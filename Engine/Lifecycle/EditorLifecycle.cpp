@@ -1579,6 +1579,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     GeometricRaster::WorldRenderConfiguration RenderConfig {};
     RenderConfig.Engine           = static_cast<GeometricRaster::WorldRenderEngine>(std::min(5u, DisplayCfg.RenderEngineIndex));
     RenderConfig.ShadowAlgorithm  = static_cast<GeometricRaster::SolarShadowAlgorithm>(std::min(4u, DisplayCfg.ShadowAlgorithmIndex));
+    RenderConfig.SdfPenumbraMode  = static_cast<GeometricRaster::DirectLighting::SdfShadowPenumbraMode>(std::min(5u, DisplayCfg.SdfShadowPenumbraIndex));
     RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.RaytracingEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
         ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
         : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
@@ -1916,6 +1917,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.DebugChannelIndex != LastViewportDebug ||
                 DisplayCfg.RenderEngineIndex != LastRenderEngine ||
                 DisplayCfg.ShadowAlgorithmIndex != LastShadowAlgorithm ||
+                DisplayCfg.SdfShadowPenumbraIndex != LastSdfPenumbraIndex ||
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
@@ -1934,6 +1936,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastViewportDebug      = DisplayCfg.DebugChannelIndex;
             LastRenderEngine       = DisplayCfg.RenderEngineIndex;
             LastShadowAlgorithm    = DisplayCfg.ShadowAlgorithmIndex;
+            LastSdfPenumbraIndex   = DisplayCfg.SdfShadowPenumbraIndex;
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;

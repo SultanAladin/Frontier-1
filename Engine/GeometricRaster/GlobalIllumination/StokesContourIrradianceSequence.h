@@ -64,6 +64,8 @@ struct StokesContourTierSettings
     bool     HighEndZeroSdfTier     = false; // false = GtxLowEnd (<=4.8 m contour + Hybrid SDF cone); true = HighEnd (all tris + BVH4)
     float    ExactContourCutoffM    = 4.8f;  // [m] - GtxLowEnd switches to cluster Bunnell disk beyond 4.8 m
     uint32_t ClusterShadowSamples   = 2u;    // [cnt] - HighEnd BVH4 luminaire rays per cluster
+    Mathematics::Axis3D    SunDirection { 0.45f, -0.35f, 0.82f };
+    Mathematics::LinearRGB SunRadiance  { 0.0f, 0.0f, 0.0f };
 };
 
 //------------------------------------------------------------------------------------------------------------------------

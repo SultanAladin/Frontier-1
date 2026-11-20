@@ -58,6 +58,7 @@ public:
 
     [[nodiscard]] bool               QueryPaused() const noexcept          { return IntegrationPaused; }
     void                             AssignPaused(bool Paused) noexcept    { IntegrationPaused = Paused; }
+    void                             ConfigureOpenDropdownId(int32_t Id) noexcept { OpenDropdownId = Id; }
     [[nodiscard]] const std::string& QueryDigestText() const noexcept      { return LastDigestText; }
     [[nodiscard]] const std::string& QueryRepeatVerdict() const noexcept   { return RepeatVerdictText; }
 

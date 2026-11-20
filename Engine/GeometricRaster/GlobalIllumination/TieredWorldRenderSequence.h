@@ -14,6 +14,7 @@
 #include "Engine/GeometricRaster/Atmosphere/VolumetricCloudSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.h"
 #include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
+#include "Engine/GeometricRaster/DirectLighting/SdfEmissivePenumbraSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SurfelRadiosityLatticeSequence.h"
@@ -62,15 +63,16 @@ enum class RealTimeGiCandidate : uint8_t
 
 struct WorldRenderConfiguration
 {
-    WorldRenderEngine        Engine              = WorldRenderEngine::OpenPbrDirect;
-    SolarShadowAlgorithm     ShadowAlgorithm     = SolarShadowAlgorithm::WideTreeRayQuery;
-    SpecularReflectionSource ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
-    RealTimeGiCandidate      GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
-    uint32_t                 DebugChannel        = 0u;   // [0..11] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular
-    bool                     ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
-    bool                     RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
-    uint32_t                 QualityTier         = 1u;   // [0..4]  - Quality tier
-    uint32_t                 PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
+    WorldRenderEngine                     Engine              = WorldRenderEngine::OpenPbrDirect;
+    SolarShadowAlgorithm                  ShadowAlgorithm     = SolarShadowAlgorithm::WideTreeRayQuery;
+    SpecularReflectionSource              ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
+    RealTimeGiCandidate                   GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
+    DirectLighting::SdfShadowPenumbraMode SdfPenumbraMode     = DirectLighting::SdfShadowPenumbraMode::AnalyticSdfConePenumbra;
+    uint32_t                              DebugChannel        = 0u;   // [0..11] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular
+    bool                                  ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
+    bool                                  RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
+    uint32_t                              QualityTier         = 1u;   // [0..4]  - Quality tier
+    uint32_t                              PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
 };
 
 struct WorldSceneSpecification

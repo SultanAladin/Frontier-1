@@ -40,6 +40,18 @@ namespace
     return Seed;
 }
 
+[[nodiscard]] float SmoothHermite(float Edge0, float Edge1, float X) noexcept
+{
+    const float T = std::clamp((X - Edge0) / std::max(1.0e-6f, Edge1 - Edge0), 0.0f, 1.0f);
+    return T * T * (3.0f - 2.0f * T);
+}
+
+[[nodiscard]] float SoftMinFloat(float A, float B, float K) noexcept
+{
+    const float H = std::max(K - std::fabs(A - B), 0.0f) / K;
+    return std::min(A, B) - H * H * K * 0.25f;
+}
+
 } // namespace
 
 float EvaluateCombinedOccludersDistance(
@@ -55,6 +67,10 @@ float EvaluateCombinedOccludersDistance(
     float BestDist = 20.0f;
     for (const auto& Box : Env.InteriorBoxes)
     {
+        if (Box.HalfExtent.X > 3.5f || Box.HalfExtent.Y > 3.5f)
+        {
+            continue;
+        }
         BestDist = std::min(BestDist, Box.EvaluateSignedDistance(WorldPos));
     }
 
@@ -74,6 +90,39 @@ float EvaluateCombinedOccludersDistance(
     return BestDist;
 }
 
+float EvaluateInteriorOccluderDistance(
+    const HybridOccluderEnvironment& Env,
+    Mathematics::Axis3D              WorldPos) noexcept
+{
+    if (Env.ForbidDistanceField)
+    {
+        return 20.0f;
+    }
+
+    float BestDist = 20.0f;
+    for (const auto& Box : Env.InteriorBoxes)
+    {
+        if (Box.HalfExtent.X > 3.5f || Box.HalfExtent.Y > 3.5f)
+        {
+            continue;
+        }
+        BestDist = std::min(BestDist, Box.EvaluateSignedDistance(WorldPos));
+    }
+
+    if (Env.CharacterRig != nullptr && !Env.CharacterRig->LimbCapsules.empty())
+    {
+        BestDist = std::min(BestDist, Env.CharacterRig->EvaluateMinimumSignedDistance(WorldPos));
+    }
+
+    if (Env.VehiclePlacement.ActiveToggle && Env.VehiclePlacement.VolumeAsset != nullptr)
+    {
+        BestDist = std::min(BestDist, DistanceFieldSpace::LocalSignedDistanceVolume::SampleSmoothWorldDistance(
+            Env.VehiclePlacement, WorldPos));
+    }
+
+    return BestDist;
+}
+
 float EvaluateGtxHybridDirectionalShadow(
     const HybridOccluderEnvironment& Env,
     Mathematics::Axis3D              ShadingPos,
@@ -82,7 +131,7 @@ float EvaluateGtxHybridDirectionalShadow(
     const HybridConeShadowSetup&     Setup) noexcept
 {
     const float NdotL = Mathematics::EvaluateDot(ShadingNormal, DirectionToLight);
-    if (NdotL <= 0.0f)
+    if (NdotL <= 1.0e-4f)
     {
         return 0.0f;
     }
@@ -91,9 +140,9 @@ float EvaluateGtxHybridDirectionalShadow(
     if (Env.SceneBvh != nullptr && Setup.ContactRangeMeters > 0.0f)
     {
         SpatialAcceleration::RaySegmentQuery ContactRay {};
-        ContactRay.Origin          = ShadingPos + ShadingNormal * 2.5e-3f;
+        ContactRay.Origin          = ShadingPos + ShadingNormal * 3.0e-3f;
         ContactRay.UnitDirection   = DirectionToLight;
-        ContactRay.MinimumDistance = 1.0e-3f;
+        ContactRay.MinimumDistance = 1.5e-3f;
         ContactRay.MaximumDistance = Setup.ContactRangeMeters;
         if (Env.SceneBvh->QueryRayOccluded(ContactRay))
         {
@@ -106,31 +155,56 @@ float EvaluateGtxHybridDirectionalShadow(
         return 1.0f;
     }
 
-    // 2. C1-smooth SDF + Capsule Rig directional soft cone beyond ContactRangeMeters
-    const Mathematics::Axis3D MarchOrigin = ShadingPos + ShadingNormal * 0.015f;
-    float RayT       = std::max(0.08f, Setup.ContactRangeMeters * 0.85f);
-    float Visibility = 1.0f;
-
-    for (uint32_t Step = 0u; Step < Setup.MaxMarchSteps && RayT < Setup.MaxTraceMeters; ++Step)
+    // 2. Candidate 1 conservative cone march: signed analytical SDF (boxes + capsule rig) separated from unsigned vehicle SDF
+    float MinRatio = 2.0f;
+    float Travel   = 0.04f;
+    for (uint32_t Step = 0u; Step < Setup.MaxMarchSteps && Travel < Setup.MaxTraceMeters; ++Step)
     {
-        const Mathematics::Axis3D SampleP = MarchOrigin + DirectionToLight * RayT;
-        const float Dist = EvaluateCombinedOccludersDistance(Env, SampleP, Setup.SmoothBlendMeters);
-        if (Dist < -0.025f)
+        const Mathematics::Axis3D SampleP = ShadingPos + DirectionToLight * Travel;
+        const float PlaneFade = SmoothHermite(0.015f, 0.10f, Mathematics::EvaluateDot(SampleP - ShadingPos, ShadingNormal));
+
+        float SignedStatic = 20.0f;
+        for (const auto& Box : Env.InteriorBoxes)
         {
-            return 0.0f;
+            if (Box.HalfExtent.X > 3.5f || Box.HalfExtent.Y > 3.5f)
+            {
+                continue;
+            }
+            SignedStatic = std::min(SignedStatic, Box.EvaluateSignedDistance(SampleP));
         }
 
-        const float Ramp = std::clamp((RayT - Setup.ContactRangeMeters * 0.65f) / 0.22f, 0.0f, 1.0f);
-        const float Soft = std::clamp(Setup.ConeSoftness * std::max(Dist, 0.0f) / RayT, 0.0f, 1.0f);
-        Visibility       = std::min(Visibility, 1.0f - Ramp * (1.0f - Soft));
-        if (Visibility < 0.008f)
+        const float RigD    = (Env.CharacterRig != nullptr && !Env.CharacterRig->LimbCapsules.empty())
+            ? Env.CharacterRig->EvaluateMinimumSignedDistance(SampleP)
+            : 20.0f;
+        const float SignedD = std::min(SignedStatic, RigD);
+
+        float DynD = 20.0f;
+        if (Env.VehiclePlacement.ActiveToggle && Env.VehiclePlacement.VolumeAsset != nullptr)
         {
-            return 0.0f;
+            DynD = DistanceFieldSpace::LocalSignedDistanceVolume::SampleSmoothWorldDistance(
+                Env.VehiclePlacement, SampleP);
         }
-        RayT += std::clamp(Dist * 0.80f, 0.032f, 0.42f);
+
+        const float MinD = std::min(std::fabs(SignedD), DynD);
+        if (PlaneFade > 1.0e-4f)
+        {
+            const float ConeR    = std::max(0.016f, Travel * Setup.TanSunRadius);
+            const float SigRatio = std::clamp(SignedD / ConeR, -1.5f, 1.5f);
+            const float DynMid   = std::max(0.056f, ConeR * 0.65f);
+            const float DynHalf  = std::max(0.024f, ConeR * 0.36f);
+            const float DynRatio = std::clamp((DynD - DynMid) / DynHalf, -1.5f, 1.5f);
+            const float RawRatio = std::min(SigRatio, DynRatio);
+            const float Ratio    = RawRatio * PlaneFade + 1.5f * (1.0f - PlaneFade);
+            MinRatio = SoftMinFloat(MinRatio, Ratio, 0.12f);
+            if (MinRatio <= -1.0f)
+            {
+                return 0.0f;
+            }
+        }
+        Travel += std::clamp(MinD * 0.34f, 0.014f, 0.14f);
     }
 
-    return Visibility * Visibility * (3.0f - 2.0f * Visibility);
+    return SmoothHermite(-0.95f, 0.95f, MinRatio);
 }
 
 float EvaluateHighEndBvhDirectionalShadow(
@@ -190,24 +264,14 @@ float EvaluateGtxHybridLuminaireVisibility(
 {
     const Mathematics::Axis3D ToTarget = LuminaireTargetPos - ShadingPos;
     const float SegmentLen = Mathematics::EvaluateLength(ToTarget);
-    if (SegmentLen <= 1.0e-4f)
+    if (SegmentLen <= 0.06f)
     {
         return 1.0f;
     }
     const Mathematics::Axis3D Dir = ToTarget * (1.0f / SegmentLen);
-
-    // 1. Short-range exact BVH4 contact check [0, 0.28 m]
-    if (Env.SceneBvh != nullptr)
+    if (Mathematics::EvaluateDot(ShadingNormal, Dir) <= 1.0e-4f)
     {
-        SpatialAcceleration::RaySegmentQuery ContactRay {};
-        ContactRay.Origin          = ShadingPos + ShadingNormal * 3.0e-3f;
-        ContactRay.UnitDirection   = Dir;
-        ContactRay.MinimumDistance = 1.5e-3f;
-        ContactRay.MaximumDistance = std::min(0.28f, SegmentLen - 0.04f);
-        if (ContactRay.MaximumDistance > ContactRay.MinimumDistance && Env.SceneBvh->QueryRayOccluded(ContactRay))
-        {
-            return 0.0f;
-        }
+        return 0.0f;
     }
 
     if (Env.ForbidDistanceField)
@@ -215,36 +279,70 @@ float EvaluateGtxHybridLuminaireVisibility(
         return 1.0f;
     }
 
-    // 2. Uniform 32-step optical-depth SDF cone integration (0.38 m start avoids self-capsule grazing; contact BVH4 covers [0, 0.28 m])
-    const float TStart = 0.38f;
-    const float TEnd   = SegmentLen - 0.10f;
-    if (TEnd <= TStart)
+    const float SelfGuardM      = 0.20f;
+    const float LuminaireMargin = std::max(SelfGuardM, LuminaireRadiusMeters * 0.65f);
+    const float StartT          = 0.12f;
+    const float EndT            = SegmentLen - LuminaireMargin;
+    if (EndT <= StartT)
     {
         return 1.0f;
     }
 
-    constexpr uint32_t FixedSteps = 32u;
-    const float StepLen   = (TEnd - TStart) / static_cast<float>(FixedSteps);
-    const float SourceSpreadR     = std::max(0.05f, LuminaireRadiusMeters * 0.42f);
-    const auto  StartPos  = ShadingPos + ShadingNormal * 0.02f;
-    float OpticalDepth    = 0.0f;
+    constexpr uint32_t StepCount = 32u;
+    constexpr float    InvSteps  = 1.0f / static_cast<float>(StepCount);
+    const float        StepDt    = (EndT - StartT) * InvSteps;
+    const float        AngRadius = std::clamp(LuminaireRadiusMeters / std::max(0.5f, SegmentLen), 0.025f, 0.075f);
 
-    for (uint32_t K = 0u; K < FixedSteps; ++K)
+    float OpticalDepth = 0.0f;
+    for (uint32_t Step = 0u; Step < StepCount; ++Step)
     {
-        const float T         = TStart + (static_cast<float>(K) + 0.5f) * StepLen;
-        const float Frac      = T / SegmentLen;
-        const float ConeR     = 0.03f + SourceSpreadR * Frac;
-        const float Dist      = EvaluateCombinedOccludersDistance(Env, StartPos + Dir * T, 0.08f);
-        const float Overlap   = std::clamp((ConeR - Dist) / (2.0f * ConeR), 0.0f, 1.0f);
-        const float SmoothOvl = Overlap * Overlap * (3.0f - 2.0f * Overlap);
-        OpticalDepth         += SmoothOvl * (StepLen / std::max(0.09f, ConeR * 0.90f));
+        const float U = (static_cast<float>(Step) + 0.5f) * InvSteps;
+        const float T = StartT + (EndT - StartT) * U;
+        const Mathematics::Axis3D SampleP = ShadingPos + Dir * T;
+        const float PlaneFade = SmoothHermite(0.02f, 0.16f, Mathematics::EvaluateDot(SampleP - ShadingPos, ShadingNormal));
+        if (PlaneFade <= 1.0e-4f)
+        {
+            continue;
+        }
+        const float RampIn  = SmoothHermite(0.10f, 0.26f, T);
+        const float RampOut = 1.0f - SmoothHermite(EndT - 0.14f, EndT, T);
+        const float Weight  = RampIn * RampOut * PlaneFade;
+        if (Weight <= 1.0e-4f)
+        {
+            continue;
+        }
+
+        const float Dist    = EvaluateInteriorOccluderDistance(Env, SampleP);
+        const float ConeR   = std::max(0.036f, T * AngRadius);
+        const float StepVis = SmoothHermite(-0.025f, ConeR * 0.72f, Dist + 0.015f);
+        const float Occ     = (1.0f - StepVis) * Weight;
+        OpticalDepth += 2.6f * Occ * (StepDt / std::max(0.08f, ConeR));
         if (OpticalDepth > 6.5f)
         {
             return 0.0f;
         }
     }
 
-    return std::exp(-OpticalDepth * 1.45f);
+    const float SoftVis = std::exp(-OpticalDepth);
+    if (SoftVis <= 0.004f || Env.SceneBvh == nullptr)
+    {
+        return SoftVis;
+    }
+
+    const float ContactLimit = std::min(0.28f, std::max(0.01f, SegmentLen - SelfGuardM));
+    if (ContactLimit > 0.02f)
+    {
+        SpatialAcceleration::RaySegmentQuery ContactRay {};
+        ContactRay.Origin          = ShadingPos + ShadingNormal * 0.004f;
+        ContactRay.UnitDirection   = Dir;
+        ContactRay.MinimumDistance = 0.002f;
+        ContactRay.MaximumDistance = ContactLimit;
+        if (Env.SceneBvh->QueryRayOccluded(ContactRay))
+        {
+            return 0.0f;
+        }
+    }
+    return SoftVis;
 }
 
 float EvaluateHighEndBvhLuminaireVisibility(

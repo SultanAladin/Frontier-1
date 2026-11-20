@@ -11,6 +11,7 @@
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/DeterministicPathTraceSequence.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 
 #include <algorithm>
 #include <array>
@@ -692,18 +693,39 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             Order2Occluders.VehiclePlacement = PreparedScene.GtxVehicleVolume;
             Order2Occluders.CharacterRig     = &PreparedScene.GtxCharacterRig;
 
-            // Precompute GtxLowEnd HybridConeShadow (0.28 m BVH4 + C0 48^3 SDF + Capsule Rig) BEFORE OpenPBR direct shading
+            // Precompute GtxLowEnd SDF Directional Shadow (Modes 0..5, defaulting to Candidate 1 AnalyticSdfConePenumbra)
             if (std::max({ PreparedScene.Sun.SolarIrradiance.R, PreparedScene.Sun.SolarIrradiance.G, PreparedScene.Sun.SolarIrradiance.B }) > 1.0e-4f)
             {
                 GtxSolarVisibility.assign(TotalPixels, 1.0f);
-                const Mathematics::Axis3D UnitSun = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+                const Mathematics::Axis3D UnitSun   = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+                const float               TanSunRad = std::tan(std::clamp(PreparedScene.Sun.SunAngularRadiusRadians, 1.0e-4f, 0.25f));
+
+                DirectLighting::SdfVoxelClipmapHierarchy OptionalClipmap {};
+                const bool NeedsVoxelClipmap =
+                    (Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfClipmapPenumbra ||
+                     Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfPenumbraPlusConeGi);
+                if (NeedsVoxelClipmap)
+                {
+                    const Mathematics::Axis3D FocusCenter =
+                        (PreparedScene.SceneTree.RootBoundsMin + PreparedScene.SceneTree.RootBoundsMax) * 0.5f;
+                    OptionalClipmap.BuildFromHybridEnvironment(Order2Occluders, FocusCenter, 2.2f, 3.6f);
+                }
+
                 for (std::size_t Off = 0u; Off < TotalPixels; ++Off)
                 {
                     const auto& Hit = PrimarySamples[Off];
                     if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
                     {
-                        GtxSolarVisibility[Off] = DirectLighting::EvaluateGtxHybridDirectionalShadow(
-                            Order2Occluders, Hit.WorldPosition, Hit.TangentFrame.NormalZ, UnitSun);
+                        const uint32_t PixelKey = static_cast<uint32_t>(Off * 2654435761u + 0x9E3779B9u);
+                        GtxSolarVisibility[Off] = DirectLighting::EvaluateWorldDirectionalSdfShadow(
+                            Config.SdfPenumbraMode,
+                            Order2Occluders,
+                            NeedsVoxelClipmap ? &OptionalClipmap : nullptr,
+                            Hit.WorldPosition,
+                            Hit.TangentFrame.NormalZ,
+                            UnitSun,
+                            TanSunRad,
+                            PixelKey);
                     }
                 }
             }
@@ -742,14 +764,16 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 AuthMat.Diffuse.BaseColor.G * DiffK,
                 AuthMat.Diffuse.BaseColor.B * DiffK,
             };
-            MatEmissionBySlot[M] = {
-                AuthMat.PorosityLight.EmissionTint.R * AuthMat.PorosityLight.EmissionLuminanceNits,
-                AuthMat.PorosityLight.EmissionTint.G * AuthMat.PorosityLight.EmissionLuminanceNits,
-                AuthMat.PorosityLight.EmissionTint.B * AuthMat.PorosityLight.EmissionLuminanceNits,
-            };
+            MatEmissionBySlot[M] = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(AuthMat.PorosityLight);
         }
 
         StokesSettings.HighEndZeroSdfTier = HighEndZeroSdf;
+        StokesSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
+        StokesSettings.SunRadiance        = {
+            PreparedScene.Sun.SolarIrradiance.R,
+            PreparedScene.Sun.SolarIrradiance.G,
+            PreparedScene.Sun.SolarIrradiance.B,
+        };
         SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
         SurfelSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
         SurfelSettings.SunRadiance        = {

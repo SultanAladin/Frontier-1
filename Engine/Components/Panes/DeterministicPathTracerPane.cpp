@@ -439,6 +439,7 @@ void DeterministicPathTracerPane::Render(
     Rectangle2D PaintDropdownBounds {};
     Rectangle2D FloorDropdownBounds {};
     Rectangle2D SkyDropdownBounds   {};
+    Rectangle2D SdfDropdownBounds   {};
 
     // Profile selector (SceneFinalRender vs GameRealtime)
     {
@@ -590,6 +591,22 @@ void DeterministicPathTracerPane::Render(
         if (DropdownSelector::ConstructButton(Surface, SkyDropdownBounds, SkyNames[static_cast<uint32_t>(Cfg.EnvironmentPreset)], OpenDropdownId == 3, Ptr).Pressed)
         {
             OpenDropdownId = (OpenDropdownId == 3) ? -1 : 3;
+        }
+        Y += 26.0f;
+
+        constexpr std::array<const char*, 6> SdfShortNames {
+            "0. Point SDF",
+            "1. Analytic Cone",
+            "2. Voxel Clipmap",
+            "3. Voxel + Cone GI",
+            "4. Hybrid Sobol Cap",
+            "5. SDF MC Ref (96spp)",
+        };
+        Surface.Text({ LeftX, Y + 4.0f }, 11.5f, StudioTextMuted, "SDF Shadow");
+        SdfDropdownBounds = { DropLeft, Y, DropW, 22.0f };
+        if (DropdownSelector::ConstructButton(Surface, SdfDropdownBounds, SdfShortNames[Cfg.SdfPenumbraModeIndex % 6u], OpenDropdownId == 4, Ptr).Pressed)
+        {
+            OpenDropdownId = (OpenDropdownId == 4) ? -1 : 4;
         }
         Y += 26.0f;
 
@@ -824,6 +841,24 @@ void DeterministicPathTracerPane::Render(
             Cfg.EnvironmentPreset = static_cast<GeometricRaster::StudioEnvironmentPreset>(Chosen);
             RebuildScene          = true;
             OpenDropdownId        = -1;
+        }
+    }
+    else if (OpenDropdownId == 4)
+    {
+        constexpr std::array<const char*, 6> SdfOpts {
+            "0. Point-Sample SDF (No Penumbra)",
+            "1. Analytic SDF Cone Penumbra",
+            "2. 3D Voxel SDF Clipmap Penumbra",
+            "3. 3D Voxel SDF Penumbra + Cone GI",
+            "4. Hybrid SDF + Sobol Spherical Cap",
+            "5. SDF Monte Carlo PT Ref (96 SPP)",
+        };
+        uint32_t Chosen = Cfg.SdfPenumbraModeIndex % 6u;
+        if (DropdownSelector::ConstructOptionSheet(Surface, SdfDropdownBounds, SdfOpts.data(), 6u, Chosen, Ptr, Chosen).Clicked)
+        {
+            Cfg.SdfPenumbraModeIndex = Chosen;
+            ResetSamples             = true;
+            OpenDropdownId           = -1;
         }
     }
 

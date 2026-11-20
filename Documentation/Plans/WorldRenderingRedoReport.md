@@ -102,3 +102,16 @@
 #### `GameRealtime` `1-spp` Reconstruction Strip (`05-ReconstructionComparison_GameRealtime.png` — Left: `1 spp` Noisy · Center: `1 spp` Blue-Noise + À-Trous · Right: `32 spp` Converged)
 
 ![Reconstruction Strip](../../Exhibits/Images/DeterministicPathTracer/05-ReconstructionComparison_GameRealtime.png)
+
+---
+
+## 5. PROOF 11 — Emissive-Sphere SDF Penumbrae, Candidate 1 `GtxSdfGi` Repair, & Spherical-Cap VNDF
+
+- **Candidate 1 `HybridConeShadow` + `GtxSdfGi` Repair (`GtxSdfGiShadowValidation`)**:
+  - Repaired `LocalSignedDistanceVolume` (`80x40x32` FP16 local SDF, `204,800 B` for `GtxLowEnd`, `0 B` for `HighEnd`), `HybridConeShadowSequence`, `StokesContourIrradianceSequence`, and `SurfelRadiosityLatticeSequence` + their `.slang` compute shaders (`HDR RMSE: 0.1326 / 0.1277 / 0.0360`).
+- **Dupuy & Benyoub (2023) Spherical-Cap GGX VNDF**:
+  - Upgraded `SampleVisibleNormal` in `Engine/Shaders/GlobalIllumination/DeterministicRadianceIntegration.slang` to the exact Spherical-Cap VNDF formulation.
+- **6 `PROOF 11` SDF Shadow + Penumbra Modes (`SdfEmissivePenumbraSequence` + `SdfEmissivePenumbraCompute.slang` + `ViewportPanel` Dropdown)**:
+  - Compact 2-cascade 3D Voxel SDF Clipmap (`56x56x40` Fine + `40x40x32` Coarse + premultiplied 14-dir cosine 2-bounce radiosity) in `3,532,800 B` (`3.37 MB`).
+  - Modes `0..5`: `0. Point-Sample SDF (No Penumbra)` (`0.000 m`), `1. Analytic SDF Cone Penumbra` (`0.684 m`), `2. 3D Voxel SDF Clipmap Penumbra` (`0.583 m`), `3. 3D Voxel SDF Penumbra + Cone GI` (`0.583 m`, 16-dir world-fixed Golden-Spiral soft-aperture cones + 7-tap normalized surface radiosity), `4. Hybrid SDF + Sobol Spherical Cap` (`0.684 m`), and `5. SDF Monte Carlo PT Ref (96 SPP)` (`0.724 m`).
+  - `SdfEmissivePenumbraValidation` verified: 96-SPP PT Ref RMSE `Point=0.0712`, `Analytic=0.0652`, `Clipmap=0.0657`, `VoxelConeGI=0.0570`, `HybridSobol=0.0580`; Vulkan `SdfEmissivePenumbraCompute.comp.spv` GPU vs CPU RMSE `0.0190`; `06_Proof11_AllSdfRenderers_PenumbraSheet.png` (`1488x688`) and `07_ViewportSdfDropdownSelector.png` (`1440x860`).

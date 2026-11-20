@@ -61,8 +61,9 @@ struct ViewportDisplaySettings
 {
     uint32_t QualityTier           = 2u;     // [idx] - 0=Low, 1=Medium, 2=Standard, 3=High, 4=Ultra
     uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1..11=Modular Debug Channels
-    uint32_t RenderEngineIndex     = 1u;     // [idx] - 0=MatCap, 1=OpenPbrDirect
+    uint32_t RenderEngineIndex     = 1u;     // [idx] - 0=MatCap, 1=OpenPbrDirect, 2=GtxSdfGi, 3=HighEndBvh4Gi, 4=PtRealtime, 5=PtFinal
     uint32_t ShadowAlgorithmIndex  = 4u;     // [idx] - 0=ContactPcss, 1=PcssPlaneAware, 2=ShadowRayMarch, 3=PcfBilinear, 4=WideTreeRayQuery
+    uint32_t SdfShadowPenumbraIndex = 1u;    // [idx] - 0=PointSdf, 1=AnalyticCone, 2=VoxelClipmap, 3=VoxelConeGi, 4=HybridSobolCap, 5=SdfMcRef96Spp
     uint32_t ReflectionSourceIndex = 0u;     // [idx] - 0=WideTreeRaytrace, 1=SkyEnvironment
     uint32_t TraceResolutionIndex  = 0u;     // [idx] - 0=Full Trace, 1=1/2 Trace, 2=1/4 Trace
     float    RenderScalePercent    = 100.0f; // [%]   - Internal resolution percentage [50..200]
@@ -132,6 +133,7 @@ public:
     void ConfigureSplitViewport(bool SplitEnabled) noexcept;
     void ConfigureDiagnosticsVisible(bool Visible) noexcept;
     void ConfigureSettingsSheetOpen(bool Open) noexcept;
+    void ConfigureSdfPenumbraDropdownOpen(bool Open) noexcept { SdfPenumbraDropdownOpen = Open; }
     void ConfigureConstructSheetOpen(bool Open) noexcept;
     void ConfigureProjectionDropdownOpen(bool Open) noexcept;
     void ConfigurePrimaryProjection(ViewportProjectionPreset Preset) noexcept;
@@ -203,10 +205,12 @@ private:
     bool                       DebugDropdownOpen       = false;                                   // [-]   - Debug View DropdownSelector open
     bool                       EngineDropdownOpen      = false;                                   // [-]   - Render Engine DropdownSelector open
     bool                       ShadowDropdownOpen      = false;                                   // [-]   - Shadow Algorithm DropdownSelector open
+    bool                       SdfPenumbraDropdownOpen = false;                                   // [-]   - 6-Mode SDF Shadow/Penumbra DropdownSelector open
     Rectangle2D                HeaderDebugButtonBounds {};                                        // [px]  - Last Header Debug button bounds
     Rectangle2D                DebugButtonBounds       {};                                        // [px]  - Last Debug View button bounds
     Rectangle2D                EngineButtonBounds      {};                                        // [px]  - Last Engine selector button bounds
     Rectangle2D                ShadowButtonBounds      {};                                        // [px]  - Last Shadow selector button bounds
+    Rectangle2D                SdfPenumbraButtonBounds {};                                        // [px]  - Last SDF Penumbra selector button bounds
     ViewportProjectionPreset   PrimaryProjection       = ViewportProjectionPreset::Perspective;   // [-]   - Primary pane projection
     ViewportProjectionPreset   SecondaryProjection     = ViewportProjectionPreset::Top;           // [-]   - Split secondary pane projection
     uint32_t                   ActivePaneIndex         = 0u;                                      // [idx] - Focused pane in split mode (0/1)

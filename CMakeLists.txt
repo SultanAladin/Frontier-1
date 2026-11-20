@@ -631,6 +631,7 @@ endfunction()
 
 frontier_compile_world_module_slang_shader(DirectLighting/RefitWideBoundingTreeCompute.slang            ComputeEntry           compute  RefitWideBoundingTreeCompute.comp.spv)
 frontier_compile_world_module_slang_shader(DirectLighting/HybridConeShadowCompute.slang                 ComputeEntry           compute  HybridConeShadowCompute.comp.spv)
+frontier_compile_world_module_slang_shader(DirectLighting/SdfEmissivePenumbraCompute.slang              ComputeEntry           compute  SdfEmissivePenumbraCompute.comp.spv)
 frontier_compile_world_module_slang_shader(GlobalIllumination/StokesContourIrradianceCompute.slang      ComputeEntry           compute  StokesContourIrradianceCompute.comp.spv)
 frontier_compile_world_module_slang_shader(GlobalIllumination/SurfelRadiosityLatticeCompute.slang       ComputeEntry           compute  SurfelRadiosityLatticeCompute.comp.spv)
 frontier_compile_world_module_slang_shader(GlobalIllumination/DeterministicRadianceIntegration.slang    IntegrateRadiance      compute  DeterministicRadianceIntegration.comp.spv)
@@ -669,6 +670,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/DirectLighting/SolarShadowSequence.cpp
     Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.cpp
     Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.cpp
+    Engine/GeometricRaster/DirectLighting/SdfEmissivePenumbraSequence.cpp
     Engine/GeometricRaster/DirectLighting/PhotometricLightTree.cpp
     Engine/GeometricRaster/GlobalIllumination/SpecularReflectionSequence.cpp
     Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.cpp
@@ -1148,6 +1150,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
     frontier_register_exhibit(DirectPbrWorldValidation          Exhibits/DirectPbrWorldValidation.cpp)
     frontier_register_exhibit(GtxSdfGiShadowValidation          Exhibits/GtxSdfGiShadowValidation.cpp)
+    frontier_register_exhibit(SdfEmissivePenumbraValidation     Exhibits/SdfEmissivePenumbraValidation.cpp)
     frontier_register_exhibit(DeterministicPathTracerValidation Exhibits/DeterministicPathTracerValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)

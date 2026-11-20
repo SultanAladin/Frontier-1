@@ -217,8 +217,18 @@ bool LocalSignedDistanceVolume::BakeFromTriangles(
     uint32_t                                                   CubicResolution,
     float                                                      MarginMeters)
 {
+    return BakeFromTrianglesAspect(InputPrimitives, CubicResolution, CubicResolution, CubicResolution, MarginMeters);
+}
+
+bool LocalSignedDistanceVolume::BakeFromTrianglesAspect(
+    std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+    uint32_t                                                   ResX,
+    uint32_t                                                   ResY,
+    uint32_t                                                   ResZ,
+    float                                                      MarginMeters)
+{
     Reset();
-    if (InputPrimitives.empty() || CubicResolution < 8u)
+    if (InputPrimitives.empty() || ResX < 8u || ResY < 8u || ResZ < 8u)
     {
         return false;
     }
@@ -229,9 +239,9 @@ bool LocalSignedDistanceVolume::BakeFromTriangles(
         return false;
     }
 
-    ResolutionX = CubicResolution;
-    ResolutionY = CubicResolution;
-    ResolutionZ = CubicResolution;
+    ResolutionX = ResX;
+    ResolutionY = ResY;
+    ResolutionZ = ResZ;
     LocalMin = {
         LocalTree.RootBoundsMin.X - MarginMeters,
         LocalTree.RootBoundsMin.Y - MarginMeters,
@@ -327,7 +337,7 @@ float LocalSignedDistanceVolume::SampleTrilinearLocal(Mathematics::Axis3D Clampe
     const float C00 = At(IX0, IY0, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0) * TX;
     const float C10 = At(IX0, IY0 + 1u, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0) * TX;
     const float C01 = At(IX0, IY0, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0 + 1u) * TX;
-    const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u);
+    const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u) * TX;
     const float C0  = C00 * (1.0f - TY) + C10 * TY;
     const float C1  = C01 * (1.0f - TY) + C11 * TY;
     return C0 * (1.0f - TZ) + C1 * TZ;

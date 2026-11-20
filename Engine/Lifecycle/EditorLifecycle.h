@@ -189,6 +189,7 @@ private:
     uint32_t                                                         LastViewportDebug    = UINT32_MAX;
     uint32_t                                                         LastRenderEngine     = UINT32_MAX;
     uint32_t                                                         LastShadowAlgorithm  = UINT32_MAX;
+    uint32_t                                                         LastSdfPenumbraIndex = UINT32_MAX;
     uint32_t                                                         LastReflectionSource = UINT32_MAX;
     uint32_t                                                         LastTraceResolutionIdx = UINT32_MAX;
     bool                                                             LastReflectionsEnabled = true;

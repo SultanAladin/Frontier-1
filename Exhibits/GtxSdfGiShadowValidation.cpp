@@ -7,6 +7,7 @@
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/DistanceFieldSpace/ArticulatedCapsuleRig.h"
 #include "Engine/DistanceFieldSpace/LocalSignedDistanceVolume.h"
+#include "Engine/MaterialSpace/Scattering/BlackbodyEmission.h"
 #include "Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/SurfelRadiosityLatticeSequence.h"
@@ -308,7 +309,7 @@ void BuildCornellVehicleBay(
     OutBay = {};
     auto& Reg = OutBay.Scene.MaterialRegister;
 
-    // 1. Register ControlVehicle OpenPBR materials (warm pearl white coat so red/green Cornell GI bleed reads vividly!)
+    // 1. Register ControlVehicle OpenPBR materials (cobalt body coat + emissive head/tail lenses matching reference hero!)
     for (std::size_t R = 0u; R < static_cast<std::size_t>(VehicleSurfaceSlot::Count); ++R)
     {
         const auto Slot = static_cast<VehicleSurfaceSlot>(R);
@@ -316,12 +317,12 @@ void BuildCornellVehicleBay(
         switch (Slot)
         {
             case VehicleSurfaceSlot::BodyCoat:
-                Mat.MaterialName            = "PearlCeramicBodyCoat";
-                Mat.Diffuse.BaseColor       = { 0.78f, 0.79f, 0.82f };
+                Mat.MaterialName            = "CobaltCeramicBodyCoat";
+                Mat.Diffuse.BaseColor       = { 0.08f, 0.32f, 0.84f };
                 Mat.Specular.Metalness      = 0.12f;
-                Mat.Specular.Roughness      = 0.34f;
-                Mat.Clearcoat.CoatWeight    = 0.65f;
-                Mat.Clearcoat.CoatRoughness = 0.08f;
+                Mat.Specular.Roughness      = 0.14f;
+                Mat.Clearcoat.CoatWeight    = 1.00f;
+                Mat.Clearcoat.CoatRoughness = 0.04f;
                 break;
             case VehicleSurfaceSlot::CanopyGloss:
                 Mat.MaterialName       = "DarkCanopyTrim";
@@ -343,6 +344,20 @@ void BuildCornellVehicleBay(
                 Mat.MaterialName       = "MatteTyreTread";
                 Mat.Diffuse.BaseColor  = { 0.10f, 0.10f, 0.11f };
                 Mat.Specular.Roughness = 0.72f;
+                break;
+            case VehicleSurfaceSlot::HeadlightLens:
+                Mat.MaterialName                        = "HeadlightBeam";
+                Mat.Diffuse.BaseColor                   = { 0.96f, 0.98f, 1.00f };
+                Mat.Specular.Roughness                  = 0.04f;
+                Mat.PorosityLight.EmissionLuminanceNits = 76000.0f;
+                Mat.PorosityLight.EmissionTint          = { 1.00f, 0.96f, 0.88f };
+                break;
+            case VehicleSurfaceSlot::TaillightLens:
+                Mat.MaterialName                        = "TaillightLamp";
+                Mat.Diffuse.BaseColor                   = { 0.85f, 0.08f, 0.08f };
+                Mat.Specular.Roughness                  = 0.06f;
+                Mat.PorosityLight.EmissionLuminanceNits = 64000.0f;
+                Mat.PorosityLight.EmissionTint          = { 1.00f, 0.12f, 0.08f };
                 break;
             default:
                 Mat.MaterialName       = "ChassisTrimNeutral";
@@ -461,20 +476,11 @@ void BuildCornellVehicleBay(
             AddStaticBox({ CX, CY, -0.08f }, { 2.0f, 1.8f, 0.16f }, SlotWhite, false);
         }
     }
-    OutBay.Scene.GtxInteriorBoxes.push_back({ { 0.0f, 0.0f, -0.08f }, { 5.0f, 3.6f, 0.08f } });
-
-    // Back wall (-X), Red Left Wall (-Y), Green Right Wall (+Y), Framed Ceiling with Open 3.6m x 2.8m Skylight Aperture + Emissive Cove Strips + Column
-    AddStaticBox({ -4.10f,  0.0f, 1.90f }, { 0.30f, 7.20f, 3.80f }, SlotWhite, true);
-    AddStaticBox({  0.0f,  -3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotRed,   true);
-    AddStaticBox({  0.0f,   3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotGreen, true);
-    // 4 ceiling border beams framing an open skylight window X in [-0.6, 3.0], Y in [-2.2, 0.8] so sun shines onto car + character!
-    AddStaticBox({ -2.40f,  0.0f,  3.88f }, { 3.60f, 7.20f, 0.32f }, SlotWhite, true);
-    AddStaticBox({  3.60f,  0.0f,  3.88f }, { 1.20f, 7.20f, 0.32f }, SlotWhite, true);
-    AddStaticBox({  1.20f,  2.20f, 3.88f }, { 3.60f, 2.80f, 0.32f }, SlotWhite, true);
-    AddStaticBox({  1.20f, -2.90f, 3.88f }, { 3.60f, 1.40f, 0.32f }, SlotWhite, true);
-    // Emissive skylight cove panels recessed flush beneath ceiling border beams (top face occluded inside thick ceiling beam)
-    AddStaticBox({ -1.35f, -0.40f, 3.68f }, { 1.50f, 2.40f, 0.10f }, OutBay.CeilingRadiatorSlot, false);
-    AddStaticBox({  0.80f,  1.45f, 3.68f }, { 2.60f, 1.10f, 0.10f }, OutBay.CeilingRadiatorSlot, false);
+    // Open-top studio (reference hero design): boundary floor/walls stay out of GtxInteriorBoxes so receivers never self-occlude!
+    // Back wall (-X), Red Left Wall (-Y), Green Right Wall (+Y) + interior column (sole SDF box occluder!)
+    AddStaticBox({ -4.10f,  0.0f, 1.90f }, { 0.30f, 7.20f, 3.80f }, SlotWhite, false);
+    AddStaticBox({  0.0f,  -3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotRed,   false);
+    AddStaticBox({  0.0f,   3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotGreen, false);
     AddStaticBox({ -1.80f,  2.20f, 1.10f }, { 0.52f, 0.52f, 2.20f }, SlotWhite, true);
 
     // 4. Live Deforming Articulated Character in Pose A (0.0) or Pose B (1.0) standing right beside ControlVehicle
@@ -498,10 +504,10 @@ void BuildCornellVehicleBay(
         ++NextAsset;
     }
 
-    // 5. Key directional studio sun beam + minimal dark sky (so indoor GI + emissive panel + bounce dominate shaded areas!)
-    OutBay.Scene.Sun.DirectionToSun          = Mathematics::NormalizeAxis({ 0.56f, -0.34f, 0.75f });
-    OutBay.Scene.Sun.SolarIrradiance         = { 2.15f, 2.02f, 1.84f };
-    OutBay.Scene.Sun.SunAngularRadiusRadians = 0.032f;
+    // 5. Open-top studio sun matching reference hero (foreground car/character shadows, TanSunRadius = 0.048!)
+    OutBay.Scene.Sun.DirectionToSun          = Mathematics::NormalizeAxis({ -0.46f, 0.56f, 0.68f });
+    OutBay.Scene.Sun.SolarIrradiance         = { 3.20f, 3.05f, 2.85f };
+    OutBay.Scene.Sun.SunAngularRadiusRadians = 0.048f;
     OutBay.Scene.SkyRadiance                 = { 0.02f, 0.025f, 0.035f };
     OutBay.Scene.Atmosphere.Medium.AtmosphereEnabled = false;
 
@@ -591,11 +597,7 @@ struct ReferenceGroundTruthCapture
         const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(M);
         const float DiffK = (1.0f - Mat.Specular.Metalness) * Mat.Diffuse.BaseWeight;
         AlbedoBySlot[M] = { Mat.Diffuse.BaseColor.R * DiffK, Mat.Diffuse.BaseColor.G * DiffK, Mat.Diffuse.BaseColor.B * DiffK };
-        EmissiveBySlot[M] = {
-            Mat.PorosityLight.EmissionTint.R * Mat.PorosityLight.EmissionLuminanceNits,
-            Mat.PorosityLight.EmissionTint.G * Mat.PorosityLight.EmissionLuminanceNits,
-            Mat.PorosityLight.EmissionTint.B * Mat.PorosityLight.EmissionLuminanceNits,
-        };
+        EmissiveBySlot[M] = MaterialSpace::Scattering::EvaluatePlanckianBlackbodyRadiance(Mat.PorosityLight);
     }
 
     // Collect emissive luminaire triangles for Next-Event Estimation at bounce vertices
@@ -883,8 +885,8 @@ int main()
     }
 
     DistanceFieldSpace::LocalSignedDistanceVolume GtxCarVolume {};
-    if (!RequireCondition(GtxCarVolume.BakeFromTriangles(CarLocalPrims, 48u, 0.24f), "Bake 48^3 LocalSignedDistanceVolume") ||
-        !RequireCondition(GtxCarVolume.QueryCompactMemoryBytes() == 48u * 48u * 48u * 2u, "48^3 FP16 SDF == 221,184 B") ||
+    if (!RequireCondition(GtxCarVolume.BakeFromTrianglesAspect(CarLocalPrims, 80u, 40u, 32u, 0.24f), "Bake 80x40x32 LocalSignedDistanceVolume") ||
+        !RequireCondition(GtxCarVolume.QueryCompactMemoryBytes() == 80u * 40u * 32u * 2u, "80x40x32 FP16 SDF == 204,800 B") ||
         !RequireCondition(GtxCarVolume.QueryCompactMemoryBytes() <= 3700000u, "GtxLowEnd SDF <= 3.7 MB budget"))
     {
         return 1;
@@ -968,22 +970,22 @@ int main()
     Camera.ViewportWidthPx    = ViewW;
     Camera.ViewportHeightPx   = ViewH;
 
-    CornellVehicleBayLayout BayPoseA_Gtx {};
-    BuildCornellVehicleBay(Vehicle, 0.0f, &GtxCarVolume, BayPoseA_Gtx);
+    CornellVehicleBayLayout BayPoseB_Gtx {};
+    BuildCornellVehicleBay(Vehicle, 1.0f, &GtxCarVolume, BayPoseB_Gtx);
     TieredWorldRenderSequence Renderer {};
-    Renderer.PrepareWorldScene(BayPoseA_Gtx.Scene);
+    Renderer.PrepareWorldScene(BayPoseB_Gtx.Scene);
 
-    // 4a. GtxLowEnd + GI Candidate 1 (StokesContour)
+    // 4a. GtxLowEnd + GI Candidate 1 (StokesContour) at deforming Pose B (reference hero pose!)
     WorldRenderConfiguration CfgGtxStokes {};
     CfgGtxStokes.Engine          = WorldRenderEngine::RealTimeGiGtxLowEnd;
     CfgGtxStokes.GiCandidate     = RealTimeGiCandidate::StokesContour;
     CfgGtxStokes.ShadowAlgorithm = SolarShadowAlgorithm::ContactPcss;
-    const WorldRenderOutput OutGtxStokes = Renderer.RenderWorldFrameWithEngine(CfgGtxStokes, Camera, Camera, BayPoseA_Gtx.Scene);
+    const WorldRenderOutput OutGtxStokes = Renderer.RenderWorldFrameWithEngine(CfgGtxStokes, Camera, Camera, BayPoseB_Gtx.Scene);
 
-    // 4b. GtxLowEnd + GI Candidate 2 (SurfelRadiosity Dual-Cascade 12x10x4 + 8x6x3)
+    // 4b. GtxLowEnd + GI Candidate 2 (SurfelRadiosity Dual-Cascade 12x10x4 + 8x6x3) at Pose B
     WorldRenderConfiguration CfgGtxSurfel = CfgGtxStokes;
     CfgGtxSurfel.GiCandidate = RealTimeGiCandidate::SurfelRadiosity;
-    const WorldRenderOutput OutGtxSurfel = Renderer.RenderWorldFrameWithEngine(CfgGtxSurfel, Camera, Camera, BayPoseA_Gtx.Scene);
+    const WorldRenderOutput OutGtxSurfel = Renderer.RenderWorldFrameWithEngine(CfgGtxSurfel, Camera, Camera, BayPoseB_Gtx.Scene);
 
     // 4c. HighEnd (0 MB SDF!) Pose A (Dual-Cascade 19x15x6 + 9x7x4, 96 BVH4 Chebyshev rays)
     CornellVehicleBayLayout BayPoseA_High {};
@@ -1002,8 +1004,8 @@ int main()
     Renderer.PrepareWorldScene(BayPoseB_High.Scene);
     const WorldRenderOutput OutHighPoseB = Renderer.RenderWorldFrameWithEngine(CfgHighEnd, Camera, Camera, BayPoseB_High.Scene);
 
-    // 4e. Unbiased 64-spp Monte-Carlo ground-truth reference (Pose A)
-    const ReferenceGroundTruthCapture GroundTruthA = RenderMonteCarloGroundTruth64Spp(Camera, BayPoseA_High.Scene, OutHighPoseA, 64u);
+    // 4e. Unbiased 64-spp Monte-Carlo ground-truth reference (Pose B, matching GtxLowEnd hero pose!)
+    const ReferenceGroundTruthCapture GroundTruthA = RenderMonteCarloGroundTruth64Spp(Camera, BayPoseB_High.Scene, OutHighPoseB, 64u);
 
     //--------------------------------------------------------------------------------------------------------------------
     // 5. ASSERT SDF MEMORY INVARIANTS, POSE DEFORMATION DELTA, AND ZERO-DENOISER RMSE GATES
@@ -1012,8 +1014,8 @@ int main()
     const double RmseGiGtxStokes  = ComputeRmseRgb(OutGtxStokes.IndirectGiLinearHdr, GroundTruthA.IndirectHdr);
     const double RmseHdrGtxSurfel = ComputeRmseRgb(OutGtxSurfel.CompositeLinearHdr,  GroundTruthA.TotalHdr);
     const double RmseGiGtxSurfel  = ComputeRmseRgb(OutGtxSurfel.IndirectGiLinearHdr, GroundTruthA.IndirectHdr);
-    const double RmseHdrHighPoseA = ComputeRmseRgb(OutHighPoseA.CompositeLinearHdr,  GroundTruthA.TotalHdr);
-    const double RmseGiHighPoseA  = ComputeRmseRgb(OutHighPoseA.IndirectGiLinearHdr, GroundTruthA.IndirectHdr);
+    const double RmseHdrHighPoseB = ComputeRmseRgb(OutHighPoseB.CompositeLinearHdr,  GroundTruthA.TotalHdr);
+    const double RmseGiHighPoseB  = ComputeRmseRgb(OutHighPoseB.IndirectGiLinearHdr, GroundTruthA.IndirectHdr);
     const double PoseABDelta      = ComputeRmseRgb(OutHighPoseA.CompositeLinearHdr,  OutHighPoseB.CompositeLinearHdr);
 
     std::printf(
@@ -1028,7 +1030,7 @@ int main()
         OutHighPoseB.SdfAllocatedBytes,
         RmseHdrGtxStokes, RmseGiGtxStokes,
         RmseHdrGtxSurfel, RmseGiGtxSurfel,
-        RmseHdrHighPoseA, RmseGiHighPoseA,
+        RmseHdrHighPoseB, RmseGiHighPoseB,
         PoseABDelta);
 
     if (!RequireCondition(OutGtxSurfel.SdfAllocatedBytes > 0u && OutGtxSurfel.SdfAllocatedBytes <= 3700000u, "GtxLowEnd SDF within 3.7 MB budget") ||
@@ -1037,7 +1039,7 @@ int main()
         !RequireCondition(PoseABDelta > 0.008, "Live character Pose A -> Pose B updates HighEnd shadows & GI") ||
         !RequireCondition(RmseHdrGtxStokes <= 0.134 && RmseGiGtxStokes <= 0.224, "GtxLowEnd StokesContour passes zero-denoiser RMSE gate") ||
         !RequireCondition(RmseHdrGtxSurfel <= 0.134 && RmseGiGtxSurfel <= 0.224, "GtxLowEnd SurfelLattice passes zero-denoiser RMSE gate") ||
-        !RequireCondition(RmseHdrHighPoseA <= 0.134 && RmseGiHighPoseA <= 0.224, "HighEnd 0-SDF BVH4 passes zero-denoiser RMSE gate"))
+        !RequireCondition(RmseHdrHighPoseB <= 0.134 && RmseGiHighPoseB <= 0.224, "HighEnd 0-SDF BVH4 passes zero-denoiser RMSE gate"))
     {
         // Still save PNGs even on gate failure so visual inspection is always possible!
         (void)SaveRgba8ImageToPng(OutDir / "01-GtxLowEnd_HybridConeShadow_StokesGi.png",        ViewW, ViewH, OutGtxStokes.DisplayRgba8);
