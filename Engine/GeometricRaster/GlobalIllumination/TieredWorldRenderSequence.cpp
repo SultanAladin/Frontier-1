@@ -619,7 +619,9 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         &CoarseContactClip,
         {},
         PreparedScene.PointLights,
-        { 0.0f, 0.0f, 0.0f });
+        { 0.0f, 0.0f, 0.0f },
+        PreparedScene.PhotometricEmitters,
+        PreparedScene.PhotometricProfiles);
 
     Result.SpecularGlass = SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
         Config.ReflectionSource,

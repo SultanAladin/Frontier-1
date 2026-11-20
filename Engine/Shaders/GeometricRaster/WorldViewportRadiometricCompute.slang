@@ -85,6 +85,14 @@ struct GpuWorldMaterial80
     float4 EmissiveRadiancePad;    // xyz = Planckian Blackbody Emissive RGB, w = Pad
 };
 
+struct GpuPhotometricLamp64
+{
+    float4 PositionRange;      // xyz = PositionWorld, w = RangeMeters
+    float4 BeamAxisRadius;     // xyz = BeamAxis,      w = RadiusMeters
+    float4 ZeroAzimuthProfile; // xyz = ZeroAzimuth,   w = float(ProfileOrdinal)
+    float4 PeakIntensityPad;   // xyz = PeakIntensity, w = Reserved
+};
+
 [[vk::binding(0,  0)]] ConstantBuffer<WorldViewportUniformBlock> WorldUniforms;
 [[vk::binding(1,  0)]] StructuredBuffer<GpuWideTreeEntry128>     SceneBvhEntries;
 [[vk::binding(2,  0)]] StructuredBuffer<GpuShadedTriangle96>     SceneTriangles;
@@ -105,6 +113,8 @@ struct GpuWorldMaterial80
 [[vk::binding(17, 0)]] RWStructuredBuffer<float4>                CloudRadiometricBuffer;
 [[vk::binding(18, 0)]] StructuredBuffer<GpuProjectedStar>        ProjectedCatalogStars;
 [[vk::binding(19, 0)]] StructuredBuffer<uint>                    StellarTileBins;
+[[vk::binding(22, 0)]] StructuredBuffer<float>                   PhotometricProfileTables;
+[[vk::binding(23, 0)]] StructuredBuffer<GpuPhotometricLamp64>    PhotometricLampEntries;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -863,6 +873,88 @@ float3 EvaluateAreaQuadLight(GpuAreaQuadLight Quad, float3 Pos, float3 N, float3
     return Quad.RadiancePacked.xyz * (DiffContrib + SpecContrib) * VisFactor;
 }
 
+float EvaluatePhotometricProfile128x32(
+    uint   ProfileOrdinal,
+    float3 TowardSurface,
+    float3 BeamAxis,
+    float3 ZeroAzimuth)
+{
+    float  CosTheta    = clamp(dot(BeamAxis, TowardSurface), -1.0, 1.0);
+    float  VerticalPos = acos(CosTheta) * (127.0 / PiConst);
+    float3 OrthoBit    = cross(BeamAxis, ZeroAzimuth);
+    float  HorizPos    = atan2(dot(TowardSurface, OrthoBit), dot(TowardSurface, ZeroAzimuth)) * (32.0 / TauConst);
+    if (HorizPos < 0.0)
+    {
+        HorizPos += 32.0;
+    }
+
+    uint  V0   = min(uint(VerticalPos), 126u);
+    float Vt   = saturate(VerticalPos - float(V0));
+    uint  H0   = min(uint(HorizPos), 31u);
+    float Ht   = saturate(HorizPos - float(H0));
+    uint  H1   = (H0 + 1u) & 31u;
+    uint  Base = ProfileOrdinal * 4096u;
+    uint  I00  = Base + H0 * 128u + V0;
+    uint  I10  = Base + H1 * 128u + V0;
+
+    float NearRow = lerp(PhotometricProfileTables[I00], PhotometricProfileTables[I00 + 1u], Vt);
+    float FarRow  = lerp(PhotometricProfileTables[I10], PhotometricProfileTables[I10 + 1u], Vt);
+    return lerp(NearRow, FarRow, Ht);
+}
+
+float3 EvaluatePhotometricLampGpu(
+    GpuPhotometricLamp64 Lamp,
+    uint                 ProfileCount,
+    float3               SafePos,
+    float3               N,
+    float3               V,
+    GpuWorldMaterial80   Mat)
+{
+    uint ProfileOrd = uint(Lamp.ZeroAzimuthProfile.w + 0.5);
+    if (ProfileOrd >= ProfileCount)
+    {
+        return float3(0.0);
+    }
+
+    float3 Delta = Lamp.PositionRange.xyz - SafePos;
+    float  Dist2 = dot(Delta, Delta);
+    float  Dist  = sqrt(max(1.0e-5, Dist2));
+    float  Range = Lamp.PositionRange.w;
+    if (Dist >= Range)
+    {
+        return float3(0.0);
+    }
+
+    float3 LDir  = Delta / Dist;
+    float  NdotL = dot(N, LDir);
+    if (NdotL <= 1.0e-4)
+    {
+        return float3(0.0);
+    }
+
+    float ProfileGain = EvaluatePhotometricProfile128x32(
+        ProfileOrd,
+        -LDir,
+        normalize(Lamp.BeamAxisRadius.xyz),
+        normalize(Lamp.ZeroAzimuthProfile.xyz));
+    if (ProfileGain <= 1.0e-5)
+    {
+        return float3(0.0);
+    }
+
+    float Radius = max(0.025, Lamp.BeamAxisRadius.w);
+    if (TraceSceneAnyHit(SafePos, LDir, 2.5e-3, max(0.02, Dist - Radius)))
+    {
+        return float3(0.0);
+    }
+
+    float Ratio  = saturate(Dist / max(0.5, Range));
+    float Ratio2 = Ratio * Ratio;
+    float Window = max(0.0, 1.0 - Ratio2 * Ratio2);
+    float Atten  = (ProfileGain * Window * Window) / max(0.01, Dist2 + Radius * Radius);
+    return EvaluateSurfaceBrdf(Mat, N, V, LDir) * Lamp.PeakIntensityPad.xyz * Atten;
+}
+
 //------------------------------------------------------------------------------------------------------------------------
 //                      SHADOW LAB ALGORITHMS (depth32float Sun Cascades + BVH4 Ray Queries)
 //------------------------------------------------------------------------------------------------------------------------
@@ -1184,6 +1276,17 @@ float3 ShadeSecondaryBounce(float3 RayOrigin, float3 RayDir)
         ColorHdr += EvaluateAreaQuadLight(WorldUniforms.AreaLights[L], SafeSecondaryPos, N, V, Mat);
     }
 
+    uint PackedPhotoCounts = WorldUniforms.DenoiseStepParams.z;
+    uint PhotoProfileCount = PackedPhotoCounts >> 16u;
+    uint PhotoLampCount    = PackedPhotoCounts & 0xFFFFu;
+    if (PhotoProfileCount > 0u && PhotoLampCount > 0u)
+    {
+        for (uint PL = 0u; PL < PhotoLampCount; ++PL)
+        {
+            ColorHdr += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafeSecondaryPos, N, V, Mat);
+        }
+    }
+
     float3 Albedo  = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(Mat.SpecParams.y)) * (1.0 - saturate(Mat.CoatRoughnessOptics.y));
     float3 SkyFill = EvaluateSkyDome(N) * 0.22;
     ColorHdr += Albedo * SkyFill;
@@ -1264,6 +1367,18 @@ void ShadePrimarySurfaceDemod(
     for (uint L = 0u; L < LightCnt; ++L)
     {
         OutDirectBaseHdr += EvaluateAreaQuadLight(WorldUniforms.AreaLights[L], SafePrimaryPos, N, ViewDir, Mat);
+    }
+
+    // 2b. ANSI/IESNA LM-63 Type C Photometric Point Emitters (128x32 Candela Table + BVH4 Ray Occlusion)
+    uint PackedPhotoCounts = WorldUniforms.DenoiseStepParams.z;
+    uint PhotoProfileCount = PackedPhotoCounts >> 16u;
+    uint PhotoLampCount    = PackedPhotoCounts & 0xFFFFu;
+    if (PhotoProfileCount > 0u && PhotoLampCount > 0u)
+    {
+        for (uint PL = 0u; PL < PhotoLampCount; ++PL)
+        {
+            OutDirectBaseHdr += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafePrimaryPos, N, ViewDir, Mat);
+        }
     }
 
     // 3. Fast BVH4 Ambient Occlusion (IGN-jittered 8-ray) + Lagarde Specular AO

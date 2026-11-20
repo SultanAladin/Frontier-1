@@ -156,12 +156,16 @@ private:
     DeviceBufferResource   RawCatalogStarBuffer          {};
     DeviceBufferResource   ProjectedCatalogStarBuffer    {};
     DeviceBufferResource   StellarTileBinsBuffer         {};
+    DeviceBufferResource   PhotometricProfileTableBuffer {};
+    DeviceBufferResource   PhotometricLampEntryBuffer    {};
 
     DeviceImageResource    DisplayOutputImage2D          {};
 
     OrthographicShadowCascade CachedFineSunCascade       {};
     OrthographicShadowCascade CachedSunCascade           {};
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
+    uint32_t               UploadedPhotometricProfiles   = 0u;
+    uint32_t               UploadedPhotometricLamps      = 0u;
     uint32_t               CoarseShadowOffsetTexels      = 0u;
     uint32_t               UploadedBvhCount              = 0u;
     uint32_t               UploadedMaterialCount         = 0u;

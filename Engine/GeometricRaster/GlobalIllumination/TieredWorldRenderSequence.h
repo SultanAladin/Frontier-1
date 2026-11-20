@@ -57,15 +57,17 @@ struct WorldRenderConfiguration
 
 struct WorldSceneSpecification
 {
-    std::vector<RigidClusterInstance>                           ClusterInstances {};
-    MaterialSpace::CompactMaterialRegister                      MaterialRegister {};
-    std::vector<MaterialSpace::BounceSlabEntry>                 BounceSummaries  {};
-    SpatialAcceleration::WideBoundingTree                       SceneTree        {};
-    std::vector<DirectPointLightSpec>                           PointLights      {};
-    SolarDirectionalSource                                      Sun              {};
-    std::vector<PolygonalAreaQuadLight>                         AreaLights       {};
-    Mathematics::LinearRGB                                      SkyRadiance      { 0.15f, 0.21f, 0.32f };
-    WorldAtmosphereConfiguration                                Atmosphere       {};
+    std::vector<RigidClusterInstance>                           ClusterInstances    {};
+    MaterialSpace::CompactMaterialRegister                      MaterialRegister    {};
+    std::vector<MaterialSpace::BounceSlabEntry>                 BounceSummaries     {};
+    SpatialAcceleration::WideBoundingTree                       SceneTree           {};
+    std::vector<DirectPointLightSpec>                           PointLights         {};
+    std::vector<PhotometricPointEmitter>                        PhotometricEmitters {};
+    std::vector<Codecs::ResampledPhotometricProfile>            PhotometricProfiles {};
+    SolarDirectionalSource                                      Sun                 {};
+    std::vector<PolygonalAreaQuadLight>                         AreaLights          {};
+    Mathematics::LinearRGB                                      SkyRadiance         { 0.15f, 0.21f, 0.32f };
+    WorldAtmosphereConfiguration                                Atmosphere          {};
 };
 
 struct WorldRenderOutput

@@ -812,6 +812,8 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/VectorCodec.cpp
     Engine/Codecs/NetworkCodec.cpp
     Engine/Codecs/ComponentSpaceCodec.cpp
+    Engine/Codecs/PhotometricProfile.cpp
+    Engine/Codecs/ControlVehicleSurfaceDecoder.cpp
     Engine/ComponentClass/ComponentInstanceStorage.cpp
     Engine/ComponentClass/ComponentClassDefinition.cpp
     Engine/ComponentClass/ComponentClassValidator.cpp
@@ -1082,6 +1084,7 @@ if(BUILD_TESTING)
     endif()
     frontier_register_exhibit(VectorGraphicsGPUValidation       Exhibits/VectorGraphicsGPUValidation.cpp)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
+    frontier_register_exhibit(DirectPbrWorldValidation          Exhibits/DirectPbrWorldValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)

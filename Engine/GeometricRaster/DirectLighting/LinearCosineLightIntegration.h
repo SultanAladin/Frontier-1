@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Codecs/PhotometricProfile.h"
 #include "Engine/GeometricRaster/DirectLighting/SolarShadowSequence.h"
 #include "Engine/MaterialSpace/CompactMaterialRegister.h"
 
@@ -49,6 +50,17 @@ struct DirectPointLightSpec
     Mathematics::LinearRGB Color         { 1.0f, 1.0f, 1.0f }; // [-] - Linear RGB tint
     float                  Intensity     = 1.0f;             // [cd]  - Luminous intensity multiplier
     float                  RadiusMeters  = 0.10f;            // [m]   - Source sphere radius
+};
+
+struct PhotometricPointEmitter
+{
+    Mathematics::Axis3D    PositionWorld    { 0.0f, 0.0f, 3.0f };   // [m]    - Emitter apex in world space
+    Mathematics::Axis3D    BeamAxis         { 0.0f, 0.0f, -1.0f };  // [-]    - Unit polar theta=0 emission axis
+    Mathematics::Axis3D    ZeroAzimuthAxis  { 1.0f, 0.0f, 0.0f };   // [-]    - Unit orthogonal phi=0 reference axis
+    Mathematics::LinearRGB PeakIntensityRgb { 1.0f, 1.0f, 1.0f };   // [W/sr] - Radiometric intensity at normalized candela = 1
+    float                  RangeMeters      = 24.0f;                // [m]    - Smooth quartic distance cutoff
+    float                  RadiusMeters     = 0.06f;                // [m]    - Non-singular denominator clamp
+    uint32_t               ProfileOrdinal   = 0u;                   // [idx]  - Index into PhotometricProfiles array
 };
 
 struct DirectLightingOutput
@@ -97,11 +109,13 @@ public:
         const SpatialAcceleration::WideBoundingTree&   SceneTree,
         const SolarDirectionalSource&                  Sun,
         std::span<const PolygonalAreaQuadLight>        AreaLights,
-        const OrthographicShadowCascade*               OptionalFineClip   = nullptr,
-        const OrthographicShadowCascade*               OptionalCoarseClip = nullptr,
-        const AmbientOcclusionSettings&                AoSettings         = {},
-        std::span<const DirectPointLightSpec>          PointLights        = {},
-        Mathematics::LinearRGB                         SkyFillRadiance    = { 0.14f, 0.19f, 0.28f });
+        const OrthographicShadowCascade*                        OptionalFineClip    = nullptr,
+        const OrthographicShadowCascade*                        OptionalCoarseClip  = nullptr,
+        const AmbientOcclusionSettings&                         AoSettings          = {},
+        std::span<const DirectPointLightSpec>                   PointLights         = {},
+        Mathematics::LinearRGB                                  SkyFillRadiance     = { 0.14f, 0.19f, 0.28f },
+        std::span<const PhotometricPointEmitter>                PhotometricEmitters = {},
+        std::span<const Codecs::ResampledPhotometricProfile>    PhotometricProfiles = {});
 
     // Compatibility wrapper mapping DirectShadowTier -> SolarShadowAlgorithm
     [[nodiscard]] static DirectLightingOutput EvaluateDirectLightingFrame(
