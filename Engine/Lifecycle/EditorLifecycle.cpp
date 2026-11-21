@@ -313,7 +313,7 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
 
     const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-    GeometricRaster::BuildShowcaseGalleryScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
     {
         const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
         auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
@@ -322,10 +322,11 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
         Atmo.Clouds.CloudFraction      = DisplayCfg.CloudFraction;
         Atmo.Clouds.CloudShadow.ShadowEnabled      = DisplayCfg.CloudShadowsEnabled;
         Atmo.Clouds.WindSpeedMetersPerSecond       = DisplayCfg.CloudWindSpeedMps;
+        Atmo.Clouds.FollowWindEnabled              = (DisplayCfg.CloudWindSpeedMps > 0.01f);
         Atmo.Wind.SpeedMetersPerSecond             = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
         Atmo.Stars.StarfieldEnabled    = DisplayCfg.CelestialStarsEnabled;
         Atmo.Solar.SolarEnabled        = DisplayCfg.CelestialStarsEnabled;
-        Atmo.Moons[0].Visible          = DisplayCfg.CelestialStarsEnabled;
+        Atmo.Moons[0].Visible          = false;
         Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
         Atmo.Solar.LocalHours          = DisplayCfg.SolarTimeOfDayHours;
         if (Atmo.Medium.AtmosphereEnabled)
@@ -343,7 +344,7 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     }
     GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
     Panes->Viewport.ConfigureSceneTitle(
-        ActiveProjectTitle.empty() ? "Sky & Plane Studio" : (ActiveProjectTitle + " · Sky & Plane Studio"));
+        ActiveProjectTitle.empty() ? "Vehicle & Clear Sky" : (ActiveProjectTitle + " · Vehicle & Clear Sky"));
 
     Panes->Viewport.ConfigureInteractionCallback(
         [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)
@@ -1928,13 +1929,9 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 GeometricRaster::CelestialEphemerisSolver::AdvanceDayCycleHours(Atmo.Solar, SafeStep);
                 DisplayCfg.SolarTimeOfDayHours = Atmo.Solar.LocalHours;
             }
-            const bool CloudsMoving =
-                DisplayCfg.VolumetricCloudsEnabled &&
-                Atmo.Clouds.FollowWindEnabled &&
-                Atmo.Clouds.WindSpeedMetersPerSecond > 0.01f;
             const bool AtmoAnimTick =
                 DisplayCfg.AtmosphereSkyEnabled &&
-                (DisplayCfg.DayCyclePlaying || CloudsMoving) &&
+                DisplayCfg.DayCyclePlaying &&
                 SafeStep > 0.0;
             if (AtmoAnimTick)
             {
@@ -1969,6 +1966,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             if (std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f)
             {
                 Atmo.Clouds.WindSpeedMetersPerSecond = DisplayCfg.CloudWindSpeedMps;
+                Atmo.Clouds.FollowWindEnabled        = (DisplayCfg.CloudWindSpeedMps > 0.01f);
                 Atmo.Wind.SpeedMetersPerSecond       = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
             }
             if (DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled)
@@ -2005,24 +2003,35 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 LastPrimaryProjection = CurProjection;
                 ProjectionChanged     = true;
                 auto& Cam             = ShowcaseBundle->EditorCamera;
-                Cam.TargetPoint       = { 0.00f, 0.55f, 0.15f };
+                const bool VehicleDefaultScene = (ShowcaseBundle->Objects.size() == 2u);
+                Cam.TargetPoint       = VehicleDefaultScene
+                    ? Mathematics::Axis3D{ 0.10f, 0.00f, 0.62f }
+                    : Mathematics::Axis3D{ 0.00f, 0.55f, 0.15f };
                 Cam.WorldUpAxis       = { 0.00f, 0.00f, 1.00f };
                 switch (CurProjection)
                 {
                 case ViewportProjectionPreset::Top:
-                    Cam.CameraOrigin = { 0.00f, 0.50f, 5.20f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 0.10f, 0.00f, 6.20f }
+                        : Mathematics::Axis3D{ 0.00f, 0.50f, 5.20f };
                     Cam.WorldUpAxis  = { 0.00f, 1.00f, 0.00f };
                     break;
                 case ViewportProjectionPreset::Front:
-                    Cam.CameraOrigin = { 0.00f, -4.40f, 0.45f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 6.20f, 0.00f, 0.72f }
+                        : Mathematics::Axis3D{ 0.00f, -4.40f, 0.45f };
                     break;
                 case ViewportProjectionPreset::Right:
-                    Cam.CameraOrigin = { 4.60f, 0.55f, 0.45f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 0.10f, -5.60f, 0.72f }
+                        : Mathematics::Axis3D{ 4.60f, 0.55f, 0.45f };
                     break;
                 case ViewportProjectionPreset::Perspective:
                 case ViewportProjectionPreset::Orthographic:
                 default:
-                    Cam.CameraOrigin = { 0.00f, -3.55f, 0.42f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 4.85f, -4.15f, 1.68f }
+                        : Mathematics::Axis3D{ 0.00f, -3.55f, 0.42f };
                     break;
                 }
             }

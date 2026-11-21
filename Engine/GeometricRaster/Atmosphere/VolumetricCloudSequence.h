@@ -68,7 +68,7 @@ struct CloudShadowConfiguration
 struct CloudDeckConfiguration
 {
     bool                     CloudsEnabled            = true;
-    bool                     FollowWindEnabled        = true;
+    bool                     FollowWindEnabled        = false;
     WindCouplingSource        WindSource               = WindCouplingSource::CloudWind;
     CloudCategoryType        Category                 = CloudCategoryType::Cumulus;
     float                    CloudFraction            = 0.34f;   // [0..1]   - Fractional sky cover
@@ -79,20 +79,20 @@ struct CloudDeckConfiguration
     float                    DeckCeilingMeters        = 16000.0f;// [m]      - Maximum ceiling [4000..22000]
     float                    AnvilTopSpread           = 0.50f;   // [0..1]   - Upper anvil widening factor
     float                    ForwardScatterAnisotropy = 0.45f;   // [-.9..9] - Henyey-Greenstein phase g
-    float                    WindSpeedMetersPerSecond = 7.0f;    // [m/s]    - Advection wind speed [0..40]
+    float                    WindSpeedMetersPerSecond = 0.0f;    // [m/s]    - Advection wind speed [0..40] (0 = static)
     float                    WindBearingDegrees       = 250.0f;  // [deg]    - Advection wind bearing [0..360)
     float                    WindShearPerKilometer    = 0.35f;   // [/km]    - Vertical altitude shear
     float                    WindVeerDegreesPerKm     = 12.0f;   // [d/km]   - Ekman wind bearing rotation with altitude [-60..60]
     float                    WindTurbulence           = 0.30f;   // [0..1]   - Wind eddy warp on cloud silhouettes
-    float                    CloudRenderScale         = 0.50f;   // [0.25..1]- Offscreen cloud pass resolution scale (0.5 = half-res)
-    uint32_t                 CloudMarchSteps          = 36u;     // [16..96] - Volumetric cloud deck raymarch steps
+    float                    CloudRenderScale         = 1.00f;   // [0.25..1]- Offscreen cloud pass resolution scale (1.0 = full native res)
+    uint32_t                 CloudMarchSteps          = 64u;     // [16..128]- Volumetric cloud deck raymarch steps
     CloudShadowConfiguration CloudShadow              {};
 };
 
 struct BoundedCloudVolume
 {
     bool                   LocalEnabled             = false;
-    bool                   FollowWindEnabled        = true;
+    bool                   FollowWindEnabled        = false;
     WindCouplingSource      WindSource               = WindCouplingSource::LocalCloudWind;
     AtmosphericVolumeShape Shape                    = AtmosphericVolumeShape::Box;
     uint32_t               PrismSides               = 6u;

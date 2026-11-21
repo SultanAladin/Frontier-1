@@ -1413,7 +1413,8 @@ float3 EvaluatePhotometricLampGpu(
     float3               SafePos,
     float3               N,
     float3               V,
-    GpuWorldMaterial80   Mat)
+    GpuWorldMaterial80   Mat,
+    bool                 UseFastGdfVis)
 {
     uint ProfileOrd = uint(Lamp.ZeroAzimuthProfile.w + 0.5);
     if (ProfileOrd >= ProfileCount)
@@ -1449,7 +1450,7 @@ float3 EvaluatePhotometricLampGpu(
 
     float Radius  = max(0.025, Lamp.BeamAxisRadius.w);
     float LampVis = 1.0;
-    if (WorldUniforms.EngineShadowReflPad.x <= 2u && IsGlobalDistanceFieldReady())
+    if (UseFastGdfVis && IsGlobalDistanceFieldReady())
     {
         LampVis = TraceGlobalDistanceConeVisibility(SafePos, N, LDir, max(0.04, Dist - Radius), Radius / max(0.1, Dist), false, 8u);
         if (LampVis <= 1.0e-3) return float3(0.0);
@@ -1676,8 +1677,9 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
     }
 
     int   MaxIdx     = int(Res) - 1;
-    float SlopeScale = sqrt(max(0.0, 1.0 - NdotL * NdotL)) / max(0.18, NdotL);
-    float Bias       = TexelM * (1.20 + 0.90 * SlopeScale);
+    float EffNdotL   = min(NdotL, abs(dot(Hit.GeomNormal, SunDir)));
+    float SlopeScale = min(4.2, sqrt(max(0.0, 1.0 - EffNdotL * EffNdotL)) / max(0.16, EffNdotL));
+    float Bias       = TexelM * (1.35 + 0.95 * SlopeScale);
 
     // Algorithm 3: PcfBilinear (8-Tap Smooth Bilinear Vogel PCF with 5-Tap Lit Early-Out)
     if (ShadowAlg == 3u)
@@ -1859,7 +1861,7 @@ float3 ShadeSecondaryBounce(float3 RayOrigin, float3 RayDir)
     {
         for (uint PL = 0u; PL < PhotoLampCount; ++PL)
         {
-            ColorHdr += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafeSecondaryPos, N, V, Mat);
+            ColorHdr += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafeSecondaryPos, N, V, Mat, false);
         }
     }
 
@@ -1885,6 +1887,35 @@ float3 ShadeSecondaryBounce(float3 RayOrigin, float3 RayDir)
     return ColorHdr;
 }
 
+// Ultra-fast single-tap 2x2 bilinear shadow-map lookup for MatCap / Phong (Engine 0):
+// Zero SDF volume traversal, zero PCSS blocker search, zero Vogel filter loop, zero BVH4 shadow ray.
+float SampleMatCapCheapShadow(float3 WorldPos, float3 GeomN, float3 ShadingN)
+{
+    if (max(WorldUniforms.SolarIrradiancePad.x, max(WorldUniforms.SolarIrradiancePad.y, WorldUniforms.SolarIrradiancePad.z)) <= 1.0e-4)
+    {
+        return 1.0;
+    }
+    float3 SunDir = normalize(WorldUniforms.SunDirConeTan.xyz);
+    if (dot(ShadingN, SunDir) <= -0.04)
+    {
+        return 0.0;
+    }
+    float2 TexelXY   = float2(0.0);
+    float  RecD      = 0.0;
+    float  TexelM    = 0.0;
+    uint   Res       = 0u;
+    uint   BufOffset = 0u;
+    float3 BiasedPos = WorldPos + GeomN * 0.008;
+    if (!ProjectBestSunCascade(BiasedPos, TexelXY, RecD, TexelM, Res, BufOffset))
+    {
+        return 1.0;
+    }
+    float CosSlope = max(0.25, abs(dot(GeomN, SunDir)));
+    float SlopeTan = min(2.5, sqrt(max(0.0, 1.0 - saturate(CosSlope * CosSlope))) / CosSlope);
+    float Bias     = TexelM * (0.90 + 0.55 * SlopeTan);
+    return SampleShadowVisBilinear(TexelXY, RecD, Bias, Res, BufOffset);
+}
+
 float3 EvaluateMatCapSurface(RayHitReading Hit)
 {
     uint MatCount = max(1u, WorldUniforms.LightGlassMaterialDebug.z);
@@ -1899,11 +1930,12 @@ float3 EvaluateMatCapSurface(RayHitReading Hit)
     float3 FillDir = normalize(float3(-0.68, 0.25, 0.68));
     float3 RimDir  = normalize(float3(0.0, 0.85, 0.52));
 
-    float KeyDiff  = max(0.0, dot(Vn, KeyDir));
+    float SunVis   = SampleMatCapCheapShadow(Hit.Position, Hit.GeomNormal, N);
+    float KeyDiff  = max(0.0, dot(Vn, KeyDir)) * (0.28 + 0.72 * SunVis);
     float FillDiff = max(0.0, dot(Vn, FillDir));
     float RimGlow  = pow(saturate(1.0 - Vn.z), 2.6) * (0.35 + 0.65 * max(0.0, dot(Vn, RimDir)));
     float SpecPow  = lerp(96.0, 6.0, clamp(Mat.SpecParams.x, 0.02, 1.0));
-    float KeySpec  = pow(max(0.0, dot(Vn, normalize(KeyDir + float3(0.0, 0.0, 1.0)))), SpecPow);
+    float KeySpec  = pow(max(0.0, dot(Vn, normalize(KeyDir + float3(0.0, 0.0, 1.0)))), SpecPow) * (0.22 + 0.78 * SunVis);
     float SpecGain = lerp(1.45, 0.18, saturate(Mat.SpecParams.x));
     float Metal    = saturate(Mat.SpecParams.y);
     float StudioL  = 0.14 + 0.88 * KeyDiff + 0.34 * FillDiff;
@@ -1977,7 +2009,7 @@ void ShadePrimarySurfaceDemod(
     {
         for (uint PL = 0u; PL < PhotoLampCount; ++PL)
         {
-            OutDirectBaseHdr += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafePrimaryPos, N, ViewDir, Mat);
+            OutDirectBaseHdr += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafePrimaryPos, N, ViewDir, Mat, false);
         }
     }
 
@@ -2393,7 +2425,7 @@ float3 EvaluateProgressiveViewportPath(float3 CamOrigin, float3 PrimaryDir, uint
             [loop]
             for (uint PL = 0u; PL < PhotLamps; ++PL)
             {
-                Radiance += Throughput * EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotProfs, SafePos, N, V, Mat);
+                Radiance += Throughput * EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotProfs, SafePos, N, V, Mat, false);
             }
         }
 
@@ -3272,7 +3304,7 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             for (uint PL = 0u; PL < PhotoLampCount; ++PL)
             {
-                OutgoingRad += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafePos, SurfN, SurfN, Mat);
+                OutgoingRad += EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotoProfileCount, SafePos, SurfN, SurfN, Mat, true);
             }
         }
 

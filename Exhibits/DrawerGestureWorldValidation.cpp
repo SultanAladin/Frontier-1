@@ -373,6 +373,26 @@ namespace
                             "GPU OpenPBR Direct viewport render produced lit image");
                 VerifyCheck(DiffSum > 0.25,
                             "GPU OpenPBR Direct viewport render differs cleanly from MatCap");
+
+                // 5. Verify Default Editor Scene: ControlVehicle ONLY, Clear Sky, and Ground Plane
+                ShowcaseWorldSceneBundle DefaultScene {};
+                BuildVehicleClearSkyDefaultScene(DefaultScene, 160u, 90u);
+                VerifyCheck(DefaultScene.Objects.size() == 2u &&
+                                DefaultScene.Objects[0u].Title == "Ground Plane" &&
+                                DefaultScene.Objects[1u].Title == "Control Vehicle",
+                            "BuildVehicleClearSkyDefaultScene contains ONLY Ground Plane and Control Vehicle");
+                VerifyCheck(!DefaultScene.Scene.Atmosphere.Clouds.CloudsEnabled &&
+                                !DefaultScene.Scene.Atmosphere.Clouds.FollowWindEnabled &&
+                                DefaultScene.Scene.AreaLights.empty(),
+                            "BuildVehicleClearSkyDefaultScene configures static Clear Sky with zero indoor area lights");
+                VerifyCheck(DefaultScene.Scene.SceneTree.Primitives.size() > 25000u,
+                            "BuildVehicleClearSkyDefaultScene builds full 25,068-tri ControlVehicle + Ground Plane BVH4");
+
+                Frontier::OutlinerPanel DefaultOutliner {};
+                RegisterShowcaseGalleryInOutliner(DefaultOutliner, DefaultScene, false);
+                VerifyCheck(DefaultOutliner.QueryPrimarySelection() == DefaultScene.Objects[1u].SlotToken,
+                            "RegisterShowcaseGalleryInOutliner selects Control Vehicle cleanly with 2 objects and 0 area lights");
+
                 Gpu.TeardownSequence();
             }
             Device.TeardownInterchange();

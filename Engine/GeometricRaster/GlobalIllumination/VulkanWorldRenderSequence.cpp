@@ -829,8 +829,8 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
     const Mathematics::Axis3D FocusCenter = (Scene.SceneTree.RootBoundsMin + Scene.SceneTree.RootBoundsMax) * 0.5f;
     const Mathematics::Axis3D BoundsSpan  = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
     const float MaxHalfExtent = 0.5f * std::max({ std::abs(BoundsSpan.X), std::abs(BoundsSpan.Y), std::abs(BoundsSpan.Z), 5.6f });
-    const float FineGdfHalf   = std::clamp(MaxHalfExtent * 1.18f, 3.2f, 12.0f);
-    const float CoarseGdfHalf = std::max(FineGdfHalf * 3.0f, MaxHalfExtent * 1.35f);
+    const float FineGdfHalf   = std::clamp(MaxHalfExtent * 1.18f, 3.2f, 4.2f);
+    const float CoarseGdfHalf = std::max(FineGdfHalf * 3.0f, MaxHalfExtent * 1.18f);
     CachedFineGdfCenterSpan[0]   = FocusCenter.X;
     CachedFineGdfCenterSpan[1]   = FocusCenter.Y;
     CachedFineGdfCenterSpan[2]   = FocusCenter.Z;
@@ -860,8 +860,8 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         Cascade.CenterWorld    = RightAxis * ProjU + UpAxis * ProjV + LightFwd * ProjZ;
         Cascade.ClosestLightDepth.clear();
     };
-    InitCascadeBasis(CachedFineSunCascade, 2.0f);
-    InitCascadeBasis(CachedSunCascade, 8.0f);
+    InitCascadeBasis(CachedFineSunCascade, 2.85f);
+    InitCascadeBasis(CachedSunCascade, 8.5f);
     CoarseShadowOffsetTexels = 1024u * 1024u;
 
     const uint64_t ShadowDepthBytes = static_cast<uint64_t>(CoarseShadowOffsetTexels) * 2ull * sizeof(float);
@@ -1716,7 +1716,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const uint32_t WidthPx    = std::max(1u, Camera.ViewportWidthPx);
     const uint32_t HeightPx   = std::max(1u, Camera.ViewportHeightPx);
     const bool     IsHwGpu    = QueryHardwareGpuActive();
-    const float    MaxScale   = IsHwGpu ? 1.0f : 0.45f;
+    const float    MaxScale   = IsHwGpu ? 1.0f : 0.50f;
     const float    CloudScale = std::clamp(Scene.Atmosphere.Clouds.CloudRenderScale, 0.25f, MaxScale);
     const uint32_t CloudW     = std::max(1u, static_cast<uint32_t>(std::lround(static_cast<float>(WidthPx)  * CloudScale)));
     const uint32_t CloudH     = std::max(1u, static_cast<uint32_t>(std::lround(static_cast<float>(HeightPx) * CloudScale)));
@@ -2017,14 +2017,16 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         C.CloudPassControl[0]    = (AtmoActive && Deck.CloudsEnabled) ? static_cast<float>(CloudW) : 0.0f;
         C.CloudPassControl[1]    = (AtmoActive && Deck.CloudsEnabled) ? static_cast<float>(CloudH) : 0.0f;
         const uint32_t EffSteps  = IsHwGpu
-            ? std::clamp(std::max(Deck.CloudMarchSteps, 48u), 32u, 128u)
-            : std::clamp(Deck.CloudMarchSteps, 18u, 28u);
+            ? std::clamp(std::max(Deck.CloudMarchSteps, 64u), 48u, 128u)
+            : std::clamp(Deck.CloudMarchSteps, 24u, 36u);
         C.CloudPassControl[2]    = static_cast<float>(EffSteps);
 
-        const auto BaseCloudWind = AtmosphericWindSolver::ResolveWindSample(
-            Atmo.Wind, Deck.WindSpeedMetersPerSecond, Deck.WindBearingDegrees,
-            Deck.WindSource, { 0.0f, 0.0f, Deck.CloudFloorMeters }, Deck.CloudFloorMeters,
-            Atmo.SimulationSeconds);
+        const auto BaseCloudWind = Deck.FollowWindEnabled
+            ? AtmosphericWindSolver::ResolveWindSample(
+                  Atmo.Wind, Deck.WindSpeedMetersPerSecond, Deck.WindBearingDegrees,
+                  Deck.WindSource, { 0.0f, 0.0f, Deck.CloudFloorMeters }, Deck.CloudFloorMeters,
+                  Atmo.SimulationSeconds)
+            : ResolvedWindSample {};
         C.CloudPassControl[3] = Basis.TanHalfFovY;
         C.WindForceMeta[0]    = 1600.0f;
         C.WindForceMeta[1]    = BaseCloudWind.VelocityMetersPerSec.X;
@@ -2300,7 +2302,8 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         LightingSig = HashMixBytes(LightingSig, Uniforms.AreaLights, sizeof(Uniforms.AreaLights));
         LightingSig = HashMixBytes(LightingSig, &LightCount, sizeof(LightCount));
 
-        if (GlobalDistanceFieldReady &&
+        if (Config.Engine != WorldRenderEngine::MatCap &&
+            GlobalDistanceFieldReady &&
             UploadedBvhCount > 0u &&
             LastRadiosityLightingSignature != 0ull &&
             LightingSig != LastRadiosityLightingSignature)

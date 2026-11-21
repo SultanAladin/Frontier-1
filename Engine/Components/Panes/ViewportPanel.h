@@ -71,13 +71,13 @@ struct ViewportDisplaySettings
     bool     AntiAliasingEnabled   = true;   // [-]   - Spatial shadow filter / AA toggle
     bool     RaytracingEnabled     = true;   // [-]   - Hardware BVH4 raytracing toggle
     bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
-    bool     VolumetricCloudsEnabled = true; // [-]   - Raymarched volumetric cloud deck toggle
-    bool     CloudShadowsEnabled   = true;   // [-]   - Volumetric cloud ground shadow casting toggle
+    bool     VolumetricCloudsEnabled = false;// [-]   - Raymarched volumetric cloud deck toggle (default off for Clear Sky)
+    bool     CloudShadowsEnabled   = false;  // [-]   - Volumetric cloud ground shadow casting toggle
     bool     CelestialStarsEnabled = true;   // [-]   - Sun disc, moons & nocturnal starfield toggle
     bool     DayCyclePlaying       = false;  // [-]   - Advances solar ephemeris time of day
     float    SolarTimeOfDayHours   = 10.5f;  // [h]   - Solar time of day [0..24]
     float    CloudFraction         = 0.34f;  // [0-1] - Cloud sky fraction [0..1]
-    float    CloudWindSpeedMps     = 7.0f;   // [m/s] - Cloud deck wind speed [0..35]
+    float    CloudWindSpeedMps     = 0.0f;   // [m/s] - Static cloud deck by default (0 = no fake movement)
 };
 
 struct ViewportPaneSurfaceSpecification

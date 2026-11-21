@@ -307,7 +307,8 @@ struct CpuDownsampledCloudField
 [[nodiscard]] Mathematics::LinearRGB EvaluateMatCapShading(
     const OrthonormalCameraBasis&         CameraBasis,
     Mathematics::Axis3D                   WorldNormal,
-    const MaterialSpace::SurfaceMaterial& Mat) noexcept
+    const MaterialSpace::SurfaceMaterial& Mat,
+    float                                 SunVis = 1.0f) noexcept
 {
     const float Vx = Mathematics::EvaluateDot(WorldNormal, CameraBasis.RightAxis);
     const float Vy = Mathematics::EvaluateDot(WorldNormal, CameraBasis.UpAxis);
@@ -318,13 +319,14 @@ struct CpuDownsampledCloudField
     const Mathematics::Axis3D FillDir = Mathematics::NormalizeAxis({ -0.68f, 0.25f, 0.68f });
     const Mathematics::Axis3D RimDir  = Mathematics::NormalizeAxis({ 0.0f, 0.85f, 0.52f });
 
-    const float KeyDiff  = std::max(0.0f, Mathematics::EvaluateDot(Vn, KeyDir));
+    const float ClampedVis = std::clamp(SunVis, 0.0f, 1.0f);
+    const float KeyDiff  = std::max(0.0f, Mathematics::EvaluateDot(Vn, KeyDir)) * (0.28f + 0.72f * ClampedVis);
     const float FillDiff = std::max(0.0f, Mathematics::EvaluateDot(Vn, FillDir));
     const float RimGlow  = std::pow(std::clamp(1.0f - Vn.Z, 0.0f, 1.0f), 2.6f) * (0.35f + 0.65f * std::max(0.0f, Mathematics::EvaluateDot(Vn, RimDir)));
 
     const Mathematics::Axis3D HalfKey = Mathematics::NormalizeAxis(KeyDir + Mathematics::Axis3D{ 0.0f, 0.0f, 1.0f });
     const float SpecPow  = std::lerp(96.0f, 6.0f, std::clamp(Mat.Specular.Roughness, 0.02f, 1.0f));
-    const float KeySpec  = std::pow(std::max(0.0f, Mathematics::EvaluateDot(Vn, HalfKey)), SpecPow);
+    const float KeySpec  = std::pow(std::max(0.0f, Mathematics::EvaluateDot(Vn, HalfKey)), SpecPow) * (0.22f + 0.78f * ClampedVis);
     const float SpecGain = std::lerp(1.45f, 0.18f, std::clamp(Mat.Specular.Roughness, 0.0f, 1.0f));
 
     const float Metal   = Mat.Specular.Metalness;
@@ -652,10 +654,28 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             : ProjectedLensFlareSlice{};
 
     //====================================================================================================================
-    // ENGINE 0: MATCAP (Zero GI, Zero Shadow Maps, Zero Reflections)
+    // ENGINE 0: MATCAP / PHONG (Zero GI, Zero SDF, Zero PCSS — Ultra-Fast 2x2 Bilinear Shadow Lookup Only)
     //====================================================================================================================
     if (Config.Engine == WorldRenderEngine::MatCap)
     {
+        SolarShadowFieldResult CheapShadow {};
+        const bool SunShadowActive =
+            Config.DebugChannel == 0u &&
+            !FineContactClip.ClosestLightDepth.empty() &&
+            std::max({ PreparedScene.Sun.SolarIrradiance.R, PreparedScene.Sun.SolarIrradiance.G, PreparedScene.Sun.SolarIrradiance.B }) > 1.0e-4f;
+        if (SunShadowActive)
+        {
+            CheapShadow = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
+                SolarShadowAlgorithm::PcfBilinear,
+                PreparedScene.Sun,
+                Result.WidthPx,
+                Result.HeightPx,
+                PrimarySamples,
+                PreparedScene.SceneTree,
+                &FineContactClip,
+                &CoarseContactClip);
+        }
+
         for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
         {
             for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
@@ -666,9 +686,12 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
                 {
                     const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                    const float SunVis = (SunShadowActive && Off < CheapShadow.RawVisibility.size())
+                        ? CheapShadow.RawVisibility[Off]
+                        : 1.0f;
                     OutHdr = (Config.DebugChannel != 0u)
                         ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat)
-                        : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat);
+                        : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat, SunVis);
                 }
                 else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && Config.DebugChannel == 0u)
                 {

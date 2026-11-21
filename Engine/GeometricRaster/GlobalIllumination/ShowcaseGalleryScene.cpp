@@ -5,6 +5,7 @@
 
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 
+#include "Engine/Codecs/ControlVehicleSurfaceDecoder.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
 
 namespace Frontier::GeometricRaster
@@ -802,10 +804,285 @@ void BuildShowcaseGalleryScene(
 
     OutBundle.EditorCamera.CameraOrigin       = { 0.00f, -3.55f, 0.42f };
     OutBundle.EditorCamera.TargetPoint        = { 0.00f,  0.55f, 0.15f };
-    OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.00f };
+    OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.0f };
     OutBundle.EditorCamera.VerticalFovRadians = 43.0f * Constants::DegToRadFloat;
     OutBundle.EditorCamera.NearClipMeters     = 0.15f;
     OutBundle.EditorCamera.FarClipMeters      = 60.0f;
+    OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
+    OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
+}
+
+void BuildVehicleClearSkyDefaultScene(
+    ShowcaseWorldSceneBundle& OutBundle,
+    uint32_t                  ViewportWidthPx,
+    uint32_t                  ViewportHeightPx)
+{
+    OutBundle = {};
+
+    // Locate repository root containing EngineContent/EnvironmentArchives/ControlVehicle
+    std::filesystem::path RepoRoot = std::filesystem::current_path();
+    for (int Depth = 0; Depth < 6; ++Depth)
+    {
+        if (std::filesystem::exists(RepoRoot / "EngineContent" / "EnvironmentArchives" / "ControlVehicle" / "ControlVehicleBody.face"))
+        {
+            break;
+        }
+        if (!RepoRoot.has_parent_path() || RepoRoot.parent_path() == RepoRoot)
+        {
+            break;
+        }
+        RepoRoot = RepoRoot.parent_path();
+    }
+
+    // Slot 0: Neutral studio ground plane (architectural concrete / dry asphalt)
+    MaterialSpace::SurfaceMaterial GroundMat {};
+    GroundMat.MaterialName            = "Ground Plane Asphalt";
+    GroundMat.Diffuse.BaseWeight      = 1.0f;
+    GroundMat.Diffuse.BaseColor       = { 0.22f, 0.23f, 0.25f };
+    GroundMat.Specular.Roughness      = 0.54f;
+    GroundMat.Specular.Metalness      = 0.0f;
+    GroundMat.Specular.DielectricIOR  = 1.50f;
+    GroundMat.Clearcoat.CoatWeight    = 0.04f;
+    GroundMat.Clearcoat.CoatRoughness = 0.36f;
+    const uint16_t GroundSlot = OutBundle.Scene.MaterialRegister.RegisterMaterial(GroundMat);
+
+    // Slots 1..11: 11-slot OpenPBR automotive material register (daytime clear-sky: zero headlamp/taillamp nits)
+    std::array<uint16_t, static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::Count)> VehicleSlots {};
+    const auto ConstructVehicleSlotMaterial = [](Codecs::VehicleSurfaceSlot Slot) -> MaterialSpace::SurfaceMaterial
+    {
+        MaterialSpace::SurfaceMaterial Mat {};
+        switch (Slot)
+        {
+            case Codecs::VehicleSurfaceSlot::BodyCoat:
+                Mat.MaterialName            = "Control Vehicle Metallic Paint";
+                Mat.Diffuse.BaseColor       = { 0.09f, 0.28f, 0.74f };
+                Mat.Specular.Metalness      = 0.72f;
+                Mat.Specular.Roughness      = 0.18f;
+                Mat.Specular.EdgeTintF82    = { 0.55f, 0.78f, 1.00f };
+                Mat.Clearcoat.CoatWeight    = 1.00f;
+                Mat.Clearcoat.CoatRoughness = 0.03f;
+                break;
+            case Codecs::VehicleSurfaceSlot::CanopyGloss:
+                Mat.MaterialName            = "VehicleObsidianCanopy";
+                Mat.Diffuse.BaseColor       = { 0.03f, 0.035f, 0.045f };
+                Mat.Specular.Roughness      = 0.08f;
+                Mat.Clearcoat.CoatWeight    = 1.00f;
+                Mat.Clearcoat.CoatRoughness = 0.02f;
+                break;
+            case Codecs::VehicleSurfaceSlot::VehicleGlass:
+                Mat.MaterialName            = "VehicleTintedWindshield";
+                Mat.Diffuse.BaseColor       = { 0.05f, 0.09f, 0.13f };
+                Mat.Specular.Roughness      = 0.025f;
+                Mat.Specular.DielectricIOR  = 1.52f;
+                Mat.Clearcoat.CoatWeight    = 1.00f;
+                Mat.Clearcoat.CoatRoughness = 0.015f;
+                break;
+            case Codecs::VehicleSurfaceSlot::VehiclePlastic:
+                Mat.MaterialName       = "VehicleIntakePolymer";
+                Mat.Diffuse.BaseColor  = { 0.07f, 0.075f, 0.082f };
+                Mat.Specular.Roughness = 0.52f;
+                break;
+            case Codecs::VehicleSurfaceSlot::TyreRubber:
+                Mat.MaterialName       = "VulcanizedTyreRubber";
+                Mat.Diffuse.BaseColor  = { 0.045f, 0.046f, 0.050f };
+                Mat.Specular.Roughness = 0.68f;
+                break;
+            case Codecs::VehicleSurfaceSlot::RimAlloy:
+                Mat.MaterialName         = "ForgedTitaniumRimAlloy";
+                Mat.Diffuse.BaseColor    = { 0.84f, 0.86f, 0.90f };
+                Mat.Specular.Metalness   = 0.96f;
+                Mat.Specular.Roughness   = 0.16f;
+                Mat.Specular.EdgeTintF82 = { 0.96f, 0.97f, 0.99f };
+                break;
+            case Codecs::VehicleSurfaceSlot::WheelCapAccent:
+                Mat.MaterialName       = "AnodizedBronzeHubCap";
+                Mat.Diffuse.BaseColor  = { 0.78f, 0.54f, 0.24f };
+                Mat.Specular.Metalness = 0.92f;
+                Mat.Specular.Roughness = 0.20f;
+                break;
+            case Codecs::VehicleSurfaceSlot::BrakeDisc:
+                Mat.MaterialName        = "MachinedSteelBrakeRotor";
+                Mat.Diffuse.BaseColor   = { 0.66f, 0.68f, 0.71f };
+                Mat.Specular.Metalness  = 0.94f;
+                Mat.Specular.Roughness  = 0.28f;
+                Mat.Specular.Anisotropy = 0.55f;
+                break;
+            case Codecs::VehicleSurfaceSlot::VehicleTrim:
+                Mat.MaterialName       = "SatinGraphiteTrim";
+                Mat.Diffuse.BaseColor  = { 0.14f, 0.15f, 0.17f };
+                Mat.Specular.Metalness = 0.40f;
+                Mat.Specular.Roughness = 0.34f;
+                break;
+            case Codecs::VehicleSurfaceSlot::HeadlightLens:
+                Mat.MaterialName            = "SmokedHeadlampHousing";
+                Mat.Diffuse.BaseColor       = { 0.12f, 0.13f, 0.15f };
+                Mat.Specular.Roughness      = 0.05f;
+                Mat.Clearcoat.CoatWeight    = 0.92f;
+                Mat.Clearcoat.CoatRoughness = 0.03f;
+                break;
+            case Codecs::VehicleSurfaceSlot::TaillightLens:
+            default:
+                Mat.MaterialName            = "RubyTaillampOptic";
+                Mat.Diffuse.BaseColor       = { 0.36f, 0.025f, 0.028f };
+                Mat.Specular.Roughness      = 0.06f;
+                Mat.Clearcoat.CoatWeight    = 0.88f;
+                Mat.Clearcoat.CoatRoughness = 0.035f;
+                break;
+        }
+        return Mat;
+    };
+    for (std::size_t R = 0u; R < VehicleSlots.size(); ++R)
+    {
+        VehicleSlots[R] = OutBundle.Scene.MaterialRegister.RegisterMaterial(
+            ConstructVehicleSlotMaterial(static_cast<Codecs::VehicleSurfaceSlot>(R)));
+    }
+
+    // Object 0: Ground Plane (24 m x 24 m x 0.16 m, top surface at Z = 0.0 m)
+    const Mathematics::Scalar3D GroundDims   { 24.0f, 24.0f, 0.16f };
+    const Mathematics::Axis3D   GroundCenter { 0.0f,  0.0f, -0.08f };
+    BuildBoxGeometryAsset(OutBundle.GeometryAssets[0u], GroundDims * 0.5f);
+    for (auto& Face : OutBundle.GeometryAssets[0u].Network.Faces)
+    {
+        Face.PartGroupOrdinal = GroundSlot;
+    }
+    (void)OutBundle.GeometryAssets[0u].Pyramid.BuildFromPolygonNetwork(OutBundle.GeometryAssets[0u].Network, 3u);
+    OutBundle.Scene.ClusterInstances.push_back(
+        { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
+
+    ShowcaseWorldAssetEntry GroundEntry {};
+    GroundEntry.Title                = "Ground Plane";
+    GroundEntry.StableIdentifier     = "ground-plane";
+    GroundEntry.MaterialTitle        = GroundMat.MaterialName;
+    GroundEntry.Subtitle             = "Box · 24.0 × 24.0 × 0.16 m · Z = 0 datum";
+    GroundEntry.AuthorNotes          = "Outdoor Z=0 ground plane supporting the Control Vehicle under clear sky illumination.";
+    GroundEntry.CenterWorld          = GroundCenter;
+    GroundEntry.DimensionsMeters     = GroundDims;
+    GroundEntry.AuthoredDimensions   = GroundDims;
+    GroundEntry.MaterialSlot         = GroundSlot;
+    GroundEntry.ClusterInstanceIndex = 0u;
+    GroundEntry.PrimitiveShape       = ShowcasePrimitiveShape::Box;
+    EnsureObjectLocalSmoothTriangles(GroundEntry);
+    OutBundle.Objects.push_back(std::move(GroundEntry));
+
+    // Object 1: Control Vehicle (25,068 creased smooth-normal triangles, 4 rims + 4 tyres + body resting on Z = 0)
+    Codecs::AssembledControlVehicle DecodedVehicle {};
+    std::string VehicleDiag {};
+    const bool VehicleDecoded = Codecs::ControlVehicleSurfaceDecoder::DecodeAssembledVehicle(
+        RepoRoot, Codecs::VehicleCoordinateConvention::FrontierWorldZUp, DecodedVehicle, VehicleDiag);
+
+    auto VehicleGeom = std::make_unique<ShowcaseGeometryAsset>();
+    ShowcaseWorldAssetEntry VehicleEntry {};
+    VehicleEntry.Title                = "Control Vehicle";
+    VehicleEntry.StableIdentifier     = "control-vehicle";
+    VehicleEntry.MaterialTitle        = "Control Vehicle Metallic Paint";
+    VehicleEntry.MaterialSlot         = VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::BodyCoat)];
+    VehicleEntry.ClusterInstanceIndex = 1u;
+    VehicleEntry.PrimitiveShape       = ShowcasePrimitiveShape::Box;
+
+    if (VehicleDecoded && !DecodedVehicle.Triangles.empty())
+    {
+        const Mathematics::Axis3D Center = DecodedVehicle.BoundsCenter;
+        const Mathematics::Scalar3D Span {
+            std::max(0.20f, DecodedVehicle.BoundsMax.X - DecodedVehicle.BoundsMin.X),
+            std::max(0.20f, DecodedVehicle.BoundsMax.Y - DecodedVehicle.BoundsMin.Y),
+            std::max(0.20f, DecodedVehicle.BoundsMax.Z - DecodedVehicle.BoundsMin.Z),
+        };
+        VehicleEntry.CenterWorld        = Center;
+        VehicleEntry.DimensionsMeters   = Span;
+        VehicleEntry.AuthoredDimensions = Span;
+        VehicleEntry.Subtitle           = "ControlVehicle · 25,068 tris · 11 OpenPBR slots";
+        VehicleEntry.AuthorNotes        = "Decoded FCT1 ControlVehicle (Body + 4 Rims + 4 Tyres) resting tangent to Z = 0.";
+
+        const uint32_t TriCount = static_cast<uint32_t>(DecodedVehicle.Triangles.size());
+        VehicleGeom->Network.NetworkTitle = "ControlVehicle";
+        VehicleGeom->Network.ReserveStorage(TriCount * 3u, TriCount * 3u, TriCount);
+        VehicleEntry.LocalSmoothTriangles.reserve(TriCount);
+
+        for (const Codecs::DecodedVehicleTriangle& Tri : DecodedVehicle.Triangles)
+        {
+            const uint16_t SlotMat = VehicleSlots[std::min<std::size_t>(
+                static_cast<std::size_t>(Tri.SurfaceSlot),
+                VehicleSlots.size() - 1u)];
+
+            const Mathematics::Axis3D L0 = Tri.CornerA - Center;
+            const Mathematics::Axis3D L1 = Tri.CornerB - Center;
+            const Mathematics::Axis3D L2 = Tri.CornerC - Center;
+
+            CachedLocalSmoothTriangle SmoothTri {};
+            SmoothTri.Corner0              = L0;
+            SmoothTri.Corner1              = L1;
+            SmoothTri.Corner2              = L2;
+            SmoothTri.Normal0              = Tri.NormalA;
+            SmoothTri.Normal1              = Tri.NormalB;
+            SmoothTri.Normal2              = Tri.NormalC;
+            SmoothTri.MaterialSlotOverride = SlotMat;
+            VehicleEntry.LocalSmoothTriangles.push_back(SmoothTri);
+
+            const uint32_t V0 = VehicleGeom->Network.AppendVertex(L0);
+            const uint32_t V1 = VehicleGeom->Network.AppendVertex(L1);
+            const uint32_t V2 = VehicleGeom->Network.AppendVertex(L2);
+            VehicleGeom->Network.Vertices[V0].Normal = Tri.NormalA;
+            VehicleGeom->Network.Vertices[V1].Normal = Tri.NormalB;
+            VehicleGeom->Network.Vertices[V2].Normal = Tri.NormalC;
+
+            const std::array<uint32_t, 3u> Loop {{ V0, V1, V2 }};
+            (void)VehicleGeom->Network.AppendFace(Loop, {}, {}, 0u, SlotMat);
+        }
+        (void)VehicleGeom->Pyramid.BuildFromPolygonNetwork(VehicleGeom->Network, 3u);
+    }
+    else
+    {
+        const Mathematics::Scalar3D FallbackSpan { 4.48f, 1.94f, 1.32f };
+        VehicleEntry.CenterWorld        = { 0.0f, 0.0f, 0.66f };
+        VehicleEntry.DimensionsMeters   = FallbackSpan;
+        VehicleEntry.AuthoredDimensions = FallbackSpan;
+        VehicleEntry.Subtitle           = "Vehicle Proxy Box";
+        BuildBoxGeometryAsset(*VehicleGeom, FallbackSpan * 0.5f);
+        EnsureObjectLocalSmoothTriangles(VehicleEntry);
+    }
+
+    OutBundle.Scene.ClusterInstances.push_back(
+        { &VehicleGeom->Pyramid, VehicleEntry.CenterWorld, VehicleEntry.CenterWorld, 1.0f, VehicleEntry.MaterialSlot, false });
+    OutBundle.DynamicGeometryAssets.push_back(std::move(VehicleGeom));
+    OutBundle.Objects.push_back(std::move(VehicleEntry));
+
+    // Clear Sky & Crisp Daylight Sun (Zero Clouds, Zero Fog, Zero Indoor Area Lights)
+    auto& Atmo = OutBundle.Scene.Atmosphere;
+    Atmo.Medium.AtmosphereEnabled             = true;
+    Atmo.Solar.SolarEnabled                   = true;
+    Atmo.Solar.CycleAnimationEnabled          = false;
+    Atmo.Solar.LocalHours                     = 10.5f;
+    Atmo.Clouds.CloudsEnabled                 = false;
+    Atmo.Clouds.FollowWindEnabled             = false;
+    Atmo.Clouds.WindSpeedMetersPerSecond      = 0.0f;
+    Atmo.Clouds.CloudRenderScale              = 1.00f;
+    Atmo.Clouds.CloudMarchSteps               = 64u;
+    Atmo.Clouds.CloudShadow.ShadowEnabled     = false;
+    Atmo.LocalCloud.LocalEnabled              = false;
+    Atmo.LocalCloud.FollowWindEnabled         = false;
+    Atmo.Moons[0].Visible                     = false;
+    Atmo.Stars.StarfieldEnabled               = false;
+
+    const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+    OutBundle.Scene.Sun.DirectionToSun          = SolarSolved.WorldDirectionToSun;
+    OutBundle.Scene.Sun.SolarIrradiance         = { 5.40f, 5.12f, 4.72f };
+    OutBundle.Scene.Sun.SunAngularRadiusRadians = 0.0093f;
+    OutBundle.Scene.Sun.RtxSamplesPerPixel      = 4u;
+    OutBundle.Scene.SkyRadiance                 = { 0.42f, 0.58f, 0.88f };
+    OutBundle.Scene.AreaLights.clear();
+    OutBundle.Scene.PointLights.clear();
+    OutBundle.Scene.PhotometricRadiators.clear();
+    OutBundle.Scene.PhotometricProfiles.clear();
+
+    RebuildShowcaseSceneAcceleration(OutBundle);
+
+    // 3/4 Automotive Hero Camera
+    OutBundle.EditorCamera.CameraOrigin       = { 4.85f, -4.15f, 1.68f };
+    OutBundle.EditorCamera.TargetPoint        = { 0.10f,  0.00f, 0.62f };
+    OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.00f };
+    OutBundle.EditorCamera.VerticalFovRadians = 38.0f * Constants::DegToRadFloat;
+    OutBundle.EditorCamera.NearClipMeters     = 0.12f;
+    OutBundle.EditorCamera.FarClipMeters      = 120.0f;
     OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
     OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
@@ -870,8 +1147,10 @@ void RegisterShowcaseGalleryInOutliner(
     if (OutlinerRecordEntry* Folder = TargetOutliner.AccessEntry(InOutBundle.ShowcaseFolderToken))
     {
         Folder->FolderTint  = WorkspaceSurfaceColors::ShowcaseSage;
-        Folder->Subtitle    = "Cornell-Studio Gallery · 10 specimens";
-        Folder->AuthorNotes = "Canonical C++ <-> HTML mirror geometry collection.";
+        Folder->Subtitle    = (InOutBundle.Objects.size() == 2u)
+            ? "Default Scene · Vehicle & Ground Plane"
+            : "Cornell-Studio Gallery · 10 specimens";
+        Folder->AuthorNotes = "Scene geometry collection.";
         Folder->Expanded    = true;
     }
 
@@ -1002,46 +1281,50 @@ void RegisterShowcaseGalleryInOutliner(
         LocalEntry->CastShadows       = false;
     }
 
-    InOutBundle.LightingFolderToken = TargetOutliner.ConstructFolder("Lighting");
-    if (OutlinerRecordEntry* Folder = TargetOutliner.AccessEntry(InOutBundle.LightingFolderToken))
-    {
-        Folder->FolderTint  = ColorRgba{ 226, 152, 128, 255 };
-        Folder->Subtitle    = "Analytic LTC area lights";
-        Folder->AuthorNotes = "Clipped-horizon polygonal quad lights integrated via LinearCosineLightIntegration.";
-        Folder->Expanded    = true;
-    }
-
-    InOutBundle.CeilingSoftboxToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.LightingFolderToken);
     InOutBundle.AreaLightBindings.clear();
-    if (OutlinerRecordEntry* LightEntry = TargetOutliner.AccessEntry(InOutBundle.CeilingSoftboxToken))
+    InOutBundle.CeilingSoftboxToken = {};
+    if (!InOutBundle.Scene.AreaLights.empty())
     {
-        const auto& Softbox = InOutBundle.Scene.AreaLights.front();
-        LightEntry->Category          = ConstructSlotCategory::PointLuminaire;
-        LightEntry->Title             = "Ceiling Softbox";
-        LightEntry->CategoryLabel     = "Lighting / LTC Area Quad";
-        LightEntry->Subtitle          = "LTC Quad · 1.70 × 1.30 m · 7.5, 6.6, 5.4 nit";
-        LightEntry->AuthorNotes       = "Overhead architectural softbox illuminating gallery floor and specular spheres.";
-        LightEntry->PositionX         = Softbox.CenterWorld.X;
-        LightEntry->PositionY         = Softbox.CenterWorld.Y;
-        LightEntry->PositionZ         = Softbox.CenterWorld.Z;
-        LightEntry->ScaleX            = Softbox.HalfWidthMeters * 2.0f;
-        LightEntry->ScaleY            = Softbox.HalfHeightMeters * 2.0f;
-        LightEntry->ScaleZ            = 1.0f;
-        LightEntry->VisibilityEnabled = true;
-        LightEntry->CastShadows       = false;
+        InOutBundle.LightingFolderToken = TargetOutliner.ConstructFolder("Lighting");
+        if (OutlinerRecordEntry* Folder = TargetOutliner.AccessEntry(InOutBundle.LightingFolderToken))
+        {
+            Folder->FolderTint  = ColorRgba{ 226, 152, 128, 255 };
+            Folder->Subtitle    = "Analytic LTC area lights";
+            Folder->AuthorNotes = "Clipped-horizon polygonal quad lights integrated via LinearCosineLightIntegration.";
+            Folder->Expanded    = true;
+        }
 
-        InOutBundle.AreaLightBindings.push_back({
-            InOutBundle.CeilingSoftboxToken,
-            0u,
-            Softbox.EmittedRadiance,
-        });
+        InOutBundle.CeilingSoftboxToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.LightingFolderToken);
+        if (OutlinerRecordEntry* LightEntry = TargetOutliner.AccessEntry(InOutBundle.CeilingSoftboxToken))
+        {
+            const auto& Softbox = InOutBundle.Scene.AreaLights.front();
+            LightEntry->Category          = ConstructSlotCategory::PointLuminaire;
+            LightEntry->Title             = "Ceiling Softbox";
+            LightEntry->CategoryLabel     = "Lighting / LTC Area Quad";
+            LightEntry->Subtitle          = "LTC Quad · 1.70 × 1.30 m · 7.5, 6.6, 5.4 nit";
+            LightEntry->AuthorNotes       = "Overhead architectural softbox illuminating gallery floor and specular spheres.";
+            LightEntry->PositionX         = Softbox.CenterWorld.X;
+            LightEntry->PositionY         = Softbox.CenterWorld.Y;
+            LightEntry->PositionZ         = Softbox.CenterWorld.Z;
+            LightEntry->ScaleX            = Softbox.HalfWidthMeters * 2.0f;
+            LightEntry->ScaleY            = Softbox.HalfHeightMeters * 2.0f;
+            LightEntry->ScaleZ            = 1.0f;
+            LightEntry->VisibilityEnabled = true;
+            LightEntry->CastShadows       = false;
+
+            InOutBundle.AreaLightBindings.push_back({
+                InOutBundle.CeilingSoftboxToken,
+                0u,
+                Softbox.EmittedRadiance,
+            });
+        }
     }
 
     OutlinerFooterReadings Footer {};
     Footer.RealtimeText  = "60 fps";
     Footer.QualityText   = "GTX Tier 1";
     Footer.PrimarySlot   = "Sun 46°";
-    Footer.SecondarySlot = "LTC 1";
+    Footer.SecondarySlot = InOutBundle.Scene.AreaLights.empty() ? "Clear Sky" : "LTC 1";
     char CamBuffer[48]{};
     std::snprintf(
         CamBuffer,
@@ -1053,9 +1336,17 @@ void RegisterShowcaseGalleryInOutliner(
     Footer.CameraText = CamBuffer;
     TargetOutliner.ConfigureFooterReadings(Footer);
 
-    if (!InOutBundle.Objects.empty() && InOutBundle.Objects[6u].SlotToken.Valid())
+    if (InOutBundle.Objects.size() > 6u && InOutBundle.Objects[6u].SlotToken.Valid())
     {
         TargetOutliner.SelectSingle(InOutBundle.Objects[6u].SlotToken);
+    }
+    else if (InOutBundle.Objects.size() > 1u && InOutBundle.Objects[1u].SlotToken.Valid())
+    {
+        TargetOutliner.SelectSingle(InOutBundle.Objects[1u].SlotToken);
+    }
+    else if (!InOutBundle.Objects.empty() && InOutBundle.Objects[0u].SlotToken.Valid())
+    {
+        TargetOutliner.SelectSingle(InOutBundle.Objects[0u].SlotToken);
     }
 }
 
@@ -1118,7 +1409,9 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
             Prim.Edge01           = W1 - W0;
             Prim.Edge02           = W2 - W0;
             Prim.SourceFaceIndex  = PrimCounter;
-            Prim.MaterialOrdinal  = Mat;
+            Prim.MaterialOrdinal  = (!Obj.DedicatedMaterial && LocalTri.MaterialSlotOverride != 0xFFFFu)
+                ? LocalTri.MaterialSlotOverride
+                : Mat;
             Prim.OpaqueMask       = 1u;
             Prim.PrimitiveOrdinal = PrimCounter;
             WorldPrims.push_back(Prim);

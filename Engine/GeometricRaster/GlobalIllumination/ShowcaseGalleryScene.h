@@ -48,12 +48,13 @@ struct ShowcaseGeometryAsset
 
 struct CachedLocalSmoothTriangle
 {
-    Mathematics::Axis3D Corner0 {};                     // [m] - Local-space triangle vertex 0 (centered at object origin)
-    Mathematics::Axis3D Corner1 {};                     // [m] - Local-space triangle vertex 1
-    Mathematics::Axis3D Corner2 {};                     // [m] - Local-space triangle vertex 2
-    Mathematics::Axis3D Normal0 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner0
-    Mathematics::Axis3D Normal1 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner1
-    Mathematics::Axis3D Normal2 { 0.0f, 0.0f, 1.0f };   // [-] - Precomputed 49-deg smooth normal at Corner2
+    Mathematics::Axis3D Corner0 {};                     // [m]   - Local-space triangle vertex 0 (centered at object origin)
+    Mathematics::Axis3D Corner1 {};                     // [m]   - Local-space triangle vertex 1
+    Mathematics::Axis3D Corner2 {};                     // [m]   - Local-space triangle vertex 2
+    Mathematics::Axis3D Normal0 { 0.0f, 0.0f, 1.0f };   // [-]   - Precomputed creased smooth normal at Corner0
+    Mathematics::Axis3D Normal1 { 0.0f, 0.0f, 1.0f };   // [-]   - Precomputed creased smooth normal at Corner1
+    Mathematics::Axis3D Normal2 { 0.0f, 0.0f, 1.0f };   // [-]   - Precomputed creased smooth normal at Corner2
+    uint16_t            MaterialSlotOverride = 0xFFFFu; // [idx] - Optional per-triangle CompactMaterialRegister slot (0xFFFF = Obj.MaterialSlot)
 };
 
 struct ShowcaseWorldAssetEntry
@@ -112,6 +113,12 @@ struct ShowcaseWorldSceneBundle
 
 // Constructs the canonical Architectural Cornell-Studio Gallery World Scene and EditorCamera (1:1 with HTML mirror)
 void BuildShowcaseGalleryScene(
+    ShowcaseWorldSceneBundle& OutBundle,
+    uint32_t                  ViewportWidthPx  = 640u,
+    uint32_t                  ViewportHeightPx = 336u);
+
+// Constructs the minimal Default Editor Scene: ControlVehicle ONLY, Clear Sky, and Ground Plane
+void BuildVehicleClearSkyDefaultScene(
     ShowcaseWorldSceneBundle& OutBundle,
     uint32_t                  ViewportWidthPx  = 640u,
     uint32_t                  ViewportHeightPx = 336u);
