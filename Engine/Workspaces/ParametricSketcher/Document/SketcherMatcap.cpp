@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 namespace Frontier::Workspaces::Sketcher
 {
@@ -71,6 +73,35 @@ struct Softbox
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    CONSTANTS
 //------------------------------------------------------------------------------------------------------------------------
+
+struct BakedRecipe
+{
+    const char* Name     = "";
+    const char* Caption  = "";
+    const char* Category = "Baked";
+    uint32_t    Slot     = 0;
+};
+
+// The shared 4 × 4 studio atlas is the authored/baked material set used by the other Frontier workspaces. SolidArc keeps
+// the same stable names and slices each 256² cell into its texture-array layer and its material-picker preview.
+constexpr std::array<BakedRecipe, 16> BakedRecipes{ {
+    { "CncAluminium",     "CNC aluminium",      "Baked", 0 },
+    { "Grade5Titanium",   "Grade-5 titanium",   "Baked", 1 },
+    { "CadClay",          "CAD clay",            "Baked", 2 },
+    { "ClassAChrome",     "Class-A chrome",      "Baked", 3 },
+    { "GunmetalAnodized", "Gunmetal anodized",  "Baked", 4 },
+    { "SteelBlue",        "Steel blue",          "Baked", 5 },
+    { "TurnedBrass",      "Turned brass",        "Baked", 6 },
+    { "ZebraCad",         "Zebra CAD",           "Baked", 7 },
+    { "VulcanRubber",     "Vulcan rubber",       "Baked", 8 },
+    { "NormalMap",        "Normal map",          "Baked", 9 },
+    { "CarFlakeBlue",     "Car flake blue",      "Baked", 10 },
+    { "CarFlakeRuby",     "Car flake ruby",      "Baked", 11 },
+    { "CarbonFibre",      "Carbon fibre",        "Baked", 12 },
+    { "WovenFabric",      "Woven fabric",        "Baked", 13 },
+    { "VelvetSuede",      "Velvet suede",        "Baked", 14 },
+    { "RipstopNylon",     "Ripstop nylon",       "Baked", 15 },
+} };
 
 constexpr std::array<Recipe, 13> Recipes{ {
     { "Chrome",            "Chrome",              "Metal",   Finish::Metal,   { 0.96, 0.96, 0.97 }, 0.00, 1.0 },
@@ -299,6 +330,78 @@ constexpr double DielectricLightGain = 60.0;                                    
     return nullptr;
 }
 
+[[nodiscard]] const BakedRecipe* FindBakedRecipe(const std::string& Name) noexcept
+{
+    for (const BakedRecipe& Look : BakedRecipes)
+        if (Name == Look.Name) return &Look;
+    return nullptr;
+}
+
+[[nodiscard]] std::filesystem::path FindBakedMatcapAtlas()
+{
+    constexpr const char* Relative = "EngineContent/MatCaps/MatCapStudioAtlas.rgba";
+    const std::array<std::filesystem::path, 2> Starts = { std::filesystem::current_path(), std::filesystem::absolute(std::filesystem::path(__FILE__)).parent_path() };
+    for (std::filesystem::path Start : Starts)
+    {
+        for (uint32_t Depth = 0; !Start.empty() && Depth < 12; ++Depth)
+        {
+            const std::filesystem::path Candidate = Start / Relative;
+            std::error_code Failure;
+            if (std::filesystem::exists(Candidate, Failure)) return Candidate;
+            const std::filesystem::path Parent = Start.parent_path();
+            if (Parent == Start) break;
+            Start = Parent;
+        }
+    }
+    return {};
+}
+
+[[nodiscard]] std::vector<SketcherPicture> LoadBakedMatcapAtlas()
+{
+    constexpr uint32_t AtlasSide = 1024;
+    constexpr uint32_t Columns   = 4;
+    constexpr size_t AtlasBytes  = size_t(AtlasSide) * AtlasSide * 4;
+    std::vector<uint8_t> Atlas(AtlasBytes);
+    const std::filesystem::path Path = FindBakedMatcapAtlas();
+    std::ifstream Input(Path, std::ios::binary | std::ios::ate);
+    const bool Available = Input && Input.tellg() == std::streamoff(AtlasBytes);
+    if (Available)
+    {
+        Input.seekg(0, std::ios::beg);
+        Input.read(reinterpret_cast<char*>(Atlas.data()), std::streamsize(Atlas.size()));
+    }
+
+    std::vector<SketcherPicture> Pictures;
+    Pictures.reserve(BakedRecipes.size());
+    for (const BakedRecipe& Look : BakedRecipes)
+    {
+        SketcherPicture Picture;
+        Picture.Path   = "builtin:baked:" + std::string(Look.Name);
+        Picture.Width  = SketcherMatcapExtent;
+        Picture.Height = SketcherMatcapExtent;
+        Picture.Pixels.resize(size_t(SketcherMatcapExtent) * SketcherMatcapExtent * 4);
+        if (Available && Input)
+        {
+            const uint32_t TileX = (Look.Slot % Columns) * SketcherMatcapExtent;
+            const uint32_t TileY = (Look.Slot / Columns) * SketcherMatcapExtent;
+            for (uint32_t Row = 0; Row < SketcherMatcapExtent; ++Row)
+            {
+                const uint8_t* Source = Atlas.data() + (size_t(TileY + Row) * AtlasSide + TileX) * 4;
+                uint8_t* Target = Picture.Pixels.data() + size_t(Row) * SketcherMatcapExtent * 4;
+                std::copy_n(Source, size_t(SketcherMatcapExtent) * 4, Target);
+            }
+        }
+        else
+        {
+            Picture = ComposeSketcherStudioMatcap();
+            Picture.Path = "builtin:baked-fallback:" + std::string(Look.Name);
+            Picture.Refusal = "baked matcap atlas was not found";
+        }
+        Pictures.push_back(std::move(Picture));
+    }
+    return Pictures;
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -310,6 +413,7 @@ const std::vector<SketcherMatcapDescription>& SketcherBuiltInMatcaps()
     static const std::vector<SketcherMatcapDescription> Library = []
     {
         std::vector<SketcherMatcapDescription> Built;
+        for (const BakedRecipe& Look : BakedRecipes) Built.push_back({ Look.Name, Look.Caption, Look.Category });
         for (const Recipe& Look : Recipes) Built.push_back({ Look.Name, Look.Caption, Look.Category });
         return Built;
     }();
@@ -467,8 +571,17 @@ SketcherMatcapLibrary AssembleSketcherMatcaps(const SketcherAppearance& Appearan
     Library.Names.push_back(SketcherStudioMatcap);
     Library.Captions.push_back("Studio");
     Library.Refusals.push_back({});
-    // 📝 Built-ins are fixed: composed once per process and copied.
-    static const std::vector<SketcherPicture> BuiltIn = []
+    // 📝 Built-ins are fixed: the shared authored atlas is sliced once, and the older analytic engineering set remains
+    //    available after it for document compatibility.
+    static const std::vector<SketcherPicture> Baked = LoadBakedMatcapAtlas();
+    for (size_t Index = 0; Index < BakedRecipes.size(); ++Index)
+    {
+        Library.Names.push_back(BakedRecipes[Index].Name);
+        Library.Captions.push_back(BakedRecipes[Index].Caption);
+        Library.Pictures.push_back(Baked[Index]);
+        Library.Refusals.push_back(Baked[Index].Refusal);
+    }
+    static const std::vector<SketcherPicture> Analytic = []
     {
         std::vector<SketcherPicture> Composed;
         for (const Recipe& Look : Recipes) Composed.push_back(ComposeSketcherMatcap(Look.Name));
@@ -478,7 +591,7 @@ SketcherMatcapLibrary AssembleSketcherMatcaps(const SketcherAppearance& Appearan
     {
         Library.Names.push_back(Recipes[Index].Name);
         Library.Captions.push_back(Recipes[Index].Caption);
-        Library.Pictures.push_back(BuiltIn[Index]);
+        Library.Pictures.push_back(Analytic[Index]);
         Library.Refusals.push_back({});
     }
     for (const SketcherCustomMatcap& Custom : Appearance.CustomMatcaps)
@@ -522,7 +635,7 @@ const std::string& SketcherFaceMatcap(const SketcherAppearance& Appearance, cons
 
 bool SketcherMatcapKnownCondition(const SketcherAppearance& Appearance, const std::string& Name)
 {
-    if (Name == SketcherStudioMatcap || FindRecipe(Name)) return true;
+    if (Name == SketcherStudioMatcap || FindBakedRecipe(Name) || FindRecipe(Name)) return true;
     return std::any_of(Appearance.CustomMatcaps.begin(), Appearance.CustomMatcaps.end(), [&](const SketcherCustomMatcap& Custom) { return Custom.Name == Name; });
 }
 

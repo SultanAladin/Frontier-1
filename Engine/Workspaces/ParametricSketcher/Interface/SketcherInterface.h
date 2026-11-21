@@ -36,6 +36,8 @@
 namespace Frontier::Workspaces::Sketcher
 {
 
+class SketcherPreviewWorker;
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    ENUMS
 //------------------------------------------------------------------------------------------------------------------------
@@ -111,7 +113,7 @@ struct SketcherRepeat
 
 // 📝 B / Shift+B session: a staged copy of the document carries the preview; the authored document is untouched
 //    until Apply (one undo entry). Positive pointer-adjusted size = fillet radius, negative = chamfer setback.
-//    V (Plasticity gizmo:fillet-solid:add) makes the size variable: Size at each edge's anchor corner, EndSize at its
+//    The Variable size card option makes Size apply at each edge's anchor corner and EndSize at its
 //    other end; F flips which corner is the anchor. The pointer adjusts Size; EndSize is typed.
 struct SketcherBevelSession
 {
@@ -122,6 +124,8 @@ struct SketcherBevelSession
     SketcherExtrudeMode               StagedExtrudeMode = SketcherExtrudeMode::AlongNormals; // [-]   - ExtrudeMode the preview was built for
     bool                              PinnedCondition = false;                               // [-]   - Numeric entry pins the size
     GeometrySpace::Parametric::BlendProfile            Shape           = GeometrySpace::Parametric::BlendProfile::Fillet;      // [-]   - Cross-section
+    bool                              VertexCondition = false;                               // [-]   - CAD corner blend expanded from selected body vertices
+    std::vector<std::string>          VertexNames = {};                                     // [-]   - Original picks restored if the session is cancelled
     double                            Size            = 0.25;                                // [len] - Radius / setback
     std::array<char, 32>              SizeText        = {};                                  // [-]   - Field text ("250mm", "0.25")
     bool                              SizeTypedCondition = false;                            // [-]   - SizeText typed but not yet entered
@@ -132,7 +136,7 @@ struct SketcherBevelSession
     std::string                       Refusal         = {};                                  // [-]   - Why Apply is disabled
     double                            StagedSize      = -1.0;                                // [len] - Size the preview was built at
     GeometrySpace::Parametric::BlendProfile            StagedShape     = GeometrySpace::Parametric::BlendProfile::Fillet;      // [-]   - Shape the preview was built at
-    bool                              VariableEnabled = false;                               // [-]   - V: size varies along each edge
+    bool                              VariableEnabled = false;                               // [-]   - Size varies along each edge
     double                            EndSize         = 0.0;                                 // [len] - Size at the far corners (0 = not chosen yet)
     std::array<char, 32>              EndSizeText     = {};                                  // [-]   - Field text
     bool                              ReversedCondition = false;                             // [-]   - F: anchor at each edge's end vertex
@@ -146,12 +150,11 @@ struct SketcherBevelSession
     double                            Depth           = 0.0;                                 // [len] - Inset: inner face shift (− pocket)
     std::array<char, 32>              DepthText       = {};                                  // [-]   - Inset: depth field text
     double                            StagedDepth     = 0.0;                                 // [len] - Depth the preview was built at
-    double                            StageMs         = 0.0;                                 // [ms]  - Last preview build (slow ones wait for the pointer to rest)
-    double                            PendingSize     = -1.0;                                // [len] - Pointer size waiting for the pointer to rest
-    double                            PendingSince    = 0.0;                                 // [s]   - When PendingSize last changed
-    int                               StageCount      = 0;                                   // [-]   - Previews built this session
-    uint64_t                          PendingFrame    = 0;                                   // [-]   - Frame number when PendingSize last changed
-    uint64_t                          LastStagedFrame = UINT64_MAX;                          // [-]   - Frame number of last StageBevelPreview build
+    double                            StageMs         = 0.0;                                 // [ms]  - Last exact preview build
+    std::shared_ptr<SketcherPreviewWorker> PreviewWorker = {};                              // [-]   - One immutable-snapshot kernel job; UI never waits while dragging
+    uint64_t                          PreviewGeneration = 0;                                // [-]   - Monotonic async request generation
+    int                               StageCount      = 0;                                   // [-]   - Exact previews completed this session
+    uint64_t                          LastStagedFrame = UINT64_MAX;                          // [-]   - Frame number of last synchronous StageBevelPreview build
     bool                              DepthEnabled    = false;                               // [-]   - Inset: the pointer drives the depth (H) instead of the distance (D)
     SketcherCornerRequest             Corner          = {};                                  // [-]   - Corner: the sketches / corner points (size and shape from the session)
     // 📝 Handles (Plasticity's fillet gizmo): [0] the uniform handle drives Size; one per corner of the picked edges
@@ -216,7 +219,7 @@ struct SketcherDrawingSession
     GeometrySpace::Parametric::Vector2              Pointer          = {};                                    // [len] - Pointer on the plane (snapped)
     bool                           PointerCondition = false;                                 // [-]   - Pointer hits the plane
     int                            GridPlane        = 0;                                     // [-]   - 0 XY · 1 XZ · 2 YZ (fixed at open)
-    bool                           CentreCondition  = false;                                 // [-]   - Rectangle: Alt centre mode · circle: V two-point mode off
+    bool                           CentreCondition  = false;                                 // [-]   - Rectangle: Alt centre mode · circle mode comes from its chosen catalogue tool
     GeometrySpace::Parametric::SketchSplineForm     Form             = GeometrySpace::Parametric::SketchSplineForm::Hermite;   // [-]   - Curve: 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic spline
     bool                           SquareCondition  = false;                                 // [-]   - Rectangle: s keeps the sides equal
     bool                           SegmentCondition = false;                                 // [-]   - Line: one segment, finished on the second click
@@ -303,7 +306,7 @@ struct SketcherMatcapShelf
 {
     SketcherMatcapLibrary    Library    = {};                                                // [-] - Layer order names / captions / pictures
     uint64_t                 Generation = 0;                                                 // [-] - Bumped per assembly
-    std::vector<ImTextureID> Thumbnails = {};                                                // [-] - Per layer (frame-owned, may be empty)
+    std::vector<std::unique_ptr<ImTextureData>> Thumbnails = {};                             // [-] - Per-layer baked sphere previews
     bool                     PickerOpen = false;                                             // [-] - M: Set material popup
     std::array<char, 260>    PicturePath = {};                                               // [-] - Add-picture path field
 };
@@ -337,7 +340,7 @@ struct SketcherTrimSession
     GeometrySpace::Parametric::Vector3                       Point          = {};                   // [len] - The snapped point (world)
     std::string                                       PointSource    = {};                   // [-]   - "Intersection · Circle1 …"
     std::vector<std::vector<GeometrySpace::Parametric::Vector3>> PointCurves = {};                  // [len] - Curves that break there (world)
-    // 💡 Point tool (V): a click adds a point on the curve where it is, the shape unchanged; the point is then picked.
+    // 💡 Point tool: a click adds a point on the curve where it is, the shape unchanged; the point is then picked.
     bool                                              InsertCondition = false;               // [-]   - Point tool instead of Cut / Trim
     bool                                              SpaceCurveCondition = false;
     double                                            SpaceParameter = 0.0;
@@ -374,11 +377,11 @@ struct SketcherSketchTint
 
 // 📝 K (constrain, SolveSpace's verbs on Plasticity's free K key) on one sketch step: click points / curves to pick them
 //    (a click on a constraint glyph or dimension picks that constraint, a click on empty space clears), then D distance /
-//    length / radius and N angle wait for a typed value (Enter; nothing typed keeps the measured one), H V O Q M Y L [ ]
+//    length / radius and N angle wait for a typed value (Enter; nothing typed keeps the measured one), H O Q M Y L [ ] (Vertical from the card)
 //    apply at once. A press on a point that travels drags it (snapped 0.1 unless Ctrl; the rest of the sketch follows
 //    its constraints), the release commits. A picked constraint: Delete / X / Backspace removes it, digits + Enter edit a
 //    dimension. Esc drops a pending verb, then the picks, then ends; K or right-click ends.
-//    Splines: O point on the curve, H / V with an end point (end direction), L (G1) and C (G2) with a curve meeting an end.
+//    Splines: O point on the curve, H or the Vertical card action with an end point (end direction), L (G1) and C (G2) with a curve meeting an end.
 //    Shift+D adds a reference (driven, display-only) dimension, drawn grey in parentheses; E toggles a picked dimension
 //    between driving and reference. Earlier sketches draw dimmed and are pickable: a constraint on their geometry links
 //    it in (amber, held at its projection, following them on regeneration); Delete on a picked linked point / curve unlinks.
@@ -559,7 +562,7 @@ struct SketcherKnifeBlend
 //    the press puts one base corner down, the drag (or, after a click, the pointer) carries the opposite corner — the
 //    base stretches in x and y apart, Shift keeps it square — and the release (the next click) hands the pointer to its
 //    depth along the normal (as a Construct box's height), [ / ] turn it 15°, T through. Object: the first picked body is cut by the others, K
-//    keeps the cutters. Q union · W difference (default) · E intersect · R separate; a click / right-click / Enter applies,
+//    keeps the cutters. Q union · W difference (default) · E intersect · R separate; LMB / Enter applies and RMB / Esc cancels,
 //    Esc cancels. The result stages as a document (gated like the bevel when a stage is slow).
 struct SketcherKnifeSession
 {
@@ -588,7 +591,7 @@ struct SketcherKnifeSession
     bool                                   KeepCondition        = false;                     // [-]   - Object: K, cutters survive
     bool                                   LiveCondition        = false;                     // [-]   - L: place as Live Boolean cutter + modifier
     // 📝 Object with one picked body: that body is the cutter, carried to the face under the pointer (Ctrl: its z along
-    //    the face normal); a click / right-click places it, then the pointer pushes it in / pulls it out along the normal.
+    //    the face normal); LMB places it, then the pointer pushes it in / pulls it out along the normal; RMB cancels.
     bool                                   AlignCondition       = false;                     // [-]   - Placement: cutter z along the face normal (Ctrl)
     double                                 Sink                 = 0.0;                       // [len] - Placement: cutter centre below the face (− above)
     bool                                   RigidCondition       = false;                     // [-]   - PreviewScene is the carried cutter (no Boolean yet)
@@ -763,7 +766,7 @@ struct SketcherExchangeSession
 };
 
 // 📝 Joint (Alt+J; Fusion Joint — Plasticity has none): ① pick the joint origin on the moving body, ② on the fixed body
-//    (the hovered edge / face shows its origin glyph: z blue, x red), ③ choose the kind (R rigid · V revolute · S slider ·
+//    (the hovered edge / face shows its origin glyph: z blue, x red), ③ choose the kind in the card (rigid · revolute · slider ·
 //    C cylindrical · P pin-slot · L planar · B ball), drag the values, F flips, Enter applies. Two entities picked beforehand
 //    (on two bodies; the later pick is the fixed one) skip ① and ②. The preview is a staged document.
 struct SketcherJointSession
@@ -865,6 +868,9 @@ struct SketcherGizmoSession
     int                               Commits       = 0;                                     // [-]   - Committed drags (script evidence)
     bool                              VertexCondition = false;                               // [-]   - Shape target: Names are vertices (mode 1), else edges (mode 2)
     GeometrySpace::Parametric::Vector3       FaceNormal    = { 0.0, 0.0, 1.0 };                     // [-]   - Mean outward normal for Faces target (Offset vs Tweak)
+    bool                              OperationOriginCondition = false;                       // [-]   - Fresh modeling result requests its gizmo at the edited feature
+    std::string                       OperationBody = {};                                    // [-]   - Body that owns OperationOrigin
+    GeometrySpace::Parametric::Vector3 OperationOrigin = {};                                // [len] - Last bevel/operation location
 };
 
 // 📝 Frame timing for the trace (SketcherTrace.log / F12): each frame records named CPU phases; a frame slower than
@@ -981,8 +987,12 @@ struct SketcherWorkspaceStatus
     SketcherConstructRequest              ConstructForm  = {};                               // [-]   - Construct dialog values
     bool                                  ConstructOpen  = false;                            // [-]   - Construct dialog requested
     bool                                  ConstructShown = false;                            // [-]   - Construct dialog drawn this frame
-    int                                   ConstructSection = 0;                              // [-]   - Construct menu section: 0 Solids · 1 Sketch
+    int                                   ConstructSection = 0;                              // [-]   - Context menu: 0 Solids · 1 Sketch · 2 Reference · 3 Tools
+    int                                   ContextToolPage = -1;                              // [idx] - Tool whose options are slid into the Context menu; -1 is catalogue
+    float                                 ContextToolSlide = 0.0f;                           // [0..1] - Remaining right-to-left options-page travel
     bool                                  ConstructMenuRequest = false;                      // [-]   - Construct catalogue popover requested
+    bool                                  ConstructMenuAtPointer = false;                    // [-]   - Empty-space RMB anchors the catalogue at the pointer
+    std::array<float, 2>                  ConstructMenuPointer = {};                         // [px]  - Requested viewport context-menu corner
     bool                                  TraceShown     = false;                            // [-]   - F12 operation trace panel (development builds)
     std::string                           TraceFilter    = {};                               // [-]   - Its substring filter
     SketcherOutlinerMode                 Outliner       = {};                               // [-]   - Scene search, filter chips, compact / folded

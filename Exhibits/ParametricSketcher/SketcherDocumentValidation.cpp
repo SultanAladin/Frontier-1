@@ -12,6 +12,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherScene.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -128,7 +129,23 @@ int main()
             return 1;
         }
         const auto& Matcaps = SketcherBuiltInMatcaps();
-        if (!VerifyCheck(!Matcaps.empty(), "MatCap library populated"))
+        const SketcherMatcapLibrary Library = AssembleSketcherMatcaps(Doc.Appearance);
+        const auto Chrome = std::find(Library.Names.begin(), Library.Names.end(), "ClassAChrome");
+        const size_t ChromeLayer = size_t(Chrome - Library.Names.begin());
+        if (!VerifyCheck(Matcaps.size() >= 29 && Chrome != Library.Names.end(), "MatCap library includes shared baked studio set") ||
+            !VerifyCheck(ChromeLayer > 0 && ChromeLayer - 1 < Library.Pictures.size() && Library.Pictures[ChromeLayer - 1].Pixels.size() == size_t(256 * 256 * 4)
+                         && Library.Refusals[ChromeLayer].empty(), "Baked MatCap atlas preview is resident"))
+        {
+            return 1;
+        }
+        SketcherDocument VertexDoc = CloneSketcherDocument(Doc);
+        const SketcherScene VertexScene = BuildSketcherScene(VertexDoc);
+        const std::vector<std::string> VertexEdges = VertexScene.Vertices.empty() ? std::vector<std::string>{}
+                                                    : ResolveSketcherVertexBlendEdges(VertexDoc, { VertexScene.Vertices.front().Name });
+        VertexDoc.Selection = {};
+        VertexDoc.Selection.Edges = VertexEdges;
+        if (!VerifyCheck(VertexEdges.size() >= 2 && BlendSketcherSelection(VertexDoc, BlendProfile::Fillet, 0.02).AcceptedCondition,
+                         "Selected body vertex resolves to an exact CAD corner bevel"))
         {
             return 1;
         }

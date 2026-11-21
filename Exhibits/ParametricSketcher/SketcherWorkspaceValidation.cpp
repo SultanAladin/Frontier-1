@@ -20,6 +20,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -344,7 +345,10 @@ int main()
         };
 
         auto& State = Host.AccessState();
-        if (!VerifyCheck(!State.Scene.Faces.empty() && !State.Scene.Edges.empty(), "Scene has faces and edges for CAD controls"))
+        const size_t ResidentMatcapPreviews = std::count_if(State.Matcaps.Thumbnails.begin(), State.Matcaps.Thumbnails.end(), [](const auto& Texture) { return Texture && Texture->Pixels; });
+        if (!VerifyCheck(!State.Scene.Faces.empty() && !State.Scene.Edges.empty(), "Scene has faces and edges for CAD controls") ||
+            !VerifyCheck(ResidentMatcapPreviews == State.Matcaps.Library.Names.size() && ResidentMatcapPreviews >= 30,
+                         "Material section has a baked preview texture for every MatCap"))
         {
             Host.Finalize();
             Dock.Finalize();
@@ -439,7 +443,19 @@ int main()
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_C, false); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
-        if (!VerifyCheck(CtrlBFillet && CChamfer, "Ctrl+B starts Fillet and C on edge starts Chamfer"))
+
+        State.Document.Selection = {};
+        State.Document.Selection.Vertices = { State.Scene.Vertices.front().Name };
+        State.PickMode = SketcherPickMode::ControlPoint;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, true); });
+        const bool VertexBevel = State.Bevel.ActiveCondition && State.Bevel.VertexCondition
+                              && State.Bevel.VertexNames.size() == 1 && State.Document.Selection.Edges.size() >= 2;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, false); Io.AddKeyEvent(ImGuiKey_Escape, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
+        const bool VertexSelectionRestored = !State.Bevel.ActiveCondition && State.Document.Selection.Edges.empty()
+                                          && State.Document.Selection.Vertices.size() == 1;
+        if (!VerifyCheck(CtrlBFillet && CChamfer, "Ctrl+B starts Fillet and C on edge starts Chamfer") ||
+            !VerifyCheck(VertexBevel && VertexSelectionRestored, "B bevels selected body vertices and cancel restores their selection"))
         {
             Host.Finalize();
             Dock.Finalize();
@@ -545,8 +561,83 @@ int main()
             return 1;
         }
 
+        // Blender modal contract: pointer movement adjusts, LMB confirms, RMB cancels.
+        State.Document.Selection = {};
+        State.Document.Selection.Bodies = { State.Document.Summary.Bodies.front().Key };
+        const uint64_t BeforeLmb = State.Document.Revision;
+        StepHostedFrame([&]()
+        {
+            Io.AddMousePosEvent(620.0f, 360.0f);
+            Io.AddKeyEvent(ImGuiKey_G, true);
+        });
+        StepHostedFrame([&]()
+        {
+            Io.AddKeyEvent(ImGuiKey_G, false);
+            Io.AddMousePosEvent(680.0f, 360.0f);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true); });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); });
+        const bool LmbConfirmed = !State.Transform.ActiveCondition && State.Document.Revision > BeforeLmb;
+
+        const uint64_t BeforeRmb = State.Document.Revision;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_G, true); });
+        StepHostedFrame([&]()
+        {
+            Io.AddKeyEvent(ImGuiKey_G, false);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false); });
+        const bool RmbCancelled = !State.Transform.ActiveCondition && State.Document.Revision == BeforeRmb;
+
+        // B follows free pointer motion immediately; no bevel-gizmo grab is required.
+        State.Document.Selection = {};
+        State.Document.Selection.Edges = { State.Scene.Edges.front().Name };
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, true); });
+        const bool BevelPointerArmed = State.Bevel.ActiveCondition && !State.Bevel.PinnedCondition;
+        StepHostedFrame([&]()
+        {
+            Io.AddKeyEvent(ImGuiKey_B, false);
+            Io.AddMousePosEvent(600.0f, 360.0f);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, true); });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false); });
+        const bool BevelRmbCancelled = !State.Bevel.ActiveCondition;
+
+        if (!VerifyCheck(LmbConfirmed && RmbCancelled && BevelPointerArmed && BevelRmbCancelled,
+                         "Blender gestures: B arms free-pointer bevel, LMB confirms, RMB cancels"))
+        {
+            std::fprintf(stderr, "LmbConfirmed=%d RmbCancelled=%d BevelPointerArmed=%d BevelCancelled=%d BeforeLmb=%llu BeforeRmb=%llu Revision=%llu\n",
+                         LmbConfirmed ? 1 : 0, RmbCancelled ? 1 : 0,
+                         BevelPointerArmed ? 1 : 0, BevelRmbCancelled ? 1 : 0,
+                         static_cast<unsigned long long>(BeforeLmb), static_cast<unsigned long long>(BeforeRmb),
+                         static_cast<unsigned long long>(State.Document.Revision));
+            Host.Finalize();
+            Dock.Finalize();
+            ImGui::DestroyContext(Gui);
+            return 1;
+        }
+
+        // A completed bevel keeps the result selected and places the standard gizmo at the edited feature. Plain V is
+        // deliberately unassigned (Point and variable bevel are chosen from UI controls instead).
+        State.Document.Selection = {};
+        State.Document.Selection.Edges = { State.Scene.Edges.front().Name };
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, false); });
+        State.Bevel.Size = 0.02;
+        State.Bevel.PinnedCondition = true;
+        std::snprintf(State.Bevel.SizeText.data(), State.Bevel.SizeText.size(), "0.02");
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, false); });
+        const bool BevelGizmoPlaced = !State.Bevel.ActiveCondition && State.Gizmo.OperationOriginCondition
+                                   && State.Document.Selection.Bodies.size() == 1;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_V, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_V, false); });
+        const bool VUnassigned = !State.Trim.ActiveCondition && !State.Bevel.ActiveCondition;
+
         // Verify Snap Filter & ContextAwareSnap defaults and Shift+A Line drawing mode
-        if (!VerifyCheck(State.Picker.Enabled && State.Picker.ContextAwareSnap && State.Picker.Filter.CurveEnabled && State.Picker.Filter.EndpointEnabled,
+        if (!VerifyCheck(BevelGizmoPlaced, "Completed bevel places the gizmo at the edited feature") ||
+            !VerifyCheck(VUnassigned, "Plain V has no assigned tool hotkey") ||
+            !VerifyCheck(State.Picker.Enabled && State.Picker.ContextAwareSnap && State.Picker.Filter.CurveEnabled && State.Picker.Filter.EndpointEnabled,
                          "Snap Filter & ContextAwareSnap enabled by default"))
         {
             Host.Finalize();
@@ -560,14 +651,52 @@ int main()
             Io.AddKeyEvent(ImGuiKey_A, true);
         });
         const bool LineDrawingStarted = State.Drawing.ActiveCondition && State.Drawing.Kind == SketcherDrawingCategory::Line;
+        const uint64_t BeforeLine = State.Document.Revision;
         StepHostedFrame([&]()
         {
             Io.AddKeyEvent(ImGuiKey_A, false);
             Io.AddKeyEvent(ImGuiMod_Shift, false);
-            Io.AddKeyEvent(ImGuiKey_Escape, true);
+            Io.AddMousePosEvent(540.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
         });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); });
+        StepHostedFrame([&]()
+        {
+            Io.AddMousePosEvent(660.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, false); });
+        const bool LineToolRearmed = State.Document.Revision > BeforeLine && State.Drawing.ActiveCondition
+                                  && State.Drawing.Kind == SketcherDrawingCategory::Line && State.Drawing.Points.empty();
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
-        if (!VerifyCheck(LineDrawingStarted, "Shift+A starts Line drawing session"))
+
+        // Empty viewport RMB opens Construct at the pointer (a drag remains viewport pan).
+        State.Document.Selection = {};
+        State.SketchPoints.Points.clear();
+        StepHostedFrame([&]()
+        {
+            Io.AddMousePosEvent(620.0f, 360.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false); });
+        const bool EmptyRmbConstruct = State.ConstructMenuRequest && State.ConstructMenuAtPointer
+                                    && std::abs(State.ConstructMenuPointer[0] - 620.0f) < 0.5f
+                                    && std::abs(State.ConstructMenuPointer[1] - 360.0f) < 0.5f;
+        StepHostedFrame([&]() {});                                                           // Consume the request and open the popup
+        State.ConstructSection = 3;
+        State.ContextToolPage = 3;
+        State.ContextToolSlide = 1.0f;
+        StepHostedFrame([&]() {});
+        const bool ContextToolOptions = State.ContextToolPage == 3 && State.ContextToolSlide < 1.0f;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
+        if (!VerifyCheck(LineDrawingStarted, "Shift+A starts Line drawing session") ||
+            !VerifyCheck(LineToolRearmed, "Completed Construct sketch keeps its drawing tool active") ||
+            !VerifyCheck(EmptyRmbConstruct, "Empty viewport RMB requests Construct menu at pointer") ||
+            !VerifyCheck(ContextToolOptions, "Context tool selection slides to options without closing the menu"))
         {
             Host.Finalize();
             Dock.Finalize();

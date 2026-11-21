@@ -1144,22 +1144,29 @@ void TexturePaintViewportPane::Render(
                 const std::size_t ChIdx = static_cast<std::size_t>(Row.EngineChannel);
                 const bool IsOn = Session->Brush.PaintChannels[ChIdx];
                 const bool IsOpen = Row.OpenEditor && IsOn;
-                const float RowCardH = IsOpen ? 68.0f : 31.0f;
-                if (Gy + RowCardH > GroupBoxR.Bottom() - 6.0f) break;
+                const float RowCardH = IsOpen ? 90.0f : 35.0f;
+                if (Gy + RowCardH > GroupBoxR.Bottom() - 8.0f) break;
 
                 const Rectangle2D CardR{ Gx, Gy, Gw, RowCardH };
-                Surface.FillRectangle(CardR, IsOpen ? ColorRgba{ 37u, 38u, 43u, 255u } : ColorRgba{ 22u, 23u, 26u, 255u }, 8.0f);
+                Surface.FillRectangle(CardR, IsOpen ? ColorRgba{ 37u, 38u, 43u, 255u } : ColorRgba{ 22u, 23u, 26u, 255u }, 9.0f);
 
-                // Left 20x20 rounded color swatch
-                Surface.FillRectangle({ CardR.X + 8.0f, CardR.Y + 5.5f, 20.0f, 20.0f }, Row.Swatch, 5.0f);
-                Surface.StrokeRectangle({ CardR.X + 8.0f, CardR.Y + 5.5f, 20.0f, 20.0f }, ColorRgba{ 255u, 255u, 255u, 28u }, 5.0f, 1.0f);
+                // Left 22x22 procedural channel icon
+                const Rectangle2D SwatchR{ CardR.X + 10.0f, CardR.Y + 6.5f, 22.0f, 22.0f };
+                ConstructProceduralChannelIcon(
+                    Surface,
+                    SwatchR,
+                    Row.Name,
+                    Row.Swatch,
+                    RIdx == 0u,
+                    RIdx == 1u ? Session->Brush.Roughness : 0.45f,
+                    IsOn);
 
                 WorkspaceAppearance::ConstructWeightedText(
                     Surface, IsOpen ? FontWeightClass::SemiBold : FontWeightClass::Medium,
-                    { CardR.X + 36.0f, CardR.Y + 8.0f }, 9.2f, IsOn ? Theme.TextPrimary : Theme.TextMuted, Row.Name);
+                    { CardR.X + 40.0f, CardR.Y + 9.5f }, 9.2f, IsOn ? Theme.TextPrimary : Theme.TextMuted, Row.Name);
 
                 // Toggle switch on right
-                const Rectangle2D SwR{ CardR.Right() - 36.0f, CardR.Y + 7.5f, 28.0f, 16.0f };
+                const Rectangle2D SwR{ CardR.Right() - 38.0f, CardR.Y + 9.5f, 28.0f, 16.0f };
                 Surface.FillRectangle(SwR, IsOn ? ColorRgba{ 255u, 255u, 255u, 255u } : ColorRgba{ 12u, 13u, 15u, 255u }, 8.0f);
                 Surface.FillCircle(
                     { IsOn ? (SwR.Right() - 8.0f) : (SwR.X + 8.0f), SwR.Y + 8.0f },
@@ -1172,7 +1179,7 @@ void TexturePaintViewportPane::Render(
                 else if (RIdx == 1u) std::snprintf(PillBuf, sizeof(PillBuf), "%d%%", static_cast<int>(std::lround(Session->Brush.Roughness * 100.0f)));
                 else std::snprintf(PillBuf, sizeof(PillBuf), "%s", Row.PillText);
                 const float Pw = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.0f, PillBuf) + 14.0f;
-                const Rectangle2D PillR{ SwR.X - 8.0f - Pw, CardR.Y + 7.0f, Pw, 17.0f };
+                const Rectangle2D PillR{ SwR.X - 8.0f - Pw, CardR.Y + 9.0f, Pw, 17.0f };
                 Surface.FillRectangle(PillR, ColorRgba{ 9u, 10u, 12u, 255u }, 8.5f);
                 WorkspaceAppearance::ConstructWeightedText(
                     Surface, FontWeightClass::Medium, { PillR.X + 7.0f, PillR.Y + 2.5f }, 8.0f, IsOn ? Theme.TextPrimary : Theme.TextFaint, PillBuf);
@@ -1185,11 +1192,12 @@ void TexturePaintViewportPane::Render(
 
                 if (IsOpen)
                 {
+                    Surface.StrokeLine({ CardR.X + 12.0f, CardR.Y + 35.0f }, { CardR.Right() - 12.0f, CardR.Y + 35.0f }, ColorRgba{ 255u, 255u, 255u, 14u }, 1.0f);
                     (void)ConstructSliderReadoutRow(
-                        Surface, { CardR.X + 10.0f, CardR.Y + 31.0f, CardR.Width - 20.0f, 34.0f },
+                        Surface, { CardR.X + 12.0f, CardR.Y + 41.0f, CardR.Width - 24.0f, 38.0f },
                         "Roughness", Session->Brush.Roughness, 0.0f, 1.0f, "%.0f %%", 100.0f, Input, Theme);
                 }
-                Gy += RowCardH + 3.0f;
+                Gy += RowCardH + 6.0f;
             }
         }
         else if (IsStampStudio && (Session->InspectorSubTab == BrushDetailSubTab::LibraryGrid || Session->InspectorSubTab == BrushDetailSubTab::Shape))
@@ -1201,25 +1209,25 @@ void TexturePaintViewportPane::Render(
                 Surface, FontWeightClass::Bold, { CPadX + 24.0f, ContentY - 2.0f }, 13.0f, Theme.TextPrimary, "Stamps");
             WorkspaceAppearance::ConstructWeightedText(
                 Surface, FontWeightClass::Regular, { CPadX + 24.0f, ContentY + 15.0f }, 8.6f, Theme.TextFaint, "16 presets · Stamp Studio");
-            ContentY += 34.0f;
+            ContentY += 32.0f;
 
-            const Rectangle2D SearchR{ CPadX, ContentY, CInnerW, 28.0f };
+            const Rectangle2D SearchR{ CPadX, ContentY, CInnerW, 26.0f };
             Surface.FillRectangle(SearchR, Theme.WellSurface, 8.0f);
             VectorIconRepository::ConstructControl(
-                Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 9.0f, SearchR.Y + 7.5f, 13.0f, Theme.TextFaint, 1.65f });
+                Surface, ControlIcon::SearchGlass, VectorIconPlacement{ SearchR.X + 9.0f, SearchR.Y + 6.5f, 13.0f, Theme.TextFaint, 1.65f });
             WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Regular, { SearchR.X + 28.0f, SearchR.Y + 6.5f }, 9.4f, Theme.TextFaint, "Search stamps");
-            ContentY += 36.0f;
+                Surface, FontWeightClass::Regular, { SearchR.X + 28.0f, SearchR.Y + 5.5f }, 9.2f, Theme.TextFaint, "Search stamps");
+            ContentY += 32.0f;
 
             WorkspaceAppearance::ConstructWeightedText(
                 Surface, FontWeightClass::SemiBold, { CPadX, ContentY }, 9.4f, Theme.TextPrimary, "Shapes");
             WorkspaceAppearance::ConstructWeightedText(
                 Surface, FontWeightClass::Medium, { RightPaneR.Right() - 28.0f, ContentY }, 8.8f, Theme.TextFaint, "16");
-            ContentY += 20.0f;
+            ContentY += 18.0f;
 
             const float CardGap = 8.0f;
             const float CardW   = (CInnerW - CardGap * 3.0f) / 4.0f;
-            const float CardH   = 74.0f;
+            const float CardH   = 68.0f;
 
             for (std::size_t S = 0u; S < StampShapeCatalog.size(); ++S)
             {

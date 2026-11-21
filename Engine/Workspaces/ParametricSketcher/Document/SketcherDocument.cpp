@@ -957,6 +957,30 @@ SketcherCommandOutcome BlendSketcherSelection(SketcherDocument& Document, const 
     return Tokens;
 }
 
+std::vector<std::string> ResolveSketcherVertexBlendEdges(const SketcherDocument& Document, const std::vector<std::string>& Vertices)
+{
+    if (!Document.Partition || Vertices.empty()) return {};
+    std::string OwnerKey;
+    if (!CommonBody(Document, SketcherSelectionCategory::Vertex, Vertices, OwnerKey).empty()) return {};
+    const RegeneratedBody* Owner = FindRegeneratedBody(Document, OwnerKey);
+    if (!Owner) return {};
+    std::set<uint32_t> VertexSlots;
+    for (const std::string& Name : Vertices)
+    {
+        const auto Found = std::find_if(Owner->Naming.Vertices.begin(), Owner->Naming.Vertices.end(), [&](const auto& Entry) { return Entry.second == Name; });
+        if (Found == Owner->Naming.Vertices.end()) return {};
+        VertexSlots.insert(Found->first);
+    }
+    std::vector<std::string> Edges;
+    for (const EdgeToken Edge : Document.Partition->CollectInventory(Owner->Body).Edges)
+    {
+        const EdgeProfile& Profile = Document.Partition->Edges.Resolve(Edge);
+        if (!VertexSlots.contains(Profile.Start.Slot) && !VertexSlots.contains(Profile.End.Slot)) continue;
+        if (const auto Named = Owner->Naming.Edges.find(Edge.Slot); Named != Owner->Naming.Edges.end()) Edges.push_back(Named->second);
+    }
+    return Edges;
+}
+
 // The two faces of a manifold edge (the second equals the first on a lamina edge).
 [[nodiscard]] std::array<FaceToken, 2> EdgeFaces(const ModelPartition& Partition, EdgeToken Edge)
 {
