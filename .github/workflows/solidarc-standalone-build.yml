@@ -94,8 +94,22 @@ jobs:
             "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
           Copy-Item 'Build/SolidArc/Release/FrontierSketcher.exe' "$Payload/SolidArc.exe"
           Copy-Item 'Build/SolidArc/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
-          Copy-Item 'Build/SolidArc/CompiledShaders/Sketcher*.spv' "$Payload/CompiledShaders/" -Force
+          # ResolveDesktopResourcePaths validates the shared shader root before the
+          # Sketcher host opens it, so package the complete compiled shader set.
+          Copy-Item 'Build/SolidArc/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
           Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
+          $Required = @(
+            "$Payload/SolidArc.exe",
+            "$Payload/CompiledShaders/SurfaceShading.vert.spv",
+            "$Payload/CompiledShaders/WorldViewportRadiometricCompute.comp.spv",
+            "$Payload/CompiledShaders/SketcherGizmo.vert.spv",
+            "$Payload/CompiledShaders/SketcherSurface.frag.spv",
+            "$Payload/EngineContent/FontsArchives/FontRepository.FontSpace",
+            "$Payload/EngineContent/Icons/Sketcher"
+          )
+          foreach ($Path in $Required) {
+            if (-not (Test-Path $Path)) { Write-Error "Standalone package is missing $Path"; exit 1 }
+          }
           @"
           SolidArc Standalone for Windows x64
           Source commit: ${{ steps.source.outputs.sha }}
