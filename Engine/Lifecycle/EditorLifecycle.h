@@ -123,6 +123,7 @@ public:
     [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
+    [[nodiscard]] float QueryCameraFlySpeedScalar() const noexcept { return CameraFlySpeedScalar; }
     [[nodiscard]] Editor::TransformGizmo&                    AccessTransformGizmo() noexcept { return WorldTransformGizmo; }
     [[nodiscard]] bool ExecuteAuthoringTick(double Δt);
     [[nodiscard]] bool ExecuteExternalDesktopTick(double Δt);

@@ -1772,15 +1772,17 @@ void ViewportPanel::Render(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { FootX, FootY }, 10.0f, StatusInk, StatusWord);
         FootX += WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, StatusWord) + 8.0f;
 
-        char TailSummary[160]{};
+        char TailSummary[224]{};
         std::snprintf(
             TailSummary,
             sizeof(TailSummary),
-            "-  CONSTRUCTED %u  -  %u visible  -  %s%s",
+            "-  CONSTRUCTED %u  -  %u visible  -  %s%s%s%s",
             ConstructedCount,
             VisibleCount,
             QueryQualityTierName(DisplaySettings.QualityTier),
-            SplitViewportEnabled ? "  -  SPLIT VIEW" : "");
+            SplitViewportEnabled ? "  -  SPLIT VIEW" : "",
+            ProbeReadoutText.empty() ? "" : "  -  ",
+            ProbeReadoutText.c_str());
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,
             FontWeightClass::Regular,

@@ -503,20 +503,58 @@ int main()
         // Release RMB cleanly
         StepRmbFly(ImVec2(960.0f, 420.0f), false, ImGuiKey_None, false, 1.0 / 60.0);
 
+        // Wheel must adjust Fly Speed (never Dolly-Zoom), with and without RMB held
+        auto StepWheel = [&](bool RmbDown, float WheelNotches)
+        {
+            Io.AddMousePosEvent(960.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, RmbDown);
+            Io.AddMouseWheelEvent(0.0f, WheelNotches);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        };
+
+        const float               SpeedBeforeWheel   = EditorSession.QueryCameraFlySpeedScalar();
+        const Mathematics::Axis3D OriginBeforeWheel  = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D TargetBeforeWheel  = LiveBundle->EditorCamera.TargetPoint;
+        StepWheel(false, 2.0f);
+        const float               SpeedAfterWheelUp  = EditorSession.QueryCameraFlySpeedScalar();
+        StepWheel(true, -1.0f);
+        const float               SpeedAfterRmbWheel = EditorSession.QueryCameraFlySpeedScalar();
+        const Mathematics::Axis3D OriginAfterWheel   = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D TargetAfterWheel   = LiveBundle->EditorCamera.TargetPoint;
+        const float WheelOriginDriftSq = Mathematics::EvaluateDot(
+            OriginAfterWheel - OriginBeforeWheel,
+            OriginAfterWheel - OriginBeforeWheel);
+        const float WheelTargetDriftSq = Mathematics::EvaluateDot(
+            TargetAfterWheel - TargetBeforeWheel,
+            TargetAfterWheel - TargetBeforeWheel);
+
         if (NormalStepDist < 0.20f ||
             SprintStepDist < NormalStepDist * 2.5f ||
             (ZAfterE - ZBeforeE) < 0.20f ||
             (ZAfterE - ZAfterShiftQ) < (ZAfterE - ZBeforeE) * 2.5f ||
-            StrafeDistSq < 0.01f)
+            StrafeDistSq < 0.01f ||
+            SpeedAfterWheelUp < SpeedBeforeWheel * 1.35f ||
+            SpeedAfterRmbWheel > SpeedAfterWheelUp * 0.90f ||
+            SpeedAfterRmbWheel < SpeedBeforeWheel * 1.05f ||
+            WheelOriginDriftSq > 1.0e-6f ||
+            WheelTargetDriftSq > 1.0e-6f)
         {
             std::fprintf(
                 stderr,
-                "[FAIL] Unreal Engine camera controls validation failed (NormalW=%.3f, SprintW=%.3f, dZE=%.3f, dZShiftQ=%.3f, OutBoundsStrafeSq=%.4f).\n",
+                "[FAIL] Unreal Engine camera controls validation failed (NormalW=%.3f, SprintW=%.3f, dZE=%.3f, dZShiftQ=%.3f, OutBoundsStrafeSq=%.4f, SpeedBefore=%.3f, SpeedWheelUp=%.3f, SpeedRmbWheel=%.3f, WheelDriftSq=%.6f/%.6f).\n",
                 NormalStepDist,
                 SprintStepDist,
                 ZAfterE - ZBeforeE,
                 ZAfterE - ZAfterShiftQ,
-                StrafeDistSq);
+                StrafeDistSq,
+                SpeedBeforeWheel,
+                SpeedAfterWheelUp,
+                SpeedAfterRmbWheel,
+                WheelOriginDriftSq,
+                WheelTargetDriftSq);
             EditorSession.Finalize();
             ImGui::DestroyContext(Ctx);
             return 1;

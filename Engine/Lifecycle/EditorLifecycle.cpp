@@ -808,26 +808,32 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     }
 
     // 3. Unreal Engine Camera Navigation:
-    //    - RMB: 6-DOF Mouse-Look + WASD + Q (Down) + E (Up) + Shift (3x Sprint) + RMB+Wheel (Fly Speed)
+    //    - RMB: 6-DOF Mouse-Look + WASD + Q (Down) + E (Up) + Shift (3x Sprint)
     //    - LMB (when not dragging Gizmo): Drag Yaw/Horizontal-Walk + WASD + Q/E + Shift
     //    - MMB or LMB+RMB: Truck / Pedestal Pan
     //    - Alt+LMB: Orbit around Target, Alt+RMB: Smooth Dolly, Alt+MMB: Pan
-    //    - Wheel (no RMB): Smooth Dolly; Arrow Keys + PageUp/PageDown: Keyboard Fly
+    //    - Wheel (with or without RMB): Fly-Speed Adjustment (never Dolly-Zoom; Dolly stays on Alt+RMB & +/- capsule)
+    //    - Shift is a Sprint modifier only: it must never switch RMB Mouse-Look into Pan or stop Fly keys
+    //    - Arrow Keys + PageUp/PageDown: Keyboard Fly
     const bool GizmoBusy = WorldTransformGizmo.QueryDragging();
     const bool FlyKeysPossible = !Io.WantTextInput && !GizmoBusy && (RightHeld || (LeftHeld && !AltHeld && !MiddleHeld));
 
+    // Wheel source: InputExtension snapshot and ImGui carry the same packet in the desktop host;
+    // take the larger magnitude so neither path is double-counted and headless ImGui-only frames still work.
+    const float WheelDeltaY = (std::fabs(Input.WheelDeltaY) >= std::fabs(Io.MouseWheel)) ? Input.WheelDeltaY : Io.MouseWheel;
+
     if (!GizmoBusy)
     {
+        if (std::fabs(WheelDeltaY) > 0.01f)
+        {
+            CameraFlySpeedScalar = std::clamp(
+                CameraFlySpeedScalar * std::pow(1.20f, WheelDeltaY),
+                0.10f,
+                16.0f);
+        }
+
         if (RightHeld && !AltHeld && !LeftHeld && !MiddleHeld)
         {
-            if (std::fabs(Input.WheelDeltaY) > 0.01f)
-            {
-                CameraFlySpeedScalar = std::clamp(
-                    CameraFlySpeedScalar * std::pow(1.20f, Input.WheelDeltaY),
-                    0.10f,
-                    16.0f);
-            }
-
             if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
             {
                 const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
@@ -978,24 +984,17 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
             }
         }
 
-        if (!RightHeld && std::fabs(Input.WheelDeltaY) > 0.01f)
-        {
-            const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
-            const float CurDist = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
-            const float Step    = std::clamp(CurDist * 0.14f, 0.18f, 3.50f) * Input.WheelDeltaY * (ShiftHeld ? 2.5f : 1.0f);
-            if (CurDist - Step < 0.65f && Step > 0.0f)
-            {
-                const Mathematics::Axis3D Advance = Fwd * Step;
-                Cam.CameraOrigin = Cam.CameraOrigin + Advance;
-                Cam.TargetPoint  = Cam.TargetPoint + Advance;
-            }
-            else
-            {
-                const float NextDist = std::clamp(CurDist - Step, 0.65f, 250.0f);
-                Cam.CameraOrigin     = Cam.TargetPoint - Fwd * NextDist;
-            }
-            CameraMoved = true;
-        }
+    }
+
+    {
+        char SpeedReadout[80]{};
+        std::snprintf(
+            SpeedReadout,
+            sizeof(SpeedReadout),
+            "Fly Speed %.2fx%s",
+            CameraFlySpeedScalar,
+            (ShiftHeld && FlyKeysPossible) ? " · Sprint x3" : "");
+        Panes->Viewport.ConfigureProbeReadoutText(SpeedReadout);
     }
 
     CameraInteractiveDrag = RightHeld || MiddleHeld || (AltHeld && LeftHeld) || WorldTransformGizmo.QueryDragging() || CameraMoved;
