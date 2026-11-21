@@ -1,0 +1,150 @@
+/* Height Fog authored profile inside the shared model-specific technical card. */
+.height-density-visual {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.height-density-status,
+.height-density-readings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.height-density-status {
+  color: #8f9691;
+  font-size: 8px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+}
+.height-density-status span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.height-density-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #51d487;
+  box-shadow: 0 0 9px #51d48766;
+}
+.height-density-visual[data-enabled="false"] .height-density-status i {
+  background: #d37171;
+  box-shadow: 0 0 9px #d3717166;
+}
+.height-density-status strong {
+  color: #c9ccc7;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.height-density-visual > svg {
+  display: block;
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+  border: 1px solid #ffffff0b;
+  border-radius: 12px;
+  background: #191919;
+}
+.height-density-visual svg text {
+  fill: #969d99;
+  font: 8px sans-serif;
+  letter-spacing: 0.25px;
+}
+.height-density-readings {
+  align-items: stretch;
+}
+.height-density-readings span {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 10px;
+  background: #181918;
+}
+.height-density-readings small {
+  color: #787e79;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.height-density-readings b {
+  color: #d7dad5;
+  font-size: 13px;
+  font-weight: 400;
+}
+.height-density-visual > p {
+  margin: 0;
+  color: #777d78;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.height-density-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.height-density-metric strong {
+  color: #e2e4df;
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: -1.2px;
+}
+.height-density-metric span {
+  color: #777d78;
+  font-size: 10px;
+}
+.height-density-visual > svg {
+  cursor: crosshair;
+  touch-action: none;
+}
+.height-density-visual > svg:focus-visible {
+  outline: 1px solid #d8cbb0;
+  outline-offset: 3px;
+}
+
+/* One legible Beam Chamber treatment shared by Atmospheric and Local Fog Medium cards. */
+.fog-shared-beam {
+  margin-top: 18px;
+  padding: 13px 12px 8px;
+  border-top: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #191919;
+  overflow: hidden;
+}
+.fog-shared-beam header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #777d78;
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.fog-shared-beam header strong {
+  color: #cfd3ce;
+  font-size: 8px;
+  font-weight: 500;
+}
+.fog-shared-beam[data-enabled="false"] header strong {
+  color: #d79a8f;
+}
+.fog-shared-beam > small {
+  display: block;
+  margin-top: 3px;
+  color: #666d68;
+  font-size: 8px;
+}
+.fog-shared-beam svg {
+  display: block;
+  width: 100%;
+  height: 102px;
+  margin-top: 4px;
+}
+.fog-shared-beam svg text {
+  fill: #939a95;
+  font: 8px sans-serif;
+  letter-spacing: .2px;
+}

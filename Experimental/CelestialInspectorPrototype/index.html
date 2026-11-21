@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Frontier — Celestial, Sky &amp; Volumetric Clouds Inspector Prototype</title>
+<style>
+  :root {
+    --bg-root: #0a0a0a;
+    --bg-pane: #121212;
+    --bg-surface: #1a1a1a;
+    --bg-well: #161616;
+    --bg-recess: #0f0f0f;
+    --bg-hover: #222222;
+    --bg-selected: #262626;
+    --border-subtle: #2c2c2c;
+    --border-strong: #3d3d3d;
+    --ink-primary: #ebebeb;
+    --ink-secondary: #b0b0b0;
+    --ink-muted: #828282;
+    --ink-faint: #595959;
+    --accent-amber: #ffb454;
+    --accent-gold: #dec193;
+    --accent-green: #34c759;
+    --accent-sky: #9dbdd6;
+    --accent-violet: #c8a4df;
+    --accent-cream: #dededb;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --font-ui: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg-root);
+    color: var(--ink-primary);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Top Tab Bar ───────────────────────────────────────────────────────────────────── */
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  .topbar {
+    height: 36px;
+    background: var(--bg-root);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    flex-shrink: 0;
+  }
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-pill {
+    background: #1b1b1b;
+    border: 1px solid var(--border-subtle);
+    color: var(--accent-gold);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 3px 9px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .topbar-title {
+    color: var(--ink-secondary);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .topbar-badge {
+    font-size: 10.5px;
+    color: var(--accent-amber);
+    background: rgba(255, 180, 84, 0.11);
+    border: 1px solid rgba(255, 180, 84, 0.28);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  /* ── 3-Pane Workspace ──────────────────────────────────────────────────────────────── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 260px 1fr 440px;
+    gap: 2px;
+    flex: 1;
+    min-height: 0;
+    background: #242424;
+  }
+
+  .pane {
+    background: var(--bg-pane);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .pane-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .pane-header h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .pane-header small {
+    color: var(--ink-muted);
+    font-size: 11px;
+  }
+  .pane-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px 20px;
+  }
+  .pane-scroll::-webkit-scrollbar { width: 6px; }
+  .pane-scroll::-webkit-scrollbar-thumb { background: #2e2e2e; border-radius: 3px; }
+
+  /* ── Left Outliner Entities ────────────────────────────────────────────────────────── */
+  .entity-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    margin: 12px 4px 6px;
+  }
+  .entity-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    position: relative;
+    transition: background 0.12s ease;
+    margin-bottom: 3px;
+  }
+  .entity-row:hover { background: var(--bg-hover); }
+  .entity-row.active {
+    background: var(--bg-selected);
+    border-color: #3f3f3f;
+  }
+  .entity-row.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent-amber);
+  }
+  .entity-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    background: #1f1f1f;
+    border: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .entity-meta { flex: 1; min-width: 0; }
+  .entity-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .entity-sub {
+    font-size: 10.5px;
+    color: var(--ink-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .status-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid #3c3c3c;
+    background: #181818;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .status-dot.on {
+    background: var(--accent-green);
+    border-color: var(--accent-green);
+    color: #0e0e0e;
+  }
+
+  .quick-toggles-box {
+    margin-top: 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+  }
+  .quick-toggles-box h3 {
+    margin: 0 0 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+  }
+  .preset-bar {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .btn-chip {
+    background: #202020;
+    border: 1px solid var(--border-subtle);
+    color: var(--ink-secondary);
+    border-radius: var(--radius-sm);
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+  }
+  .btn-chip:hover {
+    background: #2a2a2a;
+    color: var(--ink-primary);
+    border-color: var(--border-strong);
+  }
+  .btn-chip.accent {
+    background: rgba(255, 180, 84, 0.14);
+    border-color: rgba(255, 180, 84, 0.45);
+    color: var(--accent-amber);
+  }
+
+  /* ── Center Live Sky & Viewport Preview ────────────────────────────────────────────── */
+  .viewport-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #0d0d0d;
+  }
+  .viewport-toolbar {
+    height: 40px;
+    background: #141414;
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    gap: 10px;
+  }
+  .toolbar-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .mini-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 9px;
+    border-radius: 5px;
+    border: 1px solid var(--border-subtle);
+    background: #1b1b1b;
+    color: var(--ink-secondary);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .mini-toggle.on {
+    border-color: rgba(52, 199, 89, 0.5);
+    background: rgba(52, 199, 89, 0.12);
+    color: var(--ink-primary);
+  }
+  .mini-toggle i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #555;
+    display: inline-block;
+  }
+  .mini-toggle.on i { background: var(--accent-green); }
+
+  .sky-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    background: radial-gradient(circle at 50% 45%, #161920 0%, #0b0c10 100%);
+  }
+  #skyCanvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    border: 1px solid #2b2b2b;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.55);
+    display: block;
+  }
+  .telemetry-strip {
+    position: absolute;
+    left: 26px;
+    bottom: 24px;
+    background: rgba(10, 12, 16, 0.78);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 6px;
+    padding: 7px 11px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-secondary);
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    pointer-events: none;
+  }
+  .telemetry-strip span b { color: var(--accent-gold); font-weight: 600; }
+
+  /* ── Right Inspector Pane ──────────────────────────────────────────────────────────── */
+  .inspector-crumb {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-bottom: 2px;
+  }
+  .inspector-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .inspector-subtitle {
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    margin: 3px 0 14px;
+  }
+
+  .section-heading {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    margin: 14px 0 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .section-heading small {
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    color: var(--ink-faint);
+  }
+
+  .tile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .cap-tile {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .cap-tile:hover { border-color: var(--border-strong); background: #202020; }
+  .cap-tile.on {
+    border-color: rgba(52, 199, 89, 0.45);
+    background: rgba(52, 199, 89, 0.09);
+  }
+  .cap-tile-label { font-size: 12px; font-weight: 600; }
+  .cap-tile-state {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #141414;
+    color: var(--ink-muted);
+  }
+  .cap-tile.on .cap-tile-state {
+    background: rgba(52, 199, 89, 0.22);
+    color: var(--accent-green);
+  }
+
+  .inspector-group {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .group-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .metric-hero {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .metric-hero strong {
+    font-size: 24px;
+    font-weight: 400;
+    font-family: var(--font-mono);
+    letter-spacing: -0.02em;
+  }
+  .metric-hero span {
+    color: var(--ink-muted);
+    font-size: 12px;
+  }
+  .metric-caption {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin: -4px 0 10px;
+  }
+
+  /* ── Frontier Slider Control ───────────────────────────────────────────────────────── */
+  .field-row {
+    margin-bottom: 9px;
+  }
+  .field-row:last-child { margin-bottom: 0; }
+  .field-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 11.5px;
+  }
+  .field-label { color: var(--ink-secondary); font-weight: 500; }
+  .field-val {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-primary);
+    background: var(--bg-recess);
+    border: 1px solid #262626;
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: #101010;
+    border: 1px solid #2a2a2a;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent-cream);
+    border: 1.5px solid #121212;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.22);
+    cursor: grab;
+  }
+  input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 12px;
+    color: var(--ink-secondary);
+  }
+  .switch-pill {
+    width: 34px;
+    height: 18px;
+    border-radius: 9px;
+    background: #101010;
+    border: 1px solid #333;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.14s;
+  }
+  .switch-pill::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #888;
+    transition: transform 0.14s, background 0.14s;
+  }
+  .switch-pill.on {
+    background: rgba(52, 199, 89, 0.25);
+    border-color: var(--accent-green);
+  }
+  .switch-pill.on::after {
+    transform: translateX(16px);
+    background: var(--accent-green);
+  }
+
+  .select-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 9px;
+  }
+  .select-row select, .select-row input[type="color"] {
+    background: var(--bg-recess);
+    border: 1px solid var(--border-subtle);
+    color: var(--ink-primary);
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    font-family: var(--font-ui);
+  }
+
+  .readout-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .readout-cell {
+    background: var(--bg-recess);
+    border: 1px solid #242424;
+    border-radius: 5px;
+    padding: 6px 8px;
+  }
+  .readout-cell label {
+    display: block;
+    font-size: 9.5px;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .readout-cell span {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-primary);
+  }
+
+  .moon-catalogue {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .moon-preset-btn {
+    background: #141414;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    padding: 7px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    color: var(--ink-secondary);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .moon-preset-btn.selected {
+    border-color: var(--accent-sky);
+    background: rgba(157, 189, 214, 0.12);
+    color: var(--ink-primary);
+  }
+  .moon-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    box-shadow: inset -6px -4px 10px rgba(0,0,0,0.65);
+  }
+
+  .axes-row {
+    display: grid;
+    grid-template-columns: 74px repeat(3, 1fr);
+    gap: 5px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .axes-row label { font-size: 11px; color: var(--ink-secondary); }
+  .axes-row input {
+    width: 100%;
+    background: var(--bg-recess);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 4px 5px;
+    color: var(--ink-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .widget-svg {
+    width: 100%;
+    display: block;
+    background: #131313;
+    border: 1px solid #262626;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .footer-bar {
+    height: 28px;
+    background: #151515;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    font-size: 10.5px;
+    color: var(--ink-muted);
+    flex-shrink: 0;
+  }
+  .footer-bar b { color: var(--accent-green); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="brand-pill">Frontier</span>
+      <span class="topbar-title">Celestial, Atmosphere &amp; Volumetric Clouds — HTML Inspector Design</span>
+    </div>
+    <span class="topbar-badge">Design Spec · Turn 1 (C++ Engine Next Turn)</span>
+  </header>
+
+  <div class="workspace">
+    <!-- ── LEFT OUTLINER & QUICK PRESETS ─────────────────────────────────────────────── -->
+    <aside class="pane">
+      <div class="pane-header">
+        <h2>World Environment</h2>
+        <small>5 Entities</small>
+      </div>
+      <div class="pane-scroll">
+        <div class="entity-group-label">Celestial Bodies</div>
+        <div id="entityList"></div>
+
+        <div class="quick-toggles-box">
+          <h3>Time-of-Day Presets</h3>
+          <div class="preset-bar">
+            <button class="btn-chip" onclick="applyTimePreset(10.5, false, 0.30)">Morning</button>
+            <button class="btn-chip" onclick="applyTimePreset(15.5, false, 0.34)">Afternoon</button>
+            <button class="btn-chip accent" onclick="applyTimePreset(18.05, false, 0.42)">Golden Sunset</button>
+            <button class="btn-chip" onclick="applyTimePreset(22.5, true, 0.22)">Starlit Night</button>
+          </div>
+          <div class="preset-bar" style="margin-top:6px;">
+            <button class="btn-chip" onclick="applyCloudPreset(2, 0.45, 2.6, 1400, 1200)">Cumulus</button>
+            <button class="btn-chip" onclick="applyCloudPreset(5, 0.28, 0.9, 6500, 450)">High Cirrus</button>
+          </div>
+        </div>
+
+        <div class="quick-toggles-box">
+          <h3>Viewport Overlay Toggles</h3>
+          <div id="viewportToggles"></div>
+        </div>
+      </div>
+      <div class="footer-bar">
+        <span><b>READY</b> · HTML Design</span>
+        <span>Target: Engine/GeometricRaster/Atmosphere/</span>
+      </div>
+    </aside>
+
+    <!-- ── CENTER LIVE SKY-DOME PREVIEW ──────────────────────────────────────────────── -->
+    <main class="pane">
+      <div class="viewport-toolbar">
+        <div class="toolbar-pills" id="toolbarPills"></div>
+        <span style="font-size:11px; color:var(--ink-muted);" id="clockBadge">15:30 Local</span>
+      </div>
+      <div class="sky-stage">
+        <canvas id="skyCanvas"></canvas>
+        <div class="telemetry-strip" id="telemetryStrip"></div>
+      </div>
+    </main>
+
+    <!-- ── RIGHT INSPECTOR DESIGNER ──────────────────────────────────────────────────── -->
+    <aside class="pane">
+      <div class="pane-header">
+        <h2>Inspector</h2>
+        <small id="inspectorPanelTag">Sun</small>
+      </div>
+      <div class="pane-scroll" id="inspectorRoot"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+//==================================================================================================
+// CANONICAL STATE (Mapped 1:1 to planned C++20 Celestial & Volumetric Cloud structs)
+//==================================================================================================
+const MOON_PRESETS = [
+  { name: "Luna",    tint: "#f0ede6", crat: "#8b929d" },
+  { name: "Ember",   tint: "#ff8f57", crat: "#9c4020" },
+  { name: "Glacier", tint: "#c2e6ff", crat: "#5986a8" },
+  { name: "Sulfur",  tint: "#fae06b", crat: "#a18a2a" },
+  { name: "Shroud",  tint: "#b8bdd1", crat: "#5f6578" },
+  { name: "Shard",   tint: "#d6f5f0", crat: "#6a9e95" },
+];
+
+const CLOUD_TYPES = [
+  { name: "Stratus",       cov: 0.62, dens: 1.4, scale: 0.55, base: 900,  thick: 450,  anvil: 0.15 },
+  { name: "Stratocumulus", cov: 0.50, dens: 2.0, scale: 0.42, base: 1200, thick: 800,  anvil: 0.30 },
+  { name: "Cumulus",       cov: 0.34, dens: 2.4, scale: 0.35, base: 1400, thick: 1100, anvil: 0.50 },
+  { name: "Cumulonimbus",  cov: 0.58, dens: 3.4, scale: 0.30, base: 1100, thick: 4800, anvil: 0.92 },
+  { name: "Altostratus",   cov: 0.48, dens: 1.3, scale: 0.65, base: 3400, thick: 700,  anvil: 0.20 },
+  { name: "Cirrus",        cov: 0.28, dens: 0.85,scale: 0.85, base: 6800, thick: 420,  anvil: 0.10 },
+];
+
+const State = {
+  activeEntity: "sun",
+  moonSlot: 0,
+  simTimeSec: 0,
+
+  sun: {
+    enabled: true,
+    angularDiameterDeg: 0.533,
+    colourSource: 0, // 0 = RGB Tint, 1 = Temperature
+    tint: "#ffffff",
+    temperatureK: 6500,
+    intensity: 22.0,
+    directGain: 2.50,
+    localHours: 15.50,
+    animate: false,
+    dayDurationHours: 3.0,
+    speedPreset: 1,
+    latitudeDeg: -26.19,
+    longitudeDeg: 28.32,
+    dayOfMonth: 10,
+    month: 9,
+    utcOffsetHours: 2.0,
+    manualDirectionOverride: false,
+    manualAzimuthDeg: 295,
+    manualElevationDeg: 38,
+  },
+
+  moons: [
+    { visible: true, followSky: false, preset: 0, phase: 0.62, bright: 1.60, glow: 0.80, sizeDeg: 0.52, azimuthDeg: 300, elevationDeg: 28, rollDeg: 0, pitchDeg: 0 },
+    { visible: false, followSky: false, preset: 1, phase: 0.35, bright: 1.40, glow: 0.90, sizeDeg: 0.78, azimuthDeg: 115, elevationDeg: 22, rollDeg: 12, pitchDeg: 0 },
+    { visible: false, followSky: false, preset: 2, phase: 0.80, bright: 1.25, glow: 0.65, sizeDeg: 0.44, azimuthDeg: 210, elevationDeg: 41, rollDeg: 0, pitchDeg: -8 },
+    { visible: false, followSky: false, preset: 3, phase: 0.50, bright: 1.80, glow: 1.00, sizeDeg: 0.60, azimuthDeg: 45,  elevationDeg: 19, rollDeg: 0, pitchDeg: 0 },
+  ],
+
+  stars: {
+    enabled: true,
+    twinkle: true,
+    limitingMagnitude: 5.5,
+    brightness: 1.0,
+    pointSize: 1.0,
+    twinkleDepthPct: 30,
+    twinkleRateHz: 1.2,
+    celestialRotationDeg: 0.0,
+  },
+
+  clouds: {
+    enabled: true,
+    followWind: true,
+    shadowEnabled: true,
+    typeIndex: 2,
+    coverage: 0.34,
+    density: 2.40,
+    featureScale: 0.35,
+    baseMeters: 1400,
+    thicknessMeters: 1100,
+    ceilingMeters: 14000,
+    anvil: 0.50,
+    anisotropy: 0.45,
+    windSpeedMps: 7.0,
+    windBearingDeg: 250,
+    windShearPerKm: 0.35,
+    shadowCoverage: 1.0,
+    shadowDensity: 1.0,
+    shadowScale: 1.0,
+    shadowAnvil: 1.0,
+    shadowBaseMeters: 1.0,
+    shadowThicknessMeters: 50.0,
+  },
+
+  localCloud: {
+    enabled: false,
+    followWind: true,
+    centre: [-100, 260, 130],
+    halfSize: [100, 100, 50],
+    density: 2.50,
+    coverage: 0.80,
+    featureScaleMeters: 40,
+    anisotropy: 0.45,
+  },
+
+  atmosphere: {
+    rayleigh: 1.0,
+    mie: 1.0,
+    mieG: 0.78,
+    ozone: 1.2,
+    horizonGlow: 1.0,
+    skyBrightness: 1.0,
+  }
+};
+
+//==================================================================================================
+// ASTRONOMICAL SOLAR SOLVER (1:1 with Solar.mjs / planned CelestialSolver.cpp)
+//==================================================================================================
+function solveSolarPosition(s) {
+  const rad = d => d * Math.PI / 180;
+  const deg = r => r * 180 / Math.PI;
+  const wrap = a => ((a % 360) + 360) % 360;
+  const clamp = v => Math.max(-1, Math.min(1, v));
+  let Y = 2026, M = Math.round(s.month);
+  if (M <= 2) { Y--; M += 12; }
+  const A = Math.trunc(Y / 100), B = 2 - A + Math.trunc(A / 4);
+  const utcHours = s.localHours - s.utcOffsetHours;
+  const Jd = Math.floor(365.25 * (Y + 4716)) + Math.floor(30.6001 * (M + 1)) + Math.round(s.dayOfMonth) + B - 1524.5 + utcHours / 24;
+  const T = (Jd - 2451545) / 36525;
+  const L0 = wrap(280.46646 + T * (36000.76983 + T * 0.0003032));
+  const M0 = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  const ecc = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  const Mr = rad(M0);
+  const C = Math.sin(Mr) * (1.914602 - T * 0.004817) + Math.sin(2 * Mr) * 0.019993 + Math.sin(3 * Mr) * 0.000289;
+  const omega = 125.04 - 1934.136 * T;
+  const appLon = L0 + C - 0.00569 - 0.00478 * Math.sin(rad(omega));
+  const obliq = 23.439 - 0.013 * T + 0.00256 * Math.cos(rad(omega));
+  const decl = deg(Math.asin(Math.sin(rad(obliq)) * Math.sin(rad(appLon))));
+  const y2 = Math.tan(rad(obliq / 2)) ** 2, l0r = rad(L0);
+  const eot = 4 * deg(y2 * Math.sin(2 * l0r) - 2 * ecc * Math.sin(Mr) + 4 * ecc * y2 * Math.sin(Mr) * Math.cos(2 * l0r) - 0.5 * y2 * y2 * Math.sin(4 * l0r) - 1.25 * ecc * ecc * Math.sin(2 * Mr));
+  const trueMin = (((utcHours * 60 + eot + 4 * s.longitudeDeg) % 1440) + 1440) % 1440;
+  const ha = trueMin / 4 - 180;
+  const latR = rad(s.latitudeDeg), decR = rad(decl), haR = rad(ha);
+  const zen = Math.acos(clamp(Math.sin(latR) * Math.sin(decR) + Math.cos(latR) * Math.cos(decR) * Math.cos(haR)));
+  const elev = 90 - deg(zen);
+  const sinZ = Math.sin(zen);
+  let az = 0;
+  if (Math.abs(sinZ) > 1e-8) {
+    az = deg(Math.acos(clamp((Math.sin(latR) * Math.cos(zen) - Math.sin(decR)) / (Math.cos(latR) * sinZ))));
+    az = ha > 0 ? wrap(az + 180) : wrap(540 - az);
+  }
+  return { elevation: elev, azimuth: az, declination: decl, equationOfTime: eot };
+}
+
+function getEffectiveSunAzEl() {
+  if (State.sun.manualDirectionOverride) {
+    return { azimuth: State.sun.manualAzimuthDeg, elevation: State.sun.manualElevationDeg, declination: 0, equationOfTime: 0 };
+  }
+  return solveSolarPosition(State.sun);
+}
+
+function kelvinToHex(kelvin) {
+  const t = Math.max(1000, Math.min(40000, kelvin)) / 100;
+  let r, g, b;
+  if (t <= 66) {
+    r = 255;
+    g = Math.max(0, Math.min(255, 99.4708 * Math.log(t) - 161.1195));
+    b = t <= 19 ? 0 : Math.max(0, Math.min(255, 138.5177 * Math.log(t - 10) - 305.0448));
+  } else {
+    r = Math.max(0, Math.min(255, 329.6987 * Math.pow(t - 60, -0.1332)));
+    g = Math.max(0, Math.min(255, 288.1222 * Math.pow(t - 60, -0.0755)));
+    b = 255;
+  }
+  const hx = n => Math.round(n).toString(16).padStart(2, "0");
+  return `#${hx(r)}${hx(g)}${hx(b)}`;
+}
+
+//==================================================================================================
+// LIVE SKY-DOME PREVIEW CANVAS (Visualizes Sun, Moon, Stars & Volumetric Clouds live)
+//==================================================================================================
+function hash2(x, y) {
+  let n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+  return n - Math.floor(n);
+}
+function noise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  const a = hash2(ix, iy), b = hash2(ix + 1, iy);
+  const c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+function fbm2(x, y) {
+  let v = 0, a = 0.5;
+  for (let i = 0; i < 4; i++) { v += a * noise2(x, y); x *= 2.05; y *= 2.05; a *= 0.5; }
+  return v;
+}
+
+function renderSkyPreview() {
+  const canvas = document.getElementById("skyCanvas");
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(320, Math.floor(rect.width * 0.5));
+  const h = Math.max(200, Math.floor(rect.height * 0.5));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext("2d");
+  const sunPose = getEffectiveSunAzEl();
+  const sunEl = sunPose.elevation;
+  const sunAz = sunPose.azimuth;
+  const dayFactor = Math.max(0, Math.min(1, (sunEl + 8) / 22));
+  const twilightFactor = Math.exp(-Math.pow((sunEl - 1.5) / 7.5, 2));
+
+  // Sky vertical gradient (Rayleigh + Twilight Ozone + Night floor)
+  const zenithCol = [
+    Math.round(4 + 28 * dayFactor + 18 * twilightFactor),
+    Math.round(8 + 78 * dayFactor + 20 * twilightFactor),
+    Math.round(18 + 158 * dayFactor + 32 * twilightFactor),
+  ];
+  const horizCol = [
+    Math.round(12 + 128 * dayFactor + 115 * twilightFactor),
+    Math.round(16 + 158 * dayFactor + 52 * twilightFactor),
+    Math.round(28 + 185 * dayFactor - 12 * twilightFactor),
+  ];
+  const grad = ctx.createLinearGradient(0, 0, 0, h * 0.78);
+  grad.addColorStop(0, `rgb(${zenithCol.join(",")})`);
+  grad.addColorStop(0.65, `rgb(${Math.round((zenithCol[0]+horizCol[0])*0.5)},${Math.round((zenithCol[1]+horizCol[1])*0.5)},${Math.round((zenithCol[2]+horizCol[2])*0.5)})`);
+  grad.addColorStop(1, `rgb(${horizCol.join(",")})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h * 0.78);
+
+  // Ground plane
+  const gndGrad = ctx.createLinearGradient(0, h * 0.78, 0, h);
+  gndGrad.addColorStop(0, `rgb(${Math.round(14 + 42*dayFactor)},${Math.round(14 + 38*dayFactor)},${Math.round(16 + 32*dayFactor)})`);
+  gndGrad.addColorStop(1, "#0b0b0c");
+  ctx.fillStyle = gndGrad;
+  ctx.fillRect(0, h * 0.78, w, h * 0.22);
+
+  // Helper: map Az/El to preview X/Y
+  const mapAzEl = (az, el) => {
+    const relAz = ((((az - 180) % 360) + 540) % 360) - 180;
+    const x = w * 0.5 + (relAz / 180) * (w * 0.48);
+    const y = h * 0.78 - (el / 90) * (h * 0.72);
+    return [x, y];
+  };
+
+  // Stars
+  const nightFade = Math.max(0, Math.min(1, 1 - (sunEl + 4) / 14));
+  if (State.stars.enabled && nightFade > 0.01) {
+    const rotRad = State.stars.celestialRotationDeg * Math.PI / 180;
+    const magCut = State.stars.limitingMagnitude / 8.0;
+    const count = Math.floor(260 * magCut);
+    for (let i = 0; i < count; i++) {
+      const rx = hash2(i, 1.3) - 0.5;
+      const ry = hash2(i, 7.9) - 0.5;
+      const px = w * 0.5 + (rx * Math.cos(rotRad) - ry * Math.sin(rotRad)) * w * 1.1;
+      const py = h * 0.38 + (rx * Math.sin(rotRad) + ry * Math.cos(rotRad)) * h * 0.72;
+      if (py < 2 || py > h * 0.76 || px < 2 || px > w - 2) continue;
+      const altFade = Math.max(0, Math.min(1, (h * 0.78 - py) / (h * 0.25)));
+      const tw = State.stars.twinkle
+        ? 1 - (State.stars.twinkleDepthPct / 100) * (0.5 + 0.5 * Math.sin(State.simTimeSec * State.stars.twinkleRateHz * 6.283 + i * 2.1))
+        : 1;
+      const alpha = Math.min(1, (0.35 + 0.65 * hash2(i, 19.4)) * State.stars.brightness * nightFade * altFade * tw);
+      const rad = (0.55 + 0.9 * hash2(i, 5.1)) * State.stars.pointSize;
+      ctx.fillStyle = `rgba(225,232,255,${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(px, py, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Moons
+  State.moons.forEach((m) => {
+    if (!m.visible) return;
+    const az = m.followSky ? (sunAz + 180) % 360 : m.azimuthDeg;
+    const el = m.followSky ? -sunEl : m.elevationDeg;
+    if (el < -8) return;
+    const [mx, my] = mapAzEl(az, el);
+    if (my > h * 0.78) return;
+    const mp = MOON_PRESETS[m.preset] || MOON_PRESETS[0];
+    const r = Math.max(4, Math.min(48, 7 + Math.sqrt(m.sizeDeg) * 9));
+    // Glow
+    const halo = ctx.createRadialGradient(mx, my, r * 0.5, mx, my, r * (2.2 + m.glow * 1.5));
+    halo.addColorStop(0, `${mp.tint}${Math.round(Math.min(255, m.glow * m.bright * 55)).toString(16).padStart(2,"0")}`);
+    halo.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(mx, my, r * (2.2 + m.glow * 1.5), 0, Math.PI * 2);
+    ctx.fill();
+    // Disc
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate((m.rollDeg * Math.PI) / 180);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = "#171c24";
+    ctx.fill();
+    ctx.clip();
+    // Phase shading
+    const illum = 0.5 * (1 - Math.cos(m.phase * Math.PI * 2));
+    ctx.globalAlpha = Math.max(0.15, Math.min(1, illum * 0.95 + 0.08));
+    ctx.fillStyle = mp.tint;
+    ctx.beginPath();
+    ctx.arc((m.phase - 0.5) * -r * 0.9, 0, r * 1.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = mp.crat;
+    ctx.beginPath(); ctx.arc(-r*0.28, -r*0.18, r*0.24, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.22, r*0.25, r*0.17, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // Sun Disc + Corona
+  if (State.sun.enabled && sunEl > -4) {
+    const [sx, sy] = mapAzEl(sunAz, sunEl);
+    const sunHex = State.sun.colourSource === 1 ? kelvinToHex(State.sun.temperatureK) : State.sun.tint;
+    const sr = Math.max(4, Math.min(34, 5 + State.sun.angularDiameterDeg * 5));
+    const corona = ctx.createRadialGradient(sx, sy, sr * 0.4, sx, sy, sr * 6.5);
+    corona.addColorStop(0, sunHex);
+    corona.addColorStop(0.25, "rgba(255,220,160,0.45)");
+    corona.addColorStop(1, "rgba(255,180,90,0)");
+    ctx.fillStyle = corona;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr * 6.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff9e8";
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Volumetric Clouds Band
+  if (State.clouds.enabled && State.clouds.coverage > 0.01 && State.clouds.density > 0.01) {
+    const bandTop = Math.max(12, h * 0.72 - (State.clouds.baseMeters + State.clouds.thicknessMeters) * 0.025);
+    const bandBot = Math.min(h * 0.77, h * 0.72 - State.clouds.baseMeters * 0.018);
+    const bandH = Math.max(24, bandBot - bandTop);
+    const windShift = (State.clouds.followWind ? State.simTimeSec * State.clouds.windSpeedMps * 0.02 : 0);
+    const freq = 0.018 / Math.max(0.15, State.clouds.featureScale);
+    const cols = Math.floor(w / 4);
+    for (let cx = 0; cx < cols; cx++) {
+      const px = cx * 4;
+      for (let cy = 0; cy < Math.floor(bandH / 3); cy++) {
+        const py = bandTop + cy * 3;
+        const hNorm = (py - bandTop) / bandH;
+        const prof = Math.sin(Math.min(1, Math.max(0, hNorm)) * Math.PI);
+        const n = fbm2(px * freq + windShift, py * freq * 1.6);
+        const thresh = 1 - State.clouds.coverage;
+        const den = Math.max(0, (n - thresh) / Math.max(0.2, State.clouds.coverage)) * prof * (State.clouds.density * 0.42);
+        if (den > 0.03) {
+          const lit = 0.25 + 0.75 * (1 - hNorm) * dayFactor + 0.35 * twilightFactor;
+          const r = Math.round(Math.min(255, (140 + 115 * lit) + twilightFactor * 60));
+          const g = Math.round(Math.min(255, (145 + 105 * lit) + twilightFactor * 10));
+          const b = Math.round(Math.min(255, (158 + 90 * lit)));
+          ctx.fillStyle = `rgba(${r},${g},${b},${Math.min(0.88, den).toFixed(3)})`;
+          ctx.fillRect(px, py, 4.5, 3.5);
+        }
+      }
+    }
+  }
+
+  // Horizon rule
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.beginPath();
+  ctx.moveTo(0, h * 0.78);
+  ctx.lineTo(w, h * 0.78);
+  ctx.stroke();
+
+  // Telemetry Strip
+  const activeMoon = State.moons[State.moonSlot];
+  const hh = Math.floor(State.sun.localHours);
+  const mm = Math.floor((State.sun.localHours - hh) * 60);
+  document.getElementById("clockBadge").textContent = `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")} Local`;
+  document.getElementById("telemetryStrip").innerHTML = `
+    <span>Sun <b>${sunAz.toFixed(1)}° / ${sunEl.toFixed(1)}°</b></span>
+    <span>Moon[${State.moonSlot}] <b>${MOON_PRESETS[activeMoon.preset].name}</b> (${Math.round((1 - Math.cos(activeMoon.phase*Math.PI*2))*50)}%)</span>
+    <span>Stars <b>${State.stars.enabled ? State.stars.limitingMagnitude.toFixed(1)+" mag" : "OFF"}</b></span>
+    <span>Clouds <b>${State.clouds.enabled ? CLOUD_TYPES[State.clouds.typeIndex].name+" ("+Math.round(State.clouds.coverage*100)+"%)" : "OFF"}</b></span>
+  `;
+}
+
+//==================================================================================================
+// UI HELPERS
+//==================================================================================================
+function sliderHtml(id, label, val, min, max, step, unit, dec = 2, disabled = false) {
+  return `
+    <div class="field-row">
+      <div class="field-head">
+        <span class="field-label">${label}</span>
+        <span class="field-val" id="val_${id}">${Number(val).toFixed(dec)}${unit ? " " + unit : ""}</span>
+      </div>
+      <input type="range" id="rng_${id}" min="${min}" max="${max}" step="${step}" value="${val}" ${disabled ? "disabled" : ""}
+             oninput="onSlider('${id}', parseFloat(this.value), ${dec}, '${unit}')" />
+    </div>`;
+}
+
+function switchHtml(id, label, checked) {
+  return `
+    <div class="switch-row">
+      <span>${label}</span>
+      <div class="switch-pill ${checked ? "on" : ""}" onclick="onSwitch('${id}')"></div>
+    </div>`;
+}
+
+function selectHtml(id, label, value, options) {
+  return `
+    <div class="select-row">
+      <span class="field-label">${label}</span>
+      <select onchange="onSelect('${id}', parseInt(this.value, 10))">
+        ${options.map((opt, idx) => `<option value="${idx}" ${idx === value ? "selected" : ""}>${opt}</option>`).join("")}
+      </select>
+    </div>`;
+}
+
+//==================================================================================================
+// RENDER OUTLINER & TOOLBAR TOGGLES
+//==================================================================================================
+function renderChrome() {
+  const entities = [
+    { id: "sun",        name: "Sun",             sub: "Solar ephemeris & direct disc",   on: State.sun.enabled,                  color: "#f4cd75" },
+    { id: "moon",       name: "Moon",            sub: `${MOON_PRESETS[State.moons[State.moonSlot].preset].name} · Slot ${State.moonSlot}`, on: State.moons[State.moonSlot].visible, color: "#9dbdd6" },
+    { id: "stars",      name: "Stars",           sub: `Limiting ${State.stars.limitingMagnitude.toFixed(1)} mag`, on: State.stars.enabled, color: "#c8a4df" },
+    { id: "clouds",     name: "Volumetric Clouds", sub: `${CLOUD_TYPES[State.clouds.typeIndex].name} · ${Math.round(State.clouds.coverage*100)}% cover`, on: State.clouds.enabled, color: "#cfd8e3" },
+    { id: "localCloud", name: "Local Cloud",     sub: "Bounded 3D cloud volume",         on: State.localCloud.enabled,           color: "#98b0be" },
+  ];
+
+  document.getElementById("entityList").innerHTML = entities.map(e => `
+    <div class="entity-row ${State.activeEntity === e.id ? "active" : ""}" onclick="selectEntity('${e.id}')">
+      <div class="entity-icon" style="color:${e.color};">●</div>
+      <div class="entity-meta">
+        <div class="entity-name">${e.name}</div>
+        <div class="entity-sub">${e.sub}</div>
+      </div>
+      <div class="status-dot ${e.on ? "on" : ""}" onclick="event.stopPropagation(); toggleEntity('${e.id}')">${e.on ? "✓" : ""}</div>
+    </div>
+  `).join("");
+
+  document.getElementById("viewportToggles").innerHTML = [
+    { key: "sun",    label: "Solar Disc & Light",   on: State.sun.enabled },
+    { key: "moon",   label: "Active Moon Disc",     on: State.moons[State.moonSlot].visible },
+    { key: "stars",  label: "Procedural Starfield", on: State.stars.enabled },
+    { key: "clouds", label: "Volumetric Clouds",    on: State.clouds.enabled },
+  ].map(t => switchHtml("vp_" + t.key, t.label, t.on)).join("");
+
+  document.getElementById("toolbarPills").innerHTML = [
+    { key: "sun",    label: "Sun",    on: State.sun.enabled },
+    { key: "moon",   label: "Moon",   on: State.moons[State.moonSlot].visible },
+    { key: "stars",  label: "Stars",  on: State.stars.enabled },
+    { key: "clouds", label: "Clouds", on: State.clouds.enabled },
+  ].map(t => `<button class="mini-toggle ${t.on ? "on" : ""}" onclick="toggleEntity('${t.key}')"><i></i>${t.label}</button>`).join("");
+}
+
+//==================================================================================================
+// RENDER INSPECTOR PANELS (Sun · Moon · Stars · Clouds · Local Cloud)
+//==================================================================================================
+function renderInspector() {
+  const root = document.getElementById("inspectorRoot");
+  const tag  = document.getElementById("inspectorPanelTag");
+
+  if (State.activeEntity === "sun") {
+    tag.textContent = "Sun";
+    const pose = getEffectiveSunAzEl();
+    const r = 74, cx = 170, cy = 96;
+    const ang = (pose.azimuth - 135) * Math.PI / 180;
+    const pt = t => [cx - r * Math.cos(t) * Math.cos(ang), cy - r * Math.sin(t) + r * 0.45 * Math.cos(t) * Math.sin(ang)];
+    const arcPath = start => Array.from({length: 41}, (_,i) => {
+      const p = pt(start + i * Math.PI / 40);
+      return `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+    }).join(" ");
+    const [sx, sy] = pt(pose.elevation * Math.PI / 180);
+    const [hx, hy] = pt(0);
+
+    root.innerHTML = `
+      <div class="inspector-crumb">Inspector / Environment / Sun</div>
+      <h1 class="inspector-title">Sun</h1>
+      <div class="inspector-subtitle">Astronomical ephemeris, solar disc &amp; daylight cycle</div>
+
+      <div class="tile-grid">
+        <div class="cap-tile ${State.sun.enabled ? "on" : ""}" onclick="onSwitch('sun_enabled')">
+          <span class="cap-tile-label">Enabled</span>
+          <span class="cap-tile-state">${State.sun.enabled ? "ON" : "OFF"}</span>
+        </div>
+        <div class="cap-tile ${State.sun.animate ? "on" : ""}" onclick="onSwitch('sun_animate')">
+          <span class="cap-tile-label">Day Cycle</span>
+          <span class="cap-tile-state">${State.sun.animate ? "DYNAMIC" : "STATIC"}</span>
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Sun Direction &amp; Orbit <small style="color:var(--ink-muted)">Drag horizontally / vertically</small></div>
+        <div class="metric-hero"><strong>${pose.elevation.toFixed(1)}°</strong><span>Azimuth ${pose.azimuth.toFixed(1)}°</span></div>
+        <svg class="widget-svg" viewBox="0 0 340 180" style="height:175px; cursor:grab;" onpointerdown="startDrag('sunGizmo', event)">
+          <ellipse cx="${cx}" cy="${cy}" rx="${r}" ry="34" fill="#181818" stroke="#484848"/>
+          <path d="${arcPath(Math.PI)}" fill="none" stroke="#555" stroke-dasharray="2 3"/>
+          <path d="${arcPath(0)}" fill="none" stroke="#e2ac5b" stroke-width="1.8"/>
+          <line x1="${sx}" y1="${sy}" x2="${hx}" y2="${hy}" stroke="#9b8d72" stroke-dasharray="2 4"/>
+          <circle cx="${hx}" cy="${hy}" r="4.5" fill="#181818" stroke="#ededed" stroke-width="1.5"/>
+          <circle cx="${sx}" cy="${sy}" r="8" fill="${pose.elevation < 0 ? "#826b4e" : "#f4cd75"}"/>
+          <text x="${cx}" y="18" text-anchor="middle" fill="#888" font-size="9">N</text>
+          <text x="${cx}" y="166" text-anchor="middle" fill="#888" font-size="9">S</text>
+          <text x="64" y="${cy+3}" text-anchor="middle" fill="#888" font-size="9">W</text>
+          <text x="276" y="${cy+3}" text-anchor="middle" fill="#888" font-size="9">E</text>
+        </svg>
+        ${switchHtml("sun_manual", "Manual Direction Override", State.sun.manualDirectionOverride)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Sun Disc &amp; Radiance</div>
+        ${sliderHtml("sun_diam", "Angular Diameter", State.sun.angularDiameterDeg, 0.1, 5.0, 0.01, "deg", 2)}
+        ${selectHtml("sun_colsrc", "Colour Source", State.sun.colourSource, ["RGB Tint", "Temperature"])}
+        ${State.sun.colourSource === 0
+          ? `<div class="select-row"><span class="field-label">Sun Tint</span><input type="color" value="${State.sun.tint}" oninput="State.sun.tint=this.value; renderSkyPreview();"/></div>`
+          : sliderHtml("sun_temp", "Temperature", State.sun.temperatureK, 1000, 40000, 50, "K", 0)}
+        ${sliderHtml("sun_int", "Intensity", State.sun.intensity, 0.0, 60.0, 0.5, "x", 1)}
+        ${sliderHtml("sun_dir", "Direct Gain", State.sun.directGain, 0.0, 5.0, 0.05, "x", 2)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Day Cycle &amp; Observer Ephemeris</div>
+        ${sliderHtml("sun_hours", "Local Hours", State.sun.localHours, 0.0, 24.0, 0.05, "h", 2)}
+        ${selectHtml("sun_speed", "Cycle Speed", State.sun.speedPreset, ["x1", "x8", "x30", "x100", "Custom"])}
+        ${sliderHtml("sun_daydur", "Day Duration", State.sun.dayDurationHours, 0.01, 168.0, 0.25, "h", 2)}
+        ${sliderHtml("sun_lat", "Latitude", State.sun.latitudeDeg, -90.0, 90.0, 0.1, "deg", 2)}
+        ${sliderHtml("sun_lon", "Longitude", State.sun.longitudeDeg, -180.0, 180.0, 0.1, "deg", 2)}
+        ${sliderHtml("sun_day", "Day of Month", State.sun.dayOfMonth, 1, 31, 1, "", 0)}
+        ${sliderHtml("sun_mon", "Month", State.sun.month, 1, 12, 1, "", 0)}
+        <div class="readout-grid">
+          <div class="readout-cell"><label>Elevation</label><span>${pose.elevation.toFixed(2)}°</span></div>
+          <div class="readout-cell"><label>Azimuth</label><span>${pose.azimuth.toFixed(2)}°</span></div>
+          <div class="readout-cell"><label>Declination</label><span>${pose.declination.toFixed(2)}°</span></div>
+          <div class="readout-cell"><label>Eq. of Time</label><span>${pose.equationOfTime.toFixed(1)} min</span></div>
+        </div>
+      </div>
+    `;
+  }
+  else if (State.activeEntity === "moon") {
+    tag.textContent = "Moon";
+    const m = State.moons[State.moonSlot];
+    const illumPct = Math.round((1 - Math.cos(m.phase * Math.PI * 2)) * 50);
+    const mp = MOON_PRESETS[m.preset];
+    // Spherical moon position pad coords
+    const px = 40 + (m.azimuthDeg / 360) * 260;
+    const py = 20 + ((90 - m.elevationDeg) / 180) * 140;
+
+    root.innerHTML = `
+      <div class="inspector-crumb">Inspector / Environment / Moon</div>
+      <h1 class="inspector-title">Moon</h1>
+      <div class="inspector-subtitle">Multi-instance lunar discs, 29.53-day phase &amp; 6-preset surface atlas</div>
+
+      <div class="inspector-group">
+        <div class="group-title">Moon Instance &amp; Switches</div>
+        ${selectHtml("moon_slot", "Active Slot", State.moonSlot, State.moons.map((sl, i) => `Slot ${i} · ${MOON_PRESETS[sl.preset].name}`))}
+        <div class="tile-grid" style="margin-top:8px;">
+          <div class="cap-tile ${m.visible ? "on" : ""}" onclick="onSwitch('moon_vis')">
+            <span class="cap-tile-label">Visible</span>
+            <span class="cap-tile-state">${m.visible ? "ON" : "OFF"}</span>
+          </div>
+          <div class="cap-tile ${m.followSky ? "on" : ""}" onclick="onSwitch('moon_follow')">
+            <span class="cap-tile-label">Follow Sky</span>
+            <span class="cap-tile-state">${m.followSky ? "LOCKED" : "FREE"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Lunar Phase</div>
+        <div class="metric-hero"><strong>${(m.phase * 29.53).toFixed(1)}</strong><span>days · ${illumPct}% illuminated</span></div>
+        ${sliderHtml("moon_phase", "Phase", m.phase, 0.0, 1.0, 0.01, "", 2, m.followSky)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Moon Surface Catalogue</div>
+        <div class="moon-catalogue">
+          ${MOON_PRESETS.map((p, idx) => `
+            <button class="moon-preset-btn ${m.preset === idx ? "selected" : ""}" onclick="onSelect('moon_preset', ${idx})">
+              <span class="moon-swatch" style="background:radial-gradient(circle at 32% 28%, ${p.tint}, ${p.crat});"></span>
+              ${p.name}
+            </button>`).join("")}
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Moonlight &amp; Angular Scale</div>
+        ${sliderHtml("moon_bright", "Brightness", m.bright, 0.0, 6.0, 0.05, "x", 2)}
+        ${sliderHtml("moon_glow", "Halo Glow", m.glow, 0.0, 3.0, 0.05, "x", 2)}
+        ${sliderHtml("moon_size", "Angular Size", m.sizeDeg, 0.1, 180.0, 0.05, "deg", 2)}
+        <button class="btn-chip" style="width:100%; margin-top:6px;" onclick="State.moons[State.moonSlot].sizeDeg=0.52; renderAll();">Natural Angular Diameter · 0.52°</button>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Lunar Position &amp; Orientation</div>
+        <svg class="widget-svg" viewBox="0 0 340 180" style="height:168px; cursor:crosshair;" onpointerdown="startDrag('moonPad', event)">
+          <rect x="40" y="20" width="260" height="140" rx="8" fill="#17191d" stroke="#2c313a"/>
+          <line x1="40" y1="90" x2="300" y2="90" stroke="#7f95b0" stroke-opacity="0.45"/>
+          <text x="294" y="85" text-anchor="end" fill="#6f8096" font-size="8">HORIZON 0°</text>
+          <line x1="${px}" y1="20" x2="${px}" y2="160" stroke="#9dbdd6" stroke-opacity="0.3" stroke-dasharray="2 4"/>
+          <line x1="40" y1="${py}" x2="300" y2="${py}" stroke="#9dbdd6" stroke-opacity="0.3" stroke-dasharray="2 4"/>
+          <circle cx="${px}" cy="${py}" r="9" fill="${mp.tint}"/>
+          <text x="32" y="25" text-anchor="end" fill="#777" font-size="8">+90°</text>
+          <text x="32" y="162" text-anchor="end" fill="#777" font-size="8">-90°</text>
+        </svg>
+        ${sliderHtml("moon_az", "Azimuth", m.azimuthDeg, 0.0, 360.0, 1.0, "deg", 0, m.followSky)}
+        ${sliderHtml("moon_el", "Elevation", m.elevationDeg, -90.0, 90.0, 1.0, "deg", 0, m.followSky)}
+        ${sliderHtml("moon_roll", "Surface Roll", m.rollDeg, 0.0, 360.0, 1.0, "deg", 0)}
+        ${sliderHtml("moon_pitch", "Surface Pitch", m.pitchDeg, -180.0, 180.0, 1.0, "deg", 0)}
+      </div>
+    `;
+  }
+  else if (State.activeEntity === "stars") {
+    tag.textContent = "Stars";
+    const st = State.stars;
+    const flux = st.enabled && st.twinkle
+      ? 1 - (st.twinkleDepthPct / 100) * (0.5 + 0.3 * Math.sin(State.simTimeSec * 6.283 * st.twinkleRateHz))
+      : 1;
+    const poleAngle = st.celestialRotationDeg;
+
+    root.innerHTML = `
+      <div class="inspector-crumb">Inspector / Environment / Stars</div>
+      <h1 class="inspector-title">Stars</h1>
+      <div class="inspector-subtitle">Deterministic nocturnal starfield, scintillation &amp; celestial pole</div>
+
+      <div class="tile-grid">
+        <div class="cap-tile ${st.enabled ? "on" : ""}" onclick="onSwitch('stars_enabled')">
+          <span class="cap-tile-label">Star Field</span>
+          <span class="cap-tile-state">${st.enabled ? "ON" : "OFF"}</span>
+        </div>
+        <div class="cap-tile ${st.twinkle ? "on" : ""}" onclick="onSwitch('stars_twinkle')">
+          <span class="cap-tile-label">Twinkle</span>
+          <span class="cap-tile-state">${st.twinkle ? "ON" : "OFF"}</span>
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Equatorial Star Field</div>
+        <div class="metric-hero"><strong>${st.limitingMagnitude.toFixed(1)}</strong><span>mag limiting threshold</span></div>
+        <svg class="widget-svg" viewBox="0 0 340 120" style="height:118px;">
+          ${Array.from({length: 140}, (_, i) => {
+            const x = ((Math.sin(i * 78.233) * 43758.54) % 1);
+            const y = ((Math.sin(i * 32.213) * 22578.3) % 1);
+            const op = st.enabled && (i % 8 <= st.limitingMagnitude) ? 0.78 : 0.04;
+            return `<circle cx="${Math.abs(x)*330+5}" cy="${Math.abs(y)*110+5}" r="${0.5+Math.abs(x)*1.1}" fill="#d6c8ef" opacity="${op}"/>`;
+          }).join("")}
+        </svg>
+        ${sliderHtml("stars_mag", "Limiting Magnitude", st.limitingMagnitude, 0.0, 8.0, 0.1, "mag", 1)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Scintillation / Twinkle Monitor <small style="color:var(--accent-violet)">${Math.round(flux * 100)}%</small></div>
+        <svg class="widget-svg" viewBox="0 0 340 86" style="height:86px;" id="twinkleSvg">
+          <path id="twinklePath" d="M10 24 H330" stroke="#c8a4df" stroke-width="1.5" fill="none"/>
+        </svg>
+        ${sliderHtml("stars_tdepth", "Twinkle Depth", st.twinkleDepthPct, 0, 100, 1, "%", 0)}
+        ${sliderHtml("stars_trate", "Twinkle Rate", st.twinkleRateHz, 0.2, 3.0, 0.05, "Hz", 2)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Celestial Pole &amp; Renderer Scale</div>
+        <svg class="widget-svg" viewBox="0 0 340 130" style="height:130px; cursor:pointer;" onpointerdown="startDrag('poleDial', event)">
+          <circle cx="170" cy="65" r="48" fill="none" stroke="#b39bcc" stroke-opacity="0.25"/>
+          <circle cx="170" cy="65" r="26" fill="none" stroke="#b39bcc" stroke-opacity="0.16" stroke-dasharray="2 4"/>
+          <g transform="rotate(${poleAngle} 170 65)">
+            <line x1="170" y1="65" x2="170" y2="17" stroke="#c8a4df" stroke-opacity="0.6"/>
+            <circle cx="170" cy="17" r="5" fill="#2f2538" stroke="#e4d2f7"/>
+          </g>
+          <circle cx="170" cy="65" r="3" fill="#e4d2f7"/>
+          <text x="170" y="124" text-anchor="middle" fill="#8b7d9a" font-size="9">Pole Rotation: ${poleAngle.toFixed(1)}°</text>
+        </svg>
+        ${sliderHtml("stars_rot", "Celestial Rotation", st.celestialRotationDeg, 0.0, 360.0, 0.5, "deg", 1)}
+        ${sliderHtml("stars_bright", "Brightness", st.brightness, 0.0, 4.0, 0.05, "x", 2)}
+        ${sliderHtml("stars_size", "Point Size", st.pointSize, 0.4, 3.0, 0.05, "x", 2)}
+      </div>
+    `;
+    drawTwinkleWave();
+  }
+  else if (State.activeEntity === "clouds") {
+    tag.textContent = "Clouds";
+    const cl = State.clouds;
+    const deckH = 140;
+    const maxAlt = Math.max(4000, cl.baseMeters + cl.thicknessMeters + 800);
+    const yBase = deckH - 18 - (cl.baseMeters / maxAlt) * (deckH - 34);
+    const yTop  = deckH - 18 - ((cl.baseMeters + cl.thicknessMeters) / maxAlt) * (deckH - 34);
+
+    root.innerHTML = `
+      <div class="inspector-crumb">Inspector / Environment / Clouds</div>
+      <h1 class="inspector-title">Volumetric Clouds</h1>
+      <div class="inspector-subtitle">Raymarched 3D FBM cloud deck, Beer-Powder scattering &amp; wind advection</div>
+
+      <div class="tile-grid">
+        <div class="cap-tile ${cl.enabled ? "on" : ""}" onclick="onSwitch('cl_enabled')">
+          <span class="cap-tile-label">Enabled</span>
+          <span class="cap-tile-state">${cl.enabled ? "ON" : "OFF"}</span>
+        </div>
+        <div class="cap-tile ${cl.followWind ? "on" : ""}" onclick="onSwitch('cl_wind')">
+          <span class="cap-tile-label">Follow Wind</span>
+          <span class="cap-tile-state">${cl.followWind ? "ON" : "OFF"}</span>
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Cloud Classification &amp; Fractional Cover</div>
+        ${selectHtml("cl_type", "Cloud Type", cl.typeIndex, CLOUD_TYPES.map(c => c.name))}
+        ${sliderHtml("cl_cov", "Coverage / Fraction", cl.coverage, 0.0, 1.0, 0.01, "", 2)}
+        ${sliderHtml("cl_dens", "Density", cl.density, 0.0, 4.0, 0.05, "x", 2)}
+        ${sliderHtml("cl_scale", "Feature Scale", cl.featureScale, 0.2, 3.0, 0.02, "x", 2)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Altitude Deck Section <small style="color:var(--ink-muted)">Drag vertical datum</small></div>
+        <div class="metric-hero"><strong>${(cl.baseMeters/1000).toFixed(2)}</strong><span>km base · ${(cl.thicknessMeters/1000).toFixed(2)} km thick</span></div>
+        <svg class="widget-svg" viewBox="0 0 340 ${deckH}" style="height:${deckH}px; cursor:ns-resize;" onpointerdown="startDrag('cloudDeck', event)">
+          <rect x="0" y="${yTop}" width="340" height="${Math.max(4, yBase - yTop)}" fill="rgba(220,232,244,${(0.18 + cl.density * 0.14).toFixed(2)})"/>
+          <line x1="0" y1="${yBase}" x2="340" y2="${yBase}" stroke="#ffffffbb" stroke-dasharray="3 3"/>
+          <text x="8" y="13" fill="#8d96a0" font-size="8.5">CLOUD DECK · VERTICAL SECTION</text>
+          <text x="8" y="${yBase - 4}" fill="#d0dae5" font-size="8.5">Base: ${Math.round(cl.baseMeters)} m</text>
+        </svg>
+        ${sliderHtml("cl_base", "Layer Floor (Base)", cl.baseMeters, 100, 12000, 25, "m", 0)}
+        ${sliderHtml("cl_thick", "Layer Thickness", cl.thicknessMeters, 100, 6000, 25, "m", 0)}
+        ${sliderHtml("cl_ceil", "Ceiling", cl.ceilingMeters, 4000, 20000, 100, "m", 0)}
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Scattering, Wind &amp; Cloud Shadows</div>
+        ${sliderHtml("cl_anvil", "Anvil Top Spread", cl.anvil, 0.0, 1.0, 0.01, "", 2)}
+        ${sliderHtml("cl_aniso", "Mie Anisotropy (g)", cl.anisotropy, -0.9, 0.9, 0.02, "", 2)}
+        ${sliderHtml("cl_wspeed", "Wind Speed", cl.windSpeedMps, 0.0, 40.0, 0.5, "m/s", 1)}
+        ${sliderHtml("cl_wbear", "Wind Bearing", cl.windBearingDeg, 0.0, 360.0, 1.0, "deg", 0)}
+        ${switchHtml("cl_sh_en", "Cast Volumetric Cloud Shadows", cl.shadowEnabled)}
+        ${sliderHtml("cl_sh_cov", "Shadow Fraction", cl.shadowCoverage, 0.0, 1.0, 0.01, "", 2)}
+        ${sliderHtml("cl_sh_den", "Shadow Density", cl.shadowDensity, 0.0, 6.0, 0.05, "x", 2)}
+      </div>
+    `;
+  }
+  else if (State.activeEntity === "localCloud") {
+    tag.textContent = "Local Cloud";
+    const lc = State.localCloud;
+    root.innerHTML = `
+      <div class="inspector-crumb">Inspector / Environment / Local Cloud</div>
+      <h1 class="inspector-title">Local Cloud Volume</h1>
+      <div class="inspector-subtitle">Spatially bounded 3D cloud box in world meters</div>
+
+      <div class="tile-grid">
+        <div class="cap-tile ${lc.enabled ? "on" : ""}" onclick="onSwitch('lc_enabled')">
+          <span class="cap-tile-label">Enabled</span>
+          <span class="cap-tile-state">${lc.enabled ? "ON" : "OFF"}</span>
+        </div>
+        <div class="cap-tile ${lc.followWind ? "on" : ""}" onclick="onSwitch('lc_wind')">
+          <span class="cap-tile-label">Follow Wind</span>
+          <span class="cap-tile-state">${lc.followWind ? "ON" : "OFF"}</span>
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">World Space Box Bounds</div>
+        <div class="axes-row">
+          <label>Centre (m)</label>
+          ${[0,1,2].map(i => `<input type="number" step="5" value="${lc.centre[i]}" oninput="State.localCloud.centre[${i}]=parseFloat(this.value)||0"/>`).join("")}
+        </div>
+        <div class="axes-row">
+          <label>Half Size (m)</label>
+          ${[0,1,2].map(i => `<input type="number" step="5" min="1" value="${lc.halfSize[i]}" oninput="State.localCloud.halfSize[${i}]=Math.max(1,parseFloat(this.value)||1)"/>`).join("")}
+        </div>
+      </div>
+
+      <div class="inspector-group">
+        <div class="group-title">Cloud Body</div>
+        ${sliderHtml("lc_dens", "Density", lc.density, 0.0, 4.0, 0.05, "x", 2)}
+        ${sliderHtml("lc_cov", "Coverage / Fraction", lc.coverage, 0.0, 1.0, 0.01, "", 2)}
+        ${sliderHtml("lc_scale", "Feature Scale", lc.featureScaleMeters, 10, 600, 1, "m", 0)}
+        ${sliderHtml("lc_aniso", "Anisotropy (g)", lc.anisotropy, -0.9, 0.9, 0.02, "", 2)}
+      </div>
+    `;
+  }
+}
+
+function drawTwinkleWave() {
+  const path = document.getElementById("twinklePath");
+  if (!path) return;
+  const st = State.stars;
+  const amt = (st.enabled && st.twinkle) ? st.twinkleDepthPct : 0;
+  let d = "";
+  for (let i = 0; i <= 80; i++) {
+    const t = State.simTimeSec - 3.0 + (i / 80) * 3.0;
+    const osc = 0.5 + 0.3 * Math.sin(t * Math.PI * 2 * st.twinkleRateHz) + 0.2 * Math.sin(t * Math.PI * 2 * st.twinkleRateHz * 0.47 + 0.8);
+    const val = 1 - (amt / 100) * osc;
+    const x = 10 + (i / 80) * 320;
+    const y = 14 + (1 - val) * 56;
+    d += `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)} `;
+  }
+  path.setAttribute("d", d);
+}
+
+//==================================================================================================
+// INTERACTION HANDLERS
+//==================================================================================================
+function selectEntity(id) { State.activeEntity = id; renderAll(); }
+function toggleEntity(id) {
+  if (id === "sun") State.sun.enabled = !State.sun.enabled;
+  else if (id === "moon") State.moons[State.moonSlot].visible = !State.moons[State.moonSlot].visible;
+  else if (id === "stars") State.stars.enabled = !State.stars.enabled;
+  else if (id === "clouds") State.clouds.enabled = !State.clouds.enabled;
+  else if (id === "localCloud") State.localCloud.enabled = !State.localCloud.enabled;
+  renderAll();
+}
+
+function onSlider(id, v, dec, unit) {
+  const label = document.getElementById("val_" + id);
+  if (label) label.textContent = v.toFixed(dec) + (unit ? " " + unit : "");
+
+  const m = State.moons[State.moonSlot];
+  switch (id) {
+    case "sun_diam":   State.sun.angularDiameterDeg = v; break;
+    case "sun_temp":   State.sun.temperatureK = v; break;
+    case "sun_int":    State.sun.intensity = v; break;
+    case "sun_dir":    State.sun.directGain = v; break;
+    case "sun_hours":  State.sun.localHours = v; State.sun.manualDirectionOverride = false; break;
+    case "sun_daydur": State.sun.dayDurationHours = v; State.sun.speedPreset = 4; break;
+    case "sun_lat":    State.sun.latitudeDeg = v; break;
+    case "sun_lon":    State.sun.longitudeDeg = v; break;
+    case "sun_day":    State.sun.dayOfMonth = v; break;
+    case "sun_mon":    State.sun.month = v; break;
+
+    case "moon_phase": m.phase = v; break;
+    case "moon_bright":m.bright = v; break;
+    case "moon_glow":  m.glow = v; break;
+    case "moon_size":  m.sizeDeg = v; break;
+    case "moon_az":    m.azimuthDeg = v; break;
+    case "moon_el":    m.elevationDeg = v; break;
+    case "moon_roll":  m.rollDeg = v; break;
+    case "moon_pitch": m.pitchDeg = v; break;
+
+    case "stars_mag":    State.stars.limitingMagnitude = v; break;
+    case "stars_tdepth": State.stars.twinkleDepthPct = v; break;
+    case "stars_trate":  State.stars.twinkleRateHz = v; break;
+    case "stars_rot":    State.stars.celestialRotationDeg = v; break;
+    case "stars_bright": State.stars.brightness = v; break;
+    case "stars_size":   State.stars.pointSize = v; break;
+
+    case "cl_cov":     State.clouds.coverage = v; break;
+    case "cl_dens":    State.clouds.density = v; break;
+    case "cl_scale":   State.clouds.featureScale = v; break;
+    case "cl_base":    State.clouds.baseMeters = v; break;
+    case "cl_thick":   State.clouds.thicknessMeters = v; break;
+    case "cl_ceil":    State.clouds.ceilingMeters = v; break;
+    case "cl_anvil":   State.clouds.anvil = v; break;
+    case "cl_aniso":   State.clouds.anisotropy = v; break;
+    case "cl_wspeed":  State.clouds.windSpeedMps = v; break;
+    case "cl_wbear":   State.clouds.windBearingDeg = v; break;
+    case "cl_sh_cov":  State.clouds.shadowCoverage = v; break;
+    case "cl_sh_den":  State.clouds.shadowDensity = v; break;
+
+    case "lc_dens":    State.localCloud.density = v; break;
+    case "lc_cov":     State.localCloud.coverage = v; break;
+    case "lc_scale":   State.localCloud.featureScaleMeters = v; break;
+    case "lc_aniso":   State.localCloud.anisotropy = v; break;
+  }
+  renderChrome();
+  renderSkyPreview();
+}
+
+function onSwitch(id) {
+  const m = State.moons[State.moonSlot];
+  switch (id) {
+    case "sun_enabled": State.sun.enabled = !State.sun.enabled; break;
+    case "sun_animate": State.sun.animate = !State.sun.animate; break;
+    case "sun_manual":
+      if (!State.sun.manualDirectionOverride) {
+        const p = solveSolarPosition(State.sun);
+        State.sun.manualAzimuthDeg = p.azimuth;
+        State.sun.manualElevationDeg = p.elevation;
+      }
+      State.sun.manualDirectionOverride = !State.sun.manualDirectionOverride;
+      break;
+    case "moon_vis":    m.visible = !m.visible; break;
+    case "moon_follow": m.followSky = !m.followSky; break;
+    case "stars_enabled": State.stars.enabled = !State.stars.enabled; break;
+    case "stars_twinkle": State.stars.twinkle = !State.stars.twinkle; break;
+    case "cl_enabled":  State.clouds.enabled = !State.clouds.enabled; break;
+    case "cl_wind":     State.clouds.followWind = !State.clouds.followWind; break;
+    case "cl_sh_en":    State.clouds.shadowEnabled = !State.clouds.shadowEnabled; break;
+    case "lc_enabled":  State.localCloud.enabled = !State.localCloud.enabled; break;
+    case "lc_wind":     State.localCloud.followWind = !State.localCloud.followWind; break;
+    case "vp_sun":      toggleEntity("sun"); return;
+    case "vp_moon":     toggleEntity("moon"); return;
+    case "vp_stars":    toggleEntity("stars"); return;
+    case "vp_clouds":   toggleEntity("clouds"); return;
+  }
+  renderAll();
+}
+
+function onSelect(id, idx) {
+  if (id === "sun_colsrc") { State.sun.colourSource = idx; }
+  else if (id === "sun_speed") {
+    State.sun.speedPreset = idx;
+    const durs = [24, 3, 0.8, 0.24, State.sun.dayDurationHours];
+    State.sun.dayDurationHours = durs[idx];
+  }
+  else if (id === "moon_slot") { State.moonSlot = idx; }
+  else if (id === "moon_preset") { State.moons[State.moonSlot].preset = idx; }
+  else if (id === "cl_type") {
+    const t = CLOUD_TYPES[idx];
+    State.clouds.typeIndex = idx;
+    State.clouds.coverage = t.cov;
+    State.clouds.density = t.dens;
+    State.clouds.featureScale = t.scale;
+    State.clouds.baseMeters = t.base;
+    State.clouds.thicknessMeters = t.thick;
+    State.clouds.anvil = t.anvil;
+  }
+  renderAll();
+}
+
+function applyTimePreset(hours, starsOn, cloudCov) {
+  State.sun.localHours = hours;
+  State.sun.manualDirectionOverride = false;
+  State.stars.enabled = starsOn;
+  State.clouds.coverage = cloudCov;
+  renderAll();
+}
+
+function applyCloudPreset(typeIdx, cov, dens, baseM, thickM) {
+  State.clouds.enabled = true;
+  State.clouds.typeIndex = typeIdx;
+  State.clouds.coverage = cov;
+  State.clouds.density = dens;
+  State.clouds.baseMeters = baseM;
+  State.clouds.thicknessMeters = thickM;
+  State.activeEntity = "clouds";
+  renderAll();
+}
+
+// Interactive SVG Drags (Solar Orbit, Moon Pad, Pole Dial, Cloud Deck)
+let activeDrag = null;
+function startDrag(kind, ev) {
+  ev.preventDefault();
+  const pose = getEffectiveSunAzEl();
+  activeDrag = {
+    kind,
+    startX: ev.clientX,
+    startY: ev.clientY,
+    az: pose.azimuth,
+    el: pose.elevation,
+    rect: ev.currentTarget.getBoundingClientRect(),
+  };
+  if (kind === "sunGizmo") State.sun.manualDirectionOverride = true;
+}
+window.addEventListener("pointermove", ev => {
+  if (!activeDrag) return;
+  if (activeDrag.kind === "sunGizmo") {
+    State.sun.manualAzimuthDeg = ((activeDrag.az + (ev.clientX - activeDrag.startX) * 0.65) % 360 + 360) % 360;
+    State.sun.manualElevationDeg = Math.max(-90, Math.min(90, activeDrag.el - (ev.clientY - activeDrag.startY) * 0.6));
+    renderInspector(); renderSkyPreview();
+  } else if (activeDrag.kind === "moonPad" && !State.moons[State.moonSlot].followSky) {
+    const r = activeDrag.rect;
+    const nx = Math.max(0, Math.min(1, ((ev.clientX - r.left) / r.width * 340 - 40) / 260));
+    const ny = Math.max(0, Math.min(1, ((ev.clientY - r.top) / r.height * 180 - 20) / 140));
+    State.moons[State.moonSlot].azimuthDeg = Math.round(nx * 360);
+    State.moons[State.moonSlot].elevationDeg = Math.round(90 - ny * 180);
+    renderInspector(); renderSkyPreview();
+  } else if (activeDrag.kind === "poleDial") {
+    const r = activeDrag.rect;
+    const dx = ev.clientX - (r.left + r.width * 0.5);
+    const dy = ev.clientY - (r.top + r.height * 0.5);
+    State.stars.celestialRotationDeg = Math.round(((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360);
+    renderInspector(); renderSkyPreview();
+  } else if (activeDrag.kind === "cloudDeck") {
+    const r = activeDrag.rect;
+    const norm = Math.max(0, Math.min(1, 1 - (ev.clientY - r.top) / r.height));
+    State.clouds.baseMeters = Math.round(100 + norm * 8000);
+    renderInspector(); renderSkyPreview();
+  }
+});
+window.addEventListener("pointerup", () => { activeDrag = null; });
+
+function renderAll() {
+  renderChrome();
+  renderInspector();
+  renderSkyPreview();
+}
+
+let lastT = performance.now();
+function tick(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000);
+  lastT = now;
+  State.simTimeSec += dt;
+  if (State.sun.animate) {
+    State.sun.localHours = (State.sun.localHours + (24 / Math.max(0.01, State.sun.dayDurationHours)) * dt) % 24;
+    if (State.activeEntity === "sun") renderInspector();
+  }
+  if (State.activeEntity === "stars" && State.stars.twinkle && State.stars.enabled) {
+    drawTwinkleWave();
+  }
+  renderSkyPreview();
+  requestAnimationFrame(tick);
+}
+
+renderAll();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

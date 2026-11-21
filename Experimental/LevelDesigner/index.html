@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Level Designer · Frontier</title>
+<link rel="stylesheet" href="../Shared/Studio/Studio.css">
+<link rel="stylesheet" href="./LevelDesigner.css">
+</head>
+<body>
+<div id="Studio" class="workspace">
+
+  <!-- ============================================================ LEFT: Outliner / Content -->
+  <section class="dock left" aria-label="Outliner and content">
+    <div class="tab-strip">
+      <button type="button" class="document-tab active" data-left="outliner">Outliner</button>
+      <button type="button" class="document-tab" data-left="content">Content</button>
+    </div>
+
+    <div id="LeftOutliner" class="left-pane">
+      <div class="outliner-heading"><h1>Outliner</h1><small id="LevelCaption">Lobby</small></div>
+      <div class="stats">
+        <div class="stat-tile"><span class="status-disc" data-icon="layers" data-icon-size="12"></span><small>Objects</small><strong id="StatObjects">0</strong></div>
+        <div class="stat-tile"><span class="muted-disc" data-icon="cube" data-icon-size="12"></span><small>Triangles</small><strong id="StatTriangles">0</strong></div>
+      </div>
+
+      <div class="tier-bar">
+        <div id="TierToggle"></div>
+        <div class="tier-note" id="TierNote"></div>
+      </div>
+
+      <div class="add-row">
+        <button type="button" id="AddObjectBtn" class="primary add-btn" data-icon="plus" data-icon-size="14">Add</button>
+        <label class="search-wrap"><span data-icon="search" data-icon-size="14"></span><input id="OutlinerSearch" type="search" placeholder="Search Lobby scene"></label>
+      </div>
+
+      <div id="BasicTierGate" class="tier-gate" hidden>
+        <span data-icon="crown" data-icon-size="16"></span>
+        <span><b>Premium User</b> unlocks placing custom props, lights &amp; imported meshes in Lobby.</span>
+        <button type="button" id="UnlockPremiumBtn">Unlock</button>
+      </div>
+
+      <div id="AddMenu" class="add-menu" hidden>
+        <label class="search-wrap"><span data-icon="search" data-icon-size="14"></span><input id="AddSearch" type="search" placeholder="Search props, lights, shapes…"></label>
+        <div id="AddList" class="add-list"></div>
+      </div>
+
+      <div class="outliner-scroll" id="SceneTree" role="tree"></div>
+      <footer class="dock-footer"><div><i>CLICK</i>select</div><div><i>DBL-CLICK</i>frame</div><div><i>DEL · CTRL D</i>remove · copy</div></footer>
+    </div>
+
+    <div id="LeftContent" class="left-pane" hidden>
+      <div class="outliner-heading"><h1>Content</h1><small>compiled assets · <span id="ContentCount">0</span></small></div>
+      <div class="drop-zone">
+        <button type="button" id="ImportBtn" class="primary wide" data-icon="upload" data-icon-size="14">Import 3D object…</button>
+        <p>Drop a mesh anywhere. Imported assets pass through <b>Geometry Compile</b> and can be placed in <b>Lobby</b> under Premium User mode.</p>
+        <div class="chips" id="ImportFormats"></div>
+      </div>
+      <div class="outliner-scroll">
+        <div class="collection"><span data-icon="folder"></span><div><b>Compiled Assets</b><small>Place directly into the Lobby showroom</small></div></div>
+        <div id="ContentList" class="content-list"></div>
+        <div class="collection"><span data-icon="sparkle"></span><div><b>Sample Sources</b><small>Compile &amp; place into Lobby</small></div></div>
+        <div id="SampleList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ CENTRE: Level tabs, viewport & configurator -->
+  <section class="dock centre" aria-label="Level Designer viewport">
+    <div class="tab-strip" id="LevelTabs"></div>
+    <div class="viewport-heading">
+      <span class="scene-icon" data-icon="vehicle" data-icon-size="20"></span>
+      <div class="scene-title"><b id="LevelTitle">Lobby</b><small id="LevelSubtitle">Showroom · Neutral Daylight</small></div>
+      <span class="state-tag basic" id="TierBadge">BASIC LOBBY</span>
+      <span class="spacer"></span>
+      <button type="button" id="CleanModeBtn" class="tool clean-btn" title="UI-free Car Configurator Mode (H)"><span class="ico" data-icon="hotspot" data-icon-size="14"></span><span>Configurator</span></button>
+      <button type="button" id="SaveLevelBtn" class="primary compile-btn" data-icon="save" data-icon-size="14" title="Save Lobby layout (Ctrl+S)">Save</button>
+    </div>
+
+    <div class="viewport-tools" id="ViewportTools">
+      <div id="ChannelBar"></div>
+      <span class="divider"></span>
+      <div class="gizmo-group" id="GizmoModes" role="group" aria-label="Transform Gizmo">
+        <button type="button" data-gizmo="off" title="Select only (Q)"><span class="ico" data-icon="pointer" data-icon-size="13"></span>Select</button>
+        <button type="button" data-gizmo="translate" class="active" title="Move gizmo (W)"><span class="ico" data-icon="move" data-icon-size="13"></span>Move</button>
+        <button type="button" data-gizmo="rotate" title="Rotate gizmo (E)"><span class="ico" data-icon="rotate" data-icon-size="13"></span>Rotate</button>
+        <button type="button" data-gizmo="scale" title="Scale gizmo (R)"><span class="ico" data-icon="scale" data-icon-size="13"></span>Scale</button>
+      </div>
+      <button type="button" id="GizmoToggleBtn" class="tool round active" title="Toggle 3D Transform Gizmo visibility (X)" data-icon="gizmo" data-icon-size="15"></button>
+      <span class="divider"></span>
+      <button type="button" id="HotspotsBtn" class="tool active" title="Toggle vehicle configurator hotspot dots (D)"><span class="ico" data-icon="hotspot" data-icon-size="14"></span><span>Dots</span></button>
+      <button type="button" id="FrameBtn" class="tool round" title="Frame selection (F)" data-icon="frame" data-icon-size="15"></button>
+      <button type="button" id="GridBtn" class="tool round" title="Floor reference dots (G)" data-icon="grid" data-icon-size="15"></button>
+    </div>
+
+    <div class="canvas-well" id="ViewportWell">
+      <canvas id="Viewport" tabindex="0" aria-label="Lobby 3D viewport"></canvas>
+      <div class="readout" id="Readout"></div>
+      <div class="legend" id="Legend"></div>
+
+      <!-- Tiny interactive dots projected over the ControlVehicle -->
+      <div class="hotspots-layer" id="HotspotsLayer"></div>
+
+      <!-- Floating Clean Configurator HUD (shown only in UI-free Clean Configurator mode) -->
+      <div class="clean-hud" id="CleanHud" hidden>
+        <div class="clean-badge"><span class="ico" data-icon="vehicle" data-icon-size="14"></span><b>Lobby · ControlVehicle</b><small id="CleanEnvLabel">Neutral Daylight</small></div>
+        <span class="spacer"></span>
+        <button type="button" id="CleanEnvCycleBtn" class="clean-pill" title="Cycle showroom environment"><span class="ico" data-icon="sun" data-icon-size="13"></span><span>Environment</span></button>
+        <button type="button" id="CleanDotsBtn" class="clean-pill" title="Toggle hotspot dots"><span class="ico" data-icon="hotspot" data-icon-size="13"></span><span>Dots</span></button>
+        <button type="button" id="CleanTurntableBtn" class="clean-pill" title="Turntable orbit (T)"><span class="ico" data-icon="rotate" data-icon-size="13"></span><span>Turntable</span></button>
+        <button type="button" id="CleanResetViewBtn" class="clean-pill" title="Showroom overview"><span class="ico" data-icon="frame" data-icon-size="13"></span><span>Overview</span></button>
+        <button type="button" id="ExitCleanBtn" class="clean-pill primary-exit" title="Return to Level Designer (H / Esc)"><span class="ico" data-icon="sliders" data-icon-size="13"></span><span>Level Designer</span></button>
+      </div>
+
+      <!-- Compact floating swatch / finish popover when clicking a car hotspot dot -->
+      <div class="config-popover" id="ConfigPopover" hidden></div>
+
+      <!-- Bottom Environment & Configurator Drawer -->
+      <div class="drawer" id="Drawer">
+        <header>
+          <b id="DrawerTitle">Showroom Environment &amp; Configurator</b>
+          <span class="spacer"></span>
+          <div class="segmented small">
+            <button type="button" data-drawer="environment" class="active">Environment</button>
+            <button type="button" data-drawer="configurator">Car Configurator</button>
+          </div>
+        </header>
+        <div id="DrawerBody" class="drawer-body"></div>
+      </div>
+    </div>
+
+    <div class="strip" id="Strip">LEVEL DESIGNER · LOBBY SHOWROOM</div>
+    <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Environment &amp; Presets</span></button>
+  </section>
+
+  <!-- ============================================================ RIGHT: Details Inspector -->
+  <section class="dock right" aria-label="Details">
+    <div class="tab-strip"><div class="document-tab active">Details</div></div>
+    <div class="inspector-scroll" id="Details"></div>
+  </section>
+</div>
+
+<iframe id="Compile" class="compile-frame" hidden title="Geometry Compiler" aria-label="Geometry Compile"></iframe>
+
+<!-- ============================================================ NOTCH: shortcuts -->
+<div id="Notch" class="notch-shell">
+  <div class="shade">
+    <div class="control-sheet">
+      <header><span>Frontier · Level Designer</span><kbd>?</kbd></header>
+      <div class="keys">
+        <div>Orbit · pan · zoom<span>Drag · right-drag · wheel</span></div>
+        <div>Select object in Lobby<span>Click in viewport or Outliner</span></div>
+        <div>Transform gizmo modes<span><kbd>Q</kbd> Select · <kbd>W</kbd> Move · <kbd>E</kbd> Rotate · <kbd>R</kbd> Scale</span></div>
+        <div>Toggle 3D gizmo · snap<span><kbd>X</kbd> toggle · hold <kbd>Ctrl</kbd> to snap</span></div>
+        <div>Clean Car Configurator mode<span><kbd>H</kbd> hide UI · click tiny dots on car</span></div>
+        <div>Toggle hotspot dots · grid<span><kbd>D</kbd> dots · <kbd>G</kbd> floor dots</span></div>
+        <div>Frame selection · turntable<span><kbd>F</kbd> frame · <kbd>T</kbd> turntable</span></div>
+        <div>Duplicate · delete (Premium)<span><kbd>Ctrl D</kbd> · <kbd>Del</kbd></span></div>
+        <div>Save Lobby layout<span><kbd>Ctrl S</kbd></span></div>
+      </div>
+      <p><b>Lobby</b> starts in the neutral architectural showroom inspired by daylight studio cycloramas, featuring the assembled <b>ControlVehicle</b> with interactive configurator hotspots and live environment lighting. Switch to <b>Premium User</b> to place architectural props, lights, primitives, cameras, or imported meshes and position them freely with the 3D Transform Gizmo.</p>
+    </div>
+  </div>
+  <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Level Designer</span></button>
+</div>
+
+<div class="boot" id="Boot"><div><b>Level Designer</b><small id="BootText">Loading Lobby showroom…</small><div class="progress"><i id="BootBar"></i></div></div></div>
+<div class="toast" id="Toast" role="status"></div>
+<input type="file" id="FileInput" hidden accept=".obj,.gltf,.glb,.stl,.ply,.facet,.fbx">
+
+<script>
+  document.getElementById('NotchHandle').addEventListener('click', () => {
+    const n = document.getElementById('Notch'); const open = !n.classList.contains('open');
+    n.classList.toggle('open', open); document.getElementById('NotchHandle').setAttribute('aria-expanded', String(open));
+  });
+  document.querySelector('#Notch .shade').addEventListener('click', (e) => { if (e.target.classList.contains('shade')) document.getElementById('NotchHandle').click(); });
+  addEventListener('keydown', (e) => { if (e.key === '?' && !e.target.matches('input, textarea, select')) document.getElementById('NotchHandle').click(); });
+</script>
+<script type="module" src="./Main.js"></script>
+</body>
+</html>

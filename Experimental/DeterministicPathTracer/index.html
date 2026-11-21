@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!--==================================================================================================================================
+                                                            INDEX.HTML
+===================================================================================================================================-->
+<!-- 🧩 Deterministic path tracer workspace: viewport, render status and studio inspector -->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Frontier · Deterministic Path Tracer</title>
+    <link rel="stylesheet" href="Styles.css">
+</head>
+<body>
+    <main class="WorkspaceHost">
+        <section class="ViewportPanel" id="ViewportPanel">
+            <canvas id="ViewportCanvas"></canvas>
+            <div class="ViewportReadout" id="ViewportReadout">
+                <div class="ReadoutPrimary"><span id="ReadoutSamples">0</span><span class="ReadoutUnit"> samples</span></div>
+                <div class="ReadoutSecondary" id="ReadoutSecondary">Initializing WebGPU…</div>
+                <div class="ConvergenceTrack"><div class="ConvergenceFill" id="ConvergenceFill"></div></div>
+            </div>
+            <div class="FrameRateReadout" id="FrameRateReadout">
+                <div class="ReadoutPrimary"><span id="FrameRateValue">—</span><span class="ReadoutUnit"> FPS</span></div>
+                <div class="ReadoutSecondary" id="FrameRateDetail">waiting for first frame</div>
+            </div>
+            <div class="ViewportHint">Drag to orbit · Shift/right-drag to pan · Wheel to dolly</div>
+            <div class="FailureNotice" id="FailureNotice" hidden></div>
+        </section>
+
+        <aside class="InspectorPanel">
+            <header class="InspectorTitle">
+                <h1>Deterministic Path Tracer</h1>
+                <p>Controlled Integrator · WebGPU compute · no random numbers</p>
+            </header>
+
+            <section class="InspectorSection">
+                <h2>Render</h2>
+                <dl class="StatusTable">
+                    <dt>Adapter</dt>        <dd id="StatusAdapter">—</dd>
+                    <dt>Resolution</dt>     <dd id="StatusResolution">—</dd>
+                    <dt>Geometry</dt>       <dd id="StatusGeometry">—</dd>
+                    <dt>Rate</dt>           <dd id="StatusRate">—</dd>
+                    <dt>GPU per frame</dt>  <dd id="StatusGpu">—</dd>
+                    <dt>Elapsed</dt>        <dd id="StatusElapsed">—</dd>
+                    <dt>Complete net</dt>   <dd id="StatusNet">—</dd>
+                </dl>
+                <div class="ButtonRow">
+                    <button id="PauseButton">Pause</button>
+                    <button id="RestartButton">Restart</button>
+                    <button id="SaveButton">Save PNG</button>
+                </div>
+            </section>
+
+            <section class="InspectorSection">
+                <h2>Camera</h2>
+                <div class="ButtonRow Wrap" id="CameraPresetRow"></div>
+                <label class="SliderField"><span>Field of view</span><input type="range" id="FieldOfViewSlider" min="15" max="70" step="1"><output></output></label>
+                <label class="SliderField"><span>Aperture radius</span><input type="range" id="ApertureSlider" min="0" max="0.12" step="0.005"><output></output></label>
+            </section>
+
+            <section class="InspectorSection">
+                <h2>Look</h2>
+                <label class="SelectField"><span>Body paint</span><select id="PaintSelect"></select></label>
+                <label class="SliderField"><span>Paint base roughness</span><input type="range" id="PaintRoughnessSlider" min="0.05" max="0.8" step="0.005"><output></output></label>
+                <label class="SelectField"><span>Floor</span><select id="FloorSelect"></select></label>
+                <label class="SelectField"><span>Environment</span><select id="EnvironmentSelect"></select></label>
+                <label class="SliderField"><span>Environment</span><input type="range" id="EnvironmentSlider" min="0" max="4" step="0.05"><output></output></label>
+                <label class="SliderField"><span>Key softbox</span><input type="range" id="KeySlider" min="0" max="20" step="0.25"><output></output></label>
+                <label class="SliderField"><span>Rim strip</span><input type="range" id="RimSlider" min="0" max="40" step="0.5"><output></output></label>
+                <label class="SliderField"><span>Fill panel</span><input type="range" id="FillSlider" min="0" max="20" step="0.25"><output></output></label>
+                <label class="SliderField"><span>Lamp exitance</span><input type="range" id="LampSlider" min="0" max="1" step="0.05"><output></output></label>
+                <label class="SelectField"><span>Practical lamps (IES)</span><select id="PracticalSelect"></select></label>
+                <label class="SliderField"><span>Lamp intensity</span><input type="range" id="PracticalSlider" min="0" max="4" step="0.05"><output></output></label>
+                <label class="SelectField"><span>Studio rig</span><select id="RigSelect"></select></label>
+                <label class="SelectField"><span>Softboxes to camera</span><select id="LightVisibilitySelect"></select></label>
+                <label class="SliderField"><span>Exposure (EV)</span><input type="range" id="ExposureSlider" min="-4" max="4" step="0.1"><output></output></label>
+            </section>
+
+            <section class="InspectorSection">
+                <h2>Transport</h2>
+                <label class="SelectField"><span>Indirect bounces</span><select id="BounceSelect"></select></label>
+                <label class="SelectField"><span>Specular chain depth</span><select id="DepthSelect"></select></label>
+                <label class="SelectField"><span>Samples per dispatch</span><select id="BatchSelect"></select></label>
+                <label class="SelectField"><span>Lamp sampling</span><select id="LampSamplingSelect"></select></label>
+                <label class="SelectField"><span>Trace resolution</span><select id="TraceSelect"></select></label>
+                <label class="SelectField"><span>Render scale</span><select id="ScaleSelect"></select></label>
+                <label class="SelectField"><span>Target samples</span><select id="TargetSelect"></select></label>
+            </section>
+
+            <section class="InspectorSection">
+                <h2>Real-time</h2>
+                <label class="SelectField"><span>Sample pattern</span><select id="PatternSelect"></select></label>
+                <label class="SelectField"><span>Primary visibility</span><select id="VisibilitySelect"></select></label>
+                <label class="SelectField"><span>Camera motion</span><select id="MotionSelect"></select></label>
+                <label class="SelectField"><span>History samples</span><select id="HistorySelect"></select></label>
+                <label class="SelectField"><span>Denoiser</span><select id="DenoiseSelect"></select></label>
+                <label class="SelectField"><span>Vehicles in scene</span><select id="VehicleCountSelect"></select></label>
+                <p class="SectionNote">Per-pixel gives each pixel its own fixed scramble of the same point set (no RNG). Rasterized
+                    finds camera hits with a raster pass. Reproject keeps the image while the camera moves and fades it out as
+                    exact samples arrive (clamped to the current neighbourhood). The denoiser smooths 1–4 spp along normal, depth and
+                    material edges and fades out by 64 spp, so the converged image stays exact. Vehicles parks extra copies behind the hero car (Fleet camera shows all).</p>
+            </section>
+
+            <section class="InspectorSection">
+                <h2>Determinism</h2>
+                <p class="SectionNote">Re-renders the current sample count from zero with a different dispatch batching and compares the
+                    FNV-1a digest of the raw float accumulation.</p>
+                <div class="ButtonRow"><button id="VerifyButton">Verify bit-exact repeat</button></div>
+                <div class="DigestLine" id="DigestLine">Digest: —</div>
+            </section>
+
+            <section class="InspectorSection MethodSection">
+                <h2>Method</h2>
+                <ul>
+                    <li>One fixed Sobol' (0,2) point set, shared by every pixel by default — no RNG at any setting.</li>
+                    <li>Every lobe traced: coat, specular and diffuse; glass splits into reflection <em>and</em> refraction.</li>
+                    <li>No Russian roulette: fixed depth limits and a fixed throughput cutoff.</li>
+                    <li>Softboxes integrated by light quadrature + BSDF quadrature, power-heuristic MIS.</li>
+                    <li>Error is structured and shrinks every power of two; it never sparkles.</li>
+                </ul>
+            </section>
+        </aside>
+    </main>
+    <script type="module" src="Source/WorkspaceInterface.js"></script>
+</body>
+</html>
