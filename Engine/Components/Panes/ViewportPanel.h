@@ -74,6 +74,8 @@ struct ViewportDisplaySettings
     float    XeGtaoStrength        = 1.0f;   // [x]   - XeGTAO occlusion strength [0..2]
     uint32_t PathTraceTargetSpp    = 256u;   // [spp] - Progressive PT convergence target (0 = render continuously, no cap)
     uint32_t PathTraceBatchSpp     = 1u;     // [spp] - PT samples accumulated per frame (1/2/4/8, HTML lab parity)
+    bool     ClusterLodEnabled     = true;   // [-]   - Nanite-like cluster LOD drives the viewport BVH
+    float    ClusterLodPixelError  = 1.25f;  // [px]  - Screen-space LOD error budget (0.5 quality / 1.25 balanced / 2.5 / 5 aggressive)
     bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
     bool     VolumetricCloudsEnabled = false;// [-]   - Raymarched volumetric cloud deck toggle (default off for Clear Sky)
     bool     CloudShadowsEnabled   = false;  // [-]   - Volumetric cloud ground shadow casting toggle

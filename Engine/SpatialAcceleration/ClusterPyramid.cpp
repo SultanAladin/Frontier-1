@@ -496,15 +496,23 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         1.0f / std::max(1.0e-5f, SceneMax.Z - SceneMin.Z),
     };
 
+    // A network whose opposite edges were never linked (e.g. decoded triangle soup) would mark
+    // every vertex as an open border below; border locks for those come from welded topology.
+    bool AnyLinkedOpposite = false;
+    for (const GeometrySpace::DirectedEdge& Edge : Network.Edges)
+    {
+        AnyLinkedOpposite = AnyLinkedOpposite || (Edge.OppositeEdgeIndex != GeometrySpace::InvalidNetworkIndex);
+    }
+
     // 📝 Mark vertices incident on UV seams, sharp creases, or open geometric borders so QEM preserves UV/shading integrity
     std::vector<uint8_t> GlobalSeamLockedVertices(Network.Vertices.size(), 0u);
     for (const GeometrySpace::DirectedEdge& Edge : Network.Edges)
     {
-        const bool ProtectedEdge =
+        const bool ProtectedEdge = AnyLinkedOpposite && (
             (Edge.OppositeEdgeIndex == GeometrySpace::InvalidNetworkIndex) ||
             GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut) ||
             GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSharpCrease) ||
-            GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableBoundaryEdge);
+            GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableBoundaryEdge));
 
         if (ProtectedEdge && Edge.OriginVertexIndex < GlobalSeamLockedVertices.size())
         {
@@ -518,6 +526,60 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 }
             }
         }
+    }
+
+    // Vertex welding: triangle-soup networks duplicate every corner, leaving QEM no shared
+    // vertices to collapse (the decoded ControlVehicle baked a single LOD level before this).
+    // Weld by exact position; per-corner normals, UVs, and material slots ride on triangles.
+    std::vector<uint32_t> WeldRemap(Network.Vertices.size(), 0u);
+    {
+        struct WeldKey
+        {
+            uint32_t X = 0u;
+            uint32_t Y = 0u;
+            uint32_t Z = 0u;
+            [[nodiscard]] bool operator==(const WeldKey& Rhs) const noexcept { return X == Rhs.X && Y == Rhs.Y && Z == Rhs.Z; }
+        };
+        struct WeldKeyHash
+        {
+            [[nodiscard]] std::size_t operator()(const WeldKey& Key) const noexcept
+            {
+                return static_cast<std::size_t>((Key.X * 2654435761u) ^ (Key.Y * 40503u) ^ (Key.Z << 7u));
+            }
+        };
+        std::unordered_map<WeldKey, uint32_t, WeldKeyHash> WeldMap;
+        WeldMap.reserve(Network.Vertices.size());
+        std::vector<Mathematics::Axis3D> WeldedPositions;
+        WeldedPositions.reserve(Network.Vertices.size());
+        std::vector<uint8_t> WeldedLocks;
+        for (std::size_t VIdx = 0u; VIdx < Network.Vertices.size(); ++VIdx)
+        {
+            const Mathematics::Axis3D Pos = Network.Vertices[VIdx].Axes;
+            WeldKey Key {};
+            std::memcpy(&Key.X, &Pos.X, sizeof(float));
+            std::memcpy(&Key.Y, &Pos.Y, sizeof(float));
+            std::memcpy(&Key.Z, &Pos.Z, sizeof(float));
+            const auto Found = WeldMap.find(Key);
+            uint32_t WeldedIdx = 0u;
+            if (Found == WeldMap.end())
+            {
+                WeldedIdx = static_cast<uint32_t>(WeldedPositions.size());
+                WeldMap[Key] = WeldedIdx;
+                WeldedPositions.push_back(Pos);
+                WeldedLocks.push_back(0u);
+            }
+            else
+            {
+                WeldedIdx = Found->second;
+            }
+            WeldRemap[VIdx] = WeldedIdx;
+            if (GlobalSeamLockedVertices[VIdx] != 0u)
+            {
+                WeldedLocks[WeldedIdx] = 1u;
+            }
+        }
+        Positions               = std::move(WeldedPositions);
+        GlobalSeamLockedVertices = std::move(WeldedLocks);
     }
 
     const auto CornerTangents = GeometrySpace::EvaluateContinuousCornerTangents(Network);
@@ -554,9 +616,9 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             const uint32_t E2 = LoopEdges[Fan + 1u];
 
             ClusterTriangleEntry Tri {};
-            Tri.VertexIndex0      = Network.Edges[E0].OriginVertexIndex;
-            Tri.VertexIndex1      = Network.Edges[E1].OriginVertexIndex;
-            Tri.VertexIndex2      = Network.Edges[E2].OriginVertexIndex;
+            Tri.VertexIndex0      = WeldRemap[Network.Edges[E0].OriginVertexIndex];
+            Tri.VertexIndex1      = WeldRemap[Network.Edges[E1].OriginVertexIndex];
+            Tri.VertexIndex2      = WeldRemap[Network.Edges[E2].OriginVertexIndex];
             Tri.SourceFaceIndex   = FaceIdx;
             Tri.CornerUV0         = Network.Edges[E0].ParameterUV;
             Tri.CornerUV1         = Network.Edges[E1].ParameterUV;
@@ -577,6 +639,41 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
     if (Level0Tris.empty())
     {
         return false;
+    }
+
+    // Welded-topology border locks: vertices on edges used by a single triangle are true open
+    // borders (this is what protects soup networks whose edges were never linked).
+    {
+        std::unordered_map<uint64_t, uint32_t> EdgeUseCounts;
+        EdgeUseCounts.reserve(Level0Tris.size() * 3u);
+        const auto MixEdge = [&EdgeUseCounts](uint32_t A, uint32_t B) noexcept
+        {
+            const uint64_t Lo = std::min(A, B);
+            const uint64_t Hi = std::max(A, B);
+            EdgeUseCounts[(Lo << 32u) | Hi] += 1u;
+        };
+        for (const auto& Tagged : Level0Tris)
+        {
+            MixEdge(Tagged.Entry.VertexIndex0, Tagged.Entry.VertexIndex1);
+            MixEdge(Tagged.Entry.VertexIndex1, Tagged.Entry.VertexIndex2);
+            MixEdge(Tagged.Entry.VertexIndex2, Tagged.Entry.VertexIndex0);
+        }
+        for (const auto& [EdgeKey, UseCount] : EdgeUseCounts)
+        {
+            if (UseCount == 1u)
+            {
+                const uint32_t Lo = static_cast<uint32_t>(EdgeKey >> 32u);
+                const uint32_t Hi = static_cast<uint32_t>(EdgeKey & 0xFFFFFFFFu);
+                if (Lo < GlobalSeamLockedVertices.size())
+                {
+                    GlobalSeamLockedVertices[Lo] = 1u;
+                }
+                if (Hi < GlobalSeamLockedVertices.size())
+                {
+                    GlobalSeamLockedVertices[Hi] = 1u;
+                }
+            }
+        }
     }
 
     std::sort(Level0Tris.begin(), Level0Tris.end(), [](const MortonTaggedTriangle& Left, const MortonTaggedTriangle& Right) noexcept

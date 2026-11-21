@@ -374,3 +374,19 @@ Guarantees: every surviving triangle keeps its own face material slot at every l
 never activates a cluster coarser than the asset's last level (capped clusters become
 terminal). Bake report per level: clusters / triangles / max error (m) / material slots
 present (`SummarizeLevels()`), serialized with the pyramid (format v2; v1 loads).
+
+### 20.1 Viewport status update — Nanite LOD is LIVE in the editor viewport
+
+Previously only the CPU Tiered renderer used the cut; the editor's Vulkan viewport traced the
+full-resolution BVH. Now `VulkanWorldRenderSequence` rebuilds its GPU BVH from the same
+per-camera `SelectMonotonicCut` whenever the active cluster set changes (signature-cached).
+Controls in the viewport Settings sheet: **Nanite LOD** On/Off toggle and **LOD Error (px)**
+0.5 / 1.25 / 2.5 / 5 (`ClusterLodEnabled`, `ClusterLodPixelError` →
+`NaniteLodEnabled`, `NanitePixelError`). Viewport footer readout:
+`Nanite LOD N tris · M clusters (full K)`. Glass instances stay analytic (not in the BVH),
+per-face material slots ride every pyramid triangle. Baker now welds soup vertices by exact
+position and derives border locks from welded topology (unlinked soup attribute flags are
+ignored), so decoded assets like the ControlVehicle bake real levels:
+25,068 → 13,994 → 10,270 tris with 10 material slots at every level.
+Proof: `NaniteViewportVehicleValidation` + `Exhibits/Images/NaniteViewport/` PNGs
+(near 19,846 tris traced, far 11,418 with L2 dominant, LOD-off restores 25,080).

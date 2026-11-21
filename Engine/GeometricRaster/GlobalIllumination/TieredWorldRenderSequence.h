@@ -76,6 +76,8 @@ struct WorldRenderConfiguration
     uint32_t                              QualityTier         = 1u;   // [0..4]  - Quality tier
     uint32_t                              PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
     uint32_t                              PathTraceTargetSpp  = 0u;   // [spp]   - Convergence target for progressive PT (0 = continuous, no cap)
+    bool                                  NaniteLodEnabled    = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut (Nanite-like) instead of full-res geometry
+    float                                 NanitePixelError    = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
 };
 
 struct WorldSceneSpecification

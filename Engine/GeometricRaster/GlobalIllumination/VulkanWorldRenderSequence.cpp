@@ -1417,10 +1417,212 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     }
     LastRadiosityLightingSignature = 0ull;
 
+    CachedNaniteCutSignature = 0u;
+    NaniteLodBuffersActive   = false;
     SceneUploadedOnce      = true;
     ProgressiveSampleCount = 0u;
     const auto SyncEnd = std::chrono::steady_clock::now();
     LastSceneSyncMilliseconds = static_cast<float>(std::chrono::duration<double, std::milli>(SyncEnd - SyncStart).count());
+}
+
+// Nanite-like viewport LOD: the GPU BVH is rebuilt from the per-camera monotonic cluster cut
+// (the same SelectMonotonicCut the CPU renderer uses) whenever the active cluster set changes.
+// Per-face material slots ride on every pyramid triangle, so materials survive at every level.
+// Glass instances stay out of the BVH (analytic glass spheres shade them, as in the full-res path).
+void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
+    const WorldRenderConfiguration& Config,
+    const PerspectiveCameraBasis&   Camera,
+    const WorldSceneSpecification&  Scene)
+{
+    NaniteLodStats.FullTriangleCount = static_cast<uint32_t>(Scene.SceneTree.Primitives.size());
+    if (!Config.NaniteLodEnabled || Scene.ClusterInstances.empty())
+    {
+        if (NaniteLodBuffersActive)
+        {
+            SynchronizeSceneResources(Scene, true);
+        }
+        NaniteLodStats.Enabled             = false;
+        NaniteLodStats.ActiveTriangleCount = NaniteLodStats.FullTriangleCount;
+        return;
+    }
+
+    const OrthonormalCameraBasis Basis = ComputeCameraBasis(Camera);
+    const float PixelsPerRadian = static_cast<float>(std::max(1u, Basis.HeightPx)) /
+        std::max(1.0e-5f, 2.0f * Basis.TanHalfFovY);
+    const float PixelError = std::clamp(Config.NanitePixelError, 0.10f, 16.0f);
+
+    struct InstanceCut
+    {
+        uint32_t InstanceIndex = 0u;
+        SpatialAcceleration::ClusterCutSelection Selection {};
+    };
+    std::vector<InstanceCut> Cuts;
+    Cuts.reserve(Scene.ClusterInstances.size());
+
+    uint64_t Signature = 1469598103934665603ull;
+    const auto MixSignature = [&Signature](uint64_t Value) noexcept
+    {
+        Signature = (Signature ^ Value) * 1099511628211ull;
+    };
+    MixSignature(static_cast<uint64_t>(std::lround(PixelError * 100.0f)));
+
+    uint32_t ActiveClusters  = 0u;
+    uint32_t ActiveTriangles = 0u;
+    for (uint32_t InstIdx = 0u; InstIdx < static_cast<uint32_t>(Scene.ClusterInstances.size()); ++InstIdx)
+    {
+        const RigidClusterInstance& Inst = Scene.ClusterInstances[InstIdx];
+        if (Inst.TransparentGlass)
+        {
+            continue;
+        }
+        if (Inst.PyramidAsset == nullptr || Inst.PyramidAsset->Clusters.empty() || Inst.UniformScale <= 1.0e-4f)
+        {
+            // An instance without a baked pyramid has no LOD representation; keep full-res BVH.
+            if (NaniteLodBuffersActive)
+            {
+                SynchronizeSceneResources(Scene, true);
+            }
+            NaniteLodStats.Enabled             = false;
+            NaniteLodStats.ActiveTriangleCount = NaniteLodStats.FullTriangleCount;
+            return;
+        }
+        const float Scale = std::max(1.0e-4f, Inst.UniformScale);
+        const Mathematics::Axis3D LocalCamera = (Camera.CameraOrigin - Inst.WorldTranslation) * (1.0f / Scale);
+        InstanceCut Cut {};
+        Cut.InstanceIndex = InstIdx;
+        Cut.Selection     = Inst.PyramidAsset->SelectMonotonicCut(LocalCamera, PixelsPerRadian, PixelError, false);
+        ActiveClusters += static_cast<uint32_t>(Cut.Selection.ActiveClusterIndices.size());
+        ActiveTriangles += Cut.Selection.ActiveTriangleCount;
+        MixSignature(InstIdx + 1u);
+        for (const uint32_t ClusterIdx : Cut.Selection.ActiveClusterIndices)
+        {
+            MixSignature(ClusterIdx + 1u);
+        }
+        Cuts.push_back(std::move(Cut));
+    }
+
+    NaniteLodStats.ActiveClusterCount  = ActiveClusters;
+    NaniteLodStats.ActiveTriangleCount = ActiveTriangles;
+    if (Signature == CachedNaniteCutSignature && NaniteLodBuffersActive)
+    {
+        NaniteLodStats.Enabled = true;
+        return;
+    }
+
+    // Emit world-space triangles for the active cut only.
+    std::vector<SpatialAcceleration::RayTrianglePrimitive>  LodPrims;
+    std::vector<SpatialAcceleration::TriangleSmoothNormals> LodNormals;
+    LodPrims.reserve(std::max(1u, ActiveTriangles));
+    LodNormals.reserve(std::max(1u, ActiveTriangles));
+    uint32_t LevelTriangles[8] {};
+    uint32_t LevelClusters[8] {};
+    uint32_t PrimOrdinal = 0u;
+    for (const InstanceCut& Cut : Cuts)
+    {
+        const RigidClusterInstance& Inst = Scene.ClusterInstances[Cut.InstanceIndex];
+        const auto* Pyramid = Inst.PyramidAsset;
+        const float Scale = std::max(1.0e-4f, Inst.UniformScale);
+        for (const uint32_t ClusterIdx : Cut.Selection.ActiveClusterIndices)
+        {
+            const auto& Cluster = Pyramid->Clusters[ClusterIdx];
+            const uint32_t Level = std::min(7u, static_cast<uint32_t>(Cluster.HierarchyLevel));
+            LevelClusters[Level] += 1u;
+            LevelTriangles[Level] += Cluster.TriangleCount;
+            for (uint32_t TriOff = 0u; TriOff < Cluster.TriangleCount; ++TriOff)
+            {
+                const auto& Tri = Pyramid->Triangles[Cluster.TriangleStartOffset + TriOff];
+                const Mathematics::Axis3D W0 = Inst.WorldTranslation + Pyramid->Positions[Tri.VertexIndex0] * Scale;
+                const Mathematics::Axis3D W1 = Inst.WorldTranslation + Pyramid->Positions[Tri.VertexIndex1] * Scale;
+                const Mathematics::Axis3D W2 = Inst.WorldTranslation + Pyramid->Positions[Tri.VertexIndex2] * Scale;
+                SpatialAcceleration::RayTrianglePrimitive Prim {};
+                Prim.Corner0          = W0;
+                Prim.Edge01           = W1 - W0;
+                Prim.Edge02           = W2 - W0;
+                Prim.SourceFaceIndex  = Tri.SourceFaceIndex;
+                Prim.MaterialOrdinal  = Tri.MaterialOrdinal; // per-face material slot, preserved by the bake
+                Prim.OpaqueMask       = 1u;
+                Prim.PrimitiveOrdinal = PrimOrdinal++;
+                LodPrims.push_back(Prim);
+                SpatialAcceleration::TriangleSmoothNormals Smooth {};
+                Smooth.Normal0 = GeometrySpace::UnpackOctahedralDirection32(Tri.PackedNormal0);
+                Smooth.Normal1 = GeometrySpace::UnpackOctahedralDirection32(Tri.PackedNormal1);
+                Smooth.Normal2 = GeometrySpace::UnpackOctahedralDirection32(Tri.PackedNormal2);
+                LodNormals.push_back(Smooth);
+            }
+        }
+    }
+    if (LodPrims.empty())
+    {
+        NaniteLodStats.Enabled = false;
+        return;
+    }
+
+    SpatialAcceleration::WideBoundingTree LodTree {};
+    if (!LodTree.BuildFromTrianglePrimitivesWithNormals(LodPrims, LodNormals) || LodTree.WideEntries.empty())
+    {
+        NaniteLodStats.Enabled = false;
+        return;
+    }
+
+    const uint64_t BvhBytes = LodTree.WideEntries.size() * sizeof(SpatialAcceleration::WideTreeEntry);
+    if (!UploadToDeviceBuffer(BvhEntryBuffer, LodTree.WideEntries.data(), BvhBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+    {
+        NaniteLodStats.Enabled = false;
+        return;
+    }
+    UploadedBvhCount = static_cast<uint32_t>(LodTree.WideEntries.size());
+
+    const bool HasNormals = (LodTree.PrimitiveNormals.size() == LodTree.Primitives.size());
+    std::vector<GpuShadedTriangle96> ShadedTris(LodTree.Primitives.size());
+    for (std::size_t Idx = 0u; Idx < LodTree.Primitives.size(); ++Idx)
+    {
+        const auto& Prim = LodTree.Primitives[Idx];
+        Mathematics::Axis3D N0 = HasNormals ? LodTree.PrimitiveNormals[Idx].Normal0 : Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02), { 0.0f, 0.0f, 1.0f });
+        Mathematics::Axis3D N1 = HasNormals ? LodTree.PrimitiveNormals[Idx].Normal1 : N0;
+        Mathematics::Axis3D N2 = HasNormals ? LodTree.PrimitiveNormals[Idx].Normal2 : N0;
+        GpuShadedTriangle96 OutTri {};
+        OutTri.Corner0Pad[0]  = Prim.Corner0.X;
+        OutTri.Corner0Pad[1]  = Prim.Corner0.Y;
+        OutTri.Corner0Pad[2]  = Prim.Corner0.Z;
+        OutTri.Edge01Pad[0]   = Prim.Edge01.X;
+        OutTri.Edge01Pad[1]   = Prim.Edge01.Y;
+        OutTri.Edge01Pad[2]   = Prim.Edge01.Z;
+        OutTri.Edge02Pad[0]   = Prim.Edge02.X;
+        OutTri.Edge02Pad[1]   = Prim.Edge02.Y;
+        OutTri.Edge02Pad[2]   = Prim.Edge02.Z;
+        OutTri.Normal0Pad[0]  = N0.X;
+        OutTri.Normal0Pad[1]  = N0.Y;
+        OutTri.Normal0Pad[2]  = N0.Z;
+        OutTri.Normal1Pad[0]  = N1.X;
+        OutTri.Normal1Pad[1]  = N1.Y;
+        OutTri.Normal1Pad[2]  = N1.Z;
+        OutTri.Normal2Slot[0] = N2.X;
+        OutTri.Normal2Slot[1] = N2.Y;
+        OutTri.Normal2Slot[2] = N2.Z;
+        OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+        ShadedTris[Idx]       = OutTri;
+    }
+    const uint64_t TriBytes = ShadedTris.size() * sizeof(GpuShadedTriangle96);
+    if (!UploadToDeviceBuffer(ShadedTriangleBuffer, ShadedTris.data(), TriBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+    {
+        NaniteLodStats.Enabled = false;
+        return;
+    }
+
+    const uint32_t PreviousRebuilds = NaniteLodStats.GeometryRebuildCount;
+    NaniteLodStats = {};
+    NaniteLodStats.Enabled              = true;
+    NaniteLodStats.ActiveClusterCount   = ActiveClusters;
+    NaniteLodStats.ActiveTriangleCount  = static_cast<uint32_t>(LodPrims.size());
+    NaniteLodStats.FullTriangleCount    = static_cast<uint32_t>(Scene.SceneTree.Primitives.size());
+    NaniteLodStats.GeometryRebuildCount = PreviousRebuilds + 1u;
+    for (uint32_t Level = 0u; Level < 8u; ++Level)
+    {
+        NaniteLodStats.LevelTriangleCount[Level] = LevelTriangles[Level];
+        NaniteLodStats.LevelClusterCount[Level]  = LevelClusters[Level];
+    }
+    CachedNaniteCutSignature = Signature;
+    NaniteLodBuffersActive   = true;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1712,6 +1914,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     {
         SynchronizeSceneResources(Scene, true);
     }
+    RefreshNaniteLodGeometry(Config, Camera, Scene);
 
     const auto StartClock = std::chrono::steady_clock::now();
     LastViewportTiming = {};

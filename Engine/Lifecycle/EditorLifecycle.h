@@ -199,6 +199,8 @@ private:
     uint32_t                                                         LastSdfPenumbraIndex = UINT32_MAX;
     uint32_t                                                         LastReflectionSource = UINT32_MAX;
     uint32_t                                                         LastTraceResolutionIdx = UINT32_MAX;
+    bool                                                             LastClusterLodEnabled  = true;
+    float                                                            LastClusterLodPixelError = 1.25f;
     uint32_t                                                         LastPathTraceTargetSpp = 256u;
     uint32_t                                                         LastPathTraceBatchSpp  = 1u;
     bool                                                             LastXeGtaoEnabled    = false;

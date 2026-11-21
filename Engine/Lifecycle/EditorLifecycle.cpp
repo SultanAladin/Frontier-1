@@ -1923,6 +1923,8 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.XeGtaoStrength     = DisplayCfg.XeGtaoStrength;
     RenderConfig.PathTraceSamples   = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
     RenderConfig.PathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
+    RenderConfig.NaniteLodEnabled   = DisplayCfg.ClusterLodEnabled;
+    RenderConfig.NanitePixelError   = DisplayCfg.ClusterLodPixelError;
     RenderConfig.QualityTier        = QTier;
     RenderConfig.ReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
     RenderConfig.RaytracingEnabled  = DisplayCfg.RaytracingEnabled;
@@ -2018,6 +2020,24 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             LatestViewportTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
             LatestViewportTiming.EditorTickMs = SavedTickMs;
         }
+    }
+
+    if (RenderedOnGpu && GpuWorldRenderer != nullptr && DisplayCfg.RenderEngineIndex < 4u)
+    {
+        // Live Nanite proof in the viewport footer: triangles actually traced vs full-res scene.
+        const auto& LodStats = GpuWorldRenderer->QueryNaniteLodStats();
+        char LodReadout[128] {};
+        if (LodStats.Enabled)
+        {
+            std::snprintf(
+                LodReadout, sizeof(LodReadout), "Nanite LOD %u tris · %u clusters (full %u)",
+                LodStats.ActiveTriangleCount, LodStats.ActiveClusterCount, LodStats.FullTriangleCount);
+        }
+        else
+        {
+            std::snprintf(LodReadout, sizeof(LodReadout), "Nanite LOD off · %u tris full-res", LodStats.FullTriangleCount);
+        }
+        Panes->Viewport.ConfigureProbeReadoutText(LodReadout);
     }
 
     if (!RenderedOnGpu)
@@ -2268,6 +2288,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.SdfShadowPenumbraIndex != LastSdfPenumbraIndex ||
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
+                DisplayCfg.ClusterLodEnabled != LastClusterLodEnabled ||
+                DisplayCfg.ClusterLodPixelError != LastClusterLodPixelError ||
                 DisplayCfg.PathTraceTargetSpp != LastPathTraceTargetSpp ||
                 DisplayCfg.PathTraceBatchSpp != LastPathTraceBatchSpp ||
                 DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
@@ -2291,6 +2313,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastSdfPenumbraIndex   = DisplayCfg.SdfShadowPenumbraIndex;
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
+            LastClusterLodEnabled  = DisplayCfg.ClusterLodEnabled;
+            LastClusterLodPixelError = DisplayCfg.ClusterLodPixelError;
             LastPathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
             LastPathTraceBatchSpp  = DisplayCfg.PathTraceBatchSpp;
             LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;

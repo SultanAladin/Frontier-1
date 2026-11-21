@@ -1170,6 +1170,61 @@ void ViewportPanel::RenderSettingsSheet(
         ConstructSppRow("PT Batch / Frame", BatchLabels.data(), BatchValues.data(), 4u, DisplaySettings.PathTraceBatchSpp);
     }
 
+    // Nanite-like cluster LOD: viewport traces the per-camera LOD cut instead of full-res geometry
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+            WorkspaceSurfaceColors::SecondaryInk, "Nanite LOD");
+        constexpr std::array<const char*, 2> LodLabels = {{ "Off", "On" }};
+        const float GroupW   = 102.0f;
+        const float CapsuleW = (GroupW - 4.0f) / 2.0f;
+        const float GroupX   = Sheet.Right() - 16.0f - GroupW;
+        for (uint32_t Idx = 0u; Idx < 2u; ++Idx)
+        {
+            const Rectangle2D Capsule{ GroupX + static_cast<float>(Idx) * (CapsuleW + 4.0f), RowY + 1.0f, CapsuleW, 22.0f };
+            const bool        Active = (DisplaySettings.ClusterLodEnabled == (Idx == 1u));
+            Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+            Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, LodLabels[Idx]);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, LodLabels[Idx]);
+            if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                DisplaySettings.ClusterLodEnabled = (Idx == 1u);
+            }
+        }
+        RowY += 32.0f;
+
+        if (DisplaySettings.ClusterLodEnabled)
+        {
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+                WorkspaceSurfaceColors::SecondaryInk, "LOD Error (px)");
+            constexpr std::array<const char*, 4> ErrLabels = {{ "0.5", "1.25", "2.5", "5" }};
+            constexpr std::array<float, 4>       ErrValues = {{ 0.5f, 1.25f, 2.5f, 5.0f }};
+            const float ErrGroupW   = 204.0f;
+            const float ErrCapsuleW = (ErrGroupW - 12.0f) / 4.0f;
+            const float ErrGroupX   = Sheet.Right() - 16.0f - ErrGroupW;
+            for (uint32_t Idx = 0u; Idx < 4u; ++Idx)
+            {
+                const Rectangle2D Capsule{ ErrGroupX + static_cast<float>(Idx) * (ErrCapsuleW + 4.0f), RowY + 1.0f, ErrCapsuleW, 22.0f };
+                const bool        Active = (std::fabs(DisplaySettings.ClusterLodPixelError - ErrValues[Idx]) < 0.01f);
+                Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+                Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+                const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, ErrLabels[Idx]);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                    Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, ErrLabels[Idx]);
+                if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+                {
+                    DisplaySettings.ClusterLodPixelError = ErrValues[Idx];
+                }
+            }
+            RowY += 32.0f;
+        }
+    }
+
     // Render Scale slider (50% .. 200%)
     RowY += 4.0f;
     WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 4.0f }, 11.0f, WorkspaceSurfaceColors::SecondaryInk, "Render Scale");
