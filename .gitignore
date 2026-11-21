@@ -30,3 +30,6 @@ Thumbs.db
 .env.local
 _Build/
 Experimental/FrontierEditor/dist/
+
+# Local Python tooling virtualenv
+.venv/

@@ -27,7 +27,7 @@ All four phases of `Documentation/Plans/ProjectBrowserWorkspacePlan.md` have bee
   - Added `PreserveConstructTemplates` on `RegisterShowcaseGalleryInOutliner` so all 27 unified Construct templates remain active.
   - Added `SynchronizeShowcaseGallerySceneLive`, `RebuildShowcaseSceneAcceleration` (`WideBoundingTree` + `SignedDistanceVolume`), `ConstructShowcasePrimitiveInOutliner`, `AssignShowcaseEntryBaseColor` (`ColourCodex` swatch -> linear OpenPBR `Diffuse.BaseColor`), `PickShowcaseGalleryEntryAtUv`, and `RaycastShowcasePlacementAtUv`.
 - **`Engine/Lifecycle/EditorLifecycle.{h,cpp}` & `Engine/Lifecycle/DesktopWorkspaceLaunch.{h,cpp}`**
-  - Wired Z-up (`+Z`) viewport navigation (RMB mouse-look + WASD/Q/E fly, MMB / Shift+RMB planar pan, Alt+LMB orbit, wheel dolly, `+`/`-`/`Fit` navigation capsule, `F` frame selection).
+  - Wired Z-up (`+Z`) viewport navigation (RMB mouse-look + WASD/Q/E fly, MMB / LMB+RMB planar pan, Alt+LMB orbit / Alt+RMB dolly / Alt+MMB pan, wheel fly-speed, `+`/`-`/`Fit` navigation capsule, `F` frame selection). LMB is reserved exclusively for gizmo drag & selection and never moves the camera.
   - Wired `W`/`E`/`R`/`U` `Editor::TransformGizmo` handle-filter shortcuts, GPU gizmo handle hover/drag (`BeginDragInteraction` / `EvaluateDragInteraction` / `EndDragInteraction` with `Ctrl` snap), and 3D ray click-to-select.
   - Registered live `ColourSlotRegistration` (`"ActiveWorldSurfaceColour"`) on `ContentBrowser` so `ColourCodex` swatches apply directly to the selected World specimen's OpenPBR `BaseColor`, plus `ContentCategory::Geometry` / `Simulations` spawning.
   - Added `Projects` capsule button in the top workspace bar to return cleanly to `ProjectBrowser` at any time.

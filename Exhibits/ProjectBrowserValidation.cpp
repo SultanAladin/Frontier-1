@@ -597,6 +597,50 @@ int main()
             return 1;
         }
 
+        // Regression: plain LMB drag must NEVER drive the camera (LMB belongs to Gizmo drag & selection only)
+        const Mathematics::Axis3D OriginBeforeLmb = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D TargetBeforeLmb = LiveBundle->EditorCamera.TargetPoint;
+        auto StepLmbDrag = [&](ImVec2 From, ImVec2 To)
+        {
+            Io.AddMousePosEvent(From.x, From.y);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMousePosEvent((From.x + To.x) * 0.5f, (From.y + To.y) * 0.5f);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMousePosEvent(To.x, To.y);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+        };
+        StepLmbDrag(ImVec2(700.0f, 300.0f), ImVec2(1000.0f, 520.0f));
+        const Mathematics::Axis3D OriginAfterLmb = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D TargetAfterLmb = LiveBundle->EditorCamera.TargetPoint;
+        const float LmbOriginDriftSq = Mathematics::EvaluateDot(
+            OriginAfterLmb - OriginBeforeLmb,
+            OriginAfterLmb - OriginBeforeLmb);
+        const float LmbTargetDriftSq = Mathematics::EvaluateDot(
+            TargetAfterLmb - TargetBeforeLmb,
+            TargetAfterLmb - TargetBeforeLmb);
+        if (LmbOriginDriftSq > 1.0e-6f || LmbTargetDriftSq > 1.0e-6f)
+        {
+            std::fprintf(
+                stderr,
+                "[FAIL] Plain LMB drag moved the camera (LmbOriginDriftSq=%.6f, LmbTargetDriftSq=%.6f). LMB is reserved for gizmo drag & selection.\n",
+                LmbOriginDriftSq,
+                LmbTargetDriftSq);
+            EditorSession.Finalize();
+            ImGui::DestroyContext(Ctx);
+            return 1;
+        }
+
         EditorSession.Finalize();
         ImGui::DestroyContext(Ctx);
     }
