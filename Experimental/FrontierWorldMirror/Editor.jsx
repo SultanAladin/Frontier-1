@@ -2878,11 +2878,6 @@ function App() {
                   ? ReferenceCards("details")
                   : null
               }
-              CloudCoverageCards={
-                ["clouds", "local-cloud"].includes(Subject.Panel)
-                  ? ReferenceCards("coverage")
-                  : null
-              }
               ReferenceCards={
                 ["sun", "wind", "clouds", "local-cloud", "light"].includes(
                   Subject.Panel,

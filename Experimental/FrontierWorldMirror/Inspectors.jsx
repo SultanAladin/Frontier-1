@@ -549,7 +549,6 @@ export function Inspector({
   AllValues = {},
   AllHidden = {},
   ReferenceCards = null,
-  CloudCoverageCards = null,
   ReferenceDetailCards = null,
   ForceOverlaySettings = null,
   OnChangeForceOverlay = null,
@@ -1197,191 +1196,25 @@ export function Inspector({
       Latitude: V("Latitude"),
       Longitude: V("Longitude"),
     });
-    const Dir = Array.isArray(Values.Direction) ? Values.Direction : null;
-    const DLen = Dir ? Math.hypot(Dir[0] || 0, Dir[1] || 0, Dir[2] || 0) : 0;
-    const Elevation =
-      DLen > 1e-4
-        ? (Math.asin(Math.max(-1, Math.min(1, Dir[2] / DLen))) * 180) / Math.PI
-        : Solved.Elevation;
-    const Azimuth =
-      DLen > 1e-4
-        ? ((((Math.atan2(Dir[0], Dir[1]) * 180) / Math.PI) % 360) + 360) % 360
-        : Solved.Azimuth;
+    // C++ parity (SunInspectorPanel @ 9864969): Sun Disk · Sunlight gain ·
+    // Day cycle · Observer / date · Solved direction — schema-driven controls.
     const SunDirectionNode = (
       <>
-        <div className="section-caption">
-          PROPERTIES <small>Light, direction & atmosphere</small>
-        </div>
-        <div className="tiles sun-tiles">
-          <Tile
-            Label="Enabled"
-            Context="sun"
-            On={!Hidden}
-            Action={ToggleHidden}
-            Large
-          />
-          <button disabled>↺ Reset</button>
-          <Tile Label="Sunlight" Large Disabled IconName="sun" />
-          <Tile Label="Sun disc" Large Disabled IconName="sun" />
-          <Tile
-            Label="Day cycle"
-            Large
-            IconName="celestial-orbit"
-            On={V("Animate")}
-            Action={() => AssignProperty("Animate", !V("Animate"))}
-          />
-          <Tile
-            Label={V("Animate") ? "Dynamic" : "Static"}
-            Large
-            IconName="celestial-orbit"
-            On={V("Animate")}
-            Action={() => AssignProperty("Animate", !V("Animate"))}
-          />
-        </div>
-        <div className="card-grid sun-properties">
-          <TransformPanel
-            Values={Values}
-            Change={Change}
-            Space="WORLD DIRECTION"
-            Rows={[["Direction", "axis", [0.42, -0.55, 0.72], -1, 1, 0.01]]}
-          />
-          <Card Title="Sun direction" Height={711} Class="direction-card">
-            <Metric
-              Value={Elevation.toFixed(1) + "°"}
-              Caption={
-                Elevation < 0 ? "Below the horizon" : "Above the horizon"
-              }
-            />
-            <div
-              className="graphic tall solved-gizmo"
-              title="Drag horizontally for azimuth, vertically for elevation (full 24h day & night). Edit Local Hours for exact solar time."
-            >
-              <SunGizmo
-                azimuth={Azimuth}
-                elevation={Elevation}
-                onChange={(NextAz, NextEl) => {
-                  const ElRad = (NextEl * Math.PI) / 180;
-                  const AzRad = (NextAz * Math.PI) / 180;
-                  Change("Direction", [
-                    Number((Math.cos(ElRad) * Math.sin(AzRad)).toFixed(4)),
-                    Number((Math.cos(ElRad) * Math.cos(AzRad)).toFixed(4)),
-                    Number(Math.sin(ElRad).toFixed(4)),
-                  ]);
-                  let BestH = Time;
-                  let BestErr = 1e9;
-                  for (let H = 0; H < 24; H += 0.25) {
-                    const S = Solar({
-                      LocalHours: H,
-                      Month: V("Month"),
-                      Day: V("Day of Month"),
-                      Latitude: V("Latitude"),
-                      Longitude: V("Longitude"),
-                    });
-                    const dEl = S.Elevation - NextEl;
-                    const dAz = ((S.Azimuth - NextAz + 540) % 360) - 180;
-                    const Err = dEl * dEl + dAz * dAz * 0.25;
-                    if (Err < BestErr) {
-                      BestErr = Err;
-                      BestH = H;
-                    }
-                  }
-                  Change("Local Hours", BestH);
-                }}
-              />
-            </div>
-            {F("Local Hours")}
-            <div className="solved-directions">
-              <div>
-                <small>Azimuth</small>
-                <Metric Value={Azimuth.toFixed(1) + "°"} />
-                <input
-                  type="range"
-                  disabled
-                  value={Azimuth}
-                  min="0"
-                  max="360"
-                />
-              </div>
-              <div>
-                <small>Elevation</small>
-                <Metric Value={Elevation.toFixed(1) + "°"} />
-                <input
-                  type="range"
-                  disabled
-                  value={Elevation}
-                  min="-90"
-                  max="90"
-                />
-              </div>
-            </div>
-            <p>Shared time above · angles solved by date / location</p>
-          </Card>
-        </div>
-      </>
-    );
-    const SunLightNode = (
-      <>
-        <div className="card-grid">
-          <Card Title="Sunlight intensity" Height={347} GraphHandled>
-            <Metric
-              Value={Number(V("Intensity")).toFixed(1)}
-              Unit="×"
-              Caption="Sunlight intensity multiplier"
-            />
-            <SunGraph V={V} Change={AssignProperty} Mode="gain" />
-            {F("Intensity")}
-            <div className="ends">
-              <span>0 ×</span>
-              <span>60 ×</span>
-            </div>
-          </Card>
-          <Card Title="Temperature" Height={347} GraphHandled>
-            <Metric
-              Value={V("Colour source") ? V("Temperature") : "RGB"}
-              Unit={V("Colour source") ? "K" : ""}
-            />
-            {F("Colour source")}
-            <div className="temperature-spectrum" />
-            <SunGraph V={V} Change={AssignProperty} Mode="temperature" />
-            <div className="ends">
-              <span>Warm</span>
-              <span>Cool</span>
-            </div>
-            {F("Temperature", !V("Colour source"))}
-            <p>Blackbody tint approximation · linear RGB</p>
-            {F("Sun Tint", !!V("Colour source"))}
-          </Card>
-          <Card Title="Daylight cycle" Height={329} GraphHandled>
-            <Metric
-              Value={`${String(Math.floor(Time)).padStart(2, "0")}:${String(Math.floor((Time % 1) * 60)).padStart(2, "0")}`}
-            />
-            <SunGraph V={V} Change={AssignProperty} Mode="day" />
-            {F("Local Hours")}
-          </Card>
-          <Card Title="Sun disc" Height={329}>
-            <Metric Value={Number(V("Angular Diameter")).toFixed(2) + "°"} />
-            <div
-              className="solar-disc"
-              style={{
-                "--diameter":
-                  Math.min(120, 20 + V("Angular Diameter") * 30) + "px",
-              }}
-            />
-            {F("Angular Diameter")}
-          </Card>
-        </div>
-        <Card Title="Dynamic settings" Wide GraphHandled>
-          <SunGraph V={V} Change={AssignProperty} Mode="year" />
-          {Fields(
-            "Animate",
-            "Day duration",
-            "Speed",
-            "Direct",
-            "Latitude",
-            "Longitude",
-            "Day of Month",
-            "Month",
-          )}
+        <Card Title="Day cycle">
+          {Fields("Local Hours", "Animate", "Day duration", "Speed")}
+        </Card>
+        <Card Title="Observer / date">
+          {Fields("Latitude", "Longitude", "Day of Month", "Month")}
+        </Card>
+        <Card Title="Solved direction">
+          <div className="readout">
+            <span>Elevation</span>
+            <output>{Solved.Elevation.toFixed(1)}°</output>
+          </div>
+          <div className="readout">
+            <span>Azimuth</span>
+            <output>{Solved.Azimuth.toFixed(1)}°</output>
+          </div>
           <div className="readout">
             <span>Declination</span>
             <output>{Solved.Declination.toFixed(2)}°</output>
@@ -1391,10 +1224,17 @@ export function Inspector({
             <output>{Solved.EquationOfTime.toFixed(2)} min</output>
           </div>
         </Card>
-        <p className="native-note">
-          Calibrated Tier 1 GTX Solar Contact-Clip + SDF Cone Penumbra running
-          live in WebGL2 (1:1 mirror of C++ SolarShadowSequence).
-        </p>
+      </>
+    );
+    const SunLightNode = (
+      <>
+        <Card Title="Sun Disk">
+          {Fields("Angular Diameter", "Sun Tint", "Colour source")}
+          {F("Temperature", !V("Colour source"))}
+        </Card>
+        <Card Title="Sunlight gain">
+          {Fields("Intensity", "Direct")}
+        </Card>
       </>
     );
     const SunEffectsNode = (
@@ -1407,13 +1247,6 @@ export function Inspector({
           <Glyph Name="arrow" />
         </div>
         {ReferenceCards}
-        <div className="section-caption">
-          BAKING <small>Native target bindings pending</small>
-        </div>
-        <div className="card-grid">
-          <Bake Title="Sun lighting bake" Sun />
-          <Bake Title="Sun disk bake" Sun />
-        </div>
       </>
     );
     Content = (
@@ -2189,81 +2022,40 @@ export function Inspector({
       </>
     );
   } else if (Subject.Panel === "atmosphere") {
+    // C++ parity (AtmosphereSkyInspectorPanel @ 9864969): Scattering ·
+    // Planet · Twilight · Live · Appearance · Baked Dome.
     const AtmosphereScatteringNode = (
       <>
-        <AtmosphereLab V={V} Change={AssignProperty} />
-        <Card Title="Atmosphere settings">{Tiles(["Line at civil only"])}</Card>
-        <Card Title="Atmospheric scattering" Height={485} GraphHandled>
-          <Metric
-            Value={V("Rayleigh").toFixed(1)}
-            Unit="×"
-            Caption="How air molecules scatter sunlight"
-          />
-          <AtmosphereProfile V={V} Change={AssignProperty} Mode="spectrum" />
-          {F("Rayleigh")}
+        <Card Title="Scattering">
+          {Fields("Rayleigh", "Mie", "Mie Anisotropy", "Ozone")}
         </Card>
-        <div className="card-grid">
-          <Card Title="Aerosol haze" Height={380} GraphHandled>
-            <Metric
-              Value={V("Mie").toFixed(2)}
-              Unit="×"
-              Caption="Suspended particles soften and attenuate light"
-            />
-            <AtmosphereProfile V={V} Change={AssignProperty} Mode="haze" />
-            {F("Mie")}
-          </Card>
-          <Card Title="Ozone absorption" Height={380} GraphHandled>
-            <Metric
-              Value={V("Ozone").toFixed(2)}
-              Unit="×"
-              Caption="Selective absorption across visible wavelengths"
-            />
-            <AtmosphereProfile V={V} Change={AssignProperty} Mode="ozone" />
-            {F("Ozone")}
-          </Card>
-        </div>
+        <Card Title="Twilight">
+          {Fields("Horizon Glow", "White Line", "Line at civil only")}
+        </Card>
       </>
     );
     const AtmosphereDensityNode = (
       <>
-        <Card Title="Density falloff" Height={410} GraphHandled>
-          {F("Rayleigh Scale H")}
-          <AtmosphereProfile V={V} Change={AssignProperty} Mode="height" />
-          {F("Mie Scale H")}
+        <Card Title="Planet">
+          {Fields("Rayleigh Scale H", "Mie Scale H", "Atmosphere")}
         </Card>
-        <Card Title="Ground reflectance" Height={150}>
-          {F("Ground Albedo")}
-          <p>
-            Original RGB ground albedo · applied separately, not stored in the
-            smooth dome bake.
-          </p>
+        <Card Title="Live">
+          {Fields("Air Mass", "Tier Samples")}
         </Card>
-        <Card Title="Native atmosphere controls">
-          {Fields(
-            "Mie Anisotropy",
-            "Atmosphere",
-            "Horizon Glow",
-            "White Line",
-            "Sky Tint",
-            "Sky Brightness",
-            "Air Mass",
-            "Tier Samples",
-          )}
+        <Card Title="Appearance">
+          {Fields("Sky Tint", "Sky Brightness", "Ground Albedo")}
         </Card>
       </>
     );
     const AtmosphereBakingNode = (
       <>
-        <div className="section-caption">BAKING</div>
-        <Bake Title="Atmosphere bake" Sun />
-        <Card Title="Baked atmosphere" Height={210}>
-          <div className="empty-image">No resident atmosphere image</div>
+        <Card Title="Baked Dome">
+          {F("Fetch Baked Dome", true)}
+          {Fields("Dome Path", "Sheet")}
           <p>
             Load / bake requires the native engine. No completed bake is
             simulated.
           </p>
-          {F("Fetch Baked Dome", true)}
-          {Fields("Dome Path", "Sheet")}
         </Card>
       </>
     );
@@ -2592,6 +2384,31 @@ export function Inspector({
     );
   } else if (["clouds", "local-cloud"].includes(Subject.Panel)) {
     const Local = Subject.Panel === "local-cloud";
+    // C++ parity (CloudsInspectorPanel @ 9864969): Shape · Altitude ·
+    // Tier Budget · Cloud Shadows · Shadow Clock · Wind binding.
+    const GroupCard = (Group, Extra = null) => (
+      <Card Title={Group} key={Group}>
+        {Sheet.filter((Field) => Field.Group === Group).map((Field) =>
+          F(Field.Label),
+        )}
+        {Extra}
+      </Card>
+    );
+    const WindBindingCard = (
+      <Card Title="Wind binding" key="Wind binding">
+        {Sheet.filter((Field) => Field.Group === "Wind binding").map((Field) =>
+          F(Field.Label),
+        )}
+        <WindBinding
+          Values={Values}
+          Change={Change}
+          Fields={WindFields}
+          Open={OpenWindField}
+          AllValues={AllValues}
+          Hidden={AllHidden}
+        />
+      </Card>
+    );
     const CloudSettingsNode = (
       <>
         {Values.ReferenceInspector?.Locked && (
@@ -2607,115 +2424,30 @@ export function Inspector({
           </button>
         )}
         {ReferenceCards}
-        <Card Title="Cloud settings" Height={165}>
-          {Tiles(["Enabled", "Follow Wind"])}
-        </Card>
-        <section
-          className="cloud-coverage-replacement"
-          data-card="Cloud coverage"
-        >
-          {CloudCoverageCards}
-          {F("Coverage")}
-        </section>
+        {Local ? GroupCard("Transform") : GroupCard("Shape")}
       </>
     );
     const CloudVolumeNode = (
       <>
-        <div className="card-grid">
-          <Card Title="Cloud base" Height={452} GraphHandled>
-            <Metric
-              Value={(V("Base") / 1000).toFixed(2)}
-              Unit="km"
-              Caption={
-                Local
-                  ? "Lower bound · centre Z − half height"
-                  : "World Z altitude · drag the base line"
-              }
-            />
-            <CloudDeckPanel V={V} Change={AssignProperty} Local={Local} />
-            {!Local && F("Base")}
-          </Card>
-          <Card Title="Layer thickness" Height={452} GraphHandled>
-            <Metric
-              Value={(V("Thickness") / 1000).toFixed(2)}
-              Unit="km"
-              Caption={
-                Local
-                  ? "Bounded depth · twice half height"
-                  : "Vertical development · density profile"
-              }
-            />
-            <CloudSection V={V} Change={AssignProperty} Local={Local} />
-            {!Local && F("Thickness")}
-          </Card>
-        </div>
-        {Local && (
-          <Card Title="Local bounds" Height={452}>
-            <TransformPanel
-              Values={Values}
-              Change={Change}
-              Compact
-              Space="WORLD SPACE"
-              Rows={[
-                [
-                  "Centre",
-                  "m",
-                  Sheet.find((Field) => Field.Label === "Centre").Default,
-                  -100000,
-                  100000,
-                  1,
-                ],
-                [
-                  "Half Size",
-                  "m",
-                  Sheet.find((Field) => Field.Label === "Half Size").Default,
-                  0.001,
-                  100000,
-                  1,
-                ],
-              ]}
-            />
-            <CloudBounds V={V} Change={AssignProperty} />
-          </Card>
+        {Local ? (
+          GroupCard("Body")
+        ) : (
+          <>
+            {GroupCard("Altitude")}
+            {GroupCard("Tier Budget")}
+          </>
         )}
-        <Card Title="Cloud body">
-          {Fields(
-            "Density",
-            "Feature Scale",
-            "Anisotropy",
-            ...(!Local ? ["Type", "Anvil", "Ceiling"] : []),
-          )}
-        </Card>
       </>
     );
     const CloudShadowsNode = (
       <>
         {!Local && (
-          <details className="property-card">
-            <summary>GPU cloud shadows · separate field</summary>
-            {Sheet.filter((Field) =>
-              ["Cloud Shadows", "Shadow Clock", "Tier Budget"].includes(
-                Field.Group,
-              ),
-            ).map((Field) => F(Field.Label))}
-            <PropertyGraph
-              Title="Cloud shadows"
-              Children={Sheet.filter((Field) =>
-                ["Cloud Shadows", "Shadow Clock", "Tier Budget"].includes(
-                  Field.Group,
-                ),
-              ).map((Field) => F(Field.Label))}
-            />
-          </details>
+          <>
+            {GroupCard("Cloud Shadows")}
+            {GroupCard("Shadow Clock")}
+          </>
         )}
-        <WindBinding
-          Values={Values}
-          Change={Change}
-          Fields={WindFields}
-          Open={OpenWindField}
-          AllValues={AllValues}
-          Hidden={AllHidden}
-        />
+        {WindBindingCard}
       </>
     );
     Content = (
