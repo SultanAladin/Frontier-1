@@ -700,7 +700,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 const Mathematics::Axis3D UnitSun   = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
                 const float               TanSunRad = std::tan(std::clamp(PreparedScene.Sun.SunAngularRadiusRadians, 1.0e-4f, 0.25f));
 
-                DirectLighting::SdfVoxelClipmapHierarchy OptionalClipmap {};
+                DirectLighting::DualCascadeClipmapVolume OptionalClipmap {};
                 const bool NeedsVoxelClipmap =
                     (Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfClipmapPenumbra ||
                      Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfPenumbraPlusConeGi);
