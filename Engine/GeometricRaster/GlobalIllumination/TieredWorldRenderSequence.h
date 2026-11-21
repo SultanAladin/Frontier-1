@@ -123,7 +123,9 @@ public:
     // Attaches an optional Vulkan 1.3 DeterministicPathTraceSequence for Order 3 (GameRealtime & SceneFinalRender)
     void AttachDeterministicPathTracer(DeterministicPathTraceSequence* Tracer) noexcept
     {
-        AttachedPathTracer = Tracer;
+        AttachedPathTracer        = Tracer;
+        SyncedPathTracerPrimCount = 0u;
+        SyncedPathTracerMatCount  = 0u;
     }
 
     // Compiles compact 32 B BounceSlabEntries for every registered OpenPBR material slot
@@ -154,11 +156,13 @@ public:
     [[nodiscard]] const AtmosphericSkySequence&    InspectSkySequence() const noexcept       { return SkySequence; }
 
 private:
-    DeterministicPathTraceSequence* AttachedPathTracer = nullptr;
-    OrthographicShadowCascade       FineContactClip    {};
-    OrthographicShadowCascade       CoarseContactClip  {};
-    DepthPyramidSequence            PreviousHiZ        {};
-    AtmosphericSkySequence          SkySequence        {};
+    DeterministicPathTraceSequence* AttachedPathTracer        = nullptr;
+    std::size_t                     SyncedPathTracerPrimCount = 0u;
+    uint32_t                        SyncedPathTracerMatCount  = 0u;
+    OrthographicShadowCascade       FineContactClip           {};
+    OrthographicShadowCascade       CoarseContactClip         {};
+    DepthPyramidSequence            PreviousHiZ               {};
+    AtmosphericSkySequence          SkySequence               {};
 };
 
 } // namespace Frontier::GeometricRaster

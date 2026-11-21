@@ -1240,7 +1240,8 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
         UploadSolarCascadeDepth(Scene);
     }
 
-    SceneUploadedOnce = true;
+    SceneUploadedOnce      = true;
+    ProgressiveSampleCount = 0u;
     const auto SyncEnd = std::chrono::steady_clock::now();
     LastSceneSyncMilliseconds = static_cast<float>(std::chrono::duration<double, std::milli>(SyncEnd - SyncStart).count());
 }
@@ -1693,10 +1694,31 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.LightGlassMaterialDebug[2] = UploadedMaterialCount;
     Uniforms.LightGlassMaterialDebug[3] = Config.DebugChannel;
 
-    Uniforms.EngineShadowReflPad[0] = static_cast<uint32_t>(Config.Engine);
+    const uint32_t EngineOrdinal   = static_cast<uint32_t>(Config.Engine);
+    const uint32_t PenumbraOrdinal = static_cast<uint32_t>(Config.SdfPenumbraMode);
+    const bool CameraOrModeShifted =
+        EngineOrdinal != LastEngineOrdinal ||
+        PenumbraOrdinal != LastPenumbraOrdinal ||
+        Mathematics::EvaluateLengthSquared(Camera.CameraOrigin - LastCameraOrigin) > 1.0e-7f ||
+        Mathematics::EvaluateLengthSquared(Basis.ForwardAxis - LastCameraForward) > 1.0e-7f;
+    if (CameraOrModeShifted || EngineOrdinal < static_cast<uint32_t>(WorldRenderEngine::PathTracerGameRealtime))
+    {
+        ProgressiveSampleCount = 0u;
+    }
+    LastEngineOrdinal   = EngineOrdinal;
+    LastPenumbraOrdinal = PenumbraOrdinal;
+    LastCameraOrigin    = Camera.CameraOrigin;
+    LastCameraForward   = Basis.ForwardAxis;
+
+    const uint32_t EffectiveFrameOrSample =
+        (EngineOrdinal >= static_cast<uint32_t>(WorldRenderEngine::PathTracerGameRealtime))
+            ? ProgressiveSampleCount++
+            : FrameIndex;
+
+    Uniforms.EngineShadowReflPad[0] = EngineOrdinal;
     Uniforms.EngineShadowReflPad[1] = static_cast<uint32_t>(Config.ShadowAlgorithm);
     Uniforms.EngineShadowReflPad[2] = static_cast<uint32_t>(Config.ReflectionSource);
-    Uniforms.EngineShadowReflPad[3] = FrameIndex;
+    Uniforms.EngineShadowReflPad[3] = EffectiveFrameOrSample;
 
     Uniforms.SunCascadeCenterSpan[0] = CachedSunCascade.CenterWorld.X;
     Uniforms.SunCascadeCenterSpan[1] = CachedSunCascade.CenterWorld.Y;
@@ -1731,7 +1753,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.AtmosphereMaskPad[2] = AtmosphericSkySequence::SkyViewHeightPx;
     Uniforms.AtmosphereMaskPad[3] =
         (Config.ReflectionsEnabled ? 0u : 2u) |
-        (Config.RaytracingEnabled  ? 0u : 8u);
+        (Config.RaytracingEnabled  ? 0u : 8u) |
+        ((static_cast<uint32_t>(Config.SdfPenumbraMode) & 0x7u) << 16u) |
+        ((static_cast<uint32_t>(Config.GiCandidate) & 0x3u) << 20u);
 
     {
         const auto& Atmo = Scene.Atmosphere;
@@ -2177,7 +2201,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const uint32_t EngIdx = static_cast<uint32_t>(Config.Engine);
     const bool ShadingDebug =
         (Config.DebugChannel == 0u || (Config.DebugChannel >= 8u && Config.DebugChannel <= 11u));
-    const bool SpatialDenoise = ShadingDebug && (EngIdx == 1u);
+    const bool SpatialDenoise =
+        ShadingDebug &&
+        ((EngIdx >= 1u && EngIdx <= 3u) || (EngIdx == 4u && EffectiveFrameOrSample < 24u));
 
     WriteStamp(6u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     if (SpatialDenoise)

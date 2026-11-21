@@ -1264,9 +1264,18 @@ bool DeterministicPathTraceSequence::ConfigureStudioScene(const DeterministicTra
         return false;
     }
 
-    const auto SceneStart = std::chrono::steady_clock::now();
-    Configuration         = NextConfiguration;
-    CustomSceneActive     = false;
+    const auto SceneStart     = std::chrono::steady_clock::now();
+    const bool WasCustomScene = CustomSceneActive;
+    Configuration             = NextConfiguration;
+    CustomSceneActive         = false;
+
+    if (WasCustomScene)
+    {
+        Vulkan->ReleaseBuffer(TrianglePosBuffer);
+        Vulkan->ReleaseBuffer(TriangleNormBuffer);
+        Vulkan->ReleaseBuffer(BoundsEntryBuffer);
+        UploadedVehicleCount = 0u;
+    }
 
     const std::vector<CpuMaterialDefinition> Materials    = ConstructStudioMaterialSlots(Configuration);
     const std::vector<float>                 PackedMats   = PackGpuMaterialFloats(Materials);

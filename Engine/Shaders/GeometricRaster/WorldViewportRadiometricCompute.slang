@@ -1,8 +1,8 @@
 /*============================================================================================================================================
                                                     WORLDVIEWPORTRADIOMETRICCOMPUTE.SLANG
 ============================================================================================================================================*/
-// 🧩 2-Engine GPU Compute Shader:
-// 0=MatCap, 1=OpenPbrDirect (Direct + 5 Shadow Lab algorithms + Analytical Sky Fill + BVH4 AO & Reflections + Glass Refraction)
+// 🧩 6-Engine Unified GPU Compute Shader:
+// 0=MatCap, 1=OpenPbrDirect, 2=RealTimeGiGtxLowEnd, 3=RealTimeGiHighEnd, 4=PathTracerGameRealtime, 5=PathTracerSceneFinalRender
 
 #define FRONTIER_ATMOSPHERE_EMBEDDED 1
 [[vk::binding(20, 0)]] StructuredBuffer<uint> PlanetaryCloudNoise;
@@ -792,24 +792,48 @@ float3 EvaluateAreaQuadLight(GpuAreaQuadLight Quad, float3 Pos, float3 N, float3
     float3 HalfU = RightT * Quad.CenterHalfWidth.w;
     float3 HalfV = UpB * Quad.RightHalfHeight.w;
 
-    const float2 GridSlices[2] = { float2(-0.42, -0.42), float2(0.42, 0.42) };
-    float3 RayOrig = Pos + N * 0.010;
-    uint   VisCnt  = 0u;
-    for (uint S = 0u; S < 2u; ++S)
+    uint   PenumbraMode = (WorldUniforms.AtmosphereMaskPad.w >> 16u) & 0x7u;
+    float3 RayOrig      = Pos + N * 0.010;
+    float  VisFactor    = 0.0;
+    if (PenumbraMode == 0u)
     {
-        float3 Target = Center + HalfU * GridSlices[S].x + HalfV * GridSlices[S].y;
-        float3 ToL    = Target - RayOrig;
-        float  Dist   = length(ToL);
-        if (Dist <= 1.0e-4) continue;
-        float3 DirL   = ToL / Dist;
-        if (dot(N, DirL) <= 0.0) continue;
-        if (!TraceSceneAnyHit(RayOrig, DirL, 0.032, max(0.040, Dist - 0.035)))
+        float3 ToL  = Center - RayOrig;
+        float  Dist = length(ToL);
+        if (Dist > 1.0e-4)
         {
-            ++VisCnt;
+            float3 DirL = ToL / Dist;
+            if (dot(N, DirL) > 0.0 && !TraceSceneAnyHit(RayOrig, DirL, 0.032, max(0.040, Dist - 0.035)))
+            {
+                VisFactor = 1.0;
+            }
         }
     }
-    if (VisCnt == 0u) return float3(0.0);
-    float VisFactor = float(VisCnt) * 0.5;
+    else
+    {
+        uint TapCount = (PenumbraMode >= 4u) ? 6u : 4u;
+        uint VisCnt   = 0u;
+        for (uint S = 0u; S < TapCount; ++S)
+        {
+            float  Rad    = sqrt((float(S) + 0.5) / float(TapCount)) * 0.82;
+            float  Ang    = float(S) * 2.39996323 + dot(Pos, float3(12.9898, 78.233, 37.719));
+            float3 Target = Center + HalfU * (Rad * cos(Ang)) + HalfV * (Rad * sin(Ang));
+            float3 ToL    = Target - RayOrig;
+            float  Dist   = length(ToL);
+            if (Dist <= 1.0e-4) continue;
+            float3 DirL   = ToL / Dist;
+            if (dot(N, DirL) <= 0.0) continue;
+            if (!TraceSceneAnyHit(RayOrig, DirL, 0.032, max(0.040, Dist - 0.035)))
+            {
+                ++VisCnt;
+            }
+        }
+        VisFactor = float(VisCnt) / float(TapCount);
+    }
+    if (VisFactor <= 1.0e-4) return float3(0.0);
+    if (PenumbraMode == 3u)
+    {
+        VisFactor = min(1.0, VisFactor * 1.08);
+    }
 
     float  NdotV = clamp(dot(N, V), 1.0e-4, 1.0);
     float3 T1    = V - N * NdotV;
@@ -1412,11 +1436,42 @@ void ShadePrimarySurfaceDemod(
     OutDiffuseAlbedoMatte = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - Metalness) * (1.0 - TransW);
 
     // 5. Secondary Specular Reflection (BVH4 WideTreeRaytrace or Analytical Sky Dome)
-    float CoatW = saturate(Mat.EdgeTintCoatWeight.w);
-    if (IsReflectionsEnabled() && (Metalness > 0.20 || CoatW > 0.20 || OutSpecRough < 0.24))
+    uint  EngineMode = WorldUniforms.EngineShadowReflPad.x;
+    float CoatW      = saturate(Mat.EdgeTintCoatWeight.w);
+    if (IsReflectionsEnabled() && (Metalness > 0.20 || CoatW > 0.20 || OutSpecRough < 0.24 || EngineMode == 3u))
     {
         float3 ReflDir = reflect(-ViewDir, N);
+        if (EngineMode == 3u && OutSpecRough > 0.04)
+        {
+            float3 BasisT, BasisB;
+            ConstructOrthonormalBasis(N, BasisT, BasisB);
+            float3 ViewLoc   = float3(dot(ViewDir, BasisT), dot(ViewDir, BasisB), max(1.0e-4, dot(ViewDir, N)));
+            float  Alpha     = max(1.0e-3, OutSpecRough * OutSpecRough);
+            float3 Stretched = normalize(float3(Alpha * ViewLoc.x, Alpha * ViewLoc.y, ViewLoc.z));
+            float  LenSq     = Stretched.x * Stretched.x + Stretched.y * Stretched.y;
+            float3 DiskT1    = (LenSq > 1.0e-10) ? (float3(-Stretched.y, Stretched.x, 0.0) * rsqrt(LenSq)) : float3(1.0, 0.0, 0.0);
+            float3 DiskT2    = cross(Stretched, DiskT1);
+            float  Rad       = sqrt(saturate(R2P.x));
+            float  Phi       = TauConst * R2P.y;
+            float  P1        = Rad * cos(Phi);
+            float  P2        = Rad * sin(Phi);
+            float  Blend     = 0.5 * (1.0 + Stretched.z);
+            P2               = (1.0 - Blend) * sqrt(max(0.0, 1.0 - P1 * P1)) + Blend * P2;
+            float3 Hemi      = P1 * DiskT1 + P2 * DiskT2 + sqrt(max(0.0, 1.0 - P1 * P1 - P2 * P2)) * Stretched;
+            float3 HalfLoc   = normalize(float3(Alpha * Hemi.x, Alpha * Hemi.y, max(1.0e-5, Hemi.z)));
+            float3 HalfWorld = normalize(BasisT * HalfLoc.x + BasisB * HalfLoc.y + N * HalfLoc.z);
+            float3 CandDir   = reflect(-ViewDir, HalfWorld);
+            if (dot(CandDir, Hit.GeomNormal) > 0.01)
+            {
+                ReflDir = CandDir;
+            }
+        }
         float3 EnvRad  = ShadeSecondaryBounce(Hit.Position + Hit.GeomNormal * 3.0e-3, ReflDir);
+        if (OutSpecRough > 0.12)
+        {
+            float MaxSecondary = lerp(32.0, 3.5, saturate((OutSpecRough - 0.12) / 0.68));
+            EnvRad = min(EnvRad, float3(MaxSecondary));
+        }
         float  Ior     = max(1.02, Mat.SpecParams.z);
         float  F0Diel  = pow((Ior - 1.0) / (Ior + 1.0), 2.0);
         float3 F0      = lerp(float3(F0Diel), Mat.DiffuseAlbedoRoughness.xyz, Metalness);
@@ -1429,6 +1484,28 @@ void ShadePrimarySurfaceDemod(
             Gloss   = max(Gloss, 1.0 - Mat.CoatRoughnessOptics.x);
         }
         OutSpecReflHdr = EnvRad * Fresnel * Gloss;
+    }
+
+    // 6. Order 2 Real-Time Indirect Diffuse Bounce GI (Engines 2 = GtxLowEnd, 3 = HighEnd)
+    if ((EngineMode == 2u || EngineMode == 3u) && dot(OutDiffuseAlbedoMatte, float3(1.0)) > 1.0e-4)
+    {
+        uint   BounceRays  = (EngineMode == 3u) ? 8u : 4u;
+        float3 BasisT, BasisB;
+        ConstructOrthonormalBasis(N, BasisT, BasisB);
+        float3 BounceOrig  = Hit.Position + Hit.GeomNormal * 0.014 + N * 0.006;
+        float3 IndirectSum = float3(0.0);
+        for (uint B = 0u; B < BounceRays; ++B)
+        {
+            float  U1   = frac((float(B) + 0.5) / float(BounceRays) + R2P.x);
+            float  U2   = frac(float(B) * 0.6180339887 + R2P.y);
+            float  SinT = sqrt(saturate(U1));
+            float  CosT = sqrt(max(0.0, 1.0 - U1));
+            float  Phi  = TauConst * U2;
+            float3 Dir  = normalize(BasisT * (SinT * cos(Phi)) + BasisB * (SinT * sin(Phi)) + N * CosT);
+            float3 Rad  = min(ShadeSecondaryBounce(BounceOrig, Dir), float3(6.5));
+            IndirectSum += Rad;
+        }
+        OutDirectBaseHdr += OutDiffuseAlbedoMatte * (IndirectSum / float(BounceRays));
     }
 }
 
@@ -1588,6 +1665,160 @@ float3 EvaluateVolumetricGodRaysGpu(
 //------------------------------------------------------------------------------------------------------------------------
 //                                           COMPUTE ENTRYPOINTS
 //------------------------------------------------------------------------------------------------------------------------
+
+float3 EvaluateProgressiveViewportPath(float3 CamOrigin, float3 PrimaryDir, uint2 PixelXY, uint SampleIndex, uint EngineMode)
+{
+    uint   MaxBounces = (EngineMode == 5u) ? 4u : 3u;
+    uint   MatCount   = max(1u, WorldUniforms.LightGlassMaterialDebug.z);
+    float3 SunDir     = WorldUniforms.SunDirConeTan.xyz;
+    float3 SunIrr     = WorldUniforms.SolarIrradiancePad.xyz;
+    float  TanSun     = max(0.004, WorldUniforms.SunDirConeTan.w);
+    uint   LightCnt   = min(4u, WorldUniforms.LightGlassMaterialDebug.x);
+    uint   PackedPhot = WorldUniforms.DenoiseStepParams.z;
+    uint   PhotProfs  = PackedPhot >> 16u;
+    uint   PhotLamps  = PackedPhot & 0xFFFFu;
+
+    float2 BaseShift = (EngineMode == 4u)
+        ? PixelR2(PixelXY)
+        : float2(0.0, 0.0);
+
+    float3 RayO       = CamOrigin;
+    float3 RayD       = PrimaryDir;
+    float3 Throughput = float3(1.0, 1.0, 1.0);
+    float3 Radiance   = float3(0.0, 0.0, 0.0);
+
+    for (uint Bounce = 0u; Bounce < MaxBounces; ++Bounce)
+    {
+        RayHitReading Hit   = TraceSceneClosest(RayO, RayD, (Bounce == 0u) ? 0.08 : 0.003, 120.0);
+        float         TriT  = Hit.Hit ? Hit.Distance : 120.0;
+        float         GlsT  = TriT;
+        int           GlsId = FindClosestGlassSphere(RayO, RayD, (Bounce == 0u) ? 0.08 : 0.003, TriT, GlsT);
+
+        if (GlsId >= 0)
+        {
+            GpuGlassSphere Glass  = WorldUniforms.GlassSpheres[GlsId];
+            float3         EntryP = RayO + RayD * GlsT;
+            float3         EntryN = normalize(EntryP - Glass.CenterRadiusPacked.xyz);
+            float          Ior    = max(1.03, Glass.OpticsSlotPacked.x);
+            Radiance += Throughput * TraceThroughGlassSphere(EntryP, EntryN, RayD, Glass.CenterRadiusPacked.xyz, Glass.CenterRadiusPacked.w, Ior);
+            break;
+        }
+
+        if (!Hit.Hit)
+        {
+            Radiance += Throughput * ((Bounce == 0u) ? EvaluateBackgroundSkyCloudsGpu(RayD, float2(PixelXY)) : EvaluateSkyDome(RayD));
+            break;
+        }
+
+        GpuWorldMaterial80 Mat = MaterialEntries[min(Hit.MaterialSlot, MatCount - 1u)];
+        float3 N        = Hit.ShadingNormal;
+        float3 V        = -RayD;
+        float3 SafePos  = Hit.Position + Hit.GeomNormal * 0.012 + N * 0.006;
+        float3 Emissive = Mat.EmissiveRadiancePad.xyz;
+        if (Bounce > 0u)
+        {
+            Emissive = min(Emissive, float3(18.0));
+        }
+        Radiance += Throughput * Emissive;
+
+        float2 Xi = frac(BaseShift + float2(
+            frac(float(SampleIndex * 7u + Bounce * 3u + 1u) * 0.7548776662),
+            frac(float(SampleIndex * 7u + Bounce * 3u + 1u) * 0.5698402910)));
+
+        // Direct solar NEE with soft solar-disc jitter
+        if (dot(N, SunDir) > 1.0e-5)
+        {
+            float3 SunT, SunB;
+            ConstructOrthonormalBasis(SunDir, SunT, SunB);
+            float  DiscR  = sqrt(Xi.x) * TanSun;
+            float  DiscPh = TauConst * Xi.y;
+            float3 JitSun = normalize(SunDir + SunT * (DiscR * cos(DiscPh)) + SunB * (DiscR * sin(DiscPh)));
+            if (dot(N, JitSun) > 0.0 && !TraceSceneAnyHit(SafePos, JitSun, 0.025, 110.0))
+            {
+                float CloudTr = EvaluateSolarCloudTransmittanceGpu(Hit.Position, SunDir);
+                Radiance += Throughput * EvaluateSurfaceBrdf(Mat, N, V, JitSun) * SunIrr * CloudTr;
+            }
+        }
+
+        // Direct area & photometric luminaires
+        for (uint L = 0u; L < LightCnt; ++L)
+        {
+            Radiance += Throughput * EvaluateAreaQuadLight(WorldUniforms.AreaLights[L], SafePos, N, V, Mat);
+        }
+        if (PhotProfs > 0u && PhotLamps > 0u)
+        {
+            for (uint PL = 0u; PL < PhotLamps; ++PL)
+            {
+                Radiance += Throughput * EvaluatePhotometricLampGpu(PhotometricLampEntries[PL], PhotProfs, SafePos, N, V, Mat);
+            }
+        }
+
+        // BSDF stochastic bounce selection (specular vs diffuse)
+        float  Rough    = clamp(Mat.SpecParams.x, 0.025, 1.0);
+        float  Metal    = saturate(Mat.SpecParams.y);
+        float  TransW   = saturate(Mat.CoatRoughnessOptics.y);
+        float  CoatW    = saturate(Mat.EdgeTintCoatWeight.w);
+        float  NdotV    = max(1.0e-4, dot(N, V));
+        float  Ior      = max(1.02, Mat.SpecParams.z);
+        float  F0Scalar = pow((Ior - 1.0) / (Ior + 1.0), 2.0);
+        float3 F0       = lerp(float3(F0Scalar), Mat.DiffuseAlbedoRoughness.xyz, Metal);
+        float3 Fresnel  = F0 + (float3(1.0) - F0) * pow(1.0 - NdotV, 5.0);
+        if (CoatW > 0.15 && Metal < 0.2)
+        {
+            Fresnel = max(Fresnel, float3((0.04 + 0.96 * pow(1.0 - NdotV, 5.0)) * CoatW));
+        }
+        float3 DiffAlb  = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - Metal) * (1.0 - TransW);
+        float  SpecLuma = dot(Fresnel, float3(0.2126, 0.7152, 0.0722));
+        float  DiffLuma = dot(DiffAlb, float3(0.2126, 0.7152, 0.0722));
+        float  SpecProb = clamp(SpecLuma / max(1.0e-4, SpecLuma + DiffLuma), 0.10, 0.92);
+
+        float2 BounceXi = frac(BaseShift + float2(
+            frac(float(SampleIndex * 11u + Bounce * 5u + 2u) * 0.6180339887),
+            frac(float(SampleIndex * 11u + Bounce * 5u + 2u) * 0.3247179572)));
+        float  LobeSel  = frac(BaseShift.x * 0.73 + BaseShift.y * 0.37 + float(SampleIndex * 3u + Bounce) * 0.41421356);
+
+        float3 BasisT, BasisB;
+        ConstructOrthonormalBasis(N, BasisT, BasisB);
+        if (LobeSel < SpecProb)
+        {
+            float3 ViewLoc   = float3(dot(V, BasisT), dot(V, BasisB), max(1.0e-4, dot(V, N)));
+            float  Alpha     = max(1.0e-3, Rough * Rough);
+            float3 Stretched = normalize(float3(Alpha * ViewLoc.x, Alpha * ViewLoc.y, ViewLoc.z));
+            float  LenSq     = Stretched.x * Stretched.x + Stretched.y * Stretched.y;
+            float3 DiskT1    = (LenSq > 1.0e-10) ? (float3(-Stretched.y, Stretched.x, 0.0) * rsqrt(LenSq)) : float3(1.0, 0.0, 0.0);
+            float3 DiskT2    = cross(Stretched, DiskT1);
+            float  Rad       = sqrt(saturate(BounceXi.x));
+            float  Phi       = TauConst * BounceXi.y;
+            float  P1        = Rad * cos(Phi);
+            float  P2        = Rad * sin(Phi);
+            float  Blend     = 0.5 * (1.0 + Stretched.z);
+            P2               = (1.0 - Blend) * sqrt(max(0.0, 1.0 - P1 * P1)) + Blend * P2;
+            float3 Hemi      = P1 * DiskT1 + P2 * DiskT2 + sqrt(max(0.0, 1.0 - P1 * P1 - P2 * P2)) * Stretched;
+            float3 HalfLoc   = normalize(float3(Alpha * Hemi.x, Alpha * Hemi.y, max(1.0e-5, Hemi.z)));
+            float3 HalfWorld = normalize(BasisT * HalfLoc.x + BasisB * HalfLoc.y + N * HalfLoc.z);
+            RayD             = reflect(-V, HalfWorld);
+            if (dot(RayD, Hit.GeomNormal) <= 0.0)
+            {
+                break;
+            }
+            Throughput *= Fresnel / SpecProb;
+        }
+        else
+        {
+            float  SinT = sqrt(saturate(BounceXi.x));
+            float  CosT = sqrt(max(0.0, 1.0 - BounceXi.x));
+            float  Phi  = TauConst * BounceXi.y;
+            RayD        = normalize(BasisT * (SinT * cos(Phi)) + BasisB * (SinT * sin(Phi)) + N * CosT);
+            if (dot(RayD, Hit.GeomNormal) <= 0.0)
+            {
+                break;
+            }
+            Throughput *= DiffAlb / (1.0 - SpecProb);
+        }
+        RayO = Hit.Position + Hit.GeomNormal * 0.006;
+    }
+    return min(Radiance, float3(32.0));
+}
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -1770,6 +2001,23 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GBufSunContrib[PixelIdx] = float4(0.0, 0.0, 0.0, HitDistForFog);
         GBufAlbedo[PixelIdx]     = float4(0.0, 0.0, 0.0, 1.0);
         PingShadowAo[PixelIdx]   = float4(1.0, 1.0, 0.0, 1.0);
+        return;
+    }
+
+    if ((EngineMode == 4u || EngineMode == 5u) && DebugMode == 0u)
+    {
+        uint   SampleIdx = WorldUniforms.EngineShadowReflPad.w;
+        float3 SampleHdr = EvaluateProgressiveViewportPath(CamOrigin, RayDir, DispatchThreadID.xy, SampleIdx, EngineMode);
+        float3 NextAccum = (SampleIdx == 0u)
+            ? SampleHdr
+            : lerp(AccumulationHdrBuffer[PixelIdx].xyz, SampleHdr, 1.0 / float(SampleIdx + 1u));
+        AccumulationHdrBuffer[PixelIdx] = float4(NextAccum, float(SampleIdx + 1u));
+        GBufPosMask[PixelIdx]           = float4(0.0, 0.0, 0.0, 0.0);
+        GBufNormAo[PixelIdx]            = float4(PrimaryHit.ShadingNormal, 1.0);
+        GBufDirectBase[PixelIdx]        = float4(NextAccum, HitDistForClouds);
+        GBufSunContrib[PixelIdx]        = float4(0.0, 0.0, 0.0, HitDistForFog);
+        GBufAlbedo[PixelIdx]            = float4(0.0, 0.0, 0.0, 1.0);
+        PingShadowAo[PixelIdx]          = float4(1.0, 1.0, 0.0, 1.0);
         return;
     }
 

@@ -47,6 +47,7 @@ public:
     [[nodiscard]] std::string_view           QueryAdapterTitle() const noexcept;
     [[nodiscard]] float                      QueryLastDispatchMilliseconds() const noexcept { return LastDispatchMilliseconds; }
     [[nodiscard]] float                      QueryLastSceneSyncMilliseconds() const noexcept { return LastSceneSyncMilliseconds; }
+    [[nodiscard]] uint32_t                   QueryProgressiveSampleCount() const noexcept { return ProgressiveSampleCount; }
     [[nodiscard]] const ViewportTimingBreakdown& QueryLastTimingBreakdown() const noexcept { return LastViewportTiming; }
 
     void SynchronizeSceneResources(
@@ -172,6 +173,11 @@ private:
     uint32_t               UploadedCatalogStarCount      = 0u;
     bool                   SceneUploadedOnce             = false;
     uint32_t               FrameSequenceIndex            = 0u;
+    uint32_t               ProgressiveSampleCount        = 0u;
+    uint32_t               LastEngineOrdinal             = UINT32_MAX;
+    uint32_t               LastPenumbraOrdinal           = UINT32_MAX;
+    Mathematics::Axis3D    LastCameraOrigin              {};
+    Mathematics::Axis3D    LastCameraForward             {};
     float                  LastDispatchMilliseconds      = 0.0f;
     float                  LastSceneSyncMilliseconds     = 0.0f;
     ViewportTimingBreakdown LastViewportTiming           {};

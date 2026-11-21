@@ -516,6 +516,52 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 PtCfg.TraceScale = 1u; // Match requested viewport dimensions 1:1 when driven by TieredWorldRenderSequence
             }
         }
+
+        if (!PreparedScene.SceneTree.Primitives.empty())
+        {
+            const std::size_t PrimCount = PreparedScene.SceneTree.Primitives.size();
+            const uint32_t    MatCount  = PreparedScene.MaterialRegister.QuerySlotCount();
+            if (SyncedPathTracerPrimCount != PrimCount || SyncedPathTracerMatCount != MatCount)
+            {
+                (void)AttachedPathTracer->ConfigureCustomWorldScene(PreparedScene, PtCfg);
+                SyncedPathTracerPrimCount = PrimCount;
+                SyncedPathTracerMatCount  = MatCount;
+            }
+
+            const Mathematics::Axis3D StudioOrigin {
+                CurrentCamera.CameraOrigin.X,
+                CurrentCamera.CameraOrigin.Z,
+                -CurrentCamera.CameraOrigin.Y,
+            };
+            const Mathematics::Axis3D StudioTarget {
+                CurrentCamera.TargetPoint.X,
+                CurrentCamera.TargetPoint.Z,
+                -CurrentCamera.TargetPoint.Y,
+            };
+            const Mathematics::Axis3D Delta = StudioOrigin - StudioTarget;
+            const float Dist = std::max(0.05f, Mathematics::EvaluateLength(Delta));
+            DeterministicOrbitCamera NextCam {};
+            NextCam.Target             = { StudioTarget.X, StudioTarget.Y, StudioTarget.Z };
+            NextCam.DistanceMeters     = Dist;
+            NextCam.PitchRadians       = std::asin(std::clamp(Delta.Y / Dist, -0.9999f, 0.9999f));
+            NextCam.YawRadians         = std::atan2(Delta.X, Delta.Z);
+            NextCam.FieldOfViewDegrees = std::clamp(CurrentCamera.VerticalFovRadians * 57.2957795f, 10.0f, 120.0f);
+
+            const auto& PrevCam = AttachedPathTracer->AccessConfiguration().Camera;
+            const bool CamChanged =
+                std::abs(PrevCam.YawRadians - NextCam.YawRadians) > 1.0e-4f ||
+                std::abs(PrevCam.PitchRadians - NextCam.PitchRadians) > 1.0e-4f ||
+                std::abs(PrevCam.DistanceMeters - NextCam.DistanceMeters) > 1.0e-4f ||
+                std::abs(PrevCam.Target[0] - NextCam.Target[0]) > 1.0e-4f ||
+                std::abs(PrevCam.Target[1] - NextCam.Target[1]) > 1.0e-4f ||
+                std::abs(PrevCam.Target[2] - NextCam.Target[2]) > 1.0e-4f ||
+                std::abs(PrevCam.FieldOfViewDegrees - NextCam.FieldOfViewDegrees) > 1.0e-3f;
+            if (CamChanged)
+            {
+                AttachedPathTracer->UpdateCamera(NextCam, TargetProfile == DeterministicRenderProfile::GameRealtime);
+            }
+        }
+
         (void)AttachedPathTracer->ResizeAccumulation(Result.WidthPx, Result.HeightPx);
         const uint32_t Batch = std::max(1u, Config.PathTraceSamples);
         (void)AttachedPathTracer->AdvanceSamples(Batch);

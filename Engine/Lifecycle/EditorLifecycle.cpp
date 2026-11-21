@@ -2109,7 +2109,11 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const auto TickPrepEnd = std::chrono::steady_clock::now();
             LatestViewportTiming.EditorTickMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(TickPrepEnd - TickStart).count());
-            if (InteractionWorldRefresh || SceneMutated || DisplayChanged)
+            const bool ProgressiveOrder3Active =
+                GpuReady &&
+                ((DisplayCfg.RenderEngineIndex == 4u && GpuWorldRenderer->QueryProgressiveSampleCount() < 64u) ||
+                 (DisplayCfg.RenderEngineIndex == 5u && GpuWorldRenderer->QueryProgressiveSampleCount() < 256u));
+            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active)
             {
                 RefreshShowcaseViewportRaster();
             }

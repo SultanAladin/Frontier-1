@@ -859,18 +859,25 @@ float3 WorldToBasis(OrthonormalBasis3 Basis, float3 World)
     return float3(dot(Basis.Tangent, World), dot(Basis.Bitangent, World), dot(Basis.Normal, World));
 }
 
-// Dupuy & Benyoub (2023) Spherical-Cap GGX Visible Normal Distribution Function (VNDF) sampler
+// Heitz (2018) Projected-Disk GGX Visible Normal Distribution Function (VNDF) sampler
 float3 SampleVisibleNormal(float3 ViewLocal, float Alpha, float2 Point)
 {
-    float3 Stretched     = normalize(float3(Alpha * ViewLocal.x, Alpha * ViewLocal.y, max(1.0e-5f, ViewLocal.z)));
-    float  Phi           = 2.0f * PiConstant * Point.x;
-    float  CapZ          = (1.0f - Point.y) * (1.0f + Stretched.z) - Stretched.z;
-    float  SinTheta      = sqrt(max(0.0f, 1.0f - CapZ * CapZ));
-    float3 HalfStretched = float3(
-        SinTheta * cos(Phi) + Stretched.x,
-        SinTheta * sin(Phi) + Stretched.y,
-        max(0.0f, CapZ + Stretched.z));
-    return normalize(float3(Alpha * HalfStretched.x, Alpha * HalfStretched.y, max(1.0e-6f, HalfStretched.z)));
+    float3 Stretched  = normalize(float3(Alpha * ViewLocal.x, Alpha * ViewLocal.y, max(1.0e-5f, ViewLocal.z)));
+    float  LengthSq   = Stretched.x * Stretched.x + Stretched.y * Stretched.y;
+    float3 Tangent1   = select(LengthSq > 1.0e-10f,
+                               float3(-Stretched.y, Stretched.x, 0.0f) * rsqrt(max(LengthSq, 1.0e-12f)),
+                               float3(1.0f, 0.0f, 0.0f));
+    float3 Tangent2   = cross(Stretched, Tangent1);
+    float  Radius     = sqrt(saturate(Point.x));
+    float  Phi        = 2.0f * PiConstant * Point.y;
+    float  DiskX      = Radius * cos(Phi);
+    float  DiskY      = Radius * sin(Phi);
+    float  Blend      = 0.5f * (1.0f + Stretched.z);
+    DiskY             = (1.0f - Blend) * sqrt(max(1.0f - DiskX * DiskX, 0.0f)) + Blend * DiskY;
+    float3 Hemisphere = DiskX * Tangent1
+                      + DiskY * Tangent2
+                      + sqrt(max(0.0f, 1.0f - DiskX * DiskX - DiskY * DiskY)) * Stretched;
+    return normalize(float3(Alpha * Hemisphere.x, Alpha * Hemisphere.y, max(1.0e-6f, Hemisphere.z)));
 }
 
 float2 ConcentricDisk(float2 Point)
