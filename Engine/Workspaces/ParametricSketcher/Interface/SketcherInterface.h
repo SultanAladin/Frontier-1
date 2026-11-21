@@ -982,7 +982,7 @@ struct SketcherWorkspaceStatus
     SketcherConstructRequest              ConstructForm  = {};                               // [-]   - Construct dialog values
     bool                                  ConstructOpen  = false;                            // [-]   - Construct dialog requested
     bool                                  ConstructShown = false;                            // [-]   - Construct dialog drawn this frame
-    int                                   ConstructSection = 0;                              // [-]   - Construct menu section: 0 Solids · 1 Sketch
+    int                                   ConstructSection = 0;                              // [-]   - Context menu: 0 Solids · 1 Sketch · 2 Reference · 3 Tools
     bool                                  ConstructMenuRequest = false;                      // [-]   - Construct catalogue popover requested
     bool                                  ConstructMenuAtPointer = false;                    // [-]   - Empty-space RMB anchors the catalogue at the pointer
     std::array<float, 2>                  ConstructMenuPointer = {};                         // [px]  - Requested viewport context-menu corner

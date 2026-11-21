@@ -13903,10 +13903,72 @@ void DrawConstructDialog(SketcherWorkspaceStatus& State)
     ImGui::EndPopup();
 }
 
-// 📝 Construct menu (index.html #construct-menu): 520 px popover under the viewport Construct chip, header (dot,
-//    Construct, Tab, close), a 132 px section column (Solids · Sketch), 4-column catalogue tiles of 72 px (the menu grows
-//    past 330 px with the rows). A tile starts the drawing command in the viewport (live dimension lines); Tab inside a
-//    solid command opens the exact-size form. Sketch carries every 2-D primitive and every curve form as its own tile.
+// 📝 The viewport Context menu: creation catalogues plus every command from the lower tool strip. Empty-space RMB opens
+//    it at the pointer; the header Menu chip opens the same popup. Construct remains one part of the context catalogue,
+//    rather than the name of the viewport header control.
+[[nodiscard]] bool ContextToolEnabled(const SketcherWorkspaceStatus& State, int Tool)
+{
+    const bool SketchCondition = std::any_of(State.Document.Tree.Steps.begin(), State.Document.Tree.Steps.end(), [](const FeatureStep& Step) { return Step.Kind == FeatureStepCategory::Sketch; });
+    switch (Tool)
+    {
+    case 0: return true;                                                                     // Select
+    case 1: return (SketchCondition || !State.Document.Regeneration.Curves.empty()) && !State.Bevel.ActiveCondition;
+    case 2: return SketchCondition && !State.Bevel.ActiveCondition;
+    case 3: return SketchCondition;
+    case 4: return SketchCondition || !State.Document.Regeneration.Curves.empty();
+    case 5: return !State.Bevel.ActiveCondition;
+    case 6: return State.Document.Summary.PresentCondition && !State.Bevel.ActiveCondition;
+    case 7: return SketchCondition && !State.Bevel.ActiveCondition;
+    case 8: return !State.Drawing.ActiveCondition && !State.Knife.ActiveCondition && !State.Bevel.ActiveCondition;
+    default: return false;
+    }
+}
+
+[[nodiscard]] bool ContextToolActive(const SketcherWorkspaceStatus& State, int Tool)
+{
+    switch (Tool)
+    {
+    case 0: return !State.Trim.ActiveCondition && !State.Fill.ActiveCondition && !State.DimensionTool.ActiveCondition && !State.Knife.ActiveCondition
+                && !State.Drawing.ActiveCondition && !State.Sweep.ActiveCondition;
+    case 1: return State.Trim.ActiveCondition && State.Trim.SplitCondition;
+    case 2: return State.Trim.ActiveCondition && State.Trim.InsertCondition;
+    case 3: return State.Trim.ActiveCondition && !State.Trim.SplitCondition && !State.Trim.InsertCondition;
+    case 4: return State.Fill.ActiveCondition;
+    case 5: return State.DimensionTool.ActiveCondition;
+    case 6: return State.Knife.ActiveCondition;
+    case 7: return State.Sweep.ActiveCondition && State.Sweep.Verb == SketcherSweepVerb::Offset;
+    case 8: return State.SurfaceTraceEnabled;
+    default: return false;
+    }
+}
+
+void ActivateContextTool(SketcherWorkspaceStatus& State, int Tool)
+{
+    if (!ContextToolEnabled(State, Tool)) return;
+    if (Tool == 0)
+    {
+        if (State.Drawing.ActiveCondition) CancelDrawingSession(State);
+        if (State.Sweep.ActiveCondition) CancelSweepSession(State);
+        if (State.Trim.ActiveCondition) CloseTrimSession(State);
+        if (State.Fill.ActiveCondition) CloseFillSession(State);
+        if (State.DimensionTool.ActiveCondition) CloseDimensionSession(State, "Dimension tool closed");
+        if (State.Knife.ActiveCondition) CloseKnifeSession(State, "Knife closed");
+    }
+    else if (Tool == 1) ContextToolActive(State, Tool) ? CloseTrimSession(State) : OpenTrimSession(State, true);
+    else if (Tool == 2) ContextToolActive(State, Tool) ? CloseTrimSession(State) : OpenTrimSession(State, false, true);
+    else if (Tool == 3) ContextToolActive(State, Tool) ? CloseTrimSession(State) : OpenTrimSession(State);
+    else if (Tool == 4) State.Fill.ActiveCondition ? CloseFillSession(State) : OpenFillSession(State);
+    else if (Tool == 5) ToggleDimensionSession(State);
+    else if (Tool == 6) State.Knife.ActiveCondition ? CloseKnifeSession(State, "Knife closed") : OpenKnifeSession(State);
+    else if (Tool == 7) OpenSweepSession(State, SketcherSweepVerb::Offset);
+    else if (Tool == 8)
+    {
+        State.SurfaceTraceEnabled = !State.SurfaceTraceEnabled;
+        State.InspectorTab = SketcherInspectorTab::Geometry;
+        Announce(State, State.SurfaceTraceEnabled ? "Surface tracing ON · Shift+S: Curve · Ctrl: model edge · Enter finishes" : "Surface tracing OFF · ordinary planar sketch tools");
+    }
+}
+
 struct SketcherConstructTile
 {
     const char*           Label;                                                             // [-] - Caption
@@ -13918,6 +13980,7 @@ struct SketcherConstructTile
     bool                  CentreCondition;                                                   // [-] - Sketch tool in centre mode
     bool                  SegmentCondition;                                                  // [-] - Line finishes on its second click
     SketchSplineForm      Form;                                                              // [-] - Curve form of a curve tile
+    int                   Tool = -1;                                                         // [idx] - Lower toolbar command; -1 is a creation tile
 };
 
 constexpr SketcherConstructTile ConstructSolids[] = {
@@ -13950,9 +14013,21 @@ constexpr SketcherConstructTile ConstructSketches[] = {
 constexpr SketcherConstructTile ConstructReferences[] = {
     { "Image plane", "ConstructImagePlane", IconSymbol::SketcherImage, false, {}, {}, false, false, SketchSplineForm::Hermite } };
 
+constexpr SketcherConstructTile ContextTools[] = {
+    { "Select", "ContextSelect", IconSymbol::SketcherSelect, false, {}, {}, false, false, SketchSplineForm::Hermite, 0 },
+    { "Split", "ContextSplit", IconSymbol::SketcherCut, false, {}, {}, false, false, SketchSplineForm::Hermite, 1 },
+    { "Point", "ContextPoint", IconSymbol::SketcherPoints, false, {}, {}, false, false, SketchSplineForm::Hermite, 2 },
+    { "Trim", "ContextTrim", IconSymbol::SketcherTrim, false, {}, {}, false, false, SketchSplineForm::Hermite, 3 },
+    { "Fill", "ContextFill", IconSymbol::SketcherFill, false, {}, {}, false, false, SketchSplineForm::Hermite, 4 },
+    { "Dimension", "ContextDimension", IconSymbol::SketcherSelect, false, {}, {}, false, false, SketchSplineForm::Hermite, 5 },
+    { "Knife", "ContextKnife", IconSymbol::SketcherSubtract, false, {}, {}, false, false, SketchSplineForm::Hermite, 6 },
+    { "Offset", "ContextOffset", IconSymbol::SketcherSelect, false, {}, {}, false, false, SketchSplineForm::Hermite, 7 },
+    { "Surface", "ContextSurface", IconSymbol::SketcherNurbs, false, {}, {}, false, false, SketchSplineForm::Hermite, 8 } };
+
 constexpr int ConstructSolidCount     = int(sizeof(ConstructSolids) / sizeof(ConstructSolids[0]));
 constexpr int ConstructSketchCount    = int(sizeof(ConstructSketches) / sizeof(ConstructSketches[0]));
 constexpr int ConstructReferenceCount = int(sizeof(ConstructReferences) / sizeof(ConstructReferences[0]));
+constexpr int ContextToolCount        = int(sizeof(ContextTools) / sizeof(ContextTools[0]));
 
 // Menu height [px]: header 41 + tile rows (72, gap 6, padding 10) + footer 28, never under the reference 330.
 [[nodiscard]] float ConstructMenuHeight(int Count)
@@ -13970,8 +14045,8 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     }
     // ⚠️ The section shown this frame is fixed here: a section click below changes State.ConstructSection, and the
     //    tiles must still come from the array TileCount was measured on (the next frame draws the new section).
-    const int   Displayed  = std::clamp(State.ConstructSection, 0, 2);
-    const int   TileCount  = Displayed == 2 ? ConstructReferenceCount : Displayed == 1 ? ConstructSketchCount : ConstructSolidCount;
+    const int   Displayed  = std::clamp(State.ConstructSection, 0, 3);
+    const int   TileCount  = Displayed == 3 ? ContextToolCount : Displayed == 2 ? ConstructReferenceCount : Displayed == 1 ? ConstructSketchCount : ConstructSolidCount;
     const float MenuHeight = ConstructMenuHeight(TileCount);
     ImVec2 MenuAnchor = State.ConstructMenuAtPointer ? ImVec2(State.ConstructMenuPointer[0], State.ConstructMenuPointer[1]) : Anchor;
     const ImVec2 Display = ImGui::GetIO().DisplaySize;
@@ -13996,7 +14071,7 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     Sheet.Line(Left, Top + 40.5f, Right, Top + 40.5f, SketcherWash(0x12));
     const float HeaderCentre = Top + 20.0f;
     Sheet.Surface().FillRectangle(Spanning(Left + 16.0f, HeaderCentre - 4.0f, 8.0f, 8.0f), SketcherInk(0x4fd8e0), 4.0f);
-    Sheet.Text(Left + 16.0f + 8.0f + 12.0f, HeaderCentre, 12.0f, SketcherInk(0xdddddd), "Construct", SketcherWeight::Regular);
+    Sheet.Text(Left + 16.0f + 8.0f + 12.0f, HeaderCentre, 12.0f, SketcherInk(0xdddddd), "Context", SketcherWeight::Regular);
     if (SheetIconButton(State, Sheet, "ConstructMenuClose", Right - 12.0f - 12.0f, HeaderCentre, 24.0f, IconSymbol::SketcherClose, 17.0f)) ImGui::CloseCurrentPopup();
     Sheet.TextRight(Right - 12.0f - 24.0f - 12.0f, HeaderCentre, 10.0f, SketcherInk(0xdddddd), "Tab");
     // #construct-sections — 132 px, #0003, #ffffff12 right border, padding 8 6; button 36 px, radius 7, 11 px.
@@ -14005,9 +14080,9 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     Sheet.Line(Left + 131.5f, Body, Left + 131.5f, Bottom, SketcherWash(0x12));
     // Sections: the reference catalogue's Solids and Sketch (3-D primitives become bodies, 2-D tools become sketches), and
     // Reference (image planes, outside the history).
-    static const char* const Sections[3] = { "Solids", "Sketch", "Reference" };
-    static const int         Counts[3]   = { ConstructSolidCount, ConstructSketchCount, ConstructReferenceCount };
-    for (int Index = 0; Index < 3; ++Index)
+    static const char* const Sections[4] = { "Solids", "Sketch", "Reference", "Tools" };
+    static const int         Counts[4]   = { ConstructSolidCount, ConstructSketchCount, ConstructReferenceCount, ContextToolCount };
+    for (int Index = 0; Index < 4; ++Index)
     {
         const PlaneExtent   Section = Spanning(Left + 6.0f, Body + 8.0f + float(Index) * 40.0f, 132.0f - 12.0f - 1.0f, 36.0f);
         const SketcherPress Press   = PressSketcherRegion(State.Widgets, std::string("ConstructSection") + Sections[Index], Section);
@@ -14018,7 +14093,7 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
         Sheet.TextRight(Section.MaximumX - 10.0f, Section.MinimumY + 18.0f, 9.0f, SketcherInk(0x777777), Compose("%d", Counts[Index]).c_str());
     }
     // #construct-tiles — 4 columns, gap 6, padding 10; .catalogue-tile 72 px, #ffffff0c, #ffffff12 border, radius 8, glyph 24.
-    const SketcherConstructTile* Tiles     = Displayed == 2 ? ConstructReferences : Displayed == 1 ? ConstructSketches : ConstructSolids;
+    const SketcherConstructTile* Tiles     = Displayed == 3 ? ContextTools : Displayed == 2 ? ConstructReferences : Displayed == 1 ? ConstructSketches : ConstructSolids;
     const float                  TilesLeft = Left + 132.0f + 10.0f;
     const float                  TileWidth = 0.25f * (Right - TilesLeft - 10.0f - 3.0f * 6.0f);
     for (int Index = 0; Index < TileCount; ++Index)
@@ -14026,36 +14101,43 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
         const SketcherConstructTile& Entry = Tiles[Index];
         const PlaneExtent   Tile  = Spanning(TilesLeft + float(Index % 4) * (TileWidth + 6.0f), Body + 10.0f + float(Index / 4) * (72.0f + 6.0f), TileWidth, 72.0f);
         const std::string   Name  = Entry.Key;
-        const SketcherPress Press = PressSketcherRegion(State.Widgets, Name, Tile);
-        Sheet.Box(Tile, SketcherWash(Press.HoveredCondition ? 0x1e : 0x0c), 8.0f, SketcherWash(Press.HoveredCondition ? 0x3c : 0x12));
+        const bool Enabled = Entry.Tool < 0 || ContextToolEnabled(State, Entry.Tool);
+        const bool Active  = Entry.Tool >= 0 && ContextToolActive(State, Entry.Tool);
+        const SketcherPress Press = PressSketcherRegion(State.Widgets, Name, Tile, Enabled);
+        Sheet.Box(Tile, SketcherWash(Active ? 0x22 : Press.HoveredCondition ? 0x1e : 0x0c), 8.0f, SketcherWash(Active ? 0x48 : Press.HoveredCondition ? 0x3c : 0x12));
         const float Stack = 24.0f + 9.0f + 10.0f * SketcherStyleTokens::FontScale;
         const float GlyphTop = Tile.MinimumY + 0.5f * (72.0f - Stack);
-        Sheet.Icon(Entry.Glyph, 0.5f * (Tile.MinimumX + Tile.MaximumX) - 12.0f, GlyphTop, 24.0f, SketcherInk(0xdddddd));
+        Sheet.Icon(Entry.Glyph, 0.5f * (Tile.MinimumX + Tile.MaximumX) - 12.0f, GlyphTop, 24.0f, SketcherInk(Enabled ? (Active ? 0xffffff : 0xdddddd) : 0x666666));
         const float Width = Sheet.Measure(Entry.Label, 10.0f);
         Sheet.Text(0.5f * (Tile.MinimumX + Tile.MaximumX - Width), GlyphTop + 24.0f + 9.0f + 0.5f * 10.0f * SketcherStyleTokens::FontScale, 10.0f,
-                   SketcherInk(Press.HoveredCondition ? 0xeeeeee : 0xaaaaaa), Entry.Label);
+                   SketcherInk(!Enabled ? 0x666666 : Press.HoveredCondition || Active ? 0xeeeeee : 0xaaaaaa), Entry.Label);
         if (Press.ClickedCondition)
         {
             ImGui::CloseCurrentPopup();
             // Construct is a separate tool family. Leaving Knife here clears its modal ownership before a normal
             // primitive/sketch session starts; otherwise Knife keeps intercepting the completed primitive.
-            if (State.Knife.ActiveCondition) CloseKnifeSession(State, "Knife closed · Construct tool active");
-            if (Displayed == 2) State.PopupRequest = "Image plane";
-            else if (Entry.SolidCondition) OpenSolidSession(State, Entry.Solid);
+            if (Entry.Tool >= 0) { ActivateContextTool(State, Entry.Tool); }
             else
             {
-                OpenDrawingSession(State, Entry.Sketch);
-                State.Drawing.CentreCondition  = Entry.CentreCondition;
-                State.Drawing.SegmentCondition = Entry.SegmentCondition;
-                if (Entry.Sketch == SketcherDrawingCategory::Curve) State.Drawing.Form = State.SurfaceTraceEnabled && Entry.Form != SketchSplineForm::Bezier ? SketchSplineForm::Nurbs : Entry.Form;
-                if (Entry.SegmentCondition) Announce(State, "Line: click the start, then the end · hold Shift for a straight axis · Esc aborts");
-                if (Entry.Sketch == SketcherDrawingCategory::Curve) Announce(State, std::string("Curve · ") + SketchSplineFormLabel(State.Drawing.Form) + (State.Drawing.SurfaceCondition ? ": click controls · 2 Bezier / 3 NURBS · no extra poles · Enter finishes · Esc aborts" : ": click points · 1-4 switch form · Enter / right-click finishes · Ctrl+Z drops a point · Esc aborts"));
+                if (State.Knife.ActiveCondition) CloseKnifeSession(State, "Knife closed · Construct tool active");
+                if (Displayed == 2) State.PopupRequest = "Image plane";
+                else if (Entry.SolidCondition) OpenSolidSession(State, Entry.Solid);
+                else
+                {
+                    OpenDrawingSession(State, Entry.Sketch);
+                    State.Drawing.CentreCondition  = Entry.CentreCondition;
+                    State.Drawing.SegmentCondition = Entry.SegmentCondition;
+                    if (Entry.Sketch == SketcherDrawingCategory::Curve) State.Drawing.Form = State.SurfaceTraceEnabled && Entry.Form != SketchSplineForm::Bezier ? SketchSplineForm::Nurbs : Entry.Form;
+                    if (Entry.SegmentCondition) Announce(State, "Line: click the start, then the end · hold Shift for a straight axis · Esc aborts");
+                    if (Entry.Sketch == SketcherDrawingCategory::Curve) Announce(State, std::string("Curve · ") + SketchSplineFormLabel(State.Drawing.Form) + (State.Drawing.SurfaceCondition ? ": click controls · 2 Bezier / 3 NURBS · no extra poles · Enter finishes · Esc aborts" : ": click points · 1-4 switch form · Enter / right-click finishes · Ctrl+Z drops a point · Esc aborts"));
+                }
             }
         }
     }
     // .construct-catalogue footer — 28 px, #ffffff12 top border, padding 8 10, 9 px #828282.
     Sheet.Line(Left + 132.0f, Bottom - 28.0f + 0.5f, Right, Bottom - 28.0f + 0.5f, SketcherWash(0x12));
-    Sheet.Text(Left + 132.0f + 10.0f, Bottom - 14.0f, 9.0f, SketcherInk(0x828282), Displayed == 2 ? "A picture on the top, front or right plane to trace over (not in the history)"
+    Sheet.Text(Left + 132.0f + 10.0f, Bottom - 14.0f, 9.0f, SketcherInk(0x828282), Displayed == 3 ? "The same editing tools as the lower viewport toolbar"
+                                                                                   : Displayed == 2 ? "A picture on the top, front or right plane to trace over (not in the history)"
                                                                                    : Displayed == 1 ? "Click a tool, then draw it in the viewport · Enter / right-click finishes"
                                                                                        : "Click a solid, then draw it in the viewport · Tab types exact sizes");
     ImGui::EndPopup();
@@ -15090,7 +15172,7 @@ float DrawSnapSelect(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, float
     return Select.MaximumX - Select.MinimumX;
 }
 
-// 📝 HTML .viewport-bar (44 px, padding 0 12, gap 4): the Construct chip, a divider, the camera-view select … the
+// 📝 HTML .viewport-bar (44 px, padding 0 12, gap 4): the Menu chip, a divider, the camera-view select … the
 //    Perspective text button and the edges / fit / maximize icon buttons.
 void DrawViewportBar(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const PlaneExtent& Bar)
 {
@@ -15098,11 +15180,11 @@ void DrawViewportBar(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const
     float       Cursor = Bar.MinimumX + 12.0f;
 
     // Fold stages when the viewport narrows (each keeps every control reachable): 1 Display glyph, 2 projection glyph,
-    // 3 Construct glyph, 4 a 70 px view select, 5 no view select (the orientation cube and Keypad 1 / 3 / 7 remain).
+    // 3 Menu glyph, 4 a 70 px view select, 5 no view select (the orientation cube and Keypad 1 / 3 / 7 remain).
     const char* Projection   = State.Camera.OrthographicEnabled ? "Parallel" : "Perspective";
     const char* SplitLabel   = ViewportLayoutShortLabel(State.SplitView.Layout);
     const float ChipHeight   = 2.0f + 14.0f + 11.0f * SketcherStyleTokens::FontScale;
-    const float ChipFull     = 2.0f + 26.0f + 15.0f + 9.0f + Sheet.Measure("Construct", 11.0f);   // [px]
+    const float ChipFull     = 2.0f + 26.0f + 15.0f + 9.0f + Sheet.Measure("Menu", 11.0f);        // [px]
     const float DisplayFull  = 10.0f + Sheet.Measure("Display", 11.0f) + 26.0f;                    // [px]
     const float DimFull      = 16.0f + Sheet.Measure("Dim", 11.0f);                                // [px]
     const float SplitFull    = 38.0f + Sheet.Measure(SplitLabel, 11.0f);                           // [px]
@@ -15125,12 +15207,12 @@ void DrawViewportBar(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const
     if (Stage >= 3)
     {
         Sheet.Icon(IconSymbol::SketcherPlus, Chip.MinimumX + 0.5f * (ChipHeight - 15.0f), Centre - 7.5f, 15.0f, ChipInk);
-        if (Construct.HoveredCondition) ImGui::SetTooltip("Construct: solids and sketch tools");
+        if (Construct.HoveredCondition) ImGui::SetTooltip("Context menu: solids, sketch creation and editing tools");
     }
     else
     {
         Sheet.Icon(IconSymbol::SketcherPlus, Chip.MinimumX + 14.0f, Centre - 7.5f, 15.0f, ChipInk);
-        Sheet.Text(Chip.MinimumX + 14.0f + 15.0f + 9.0f, Centre, 11.0f, ChipInk, "Construct");
+        Sheet.Text(Chip.MinimumX + 14.0f + 15.0f + 9.0f, Centre, 11.0f, ChipInk, "Menu");
     }
     if (Construct.ClickedCondition) { State.ConstructMenuAtPointer = false; State.ConstructMenuRequest = true; }
     Cursor = Chip.MaximumX + 4.0f;
