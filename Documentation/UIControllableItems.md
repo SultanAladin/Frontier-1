@@ -230,3 +230,110 @@ Editor.ImGuiPresent, Render.WorldViewportRgba8, Render.WorldViewportWithEngine, 
 thread; zero disk I/O while running) and written **once when the application closes** to
 `Logs/FrontierThoughtLog.txt` with calls / total / avg / min / max / P50 / P95 per scope — use it
 to target optimisations.
+
+---
+
+## 16. Debug Views — every channel, what it shows, values it requires
+
+Source: `ViewportDisplaySettings.DebugChannelIndex` (`ViewportPanel.h`) → `WorldRenderConfiguration.DebugChannel`
+→ shader `LightGlassMaterialDebug.w`. Control: header dropdown `00–16` + Settings sheet dropdown. All [UI].
+
+| # | View | What you see | Requires (engine state / buffers) | Value meaning |
+|---|---|---|---|---|
+| 00 | Lit (Off) | Final ACES-tonemapped render | Full lighting path | — |
+| 01 | Depth | Greyscale linearised depth | Primary hit distance | `pow(saturate(1 − dist/11 m), 1.8)`; white = near |
+| 02 | Albedo | Raw diffuse base colour | Material register | sRGB albedo 0–1 per channel |
+| 03 | Shading Normal | Smooth shading normal | Interpolated normals | `N×0.5+0.5` RGB |
+| 04 | Roughness | Greyscale specular roughness | Material `SpecParams.x` | 0 = mirror … 1 = matte |
+| 05 | Metalness | Greyscale metalness | Material `SpecParams.y` | 0 = dielectric … 1 = metal |
+| 06 | Cluster ID | Per-material false colour | Material slot id | Hash colour per slot+1 |
+| 07 | Geometric Normal | Flat face normal | Triangle geometry | `N×0.5+0.5` RGB |
+| 08 | Sun Shadow | Filtered sun visibility | Shadow pass + spatial filter | 0 = shadowed … 1 = lit |
+| 09 | Ambient Occlusion | **Filtered** SDF cone AO (à-trous) | GDF ready (`GdfReadyMask`), engines 1–2; BVH AO on engine 3 | 0 = occluded … 1 = open |
+| 10 | Direct Lighting | ACES(direct sun + area + IES only) | Direct pass, no GI/specular | HDR direct radiance |
+| 11 | Specular | ACES(reflections × specular AO) | Reflection source (BVH4 or sky) | HDR specular radiance |
+| 12 | SDF Distance [New] | Signed-distance heat at hit | GDF baked + ready | Red inside (<0) · green at surface (0) · blue ≥ 10 voxels away |
+| 13 | SDF with Materials [New] | Albedo lit by SDF gradient normal | GDF + materials + sun direction | Albedo × (0.18 + 0.82 × wrap N·L) |
+| 14 | SDF Normal [New] | GDF gradient normal (central differences, ε = 0.75 voxel) | GDF baked + ready | `∇SDF×0.5+0.5` RGB |
+| 15 | SDF AO Raw [New] | Cone AO **before** filtering | Same as 09, bypasses filter | 0–1; compare vs 09 to separate AO noise from filter blur |
+| 16 | SDF Cascade [New] | Which GDF cascade covers the hit | Both 64³ cascades baked | Green fine · orange coarse · red outside both |
+
+Notes for your prototype: channels 12–16 need a "GDF not baked" fallback state in the UI
+(shader returns albedo/black today); glass pixels render black on 01–07/12–16 (pre-existing);
+CPU Tiered path implements 13/15 only.
+
+## 17. Diagnostics overlay (F3) — readouts & values they require
+
+Source: `ViewportPanel::RenderDiagnosticsPanel` + `ViewportTimingBreakdown`
+(`Engine/Components/Diagnostics/ViewportTimingTelemetry.h`). Toggle: header button / F3.
+Panel 324×432 px, 4 tabs, pause button freezes sampling. History: 120 samples ring buffer,
+sparkline shows 60, target line at 16.67 ms (60 fps).
+
+| Tab | Readout | Unit | Derived from |
+|---|---|---|---|
+| Timing | Current frame time (big) | ms + fps | Latest Δt; fps = 1000/avg |
+| Timing | Average / Minimum / 95th pct / Maximum | ms | Sorted 120-sample history (P95 = index 95%) |
+| Scene | Constructed slots (big) | count | Outliner constructed entries |
+| Scene | Visible / Hidden | count | Constructed − visible |
+| Render | Render Scale (big) | % | `RenderScalePercent` 50–200 |
+| Render | Quality tier name | label | Low/Med/Std/High/Ultra |
+| Profiler | Frame total (big) | ms | `TotalFrameMs` (or current Δt fallback) |
+| Profiler | Resolution + Engine/Shadow labels | px + labels | `RenderWidthPx×RenderHeightPx`, engine/shadow enums |
+| Profiler | GPU World (primary trace) | ms | `GpuPrimaryTraceMs` (Vk timestamps) |
+| Profiler | GPU Denoise | ms | `GpuDenoiseMs` |
+| Profiler | GPU Clouds+Sky | ms | `GpuCloudsMs + GpuSkyLutMs` |
+| Profiler | GPU Readback | ms | `GpuReadbackCopyMs` |
+| Profiler | GPU Frame Total | ms | `GpuTotalPassMs` |
+| Profiler | UI + Gizmo | ms | `DesktopPollAndUiMs + GizmoOverlayMs` |
+| Profiler | Present / Swap | ms | `SwapchainPresentMs` |
+| Profiler | Scene sync (footer) | ms | `SceneSyncGpuMs`; log path label `FrontierTiming.log` |
+
+Other timing fields captured but **not yet displayed** (prototype candidates): `FrameIndex`,
+`HardwareGpuActive`, `GpuTimestampsValid`, `WorldDispatched`, `AdapterName`, `EditorTickMs`,
+`GpuHostSubmitWaitMs`, `TimingLogPath`.
+
+**Thought Log** (RAM → `Logs/FrontierThoughtLog.txt` at close): scopes `Host.Frame`,
+`Host.EditorTick`, `Editor.Tick`, `Editor.ViewportRaster`, `Editor.ViewportInteraction`,
+`Editor.GizmoOverlayRefresh`, `Editor.ImGuiPresent`, `Render.WorldViewportRgba8`,
+`Render.WorldViewportWithEngine`. Per scope: Calls · Total ms · Avg µs · P50 µs · P95 µs ·
+Max µs · Share %. Constants needing possible UI: ring capacity 1M samples, reservoir 1024/scope.
+
+## 18. Other settings NOT in the Inspector that need UI (with required values)
+
+### 18.1 Viewport header / toolbar (all [UI] today, keep in prototype)
+Execution Mode: Edit · Simulate · Play/Pause (segmented) · Split Viewport toggle + Active Pane
+(0/1) · Primary/Secondary Projection per pane: Perspective · Orthographic · Top · Front ·
+Right · Navigation capsule: Zoom In / Zoom Out / Fit View · Construct sheet open + category
+rail (All / Scene Primitives / Organization) + search text · Scene Title (text) · Probe/footer
+readout: `Fly Speed ×N.NN [· Sprint ×3]` (text) · Settings sheet open · Diagnostics open (F3).
+
+### 18.2 Viewport Settings sheet (gear) — exact controls & ranges
+Quality segmented Low/Med/Std/High/Ultra (0–4) · Toggles: Reflections, Anti-Aliasing,
+Raytracing, **XeGTAO (PBR AO)**, BVH4 Specular Trace (= Reflection Source WideTree/Sky),
+Physical Sky, Volumetric Clouds, Cloud Shadows, Sun/Moons/Stars, Day Cycle · Trace Resolution
+segmented Full / ½ / ¼ · Render Scale slider **50–200 % in 5 % steps** · Dropdowns: Engine (6),
+Shadow (5), SDF Penumbra (6), Debug View (17) · Time of Day stepper (hours/minutes from
+`SolarTimeOfDayHours` 0–24 h) · Cloud Cover / Wind steppers (see §4).
+
+### 18.3 Settings that exist in code but have NO control yet [Backend-UI candidates]
+| Setting | Field / location | Type | Range / default |
+|---|---|---|---|
+| XeGTAO Strength | `XeGtaoStrength` | slider | 0–2×, default 1.0 (plumbed, no slider yet) |
+| XeGTAO Search Radius | shader constant | slider | fixed 0.85 m (4 slices × 2 sides × 4 steps fixed) |
+| SDF AO Cone Radius | shader `Vox0×16` clamp | slider | 0.40–2.75 m effective |
+| SDF AO Strength | shader `×0.94` remap | slider | fixed 0.94, floor 0.06 |
+| Path Trace Samples | `PathTraceSamples` | stepper | default 4 spp (engines 4–5) |
+| GDF Grid Resolution | shader `GdfGridRes` | dropdown | fixed 64³ ×2 cascades (rebuild cost) |
+| GDF Fine/Coarse Span | `GlobalDistanceFine/CenterSpan` | numeric m | scene-dependent, auto-centred on camera |
+| Camera Fly Base Speed | fly solver constant | slider | 6.0 m/s × FlySpeedScalar (0.10–16) × sprint 3 / slow 0.3 |
+| Gizmo Snap Steps | `GizmoSnapSettings` | numeric | Move 0.25 m · Scale 0.10 · Rotate 5° (Ctrl-drag) |
+| Editor Max Step | `MaximumStep` | numeric s | 0.100 s clamp |
+| Window Size | `WindowDescriptor` | numeric px | 1600×980 default |
+| Diagnostics History | `IntervalHistoryMs` | stepper | fixed 120 samples |
+| Thought Log Capacity | ThoughtLog ring | stepper | fixed 1M samples / 1024 reservoir |
+
+### 18.4 Control Centre (top shade, not Inspector)
+Interface Scale **75–150 %** (`InterfaceScale/100`, clamped 0.75–1.5) · Theme: 8 colour schemes
++ corner radius + accent/semantic swatches (`ThemeRepository`) · Typography size/weight
+repository · Appearance tab (Display scale / Typography / Theme). Values: scale %, theme index,
+radius px — see `ControlCentrePanel` AppliedAppearance.
