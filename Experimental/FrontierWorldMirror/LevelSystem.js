@@ -14,12 +14,8 @@ import {
   ShowcaseInitialValues,
 } from "./ShowcaseGalleryScene.js";
 import { BuildDefaultDiagnosticForceRig } from "./ForceFieldCatalog.js";
-import {
-  BuildCylinderConeMaterial,
-  BuildTrafficConeMaterial,
-} from "./WorldDragDrop.js";
 
-export const LEVEL_STORAGE_KEY = "Frontier.WorldMirrorLevels.v6";
+export const LEVEL_STORAGE_KEY = "Frontier.WorldMirrorLevels.v7";
 
 const Clone = (Value) => JSON.parse(JSON.stringify(Value));
 
@@ -384,8 +380,205 @@ function BuildEmptyProvingGroundLevel(Id = "level-proving-ground", Name = "Empty
   };
 }
 
+//==========================================================================================================================
+// Frontier Lobby — the flagship default scene: an architectural showroom lobby staging the ControlVehicle on display
+// beside a Light Trainer Aircraft, under the canonical C++-parity Sun / Atmosphere-Sky / Volumetric Clouds.
+//==========================================================================================================================
+export function BuildFrontierLobbyLevel(
+  CustomId = "level-frontier-lobby",
+  CustomName = "Frontier Lobby",
+  CustomNotes = "",
+) {
+  const Rows = [
+    { Id: "scene", Name: CustomName, Panel: "group", Icon: "folder-scene", Parent: null, Description: "Architectural lobby · showcase vehicle & light aircraft" },
+    {
+      Id: "lobby-floor",
+      Name: "Lobby Stone Slab",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "scene",
+      Preview: true,
+      Description: "Polished large-format travertine slab · 11.50 × 7.60 m",
+    },
+    {
+      Id: "lobby-back-wall",
+      Name: "Lobby Back Wall",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "scene",
+      Preview: true,
+      Description: "Warm greige plaster backdrop · 11.50 × 3.00 m",
+    },
+    {
+      Id: "lobby-left-wall",
+      Name: "Timber Accent Wall",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "scene",
+      Preview: true,
+      Description: "Walnut-stained timber acoustic cladding · West returns",
+    },
+    {
+      Id: "lobby-right-wall",
+      Name: "Lobby East Wall",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "scene",
+      Preview: true,
+      Description: "Warm greige plaster · East returns",
+    },
+    {
+      Id: "control-vehicle",
+      Name: "ControlVehicle",
+      PrimitiveShape: "vehicle",
+      Panel: "geometry",
+      Icon: "vehicle",
+      Parent: "scene",
+      Preview: true,
+      Description: "ControlVehicle BVH Mesh · Showroom display car · Clearcoat",
+    },
+    {
+      Id: "lobby-aircraft",
+      Name: "Light Trainer Aircraft",
+      Panel: "geometry",
+      PropId: "light_aircraft",
+      Icon: "aircraft",
+      Parent: "scene",
+      Preview: true,
+      Description: "Display-scale high-wing trainer · 2.65 m span · fixed tricycle gear",
+    },
+    { Id: "cameras", Name: "Cameras", Panel: "group", Icon: "camera", Parent: null, Description: "Editor cameras" },
+    { Id: "camera", Name: "Editor Camera", Panel: "camera", Icon: "camera", Parent: "cameras", Description: "Permanent editor navigation camera" },
+    { Id: "post", Name: "ACES Post-Process", Panel: "post", Icon: "environment-exposure", Parent: "cameras", Description: "Exposure & tonemapping" },
+    { Id: "world", Name: "World", Panel: "group", Icon: "folder-world", Parent: null, Description: "Solar & sky environment" },
+    { Id: "sun", Name: "Lobby Sun", Panel: "sun", Icon: "sun", Parent: "world", Preview: true, Description: "Directional · 5.4 W/m²" },
+    { Id: "lighting", Name: "Lighting", Panel: "group", Icon: "folder-generic", Parent: null, Description: "Lobby display lighting" },
+    {
+      Id: "lobby-ceiling-wash",
+      Name: "Lobby Ceiling Wash",
+      Panel: "light",
+      Icon: "editor-area-light",
+      Parent: "lighting",
+      Preview: true,
+      Description: "LTC Quad · 2.40 × 1.60 m",
+    },
+  ];
+
+  const Values = {
+    scene: { Notes: CustomNotes || "Frontier showroom lobby · ControlVehicle & Light Trainer Aircraft on display." },
+    "lobby-floor": {
+      Position: [0.0, 0.25, -0.72],
+      Rotation: [0, 0, 0],
+      Scale: [11.5, 7.6, 0.16],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.52, 0.49, 0.44], Roughness: 0.3, DiffuseRoughness: 0.28 }),
+    },
+    "lobby-back-wall": {
+      Position: [0.0, 3.3, 0.78],
+      Rotation: [0, 0, 0],
+      Scale: [11.5, 0.18, 3.0],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.66, 0.62, 0.56], Roughness: 0.66 }),
+    },
+    "lobby-left-wall": {
+      Position: [-3.5, 0.45, 0.78],
+      Rotation: [0, 0, 0],
+      Scale: [0.18, 5.8, 3.0],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.42, 0.28, 0.17], Roughness: 0.55 }),
+    },
+    "lobby-right-wall": {
+      Position: [3.5, 0.45, 0.78],
+      Rotation: [0, 0, 0],
+      Scale: [0.18, 5.8, 3.0],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.6, 0.57, 0.52], Roughness: 0.6 }),
+    },
+    "control-vehicle": {
+      Position: [-1.35, 0.85, -0.64],
+      Rotation: [0, 0, 30],
+      Scale: [0.78, 0.78, 0.78],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({
+        Type: "Clear coat",
+        BaseLinear: [0.88, 0.91, 0.97],
+        Metallic: 0.22,
+        Roughness: 0.14,
+        Coat: 1.0,
+        CoatRoughness: 0.03,
+      }),
+    },
+    "lobby-aircraft": {
+      PropId: "light_aircraft",
+      Position: [1.62, 1.05, -0.19],
+      Rotation: [0, 0, -32],
+      Scale: [1, 1, 1],
+      "Cast shadows": true,
+      GI: true,
+    },
+    camera: {
+      Position: [...CanonicalEditorCamera.Position],
+      Target: [...CanonicalEditorCamera.Target],
+      "Focal Length": CanonicalEditorCamera.FocalLengthMm,
+      "Sensor Width": CanonicalEditorCamera.SensorWidthMm,
+      Aperture: CanonicalEditorCamera.ApertureFStop,
+      "Subject Distance": CanonicalEditorCamera.SubjectDistanceM,
+    },
+    sun: {
+      Direction: [0.38, -0.62, 0.68],
+      SolarIrradiance: [5.4, 5.1, 4.65],
+      SkyRadiance: [0.18, 0.26, 0.4],
+      Intensity: 5.4,
+      "Angular Diameter": 2.06,
+      Temperature: 5650,
+    },
+    "lobby-ceiling-wash": {
+      Position: [0.1, -0.1, 1.98],
+      Rotation: [0, 0, 0],
+      Scale: [2.4, 1.6, 1.0],
+      Intensity: 7.5,
+      EmittedRadiance: [7.5, 7.1, 6.5],
+      ReferenceInspector: {
+        Type: "LuminousSurface",
+        Properties: {
+          lumens: 2900,
+          dimmer: 1,
+          color: "#fff1de",
+          temperature: 5200,
+          useTemp: false,
+          width: 2.4,
+          height: 1.6,
+          pos: [0.1, -0.1, 1.98],
+          rot: [0, 0, 0],
+        },
+      },
+    },
+  };
+
+  return {
+    Id: CustomId,
+    Name: CustomName,
+    Notes: CustomNotes || "Architectural showroom lobby · ControlVehicle & Light Trainer Aircraft on display.",
+    Rows,
+    Values,
+    Hidden: {},
+    Collapsed: {},
+    Selected: "control-vehicle",
+  };
+}
+
 export function BuildDefaultLevels() {
   return [
+    EnsureRenderSettingsInLevel(BuildFrontierLobbyLevel()),
     EnsureRenderSettingsInLevel({
       Id: "level-showcase-gallery",
       Name: "Cornell-Studio Gallery",
@@ -399,217 +592,6 @@ export function BuildDefaultLevels() {
     EnsureRenderSettingsInLevel(BuildLookDevStudioLevel()),
     EnsureRenderSettingsInLevel(BuildEmptyProvingGroundLevel()),
   ];
-}
-
-function BuildAutomotiveConeSlalomLevel(
-  CustomId = "level-cone-slalom",
-  CustomName = "Automotive Cone Slalom",
-  CustomNotes = "",
-) {
-  const Rows = [
-    { Id: "scene", Name: CustomName, Panel: "group", Icon: "folder-scene", Parent: null, Description: "Automotive proving ground" },
-    {
-      Id: "asphalt-pad",
-      Name: "Proving Ground Asphalt",
-      PrimitiveShape: "box",
-      Panel: "geometry",
-      Icon: "editor-cube",
-      Parent: "scene",
-      Preview: true,
-      Description: "Dark tarmac proving pad · 14.00 × 14.00 m",
-    },
-    {
-      Id: "control-vehicle",
-      Name: "ControlVehicle",
-      PrimitiveShape: "vehicle",
-      Panel: "geometry",
-      Icon: "vehicle",
-      Parent: "scene",
-      Preview: true,
-      Description: "ControlVehicle BVH Mesh · Full-Scale 1:1 Proving Ground Car",
-    },
-    {
-      Id: "traffic-cone-1",
-      Name: "Traffic Cone · Gate A1",
-      PrimitiveShape: "cone",
-      Panel: "geometry",
-      Icon: "editor-cone",
-      Parent: "scene",
-      Preview: true,
-      Description: "Tapered car traffic cone · reflective collar",
-    },
-    {
-      Id: "traffic-cone-2",
-      Name: "Traffic Cone · Apex B",
-      PrimitiveShape: "cone",
-      Panel: "geometry",
-      Icon: "editor-cone",
-      Parent: "scene",
-      Preview: true,
-      Description: "Tapered car traffic cone · reflective collar",
-    },
-    {
-      Id: "traffic-cone-3",
-      Name: "Traffic Cone · Exit C1",
-      PrimitiveShape: "cone",
-      Panel: "geometry",
-      Icon: "editor-cone",
-      Parent: "scene",
-      Preview: true,
-      Description: "Tapered car traffic cone · reflective collar",
-    },
-    {
-      Id: "cylinder-cone-1",
-      Name: "Cylinder Cone · Lane West",
-      PrimitiveShape: "cylinder-cone",
-      Panel: "geometry",
-      Icon: "editor-cylinder",
-      Parent: "scene",
-      Preview: true,
-      Description: "Cylinder-like car lane delineator post",
-    },
-    {
-      Id: "cylinder-cone-2",
-      Name: "Cylinder Cone · Lane East",
-      PrimitiveShape: "cylinder-cone",
-      Panel: "geometry",
-      Icon: "editor-cylinder",
-      Parent: "scene",
-      Preview: true,
-      Description: "Cylinder-like car lane delineator post",
-    },
-    {
-      Id: "cylinder-cone-3",
-      Name: "Cylinder Cone · Finish Post",
-      PrimitiveShape: "cylinder-cone",
-      Panel: "geometry",
-      Icon: "editor-cylinder",
-      Parent: "scene",
-      Preview: true,
-      Description: "Cylinder-like car lane delineator post",
-    },
-    { Id: "cameras", Name: "Cameras", Panel: "group", Icon: "camera", Parent: null, Description: "Editor cameras" },
-    { Id: "camera", Name: "Editor Camera", Panel: "camera", Icon: "camera", Parent: "cameras", Description: "Permanent editor navigation camera" },
-    { Id: "post", Name: "ACES Post-Process", Panel: "post", Icon: "environment-exposure", Parent: "cameras", Description: "Exposure & tonemapping" },
-    { Id: "world", Name: "World", Panel: "group", Icon: "folder-world", Parent: null, Description: "Solar & sky environment" },
-    { Id: "sun", Name: "Track Sun", Panel: "sun", Icon: "sun", Parent: "world", Preview: true, Description: "Directional · 4.6 W/m²" },
-    { Id: "lighting", Name: "Lighting", Panel: "group", Icon: "folder-generic", Parent: null, Description: "Track area lights" },
-    {
-      Id: "pit-rig",
-      Name: "Pit Lane Overhead Rig",
-      Panel: "light",
-      Icon: "editor-area-light",
-      Parent: "lighting",
-      Preview: true,
-      Description: "LTC Quad · 2.60 × 1.60 m",
-    },
-  ];
-
-  const Values = {
-    "asphalt-pad": {
-      Position: [0, 0.5, -0.68],
-      Rotation: [0, 0, 0],
-      Scale: [14.0, 14.0, 0.16],
-      "Cast shadows": true,
-      GI: true,
-      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.09, 0.095, 0.105], Roughness: 0.68 }),
-    },
-    "control-vehicle": {
-      Position: [0.0, 0.65, -0.60],
-      Rotation: [0, 0, -24],
-      Scale: [0.78, 0.78, 0.78],
-      "Cast shadows": true,
-      GI: true,
-      ...BuildMaterialRecord({
-        Type: "Clear coat",
-        BaseLinear: [0.88, 0.91, 0.97],
-        Metallic: 0.22,
-        Roughness: 0.14,
-        Coat: 1.0,
-        CoatRoughness: 0.03,
-      }),
-    },
-    "traffic-cone-1": {
-      Position: [-0.95, -0.85, -0.21],
-      Rotation: [0, 0, 0],
-      Scale: [0.48, 0.48, 0.78],
-      "Cast shadows": true,
-      GI: true,
-      Material: BuildTrafficConeMaterial(),
-    },
-    "traffic-cone-2": {
-      Position: [0.15, 0.25, -0.21],
-      Rotation: [0, 0, 0],
-      Scale: [0.48, 0.48, 0.78],
-      "Cast shadows": true,
-      GI: true,
-      Material: BuildTrafficConeMaterial(),
-    },
-    "traffic-cone-3": {
-      Position: [-0.82, 1.45, -0.21],
-      Rotation: [0, 0, 0],
-      Scale: [0.48, 0.48, 0.78],
-      "Cast shadows": true,
-      GI: true,
-      Material: BuildTrafficConeMaterial(),
-    },
-    "cylinder-cone-1": {
-      Position: [-1.75, -0.15, -0.16],
-      Rotation: [0, 0, 0],
-      Scale: [0.40, 0.40, 0.88],
-      "Cast shadows": true,
-      GI: true,
-      Material: BuildCylinderConeMaterial(),
-    },
-    "cylinder-cone-2": {
-      Position: [1.35, -0.35, -0.16],
-      Rotation: [0, 0, 0],
-      Scale: [0.40, 0.40, 0.88],
-      "Cast shadows": true,
-      GI: true,
-      Material: BuildCylinderConeMaterial(),
-    },
-    "cylinder-cone-3": {
-      Position: [1.18, 1.35, -0.16],
-      Rotation: [0, 0, 0],
-      Scale: [0.40, 0.40, 0.88],
-      "Cast shadows": true,
-      GI: true,
-      Material: BuildCylinderConeMaterial(),
-    },
-    camera: {
-      Position: [0.0, -4.35, 1.42],
-      Target: [0.0, 0.35, -0.08],
-      "Focal Length": CanonicalEditorCamera.FocalLengthMm,
-      "Sensor Width": CanonicalEditorCamera.SensorWidthMm,
-      Speed: 1.0,
-    },
-    post: { Exposure: 0.1 },
-    sun: {
-      Direction: [-0.46, -0.52, 0.72],
-      Irradiance: [4.5, 4.15, 3.65],
-      "Angular Radius": 0.0093,
-      "Sky Radiance": [0.22, 0.30, 0.44],
-    },
-    "pit-rig": {
-      Position: [0, 0.3, 2.35],
-      Intensity: 7.2,
-      Width: 2.6,
-      Height: 1.6,
-      EmittedRadiance: [7.2, 7.0, 6.6],
-    },
-  };
-
-  return {
-    Id: CustomId,
-    Name: CustomName,
-    Notes: CustomNotes || "Automotive chicane stage with Traffic Cones & Cylinder Cones.",
-    Rows,
-    Values,
-    Hidden: {},
-    Collapsed: {},
-    Selected: "traffic-cone-2",
-  };
 }
 
 export const LEVEL_TEMPLATES = Object.freeze([
@@ -630,12 +612,12 @@ export const LEVEL_TEMPLATES = Object.freeze([
     Subtitle: "Cornell-Studio stage pre-wired with Linear Wind, Cyclonic Vortex & Curl Turbulence",
   },
   {
-    Id: "slalom",
+    Id: "lobby",
     Category: "Automotive",
-    Badge: "CAR CHICANE",
-    Spec: "6 cones · Traffic + Cylinder Cones",
-    Title: "Automotive Cone Slalom",
-    Subtitle: "Tarmac proving ground pre-staged with Traffic Cones & Cylinder Cones",
+    Badge: "DEFAULT SCENE",
+    Spec: "8 entities · Vehicle + Light aircraft",
+    Title: "Frontier Lobby",
+    Subtitle: "Architectural showroom lobby pre-staged with the ControlVehicle & a light trainer aircraft",
   },
   {
     Id: "lookdev",
@@ -740,8 +722,8 @@ export function CreateNewLevelRecord({ Name, TemplateId, Notes = "", CurrentLeve
     return EnsureRenderSettingsInLevel(BuildForceFieldLabLevel(NewId, CleanName, Notes));
   }
 
-  if (TemplateId === "slalom") {
-    return EnsureRenderSettingsInLevel(BuildAutomotiveConeSlalomLevel(NewId, CleanName, Notes));
+  if (TemplateId === "lobby") {
+    return EnsureRenderSettingsInLevel(BuildFrontierLobbyLevel(NewId, CleanName, Notes));
   }
 
   if (TemplateId === "lookdev") {
@@ -766,6 +748,8 @@ export function LoadSavedLevelsState() {
     window.localStorage.removeItem("Frontier.WorldMirrorLevels.v2");
     window.localStorage.removeItem("Frontier.WorldMirrorLevels.v3");
     window.localStorage.removeItem("Frontier.WorldMirrorLevels.v4");
+    window.localStorage.removeItem("Frontier.WorldMirrorLevels.v5");
+    window.localStorage.removeItem("Frontier.WorldMirrorLevels.v6");
     const Raw = window.localStorage.getItem(LEVEL_STORAGE_KEY);
     if (!Raw) return { ActiveLevelId: Defaults[0].Id, Levels: Defaults };
     const Parsed = JSON.parse(Raw);
@@ -789,6 +773,10 @@ export function ResetSavedLevelsState() {
     try {
       window.localStorage.removeItem("Frontier.WorldMirrorLevels.v1");
       window.localStorage.removeItem("Frontier.WorldMirrorLevels.v2");
+      window.localStorage.removeItem("Frontier.WorldMirrorLevels.v3");
+      window.localStorage.removeItem("Frontier.WorldMirrorLevels.v4");
+      window.localStorage.removeItem("Frontier.WorldMirrorLevels.v5");
+      window.localStorage.removeItem("Frontier.WorldMirrorLevels.v6");
       window.localStorage.removeItem(LEVEL_STORAGE_KEY);
     } catch {}
   }

@@ -395,7 +395,7 @@ function BuildControlVehicleTyre({ Pos = [0, 0, 0], ScaleFactor = 0.78, WithRimA
 }
 
 //==========================================================================================================================================
-// CATALOG OF BESPOKE 3D CAMERAS, STUDIO LIGHTS, FANS, CONTROLVEHICLE TYRES & PROVING-GROUND BARRIERS (28 ITEMS)
+// CATALOG OF BESPOKE 3D CAMERAS, STUDIO LIGHTS, FANS, CONTROLVEHICLE TYRES, PROVING-GROUND BARRIERS & LIGHT AIRCRAFT (29 ITEMS)
 //   Local coordinates are centered so Z ∈ [-HalfHeightZ, +HalfHeightZ], placing bottom flush at Z_world - HalfHeightZ!
 //==========================================================================================================================================
 export const WORLD_PROP_CATALOG = [
@@ -1337,6 +1337,49 @@ export const WORLD_PROP_CATALOG = [
       Part(4, [0, 0, -0.14], [0.298, 0.298, 0.016], [0, 0, 0], PAL.chrome),
       Part(4, [0, 0, 0.14], [0.298, 0.298, 0.016], [0, 0, 0], PAL.chrome),
       Part(2, [0.14, 0.06, 0.45], [0.032, 0.032, 0.015], [0, 0, 0], PAL.chrome),
+    ],
+  },
+  // ===================================================== 4. AIRCRAFT (1) ======================================================
+  {
+    PropId: "light_aircraft",
+    Name: "Light Trainer Aircraft",
+    Category: "Aircraft",
+    Panel: "geometry",
+    Icon: "aircraft",
+    HalfHeightZ: 0.45,
+    NominalScale: [1, 1, 1],
+    Description: "Display-scale high-wing single-engine trainer (Cessna-172 silhouette) · fixed tricycle gear, twin-blade propeller, wingtip position lights · 2.65 m span",
+    BuildParts: () => [
+      // Fuselage: capped cylinder laid on its side along Y (nose -Y) · titanium-ivory airframe
+      Part(2, [0, 0, 0.10], [0.13, 0.13, 0.78], [90, 0, 0], PAL.titaniumIvory),
+      // Tapered tail cone (apex +Y)
+      Part(3, [0, 0.845, 0.135], [0.072, 0.072, 0.165], [-90, 0, 0], PAL.titaniumIvory),
+      // Raked windshield (sapphire optical) + rear side-window band
+      Part(0, [0, -0.295, 0.185], [0.095, 0.155, 0.055], [12, 0, 0], PAL.sapphireOptic),
+      Part(0, [0, 0.155, 0.205], [0.088, 0.26, 0.028], [0, 0, 0], PAL.sapphireOptic),
+      // High wing + wingtip position lights (port red +X · starboard green -X)
+      Part(0, [0, -0.02, 0.335], [1.32, 0.155, 0.030], [0, 0, 0], PAL.titaniumIvory),
+      Part(0, [1.285, -0.02, 0.335], [0.035, 0.155, 0.034], [0, 0, 0], PAL.fiaRed),
+      Part(0, [-1.285, -0.02, 0.335], [0.035, 0.155, 0.034], [0, 0, 0], PAL.tallyGreen),
+      // Twin wing struts
+      StrutPart([0.10, -0.02, 0.02], [0.55, -0.02, 0.310], 0.012, PAL.titaniumIvory),
+      StrutPart([-0.10, -0.02, 0.02], [-0.55, -0.02, 0.310], 0.012, PAL.titaniumIvory),
+      // Horizontal stabilizer + vertical fin + red fin flash + fin-tip beacon
+      Part(0, [0, 0.705, 0.175], [0.47, 0.125, 0.024], [0, 0, 0], PAL.titaniumIvory),
+      Part(0, [0, 0.700, 0.285], [0.028, 0.150, 0.125], [0, 0, 0], PAL.titaniumIvory),
+      Part(0, [0, 0.678, 0.372], [0.031, 0.115, 0.035], [0, 0, 0], PAL.fiaRed),
+      Part(1, [0, 0.70, 0.423], [0.020, 0.020, 0.020], [0, 0, 0], PAL.tallyRed),
+      // Nose spinner + twin-blade propeller (disc faces -Y)
+      Part(3, [0, -0.85, 0.10], [0.062, 0.062, 0.145], [90, 0, 0], PAL.fiaRed),
+      Part(0, [0, -0.94, 0.10], [0.036, 0.014, 0.35], [0, 0, 0], PAL.anodizedBlack),
+      Part(0, [0, -0.94, 0.10], [0.35, 0.014, 0.036], [0, 0, 0], PAL.anodizedBlack),
+      // Fixed tricycle landing gear · wheel bottoms flush at local Z = -0.45
+      Part(2, [0, -0.50, -0.215], [0.013, 0.013, 0.185], [0, 0, 0], PAL.machinedSilver),
+      Part(2, [0.15, 0.09, -0.20], [0.015, 0.015, 0.21], [0, 0, 0], PAL.machinedSilver),
+      Part(2, [-0.15, 0.09, -0.20], [0.015, 0.015, 0.21], [0, 0, 0], PAL.machinedSilver),
+      Part(4, [0, -0.50, -0.40], [0.047, 0.047, 0.018], [0, 90, 0], PAL.rubberDark),
+      Part(4, [0.15, 0.09, -0.39], [0.060, 0.060, 0.022], [0, 90, 0], PAL.rubberDark),
+      Part(4, [-0.15, 0.09, -0.39], [0.060, 0.060, 0.022], [0, 90, 0], PAL.rubberDark),
     ],
   },
 ];

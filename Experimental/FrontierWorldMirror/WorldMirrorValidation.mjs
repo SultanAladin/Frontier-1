@@ -267,7 +267,17 @@ assert.equal(SnappedMove.Position[0], 0.25, "Ctrl-snap quantizes TranslateX to 0
 
 // 6. Verify Multi-Level System & Create Level templates
 const DefaultLevels = BuildDefaultLevels();
-assert.equal(DefaultLevels.length, 3, "3 built-in Frontier levels shipped");
+assert.equal(DefaultLevels.length, 4, "4 built-in Frontier levels shipped (Frontier Lobby default + Cornell-Studio Gallery + Look-Dev Plinth Studio + Empty Proving Ground)");
+assert.equal(
+  DefaultLevels[0].Id,
+  "level-frontier-lobby",
+  "Frontier Lobby is the default boot level",
+);
+assert.ok(
+  DefaultLevels[0].Rows.some((R) => R.Id === "control-vehicle") &&
+    DefaultLevels[0].Rows.some((R) => R.Id === "lobby-aircraft" && R.PropId === "light_aircraft"),
+  "Frontier Lobby default level stages both the ControlVehicle & the light trainer aircraft",
+);
 const CreatedLookDev = CreateNewLevelRecord({
   Name: "Custom Courtyard",
   TemplateId: "lookdev",
@@ -279,14 +289,18 @@ assert.ok(
   "Look-Dev template populates Charlie velvet & subsurface specimens",
 );
 const Duplicated = CreateNewLevelRecord({
-  Name: "Gallery Variant B",
+  Name: "Lobby Variant B",
   TemplateId: "duplicate",
   CurrentLevel: DefaultLevels[0],
 });
 assert.equal(
   Duplicated.Rows.length,
-  25,
-  "Duplicate Current Level clones all 23 Showcase rows + 2 Editor Camera components (Lens Flare, Tonemapping)",
+  DefaultLevels[0].Rows.length,
+  "Duplicate Current Level clones every Frontier Lobby row 1:1 (geometry + ControlVehicle + light aircraft + camera components)",
+);
+assert.ok(
+  DefaultLevels[0].Rows.length > 14,
+  `Frontier Lobby default level carries 14 authored rows + injected Render Settings, camera components & physical environment (got ${DefaultLevels[0].Rows.length})`,
 );
 
 // 7. Verify standalone index.html bundle integrity & non-SDF shadow map / BVH shader presence
@@ -749,13 +763,13 @@ assert.ok(
     "CPU GTX raytraces Traffic Cone (Shape 3) & Cylinder Cone (Shape 5) cleanly",
   );
 
-  // Verify WGSL & Automotive Cone Slalom level template
+  // Verify WGSL shader & Frontier Lobby level template
   assert.ok(GTX_WGSL_SCENE_SHADER.includes("fn intersectFrustumZ") && GTX_WGSL_SCENE_SHADER.includes("shape == 5"), "WGSL shader includes analytical cone & cylinder-cone");
-  const SlalomLvl = CreateNewLevelRecord({ Name: "Test Chicane", TemplateId: "slalom" });
+  const LobbyLvl = CreateNewLevelRecord({ Name: "Test Lobby", TemplateId: "lobby" });
   assert.ok(
-    SlalomLvl.Rows.some((R) => R.PrimitiveShape === "cone") &&
-      SlalomLvl.Rows.some((R) => R.PrimitiveShape === "cylinder-cone"),
-    "Automotive Cone Slalom template provisions both Traffic Cones & Cylinder Cones",
+    LobbyLvl.Rows.some((R) => R.Id === "control-vehicle") &&
+      LobbyLvl.Rows.some((R) => R.Id === "lobby-aircraft" && R.PropId === "light_aircraft"),
+    "Frontier Lobby template provisions both the ControlVehicle & the light trainer aircraft",
   );
 
   // Verify 3D Analytical OpenPBR Thumbnail Raytracer across Traffic Cone, Cylinder Cone & Analytical Shapes (100% transparent sky)
@@ -793,14 +807,15 @@ assert.ok(
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
-// 13. 24-Prop Studio Camera/Light/Track Library, Transparent Thumbnails, Per-Face Colours, 15 Debug Views & ProjectBrowser
+// 13. 29-Prop Studio Camera/Light/Track/Aircraft Library, Transparent Thumbnails, Per-Face Colours, 15 Debug Views & ProjectBrowser
 // ---------------------------------------------------------------------------------------------------------------------------------------
 {
-  assert.equal(WORLD_PROP_CATALOG.length, 28, "WORLD_PROP_CATALOG exposes 28 bespoke cinema cameras, studio lights, fans, ControlVehicle tyres, and barriers");
+  assert.equal(WORLD_PROP_CATALOG.length, 29, "WORLD_PROP_CATALOG exposes 29 bespoke cinema cameras, studio lights, fans, ControlVehicle tyres, barriers & the light trainer aircraft");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "camera").length, 6, "6 bespoke 3D cinema camera models registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "light").length, 6, "6 3D studio light models registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Category === "Fans & Wind").length, 3, "3 motorsport & studio fan models registered");
-  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "geometry").length, 16, "16 fans, ControlVehicle tyre stack, barriers, sawtooth kerb & paddock props registered");
+  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "geometry").length, 17, "17 fans, ControlVehicle tyre stack, barriers, sawtooth kerb, paddock props & light aircraft registered");
+  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Category === "Aircraft").length, 1, "1 display-scale light trainer aircraft registered");
 
   // Verify every single prop renders a transparent, unclipped, tightly-framed 3D thumbnail
   for (const Prop of WORLD_PROP_CATALOG) {
@@ -1175,14 +1190,18 @@ assert.ok(
   }
   assert.ok(CpuVehPixels > 100, `CpuGtxRenderer rendered ${CpuVehPixels} ControlVehicle BVH pixels cleanly`);
 
-  const SlalomLevel = CreateNewLevelRecord({
-    Name: "Automotive Cone Slalom",
-    TemplateId: "slalom",
+  const LobbyLevel = CreateNewLevelRecord({
+    Name: "Frontier Lobby",
+    TemplateId: "lobby",
   });
   assert.ok(
-    SlalomLevel.Rows.some((R) => R.Id === "control-vehicle") &&
-      SlalomLevel.Rows.some((R) => R.Id === "render-settings"),
-    "Cone Slalom template includes ControlVehicle & Render Settings",
+    LobbyLevel.Rows.some((R) => R.Id === "control-vehicle") &&
+      LobbyLevel.Rows.some((R) => R.Id === "render-settings"),
+    "Lobby template includes ControlVehicle & Render Settings",
+  );
+  assert.ok(
+    LobbyLevel.Rows.some((R) => R.Id === "lobby-aircraft" && R.PropId === "light_aircraft"),
+    "Lobby template includes the light trainer aircraft",
   );
   assert.ok(
     DefaultLevels.every((L) => L.Rows.some((R) => R.Id === "render-settings")),

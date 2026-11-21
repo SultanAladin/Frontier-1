@@ -222,6 +222,34 @@ export function Icon({ Name, Size = 24 }) {
         <ActionIcon Name="vehicle" Size={Math.max(15, Math.min(Size, 19))} />
       </span>
     );
+  if (Name === "aircraft")
+    return (
+      <span
+        className="native-icon aircraft-symbol"
+        data-native-icon={Name}
+        style={{
+          color: "#b9e3c5",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <svg
+          width={Math.max(15, Math.min(Size, 19))}
+          height={Math.max(15, Math.min(Size, 19))}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          {/* Top-view high-wing trainer silhouette */}
+          <path d="M12 2.5c-0.9 0-1.4 0.8-1.4 1.8v3.1L3.6 11v2.2l7-1.9v5.2l-2.6 1.9v1.6l4-1.3 4 1.3v-1.6l-2.6-1.9v-5.2l7 1.9V11l-7-3.6V4.3c0-1-0.5-1.8-1.4-1.8Z" />
+        </svg>
+      </span>
+    );
   const Source = window.NativeAssets?.Icons[Name];
   return Source ? (
     <img

@@ -50,7 +50,9 @@ import ConstructPanel from "./ConstructPanel.jsx";
 import GtxWorldViewport, { PreviewVisible } from "./GtxWorldViewport.jsx";
 import LevelDialogModal from "./LevelDialogModal.jsx";
 import {
+  BuildFrontierLobbyLevel,
   CreateNewLevelRecord,
+  EnsureRenderSettingsInLevel,
   LoadSavedLevelsState,
   ResetSavedLevelsState,
   SaveLevelsState,
@@ -62,7 +64,6 @@ import {
   NormalizeVec3,
   RaycastWorldPlacementAtUv,
   ResolveRenderSettings,
-  ShowcaseInitialRows,
   ShowcaseInitialValues,
 } from "./ShowcaseGalleryScene.js";
 import {
@@ -329,7 +330,12 @@ const DebugViews = [
   "ForceField · Vorticity |∇×F|",
   "ForceField · Divergence ∇·F",
 ];
-const StorageKey = "Frontier.WorldMirrorGtx.v6";
+// Flagship boot scene: Frontier Lobby (vehicle + light aircraft on display).
+// Built once at module scope with the same Render Settings / camera components
+// / physical environment injection used by the built-in levels.
+const BootLobbyLevel = EnsureRenderSettingsInLevel(BuildFrontierLobbyLevel());
+
+const StorageKey = "Frontier.WorldMirrorGtx.v7";
 function Restore() {
   try {
     localStorage.removeItem("Frontier.WorldMirrorGtx.v1");
@@ -337,6 +343,7 @@ function Restore() {
     localStorage.removeItem("Frontier.WorldMirrorGtx.v3");
     localStorage.removeItem("Frontier.WorldMirrorGtx.v4");
     localStorage.removeItem("Frontier.WorldMirrorGtx.v5");
+    localStorage.removeItem("Frontier.WorldMirrorGtx.v6");
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
   } catch {
     return {};
@@ -581,19 +588,24 @@ function App() {
     LiveFpsRef.current = NextFps;
   }, []);
   const [Rows, StoreRows] = useState(() =>
-      EnsureEditorCamera(Saved.Rows || ShowcaseInitialRows),
+      EnsureEditorCamera(Saved.Rows || BootLobbyLevel.Rows),
     ),
     [Selected, Select] = useState(
       new URLSearchParams(location.search).get("inspect") ||
         Saved.Selected ||
-        "chrome-sphere",
+        BootLobbyLevel.Selected ||
+        "control-vehicle",
     ),
     [Values, AssignValues] = useState(() => {
-      const Restored = { ...ShowcaseInitialValues };
+      const Restored = { ...ShowcaseInitialValues, ...BootLobbyLevel.Values };
       for (const [Key, Val] of Object.entries(Saved.Values || {})) {
-        Restored[Key] = { ...(ShowcaseInitialValues[Key] || {}), ...Val };
+        Restored[Key] = {
+          ...(ShowcaseInitialValues[Key] || {}),
+          ...(BootLobbyLevel.Values[Key] || {}),
+          ...Val,
+        };
       }
-      for (const Row of Saved.Rows || ShowcaseInitialRows) {
+      for (const Row of Saved.Rows || BootLobbyLevel.Rows) {
         const Record = ReadFracture(Row.Id);
         if (
           Row.Panel === "geometry" &&
@@ -626,7 +638,7 @@ function App() {
       () =>
         new URLSearchParams(location.search).get("project") ||
         Saved.Name ||
-        "Cornell-Studio Gallery",
+        "Frontier Lobby",
     ),
     [Rename, RenameRow] = useState(null),
     [Construct, OpenConstruct] = useState(false),
@@ -1120,7 +1132,7 @@ function App() {
     Filter([]);
     Search("");
     RenameProject(First.Name);
-    Select(First.Selected || "chrome-sphere");
+    Select(First.Selected || "control-vehicle");
     ShowMenu(null);
     Toast("Cleared cached state and restarted fresh scene");
   };
@@ -3468,7 +3480,7 @@ function App() {
         ActiveLevelName={
           LevelsState.Levels.find((L) => L.Id === LevelsState.ActiveLevelId)?.Name ||
           Name ||
-          "Cornell-Studio Gallery"
+          "Frontier Lobby"
         }
         OnCancel={() => SetCreateLevelOpen(false)}
         OnCreate={HandleCreateLevel}

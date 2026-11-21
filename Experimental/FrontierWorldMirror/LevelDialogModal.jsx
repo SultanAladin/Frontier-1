@@ -39,39 +39,41 @@ function StagePreviewArtwork({ TemplateId }) {
     );
   }
 
-  if (TemplateId === "slalom") {
+  if (TemplateId === "lobby") {
     return (
       <svg viewBox="0 0 240 124" className="level-stage-svg" aria-hidden="true">
         <defs>
-          <linearGradient id="lg-auto-sky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#1b2432" />
-            <stop offset="52%" stopColor="#262b34" />
-            <stop offset="53%" stopColor="#17191d" />
-            <stop offset="100%" stopColor="#111216" />
+          <linearGradient id="lg-lobby-wall" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#33291f" />
+            <stop offset="100%" stopColor="#1f1a15" />
           </linearGradient>
+          <radialGradient id="lg-lobby-glow" cx="50%" cy="16%" r="58%">
+            <stop offset="0%" stopColor="rgba(255,228,178,0.4)" />
+            <stop offset="100%" stopColor="rgba(255,228,178,0)" />
+          </radialGradient>
         </defs>
-        <rect width="240" height="124" fill="url(#lg-auto-sky)" />
-        <path d="M24 124L96 64H144L216 124Z" fill="#1e2127" />
-        <path d="M120 66V122" stroke="#e2b95b" strokeWidth="1.6" strokeDasharray="6 5" opacity="0.65" />
-        <path d="M40 124L100 64M200 124L140 64" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2" />
-        {/* Traffic Cone (cone-like cone) */}
-        <g transform="translate(68,68)">
-          <polygon points="2,34 10,30 22,30 30,34 25,38 7,38" fill="#252830" />
-          <polygon points="8,33 14,6 18,6 24,33" fill="#ff5414" />
-          <polygon points="10.8,20 12.2,13.5 19.8,13.5 21.2,20" fill="#f5f7fc" />
+        <rect width="240" height="124" fill="url(#lg-lobby-wall)" />
+        <rect x="0" y="92" width="240" height="32" fill="#171310" />
+        <rect x="0" y="88" width="240" height="4" fill="#3d332a" />
+        {/* Timber accent wall (left) */}
+        <rect x="0" y="20" width="46" height="72" fill="#241811" />
+        <path d="M8 24V88M18 24V88M28 24V88M38 24V88" stroke="#3a2a1e" strokeWidth="3" />
+        {/* Ceiling wash + pendant glow */}
+        <rect x="86" y="8" width="68" height="5" rx="2.5" fill="#fff2dc" opacity="0.92" />
+        <rect width="240" height="124" fill="url(#lg-lobby-glow)" />
+        {/* Light trainer aircraft silhouette (hanging display) */}
+        <g transform="translate(166,34) scale(0.92)" stroke="#cfd6de" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="#2b3138">
+          <path d="M-26 0H26" />
+          <path d="M0 -8V10" />
+          <path d="M-9 -8L0 -12L9 -8" fill="none" />
+          <path d="M-6 10L0 13L6 10" fill="none" />
         </g>
-        {/* Center Traffic Cone */}
-        <g transform="translate(116,54) scale(0.78)">
-          <polygon points="2,34 10,30 22,30 30,34 25,38 7,38" fill="#252830" />
-          <polygon points="8,33 14,6 18,6 24,33" fill="#ff5414" />
-          <polygon points="10.8,20 12.2,13.5 19.8,13.5 21.2,20" fill="#f5f7fc" />
-        </g>
-        {/* Cylinder Cone (cylinder-like cone) */}
-        <g transform="translate(154,62)">
-          <ellipse cx="16" cy="39" rx="12" ry="3.4" fill="#23262e" />
-          <polygon points="11,38 12.4,5 19.6,5 21,38" fill="#f03e18" />
-          <polygon points="11.9,16 12.1,11 19.9,11 20.1,16" fill="#f5f7fc" />
-          <polygon points="11.4,26 11.7,21 20.3,21 20.6,26" fill="#f5f7fc" />
+        {/* ControlVehicle silhouette */}
+        <g transform="translate(72,72)">
+          <path d="M-32 10C-30 2 -18 -2 -6 -2C6 -2 16 -4 24 2C29 6 30 8 30 10Z" fill="#d7dde6" stroke="#8f97a3" strokeWidth="0.8" />
+          <path d="M-14 -1C-10 -6 2 -6.4 8 -2Z" fill="#141b24" />
+          <circle cx="-18" cy="11" r="5" fill="#0d0f12" stroke="#5b6470" strokeWidth="1.1" />
+          <circle cx="14" cy="11" r="5" fill="#0d0f12" stroke="#5b6470" strokeWidth="1.1" />
         </g>
       </svg>
     );
