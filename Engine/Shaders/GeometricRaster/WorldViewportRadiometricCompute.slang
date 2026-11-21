@@ -54,7 +54,7 @@ struct WorldViewportUniformBlock
     LensFlareUniformBlock       LensFlareParams;
     float4                      GlobalDistanceFineCenterSpan;   // xyz = FineCenterWorld,   w = FineHalfSpanMeters
     float4                      GlobalDistanceCoarseCenterSpan; // xyz = CoarseCenterWorld, w = CoarseHalfSpanMeters
-    uint4                       GlobalDistanceBakeControl;      // x = BakePhase, y = CascadeIdx, z = GdfReadyMask, w = Reserved
+    uint4                       GlobalDistanceBakeControl;      // x = BakePhase, y = CascadeIdx, z = GdfReadyMask, w = XeGTAO (bit0 enable, bits 8..15 strength)
 };
 
 struct GpuWideTreeEntry128
@@ -900,24 +900,71 @@ float TraceGlobalDistanceConeVisibility(
     return PointHard ? smoothstep(0.25, 0.75, MinVis) : (MinVis * MinVis * (3.0 - 2.0 * MinVis));
 }
 
+// Hemisphere cone AO over the baked Global Distance Field: 1 axial cone + 4 cones tilted 60 deg,
+// cosine weighted. This replaces the old 1-D march straight along the normal, which only measured
+// clearance directly above the point (leaking sideways occlusion, banding from its x1.85 step
+// progression, and blotchy trilinear voxel steps) and is why SDF AO looked dirty.
 float EvaluateGlobalDistanceAmbientOcclusion(float3 Pos, float3 N, float3 GeomN)
 {
     if (!IsGlobalDistanceFieldReady()) return 1.0;
-    float  Vox0   = QueryFineGdfVoxelSize();
-    float3 StartP = Pos + GeomN * (Vox0 * 0.35);
-    float  OccSum = 0.0;
-    float  Weight = 0.52;
-    float  StepT  = Vox0 * 0.85;
-    for (uint S = 0u; S < 4u; ++S)
+    float Vox0   = QueryFineGdfVoxelSize();
+    float Radius = clamp(Vox0 * 16.0, 0.40, 2.75);
+
+    float3 TangentAxis = (abs(N.z) < 0.92) ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
+    float3 Tangent     = normalize(cross(TangentAxis, N));
+    float3 Bitangent   = cross(N, Tangent);
+
+    // Axial cone (weight 1.0) + 4 tilted cones at 60 deg (weight cos(60 deg) = 0.5 each)
+    float VisSum    = TraceGlobalDistanceConeVisibility(Pos, GeomN, N, Radius, 0.42, false, 9u);
+    float WeightSum = 1.0;
+    for (uint ConeIdx = 0u; ConeIdx < 4u; ++ConeIdx)
     {
-        float LocalVox = Vox0;
-        float Dist     = SampleGlobalDistanceWorld(StartP + N * StepT, LocalVox);
-        float Deficit  = saturate((StepT - max(0.0, Dist)) / max(1.0e-3, StepT));
-        OccSum += Weight * Deficit * exp(-StepT * 0.55);
-        Weight *= 0.55;
-        StepT  *= 1.85;
+        float  Azimuth = (float(ConeIdx) + 0.5) * 1.5707963;
+        float3 TiltDir = normalize(N * 0.5 + (Tangent * cos(Azimuth) + Bitangent * sin(Azimuth)) * 0.8660254);
+        VisSum    += 0.5 * TraceGlobalDistanceConeVisibility(Pos, GeomN, TiltDir, Radius, 0.58, false, 9u);
+        WeightSum += 0.5;
     }
-    return clamp(1.0 - OccSum * 0.92, 0.12, 1.0);
+    float Ao = VisSum / WeightSum;
+    return clamp(1.0 - (1.0 - Ao) * 0.94, 0.06, 1.0);
+}
+
+// Central-difference gradient of the Global Distance Field: the SDF surface normal at any point.
+float3 EvaluateGlobalDistanceGradientNormal(float3 Pos, float3 FallbackNormal)
+{
+    if (!IsGlobalDistanceFieldReady()) return FallbackNormal;
+    float Eps = max(0.01, QueryFineGdfVoxelSize() * 0.75);
+    float LocalVox = Eps;
+    float Dx = SampleGlobalDistanceWorld(Pos + float3(Eps, 0.0, 0.0), LocalVox) -
+               SampleGlobalDistanceWorld(Pos - float3(Eps, 0.0, 0.0), LocalVox);
+    float Dy = SampleGlobalDistanceWorld(Pos + float3(0.0, Eps, 0.0), LocalVox) -
+               SampleGlobalDistanceWorld(Pos - float3(0.0, Eps, 0.0), LocalVox);
+    float Dz = SampleGlobalDistanceWorld(Pos + float3(0.0, 0.0, Eps), LocalVox) -
+               SampleGlobalDistanceWorld(Pos - float3(0.0, 0.0, Eps), LocalVox);
+    float3 Gradient = float3(Dx, Dy, Dz);
+    float  GradLen  = length(Gradient);
+    return (GradLen > 1.0e-6) ? (Gradient / GradLen) : FallbackNormal;
+}
+
+// 0 = fine cascade, 1 = coarse cascade, 2 = outside both cascades (for the SDF Cascade debug view)
+uint QueryGlobalDistanceCascadeIndex(float3 Pos)
+{
+    bool InFine = false;
+    float FineProbe = SampleGlobalDistanceCascade(0u, Pos, InFine);
+    (void)FineProbe;
+    if (InFine) return 0u;
+    bool InCoarse = false;
+    float CoarseProbe = SampleGlobalDistanceCascade(1u, Pos, InCoarse);
+    (void)CoarseProbe;
+    return InCoarse ? 1u : 2u;
+}
+
+float3 EvaluateSdfDistanceHeatColor(float SignedDistanceMeters, float VoxelMeters)
+{
+    float T = clamp(SignedDistanceMeters / max(1.0e-3, VoxelMeters * 10.0), -1.0, 1.0);
+    float3 InsideColor  = float3(0.85, 0.15, 0.10);
+    float3 SurfaceColor = float3(0.15, 0.95, 0.35);
+    float3 OutsideColor = float3(0.10, 0.30, 0.95);
+    return (T < 0.0) ? lerp(SurfaceColor, InsideColor, -T) : lerp(SurfaceColor, OutsideColor, T);
 }
 
 void QueryRadiosityMipLayout(uint MipIdx, out uint OutRes, out uint OutOffset)
@@ -2565,7 +2612,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float HitDistForClouds = (BestGlassIdx >= 0) ? BestGlassT : (PrimaryHit.Hit ? PrimaryHit.Distance : 60000.0);
     float HitDistForFog    = (BestGlassIdx >= 0) ? BestGlassT : (PrimaryHit.Hit ? PrimaryHit.Distance : 3500.0);
 
-    bool UsesShadingDebug = (DebugMode >= 8u && DebugMode <= 11u);
+    bool UsesShadingDebug = (DebugMode >= 8u && DebugMode <= 11u) || DebugMode == 15u;
     if (DebugMode != 0u && !UsesShadingDebug)
     {
         float3 DbgHdr = float3(0.0);
@@ -2600,6 +2647,33 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                 DbgHdr = float3(0.18 + 0.78 * H1, 0.18 + 0.78 * H2, 0.18 + 0.78 * H3);
             }
             else if (DebugMode == 7u) DbgHdr = PrimaryHit.GeomNormal * 0.5 + 0.5;
+            else if (DebugMode == 12u)
+            {
+                // SDF Distance: heat ramp of the signed distance at the hit (red inside, green surface, blue far)
+                float LocalVox = 0.1;
+                float SdfDist  = SampleGlobalDistanceWorld(PrimaryHit.Position, LocalVox);
+                DbgHdr = EvaluateSdfDistanceHeatColor(SdfDist, LocalVox);
+            }
+            else if (DebugMode == 13u)
+            {
+                // SDF with Materials: material albedo lit by the SDF gradient normal against the sun
+                float3 SdfNormal = EvaluateGlobalDistanceGradientNormal(PrimaryHit.Position, PrimaryHit.GeomNormal);
+                float  SdfNdotL  = saturate(dot(SdfNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
+                DbgHdr = Mat.DiffuseAlbedoRoughness.xyz * (0.18 + 0.82 * SdfNdotL);
+            }
+            else if (DebugMode == 14u)
+            {
+                // SDF Normal: central-difference gradient of the distance field at the hit
+                DbgHdr = EvaluateGlobalDistanceGradientNormal(PrimaryHit.Position, PrimaryHit.GeomNormal) * 0.5 + 0.5;
+            }
+            else if (DebugMode == 16u)
+            {
+                // SDF Cascade: fine = green, coarse = orange, outside both = red, tinted by albedo
+                uint CascadeIdx = QueryGlobalDistanceCascadeIndex(PrimaryHit.Position);
+                float3 CascadeTint = (CascadeIdx == 0u) ? float3(0.20, 0.90, 0.30)
+                    : ((CascadeIdx == 1u) ? float3(0.95, 0.60, 0.15) : float3(0.90, 0.20, 0.20));
+                DbgHdr = CascadeTint * (0.30 + 0.70 * Mat.DiffuseAlbedoRoughness.xyz);
+            }
         }
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
         GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 1.0);
@@ -2755,6 +2829,98 @@ void ViewportPathTraceEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(ApplyAcesFilmicGpu(FinalHdr), DispatchThreadID.xy);
 }
 
+// XeGTAO-style ground-truth ambient occlusion: multi-slice horizon search over the G-buffer.
+// Each slice integrates cosine-weighted visibility between the two horizon angles found by
+// marching the neighbouring world positions, exactly the XeGTAO visibility integral. It shades
+// direct PBR ambient/indirect terms only (no GI is added). Toggle + strength ride in
+// GlobalDistanceBakeControl.w (bit0, bits 8..15 = strength x255/2).
+bool IsXeGtaoEnabled()
+{
+    return (WorldUniforms.GlobalDistanceBakeControl.w & 1u) != 0u;
+}
+
+float QueryXeGtaoStrength()
+{
+    return float((WorldUniforms.GlobalDistanceBakeControl.w >> 8u) & 0xFFu) * (2.0 / 255.0);
+}
+
+float EvaluateGroundTruthAmbientOcclusion(uint2 PixelCoord, float3 WorldPos, float3 WorldNormal)
+{
+    uint Width  = uint(WorldUniforms.CameraUpWidth.w + 0.5);
+    uint Height = uint(WorldUniforms.CameraForwardHeight.w + 0.5);
+    float3 CamOrigin = WorldUniforms.CameraOriginTanX.xyz;
+    float3 CamRight  = WorldUniforms.CameraRightTanY.xyz;
+    float3 CamUp     = WorldUniforms.CameraUpWidth.xyz;
+    float  TanHalfY  = max(0.05, WorldUniforms.CameraRightTanY.w);
+
+    float3 ToSurface  = WorldPos - CamOrigin;
+    float  ViewDist   = max(0.05, length(ToSurface));
+    float3 ViewToward = ToSurface / ViewDist;      // camera -> surface
+    float3 ViewFrom   = -ViewToward;               // surface -> camera (V)
+
+    const float SearchRadiusMeters = 0.85;
+    float RadiusPx = clamp(SearchRadiusMeters * (float(Height) * 0.5) / (ViewDist * TanHalfY), 3.0, 48.0);
+
+    const uint SliceCount = 4u;
+    const uint StepsPerSide = 4u;
+    float VisibilitySum = 0.0;
+
+    for (uint SliceIdx = 0u; SliceIdx < SliceCount; ++SliceIdx)
+    {
+        float  SliceAngle = float(SliceIdx) * 0.7853981; // pi / 4
+        float2 SliceScreenDir = float2(cos(SliceAngle), sin(SliceAngle));
+        float3 SliceWorldDir  = normalize(CamRight * SliceScreenDir.x + CamUp * SliceScreenDir.y);
+        float3 SliceAxis      = SliceWorldDir - ViewFrom * dot(SliceWorldDir, ViewFrom);
+        float  SliceAxisLen   = length(SliceAxis);
+        if (SliceAxisLen < 1.0e-4)
+        {
+            VisibilitySum += 1.0;
+            continue;
+        }
+        SliceAxis /= SliceAxisLen;
+
+        // Angle of the surface normal inside this slice, measured from V
+        float NormalSlice = dot(WorldNormal, SliceAxis);
+        float NormalView  = dot(WorldNormal, ViewFrom);
+        float NormalAngle = atan2(NormalSlice, NormalView);
+
+        float HorizonPlus  = NormalAngle;
+        float HorizonMinus = NormalAngle;
+        for (uint SideIdx = 0u; SideIdx < 2u; ++SideIdx)
+        {
+            float SideSign = (SideIdx == 0u) ? 1.0 : -1.0;
+            for (uint StepIdx = 1u; StepIdx <= StepsPerSide; ++StepIdx)
+            {
+                float StepFrac = float(StepIdx) / float(StepsPerSide);
+                int2 SampleCoord = int2(PixelCoord) + int2(
+                    int(round(SliceScreenDir.x * SideSign * RadiusPx * StepFrac)),
+                    int(round(-SliceScreenDir.y * SideSign * RadiusPx * StepFrac)));
+                SampleCoord = clamp(SampleCoord, int2(0, 0), int2(int(Width) - 1, int(Height) - 1));
+                uint   SampleIdx  = uint(SampleCoord.y) * Width + uint(SampleCoord.x);
+                float4 SamplePos  = GBufPosMask[SampleIdx];
+                if (SamplePos.w <= 0.0) continue;
+                float3 SampleVec  = SamplePos.xyz - WorldPos;
+                float  SampleDist = length(SampleVec);
+                if (SampleDist < 1.0e-4 || SampleDist > SearchRadiusMeters * 1.6) continue;
+                float3 SampleDir  = SampleVec / SampleDist;
+                float  SampleAngle = atan2(dot(SampleDir, SliceAxis), dot(SampleDir, ViewFrom));
+                if (SideSign > 0.0) HorizonPlus  = max(HorizonPlus, SampleAngle);
+                else                HorizonMinus = min(HorizonMinus, SampleAngle);
+            }
+        }
+
+        float UpperAngle = min(HorizonPlus, NormalAngle + 1.5707963);
+        float LowerAngle = max(HorizonMinus, NormalAngle - 1.5707963);
+        float SliceVisibility = clamp(
+            (sin(UpperAngle - NormalAngle) - sin(LowerAngle - NormalAngle)) * 0.5,
+            0.0, 1.0);
+        VisibilitySum += SliceVisibility;
+    }
+
+    float Gtao = clamp(VisibilitySum / float(SliceCount), 0.0, 1.0);
+    return pow(Gtao, clamp(QueryXeGtaoStrength(), 0.0, 2.0));
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -2872,7 +3038,7 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float4 DirectBase = GBufDirectBase[PixelIdx];
     float4 SunContrib = GBufSunContrib[PixelIdx];
     float4 AlbedoPack = CenterAlb;
-    bool   UsesShadingDebug = (DebugMode >= 8u && DebugMode <= 11u);
+    bool   UsesShadingDebug = (DebugMode >= 8u && DebugMode <= 11u) || DebugMode == 15u;
 
     float3 FinalHdr = DirectBase.xyz;
     if (CenterPos.w < -0.5)
@@ -2893,11 +3059,19 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 SkyFill    = EvaluateSkyDome(SurfN);
         uint   EngineMode = WorldUniforms.EngineShadowReflPad.x;
         float  SkyFillGain = (EngineMode >= 2u && IsGlobalDistanceFieldReady()) ? 0.08 : 0.22;
+        // XeGTAO (toggleable, direct PBR only): tightens ambient/indirect occlusion, adds no GI
+        float  EffectiveAo = OutDiffAo;
+        if (IsXeGtaoEnabled())
+        {
+            float GtaoAo  = EvaluateGroundTruthAmbientOcclusion(DispatchThreadID.xy, CenterPos.xyz, SurfN);
+            EffectiveAo   = min(EffectiveAo, GtaoAo);
+            SpecAo        = saturate(pow(NdotV + EffectiveAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + EffectiveAo);
+        }
         FinalHdr = DirectBase.xyz
-                 + AlbedoPack.xyz * OutIndirIrrad * (0.45 + 0.55 * OutDiffAo)
+                 + AlbedoPack.xyz * OutIndirIrrad * (0.45 + 0.55 * EffectiveAo)
                  + SpecPack.xyz * SpecAo
                  + SunContrib.xyz * OutSunVis
-                 + AlbedoPack.xyz * SkyFill * SkyFillGain * (0.35 + 0.65 * OutDiffAo);
+                 + AlbedoPack.xyz * SkyFill * SkyFillGain * (0.35 + 0.65 * EffectiveAo);
     }
     else if (CenterPos.w > 0.0 && DebugMode == 8u)
     {
@@ -2906,6 +3080,11 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     else if (CenterPos.w > 0.0 && DebugMode == 9u)
     {
         FinalHdr = float3(OutDiffAo);
+    }
+    else if (CenterPos.w > 0.0 && DebugMode == 15u)
+    {
+        // SDF AO Raw: per-pixel cone AO before any spatial filtering (compare against Debug 9)
+        FinalHdr = float3(InShadAo.y);
     }
     else if (CenterPos.w > 0.0 && DebugMode == 10u)
     {

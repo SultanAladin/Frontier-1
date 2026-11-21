@@ -685,6 +685,7 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     Rectangle2D             PaneBounds,
     const PaneInputReading& Input)
 {
+    FRONTIER_THOUGHT_SCOPE("Editor.ViewportInteraction");
     (void)PaneIndex;
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
     if (Panes == nullptr || ShowcaseBundle == nullptr || PaneBounds.Width < 16.0f || PaneBounds.Height < 16.0f)
@@ -1917,7 +1918,9 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.RaytracingEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
         ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
         : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
-    RenderConfig.DebugChannel       = std::min(11u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.DebugChannel       = std::min(16u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.XeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
+    RenderConfig.XeGtaoStrength     = DisplayCfg.XeGtaoStrength;
     RenderConfig.QualityTier        = QTier;
     RenderConfig.ReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
     RenderConfig.RaytracingEnabled  = DisplayCfg.RaytracingEnabled;
@@ -2263,6 +2266,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.SdfShadowPenumbraIndex != LastSdfPenumbraIndex ||
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
+                DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
+                std::abs(DisplayCfg.XeGtaoStrength - LastXeGtaoStrength) > 0.001f ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
                 DisplayCfg.RaytracingEnabled != LastRtEnabled ||
@@ -2282,6 +2287,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastSdfPenumbraIndex   = DisplayCfg.SdfShadowPenumbraIndex;
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
+            LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
+            LastXeGtaoStrength     = DisplayCfg.XeGtaoStrength;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
             LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
             LastRtEnabled          = DisplayCfg.RaytracingEnabled;

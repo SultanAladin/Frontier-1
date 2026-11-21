@@ -60,7 +60,7 @@ enum class ConstructCategoryRail : uint8_t
 struct ViewportDisplaySettings
 {
     uint32_t QualityTier           = 3u;     // [idx] - 0=Low, 1=Medium, 2=Standard, 3=High, 4=Ultra
-    uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1..11=Modular Debug Channels
+    uint32_t DebugChannelIndex     = 0u;     // [idx] - 0=Off, 1..16=Modular Debug Channels (12..16 = SDF views)
     uint32_t RenderEngineIndex     = 2u;     // [idx] - 0=MatCap, 1=OpenPbrDirect, 2=GtxSdfGi, 3=HighEndBvh4Gi, 4=PtRealtime, 5=PtFinal
     uint32_t ShadowAlgorithmIndex  = 0u;     // [idx] - 0=ContactPcss, 1=PcssPlaneAware, 2=ShadowRayMarch, 3=PcfBilinear, 4=WideTreeRayQuery
     uint32_t SdfShadowPenumbraIndex = 3u;    // [idx] - 0=PointSdf, 1=AnalyticCone, 2=VoxelClipmap, 3=VoxelConeGi, 4=HybridSobolCap, 5=SdfMcRef96Spp
@@ -70,6 +70,8 @@ struct ViewportDisplaySettings
     bool     ReflectionsEnabled    = true;   // [-]   - Specular reflections toggle
     bool     AntiAliasingEnabled   = true;   // [-]   - Spatial shadow filter / AA toggle
     bool     RaytracingEnabled     = true;   // [-]   - Hardware BVH4 raytracing toggle
+    bool     XeGtaoEnabled         = false;  // [-]   - XeGTAO screen-space AO for direct PBR (no GI)
+    float    XeGtaoStrength        = 1.0f;   // [x]   - XeGTAO occlusion strength [0..2]
     bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
     bool     VolumetricCloudsEnabled = false;// [-]   - Raymarched volumetric cloud deck toggle (default off for Clear Sky)
     bool     CloudShadowsEnabled   = false;  // [-]   - Volumetric cloud ground shadow casting toggle

@@ -2325,7 +2325,10 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.GlobalDistanceBakeControl[0] = 0u;
     Uniforms.GlobalDistanceBakeControl[1] = 0u;
     Uniforms.GlobalDistanceBakeControl[2] = GlobalDistanceFieldReady ? 1u : 0u;
-    Uniforms.GlobalDistanceBakeControl[3] = 0u;
+    // w: bit0 = XeGTAO enabled, bits 8..15 = XeGTAO strength x255/2 (0..2 range)
+    Uniforms.GlobalDistanceBakeControl[3] =
+        (Config.XeGtaoEnabled ? 1u : 0u) |
+        (static_cast<uint32_t>(std::clamp(Config.XeGtaoStrength, 0.0f, 2.0f) * 127.5f) << 8u);
 
     uint8_t* UniformBase = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
     std::memcpy(UniformBase, &Uniforms, sizeof(Uniforms));
@@ -2486,7 +2489,8 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         WriteStamp(5u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         const bool ShadingDebug =
-            (Config.DebugChannel == 0u || (Config.DebugChannel >= 8u && Config.DebugChannel <= 11u));
+            (Config.DebugChannel == 0u || (Config.DebugChannel >= 8u && Config.DebugChannel <= 11u) ||
+             Config.DebugChannel == 15u);
         const bool MultiPassSpatialDenoise =
             ShadingDebug &&
             ((EngIdx == 3u) || ((EngIdx == 1u || EngIdx == 2u) && PenumbraOrdinal >= 4u));

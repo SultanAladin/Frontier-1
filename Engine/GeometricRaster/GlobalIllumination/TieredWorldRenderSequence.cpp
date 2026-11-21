@@ -918,6 +918,18 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                     const float A = Result.DirectLighting.CombinedDiffuseAo[Off];
                     Dbg = { A, A, A };
                 }
+                else if (Config.DebugChannel == 13u)
+                {
+                    // SDF with Materials (CPU path): material albedo shaded by the geometric normal
+                    const float NdotL = std::clamp(Mathematics::EvaluateDot(Hit.TangentFrame.NormalZ, PreparedScene.Sun.DirectionToSun), 0.0f, 1.0f);
+                    Dbg = Mat.Diffuse.BaseColor * (0.22f + 0.78f * NdotL);
+                }
+                else if (Config.DebugChannel == 15u && Off < Result.DirectLighting.CombinedDiffuseAo.size())
+                {
+                    // SDF AO Raw: unfiltered per-pixel AO (CPU AO buffer is pre-filter by construction)
+                    const float A = Result.DirectLighting.CombinedDiffuseAo[Off];
+                    Dbg = { A, A, A };
+                }
                 else if (Config.DebugChannel == 10u)
                 {
                     Dbg = ApplyAcesFilmic(Result.DirectLighting.DirectHdrRadiance[Off]);
