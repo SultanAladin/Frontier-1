@@ -5,6 +5,8 @@
 
 import {
   BuildMaterialRecord,
+  CameraFlareDefaults,
+  CameraTonemapDefaults,
   CanonicalEditorCamera,
   CanonicalRenderSettings,
   ResolveRenderSettings,
@@ -20,6 +22,9 @@ import {
 export const LEVEL_STORAGE_KEY = "Frontier.WorldMirrorLevels.v6";
 
 const Clone = (Value) => JSON.parse(JSON.stringify(Value));
+
+// Canonical component defaults for the Editor Camera's Lens Flare &
+// Tonemapping sub-components live in ShowcaseGalleryScene.js (imported above).
 
 export function EnsureRenderSettingsInLevel(Lvl) {
   if (!Lvl || !Array.isArray(Lvl.Rows)) return Lvl;
@@ -39,10 +44,43 @@ export function EnsureRenderSettingsInLevel(Lvl) {
     if (CamIdx >= 0) Rows.splice(CamIdx + 1, 0, RenderRow);
     else Rows.push(RenderRow);
   }
+  // Editor camera carries two components (Blueprint-style sub-entries):
+  // Lens Flare and Tonemapping. Injected into every level so the camera's
+  // component model is complete regardless of template.
+  const CameraSubs = [
+    {
+      Id: "camera-flare",
+      Name: "Lens Flare",
+      Panel: "flare",
+      Icon: "lens-flare",
+      Parent: "camera",
+      Description: "Editor camera lens flare component",
+    },
+    {
+      Id: "camera-tonemap",
+      Name: "Tonemapping",
+      Panel: "post",
+      Icon: "environment-exposure",
+      Parent: "camera",
+      Description: "Editor camera tonemapping component",
+    },
+  ].filter((Sub) => !Rows.some((R) => R.Id === Sub.Id));
+  if (CameraSubs.length) {
+    const CamIdx = Rows.findIndex((R) => R.Id === "camera");
+    Rows = [...Rows];
+    if (CamIdx >= 0) Rows.splice(CamIdx + 1, 0, ...CameraSubs);
+    else Rows.push(...CameraSubs);
+  }
   let Values = {
     ...(Lvl.Values || {}),
     "render-settings": ResolveRenderSettings(Lvl.Values),
   };
+  if (!Values["camera-flare"]) {
+    Values["camera-flare"] = Clone(CameraFlareDefaults);
+  }
+  if (!Values["camera-tonemap"]) {
+    Values["camera-tonemap"] = Clone(CameraTonemapDefaults);
+  }
   if (Lvl.Id === "level-showcase-gallery" && !Rows.some((R) => R.Id === "control-vehicle")) {
     const VehicleRow = ShowcaseInitialRows.find((R) => R.Id === "control-vehicle");
     if (VehicleRow) {

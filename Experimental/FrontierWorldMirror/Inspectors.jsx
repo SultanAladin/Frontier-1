@@ -472,16 +472,18 @@ function Metric({ Value, Unit, Caption }) {
   );
 }
 export function EntityNotes({ Value = "", Change }) {
-  const [Open, SetOpen] = useState(Boolean(Value));
+  // Notes start closed by default — even when a saved note exists — so the
+  // inspector heading stays clean; the user opts in via "Add notes".
+  const [Open, SetOpen] = useState(false);
   if (!Open)
     return (
       <button
         className="entity-notes-add"
         onClick={() => SetOpen(true)}
-        aria-label="Add notes"
+        aria-label={Value ? "Show notes" : "Add notes"}
       >
         <Glyph Name="plus" Size={13} />
-        Add notes
+        {Value ? "Notes" : "Add notes"}
       </button>
     );
   return (
@@ -852,6 +854,187 @@ export function Inspector({
           </details>
       </>
     ) : null;
+    // Compact quick-control primitives for the object component tabs
+    // (Overview / Transform / Material / Physics / UV / Geometry). Deep
+    // component editing (mesh, UV charts, SDF, collision) runs in the
+    // Component Viewer workspace, opened from the Overview tab.
+    const QuickField = (Label, Key, Min, Max, Step, Unit = "", Def = Min, Decimals = 2) => {
+      const Val = Number.isFinite(+Values[Key]) ? +Values[Key] : Def;
+      const Pct = Math.max(0, Math.min(100, (100 * (Val - Min)) / Math.max(1e-6, Max - Min)));
+      return (
+        <label className="field" data-native-property={Label}>
+          <span>{Label}</span>
+          <div className="slider-pill">
+            <div className="split-value">
+              <input
+                type="number"
+                min={Min}
+                max={Max}
+                step={Step}
+                value={Number(Val.toFixed(Decimals))}
+                aria-label={`${Label} value`}
+                onChange={(Ev) => {
+                  const N = +Ev.target.value;
+                  if (Number.isFinite(N)) Change(Key, Math.min(Max, Math.max(Min, N)));
+                }}
+              />
+              <small>{Unit}</small>
+            </div>
+            <input
+              type="range"
+              min={Min}
+              max={Max}
+              step={Step}
+              value={Val}
+              style={{ "--fill": `${Pct}%` }}
+              aria-label={Label}
+              onChange={(Ev) => Change(Key, +Ev.target.value)}
+            />
+          </div>
+        </label>
+      );
+    };
+    const QuickSwitch = (Label, Key, On) => (
+      <label className="switch-row">
+        <span>{Label}</span>
+        <button
+          type="button"
+          className={"toggle " + (On ? "on" : "")}
+          role="switch"
+          aria-checked={!!On}
+          aria-label={Label}
+          onClick={() => Change(Key, !On)}
+        >
+          <i />
+        </button>
+      </label>
+    );
+    const JumpToPage = (PageId) => {
+      const Btn = document.querySelector(
+        `.insp-carousel-segments .insp-segment[aria-controls="insp-page-${PageId}"]`,
+      );
+      Btn?.click();
+    };
+    const OpenComponentViewer = () => {
+      window.open("/Experimental/ComponentViewer/", "component-viewer", "noopener");
+    };
+    const PhysicsOn = !!Values.PHYSICS;
+    const PhysicsNode = IsGeometry ? (
+      <>
+        <Card Title="Rigid body" Height={420}>
+          {QuickSwitch("Rigid body", "PHYSICS", PhysicsOn)}
+          {QuickField("Mass", "Physics Mass", 1, 5000, 1, "kg", 120, 1)}
+          {QuickField("Restitution", "Physics Restitution", 0, 1, 0.01, "×", 0.18)}
+          {QuickField("Friction", "Physics Friction", 0, 1, 0.01, "×", 0.55)}
+          {QuickField("Gravity scale", "Physics Gravity Scale", 0, 2, 0.05, "g", 1, 2)}
+          <p>
+            Authored rigid-body parameters. Native solver execution is pending —
+            the mirror persists the component; the Component Viewer owns the
+            collision body.
+          </p>
+        </Card>
+      </>
+    ) : null;
+    const UvNode = IsGeometry ? (
+      <>
+        <Card Title="UV mapping" Height={380}>
+          {QuickField("Scale X", "UV Scale X", 0.05, 10, 0.05, "×", 1)}
+          {QuickField("Scale Y", "UV Scale Y", 0.05, 10, 0.05, "×", 1)}
+          {QuickField("Offset X", "UV Offset X", -1, 1, 0.01, "", 0)}
+          {QuickField("Offset Y", "UV Offset Y", -1, 1, 0.01, "", 0)}
+          {QuickField("Rotation", "UV Rotation", 0, 360, 1, "°", 0, 0)}
+          <p>
+            Component UV parameters · native chart unwrap, pack & sheet export
+            run in the Component Viewer.
+          </p>
+        </Card>
+      </>
+    ) : null;
+    const OverviewNode = IsGeometry ? (
+      <>
+        <Card Title="Object overview" Height={470}>
+          {[
+            [
+              "Transform",
+              "transform",
+              Array.isArray(Values.Position)
+                ? `P [${Values.Position.map((N) => (+N).toFixed(2)).join(", ")}]`
+                : "—",
+            ],
+            [
+              "Material",
+              "material",
+              Values.Material?.Material?.Type || "Standard",
+            ],
+            [
+              "Physics",
+              "physics",
+              PhysicsOn
+                ? `Rigid · ${Number.isFinite(+Values["Physics Mass"]) ? +Values["Physics Mass"] : 120} kg`
+                : "Off",
+            ],
+            [
+              "UV",
+              "uv",
+              `${(Number.isFinite(+Values["UV Scale X"]) ? +Values["UV Scale X"] : 1).toFixed(2)}× · ${
+                Number.isFinite(+Values["UV Rotation"]) ? +Values["UV Rotation"] : 0
+              }°`,
+            ],
+            [
+              "Geometry",
+              "geometry",
+              (Subject.PrimitiveShape || "box") +
+                (Values.Fracture?.Enabled ? " · fractured" : ""),
+            ],
+          ].map(([Name, Page, Readout]) => (
+            <div
+              key={Page}
+              className="component-row"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                padding: "7px 9px",
+                borderRadius: 8,
+                background: "rgba(255,255,255,0.03)",
+                marginBottom: 6,
+                fontSize: 12,
+              }}
+            >
+              <span style={{ fontWeight: 500 }}>{Name}</span>
+              <output style={{ color: "#9aa0a6", fontSize: 11 }}>{Readout}</output>
+              <button
+                type="button"
+                onClick={() => JumpToPage(Page)}
+                aria-label={`Open ${Name} tab`}
+                style={{ padding: "3px 9px", fontSize: 11 }}
+              >
+                Open
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="open-component-viewer"
+            onClick={OpenComponentViewer}
+            style={{
+              width: "100%",
+              marginTop: 10,
+              justifyContent: "center",
+              fontWeight: 600,
+            }}
+          >
+            Open Component Viewer ↗
+          </button>
+          <p>
+            Deep component editing — mesh, UV charts, SDF bake, cluster LOD &
+            collision — runs in the Component Viewer workspace.
+          </p>
+        </Card>
+        {Capabilities()}
+      </>
+    ) : null;
     const SheetGroupNodes = [...new Set(Sheet.map((Field) => Field.Group))]
       .filter(
           (Group) =>
@@ -876,6 +1059,7 @@ export function Inspector({
       ));
     const Pages = IsGeometry
       ? [
+          { Id: "overview", Label: "Overview", Node: OverviewNode },
           {
             Id: "transform",
             Label: "Transform",
@@ -887,9 +1071,11 @@ export function Inspector({
             ),
           },
           { Id: "material", Label: "Material", Node: MaterialNode },
+          { Id: "physics", Label: "Physics", Node: PhysicsNode },
+          { Id: "uv", Label: "UV", Node: UvNode },
           {
-            Id: "fracture",
-            Label: "Fracture",
+            Id: "geometry",
+            Label: "Geometry",
             Node: (
               <>
                 <FracturePanel
@@ -1283,39 +1469,71 @@ export function Inspector({
           <TransformPanel Values={Values} Change={Change} />
         )}
         {IsEditorCamera(Subject) && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-            <button
-              type="button"
-              className="generic-card"
-              style={{
-                padding: "9px 10px",
-                cursor: "pointer",
-                color: "#eff4cf",
-                textAlign: "center",
-              }}
-              onClick={() => {
-                Change("Position", [...CanonicalEditorCamera.Position]);
-                Change("Target", [...CanonicalEditorCamera.Target]);
-                Change("Focal Length", CanonicalEditorCamera.FocalLengthMm);
-              }}
-            >
-              Reset Canonical Pose
-            </button>
-            <button
-              type="button"
-              className="generic-card"
-              style={{
-                padding: "9px 10px",
-                cursor: "pointer",
-                color: "#b8dcff",
-                textAlign: "center",
-                borderColor: "rgba(128,184,255,0.35)",
-              }}
-              onClick={() => OnSelectSubject && OnSelectSubject("render-settings")}
-            >
-              Render Settings →
-            </button>
-          </div>
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              <button
+                type="button"
+                className="generic-card"
+                style={{
+                  padding: "9px 10px",
+                  cursor: "pointer",
+                  color: "#eff4cf",
+                  textAlign: "center",
+                }}
+                onClick={() => {
+                  Change("Position", [...CanonicalEditorCamera.Position]);
+                  Change("Target", [...CanonicalEditorCamera.Target]);
+                  Change("Focal Length", CanonicalEditorCamera.FocalLengthMm);
+                }}
+              >
+                Reset Canonical Pose
+              </button>
+              <button
+                type="button"
+                className="generic-card"
+                style={{
+                  padding: "9px 10px",
+                  cursor: "pointer",
+                  color: "#b8dcff",
+                  textAlign: "center",
+                  borderColor: "rgba(128,184,255,0.35)",
+                }}
+                onClick={() => OnSelectSubject && OnSelectSubject("render-settings")}
+              >
+                Render Settings →
+              </button>
+            </div>
+            <Card Title="Camera components" Height={185}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <button
+                  type="button"
+                  className="generic-card"
+                  style={{ padding: "9px 10px", cursor: "pointer", textAlign: "center" }}
+                  onClick={() => OnSelectSubject && OnSelectSubject("camera-flare")}
+                >
+                  Lens Flare
+                  <small style={{ display: "block", color: "#9a9a9a", fontWeight: 400 }}>
+                    ghosts · halo · streaks
+                  </small>
+                </button>
+                <button
+                  type="button"
+                  className="generic-card"
+                  style={{ padding: "9px 10px", cursor: "pointer", textAlign: "center" }}
+                  onClick={() => OnSelectSubject && OnSelectSubject("camera-tonemap")}
+                >
+                  Tonemapping
+                  <small style={{ display: "block", color: "#9a9a9a", fontWeight: 400 }}>
+                    EV · saturation · bloom
+                  </small>
+                </button>
+              </div>
+              <p>
+                Sub-components of the Editor Camera · listed in the outliner
+                under Cameras → Editor Camera.
+              </p>
+            </Card>
+          </>
         )}
       </>
     );

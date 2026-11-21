@@ -147,6 +147,39 @@ export const CanonicalRenderSettings = {
   AntiAliasing: true,
 };
 
+// Canonical component defaults for the Editor Camera's Lens Flare &
+// Tonemapping sub-components (mirrors the C++ flare/post inspector defaults).
+export const CameraFlareDefaults = {
+  Enabled: true,
+  Type: 0,
+  Intensity: 1.0,
+  Ghosts: 6,
+  "Halo Radius": 0.28,
+  Chromatic: 0.6,
+  "Aperture Blades": 6,
+  "Streak gain": 1.0,
+  Anamorphic: true,
+  Streaks: true,
+  Starburst: true,
+  Spread: 1,
+  Rotation: 0.0,
+  "Ray pairs": 6,
+  "Ghost brightness": 1,
+  "Ghost spacing": 1,
+  "Halo brightness": 1,
+  "Halo width": 0.035,
+  "Ghost shape": 0,
+  "Preview X": 0.28,
+  "Preview Y": 0.43,
+};
+export const CameraTonemapDefaults = {
+  "EV Compensation": 0,
+  Saturation: 1.0,
+  Contrast: 1.0,
+  "Bloom Intensity": 0.05,
+  Vignette: 0.15,
+};
+
 export function ResolveRenderSettings(Values = {}) {
   const RowRec = Values?.["render-settings"] || {};
   const Merged = { ...CanonicalRenderSettings, ...RowRec };
@@ -358,6 +391,22 @@ export const ShowcaseInitialRows = [
     Icon: "camera",
     Parent: "cameras",
     Description: "Permanent editor navigation camera · 43.0° vertical FOV",
+  },
+  {
+    Id: "camera-flare",
+    Name: "Lens Flare",
+    Panel: "flare",
+    Icon: "lens-flare",
+    Parent: "camera",
+    Description: "Editor camera lens flare component",
+  },
+  {
+    Id: "camera-tonemap",
+    Name: "Tonemapping",
+    Panel: "post",
+    Icon: "environment-exposure",
+    Parent: "camera",
+    Description: "Editor camera tonemapping component",
   },
   {
     Id: "render-settings",
@@ -608,6 +657,16 @@ export const ShowcaseInitialValues = {
     "Subject Distance": CanonicalEditorCamera.SubjectDistanceM,
     Notes:
       "Synchronized 1:1 with C++ ShowcaseWorldSceneBundle::EditorCamera · Origin (0.00, -3.55, 0.42) -> Target (0.00, 0.55, 0.15).",
+  },
+  "camera-flare": {
+    ...CameraFlareDefaults,
+    Notes:
+      "Camera Lens Flare component · C++ parity defaults (ghosts, halo, anamorphic streaks).",
+  },
+  "camera-tonemap": {
+    ...CameraTonemapDefaults,
+    Notes:
+      "Camera Tonemapping component · EV compensation drives the editor camera exposure.",
   },
   "render-settings": {
     ...CanonicalRenderSettings,
@@ -966,8 +1025,11 @@ export function CompileLiveGtxScene(
   // Render Settings component under Editor Camera
   const RenderSettings = ResolveRenderSettings(Values);
 
-  // Post-process EV
-  const PostRow = Rows.find((Row) => Row.Panel === "post");
+  // Post-process EV — the scene-level ACES row (Id "post") is authoritative
+  // when present; otherwise the camera's own Tonemapping component drives it.
+  const PostRow =
+    Rows.find((Row) => Row.Id === "post") ||
+    Rows.find((Row) => Row.Panel === "post");
   const PostEnabled = PostRow ? RowEffectivelyVisible(PostRow, Rows, Hidden) : true;
   const EvComp = PostEnabled
     ? Number(Values?.[PostRow?.Id]?.["EV Compensation"] ?? 0)

@@ -106,11 +106,11 @@ import {
 
 const Folder = path.dirname(fileURLToPath(import.meta.url));
 
-// 1. Verify exact 23-entry Cornell-Studio Gallery Outliner matching C++ ShowcaseGalleryScene (+ RenderSettings + ControlVehicle + Physical Environment)
+// 1. Verify exact 25-entry Cornell-Studio Gallery Outliner matching C++ ShowcaseGalleryScene (+ RenderSettings + ControlVehicle + Physical Environment + 2 Editor Camera components)
 assert.equal(
   ShowcaseInitialRows.length,
-  23,
-  "Expected 23 Outliner entries (4 folders + 10 geometry + ControlVehicle + Editor Camera + Render Settings + Sun + Atmosphere + Clouds + Moon + Starfield + Ceiling Softbox)",
+  25,
+  "Expected 25 Outliner entries (4 folders + 10 geometry + ControlVehicle + Editor Camera + Lens Flare + Tonemapping + Render Settings + Sun + Atmosphere + Clouds + Moon + Starfield + Ceiling Softbox)",
 );
 const ShowcaseChildren = ShowcaseInitialRows.filter(
   (Row) => Row.Parent === "showcase",
@@ -283,7 +283,11 @@ const Duplicated = CreateNewLevelRecord({
   TemplateId: "duplicate",
   CurrentLevel: DefaultLevels[0],
 });
-assert.equal(Duplicated.Rows.length, 23, "Duplicate Current Level clones all 23 Showcase rows");
+assert.equal(
+  Duplicated.Rows.length,
+  25,
+  "Duplicate Current Level clones all 23 Showcase rows + 2 Editor Camera components (Lens Flare, Tonemapping)",
+);
 
 // 7. Verify standalone index.html bundle integrity & non-SDF shadow map / BVH shader presence
 const ViewportSrc = fs.readFileSync(path.join(Folder, "GtxWorldViewport.jsx"), "utf8");
