@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
 #include "Engine/GeometricRaster/Atmosphere/CloudNoiseVolume.h"
 #include "Engine/GeometricRaster/Atmosphere/J2000BrightStarRepository.h"
 #include "Engine/GeometricRaster/Atmosphere/LensFlareSequence.h"
@@ -1433,6 +1434,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportRgba8(
     uint32_t                       DebugChannel,
     std::vector<uint8_t>&          OutDisplayRgba8)
 {
+    FRONTIER_THOUGHT_SCOPE("Render.WorldViewportRgba8");
     WorldRenderConfiguration Config {};
     Config.DebugChannel     = DebugChannel;
     Config.Engine           = WorldRenderEngine::OpenPbrDirect;
@@ -1662,6 +1664,7 @@ bool VulkanWorldRenderSequence::RenderWorldViewportWithEngine(
     const WorldSceneSpecification&  Scene,
     std::vector<uint8_t>&           OutDisplayRgba8)
 {
+    FRONTIER_THOUGHT_SCOPE("Render.WorldViewportWithEngine");
     return ExecuteWorldRenderDispatch(Config, FrameIndex, Camera, Scene, true, false, &OutDisplayRgba8);
 }
 

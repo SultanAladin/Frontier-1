@@ -650,6 +650,7 @@ frontier_compile_world_module_slang_shader(GlobalIllumination/DisplayToneTransfo
 add_custom_target(FrontierShaders DEPENDS ${FRONTIER_SPV_OUTPUTS})
 
 set(FRONTIER_ENGINE_SOURCES
+    Engine/Lifecycle/ThoughtLog.cpp
     Engine/Configuration/EngineConfiguration.cpp
     Engine/Configuration/WorkspaceConfiguration.cpp
     Engine/MaterialSpace/SurfaceMaterial.cpp

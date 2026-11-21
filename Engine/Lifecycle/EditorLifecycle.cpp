@@ -4,6 +4,7 @@
 // 🧩 Editor-only authoring loop implementation
 
 #include "Engine/Lifecycle/EditorLifecycle.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
 #include "Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.h"
 
 #if FRONTIER_EDITOR_ENABLED
@@ -30,6 +31,7 @@ EditorLifecycle::~EditorLifecycle() noexcept
 
 bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration) noexcept
 {
+    Diagnostics::ThoughtLog::Initialize();
     Finalize();
 
     StartupConfig        = Configuration;
@@ -2097,6 +2099,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
         return false;
     }
 
+    FRONTIER_THOUGHT_SCOPE("Editor.Tick");
     const auto TickStart = std::chrono::steady_clock::now();
     LatestViewportTiming.WorldDispatched = false;
     LatestViewportTiming.GizmoOverlayMs  = 0.0f;
@@ -2320,10 +2323,12 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                  (DisplayCfg.RenderEngineIndex == 5u && GpuWorldRenderer->QueryProgressiveSampleCount() < 256u));
             if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active)
             {
+                FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
                 RefreshShowcaseViewportRaster();
             }
             else if (InteractionGizmoRefresh || CurrentSel != LastGizmoSlot)
             {
+                FRONTIER_THOUGHT_SCOPE("Editor.GizmoOverlayRefresh");
                 RefreshGizmoOverlayFromCachedWorld();
             }
         }
@@ -2410,6 +2415,7 @@ bool EditorLifecycle::ExecuteAuthoringTick(double Δt)
 
 void EditorLifecycle::PresentPrimaryEditorImGui(double Δt)
 {
+    FRONTIER_THOUGHT_SCOPE("Editor.ImGuiPresent");
     if (!Initialized || ImGui::GetCurrentContext() == nullptr)
     {
         return;
