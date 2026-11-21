@@ -589,7 +589,7 @@ bool GenerateWorkspacePaneExhibits(const std::filesystem::path& OutputDirectory)
         Outliner.OpenDirectiveSheetForSlot(Third, Point2D{ 92.0f, 340.0f });
 
         Viewport.ConfigureExecutionMode(ViewportExecutionMode::Simulate, false);
-        Viewport.ConfigureSettingsSheetOpen(true);
+        Viewport.ConfigureRenderSettingsSheetOpen(true);
 
         if (!CaptureExhibitSnapshot("Outliner", Outliner, Viewport, Inspector, "05-MultiSelectContextAndSettings.png"))
         {

@@ -641,6 +641,45 @@ int main()
             }
         }
 
+        // (h) Function keys: F3 toggles the telemetry overlay, F1 cycles debug views, F focuses.
+        {
+            auto* Panes = EditorSession.AccessWorkspaces().AccessActivePanes();
+            if (Panes == nullptr)
+            {
+                std::fprintf(stderr, "[FAIL] No active panes for function-key validation.\n");
+                EditorSession.Finalize();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
+            const bool DiagBefore = Panes->Viewport.QueryDiagnosticsVisible();
+            Io.AddKeyEvent(ImGuiKey_F3, true);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddKeyEvent(ImGuiKey_F3, false);
+            const bool DiagAfterF3 = Panes->Viewport.QueryDiagnosticsVisible();
+
+            const uint32_t DebugBefore = Panes->Viewport.QueryDisplaySettings().DebugChannelIndex;
+            Io.AddKeyEvent(ImGuiKey_F1, true);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddKeyEvent(ImGuiKey_F1, false);
+            const uint32_t DebugAfterF1 = Panes->Viewport.QueryDisplaySettings().DebugChannelIndex;
+
+            if (DiagAfterF3 == DiagBefore || DebugAfterF1 != (DebugBefore + 1u) % 19u)
+            {
+                std::fprintf(
+                    stderr,
+                    "[FAIL] Function-key shortcuts failed (F3 diag %d->%d, F1 debug %u->%u).\n",
+                    DiagBefore ? 1 : 0, DiagAfterF3 ? 1 : 0, DebugBefore, DebugAfterF1);
+                EditorSession.Finalize();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
+            Panes->Viewport.ConfigureDiagnosticsVisible(DiagBefore);
+        }
+
         EditorSession.Finalize();
         ImGui::DestroyContext(Ctx);
     }

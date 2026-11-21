@@ -138,7 +138,8 @@ public:
     void TogglePlayPause() noexcept;
     void ConfigureSplitViewport(bool SplitEnabled) noexcept;
     void ConfigureDiagnosticsVisible(bool Visible) noexcept;
-    void ConfigureSettingsSheetOpen(bool Open) noexcept;
+    void AdvanceDebugChannelCycle() noexcept { DisplaySettings.DebugChannelIndex = (DisplaySettings.DebugChannelIndex + 1u) % 19u; }
+    void ConfigureRenderSettingsSheetOpen(bool Open) noexcept;
     void ConfigureSdfPenumbraDropdownOpen(bool Open) noexcept { SdfPenumbraDropdownOpen = Open; }
     void ConfigureConstructSheetOpen(bool Open) noexcept;
     void ConfigureProjectionDropdownOpen(bool Open) noexcept;
@@ -158,7 +159,7 @@ public:
     [[nodiscard]] bool                           QueryPlayPaused() const noexcept;
     [[nodiscard]] bool                           QuerySplitViewportEnabled() const noexcept;
     [[nodiscard]] bool                           QueryDiagnosticsVisible() const noexcept;
-    [[nodiscard]] bool                           QuerySettingsSheetOpen() const noexcept;
+    [[nodiscard]] bool                           QueryRenderSettingsSheetOpen() const noexcept;
     [[nodiscard]] bool                           QueryConstructSheetOpen() const noexcept;
     [[nodiscard]] bool                           QueryProjectionDropdownOpen() const noexcept;
     [[nodiscard]] ViewportProjectionPreset       QueryPrimaryProjection() const noexcept;
@@ -204,7 +205,10 @@ private:
     bool                       PlayPaused              = false;                                   // [-]   - Play session paused indicator
     bool                       SplitViewportEnabled    = false;                                   // [-]   - Dual side-by-side viewport toggle
     bool                       DiagnosticsVisible      = false;                                   // [-]   - Diagnostics overlay active
-    bool                       SettingsSheetOpen       = false;                                   // [-]   - Viewport settings sheet open
+    bool                       RenderSettingsSheetOpen       = false;                                   // [-]   - Dedicated Render Settings panel open
+    bool                       RenderMenuOpen              = false;                                   // [-]   - Render header menu open
+    uint32_t                   RenderSettingsSection       = 0u;                                      // [idx] - Render panel section (0 Renderer, 1 Lighting, 2 Path Tracing, 3 Nanite, 4 Atmosphere)
+    Rectangle2D                RenderMenuButtonBounds      {};                                        // [px]  - Header Render menu button bounds
     bool                       ConstructSheetOpen      = false;                                   // [-]   - Construct dialog open
     bool                       ProjectionDropdownOpen  = false;                                   // [-]   - Projection selector open
     bool                       HeaderDebugDropdownOpen = false;                                   // [-]   - Header Debug View DropdownSelector open
@@ -224,8 +228,11 @@ private:
     DiagnosticsTabCategory     DiagnosticsCategory     = DiagnosticsTabCategory::Timing;          // [-]   - Active diagnostics view tab
     bool                       DiagnosticsPaused       = false;                                   // [-]   - Freeze sparkline sampling
     DiagnosticsOverlaySession  DiagnosticsSession      {};                                        // [-]   - Reusable DiagnosticsOverlay session
-    std::array<float, 120>     IntervalHistoryMs      {};                                        // [ms]  - Rolling 120-step timing samples
+    std::array<float, 600>     IntervalHistoryMs      {};                                        // [ms]  - 10 Hz timing samples (600 = 60 s window)
     uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
+    float                      HistoryPendingMs        = 0.0f;                                    // [ms]  - Frame-time accumulator for the next 10 Hz sample
+    float                      HistoryPendingSeconds   = 0.0f;                                    // [s]   - Elapsed time inside the pending sample bucket
+    uint32_t                   HistoryPendingFrames    = 0u;                                      // [cnt] - Frames inside the pending sample bucket
     ViewportTimingBreakdown       LastViewportTiming     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
     float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset
@@ -302,9 +309,9 @@ inline bool ViewportPanel::QueryDiagnosticsVisible() const noexcept
     return DiagnosticsVisible;
 }
 
-inline bool ViewportPanel::QuerySettingsSheetOpen() const noexcept
+inline bool ViewportPanel::QueryRenderSettingsSheetOpen() const noexcept
 {
-    return SettingsSheetOpen;
+    return RenderSettingsSheetOpen;
 }
 
 inline bool ViewportPanel::QueryConstructSheetOpen() const noexcept

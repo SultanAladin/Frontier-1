@@ -255,9 +255,9 @@ void ViewportPanel::ConfigureDiagnosticsVisible(bool Visible) noexcept
     DiagnosticsVisible = Visible;
 }
 
-void ViewportPanel::ConfigureSettingsSheetOpen(bool Open) noexcept
+void ViewportPanel::ConfigureRenderSettingsSheetOpen(bool Open) noexcept
 {
-    SettingsSheetOpen = Open;
+    RenderSettingsSheetOpen = Open;
     if (Open)
     {
         ConstructSheetOpen      = false;
@@ -271,7 +271,7 @@ void ViewportPanel::ConfigureConstructSheetOpen(bool Open) noexcept
     ConstructSheetOpen = Open;
     if (Open)
     {
-        SettingsSheetOpen       = false;
+        RenderSettingsSheetOpen       = false;
         ProjectionDropdownOpen  = false;
         HeaderDebugDropdownOpen = false;
     }
@@ -314,11 +314,23 @@ void ViewportPanel::PushDiagnosticsSample(double Δt) noexcept
         return;
     }
 
-    const float ClampedMs = (Δt > 1.0e-5)
-                                ? std::clamp(static_cast<float>(Δt * 1000.0), 1.0f, 120.0f)
-                                : 16.67f;
-    IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()] = ClampedMs;
-    ++HistoryWriteCursor;
+    // Sample at 10 Hz (average frame time over each 100 ms bucket): the graph then shows a
+    // readable 15/30/60 s window scrolling slowly instead of a 2 s per-frame blur.
+    const float FrameMs = (Δt > 1.0e-5)
+        ? std::clamp(static_cast<float>(Δt * 1000.0), 1.0f, 120.0f)
+        : 16.67f;
+    HistoryPendingMs += FrameMs;
+    HistoryPendingSeconds += static_cast<float>(std::max(0.0, Δt));
+    ++HistoryPendingFrames;
+    if (HistoryPendingSeconds >= 0.1f)
+    {
+        IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()] = std::clamp(
+            HistoryPendingMs / static_cast<float>(std::max(1u, HistoryPendingFrames)), 1.0f, 120.0f);
+        ++HistoryWriteCursor;
+        HistoryPendingMs      = 0.0f;
+        HistoryPendingSeconds = 0.0f;
+        HistoryPendingFrames  = 0u;
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -458,7 +470,7 @@ void ViewportPanel::RenderCanvasPane(
             ActivePaneIndex        = PaneIndex;
             ProjectionDropdownOpen = !ProjectionDropdownOpen;
             ConstructSheetOpen     = false;
-            SettingsSheetOpen      = false;
+            RenderSettingsSheetOpen      = false;
             DebugDropdownOpen      = false;
         }
         else if (!OverlayCoversCanvas && PaneBounds.Contains(Cursor) &&
@@ -581,7 +593,7 @@ void ViewportPanel::RenderCanvasPane(
         (!SplitViewportEnabled || ActivePaneIndex == PaneIndex))
     {
         ControlPointer NavPointer = Input.PrimaryPointer;
-        if (ConstructSheetOpen || SettingsSheetOpen)
+        if (ConstructSheetOpen || RenderSettingsSheetOpen)
         {
             NavPointer = {};
         }
@@ -650,20 +662,36 @@ void ViewportPanel::RenderDiagnosticsPanel(
     std::snprintf(WholeMs, sizeof(WholeMs), "%d", WholeInt);
     std::snprintf(FracMs, sizeof(FracMs), ".%d", Tenths);
 
-    std::vector<float> OrderedSamples(60u);
+    // 10 Hz samples over the selected window (15/30/60 s): slow, readable graph scroll.
+    const uint32_t WindowSamples = std::clamp(DiagnosticsSession.HistorySeconds, 15u, 60u) * 10u;
+    std::vector<float> OrderedSamples(WindowSamples);
+    const std::size_t RingSize = IntervalHistoryMs.size();
     for (std::size_t Step = 0u; Step < OrderedSamples.size(); ++Step)
     {
-        OrderedSamples[Step] = IntervalHistoryMs[(HistoryWriteCursor + Step * 2u) % IntervalHistoryMs.size()];
+        const std::size_t Back = OrderedSamples.size() - 1u - Step;
+        OrderedSamples[Step] = IntervalHistoryMs[(HistoryWriteCursor + RingSize - 1u - (Back % RingSize)) % RingSize];
     }
+
+    auto FormatCount = [](uint32_t V) -> std::string
+    {
+        char Buf[24]{};
+        std::snprintf(Buf, sizeof(Buf), "%u", V);
+        return std::string(Buf);
+    };
 
     char BigCnt[24]{};
     std::snprintf(BigCnt, sizeof(BigCnt), "%u", ConstructedCount);
     char VisSummary[64]{};
     std::snprintf(VisSummary, sizeof(VisSummary), "Visible: %u   Hidden: %u", VisibleCount, ConstructedCount - VisibleCount);
 
+    char ResolutionText[32]{};
+    std::snprintf(ResolutionText, sizeof(ResolutionText), "%u x %u", LastViewportTiming.RenderWidthPx, LastViewportTiming.RenderHeightPx);
+
     char ScaleText[48]{};
     std::snprintf(ScaleText, sizeof(ScaleText), "%.0f", DisplaySettings.RenderScalePercent);
 
+    char FpsText[24]{};
+    std::snprintf(FpsText, sizeof(FpsText), "%.1f fps", 1000.0f / std::max(0.1f, AvgMs));
     const float RealFps = 1000.0f / std::max(0.1f, AvgMs);
     char FpsUnitBuf[32]{};
     std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", RealFps);
@@ -705,13 +733,16 @@ void ViewportPanel::RenderDiagnosticsPanel(
             "",
             "",
             OrderedSamples,
-            std::min(12.0f, MinMs - 1.0f),
-            std::max(22.0f, MaxMs + 1.0f),
+            0.0f,
+            33.3f,
             16.67f,
-            false,
+            true,
+            true,
             ColorRgba{ 142, 198, 152, 240 },
             {
+                { "Current",  FormatMs(CurMs) },
                 { "Average",  FormatMs(AvgMs) },
+                { "FPS (avg)", FpsText },
                 { "Minimum",  FormatMs(MinMs) },
                 { "95th pct", FormatMs(P95Ms) },
                 { "Maximum",  FormatMs(MaxMs) },
@@ -730,8 +761,13 @@ void ViewportPanel::RenderDiagnosticsPanel(
             1.0f,
             0.0f,
             false,
+            false,
             ColorRgba{ 142, 198, 152, 240 },
-            {}
+            {
+                { "Constructed", FormatCount(ConstructedCount) },
+                { "Visible",     FormatCount(VisibleCount) },
+                { "Hidden",      FormatCount(ConstructedCount - VisibleCount) },
+            }
         },
         DiagnosticsMetricChannel{
             "Render configuration",
@@ -746,8 +782,14 @@ void ViewportPanel::RenderDiagnosticsPanel(
             1.0f,
             0.0f,
             false,
+            false,
             ColorRgba{ 142, 198, 152, 240 },
-            {}
+            {
+                { "Engine",      QueryRenderEngineName(DisplaySettings.RenderEngineIndex) },
+                { "Debug View",  QueryDebugChannelName(DisplaySettings.DebugChannelIndex) },
+                { "Quality",     QueryQualityTierName(DisplaySettings.QualityTier) },
+                { "Resolution",  ResolutionText },
+            }
         },
         DiagnosticsMetricChannel{
             "Stage profiler",
@@ -761,6 +803,7 @@ void ViewportPanel::RenderDiagnosticsPanel(
             0.0f,
             1.0f,
             0.0f,
+            false,
             false,
             ColorRgba{ 142, 198, 152, 240 },
             {
@@ -782,9 +825,9 @@ void ViewportPanel::RenderDiagnosticsPanel(
     DiagnosticsOverlaySpec Spec {};
     Spec.Title                   = "Diagnostics";
     Spec.ShortcutBadge           = "F3";
-    Spec.FooterSampleLabel       = "120 samples";
+    Spec.FooterSampleLabel       = "10 Hz samples";
     Spec.AllowDragResize         = false;
-    Spec.ShowViewSpanControls    = false;
+    Spec.ShowViewSpanControls    = true;
     Spec.DefaultWidthPx          = 324.0f;
     Spec.DefaultHeightPx         = 432.0f;
     Spec.Channels                = Channels;
@@ -1009,7 +1052,11 @@ void ViewportPanel::RenderSettingsSheet(
     const PaneInputReading& Input)
 {
     const float SheetW = 286.0f;
-    const float SheetH = std::min(796.0f, std::max(426.0f, Bounds.Height - 22.0f));
+    // Dedicated Render Settings panel: height follows the active section.
+    constexpr std::array<float, 5> SectionHeights = {{ 560.0f, 220.0f, 240.0f, 200.0f, 380.0f }};
+    const float SheetH = std::min(
+        SectionHeights[std::min(4u, RenderSettingsSection)],
+        std::max(240.0f, Bounds.Height - 22.0f));
     const float SheetX = std::clamp(GearButtonRightBottom.X - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
     const float SheetY = GearButtonRightBottom.Y + 6.0f;
     const Rectangle2D Sheet{ SheetX, SheetY, SheetW, SheetH };
@@ -1024,10 +1071,32 @@ void ViewportPanel::RenderSettingsSheet(
         { Sheet.X + 16.0f, Sheet.Y + 14.0f },
         9.5f,
         ColorRgba{ 138, 138, 138, 255 },
-        "VIEWPORT SETTINGS");
+        "RENDER SETTINGS");
 
-    // Quality tier capsules (Low / Med / Std / High / Ultra)
-    float RowY = Sheet.Y + 36.0f;
+    // Section pills mirror the Render header menu (switch sections without reopening it)
+    {
+        constexpr std::array<const char*, 5> SectionLabels = {{ "Render", "Lights", "PT", "Nanite", "Sky" }};
+        const float PillW = (SheetW - 32.0f - 16.0f) / 5.0f;
+        for (uint32_t SecIdx = 0u; SecIdx < 5u; ++SecIdx)
+        {
+            const Rectangle2D Pill{ Sheet.X + 16.0f + static_cast<float>(SecIdx) * (PillW + 4.0f), Sheet.Y + 32.0f, PillW, 20.0f };
+            const bool Active = (RenderSettingsSection == SecIdx);
+            Overlay.FillRectangle(Pill, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 10.0f);
+            Overlay.StrokeRectangle(Pill, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 10.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 8.5f, SectionLabels[SecIdx]);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Pill.Center().X - TW * 0.5f, Pill.Y + 5.0f }, 8.5f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 150, 150, 150, 255 }, SectionLabels[SecIdx]);
+            if (Pill.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                RenderSettingsSection = SecIdx;
+            }
+        }
+    }
+
+    // Quality tier capsules (Low / Med / Std / High / Ultra) [Section: Renderer]
+    float RowY = Sheet.Y + 62.0f;
+    if (RenderSettingsSection == 0u)
     {
         constexpr std::array<const char*, 5> ShortLabels = {{ "Low", "Med", "Std", "High", "Ultra" }};
         const float CapsuleW = (Sheet.Width - 32.0f - 16.0f) / 5.0f;
@@ -1075,10 +1144,39 @@ void ViewportPanel::RenderSettingsSheet(
         RowY += 32.0f;
     };
 
+    if (RenderSettingsSection == 0u)
+    {
     ConstructToggleRow("Reflections",         DisplaySettings.ReflectionsEnabled);
     ConstructToggleRow("Anti-aliasing",       DisplaySettings.AntiAliasingEnabled);
     ConstructToggleRow("Raytracing",          DisplaySettings.RaytracingEnabled);
     ConstructToggleRow("XeGTAO (PBR AO)",     DisplaySettings.XeGtaoEnabled);
+    if (DisplaySettings.XeGtaoEnabled)
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+            WorkspaceSurfaceColors::SecondaryInk, "XeGTAO Strength");
+        constexpr std::array<const char*, 4> StrLabels = {{ "0.5", "1.0", "1.5", "2.0" }};
+        constexpr std::array<float, 4>       StrValues = {{ 0.5f, 1.0f, 1.5f, 2.0f }};
+        const float StrGroupW   = 172.0f;
+        const float StrCapsuleW = (StrGroupW - 12.0f) / 4.0f;
+        const float StrGroupX   = Sheet.Right() - 16.0f - StrGroupW;
+        for (uint32_t Idx = 0u; Idx < 4u; ++Idx)
+        {
+            const Rectangle2D Capsule{ StrGroupX + static_cast<float>(Idx) * (StrCapsuleW + 4.0f), RowY + 1.0f, StrCapsuleW, 22.0f };
+            const bool        Active = (std::fabs(DisplaySettings.XeGtaoStrength - StrValues[Idx]) < 0.01f);
+            Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+            Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, StrLabels[Idx]);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, StrLabels[Idx]);
+            if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                DisplaySettings.XeGtaoStrength = StrValues[Idx];
+            }
+        }
+        RowY += 32.0f;
+    }
 
     // BVH4 Reflection Raytrace vs Sky Environment toggle
     {
@@ -1136,6 +1234,10 @@ void ViewportPanel::RenderSettingsSheet(
         RowY += 32.0f;
     }
 
+    } // Section: Renderer (toggles)
+
+    if (RenderSettingsSection == 2u)
+    {
     // Progressive PT convergence (only on Path Tracer engines): target spp + per-frame batch
     if (DisplaySettings.RenderEngineIndex == 4u || DisplaySettings.RenderEngineIndex == 5u)
     {
@@ -1172,6 +1274,20 @@ void ViewportPanel::RenderSettingsSheet(
         ConstructSppRow("PT Batch / Frame", BatchLabels.data(), BatchValues.data(), 4u, DisplaySettings.PathTraceBatchSpp);
     }
 
+    if (DisplaySettings.RenderEngineIndex != 4u && DisplaySettings.RenderEngineIndex != 5u)
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 10.5f,
+            WorkspaceSurfaceColors::SecondaryInk, "Select a Path Tracer engine");
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 22.0f }, 10.5f,
+            WorkspaceSurfaceColors::SecondaryInk, "(Renderer section) for SPP controls.");
+        RowY += 48.0f;
+    }
+    } // Section: Path Tracing
+
+    if (RenderSettingsSection == 3u)
+    {
     // Nanite-like cluster LOD: viewport traces the per-camera LOD cut instead of full-res geometry
     {
         WorkspaceAppearance::ConstructWeightedText(
@@ -1227,6 +1343,10 @@ void ViewportPanel::RenderSettingsSheet(
         }
     }
 
+    } // Section: Nanite
+
+    if (RenderSettingsSection == 0u)
+    {
     // Render Scale slider (50% .. 200%)
     RowY += 4.0f;
     WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 4.0f }, 11.0f, WorkspaceSurfaceColors::SecondaryInk, "Render Scale");
@@ -1265,6 +1385,10 @@ void ViewportPanel::RenderSettingsSheet(
     }
     RowY += 34.0f;
 
+    } // Section: Renderer (scale, engine)
+
+    if (RenderSettingsSection == 1u)
+    {
     // 2. Shadow Algorithm Dropdown Button
     const Rectangle2D ShadowBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 28.0f };
     ShadowButtonBounds      = ShadowBtn;
@@ -1301,6 +1425,10 @@ void ViewportPanel::RenderSettingsSheet(
     }
     RowY += 34.0f;
 
+    } // Section: Lighting
+
+    if (RenderSettingsSection == 0u)
+    {
     // 3. Debug View Dropdown Button
     const Rectangle2D DebugBtn{ Sheet.X + 16.0f, RowY - 2.0f, Sheet.Width - 32.0f, 28.0f };
     DebugButtonBounds      = DebugBtn;
@@ -1319,6 +1447,10 @@ void ViewportPanel::RenderSettingsSheet(
     }
     RowY += 36.0f;
 
+    } // Section: Renderer (debug)
+
+    if (RenderSettingsSection == 4u)
+    {
     // 4. Atmosphere, Celestials & Volumetric Clouds Quick Controls
     if (RowY + 120.0f <= Sheet.Bottom())
     {
@@ -1404,6 +1536,8 @@ void ViewportPanel::RenderSettingsSheet(
         }
     }
 
+    } // Section: Atmosphere
+
     // Active Option Sheet rendered last for clean z-ordering
     if (EngineDropdownOpen)
     {
@@ -1415,17 +1549,17 @@ void ViewportPanel::RenderSettingsSheet(
             "Engine: Path Tracer (Real-Time)",
             "Engine: Path Tracer (Final)",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(EngineBtn, static_cast<uint32_t>(EngineOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(EngineButtonBounds, static_cast<uint32_t>(EngineOptions.size()));
         const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % static_cast<uint32_t>(EngineOptions.size());
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
-                Overlay, EngineBtn, EngineOptions.data(), static_cast<uint32_t>(EngineOptions.size()),
+                Overlay, EngineButtonBounds, EngineOptions.data(), static_cast<uint32_t>(EngineOptions.size()),
                 CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
         {
             DisplaySettings.RenderEngineIndex = ChosenIdx;
             EngineDropdownOpen                = false;
         }
-        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !EngineBtn.Contains(Cursor))
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !EngineButtonBounds.Contains(Cursor))
         {
             EngineDropdownOpen = false;
         }
@@ -1439,17 +1573,17 @@ void ViewportPanel::RenderSettingsSheet(
             "Shadow: PCF 3x3",
             "Shadow: BVH4 Ray",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(ShadowBtn, static_cast<uint32_t>(ShadowOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, static_cast<uint32_t>(ShadowOptions.size()));
         const uint32_t    CurIdx     = DisplaySettings.ShadowAlgorithmIndex % 5u;
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
-                Overlay, ShadowBtn, ShadowOptions.data(), static_cast<uint32_t>(ShadowOptions.size()),
+                Overlay, ShadowButtonBounds, ShadowOptions.data(), static_cast<uint32_t>(ShadowOptions.size()),
                 CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
         {
             DisplaySettings.ShadowAlgorithmIndex = ChosenIdx;
             ShadowDropdownOpen                   = false;
         }
-        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !ShadowBtn.Contains(Cursor))
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !ShadowButtonBounds.Contains(Cursor))
         {
             ShadowDropdownOpen = false;
         }
@@ -1464,17 +1598,17 @@ void ViewportPanel::RenderSettingsSheet(
             "4. Hybrid SDF + Sobol Spherical Cap",
             "5. SDF Monte Carlo PT Ref (96 SPP)",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(SdfPenumbraBtn, static_cast<uint32_t>(SdfOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(SdfPenumbraButtonBounds, static_cast<uint32_t>(SdfOptions.size()));
         const uint32_t    CurIdx     = DisplaySettings.SdfShadowPenumbraIndex % static_cast<uint32_t>(SdfOptions.size());
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
-                Overlay, SdfPenumbraBtn, SdfOptions.data(), static_cast<uint32_t>(SdfOptions.size()),
+                Overlay, SdfPenumbraButtonBounds, SdfOptions.data(), static_cast<uint32_t>(SdfOptions.size()),
                 CurIdx, Input.PrimaryPointer, ChosenIdx).Clicked)
         {
             DisplaySettings.SdfShadowPenumbraIndex = ChosenIdx;
             SdfPenumbraDropdownOpen                = false;
         }
-        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !SdfPenumbraBtn.Contains(Cursor))
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !SdfPenumbraButtonBounds.Contains(Cursor))
         {
             SdfPenumbraDropdownOpen = false;
         }
@@ -1502,12 +1636,12 @@ void ViewportPanel::RenderSettingsSheet(
             "Debug View: Nanite LOD Level",
             "Debug View: Nanite Clusters",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugBtn, static_cast<uint32_t>(DebugOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugButtonBounds, static_cast<uint32_t>(DebugOptions.size()));
         const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 19u;
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay,
-                DebugBtn,
+                DebugButtonBounds,
                 DebugOptions.data(),
                 static_cast<uint32_t>(DebugOptions.size()),
                 CurrentIdx,
@@ -1517,7 +1651,7 @@ void ViewportPanel::RenderSettingsSheet(
             DisplaySettings.DebugChannelIndex = ChosenIdx;
             DebugDropdownOpen                 = false;
         }
-        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !DebugBtn.Contains(Cursor))
+        else if (Input.PrimaryPointer.Pressed && !DropBounds.Contains(Cursor) && !DebugButtonBounds.Contains(Cursor))
         {
             DebugDropdownOpen = false;
         }
@@ -1542,7 +1676,7 @@ void ViewportPanel::Render(
 
     PixelSpace&   ActiveOverlay     = (OverlaySurface != nullptr) ? *OverlaySurface : Surface;
     const Point2D Cursor            = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    OverlayOpenBefore = ConstructSheetOpen || SettingsSheetOpen || ProjectionDropdownOpen || HeaderDebugDropdownOpen;
+    const bool    OverlayOpenBefore = ConstructSheetOpen || RenderSettingsSheetOpen || RenderMenuOpen || ProjectionDropdownOpen || HeaderDebugDropdownOpen;
 
     PushDiagnosticsSample(Δt);
     WorkspaceAppearance::ForwardInputToTextBuffer(ConstructSearchEditor, Input, Δt);
@@ -1553,7 +1687,7 @@ void ViewportPanel::Render(
     if (Input.EscapePressed)
     {
         ConstructSheetOpen           = false;
-        SettingsSheetOpen            = false;
+        RenderSettingsSheetOpen            = false;
         ProjectionDropdownOpen       = false;
         HeaderDebugDropdownOpen      = false;
         ConstructSearchEditor.Active = false;
@@ -1719,7 +1853,7 @@ void ViewportPanel::Render(
         const ViewportProjectionPreset ActivePreset =
             (SplitViewportEnabled && ActivePaneIndex == 1u) ? SecondaryProjection : PrimaryProjection;
         ControlPointer ProjPointer = Input.PrimaryPointer;
-        if (ConstructSheetOpen || SettingsSheetOpen)
+        if (ConstructSheetOpen || RenderSettingsSheetOpen)
         {
             ProjPointer.Enabled = false;
         }
@@ -1735,14 +1869,15 @@ void ViewportPanel::Render(
         {
             ProjectionDropdownOpen = !ProjectionDropdownOpen;
             ConstructSheetOpen     = false;
-            SettingsSheetOpen      = false;
+            RenderSettingsSheetOpen      = false;
             DebugDropdownOpen      = false;
         }
     }
 
     // Right-aligned secondary tools: Split Viewport, Diagnostics, Settings (each 39x31 capsule)
-    const Rectangle2D SettingsBtn{ ToolbarRight - 39.0f, ToolsRowY, 39.0f, 31.0f };
-    const Rectangle2D DiagnosticsBtn{ SettingsBtn.X - 5.0f - 39.0f, ToolsRowY, 39.0f, 31.0f };
+    const Rectangle2D RenderBtn{ ToolbarRight - 92.0f, ToolsRowY, 92.0f, 31.0f };
+    const Rectangle2D DiagnosticsBtn{ RenderBtn.X - 5.0f - 39.0f, ToolsRowY, 39.0f, 31.0f };
+    RenderMenuButtonBounds = RenderBtn;
     const Rectangle2D SplitBtn{ DiagnosticsBtn.X - 5.0f - 39.0f, ToolsRowY, 39.0f, 31.0f };
 
     // Header Debug View Dropdown Pill (1-click access to Lit + 15 modular debug views)
@@ -1758,7 +1893,7 @@ void ViewportPanel::Render(
             const Rectangle2D HeaderDbgBtn{ DebugStartX, ToolsRowY, DbgBtnW, 31.0f };
             HeaderDebugButtonBounds = HeaderDbgBtn;
             ControlPointer DbgPtr   = Input.PrimaryPointer;
-            if (ConstructSheetOpen || SettingsSheetOpen || ProjectionDropdownOpen)
+            if (ConstructSheetOpen || RenderSettingsSheetOpen || ProjectionDropdownOpen)
             {
                 DbgPtr.Enabled = false;
             }
@@ -1768,7 +1903,7 @@ void ViewportPanel::Render(
                 HeaderDebugDropdownOpen = !HeaderDebugDropdownOpen;
                 ProjectionDropdownOpen  = false;
                 ConstructSheetOpen      = false;
-                SettingsSheetOpen       = false;
+                RenderSettingsSheetOpen       = false;
             }
         }
     }
@@ -1812,16 +1947,28 @@ void ViewportPanel::Render(
         DiagnosticsVisible = !DiagnosticsVisible;
     }
 
-    if (ConstructSecondaryToolButton(
-            SettingsBtn,
-            SettingsSheetOpen,
-            [&](Point2D Origin, ColorRgba Ink, ColorRgba BtnBg)
-            { WorkspaceAppearance::ConstructViewportSettingsIcon(Surface, Origin, 16.0f, Ink, BtnBg); }))
+    // Dedicated Render menu button (replaces the old gear/settings sheet trigger)
     {
-        ConfigureSettingsSheetOpen(!SettingsSheetOpen);
-        if (!SettingsSheetOpen)
+        const bool MenuActive = RenderMenuOpen || RenderSettingsSheetOpen;
+        const bool Hovered    = !OverlayOpenBefore && RenderBtn.Contains(Cursor);
+        Surface.FillRectangle(RenderBtn, MenuActive ? ColorRgba{ 46, 39, 30, 255 } : (Hovered ? ColorRgba{ 43, 43, 43, 255 } : ColorRgba{ 26, 26, 26, 255 }), 15.5f);
+        Surface.StrokeRectangle(RenderBtn, MenuActive ? ColorRgba{ 191, 162, 122, 110 } : ColorRgba{ 255, 255, 255, 20 }, 15.5f, 1.0f);
+        const char* RenderLabel = "Render";
+        const float RenderLabelW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 10.5f, RenderLabel);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium,
+            { RenderBtn.Center().X - RenderLabelW * 0.5f - 5.0f, RenderBtn.Y + 9.0f }, 10.5f,
+            MenuActive ? ColorRgba{ 222, 193, 147, 255 } : ColorRgba{ 190, 190, 190, 255 }, RenderLabel);
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Regular,
+            { RenderBtn.Center().X + RenderLabelW * 0.5f - 1.0f, RenderBtn.Y + 10.0f }, 9.0f,
+            MenuActive ? ColorRgba{ 222, 193, 147, 255 } : ColorRgba{ 150, 150, 150, 255 }, "v");
+        if (Hovered && Input.PrimaryPointer.Pressed)
         {
-            DebugDropdownOpen = false;
+            RenderMenuOpen         = !RenderMenuOpen;
+            ProjectionDropdownOpen = false;
+            HeaderDebugDropdownOpen = false;
+            ConstructSheetOpen     = false;
         }
     }
 
@@ -1984,6 +2131,34 @@ void ViewportPanel::Render(
         }
     }
 
+    if (RenderMenuOpen)
+    {
+        // Dedicated Render Settings menu: pick a section, the dedicated panel opens on it.
+        constexpr std::array<const char*, 5> RenderMenuOptions = {{
+            "Renderer...",
+            "Lighting & Shadows...",
+            "Path Tracing...",
+            "Nanite LOD...",
+            "Atmosphere...",
+        }};
+        const Rectangle2D MenuSheet = DropdownSelector::QuerySheetBounds(
+            RenderMenuButtonBounds, static_cast<uint32_t>(RenderMenuOptions.size()));
+        uint32_t ChosenIdx = RenderSettingsSection;
+        if (DropdownSelector::ConstructOptionSheet(
+                ActiveOverlay, RenderMenuButtonBounds, RenderMenuOptions.data(),
+                static_cast<uint32_t>(RenderMenuOptions.size()), RenderSettingsSection, Input.PrimaryPointer, ChosenIdx).Clicked)
+        {
+            RenderSettingsSection = ChosenIdx;
+            RenderMenuOpen        = false;
+            ConfigureRenderSettingsSheetOpen(true);
+        }
+        else if (OverlayOpenBefore && Input.PrimaryPointer.Pressed &&
+                 !MenuSheet.Contains(Cursor) && !RenderMenuButtonBounds.Contains(Cursor))
+        {
+            RenderMenuOpen = false;
+        }
+    }
+
     if (ConstructSheetOpen)
     {
         RenderConstructDialog(ActiveOverlay, Bounds, Input);
@@ -1997,15 +2172,15 @@ void ViewportPanel::Render(
         }
     }
 
-    if (SettingsSheetOpen)
+    if (RenderSettingsSheetOpen)
     {
-        RenderSettingsSheet(ActiveOverlay, Bounds, { SettingsBtn.Right(), SettingsBtn.Bottom() }, Input);
-        if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !SettingsBtn.Contains(Cursor))
+        RenderSettingsSheet(ActiveOverlay, Bounds, { RenderBtn.Right(), RenderBtn.Bottom() }, Input);
+        if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !RenderBtn.Contains(Cursor))
         {
             const float SheetW = 286.0f;
             const float SheetH = std::min(796.0f, std::max(426.0f, Bounds.Height - 22.0f));
-            const float SheetX = std::clamp(SettingsBtn.Right() - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
-            const Rectangle2D SheetRect{ SheetX, SettingsBtn.Bottom() + 6.0f, SheetW, SheetH };
+            const float SheetX = std::clamp(RenderBtn.Right() - SheetW, Bounds.X + 10.0f, std::max(Bounds.X + 10.0f, Bounds.Right() - SheetW - 10.0f));
+            const Rectangle2D SheetRect{ SheetX, RenderBtn.Bottom() + 6.0f, SheetW, SheetH };
             const Rectangle2D EngineSheetRect      = DropdownSelector::QuerySheetBounds(EngineButtonBounds, 6u);
             const Rectangle2D ShadowSheetRect      = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, 5u);
             const Rectangle2D SdfPenumbraSheetRect = DropdownSelector::QuerySheetBounds(SdfPenumbraButtonBounds, 6u);
@@ -2017,7 +2192,7 @@ void ViewportPanel::Render(
                 (DebugDropdownOpen       && DebugSheetRect.Contains(Cursor));
             if (!SheetRect.Contains(Cursor) && !InDropdown)
             {
-                SettingsSheetOpen       = false;
+                RenderSettingsSheetOpen       = false;
                 EngineDropdownOpen      = false;
                 ShadowDropdownOpen      = false;
                 SdfPenumbraDropdownOpen = false;

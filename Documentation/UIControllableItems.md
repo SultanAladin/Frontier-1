@@ -419,3 +419,28 @@ face filled with its slot colour. Small materials with a single L0 cluster stay 
 material are printed by `NaniteViewportVehicleValidation` (slot 6 body: 124 clusters,
 slot 7: 41, glass/trim slots: 1–13 each); homogeneity is asserted for every cluster at
 every level in both LOD validations.
+
+## 21. Merge + viewport keys, telemetry, Render menu (this change)
+
+Merged `arena/20fc22da-frontier` (SolidArc CAD bevel workflow, context tool options,
+shader packaging) into this branch — clean merge, full build green.
+
+**Keys** (Viewport): `F` Focus (frame selection, existed — kept), **`F3` telemetry overlay
+toggle** (new key binding; badge already said F3), **`F1` cycle Debug View** 00→18 (new).
+Validated in `ProjectBrowserValidation` section (h) with synthetic key events.
+
+**Telemetry (F3) readability rework**: sampling is now **10 Hz** (frame-time averaged per
+100 ms bucket, 600-sample ring = 60 s). The graph plots a **fixed 0–33.3 ms scale** (no
+per-frame autoscale), amber **16.67 ms (60 fps)** budget line with ms labels, `-15/30/60s …
+now` window labels, and Plot/Stats + 15/30/60 s span controls are enabled. Timing tab rows:
+Current / Average / **FPS (avg)** / Minimum / 95th pct / Maximum. Scene tab now lists
+Constructed/Visible/Hidden; Render tab lists Engine / Debug View / Quality / Resolution;
+Profiler tab keeps the GPU stage breakdown. (Before: 120 samples at frame rate ≈ 2 s of
+history with autoscale — the unreadable blur.)
+
+**Render Settings menus**: the gear "Viewport Settings" sheet in the viewport header is
+**removed**. A dedicated **Render** header menu now offers *Renderer… / Lighting &
+Shadows… / Path Tracing… / Nanite LOD… / Atmosphere…*, opening the dedicated Render
+Settings panel on that section (section pills inside mirror the menu). XeGTAO strength
+(0.5/1.0/1.5/2.0) gained a UI next to its toggle. Known pre-existing failure, unrelated:
+`WorkspacePanesValidation` needs `EngineContent/FontsArchives`, which has 0 files in git.

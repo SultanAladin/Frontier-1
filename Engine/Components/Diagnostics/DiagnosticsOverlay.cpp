@@ -364,14 +364,17 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
 
             float Lo = Ch.PlotMinBound;
             float Hi = Ch.PlotMaxBound;
-            for (const float S : Ch.Samples)
+            if (!Ch.FixedPlotScale)
             {
-                Lo = std::min(Lo, S);
-                Hi = std::max(Hi, S);
-            }
-            if (Ch.HasBudgetLine)
-            {
-                Hi = std::max(Hi, Ch.BudgetThreshold * 1.1f);
+                for (const float S : Ch.Samples)
+                {
+                    Lo = std::min(Lo, S);
+                    Hi = std::max(Hi, S);
+                }
+                if (Ch.HasBudgetLine)
+                {
+                    Hi = std::max(Hi, Ch.BudgetThreshold * 1.1f);
+                }
             }
             if (Hi - Lo < 0.5f)
             {
@@ -397,6 +400,36 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
             if (Poly.size() >= 2u)
             {
                 Surface.StrokePolyline(Poly, ScaleAlpha(Ch.AccentColor, Opacity), 1.6f, false);
+            }
+
+            if (Ch.FixedPlotScale)
+            {
+                // Fixed-scale annotations: budget fps at the amber line, time window at the base.
+                char TopLabel[24]{};
+                std::snprintf(TopLabel, sizeof(TopLabel), "%.0f ms", Hi);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular, { Plot.X + 5.0f, Plot.Y + 3.0f }, 8.0f,
+                    ScaleAlpha(ColorRgba{ 150, 150, 150, 255 }, Opacity), TopLabel);
+                if (Ch.HasBudgetLine)
+                {
+                    char BudgetLabel[24]{};
+                    std::snprintf(BudgetLabel, sizeof(BudgetLabel), "%.1f ms", Ch.BudgetThreshold);
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Surface, FontWeightClass::Regular,
+                        { Plot.Right() - 5.0f - WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.0f, BudgetLabel),
+                          Plot.Bottom() - 10.0f - std::clamp((Ch.BudgetThreshold - Lo) / (Hi - Lo), 0.0f, 1.0f) * (Plot.Height - 20.0f) - 11.0f },
+                        8.0f, ScaleAlpha(ColorRgba{ 242, 168, 92, 220 }, Opacity), BudgetLabel);
+                }
+                char WindowLabel[24]{};
+                std::snprintf(WindowLabel, sizeof(WindowLabel), "-%us", Session.HistorySeconds);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular, { Plot.X + 5.0f, Plot.Bottom() - 11.0f }, 8.0f,
+                    ScaleAlpha(ColorRgba{ 130, 130, 130, 255 }, Opacity), WindowLabel);
+                const char* NowLabel = "now";
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular,
+                    { Plot.Right() - 5.0f - WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.0f, NowLabel), Plot.Bottom() - 11.0f },
+                    8.0f, ScaleAlpha(ColorRgba{ 130, 130, 130, 255 }, Opacity), NowLabel);
             }
 
             CursorY = Plot.Bottom() + 12.0f;

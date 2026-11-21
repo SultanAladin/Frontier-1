@@ -603,7 +603,7 @@ int main()
         Vp.AccessDisplaySettings().RenderEngineIndex      = 2u; // Engine: GTX SDF GI
         Vp.AccessDisplaySettings().SdfShadowPenumbraIndex = 3u; // 3. 3D Voxel SDF Penumbra + Cone GI
         Vp.AssignCanvasRasterImage(HiResViewportCapture.DisplayRgba8.data(), HiResCam.WidthPx, HiResCam.HeightPx);
-        Vp.ConfigureSettingsSheetOpen(true);
+        Vp.ConfigureRenderSettingsSheetOpen(true);
         Vp.ConfigureSdfPenumbraDropdownOpen(true);
 
         const Rectangle2D VpBounds { 0.0f, 0.0f, 1440.0f, 860.0f };

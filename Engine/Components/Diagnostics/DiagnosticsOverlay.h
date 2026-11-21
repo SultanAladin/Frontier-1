@@ -55,6 +55,7 @@ struct DiagnosticsMetricChannel
     float                           PlotMaxBound      = 1.0f;  // [-] - Suggested maximum Y bound
     float                           BudgetThreshold   = 0.0f;  // [-] - Optional budget horizontal line threshold
     bool                            HasBudgetLine     = false; // [-] - Render dashed/amber budget line when true
+    bool                            FixedPlotScale    = false; // [-] - Plot exactly [PlotMinBound, PlotMaxBound] (no per-frame autoscale)
     ColorRgba                       AccentColor       { 142, 198, 152, 240 }; // [-] - Plot stroke & accent color
     std::vector<DiagnosticsStatRow> Rows              {}; // [-] - Bottom key-value statistics rows
 };

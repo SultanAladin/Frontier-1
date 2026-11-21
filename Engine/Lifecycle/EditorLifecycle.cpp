@@ -1051,6 +1051,19 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         }
     }
 
+    // Function-key viewport shortcuts: F3 toggles the telemetry overlay, F1 cycles debug views
+    if (!Io.WantTextInput && !CtrlHeld && !AltHeld)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_F3, false))
+        {
+            Panes->Viewport.ConfigureDiagnosticsVisible(!Panes->Viewport.QueryDiagnosticsVisible());
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_F1, false))
+        {
+            Panes->Viewport.AdvanceDebugChannelCycle();
+        }
+    }
+
     // Camera lag: input above moves the DESIRED pose; the reusable lag component damps the
     // rendered pose toward it every tick (also while settling after the keys are released).
     if (CameraMoved)
