@@ -75,6 +75,7 @@ struct WorldRenderConfiguration
     float                                 XeGtaoStrength      = 1.0f;  // [x]    - XeGTAO occlusion strength multiplier [0..2]
     uint32_t                              QualityTier         = 1u;   // [0..4]  - Quality tier
     uint32_t                              PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
+    uint32_t                              PathTraceTargetSpp  = 0u;   // [spp]   - Convergence target for progressive PT (0 = continuous, no cap)
 };
 
 struct WorldSceneSpecification

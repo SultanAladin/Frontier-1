@@ -1906,10 +1906,27 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     LastCameraOrigin    = Camera.CameraOrigin;
     LastCameraForward   = Basis.ForwardAxis;
 
-    const uint32_t EffectiveTickOrSample =
-        (EngineOrdinal >= static_cast<uint32_t>(WorldRenderEngine::PathTracerGameRealtime))
-            ? ProgressiveSampleCount++
-            : FrameIndex;
+    // Progressive PT: accumulate PathTraceSamples spp per dispatch (clamped to the convergence
+    // target when one is set); the editor keeps dispatching until the target is reached.
+    const bool     ProgressivePtActive =
+        EngineOrdinal >= static_cast<uint32_t>(WorldRenderEngine::PathTracerGameRealtime);
+    uint32_t       ProgressiveBatchSpp = 1u;
+    if (ProgressivePtActive)
+    {
+        ProgressiveBatchSpp = std::clamp(Config.PathTraceSamples, 1u, 8u);
+        if (Config.PathTraceTargetSpp > 0u)
+        {
+            const uint32_t RemainingSpp = (Config.PathTraceTargetSpp > ProgressiveSampleCount)
+                ? (Config.PathTraceTargetSpp - ProgressiveSampleCount)
+                : 0u;
+            ProgressiveBatchSpp = std::min(ProgressiveBatchSpp, std::max(1u, RemainingSpp));
+        }
+    }
+    const uint32_t EffectiveTickOrSample = ProgressivePtActive ? ProgressiveSampleCount : FrameIndex;
+    if (ProgressivePtActive)
+    {
+        ProgressiveSampleCount += ProgressiveBatchSpp;
+    }
 
     Uniforms.EngineShadowReflPad[0] = EngineOrdinal;
     Uniforms.EngineShadowReflPad[1] = static_cast<uint32_t>(Config.ShadowAlgorithm);
@@ -2468,10 +2485,28 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     if (UseDedicatedPathTracer)
     {
         WriteStamp(4u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ViewportPathTraceProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
+        // Accumulate the whole per-frame batch: each sample re-dispatches with its own sample
+        // index in a spare uniform slot (running-mean accumulation in the shader does the rest).
+        for (uint32_t BatchIdx = 0u; BatchIdx < ProgressiveBatchSpp; ++BatchIdx)
         {
-            BoundDevice->FreeCommandBuffer(Cmd);
-            return false;
+            auto SampleSlots = Pass0Slots;
+            if (BatchIdx > 0u)
+            {
+                const uint64_t SampleUniOffs = static_cast<uint64_t>(BatchIdx) * UniformStrideBytes;
+                WorldViewportUniformBlockStd140 SampleUni = Uniforms;
+                SampleUni.EngineShadowReflPad[3] = EffectiveTickOrSample + BatchIdx;
+                std::memcpy(UniformBase + SampleUniOffs, &SampleUni, sizeof(SampleUni));
+                SampleSlots = MakePassSlots(SampleUniOffs, false);
+            }
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ViewportPathTraceProgramHandle, SampleSlots, GroupsX, GroupsY, 1u))
+            {
+                BoundDevice->FreeCommandBuffer(Cmd);
+                return false;
+            }
+            if (BatchIdx + 1u < ProgressiveBatchSpp)
+            {
+                InsertComputeSyncBarrier();
+            }
         }
         WriteStamp(5u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         WriteStamp(6u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);

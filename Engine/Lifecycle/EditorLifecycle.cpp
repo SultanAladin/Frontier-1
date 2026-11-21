@@ -1921,6 +1921,8 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.DebugChannel       = std::min(16u, DisplayCfg.DebugChannelIndex);
     RenderConfig.XeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
     RenderConfig.XeGtaoStrength     = DisplayCfg.XeGtaoStrength;
+    RenderConfig.PathTraceSamples   = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
+    RenderConfig.PathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
     RenderConfig.QualityTier        = QTier;
     RenderConfig.ReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
     RenderConfig.RaytracingEnabled  = DisplayCfg.RaytracingEnabled;
@@ -2266,6 +2268,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.SdfShadowPenumbraIndex != LastSdfPenumbraIndex ||
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
+                DisplayCfg.PathTraceTargetSpp != LastPathTraceTargetSpp ||
+                DisplayCfg.PathTraceBatchSpp != LastPathTraceBatchSpp ||
                 DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
                 std::abs(DisplayCfg.XeGtaoStrength - LastXeGtaoStrength) > 0.001f ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
@@ -2287,6 +2291,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastSdfPenumbraIndex   = DisplayCfg.SdfShadowPenumbraIndex;
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
+            LastPathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
+            LastPathTraceBatchSpp  = DisplayCfg.PathTraceBatchSpp;
             LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
             LastXeGtaoStrength     = DisplayCfg.XeGtaoStrength;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
@@ -2341,14 +2347,39 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const auto TickPrepEnd = std::chrono::steady_clock::now();
             LatestViewportTiming.EditorTickMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(TickPrepEnd - TickStart).count());
+            // Progressive PT renders continuously until it converges: keep dispatching while the
+            // accumulated spp is below the target (0 = no cap, renders until camera/scene changes,
+            // which reset accumulation in the Vulkan sequence / below).
+            const bool PathTracerEngineActive = (DisplayCfg.RenderEngineIndex == 4u || DisplayCfg.RenderEngineIndex == 5u);
+            if (PathTracerEngineActive && GpuReady && (SceneMutated || DisplayChanged))
+            {
+                GpuWorldRenderer->ResetProgressiveAccumulation();
+            }
             const bool ProgressiveOrder3Active =
-                GpuReady &&
-                ((DisplayCfg.RenderEngineIndex == 4u && GpuWorldRenderer->QueryProgressiveSampleCount() < 64u) ||
-                 (DisplayCfg.RenderEngineIndex == 5u && GpuWorldRenderer->QueryProgressiveSampleCount() < 256u));
+                GpuReady && PathTracerEngineActive &&
+                (DisplayCfg.PathTraceTargetSpp == 0u ||
+                 GpuWorldRenderer->QueryProgressiveSampleCount() < DisplayCfg.PathTraceTargetSpp);
             if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active)
             {
                 FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
                 RefreshShowcaseViewportRaster();
+                if (PathTracerEngineActive && GpuWorldRenderer != nullptr)
+                {
+                    char PtReadout[96] {};
+                    if (DisplayCfg.PathTraceTargetSpp == 0u)
+                    {
+                        std::snprintf(PtReadout, sizeof(PtReadout), "PT %u spp · continuous", GpuWorldRenderer->QueryProgressiveSampleCount());
+                    }
+                    else
+                    {
+                        std::snprintf(
+                            PtReadout, sizeof(PtReadout), "PT %u / %u spp%s",
+                            GpuWorldRenderer->QueryProgressiveSampleCount(),
+                            DisplayCfg.PathTraceTargetSpp,
+                            (GpuWorldRenderer->QueryProgressiveSampleCount() >= DisplayCfg.PathTraceTargetSpp) ? " · converged" : "");
+                    }
+                    Panes->Viewport.ConfigureProbeReadoutText(PtReadout);
+                }
             }
             else if (InteractionGizmoRefresh || CurrentSel != LastGizmoSlot)
             {

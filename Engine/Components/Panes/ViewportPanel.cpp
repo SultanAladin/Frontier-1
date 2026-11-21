@@ -1134,6 +1134,42 @@ void ViewportPanel::RenderSettingsSheet(
         RowY += 32.0f;
     }
 
+    // Progressive PT convergence (only on Path Tracer engines): target spp + per-frame batch
+    if (DisplaySettings.RenderEngineIndex == 4u || DisplaySettings.RenderEngineIndex == 5u)
+    {
+        auto ConstructSppRow = [&](const char* Label, const char* const* Labels, const uint32_t* Values, uint32_t Count, uint32_t& Target)
+        {
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+                WorkspaceSurfaceColors::SecondaryInk, Label);
+            const float GroupW   = 204.0f;
+            const float CapsuleW = (GroupW - static_cast<float>(Count - 1u) * 4.0f) / static_cast<float>(Count);
+            const float GroupX   = Sheet.Right() - 16.0f - GroupW;
+            for (uint32_t Idx = 0u; Idx < Count; ++Idx)
+            {
+                const Rectangle2D Capsule{ GroupX + static_cast<float>(Idx) * (CapsuleW + 4.0f), RowY + 1.0f, CapsuleW, 22.0f };
+                const bool        Active = (Target == Values[Idx]);
+                Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+                Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+                const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, Labels[Idx]);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                    Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, Labels[Idx]);
+                if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+                {
+                    Target = Values[Idx];
+                }
+            }
+            RowY += 32.0f;
+        };
+        constexpr std::array<const char*, 6> TargetLabels = {{ "64", "128", "256", "512", "1024", "Inf" }};
+        constexpr std::array<uint32_t, 6>    TargetValues = {{ 64u, 128u, 256u, 512u, 1024u, 0u }};
+        ConstructSppRow("PT Target SPP", TargetLabels.data(), TargetValues.data(), 6u, DisplaySettings.PathTraceTargetSpp);
+        constexpr std::array<const char*, 4> BatchLabels = {{ "1", "2", "4", "8" }};
+        constexpr std::array<uint32_t, 4>    BatchValues = {{ 1u, 2u, 4u, 8u }};
+        ConstructSppRow("PT Batch / Frame", BatchLabels.data(), BatchValues.data(), 4u, DisplaySettings.PathTraceBatchSpp);
+    }
+
     // Render Scale slider (50% .. 200%)
     RowY += 4.0f;
     WorkspaceAppearance::ConstructWeightedText(Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 4.0f }, 11.0f, WorkspaceSurfaceColors::SecondaryInk, "Render Scale");
