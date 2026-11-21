@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';import path from 'node:path';import vm from 'node:vm';
+import {build} from 'esbuild';import {JSDOM} from 'jsdom';import {createCanvas,loadImage} from '@napi-rs/canvas';
+const entry=`import React,{useState} from 'react';import{createRoot}from'react-dom/client';import Bake from './bake-quick-tiles.jsx';function Harness(){const [obj,select]=useState({id:'sun',kind:'sun'}),[all,setAll]=useState({}),[intensity,setIntensity]=useState(100);window.selectTarget=(id,kind)=>select({id,kind});window.editSettings=()=>setIntensity(120);window.bakeValues=all;return <Bake key={obj.id} object={obj} kind={obj.kind} values={all[obj.id]||{}} settings={{intensity,...all[obj.id]}} allValues={all} onSet={(k,v)=>setAll(s=>({...s,[obj.id]:{...s[obj.id],[k]:v}}))}/>};createRoot(document.getElementById('root')).render(<Harness/>);`;
+const result=await build({stdin:{contents:entry,resolveDir:process.cwd(),loader:'jsx'},bundle:true,write:false,format:'iife',define:{'process.env.NODE_ENV':'"test"'},plugins:[{name:'svg-test',setup(b){b.onResolve({filter:/\.svg\?url$/},a=>({path:path.resolve(a.resolveDir,a.path.split('?')[0]),namespace:'svg'}));b.onLoad({filter:/.*/,namespace:'svg'},a=>({contents:'export default '+JSON.stringify('data:image/svg+xml,'+encodeURIComponent(fs.readFileSync(a.path,'utf8'))),loader:'js'}))}}]});
+const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost:5173',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,d=w.document;
+w.Image=class {set src(value){loadImage(Buffer.from(value.split(',')[1],'base64')).then(img=>{this.naturalWidth=img.width;this.naturalHeight=img.height;this.onload?.()}).catch(()=>this.onerror?.())}};
+let downloaded='';w.URL.createObjectURL=()=> 'blob:test';w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=function(){downloaded=this.download};
+new vm.Script(result.outputFiles[0].text).runInContext(dom.getInternalVMContext());const tick=()=>new Promise(r=>setTimeout(r,40));await tick();
+const tile=id=>d.querySelector(`[data-bake-target="${id}"]`);
+assert.ok(tile('sun')&&tile('sun-disk'));assert.equal(d.querySelectorAll('.bake-quick-tile').length,2);
+assert.ok(tile('sun').querySelector('input[type=checkbox]').disabled);
+tile('sun').querySelector('.bake-trigger').click();await tick();
+assert.equal(w.bakeValues.sun['bake:sun'].request.status,'pending-renderer');assert.ok(tile('sun').textContent.includes('renderer connection required'));assert.ok(!w.bakeValues.sun['bake:sun'].asset);
+assert.ok(!w.bakeValues.sun['bake:sun-disk'],'sun disk is independent');
+d.querySelector('[aria-label="Export Sun lighting bake request"]').click();assert.equal(downloaded,'frontier-sun-bake-request.json');
+w.editSettings();await tick();assert.ok(tile('sun').textContent.includes('Settings changed'));
+async function upload(file){const input=tile('sun').querySelector('input[type=file]');Object.defineProperty(input,'files',{configurable:true,value:[file]});input.dispatchEvent(new w.Event('change',{bubbles:true}));await tick();await tick();}
+await upload(new w.File(['oops'],'bad.svg',{type:'image/svg+xml'}));assert.ok(d.querySelector('.bake-error').textContent.includes('PNG'));
+await upload(new w.File([new Uint8Array(256*1024+1)],'big.png',{type:'image/png'}));assert.ok(d.querySelector('.bake-error').textContent.includes('256 KB'));
+await upload(new w.File(['bad bytes'],'broken.png',{type:'image/png'}));assert.ok(d.querySelector('.bake-error').textContent.includes('decoded'));
+const canvas=createCanvas(2,2),ctx=canvas.getContext('2d');ctx.fillStyle='#ffe';ctx.fillRect(0,0,2,2);
+await upload(new w.File([canvas.toBuffer('image/png')],'sun-baked.png',{type:'image/png'}));
+assert.equal(w.bakeValues.sun['bake:sun'].asset.width,2);assert.equal(w.bakeValues.sun['bake:sun'].mode,'baked');assert.ok(tile('sun').querySelector('input[type=checkbox]').checked);
+tile('sun').querySelector('input[type=checkbox]').click();await tick();assert.equal(w.bakeValues.sun['bake:sun'].mode,'procedural');assert.ok(w.bakeValues.sun['bake:sun'].asset);
+for(const [kind,target] of [['sky','atmosphere'],['rainbow','rainbow'],['flare','lens-flare'],['stars','stars']]){w.selectTarget(kind,kind);await tick();assert.ok(tile(target));assert.equal(d.querySelectorAll('.bake-quick-tile').length,1);tile(target).querySelector('.bake-trigger').click();await tick();assert.equal(w.bakeValues[kind]['bake:'+target].request.target,target);}
+w.selectTarget('sun-duplicate','sun');await tick();assert.ok(!tile('sun').querySelector('.bake-asset'));assert.ok(tile('sun').querySelector('input[type=checkbox]').disabled);
+w.selectTarget('sun','sun');await tick();assert.ok(tile('sun').querySelector('.bake-asset'));
+d.querySelector('[aria-label="Remove baked image for Sun lighting"]').click();await tick();assert.equal(w.bakeValues.sun['bake:sun'].asset,null);assert.equal(w.bakeValues.sun['bake:sun'].mode,'procedural');
+w.selectTarget('camera','camera');await tick();assert.equal(d.querySelector('.bake-quick-area'),null);
+dom.window.close();console.log('PASS: six independent bake targets; honest pending renderer requests, export, stale settings, validated image import, mode switch, removal and entity isolation.');
