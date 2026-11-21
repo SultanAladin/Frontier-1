@@ -41,6 +41,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <limits>
 #include <numbers>
 #include <numeric>
@@ -52,6 +53,35 @@ namespace Frontier::Workspaces::Sketcher
 {
 
 using namespace Frontier::GeometrySpace::Parametric;
+
+struct SketcherPreviewResult
+{
+    uint64_t                 Generation      = 0;
+    int                      Parameter       = 0;
+    SketcherSessionVerb      Verb            = SketcherSessionVerb::Blend;
+    SketcherExtrudeMode      ExtrudeMode     = SketcherExtrudeMode::AlongNormals;
+    BlendProfile             Shape           = BlendProfile::Fillet;
+    double                   Size            = 0.0;
+    bool                     VariableEnabled = false;
+    double                   EndSize         = 0.0;
+    bool                     Reversed        = false;
+    FeatureCombination       Combination     = FeatureCombination::Union;
+    double                   Depth           = 0.0;
+    std::vector<double>      CornerSizes     = {};
+    std::unique_ptr<SketcherDocument> Document = {};
+    SketcherCommandOutcome   Outcome          = {};
+    SketcherScene            Scene            = {};
+    std::string              Refusal          = {};
+    uint64_t                 DocumentRevision = 0;
+    double                   Milliseconds     = 0.0;
+};
+
+class SketcherPreviewWorker
+{
+public:
+    std::future<SketcherPreviewResult> Future = {};
+    bool Active() const noexcept { return Future.valid(); }
+};
 
 namespace
 {
@@ -301,9 +331,20 @@ bool WriteDocument(const SketcherDocument& Document, const std::string& Path)
     return SaveSketcherDocument(Document, Path);
 }
 
+void ResetBevelSession(SketcherWorkspaceStatus& State)
+{
+    // Keep an in-flight worker alive across cancel/new-session resets. Its generation is invalidated, so the result is
+    // discarded, but destroying std::future here would synchronously wait and recreate the very input hitch it avoids.
+    std::shared_ptr<SketcherPreviewWorker> Worker = std::move(State.Bevel.PreviewWorker);
+    const uint64_t Generation = State.Bevel.PreviewGeneration + 1;
+    State.Bevel = {};
+    State.Bevel.PreviewWorker     = std::move(Worker);
+    State.Bevel.PreviewGeneration = Generation;
+}
+
 void AdoptDocument(SketcherWorkspaceStatus& State, SketcherDocument Document, bool FitCondition)
 {
-    State.Bevel              = {};
+    ResetBevelSession(State);
     State.Isolate            = {};
     State.DimensionTool      = {};
     State.Outliner.AnchorKey = {};
@@ -736,7 +777,7 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
             return;
         }
         const double Previous = State.Bevel.Verb == SketcherSessionVerb::Corner ? State.Bevel.Size : 0.0;
-        State.Bevel                 = {};
+        ResetBevelSession(State);
         State.Bevel.ActiveCondition = true;
         State.Bevel.Verb            = SketcherSessionVerb::Corner;
         State.Bevel.Shape           = Shape;
@@ -748,7 +789,7 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
         return;
     }
     const double Previous = State.Bevel.Verb == SketcherSessionVerb::Blend ? State.Bevel.Size : 0.0;
-    State.Bevel                 = {};
+    ResetBevelSession(State);
     State.Bevel.ActiveCondition = true;
     State.Bevel.Verb            = SketcherSessionVerb::Blend;
     State.Bevel.Shape           = Shape;
@@ -877,7 +918,7 @@ void OpenExtrudeSessionWithMode(SketcherWorkspaceStatus& State, SketcherExtrudeM
         return;
     }
     const double Remembered = State.LastCommand.Kind == SketcherRepeatCategory::Face && State.LastCommand.Operation == FaceOperationCategory::Extrude ? State.LastCommand.Amount : 0.5;
-    State.Bevel                   = {};
+    ResetBevelSession(State);
     State.Bevel.ActiveCondition   = true;
     State.Bevel.Verb              = SketcherSessionVerb::Extrude;
     State.Bevel.ExtrudeMode       = Mode;
@@ -904,7 +945,7 @@ void OpenInsetSession(SketcherWorkspaceStatus& State)
         return;
     }
     const bool Remembered = State.LastCommand.Kind == SketcherRepeatCategory::Face && State.LastCommand.Operation == FaceOperationCategory::Inset;
-    State.Bevel                 = {};
+    ResetBevelSession(State);
     State.Bevel.ActiveCondition = true;
     State.Bevel.Verb            = SketcherSessionVerb::Inset;
     State.Bevel.Size            = Remembered ? State.LastCommand.Amount : 0.1;
@@ -1053,30 +1094,118 @@ void ConfineBevelLimit(SketcherWorkspaceStatus& State, int Parameter, bool Accep
     if (Parameter > 0 && Parameter == Bevel.FocusCorner) std::snprintf(Bevel.CornerText.data(), Bevel.CornerText.size(), "%.4g", Value);
 }
 
+bool FinishAsyncBevelPreview(SketcherWorkspaceStatus& State, bool WaitCondition)
+{
+    SketcherBevelSession& Bevel = State.Bevel;
+    if (!Bevel.PreviewWorker || !Bevel.PreviewWorker->Active()) return false;
+    if (!WaitCondition && Bevel.PreviewWorker->Future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+
+    SketcherPreviewResult Result = Bevel.PreviewWorker->Future.get();
+    if (!Bevel.ActiveCondition || Result.DocumentRevision != State.Document.Revision || Result.Generation != Bevel.PreviewGeneration) return true;
+
+    Bevel.Preview            = std::move(Result.Document);
+    Bevel.PreviewOutcome     = std::move(Result.Outcome);
+    Bevel.PreviewScene       = std::move(Result.Scene);
+    Bevel.PreviewRevision    = Result.DocumentRevision;
+    Bevel.StagedDepth        = Result.Depth;
+    Bevel.StagedCombination  = Result.Combination;
+    Bevel.StagedSize         = Result.Size;
+    Bevel.StagedShape        = Result.Shape;
+    Bevel.PreviewVerb        = Result.Verb;
+    Bevel.StagedExtrudeMode  = Result.ExtrudeMode;
+    Bevel.StagedVariable     = Result.VariableEnabled;
+    Bevel.StagedEndSize      = Result.EndSize;
+    Bevel.StagedReversed     = Result.Reversed;
+    Bevel.StagedCorners      = std::move(Result.CornerSizes);
+    Bevel.Refusal            = Legible(Result.Refusal);
+    Bevel.StageMs            = Result.Milliseconds;
+    ++Bevel.StageCount;
+    if (Bevel.PreviewOutcome.AcceptedCondition && Bevel.Refusal.empty())
+    {
+        Bevel.GoodScene     = Bevel.PreviewScene;
+        Bevel.GoodSize      = Bevel.StagedSize;
+        Bevel.GoodCondition = true;
+    }
+    // A result for an older pointer position remains useful visually, but must never move the feasibility bound of the
+    // newest value. Current results retain the existing blend-limit behavior exactly.
+    if (BevelStagedCurrent(Bevel))
+        ConfineBevelLimit(State, Result.Parameter, Bevel.PreviewOutcome.AcceptedCondition && Bevel.Refusal.empty());
+    return true;
+}
+
+void LaunchAsyncBevelPreview(SketcherWorkspaceStatus& State)
+{
+    SketcherBevelSession& Bevel = State.Bevel;
+    if (!Bevel.PreviewWorker) Bevel.PreviewWorker = std::make_shared<SketcherPreviewWorker>();
+
+    auto Document = std::make_unique<SketcherDocument>(CloneSketcherDocument(State.Document));
+    SketcherPreviewResult Request;
+    Request.Generation       = ++Bevel.PreviewGeneration;
+    Request.Parameter        = ChangedBevelParameter(Bevel);
+    Request.Verb             = Bevel.Verb;
+    Request.ExtrudeMode      = Bevel.ExtrudeMode;
+    Request.Shape            = Bevel.Shape;
+    Request.Size             = Bevel.Size;
+    Request.VariableEnabled  = Bevel.VariableEnabled;
+    Request.EndSize          = Bevel.EndSize;
+    Request.Reversed         = Bevel.ReversedCondition;
+    Request.Combination      = Bevel.Combination;
+    Request.Depth            = Bevel.Depth;
+    Request.CornerSizes      = Bevel.CornerSizes;
+    Request.DocumentRevision = State.Document.Revision;
+    const std::string ProfileLabel = Bevel.ProfileLabel;
+    const std::string Target       = BooleanTarget(State);
+    const double ProfileStartValue = ProfileStart(Bevel);
+    const SketcherBlendRequest BlendRequest = ComposeBlendRequest(Bevel);
+    const SketcherCornerRequest CornerRequest = ComposeCornerRequest(Bevel);
+
+    Bevel.PreviewWorker->Future = std::async(std::launch::async,
+        [Document = std::move(Document), Request = std::move(Request), ProfileLabel, Target, ProfileStartValue, BlendRequest, CornerRequest]() mutable
+        {
+            const auto Started = std::chrono::steady_clock::now();
+            Request.Document = std::move(Document);
+            Request.Outcome = Request.Verb == SketcherSessionVerb::Profile ? ExtrudeSketcherSketch(*Request.Document, ProfileLabel, Request.Size, Request.Combination, Target, ProfileStartValue, true)
+                            : Request.Verb == SketcherSessionVerb::Extrude ? RunFaceExtrudeWithMode(*Request.Document, Request.Size, Request.ExtrudeMode)
+                            : Request.Verb == SketcherSessionVerb::Inset   ? InsetSketcherSelection(*Request.Document, Request.Size, Request.Depth)
+                            : Request.Verb == SketcherSessionVerb::Corner  ? CutSketcherSketchCorners(*Request.Document, CornerRequest)
+                                                                          : BlendSketcherSelection(*Request.Document, BlendRequest);
+            if (Request.Outcome.AcceptedCondition)
+            {
+                Request.Scene   = BuildSketcherScene(*Request.Document);
+                Request.Refusal = Request.Scene.Refusal;
+            }
+            else Request.Refusal = Request.Outcome.Refusal;
+            Request.Milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - Started).count();
+            return std::move(Request);
+        });
+}
+
 void StageBevelPreview(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel = State.Bevel;
     if (!Bevel.ActiveCondition) return;
     ResolveProfileCombination(Bevel);
+    // Completed jobs are adopted only on the UI thread. While one immutable snapshot is being evaluated, pointer input,
+    // camera movement and raster presentation continue normally; when it finishes, the newest pointer value is queued.
+    FinishAsyncBevelPreview(State, false);
+    if (Bevel.PreviewWorker && Bevel.PreviewWorker->Active()) return;
     if (BevelStagedCurrent(Bevel)) return;
-    // Never run two synchronous kernel rebuilds in the same UI frame when a limit probe or slow preview already built this frame.
-    if (Bevel.LastStagedFrame == State.FrameNumber && (Bevel.LimitProbeCondition || Bevel.StageMs > 15.0)) return;
-    // 💡 A slow preview (a blend along a cylinder–cylinder junction takes seconds) is rebuilt once the pointer rests
-    //    (one size held for 0.15 s and 6 frames: a slow frame alone is no rest), not on every pixel of mouse adjust: the
-    //    last preview stays up meanwhile. A typed (pinned) size, a new shape, verb or Boolean, and every fast preview
-    //    still restage at once.
-    const double Now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+
     const bool SizeOnly = Bevel.Preview && Bevel.StagedShape == Bevel.Shape && Bevel.PreviewVerb == Bevel.Verb && Bevel.StagedVariable == Bevel.VariableEnabled &&
                           Bevel.StagedEndSize == Bevel.EndSize && Bevel.StagedReversed == Bevel.ReversedCondition && Bevel.StagedCombination == Bevel.Combination &&
-                          Bevel.StagedDepth == Bevel.Depth;
+                          Bevel.StagedDepth == Bevel.Depth && Bevel.StagedExtrudeMode == Bevel.ExtrudeMode;
     const bool Dragging = Bevel.DragHandle >= 0 || Bevel.PointerDragCondition;               // A handle / empty-space drag is mouse adjust too
     if (SizeOnly && (!Bevel.PinnedCondition || Dragging) && Bevel.StageMs > 30.0)
     {
-        if (Bevel.PendingSize != Bevel.Size) { Bevel.PendingSize = Bevel.Size; Bevel.PendingSince = Now; Bevel.PendingFrame = State.FrameNumber; return; }
-        if (State.FrameNumber < Bevel.PendingFrame + 6 || Now - Bevel.PendingSince < 0.15) return;
+        LaunchAsyncBevelPreview(State);
+        return;
     }
+
+    // Never run two synchronous kernel rebuilds in the same UI frame when a limit probe or slow preview already built this frame.
+    if (Bevel.LastStagedFrame == State.FrameNumber && (Bevel.LimitProbeCondition || Bevel.StageMs > 15.0)) return;
     if (Bevel.LimitProbeCondition && Bevel.StageMs > 50.0 && Bevel.LastStagedFrame != UINT64_MAX && State.FrameNumber < Bevel.LastStagedFrame + 2) return;
     Bevel.LastStagedFrame = State.FrameNumber;
+    const double Now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     const int Parameter = ChangedBevelParameter(Bevel);                                      // [idx] - What the bound applies to
     Bevel.StagedDepth       = Bevel.Depth;
     Bevel.StagedCombination = Bevel.Combination;
@@ -1088,7 +1217,7 @@ void StageBevelPreview(SketcherWorkspaceStatus& State)
     Bevel.StagedEndSize     = Bevel.EndSize;
     Bevel.StagedReversed    = Bevel.ReversedCondition;
     Bevel.StagedCorners     = Bevel.CornerSizes;
-    static const char* Verbs[] = { "Blend", "Extrude", "Profile", "Inset", "Corner" };
+    [[maybe_unused]] static const char* Verbs[] = { "Blend", "Extrude", "Profile", "Inset", "Corner" };
     FRONTIER_TRACE_SCOPE("Preview", std::string("StageBevelPreview · ") + Verbs[std::clamp(int(Bevel.Verb), 0, 4)] + " · size " + TraceNumber(Bevel.Size));
     SketcherPhaseClock StageClock(State.Profile, "bevel preview · stage");
     Bevel.Preview     = std::make_unique<SketcherDocument>(CloneSketcherDocument(State.Document));
@@ -1142,6 +1271,9 @@ void ApplyBevelSession(SketcherWorkspaceStatus& State)
     }
     if (TypedSize != 0.0) Typed.Size = BoundBevelValue(State, 0, Typed.Size);
     ResolveProfileCombination(Typed);
+    // Confirmation is allowed to wait for the sole in-flight immutable snapshot. The drag path never waits; this also
+    // prevents a direct apply from entering the modeling kernel concurrently with its preview job.
+    FinishAsyncBevelPreview(State, true);
     if (!State.Bevel.Refusal.empty() && State.Bevel.StagedSize == State.Bevel.Size)
     {
         Announce(State, "Not applied: " + State.Bevel.Refusal + " · change the size, or Esc");
@@ -1217,6 +1349,7 @@ void CancelBevelSession(SketcherWorkspaceStatus& State)
 {
     if (!State.Bevel.ActiveCondition) return;
     State.Bevel.ActiveCondition = false;
+    ++State.Bevel.PreviewGeneration;                                                        // Discard any immutable snapshot still completing
     State.Bevel.Preview.reset();
     Announce(State, "Bevel cancelled (document untouched)");
 }
@@ -2663,7 +2796,7 @@ void OpenSketchExtrudeSession(SketcherWorkspaceStatus& State)
 {
     const std::string Label = State.FocusedStep;
     const double Remembered = State.Bevel.Verb == SketcherSessionVerb::Profile && State.Bevel.Size != 0.0 ? State.Bevel.Size : 0.5;
-    State.Bevel                 = {};
+    ResetBevelSession(State);
     State.Bevel.ActiveCondition = true;
     State.Bevel.Verb            = SketcherSessionVerb::Profile;
     State.Bevel.ProfileLabel    = Label;

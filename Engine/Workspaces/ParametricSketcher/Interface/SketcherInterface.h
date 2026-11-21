@@ -36,6 +36,8 @@
 namespace Frontier::Workspaces::Sketcher
 {
 
+class SketcherPreviewWorker;
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    ENUMS
 //------------------------------------------------------------------------------------------------------------------------
@@ -146,12 +148,11 @@ struct SketcherBevelSession
     double                            Depth           = 0.0;                                 // [len] - Inset: inner face shift (− pocket)
     std::array<char, 32>              DepthText       = {};                                  // [-]   - Inset: depth field text
     double                            StagedDepth     = 0.0;                                 // [len] - Depth the preview was built at
-    double                            StageMs         = 0.0;                                 // [ms]  - Last preview build (slow ones wait for the pointer to rest)
-    double                            PendingSize     = -1.0;                                // [len] - Pointer size waiting for the pointer to rest
-    double                            PendingSince    = 0.0;                                 // [s]   - When PendingSize last changed
-    int                               StageCount      = 0;                                   // [-]   - Previews built this session
-    uint64_t                          PendingFrame    = 0;                                   // [-]   - Frame number when PendingSize last changed
-    uint64_t                          LastStagedFrame = UINT64_MAX;                          // [-]   - Frame number of last StageBevelPreview build
+    double                            StageMs         = 0.0;                                 // [ms]  - Last exact preview build
+    std::shared_ptr<SketcherPreviewWorker> PreviewWorker = {};                              // [-]   - One immutable-snapshot kernel job; UI never waits while dragging
+    uint64_t                          PreviewGeneration = 0;                                // [-]   - Monotonic async request generation
+    int                               StageCount      = 0;                                   // [-]   - Exact previews completed this session
+    uint64_t                          LastStagedFrame = UINT64_MAX;                          // [-]   - Frame number of last synchronous StageBevelPreview build
     bool                              DepthEnabled    = false;                               // [-]   - Inset: the pointer drives the depth (H) instead of the distance (D)
     SketcherCornerRequest             Corner          = {};                                  // [-]   - Corner: the sketches / corner points (size and shape from the session)
     // 📝 Handles (Plasticity's fillet gizmo): [0] the uniform handle drives Size; one per corner of the picked edges
