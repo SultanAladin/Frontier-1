@@ -1710,7 +1710,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     LastCameraOrigin    = Camera.CameraOrigin;
     LastCameraForward   = Basis.ForwardAxis;
 
-    const uint32_t EffectiveFrameOrSample =
+    const uint32_t EffectiveTickOrSample =
         (EngineOrdinal >= static_cast<uint32_t>(WorldRenderEngine::PathTracerGameRealtime))
             ? ProgressiveSampleCount++
             : FrameIndex;
@@ -1718,7 +1718,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.EngineShadowReflPad[0] = EngineOrdinal;
     Uniforms.EngineShadowReflPad[1] = static_cast<uint32_t>(Config.ShadowAlgorithm);
     Uniforms.EngineShadowReflPad[2] = static_cast<uint32_t>(Config.ReflectionSource);
-    Uniforms.EngineShadowReflPad[3] = EffectiveFrameOrSample;
+    Uniforms.EngineShadowReflPad[3] = EffectiveTickOrSample;
 
     Uniforms.SunCascadeCenterSpan[0] = CachedSunCascade.CenterWorld.X;
     Uniforms.SunCascadeCenterSpan[1] = CachedSunCascade.CenterWorld.Y;
@@ -2203,7 +2203,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         (Config.DebugChannel == 0u || (Config.DebugChannel >= 8u && Config.DebugChannel <= 11u));
     const bool SpatialDenoise =
         ShadingDebug &&
-        ((EngIdx >= 1u && EngIdx <= 3u) || (EngIdx == 4u && EffectiveFrameOrSample < 24u));
+        ((EngIdx >= 1u && EngIdx <= 3u) || (EngIdx == 4u && EffectiveTickOrSample < 24u));
 
     WriteStamp(6u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     if (SpatialDenoise)
