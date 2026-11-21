@@ -5,9 +5,14 @@
 // into named menus (A | B | C) behind a segmented control with prev/next arrows, pointer swipe,
 // arrow-key navigation, and scrollable per-page content. A single-page request renders its
 // content directly so sparse subjects keep a plain layout.
+//
+// The page viewport is the single scroll container: it fills a fixed-height frame exactly
+// (absolute inset), so long pages scroll instead of clipping at the panel edge. When the
+// active page extends below the fold a soft "more below" fade appears at the bottom edge,
+// and scroll-snap (proximity) lets cards settle against the top edge.
 //==========================================================================================================================================
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./InspectorCarousel.css";
 
 const PageLetter = (Index) => String.fromCharCode(65 + Math.min(25, Index));
@@ -24,12 +29,43 @@ export function InspectorCarousel({
   const [Index, Select] = useState(Clamped);
   const [Dragging, SetDragging] = useState(false);
   const [DragOffset, SetDragOffset] = useState(0);
+  const [MoreBelow, SetMoreBelow] = useState(false);
   const ViewportRef = useRef(null);
   const DragState = useRef(null);
   const Active = Math.max(0, Math.min(Index, Count - 1));
 
   const Step = (Delta) =>
     Select((Previous) => Math.max(0, Math.min(Count - 1, Previous + Delta)));
+
+  // Recomputes whether the active page continues below the visible fold, so the
+  // bottom-edge fade only shows when there is actually more content to scroll to.
+  const UpdateMoreBelow = () => {
+    const El = ViewportRef.current;
+    if (!El) return;
+    SetMoreBelow(El.scrollTop + El.clientHeight < El.scrollHeight - 4);
+  };
+  const OnScroll = () => UpdateMoreBelow();
+
+  useEffect(() => {
+    if (Count <= 1) return;
+    const El = ViewportRef.current;
+    if (!El) return;
+    // A new menu starts at the top so a long page never strands the user mid-scroll.
+    El.scrollTop = 0;
+    UpdateMoreBelow();
+    let Observed = null;
+    if (typeof ResizeObserver === "function") {
+      Observed = new ResizeObserver(() => UpdateMoreBelow());
+      if (El.firstElementChild) Observed.observe(El.firstElementChild);
+      Observed.observe(El);
+    }
+    window.addEventListener("resize", UpdateMoreBelow);
+    return () => {
+      Observed?.disconnect();
+      window.removeEventListener("resize", UpdateMoreBelow);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Active, Count]);
 
   if (Count <= 1) return <>{Count === 1 ? Safe[0]?.Node : null}</>;
 
@@ -139,32 +175,48 @@ export function InspectorCarousel({
           {Active + 1} / {Count}
         </span>
       </div>
-      <div ref={ViewportRef} className="insp-carousel-viewport">
+      <div className="insp-carousel-scroll">
         <div
+          ref={ViewportRef}
           className={
-            "insp-carousel-track" + (Dragging ? " dragging" : "")
+            "insp-carousel-viewport" +
+            (MoreBelow ? " has-more-below" : "")
           }
-          style={{
-            transform: `translateX(calc(${-Active * 100}% + ${DragOffset}px))`,
-          }}
+          onScroll={OnScroll}
         >
-          {Safe.map((Page, Pos) => (
-            <div
-              key={Page.Id || Pos}
-              id={`insp-page-${Page.Id || Pos}`}
-              role="tabpanel"
-              aria-label={Page.Label + " settings"}
-              aria-hidden={Pos !== Active}
-              className={
-                "insp-carousel-page " +
-                (Pos === Active ? "active" : Pos < Active ? "left" : "right")
-              }
-              inert={Pos !== Active ? "" : undefined}
-            >
-              {Page.Node}
-            </div>
-          ))}
+          <div
+            className={
+              "insp-carousel-track" + (Dragging ? " dragging" : "")
+            }
+            style={{
+              transform: `translateX(calc(${-Active * 100}% + ${DragOffset}px))`,
+            }}
+          >
+            {Safe.map((Page, Pos) => (
+              <div
+                key={Page.Id || Pos}
+                id={`insp-page-${Page.Id || Pos}`}
+                role="tabpanel"
+                aria-label={Page.Label + " settings"}
+                aria-hidden={Pos !== Active}
+                className={
+                  "insp-carousel-page " +
+                  (Pos === Active ? "active" : Pos < Active ? "left" : "right")
+                }
+                inert={Pos !== Active ? "" : undefined}
+              >
+                {Page.Node}
+              </div>
+            ))}
+          </div>
         </div>
+        {MoreBelow && (
+          <div
+            className="insp-carousel-fade"
+            aria-hidden="true"
+            title="Scroll for more settings"
+          />
+        )}
       </div>
     </div>
   );
