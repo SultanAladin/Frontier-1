@@ -711,7 +711,7 @@ int LaunchDesktopWorkspace(
         ProjectBrowserInitialized = true;
     };
 
-    auto EnsureEditorLifecycleReady = [&](const std::filesystem::path& ProjectSpaceFile, std::string_view ProjectTitle) -> bool
+    auto EnsureEditorLifecycleReady = [&](const std::filesystem::path& ProjectSpaceFile, std::string_view ProjectTitle, bool BlankPlaneSkyScene = false) -> bool
     {
         if (!EditorStackReady)
         {
@@ -725,6 +725,7 @@ int LaunchDesktopWorkspace(
             EditorCfg.FontRepositoryRoot      = RepositoryRootPath / "EngineContent/FontsArchives";
             EditorCfg.ProjectSpacePath        = ProjectSpaceFile.empty() ? InitialOptions.StartupProjectSpacePath : ProjectSpaceFile;
             EditorCfg.PopulateShowcaseScene   = true;
+            EditorCfg.PopulateBlankPlaneSkyScene = BlankPlaneSkyScene;
             EditorCfg.VulkanDevice            = &DeviceInterchange;
             EditorCfg.ImGuiPresenter          = &SwapchainPresenter;
             EditorCfg.CompiledShaderDirectory = CompiledShaderDir;
@@ -745,6 +746,10 @@ int LaunchDesktopWorkspace(
                 true);
             (void)EditorBrowserPanel.ActivateCategory(ContentCategory::Colours);
             EditorStackReady = true;
+        }
+        if (BlankPlaneSkyScene && EditorStackReady)
+        {
+            EditorLoopPtr->PopulateBlankPlaneSkySession();
         }
         if (!ProjectTitle.empty())
         {
@@ -1117,7 +1122,7 @@ int LaunchDesktopWorkspace(
                 }
                 else
                 {
-                    if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle))
+                    if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle, Directive.BlankPlaneSkyScene))
                     {
                         CurrentSurface = ActiveHostSurface::WorldEditorSurface;
                     }

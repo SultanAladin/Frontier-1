@@ -40,7 +40,7 @@ WorkspaceCapabilityRegister::WorkspaceCapabilityRegister()
         HostWorkspaceTarget::FrontierWorld,
         "Frontier",
         "Open with Frontier",
-        "World Editor · Cornell-Studio Gallery, Atmosphere, Clouds & ContentBrowser",
+        "World Editor · Blank Plane & Sky Scene, Atmosphere, Clouds & ContentBrowser",
         true,
     });
     RegisteredEntries.push_back({

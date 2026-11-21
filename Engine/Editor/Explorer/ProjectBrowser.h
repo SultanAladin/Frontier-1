@@ -100,9 +100,10 @@ struct BrowserCollectionEntry
 
 struct BrowserWorkspaceLaunchDirective
 {
-    Workspaces::HostWorkspaceTarget TargetWorkspace  = Workspaces::HostWorkspaceTarget::FrontierWorld;
-    std::string                     ProjectTitle     {};
-    std::filesystem::path           SelectedFilePath {};
+    Workspaces::HostWorkspaceTarget TargetWorkspace     = Workspaces::HostWorkspaceTarget::FrontierWorld;
+    std::string                     ProjectTitle        {};
+    std::filesystem::path           SelectedFilePath    {};
+    bool                            BlankPlaneSkyScene  = false; // [-] - True for newly created projects (blank plane & sky)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -186,8 +187,6 @@ private:
     bool                    RevisionDropdownOpen  = false;
     bool                    NewProjectModalOpen   = false;
     bool                    DiskPathModalOpen     = false;
-    bool                    DraftEnableFrontier   = true;
-    bool                    DraftEnableUv         = true;
 
     TextEditBuffer          SearchInput           {};
     TextEditBuffer          CommentInput          {};

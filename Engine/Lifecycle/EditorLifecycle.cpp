@@ -231,7 +231,11 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     {
         (void)AttachVulkanGizmoOverlay(StartupConfig.VulkanDevice, StartupConfig.CompiledShaderDirectory);
     }
-    if (StartupConfig.PopulateShowcaseScene)
+    if (StartupConfig.PopulateBlankPlaneSkyScene)
+    {
+        PopulateBlankPlaneSkySession();
+    }
+    else if (StartupConfig.PopulateShowcaseScene)
     {
         PopulateShowcaseGallerySession();
     }
@@ -291,12 +295,24 @@ void EditorLifecycle::ConfigureActiveProjectTitle(std::string_view ProjectTitle)
     {
         if (!ActiveProjectTitle.empty())
         {
-            Panes->Viewport.ConfigureSceneTitle(ActiveProjectTitle + " · Cornell-Studio Gallery");
+            Panes->Viewport.ConfigureSceneTitle(ActiveProjectTitle + (BlankPlaneSkySessionActive ? " · Blank Scene" : " · Vehicle & Clear Sky"));
         }
     }
 }
 
 void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive = false;
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateBlankPlaneSkySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive = true;
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
 {
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
     if (Panes == nullptr)
@@ -313,7 +329,14 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
 
     const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-    GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    if (BlankPlaneSkySessionActive)
+    {
+        GeometricRaster::BuildBlankPlaneSkyScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    }
+    else
+    {
+        GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    }
     {
         const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
         auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
@@ -344,7 +367,9 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     }
     GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
     Panes->Viewport.ConfigureSceneTitle(
-        ActiveProjectTitle.empty() ? "Vehicle & Clear Sky" : (ActiveProjectTitle + " · Vehicle & Clear Sky"));
+        ActiveProjectTitle.empty()
+            ? (BlankPlaneSkySessionActive ? "Blank Scene · Ground Plane & Sky" : "Vehicle & Clear Sky")
+            : (ActiveProjectTitle + (BlankPlaneSkySessionActive ? " · Blank Scene" : " · Vehicle & Clear Sky")));
 
     Panes->Viewport.ConfigureInteractionCallback(
         [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)

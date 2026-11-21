@@ -63,7 +63,8 @@ struct EditorStartupConfiguration
     std::filesystem::path ProjectSpacePath {};                                                         // [-] - Optional .projectspace persistence path
     OutlinerTitleVariant                  OutlinerHeading         = OutlinerTitleVariant::Outliner; // [-] - Outliner vs LayerStack heading
     double                                MaximumStep             = 0.100;                          // [s] - Upper Δt clamp per authoring tick
-    bool                                        PopulateShowcaseScene   = false;                          // [-] - Populate Cornell-Studio Gallery in Outliner & GTX Viewport
+    bool                                        PopulateShowcaseScene   = false;                          // [-] - Populate default ControlVehicle scene in Outliner & GTX Viewport
+    bool                                        PopulateBlankPlaneSkyScene = false;                       // [-] - Populate blank Ground Plane & Clear Sky scene instead of the default scene
     GeometricRaster::VulkanInterchange*         VulkanDevice            = nullptr;                        // [-] - Optional hardware Vulkan device for GPU .slang World & Gizmo passes
     GeometricRaster::ImGuiOverlayRasterization* ImGuiPresenter          = nullptr;                        // [-] - Optional ImGui Vulkan presenter for zero-readback GPU viewport
     std::filesystem::path                       CompiledShaderDirectory {};                               // [-] - Optional CompiledShaders/ path for GPU .slang SPIR-V modules
@@ -110,6 +111,7 @@ public:
     void               AssignReturnToProjectBrowserCallback(std::function<void()> Callback);
     void               ConfigureActiveProjectTitle(std::string_view ProjectTitle);
     void               PopulateShowcaseGallerySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
+    void               PopulateBlankPlaneSkySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
     void               RefreshShowcaseViewportRaster();
     void               FrameShowcaseCameraSelection() noexcept;
 
@@ -157,6 +159,7 @@ private:
         uint32_t                               ClassIndex     = 0u;
     };
 
+    void PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx);
     void SynchronizeShowcaseGizmoAnchor() noexcept;
     void RefreshGizmoOverlayFromCachedWorld();
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
@@ -174,7 +177,7 @@ private:
     WorkspaceLifecycle                         Workspaces             {};     // [-]     - Multi-document workspace session loop
     Input::InputExtension                      InputParticipant       {};     // [-]     - Hardware input & OS feedback participant
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
-    std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted Cornell-Studio Gallery scene & Outliner tokens
+    std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted default world scene & Outliner tokens
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated MatCap / OpenPBR Direct world renderer
     std::unique_ptr<GeometricRaster::VulkanWorldRenderSequence>      GpuWorldRenderer     {}; // [-] - Hardware Vulkan .slang compute world render sequence
     std::unique_ptr<GeometricRaster::WorldGizmoOverlayRasterization> WorldGizmoRasterizer {}; // [-] - Vulkan .slang 3D Gizmo overlay rasterizer
@@ -213,6 +216,7 @@ private:
     bool                                                             PointerTrackingValid = false;
     bool                                                             NavigationDragWasActive = false;
     bool                                                             RightMouseFlyActive  = false;
+    bool                                                             BlankPlaneSkySessionActive = false;
     bool                                                             CameraInteractiveDrag = false;
     bool                                                             PendingInteractionWorldRefresh = false;
     bool                                                             PendingInteractionGizmoRefresh = false;

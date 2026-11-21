@@ -8,7 +8,7 @@
 
 | Target Enum | Executable (`Engine/Lifecycle/`) | Host / Source Directory | Domain & Capabilities | Detailed Docs |
 | :--- | :--- | :--- | :--- | :--- |
-| `FrontierWorld` | `Frontier` (`FrontierHostLaunch.cpp`) / `FrontierEditor` | `Engine/Lifecycle/EditorLifecycle.*` | World Editor: Cornell-Studio Gallery, Direct MatCap & OpenPBR World Rendering, `TransformGizmo`, `ContentBrowser` | [Engine/Lifecycle/README.md](../Lifecycle/README.md) |
+| `FrontierWorld` | `Frontier` (`FrontierHostLaunch.cpp`) / `FrontierEditor` | `Engine/Lifecycle/EditorLifecycle.*` | World Editor: Default & Blank World Scenes, Direct MatCap & OpenPBR World Rendering, `TransformGizmo`, `ContentBrowser` | [Engine/Lifecycle/README.md](../Lifecycle/README.md) |
 | `UVWorkspace` | `FrontierUV` | `Engine/Workspaces/UV/` | Dual 2D UDIM & 3D Surface GPU viewports, LSCM/ABF++ unwrap, GPU relax, concave packing | [UV/README.md](UV/README.md) |
 | `PatternWorkspace` | `FrontierPattern` | `Engine/Workspaces/Texturing/` | Seamless 2D vector stack, 8 GPU modifiers, 22 OpenPBR channels | [Texturing/README.md](Texturing/README.md) |
 | `StampWorkspace` | `FrontierStamp` | `Engine/Workspaces/Texturing/` | Alpha cutout vector contours, procedural masks, typography, OpenPBR relief | [Texturing/README.md](Texturing/README.md) |

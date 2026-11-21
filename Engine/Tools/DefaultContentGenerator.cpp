@@ -416,11 +416,9 @@ bool DefaultContentGenerator::GenerateRepositoryContent(
     MaterialSpace::SurfaceMaterial BrakeMat = MakeMat("MachinedSteelBrakeRotor", { 0.66f, 0.68f, 0.71f }, 0.28f, 0.94f);
     BrakeMat.Specular.Anisotropy = 0.55f;
 
-    const std::array<NamedMaterialEntry, 18u> Materials {{
+    const std::array<NamedMaterialEntry, 16u> Materials {{
         { "Architectural", "GroundPlaneAsphalt",         MakeMat("GroundPlaneAsphalt",         { 0.22f, 0.23f, 0.25f }, 0.54f, 0.00f, 0.04f, 0.36f) },
         { "Architectural", "GalleryNeutralPlaster",      MakeMat("GalleryNeutralPlaster",      { 0.76f, 0.75f, 0.72f }, 0.72f, 0.00f) },
-        { "Architectural", "CornellCrimsonWall",         MakeMat("CornellCrimsonWall",         { 0.65f, 0.07f, 0.06f }, 0.74f, 0.00f) },
-        { "Architectural", "CornellEmeraldWall",         MakeMat("CornellEmeraldWall",         { 0.12f, 0.48f, 0.15f }, 0.74f, 0.00f) },
         { "Architectural", "BrushedGoldConductor",       MakeMat("BrushedGoldConductor",       { 0.94f, 0.76f, 0.34f }, 0.18f, 1.00f) },
         { "Architectural", "AbbeCrownGlassOrb",          MakeMat("AbbeCrownGlassOrb",          { 0.96f, 0.99f, 1.00f }, 0.02f, 0.00f, 0.0f, 0.02f, 0.96f, 1.52f) },
         { "Automotive",    "ControlVehicleMetallicPaint",PaintMat },
@@ -545,7 +543,7 @@ bool DefaultContentGenerator::GenerateRepositoryContent(
             0.0f,
             1.0f,
             24u,
-            "Content/Materials/Architectural/CornellCrimsonWall.MaterialSpace",
+            "Content/Materials/Architectural/GalleryNeutralPlaster.MaterialSpace",
             ConeDoc);
         const auto ConePath = ContentRoot / "Geometry/Primitives/TrafficCone.GeometrySpace";
         if (!Codecs::GeometryEncoder::EncodeToFile(ConePath, ConeDoc, OutDiagnostic) ||
@@ -1027,7 +1025,7 @@ bool DefaultContentGenerator::GenerateRepositoryContent(
         }
     }
 
-    // 9. Worlds (.WorldSpace — VehicleClearSkyDefault, CornellGalleryStudio, NightCarParkPhotometric)
+    // 9. Worlds (.WorldSpace — VehicleClearSkyDefault, NightCarParkPhotometric)
     {
         Codecs::WorldSpaceDocumentModel DefaultWorld{};
         DefaultWorld.DocumentTitle             = "VehicleClearSkyDefault";
@@ -1102,60 +1100,6 @@ bool DefaultContentGenerator::GenerateRepositoryContent(
         const auto NightWorldPath = ContentRoot / "Worlds/NightCarParkPhotometric.WorldSpace";
         if (!Codecs::WorldSpaceEncoder::EncodeToFile(NightWorldPath, NightWorld, OutDiagnostic) ||
             !RecordWrittenFile(RepositoryRoot, NightWorldPath, OutReport, OutDiagnostic))
-        {
-            return false;
-        }
-
-        // CornellGalleryStudio.WorldSpace
-        Codecs::WorldSpaceDocumentModel CornellWorld{};
-        CornellWorld.DocumentTitle             = "CornellGalleryStudio";
-        CornellWorld.SolarPhotometryPath       = "Content/Photometry/Solar/ClearMorningSun.PhotometrySpace";
-        CornellWorld.EnvironmentVolumetricPath = "Content/Environment/Skies/ClearSkyDaylight.VolumetricSpace";
-        CornellWorld.RenderSettingsPath        = "Content/Rendering/DefaultEditorViewport.RenderSpace";
-        CornellWorld.EditorCamera.CameraOrigin = { 0.0f, -6.20f, 1.45f };
-        CornellWorld.EditorCamera.TargetPoint  = { 0.0f,  0.20f, 1.10f };
-        CornellWorld.EditorCamera.WorldUpAxis  = { 0.0f,  0.0f,  1.0f  };
-        CornellWorld.AreaLuminairePlacements.push_back({
-            "CeilingSoftboxLuminaire",
-            "Content/Photometry/AreaLuminaires/CeilingSoftboxLuminaire.PhotometrySpace",
-            { 0.0f, 0.0f, 2.72f },
-            true });
-
-        Codecs::WorldGeometryPlacementEntry FloorP{};
-        FloorP.PlacementTitle      = "GalleryFloorSlab";
-        FloorP.StableIdentifier    = "gallery-floor";
-        FloorP.GeometrySpacePath   = "Content/Geometry/Primitives/UnitBox.GeometrySpace";
-        FloorP.PrimaryMaterialPath = "Content/Materials/Architectural/GalleryNeutralPlaster.MaterialSpace";
-        FloorP.CenterWorld         = { 0.0f, 0.0f, -0.05f };
-        FloorP.DimensionsMeters    = { 5.6f, 5.6f, 0.10f };
-        CornellWorld.GeometryPlacements.push_back(std::move(FloorP));
-
-        Codecs::WorldGeometryPlacementEntry GoldOrb{};
-        GoldOrb.PlacementTitle        = "BrushedGoldSphere";
-        GoldOrb.StableIdentifier      = "gold-sphere";
-        GoldOrb.GeometrySpacePath     = "Content/Geometry/Primitives/CalibrationSphere.GeometrySpace";
-        GoldOrb.PrimaryMaterialPath   = "Content/Materials/Architectural/BrushedGoldConductor.MaterialSpace";
-        GoldOrb.CenterWorld           = { -0.95f, 0.35f, 0.55f };
-        GoldOrb.DimensionsMeters      = { 1.10f, 1.10f, 1.10f };
-        GoldOrb.PrimitiveShapeOrdinal = 1u;
-        GoldOrb.SphericalPrimitive    = true;
-        CornellWorld.GeometryPlacements.push_back(std::move(GoldOrb));
-
-        Codecs::WorldGeometryPlacementEntry GlassOrb{};
-        GlassOrb.PlacementTitle        = "CrownGlassSphere";
-        GlassOrb.StableIdentifier      = "glass-sphere";
-        GlassOrb.GeometrySpacePath     = "Content/Geometry/Primitives/CalibrationSphere.GeometrySpace";
-        GlassOrb.PrimaryMaterialPath   = "Content/Materials/Architectural/AbbeCrownGlassOrb.MaterialSpace";
-        GlassOrb.CenterWorld           = { 0.95f, -0.25f, 0.55f };
-        GlassOrb.DimensionsMeters      = { 1.10f, 1.10f, 1.10f };
-        GlassOrb.PrimitiveShapeOrdinal = 1u;
-        GlassOrb.SphericalPrimitive    = true;
-        GlassOrb.GlassShell            = true;
-        CornellWorld.GeometryPlacements.push_back(std::move(GlassOrb));
-
-        const auto CornellWorldPath = ContentRoot / "Worlds/CornellGalleryStudio.WorldSpace";
-        if (!Codecs::WorldSpaceEncoder::EncodeToFile(CornellWorldPath, CornellWorld, OutDiagnostic) ||
-            !RecordWrittenFile(RepositoryRoot, CornellWorldPath, OutReport, OutDiagnostic))
         {
             return false;
         }

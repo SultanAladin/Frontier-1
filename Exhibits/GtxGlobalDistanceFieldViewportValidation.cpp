@@ -133,6 +133,38 @@ struct ValidationScorecard
     return Count > 0u ? (Sum / static_cast<double>(Count)) : 0.0;
 }
 
+[[nodiscard]] double MeasureRegionBlueMinusRed(
+    const std::vector<uint8_t>& Rgba,
+    uint32_t                    Width,
+    uint32_t                    Height,
+    float                       U0,
+    float                       V0,
+    float                       U1,
+    float                       V1)
+{
+    if (Rgba.size() < static_cast<std::size_t>(Width) * Height * 4u)
+    {
+        return 0.0;
+    }
+    const uint32_t X0 = std::min(Width - 1u, static_cast<uint32_t>(std::max(0.0f, U0) * static_cast<float>(Width)));
+    const uint32_t X1 = std::min(Width, std::max(X0 + 1u, static_cast<uint32_t>(std::min(1.0f, U1) * static_cast<float>(Width))));
+    const uint32_t Y0 = std::min(Height - 1u, static_cast<uint32_t>(std::max(0.0f, V0) * static_cast<float>(Height)));
+    const uint32_t Y1 = std::min(Height, std::max(Y0 + 1u, static_cast<uint32_t>(std::min(1.0f, V1) * static_cast<float>(Height))));
+
+    double      Sum   = 0.0;
+    std::size_t Count = 0u;
+    for (uint32_t Y = Y0; Y < Y1; ++Y)
+    {
+        for (uint32_t X = X0; X < X1; ++X)
+        {
+            const std::size_t Idx = (static_cast<std::size_t>(Y) * Width + X) * 4u;
+            Sum += static_cast<double>(Rgba[Idx + 2u]) - static_cast<double>(Rgba[Idx + 0u]);
+            ++Count;
+        }
+    }
+    return Count > 0u ? (Sum / static_cast<double>(Count)) : 0.0;
+}
+
 [[nodiscard]] double MeasureRegionRedMinusGreen(
     const std::vector<uint8_t>& Rgba,
     uint32_t                    Width,
@@ -240,7 +272,7 @@ int main()
     constexpr uint32_t TileW = 320u;
     constexpr uint32_t TileH = 176u;
     ShowcaseWorldSceneBundle Showcase {};
-    BuildShowcaseGalleryScene(Showcase, TileW, TileH);
+    BuildVehicleClearSkyDefaultScene(Showcase, TileW, TileH);
 
     std::array<std::vector<uint8_t>, 6u> EngineTiles {};
     std::vector<uint8_t> SingleSamplePtTile {};
@@ -325,12 +357,13 @@ int main()
                 Score.Verify(PtOk, "Rendered Tile 5: Dedicated ViewportPathTraceEntry (4 progressive samples)");
             }
 
-            // Dynamic Lighting Refresh (boost ceiling softbox x2.6 without geometry re-sync)
-            if (!Showcase.Scene.AreaLights.empty())
+            // Dynamic Lighting Refresh (boost solar irradiance x2.6 without geometry re-sync)
             {
-                Showcase.Scene.AreaLights[0].EmittedRadiance.R *= 2.6f;
-                Showcase.Scene.AreaLights[0].EmittedRadiance.G *= 2.6f;
-                Showcase.Scene.AreaLights[0].EmittedRadiance.B *= 2.6f;
+                Showcase.Scene.Sun.SolarIrradiance.R *= 2.6f;
+                Showcase.Scene.Sun.SolarIrradiance.G *= 2.6f;
+                Showcase.Scene.Sun.SolarIrradiance.B *= 2.6f;
+                Showcase.Scene.Atmosphere.Solar.SolarIntensityMultiplier *= 2.6f;
+                Showcase.Scene.Atmosphere.Solar.DirectGainMultiplier    *= 2.6f;
                 WorldRenderConfiguration Cfg {};
                 Cfg.Engine          = WorldRenderEngine::RealTimeGiGtxLowEnd;
                 Cfg.ShadowAlgorithm = SolarShadowAlgorithm::ContactPcss;
@@ -350,6 +383,9 @@ int main()
     const double HighEndInteriorLuma= MeasureRegionMeanLuma(EngineTiles[4], TileW, TileH, 0.22f, 0.28f, 0.78f, 0.85f);
     const double PtInteriorLuma     = MeasureRegionMeanLuma(EngineTiles[5], TileW, TileH, 0.22f, 0.28f, 0.78f, 0.85f);
     const double RelitInteriorLuma  = MeasureRegionMeanLuma(RelitGdfTile,   TileW, TileH, 0.22f, 0.28f, 0.78f, 0.85f);
+    const double DirectUnderLuma    = MeasureRegionMeanLuma(EngineTiles[1], TileW, TileH, 0.06f, 0.55f, 0.42f, 0.74f);
+    const double GtxUnderLuma       = MeasureRegionMeanLuma(EngineTiles[2], TileW, TileH, 0.06f, 0.55f, 0.42f, 0.74f);
+    const double RelitUnderLuma     = MeasureRegionMeanLuma(RelitGdfTile,   TileW, TileH, 0.06f, 0.55f, 0.42f, 0.74f);
 
     std::printf(
         "[GtxGlobalDistanceFieldViewportValidation] Interior Luma [0..255]: Direct=%.2f, GTX_GDF_GI=%.2f, HighEnd_BVH=%.2f, PT_4SPP=%.2f, Relit_GDF=%.2f\n",
@@ -359,24 +395,21 @@ int main()
         PtInteriorLuma,
         RelitInteriorLuma);
 
-    Score.Verify(GtxGiInteriorLuma > DirectInteriorLuma + 3.0, "GTX GDF GI delivers measurable multi-bounce indirect illumination lift over OpenPBR Direct");
-    Score.Verify(RelitInteriorLuma > GtxGiInteriorLuma + 4.0, "Dynamic LightingSig refresh updates 2-bounce GDF Radiosity when softbox intensity changes");
-    Score.Verify(PtInteriorLuma > 25.0, "Dedicated ViewportPathTraceEntry produces physically lit Showcase Gallery image");
 
-    // Verify red left-wall and green right-wall color-bleeding onto gallery floor/pedestals
-    const double DirectLeftRG = MeasureRegionRedMinusGreen(EngineTiles[1], TileW, TileH, 0.23f, 0.62f, 0.36f, 0.84f);
-    const double GtxLeftRG    = MeasureRegionRedMinusGreen(EngineTiles[2], TileW, TileH, 0.23f, 0.62f, 0.36f, 0.84f);
-    const double DirectRightGR= -MeasureRegionRedMinusGreen(EngineTiles[1], TileW, TileH, 0.64f, 0.62f, 0.77f, 0.84f);
-    const double GtxRightGR   = -MeasureRegionRedMinusGreen(EngineTiles[2], TileW, TileH, 0.64f, 0.62f, 0.77f, 0.84f);
+    Score.Verify(GtxUnderLuma > DirectUnderLuma + 3.0, "GTX GDF GI delivers measurable multi-bounce indirect illumination lift over OpenPBR Direct");
+    Score.Verify(RelitUnderLuma > GtxUnderLuma + 4.0, "Dynamic LightingSig refresh updates 2-bounce GDF Radiosity when solar intensity changes");
+    Score.Verify(PtInteriorLuma > 25.0, "Dedicated ViewportPathTraceEntry produces physically lit ControlVehicle default scene image");
+
+    // Verify Reflex-Blue vehicle paint color-bleeding onto the adjacent neutral ground plane
+    const double DirectPaintBR = MeasureRegionBlueMinusRed(EngineTiles[1], TileW, TileH, 0.02f, 0.62f, 0.20f, 0.90f);
+    const double GtxPaintBR    = MeasureRegionBlueMinusRed(EngineTiles[2], TileW, TileH, 0.02f, 0.62f, 0.20f, 0.90f);
     std::printf(
-        "[GtxGlobalDistanceFieldViewportValidation] Color Bleed: Left(R-G) Direct=%.2f -> GTX=%.2f | Right(G-R) Direct=%.2f -> GTX=%.2f\n",
-        DirectLeftRG,
-        GtxLeftRG,
-        DirectRightGR,
-        GtxRightGR);
+        "[GtxGlobalDistanceFieldViewportValidation] Paint Bleed: Ground(B-R) Direct=%.2f -> GTX=%.2f\n",
+        DirectPaintBR,
+        GtxPaintBR);
     Score.Verify(
-        (GtxLeftRG > DirectLeftRG + 0.5) || (GtxRightGR > DirectRightGR + 0.5),
-        "GTX GDF GI transfers Cornell wall chroma bleed onto adjacent neutral floor/pedestal surfaces");
+        GtxPaintBR > DirectPaintBR + 1.0,
+        "GTX GDF GI transfers vehicle paint chroma bleed onto the adjacent neutral ground plane");
 
     // Verify absence of checker / 8.0 cm sawtooth stripe oscillation on flat floor
     const double FloorLapSdf       = MeasureCheckerboardLaplacian(EngineTiles[2],      TileW, TileH, 0.36f, 0.78f, 0.64f, 0.92f);

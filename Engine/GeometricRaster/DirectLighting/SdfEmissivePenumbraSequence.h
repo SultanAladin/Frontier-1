@@ -89,7 +89,7 @@ struct SdfBoxPrimitive
     Mathematics::Axis3D Center       { 0.0f, 0.0f, 0.0f };
     Mathematics::Axis3D HalfExtent   { 0.5f, 0.5f, 0.5f };
     uint32_t            MaterialSlot = 0u;
-    bool                CastsShadow  = true; // False for outer Cornell room slabs so receivers never self-occlude
+    bool                CastsShadow  = true; // False for outer proof-room slabs so receivers never self-occlude
 };
 
 struct EmissiveSphereLuminaire
@@ -213,7 +213,7 @@ struct SdfEmissiveRenderCapture
 //                                        EVALUATION & SHOWCASE ENTRY POINTS
 //------------------------------------------------------------------------------------------------------------------------
 
-// Builds the canonical PROOF 11 Emissive-Sphere-Only Cornell Showcase (zero sun, zero area, zero spot, zero IES)
+// Builds the canonical PROOF 11 Emissive-Sphere-Only Proof-Room Showcase (zero sun, zero area, zero spot, zero IES)
 void BuildCanonicalProof11EmissiveSphereScene(SdfShowcaseScene& OutScene);
 
 // Owen-scrambled (0, 2) Laine-Karras Sobol 2D quadrature sample in [0, 1)^2
