@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            SHOWCASEGALLERYSCENE.CPP
 ============================================================================================================================================*/
-// 🧩 Canonical Architectural Cornell-Studio Gallery World Scene, EditorCamera, and OutlinerPanel bidirectional registration
+// 🧩 Default & Blank World Scenes, EditorCamera, and OutlinerPanel bidirectional registration
 
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 
@@ -519,305 +519,8 @@ void BuildCameraRay(
 } // namespace
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                           CANONICAL GALLERY SCENE BUILDER
+//                                              WORLD SCENE BUILDERS
 //------------------------------------------------------------------------------------------------------------------------
-
-void BuildShowcaseGalleryScene(
-    ShowcaseWorldSceneBundle& OutBundle,
-    uint32_t                  ViewportWidthPx,
-    uint32_t                  ViewportHeightPx)
-{
-    OutBundle = {};
-
-    MaterialSpace::SurfaceMaterial NeutralPlaster {};
-    NeutralPlaster.MaterialName             = "GalleryNeutralPlaster";
-    NeutralPlaster.Diffuse.BaseColor        = { 0.78f, 0.77f, 0.75f };
-    NeutralPlaster.Diffuse.DiffuseRoughness = 0.55f;
-    NeutralPlaster.Specular.Roughness       = 0.65f;
-
-    MaterialSpace::SurfaceMaterial CrimsonWall {};
-    CrimsonWall.MaterialName                = "GalleryCrimsonWall";
-    CrimsonWall.Diffuse.BaseColor           = { 0.86f, 0.08f, 0.07f };
-    CrimsonWall.Diffuse.DiffuseRoughness    = 0.50f;
-    CrimsonWall.Specular.Roughness          = 0.55f;
-
-    MaterialSpace::SurfaceMaterial EmeraldWall {};
-    EmeraldWall.MaterialName                = "GalleryEmeraldWall";
-    EmeraldWall.Diffuse.BaseColor           = { 0.09f, 0.80f, 0.17f };
-    EmeraldWall.Diffuse.DiffuseRoughness    = 0.50f;
-    EmeraldWall.Specular.Roughness          = 0.55f;
-
-    MaterialSpace::SurfaceMaterial MirrorChrome {};
-    MirrorChrome.MaterialName               = "PolishedMirrorChrome";
-    MirrorChrome.Diffuse.BaseColor          = { 0.94f, 0.95f, 0.97f };
-    MirrorChrome.Specular.Metalness         = 1.0f;
-    MirrorChrome.Specular.Roughness         = 0.035f;
-    MirrorChrome.Specular.EdgeTintF82       = { 0.98f, 0.98f, 0.99f };
-
-    MaterialSpace::SurfaceMaterial BrushedGold {};
-    BrushedGold.MaterialName                = "AnisotropicGoldPedestal";
-    BrushedGold.Diffuse.BaseColor           = { 0.96f, 0.76f, 0.32f };
-    BrushedGold.Specular.Metalness          = 1.0f;
-    BrushedGold.Specular.Roughness          = 0.18f;
-    BrushedGold.Specular.Anisotropy         = 0.55f;
-    BrushedGold.Specular.EdgeTintF82        = { 1.00f, 0.90f, 0.60f };
-
-    MaterialSpace::SurfaceMaterial ClearcoatCobalt {};
-    ClearcoatCobalt.MaterialName            = "ClearcoatCobaltArch";
-    ClearcoatCobalt.Diffuse.BaseColor       = { 0.10f, 0.25f, 0.78f };
-    ClearcoatCobalt.Specular.Roughness      = 0.28f;
-    ClearcoatCobalt.Clearcoat.CoatWeight    = 1.0f;
-    ClearcoatCobalt.Clearcoat.CoatRoughness = 0.04f;
-
-    MaterialSpace::SurfaceMaterial AbbeCrownGlass {};
-    AbbeCrownGlass.MaterialName                      = "AbbeCrownGlassOrb";
-    AbbeCrownGlass.Diffuse.BaseWeight                = 0.0f;
-    AbbeCrownGlass.Specular.Roughness                = 0.02f;
-    AbbeCrownGlass.Specular.DielectricIOR            = 1.52f;
-    AbbeCrownGlass.Transmission.TransmissionWeight   = 1.0f;
-    AbbeCrownGlass.Transmission.AttenuationColor     = { 0.95f, 0.98f, 1.00f };
-    AbbeCrownGlass.Transmission.AbbeDispersionNumber = 26.0f;
-
-    const uint16_t SlotPlaster = OutBundle.Scene.MaterialRegister.RegisterMaterial(NeutralPlaster);
-    const uint16_t SlotCrimson = OutBundle.Scene.MaterialRegister.RegisterMaterial(CrimsonWall);
-    const uint16_t SlotEmerald = OutBundle.Scene.MaterialRegister.RegisterMaterial(EmeraldWall);
-    const uint16_t SlotChrome  = OutBundle.Scene.MaterialRegister.RegisterMaterial(MirrorChrome);
-    const uint16_t SlotGold    = OutBundle.Scene.MaterialRegister.RegisterMaterial(BrushedGold);
-    const uint16_t SlotCobalt  = OutBundle.Scene.MaterialRegister.RegisterMaterial(ClearcoatCobalt);
-    const uint16_t SlotGlass   = OutBundle.Scene.MaterialRegister.RegisterMaterial(AbbeCrownGlass);
-
-    BuildBoxGeometryAsset(OutBundle.GeometryAssets[0u],    { 2.80f, 2.40f, 0.08f });
-    BuildBoxGeometryAsset(OutBundle.GeometryAssets[1u],    { 2.80f, 0.08f, 1.45f });
-    BuildBoxGeometryAsset(OutBundle.GeometryAssets[2u],    { 0.08f, 2.20f, 1.45f });
-    BuildBoxGeometryAsset(OutBundle.GeometryAssets[3u],    { 1.35f, 1.15f, 0.07f });
-    BuildBoxGeometryAsset(OutBundle.GeometryAssets[4u],    { 0.46f, 0.46f, 0.24f });
-    BuildSphereGeometryAsset(OutBundle.GeometryAssets[5u], 0.52f, 36u, 22u);
-    BuildSphereGeometryAsset(OutBundle.GeometryAssets[6u], 0.44f, 32u, 20u);
-    BuildSphereGeometryAsset(OutBundle.GeometryAssets[7u], 0.40f, 32u, 20u);
-
-    const auto AppendBoxEntry = [&](
-        std::size_t           AssetOrdinal,
-        const char*           Title,
-        const char*           StableId,
-        const char*           MaterialTitle,
-        const char*           Subtitle,
-        const char*           Notes,
-        Mathematics::Axis3D   Center,
-        Mathematics::Scalar3D HalfExtents,
-        uint16_t              Slot,
-        bool                  GlassShell)
-    {
-        const uint32_t InstanceIdx = static_cast<uint32_t>(OutBundle.Scene.ClusterInstances.size());
-        OutBundle.Scene.ClusterInstances.push_back(
-            { &OutBundle.GeometryAssets[AssetOrdinal].Pyramid, Center, Center, 1.0f, Slot, GlassShell });
-
-        ShowcaseWorldAssetEntry Record {};
-        Record.Title                = Title;
-        Record.StableIdentifier     = StableId;
-        Record.MaterialTitle        = MaterialTitle;
-        Record.Subtitle             = Subtitle;
-        Record.AuthorNotes          = Notes;
-        Record.CenterWorld          = Center;
-        Record.DimensionsMeters     = { HalfExtents.X * 2.0f, HalfExtents.Y * 2.0f, HalfExtents.Z * 2.0f };
-        Record.AuthoredDimensions   = Record.DimensionsMeters;
-        Record.MaterialSlot         = Slot;
-        Record.ClusterInstanceIndex = InstanceIdx;
-        Record.GlassShell           = GlassShell;
-        Record.SphericalPrimitive   = false;
-        Record.PrimitiveShape       = ShowcasePrimitiveShape::Box;
-        OutBundle.Objects.push_back(std::move(Record));
-    };
-
-    const auto AppendSphereEntry = [&](
-        std::size_t         AssetOrdinal,
-        const char*         Title,
-        const char*         StableId,
-        const char*         MaterialTitle,
-        const char*         Subtitle,
-        const char*         Notes,
-        Mathematics::Axis3D Center,
-        float               Radius,
-        uint32_t            /*Sectors*/,
-        uint32_t            /*Rings*/,
-        uint16_t            Slot,
-        bool                GlassShell)
-    {
-        const uint32_t InstanceIdx = static_cast<uint32_t>(OutBundle.Scene.ClusterInstances.size());
-        OutBundle.Scene.ClusterInstances.push_back(
-            { &OutBundle.GeometryAssets[AssetOrdinal].Pyramid, Center, Center, 1.0f, Slot, GlassShell });
-
-        const float Diameter = Radius * 2.0f;
-        ShowcaseWorldAssetEntry Record {};
-        Record.Title                = Title;
-        Record.StableIdentifier     = StableId;
-        Record.MaterialTitle        = MaterialTitle;
-        Record.Subtitle             = Subtitle;
-        Record.AuthorNotes          = Notes;
-        Record.CenterWorld          = Center;
-        Record.DimensionsMeters     = { Diameter, Diameter, Diameter };
-        Record.AuthoredDimensions   = Record.DimensionsMeters;
-        Record.MaterialSlot         = Slot;
-        Record.ClusterInstanceIndex = InstanceIdx;
-        Record.GlassShell           = GlassShell;
-        Record.SphericalPrimitive   = true;
-        Record.PrimitiveShape       = ShowcasePrimitiveShape::Sphere;
-        OutBundle.Objects.push_back(std::move(Record));
-    };
-
-    AppendBoxEntry(
-        0u,
-        "Gallery Floor",
-        "gallery-floor",
-        "GalleryNeutralPlaster",
-        "Box · 5.60 × 4.80 × 0.16 m · Neutral Plaster",
-        "Architectural floor slab receiving 3.91 mm contact-clip shadows, LTC softbox illumination, and Crimson/Emerald bounce.",
-        { 0.00f, 0.20f, -0.72f },
-        { 2.80f, 2.40f, 0.08f },
-        SlotPlaster,
-        false);
-
-    AppendBoxEntry(
-        1u,
-        "Gallery Back Wall",
-        "gallery-back-wall",
-        "GalleryNeutralPlaster",
-        "Box · 5.60 × 0.16 × 2.90 m · Neutral Plaster",
-        "North neutral plaster backdrop closing the Cornell-Studio chamber.",
-        { 0.00f, 2.35f, 0.70f },
-        { 2.80f, 0.08f, 1.45f },
-        SlotPlaster,
-        false);
-
-    AppendBoxEntry(
-        2u,
-        "Crimson Left Wall",
-        "crimson-left-wall",
-        "GalleryCrimsonWall",
-        "Box · 0.16 × 4.40 × 2.90 m · Crimson Bounce",
-        "West sunlit Crimson wall driving warm diffuse color bleed into the gallery.",
-        { -2.15f, 0.25f, 0.70f },
-        { 0.08f, 2.20f, 1.45f },
-        SlotCrimson,
-        false);
-
-    AppendBoxEntry(
-        2u,
-        "Emerald Right Wall",
-        "emerald-right-wall",
-        "GalleryEmeraldWall",
-        "Box · 0.16 × 4.40 × 2.90 m · Emerald Bounce",
-        "East Emerald wall reflecting saturated green indirect radiance onto the eastern specimen.",
-        { 2.15f, 0.25f, 0.70f },
-        { 0.08f, 2.20f, 1.45f },
-        SlotEmerald,
-        false);
-
-    AppendBoxEntry(
-        3u,
-        "Clearcoat Roof Baffle",
-        "clearcoat-roof-baffle",
-        "ClearcoatCobaltArch",
-        "Box · 2.70 × 2.30 × 0.14 m · Clearcoat Cobalt",
-        "Overhead architectural baffle casting calibrated solar penumbra across the gallery floor.",
-        { -0.45f, 0.55f, 1.92f },
-        { 1.35f, 1.15f, 0.07f },
-        SlotCobalt,
-        false);
-
-    AppendBoxEntry(
-        4u,
-        "Anisotropic Gold Pedestal",
-        "gold-pedestal",
-        "AnisotropicGoldPedestal",
-        "Box · 0.92 × 0.92 × 0.48 m · Brushed Gold",
-        "Anisotropic F82 conductor pedestal supporting the central mirror chrome sphere.",
-        { -0.15f, 0.55f, -0.40f },
-        { 0.46f, 0.46f, 0.24f },
-        SlotGold,
-        false);
-
-    AppendSphereEntry(
-        5u,
-        "Mirror Chrome Sphere",
-        "chrome-sphere",
-        "PolishedMirrorChrome",
-        "Sphere · r = 0.52 m · F82 Mirror Chrome",
-        "Central hero conductor sphere showcasing Hi-Z screen-space reflections (GTX) and VNDF specular reflections (RTX).",
-        { -0.15f, 0.55f, 0.34f },
-        0.52f,
-        36u,
-        22u,
-        SlotChrome,
-        false);
-
-    AppendSphereEntry(
-        6u,
-        "Plaster Specimen West",
-        "plaster-west",
-        "GalleryNeutralPlaster",
-        "Sphere · r = 0.44 m · Neutral Plaster",
-        "Western Oren-Nayar diffuse sphere capturing Crimson left-wall multi-bounce bleed.",
-        { -1.25f, 0.65f, -0.20f },
-        0.44f,
-        32u,
-        20u,
-        SlotPlaster,
-        false);
-
-    AppendSphereEntry(
-        6u,
-        "Plaster Specimen East",
-        "plaster-east",
-        "GalleryNeutralPlaster",
-        "Sphere · r = 0.44 m · Neutral Plaster",
-        "Eastern Oren-Nayar diffuse sphere capturing Emerald right-wall multi-bounce bleed.",
-        { 1.25f, 0.65f, -0.20f },
-        0.44f,
-        32u,
-        20u,
-        SlotPlaster,
-        false);
-
-    AppendSphereEntry(
-        7u,
-        "Abbe Crown Glass Orb",
-        "abbe-glass-orb",
-        "AbbeCrownGlassOrb",
-        "Sphere · r = 0.40 m · Abbe 26 Crown Glass",
-        "Foreground 2-layer dispersive dielectric orb (IOR 1.52, Abbe 26) refracting the gallery interior.",
-        { 0.62f, -0.55f, -0.16f },
-        0.40f,
-        32u,
-        20u,
-        SlotGlass,
-        true);
-
-    RebuildShowcaseSceneAcceleration(OutBundle);
-
-    OutBundle.Scene.Sun.DirectionToSun          = Mathematics::NormalizeAxis({ 0.42f, -0.55f, 0.72f });
-    OutBundle.Scene.Sun.SunAngularRadiusRadians = 0.018f;
-    OutBundle.Scene.Sun.SolarIrradiance         = { 5.40f, 5.10f, 4.65f };
-    OutBundle.Scene.Sun.RtxSamplesPerPixel      = 8u;
-    OutBundle.Scene.SkyRadiance                 = { 0.16f, 0.23f, 0.36f };
-
-    PolygonalAreaQuadLight CeilingSoftbox {};
-    CeilingSoftbox.CenterWorld      = { 0.55f, 0.35f, 1.82f };
-    CeilingSoftbox.RightTangent     = { 1.0f, 0.0f, 0.0f };
-    CeilingSoftbox.UpBitangent      = { 0.0f, -1.0f, 0.0f };
-    CeilingSoftbox.HalfWidthMeters  = 0.85f;
-    CeilingSoftbox.HalfHeightMeters = 0.65f;
-    CeilingSoftbox.EmittedRadiance  = { 7.5f, 6.6f, 5.4f };
-    OutBundle.Scene.AreaLights.push_back(CeilingSoftbox);
-
-    OutBundle.EditorCamera.CameraOrigin       = { 0.00f, -3.55f, 0.42f };
-    OutBundle.EditorCamera.TargetPoint        = { 0.00f,  0.55f, 0.15f };
-    OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.0f };
-    OutBundle.EditorCamera.VerticalFovRadians = 43.0f * Constants::DegToRadFloat;
-    OutBundle.EditorCamera.NearClipMeters     = 0.15f;
-    OutBundle.EditorCamera.FarClipMeters      = 60.0f;
-    OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
-    OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
-}
 
 bool LoadWorldSceneFromSpaceFile(
     const std::filesystem::path& WorldSpacePath,
@@ -1061,6 +764,91 @@ bool LoadWorldSceneFromSpaceFile(
     OutBundle.EditorCamera.ViewportHeightPx = std::max(1u, ViewportHeightPx);
     OutDiagnostic.clear();
     return true;
+}
+
+void BuildBlankPlaneSkyScene(
+    ShowcaseWorldSceneBundle& OutBundle,
+    uint32_t                  ViewportWidthPx,
+    uint32_t                  ViewportHeightPx)
+{
+    OutBundle = {};
+
+    // Single Ground Plane (48 m x 48 m x 0.16 m, top surface at Z = 0.0 m)
+    MaterialSpace::SurfaceMaterial GroundMat {};
+    GroundMat.MaterialName            = "GroundPlaneAsphalt";
+    GroundMat.Diffuse.BaseWeight      = 1.0f;
+    GroundMat.Diffuse.BaseColor       = { 0.22f, 0.23f, 0.25f };
+    GroundMat.Specular.Roughness      = 0.54f;
+    GroundMat.Specular.Metalness      = 0.0f;
+    GroundMat.Specular.DielectricIOR  = 1.50f;
+    GroundMat.Clearcoat.CoatWeight    = 0.04f;
+    GroundMat.Clearcoat.CoatRoughness = 0.36f;
+    const uint16_t GroundSlot = OutBundle.Scene.MaterialRegister.RegisterMaterial(GroundMat);
+
+    const Mathematics::Scalar3D GroundDims   { 48.0f, 48.0f, 0.16f };
+    const Mathematics::Axis3D   GroundCenter { 0.0f, 0.0f, -0.08f };
+    BuildBoxGeometryAsset(OutBundle.GeometryAssets[0u], GroundDims * 0.5f);
+    for (auto& Face : OutBundle.GeometryAssets[0u].Network.Faces)
+    {
+        Face.PartGroupOrdinal = GroundSlot;
+    }
+    (void)OutBundle.GeometryAssets[0u].Pyramid.BuildFromPolygonNetwork(OutBundle.GeometryAssets[0u].Network, 3u);
+    OutBundle.Scene.ClusterInstances.push_back(
+        { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
+
+    ShowcaseWorldAssetEntry GroundEntry {};
+    GroundEntry.Title                = "GroundPlane";
+    GroundEntry.StableIdentifier     = "ground-plane";
+    GroundEntry.MaterialTitle        = GroundMat.MaterialName;
+    GroundEntry.Subtitle             = "Box · 48.0 × 48.0 × 0.16 m · Z = 0 datum";
+    GroundEntry.AuthorNotes          = "Blank scene ground plane under clear sky illumination.";
+    GroundEntry.CenterWorld          = GroundCenter;
+    GroundEntry.DimensionsMeters     = GroundDims;
+    GroundEntry.AuthoredDimensions   = GroundDims;
+    GroundEntry.MaterialSlot         = GroundSlot;
+    GroundEntry.ClusterInstanceIndex = 0u;
+    GroundEntry.PrimitiveShape       = ShowcasePrimitiveShape::Box;
+    EnsureObjectLocalSmoothTriangles(GroundEntry);
+    OutBundle.Objects.push_back(std::move(GroundEntry));
+
+    // Clear Sky & Daylight Sun (no clouds, fog, moon, stars, or area lights)
+    auto& Atmo = OutBundle.Scene.Atmosphere;
+    Atmo.Medium.AtmosphereEnabled        = true;
+    Atmo.Solar.SolarEnabled              = true;
+    Atmo.Solar.CycleAnimationEnabled     = false;
+    Atmo.Solar.LocalHours                = 10.5f;
+    Atmo.Clouds.CloudsEnabled            = false;
+    Atmo.Clouds.FollowWindEnabled        = false;
+    Atmo.Clouds.WindSpeedMetersPerSecond = 0.0f;
+    Atmo.Clouds.CloudRenderScale         = 1.00f;
+    Atmo.Clouds.CloudMarchSteps          = 64u;
+    Atmo.Clouds.CloudShadow.ShadowEnabled = false;
+    Atmo.LocalCloud.LocalEnabled         = false;
+    Atmo.LocalCloud.FollowWindEnabled    = false;
+    Atmo.Moons[0].Visible                = false;
+    Atmo.Stars.StarfieldEnabled          = false;
+
+    const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+    OutBundle.Scene.Sun.DirectionToSun          = SolarSolved.WorldDirectionToSun;
+    OutBundle.Scene.Sun.SolarIrradiance         = { 5.40f, 5.12f, 4.72f };
+    OutBundle.Scene.Sun.SunAngularRadiusRadians = 0.0093f;
+    OutBundle.Scene.Sun.RtxSamplesPerPixel      = 4u;
+    OutBundle.Scene.SkyRadiance                 = { 0.42f, 0.58f, 0.88f };
+    OutBundle.Scene.AreaLights.clear();
+    OutBundle.Scene.PointLights.clear();
+    OutBundle.Scene.PhotometricRadiators.clear();
+    OutBundle.Scene.PhotometricProfiles.clear();
+
+    RebuildShowcaseSceneAcceleration(OutBundle);
+
+    OutBundle.EditorCamera.CameraOrigin       = { 6.50f, -6.50f, 2.60f };
+    OutBundle.EditorCamera.TargetPoint        = { 0.00f, 0.00f, 0.20f };
+    OutBundle.EditorCamera.WorldUpAxis        = { 0.00f, 0.00f, 1.00f };
+    OutBundle.EditorCamera.VerticalFovRadians = 42.0f * Constants::DegToRadFloat;
+    OutBundle.EditorCamera.NearClipMeters     = 0.12f;
+    OutBundle.EditorCamera.FarClipMeters      = 240.0f;
+    OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
+    OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
 
 void BuildVehicleClearSkyDefaultScene(
@@ -1411,9 +1199,9 @@ void RegisterShowcaseGalleryInOutliner(
     if (OutlinerRecordEntry* Folder = TargetOutliner.AccessEntry(InOutBundle.ShowcaseFolderToken))
     {
         Folder->FolderTint  = WorkspaceSurfaceColors::ShowcaseSage;
-        Folder->Subtitle    = (InOutBundle.Objects.size() == 2u)
-            ? "Default Scene · Vehicle & Ground Plane"
-            : "Cornell-Studio Gallery · 10 specimens";
+        Folder->Subtitle    = (InOutBundle.Objects.size() == 1u)
+            ? "Blank Scene · Ground Plane & Clear Sky"
+            : "Default Scene · Vehicle & Ground Plane";
         Folder->AuthorNotes = "Scene geometry collection.";
         Folder->Expanded    = true;
     }

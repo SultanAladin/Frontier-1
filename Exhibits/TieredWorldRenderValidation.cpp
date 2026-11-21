@@ -258,7 +258,7 @@ int main()
         InspectorPanel Inspector {};
 
         GeometricRaster::ShowcaseWorldSceneBundle ShowcaseBundle {};
-        GeometricRaster::BuildShowcaseGalleryScene(ShowcaseBundle, 700u, 520u);
+        GeometricRaster::BuildVehicleClearSkyDefaultScene(ShowcaseBundle, 700u, 520u);
         GeometricRaster::RegisterShowcaseGalleryInOutliner(Outliner, ShowcaseBundle, false);
         WorldRenderer.PrepareWorldScene(ShowcaseBundle.Scene);
 

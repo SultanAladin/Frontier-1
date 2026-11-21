@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             SHOWCASEGALLERYSCENE.H
 ============================================================================================================================================*/
-// 🧩 Canonical Architectural Cornell-Studio Gallery World Scene, EditorCamera, and OutlinerPanel bidirectional registration
+// 🧩 Default & Blank World Scenes, EditorCamera, and OutlinerPanel bidirectional registration
 
 #pragma once
 
@@ -111,8 +111,8 @@ struct ShowcaseWorldSceneBundle
 //                                                  FUNCTION PROTOTYPES
 //------------------------------------------------------------------------------------------------------------------------
 
-// Constructs the canonical Architectural Cornell-Studio Gallery World Scene and EditorCamera (1:1 with HTML mirror)
-void BuildShowcaseGalleryScene(
+// Constructs a blank scene: single Ground Plane under a clear daylight sky (used for new projects)
+void BuildBlankPlaneSkyScene(
     ShowcaseWorldSceneBundle& OutBundle,
     uint32_t                  ViewportWidthPx  = 640u,
     uint32_t                  ViewportHeightPx = 336u);

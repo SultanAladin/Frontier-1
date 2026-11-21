@@ -283,7 +283,7 @@ namespace
 
         // 1. Build Showcase Gallery -> cached local smooth triangles & BVH4 smooth normals ready
         ShowcaseWorldSceneBundle Bundle {};
-        BuildShowcaseGalleryScene(Bundle, 160u, 90u);
+        BuildVehicleClearSkyDefaultScene(Bundle, 160u, 90u);
         VerifyCheck(!Bundle.Objects.empty(),
                     "ShowcaseGalleryScene populated opaque objects");
         VerifyCheck(!Bundle.Scene.SceneTree.Primitives.empty() &&
@@ -378,9 +378,9 @@ namespace
                 ShowcaseWorldSceneBundle DefaultScene {};
                 BuildVehicleClearSkyDefaultScene(DefaultScene, 160u, 90u);
                 VerifyCheck(DefaultScene.Objects.size() == 2u &&
-                                DefaultScene.Objects[0u].Title == "Ground Plane" &&
-                                DefaultScene.Objects[1u].Title == "Control Vehicle",
-                            "BuildVehicleClearSkyDefaultScene contains ONLY Ground Plane and Control Vehicle");
+                                DefaultScene.Objects[0u].Title == "GroundPlane" &&
+                                DefaultScene.Objects[1u].Title == "ControlVehicle",
+                            "BuildVehicleClearSkyDefaultScene contains ONLY GroundPlane and ControlVehicle");
                 VerifyCheck(!DefaultScene.Scene.Atmosphere.Clouds.CloudsEnabled &&
                                 !DefaultScene.Scene.Atmosphere.Clouds.FollowWindEnabled &&
                                 DefaultScene.Scene.AreaLights.empty(),

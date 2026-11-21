@@ -3,6 +3,7 @@
 ============================================================================================================================================*/
 // 🧩 End-to-end validation of WorkspaceCapabilityRegister, ProjectGenerator (3-target CMake + SessionOutput), ShowcaseGalleryScene & ProjectBrowser
 
+#include "Engine/Codecs/WorldSpaceCodec.h"
 #include "Engine/Configuration/ProjectGenerator.h"
 #include "Engine/Configuration/ProjectSpaceRepository.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
@@ -133,6 +134,32 @@ int main()
         LoadedSpace.Appearance.Theme != ThemePreset::Oled)
     {
         std::fprintf(stderr, "[FAIL] .projectspace round-trip failed: %s\n", SpaceDiag.c_str());
+        return 1;
+    }
+
+    // New projects start from a blank scene: one Ground Plane placement under a clear sky (no preset gallery)
+    Codecs::WorldSpaceDocumentModel BlankWorld {};
+    std::string                     BlankWorldDiag {};
+    if (!Codecs::WorldSpaceDecoder::DecodeFromFile(Scaffold.MainWorldFile, BlankWorld, BlankWorldDiag) ||
+        BlankWorld.GeometryPlacements.size() != 1u ||
+        BlankWorld.GeometryPlacements[0].PlacementTitle != "GroundPlane" ||
+        !BlankWorld.AreaLuminairePlacements.empty() ||
+        !BlankWorld.MeasuredLuminairePlacements.empty())
+    {
+        std::fprintf(stderr, "[FAIL] Generated MainWorld.WorldSpace is not a blank Ground Plane scene: %s\n", BlankWorldDiag.c_str());
+        return 1;
+    }
+
+    GeometricRaster::ShowcaseWorldSceneBundle BlankScene {};
+    GeometricRaster::BuildBlankPlaneSkyScene(BlankScene, 160u, 90u);
+    if (BlankScene.Objects.size() != 1u ||
+        BlankScene.Objects[0].Title != "GroundPlane" ||
+        !BlankScene.Scene.Atmosphere.Medium.AtmosphereEnabled ||
+        !BlankScene.Scene.Atmosphere.Solar.SolarEnabled ||
+        BlankScene.Scene.Atmosphere.Clouds.CloudsEnabled ||
+        !BlankScene.Scene.AreaLights.empty())
+    {
+        std::fprintf(stderr, "[FAIL] BuildBlankPlaneSkyScene is not a single Ground Plane under clear sky.\n");
         return 1;
     }
 
@@ -285,11 +312,21 @@ int main()
 
         Editor::Explorer::ProjectBrowser Browser {};
         Browser.InitializeDefaultCollection(TempBase, RepoRoot, ActiveBinDir);
-        if (Browser.QueryCollection().size() < 5u ||
+        bool HasDefaultProject = false;
+        for (const auto& Entry : Browser.QueryCollection())
+        {
+            if (Entry.Title == "Default Project")
+            {
+                HasDefaultProject = true;
+                break;
+            }
+        }
+        if (!HasDefaultProject ||
+            Browser.QueryCollection().empty() ||
             Browser.QueryCollection()[0].ThumbnailW != 264u ||
             Browser.QueryCollection()[0].ThumbnailH != 160u)
         {
-            std::fprintf(stderr, "[FAIL] ProjectBrowser failed to populate rendered Tier 1 GTX thumbnails.\n");
+            std::fprintf(stderr, "[FAIL] ProjectBrowser failed to populate the Default Project with rendered Tier 1 GTX thumbnails.\n");
             ImGui::DestroyContext(Ctx);
             return 1;
         }
@@ -590,7 +627,7 @@ int main()
             }
 
             GeometricRaster::ShowcaseWorldSceneBundle GpuGallery {};
-            GeometricRaster::BuildShowcaseGalleryScene(GpuGallery, 160u, 96u);
+            GeometricRaster::BuildVehicleClearSkyDefaultScene(GpuGallery, 160u, 96u);
             GpuWorldSeq.SynchronizeSceneResources(GpuGallery.Scene, true);
 
             std::vector<uint8_t> RgbaTier1 {};
@@ -608,17 +645,21 @@ int main()
                 return 1;
             }
 
-            // Verify left Crimson wall (X=8, Y=48) is red-dominant and right Emerald wall (X=151, Y=48) is green-dominant
-            const std::size_t LeftIdx  = (48u * 160u + 8u) * 4u;
-            const std::size_t RightIdx = (48u * 160u + 151u) * 4u;
-            if (RgbaTier1[LeftIdx + 0u] <= RgbaTier1[LeftIdx + 1u] + 40u ||
-                RgbaTier1[RightIdx + 1u] <= RgbaTier1[RightIdx + 0u] + 40u)
+            // Verify the default scene renders lit: upper-sky pixel is blue-dominant and the image is non-black overall
+            const std::size_t SkyIdx = (12u * 160u + 80u) * 4u;
+            uint64_t LumaTotal = 0u;
+            for (std::size_t Pix = 0u; Pix + 3u < RgbaTier1.size(); Pix += 4u)
+            {
+                LumaTotal += static_cast<uint64_t>(RgbaTier1[Pix]) + RgbaTier1[Pix + 1u] + RgbaTier1[Pix + 2u];
+            }
+            const uint64_t MeanLuma = LumaTotal / (160ull * 96ull * 3ull);
+            if (RgbaTier1[SkyIdx + 2u] <= RgbaTier1[SkyIdx + 0u] || MeanLuma < 8u)
             {
                 std::fprintf(
                     stderr,
-                    "[FAIL] VulkanWorldRenderSequence wall color check failed (Left RGB=%u,%u,%u Right RGB=%u,%u,%u).\n",
-                    RgbaTier1[LeftIdx + 0u], RgbaTier1[LeftIdx + 1u], RgbaTier1[LeftIdx + 2u],
-                    RgbaTier1[RightIdx + 0u], RgbaTier1[RightIdx + 1u], RgbaTier1[RightIdx + 2u]);
+                    "[FAIL] VulkanWorldRenderSequence sky/luminance check failed (Sky RGB=%u,%u,%u MeanLuma=%llu).\n",
+                    RgbaTier1[SkyIdx + 0u], RgbaTier1[SkyIdx + 1u], RgbaTier1[SkyIdx + 2u],
+                    static_cast<unsigned long long>(MeanLuma));
                 GpuWorldSeq.TeardownSequence();
                 VkDevice.TeardownInterchange();
                 return 1;

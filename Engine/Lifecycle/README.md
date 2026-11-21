@@ -1,6 +1,6 @@
 # 🧩 `Engine/Lifecycle/` — Application Lifecycles, Launchers & World Editor
 
-> **TL;DR**: `Engine/Lifecycle/` implements the profile-gated lifecycle hierarchy (`RuntimeLifecycle` → `WorkspaceLifecycle` → `EditorLifecycle`), the 9 desktop executables (`Frontier*Launch.cpp`), `DesktopWorkspaceLaunch` (shared workspace switcher bar & drag-drop routing), and the **Frontier World Editor** (`EditorLifecycle`: Cornell-Studio Gallery, Direct MatCap & OpenPBR World Rendering, GPU `TransformGizmo`, `OutlinerPanel`, `ViewportPanel`, `InspectorPanel`, `ControlCentrePanel`, and `ContentBrowser`).
+> **TL;DR**: `Engine/Lifecycle/` implements the profile-gated lifecycle hierarchy (`RuntimeLifecycle` → `WorkspaceLifecycle` → `EditorLifecycle`), the 9 desktop executables (`Frontier*Launch.cpp`), `DesktopWorkspaceLaunch` (shared workspace switcher bar & drag-drop routing), and the **Frontier World Editor** (`EditorLifecycle`: Default ControlVehicle Scene & Blank Plane/Sky Scene, Direct MatCap & OpenPBR World Rendering, GPU `TransformGizmo`, `OutlinerPanel`, `ViewportPanel`, `InspectorPanel`, `ControlCentrePanel`, and `ContentBrowser`).
 
 ---
 

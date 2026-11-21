@@ -353,7 +353,7 @@ int main()
     SdfShowcaseScene Scene {};
     BuildCanonicalProof11EmissiveSphereScene(Scene);
     if (!VerifyCheck(Scene.EmissiveActive && Scene.EmissiveSphere.Radius > 0.35f,
-                     "Built canonical PROOF 11 Cornell gallery with sole Emissive Sphere (NO sun/area/spot/IES)"))
+                     "Built canonical PROOF 11 proof-room gallery with sole Emissive Sphere (NO sun/area/spot/IES)"))
     {
         return 1;
     }

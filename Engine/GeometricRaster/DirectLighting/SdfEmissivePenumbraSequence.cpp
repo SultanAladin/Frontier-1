@@ -646,7 +646,7 @@ void BuildCanonicalProof11EmissiveSphereScene(SdfShowcaseScene& OutScene)
     OutScene.Materials[8].BaseColor = { 0.68f, 0.68f, 0.70f };
     OutScene.Materials[8].Roughness = 0.46f;
 
-    // Cornell Gallery Slabs (CastsShadow = false for direct shadow march; FullDistanceGrid & Cone GI include them)
+    // Proof-Room Gallery Slabs (CastsShadow = false for direct shadow march; FullDistanceGrid & Cone GI include them)
     OutScene.Boxes.push_back({ {  0.00f,  0.20f, -0.10f }, { 2.80f, 2.65f, 0.10f }, 0u, false }); // Floor Z = 0
     OutScene.Boxes.push_back({ {  0.00f,  2.72f,  1.60f }, { 2.80f, 0.10f, 1.70f }, 1u, false }); // Back wall Y = 2.62
     OutScene.Boxes.push_back({ { -2.74f,  0.20f,  1.60f }, { 0.10f, 2.65f, 1.70f }, 2u, false }); // Crimson left wall X = -2.64
@@ -1181,7 +1181,7 @@ void DualCascadeClipmapVolume::BuildFromShowcaseScene(const SdfShowcaseScene& Sc
 
     // Cascade 0 (Fine 56x56x40): tight interior pitch around column, pedestal, torus, & sphere
     PopulateBounce1Cascade(FineCascade,   56u, 56u, 40u, { -1.95f, -1.65f, -0.15f }, { 1.95f, 2.25f, 2.45f });
-    // Cascade 1 (Coarse 44x44x34): full Cornell room bounds capturing red/green walls, floor, & ceiling
+    // Cascade 1 (Coarse 44x44x34): full proof-room bounds capturing red/green walls, floor, & ceiling
     PopulateBounce1Cascade(CoarseCascade, 44u, 44u, 34u, { -2.95f, -2.65f, -0.25f }, { 2.95f, 2.95f, 3.45f });
 
     // Second-bounce physical SDF cone radiosity propagation across both cascades!
