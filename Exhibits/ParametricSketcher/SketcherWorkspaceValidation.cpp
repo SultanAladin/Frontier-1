@@ -616,14 +616,46 @@ int main()
             Io.AddKeyEvent(ImGuiKey_A, true);
         });
         const bool LineDrawingStarted = State.Drawing.ActiveCondition && State.Drawing.Kind == SketcherDrawingCategory::Line;
+        const uint64_t BeforeLine = State.Document.Revision;
         StepHostedFrame([&]()
         {
             Io.AddKeyEvent(ImGuiKey_A, false);
             Io.AddKeyEvent(ImGuiMod_Shift, false);
-            Io.AddKeyEvent(ImGuiKey_Escape, true);
+            Io.AddMousePosEvent(540.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
         });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); });
+        StepHostedFrame([&]()
+        {
+            Io.AddMousePosEvent(660.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, false); });
+        const bool LineToolRearmed = State.Document.Revision > BeforeLine && State.Drawing.ActiveCondition
+                                  && State.Drawing.Kind == SketcherDrawingCategory::Line && State.Drawing.Points.empty();
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
-        if (!VerifyCheck(LineDrawingStarted, "Shift+A starts Line drawing session"))
+
+        // Empty viewport RMB opens Construct at the pointer (a drag remains viewport pan).
+        State.Document.Selection = {};
+        State.SketchPoints.Points.clear();
+        StepHostedFrame([&]()
+        {
+            Io.AddMousePosEvent(620.0f, 360.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        });
+        StepHostedFrame([&]() { Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false); });
+        const bool EmptyRmbConstruct = State.ConstructMenuRequest && State.ConstructMenuAtPointer
+                                    && std::abs(State.ConstructMenuPointer[0] - 620.0f) < 0.5f
+                                    && std::abs(State.ConstructMenuPointer[1] - 360.0f) < 0.5f;
+        StepHostedFrame([&]() {});                                                           // Consume the request and open the popup
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
+        if (!VerifyCheck(LineDrawingStarted, "Shift+A starts Line drawing session") ||
+            !VerifyCheck(LineToolRearmed, "Completed Construct sketch keeps its drawing tool active") ||
+            !VerifyCheck(EmptyRmbConstruct, "Empty viewport RMB requests Construct menu at pointer"))
         {
             Host.Finalize();
             Dock.Finalize();

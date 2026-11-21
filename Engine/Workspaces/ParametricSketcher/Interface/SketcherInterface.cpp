@@ -1557,10 +1557,12 @@ bool IntersectSketchPlane(const OrbitCameraBasis& Frame, ImVec2 Local, const Ort
 }
 
 int ViewGridPlane(const OrbitCamera& Camera) noexcept;
+void CloseKnifeSession(SketcherWorkspaceStatus& State, const std::string& Message);
 
-void OpenDrawingSession(SketcherWorkspaceStatus& State, SketcherDrawingCategory Kind)
+void OpenDrawingSession(SketcherWorkspaceStatus& State, SketcherDrawingCategory Kind, bool KnifeCutterCondition = false)
 {
     if (State.Bevel.ActiveCondition) return;
+    if (State.Knife.ActiveCondition && !KnifeCutterCondition) CloseKnifeSession(State, "Knife closed · Construct tool active");
     // Knife profiles are planar sections on the first-clicked face, not retopology
     // traces. Keep the user's tracing preference unchanged for the next normal tool.
     const bool SurfaceTrace = State.SurfaceTraceEnabled && !State.Knife.ActiveCondition;
@@ -1619,6 +1621,16 @@ void CancelDrawingSession(SketcherWorkspaceStatus& State)
 
 SketcherSnapRepository& SnapCatalogue(SketcherWorkspaceStatus& State, const std::vector<std::string>& Excluded);
 
+void RearmSketchTool(SketcherWorkspaceStatus& State, SketcherDrawingCategory Kind, bool CentreCondition, bool SegmentCondition, SketchSplineForm Form, int Sides)
+{
+    OpenDrawingSession(State, Kind);
+    State.Drawing.CentreCondition  = CentreCondition;
+    State.Drawing.SegmentCondition = SegmentCondition;
+    State.Drawing.Form             = Form;
+    State.Drawing.Sides            = Sides;
+    Announce(State, std::string(SketcherDrawingLabel(Kind)) + " created · tool stays active for another · Esc ends the tool");
+}
+
 // Commits the collected points as a sketch step; the new sketch becomes the focused step (E extrudes it).
 void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
 {
@@ -1626,6 +1638,11 @@ void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
     if (!Drawing.ActiveCondition) return;
     if (Drawing.SolidCondition) { FinishSolidSession(State); return; }
     const bool KnifeCondition = State.Knife.ActiveCondition && State.Knife.DrawPendingCondition;
+    const SketcherDrawingCategory RepeatKind = Drawing.Kind;
+    const bool RepeatCentre = Drawing.CentreCondition;
+    const bool RepeatSegment = Drawing.SegmentCondition;
+    const SketchSplineForm RepeatForm = Drawing.Form;
+    const int RepeatSides = Drawing.Sides;
     if (Drawing.SurfaceCondition || (State.DrawingAutoSplit && Drawing.Kind==SketcherDrawingCategory::Curve &&
         (Drawing.Form==SketchSplineForm::Nurbs || Drawing.Form==SketchSplineForm::Bezier)))
     {
@@ -1640,7 +1657,11 @@ void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
             State.FocusedStep = State.Document.Tree.Steps.back().Label;
         }
         Conclude(State, Outcome);
-        if (Outcome.AcceptedCondition) Announce(State, Compose("Surface-point trace · %zu placed controls · no automatic points or surface fitting", Drawing.Points.size()));
+        if (Outcome.AcceptedCondition)
+        {
+            Announce(State, Compose("Surface-point trace · %zu placed controls · no automatic points or surface fitting", Drawing.Points.size()));
+            RearmSketchTool(State, RepeatKind, RepeatCentre, RepeatSegment, RepeatForm, RepeatSides);
+        }
         return;
     }
     if (const std::vector<Vector3> Lifted = LiftedDrawingPoints(Drawing, false); !Lifted.empty() && !KnifeCondition)
@@ -1665,6 +1686,7 @@ void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
         }
         if (Outcome.AcceptedCondition) State.FocusedStep = State.Document.Tree.Steps.back().Label;
         Conclude(State, Outcome);
+        if (Outcome.AcceptedCondition) RearmSketchTool(State, RepeatKind, RepeatCentre, RepeatSegment, RepeatForm, RepeatSides);
         return;
     }
     SketcherDrawingRequest Request = ComposeDrawingRequest(Drawing, false, ClosedCondition);
@@ -1685,6 +1707,8 @@ void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
     if (KnifeCondition)
         AdoptKnifeSketch(State, Outcome.AcceptedCondition && State.Document.Tree.Steps.size() > Before ? State.Document.Tree.Steps.back().Label : std::string{},
                          Drawing.FacePlaneCondition ? Drawing.FaceName : std::string{});
+    else if (Outcome.AcceptedCondition)
+        RearmSketchTool(State, RepeatKind, RepeatCentre, RepeatSegment, RepeatForm, RepeatSides);
 }
 
 void AppendDrawingPoint(SketcherWorkspaceStatus& State, Vector2 Point, bool ClosingCondition)
@@ -2155,9 +2179,10 @@ std::string ComposeSolidRequest(const SketcherDrawingSession& Drawing, bool Poin
     return {};
 }
 
-void OpenSolidSession(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind)
+void OpenSolidSession(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind, bool KnifeCutterCondition = false)
 {
     if (State.Bevel.ActiveCondition) return;
+    if (State.Knife.ActiveCondition && !KnifeCutterCondition) CloseKnifeSession(State, "Knife closed · Construct tool active");
     const int Sides = State.Drawing.Sides;
     State.Drawing                 = {};
     State.Drawing.ActiveCondition = true;
@@ -2198,12 +2223,24 @@ void FinishSolidSession(SketcherWorkspaceStatus& State)
             for (size_t Index = Before; Index < Probe.Tree.Steps.size(); ++Index)
                 if (Probe.Tree.Steps[Index].Kind == FeatureStepCategory::Sketch) { Request.Start = -MeasureSketcherProfileSink(Probe, State.Scene, Probe.Tree.Steps[Index].Label); break; }
     }
+    const SketcherConstructCategory RepeatSolid = Drawing.Solid;
+    const int RepeatSides = Drawing.Sides;
+    const bool RepeatCentre = Drawing.CentreCondition;
+    const FeatureCombination RepeatCombination = Drawing.Combination;
     Drawing.ActiveCondition = false;
     State.LastCommand = { SketcherRepeatCategory::Construct, BlendProfile::Fillet, 0.0, FaceOperationCategory::Extrude, 0.0, Request };
     const SketcherCommandOutcome Outcome = ConstructSketcherPrimitive(State.Document, Request);
     if (Outcome.AcceptedCondition && Request.Combination == GeometrySpace::Parametric::FeatureCombination::Separate)
         SelectSketcherName(State.Document, SketcherSelectionCategory::Body, State.Document.Regeneration.Active, false);
     Conclude(State, Outcome);
+    if (Outcome.AcceptedCondition)
+    {
+        OpenSolidSession(State, RepeatSolid);
+        State.Drawing.Sides           = RepeatSides;
+        State.Drawing.CentreCondition = RepeatCentre;
+        State.Drawing.Combination     = RepeatCombination;
+        Announce(State, std::string(SketcherConstructLabel(RepeatSolid)) + " created · tool stays active for another · Esc ends the tool");
+    }
 }
 
 // Tab: the size form, filled with what is drawn so far (the session closes; Create in the form makes the solid).
@@ -7602,7 +7639,7 @@ void DrawKnifeShape(SketcherWorkspaceStatus& State, SketcherDrawingCategory Kind
     Knife.Typed.clear();
     DropKnifePreview(Knife);
     State.Picker.Lock = SketcherSnapLockCategory::None; // A previous drawing's axis lock must not pin a new cutter to its grid.
-    OpenDrawingSession(State, Kind);
+    OpenDrawingSession(State, Kind, true);
     // A knife line is one cut across the face: it finishes on its second click (edge to edge), no Enter needed. A knife
     // polyline takes clicks until Enter / right-click (the open chain slices along every segment; clicking the first
     // point closes it into a pocket outline instead).
@@ -7620,7 +7657,7 @@ void DrawKnifeSolid(SketcherWorkspaceStatus& State, SketcherConstructCategory Ki
     Knife.Typed.clear();
     DropKnifePreview(Knife);
     State.Picker.Lock = SketcherSnapLockCategory::None;
-    OpenSolidSession(State, Kind);
+    OpenSolidSession(State, Kind, true);
     State.Drawing.Combination  = Knife.Combination;
     Knife.DrawPendingCondition = State.Drawing.ActiveCondition;
     if (!Knife.DrawPendingCondition) return;
@@ -13936,7 +13973,11 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     const int   Displayed  = std::clamp(State.ConstructSection, 0, 2);
     const int   TileCount  = Displayed == 2 ? ConstructReferenceCount : Displayed == 1 ? ConstructSketchCount : ConstructSolidCount;
     const float MenuHeight = ConstructMenuHeight(TileCount);
-    ImGui::SetNextWindowPos(Anchor);
+    ImVec2 MenuAnchor = State.ConstructMenuAtPointer ? ImVec2(State.ConstructMenuPointer[0], State.ConstructMenuPointer[1]) : Anchor;
+    const ImVec2 Display = ImGui::GetIO().DisplaySize;
+    MenuAnchor.x = std::clamp(MenuAnchor.x, 0.0f, std::max(0.0f, Display.x - 520.0f));
+    MenuAnchor.y = std::clamp(MenuAnchor.y, 0.0f, std::max(0.0f, Display.y - MenuHeight));
+    ImGui::SetNextWindowPos(MenuAnchor);
     ImGui::SetNextWindowSize(ImVec2(520, MenuHeight));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 0.0f);
@@ -13947,7 +13988,7 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     if (!Shown) return;
     SketcherSheet Sheet;
     Sheet.Begin();
-    const PlaneExtent Menu = Spanning(Anchor.x, Anchor.y, 520.0f, MenuHeight);
+    const PlaneExtent Menu = Spanning(MenuAnchor.x, MenuAnchor.y, 520.0f, MenuHeight);
     Sheet.Box(Menu, SketcherInk(0x121417), 14.0f, SketcherWash(0x22));
     const float Left = Menu.MinimumX + 1.0f, Top = Menu.MinimumY + 1.0f, Right = Menu.MaximumX - 1.0f, Bottom = Menu.MaximumY - 1.0f;
     // header — 40 px, #ffffff08, #ffffff12 bottom border, padding 0 12 0 16, gap 12.
@@ -13996,6 +14037,9 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
         if (Press.ClickedCondition)
         {
             ImGui::CloseCurrentPopup();
+            // Construct is a separate tool family. Leaving Knife here clears its modal ownership before a normal
+            // primitive/sketch session starts; otherwise Knife keeps intercepting the completed primitive.
+            if (State.Knife.ActiveCondition) CloseKnifeSession(State, "Knife closed · Construct tool active");
             if (Displayed == 2) State.PopupRequest = "Image plane";
             else if (Entry.SolidCondition) OpenSolidSession(State, Entry.Solid);
             else
@@ -14252,6 +14296,7 @@ void DrawOutliner(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size, 
         else ToggleFigureLock(State, Intent.Figure);
         break;
     case SketcherOutlinerVerb::Construct:
+        State.ConstructMenuAtPointer = false;
         State.ConstructMenuRequest = true;
         break;
     case SketcherOutlinerVerb::None:
@@ -15087,7 +15132,7 @@ void DrawViewportBar(SketcherWorkspaceStatus& State, SketcherSheet& Sheet, const
         Sheet.Icon(IconSymbol::SketcherPlus, Chip.MinimumX + 14.0f, Centre - 7.5f, 15.0f, ChipInk);
         Sheet.Text(Chip.MinimumX + 14.0f + 15.0f + 9.0f, Centre, 11.0f, ChipInk, "Construct");
     }
-    if (Construct.ClickedCondition) State.ConstructMenuRequest = true;
+    if (Construct.ClickedCondition) { State.ConstructMenuAtPointer = false; State.ConstructMenuRequest = true; }
     Cursor = Chip.MaximumX + 4.0f;
 
     // .bar-divider — 1 × 15, #ffffff10, margin 0 9.
@@ -16133,7 +16178,11 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
                 AppendDrawingPoint(State, Point, Closing);
         }
         if (LeftClick && !OverCube && Drawing.PointerCondition && !PressPlaced && State.Drawing.ActiveCondition) AppendDrawingPoint(State, Point, Closing);
-        if (RightClick && !OverCube && State.Drawing.ActiveCondition) ConfirmDrawingSession(State);   // Right-click confirms like Enter
+        if (RightClick && !OverCube && State.Drawing.ActiveCondition)
+        {
+            if (Drawing.Points.empty()) CancelDrawingSession(State);                         // RMB on a freshly re-armed tool ends it
+            else ConfirmDrawingSession(State);                                                // Otherwise RMB finishes the current open chain
+        }
         if (KnifeSolidCondition(State))
         {
             // A knife's 3D cutter: the cut stages live behind the drawn outline and its dimension lines.
@@ -16262,6 +16311,17 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
     }
     else
     {
+        const SketcherSelection& Selection = State.Document.Selection;
+        const bool NothingSelected = Selection.Bodies.empty() && Selection.Faces.empty() && Selection.Edges.empty() && Selection.Vertices.empty()
+                                  && Selection.Curves.empty() && State.SketchPoints.Points.empty();
+        if (RightClick && !OverCube && NothingSelected)
+        {
+            // Empty-space RMB is the viewport's creation context menu. A right drag remains pan because RightClick is
+            // release-within-click-tolerance; active modal tools consumed RMB in their branches above.
+            State.ConstructMenuPointer = { Io.MousePos.x, Io.MousePos.y };
+            State.ConstructMenuAtPointer = true;
+            State.ConstructMenuRequest = true;
+        }
         SketcherBoxSelection& Box = State.Box;
         const bool BoxModeCondition = State.PickMode==SketcherPickMode::Curve || State.PickMode == SketcherPickMode::ControlPoint || State.PickMode == SketcherPickMode::Edge || State.PickMode == SketcherPickMode::Any;
         if (BoxModeCondition && Hovered && !OverCube && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
@@ -16658,6 +16718,36 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
         SketcherSheet Instructions;
         Instructions.Begin();
         HintTop = DrawViewportInstructions(Instructions, Image.x + 17.0f, Image.y + Extent.y - 12.0f, Extent.x - 34.0f - CubeExtent - 18.0f, Hint);
+    }
+
+    // Keep the sketch Boolean choice in the viewport while the extrusion is being adjusted. The Inspector card has the
+    // same controls, but this HUD makes Cut/Add explicit even when that pane is hidden or the viewport is maximized.
+    if (State.Bevel.ActiveCondition && State.Bevel.Verb == SketcherSessionVerb::Profile)
+    {
+        ImGui::SetNextWindowPos(ImVec2(Image.x + 16.0f, Image.y + 56.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowBgAlpha(0.94f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 9.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(9.0f, 7.0f));
+        if (ImGui::Begin("###SketchBooleanHud", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+        {
+            ImGui::TextDisabled("Sketch Boolean");
+            static const struct { const char* Label; FeatureCombination Combination; } Choices[] = {
+                { "Add###HudProfileAdd", FeatureCombination::Union }, { "Cut###HudProfileCut", FeatureCombination::Difference },
+                { "Intersect###HudProfileIntersect", FeatureCombination::Intersection }, { "New###HudProfileNew", FeatureCombination::Separate } };
+            for (int Index = 0; Index < 4; ++Index)
+            {
+                if (Index) ImGui::SameLine();
+                if (ToggleButton(State, Choices[Index].Label, !State.Bevel.AutoCombinationCondition && State.Bevel.Combination == Choices[Index].Combination))
+                    ChooseProfileCombination(State, Choices[Index].Combination);
+            }
+            if (State.Bevel.ProfileMaterial != 0)
+            {
+                ImGui::SameLine();
+                if (ToggleButton(State, "Auto###HudProfileAuto", State.Bevel.AutoCombinationCondition)) ChooseProfileAutomatic(State);
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleVar(2);
     }
 
     // The overlay clusters are top-level windows of their own (begun here so they measure inside a window).

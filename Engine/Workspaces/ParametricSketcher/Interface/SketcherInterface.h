@@ -984,6 +984,8 @@ struct SketcherWorkspaceStatus
     bool                                  ConstructShown = false;                            // [-]   - Construct dialog drawn this frame
     int                                   ConstructSection = 0;                              // [-]   - Construct menu section: 0 Solids · 1 Sketch
     bool                                  ConstructMenuRequest = false;                      // [-]   - Construct catalogue popover requested
+    bool                                  ConstructMenuAtPointer = false;                    // [-]   - Empty-space RMB anchors the catalogue at the pointer
+    std::array<float, 2>                  ConstructMenuPointer = {};                         // [px]  - Requested viewport context-menu corner
     bool                                  TraceShown     = false;                            // [-]   - F12 operation trace panel (development builds)
     std::string                           TraceFilter    = {};                               // [-]   - Its substring filter
     SketcherOutlinerMode                 Outliner       = {};                               // [-]   - Scene search, filter chips, compact / folded
