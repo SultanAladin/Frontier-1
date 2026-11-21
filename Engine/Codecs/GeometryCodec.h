@@ -30,15 +30,26 @@ namespace Frontier::Codecs
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
+struct GeometrySurfaceSlotLink
+{
+    uint32_t    PartGroupOrdinal = 0u; // [idx] - PartGroupOrdinal referenced by Face entries
+    std::string SlotTitle        {};   // [-]   - Unabbreviated surface slot name
+    std::string MaterialPath     {};   // [-]   - Relative .MaterialSpace asset path
+};
+
 struct GeometrySpaceDocument
 {
-    GeometrySpace::PolygonNetwork         Network           {};    // [-]    - Complete half-edge PolygonNetwork (n-gons, seams, pins)
-    GeometrySpace::FacePartitionRegister  Partitions        {};    // [-]    - Priority UV allocation layers
-    std::vector<uint32_t>                 UDIMTiles         { 1001u }; // [code] - Active UDIM 1001-series tile codes
-    SpatialAcceleration::ClusterPyramid   ClusterHierarchy  {};    // [-]    - Optional prebuilt 128-triangle LOD pyramid
-    SpatialAcceleration::WideBoundingTree RayAcceleration   {};    // [-]    - Optional prebuilt 128 B 4-wide BVH4
-    bool                                  ClustersIncluded  = false; // [-]  - True when ClusterHierarchy is persisted
-    bool                                  WideTreeIncluded  = false; // [-]  - True when RayAcceleration is persisted
+    GeometrySpace::PolygonNetwork         Network                 {};    // [-]    - Complete half-edge PolygonNetwork (n-gons, seams, pins)
+    GeometrySpace::FacePartitionRegister  Partitions              {};    // [-]    - Priority UV allocation layers
+    std::vector<uint32_t>                 UDIMTiles               { 1001u }; // [code] - Active UDIM 1001-series tile codes
+    std::vector<GeometrySurfaceSlotLink>  SurfaceSlots            {};    // [-]    - Material bindings per PartGroupOrdinal
+    std::string                           SurfaceParameterPath    {};    // [-]    - Linked .SurfaceParameterSpace asset path
+    float                                 CreaseAngleDegrees      = 38.0f; // [deg] - Crease smoothing angle
+    std::vector<float>                    FaceCornerNormals       {};    // [-]    - Optional 9 floats/face creased corner normals
+    SpatialAcceleration::ClusterPyramid   ClusterHierarchy        {};    // [-]    - Optional prebuilt 128-triangle LOD pyramid
+    SpatialAcceleration::WideBoundingTree RayAcceleration         {};    // [-]    - Optional prebuilt 128 B 4-wide BVH4
+    bool                                  ClustersIncluded        = false; // [-]  - True when ClusterHierarchy is persisted
+    bool                                  WideTreeIncluded        = false; // [-]  - True when RayAcceleration is persisted
 };
 
 class GeometryEncoder

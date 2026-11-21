@@ -6,7 +6,13 @@
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 
 #include "Engine/Codecs/ControlVehicleSurfaceDecoder.h"
+#include "Engine/Codecs/GeometryCodec.h"
+#include "Engine/Codecs/MaterialCodec.h"
+#include "Engine/Codecs/PhotometrySpaceCodec.h"
+#include "Engine/Codecs/VolumetricSpaceCodec.h"
+#include "Engine/Codecs/WorldSpaceCodec.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
+#include "Engine/Tools/DefaultContentGenerator.h"
 
 #include <algorithm>
 #include <array>
@@ -15,6 +21,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <limits>
+#include <unordered_map>
 
 namespace Frontier::GeometricRaster
 {
@@ -812,6 +819,250 @@ void BuildShowcaseGalleryScene(
     OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
 
+bool LoadWorldSceneFromSpaceFile(
+    const std::filesystem::path& WorldSpacePath,
+    const std::filesystem::path& RepositoryRoot,
+    ShowcaseWorldSceneBundle&    OutBundle,
+    uint32_t                     ViewportWidthPx,
+    uint32_t                     ViewportHeightPx,
+    std::string&                 OutDiagnostic)
+{
+    Codecs::WorldSpaceDocumentModel WorldDoc{};
+    if (!Codecs::WorldSpaceDecoder::DecodeFromFile(WorldSpacePath, WorldDoc, OutDiagnostic))
+    {
+        return false;
+    }
+
+    OutBundle = {};
+
+    std::unordered_map<std::string, uint16_t> MaterialSlotByPath{};
+    auto ResolveMaterialSlot = [&](const std::string& RelativeMatPath, std::string& OutMatTitle) -> uint16_t
+    {
+        if (RelativeMatPath.empty())
+        {
+            OutMatTitle = "DefaultClay";
+            return 0u;
+        }
+        if (const auto Found = MaterialSlotByPath.find(RelativeMatPath); Found != MaterialSlotByPath.end())
+        {
+            OutMatTitle = OutBundle.Scene.MaterialRegister.InspectAuthoredMaterial(Found->second).MaterialName;
+            return Found->second;
+        }
+        Codecs::MaterialSpaceDocumentModel MatDoc{};
+        std::string                        MatDiag{};
+        if (Codecs::MaterialDecoder::DecodeFromFile(RepositoryRoot / RelativeMatPath, MatDoc, MatDiag))
+        {
+            const uint16_t Slot = OutBundle.Scene.MaterialRegister.RegisterMaterial(MatDoc.AuthoredMaterial);
+            MaterialSlotByPath.emplace(RelativeMatPath, Slot);
+            OutMatTitle = MatDoc.AuthoredMaterial.MaterialName;
+            return Slot;
+        }
+        OutMatTitle = "DefaultClay";
+        return 0u;
+    };
+
+    // Environment & Solar Photometry
+    if (!WorldDoc.EnvironmentVolumetricPath.empty())
+    {
+        Codecs::VolumetricSpaceDocumentModel VolDoc{};
+        std::string                          VolDiag{};
+        if (Codecs::VolumetricSpaceDecoder::DecodeFromFile(RepositoryRoot / WorldDoc.EnvironmentVolumetricPath, VolDoc, VolDiag))
+        {
+            OutBundle.Scene.Atmosphere  = VolDoc.Atmosphere;
+            OutBundle.Scene.SkyRadiance = VolDoc.FallbackSkyRadiance;
+        }
+    }
+
+    if (!WorldDoc.SolarPhotometryPath.empty())
+    {
+        Codecs::PhotometrySpaceDocumentModel SunDoc{};
+        std::string                          SunDiag{};
+        if (Codecs::PhotometrySpaceDecoder::DecodeFromFile(RepositoryRoot / WorldDoc.SolarPhotometryPath, SunDoc, SunDiag))
+        {
+            OutBundle.Scene.Atmosphere.Solar = SunDoc.SolarEphemeris;
+            OutBundle.Scene.Sun              = SunDoc.SolarSource;
+            if (SunDoc.SolarEphemeris.SolarEnabled)
+            {
+                const auto Solved                = CelestialEphemerisSolver::SolveSolarEphemeris(OutBundle.Scene.Atmosphere.Solar);
+                OutBundle.Scene.Sun.DirectionToSun = Solved.WorldDirectionToSun;
+            }
+        }
+    }
+
+    // Geometry Placements (.GeometrySpace + .MaterialSpace + .SmoothNormals)
+    for (const Codecs::WorldGeometryPlacementEntry& Placement : WorldDoc.GeometryPlacements)
+    {
+        auto                    GeomAsset = std::make_unique<ShowcaseGeometryAsset>();
+        ShowcaseWorldAssetEntry Entry{};
+        Entry.Title                = Placement.PlacementTitle;
+        Entry.StableIdentifier     = Placement.StableIdentifier;
+        Entry.Subtitle             = Placement.Subtitle;
+        Entry.AuthorNotes          = Placement.AuthorNotes;
+        Entry.CenterWorld          = Placement.CenterWorld;
+        Entry.DimensionsMeters     = Placement.DimensionsMeters;
+        Entry.AuthoredDimensions   = Placement.DimensionsMeters;
+        Entry.RotationZDegrees     = Placement.RotationZDegrees;
+        Entry.SphericalPrimitive   = Placement.SphericalPrimitive;
+        Entry.GlassShell           = Placement.GlassShell;
+        Entry.PrimitiveShape       = static_cast<ShowcasePrimitiveShape>(std::min<uint32_t>(Placement.PrimitiveShapeOrdinal, 4u));
+        Entry.MaterialSlot         = ResolveMaterialSlot(Placement.PrimaryMaterialPath, Entry.MaterialTitle);
+        Entry.ClusterInstanceIndex = static_cast<uint32_t>(OutBundle.Scene.ClusterInstances.size());
+
+        Codecs::GeometrySpaceDocument GeoDoc{};
+        std::string                   GeoDiag{};
+        if (!Placement.GeometrySpacePath.empty() &&
+            Codecs::GeometryDecoder::DecodeFromFile(RepositoryRoot / Placement.GeometrySpacePath, GeoDoc, GeoDiag) &&
+            !GeoDoc.Network.Faces.empty())
+        {
+            std::unordered_map<uint32_t, uint16_t> SubSlotRemap{};
+            for (const Codecs::GeometrySurfaceSlotLink& SlotLink : GeoDoc.SurfaceSlots)
+            {
+                std::string SubMatTitle{};
+                SubSlotRemap[SlotLink.PartGroupOrdinal] = ResolveMaterialSlot(SlotLink.MaterialPath, SubMatTitle);
+            }
+
+            GeomAsset->Network = std::move(GeoDoc.Network);
+            const std::size_t FaceCount = GeomAsset->Network.Faces.size();
+            const bool HasSmoothCorners = (GeoDoc.FaceCornerNormals.size() >= FaceCount * 9u);
+            Entry.LocalSmoothTriangles.reserve(FaceCount);
+
+            for (std::size_t FaceIdx = 0u; FaceIdx < FaceCount; ++FaceIdx)
+            {
+                auto& Face = GeomAsset->Network.Faces[FaceIdx];
+                uint16_t ResolvedSlot = Entry.MaterialSlot;
+                if (const auto FoundSlot = SubSlotRemap.find(Face.PartGroupOrdinal); FoundSlot != SubSlotRemap.end())
+                {
+                    ResolvedSlot = FoundSlot->second;
+                }
+                Face.PartGroupOrdinal = ResolvedSlot;
+
+                const uint32_t E0 = Face.BoundaryLoopEdgeIndex;
+                if (E0 >= GeomAsset->Network.Edges.size())
+                {
+                    continue;
+                }
+                const uint32_t E1 = GeomAsset->Network.Edges[E0].NextEdgeIndex;
+                const uint32_t E2 = (E1 < GeomAsset->Network.Edges.size()) ? GeomAsset->Network.Edges[E1].NextEdgeIndex : E0;
+                if (E1 >= GeomAsset->Network.Edges.size() || E2 >= GeomAsset->Network.Edges.size())
+                {
+                    continue;
+                }
+                const uint32_t V0 = GeomAsset->Network.Edges[E0].OriginVertexIndex;
+                const uint32_t V1 = GeomAsset->Network.Edges[E1].OriginVertexIndex;
+                const uint32_t V2 = GeomAsset->Network.Edges[E2].OriginVertexIndex;
+                if (V0 >= GeomAsset->Network.Vertices.size() ||
+                    V1 >= GeomAsset->Network.Vertices.size() ||
+                    V2 >= GeomAsset->Network.Vertices.size())
+                {
+                    continue;
+                }
+
+                CachedLocalSmoothTriangle SmoothTri{};
+                SmoothTri.Corner0              = GeomAsset->Network.Vertices[V0].Axes;
+                SmoothTri.Corner1              = GeomAsset->Network.Vertices[V1].Axes;
+                SmoothTri.Corner2              = GeomAsset->Network.Vertices[V2].Axes;
+                SmoothTri.MaterialSlotOverride = ResolvedSlot;
+                if (HasSmoothCorners)
+                {
+                    const std::size_t Base = FaceIdx * 9u;
+                    SmoothTri.Normal0 = { GeoDoc.FaceCornerNormals[Base + 0u], GeoDoc.FaceCornerNormals[Base + 1u], GeoDoc.FaceCornerNormals[Base + 2u] };
+                    SmoothTri.Normal1 = { GeoDoc.FaceCornerNormals[Base + 3u], GeoDoc.FaceCornerNormals[Base + 4u], GeoDoc.FaceCornerNormals[Base + 5u] };
+                    SmoothTri.Normal2 = { GeoDoc.FaceCornerNormals[Base + 6u], GeoDoc.FaceCornerNormals[Base + 7u], GeoDoc.FaceCornerNormals[Base + 8u] };
+                    GeomAsset->Network.Vertices[V0].Normal = SmoothTri.Normal0;
+                    GeomAsset->Network.Vertices[V1].Normal = SmoothTri.Normal1;
+                    GeomAsset->Network.Vertices[V2].Normal = SmoothTri.Normal2;
+                }
+                else
+                {
+                    SmoothTri.Normal0 = Face.GeometricNormal;
+                    SmoothTri.Normal1 = Face.GeometricNormal;
+                    SmoothTri.Normal2 = Face.GeometricNormal;
+                }
+                Entry.LocalSmoothTriangles.push_back(SmoothTri);
+            }
+            (void)GeomAsset->Pyramid.BuildFromPolygonNetwork(GeomAsset->Network, 3u);
+        }
+        else
+        {
+            BuildBoxGeometryAsset(*GeomAsset, Placement.DimensionsMeters * 0.5f);
+            for (auto& Face : GeomAsset->Network.Faces)
+            {
+                Face.PartGroupOrdinal = Entry.MaterialSlot;
+            }
+            (void)GeomAsset->Pyramid.BuildFromPolygonNetwork(GeomAsset->Network, 3u);
+            EnsureObjectLocalSmoothTriangles(Entry);
+        }
+
+        OutBundle.Scene.ClusterInstances.push_back(
+            { &GeomAsset->Pyramid, Entry.CenterWorld, Entry.CenterWorld, 1.0f, Entry.MaterialSlot, Entry.SphericalPrimitive });
+        OutBundle.DynamicGeometryAssets.push_back(std::move(GeomAsset));
+        OutBundle.Objects.push_back(std::move(Entry));
+    }
+
+    // Area Luminaires (.PhotometrySpace)
+    for (const Codecs::WorldAreaLuminairePlacement& AreaPlacement : WorldDoc.AreaLuminairePlacements)
+    {
+        if (!AreaPlacement.VisibilityEnabled || AreaPlacement.PhotometrySpacePath.empty())
+        {
+            continue;
+        }
+        Codecs::PhotometrySpaceDocumentModel AreaDoc{};
+        std::string                          AreaDiag{};
+        if (Codecs::PhotometrySpaceDecoder::DecodeFromFile(RepositoryRoot / AreaPlacement.PhotometrySpacePath, AreaDoc, AreaDiag))
+        {
+            auto Quad        = AreaDoc.AreaQuad;
+            Quad.CenterWorld = AreaPlacement.CenterWorld;
+            OutBundle.Scene.AreaLights.push_back(Quad);
+        }
+    }
+
+    // Measured Luminaires (.PhotometrySpace 128x32 CandelaGrid)
+    std::unordered_map<std::string, uint32_t> ProfileIndexByPath{};
+    for (const Codecs::WorldMeasuredLuminairePlacement& LumPlacement : WorldDoc.MeasuredLuminairePlacements)
+    {
+        if (LumPlacement.PhotometrySpacePath.empty())
+        {
+            continue;
+        }
+        uint32_t ProfileIdx = 0u;
+        if (const auto Found = ProfileIndexByPath.find(LumPlacement.PhotometrySpacePath); Found != ProfileIndexByPath.end())
+        {
+            ProfileIdx = Found->second;
+        }
+        else
+        {
+            Codecs::PhotometrySpaceDocumentModel MeasDoc{};
+            std::string                          MeasDiag{};
+            if (!Codecs::PhotometrySpaceDecoder::DecodeFromFile(RepositoryRoot / LumPlacement.PhotometrySpacePath, MeasDoc, MeasDiag) ||
+                !MeasDoc.CandelaIncluded)
+            {
+                continue;
+            }
+            ProfileIdx = static_cast<uint32_t>(OutBundle.Scene.PhotometricProfiles.size());
+            OutBundle.Scene.PhotometricProfiles.push_back(std::move(MeasDoc.CandelaProfile));
+            ProfileIndexByPath.emplace(LumPlacement.PhotometrySpacePath, ProfileIdx);
+        }
+
+        PhotometricPointRadiator Rad{};
+        Rad.PositionWorld    = LumPlacement.PositionWorld;
+        Rad.BeamAxis         = LumPlacement.BeamAxis;
+        Rad.ZeroAzimuthAxis  = LumPlacement.ZeroAzimuthAxis;
+        Rad.PeakIntensityRgb = LumPlacement.PeakIntensityRgb;
+        Rad.RangeMeters      = LumPlacement.RangeMeters;
+        Rad.RadiusMeters     = LumPlacement.RadiusMeters;
+        Rad.ProfileOrdinal   = ProfileIdx;
+        OutBundle.Scene.PhotometricRadiators.push_back(Rad);
+    }
+
+    RebuildShowcaseSceneAcceleration(OutBundle);
+
+    OutBundle.EditorCamera                  = WorldDoc.EditorCamera;
+    OutBundle.EditorCamera.ViewportWidthPx  = std::max(1u, ViewportWidthPx);
+    OutBundle.EditorCamera.ViewportHeightPx = std::max(1u, ViewportHeightPx);
+    OutDiagnostic.clear();
+    return true;
+}
+
 void BuildVehicleClearSkyDefaultScene(
     ShowcaseWorldSceneBundle& OutBundle,
     uint32_t                  ViewportWidthPx,
@@ -819,11 +1070,12 @@ void BuildVehicleClearSkyDefaultScene(
 {
     OutBundle = {};
 
-    // Locate repository root containing EngineContent/EnvironmentArchives/ControlVehicle
+    // Locate repository root containing Content/Worlds/VehicleClearSkyDefault.WorldSpace or EngineContent/
     std::filesystem::path RepoRoot = std::filesystem::current_path();
     for (int Depth = 0; Depth < 6; ++Depth)
     {
-        if (std::filesystem::exists(RepoRoot / "EngineContent" / "EnvironmentArchives" / "ControlVehicle" / "ControlVehicleBody.face"))
+        if (std::filesystem::exists(RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace") ||
+            std::filesystem::exists(RepoRoot / "EngineContent" / "EnvironmentArchives" / "ControlVehicle" / "ControlVehicleBody.face"))
         {
             break;
         }
@@ -832,6 +1084,18 @@ void BuildVehicleClearSkyDefaultScene(
             break;
         }
         RepoRoot = RepoRoot.parent_path();
+    }
+
+    std::string SpaceDiag{};
+    if (std::filesystem::exists(RepoRoot / "EngineContent" / "EnvironmentArchives" / "ControlVehicle" / "ControlVehicleBody.face"))
+    {
+        (void)Tools::DefaultContentGenerator::EnsureDefaultContentAvailable(RepoRoot, SpaceDiag);
+    }
+    const std::filesystem::path DefaultWorldSpace = RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace";
+    if (std::filesystem::exists(DefaultWorldSpace) &&
+        LoadWorldSceneFromSpaceFile(DefaultWorldSpace, RepoRoot, OutBundle, ViewportWidthPx, ViewportHeightPx, SpaceDiag))
+    {
+        return;
     }
 
     // Slot 0: Neutral studio ground plane (architectural concrete / dry asphalt)
@@ -854,7 +1118,7 @@ void BuildVehicleClearSkyDefaultScene(
         switch (Slot)
         {
             case Codecs::VehicleSurfaceSlot::BodyCoat:
-                Mat.MaterialName            = "Control Vehicle Metallic Paint";
+                Mat.MaterialName            = "ControlVehicleMetallicPaint";
                 Mat.Diffuse.BaseColor       = { 0.09f, 0.28f, 0.74f };
                 Mat.Specular.Metalness      = 0.72f;
                 Mat.Specular.Roughness      = 0.18f;
@@ -950,11 +1214,11 @@ void BuildVehicleClearSkyDefaultScene(
         { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
 
     ShowcaseWorldAssetEntry GroundEntry {};
-    GroundEntry.Title                = "Ground Plane";
+    GroundEntry.Title                = "GroundPlane";
     GroundEntry.StableIdentifier     = "ground-plane";
     GroundEntry.MaterialTitle        = GroundMat.MaterialName;
     GroundEntry.Subtitle             = "Box · 24.0 × 24.0 × 0.16 m · Z = 0 datum";
-    GroundEntry.AuthorNotes          = "Outdoor Z=0 ground plane supporting the Control Vehicle under clear sky illumination.";
+    GroundEntry.AuthorNotes          = "Outdoor Z=0 ground plane supporting ControlVehicle under clear sky illumination.";
     GroundEntry.CenterWorld          = GroundCenter;
     GroundEntry.DimensionsMeters     = GroundDims;
     GroundEntry.AuthoredDimensions   = GroundDims;
@@ -964,7 +1228,7 @@ void BuildVehicleClearSkyDefaultScene(
     EnsureObjectLocalSmoothTriangles(GroundEntry);
     OutBundle.Objects.push_back(std::move(GroundEntry));
 
-    // Object 1: Control Vehicle (25,068 creased smooth-normal triangles, 4 rims + 4 tyres + body resting on Z = 0)
+    // Object 1: ControlVehicle (25,068 creased smooth-normal triangles, 4 rims + 4 tyres + body resting on Z = 0)
     Codecs::AssembledControlVehicle DecodedVehicle {};
     std::string VehicleDiag {};
     const bool VehicleDecoded = Codecs::ControlVehicleSurfaceDecoder::DecodeAssembledVehicle(
@@ -972,9 +1236,9 @@ void BuildVehicleClearSkyDefaultScene(
 
     auto VehicleGeom = std::make_unique<ShowcaseGeometryAsset>();
     ShowcaseWorldAssetEntry VehicleEntry {};
-    VehicleEntry.Title                = "Control Vehicle";
+    VehicleEntry.Title                = "ControlVehicle";
     VehicleEntry.StableIdentifier     = "control-vehicle";
-    VehicleEntry.MaterialTitle        = "Control Vehicle Metallic Paint";
+    VehicleEntry.MaterialTitle        = "ControlVehicleMetallicPaint";
     VehicleEntry.MaterialSlot         = VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::BodyCoat)];
     VehicleEntry.ClusterInstanceIndex = 1u;
     VehicleEntry.PrimitiveShape       = ShowcasePrimitiveShape::Box;

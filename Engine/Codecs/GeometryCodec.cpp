@@ -267,11 +267,17 @@ SpaceContainerPayload GeometryEncoder::ConstructPayload(
     Payload.AuthoringWorkspace = "Frontier.Geometry";
 
     toml::table MetadataSection {};
-    MetadataSection.insert_or_assign("VertexCount",       static_cast<int64_t>(Document.Network.Vertices.size()));
-    MetadataSection.insert_or_assign("DirectedEdgeCount", static_cast<int64_t>(Document.Network.Edges.size()));
-    MetadataSection.insert_or_assign("FaceCount",         static_cast<int64_t>(Document.Network.Faces.size()));
-    MetadataSection.insert_or_assign("ClustersIncluded",  Document.ClustersIncluded);
-    MetadataSection.insert_or_assign("WideTreeIncluded",  Document.WideTreeIncluded);
+    MetadataSection.insert_or_assign("VertexCount",          static_cast<int64_t>(Document.Network.Vertices.size()));
+    MetadataSection.insert_or_assign("DirectedEdgeCount",    static_cast<int64_t>(Document.Network.Edges.size()));
+    MetadataSection.insert_or_assign("FaceCount",            static_cast<int64_t>(Document.Network.Faces.size()));
+    MetadataSection.insert_or_assign("CreaseAngleDegrees",   static_cast<double>(Document.CreaseAngleDegrees));
+    MetadataSection.insert_or_assign("PartSlotCount",        static_cast<int64_t>(Document.SurfaceSlots.size()));
+    if (!Document.SurfaceParameterPath.empty())
+    {
+        MetadataSection.insert_or_assign("SurfaceParameterPath", Document.SurfaceParameterPath);
+    }
+    MetadataSection.insert_or_assign("ClustersIncluded",     Document.ClustersIncluded);
+    MetadataSection.insert_or_assign("WideTreeIncluded",     Document.WideTreeIncluded);
 
     toml::array UDIMArray {};
     for (const uint32_t Code : Document.UDIMTiles)
@@ -298,11 +304,36 @@ SpaceContainerPayload GeometryEncoder::ConstructPayload(
     MetadataSection.insert_or_assign("PriorityLayers", std::move(LayersArray));
     Payload.DomainManifest.insert_or_assign("GeometryMetadata", std::move(MetadataSection));
 
+    if (!Document.SurfaceSlots.empty())
+    {
+        toml::array SlotArray {};
+        for (const GeometrySurfaceSlotLink& Slot : Document.SurfaceSlots)
+        {
+            toml::table SlotEntry {};
+            SlotEntry.insert_or_assign("PartGroupOrdinal", static_cast<int64_t>(Slot.PartGroupOrdinal));
+            SlotEntry.insert_or_assign("SlotTitle", Slot.SlotTitle);
+            SlotEntry.insert_or_assign("MaterialPath", Slot.MaterialPath);
+            SlotArray.push_back(std::move(SlotEntry));
+        }
+        Payload.DomainManifest.insert_or_assign("SurfaceSlots", std::move(SlotArray));
+    }
+
     BinarySectionBlock PolygonBlock {};
     PolygonBlock.SectionIdentifier = "PolygonNetwork";
     PolygonBlock.SubFormatTag      = ".PolygonNetwork";
     PolygonBlock.PayloadBytes      = EncodePolygonNetworkBinary(Document.Network);
     Payload.BinarySections.push_back(std::move(PolygonBlock));
+
+    if (!Document.FaceCornerNormals.empty())
+    {
+        BinarySectionBlock NormalBlock {};
+        NormalBlock.SectionIdentifier = "SmoothNormals";
+        NormalBlock.SubFormatTag      = ".SmoothNormals";
+        const std::size_t ByteLength  = Document.FaceCornerNormals.size() * sizeof(float);
+        NormalBlock.PayloadBytes.resize(ByteLength);
+        std::memcpy(NormalBlock.PayloadBytes.data(), Document.FaceCornerNormals.data(), ByteLength);
+        Payload.BinarySections.push_back(std::move(NormalBlock));
+    }
 
     if (Document.ClustersIncluded && !Document.ClusterHierarchy.Clusters.empty())
     {
@@ -377,6 +408,8 @@ bool GeometryDecoder::ExtractDocument(
 
     if (const auto* MetadataSection = Payload.DomainManifest["GeometryMetadata"].as_table())
     {
+        OutDocument.CreaseAngleDegrees   = static_cast<float>((*MetadataSection)["CreaseAngleDegrees"].value_or(38.0));
+        OutDocument.SurfaceParameterPath = (*MetadataSection)["SurfaceParameterPath"].value_or(std::string{});
         if (const auto* UDIMArray = (*MetadataSection)["UDIMTiles"].as_array())
         {
             for (const toml::node& Elem : *UDIMArray)
@@ -417,6 +450,21 @@ bool GeometryDecoder::ExtractDocument(
         OutDocument.UDIMTiles.push_back(1001u);
     }
 
+    if (const auto* SlotArray = Payload.DomainManifest["SurfaceSlots"].as_array())
+    {
+        for (const toml::node& Elem : *SlotArray)
+        {
+            if (const auto* SlotTbl = Elem.as_table())
+            {
+                GeometrySurfaceSlotLink Link {};
+                Link.PartGroupOrdinal = static_cast<uint32_t>((*SlotTbl)["PartGroupOrdinal"].value_or(int64_t{ 0 }));
+                Link.SlotTitle        = (*SlotTbl)["SlotTitle"].value_or(std::string{});
+                Link.MaterialPath     = (*SlotTbl)["MaterialPath"].value_or(std::string{});
+                OutDocument.SurfaceSlots.push_back(std::move(Link));
+            }
+        }
+    }
+
     bool PolygonDecoded = false;
     for (const BinarySectionBlock& Section : Payload.BinarySections)
     {
@@ -429,6 +477,16 @@ bool GeometryDecoder::ExtractDocument(
                 return false;
             }
             PolygonDecoded = true;
+        }
+        else if (Section.SectionIdentifier == "SmoothNormals" && Section.SubFormatTag == ".SmoothNormals")
+        {
+            if (Section.PayloadBytes.size() % sizeof(float) != 0u)
+            {
+                OutDiagnostic = "Corrupt SmoothNormals float32 section inside .GeometrySpace.";
+                return false;
+            }
+            OutDocument.FaceCornerNormals.resize(Section.PayloadBytes.size() / sizeof(float));
+            std::memcpy(OutDocument.FaceCornerNormals.data(), Section.PayloadBytes.data(), Section.PayloadBytes.size());
         }
         else if (Section.SubFormatTag == ".ClusterHierarchy")
         {

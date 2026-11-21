@@ -48,9 +48,14 @@ enum class SpaceSuffixCategory : uint8_t
     Photometry      = 16, // [-] - .Photometry Option 1A natural IES luminaire profile
     Terrain         = 17, // [-] - .Terrain Option 1A natural heightfield tile
     Acoustic        = 18, // [-] - .Acoustic Option 1A natural impulse/propagation setup
-    NetworkSpace    = 19, // [-] - .NetworkSpace distributed session routing & replication policies
-    InputSpace      = 20, // [-] - .InputSpace hardware chord registers, navigation presets & axis calibration
-    ComponentSpace  = 21  // [-] - .ComponentSpace modular ComponentClass hierarchy, physics constraints & behaviours
+    NetworkSpace          = 19, // [-] - .NetworkSpace distributed session routing & replication policies
+    InputSpace            = 20, // [-] - .InputSpace hardware chord registers, navigation presets & axis calibration
+    ComponentSpace        = 21, // [-] - .ComponentSpace modular ComponentClass hierarchy, physics constraints & behaviours
+    WorldSpace            = 22, // [-] - .WorldSpace complete openable world scene hierarchy, placements & environment links
+    PhotometrySpace       = 23, // [-] - .PhotometrySpace solar ephemeris, area luminaires & 128x32 goniophotometric grids
+    RenderSpace           = 24, // [-] - .RenderSpace viewport render engine, shadow cascades, distance field & tone transforms
+    SurfaceParameterSpace = 25, // [-] - .SurfaceParameterSpace 2D surface parameterization tiles, seams & pin coordinates
+    InstanceSpace         = 26  // [-] - .InstanceSpace full unabbreviated domain-tagged instance container
 };
 
 //------------------------------------------------------------------------------------------------------------------------

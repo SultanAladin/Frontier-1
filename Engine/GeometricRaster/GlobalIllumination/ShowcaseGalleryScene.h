@@ -123,6 +123,15 @@ void BuildVehicleClearSkyDefaultScene(
     uint32_t                  ViewportWidthPx  = 640u,
     uint32_t                  ViewportHeightPx = 336u);
 
+// Loads any .WorldSpace scene hierarchy + linked .GeometrySpace/.MaterialSpace/.PhotometrySpace/.VolumetricSpace assets
+[[nodiscard]] bool LoadWorldSceneFromSpaceFile(
+    const std::filesystem::path& WorldSpacePath,
+    const std::filesystem::path& RepositoryRoot,
+    ShowcaseWorldSceneBundle&    OutBundle,
+    uint32_t                     ViewportWidthPx,
+    uint32_t                     ViewportHeightPx,
+    std::string&                 OutDiagnostic);
+
 // Registers all Showcase Gallery folders, 10 geometry entries, EditorCamera, Sun, and Ceiling Softbox in OutlinerPanel
 void RegisterShowcaseGalleryInOutliner(
     OutlinerPanel&            TargetOutliner,

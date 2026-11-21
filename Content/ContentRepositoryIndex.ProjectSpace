@@ -1,0 +1,242 @@
+# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase Manifest)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.ProjectWorkspace'
+BinaryAlignmentBytes = 64
+ContainerExtension = '.ProjectSpace'
+DocumentTitle = 'FrontierDefaultContentRepository'
+SchemaVersion = 1
+
+['.ProjectSettings']
+ProjectTitle = 'FrontierDefaultContentRepository'
+StartupSpacePath = 'Content/Worlds/VehicleClearSkyDefault.WorldSpace'
+TargetTickRateHz = 120.0
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Architectural/GroundPlaneAsphalt.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Architectural/GalleryNeutralPlaster.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Architectural/CornellCrimsonWall.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Architectural/CornellEmeraldWall.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Architectural/BrushedGoldConductor.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Architectural/AbbeCrownGlassOrb.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/ControlVehicleMetallicPaint.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/VehicleObsidianCanopy.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/VehicleTintedWindshield.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/VehicleIntakePolymer.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/VulcanizedTyreRubber.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/ForgedTitaniumRimAlloy.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/AnodizedBronzeWheelCap.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/MachinedSteelBrakeRotor.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/SatinGraphiteTrim.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/SmokedHeadlampHousing.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/XenonHeadlampOptic.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Materials/Automotive/RubyTaillampOptic.MaterialSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Primitives/GroundPlaneParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Primitives/UnitBoxParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Primitives/CalibrationSphereParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Vehicles/ControlVehicleParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Vehicles/ControlVehicleBodyParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Vehicles/ControlVehicleRimParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/SurfaceParameters/Vehicles/ControlVehicleTyreParameterization.SurfaceParameterSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Primitives/GroundPlane.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Primitives/UnitBox.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Primitives/CalibrationSphere.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Primitives/StandardCylinder.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Primitives/TrafficCone.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Primitives/CalibrationTorus.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Vehicles/ControlVehicle.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Vehicles/ControlVehicleBody.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Vehicles/ControlVehicleRim.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Geometry/Vehicles/ControlVehicleTyre.GeometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Components/ControlVehicle.ComponentSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/Solar/ClearMorningSun.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/Solar/NocturnalZeroSun.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/AreaLuminaires/CeilingSoftboxLuminaire.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/AreaLuminaires/ShowroomOverheadLuminaire.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/MeasuredLuminaires/LowBeamHeadlamp.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/MeasuredLuminaires/TailLampRed.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Photometry/MeasuredLuminaires/CarParkDownlight.PhotometrySpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Environment/Skies/ClearSkyDaylight.VolumetricSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Environment/Skies/NocturnalStarrySky.VolumetricSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Environment/Clouds/StaticFullResolutionCumulus.VolumetricSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Environment/Clouds/CondensateNoiseVolume.VolumetricSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Environment/Fog/ClearHorizonHeightFog.VolumetricSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Rendering/DefaultEditorViewport.RenderSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Rendering/NightPhotometricViewport.RenderSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Optics/BlueNoiseSamplingRanks.TextureSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Optics/StudioShadingSphereSheet.ImageSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Optics/LensFlareBakedSheet.ImageSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Optics/LunarSurfaceSheet.ImageSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Worlds/VehicleClearSkyDefault.WorldSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Worlds/NightCarParkPhotometric.WorldSpace'
+PinnedVersion = '1.0.0'
+
+[['.DependencyLock']]
+DependencyIdentifier = 'Content/Worlds/CornellGalleryStudio.WorldSpace'
+PinnedVersion = '1.0.0'
+# === FRONTIER_BINARY_BOUNDARY ===
+                       

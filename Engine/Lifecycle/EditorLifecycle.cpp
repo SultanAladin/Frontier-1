@@ -1539,6 +1539,12 @@ void EditorLifecycle::HandleContentDropOnOutliner(
 
     if (Category == ContentCategory::Materials && Entry.IndexHeader.MatCapPresetMarker == 0u)
     {
+        // Material assignment only targets geometry rows; environment/folder/camera rows fall back to current selection
+        const OutlinerRecordEntry* HitEntry = HitSlot.Valid() ? Panes->Outliner.FindEntry(HitSlot) : nullptr;
+        if (HitEntry == nullptr || HitEntry->Category != ConstructSlotCategory::GeometryVolume)
+        {
+            HitSlot = {};
+        }
         if (!HitSlot.Valid())
         {
             HitSlot = Panes->Outliner.QueryPrimarySelection();

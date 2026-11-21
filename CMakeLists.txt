@@ -879,7 +879,12 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/NetworkCodec.cpp
     Engine/Codecs/ComponentSpaceCodec.cpp
     Engine/Codecs/PhotometricProfile.cpp
+    Engine/Codecs/PhotometrySpaceCodec.cpp
+    Engine/Codecs/VolumetricSpaceCodec.cpp
+    Engine/Codecs/RenderSpaceCodec.cpp
+    Engine/Codecs/WorldSpaceCodec.cpp
     Engine/Codecs/ControlVehicleSurfaceDecoder.cpp
+    Engine/Tools/DefaultContentGenerator.cpp
     Engine/ComponentClass/ComponentInstanceStorage.cpp
     Engine/ComponentClass/ComponentClassDefinition.cpp
     Engine/ComponentClass/ComponentClassValidator.cpp
@@ -1059,6 +1064,16 @@ endforeach()
     frontier_register_desktop_app(FrontierPattern     Engine/Lifecycle/FrontierPatternLaunch.cpp)
     frontier_register_desktop_app(FrontierStamp       Engine/Lifecycle/FrontierStampLaunch.cpp)
     frontier_register_desktop_app(FrontierTexturePaint Engine/Lifecycle/FrontierTexturePaintLaunch.cpp)
+
+    add_executable(FrontierDefaultContentGenerator Engine/Tools/DefaultContentGeneratorMain.cpp)
+    target_compile_definitions(FrontierDefaultContentGenerator PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    target_link_libraries(FrontierDefaultContentGenerator PRIVATE FrontierEngine)
+    add_custom_target(FrontierGenerateDefaultContent
+        COMMAND FrontierDefaultContentGenerator "--repo-root=${CMAKE_SOURCE_DIR}"
+        DEPENDS FrontierDefaultContentGenerator
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Generating & verifying zero-abbreviation Content/ .Space repository"
+    )
     frontier_register_desktop_app(FrontierMaterial    Engine/Lifecycle/FrontierMaterialLaunch.cpp)
     frontier_register_desktop_app(FrontierFracture    Engine/Lifecycle/FrontierFractureLaunch.cpp)
     frontier_register_desktop_app(FrontierSketcher    Engine/Lifecycle/FrontierSketcherLaunch.cpp)
@@ -1161,6 +1176,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
     frontier_register_exhibit(SketcherViewportValidation        Exhibits/ParametricSketcher/SketcherViewportValidation.cpp)
     frontier_register_exhibit(ComponentEditorRenderValidation   Exhibits/ComponentEditorRenderValidation.cpp)
+    frontier_register_exhibit(DataDrivenSpaceContentValidation  Exhibits/DataDrivenSpaceContentValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
         frontier_register_exhibit(TexturePaintWorkspaceUIValidation Exhibits/TexturePaintWorkspaceUIValidation.cpp)

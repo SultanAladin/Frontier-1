@@ -74,7 +74,16 @@ bool UVEncoder::EncodeToFile(
     std::string&                       OutDiagnostic,
     const Workspaces::RevisionTracker* OptionalRevision)
 {
-    return SpaceContainerEncoder::EncodeToFile(TargetPath, BuildPayload(Model, OptionalRevision), OutDiagnostic);
+    SpaceContainerPayload Payload = BuildPayload(Model, OptionalRevision);
+    SpaceSuffixCategory   PathCat {};
+    std::string           CanonExt {};
+    std::string           IgnoreDiag {};
+    if (SpaceContainerDecoder::ResolveSuffixCaseInsensitive(TargetPath.extension().string(), PathCat, CanonExt, IgnoreDiag) &&
+        PathCat == SpaceSuffixCategory::SurfaceParameterSpace)
+    {
+        Payload.SuffixCategory = SpaceSuffixCategory::SurfaceParameterSpace;
+    }
+    return SpaceContainerEncoder::EncodeToFile(TargetPath, Payload, OutDiagnostic);
 }
 
 bool UVDecoder::ExtractModel(
@@ -83,9 +92,10 @@ bool UVDecoder::ExtractModel(
     std::string&                 OutDiagnostic,
     Workspaces::RevisionTracker* OptionalOutRevision)
 {
-    if (Payload.SuffixCategory != SpaceSuffixCategory::UVSpace)
+    if (Payload.SuffixCategory != SpaceSuffixCategory::UVSpace &&
+        Payload.SuffixCategory != SpaceSuffixCategory::SurfaceParameterSpace)
     {
-        OutDiagnostic = "Expected .UVSpace container category.";
+        OutDiagnostic = "Expected .UVSpace or .SurfaceParameterSpace container category.";
         return false;
     }
 
