@@ -506,11 +506,11 @@ std::string DrawMatcapSwatches(SketcherWorkspaceStatus& State, const char* Prefi
     const SketcherMatcapLibrary& Library = State.Matcaps.Library;
     const std::string Current = SelectionMatcap(State);
     std::string Chosen;
-    std::vector<std::pair<std::string, std::vector<size_t>>> Groups = { { "Studio", { 0 } }, { "Metal", {} }, { "Plastic", {} }, { "Other", {} }, { "Pictures", {} } };
+    std::vector<std::pair<std::string, std::vector<size_t>>> Groups = { { "Default", { 0 } }, { "Baked", {} }, { "Metal", {} }, { "Plastic", {} }, { "Other", {} }, { "Pictures", {} } };
     const std::vector<SketcherMatcapDescription>& BuiltIn = SketcherBuiltInMatcaps();
     for (size_t Layer = 1; Layer < Library.Names.size(); ++Layer)
     {
-        const size_t Group = Layer <= BuiltIn.size() ? (BuiltIn[Layer - 1].Category == "Metal" ? 1 : BuiltIn[Layer - 1].Category == "Plastic" ? 2 : 3) : 4;
+        const size_t Group = Layer <= BuiltIn.size() ? (BuiltIn[Layer - 1].Category == "Baked" ? 1 : BuiltIn[Layer - 1].Category == "Metal" ? 2 : BuiltIn[Layer - 1].Category == "Plastic" ? 3 : 4) : 5;
         Groups[Group].second.push_back(Layer);
     }
     const ImGuiStyle& Style = ImGui::GetStyle();
@@ -533,8 +533,8 @@ std::string DrawMatcapSwatches(SketcherWorkspaceStatus& State, const char* Prefi
             const bool CurrentCondition = Name == Current;
             ImGui::PushStyleColor(ImGuiCol_Button, CurrentCondition ? Tint(SelectedColour) : ImVec4(0, 0, 0, 0));
             bool Pressed = false;
-            if (Layer < State.Matcaps.Thumbnails.size() && State.Matcaps.Thumbnails[Layer])
-                Pressed = ImGui::ImageButton(Label.c_str(), State.Matcaps.Thumbnails[Layer], ImVec2(Side, Side));
+            if (Layer < State.Matcaps.Thumbnails.size() && State.Matcaps.Thumbnails[Layer] && State.Matcaps.Thumbnails[Layer]->Pixels)
+                Pressed = ImGui::ImageButton(Label.c_str(), State.Matcaps.Thumbnails[Layer]->GetTexRef(), ImVec2(Side, Side));
             else
             {
                 ImVec4 Flat(0.7f, 0.72f, 0.76f, 1.0f);
@@ -21283,8 +21283,41 @@ const SketcherScene& DisplayedSketcherScene(const SketcherWorkspaceStatus& State
 void RefreshSketcherMatcaps(SketcherWorkspaceStatus& State)
 {
     SketcherMatcapShelf& Shelf = State.Matcaps;
-    if (!Shelf.Library.Names.empty() && Shelf.Library.Key == SketcherMatcapKey(State.Document.Appearance)) return;
-    Shelf.Library = AssembleSketcherMatcaps(State.Document.Appearance);
+    const bool LibraryCurrent = !Shelf.Library.Names.empty() && Shelf.Library.Key == SketcherMatcapKey(State.Document.Appearance);
+    const bool PreviewsCurrent = Shelf.Thumbnails.size() >= Shelf.Library.Names.size() &&
+        std::all_of(Shelf.Thumbnails.begin(), Shelf.Thumbnails.begin() + std::min(Shelf.Thumbnails.size(), Shelf.Library.Names.size()),
+                    [](const auto& Texture) { return Texture && Texture->Pixels; });
+    if (LibraryCurrent && PreviewsCurrent) return;
+    if (!LibraryCurrent) Shelf.Library = AssembleSketcherMatcaps(State.Document.Appearance);
+
+    // The viewport samples the 256² layers directly, while the material section needs real baked sphere previews rather
+    // than the former one-colour fallback. Keep texture objects stable when a project adds/removes custom matcaps so the
+    // ImGui renderer can update them without dangling a texture reference from the preceding frame.
+    while (Shelf.Thumbnails.size() < Shelf.Library.Names.size()) Shelf.Thumbnails.push_back(std::make_unique<ImTextureData>());
+    for (size_t Layer = 0; Layer < Shelf.Library.Names.size(); ++Layer)
+    {
+        const SketcherPicture Picture = Layer == 0 ? ComposeSketcherStudioMatcap()
+                                      : Layer - 1 < Shelf.Library.Pictures.size() ? Shelf.Library.Pictures[Layer - 1] : SketcherPicture{};
+        if (Picture.Width != SketcherMatcapExtent || Picture.Height != SketcherMatcapExtent ||
+            Picture.Pixels.size() != size_t(SketcherMatcapExtent) * SketcherMatcapExtent * 4) continue;
+        ImTextureData& Texture = *Shelf.Thumbnails[Layer];
+        const bool Create = Texture.Pixels == nullptr || Texture.Width != int(SketcherMatcapExtent) || Texture.Height != int(SketcherMatcapExtent);
+        if (Create)
+        {
+            Texture.DestroyPixels();
+            Texture.SetStatus(ImTextureStatus_Destroyed);
+            Texture.Create(ImTextureFormat_RGBA32, int(SketcherMatcapExtent), int(SketcherMatcapExtent));
+        }
+        if (!Texture.Pixels) continue;
+        std::memcpy(Texture.GetPixels(), Picture.Pixels.data(), Picture.Pixels.size());
+        Texture.UseColors = true;
+        if (Create) Texture.SetStatus(ImTextureStatus_WantCreate);
+        else
+        {
+            Texture.UpdateRect = { 0u, 0u, static_cast<unsigned short>(SketcherMatcapExtent), static_cast<unsigned short>(SketcherMatcapExtent) };
+            Texture.SetStatus(ImTextureStatus_WantUpdates);
+        }
+    }
     Shelf.Generation += 1;
 }
 

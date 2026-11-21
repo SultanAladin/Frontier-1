@@ -304,7 +304,7 @@ struct SketcherMatcapShelf
 {
     SketcherMatcapLibrary    Library    = {};                                                // [-] - Layer order names / captions / pictures
     uint64_t                 Generation = 0;                                                 // [-] - Bumped per assembly
-    std::vector<ImTextureID> Thumbnails = {};                                                // [-] - Per layer (frame-owned, may be empty)
+    std::vector<std::unique_ptr<ImTextureData>> Thumbnails = {};                             // [-] - Per-layer baked sphere previews
     bool                     PickerOpen = false;                                             // [-] - M: Set material popup
     std::array<char, 260>    PicturePath = {};                                               // [-] - Add-picture path field
 };

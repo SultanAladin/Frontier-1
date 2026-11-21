@@ -85,6 +85,12 @@ bool SketcherWorkspaceHost::Initialize(
 void SketcherWorkspaceHost::Finalize() noexcept
 {
     ViewportTexture.DestroyPixels();
+    for (auto& Thumbnail : State.Matcaps.Thumbnails)
+    {
+        if (!Thumbnail) continue;
+        Thumbnail->DestroyPixels();
+        Thumbnail->SetStatus(ImTextureStatus_Destroyed);
+    }
     UploadedMatcapGen = 0u;
 
     if (RasterReady)

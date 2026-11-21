@@ -20,6 +20,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -344,7 +345,10 @@ int main()
         };
 
         auto& State = Host.AccessState();
-        if (!VerifyCheck(!State.Scene.Faces.empty() && !State.Scene.Edges.empty(), "Scene has faces and edges for CAD controls"))
+        const size_t ResidentMatcapPreviews = std::count_if(State.Matcaps.Thumbnails.begin(), State.Matcaps.Thumbnails.end(), [](const auto& Texture) { return Texture && Texture->Pixels; });
+        if (!VerifyCheck(!State.Scene.Faces.empty() && !State.Scene.Edges.empty(), "Scene has faces and edges for CAD controls") ||
+            !VerifyCheck(ResidentMatcapPreviews == State.Matcaps.Library.Names.size() && ResidentMatcapPreviews >= 30,
+                         "Material section has a baked preview texture for every MatCap"))
         {
             Host.Finalize();
             Dock.Finalize();
