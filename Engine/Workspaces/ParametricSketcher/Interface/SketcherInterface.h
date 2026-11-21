@@ -124,6 +124,8 @@ struct SketcherBevelSession
     SketcherExtrudeMode               StagedExtrudeMode = SketcherExtrudeMode::AlongNormals; // [-]   - ExtrudeMode the preview was built for
     bool                              PinnedCondition = false;                               // [-]   - Numeric entry pins the size
     GeometrySpace::Parametric::BlendProfile            Shape           = GeometrySpace::Parametric::BlendProfile::Fillet;      // [-]   - Cross-section
+    bool                              VertexCondition = false;                               // [-]   - CAD corner blend expanded from selected body vertices
+    std::vector<std::string>          VertexNames = {};                                     // [-]   - Original picks restored if the session is cancelled
     double                            Size            = 0.25;                                // [len] - Radius / setback
     std::array<char, 32>              SizeText        = {};                                  // [-]   - Field text ("250mm", "0.25")
     bool                              SizeTypedCondition = false;                            // [-]   - SizeText typed but not yet entered

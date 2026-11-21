@@ -767,6 +767,17 @@ void FlipBevelAnchor(SketcherWorkspaceStatus& State)
 
 void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
 {
+    // In body-point selection mode, B/C performs a CAD corner blend: every edge incident to the picked persistent
+    // vertex is fed to the same exact edge-blend kernel. This produces the proper setback/fillet corner patch rather
+    // than treating a body vertex as a 2D sketch point.
+    const std::vector<std::string> VertexNames = State.Document.Selection.Edges.empty() ? State.Document.Selection.Vertices : std::vector<std::string>{};
+    const std::vector<std::string> VertexEdges = ResolveSketcherVertexBlendEdges(State.Document, VertexNames);
+    if (!VertexNames.empty() && VertexEdges.empty())
+    {
+        Announce(State, "Vertex bevel needs body vertices from one solid");
+        return;
+    }
+    if (!VertexEdges.empty()) State.Document.Selection.Edges = VertexEdges;
     if (State.Document.Selection.Edges.empty())
     {
         // 2D: sketch corners (picked points in mode 1, or whole sketches).
@@ -793,6 +804,8 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
     State.Bevel.ActiveCondition = true;
     State.Bevel.Verb            = SketcherSessionVerb::Blend;
     State.Bevel.Shape           = Shape;
+    State.Bevel.VertexCondition = !VertexNames.empty();
+    State.Bevel.VertexNames     = VertexNames;
     State.Bevel.Size            = Previous > 0.0 ? Previous : 0.25;
     // 💡 The start size fits the picked edges: the remembered size (or 0.25) when it is under 35 % of what the edges
     //    allow, else a round 15 % — so the first preview shows at once instead of a refusal of a size too large.
@@ -804,7 +817,7 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
     State.Bevel.PinnedCondition = false;
     RefreshBevelHandles(State, true);
     WriteBevelText(State.Bevel);
-    Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " (B): drag anywhere or the ring handle to size (it stops at the largest that fits) · drag a corner diamond for a variable size · type in the card · D fillet · C chamfer · variable size is in the card · Alt+click an edge loop, Ctrl+Alt+click a ring (Shift adds) · LMB / Enter applies · RMB / Esc cancels"
+    Announce(State, std::string(State.Bevel.VertexCondition ? "Vertex " : "") + (Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " (B): drag anywhere or the ring handle to size (it stops at the largest that fits) · drag a corner diamond for a variable size · type in the card · D fillet · C chamfer · variable size is in the card · Alt+click an edge loop, Ctrl+Alt+click a ring (Shift adds) · LMB / Enter applies · RMB / Esc cancels"
                     + (Refitted ? " · starts at " + FormatLength(State.Bevel.Size) + " m to fit the edges" : std::string{}));
 }
 
@@ -1354,6 +1367,12 @@ void ApplyBevelSession(SketcherWorkspaceStatus& State)
 void CancelBevelSession(SketcherWorkspaceStatus& State)
 {
     if (!State.Bevel.ActiveCondition) return;
+    if (State.Bevel.VertexCondition)
+    {
+        State.Document.Selection.Edges.clear();
+        State.Document.Selection.Vertices = State.Bevel.VertexNames;
+        State.PickMode = SketcherPickMode::ControlPoint;
+    }
     State.Bevel.ActiveCondition = false;
     ++State.Bevel.PreviewGeneration;                                                        // Discard any immutable snapshot still completing
     State.Bevel.Preview.reset();
@@ -17135,7 +17154,13 @@ void DrawBevelCard(SketcherWorkspaceStatus& State)
     const bool            Inset   = Bevel.Verb == SketcherSessionVerb::Inset;
     const bool            Extrude = Bevel.Verb == SketcherSessionVerb::Extrude || Profile || Inset;
     const bool            Corner  = Bevel.Verb == SketcherSessionVerb::Corner;
-    BeginCard(Inset ? "Inset" : Profile ? "Extrude sketch" : Extrude ? "Extrude" : Corner ? "Sketch corners" : "Bevel");
+    BeginCard(Inset ? "Inset" : Profile ? "Extrude sketch" : Extrude ? "Extrude" : Corner ? "Sketch corners" : Bevel.VertexCondition ? "Vertex bevel" : "Edge bevel");
+    if (Bevel.VertexCondition)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, Tint(MutedColour));
+        ImGui::TextWrapped("%zu selected bod%s · %zu incident edges · CAD corner patch", Bevel.VertexNames.size(), Bevel.VertexNames.size() == 1 ? "y vertex" : "y vertices", State.Document.Selection.Edges.size());
+        ImGui::PopStyleColor();
+    }
     if (Inset)
     {
         // The pointer drives one value: D the inset distance, H the depth of the inner face (+ boss, − pocket).
@@ -20732,7 +20757,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     if (Pressed(ImGuiKey_C))
     {
         // C starts Chamfer when edges or sketch corner points are picked (or Edge pick mode); otherwise performs Cut.
-        if (!State.Document.Selection.Edges.empty() || !State.SketchPoints.Points.empty() || State.PickMode == SketcherPickMode::Edge)
+        if (!State.Document.Selection.Edges.empty() || !State.Document.Selection.Vertices.empty() || !State.SketchPoints.Points.empty() || State.PickMode == SketcherPickMode::Edge)
             OpenBevelSession(State, BlendProfile::Chamfer);
         else
             ApplyCut(State);

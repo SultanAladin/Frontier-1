@@ -443,7 +443,19 @@ int main()
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_C, false); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
-        if (!VerifyCheck(CtrlBFillet && CChamfer, "Ctrl+B starts Fillet and C on edge starts Chamfer"))
+
+        State.Document.Selection = {};
+        State.Document.Selection.Vertices = { State.Scene.Vertices.front().Name };
+        State.PickMode = SketcherPickMode::ControlPoint;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, true); });
+        const bool VertexBevel = State.Bevel.ActiveCondition && State.Bevel.VertexCondition
+                              && State.Bevel.VertexNames.size() == 1 && State.Document.Selection.Edges.size() >= 2;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, false); Io.AddKeyEvent(ImGuiKey_Escape, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
+        const bool VertexSelectionRestored = !State.Bevel.ActiveCondition && State.Document.Selection.Edges.empty()
+                                          && State.Document.Selection.Vertices.size() == 1;
+        if (!VerifyCheck(CtrlBFillet && CChamfer, "Ctrl+B starts Fillet and C on edge starts Chamfer") ||
+            !VerifyCheck(VertexBevel && VertexSelectionRestored, "B bevels selected body vertices and cancel restores their selection"))
         {
             Host.Finalize();
             Dock.Finalize();

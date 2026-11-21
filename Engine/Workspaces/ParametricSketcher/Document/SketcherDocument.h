@@ -410,6 +410,8 @@ struct VehicleCurveFile;
 [[nodiscard]] SketcherCommandOutcome ConstructSketcherPrimitive(SketcherDocument& Document, const SketcherConstructRequest& Request);
 [[nodiscard]] SketcherCommandOutcome BlendSketcherSelection(SketcherDocument& Document, GeometrySpace::Parametric::BlendProfile Shape, double Size);
 [[nodiscard]] SketcherCommandOutcome BlendSketcherSelection(SketcherDocument& Document, const SketcherBlendRequest& Request);
+// CAD vertex bevel: resolve every topological edge incident to the selected persistent body vertices.
+[[nodiscard]] std::vector<std::string> ResolveSketcherVertexBlendEdges(const SketcherDocument& Document, const std::vector<std::string>& Vertices);
 [[nodiscard]] std::vector<SketcherBlendHandle> MeasureSketcherBlendHandles(const SketcherDocument& Document, const std::vector<std::string>& Edges);
 [[nodiscard]] SketcherBlendFit MeasureSketcherBlendFit(const SketcherDocument& Document, const std::vector<std::string>& Edges);
 // Direction (gizmo): Tweak moves along it by Amount, Rotate turns about it (through each face centre) by Amount [rad].

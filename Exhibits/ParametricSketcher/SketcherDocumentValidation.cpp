@@ -138,6 +138,17 @@ int main()
         {
             return 1;
         }
+        SketcherDocument VertexDoc = CloneSketcherDocument(Doc);
+        const SketcherScene VertexScene = BuildSketcherScene(VertexDoc);
+        const std::vector<std::string> VertexEdges = VertexScene.Vertices.empty() ? std::vector<std::string>{}
+                                                    : ResolveSketcherVertexBlendEdges(VertexDoc, { VertexScene.Vertices.front().Name });
+        VertexDoc.Selection = {};
+        VertexDoc.Selection.Edges = VertexEdges;
+        if (!VerifyCheck(VertexEdges.size() >= 2 && BlendSketcherSelection(VertexDoc, BlendProfile::Fillet, 0.02).AcceptedCondition,
+                         "Selected body vertex resolves to an exact CAD corner bevel"))
+        {
+            return 1;
+        }
         const SketcherDrawingSheet Sheet = ComposeSketcherDrawingSheet(Doc, Doc.DrawingSheet);
         if (!VerifyCheck(Sheet.Refusal.empty() && Sheet.Bodies == 1, "ComposeSketcherDrawingSheet succeeds for bracket"))
         {
