@@ -1138,10 +1138,40 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
         GeometrySpace::PolygonNetwork FallbackNet {};
         GeometrySpace::AppendBoxPrimitive(FallbackNet, { 0.0f, 0.20f, -50.0f }, { 0.05f, 0.05f, 0.05f }, {}, {});
         (void)InOutBundle.Scene.SceneTree.BuildFromPolygonNetwork(FallbackNet);
+        InOutBundle.Scene.CompressedSceneTree.Reset();
+        InOutBundle.Scene.GtxInteriorBoxes.clear();
     }
     else
     {
         (void)InOutBundle.Scene.SceneTree.BuildFromTrianglePrimitivesWithNormals(WorldPrims, WorldNormals);
+        (void)InOutBundle.Scene.CompressedSceneTree.BuildFromPrimitives(WorldPrims, WorldNormals);
+        InOutBundle.Scene.GtxInteriorBoxes.clear();
+        for (const ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
+        {
+            if (Obj.GlassShell || Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
+            {
+                continue;
+            }
+            const auto& Inst = InOutBundle.Scene.ClusterInstances[Obj.ClusterInstanceIndex];
+            if (Inst.UniformScale <= 1.0e-4f)
+            {
+                continue;
+            }
+            // Skip floor horizontal slab; register vertical walls, roof baffle, pedestal, and specimen bounding volumes for GtxLowEnd SDF
+            const Mathematics::Axis3D HalfExt {
+                Obj.DimensionsMeters.X * 0.5f,
+                Obj.DimensionsMeters.Y * 0.5f,
+                Obj.DimensionsMeters.Z * 0.5f,
+            };
+            if (HalfExt.Z < 0.12f && Obj.CenterWorld.Z < -0.20f)
+            {
+                continue;
+            }
+            DistanceFieldSpace::ClosedOccluderBox Box {};
+            Box.CenterWorld = Obj.CenterWorld;
+            Box.HalfExtent  = HalfExt;
+            InOutBundle.Scene.GtxInteriorBoxes.push_back(Box);
+        }
     }
 }
 

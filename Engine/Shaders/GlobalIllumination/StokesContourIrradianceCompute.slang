@@ -107,14 +107,18 @@ float SampleVehicleDistanceGi(float3 WorldPos)
     return select(BoxD > 0.0, sqrt(BoundaryD * BoundaryD + BoxD * BoxD), BoundaryD);
 }
 
-float EvaluateInteriorDistanceGi(float3 WorldPos)
+float EvaluateInteriorDistanceGi(float3 WorldPos, float3 EndpointA, float3 EndpointB)
 {
     float BestD = 20.0;
     uint BoxCount = GiUniforms.VolumeDimsSdf.w;
     for (uint B = 0u; B < BoxCount; ++B)
     {
         GpuClosedBox32 Box = InteriorBoxes[B];
-        if (Box.HalfExtent.x > 3.5 || Box.HalfExtent.y > 3.5) continue;
+        if (Box.HalfExtent.x > 3.5 && Box.HalfExtent.y > 3.5) continue;
+        float3 QA = abs(EndpointA - Box.CenterWorld) - Box.HalfExtent;
+        if (length(max(QA, float3(0.0))) + min(max(QA.x, max(QA.y, QA.z)), 0.0) < 0.055) continue;
+        float3 QB = abs(EndpointB - Box.CenterWorld) - Box.HalfExtent;
+        if (length(max(QB, float3(0.0))) + min(max(QB.x, max(QB.y, QB.z)), 0.0) < 0.055) continue;
         float3 Q = abs(WorldPos - Box.CenterWorld) - Box.HalfExtent;
         BestD = min(BestD, length(max(Q, float3(0.0))) + min(max(Q.x, max(Q.y, Q.z)), 0.0));
     }
@@ -159,7 +163,7 @@ float EvaluateGtxFarFieldVisibility(float3 RPos, float3 RNrm, float3 Target, flo
         float RampOut = 1.0 - SmoothHermiteGi(EndT - 0.14, EndT, T);
         float Weight  = RampIn * RampOut * PlaneFade;
         if (Weight <= 1.0e-4) continue;
-        float Dist    = EvaluateInteriorDistanceGi(SampleP);
+        float Dist    = EvaluateInteriorDistanceGi(SampleP, RPos, Target);
         float ConeR   = max(0.036, T * AngRadius);
         float StepVis = SmoothHermiteGi(-0.025, ConeR * 0.72, Dist + 0.015);
         float Occ     = (1.0 - StepVis) * Weight;
@@ -256,7 +260,7 @@ float EvaluateDiskFallback(float3 RPos, float3 RNrm, float3 DPos, float3 DNrm, f
     float  RawE = dot(DNrm, -Wi);
     float  CosE = TwoSided ? abs(RawE) : max(0.0, RawE);
     if (CosE <= 0.0) return 0.0;
-    return (Area * CosR * CosE) / (PiConstant * DSq + Area);
+    return min(0.18, (Area * CosR * CosE) / (PiConstant * DSq + max(Area * 2.2, 0.38)));
 }
 
 [shader("compute")]
@@ -342,7 +346,7 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
         float3 Seg = Patch.PositionArea.xyz - RPos;
         float  SLen = length(Seg);
         float  Vis  = 1.0;
-        if (SLen > 0.05 && SLen * SLen < 12.0)
+        if (SLen > 0.05)
         {
             if (HighEnd)
             {

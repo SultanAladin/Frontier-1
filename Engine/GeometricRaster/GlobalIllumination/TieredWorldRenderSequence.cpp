@@ -774,6 +774,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             PreparedScene.Sun.SolarIrradiance.G,
             PreparedScene.Sun.SolarIrradiance.B,
         };
+        StokesSettings.AreaLights         = PreparedScene.AreaLights;
         SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
         SurfelSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
         SurfelSettings.SunRadiance        = {
@@ -781,6 +782,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             PreparedScene.Sun.SolarIrradiance.G,
             PreparedScene.Sun.SolarIrradiance.B,
         };
+        SurfelSettings.AreaLights         = PreparedScene.AreaLights;
 
         if (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
         {
@@ -794,6 +796,24 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         }
     }
 
+    SpecularSecondaryGiContext SpecGiContext {};
+    const SpecularSecondaryGiContext* SpecGiPtr = nullptr;
+    if (Order2Active && !PreparedScene.CompressedSceneTree.Primitives.empty())
+    {
+        SpecGiContext.OccluderEnv    = &Order2Occluders;
+        SpecGiContext.StokesSettings = StokesSettings;
+        SpecGiContext.SurfelSettings = SurfelSettings;
+        if (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
+        {
+            SpecGiContext.StokesIrradiance = &Order2Stokes;
+        }
+        else
+        {
+            SpecGiContext.SurfelLattice = &Order2Surfels;
+        }
+        SpecGiPtr = &SpecGiContext;
+    }
+
     Result.SpecularGlass = SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
         Config.ReflectionSource,
         CurrentCamera,
@@ -805,7 +825,8 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         PreparedScene.SceneTree,
         PreparedScene.Sun,
         PreparedScene.SkyRadiance,
-        PreparedScene.AreaLights);
+        PreparedScene.AreaLights,
+        SpecGiPtr);
 
     for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
     {

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                     SURFELRADIOSITYLATTICESEQUENCE.H
+                                                    SURFELRADIOSITYLATTICESEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Order 2 GI Candidate 2: 2-bounce Bunnell finite-disk radiosity + Dual-Cascade C1-Hermite Octahedral Irradiance Lattice
+// 🧩 Order 2 GI Candidate 2: Relocated Surfel Radiosity + Dual-Cascade Octahedral Irradiance Lattice with Dual-Tier Chebyshev Moments
 
 #pragma once
 
@@ -10,11 +10,12 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.h"
+#include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
+#include "Engine/GeometricRaster/GlobalIllumination/StokesContourIrradianceSequence.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
 #include "Engine/Mathematics/LinearColors.h"
 #include "Engine/SpatialAcceleration/CompressedWideTree.h"
 
-#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -22,81 +23,73 @@
 namespace Frontier::GeometricRaster::GlobalIllumination
 {
 
-//------------------------------------------------------------------------------------------------------------------------
-//                                                       STRUCTURES
-//------------------------------------------------------------------------------------------------------------------------
-
-struct RadiositySurfelDisk
+struct RadiositySurfaceElement
 {
     Mathematics::Axis3D    Position        {};
-    Mathematics::Axis3D    Normal          { 0.0f, 0.0f, 1.0f };
-    Mathematics::LinearRGB AlbedoRgb       {};
-    Mathematics::LinearRGB EmissiveRgb     {};
-    float                  AreaMeters      = 0.1f;
-    float                  RadiusMeters    = 0.18f;
+    Mathematics::Axis3D    Normal          {};
+    Mathematics::LinearRGB DiffuseAlbedo   {};
+    Mathematics::LinearRGB EmittedRadiance {}; // [cd/m^2]
+    Mathematics::LinearRGB ExitantRadiance {}; // [cd/m^2] L_out = L_emit + (Albedo/Pi) * E_in
+    float                  Area            = 0.0f;
     bool                   EmissiveSurface = false;
-    bool                   TwoSidedSurface = false;
-    Mathematics::LinearRGB ExitantRadiance {}; // Emissive + 2-bounce relaxed diffuse exitant radiance [W/(m^2*sr)]
 };
 
-struct OctahedralIrradianceCascade
+struct IrradianceCascadeGrid
 {
-    uint32_t                          GridDimX     = 0u;
-    uint32_t                          GridDimY     = 0u;
-    uint32_t                          GridDimZ     = 0u;
-    uint32_t                          OctaSheetRes = 8u; // 8x8 on GtxLowEnd, 16x16 on HighEnd
-    Mathematics::Axis3D               BoundsMin    {};
-    Mathematics::Axis3D               BoundsMax    {};
-    Mathematics::Axis3D               CellSpacing  {};
-    std::vector<Mathematics::LinearRGB> IrradianceSheets {}; // [EntryCount * OctaSheetRes * OctaSheetRes]
-    std::vector<float>                ChebyshevMoments   {}; // [EntryCount * OctaSheetRes * OctaSheetRes * 2] (MeanD, MeanD^2)
+    Mathematics::Axis3D               WorldMin           {};
+    Mathematics::Axis3D               WorldMax           {};
+    Mathematics::Axis3D               CellSpacing        {};
+    uint32_t                          GridDimX           = 1u;
+    uint32_t                          GridDimY           = 1u;
+    uint32_t                          GridDimZ           = 1u;
+    uint32_t                          OctaSheetRes       = 6u;  // 6x6 octahedral irradiance texels per lattice entry
+    std::vector<Mathematics::LinearRGB> IrradianceSheets {};    // [EntryCount * OctaSheetRes * OctaSheetRes]
+    std::vector<float>                ChebyshevMoments   {};    // [EntryCount * OctaSheetRes * OctaSheetRes * 2] (MeanD, MeanD^2)
 };
 
 struct SurfelLatticeTierSettings
 {
-    bool     HighEndZeroSdfTier = false; // false = GtxLowEnd (12x10x4 + 8x6x3, 8x8 sheet); true = HighEnd (19x15x6 + 9x7x4, 16x16 sheet, 96 BVH4 rays)
-    uint32_t FibonacciMomentRays = 96u;  // [cnt] - HighEnd BVH4 Chebyshev depth moment rays per lattice cell
-    Mathematics::Axis3D SunDirection    { 0.45f, -0.35f, 0.82f };
-    Mathematics::LinearRGB SunRadiance  { 0.0f, 0.0f, 0.0f };
+    bool                   HighEndZeroSdfTier  = false; // false = GtxLowEnd (12x10x4 + 8x6x3 + SDF Chebyshev); true = HighEnd (19x15x6 + 9x7x4 + BVH4 Chebyshev)
+    uint32_t               TargetSurfelBudget  = 160u;
+    uint32_t               RadiosityBounceCount= 2u;
+    Mathematics::Axis3D    SunDirection        { 0.38f, -0.46f, 0.80f };
+    Mathematics::LinearRGB SunRadiance         { 0.0f, 0.0f, 0.0f };
+    std::span<const PolygonalAreaQuadLight> AreaLights {};
 };
 
-//------------------------------------------------------------------------------------------------------------------------
-//                                            SURFEL RADIOSITY LATTICE SEQUENCE
-//------------------------------------------------------------------------------------------------------------------------
-
-// Singularity-free Bunnell (GPU Gems 2, Ch. 14) disk-to-point Lambertian form factor in [0, 1]
-[[nodiscard]] float EvaluateBunnellDiskFormFactor(
-    Mathematics::Axis3D ReceiverPos,
-    Mathematics::Axis3D ReceiverNormal,
-    Mathematics::Axis3D DiskPos,
-    Mathematics::Axis3D DiskNormal,
-    float               DiskArea,
-    bool                TwoSidedDisk = false) noexcept;
-
-class SurfelRadiosityLatticeSequence
+class SurfelRadiosityLatticeSequence final
 {
 public:
-    std::vector<RadiositySurfelDisk> Surfels      {};
-    OctahedralIrradianceCascade      InnerCascade {}; // GtxLowEnd: 12x10x4; HighEnd: 19x15x6
-    OctahedralIrradianceCascade      OuterCascade {}; // GtxLowEnd:  8x6x3;  HighEnd:  9x7x4
-
-    void Reset() noexcept;
-
     void BuildRelaxedLatticeFromScene(
         std::span<const SpatialAcceleration::RayTrianglePrimitive> Primitives,
-        std::span<const Mathematics::LinearRGB>                    MaterialAlbedoBySlot,
-        std::span<const Mathematics::LinearRGB>                    MaterialEmissiveBySlot,
+        std::span<const Mathematics::LinearRGB>                    MaterialDiffuseAlbedos,
+        std::span<const Mathematics::LinearRGB>                    MaterialEmissiveRadiance,
         const DirectLighting::HybridOccluderEnvironment&           Occluders,
         const SurfelLatticeTierSettings&                           Settings);
 
-    // Evaluates near-field emissive Bunnell form factor + C1-Hermite Dual-Cascade Octahedral Lattice indirect irradiance
+    [[nodiscard]] Mathematics::LinearRGB EvaluateIndirectIrradiance(
+        Mathematics::Axis3D ShadingPos,
+        Mathematics::Axis3D ShadingNormal) const noexcept;
+
     [[nodiscard]] Mathematics::LinearRGB EvaluateTotalIrradiance(
-        Mathematics::Axis3D                              ReceiverPos,
-        Mathematics::Axis3D                              ReceiverNormal,
+        Mathematics::Axis3D                              ShadingPos,
+        Mathematics::Axis3D                              ShadingNormal,
         const DirectLighting::HybridOccluderEnvironment& Occluders,
-        const SurfelLatticeTierSettings&                 Settings,
-        Mathematics::LinearRGB*                          OptionalOutNearEmissiveE = nullptr,
-        Mathematics::LinearRGB*                          OptionalOutCascadeGiE    = nullptr) const noexcept;
+        const SurfelLatticeTierSettings&                 Settings) const noexcept;
+
+    [[nodiscard]] const std::vector<RadiositySurfaceElement>& InspectSurfels() const noexcept      { return Surfels; }
+    [[nodiscard]] const IrradianceCascadeGrid&                InspectInnerCascade() const noexcept { return InnerCascade; }
+    [[nodiscard]] const IrradianceCascadeGrid&                InspectOuterCascade() const noexcept { return OuterCascade; }
+
+private:
+    std::vector<RadiositySurfaceElement> Surfels      {};
+    StokesContourIrradianceSequence      NearFieldStokes {};
+    IrradianceCascadeGrid                InnerCascade {};
+    IrradianceCascadeGrid                OuterCascade {};
+    bool                                 BuiltValid   = false;
 };
+
+[[nodiscard]] Mathematics::Axis2D EncodeEqualAreaOctahedralUv(Mathematics::Axis3D UnitDir) noexcept;
+[[nodiscard]] Mathematics::Axis3D DecodeEqualAreaOctahedralUv(Mathematics::Axis2D UvZeroToOne) noexcept;
 
 } // namespace Frontier::GeometricRaster::GlobalIllumination

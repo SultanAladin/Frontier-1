@@ -90,14 +90,17 @@ float SampleVehicleDistance(float3 WorldPos)
     return select(BoxD > 0.0, sqrt(BoundaryD * BoundaryD + BoxD * BoxD), BoundaryD);
 }
 
-float EvaluateSignedStaticDistance(float3 WorldPos)
+float EvaluateSignedStaticDistance(float3 WorldPos, float3 ReceiverPos)
 {
     float BestD = 20.0;
     uint BoxCount = (ShadowUniforms.CountsTier.z >> 16u) & 0xFFFFu;
     for (uint B = 0u; B < BoxCount; ++B)
     {
         GpuClosedBox32 Box = InteriorBoxes[B];
-        if (Box.HalfExtent.x > 3.5 || Box.HalfExtent.y > 3.5) continue;
+        if (Box.HalfExtent.x > 3.5 && Box.HalfExtent.y > 3.5) continue;
+        float3 QR = abs(ReceiverPos - Box.CenterWorld) - Box.HalfExtent;
+        float  DR = length(max(QR, float3(0.0))) + min(max(QR.x, max(QR.y, QR.z)), 0.0);
+        if (DR < 0.055) continue;
         float3 Q = abs(WorldPos - Box.CenterWorld) - Box.HalfExtent;
         BestD = min(BestD, length(max(Q, float3(0.0))) + min(max(Q.x, max(Q.y, Q.z)), 0.0));
     }
@@ -199,7 +202,7 @@ void ComputeEntry(uint3 DispatchThreadId : SV_DispatchThreadID)
     {
         float3 SampleP   = ShadingPos + LightDir * Travel;
         float  PlaneFade = SmoothHermite(0.015, 0.10, dot(SampleP - ShadingPos, ShadingNrm));
-        float  SignedD   = min(EvaluateSignedStaticDistance(SampleP), EvaluateRigDistance(SampleP));
+        float  SignedD   = min(EvaluateSignedStaticDistance(SampleP, ShadingPos), EvaluateRigDistance(SampleP));
         float  DynD      = SampleVehicleDistance(SampleP);
         float  MinD      = min(abs(SignedD), DynD);
         if (PlaneFade > 1.0e-4)

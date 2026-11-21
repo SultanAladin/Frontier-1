@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                    STOKESCONTOURIRRADIANCESEQUENCE.CPP
+                                                   STOKESCONTOURIRRADIANCESEQUENCE.CPP
 ============================================================================================================================================*/
-// 🧩 Order 2 GI Candidate 1: Exact Sutherland-Hodgman spherical-polygon Stokes contour integral + 2-bounce diffuse patch radiosity
+// 🧩 Order 2 GI Candidate 1: Exact Stokes Contour Emissive Irradiance + Stratified Occluded 2-Bounce Diffuse Patches
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -21,467 +21,573 @@ namespace Frontier::GeometricRaster::GlobalIllumination
 namespace
 {
 
-[[nodiscard]] float EvaluateDiskFallbackFormFactor(
-    Mathematics::Axis3D ReceiverPos,
-    Mathematics::Axis3D ReceiverNormal,
-    Mathematics::Axis3D DiskCenter,
-    Mathematics::Axis3D DiskNormal,
-    float               DiskArea,
-    bool                TwoSided) noexcept
+[[nodiscard]] float EvaluatePeakChannel(const Mathematics::LinearRGB& Color) noexcept
 {
-    const Mathematics::Axis3D Delta = DiskCenter - ReceiverPos;
-    const float DistSq = Mathematics::EvaluateLengthSquared(Delta);
-    if (DistSq <= 1.0e-7f || DiskArea <= 0.0f)
+    return std::max({ Color.R, Color.G, Color.B });
+}
+
+[[nodiscard]] uint32_t ReverseBits32(uint32_t Bits) noexcept
+{
+    Bits = (Bits << 16u) | (Bits >> 16u);
+    Bits = ((Bits & 0x00FF00FFu) << 8u) | ((Bits & 0xFF00FF00u) >> 8u);
+    Bits = ((Bits & 0x0F0F0F0Fu) << 4u) | ((Bits & 0xF0F0F0F0u) >> 4u);
+    Bits = ((Bits & 0x33333333u) << 2u) | ((Bits & 0xCCCCCCCCu) >> 2u);
+    Bits = ((Bits & 0x55555555u) << 1u) | ((Bits & 0xAAAAAAAAu) >> 1u);
+    return Bits;
+}
+
+[[nodiscard]] uint32_t LaineKarrasScramble(uint32_t X, uint32_t Seed) noexcept
+{
+    X += Seed;
+    X ^= X * 0x6C50B47Cu;
+    X ^= X * 0xB82F1E52u;
+    X ^= X * 0xC7AFE638u;
+    X ^= X * 0x8D22F6E6u;
+    return X;
+}
+
+// Deterministic Owen-scrambled Sobol (0,2) sequence in [0, 1)^2 — zero clumping, zero RNG state
+void SampleOwenSobol02(uint32_t SampleIdx, uint32_t Seed, float& OutU, float& OutV) noexcept
+{
+    uint32_t SobolX = ReverseBits32(SampleIdx);
+    uint32_t V      = 0x80000000u;
+    uint32_t SobolY = 0u;
+    for (uint32_t N = SampleIdx; N != 0u; N >>= 1u)
     {
-        return 0.0f;
+        if ((N & 1u) != 0u)
+        {
+            SobolY ^= V;
+        }
+        V ^= (V >> 1u);
     }
-    const float InvDist = 1.0f / std::sqrt(DistSq);
-    const Mathematics::Axis3D Wi = Delta * InvDist;
-    const float CosR = Mathematics::EvaluateDot(ReceiverNormal, Wi);
-    if (CosR <= 0.0f)
+    SobolX = ReverseBits32(LaineKarrasScramble(ReverseBits32(SobolX), Seed ^ 0x9E3779B9u));
+    SobolY = ReverseBits32(LaineKarrasScramble(ReverseBits32(SobolY), Seed ^ 0xBB67AE85u));
+    OutU   = static_cast<float>(SobolX >> 8u) * (1.0f / 16777216.0f);
+    OutV   = static_cast<float>(SobolY >> 8u) * (1.0f / 16777216.0f);
+}
+
+[[nodiscard]] float EvaluateSegmentVisibility(
+    Mathematics::Axis3D                              ShadingPos,
+    Mathematics::Axis3D                              ShadingNormal,
+    Mathematics::Axis3D                              TargetPos,
+    float                                            SourceRadius,
+    const DirectLighting::HybridOccluderEnvironment& Occluders,
+    const StokesContourTierSettings&                 Settings) noexcept
+{
+    if (Settings.HighEndZeroSdfTier)
     {
-        return 0.0f;
+        if (Occluders.SceneBvh == nullptr)
+        {
+            return 1.0f;
+        }
+        return DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
+            *Occluders.SceneBvh, ShadingPos, ShadingNormal, TargetPos);
     }
-    const float RawCosE = Mathematics::EvaluateDot(DiskNormal, Wi * -1.0f);
-    const float CosE    = TwoSided ? std::fabs(RawCosE) : std::max(0.0f, RawCosE);
-    if (CosE <= 0.0f)
+    return DirectLighting::EvaluateGtxHybridLuminaireVisibility(
+        Occluders, ShadingPos, ShadingNormal, TargetPos, SourceRadius);
+}
+
+[[nodiscard]] float EvaluateClusterVisibility(
+    const EmissiveLuminaireCluster&                  Cluster,
+    Mathematics::Axis3D                              ShadingPos,
+    Mathematics::Axis3D                              ShadingNormal,
+    const DirectLighting::HybridOccluderEnvironment& Occluders,
+    const StokesContourTierSettings&                 Settings) noexcept
+{
+    if (Settings.HighEndZeroSdfTier)
     {
-        return 0.0f;
+        if (Occluders.SceneBvh == nullptr)
+        {
+            return 1.0f;
+        }
+        // Multi-sample 3-point visibility across luminaire extent eliminates binary hard step on wide softboxes
+        const float VisA = DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
+            *Occluders.SceneBvh, ShadingPos, ShadingNormal, Cluster.SamplePosA);
+        if (Cluster.BoundingRadius <= 0.14f)
+        {
+            return VisA;
+        }
+        const float VisB = DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
+            *Occluders.SceneBvh, ShadingPos, ShadingNormal, Cluster.SamplePosB);
+        const float VisC = DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
+            *Occluders.SceneBvh, ShadingPos, ShadingNormal, Cluster.SamplePosC);
+        return (VisA + VisB + VisC) * (1.0f / 3.0f);
     }
-    return (DiskArea * CosR * CosE) / (Constants::PiFloat * DistSq + DiskArea);
+    return DirectLighting::EvaluateGtxHybridLuminaireVisibility(
+        Occluders, ShadingPos, ShadingNormal, Cluster.RepresentativePos, Cluster.BoundingRadius);
+}
+
+[[nodiscard]] Mathematics::LinearRGB EvaluateAreaLightPatchIrradiance(
+    Mathematics::Axis3D                     PatchPos,
+    Mathematics::Axis3D                     PatchNormal,
+    std::span<const PolygonalAreaQuadLight> AreaLights,
+    const DirectLighting::HybridOccluderEnvironment& Occluders,
+    const StokesContourTierSettings&        Settings) noexcept
+{
+    Mathematics::LinearRGB Total { 0.0f, 0.0f, 0.0f };
+    for (const auto& Quad : AreaLights)
+    {
+        const Mathematics::Axis3D HalfU = Quad.RightTangent * Quad.HalfWidthMeters;
+        const Mathematics::Axis3D HalfV = Quad.UpBitangent  * Quad.HalfHeightMeters;
+        const Mathematics::Axis3D EmitN = Mathematics::NormalizeAxis(
+            Mathematics::EvaluateCross(Quad.RightTangent, Quad.UpBitangent), { 0.0f, 0.0f, -1.0f });
+        const Mathematics::Axis3D C0    = Quad.CenterWorld - HalfU - HalfV;
+        const Mathematics::Axis3D C1    = Quad.CenterWorld + HalfU - HalfV;
+        const Mathematics::Axis3D C2    = Quad.CenterWorld + HalfU + HalfV;
+        const Mathematics::Axis3D C3    = Quad.CenterWorld - HalfU + HalfV;
+        const float Radius = std::hypot(Quad.HalfWidthMeters, Quad.HalfHeightMeters);
+        const float Vis    = EvaluateSegmentVisibility(
+            PatchPos, PatchNormal, Quad.CenterWorld, Radius, Occluders, Settings);
+        if (Vis <= 1.0e-4f)
+        {
+            continue;
+        }
+        const float Form = EvaluateClippedStokesTriangleFormFactor(PatchPos, PatchNormal, C0, C1, C2, EmitN)
+                         + EvaluateClippedStokesTriangleFormFactor(PatchPos, PatchNormal, C0, C2, C3, EmitN);
+        if (Form > 0.0f)
+        {
+            Total = Total + Quad.EmittedRadiance * (Constants::PiFloat * Form * Vis);
+        }
+    }
+    return Total;
 }
 
 } // namespace
 
-float EvaluateClippedTriangleFormFactor(
-    Mathematics::Axis3D ReceiverPos,
-    Mathematics::Axis3D ReceiverNormal,
-    Mathematics::Axis3D TriV0,
-    Mathematics::Axis3D TriV1,
-    Mathematics::Axis3D TriV2,
-    Mathematics::Axis3D TriNormal,
-    bool                TwoSidedRadiator) noexcept
+float EvaluateClippedStokesTriangleFormFactor(
+    Mathematics::Axis3D ShadingPos,
+    Mathematics::Axis3D ShadingNormal,
+    Mathematics::Axis3D CornerA,
+    Mathematics::Axis3D CornerB,
+    Mathematics::Axis3D CornerC,
+    Mathematics::Axis3D EmitterNormal) noexcept
 {
-    const Mathematics::Axis3D Centroid = (TriV0 + TriV1 + TriV2) * (1.0f / 3.0f);
-    const float Facing = Mathematics::EvaluateDot(TriNormal, ReceiverPos - Centroid);
-    if (!TwoSidedRadiator && Facing <= 1.0e-5f)
+    const Mathematics::Axis3D Centroid = (CornerA + CornerB + CornerC) * (1.0f / 3.0f);
+    if (Mathematics::EvaluateDot(ShadingPos - Centroid, EmitterNormal) <= 1.0e-4f)
     {
         return 0.0f;
     }
 
-    // Sutherland-Hodgman clip against receiver tangent plane plane dot(ReceiverNormal, P - ReceiverPos) >= 1e-4
-    std::array<Mathematics::Axis3D, 3u> RawVerts {{
-        TriV0 - ReceiverPos,
-        TriV1 - ReceiverPos,
-        TriV2 - ReceiverPos,
+    std::array<Mathematics::Axis3D, 3u> Rel {{
+        CornerA - ShadingPos,
+        CornerB - ShadingPos,
+        CornerC - ShadingPos,
     }};
-    if (TwoSidedRadiator && Facing < 0.0f)
-    {
-        std::swap(RawVerts[1], RawVerts[2]);
-    }
+    std::array<float, 3u> Heights {{
+        Mathematics::EvaluateDot(Rel[0u], ShadingNormal),
+        Mathematics::EvaluateDot(Rel[1u], ShadingNormal),
+        Mathematics::EvaluateDot(Rel[2u], ShadingNormal),
+    }};
 
+    constexpr float HorizonEps = 1.0e-5f;
     std::array<Mathematics::Axis3D, 6u> Clipped {};
     uint32_t ClippedCount = 0u;
-    constexpr float PlaneClipEps = 1.0e-4f;
-
-    Mathematics::Axis3D PrevP = RawVerts[2];
-    float               PrevH = Mathematics::EvaluateDot(ReceiverNormal, PrevP);
     for (uint32_t I = 0u; I < 3u; ++I)
     {
-        const Mathematics::Axis3D CurrP = RawVerts[I];
-        const float               CurrH = Mathematics::EvaluateDot(ReceiverNormal, CurrP);
-        const bool PrevIn = (PrevH >= PlaneClipEps);
-        const bool CurrIn = (CurrH >= PlaneClipEps);
-
-        if (PrevIn != CurrIn)
+        const uint32_t Next = (I + 1u) % 3u;
+        const bool InCurr   = Heights[I] >= HorizonEps;
+        const bool InNext   = Heights[Next] >= HorizonEps;
+        if (InCurr)
         {
-            const float Alpha = (PlaneClipEps - PrevH) / (CurrH - PrevH);
-            Clipped[ClippedCount++] = PrevP + (CurrP - PrevP) * std::clamp(Alpha, 0.0f, 1.0f);
+            Clipped[ClippedCount++] = Rel[I];
         }
-        if (CurrIn)
+        if (InCurr != InNext)
         {
-            Clipped[ClippedCount++] = CurrP;
+            const float T = (HorizonEps - Heights[I]) / (Heights[Next] - Heights[I]);
+            Clipped[ClippedCount++] = Rel[I] + (Rel[Next] - Rel[I]) * T;
         }
-        PrevP = CurrP;
-        PrevH = CurrH;
     }
-
     if (ClippedCount < 3u)
     {
         return 0.0f;
     }
 
-    // Project onto unit hemisphere around ReceiverPos
     std::array<Mathematics::Axis3D, 6u> UnitDirs {};
     for (uint32_t I = 0u; I < ClippedCount; ++I)
     {
-        const float LenSq = Mathematics::EvaluateLengthSquared(Clipped[I]);
-        if (LenSq <= 1.0e-10f)
+        const float Len = Mathematics::EvaluateLength(Clipped[I]);
+        if (Len <= 1.0e-6f)
         {
             return 0.0f;
         }
-        UnitDirs[I] = Clipped[I] * (1.0f / std::sqrt(LenSq));
+        UnitDirs[I] = Clipped[I] * (1.0f / Len);
     }
 
-    // Exact Lambert (1760) / Arvo Stokes boundary contour sum
-    Mathematics::Axis3D VectorIrradiance { 0.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D VectorIrrad { 0.0f, 0.0f, 0.0f };
     for (uint32_t I = 0u; I < ClippedCount; ++I)
     {
         const Mathematics::Axis3D& U = UnitDirs[I];
         const Mathematics::Axis3D& V = UnitDirs[(I + 1u) % ClippedCount];
-        const Mathematics::Axis3D CrossUV = Mathematics::EvaluateCross(U, V);
-        const float SinTheta = Mathematics::EvaluateLength(CrossUV);
-        const float CosTheta = std::clamp(Mathematics::EvaluateDot(U, V), -1.0f, 1.0f);
-        if (SinTheta > 1.0e-6f)
-        {
-            const float Theta = std::atan2(SinTheta, CosTheta);
-            VectorIrradiance  = VectorIrradiance + CrossUV * (Theta / SinTheta);
-        }
+        const Mathematics::Axis3D  CrossUV = Mathematics::EvaluateCross(U, V);
+        const float SinAngle = Mathematics::EvaluateLength(CrossUV);
+        const float CosAngle = std::clamp(Mathematics::EvaluateDot(U, V), -1.0f, 1.0f);
+        const float Theta    = std::atan2(SinAngle, CosAngle);
+        const float Scale    = (SinAngle > 1.0e-6f) ? (Theta / SinAngle) : 1.0f;
+        VectorIrrad = VectorIrrad + CrossUV * Scale;
     }
 
-    const float FormFactor = std::fabs(Mathematics::EvaluateDot(ReceiverNormal, VectorIrradiance)) * (0.5f / Constants::PiFloat);
+    const float FormFactor = std::fabs(Mathematics::EvaluateDot(VectorIrrad, ShadingNormal)) * (1.0f / Constants::TauFloat);
     return std::clamp(FormFactor, 0.0f, 1.0f);
-}
-
-void StokesContourIrradianceSequence::Reset() noexcept
-{
-    Radiators.clear();
-    Clusters.clear();
-    Patches.clear();
 }
 
 void StokesContourIrradianceSequence::BuildFromScene(
     std::span<const SpatialAcceleration::RayTrianglePrimitive> Primitives,
-    std::span<const Mathematics::LinearRGB>                    MaterialAlbedoBySlot,
-    std::span<const Mathematics::LinearRGB>                    MaterialEmissiveBySlot,
+    std::span<const Mathematics::LinearRGB>                    MaterialDiffuseAlbedos,
+    std::span<const Mathematics::LinearRGB>                    MaterialEmissiveRadiance,
     const DirectLighting::HybridOccluderEnvironment&           Occluders,
     const StokesContourTierSettings&                           Settings)
 {
-    Reset();
-    if (Primitives.empty())
-    {
-        return;
-    }
+    EmissiveTriangles.clear();
+    Clusters.clear();
+    BouncePatches.clear();
 
-    // 1. Gather emissive triangles and spatially cluster neighboring triangles by material & proximity (~0.9 m)
-    for (const auto& Tri : Primitives)
+    double TotalDiffuseArea = 0.0;
+    struct CandidateTri
     {
-        const uint16_t MatIdx = Tri.MaterialOrdinal;
-        if (MatIdx >= MaterialEmissiveBySlot.size())
-        {
-            continue;
-        }
-        const auto Emissive = MaterialEmissiveBySlot[MatIdx];
-        const float MaxEm   = std::max({ Emissive.R, Emissive.G, Emissive.B });
-        if (MaxEm <= 1.0e-3f)
-        {
-            continue;
-        }
+        uint32_t               PrimIndex = 0u;
+        float                  Area      = 0.0f;
+        Mathematics::Axis3D    Normal    {};
+        Mathematics::LinearRGB Albedo    {};
+    };
+    std::vector<CandidateTri> DiffuseCandidates;
+    DiffuseCandidates.reserve(Primitives.size());
 
-        const Mathematics::Axis3D V0 = Tri.Corner0;
-        const Mathematics::Axis3D V1 = Tri.Corner0 + Tri.Edge01;
-        const Mathematics::Axis3D V2 = Tri.Corner0 + Tri.Edge02;
-        const Mathematics::Axis3D CrossE = Mathematics::EvaluateCross(Tri.Edge01, Tri.Edge02);
-        const float DoubleArea = Mathematics::EvaluateLength(CrossE);
+    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Primitives.size()); ++Idx)
+    {
+        const auto& Prim = Primitives[Idx];
+        const Mathematics::Axis3D CrossVec = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+        const float DoubleArea = Mathematics::EvaluateLength(CrossVec);
         if (DoubleArea <= 1.0e-6f)
         {
             continue;
         }
+        const float Area = 0.5f * DoubleArea;
+        const Mathematics::Axis3D TriN = CrossVec * (1.0f / DoubleArea);
 
-        EmissiveTriangleRadiator Em {};
-        Em.Vertex0         = V0;
-        Em.Vertex1         = V1;
-        Em.Vertex2         = V2;
-        Em.GeometricNormal = CrossE * (1.0f / DoubleArea);
-        Em.Centroid        = (V0 + V1 + V2) * (1.0f / 3.0f);
-        Em.SurfaceArea     = 0.5f * DoubleArea;
-        Em.RadianceRgb     = Emissive;
-        Em.TwoSidedRadiator = false;
+        const Mathematics::LinearRGB Emissive = (Prim.MaterialOrdinal < MaterialEmissiveRadiance.size())
+            ? MaterialEmissiveRadiance[Prim.MaterialOrdinal]
+            : Mathematics::LinearRGB {};
+        const Mathematics::LinearRGB Albedo = (Prim.MaterialOrdinal < MaterialDiffuseAlbedos.size())
+            ? MaterialDiffuseAlbedos[Prim.MaterialOrdinal]
+            : Mathematics::LinearRGB { 0.5f, 0.5f, 0.5f };
 
-        uint32_t AssignedCluster = static_cast<uint32_t>(Clusters.size());
-        for (uint32_t C = 0u; C < Clusters.size(); ++C)
+        if (EvaluatePeakChannel(Emissive) > 0.05f)
         {
-            const float DistSq = Mathematics::EvaluateLengthSquared(Em.Centroid - Clusters[C].RepresentativePos);
-            const float NDot   = Mathematics::EvaluateDot(Em.GeometricNormal, Clusters[C].RepresentativeNormal);
-            if (DistSq <= 1.25f && std::fabs(NDot) > 0.75f)
+            const Mathematics::Axis3D B = Prim.Corner0 + Prim.Edge01;
+            const Mathematics::Axis3D C = Prim.Corner0 + Prim.Edge02;
+            const Mathematics::Axis3D Centroid = (Prim.Corner0 + B + C) * (1.0f / 3.0f);
+
+            uint32_t AssignedCluster = static_cast<uint32_t>(Clusters.size());
+            for (uint32_t CIdx = 0u; CIdx < static_cast<uint32_t>(Clusters.size()); ++CIdx)
             {
-                AssignedCluster = C;
-                break;
+                const float Dist  = Mathematics::EvaluateLength(Centroid - Clusters[CIdx].RepresentativePos);
+                const float Align = Mathematics::EvaluateDot(TriN, Clusters[CIdx].RepresentativeNormal);
+                if (Dist < 0.42f && Align > 0.85f)
+                {
+                    AssignedCluster = CIdx;
+                    break;
+                }
             }
-        }
+            if (AssignedCluster == Clusters.size())
+            {
+                EmissiveLuminaireCluster NewCl {};
+                NewCl.RepresentativePos    = Centroid;
+                NewCl.SamplePosA           = Centroid;
+                NewCl.SamplePosB           = Centroid;
+                NewCl.SamplePosC           = Centroid;
+                NewCl.RepresentativeNormal = TriN;
+                NewCl.TotalArea            = Area;
+                NewCl.BoundingRadius       = std::sqrt(Area / Constants::PiFloat);
+                Clusters.push_back(NewCl);
+            }
+            else
+            {
+                auto& Cl        = Clusters[AssignedCluster];
+                const float Sum = Cl.TotalArea + Area;
+                Cl.RepresentativePos    = (Cl.RepresentativePos * Cl.TotalArea + Centroid * Area) * (1.0f / Sum);
+                Cl.RepresentativeNormal = Mathematics::NormalizeAxis(
+                    Cl.RepresentativeNormal * Cl.TotalArea + TriN * Area, TriN);
+                Cl.TotalArea            = Sum;
+                Cl.BoundingRadius       = std::max(Cl.BoundingRadius, std::sqrt(Sum / Constants::PiFloat));
+            }
 
-        if (AssignedCluster == Clusters.size())
-        {
-            EmissiveLuminaireCluster NewC {};
-            NewC.RepresentativePos    = Em.Centroid;
-            NewC.RepresentativeNormal = Em.GeometricNormal;
-            NewC.BoundingRadius       = std::sqrt(Em.SurfaceArea / Constants::PiFloat);
-            NewC.TotalArea            = Em.SurfaceArea;
-            NewC.MeanRadianceRgb      = Em.RadianceRgb;
-            NewC.TwoSidedCluster      = Em.TwoSidedRadiator;
-            Clusters.push_back(NewC);
+            EmissiveTriangleEmitter Emit {};
+            Emit.CornerA       = Prim.Corner0;
+            Emit.CornerB       = B;
+            Emit.CornerC       = C;
+            Emit.Centroid      = Centroid;
+            Emit.OutwardNormal = TriN;
+            Emit.Radiance      = Emissive;
+            Emit.SurfaceArea   = Area;
+            Emit.ClusterId     = AssignedCluster;
+            EmissiveTriangles.push_back(Emit);
         }
-        else
+        else if (EvaluatePeakChannel(Albedo) > 0.02f && Area > 0.025f)
         {
-            auto& CurC = Clusters[AssignedCluster];
-            const float PrevArea = CurC.TotalArea;
-            const float NextArea = PrevArea + Em.SurfaceArea;
-            CurC.RepresentativePos = (CurC.RepresentativePos * PrevArea + Em.Centroid * Em.SurfaceArea) * (1.0f / NextArea);
-            CurC.MeanRadianceRgb   = {
-                (CurC.MeanRadianceRgb.R   * PrevArea + Em.RadianceRgb.R   * Em.SurfaceArea) / NextArea,
-                (CurC.MeanRadianceRgb.G * PrevArea + Em.RadianceRgb.G * Em.SurfaceArea) / NextArea,
-                (CurC.MeanRadianceRgb.B  * PrevArea + Em.RadianceRgb.B  * Em.SurfaceArea) / NextArea,
-            };
-            CurC.TotalArea      = NextArea;
-            CurC.BoundingRadius = std::max(CurC.BoundingRadius, std::sqrt(NextArea / Constants::PiFloat));
+            TotalDiffuseArea += static_cast<double>(Area);
+            DiffuseCandidates.push_back({ Idx, Area, TriN, Albedo });
         }
-
-        Em.ClusterId = AssignedCluster;
-        Radiators.push_back(Em);
     }
 
-    // 2. Sample ~256 deterministic area-weighted diffuse bounce patches across architectural & asset surfaces
-    double TotalDiffuseArea = 0.0;
-    for (const auto& Tri : Primitives)
+    // Build 3 deterministic spread sample points per luminaire cluster for soft multi-point HighEnd visibility
+    for (uint32_t CIdx = 0u; CIdx < static_cast<uint32_t>(Clusters.size()); ++CIdx)
     {
-        const uint16_t MatIdx = Tri.MaterialOrdinal;
-        const bool EmissiveActive = (MatIdx < MaterialEmissiveBySlot.size()) &&
-            (std::max({ MaterialEmissiveBySlot[MatIdx].R, MaterialEmissiveBySlot[MatIdx].G, MaterialEmissiveBySlot[MatIdx].B }) > 1.0e-3f);
-        if (EmissiveActive)
+        auto& Cl = Clusters[CIdx];
+        Mathematics::Axis3D TanU {}, BitV {};
+        DistanceFieldSpace::ConstructLimbBasis(Cl.RepresentativeNormal, TanU, BitV);
+        float MinU = 0.0f, MaxU = 0.0f, MinV = 0.0f, MaxV = 0.0f;
+        for (const auto& Emit : EmissiveTriangles)
+        {
+            if (Emit.ClusterId != CIdx) continue;
+            for (const auto& Vtx : { Emit.CornerA, Emit.CornerB, Emit.CornerC })
+            {
+                const Mathematics::Axis3D Rel = Vtx - Cl.RepresentativePos;
+                const float PU = Mathematics::EvaluateDot(Rel, TanU);
+                const float PV = Mathematics::EvaluateDot(Rel, BitV);
+                MinU = std::min(MinU, PU);
+                MaxU = std::max(MaxU, PU);
+                MinV = std::min(MinV, PV);
+                MaxV = std::max(MaxV, PV);
+            }
+        }
+        const float HalfU = 0.52f * (MaxU - MinU) * 0.5f;
+        const float HalfV = 0.52f * (MaxV - MinV) * 0.5f;
+        Cl.BoundingRadius = std::max(Cl.BoundingRadius, std::hypot(HalfU, HalfV));
+        Cl.SamplePosA     = Cl.RepresentativePos;
+        Cl.SamplePosB     = Cl.RepresentativePos - TanU * HalfU - BitV * (HalfV * 0.65f);
+        Cl.SamplePosC     = Cl.RepresentativePos + TanU * HalfU + BitV * (HalfV * 0.65f);
+    }
+
+    if (DiffuseCandidates.empty() || TotalDiffuseArea <= 1.0e-5)
+    {
+        return;
+    }
+
+    // Stratified area-proportional diffuse patch generation via Owen-scrambled Sobol (0,2)
+    const uint32_t Budget = std::max(24u, Settings.TargetPatchBudget);
+    BouncePatches.reserve(Budget + 16u);
+    const double AreaPerPatch = TotalDiffuseArea / static_cast<double>(Budget);
+    double Accumulator        = AreaPerPatch * 0.5;
+    uint32_t PatchSeed        = 1u;
+
+    for (const auto& Cand : DiffuseCandidates)
+    {
+        const auto& Prim = Primitives[Cand.PrimIndex];
+        Accumulator += static_cast<double>(Cand.Area);
+        uint32_t SpawnCount = 0u;
+        while (Accumulator >= AreaPerPatch)
+        {
+            Accumulator -= AreaPerPatch;
+            ++SpawnCount;
+        }
+        if (SpawnCount == 0u)
         {
             continue;
         }
-        TotalDiffuseArea += 0.5 * static_cast<double>(Mathematics::EvaluateLength(Mathematics::EvaluateCross(Tri.Edge01, Tri.Edge02)));
-    }
 
-    if (TotalDiffuseArea > 1.0e-4)
-    {
-        constexpr uint32_t TargetPatches = 224u;
-        const double AreaQuantum = TotalDiffuseArea / static_cast<double>(TargetPatches);
-        double Accum = 0.0;
-
-        for (const auto& Tri : Primitives)
+        const float SubArea = Cand.Area / static_cast<float>(SpawnCount);
+        for (uint32_t S = 0u; S < SpawnCount; ++S)
         {
-            const uint16_t MatIdx = Tri.MaterialOrdinal;
-            const bool EmissiveActive = (MatIdx < MaterialEmissiveBySlot.size()) &&
-                (std::max({ MaterialEmissiveBySlot[MatIdx].R, MaterialEmissiveBySlot[MatIdx].G, MaterialEmissiveBySlot[MatIdx].B }) > 1.0e-3f);
-            if (EmissiveActive)
-            {
-                continue;
-            }
-            const Mathematics::Axis3D CrossE = Mathematics::EvaluateCross(Tri.Edge01, Tri.Edge02);
-            const float DoubleArea = Mathematics::EvaluateLength(CrossE);
-            if (DoubleArea <= 1.0e-6f)
-            {
-                continue;
-            }
-            const float TriArea = 0.5f * DoubleArea;
-            const Mathematics::Axis3D Normal = CrossE * (1.0f / DoubleArea);
-            const Mathematics::LinearRGB Albedo = (MatIdx < MaterialAlbedoBySlot.size())
-                ? MaterialAlbedoBySlot[MatIdx]
-                : Mathematics::LinearRGB { 0.5f, 0.5f, 0.5f };
-
-            Accum += static_cast<double>(TriArea);
-            while (Accum >= AreaQuantum && Patches.size() < TargetPatches + 32u)
-            {
-                Accum -= AreaQuantum;
-                const uint32_t Seed = static_cast<uint32_t>(Patches.size() * 747796405u + 2891336453u);
-                float U = static_cast<float>((Seed & 0xFFFFu)) / 65536.0f;
-                float V = static_cast<float>((Seed >> 16u)) / 65536.0f;
-                if (U + V > 1.0f)
-                {
-                    U = 1.0f - U;
-                    V = 1.0f - V;
-                }
-                DiffuseBouncePatch Patch {};
-                Patch.Position   = Tri.Corner0 + Tri.Edge01 * U + Tri.Edge02 * V;
-                Patch.Normal     = Normal;
-                Patch.AlbedoRgb  = Albedo;
-                Patch.AreaMeters = static_cast<float>(AreaQuantum);
-                Patch.Radius     = std::sqrt(Patch.AreaMeters / Constants::PiFloat);
-                Patches.push_back(Patch);
-            }
+            float U = 0.0f, V = 0.0f;
+            SampleOwenSobol02(S, Cand.PrimIndex * 747796405u + PatchSeed * 2891336453u, U, V);
+            ++PatchSeed;
+            // Uniform triangle fold preserving (0,2) stratification
+            const float RootU = std::sqrt(std::clamp(U, 0.0f, 1.0f));
+            const float Bary1 = 1.0f - RootU;
+            const float Bary2 = V * RootU;
+            DiffuseBouncePatch Patch {};
+            Patch.Position = Prim.Corner0 + Prim.Edge01 * Bary1 + Prim.Edge02 * Bary2;
+            Patch.Normal   = Cand.Normal;
+            Patch.Albedo   = Cand.Albedo;
+            Patch.Area     = SubArea;
+            BouncePatches.push_back(Patch);
         }
     }
 
-    // 3. Relax 1st-bounce emissive + solar -> patch radiance, then 2nd-bounce patch <-> patch diffuse bleed
-    StokesContourTierSettings PatchSettings = Settings;
-    const float MaxSun = std::max({ Settings.SunRadiance.R, Settings.SunRadiance.G, Settings.SunRadiance.B });
-    for (auto& P : Patches)
+    // Bounce 1: Illuminate every diffuse patch via closed-form Stokes luminaire contour + AreaLights + solar shadow
+    DirectLighting::HybridConeShadowSetup SunSetup {};
+    for (auto& Patch : BouncePatches)
     {
-        Mathematics::LinearRGB DirectEm {};
-        (void)EvaluateTotalIrradiance(P.Position, P.Normal, Occluders, PatchSettings, &DirectEm, nullptr);
-        if (MaxSun > 1.0e-4f)
+        Mathematics::LinearRGB DirectIrrad = EvaluateDirectEmissiveIrradiance(
+            Patch.Position, Patch.Normal, Occluders, Settings);
+
+        if (!Settings.AreaLights.empty())
         {
-            const float NdotS = std::max(0.0f, Mathematics::EvaluateDot(P.Normal, Settings.SunDirection));
-            if (NdotS > 0.0f)
+            DirectIrrad = DirectIrrad + EvaluateAreaLightPatchIrradiance(
+                Patch.Position, Patch.Normal, Settings.AreaLights, Occluders, Settings);
+        }
+
+        if (EvaluatePeakChannel(Settings.SunRadiance) > 1.0e-3f)
+        {
+            const float NdotL = std::max(0.0f, Mathematics::EvaluateDot(Patch.Normal, Settings.SunDirection));
+            if (NdotL > 0.0f)
             {
-                float SunVis = 1.0f;
-                if (Settings.HighEndZeroSdfTier && Occluders.SceneBvh != nullptr)
-                {
-                    DirectLighting::HybridConeShadowSetup S {};
-                    S.VogelRaySamples = 1u;
-                    SunVis = DirectLighting::EvaluateHighEndBvhDirectionalShadow(
-                        *Occluders.SceneBvh, P.Position, P.Normal, Settings.SunDirection, 0u, S);
-                }
-                else
-                {
-                    SunVis = DirectLighting::EvaluateGtxHybridDirectionalShadow(
-                        Occluders, P.Position, P.Normal, Settings.SunDirection);
-                }
-                DirectEm.R += Settings.SunRadiance.R * NdotS * SunVis;
-                DirectEm.G += Settings.SunRadiance.G * NdotS * SunVis;
-                DirectEm.B += Settings.SunRadiance.B * NdotS * SunVis;
+                const float SunVis = Settings.HighEndZeroSdfTier
+                    ? ((Occluders.SceneBvh != nullptr)
+                        ? DirectLighting::EvaluateHighEndBvhDirectionalShadow(
+                            *Occluders.SceneBvh, Patch.Position, Patch.Normal, Settings.SunDirection, 17u, SunSetup)
+                        : 1.0f)
+                    : DirectLighting::EvaluateGtxHybridDirectionalShadow(
+                        Occluders, Patch.Position, Patch.Normal, Settings.SunDirection, SunSetup);
+                DirectIrrad = DirectIrrad + Settings.SunRadiance * (NdotL * SunVis);
             }
         }
-        P.Radiance1 = {
-            (P.AlbedoRgb.R   * DirectEm.R)   / Constants::PiFloat,
-            (P.AlbedoRgb.G * DirectEm.G) / Constants::PiFloat,
-            (P.AlbedoRgb.B  * DirectEm.B)  / Constants::PiFloat,
+
+        Patch.ExitantFlux = {
+            Patch.Albedo.R * DirectIrrad.R,
+            Patch.Albedo.G * DirectIrrad.G,
+            Patch.Albedo.B * DirectIrrad.B,
         };
-        P.Radiance2 = P.Radiance1;
     }
 
-    for (std::size_t I = 0u; I < Patches.size(); ++I)
+    // Bounce 2: Single visibility-gated Jacobi radiosity relaxation across virtual patches so secondary color bleed respects walls & columns
+    std::vector<Mathematics::LinearRGB> SecondBounceFlux(BouncePatches.size(), { 0.0f, 0.0f, 0.0f });
+    for (std::size_t I = 0u; I < BouncePatches.size(); ++I)
     {
-        Mathematics::LinearRGB BounceE { 0.0f, 0.0f, 0.0f };
-        for (std::size_t J = 0u; J < Patches.size(); ++J)
+        Mathematics::LinearRGB GatherIrrad { 0.0f, 0.0f, 0.0f };
+        const auto& Dst = BouncePatches[I];
+        for (std::size_t J = 0u; J < BouncePatches.size(); ++J)
         {
             if (I == J) continue;
-            const float FF = EvaluateDiskFallbackFormFactor(
-                Patches[I].Position, Patches[I].Normal, Patches[J].Position, Patches[J].Normal, Patches[J].AreaMeters, false);
-            if (FF <= 1.0e-5f) continue;
-            BounceE.R   += Patches[J].Radiance1.R   * (Constants::PiFloat * FF);
-            BounceE.G += Patches[J].Radiance1.G * (Constants::PiFloat * FF);
-            BounceE.B  += Patches[J].Radiance1.B  * (Constants::PiFloat * FF);
+            const auto& Src = BouncePatches[J];
+            if (EvaluatePeakChannel(Src.ExitantFlux) <= 1.0e-4f) continue;
+
+            const Mathematics::Axis3D Delta = Src.Position - Dst.Position;
+            const float DistSq = Mathematics::EvaluateLengthSquared(Delta);
+            if (DistSq <= 0.09f) continue;
+            const float InvDist = 1.0f / std::sqrt(DistSq);
+            const Mathematics::Axis3D Dir = Delta * InvDist;
+            const float CosDst = Mathematics::EvaluateDot(Dst.Normal, Dir);
+            const float CosSrc = Mathematics::EvaluateDot(Src.Normal, Dir * -1.0f);
+            if (CosDst <= 0.02f || CosSrc <= 0.02f) continue;
+
+            const float PatchRad = std::sqrt(Src.Area * (1.0f / Constants::PiFloat));
+            const float Vis      = EvaluateSegmentVisibility(
+                Dst.Position, Dst.Normal, Src.Position, PatchRad, Occluders, Settings);
+            if (Vis <= 1.0e-4f) continue;
+
+            const float Denom      = Constants::PiFloat * DistSq + std::max(Src.Area * 2.2f, 0.38f);
+            const float FormFactor = std::min(0.14f, (CosDst * CosSrc * Src.Area) / Denom) * Vis;
+            GatherIrrad = GatherIrrad + Src.ExitantFlux * FormFactor;
         }
-        Patches[I].Radiance2 = {
-            Patches[I].Radiance1.R   + (Patches[I].AlbedoRgb.R   * BounceE.R)   / Constants::PiFloat,
-            Patches[I].Radiance1.G + (Patches[I].AlbedoRgb.G * BounceE.G) / Constants::PiFloat,
-            Patches[I].Radiance1.B  + (Patches[I].AlbedoRgb.B  * BounceE.B)  / Constants::PiFloat,
+        SecondBounceFlux[I] = {
+            Dst.ExitantFlux.R + Dst.Albedo.R * GatherIrrad.R,
+            Dst.ExitantFlux.G + Dst.Albedo.G * GatherIrrad.G,
+            Dst.ExitantFlux.B + Dst.Albedo.B * GatherIrrad.B,
         };
+    }
+    for (std::size_t I = 0u; I < BouncePatches.size(); ++I)
+    {
+        BouncePatches[I].ExitantFlux = SecondBounceFlux[I];
     }
 }
 
-Mathematics::LinearRGB StokesContourIrradianceSequence::EvaluateTotalIrradiance(
-    Mathematics::Axis3D                              ReceiverPos,
-    Mathematics::Axis3D                              ReceiverNormal,
+Mathematics::LinearRGB StokesContourIrradianceSequence::EvaluateDirectEmissiveIrradiance(
+    Mathematics::Axis3D                              ShadingPos,
+    Mathematics::Axis3D                              ShadingNormal,
     const DirectLighting::HybridOccluderEnvironment& Occluders,
-    const StokesContourTierSettings&                 Settings,
-    Mathematics::LinearRGB*                          OptionalOutDirectEmissiveE,
-    Mathematics::LinearRGB*                          OptionalOutBounceIndirectE) const noexcept
+    const StokesContourTierSettings&                 Settings) const noexcept
 {
-    Mathematics::LinearRGB DirectEmissiveE { 0.0f, 0.0f, 0.0f };
-    if (!Clusters.empty())
+    if (EmissiveTriangles.empty())
     {
-        std::array<float, 64u> ClusterVisibility {};
-        std::array<uint8_t, 64u> ClusterEvaluated {};
-        const std::size_t MaxClusters = std::min(Clusters.size(), ClusterVisibility.size());
+        return {};
+    }
 
-        auto QueryClusterVis = [&](uint32_t CIdx) noexcept -> float
-        {
-            if (CIdx >= MaxClusters)
-            {
-                return 1.0f;
-            }
-            if (ClusterEvaluated[CIdx] != 0u)
-            {
-                return ClusterVisibility[CIdx];
-            }
-            ClusterEvaluated[CIdx] = 1u;
-            const auto& Cl = Clusters[CIdx];
-            float Vis = 1.0f;
-            if (Settings.HighEndZeroSdfTier && Occluders.SceneBvh != nullptr)
-            {
-                Vis = DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
-                    *Occluders.SceneBvh, ReceiverPos, ReceiverNormal, Cl.RepresentativePos);
-            }
-            else
-            {
-                Vis = DirectLighting::EvaluateGtxHybridLuminaireVisibility(
-                    Occluders, ReceiverPos, ReceiverNormal, Cl.RepresentativePos, Cl.BoundingRadius);
-            }
-            ClusterVisibility[CIdx] = Vis;
-            return Vis;
-        };
+    std::array<float, 32u> ClusterVis {};
+    std::array<bool,  32u> ClusterEvaluated {};
 
-        const float CutoffSq = Settings.ExactContourCutoffM * Settings.ExactContourCutoffM;
-        for (const auto& Em : Radiators)
+    Mathematics::LinearRGB Irrad { 0.0f, 0.0f, 0.0f };
+    for (const auto& Emit : EmissiveTriangles)
+    {
+        const float Form = EvaluateClippedStokesTriangleFormFactor(
+            ShadingPos, ShadingNormal, Emit.CornerA, Emit.CornerB, Emit.CornerC, Emit.OutwardNormal);
+        if (Form <= 1.0e-6f)
         {
-            const float DistSq = Mathematics::EvaluateLengthSquared(Em.Centroid - ReceiverPos);
-            float FF = 0.0f;
-            if (!Settings.HighEndZeroSdfTier && DistSq > CutoffSq)
-            {
-                FF = EvaluateDiskFallbackFormFactor(
-                    ReceiverPos, ReceiverNormal, Em.Centroid, Em.GeometricNormal, Em.SurfaceArea, Em.TwoSidedRadiator);
-            }
-            else
-            {
-                FF = EvaluateClippedTriangleFormFactor(
-                    ReceiverPos, ReceiverNormal, Em.Vertex0, Em.Vertex1, Em.Vertex2, Em.GeometricNormal, Em.TwoSidedRadiator);
-            }
-            if (FF <= 1.0e-6f)
-            {
-                continue;
-            }
-            const float Vis = QueryClusterVis(Em.ClusterId);
-            if (Vis <= 1.0e-4f)
-            {
-                continue;
-            }
-            const float Weight = Constants::PiFloat * FF * Vis;
-            DirectEmissiveE.R   += Em.RadianceRgb.R   * Weight;
-            DirectEmissiveE.G += Em.RadianceRgb.G * Weight;
-            DirectEmissiveE.B  += Em.RadianceRgb.B  * Weight;
+            continue;
         }
-    }
 
-    Mathematics::LinearRGB BounceIndirectE { 0.0f, 0.0f, 0.0f };
-    if (OptionalOutBounceIndirectE != nullptr || OptionalOutDirectEmissiveE == nullptr)
-    {
-        for (const auto& P : Patches)
+        float Vis = 1.0f;
+        if (Settings.HighEndZeroSdfTier && Occluders.SceneBvh != nullptr && EmissiveTriangles.size() <= 160u)
         {
-            const float FF = EvaluateDiskFallbackFormFactor(
-                ReceiverPos, ReceiverNormal, P.Position, P.Normal, P.AreaMeters, false);
-            if (FF <= 1.0e-5f)
-            {
-                continue;
-            }
-            float Vis = 1.0f;
-            const float DistSq = Mathematics::EvaluateLengthSquared(P.Position - ReceiverPos);
-            if (DistSq < 12.0f)
-            {
-                if (Settings.HighEndZeroSdfTier && Occluders.SceneBvh != nullptr)
-                {
-                    Vis = DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
-                        *Occluders.SceneBvh, ReceiverPos, ReceiverNormal, P.Position);
-                }
-                else
-                {
-                    Vis = DirectLighting::EvaluateGtxHybridLuminaireVisibility(
-                        Occluders, ReceiverPos, ReceiverNormal, P.Position, P.Radius);
-                }
-            }
-            const float Weight = Constants::PiFloat * FF * Vis;
-            BounceIndirectE.R   += P.Radiance2.R   * Weight;
-            BounceIndirectE.G += P.Radiance2.G * Weight;
-            BounceIndirectE.B  += P.Radiance2.B  * Weight;
+            const Mathematics::Axis3D TargetPt = Emit.Centroid + Emit.OutwardNormal * 0.015f;
+            Vis = DirectLighting::EvaluateHighEndBvhLuminaireVisibility(
+                *Occluders.SceneBvh, ShadingPos, ShadingNormal, TargetPt);
         }
+        else if (Emit.ClusterId < 32u && Emit.ClusterId < Clusters.size())
+        {
+            if (!ClusterEvaluated[Emit.ClusterId])
+            {
+                const auto& Cl = Clusters[Emit.ClusterId];
+                ClusterVis[Emit.ClusterId] = EvaluateClusterVisibility(
+                    Cl, ShadingPos, ShadingNormal, Occluders, Settings);
+                ClusterEvaluated[Emit.ClusterId] = true;
+            }
+            Vis = ClusterVis[Emit.ClusterId];
+        }
+        if (Vis <= 1.0e-4f)
+        {
+            continue;
+        }
+
+        // Exact Lambertian diffuse irradiance from uniform emitter radiance L is E = Pi * L * FormFactor
+        Irrad = Irrad + Emit.Radiance * (Constants::PiFloat * Form * Vis);
     }
 
-    if (OptionalOutDirectEmissiveE != nullptr)
+    return Irrad;
+}
+
+Mathematics::LinearRGB StokesContourIrradianceSequence::EvaluateIndirectBounceIrradiance(
+    Mathematics::Axis3D                              ShadingPos,
+    Mathematics::Axis3D                              ShadingNormal,
+    const DirectLighting::HybridOccluderEnvironment& Occluders,
+    const StokesContourTierSettings&                 Settings) const noexcept
+{
+    Mathematics::LinearRGB BounceIrrad { 0.0f, 0.0f, 0.0f };
+    for (const auto& Patch : BouncePatches)
     {
-        *OptionalOutDirectEmissiveE = DirectEmissiveE;
+        if (EvaluatePeakChannel(Patch.ExitantFlux) <= 1.0e-4f)
+        {
+            continue;
+        }
+        const Mathematics::Axis3D Delta = Patch.Position - ShadingPos;
+        const float DistSq = Mathematics::EvaluateLengthSquared(Delta);
+        if (DistSq <= 0.04f)
+        {
+            continue;
+        }
+        const float Dist    = std::sqrt(DistSq);
+        const auto  Dir     = Delta * (1.0f / Dist);
+        const float CosRecv = Mathematics::EvaluateDot(ShadingNormal, Dir);
+        const float CosSend = Mathematics::EvaluateDot(Patch.Normal, Dir * -1.0f);
+        if (CosRecv <= 1.0e-3f || CosSend <= 1.0e-3f)
+        {
+            continue;
+        }
+
+        const float PatchRadius = std::sqrt(Patch.Area * (1.0f / Constants::PiFloat));
+        const float Vis         = EvaluateSegmentVisibility(
+            ShadingPos, ShadingNormal, Patch.Position, PatchRadius, Occluders, Settings);
+        if (Vis <= 1.0e-4f)
+        {
+            continue;
+        }
+
+        const float Denom = Constants::PiFloat * DistSq + std::max(Patch.Area * 2.2f, 0.38f);
+        const float Form  = std::min(0.18f, (CosRecv * CosSend * Patch.Area) / Denom);
+        BounceIrrad = BounceIrrad + Patch.ExitantFlux * (Form * Vis);
     }
-    if (OptionalOutBounceIndirectE != nullptr)
-    {
-        *OptionalOutBounceIndirectE = BounceIndirectE;
-    }
-    return {
-        DirectEmissiveE.R   + BounceIndirectE.R,
-        DirectEmissiveE.G + BounceIndirectE.G,
-        DirectEmissiveE.B  + BounceIndirectE.B,
-    };
+    return BounceIrrad;
+}
+
+Mathematics::LinearRGB StokesContourIrradianceSequence::EvaluateTotalIrradiance(
+    Mathematics::Axis3D                              ShadingPos,
+    Mathematics::Axis3D                              ShadingNormal,
+    const DirectLighting::HybridOccluderEnvironment& Occluders,
+    const StokesContourTierSettings&                 Settings) const noexcept
+{
+    // DirectLighting skips PorosityLight meshes when Order2Active == true so Order 2 evaluates exact Stokes luminaire contour + multi-bounce!
+    return EvaluateDirectEmissiveIrradiance(ShadingPos, ShadingNormal, Occluders, Settings)
+         + EvaluateIndirectBounceIrradiance(ShadingPos, ShadingNormal, Occluders, Settings);
 }
 
 } // namespace Frontier::GeometricRaster::GlobalIllumination

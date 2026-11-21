@@ -476,11 +476,10 @@ void BuildCornellVehicleBay(
             AddStaticBox({ CX, CY, -0.08f }, { 2.0f, 1.8f, 0.16f }, SlotWhite, false);
         }
     }
-    // Open-top studio (reference hero design): boundary floor/walls stay out of GtxInteriorBoxes so receivers never self-occlude!
-    // Back wall (-X), Red Left Wall (-Y), Green Right Wall (+Y) + interior column (sole SDF box occluder!)
-    AddStaticBox({ -4.10f,  0.0f, 1.90f }, { 0.30f, 7.20f, 3.80f }, SlotWhite, false);
-    AddStaticBox({  0.0f,  -3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotRed,   false);
-    AddStaticBox({  0.0f,   3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotGreen, false);
+    // Open-top studio: vertical walls + interior column registered in GtxInteriorBoxes (endpoint self-box filter prevents wall self-occlusion!)
+    AddStaticBox({ -4.10f,  0.0f, 1.90f }, { 0.30f, 7.20f, 3.80f }, SlotWhite, true);
+    AddStaticBox({  0.0f,  -3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotRed,   true);
+    AddStaticBox({  0.0f,   3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotGreen, true);
     AddStaticBox({ -1.80f,  2.20f, 1.10f }, { 0.52f, 0.52f, 2.20f }, SlotWhite, true);
 
     // 4. Live Deforming Articulated Character in Pose A (0.0) or Pose B (1.0) standing right beside ControlVehicle
