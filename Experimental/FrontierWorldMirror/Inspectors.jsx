@@ -40,6 +40,7 @@ import {
 } from "../FrontierEditor/celestial-controls.jsx";
 import { LunarSphere } from "../FrontierEditor/moon-controls.jsx";
 import Native from "./NativePanels.json";
+import { InspectorCarousel } from "./InspectorCarousel.jsx";
 import { Solar } from "./Solar.mjs";
 import { SensorField } from "./OpticalGraphic.jsx";
 import { FACE_KEYS, FACE_LABELS, HasActiveFaceColors } from "./WorldPropLibrary.js";
@@ -731,19 +732,12 @@ export function Inspector({
       )}
     </section>
   );
-  const Generic = () => (
-    <>
-      {Header(
-        Subject.Panel === "light"
-          ? "Lighting"
-          : Subject.Panel === "geometry"
-            ? "Geometry"
-            : Subject.Panel === "post"
-              ? "Post processing"
-              : "Scene",
-      )}
-      {Subject.Panel === "light" && ReferenceCards}
-      {Subject.Panel === "light" && Values.ReferenceInspector?.Locked && (
+  const Generic = () => {
+    const IsGeometry = Subject.Panel === "geometry",
+      IsLight = Subject.Panel === "light",
+      IsPost = Subject.Panel === "post";
+    const UnlockButton =
+      IsLight && Values.ReferenceInspector?.Locked ? (
         <button
           onClick={() =>
             Change("ReferenceInspector", {
@@ -754,15 +748,15 @@ export function Inspector({
         >
           Unlock editing
         </button>
-      )}
-      {(Subject.Panel === "geometry" ||
-        (Subject.Panel === "light" && (!Subject.ReferenceType || Subject.PropId || Values.PropId))) && (
+      ) : null;
+    const TransformNode =
+      IsGeometry ||
+      (IsLight &&
+        (!Subject.ReferenceType || Subject.PropId || Values.PropId)) ? (
         <TransformPanel Values={Values} Change={Change} />
-      )}
-      {Capabilities()}
-      {Subject.Panel === "light" && ReferenceDetailCards}
-      {Subject.Panel === "geometry" && (
-        <>
+      ) : null;
+    const MaterialNode = IsGeometry ? (
+      <>
           <MaterialPanel
             Subject={Subject}
             Values={Values}
@@ -856,10 +850,10 @@ export function Inspector({
               )}
             </div>
           </details>
-        </>
-      )}
-      {[...new Set(Sheet.map((Field) => Field.Group))]
-        .filter(
+      </>
+    ) : null;
+    const SheetGroupNodes = [...new Set(Sheet.map((Field) => Field.Group))]
+      .filter(
           (Group) =>
             Subject.Panel !== "geometry" ||
             !["Transform", "Surface"].includes(Group),
@@ -879,17 +873,93 @@ export function Inspector({
               />
             )}
           </details>
-        ))}
-      {Subject.Panel === "geometry" && (
-        <FracturePanel
-          Subject={Subject}
-          Values={Values}
-          Change={Change}
-          Expand={OpenFracture}
-        />
-      )}
-    </>
-  );
+      ));
+    const Pages = IsGeometry
+      ? [
+          {
+            Id: "transform",
+            Label: "Transform",
+            Node: (
+              <>
+                {TransformNode}
+                {Capabilities()}
+              </>
+            ),
+          },
+          { Id: "material", Label: "Material", Node: MaterialNode },
+          {
+            Id: "fracture",
+            Label: "Fracture",
+            Node: (
+              <>
+                <FracturePanel
+                  Subject={Subject}
+                  Values={Values}
+                  Change={Change}
+                  Expand={OpenFracture}
+                />
+                {SheetGroupNodes}
+              </>
+            ),
+          },
+        ]
+      : IsLight
+        ? [
+            {
+              Id: "settings",
+              Label: "Settings",
+              Node: (
+                <>
+                  {ReferenceCards}
+                  {UnlockButton}
+                  {TransformNode}
+                  {Capabilities()}
+                </>
+              ),
+            },
+            {
+              Id: "lighting",
+              Label: "Lighting",
+              Node: (
+                <>
+                  {ReferenceDetailCards}
+                  {SheetGroupNodes}
+                </>
+              ),
+            },
+          ]
+        : [
+            {
+              Id: "settings",
+              Label: "Settings",
+              Node: (
+                <>
+                  {TransformNode}
+                  {Capabilities()}
+                </>
+              ),
+            },
+            {
+              Id: "effects",
+              Label: "Effects",
+              Node: <>{SheetGroupNodes}</>,
+            },
+          ];
+    return (
+      <>
+        {Header(
+          IsLight
+            ? "Lighting"
+            : IsGeometry
+              ? "Geometry"
+              : IsPost
+                ? "Post processing"
+                : "Scene",
+        )}
+        <InspectorCarousel Pages={Pages} />
+      </>
+    );
+  };
   if (["geometry", "light", "post", "group"].includes(Subject.Panel))
     return (
       <GraphContext.Provider
@@ -951,10 +1021,8 @@ export function Inspector({
       DLen > 1e-4
         ? ((((Math.atan2(Dir[0], Dir[1]) * 180) / Math.PI) % 360) + 360) % 360
         : Solved.Azimuth;
-    Content = (
+    const SunDirectionNode = (
       <>
-        {Header("Environment")}
-        {ReferenceCards}
         <div className="section-caption">
           PROPERTIES <small>Light, direction & atmosphere</small>
         </div>
@@ -983,13 +1051,6 @@ export function Inspector({
             On={V("Animate")}
             Action={() => AssignProperty("Animate", !V("Animate"))}
           />
-        </div>
-        <div className="subcomponent">
-          <Icon Name="lens-flare" />
-          <div>
-            Lens Flare<small>Optical effect subcomponent</small>
-          </div>
-          <Glyph Name="arrow" />
         </div>
         <div className="card-grid sun-properties">
           <TransformPanel
@@ -1069,6 +1130,12 @@ export function Inspector({
             </div>
             <p>Shared time above · angles solved by date / location</p>
           </Card>
+        </div>
+      </>
+    );
+    const SunLightNode = (
+      <>
+        <div className="card-grid">
           <Card Title="Sunlight intensity" Height={347} GraphHandled>
             <Metric
               Value={Number(V("Intensity")).toFixed(1)}
@@ -1142,6 +1209,18 @@ export function Inspector({
           Calibrated Tier 1 GTX Solar Contact-Clip + SDF Cone Penumbra running
           live in WebGL2 (1:1 mirror of C++ SolarShadowSequence).
         </p>
+      </>
+    );
+    const SunEffectsNode = (
+      <>
+        <div className="subcomponent">
+          <Icon Name="lens-flare" />
+          <div>
+            Lens Flare<small>Optical effect subcomponent</small>
+          </div>
+          <Glyph Name="arrow" />
+        </div>
+        {ReferenceCards}
         <div className="section-caption">
           BAKING <small>Native target bindings pending</small>
         </div>
@@ -1149,6 +1228,18 @@ export function Inspector({
           <Bake Title="Sun lighting bake" Sun />
           <Bake Title="Sun disk bake" Sun />
         </div>
+      </>
+    );
+    Content = (
+      <>
+        {Header("Environment")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "direction", Label: "Direction", Node: SunDirectionNode },
+            { Id: "light", Label: "Light", Node: SunLightNode },
+            { Id: "effects", Label: "Effects", Node: SunEffectsNode },
+          ]}
+        />
       </>
     );
   } else if (Subject.Panel === "camera") {
@@ -1170,12 +1261,8 @@ export function Inspector({
       frameWidth: (Distance * Sensor) / Focal,
       frameHeight: (Distance * Sensor) / Aspect / Focal,
     };
-    Content = (
+    const CameraTransformNode = (
       <>
-        {Header(
-          "Scene / Cameras",
-          Subject.Id === "cine" ? "Cine Camera · lens study" : Subject.Name,
-        )}
         {IsEditorCamera(Subject) && (
           <div className="editor-camera-note">
             Editor navigation camera · synchronized 1:1 with C++ EditorCamera.
@@ -1230,6 +1317,10 @@ export function Inspector({
             </button>
           </div>
         )}
+      </>
+    );
+    const CameraLensNode = (
+      <>
         <Card Title="Lens + field of view" Height={440}>
           <Metric Value={Focal.toFixed(1)} Unit="mm" />
           <div className="graphic lens">
@@ -1286,6 +1377,10 @@ export function Inspector({
             </p>
           </Card>
         </div>
+      </>
+    );
+    const CameraSensorNode = (
+      <>
         <Card Title="Sensor / support" Height={196}>
           {F("Sensor Width")}
           <p>
@@ -1293,6 +1388,25 @@ export function Inspector({
             {Optics.hyperfocal.toFixed(1)} m · pinhole renderer
           </p>
         </Card>
+      </>
+    );
+    Content = (
+      <>
+        {Header(
+          "Scene / Cameras",
+          Subject.Id === "cine" ? "Cine Camera · lens study" : Subject.Name,
+        )}
+        <InspectorCarousel
+          Pages={[
+            {
+              Id: "transform",
+              Label: "Transform",
+              Node: CameraTransformNode,
+            },
+            { Id: "lens", Label: "Lens", Node: CameraLensNode },
+            { Id: "sensor", Label: "Sensor", Node: CameraSensorNode },
+          ]}
+        />
       </>
     );
   } else if (Subject.Panel === "render-settings") {
@@ -1415,9 +1529,8 @@ export function Inspector({
         ? Rs.ShadowQuality
         : -1;
 
-    Content = (
+    const RsQualityNode = (
       <>
-        {Header("Cameras / Editor Camera / Component", "Render Settings")}
 
         <div className="rs-summary-bar">
           <div className="rs-summary-chips">
@@ -1463,7 +1576,10 @@ export function Inspector({
             )}
           </div>
         </Card>
-
+      </>
+    );
+    const RsLightingNode = (
+      <>
         <Card Title="Shadows" Accent="#7ab8ff" GraphHandled>
           <div className="rs-sliders">
             {RsSelect(
@@ -1559,7 +1675,10 @@ export function Inspector({
             )}
           </div>
         </Card>
-
+      </>
+    );
+    const RsOutputNode = (
+      <>
         <Card Title="Camera & Output" Accent="#e3d598" GraphHandled>
           <div className="rs-sliders">
             {RsFieldSlider("Camera Exposure Gain", "ExposureGain", Rs.ExposureGain, 0.2, 3.5, 0.05, "×", 2)}
@@ -1579,10 +1698,21 @@ export function Inspector({
         </Card>
       </>
     );
-  } else if (Subject.Panel === "stars") {
     Content = (
       <>
-        {Header("Environment", "Stars")}
+        {Header("Cameras / Editor Camera / Component", "Render Settings")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "quality", Label: "Quality", Node: RsQualityNode },
+            { Id: "lighting", Label: "Lighting", Node: RsLightingNode },
+            { Id: "output", Label: "Output", Node: RsOutputNode },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "stars") {
+    const StarsFieldNode = (
+      <>
         <Card Title="Star field" Height={444}>
           <Metric
             Value={V("Limiting magnitude").toFixed(1)}
@@ -1630,6 +1760,10 @@ export function Inspector({
           </div>
           <p>Catalogue field controls.</p>
         </Card>
+      </>
+    );
+    const StarsMotionNode = (
+      <>
         <div className="card-grid">
           <Card Title="Twinkle" Height={547}>
             <Metric
@@ -1663,6 +1797,10 @@ export function Inspector({
             a schematic.
           </p>
         </Card>
+      </>
+    );
+    const StarsBakingNode = (
+      <>
         <div className="section-caption">BAKING</div>
         <Card Title="Star field bake">
           <div className="tiles">
@@ -1673,11 +1811,22 @@ export function Inspector({
         </Card>
       </>
     );
-  } else if (Subject.Panel === "moon") {
-    const Preset = V("Preset");
     Content = (
       <>
-        {Header("Environment", "Moon")}
+        {Header("Environment", "Stars")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "field", Label: "Field", Node: StarsFieldNode },
+            { Id: "motion", Label: "Motion", Node: StarsMotionNode },
+            { Id: "baking", Label: "Baking", Node: StarsBakingNode },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "moon") {
+    const Preset = V("Preset");
+    const MoonPhaseNode = (
+      <>
         <Card Title="Lunar phase" Height={443}>
           <Metric
             Value={(V("Phase") * 29.53).toFixed(1)}
@@ -1718,6 +1867,10 @@ export function Inspector({
             ))}
           </div>
         </Card>
+      </>
+    );
+    const MoonAppearanceNode = (
+      <>
         <Card Title="Moon catalogue" Height={216}>
           <div className="moon-catalogue">
             {["Luna", "Ember", "Glacier", "Sulfur", "Shroud", "Shard"].map(
@@ -1758,6 +1911,12 @@ export function Inspector({
               Natural size · 0.52°
             </button>
           </Card>
+        </div>
+      </>
+    );
+    const MoonPositionNode = (
+      <>
+        <div className="card-grid">
           <Card Title="Lunar position" Height={484}>
             <p>
               {V("Follow Sky")
@@ -1795,10 +1954,25 @@ export function Inspector({
         </div>
       </>
     );
-  } else if (Subject.Panel === "atmosphere") {
     Content = (
       <>
-        {Header("Environment", "Atmosphere")}
+        {Header("Environment", "Moon")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "phase", Label: "Phase", Node: MoonPhaseNode },
+            {
+              Id: "appearance",
+              Label: "Appearance",
+              Node: MoonAppearanceNode,
+            },
+            { Id: "position", Label: "Position", Node: MoonPositionNode },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "atmosphere") {
+    const AtmosphereScatteringNode = (
+      <>
         <AtmosphereLab V={V} Change={AssignProperty} />
         <Card Title="Atmosphere settings">{Tiles(["Line at civil only"])}</Card>
         <Card Title="Atmospheric scattering" Height={485} GraphHandled>
@@ -1830,6 +2004,10 @@ export function Inspector({
             {F("Ozone")}
           </Card>
         </div>
+      </>
+    );
+    const AtmosphereDensityNode = (
+      <>
         <Card Title="Density falloff" Height={410} GraphHandled>
           {F("Rayleigh Scale H")}
           <AtmosphereProfile V={V} Change={AssignProperty} Mode="height" />
@@ -1854,6 +2032,10 @@ export function Inspector({
             "Tier Samples",
           )}
         </Card>
+      </>
+    );
+    const AtmosphereBakingNode = (
+      <>
         <div className="section-caption">BAKING</div>
         <Bake Title="Atmosphere bake" Sun />
         <Card Title="Baked atmosphere" Height={210}>
@@ -1867,10 +2049,33 @@ export function Inspector({
         </Card>
       </>
     );
-  } else if (Subject.Panel === "flare") {
     Content = (
       <>
-        {Header("Environment / Optics", "Lens Flare")}
+        {Header("Environment", "Atmosphere")}
+        <InspectorCarousel
+          Pages={[
+            {
+              Id: "scattering",
+              Label: "Scattering",
+              Node: AtmosphereScatteringNode,
+            },
+            {
+              Id: "density",
+              Label: "Density",
+              Node: AtmosphereDensityNode,
+            },
+            {
+              Id: "baking",
+              Label: "Baking",
+              Node: AtmosphereBakingNode,
+            },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "flare") {
+    const FlareCompositeNode = (
+      <>
         <Card Title="Flare composite" Height={430}>
           <Metric Value={V("Intensity").toFixed(2)} Unit="×" />
           <div
@@ -1927,6 +2132,10 @@ export function Inspector({
           {Tiles(["Enabled", "Anamorphic", "Streaks", "Starburst"])}
         </Card>
         <Card Title="Flare source">{Fields("Intensity", "Type")}</Card>
+      </>
+    );
+    const FlareLayersNode = (
+      <>
         <div className="card-grid">
           <Card Title="Flare layers" Height={565}>
             <p>
@@ -1948,6 +2157,10 @@ export function Inspector({
         <Card Title="Halo & optical response">
           {Fields("Halo Radius", "Halo brightness", "Halo width", "Chromatic")}
         </Card>
+      </>
+    );
+    const FlarePresetsNode = (
+      <>
         <Card Title="Legacy preset settings">
           {Fields("Aperture Blades", "Preview X", "Preview Y")}
         </Card>
@@ -1955,10 +2168,25 @@ export function Inspector({
         <Bake Title="Lens flare image" />
       </>
     );
-  } else if (Subject.Panel === "wind") {
     Content = (
       <>
-        {Header("Environment", Subject.Name)}
+        {Header("Environment / Optics", "Lens Flare")}
+        <InspectorCarousel
+          Pages={[
+            {
+              Id: "composite",
+              Label: "Composite",
+              Node: FlareCompositeNode,
+            },
+            { Id: "layers", Label: "Layers", Node: FlareLayersNode },
+            { Id: "presets", Label: "Presets", Node: FlarePresetsNode },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "wind") {
+    const WindControlsNode = (
+      <>
         {ReferenceCards}
         <Card Title="Wind controls">
           <div className="tiles">
@@ -1982,6 +2210,10 @@ export function Inspector({
           Open={OpenWind}
           Hidden={Hidden}
         />
+      </>
+    );
+    const WindModifiersNode = (
+      <>
         <Card Title="Atmospheric modifiers · native draft">
           {Fields("Shear", "Veer", "Turbulence", "Steadiness")}
           {F("Force")}
@@ -1993,10 +2225,24 @@ export function Inspector({
         </Card>
       </>
     );
-  } else if (Subject.Panel === "precipitation") {
     Content = (
       <>
-        {Header("Environment", "Precipitation")}
+        {Header("Environment", Subject.Name)}
+        <InspectorCarousel
+          Pages={[
+            { Id: "controls", Label: "Controls", Node: WindControlsNode },
+            {
+              Id: "modifiers",
+              Label: "Modifiers",
+              Node: WindModifiersNode,
+            },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "precipitation") {
+    const PrecipTypeNode = (
+      <>
         <Card Title="Precipitation type" Height={270}>
           <div className="precip-types">
             {["Rain", "Drizzle", "Hail", "Snow", "Sleet"].map((Name, Index) => (
@@ -2028,6 +2274,10 @@ export function Inspector({
             "Ground Collision",
           ])}
         </Card>
+      </>
+    );
+    const PrecipBehaviorNode = (
+      <>
         <div className="card-grid">
           <Card Title="Fall + density" Height={446}>
             {Fields("Intensity", "Density", "Particle Size", "Wind Drift")}
@@ -2046,6 +2296,10 @@ export function Inspector({
             </p>
           </Card>
         </div>
+      </>
+    );
+    const PrecipSimulationNode = (
+      <>
         <Card Title="Simulation + settling" Height={290}>
           {Fields("Accumulation", "Particles", "Snow Depth")}
           <p>
@@ -2055,10 +2309,29 @@ export function Inspector({
         </Card>
       </>
     );
-  } else if (Subject.Panel === "rainbow") {
     Content = (
       <>
-        {Header("Environment", "Rainbow")}
+        {Header("Environment", "Precipitation")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "type", Label: "Type", Node: PrecipTypeNode },
+            {
+              Id: "behavior",
+              Label: "Behavior",
+              Node: PrecipBehaviorNode,
+            },
+            {
+              Id: "simulation",
+              Label: "Simulation",
+              Node: PrecipSimulationNode,
+            },
+          ]}
+        />
+      </>
+    );
+  } else if (Subject.Panel === "rainbow") {
+    const RainbowPreviewNode = (
+      <>
         <Card Title="Optical preview">
           <div
             className="rainbow-preview"
@@ -2074,17 +2347,35 @@ export function Inspector({
         <Card Title="Visibility" Height={154}>
           {Tiles(["Enabled", "Alexander's Band"])}
         </Card>
+      </>
+    );
+    const RainbowResponseNode = (
+      <>
         <Card Title="Bow response" Height={458}>
           {Fields("Intensity", "Width", "Secondary", "Minimum Path")}
         </Card>
         <Bake Title="Bake / image" />
       </>
     );
-  } else if (["clouds", "local-cloud"].includes(Subject.Panel)) {
-    const Local = Subject.Panel === "local-cloud";
     Content = (
       <>
-        {Header("Environment", Local ? "Local Cloud" : "Clouds")}
+        {Header("Environment", "Rainbow")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "preview", Label: "Preview", Node: RainbowPreviewNode },
+            {
+              Id: "response",
+              Label: "Response",
+              Node: RainbowResponseNode,
+            },
+          ]}
+        />
+      </>
+    );
+  } else if (["clouds", "local-cloud"].includes(Subject.Panel)) {
+    const Local = Subject.Panel === "local-cloud";
+    const CloudSettingsNode = (
+      <>
         {Values.ReferenceInspector?.Locked && (
           <button
             onClick={() =>
@@ -2108,6 +2399,10 @@ export function Inspector({
           {CloudCoverageCards}
           {F("Coverage")}
         </section>
+      </>
+    );
+    const CloudVolumeNode = (
+      <>
         <div className="card-grid">
           <Card Title="Cloud base" Height={452} GraphHandled>
             <Metric
@@ -2173,6 +2468,10 @@ export function Inspector({
             ...(!Local ? ["Type", "Anvil", "Ceiling"] : []),
           )}
         </Card>
+      </>
+    );
+    const CloudShadowsNode = (
+      <>
         {!Local && (
           <details className="property-card">
             <summary>GPU cloud shadows · separate field</summary>
@@ -2201,19 +2500,38 @@ export function Inspector({
         />
       </>
     );
+    Content = (
+      <>
+        {Header("Environment", Local ? "Local Cloud" : "Clouds")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "settings", Label: "Settings", Node: CloudSettingsNode },
+            { Id: "volume", Label: "Volume", Node: CloudVolumeNode },
+            {
+              Id: "shadows",
+              Label: Local ? "Wind" : "Shadows",
+              Node: CloudShadowsNode,
+            },
+          ]}
+        />
+      </>
+    );
   } else if (Subject.Panel.includes("fog")) {
     const Local = Subject.Panel === "local-fog",
       Aerial = Subject.Panel === "aerial-fog",
       Height = !Local && !Aerial;
-    Content = (
+    const FogSettingsNode = (
       <>
-        {Header("Environment")}
         <Card Title="Fog settings" Height={142}>
           {Tiles(Local ? ["Enabled", "Follow Wind"] : ["Enabled"])}
         </Card>
         <Card Title="Visibility through fog" Height={435} GraphHandled>
           <FogGraph Kind={Subject.Panel} V={V} Change={AssignProperty} />
         </Card>
+      </>
+    );
+    const FogModelNode = (
+      <>
         <div className="card-grid fog-model-cards">
           <Card Title="Medium" Height={416}>
             {Fields(
@@ -2241,9 +2559,25 @@ export function Inspector({
             </Card>
           )}
         </div>
+      </>
+    );
+    const FogWindNode = (
+      <>
         <Card Title="Wind binding">
           {Fields("Wind source", "Owned wind component")}
         </Card>
+      </>
+    );
+    Content = (
+      <>
+        {Header("Environment")}
+        <InspectorCarousel
+          Pages={[
+            { Id: "fog", Label: "Fog", Node: FogSettingsNode },
+            { Id: "model", Label: "Model", Node: FogModelNode },
+            { Id: "wind", Label: "Wind", Node: FogWindNode },
+          ]}
+        />
       </>
     );
   } else if (Subject.Panel === "force") {

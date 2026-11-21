@@ -1,0 +1,182 @@
+/* InspectorCarousel.css — segmented settings carousel (A | B | C) for the Frontier World
+   Mirror inspector. Keeps the A/B/C menu strip fixed while each page's settings scroll
+   independently inside the viewport. */
+
+/* The scroll container becomes a column when it hosts a carousel: header + menu strip stay
+   pinned, the page viewport takes the remaining height and scrolls on its own. */
+.inspector-scroll {
+  display: flex;
+  flex-direction: column;
+}
+.inspector-scroll > * {
+  flex: none;
+}
+.inspector-scroll > .generic-inspector,
+.inspector-scroll > .specialized-inspector {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.inspector-scroll > .generic-inspector > *,
+.inspector-scroll > .specialized-inspector > * {
+  flex: none;
+}
+.inspector-scroll > .generic-inspector > .insp-carousel,
+.inspector-scroll > .specialized-inspector > .insp-carousel {
+  flex: 1 1 auto;
+}
+.insp-carousel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.insp-carousel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 2px 8px;
+  flex: none;
+  z-index: 6;
+}
+
+.insp-carousel-arrow {
+  flex: none;
+  width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 10px;
+  background: #161616;
+  color: #cfcfcf;
+  font-size: 15px;
+  line-height: 1;
+}
+.insp-carousel-arrow:hover:not(:disabled) {
+  background: #262626;
+}
+
+.insp-carousel-segments {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: #141414;
+  border: 1px solid #ffffff0d;
+  border-radius: 14px;
+}
+
+.insp-segment {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  border-radius: 11px;
+  min-height: 27px;
+  padding: 2px 8px;
+  color: #9a9a9a;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.insp-segment:hover {
+  background: #ffffff08;
+  color: #dcdcdc;
+}
+.insp-segment .seg-key {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  color: #cfcfcf;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.insp-segment .seg-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.insp-segment.active {
+  background: #2f3338;
+  color: #f2f2f2;
+}
+.insp-segment.active .seg-key {
+  background: #e0e0e0;
+  color: #111;
+}
+
+.insp-carousel-count {
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+  font-size: 10.5px;
+  color: #8a8a8a;
+}
+
+.insp-carousel-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  overscroll-behavior: contain;
+}
+.insp-carousel-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+.insp-carousel-viewport::-webkit-scrollbar-thumb {
+  background: #2c2c2c;
+  border-radius: 4px;
+}
+
+.insp-carousel-track {
+  display: flex;
+  width: 100%;
+  transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+.insp-carousel-track.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+.insp-carousel-page {
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 0 2px 14px;
+}
+.insp-carousel-page > * {
+  flex: none;
+}
+
+/* The inspector heading (title + breadcrumbs) stays pinned above the menu strip. */
+.inspector-scroll .inspector-heading {
+  flex: none;
+}
+
+@media (max-width: 380px) {
+  .insp-carousel-count {
+    display: none;
+  }
+  .insp-segment .seg-label {
+    display: none;
+  }
+  .insp-segment .seg-key {
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+  }
+}
