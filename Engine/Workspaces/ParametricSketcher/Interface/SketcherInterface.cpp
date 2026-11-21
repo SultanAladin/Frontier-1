@@ -13960,7 +13960,7 @@ void ActivateContextTool(SketcherWorkspaceStatus& State, int Tool)
     else if (Tool == 4) State.Fill.ActiveCondition ? CloseFillSession(State) : OpenFillSession(State);
     else if (Tool == 5) ToggleDimensionSession(State);
     else if (Tool == 6) State.Knife.ActiveCondition ? CloseKnifeSession(State, "Knife closed") : OpenKnifeSession(State);
-    else if (Tool == 7) OpenSweepSession(State, SketcherSweepVerb::Offset);
+    else if (Tool == 7) ContextToolActive(State, Tool) ? CancelSweepSession(State) : OpenSweepSession(State, SketcherSweepVerb::Offset);
     else if (Tool == 8)
     {
         State.SurfaceTraceEnabled = !State.SurfaceTraceEnabled;
@@ -14041,6 +14041,8 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     if (State.ConstructMenuRequest)
     {
         ImGui::OpenPopup("ConstructMenu");
+        State.ContextToolPage = -1;
+        State.ContextToolSlide = 0.0f;
         State.ConstructMenuRequest = false;
     }
     // ⚠️ The section shown this frame is fixed here: a section click below changes State.ConstructSection, and the
@@ -14071,11 +14073,25 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     Sheet.Line(Left, Top + 40.5f, Right, Top + 40.5f, SketcherWash(0x12));
     const float HeaderCentre = Top + 20.0f;
     Sheet.Surface().FillRectangle(Spanning(Left + 16.0f, HeaderCentre - 4.0f, 8.0f, 8.0f), SketcherInk(0x4fd8e0), 4.0f);
-    Sheet.Text(Left + 16.0f + 8.0f + 12.0f, HeaderCentre, 12.0f, SketcherInk(0xdddddd), "Context", SketcherWeight::Regular);
+    const bool ToolOptions = State.ContextToolPage >= 0 && State.ContextToolPage < ContextToolCount;
+    float TitleLeft = Left + 16.0f + 8.0f + 12.0f;
+    if (ToolOptions)
+    {
+        const PlaneExtent Back = Spanning(TitleLeft, HeaderCentre - 12.0f, 24.0f, 24.0f);
+        const SketcherPress BackPress = PressSketcherRegion(State.Widgets, "ContextToolBack", Back);
+        if (BackPress.HoveredCondition) Sheet.Box(Back, SketcherWash(0x16), 6.0f);
+        Sheet.Text(Back.MinimumX + 7.0f, HeaderCentre, 14.0f, SketcherInk(0xdddddd), "‹");
+        if (BackPress.ClickedCondition) { State.ContextToolPage = -1; State.ContextToolSlide = -1.0f; }
+        TitleLeft += 31.0f;
+    }
+    const std::string ContextTitle = ToolOptions ? std::string(ContextTools[State.ContextToolPage].Label) + " options" : "Context";
+    Sheet.Text(TitleLeft, HeaderCentre, 12.0f, SketcherInk(0xdddddd), ContextTitle.c_str(), SketcherWeight::Regular);
     if (SheetIconButton(State, Sheet, "ConstructMenuClose", Right - 12.0f - 12.0f, HeaderCentre, 24.0f, IconSymbol::SketcherClose, 17.0f)) ImGui::CloseCurrentPopup();
     Sheet.TextRight(Right - 12.0f - 24.0f - 12.0f, HeaderCentre, 10.0f, SketcherInk(0xdddddd), "Tab");
     // #construct-sections — 132 px, #0003, #ffffff12 right border, padding 8 6; button 36 px, radius 7, 11 px.
     const float Body = Top + 41.0f;
+    if (!ToolOptions)
+    {
     Sheet.Surface().FillRectangle(PlaneExtent{ Left, Body, Left + 132.0f, Bottom }, SketcherInk(0x000000, 0.2f), 0.0f);
     Sheet.Line(Left + 131.5f, Body, Left + 131.5f, Bottom, SketcherWash(0x12));
     // Sections: the reference catalogue's Solids and Sketch (3-D primitives become bodies, 2-D tools become sketches), and
@@ -14113,12 +14129,18 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
                    SketcherInk(!Enabled ? 0x666666 : Press.HoveredCondition || Active ? 0xeeeeee : 0xaaaaaa), Entry.Label);
         if (Press.ClickedCondition)
         {
-            ImGui::CloseCurrentPopup();
-            // Construct is a separate tool family. Leaving Knife here clears its modal ownership before a normal
-            // primitive/sketch session starts; otherwise Knife keeps intercepting the completed primitive.
-            if (Entry.Tool >= 0) { ActivateContextTool(State, Entry.Tool); }
+            // Editing tools drill into an options page without dismissing the context surface. This restores the
+            // original catalogue → tool-options carousel; the page's primary action starts or ends the chosen tool.
+            if (Entry.Tool >= 0)
+            {
+                State.ContextToolPage = Entry.Tool;
+                State.ContextToolSlide = 1.0f;
+            }
             else
             {
+                ImGui::CloseCurrentPopup();
+                // Construct is a separate tool family. Leaving Knife here clears its modal ownership before a normal
+                // primitive/sketch session starts; otherwise Knife keeps intercepting the completed primitive.
                 if (State.Knife.ActiveCondition) CloseKnifeSession(State, "Knife closed · Construct tool active");
                 if (Displayed == 2) State.PopupRequest = "Image plane";
                 else if (Entry.SolidCondition) OpenSolidSession(State, Entry.Solid);
@@ -14136,10 +14158,56 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     }
     // .construct-catalogue footer — 28 px, #ffffff12 top border, padding 8 10, 9 px #828282.
     Sheet.Line(Left + 132.0f, Bottom - 28.0f + 0.5f, Right, Bottom - 28.0f + 0.5f, SketcherWash(0x12));
-    Sheet.Text(Left + 132.0f + 10.0f, Bottom - 14.0f, 9.0f, SketcherInk(0x828282), Displayed == 3 ? "The same editing tools as the lower viewport toolbar"
+    Sheet.Text(Left + 132.0f + 10.0f, Bottom - 14.0f, 9.0f, SketcherInk(0x828282), Displayed == 3 ? "Select a tool to slide its options into this menu"
                                                                                    : Displayed == 2 ? "A picture on the top, front or right plane to trace over (not in the history)"
                                                                                    : Displayed == 1 ? "Click a tool, then draw it in the viewport · Enter / right-click finishes"
                                                                                        : "Click a solid, then draw it in the viewport · Tab types exact sizes");
+    }
+    else
+    {
+        static const char* const Help[ContextToolCount] = {
+            "Closes the current editing tool and returns to ordinary object and component selection.",
+            "Click a planar or 3D curve to divide it at the pointer while preserving its shape.",
+            "Click a sketch curve to insert a control point without changing the surrounding curve.",
+            "Click the segment of a sketch you want removed. Escape finishes the trim session.",
+            "Choose a closed boundary in the viewport to create or update a filled sketch region.",
+            "Pick geometry, place the measurement, then type a precise value when applicable.",
+            "Draw or pick a cutter, then choose depth, through-cut, outward add or imprint-only in the viewport.",
+            "Select an arc, circle or sketch, then drag or type a signed offset distance and press Enter.",
+            "Places curve controls on model surfaces. Hold Ctrl to prefer authored curves and edges." };
+        static const char* const Shortcut[ContextToolCount] = { "Esc", "—", "V", "T", "F", "D", "Shift+K", "O", "Shift+S" };
+        const int Tool = State.ContextToolPage;
+        const bool Enabled = ContextToolEnabled(State, Tool);
+        const bool Active = ContextToolActive(State, Tool);
+        const float Travel = std::max(0.0f, State.ContextToolSlide) * 150.0f;
+        State.ContextToolSlide = std::max(0.0f, State.ContextToolSlide - ImGui::GetIO().DeltaTime * 8.0f);
+        const float PageLeft = Left + 24.0f + Travel;
+        const PlaneExtent Hero = Spanning(PageLeft, Body + 20.0f, Right - Left - 48.0f, 92.0f);
+        Sheet.Box(Hero, SketcherWash(0x0c), 10.0f, SketcherWash(0x18));
+        Sheet.Icon(ContextTools[Tool].Glyph, Hero.MinimumX + 20.0f, Hero.MinimumY + 20.0f, 32.0f, SketcherInk(Enabled ? 0xeeeeee : 0x666666));
+        Sheet.Text(Hero.MinimumX + 68.0f, Hero.MinimumY + 28.0f, 14.0f, SketcherInk(0xeeeeee), ContextTools[Tool].Label, SketcherWeight::Regular);
+        Sheet.Text(Hero.MinimumX + 68.0f, Hero.MinimumY + 55.0f, 10.0f, SketcherInk(0x8d969f), Active ? "Active in viewport" : Enabled ? "Ready" : "Unavailable for the current selection");
+        const PlaneExtent ShortcutChip = Spanning(Hero.MaximumX - 76.0f, Hero.MinimumY + 18.0f, 58.0f, 24.0f);
+        Sheet.Box(ShortcutChip, SketcherWash(0x10), 6.0f, SketcherWash(0x20));
+        const float ShortcutWidth = Sheet.Measure(Shortcut[Tool], 9.0f);
+        Sheet.Text(ShortcutChip.MinimumX + 0.5f * (58.0f - ShortcutWidth), ShortcutChip.MinimumY + 12.0f, 9.0f, SketcherInk(0xaaaaaa), Shortcut[Tool]);
+        Sheet.Text(PageLeft, Body + 138.0f, 10.0f, SketcherInk(0x858b91), Help[Tool]);
+
+        const PlaneExtent Action = Spanning(PageLeft, Bottom - 78.0f, 176.0f, 36.0f);
+        const SketcherPress ActionPress = PressSketcherRegion(State.Widgets, "ContextToolAction", Action, Enabled || Active);
+        Sheet.Box(Action, SketcherInk(ActionPress.HoveredCondition ? 0x317b82 : Active ? 0x353b40 : 0x245f65), 8.0f);
+        const char* ActionLabel = Tool == 0 ? "Return to Select" : Active ? "End tool" : "Use tool";
+        const float ActionWidth = Sheet.Measure(ActionLabel, 11.0f);
+        Sheet.Text(Action.MinimumX + 0.5f * (176.0f - ActionWidth), Action.MinimumY + 18.0f, 11.0f, SketcherInk(0xffffff), ActionLabel, SketcherWeight::Regular);
+        if (ActionPress.ClickedCondition) ActivateContextTool(State, Tool);
+        const PlaneExtent BackButton = Spanning(Action.MaximumX + 10.0f, Bottom - 78.0f, 108.0f, 36.0f);
+        const SketcherPress BackPress = PressSketcherRegion(State.Widgets, "ContextToolBackButton", BackButton);
+        Sheet.Box(BackButton, SketcherWash(BackPress.HoveredCondition ? 0x18 : 0x0c), 8.0f, SketcherWash(0x20));
+        Sheet.Text(BackButton.MinimumX + 22.0f, BackButton.MinimumY + 18.0f, 10.0f, SketcherInk(0xcccccc), "‹ All tools");
+        if (BackPress.ClickedCondition) { State.ContextToolPage = -1; State.ContextToolSlide = -1.0f; }
+        Sheet.Line(Left, Bottom - 28.0f + 0.5f, Right, Bottom - 28.0f + 0.5f, SketcherWash(0x12));
+        Sheet.Text(Left + 16.0f, Bottom - 14.0f, 9.0f, SketcherInk(0x828282), "Tool options stay in Context · Back returns to the catalogue");
+    }
     ImGui::EndPopup();
 }
 

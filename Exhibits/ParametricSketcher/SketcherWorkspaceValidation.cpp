@@ -655,11 +655,17 @@ int main()
                                     && std::abs(State.ConstructMenuPointer[0] - 620.0f) < 0.5f
                                     && std::abs(State.ConstructMenuPointer[1] - 360.0f) < 0.5f;
         StepHostedFrame([&]() {});                                                           // Consume the request and open the popup
+        State.ConstructSection = 3;
+        State.ContextToolPage = 3;
+        State.ContextToolSlide = 1.0f;
+        StepHostedFrame([&]() {});
+        const bool ContextToolOptions = State.ContextToolPage == 3 && State.ContextToolSlide < 1.0f;
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, true); });
         StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Escape, false); });
         if (!VerifyCheck(LineDrawingStarted, "Shift+A starts Line drawing session") ||
             !VerifyCheck(LineToolRearmed, "Completed Construct sketch keeps its drawing tool active") ||
-            !VerifyCheck(EmptyRmbConstruct, "Empty viewport RMB requests Construct menu at pointer"))
+            !VerifyCheck(EmptyRmbConstruct, "Empty viewport RMB requests Construct menu at pointer") ||
+            !VerifyCheck(ContextToolOptions, "Context tool selection slides to options without closing the menu"))
         {
             Host.Finalize();
             Dock.Finalize();

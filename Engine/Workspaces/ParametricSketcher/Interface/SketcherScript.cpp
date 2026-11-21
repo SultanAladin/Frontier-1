@@ -793,6 +793,7 @@ bool ObserveField(const SketcherWorkspaceStatus& State, const std::string& Field
     if (Field == "construct-open") return Numeric(State.ConstructShown ? 1 : 0);
     if (Field == "construct-combination") return Numeric(int(State.Drawing.ActiveCondition && State.Drawing.SolidCondition ? State.Drawing.Combination : State.ConstructForm.Combination));
     if (Field == "construct-section") return Numeric(State.ConstructSection);
+    if (Field == "context-tool-page") return Numeric(State.ContextToolPage);
     if (Field == "bevel-active") return Numeric(State.Bevel.ActiveCondition ? 1 : 0);
     if (Field == "bevel-size") return Numeric(State.Bevel.Size);
     if (Field == "bevel-axis") return Numeric(State.Bevel.AxisCondition ? 1 : 0);
