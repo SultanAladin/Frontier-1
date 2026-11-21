@@ -735,6 +735,56 @@ int main()
                 return 1;
             }
 
+            // Progressive PT must render continuously until it converges at the target spp:
+            // batch 4/frame, target 16 -> exactly 4 dispatches, then reset restarts at 0.
+            {
+                GeometricRaster::WorldRenderConfiguration PtConfig {};
+                PtConfig.Engine           = GeometricRaster::WorldRenderEngine::PathTracerSceneFinalRender;
+                PtConfig.PathTraceSamples = 4u;
+                PtConfig.PathTraceTargetSpp = 16u;
+                GpuWorldSeq.ResetProgressiveAccumulation();
+                std::vector<uint8_t> RgbaPt {};
+                uint32_t Dispatches = 0u;
+                while (GpuWorldSeq.QueryProgressiveSampleCount() < 16u && Dispatches < 16u)
+                {
+                    if (!GpuWorldSeq.RenderWorldViewportWithEngine(PtConfig, Dispatches, GpuGallery.EditorCamera, GpuGallery.Scene, RgbaPt))
+                    {
+                        std::fprintf(stderr, "[FAIL] Progressive PT dispatch failed.\n");
+                        GpuWorldSeq.TeardownSequence();
+                        VkDevice.TeardownInterchange();
+                        return 1;
+                    }
+                    ++Dispatches;
+                }
+                uint64_t PtLuma = 0u;
+                for (std::size_t Pix = 0u; Pix + 3u < RgbaPt.size(); Pix += 4u)
+                {
+                    PtLuma += static_cast<uint64_t>(RgbaPt[Pix]) + RgbaPt[Pix + 1u] + RgbaPt[Pix + 2u];
+                }
+                if (Dispatches != 4u || GpuWorldSeq.QueryProgressiveSampleCount() != 16u ||
+                    RgbaPt.size() != 200u * 120u * 4u || PtLuma == 0u)
+                {
+                    std::fprintf(
+                        stderr,
+                        "[FAIL] Progressive PT convergence check failed (Dispatches=%u Spp=%u Bytes=%zu Luma=%llu).\n",
+                        Dispatches,
+                        GpuWorldSeq.QueryProgressiveSampleCount(),
+                        RgbaPt.size(),
+                        static_cast<unsigned long long>(PtLuma));
+                    GpuWorldSeq.TeardownSequence();
+                    VkDevice.TeardownInterchange();
+                    return 1;
+                }
+                GpuWorldSeq.ResetProgressiveAccumulation();
+                if (GpuWorldSeq.QueryProgressiveSampleCount() != 0u)
+                {
+                    std::fprintf(stderr, "[FAIL] Progressive PT reset did not restart accumulation.\n");
+                    GpuWorldSeq.TeardownSequence();
+                    VkDevice.TeardownInterchange();
+                    return 1;
+                }
+            }
+
             GpuWorldSeq.TeardownSequence();
             VkDevice.TeardownInterchange();
         }

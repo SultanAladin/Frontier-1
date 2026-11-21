@@ -120,3 +120,23 @@ Known limits: XeGTAO search radius fixed at 0.85 m (expose in prototype if wante
 views show glass as black like pre-existing channels 1–7; CPU Tiered path implements 13/15
 only (12/14/16 are GPU-path views); XeGTAO visual quality still wants an eyeball pass in the
 real editor (SwiftShader proofs here are numeric, not aesthetic).
+
+## 8. Follow-on: convergent PT & Nanite-like LOD bake
+
+**Path tracing (engines 4/5):** was capped at a hardcoded 64/256 spp. Now renders
+continuously until converged — editor re-dispatches every frame, GPU accumulates
+`PT Batch/Frame` (1/2/4/8, HTML lab parity) samples per dispatch via spare uniform
+slots, stops at `PT Target SPP` (64…1024 or Inf = render until camera/scene/settings
+change). Footer shows `PT N / Target spp · converged`. Validated on SwiftShader:
+batch 4 × target 16 converged in exactly 4 dispatches with a non-black frame, and
+reset restarts at 0 (`ProjectBrowserValidation`).
+
+**Nanite-like LOD:** the 128-triangle cluster QEM pyramid already existed; added the
+missing per-asset bake recipe (`ClusterLodBakeConfiguration`): bake depth 1–8,
+**last selectable level** (glass scene assets capped at LOD 1, everything else
+uncapped), and **material-boundary locking** — vertices shared by faces of different
+material slots never collapse, so every face keeps its material slot at every level.
+The runtime monotonic cut treats capped clusters as terminal (no holes).
+`ClusterLodBakeValidation`: 800-tri two-material grid baked 4 levels (800→116 tris),
+slots {3,7} present and side-correct at every level, cap 0 keeps the far cut at LOD 0,
+serialization v2 round-trips the cap (v1 payloads still load).
