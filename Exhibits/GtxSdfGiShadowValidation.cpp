@@ -288,7 +288,7 @@ void ExtractTrianglesFromNetwork(
     }
 }
 
-struct CornellVehicleBayLayout
+struct VehicleBayLayout
 {
     static constexpr std::size_t MaxAssets = 64u;
     std::array<GeometrySpace::PolygonNetwork, MaxAssets>       Networks {};
@@ -300,11 +300,11 @@ struct CornellVehicleBayLayout
     WorldSceneSpecification Scene {};
 };
 
-void BuildCornellVehicleBay(
+void BuildVehicleBay(
     const AssembledControlVehicle&                        Vehicle,
     float                                                 CharacterPoseFraction,
     const DistanceFieldSpace::LocalSignedDistanceVolume*  OptionalGtxCarVolume,
-    CornellVehicleBayLayout&                            OutBay)
+    VehicleBayLayout&                            OutBay)
 {
     OutBay = {};
     auto& Reg = OutBay.Scene.MaterialRegister;
@@ -369,19 +369,19 @@ void BuildCornellVehicleBay(
     }
 
     MaterialSpace::SurfaceMaterial WhitePlaster {};
-    WhitePlaster.MaterialName       = "CornellMatteWhitePlaster";
+    WhitePlaster.MaterialName       = "MatteWhitePlaster";
     WhitePlaster.Diffuse.BaseColor  = { 0.76f, 0.76f, 0.74f };
     WhitePlaster.Specular.Roughness = 0.85f;
     const uint16_t SlotWhite = Reg.RegisterMaterial(WhitePlaster);
 
     MaterialSpace::SurfaceMaterial RedWall {};
-    RedWall.MaterialName       = "CornellCrimsonLeftWall";
+    RedWall.MaterialName       = "CrimsonLeftWall";
     RedWall.Diffuse.BaseColor  = { 0.74f, 0.11f, 0.09f };
     RedWall.Specular.Roughness = 0.85f;
     const uint16_t SlotRed = Reg.RegisterMaterial(RedWall);
 
     MaterialSpace::SurfaceMaterial GreenWall {};
-    GreenWall.MaterialName       = "CornellEmeraldRightWall";
+    GreenWall.MaterialName       = "EmeraldRightWall";
     GreenWall.Diffuse.BaseColor  = { 0.11f, 0.68f, 0.16f };
     GreenWall.Specular.Roughness = 0.85f;
     const uint16_t SlotGreen = Reg.RegisterMaterial(GreenWall);
@@ -466,7 +466,7 @@ void BuildCornellVehicleBay(
         ++NextAsset;
     };
 
-    // 3. Subdivided 5x4 Cornell Bay Floor (avoids CPU near-clip straddling across camera plane!)
+    // 3. Subdivided 5x4 Vehicle Bay Floor (avoids CPU near-clip straddling across camera plane!)
     for (int IX = 0; IX < 5; ++IX)
     {
         for (int IY = 0; IY < 4; ++IY)
@@ -476,11 +476,10 @@ void BuildCornellVehicleBay(
             AddStaticBox({ CX, CY, -0.08f }, { 2.0f, 1.8f, 0.16f }, SlotWhite, false);
         }
     }
-    // Open-top studio (reference hero design): boundary floor/walls stay out of GtxInteriorBoxes so receivers never self-occlude!
-    // Back wall (-X), Red Left Wall (-Y), Green Right Wall (+Y) + interior column (sole SDF box occluder!)
-    AddStaticBox({ -4.10f,  0.0f, 1.90f }, { 0.30f, 7.20f, 3.80f }, SlotWhite, false);
-    AddStaticBox({  0.0f,  -3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotRed,   false);
-    AddStaticBox({  0.0f,   3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotGreen, false);
+    // Open-top studio: vertical walls + interior column registered in GtxInteriorBoxes (endpoint self-box filter prevents wall self-occlusion!)
+    AddStaticBox({ -4.10f,  0.0f, 1.90f }, { 0.30f, 7.20f, 3.80f }, SlotWhite, true);
+    AddStaticBox({  0.0f,  -3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotRed,   true);
+    AddStaticBox({  0.0f,   3.65f, 1.90f }, { 8.40f, 0.30f, 3.80f }, SlotGreen, true);
     AddStaticBox({ -1.80f,  2.20f, 1.10f }, { 0.52f, 0.52f, 2.20f }, SlotWhite, true);
 
     // 4. Live Deforming Articulated Character in Pose A (0.0) or Pose B (1.0) standing right beside ControlVehicle
@@ -970,8 +969,8 @@ int main()
     Camera.ViewportWidthPx    = ViewW;
     Camera.ViewportHeightPx   = ViewH;
 
-    CornellVehicleBayLayout BayPoseB_Gtx {};
-    BuildCornellVehicleBay(Vehicle, 1.0f, &GtxCarVolume, BayPoseB_Gtx);
+    VehicleBayLayout BayPoseB_Gtx {};
+    BuildVehicleBay(Vehicle, 1.0f, &GtxCarVolume, BayPoseB_Gtx);
     TieredWorldRenderSequence Renderer {};
     Renderer.PrepareWorldScene(BayPoseB_Gtx.Scene);
 
@@ -988,8 +987,8 @@ int main()
     const WorldRenderOutput OutGtxSurfel = Renderer.RenderWorldFrameWithEngine(CfgGtxSurfel, Camera, Camera, BayPoseB_Gtx.Scene);
 
     // 4c. HighEnd (0 MB SDF!) Pose A (Dual-Cascade 19x15x6 + 9x7x4, 96 BVH4 Chebyshev rays)
-    CornellVehicleBayLayout BayPoseA_High {};
-    BuildCornellVehicleBay(Vehicle, 0.0f, nullptr, BayPoseA_High);
+    VehicleBayLayout BayPoseA_High {};
+    BuildVehicleBay(Vehicle, 0.0f, nullptr, BayPoseA_High);
     Renderer.PrepareWorldScene(BayPoseA_High.Scene);
 
     WorldRenderConfiguration CfgHighEnd {};
@@ -999,8 +998,8 @@ int main()
     const WorldRenderOutput OutHighPoseA = Renderer.RenderWorldFrameWithEngine(CfgHighEnd, Camera, Camera, BayPoseA_High.Scene);
 
     // 4d. HighEnd (0 MB SDF!) Pose B (deformed character BVH4 refit)
-    CornellVehicleBayLayout BayPoseB_High {};
-    BuildCornellVehicleBay(Vehicle, 1.0f, nullptr, BayPoseB_High);
+    VehicleBayLayout BayPoseB_High {};
+    BuildVehicleBay(Vehicle, 1.0f, nullptr, BayPoseB_High);
     Renderer.PrepareWorldScene(BayPoseB_High.Scene);
     const WorldRenderOutput OutHighPoseB = Renderer.RenderWorldFrameWithEngine(CfgHighEnd, Camera, Camera, BayPoseB_High.Scene);
 

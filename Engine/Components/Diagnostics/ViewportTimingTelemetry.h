@@ -59,8 +59,12 @@ struct ViewportTimingBreakdown
     switch (EngineMode)
     {
     case 0u: return "MatCap";
-    case 1u: return "OpenPBR";
-    default: return "OpenPBR";
+    case 1u: return "OpenPBR Direct";
+    case 2u: return "GTX GDF GI";
+    case 3u: return "HighEnd BVH4";
+    case 4u: return "PT Realtime";
+    case 5u: return "PT Final";
+    default: return "GTX GDF GI";
     }
 }
 

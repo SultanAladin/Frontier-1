@@ -98,14 +98,18 @@ float SampleVehicleDistanceLat(float3 WorldPos)
     return select(BoxD > 0.0, sqrt(BoundaryD * BoundaryD + BoxD * BoxD), BoundaryD);
 }
 
-float EvaluateInteriorDistanceLat(float3 WorldPos)
+float EvaluateInteriorDistanceLat(float3 WorldPos, float3 EndpointA, float3 EndpointB)
 {
     float BestD = 20.0;
     uint BoxCount = LatticeUniforms.VolumeDimsSdf.w;
     for (uint B = 0u; B < BoxCount; ++B)
     {
         GpuClosedBox32 Box = InteriorBoxes[B];
-        if (Box.HalfExtent.x > 3.5 || Box.HalfExtent.y > 3.5) continue;
+        if (Box.HalfExtent.x > 3.5 && Box.HalfExtent.y > 3.5) continue;
+        float3 QA = abs(EndpointA - Box.CenterWorld) - Box.HalfExtent;
+        if (length(max(QA, float3(0.0))) + min(max(QA.x, max(QA.y, QA.z)), 0.0) < 0.055) continue;
+        float3 QB = abs(EndpointB - Box.CenterWorld) - Box.HalfExtent;
+        if (length(max(QB, float3(0.0))) + min(max(QB.x, QB.z > -1.0e9 ? max(QB.y, QB.z) : QB.y), 0.0) < 0.055) continue;
         float3 Q = abs(WorldPos - Box.CenterWorld) - Box.HalfExtent;
         BestD = min(BestD, length(max(Q, float3(0.0))) + min(max(Q.x, max(Q.y, Q.z)), 0.0));
     }
@@ -150,7 +154,7 @@ float EvaluateGtxFarFieldVisibilityLat(float3 RPos, float3 RNrm, float3 Target, 
         float RampOut = 1.0 - SmoothHermiteLat(EndT - 0.14, EndT, T);
         float Weight  = RampIn * RampOut * PlaneFade;
         if (Weight <= 1.0e-4) continue;
-        float Dist    = EvaluateInteriorDistanceLat(SampleP);
+        float Dist    = EvaluateInteriorDistanceLat(SampleP, RPos, Target);
         float ConeR   = max(0.036, T * AngRadius);
         float StepVis = SmoothHermiteLat(-0.025, ConeR * 0.72, Dist + 0.015);
         float Occ     = (1.0 - StepVis) * Weight;
@@ -244,7 +248,8 @@ float3 SampleCascadeHermite(
                 float3 ToN  = NPos - ShadingPos;
                 float  TLen = length(ToN);
                 float3 DirN = (TLen > 1.0e-5) ? (ToN / TLen) : ShadingNrm;
-                float  BackW = max(0.08, 0.5 + 0.5 * dot(ShadingNrm, DirN));
+                float  WrapC = max(0.005, (dot(ShadingNrm, DirN) + 0.14) / 1.14);
+                float  BackW = WrapC * WrapC;
                 float  ChebW = SampleChebyshevWeight(Moments, Idx, Res, MomentsPresent, ShadingPos, NPos);
                 float  W     = HW * BackW * ChebW;
                 Accum += SampleOctaSheet(Sheets, Idx, Res, ShadingNrm) * W;

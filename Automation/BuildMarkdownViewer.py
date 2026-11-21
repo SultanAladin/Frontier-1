@@ -1732,8 +1732,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   let noteSaveTimer = null;
   let noteDirty = false;
 
-  // Pre-open Plan docs in center tabs (excluding SessionNotes.md / Note-*.md so center starts on the active Plan)
-  DOCS.filter(d => String(d.group).startsWith('Plans') && d.name !== 'SessionNotes.md' && !d.name.startsWith('Note-')).forEach(d => openTabs.push(d.path));
+  // Pre-open Plan docs in center tabs (starting on DataDrivenSpaceContentFormattingPlan.md when present)
+  const preferredPlan = 'Documentation/Plans/DataDrivenSpaceContentFormattingPlan.md';
+  if (docByPath.has(preferredPlan)) {
+    openTabs.push(preferredPlan);
+  }
+  DOCS.filter(d => String(d.group).startsWith('Plans') && d.path !== preferredPlan && d.name !== 'SessionNotes.md' && !d.name.startsWith('Note-')).forEach(d => openTabs.push(d.path));
   if (openTabs.length === 0 && DOCS.length > 0) {
     openTabs.push(DOCS[0].path);
   }

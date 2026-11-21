@@ -68,11 +68,16 @@ struct WorldRenderConfiguration
     SpecularReflectionSource              ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
     RealTimeGiCandidate                   GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
     DirectLighting::SdfShadowPenumbraMode SdfPenumbraMode     = DirectLighting::SdfShadowPenumbraMode::AnalyticSdfConePenumbra;
-    uint32_t                              DebugChannel        = 0u;   // [0..11] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular
+    uint32_t                              DebugChannel        = 0u;   // [0..16] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular, 12=SdfDistance, 13=SdfMaterial, 14=SdfNormal, 15=SdfAoRaw, 16=SdfCascade
     bool                                  ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
     bool                                  RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
+    bool                                  XeGtaoEnabled       = false; // [-]    - XeGTAO screen-space AO for direct PBR (no GI contribution)
+    float                                 XeGtaoStrength      = 1.0f;  // [x]    - XeGTAO occlusion strength multiplier [0..2]
     uint32_t                              QualityTier         = 1u;   // [0..4]  - Quality tier
     uint32_t                              PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
+    uint32_t                              PathTraceTargetSpp  = 0u;   // [spp]   - Convergence target for progressive PT (0 = continuous, no cap)
+    bool                                  NaniteLodEnabled    = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut (Nanite-like) instead of full-res geometry
+    float                                 NanitePixelError    = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
 };
 
 struct WorldSceneSpecification
@@ -123,7 +128,9 @@ public:
     // Attaches an optional Vulkan 1.3 DeterministicPathTraceSequence for Order 3 (GameRealtime & SceneFinalRender)
     void AttachDeterministicPathTracer(DeterministicPathTraceSequence* Tracer) noexcept
     {
-        AttachedPathTracer = Tracer;
+        AttachedPathTracer        = Tracer;
+        SyncedPathTracerPrimCount = 0u;
+        SyncedPathTracerMatCount  = 0u;
     }
 
     // Compiles compact 32 B BounceSlabEntries for every registered OpenPBR material slot
@@ -154,11 +161,13 @@ public:
     [[nodiscard]] const AtmosphericSkySequence&    InspectSkySequence() const noexcept       { return SkySequence; }
 
 private:
-    DeterministicPathTraceSequence* AttachedPathTracer = nullptr;
-    OrthographicShadowCascade       FineContactClip    {};
-    OrthographicShadowCascade       CoarseContactClip  {};
-    DepthPyramidSequence            PreviousHiZ        {};
-    AtmosphericSkySequence          SkySequence        {};
+    DeterministicPathTraceSequence* AttachedPathTracer        = nullptr;
+    std::size_t                     SyncedPathTracerPrimCount = 0u;
+    uint32_t                        SyncedPathTracerMatCount  = 0u;
+    OrthographicShadowCascade       FineContactClip           {};
+    OrthographicShadowCascade       CoarseContactClip         {};
+    DepthPyramidSequence            PreviousHiZ               {};
+    AtmosphericSkySequence          SkySequence               {};
 };
 
 } // namespace Frontier::GeometricRaster

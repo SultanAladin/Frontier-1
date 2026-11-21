@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                     STOKESCONTOURIRRADIANCESEQUENCE.H
+                                                    STOKESCONTOURIRRADIANCESEQUENCE.H
 ============================================================================================================================================*/
-// 🧩 Order 2 GI Candidate 1: Exact Sutherland-Hodgman spherical-polygon Stokes contour integral + 2-bounce diffuse patch radiosity
+// 🧩 Order 2 GI Candidate 1: Closed-Form Stokes Contour Emissive Irradiance + Stratified Multi-Bounce Virtual Diffuse Patches
 
 #pragma once
 
@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/GeometricRaster/DirectLighting/HybridConeShadowSequence.h"
+#include "Engine/GeometricRaster/DirectLighting/LinearCosineLightIntegration.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
 #include "Engine/Mathematics/LinearColors.h"
 #include "Engine/SpatialAcceleration/CompressedWideTree.h"
@@ -21,92 +22,92 @@
 namespace Frontier::GeometricRaster::GlobalIllumination
 {
 
-//------------------------------------------------------------------------------------------------------------------------
-//                                                       STRUCTURES
-//------------------------------------------------------------------------------------------------------------------------
-
-struct EmissiveTriangleRadiator
+struct EmissiveTriangleEmitter
 {
-    Mathematics::Axis3D    Vertex0         {};
-    Mathematics::Axis3D    Vertex1         {};
-    Mathematics::Axis3D    Vertex2         {};
-    Mathematics::Axis3D    GeometricNormal { 0.0f, 0.0f, -1.0f };
-    Mathematics::Axis3D    Centroid        {};
-    float                  SurfaceArea     = 0.0f;
-    Mathematics::LinearRGB RadianceRgb     {}; // [W/(m^2*sr)]
-    uint32_t               ClusterId       = 0u;
-    bool                   TwoSidedRadiator = false;
+    Mathematics::Axis3D    CornerA       {};
+    Mathematics::Axis3D    CornerB       {};
+    Mathematics::Axis3D    CornerC       {};
+    Mathematics::Axis3D    Centroid      {};
+    Mathematics::Axis3D    OutwardNormal {};
+    Mathematics::LinearRGB Radiance      {}; // [cd/m^2]
+    float                  SurfaceArea   = 0.0f;
+    uint32_t               ClusterId     = 0u;
 };
 
 struct EmissiveLuminaireCluster
 {
     Mathematics::Axis3D    RepresentativePos    {};
-    Mathematics::Axis3D    RepresentativeNormal { 0.0f, 0.0f, -1.0f };
-    float                  BoundingRadius       = 0.25f;
+    Mathematics::Axis3D    SamplePosA           {};
+    Mathematics::Axis3D    SamplePosB           {};
+    Mathematics::Axis3D    SamplePosC           {};
+    Mathematics::Axis3D    RepresentativeNormal {};
+    float                  BoundingRadius       = 0.35f;
     float                  TotalArea            = 0.0f;
-    Mathematics::LinearRGB MeanRadianceRgb      {};
-    bool                   TwoSidedCluster      = false;
 };
 
 struct DiffuseBouncePatch
 {
-    Mathematics::Axis3D    Position   {};
-    Mathematics::Axis3D    Normal     { 0.0f, 0.0f, 1.0f };
-    Mathematics::LinearRGB AlbedoRgb  {};
-    float                  AreaMeters = 0.25f;
-    float                  Radius     = 0.28f;
-    Mathematics::LinearRGB Radiance1  {}; // 1st-bounce diffuse exitant radiance L = (Albedo/Pi) * E_direct
-    Mathematics::LinearRGB Radiance2  {}; // 1st + 2nd bounce relaxed diffuse exitant radiance
+    Mathematics::Axis3D    Position    {};
+    Mathematics::Axis3D    Normal      {};
+    Mathematics::LinearRGB Albedo      {};
+    Mathematics::LinearRGB ExitantFlux {}; // [W/m^2] Lambertian exitance B = Albedo * E_in
+    float                  Area        = 0.0f;
 };
 
 struct StokesContourTierSettings
 {
-    bool     HighEndZeroSdfTier     = false; // false = GtxLowEnd (<=4.8 m contour + Hybrid SDF cone); true = HighEnd (all tris + BVH4)
-    float    ExactContourCutoffM    = 4.8f;  // [m] - GtxLowEnd switches to cluster Bunnell disk beyond 4.8 m
-    uint32_t ClusterShadowSamples   = 2u;    // [cnt] - HighEnd BVH4 luminaire rays per cluster
-    Mathematics::Axis3D    SunDirection { 0.45f, -0.35f, 0.82f };
-    Mathematics::LinearRGB SunRadiance  { 0.0f, 0.0f, 0.0f };
+    bool                    HighEndZeroSdfTier = false; // false = GtxLowEnd (hybrid SDF+contact); true = HighEnd (0-SDF BVH4)
+    uint32_t                TargetPatchBudget  = 112u;
+    Mathematics::Axis3D     SunDirection       { 0.38f, -0.46f, 0.80f };
+    Mathematics::LinearRGB  SunRadiance        { 0.0f, 0.0f, 0.0f };
+    std::span<const PolygonalAreaQuadLight> AreaLights {};
 };
 
-//------------------------------------------------------------------------------------------------------------------------
-//                                              STOKES CONTOUR IRRADIANCE SEQUENCE
-//------------------------------------------------------------------------------------------------------------------------
-
-// Exact closed-form Lambertian configuration factor F_{x->tri} in [0, 1] via Sutherland-Hodgman clipping + Stokes contour
-[[nodiscard]] float EvaluateClippedTriangleFormFactor(
-    Mathematics::Axis3D ReceiverPos,
-    Mathematics::Axis3D ReceiverNormal,
-    Mathematics::Axis3D TriV0,
-    Mathematics::Axis3D TriV1,
-    Mathematics::Axis3D TriV2,
-    Mathematics::Axis3D TriNormal,
-    bool                TwoSidedRadiator = false) noexcept;
-
-class StokesContourIrradianceSequence
+class StokesContourIrradianceSequence final
 {
 public:
-    std::vector<EmissiveTriangleRadiator>  Radiators {};
-    std::vector<EmissiveLuminaireCluster> Clusters {};
-    std::vector<DiffuseBouncePatch>       Patches  {};
-
-    void Reset() noexcept;
-
-    // Extracts emissive triangles into clustered luminaires and builds 2-bounce diffuse surface patches over non-emissive walls/car/rig
     void BuildFromScene(
         std::span<const SpatialAcceleration::RayTrianglePrimitive> Primitives,
-        std::span<const Mathematics::LinearRGB>                    MaterialAlbedoBySlot,
-        std::span<const Mathematics::LinearRGB>                    MaterialEmissiveBySlot,
+        std::span<const Mathematics::LinearRGB>                    MaterialDiffuseAlbedos,
+        std::span<const Mathematics::LinearRGB>                    MaterialEmissiveRadiance,
         const DirectLighting::HybridOccluderEnvironment&           Occluders,
         const StokesContourTierSettings&                           Settings);
 
-    // Evaluates 1st-bounce emissive Stokes irradiance + 2nd-bounce diffuse patch irradiance at an arbitrary shading point
-    [[nodiscard]] Mathematics::LinearRGB EvaluateTotalIrradiance(
-        Mathematics::Axis3D                              ReceiverPos,
-        Mathematics::Axis3D                              ReceiverNormal,
+    [[nodiscard]] Mathematics::LinearRGB EvaluateDirectEmissiveIrradiance(
+        Mathematics::Axis3D                              ShadingPos,
+        Mathematics::Axis3D                              ShadingNormal,
         const DirectLighting::HybridOccluderEnvironment& Occluders,
-        const StokesContourTierSettings&                 Settings,
-        Mathematics::LinearRGB*                          OptionalOutDirectEmissiveE = nullptr,
-        Mathematics::LinearRGB*                          OptionalOutBounceIndirectE = nullptr) const noexcept;
+        const StokesContourTierSettings&                 Settings) const noexcept;
+
+    [[nodiscard]] Mathematics::LinearRGB EvaluateIndirectBounceIrradiance(
+        Mathematics::Axis3D                              ShadingPos,
+        Mathematics::Axis3D                              ShadingNormal,
+        const DirectLighting::HybridOccluderEnvironment& Occluders,
+        const StokesContourTierSettings&                 Settings) const noexcept;
+
+    [[nodiscard]] Mathematics::LinearRGB EvaluateTotalIrradiance(
+        Mathematics::Axis3D                              ShadingPos,
+        Mathematics::Axis3D                              ShadingNormal,
+        const DirectLighting::HybridOccluderEnvironment& Occluders,
+        const StokesContourTierSettings&                 Settings) const noexcept;
+
+    [[nodiscard]] const std::vector<EmissiveTriangleEmitter>&  InspectEmissiveTriangles() const noexcept { return EmissiveTriangles; }
+    [[nodiscard]] const std::vector<EmissiveLuminaireCluster>& InspectClusters() const noexcept          { return Clusters; }
+    [[nodiscard]] const std::vector<DiffuseBouncePatch>&       InspectBouncePatches() const noexcept     { return BouncePatches; }
+
+private:
+    std::vector<EmissiveTriangleEmitter>  EmissiveTriangles {};
+    std::vector<EmissiveLuminaireCluster> Clusters          {};
+    std::vector<DiffuseBouncePatch>       BouncePatches     {};
 };
+
+// Exact Lambert (1760) / Stokes boundary vector irradiance integral for a clipped convex triangle
+[[nodiscard]] float EvaluateClippedStokesTriangleFormFactor(
+    Mathematics::Axis3D ShadingPos,
+    Mathematics::Axis3D ShadingNormal,
+    Mathematics::Axis3D CornerA,
+    Mathematics::Axis3D CornerB,
+    Mathematics::Axis3D CornerC,
+    Mathematics::Axis3D EmitterNormal) noexcept;
 
 } // namespace Frontier::GeometricRaster::GlobalIllumination

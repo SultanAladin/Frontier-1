@@ -337,6 +337,9 @@ frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ComputeEnt
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   CloudComputeEntry         compute  WorldViewportCloudCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DenoiseCompositeEntry     compute  WorldViewportDenoiseCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCascadeComputeEntry compute  WorldViewportShadowCascadeCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalDistanceBakeEntry   compute  WorldViewportGlobalDistanceBake.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalRadiosityBakeEntry  compute  WorldViewportGlobalRadiosityBake.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ViewportPathTraceEntry    compute  WorldViewportPathTraceCompute.comp.spv)
 
 set(FRONTIER_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/Generated")
 file(MAKE_DIRECTORY "${FRONTIER_GENERATED_INCLUDE_DIR}")
@@ -648,6 +651,7 @@ frontier_compile_world_module_slang_shader(GlobalIllumination/DisplayToneTransfo
 add_custom_target(FrontierShaders DEPENDS ${FRONTIER_SPV_OUTPUTS})
 
 set(FRONTIER_ENGINE_SOURCES
+    Engine/Lifecycle/ThoughtLog.cpp
     Engine/Configuration/EngineConfiguration.cpp
     Engine/Configuration/WorkspaceConfiguration.cpp
     Engine/MaterialSpace/SurfaceMaterial.cpp
@@ -687,6 +691,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Atmosphere/VolumetricFogSequence.cpp
     Engine/GeometricRaster/Atmosphere/LensFlareSequence.cpp
     Engine/Components/Camera/CameraComponent.cpp
+    Engine/Components/Camera/CameraLagComponent.cpp
     Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.cpp
     Engine/GeometrySpace/Network/PolygonNetwork.cpp
     Engine/GeometrySpace/Network/GeometryInstance.cpp
@@ -877,7 +882,12 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/NetworkCodec.cpp
     Engine/Codecs/ComponentSpaceCodec.cpp
     Engine/Codecs/PhotometricProfile.cpp
+    Engine/Codecs/PhotometrySpaceCodec.cpp
+    Engine/Codecs/VolumetricSpaceCodec.cpp
+    Engine/Codecs/RenderSpaceCodec.cpp
+    Engine/Codecs/WorldSpaceCodec.cpp
     Engine/Codecs/ControlVehicleSurfaceDecoder.cpp
+    Engine/Tools/DefaultContentGenerator.cpp
     Engine/ComponentClass/ComponentInstanceStorage.cpp
     Engine/ComponentClass/ComponentClassDefinition.cpp
     Engine/ComponentClass/ComponentClassValidator.cpp
@@ -1057,6 +1067,16 @@ endforeach()
     frontier_register_desktop_app(FrontierPattern     Engine/Lifecycle/FrontierPatternLaunch.cpp)
     frontier_register_desktop_app(FrontierStamp       Engine/Lifecycle/FrontierStampLaunch.cpp)
     frontier_register_desktop_app(FrontierTexturePaint Engine/Lifecycle/FrontierTexturePaintLaunch.cpp)
+
+    add_executable(FrontierDefaultContentGenerator Engine/Tools/DefaultContentGeneratorMain.cpp)
+    target_compile_definitions(FrontierDefaultContentGenerator PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    target_link_libraries(FrontierDefaultContentGenerator PRIVATE FrontierEngine)
+    add_custom_target(FrontierGenerateDefaultContent
+        COMMAND FrontierDefaultContentGenerator "--repo-root=${CMAKE_SOURCE_DIR}"
+        DEPENDS FrontierDefaultContentGenerator
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Generating & verifying zero-abbreviation Content/ .Space repository"
+    )
     frontier_register_desktop_app(FrontierMaterial    Engine/Lifecycle/FrontierMaterialLaunch.cpp)
     frontier_register_desktop_app(FrontierFracture    Engine/Lifecycle/FrontierFractureLaunch.cpp)
     frontier_register_desktop_app(FrontierSketcher    Engine/Lifecycle/FrontierSketcherLaunch.cpp)
@@ -1088,6 +1108,8 @@ if(BUILD_TESTING)
         add_test(NAME ${EXHIBIT_NAME} COMMAND ${EXHIBIT_NAME})
     endfunction()
 
+    frontier_register_exhibit(ClusterLodBakeValidation      Exhibits/ClusterLodBakeValidation.cpp)
+    frontier_register_exhibit(NaniteViewportVehicleValidation Exhibits/NaniteViewportVehicleValidation.cpp)
     frontier_register_exhibit(InputValidation             Exhibits/InputValidation.cpp)
     frontier_register_exhibit(CameraComponentValidation     Exhibits/CameraComponentValidation.cpp)
     frontier_register_exhibit(CameraEffectsValidation       Exhibits/CameraEffectsValidation.cpp)
@@ -1151,6 +1173,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(BakingGPUValidation               Exhibits/BakingGPUValidation.cpp)
     frontier_register_exhibit(DirectPbrWorldValidation          Exhibits/DirectPbrWorldValidation.cpp)
     frontier_register_exhibit(GtxSdfGiShadowValidation          Exhibits/GtxSdfGiShadowValidation.cpp)
+    frontier_register_exhibit(GtxGlobalDistanceFieldViewportValidation Exhibits/GtxGlobalDistanceFieldViewportValidation.cpp)
     frontier_register_exhibit(SdfEmissivePenumbraValidation     Exhibits/SdfEmissivePenumbraValidation.cpp)
     frontier_register_exhibit(DeterministicPathTracerValidation Exhibits/DeterministicPathTracerValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
@@ -1158,6 +1181,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
     frontier_register_exhibit(SketcherViewportValidation        Exhibits/ParametricSketcher/SketcherViewportValidation.cpp)
     frontier_register_exhibit(ComponentEditorRenderValidation   Exhibits/ComponentEditorRenderValidation.cpp)
+    frontier_register_exhibit(DataDrivenSpaceContentValidation  Exhibits/DataDrivenSpaceContentValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(BakingWorkspaceUIValidation       Exhibits/BakingWorkspaceUIValidation.cpp)
         frontier_register_exhibit(TexturePaintWorkspaceUIValidation Exhibits/TexturePaintWorkspaceUIValidation.cpp)

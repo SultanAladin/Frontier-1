@@ -336,7 +336,7 @@ void ProjectBrowser::EnsurePreviewRendererReady()
     {
         PreviewSceneBundle   = std::make_unique<GeometricRaster::ShowcaseWorldSceneBundle>();
         PreviewWorldRenderer = std::make_unique<GeometricRaster::TieredWorldRenderSequence>();
-        GeometricRaster::BuildShowcaseGalleryScene(*PreviewSceneBundle, 320u, 194u);
+        GeometricRaster::BuildBlankPlaneSkyScene(*PreviewSceneBundle, 320u, 194u);
         if (GpuPreviewRenderer != nullptr && GpuPreviewRenderer->QueryReady())
         {
             GpuPreviewRenderer->SynchronizeSceneResources(PreviewSceneBundle->Scene, true);
@@ -600,83 +600,39 @@ void ProjectBrowser::InitializeDefaultCollection(
         Collection.push_back(std::move(Entry));
     };
 
+    // Default Project (scaffolded on disk when missing) is the only built-in library entry
+    const std::filesystem::path DefaultProjectSpaceFile =
+        DefaultProjectsDir / "DefaultProject" / "DefaultProject.projectspace";
+    {
+        std::error_code ExistsEc {};
+        if (!std::filesystem::exists(DefaultProjectSpaceFile, ExistsEc))
+        {
+            Configuration::ProjectScaffoldSpecification DefaultSpec {};
+            DefaultSpec.DisplayName          = "Default Project";
+            DefaultSpec.DestinationDirectory = DefaultProjectsDir;
+            DefaultSpec.FrontierRootPath     = FrontierRootDir;
+            DefaultSpec.FrontierBinariesPath = FrontierBinariesDir;
+            DefaultSpec.InitialTheme         = ActiveTheme;
+            DefaultSpec.EnableFrontierWorld  = true;
+            DefaultSpec.EnableUvWorkspace    = false;
+            (void)Configuration::ProjectGenerator::GenerateProject(DefaultSpec);
+        }
+    }
+
     AddSample(
-        "cornell",
-        "Cornell-Studio Gallery",
+        "default",
+        "Default Project",
         ".projectspace",
         BrowserEntryCategory::Project,
-        "3 levels · 24 props · Tier 1 GTX & Tier 2 RTX",
-        "Calibrated Cornell-Studio OpenPBR showcase with dielectric glass, brushed copper, LTC quad lighting, and volumetric clouds.",
+        "Blank Scene \u00B7 Ground Plane & Clear Sky",
+        "Default Frontier project. Opens in Frontier with a blank scene: one ground plane under a clear daylight sky.",
         "Just now",
-        DefaultProjectsDir / "CornellStudioGallery" / "CornellStudioGallery.projectspace",
-        { "Studio", "Courtyard", "Workshop" },
-        { "OpenPBR 3D specimens & ColourCodex", "Sky atmosphere & volumetric clouds", "Initial Cornell-Studio gallery" },
-        { { "Sam", "S", "Studio cameras, LTC lights and OpenPBR specimens ready in Construct & ContentBrowser.", "Just now" } },
+        DefaultProjectSpaceFile,
+        { "Blank Scene", "Ground Plane", "Clear Sky" },
+        { "Blank plane & sky scene", "Initial default project" },
+        { { "Frontier", "F", "Default project \u2014 use + New Project to create another blank plane & sky project.", "Just now" } },
         true,
         0u);
-
-    AddSample(
-        "valley",
-        "Actuator studio",
-        ".projectspace",
-        BrowserEntryCategory::Project,
-        "3 levels · 1 document",
-        "Compact reference studio scene calibrated around metallic & dielectric inspection specimens.",
-        "Today, 10:42",
-        DefaultProjectsDir / "ActuatorStudio" / "ActuatorStudio.projectspace",
-        { "Studio", "Courtyard", "Workshop" },
-        { "Copper winding and studio props", "Shaft and fasteners", "Housing blockout" },
-        {
-            { "Sam", "S", "Review the clearance around the central specimen.", "2 hours ago" },
-            { "Alex", "A", "Alternate studio camera angle verified.", "Yesterday" },
-        },
-        true,
-        1u);
-
-    AddSample(
-        "stone",
-        "Actuator housing",
-        ".GeometrySpace",
-        BrowserEntryCategory::Geometry,
-        "Geometry · UV · Texture",
-        "Surface geometry and UDIM UV islands ready for conformal unwrap and concave packing in UVWorkspace.",
-        "Yesterday",
-        FrontierRootDir / "Assets" / "ActuatorHousing.obj",
-        { "Geometry", "UV layout", "Texture" },
-        { "Full housing proportions", "UV seam relaxation", "Initial compact housing" },
-        { { "Alex", "A", "Keep the primary UV seams tucked along the underside.", "Yesterday" } },
-        false,
-        3u);
-
-    AddSample(
-        "mount",
-        "Precision mount",
-        ".projectspace",
-        BrowserEntryCategory::Cad,
-        "2 assemblies · 2 views",
-        "Precision mounting assembly with anodized metallic sleeves and studio area lighting.",
-        "Today, 09:18",
-        DefaultProjectsDir / "PrecisionMount" / "PrecisionMount.projectspace",
-        { "Main assembly", "Sleeve assembly", "Orthographic" },
-        { "Copper winding rings", "Shaft and fasteners", "Initial housing" },
-        { { "Sam", "S", "Check sleeve tolerance before next build.", "45 minutes ago" } },
-        false,
-        2u);
-
-    AddSample(
-        "faceted",
-        "Housing UV study",
-        ".UVSpace",
-        BrowserEntryCategory::Geometry,
-        "UDIM 1001 · 2K Texel Density",
-        "Dual-viewport UV unwrap & texel-density study targeting UVWorkspace and Frontier World.",
-        "Oct 12",
-        FrontierRootDir / "Assets" / "HousingStudy.UVSpace",
-        { "UV layout", "Geometry", "Texel density" },
-        { "Surface colour study", "Conformal UV unwrap", "Initial geometry" },
-        {},
-        false,
-        4u);
 
     std::error_code Ec {};
     if (std::filesystem::exists(DefaultProjectsDir, Ec))
@@ -696,8 +652,6 @@ void ProjectBrowser::OpenNewProjectSheet(std::string_view InitialName, const std
     {
         DraftDestinationDirInput.Begin(DefaultProjectsDir.generic_string().c_str());
     }
-    DraftEnableFrontier = true;
-    DraftEnableUv       = true;
     NewProjectModalOpen = true;
     DiskPathModalOpen   = false;
 }
@@ -710,8 +664,8 @@ Configuration::ProjectScaffoldOutcome ProjectBrowser::TriggerCreateProjectFromDr
     Spec.FrontierRootPath     = FrontierRootDir;
     Spec.FrontierBinariesPath = FrontierBinariesDir;
     Spec.InitialTheme         = ActiveTheme;
-    Spec.EnableFrontierWorld  = DraftEnableFrontier;
-    Spec.EnableUvWorkspace    = DraftEnableUv;
+    Spec.EnableFrontierWorld  = true;
+    Spec.EnableUvWorkspace    = false;
 
     auto Outcome = Configuration::ProjectGenerator::GenerateProject(Spec);
     if (Outcome.Succeeded)
@@ -724,11 +678,10 @@ Configuration::ProjectScaffoldOutcome ProjectBrowser::TriggerCreateProjectFromDr
         if (LaunchImmediately && LaunchCallback)
         {
             BrowserWorkspaceLaunchDirective Directive {};
-            Directive.TargetWorkspace  = DraftEnableFrontier
-                                             ? Workspaces::HostWorkspaceTarget::FrontierWorld
-                                             : Workspaces::HostWorkspaceTarget::UVWorkspace;
-            Directive.ProjectTitle     = Outcome.PascalIdentifier;
-            Directive.SelectedFilePath = Outcome.ProjectSpaceFile;
+            Directive.TargetWorkspace    = Workspaces::HostWorkspaceTarget::FrontierWorld;
+            Directive.ProjectTitle       = Outcome.PascalIdentifier;
+            Directive.SelectedFilePath   = Outcome.ProjectSpaceFile;
+            Directive.BlankPlaneSkyScene = true;
             LaunchCallback(Directive);
         }
     }
@@ -1388,17 +1341,22 @@ void ProjectBrowser::RenderLibraryMode(
         Surface.Text({ RightX + 24.0f, HeaderH + 36.0f }, 12.0f, P.Ink, "Select a file to preview it.");
         Surface.Text({ RightX + 24.0f, HeaderH + 60.0f }, 10.5f, P.Muted, "Click any project or geometry tile to");
         Surface.Text({ RightX + 24.0f, HeaderH + 76.0f }, 10.5f, P.Muted, "inspect levels, notes, and revisions, or");
-        Surface.Text({ RightX + 24.0f, HeaderH + 92.0f }, 10.5f, P.Muted, "launch directly into Frontier / UVWorkspace.");
+        Surface.Text({ RightX + 24.0f, HeaderH + 92.0f }, 10.5f, P.Muted, "launch directly into Frontier.");
 
-        Surface.Text({ RightX + 24.0f, HeaderH + 134.0f }, 9.0f, P.Faint, "ACTIVE HOST WORKSPACES");
+        // Project Browser offers Frontier only; standalone workspace apps keep their own entry points.
+        Surface.Text({ RightX + 24.0f, HeaderH + 134.0f }, 9.0f, P.Faint, "OPEN IN");
         float CapY = HeaderH + 156.0f;
         for (const auto& Cap : CapabilityRegister.QueryAllCapabilities())
         {
+            if (Cap.Target != Workspaces::HostWorkspaceTarget::FrontierWorld)
+            {
+                continue;
+            }
             const Rectangle2D CapBox { RightX + 20.0f, CapY, RightW - 40.0f, 48.0f };
             Surface.FillRectangle(CapBox, P.Control, 7.0f);
             Surface.StrokeRectangle(CapBox, P.Line, 7.0f, 1.0f);
             Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 9.0f }, 11.0f, P.Ink, Cap.ActionTitle.c_str());
-            Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 27.0f }, 9.0f, P.Muted, Cap.Identifier == "Frontier" ? "World + Outliner + Clouds" : "Dual 2D UDIM + 3D Surface");
+            Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 27.0f }, 9.0f, P.Muted, "World + Outliner + Clouds");
             CapY += 56.0f;
         }
     }
@@ -1499,7 +1457,15 @@ void ProjectBrowser::RenderReaderMode(
     const std::string FullName = Entry.Title + Entry.Suffix;
     Surface.Text({ MainX + 62.0f, 24.0f }, 12.5f, P.Ink, FullName.c_str());
 
-    const auto PermittedCaps = CapabilityRegister.QueryPermittedForPath(Entry.FilePath);
+    // Project Browser launches projects in Frontier only (standalone workspace apps keep their own entry points)
+    std::vector<Workspaces::WorkspaceCapabilityEntry> PermittedCaps {};
+    for (const auto& Cap : CapabilityRegister.QueryPermittedForPath(Entry.FilePath))
+    {
+        if (Cap.Target == Workspaces::HostWorkspaceTarget::FrontierWorld)
+        {
+            PermittedCaps.push_back(Cap);
+        }
+    }
     float ActionRightX = MainX + MainW - 16.0f;
 
     for (std::size_t CapIdx = 0u; CapIdx < PermittedCaps.size(); ++CapIdx)
@@ -1868,17 +1834,8 @@ void ProjectBrowser::RenderNewProjectModal(
     }
     Y += 46.0f;
 
-    // Capability switches
-    Surface.Text({ X, Y + 4.0f }, 11.0f, P.Ink, "Frontier World Editor");
-    if (ExclusiveSelector::ConstructCompact(Surface, { X + 148.0f, Y, 44.0f, 22.0f }, DraftEnableFrontier, Pointer).Pressed)
-    {
-        DraftEnableFrontier = !DraftEnableFrontier;
-    }
-    Surface.Text({ X + 216.0f, Y + 4.0f }, 11.0f, P.Ink, "UVWorkspace");
-    if (ExclusiveSelector::ConstructCompact(Surface, { X + 308.0f, Y, 44.0f, 22.0f }, DraftEnableUv, Pointer).Pressed)
-    {
-        DraftEnableUv = !DraftEnableUv;
-    }
+    // Projects always open in Frontier with a blank scene (single ground plane & clear sky)
+    Surface.Text({ X, Y + 4.0f }, 11.0f, P.Ink, "Opens in Frontier · Blank Scene (Ground Plane & Clear Sky)");
     Y += 36.0f;
 
     const std::string Pascal = Configuration::ProjectGenerator::SanitizePascalIdentifier(DraftProjectNameInput.Text);

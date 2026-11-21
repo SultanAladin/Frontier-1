@@ -4,6 +4,7 @@
 // 🧩 Editor-only authoring loop implementation
 
 #include "Engine/Lifecycle/EditorLifecycle.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
 #include "Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.h"
 
 #if FRONTIER_EDITOR_ENABLED
@@ -30,6 +31,7 @@ EditorLifecycle::~EditorLifecycle() noexcept
 
 bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration) noexcept
 {
+    Diagnostics::ThoughtLog::Initialize();
     Finalize();
 
     StartupConfig        = Configuration;
@@ -231,7 +233,11 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     {
         (void)AttachVulkanGizmoOverlay(StartupConfig.VulkanDevice, StartupConfig.CompiledShaderDirectory);
     }
-    if (StartupConfig.PopulateShowcaseScene)
+    if (StartupConfig.PopulateBlankPlaneSkyScene)
+    {
+        PopulateBlankPlaneSkySession();
+    }
+    else if (StartupConfig.PopulateShowcaseScene)
     {
         PopulateShowcaseGallerySession();
     }
@@ -291,12 +297,24 @@ void EditorLifecycle::ConfigureActiveProjectTitle(std::string_view ProjectTitle)
     {
         if (!ActiveProjectTitle.empty())
         {
-            Panes->Viewport.ConfigureSceneTitle(ActiveProjectTitle + " · Cornell-Studio Gallery");
+            Panes->Viewport.ConfigureSceneTitle(ActiveProjectTitle + (BlankPlaneSkySessionActive ? " · Blank Scene" : " · Vehicle & Clear Sky"));
         }
     }
 }
 
 void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive = false;
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateBlankPlaneSkySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive = true;
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
 {
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
     if (Panes == nullptr)
@@ -313,7 +331,14 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
 
     const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-    GeometricRaster::BuildShowcaseGalleryScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    if (BlankPlaneSkySessionActive)
+    {
+        GeometricRaster::BuildBlankPlaneSkyScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    }
+    else
+    {
+        GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    }
     {
         const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
         auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
@@ -322,10 +347,11 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
         Atmo.Clouds.CloudFraction      = DisplayCfg.CloudFraction;
         Atmo.Clouds.CloudShadow.ShadowEnabled      = DisplayCfg.CloudShadowsEnabled;
         Atmo.Clouds.WindSpeedMetersPerSecond       = DisplayCfg.CloudWindSpeedMps;
+        Atmo.Clouds.FollowWindEnabled              = (DisplayCfg.CloudWindSpeedMps > 0.01f);
         Atmo.Wind.SpeedMetersPerSecond             = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
         Atmo.Stars.StarfieldEnabled    = DisplayCfg.CelestialStarsEnabled;
         Atmo.Solar.SolarEnabled        = DisplayCfg.CelestialStarsEnabled;
-        Atmo.Moons[0].Visible          = DisplayCfg.CelestialStarsEnabled;
+        Atmo.Moons[0].Visible          = false;
         Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
         Atmo.Solar.LocalHours          = DisplayCfg.SolarTimeOfDayHours;
         if (Atmo.Medium.AtmosphereEnabled)
@@ -341,9 +367,15 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     {
         ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
     }
+    EditorCameraLag.SnapTo(ShowcaseBundle->EditorCamera.CameraOrigin, ShowcaseBundle->EditorCamera.TargetPoint);
+    DesiredCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
+    DesiredCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+    DesiredCameraValid  = true;
     GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
     Panes->Viewport.ConfigureSceneTitle(
-        ActiveProjectTitle.empty() ? "Cornell-Studio Gallery" : (ActiveProjectTitle + " · Cornell-Studio Gallery"));
+        ActiveProjectTitle.empty()
+            ? (BlankPlaneSkySessionActive ? "Blank Scene · Ground Plane & Sky" : "Vehicle & Clear Sky")
+            : (ActiveProjectTitle + (BlankPlaneSkySessionActive ? " · Blank Scene" : " · Vehicle & Clear Sky")));
 
     Panes->Viewport.ConfigureInteractionCallback(
         [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)
@@ -394,7 +426,6 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
     auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
     BrowserPanel.AttachOutlinerFallback(&Panes->Outliner);
 
-    // Hook Editor Camera Render Settings Component into the Inspector
     Panes->Inspector.ConfigureCustomSectionCallback(
         [this](
             PixelSpace&             Surface,
@@ -419,129 +450,98 @@ void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uin
             }
 
             auto& Disp = ActivePanes->Viewport.AccessDisplaySettings();
-            float Y    = TopY + 6.0f;
-
-            // Section Header
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 26, 28, 32, 255 }, 8.0f);
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Medium, { LeftX + 10.0f, Y + 6.0f }, 10.5f, ColorRgba{ 220, 224, 230, 255 }, "RENDER SETTINGS COMPONENT");
-            Y += 32.0f;
-
             const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-            const auto HitTest = [&](float X, float RY, float W, float H) -> bool
+            const auto HitTest = [&](Rectangle2D R) -> bool
             {
-                return Input.PrimaryPointer.Pressed && Rectangle2D{ X, RY, W, H }.Contains(Cursor);
+                return Input.PrimaryPointer.Pressed && R.Contains(Cursor);
             };
 
-            // 1. Render Engine / Type
-            static constexpr const char* kEngineNames[6] = {
-                "MatCap", "OpenPBR Direct", "GTX SDF GI", "HighEnd BVH4", "Game Realtime", "Scene Final"
-            };
-            const uint32_t EngIdx = (Disp.RenderEngineIndex < 6u) ? Disp.RenderEngineIndex : 1u;
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 35, 38, 43, 255 }, 13.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 6.0f }, 10.0f, ColorRgba{ 142, 149, 158, 255 }, "Render Type:");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 95.0f, Y + 6.0f }, 10.0f, ColorRgba{ 241, 243, 245, 255 }, kEngineNames[EngIdx]);
-            if (HitTest(LeftX, Y, InnerWidth, 26.0f))
-            {
-                Disp.RenderEngineIndex = (EngIdx + 1u) % 6u;
-            }
-            Y += 32.0f;
+            float Y = TopY + 10.0f;
 
-            // 2. SDF / Shadow Penumbra Mode
-            static constexpr const char* kSdfNames[6] = {
-                "0. Point-Sample SDF", "1. Analytic SDF Cone", "2. 3D Voxel Clipmap",
-                "3. Voxel SDF + Cone GI", "4. Hybrid Sobol Cap", "5. SDF MC PT Ref"
-            };
-            const uint32_t SdfIdx = (Disp.SdfShadowPenumbraIndex < 6u) ? Disp.SdfShadowPenumbraIndex : 1u;
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 35, 38, 43, 255 }, 13.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 6.0f }, 10.0f, ColorRgba{ 142, 149, 158, 255 }, "SDF / Shadow:");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 100.0f, Y + 6.0f }, 10.0f, ColorRgba{ 241, 243, 245, 255 }, kSdfNames[SdfIdx]);
-            if (HitTest(LeftX, Y, InnerWidth, 26.0f))
-            {
-                Disp.SdfShadowPenumbraIndex = (SdfIdx + 1u) % 6u;
-            }
-            Y += 32.0f;
+            // Card 1: Render Settings (mirrors Inspectors.jsx Card + Control)
+            const float Card1H = 186.0f;
+            const Rectangle2D Card1{ LeftX, Y, InnerWidth, Card1H };
+            Surface.FillRectangle(Card1, WorkspaceSurfaceColors::SectionSurface, 20.0f);
+            Surface.StrokeRectangle(Card1, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
 
-            // 3. Quality Tier Segmented Bar
-            static constexpr const char* kQualityNames[5] = { "Low", "Med", "Std", "High", "Ultra" };
+            float CY = Y + 14.0f;
+            const float CX = LeftX + 14.0f;
+            const float CW = InnerWidth - 28.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CX, CY }, 11.0f, WorkspaceSurfaceColors::PrimaryInk, "Render Settings");
+            CY += 24.0f;
+
+            static constexpr const char* kEngines[6] = { "MatCap", "OpenPBR Direct", "GTX SDF GI", "HighEnd BVH4", "Game Realtime", "Scene Final" };
+            const uint32_t EngIdx = (Disp.RenderEngineIndex < 6u) ? Disp.RenderEngineIndex : 2u;
+            const Rectangle2D EngRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(EngRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Engine");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, kEngines[EngIdx]);
+            if (HitTest(EngRow)) { Disp.RenderEngineIndex = (EngIdx + 1u) % 6u; }
+            CY += 32.0f;
+
+            static constexpr const char* kSdfModes[6] = { "0. Point SDF", "1. Analytic Cone", "2. Voxel Clipmap", "3. Voxel + Cone GI", "4. Hybrid Sobol", "5. MC PT Ref" };
+            const uint32_t SdfIdx = (Disp.SdfShadowPenumbraIndex < 6u) ? Disp.SdfShadowPenumbraIndex : 3u;
+            const Rectangle2D SdfRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(SdfRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "SDF Shadow");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, kSdfModes[SdfIdx]);
+            if (HitTest(SdfRow)) { Disp.SdfShadowPenumbraIndex = (SdfIdx + 1u) % 6u; }
+            CY += 32.0f;
+
+            static constexpr const char* kQuals[5] = { "Low", "Med", "Std", "High", "Ultra" };
             const uint32_t QIdx = static_cast<uint32_t>(Disp.QualityTier) % 5u;
-            const float SegW    = (InnerWidth - 8.0f) / 5.0f;
+            const float SegW = (CW - 8.0f) / 5.0f;
             for (uint32_t Q = 0u; Q < 5u; ++Q)
             {
-                const float SX = LeftX + static_cast<float>(Q) * (SegW + 2.0f);
-                const bool Active = (Q == QIdx);
-                Surface.FillRectangle({ SX, Y, SegW, 24.0f },
-                    Active ? ColorRgba{ 46, 50, 57, 255 } : ColorRgba{ 22, 24, 28, 255 }, 12.0f);
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { SX + 8.0f, Y + 5.0f }, 9.5f,
-                    Active ? ColorRgba{ 241, 243, 245, 255 } : ColorRgba{ 142, 149, 158, 255 }, kQualityNames[Q]);
-                if (HitTest(SX, Y, SegW, 24.0f))
-                {
-                    Disp.QualityTier = static_cast<decltype(Disp.QualityTier)>(Q);
-                }
+                const Rectangle2D Seg{ CX + static_cast<float>(Q) * (SegW + 2.0f), CY, SegW, 24.0f };
+                Surface.FillRectangle(Seg, (Q == QIdx) ? ColorRgba{ 46, 50, 57, 255 } : WorkspaceSurfaceColors::ControlWell, 12.0f);
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Seg.X + 8.0f, Seg.Y + 6.0f }, 9.0f,
+                    (Q == QIdx) ? WorkspaceSurfaceColors::PrimaryInk : WorkspaceSurfaceColors::SecondaryInk, kQuals[Q]);
+                if (HitTest(Seg)) { Disp.QualityTier = static_cast<decltype(Disp.QualityTier)>(Q); }
             }
-            Y += 30.0f;
+            CY += 30.0f;
 
-            // 4. Render Scale
-            char ScaleBuf[32];
-            std::snprintf(ScaleBuf, sizeof(ScaleBuf), "Render Scale: %.0f%%", Disp.RenderScalePercent);
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f, ColorRgba{ 200, 205, 212, 255 }, ScaleBuf);
-            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
-            {
-                Disp.RenderScalePercent = (Disp.RenderScalePercent >= 150.0f) ? 50.0f : (Disp.RenderScalePercent + 25.0f);
-            }
-            Y += 30.0f;
+            const Rectangle2D RtRow{ CX, CY, CW, 24.0f };
+            Surface.FillRectangle(RtRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 5.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Raytracing");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 5.0f }, 9.5f,
+                Disp.RaytracingEnabled ? ColorRgba{ 74, 222, 128, 255 } : WorkspaceSurfaceColors::SecondaryInk, Disp.RaytracingEnabled ? "ON" : "OFF");
+            if (HitTest(RtRow)) { Disp.RaytracingEnabled = !Disp.RaytracingEnabled; }
 
-            // 5. Raytracing Toggle
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f,
-                Disp.RaytracingEnabled ? ColorRgba{ 74, 222, 128, 255 } : ColorRgba{ 142, 149, 158, 255 },
-                Disp.RaytracingEnabled ? "Raytracing: ON" : "Raytracing: OFF");
-            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
-            {
-                Disp.RaytracingEnabled = !Disp.RaytracingEnabled;
-            }
-            Y += 34.0f;
+            Y += Card1H + 12.0f;
 
-            // 6. Atmosphere, Sun, Sky, Moon, Stars & Clouds Component
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 26.0f }, ColorRgba{ 26, 28, 32, 255 }, 8.0f);
-            WorkspaceAppearance::ConstructWeightedText(
-                Surface, FontWeightClass::Medium, { LeftX + 10.0f, Y + 6.0f }, 10.5f, ColorRgba{ 220, 224, 230, 255 }, "SKY, SUN, MOON & CLOUDS");
-            Y += 32.0f;
+            // Card 2: Sky, Sun, Moon & Clouds
+            const float Card2H = 132.0f;
+            const Rectangle2D Card2{ LeftX, Y, InnerWidth, Card2H };
+            Surface.FillRectangle(Card2, WorkspaceSurfaceColors::SectionSurface, 20.0f);
+            Surface.StrokeRectangle(Card2, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
 
-            char SunBuf[40];
-            std::snprintf(SunBuf, sizeof(SunBuf), "Solar Time: %.1f h", Disp.SolarTimeOfDayHours);
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f, ColorRgba{ 200, 205, 212, 255 }, SunBuf);
-            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
-            {
-                Disp.SolarTimeOfDayHours = (Disp.SolarTimeOfDayHours >= 22.0f) ? 6.0f : (Disp.SolarTimeOfDayHours + 2.0f);
-            }
-            Y += 30.0f;
+            CY = Y + 14.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CX, CY }, 11.0f, WorkspaceSurfaceColors::PrimaryInk, "Sky, Sun, Moon & Clouds");
+            CY += 24.0f;
 
-            char CloudBuf[40];
-            std::snprintf(CloudBuf, sizeof(CloudBuf), "Clouds: %.0f%% (%s)", Disp.CloudFraction * 100.0f, Disp.VolumetricCloudsEnabled ? "ON" : "OFF");
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f,
-                Disp.VolumetricCloudsEnabled ? ColorRgba{ 74, 222, 128, 255 } : ColorRgba{ 142, 149, 158, 255 }, CloudBuf);
-            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
+            char SunBuf[24];
+            std::snprintf(SunBuf, sizeof(SunBuf), "%.1f h", Disp.SolarTimeOfDayHours);
+            const Rectangle2D SunRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(SunRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Solar Time");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, SunBuf);
+            if (HitTest(SunRow)) { Disp.SolarTimeOfDayHours = (Disp.SolarTimeOfDayHours >= 22.0f) ? 6.0f : (Disp.SolarTimeOfDayHours + 2.0f); }
+            CY += 32.0f;
+
+            char CloudBuf[24];
+            std::snprintf(CloudBuf, sizeof(CloudBuf), "%.0f%%", Disp.CloudFraction * 100.0f);
+            const Rectangle2D CloudRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(CloudRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Cloud Cover");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, CloudBuf);
+            if (HitTest(CloudRow))
             {
                 Disp.CloudFraction = (Disp.CloudFraction >= 0.80f) ? 0.0f : (Disp.CloudFraction + 0.20f);
                 Disp.VolumetricCloudsEnabled = (Disp.CloudFraction > 0.01f);
             }
-            Y += 30.0f;
 
-            Surface.FillRectangle({ LeftX, Y, InnerWidth, 24.0f }, ColorRgba{ 25, 27, 31, 255 }, 12.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + 12.0f, Y + 5.0f }, 10.0f,
-                Disp.CelestialStarsEnabled ? ColorRgba{ 74, 222, 128, 255 } : ColorRgba{ 142, 149, 158, 255 },
-                Disp.CelestialStarsEnabled ? "Sun, Moon & Stars: ON" : "Sun, Moon & Stars: OFF");
-            if (HitTest(LeftX, Y, InnerWidth, 24.0f))
-            {
-                Disp.CelestialStarsEnabled = !Disp.CelestialStarsEnabled;
-            }
-            Y += 30.0f;
-
-            return Y;
+            return Y + Card2H + 10.0f;
         });
     BrowserPanel.AssignContentActivationCallback(
         [this](const ContentRepositoryEntry& Entry)
@@ -638,6 +638,10 @@ void EditorLifecycle::FrameShowcaseCameraSelection() noexcept
         CamEntry->PositionY = ShowcaseBundle->EditorCamera.CameraOrigin.Y;
         CamEntry->PositionZ = ShowcaseBundle->EditorCamera.CameraOrigin.Z;
     }
+    EditorCameraLag.SnapTo(ShowcaseBundle->EditorCamera.CameraOrigin, ShowcaseBundle->EditorCamera.TargetPoint);
+    DesiredCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
+    DesiredCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+    DesiredCameraValid  = true;
     SynchronizeShowcaseGizmoAnchor();
     PendingInteractionWorldRefresh = true;
 }
@@ -681,6 +685,7 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     Rectangle2D             PaneBounds,
     const PaneInputReading& Input)
 {
+    FRONTIER_THOUGHT_SCOPE("Editor.ViewportInteraction");
     (void)PaneIndex;
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
     if (Panes == nullptr || ShowcaseBundle == nullptr || PaneBounds.Width < 16.0f || PaneBounds.Height < 16.0f)
@@ -688,131 +693,71 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         return;
     }
 
-    ImGuiIO& Io = ImGui::GetIO();
-    const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const float DeltaX = PointerTrackingValid ? (Cursor.X - LastPointerPosition.X) : 0.0f;
-    const float DeltaY = PointerTrackingValid ? (Cursor.Y - LastPointerPosition.Y) : 0.0f;
-    LastPointerPosition  = Cursor;
-    PointerTrackingValid = true;
+    ImGuiIO&      Io               = ImGui::GetIO();
+    const Point2D Cursor           { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    const float   RawCursorDeltaX  = PointerTrackingValid ? (Cursor.X - LastPointerPosition.X) : 0.0f;
+    const float   RawCursorDeltaY  = PointerTrackingValid ? (Cursor.Y - LastPointerPosition.Y) : 0.0f;
+    LastPointerPosition            = Cursor;
+    PointerTrackingValid           = true;
+
+    const float UiScale = std::clamp(ControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+    float       DeltaX  = RawCursorDeltaX;
+    float       DeltaY  = RawCursorDeltaY;
+    if (const auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+    {
+        const auto& Snapshot = ActiveExt->InspectEditorSnapshot();
+        if (std::fabs(Snapshot.TickDeltaX) > 0.0f || std::fabs(Snapshot.TickDeltaY) > 0.0f)
+        {
+            DeltaX = Snapshot.TickDeltaX / UiScale;
+            DeltaY = Snapshot.TickDeltaY / UiScale;
+        }
+        else if (RightMouseFlyActive && std::fabs(Io.MouseDelta.x) > 0.0f)
+        {
+            DeltaX = Io.MouseDelta.x / UiScale;
+            DeltaY = Io.MouseDelta.y / UiScale;
+        }
+    }
 
     const float NormU = std::clamp((Cursor.X - PaneBounds.X) / PaneBounds.Width, 0.0f, 1.0f);
     const float NormV = std::clamp((Cursor.Y - PaneBounds.Y) / PaneBounds.Height, 0.0f, 1.0f);
 
-    bool CameraMoved  = false;
-    bool SceneChanged = false;
+    bool CameraMoved      = false;
+    bool SceneChanged     = false;
+    bool GizmoOverlayOnly = false;
+    bool GizmoDragEnded   = false;
 
     auto& Cam = ShowcaseBundle->EditorCamera;
     Mathematics::Axis3D Fwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, { 0.0f, 1.0f, 0.0f });
     Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
     Mathematics::Axis3D Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
 
-    // 1. Z-up (+Z) Camera Navigation: RMB mouse-look + WASD, MMB pan, Alt+LMB orbit, Scroll wheel dolly
+    // 1. Modifier & Mouse Button State (Unreal Engine Z-Up Viewport Controls)
     const bool RightHeld  = ImGui::IsMouseDown(ImGuiMouseButton_Right);
     const bool MiddleHeld = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
-    const bool AltHeld    = Io.KeyAlt;
+    const bool LeftHeld   = ImGui::IsMouseDown(ImGuiMouseButton_Left) || Input.PrimaryPointer.Down;
+    const bool ShiftHeld  = Io.KeyShift || ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
+    const bool CtrlHeld   = Io.KeyCtrl  || ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    const bool AltHeld    = Io.KeyAlt   || ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt);
 
-    CameraInteractiveDrag = RightHeld || MiddleHeld || (AltHeld && Input.PrimaryPointer.Down) || WorldTransformGizmo.QueryDragging();
-
-    if (RightHeld && !Io.KeyShift)
+    const bool WantCursorLock =
+        RightHeld && !AltHeld && !LeftHeld && !MiddleHeld && !WorldTransformGizmo.QueryDragging();
+    if (WantCursorLock != RightMouseFlyActive)
     {
-        if (std::fabs(DeltaX) > 0.01f || std::fabs(DeltaY) > 0.01f)
+        RightMouseFlyActive = WantCursorLock;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
         {
-            const float Dist  = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(Cam.TargetPoint - Cam.CameraOrigin, Cam.TargetPoint - Cam.CameraOrigin)));
-            float       Yaw   = std::atan2(Fwd.X, Fwd.Y) + DeltaX * 0.0042f;
-            float       Pitch = std::asin(std::clamp(Fwd.Z, -0.98f, 0.98f)) - DeltaY * 0.0042f;
-            Pitch             = std::clamp(Pitch, -1.42f, 1.42f);
-            const float CosP  = std::cos(Pitch);
-            Fwd               = Mathematics::NormalizeAxis({ std::sin(Yaw) * CosP, std::cos(Yaw) * CosP, std::sin(Pitch) }, Fwd);
-            Cam.TargetPoint   = Cam.CameraOrigin + Fwd * Dist;
-            Right             = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
-            Up                = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
-            CameraMoved       = true;
-        }
-
-        const float FlySpeed = (Io.KeyShift ? 6.0f : 2.8f) * static_cast<float>(std::max(0.001, CurrentStepSeconds));
-        Mathematics::Axis3D MoveVec { 0.0f, 0.0f, 0.0f };
-        if (ImGui::IsKeyDown(ImGuiKey_W)) MoveVec = MoveVec + Fwd * FlySpeed;
-        if (ImGui::IsKeyDown(ImGuiKey_S)) MoveVec = MoveVec - Fwd * FlySpeed;
-        if (ImGui::IsKeyDown(ImGuiKey_D)) MoveVec = MoveVec + Right * FlySpeed;
-        if (ImGui::IsKeyDown(ImGuiKey_A)) MoveVec = MoveVec - Right * FlySpeed;
-        if (ImGui::IsKeyDown(ImGuiKey_E)) MoveVec = MoveVec + Cam.WorldUpAxis * FlySpeed;
-        if (ImGui::IsKeyDown(ImGuiKey_Q)) MoveVec = MoveVec - Cam.WorldUpAxis * FlySpeed;
-        if (Mathematics::EvaluateDot(MoveVec, MoveVec) > 1.0e-8f)
-        {
-            Cam.CameraOrigin = Cam.CameraOrigin + MoveVec;
-            Cam.TargetPoint  = Cam.TargetPoint + MoveVec;
-            CameraMoved      = true;
-        }
-    }
-    else if (MiddleHeld || (RightHeld && Io.KeyShift))
-    {
-        if (std::fabs(DeltaX) > 0.01f || std::fabs(DeltaY) > 0.01f)
-        {
-            const float PanScale = 0.0038f;
-            const Mathematics::Axis3D PanOffset = Right * (-DeltaX * PanScale) + Up * (DeltaY * PanScale);
-            Cam.CameraOrigin = Cam.CameraOrigin + PanOffset;
-            Cam.TargetPoint  = Cam.TargetPoint + PanOffset;
-            CameraMoved      = true;
-        }
-    }
-    else if (AltHeld && Input.PrimaryPointer.Down)
-    {
-        if (std::fabs(DeltaX) > 0.01f || std::fabs(DeltaY) > 0.01f)
-        {
-            const Mathematics::Axis3D Offset = Cam.CameraOrigin - Cam.TargetPoint;
-            const float Dist  = std::max(0.45f, std::sqrt(Mathematics::EvaluateDot(Offset, Offset)));
-            float       Yaw   = std::atan2(Offset.X, Offset.Y) - DeltaX * 0.0055f;
-            float       Pitch = std::asin(std::clamp(Offset.Z / Dist, -0.98f, 0.98f)) + DeltaY * 0.0055f;
-            Pitch             = std::clamp(Pitch, -1.35f, 1.35f);
-            const float CosP  = std::cos(Pitch);
-            Cam.CameraOrigin  = Cam.TargetPoint + Mathematics::Axis3D{ std::sin(Yaw) * CosP * Dist, std::cos(Yaw) * CosP * Dist, std::sin(Pitch) * Dist };
-            CameraMoved       = true;
+            ActiveExt->RequestCursorConfinement(
+                WantCursorLock ? Input::CursorConfinementMode::LockedRelativeHidden
+                               : Input::CursorConfinementMode::FreeVisible);
         }
     }
 
-    if (std::fabs(Input.WheelDeltaY) > 0.01f)
-    {
-        const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
-        const float               CurDist  = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
-        const float               Step     = std::clamp(CurDist * 0.12f, 0.12f, 1.25f) * Input.WheelDeltaY;
-        const float               NextDist = std::clamp(CurDist - Step, 0.50f, 20.0f);
-        Cam.CameraOrigin                   = Cam.TargetPoint - Fwd * NextDist;
-        CameraMoved                        = true;
-    }
+    const bool AnyNavButtonHeld = RightHeld || MiddleHeld || LeftHeld;
+    const float NavDeltaX       = NavigationDragWasActive ? DeltaX : 0.0f;
+    const float NavDeltaY       = NavigationDragWasActive ? DeltaY : 0.0f;
+    NavigationDragWasActive     = AnyNavButtonHeld;
 
-    // 2. Gizmo & Frame-Selection Keyboard Shortcuts (when not flying RMB and not typing in text fields)
-    bool GizmoOverlayOnly = false;
-    bool GizmoDragEnded   = false;
-    if (!RightHeld && !Io.WantTextInput)
-    {
-        if (ImGui::IsKeyPressed(ImGuiKey_W, false))
-        {
-            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::TranslateOnly);
-            GizmoOverlayOnly = true;
-        }
-        else if (ImGui::IsKeyPressed(ImGuiKey_E, false))
-        {
-            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::RotateOnly);
-            GizmoOverlayOnly = true;
-        }
-        else if (ImGui::IsKeyPressed(ImGuiKey_R, false))
-        {
-            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::ScaleOnly);
-            GizmoOverlayOnly = true;
-        }
-        else if (ImGui::IsKeyPressed(ImGuiKey_U, false))
-        {
-            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
-            GizmoOverlayOnly = true;
-        }
-        else if (ImGui::IsKeyPressed(ImGuiKey_F, false))
-        {
-            FrameShowcaseCameraSelection();
-            return;
-        }
-    }
-
-    // 3. GPU Gizmo Hover / Drag & 3D Ray Picking
+    // 2. GPU Gizmo Hover / Drag & 3D Ray Picking (evaluated first so Gizmo handles preempt LMB camera walk)
     const float Aspect  = static_cast<float>(std::max(1u, Cam.ViewportWidthPx)) / static_cast<float>(std::max(1u, Cam.ViewportHeightPx));
     const float TanHalf = std::tan(std::clamp(Cam.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
     const float NdcX    = (NormU * 2.0f - 1.0f) * Aspect * TanHalf;
@@ -824,10 +769,10 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
 
     if (WorldTransformGizmo.QueryDragging())
     {
-        if (Input.PrimaryPointer.Down && LastGizmoSlot.Valid())
+        if (LeftHeld && LastGizmoSlot.Valid())
         {
             Configuration::GizmoSnapSettings SnapCfg {};
-            const auto Delta = WorldTransformGizmo.EvaluateDragInteraction(CursorRay, Io.KeyCtrl, SnapCfg, GizmoActiveTransform);
+            const auto Delta = WorldTransformGizmo.EvaluateDragInteraction(CursorRay, CtrlHeld, SnapCfg, GizmoActiveTransform);
             if (Delta.TransformChanged)
             {
                 if (OutlinerRecordEntry* SelectedEntry = Panes->Outliner.AccessEntry(LastGizmoSlot))
@@ -860,6 +805,12 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
             const uint32_t PixX = static_cast<uint32_t>(NormU * static_cast<float>(std::max(1u, Cam.ViewportWidthPx) - 1u));
             const uint32_t PixY = static_cast<uint32_t>(NormV * static_cast<float>(std::max(1u, Cam.ViewportHeightPx) - 1u));
             Hovered             = WorldGizmoRasterizer->QueryLastGpuPickAtPixel(PixX, PixY);
+        }
+        if (Hovered == Editor::GizmoHandleOrdinal::None && LastGizmoSlot.Valid())
+        {
+            // GPU pick is best-effort only (stale patch, CPU viewport, headless): fall back to the
+            // analytic CPU ray hover so the gizmo stays draggable on every presentation path.
+            Hovered = WorldTransformGizmo.EvaluateRayHover(CursorRay, Right, Up);
         }
         if (Hovered != WorldTransformGizmo.QueryHoveredHandle())
         {
@@ -898,6 +849,231 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         }
     }
 
+    // 3. Unreal Engine Camera Navigation (ONE camera model — never two competing models):
+    //    - RMB held: Mouse-Look + WASD + Q (Down) + E (Up) + Shift (3x Sprint) + Ctrl (0.3x Slow)
+    //    - LMB: Gizmo drag & selection ONLY. LMB never moves the camera and never enables fly keys,
+    //      so a gizmo drag can never be stolen by camera walk (the old LMB-walk model is removed).
+    //    - MMB or LMB+RMB: Truck / Pedestal Pan
+    //    - Alt+LMB: Orbit around Target, Alt+RMB: Smooth Dolly, Alt+MMB: Pan
+    //    - Wheel (with or without RMB): Fly-Speed Adjustment (never Dolly-Zoom; Dolly stays on Alt+RMB & +/- capsule)
+    //    - Shift is a Sprint modifier only: it must never switch RMB Mouse-Look into Pan or stop Fly keys
+    //    - Arrow Keys + PageUp/PageDown (no mouse button): Keyboard Fly
+    const bool GizmoBusy = WorldTransformGizmo.QueryDragging();
+    const bool FlyKeysPossible = !Io.WantTextInput && !GizmoBusy && RightHeld && !AltHeld;
+
+    // Wheel source: InputExtension snapshot and ImGui carry the same packet in the desktop host;
+    // take the larger magnitude so neither path is double-counted and headless ImGui-only frames still work.
+    const float WheelDeltaY = (std::fabs(Input.WheelDeltaY) >= std::fabs(Io.MouseWheel)) ? Input.WheelDeltaY : Io.MouseWheel;
+
+    if (!GizmoBusy)
+    {
+        if (std::fabs(WheelDeltaY) > 0.01f)
+        {
+            CameraFlySpeedScalar = std::clamp(
+                CameraFlySpeedScalar * std::pow(1.20f, WheelDeltaY),
+                0.10f,
+                16.0f);
+        }
+
+        if (RightHeld && !AltHeld && !LeftHeld && !MiddleHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const float Dist  = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float Yaw   = std::atan2(Fwd.X, Fwd.Y) + NavDeltaX * 0.0042f;
+                const float Pitch = std::clamp(
+                    std::asin(std::clamp(Fwd.Z, -0.995f, 0.995f)) - NavDeltaY * 0.0042f,
+                    -1.52f,
+                    1.52f);
+                const float CosP = std::cos(Pitch);
+                Fwd              = Mathematics::NormalizeAxis({ std::sin(Yaw) * CosP, std::cos(Yaw) * CosP, std::sin(Pitch) }, Fwd);
+                Cam.TargetPoint  = Cam.CameraOrigin + Fwd * Dist;
+                Right            = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
+                Up               = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
+                CameraMoved      = true;
+            }
+        }
+        else if ((MiddleHeld && !AltHeld) || (LeftHeld && RightHeld && !AltHeld))
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const float CurDist  = std::max(0.50f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.045f) * (ShiftHeld ? 2.5f : 1.0f);
+                const Mathematics::Axis3D PanOffset = Right * (-NavDeltaX * PanScale) + Up * (NavDeltaY * PanScale);
+                Cam.CameraOrigin = Cam.CameraOrigin + PanOffset;
+                Cam.TargetPoint  = Cam.TargetPoint + PanOffset;
+                CameraMoved      = true;
+            }
+        }
+        else if (AltHeld && LeftHeld && !RightHeld && !MiddleHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D Offset = Cam.CameraOrigin - Cam.TargetPoint;
+                const float Dist  = std::max(0.45f, std::sqrt(Mathematics::EvaluateDot(Offset, Offset)));
+                const float Yaw   = std::atan2(Offset.X, Offset.Y) + NavDeltaX * 0.0055f;
+                const float Pitch = std::clamp(
+                    std::asin(std::clamp(Offset.Z / Dist, -0.995f, 0.995f)) + NavDeltaY * 0.0055f,
+                    -1.48f,
+                    1.48f);
+                const float CosP = std::cos(Pitch);
+                Cam.CameraOrigin = Cam.TargetPoint + Mathematics::Axis3D{
+                    std::sin(Yaw) * CosP * Dist,
+                    std::cos(Yaw) * CosP * Dist,
+                    std::sin(Pitch) * Dist
+                };
+                Fwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, Fwd);
+                Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), Right);
+                Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), Up);
+                CameraMoved = true;
+            }
+        }
+        else if (AltHeld && RightHeld && !LeftHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const float CurDist   = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float DollyStep = (NavDeltaX - NavDeltaY) * std::max(0.008f, CurDist * 0.0055f) * (ShiftHeld ? 2.5f : 1.0f);
+                const float NextDist  = std::clamp(CurDist - DollyStep, 0.35f, 250.0f);
+                Cam.CameraOrigin      = Cam.TargetPoint - Fwd * NextDist;
+                CameraMoved           = true;
+            }
+        }
+        else if (AltHeld && MiddleHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const float CurDist  = std::max(0.50f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.045f) * (ShiftHeld ? 2.5f : 1.0f);
+                const Mathematics::Axis3D PanOffset = Right * (-NavDeltaX * PanScale) + Up * (NavDeltaY * PanScale);
+                Cam.CameraOrigin = Cam.CameraOrigin + PanOffset;
+                Cam.TargetPoint  = Cam.TargetPoint + PanOffset;
+                CameraMoved      = true;
+            }
+        }
+        // (No LMB camera branch: LMB is reserved for Gizmo drag & selection above.)
+
+        if (FlyKeysPossible)
+        {
+            Mathematics::Axis3D WishDir { 0.0f, 0.0f, 0.0f };
+            if (ImGui::IsKeyDown(ImGuiKey_W)) WishDir = WishDir + Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_S)) WishDir = WishDir - Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_D)) WishDir = WishDir + Right;
+            if (ImGui::IsKeyDown(ImGuiKey_A)) WishDir = WishDir - Right;
+            if (ImGui::IsKeyDown(ImGuiKey_E)) WishDir = WishDir + Cam.WorldUpAxis;
+            if (ImGui::IsKeyDown(ImGuiKey_Q)) WishDir = WishDir - Cam.WorldUpAxis;
+
+            const float WishLenSq = Mathematics::EvaluateDot(WishDir, WishDir);
+            if (WishLenSq > 1.0e-8f)
+            {
+                const Mathematics::Axis3D NormDir = WishDir * (1.0f / std::sqrt(WishLenSq));
+                const float ModifierBoost = ShiftHeld ? 3.0f : (CtrlHeld ? 0.30f : 1.0f);
+                const float StepMeters =
+                    6.0f * CameraFlySpeedScalar * ModifierBoost *
+                    static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
+                const Mathematics::Axis3D MoveVec = NormDir * StepMeters;
+                Cam.CameraOrigin = Cam.CameraOrigin + MoveVec;
+                Cam.TargetPoint  = Cam.TargetPoint + MoveVec;
+                CameraMoved      = true;
+            }
+        }
+        else if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
+        {
+            // Arrow-key + PageUp/PageDown viewport flight without mouse button
+            Mathematics::Axis3D ArrowDir { 0.0f, 0.0f, 0.0f };
+            if (ImGui::IsKeyDown(ImGuiKey_UpArrow))    ArrowDir = ArrowDir + Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_DownArrow))  ArrowDir = ArrowDir - Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) ArrowDir = ArrowDir + Right;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))  ArrowDir = ArrowDir - Right;
+            if (ImGui::IsKeyDown(ImGuiKey_PageUp))     ArrowDir = ArrowDir + Cam.WorldUpAxis;
+            if (ImGui::IsKeyDown(ImGuiKey_PageDown))   ArrowDir = ArrowDir - Cam.WorldUpAxis;
+
+            const float ArrowLenSq = Mathematics::EvaluateDot(ArrowDir, ArrowDir);
+            if (ArrowLenSq > 1.0e-8f)
+            {
+                const Mathematics::Axis3D NormDir = ArrowDir * (1.0f / std::sqrt(ArrowLenSq));
+                const float StepMeters =
+                    6.0f * CameraFlySpeedScalar * (ShiftHeld ? 3.0f : 1.0f) *
+                    static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
+                const Mathematics::Axis3D MoveVec = NormDir * StepMeters;
+                Cam.CameraOrigin = Cam.CameraOrigin + MoveVec;
+                Cam.TargetPoint  = Cam.TargetPoint + MoveVec;
+                CameraMoved      = true;
+            }
+        }
+
+    }
+
+    {
+        char SpeedReadout[80]{};
+        std::snprintf(
+            SpeedReadout,
+            sizeof(SpeedReadout),
+            "Fly Speed %.2fx%s",
+            CameraFlySpeedScalar,
+            (ShiftHeld && FlyKeysPossible) ? " · Sprint x3" : "");
+        Panes->Viewport.ConfigureProbeReadoutText(SpeedReadout);
+    }
+
+    CameraInteractiveDrag = RightHeld || MiddleHeld || (AltHeld && LeftHeld) || WorldTransformGizmo.QueryDragging() || CameraMoved;
+
+    // 4. Gizmo & Frame-Selection Keyboard Shortcuts (when not flying RMB/LMB and not typing in text fields)
+    if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::TranslateOnly);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_E, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::RotateOnly);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::ScaleOnly);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_U, false) || ImGui::IsKeyPressed(ImGuiKey_Q, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_F, false))
+        {
+            FrameShowcaseCameraSelection();
+            return;
+        }
+    }
+
+    // Camera lag: input above moves the DESIRED pose; the reusable lag component damps the
+    // rendered pose toward it every tick (also while settling after the keys are released).
+    if (CameraMoved)
+    {
+        DesiredCameraOrigin = Cam.CameraOrigin;
+        DesiredCameraTarget = Cam.TargetPoint;
+        DesiredCameraValid  = true;
+    }
+    if (DesiredCameraValid && !WorldTransformGizmo.QueryDragging())
+    {
+        if (!EditorCameraLag.QueryPrimed())
+        {
+            EditorCameraLag.SnapTo(Cam.CameraOrigin, Cam.TargetPoint);
+        }
+        const float LagStepSeconds = static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
+        if (EditorCameraLag.AdvanceLag(DesiredCameraOrigin, DesiredCameraTarget, LagStepSeconds))
+        {
+            Cam.CameraOrigin = EditorCameraLag.QueryPosition();
+            Cam.TargetPoint  = EditorCameraLag.QueryTarget();
+            CameraMoved      = true;
+        }
+    }
+
     if (CameraMoved)
     {
         if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
@@ -912,8 +1088,11 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     if (CameraMoved || SceneChanged)
     {
         PendingInteractionWorldRefresh = true;
-        PendingInteractionSceneSync    = true;
-        PendingInteractionFastDrag     = WorldTransformGizmo.QueryDragging() && !GizmoDragEnded;
+        if (SceneChanged)
+        {
+            PendingInteractionSceneSync = true;
+        }
+        PendingInteractionFastDrag = WorldTransformGizmo.QueryDragging() && !GizmoDragEnded;
     }
     else if (GizmoOverlayOnly)
     {
@@ -1404,6 +1583,12 @@ void EditorLifecycle::HandleContentDropOnOutliner(
 
     if (Category == ContentCategory::Materials && Entry.IndexHeader.MatCapPresetMarker == 0u)
     {
+        // Material assignment only targets geometry rows; environment/folder/camera rows fall back to current selection
+        const OutlinerRecordEntry* HitEntry = HitSlot.Valid() ? Panes->Outliner.FindEntry(HitSlot) : nullptr;
+        if (HitEntry == nullptr || HitEntry->Category != ConstructSlotCategory::GeometryVolume)
+        {
+            HitSlot = {};
+        }
         if (!HitSlot.Valid())
         {
             HitSlot = Panes->Outliner.QueryPrimarySelection();
@@ -1733,7 +1918,13 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.RaytracingEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
         ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
         : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
-    RenderConfig.DebugChannel       = std::min(11u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.DebugChannel       = std::min(16u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.XeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
+    RenderConfig.XeGtaoStrength     = DisplayCfg.XeGtaoStrength;
+    RenderConfig.PathTraceSamples   = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
+    RenderConfig.PathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
+    RenderConfig.NaniteLodEnabled   = DisplayCfg.ClusterLodEnabled;
+    RenderConfig.NanitePixelError   = DisplayCfg.ClusterLodPixelError;
     RenderConfig.QualityTier        = QTier;
     RenderConfig.ReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
     RenderConfig.RaytracingEnabled  = DisplayCfg.RaytracingEnabled;
@@ -1829,6 +2020,24 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             LatestViewportTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
             LatestViewportTiming.EditorTickMs = SavedTickMs;
         }
+    }
+
+    if (RenderedOnGpu && GpuWorldRenderer != nullptr && DisplayCfg.RenderEngineIndex < 4u)
+    {
+        // Live Nanite proof in the viewport footer: triangles actually traced vs full-res scene.
+        const auto& LodStats = GpuWorldRenderer->QueryNaniteLodStats();
+        char LodReadout[128] {};
+        if (LodStats.Enabled)
+        {
+            std::snprintf(
+                LodReadout, sizeof(LodReadout), "Nanite LOD %u tris · %u clusters (full %u)",
+                LodStats.ActiveTriangleCount, LodStats.ActiveClusterCount, LodStats.FullTriangleCount);
+        }
+        else
+        {
+            std::snprintf(LodReadout, sizeof(LodReadout), "Nanite LOD off · %u tris full-res", LodStats.FullTriangleCount);
+        }
+        Panes->Viewport.ConfigureProbeReadoutText(LodReadout);
     }
 
     if (!RenderedOnGpu)
@@ -1932,6 +2141,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
         return false;
     }
 
+    FRONTIER_THOUGHT_SCOPE("Editor.Tick");
     const auto TickStart = std::chrono::steady_clock::now();
     LatestViewportTiming.WorldDispatched = false;
     LatestViewportTiming.GizmoOverlayMs  = 0.0f;
@@ -1960,13 +2170,9 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 GeometricRaster::CelestialEphemerisSolver::AdvanceDayCycleHours(Atmo.Solar, SafeStep);
                 DisplayCfg.SolarTimeOfDayHours = Atmo.Solar.LocalHours;
             }
-            const bool CloudsMoving =
-                DisplayCfg.VolumetricCloudsEnabled &&
-                Atmo.Clouds.FollowWindEnabled &&
-                Atmo.Clouds.WindSpeedMetersPerSecond > 0.01f;
             const bool AtmoAnimTick =
                 DisplayCfg.AtmosphereSkyEnabled &&
-                (DisplayCfg.DayCyclePlaying || CloudsMoving) &&
+                DisplayCfg.DayCyclePlaying &&
                 SafeStep > 0.0;
             if (AtmoAnimTick)
             {
@@ -2001,6 +2207,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             if (std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f)
             {
                 Atmo.Clouds.WindSpeedMetersPerSecond = DisplayCfg.CloudWindSpeedMps;
+                Atmo.Clouds.FollowWindEnabled        = (DisplayCfg.CloudWindSpeedMps > 0.01f);
                 Atmo.Wind.SpeedMetersPerSecond       = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
             }
             if (DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled)
@@ -2037,24 +2244,35 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 LastPrimaryProjection = CurProjection;
                 ProjectionChanged     = true;
                 auto& Cam             = ShowcaseBundle->EditorCamera;
-                Cam.TargetPoint       = { 0.00f, 0.55f, 0.15f };
+                const bool VehicleDefaultScene = (ShowcaseBundle->Objects.size() == 2u);
+                Cam.TargetPoint       = VehicleDefaultScene
+                    ? Mathematics::Axis3D{ 0.10f, 0.00f, 0.62f }
+                    : Mathematics::Axis3D{ 0.00f, 0.55f, 0.15f };
                 Cam.WorldUpAxis       = { 0.00f, 0.00f, 1.00f };
                 switch (CurProjection)
                 {
                 case ViewportProjectionPreset::Top:
-                    Cam.CameraOrigin = { 0.00f, 0.50f, 5.20f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 0.10f, 0.00f, 6.20f }
+                        : Mathematics::Axis3D{ 0.00f, 0.50f, 5.20f };
                     Cam.WorldUpAxis  = { 0.00f, 1.00f, 0.00f };
                     break;
                 case ViewportProjectionPreset::Front:
-                    Cam.CameraOrigin = { 0.00f, -4.40f, 0.45f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 6.20f, 0.00f, 0.72f }
+                        : Mathematics::Axis3D{ 0.00f, -4.40f, 0.45f };
                     break;
                 case ViewportProjectionPreset::Right:
-                    Cam.CameraOrigin = { 4.60f, 0.55f, 0.45f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 0.10f, -5.60f, 0.72f }
+                        : Mathematics::Axis3D{ 4.60f, 0.55f, 0.45f };
                     break;
                 case ViewportProjectionPreset::Perspective:
                 case ViewportProjectionPreset::Orthographic:
                 default:
-                    Cam.CameraOrigin = { 0.00f, -3.55f, 0.42f };
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 4.85f, -4.15f, 1.68f }
+                        : Mathematics::Axis3D{ 0.00f, -3.55f, 0.42f };
                     break;
                 }
             }
@@ -2070,6 +2288,12 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.SdfShadowPenumbraIndex != LastSdfPenumbraIndex ||
                 DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
                 DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
+                DisplayCfg.ClusterLodEnabled != LastClusterLodEnabled ||
+                DisplayCfg.ClusterLodPixelError != LastClusterLodPixelError ||
+                DisplayCfg.PathTraceTargetSpp != LastPathTraceTargetSpp ||
+                DisplayCfg.PathTraceBatchSpp != LastPathTraceBatchSpp ||
+                DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
+                std::abs(DisplayCfg.XeGtaoStrength - LastXeGtaoStrength) > 0.001f ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
                 DisplayCfg.RaytracingEnabled != LastRtEnabled ||
@@ -2089,6 +2313,12 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastSdfPenumbraIndex   = DisplayCfg.SdfShadowPenumbraIndex;
             LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
             LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
+            LastClusterLodEnabled  = DisplayCfg.ClusterLodEnabled;
+            LastClusterLodPixelError = DisplayCfg.ClusterLodPixelError;
+            LastPathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
+            LastPathTraceBatchSpp  = DisplayCfg.PathTraceBatchSpp;
+            LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
+            LastXeGtaoStrength     = DisplayCfg.XeGtaoStrength;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
             LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
             LastRtEnabled          = DisplayCfg.RaytracingEnabled;
@@ -2141,12 +2371,43 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const auto TickPrepEnd = std::chrono::steady_clock::now();
             LatestViewportTiming.EditorTickMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(TickPrepEnd - TickStart).count());
-            if (InteractionWorldRefresh || SceneMutated || DisplayChanged)
+            // Progressive PT renders continuously until it converges: keep dispatching while the
+            // accumulated spp is below the target (0 = no cap, renders until camera/scene changes,
+            // which reset accumulation in the Vulkan sequence / below).
+            const bool PathTracerEngineActive = (DisplayCfg.RenderEngineIndex == 4u || DisplayCfg.RenderEngineIndex == 5u);
+            if (PathTracerEngineActive && GpuReady && (SceneMutated || DisplayChanged))
             {
+                GpuWorldRenderer->ResetProgressiveAccumulation();
+            }
+            const bool ProgressiveOrder3Active =
+                GpuReady && PathTracerEngineActive &&
+                (DisplayCfg.PathTraceTargetSpp == 0u ||
+                 GpuWorldRenderer->QueryProgressiveSampleCount() < DisplayCfg.PathTraceTargetSpp);
+            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active)
+            {
+                FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
                 RefreshShowcaseViewportRaster();
+                if (PathTracerEngineActive && GpuWorldRenderer != nullptr)
+                {
+                    char PtReadout[96] {};
+                    if (DisplayCfg.PathTraceTargetSpp == 0u)
+                    {
+                        std::snprintf(PtReadout, sizeof(PtReadout), "PT %u spp · continuous", GpuWorldRenderer->QueryProgressiveSampleCount());
+                    }
+                    else
+                    {
+                        std::snprintf(
+                            PtReadout, sizeof(PtReadout), "PT %u / %u spp%s",
+                            GpuWorldRenderer->QueryProgressiveSampleCount(),
+                            DisplayCfg.PathTraceTargetSpp,
+                            (GpuWorldRenderer->QueryProgressiveSampleCount() >= DisplayCfg.PathTraceTargetSpp) ? " · converged" : "");
+                    }
+                    Panes->Viewport.ConfigureProbeReadoutText(PtReadout);
+                }
             }
             else if (InteractionGizmoRefresh || CurrentSel != LastGizmoSlot)
             {
+                FRONTIER_THOUGHT_SCOPE("Editor.GizmoOverlayRefresh");
                 RefreshGizmoOverlayFromCachedWorld();
             }
         }
@@ -2233,6 +2494,7 @@ bool EditorLifecycle::ExecuteAuthoringTick(double Δt)
 
 void EditorLifecycle::PresentPrimaryEditorImGui(double Δt)
 {
+    FRONTIER_THOUGHT_SCOPE("Editor.ImGuiPresent");
     if (!Initialized || ImGui::GetCurrentContext() == nullptr)
     {
         return;
@@ -2282,6 +2544,15 @@ void EditorLifecycle::PresentPrimaryEditorImGui(double Δt)
 
     DockContainer.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
     WorkspaceAppearance::ClearOverlayPointerShield();
+    if (RightMouseFlyActive && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
+    {
+        RightMouseFlyActive     = false;
+        NavigationDragWasActive = false;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
+    }
 
     if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
     {
@@ -2329,6 +2600,14 @@ bool EditorLifecycle::Suspend() noexcept
     {
         return false;
     }
+    if (RightMouseFlyActive)
+    {
+        RightMouseFlyActive = false;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
+    }
     const bool OverlaySuspended   = EditorSequence.Suspend();
     const bool WorkspaceSuspended = Workspaces.Suspend();
     return OverlaySuspended && WorkspaceSuspended;
@@ -2359,6 +2638,14 @@ void EditorLifecycle::Finalize() noexcept
     }
 
     // 🔴 CRITICAL: Tear down GPU overlay hooks, then workspace sessions, then input, then dock windows.
+    if (RightMouseFlyActive)
+    {
+        RightMouseFlyActive = false;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
+    }
     EditorSequence.Finalize();
     if (StartupConfig.ImGuiPresenter != nullptr)
     {

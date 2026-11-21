@@ -432,6 +432,178 @@ bool TransformGizmo::EvaluatePlaneRayIntersection(
     return true;
 }
 
+GizmoHandleOrdinal TransformGizmo::EvaluateRayHover(
+    const ViewportRay3D& Ray,
+    Mathematics::Axis3D  CameraRight,
+    Mathematics::Axis3D  CameraUp) const noexcept
+{
+    const float L = WorldRadius;
+    if (L <= 1.0e-5f)
+    {
+        return GizmoHandleOrdinal::None;
+    }
+
+    const bool EmitTranslate = (HandleFilter == GizmoHandleFilter::Universal || HandleFilter == GizmoHandleFilter::TranslateOnly);
+    const bool EmitRotate    = (HandleFilter == GizmoHandleFilter::Universal || HandleFilter == GizmoHandleFilter::RotateOnly);
+    const bool EmitScale     = (HandleFilter == GizmoHandleFilter::Universal || HandleFilter == GizmoHandleFilter::ScaleOnly);
+    const bool Spatial       = (DimensionMode == GizmoDimensionMode::Spatial3D);
+
+    GizmoHandleOrdinal BestHandle = GizmoHandleOrdinal::None;
+    float              BestScore  = 1.0f; // Normalized: candidate distance / candidate threshold (must stay < 1)
+
+    const Mathematics::Axis3D UnitAxes[3] = { { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } };
+    const GizmoHandleOrdinal  TranslateOrd[3] = { GizmoHandleOrdinal::TranslateX, GizmoHandleOrdinal::TranslateY, GizmoHandleOrdinal::TranslateZ };
+    const GizmoHandleOrdinal  ScaleOrd[3]     = { GizmoHandleOrdinal::ScaleX, GizmoHandleOrdinal::ScaleY, GizmoHandleOrdinal::ScaleZ };
+    const uint32_t            AxisCount       = Spatial ? 3u : 2u;
+
+    // Axis handles: measure the closest distance between the cursor ray and each axis stem.
+    // The scale cylinder occupies 0.61L..0.73L along the stem; the translate cone/stem owns the rest.
+    for (uint32_t AxisIdx = 0u; AxisIdx < AxisCount; ++AxisIdx)
+    {
+        const Mathematics::Axis3D AxisDir = UnitAxes[AxisIdx];
+        const float RawParam  = EvaluateAxisRayParameter(PivotPosition, AxisDir, Ray);
+        const float StemParam = std::clamp(RawParam, 0.10f * L, 1.06f * L);
+        const Mathematics::Axis3D StemPoint = PivotPosition + AxisDir * StemParam;
+        const Mathematics::Axis3D ToPoint   = StemPoint - Ray.Origin;
+        const float RayParam = Mathematics::EvaluateDot(ToPoint, Ray.Direction);
+        if (RayParam < 0.0f)
+        {
+            continue;
+        }
+        const Mathematics::Axis3D ClosestOnRay = Ray.Origin + Ray.Direction * RayParam;
+        const Mathematics::Axis3D Offset       = StemPoint - ClosestOnRay;
+        const float Distance = std::sqrt(Mathematics::EvaluateDot(Offset, Offset));
+        const float Score    = Distance / (0.085f * L);
+        if (Score >= BestScore)
+        {
+            continue;
+        }
+        const bool InScaleBand = (StemParam >= 0.56f * L && StemParam <= 0.78f * L);
+        if (EmitScale && InScaleBand)
+        {
+            BestHandle = ScaleOrd[AxisIdx];
+            BestScore  = Score;
+        }
+        else if (EmitTranslate)
+        {
+            BestHandle = TranslateOrd[AxisIdx];
+            BestScore  = Score;
+        }
+        else if (EmitScale)
+        {
+            BestHandle = ScaleOrd[AxisIdx];
+            BestScore  = Score;
+        }
+    }
+
+    // Plane quads: ray-plane hit inside the 0.08L half-size quad centred at 0.87L along (U + V).
+    if (EmitTranslate)
+    {
+        struct PlaneCandidate
+        {
+            Mathematics::Axis3D U;
+            Mathematics::Axis3D V;
+            GizmoHandleOrdinal  Ordinal;
+        };
+        const PlaneCandidate Planes[3] = {
+            { UnitAxes[1], UnitAxes[2], GizmoHandleOrdinal::PlaneYZ },
+            { UnitAxes[0], UnitAxes[2], GizmoHandleOrdinal::PlaneXZ },
+            { UnitAxes[0], UnitAxes[1], GizmoHandleOrdinal::PlaneXY },
+        };
+        const uint32_t PlaneCount = Spatial ? 3u : 1u;
+        for (uint32_t PlaneIdx = 0u; PlaneIdx < PlaneCount; ++PlaneIdx)
+        {
+            const PlaneCandidate& Candidate = Planes[Spatial ? PlaneIdx : 2u];
+            const Mathematics::Axis3D Normal = Mathematics::NormalizeAxis(
+                Mathematics::EvaluateCross(Candidate.U, Candidate.V), { 0.0f, 0.0f, 1.0f });
+            Mathematics::Axis3D HitPoint {};
+            if (!EvaluatePlaneRayIntersection(PivotPosition, Normal, Ray, HitPoint))
+            {
+                continue;
+            }
+            const Mathematics::Axis3D Local = HitPoint - PivotPosition;
+            const float Du = Mathematics::EvaluateDot(Local, Candidate.U);
+            const float Dv = Mathematics::EvaluateDot(Local, Candidate.V);
+            const float Score = std::max(std::abs(Du - 0.87f * L), std::abs(Dv - 0.87f * L)) / (0.11f * L);
+            if (Score < BestScore)
+            {
+                BestHandle = Candidate.Ordinal;
+                BestScore  = Score;
+            }
+        }
+    }
+
+    // Rotation arcs: ray-plane hit near the 0.589L arc radius, within the 45 deg +/- 15.5 deg sweep.
+    if (EmitRotate)
+    {
+        struct ArcCandidate
+        {
+            Mathematics::Axis3D U;
+            Mathematics::Axis3D V;
+            GizmoHandleOrdinal  Ordinal;
+        };
+        const ArcCandidate Arcs[3] = {
+            { UnitAxes[1], UnitAxes[2], GizmoHandleOrdinal::RotateX },
+            { UnitAxes[2], UnitAxes[0], GizmoHandleOrdinal::RotateY },
+            { UnitAxes[0], UnitAxes[1], GizmoHandleOrdinal::RotateZ },
+        };
+        const uint32_t ArcCount = Spatial ? 3u : 1u;
+        for (uint32_t ArcIdx = 0u; ArcIdx < ArcCount; ++ArcIdx)
+        {
+            const ArcCandidate& Candidate = Arcs[Spatial ? ArcIdx : 2u];
+            const Mathematics::Axis3D Normal = Mathematics::NormalizeAxis(
+                Mathematics::EvaluateCross(Candidate.U, Candidate.V), { 0.0f, 0.0f, 1.0f });
+            Mathematics::Axis3D HitPoint {};
+            if (!EvaluatePlaneRayIntersection(PivotPosition, Normal, Ray, HitPoint))
+            {
+                continue;
+            }
+            const Mathematics::Axis3D Local  = HitPoint - PivotPosition;
+            const float Radius  = std::sqrt(Mathematics::EvaluateDot(Local, Local));
+            const float RadialScore = std::abs(Radius - 0.589f * L) / (0.075f * L);
+            if (RadialScore >= 1.0f)
+            {
+                continue;
+            }
+            const float Angle = std::atan2(Mathematics::EvaluateDot(Local, Candidate.V), Mathematics::EvaluateDot(Local, Candidate.U));
+            float AngleDelta = std::abs(Angle - Constants::PiFloat * 0.25f);
+            if (AngleDelta > Constants::PiFloat)
+            {
+                AngleDelta = Constants::TauFloat - AngleDelta;
+            }
+            if (AngleDelta > (15.5f + 7.0f) * Constants::DegToRadFloat)
+            {
+                continue;
+            }
+            if (RadialScore < BestScore)
+            {
+                BestHandle = Candidate.Ordinal;
+                BestScore  = RadialScore;
+            }
+        }
+    }
+
+    // Centre ring: ray hit on the camera-facing plane at the 0.16L billboard radius.
+    {
+        const Mathematics::Axis3D RingNormal = Mathematics::NormalizeAxis(
+            Mathematics::EvaluateCross(CameraRight, CameraUp), { 0.0f, 0.0f, 1.0f });
+        Mathematics::Axis3D HitPoint {};
+        if (EvaluatePlaneRayIntersection(PivotPosition, RingNormal, Ray, HitPoint))
+        {
+            const Mathematics::Axis3D Local  = HitPoint - PivotPosition;
+            const float Radius = std::sqrt(Mathematics::EvaluateDot(Local, Local));
+            const float Score  = std::abs(Radius - 0.16f * L) / (0.055f * L);
+            if (Score < BestScore)
+            {
+                BestHandle = GizmoHandleOrdinal::CenterRing;
+                BestScore  = Score;
+            }
+        }
+    }
+
+    return BestHandle;
+}
+
 bool TransformGizmo::BeginDragInteraction(
     GizmoHandleOrdinal                   PickedHandle,
     const ViewportRay3D&                 InitialRay,

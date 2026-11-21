@@ -110,6 +110,24 @@ export const REFLECTION_ALGORITHMS = [
   { id: "env", label: "Sky / Env Only", desc: "Physical sky, clouds, moon & stars environment reflection only" },
 ];
 
+export const RENDER_ENGINES = [
+  { id: "matcap", ordinal: 0, label: "0. MatCap (Studio Normal)", desc: "Order 1: Studio MatCap Normal/Roughness Shading (Zero GI, Zero SDF)" },
+  { id: "openpbr_direct", ordinal: 1, label: "1. OpenPBR Direct", desc: "Order 1: Standalone Direct OpenPBR + LTC + Shadow Lab (Zero GI, Zero SDF)" },
+  { id: "gtx_sdf_gi", ordinal: 2, label: "2. RealTime GI · GTX Low-End", desc: "Order 2: Hybrid Cone Penumbra + Multi-Bounce Cone GI" },
+  { id: "highend_bvh4_gi", ordinal: 3, label: "3. RealTime GI · High-End BVH4", desc: "Order 2: 0-SDF BVH4 2-Bounce GI + Heitz Projected-Disk VNDF Reflections" },
+  { id: "pt_realtime", ordinal: 4, label: "4. Path Tracer · GameRealtime", desc: "Order 3: Unified Deterministic Path Tracer (Blue-Noise R2 + Reconstruction)" },
+  { id: "pt_final", ordinal: 5, label: "5. Path Tracer · SceneFinalRender", desc: "Order 3: Unified Deterministic Path Tracer (Shared Sobol Exact Convergence)" },
+];
+
+export const SDF_PENUMBRA_MODES = [
+  { id: "point_sdf", ordinal: 0, label: "0. Point-Sample (No Penumbra)", desc: "Crisp point-centroid luminaire occlusion with zero penumbra spread" },
+  { id: "analytic_cone", ordinal: 1, label: "1. Analytic Cone Penumbra", desc: "Closed-form solid-angle cone penumbra across area emitters" },
+  { id: "voxel_clipmap", ordinal: 2, label: "2. 3D Voxel Clipmap Penumbra", desc: "Stratified 3D clipmap cone-traced area luminaire penumbra" },
+  { id: "voxel_cone_gi", ordinal: 3, label: "3. 3D Voxel Penumbra + Cone GI", desc: "Coupled 3D clipmap luminaire penumbra + multi-cone indirect bounce GI" },
+  { id: "hybrid_sobol_cap", ordinal: 4, label: "4. Hybrid + Sobol Spherical Cap", desc: "Owen-scrambled Sobol spherical-cap luminaire penumbra integration" },
+  { id: "sdf_mc_ref", ordinal: 5, label: "5. Monte Carlo PT Ref (96 SPP)", desc: "High-sample Monte Carlo area-emitter reference penumbra" },
+];
+
 export const QUALITY_PRESETS = [
   { id: 0, label: "Low", bvhRays: 1, smrtRays: 2, pcssTaps: 8, giSamples: 4, giCones: 4, reflRays: 1 },
   { id: 1, label: "Medium (GTX)", bvhRays: 2, smrtRays: 4, pcssTaps: 16, giSamples: 6, giCones: 6, reflRays: 2 },
@@ -119,6 +137,8 @@ export const QUALITY_PRESETS = [
 ];
 
 export const CanonicalRenderSettings = {
+  RenderEngine: "gtx_sdf_gi",
+  SdfPenumbraMode: "voxel_cone_gi",
   ShadowAlgorithm: "contact_pcss",
   ShadowQuality: 1,
   ShadowRays: 2,
@@ -147,10 +167,49 @@ export const CanonicalRenderSettings = {
   AntiAliasing: true,
 };
 
+// Canonical component defaults for the Editor Camera's Lens Flare &
+// Tonemapping sub-components (mirrors the C++ flare/post inspector defaults).
+export const CameraFlareDefaults = {
+  Enabled: true,
+  Type: 0,
+  Intensity: 1.0,
+  Ghosts: 6,
+  "Halo Radius": 0.28,
+  Chromatic: 0.6,
+  "Aperture Blades": 6,
+  "Streak gain": 1.0,
+  Anamorphic: true,
+  Streaks: true,
+  Starburst: true,
+  Spread: 1,
+  Rotation: 0.0,
+  "Ray pairs": 6,
+  "Ghost brightness": 1,
+  "Ghost spacing": 1,
+  "Halo brightness": 1,
+  "Halo width": 0.035,
+  "Ghost shape": 0,
+  "Preview X": 0.28,
+  "Preview Y": 0.43,
+};
+export const CameraTonemapDefaults = {
+  "EV Compensation": 0,
+  Saturation: 1.0,
+  Contrast: 1.0,
+  "Bloom Intensity": 0.05,
+  Vignette: 0.15,
+};
+
 export function ResolveRenderSettings(Values = {}) {
   const RowRec = Values?.["render-settings"] || {};
   const Merged = { ...CanonicalRenderSettings, ...RowRec };
   // Guarantee SDF shadow is never accepted even from stale cached state
+  if (!RENDER_ENGINES.some((E) => E.id === Merged.RenderEngine)) {
+    Merged.RenderEngine = CanonicalRenderSettings.RenderEngine;
+  }
+  if (!SDF_PENUMBRA_MODES.some((M) => M.id === Merged.SdfPenumbraMode)) {
+    Merged.SdfPenumbraMode = CanonicalRenderSettings.SdfPenumbraMode;
+  }
   if (!SHADOW_ALGORITHMS.some((A) => A.id === Merged.ShadowAlgorithm)) {
     Merged.ShadowAlgorithm = CanonicalRenderSettings.ShadowAlgorithm;
   }
@@ -358,6 +417,22 @@ export const ShowcaseInitialRows = [
     Icon: "camera",
     Parent: "cameras",
     Description: "Permanent editor navigation camera · 43.0° vertical FOV",
+  },
+  {
+    Id: "camera-flare",
+    Name: "Lens Flare",
+    Panel: "flare",
+    Icon: "lens-flare",
+    Parent: "camera",
+    Description: "Editor camera lens flare component",
+  },
+  {
+    Id: "camera-tonemap",
+    Name: "Tonemapping",
+    Panel: "post",
+    Icon: "environment-exposure",
+    Parent: "camera",
+    Description: "Editor camera tonemapping component",
   },
   {
     Id: "render-settings",
@@ -608,6 +683,16 @@ export const ShowcaseInitialValues = {
     "Subject Distance": CanonicalEditorCamera.SubjectDistanceM,
     Notes:
       "Synchronized 1:1 with C++ ShowcaseWorldSceneBundle::EditorCamera · Origin (0.00, -3.55, 0.42) -> Target (0.00, 0.55, 0.15).",
+  },
+  "camera-flare": {
+    ...CameraFlareDefaults,
+    Notes:
+      "Camera Lens Flare component · C++ parity defaults (ghosts, halo, anamorphic streaks).",
+  },
+  "camera-tonemap": {
+    ...CameraTonemapDefaults,
+    Notes:
+      "Camera Tonemapping component · EV compensation drives the editor camera exposure.",
   },
   "render-settings": {
     ...CanonicalRenderSettings,
@@ -966,8 +1051,11 @@ export function CompileLiveGtxScene(
   // Render Settings component under Editor Camera
   const RenderSettings = ResolveRenderSettings(Values);
 
-  // Post-process EV
-  const PostRow = Rows.find((Row) => Row.Panel === "post");
+  // Post-process EV — the scene-level ACES row (Id "post") is authoritative
+  // when present; otherwise the camera's own Tonemapping component drives it.
+  const PostRow =
+    Rows.find((Row) => Row.Id === "post") ||
+    Rows.find((Row) => Row.Panel === "post");
   const PostEnabled = PostRow ? RowEffectivelyVisible(PostRow, Rows, Hidden) : true;
   const EvComp = PostEnabled
     ? Number(Values?.[PostRow?.Id]?.["EV Compensation"] ?? 0)

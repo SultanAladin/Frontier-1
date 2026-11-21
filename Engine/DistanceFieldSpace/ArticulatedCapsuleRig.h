@@ -84,7 +84,7 @@ inline void AppendTaperedLimbGeometry(
     GeometrySpace::PolygonNetwork& Network,
     const TaperedLimbCapsule32&    Cap,
     uint16_t                       PartOrdinal,
-    uint32_t                       RadialSides = 10u)
+    uint32_t                       RadialSides = 16u)
 {
     const Mathematics::Axis3D AxisVec = Cap.JointEnd - Cap.JointStart;
     const float AxisLen = Mathematics::EvaluateLength(AxisVec);
@@ -96,23 +96,66 @@ inline void AppendTaperedLimbGeometry(
     Mathematics::Axis3D TanU {}, BitV {};
     ConstructLimbBasis(Dir, TanU, BitV);
 
-    constexpr uint32_t Rings = 4u;
+    // 7 profile rings: 2 bottom-hemisphere cap rings + 3 tapered shaft rings + 2 top-hemisphere cap rings
+    constexpr uint32_t Rings = 7u;
+    const float SlopeZ = (Cap.RadiusStart - Cap.RadiusEnd) / AxisLen;
     std::vector<uint32_t> RingVertices(static_cast<std::size_t>(Rings) * RadialSides, 0u);
     for (uint32_t R = 0u; R < Rings; ++R)
     {
-        const float T      = static_cast<float>(R) / static_cast<float>(Rings - 1u);
-        const auto  Center = Cap.JointStart + AxisVec * T;
-        const float Radius = Cap.RadiusStart + (Cap.RadiusEnd - Cap.RadiusStart) * T;
+        Mathematics::Axis3D Center {};
+        float               RingRadius = 0.0f;
+        float               AxialNrm   = SlopeZ;
+        float               RadialNrm  = 1.0f;
+        if (R == 0u)
+        {
+            Center     = Cap.JointStart - Dir * (Cap.RadiusStart * 0.70710678f);
+            RingRadius = Cap.RadiusStart * 0.70710678f;
+            AxialNrm   = -0.70710678f;
+            RadialNrm  =  0.70710678f;
+        }
+        else if (R == 1u)
+        {
+            Center     = Cap.JointStart - Dir * (Cap.RadiusStart * 0.25881905f);
+            RingRadius = Cap.RadiusStart * 0.96592583f;
+            AxialNrm   = -0.25881905f;
+            RadialNrm  =  0.96592583f;
+        }
+        else if (R <= 4u)
+        {
+            const float T = static_cast<float>(R - 2u) * 0.5f;
+            Center        = Cap.JointStart + AxisVec * T;
+            RingRadius    = Cap.RadiusStart + (Cap.RadiusEnd - Cap.RadiusStart) * T;
+        }
+        else if (R == 5u)
+        {
+            Center     = Cap.JointEnd + Dir * (Cap.RadiusEnd * 0.25881905f);
+            RingRadius = Cap.RadiusEnd * 0.96592583f;
+            AxialNrm   = 0.25881905f;
+            RadialNrm  = 0.96592583f;
+        }
+        else
+        {
+            Center     = Cap.JointEnd + Dir * (Cap.RadiusEnd * 0.70710678f);
+            RingRadius = Cap.RadiusEnd * 0.70710678f;
+            AxialNrm   = 0.70710678f;
+            RadialNrm  = 0.70710678f;
+        }
+
         for (uint32_t S = 0u; S < RadialSides; ++S)
         {
-            const float Angle = Constants::TauFloat * static_cast<float>(S) / static_cast<float>(RadialSides);
-            const auto  Point = Center + (TanU * std::cos(Angle) + BitV * std::sin(Angle)) * Radius;
-            RingVertices[static_cast<std::size_t>(R) * RadialSides + S] = Network.AppendVertex(Point);
+            const float Angle  = Constants::TauFloat * static_cast<float>(S) / static_cast<float>(RadialSides);
+            const auto  RadDir = TanU * std::cos(Angle) + BitV * std::sin(Angle);
+            const auto  Point  = Center + RadDir * RingRadius;
+            const uint32_t VId = Network.AppendVertex(Point);
+            Network.Vertices[VId].Normal = Mathematics::NormalizeAxis(RadDir * RadialNrm + Dir * AxialNrm, RadDir);
+            RingVertices[static_cast<std::size_t>(R) * RadialSides + S] = VId;
         }
     }
 
     const uint32_t CapStart = Network.AppendVertex(Cap.JointStart - Dir * Cap.RadiusStart);
     const uint32_t CapEnd   = Network.AppendVertex(Cap.JointEnd   + Dir * Cap.RadiusEnd);
+    Network.Vertices[CapStart].Normal = Dir * -1.0f;
+    Network.Vertices[CapEnd].Normal   = Dir;
 
     for (uint32_t S = 0u; S < RadialSides; ++S)
     {

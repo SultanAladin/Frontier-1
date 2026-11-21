@@ -52,6 +52,45 @@ namespace
     return std::min(A, B) - H * H * K * 0.25f;
 }
 
+[[nodiscard]] float EvaluateEndpointFilteredOccluderDistance(
+    const HybridOccluderEnvironment& Env,
+    Mathematics::Axis3D              WorldPos,
+    Mathematics::Axis3D              EndpointA,
+    Mathematics::Axis3D              EndpointB) noexcept
+{
+    if (Env.ForbidDistanceField)
+    {
+        return 20.0f;
+    }
+
+    float BestDist = 20.0f;
+    for (const auto& Box : Env.InteriorBoxes)
+    {
+        if (Box.HalfExtent.X > 3.5f && Box.HalfExtent.Y > 3.5f)
+        {
+            continue;
+        }
+        if (Box.EvaluateSignedDistance(EndpointA) < 0.055f || Box.EvaluateSignedDistance(EndpointB) < 0.055f)
+        {
+            continue;
+        }
+        BestDist = std::min(BestDist, Box.EvaluateSignedDistance(WorldPos));
+    }
+
+    if (Env.CharacterRig != nullptr && !Env.CharacterRig->LimbCapsules.empty())
+    {
+        BestDist = std::min(BestDist, Env.CharacterRig->EvaluateMinimumSignedDistance(WorldPos));
+    }
+
+    if (Env.VehiclePlacement.ActiveToggle && Env.VehiclePlacement.VolumeAsset != nullptr)
+    {
+        BestDist = std::min(BestDist, DistanceFieldSpace::LocalSignedDistanceVolume::SampleSmoothWorldDistance(
+            Env.VehiclePlacement, WorldPos));
+    }
+
+    return BestDist;
+}
+
 } // namespace
 
 float EvaluateCombinedOccludersDistance(
@@ -67,7 +106,7 @@ float EvaluateCombinedOccludersDistance(
     float BestDist = 20.0f;
     for (const auto& Box : Env.InteriorBoxes)
     {
-        if (Box.HalfExtent.X > 3.5f || Box.HalfExtent.Y > 3.5f)
+        if (Box.HalfExtent.X > 3.5f && Box.HalfExtent.Y > 3.5f)
         {
             continue;
         }
@@ -102,7 +141,7 @@ float EvaluateInteriorOccluderDistance(
     float BestDist = 20.0f;
     for (const auto& Box : Env.InteriorBoxes)
     {
-        if (Box.HalfExtent.X > 3.5f || Box.HalfExtent.Y > 3.5f)
+        if (Box.HalfExtent.X > 3.5f && Box.HalfExtent.Y > 3.5f)
         {
             continue;
         }
@@ -155,7 +194,7 @@ float EvaluateGtxHybridDirectionalShadow(
         return 1.0f;
     }
 
-    // 2. Candidate 1 conservative cone march: signed analytical SDF (boxes + capsule rig) separated from unsigned vehicle SDF
+    // 2. Candidate 1 conservative cone march: signed analytical SDF (walls + columns + capsule rig, skipping receiver's own wall)
     float MinRatio = 2.0f;
     float Travel   = 0.04f;
     for (uint32_t Step = 0u; Step < Setup.MaxMarchSteps && Travel < Setup.MaxTraceMeters; ++Step)
@@ -166,7 +205,11 @@ float EvaluateGtxHybridDirectionalShadow(
         float SignedStatic = 20.0f;
         for (const auto& Box : Env.InteriorBoxes)
         {
-            if (Box.HalfExtent.X > 3.5f || Box.HalfExtent.Y > 3.5f)
+            if (Box.HalfExtent.X > 3.5f && Box.HalfExtent.Y > 3.5f)
+            {
+                continue;
+            }
+            if (Box.EvaluateSignedDistance(ShadingPos) < 0.055f)
             {
                 continue;
             }
@@ -312,7 +355,7 @@ float EvaluateGtxHybridLuminaireVisibility(
             continue;
         }
 
-        const float Dist    = EvaluateInteriorOccluderDistance(Env, SampleP);
+        const float Dist    = EvaluateEndpointFilteredOccluderDistance(Env, SampleP, ShadingPos, LuminaireTargetPos);
         const float ConeR   = std::max(0.036f, T * AngRadius);
         const float StepVis = SmoothHermite(-0.025f, ConeR * 0.72f, Dist + 0.015f);
         const float Occ     = (1.0f - StepVis) * Weight;
@@ -353,7 +396,7 @@ float EvaluateHighEndBvhLuminaireVisibility(
 {
     const Mathematics::Axis3D ToTarget = LuminaireTargetPos - ShadingPos;
     const float SegmentLen = Mathematics::EvaluateLength(ToTarget);
-    if (SegmentLen <= 0.05f)
+    if (SegmentLen <= 0.06f)
     {
         return 1.0f;
     }
@@ -361,7 +404,7 @@ float EvaluateHighEndBvhLuminaireVisibility(
     Ray.Origin          = ShadingPos + ShadingNormal * 3.0e-3f;
     Ray.UnitDirection   = ToTarget * (1.0f / SegmentLen);
     Ray.MinimumDistance = 2.0e-3f;
-    Ray.MaximumDistance = SegmentLen - 0.035f;
+    Ray.MaximumDistance = std::max(3.0e-3f, SegmentLen - 0.055f);
     return SceneBvh.QueryRayOccluded(Ray) ? 0.0f : 1.0f;
 }
 

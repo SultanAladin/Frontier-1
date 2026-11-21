@@ -307,7 +307,8 @@ struct CpuDownsampledCloudField
 [[nodiscard]] Mathematics::LinearRGB EvaluateMatCapShading(
     const OrthonormalCameraBasis&         CameraBasis,
     Mathematics::Axis3D                   WorldNormal,
-    const MaterialSpace::SurfaceMaterial& Mat) noexcept
+    const MaterialSpace::SurfaceMaterial& Mat,
+    float                                 SunVis = 1.0f) noexcept
 {
     const float Vx = Mathematics::EvaluateDot(WorldNormal, CameraBasis.RightAxis);
     const float Vy = Mathematics::EvaluateDot(WorldNormal, CameraBasis.UpAxis);
@@ -318,13 +319,14 @@ struct CpuDownsampledCloudField
     const Mathematics::Axis3D FillDir = Mathematics::NormalizeAxis({ -0.68f, 0.25f, 0.68f });
     const Mathematics::Axis3D RimDir  = Mathematics::NormalizeAxis({ 0.0f, 0.85f, 0.52f });
 
-    const float KeyDiff  = std::max(0.0f, Mathematics::EvaluateDot(Vn, KeyDir));
+    const float ClampedVis = std::clamp(SunVis, 0.0f, 1.0f);
+    const float KeyDiff  = std::max(0.0f, Mathematics::EvaluateDot(Vn, KeyDir)) * (0.28f + 0.72f * ClampedVis);
     const float FillDiff = std::max(0.0f, Mathematics::EvaluateDot(Vn, FillDir));
     const float RimGlow  = std::pow(std::clamp(1.0f - Vn.Z, 0.0f, 1.0f), 2.6f) * (0.35f + 0.65f * std::max(0.0f, Mathematics::EvaluateDot(Vn, RimDir)));
 
     const Mathematics::Axis3D HalfKey = Mathematics::NormalizeAxis(KeyDir + Mathematics::Axis3D{ 0.0f, 0.0f, 1.0f });
     const float SpecPow  = std::lerp(96.0f, 6.0f, std::clamp(Mat.Specular.Roughness, 0.02f, 1.0f));
-    const float KeySpec  = std::pow(std::max(0.0f, Mathematics::EvaluateDot(Vn, HalfKey)), SpecPow);
+    const float KeySpec  = std::pow(std::max(0.0f, Mathematics::EvaluateDot(Vn, HalfKey)), SpecPow) * (0.22f + 0.78f * ClampedVis);
     const float SpecGain = std::lerp(1.45f, 0.18f, std::clamp(Mat.Specular.Roughness, 0.0f, 1.0f));
 
     const float Metal   = Mat.Specular.Metalness;
@@ -516,6 +518,52 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 PtCfg.TraceScale = 1u; // Match requested viewport dimensions 1:1 when driven by TieredWorldRenderSequence
             }
         }
+
+        if (!PreparedScene.SceneTree.Primitives.empty())
+        {
+            const std::size_t PrimCount = PreparedScene.SceneTree.Primitives.size();
+            const uint32_t    MatCount  = PreparedScene.MaterialRegister.QuerySlotCount();
+            if (SyncedPathTracerPrimCount != PrimCount || SyncedPathTracerMatCount != MatCount)
+            {
+                (void)AttachedPathTracer->ConfigureCustomWorldScene(PreparedScene, PtCfg);
+                SyncedPathTracerPrimCount = PrimCount;
+                SyncedPathTracerMatCount  = MatCount;
+            }
+
+            const Mathematics::Axis3D StudioOrigin {
+                CurrentCamera.CameraOrigin.X,
+                CurrentCamera.CameraOrigin.Z,
+                -CurrentCamera.CameraOrigin.Y,
+            };
+            const Mathematics::Axis3D StudioTarget {
+                CurrentCamera.TargetPoint.X,
+                CurrentCamera.TargetPoint.Z,
+                -CurrentCamera.TargetPoint.Y,
+            };
+            const Mathematics::Axis3D Delta = StudioOrigin - StudioTarget;
+            const float Dist = std::max(0.05f, Mathematics::EvaluateLength(Delta));
+            DeterministicOrbitCamera NextCam {};
+            NextCam.Target             = { StudioTarget.X, StudioTarget.Y, StudioTarget.Z };
+            NextCam.DistanceMeters     = Dist;
+            NextCam.PitchRadians       = std::asin(std::clamp(Delta.Y / Dist, -0.9999f, 0.9999f));
+            NextCam.YawRadians         = std::atan2(Delta.X, Delta.Z);
+            NextCam.FieldOfViewDegrees = std::clamp(CurrentCamera.VerticalFovRadians * 57.2957795f, 10.0f, 120.0f);
+
+            const auto& PrevCam = AttachedPathTracer->AccessConfiguration().Camera;
+            const bool CamChanged =
+                std::abs(PrevCam.YawRadians - NextCam.YawRadians) > 1.0e-4f ||
+                std::abs(PrevCam.PitchRadians - NextCam.PitchRadians) > 1.0e-4f ||
+                std::abs(PrevCam.DistanceMeters - NextCam.DistanceMeters) > 1.0e-4f ||
+                std::abs(PrevCam.Target[0] - NextCam.Target[0]) > 1.0e-4f ||
+                std::abs(PrevCam.Target[1] - NextCam.Target[1]) > 1.0e-4f ||
+                std::abs(PrevCam.Target[2] - NextCam.Target[2]) > 1.0e-4f ||
+                std::abs(PrevCam.FieldOfViewDegrees - NextCam.FieldOfViewDegrees) > 1.0e-3f;
+            if (CamChanged)
+            {
+                AttachedPathTracer->UpdateCamera(NextCam, TargetProfile == DeterministicRenderProfile::GameRealtime);
+            }
+        }
+
         (void)AttachedPathTracer->ResizeAccumulation(Result.WidthPx, Result.HeightPx);
         const uint32_t Batch = std::max(1u, Config.PathTraceSamples);
         (void)AttachedPathTracer->AdvanceSamples(Batch);
@@ -606,10 +654,28 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             : ProjectedLensFlareSlice{};
 
     //====================================================================================================================
-    // ENGINE 0: MATCAP (Zero GI, Zero Shadow Maps, Zero Reflections)
+    // ENGINE 0: MATCAP / PHONG (Zero GI, Zero SDF, Zero PCSS — Ultra-Fast 2x2 Bilinear Shadow Lookup Only)
     //====================================================================================================================
     if (Config.Engine == WorldRenderEngine::MatCap)
     {
+        SolarShadowFieldResult CheapShadow {};
+        const bool SunShadowActive =
+            Config.DebugChannel == 0u &&
+            !FineContactClip.ClosestLightDepth.empty() &&
+            std::max({ PreparedScene.Sun.SolarIrradiance.R, PreparedScene.Sun.SolarIrradiance.G, PreparedScene.Sun.SolarIrradiance.B }) > 1.0e-4f;
+        if (SunShadowActive)
+        {
+            CheapShadow = SolarShadowSequence::EvaluateSolarShadowFieldWithAlgorithm(
+                SolarShadowAlgorithm::PcfBilinear,
+                PreparedScene.Sun,
+                Result.WidthPx,
+                Result.HeightPx,
+                PrimarySamples,
+                PreparedScene.SceneTree,
+                &FineContactClip,
+                &CoarseContactClip);
+        }
+
         for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
         {
             for (uint32_t PX = 0u; PX < Result.WidthPx; ++PX)
@@ -620,9 +686,12 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
                 {
                     const auto& Mat = PreparedScene.MaterialRegister.InspectAuthoredMaterial(Hit.MaterialSlot);
+                    const float SunVis = (SunShadowActive && Off < CheapShadow.RawVisibility.size())
+                        ? CheapShadow.RawVisibility[Off]
+                        : 1.0f;
                     OutHdr = (Config.DebugChannel != 0u)
                         ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat)
-                        : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat);
+                        : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat, SunVis);
                 }
                 else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && Config.DebugChannel == 0u)
                 {
@@ -700,7 +769,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 const Mathematics::Axis3D UnitSun   = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
                 const float               TanSunRad = std::tan(std::clamp(PreparedScene.Sun.SunAngularRadiusRadians, 1.0e-4f, 0.25f));
 
-                DirectLighting::SdfVoxelClipmapHierarchy OptionalClipmap {};
+                DirectLighting::DualCascadeClipmapVolume OptionalClipmap {};
                 const bool NeedsVoxelClipmap =
                     (Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfClipmapPenumbra ||
                      Config.SdfPenumbraMode == DirectLighting::SdfShadowPenumbraMode::VoxelSdfPenumbraPlusConeGi);
@@ -774,6 +843,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             PreparedScene.Sun.SolarIrradiance.G,
             PreparedScene.Sun.SolarIrradiance.B,
         };
+        StokesSettings.AreaLights         = PreparedScene.AreaLights;
         SurfelSettings.HighEndZeroSdfTier = HighEndZeroSdf;
         SurfelSettings.SunDirection       = Mathematics::NormalizeAxis(PreparedScene.Sun.DirectionToSun, { 0.0f, 0.0f, 1.0f });
         SurfelSettings.SunRadiance        = {
@@ -781,6 +851,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             PreparedScene.Sun.SolarIrradiance.G,
             PreparedScene.Sun.SolarIrradiance.B,
         };
+        SurfelSettings.AreaLights         = PreparedScene.AreaLights;
 
         if (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
         {
@@ -794,6 +865,24 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         }
     }
 
+    SpecularSecondaryGiContext SpecGiContext {};
+    const SpecularSecondaryGiContext* SpecGiPtr = nullptr;
+    if (Order2Active && !PreparedScene.CompressedSceneTree.Primitives.empty())
+    {
+        SpecGiContext.OccluderEnv    = &Order2Occluders;
+        SpecGiContext.StokesSettings = StokesSettings;
+        SpecGiContext.SurfelSettings = SurfelSettings;
+        if (Config.GiCandidate == RealTimeGiCandidate::StokesContour)
+        {
+            SpecGiContext.StokesIrradiance = &Order2Stokes;
+        }
+        else
+        {
+            SpecGiContext.SurfelLattice = &Order2Surfels;
+        }
+        SpecGiPtr = &SpecGiContext;
+    }
+
     Result.SpecularGlass = SpecularReflectionSequence::EvaluateSpecularRefractionWithSource(
         Config.ReflectionSource,
         CurrentCamera,
@@ -805,7 +894,8 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
         PreparedScene.SceneTree,
         PreparedScene.Sun,
         PreparedScene.SkyRadiance,
-        PreparedScene.AreaLights);
+        PreparedScene.AreaLights,
+        SpecGiPtr);
 
     for (uint32_t PY = 0u; PY < Result.HeightPx; ++PY)
     {
@@ -825,6 +915,18 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 }
                 else if (Config.DebugChannel == 9u && Off < Result.DirectLighting.CombinedDiffuseAo.size())
                 {
+                    const float A = Result.DirectLighting.CombinedDiffuseAo[Off];
+                    Dbg = { A, A, A };
+                }
+                else if (Config.DebugChannel == 13u)
+                {
+                    // SDF with Materials (CPU path): material albedo shaded by the geometric normal
+                    const float NdotL = std::clamp(Mathematics::EvaluateDot(Hit.TangentFrame.NormalZ, PreparedScene.Sun.DirectionToSun), 0.0f, 1.0f);
+                    Dbg = Mat.Diffuse.BaseColor * (0.22f + 0.78f * NdotL);
+                }
+                else if (Config.DebugChannel == 15u && Off < Result.DirectLighting.CombinedDiffuseAo.size())
+                {
+                    // SDF AO Raw: unfiltered per-pixel AO (CPU AO buffer is pre-filter by construction)
                     const float A = Result.DirectLighting.CombinedDiffuseAo[Off];
                     Dbg = { A, A, A };
                 }

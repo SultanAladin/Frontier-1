@@ -15,7 +15,18 @@ const { build } = Require("esbuild");
 let Assets;
 let Fonts;
 
-if (fs.existsSync(path.join(Frontier, "EngineContent/Icons"))) {
+const FullAssetSources =
+  fs.existsSync(path.join(Frontier, "EngineContent/Icons")) &&
+  fs.existsSync(
+    path.join(Frontier, "EngineContent/Fonts/SunReference/DMSans-Light.ttf"),
+  ) &&
+  fs.existsSync(
+    path.join(Frontier, "EngineContent/CelestialTextures/luna_2k.jpg"),
+  ) &&
+  fs.existsSync(
+    path.join(Frontier, "Exhibits/DistanceFieldGI/ShaderBall.mesh"),
+  );
+if (FullAssetSources) {
   const { createCanvas, loadImage } = Require("@napi-rs/canvas");
   Assets = {
     Icons: {},

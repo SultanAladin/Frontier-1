@@ -6,6 +6,7 @@
 #include "Engine/Codecs/ControlVehicleSurfaceDecoder.h"
 #include "Engine/Codecs/PhotometricProfile.h"
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -771,6 +772,31 @@ int main()
         !RequireCondition(ForwardBeamPoolLum > FarDarkCornerLum + 20.0, "LowBeamHeadlamp .ies throws bright pool onto floor/wall"))
     {
         return 1;
+    }
+
+    // 3e. Default Editor Scene Proof: ControlVehicle ONLY, Clear Sky, and Ground Plane
+    {
+        ShowcaseWorldSceneBundle DefaultScene {};
+        BuildVehicleClearSkyDefaultScene(DefaultScene, RenderWidthPx, RenderHeightPx);
+        CpuSequence.SynchronizeWorldAtmosphere(DefaultScene.Scene);
+        GpuSequence.SynchronizeSceneResources(DefaultScene.Scene, true);
+
+        std::vector<uint8_t> DefaultSceneRgba {};
+        WorldRenderConfiguration DefaultCfg {};
+        DefaultCfg.Engine             = WorldRenderEngine::RealTimeGiGtxLowEnd;
+        DefaultCfg.ShadowAlgorithm    = SolarShadowAlgorithm::ContactPcss;
+        DefaultCfg.ReflectionSource   = SpecularReflectionSource::WideTreeRaytrace;
+        DefaultCfg.ReflectionsEnabled = true;
+        DefaultCfg.RaytracingEnabled  = true;
+        if (!RequireCondition(
+                GpuSequence.RenderWorldViewportWithEngine(DefaultCfg, 3u, DefaultScene.EditorCamera, DefaultScene.Scene, DefaultSceneRgba),
+                "GPU Default Scene (ControlVehicle + Clear Sky + Ground Plane) render") ||
+            !RequireCondition(
+                SaveRgba8ImageToPng(ImageDir / "05-DefaultSceneVehicleClearSky.png", RenderWidthPx, RenderHeightPx, DefaultSceneRgba),
+                "Write 05-DefaultSceneVehicleClearSky.png"))
+        {
+            return 1;
+        }
     }
 
     GpuSequence.TeardownSequence();

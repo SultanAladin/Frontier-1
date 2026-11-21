@@ -560,11 +560,13 @@ ContentCategory ThumbnailSheetRepository::ClassifyExternalSuffix(const std::file
     {
         return ContentCategory::Colours;
     }
-    if (Ext == ".gltf" || Ext == ".glb" || Ext == ".fbx" || Ext == ".obj" || Ext == ".step" || Ext == ".geometryspace" || Ext == ".assembly" || Ext == ".sketch")
+    if (Ext == ".gltf" || Ext == ".glb" || Ext == ".fbx" || Ext == ".obj" || Ext == ".step"
+        || Ext == ".geometryspace" || Ext == ".componentspace" || Ext == ".worldspace" || Ext == ".instancespace"
+        || Ext == ".assembly" || Ext == ".sketch")
     {
         return ContentCategory::Geometry;
     }
-    if (Ext == ".uvspace")
+    if (Ext == ".uvspace" || Ext == ".surfaceparameterspace")
     {
         return ContentCategory::UVLayouts;
     }
@@ -596,7 +598,7 @@ ContentCategory ThumbnailSheetRepository::ClassifyExternalSuffix(const std::file
     {
         return ContentCategory::Volumetrics;
     }
-    if (Ext == ".ies" || Ext == ".photometry")
+    if (Ext == ".ies" || Ext == ".photometry" || Ext == ".photometryspace")
     {
         return ContentCategory::Photometry;
     }
@@ -604,7 +606,7 @@ ContentCategory ThumbnailSheetRepository::ClassifyExternalSuffix(const std::file
     {
         return ContentCategory::Audio;
     }
-    if (Ext == ".slang" || Ext == ".render")
+    if (Ext == ".slang" || Ext == ".render" || Ext == ".renderspace")
     {
         return ContentCategory::Shaders;
     }
@@ -1124,6 +1126,7 @@ void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
         { "Studio Softbox Light",         ContentCategory::Photometry,  ContentOriginFilter::Engine,  { 255u, 244u, 214u, 255u } },
         { "Turbine Wind Fan",             ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 100u, 116u, 139u, 255u } },
         { "Tyre Stack",                   ContentCategory::Geometry,    ContentOriginFilter::Engine,  { 59u,  120u, 216u, 255u } },
+        { "ControlVehicleMesh",           ContentCategory::Geometry,    ContentOriginFilter::Project, { 24u,  96u,  214u, 255u }, ".GeometrySpace", "Geometry/Vehicles/ControlVehicle.GeometrySpace" },
     });
 
     for (const SeedEntry& Seed : StockEntries)

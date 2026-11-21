@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Lifecycle/DesktopWorkspaceLaunch.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
 
 #include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
@@ -264,6 +265,7 @@ int LaunchDesktopWorkspace(
     const std::filesystem::path&  RepositoryRootPath,
     const std::filesystem::path&  CompiledShaderDir)
 {
+    Diagnostics::ThoughtLog::Initialize(); // RAM-only timing log; flushed once when the application closes
     std::set_terminate([]()
     {
         std::fprintf(stderr, "[FrontierHost] Unhandled C++ terminate invoked.\n");
@@ -711,7 +713,7 @@ int LaunchDesktopWorkspace(
         ProjectBrowserInitialized = true;
     };
 
-    auto EnsureEditorLifecycleReady = [&](const std::filesystem::path& ProjectSpaceFile, std::string_view ProjectTitle) -> bool
+    auto EnsureEditorLifecycleReady = [&](const std::filesystem::path& ProjectSpaceFile, std::string_view ProjectTitle, bool BlankPlaneSkyScene = false) -> bool
     {
         if (!EditorStackReady)
         {
@@ -725,6 +727,7 @@ int LaunchDesktopWorkspace(
             EditorCfg.FontRepositoryRoot      = RepositoryRootPath / "EngineContent/FontsArchives";
             EditorCfg.ProjectSpacePath        = ProjectSpaceFile.empty() ? InitialOptions.StartupProjectSpacePath : ProjectSpaceFile;
             EditorCfg.PopulateShowcaseScene   = true;
+            EditorCfg.PopulateBlankPlaneSkyScene = BlankPlaneSkyScene;
             EditorCfg.VulkanDevice            = &DeviceInterchange;
             EditorCfg.ImGuiPresenter          = &SwapchainPresenter;
             EditorCfg.CompiledShaderDirectory = CompiledShaderDir;
@@ -745,6 +748,10 @@ int LaunchDesktopWorkspace(
                 true);
             (void)EditorBrowserPanel.ActivateCategory(ContentCategory::Colours);
             EditorStackReady = true;
+        }
+        if (BlankPlaneSkyScene && EditorStackReady)
+        {
+            EditorLoopPtr->PopulateBlankPlaneSkySession();
         }
         if (!ProjectTitle.empty())
         {
@@ -1117,7 +1124,7 @@ int LaunchDesktopWorkspace(
                 }
                 else
                 {
-                    if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle))
+                    if (EnsureEditorLifecycleReady(Directive.SelectedFilePath, Directive.ProjectTitle, Directive.BlankPlaneSkyScene))
                     {
                         CurrentSurface = ActiveHostSurface::WorldEditorSurface;
                     }
@@ -1327,6 +1334,7 @@ int LaunchDesktopWorkspace(
             break;
         }
 
+        FRONTIER_THOUGHT_SCOPE("Host.Frame");
         const auto   NowTick = std::chrono::steady_clock::now();
         const double Dt      = std::clamp(std::chrono::duration<double>(NowTick - LastTick).count(), 1.0 / 240.0, 0.250);
         LastTick             = NowTick;
@@ -1493,7 +1501,10 @@ int LaunchDesktopWorkspace(
         }
         else if (CurrentSurface == ActiveHostSurface::WorldEditorSurface && EditorLoopPtr)
         {
-            (void)EditorLoopPtr->ExecuteExternalDesktopTick(Dt);
+            {
+                FRONTIER_THOUGHT_SCOPE("Host.EditorTick");
+                (void)EditorLoopPtr->ExecuteExternalDesktopTick(Dt);
+            }
             Input::InputExtension::AssignActiveExtension(&InputParticipant);
             const auto UiStart = std::chrono::steady_clock::now();
             EditorLoopPtr->PresentPrimaryEditorImGui(Dt);
@@ -1894,6 +1905,7 @@ int LaunchDesktopWorkspace(
 #endif
     TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiCtx);
+    Diagnostics::ThoughtLog::Shutdown(); // Application closing: flush the thought log and close it
     return 0;
 }
 

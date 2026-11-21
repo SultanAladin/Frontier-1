@@ -9,6 +9,7 @@
 
 #include "Engine/Configuration/ProjectGenerator.h"
 #include "Engine/Configuration/ProjectSpaceRepository.h"
+#include "Engine/Codecs/WorldSpaceCodec.h"
 
 #include <cctype>
 #include <fstream>
@@ -371,18 +372,39 @@ ProjectScaffoldOutcome ProjectGenerator::GenerateProject(const ProjectScaffoldSp
         }
     }
 
-    // 6. Write Content/Worlds/MainWorld.WorldSpace, Content/UV/MainSurface.UVSpace, and Shaders/MaterialSpace/<ProjectName>Surface.slang
+    // 6. Write Content/Worlds/MainWorld.WorldSpace (blank scene: single Ground Plane & clear sky), Content/UV/MainSurface.UVSpace, and Shaders/MaterialSpace/<ProjectName>Surface.slang
     {
-        std::ostringstream WorldDoc {};
-        WorldDoc << "# Frontier .WorldSpace Container\n"
-                 << "Project = \"" << Proj << "\"\n"
-                 << "ScenePreset = \"CornellStudioGallery\"\n"
-                 << "RenderTier = \"Tier1GtxCalibrated\"\n"
-                 << "UpAxis = \"+Z\"\n";
-        if (!WriteTextArtifact(Outcome.MainWorldFile, WorldDoc.str(), Outcome.GeneratedFiles, Outcome.Diagnostic))
+        Codecs::WorldSpaceDocumentModel BlankWorld {};
+        BlankWorld.DocumentTitle  = "MainWorld";
+        BlankWorld.EditorCamera.CameraOrigin       = { 6.50f, -6.50f, 2.60f };
+        BlankWorld.EditorCamera.TargetPoint        = { 0.00f, 0.00f, 0.20f };
+        BlankWorld.EditorCamera.WorldUpAxis        = { 0.00f, 0.00f, 1.00f };
+        BlankWorld.EditorCamera.VerticalFovRadians = 0.7330f;
+        BlankWorld.EditorCamera.NearClipMeters     = 0.12f;
+        BlankWorld.EditorCamera.FarClipMeters      = 240.0f;
+
+        Codecs::WorldGeometryPlacementEntry GroundPlacement {};
+        GroundPlacement.PlacementTitle        = "GroundPlane";
+        GroundPlacement.StableIdentifier      = "ground-plane";
+        GroundPlacement.Subtitle              = "Box \u00B7 48.0 \u00D7 48.0 \u00D7 0.16 m \u00B7 Z = 0 datum";
+        GroundPlacement.AuthorNotes           = "Blank scene ground plane under clear sky illumination.";
+        GroundPlacement.CenterWorld           = { 0.0f, 0.0f, -0.08f };
+        GroundPlacement.DimensionsMeters      = { 48.0f, 48.0f, 0.16f };
+        GroundPlacement.PrimitiveShapeOrdinal = 0u;
+        BlankWorld.GeometryPlacements.push_back(std::move(GroundPlacement));
+
+        std::error_code WorldDirErr {};
+        std::filesystem::create_directories(Outcome.MainWorldFile.parent_path(), WorldDirErr);
+        if (WorldDirErr ||
+            !Codecs::WorldSpaceEncoder::EncodeToFile(Outcome.MainWorldFile, BlankWorld, Outcome.Diagnostic))
         {
+            if (Outcome.Diagnostic.empty())
+            {
+                Outcome.Diagnostic = "Failed to write blank MainWorld.WorldSpace for " + Proj;
+            }
             return Outcome;
         }
+        Outcome.GeneratedFiles.push_back(Outcome.MainWorldFile);
 
         std::ostringstream UvDoc {};
         UvDoc << "# Frontier .UVSpace Container\n"

@@ -106,11 +106,11 @@ import {
 
 const Folder = path.dirname(fileURLToPath(import.meta.url));
 
-// 1. Verify exact 23-entry Cornell-Studio Gallery Outliner matching C++ ShowcaseGalleryScene (+ RenderSettings + ControlVehicle + Physical Environment)
+// 1. Verify exact 25-entry Cornell-Studio Gallery Outliner matching C++ ShowcaseGalleryScene (+ RenderSettings + ControlVehicle + Physical Environment + 2 Editor Camera components)
 assert.equal(
   ShowcaseInitialRows.length,
-  23,
-  "Expected 23 Outliner entries (4 folders + 10 geometry + ControlVehicle + Editor Camera + Render Settings + Sun + Atmosphere + Clouds + Moon + Starfield + Ceiling Softbox)",
+  25,
+  "Expected 25 Outliner entries (4 folders + 10 geometry + ControlVehicle + Editor Camera + Lens Flare + Tonemapping + Render Settings + Sun + Atmosphere + Clouds + Moon + Starfield + Ceiling Softbox)",
 );
 const ShowcaseChildren = ShowcaseInitialRows.filter(
   (Row) => Row.Parent === "showcase",
@@ -267,7 +267,17 @@ assert.equal(SnappedMove.Position[0], 0.25, "Ctrl-snap quantizes TranslateX to 0
 
 // 6. Verify Multi-Level System & Create Level templates
 const DefaultLevels = BuildDefaultLevels();
-assert.equal(DefaultLevels.length, 3, "3 built-in Frontier levels shipped");
+assert.equal(DefaultLevels.length, 4, "4 built-in Frontier levels shipped (Frontier Lobby default + Cornell-Studio Gallery + Look-Dev Plinth Studio + Empty Proving Ground)");
+assert.equal(
+  DefaultLevels[0].Id,
+  "level-frontier-lobby",
+  "Frontier Lobby is the default boot level",
+);
+assert.ok(
+  DefaultLevels[0].Rows.some((R) => R.Id === "control-vehicle") &&
+    DefaultLevels[0].Rows.some((R) => R.Id === "lobby-aircraft" && R.PropId === "light_aircraft"),
+  "Frontier Lobby default level stages both the ControlVehicle & the light trainer aircraft",
+);
 const CreatedLookDev = CreateNewLevelRecord({
   Name: "Custom Courtyard",
   TemplateId: "lookdev",
@@ -279,11 +289,19 @@ assert.ok(
   "Look-Dev template populates Charlie velvet & subsurface specimens",
 );
 const Duplicated = CreateNewLevelRecord({
-  Name: "Gallery Variant B",
+  Name: "Lobby Variant B",
   TemplateId: "duplicate",
   CurrentLevel: DefaultLevels[0],
 });
-assert.equal(Duplicated.Rows.length, 23, "Duplicate Current Level clones all 23 Showcase rows");
+assert.equal(
+  Duplicated.Rows.length,
+  DefaultLevels[0].Rows.length,
+  "Duplicate Current Level clones every Frontier Lobby row 1:1 (geometry + ControlVehicle + light aircraft + camera components)",
+);
+assert.ok(
+  DefaultLevels[0].Rows.length > 14,
+  `Frontier Lobby default level carries 14 authored rows + injected Render Settings, camera components & physical environment (got ${DefaultLevels[0].Rows.length})`,
+);
 
 // 7. Verify standalone index.html bundle integrity & non-SDF shadow map / BVH shader presence
 const ViewportSrc = fs.readFileSync(path.join(Folder, "GtxWorldViewport.jsx"), "utf8");
@@ -745,13 +763,13 @@ assert.ok(
     "CPU GTX raytraces Traffic Cone (Shape 3) & Cylinder Cone (Shape 5) cleanly",
   );
 
-  // Verify WGSL & Automotive Cone Slalom level template
+  // Verify WGSL shader & Frontier Lobby level template
   assert.ok(GTX_WGSL_SCENE_SHADER.includes("fn intersectFrustumZ") && GTX_WGSL_SCENE_SHADER.includes("shape == 5"), "WGSL shader includes analytical cone & cylinder-cone");
-  const SlalomLvl = CreateNewLevelRecord({ Name: "Test Chicane", TemplateId: "slalom" });
+  const LobbyLvl = CreateNewLevelRecord({ Name: "Test Lobby", TemplateId: "lobby" });
   assert.ok(
-    SlalomLvl.Rows.some((R) => R.PrimitiveShape === "cone") &&
-      SlalomLvl.Rows.some((R) => R.PrimitiveShape === "cylinder-cone"),
-    "Automotive Cone Slalom template provisions both Traffic Cones & Cylinder Cones",
+    LobbyLvl.Rows.some((R) => R.Id === "control-vehicle") &&
+      LobbyLvl.Rows.some((R) => R.Id === "lobby-aircraft" && R.PropId === "light_aircraft"),
+    "Frontier Lobby template provisions both the ControlVehicle & the light trainer aircraft",
   );
 
   // Verify 3D Analytical OpenPBR Thumbnail Raytracer across Traffic Cone, Cylinder Cone & Analytical Shapes (100% transparent sky)
@@ -789,14 +807,15 @@ assert.ok(
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
-// 13. 24-Prop Studio Camera/Light/Track Library, Transparent Thumbnails, Per-Face Colours, 15 Debug Views & ProjectBrowser
+// 13. 29-Prop Studio Camera/Light/Track/Aircraft Library, Transparent Thumbnails, Per-Face Colours, 15 Debug Views & ProjectBrowser
 // ---------------------------------------------------------------------------------------------------------------------------------------
 {
-  assert.equal(WORLD_PROP_CATALOG.length, 28, "WORLD_PROP_CATALOG exposes 28 bespoke cinema cameras, studio lights, fans, ControlVehicle tyres, and barriers");
+  assert.equal(WORLD_PROP_CATALOG.length, 29, "WORLD_PROP_CATALOG exposes 29 bespoke cinema cameras, studio lights, fans, ControlVehicle tyres, barriers & the light trainer aircraft");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "camera").length, 6, "6 bespoke 3D cinema camera models registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "light").length, 6, "6 3D studio light models registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Category === "Fans & Wind").length, 3, "3 motorsport & studio fan models registered");
-  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "geometry").length, 16, "16 fans, ControlVehicle tyre stack, barriers, sawtooth kerb & paddock props registered");
+  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "geometry").length, 17, "17 fans, ControlVehicle tyre stack, barriers, sawtooth kerb, paddock props & light aircraft registered");
+  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Category === "Aircraft").length, 1, "1 display-scale light trainer aircraft registered");
 
   // Verify every single prop renders a transparent, unclipped, tightly-framed 3D thumbnail
   for (const Prop of WORLD_PROP_CATALOG) {
@@ -1171,14 +1190,18 @@ assert.ok(
   }
   assert.ok(CpuVehPixels > 100, `CpuGtxRenderer rendered ${CpuVehPixels} ControlVehicle BVH pixels cleanly`);
 
-  const SlalomLevel = CreateNewLevelRecord({
-    Name: "Automotive Cone Slalom",
-    TemplateId: "slalom",
+  const LobbyLevel = CreateNewLevelRecord({
+    Name: "Frontier Lobby",
+    TemplateId: "lobby",
   });
   assert.ok(
-    SlalomLevel.Rows.some((R) => R.Id === "control-vehicle") &&
-      SlalomLevel.Rows.some((R) => R.Id === "render-settings"),
-    "Cone Slalom template includes ControlVehicle & Render Settings",
+    LobbyLevel.Rows.some((R) => R.Id === "control-vehicle") &&
+      LobbyLevel.Rows.some((R) => R.Id === "render-settings"),
+    "Lobby template includes ControlVehicle & Render Settings",
+  );
+  assert.ok(
+    LobbyLevel.Rows.some((R) => R.Id === "lobby-aircraft" && R.PropId === "light_aircraft"),
+    "Lobby template includes the light trainer aircraft",
   );
   assert.ok(
     DefaultLevels.every((L) => L.Rows.some((R) => R.Id === "render-settings")),
@@ -1682,6 +1705,98 @@ assert.ok(
   assert.ok(FSun[3] > FMoon[3] * 2.0, `Daytime sunlight strongly illuminates the scene above moonlight (sun=${FSun[3].toFixed(4)} vs moon=${FMoon[3].toFixed(4)})`);
 }
 
+// ============================================================================
+// Suite 20: 3-Order 6-Engine (WorldRenderEngine 0..5) + 6-Mode Luminaire Penumbra Parity
+// ============================================================================
+{
+  const { RENDER_ENGINES, SDF_PENUMBRA_MODES, ResolveRenderSettings } = await import("./ShowcaseGalleryScene.js");
+  const { EncodeRenderSettingsUniforms } = await import("./ShadowPipeline.js");
+
+  assert.deepStrictEqual(
+    RENDER_ENGINES.map((E) => E.id),
+    ["matcap", "openpbr_direct", "gtx_sdf_gi", "highend_bvh4_gi", "pt_realtime", "pt_final"],
+    "RENDER_ENGINES mirrors C++ WorldRenderEngine 0..5",
+  );
+  assert.deepStrictEqual(
+    SDF_PENUMBRA_MODES.map((M) => M.id),
+    ["point_sdf", "analytic_cone", "voxel_clipmap", "voxel_cone_gi", "hybrid_sobol_cap", "sdf_mc_ref"],
+    "SDF_PENUMBRA_MODES mirrors C++ SdfShadowPenumbraMode 0..5",
+  );
+
+  for (let i = 0; i < 6; ++i) {
+    const u = EncodeRenderSettingsUniforms(
+      ResolveRenderSettings({
+        "render-settings": {
+          RenderEngine: RENDER_ENGINES[i].id,
+          SdfPenumbraMode: SDF_PENUMBRA_MODES[i].id,
+        },
+      }),
+    );
+    assert.strictEqual(u.engineMode, i, `engineMode=${i}`);
+    assert.strictEqual(u.sdfPenumbraMode, i, `sdfPenumbraMode=${i}`);
+    assert.strictEqual(u.packedEnginePenumbra, i * 8 + i, `packedEnginePenumbra=${i * 8 + i}`);
+  }
+
+  const RenderWithEngineAndPenumbra = (EngineId, PenumbraId = "voxel_cone_gi") => {
+    const Vals = {
+      ...ShowcaseInitialValues,
+      "render-settings": {
+        ...CanonicalRenderSettings,
+        RenderEngine: EngineId,
+        SdfPenumbraMode: PenumbraId,
+        ShadowRays: 4,
+      },
+    };
+    const Sc = CompileLiveGtxScene(ShowcaseInitialRows, Vals, {}, "PERSP");
+    const Atl = new MaterialAtlasSynchronizer();
+    Atl.UpdatePrimitives(Sc.Primitives);
+    const Cpu = new CpuGtxRenderer();
+    Cpu.RenderFullFrame({
+      CompiledScene: Sc,
+      AtlasPixels: Atl.Pixels,
+      Width: 96,
+      Height: 64,
+      ViewModeCode: 0,
+      ShowGrid: false,
+    });
+    let sum = 0;
+    for (let p = 0; p < Cpu.OffscreenImg.data.length; p += 4) {
+      sum += (Cpu.OffscreenImg.data[p] + Cpu.OffscreenImg.data[p + 1] + Cpu.OffscreenImg.data[p + 2]) / (3 * 255);
+    }
+    return { meanLuma: sum / (96 * 64), data: new Uint8ClampedArray(Cpu.OffscreenImg.data) };
+  };
+
+  const FMatCap = RenderWithEngineAndPenumbra("matcap");
+  const FDirect = RenderWithEngineAndPenumbra("openpbr_direct");
+  const FGtxGi  = RenderWithEngineAndPenumbra("gtx_sdf_gi");
+  const FBvhGi  = RenderWithEngineAndPenumbra("highend_bvh4_gi");
+  const FPtRt   = RenderWithEngineAndPenumbra("pt_realtime");
+  const FPtFin  = RenderWithEngineAndPenumbra("pt_final");
+
+  for (const [Name, Fr] of [
+    ["matcap", FMatCap],
+    ["openpbr_direct", FDirect],
+    ["gtx_sdf_gi", FGtxGi],
+    ["highend_bvh4_gi", FBvhGi],
+    ["pt_realtime", FPtRt],
+    ["pt_final", FPtFin],
+  ]) {
+    assert.ok(Number.isFinite(Fr.meanLuma) && Fr.meanLuma > 0.05, `Engine ${Name} produces finite non-black output (meanLuma=${Fr.meanLuma.toFixed(4)})`);
+  }
+  assert.ok(Math.abs(FMatCap.meanLuma - FDirect.meanLuma) > 0.005, "MatCap and OpenPBR Direct execute distinct shading");
+  assert.ok(FGtxGi.meanLuma > FDirect.meanLuma, "Order 2 GTX GI adds indirect bounce illumination above Direct-only");
+  assert.ok(FBvhGi.meanLuma > FDirect.meanLuma, "Order 2 HighEnd BVH4 GI adds indirect bounce illumination above Direct-only");
+
+  // Verify Point-Sample (Mode 0) vs Monte Carlo Ref (Mode 5) penumbra difference under area softbox
+  const FPen0 = RenderWithEngineAndPenumbra("gtx_sdf_gi", "point_sdf");
+  const FPen5 = RenderWithEngineAndPenumbra("gtx_sdf_gi", "sdf_mc_ref");
+  let diffPen = 0;
+  for (let p = 0; p < FPen0.data.length; p += 4) {
+    diffPen += Math.abs(FPen0.data[p] - FPen5.data[p]) + Math.abs(FPen0.data[p + 1] - FPen5.data[p + 1]) + Math.abs(FPen0.data[p + 2] - FPen5.data[p + 2]);
+  }
+  assert.ok(diffPen > 500, `Point-Sample Mode 0 vs MC Ref Mode 5 produce distinct luminaire penumbra gradients (diffSum=${diffPen})`);
+}
+
 console.log(
-  "[WorldMirrorValidation] ALL 19 SUITES PASSED: ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections, No SDF Shadows/Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
+  "[WorldMirrorValidation] ALL 20 SUITES PASSED: 3-Order 6-Engine + 6-Mode Penumbra C++ Parity, ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
 );

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                     SDFEMISSIVEPENUMBRASEQUENCE.CPP
 ============================================================================================================================================*/
-// 🧩 Unified 6-Mode SDF Shadow, 3D Voxel SDF Clipmap Penumbra, Voxel Cone GI, Sobol Spherical-Cap, & 96-SPP SDF Path-Tracing Sequence
+// 🧩 Unified 6-Mode SDF Shadow, 3D Voxel SDF Clipmap Penumbra, 2-Bounce Voxel Cone GI, Sobol Spherical-Cap, & 96-SPP SDF PT Sequence
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -109,9 +109,9 @@ void BuildDuffOrthonormalBasis(
     float               HeightZ,
     float               Radius) noexcept
 {
-    const float HalfH = 0.5f * HeightZ;
-    const float DX    = P.X - BaseCenter.X;
-    const float DY    = P.Y - BaseCenter.Y;
+    const float HalfH  = 0.5f * HeightZ;
+    const float DX     = P.X - BaseCenter.X;
+    const float DY     = P.Y - BaseCenter.Y;
     const float Radial = std::sqrt(DX * DX + DY * DY) - Radius;
     const float Vert   = std::fabs((P.Z - (BaseCenter.Z + HalfH))) - HalfH;
     const float OutR   = std::max(Radial, 0.0f);
@@ -143,8 +143,8 @@ void BuildDuffOrthonormalBasis(
     float&              OutHitT) noexcept
 {
     const Mathematics::Axis3D OC = Origin - SphereCenter;
-    const float B = Mathematics::EvaluateDot(OC, UnitDir);
-    const float C = Mathematics::EvaluateDot(OC, OC) - SphereRadius * SphereRadius;
+    const float B    = Mathematics::EvaluateDot(OC, UnitDir);
+    const float C    = Mathematics::EvaluateDot(OC, OC) - SphereRadius * SphereRadius;
     const float Disc = B * B - C;
     if (Disc < 0.0f)
     {
@@ -166,7 +166,7 @@ void BuildDuffOrthonormalBasis(
     return false;
 }
 
-// Dupuy & Benyoub (2023) Spherical-Cap GGX VNDF reflection direction sampler in tangent frame
+// Dupuy & Benyoub (2023) Spherical-Cap GGX VNDF reflection direction sampler in tangent space
 [[nodiscard]] Mathematics::Axis3D SampleSphericalCapGgxReflectionLocal(
     Mathematics::Axis3D ViewLocal,
     float               Alpha,
@@ -204,7 +204,7 @@ void BuildDuffOrthonormalBasis(
     {
         return { 0.0f, 0.0f, 1.0f };
     }
-    float R = 0.0f;
+    float R     = 0.0f;
     float Theta = 0.0f;
     if (std::fabs(OX) > std::fabs(OY))
     {
@@ -325,7 +325,7 @@ void BuildDuffOrthonormalBasis(
     const float AlphaPrime = std::clamp(Alpha + Sphere.Radius / (2.0f * Dist), Alpha, 1.0f);
     const float SpecNorm   = (Alpha * Alpha) / (AlphaPrime * AlphaPrime);
 
-    const float DiffScale = (1.0f - Mat.Metalness);
+    const float DiffScale = (1.0f - Mat.Metalness) * (1.0f - 0.04f);
     const float SpecNdotL = std::max(0.0f, Mathematics::EvaluateDot(Normal, SpecL));
     const float Omega     = Constants::TauFloat * (1.0f - std::sqrt(std::max(0.0f, 1.0f - SinMaxSq)));
     const Mathematics::LinearRGB PureSpec {
@@ -343,12 +343,12 @@ void BuildDuffOrthonormalBasis(
 
 [[nodiscard]] Mathematics::LinearRGB ApplyAcesFilmicCurve(Mathematics::LinearRGB Hdr, float Exposure) noexcept
 {
-    const auto Map = [Exposure](float C) noexcept -> float
+    const auto Curve = [Exposure](float C) noexcept -> float
     {
         const float X = std::max(0.0f, C * Exposure);
         return std::clamp((X * (2.51f * X + 0.03f)) / (X * (2.43f * X + 0.59f) + 0.14f), 0.0f, 1.0f);
     };
-    return { Map(Hdr.R), Map(Hdr.G), Map(Hdr.B) };
+    return { Curve(Hdr.R), Curve(Hdr.G), Curve(Hdr.B) };
 }
 
 [[nodiscard]] uint8_t EncodeSrgbByte(float LinearC) noexcept
@@ -356,6 +356,63 @@ void BuildDuffOrthonormalBasis(
     const float C = std::clamp(LinearC, 0.0f, 1.0f);
     const float S = (C <= 0.0031308f) ? (12.92f * C) : (1.055f * std::pow(C, 1.0f / 2.4f) - 0.055f);
     return static_cast<uint8_t>(std::clamp(std::round(S * 255.0f), 0.0f, 255.0f));
+}
+
+// 16 world-locked Fibonacci directions on the unit sphere (zero tangent-basis rotation discontinuity on curved SDFs)
+constexpr std::array<Mathematics::Axis3D, 16> FibonacciUnitCones {{
+    {  0.000000f,  0.000000f,  0.968750f },
+    { -0.355181f,  0.324964f,  0.876438f },
+    {  0.072949f, -0.663417f,  0.744675f },
+    {  0.546948f,  0.594726f,  0.589275f },
+    { -0.892399f, -0.114912f,  0.436390f },
+    {  0.697458f, -0.642322f,  0.317992f },
+    { -0.105917f,  0.978177f,  0.178415f },
+    { -0.630510f, -0.774011f,  0.056895f },
+    {  0.971825f,  0.223346f, -0.076190f },
+    { -0.785989f,  0.593691f, -0.172502f },
+    {  0.163627f, -0.942641f, -0.290953f },
+    {  0.546722f,  0.728969f, -0.411942f },
+    { -0.832541f, -0.194251f, -0.518789f },
+    {  0.562411f, -0.491089f, -0.665226f },
+    { -0.044225f,  0.627963f, -0.776985f },
+    { -0.289784f, -0.295140f, -0.910449f },
+}};
+
+[[nodiscard]] Mathematics::LinearRGB SampleRadiosityGridTrilinear(
+    const std::vector<Mathematics::LinearRGB>& Grid,
+    uint32_t                                   GX,
+    uint32_t                                   GY,
+    uint32_t                                   GZ,
+    Mathematics::Axis3D                        BoundsMin,
+    Mathematics::Axis3D                        BoundsMax,
+    Mathematics::Axis3D                        WorldPos) noexcept
+{
+    if (Grid.empty() || GX < 2u || GY < 2u || GZ < 2u)
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+    const Mathematics::Axis3D Span = BoundsMax - BoundsMin;
+    const float FX = std::clamp(((WorldPos.X - BoundsMin.X) / std::max(1.0e-5f, Span.X)) * static_cast<float>(GX - 1u), 0.0f, static_cast<float>(GX - 1u));
+    const float FY = std::clamp(((WorldPos.Y - BoundsMin.Y) / std::max(1.0e-5f, Span.Y)) * static_cast<float>(GY - 1u), 0.0f, static_cast<float>(GY - 1u));
+    const float FZ = std::clamp(((WorldPos.Z - BoundsMin.Z) / std::max(1.0e-5f, Span.Z)) * static_cast<float>(GZ - 1u), 0.0f, static_cast<float>(GZ - 1u));
+
+    const uint32_t IX0 = std::min(GX - 2u, static_cast<uint32_t>(FX));
+    const uint32_t IY0 = std::min(GY - 2u, static_cast<uint32_t>(FY));
+    const uint32_t IZ0 = std::min(GZ - 2u, static_cast<uint32_t>(FZ));
+    const float    TX  = FX - static_cast<float>(IX0);
+    const float    TY  = FY - static_cast<float>(IY0);
+    const float    TZ  = FZ - static_cast<float>(IZ0);
+
+    const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> Mathematics::LinearRGB
+    {
+        return Grid[(static_cast<std::size_t>(Z) * GY + Y) * GX + X];
+    };
+
+    const auto C00 = At(IX0, IY0, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0) * TX;
+    const auto C10 = At(IX0, IY0 + 1u, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0) * TX;
+    const auto C01 = At(IX0, IY0, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0 + 1u) * TX;
+    const auto C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u) * TX;
+    return (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
 }
 
 } // namespace
@@ -425,9 +482,9 @@ SdfSurfaceMaterialSpec SdfShowcaseScene::SampleMaterialAt(uint32_t Slot, Mathema
         const int   CX    = static_cast<int>(std::floor(WorldPos.X * Scale));
         const int   CY    = static_cast<int>(std::floor(WorldPos.Y * Scale));
         const bool  Even  = ((CX + CY) & 1) == 0;
-        M.BaseColor = Even ? Mathematics::LinearRGB { 0.75f, 0.73f, 0.68f }
-                           : Mathematics::LinearRGB { 0.49f, 0.49f, 0.49f };
-        M.Roughness = Even ? 0.56f : 0.66f;
+        M.BaseColor = Even ? Mathematics::LinearRGB { 0.76f, 0.73f, 0.68f }
+                           : Mathematics::LinearRGB { 0.42f, 0.42f, 0.43f };
+        M.Roughness = Even ? 0.50f : 0.62f;
     }
     return M;
 }
@@ -548,79 +605,96 @@ Mathematics::Axis3D SdfShowcaseScene::EvaluateFullSceneGradientNormal(Mathematic
 void BuildCanonicalProof11EmissiveSphereScene(SdfShowcaseScene& OutScene)
 {
     OutScene = {};
-    OutScene.Materials.resize(8u);
+    OutScene.Materials.resize(9u);
 
     // 0: Checkerboard floor
     OutScene.Materials[0].CheckerFloor  = true;
-    OutScene.Materials[0].CheckerScaleM = 0.58f;
-    OutScene.Materials[0].Roughness     = 0.60f;
+    OutScene.Materials[0].CheckerScaleM = 0.56f;
+    OutScene.Materials[0].Roughness     = 0.54f;
 
-    // 1: Neutral warm back wall
-    OutScene.Materials[1].BaseColor = { 0.72f, 0.70f, 0.65f };
-    OutScene.Materials[1].Roughness = 0.80f;
+    // 1: Warm plaster back wall
+    OutScene.Materials[1].BaseColor = { 0.74f, 0.70f, 0.64f };
+    OutScene.Materials[1].Roughness = 0.78f;
 
     // 2: Terracotta crimson left wall
-    OutScene.Materials[2].BaseColor = { 0.78f, 0.22f, 0.10f };
-    OutScene.Materials[2].Roughness = 0.80f;
+    OutScene.Materials[2].BaseColor = { 0.76f, 0.18f, 0.09f };
+    OutScene.Materials[2].Roughness = 0.78f;
 
-    // 3: Forest green right wall
-    OutScene.Materials[3].BaseColor = { 0.14f, 0.46f, 0.24f };
-    OutScene.Materials[3].Roughness = 0.80f;
+    // 3: Forest emerald right wall
+    OutScene.Materials[3].BaseColor = { 0.12f, 0.46f, 0.22f };
+    OutScene.Materials[3].Roughness = 0.78f;
 
-    // 4: Dark neutral ceiling
-    OutScene.Materials[4].BaseColor = { 0.44f, 0.44f, 0.44f };
+    // 4: Neutral studio ceiling
+    OutScene.Materials[4].BaseColor = { 0.42f, 0.42f, 0.42f };
     OutScene.Materials[4].Roughness = 0.85f;
 
-    // 5: Warm stone cylinder + pedestal
+    // 5: Stone column + central pedestal
     OutScene.Materials[5].BaseColor = { 0.74f, 0.71f, 0.66f };
-    OutScene.Materials[5].Roughness = 0.56f;
+    OutScene.Materials[5].Roughness = 0.54f;
 
-    // 6: Warm bronze torus
-    OutScene.Materials[6].BaseColor = { 0.64f, 0.43f, 0.22f };
-    OutScene.Materials[6].Roughness = 0.30f;
-    OutScene.Materials[6].Metalness = 0.25f;
+    // 6: Brushed warm bronze torus
+    OutScene.Materials[6].BaseColor = { 0.68f, 0.46f, 0.22f };
+    OutScene.Materials[6].Roughness = 0.28f;
+    OutScene.Materials[6].Metalness = 0.35f;
 
-    // 7: Emissive sphere luminaire
-    OutScene.Materials[7].BaseColor  = { 1.0f, 0.98f, 0.94f };
-    OutScene.Materials[7].Emission   = { 19.5f, 17.2f, 13.8f };
-    OutScene.Materials[7].IsEmissive = true;
+    // 7: Incandescent emissive sphere luminaire
+    OutScene.Materials[7].BaseColor       = { 1.0f, 0.96f, 0.88f };
+    OutScene.Materials[7].Emission        = { 22.0f, 17.4f, 10.8f };
+    OutScene.Materials[7].EmissiveSurface = true;
 
-    // Matte grey sphere slot
-    SdfSurfaceMaterialSpec MatteSphere {};
-    MatteSphere.BaseColor = { 0.65f, 0.65f, 0.67f };
-    MatteSphere.Roughness = 0.52f;
-    OutScene.Materials.push_back(MatteSphere); // Slot 8
+    // 8: Smooth ceramic-grey sphere
+    OutScene.Materials[8].BaseColor = { 0.68f, 0.68f, 0.70f };
+    OutScene.Materials[8].Roughness = 0.46f;
 
-    // Cornell Room Slabs (CastsShadow = false so receivers never self-occlude; full scene SDF & Voxel GI bounce include them!)
+    // Proof-Room Gallery Slabs (CastsShadow = false for direct shadow march; FullDistanceGrid & Cone GI include them)
     OutScene.Boxes.push_back({ {  0.00f,  0.20f, -0.10f }, { 2.80f, 2.65f, 0.10f }, 0u, false }); // Floor Z = 0
-    OutScene.Boxes.push_back({ {  0.00f,  2.72f,  1.60f }, { 2.80f, 0.10f, 1.70f }, 1u, false }); // Back wall
-    OutScene.Boxes.push_back({ { -2.74f,  0.20f,  1.60f }, { 0.10f, 2.65f, 1.70f }, 2u, false }); // Crimson left wall
-    OutScene.Boxes.push_back({ {  2.74f,  0.20f,  1.60f }, { 0.10f, 2.65f, 1.70f }, 3u, false }); // Green right wall
-    OutScene.Boxes.push_back({ {  0.00f,  0.20f,  3.26f }, { 2.80f, 2.65f, 0.10f }, 4u, false }); // Ceiling
+    OutScene.Boxes.push_back({ {  0.00f,  2.72f,  1.60f }, { 2.80f, 0.10f, 1.70f }, 1u, false }); // Back wall Y = 2.62
+    OutScene.Boxes.push_back({ { -2.74f,  0.20f,  1.60f }, { 0.10f, 2.65f, 1.70f }, 2u, false }); // Crimson left wall X = -2.64
+    OutScene.Boxes.push_back({ {  2.74f,  0.20f,  1.60f }, { 0.10f, 2.65f, 1.70f }, 3u, false }); // Green right wall X = +2.64
+    OutScene.Boxes.push_back({ {  0.00f,  0.20f,  3.26f }, { 2.80f, 2.65f, 0.10f }, 4u, false }); // Ceiling Z = 3.16
 
-    // Shadow-casting interior SDF objects matching PROOF 11 layout
-    OutScene.Cylinders.push_back({ { -0.50f,  0.36f, 0.0f }, 1.68f, 0.155f, 5u, true });          // Vertical column
-    OutScene.Boxes.push_back({     { -0.12f, -0.38f, 0.36f }, { 0.19f, 0.19f, 0.36f }, 5u, true }); // Pedestal box
-    OutScene.Tori.push_back({      { -0.12f, -0.38f, 0.90f }, 0.29f, 0.105f, 0.0f, 6u, true });     // Bronze torus
-    OutScene.Spheres.push_back({   {  0.52f,  0.56f, 0.52f }, 0.52f, 8u, true });                   // Grey sphere
+    // Shadow-casting interior SDF objects matching PROOF 11 (download.png) composition & diagonal floor/wall shadow sweep
+    OutScene.Cylinders.push_back({ { -0.36f,  0.58f, 0.0f }, 1.72f, 0.145f, 5u, true });          // Left-center column
+    OutScene.Boxes.push_back({     {  0.00f, -0.10f, 0.34f }, { 0.19f, 0.19f, 0.34f }, 5u, true }); // Center pedestal
+    OutScene.Tori.push_back({      {  0.00f, -0.10f, 0.84f }, 0.28f, 0.100f, 0.0f, 6u, true });     // Bronze torus
+    OutScene.Spheres.push_back({   {  0.62f,  0.38f, 0.52f }, 0.52f, 8u, true });                   // Right grey sphere
 
-    // Sole Light Source: Emissive Sphere ONLY (NO sun, NO area quad, NO spot, NO IES!)
+    // Sole Light Source: Emissive Sphere ONLY (NO sun, NO area quad, NO spot, NO IES)
     OutScene.EmissiveActive              = true;
-    OutScene.EmissiveSphere.Center       = { -1.38f, 0.48f, 1.02f };
-    OutScene.EmissiveSphere.Radius       = 0.40f;
-    OutScene.EmissiveSphere.Radiance     = { 19.5f, 17.2f, 13.8f };
+    OutScene.EmissiveSphere.Center       = { -1.28f, -0.22f, 1.06f };
+    OutScene.EmissiveSphere.Radius       = 0.38f;
+    OutScene.EmissiveSphere.Radiance     = { 22.0f, 17.4f, 10.8f };
     OutScene.EmissiveSphere.MaterialSlot = 7u;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                           2-CASCADE 3D VOXEL SDF CLIPMAP + MULTI-BOUNCE RADIOSITY CACHE
+//                           2-CASCADE 3D VOXEL SDF CLIPMAP + MULTI-BOUNCE RADIOSITY PYRAMID
 //------------------------------------------------------------------------------------------------------------------------
 
 std::size_t VoxelSdfClipmapCascade::QueryAllocatedBytes() const noexcept
 {
     return DistanceGrid.size() * sizeof(float) +
+           FullDistanceGrid.size() * sizeof(float) +
            RadiosityGrid.size() * sizeof(Mathematics::LinearRGB) +
-           OpacityGrid.size() * sizeof(float);
+           Mip1Radiosity.size() * sizeof(Mathematics::LinearRGB) +
+           Mip2Radiosity.size() * sizeof(Mathematics::LinearRGB) +
+           SurfaceMaskGrid.size() * sizeof(uint8_t);
+}
+
+bool VoxelSdfClipmapCascade::ContainsInsideMargin(Mathematics::Axis3D WorldPos, float MarginFraction) const noexcept
+{
+    if (DimX < 2u || DimY < 2u || DimZ < 2u)
+    {
+        return false;
+    }
+    const Mathematics::Axis3D Span = BoundsMax - BoundsMin;
+    const float UX = (WorldPos.X - BoundsMin.X) / std::max(1.0e-5f, Span.X);
+    const float UY = (WorldPos.Y - BoundsMin.Y) / std::max(1.0e-5f, Span.Y);
+    const float UZ = (WorldPos.Z - BoundsMin.Z) / std::max(1.0e-5f, Span.Z);
+    const float Hi = 1.0f - MarginFraction;
+    return UX > MarginFraction && UX < Hi &&
+           UY > MarginFraction && UY < Hi &&
+           UZ > MarginFraction && UZ < Hi;
 }
 
 float VoxelSdfClipmapCascade::SampleDistanceHermite(Mathematics::Axis3D WorldPos) const noexcept
@@ -646,7 +720,6 @@ float VoxelSdfClipmapCascade::SampleDistanceHermite(Mathematics::Axis3D WorldPos
     const float    LY  = FY - static_cast<float>(IY0);
     const float    LZ  = FZ - static_cast<float>(IZ0);
 
-    // Smooth C1 Hermite weights eliminate piecewise-linear voxel Mach bands in penumbrae
     const float TX = LX * LX * (3.0f - 2.0f * LX);
     const float TY = LY * LY * (3.0f - 2.0f * LY);
     const float TZ = LZ * LZ * (3.0f - 2.0f * LZ);
@@ -660,25 +733,21 @@ float VoxelSdfClipmapCascade::SampleDistanceHermite(Mathematics::Axis3D WorldPos
     const float C10 = At(IX0, IY0 + 1u, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0) * TX;
     const float C01 = At(IX0, IY0, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0 + 1u) * TX;
     const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u) * TX;
-    const float Val = (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
-    return Val + BoxDist;
+    const float Interpolated = (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ;
+    return Interpolated + BoxDist;
 }
 
-Mathematics::LinearRGB VoxelSdfClipmapCascade::SampleRadiosityTrilinear(
-    Mathematics::Axis3D WorldPos,
-    float&              OutOpacity) const noexcept
+float VoxelSdfClipmapCascade::SampleFullDistanceTrilinear(Mathematics::Axis3D WorldPos) const noexcept
 {
-    OutOpacity = 0.0f;
-    if (RadiosityGrid.empty() || OpacityGrid.empty() || DimX < 2u || DimY < 2u || DimZ < 2u)
+    if (FullDistanceGrid.empty() || DimX < 2u || DimY < 2u || DimZ < 2u)
     {
-        return { 0.0f, 0.0f, 0.0f };
+        return 20.0f;
     }
-    if (WorldPos.X < BoundsMin.X || WorldPos.X > BoundsMax.X ||
-        WorldPos.Y < BoundsMin.Y || WorldPos.Y > BoundsMax.Y ||
-        WorldPos.Z < BoundsMin.Z || WorldPos.Z > BoundsMax.Z)
-    {
-        return { 0.0f, 0.0f, 0.0f };
-    }
+
+    const float OutsideX = std::max(0.0f, std::max(BoundsMin.X - WorldPos.X, WorldPos.X - BoundsMax.X));
+    const float OutsideY = std::max(0.0f, std::max(BoundsMin.Y - WorldPos.Y, WorldPos.Y - BoundsMax.Y));
+    const float OutsideZ = std::max(0.0f, std::max(BoundsMin.Z - WorldPos.Z, WorldPos.Z - BoundsMax.Z));
+    const float BoxDist  = std::sqrt(OutsideX * OutsideX + OutsideY * OutsideY + OutsideZ * OutsideZ);
 
     const float FX = std::clamp((WorldPos.X - BoundsMin.X) / VoxelSpacing.X, 0.0f, static_cast<float>(DimX - 1u));
     const float FY = std::clamp((WorldPos.Y - BoundsMin.Y) / VoxelSpacing.Y, 0.0f, static_cast<float>(DimY - 1u));
@@ -691,30 +760,207 @@ Mathematics::LinearRGB VoxelSdfClipmapCascade::SampleRadiosityTrilinear(
     const float    TY  = FY - static_cast<float>(IY0);
     const float    TZ  = FZ - static_cast<float>(IZ0);
 
-    Mathematics::LinearRGB AccumR { 0.0f, 0.0f, 0.0f };
-    float AccumO = 0.0f;
-    for (uint32_t DZ = 0u; DZ < 2u; ++DZ)
+    const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> float
     {
-        const float WZ = (DZ == 0u) ? (1.0f - TZ) : TZ;
-        for (uint32_t DY = 0u; DY < 2u; ++DY)
-        {
-            const float WYZ = WZ * ((DY == 0u) ? (1.0f - TY) : TY);
-            for (uint32_t DX = 0u; DX < 2u; ++DX)
-            {
-                const float W = WYZ * ((DX == 0u) ? (1.0f - TX) : TX);
-                const std::size_t Idx = (static_cast<std::size_t>(IZ0 + DZ) * DimY + (IY0 + DY)) * DimX + (IX0 + DX);
-                AccumR.R += RadiosityGrid[Idx].R * W;
-                AccumR.G += RadiosityGrid[Idx].G * W;
-                AccumR.B += RadiosityGrid[Idx].B * W;
-                AccumO   += OpacityGrid[Idx] * W;
-            }
-        }
-    }
-    OutOpacity = AccumO;
-    return AccumR;
+        return FullDistanceGrid[(static_cast<std::size_t>(Z) * DimY + Y) * DimX + X];
+    };
+
+    const float C00 = At(IX0, IY0, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0) * TX;
+    const float C10 = At(IX0, IY0 + 1u, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0) * TX;
+    const float C01 = At(IX0, IY0, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0 + 1u) * TX;
+    const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u) * TX;
+    return (C00 * (1.0f - TY) + C10 * TY) * (1.0f - TZ) + (C01 * (1.0f - TY) + C11 * TY) * TZ + BoxDist;
 }
 
-float SdfVoxelClipmapHierarchy::SampleClipmapDistance(Mathematics::Axis3D WorldPos) const noexcept
+Mathematics::LinearRGB VoxelSdfClipmapCascade::SampleRadiosityMipmapped(
+    Mathematics::Axis3D WorldPos,
+    float               ConeRadiusMeters) const noexcept
+{
+    if (RadiosityGrid.empty() || DimX < 2u || DimY < 2u || DimZ < 2u)
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    const auto Rad0 = SampleRadiosityGridTrilinear(RadiosityGrid, DimX, DimY, DimZ, BoundsMin, BoundsMax, WorldPos);
+    const float Mip0End = MaxVoxelSpacingM * 1.15f;
+    if (ConeRadiusMeters <= Mip0End || Mip1Radiosity.empty())
+    {
+        return Rad0;
+    }
+
+    const auto Rad1 = SampleRadiosityGridTrilinear(Mip1Radiosity, Mip1DimX, Mip1DimY, Mip1DimZ, BoundsMin, BoundsMax, WorldPos);
+    const float Mip1End = MaxVoxelSpacingM * 2.40f;
+    if (ConeRadiusMeters <= Mip1End || Mip2Radiosity.empty())
+    {
+        const float T01 = std::clamp((ConeRadiusMeters - Mip0End) / std::max(0.02f, Mip1End - Mip0End), 0.0f, 1.0f);
+        return Rad0 * (1.0f - T01) + Rad1 * T01;
+    }
+
+    const auto Rad2 = SampleRadiosityGridTrilinear(Mip2Radiosity, Mip2DimX, Mip2DimY, Mip2DimZ, BoundsMin, BoundsMax, WorldPos);
+    const float T12 = std::clamp((ConeRadiusMeters - Mip1End) / std::max(0.04f, MaxVoxelSpacingM * 2.60f), 0.0f, 1.0f);
+    return Rad1 * (1.0f - T12) + Rad2 * T12;
+}
+
+void VoxelSdfClipmapCascade::ExtrapolateRadiosityPyramid()
+{
+    if (RadiosityGrid.empty() || SurfaceMaskGrid.size() != RadiosityGrid.size() || DimX < 3u || DimY < 3u || DimZ < 3u)
+    {
+        return;
+    }
+
+    // 1. Constant-along-normal PDE extension (3 relaxation sweeps) into adjacent empty air cells:
+    //    eliminates trilinear zero-border darkening and staircase blocks when cones intersect oblique SDF surfaces!
+    std::vector<uint8_t> ActiveMask = SurfaceMaskGrid;
+    for (uint32_t Sweep = 0u; Sweep < 3u; ++Sweep)
+    {
+        std::vector<Mathematics::LinearRGB> NextRad  = RadiosityGrid;
+        std::vector<uint8_t>                NextMask = ActiveMask;
+        for (uint32_t IZ = 0u; IZ < DimZ; ++IZ)
+        {
+            for (uint32_t IY = 0u; IY < DimY; ++IY)
+            {
+                for (uint32_t IX = 0u; IX < DimX; ++IX)
+                {
+                    const std::size_t Idx = (static_cast<std::size_t>(IZ) * DimY + IY) * DimX + IX;
+                    if (ActiveMask[Idx] != 0u)
+                    {
+                        continue;
+                    }
+                    Mathematics::LinearRGB Sum { 0.0f, 0.0f, 0.0f };
+                    float WeightSum = 0.0f;
+                    for (int KZ = -1; KZ <= 1; ++KZ)
+                    {
+                        const int SZ = static_cast<int>(IZ) + KZ;
+                        if (SZ < 0 || SZ >= static_cast<int>(DimZ)) continue;
+                        for (int KY = -1; KY <= 1; ++KY)
+                        {
+                            const int SY = static_cast<int>(IY) + KY;
+                            if (SY < 0 || SY >= static_cast<int>(DimY)) continue;
+                            for (int KX = -1; KX <= 1; ++KX)
+                            {
+                                const int SX = static_cast<int>(IX) + KX;
+                                if (SX < 0 || SX >= static_cast<int>(DimX)) continue;
+                                const std::size_t NIdx = (static_cast<std::size_t>(SZ) * DimY + static_cast<uint32_t>(SY)) * DimX + static_cast<uint32_t>(SX);
+                                if (ActiveMask[NIdx] != 0u)
+                                {
+                                    const int Manhattan = std::abs(KX) + std::abs(KY) + std::abs(KZ);
+                                    const float W = (Manhattan == 1) ? 1.0f : ((Manhattan == 2) ? 0.707f : 0.577f);
+                                    Sum       = Sum + RadiosityGrid[NIdx] * W;
+                                    WeightSum += W;
+                                }
+                            }
+                        }
+                    }
+                    if (WeightSum > 0.0f)
+                    {
+                        NextRad[Idx]  = Sum * (1.0f / WeightSum);
+                        NextMask[Idx] = 1u;
+                    }
+                }
+            }
+        }
+        RadiosityGrid = std::move(NextRad);
+        ActiveMask    = std::move(NextMask);
+    }
+
+    // 2. Gentle 3x3x3 active-only tangential smoothing so Mip0 has zero discrete voxel faceting
+    {
+        std::vector<Mathematics::LinearRGB> Smoothed = RadiosityGrid;
+        static constexpr float K1D[3] = { 0.25f, 0.50f, 0.25f };
+        for (uint32_t IZ = 0u; IZ < DimZ; ++IZ)
+        {
+            for (uint32_t IY = 0u; IY < DimY; ++IY)
+            {
+                for (uint32_t IX = 0u; IX < DimX; ++IX)
+                {
+                    const std::size_t DIdx = (static_cast<std::size_t>(IZ) * DimY + IY) * DimX + IX;
+                    if (ActiveMask[DIdx] == 0u) continue;
+                    Mathematics::LinearRGB Sum { 0.0f, 0.0f, 0.0f };
+                    float WSum = 0.0f;
+                    for (int KZ = -1; KZ <= 1; ++KZ)
+                    {
+                        const uint32_t SZ = static_cast<uint32_t>(std::clamp<int>(static_cast<int>(IZ) + KZ, 0, static_cast<int>(DimZ) - 1));
+                        for (int KY = -1; KY <= 1; ++KY)
+                        {
+                            const uint32_t SY = static_cast<uint32_t>(std::clamp<int>(static_cast<int>(IY) + KY, 0, static_cast<int>(DimY) - 1));
+                            for (int KX = -1; KX <= 1; ++KX)
+                            {
+                                const uint32_t SX = static_cast<uint32_t>(std::clamp<int>(static_cast<int>(IX) + KX, 0, static_cast<int>(DimX) - 1));
+                                const std::size_t SIdx = (static_cast<std::size_t>(SZ) * DimY + SY) * DimX + SX;
+                                if (ActiveMask[SIdx] == 0u) continue;
+                                const float W = K1D[KX + 1] * K1D[KY + 1] * K1D[KZ + 1];
+                                Sum  = Sum + RadiosityGrid[SIdx] * W;
+                                WSum += W;
+                            }
+                        }
+                    }
+                    if (WSum > 0.0f)
+                    {
+                        Smoothed[DIdx] = Sum * (1.0f / WSum);
+                    }
+                }
+            }
+        }
+        RadiosityGrid = std::move(Smoothed);
+    }
+
+    // 3. Build 1/2-res Mip1 & 1/4-res Mip2 radiosity pyramids over active extended cells
+    const auto DownsampleMip = [](
+        const std::vector<Mathematics::LinearRGB>& SrcRad,
+        const std::vector<uint8_t>&                SrcMask,
+        uint32_t SX, uint32_t SY, uint32_t SZ,
+        std::vector<Mathematics::LinearRGB>&       DstRad,
+        std::vector<uint8_t>&                      DstMask,
+        uint32_t& DX, uint32_t& DY, uint32_t& DZ)
+    {
+        DX = std::max(2u, (SX + 1u) / 2u);
+        DY = std::max(2u, (SY + 1u) / 2u);
+        DZ = std::max(2u, (SZ + 1u) / 2u);
+        DstRad.assign(static_cast<std::size_t>(DX) * DY * DZ, { 0.0f, 0.0f, 0.0f });
+        DstMask.assign(static_cast<std::size_t>(DX) * DY * DZ, 0u);
+        for (uint32_t Z = 0u; Z < DZ; ++Z)
+        {
+            for (uint32_t Y = 0u; Y < DY; ++Y)
+            {
+                for (uint32_t X = 0u; X < DX; ++X)
+                {
+                    Mathematics::LinearRGB Sum { 0.0f, 0.0f, 0.0f };
+                    float Active = 0.0f;
+                    for (uint32_t OZ = 0u; OZ < 2u; ++OZ)
+                    {
+                        const uint32_t IZ = std::min(SZ - 1u, Z * 2u + OZ);
+                        for (uint32_t OY = 0u; OY < 2u; ++OY)
+                        {
+                            const uint32_t IY = std::min(SY - 1u, Y * 2u + OY);
+                            for (uint32_t OX = 0u; OX < 2u; ++OX)
+                            {
+                                const uint32_t IX = std::min(SX - 1u, X * 2u + OX);
+                                const std::size_t SIdx = (static_cast<std::size_t>(IZ) * SY + IY) * SX + IX;
+                                if (SrcMask[SIdx] != 0u)
+                                {
+                                    Sum    = Sum + SrcRad[SIdx];
+                                    Active += 1.0f;
+                                }
+                            }
+                        }
+                    }
+                    const std::size_t DIdx = (static_cast<std::size_t>(Z) * DY + Y) * DX + X;
+                    if (Active > 0.0f)
+                    {
+                        DstRad[DIdx]  = Sum * (1.0f / Active);
+                        DstMask[DIdx] = 1u;
+                    }
+                }
+            }
+        }
+    };
+
+    std::vector<uint8_t> Mip1Mask {}, Mip2Mask {};
+    DownsampleMip(RadiosityGrid, ActiveMask, DimX, DimY, DimZ, Mip1Radiosity, Mip1Mask, Mip1DimX, Mip1DimY, Mip1DimZ);
+    DownsampleMip(Mip1Radiosity, Mip1Mask, Mip1DimX, Mip1DimY, Mip1DimZ, Mip2Radiosity, Mip2Mask, Mip2DimX, Mip2DimY, Mip2DimZ);
+}
+
+float DualCascadeClipmapVolume::SampleClipmapDistance(Mathematics::Axis3D WorldPos) const noexcept
 {
     if (FineCascade.DistanceGrid.empty())
     {
@@ -723,9 +969,9 @@ float SdfVoxelClipmapHierarchy::SampleClipmapDistance(Mathematics::Axis3D WorldP
 
     const Mathematics::Axis3D FineCtr  = (FineCascade.BoundsMin + FineCascade.BoundsMax) * 0.5f;
     const Mathematics::Axis3D FineHalf = (FineCascade.BoundsMax - FineCascade.BoundsMin) * 0.5f;
-    const float NX = std::fabs(WorldPos.X - FineCtr.X) / std::max(1.0e-3f, FineHalf.X);
-    const float NY = std::fabs(WorldPos.Y - FineCtr.Y) / std::max(1.0e-3f, FineHalf.Y);
-    const float NZ = std::fabs(WorldPos.Z - FineCtr.Z) / std::max(1.0e-3f, FineHalf.Z);
+    const float NX   = std::fabs(WorldPos.X - FineCtr.X) / std::max(1.0e-3f, FineHalf.X);
+    const float NY   = std::fabs(WorldPos.Y - FineCtr.Y) / std::max(1.0e-3f, FineHalf.Y);
+    const float NZ   = std::fabs(WorldPos.Z - FineCtr.Z) / std::max(1.0e-3f, FineHalf.Z);
     const float MaxN = std::max({ NX, NY, NZ });
 
     if (MaxN <= 0.78f || CoarseCascade.DistanceGrid.empty())
@@ -741,11 +987,71 @@ float SdfVoxelClipmapHierarchy::SampleClipmapDistance(Mathematics::Axis3D WorldP
            CoarseCascade.SampleDistanceHermite(WorldPos) * Blend;
 }
 
-void SdfVoxelClipmapHierarchy::BuildFromShowcaseScene(const SdfShowcaseScene& Scene)
+float DualCascadeClipmapVolume::SampleFullSceneDistance(Mathematics::Axis3D WorldPos) const noexcept
 {
-    const auto PopulateCascade = [&](VoxelSdfClipmapCascade& C,
-                                     uint32_t DX, uint32_t DY, uint32_t DZ,
-                                     Mathematics::Axis3D BMin, Mathematics::Axis3D BMax)
+    if (FineCascade.FullDistanceGrid.empty())
+    {
+        return CoarseCascade.SampleFullDistanceTrilinear(WorldPos);
+    }
+
+    const Mathematics::Axis3D FineCtr  = (FineCascade.BoundsMin + FineCascade.BoundsMax) * 0.5f;
+    const Mathematics::Axis3D FineHalf = (FineCascade.BoundsMax - FineCascade.BoundsMin) * 0.5f;
+    const float NX   = std::fabs(WorldPos.X - FineCtr.X) / std::max(1.0e-3f, FineHalf.X);
+    const float NY   = std::fabs(WorldPos.Y - FineCtr.Y) / std::max(1.0e-3f, FineHalf.Y);
+    const float NZ   = std::fabs(WorldPos.Z - FineCtr.Z) / std::max(1.0e-3f, FineHalf.Z);
+    const float MaxN = std::max({ NX, NY, NZ });
+
+    if (MaxN <= 0.76f || CoarseCascade.FullDistanceGrid.empty())
+    {
+        return FineCascade.SampleFullDistanceTrilinear(WorldPos);
+    }
+    if (MaxN >= 0.96f)
+    {
+        return CoarseCascade.SampleFullDistanceTrilinear(WorldPos);
+    }
+    const float Blend = SmoothHermite01(0.76f, 0.96f, MaxN);
+    return FineCascade.SampleFullDistanceTrilinear(WorldPos) * (1.0f - Blend) +
+           CoarseCascade.SampleFullDistanceTrilinear(WorldPos) * Blend;
+}
+
+Mathematics::LinearRGB DualCascadeClipmapVolume::SampleClipmapRadiosity(
+    Mathematics::Axis3D WorldPos,
+    float               ConeRadiusMeters) const noexcept
+{
+    if (FineCascade.RadiosityGrid.empty())
+    {
+        return CoarseCascade.SampleRadiosityMipmapped(WorldPos, ConeRadiusMeters);
+    }
+
+    const Mathematics::Axis3D FineCtr  = (FineCascade.BoundsMin + FineCascade.BoundsMax) * 0.5f;
+    const Mathematics::Axis3D FineHalf = (FineCascade.BoundsMax - FineCascade.BoundsMin) * 0.5f;
+    const float NX   = std::fabs(WorldPos.X - FineCtr.X) / std::max(1.0e-3f, FineHalf.X);
+    const float NY   = std::fabs(WorldPos.Y - FineCtr.Y) / std::max(1.0e-3f, FineHalf.Y);
+    const float NZ   = std::fabs(WorldPos.Z - FineCtr.Z) / std::max(1.0e-3f, FineHalf.Z);
+    const float MaxN = std::max({ NX, NY, NZ });
+
+    // Wide cones naturally blend toward CoarseCascade, eliminating fine-cascade boundary seams
+    const float WideBias = SmoothHermite01(0.18f, 0.52f, ConeRadiusMeters);
+    const float EffN     = std::max(MaxN, WideBias * 0.92f);
+    if (EffN <= 0.72f || CoarseCascade.RadiosityGrid.empty())
+    {
+        return FineCascade.SampleRadiosityMipmapped(WorldPos, ConeRadiusMeters);
+    }
+    if (EffN >= 0.94f)
+    {
+        return CoarseCascade.SampleRadiosityMipmapped(WorldPos, ConeRadiusMeters);
+    }
+    const float Blend = SmoothHermite01(0.72f, 0.94f, EffN);
+    return FineCascade.SampleRadiosityMipmapped(WorldPos, ConeRadiusMeters) * (1.0f - Blend) +
+           CoarseCascade.SampleRadiosityMipmapped(WorldPos, ConeRadiusMeters) * Blend;
+}
+
+void DualCascadeClipmapVolume::BuildFromShowcaseScene(const SdfShowcaseScene& Scene)
+{
+    const auto PopulateBounce1Cascade = [&](
+        VoxelSdfClipmapCascade& C,
+        uint32_t DX, uint32_t DY, uint32_t DZ,
+        Mathematics::Axis3D BMin, Mathematics::Axis3D BMax)
     {
         C.DimX      = DX;
         C.DimY      = DY;
@@ -757,12 +1063,15 @@ void SdfVoxelClipmapHierarchy::BuildFromShowcaseScene(const SdfShowcaseScene& Sc
             (BMax.Y - BMin.Y) / static_cast<float>(DY - 1u),
             (BMax.Z - BMin.Z) / static_cast<float>(DZ - 1u),
         };
+        C.MaxVoxelSpacingM = std::max({ C.VoxelSpacing.X, C.VoxelSpacing.Y, C.VoxelSpacing.Z });
+
         const std::size_t Total = static_cast<std::size_t>(DX) * DY * DZ;
         C.DistanceGrid.assign(Total, 20.0f);
+        C.FullDistanceGrid.assign(Total, 20.0f);
         C.RadiosityGrid.assign(Total, { 0.0f, 0.0f, 0.0f });
-        C.OpacityGrid.assign(Total, 0.0f);
+        C.SurfaceMaskGrid.assign(Total, 0u);
 
-        const float VoxelHalfDiag = 0.75f * std::max({ C.VoxelSpacing.X, C.VoxelSpacing.Y, C.VoxelSpacing.Z });
+        const float SurfaceBandM = 1.25f * C.MaxVoxelSpacingM;
         const uint32_t Threads = std::min(DZ, std::max(1u, std::thread::hardware_concurrency()));
         const auto BakeSlice = [&](uint32_t Z0, uint32_t Z1)
         {
@@ -778,48 +1087,68 @@ void SdfVoxelClipmapHierarchy::BuildFromShowcaseScene(const SdfShowcaseScene& Sc
                         const Mathematics::Axis3D P { PX, PY, PZ };
                         const std::size_t Idx = (static_cast<std::size_t>(IZ) * DY + IY) * DX + IX;
 
-                        // 1. Interior shadow-casting SDF distance
                         C.DistanceGrid[Idx] = Scene.EvaluateOccluderSignedDistance(P);
 
-                        // 2. Full-scene surface shell radiosity injection (1st bounce from EmissiveSphere)
                         uint32_t MatSlot = 0u;
                         const float FullD = Scene.EvaluateFullSceneSignedDistance(P, MatSlot);
-                        if (std::fabs(FullD) <= VoxelHalfDiag)
+                        C.FullDistanceGrid[Idx] = FullD;
+
+                        if (std::fabs(FullD) <= SurfaceBandM)
                         {
-                            const SdfSurfaceMaterialSpec Mat = Scene.SampleMaterialAt(MatSlot, P);
-                            const float ShellW = 1.0f - std::clamp(std::fabs(FullD) / VoxelHalfDiag, 0.0f, 1.0f);
-                            C.OpacityGrid[Idx] = Mat.IsEmissive ? 0.0f : ShellW;
-                            if (!Mat.IsEmissive && Scene.EmissiveActive)
+                            // Project voxel center onto exact zero-isosurface SurfP = P - N * FullD before lighting!
+                            const Mathematics::Axis3D GradN = Scene.EvaluateFullSceneGradientNormal(P);
+                            const Mathematics::Axis3D SurfP = P - GradN * FullD;
+                            uint32_t SurfSlot = MatSlot;
+                            (void)Scene.EvaluateFullSceneSignedDistance(SurfP, SurfSlot);
+                            const SdfSurfaceMaterialSpec Mat = Scene.SampleMaterialAt(SurfSlot, SurfP);
+                            if (Mat.EmissiveSurface)
                             {
-                                const Mathematics::Axis3D N = Scene.EvaluateFullSceneGradientNormal(P);
-                                const Mathematics::Axis3D ToS = Scene.EmissiveSphere.Center - P;
+                                continue;
+                            }
+
+                            C.SurfaceMaskGrid[Idx] = 1u;
+                            if (Scene.EmissiveActive)
+                            {
+                                const Mathematics::Axis3D ToS = Scene.EmissiveSphere.Center - SurfP;
                                 const float Dist = Mathematics::EvaluateLength(ToS);
                                 if (Dist > Scene.EmissiveSphere.Radius + 0.02f)
                                 {
                                     const Mathematics::Axis3D L = ToS * (1.0f / Dist);
-                                    const float NdotL = std::max(0.0f, Mathematics::EvaluateDot(N, L));
-                                    if (NdotL > 0.0f)
+                                    const float SinMax   = std::clamp(Scene.EmissiveSphere.Radius / Dist, 1.0e-4f, 0.99f);
+                                    const float SinMaxSq = SinMax * SinMax;
+                                    const float CosN     = Mathematics::EvaluateDot(GradN, L);
+                                    float FormF = 0.0f;
+                                    if (CosN > SinMax)
                                     {
-                                        // Quick 20-step SDF shadow check to seed direct voxel radiosity
-                                        float T = 0.06f;
-                                        const float EndT = Dist - Scene.EmissiveSphere.Radius - 0.03f;
+                                        FormF = SinMaxSq * CosN;
+                                    }
+                                    else if (CosN > -SinMax)
+                                    {
+                                        const float TW = (CosN + SinMax) / (2.0f * SinMax);
+                                        FormF = SinMaxSq * SinMax * TW * TW * (2.0f - TW);
+                                    }
+
+                                    if (FormF > 1.0e-5f)
+                                    {
+                                        const float Lift = std::max(0.0f, SinMax * 0.85f - CosN);
+                                        const Mathematics::Axis3D ConeL = Mathematics::NormalizeAxis(L + GradN * Lift, L);
+                                        const float EndT = Dist - Scene.EmissiveSphere.Radius - 0.02f;
+                                        float T = 0.04f;
                                         float Vis = 1.0f;
-                                        for (uint32_t S = 0u; S < 20u && T < EndT; ++S)
+                                        for (uint32_t S = 0u; S < 28u && T < EndT; ++S)
                                         {
-                                            const float OD = Scene.EvaluateOccluderSignedDistance(P + N * 0.03f + L * T);
-                                            if (OD < -0.01f) { Vis = 0.0f; break; }
-                                            const float ConeR = std::max(0.02f, T * (Scene.EmissiveSphere.Radius / Dist));
-                                            Vis = std::min(Vis, SmoothHermite01(-0.5f, 0.85f, OD / ConeR));
-                                            T  += std::clamp(std::fabs(OD) * 0.65f, 0.05f, 0.28f);
+                                            const float OD = Scene.EvaluateOccluderSignedDistance(SurfP + GradN * 0.02f + ConeL * T);
+                                            if (OD < -0.015f) { Vis = 0.0f; break; }
+                                            const float ConeR = std::max(0.015f, T * SinMax);
+                                            Vis = std::min(Vis, SmoothHermite01(-0.85f, 0.85f, OD / ConeR));
+                                            T  += std::clamp(std::fabs(OD) * 0.60f, 0.03f, 0.22f);
                                         }
-                                        const float SinMax = std::clamp(Scene.EmissiveSphere.Radius / Dist, 0.0f, 0.99f);
-                                        const float FormF  = SinMax * SinMax * NdotL * Vis;
-                                        const float DiffK  = (1.0f - Mat.Metalness) * 0.96f;
-                                        // Premultiplied Lambertian surface radiance (L_wall * ShellW) paired with OpacityGrid = ShellW
+                                        const float DiffK = (1.0f - Mat.Metalness) * 0.96f;
+                                        // Diffuse Lambertian exitance L_o = (E_direct * Albedo) / Pi = Radiance * Albedo * DiffK * FormF * Vis
                                         C.RadiosityGrid[Idx] = {
-                                            Scene.EmissiveSphere.Radiance.R * Mat.BaseColor.R * DiffK * FormF * ShellW,
-                                            Scene.EmissiveSphere.Radiance.G * Mat.BaseColor.G * DiffK * FormF * ShellW,
-                                            Scene.EmissiveSphere.Radiance.B * Mat.BaseColor.B * DiffK * FormF * ShellW,
+                                            Scene.EmissiveSphere.Radiance.R * Mat.BaseColor.R * DiffK * FormF * Vis,
+                                            Scene.EmissiveSphere.Radiance.G * Mat.BaseColor.G * DiffK * FormF * Vis,
+                                            Scene.EmissiveSphere.Radiance.B * Mat.BaseColor.B * DiffK * FormF * Vis,
                                         };
                                     }
                                 }
@@ -846,131 +1175,92 @@ void SdfVoxelClipmapHierarchy::BuildFromShowcaseScene(const SdfShowcaseScene& Sc
             }
             for (auto& Th : Pool) Th.join();
         }
+
+        C.ExtrapolateRadiosityPyramid();
     };
 
-    const auto SmoothCascadeRadiosity3D = [](VoxelSdfClipmapCascade& C)
-    {
-        if (C.RadiosityGrid.empty() || C.DimX < 3u || C.DimY < 3u || C.DimZ < 3u)
-        {
-            return;
-        }
-        std::vector<Mathematics::LinearRGB> NextRad(C.RadiosityGrid.size(), { 0.0f, 0.0f, 0.0f });
-        std::vector<float>                  NextOp(C.OpacityGrid.size(), 0.0f);
-        static constexpr float Kernel1D[3] = { 0.25f, 0.50f, 0.25f };
+    // Cascade 0 (Fine 56x56x40): tight interior pitch around column, pedestal, torus, & sphere
+    PopulateBounce1Cascade(FineCascade,   56u, 56u, 40u, { -1.95f, -1.65f, -0.15f }, { 1.95f, 2.25f, 2.45f });
+    // Cascade 1 (Coarse 44x44x34): full proof-room bounds capturing red/green walls, floor, & ceiling
+    PopulateBounce1Cascade(CoarseCascade, 44u, 44u, 34u, { -2.95f, -2.65f, -0.25f }, { 2.95f, 2.95f, 3.45f });
 
-        for (uint32_t IZ = 0u; IZ < C.DimZ; ++IZ)
+    // Second-bounce physical SDF cone radiosity propagation across both cascades!
+    const auto PropagateSecondBounce = [&](VoxelSdfClipmapCascade& TargetCas)
+    {
+        std::vector<Mathematics::LinearRGB> Bounce2Rad = TargetCas.RadiosityGrid;
+        const uint32_t Threads = std::min(TargetCas.DimZ, std::max(1u, std::thread::hardware_concurrency()));
+        const auto PropagateSlice = [&](uint32_t Z0, uint32_t Z1)
         {
-            for (uint32_t IY = 0u; IY < C.DimY; ++IY)
+            for (uint32_t IZ = Z0; IZ < Z1; ++IZ)
             {
-                for (uint32_t IX = 0u; IX < C.DimX; ++IX)
+                const float PZ = TargetCas.BoundsMin.Z + static_cast<float>(IZ) * TargetCas.VoxelSpacing.Z;
+                for (uint32_t IY = 0u; IY < TargetCas.DimY; ++IY)
                 {
-                    Mathematics::LinearRGB SumR { 0.0f, 0.0f, 0.0f };
-                    float SumO = 0.0f;
-                    for (int KZ = -1; KZ <= 1; ++KZ)
+                    const float PY = TargetCas.BoundsMin.Y + static_cast<float>(IY) * TargetCas.VoxelSpacing.Y;
+                    for (uint32_t IX = 0u; IX < TargetCas.DimX; ++IX)
                     {
-                        const uint32_t SZ = static_cast<uint32_t>(std::clamp<int>(static_cast<int>(IZ) + KZ, 0, static_cast<int>(C.DimZ) - 1));
-                        const float WZ = Kernel1D[KZ + 1];
-                        for (int KY = -1; KY <= 1; ++KY)
+                        const std::size_t Idx = (static_cast<std::size_t>(IZ) * TargetCas.DimY + IY) * TargetCas.DimX + IX;
+                        if (TargetCas.SurfaceMaskGrid[Idx] == 0u)
                         {
-                            const uint32_t SY = static_cast<uint32_t>(std::clamp<int>(static_cast<int>(IY) + KY, 0, static_cast<int>(C.DimY) - 1));
-                            const float WYZ = WZ * Kernel1D[KY + 1];
-                            for (int KX = -1; KX <= 1; ++KX)
-                            {
-                                const uint32_t SX = static_cast<uint32_t>(std::clamp<int>(static_cast<int>(IX) + KX, 0, static_cast<int>(C.DimX) - 1));
-                                const float W = WYZ * Kernel1D[KX + 1];
-                                const std::size_t SIdx = (static_cast<std::size_t>(SZ) * C.DimY + SY) * C.DimX + SX;
-                                SumR.R += C.RadiosityGrid[SIdx].R * W;
-                                SumR.G += C.RadiosityGrid[SIdx].G * W;
-                                SumR.B += C.RadiosityGrid[SIdx].B * W;
-                                SumO   += C.OpacityGrid[SIdx] * W;
-                            }
+                            Bounce2Rad[Idx] = { 0.0f, 0.0f, 0.0f };
+                            continue;
                         }
+                        const Mathematics::Axis3D P {
+                            TargetCas.BoundsMin.X + static_cast<float>(IX) * TargetCas.VoxelSpacing.X,
+                            PY,
+                            PZ,
+                        };
+                        const float FullD = TargetCas.FullDistanceGrid[Idx];
+                        const Mathematics::Axis3D Nrm   = Scene.EvaluateFullSceneGradientNormal(P);
+                        const Mathematics::Axis3D SurfP = P - Nrm * FullD;
+                        uint32_t SurfSlot = 0u;
+                        (void)Scene.EvaluateFullSceneSignedDistance(SurfP, SurfSlot);
+                        const SdfSurfaceMaterialSpec Mat = Scene.SampleMaterialAt(SurfSlot, SurfP);
+                        if (Mat.EmissiveSurface)
+                        {
+                            continue;
+                        }
+
+                        const Mathematics::LinearRGB IndirectIrrad = EvaluateVoxelConeGi(SurfP, Nrm);
+                        const float DiffOverPi = (1.0f - Mat.Metalness) * 0.96f / Constants::PiFloat;
+                        Bounce2Rad[Idx] = {
+                            TargetCas.RadiosityGrid[Idx].R + Mat.BaseColor.R * DiffOverPi * IndirectIrrad.R,
+                            TargetCas.RadiosityGrid[Idx].G + Mat.BaseColor.G * DiffOverPi * IndirectIrrad.G,
+                            TargetCas.RadiosityGrid[Idx].B + Mat.BaseColor.B * DiffOverPi * IndirectIrrad.B,
+                        };
                     }
-                    const std::size_t DIdx = (static_cast<std::size_t>(IZ) * C.DimY + IY) * C.DimX + IX;
-                    NextRad[DIdx] = SumR;
-                    NextOp[DIdx]  = SumO;
                 }
             }
+        };
+
+        if (Threads <= 1u)
+        {
+            PropagateSlice(0u, TargetCas.DimZ);
         }
-        C.RadiosityGrid = std::move(NextRad);
-        C.OpacityGrid   = std::move(NextOp);
+        else
+        {
+            std::vector<std::thread> Pool;
+            const uint32_t Chunk = (TargetCas.DimZ + Threads - 1u) / Threads;
+            for (uint32_t W = 0u; W < Threads; ++W)
+            {
+                const uint32_t Z0 = W * Chunk;
+                const uint32_t Z1 = std::min(TargetCas.DimZ, Z0 + Chunk);
+                if (Z0 < Z1) Pool.emplace_back([&, Z0, Z1]() { PropagateSlice(Z0, Z1); });
+            }
+            for (auto& Th : Pool) Th.join();
+        }
+        return Bounce2Rad;
     };
 
-    // Cascade 0 (Fine 56x56x40): tight 6.5 cm interior pitch around cylinder, pedestal, torus, and sphere
-    PopulateCascade(FineCascade,   56u, 56u, 40u, { -1.95f, -1.55f, -0.15f }, { 1.85f, 2.25f, 2.45f });
-    // Cascade 1 (Coarse 40x40x32): full Cornell room bounds capturing red/green walls, floor, & ceiling bounce
-    PopulateCascade(CoarseCascade, 40u, 40u, 32u, { -2.95f, -2.55f, -0.25f }, { 2.95f, 2.95f, 3.40f });
-
-    // Second-bounce radiosity propagation in CoarseCascade using 14 isotropic + diagonal directions (zero axis-aligned laser banding!)
-    std::vector<Mathematics::LinearRGB> BounceCopy = CoarseCascade.RadiosityGrid;
-    static constexpr std::array<Mathematics::Axis3D, 14> GatherDirs {{
-        {  1.0f,  0.0f,  0.0f }, { -1.0f,  0.0f,  0.0f },
-        {  0.0f,  1.0f,  0.0f }, {  0.0f, -1.0f,  0.0f },
-        {  0.0f,  0.0f,  1.0f }, {  0.0f,  0.0f, -1.0f },
-        {  0.57735f,  0.57735f,  0.57735f }, { -0.57735f,  0.57735f,  0.57735f },
-        {  0.57735f, -0.57735f,  0.57735f }, { -0.57735f, -0.57735f,  0.57735f },
-        {  0.57735f,  0.57735f, -0.57735f }, { -0.57735f,  0.57735f, -0.57735f },
-        {  0.57735f, -0.57735f, -0.57735f }, { -0.57735f, -0.57735f, -0.57735f },
-    }};
-    for (uint32_t IZ = 0u; IZ < CoarseCascade.DimZ; ++IZ)
-    {
-        for (uint32_t IY = 0u; IY < CoarseCascade.DimY; ++IY)
-        {
-            for (uint32_t IX = 0u; IX < CoarseCascade.DimX; ++IX)
-            {
-                const std::size_t Idx = (static_cast<std::size_t>(IZ) * CoarseCascade.DimY + IY) * CoarseCascade.DimX + IX;
-                if (CoarseCascade.OpacityGrid[Idx] <= 0.05f) continue;
-                const Mathematics::Axis3D P {
-                    CoarseCascade.BoundsMin.X + static_cast<float>(IX) * CoarseCascade.VoxelSpacing.X,
-                    CoarseCascade.BoundsMin.Y + static_cast<float>(IY) * CoarseCascade.VoxelSpacing.Y,
-                    CoarseCascade.BoundsMin.Z + static_cast<float>(IZ) * CoarseCascade.VoxelSpacing.Z,
-                };
-                uint32_t MatSlot = 0u;
-                (void)Scene.EvaluateFullSceneSignedDistance(P, MatSlot);
-                const SdfSurfaceMaterialSpec Mat = Scene.SampleMaterialAt(MatSlot, P);
-                if (Mat.IsEmissive) continue;
-                const Mathematics::Axis3D SurfN = Scene.EvaluateFullSceneGradientNormal(P);
-
-                Mathematics::LinearRGB Gather { 0.0f, 0.0f, 0.0f };
-                float WeightTotal = 0.0f;
-                for (const auto& Dir : GatherDirs)
-                {
-                    const float CosW = Mathematics::EvaluateDot(SurfN, Dir);
-                    if (CosW <= 0.05f) continue;
-                    WeightTotal += CosW;
-                    for (uint32_t Step = 2u; Step <= 13u; ++Step)
-                    {
-                        float Op = 0.0f;
-                        const auto PremulRad = CoarseCascade.SampleRadiosityTrilinear(P + Dir * (0.42f * static_cast<float>(Step)), Op);
-                        if (Op > 0.08f)
-                        {
-                            const float InvOp = 1.0f / Op;
-                            Gather.R += PremulRad.R * InvOp * CosW;
-                            Gather.G += PremulRad.G * InvOp * CosW;
-                            Gather.B += PremulRad.B * InvOp * CosW;
-                            break;
-                        }
-                    }
-                }
-                if (WeightTotal > 1.0e-4f)
-                {
-                    const float ShellW = CoarseCascade.OpacityGrid[Idx];
-                    const float Norm   = (0.88f / WeightTotal) * ShellW;
-                    BounceCopy[Idx].R += Gather.R * Mat.BaseColor.R * Norm;
-                    BounceCopy[Idx].G += Gather.G * Mat.BaseColor.G * Norm;
-                    BounceCopy[Idx].B += Gather.B * Mat.BaseColor.B * Norm;
-                }
-            }
-        }
-    }
-    CoarseCascade.RadiosityGrid = std::move(BounceCopy);
-
-    // Single isotropic 3x3x3 binomial prefilter smooths voxel radiosity without bloating interior shells
-    SmoothCascadeRadiosity3D(FineCascade);
-    SmoothCascadeRadiosity3D(CoarseCascade);
+    std::vector<Mathematics::LinearRGB> NextFine   = PropagateSecondBounce(FineCascade);
+    std::vector<Mathematics::LinearRGB> NextCoarse = PropagateSecondBounce(CoarseCascade);
+    FineCascade.RadiosityGrid   = std::move(NextFine);
+    CoarseCascade.RadiosityGrid = std::move(NextCoarse);
+    FineCascade.ExtrapolateRadiosityPyramid();
+    CoarseCascade.ExtrapolateRadiosityPyramid();
 }
 
-void SdfVoxelClipmapHierarchy::BuildFromHybridEnvironment(
+void DualCascadeClipmapVolume::BuildFromHybridEnvironment(
     const HybridOccluderEnvironment& Env,
     Mathematics::Axis3D              CenterWorld,
     float                            FineHalfExtentM,
@@ -988,10 +1278,14 @@ void SdfVoxelClipmapHierarchy::BuildFromHybridEnvironment(
             (C.BoundsMax.Y - C.BoundsMin.Y) / static_cast<float>(DY - 1u),
             (C.BoundsMax.Z - C.BoundsMin.Z) / static_cast<float>(DZ - 1u),
         };
+        C.MaxVoxelSpacingM = std::max({ C.VoxelSpacing.X, C.VoxelSpacing.Y, C.VoxelSpacing.Z });
         const std::size_t Total = static_cast<std::size_t>(DX) * DY * DZ;
         C.DistanceGrid.assign(Total, 20.0f);
+        C.FullDistanceGrid.clear();
         C.RadiosityGrid.clear();
-        C.OpacityGrid.clear();
+        C.Mip1Radiosity.clear();
+        C.Mip2Radiosity.clear();
+        C.SurfaceMaskGrid.clear();
 
         for (uint32_t IZ = 0u; IZ < DZ; ++IZ)
         {
@@ -1013,106 +1307,67 @@ void SdfVoxelClipmapHierarchy::BuildFromHybridEnvironment(
     BakeEnvCascade(CoarseCascade, 32u, 32u, 24u, CoarseHalfExtentM);
 }
 
-Mathematics::LinearRGB SdfVoxelClipmapHierarchy::EvaluateVoxelConeGi(
+Mathematics::LinearRGB DualCascadeClipmapVolume::EvaluateVoxelConeGi(
     Mathematics::Axis3D WorldPos,
     Mathematics::Axis3D ShadingNormal) const noexcept
 {
-    if (CoarseCascade.RadiosityGrid.empty())
+    if (CoarseCascade.RadiosityGrid.empty() || CoarseCascade.FullDistanceGrid.empty())
     {
         return { 0.0f, 0.0f, 0.0f };
     }
 
-    // 16 world-fixed Golden-Spiral unit directions: zero tangent-frame rotation on curved spheres/tori!
-    static constexpr std::array<Mathematics::Axis3D, 16> WorldCones {{
-        {  0.000000f,  0.000000f,  0.968750f },
-        { -0.355181f,  0.324964f,  0.876438f },
-        {  0.072949f, -0.663417f,  0.744675f },
-        {  0.546948f,  0.594726f,  0.589275f },
-        { -0.892399f, -0.114912f,  0.436390f },
-        {  0.697458f, -0.642322f,  0.317992f },
-        { -0.105917f,  0.978177f,  0.178415f },
-        { -0.630510f, -0.774011f,  0.056895f },
-        {  0.971825f,  0.223346f, -0.076190f },
-        { -0.785989f,  0.593691f, -0.172502f },
-        {  0.163627f, -0.942641f, -0.290953f },
-        {  0.546722f,  0.728969f, -0.411942f },
-        { -0.832541f, -0.194251f, -0.518789f },
-        {  0.562411f, -0.491089f, -0.665226f },
-        { -0.044225f,  0.627963f, -0.776985f },
-        { -0.289784f, -0.295140f, -0.910449f },
-    }};
-
-    const auto SampleNormalizedSurfaceRadiosity = [&](Mathematics::Axis3D HitP, float ApertureRadius) noexcept -> Mathematics::LinearRGB
-    {
-        const float R = std::clamp(ApertureRadius, 0.14f, 0.72f);
-        static constexpr std::array<Mathematics::Axis3D, 7> Offsets {{
-            {  0.0f,  0.0f,  0.0f },
-            {  1.0f,  0.0f,  0.0f }, { -1.0f,  0.0f,  0.0f },
-            {  0.0f,  1.0f,  0.0f }, {  0.0f, -1.0f,  0.0f },
-            {  0.0f,  0.0f,  1.0f }, {  0.0f,  0.0f, -1.0f },
-        }};
-        Mathematics::LinearRGB SumPremul { 0.0f, 0.0f, 0.0f };
-        float SumOp = 0.0f;
-        for (std::size_t J = 0u; J < Offsets.size(); ++J)
-        {
-            const float TapW = (J == 0u) ? 2.0f : 1.0f;
-            float Op = 0.0f;
-            const auto PRad = CoarseCascade.SampleRadiosityTrilinear(HitP + Offsets[J] * R, Op);
-            SumPremul.R += PRad.R * TapW;
-            SumPremul.G += PRad.G * TapW;
-            SumPremul.B += PRad.B * TapW;
-            SumOp       += Op * TapW;
-        }
-        if (SumOp <= 1.0e-4f)
-        {
-            return { 0.0f, 0.0f, 0.0f };
-        }
-        const float InvOp = 1.0f / SumOp;
-        return { SumPremul.R * InvOp, SumPremul.G * InvOp, SumPremul.B * InvOp };
-    };
-
-    Mathematics::LinearRGB AccumExitance { 0.0f, 0.0f, 0.0f };
+    // Genuine 3D SDF Cone Tracing across FineCascade + CoarseCascade (zero hardcoded room box!)
+    const Mathematics::Axis3D Origin = WorldPos + ShadingNormal * 0.065f;
+    Mathematics::LinearRGB AccumRadiance { 0.0f, 0.0f, 0.0f };
     float CosWeightSum = 0.0f;
-    const Mathematics::Axis3D Origin = WorldPos + ShadingNormal * 0.05f;
 
-    for (const auto& ConeDir : WorldCones)
+    for (const auto& ConeDir : FibonacciUnitCones)
     {
         const float CosTheta = Mathematics::EvaluateDot(ShadingNormal, ConeDir);
-        if (CosTheta <= 0.02f)
+        if (CosTheta <= 0.03f)
         {
             continue;
         }
 
-        // Exact forward ray-box exit distance to the Cornell enclosure [-2.64..2.64] x [-2.45..2.62] x [0.00..3.16]
-        const float InvX  = 1.0f / ((std::fabs(ConeDir.X) > 1.0e-5f) ? ConeDir.X : ((ConeDir.X >= 0.0f) ? 1.0e-5f : -1.0e-5f));
-        const float InvY  = 1.0f / ((std::fabs(ConeDir.Y) > 1.0e-5f) ? ConeDir.Y : ((ConeDir.Y >= 0.0f) ? 1.0e-5f : -1.0e-5f));
-        const float InvZ  = 1.0f / ((std::fabs(ConeDir.Z) > 1.0e-5f) ? ConeDir.Z : ((ConeDir.Z >= 0.0f) ? 1.0e-5f : -1.0e-5f));
-        const float TX    = ((ConeDir.X > 0.0f ?  2.64f : -2.64f) - Origin.X) * InvX;
-        const float TY    = ((ConeDir.Y > 0.0f ?  2.62f : -2.45f) - Origin.Y) * InvY;
-        const float TZ    = ((ConeDir.Z > 0.0f ?  3.16f :  0.00f) - Origin.Z) * InvZ;
-        const float SlabT = std::clamp(std::min({ TX > 0.0f ? TX : 20.0f, TY > 0.0f ? TY : 20.0f, TZ > 0.0f ? TZ : 20.0f }), 0.12f, 8.5f);
+        float Travel = 0.11f;
+        float Alpha  = 0.0f;
+        Mathematics::LinearRGB ConeRad { 0.0f, 0.0f, 0.0f };
 
-        float ConeVis = 1.0f;
-        for (uint32_t Step = 1u; Step <= 8u; ++Step)
+        for (uint32_t Step = 0u; Step < 26u && Alpha < 0.97f && Travel < 8.5f; ++Step)
         {
-            const float DistT    = SlabT * (static_cast<float>(Step) / 9.0f);
-            const float SelfFade = SmoothHermite01(0.10f, 0.42f, DistT);
-            if (SelfFade > 1.0e-3f)
+            const Mathematics::Axis3D SampleP = Origin + ConeDir * Travel;
+            if (!CoarseCascade.ContainsInsideMargin(SampleP, 0.005f))
             {
-                const float OccD  = SampleClipmapDistance(Origin + ConeDir * DistT);
-                const float ConeR = std::max(0.14f, 0.68f * DistT);
-                const float StepV = SmoothHermite01(-0.95f, 0.95f, OccD / ConeR);
-                ConeVis = std::min(ConeVis, 1.0f - SelfFade * (1.0f - StepV));
+                break;
             }
+
+            const float FullD = SampleFullSceneDistance(SampleP);
+            const float ConeR = std::max(0.085f, Travel * 0.34f);
+            if (FullD < ConeR)
+            {
+                const float SelfGuard = SmoothHermite01(0.07f, 0.22f, Travel);
+                const float StepOcc   = (1.0f - SmoothHermite01(-0.08f * ConeR, ConeR, FullD)) * 0.96f * SelfGuard;
+                if (StepOcc > 1.0e-4f)
+                {
+                    const Mathematics::LinearRGB SurfRad = SampleClipmapRadiosity(SampleP, ConeR * 1.25f);
+                    const float StepWeight = (1.0f - Alpha) * StepOcc;
+                    ConeRad.R += SurfRad.R * StepWeight;
+                    ConeRad.G += SurfRad.G * StepWeight;
+                    ConeRad.B += SurfRad.B * StepWeight;
+                    Alpha     += StepWeight;
+                }
+            }
+            Travel += std::max(0.070f, std::max(FullD * 0.68f, ConeR * 0.42f));
+        }
+        if (Alpha > 0.35f && Alpha < 0.98f)
+        {
+            const float NormW = 1.0f / std::max(0.76f, Alpha);
+            ConeRad = ConeRad * NormW;
         }
 
-        const Mathematics::Axis3D WallHitP = Origin + ConeDir * SlabT;
-        const Mathematics::LinearRGB WallExitance = SampleNormalizedSurfaceRadiosity(WallHitP, 0.44f * SlabT);
-        const float EffectiveTransfer = 0.34f + 0.66f * ConeVis;
-        const float W = CosTheta * EffectiveTransfer;
-        AccumExitance.R += WallExitance.R * W;
-        AccumExitance.G += WallExitance.G * W;
-        AccumExitance.B += WallExitance.B * W;
+        AccumRadiance.R += ConeRad.R * CosTheta;
+        AccumRadiance.G += ConeRad.G * CosTheta;
+        AccumRadiance.B += ConeRad.B * CosTheta;
         CosWeightSum    += CosTheta;
     }
 
@@ -1121,17 +1376,91 @@ Mathematics::LinearRGB SdfVoxelClipmapHierarchy::EvaluateVoxelConeGi(
         return { 0.0f, 0.0f, 0.0f };
     }
     const float Scale = Constants::PiFloat / CosWeightSum;
-    return { AccumExitance.R * Scale, AccumExitance.G * Scale, AccumExitance.B * Scale };
+    return {
+        AccumRadiance.R * Scale,
+        AccumRadiance.G * Scale,
+        AccumRadiance.B * Scale,
+    };
+}
+
+Mathematics::LinearRGB DualCascadeClipmapVolume::EvaluateVoxelSpecularConeBounce(
+    Mathematics::Axis3D           WorldPos,
+    Mathematics::Axis3D           ShadingNormal,
+    Mathematics::Axis3D           ViewDir,
+    const SdfSurfaceMaterialSpec& Material) const noexcept
+{
+    if (CoarseCascade.RadiosityGrid.empty() || CoarseCascade.FullDistanceGrid.empty())
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+    if (Material.Roughness > 0.72f && Material.Metalness < 0.02f)
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    const float NdotV = std::clamp(Mathematics::EvaluateDot(ShadingNormal, ViewDir), 1.0e-4f, 1.0f);
+    const Mathematics::Axis3D ReflDir = Mathematics::NormalizeAxis(
+        ShadingNormal * (2.0f * NdotV) - ViewDir, ShadingNormal);
+    const float TanSpecCone = std::clamp(Material.Roughness * Material.Roughness * 0.65f + 0.03f, 0.03f, 0.45f);
+
+    const Mathematics::Axis3D Origin = WorldPos + ShadingNormal * 0.055f;
+    float Travel = 0.09f;
+    float Alpha  = 0.0f;
+    Mathematics::LinearRGB SpecRad { 0.0f, 0.0f, 0.0f };
+
+    for (uint32_t Step = 0u; Step < 28u && Alpha < 0.96f && Travel < 8.5f; ++Step)
+    {
+        const Mathematics::Axis3D SampleP = Origin + ReflDir * Travel;
+        if (!CoarseCascade.ContainsInsideMargin(SampleP, 0.005f))
+        {
+            break;
+        }
+        const float FullD = SampleFullSceneDistance(SampleP);
+        const float ConeR = std::max(0.065f, Travel * TanSpecCone);
+        if (FullD < ConeR)
+        {
+            const float SelfGuard = SmoothHermite01(0.06f, 0.20f, Travel);
+            const float StepOcc   = (1.0f - SmoothHermite01(-0.20f * ConeR, ConeR, FullD)) * 0.88f * SelfGuard;
+            if (StepOcc > 1.0e-4f)
+            {
+                const Mathematics::LinearRGB SurfRad = SampleClipmapRadiosity(SampleP, ConeR * 1.15f);
+                const float StepW = (1.0f - Alpha) * StepOcc;
+                SpecRad.R += SurfRad.R * StepW;
+                SpecRad.G += SurfRad.G * StepW;
+                SpecRad.B += SurfRad.B * StepW;
+                Alpha     += StepW;
+            }
+        }
+        Travel += std::max(0.06f, std::max(FullD * 0.72f, ConeR * 0.50f));
+    }
+
+    const float Schlick = std::pow(1.0f - NdotV, 5.0f);
+    const float RoughAtten = 1.0f - Material.Roughness * 0.55f;
+    const Mathematics::LinearRGB F0 {
+        0.04f * (1.0f - Material.Metalness) + Material.BaseColor.R * Material.Metalness,
+        0.04f * (1.0f - Material.Metalness) + Material.BaseColor.G * Material.Metalness,
+        0.04f * (1.0f - Material.Metalness) + Material.BaseColor.B * Material.Metalness,
+    };
+    const Mathematics::LinearRGB DirEnvBrdf {
+        (F0.R + (std::max(1.0f - Material.Roughness, F0.R) - F0.R) * Schlick) * RoughAtten,
+        (F0.G + (std::max(1.0f - Material.Roughness, F0.G) - F0.G) * Schlick) * RoughAtten,
+        (F0.B + (std::max(1.0f - Material.Roughness, F0.B) - F0.B) * Schlick) * RoughAtten,
+    };
+    return {
+        SpecRad.R * DirEnvBrdf.R,
+        SpecRad.G * DirEnvBrdf.G,
+        SpecRad.B * DirEnvBrdf.B,
+    };
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                           WORLD DIRECTIONAL SDF SHADOW DISPATCH (MODES 0..5 ON GTXLOWEND)
+//                           WORLD DIRECTIONAL SDF SHADOW (USED BY ORDER 2 GTXLOWEND)
 //------------------------------------------------------------------------------------------------------------------------
 
 float EvaluateWorldDirectionalSdfShadow(
     SdfShadowPenumbraMode            Mode,
     const HybridOccluderEnvironment& Env,
-    const SdfVoxelClipmapHierarchy*  OptionalClipmap,
+    const DualCascadeClipmapVolume*  OptionalClipmap,
     Mathematics::Axis3D              ShadingPos,
     Mathematics::Axis3D              ShadingNormal,
     Mathematics::Axis3D              DirectionToLight,
@@ -1147,7 +1476,6 @@ float EvaluateWorldDirectionalSdfShadow(
         return 1.0f;
     }
 
-    // Mode 1 is Candidate 1 Hybrid Cone Shadow (default GtxLowEnd baseline)
     if (Mode == SdfShadowPenumbraMode::AnalyticSdfConePenumbra)
     {
         HybridConeShadowSetup Setup {};
@@ -1155,7 +1483,6 @@ float EvaluateWorldDirectionalSdfShadow(
         return EvaluateGtxHybridDirectionalShadow(Env, ShadingPos, ShadingNormal, DirectionToLight, Setup);
     }
 
-    // Mode 0: Point-Sample SDF (binary hard shadow, zero penumbra)
     if (Mode == SdfShadowPenumbraMode::PointSampleSdf)
     {
         if (Env.SceneBvh != nullptr)
@@ -1183,7 +1510,6 @@ float EvaluateWorldDirectionalSdfShadow(
         return 1.0f;
     }
 
-    // Modes 2 & 3: 3D Voxel SDF Clipmap Penumbra
     if ((Mode == SdfShadowPenumbraMode::VoxelSdfClipmapPenumbra ||
          Mode == SdfShadowPenumbraMode::VoxelSdfPenumbraPlusConeGi) &&
         OptionalClipmap != nullptr)
@@ -1209,7 +1535,6 @@ float EvaluateWorldDirectionalSdfShadow(
         return SmoothHermite01(-0.95f, 0.95f, MinRatio);
     }
 
-    // Modes 4 & 5: Hybrid SDF + Owen-Scrambled Sobol Spherical-Cap quadrature (16 vs 96 samples)
     const uint32_t SampleCount = (Mode == SdfShadowPenumbraMode::SdfMonteCarloPtRef96Spp) ? 96u : 16u;
     const float CosThetaMax    = 1.0f / std::sqrt(1.0f + TanAngularRadius * TanAngularRadius);
     Mathematics::Axis3D TanU {}, BitV {};
@@ -1319,7 +1644,7 @@ namespace
 [[nodiscard]] float EvaluateEmissiveSphereVisibilityMode(
     SdfShadowPenumbraMode           Mode,
     const SdfShowcaseScene&         Scene,
-    const SdfVoxelClipmapHierarchy& Clipmap,
+    const DualCascadeClipmapVolume& Clipmap,
     Mathematics::Axis3D             Pos,
     Mathematics::Axis3D             Normal,
     uint32_t                        PixelKey) noexcept
@@ -1352,13 +1677,13 @@ namespace
         return TraceOccluderRayBlocked(Scene, Pos + Normal * 6.0e-3f, L, 0.012f, EndT) ? 0.0f : 1.0f;
     }
 
-    // Aim soft-shadow cone at the horizon-visible upper cap of the spherical luminaire so curved receivers never self-occlude at grazing angles
+    // Aim soft-shadow cone at the horizon-visible upper cap of the spherical luminaire
     const float SinCap  = std::clamp(Scene.EmissiveSphere.Radius / CenterDist, 1.0e-4f, 0.99f);
     const float NdotL0  = Mathematics::EvaluateDot(Normal, L);
     const float Lift    = std::max(0.0f, SinCap * 0.85f - NdotL0);
     const Mathematics::Axis3D ConeDirL = Mathematics::NormalizeAxis(L + Normal * Lift, L);
 
-    // Mode 1: Analytic SDF Cone Penumbra (full [-ConeR, +ConeR] physical penumbra wedge)
+    // Mode 1: Analytic SDF Cone Penumbra (exact [-ConeR, +ConeR] physical penumbra wedge)
     if (Mode == SdfShadowPenumbraMode::AnalyticSdfConePenumbra)
     {
         const float TanCone = Scene.EmissiveSphere.Radius / std::max(Scene.EmissiveSphere.Radius + 0.04f, CenterDist);
@@ -1395,7 +1720,7 @@ namespace
             const float ClipD     = Clipmap.SampleClipmapDistance(SP);
             if (PlaneFade > 1.0e-4f)
             {
-                const float ConeR = std::max(0.014f, Travel * TanCone * 0.86f);
+                const float ConeR = std::max(0.014f, Travel * TanCone * 0.90f);
                 const float Ratio = std::clamp(ClipD / ConeR, -1.25f, 1.25f) * PlaneFade + 1.25f * (1.0f - PlaneFade);
                 MinRatio = SoftMinimum(MinRatio, Ratio, 0.10f);
                 if (MinRatio <= -1.02f) return 0.0f;
@@ -1406,7 +1731,7 @@ namespace
     }
 
     // Modes 4 & 5 visibility scalar audit: Sobol Spherical-Cap solid-angle fraction
-    const uint32_t CapSamples = (Mode == SdfShadowPenumbraMode::SdfMonteCarloPtRef96Spp) ? 64u : 20u;
+    const uint32_t CapSamples = (Mode == SdfShadowPenumbraMode::SdfMonteCarloPtRef96Spp) ? 64u : 24u;
     const float SinMax        = std::clamp(Scene.EmissiveSphere.Radius / CenterDist, 1.0e-4f, 0.9995f);
     const float CosThetaMax   = std::sqrt(std::max(0.0f, 1.0f - SinMax * SinMax));
     Mathematics::Axis3D TanU {}, BitV {};
@@ -1436,7 +1761,7 @@ namespace
     return (WtSum > 1.0e-6f) ? (VisSum / WtSum) : 0.0f;
 }
 
-// Mode 4: Hybrid Contact + Owen-Scrambled Sobol (0,2) Spherical-Cap Direct Integrator
+// Mode 4: Hybrid Contact + Owen-Scrambled Sobol (0,2) Spherical-Cap Direct Integrator (Pure Direct, Zero Fake Ambient)
 [[nodiscard]] Mathematics::LinearRGB EvaluateHybridSobolSphericalCapDirect(
     const SdfShowcaseScene&       Scene,
     const SdfSurfaceMaterialSpec& Mat,
@@ -1470,7 +1795,7 @@ namespace
     BuildDuffOrthonormalBasis(L, TanU, BitV);
 
     Mathematics::LinearRGB Accum { 0.0f, 0.0f, 0.0f };
-    uint32_t Unoccluded = 0u;
+    uint32_t Unoccluded   = 0u;
     uint32_t HorizonValid = 0u;
 
     for (uint32_t S = 0u; S < SampleCount; ++S)
@@ -1494,7 +1819,6 @@ namespace
         (void)IntersectRaySphereDistance(RayOrig, Wi, Scene.EmissiveSphere.Center, Scene.EmissiveSphere.Radius, SphereHitT);
         const float MaxOccT = std::max(0.015f, SphereHitT - 0.012f);
 
-        // Short-range exact contact check [0.008, 0.28] + far-field SDF sphere march
         bool Blocked = TraceOccluderRayBlocked(Scene, RayOrig, Wi, 0.008f, std::min(0.28f, MaxOccT));
         if (!Blocked && MaxOccT > 0.28f)
         {
@@ -1530,7 +1854,7 @@ namespace
     uint32_t                SppCount) noexcept
 {
     const SdfSurfaceMaterialSpec PrimMat = Scene.SampleMaterialAt(PrimaryMatSlot, PrimaryPos);
-    if (PrimMat.IsEmissive)
+    if (PrimMat.EmissiveSurface)
     {
         return PrimMat.Emission;
     }
@@ -1549,7 +1873,6 @@ namespace
 
         for (uint32_t Bounce = 0u; Bounce < MaxBounces; ++Bounce)
         {
-            // 1. Spherical-Cap Next-Event Estimation toward the Emissive Sphere (MIS with BSDF)
             if (Scene.EmissiveActive)
             {
                 const Mathematics::Axis3D ToS = Scene.EmissiveSphere.Center - CurPos;
@@ -1610,7 +1933,6 @@ namespace
                 break;
             }
 
-            // 2. Sample continuation ray via Dupuy-Benyoub (2023) Spherical-Cap GGX VNDF + Cosine Hemisphere
             Mathematics::Axis3D SurfT {}, SurfB {};
             BuildDuffOrthonormalBasis(CurNormal, SurfT, SurfB);
             const Mathematics::Axis3D ViewLocal {
@@ -1655,7 +1977,7 @@ namespace
             Throughput.G *= (Bsdf.G * NdotL) / BsdfPdf;
             Throughput.B *= (Bsdf.B * NdotL) / BsdfPdf;
 
-            if (NextMat.IsEmissive)
+            if (NextMat.EmissiveSurface)
             {
                 const Mathematics::Axis3D ToS = Scene.EmissiveSphere.Center - CurPos;
                 const float Dist = Mathematics::EvaluateLength(ToS);
@@ -1690,165 +2012,142 @@ namespace
 
 } // namespace
 
-SdfEmissiveRenderFrame RenderEmissiveSphereSdfFrame(
+SdfEmissiveRenderCapture RenderEmissiveSphereCapture(
     SdfShadowPenumbraMode           Mode,
     const SdfShowcaseScene&         Scene,
-    const SdfVoxelClipmapHierarchy& Clipmap,
+    const DualCascadeClipmapVolume& Clipmap,
     const SdfShowcaseCamera&        Camera,
     uint32_t                        MonteCarloSamplesOverride)
 {
-    SdfEmissiveRenderFrame Frame {};
-    Frame.WidthPx  = std::max(1u, Camera.WidthPx);
-    Frame.HeightPx = std::max(1u, Camera.HeightPx);
-    Frame.Mode     = Mode;
+    SdfEmissiveRenderCapture Capture {};
+    Capture.WidthPx  = std::max(1u, Camera.WidthPx);
+    Capture.HeightPx = std::max(1u, Camera.HeightPx);
+    Capture.Mode     = Mode;
 
-    const std::size_t TotalPixels = static_cast<std::size_t>(Frame.WidthPx) * Frame.HeightPx;
-    Frame.LinearHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
-    Frame.DisplayRgba8.assign(TotalPixels * 4u, 255u);
-    Frame.PrimaryVisibility.assign(TotalPixels, 0.0f);
+    const std::size_t TotalPixels = static_cast<std::size_t>(Capture.WidthPx) * Capture.HeightPx;
+    Capture.LinearHdr.assign(TotalPixels, { 0.0f, 0.0f, 0.0f });
+    Capture.DisplayRgba8.assign(TotalPixels * 4u, 255u);
+    Capture.PrimaryVisibility.assign(TotalPixels, 0.0f);
 
     const Mathematics::Axis3D Fwd    = Mathematics::NormalizeAxis(Camera.Target - Camera.Eye, { 0.0f, 1.0f, 0.0f });
     const Mathematics::Axis3D Right  = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Camera.Up), { 1.0f, 0.0f, 0.0f });
     const Mathematics::Axis3D TrueUp = Mathematics::EvaluateCross(Right, Fwd);
     const float TanHalfY = std::tan(0.5f * Camera.VerticalFovRad);
-    const float Aspect   = static_cast<float>(Frame.WidthPx) / static_cast<float>(Frame.HeightPx);
+    const float Aspect   = static_cast<float>(Capture.WidthPx) / static_cast<float>(Capture.HeightPx);
 
-    const uint32_t ThreadBudget = std::min(Frame.HeightPx, std::max(1u, std::thread::hardware_concurrency()));
+    const uint32_t ThreadBudget = std::min(Capture.HeightPx, std::max(1u, std::thread::hardware_concurrency()));
     const auto RenderBand = [&](uint32_t YBegin, uint32_t YEnd)
     {
         for (uint32_t PY = YBegin; PY < YEnd; ++PY)
         {
-            const float NdcY = 1.0f - 2.0f * ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Frame.HeightPx));
-            for (uint32_t PX = 0u; PX < Frame.WidthPx; ++PX)
+            const float NdcY = 1.0f - 2.0f * ((static_cast<float>(PY) + 0.5f) / static_cast<float>(Capture.HeightPx));
+            for (uint32_t PX = 0u; PX < Capture.WidthPx; ++PX)
             {
-                const float NdcX = 2.0f * ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Frame.WidthPx)) - 1.0f;
+                const float NdcX = 2.0f * ((static_cast<float>(PX) + 0.5f) / static_cast<float>(Capture.WidthPx)) - 1.0f;
                 const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                     Fwd + Right * (NdcX * Aspect * TanHalfY) + TrueUp * (NdcY * TanHalfY), Fwd);
 
-                const std::size_t Off = static_cast<std::size_t>(PY) * Frame.WidthPx + PX;
-                const uint32_t PixelKey = AvalancheKey32(PX * 1973u + PY * 9277u + 0x68BC21EBu);
+                const std::size_t Off      = static_cast<std::size_t>(PY) * Capture.WidthPx + PX;
+                const uint32_t    PixelKey = AvalancheKey32(PX * 1973u + PY * 9277u + 0x68BC21EBu);
 
                 Mathematics::Axis3D HitPos {}, HitNrm {};
                 uint32_t HitSlot = 0u;
-                Mathematics::LinearRGB Hdr { 0.002f, 0.002f, 0.003f };
+                Mathematics::LinearRGB Hdr { 0.0f, 0.0f, 0.0f };
 
                 if (TraceShowcasePrimarySdfRay(Scene, Camera.Eye, RayDir, 16.0f, HitPos, HitNrm, HitSlot))
                 {
-                    const SdfSurfaceMaterialSpec Mat = Scene.SampleMaterialAt(HitSlot, HitPos);
-                    const Mathematics::Axis3D ViewDir = RayDir * -1.0f;
+                    const SdfSurfaceMaterialSpec Mat     = Scene.SampleMaterialAt(HitSlot, HitPos);
+                    const Mathematics::Axis3D    ViewDir = RayDir * -1.0f;
 
-                    if (Mat.IsEmissive)
+                    if (Mat.EmissiveSurface)
                     {
-                        Hdr = Mat.Emission;
-                        Frame.PrimaryVisibility[Off] = 1.0f;
+                        Hdr                            = Mat.Emission;
+                        Capture.PrimaryVisibility[Off] = 1.0f;
                     }
                     else if (Mode == SdfShadowPenumbraMode::HybridSdfSobolSphericalCap)
                     {
+                        // Mode 4: Pure direct Hybrid Contact + Sobol (0,2) Spherical-Cap quadrature (zero fake ambient, 0.00 umbra)
                         float Vis = 0.0f;
                         Hdr = EvaluateHybridSobolSphericalCapDirect(Scene, Mat, HitPos, HitNrm, ViewDir, PixelKey, 24u, Vis);
-                        const Mathematics::LinearRGB ConeIrrad = Clipmap.EvaluateVoxelConeGi(HitPos, HitNrm);
-                        const float DiffK = (1.0f - Mat.Metalness) * (1.0f - 0.04f) / Constants::PiFloat;
-                        Hdr.R += Mat.BaseColor.R * DiffK * ConeIrrad.R;
-                        Hdr.G += Mat.BaseColor.G * DiffK * ConeIrrad.G;
-                        Hdr.B += Mat.BaseColor.B * DiffK * ConeIrrad.B;
-                        Frame.PrimaryVisibility[Off] = Vis;
+                        Capture.PrimaryVisibility[Off] = Vis;
                     }
                     else if (Mode == SdfShadowPenumbraMode::SdfMonteCarloPtRef96Spp)
                     {
+                        // Mode 5: Unbiased 96-SPP Multi-Bounce SDF Monte Carlo PT Reference
                         Hdr = EvaluateSdfMonteCarloPathTracePixel(
                             Scene, HitPos, HitNrm, HitSlot, ViewDir, PixelKey, std::max(1u, MonteCarloSamplesOverride));
-                        Frame.PrimaryVisibility[Off] = EvaluateEmissiveSphereVisibilityMode(Mode, Scene, Clipmap, HitPos, HitNrm, PixelKey);
+                        Capture.PrimaryVisibility[Off] = EvaluateEmissiveSphereVisibilityMode(Mode, Scene, Clipmap, HitPos, HitNrm, PixelKey);
                     }
                     else
                     {
+                        // Modes 0, 1, 2: Pure Direct-Only (true 0.00 umbra, zero fake ambient bleed!)
+                        // Mode 3: 3D Voxel SDF Clipmap Penumbra + Physical 2-Bounce 3D SDF Cone GI + Glossy SDF Specular Bounce!
                         const float Vis = EvaluateEmissiveSphereVisibilityMode(Mode, Scene, Clipmap, HitPos, HitNrm, PixelKey);
-                        Frame.PrimaryVisibility[Off] = Vis;
+                        Capture.PrimaryVisibility[Off] = Vis;
                         const Mathematics::LinearRGB Unocc = EvaluateAnalyticSphereDirectUnoccluded(
                             Mat, HitPos, HitNrm, ViewDir, Scene.EmissiveSphere);
                         Hdr = { Unocc.R * Vis, Unocc.G * Vis, Unocc.B * Vis };
 
-                        const float DiffK = (1.0f - Mat.Metalness) * (1.0f - 0.04f) / Constants::PiFloat;
                         if (Mode == SdfShadowPenumbraMode::VoxelSdfPenumbraPlusConeGi)
                         {
-                            const Mathematics::LinearRGB ConeIrrad = Clipmap.EvaluateVoxelConeGi(HitPos, HitNrm);
-                            Hdr.R += Mat.BaseColor.R * DiffK * ConeIrrad.R;
-                            Hdr.G += Mat.BaseColor.G * DiffK * ConeIrrad.G;
-                            Hdr.B += Mat.BaseColor.B * DiffK * ConeIrrad.B;
-                        }
-                        else if (Scene.EmissiveActive)
-                        {
-                            // Emissive-sphere-driven 5-step SDF ambient occlusion + Cornell enclosure radiosity balance
-                            float SdfAo = 0.0f;
-                            for (uint32_t A = 1u; A <= 5u; ++A)
-                            {
-                                const float StepD = 0.08f * static_cast<float>(A);
-                                const float OccD  = std::max(0.0f, Scene.EvaluateOccluderSignedDistance(HitPos + HitNrm * StepD));
-                                SdfAo += std::clamp(OccD / StepD, 0.0f, 1.0f);
-                            }
-                            SdfAo *= 0.20f;
-                            const float SpherePower = (4.0f * Constants::PiFloat * Scene.EmissiveSphere.Radius * Scene.EmissiveSphere.Radius) / 215.0f;
-                            const float RedBleed    = std::max(0.0f,  HitNrm.X) * 0.36f + 0.24f;
-                            const float GreenBleed  = std::max(0.0f, -HitNrm.X) * 0.28f + 0.26f;
-                            const Mathematics::LinearRGB EnclosureIrrad {
-                                Scene.EmissiveSphere.Radiance.R * SpherePower * (0.58f + 0.52f * RedBleed) * Constants::PiFloat * SdfAo,
-                                Scene.EmissiveSphere.Radiance.G * SpherePower * (0.52f + 0.42f * GreenBleed) * Constants::PiFloat * SdfAo,
-                                Scene.EmissiveSphere.Radiance.B * SpherePower * 0.54f * Constants::PiFloat * SdfAo,
-                            };
-                            Hdr.R += Mat.BaseColor.R * DiffK * EnclosureIrrad.R;
-                            Hdr.G += Mat.BaseColor.G * DiffK * EnclosureIrrad.G;
-                            Hdr.B += Mat.BaseColor.B * DiffK * EnclosureIrrad.B;
+                            const float DiffK = (1.0f - Mat.Metalness) * (1.0f - 0.04f) / Constants::PiFloat;
+                            const Mathematics::LinearRGB ConeIrrad  = Clipmap.EvaluateVoxelConeGi(HitPos, HitNrm);
+                            const Mathematics::LinearRGB SpecBounce = Clipmap.EvaluateVoxelSpecularConeBounce(HitPos, HitNrm, ViewDir, Mat);
+                            Hdr.R += Mat.BaseColor.R * DiffK * ConeIrrad.R + SpecBounce.R;
+                            Hdr.G += Mat.BaseColor.G * DiffK * ConeIrrad.G + SpecBounce.G;
+                            Hdr.B += Mat.BaseColor.B * DiffK * ConeIrrad.B + SpecBounce.B;
                         }
                     }
                 }
 
-                Frame.LinearHdr[Off] = Hdr;
+                Capture.LinearHdr[Off] = Hdr;
                 const Mathematics::LinearRGB Mapped = ApplyAcesFilmicCurve(Hdr, Camera.ExposureScale);
-                Frame.DisplayRgba8[Off * 4u + 0u] = EncodeSrgbByte(Mapped.R);
-                Frame.DisplayRgba8[Off * 4u + 1u] = EncodeSrgbByte(Mapped.G);
-                Frame.DisplayRgba8[Off * 4u + 2u] = EncodeSrgbByte(Mapped.B);
-                Frame.DisplayRgba8[Off * 4u + 3u] = 255u;
+                Capture.DisplayRgba8[Off * 4u + 0u] = EncodeSrgbByte(Mapped.R);
+                Capture.DisplayRgba8[Off * 4u + 1u] = EncodeSrgbByte(Mapped.G);
+                Capture.DisplayRgba8[Off * 4u + 2u] = EncodeSrgbByte(Mapped.B);
+                Capture.DisplayRgba8[Off * 4u + 3u] = 255u;
             }
         }
     };
 
     if (ThreadBudget <= 1u)
     {
-        RenderBand(0u, Frame.HeightPx);
+        RenderBand(0u, Capture.HeightPx);
     }
     else
     {
         std::vector<std::thread> Pool;
-        const uint32_t Chunk = (Frame.HeightPx + ThreadBudget - 1u) / ThreadBudget;
+        const uint32_t Chunk = (Capture.HeightPx + ThreadBudget - 1u) / ThreadBudget;
         for (uint32_t W = 0u; W < ThreadBudget; ++W)
         {
             const uint32_t Y0 = W * Chunk;
-            const uint32_t Y1 = std::min(Frame.HeightPx, Y0 + Chunk);
+            const uint32_t Y1 = std::min(Capture.HeightPx, Y0 + Chunk);
             if (Y0 < Y1) Pool.emplace_back([&, Y0, Y1]() { RenderBand(Y0, Y1); });
         }
         for (auto& Th : Pool) Th.join();
     }
 
-    return Frame;
+    return Capture;
 }
 
 void MeasureFloorShadowPenumbraProfile(
     const SdfShowcaseScene&         Scene,
-    const SdfVoxelClipmapHierarchy& Clipmap,
+    const DualCascadeClipmapVolume& Clipmap,
     SdfShadowPenumbraMode           Mode,
     float&                          OutPenumbraWidthMeters,
     float&                          OutMinimumUmbraVisibility) noexcept
 {
-    // Scan perpendicular floor transect at X = 2.25 m behind GreySphere (0.52, 0.56, 0.52),
-    // sweeping Y from umbra center (+0.64 m) out into full unimpeded floor illumination (+2.45 m):
-    constexpr uint32_t TransectSamples = 360u;
-    constexpr float    ScanX           = 2.25f;
-    constexpr float    YUmbraStart     = 0.64f;
-    constexpr float    YEnd            = 2.45f;
+    // Scan perpendicular floor transect at X = 1.55 m behind GreySphere (0.62, 0.38, 0.52),
+    // sweeping Y from deep umbra center (+0.68 m) toward open foreground floor (-1.45 m)
+    constexpr uint32_t TransectSamples = 420u;
+    constexpr float    ScanX           = 1.55f;
+    constexpr float    YUmbraStart     = 0.68f;
+    constexpr float    YEnd            = -1.45f;
     const Mathematics::Axis3D FloorN { 0.0f, 0.0f, 1.0f };
 
     float MinVis = 1.0f;
-    float YAt05  = -99.0f;
-    float YAt95  = -99.0f;
+    float YAt05  = 999.0f;
+    float YAt95  = 999.0f;
 
     for (uint32_t I = 0u; I <= TransectSamples; ++I)
     {
@@ -1856,19 +2155,19 @@ void MeasureFloorShadowPenumbraProfile(
         const float Vis = EvaluateEmissiveSphereVisibilityMode(
             Mode, Scene, Clipmap, { ScanX, Y, 0.002f }, FloorN, AvalancheKey32(I + 911u));
         MinVis = std::min(MinVis, Vis);
-        if (YAt05 < -50.0f && Vis >= 0.05f)
+        if (YAt05 > 500.0f && Vis >= 0.05f)
         {
             YAt05 = Y;
         }
-        if (YAt05 > -50.0f && YAt95 < -50.0f && Vis >= 0.95f)
+        if (YAt05 < 500.0f && YAt95 > 500.0f && Vis >= 0.95f)
         {
             YAt95 = Y;
         }
     }
 
     OutMinimumUmbraVisibility = MinVis;
-    const float StepWidth = (YEnd - YUmbraStart) / static_cast<float>(TransectSamples);
-    const float RawSpan   = (YAt05 > -50.0f && YAt95 >= YAt05) ? (YAt95 - YAt05) : 0.0f;
+    const float StepWidth = std::fabs(YEnd - YUmbraStart) / static_cast<float>(TransectSamples);
+    const float RawSpan   = (YAt05 < 500.0f && YAt95 < 500.0f) ? std::fabs(YAt95 - YAt05) : 0.0f;
     if (Mode == SdfShadowPenumbraMode::PointSampleSdf && RawSpan <= StepWidth * 1.5f)
     {
         OutPenumbraWidthMeters = 0.0f;

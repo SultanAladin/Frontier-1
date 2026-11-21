@@ -19,6 +19,7 @@
 #include "Engine/ComponentClass/ComponentWorldPlacement.h"
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
+#include "Engine/Components/Camera/CameraLagComponent.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
@@ -63,7 +64,8 @@ struct EditorStartupConfiguration
     std::filesystem::path ProjectSpacePath {};                                                         // [-] - Optional .projectspace persistence path
     OutlinerTitleVariant                  OutlinerHeading         = OutlinerTitleVariant::Outliner; // [-] - Outliner vs LayerStack heading
     double                                MaximumStep             = 0.100;                          // [s] - Upper Δt clamp per authoring tick
-    bool                                        PopulateShowcaseScene   = false;                          // [-] - Populate Cornell-Studio Gallery in Outliner & GTX Viewport
+    bool                                        PopulateShowcaseScene   = false;                          // [-] - Populate default ControlVehicle scene in Outliner & GTX Viewport
+    bool                                        PopulateBlankPlaneSkyScene = false;                       // [-] - Populate blank Ground Plane & Clear Sky scene instead of the default scene
     GeometricRaster::VulkanInterchange*         VulkanDevice            = nullptr;                        // [-] - Optional hardware Vulkan device for GPU .slang World & Gizmo passes
     GeometricRaster::ImGuiOverlayRasterization* ImGuiPresenter          = nullptr;                        // [-] - Optional ImGui Vulkan presenter for zero-readback GPU viewport
     std::filesystem::path                       CompiledShaderDirectory {};                               // [-] - Optional CompiledShaders/ path for GPU .slang SPIR-V modules
@@ -110,6 +112,7 @@ public:
     void               AssignReturnToProjectBrowserCallback(std::function<void()> Callback);
     void               ConfigureActiveProjectTitle(std::string_view ProjectTitle);
     void               PopulateShowcaseGallerySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
+    void               PopulateBlankPlaneSkySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
     void               RefreshShowcaseViewportRaster();
     void               FrameShowcaseCameraSelection() noexcept;
 
@@ -123,6 +126,9 @@ public:
     [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
+    [[nodiscard]] float QueryCameraFlySpeedScalar() const noexcept { return CameraFlySpeedScalar; }
+    [[nodiscard]] Components::CameraLagComponent& AccessEditorCameraLag() noexcept { return EditorCameraLag; }
+    [[nodiscard]] const Components::CameraLagComponent& InspectEditorCameraLag() const noexcept { return EditorCameraLag; }
     [[nodiscard]] Editor::TransformGizmo&                    AccessTransformGizmo() noexcept { return WorldTransformGizmo; }
     [[nodiscard]] bool ExecuteAuthoringTick(double Δt);
     [[nodiscard]] bool ExecuteExternalDesktopTick(double Δt);
@@ -156,6 +162,7 @@ private:
         uint32_t                               ClassIndex     = 0u;
     };
 
+    void PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx);
     void SynchronizeShowcaseGizmoAnchor() noexcept;
     void RefreshGizmoOverlayFromCachedWorld();
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
@@ -173,7 +180,7 @@ private:
     WorkspaceLifecycle                         Workspaces             {};     // [-]     - Multi-document workspace session loop
     Input::InputExtension                      InputParticipant       {};     // [-]     - Hardware input & OS feedback participant
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
-    std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted Cornell-Studio Gallery scene & Outliner tokens
+    std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted default world scene & Outliner tokens
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated MatCap / OpenPBR Direct world renderer
     std::unique_ptr<GeometricRaster::VulkanWorldRenderSequence>      GpuWorldRenderer     {}; // [-] - Hardware Vulkan .slang compute world render sequence
     std::unique_ptr<GeometricRaster::WorldGizmoOverlayRasterization> WorldGizmoRasterizer {}; // [-] - Vulkan .slang 3D Gizmo overlay rasterizer
@@ -192,6 +199,12 @@ private:
     uint32_t                                                         LastSdfPenumbraIndex = UINT32_MAX;
     uint32_t                                                         LastReflectionSource = UINT32_MAX;
     uint32_t                                                         LastTraceResolutionIdx = UINT32_MAX;
+    bool                                                             LastClusterLodEnabled  = true;
+    float                                                            LastClusterLodPixelError = 1.25f;
+    uint32_t                                                         LastPathTraceTargetSpp = 256u;
+    uint32_t                                                         LastPathTraceBatchSpp  = 1u;
+    bool                                                             LastXeGtaoEnabled    = false;
+    float                                                            LastXeGtaoStrength   = 1.0f;
     bool                                                             LastReflectionsEnabled = true;
     bool                                                             LastAaEnabled        = true;
     bool                                                             LastRtEnabled        = true;
@@ -208,7 +221,15 @@ private:
     Mathematics::SpatialTransform                                    GizmoActiveTransform {}; // [-] - Working SpatialTransform during active drag
     OutlinerSlotToken                                                LastGizmoSlot        {}; // [id]- Slot currently anchored by WorldTransformGizmo
     Point2D                                                          LastPointerPosition  {}; // [px]- Previous frame viewport pointer coordinate
+    float                                                            CameraFlySpeedScalar = 1.0f; // [x] - Unreal RMB+Wheel dynamic fly-speed multiplier
+    Components::CameraLagComponent                                   EditorCameraLag    {};     // [-] - Reusable lag trailing the desired editor camera pose
+    Mathematics::Axis3D                                              DesiredCameraOrigin {};     // [m] - Undamped editor camera position requested by input
+    Mathematics::Axis3D                                              DesiredCameraTarget {};     // [m] - Undamped editor camera target point requested by input
+    bool                                                             DesiredCameraValid = false; // [-] - DesiredCameraOrigin/Target hold a live pose
     bool                                                             PointerTrackingValid = false;
+    bool                                                             NavigationDragWasActive = false;
+    bool                                                             RightMouseFlyActive  = false;
+    bool                                                             BlankPlaneSkySessionActive = false;
     bool                                                             CameraInteractiveDrag = false;
     bool                                                             PendingInteractionWorldRefresh = false;
     bool                                                             PendingInteractionGizmoRefresh = false;

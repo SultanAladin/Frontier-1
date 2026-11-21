@@ -10,8 +10,8 @@
 | :--- | :--- |
 | `DeterministicPathTraceSequence.cpp` | Vulkan 1.3 + Slang unified deterministic path tracer (`GameRealtime` & `SceneFinalRender` over one Owen-scrambled Sobol' `(0, 2)` OpenPBR integrator) |
 | `DeterministicPathTraceSequence.h` | Host sequence for deterministic path tracing, `R32_UINT` visibility rasterization, temporal history reprojection, à-trous reconstruction, and IEEE-754 FNV-1a digest verification |
-| `ShowcaseGalleryScene.cpp` | Cornell-Studio Showcase Gallery Scene with Outliner synchronization & interactive asset placement |
-| `ShowcaseGalleryScene.h` | Cornell-Studio Showcase Gallery Scene with Outliner synchronization & interactive asset placement |
+| `ShowcaseGalleryScene.cpp` | Default & Blank World Scenes (ControlVehicle default, Ground Plane & Clear Sky blank) with Outliner synchronization & interactive asset placement |
+| `ShowcaseGalleryScene.h` | Default & Blank World Scenes (ControlVehicle default, Ground Plane & Clear Sky blank) with Outliner synchronization & interactive asset placement |
 | `SpecularReflectionSequence.cpp` | BVH4 specular raytracing, analytical sky dome fallback, and chromatic dielectric refraction |
 | `SpecularReflectionSequence.h` | BVH4 specular raytracing, analytical sky dome fallback, and chromatic dielectric refraction |
 | `StokesContourIrradianceSequence.cpp` | Order 2 boundary-only Stokes polygonal contour irradiance with 1-bounce diffuse radiosity & `CompressedWideTree` / local-SDF visibility |

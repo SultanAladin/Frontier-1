@@ -3,6 +3,7 @@
 ============================================================================================================================================*/
 // 🧩 End-to-end validation of WorkspaceCapabilityRegister, ProjectGenerator (3-target CMake + SessionOutput), ShowcaseGalleryScene & ProjectBrowser
 
+#include "Engine/Codecs/WorldSpaceCodec.h"
 #include "Engine/Configuration/ProjectGenerator.h"
 #include "Engine/Configuration/ProjectSpaceRepository.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
@@ -133,6 +134,32 @@ int main()
         LoadedSpace.Appearance.Theme != ThemePreset::Oled)
     {
         std::fprintf(stderr, "[FAIL] .projectspace round-trip failed: %s\n", SpaceDiag.c_str());
+        return 1;
+    }
+
+    // New projects start from a blank scene: one Ground Plane placement under a clear sky (no preset gallery)
+    Codecs::WorldSpaceDocumentModel BlankWorld {};
+    std::string                     BlankWorldDiag {};
+    if (!Codecs::WorldSpaceDecoder::DecodeFromFile(Scaffold.MainWorldFile, BlankWorld, BlankWorldDiag) ||
+        BlankWorld.GeometryPlacements.size() != 1u ||
+        BlankWorld.GeometryPlacements[0].PlacementTitle != "GroundPlane" ||
+        !BlankWorld.AreaLuminairePlacements.empty() ||
+        !BlankWorld.MeasuredLuminairePlacements.empty())
+    {
+        std::fprintf(stderr, "[FAIL] Generated MainWorld.WorldSpace is not a blank Ground Plane scene: %s\n", BlankWorldDiag.c_str());
+        return 1;
+    }
+
+    GeometricRaster::ShowcaseWorldSceneBundle BlankScene {};
+    GeometricRaster::BuildBlankPlaneSkyScene(BlankScene, 160u, 90u);
+    if (BlankScene.Objects.size() != 1u ||
+        BlankScene.Objects[0].Title != "GroundPlane" ||
+        !BlankScene.Scene.Atmosphere.Medium.AtmosphereEnabled ||
+        !BlankScene.Scene.Atmosphere.Solar.SolarEnabled ||
+        BlankScene.Scene.Atmosphere.Clouds.CloudsEnabled ||
+        !BlankScene.Scene.AreaLights.empty())
+    {
+        std::fprintf(stderr, "[FAIL] BuildBlankPlaneSkyScene is not a single Ground Plane under clear sky.\n");
         return 1;
     }
 
@@ -285,11 +312,21 @@ int main()
 
         Editor::Explorer::ProjectBrowser Browser {};
         Browser.InitializeDefaultCollection(TempBase, RepoRoot, ActiveBinDir);
-        if (Browser.QueryCollection().size() < 5u ||
+        bool HasDefaultProject = false;
+        for (const auto& Entry : Browser.QueryCollection())
+        {
+            if (Entry.Title == "Default Project")
+            {
+                HasDefaultProject = true;
+                break;
+            }
+        }
+        if (!HasDefaultProject ||
+            Browser.QueryCollection().empty() ||
             Browser.QueryCollection()[0].ThumbnailW != 264u ||
             Browser.QueryCollection()[0].ThumbnailH != 160u)
         {
-            std::fprintf(stderr, "[FAIL] ProjectBrowser failed to populate rendered Tier 1 GTX thumbnails.\n");
+            std::fprintf(stderr, "[FAIL] ProjectBrowser failed to populate the Default Project with rendered Tier 1 GTX thumbnails.\n");
             ImGui::DestroyContext(Ctx);
             return 1;
         }
@@ -435,6 +472,175 @@ int main()
             return 1;
         }
 
+        // (f) Validate Unreal Engine Viewport Camera Controls: RMB + WASD + Q/E + Shift (3.0x Sprint) + Pointer Capture
+        EditorSession.AccessControlCentre().AccessSettings().UiScale = 1.0f;
+        Drawer.SetShelfExtent(Components::ContentShelfExtent::Closed, true);
+        StepEditorFrame(ImVec2(960.0f, 420.0f), false, false);
+
+        auto* LiveBundle = EditorSession.AccessShowcaseScene();
+        if (LiveBundle == nullptr)
+        {
+            std::fprintf(stderr, "[FAIL] Missing ShowcaseScene for Unreal Engine camera validation.\n");
+            EditorSession.Finalize();
+            ImGui::DestroyContext(Ctx);
+            return 1;
+        }
+
+        auto StepRmbFly = [&](ImVec2 Pos, bool RmbDown, ImGuiKey HeldKey, bool HoldShift, double Dt = 0.050)
+        {
+            Io.AddMousePosEvent(Pos.x, Pos.y);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, RmbDown);
+            Io.AddKeyEvent(ImGuiMod_Shift, HoldShift);
+            Io.AddKeyEvent(ImGuiKey_LeftShift, HoldShift);
+            if (HeldKey != ImGuiKey_None)
+            {
+                Io.AddKeyEvent(HeldKey, true);
+            }
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(Dt);
+            ImGui::Render();
+            if (HeldKey != ImGuiKey_None)
+            {
+                Io.AddKeyEvent(HeldKey, false);
+            }
+            Io.AddKeyEvent(ImGuiMod_Shift, false);
+            Io.AddKeyEvent(ImGuiKey_LeftShift, false);
+        };
+
+        const Mathematics::Axis3D StartOrigin = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D InitFwd = Mathematics::NormalizeAxis(
+            LiveBundle->EditorCamera.TargetPoint - StartOrigin,
+            { 0.0f, 1.0f, 0.0f });
+
+        // RMB + W normal fly forward
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_W, false, 0.050);
+        const Mathematics::Axis3D AfterW = LiveBundle->EditorCamera.CameraOrigin;
+        const float NormalStepDist = Mathematics::EvaluateDot(AfterW - StartOrigin, InitFwd);
+
+        // RMB + Shift + W sprint fly forward (must be ~3.0x normal speed and MUST NOT hijack RMB into pan!)
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_W, true, 0.050);
+        const Mathematics::Axis3D AfterShiftW = LiveBundle->EditorCamera.CameraOrigin;
+        const float SprintStepDist = Mathematics::EvaluateDot(AfterShiftW - AfterW, InitFwd);
+
+        // RMB + E vertical ascend (+Z) and RMB + Q vertical descend (-Z)
+        const float ZBeforeE = LiveBundle->EditorCamera.CameraOrigin.Z;
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_E, false, 0.050);
+        const float ZAfterE = LiveBundle->EditorCamera.CameraOrigin.Z;
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_Q, true, 0.050);
+        const float ZAfterShiftQ = LiveBundle->EditorCamera.CameraOrigin.Z;
+
+        // RMB + A / D horizontal strafe + continuous drag capture outside Viewport bounds (X = 40 inside Outliner)
+        const Mathematics::Axis3D BeforeStrafe = LiveBundle->EditorCamera.CameraOrigin;
+        StepRmbFly(ImVec2(40.0f, 420.0f), true, ImGuiKey_D, false, 0.050);
+        const Mathematics::Axis3D AfterOutBoundsStrafe = LiveBundle->EditorCamera.CameraOrigin;
+        const float StrafeDistSq = Mathematics::EvaluateDot(
+            AfterOutBoundsStrafe - BeforeStrafe,
+            AfterOutBoundsStrafe - BeforeStrafe);
+
+        // Release RMB cleanly
+        StepRmbFly(ImVec2(960.0f, 420.0f), false, ImGuiKey_None, false, 1.0 / 60.0);
+
+        // Wheel must adjust Fly Speed (never Dolly-Zoom), with and without RMB held
+        auto StepWheel = [&](bool RmbDown, float WheelNotches)
+        {
+            Io.AddMousePosEvent(960.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, RmbDown);
+            Io.AddMouseWheelEvent(0.0f, WheelNotches);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        };
+
+        const float               SpeedBeforeWheel   = EditorSession.QueryCameraFlySpeedScalar();
+        const Mathematics::Axis3D OriginBeforeWheel  = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D TargetBeforeWheel  = LiveBundle->EditorCamera.TargetPoint;
+        StepWheel(false, 2.0f);
+        const float               SpeedAfterWheelUp  = EditorSession.QueryCameraFlySpeedScalar();
+        StepWheel(true, -1.0f);
+        const float               SpeedAfterRmbWheel = EditorSession.QueryCameraFlySpeedScalar();
+        const Mathematics::Axis3D OriginAfterWheel   = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D TargetAfterWheel   = LiveBundle->EditorCamera.TargetPoint;
+        const float WheelOriginDriftSq = Mathematics::EvaluateDot(
+            OriginAfterWheel - OriginBeforeWheel,
+            OriginAfterWheel - OriginBeforeWheel);
+        const float WheelTargetDriftSq = Mathematics::EvaluateDot(
+            TargetAfterWheel - TargetBeforeWheel,
+            TargetAfterWheel - TargetBeforeWheel);
+
+        // First-frame steps are damped by the editor camera lag component; sprint ratio must still hold.
+        if (NormalStepDist < 0.08f ||
+            SprintStepDist < NormalStepDist * 2.5f ||
+            (ZAfterE - ZBeforeE) < 0.08f ||
+            (ZAfterE - ZAfterShiftQ) < (ZAfterE - ZBeforeE) * 2.5f ||
+            StrafeDistSq < 0.01f ||
+            SpeedAfterWheelUp < SpeedBeforeWheel * 1.35f ||
+            SpeedAfterRmbWheel > SpeedAfterWheelUp * 0.90f ||
+            SpeedAfterRmbWheel < SpeedBeforeWheel * 1.05f ||
+            WheelOriginDriftSq > 1.0e-6f ||
+            WheelTargetDriftSq > 1.0e-6f)
+        {
+            std::fprintf(
+                stderr,
+                "[FAIL] Unreal Engine camera controls validation failed (NormalW=%.3f, SprintW=%.3f, dZE=%.3f, dZShiftQ=%.3f, OutBoundsStrafeSq=%.4f, SpeedBefore=%.3f, SpeedWheelUp=%.3f, SpeedRmbWheel=%.3f, WheelDriftSq=%.6f/%.6f).\n",
+                NormalStepDist,
+                SprintStepDist,
+                ZAfterE - ZBeforeE,
+                ZAfterE - ZAfterShiftQ,
+                StrafeDistSq,
+                SpeedBeforeWheel,
+                SpeedAfterWheelUp,
+                SpeedAfterRmbWheel,
+                WheelOriginDriftSq,
+                WheelTargetDriftSq);
+            EditorSession.Finalize();
+            ImGui::DestroyContext(Ctx);
+            return 1;
+        }
+
+        // (g) Single camera model: an LMB drag must NEVER move the camera (LMB = gizmo & selection only),
+        //     and the CPU gizmo ray hover must resolve handles without any GPU pick patch.
+        {
+            const Mathematics::Axis3D OriginBeforeLmb = LiveBundle->EditorCamera.CameraOrigin;
+            const Mathematics::Axis3D TargetBeforeLmb = LiveBundle->EditorCamera.TargetPoint;
+            Io.AddMousePosEvent(960.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMousePosEvent(1060.0f, 360.0f);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            const Mathematics::Axis3D LmbDrift = LiveBundle->EditorCamera.CameraOrigin - OriginBeforeLmb;
+            const Mathematics::Axis3D LmbTargetDrift = LiveBundle->EditorCamera.TargetPoint - TargetBeforeLmb;
+            if (Mathematics::EvaluateDot(LmbDrift, LmbDrift) > 1.0e-6f ||
+                Mathematics::EvaluateDot(LmbTargetDrift, LmbTargetDrift) > 1.0e-6f)
+            {
+                std::fprintf(stderr, "[FAIL] LMB drag moved the editor camera; LMB must stay gizmo/selection only.\n");
+                EditorSession.Finalize();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
+
+            Editor::TransformGizmo HoverProbe {};
+            HoverProbe.ConfigureAnchor({ 0.0f, 0.0f, 0.0f }, 1.0f);
+            const Editor::ViewportRay3D ConeRay { { -3.0f, 0.2f, 0.1f }, Mathematics::NormalizeAxis({ 3.95f, -0.2f, -0.1f }, { 1.0f, 0.0f, 0.0f }) };
+            const Editor::ViewportRay3D MissRay { { -3.0f, 3.0f, 3.0f }, { 1.0f, 0.0f, 0.0f } };
+            if (HoverProbe.EvaluateRayHover(ConeRay) != Editor::GizmoHandleOrdinal::TranslateX ||
+                HoverProbe.EvaluateRayHover(MissRay) != Editor::GizmoHandleOrdinal::None)
+            {
+                std::fprintf(stderr, "[FAIL] CPU gizmo ray hover failed to resolve the +X translate handle.\n");
+                EditorSession.Finalize();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
+        }
+
         EditorSession.Finalize();
         ImGui::DestroyContext(Ctx);
     }
@@ -465,7 +671,7 @@ int main()
             }
 
             GeometricRaster::ShowcaseWorldSceneBundle GpuGallery {};
-            GeometricRaster::BuildShowcaseGalleryScene(GpuGallery, 160u, 96u);
+            GeometricRaster::BuildVehicleClearSkyDefaultScene(GpuGallery, 160u, 96u);
             GpuWorldSeq.SynchronizeSceneResources(GpuGallery.Scene, true);
 
             std::vector<uint8_t> RgbaTier1 {};
@@ -483,17 +689,21 @@ int main()
                 return 1;
             }
 
-            // Verify left Crimson wall (X=8, Y=48) is red-dominant and right Emerald wall (X=151, Y=48) is green-dominant
-            const std::size_t LeftIdx  = (48u * 160u + 8u) * 4u;
-            const std::size_t RightIdx = (48u * 160u + 151u) * 4u;
-            if (RgbaTier1[LeftIdx + 0u] <= RgbaTier1[LeftIdx + 1u] + 40u ||
-                RgbaTier1[RightIdx + 1u] <= RgbaTier1[RightIdx + 0u] + 40u)
+            // Verify the default scene renders lit: upper-sky pixel is blue-dominant and the image is non-black overall
+            const std::size_t SkyIdx = (12u * 160u + 80u) * 4u;
+            uint64_t LumaTotal = 0u;
+            for (std::size_t Pix = 0u; Pix + 3u < RgbaTier1.size(); Pix += 4u)
+            {
+                LumaTotal += static_cast<uint64_t>(RgbaTier1[Pix]) + RgbaTier1[Pix + 1u] + RgbaTier1[Pix + 2u];
+            }
+            const uint64_t MeanLuma = LumaTotal / (160ull * 96ull * 3ull);
+            if (RgbaTier1[SkyIdx + 2u] <= RgbaTier1[SkyIdx + 0u] || MeanLuma < 8u)
             {
                 std::fprintf(
                     stderr,
-                    "[FAIL] VulkanWorldRenderSequence wall color check failed (Left RGB=%u,%u,%u Right RGB=%u,%u,%u).\n",
-                    RgbaTier1[LeftIdx + 0u], RgbaTier1[LeftIdx + 1u], RgbaTier1[LeftIdx + 2u],
-                    RgbaTier1[RightIdx + 0u], RgbaTier1[RightIdx + 1u], RgbaTier1[RightIdx + 2u]);
+                    "[FAIL] VulkanWorldRenderSequence sky/luminance check failed (Sky RGB=%u,%u,%u MeanLuma=%llu).\n",
+                    RgbaTier1[SkyIdx + 0u], RgbaTier1[SkyIdx + 1u], RgbaTier1[SkyIdx + 2u],
+                    static_cast<unsigned long long>(MeanLuma));
                 GpuWorldSeq.TeardownSequence();
                 VkDevice.TeardownInterchange();
                 return 1;
@@ -523,6 +733,56 @@ int main()
                 GpuWorldSeq.TeardownSequence();
                 VkDevice.TeardownInterchange();
                 return 1;
+            }
+
+            // Progressive PT must render continuously until it converges at the target spp:
+            // batch 4/frame, target 16 -> exactly 4 dispatches, then reset restarts at 0.
+            {
+                GeometricRaster::WorldRenderConfiguration PtConfig {};
+                PtConfig.Engine           = GeometricRaster::WorldRenderEngine::PathTracerSceneFinalRender;
+                PtConfig.PathTraceSamples = 4u;
+                PtConfig.PathTraceTargetSpp = 16u;
+                GpuWorldSeq.ResetProgressiveAccumulation();
+                std::vector<uint8_t> RgbaPt {};
+                uint32_t Dispatches = 0u;
+                while (GpuWorldSeq.QueryProgressiveSampleCount() < 16u && Dispatches < 16u)
+                {
+                    if (!GpuWorldSeq.RenderWorldViewportWithEngine(PtConfig, Dispatches, GpuGallery.EditorCamera, GpuGallery.Scene, RgbaPt))
+                    {
+                        std::fprintf(stderr, "[FAIL] Progressive PT dispatch failed.\n");
+                        GpuWorldSeq.TeardownSequence();
+                        VkDevice.TeardownInterchange();
+                        return 1;
+                    }
+                    ++Dispatches;
+                }
+                uint64_t PtLuma = 0u;
+                for (std::size_t Pix = 0u; Pix + 3u < RgbaPt.size(); Pix += 4u)
+                {
+                    PtLuma += static_cast<uint64_t>(RgbaPt[Pix]) + RgbaPt[Pix + 1u] + RgbaPt[Pix + 2u];
+                }
+                if (Dispatches != 4u || GpuWorldSeq.QueryProgressiveSampleCount() != 16u ||
+                    RgbaPt.size() != 200u * 120u * 4u || PtLuma == 0u)
+                {
+                    std::fprintf(
+                        stderr,
+                        "[FAIL] Progressive PT convergence check failed (Dispatches=%u Spp=%u Bytes=%zu Luma=%llu).\n",
+                        Dispatches,
+                        GpuWorldSeq.QueryProgressiveSampleCount(),
+                        RgbaPt.size(),
+                        static_cast<unsigned long long>(PtLuma));
+                    GpuWorldSeq.TeardownSequence();
+                    VkDevice.TeardownInterchange();
+                    return 1;
+                }
+                GpuWorldSeq.ResetProgressiveAccumulation();
+                if (GpuWorldSeq.QueryProgressiveSampleCount() != 0u)
+                {
+                    std::fprintf(stderr, "[FAIL] Progressive PT reset did not restart accumulation.\n");
+                    GpuWorldSeq.TeardownSequence();
+                    VkDevice.TeardownInterchange();
+                    return 1;
+                }
             }
 
             GpuWorldSeq.TeardownSequence();

@@ -1562,9 +1562,18 @@ fn evaluateAreaLightSoftVis(pos : vec3f, N : vec3f, lc : vec3f, lRight : vec3f, 
   let distL = length(toL);
   if (distL < 0.05) { return 1.0; }
   let lDir = toL / distL;
+  let packedMode = max(0, i32(round(U.uAreaShadowFwd.w)));
+  let penumbraMode = packedMode % 8;
+  if (penumbraMode == 0) {
+    let originPt = pos + N * 0.008;
+    if (dot(N, lDir) <= 0.002) { return 0.03; }
+    let blocked = traceShadowRayAny(originPt, lDir, max(0.04, distL - 0.14), selfPrimIdx, lightPickCode);
+    return select(1.0, 0.03, blocked);
+  }
   let alg = U.uSelection.y;
-  let soft = U.uRenderCfg1.x;
-  if (li == 0 && U.uRenderCfg3.y != 0 && alg != 4) {
+  let softScale = select(select(1.0, 0.72, penumbraMode == 1), 1.12, penumbraMode >= 4);
+  let soft = U.uRenderCfg1.x * softScale;
+  if (li == 0 && U.uRenderCfg3.y != 0 && alg != 4 && penumbraMode < 4) {
     let areaRes = f32(U.uRenderCfg3.z);
     let panelRad = mix(hh, hw, 0.55) * soft;
     if (alg == 3) {
@@ -1582,7 +1591,7 @@ fn evaluateAreaLightSoftVis(pos : vec3f, N : vec3f, lc : vec3f, lRight : vec3f, 
     return mix(0.03, 1.0, pcss.vis);
   }
   // True 2D rectangular Monte Carlo BVH visibility (EMISSIVE_BVH_SHADOW_FRAG)
-  let rayCount = clamp(U.uRenderCfg0.z, 2, 12);
+  let rayCount = select(clamp(U.uRenderCfg0.z, 2, 12), select(8, 12, penumbraMode == 5), penumbraMode >= 4);
   let invRays = 1.0 / f32(rayCount);
   let r2x = hash12(pos.xy * 71.3 + pos.z * 19.7);
   let r2y = hash12(pos.yz * 43.1 + pos.x * 29.3);
@@ -2194,8 +2203,13 @@ fn traceBvhReflection(startOrigin : vec3f, startNormal : vec3f, startDir : vec3f
 }
 
 fn evaluateMultiModeGi(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut {
-  let giAlg = U.uSelection.z;
-  let giInt = U.uRenderCfg1.y;
+  let packedMode = max(0, i32(round(U.uAreaShadowFwd.w)));
+  let engineMode = packedMode / 8;
+  let penumbraMode = packedMode % 8;
+  var giAlg = U.uSelection.z;
+  if (engineMode == 1) { giAlg = 2; }
+  else if (engineMode >= 3) { giAlg = 1; }
+  let giInt = U.uRenderCfg1.y * select(1.0, 1.06, penumbraMode == 3 && engineMode == 2 && U.uCountsAndModes.y > 0);
   let fillB = U.uRenderCfg1.z;
   if (giAlg == 2) {
     let skyW = clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
@@ -2207,8 +2221,8 @@ fn evaluateMultiModeGi(pos : vec3f, N : vec3f, selfPrimIdx : i32) -> GiAoOut {
     return out;
   }
   if (giAlg == 1) {
-    // GI_BVH_FRAG (ShadowAlgorithmLab): 2-bounce cosine-hemisphere BVH path tracing
-    let cnt = clamp(U.uRenderCfg2.y, 2, 20);
+    // GI_BVH_FRAG (ShadowAlgorithmLab): multi-bounce cosine-hemisphere BVH path tracing
+    let cnt = select(clamp(U.uRenderCfg2.y, 2, 20), select(10, 18, engineMode == 5), engineMode >= 4);
     let invGi = 1.0 / f32(cnt);
     let phi = hash12(pos.xy * 149.3 + pos.z * 67.1) * 6.2831853;
     var irr = vec3f(0.0);
@@ -2305,6 +2319,24 @@ fn shadePrimaryOpaqueHit(hit : HitInfo, V : vec3f) -> vec3f {
   let Nc = sf.Nc;
   let T = sf.T;
   let B = sf.B;
+  let engineMode = max(0, i32(round(U.uAreaShadowFwd.w))) / 8;
+  if (engineMode == 0 && viewMode == 0) {
+    let vn = normalize(vec3f(dot(N, U.uCamRight.xyz), dot(N, U.uCamUp.xyz), max(0.0, dot(N, -U.uCamForward.xyz))));
+    let keyDir = normalize(vec3f(0.42, 0.62, 0.66));
+    let fillDir = normalize(vec3f(-0.68, 0.25, 0.68));
+    let rimDir = normalize(vec3f(0.0, 0.85, 0.52));
+    let keyDiff = max(0.0, dot(vn, keyDir));
+    let fillDiff = max(0.0, dot(vn, fillDir));
+    let rimGlow = pow(clamp(1.0 - vn.z, 0.0, 1.0), 2.6) * (0.35 + 0.65 * max(0.0, dot(vn, rimDir)));
+    let specPow = mix(96.0, 6.0, clamp(mat.roughness, 0.02, 1.0));
+    let keySpec = pow(max(0.0, dot(vn, normalize(keyDir + vec3f(0.0, 0.0, 1.0)))), specPow);
+    let specGain = mix(1.45, 0.18, clamp(mat.roughness, 0.0, 1.0));
+    let studioL = 0.14 + 0.88 * keyDiff + 0.34 * fillDiff;
+    return mat.baseColor * (studioL * (1.0 - mat.metallic * 0.78) + keySpec * specGain * mat.metallic)
+         + vec3f(keySpec * specGain * (1.0 - mat.metallic))
+         + vec3f(0.26, 0.28, 0.32) * rimGlow
+         + mat.baseColor * mat.emission;
+  }
   let edgeTint = select(sdFetch(5, idx).rgb, mat.baseColor, hit.isVehicle);
   var Lo = mat.baseColor * mat.emission;
 
@@ -3608,7 +3640,7 @@ export async function CreateWebgpuGtxRenderer(OnDeviceLost) {
         SceneUniformF32[140] = AreaInfo ? AreaInfo.forward[0] : 0.0;
         SceneUniformF32[141] = AreaInfo ? AreaInfo.forward[1] : 0.0;
         SceneUniformF32[142] = AreaInfo ? AreaInfo.forward[2] : -1.0;
-        SceneUniformF32[143] = 0.0;
+        SceneUniformF32[143] = RsU.packedEnginePenumbra ?? 19.0;
 
         Device.queue.writeBuffer(SceneUniformBuf, 0, SceneUniformScratch);
 

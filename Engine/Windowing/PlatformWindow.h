@@ -408,6 +408,8 @@ private:
     uint32_t                     DeliveredHapticCount = 0;                                                 // [count] - Outbound haptic directives received
     float                        LastCursorX          = 0.0f;                                              // [px]    - Previous GLFW cursor X for delta computation
     float                        LastCursorY          = 0.0f;                                              // [px]    - Previous GLFW cursor Y for delta computation
+    float                        LockedAnchorX        = 0.0f;                                              // [px]    - Saved client cursor X while LockedRelativeHidden
+    float                        LockedAnchorY        = 0.0f;                                              // [px]    - Saved client cursor Y while LockedRelativeHidden
     bool                         CursorPositionSeeded = false;                                             // [-]     - True after initial cursor sample
     std::vector<std::string>     PendingDroppedPaths{};                                                    // [-]     - External OS drop paths buffered until next poll
 };

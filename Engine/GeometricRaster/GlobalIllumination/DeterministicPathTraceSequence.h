@@ -123,11 +123,10 @@ struct DeterministicTracerConfiguration
     bool                       LightsVisibleToCamera   = false;
     float                      ExposureStops           = 0.0f;
 
-    // Transport & SDF Penumbra Mode Selector
+    // Transport & Sampling
     uint32_t                   BounceLimit             = 2u;
     uint32_t                   DepthLimit              = 10u;
     float                      ThroughputCutoff        = 0.002f;
-    uint32_t                   SdfPenumbraModeIndex    = 1u; // [0..5] - 0=PointSdf, 1=AnalyticCone, 2=VoxelClipmap, 3=VoxelConeGi, 4=HybridSobolCap, 5=SdfMcRef96Spp
     uint32_t                   SampleBatch             = 1u;
     LampSamplingRule           LampSampling            = LampSamplingRule::SplitEight;
     uint32_t                   TraceScale              = 1u;   // 1 = Full, 2 = 1/2 (2x2 tile), 4 = 1/4 (4x4 tile)

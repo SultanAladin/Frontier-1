@@ -24,7 +24,7 @@ namespace
 {
 
 constexpr uint32_t ClusterBinaryMagic   = 0x31595043u; // 'CPY1'
-constexpr uint32_t ClusterBinaryVersion = 1u;
+constexpr uint32_t ClusterBinaryVersion = 2u; // v2 appends CoarsestAllowedLevel after the counts
 
 [[nodiscard]] uint32_t ExpandBits10To30(uint32_t Coord10) noexcept
 {
@@ -195,7 +195,8 @@ void PopulateClusterBoundsNormalCone(
     std::span<const uint8_t>              GlobalSeamLockedVertices,
     std::span<const ClusterTriangleEntry> InputTriangles,
     uint32_t                              TargetTriangleCount,
-    float&                                OutSimplifiedMaxErrorMeters)
+    float&                                OutSimplifiedMaxErrorMeters,
+    bool                                  LockMaterialBoundaries = true)
 {
     OutSimplifiedMaxErrorMeters = 0.0f;
     std::vector<ClusterTriangleEntry> Working(InputTriangles.begin(), InputTriangles.end());
@@ -248,6 +249,30 @@ void PopulateClusterBoundsNormalCone(
             LockedVertex[GroupEdges[Cursor].UpperV] = 1u;
         }
         Cursor = End;
+    }
+
+    // Material-boundary locks: a vertex touched by triangles of different material slots must
+    // never collapse, so each face keeps its own material slot and material regions cannot bleed
+    // into each other at coarser LOD levels (Nanite-style per-face material preservation).
+    if (LockMaterialBoundaries)
+    {
+        std::unordered_map<uint32_t, uint16_t> VertexMaterial;
+        for (const ClusterTriangleEntry& Tri : Working)
+        {
+            const std::array<uint32_t, 3u> V {{ Tri.VertexIndex0, Tri.VertexIndex1, Tri.VertexIndex2 }};
+            for (const uint32_t VIdx : V)
+            {
+                const auto Found = VertexMaterial.find(VIdx);
+                if (Found == VertexMaterial.end())
+                {
+                    VertexMaterial[VIdx] = Tri.MaterialOrdinal;
+                }
+                else if (Found->second != Tri.MaterialOrdinal)
+                {
+                    LockedVertex[VIdx] = 1u;
+                }
+            }
+        }
     }
 
     for (const ClusterTriangleEntry& Tri : Working)
@@ -425,13 +450,26 @@ void ClusterPyramid::Reset() noexcept
     Clusters.clear();
     HierarchyDepth     = 0u;
     FinestClusterCount = 0u;
+    CoarsestAllowedLevel     = 0xFFFFFFFFu;
+    MaterialBoundariesLocked = true;
 }
 
 bool ClusterPyramid::BuildFromPolygonNetwork(
     const GeometrySpace::PolygonNetwork& Network,
     uint32_t                             MaxHierarchyLevels)
 {
+    ClusterLodBakeConfiguration BakeConfiguration {};
+    BakeConfiguration.MaximumLevels = MaxHierarchyLevels;
+    return BuildFromPolygonNetwork(Network, BakeConfiguration);
+}
+
+bool ClusterPyramid::BuildFromPolygonNetwork(
+    const GeometrySpace::PolygonNetwork& Network,
+    const ClusterLodBakeConfiguration&   BakeConfiguration)
+{
     Reset();
+    CoarsestAllowedLevel     = BakeConfiguration.CoarsestAllowedLevel;
+    MaterialBoundariesLocked = BakeConfiguration.LockMaterialBoundaries;
     if (Network.Vertices.empty() || Network.Faces.empty())
     {
         return false;
@@ -458,15 +496,23 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         1.0f / std::max(1.0e-5f, SceneMax.Z - SceneMin.Z),
     };
 
+    // A network whose opposite edges were never linked (e.g. decoded triangle soup) would mark
+    // every vertex as an open border below; border locks for those come from welded topology.
+    bool AnyLinkedOpposite = false;
+    for (const GeometrySpace::DirectedEdge& Edge : Network.Edges)
+    {
+        AnyLinkedOpposite = AnyLinkedOpposite || (Edge.OppositeEdgeIndex != GeometrySpace::InvalidNetworkIndex);
+    }
+
     // 📝 Mark vertices incident on UV seams, sharp creases, or open geometric borders so QEM preserves UV/shading integrity
     std::vector<uint8_t> GlobalSeamLockedVertices(Network.Vertices.size(), 0u);
     for (const GeometrySpace::DirectedEdge& Edge : Network.Edges)
     {
-        const bool ProtectedEdge =
+        const bool ProtectedEdge = AnyLinkedOpposite && (
             (Edge.OppositeEdgeIndex == GeometrySpace::InvalidNetworkIndex) ||
             GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSeamCut) ||
             GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableSharpCrease) ||
-            GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableBoundaryEdge);
+            GeometrySpace::QueryEdgeAttributeEnabled(Edge.AttributeMask, GeometrySpace::EdgeAttributeMask::EnableBoundaryEdge));
 
         if (ProtectedEdge && Edge.OriginVertexIndex < GlobalSeamLockedVertices.size())
         {
@@ -480,6 +526,60 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 }
             }
         }
+    }
+
+    // Vertex welding: triangle-soup networks duplicate every corner, leaving QEM no shared
+    // vertices to collapse (the decoded ControlVehicle baked a single LOD level before this).
+    // Weld by exact position; per-corner normals, UVs, and material slots ride on triangles.
+    std::vector<uint32_t> WeldRemap(Network.Vertices.size(), 0u);
+    {
+        struct WeldKey
+        {
+            uint32_t X = 0u;
+            uint32_t Y = 0u;
+            uint32_t Z = 0u;
+            [[nodiscard]] bool operator==(const WeldKey& Rhs) const noexcept { return X == Rhs.X && Y == Rhs.Y && Z == Rhs.Z; }
+        };
+        struct WeldKeyHash
+        {
+            [[nodiscard]] std::size_t operator()(const WeldKey& Key) const noexcept
+            {
+                return static_cast<std::size_t>((Key.X * 2654435761u) ^ (Key.Y * 40503u) ^ (Key.Z << 7u));
+            }
+        };
+        std::unordered_map<WeldKey, uint32_t, WeldKeyHash> WeldMap;
+        WeldMap.reserve(Network.Vertices.size());
+        std::vector<Mathematics::Axis3D> WeldedPositions;
+        WeldedPositions.reserve(Network.Vertices.size());
+        std::vector<uint8_t> WeldedLocks;
+        for (std::size_t VIdx = 0u; VIdx < Network.Vertices.size(); ++VIdx)
+        {
+            const Mathematics::Axis3D Pos = Network.Vertices[VIdx].Axes;
+            WeldKey Key {};
+            std::memcpy(&Key.X, &Pos.X, sizeof(float));
+            std::memcpy(&Key.Y, &Pos.Y, sizeof(float));
+            std::memcpy(&Key.Z, &Pos.Z, sizeof(float));
+            const auto Found = WeldMap.find(Key);
+            uint32_t WeldedIdx = 0u;
+            if (Found == WeldMap.end())
+            {
+                WeldedIdx = static_cast<uint32_t>(WeldedPositions.size());
+                WeldMap[Key] = WeldedIdx;
+                WeldedPositions.push_back(Pos);
+                WeldedLocks.push_back(0u);
+            }
+            else
+            {
+                WeldedIdx = Found->second;
+            }
+            WeldRemap[VIdx] = WeldedIdx;
+            if (GlobalSeamLockedVertices[VIdx] != 0u)
+            {
+                WeldedLocks[WeldedIdx] = 1u;
+            }
+        }
+        Positions               = std::move(WeldedPositions);
+        GlobalSeamLockedVertices = std::move(WeldedLocks);
     }
 
     const auto CornerTangents = GeometrySpace::EvaluateContinuousCornerTangents(Network);
@@ -516,9 +616,9 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             const uint32_t E2 = LoopEdges[Fan + 1u];
 
             ClusterTriangleEntry Tri {};
-            Tri.VertexIndex0      = Network.Edges[E0].OriginVertexIndex;
-            Tri.VertexIndex1      = Network.Edges[E1].OriginVertexIndex;
-            Tri.VertexIndex2      = Network.Edges[E2].OriginVertexIndex;
+            Tri.VertexIndex0      = WeldRemap[Network.Edges[E0].OriginVertexIndex];
+            Tri.VertexIndex1      = WeldRemap[Network.Edges[E1].OriginVertexIndex];
+            Tri.VertexIndex2      = WeldRemap[Network.Edges[E2].OriginVertexIndex];
             Tri.SourceFaceIndex   = FaceIdx;
             Tri.CornerUV0         = Network.Edges[E0].ParameterUV;
             Tri.CornerUV1         = Network.Edges[E1].ParameterUV;
@@ -539,6 +639,41 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
     if (Level0Tris.empty())
     {
         return false;
+    }
+
+    // Welded-topology border locks: vertices on edges used by a single triangle are true open
+    // borders (this is what protects soup networks whose edges were never linked).
+    {
+        std::unordered_map<uint64_t, uint32_t> EdgeUseCounts;
+        EdgeUseCounts.reserve(Level0Tris.size() * 3u);
+        const auto MixEdge = [&EdgeUseCounts](uint32_t A, uint32_t B) noexcept
+        {
+            const uint64_t Lo = std::min(A, B);
+            const uint64_t Hi = std::max(A, B);
+            EdgeUseCounts[(Lo << 32u) | Hi] += 1u;
+        };
+        for (const auto& Tagged : Level0Tris)
+        {
+            MixEdge(Tagged.Entry.VertexIndex0, Tagged.Entry.VertexIndex1);
+            MixEdge(Tagged.Entry.VertexIndex1, Tagged.Entry.VertexIndex2);
+            MixEdge(Tagged.Entry.VertexIndex2, Tagged.Entry.VertexIndex0);
+        }
+        for (const auto& [EdgeKey, UseCount] : EdgeUseCounts)
+        {
+            if (UseCount == 1u)
+            {
+                const uint32_t Lo = static_cast<uint32_t>(EdgeKey >> 32u);
+                const uint32_t Hi = static_cast<uint32_t>(EdgeKey & 0xFFFFFFFFu);
+                if (Lo < GlobalSeamLockedVertices.size())
+                {
+                    GlobalSeamLockedVertices[Lo] = 1u;
+                }
+                if (Hi < GlobalSeamLockedVertices.size())
+                {
+                    GlobalSeamLockedVertices[Hi] = 1u;
+                }
+            }
+        }
     }
 
     std::sort(Level0Tris.begin(), Level0Tris.end(), [](const MortonTaggedTriangle& Left, const MortonTaggedTriangle& Right) noexcept
@@ -577,7 +712,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
     FinestClusterCount = static_cast<uint32_t>(CurrentLevelClusterIndices.size());
     HierarchyDepth     = 1u;
 
-    const uint32_t AllowedLevels = std::clamp(MaxHierarchyLevels, 1u, 8u);
+    const uint32_t AllowedLevels = std::clamp(BakeConfiguration.MaximumLevels, 1u, 8u);
     uint32_t GroupOrdinalCounter = 1u;
 
     // 📝 Iteratively merge Morton-adjacent groups of up to 4 clusters -> simplify ~50% -> re-split into <=128-tri coarser clusters
@@ -624,7 +759,8 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 GlobalSeamLockedVertices,
                 MergedTris,
                 TargetSimplifiedCount,
-                CollapseError);
+                CollapseError,
+                BakeConfiguration.LockMaterialBoundaries);
 
             if (SimplifiedTris.size() >= MergedTris.size())
             {
@@ -720,6 +856,10 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
     for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Clusters.size()); ++Idx)
     {
         const ClusterHeaderEntry& Cluster = Clusters[Idx];
+        if (Cluster.HierarchyLevel > CoarsestAllowedLevel)
+        {
+            continue; // Per-asset final-level cap: coarser LOD exists in the bake but is never selected
+        }
         const float SelfDist = std::max(
             1.0e-3f,
             Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.SphereCenter) - Cluster.SphereRadiusMeters);
@@ -727,8 +867,12 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
             ? GroupMinDistance[Cluster.EnclosingGroupOrdinal]
             : SelfDist;
 
+        // When the coarser replacement is capped out, this cluster is terminal (never replaced).
+        const bool CoarserCappedOut =
+            Cluster.EnclosingGroupOrdinal != 0u &&
+            (static_cast<uint32_t>(Cluster.HierarchyLevel) + 1u > CoarsestAllowedLevel);
         const float ProjectedSelfErrorPx    = (Cluster.FinerSelfErrorMeters / SelfDist) * SafeProjScale;
-        const float ProjectedCoarserErrorPx = (Cluster.CoarserThresholdErrorMeters >= 1.0e20f)
+        const float ProjectedCoarserErrorPx = (CoarserCappedOut || Cluster.CoarserThresholdErrorMeters >= 1.0e20f)
             ? 1.0e30f
             : ((Cluster.CoarserThresholdErrorMeters / CoarserGroupDist) * SafeProjScale);
 
@@ -764,6 +908,41 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
 //                                              BINARY SECTION SERIALIZATION
 //------------------------------------------------------------------------------------------------------------------------
 
+std::vector<ClusterLodLevelSummary> ClusterPyramid::SummarizeLevels() const
+{
+    std::vector<ClusterLodLevelSummary> Summaries;
+    Summaries.resize(HierarchyDepth);
+    for (uint32_t Level = 0u; Level < HierarchyDepth; ++Level)
+    {
+        Summaries[Level].Level = Level;
+    }
+    for (const ClusterHeaderEntry& Cluster : Clusters)
+    {
+        if (Cluster.HierarchyLevel >= Summaries.size())
+        {
+            continue;
+        }
+        ClusterLodLevelSummary& Summary = Summaries[Cluster.HierarchyLevel];
+        ++Summary.ClusterCount;
+        Summary.TriangleCount += Cluster.TriangleCount;
+        Summary.MaximumErrorMeters = std::max(Summary.MaximumErrorMeters, Cluster.FinerSelfErrorMeters);
+        for (uint32_t TriIdx = 0u; TriIdx < Cluster.TriangleCount; ++TriIdx)
+        {
+            const uint16_t Ordinal = Triangles[Cluster.TriangleStartOffset + TriIdx].MaterialOrdinal;
+            bool Known = false;
+            for (const uint16_t Existing : Summary.MaterialOrdinals)
+            {
+                Known = Known || (Existing == Ordinal);
+            }
+            if (!Known)
+            {
+                Summary.MaterialOrdinals.push_back(Ordinal);
+            }
+        }
+    }
+    return Summaries;
+}
+
 std::vector<std::byte> ClusterPyramid::SerializeToBinaryBytes() const
 {
     std::vector<std::byte> Bytes;
@@ -781,6 +960,7 @@ std::vector<std::byte> ClusterPyramid::SerializeToBinaryBytes() const
     AppendPodBytes(Bytes, PosCount);
     AppendPodBytes(Bytes, TriCount);
     AppendPodBytes(Bytes, ClsCount);
+    AppendPodBytes(Bytes, CoarsestAllowedLevel);
 
     for (const auto& Pos : Positions)
     {
@@ -803,10 +983,15 @@ bool ClusterPyramid::DeserializeFromBinaryBytes(std::span<const std::byte> RawBy
     std::span<const std::byte> Cursor = RawBytes;
     uint32_t Magic = 0u, Version = 0u, PosCount = 0u, TriCount = 0u, ClsCount = 0u;
     if (!ReadPodBytes(Cursor, Magic) || !ReadPodBytes(Cursor, Version) ||
-        Magic != ClusterBinaryMagic || Version != ClusterBinaryVersion ||
+        Magic != ClusterBinaryMagic || (Version != 1u && Version != ClusterBinaryVersion) ||
         !ReadPodBytes(Cursor, HierarchyDepth) || !ReadPodBytes(Cursor, FinestClusterCount) ||
         !ReadPodBytes(Cursor, PosCount) || !ReadPodBytes(Cursor, TriCount) || !ReadPodBytes(Cursor, ClsCount))
     {
+        return false;
+    }
+    if (Version >= 2u && !ReadPodBytes(Cursor, CoarsestAllowedLevel))
+    {
+        Reset();
         return false;
     }
 

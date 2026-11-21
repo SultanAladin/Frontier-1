@@ -50,7 +50,9 @@ import ConstructPanel from "./ConstructPanel.jsx";
 import GtxWorldViewport, { PreviewVisible } from "./GtxWorldViewport.jsx";
 import LevelDialogModal from "./LevelDialogModal.jsx";
 import {
+  BuildFrontierLobbyLevel,
   CreateNewLevelRecord,
+  EnsureRenderSettingsInLevel,
   LoadSavedLevelsState,
   ResetSavedLevelsState,
   SaveLevelsState,
@@ -61,8 +63,9 @@ import {
   ConstructForceTemplates,
   NormalizeVec3,
   RaycastWorldPlacementAtUv,
+  RENDER_ENGINES,
   ResolveRenderSettings,
-  ShowcaseInitialRows,
+  SDF_PENUMBRA_MODES,
   ShowcaseInitialValues,
 } from "./ShowcaseGalleryScene.js";
 import {
@@ -329,7 +332,12 @@ const DebugViews = [
   "ForceField · Vorticity |∇×F|",
   "ForceField · Divergence ∇·F",
 ];
-const StorageKey = "Frontier.WorldMirrorGtx.v6";
+// Flagship boot scene: Frontier Lobby (vehicle + light aircraft on display).
+// Built once at module scope with the same Render Settings / camera components
+// / physical environment injection used by the built-in levels.
+const BootLobbyLevel = EnsureRenderSettingsInLevel(BuildFrontierLobbyLevel());
+
+const StorageKey = "Frontier.WorldMirrorGtx.v7";
 function Restore() {
   try {
     localStorage.removeItem("Frontier.WorldMirrorGtx.v1");
@@ -337,6 +345,7 @@ function Restore() {
     localStorage.removeItem("Frontier.WorldMirrorGtx.v3");
     localStorage.removeItem("Frontier.WorldMirrorGtx.v4");
     localStorage.removeItem("Frontier.WorldMirrorGtx.v5");
+    localStorage.removeItem("Frontier.WorldMirrorGtx.v6");
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
   } catch {
     return {};
@@ -379,12 +388,10 @@ function OutlinerMetadata(Row, Record = {}, Rows = []) {
     return "Editor · permanent · 43.0° FOV";
   if (IsRenderSettings(Row) || Row.Panel === "render-settings") {
     const Rs = ResolveRenderSettings({ "render-settings": Record });
-    const ShShort =
-      Rs.ShadowAlgorithm === "contact_pcss"
-        ? "Contact+PCSS"
-        : Rs.ShadowAlgorithm.toUpperCase();
+    const EngObj = RENDER_ENGINES.find((E) => E.id === Rs.RenderEngine) || RENDER_ENGINES[2];
+    const EngShort = EngObj.label.replace(/^\d+\.\s*/, "");
     const GiShort = Rs.GiAlgorithm === "off" ? "GI Off" : `GI ${Rs.GiAlgorithm.toUpperCase()}`;
-    return `${ShShort} · ${GiShort} · ${Rs.ShadowMapRes}²`;
+    return `${EngShort} · ${GiShort} · ${Rs.ShadowMapRes}²`;
   }
   if (Row.Panel === "group") {
     const Count = Rows.filter((Item) => Item.Parent === Row.Id).length;
@@ -581,19 +588,24 @@ function App() {
     LiveFpsRef.current = NextFps;
   }, []);
   const [Rows, StoreRows] = useState(() =>
-      EnsureEditorCamera(Saved.Rows || ShowcaseInitialRows),
+      EnsureEditorCamera(Saved.Rows || BootLobbyLevel.Rows),
     ),
     [Selected, Select] = useState(
       new URLSearchParams(location.search).get("inspect") ||
         Saved.Selected ||
-        "chrome-sphere",
+        BootLobbyLevel.Selected ||
+        "control-vehicle",
     ),
     [Values, AssignValues] = useState(() => {
-      const Restored = { ...ShowcaseInitialValues };
+      const Restored = { ...ShowcaseInitialValues, ...BootLobbyLevel.Values };
       for (const [Key, Val] of Object.entries(Saved.Values || {})) {
-        Restored[Key] = { ...(ShowcaseInitialValues[Key] || {}), ...Val };
+        Restored[Key] = {
+          ...(ShowcaseInitialValues[Key] || {}),
+          ...(BootLobbyLevel.Values[Key] || {}),
+          ...Val,
+        };
       }
-      for (const Row of Saved.Rows || ShowcaseInitialRows) {
+      for (const Row of Saved.Rows || BootLobbyLevel.Rows) {
         const Record = ReadFracture(Row.Id);
         if (
           Row.Panel === "geometry" &&
@@ -626,7 +638,7 @@ function App() {
       () =>
         new URLSearchParams(location.search).get("project") ||
         Saved.Name ||
-        "Cornell-Studio Gallery",
+        "Frontier Lobby",
     ),
     [Rename, RenameRow] = useState(null),
     [Construct, OpenConstruct] = useState(false),
@@ -1120,7 +1132,7 @@ function App() {
     Filter([]);
     Search("");
     RenameProject(First.Name);
-    Select(First.Selected || "chrome-sphere");
+    Select(First.Selected || "control-vehicle");
     ShowMenu(null);
     Toast("Cleared cached state and restarted fresh scene");
   };
@@ -2600,6 +2612,52 @@ function App() {
             </button>
           </header>
           <label>
+            World Render Engine
+            <select
+              aria-label="World Render Engine"
+              value={ResolveRenderSettings(Values).RenderEngine}
+              onChange={(Event) => {
+                const NextEng = Event.target.value;
+                AssignValues((Prev) => {
+                  const NextRs = { ...(Prev["render-settings"] || {}), RenderEngine: NextEng };
+                  if (NextEng === "openpbr_direct") NextRs.GiAlgorithm = "off";
+                  else if (NextEng === "gtx_sdf_gi") NextRs.GiAlgorithm = "sdf";
+                  else if (NextEng === "highend_bvh4_gi" || NextEng === "pt_realtime" || NextEng === "pt_final") NextRs.GiAlgorithm = "bvh";
+                  return { ...Prev, "render-settings": NextRs };
+                });
+              }}
+            >
+              {RENDER_ENGINES.map((Eng) => (
+                <option key={Eng.id} value={Eng.id}>
+                  {Eng.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Luminaire Penumbra Mode
+            <select
+              aria-label="Luminaire Penumbra Mode"
+              value={ResolveRenderSettings(Values).SdfPenumbraMode}
+              onChange={(Event) => {
+                const NextMode = Event.target.value;
+                AssignValues((Prev) => ({
+                  ...Prev,
+                  "render-settings": {
+                    ...(Prev["render-settings"] || {}),
+                    SdfPenumbraMode: NextMode,
+                  },
+                }));
+              }}
+            >
+              {SDF_PENUMBRA_MODES.map((Mode) => (
+                <option key={Mode.id} value={Mode.id}>
+                  {Mode.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Debug view
             <select
               autoFocus
@@ -2876,11 +2934,6 @@ function App() {
               ReferenceDetailCards={
                 Subject.Panel === "light" && !Subject.ReferenceOnly
                   ? ReferenceCards("details")
-                  : null
-              }
-              CloudCoverageCards={
-                ["clouds", "local-cloud"].includes(Subject.Panel)
-                  ? ReferenceCards("coverage")
                   : null
               }
               ReferenceCards={
@@ -3473,7 +3526,7 @@ function App() {
         ActiveLevelName={
           LevelsState.Levels.find((L) => L.Id === LevelsState.ActiveLevelId)?.Name ||
           Name ||
-          "Cornell-Studio Gallery"
+          "Frontier Lobby"
         }
         OnCancel={() => SetCreateLevelOpen(false)}
         OnCreate={HandleCreateLevel}

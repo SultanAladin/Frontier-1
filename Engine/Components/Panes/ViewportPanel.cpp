@@ -75,7 +75,7 @@ namespace
 
 [[nodiscard]] const char* QueryDebugChannelName(uint32_t Channel) noexcept
 {
-    constexpr std::array<const char*, 12> Names = {{
+    constexpr std::array<const char*, 17> Names = {{
         "Off",
         "Depth",
         "Albedo",
@@ -87,7 +87,12 @@ namespace
         "Sun Shadow",
         "Ambient Occ",
         "Direct Lit",
-        "Specular"
+        "Specular",
+        "SDF Dist",
+        "SDF Material",
+        "SDF Normal",
+        "SDF AO Raw",
+        "SDF Cascade"
     }};
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
@@ -454,15 +459,39 @@ void ViewportPanel::RenderCanvasPane(
             SettingsSheetOpen      = false;
             DebugDropdownOpen      = false;
         }
-        else if (!OverlayCoversCanvas && PaneBounds.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+        else if (!OverlayCoversCanvas && PaneBounds.Contains(Cursor) &&
+                 (Input.PrimaryPointer.Pressed || Input.SecondaryPressed))
         {
             ActivePaneIndex = PaneIndex;
         }
     }
 
-    if (InteractionCallback && !OverlayCoversCanvas && !ProjectionChipConsumed && PaneBounds.Contains(Cursor))
+    const bool ImGuiMouseActive =
+        (ImGui::GetCurrentContext() != nullptr) &&
+        (ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+         ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+         ImGui::IsMouseDown(ImGuiMouseButton_Middle));
+    const bool AnyMouseHeld = ImGuiMouseActive || Input.PrimaryPointer.Down;
+
+    if (CapturedInteractionPaneIndex < 0 &&
+        !OverlayCoversCanvas &&
+        !ProjectionChipConsumed &&
+        PaneBounds.Contains(Cursor) &&
+        AnyMouseHeld)
+    {
+        CapturedInteractionPaneIndex = static_cast<int32_t>(PaneIndex);
+        ActivePaneIndex              = PaneIndex;
+    }
+
+    const bool CapturedHere = (CapturedInteractionPaneIndex == static_cast<int32_t>(PaneIndex));
+    if (InteractionCallback &&
+        ((!OverlayCoversCanvas && !ProjectionChipConsumed && PaneBounds.Contains(Cursor)) || CapturedHere))
     {
         InteractionCallback(PaneIndex, PaneBounds, Input);
+    }
+    if (CapturedHere && !AnyMouseHeld)
+    {
+        CapturedInteractionPaneIndex = -1;
     }
 
     if (!RenderedLiveSurface)
@@ -1047,6 +1076,7 @@ void ViewportPanel::RenderSettingsSheet(
     ConstructToggleRow("Reflections",         DisplaySettings.ReflectionsEnabled);
     ConstructToggleRow("Anti-aliasing",       DisplaySettings.AntiAliasingEnabled);
     ConstructToggleRow("Raytracing",          DisplaySettings.RaytracingEnabled);
+    ConstructToggleRow("XeGTAO (PBR AO)",     DisplaySettings.XeGtaoEnabled);
 
     // BVH4 Reflection Raytrace vs Sky Environment toggle
     {
@@ -1102,6 +1132,97 @@ void ViewportPanel::RenderSettingsSheet(
             }
         }
         RowY += 32.0f;
+    }
+
+    // Progressive PT convergence (only on Path Tracer engines): target spp + per-frame batch
+    if (DisplaySettings.RenderEngineIndex == 4u || DisplaySettings.RenderEngineIndex == 5u)
+    {
+        auto ConstructSppRow = [&](const char* Label, const char* const* Labels, const uint32_t* Values, uint32_t Count, uint32_t& Target)
+        {
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+                WorkspaceSurfaceColors::SecondaryInk, Label);
+            const float GroupW   = 204.0f;
+            const float CapsuleW = (GroupW - static_cast<float>(Count - 1u) * 4.0f) / static_cast<float>(Count);
+            const float GroupX   = Sheet.Right() - 16.0f - GroupW;
+            for (uint32_t Idx = 0u; Idx < Count; ++Idx)
+            {
+                const Rectangle2D Capsule{ GroupX + static_cast<float>(Idx) * (CapsuleW + 4.0f), RowY + 1.0f, CapsuleW, 22.0f };
+                const bool        Active = (Target == Values[Idx]);
+                Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+                Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+                const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, Labels[Idx]);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                    Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, Labels[Idx]);
+                if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+                {
+                    Target = Values[Idx];
+                }
+            }
+            RowY += 32.0f;
+        };
+        constexpr std::array<const char*, 6> TargetLabels = {{ "64", "128", "256", "512", "1024", "Inf" }};
+        constexpr std::array<uint32_t, 6>    TargetValues = {{ 64u, 128u, 256u, 512u, 1024u, 0u }};
+        ConstructSppRow("PT Target SPP", TargetLabels.data(), TargetValues.data(), 6u, DisplaySettings.PathTraceTargetSpp);
+        constexpr std::array<const char*, 4> BatchLabels = {{ "1", "2", "4", "8" }};
+        constexpr std::array<uint32_t, 4>    BatchValues = {{ 1u, 2u, 4u, 8u }};
+        ConstructSppRow("PT Batch / Frame", BatchLabels.data(), BatchValues.data(), 4u, DisplaySettings.PathTraceBatchSpp);
+    }
+
+    // Nanite-like cluster LOD: viewport traces the per-camera LOD cut instead of full-res geometry
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+            WorkspaceSurfaceColors::SecondaryInk, "Nanite LOD");
+        constexpr std::array<const char*, 2> LodLabels = {{ "Off", "On" }};
+        const float GroupW   = 102.0f;
+        const float CapsuleW = (GroupW - 4.0f) / 2.0f;
+        const float GroupX   = Sheet.Right() - 16.0f - GroupW;
+        for (uint32_t Idx = 0u; Idx < 2u; ++Idx)
+        {
+            const Rectangle2D Capsule{ GroupX + static_cast<float>(Idx) * (CapsuleW + 4.0f), RowY + 1.0f, CapsuleW, 22.0f };
+            const bool        Active = (DisplaySettings.ClusterLodEnabled == (Idx == 1u));
+            Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+            Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, LodLabels[Idx]);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, LodLabels[Idx]);
+            if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                DisplaySettings.ClusterLodEnabled = (Idx == 1u);
+            }
+        }
+        RowY += 32.0f;
+
+        if (DisplaySettings.ClusterLodEnabled)
+        {
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+                WorkspaceSurfaceColors::SecondaryInk, "LOD Error (px)");
+            constexpr std::array<const char*, 4> ErrLabels = {{ "0.5", "1.25", "2.5", "5" }};
+            constexpr std::array<float, 4>       ErrValues = {{ 0.5f, 1.25f, 2.5f, 5.0f }};
+            const float ErrGroupW   = 204.0f;
+            const float ErrCapsuleW = (ErrGroupW - 12.0f) / 4.0f;
+            const float ErrGroupX   = Sheet.Right() - 16.0f - ErrGroupW;
+            for (uint32_t Idx = 0u; Idx < 4u; ++Idx)
+            {
+                const Rectangle2D Capsule{ ErrGroupX + static_cast<float>(Idx) * (ErrCapsuleW + 4.0f), RowY + 1.0f, ErrCapsuleW, 22.0f };
+                const bool        Active = (std::fabs(DisplaySettings.ClusterLodPixelError - ErrValues[Idx]) < 0.01f);
+                Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+                Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+                const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, ErrLabels[Idx]);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                    Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, ErrLabels[Idx]);
+                if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+                {
+                    DisplaySettings.ClusterLodPixelError = ErrValues[Idx];
+                }
+            }
+            RowY += 32.0f;
+        }
     }
 
     // Render Scale slider (50% .. 200%)
@@ -1358,7 +1479,7 @@ void ViewportPanel::RenderSettingsSheet(
     }
     else if (DebugDropdownOpen)
     {
-        constexpr std::array<const char*, 12> DebugOptions = {{
+        constexpr std::array<const char*, 17> DebugOptions = {{
             "Debug View: Off",
             "Debug View: Depth",
             "Debug View: Albedo",
@@ -1371,9 +1492,14 @@ void ViewportPanel::RenderSettingsSheet(
             "Debug View: Ambient Occlusion",
             "Debug View: Direct Lighting",
             "Debug View: Specular & Reflections",
+            "Debug View: SDF Distance",
+            "Debug View: SDF with Materials",
+            "Debug View: SDF Normal",
+            "Debug View: SDF AO Raw (Unfiltered)",
+            "Debug View: SDF Cascade",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugBtn, static_cast<uint32_t>(DebugOptions.size()));
-        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 12u;
+        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 17u;
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay,
@@ -1748,15 +1874,17 @@ void ViewportPanel::Render(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { FootX, FootY }, 10.0f, StatusInk, StatusWord);
         FootX += WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, StatusWord) + 8.0f;
 
-        char TailSummary[160]{};
+        char TailSummary[224]{};
         std::snprintf(
             TailSummary,
             sizeof(TailSummary),
-            "-  CONSTRUCTED %u  -  %u visible  -  %s%s",
+            "-  CONSTRUCTED %u  -  %u visible  -  %s%s%s%s",
             ConstructedCount,
             VisibleCount,
             QueryQualityTierName(DisplaySettings.QualityTier),
-            SplitViewportEnabled ? "  -  SPLIT VIEW" : "");
+            SplitViewportEnabled ? "  -  SPLIT VIEW" : "",
+            ProbeReadoutText.empty() ? "" : "  -  ",
+            ProbeReadoutText.c_str());
         WorkspaceAppearance::ConstructTruncatedText(
             Surface,
             FontWeightClass::Regular,
@@ -1813,7 +1941,7 @@ void ViewportPanel::Render(
 
     if (HeaderDebugDropdownOpen)
     {
-        constexpr std::array<const char*, 12> HeaderDebugOptions = {{
+        constexpr std::array<const char*, 17> HeaderDebugOptions = {{
             "00 · Lit (Off)",
             "01 · Depth",
             "02 · Albedo",
@@ -1826,10 +1954,15 @@ void ViewportPanel::Render(
             "09 · Ambient Occlusion",
             "10 · Direct Lighting",
             "11 · Specular & Reflections",
+            "12 · SDF Distance",
+            "13 · SDF with Materials",
+            "14 · SDF Normal",
+            "15 · SDF AO Raw (Unfiltered)",
+            "16 · SDF Cascade",
         }};
         const Rectangle2D DropSheet = DropdownSelector::QuerySheetBounds(
             HeaderDebugButtonBounds, static_cast<uint32_t>(HeaderDebugOptions.size()));
-        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % 12u;
+        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % 17u;
         uint32_t       ChosenIdx = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 ActiveOverlay, HeaderDebugButtonBounds, HeaderDebugOptions.data(),

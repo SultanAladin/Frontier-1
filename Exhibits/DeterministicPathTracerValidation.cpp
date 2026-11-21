@@ -344,12 +344,12 @@ int main()
         std::vector<uint8_t> Shared1SppRgba {};
         (void)Tracer.ResolveDisplayRgba8(Shared1SppRgba);
 
-        // Advance to 32 spp SceneFinalRender Hero capture (clean Sobol' (0,2) convergence!)
-        if (!Tracer.AdvanceSamples(31u)) return 16;
+        // Advance to 128 spp SceneFinalRender Hero capture (clean Heitz VNDF + Sobol' (0,2) convergence!)
+        if (!Tracer.AdvanceSamples(127u)) return 16;
         std::vector<uint8_t> HeroConvergedRgba {};
         (void)Tracer.ResolveDisplayRgba8(HeroConvergedRgba);
         if (!VerifyCheck(WriteRgbaBufferToPng(OutDir / "02-Hero_SceneFinalRender.png", HeroW, HeroH, HeroConvergedRgba),
-                         "Wrote 02-Hero_SceneFinalRender.png"))
+                         "Wrote 128-spp 02-Hero_SceneFinalRender.png"))
         {
             return 17;
         }
@@ -508,31 +508,51 @@ int main()
         DeterministicPathTraceSequence::ApplyRenderProfile(DeterministicRenderProfile::SceneFinalRender, StudioUiCfg);
         StudioUiCfg.CameraPreset  = StudioCameraPreset::Hero;
         StudioUiCfg.Camera        = DeterministicPathTraceSequence::QueryCameraPreset(StudioCameraPreset::Hero);
-        StudioUiCfg.RenderScale   = 0.50f;
-        StudioUiCfg.TargetSamples = 32u;
+        StudioUiCfg.RenderScale   = 0.55f;
+        StudioUiCfg.TargetSamples = 48u;
         if (!Tracer.ConfigureStudioScene(StudioUiCfg)) return 31;
 
-        // Verify TieredWorldRenderSequence Order 3 integration & strict 0 B SDF invariant
+        // Verify TieredWorldRenderSequence Order 3 integration, live custom WorldScene upload, & strict 0 B SDF invariant
         TieredWorldRenderSequence Tiered {};
         Tiered.AttachDeterministicPathTracer(&Tracer);
-        WorldSceneSpecification DummyWorld {};
-        PerspectiveCameraBasis  WorldCam {};
+        WorldSceneSpecification CustomWorld {};
+        MaterialSpace::SurfaceMaterial FloorMat {};
+        FloorMat.Diffuse.BaseColor   = { 0.72f, 0.70f, 0.66f };
+        FloorMat.Specular.Roughness  = 0.45f;
+        const uint16_t FloorMatSlot  = CustomWorld.MaterialRegister.RegisterMaterial(FloorMat);
+        SpatialAcceleration::RayTrianglePrimitive FloorTri {};
+        FloorTri.Corner0         = { -4.0f, -4.0f, 0.0f };
+        FloorTri.Edge01          = {  8.0f,  0.0f, 0.0f };
+        FloorTri.Edge02          = {  0.0f,  8.0f, 0.0f };
+        FloorTri.MaterialOrdinal = FloorMatSlot;
+        FloorTri.OpaqueMask      = 1u;
+        CustomWorld.SceneTree.Primitives.push_back(FloorTri);
+        CustomWorld.SceneTree.PrimitiveNormals.push_back({ { 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } });
+
+        PerspectiveCameraBasis WorldCam {};
+        WorldCam.CameraOrigin     = { 0.0f, -5.0f, 2.2f };
+        WorldCam.TargetPoint      = { 0.0f,  0.0f, 0.2f };
         WorldCam.ViewportWidthPx  = 160u;
         WorldCam.ViewportHeightPx = 90u;
         WorldRenderConfiguration TieredCfg {};
         TieredCfg.Engine           = WorldRenderEngine::PathTracerGameRealtime;
         TieredCfg.PathTraceSamples = 2u;
-        const WorldRenderOutput RtOut = Tiered.RenderWorldFrameWithEngine(TieredCfg, WorldCam, WorldCam, DummyWorld);
+        const WorldRenderOutput RtOut = Tiered.RenderWorldFrameWithEngine(TieredCfg, WorldCam, WorldCam, CustomWorld);
         if (!VerifyCheck(RtOut.SdfAllocatedBytes == 0u && RtOut.DisplayRgba8.size() == 160u * 90u * 4u,
-                         "TieredWorldRenderSequence Order 3 (PathTracerGameRealtime) enforces 0 B SDF & valid display output"))
+                         "TieredWorldRenderSequence Order 3 syncs custom WorldScene + live camera with 0 B SDF"))
         {
             return 32;
         }
 
-#if FRONTIER_PROFILE_EDITOR
-        // Restore SceneFinalRender Hero configuration for full 1440x860 Studio Pane capture
-        if (!Tracer.ConfigureStudioScene(StudioUiCfg)) return 33;
+        // Restore SceneFinalRender Hero configuration and verify PrototypeVehicle buffers were cleanly restored
+        if (!VerifyCheck(Tracer.ConfigureStudioScene(StudioUiCfg) &&
+                         Tracer.QuerySceneSummary().VehicleTriangleCount == 25068u,
+                         "ConfigureStudioScene cleanly restored 25,068-tri PrototypeVehicle after ConfigureCustomWorldScene"))
+        {
+            return 33;
+        }
 
+#if FRONTIER_PROFILE_EDITOR
         IMGUI_CHECKVERSION();
         ImGuiContext* Gui = ImGui::CreateContext();
         ImGui::SetCurrentContext(Gui);
@@ -563,7 +583,7 @@ int main()
         const Rectangle2D WorkspaceBounds { 0.0f, 0.0f, 1440.0f, 860.0f };
         Pane.TriggerBitExactRepeatVerification(4u, 2u);
         Tracer.ResetAccumulation(false);
-        Pane.StepIntegrationTick(WorkspaceBounds, 1.0 / 30.0, 24u);
+        Pane.StepIntegrationTick(WorkspaceBounds, 1.0 / 30.0, 48u);
 
         ImGui::NewFrame();
         ImDrawList* DrawList = ImGui::GetBackgroundDrawList();
