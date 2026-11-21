@@ -63,7 +63,9 @@ import {
   ConstructForceTemplates,
   NormalizeVec3,
   RaycastWorldPlacementAtUv,
+  RENDER_ENGINES,
   ResolveRenderSettings,
+  SDF_PENUMBRA_MODES,
   ShowcaseInitialValues,
 } from "./ShowcaseGalleryScene.js";
 import {
@@ -386,12 +388,10 @@ function OutlinerMetadata(Row, Record = {}, Rows = []) {
     return "Editor · permanent · 43.0° FOV";
   if (IsRenderSettings(Row) || Row.Panel === "render-settings") {
     const Rs = ResolveRenderSettings({ "render-settings": Record });
-    const ShShort =
-      Rs.ShadowAlgorithm === "contact_pcss"
-        ? "Contact+PCSS"
-        : Rs.ShadowAlgorithm.toUpperCase();
+    const EngObj = RENDER_ENGINES.find((E) => E.id === Rs.RenderEngine) || RENDER_ENGINES[2];
+    const EngShort = EngObj.label.replace(/^\d+\.\s*/, "");
     const GiShort = Rs.GiAlgorithm === "off" ? "GI Off" : `GI ${Rs.GiAlgorithm.toUpperCase()}`;
-    return `${ShShort} · ${GiShort} · ${Rs.ShadowMapRes}²`;
+    return `${EngShort} · ${GiShort} · ${Rs.ShadowMapRes}²`;
   }
   if (Row.Panel === "group") {
     const Count = Rows.filter((Item) => Item.Parent === Row.Id).length;
@@ -2611,6 +2611,52 @@ function App() {
               ×
             </button>
           </header>
+          <label>
+            World Render Engine
+            <select
+              aria-label="World Render Engine"
+              value={ResolveRenderSettings(Values).RenderEngine}
+              onChange={(Event) => {
+                const NextEng = Event.target.value;
+                AssignValues((Prev) => {
+                  const NextRs = { ...(Prev["render-settings"] || {}), RenderEngine: NextEng };
+                  if (NextEng === "openpbr_direct") NextRs.GiAlgorithm = "off";
+                  else if (NextEng === "gtx_sdf_gi") NextRs.GiAlgorithm = "sdf";
+                  else if (NextEng === "highend_bvh4_gi" || NextEng === "pt_realtime" || NextEng === "pt_final") NextRs.GiAlgorithm = "bvh";
+                  return { ...Prev, "render-settings": NextRs };
+                });
+              }}
+            >
+              {RENDER_ENGINES.map((Eng) => (
+                <option key={Eng.id} value={Eng.id}>
+                  {Eng.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Luminaire Penumbra Mode
+            <select
+              aria-label="Luminaire Penumbra Mode"
+              value={ResolveRenderSettings(Values).SdfPenumbraMode}
+              onChange={(Event) => {
+                const NextMode = Event.target.value;
+                AssignValues((Prev) => ({
+                  ...Prev,
+                  "render-settings": {
+                    ...(Prev["render-settings"] || {}),
+                    SdfPenumbraMode: NextMode,
+                  },
+                }));
+              }}
+            >
+              {SDF_PENUMBRA_MODES.map((Mode) => (
+                <option key={Mode.id} value={Mode.id}>
+                  {Mode.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Debug view
             <select
