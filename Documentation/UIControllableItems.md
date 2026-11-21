@@ -337,3 +337,40 @@ Interface Scale **75–150 %** (`InterfaceScale/100`, clamped 0.75–1.5) · The
 + corner radius + accent/semantic swatches (`ThemeRepository`) · Typography size/weight
 repository · Appearance tab (Display scale / Typography / Theme). Values: scale %, theme index,
 radius px — see `ControlCentrePanel` AppliedAppearance.
+
+---
+
+## 19. Path Tracing convergence (Viewport Settings, PT engines only) [New]
+
+Engines 4 (PT Game Realtime) / 5 (PT Scene Final) now render **continuously until converged**:
+the editor re-dispatches every frame, the shader running-mean accumulates, and accumulation
+resets on camera move, scene edit, or any display-settings change. Footer readout:
+`PT N / Target spp [· converged]` or `PT N spp · continuous`.
+
+| Control | Type | Values | Status |
+|---|---|---|---|
+| PT Target SPP | segmented | 64 · 128 · 256 · 512 · 1024 · **Inf** (0 = no cap, render forever) | [New][UI] |
+| PT Batch / Frame | segmented | 1 · 2 · 4 · 8 spp per frame (HTML lab `SampleBatch` parity) | [New][UI] |
+
+Backend fields: `PathTraceTargetSpp`, `PathTraceBatchSpp` (`ViewportDisplaySettings`) →
+`PathTraceTargetSpp`, `PathTraceSamples` (`WorldRenderConfiguration`). CPU Tiered PT uses the
+batch per refresh; continuous dispatch is GPU-path today.
+
+## 20. Nanite-like Cluster LOD bake (per asset) [New]
+
+Pipeline: `PolygonNetwork` → ≤128-tri Morton clusters → QEM levels with seam/border locks
+(`ClusterPyramid`). Per-asset recipe `ClusterLodBakeConfiguration`:
+
+| Control | Type | Values | Status |
+|---|---|---|---|
+| Bake Maximum Levels | stepper | 1–8 levels incl. LOD0 | [Backend-UI] (`MaximumLevels`) |
+| **Last Level (Coarsest Allowed)** | stepper | 0 = finest only … N; glass assets ship capped at **1** | [New][Backend-UI] (`CoarsestAllowedLevel`) |
+| Lock Material Boundaries | toggle | on: vertices shared by faces of different material slots never collapse | [New][Backend-UI] |
+| Runtime Pixel Error | slider | `MaxAllowedPixelError`, default 1.25 px (cut selection) | [Backend-UI] |
+| Normal-Cone Backface Cull | toggle | cut option | [Backend-UI] |
+
+Guarantees: every surviving triangle keeps its own face material slot at every level
+(boundary vertices locked, collapse only remaps vertex indices); the runtime monotonic cut
+never activates a cluster coarser than the asset's last level (capped clusters become
+terminal). Bake report per level: clusters / triangles / max error (m) / material slots
+present (`SummarizeLevels()`), serialized with the pyramid (format v2; v1 loads).

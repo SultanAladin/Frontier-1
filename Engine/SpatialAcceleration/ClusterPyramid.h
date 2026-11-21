@@ -78,6 +78,24 @@ struct ClusterCutSelection
     uint32_t              CulledBackfaceCount  = 0u; // [cnt] - Clusters rejected by normal-cone backface test
 };
 
+// Per-asset LOD bake recipe (Nanite-like): how deep to bake, and the coarsest level the runtime
+// cut may ever select for this asset (e.g. glass keeps level 1 so its silhouette never melts).
+struct ClusterLodBakeConfiguration
+{
+    uint32_t MaximumLevels          = 4u;          // [lvl] - Bake depth incl. level 0 (clamped 1..8)
+    uint32_t CoarsestAllowedLevel   = 0xFFFFFFFFu; // [lvl] - Last selectable LOD level (0 = finest only)
+    bool     LockMaterialBoundaries = true;        // [-]   - Never collapse vertices shared by faces of different material slots
+};
+
+struct ClusterLodLevelSummary
+{
+    uint32_t              Level               = 0u; // [lvl] - Hierarchy level (0 = finest)
+    uint32_t              ClusterCount        = 0u; // [cnt] - Clusters at this level
+    uint32_t              TriangleCount       = 0u; // [cnt] - Triangles at this level
+    float                 MaximumErrorMeters  = 0.0f; // [m] - Worst FinerSelfError at this level
+    std::vector<uint16_t> MaterialOrdinals    {};   // [idx] - Distinct per-face material slots present at this level
+};
+
 class ClusterPyramid
 {
 public:
@@ -86,6 +104,8 @@ public:
     std::vector<ClusterHeaderEntry>   Clusters         {}; // [-]     - 128 B GPU-aligned cluster descriptors
     uint32_t                          HierarchyDepth   = 0u; // [cnt] - Number of built LOD levels (1..N)
     uint32_t                          FinestClusterCount = 0u; // [cnt] - Level-0 cluster count
+    uint32_t                          CoarsestAllowedLevel = 0xFFFFFFFFu; // [lvl] - Runtime cut cap from the bake recipe
+    bool                              MaterialBoundariesLocked = true;    // [-]   - Bake kept per-face material slots intact
 
     void Reset() noexcept;
 
@@ -93,6 +113,17 @@ public:
     bool BuildFromPolygonNetwork(
         const GeometrySpace::PolygonNetwork& Network,
         uint32_t                             MaxHierarchyLevels = 4u);
+
+    // Bake with a full per-asset recipe (bake depth, runtime coarsest level, material-boundary locking).
+    bool BuildFromPolygonNetwork(
+        const GeometrySpace::PolygonNetwork& Network,
+        const ClusterLodBakeConfiguration&   BakeConfiguration);
+
+    // Sets the coarsest LOD level SelectMonotonicCut may ever activate (per asset, e.g. glass).
+    void ConfigureCoarsestAllowedLevel(uint32_t Level) noexcept { CoarsestAllowedLevel = Level; }
+
+    // Per-level bake report: clusters, triangles, worst error, and the material slots still present.
+    [[nodiscard]] std::vector<ClusterLodLevelSummary> SummarizeLevels() const;
 
     // Selects a crack-free monotonic LOD cut where FinerSelfError <= AllowedError < CoarserThresholdError.
     [[nodiscard]] ClusterCutSelection SelectMonotonicCut(

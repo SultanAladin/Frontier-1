@@ -1107,6 +1107,7 @@ if(BUILD_TESTING)
         add_test(NAME ${EXHIBIT_NAME} COMMAND ${EXHIBIT_NAME})
     endfunction()
 
+    frontier_register_exhibit(ClusterLodBakeValidation      Exhibits/ClusterLodBakeValidation.cpp)
     frontier_register_exhibit(InputValidation             Exhibits/InputValidation.cpp)
     frontier_register_exhibit(CameraComponentValidation     Exhibits/CameraComponentValidation.cpp)
     frontier_register_exhibit(CameraEffectsValidation       Exhibits/CameraEffectsValidation.cpp)
