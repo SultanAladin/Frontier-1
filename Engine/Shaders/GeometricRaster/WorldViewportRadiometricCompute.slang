@@ -3514,4 +3514,3 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         GlobalRadiosityFieldBuffer[RadMip0Off + LinearIdx] = PackHalf4(float4(TotalRad * Opacity, Opacity));
     }
 }
-
