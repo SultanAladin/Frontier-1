@@ -1,99 +1,232 @@
-# UI-Controllable Items — Complete Inventory
+# UI-Controllable Items — Complete Inventory for the UI Rewrite
 
-Everything the Frontier editor can control today, plus the full backend parameter space that is
-available to expose. Use this to adjust your UI prototype before handing it over.
+Everything the Frontier editor can control today, plus the full backend parameter space available
+to expose. Organised by Inspector subject so each section maps 1:1 onto an Inspector card in your
+prototype. Give me the adjusted prototype and I will wire the [Backend] items in.
 
-Legend: **[UI]** = wired to a live control in the current editor UI · **[Backend]** = parameter exists
-in the engine and takes effect when changed, but has no dedicated control yet (prototype candidate).
+Legend: **[UI]** = wired to a live control today · **[Backend]** = parameter exists in the engine
+and takes effect when set, but has no dedicated control yet (prototype candidate) ·
+**[New]** = added in the latest camera/SDF pass.
 
 ---
 
-## 1. Viewport (toolbar, header & footer)
+## 1. Sun Inspector
 
-Source: `ViewportDisplaySettings` (`Engine/Components/Panes/ViewportPanel.h`).
+Source: `SolarCelestialConfiguration` (`Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.h`)
 
-| Item | Type | Values / Range | Status |
+| Control | Type | Range / Options | Status |
 |---|---|---|---|
-| Render Engine | cycle | MatCap · OpenPBR Direct · GTX SDF GI · HighEnd BVH4 · Game Realtime (PT) · Scene Final (PT) | [UI] |
-| Quality Tier | segmented | Low · Med · Std · High · Ultra | [UI] |
-| Debug Channel | cycle | Off · Depth · Albedo · Shading Nrm · Roughness · Metalness · Cluster ID · Geom Nrm · Sun Shadow · Ambient Occ · Direct Lit · Specular | [UI] |
+| Solar Enabled | toggle | on/off | [UI] via Outliner eye |
+| Time of Day (Local Hours) | slider + play | 0–24 h | [UI] |
+| Day Cycle Play/Pause | toggle | play/pause | [UI] |
+| Cycle Speed Preset | segmented | ×1 · ×8 · ×30 · ×100 · Custom | [Backend] |
+| Day Duration | slider | 0.01–168 h per full day | [Backend] |
+| Sun Diameter (Angular Diameter) | slider | 0.1–5.0° (real sun 0.533°) | [Backend] |
+| Sun Azimuth | slider/step | 0–360° (Manual Direction Override) | [Backend] |
+| Sun Elevation | slider/step | −90–90° (Manual Direction Override) | [Backend] |
+| Manual Direction Override | toggle | ephemeris ↔ manual az/el | [Backend] |
+| Sun Flare / Glare Strength | slider | 0–2 (Radiant appearance mode) | [Backend] |
+| Appearance Mode | segmented | Muted disc · Radiant glare veil | [Backend] |
+| Tint Source | segmented | Manual RGB · Kelvin temperature | [Backend] |
+| Manual RGB Tint | colour | RGB | [Backend] |
+| Colour Temperature | slider | 1000–40000 K | [Backend] |
+| Solar Intensity Multiplier | slider | 0–60× | [Backend] |
+| Direct Gain Multiplier | slider | 0–5× | [Backend] |
+| Site Latitude | numeric | −90–90° (default −26.19 Johannesburg) | [Backend] |
+| Site Longitude | numeric | −180–180° (default 28.32) | [Backend] |
+| Date (Day / Month / Year) | numeric | 1–31 / 1–12 / year | [Backend] |
+| UTC Offset | numeric | −12–+14 h | [Backend] |
+| Cast Shadows | toggle | on/off | [UI] via Outliner |
+
+Shadow **quality** lives in the Viewport/Camera render card (§10): Shadow Algorithm, SDF Penumbra
+Mode, Quality Tier.
+
+## 2. Moon Inspector (×6 slots)
+
+Source: `LunarBodyConfiguration` (`LunarStarfieldSequence.h`). Outliner eye drives slot 0 only.
+
+Per slot: Visible [UI slot 0 / Backend 1–5] · Follow-Sky-Opposite-Sun toggle · Surface Preset
+(Luna · Ember · Glacier · Sulfur · Shroud · Shard) · Synodic Phase 0=new … 0.5=full · Brightness
+0–6× · Halo Glow 0–3× · Angular Diameter 0.1–180° · Azimuth 0–360° · Elevation −90–90° · Surface
+Roll 0–360° · Surface Pitch −180–180° · Has Atmosphere toggle · Atmosphere Intensity 0–3× ·
+Atmosphere Thickness Scale · Atmosphere Tint (colour). All [Backend] except slot-0 Visible.
+
+## 3. Stars Inspector
+
+Source: `StarfieldConfiguration` (`LunarStarfieldSequence.h`)
+
+Starfield Enabled [UI via Outliner] · Scintillation (twinkle) Enabled · Limiting Magnitude 0–8 ·
+Brightness 0–4× · Point Size 0.4–3.0× · Scintillation Depth 0–100 % · Scintillation Rate
+0.2–3.0 Hz · Celestial Rotation 0–360° · Bright Star Catalog (J2000) toggle · Galactic Band
+(Milky Way) toggle · Zodiacal Light toggle · Zodiacal Radiance 0–4×. Rest [Backend].
+
+## 4. Clouds Inspector (planetary deck)
+
+Source: `CloudDeckConfiguration` (`VolumetricCloudSequence.h`)
+
+| Control | Type | Range / Options | Status |
+|---|---|---|---|
+| Clouds Enabled | toggle | on/off | [UI] |
+| Cloud Type (Category) | dropdown | Stratus · Stratocumulus · Cumulus · Cumulonimbus · Altostratus · Cirrus · Lenticular · Mammatus · Kelvin-Helmholtz · Asperitas · Nacreous · Pyrocumulus (12 presets) | [Backend] |
+| Cloud Cover (Fraction) | slider | 0–100 % | [UI] |
+| Cloud March Steps | slider/step | 16–128 steps | [Backend] |
+| Cloud Render Scale | slider | 0.25–1.0× offscreen resolution | [Backend] |
+| Extinction (density) | slider | 0–4× | [Backend] |
+| Feature Scale | slider | 0.2–3.0× noise wavelength | [Backend] |
+| Cloud Floor (base altitude) | slider | 100–15000 m | [Backend] |
+| Layer Thickness | slider | 100–6500 m | [Backend] |
+| Deck Ceiling | slider | 4000–22000 m | [Backend] |
+| Anvil Top Spread | slider | 0–1 | [Backend] |
+| Forward Scattering (phase g) | slider | −0.9–0.9 | [Backend] |
+| Wind Speed | slider | 0–40 m/s (0 = static) | [UI] |
+| Wind Bearing | slider | 0–360° | [Backend] |
+| Wind Shear | slider | per km | [Backend] |
+| Wind Veer | slider | −60–60°/km | [Backend] |
+| Wind Turbulence | slider | 0–1 | [Backend] |
+| Follow Wind | toggle | on/off | [Backend] |
+| Wind Source | dropdown | CloudWind · coupled sources | [Backend] |
+
+Cloud shadow sub-card (`CloudShadowConfiguration`): Shadow Enabled [UI via Outliner] · Shadow
+Category (cloud type) · Shadow Fraction · Shadow Density · Shadow Scale · Shadow Anvil · Shadow
+Floor (m) · Shadow Thickness (m). Rest [Backend].
+
+## 5. Local Cloud Inspector (bounded volume, up to 8 GPU volumes)
+
+Source: `BoundedCloudVolume`
+
+Local Enabled [UI via Outliner] · Shape (Box / prism) · Prism Sides · Volume Centre (m, XYZ) ·
+Half Extent (m, XYZ) · Yaw 0–360° · Edge Softness · Extinction · Cloud Fraction · Feature Scale
+(m) · Forward Scattering g · Follow Wind · Wind Source. Mostly [Backend].
+
+## 6. Atmosphere / Sky Inspector
+
+Source: `AtmosphericMediumConfiguration` (`AtmosphericSkySequence.h`)
+
+Atmosphere Enabled [UI] · Rayleigh Strength 0–4× · Mie Strength 0–6× · Mie Anisotropy g 0–0.99 ·
+Ozone Strength 0–4× · Rayleigh Scale Height (m) · Mie Scale Height (m) · Atmosphere Thickness
+(m) · Planet Radius (m) · Limb Glow 0–3× · Sky Brightness 0–3× · Sky Tint (colour) · Ground
+Albedo (colour) · Orbital View toggle · Observer Altitude (m). Rest [Backend].
+
+Wind (`AtmosphericWindParameters`): Speed (m/s) [partial UI via cloud wind] · bearing/shear —
+see solver header for the exact field list when prototyping this card. [Backend]
+
+## 7. Fog & God Rays Inspector
+
+Source: `AtmosphericFogConfiguration` (`VolumetricFogSequence.h`)
+
+Height Fog: density / falloff / start distance / tint fields (solver header). Aerial Fog: aerial
+perspective fields (solver header). Local Fog volumes: centre/extent/density list. God Rays:
+Enabled · Intensity 0–4× · Anisotropy g 0–0.95 · Decay 0–1 · Density 0–3× · Max Distance
+10–2000 m · Sample Steps 8–48 · Interact With Clouds toggle · Interact With Fog toggle · Shaft
+Tint (colour). [Backend]
+
+## 8. Lens Flare Inspector (camera-attached)
+
+Source: `LensFlareConfiguration`
+
+Enabled · Style (Anamorphic · Streaks · Halos) · Flare Intensity 0–3× · Flare Spread 0.2–2.0× ·
+Halo Intensity 0–2.5× · Ghost Intensity 0–2.5× · Ghost Spacing 0.2–1.8× · Ghost Count 0–16 ·
+Ghost Sides (0=round, 6=hex, 8=oct) · Streak Rotation 0–360°. [Backend]
+(Physical `CameraComponent` lens effects — flare/DoF/vignette/chromatic aberration/motion blur —
+live in `CameraConfiguration`, §9.)
+
+## 9. Editor Camera Inspector — optics & movement
+
+Sources: `PerspectiveCameraBasis` (live editor camera), `CameraConfiguration` / `CameraComponent`,
+`CameraLagComponent` **[New]**, `EditorLifecycle` fly controls.
+
+Movement (live today, one Unreal model): RMB mouse-look · WASD/QE fly · Shift sprint ×3 · Ctrl
+slow ×0.3 · MMB / LMB+RMB pan · Alt+LMB orbit · Alt+RMB dolly · Wheel = fly speed ×0.10–×16
+(footer readout) · Arrow keys + PgUp/PgDn flight · F frame selected · W/E/R/Q gizmo mode keys
+(when not flying).
+
+| Control | Type | Range | Status |
+|---|---|---|---|
+| Camera Lag Enabled (location) | toggle | on/off | [New][Backend-UI] |
+| Camera Lag Enabled (rotation) | toggle | on/off | [New][Backend-UI] |
+| Location Lag Speed | slider | 1/s (higher = tighter) | [New][Backend-UI] |
+| Rotation Lag Speed | slider | 1/s | [New][Backend-UI] |
+| Maximum Lag Distance | slider | m (0 = uncapped) | [New][Backend-UI] |
+| Fly Speed Scalar | wheel | ×0.10–×16 | [UI] |
+| Focal Length | slider | mm (thin-lens) | [Backend] |
+| Sensor Gate | dropdown | Vista 35 mm · IMAX 70 mm · … | [Backend] |
+| Vertical FOV | slider | derived from focal/gate | [Backend] |
+| Aperture f-stop | slider | f/0.95–f/32 | [Backend] |
+| Focus Distance | slider | m | [Backend] |
+| Near / Far Clip | numeric | m | [Backend] |
+| Operating Mode | dropdown | Orbit · Fly · FirstPerson · Follow · Spline · Planar (6) | [Backend] |
+| Projection | dropdown | Perspective · Orthographic (+ Top/Front/Side presets) | [UI presets] |
+| Orbit/Pan/Zoom Smoothing Rates | sliders | 1/s | [Backend] |
+| Fly Speed / Sprint Multiplier | sliders | m/s · × | [Backend] |
+| Pitch Limit | slider | ±87° pole guard | [Backend] |
+| Follow Spring Frequency | slider | rad/s | [Backend] |
+| Depth of Field / Vignette / Chromatic Aberration / Motion Blur / Heat Shimmer / Glitch | sub-cards | per-effect fields in `CameraConfiguration` | [Backend] |
+
+## 10. Editor Camera Inspector — Render Settings card + Viewport header
+
+Source: `ViewportDisplaySettings` (`ViewportPanel.h`)
+
+| Control | Type | Values | Status |
+|---|---|---|---|
+| Render Engine | cycle | MatCap · OpenPBR Direct · GTX SDF GI · HighEnd BVH4 GI · PT Game Realtime · PT Scene Final | [UI] |
+| Quality Tier | segmented | Low · Medium · Standard · High · Ultra | [UI] |
+| Debug View | dropdown | 00 Lit · 01 Depth · 02 Albedo · 03 Shading Normal · 04 Roughness · 05 Metalness · 06 Cluster ID · 07 Geometric Normal · 08 Sun Shadow · 09 Ambient Occlusion (filtered) · 10 Direct Lighting · 11 Specular · **12 SDF Distance · 13 SDF with Materials · 14 SDF Normal · 15 SDF AO Raw (unfiltered) · 16 SDF Cascade** [New] | [UI] |
 | Shadow Algorithm | cycle | Contact PCSS · PCSS Plane-Aware · Shadow Ray March · PCF Bilinear · WideTree RayQuery | [UI] |
-| SDF Shadow / Penumbra Mode | cycle | 0 Point SDF · 1 Analytic Cone · 2 Voxel Clipmap · 3 Voxel+Cone GI · 4 Hybrid Sobol · 5 MC PT Ref | [UI] |
+| SDF Shadow/Penumbra Mode | cycle | Point SDF · Analytic Cone · Voxel Clipmap · Voxel+Cone GI · Hybrid Sobol Cap · SDF MC Ref 96 spp | [UI] |
 | Reflection Source | cycle | WideTree Raytrace · Sky Environment | [UI] |
 | Trace Resolution | cycle | Full · ½ · ¼ | [UI] |
 | Render Scale | slider | 50–200 % | [UI] |
-| Reflections Enabled | toggle | on/off | [UI] |
-| Anti-Aliasing Enabled | toggle | on/off | [UI] |
-| Raytracing Enabled | toggle | on/off | [UI] |
-| Atmosphere Sky Enabled | toggle | on/off | [UI] |
-| Volumetric Clouds Enabled | toggle | on/off | [UI] |
-| Cloud Shadows Enabled | toggle | on/off | [UI] |
-| Celestial Stars Enabled | toggle | on/off | [UI] |
-| Day Cycle Playing | toggle | play/pause | [UI] |
-| Solar Time of Day | slider/step | 0–24 h | [UI] |
-| Cloud Cover (Fraction) | slider/step | 0–100 % | [UI] |
-| Cloud Wind Speed | slider | m/s | [UI] |
-| Camera Fly Speed | mouse wheel | ×0.10 – ×16.0 (footer readout `Fly Speed x.xx`) | [UI] |
-| Camera movement | keys | WASD/QE fly, Shift = sprint ×3, Alt+RMB orbit-drag, F = frame selected | [UI] |
+| Reflections | toggle | on/off | [UI] |
+| Anti-Aliasing | toggle | on/off | [UI] |
+| Raytracing | toggle | on/off | [UI] |
+| XeGTAO (PBR AO, no GI) | toggle | on/off | [New][UI] settings sheet |
+| XeGTAO Strength | slider | 0–2× | [New][Backend-UI] (value plumbed) |
+| Atmosphere Sky | toggle | on/off | [UI] |
+| Volumetric Clouds | toggle | on/off | [UI] |
+| Cloud Shadows | toggle | on/off | [UI] |
+| Celestial Stars | toggle | on/off | [UI] |
+| Split Viewport | toggle | single / dual + per-pane projection | [UI] |
+| Diagnostics Overlay | toggle + tabs | Timing · Scene · Render · Profiler | [UI] |
+| Execution Mode | segmented | Edit · Simulate · Play/Pause | [UI] |
 
-## 2. Outliner — World folder rows
+## 11. Material Inspector (selected object)
 
-Rows: **Sun · Moon · Stars · Volumetric Clouds · Local Cloud** (plus **Ceiling Softbox** under
-Lighting when the scene has area lights, and every scene object). Source:
-`RegisterShowcaseGalleryInOutliner` / `SynchronizeShowcaseWorldFromOutliner`.
+Source: `SurfaceMaterial` / `CompactMaterialRegister` (authored `.MaterialSpace`)
 
-| Row | Eye toggle drives | Shadow toggle drives |
-|---|---|---|
-| Sun | `Solar.SolarEnabled` | sun cast-shadows |
-| Moon | `Moons[0].Visible` (slot 0) | — |
-| Stars | `Stars.StarfieldEnabled` | — |
-| Volumetric Clouds | `Clouds.CloudsEnabled` | `Clouds.CloudShadow.ShadowEnabled` |
-| Local Cloud | `LocalCloud.LocalEnabled` | — |
-| Ceiling Softbox (area light) | area-light visibility | — |
+Albedo (colour) · Roughness · Metalness · Dielectric IOR · Anisotropy · Edge Tint (F82 colour) ·
+Coat Weight · Coat Roughness · Transmission Weight · Abbe Dispersion · Emissive (blackbody
+radiance/temperature). Mostly [Backend] in the World viewport (full editing lives in the Material
+workspace); MatCap preset selection is [UI] via Content Browser drop.
 
-## 3. Inspector — generic (every Outliner entry)
+## 12. Lights Inspector
 
-Source: `InspectorPanel`.
+Point lights: Position · Range (m) · Peak Intensity · IES photometric profile (LM-63) · Beam
+axis/radius. Area (quad) lights: Centre · Half Width/Height · Right/Up axes · Two-sided toggle ·
+Emissive Radiance (colour) · Ceiling Softbox preset [UI via Outliner visibility]. Sun = §1.
+[Backend] for numeric fields.
 
-- **Enabled** (visibility) and **Cast shadows** capability tiles [UI]
-- **Transform**: Position (m), Rotation (deg), Scale (×) — numeric fields with per-row reset
-  buttons and precision hint [UI]
-- Identity readout: title, category label, subtitle, author notes, position summary [UI]
+## 13. Transform & Gizmo (selected object)
 
-## 4. Inspector — Editor Camera custom cards
+[UI]: Position (m, XYZ) · Rotation (deg) · Scale (×) numeric fields with reset · Enabled toggle ·
+Cast Shadows toggle. Gizmo: Universal/Translate/Rotate/Scale handle filter [UI keys W/E/R/Q] ·
+Ctrl snap: Move Step 0.25 m · Scale Step 0.10 · Rotation Step 5° (`GizmoSnapSettings`) [Backend]
+· Gizmo hover = GPU pick with CPU ray fallback [New].
 
-Source: `EditorLifecycle` camera Inspector section (mirrors the `Inspectors.jsx` prototype cards).
+## 14. Project Browser
 
-**Card 1 · Render Settings** [UI]: Engine (cycle, 6) · SDF Shadow (cycle, 6) · Quality
-(Low/Med/Std/High/Ultra segmented) · Raytracing (ON/OFF).
+[UI]: **Default Project only** in the library (others removed; no Cornell box anywhere) · **+ New
+Project → blank scene (single ground plane + clear sky), opens in Frontier only** — no UV /
+Texture / other-workspace launch buttons · Create & Open in Frontier · Open existing
+`.projectspace` / path entry · Search · Version (revision) selector.
 
-**Card 2 · Sky, Sun, Moon & Clouds** [UI]: Solar Time (steps +2 h, wraps 22→6) · Cloud Cover
-(steps +20 %, wraps 80→0, also toggles Volumetric Clouds).
+## 15. Diagnostics & Thought Log [New]
 
-## 5. Sun / Solar ephemeris (backend space)
-
-Source: `SolarCelestialConfiguration` (`CelestialEphemerisSolver.h`).
-
-| Parameter | Range / Options | Status |
-|---|---|---|
-| Solar Enabled | on/off | [UI] via Outliner |
-| Local Hours (time of day) | 0–24 h | [UI] |
-| Cycle Animation Enabled + speed preset (×1/×8/×30/×100/Custom) + Day Duration | 0.01–168 h | [Backend] (play toggle is [UI]) |
-| Angular Diameter | 0.1–5.0° | [Backend] |
-| Tint Source (RGB tint / Kelvin) + Manual RGB Tint | — | [Backend] |
-| Color Temperature | 1000–40000 K | [Backend] |
-| Solar Intensity Multiplier | 0–60× | [Backend] |
-| Direct Gain Multiplier | 0–5× | [Backend] |
-| Site Latitude / Longitude | −90–90° / −180–180° (default Johannesburg) | [Backend] |
-| Date (Day / Month / Year) + UTC Offset | — | [Backend] |
-| Manual Direction Override + Azimuth / Elevation | 0–360° / −90–90° | [Backend] |
-| Appearance Mode (Muted / Radiant) + Sun Glare Strength | 0–2 | [Backend] |
-
-## 6. Moon — 6 slots (backend space)
-
-Source: `LunarBodyConfiguration` (`LunarStarfieldSequence.h`). Outliner eye controls slot 0 only.
-
-Per slot: Visible · Follow-Sky-Opposite-Sun · Surface Preset (Luna, Ember, Glacier, Sulfur,
-Shroud, Shard) · Synodic Phase (0=new … 0.5=full) · Brightness (0–6×) · Halo Glow (0–3×) ·
-Angular Diameter (0.1–180°) · Azimuth / Elevation · Surface Roll / Pitch · Has
-...[truncated 3881 chars]
+Viewport Diagnostics overlay [UI]: frame-time sparkline, per-stage GPU/CPU ms (viewport raster,
+gizmo overlay, ImGui present, host frame), scene/render telemetry.
+**Thought Log** [New]: every timed scope (Host.Frame, Host.EditorTick, Editor.Tick,
+Editor.ViewportRaster, Editor.ViewportInteraction, Editor.GizmoOverlayRefresh,
+Editor.ImGuiPresent, Render.WorldViewportRgba8, Render.WorldViewportWithEngine, + any
+`FRONTIER_THOUGHT_SCOPE`) is recorded **in RAM only** (lock-free ring + background aggregator
+thread; zero disk I/O while running) and written **once when the application closes** to
+`Logs/FrontierThoughtLog.txt` with calls / total / avg / min / max / P50 / P95 per scope — use it
+to target optimisations.
