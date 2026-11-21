@@ -435,6 +435,93 @@ int main()
             return 1;
         }
 
+        // (f) Validate Unreal Engine Viewport Camera Controls: RMB + WASD + Q/E + Shift (3.0x Sprint) + Pointer Capture
+        EditorSession.AccessControlCentre().AccessSettings().UiScale = 1.0f;
+        Drawer.SetShelfExtent(Components::ContentShelfExtent::Closed, true);
+        StepEditorFrame(ImVec2(960.0f, 420.0f), false, false);
+
+        auto* LiveBundle = EditorSession.AccessShowcaseScene();
+        if (LiveBundle == nullptr)
+        {
+            std::fprintf(stderr, "[FAIL] Missing ShowcaseScene for Unreal Engine camera validation.\n");
+            EditorSession.Finalize();
+            ImGui::DestroyContext(Ctx);
+            return 1;
+        }
+
+        auto StepRmbFly = [&](ImVec2 Pos, bool RmbDown, ImGuiKey HeldKey, bool HoldShift, double Dt = 0.050)
+        {
+            Io.AddMousePosEvent(Pos.x, Pos.y);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Right, RmbDown);
+            Io.AddKeyEvent(ImGuiMod_Shift, HoldShift);
+            Io.AddKeyEvent(ImGuiKey_LeftShift, HoldShift);
+            if (HeldKey != ImGuiKey_None)
+            {
+                Io.AddKeyEvent(HeldKey, true);
+            }
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(Dt);
+            ImGui::Render();
+            if (HeldKey != ImGuiKey_None)
+            {
+                Io.AddKeyEvent(HeldKey, false);
+            }
+            Io.AddKeyEvent(ImGuiMod_Shift, false);
+            Io.AddKeyEvent(ImGuiKey_LeftShift, false);
+        };
+
+        const Mathematics::Axis3D StartOrigin = LiveBundle->EditorCamera.CameraOrigin;
+        const Mathematics::Axis3D InitFwd = Mathematics::NormalizeAxis(
+            LiveBundle->EditorCamera.TargetPoint - StartOrigin,
+            { 0.0f, 1.0f, 0.0f });
+
+        // RMB + W normal fly forward
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_W, false, 0.050);
+        const Mathematics::Axis3D AfterW = LiveBundle->EditorCamera.CameraOrigin;
+        const float NormalStepDist = Mathematics::EvaluateDot(AfterW - StartOrigin, InitFwd);
+
+        // RMB + Shift + W sprint fly forward (must be ~3.0x normal speed and MUST NOT hijack RMB into pan!)
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_W, true, 0.050);
+        const Mathematics::Axis3D AfterShiftW = LiveBundle->EditorCamera.CameraOrigin;
+        const float SprintStepDist = Mathematics::EvaluateDot(AfterShiftW - AfterW, InitFwd);
+
+        // RMB + E vertical ascend (+Z) and RMB + Q vertical descend (-Z)
+        const float ZBeforeE = LiveBundle->EditorCamera.CameraOrigin.Z;
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_E, false, 0.050);
+        const float ZAfterE = LiveBundle->EditorCamera.CameraOrigin.Z;
+        StepRmbFly(ImVec2(960.0f, 420.0f), true, ImGuiKey_Q, true, 0.050);
+        const float ZAfterShiftQ = LiveBundle->EditorCamera.CameraOrigin.Z;
+
+        // RMB + A / D horizontal strafe + continuous drag capture outside Viewport bounds (X = 40 inside Outliner)
+        const Mathematics::Axis3D BeforeStrafe = LiveBundle->EditorCamera.CameraOrigin;
+        StepRmbFly(ImVec2(40.0f, 420.0f), true, ImGuiKey_D, false, 0.050);
+        const Mathematics::Axis3D AfterOutBoundsStrafe = LiveBundle->EditorCamera.CameraOrigin;
+        const float StrafeDistSq = Mathematics::EvaluateDot(
+            AfterOutBoundsStrafe - BeforeStrafe,
+            AfterOutBoundsStrafe - BeforeStrafe);
+
+        // Release RMB cleanly
+        StepRmbFly(ImVec2(960.0f, 420.0f), false, ImGuiKey_None, false, 1.0 / 60.0);
+
+        if (NormalStepDist < 0.20f ||
+            SprintStepDist < NormalStepDist * 2.5f ||
+            (ZAfterE - ZBeforeE) < 0.20f ||
+            (ZAfterE - ZAfterShiftQ) < (ZAfterE - ZBeforeE) * 2.5f ||
+            StrafeDistSq < 0.01f)
+        {
+            std::fprintf(
+                stderr,
+                "[FAIL] Unreal Engine camera controls validation failed (NormalW=%.3f, SprintW=%.3f, dZE=%.3f, dZShiftQ=%.3f, OutBoundsStrafeSq=%.4f).\n",
+                NormalStepDist,
+                SprintStepDist,
+                ZAfterE - ZBeforeE,
+                ZAfterE - ZAfterShiftQ,
+                StrafeDistSq);
+            EditorSession.Finalize();
+            ImGui::DestroyContext(Ctx);
+            return 1;
+        }
+
         EditorSession.Finalize();
         ImGui::DestroyContext(Ctx);
     }

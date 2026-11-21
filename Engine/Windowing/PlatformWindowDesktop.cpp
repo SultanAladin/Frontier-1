@@ -407,13 +407,14 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
     glfwSetCursorPosCallback(CreatedWindow, [](GLFWwindow* Win, double PosX, double PosY) {
         auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
         if (Self == nullptr) return;
-        const float NewX = static_cast<float>(PosX);
-        const float NewY = static_cast<float>(PosY);
+        const float NewX   = static_cast<float>(PosX);
+        const float NewY   = static_cast<float>(PosY);
+        const bool  Locked = (Self->CurrentCursorMode == Input::CursorConfinementMode::LockedRelativeHidden);
         Input::InputSignalPacket Packet{};
         Packet.TimestampNanoseconds = CurrentMonotonicNanoseconds();
         Packet.Category             = Input::InputSignalCategory::PointerMotion;
-        Packet.PrimaryAxis          = NewX;
-        Packet.SecondaryAxis        = NewY;
+        Packet.PrimaryAxis          = Locked ? Self->LockedAnchorX : NewX;
+        Packet.SecondaryAxis        = Locked ? Self->LockedAnchorY : NewY;
         Packet.DeltaPrimary         = Self->CursorPositionSeeded ? (NewX - Self->LastCursorX) : 0.0f;
         Packet.DeltaSecondary       = Self->CursorPositionSeeded ? (NewY - Self->LastCursorY) : 0.0f;
         Self->LastCursorX           = NewX;
@@ -448,7 +449,21 @@ bool DesktopPlatformWindow::Initialize(const WindowConfigurationDescriptor& Desc
     glfwSetWindowFocusCallback(CreatedWindow, [](GLFWwindow* Win, int Focused) {
         auto* Self = static_cast<DesktopPlatformWindow*>(glfwGetWindowUserPointer(Win));
         if (Self == nullptr || Focused == GLFW_TRUE) return;
+        if (Self->CurrentCursorMode != Input::CursorConfinementMode::FreeVisible)
+        {
+            Self->ApplyCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
         const uint64_t NowNs = CurrentMonotonicNanoseconds();
+        for (uint32_t Btn = 0u; Btn < 3u; ++Btn)
+        {
+            Input::InputSignalPacket BtnPacket{};
+            BtnPacket.TimestampNanoseconds = NowNs;
+            BtnPacket.Category             = Input::InputSignalCategory::PointerButton;
+            BtnPacket.ControlCode          = Btn;
+            BtnPacket.Transition           = Input::ButtonTransitionCategory::Released;
+            BtnPacket.PrimaryAxis          = 0.0f;
+            (void)Self->CallbackExchange.IntakeSignal(BtnPacket);
+        }
         static constexpr Input::InputLogicalKey ModifierKeys[] = {
             Input::InputLogicalKey::LeftShift,
             Input::InputLogicalKey::RightShift,
@@ -814,20 +829,43 @@ void DesktopPlatformWindow::RequestClose() noexcept
 
 void DesktopPlatformWindow::ApplyCursorConfinement(Input::CursorConfinementMode Confinement) noexcept
 {
-    CurrentCursorMode = Confinement;
+    if (CurrentCursorMode == Confinement)
+    {
+        return;
+    }
+    const Input::CursorConfinementMode PriorMode = CurrentCursorMode;
+    CurrentCursorMode                            = Confinement;
     if (GlfwWindowHandle == nullptr)
     {
         return;
     }
 
     auto* Window = static_cast<GLFWwindow*>(GlfwWindowHandle);
+    if (Confinement == Input::CursorConfinementMode::LockedRelativeHidden &&
+        PriorMode != Input::CursorConfinementMode::LockedRelativeHidden)
+    {
+        double CurX = static_cast<double>(LastCursorX);
+        double CurY = static_cast<double>(LastCursorY);
+        glfwGetCursorPos(Window, &CurX, &CurY);
+        LockedAnchorX = static_cast<float>(CurX);
+        LockedAnchorY = static_cast<float>(CurY);
+    }
+
     switch (Confinement)
     {
         case Input::CursorConfinementMode::FreeVisible:
+            if (glfwRawMouseMotionSupported() == GLFW_TRUE)
+            {
+                glfwSetInputMode(Window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+            }
             glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             break;
 
         case Input::CursorConfinementMode::ConfinedVisible:
+            if (glfwRawMouseMotionSupported() == GLFW_TRUE)
+            {
+                glfwSetInputMode(Window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+            }
             glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_CAPTURED);
             break;
 
@@ -839,6 +877,13 @@ void DesktopPlatformWindow::ApplyCursorConfinement(Input::CursorConfinementMode 
             }
             break;
     }
+
+    double SeedX = 0.0;
+    double SeedY = 0.0;
+    glfwGetCursorPos(Window, &SeedX, &SeedY);
+    LastCursorX          = static_cast<float>(SeedX);
+    LastCursorY          = static_cast<float>(SeedY);
+    CursorPositionSeeded = true;
 }
 
 void DesktopPlatformWindow::ApplyHapticFeedback(const Input::HapticFeedbackDirective& Haptic) noexcept

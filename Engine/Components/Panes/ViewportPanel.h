@@ -237,8 +237,9 @@ private:
     ConstructSlotCategory      ConstructDragCategory   = ConstructSlotCategory::GeometryVolume;
     std::string                ConstructDragLabel      {};                                        // [-]   - Label shown on floating Construct ghost
 
-    ViewportPaneRasterCallback      RasterCallback          {};                                        // [-]   - Optional GPU / software surface feeder
-    ViewportPaneInteractionCallback InteractionCallback     {};                                        // [-]   - Optional canvas pointer router
+    ViewportPaneRasterCallback      RasterCallback               {};                                   // [-]   - Optional GPU / software surface feeder
+    ViewportPaneInteractionCallback InteractionCallback          {};                                   // [-]   - Optional canvas pointer router
+    int32_t                         CapturedInteractionPaneIndex = -1;                                 // [idx] - Pane holding pointer drag across borders
     std::string                     ProbeReadoutText        {};                                        // [-]   - Optional bottom strip readout
     ImTextureData                   CanvasRasterTexture     {};                                        // [-]   - Optional live GTX/RTX viewport texture
     uint64_t                        CanvasGpuTextureHandle  = 0ull;                                    // [-]   - GPU-resident ImTextureID (zero-copy viewport)

@@ -208,7 +208,10 @@ private:
     Mathematics::SpatialTransform                                    GizmoActiveTransform {}; // [-] - Working SpatialTransform during active drag
     OutlinerSlotToken                                                LastGizmoSlot        {}; // [id]- Slot currently anchored by WorldTransformGizmo
     Point2D                                                          LastPointerPosition  {}; // [px]- Previous frame viewport pointer coordinate
+    float                                                            CameraFlySpeedScalar = 1.0f; // [x] - Unreal RMB+Wheel dynamic fly-speed multiplier
     bool                                                             PointerTrackingValid = false;
+    bool                                                             NavigationDragWasActive = false;
+    bool                                                             RightMouseFlyActive  = false;
     bool                                                             CameraInteractiveDrag = false;
     bool                                                             PendingInteractionWorldRefresh = false;
     bool                                                             PendingInteractionGizmoRefresh = false;

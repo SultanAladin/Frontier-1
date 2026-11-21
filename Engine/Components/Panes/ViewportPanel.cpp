@@ -454,15 +454,39 @@ void ViewportPanel::RenderCanvasPane(
             SettingsSheetOpen      = false;
             DebugDropdownOpen      = false;
         }
-        else if (!OverlayCoversCanvas && PaneBounds.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+        else if (!OverlayCoversCanvas && PaneBounds.Contains(Cursor) &&
+                 (Input.PrimaryPointer.Pressed || Input.SecondaryPressed))
         {
             ActivePaneIndex = PaneIndex;
         }
     }
 
-    if (InteractionCallback && !OverlayCoversCanvas && !ProjectionChipConsumed && PaneBounds.Contains(Cursor))
+    const bool ImGuiMouseActive =
+        (ImGui::GetCurrentContext() != nullptr) &&
+        (ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+         ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+         ImGui::IsMouseDown(ImGuiMouseButton_Middle));
+    const bool AnyMouseHeld = ImGuiMouseActive || Input.PrimaryPointer.Down;
+
+    if (CapturedInteractionPaneIndex < 0 &&
+        !OverlayCoversCanvas &&
+        !ProjectionChipConsumed &&
+        PaneBounds.Contains(Cursor) &&
+        AnyMouseHeld)
+    {
+        CapturedInteractionPaneIndex = static_cast<int32_t>(PaneIndex);
+        ActivePaneIndex              = PaneIndex;
+    }
+
+    const bool CapturedHere = (CapturedInteractionPaneIndex == static_cast<int32_t>(PaneIndex));
+    if (InteractionCallback &&
+        ((!OverlayCoversCanvas && !ProjectionChipConsumed && PaneBounds.Contains(Cursor)) || CapturedHere))
     {
         InteractionCallback(PaneIndex, PaneBounds, Input);
+    }
+    if (CapturedHere && !AnyMouseHeld)
+    {
+        CapturedInteractionPaneIndex = -1;
     }
 
     if (!RenderedLiveSurface)
