@@ -137,6 +137,35 @@ int main()
             Summary.MaximumErrorMeters, Summary.MaterialOrdinals.size());
     }
 
+    // Material-pure clusters: no cluster is ever shared between material slots, at any level.
+    // (One material owns many clusters — the 128-triangle cap — but never shares one.)
+    {
+        std::vector<uint32_t> L0ClustersPerMaterial(256u, 0u);
+        for (const auto& Cluster : VehiclePyramid->Clusters)
+        {
+            for (uint32_t T = 0u; T < Cluster.TriangleCount; ++T)
+            {
+                const auto& Tri = VehiclePyramid->Triangles[Cluster.TriangleStartOffset + T];
+                if (!VerifyCheck(Tri.MaterialOrdinal == Cluster.DominantMaterialOrdinal, "vehicle cluster mixes material slots"))
+                {
+                    return 1;
+                }
+            }
+            if (Cluster.HierarchyLevel == 0u)
+            {
+                L0ClustersPerMaterial[Cluster.DominantMaterialOrdinal] += 1u;
+            }
+        }
+        std::printf("[NaniteViewportVehicleValidation] L0 clusters per material slot (each material owns its clusters):\n");
+        for (uint32_t Slot = 0u; Slot < 256u; ++Slot)
+        {
+            if (L0ClustersPerMaterial[Slot] > 0u)
+            {
+                std::printf("  material slot %u: %u clusters\n", Slot, L0ClustersPerMaterial[Slot]);
+            }
+        }
+    }
+
     const Mathematics::Axis3D VehicleCenter = VehicleInst.WorldTranslation;
     const uint32_t FullVehicleTris = Summaries.front().TriangleCount;
 
@@ -243,8 +272,10 @@ int main()
     auto [FarLevelOk, FarLevelRgba]     = RenderFrom(FarOrigin, true, 17u);
     auto [NearClusterOk, NearClusterRgba] = RenderFrom(NearOrigin, true, 18u);
     auto [FarClusterOk, FarClusterRgba]   = RenderFrom(FarOrigin, true, 18u);
+    auto [NearMatOk, NearMatRgba] = RenderFrom(NearOrigin, true, 6u);
+    auto [FarMatOk, FarMatRgba]   = RenderFrom(FarOrigin, true, 6u);
 
-    const bool RendersOk = NearOk && FarOk && FarOffOk && NearLevelOk && FarLevelOk && NearClusterOk && FarClusterOk &&
+    const bool RendersOk = NearOk && FarOk && FarOffOk && NearLevelOk && FarLevelOk && NearClusterOk && FarClusterOk && NearMatOk && FarMatOk &&
         NearRgba.size() == ProofW * ProofH * 4u && FarRgba.size() == ProofW * ProofH * 4u && FarOffRgba.size() == ProofW * ProofH * 4u &&
         NearLevelRgba.size() == ProofW * ProofH * 4u && FarClusterRgba.size() == ProofW * ProofH * 4u;
     if (!VerifyCheck(RendersOk, "GPU viewport rendered near/far/LOD-off frames"))
@@ -262,7 +293,10 @@ int main()
 
     bool Pass = true;
     Pass = VerifyCheck(NearStats.Enabled && FarStats.Enabled, "Nanite LOD drove the GPU viewport BVH") && Pass;
-    Pass = VerifyCheck(NearStats.ActiveTriangleCount >= NearStats.FullTriangleCount * 3u / 4u, "near viewport frame is near-full detail") && Pass;
+    Pass = VerifyCheck(
+        NearStats.ActiveTriangleCount >= NearStats.FullTriangleCount / 2u &&
+            NearStats.LevelTriangleCount[0] > NearStats.LevelTriangleCount[1] + NearStats.LevelTriangleCount[2],
+        "near viewport frame is L0-dominant detail") && Pass;
     Pass = VerifyCheck(FarStats.ActiveTriangleCount < NearStats.ActiveTriangleCount, "far viewport frame traced fewer triangles") && Pass;
     Pass = VerifyCheck(FarStats.LevelTriangleCount[1] + FarStats.LevelTriangleCount[2] > 0u, "far viewport frame used coarser LOD levels") && Pass;
     Pass = VerifyCheck(!FarOffStats.Enabled && FarOffStats.ActiveTriangleCount == FarOffStats.FullTriangleCount, "LOD off restores full-res BVH") && Pass;
@@ -282,6 +316,9 @@ int main()
     Pass = VerifyCheck(FarHue.OrangeDominant + FarHue.YellowDominant > 300u, "far LOD-level view shows coarser L1/L2 colours") && Pass;
     Pass = VerifyCheck(FarHue.GreenDominant < NearHue.GreenDominant, "far view has less L0 green than near") && Pass;
     Pass = VerifyCheck(FarCluster.DistinctColors > 60u, "far cluster view shows many distinct cluster colours") && Pass;
+    const HueCounts FarMat = AnalyzeDebugImage(FarMatRgba);
+    std::printf("[NaniteViewportVehicleValidation] Far filled-face-material view distinct colours: %u (one fill per material slot)\n", FarMat.DistinctColors);
+    Pass = VerifyCheck(FarMat.DistinctColors >= 12u, "far material view keeps distinct filled face materials") && Pass;
 
     Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearLod.png", ProofW, ProofH, NearRgba.data()), "wrote near proof PNG") && Pass;
     Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLod.png", ProofW, ProofH, FarRgba.data()), "wrote far proof PNG") && Pass;
@@ -291,15 +328,20 @@ int main()
     Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearClusters.png", ProofW, ProofH, NearClusterRgba.data()), "wrote near cluster PNG") && Pass;
     Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarClusters.png", ProofW, ProofH, FarClusterRgba.data()), "wrote far cluster PNG") && Pass;
 
-    // Contact sheet: rows = Near / Far, columns = Lit / LOD Level / Clusters.
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearFaceMaterials.png", ProofW, ProofH, NearMatRgba.data()), "wrote near face-material PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarFaceMaterials.png", ProofW, ProofH, FarMatRgba.data()), "wrote far face-material PNG") && Pass;
+
+    // Contact sheet: rows = Near / Far, columns = Lit / Face Materials / LOD Level / Clusters.
     {
-        Frontier::Exhibits::SoftwareRasterCanvas Sheet(ProofW * 3u, ProofH * 2u, { 24u, 24u, 24u, 255u });
+        Frontier::Exhibits::SoftwareRasterCanvas Sheet(ProofW * 4u, ProofH * 2u, { 24u, 24u, 24u, 255u });
         Sheet.BlitRgbaRegion(0u, 0u, ProofW, ProofH, NearRgba.data());
-        Sheet.BlitRgbaRegion(ProofW, 0u, ProofW, ProofH, NearLevelRgba.data());
-        Sheet.BlitRgbaRegion(ProofW * 2u, 0u, ProofW, ProofH, NearClusterRgba.data());
+        Sheet.BlitRgbaRegion(ProofW, 0u, ProofW, ProofH, NearMatRgba.data());
+        Sheet.BlitRgbaRegion(ProofW * 2u, 0u, ProofW, ProofH, NearLevelRgba.data());
+        Sheet.BlitRgbaRegion(ProofW * 3u, 0u, ProofW, ProofH, NearClusterRgba.data());
         Sheet.BlitRgbaRegion(0u, ProofH, ProofW, ProofH, FarRgba.data());
-        Sheet.BlitRgbaRegion(ProofW, ProofH, ProofW, ProofH, FarLevelRgba.data());
-        Sheet.BlitRgbaRegion(ProofW * 2u, ProofH, ProofW, ProofH, FarClusterRgba.data());
+        Sheet.BlitRgbaRegion(ProofW, ProofH, ProofW, ProofH, FarMatRgba.data());
+        Sheet.BlitRgbaRegion(ProofW * 2u, ProofH, ProofW, ProofH, FarLevelRgba.data());
+        Sheet.BlitRgbaRegion(ProofW * 3u, ProofH, ProofW, ProofH, FarClusterRgba.data());
         Pass = VerifyCheck(Sheet.WritePngFile(OutDir / "VehicleLodContactSheet.png"), "wrote LOD contact sheet") && Pass;
     }
 

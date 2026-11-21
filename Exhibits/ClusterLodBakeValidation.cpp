@@ -111,6 +111,28 @@ int main()
         return 1;
     }
 
+    // 1b. Material-pure clusters: every cluster at every level holds faces of ONE material slot
+    //     only (clusters are never shared between materials), and each triangle keeps the
+    //     material of the source face it came from (face identity via SourceFaceIndex).
+    for (const auto& Cluster : Pyramid.Clusters)
+    {
+        for (uint32_t T = 0u; T < Cluster.TriangleCount; ++T)
+        {
+            const auto& Tri = Pyramid.Triangles[Cluster.TriangleStartOffset + T];
+            if (!VerifyCheck(Tri.MaterialOrdinal == Cluster.DominantMaterialOrdinal, "cluster mixes material slots"))
+            {
+                return 1;
+            }
+            if (!VerifyCheck(
+                    Tri.SourceFaceIndex < Grid.Faces.size() &&
+                        Grid.Faces[Tri.SourceFaceIndex].PartGroupOrdinal == Tri.MaterialOrdinal,
+                    "triangle lost its source face material slot"))
+            {
+                return 1;
+            }
+        }
+    }
+
     // 2. Per-face material assignment: a triangle's material must match the side it sits on
     for (const auto& Tri : Pyramid.Triangles)
     {

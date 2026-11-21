@@ -405,3 +405,17 @@ Proof sheet `Exhibits/Images/NaniteViewport/VehicleLodContactSheet.png` (rows Ne
 columns Lit / LOD Level / Clusters): near is L0-green with L1 yellow at the wheels, far is
 L1/L2 yellow-orange; cluster patches grow with distance. Triangle density is visible as
 cluster-patch size + the footer triangle readout.
+
+### 20.3 Material-pure clusters + face identity
+
+Clustering is **material-partitioned**: LOD0 sorts triangles by (material slot, Morton) and
+starts a new cluster at every material change; coarser merge groups only combine clusters of
+the same material slot that are also spatially adjacent. Result: **no cluster is ever shared
+between materials** — one material owns many clusters (128-tri cap), never a mixed one.
+Every triangle carries its source face identity (`SourceFaceIndex`) and that face's material
+slot (`MaterialOrdinal`) at all levels; debug channel 6 (Material / Cluster ID) shows each
+face filled with its slot colour. Small materials with a single L0 cluster stay terminal
+(they never coarsen) — intentional protection for small parts. Vehicle L0 clusters per
+material are printed by `NaniteViewportVehicleValidation` (slot 6 body: 124 clusters,
+slot 7: 41, glass/trim slots: 1–13 each); homogeneity is asserted for every cluster at
+every level in both LOD validations.

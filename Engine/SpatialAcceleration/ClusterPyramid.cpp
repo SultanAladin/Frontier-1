@@ -676,16 +676,28 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         }
     }
 
+    // Material-pure clustering: sort by (material slot, Morton) so a cluster NEVER mixes faces
+    // of different material slots — each face keeps its own slot and clusters are per-material.
     std::sort(Level0Tris.begin(), Level0Tris.end(), [](const MortonTaggedTriangle& Left, const MortonTaggedTriangle& Right) noexcept
     {
+        if (Left.Entry.MaterialOrdinal != Right.Entry.MaterialOrdinal)
+        {
+            return Left.Entry.MaterialOrdinal < Right.Entry.MaterialOrdinal;
+        }
         return Left.MortonCode < Right.MortonCode;
     });
 
-    // 📝 Construct Level-0 clusters (<= 128 spatially localized triangles per cluster)
+    // 📝 Construct Level-0 clusters (<= 128 spatially localized triangles per cluster, never
+    //    spanning a material boundary — a new cluster starts when the material slot changes)
     std::vector<uint32_t> CurrentLevelClusterIndices;
-    for (std::size_t Start = 0u; Start < Level0Tris.size(); Start += MaxTrianglesPerCluster)
+    for (std::size_t Start = 0u; Start < Level0Tris.size();)
     {
-        const std::size_t Count = std::min<std::size_t>(MaxTrianglesPerCluster, Level0Tris.size() - Start);
+        std::size_t Count = 1u;
+        while (Count < MaxTrianglesPerCluster && Start + Count < Level0Tris.size() &&
+               Level0Tris[Start + Count].Entry.MaterialOrdinal == Level0Tris[Start].Entry.MaterialOrdinal)
+        {
+            ++Count;
+        }
         const uint32_t TriOffset = static_cast<uint32_t>(Triangles.size());
         for (std::size_t Offset = 0u; Offset < Count; ++Offset)
         {
@@ -707,6 +719,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
 
         CurrentLevelClusterIndices.push_back(Header.ClusterOrdinal);
         Clusters.push_back(Header);
+        Start += Count;
     }
 
     FinestClusterCount = static_cast<uint32_t>(CurrentLevelClusterIndices.size());
@@ -718,9 +731,14 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
     // 📝 Iteratively merge Morton-adjacent groups of up to 4 clusters -> simplify ~50% -> re-split into <=128-tri coarser clusters
     for (uint32_t Level = 1u; Level < AllowedLevels && CurrentLevelClusterIndices.size() > 1u; ++Level)
     {
-        // Sort current level clusters by Morton code of their bounding sphere centers
+        // Sort by (material slot, Morton): merge groups only ever combine clusters of the SAME
+        // material slot, so coarser clusters stay material-pure like the finest level.
         std::sort(CurrentLevelClusterIndices.begin(), CurrentLevelClusterIndices.end(), [&](uint32_t ClusterA, uint32_t ClusterB) noexcept
         {
+            if (Clusters[ClusterA].DominantMaterialOrdinal != Clusters[ClusterB].DominantMaterialOrdinal)
+            {
+                return Clusters[ClusterA].DominantMaterialOrdinal < Clusters[ClusterB].DominantMaterialOrdinal;
+            }
             return EncodeMorton30(Clusters[ClusterA].SphereCenter, SceneMin, InvSceneExtent) <
                    EncodeMorton30(Clusters[ClusterB].SphereCenter, SceneMin, InvSceneExtent);
         });
@@ -728,12 +746,28 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         std::vector<uint32_t> NextLevelClusterIndices;
         bool AnyGroupReduced = false;
 
-        for (std::size_t GroupPos = 0u; GroupPos < CurrentLevelClusterIndices.size(); GroupPos += 4u)
+        for (std::size_t GroupPos = 0u; GroupPos < CurrentLevelClusterIndices.size();)
         {
-            const std::size_t GroupCount = std::min<std::size_t>(4u, CurrentLevelClusterIndices.size() - GroupPos);
+            // Group = up to 4 consecutive clusters sharing one material slot AND spatially
+            // adjacent to the group's first cluster (never merge across the asset, e.g. wheels).
+            const uint8_t GroupMaterial = Clusters[CurrentLevelClusterIndices[GroupPos]].DominantMaterialOrdinal;
+            const ClusterHeaderEntry& GroupAnchor = Clusters[CurrentLevelClusterIndices[GroupPos]];
+            std::size_t GroupCount = 1u;
+            while (GroupCount < 4u && GroupPos + GroupCount < CurrentLevelClusterIndices.size() &&
+                   Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]].DominantMaterialOrdinal == GroupMaterial)
+            {
+                const ClusterHeaderEntry& Candidate = Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]];
+                const float CenterDistance = Mathematics::EvaluateDistance(Candidate.SphereCenter, GroupAnchor.SphereCenter);
+                if (CenterDistance > (GroupAnchor.SphereRadiusMeters + Candidate.SphereRadiusMeters) * 2.0f + 0.05f)
+                {
+                    break;
+                }
+                ++GroupCount;
+            }
             if (GroupCount < 2u)
             {
-                // Singleton remainder stays terminal at CoarserThresholdErrorMeters = +inf
+                // Singleton (last cluster of its material) stays terminal at CoarserThresholdErrorMeters = +inf
+                GroupPos += 1u;
                 continue;
             }
 
@@ -764,6 +798,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
 
             if (SimplifiedTris.size() >= MergedTris.size())
             {
+                GroupPos += GroupCount;
                 continue;
             }
 
@@ -802,6 +837,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             }
 
             AnyGroupReduced = true;
+            GroupPos += GroupCount;
         }
 
         if (!AnyGroupReduced)
