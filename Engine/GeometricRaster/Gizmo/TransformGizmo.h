@@ -114,6 +114,14 @@ public:
 
     void EndDragInteraction() noexcept;
 
+    // CPU ray hover evaluation against the same handle geometry BuildTriangleStream emits.
+    // Used whenever the GPU pick patch is unavailable (headless, CPU viewport, stale pick),
+    // so gizmo dragging never depends on a GPU readback succeeding first.
+    [[nodiscard]] GizmoHandleOrdinal EvaluateRayHover(
+        const ViewportRay3D& Ray,
+        Mathematics::Axis3D  CameraRight = { 1.0f, 0.0f, 0.0f },
+        Mathematics::Axis3D  CameraUp    = { 0.0f, 1.0f, 0.0f }) const noexcept;
+
     [[nodiscard]] GizmoDimensionMode  QueryDimensionMode() const noexcept { return DimensionMode; }
     [[nodiscard]] GizmoHandleOrdinal  QueryHoveredHandle() const noexcept { return HoveredHandle; }
     [[nodiscard]] GizmoHandleOrdinal  QueryActiveHandle() const noexcept  { return ActiveDragHandle; }

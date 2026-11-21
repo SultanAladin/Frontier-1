@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Camera/CameraComponent.h"
+#include "Engine/Components/Camera/CameraLagComponent.h"
 #include "Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.h"
 #include "Engine/Components/Camera/VisualEffects/DepthOfField.h"
 #include "Engine/GeometricRaster/UV/UVWorkspaceRasterizer.h"
@@ -362,6 +363,52 @@ int main()
     OpticsEncoder.TeardownOpticsEncoder();
     Rasterizer.TeardownRasterizer();
     VkDevice.TeardownInterchange();
+
+    //--------------------------------------------------------------------------------------------------------------------
+    // 7. Reusable CameraLagComponent: damped follow, settle, max-distance cap, disabled = snap
+    //--------------------------------------------------------------------------------------------------------------------
+    {
+        CameraLagComponent Lag {};
+        Lag.SnapTo({ 0.0f, 0.0f, 1.0f }, { 0.0f, 1.0f, 1.0f });
+        const bool Settling = Lag.AdvanceLag({ 10.0f, 0.0f, 1.0f }, { 10.0f, 1.0f, 1.0f }, 1.0f / 60.0f);
+        const float TrailedX = Lag.QueryPosition().X;
+        if (!VerifyCheck(Settling && TrailedX > 0.01f && TrailedX < 9.9f, "Camera lag trails the desired pose instead of snapping"))
+        {
+            return 1;
+        }
+        for (uint32_t Step = 0u; Step < 600u; ++Step)
+        {
+            Lag.AdvanceLag({ 10.0f, 0.0f, 1.0f }, { 10.0f, 1.0f, 1.0f }, 1.0f / 60.0f);
+        }
+        if (!VerifyCheck(std::abs(Lag.QueryPosition().X - 10.0f) < 0.01f, "Camera lag settles onto the desired pose"))
+        {
+            return 1;
+        }
+
+        CameraLagSettings CapSettings {};
+        CapSettings.MaximumLagDistanceMeters = 2.0f;
+        CameraLagComponent CappedLag {};
+        CappedLag.Configure(CapSettings);
+        CappedLag.SnapTo({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f });
+        CappedLag.AdvanceLag({ 100.0f, 0.0f, 0.0f }, { 100.0f, 1.0f, 0.0f }, 1.0f / 60.0f);
+        const Axis3D Trail = CappedLag.QueryPosition() - Axis3D{ 100.0f, 0.0f, 0.0f };
+        if (!VerifyCheck(std::sqrt(EvaluateDot(Trail, Trail)) <= 2.001f, "Camera lag honours the maximum lag distance cap"))
+        {
+            return 1;
+        }
+
+        CameraLagSettings SnapSettings {};
+        SnapSettings.LocationLagEnabled = false;
+        SnapSettings.RotationLagEnabled = false;
+        CameraLagComponent SnapLag {};
+        SnapLag.Configure(SnapSettings);
+        SnapLag.SnapTo({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f });
+        SnapLag.AdvanceLag({ 5.0f, 0.0f, 0.0f }, { 5.0f, 1.0f, 0.0f }, 1.0f / 60.0f);
+        if (!VerifyCheck(std::abs(SnapLag.QueryPosition().X - 5.0f) < 1.0e-5f, "Disabled camera lag snaps immediately"))
+        {
+            return 1;
+        }
+    }
 
     std::printf("[CameraComponentValidation] All 6 camera modes, thin-lens optics, Z-up/Y-up renders & GPU .slang effects PASSED.\n");
     return 0;

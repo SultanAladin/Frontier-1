@@ -690,6 +690,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometricRaster/Atmosphere/VolumetricFogSequence.cpp
     Engine/GeometricRaster/Atmosphere/LensFlareSequence.cpp
     Engine/Components/Camera/CameraComponent.cpp
+    Engine/Components/Camera/CameraLagComponent.cpp
     Engine/Components/Camera/VisualEffects/CameraOpticsEncoder.cpp
     Engine/GeometrySpace/Network/PolygonNetwork.cpp
     Engine/GeometrySpace/Network/GeometryInstance.cpp

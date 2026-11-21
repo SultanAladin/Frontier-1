@@ -1341,17 +1341,22 @@ void ProjectBrowser::RenderLibraryMode(
         Surface.Text({ RightX + 24.0f, HeaderH + 36.0f }, 12.0f, P.Ink, "Select a file to preview it.");
         Surface.Text({ RightX + 24.0f, HeaderH + 60.0f }, 10.5f, P.Muted, "Click any project or geometry tile to");
         Surface.Text({ RightX + 24.0f, HeaderH + 76.0f }, 10.5f, P.Muted, "inspect levels, notes, and revisions, or");
-        Surface.Text({ RightX + 24.0f, HeaderH + 92.0f }, 10.5f, P.Muted, "launch directly into Frontier / UVWorkspace.");
+        Surface.Text({ RightX + 24.0f, HeaderH + 92.0f }, 10.5f, P.Muted, "launch directly into Frontier.");
 
-        Surface.Text({ RightX + 24.0f, HeaderH + 134.0f }, 9.0f, P.Faint, "ACTIVE HOST WORKSPACES");
+        // Project Browser offers Frontier only; standalone workspace apps keep their own entry points.
+        Surface.Text({ RightX + 24.0f, HeaderH + 134.0f }, 9.0f, P.Faint, "OPEN IN");
         float CapY = HeaderH + 156.0f;
         for (const auto& Cap : CapabilityRegister.QueryAllCapabilities())
         {
+            if (Cap.Target != Workspaces::HostWorkspaceTarget::FrontierWorld)
+            {
+                continue;
+            }
             const Rectangle2D CapBox { RightX + 20.0f, CapY, RightW - 40.0f, 48.0f };
             Surface.FillRectangle(CapBox, P.Control, 7.0f);
             Surface.StrokeRectangle(CapBox, P.Line, 7.0f, 1.0f);
             Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 9.0f }, 11.0f, P.Ink, Cap.ActionTitle.c_str());
-            Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 27.0f }, 9.0f, P.Muted, Cap.Identifier == "Frontier" ? "World + Outliner + Clouds" : "Dual 2D UDIM + 3D Surface");
+            Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 27.0f }, 9.0f, P.Muted, "World + Outliner + Clouds");
             CapY += 56.0f;
         }
     }

@@ -568,9 +568,10 @@ int main()
             TargetAfterWheel - TargetBeforeWheel,
             TargetAfterWheel - TargetBeforeWheel);
 
-        if (NormalStepDist < 0.20f ||
+        // First-frame steps are damped by the editor camera lag component; sprint ratio must still hold.
+        if (NormalStepDist < 0.08f ||
             SprintStepDist < NormalStepDist * 2.5f ||
-            (ZAfterE - ZBeforeE) < 0.20f ||
+            (ZAfterE - ZBeforeE) < 0.08f ||
             (ZAfterE - ZAfterShiftQ) < (ZAfterE - ZBeforeE) * 2.5f ||
             StrafeDistSq < 0.01f ||
             SpeedAfterWheelUp < SpeedBeforeWheel * 1.35f ||
@@ -595,6 +596,49 @@ int main()
             EditorSession.Finalize();
             ImGui::DestroyContext(Ctx);
             return 1;
+        }
+
+        // (g) Single camera model: an LMB drag must NEVER move the camera (LMB = gizmo & selection only),
+        //     and the CPU gizmo ray hover must resolve handles without any GPU pick patch.
+        {
+            const Mathematics::Axis3D OriginBeforeLmb = LiveBundle->EditorCamera.CameraOrigin;
+            const Mathematics::Axis3D TargetBeforeLmb = LiveBundle->EditorCamera.TargetPoint;
+            Io.AddMousePosEvent(960.0f, 420.0f);
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMousePosEvent(1060.0f, 360.0f);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            Io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+            ImGui::NewFrame();
+            EditorSession.PresentPrimaryEditorImGui(1.0 / 60.0);
+            ImGui::Render();
+            const Mathematics::Axis3D LmbDrift = LiveBundle->EditorCamera.CameraOrigin - OriginBeforeLmb;
+            const Mathematics::Axis3D LmbTargetDrift = LiveBundle->EditorCamera.TargetPoint - TargetBeforeLmb;
+            if (Mathematics::EvaluateDot(LmbDrift, LmbDrift) > 1.0e-6f ||
+                Mathematics::EvaluateDot(LmbTargetDrift, LmbTargetDrift) > 1.0e-6f)
+            {
+                std::fprintf(stderr, "[FAIL] LMB drag moved the editor camera; LMB must stay gizmo/selection only.\n");
+                EditorSession.Finalize();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
+
+            Editor::TransformGizmo HoverProbe {};
+            HoverProbe.ConfigureAnchor({ 0.0f, 0.0f, 0.0f }, 1.0f);
+            const Editor::ViewportRay3D ConeRay { { -3.0f, 0.2f, 0.1f }, Mathematics::NormalizeAxis({ 3.95f, -0.2f, -0.1f }, { 1.0f, 0.0f, 0.0f }) };
+            const Editor::ViewportRay3D MissRay { { -3.0f, 3.0f, 3.0f }, { 1.0f, 0.0f, 0.0f } };
+            if (HoverProbe.EvaluateRayHover(ConeRay) != Editor::GizmoHandleOrdinal::TranslateX ||
+                HoverProbe.EvaluateRayHover(MissRay) != Editor::GizmoHandleOrdinal::None)
+            {
+                std::fprintf(stderr, "[FAIL] CPU gizmo ray hover failed to resolve the +X translate handle.\n");
+                EditorSession.Finalize();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
         }
 
         EditorSession.Finalize();

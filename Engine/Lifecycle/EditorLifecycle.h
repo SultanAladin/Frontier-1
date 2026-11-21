@@ -19,6 +19,7 @@
 #include "Engine/ComponentClass/ComponentWorldPlacement.h"
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
+#include "Engine/Components/Camera/CameraLagComponent.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
@@ -126,6 +127,8 @@ public:
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
     [[nodiscard]] float QueryCameraFlySpeedScalar() const noexcept { return CameraFlySpeedScalar; }
+    [[nodiscard]] Components::CameraLagComponent& AccessEditorCameraLag() noexcept { return EditorCameraLag; }
+    [[nodiscard]] const Components::CameraLagComponent& InspectEditorCameraLag() const noexcept { return EditorCameraLag; }
     [[nodiscard]] Editor::TransformGizmo&                    AccessTransformGizmo() noexcept { return WorldTransformGizmo; }
     [[nodiscard]] bool ExecuteAuthoringTick(double Δt);
     [[nodiscard]] bool ExecuteExternalDesktopTick(double Δt);
@@ -213,6 +216,10 @@ private:
     OutlinerSlotToken                                                LastGizmoSlot        {}; // [id]- Slot currently anchored by WorldTransformGizmo
     Point2D                                                          LastPointerPosition  {}; // [px]- Previous frame viewport pointer coordinate
     float                                                            CameraFlySpeedScalar = 1.0f; // [x] - Unreal RMB+Wheel dynamic fly-speed multiplier
+    Components::CameraLagComponent                                   EditorCameraLag    {};     // [-] - Reusable lag trailing the desired editor camera pose
+    Mathematics::Axis3D                                              DesiredCameraOrigin {};     // [m] - Undamped editor camera position requested by input
+    Mathematics::Axis3D                                              DesiredCameraTarget {};     // [m] - Undamped editor camera target point requested by input
+    bool                                                             DesiredCameraValid = false; // [-] - DesiredCameraOrigin/Target hold a live pose
     bool                                                             PointerTrackingValid = false;
     bool                                                             NavigationDragWasActive = false;
     bool                                                             RightMouseFlyActive  = false;
