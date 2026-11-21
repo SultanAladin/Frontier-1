@@ -1,7 +1,7 @@
 # 🧩 World Rendering Audit Remediation & PROOF 11 Emissive Penumbra — Completion Report
 
 > **TL;DR**: Executed every workstream (`1`–`6`) of [`WorldRenderingAuditRemediationPlan.md`](WorldRenderingAuditRemediationPlan.md) on branch `arena/28ada475-frontier` (fast-forwarded cleanly atop `e4966e4` / `ad7fa01c`) with **zero placeholders**, strict [`BannedWordsVocabulary.md`](../Governance/BannedWordsVocabulary.md) enforcement across all newly authored C++20 & `.slang` code, **all 20 `WorldMirrorValidation.mjs` suites passing**, and **100% visual `.png` inspection** across all `18` rendered exhibits:
-> - **Workstream 1 (`49a8d3d`) — `PROOF 11: SDF Area-Light Penumbrae` (`download.png` Reference Match)**: Implemented `SdfEmissivePenumbraSequence.{h,cpp}`, `SdfEmissivePenumbraCompute.slang` (`SPIR-V 1.3`), and `SdfEmissivePenumbraValidation` producing a 6-panel `1920x1080` contact sheet (`00-Proof11_SdfEmissivePenumbraeSheet.png`) plus `7` standalone `640x480` proof frames (`01`–`07`), coupling physical multi-aperture 3D SDF voxel cone tracing (`VoxelSdfPenumbraAndConeGi`) with zero wall light leaks (`0.000000`), deep umbra (`0.0000`), `1.116 m` monotonic penumbra width, `0.0288` RMSE against a `96-spp` Monte Carlo reference, and `0.0146` Vulkan GPU vs CPU RMSE.
+> - **Workstream 1 (`49a8d3d`) — `PROOF 11: SDF Area-Light Penumbrae` (`download.png` Reference Match)**: Implemented `SdfEmissivePenumbraSequence.{h,cpp}`, `SdfEmissivePenumbraCompute.slang` (`SPIR-V 1.3`), and `SdfEmissivePenumbraValidation` producing a 6-panel `1232x648` contact sheet (`06_Proof11_AllSdfRenderers_PenumbraSheet.png`), `1440x860` dropdown viewport exhibit (`07_ViewportSdfDropdownSelector.png`), and `6` standalone proof frames (`00`–`05`), coupling physical multi-aperture 3D SDF voxel cone tracing (`VoxelSdfPenumbraAndConeGi`) with zero wall light leaks (`0.000000`), deep umbra (`0.0000`), `1.116 m` monotonic penumbra width, `0.0288` RMSE against a `96-spp` Monte Carlo reference, and `0.0146` Vulkan GPU vs CPU RMSE.
 > - **Workstreams 2 & 3 (`d12b430`) — Order 2 Real-Time GI & Specular/Glass/Capsule Root-Cause Remediation**: Upgraded `HybridConeShadowSequence` (6-mode `SdfPenumbraMode` + `HighEndZeroSdfTier` `BVH4` area visibility), `StokesContourIrradianceSequence` (`19: 3 + 16` dual-cascade Stokes contour + 2nd-bounce `BVH4` irradiance), `SurfelRadiosityLatticeSequence` (`32x16x32` spatial-hashed 2-bounce surfel lattice + octahedral `6x6` lookup), `SpecularReflectionSequence.{h,cpp}` + `SpecularGlassRaytrace.slang` (full-roughness `[0..1]` Heitz VNDF `BVH4` reflection + dual-interface Beer-Lambert + 3-channel Cauchy/Abbe glass refraction), `ArticulatedCapsuleRig` (`16` human capsules + `4` quadruped capsules), and `GtxSdfGiShadowValidation` (`0.0523`–`0.0716` HDR RMSE vs `64-spp` reference with **zero denoiser**).
 > - **Workstream 4 (`5b7936d`) — Order 3 Path Tracer & Live 6-Engine Editor Viewport Routing**: Upgraded `DeterministicRadianceIntegration.slang` to Heitz (2018) Spherical-Cap GGX VNDF, raised `02-Hero_SceneFinalRender.png` to `128 spp`, decoupled `TieredWorldRenderSequence` Order 3 (`PathTracerGameRealtime` & `PathTracerSceneFinal`) to synchronize arbitrary `WorldScene` geometry/materials/lights/camera with `0 B` SDF while cleanly restoring the `25,068`-tri `PrototypeVehicle` studio scene, wired all `6` `WorldRenderEngine` modes + `6` `SdfPenumbraMode` options in `VulkanWorldRenderSequence` + `WorldViewportRadiometricCompute.slang` + `EditorLifecycle`, and removed the redundant `SDF Shadow` dropdown from `DeterministicPathTracerPane`.
 > - **Workstream 5 (`95943d7`) — `Experimental/FrontierWorldMirror` Full 3-Order / 6-Engine Parity**: Synced `RENDER_ENGINES` (`0..5`) and `SDF_PENUMBRA_MODES` (`0..5`) across `ShowcaseGalleryScene.js`, `ShadowPipeline.js`, `Inspectors.jsx`, `WebgpuGtxRenderer.js` (WGSL), `GtxWorldViewport.jsx` (WebGL2 GLSL), and `CpuGtxFallbackRenderer.js`, rebuilt standalone `Experimental/FrontierWorldMirror/index.html` (`5.29 MiB`), and verified **`20/20` suites** in `WorldMirrorValidation.mjs`.
@@ -38,13 +38,13 @@
 
 ### Rendered Exhibits (`Exhibits/Images/SdfEmissivePenumbra/`)
 
-| `00-Proof11_SdfEmissivePenumbraeSheet.png` (`1920x1080` 6-Panel Contact Sheet) | `07-VoxelSdfPenumbraAndConeGiGpu.png` (`640x480` Vulkan `.slang` GPU) |
+| `06_Proof11_AllSdfRenderers_PenumbraSheet.png` (`1232x648` 6-Panel Contact Sheet) | `07_ViewportSdfDropdownSelector.png` (`1440x860` Viewport Dropdown) |
 | :---: | :---: |
-| ![Proof 11 Sheet](../../Exhibits/Images/SdfEmissivePenumbra/00-Proof11_SdfEmissivePenumbraeSheet.png) | ![GPU Voxel Cone GI](../../Exhibits/Images/SdfEmissivePenumbra/07-VoxelSdfPenumbraAndConeGiGpu.png) |
-| **`01-PointSdfHard.png`** | **`04-VoxelSdfPenumbraAndConeGi.png`** |
-| ![Point SDF Hard](../../Exhibits/Images/SdfEmissivePenumbra/01-PointSdfHard.png) | ![CPU Voxel Cone GI](../../Exhibits/Images/SdfEmissivePenumbra/04-VoxelSdfPenumbraAndConeGi.png) |
-| **`05-HybridSobolSphericalCap.png`** | **`06-SdfMonteCarloReference96Spp.png`** |
-| ![Hybrid Sobol Cap](../../Exhibits/Images/SdfEmissivePenumbra/05-HybridSobolSphericalCap.png) | ![MC Reference 96spp](../../Exhibits/Images/SdfEmissivePenumbra/06-SdfMonteCarloReference96Spp.png) |
+| ![Proof 11 Sheet](../../Exhibits/Images/SdfEmissivePenumbra/06_Proof11_AllSdfRenderers_PenumbraSheet.png) | ![Viewport SDF Dropdown](../../Exhibits/Images/SdfEmissivePenumbra/07_ViewportSdfDropdownSelector.png) |
+| **`00_PointSampleSdf.png`** | **`03_VoxelSdfPenumbraPlusConeGi.png`** |
+| ![Point SDF Hard](../../Exhibits/Images/SdfEmissivePenumbra/00_PointSampleSdf.png) | ![Voxel Cone GI](../../Exhibits/Images/SdfEmissivePenumbra/03_VoxelSdfPenumbraPlusConeGi.png) |
+| **`04_HybridSdfSobolSphericalCap.png`** | **`05_SdfMonteCarloPtRef96Spp.png`** |
+| ![Hybrid Sobol Cap](../../Exhibits/Images/SdfEmissivePenumbra/04_HybridSdfSobolSphericalCap.png) | ![MC Reference 96spp](../../Exhibits/Images/SdfEmissivePenumbra/05_SdfMonteCarloPtRef96Spp.png) |
 
 ---
 
@@ -76,13 +76,13 @@
 
 ### Rendered Exhibits (`Exhibits/Images/GtxSdfGi/`)
 
-| `01-GtxLowEnd_SdfCone_StokesGi.png` | `02-GtxLowEnd_SdfCone_SurfelLatticeGi.png` |
+| `01-GtxLowEnd_HybridConeShadow_StokesGi.png` | `02-GtxLowEnd_HybridConeShadow_SurfelLatticeGi.png` |
 | :---: | :---: |
-| ![GTX Stokes GI](../../Exhibits/Images/GtxSdfGi/01-GtxLowEnd_SdfCone_StokesGi.png) | ![GTX Surfel Lattice GI](../../Exhibits/Images/GtxSdfGi/02-GtxLowEnd_SdfCone_SurfelLatticeGi.png) |
-| **`03-HighEnd_ZeroSdf_BvhShadow_PoseA.png`** | **`04-HighEnd_ZeroSdf_BvhShadow_PoseB.png`** |
-| ![HighEnd Pose A](../../Exhibits/Images/GtxSdfGi/03-HighEnd_ZeroSdf_BvhShadow_PoseA.png) | ![HighEnd Pose B](../../Exhibits/Images/GtxSdfGi/04-HighEnd_ZeroSdf_BvhShadow_PoseB.png) |
-| **`05-Reference_PathTraced_64Spp.png` (`64-spp` Unbiased Reference)** | |
-| ![64-spp Reference](../../Exhibits/Images/GtxSdfGi/05-Reference_PathTraced_64Spp.png) | |
+| ![GTX Stokes GI](../../Exhibits/Images/GtxSdfGi/01-GtxLowEnd_HybridConeShadow_StokesGi.png) | ![GTX Surfel Lattice GI](../../Exhibits/Images/GtxSdfGi/02-GtxLowEnd_HybridConeShadow_SurfelLatticeGi.png) |
+| **`03-HighEnd_ZeroSdf_Bvh4Refit_PoseA.png`** | **`04-HighEnd_ZeroSdf_Bvh4Refit_PoseB.png`** |
+| ![HighEnd Pose A](../../Exhibits/Images/GtxSdfGi/03-HighEnd_ZeroSdf_Bvh4Refit_PoseA.png) | ![HighEnd Pose B](../../Exhibits/Images/GtxSdfGi/04-HighEnd_ZeroSdf_Bvh4Refit_PoseB.png) |
+| **`05-GroundTruth_64spp_Reference.png` (`64-spp` Unbiased Reference)** | |
+| ![64-spp Reference](../../Exhibits/Images/GtxSdfGi/05-GroundTruth_64spp_Reference.png) | |
 
 ---
 
@@ -106,10 +106,10 @@
 | `01-WorkspaceInterface_CppParity.png` (`1440x860` Live C++ Workspace, No `SDF Shadow` Dropdown) | `02-Hero_SceneFinalRender.png` (`128-spp` Heitz VNDF Final Render) |
 | :---: | :---: |
 | ![Workspace Parity](../../Exhibits/Images/DeterministicPathTracer/01-WorkspaceInterface_CppParity.png) | ![128-spp Hero Final](../../Exhibits/Images/DeterministicPathTracer/02-Hero_SceneFinalRender.png) |
-| **`03-Hero_GameRealtime1Spp.png` (`1-spp` Blue-Noise + Edge-Stopping A-Trous)** | **`04-Fleet50Vehicles_1250kTris.png` (`1,253,400` Triangles in `212 KB`)** |
-| ![1-spp GameRealtime](../../Exhibits/Images/DeterministicPathTracer/03-Hero_GameRealtime1Spp.png) | ![50-Vehicle Fleet](../../Exhibits/Images/DeterministicPathTracer/04-Fleet50Vehicles_1250kTris.png) |
-| **`05-Photometric228Lights_IesTree.png` (`228` `.ies` Luminaires)** | |
-| ![228 IES Lights](../../Exhibits/Images/DeterministicPathTracer/05-Photometric228Lights_IesTree.png) | |
+| **`03-Fleet50_Daylight.png` (`1,253,400` Triangles in `212 KB`)** | **`04-Fleet50_NightIes228.png` (`228` `.ies` Luminaires)** |
+| ![50-Vehicle Fleet Daylight](../../Exhibits/Images/DeterministicPathTracer/03-Fleet50_Daylight.png) | ![228 IES Lights Night](../../Exhibits/Images/DeterministicPathTracer/04-Fleet50_NightIes228.png) |
+| **`05-ReconstructionComparison_GameRealtime.png` (`1-spp` Blue-Noise + Edge-Stopping A-Trous)** | |
+| ![1-spp GameRealtime Reconstruction](../../Exhibits/Images/DeterministicPathTracer/05-ReconstructionComparison_GameRealtime.png) | |
 
 ---
 
