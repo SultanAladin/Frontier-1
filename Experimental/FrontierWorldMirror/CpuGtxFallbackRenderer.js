@@ -1457,12 +1457,31 @@ export function CreateGtxBandKernel(
         SunDir, SunIrradiance, SunAngularRadiusRad, SkyRadiance, ExposureGain,
       } = CompiledScene;
       const Rs = CompiledScene.RenderSettings || {};
-      const ShadowRays = Clamp((Rs.ShadowRays ?? 4) | 0, 1, 8);
+      const EngineCodeMap = {
+        matcap: 0,
+        openpbr_direct: 1,
+        gtx_sdf_gi: 2,
+        highend_bvh4_gi: 3,
+        pt_realtime: 4,
+        pt_final: 5,
+      };
+      const PenumbraCodeMap = {
+        point_sdf: 0,
+        analytic_cone: 1,
+        voxel_clipmap: 2,
+        voxel_cone_gi: 3,
+        hybrid_sobol_cap: 4,
+        sdf_mc_ref: 5,
+      };
+      const EngineMode = EngineCodeMap[Rs.RenderEngine] ?? 2;
+      const PenumbraMode = PenumbraCodeMap[Rs.SdfPenumbraMode] ?? 3;
+      const ShadowRays = Clamp((Rs.ShadowRays ?? 4) | 0, 1, 12);
       const ShadowSoftness = Rs.ShadowSoftness ?? 1.0;
       const EmissiveShadowed = Rs.EmissiveShadowMode !== "unshadowed";
-      const GiAlg = Rs.GiAlgorithm === "off" ? 2 : Rs.GiAlgorithm === "bvh" ? 1 : 0;
-      const GiSamples = Clamp((Rs.GiSamples ?? 6) | 0, 2, 16);
-      const GiIntensity = Rs.GiIntensity ?? 1.0;
+      const BaseGiAlg = Rs.GiAlgorithm === "off" ? 2 : Rs.GiAlgorithm === "bvh" ? 1 : 0;
+      const GiAlg = EngineMode === 1 ? 2 : EngineMode >= 3 ? 1 : BaseGiAlg;
+      const GiSamples = EngineMode >= 4 ? (EngineMode === 5 ? 16 : 10) : Clamp((Rs.GiSamples ?? 6) | 0, 2, 16);
+      const GiIntensity = (Rs.GiIntensity ?? 1.0) * (PenumbraMode === 3 && EngineMode === 2 && Lights.length > 0 ? 1.06 : 1.0);
       const FillBoost = Rs.FillBoost ?? 1.0;
       const ReflOff = Rs.ReflectionAlgorithm === "env";
       const SinSun = Math.sin(SunAngularRadiusRad || 0.009) * ShadowSoftness;
@@ -1725,6 +1744,25 @@ export function CreateGtxBandKernel(
               LinR = ReflR * F + TrR * ChrR * AttR * TransScale + SunIrradiance[0] * SunGlint + Mat.baseR * Mat.emission;
               LinG = ReflG * F + TrG * AttG * TransScale + SunIrradiance[1] * SunGlint + Mat.baseG * Mat.emission;
               LinB = ReflB * F + TrB * ChrB * AttB * TransScale + SunIrradiance[2] * SunGlint + Mat.baseB * Mat.emission;
+            } else if (EngineMode === 0 && ViewModeCode === 0) {
+              // Order 1 Studio MatCap Shading (Zero GI, Zero SDF)
+              let Vnx = Nx * Rx + Ny * Ry + Nz * Rz;
+              let Vny = Nx * Ux + Ny * Uy + Nz * Uz;
+              let Vnz = Math.max(0.0, -(Nx * FwdX + Ny * FwdY + Nz * FwdZ));
+              const Vnl = Math.max(1e-6, Len3(Vnx, Vny, Vnz));
+              Vnx /= Vnl; Vny /= Vnl; Vnz /= Vnl;
+              const KeyDiff = Math.max(0.0, Vnx * 0.4158 + Vny * 0.6138 + Vnz * 0.6712);
+              const FillDiff = Math.max(0.0, Vnx * -0.6844 + Vny * 0.2516 + Vnz * 0.6844);
+              const RimGlow = Math.pow(Clamp(1.0 - Vnz, 0.0, 1.0), 2.6) * (0.35 + 0.65 * Math.max(0.0, Vny * 0.8531 + Vnz * 0.5217));
+              const SpecPow = Mix(96.0, 6.0, Clamp(Mat.roughness, 0.02, 1.0));
+              const Khx = 0.2323, Khy = 0.3429, Khz = 0.9102;
+              const KeySpec = Math.pow(Math.max(0.0, Vnx * Khx + Vny * Khy + Vnz * Khz), SpecPow);
+              const SpecGain = Mix(1.45, 0.18, Clamp(Mat.roughness, 0.0, 1.0));
+              const StudioL = 0.14 + 0.88 * KeyDiff + 0.34 * FillDiff;
+              const SpecNonMetal = KeySpec * SpecGain * (1.0 - Mat.metallic);
+              LinR = Mat.baseR * (StudioL * (1.0 - Mat.metallic * 0.78) + KeySpec * SpecGain * Mat.metallic) + SpecNonMetal + 0.26 * RimGlow + Mat.baseR * (PrimEmission + Mat.emission);
+              LinG = Mat.baseG * (StudioL * (1.0 - Mat.metallic * 0.78) + KeySpec * SpecGain * Mat.metallic) + SpecNonMetal + 0.28 * RimGlow + Mat.baseG * (PrimEmission + Mat.emission);
+              LinB = Mat.baseB * (StudioL * (1.0 - Mat.metallic * 0.78) + KeySpec * SpecGain * Mat.metallic) + SpecNonMetal + 0.32 * RimGlow + Mat.baseB * (PrimEmission + Mat.emission);
             } else {
               if (ViewModeCode === 1) {
                 Mat.baseR = 0.72; Mat.baseG = 0.71; Mat.baseB = 0.69;
@@ -1805,25 +1843,38 @@ export function CreateGtxBandKernel(
                   const Tlx = L.Cx - Hit.px, Tly = L.Cy - Hit.py, Tlz = L.Cz - Hit.pz;
                   const DistL = Len3(Tlx, Tly, Tlz);
                   if (EmissiveShadowed && DistL >= 0.05) {
-                    const RayCnt = Clamp(ShadowRays, 2, 12);
-                    const R2x = Hash12(Px * 131.7, Py * 73.1);
-                    const R2y = Hash12(Px * 91.3 + 37.1, Py * 53.7 + 13.7);
                     const OxA = Hit.px + Nx * 0.008, OyA = Hit.py + Ny * 0.008, OzA = Hit.pz + Nz * 0.008;
-                    let VisAcc = 0;
-                    for (let S = 0; S < RayCnt; ++S) {
-                      const Sx = (Fract(R2x + S * 0.75487766) * 2.0 - 1.0) * 0.94 * L.Hw * ShadowSoftness;
-                      const Sy = (Fract(R2y + S * 0.56984029) * 2.0 - 1.0) * 0.94 * L.Hh * ShadowSoftness;
-                      const Dx = L.Cx + L.Rx * Sx + L.Ux * Sy - OxA;
-                      const Dy = L.Cy + L.Ry * Sx + L.Uy * Sy - OyA;
-                      const Dz = L.Cz + L.Rz * Sx + L.Uz * Sy - OzA;
+                    if (PenumbraMode === 0) {
+                      const Dx = L.Cx - OxA, Dy = L.Cy - OyA, Dz = L.Cz - OzA;
                       const D = Len3(Dx, Dy, Dz);
+                      let Lit = 0.0;
                       if (D > 1e-4 && (Nx * Dx + Ny * Dy + Nz * Dz) > 0.002 * D) {
                         if (!this.TraceShadowRayAny(Prims, VehicleBvhData, OxA, OyA, OzA, Dx / D, Dy / D, Dz / D, Math.max(0.04, D - 0.14), Hit.primIdx, L.PickCode)) {
-                          VisAcc += 1.0 / RayCnt;
+                          Lit = 1.0;
                         }
                       }
+                      AreaVis = Mix(0.03, 1.0, Lit);
+                    } else {
+                      const RayCnt = PenumbraMode >= 4 ? (PenumbraMode === 5 ? 12 : 8) : Clamp(ShadowRays, 2, 12);
+                      const SoftScale = PenumbraMode === 1 ? 0.72 : PenumbraMode >= 4 ? 1.12 : 1.0;
+                      const R2x = Hash12(Px * 131.7, Py * 73.1);
+                      const R2y = Hash12(Px * 91.3 + 37.1, Py * 53.7 + 13.7);
+                      let VisAcc = 0;
+                      for (let S = 0; S < RayCnt; ++S) {
+                        const Sx = (Fract(R2x + S * 0.75487766) * 2.0 - 1.0) * 0.94 * L.Hw * ShadowSoftness * SoftScale;
+                        const Sy = (Fract(R2y + S * 0.56984029) * 2.0 - 1.0) * 0.94 * L.Hh * ShadowSoftness * SoftScale;
+                        const Dx = L.Cx + L.Rx * Sx + L.Ux * Sy - OxA;
+                        const Dy = L.Cy + L.Ry * Sx + L.Uy * Sy - OyA;
+                        const Dz = L.Cz + L.Rz * Sx + L.Uz * Sy - OzA;
+                        const D = Len3(Dx, Dy, Dz);
+                        if (D > 1e-4 && (Nx * Dx + Ny * Dy + Nz * Dz) > 0.002 * D) {
+                          if (!this.TraceShadowRayAny(Prims, VehicleBvhData, OxA, OyA, OzA, Dx / D, Dy / D, Dz / D, Math.max(0.04, D - 0.14), Hit.primIdx, L.PickCode)) {
+                            VisAcc += 1.0 / RayCnt;
+                          }
+                        }
+                      }
+                      AreaVis = Mix(0.03, 1.0, VisAcc);
                     }
-                    AreaVis = Mix(0.03, 1.0, VisAcc);
                   }
                   const Kd = (1.0 - Mat.metallic) * (1.0 - Mat.transmission);
                   LinR += Kd * Mat.baseR * DiffR * AreaVis;

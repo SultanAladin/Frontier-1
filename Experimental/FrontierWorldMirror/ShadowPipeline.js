@@ -23,7 +23,28 @@ export function EncodeRenderSettingsUniforms(Rs = {}) {
     bvh: 1,
     env: 2,
   };
+  const EngineMap = {
+    matcap: 0,
+    openpbr_direct: 1,
+    gtx_sdf_gi: 2,
+    highend_bvh4_gi: 3,
+    pt_realtime: 4,
+    pt_final: 5,
+  };
+  const PenumbraMap = {
+    point_sdf: 0,
+    analytic_cone: 1,
+    voxel_clipmap: 2,
+    voxel_cone_gi: 3,
+    hybrid_sobol_cap: 4,
+    sdf_mc_ref: 5,
+  };
+  const engineMode = EngineMap[Rs.RenderEngine] ?? 2;
+  const sdfPenumbraMode = PenumbraMap[Rs.SdfPenumbraMode] ?? 3;
   return {
+    engineMode,
+    sdfPenumbraMode,
+    packedEnginePenumbra: engineMode * 8 + sdfPenumbraMode,
     shadowAlg: ShadowMap[Rs.ShadowAlgorithm] ?? 0,
     giAlg: GiMap[Rs.GiAlgorithm] ?? 0,
     reflAlg: ReflMap[Rs.ReflectionAlgorithm] ?? 1,

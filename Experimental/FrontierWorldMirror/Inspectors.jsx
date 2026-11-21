@@ -21,7 +21,9 @@ import {
   GI_ALGORITHMS,
   QUALITY_PRESETS,
   REFLECTION_ALGORITHMS,
+  RENDER_ENGINES,
   ResolveRenderSettings,
+  SDF_PENUMBRA_MODES,
   SHADOW_ALGORITHMS,
 } from "./ShowcaseGalleryScene.js";
 import { WindInspector, WindBinding } from "./WindPanel.jsx";
@@ -1490,6 +1492,8 @@ export function Inspector({
     );
   } else if (Subject.Panel === "render-settings") {
     const Rs = ResolveRenderSettings({ "render-settings": Values });
+    const ActiveEngine = RENDER_ENGINES.find((E) => E.id === Rs.RenderEngine) || RENDER_ENGINES[2];
+    const ActivePenumbra = SDF_PENUMBRA_MODES.find((M) => M.id === Rs.SdfPenumbraMode) || SDF_PENUMBRA_MODES[3];
     const ActiveShadow = SHADOW_ALGORITHMS.find((A) => A.id === Rs.ShadowAlgorithm) || SHADOW_ALGORITHMS[0];
     const ActiveGi = GI_ALGORITHMS.find((A) => A.id === Rs.GiAlgorithm) || GI_ALGORITHMS[0];
     const ActiveRefl = REFLECTION_ALGORITHMS.find((A) => A.id === Rs.ReflectionAlgorithm) || REFLECTION_ALGORITHMS[0];
@@ -1640,8 +1644,27 @@ export function Inspector({
           </button>
         </div>
 
-        <Card Title="Pipeline Preset" Accent="#b9c8d8" GraphHandled>
+        <Card Title="World Render Engine (Orders 1–3)" Accent="#c7f03a" GraphHandled>
           <div className="rs-sliders">
+            {RsSelect(
+              "World Render Engine",
+              RENDER_ENGINES,
+              Rs.RenderEngine,
+              (Id) => {
+                Change("RenderEngine", Id);
+                if (Id === "openpbr_direct") Change("GiAlgorithm", "off");
+                else if (Id === "gtx_sdf_gi") Change("GiAlgorithm", "sdf");
+                else if (Id === "highend_bvh4_gi" || Id === "pt_realtime" || Id === "pt_final") Change("GiAlgorithm", "bvh");
+              },
+              ActiveEngine.desc,
+            )}
+            {RsSelect(
+              "Luminaire Penumbra Mode",
+              SDF_PENUMBRA_MODES,
+              Rs.SdfPenumbraMode,
+              (Id) => Change("SdfPenumbraMode", Id),
+              ActivePenumbra.desc,
+            )}
             {RsSelect(
               "Global Quality Tier",
               [

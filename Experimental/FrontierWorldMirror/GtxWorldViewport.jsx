@@ -1557,8 +1557,17 @@ float evaluateAreaLightSoftVis(vec3 pos, vec3 N, vec3 lc, vec3 lRight, vec3 lUp,
   float distL = length(toL);
   if (distL < 0.05) return 1.0;
   vec3 L = toL / distL;
-  if (lightIdx == 0 && uHasAreaShadow != 0 && uShadowAlg != 4) {
-    float panelRad = mix(hh, hw, 0.55) * uShadowSoftness;
+  int packedMode = max(0, int(floor(uAreaShadowFwd.w + 0.5)));
+  int penumbraMode = packedMode % 8;
+  if (penumbraMode == 0) {
+    vec3 originPt = pos + N * 0.008;
+    if (dot(N, L) <= 0.002) return 0.03;
+    bool blocked = traceShadowOccluderAnyHit(originPt, L, max(0.04, distL - 0.14), selfPrimIdx, lightPickCode);
+    return blocked ? 0.03 : 1.0;
+  }
+  float softScale = (penumbraMode == 1) ? 0.72 : ((penumbraMode >= 4) ? 1.12 : 1.0);
+  if (lightIdx == 0 && uHasAreaShadow != 0 && uShadowAlg != 4 && penumbraMode < 4) {
+    float panelRad = mix(hh, hw, 0.55) * uShadowSoftness * softScale;
     if (uShadowAlg == 3) {
       return mix(0.03, 1.0, evalShadowMapPCF(true, uAreaShadowRes, pos, N, L, panelRad));
     }
@@ -1574,7 +1583,7 @@ float evaluateAreaLightSoftVis(vec3 pos, vec3 N, vec3 lc, vec3 lRight, vec3 lUp,
     }
     return mix(0.03, 1.0, pcssVis);
   }
-  int rayCount = clamp(uShadowRays, 2, 12);
+  int rayCount = (penumbraMode >= 4) ? ((penumbraMode == 5) ? 12 : 8) : clamp(uShadowRays, 2, 12);
   float invRays = 1.0 / float(rayCount);
   float r2x = ignHash(gl_FragCoord.xy);
   float r2y = ignHash(gl_FragCoord.xy + vec2(37.1, 13.7));
@@ -2156,7 +2165,14 @@ vec3 traceBvhReflection(vec3 startOrigin, vec3 startNormal, vec3 startDir, int m
 }
 
 void evaluateMultiModeGi(vec3 pos, vec3 N, int selfPrimIdx, out vec3 giIrr, out float sceneAo) {
-  if (uGiAlg == 2) {
+  int packedMode = max(0, int(floor(uAreaShadowFwd.w + 0.5)));
+  int engineMode = packedMode / 8;
+  int penumbraMode = packedMode % 8;
+  int effGiAlg = uGiAlg;
+  if (engineMode == 1) effGiAlg = 2;
+  else if (engineMode >= 3) effGiAlg = 1;
+  float effGiInt = uGiIntensity * ((penumbraMode == 3 && engineMode == 2 && uLightCount > 0) ? 1.06 : 1.0);
+  if (effGiAlg == 2) {
     float skyW = clamp(N.z * 0.5 + 0.5, 0.0, 1.0);
     float dayF = clamp(uSunDir.z * 4.0 + 0.25, 0.0, 1.0);
     vec3 gAmb = mix(vec3(0.0012, 0.0015, 0.0024), vec3(0.055, 0.053, 0.052), dayF);
@@ -2164,9 +2180,9 @@ void evaluateMultiModeGi(vec3 pos, vec3 N, int selfPrimIdx, out vec3 giIrr, out 
     sceneAo = 1.0;
     return;
   }
-  if (uGiAlg == 1) {
-    // GI_BVH_FRAG (ShadowAlgorithmLab): 2-bounce cosine-hemisphere BVH path tracing
-    int samples = clamp(uGiSamples, 2, 20);
+  if (effGiAlg == 1) {
+    // GI_BVH_FRAG (ShadowAlgorithmLab): multi-bounce cosine-hemisphere BVH path tracing
+    int samples = (engineMode >= 4) ? ((engineMode == 5) ? 18 : 10) : clamp(uGiSamples, 2, 20);
     float invGi = 1.0 / float(samples);
     float phi = ignHash(gl_FragCoord.xy) * 6.2831853;
     vec3 accum = vec3(0.0);
@@ -2220,12 +2236,12 @@ void evaluateMultiModeGi(vec3 pos, vec3 N, int selfPrimIdx, out vec3 giIrr, out 
       accum += pathRad * invGi;
     }
     sceneAo = clamp(1.0 - (occ * invGi) * 0.72, 0.25, 1.0);
-    giIrr = min(accum, vec3(16.0)) * uGiIntensity;
+    giIrr = min(accum, vec3(16.0)) * effGiInt;
     return;
   }
   evaluateGtxConeGiAndAo(pos, N, selfPrimIdx, giIrr, sceneAo);
   float coneGain = clamp(float(uGiCones) / 6.0, 0.75, 1.25);
-  giIrr *= uGiIntensity * mix(0.85, 1.0, coneGain) * (0.35 + 0.65 * uFillBoost);
+  giIrr *= effGiInt * mix(0.85, 1.0, coneGain) * (0.35 + 0.65 * uFillBoost);
 }
 
 vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
@@ -2261,6 +2277,24 @@ vec3 shadePrimaryOpaqueHit(HitInfo hit, vec3 V) {
 
   vec3 N, Nc, T, B;
   buildShadingFrame(hit, mat, N, Nc, T, B);
+  int engineMode = max(0, int(floor(uAreaShadowFwd.w + 0.5))) / 8;
+  if (engineMode == 0 && uViewMode == 0) {
+    vec3 vn = normalize(vec3(dot(N, uCamRight), dot(N, uCamUp), max(0.0, dot(N, -uCamForward))));
+    vec3 keyDir = normalize(vec3(0.42, 0.62, 0.66));
+    vec3 fillDir = normalize(vec3(-0.68, 0.25, 0.68));
+    vec3 rimDir = normalize(vec3(0.0, 0.85, 0.52));
+    float keyDiff = max(0.0, dot(vn, keyDir));
+    float fillDiff = max(0.0, dot(vn, fillDir));
+    float rimGlow = pow(clamp(1.0 - vn.z, 0.0, 1.0), 2.6) * (0.35 + 0.65 * max(0.0, dot(vn, rimDir)));
+    float specPow = mix(96.0, 6.0, clamp(mat.roughness, 0.02, 1.0));
+    float keySpec = pow(max(0.0, dot(vn, normalize(keyDir + vec3(0.0, 0.0, 1.0)))), specPow);
+    float specGain = mix(1.45, 0.18, clamp(mat.roughness, 0.0, 1.0));
+    float studioL = 0.14 + 0.88 * keyDiff + 0.34 * fillDiff;
+    return mat.baseColor * (studioL * (1.0 - mat.metallic * 0.78) + keySpec * specGain * mat.metallic)
+         + vec3(keySpec * specGain * (1.0 - mat.metallic))
+         + vec3(0.26, 0.28, 0.32) * rimGlow
+         + mat.baseColor * mat.emission;
+  }
   vec3 edgeTint = hit.isVehicle ? vec3(1.0) : sdFetch(5, idx).rgb;
   vec3 Lo = mat.baseColor * mat.emission;
 
@@ -4572,7 +4606,7 @@ export default function GtxWorldViewport({
             AInfo ? AInfo.forward[0] : 0.0,
             AInfo ? AInfo.forward[1] : 0.0,
             AInfo ? AInfo.forward[2] : -1.0,
-            0.0,
+            RsU.packedEnginePenumbra ?? 19.0,
           );
           Gl.uniform1i(U.uVehicleInstCount, CurState.VehicleInstCount);
 

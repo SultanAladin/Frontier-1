@@ -1705,6 +1705,98 @@ assert.ok(
   assert.ok(FSun[3] > FMoon[3] * 2.0, `Daytime sunlight strongly illuminates the scene above moonlight (sun=${FSun[3].toFixed(4)} vs moon=${FMoon[3].toFixed(4)})`);
 }
 
+// ============================================================================
+// Suite 20: 3-Order 6-Engine (WorldRenderEngine 0..5) + 6-Mode Luminaire Penumbra Parity
+// ============================================================================
+{
+  const { RENDER_ENGINES, SDF_PENUMBRA_MODES, ResolveRenderSettings } = await import("./ShowcaseGalleryScene.js");
+  const { EncodeRenderSettingsUniforms } = await import("./ShadowPipeline.js");
+
+  assert.deepStrictEqual(
+    RENDER_ENGINES.map((E) => E.id),
+    ["matcap", "openpbr_direct", "gtx_sdf_gi", "highend_bvh4_gi", "pt_realtime", "pt_final"],
+    "RENDER_ENGINES mirrors C++ WorldRenderEngine 0..5",
+  );
+  assert.deepStrictEqual(
+    SDF_PENUMBRA_MODES.map((M) => M.id),
+    ["point_sdf", "analytic_cone", "voxel_clipmap", "voxel_cone_gi", "hybrid_sobol_cap", "sdf_mc_ref"],
+    "SDF_PENUMBRA_MODES mirrors C++ SdfShadowPenumbraMode 0..5",
+  );
+
+  for (let i = 0; i < 6; ++i) {
+    const u = EncodeRenderSettingsUniforms(
+      ResolveRenderSettings({
+        "render-settings": {
+          RenderEngine: RENDER_ENGINES[i].id,
+          SdfPenumbraMode: SDF_PENUMBRA_MODES[i].id,
+        },
+      }),
+    );
+    assert.strictEqual(u.engineMode, i, `engineMode=${i}`);
+    assert.strictEqual(u.sdfPenumbraMode, i, `sdfPenumbraMode=${i}`);
+    assert.strictEqual(u.packedEnginePenumbra, i * 8 + i, `packedEnginePenumbra=${i * 8 + i}`);
+  }
+
+  const RenderWithEngineAndPenumbra = (EngineId, PenumbraId = "voxel_cone_gi") => {
+    const Vals = {
+      ...ShowcaseInitialValues,
+      "render-settings": {
+        ...CanonicalRenderSettings,
+        RenderEngine: EngineId,
+        SdfPenumbraMode: PenumbraId,
+        ShadowRays: 4,
+      },
+    };
+    const Sc = CompileLiveGtxScene(ShowcaseInitialRows, Vals, {}, "PERSP");
+    const Atl = new MaterialAtlasSynchronizer();
+    Atl.UpdatePrimitives(Sc.Primitives);
+    const Cpu = new CpuGtxRenderer();
+    Cpu.RenderFullFrame({
+      CompiledScene: Sc,
+      AtlasPixels: Atl.Pixels,
+      Width: 96,
+      Height: 64,
+      ViewModeCode: 0,
+      ShowGrid: false,
+    });
+    let sum = 0;
+    for (let p = 0; p < Cpu.OffscreenImg.data.length; p += 4) {
+      sum += (Cpu.OffscreenImg.data[p] + Cpu.OffscreenImg.data[p + 1] + Cpu.OffscreenImg.data[p + 2]) / (3 * 255);
+    }
+    return { meanLuma: sum / (96 * 64), data: new Uint8ClampedArray(Cpu.OffscreenImg.data) };
+  };
+
+  const FMatCap = RenderWithEngineAndPenumbra("matcap");
+  const FDirect = RenderWithEngineAndPenumbra("openpbr_direct");
+  const FGtxGi  = RenderWithEngineAndPenumbra("gtx_sdf_gi");
+  const FBvhGi  = RenderWithEngineAndPenumbra("highend_bvh4_gi");
+  const FPtRt   = RenderWithEngineAndPenumbra("pt_realtime");
+  const FPtFin  = RenderWithEngineAndPenumbra("pt_final");
+
+  for (const [Name, Fr] of [
+    ["matcap", FMatCap],
+    ["openpbr_direct", FDirect],
+    ["gtx_sdf_gi", FGtxGi],
+    ["highend_bvh4_gi", FBvhGi],
+    ["pt_realtime", FPtRt],
+    ["pt_final", FPtFin],
+  ]) {
+    assert.ok(Number.isFinite(Fr.meanLuma) && Fr.meanLuma > 0.05, `Engine ${Name} produces finite non-black output (meanLuma=${Fr.meanLuma.toFixed(4)})`);
+  }
+  assert.ok(Math.abs(FMatCap.meanLuma - FDirect.meanLuma) > 0.005, "MatCap and OpenPBR Direct execute distinct shading");
+  assert.ok(FGtxGi.meanLuma > FDirect.meanLuma, "Order 2 GTX GI adds indirect bounce illumination above Direct-only");
+  assert.ok(FBvhGi.meanLuma > FDirect.meanLuma, "Order 2 HighEnd BVH4 GI adds indirect bounce illumination above Direct-only");
+
+  // Verify Point-Sample (Mode 0) vs Monte Carlo Ref (Mode 5) penumbra difference under area softbox
+  const FPen0 = RenderWithEngineAndPenumbra("gtx_sdf_gi", "point_sdf");
+  const FPen5 = RenderWithEngineAndPenumbra("gtx_sdf_gi", "sdf_mc_ref");
+  let diffPen = 0;
+  for (let p = 0; p < FPen0.data.length; p += 4) {
+    diffPen += Math.abs(FPen0.data[p] - FPen5.data[p]) + Math.abs(FPen0.data[p + 1] - FPen5.data[p + 1]) + Math.abs(FPen0.data[p + 2] - FPen5.data[p + 2]);
+  }
+  assert.ok(diffPen > 500, `Point-Sample Mode 0 vs MC Ref Mode 5 produce distinct luminaire penumbra gradients (diffSum=${diffPen})`);
+}
+
 console.log(
-  "[WorldMirrorValidation] ALL 19 SUITES PASSED: ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections, No SDF Shadows/Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
+  "[WorldMirrorValidation] ALL 20 SUITES PASSED: 3-Order 6-Engine + 6-Mode Penumbra C++ Parity, ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
 );
