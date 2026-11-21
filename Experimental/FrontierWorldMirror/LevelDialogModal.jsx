@@ -7,9 +7,56 @@ import React, { useEffect, useRef, useState } from "react";
 import { Glyph } from "./Inspectors.jsx";
 import { LEVEL_TEMPLATES } from "./LevelSystem.js";
 
-const LEVEL_GROUPS = ["All", "Architectural", "Automotive", "Look-Dev", "Blank"];
+const LEVEL_GROUPS = ["All", "Lobby", "Architectural", "Automotive", "Look-Dev", "Blank"];
 
 function StagePreviewArtwork({ TemplateId }) {
+  if (TemplateId === "lobby") {
+    return (
+      <svg viewBox="0 0 240 124" className="level-stage-svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="lg-lobby-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8fc3e8" />
+            <stop offset="62%" stopColor="#d6e6ef" />
+            <stop offset="100%" stopColor="#e8eef1" />
+          </linearGradient>
+          <linearGradient id="lg-lobby-floor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4a4f56" />
+            <stop offset="100%" stopColor="#2a2e33" />
+          </linearGradient>
+          <radialGradient id="lg-lobby-glow" cx="50%" cy="8%" r="66%">
+            <stop offset="0%" stopColor="rgba(255,246,224,0.55)" />
+            <stop offset="100%" stopColor="rgba(255,246,224,0)" />
+          </radialGradient>
+        </defs>
+        <rect width="240" height="124" fill="url(#lg-lobby-sky)" />
+        <polygon points="0,0 46,26 46,92 0,124" fill="#7a2f2c" opacity="0.78" />
+        <polygon points="240,0 194,26 194,92 240,124" fill="#1f5c3f" opacity="0.78" />
+        <rect x="46" y="20" width="148" height="74" fill="#cfe0ea" opacity="0.62" />
+        <polygon points="46,94 194,94 240,124 0,124" fill="url(#lg-lobby-floor)" />
+        <path d="M0 124 96 94M240 124 144 94M120 94V124" stroke="rgba(255,255,255,0.16)" strokeWidth="1" />
+        <rect width="240" height="124" fill="url(#lg-lobby-glow)" />
+        <rect x="92" y="14" width="56" height="6" rx="2" fill="#fff6e0" opacity="0.9" />
+        {/* ControlVehicle profile */}
+        <g transform="translate(96,88)">
+          <path d="M-26 0c0-7 5-12 12-13l12-1 9 6c5 1 8 4 8 8z" fill="#e6ecf5" stroke="#aab6c6" strokeWidth="1" />
+          <circle cx="-14" cy="1" r="6" fill="#22262c" />
+          <circle cx="10" cy="1" r="6" fill="#22262c" />
+        </g>
+        {/* Lobby light aircraft (high wing, tractor prop) */}
+        <g transform="translate(152,74)">
+          <rect x="-30" y="-1" width="60" height="3" rx="1.4" fill="#f1f4f7" />
+          <path d="M-22 1h44l-5 6h-34z" fill="#eef2f6" stroke="#c2ccd6" strokeWidth="0.8" />
+          <rect x="-16" y="-3.2" width="16" height="2.4" rx="1" fill="#7fc3e0" opacity="0.9" />
+          <path d="M20 1l7 0 -3 -7 -4 0z" fill="#f1f4f7" />
+          <path d="M-19 7v6M-6 7v6M14 7v6" stroke="#9aa7b4" strokeWidth="1.2" />
+          <circle cx="-20" cy="13" r="2.2" fill="#23272d" />
+          <circle cx="-4" cy="13" r="2.2" fill="#23272d" />
+          <circle cx="16" cy="13" r="2.2" fill="#23272d" />
+          <path d="M-24 2v-9" stroke="#8d9aa8" strokeWidth="1.2" />
+        </g>
+      </svg>
+    );
+  }
   if (TemplateId === "gallery") {
     return (
       <svg viewBox="0 0 240 124" className="level-stage-svg" aria-hidden="true">
@@ -125,12 +172,12 @@ function StagePreviewArtwork({ TemplateId }) {
 export default function LevelDialogModal({
   Open,
   LevelCount = 1,
-  ActiveLevelName = "Cornell-Studio Gallery",
+  ActiveLevelName = "Lobby",
   OnCancel,
   OnCreate,
 }) {
   const [LevelName, SetLevelName] = useState("");
-  const [TemplateId, SetTemplateId] = useState("gallery");
+  const [TemplateId, SetTemplateId] = useState("lobby");
   const [Group, SetGroup] = useState("All");
   const [Query, SetQuery] = useState("");
   const [Notes, SetNotes] = useState("");
@@ -140,7 +187,7 @@ export default function LevelDialogModal({
   useEffect(() => {
     if (!Open) return;
     SetLevelName(`Stage ${String(LevelCount + 1).padStart(2, "0")}`);
-    SetTemplateId("gallery");
+    SetTemplateId("lobby");
     SetGroup("All");
     SetQuery("");
     SetNotes("");
@@ -222,7 +269,7 @@ export default function LevelDialogModal({
         <label className="construct-search">
           <Glyph Name="search" Size={16} />
           <input
-            placeholder="Search stage templates (Cornell, Cone Slalom, Look-Dev, Empty)…"
+            placeholder="Search stage templates (Lobby, Cornell, Cone Slalom, Look-Dev, Empty)…"
             aria-label="Search level templates"
             value={Query}
             onChange={(Ev) => SetQuery(Ev.target.value)}

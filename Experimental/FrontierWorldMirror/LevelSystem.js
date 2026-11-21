@@ -384,8 +384,258 @@ function BuildEmptyProvingGroundLevel(Id = "level-proving-ground", Name = "Empty
   };
 }
 
+//==========================================================================================================================================
+//  DEFAULT LOBBY — "Lobby" (the level the editor opens on)
+//==========================================================================================================================================
+// Replaces the Automotive Cone Slalom scene as the boot level: a walled showroom lobby that seats the
+// ControlVehicle beside a lobby light aircraft under the canonical C++ Sun / Atmosphere / Clouds rig.
+// GI is untouched (the canonical render settings ride along unchanged via EnsureRenderSettingsInLevel).
+export function BuildLobbyLevel(Id = "level-lobby", Name = "Lobby", Notes = "") {
+  const Rows = [
+    { Id: "scene", Name, Panel: "group", Icon: "folder-scene", Parent: null, Description: "Lobby collection" },
+    { Id: "architecture", Name: "Lobby Architecture", Panel: "group", Icon: "folder-environment", Parent: "scene", Description: "Polished lobby shell" },
+    {
+      Id: "lobby-floor",
+      Name: "Polished Lobby Floor",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "architecture",
+      Preview: true,
+      Description: "Mirror-polished terrazzo lobby floor · 12.00 × 12.00 m",
+    },
+    {
+      Id: "lobby-ceiling",
+      Name: "Lobby Ceiling Slab",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "architecture",
+      Preview: true,
+      Description: "Recessed lobby ceiling · 12.00 × 12.00 m",
+    },
+    {
+      Id: "lobby-wall-north",
+      Name: "Lobby North Glazing Wall",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "architecture",
+      Preview: true,
+      Description: "Back glazing wall closing the lobby chamber",
+    },
+    {
+      Id: "lobby-wall-west",
+      Name: "Lobby West Feature Wall",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "architecture",
+      Preview: true,
+      Description: "Crimson feature wall",
+    },
+    {
+      Id: "lobby-wall-east",
+      Name: "Lobby East Feature Wall",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "architecture",
+      Preview: true,
+      Description: "Emerald feature wall",
+    },
+    {
+      Id: "lobby-reception",
+      Name: "Reception Desk",
+      PrimitiveShape: "box",
+      Panel: "geometry",
+      Icon: "editor-cube",
+      Parent: "architecture",
+      Preview: true,
+      Description: "Brushed lobby reception counter",
+    },
+    { Id: "exhibits", Name: "Exhibits", Panel: "group", Icon: "folder-scene", Parent: "scene", Description: "Lobby show pieces" },
+    {
+      Id: "control-vehicle",
+      Name: "ControlVehicle",
+      PrimitiveShape: "vehicle",
+      Panel: "geometry",
+      Icon: "vehicle",
+      Parent: "exhibits",
+      Preview: true,
+      Description: "ControlVehicle BVH Mesh · Body + 4 Wheels/Rims · Clearcoat",
+    },
+    {
+      Id: "lobby-aircraft",
+      Name: "Lobby Light Aircraft",
+      PrimitiveShape: "box",
+      PropId: "lobby_aircraft",
+      Panel: "geometry",
+      Icon: "editor-mesh",
+      Parent: "exhibits",
+      Preview: true,
+      Description: "Aircraft · single-engine high-wing light plane on tricycle gear",
+    },
+    { Id: "cameras", Name: "Cameras", Panel: "group", Icon: "camera", Parent: null, Description: "Editor cameras" },
+    { Id: "camera", Name: "Editor Camera", Panel: "camera", Icon: "camera", Parent: "cameras", Description: "Permanent editor navigation camera" },
+    { Id: "post", Name: "ACES Post-Process", Panel: "post", Icon: "environment-exposure", Parent: "cameras", Description: "Exposure & tonemapping" },
+    { Id: "world", Name: "World", Panel: "group", Icon: "folder-world", Parent: null, Description: "Solar & sky environment" },
+    { Id: "sun", Name: "Sun", Panel: "sun", Icon: "sun", Parent: "world", Preview: true, Description: "Directional · 5.4 W/m²" },
+    { Id: "lighting", Name: "Lighting", Panel: "group", Icon: "folder-generic", Parent: null, Description: "Lobby area lights" },
+    {
+      Id: "lobby-softbox",
+      Name: "Lobby Ceiling Softbox",
+      Panel: "light",
+      Icon: "editor-area-light",
+      Parent: "lighting",
+      Preview: true,
+      Description: "LTC Quad · 2.60 × 2.00 m",
+    },
+  ];
+
+  const Values = {
+    scene: { Notes: Notes || "Default Frontier lobby with the ControlVehicle and a light aircraft." },
+    "lobby-floor": {
+      Position: [0, 0.5, -0.72],
+      Rotation: [0, 0, 0],
+      Scale: [12.0, 12.0, 0.16],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.30, 0.31, 0.33], Roughness: 0.14, DiffuseRoughness: 0.24 }),
+    },
+    "lobby-ceiling": {
+      Position: [0, 0.5, 3.92],
+      Rotation: [0, 0, 0],
+      Scale: [12.0, 12.0, 0.16],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.62, 0.63, 0.65], Roughness: 0.72 }),
+    },
+    "lobby-wall-north": {
+      Position: [0, 6.42, 1.60],
+      Rotation: [0, 0, 0],
+      Scale: [12.0, 0.16, 4.64],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.66, 0.68, 0.71], Roughness: 0.42 }),
+    },
+    "lobby-wall-west": {
+      Position: [-5.92, 0.5, 1.60],
+      Rotation: [0, 0, 0],
+      Scale: [0.16, 11.68, 4.64],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.72, 0.13, 0.12], Roughness: 0.5 }),
+    },
+    "lobby-wall-east": {
+      Position: [5.92, 0.5, 1.60],
+      Rotation: [0, 0, 0],
+      Scale: [0.16, 11.68, 4.64],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.12, 0.52, 0.26], Roughness: 0.5 }),
+    },
+    "lobby-reception": {
+      Position: [3.30, 3.05, -0.18],
+      Rotation: [0, 0, -18],
+      Scale: [3.20, 0.90, 0.90],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({ Type: "Standard", BaseLinear: [0.24, 0.20, 0.16], Roughness: 0.38 }),
+    },
+    "control-vehicle": {
+      Position: [0.0, 1.05, -0.64],
+      Rotation: [0, 0, -24],
+      Scale: [0.62, 0.62, 0.62],
+      "Cast shadows": true,
+      GI: true,
+      ...BuildMaterialRecord({
+        Type: "Clear coat",
+        BaseLinear: [0.88, 0.91, 0.97],
+        Metallic: 0.22,
+        Roughness: 0.14,
+        Coat: 1.0,
+        CoatRoughness: 0.03,
+      }),
+    },
+    "lobby-aircraft": {
+      // Gear is authored flush on local Z = -HalfHeightZ, so the world seat is floor + HalfHeightZ x Scale.
+      Position: [-0.55, -0.30, -0.64 + 0.62 * 1.05],
+      Rotation: [0, 0, 62],
+      Scale: [1.05, 1.05, 1.05],
+      "Cast shadows": true,
+      GI: true,
+    },
+    camera: {
+      Position: [0.0, -5.6, 1.55],
+      Target: [0.0, 0.55, 0.42],
+      "Focal Length": CanonicalEditorCamera.FocalLengthMm,
+      "Sensor Width": CanonicalEditorCamera.SensorWidthMm,
+      Aperture: CanonicalEditorCamera.ApertureFStop,
+      "Subject Distance": CanonicalEditorCamera.SubjectDistanceM,
+      Notes: "Lobby establishing camera · low three-quarter view onto the ControlVehicle and the light aircraft.",
+    },
+    post: { Exposure: 0.1 },
+    sun: {
+      Direction: [0.42, -0.55, 0.72],
+      SolarIrradiance: [5.4, 5.1, 4.65],
+      SkyRadiance: [0.16, 0.23, 0.36],
+      Intensity: 5.4,
+      "Angular Diameter": 2.06,
+      Temperature: 5650,
+      "Colour source": 0,
+      "Sun Tint": "#ffffff",
+      "Local Hours": 13.4,
+      "Day of Month": 4,
+      Month: 10,
+      Latitude: -26.19,
+      Longitude: 28.32,
+      Animate: false,
+      Speed: 1,
+      Notes: "Canonical C++ solar emitter shared with the Gallery scene.",
+    },
+    "lobby-softbox": {
+      Position: [0.65, 1.20, 3.05],
+      Rotation: [0, 0, 0],
+      Scale: [2.6, 2.0, 1.0],
+      Intensity: 6.4,
+      EmittedRadiance: [6.4, 6.1, 5.7],
+      "Cast shadows": true,
+      GI: true,
+      ReferenceInspector: {
+        Type: "LuminousSurface",
+        Properties: {
+          lumens: 2600,
+          dimmer: 1,
+          color: "#fff3e2",
+          temperature: 5400,
+          useTemp: false,
+          width: 2.6,
+          height: 2.0,
+          twoSided: false,
+          spread: 168,
+          pos: [0.65, 1.20, 3.05],
+          rot: [0, 0, 0],
+        },
+      },
+    },
+  };
+
+  return {
+    Id,
+    Name,
+    Notes: Notes || "Default Frontier lobby: walled showroom with the ControlVehicle and a light aircraft.",
+    Rows,
+    Values,
+    Hidden: {},
+    Collapsed: {},
+    Selected: "control-vehicle",
+  };
+}
+
 export function BuildDefaultLevels() {
   return [
+    EnsureRenderSettingsInLevel(BuildLobbyLevel()),
     EnsureRenderSettingsInLevel({
       Id: "level-showcase-gallery",
       Name: "Cornell-Studio Gallery",
@@ -614,6 +864,14 @@ function BuildAutomotiveConeSlalomLevel(
 
 export const LEVEL_TEMPLATES = Object.freeze([
   {
+    Id: "lobby",
+    Category: "Lobby",
+    Badge: "DEFAULT SCENE",
+    Spec: "17 entities · ControlVehicle + Light Aircraft",
+    Title: "Lobby",
+    Subtitle: "Walled showroom lobby seating the ControlVehicle beside a light aircraft under the C++ Sun & Sky",
+  },
+  {
     Id: "gallery",
     Category: "Architectural",
     Badge: "GI SHOWCASE",
@@ -721,6 +979,10 @@ export function CreateNewLevelRecord({ Name, TemplateId, Notes = "", CurrentLeve
     Copy.Notes = Notes || `Duplicated from ${CurrentLevel.Name}`;
     if (Copy.Rows?.[0]?.Id === "scene") Copy.Rows[0].Name = CleanName;
     return EnsureRenderSettingsInLevel(Copy);
+  }
+
+  if (TemplateId === "lobby") {
+    return EnsureRenderSettingsInLevel(BuildLobbyLevel(NewId, CleanName, Notes));
   }
 
   if (TemplateId === "gallery") {

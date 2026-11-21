@@ -544,6 +544,13 @@ function OutlinerMetadata(Row, Record = {}, Rows = []) {
 }
 
 const Saved = Restore();
+// The active level drives the boot scene: on a fresh profile that is the built-in "Lobby"
+// (ControlVehicle + light aircraft under the C++ Sun / Atmosphere / Clouds rig). A legacy
+// single-scene project in the project storage still wins so existing sessions are untouched.
+const BootLevelsState = LoadSavedLevelsState();
+const BootLevel =
+  BootLevelsState.Levels.find((Lvl) => Lvl.Id === BootLevelsState.ActiveLevelId) ||
+  BootLevelsState.Levels[0];
 const SceneRows = Saved.Rows ? ConsolidateAtmosphere(Saved.Rows) : undefined;
 const SkyAlias = !SceneRows?.some((Row) => Row.Id === "sky");
 Saved.Values = NormalizeHeightFogValues(
@@ -581,15 +588,16 @@ function App() {
     LiveFpsRef.current = NextFps;
   }, []);
   const [Rows, StoreRows] = useState(() =>
-      EnsureEditorCamera(Saved.Rows || ShowcaseInitialRows),
+      EnsureEditorCamera(Saved.Rows || BootLevel?.Rows || ShowcaseInitialRows),
     ),
     [Selected, Select] = useState(
       new URLSearchParams(location.search).get("inspect") ||
         Saved.Selected ||
-        "chrome-sphere",
+        BootLevel?.Selected ||
+        "control-vehicle",
     ),
     [Values, AssignValues] = useState(() => {
-      const Restored = { ...ShowcaseInitialValues };
+      const Restored = { ...ShowcaseInitialValues, ...(BootLevel?.Values || {}) };
       for (const [Key, Val] of Object.entries(Saved.Values || {})) {
         Restored[Key] = { ...(ShowcaseInitialValues[Key] || {}), ...Val };
       }
@@ -607,8 +615,12 @@ function App() {
       }
       return Restored;
     }),
-    [Hidden, AssignHidden] = useState({ ...Saved.Hidden, camera: false }),
-    [Collapsed, Collapse] = useState(Saved.Collapsed || {}),
+    [Hidden, AssignHidden] = useState({
+      ...(BootLevel?.Hidden || {}),
+      ...Saved.Hidden,
+      camera: false,
+    }),
+    [Collapsed, Collapse] = useState(Saved.Collapsed || BootLevel?.Collapsed || {}),
     [Query, Search] = useState(""),
     [Filters, Filter] = useState([]),
     [Menu, ShowMenu] = useState(null),
@@ -626,7 +638,8 @@ function App() {
       () =>
         new URLSearchParams(location.search).get("project") ||
         Saved.Name ||
-        "Cornell-Studio Gallery",
+        BootLevel?.Name ||
+        "Lobby",
     ),
     [Rename, RenameRow] = useState(null),
     [Construct, OpenConstruct] = useState(false),
@@ -650,7 +663,7 @@ function App() {
     [ShowGizmo, SetShowGizmo] = useState(true),
     [ForceOverlaySettings, SetForceOverlaySettings] = useState(DEFAULT_FORCE_OVERLAY),
     [CreateLevelOpen, SetCreateLevelOpen] = useState(false),
-    [LevelsState, SetLevelsState] = useState(() => LoadSavedLevelsState());
+    [LevelsState, SetLevelsState] = useState(() => BootLevelsState);
   const PreviousFractureRows = useRef(Rows);
   useEffect(() => {
     const Receive = (Event) => {
@@ -1120,7 +1133,7 @@ function App() {
     Filter([]);
     Search("");
     RenameProject(First.Name);
-    Select(First.Selected || "chrome-sphere");
+    Select(First.Selected || "control-vehicle");
     ShowMenu(null);
     Toast("Cleared cached state and restarted fresh scene");
   };

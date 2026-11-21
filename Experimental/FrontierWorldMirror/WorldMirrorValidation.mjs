@@ -92,6 +92,7 @@ import { CreateWebgpuGtxRenderer, GTX_WGSL_SCENE_SHADER } from "./WebgpuGtxRende
 import {
   BuildDefaultLevels,
   CreateNewLevelRecord,
+  LEVEL_TEMPLATES,
 } from "./LevelSystem.js";
 import { CreateGtxBandKernel, CpuGtxRenderer } from "./CpuGtxFallbackRenderer.js";
 import {
@@ -267,7 +268,10 @@ assert.equal(SnappedMove.Position[0], 0.25, "Ctrl-snap quantizes TranslateX to 0
 
 // 6. Verify Multi-Level System & Create Level templates
 const DefaultLevels = BuildDefaultLevels();
-assert.equal(DefaultLevels.length, 3, "3 built-in Frontier levels shipped");
+assert.equal(DefaultLevels.length, 4, "4 built-in Frontier levels shipped (Lobby + Gallery + Look-Dev Studio + Empty Proving Ground)");
+assert.equal(DefaultLevels[0].Id, "level-lobby", "The Lobby is the boot level of the World Mirror");
+assert.equal(DefaultLevels[0].Name, "Lobby");
+assert.equal(DefaultLevels[1].Id, "level-showcase-gallery", "The Cornell-Studio Gallery remains the second shipped level");
 const CreatedLookDev = CreateNewLevelRecord({
   Name: "Custom Courtyard",
   TemplateId: "lookdev",
@@ -281,7 +285,7 @@ assert.ok(
 const Duplicated = CreateNewLevelRecord({
   Name: "Gallery Variant B",
   TemplateId: "duplicate",
-  CurrentLevel: DefaultLevels[0],
+  CurrentLevel: DefaultLevels[1],
 });
 assert.equal(
   Duplicated.Rows.length,
@@ -312,6 +316,49 @@ assert.ok(
     !ViewportSrc.includes("uMetaTex"),
   "Zero discrete GI ghost rays, zero divergent fwidth derivatives, and zero MRT overhead",
 );
+// Every Outliner / Construct icon name must resolve to shipped NativeAssets artwork or an ActionIcon case,
+// so the shipped volumetric-cloud + atmosphere artwork can never silently fall back to a generic glyph again.
+{
+  const HtmlSrc = fs.readFileSync(path.join(Folder, "index.html"), "utf8");
+  const AssetMarker = "<script>window.NativeAssets=";
+  const AssetStart = HtmlSrc.indexOf(AssetMarker) + AssetMarker.length;
+  const AssetEnd = HtmlSrc.indexOf(";</script><script>", AssetStart);
+  const NativeAssets = JSON.parse(HtmlSrc.slice(AssetStart, AssetEnd));
+  const ShippedIcons = new Set(Object.keys(NativeAssets.Icons));
+  const ActionSrc = fs.readFileSync(path.join(Folder, "ActionIcon.jsx"), "utf8");
+  const ActionCases = new Set([...ActionSrc.matchAll(/case\s+"([^"]+)":/g)].map((M) => M[1]));
+  const IconSources = [
+    "ShowcaseGalleryScene.js",
+    "LevelSystem.js",
+    "WorldPropLibrary.js",
+    "LightSpecification.js",
+    "WorldDragDrop.js",
+  ];
+  const Unresolved = [];
+  for (const SourceName of IconSources) {
+    const Source = fs.readFileSync(path.join(Folder, SourceName), "utf8");
+    for (const Match of Source.matchAll(/Icon:\s*"([^"]+)"/g)) {
+      const Name = Match[1];
+      if (Name.startsWith("force-model:")) continue;
+      if (!ShippedIcons.has(Name) && !ActionCases.has(Name)) Unresolved.push(`${SourceName}:${Name}`);
+    }
+  }
+  assert.deepEqual(Unresolved, [], `Every Icon name resolves to shipped artwork (unresolved: ${Unresolved.join(", ")})`);
+  assert.ok(
+    ShippedIcons.has("clouds") && ShippedIcons.has("sky-scattering"),
+    "The shipped volumetric-cloud and atmosphere artwork ships in the bundle",
+  );
+  assert.equal(
+    ShowcaseInitialRows.find((R) => R.Panel === "clouds")?.Icon,
+    "clouds",
+    "The Volumetric Clouds row uses the shipped volumetric-cloud artwork",
+  );
+  assert.equal(
+    ShowcaseInitialRows.find((R) => R.Panel === "atmosphere")?.Icon,
+    "sky-scattering",
+    "The Atmosphere row uses the shipped atmosphere artwork",
+  );
+}
 assert.ok(
   ViewportSrc.includes("evalShadowMapPCSS") &&
     ViewportSrc.includes("evalShadowMapSMRT") &&
@@ -751,6 +798,18 @@ assert.ok(
 
   // Verify WGSL & Automotive Cone Slalom level template
   assert.ok(GTX_WGSL_SCENE_SHADER.includes("fn intersectFrustumZ") && GTX_WGSL_SCENE_SHADER.includes("shape == 5"), "WGSL shader includes analytical cone & cylinder-cone");
+  const LobbyTemplate = CreateNewLevelRecord({ Name: "Second Lobby", TemplateId: "lobby" });
+  assert.ok(
+    LobbyTemplate.Rows.some((R) => R.Id === "control-vehicle") &&
+      LobbyTemplate.Rows.some((R) => R.PropId === "lobby_aircraft") &&
+      LobbyTemplate.Rows.some((R) => R.Id === "render-settings"),
+    "Lobby template provisions the ControlVehicle, light aircraft & Render Settings",
+  );
+  assert.ok(
+    LEVEL_TEMPLATES.some((T) => T.Id === "lobby" && T.Category === "Lobby"),
+    "Create Level dialogue advertises the Lobby stage template",
+  );
+
   const SlalomLvl = CreateNewLevelRecord({ Name: "Test Chicane", TemplateId: "slalom" });
   assert.ok(
     SlalomLvl.Rows.some((R) => R.PrimitiveShape === "cone") &&
@@ -796,11 +855,12 @@ assert.ok(
 // 13. 24-Prop Studio Camera/Light/Track Library, Transparent Thumbnails, Per-Face Colours, 15 Debug Views & ProjectBrowser
 // ---------------------------------------------------------------------------------------------------------------------------------------
 {
-  assert.equal(WORLD_PROP_CATALOG.length, 28, "WORLD_PROP_CATALOG exposes 28 bespoke cinema cameras, studio lights, fans, ControlVehicle tyres, and barriers");
+  assert.equal(WORLD_PROP_CATALOG.length, 29, "WORLD_PROP_CATALOG exposes 29 bespoke aircraft, cinema cameras, studio lights, fans, ControlVehicle tyres, and barriers");
+  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Category === "Aircraft").length, 1, "1 lobby light-aircraft prop registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "camera").length, 6, "6 bespoke 3D cinema camera models registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "light").length, 6, "6 3D studio light models registered");
   assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Category === "Fans & Wind").length, 3, "3 motorsport & studio fan models registered");
-  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "geometry").length, 16, "16 fans, ControlVehicle tyre stack, barriers, sawtooth kerb & paddock props registered");
+  assert.equal(WORLD_PROP_CATALOG.filter((P) => P.Panel === "geometry").length, 17, "17 aircraft, fans, ControlVehicle tyre stack, barriers, sawtooth kerb & paddock props registered");
 
   // Verify every single prop renders a transparent, unclipped, tightly-framed 3D thumbnail
   for (const Prop of WORLD_PROP_CATALOG) {
@@ -1686,6 +1746,110 @@ assert.ok(
   assert.ok(FSun[3] > FMoon[3] * 2.0, `Daytime sunlight strongly illuminates the scene above moonlight (sun=${FSun[3].toFixed(4)} vs moon=${FMoon[3].toFixed(4)})`);
 }
 
+// 20. Lobby Boot Scene (default level) — ControlVehicle + Light Aircraft under the C++ Sun / Atmosphere / Clouds rig
+{
+  const Lobby = DefaultLevels[0];
+  assert.equal(Lobby.Id, "level-lobby", "DefaultLevels[0] is the Lobby");
+  assert.ok(
+    Lobby.Rows.some((R) => R.Id === "control-vehicle") &&
+      Lobby.Rows.some((R) => R.Id === "lobby-aircraft"),
+    "Lobby seats the ControlVehicle and the light aircraft",
+  );
+  assert.ok(
+    ["sun", "atmosphere", "clouds"].every((Id) => Lobby.Rows.some((R) => R.Id === Id)),
+    "Lobby carries the same C++ Sun / Atmosphere / Clouds environment rows as the Gallery",
+  );
+  assert.equal(
+    Lobby.Values.sun.Direction.join(","),
+    ShowcaseInitialValues.sun.Direction.join(","),
+    "Lobby Sun direction is byte-identical to the C++ ShowcaseGalleryScene solar vector",
+  );
+  assert.equal(
+    Lobby.Values.atmosphere.Rayleigh,
+    ShowcaseInitialValues.atmosphere.Rayleigh,
+    "Lobby atmosphere (Rayleigh) is byte-identical to the C++ physical sky",
+  );
+  assert.equal(
+    Lobby.Values.sky === undefined && Lobby.Values.atmosphere !== undefined,
+    true,
+    "Lobby atmosphere stays the single consolidated physical sky",
+  );
+
+  const LobbyRows = [...Lobby.Rows];
+  const LobbyValues = Lobby.Values;
+  const LobbyScene = CompileLiveGtxScene(LobbyRows, LobbyValues, {}, "PERSP");
+  assert.equal(LobbyScene.Vehicles.length, 1, "Lobby compiles exactly one ControlVehicle BVH mesh");
+
+  const Aircraft = LobbyScene.Primitives.filter((P) => P.OwnerId === "lobby-aircraft");
+  assert.ok(Aircraft.length >= 30, `Lobby light aircraft expands into ${Aircraft.length} analytical parts`);
+  assert.ok(
+    Aircraft.every((P) => [0, 1, 2, 3, 4].includes(P.Shape)),
+    "Every aircraft part uses a renderer-supported analytical shape (box/sphere/cylinder/cone/torus)",
+  );
+  const Wingspan = Math.max(...Aircraft.map((P) => Math.abs(P.Center[0]))) * 2;
+  assert.ok(Wingspan > 1.6, `Aircraft wingspan spans ${Wingspan.toFixed(2)} m across the lobby`);
+  // Gear must be seated flush on the lobby slab (floor top = Position.z + Scale.z / 2), never sunken or floating.
+  const FloorTop = LobbyValues["lobby-floor"].Position[2] + LobbyValues["lobby-floor"].Scale[2] * 0.5;
+  const AircraftFloor = Math.min(...Aircraft.map((P) => P.Center[2] - P.HalfExtents[2]));
+  assert.ok(
+    Math.abs(AircraftFloor - FloorTop) < 0.02,
+    `Aircraft tricycle gear sits flush on the lobby slab (gear=${AircraftFloor.toFixed(3)} m, slab=${FloorTop.toFixed(3)} m)`,
+  );
+  assert.ok(
+    Math.max(...Aircraft.map((P) => P.Center[2] + P.HalfExtents[2])) < LobbyValues["lobby-ceiling"].Position[2],
+    "Aircraft fin clears the lobby ceiling slab",
+  );
+
+  // Every aircraft part must be a valid ray-intersectable primitive: a vertical ray onto the wing must hit.
+  const WingProbe = RaycastWorldPlacementAtUv(LobbyScene, 0.5, 0.5, 16 / 9, 0.01);
+  assert.ok(Number.isFinite(WingProbe.Position[2]), "Lobby surface raycast resolves a finite support plane");
+
+  // CPU GTX renders the lobby without throwing and lights the aircraft pixels.
+  const LobbyAtlas = new MaterialAtlasSynchronizer();
+  LobbyAtlas.UpdatePrimitives(LobbyScene.Primitives);
+  const LobbyCpu = new CpuGtxRenderer();
+  assert.equal(
+    LobbyCpu.RenderFullFrame({
+      CompiledScene: LobbyScene,
+      AtlasPixels: LobbyAtlas.Pixels,
+      Width: 160,
+      Height: 90,
+      ViewModeCode: 0,
+      ShowGrid: false,
+    }),
+    true,
+    "CPU GTX renders the Lobby boot scene end-to-end",
+  );
+  const AircraftCodes = new Set(Aircraft.map((P) => P.PickCode));
+  let AircraftPixels = 0;
+  for (let I = 0; I < LobbyCpu.EntityBuf.length; ++I) {
+    if (AircraftCodes.has(LobbyCpu.EntityBuf[I])) AircraftPixels += 1;
+  }
+  assert.ok(AircraftPixels > 120, `CpuGtxRenderer paints ${AircraftPixels} light-aircraft pixels in the lobby`);
+
+  // Aircraft prop is registered in the shared prop library + Construct catalogue.
+  const AircraftProp = WORLD_PROP_CATALOG.find((P) => P.PropId === "lobby_aircraft");
+  assert.ok(AircraftProp && AircraftProp.Category === "Aircraft", "Lobby aircraft registered in WORLD_PROP_CATALOG under Aircraft");
+  const AircraftSpec = WORLD_PLACEABLE_MODELS.find((M) => M.PropId === "lobby_aircraft");
+  assert.ok(AircraftSpec, "Lobby aircraft is draggable from the Construct Models catalogue");
+  const Payload = BuildActorPayloadFromModelSpec(AircraftSpec);
+  assert.ok(Payload.HalfHeightZ >= 0.5, "Construct payload seats the aircraft on its landing gear");
+  const PlacedRows = [
+    ...ShowcaseInitialRows,
+    { ...Payload.Template, Id: "placed-aircraft", Parent: "showcase" },
+  ];
+  const PlacedScene = CompileLiveGtxScene(
+    PlacedRows,
+    { ...ShowcaseInitialValues, "placed-aircraft": { ...Payload.Properties, Position: [0, 0, 0.3] } },
+    {},
+    "PERSP",
+  );
+  assert.ok(
+    PlacedScene.Primitives.filter((P) => P.OwnerId === "placed-aircraft").length >= 30,
+    "Drag-dropped aircraft expands into its full analytical part set",
+  );
+}
+
 console.log(
-  "[WorldMirrorValidation] ALL 19 SUITES PASSED: ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections, No SDF Shadows/Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
+  "[WorldMirrorValidation] ALL 20 SUITES PASSED: ShadowAlgorithmLab Parity (PCF/PCSS/SMRT/BVH, LTC Area Lights, Cone & 2-Bounce BVH GI, BVH Reflections, No SDF Shadows/Reflections), Sun+Moon+Starlight Illumination, Moon Atlas, Physical Sky/Clouds, RenderSettings, ControlVehicle BVH, and ProjectBrowser verified!",
 );

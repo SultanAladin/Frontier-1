@@ -395,10 +395,70 @@ function BuildControlVehicleTyre({ Pos = [0, 0, 0], ScaleFactor = 0.78, WithRimA
 }
 
 //==========================================================================================================================================
-// CATALOG OF BESPOKE 3D CAMERAS, STUDIO LIGHTS, FANS, CONTROLVEHICLE TYRES & PROVING-GROUND BARRIERS (28 ITEMS)
+// CATALOG OF BESPOKE 3D AIRCRAFT, CAMERAS, STUDIO LIGHTS, FANS, CONTROLVEHICLE TYRES & PROVING-GROUND BARRIERS (29 ITEMS)
 //   Local coordinates are centered so Z ∈ [-HalfHeightZ, +HalfHeightZ], placing bottom flush at Z_world - HalfHeightZ!
 //==========================================================================================================================================
 export const WORLD_PROP_CATALOG = [
+  // ===================================================== 0. AIRCRAFT (1) =====================================================
+  {
+    PropId: "lobby_aircraft",
+    Name: "Lobby Light Aircraft",
+    Category: "Aircraft",
+    Panel: "geometry",
+    Icon: "editor-mesh",
+    HalfHeightZ: 0.62,
+    NominalScale: [1, 1, 1],
+    Description: "Single-engine high-wing light aircraft · 3-blade tractor propeller, tricycle gear, chevron livery & lit nav LEDs",
+    // Authored nose-forward along -Y (Frontier +Y Forward, +Z Up) so the default Editor Camera sees the nose.
+    // Wheels sit flush on local Z = -HalfHeightZ. Wing panels are span-wise boxes along X; lift struts use a
+    // cylinder part laid horizontally, because the analytical cylinder axis is local Z ([0, 90, 0] → X).
+    BuildParts: () => [
+      // Monocoque fuselage: engine cowl -> glazed cockpit cabin -> tapering tail boom -> fin root
+      Part(0, [0, -0.620, 0.115], [0.088, 0.160, 0.090], [0, 0, 0], PAL.whiteCoat),
+      Part(0, [0, -0.300, 0.140], [0.108, 0.195, 0.130], [0, 0, 0], PAL.titaniumIvory),
+      Part(0, [0, 0.080, 0.120], [0.076, 0.200, 0.095], [0, 0, 0], PAL.whiteCoat),
+      Part(0, [0, 0.430, 0.125], [0.050, 0.170, 0.070], [0, 0, 0], PAL.whiteCoat),
+      Part(0, [0, 0.700, 0.155], [0.036, 0.130, 0.055], [3, 0, 0], PAL.whiteCoat),
+      // Engine cowl ring, cooling intakes, chromium spinner & 3-blade tractor propeller disc
+      Part(2, [0, -0.775, 0.115], [0.090, 0.090, 0.028], [90, 0, 0], PAL.machinedSilver),
+      Part(0, [-0.074, -0.745, 0.115], [0.014, 0.030, 0.032], [0, 0, 0], PAL.anodizedBlack),
+      Part(0, [0.074, -0.745, 0.115], [0.014, 0.030, 0.032], [0, 0, 0], PAL.anodizedBlack),
+      Part(3, [0, -0.808, 0.115], [0.044, 0.044, 0.050], [-90, 0, 0], PAL.chrome),
+      Part(0, [0, -0.822, 0.115], [0.018, 0.011, 0.192], [0, 0, 0], PAL.carbon),
+      Part(0, [0, -0.822, 0.115], [0.174, 0.011, 0.018], [0, 0, 0], PAL.carbon),
+      Part(0, [0, -0.822, 0.115], [0.122, 0.011, 0.122], [0, 45, 0], PAL.carbon),
+      // Glazed canopy + side windows + cabin dorsal fairing
+      Part(0, [0, -0.305, 0.278], [0.074, 0.175, 0.052], [0, 0, 0], PAL.sapphireOptic),
+      Part(0, [-0.100, -0.290, 0.195], [0.010, 0.155, 0.060], [0, 0, 0], PAL.sapphireOptic),
+      Part(0, [0.100, -0.290, 0.195], [0.010, 0.155, 0.060], [0, 0, 0], PAL.sapphireOptic),
+      Part(0, [0, -0.250, 0.262], [0.088, 0.200, 0.016], [0, 0, 0], PAL.titaniumIvory),
+      // High wing: carry-through spar + two tapered panels with chevron livery bands
+      Part(0, [0, -0.255, 0.292], [0.600, 0.155, 0.024], [0, 0, 0], PAL.titaniumIvory),
+      Part(0, [-0.660, -0.255, 0.292], [0.320, 0.128, 0.019], [0, 0, 0], PAL.fiaRed),
+      Part(0, [0.660, -0.255, 0.292], [0.320, 0.128, 0.019], [0, 0, 0], PAL.fiaRed),
+      // Wing lift struts (cylinder axis Z → [0, 90, 0] lays the part along X)
+      Part(2, [0.600, -0.255, 0.160], [0.012, 0.012, 0.132], [0, 90, 0], PAL.gunmetal),
+      Part(2, [-0.600, -0.255, 0.160], [0.012, 0.012, 0.132], [0, 90, 0], PAL.gunmetal),
+      // Empennage: horizontal stabiliser, swept fin & red rudder
+      Part(0, [0, 0.760, 0.170], [0.280, 0.085, 0.015], [0, 0, 0], PAL.whiteCoat),
+      Part(0, [0, 0.790, 0.315], [0.014, 0.098, 0.130], [-12, 0, 0], PAL.whiteCoat),
+      Part(0, [0, 0.885, 0.292], [0.010, 0.030, 0.086], [-12, 0, 0], PAL.fiaRed),
+      // Tricycle landing gear: nose leg + main legs, three tyres and painted wheel pants
+      Part(2, [0, -0.600, -0.345], [0.017, 0.017, 0.175], [0, 0, 0], PAL.machinedSilver),
+      Part(2, [0, -0.600, -0.516], [0.104, 0.104, 0.046], [90, 0, 0], PAL.rubberDark),
+      Part(0, [-0.150, -0.120, -0.470], [0.020, 0.020, 0.080], [0, 0, 14], PAL.machinedSilver),
+      Part(0, [0.150, -0.120, -0.470], [0.020, 0.020, 0.080], [0, 0, -14], PAL.machinedSilver),
+      Part(0, [-0.215, -0.120, -0.536], [0.038, 0.108, 0.082], [0, 0, 0], PAL.fiaRed),
+      Part(0, [0.215, -0.120, -0.536], [0.038, 0.108, 0.082], [0, 0, 0], PAL.fiaRed),
+      Part(2, [-0.215, -0.120, -0.516], [0.104, 0.104, 0.044], [90, 0, 0], PAL.rubberDark),
+      Part(2, [0.215, -0.120, -0.516], [0.104, 0.104, 0.044], [90, 0, 0], PAL.rubberDark),
+      // Anti-collision beacon, wing-tip nav LEDs & landing light
+      Part(0, [0, 0.885, 0.362], [0.014, 0.014, 0.020], [0, 0, 0], PAL.tallyRed),
+      Part(0, [-0.980, -0.255, 0.292], [0.020, 0.020, 0.014], [0, 0, 0], PAL.tallyRed),
+      Part(0, [0.980, -0.255, 0.292], [0.020, 0.020, 0.014], [0, 0, 0], PAL.tallyGreen),
+      Part(0, [0, -0.690, 0.048], [0.028, 0.014, 0.014], [0, 0, 0], PAL.coolGlow),
+    ],
+  },
   // ===================================================== 1. CAMERAS (6) =====================================================
   {
     PropId: "editor_camera",
