@@ -75,7 +75,7 @@ namespace
 
 [[nodiscard]] const char* QueryDebugChannelName(uint32_t Channel) noexcept
 {
-    constexpr std::array<const char*, 17> Names = {{
+    constexpr std::array<const char*, 19> Names = {{
         "Off",
         "Depth",
         "Albedo",
@@ -92,7 +92,9 @@ namespace
         "SDF Material",
         "SDF Normal",
         "SDF AO Raw",
-        "SDF Cascade"
+        "SDF Cascade",
+        "Nanite LOD Level",
+        "Nanite Clusters"
     }};
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
@@ -1479,7 +1481,7 @@ void ViewportPanel::RenderSettingsSheet(
     }
     else if (DebugDropdownOpen)
     {
-        constexpr std::array<const char*, 17> DebugOptions = {{
+        constexpr std::array<const char*, 19> DebugOptions = {{
             "Debug View: Off",
             "Debug View: Depth",
             "Debug View: Albedo",
@@ -1497,9 +1499,11 @@ void ViewportPanel::RenderSettingsSheet(
             "Debug View: SDF Normal",
             "Debug View: SDF AO Raw (Unfiltered)",
             "Debug View: SDF Cascade",
+            "Debug View: Nanite LOD Level",
+            "Debug View: Nanite Clusters",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugBtn, static_cast<uint32_t>(DebugOptions.size()));
-        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 17u;
+        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 19u;
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay,
@@ -1941,7 +1945,7 @@ void ViewportPanel::Render(
 
     if (HeaderDebugDropdownOpen)
     {
-        constexpr std::array<const char*, 17> HeaderDebugOptions = {{
+        constexpr std::array<const char*, 19> HeaderDebugOptions = {{
             "00 · Lit (Off)",
             "01 · Depth",
             "02 · Albedo",
@@ -1959,10 +1963,12 @@ void ViewportPanel::Render(
             "14 · SDF Normal",
             "15 · SDF AO Raw (Unfiltered)",
             "16 · SDF Cascade",
+            "17 · Nanite LOD Level",
+            "18 · Nanite Clusters",
         }};
         const Rectangle2D DropSheet = DropdownSelector::QuerySheetBounds(
             HeaderDebugButtonBounds, static_cast<uint32_t>(HeaderDebugOptions.size()));
-        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % 17u;
+        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % 19u;
         uint32_t       ChosenIdx = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 ActiveOverlay, HeaderDebugButtonBounds, HeaderDebugOptions.data(),

@@ -1225,6 +1225,8 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
                 OutTri.Normal2Slot[1] = Smooth.Normal2.Y;
                 OutTri.Normal2Slot[2] = Smooth.Normal2.Z;
                 OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+                OutTri.Corner0Pad[3]  = 0.0f; // full-res: LOD level 0
+                OutTri.Edge01Pad[3]   = static_cast<float>(Idx / 128u); // full-res pseudo-cluster (128-tri groups)
                 ShadedTris[Idx]       = OutTri;
             }
         }
@@ -1303,6 +1305,8 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
                 OutTri.Normal2Slot[1] = SmoothCorners[2u].Y;
                 OutTri.Normal2Slot[2] = SmoothCorners[2u].Z;
                 OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+                OutTri.Corner0Pad[3]  = 0.0f; // full-res: LOD level 0
+                OutTri.Edge01Pad[3]   = static_cast<float>(Idx / 128u); // full-res pseudo-cluster (128-tri groups)
                 ShadedTris[Idx]       = OutTri;
             }
         }
@@ -1512,11 +1516,16 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
     // Emit world-space triangles for the active cut only.
     std::vector<SpatialAcceleration::RayTrianglePrimitive>  LodPrims;
     std::vector<SpatialAcceleration::TriangleSmoothNormals> LodNormals;
+    std::vector<uint32_t> LodPrimLevel;   // per PrimitiveOrdinal: hierarchy level (debug channel 17)
+    std::vector<uint32_t> LodPrimCluster; // per PrimitiveOrdinal: global cluster ordinal (debug channel 18)
     LodPrims.reserve(std::max(1u, ActiveTriangles));
     LodNormals.reserve(std::max(1u, ActiveTriangles));
+    LodPrimLevel.reserve(std::max(1u, ActiveTriangles));
+    LodPrimCluster.reserve(std::max(1u, ActiveTriangles));
     uint32_t LevelTriangles[8] {};
     uint32_t LevelClusters[8] {};
     uint32_t PrimOrdinal = 0u;
+    uint32_t GlobalClusterOrdinal = 0u;
     for (const InstanceCut& Cut : Cuts)
     {
         const RigidClusterInstance& Inst = Scene.ClusterInstances[Cut.InstanceIndex];
@@ -1528,6 +1537,7 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
             const uint32_t Level = std::min(7u, static_cast<uint32_t>(Cluster.HierarchyLevel));
             LevelClusters[Level] += 1u;
             LevelTriangles[Level] += Cluster.TriangleCount;
+            const uint32_t ThisClusterOrdinal = GlobalClusterOrdinal++;
             for (uint32_t TriOff = 0u; TriOff < Cluster.TriangleCount; ++TriOff)
             {
                 const auto& Tri = Pyramid->Triangles[Cluster.TriangleStartOffset + TriOff];
@@ -1542,6 +1552,8 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
                 Prim.MaterialOrdinal  = Tri.MaterialOrdinal; // per-face material slot, preserved by the bake
                 Prim.OpaqueMask       = 1u;
                 Prim.PrimitiveOrdinal = PrimOrdinal++;
+                LodPrimLevel.push_back(Level);
+                LodPrimCluster.push_back(ThisClusterOrdinal);
                 LodPrims.push_back(Prim);
                 SpatialAcceleration::TriangleSmoothNormals Smooth {};
                 Smooth.Normal0 = GeometrySpace::UnpackOctahedralDirection32(Tri.PackedNormal0);
@@ -1600,6 +1612,10 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         OutTri.Normal2Slot[1] = N2.Y;
         OutTri.Normal2Slot[2] = N2.Z;
         OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+        // Nanite debug packing in spare pad lanes: level in Corner0Pad.w, cluster in Edge01Pad.w
+        const uint32_t Ord = Prim.PrimitiveOrdinal;
+        OutTri.Corner0Pad[3] = (Ord < LodPrimLevel.size()) ? static_cast<float>(LodPrimLevel[Ord]) : 0.0f;
+        OutTri.Edge01Pad[3]  = (Ord < LodPrimCluster.size()) ? static_cast<float>(LodPrimCluster[Ord]) : 0.0f;
         ShadedTris[Idx]       = OutTri;
     }
     const uint64_t TriBytes = ShadedTris.size() * sizeof(GpuShadedTriangle96);

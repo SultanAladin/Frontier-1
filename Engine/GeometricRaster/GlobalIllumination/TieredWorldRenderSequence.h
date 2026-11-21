@@ -68,7 +68,7 @@ struct WorldRenderConfiguration
     SpecularReflectionSource              ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
     RealTimeGiCandidate                   GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
     DirectLighting::SdfShadowPenumbraMode SdfPenumbraMode     = DirectLighting::SdfShadowPenumbraMode::AnalyticSdfConePenumbra;
-    uint32_t                              DebugChannel        = 0u;   // [0..16] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular, 12=SdfDistance, 13=SdfMaterial, 14=SdfNormal, 15=SdfAoRaw, 16=SdfCascade
+    uint32_t                              DebugChannel        = 0u;   // [0..16] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular, 12=SdfDistance, 13=SdfMaterial, 14=SdfNormal, 15=SdfAoRaw, 16=SdfCascade, 17=NaniteLodLevel, 18=NaniteClusters
     bool                                  ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
     bool                                  RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
     bool                                  XeGtaoEnabled       = false; // [-]    - XeGTAO screen-space AO for direct PBR (no GI contribution)

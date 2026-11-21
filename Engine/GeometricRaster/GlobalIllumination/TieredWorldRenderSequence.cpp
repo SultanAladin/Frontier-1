@@ -341,12 +341,59 @@ struct CpuDownsampledCloudField
     };
 }
 
+[[nodiscard]] uint32_t ResolveHitLodLevel(
+    const WorldSceneSpecification&       Scene,
+    const AnalyticResolvedSurfaceSample& Hit) noexcept
+{
+    if (Hit.InstanceOrdinal >= Scene.ClusterInstances.size())
+    {
+        return 0u;
+    }
+    const auto* Pyramid = Scene.ClusterInstances[Hit.InstanceOrdinal].PyramidAsset;
+    if (Pyramid == nullptr || Hit.ClusterOrdinal >= Pyramid->Clusters.size())
+    {
+        return 0u;
+    }
+    return static_cast<uint32_t>(Pyramid->Clusters[Hit.ClusterOrdinal].HierarchyLevel);
+}
+
 [[nodiscard]] Mathematics::LinearRGB EvaluateDebugChannelColor(
     uint32_t                              DebugChannel,
     Mathematics::Axis3D                   CameraOrigin,
     const AnalyticResolvedSurfaceSample&  Hit,
-    const MaterialSpace::SurfaceMaterial& Mat) noexcept
+    const MaterialSpace::SurfaceMaterial& Mat,
+    uint32_t                              HitLodLevel     = 0u,
+    uint32_t                              HitClusterKey   = 0u) noexcept
 {
+    if (DebugChannel == 17u)
+    {
+        // Nanite LOD Level: green L0 finest, yellow L1, orange L2, red L3, purple L4+
+        Mathematics::LinearRGB LevelColor { 0.10f, 0.85f, 0.35f };
+        if (HitLodLevel == 1u)      LevelColor = { 0.95f, 0.85f, 0.10f };
+        else if (HitLodLevel == 2u) LevelColor = { 0.98f, 0.45f, 0.08f };
+        else if (HitLodLevel == 3u) LevelColor = { 0.92f, 0.10f, 0.15f };
+        else if (HitLodLevel >= 4u) LevelColor = { 0.75f, 0.20f, 0.95f };
+        const float FormShade = 0.30f + 0.70f * std::clamp(Hit.TangentFrame.NormalZ.Z * 0.5f + 0.5f, 0.0f, 1.0f);
+        return LevelColor * FormShade;
+    }
+    if (DebugChannel == 18u)
+    {
+        // Nanite Cluster ID: one vivid colour per cluster
+        const uint32_t CId = HitClusterKey + 1u;
+        const auto Frac = [](float V) noexcept { return V - std::floor(V); };
+        Mathematics::LinearRGB ClusterColor {
+            Frac(static_cast<float>(CId) * 0.3819660113f),
+            Frac(static_cast<float>(CId) * 0.6180339887f + 0.27f),
+            Frac(static_cast<float>(CId) * 0.7548776662f + 0.53f),
+        };
+        const float MaxComp = std::max(ClusterColor.R, std::max(ClusterColor.G, ClusterColor.B));
+        if (MaxComp > 1.0e-5f)
+        {
+            ClusterColor = ClusterColor * (1.0f / MaxComp);
+        }
+        const float FormShade = 0.35f + 0.65f * std::clamp(Hit.TangentFrame.NormalZ.Z * 0.5f + 0.5f, 0.0f, 1.0f);
+        return ClusterColor * FormShade;
+    }
     if (DebugChannel == 1u)
     {
         const float D = std::pow(std::clamp(1.0f - Mathematics::EvaluateLength(Hit.WorldPosition - CameraOrigin) / 11.0f, 0.0f, 1.0f), 1.8f);
@@ -690,7 +737,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         ? CheapShadow.RawVisibility[Off]
                         : 1.0f;
                     OutHdr = (Config.DebugChannel != 0u)
-                        ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat)
+                        ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat, ResolveHitLodLevel(PreparedScene, Hit), Hit.InstanceOrdinal * 4096u + Hit.ClusterOrdinal)
                         : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat, SunVis);
                 }
                 else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && Config.DebugChannel == 0u)
@@ -941,7 +988,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 }
                 else
                 {
-                    Dbg = EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat);
+                    Dbg = EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat, ResolveHitLodLevel(PreparedScene, Hit), Hit.InstanceOrdinal * 4096u + Hit.ClusterOrdinal);
                 }
                 Result.CompositeLinearHdr[Off] = Dbg;
                 Result.DisplayRgba8[Off * 4u + 0u] = static_cast<uint8_t>(std::round(EncodeLinearToSrgb(Dbg.R) * 255.0f));

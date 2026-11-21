@@ -390,3 +390,18 @@ ignored), so decoded assets like the ControlVehicle bake real levels:
 25,068 → 13,994 → 10,270 tris with 10 material slots at every level.
 Proof: `NaniteViewportVehicleValidation` + `Exhibits/Images/NaniteViewport/` PNGs
 (near 19,846 tris traced, far 11,418 with L2 dominant, LOD-off restores 25,080).
+
+### 20.2 Colour debug visualizations (Debug View menu)
+
+Two new viewport debug channels (GPU + CPU renderers), fed by per-triangle data packed into
+the shaded-triangle pad lanes (level in `Corner0Pad.w`, cluster ordinal in `Edge01Pad.w`):
+
+| Channel | View | Colours |
+|---|---|---|
+| 17 | **Nanite LOD Level** | L0 green · L1 yellow · L2 orange · L3 red · L4+ purple |
+| 18 | **Nanite Clusters** | one vivid colour per cluster (hashed ordinal, form-shaded) |
+
+Proof sheet `Exhibits/Images/NaniteViewport/VehicleLodContactSheet.png` (rows Near/Far,
+columns Lit / LOD Level / Clusters): near is L0-green with L1 yellow at the wheels, far is
+L1/L2 yellow-orange; cluster patches grow with distance. Triangle density is visible as
+cluster-patch size + the footer triangle readout.

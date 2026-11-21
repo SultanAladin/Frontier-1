@@ -56,6 +56,45 @@ namespace
     return Total / std::max<uint64_t>(1u, static_cast<uint64_t>(Rgba.size() / 4u) * 3u);
 }
 
+struct HueCounts
+{
+    uint32_t GreenDominant  = 0u; // LOD L0 palette (green)
+    uint32_t YellowDominant = 0u; // LOD L1 palette (yellow)
+    uint32_t OrangeDominant = 0u; // LOD L2 palette (orange)
+    uint32_t DistinctColors = 0u; // quantized distinct colours (cluster view)
+};
+
+[[nodiscard]] HueCounts AnalyzeDebugImage(const std::vector<uint8_t>& Rgba) noexcept
+{
+    HueCounts Counts {};
+    bool Seen[32768] {};
+    for (std::size_t Pix = 0u; Pix + 3u < Rgba.size(); Pix += 4u)
+    {
+        const uint32_t R = Rgba[Pix];
+        const uint32_t G = Rgba[Pix + 1u];
+        const uint32_t B = Rgba[Pix + 2u];
+        if (G > R + 25u && G > B + 15u && G > 70u)
+        {
+            ++Counts.GreenDominant;
+        }
+        else if (R > 120u && G > 80u && B < 90u && R >= G)
+        {
+            ++Counts.YellowDominant;
+        }
+        else if (R > 120u && G > 30u && G < 170u && B < 80u && R > G + 30u)
+        {
+            ++Counts.OrangeDominant;
+        }
+        const std::size_t Key = static_cast<std::size_t>(((R >> 3u) << 10u) | ((G >> 3u) << 5u) | (B >> 3u));
+        if (!Seen[Key])
+        {
+            Seen[Key] = true;
+            ++Counts.DistinctColors;
+        }
+    }
+    return Counts;
+}
+
 } // namespace
 
 int main()
@@ -171,34 +210,43 @@ int main()
     }
     GpuSeq.SynchronizeSceneResources(Bundle.Scene, true);
 
-    const auto RenderFrom = [&](Mathematics::Axis3D Origin, bool LodEnabled)
+    constexpr uint32_t ProofW = 640u;
+    constexpr uint32_t ProofH = 400u;
+    const auto RenderFrom = [&](Mathematics::Axis3D Origin, bool LodEnabled, uint32_t DebugChannel)
     {
         PerspectiveCameraBasis Cam = Bundle.EditorCamera;
         Cam.CameraOrigin       = Origin;
         Cam.TargetPoint        = VehicleCenter + Mathematics::Axis3D{ 0.0f, 0.0f, 0.2f };
-        Cam.ViewportWidthPx    = 320u;
-        Cam.ViewportHeightPx   = 200u;
+        Cam.ViewportWidthPx    = ProofW;
+        Cam.ViewportHeightPx   = ProofH;
         WorldRenderConfiguration Config {};
         Config.Engine          = WorldRenderEngine::OpenPbrDirect;
         Config.NaniteLodEnabled = LodEnabled;
         Config.NanitePixelError = 1.25f;
+        Config.DebugChannel    = DebugChannel;
         std::vector<uint8_t> Rgba {};
         const bool Ok = GpuSeq.RenderWorldViewportWithEngine(Config, 0u, Cam, Bundle.Scene, Rgba);
         return std::pair<bool, std::vector<uint8_t>>{ Ok, std::move(Rgba) };
     };
 
     const Mathematics::Axis3D NearOrigin = VehicleCenter + Mathematics::Axis3D{ 4.5f, -6.5f, 1.6f };
-    const Mathematics::Axis3D FarOrigin  = VehicleCenter + Mathematics::Axis3D{ 26.0f, -38.0f, 14.0f };
+    const Mathematics::Axis3D FarOrigin  = VehicleCenter + Mathematics::Axis3D{ 16.0f, -24.0f, 9.0f };
 
-    auto [NearOk, NearRgba] = RenderFrom(NearOrigin, true);
+    // Lit + two colour debug visualizations: channel 17 = LOD level, channel 18 = cluster ID.
+    auto [NearOk, NearRgba] = RenderFrom(NearOrigin, true, 0u);
     const auto NearStats = GpuSeq.QueryNaniteLodStats();
-    auto [FarOk, FarRgba] = RenderFrom(FarOrigin, true);
+    auto [FarOk, FarRgba] = RenderFrom(FarOrigin, true, 0u);
     const auto FarStats = GpuSeq.QueryNaniteLodStats();
-    auto [FarOffOk, FarOffRgba] = RenderFrom(FarOrigin, false);
+    auto [FarOffOk, FarOffRgba] = RenderFrom(FarOrigin, false, 0u);
     const auto FarOffStats = GpuSeq.QueryNaniteLodStats();
+    auto [NearLevelOk, NearLevelRgba]   = RenderFrom(NearOrigin, true, 17u);
+    auto [FarLevelOk, FarLevelRgba]     = RenderFrom(FarOrigin, true, 17u);
+    auto [NearClusterOk, NearClusterRgba] = RenderFrom(NearOrigin, true, 18u);
+    auto [FarClusterOk, FarClusterRgba]   = RenderFrom(FarOrigin, true, 18u);
 
-    const bool RendersOk = NearOk && FarOk && FarOffOk &&
-        NearRgba.size() == 320u * 200u * 4u && FarRgba.size() == 320u * 200u * 4u && FarOffRgba.size() == 320u * 200u * 4u;
+    const bool RendersOk = NearOk && FarOk && FarOffOk && NearLevelOk && FarLevelOk && NearClusterOk && FarClusterOk &&
+        NearRgba.size() == ProofW * ProofH * 4u && FarRgba.size() == ProofW * ProofH * 4u && FarOffRgba.size() == ProofW * ProofH * 4u &&
+        NearLevelRgba.size() == ProofW * ProofH * 4u && FarClusterRgba.size() == ProofW * ProofH * 4u;
     if (!VerifyCheck(RendersOk, "GPU viewport rendered near/far/LOD-off frames"))
     {
         GpuSeq.TeardownSequence();
@@ -220,9 +268,40 @@ int main()
     Pass = VerifyCheck(!FarOffStats.Enabled && FarOffStats.ActiveTriangleCount == FarOffStats.FullTriangleCount, "LOD off restores full-res BVH") && Pass;
     Pass = VerifyCheck(MeanLuma(FarRgba) > 8u && MeanLuma(NearRgba) > 8u, "near and far frames are lit (vehicle visible)") && Pass;
 
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearLod.png", 320u, 200u, NearRgba.data()), "wrote near proof PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLod.png", 320u, 200u, FarRgba.data()), "wrote far proof PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLodOff.png", 320u, 200u, FarOffRgba.data()), "wrote LOD-off proof PNG") && Pass;
+    // Colour-visualization assertions: near is L0-green dominant, far shows L1/L2 colours,
+    // and the cluster view is a mosaic of many distinct cluster colours.
+    const HueCounts NearHue    = AnalyzeDebugImage(NearLevelRgba);
+    const HueCounts FarHue     = AnalyzeDebugImage(FarLevelRgba);
+    const HueCounts FarCluster = AnalyzeDebugImage(FarClusterRgba);
+    std::printf(
+        "[NaniteViewportVehicleValidation] LOD-level colours: near green %u yellow %u orange %u | far green %u yellow %u orange %u | far cluster distinct colours %u\n",
+        NearHue.GreenDominant, NearHue.YellowDominant, NearHue.OrangeDominant,
+        FarHue.GreenDominant, FarHue.YellowDominant, FarHue.OrangeDominant, FarCluster.DistinctColors);
+    std::printf("[NaniteViewportVehicleValidation] Legend: L0 finest = GREEN, L1 = YELLOW, L2 = ORANGE, L3 = RED, L4+ = PURPLE; cluster view = one vivid colour per cluster.\n");
+    Pass = VerifyCheck(NearHue.GreenDominant > 2000u, "near LOD-level view is L0 green dominant") && Pass;
+    Pass = VerifyCheck(FarHue.OrangeDominant + FarHue.YellowDominant > 300u, "far LOD-level view shows coarser L1/L2 colours") && Pass;
+    Pass = VerifyCheck(FarHue.GreenDominant < NearHue.GreenDominant, "far view has less L0 green than near") && Pass;
+    Pass = VerifyCheck(FarCluster.DistinctColors > 60u, "far cluster view shows many distinct cluster colours") && Pass;
+
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearLod.png", ProofW, ProofH, NearRgba.data()), "wrote near proof PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLod.png", ProofW, ProofH, FarRgba.data()), "wrote far proof PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLodOff.png", ProofW, ProofH, FarOffRgba.data()), "wrote LOD-off proof PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearLodLevels.png", ProofW, ProofH, NearLevelRgba.data()), "wrote near LOD-level PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLodLevels.png", ProofW, ProofH, FarLevelRgba.data()), "wrote far LOD-level PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearClusters.png", ProofW, ProofH, NearClusterRgba.data()), "wrote near cluster PNG") && Pass;
+    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarClusters.png", ProofW, ProofH, FarClusterRgba.data()), "wrote far cluster PNG") && Pass;
+
+    // Contact sheet: rows = Near / Far, columns = Lit / LOD Level / Clusters.
+    {
+        Frontier::Exhibits::SoftwareRasterCanvas Sheet(ProofW * 3u, ProofH * 2u, { 24u, 24u, 24u, 255u });
+        Sheet.BlitRgbaRegion(0u, 0u, ProofW, ProofH, NearRgba.data());
+        Sheet.BlitRgbaRegion(ProofW, 0u, ProofW, ProofH, NearLevelRgba.data());
+        Sheet.BlitRgbaRegion(ProofW * 2u, 0u, ProofW, ProofH, NearClusterRgba.data());
+        Sheet.BlitRgbaRegion(0u, ProofH, ProofW, ProofH, FarRgba.data());
+        Sheet.BlitRgbaRegion(ProofW, ProofH, ProofW, ProofH, FarLevelRgba.data());
+        Sheet.BlitRgbaRegion(ProofW * 2u, ProofH, ProofW, ProofH, FarClusterRgba.data());
+        Pass = VerifyCheck(Sheet.WritePngFile(OutDir / "VehicleLodContactSheet.png"), "wrote LOD contact sheet") && Pass;
+    }
 
     GpuSeq.TeardownSequence();
     VkDevice.TeardownInterchange();

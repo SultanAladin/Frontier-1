@@ -142,6 +142,8 @@ struct RayHitReading
     float3 ShadingNormal;
     float3 GeomNormal;
     uint   MaterialSlot;
+    uint   LodLevel;       // Nanite debug: cluster hierarchy level of the hit triangle (packed in Corner0Pad.w)
+    uint   ClusterOrdinal; // Nanite debug: global cluster ordinal of the hit triangle (packed in Edge01Pad.w)
 };
 
 uint PcgNext(inout uint SeedVal)
@@ -619,6 +621,8 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
     Res.ShadingNormal = float3(0.0, 0.0, 1.0);
     Res.GeomNormal    = float3(0.0, 0.0, 1.0);
     Res.MaterialSlot  = 0u;
+    Res.LodLevel      = 0u;
+    Res.ClusterOrdinal = 0u;
 
     uint EntryCount = uint(WorldUniforms.SkyRadianceBvhCount.w + 0.5);
     if (EntryCount == 0u) return Res;
@@ -685,6 +689,8 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
                         Res.GeomNormal    = RawGeom;
                         Res.ShadingNormal = SmoothN;
                         Res.MaterialSlot  = uint(N2Slot.w + 0.5);
+                        Res.LodLevel      = uint(SceneTriangles[TriIdx].Corner0Pad.w + 0.5);
+                        Res.ClusterOrdinal = uint(SceneTriangles[TriIdx].Edge01Pad.w + 0.5);
                     }
                 }
             }
@@ -2673,6 +2679,29 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                 float3 CascadeTint = (CascadeIdx == 0u) ? float3(0.20, 0.90, 0.30)
                     : ((CascadeIdx == 1u) ? float3(0.95, 0.60, 0.15) : float3(0.90, 0.20, 0.20));
                 DbgHdr = CascadeTint * (0.30 + 0.70 * Mat.DiffuseAlbedoRoughness.xyz);
+            }
+            else if (DebugMode == 17u)
+            {
+                // Nanite LOD Level: green L0 finest, yellow L1, orange L2, red L3, purple L4+
+                float3 LevelColor = float3(0.10, 0.85, 0.35);
+                if (PrimaryHit.LodLevel == 1u)      LevelColor = float3(0.95, 0.85, 0.10);
+                else if (PrimaryHit.LodLevel == 2u) LevelColor = float3(0.98, 0.45, 0.08);
+                else if (PrimaryHit.LodLevel == 3u) LevelColor = float3(0.92, 0.10, 0.15);
+                else if (PrimaryHit.LodLevel >= 4u) LevelColor = float3(0.75, 0.20, 0.95);
+                float FormShade = 0.30 + 0.70 * saturate(dot(PrimaryHit.GeomNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
+                DbgHdr = LevelColor * FormShade;
+            }
+            else if (DebugMode == 18u)
+            {
+                // Nanite Cluster ID: one vivid colour per cluster so cluster granularity is visible
+                uint CId = PrimaryHit.ClusterOrdinal + 1u;
+                float H1 = frac(float(CId) * 0.3819660113);
+                float H2 = frac(float(CId) * 0.6180339887 + 0.27);
+                float H3 = frac(float(CId) * 0.7548776662 + 0.53);
+                float3 ClusterColor = float3(H1, H2, H3);
+                ClusterColor /= max(ClusterColor.r, max(ClusterColor.g, ClusterColor.b));
+                float FormShade = 0.35 + 0.65 * saturate(dot(PrimaryHit.GeomNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
+                DbgHdr = ClusterColor * FormShade;
             }
         }
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
