@@ -605,8 +605,27 @@ int main()
             return 1;
         }
 
+        // A completed bevel keeps the result selected and places the standard gizmo at the edited feature. Plain V is
+        // deliberately unassigned (Point and variable bevel are chosen from UI controls instead).
+        State.Document.Selection = {};
+        State.Document.Selection.Edges = { State.Scene.Edges.front().Name };
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_B, false); });
+        State.Bevel.Size = 0.02;
+        State.Bevel.PinnedCondition = true;
+        std::snprintf(State.Bevel.SizeText.data(), State.Bevel.SizeText.size(), "0.02");
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_Enter, false); });
+        const bool BevelGizmoPlaced = !State.Bevel.ActiveCondition && State.Gizmo.OperationOriginCondition
+                                   && State.Document.Selection.Bodies.size() == 1;
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_V, true); });
+        StepHostedFrame([&]() { Io.AddKeyEvent(ImGuiKey_V, false); });
+        const bool VUnassigned = !State.Trim.ActiveCondition && !State.Bevel.ActiveCondition;
+
         // Verify Snap Filter & ContextAwareSnap defaults and Shift+A Line drawing mode
-        if (!VerifyCheck(State.Picker.Enabled && State.Picker.ContextAwareSnap && State.Picker.Filter.CurveEnabled && State.Picker.Filter.EndpointEnabled,
+        if (!VerifyCheck(BevelGizmoPlaced, "Completed bevel places the gizmo at the edited feature") ||
+            !VerifyCheck(VUnassigned, "Plain V has no assigned tool hotkey") ||
+            !VerifyCheck(State.Picker.Enabled && State.Picker.ContextAwareSnap && State.Picker.Filter.CurveEnabled && State.Picker.Filter.EndpointEnabled,
                          "Snap Filter & ContextAwareSnap enabled by default"))
         {
             Host.Finalize();

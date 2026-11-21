@@ -113,7 +113,7 @@ struct SketcherRepeat
 
 // 📝 B / Shift+B session: a staged copy of the document carries the preview; the authored document is untouched
 //    until Apply (one undo entry). Positive pointer-adjusted size = fillet radius, negative = chamfer setback.
-//    V (Plasticity gizmo:fillet-solid:add) makes the size variable: Size at each edge's anchor corner, EndSize at its
+//    The Variable size card option makes Size apply at each edge's anchor corner and EndSize at its
 //    other end; F flips which corner is the anchor. The pointer adjusts Size; EndSize is typed.
 struct SketcherBevelSession
 {
@@ -134,7 +134,7 @@ struct SketcherBevelSession
     std::string                       Refusal         = {};                                  // [-]   - Why Apply is disabled
     double                            StagedSize      = -1.0;                                // [len] - Size the preview was built at
     GeometrySpace::Parametric::BlendProfile            StagedShape     = GeometrySpace::Parametric::BlendProfile::Fillet;      // [-]   - Shape the preview was built at
-    bool                              VariableEnabled = false;                               // [-]   - V: size varies along each edge
+    bool                              VariableEnabled = false;                               // [-]   - Size varies along each edge
     double                            EndSize         = 0.0;                                 // [len] - Size at the far corners (0 = not chosen yet)
     std::array<char, 32>              EndSizeText     = {};                                  // [-]   - Field text
     bool                              ReversedCondition = false;                             // [-]   - F: anchor at each edge's end vertex
@@ -217,7 +217,7 @@ struct SketcherDrawingSession
     GeometrySpace::Parametric::Vector2              Pointer          = {};                                    // [len] - Pointer on the plane (snapped)
     bool                           PointerCondition = false;                                 // [-]   - Pointer hits the plane
     int                            GridPlane        = 0;                                     // [-]   - 0 XY · 1 XZ · 2 YZ (fixed at open)
-    bool                           CentreCondition  = false;                                 // [-]   - Rectangle: Alt centre mode · circle: V two-point mode off
+    bool                           CentreCondition  = false;                                 // [-]   - Rectangle: Alt centre mode · circle mode comes from its chosen catalogue tool
     GeometrySpace::Parametric::SketchSplineForm     Form             = GeometrySpace::Parametric::SketchSplineForm::Hermite;   // [-]   - Curve: 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic spline
     bool                           SquareCondition  = false;                                 // [-]   - Rectangle: s keeps the sides equal
     bool                           SegmentCondition = false;                                 // [-]   - Line: one segment, finished on the second click
@@ -338,7 +338,7 @@ struct SketcherTrimSession
     GeometrySpace::Parametric::Vector3                       Point          = {};                   // [len] - The snapped point (world)
     std::string                                       PointSource    = {};                   // [-]   - "Intersection · Circle1 …"
     std::vector<std::vector<GeometrySpace::Parametric::Vector3>> PointCurves = {};                  // [len] - Curves that break there (world)
-    // 💡 Point tool (V): a click adds a point on the curve where it is, the shape unchanged; the point is then picked.
+    // 💡 Point tool: a click adds a point on the curve where it is, the shape unchanged; the point is then picked.
     bool                                              InsertCondition = false;               // [-]   - Point tool instead of Cut / Trim
     bool                                              SpaceCurveCondition = false;
     double                                            SpaceParameter = 0.0;
@@ -375,11 +375,11 @@ struct SketcherSketchTint
 
 // 📝 K (constrain, SolveSpace's verbs on Plasticity's free K key) on one sketch step: click points / curves to pick them
 //    (a click on a constraint glyph or dimension picks that constraint, a click on empty space clears), then D distance /
-//    length / radius and N angle wait for a typed value (Enter; nothing typed keeps the measured one), H V O Q M Y L [ ]
+//    length / radius and N angle wait for a typed value (Enter; nothing typed keeps the measured one), H O Q M Y L [ ] (Vertical from the card)
 //    apply at once. A press on a point that travels drags it (snapped 0.1 unless Ctrl; the rest of the sketch follows
 //    its constraints), the release commits. A picked constraint: Delete / X / Backspace removes it, digits + Enter edit a
 //    dimension. Esc drops a pending verb, then the picks, then ends; K or right-click ends.
-//    Splines: O point on the curve, H / V with an end point (end direction), L (G1) and C (G2) with a curve meeting an end.
+//    Splines: O point on the curve, H or the Vertical card action with an end point (end direction), L (G1) and C (G2) with a curve meeting an end.
 //    Shift+D adds a reference (driven, display-only) dimension, drawn grey in parentheses; E toggles a picked dimension
 //    between driving and reference. Earlier sketches draw dimmed and are pickable: a constraint on their geometry links
 //    it in (amber, held at its projection, following them on regeneration); Delete on a picked linked point / curve unlinks.
@@ -764,7 +764,7 @@ struct SketcherExchangeSession
 };
 
 // 📝 Joint (Alt+J; Fusion Joint — Plasticity has none): ① pick the joint origin on the moving body, ② on the fixed body
-//    (the hovered edge / face shows its origin glyph: z blue, x red), ③ choose the kind (R rigid · V revolute · S slider ·
+//    (the hovered edge / face shows its origin glyph: z blue, x red), ③ choose the kind in the card (rigid · revolute · slider ·
 //    C cylindrical · P pin-slot · L planar · B ball), drag the values, F flips, Enter applies. Two entities picked beforehand
 //    (on two bodies; the later pick is the fixed one) skip ① and ②. The preview is a staged document.
 struct SketcherJointSession
@@ -866,6 +866,9 @@ struct SketcherGizmoSession
     int                               Commits       = 0;                                     // [-]   - Committed drags (script evidence)
     bool                              VertexCondition = false;                               // [-]   - Shape target: Names are vertices (mode 1), else edges (mode 2)
     GeometrySpace::Parametric::Vector3       FaceNormal    = { 0.0, 0.0, 1.0 };                     // [-]   - Mean outward normal for Faces target (Offset vs Tweak)
+    bool                              OperationOriginCondition = false;                       // [-]   - Fresh modeling result requests its gizmo at the edited feature
+    std::string                       OperationBody = {};                                    // [-]   - Body that owns OperationOrigin
+    GeometrySpace::Parametric::Vector3 OperationOrigin = {};                                // [len] - Last bevel/operation location
 };
 
 // 📝 Frame timing for the trace (SketcherTrace.log / F12): each frame records named CPU phases; a frame slower than

@@ -659,7 +659,7 @@ void WriteBevelText(SketcherBevelSession& Bevel)
     std::snprintf(Bevel.DepthText.data(), Bevel.DepthText.size(), "%.4g", Bevel.Depth);
 }
 
-// The blend the session would apply (variable sizes and the flip only when V is on).
+// The blend the session would apply (variable sizes and the optional flipped anchor).
 [[nodiscard]] SketcherBlendRequest ComposeBlendRequest(const SketcherBevelSession& Bevel)
 {
     SketcherBlendRequest Request;
@@ -743,8 +743,8 @@ constexpr float BevelHandleReach = 11.0f;                                       
     return Count;
 }
 
-// V: variable size on / off; the far size starts at half the current size so the taper is visible at once (a typed far
-//    size is kept when V is pressed again).
+// Variable size on / off; the far size starts at half the current size so the taper is visible at once (a typed far
+//    size is kept when the option is toggled again).
 void ToggleBevelVariable(SketcherWorkspaceStatus& State)
 {
     SketcherBevelSession& Bevel = State.Bevel;
@@ -804,7 +804,7 @@ void OpenBevelSession(SketcherWorkspaceStatus& State, BlendProfile Shape)
     State.Bevel.PinnedCondition = false;
     RefreshBevelHandles(State, true);
     WriteBevelText(State.Bevel);
-    Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " (B): drag anywhere or the ring handle to size (it stops at the largest that fits) · drag a corner diamond for a variable size · type in the card · D fillet · C chamfer · V taper · Alt+click an edge loop, Ctrl+Alt+click a ring (Shift adds) · LMB / Enter applies · RMB / Esc cancels"
+    Announce(State, std::string(Shape == BlendProfile::Fillet ? "Fillet" : "Chamfer") + " (B): drag anywhere or the ring handle to size (it stops at the largest that fits) · drag a corner diamond for a variable size · type in the card · D fillet · C chamfer · variable size is in the card · Alt+click an edge loop, Ctrl+Alt+click a ring (Shift adds) · LMB / Enter applies · RMB / Esc cancels"
                     + (Refitted ? " · starts at " + FormatLength(State.Bevel.Size) + " m to fit the edges" : std::string{}));
 }
 
@@ -1069,26 +1069,18 @@ void ConfineBevelLimit(SketcherWorkspaceStatus& State, int Parameter, bool Accep
         if (Bevel.LimitCeiling > 0.0 && Value >= Bevel.LimitCeiling) Bevel.LimitCeiling = 0.0;
     }
     else if (Bevel.LimitGood > 0.0 && Value > Bevel.LimitGood) Bevel.LimitCeiling = Bevel.LimitCeiling > 0.0 ? std::min(Bevel.LimitCeiling, Value) : Value;
-    if (!(Bevel.LimitCeiling > 0.0) || !(Bevel.LimitGood > 0.0) || (AcceptedCondition && !Bevel.LimitProbeCondition)) return;
-    const double Gap    = Bevel.LimitCeiling - Bevel.LimitGood;                              // [len] - Unknown band
-    const double RelTol = Bevel.StageMs > 400.0 ? 1.0 : Bevel.StageMs > 120.0 ? 1.2e-1 : Bevel.StageMs > 50.0 ? 2.0e-2 : 2.0e-3;
-    const double AbsTol = Bevel.StageMs > 400.0 ? 1.0e9 : Bevel.StageMs > 120.0 ? 1.0e-3 : Bevel.StageMs > 50.0 ? 5.0e-4 : 1.0e-4;
-    if (Gap > std::max(AbsTol, RelTol * Bevel.LimitGood))
+    if (!(Bevel.LimitCeiling > 0.0) || !(Bevel.LimitGood > 0.0) || AcceptedCondition) return;
+    // A rejected asynchronous preview used to launch a visible binary search by repeatedly rewriting Size while the
+    // pointer was stationary. That made tiny drags appear to run forward, backward and keep "settling". Hold immediately
+    // at the last accepted value instead: one deterministic correction, no autonomous motion on later frames.
+    const bool Settling       = Value != Bevel.LimitGood || Bevel.LimitProbeCondition;
+    Value                     = Bevel.LimitGood;
+    Bevel.LimitProbeCondition = false;
+    if (Settling)
     {
-        Value                     = std::round(0.5 * (Bevel.LimitGood + Bevel.LimitCeiling) * 1.0e6) * 1.0e-6;
-        Bevel.LimitProbeCondition = true;
-    }
-    else
-    {
-        const bool Settling       = Bevel.LimitProbeCondition || Value != Bevel.LimitGood;
-        Value                     = Bevel.LimitGood;
-        Bevel.LimitProbeCondition = false;
-        if (Settling)
-        {
-            ++Bevel.LimitStops;
-            Announce(State, Parameter == 0 ? Compose("Bevel: %s m is the largest size these edges take · it stops there", FormatLength(Value).c_str())
-                                           : Compose("Corner %d: %s m is the largest it takes · it stops there", Parameter, FormatLength(Value).c_str()));
-        }
+        ++Bevel.LimitStops;
+        Announce(State, Parameter == 0 ? Compose("Bevel: stopped at the last valid size · %s m", FormatLength(Value).c_str())
+                                       : Compose("Corner %d: stopped at the last valid size · %s m", Parameter, FormatLength(Value).c_str()));
     }
     WriteBevelText(Bevel);
     if (Parameter > 0 && Parameter == Bevel.FocusCorner) std::snprintf(Bevel.CornerText.data(), Bevel.CornerText.size(), "%.4g", Value);
@@ -1282,6 +1274,11 @@ void ApplyBevelSession(SketcherWorkspaceStatus& State)
     const BlendProfile         Shape   = State.Bevel.Shape;
     const double               Size    = State.Bevel.Size;
     const SketcherBlendRequest Request = ComposeBlendRequest(State.Bevel);
+    // Keep the edited location before regeneration replaces the selected sharp-edge names. A successful blend selects
+    // its owning body and asks the ordinary transform gizmo to stand where the bevel was made, not at the body centre.
+    const std::string BlendBody = State.Document.Selection.Edges.empty() ? std::string{}
+                                : SketcherBodyOfName(State.Document, SketcherSelectionCategory::Edge, State.Document.Selection.Edges.front());
+    const Vector3 BlendOrigin = !State.Bevel.Handles.empty() ? BevelHandleBase(State.Bevel, 0) : Vector3{};
     // 💡 The preview on screen is the result: when it was staged from this document with every parameter as it stands,
     //    it is adopted (one undo entry, its display arrays reused) instead of running the command a second time.
     std::unique_ptr<SketcherDocument> Staged     = std::move(State.Bevel.Preview);
@@ -1341,6 +1338,15 @@ void ApplyBevelSession(SketcherWorkspaceStatus& State)
         Rep.Size  = Size;
         Rep.Blend = Request;
         State.LastCommand = std::move(Rep);
+        if (!BlendBody.empty())
+        {
+            State.Document.Selection = {};
+            State.Document.Selection.Bodies = { BlendBody };
+            State.PickMode = SketcherPickMode::Solid;
+            State.Gizmo.OperationOriginCondition = true;
+            State.Gizmo.OperationBody = BlendBody;
+            State.Gizmo.OperationOrigin = BlendOrigin;
+        }
     }
     Conclude(State, Outcome);
 }
@@ -1576,7 +1582,7 @@ void OpenDrawingSession(SketcherWorkspaceStatus& State, SketcherDrawingCategory 
     State.Drawing.Kind            = Kind;
     State.Drawing.SurfaceCondition = SurfaceTrace && Kind != SketcherDrawingCategory::Arc;
     State.Drawing.GridPlane       = ViewGridPlane(State.Camera);
-    State.Drawing.CentreCondition = Kind == SketcherDrawingCategory::Circle;                     // Plasticity center-circle; V → two-point
+    State.Drawing.CentreCondition = Kind == SketcherDrawingCategory::Circle;                     // Centre-circle by default; the Context catalogue offers two-point circle
     State.Drawing.Form            = SurfaceTrace ? SketchSplineForm::Nurbs : Form;
     if (State.Drawing.SurfaceCondition)
     {
@@ -1584,7 +1590,7 @@ void OpenDrawingSession(SketcherWorkspaceStatus& State, SketcherDrawingCategory 
         return;
     }
     static const char* Hints[] = { "click points · click the first point closes · Enter / right-click finishes open · Ctrl+Z drops a point",
-                                   "click two corners · Alt centre mode", "click centre and rim · V two-point mode", "click start, end, then a point on the arc",
+                                   "click two corners · Alt centre mode", "click centre and rim · choose 2-point circle from Context when needed", "click start, end, then a point on the arc",
                                    "click both cap centres, then the rim", "click points · 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic spline · Enter / right-click finishes · Ctrl+Z drops a point",
                                    "click the centre, then a vertex · + / − sides" };
     static const char* Planes[] = { "XY", "XZ", "YZ" };
@@ -2864,7 +2870,7 @@ void OpenBooleanSession(SketcherWorkspaceStatus& State)
     const size_t Picked = State.Document.Selection.Bodies.size();
     if (State.Document.Summary.Bodies.size() < 2)
     {
-        Announce(State, "Boolean (Q) needs two bodies: construct one with R (New body) in Shift+C / V / X / Z");
+        Announce(State, "Boolean (Q) needs two bodies: construct one with R (New body) from Context / Construct");
         return;
     }
     if (Picked < 2)
@@ -3845,7 +3851,7 @@ void OpenConstraintSession(SketcherWorkspaceStatus& State)
     State.Fill.ActiveCondition      = false;
     State.FocusedStep               = Label;
     const ConstraintView View = ViewConstraintSketch(State, Label);
-    Announce(State, Compose("Constrain %s · %d constraint(s) · DOF %d · click points / curves (earlier sketches link), then D N H V O Q M Y L [ ] C · Shift+D reference · drag points · Esc ends", CaptionOf(State.Document, Label).c_str(),
+    Announce(State, Compose("Constrain %s · %d constraint(s) · DOF %d · click points / curves (earlier sketches link), then D N H O Q M Y L [ ] C (Vertical is in the card) · Shift+D reference · drag points · Esc ends", CaptionOf(State.Document, Label).c_str(),
                             int(View.Sketch->Constraints.size()), View.Solve ? View.Solve->DegreesOfFreedom : -1));
 }
 
@@ -4359,7 +4365,7 @@ void RouteConstraintKeys(SketcherWorkspaceStatus& State, PressedKey&& Pressed, b
     if (Session.PickedConstraint >= 0 && !Session.PendingCondition && Empty && Pressed(ImGuiKey_E)) { TogglePickedReference(State); return; }
     static const std::pair<ImGuiKey, SketchConstraintVerb> Verbs[] = {
         { ImGuiKey_D, SketchConstraintVerb::Dimension }, { ImGuiKey_N, SketchConstraintVerb::Angle }, { ImGuiKey_H, SketchConstraintVerb::Horizontal },
-        { ImGuiKey_V, SketchConstraintVerb::Vertical }, { ImGuiKey_O, SketchConstraintVerb::On }, { ImGuiKey_Q, SketchConstraintVerb::Equal },
+        { ImGuiKey_O, SketchConstraintVerb::On }, { ImGuiKey_Q, SketchConstraintVerb::Equal },
         { ImGuiKey_M, SketchConstraintVerb::Midpoint }, { ImGuiKey_Y, SketchConstraintVerb::Symmetric }, { ImGuiKey_L, SketchConstraintVerb::Parallel },
         { ImGuiKey_LeftBracket, SketchConstraintVerb::Perpendicular }, { ImGuiKey_RightBracket, SketchConstraintVerb::Lock }, { ImGuiKey_C, SketchConstraintVerb::Curvature } };
     for (const auto& [Key, Verb] : Verbs) if (Pressed(Key)) { ApplyConstraintVerb(State, Verb); return; }
@@ -4404,7 +4410,7 @@ void DrawConstraintCard(SketcherWorkspaceStatus& State)
         ImGui::Spacing();
         static const std::pair<const char*, SketchConstraintVerb> Buttons[] = {
             { "D###ConstrainD", SketchConstraintVerb::Dimension }, { "N###ConstrainN", SketchConstraintVerb::Angle }, { "H###ConstrainH", SketchConstraintVerb::Horizontal },
-            { "V###ConstrainV", SketchConstraintVerb::Vertical }, { "O###ConstrainO", SketchConstraintVerb::On }, { "Q###ConstrainQ", SketchConstraintVerb::Equal },
+            { "Vertical###ConstrainV", SketchConstraintVerb::Vertical }, { "O###ConstrainO", SketchConstraintVerb::On }, { "Q###ConstrainQ", SketchConstraintVerb::Equal },
             { "M###ConstrainM", SketchConstraintVerb::Midpoint }, { "Y###ConstrainY", SketchConstraintVerb::Symmetric }, { "L###ConstrainL", SketchConstraintVerb::Parallel },
             { "[###ConstrainPerpendicular", SketchConstraintVerb::Perpendicular }, { "]###ConstrainLock", SketchConstraintVerb::Lock }, { "C###ConstrainC", SketchConstraintVerb::Curvature } };
         for (size_t Index = 0; Index < std::size(Buttons); ++Index)
@@ -5474,6 +5480,10 @@ void ResolveGizmoTarget(SketcherWorkspaceStatus& State)
     Gizmo.Pose.Axes[0] = { 1.0, 0.0, 0.0 };
     Gizmo.Pose.Axes[1] = { 0.0, 1.0, 0.0 };
     Gizmo.Pose.Axes[2] = { 0.0, 0.0, 1.0 };
+    const bool OperationBodySelected = Gizmo.OperationOriginCondition && Document.Selection.Bodies.size() == 1
+                                    && Document.Selection.Bodies.front() == Gizmo.OperationBody && Document.Selection.Faces.empty()
+                                    && Document.Selection.Edges.empty() && Document.Selection.Vertices.empty() && Document.Selection.Curves.empty();
+    if (!OperationBodySelected) Gizmo.OperationOriginCondition = false;
     constexpr uint32_t AxisScales = (1u << uint32_t(GizmoHandle::ScaleX)) | (1u << uint32_t(GizmoHandle::ScaleY)) | (1u << uint32_t(GizmoHandle::ScaleZ));
     constexpr uint32_t CentreBit  = 1u << uint32_t(GizmoHandle::Centre);
     // 📝 Direct reshape: mode-1 body vertices (no sketch points picked) or mode-2 edges move by the gizmo map; the frame is
@@ -5652,7 +5662,7 @@ void ResolveGizmoTarget(SketcherWorkspaceStatus& State)
     {
         Gizmo.Target      = SketcherGizmoTarget::Bodies;
         Gizmo.Names       = Keys;
-        Gizmo.Pose.Origin = MeasureBodiesCentre(State.Scene, Keys);
+        Gizmo.Pose.Origin = OperationBodySelected ? Gizmo.OperationOrigin : MeasureBodiesCentre(State.Scene, Keys);
         Gizmo.Pose.Hidden = (Gizmo.Modes & (GizmoTranslate | GizmoScale)) ? 0u : CentreBit;
         return;
     }
@@ -8683,7 +8693,7 @@ bool DriveBevelHandles(SketcherWorkspaceStatus& State, const OrbitCameraBasis& F
         Bevel.PinnedCondition = true;                                                        // The handles drive the size from now on
         if (Bevel.DragHandle > 0)
         {
-            Bevel.VariableEnabled = false;                                                   // Corner sizes replace the V taper
+            Bevel.VariableEnabled = false;                                                   // Corner sizes replace the end-to-end taper
             Bevel.FocusCorner     = Bevel.DragHandle;
         }
     }
@@ -9926,7 +9936,7 @@ void CloseJointSession(SketcherWorkspaceStatus& State, const char* Message)
 void AnnounceJointAdjust(SketcherWorkspaceStatus& State)
 {
     const SketcherJointSession& Joint = State.Joint;
-    Announce(State, Compose("Joint: %s onto %s · R V S C P L B kind · drag the values · F flip · LMB / Enter applies · RMB cancels", SketcherBodyCaption(State.Document, Joint.Moving.Body).c_str(),
+    Announce(State, Compose("Joint: %s onto %s · choose the joint kind in the card · drag the values · F flip · LMB / Enter applies · RMB cancels", SketcherBodyCaption(State.Document, Joint.Moving.Body).c_str(),
                             SketcherBodyCaption(State.Document, Joint.Fixed.Body).c_str()));
 }
 
@@ -9936,7 +9946,7 @@ void OpenJointSession(SketcherWorkspaceStatus& State)
 {
     if (State.Document.Summary.Bodies.size() < 2)
     {
-        Announce(State, "Joint (Alt+J) needs two bodies: construct one with R (New body) in Shift+C / V / X / Z");
+        Announce(State, "Joint (Alt+J) needs two bodies: construct a separate body from Context / Construct");
         return;
     }
     SketcherJointSession& Joint   = State.Joint;
@@ -10058,7 +10068,7 @@ void DrawJointCard(SketcherWorkspaceStatus& State)
     SketcherJointSession& Joint = State.Joint;
     BeginCard("Joint");
     static const struct { const char* Label; JointCategory Kind; } Kinds[] = {
-        { "Rigid (R)###JointRigid", JointCategory::Rigid }, { "Revolute (V)###JointRevolute", JointCategory::Revolute }, { "Slider (S)###JointSlider", JointCategory::Slider },
+        { "Rigid (R)###JointRigid", JointCategory::Rigid }, { "Revolute###JointRevolute", JointCategory::Revolute }, { "Slider (S)###JointSlider", JointCategory::Slider },
         { "Cylindrical (C)###JointCylindrical", JointCategory::Cylindrical }, { "Pin-slot (P)###JointPinSlot", JointCategory::PinSlot }, { "Planar (L)###JointPlanar", JointCategory::Planar },
         { "Ball (B)###JointBall", JointCategory::Ball } };
     const float Half = std::floor((ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.0f);
@@ -10108,7 +10118,7 @@ void DrawJointCard(SketcherWorkspaceStatus& State)
         ImGui::PopStyleColor();
     }
     ImGui::PushStyleColor(ImGuiCol_Text, Tint(MutedColour));
-    ImGui::TextWrapped("Edges give centres / midpoints, faces centroids / axes · R V S C P L B kind · drag a value · F flip · Enter applies · Esc cancels. "
+    ImGui::TextWrapped("Edges give centres / midpoints, faces centroids / axes · choose the kind above · drag a value · F flip · Enter applies · Esc cancels. "
                        "The moving body and every body jointed to it move; the fixed body stays.");
     ImGui::PopStyleColor();
     if (PressButton(State, "Apply###JointApply", RowSpan(), Joint.Phase == 2 && Joint.Refusal.empty())) ApplyJointSession(State);
@@ -14049,7 +14059,8 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
     //    tiles must still come from the array TileCount was measured on (the next frame draws the new section).
     const int   Displayed  = std::clamp(State.ConstructSection, 0, 3);
     const int   TileCount  = Displayed == 3 ? ContextToolCount : Displayed == 2 ? ConstructReferenceCount : Displayed == 1 ? ConstructSketchCount : ConstructSolidCount;
-    const float MenuHeight = ConstructMenuHeight(TileCount);
+    const bool  RequestedToolOptions = State.ContextToolPage >= 0 && State.ContextToolPage < ContextToolCount;
+    const float MenuHeight = RequestedToolOptions ? 520.0f : ConstructMenuHeight(TileCount);
     ImVec2 MenuAnchor = State.ConstructMenuAtPointer ? ImVec2(State.ConstructMenuPointer[0], State.ConstructMenuPointer[1]) : Anchor;
     const ImVec2 Display = ImGui::GetIO().DisplaySize;
     MenuAnchor.x = std::clamp(MenuAnchor.x, 0.0f, std::max(0.0f, Display.x - 520.0f));
@@ -14175,7 +14186,7 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
             "Draw or pick a cutter, then choose depth, through-cut, outward add or imprint-only in the viewport.",
             "Select an arc, circle or sketch, then drag or type a signed offset distance and press Enter.",
             "Places curve controls on model surfaces. Hold Ctrl to prefer authored curves and edges." };
-        static const char* const Shortcut[ContextToolCount] = { "Esc", "—", "V", "T", "F", "D", "Shift+K", "O", "Shift+S" };
+        static const char* const Shortcut[ContextToolCount] = { "Esc", "—", "—", "T", "F", "D", "Shift+K", "O", "Shift+S" };
         const int Tool = State.ContextToolPage;
         const bool Enabled = ContextToolEnabled(State, Tool);
         const bool Active = ContextToolActive(State, Tool);
@@ -14192,6 +14203,94 @@ void DrawConstructMenu(SketcherWorkspaceStatus& State, ImVec2 Anchor)
         const float ShortcutWidth = Sheet.Measure(Shortcut[Tool], 9.0f);
         Sheet.Text(ShortcutChip.MinimumX + 0.5f * (58.0f - ShortcutWidth), ShortcutChip.MinimumY + 12.0f, 9.0f, SketcherInk(0xaaaaaa), Shortcut[Tool]);
         Sheet.Text(PageLeft, Body + 138.0f, 10.0f, SketcherInk(0x858b91), Help[Tool]);
+
+        // Real operation choices live on the slid page (not an empty description card). Knife mirrors the lower-toolbar
+        // cutter catalogue; Select exposes every selection filter; the remaining tools expose their applicable modes.
+        int OptionIndex = 0;
+        const auto Choice = [&](const std::string& Key, const std::string& Label, bool Chosen, bool Available = true)
+        {
+            const int Column = OptionIndex % 4, Row = OptionIndex / 4;
+            ++OptionIndex;
+            const float Width = (Right - PageLeft - 3.0f * 7.0f - 24.0f) * 0.25f;
+            const PlaneExtent Box = Spanning(PageLeft + Column * (Width + 7.0f), Body + 166.0f + Row * 34.0f, Width, 28.0f);
+            const SketcherPress Press = PressSketcherRegion(State.Widgets, "ContextOption" + Key, Box, Available);
+            Sheet.Box(Box, SketcherWash(Chosen ? 0x24 : Press.HoveredCondition ? 0x18 : 0x0c), 7.0f, SketcherWash(Chosen ? 0x48 : 0x20));
+            Sheet.TextClipped(Box.MinimumX + 9.0f, Box.MinimumY + 14.0f, Width - 18.0f, 9.0f,
+                              SketcherInk(!Available ? 0x555555 : Chosen ? 0xffffff : 0xb8b8b8), Label.c_str());
+            return Press.ClickedCondition;
+        };
+        if (Tool == 0)
+        {
+            static const struct { const char* Label; SketcherPickMode Mode; } Modes[] = {
+                { "Objects", SketcherPickMode::Solid }, { "Faces", SketcherPickMode::Face }, { "Curves", SketcherPickMode::Curve },
+                { "Edges", SketcherPickMode::Edge }, { "Points", SketcherPickMode::ControlPoint }, { "Anything", SketcherPickMode::Any } };
+            for (const auto& Mode : Modes) if (Choice(Mode.Label, Mode.Label, State.PickMode == Mode.Mode)) { ActivateContextTool(State, 0); State.PickMode = Mode.Mode; }
+        }
+        else if (Tool >= 1 && Tool <= 3)
+        {
+            if (Choice("Split", "Split curve", ContextToolActive(State, 1))) ActivateContextTool(State, 1);
+            if (Choice("Point", "Insert point", ContextToolActive(State, 2))) ActivateContextTool(State, 2);
+            if (Choice("Trim", "Trim segment", ContextToolActive(State, 3))) ActivateContextTool(State, 3);
+        }
+        else if (Tool == 4)
+        {
+            if (Choice("Fill", "Fill region", State.Fill.ActiveCondition)) ActivateContextTool(State, 4);
+            if (Choice("FillSelect", "Return to select", false)) ActivateContextTool(State, 0);
+        }
+        else if (Tool == 5)
+        {
+            if (Choice("Dimension", "Place dimension", State.DimensionTool.ActiveCondition)) ActivateContextTool(State, 5);
+            if (Choice("DimensionSelect", "Return to select", false)) ActivateContextTool(State, 0);
+        }
+        else if (Tool == 6)
+        {
+            SketcherKnifeSession& Knife = State.Knife;
+            const SketcherKnifeMode Mode = Knife.ActiveCondition ? Knife.Mode : Knife.PreferredMode;
+            static const struct { const char* Label; SketcherDrawingCategory Shape; bool Polyline; } Flats[] = {
+                { "Imprint rect", SketcherDrawingCategory::Rectangle, false }, { "Imprint circle", SketcherDrawingCategory::Circle, false },
+                { "Imprint polygon", SketcherDrawingCategory::Polygon, false }, { "Imprint slot", SketcherDrawingCategory::Slot, false },
+                { "Imprint line", SketcherDrawingCategory::Line, false }, { "Imprint polyline", SketcherDrawingCategory::Line, true } };
+            for (const auto& Entry : Flats)
+            {
+                const bool Chosen = Mode == SketcherKnifeMode::Sketch && !Knife.PreferredSolidCondition && Knife.PreferredImprintCondition
+                                 && Knife.PreferredShape == Entry.Shape && Knife.PreferredPolylineCondition == Entry.Polyline;
+                if (Choice(Entry.Label, Entry.Label, Chosen)) ChooseKnifeTool(State, SketcherKnifeMode::Sketch, Entry.Shape, -1, Entry.Polyline, true);
+            }
+            static const struct { const char* Label; SketcherDrawingCategory Shape; bool Polyline; } Cuts[] = {
+                { "Cut circle", SketcherDrawingCategory::Circle, false }, { "Cut rectangle", SketcherDrawingCategory::Rectangle, false },
+                { "Cut polygon", SketcherDrawingCategory::Polygon, false }, { "Cut slot", SketcherDrawingCategory::Slot, false },
+                { "Cut line", SketcherDrawingCategory::Line, false }, { "Cut polyline", SketcherDrawingCategory::Line, true } };
+            for (const auto& Entry : Cuts)
+            {
+                const bool Chosen = Mode == SketcherKnifeMode::Sketch && !Knife.PreferredSolidCondition && !Knife.PreferredImprintCondition
+                                 && Knife.PreferredShape == Entry.Shape && Knife.PreferredPolylineCondition == Entry.Polyline;
+                if (Choice(Entry.Label, Entry.Label, Chosen)) ChooseKnifeTool(State, SketcherKnifeMode::Sketch, Entry.Shape, -1, Entry.Polyline);
+            }
+            static const SketcherConstructCategory Solids[] = { SketcherConstructCategory::Cone, SketcherConstructCategory::Sphere, SketcherConstructCategory::Torus,
+                                                                SketcherConstructCategory::Wedge, SketcherConstructCategory::Tube };
+            for (SketcherConstructCategory Solid : Solids)
+            {
+                const std::string Label = SketcherConstructLabel(Solid);
+                if (Choice("Solid" + Label, Label, Mode == SketcherKnifeMode::Sketch && Knife.PreferredSolidCondition && Knife.PreferredSolid == Solid)) ChooseKnifeSolid(State, Solid);
+            }
+            if (Choice("PickedBodies", "Picked bodies", Mode == SketcherKnifeMode::Object)) ChooseKnifeTool(State, SketcherKnifeMode::Object, Knife.PreferredShape, -1);
+            for (int Index = 0; Index < SketcherCompoundCutterCount; ++Index)
+            {
+                const std::string Label = SketcherCompoundCutterLabel(static_cast<SketcherCompoundCutterCategory>(Index));
+                if (Choice("Insert" + std::to_string(Index), Label, Mode == SketcherKnifeMode::Insert && Knife.Insert == Index))
+                    ChooseKnifeTool(State, SketcherKnifeMode::Insert, Knife.PreferredShape, Index);
+            }
+        }
+        else if (Tool == 7)
+        {
+            if (Choice("Offset", "Offset curve", ContextToolActive(State, 7))) ActivateContextTool(State, 7);
+            if (Choice("OffsetSelect", "Return to select", false)) ActivateContextTool(State, 0);
+        }
+        else if (Tool == 8)
+        {
+            if (Choice("SurfaceOn", "Surface tracing", State.SurfaceTraceEnabled)) { if (!State.SurfaceTraceEnabled) ActivateContextTool(State, 8); }
+            if (Choice("SurfaceOff", "Planar sketching", !State.SurfaceTraceEnabled)) { if (State.SurfaceTraceEnabled) ActivateContextTool(State, 8); }
+        }
 
         const PlaneExtent Action = Spanning(PageLeft, Bottom - 78.0f, 176.0f, 36.0f);
         const SketcherPress ActionPress = PressSketcherRegion(State.Widgets, "ContextToolAction", Action, Enabled || Active);
@@ -15700,7 +15799,7 @@ void DrawSketchToolbar(SketcherWorkspaceStatus& State, ImVec2 Image, ImVec2 Exte
         Sheet.Text(Box.MinimumX + Padding, Centre, FontSize, Ink, TextIcons[Index]);
         if (Press.HoveredCondition)
         {
-            const char* Tips[] = {"Select: close editing tools", "Split curve at mouse: click the preview ring on a 3D spline or planar curve. Shape preserved; Esc exits.", "Point (V): add a point to a curve",
+            const char* Tips[] = {"Select: close editing tools", "Split curve at mouse: click the preview ring on a 3D spline or planar curve. Shape preserved; Esc exits.", "Point: add a control point to a curve",
                 "Trim (T): remove a curve segment", "Fill (F): fill a closed region", "Dimension (D): pick geometry, then place the dimension",
                 "Knife (Shift+K): cutter tools; arrow opens the cutter menu",
                 "Offset (O): select an arc/circle/sketch, then drag or type a distance in metres and Enter. Keeps the original; arcs/circles stay concentric. Use the opposite sign for the other side.",
@@ -16422,9 +16521,21 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
         bool AxisDriven = false;                                                             // [-] - The axis drove the value this frame
         if (!HandleOwned && ImGui::IsMouseDown(ImGuiMouseButton_Left) && Io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] > ClickTolerance * ClickTolerance && Hovered)
         {
-            if (!Bevel.PointerDragCondition) { Bevel.PointerDragCondition = true; Bevel.PinnedCondition = false; }
+            if (!Bevel.PointerDragCondition)
+            {
+                Bevel.PointerDragCondition = true;
+                Bevel.PinnedCondition = false;
+                Bevel.DragOrigin = Io.MousePos.x;
+                Bevel.DragSize = Bevel.Size;
+            }
             if (AxisParameter) { DriveExtrudeAxis(State, *AxisParameter); AxisDriven = true; }
-            else if (Io.MousePos.x != Bevel.DragLast) AdjustBevelSize(State, (Io.MousePos.x - Bevel.DragLast) * Frame.WorldPerPixel * (Io.KeyShift ? 0.1 : 1.0) * 0.5);
+            else
+            {
+                // Absolute-from-press sizing is stable when frame delivery or asynchronous previews vary: the value no
+                // longer accumulates tiny per-frame deltas that can alternately add and subtract around one pixel.
+                const double Target = Bevel.DragSize + (Io.MousePos.x - Bevel.DragOrigin) * Frame.WorldPerPixel * (Io.KeyShift ? 0.1 : 1.0) * 0.5;
+                if (std::abs(Target - Bevel.Size) >= 5.0e-5) AdjustBevelSize(State, Target - Bevel.Size);
+            }
             Bevel.DragLast = Io.MousePos.x;
         }
         const bool ReleasedPointerDrag = OperationInput.PrimaryReleased() && Bevel.PointerDragCondition;
@@ -16838,13 +16949,13 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
                               : State.Drawing.Kind == SketcherDrawingCategory::Curve ? "Click points (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · 1 Hermite · 2 Bezier · 3 NURBS · 4 cubic · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
                               : State.Drawing.Kind == SketcherDrawingCategory::Line ? "Click points (hold Shift for straight axes; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · click first point closes · Enter / right-click finish · Ctrl+Z drop · Esc abort"
                               : State.Drawing.Kind == SketcherDrawingCategory::Rectangle ? "Click two corners (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · s square · Alt centre / corner · Ctrl+Z drop · Esc abort"
-                              : State.Drawing.Kind == SketcherDrawingCategory::Circle ? "Click centre then rim (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · V two-point / centre · Ctrl+Z drop · Esc abort"
+                              : State.Drawing.Kind == SketcherDrawingCategory::Circle ? "Click centre then rim (free; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · choose the circle mode in Context · Ctrl+Z drop · Esc abort"
                               : State.Drawing.Kind == SketcherDrawingCategory::Arc ? "Click start, Shift-align end, then free bulge point (planar; Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · Ctrl+Z drop · Esc abort"
                               : "Click cap centres (Shift aligns), then free rim (Ctrl ends / midpoints / quarters / centres / edges, Alt slides along a curve; a body face under the first click carries the sketch) · x y z t n b lock · Ctrl+Z drop · Esc abort")
                        : State.Constrain.ActiveCondition
-                           ? "Constrain: click points / curves · D dimension · N angle · H / V · O on · Q equal · M midpoint · Y symmetric · L parallel / tangent · [ perpendicular · ] lock · drag a point · click a glyph: Delete removes, digits + Enter edit · Esc / K end"
+                           ? "Constrain: click points / curves · D dimension · N angle · H horizontal · Vertical in card · O on · Q equal · M midpoint · Y symmetric · L parallel / tangent · [ perpendicular · ] lock · drag a point · click a glyph: Delete removes, digits + Enter edit · Esc / K end"
                        : State.Trim.ActiveCondition && State.Trim.InsertCondition
-                           ? "Point: hover a curve (blue, a ring where the point goes) · click adds the point, the shape stays · Ctrl snaps the ring onto a midpoint / quarter / crossing · drag a point (or the gizmo) to move it · Esc / V / right-click end"
+                           ? "Point: hover a curve (blue, a ring where the point goes) · click adds the point, the shape stays · Ctrl snaps the ring onto a midpoint / quarter / crossing · drag a point (or the gizmo) to move it · Esc / right-click end"
                        : State.Trim.ActiveCondition && State.Trim.SplitCondition
                            ? "Split: hover a 3D spline or planar curve; the ring marks the mouse position · click preserves both pieces · Esc / right-click ends"
                        : State.Trim.ActiveCondition
@@ -16859,7 +16970,7 @@ void DrawViewport(SketcherWorkspaceStatus& State, ImTextureRef ViewportTexture, 
                            ? (State.Bevel.AxisCondition ? "Extrude: the face follows the pointer along its normal (Blender; Shift fine) · out adds, in pushes / cuts · type a distance in the card · click edits the faces · Enter / right-click finish · Esc abort"
                                                         : "Extrude: move horizontally (Shift fine) · out adds, in pushes / cuts · type a distance in the card · click edits the faces · Enter / right-click finish · Esc abort")
                        : State.Bevel.ActiveCondition
-                           ? "Drag anywhere / a handle: size, stops at the max (Shift fine) · corner diamonds: variable · D fillet · C chamfer · V taper · F flip anchor · click / Alt (loop) / Ctrl+Alt (ring) edits edges · Enter / right-click finish · Esc abort"
+                           ? "Drag anywhere / a handle: size, stops at the max (Shift fine) · corner diamonds: variable · D fillet · C chamfer · variable size in the card · F flip anchor · click / Alt (loop) / Ctrl+Alt (ring) edits edges · Enter / right-click finish · Esc abort"
                        : State.PickMode == SketcherPickMode::ControlPoint
                            ? "Mode 1: drag a sketch point or pole (live, release commits, Esc drops; Ctrl ends / midpoints, Alt along a curve) · click a point for the gizmo (Shift add, box picks) · click a curve · L loft · 2/3/4/5 modes"
                            : "Middle orbit · right pan · wheel zoom · click select (Shift add, Ctrl remove · Ctrl on a new edge: path, Alt loop, Ctrl+Alt ring, double-click chain) · 1-5 modes · B fillet · E extrude · L loft · Shift+A line · Shift+S curve";
@@ -17129,8 +17240,8 @@ void DrawBevelCard(SketcherWorkspaceStatus& State)
     }
     if (!Extrude && !Corner)
     {
-        // Variable size (V): the end size field and the anchor flip (F).
-        if (ToggleButton(State, "Variable  (V)###BevelVariable", Bevel.VariableEnabled, RowSpan())) ToggleBevelVariable(State);
+        // Variable size: the end size field and the anchor flip (F).
+        if (ToggleButton(State, "Variable size###BevelVariable", Bevel.VariableEnabled, RowSpan())) ToggleBevelVariable(State);
         if (Bevel.VariableEnabled)
         {
             ImGui::SameLine();
@@ -19772,7 +19883,7 @@ void RepeatLastCommand(SketcherWorkspaceStatus& State)
     }
 }
 
-// Plasticity Shift+C / V / X / Z (box, cylinder, sphere, …): the drawn solid command; Tab inside it opens the size form.
+// Construct shortcuts and Context catalogue (box, cylinder, sphere, …): the drawn solid command; Tab inside it opens the size form.
 void OpenConstruct(SketcherWorkspaceStatus& State, SketcherConstructCategory Kind)
 {
     OpenSolidSession(State, Kind);
@@ -20014,15 +20125,10 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
             Drawing.CentreCondition = !Drawing.CentreCondition;                               // keyboard:rectangle:mode
             Announce(State, Drawing.CentreCondition ? "Rectangle: centre mode (first click is the centre)" : "Rectangle: corner mode");
         }
-        else if (Drawing.Kind == SketcherDrawingCategory::Circle && !Control && !Alternate && Pressed(ImGuiKey_V))
-        {
-            Drawing.CentreCondition = !Drawing.CentreCondition;                               // gizmo:circle:mode
-            Announce(State, Drawing.CentreCondition ? "Circle: centre and rim" : "Circle: two diameter points");
-        }
         return;
     }
 
-    // Joint (Alt+J) — R V S C P L B kind · F flip · Enter applies · Esc cancels (letters free inside the command).
+    // Joint (Alt+J) — choose kind in the card · F flip · Enter applies · Esc cancels (letters free inside the command).
     if (State.Joint.ActiveCondition)
     {
         if (OperationInput.ConfirmPressed()) ApplyJointSession(State);
@@ -20030,7 +20136,6 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
         else if (!Control && !Alternate)
         {
             if (Pressed(ImGuiKey_R)) ChooseJointKind(State, JointCategory::Rigid);
-            if (Pressed(ImGuiKey_V)) ChooseJointKind(State, JointCategory::Revolute);
             if (Pressed(ImGuiKey_S)) ChooseJointKind(State, JointCategory::Slider);
             if (Pressed(ImGuiKey_C)) ChooseJointKind(State, JointCategory::Cylindrical);
             if (Pressed(ImGuiKey_P)) ChooseJointKind(State, JointCategory::PinSlot);
@@ -20069,7 +20174,6 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
         {
             if (Pressed(ImGuiKey_D)) State.Bevel.Shape = BlendProfile::Fillet;                // gizmo:fillet-solid:fillet
             if (Pressed(ImGuiKey_C)) State.Bevel.Shape = BlendProfile::Chamfer;               // gizmo:fillet-solid:chamfer
-            if (Pressed(ImGuiKey_V)) ToggleBevelVariable(State);                              // gizmo:fillet-solid:add (variable size)
             if (Pressed(ImGuiKey_F)) FlipBevelAnchor(State);                                  // as gizmo:place:flip
         }
         if (State.Bevel.Verb == SketcherSessionVerb::Inset && !Control && !Alternate)
@@ -20305,7 +20409,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     const bool PassingKey = !Control && (Pressed(ImGuiKey_L) || Pressed(ImGuiKey_H)) && !(Alternate && Pressed(ImGuiKey_L));
     if (State.Trim.ActiveCondition)
     {
-        if (OperationInput.CancelPressed() || OperationInput.ConfirmPressed() || Pressed(ImGuiKey_T) || (State.Trim.InsertCondition && Pressed(ImGuiKey_V))) CloseTrimSession(State);
+        if (OperationInput.CancelPressed() || OperationInput.ConfirmPressed() || Pressed(ImGuiKey_T)) CloseTrimSession(State);
         if (!PassingKey) return;
         if (State.Trim.ActiveCondition) CloseTrimSession(State);
     }
@@ -20574,11 +20678,10 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
     }
     if (Shift)
     {
-        if (Pressed(ImGuiKey_C) || Pressed(ImGuiKey_V))                                     // corner / centre box
+        if (Pressed(ImGuiKey_C))                                                             // corner box
         {
-            const bool Centre = Pressed(ImGuiKey_V);
             OpenConstruct(State, SketcherConstructCategory::Block);
-            State.Drawing.CentreCondition = Centre;
+            State.Drawing.CentreCondition = false;
         }
         if (Pressed(ImGuiKey_X)) OpenConstruct(State, SketcherConstructCategory::Cylinder);
         if (Pressed(ImGuiKey_Z)) OpenConstruct(State, SketcherConstructCategory::Sphere);
@@ -20635,7 +20738,6 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
             ApplyCut(State);
     }
     if (Pressed(ImGuiKey_T)) OpenTrimSession(State);                                       // command:trim
-    if (Pressed(ImGuiKey_V)) OpenTrimSession(State, false, true);                          // point on curve (v is free in Plasticity's global map)
     if (Pressed(ImGuiKey_F)) ToggleSketchFill(State);                                      // fill on / off (f is free in Plasticity's map)
     if (Pressed(ImGuiKey_K)) OpenConstraintSession(State);                                 // constrain (K is free in Plasticity's map)
     // I: inset with faces selected (Blender habit), else measure (I is free in Plasticity's map).
