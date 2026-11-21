@@ -224,7 +224,7 @@ export default function LevelDialogModal({
         <label className="construct-search">
           <Glyph Name="search" Size={16} />
           <input
-            placeholder="Search stage templates (Cornell, Cone Slalom, Look-Dev, Empty)…"
+            placeholder="Search stage templates (Lobby, Cornell, Look-Dev, Empty)…"
             aria-label="Search level templates"
             value={Query}
             onChange={(Ev) => SetQuery(Ev.target.value)}
