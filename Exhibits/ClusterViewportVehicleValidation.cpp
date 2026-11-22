@@ -238,15 +238,12 @@ int main()
         VkDevice.TeardownInterchange();
         return 1;
     }
-    std::printf("[ClusterViewportVehicleValidation] Calling SynchronizeSceneResources...\n");
     GpuSeq.SynchronizeSceneResources(Bundle.Scene, true);
-    std::printf("[ClusterViewportVehicleValidation] SynchronizeSceneResources complete!\n");
 
     constexpr uint32_t ProofW = 480u;
     constexpr uint32_t ProofH = 300u;
     const auto RenderFrom = [&](Mathematics::Axis3D Origin, bool LodEnabled, uint32_t DebugChannel, bool GtaoOn = false)
     {
-        std::printf("[ClusterViewportVehicleValidation] RenderFrom ch=%u lod=%u gtao=%u...\n", DebugChannel, LodEnabled ? 1u : 0u, GtaoOn ? 1u : 0u);
         PerspectiveCameraBasis Cam = Bundle.EditorCamera;
         Cam.CameraOrigin       = Origin;
         Cam.TargetPoint        = VehicleCenter + Mathematics::Axis3D{ 0.0f, 0.0f, 0.2f };

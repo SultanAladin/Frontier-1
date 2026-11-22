@@ -120,7 +120,7 @@ float2 UnpackSlabHalfPair(uint Word)
 float3 ShadeSecondaryRay(float3 Origin, float3 Dir, bool AllowSecondBounce)
 {
     GpuRayHitSummary Hit = TraceWideBoundingTreeClosest(
-        SceneBvhEntries, SceneTriangles, Uniforms.BvhEntryCount, Origin, Dir, 1.5e-3, 90.0);
+        SceneBvhEntries, SceneTriangles, Uniforms.BvhEntryCount, Origin, Dir, 1.5e-3, 50000.0);
     if (!Hit.HitConfirmed)
     {
         return SampleSkyDomeSpec(Dir);
@@ -149,7 +149,7 @@ float3 ShadeSecondaryRay(float3 Origin, float3 Dir, bool AllowSecondBounce)
     if (dot(HitNrm, Uniforms.SunDirection) > 0.0)
     {
         GpuRayHitSummary SunCheck = TraceWideBoundingTreeClosest(
-            SceneBvhEntries, SceneTriangles, Uniforms.BvhEntryCount, HitPos + HitNrm * 2.5e-3, Uniforms.SunDirection, 1.0e-3, 120.0);
+            SceneBvhEntries, SceneTriangles, Uniforms.BvhEntryCount, HitPos + HitNrm * 2.5e-3, Uniforms.SunDirection, 1.0e-3, 50000.0);
         if (!SunCheck.HitConfirmed)
         {
             Shaded += EvaluateBounceSlabSurface(Slab, HitNrm, -Dir, Uniforms.SunDirection, Uniforms.SolarIrradiance);
@@ -162,7 +162,7 @@ float3 ShadeSecondaryRay(float3 Origin, float3 Dir, bool AllowSecondBounce)
         if (dot(HitNrm, Refl2) > 1.0e-3)
         {
             GpuRayHitSummary Hit2 = TraceWideBoundingTreeClosest(
-                SceneBvhEntries, SceneTriangles, Uniforms.BvhEntryCount, HitPos + HitNrm * 2.5e-3, Refl2, 1.5e-3, 90.0);
+                SceneBvhEntries, SceneTriangles, Uniforms.BvhEntryCount, HitPos + HitNrm * 2.5e-3, Refl2, 1.5e-3, 50000.0);
             float3 Bounce2 = Hit2.HitConfirmed
                 ? (SampleSkyDomeSpec(HitNrm) * 0.32)
                 : SampleSkyDomeSpec(Refl2);

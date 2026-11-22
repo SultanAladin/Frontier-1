@@ -1054,13 +1054,13 @@ float TraceGlobalDistanceConeVisibility(
 
     float ProbeVox = 0.08;
     (void)SampleGlobalDistanceWorld(Origin, ProbeVox);
-    float  Vox0      = clamp(ProbeVox, 0.03, 0.22);
-    float  StartLift = Vox0 * 0.72;
+    float  Vox0      = clamp(ProbeVox, 0.03, 0.45);
+    float  StartLift = Vox0 * 0.85;
     float3 StartP    = Origin + GeomN * StartLift;
     float  NdotD     = max(0.0, dot(GeomN, Dir));
     float  EndMargin = max(0.10, Vox0 * 1.85);
     float  SafeMax   = MaxDist - EndMargin;
-    float  T         = Vox0 * 0.65;
+    float  T         = Vox0 * 0.75;
     if (SafeMax <= T + 0.02)
     {
         return 1.0;
@@ -1075,7 +1075,7 @@ float TraceGlobalDistanceConeVisibility(
         float Dist     = SampleGlobalDistanceWorld(StartP + Dir * T, LocalVox);
 
         float SelfPlaneDist  = StartLift + T * NdotD;
-        bool  IsReceiverSelf = (Dist >= SelfPlaneDist - LocalVox * 0.45);
+        bool  IsReceiverSelf = (Dist >= SelfPlaneDist - LocalVox * 0.72);
 
         if (PointHard)
         {
@@ -3208,13 +3208,12 @@ float EvaluateGroundTruthAmbientOcclusion(uint2 PixelCoord, float3 WorldPos, flo
             continue;
         }
         float3 ProjNormalDir = ProjNormal / ProjNormalLen;
-        float  CosN          = clamp(dot(ProjNormalDir, ViewFrom), -1.0, 1.0);
-        float  SignN         = (dot(ProjNormalDir, SliceTangent) >= 0.0) ? -1.0 : 1.0;
-        float  NormalAngle   = SignN * acos(CosN);
-        float  SinN          = sin(NormalAngle);
 
-        float CosHorizonPlus  = -1.0;
-        float CosHorizonMinus = -1.0;
+        // Exact 3D Lambertian sin(theta)*cos(theta) hemisphere slice integral in normal-aligned slice coordinates:
+        // V_slice = 1 - 0.5 * (sin^2(alpha_+) + sin^2(alpha_-)), giving exact 1.0 on flat planes at all grazing angles,
+        // exact 0.5 at a 90-degree dihedral wall-floor corner, and zero transcendental acos/cos/sin stipple.
+        float MaxSinPlus  = 0.0;
+        float MaxSinMinus = 0.0;
         for (uint StepIdx = 0u; StepIdx < StepsPerSide; ++StepIdx)
         {
             float StepFrac = pow((float(StepIdx) + 0.25 + 0.70 * IgnRadial) / float(StepsPerSide), 1.35);
@@ -3231,9 +3230,13 @@ float EvaluateGroundTruthAmbientOcclusion(uint2 PixelCoord, float3 WorldPos, flo
                 float  DistP = length(VecP);
                 if (DistP > 1.0e-3 && DistP < FalloffEndMeters)
                 {
-                    float SampleCos = dot(VecP / DistP, ViewFrom);
-                    float Weight    = saturate((FalloffEndMeters - DistP) / (FalloffEndMeters - FalloffStartMeters));
-                    CosHorizonPlus  = max(CosHorizonPlus, lerp(-1.0, SampleCos, Weight));
+                    // Guard against background silhouette halos (occluder behind view ray cannot occlude front hemisphere)
+                    float ElevSin = (dot(VecP, ProjNormalDir) / DistP) - 0.02;
+                    if (ElevSin > 0.0 && dot(VecP, ViewFrom) > -0.35 * DistP)
+                    {
+                        float Weight = saturate((FalloffEndMeters - DistP) / (FalloffEndMeters - FalloffStartMeters));
+                        MaxSinPlus   = max(MaxSinPlus, saturate(ElevSin) * Weight);
+                    }
                 }
             }
 
@@ -3245,18 +3248,17 @@ float EvaluateGroundTruthAmbientOcclusion(uint2 PixelCoord, float3 WorldPos, flo
                 float  DistM = length(VecM);
                 if (DistM > 1.0e-3 && DistM < FalloffEndMeters)
                 {
-                    float SampleCos = dot(VecM / DistM, ViewFrom);
-                    float Weight    = saturate((FalloffEndMeters - DistM) / (FalloffEndMeters - FalloffStartMeters));
-                    CosHorizonMinus = max(CosHorizonMinus, lerp(-1.0, SampleCos, Weight));
+                    float ElevSin = (dot(VecM, ProjNormalDir) / DistM) - 0.02;
+                    if (ElevSin > 0.0 && dot(VecM, ViewFrom) > -0.35 * DistM)
+                    {
+                        float Weight = saturate((FalloffEndMeters - DistM) / (FalloffEndMeters - FalloffStartMeters));
+                        MaxSinMinus  = max(MaxSinMinus, saturate(ElevSin) * Weight);
+                    }
                 }
             }
         }
 
-        float H1 = NormalAngle + max(-acos(clamp(CosHorizonMinus, -1.0, 1.0)) - NormalAngle, -1.5707963);
-        float H2 = NormalAngle + min( acos(clamp(CosHorizonPlus,  -1.0, 1.0)) - NormalAngle,  1.5707963);
-        float Side1 = -cos(2.0 * H1 - NormalAngle) + CosN + 2.0 * H1 * SinN;
-        float Side2 = -cos(2.0 * H2 - NormalAngle) + CosN + 2.0 * H2 * SinN;
-        float SliceVisibility = saturate(ProjNormalLen * 0.25 * (Side1 + Side2));
+        float SliceVisibility = saturate(1.0 - 0.5 * (MaxSinPlus * MaxSinPlus + MaxSinMinus * MaxSinMinus));
         VisibilitySum += lerp(1.0, SliceVisibility, ProjNormalLen);
     }
 
