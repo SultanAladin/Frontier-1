@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 
 namespace Frontier
 {
@@ -85,9 +86,8 @@ namespace Detail
 {
 struct PersistentTimingLogChannel
 {
-    std::ofstream         Stream {};
     std::filesystem::path OpenPath {};
-    uint32_t              UnflushedLines = 0u;
+    std::string           BufferedText {};
 };
 
 inline PersistentTimingLogChannel& AccessTimingLogChannel()
@@ -100,39 +100,22 @@ inline PersistentTimingLogChannel& AccessTimingLogChannel()
 inline void InitializeTimingLogFile(const std::filesystem::path& LogPath, std::string_view AdapterName, bool HwGpu)
 {
     auto& LogChannel = Detail::AccessTimingLogChannel();
-    if (LogChannel.Stream.is_open())
-    {
-        LogChannel.Stream.close();
-    }
-    LogChannel.Stream.open(LogPath, std::ios::out | std::ios::trunc);
-    LogChannel.OpenPath       = LogPath;
-    LogChannel.UnflushedLines = 0u;
-    if (!LogChannel.Stream)
-    {
-        return;
-    }
-    LogChannel.Stream << "# Frontier Per-Stage Timing Log\n";
-    LogChannel.Stream << "# Adapter: " << AdapterName << " | HardwareGPU: " << (HwGpu ? "YES" : "NO") << "\n";
-    LogChannel.Stream << "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
-    LogChannel.Stream.flush();
+    LogChannel.OpenPath = LogPath;
+    LogChannel.BufferedText.clear();
+    LogChannel.BufferedText.reserve(64u * 1024u);
+    LogChannel.BufferedText += "# Frontier Per-Stage Timing Log\n";
+    LogChannel.BufferedText += "# Adapter: ";
+    LogChannel.BufferedText.append(AdapterName);
+    LogChannel.BufferedText += HwGpu ? " | HardwareGPU: YES\n" : " | HardwareGPU: NO\n";
+    LogChannel.BufferedText += "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
 }
 
 inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const ViewportTimingBreakdown& T, const char* ReasonTag = "SAMPLE")
 {
     auto& LogChannel = Detail::AccessTimingLogChannel();
-    if (!LogChannel.Stream.is_open() || LogChannel.OpenPath != LogPath)
+    if (LogChannel.OpenPath != LogPath)
     {
-        if (LogChannel.Stream.is_open())
-        {
-            LogChannel.Stream.close();
-        }
-        LogChannel.Stream.open(LogPath, std::ios::out | std::ios::app);
-        LogChannel.OpenPath       = LogPath;
-        LogChannel.UnflushedLines = 0u;
-    }
-    if (!LogChannel.Stream)
-    {
-        return;
+        LogChannel.OpenPath = LogPath;
     }
     const float Fps = (T.TotalFrameMs > 0.01f) ? (1000.0f / T.TotalFrameMs) : 0.0f;
     char Line[512]{};
@@ -163,12 +146,37 @@ inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const View
         T.GizmoOverlayMs,
         T.DesktopPollAndUiMs,
         T.SwapchainPresentMs);
-    LogChannel.Stream.write(Line, static_cast<std::streamsize>(std::char_traits<char>::length(Line)));
-    if (++LogChannel.UnflushedLines >= 24u)
+    LogChannel.BufferedText.append(Line, std::char_traits<char>::length(Line));
+}
+
+[[nodiscard]] inline bool FinalizeTimingLogFile() noexcept
+{
+    auto& LogChannel = Detail::AccessTimingLogChannel();
+    if (LogChannel.OpenPath.empty())
     {
-        LogChannel.Stream.flush();
-        LogChannel.UnflushedLines = 0u;
+        return true;
     }
+
+    std::ofstream Output(LogChannel.OpenPath, std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!Output)
+    {
+        return false;
+    }
+    Output.write(LogChannel.BufferedText.data(), static_cast<std::streamsize>(LogChannel.BufferedText.size()));
+    Output.flush();
+    if (!Output)
+    {
+        return false;
+    }
+    Output.close();
+    if (!Output)
+    {
+        return false;
+    }
+
+    LogChannel.BufferedText.clear();
+    LogChannel.OpenPath.clear();
+    return true;
 }
 
 } // namespace Frontier

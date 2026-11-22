@@ -2858,6 +2858,8 @@ void EditorLifecycle::RequestTermination() noexcept
 
 void EditorLifecycle::Finalize() noexcept
 {
+    (void)FinalizeTimingLogFile();
+    TimingLogInitialized = false;
     if (!Initialized)
     {
         EditorSequence.Finalize();

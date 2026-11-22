@@ -17,7 +17,7 @@
 
 The checked-in `FrontierTiming.log` contains HighEnd BVH4 spike records around frames 39290–39305 with roughly 30–34 ms in the primary trace. Path Tracer records show roughly 15 ms primary-trace cost in that captured run. These are observations from the log, not a fresh hardware benchmark. Separate UI-build and presentation spikes also appear in the log.
 
-The old timing writer retained the previous GPU timestamps when the viewport was idle, so periodic entries could imply that a completed render was still running. `EditorLifecycle` now clears GPU/scene-sync measurements on frames with no successful viewport dispatch and marks `WorldDispatched` false. This makes idle-frame samples readable rather than changing GPU work.
+The old timing writer retained the previous GPU timestamps when the viewport was idle, so periodic entries could imply that a completed render was still running. `EditorLifecycle` now clears GPU/scene-sync measurements on frames with no successful viewport dispatch and marks `WorldDispatched` false. Timing rows are accumulated in memory; `FrontierTiming.log` is opened and written once when `EditorLifecycle::Finalize` runs on orderly editor shutdown. A forced process termination can lose the in-memory session log.
 
 ## Change and tradeoff
 
@@ -25,5 +25,6 @@ The default viewport engine changed from GTX GDF GI to **Path Tracer (Real-Time)
 
 ## Verification
 
+- Standalone C++20 telemetry test: verified the log file remains absent after initialization and appended samples; it is created with the buffered header/rows only at finalization.
 - `git diff --check`: passed.
-- Build/runtime benchmark: not run in this sandbox; no configured build tree or `ExternalPackages/` dependency directory is present.
+- Full build/runtime benchmark: not run in this sandbox; no configured build tree or `ExternalPackages/` dependency directory is present.
