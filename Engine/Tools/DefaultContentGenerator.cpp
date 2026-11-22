@@ -1037,7 +1037,7 @@ bool DefaultContentGenerator::GenerateRepositoryContent(
         DefaultWorld.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.00f };
         DefaultWorld.EditorCamera.VerticalFovRadians = 38.0f * Constants::DegToRadFloat;
         DefaultWorld.EditorCamera.NearClipMeters     = 0.12f;
-        DefaultWorld.EditorCamera.FarClipMeters      = 120.0f;
+        DefaultWorld.EditorCamera.FarClipMeters      = 5000.0f;
 
         Codecs::WorldGeometryPlacementEntry GroundPlacement{};
         GroundPlacement.PlacementTitle        = "GroundPlane";

@@ -73,8 +73,8 @@ struct ViewportDisplaySettings
     bool     XeGtaoEnabled         = false;  // [-]   - XeGTAO screen-space AO for direct PBR (no GI)
     float    XeGtaoStrength        = 1.0f;   // [x]   - XeGTAO occlusion strength [0..2]
     uint32_t PathTraceTargetSpp    = 256u;   // [spp] - Progressive PT convergence target (0 = render continuously, no cap)
-    uint32_t PathTraceBatchSpp     = 1u;     // [spp] - PT samples accumulated per step (1/2/4/8, HTML lab parity)
-    bool     ClusterLodEnabled     = true;   // [-]   - Monotonic cluster LOD drives the viewport BVH
+    uint32_t PathTraceBatchSpp     = 1u;     // [spp] - PT samples accumulated per frame (1/2/4/8, HTML lab parity)
+    bool     ClusterLodEnabled     = true;   // [-]   - Nanite-like cluster LOD drives the viewport BVH
     float    ClusterLodPixelError  = 1.25f;  // [px]  - Screen-space LOD error budget (0.5 quality / 1.25 balanced / 2.5 / 5 aggressive)
     bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
     bool     VolumetricCloudsEnabled = false;// [-]   - Raymarched volumetric cloud deck toggle (default off for Clear Sky)
@@ -131,9 +131,6 @@ public:
     void ConfigureOpenContentBrowserCallback(std::function<void()> Callback);
     void ConfigureRasterCallback(ViewportPaneRasterCallback Callback);
     void ConfigureInteractionCallback(ViewportPaneInteractionCallback Callback);
-    void ConfigureGizmoModeIndex(uint32_t ModeIndex) noexcept;
-    void ConfigureGizmoModeChangedCallback(std::function<void(uint32_t)> Callback);
-    [[nodiscard]] uint32_t QueryGizmoModeIndex() const noexcept;
     void ConfigureViewportTimingBreakdown(const ViewportTimingBreakdown& Breakdown) noexcept;
     void ConfigureProbeReadoutText(std::string_view ReadoutText);
     void ConfigureSceneTitle(std::string_view Title);
@@ -141,9 +138,9 @@ public:
     void TogglePlayPause() noexcept;
     void ConfigureSplitViewport(bool SplitEnabled) noexcept;
     void ConfigureDiagnosticsVisible(bool Visible) noexcept;
-    void AdvanceDebugChannelCycle() noexcept;
+    void AdvanceDebugChannelCycle() noexcept { DisplaySettings.DebugChannelIndex = (DisplaySettings.DebugChannelIndex + 1u) % 19u; }
     void ConfigureRenderSettingsSheetOpen(bool Open) noexcept;
-    void ConfigureSdfPenumbraDropdownOpen(bool Open) noexcept;
+    void ConfigureSdfPenumbraDropdownOpen(bool Open) noexcept { SdfPenumbraDropdownOpen = Open; }
     void ConfigureConstructSheetOpen(bool Open) noexcept;
     void ConfigureProjectionDropdownOpen(bool Open) noexcept;
     void ConfigurePrimaryProjection(ViewportProjectionPreset Preset) noexcept;
@@ -173,7 +170,7 @@ public:
     [[nodiscard]] Rectangle2D                    QueryLastCanvasPhysicalBounds() const noexcept;
     [[nodiscard]] const ViewportDisplaySettings& QueryDisplaySettings() const noexcept;
     [[nodiscard]] ViewportDisplaySettings&       AccessDisplaySettings() noexcept;
-    [[nodiscard]] const ImTextureData&           QueryCanvasRasterTexture() const noexcept;
+    [[nodiscard]] const ImTextureData&           QueryCanvasRasterTexture() const noexcept { return CanvasRasterTexture; }
 
 private:
     void PushDiagnosticsSample(double Δt) noexcept;
@@ -208,12 +205,10 @@ private:
     bool                       PlayPaused              = false;                                   // [-]   - Play session paused indicator
     bool                       SplitViewportEnabled    = false;                                   // [-]   - Dual side-by-side viewport toggle
     bool                       DiagnosticsVisible      = false;                                   // [-]   - Diagnostics overlay active
-    bool                       RenderSettingsSheetOpen = false;                                   // [-]   - Dedicated Render Settings panel open
-    bool                       RenderSectionDropdownOpen = false;                                 // [-]   - Header Render section selector open
-    uint32_t                   RenderSettingsSection   = 0u;                                      // [idx] - Render panel section (0 Renderer, 1 Lighting, 2 Path Tracing, 3 Cluster LOD, 4 Atmosphere)
-    Rectangle2D                RenderSectionButtonBounds {};                                      // [px]  - Header Render selector button bounds
-    uint32_t                   ActiveGizmoModeIndex    = 0u;                                      // [idx] - 0=All, 1=Move, 2=Rotate, 3=Scale
-    std::function<void(uint32_t)> OnGizmoModeChanged   {};                                        // [-]   - Toolbar gizmo mode callback
+    bool                       RenderSettingsSheetOpen       = false;                                   // [-]   - Dedicated Render Settings panel open
+    bool                       RenderMenuOpen              = false;                                   // [-]   - Render header menu open
+    uint32_t                   RenderSettingsSection       = 0u;                                      // [idx] - Render panel section (0 Renderer, 1 Lighting, 2 Path Tracing, 3 Nanite, 4 Atmosphere)
+    Rectangle2D                RenderMenuButtonBounds      {};                                        // [px]  - Header Render menu button bounds
     bool                       ConstructSheetOpen      = false;                                   // [-]   - Construct dialog open
     bool                       ProjectionDropdownOpen  = false;                                   // [-]   - Projection selector open
     bool                       HeaderDebugDropdownOpen = false;                                   // [-]   - Header Debug View DropdownSelector open
@@ -233,10 +228,12 @@ private:
     DiagnosticsTabCategory     DiagnosticsCategory     = DiagnosticsTabCategory::Timing;          // [-]   - Active diagnostics view tab
     bool                       DiagnosticsPaused       = false;                                   // [-]   - Freeze sparkline sampling
     DiagnosticsOverlaySession  DiagnosticsSession      {};                                        // [-]   - Reusable DiagnosticsOverlay session
-    std::array<float, 360>     IntervalHistoryMs       {};                                        // [ms]  - Stationary per-step oscilloscope ring
-    uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Current sweep slot [0..359]
-    uint32_t                   HistoryValidSamples     = 0u;                                      // [cnt] - Populated sample count [0..360]
-    ViewportTimingBreakdown    LastViewportTiming      {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
+    std::array<float, 600>     IntervalHistoryMs      {};                                        // [ms]  - 10 Hz timing samples (600 = 60 s window)
+    uint32_t                   HistoryWriteCursor      = 0u;                                      // [idx] - Ring buffer write cursor
+    float                      HistoryPendingMs        = 0.0f;                                    // [ms]  - Frame-time accumulator for the next 10 Hz sample
+    float                      HistoryPendingSeconds   = 0.0f;                                    // [s]   - Elapsed time inside the pending sample bucket
+    uint32_t                   HistoryPendingFrames    = 0u;                                      // [cnt] - Frames inside the pending sample bucket
+    ViewportTimingBreakdown       LastViewportTiming     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
     float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset
     TextEditBuffer             ConstructSearchEditor   {};                                        // [-]   - Construct search filter buffer
@@ -355,36 +352,6 @@ inline const ViewportDisplaySettings& ViewportPanel::QueryDisplaySettings() cons
 inline ViewportDisplaySettings& ViewportPanel::AccessDisplaySettings() noexcept
 {
     return DisplaySettings;
-}
-
-inline void ViewportPanel::ConfigureGizmoModeIndex(uint32_t ModeIndex) noexcept
-{
-    ActiveGizmoModeIndex = std::min(3u, ModeIndex);
-}
-
-inline void ViewportPanel::ConfigureGizmoModeChangedCallback(std::function<void(uint32_t)> Callback)
-{
-    OnGizmoModeChanged = std::move(Callback);
-}
-
-inline uint32_t ViewportPanel::QueryGizmoModeIndex() const noexcept
-{
-    return ActiveGizmoModeIndex;
-}
-
-inline void ViewportPanel::AdvanceDebugChannelCycle() noexcept
-{
-    DisplaySettings.DebugChannelIndex = (DisplaySettings.DebugChannelIndex + 1u) % 19u;
-}
-
-inline void ViewportPanel::ConfigureSdfPenumbraDropdownOpen(bool Open) noexcept
-{
-    SdfPenumbraDropdownOpen = Open;
-}
-
-inline const ImTextureData& ViewportPanel::QueryCanvasRasterTexture() const noexcept
-{
-    return CanvasRasterTexture;
 }
 
 } // namespace Frontier

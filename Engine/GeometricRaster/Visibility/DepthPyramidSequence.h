@@ -29,7 +29,7 @@ struct PerspectiveCameraBasis
     Mathematics::Axis3D WorldUpAxis        { 0.0f,  0.0f, 1.0f }; // [-]   - World Z-up reference direction
     float               VerticalFovRadians = 0.78539816f;         // [rad] - Vertical field of view (default 45 deg)
     float               NearClipMeters     = 0.10f;               // [m]   - Reversed-Z near plane -> Depth = 1.0
-    float               FarClipMeters      = 500.0f;              // [m]   - Reversed-Z far plane  -> Depth = 0.0
+    float               FarClipMeters      = 5000.0f;             // [m]   - Reversed-Z far plane  -> Depth = 0.0
     uint32_t            ViewportWidthPx    = 640u;                // [px]  - Render target width
     uint32_t            ViewportHeightPx   = 360u;                // [px]  - Render target height
     Mathematics::Axis2D SubpixelJitterPx   { 0.0f, 0.0f };        // [px]  - Temporal AA sub-pixel camera jitter offset

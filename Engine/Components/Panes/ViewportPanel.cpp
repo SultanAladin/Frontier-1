@@ -93,8 +93,8 @@ namespace
         "SDF Normal",
         "SDF AO Raw",
         "SDF Cascade",
-        "Cluster LOD Level",
-        "Cluster ID Color"
+        "Nanite LOD Level",
+        "Nanite Clusters"
     }};
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
@@ -314,13 +314,23 @@ void ViewportPanel::PushDiagnosticsSample(double Δt) noexcept
         return;
     }
 
-    // Record every rendered step into a stationary oscilloscope slot (zero horizontal scrolling blur).
-    const float StepMs = (LastViewportTiming.TotalFrameMs > 0.05f)
-        ? std::clamp(LastViewportTiming.TotalFrameMs, 0.2f, 120.0f)
-        : ((Δt > 1.0e-5) ? std::clamp(static_cast<float>(Δt * 1000.0), 0.2f, 120.0f) : 16.67f);
-    HistoryWriteCursor                     = (HistoryValidSamples == 0u) ? 0u : ((HistoryWriteCursor + 1u) % IntervalHistoryMs.size());
-    IntervalHistoryMs[HistoryWriteCursor]  = StepMs;
-    HistoryValidSamples                    = std::min<uint32_t>(static_cast<uint32_t>(IntervalHistoryMs.size()), HistoryValidSamples + 1u);
+    // Sample at 10 Hz (average frame time over each 100 ms bucket): the graph then shows a
+    // readable 15/30/60 s window scrolling slowly instead of a 2 s per-frame blur.
+    const float FrameMs = (Δt > 1.0e-5)
+        ? std::clamp(static_cast<float>(Δt * 1000.0), 1.0f, 120.0f)
+        : 16.67f;
+    HistoryPendingMs += FrameMs;
+    HistoryPendingSeconds += static_cast<float>(std::max(0.0, Δt));
+    ++HistoryPendingFrames;
+    if (HistoryPendingSeconds >= 0.1f)
+    {
+        IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()] = std::clamp(
+            HistoryPendingMs / static_cast<float>(std::max(1u, HistoryPendingFrames)), 1.0f, 120.0f);
+        ++HistoryWriteCursor;
+        HistoryPendingMs      = 0.0f;
+        HistoryPendingSeconds = 0.0f;
+        HistoryPendingFrames  = 0u;
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -630,14 +640,13 @@ void ViewportPanel::RenderDiagnosticsPanel(
     uint32_t                VisibleCount,
     const PaneInputReading& Input)
 {
-    const uint32_t SampleCount = std::max<uint32_t>(1u, HistoryValidSamples);
-    std::vector<float> Sorted(IntervalHistoryMs.begin(), IntervalHistoryMs.begin() + SampleCount);
+    std::vector<float> Sorted(IntervalHistoryMs.begin(), IntervalHistoryMs.end());
     std::sort(Sorted.begin(), Sorted.end());
     const float MinMs = Sorted.front();
     const float MaxMs = Sorted.back();
     const float AvgMs = std::accumulate(Sorted.begin(), Sorted.end(), 0.0f) / static_cast<float>(Sorted.size());
     const float P95Ms = Sorted[static_cast<std::size_t>(Sorted.size() * 95u / 100u)];
-    const float CurMs = IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()];
+    const float CurMs = IntervalHistoryMs[(HistoryWriteCursor + IntervalHistoryMs.size() - 1u) % IntervalHistoryMs.size()];
 
     auto FormatMs = [](float V) -> std::string
     {
@@ -653,9 +662,15 @@ void ViewportPanel::RenderDiagnosticsPanel(
     std::snprintf(WholeMs, sizeof(WholeMs), "%d", WholeInt);
     std::snprintf(FracMs, sizeof(FracMs), ".%d", Tenths);
 
-    // Stationary oscilloscope trace across all 360 slots (writes in-place at SweepCursorIndex).
-    const std::vector<float> StationarySamples(IntervalHistoryMs.begin(), IntervalHistoryMs.end());
-    const int32_t            SweepCursor = static_cast<int32_t>(HistoryWriteCursor % IntervalHistoryMs.size());
+    // 10 Hz samples over the selected window (15/30/60 s): slow, readable graph scroll.
+    const uint32_t WindowSamples = std::clamp(DiagnosticsSession.HistorySeconds, 15u, 60u) * 10u;
+    std::vector<float> OrderedSamples(WindowSamples);
+    const std::size_t RingSize = IntervalHistoryMs.size();
+    for (std::size_t Step = 0u; Step < OrderedSamples.size(); ++Step)
+    {
+        const std::size_t Back = OrderedSamples.size() - 1u - Step;
+        OrderedSamples[Step] = IntervalHistoryMs[(HistoryWriteCursor + RingSize - 1u - (Back % RingSize)) % RingSize];
+    }
 
     auto FormatCount = [](uint32_t V) -> std::string
     {
@@ -675,12 +690,11 @@ void ViewportPanel::RenderDiagnosticsPanel(
     char ScaleText[48]{};
     std::snprintf(ScaleText, sizeof(ScaleText), "%.0f", DisplaySettings.RenderScalePercent);
 
-    const float CurFps  = 1000.0f / std::max(0.1f, CurMs);
+    char FpsText[24]{};
+    std::snprintf(FpsText, sizeof(FpsText), "%.1f fps", 1000.0f / std::max(0.1f, AvgMs));
     const float RealFps = 1000.0f / std::max(0.1f, AvgMs);
-    char FpsPairText[48]{};
-    std::snprintf(FpsPairText, sizeof(FpsPairText), "%.1f cur / %.1f avg", CurFps, RealFps);
     char FpsUnitBuf[32]{};
-    std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", CurFps);
+    std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", RealFps);
 
     const float ProfMs = (LastViewportTiming.TotalFrameMs > 0.0f)
         ? LastViewportTiming.TotalFrameMs
@@ -692,7 +706,7 @@ void ViewportPanel::RenderDiagnosticsPanel(
     std::snprintf(ProfWhole, sizeof(ProfWhole), "%d", ProfWholeInt);
     std::snprintf(ProfFrac, sizeof(ProfFrac), ".%d", ProfTenths);
 
-    char ProfSub[96]{};
+    char ProfSub[64]{};
     std::snprintf(
         ProfSub,
         sizeof(ProfSub),
@@ -702,60 +716,36 @@ void ViewportPanel::RenderDiagnosticsPanel(
         QueryEngineShortLabel(LastViewportTiming.EngineMode),
         QueryShadowShortLabel(LastViewportTiming.ShadowAlgorithm));
 
-    char ClusterSummary[64]{};
-    if (LastViewportTiming.ClusterLodActive && LastViewportTiming.FullTriangleCount > 0u)
-    {
-        std::snprintf(
-            ClusterSummary,
-            sizeof(ClusterSummary),
-            "%u cls · %u / %u tris",
-            LastViewportTiming.ActiveClusterCount,
-            LastViewportTiming.ActiveTriangleCount,
-            LastViewportTiming.FullTriangleCount);
-    }
-    else
-    {
-        std::snprintf(ClusterSummary, sizeof(ClusterSummary), "Full (%u tris)", LastViewportTiming.FullTriangleCount);
-    }
-
-    char SdfSummary[48]{};
-    std::snprintf(SdfSummary, sizeof(SdfSummary), "%u local SDFs", LastViewportTiming.LocalSdfInstanceCount);
-
-    char ProfDebug[96]{};
+    char ProfDebug[80]{};
     std::snprintf(
         ProfDebug,
         sizeof(ProfDebug),
-        "RAM ledger -> exit flush  |  Scene sync: %.2f ms",
+        "Log: FrontierTiming.log  |  Scene sync: %.2f ms",
         LastViewportTiming.SceneSyncGpuMs);
 
     const std::array<DiagnosticsMetricChannel, 4> Channels = {{
         DiagnosticsMetricChannel{
-            "Telemetry & step plot",
-            "All",
+            "Frame time",
+            "Timing",
             WholeMs,
             FracMs,
             FpsUnitBuf,
-            ProfSub,
-            ProfDebug,
-            StationarySamples,
+            "",
+            "",
+            OrderedSamples,
             0.0f,
-            40.0f,
+            33.3f,
             16.67f,
-            33.33f,
-            SweepCursor,
-            true,
             true,
             true,
             ColorRgba{ 142, 198, 152, 240 },
             {
-                { "Step / P95",   FormatMs(CurMs) + " / " + FormatMs(P95Ms) },
-                { "FPS",          FpsPairText },
-                { "Min / Max",    FormatMs(MinMs) + " / " + FormatMs(MaxMs) },
-                { "GPU Total",    FormatMs(LastViewportTiming.GpuTotalPassMs) + " (Trc " + FormatMs(LastViewportTiming.GpuPrimaryTraceMs) + ")" },
-                { "UI + Present", FormatMs(LastViewportTiming.DesktopPollAndUiMs + LastViewportTiming.SwapchainPresentMs) },
-                { "Cluster LOD",  ClusterSummary },
-                { "Global SDF",   SdfSummary },
-                { "Scene Slots",  std::string(VisSummary) },
+                { "Current",  FormatMs(CurMs) },
+                { "Average",  FormatMs(AvgMs) },
+                { "FPS (avg)", FpsText },
+                { "Minimum",  FormatMs(MinMs) },
+                { "95th pct", FormatMs(P95Ms) },
+                { "Maximum",  FormatMs(MaxMs) },
             }
         },
         DiagnosticsMetricChannel{
@@ -770,9 +760,6 @@ void ViewportPanel::RenderDiagnosticsPanel(
             0.0f,
             1.0f,
             0.0f,
-            0.0f,
-            -1,
-            false,
             false,
             false,
             ColorRgba{ 142, 198, 152, 240 },
@@ -780,8 +767,6 @@ void ViewportPanel::RenderDiagnosticsPanel(
                 { "Constructed", FormatCount(ConstructedCount) },
                 { "Visible",     FormatCount(VisibleCount) },
                 { "Hidden",      FormatCount(ConstructedCount - VisibleCount) },
-                { "Cluster LOD", ClusterSummary },
-                { "Global SDF",  SdfSummary },
             }
         },
         DiagnosticsMetricChannel{
@@ -796,9 +781,6 @@ void ViewportPanel::RenderDiagnosticsPanel(
             0.0f,
             1.0f,
             0.0f,
-            0.0f,
-            -1,
-            false,
             false,
             false,
             ColorRgba{ 142, 198, 152, 240 },
@@ -811,19 +793,16 @@ void ViewportPanel::RenderDiagnosticsPanel(
         },
         DiagnosticsMetricChannel{
             "Stage profiler",
-            "Stages",
+            "Profiler",
             ProfWhole,
             ProfFrac,
-            "ms  (step)",
+            "ms  (frame)",
             ProfSub,
             ProfDebug,
             {},
             0.0f,
             1.0f,
             0.0f,
-            0.0f,
-            -1,
-            false,
             false,
             false,
             ColorRgba{ 142, 198, 152, 240 },
@@ -832,7 +811,7 @@ void ViewportPanel::RenderDiagnosticsPanel(
                 { "GPU Denoise",    FormatMs(LastViewportTiming.GpuDenoiseMs) },
                 { "GPU Clouds+Sky", FormatMs(LastViewportTiming.GpuCloudsMs + LastViewportTiming.GpuSkyLutMs) },
                 { "GPU Readback",   FormatMs(LastViewportTiming.GpuReadbackCopyMs) },
-                { "GPU Pass Total", FormatMs(LastViewportTiming.GpuTotalPassMs) },
+                { "GPU Frame Total",FormatMs(LastViewportTiming.GpuTotalPassMs) },
                 { "UI + Gizmo",     FormatMs(LastViewportTiming.DesktopPollAndUiMs + LastViewportTiming.GizmoOverlayMs) },
                 { "Present / Swap", FormatMs(LastViewportTiming.SwapchainPresentMs) },
             }
@@ -846,11 +825,11 @@ void ViewportPanel::RenderDiagnosticsPanel(
     DiagnosticsOverlaySpec Spec {};
     Spec.Title                   = "Diagnostics";
     Spec.ShortcutBadge           = "F3";
-    Spec.FooterSampleLabel       = "Per-step sweep";
-    Spec.AllowDragResize         = true;
-    Spec.ShowViewSpanControls    = false;
-    Spec.DefaultWidthPx          = 344.0f;
-    Spec.DefaultHeightPx         = 496.0f;
+    Spec.FooterSampleLabel       = "10 Hz samples";
+    Spec.AllowDragResize         = false;
+    Spec.ShowViewSpanControls    = true;
+    Spec.DefaultWidthPx          = 324.0f;
+    Spec.DefaultHeightPx         = 432.0f;
     Spec.Channels                = Channels;
 
     ControlPointer Pointer {};
@@ -1094,9 +1073,9 @@ void ViewportPanel::RenderSettingsSheet(
         ColorRgba{ 138, 138, 138, 255 },
         "RENDER SETTINGS");
 
-    // Section pills switch Render Settings sections directly
+    // Section pills mirror the Render header menu (switch sections without reopening it)
     {
-        constexpr std::array<const char*, 5> SectionLabels = {{ "Render", "Lights", "PT", "Cluster", "Sky" }};
+        constexpr std::array<const char*, 5> SectionLabels = {{ "Render", "Lights", "PT", "Nanite", "Sky" }};
         const float PillW = (SheetW - 32.0f - 16.0f) / 5.0f;
         for (uint32_t SecIdx = 0u; SecIdx < 5u; ++SecIdx)
         {
@@ -1309,11 +1288,11 @@ void ViewportPanel::RenderSettingsSheet(
 
     if (RenderSettingsSection == 3u)
     {
-    // Monotonic Cluster LOD: viewport traces the per-camera LOD cut instead of full-res geometry
+    // Nanite-like cluster LOD: viewport traces the per-camera LOD cut instead of full-res geometry
     {
         WorkspaceAppearance::ConstructWeightedText(
             Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
-            WorkspaceSurfaceColors::SecondaryInk, "Cluster LOD");
+            WorkspaceSurfaceColors::SecondaryInk, "Nanite LOD");
         constexpr std::array<const char*, 2> LodLabels = {{ "Off", "On" }};
         const float GroupW   = 102.0f;
         const float CapsuleW = (GroupW - 4.0f) / 2.0f;
@@ -1364,7 +1343,7 @@ void ViewportPanel::RenderSettingsSheet(
         }
     }
 
-    } // Section: Cluster LOD
+    } // Section: Nanite
 
     if (RenderSettingsSection == 0u)
     {
@@ -1654,8 +1633,8 @@ void ViewportPanel::RenderSettingsSheet(
             "Debug View: SDF Normal",
             "Debug View: SDF AO Raw (Unfiltered)",
             "Debug View: SDF Cascade",
-            "Debug View: Cluster LOD Level",
-            "Debug View: Cluster ID Color",
+            "Debug View: Nanite LOD Level",
+            "Debug View: Nanite Clusters",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugButtonBounds, static_cast<uint32_t>(DebugOptions.size()));
         const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 19u;
@@ -1697,7 +1676,7 @@ void ViewportPanel::Render(
 
     PixelSpace&   ActiveOverlay     = (OverlaySurface != nullptr) ? *OverlaySurface : Surface;
     const Point2D Cursor            = { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const bool    OverlayOpenBefore = ConstructSheetOpen || RenderSettingsSheetOpen || RenderSectionDropdownOpen || ProjectionDropdownOpen || HeaderDebugDropdownOpen;
+    const bool    OverlayOpenBefore = ConstructSheetOpen || RenderSettingsSheetOpen || RenderMenuOpen || ProjectionDropdownOpen || HeaderDebugDropdownOpen;
 
     PushDiagnosticsSample(Δt);
     WorkspaceAppearance::ForwardInputToTextBuffer(ConstructSearchEditor, Input, Δt);
@@ -1895,23 +1874,23 @@ void ViewportPanel::Render(
         }
     }
 
-    // Right-aligned secondary tools: Split Viewport, Diagnostics, Render (each 39x31 / 92x31 capsule)
+    // Right-aligned secondary tools: Split Viewport, Diagnostics, Settings (each 39x31 capsule)
     const Rectangle2D RenderBtn{ ToolbarRight - 92.0f, ToolsRowY, 92.0f, 31.0f };
     const Rectangle2D DiagnosticsBtn{ RenderBtn.X - 5.0f - 39.0f, ToolsRowY, 39.0f, 31.0f };
-    RenderSectionButtonBounds = RenderBtn;
+    RenderMenuButtonBounds = RenderBtn;
     const Rectangle2D SplitBtn{ DiagnosticsBtn.X - 5.0f - 39.0f, ToolsRowY, 39.0f, 31.0f };
 
-    // Header Debug View Dropdown Pill + Gizmo Mode Strip (All / Move / Rot / Scale)
+    // Header Debug View Dropdown Pill (1-click access to Lit + 15 modular debug views)
     {
-        float NextLeftX = ProjectionBtn.Right() + 8.0f;
+        const float DebugStartX = ProjectionBtn.Right() + 8.0f;
         std::string HeaderDbgLabel = "Debug: ";
         HeaderDbgLabel += QueryDebugChannelName(DisplaySettings.DebugChannelIndex);
         const float DbgBtnW = std::clamp(
             WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.5f, HeaderDbgLabel) + 38.0f,
             102.0f, 156.0f);
-        if (NextLeftX + DbgBtnW + 8.0f < SplitBtn.X)
+        if (DebugStartX + DbgBtnW + 8.0f < SplitBtn.X)
         {
-            const Rectangle2D HeaderDbgBtn{ NextLeftX, ToolsRowY, DbgBtnW, 31.0f };
+            const Rectangle2D HeaderDbgBtn{ DebugStartX, ToolsRowY, DbgBtnW, 31.0f };
             HeaderDebugButtonBounds = HeaderDbgBtn;
             ControlPointer DbgPtr   = Input.PrimaryPointer;
             if (ConstructSheetOpen || RenderSettingsSheetOpen || ProjectionDropdownOpen)
@@ -1924,51 +1903,7 @@ void ViewportPanel::Render(
                 HeaderDebugDropdownOpen = !HeaderDebugDropdownOpen;
                 ProjectionDropdownOpen  = false;
                 ConstructSheetOpen      = false;
-                RenderSettingsSheetOpen = false;
-            }
-            NextLeftX = HeaderDbgBtn.Right() + 8.0f;
-        }
-
-        constexpr std::array<const char*, 4> GizmoLabels = {{ "All", "Move", "Rot", "Scale" }};
-        constexpr float GizmoStripW = 168.0f;
-        if (NextLeftX + GizmoStripW + 8.0f < SplitBtn.X)
-        {
-            const Rectangle2D GizmoGroup{ NextLeftX, ToolsRowY, GizmoStripW, 31.0f };
-            Surface.FillRectangle(GizmoGroup, ColorRgba{ 22, 22, 22, 255 }, 15.5f);
-            Surface.StrokeRectangle(GizmoGroup, ColorRgba{ 255, 255, 255, 18 }, 15.5f, 1.0f);
-            const float SegW = (GizmoStripW - 6.0f) / 4.0f;
-            for (uint32_t ModeIdx = 0u; ModeIdx < 4u; ++ModeIdx)
-            {
-                const Rectangle2D Seg{ GizmoGroup.X + 3.0f + static_cast<float>(ModeIdx) * SegW, ToolsRowY + 3.0f, SegW, 25.0f };
-                const bool Active  = (ActiveGizmoModeIndex == ModeIdx);
-                const bool Hovered = !OverlayOpenBefore && Seg.Contains(Cursor);
-                if (Active || Hovered)
-                {
-                    Surface.FillRectangle(
-                        Seg,
-                        Active ? ColorRgba{ 52, 44, 33, 255 } : ColorRgba{ 38, 38, 38, 255 },
-                        12.5f);
-                    if (Active)
-                    {
-                        Surface.StrokeRectangle(Seg, ColorRgba{ 191, 162, 122, 115 }, 12.5f, 1.0f);
-                    }
-                }
-                const float LabelW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.5f, GizmoLabels[ModeIdx]);
-                WorkspaceAppearance::ConstructWeightedText(
-                    Surface,
-                    FontWeightClass::Regular,
-                    { Seg.Center().X - LabelW * 0.5f, Seg.Y + 6.5f },
-                    9.5f,
-                    Active ? ColorRgba{ 230, 201, 152, 255 } : ColorRgba{ 166, 166, 166, 255 },
-                    GizmoLabels[ModeIdx]);
-                if (Hovered && Input.PrimaryPointer.Pressed && ActiveGizmoModeIndex != ModeIdx)
-                {
-                    ActiveGizmoModeIndex = ModeIdx;
-                    if (OnGizmoModeChanged)
-                    {
-                        OnGizmoModeChanged(ModeIdx);
-                    }
-                }
+                RenderSettingsSheetOpen       = false;
             }
         }
     }
@@ -2012,28 +1947,28 @@ void ViewportPanel::Render(
         DiagnosticsVisible = !DiagnosticsVisible;
     }
 
-    // Dedicated Render section button
+    // Dedicated Render menu button (replaces the old gear/settings sheet trigger)
     {
-        const bool SectionActive = RenderSectionDropdownOpen || RenderSettingsSheetOpen;
-        const bool Hovered       = !OverlayOpenBefore && RenderBtn.Contains(Cursor);
-        Surface.FillRectangle(RenderBtn, SectionActive ? ColorRgba{ 46, 39, 30, 255 } : (Hovered ? ColorRgba{ 43, 43, 43, 255 } : ColorRgba{ 26, 26, 26, 255 }), 15.5f);
-        Surface.StrokeRectangle(RenderBtn, SectionActive ? ColorRgba{ 191, 162, 122, 110 } : ColorRgba{ 255, 255, 255, 20 }, 15.5f, 1.0f);
+        const bool MenuActive = RenderMenuOpen || RenderSettingsSheetOpen;
+        const bool Hovered    = !OverlayOpenBefore && RenderBtn.Contains(Cursor);
+        Surface.FillRectangle(RenderBtn, MenuActive ? ColorRgba{ 46, 39, 30, 255 } : (Hovered ? ColorRgba{ 43, 43, 43, 255 } : ColorRgba{ 26, 26, 26, 255 }), 15.5f);
+        Surface.StrokeRectangle(RenderBtn, MenuActive ? ColorRgba{ 191, 162, 122, 110 } : ColorRgba{ 255, 255, 255, 20 }, 15.5f, 1.0f);
         const char* RenderLabel = "Render";
         const float RenderLabelW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 10.5f, RenderLabel);
         WorkspaceAppearance::ConstructWeightedText(
             Surface, FontWeightClass::Medium,
             { RenderBtn.Center().X - RenderLabelW * 0.5f - 5.0f, RenderBtn.Y + 9.0f }, 10.5f,
-            SectionActive ? ColorRgba{ 222, 193, 147, 255 } : ColorRgba{ 190, 190, 190, 255 }, RenderLabel);
+            MenuActive ? ColorRgba{ 222, 193, 147, 255 } : ColorRgba{ 190, 190, 190, 255 }, RenderLabel);
         WorkspaceAppearance::ConstructWeightedText(
             Surface, FontWeightClass::Regular,
             { RenderBtn.Center().X + RenderLabelW * 0.5f - 1.0f, RenderBtn.Y + 10.0f }, 9.0f,
-            SectionActive ? ColorRgba{ 222, 193, 147, 255 } : ColorRgba{ 150, 150, 150, 255 }, "v");
+            MenuActive ? ColorRgba{ 222, 193, 147, 255 } : ColorRgba{ 150, 150, 150, 255 }, "v");
         if (Hovered && Input.PrimaryPointer.Pressed)
         {
-            RenderSectionDropdownOpen = !RenderSectionDropdownOpen;
-            ProjectionDropdownOpen    = false;
-            HeaderDebugDropdownOpen   = false;
-            ConstructSheetOpen        = false;
+            RenderMenuOpen         = !RenderMenuOpen;
+            ProjectionDropdownOpen = false;
+            HeaderDebugDropdownOpen = false;
+            ConstructSheetOpen     = false;
         }
     }
 
@@ -2175,8 +2110,8 @@ void ViewportPanel::Render(
             "14 · SDF Normal",
             "15 · SDF AO Raw (Unfiltered)",
             "16 · SDF Cascade",
-            "17 · Cluster LOD Level",
-            "18 · Cluster ID Color",
+            "17 · Nanite LOD Level",
+            "18 · Nanite Clusters",
         }};
         const Rectangle2D DropSheet = DropdownSelector::QuerySheetBounds(
             HeaderDebugButtonBounds, static_cast<uint32_t>(HeaderDebugOptions.size()));
@@ -2196,30 +2131,31 @@ void ViewportPanel::Render(
         }
     }
 
-    if (RenderSectionDropdownOpen)
+    if (RenderMenuOpen)
     {
-        constexpr std::array<const char*, 5> RenderSectionOptions = {{
+        // Dedicated Render Settings menu: pick a section, the dedicated panel opens on it.
+        constexpr std::array<const char*, 5> RenderMenuOptions = {{
             "Renderer...",
             "Lighting & Shadows...",
             "Path Tracing...",
-            "Cluster LOD...",
+            "Nanite LOD...",
             "Atmosphere...",
         }};
-        const Rectangle2D SectionSheet = DropdownSelector::QuerySheetBounds(
-            RenderSectionButtonBounds, static_cast<uint32_t>(RenderSectionOptions.size()));
+        const Rectangle2D MenuSheet = DropdownSelector::QuerySheetBounds(
+            RenderMenuButtonBounds, static_cast<uint32_t>(RenderMenuOptions.size()));
         uint32_t ChosenIdx = RenderSettingsSection;
         if (DropdownSelector::ConstructOptionSheet(
-                ActiveOverlay, RenderSectionButtonBounds, RenderSectionOptions.data(),
-                static_cast<uint32_t>(RenderSectionOptions.size()), RenderSettingsSection, Input.PrimaryPointer, ChosenIdx).Clicked)
+                ActiveOverlay, RenderMenuButtonBounds, RenderMenuOptions.data(),
+                static_cast<uint32_t>(RenderMenuOptions.size()), RenderSettingsSection, Input.PrimaryPointer, ChosenIdx).Clicked)
         {
-            RenderSettingsSection     = ChosenIdx;
-            RenderSectionDropdownOpen = false;
+            RenderSettingsSection = ChosenIdx;
+            RenderMenuOpen        = false;
             ConfigureRenderSettingsSheetOpen(true);
         }
         else if (OverlayOpenBefore && Input.PrimaryPointer.Pressed &&
-                 !SectionSheet.Contains(Cursor) && !RenderSectionButtonBounds.Contains(Cursor))
+                 !MenuSheet.Contains(Cursor) && !RenderMenuButtonBounds.Contains(Cursor))
         {
-            RenderSectionDropdownOpen = false;
+            RenderMenuOpen = false;
         }
     }
 

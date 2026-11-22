@@ -61,9 +61,9 @@ enum class GizmoHandleOrdinal : uint32_t
 
 struct alignas(16) GizmoGPUVertex
 {
-    Mathematics::GPUAxis4 PositionAlpha  {}; // xyz = World/UV Position, w = BaseAlpha (1.0 or 0.28)
-    Mathematics::GPUAxis4 NormalHandlePacked   {}; // xyz = Surface Normal,    w = float(GizmoHandleOrdinal)
-    Mathematics::GPUAxis4 ColorRGBAndShaded {}; // rgb = Slate Accent RGB,  w = LitShadingWeight (0 or 1)
+    Mathematics::GPUAxis4 PositionAlpha      {}; // xyz = World/UV Position, w = BaseAlpha (1.0 or 0.28)
+    Mathematics::GPUAxis4 NormalHandlePacked {}; // xyz = Surface Normal,    w = float(GizmoHandleOrdinal)
+    Mathematics::GPUAxis4 AccentLitWeight    {}; // rgb = Slate Accent RGB,  w = LitShadingWeight (0 or 1)
 };
 
 static_assert(sizeof(GizmoGPUVertex) == 48u, "GizmoGPUVertex must match GizmoRasterization.slang 48-byte stride.");
@@ -91,7 +91,7 @@ public:
     void ConfigureDimensionMode(GizmoDimensionMode Mode) noexcept;
     void ConfigureHandleFilter(GizmoHandleFilter Filter) noexcept;
     [[nodiscard]] GizmoHandleFilter QueryHandleFilter() const noexcept { return HandleFilter; }
-    void ConfigureAnchor(Mathematics::Axis3D PivotOrigin, float ConstantWorldRadius = 1.0f) noexcept;
+    void ConfigureAnchor(Mathematics::Axis3D PivotOrigin, float ConstantWorldRadius = 1.0f, float AnchorYawDegrees = 0.0f) noexcept;
     void AssignHoveredHandle(GizmoHandleOrdinal Handle) noexcept;
 
     [[nodiscard]] std::vector<GizmoGPUVertex> BuildTriangleStream(
@@ -128,6 +128,7 @@ public:
     [[nodiscard]] bool                QueryDragging() const noexcept      { return ActiveDragHandle != GizmoHandleOrdinal::None; }
     [[nodiscard]] Mathematics::Axis3D QueryPivotOrigin() const noexcept   { return PivotPosition; }
     [[nodiscard]] float               QueryWorldRadius() const noexcept   { return WorldRadius; }
+    [[nodiscard]] float               QueryAnchorYawDegrees() const noexcept { return AnchorYawDegrees; }
 
     [[nodiscard]] static float EvaluateAxisRayParameter(
         Mathematics::Axis3D AxisOrigin,
@@ -145,6 +146,7 @@ private:
     GizmoHandleFilter             HandleFilter        = GizmoHandleFilter::Universal;
     Mathematics::Axis3D           PivotPosition       { 0.0f, 0.0f, 0.0f };
     float                         WorldRadius         = 1.0f;
+    float                         AnchorYawDegrees    = 0.0f;
     GizmoHandleOrdinal            HoveredHandle       = GizmoHandleOrdinal::None;
     GizmoHandleOrdinal            ActiveDragHandle    = GizmoHandleOrdinal::None;
     Mathematics::SpatialTransform DragStartTransform  {};

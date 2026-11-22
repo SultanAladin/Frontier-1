@@ -204,7 +204,7 @@ void SampleOwenSobol02Pixel(uint32_t PX, uint32_t PY, uint32_t SampleIdx, float&
         SunShadow.Origin          = HitPos + HitNrm * 2.5e-3f;
         SunShadow.UnitDirection   = SunDir;
         SunShadow.MinimumDistance = 1.0e-3f;
-        SunShadow.MaximumDistance = 120.0f;
+        SunShadow.MaximumDistance = 5000.0f;
         if (!SceneTree.QueryRayOccluded(SunShadow))
         {
             OutRad = OutRad + MaterialSpace::EvaluateBounceSlabRadiance(

@@ -176,9 +176,9 @@ bool WorldGizmoOverlayRasterization::InitializeOverlay(
     GpuDeps[1].srcSubpass      = 0u;
     GpuDeps[1].dstSubpass      = VK_SUBPASS_EXTERNAL;
     GpuDeps[1].srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    GpuDeps[1].dstStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    GpuDeps[1].dstStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
     GpuDeps[1].srcAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    GpuDeps[1].dstAccessMask   = VK_ACCESS_SHADER_READ_BIT;
+    GpuDeps[1].dstAccessMask   = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
     GpuDeps[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
     VkRenderPassCreateInfo GpuPassSpec {};
@@ -249,7 +249,7 @@ bool WorldGizmoOverlayRasterization::InitializeOverlay(
     }
 
     ReadbackPickPatchBuffer = DeviceInterchange->AllocateBuffer(
-        25ull * 16ull,
+        81ull * 16ull,
         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
         VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
@@ -758,8 +758,8 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
         Fwd,
         std::clamp(FovDeg, 10.0f, 140.0f),
         Aspect,
-        std::max(0.01f, Camera.NearClipMeters),
-        std::max(10.0f, Camera.FarClipMeters));
+        std::max(0.05f, Camera.NearClipMeters),
+        std::max(5000.0f, Camera.FarClipMeters));
     std::memcpy(Uniforms.ViewProjection, Clip.Rows, sizeof(Clip.Rows));
     Uniforms.HoverSpacePacked[0] = static_cast<uint32_t>(Gizmo3D.QueryHoveredHandle());
     Uniforms.HoverSpacePacked[1] = static_cast<uint32_t>(Gizmo3D.QueryActiveHandle());
@@ -992,8 +992,8 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
             Fwd,
             std::clamp(FovDeg, 10.0f, 140.0f),
             Aspect,
-            std::max(0.01f, Request.Camera.NearClipMeters),
-            std::max(10.0f, Request.Camera.FarClipMeters));
+            std::max(0.05f, Request.Camera.NearClipMeters),
+            std::max(5000.0f, Request.Camera.FarClipMeters));
         std::memcpy(Uniforms.ViewProjection, Clip.Rows, sizeof(Clip.Rows));
         Uniforms.HoverSpacePacked[0] = static_cast<uint32_t>(Request.Gizmo3D->QueryHoveredHandle());
         Uniforms.HoverSpacePacked[1] = static_cast<uint32_t>(Request.Gizmo3D->QueryActiveHandle());
@@ -1061,7 +1061,11 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
     }
 
     std::array<VkClearValue, 3u> Clears {};
-    Clears[2].depthStencil = { 1.0f, 0u };
+    Clears[1].color.uint32[0] = 0u;
+    Clears[1].color.uint32[1] = 0xFFFFFFFFu;
+    Clears[1].color.uint32[2] = 0xFFFFFFFFu;
+    Clears[1].color.uint32[3] = 0u;
+    Clears[2].depthStencil    = { 1.0f, 0u };
 
     VkRenderPassBeginInfo PassBegin {};
     PassBegin.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1110,10 +1114,10 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
     {
         const int32_t Cx = std::clamp(static_cast<int32_t>(Request.PickCursorX), 0, static_cast<int32_t>(Request.TargetWidthPx) - 1);
         const int32_t Cy = std::clamp(static_cast<int32_t>(Request.PickCursorY), 0, static_cast<int32_t>(Request.TargetHeightPx) - 1);
-        PatchX0 = std::max(0, Cx - 2);
-        PatchY0 = std::max(0, Cy - 2);
-        const int32_t PatchX1 = std::min(static_cast<int32_t>(Request.TargetWidthPx) - 1, Cx + 2);
-        const int32_t PatchY1 = std::min(static_cast<int32_t>(Request.TargetHeightPx) - 1, Cy + 2);
+        PatchX0 = std::max(0, Cx - 4);
+        PatchY0 = std::max(0, Cy - 4);
+        const int32_t PatchX1 = std::min(static_cast<int32_t>(Request.TargetWidthPx) - 1, Cx + 4);
+        const int32_t PatchY1 = std::min(static_cast<int32_t>(Request.TargetHeightPx) - 1, Cy + 4);
         PatchW = static_cast<uint32_t>(PatchX1 - PatchX0 + 1);
         PatchH = static_cast<uint32_t>(PatchY1 - PatchY0 + 1);
 
@@ -1198,11 +1202,11 @@ Editor::GizmoHandleOrdinal WorldGizmoOverlayRasterization::QueryLastGpuPickAtPix
         return Editor::GizmoHandleOrdinal::None;
     }
 
-    // Search a tiny 5x5 pixel neighborhood around cursor for crisp axis/arc usability
-    for (int32_t Dy = -2; Dy <= 2; ++Dy)
+    // Search a 9x9 pixel neighborhood around cursor for crisp axis/arc usability
+    for (int32_t Dy = -4; Dy <= 4; ++Dy)
     {
         const int32_t Sy = std::clamp(static_cast<int32_t>(ClampedY) + Dy, 0, static_cast<int32_t>(TargetHeightPx) - 1);
-        for (int32_t Dx = -2; Dx <= 2; ++Dx)
+        for (int32_t Dx = -4; Dx <= 4; ++Dx)
         {
             const int32_t Sx  = std::clamp(static_cast<int32_t>(ClampedX) + Dx, 0, static_cast<int32_t>(TargetWidthPx) - 1);
             const uint32_t Ord = CachedPickOrdinals[static_cast<std::size_t>(Sy) * TargetWidthPx + static_cast<std::size_t>(Sx)];

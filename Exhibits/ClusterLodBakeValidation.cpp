@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                      CLUSTERLODBAKEVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 Validation suite for the Cluster LOD bake: per-asset final level, material-slot preservation, and partition-exact cuts
+// 🧩 Validation suite for the Nanite-like Cluster LOD bake: per-asset final level, material-slot preservation
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

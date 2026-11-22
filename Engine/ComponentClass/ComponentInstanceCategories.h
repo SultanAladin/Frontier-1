@@ -161,9 +161,9 @@ struct LightComponentSettings
 
 struct CameraComponentSettings
 {
-    float VerticalFovDegrees = 52.0f;  // [deg] - Vertical field of view
-    float NearClipMeters     = 0.10f;  // [m]   - Near frustum distance
-    float FarClipMeters      = 120.0f; // [m]   - Far frustum distance
+    float VerticalFovDegrees = 52.0f;   // [deg] - Vertical field of view
+    float NearClipMeters     = 0.10f;   // [m]   - Near frustum distance
+    float FarClipMeters      = 5000.0f; // [m]   - Far frustum distance
     float AspectRatio        = 16.0f / 9.0f; // [-] - Preview frustum aspect ratio
 };
 

@@ -53,12 +53,9 @@ struct DiagnosticsMetricChannel
     std::vector<float>              Samples           {}; // [-] - Ordered chronological plot samples
     float                           PlotMinBound      = 0.0f;  // [-] - Suggested minimum Y bound
     float                           PlotMaxBound      = 1.0f;  // [-] - Suggested maximum Y bound
-    float                           BudgetThreshold   = 0.0f;  // [-] - Optional budget horizontal line threshold (e.g. 16.67 ms)
-    float                           SecondaryThreshold = 0.0f; // [-] - Optional secondary horizontal guide (e.g. 33.33 ms)
-    int32_t                         SweepCursorIndex  = -1;    // [idx]- >=0 enables stationary oscilloscope sweep bar
-    bool                            HasBudgetLine     = false; // [-] - Render amber budget line when true
-    bool                            SecondaryGuideEnabled = false; // [-] - Render secondary guide line when true
-    bool                            FixedPlotScale    = false; // [-] - Plot [PlotMinBound, PlotMaxBound] without horizontal shift
+    float                           BudgetThreshold   = 0.0f;  // [-] - Optional budget horizontal line threshold
+    bool                            HasBudgetLine     = false; // [-] - Render dashed/amber budget line when true
+    bool                            FixedPlotScale    = false; // [-] - Plot exactly [PlotMinBound, PlotMaxBound] (no per-frame autoscale)
     ColorRgba                       AccentColor       { 142, 198, 152, 240 }; // [-] - Plot stroke & accent color
     std::vector<DiagnosticsStatRow> Rows              {}; // [-] - Bottom key-value statistics rows
 };

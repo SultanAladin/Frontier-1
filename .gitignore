@@ -2,9 +2,8 @@
 ExternalPackages/
 EngineContent/FontsArchives/
 
-# Local transient scratchpad & exit-flushed telemetry logs
+# Local transient scratchpad
 _ClaudeScratch/
-Logs/
 
 # Build & packaged output directories
 Build/

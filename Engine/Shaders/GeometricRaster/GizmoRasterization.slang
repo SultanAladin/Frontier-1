@@ -5,9 +5,9 @@
 
 struct GizmoVertexEntry
 {
-    float4 PositionAlpha;  // xyz = World or NDC Position, w = BaseAlpha (1.0 solid, 0.28 translucent plane quad)
-    float4 NormalHandlePacked;   // xyz = Shading Normal,        w = float(GizmoHandleOrdinal)
-    float4 ColorRGBAndShaded; // rgb = Slate Handle Color,    w = LitShadingWeight (1.0 for 3D cones/cylinders, 0.0 for flat/arc/ring)
+    float4 PositionAlpha;      // xyz = World or NDC Position, w = BaseAlpha (1.0 solid, 0.28 translucent plane quad)
+    float4 NormalHandlePacked; // xyz = Shading Normal,        w = float(GizmoHandleOrdinal)
+    float4 AccentLitWeight;    // rgb = Slate Handle Color,    w = LitShadingWeight (1.0 for 3D cones/cylinders, 0.0 for flat/arc/ring)
 };
 
 struct GizmoUniformBlock
@@ -48,10 +48,10 @@ GizmoVSOutput VertexEntry(uint VertexID : SV_VulkanVertexID)
     {
         Out.ClipPosition = mul(GizmoUniforms.ViewProjection, float4(Rec.PositionAlpha.xyz, 1.0));
     }
-    Out.Normal            = Rec.NormalHandlePacked.xyz;
-    Out.TintAlphaPacked = float4(Rec.ColorRGBAndShaded.rgb, Rec.PositionAlpha.w);
-    Out.ShadingWeight     = Rec.ColorRGBAndShaded.w;
-    Out.Ordinal           = uint(Rec.NormalHandlePacked.w + 0.5);
+    Out.Normal          = Rec.NormalHandlePacked.xyz;
+    Out.TintAlphaPacked = float4(Rec.AccentLitWeight.rgb, Rec.PositionAlpha.w);
+    Out.ShadingWeight   = Rec.AccentLitWeight.w;
+    Out.Ordinal         = uint(Rec.NormalHandlePacked.w + 0.5);
     return Out;
 }
 

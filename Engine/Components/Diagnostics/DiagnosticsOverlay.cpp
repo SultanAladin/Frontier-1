@@ -381,13 +381,6 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
                 Hi = Lo + 0.5f;
             }
 
-            if (Ch.SecondaryGuideEnabled)
-            {
-                const float SNorm = std::clamp((Ch.SecondaryThreshold - Lo) / (Hi - Lo), 0.0f, 1.0f);
-                const float SY    = Plot.Bottom() - 10.0f - SNorm * (Plot.Height - 20.0f);
-                Surface.StrokeLine({ Plot.X + 4.0f, SY }, { Plot.Right() - 4.0f, SY }, ScaleAlpha(ColorRgba{ 226, 112, 98, 135 }, Opacity), 1.0f);
-            }
-
             if (Ch.HasBudgetLine)
             {
                 const float BNorm = std::clamp((Ch.BudgetThreshold - Lo) / (Hi - Lo), 0.0f, 1.0f);
@@ -395,63 +388,23 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
                 Surface.StrokeLine({ Plot.X + 4.0f, BY }, { Plot.Right() - 4.0f, BY }, ScaleAlpha(ColorRgba{ 242, 168, 92, 175 }, Opacity), 1.2f);
             }
 
-            const auto SamplePointAt = [&](std::size_t Step) noexcept -> Point2D
+            std::vector<Point2D> Poly(Ch.Samples.size());
+            for (std::size_t Step = 0u; Step < Ch.Samples.size(); ++Step)
             {
                 const float NormX = Ch.Samples.size() > 1u
-                    ? static_cast<float>(Step) / static_cast<float>(Ch.Samples.size() - 1u)
-                    : 0.5f;
+                                        ? static_cast<float>(Step) / static_cast<float>(Ch.Samples.size() - 1u)
+                                        : 0.5f;
                 const float NormY = std::clamp((Ch.Samples[Step] - Lo) / (Hi - Lo), 0.0f, 1.0f);
-                return { Plot.X + 6.0f + NormX * (Plot.Width - 12.0f), Plot.Bottom() - 10.0f - NormY * (Plot.Height - 20.0f) };
-            };
-
-            if (Ch.SweepCursorIndex >= 0 && static_cast<std::size_t>(Ch.SweepCursorIndex) < Ch.Samples.size())
-            {
-                const auto CursorStep = static_cast<std::size_t>(Ch.SweepCursorIndex);
-                if (CursorStep >= 1u)
-                {
-                    std::vector<Point2D> LeftPoly;
-                    LeftPoly.reserve(CursorStep + 1u);
-                    for (std::size_t Step = 0u; Step <= CursorStep; ++Step)
-                    {
-                        LeftPoly.push_back(SamplePointAt(Step));
-                    }
-                    Surface.StrokePolyline(LeftPoly, ScaleAlpha(Ch.AccentColor, Opacity), 1.6f, false);
-                }
-
-                const std::size_t RightStart = CursorStep + 4u;
-                if (RightStart + 1u < Ch.Samples.size())
-                {
-                    std::vector<Point2D> RightPoly;
-                    RightPoly.reserve(Ch.Samples.size() - RightStart);
-                    for (std::size_t Step = RightStart; Step < Ch.Samples.size(); ++Step)
-                    {
-                        RightPoly.push_back(SamplePointAt(Step));
-                    }
-                    Surface.StrokePolyline(RightPoly, ScaleAlpha(Ch.AccentColor, Opacity * 0.72f), 1.4f, false);
-                }
-
-                const Point2D SweepPt = SamplePointAt(CursorStep);
-                Surface.StrokeLine(
-                    { SweepPt.X, Plot.Y + 4.0f },
-                    { SweepPt.X, Plot.Bottom() - 4.0f },
-                    ScaleAlpha(ColorRgba{ 238, 224, 178, 190 }, Opacity),
-                    1.2f);
+                Poly[Step]        = { Plot.X + 6.0f + NormX * (Plot.Width - 12.0f), Plot.Bottom() - 10.0f - NormY * (Plot.Height - 20.0f) };
             }
-            else
+            if (Poly.size() >= 2u)
             {
-                std::vector<Point2D> Poly(Ch.Samples.size());
-                for (std::size_t Step = 0u; Step < Ch.Samples.size(); ++Step)
-                {
-                    Poly[Step] = SamplePointAt(Step);
-                }
-                if (Poly.size() >= 2u)
-                {
-                    Surface.StrokePolyline(Poly, ScaleAlpha(Ch.AccentColor, Opacity), 1.6f, false);
-                }
+                Surface.StrokePolyline(Poly, ScaleAlpha(Ch.AccentColor, Opacity), 1.6f, false);
             }
 
             if (Ch.FixedPlotScale)
             {
+                // Fixed-scale annotations: budget fps at the amber line, time window at the base.
                 char TopLabel[24]{};
                 std::snprintf(TopLabel, sizeof(TopLabel), "%.0f ms", Hi);
                 WorkspaceAppearance::ConstructWeightedText(
@@ -459,26 +412,24 @@ DiagnosticsOverlayResult DiagnosticsOverlay::Construct(
                     ScaleAlpha(ColorRgba{ 150, 150, 150, 255 }, Opacity), TopLabel);
                 if (Ch.HasBudgetLine)
                 {
-                    const char* BudgetLabel = "16.7 ms (60fps)";
+                    char BudgetLabel[24]{};
+                    std::snprintf(BudgetLabel, sizeof(BudgetLabel), "%.1f ms", Ch.BudgetThreshold);
                     WorkspaceAppearance::ConstructWeightedText(
                         Surface, FontWeightClass::Regular,
                         { Plot.Right() - 5.0f - WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.0f, BudgetLabel),
                           Plot.Bottom() - 10.0f - std::clamp((Ch.BudgetThreshold - Lo) / (Hi - Lo), 0.0f, 1.0f) * (Plot.Height - 20.0f) - 11.0f },
                         8.0f, ScaleAlpha(ColorRgba{ 242, 168, 92, 220 }, Opacity), BudgetLabel);
                 }
-                if (Ch.SecondaryGuideEnabled)
-                {
-                    const char* SecLabel = "33.3 ms (30fps)";
-                    WorkspaceAppearance::ConstructWeightedText(
-                        Surface, FontWeightClass::Regular,
-                        { Plot.Right() - 5.0f - WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.0f, SecLabel),
-                          Plot.Bottom() - 10.0f - std::clamp((Ch.SecondaryThreshold - Lo) / (Hi - Lo), 0.0f, 1.0f) * (Plot.Height - 20.0f) - 11.0f },
-                        8.0f, ScaleAlpha(ColorRgba{ 226, 112, 98, 210 }, Opacity), SecLabel);
-                }
-                const char* BaseLabel = (Ch.SweepCursorIndex >= 0) ? "360-step stationary sweep" : "history";
+                char WindowLabel[24]{};
+                std::snprintf(WindowLabel, sizeof(WindowLabel), "-%us", Session.HistorySeconds);
                 WorkspaceAppearance::ConstructWeightedText(
                     Surface, FontWeightClass::Regular, { Plot.X + 5.0f, Plot.Bottom() - 11.0f }, 8.0f,
-                    ScaleAlpha(ColorRgba{ 130, 130, 130, 255 }, Opacity), BaseLabel);
+                    ScaleAlpha(ColorRgba{ 130, 130, 130, 255 }, Opacity), WindowLabel);
+                const char* NowLabel = "now";
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Regular,
+                    { Plot.Right() - 5.0f - WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.0f, NowLabel), Plot.Bottom() - 11.0f },
+                    8.0f, ScaleAlpha(ColorRgba{ 130, 130, 130, 255 }, Opacity), NowLabel);
             }
 
             CursorY = Plot.Bottom() + 12.0f;

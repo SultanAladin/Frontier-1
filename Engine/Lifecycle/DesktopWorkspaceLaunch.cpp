@@ -1908,7 +1908,6 @@ int LaunchDesktopWorkspace(
 #endif
     TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiCtx);
-    Frontier::FlushBufferedTimingLog();
     Diagnostics::ThoughtLog::Shutdown(); // Application closing: flush the thought log and close it
     return 0;
 }

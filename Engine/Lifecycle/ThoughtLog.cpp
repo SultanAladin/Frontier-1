@@ -1,7 +1,8 @@
 /*============================================================================================================================================
                                                            THOUGHTLOG.CPP
 ============================================================================================================================================*/
-// 🧩 MPSC sequence-stamped ring buffer in RAM + background aggregation worker; flushed once to disk on Shutdown()
+// 🧠 Thought log implementation: MPSC sequence-stamped ring buffer in RAM + background aggregation thread.
+//    Nothing touches the disk until Shutdown() flushes the aggregated report at application close.
 
 #include "Engine/Lifecycle/ThoughtLog.h"
 
@@ -281,7 +282,7 @@ void ThoughtLog::RecordSample(const char* Name, uint64_t DurationNs)
     RecordScopeSample(ResolveNameId(Name), DurationNs);
 }
 
-bool ThoughtLog::QueryRunning() noexcept
+bool ThoughtLog::IsRunning() noexcept
 {
     return AccessState().Running.load(std::memory_order_relaxed);
 }

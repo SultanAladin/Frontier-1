@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         LOCALSIGNEDDISTANCEVOLUME.H
 ============================================================================================================================================*/
-// 🧩 Per-asset compact local distance & surface-material volume with C0-continuous Euclidean outer-box clamping and rigid 3D placement
+// 🧩 Order 2 GtxLowEnd-ONLY per-asset compact 48^3 distance volume with C0-continuous Euclidean outer-box distance clamping
 
 #pragma once
 
@@ -33,27 +33,11 @@ struct ClosedOccluderBox
 
 struct RigidLocalVolumePlacement
 {
-    const class LocalSignedDistanceVolume* VolumeAsset          = nullptr;
-    Mathematics::Axis3D                    Translation          { 0.0f, 0.0f, 0.0f };
-    float                                  CosineYaw            = 1.0f;
-    float                                  SineYaw              = 0.0f;
-    bool                                   ActiveToggle         = true;
-    float                                  UniformScale         = 1.0f;
-    uint16_t                               MaterialSlotOverride = 0xFFFFu;
-    bool                                   FullMatrixValid      = false;
-    Mathematics::Axis3D                    WorldToLocalRow0     { 1.0f, 0.0f, 0.0f };
-    Mathematics::Axis3D                    WorldToLocalRow1     { 0.0f, 1.0f, 0.0f };
-    Mathematics::Axis3D                    WorldToLocalRow2     { 0.0f, 0.0f, 1.0f };
-    Mathematics::Axis3D                    LocalToWorldRow0     { 1.0f, 0.0f, 0.0f };
-    Mathematics::Axis3D                    LocalToWorldRow1     { 0.0f, 1.0f, 0.0f };
-    Mathematics::Axis3D                    LocalToWorldRow2     { 0.0f, 0.0f, 1.0f };
-
-    void ConfigureRigidTransform(
-        const class LocalSignedDistanceVolume* Asset,
-        Mathematics::Axis3D                    WorldPosition,
-        Mathematics::Axis3D                    EulerRotationDegrees,
-        float                                  Scale           = 1.0f,
-        uint16_t                               OverrideMatSlot = 0xFFFFu) noexcept;
+    const class LocalSignedDistanceVolume* VolumeAsset  = nullptr;
+    Mathematics::Axis3D                    Translation  { 0.0f, 0.0f, 0.0f };
+    float                                  CosineYaw    = 1.0f;
+    float                                  SineYaw      = 0.0f;
+    bool                                   ActiveToggle = true;
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -63,24 +47,24 @@ struct RigidLocalVolumePlacement
 class LocalSignedDistanceVolume
 {
 public:
-    uint32_t              ResolutionX                 = 0u;
-    uint32_t              ResolutionY                 = 0u;
-    uint32_t              ResolutionZ                 = 0u;
-    uint32_t              UniqueAssetSerial           = 0u;
-    Mathematics::Axis3D   LocalMin                    {};
-    Mathematics::Axis3D   LocalMax                    {};
-    Mathematics::Axis3D   VoxelSpacing                {};
-    std::vector<uint16_t> HalfDistanceSamples         {}; // Compact IEEE-754 binary16 distance samples
-    std::vector<float>    DistanceSamples             {}; // Mirror float32 slice for direct GPU structured buffer upload
-    std::vector<uint32_t> PackedNormalMaterialSamples {}; // Packed [9:0]=OctX, [19:10]=OctY, [31:20]=MaterialOrdinal
+    uint32_t            ResolutionX     = 0u;
+    uint32_t            ResolutionY     = 0u;
+    uint32_t            ResolutionZ     = 0u;
+    Mathematics::Axis3D LocalMin        {};
+    Mathematics::Axis3D LocalMax        {};
+    Mathematics::Axis3D VoxelSpacing    {};
+    std::vector<uint16_t> HalfDistanceSamples {}; // Compact IEEE-754 binary16 distance samples (80x40x32 = 204,800 bytes << 3.7 MB budget)
+    std::vector<float>    DistanceSamples     {}; // Mirror float32 slice for direct GPU structured buffer upload when active
 
     void Reset() noexcept;
 
+    // Bakes a conservative unsigned/C0-clamped local distance volume around InputPrimitives (e.g. 48^3 ControlVehicle)
     bool BakeFromTriangles(
         std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
         uint32_t                                                   CubicResolution = 48u,
         float                                                      MarginMeters    = 0.24f);
 
+    // Aspect-matched bake (e.g. 80x40x32 ControlVehicle at ~6.0 cm isotropic pitch) for near-isotropic voxel spacing
     bool BakeFromTrianglesAspect(
         std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
         uint32_t                                                   ResX,
@@ -88,22 +72,26 @@ public:
         uint32_t                                                   ResZ,
         float                                                      MarginMeters = 0.24f);
 
+    // True signed inside/outside bake (< 0 inside closed volumes, > 0 outside) via multi-axis BVH4 ray-parity voting
+    bool BakeSignedFromTrianglesAspect(
+        std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+        uint32_t                                                   ResX,
+        uint32_t                                                   ResY,
+        uint32_t                                                   ResZ,
+        float                                                      MarginMeters = 0.24f);
+
+    // Trilinear lookup inside [LocalMin, LocalMax]
     [[nodiscard]] float SampleTrilinearLocal(Mathematics::Axis3D ClampedLocalPos) const noexcept;
 
+    // C0-continuous world-space distance via Euclidean outer-box clamp hypot(BoundaryD, BoxD) (eliminates AABB seam!)
     [[nodiscard]] static float SampleSmoothWorldDistance(
         const RigidLocalVolumePlacement& Placement,
         Mathematics::Axis3D              WorldPos) noexcept;
 
-    [[nodiscard]] std::size_t QueryCompactMemoryBytes() const noexcept;
+    [[nodiscard]] std::size_t QueryCompactMemoryBytes() const noexcept
+    {
+        return HalfDistanceSamples.size() * sizeof(uint16_t);
+    }
 };
-
-//------------------------------------------------------------------------------------------------------------------------
-//                                               INLINE IMPLEMENTATIONS
-//------------------------------------------------------------------------------------------------------------------------
-
-inline std::size_t LocalSignedDistanceVolume::QueryCompactMemoryBytes() const noexcept
-{
-    return HalfDistanceSamples.size() * sizeof(uint16_t);
-}
 
 } // namespace Frontier::DistanceFieldSpace

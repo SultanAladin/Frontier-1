@@ -226,12 +226,12 @@ private:
     Mathematics::Axis3D                                              DesiredCameraOrigin {};     // [m] - Undamped editor camera position requested by input
     Mathematics::Axis3D                                              DesiredCameraTarget {};     // [m] - Undamped editor camera target point requested by input
     bool                                                             DesiredCameraValid = false; // [-] - DesiredCameraOrigin/Target hold a live pose
-    float                                                            PostFlyShortcutGuardSeconds = 0.0f; // [s] - Suppresses accidental W/E/R gizmo switches right after RMB fly release
     bool                                                             PointerTrackingValid = false;
     bool                                                             NavigationDragWasActive = false;
     bool                                                             RightMouseFlyActive  = false;
     bool                                                             BlankPlaneSkySessionActive = false;
     bool                                                             CameraInteractiveDrag = false;
+    bool                                                             CameraLagSettling     = false;
     bool                                                             PendingInteractionWorldRefresh = false;
     bool                                                             PendingInteractionGizmoRefresh = false;
     bool                                                             PendingInteractionSceneSync    = false;

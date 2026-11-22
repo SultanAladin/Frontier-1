@@ -1,8 +1,12 @@
-# Inspector Control Inventory — Frontier Authoring & Viewport Parameter Reference
+# UI-Controllable Items — Complete Inventory for the UI Rewrite
 
-Complete inventory of live UI controls and backend-tunable parameters across the Frontier World Editor, Inspector cards, Render Settings sections, and Diagnostics overlay.
+Everything the Frontier editor can control today, plus the full backend parameter space available
+to expose. Organised by Inspector subject so each section maps 1:1 onto an Inspector card in your
+prototype. Give me the adjusted prototype and I will wire the [Backend] items in.
 
-Legend: **[UI]** = wired to a live control today · **[Backend]** = parameter exists in the engine and takes effect when set · **[New]** = added or upgraded in the Cluster LOD / Local SDF / Camera Lag / Diagnostics pass.
+Legend: **[UI]** = wired to a live control today · **[Backend]** = parameter exists in the engine
+and takes effect when set, but has no dedicated control yet (prototype candidate) ·
+**[New]** = added in the latest camera/SDF pass.
 
 ---
 
@@ -352,41 +356,91 @@ Backend fields: `PathTraceTargetSpp`, `PathTraceBatchSpp` (`ViewportDisplaySetti
 `PathTraceTargetSpp`, `PathTraceSamples` (`WorldRenderConfiguration`). CPU Tiered PT uses the
 batch per refresh; continuous dispatch is GPU-path today.
 
-## 20. Partition-Exact Cluster LOD (per asset & per material) [New]
+## 20. Nanite-like Cluster LOD bake (per asset) [New]
 
-Pipeline: `PolygonNetwork` → ≤128-tri material-pure Morton clusters → area-normalized flip-guarded QEM levels with seam/border locks and smooth vertex normal preservation (`ClusterPyramid`). Per-asset recipe `ClusterLodBakeConfiguration` + per-material floor `ConfigureMaterialCoarsestLevel(MaterialOrdinal, CoarsestAllowedLevel)`:
+Pipeline: `PolygonNetwork` → ≤128-tri Morton clusters → QEM levels with seam/border locks
+(`ClusterPyramid`). Per-asset recipe `ClusterLodBakeConfiguration`:
 
 | Control | Type | Values | Status |
 |---|---|---|---|
-| **Cluster LOD** | toggle | On / Off (`ClusterLodEnabled`) | [UI] Render Settings → Cluster LOD |
-| **LOD Error (px)** | segmented | 0.5 · 1.25 · 2.5 · 5.0 px (`ClusterLodPixelError`) | [UI] Render Settings → Cluster LOD |
-| Bake Maximum Levels | stepper | 1–8 levels incl. LOD0 | [Backend] (`MaximumLevels`) |
-| **Per-Asset Coarsest Level** | stepper | 0 = finest only … N; glass assets ship capped at **1** | [Backend] (`CoarsestAllowedLevel`) |
-| **Per-Material Coarsest Level** | map | `MaterialCoarsestLevels` (`Canopy/Glass/Lenses = L0`, `Tyres/Rims/Brakes = L1`) | [New][Backend] |
-| Lock Material Boundaries | toggle | on: vertices shared by faces of different material slots never collapse | [Backend] |
+| Bake Maximum Levels | stepper | 1–8 levels incl. LOD0 | [Backend-UI] (`MaximumLevels`) |
+| **Last Level (Coarsest Allowed)** | stepper | 0 = finest only … N; glass assets ship capped at **1** | [New][Backend-UI] (`CoarsestAllowedLevel`) |
+| Lock Material Boundaries | toggle | on: vertices shared by faces of different material slots never collapse | [New][Backend-UI] |
+| Runtime Pixel Error | slider | `MaxAllowedPixelError`, default 1.25 px (cut selection) | [Backend-UI] |
+| Normal-Cone Backface Cull | toggle | cut option | [Backend-UI] |
 
-### 20.1 Viewport status — Partition-Exact Cluster LOD in the Vulkan viewport
+Guarantees: every surviving triangle keeps its own face material slot at every level
+(boundary vertices locked, collapse only remaps vertex indices); the runtime monotonic cut
+never activates a cluster coarser than the asset's last level (capped clusters become
+terminal). Bake report per level: clusters / triangles / max error (m) / material slots
+present (`SummarizeLevels()`), serialized with the pyramid (format v2; v1 loads).
 
-`VulkanWorldRenderSequence::RefreshClusterLodGeometry` rebuilds the GPU BVH from the per-camera monotonic cut (`SelectMonotonicCutWithCap`) using shared `OriginGroupSphere` + `EnclosingGroupSphere` parent/child decision spheres so no sibling cluster group can ever split asymmetrically or leave holes. Full 3D `EulerRotationDegrees` (`Rz * Ry * Rx`), `UniformScale`, and `OverrideMaterialSlot` are applied to both camera-space LOD selection and emitted world-space triangles/normals, and Outliner-hidden instances (`UniformScale <= 1e-4`) are skipped cleanly without disabling LOD for the rest of the scene.
+### 20.1 Viewport status update — Nanite LOD is LIVE in the editor viewport
 
-### 20.2 Debug View channels (00–18)
+Previously only the CPU Tiered renderer used the cut; the editor's Vulkan viewport traced the
+full-resolution BVH. Now `VulkanWorldRenderSequence` rebuilds its GPU BVH from the same
+per-camera `SelectMonotonicCut` whenever the active cluster set changes (signature-cached).
+Controls in the viewport Settings sheet: **Nanite LOD** On/Off toggle and **LOD Error (px)**
+0.5 / 1.25 / 2.5 / 5 (`ClusterLodEnabled`, `ClusterLodPixelError` →
+`NaniteLodEnabled`, `NanitePixelError`). Viewport footer readout:
+`Nanite LOD N tris · M clusters (full K)`. Glass instances stay analytic (not in the BVH),
+per-face material slots ride every pyramid triangle. Baker now welds soup vertices by exact
+position and derives border locks from welded topology (unlinked soup attribute flags are
+ignored), so decoded assets like the ControlVehicle bake real levels:
+25,068 → 13,994 → 10,270 tris with 10 material slots at every level.
+Proof: `NaniteViewportVehicleValidation` + `Exhibits/Images/NaniteViewport/` PNGs
+(near 19,846 tris traced, far 11,418 with L2 dominant, LOD-off restores 25,080).
 
-| Channel | View | Behaviour |
+### 20.2 Colour debug visualizations (Debug View menu)
+
+Two new viewport debug channels (GPU + CPU renderers), fed by per-triangle data packed into
+the shaded-triangle pad lanes (level in `Corner0Pad.w`, cluster ordinal in `Edge01Pad.w`):
+
+| Channel | View | Colours |
 |---|---|---|
-| 06 | **Material / Cluster ID** | Per-face material slot colour with smooth form shading |
-| 09 | **Ambient Occlusion** | Combined filtered SDF AO + optional Jiménez `XeGTAO` (`QueryXeGtaoEnabled`) |
-| 12 | **SDF Distance** | Unsigned distance heat ramp + crisp 0.25 m isoline contours |
-| 13 | **SDF + Materials** | Sphere-traced combined Local/Global SDF shaded with baked per-voxel `MaterialSlot` + sun/sky |
-| 14 | **SDF Normal** | Sphere-traced combined SDF central-difference gradient normal |
-| 15 | **SDF AO Raw (Unfiltered)** | Unfiltered 9-cone Vogel-spiral hemisphere SDF ambient occlusion |
-| 16 | **SDF Cascade** | Colour-coded SDF source (`0` = Fine Local Brick, `1` = Fine Global Cascade, `2` = Coarse Global Cascade, `3` = Outer Field) |
-| 17 | **Cluster LOD Level** | L0 green · L1 yellow · L2 orange · L3 red · L4+ purple |
-| 18 | **Cluster ID Color** | Vivid per-cluster colour hash with smooth form shading |
+| 17 | **Nanite LOD Level** | L0 green · L1 yellow · L2 orange · L3 red · L4+ purple |
+| 18 | **Nanite Clusters** | one vivid colour per cluster (hashed ordinal, form-shaded) |
 
-## 21. Per-Object Local SDF Bricks, Dynamic Rigid Transforms, Camera Lag & Unified Diagnostics [New]
+Proof sheet `Exhibits/Images/NaniteViewport/VehicleLodContactSheet.png` (rows Near/Far,
+columns Lit / LOD Level / Clusters): near is L0-green with L1 yellow at the wheels, far is
+L1/L2 yellow-orange; cluster patches grow with distance. Triangle density is visible as
+cluster-patch size + the footer triangle readout.
 
-- **Per-Asset `LocalSignedDistanceVolume` + Dynamic Rigid Instances**: Every geometry asset bakes an immutable local-space unsigned SDF brick + $C^0$ outer-box Euclidean distance continuation + packed 32-bit `(OctNormalX10, OctNormalY10, MaterialOrdinal12)` (`LocalDistanceBricksBuffer`, binding 29). Moving, rotating (`Rz * Ry * Rx`), or scaling any object in the viewport updates only its 128-byte `GpuObjectDistanceInstance128` (`ObjectDistanceInstancesBuffer`, binding 30) and re-composites the 64³ Global SDF clipmap on the GPU in `O(Instances)` with zero mesh-SDF rebaking.
-- **Secondary Toolbar Gizmo Mode Strip**: Dedicated **`All / Move / Rot / Scale`** capsule pills in the Viewport header stay synchronized with `W / E / R / U / Q` shortcuts (guarded by a `0.25 s` post-RMB-fly cooldown so releasing RMB never triggers accidental gizmo switches) and scale proportionally up to `50 km` (`NearClip = 0.02 m`, `FarClip = 50000 m`).
-- **Camera Lag Inspector Card**: Selecting `EditorCamera` in the Outliner exposes **Position Lag** (`ON/OFF`, `4–24 Hz`) and **Rotation Lag** (`ON/OFF`, `4–28 Hz`) backed by decoupled world-position + unit-sphere ($S^2$) forward-direction spring-dampers (`CameraLagComponent`) and same-step OS cursor confinement (`FlushOutboundDirectives`).
-- **Unified Movable & Resizable `F3` Diagnostics Overlay**: Stationary 360-sample oscilloscope sweep with live playhead cursor, dual `16.7 ms (60fps)` and `33.3 ms (30fps)` guides, live Cluster LOD & Global SDF counters, GPU/CPU stage breakdown, and exit-only RAM-buffered telemetry flush (`FlushBufferedTimingLog`).
+### 20.3 Material-pure clusters + face identity
 
+Clustering is **material-partitioned**: LOD0 sorts triangles by (material slot, Morton) and
+starts a new cluster at every material change; coarser merge groups only combine clusters of
+the same material slot that are also spatially adjacent. Result: **no cluster is ever shared
+between materials** — one material owns many clusters (128-tri cap), never a mixed one.
+Every triangle carries its source face identity (`SourceFaceIndex`) and that face's material
+slot (`MaterialOrdinal`) at all levels; debug channel 6 (Material / Cluster ID) shows each
+face filled with its slot colour. Small materials with a single L0 cluster stay terminal
+(they never coarsen) — intentional protection for small parts. Vehicle L0 clusters per
+material are printed by `NaniteViewportVehicleValidation` (slot 6 body: 124 clusters,
+slot 7: 41, glass/trim slots: 1–13 each); homogeneity is asserted for every cluster at
+every level in both LOD validations.
+
+## 21. Merge + viewport keys, telemetry, Render menu (this change)
+
+Merged `arena/20fc22da-frontier` (SolidArc CAD bevel workflow, context tool options,
+shader packaging) into this branch — clean merge, full build green.
+
+**Keys** (Viewport): `F` Focus (frame selection, existed — kept), **`F3` telemetry overlay
+toggle** (new key binding; badge already said F3), **`F1` cycle Debug View** 00→18 (new).
+Validated in `ProjectBrowserValidation` section (h) with synthetic key events.
+
+**Telemetry (F3) readability rework**: sampling is now **10 Hz** (frame-time averaged per
+100 ms bucket, 600-sample ring = 60 s). The graph plots a **fixed 0–33.3 ms scale** (no
+per-frame autoscale), amber **16.67 ms (60 fps)** budget line with ms labels, `-15/30/60s …
+now` window labels, and Plot/Stats + 15/30/60 s span controls are enabled. Timing tab rows:
+Current / Average / **FPS (avg)** / Minimum / 95th pct / Maximum. Scene tab now lists
+Constructed/Visible/Hidden; Render tab lists Engine / Debug View / Quality / Resolution;
+Profiler tab keeps the GPU stage breakdown. (Before: 120 samples at frame rate ≈ 2 s of
+history with autoscale — the unreadable blur.)
+
+**Render Settings menus**: the gear "Viewport Settings" sheet in the viewport header is
+**removed**. A dedicated **Render** header menu now offers *Renderer… / Lighting &
+Shadows… / Path Tracing… / Nanite LOD… / Atmosphere…*, opening the dedicated Render
+Settings panel on that section (section pills inside mirror the menu). XeGTAO strength
+(0.5/1.0/1.5/2.0) gained a UI next to its toggle. Known pre-existing failure, unrelated:
+`WorkspacePanesValidation` needs `EngineContent/FontsArchives`, which has 0 files in git.

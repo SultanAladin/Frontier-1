@@ -42,9 +42,9 @@ enum class ShowcasePrimitiveShape : uint8_t
 
 struct ShowcaseGeometryAsset
 {
-    GeometrySpace::PolygonNetwork                 Network     {}; // [-] - Authored polygon network primitive
-    SpatialAcceleration::ClusterPyramid           Pyramid     {}; // [-] - Built cluster LOD hierarchy
-    DistanceFieldSpace::LocalSignedDistanceVolume LocalVolume {}; // [-] - Baked per-asset local-space SDF + surface material brick
+    GeometrySpace::PolygonNetwork                  Network  {}; // [-] - Authored polygon network primitive
+    SpatialAcceleration::ClusterPyramid            Pyramid  {}; // [-] - Built 3-level cluster pyramid
+    DistanceFieldSpace::LocalSignedDistanceVolume  LocalSdf {}; // [-] - Optional per-asset signed local SDF volume
 };
 
 struct CachedLocalSmoothTriangle
@@ -68,12 +68,9 @@ struct ShowcaseWorldAssetEntry
     Mathematics::Axis3D    CenterWorld          {};                          // [m]   - World-space center coordinate
     Mathematics::Scalar3D  DimensionsMeters     {};                          // [m]   - Full X/Y/Z extent in meters
     Mathematics::Scalar3D  AuthoredDimensions   {};                          // [m]   - Base unscaled X/Y/Z extent in meters
-    float                  RotationXDegrees     = 0.0f;                      // [deg] - Rigid roll rotation around +X axis
-    float                  RotationYDegrees     = 0.0f;                      // [deg] - Rigid pitch rotation around +Y axis
     float                  RotationZDegrees     = 0.0f;                      // [deg] - Rigid yaw rotation around +Z axis
     uint16_t               MaterialSlot         = 0u;                        // [idx] - CompactMaterialRegister slot
     uint32_t               ClusterInstanceIndex = 0u;                        // [idx] - Index in Scene.ClusterInstances
-    const DistanceFieldSpace::LocalSignedDistanceVolume* LocalVolumeAsset = nullptr; // [ptr] - Immutable per-asset local SDF brick
     bool                   GlassShell           = false;                     // [-]   - True for 2-layer Abbe glass peel
     bool                   SphericalPrimitive   = false;                     // [-]   - Sphere vs box primitive marker
     bool                   DedicatedMaterial    = false;                     // [-]   - True once given an isolated material slot
@@ -151,7 +148,8 @@ bool SynchronizeShowcaseGalleryFromOutliner(
 bool SynchronizeShowcaseGallerySceneLive(
     OutlinerPanel&            InOutOutliner,
     ShowcaseWorldSceneBundle& InOutBundle,
-    bool&                     OutRequiresAccelerationRebuild);
+    bool&                     OutRequiresAccelerationRebuild,
+    bool                      DeferCpuAccelerationForGpuDynamic = false);
 
 // Rebuilds SceneTree (WideBoundingTree) across all visible opaque geometry
 void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle);
