@@ -367,7 +367,7 @@ struct CpuDownsampledCloudField
 {
     if (DebugChannel == 17u)
     {
-        // Nanite LOD Level: green L0 finest, yellow L1, orange L2, red L3, purple L4+
+        // Cluster LOD Level: green L0 finest, yellow L1, orange L2, red L3, purple L4+
         Mathematics::LinearRGB LevelColor { 0.10f, 0.85f, 0.35f };
         if (HitLodLevel == 1u)      LevelColor = { 0.95f, 0.85f, 0.10f };
         else if (HitLodLevel == 2u) LevelColor = { 0.98f, 0.45f, 0.08f };
@@ -378,7 +378,7 @@ struct CpuDownsampledCloudField
     }
     if (DebugChannel == 18u)
     {
-        // Nanite Cluster ID: one vivid colour per cluster
+        // Cluster ID: one vivid colour per cluster
         const uint32_t CId = HitClusterKey + 1u;
         const auto Frac = [](float V) noexcept { return V - std::floor(V); };
         Mathematics::LinearRGB ClusterColor {

@@ -50,18 +50,18 @@ public:
     [[nodiscard]] uint32_t                   QueryProgressiveSampleCount() const noexcept { return ProgressiveSampleCount; }
     void                                       ResetProgressiveAccumulation() noexcept { ProgressiveSampleCount = 0u; }
 
-    // Live Nanite-like cluster LOD state of the geometry the viewport actually traced last frame.
-    struct NaniteViewportLodStats
+    // Live monotonic Cluster LOD state of the geometry the viewport actually traced last step.
+    struct ClusterViewportLodStats
     {
         bool     Enabled              = false; // [-]   - LOD cut drove the uploaded BVH
         uint32_t ActiveClusterCount   = 0u;    // [cnt] - Clusters in the current cut (all instances)
-        uint32_t ActiveTriangleCount  = 0u;    // [cnt] - Triangles the GPU BVH held last frame
+        uint32_t ActiveTriangleCount  = 0u;    // [cnt] - Triangles the GPU BVH held last step
         uint32_t FullTriangleCount    = 0u;    // [cnt] - Full-resolution triangle count of the scene
         uint32_t LevelTriangleCount[8] {};     // [cnt] - Active triangles per hierarchy level (0 = finest)
         uint32_t LevelClusterCount[8]  {};     // [cnt] - Active clusters per hierarchy level
         uint32_t GeometryRebuildCount = 0u;    // [cnt] - Times the cut changed enough to rebuild the GPU BVH
     };
-    [[nodiscard]] const NaniteViewportLodStats& QueryNaniteLodStats() const noexcept { return NaniteLodStats; }
+    [[nodiscard]] const ClusterViewportLodStats& QueryClusterLodStats() const noexcept { return ClusterLodStats; }
     [[nodiscard]] const ViewportTimingBreakdown& QueryLastTimingBreakdown() const noexcept { return LastViewportTiming; }
 
     void SynchronizeSceneResources(
@@ -120,10 +120,11 @@ private:
         uint32_t                       WidthPx,
         uint32_t                       HeightPx);
     void UploadSolarCascadeDepth(const WorldSceneSpecification& Scene);
+    void SynchronizeLocalDistanceVolumes(const WorldSceneSpecification& Scene);
     [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool RebuildGeometryFields = true);
     void EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx);
     // Rebuilds the GPU BVH from the per-camera monotonic cluster cut when the cut signature changes.
-    void RefreshNaniteLodGeometry(
+    void RefreshClusterLodGeometry(
         const WorldRenderConfiguration& Config,
         const PerspectiveCameraBasis&   Camera,
         const WorldSceneSpecification&  Scene);
@@ -186,6 +187,8 @@ private:
     DeviceBufferResource   PingIndirectIrradianceBuffer    {};
     DeviceBufferResource   PongIndirectIrradianceBuffer    {};
     DeviceBufferResource   GlobalSurfaceShellBuffer        {};
+    DeviceBufferResource   LocalDistanceBricksBuffer       {};
+    DeviceBufferResource   ObjectDistanceInstancesBuffer   {};
 
     DeviceImageResource    DisplayOutputImage2D            {};
 
@@ -197,6 +200,9 @@ private:
     bool                   SkyViewLutValid                 = false;
     std::array<uint8_t, 128u> LastSkyViewUniformSnapshot   {};
     uint64_t               LastRadiosityLightingSignature  = 0ull;
+    uint64_t               UploadedLocalDistanceGeneration = 0ull;
+    std::vector<std::pair<uint32_t, uint32_t>> CachedBrickOffsetBySerial {};
+    uint32_t               UploadedObjectDistanceCount     = 0u;
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
     uint32_t               UploadedPhotometricProfiles   = 0u;
     uint32_t               UploadedPhotometricLamps      = 0u;
@@ -205,9 +211,9 @@ private:
     uint32_t               UploadedMaterialCount         = 0u;
     uint32_t               UploadedCatalogStarCount      = 0u;
     bool                   SceneUploadedOnce             = false;
-    NaniteViewportLodStats NaniteLodStats                {};
-    uint64_t               CachedNaniteCutSignature      = 0u;
-    bool                   NaniteLodBuffersActive        = false;
+    ClusterViewportLodStats ClusterLodStats              {};
+    uint64_t               CachedClusterCutSignature     = 0u;
+    bool                   ClusterLodBuffersActive       = false;
     uint32_t               FrameSequenceIndex            = 0u;
     uint32_t               ProgressiveSampleCount        = 0u;
     uint32_t               LastEngineOrdinal             = UINT32_MAX;

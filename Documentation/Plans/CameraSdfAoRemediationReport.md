@@ -59,7 +59,7 @@ maximum lag distance cap, `SnapTo` priming. Built on the existing
 `Kinematics::EvaluateExponentialBlendFactor` (step-rate independent, no new math). Editor wiring:
 input moves the *desired* pose, the component damps the rendered pose toward it each tick
 (including settle after release); snapped on scene populate and Frame Selection so it never
-sweeps across the scene. Controls listed in `UIControllableItems.md` §9 for your prototype.
+sweeps across the scene. Controls listed in `InspectorControlInventory.md` §9 for your prototype.
 Covered by `CameraComponentValidation` §7 (trail, settle, cap, disabled=snap).
 
 ## 5. Why SDF AO looked terrible — and the fix

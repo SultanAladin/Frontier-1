@@ -68,7 +68,7 @@ struct WorldRenderConfiguration
     SpecularReflectionSource              ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
     RealTimeGiCandidate                   GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
     DirectLighting::SdfShadowPenumbraMode SdfPenumbraMode     = DirectLighting::SdfShadowPenumbraMode::AnalyticSdfConePenumbra;
-    uint32_t                              DebugChannel        = 0u;   // [0..16] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular, 12=SdfDistance, 13=SdfMaterial, 14=SdfNormal, 15=SdfAoRaw, 16=SdfCascade, 17=NaniteLodLevel, 18=NaniteClusters
+    uint32_t                              DebugChannel        = 0u;   // [0..18] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=MaterialSlot, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular, 12=SdfDistance, 13=SdfMaterial, 14=SdfNormal, 15=SdfAoRaw, 16=SdfCascade, 17=ClusterLodLevel, 18=ClusterIdColor
     bool                                  ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
     bool                                  RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
     bool                                  XeGtaoEnabled       = false; // [-]    - XeGTAO screen-space AO for direct PBR (no GI contribution)
@@ -76,14 +76,16 @@ struct WorldRenderConfiguration
     uint32_t                              QualityTier         = 1u;   // [0..4]  - Quality tier
     uint32_t                              PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
     uint32_t                              PathTraceTargetSpp  = 0u;   // [spp]   - Convergence target for progressive PT (0 = continuous, no cap)
-    bool                                  NaniteLodEnabled    = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut (Nanite-like) instead of full-res geometry
-    float                                 NanitePixelError    = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
+    bool                                  ClusterLodEnabled   = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut instead of full-res geometry
+    float                                 ClusterPixelError   = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
 };
 
 struct WorldSceneSpecification
 {
-    std::vector<RigidClusterInstance>                           ClusterInstances    {};
-    MaterialSpace::CompactMaterialRegister                      MaterialRegister    {};
+    std::vector<RigidClusterInstance>                           ClusterInstances            {};
+    std::vector<DistanceFieldSpace::RigidLocalVolumePlacement>  LocalDistancePlacements     {};
+    uint64_t                                                    LocalDistanceBakeGeneration = 1ull;
+    MaterialSpace::CompactMaterialRegister                      MaterialRegister            {};
     std::vector<MaterialSpace::BounceSlabEntry>                 BounceSummaries     {};
     SpatialAcceleration::WideBoundingTree                       SceneTree           {};
     SpatialAcceleration::CompressedWideTree                     CompressedSceneTree {}; // 64 B quantized 4-wide BVH4 (Order 2 & 3)

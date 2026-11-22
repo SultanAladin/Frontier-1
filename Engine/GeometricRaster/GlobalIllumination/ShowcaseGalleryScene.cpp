@@ -29,11 +29,50 @@ namespace Frontier::GeometricRaster
 namespace
 {
 
+void BakeAssetLocalDistanceVolume(
+    ShowcaseGeometryAsset& OutAsset,
+    uint32_t               ResX         = 32u,
+    uint32_t               ResY         = 32u,
+    uint32_t               ResZ         = 32u,
+    float                  MarginMeters = 0.20f)
+{
+    std::vector<SpatialAcceleration::RayTrianglePrimitive> LocalPrims;
+    for (const auto& Cls : OutAsset.Pyramid.Clusters)
+    {
+        if (Cls.HierarchyLevel != 0u)
+        {
+            continue;
+        }
+        for (uint32_t T = 0u; T < Cls.TriangleCount; ++T)
+        {
+            const auto& Tri = OutAsset.Pyramid.Triangles[Cls.TriangleStartOffset + T];
+            const Mathematics::Axis3D P0 = OutAsset.Pyramid.Positions[Tri.VertexIndex0];
+            const Mathematics::Axis3D P1 = OutAsset.Pyramid.Positions[Tri.VertexIndex1];
+            const Mathematics::Axis3D P2 = OutAsset.Pyramid.Positions[Tri.VertexIndex2];
+
+            SpatialAcceleration::RayTrianglePrimitive Prim {};
+            Prim.Corner0          = P0;
+            Prim.Edge01           = P1 - P0;
+            Prim.Edge02           = P2 - P0;
+            Prim.SourceFaceIndex  = Tri.SourceFaceIndex;
+            Prim.MaterialOrdinal  = Tri.MaterialOrdinal;
+            Prim.OpaqueMask       = 1u;
+            Prim.PrimitiveOrdinal = static_cast<uint32_t>(LocalPrims.size());
+            LocalPrims.push_back(Prim);
+        }
+    }
+    if (!LocalPrims.empty())
+    {
+        (void)OutAsset.LocalVolume.BakeFromTrianglesAspect(LocalPrims, ResX, ResY, ResZ, MarginMeters);
+    }
+}
+
 void BuildBoxGeometryAsset(ShowcaseGeometryAsset& OutAsset, Mathematics::Scalar3D HalfExtents)
 {
     OutAsset = {};
     GeometrySpace::AppendBoxPrimitive(OutAsset.Network, { 0.0f, 0.0f, 0.0f }, HalfExtents, {}, {});
     (void)OutAsset.Pyramid.BuildFromPolygonNetwork(OutAsset.Network, 3u);
+    BakeAssetLocalDistanceVolume(OutAsset, 24u, 24u, 20u, 0.22f);
 }
 
 void BuildSphereGeometryAsset(ShowcaseGeometryAsset& OutAsset, float Radius, uint32_t Sectors, uint32_t Rings)
@@ -43,6 +82,7 @@ void BuildSphereGeometryAsset(ShowcaseGeometryAsset& OutAsset, float Radius, uin
     OutAsset.Network.LinkOppositeEdges();
     OutAsset.Network.RecomputeNormals();
     (void)OutAsset.Pyramid.BuildFromPolygonNetwork(OutAsset.Network, 3u);
+    BakeAssetLocalDistanceVolume(OutAsset, 32u, 32u, 32u, 0.22f);
 }
 
 void BuildShapeGeometryAsset(
@@ -118,6 +158,7 @@ void BuildShapeGeometryAsset(
     OutAsset.Network.LinkOppositeEdges();
     OutAsset.Network.RecomputeNormals();
     (void)OutAsset.Pyramid.BuildFromPolygonNetwork(OutAsset.Network, 3u);
+    BakeAssetLocalDistanceVolume(OutAsset, 32u, 32u, 32u, 0.22f);
 }
 
 struct LocalQuantizedKey
@@ -335,6 +376,62 @@ void EnsureObjectLocalSmoothTriangles(ShowcaseWorldAssetEntry& Obj)
         Vec.X * SinZ + Vec.Y * CosZ,
         Vec.Z,
     };
+}
+
+[[nodiscard]] Mathematics::Axis3D RotateEulerZyx(Mathematics::Axis3D Vec, float DegX, float DegY, float DegZ) noexcept
+{
+    constexpr float DegToRad = 0.01745329252f;
+    const float Rx = DegX * DegToRad;
+    const float Ry = DegY * DegToRad;
+    const float Rz = DegZ * DegToRad;
+    const float Cx = std::cos(Rx), Sx = std::sin(Rx);
+    const float Cy = std::cos(Ry), Sy = std::sin(Ry);
+    const float Cz = std::cos(Rz), Sz = std::sin(Rz);
+
+    const float X1 = Vec.X;
+    const float Y1 = Vec.Y * Cx - Vec.Z * Sx;
+    const float Z1 = Vec.Y * Sx + Vec.Z * Cx;
+
+    const float X2 = X1 * Cy + Z1 * Sy;
+    const float Y2 = Y1;
+    const float Z2 = -X1 * Sy + Z1 * Cy;
+
+    return {
+        X2 * Cz - Y2 * Sz,
+        X2 * Sz + Y2 * Cz,
+        Z2,
+    };
+}
+
+void RefreshLocalDistancePlacements(ShowcaseWorldSceneBundle& InOutBundle)
+{
+    InOutBundle.Scene.LocalDistancePlacements.clear();
+    InOutBundle.Scene.LocalDistancePlacements.reserve(InOutBundle.Objects.size());
+
+    for (const ShowcaseWorldAssetEntry& Obj : InOutBundle.Objects)
+    {
+        if (Obj.GlassShell ||
+            Obj.LocalVolumeAsset == nullptr ||
+            Obj.LocalVolumeAsset->DistanceSamples.empty() ||
+            Obj.ClusterInstanceIndex >= InOutBundle.Scene.ClusterInstances.size())
+        {
+            continue;
+        }
+        const auto& Inst = InOutBundle.Scene.ClusterInstances[Obj.ClusterInstanceIndex];
+        if (Inst.UniformScale <= 1.0e-4f)
+        {
+            continue;
+        }
+
+        DistanceFieldSpace::RigidLocalVolumePlacement Placement {};
+        Placement.ConfigureRigidTransform(
+            Obj.LocalVolumeAsset,
+            Inst.WorldTranslation,
+            { Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees },
+            Inst.UniformScale,
+            Obj.DedicatedMaterial ? Obj.MaterialSlot : 0xFFFFu);
+        InOutBundle.Scene.LocalDistancePlacements.push_back(Placement);
+    }
 }
 
 [[nodiscard]] bool NearlyEqualFloat(float Left, float Right) noexcept
@@ -683,13 +780,14 @@ bool LoadWorldSceneFromSpaceFile(
                 }
                 Entry.LocalSmoothTriangles.push_back(SmoothTri);
             }
-            // Nanite-like per-asset LOD bake: glass keeps LOD 1 as its last level (silhouette
+            // Per-asset Cluster LOD bake: glass keeps LOD 1 as its last level (silhouette
             // protection); every asset locks material boundaries so face material slots survive.
             SpatialAcceleration::ClusterLodBakeConfiguration LodBake {};
-            LodBake.MaximumLevels        = 3u;
-            LodBake.CoarsestAllowedLevel = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
+            LodBake.MaximumLevels          = 4u;
+            LodBake.CoarsestAllowedLevel   = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
             LodBake.LockMaterialBoundaries = true;
             (void)GeomAsset->Pyramid.BuildFromPolygonNetwork(GeomAsset->Network, LodBake);
+            BakeAssetLocalDistanceVolume(*GeomAsset, 36u, 36u, 36u, 0.24f);
         }
         else
         {
@@ -699,17 +797,28 @@ bool LoadWorldSceneFromSpaceFile(
                 Face.PartGroupOrdinal = Entry.MaterialSlot;
             }
             SpatialAcceleration::ClusterLodBakeConfiguration LodBake {};
-            LodBake.MaximumLevels        = 3u;
-            LodBake.CoarsestAllowedLevel = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
+            LodBake.MaximumLevels          = 3u;
+            LodBake.CoarsestAllowedLevel   = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
             LodBake.LockMaterialBoundaries = true;
             (void)GeomAsset->Pyramid.BuildFromPolygonNetwork(GeomAsset->Network, LodBake);
+            BakeAssetLocalDistanceVolume(*GeomAsset, 24u, 24u, 20u, 0.22f);
             EnsureObjectLocalSmoothTriangles(Entry);
         }
 
-        OutBundle.Scene.ClusterInstances.push_back(
-            { &GeomAsset->Pyramid, Entry.CenterWorld, Entry.CenterWorld, 1.0f, Entry.MaterialSlot, Entry.SphericalPrimitive });
+        Entry.LocalVolumeAsset = &GeomAsset->LocalVolume;
+        RigidClusterInstance ClusterInst {};
+        ClusterInst.PyramidAsset         = &GeomAsset->Pyramid;
+        ClusterInst.WorldTranslation     = Entry.CenterWorld;
+        ClusterInst.PreviousTranslation  = Entry.CenterWorld;
+        ClusterInst.EulerRotationDegrees = { Entry.RotationXDegrees, Entry.RotationYDegrees, Entry.RotationZDegrees };
+        ClusterInst.UniformScale         = 1.0f;
+        ClusterInst.MaterialSlot         = Entry.MaterialSlot;
+        ClusterInst.TransparentGlass     = Entry.GlassShell;
+        ClusterInst.OverrideMaterialSlot = Entry.DedicatedMaterial;
+        OutBundle.Scene.ClusterInstances.push_back(ClusterInst);
         OutBundle.DynamicGeometryAssets.push_back(std::move(GeomAsset));
         OutBundle.Objects.push_back(std::move(Entry));
+        ++OutBundle.Scene.LocalDistanceBakeGeneration;
     }
 
     // Area Luminaires (.PhotometrySpace)
@@ -803,6 +912,7 @@ void BuildBlankPlaneSkyScene(
         Face.PartGroupOrdinal = GroundSlot;
     }
     (void)OutBundle.GeometryAssets[0u].Pyramid.BuildFromPolygonNetwork(OutBundle.GeometryAssets[0u].Network, 3u);
+    BakeAssetLocalDistanceVolume(OutBundle.GeometryAssets[0u], 32u, 32u, 16u, 0.24f);
     OutBundle.Scene.ClusterInstances.push_back(
         { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
 
@@ -817,9 +927,11 @@ void BuildBlankPlaneSkyScene(
     GroundEntry.AuthoredDimensions   = GroundDims;
     GroundEntry.MaterialSlot         = GroundSlot;
     GroundEntry.ClusterInstanceIndex = 0u;
+    GroundEntry.LocalVolumeAsset     = &OutBundle.GeometryAssets[0u].LocalVolume;
     GroundEntry.PrimitiveShape       = ShowcasePrimitiveShape::Box;
     EnsureObjectLocalSmoothTriangles(GroundEntry);
     OutBundle.Objects.push_back(std::move(GroundEntry));
+    ++OutBundle.Scene.LocalDistanceBakeGeneration;
 
     // Clear Sky & Daylight Sun (no clouds, fog, moon, stars, or area lights)
     auto& Atmo = OutBundle.Scene.Atmosphere;
@@ -855,8 +967,8 @@ void BuildBlankPlaneSkyScene(
     OutBundle.EditorCamera.TargetPoint        = { 0.00f, 0.00f, 0.20f };
     OutBundle.EditorCamera.WorldUpAxis        = { 0.00f, 0.00f, 1.00f };
     OutBundle.EditorCamera.VerticalFovRadians = 42.0f * Constants::DegToRadFloat;
-    OutBundle.EditorCamera.NearClipMeters     = 0.12f;
-    OutBundle.EditorCamera.FarClipMeters      = 240.0f;
+    OutBundle.EditorCamera.NearClipMeters     = 0.02f;
+    OutBundle.EditorCamera.FarClipMeters      = 50000.0f;
     OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
     OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
@@ -1008,6 +1120,7 @@ void BuildVehicleClearSkyDefaultScene(
         Face.PartGroupOrdinal = GroundSlot;
     }
     (void)OutBundle.GeometryAssets[0u].Pyramid.BuildFromPolygonNetwork(OutBundle.GeometryAssets[0u].Network, 3u);
+    BakeAssetLocalDistanceVolume(OutBundle.GeometryAssets[0u], 32u, 32u, 16u, 0.24f);
     OutBundle.Scene.ClusterInstances.push_back(
         { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
 
@@ -1022,6 +1135,7 @@ void BuildVehicleClearSkyDefaultScene(
     GroundEntry.AuthoredDimensions   = GroundDims;
     GroundEntry.MaterialSlot         = GroundSlot;
     GroundEntry.ClusterInstanceIndex = 0u;
+    GroundEntry.LocalVolumeAsset     = &OutBundle.GeometryAssets[0u].LocalVolume;
     GroundEntry.PrimitiveShape       = ShowcasePrimitiveShape::Box;
     EnsureObjectLocalSmoothTriangles(GroundEntry);
     OutBundle.Objects.push_back(std::move(GroundEntry));
@@ -1090,7 +1204,31 @@ void BuildVehicleClearSkyDefaultScene(
             const std::array<uint32_t, 3u> Loop {{ V0, V1, V2 }};
             (void)VehicleGeom->Network.AppendFace(Loop, {}, {}, 0u, SlotMat);
         }
-        (void)VehicleGeom->Pyramid.BuildFromPolygonNetwork(VehicleGeom->Network, 3u);
+
+        SpatialAcceleration::ClusterLodBakeConfiguration VehicleLodBake {};
+        VehicleLodBake.MaximumLevels          = 4u;
+        VehicleLodBake.CoarsestAllowedLevel   = 0xFFFFFFFFu;
+        VehicleLodBake.LockMaterialBoundaries = true;
+        (void)VehicleGeom->Pyramid.BuildFromPolygonNetwork(VehicleGeom->Network, VehicleLodBake);
+
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::CanopyGloss)], 0u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::VehicleGlass)], 0u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::HeadlightLens)], 0u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::TaillightLens)], 0u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::TyreRubber)], 1u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::RimAlloy)], 1u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::WheelCapAccent)], 1u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestLevel(
+            VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::BrakeDisc)], 1u);
+
+        BakeAssetLocalDistanceVolume(*VehicleGeom, 80u, 40u, 32u, 0.24f);
     }
     else
     {
@@ -1103,10 +1241,12 @@ void BuildVehicleClearSkyDefaultScene(
         EnsureObjectLocalSmoothTriangles(VehicleEntry);
     }
 
+    VehicleEntry.LocalVolumeAsset = &VehicleGeom->LocalVolume;
     OutBundle.Scene.ClusterInstances.push_back(
         { &VehicleGeom->Pyramid, VehicleEntry.CenterWorld, VehicleEntry.CenterWorld, 1.0f, VehicleEntry.MaterialSlot, false });
     OutBundle.DynamicGeometryAssets.push_back(std::move(VehicleGeom));
     OutBundle.Objects.push_back(std::move(VehicleEntry));
+    ++OutBundle.Scene.LocalDistanceBakeGeneration;
 
     // Clear Sky & Crisp Daylight Sun (Zero Clouds, Zero Fog, Zero Indoor Area Lights)
     auto& Atmo = OutBundle.Scene.Atmosphere;
@@ -1143,8 +1283,8 @@ void BuildVehicleClearSkyDefaultScene(
     OutBundle.EditorCamera.TargetPoint        = { 0.10f,  0.00f, 0.62f };
     OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.00f };
     OutBundle.EditorCamera.VerticalFovRadians = 38.0f * Constants::DegToRadFloat;
-    OutBundle.EditorCamera.NearClipMeters     = 0.12f;
-    OutBundle.EditorCamera.FarClipMeters      = 120.0f;
+    OutBundle.EditorCamera.NearClipMeters     = 0.02f;
+    OutBundle.EditorCamera.FarClipMeters      = 50000.0f;
     OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
     OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
@@ -1448,13 +1588,18 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
             continue;
         }
 
-        const float Scale   = Inst.UniformScale;
-        const float YawRad  = Obj.RotationZDegrees * 0.01745329252f;
-        const bool  HasYaw  = std::fabs(YawRad) > 1.0e-5f;
-        const float CosZ    = HasYaw ? std::cos(YawRad) : 1.0f;
-        const float SinZ    = HasYaw ? std::sin(YawRad) : 0.0f;
-        const auto  Center  = Obj.CenterWorld;
-        const uint16_t Mat  = Obj.MaterialSlot;
+        auto& MutInst = InOutBundle.Scene.ClusterInstances[Obj.ClusterInstanceIndex];
+        MutInst.EulerRotationDegrees = { Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees };
+        MutInst.OverrideMaterialSlot = Obj.DedicatedMaterial;
+        MutInst.MaterialSlot         = Obj.MaterialSlot;
+
+        const float Scale  = MutInst.UniformScale;
+        const bool  HasRot =
+            (std::fabs(Obj.RotationXDegrees) > 1.0e-4f) ||
+            (std::fabs(Obj.RotationYDegrees) > 1.0e-4f) ||
+            (std::fabs(Obj.RotationZDegrees) > 1.0e-4f);
+        const auto     Center = Obj.CenterWorld;
+        const uint16_t Mat    = Obj.MaterialSlot;
 
         for (const CachedLocalSmoothTriangle& LocalTri : Obj.LocalSmoothTriangles)
         {
@@ -1462,9 +1607,9 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
             const Mathematics::Axis3D L1 = LocalTri.Corner1 * Scale;
             const Mathematics::Axis3D L2 = LocalTri.Corner2 * Scale;
 
-            const Mathematics::Axis3D W0 = Center + (HasYaw ? RotateAroundZ(L0, CosZ, SinZ) : L0);
-            const Mathematics::Axis3D W1 = Center + (HasYaw ? RotateAroundZ(L1, CosZ, SinZ) : L1);
-            const Mathematics::Axis3D W2 = Center + (HasYaw ? RotateAroundZ(L2, CosZ, SinZ) : L2);
+            const Mathematics::Axis3D W0 = Center + (HasRot ? RotateEulerZyx(L0, Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees) : L0);
+            const Mathematics::Axis3D W1 = Center + (HasRot ? RotateEulerZyx(L1, Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees) : L1);
+            const Mathematics::Axis3D W2 = Center + (HasRot ? RotateEulerZyx(L2, Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees) : L2);
 
             SpatialAcceleration::RayTrianglePrimitive Prim {};
             Prim.Corner0          = W0;
@@ -1479,9 +1624,9 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
             WorldPrims.push_back(Prim);
 
             SpatialAcceleration::TriangleSmoothNormals Smooth {};
-            Smooth.Normal0 = HasYaw ? RotateAroundZ(LocalTri.Normal0, CosZ, SinZ) : LocalTri.Normal0;
-            Smooth.Normal1 = HasYaw ? RotateAroundZ(LocalTri.Normal1, CosZ, SinZ) : LocalTri.Normal1;
-            Smooth.Normal2 = HasYaw ? RotateAroundZ(LocalTri.Normal2, CosZ, SinZ) : LocalTri.Normal2;
+            Smooth.Normal0 = HasRot ? RotateEulerZyx(LocalTri.Normal0, Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees) : LocalTri.Normal0;
+            Smooth.Normal1 = HasRot ? RotateEulerZyx(LocalTri.Normal1, Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees) : LocalTri.Normal1;
+            Smooth.Normal2 = HasRot ? RotateEulerZyx(LocalTri.Normal2, Obj.RotationXDegrees, Obj.RotationYDegrees, Obj.RotationZDegrees) : LocalTri.Normal2;
             WorldNormals.push_back(Smooth);
 
             ++PrimCounter;
@@ -1512,7 +1657,6 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
             {
                 continue;
             }
-            // Skip floor horizontal slab; register vertical walls, roof baffle, pedestal, and specimen bounding volumes for GtxLowEnd SDF
             const Mathematics::Axis3D HalfExt {
                 Obj.DimensionsMeters.X * 0.5f,
                 Obj.DimensionsMeters.Y * 0.5f,
@@ -1528,6 +1672,8 @@ void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle)
             InOutBundle.Scene.GtxInteriorBoxes.push_back(Box);
         }
     }
+
+    RefreshLocalDistancePlacements(InOutBundle);
 }
 
 bool SynchronizeShowcaseGalleryFromOutliner(
@@ -1574,6 +1720,17 @@ bool SynchronizeShowcaseGalleryFromOutliner(
                 Obj.CenterWorld          = NextPos;
                 Changed                  = true;
                 AccelInvalidated         = true;
+            }
+            if (!NearlyEqualFloat(Obj.RotationXDegrees, Entry->RotationX) ||
+                !NearlyEqualFloat(Obj.RotationYDegrees, Entry->RotationY) ||
+                !NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ))
+            {
+                Obj.RotationXDegrees      = Entry->RotationX;
+                Obj.RotationYDegrees      = Entry->RotationY;
+                Obj.RotationZDegrees      = Entry->RotationZ;
+                Inst.EulerRotationDegrees = { Entry->RotationX, Entry->RotationY, Entry->RotationZ };
+                Changed                   = true;
+                AccelInvalidated          = true;
             }
         }
     }
@@ -1775,16 +1932,18 @@ bool SynchronizeShowcaseGallerySceneLive(
                     }
                 }
 
+                const DistanceFieldSpace::LocalSignedDistanceVolume* DynLocalVol = &DynAsset->LocalVolume;
                 const uint32_t InstanceIdx = static_cast<uint32_t>(InOutBundle.Scene.ClusterInstances.size());
-                InOutBundle.Scene.ClusterInstances.push_back({
-                    &DynAsset->Pyramid,
-                    SpawnCenter,
-                    SpawnCenter,
-                    1.0f,
-                    MatSlot,
-                    false,
-                });
+                RigidClusterInstance NewInst {};
+                NewInst.PyramidAsset         = &DynAsset->Pyramid;
+                NewInst.WorldTranslation     = SpawnCenter;
+                NewInst.PreviousTranslation  = SpawnCenter;
+                NewInst.UniformScale         = 1.0f;
+                NewInst.MaterialSlot         = MatSlot;
+                NewInst.OverrideMaterialSlot = true;
+                InOutBundle.Scene.ClusterInstances.push_back(NewInst);
                 InOutBundle.DynamicGeometryAssets.push_back(std::move(DynAsset));
+                ++InOutBundle.Scene.LocalDistanceBakeGeneration;
 
                 ShowcaseWorldAssetEntry NewObj {};
                 NewObj.Title                = Entry.Title;
@@ -1797,6 +1956,7 @@ bool SynchronizeShowcaseGallerySceneLive(
                 NewObj.AuthoredDimensions   = Dims;
                 NewObj.MaterialSlot         = MatSlot;
                 NewObj.ClusterInstanceIndex = InstanceIdx;
+                NewObj.LocalVolumeAsset     = DynLocalVol;
                 NewObj.GlassShell           = false;
                 NewObj.SphericalPrimitive   = (Shape == ShowcasePrimitiveShape::Sphere);
                 NewObj.DedicatedMaterial    = true;
@@ -1913,11 +2073,16 @@ bool SynchronizeShowcaseGallerySceneLive(
                 Changed                  = true;
                 AccelInvalidated         = true;
             }
-            if (!NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ))
+            if (!NearlyEqualFloat(Obj.RotationXDegrees, Entry->RotationX) ||
+                !NearlyEqualFloat(Obj.RotationYDegrees, Entry->RotationY) ||
+                !NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ))
             {
-                Obj.RotationZDegrees = Entry->RotationZ;
-                Changed              = true;
-                AccelInvalidated     = true;
+                Obj.RotationXDegrees      = Entry->RotationX;
+                Obj.RotationYDegrees      = Entry->RotationY;
+                Obj.RotationZDegrees      = Entry->RotationZ;
+                Inst.EulerRotationDegrees = { Entry->RotationX, Entry->RotationY, Entry->RotationZ };
+                Changed                   = true;
+                AccelInvalidated          = true;
             }
         }
     }

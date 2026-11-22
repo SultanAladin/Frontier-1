@@ -1109,7 +1109,7 @@ if(BUILD_TESTING)
     endfunction()
 
     frontier_register_exhibit(ClusterLodBakeValidation      Exhibits/ClusterLodBakeValidation.cpp)
-    frontier_register_exhibit(NaniteViewportVehicleValidation Exhibits/NaniteViewportVehicleValidation.cpp)
+    frontier_register_exhibit(ClusterViewportVehicleValidation Exhibits/ClusterViewportVehicleValidation.cpp)
     frontier_register_exhibit(InputValidation             Exhibits/InputValidation.cpp)
     frontier_register_exhibit(CameraComponentValidation     Exhibits/CameraComponentValidation.cpp)
     frontier_register_exhibit(CameraEffectsValidation       Exhibits/CameraEffectsValidation.cpp)

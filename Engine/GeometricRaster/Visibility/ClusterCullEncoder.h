@@ -25,12 +25,15 @@ namespace Frontier::GeometricRaster
 
 struct RigidClusterInstance
 {
-    const SpatialAcceleration::ClusterPyramid* PyramidAsset       = nullptr; // [-]   - Pre-built 128-triangle cluster LOD pyramid
-    Mathematics::Axis3D                        WorldTranslation   {};        // [m]   - Current-frame world position
-    Mathematics::Axis3D                        PreviousTranslation{};        // [m]   - Previous-frame world position (for motion vectors)
-    float                                      UniformScale       = 1.0f;    // [-]   - Uniform rigid world scale
-    uint16_t                                   MaterialSlot       = 0u;      // [idx] - CompactMaterialRegister slot
-    bool                                       TransparentGlass   = false;   // [-]   - Routed to 2-layer glass depth-peel pass
+    const SpatialAcceleration::ClusterPyramid* PyramidAsset                 = nullptr;     // [-]   - Pre-built 128-triangle cluster LOD pyramid
+    Mathematics::Axis3D                        WorldTranslation             {};            // [m]   - Current-step world position
+    Mathematics::Axis3D                        PreviousTranslation          {};            // [m]   - Previous-step world position
+    float                                      UniformScale                 = 1.0f;        // [-]   - Uniform rigid world scale
+    uint16_t                                   MaterialSlot                 = 0u;          // [idx] - CompactMaterialRegister slot
+    bool                                       TransparentGlass             = false;       // [-]   - Routed to 2-layer glass depth-peel pass
+    bool                                       OverrideMaterialSlot         = false;       // [-]   - Override per-triangle material slot with MaterialSlot
+    Mathematics::Axis3D                        EulerRotationDegrees         {};            // [deg] - Rigid X/Y/Z Euler rotation in degrees
+    uint32_t                                   CoarsestAllowedLevelOverride = 0xFFFFFFFFu; // [lvl] - Optional per-instance coarsest LOD cap
 };
 
 struct VisibleClusterCommand

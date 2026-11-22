@@ -758,7 +758,7 @@ bool WorldGizmoOverlayRasterization::RasterizeGizmoOntoWorldBuffer(
         Fwd,
         std::clamp(FovDeg, 10.0f, 140.0f),
         Aspect,
-        std::max(0.05f, Camera.NearClipMeters),
+        std::max(0.01f, Camera.NearClipMeters),
         std::max(10.0f, Camera.FarClipMeters));
     std::memcpy(Uniforms.ViewProjection, Clip.Rows, sizeof(Clip.Rows));
     Uniforms.HoverSpacePacked[0] = static_cast<uint32_t>(Gizmo3D.QueryHoveredHandle());
@@ -992,7 +992,7 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
             Fwd,
             std::clamp(FovDeg, 10.0f, 140.0f),
             Aspect,
-            std::max(0.05f, Request.Camera.NearClipMeters),
+            std::max(0.01f, Request.Camera.NearClipMeters),
             std::max(10.0f, Request.Camera.FarClipMeters));
         std::memcpy(Uniforms.ViewProjection, Clip.Rows, sizeof(Clip.Rows));
         Uniforms.HoverSpacePacked[0] = static_cast<uint32_t>(Request.Gizmo3D->QueryHoveredHandle());

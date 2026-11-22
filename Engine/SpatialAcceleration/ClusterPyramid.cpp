@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                               CLUSTERPYRAMID.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of 128-triangle Morton cluster partitioning and seam/border-locked QEM hierarchical LOD simplification
+// 🧩 128-triangle Morton cluster partitioning, area-normalized flip-guarded QEM, and partition-exact monotonic group cuts
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -23,8 +23,12 @@ namespace Frontier::SpatialAcceleration
 namespace
 {
 
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    INTERNAL HELPERS
+//------------------------------------------------------------------------------------------------------------------------
+
 constexpr uint32_t ClusterBinaryMagic   = 0x31595043u; // 'CPY1'
-constexpr uint32_t ClusterBinaryVersion = 2u; // v2 appends CoarsestAllowedLevel after the counts
+constexpr uint32_t ClusterBinaryVersion = 2u;
 
 [[nodiscard]] uint32_t ExpandBits10To30(uint32_t Coord10) noexcept
 {
@@ -50,25 +54,64 @@ constexpr uint32_t ClusterBinaryVersion = 2u; // v2 appends CoarsestAllowedLevel
     return (ExpandBits10To30(QuantX) << 2u) | (ExpandBits10To30(QuantY) << 1u) | ExpandBits10To30(QuantZ);
 }
 
+void EncloseBoundingSphere(
+    Mathematics::Axis3D& InOutCenter,
+    float&               InOutRadius,
+    bool&                InOutSeeded,
+    Mathematics::Axis3D  OtherCenter,
+    float                OtherRadius) noexcept
+{
+    const float SafeOtherR = std::max(0.0f, OtherRadius);
+    if (!InOutSeeded)
+    {
+        InOutCenter = OtherCenter;
+        InOutRadius = SafeOtherR;
+        InOutSeeded = true;
+        return;
+    }
+
+    const Mathematics::Axis3D Delta = OtherCenter - InOutCenter;
+    const float Dist = Mathematics::EvaluateLength(Delta);
+    if (Dist + SafeOtherR <= InOutRadius)
+    {
+        return;
+    }
+    if (Dist + InOutRadius <= SafeOtherR)
+    {
+        InOutCenter = OtherCenter;
+        InOutRadius = SafeOtherR + 1.0e-5f;
+        return;
+    }
+
+    const float MergedRadius = 0.5f * (InOutRadius + SafeOtherR + Dist) + 1.0e-5f;
+    if (Dist > 1.0e-8f)
+    {
+        InOutCenter = InOutCenter + Delta * ((MergedRadius - InOutRadius) / Dist);
+    }
+    InOutRadius = MergedRadius;
+}
+
 struct SymmetricQuadric10
 {
-    std::array<double, 10u> Coeffs {}; // Upper-triangular 4x4 plane quadric coefficients
+    std::array<double, 10u> Coeffs          {};
+    double                  TotalAreaWeight = 0.0;
 
-    void AccumulatePlane(Mathematics::Axis3D UnitNormal, double PlaneOffsetD, double Weight) noexcept
+    void AccumulatePlane(Mathematics::Axis3D UnitNormal, double PlaneOffsetD, double AreaWeight) noexcept
     {
         const double Nx = static_cast<double>(UnitNormal.X);
         const double Ny = static_cast<double>(UnitNormal.Y);
         const double Nz = static_cast<double>(UnitNormal.Z);
-        Coeffs[0u] += Weight * Nx * Nx;
-        Coeffs[1u] += Weight * Nx * Ny;
-        Coeffs[2u] += Weight * Nx * Nz;
-        Coeffs[3u] += Weight * Nx * PlaneOffsetD;
-        Coeffs[4u] += Weight * Ny * Ny;
-        Coeffs[5u] += Weight * Ny * Nz;
-        Coeffs[6u] += Weight * Ny * PlaneOffsetD;
-        Coeffs[7u] += Weight * Nz * Nz;
-        Coeffs[8u] += Weight * Nz * PlaneOffsetD;
-        Coeffs[9u] += Weight * PlaneOffsetD * PlaneOffsetD;
+        Coeffs[0u] += AreaWeight * Nx * Nx;
+        Coeffs[1u] += AreaWeight * Nx * Ny;
+        Coeffs[2u] += AreaWeight * Nx * Nz;
+        Coeffs[3u] += AreaWeight * Nx * PlaneOffsetD;
+        Coeffs[4u] += AreaWeight * Ny * Ny;
+        Coeffs[5u] += AreaWeight * Ny * Nz;
+        Coeffs[6u] += AreaWeight * Ny * PlaneOffsetD;
+        Coeffs[7u] += AreaWeight * Nz * Nz;
+        Coeffs[8u] += AreaWeight * Nz * PlaneOffsetD;
+        Coeffs[9u] += AreaWeight * PlaneOffsetD * PlaneOffsetD;
+        TotalAreaWeight += AreaWeight;
     }
 
     void AccumulateOther(const SymmetricQuadric10& Other) noexcept
@@ -77,9 +120,10 @@ struct SymmetricQuadric10
         {
             Coeffs[Idx] += Other.Coeffs[Idx];
         }
+        TotalAreaWeight += Other.TotalAreaWeight;
     }
 
-    [[nodiscard]] double EvaluateErrorSquared(Mathematics::Axis3D Candidate) const noexcept
+    [[nodiscard]] double EvaluateNormalizedErrorSquared(Mathematics::Axis3D Candidate) const noexcept
     {
         const double Px = static_cast<double>(Candidate.X);
         const double Py = static_cast<double>(Candidate.Y);
@@ -89,7 +133,7 @@ struct SymmetricQuadric10
             Coeffs[4u] * Py * Py + 2.0 * Coeffs[5u] * Py * Pz + 2.0 * Coeffs[6u] * Py +
             Coeffs[7u] * Pz * Pz + 2.0 * Coeffs[8u] * Pz +
             Coeffs[9u];
-        return std::max(0.0, Residual);
+        return std::max(0.0, Residual) / std::max(1.0e-12, TotalAreaWeight);
     }
 };
 
@@ -125,9 +169,9 @@ void PopulateClusterBoundsNormalCone(
             MaxPt.Z = std::max(MaxPt.Z, Pos.Z);
         }
 
-        const Mathematics::Axis3D P0 = Positions[Tri.VertexIndex0];
-        const Mathematics::Axis3D P1 = Positions[Tri.VertexIndex1];
-        const Mathematics::Axis3D P2 = Positions[Tri.VertexIndex2];
+        const Mathematics::Axis3D P0    = Positions[Tri.VertexIndex0];
+        const Mathematics::Axis3D P1    = Positions[Tri.VertexIndex1];
+        const Mathematics::Axis3D P2    = Positions[Tri.VertexIndex2];
         const Mathematics::Axis3D Cross = Mathematics::EvaluateCross(P1 - P0, P2 - P0);
         const float Len = Mathematics::EvaluateLength(Cross);
         if (Len > 1.0e-9f)
@@ -157,7 +201,8 @@ void PopulateClusterBoundsNormalCone(
     {
         if (Votes > TopVotes)
         {
-            TopVotes = Votes;
+            TopVotes                       = Votes;
+            Header.FullMaterialOrdinal     = MatOrd;
             Header.DominantMaterialOrdinal = static_cast<uint8_t>(std::min<uint16_t>(MatOrd, 255u));
         }
     }
@@ -172,13 +217,10 @@ void PopulateClusterBoundsNormalCone(
         }
         if (MinDot <= 0.02f)
         {
-            // Cone half-angle >= ~89 deg -> spans hemisphere, disable cone backface culling
             Header.NormalConeSinCutoff = 1.0f;
         }
         else
         {
-            // Backface test: Dot(Normalize(ConeCenter - CamPos), ConeDir) > SinCutoff
-            // where SinCutoff = sin(coneHalfAngle) = sqrt(1 - MinDot^2)
             Header.NormalConeSinCutoff = std::sqrt(std::max(0.0f, 1.0f - MinDot * MinDot));
         }
     }
@@ -189,7 +231,59 @@ void PopulateClusterBoundsNormalCone(
     }
 }
 
-// 📝 Simplifies a merged span of triangles down to TargetTriangleCount while strictly locking border & UV-seam vertices
+[[nodiscard]] bool WouldCollapseInvertSurvivingFace(
+    std::span<const Mathematics::Axis3D>  Positions,
+    std::span<const ClusterTriangleEntry> WorkingTris,
+    uint32_t                              FromVertex,
+    uint32_t                              ToVertex) noexcept
+{
+    for (const ClusterTriangleEntry& Tri : WorkingTris)
+    {
+        const bool TouchesFrom =
+            (Tri.VertexIndex0 == FromVertex) ||
+            (Tri.VertexIndex1 == FromVertex) ||
+            (Tri.VertexIndex2 == FromVertex);
+        if (!TouchesFrom)
+        {
+            continue;
+        }
+        const bool TouchesTo =
+            (Tri.VertexIndex0 == ToVertex) ||
+            (Tri.VertexIndex1 == ToVertex) ||
+            (Tri.VertexIndex2 == ToVertex);
+        if (TouchesTo)
+        {
+            continue;
+        }
+
+        const uint32_t NV0 = (Tri.VertexIndex0 == FromVertex) ? ToVertex : Tri.VertexIndex0;
+        const uint32_t NV1 = (Tri.VertexIndex1 == FromVertex) ? ToVertex : Tri.VertexIndex1;
+        const uint32_t NV2 = (Tri.VertexIndex2 == FromVertex) ? ToVertex : Tri.VertexIndex2;
+
+        const Mathematics::Axis3D OldCross = Mathematics::EvaluateCross(
+            Positions[Tri.VertexIndex1] - Positions[Tri.VertexIndex0],
+            Positions[Tri.VertexIndex2] - Positions[Tri.VertexIndex0]);
+        const Mathematics::Axis3D NewCross = Mathematics::EvaluateCross(
+            Positions[NV1] - Positions[NV0],
+            Positions[NV2] - Positions[NV0]);
+        const float OldLen = Mathematics::EvaluateLength(OldCross);
+        const float NewLen = Mathematics::EvaluateLength(NewCross);
+        if (OldLen > 1.0e-9f)
+        {
+            if (NewLen <= 1.0e-9f)
+            {
+                return true;
+            }
+            const float Alignment = Mathematics::EvaluateDot(OldCross * (1.0f / OldLen), NewCross * (1.0f / NewLen));
+            if (Alignment < 0.22f)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] std::vector<ClusterTriangleEntry> SimplifyGroupWithLockedBorders(
     std::span<const Mathematics::Axis3D>  Positions,
     std::span<const uint8_t>              GlobalSeamLockedVertices,
@@ -205,7 +299,6 @@ void PopulateClusterBoundsNormalCone(
         return Working;
     }
 
-    // 📝 Identify group-boundary vertices (undirected edges appearing != 2 times inside this group) + global seam/crease locks
     struct DirectedGroupEdge
     {
         uint32_t LowerV = 0u;
@@ -230,8 +323,9 @@ void PopulateClusterBoundsNormalCone(
     }
     std::sort(GroupEdges.begin(), GroupEdges.end());
 
-    std::unordered_map<uint32_t, uint8_t> LockedVertex;
+    std::unordered_map<uint32_t, uint8_t>            LockedVertex;
     std::unordered_map<uint32_t, SymmetricQuadric10> VertexQuadrics;
+    std::unordered_map<uint32_t, float>              CumulativeChordError;
 
     std::size_t Cursor = 0u;
     while (Cursor < GroupEdges.size())
@@ -251,9 +345,6 @@ void PopulateClusterBoundsNormalCone(
         Cursor = End;
     }
 
-    // Material-boundary locks: a vertex touched by triangles of different material slots must
-    // never collapse, so each face keeps its own material slot and material regions cannot bleed
-    // into each other at coarser LOD levels (Nanite-style per-face material preservation).
     if (LockMaterialBoundaries)
     {
         std::unordered_map<uint32_t, uint16_t> VertexMaterial;
@@ -286,9 +377,9 @@ void PopulateClusterBoundsNormalCone(
             }
         }
 
-        const Mathematics::Axis3D P0 = Positions[Tri.VertexIndex0];
-        const Mathematics::Axis3D P1 = Positions[Tri.VertexIndex1];
-        const Mathematics::Axis3D P2 = Positions[Tri.VertexIndex2];
+        const Mathematics::Axis3D P0    = Positions[Tri.VertexIndex0];
+        const Mathematics::Axis3D P1    = Positions[Tri.VertexIndex1];
+        const Mathematics::Axis3D P2    = Positions[Tri.VertexIndex2];
         const Mathematics::Axis3D Cross = Mathematics::EvaluateCross(P1 - P0, P2 - P0);
         const float TwiceArea = Mathematics::EvaluateLength(Cross);
         if (TwiceArea > 1.0e-10f)
@@ -302,20 +393,20 @@ void PopulateClusterBoundsNormalCone(
         }
     }
 
-    // 📝 Iterative half-edge QEM collapse (collapsing unlocked FromV -> ToV preserves exact existing vertex coordinates & UVs!)
     while (Working.size() > TargetTriangleCount)
     {
-        uint32_t BestFromVertex = GeometrySpace::InvalidNetworkIndex;
-        uint32_t BestToVertex   = GeometrySpace::InvalidNetworkIndex;
-        Mathematics::UVAxes BestTargetUV {};
+        uint32_t            BestFromVertex   = GeometrySpace::InvalidNetworkIndex;
+        uint32_t            BestToVertex     = GeometrySpace::InvalidNetworkIndex;
+        Mathematics::UVAxes BestTargetUV     {};
         uint32_t            BestTargetNormal = 0u;
-        double   BestCost       = std::numeric_limits<double>::max();
+        double              BestCost         = std::numeric_limits<double>::max();
+        double              BestQemSq        = 0.0;
 
         for (const ClusterTriangleEntry& Tri : Working)
         {
-            const std::array<uint32_t, 3u> V {{ Tri.VertexIndex0, Tri.VertexIndex1, Tri.VertexIndex2 }};
-            const std::array<Mathematics::UVAxes, 3u> UVs {{ Tri.CornerUV0, Tri.CornerUV1, Tri.CornerUV2 }};
-            const std::array<uint32_t, 3u> Norms {{ Tri.PackedNormal0, Tri.PackedNormal1, Tri.PackedNormal2 }};
+            const std::array<uint32_t, 3u>            V     {{ Tri.VertexIndex0, Tri.VertexIndex1, Tri.VertexIndex2 }};
+            const std::array<Mathematics::UVAxes, 3u> UVs   {{ Tri.CornerUV0, Tri.CornerUV1, Tri.CornerUV2 }};
+            const std::array<uint32_t, 3u>            Norms {{ Tri.PackedNormal0, Tri.PackedNormal1, Tri.PackedNormal2 }};
 
             for (std::size_t Side = 0u; Side < 3u; ++Side)
             {
@@ -326,16 +417,18 @@ void PopulateClusterBoundsNormalCone(
                     continue;
                 }
 
-                // Try collapsing VA -> VB if VA is unlocked
+                const double EdgeLenSq = static_cast<double>(Mathematics::EvaluateLengthSquared(Positions[VB] - Positions[VA]));
+
                 if (LockedVertex.find(VA) == LockedVertex.end())
                 {
                     SymmetricQuadric10 Combined = VertexQuadrics[VA];
                     Combined.AccumulateOther(VertexQuadrics[VB]);
-                    const double EdgeLenSq = static_cast<double>(Mathematics::EvaluateLengthSquared(Positions[VB] - Positions[VA]));
-                    const double Cost      = Combined.EvaluateErrorSquared(Positions[VB]) + 1.0e-5 * EdgeLenSq;
-                    if (Cost < BestCost)
+                    const double QemSq = Combined.EvaluateNormalizedErrorSquared(Positions[VB]);
+                    const double Cost  = QemSq + 2.5e-3 * EdgeLenSq;
+                    if (Cost < BestCost && !WouldCollapseInvertSurvivingFace(Positions, Working, VA, VB))
                     {
                         BestCost         = Cost;
+                        BestQemSq        = QemSq;
                         BestFromVertex   = VA;
                         BestToVertex     = VB;
                         BestTargetUV     = UVs[(Side + 1u) % 3u];
@@ -343,16 +436,16 @@ void PopulateClusterBoundsNormalCone(
                     }
                 }
 
-                // Try collapsing VB -> VA if VB is unlocked
                 if (LockedVertex.find(VB) == LockedVertex.end())
                 {
                     SymmetricQuadric10 Combined = VertexQuadrics[VB];
                     Combined.AccumulateOther(VertexQuadrics[VA]);
-                    const double EdgeLenSq = static_cast<double>(Mathematics::EvaluateLengthSquared(Positions[VA] - Positions[VB]));
-                    const double Cost      = Combined.EvaluateErrorSquared(Positions[VA]) + 1.0e-5 * EdgeLenSq;
-                    if (Cost < BestCost)
+                    const double QemSq = Combined.EvaluateNormalizedErrorSquared(Positions[VA]);
+                    const double Cost  = QemSq + 2.5e-3 * EdgeLenSq;
+                    if (Cost < BestCost && !WouldCollapseInvertSurvivingFace(Positions, Working, VB, VA))
                     {
                         BestCost         = Cost;
+                        BestQemSq        = QemSq;
                         BestFromVertex   = VB;
                         BestToVertex     = VA;
                         BestTargetUV     = UVs[Side];
@@ -364,14 +457,16 @@ void PopulateClusterBoundsNormalCone(
 
         if (BestFromVertex == GeometrySpace::InvalidNetworkIndex)
         {
-            // All remaining interior vertices are border/seam locked — stop cleanly without cracking borders!
             break;
         }
 
-        const float StepLinearError = std::max(
-            static_cast<float>(std::sqrt(std::max(0.0, BestCost))),
-            0.25f * Mathematics::EvaluateDistance(Positions[BestFromVertex], Positions[BestToVertex]));
-        OutSimplifiedMaxErrorMeters = std::max(OutSimplifiedMaxErrorMeters, StepLinearError);
+        const float CollapseSpanMeters = Mathematics::EvaluateDistance(Positions[BestFromVertex], Positions[BestToVertex]);
+        const float PriorFromErr       = CumulativeChordError[BestFromVertex];
+        const float PriorToErr         = CumulativeChordError[BestToVertex];
+        const float QemMeters          = static_cast<float>(std::sqrt(std::max(0.0, BestQemSq)));
+        const float TrueCollapseError  = std::max({ PriorToErr, PriorFromErr + 0.35f * CollapseSpanMeters, QemMeters });
+        CumulativeChordError[BestToVertex] = TrueCollapseError;
+        OutSimplifiedMaxErrorMeters        = std::max(OutSimplifiedMaxErrorMeters, TrueCollapseError);
 
         VertexQuadrics[BestToVertex].AccumulateOther(VertexQuadrics[BestFromVertex]);
 
@@ -448,10 +543,20 @@ void ClusterPyramid::Reset() noexcept
     Positions.clear();
     Triangles.clear();
     Clusters.clear();
-    HierarchyDepth     = 0u;
-    FinestClusterCount = 0u;
+    MaterialCoarsestLevels.clear();
+    HierarchyDepth           = 0u;
+    FinestClusterCount       = 0u;
     CoarsestAllowedLevel     = 0xFFFFFFFFu;
     MaterialBoundariesLocked = true;
+}
+
+void ClusterPyramid::ConfigureMaterialCoarsestLevel(uint16_t MaterialOrdinal, uint32_t CoarsestLevel)
+{
+    if (MaterialOrdinal >= MaterialCoarsestLevels.size())
+    {
+        MaterialCoarsestLevels.resize(static_cast<std::size_t>(MaterialOrdinal) + 1u, 0xFFFFFFFFu);
+    }
+    MaterialCoarsestLevels[MaterialOrdinal] = CoarsestLevel;
 }
 
 bool ClusterPyramid::BuildFromPolygonNetwork(
@@ -496,15 +601,12 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         1.0f / std::max(1.0e-5f, SceneMax.Z - SceneMin.Z),
     };
 
-    // A network whose opposite edges were never linked (e.g. decoded triangle soup) would mark
-    // every vertex as an open border below; border locks for those come from welded topology.
     bool AnyLinkedOpposite = false;
     for (const GeometrySpace::DirectedEdge& Edge : Network.Edges)
     {
         AnyLinkedOpposite = AnyLinkedOpposite || (Edge.OppositeEdgeIndex != GeometrySpace::InvalidNetworkIndex);
     }
 
-    // 📝 Mark vertices incident on UV seams, sharp creases, or open geometric borders so QEM preserves UV/shading integrity
     std::vector<uint8_t> GlobalSeamLockedVertices(Network.Vertices.size(), 0u);
     for (const GeometrySpace::DirectedEdge& Edge : Network.Edges)
     {
@@ -528,9 +630,6 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         }
     }
 
-    // Vertex welding: triangle-soup networks duplicate every corner, leaving QEM no shared
-    // vertices to collapse (the decoded ControlVehicle baked a single LOD level before this).
-    // Weld by exact position; per-corner normals, UVs, and material slots ride on triangles.
     std::vector<uint32_t> WeldRemap(Network.Vertices.size(), 0u);
     {
         struct WeldKey
@@ -578,11 +677,33 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 WeldedLocks[WeldedIdx] = 1u;
             }
         }
-        Positions               = std::move(WeldedPositions);
+        Positions                = std::move(WeldedPositions);
         GlobalSeamLockedVertices = std::move(WeldedLocks);
     }
 
     const auto CornerTangents = GeometrySpace::EvaluateContinuousCornerTangents(Network);
+
+    const auto ResolveCornerNormal = [&](uint32_t EdgeIdx, Mathematics::Axis3D FallbackFaceN) noexcept -> Mathematics::Axis3D
+    {
+        if (!AnyLinkedOpposite && EdgeIdx < Network.Edges.size())
+        {
+            const uint32_t OrigV = Network.Edges[EdgeIdx].OriginVertexIndex;
+            if (OrigV < Network.Vertices.size())
+            {
+                const Mathematics::Axis3D AuthoredN = Network.Vertices[OrigV].Normal;
+                const float LenSq = Mathematics::EvaluateLengthSquared(AuthoredN);
+                if (LenSq > 0.25f)
+                {
+                    const Mathematics::Axis3D UnitAuthored = AuthoredN * (1.0f / std::sqrt(LenSq));
+                    if (Mathematics::EvaluateDot(UnitAuthored, FallbackFaceN) > 0.05f)
+                    {
+                        return UnitAuthored;
+                    }
+                }
+            }
+        }
+        return CornerTangents[EdgeIdx].NormalAxis;
+    };
 
     struct MortonTaggedTriangle
     {
@@ -619,19 +740,31 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             Tri.VertexIndex0      = WeldRemap[Network.Edges[E0].OriginVertexIndex];
             Tri.VertexIndex1      = WeldRemap[Network.Edges[E1].OriginVertexIndex];
             Tri.VertexIndex2      = WeldRemap[Network.Edges[E2].OriginVertexIndex];
+            if (Tri.VertexIndex0 == Tri.VertexIndex1 ||
+                Tri.VertexIndex1 == Tri.VertexIndex2 ||
+                Tri.VertexIndex2 == Tri.VertexIndex0)
+            {
+                continue;
+            }
+
+            const Mathematics::Axis3D P0 = Positions[Tri.VertexIndex0];
+            const Mathematics::Axis3D P1 = Positions[Tri.VertexIndex1];
+            const Mathematics::Axis3D P2 = Positions[Tri.VertexIndex2];
+            const Mathematics::Axis3D FaceN = Mathematics::NormalizeAxis(
+                Mathematics::EvaluateCross(P1 - P0, P2 - P0), CurrentFace.GeometricNormal);
+
             Tri.SourceFaceIndex   = FaceIdx;
             Tri.CornerUV0         = Network.Edges[E0].ParameterUV;
             Tri.CornerUV1         = Network.Edges[E1].ParameterUV;
             Tri.CornerUV2         = Network.Edges[E2].ParameterUV;
-            Tri.PackedNormal0     = GeometrySpace::PackOctahedralDirection32(CornerTangents[E0].NormalAxis);
-            Tri.PackedNormal1     = GeometrySpace::PackOctahedralDirection32(CornerTangents[E1].NormalAxis);
-            Tri.PackedNormal2     = GeometrySpace::PackOctahedralDirection32(CornerTangents[E2].NormalAxis);
+            Tri.PackedNormal0     = GeometrySpace::PackOctahedralDirection32(ResolveCornerNormal(E0, FaceN));
+            Tri.PackedNormal1     = GeometrySpace::PackOctahedralDirection32(ResolveCornerNormal(E1, FaceN));
+            Tri.PackedNormal2     = GeometrySpace::PackOctahedralDirection32(ResolveCornerNormal(E2, FaceN));
             Tri.PackedTangent0    = GeometrySpace::PackOctahedralDirection32(CornerTangents[E0].TangentAxis);
             Tri.MaterialOrdinal   = CurrentFace.PartGroupOrdinal;
             Tri.TangentSignScaled = (CornerTangents[E0].HandednessSign >= 0.0f) ? int16_t{ 1 } : int16_t{ -1 };
 
-            const Mathematics::Axis3D Centroid =
-                (Positions[Tri.VertexIndex0] + Positions[Tri.VertexIndex1] + Positions[Tri.VertexIndex2]) * (1.0f / 3.0f);
+            const Mathematics::Axis3D Centroid = (P0 + P1 + P2) * (1.0f / 3.0f);
             Level0Tris.push_back({ EncodeMorton30(Centroid, SceneMin, InvSceneExtent), Tri });
         }
     }
@@ -641,8 +774,6 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         return false;
     }
 
-    // Welded-topology border locks: vertices on edges used by a single triangle are true open
-    // borders (this is what protects soup networks whose edges were never linked).
     {
         std::unordered_map<uint64_t, uint32_t> EdgeUseCounts;
         EdgeUseCounts.reserve(Level0Tris.size() * 3u);
@@ -676,8 +807,6 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         }
     }
 
-    // Material-pure clustering: sort by (material slot, Morton) so a cluster NEVER mixes faces
-    // of different material slots — each face keeps its own slot and clusters are per-material.
     std::sort(Level0Tris.begin(), Level0Tris.end(), [](const MortonTaggedTriangle& Left, const MortonTaggedTriangle& Right) noexcept
     {
         if (Left.Entry.MaterialOrdinal != Right.Entry.MaterialOrdinal)
@@ -687,8 +816,6 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         return Left.MortonCode < Right.MortonCode;
     });
 
-    // 📝 Construct Level-0 clusters (<= 128 spatially localized triangles per cluster, never
-    //    spanning a material boundary — a new cluster starts when the material slot changes)
     std::vector<uint32_t> CurrentLevelClusterIndices;
     for (std::size_t Start = 0u; Start < Level0Tris.size();)
     {
@@ -710,12 +837,17 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         Header.HierarchyLevel              = 0u;
         Header.FinerSelfErrorMeters        = 0.0f;
         Header.CoarserThresholdErrorMeters = 1.0e30f;
+        Header.OriginGroupOrdinal          = 0u;
+        Header.EnclosingGroupOrdinal       = 0u;
         Header.ClusterOrdinal              = static_cast<uint32_t>(Clusters.size());
 
         PopulateClusterBoundsNormalCone(
             Header,
             Positions,
             std::span<const ClusterTriangleEntry>(Triangles.data() + TriOffset, Count));
+
+        Header.OriginGroupSphereCenter = Header.SphereCenter;
+        Header.OriginGroupSphereRadius = Header.SphereRadiusMeters;
 
         CurrentLevelClusterIndices.push_back(Header.ClusterOrdinal);
         Clusters.push_back(Header);
@@ -725,19 +857,16 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
     FinestClusterCount = static_cast<uint32_t>(CurrentLevelClusterIndices.size());
     HierarchyDepth     = 1u;
 
-    const uint32_t AllowedLevels = std::clamp(BakeConfiguration.MaximumLevels, 1u, 8u);
-    uint32_t GroupOrdinalCounter = 1u;
+    const uint32_t AllowedLevels       = std::clamp(BakeConfiguration.MaximumLevels, 1u, 8u);
+    uint32_t       GroupOrdinalCounter = 1u;
 
-    // 📝 Iteratively merge Morton-adjacent groups of up to 4 clusters -> simplify ~50% -> re-split into <=128-tri coarser clusters
-    for (uint32_t Level = 1u; Level < AllowedLevels && CurrentLevelClusterIndices.size() > 1u; ++Level)
+    for (uint32_t Level = 1u; Level < AllowedLevels && !CurrentLevelClusterIndices.empty(); ++Level)
     {
-        // Sort by (material slot, Morton): merge groups only ever combine clusters of the SAME
-        // material slot, so coarser clusters stay material-pure like the finest level.
         std::sort(CurrentLevelClusterIndices.begin(), CurrentLevelClusterIndices.end(), [&](uint32_t ClusterA, uint32_t ClusterB) noexcept
         {
-            if (Clusters[ClusterA].DominantMaterialOrdinal != Clusters[ClusterB].DominantMaterialOrdinal)
+            if (Clusters[ClusterA].FullMaterialOrdinal != Clusters[ClusterB].FullMaterialOrdinal)
             {
-                return Clusters[ClusterA].DominantMaterialOrdinal < Clusters[ClusterB].DominantMaterialOrdinal;
+                return Clusters[ClusterA].FullMaterialOrdinal < Clusters[ClusterB].FullMaterialOrdinal;
             }
             return EncodeMorton30(Clusters[ClusterA].SphereCenter, SceneMin, InvSceneExtent) <
                    EncodeMorton30(Clusters[ClusterB].SphereCenter, SceneMin, InvSceneExtent);
@@ -748,25 +877,22 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
 
         for (std::size_t GroupPos = 0u; GroupPos < CurrentLevelClusterIndices.size();)
         {
-            // Group = up to 4 consecutive clusters sharing one material slot AND spatially
-            // adjacent to the group's first cluster (never merge across the asset, e.g. wheels).
-            const uint8_t GroupMaterial = Clusters[CurrentLevelClusterIndices[GroupPos]].DominantMaterialOrdinal;
-            const ClusterHeaderEntry& GroupAnchor = Clusters[CurrentLevelClusterIndices[GroupPos]];
+            const uint16_t            GroupMaterial = Clusters[CurrentLevelClusterIndices[GroupPos]].FullMaterialOrdinal;
+            const ClusterHeaderEntry& GroupAnchor   = Clusters[CurrentLevelClusterIndices[GroupPos]];
             std::size_t GroupCount = 1u;
             while (GroupCount < 4u && GroupPos + GroupCount < CurrentLevelClusterIndices.size() &&
-                   Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]].DominantMaterialOrdinal == GroupMaterial)
+                   Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]].FullMaterialOrdinal == GroupMaterial)
             {
                 const ClusterHeaderEntry& Candidate = Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]];
                 const float CenterDistance = Mathematics::EvaluateDistance(Candidate.SphereCenter, GroupAnchor.SphereCenter);
-                if (CenterDistance > (GroupAnchor.SphereRadiusMeters + Candidate.SphereRadiusMeters) * 2.0f + 0.05f)
+                if (CenterDistance > (GroupAnchor.SphereRadiusMeters + Candidate.SphereRadiusMeters) * 3.0f + 0.15f)
                 {
                     break;
                 }
                 ++GroupCount;
             }
-            if (GroupCount < 2u)
+            if (GroupCount < 2u && GroupAnchor.TriangleCount < 64u)
             {
-                // Singleton (last cluster of its material) stays terminal at CoarserThresholdErrorMeters = +inf
                 GroupPos += 1u;
                 continue;
             }
@@ -784,7 +910,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             }
 
             const uint32_t TargetSimplifiedCount = std::max<uint32_t>(
-                MaxTrianglesPerCluster / 2u,
+                16u,
                 static_cast<uint32_t>(MergedTris.size() / 2u));
 
             float CollapseError = 0.0f;
@@ -802,21 +928,32 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 continue;
             }
 
-            // 📝 Enforce strict monotonicity: CoarserError > max(FinerSelfError) so cuts never overlap or leave holes!
-            const float MonotonicGroupError = std::max(MaxFinerError + 1.0e-4f, MaxFinerError + CollapseError);
-            const uint32_t CurrentGroupOrd  = GroupOrdinalCounter++;
+            const float    MonotonicGroupError = std::max(MaxFinerError * 1.08f + 1.0e-4f, MaxFinerError + CollapseError);
+            const uint32_t CurrentGroupOrd     = GroupOrdinalCounter++;
 
+            Mathematics::Axis3D SharedGroupCenter {};
+            float               SharedGroupRadius = 0.0f;
+            bool                SphereSeeded      = false;
             for (std::size_t Sub = 0u; Sub < GroupCount; ++Sub)
             {
-                ClusterHeaderEntry& Finer         = Clusters[CurrentLevelClusterIndices[GroupPos + Sub]];
-                Finer.CoarserThresholdErrorMeters = MonotonicGroupError;
-                Finer.EnclosingGroupOrdinal       = CurrentGroupOrd;
+                const ClusterHeaderEntry& Finer = Clusters[CurrentLevelClusterIndices[GroupPos + Sub]];
+                EncloseBoundingSphere(SharedGroupCenter, SharedGroupRadius, SphereSeeded, Finer.SphereCenter, Finer.SphereRadiusMeters);
+                if (Finer.OriginGroupOrdinal != 0u)
+                {
+                    EncloseBoundingSphere(
+                        SharedGroupCenter,
+                        SharedGroupRadius,
+                        SphereSeeded,
+                        Finer.OriginGroupSphereCenter,
+                        Finer.OriginGroupSphereRadius);
+                }
             }
 
+            const std::size_t FirstCoarserIdx = Clusters.size();
             for (std::size_t Chunk = 0u; Chunk < SimplifiedTris.size(); Chunk += MaxTrianglesPerCluster)
             {
                 const std::size_t ChunkCount = std::min<std::size_t>(MaxTrianglesPerCluster, SimplifiedTris.size() - Chunk);
-                const uint32_t TriOffset     = static_cast<uint32_t>(Triangles.size());
+                const uint32_t    TriOffset  = static_cast<uint32_t>(Triangles.size());
                 Triangles.insert(Triangles.end(), SimplifiedTris.begin() + Chunk, SimplifiedTris.begin() + Chunk + ChunkCount);
 
                 ClusterHeaderEntry Coarser {};
@@ -825,6 +962,8 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                 Coarser.HierarchyLevel              = static_cast<uint8_t>(Level);
                 Coarser.FinerSelfErrorMeters        = MonotonicGroupError;
                 Coarser.CoarserThresholdErrorMeters = 1.0e30f;
+                Coarser.OriginGroupOrdinal          = CurrentGroupOrd;
+                Coarser.EnclosingGroupOrdinal       = 0u;
                 Coarser.ClusterOrdinal              = static_cast<uint32_t>(Clusters.size());
 
                 PopulateClusterBoundsNormalCone(
@@ -832,8 +971,24 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                     Positions,
                     std::span<const ClusterTriangleEntry>(Triangles.data() + TriOffset, ChunkCount));
 
+                EncloseBoundingSphere(SharedGroupCenter, SharedGroupRadius, SphereSeeded, Coarser.SphereCenter, Coarser.SphereRadiusMeters);
                 NextLevelClusterIndices.push_back(Coarser.ClusterOrdinal);
                 Clusters.push_back(Coarser);
+            }
+
+            for (std::size_t Sub = 0u; Sub < GroupCount; ++Sub)
+            {
+                ClusterHeaderEntry& Finer         = Clusters[CurrentLevelClusterIndices[GroupPos + Sub]];
+                Finer.CoarserThresholdErrorMeters = MonotonicGroupError;
+                Finer.EnclosingGroupSphereCenter  = SharedGroupCenter;
+                Finer.EnclosingGroupSphereRadius  = SharedGroupRadius;
+                Finer.EnclosingGroupOrdinal       = CurrentGroupOrd;
+                Finer.EnclosingOutputLevel        = static_cast<uint16_t>(Level);
+            }
+            for (std::size_t CIdx = FirstCoarserIdx; CIdx < Clusters.size(); ++CIdx)
+            {
+                Clusters[CIdx].OriginGroupSphereCenter = SharedGroupCenter;
+                Clusters[CIdx].OriginGroupSphereRadius = SharedGroupRadius;
             }
 
             AnyGroupReduced = true;
@@ -852,7 +1007,7 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                       RUNTIME CRACK-FREE MONOTONIC LOD CUT
+//                                     RUNTIME PARTITION-EXACT MONOTONIC LOD CUT
 //------------------------------------------------------------------------------------------------------------------------
 
 ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
@@ -861,59 +1016,69 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
     float               MaxAllowedPixelError,
     bool                EnableNormalConeBackfaceCull) const
 {
+    return SelectMonotonicCutWithCap(
+        CameraWorldPosition,
+        PixelsPerRadian,
+        MaxAllowedPixelError,
+        0xFFFFFFFFu,
+        EnableNormalConeBackfaceCull);
+}
+
+ClusterCutSelection ClusterPyramid::SelectMonotonicCutWithCap(
+    Mathematics::Axis3D CameraWorldPosition,
+    float               PixelsPerRadian,
+    float               MaxAllowedPixelError,
+    uint32_t            CoarsestLevelOverride,
+    bool                EnableNormalConeBackfaceCull) const
+{
     ClusterCutSelection Selection {};
     if (Clusters.empty())
     {
         return Selection;
     }
 
-    const float SafeProjScale = std::max(1.0f, PixelsPerRadian);
-    const float AllowedPx     = std::max(0.0f, MaxAllowedPixelError);
+    const float    SafeProjScale  = std::max(1.0f, PixelsPerRadian);
+    const float    AllowedPx      = std::max(0.0f, MaxAllowedPixelError);
+    const uint32_t ObjectLevelCap = std::min(CoarsestAllowedLevel, CoarsestLevelOverride);
 
-    // 📝 Group-uniform distance metric ensures all finer clusters in an EnclosingGroup transition together!
-    std::unordered_map<uint32_t, float> GroupMinDistance;
-    for (const ClusterHeaderEntry& Cluster : Clusters)
-    {
-        if (Cluster.EnclosingGroupOrdinal == 0u)
-        {
-            continue;
-        }
-        const float RawDist = std::max(
-            1.0e-3f,
-            Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.SphereCenter) - Cluster.SphereRadiusMeters);
-        const auto Found = GroupMinDistance.find(Cluster.EnclosingGroupOrdinal);
-        if (Found == GroupMinDistance.end() || RawDist < Found->second)
-        {
-            GroupMinDistance[Cluster.EnclosingGroupOrdinal] = RawDist;
-        }
-    }
-
-    // Evaluate each cluster against its self distance and enclosing group distance
     for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Clusters.size()); ++Idx)
     {
         const ClusterHeaderEntry& Cluster = Clusters[Idx];
-        if (Cluster.HierarchyLevel > CoarsestAllowedLevel)
+        const uint32_t EffectiveMaxLevel = std::min(
+            ObjectLevelCap,
+            QueryMaterialCoarsestLevel(Cluster.FullMaterialOrdinal));
+
+        if (Cluster.HierarchyLevel > EffectiveMaxLevel)
         {
-            continue; // Per-asset final-level cap: coarser LOD exists in the bake but is never selected
+            continue;
         }
-        const float SelfDist = std::max(
-            1.0e-3f,
-            Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.SphereCenter) - Cluster.SphereRadiusMeters);
-        const float CoarserGroupDist = (Cluster.EnclosingGroupOrdinal != 0u)
-            ? GroupMinDistance[Cluster.EnclosingGroupOrdinal]
-            : SelfDist;
 
-        // When the coarser replacement is capped out, this cluster is terminal (never replaced).
-        const bool CoarserCappedOut =
-            Cluster.EnclosingGroupOrdinal != 0u &&
-            (static_cast<uint32_t>(Cluster.HierarchyLevel) + 1u > CoarsestAllowedLevel);
-        const float ProjectedSelfErrorPx    = (Cluster.FinerSelfErrorMeters / SelfDist) * SafeProjScale;
-        const float ProjectedCoarserErrorPx = (CoarserCappedOut || Cluster.CoarserThresholdErrorMeters >= 1.0e20f)
-            ? 1.0e30f
-            : ((Cluster.CoarserThresholdErrorMeters / CoarserGroupDist) * SafeProjScale);
+        bool OriginGroupCoarsened = true;
+        if (Cluster.OriginGroupOrdinal != 0u)
+        {
+            const float OriginDist = std::max(
+                1.0e-3f,
+                Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.OriginGroupSphereCenter) - Cluster.OriginGroupSphereRadius);
+            const float OriginProjPx = (Cluster.FinerSelfErrorMeters / OriginDist) * SafeProjScale;
+            OriginGroupCoarsened     = (OriginProjPx <= AllowedPx);
+        }
+        if (!OriginGroupCoarsened)
+        {
+            continue;
+        }
 
-        const bool CutActive = (ProjectedSelfErrorPx <= AllowedPx) && (ProjectedCoarserErrorPx > AllowedPx);
-        if (!CutActive)
+        bool EnclosingGroupCoarsened = false;
+        if (Cluster.EnclosingGroupOrdinal != 0u &&
+            Cluster.EnclosingOutputLevel <= EffectiveMaxLevel &&
+            Cluster.CoarserThresholdErrorMeters < 1.0e20f)
+        {
+            const float EnclosingDist = std::max(
+                1.0e-3f,
+                Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.EnclosingGroupSphereCenter) - Cluster.EnclosingGroupSphereRadius);
+            const float EnclosingProjPx = (Cluster.CoarserThresholdErrorMeters / EnclosingDist) * SafeProjScale;
+            EnclosingGroupCoarsened     = (EnclosingProjPx <= AllowedPx);
+        }
+        if (EnclosingGroupCoarsened)
         {
             continue;
         }
@@ -982,7 +1147,7 @@ std::vector<ClusterLodLevelSummary> ClusterPyramid::SummarizeLevels() const
 std::vector<std::byte> ClusterPyramid::SerializeToBinaryBytes() const
 {
     std::vector<std::byte> Bytes;
-    Bytes.reserve(24u + Positions.size() * sizeof(Mathematics::Axis3D) +
+    Bytes.reserve(28u + Positions.size() * sizeof(Mathematics::Axis3D) +
                   Triangles.size() * sizeof(ClusterTriangleEntry) +
                   Clusters.size() * sizeof(ClusterHeaderEntry));
 

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                        LOCALSIGNEDDISTANCEVOLUME.CPP
 ============================================================================================================================================*/
-// 🧩 Order 2 GtxLowEnd-ONLY per-asset compact 48^3 distance volume with C0-continuous Euclidean outer-box distance clamping
+// 🧩 Multi-threaded BVH4-accelerated per-asset compact local distance + normal/material volume baking & rigid 3D sampling
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -10,6 +10,8 @@
 #include "Engine/DistanceFieldSpace/LocalSignedDistanceVolume.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -21,195 +23,355 @@ namespace Frontier::DistanceFieldSpace
 namespace
 {
 
-[[nodiscard]] uint16_t PackFloat32ToHalf16(float Scalar) noexcept
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    INTERNAL HELPERS
+//------------------------------------------------------------------------------------------------------------------------
+
+std::atomic<uint32_t> NextVolumeAssetSerial { 1u };
+
+[[nodiscard]] uint16_t PackFloat32ToFloat16(float Value) noexcept
 {
     uint32_t Bits = 0u;
-    std::memcpy(&Bits, &Scalar, sizeof(Bits));
+    std::memcpy(&Bits, &Value, sizeof(uint32_t));
     const uint32_t Sign = (Bits >> 16u) & 0x8000u;
     const int32_t  Exp  = static_cast<int32_t>((Bits >> 23u) & 0xFFu) - 127 + 15;
     uint32_t       Mant = Bits & 0x007FFFFFu;
+
     if (Exp <= 0)
     {
-        return static_cast<uint16_t>(Sign);
+        if (Exp < -10)
+        {
+            return static_cast<uint16_t>(Sign);
+        }
+        Mant = (Mant | 0x00800000u) >> static_cast<uint32_t>(1 - Exp);
+        return static_cast<uint16_t>(Sign | ((Mant + 0x00001000u) >> 13u));
     }
     if (Exp >= 31)
     {
         return static_cast<uint16_t>(Sign | 0x7BFFu);
     }
-    return static_cast<uint16_t>(Sign | (static_cast<uint32_t>(Exp) << 10u) | (Mant >> 13u));
+    return static_cast<uint16_t>(Sign | (static_cast<uint32_t>(Exp) << 10u) | ((Mant + 0x00001000u) >> 13u));
 }
 
-[[nodiscard]] float UnpackHalf16ToFloat32(uint16_t HalfWord) noexcept
+[[nodiscard]] float UnpackFloat16ToFloat32(uint16_t HalfBits) noexcept
 {
-    const uint32_t Sign = (static_cast<uint32_t>(HalfWord & 0x8000u)) << 16u;
-    const uint32_t Exp  = (HalfWord >> 10u) & 0x1Fu;
-    const uint32_t Mant = HalfWord & 0x03FFu;
-    uint32_t Bits       = 0u;
+    const uint32_t Sign = (static_cast<uint32_t>(HalfBits) & 0x8000u) << 16u;
+    const uint32_t Exp  = (static_cast<uint32_t>(HalfBits) >> 10u) & 0x1Fu;
+    uint32_t       Mant = static_cast<uint32_t>(HalfBits) & 0x03FFu;
+
+    uint32_t OutBits = 0u;
     if (Exp == 0u)
     {
-        Bits = Sign;
+        if (Mant == 0u)
+        {
+            OutBits = Sign;
+        }
+        else
+        {
+            uint32_t ShiftExp = 127u - 15u + 1u;
+            while ((Mant & 0x0400u) == 0u)
+            {
+                Mant <<= 1u;
+                --ShiftExp;
+            }
+            Mant &= 0x03FFu;
+            OutBits = Sign | (ShiftExp << 23u) | (Mant << 13u);
+        }
+    }
+    else if (Exp == 31u)
+    {
+        OutBits = Sign | 0x7F800000u | (Mant << 13u);
     }
     else
     {
-        Bits = Sign | ((Exp + 127u - 15u) << 23u) | (Mant << 13u);
+        OutBits = Sign | ((Exp + 127u - 15u) << 23u) | (Mant << 13u);
     }
-    float Out = 0.0f;
-    std::memcpy(&Out, &Bits, sizeof(Out));
-    return Out;
+
+    float Result = 0.0f;
+    std::memcpy(&Result, &OutBits, sizeof(float));
+    return Result;
 }
 
-[[nodiscard]] float PointToTriangleDistanceSquared(
-    Mathematics::Axis3D P,
-    Mathematics::Axis3D A,
-    Mathematics::Axis3D B,
-    Mathematics::Axis3D C) noexcept
+[[nodiscard]] uint32_t PackOctNormalAndMaterial(Mathematics::Axis3D UnitNormal, uint16_t MaterialOrdinal) noexcept
 {
-    const Mathematics::Axis3D AB = B - A;
-    const Mathematics::Axis3D AC = C - A;
-    const Mathematics::Axis3D AP = P - A;
+    const float InvL1 = 1.0f / std::max(1.0e-6f, std::fabs(UnitNormal.X) + std::fabs(UnitNormal.Y) + std::fabs(UnitNormal.Z));
+    float OctX = UnitNormal.X * InvL1;
+    float OctY = UnitNormal.Y * InvL1;
+    if (UnitNormal.Z < 0.0f)
+    {
+        const float WrapX = (1.0f - std::fabs(OctY)) * ((OctX >= 0.0f) ? 1.0f : -1.0f);
+        const float WrapY = (1.0f - std::fabs(OctX)) * ((OctY >= 0.0f) ? 1.0f : -1.0f);
+        OctX = WrapX;
+        OctY = WrapY;
+    }
+    const uint32_t QuantX = static_cast<uint32_t>(std::clamp(std::lround((OctX * 0.5f + 0.5f) * 1023.0f), 0l, 1023l));
+    const uint32_t QuantY = static_cast<uint32_t>(std::clamp(std::lround((OctY * 0.5f + 0.5f) * 1023.0f), 0l, 1023l));
+    const uint32_t Mat12  = static_cast<uint32_t>(std::min<uint16_t>(MaterialOrdinal, 4095u));
+    return QuantX | (QuantY << 10u) | (Mat12 << 20u);
+}
+
+struct ClosestPointTriangleResult
+{
+    float               DistSq = 0.0f;
+    Mathematics::Axis3D Normal { 0.0f, 0.0f, 1.0f };
+};
+
+[[nodiscard]] ClosestPointTriangleResult EvaluatePointTriangleClosest(
+    Mathematics::Axis3D                              Point,
+    const SpatialAcceleration::RayTrianglePrimitive& Tri) noexcept
+{
+    const Mathematics::Axis3D A  = Tri.Corner0;
+    const Mathematics::Axis3D AB = Tri.Edge01;
+    const Mathematics::Axis3D AC = Tri.Edge02;
+    const Mathematics::Axis3D AP = Point - A;
+
+    const Mathematics::Axis3D FaceCross = Mathematics::EvaluateCross(AB, AC);
+    const Mathematics::Axis3D FaceNorm  = Mathematics::NormalizeAxis(FaceCross, { 0.0f, 0.0f, 1.0f });
+
     const float D1 = Mathematics::EvaluateDot(AB, AP);
     const float D2 = Mathematics::EvaluateDot(AC, AP);
     if (D1 <= 0.0f && D2 <= 0.0f)
     {
-        return Mathematics::EvaluateLengthSquared(AP);
+        return { Mathematics::EvaluateLengthSquared(AP), FaceNorm };
     }
 
-    const Mathematics::Axis3D BP = P - B;
+    const Mathematics::Axis3D BP = Point - (A + AB);
     const float D3 = Mathematics::EvaluateDot(AB, BP);
     const float D4 = Mathematics::EvaluateDot(AC, BP);
     if (D3 >= 0.0f && D4 <= D3)
     {
-        return Mathematics::EvaluateLengthSquared(BP);
+        return { Mathematics::EvaluateLengthSquared(BP), FaceNorm };
     }
 
     const float VC = D1 * D4 - D3 * D2;
     if (VC <= 0.0f && D1 >= 0.0f && D3 <= 0.0f)
     {
-        const float V = D1 / std::max(1.0e-12f, D1 - D3);
-        return Mathematics::EvaluateLengthSquared(P - (A + AB * V));
+        const float V = D1 / (D1 - D3);
+        return { Mathematics::EvaluateLengthSquared(Point - (A + AB * V)), FaceNorm };
     }
 
-    const Mathematics::Axis3D CP = P - C;
+    const Mathematics::Axis3D CP = Point - (A + AC);
     const float D5 = Mathematics::EvaluateDot(AB, CP);
     const float D6 = Mathematics::EvaluateDot(AC, CP);
     if (D6 >= 0.0f && D5 <= D6)
     {
-        return Mathematics::EvaluateLengthSquared(CP);
+        return { Mathematics::EvaluateLengthSquared(CP), FaceNorm };
     }
 
     const float VB = D5 * D2 - D1 * D6;
     if (VB <= 0.0f && D2 >= 0.0f && D6 <= 0.0f)
     {
-        const float W = D2 / std::max(1.0e-12f, D2 - D6);
-        return Mathematics::EvaluateLengthSquared(P - (A + AC * W));
+        const float W = D2 / (D2 - D6);
+        return { Mathematics::EvaluateLengthSquared(Point - (A + AC * W)), FaceNorm };
     }
 
     const float VA = D3 * D6 - D5 * D4;
     if (VA <= 0.0f && (D4 - D3) >= 0.0f && (D5 - D6) >= 0.0f)
     {
-        const float W = (D4 - D3) / std::max(1.0e-12f, (D4 - D3) + (D5 - D6));
-        return Mathematics::EvaluateLengthSquared(P - (B + (C - B) * W));
+        const float W = (D4 - D3) / ((D4 - D3) + (D5 - D6));
+        return { Mathematics::EvaluateLengthSquared(Point - (A + AB + (AC - AB) * W)), FaceNorm };
     }
 
-    const float Denom = 1.0f / std::max(1.0e-12f, VA + VB + VC);
+    const float Denom = 1.0f / (VA + VB + VC);
     const float V     = VB * Denom;
     const float W     = VC * Denom;
-    return Mathematics::EvaluateLengthSquared(P - (A + AB * V + AC * W));
+    return { Mathematics::EvaluateLengthSquared(Point - (A + AB * V + AC * W)), FaceNorm };
 }
 
-struct BvhClosestSurfaceStack
+[[nodiscard]] float PointAabbDistanceSq(
+    Mathematics::Axis3D P,
+    float               MinX,
+    float               MinY,
+    float               MinZ,
+    float               MaxX,
+    float               MaxY,
+    float               MaxZ) noexcept
 {
-    uint32_t EntryIndex;
-    float    LowerBoundSq;
+    const float DX = std::max({ 0.0f, MinX - P.X, P.X - MaxX });
+    const float DY = std::max({ 0.0f, MinY - P.Y, P.Y - MaxY });
+    const float DZ = std::max({ 0.0f, MinZ - P.Z, P.Z - MaxZ });
+    return DX * DX + DY * DY + DZ * DZ;
+}
+
+struct ExactClosestSurfaceSample
+{
+    float    DistanceMeters = 0.0f;
+    uint32_t PackedNormMat  = 0u;
 };
 
-[[nodiscard]] float QueryExactUnsignedDistanceViaBvh(
+[[nodiscard]] ExactClosestSurfaceSample QueryExactUnsignedDistanceViaBvh(
     const SpatialAcceleration::WideBoundingTree& Tree,
     Mathematics::Axis3D                          QueryPoint) noexcept
 {
     if (Tree.WideEntries.empty() || Tree.Primitives.empty())
     {
-        return 10.0f;
+        return { 1.0e6f, PackOctNormalAndMaterial({ 0.0f, 0.0f, 1.0f }, 0u) };
     }
 
-    float BestDistSq = 100.0f;
-    std::array<BvhClosestSurfaceStack, 64u> Stack {};
-    uint32_t Top = 0u;
-    Stack[Top++] = { 0u, 0.0f };
+    float               BestDistSq = std::numeric_limits<float>::max();
+    Mathematics::Axis3D BestNormal { 0.0f, 0.0f, 1.0f };
+    uint16_t            BestMat    = 0u;
 
-    while (Top > 0u)
+    std::array<uint32_t, 64u> Stack {};
+    uint32_t StackTop = 0u;
+    Stack[StackTop++] = 0u;
+
+    while (StackTop > 0u)
     {
-        const auto Cur = Stack[--Top];
-        if (Cur.LowerBoundSq >= BestDistSq || Cur.EntryIndex >= Tree.WideEntries.size())
-        {
-            continue;
-        }
-        const auto& CurEntry = Tree.WideEntries[Cur.EntryIndex];
-        for (uint32_t S = 0u; S < 4u; ++S)
-        {
-            const uint32_t Ref = CurEntry.BranchReference[S];
-            if (Ref == SpatialAcceleration::EmptyBranchReference)
-            {
-                continue;
-            }
-            const float DX = std::max({ 0.0f, CurEntry.BranchBoundsMinX[S] - QueryPoint.X, QueryPoint.X - CurEntry.BranchBoundsMaxX[S] });
-            const float DY = std::max({ 0.0f, CurEntry.BranchBoundsMinY[S] - QueryPoint.Y, QueryPoint.Y - CurEntry.BranchBoundsMaxY[S] });
-            const float DZ = std::max({ 0.0f, CurEntry.BranchBoundsMinZ[S] - QueryPoint.Z, QueryPoint.Z - CurEntry.BranchBoundsMaxZ[S] });
-            const float BoxSq = DX * DX + DY * DY + DZ * DZ;
-            if (BoxSq >= BestDistSq)
-            {
-                continue;
-            }
+        const uint32_t NodeIdx = Stack[--StackTop];
+        const SpatialAcceleration::WideTreeEntry& Node = Tree.WideEntries[NodeIdx];
 
-            const uint32_t Count = CurEntry.BranchPrimitiveCount[S];
-            if (Count > 0u)
+        struct ChildHit
+        {
+            uint32_t Slot   = 0u;
+            float    DistSq = 0.0f;
+        };
+        std::array<ChildHit, 4u> Hits {};
+        uint32_t HitCount = 0u;
+
+        for (uint32_t Lane = 0u; Lane < 4u; ++Lane)
+        {
+            if (Node.BranchReference[Lane] == 0xFFFFFFFFu)
             {
-                const uint32_t First = Ref & (~SpatialAcceleration::WideLeafReferenceMask);
-                for (uint32_t K = 0u; K < Count && (First + K) < Tree.Primitives.size(); ++K)
+                continue;
+            }
+            const float BoxSq = PointAabbDistanceSq(
+                QueryPoint,
+                Node.BranchBoundsMinX[Lane], Node.BranchBoundsMinY[Lane], Node.BranchBoundsMinZ[Lane],
+                Node.BranchBoundsMaxX[Lane], Node.BranchBoundsMaxY[Lane], Node.BranchBoundsMaxZ[Lane]);
+            if (BoxSq < BestDistSq)
+            {
+                Hits[HitCount++] = { Lane, BoxSq };
+            }
+        }
+
+        for (uint32_t I = 1u; I < HitCount; ++I)
+        {
+            const ChildHit Key = Hits[I];
+            uint32_t J = I;
+            while (J > 0u && Hits[J - 1u].DistSq < Key.DistSq)
+            {
+                Hits[J] = Hits[J - 1u];
+                --J;
+            }
+            Hits[J] = Key;
+        }
+
+        // Evaluate leaf lanes nearest-first, and push internal lanes farthest-first so LIFO pops nearest first.
+        for (uint32_t H = 0u; H < HitCount; ++H)
+        {
+            const uint32_t Lane      = Hits[H].Slot;
+            const uint32_t PrimCount = Node.BranchPrimitiveCount[Lane];
+            if (PrimCount == 0u || Hits[H].DistSq >= BestDistSq)
+            {
+                continue;
+            }
+            const uint32_t LeafStart = Node.BranchReference[Lane] & 0x7FFFFFFFu;
+            for (uint32_t Off = 0u; Off < PrimCount; ++Off)
+            {
+                const auto& Prim = Tree.Primitives[LeafStart + Off];
+                const ClosestPointTriangleResult Hit = EvaluatePointTriangleClosest(QueryPoint, Prim);
+                if (Hit.DistSq < BestDistSq)
                 {
-                    const auto& Tri = Tree.Primitives[First + K];
-                    const float D2  = PointToTriangleDistanceSquared(
-                        QueryPoint, Tri.Corner0, Tri.Corner0 + Tri.Edge01, Tri.Corner0 + Tri.Edge02);
-                    BestDistSq = std::min(BestDistSq, D2);
+                    BestDistSq = Hit.DistSq;
+                    BestNormal = Hit.Normal;
+                    BestMat    = Prim.MaterialOrdinal;
                 }
             }
-            else if (Top < Stack.size())
+        }
+
+        for (int32_t H = static_cast<int32_t>(HitCount) - 1; H >= 0; --H)
+        {
+            const uint32_t Lane      = Hits[static_cast<uint32_t>(H)].Slot;
+            const uint32_t PrimCount = Node.BranchPrimitiveCount[Lane];
+            if (PrimCount > 0u || Hits[static_cast<uint32_t>(H)].DistSq >= BestDistSq)
             {
-                Stack[Top++] = { Ref, BoxSq };
+                continue;
+            }
+            if (StackTop < Stack.size())
+            {
+                Stack[StackTop++] = Node.BranchReference[Lane];
             }
         }
     }
 
-    return std::sqrt(BestDistSq);
+    const float Dist = std::sqrt(std::max(0.0f, BestDistSq));
+    return { Dist, PackOctNormalAndMaterial(BestNormal, BestMat) };
 }
 
 } // namespace
 
+//------------------------------------------------------------------------------------------------------------------------
+//                                              CLOSED OCCLUDER BOX ANALYTIC
+//------------------------------------------------------------------------------------------------------------------------
+
 float ClosedOccluderBox::EvaluateSignedDistance(Mathematics::Axis3D WorldPos) const noexcept
 {
-    const float DX   = std::fabs(WorldPos.X - CenterWorld.X) - HalfExtent.X;
-    const float DY   = std::fabs(WorldPos.Y - CenterWorld.Y) - HalfExtent.Y;
-    const float DZ   = std::fabs(WorldPos.Z - CenterWorld.Z) - HalfExtent.Z;
-    const float OX   = std::max(DX, 0.0f);
-    const float OY   = std::max(DY, 0.0f);
-    const float OZ   = std::max(DZ, 0.0f);
-    const float OutD = std::sqrt(OX * OX + OY * OY + OZ * OZ);
-    const float InD  = std::min(std::max({ DX, DY, DZ }), 0.0f);
-    return OutD + InD;
+    const float DX = std::fabs(WorldPos.X - CenterWorld.X) - HalfExtent.X;
+    const float DY = std::fabs(WorldPos.Y - CenterWorld.Y) - HalfExtent.Y;
+    const float DZ = std::fabs(WorldPos.Z - CenterWorld.Z) - HalfExtent.Z;
+    const float OX = std::max(DX, 0.0f);
+    const float OY = std::max(DY, 0.0f);
+    const float OZ = std::max(DZ, 0.0f);
+    const float Outside = std::sqrt(OX * OX + OY * OY + OZ * OZ);
+    const float Inside  = std::min(std::max({ DX, DY, DZ }), 0.0f);
+    return Outside + Inside;
 }
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                            RIGID LOCAL VOLUME PLACEMENT
+//------------------------------------------------------------------------------------------------------------------------
+
+void RigidLocalVolumePlacement::ConfigureRigidTransform(
+    const LocalSignedDistanceVolume* Asset,
+    Mathematics::Axis3D              WorldPosition,
+    Mathematics::Axis3D              EulerRotationDegrees,
+    float                            Scale,
+    uint16_t                         OverrideMatSlot) noexcept
+{
+    constexpr float DegToRad = 0.01745329252f;
+    const float Rx = EulerRotationDegrees.X * DegToRad;
+    const float Ry = EulerRotationDegrees.Y * DegToRad;
+    const float Rz = EulerRotationDegrees.Z * DegToRad;
+
+    const float Cx = std::cos(Rx), Sx = std::sin(Rx);
+    const float Cy = std::cos(Ry), Sy = std::sin(Ry);
+    const float Cz = std::cos(Rz), Sz = std::sin(Rz);
+
+    LocalToWorldRow0 = { Cz * Cy, Cz * Sy * Sx - Sz * Cx, Cz * Sy * Cx + Sz * Sx };
+    LocalToWorldRow1 = { Sz * Cy, Sz * Sy * Sx + Cz * Cx, Sz * Sy * Cx - Cz * Sx };
+    LocalToWorldRow2 = { -Sy,     Cy * Sx,                Cy * Cx                };
+
+    WorldToLocalRow0 = { LocalToWorldRow0.X, LocalToWorldRow1.X, LocalToWorldRow2.X };
+    WorldToLocalRow1 = { LocalToWorldRow0.Y, LocalToWorldRow1.Y, LocalToWorldRow2.Y };
+    WorldToLocalRow2 = { LocalToWorldRow0.Z, LocalToWorldRow1.Z, LocalToWorldRow2.Z };
+
+    VolumeAsset          = Asset;
+    Translation          = WorldPosition;
+    CosineYaw            = Cz;
+    SineYaw              = Sz;
+    ActiveToggle         = (Scale > 1.0e-4f);
+    UniformScale         = std::max(1.0e-4f, Scale);
+    MaterialSlotOverride = OverrideMatSlot;
+    FullMatrixValid      = true;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                             LOCAL SIGNED DISTANCE VOLUME
+//------------------------------------------------------------------------------------------------------------------------
 
 void LocalSignedDistanceVolume::Reset() noexcept
 {
-    ResolutionX = 0u;
-    ResolutionY = 0u;
-    ResolutionZ = 0u;
-    LocalMin    = {};
-    LocalMax    = {};
-    VoxelSpacing = {};
+    ResolutionX       = 0u;
+    ResolutionY       = 0u;
+    ResolutionZ       = 0u;
+    UniqueAssetSerial = 0u;
+    LocalMin          = {};
+    LocalMax          = {};
+    VoxelSpacing      = {};
     HalfDistanceSamples.clear();
-    HalfDistanceSamples.shrink_to_fit();
     DistanceSamples.clear();
-    DistanceSamples.shrink_to_fit();
+    PackedNormalMaterialSamples.clear();
 }
 
 bool LocalSignedDistanceVolume::BakeFromTriangles(
@@ -233,78 +395,81 @@ bool LocalSignedDistanceVolume::BakeFromTrianglesAspect(
         return false;
     }
 
-    SpatialAcceleration::WideBoundingTree LocalTree {};
-    if (!LocalTree.BuildFromTrianglePrimitives(InputPrimitives))
+    SpatialAcceleration::WideBoundingTree LocalBvh {};
+    if (!LocalBvh.BuildFromTrianglePrimitives(InputPrimitives))
     {
         return false;
     }
 
-    ResolutionX = ResX;
-    ResolutionY = ResY;
-    ResolutionZ = ResZ;
-    LocalMin = {
-        LocalTree.RootBoundsMin.X - MarginMeters,
-        LocalTree.RootBoundsMin.Y - MarginMeters,
-        LocalTree.RootBoundsMin.Z - MarginMeters,
-    };
-    LocalMax = {
-        LocalTree.RootBoundsMax.X + MarginMeters,
-        LocalTree.RootBoundsMax.Y + MarginMeters,
-        LocalTree.RootBoundsMax.Z + MarginMeters,
-    };
+    Mathematics::Axis3D MinPt { std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() };
+    Mathematics::Axis3D MaxPt { std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest() };
+    for (const auto& Tri : InputPrimitives)
+    {
+        const std::array<Mathematics::Axis3D, 3u> Corners {{ Tri.Corner0, Tri.Corner0 + Tri.Edge01, Tri.Corner0 + Tri.Edge02 }};
+        for (const auto& C : Corners)
+        {
+            MinPt.X = std::min(MinPt.X, C.X);
+            MinPt.Y = std::min(MinPt.Y, C.Y);
+            MinPt.Z = std::min(MinPt.Z, C.Z);
+            MaxPt.X = std::max(MaxPt.X, C.X);
+            MaxPt.Y = std::max(MaxPt.Y, C.Y);
+            MaxPt.Z = std::max(MaxPt.Z, C.Z);
+        }
+    }
+
+    ResolutionX       = ResX;
+    ResolutionY       = ResY;
+    ResolutionZ       = ResZ;
+    UniqueAssetSerial = NextVolumeAssetSerial.fetch_add(1u, std::memory_order_relaxed);
+    LocalMin          = { MinPt.X - MarginMeters, MinPt.Y - MarginMeters, MinPt.Z - MarginMeters };
+    LocalMax          = { MaxPt.X + MarginMeters, MaxPt.Y + MarginMeters, MaxPt.Z + MarginMeters };
+
     VoxelSpacing = {
-        (LocalMax.X - LocalMin.X) / static_cast<float>(ResolutionX - 1u),
-        (LocalMax.Y - LocalMin.Y) / static_cast<float>(ResolutionY - 1u),
-        (LocalMax.Z - LocalMin.Z) / static_cast<float>(ResolutionZ - 1u),
+        std::max(1.0e-5f, LocalMax.X - LocalMin.X) / static_cast<float>(ResolutionX - 1u),
+        std::max(1.0e-5f, LocalMax.Y - LocalMin.Y) / static_cast<float>(ResolutionY - 1u),
+        std::max(1.0e-5f, LocalMax.Z - LocalMin.Z) / static_cast<float>(ResolutionZ - 1u),
     };
 
-    const std::size_t TotalVoxels = static_cast<std::size_t>(ResolutionX) * ResolutionY * ResolutionZ;
+    const std::size_t TotalVoxels =
+        static_cast<std::size_t>(ResolutionX) *
+        static_cast<std::size_t>(ResolutionY) *
+        static_cast<std::size_t>(ResolutionZ);
     HalfDistanceSamples.resize(TotalVoxels, 0u);
     DistanceSamples.resize(TotalVoxels, 0.0f);
+    PackedNormalMaterialSamples.resize(TotalVoxels, 0u);
 
-    const uint32_t ThreadBudget = std::min(ResolutionZ, std::max(1u, std::thread::hardware_concurrency()));
-    const auto BakeDepthBand  = [&](uint32_t ZBegin, uint32_t ZEnd)
+    const uint32_t WorkerCount = std::max(1u, std::min<uint32_t>(ResolutionZ, std::thread::hardware_concurrency()));
+    std::vector<std::thread> Workers;
+    Workers.reserve(WorkerCount);
+
+    for (uint32_t Worker = 0u; Worker < WorkerCount; ++Worker)
     {
-        for (uint32_t IZ = ZBegin; IZ < ZEnd; ++IZ)
+        Workers.emplace_back([&, Worker]()
         {
-            const float PZ = LocalMin.Z + static_cast<float>(IZ) * VoxelSpacing.Z;
-            for (uint32_t IY = 0u; IY < ResolutionY; ++IY)
+            for (uint32_t Z = Worker; Z < ResolutionZ; Z += WorkerCount)
             {
-                const float PY = LocalMin.Y + static_cast<float>(IY) * VoxelSpacing.Y;
-                for (uint32_t IX = 0u; IX < ResolutionX; ++IX)
+                const float PosZ = LocalMin.Z + static_cast<float>(Z) * VoxelSpacing.Z;
+                for (uint32_t Y = 0u; Y < ResolutionY; ++Y)
                 {
-                    const float PX          = LocalMin.X + static_cast<float>(IX) * VoxelSpacing.X;
-                    const float Dist        = QueryExactUnsignedDistanceViaBvh(LocalTree, { PX, PY, PZ });
-                    const std::size_t Index = (static_cast<std::size_t>(IZ) * ResolutionY + IY) * ResolutionX + IX;
-                    DistanceSamples[Index]        = Dist;
-                    HalfDistanceSamples[Index]    = PackFloat32ToHalf16(Dist);
+                    const float PosY = LocalMin.Y + static_cast<float>(Y) * VoxelSpacing.Y;
+                    const std::size_t RowBase =
+                        (static_cast<std::size_t>(Z) * ResolutionY + Y) * ResolutionX;
+                    for (uint32_t X = 0u; X < ResolutionX; ++X)
+                    {
+                        const float PosX = LocalMin.X + static_cast<float>(X) * VoxelSpacing.X;
+                        const ExactClosestSurfaceSample Hit = QueryExactUnsignedDistanceViaBvh(LocalBvh, { PosX, PosY, PosZ });
+                        const uint16_t PackedHalf           = PackFloat32ToFloat16(Hit.DistanceMeters);
+                        HalfDistanceSamples[RowBase + X]         = PackedHalf;
+                        DistanceSamples[RowBase + X]             = UnpackFloat16ToFloat32(PackedHalf);
+                        PackedNormalMaterialSamples[RowBase + X] = Hit.PackedNormMat;
+                    }
                 }
             }
-        }
-    };
-
-    if (ThreadBudget <= 1u)
-    {
-        BakeDepthBand(0u, ResolutionZ);
+        });
     }
-    else
+    for (auto& W : Workers)
     {
-        std::vector<std::thread> Threads;
-        Threads.reserve(ThreadBudget);
-        const uint32_t Chunk = (ResolutionZ + ThreadBudget - 1u) / ThreadBudget;
-        for (uint32_t W = 0u; W < ThreadBudget; ++W)
-        {
-            const uint32_t Z0 = W * Chunk;
-            const uint32_t Z1 = std::min(ResolutionZ, Z0 + Chunk);
-            if (Z0 < Z1)
-            {
-                Threads.emplace_back([&, Z0, Z1]() { BakeDepthBand(Z0, Z1); });
-            }
-        }
-        for (auto& T : Threads)
-        {
-            T.join();
-        }
+        W.join();
     }
 
     return true;
@@ -314,30 +479,33 @@ float LocalSignedDistanceVolume::SampleTrilinearLocal(Mathematics::Axis3D Clampe
 {
     if (HalfDistanceSamples.empty() || ResolutionX < 2u || ResolutionY < 2u || ResolutionZ < 2u)
     {
-        return 10.0f;
+        return 1.0e6f;
     }
 
-    const float FX = std::clamp((ClampedLocalPos.X - LocalMin.X) / VoxelSpacing.X, 0.0f, static_cast<float>(ResolutionX - 1u));
-    const float FY = std::clamp((ClampedLocalPos.Y - LocalMin.Y) / VoxelSpacing.Y, 0.0f, static_cast<float>(ResolutionY - 1u));
-    const float FZ = std::clamp((ClampedLocalPos.Z - LocalMin.Z) / VoxelSpacing.Z, 0.0f, static_cast<float>(ResolutionZ - 1u));
+    const float GX = std::clamp((ClampedLocalPos.X - LocalMin.X) / VoxelSpacing.X, 0.0f, static_cast<float>(ResolutionX - 1u) - 1.0e-5f);
+    const float GY = std::clamp((ClampedLocalPos.Y - LocalMin.Y) / VoxelSpacing.Y, 0.0f, static_cast<float>(ResolutionY - 1u) - 1.0e-5f);
+    const float GZ = std::clamp((ClampedLocalPos.Z - LocalMin.Z) / VoxelSpacing.Z, 0.0f, static_cast<float>(ResolutionZ - 1u) - 1.0e-5f);
 
-    const uint32_t IX0 = std::min(ResolutionX - 2u, static_cast<uint32_t>(FX));
-    const uint32_t IY0 = std::min(ResolutionY - 2u, static_cast<uint32_t>(FY));
-    const uint32_t IZ0 = std::min(ResolutionZ - 2u, static_cast<uint32_t>(FZ));
-    const float    TX  = FX - static_cast<float>(IX0);
-    const float    TY  = FY - static_cast<float>(IY0);
-    const float    TZ  = FZ - static_cast<float>(IZ0);
+    const uint32_t X0 = static_cast<uint32_t>(GX);
+    const uint32_t Y0 = static_cast<uint32_t>(GY);
+    const uint32_t Z0 = static_cast<uint32_t>(GZ);
+    const uint32_t X1 = std::min(X0 + 1u, ResolutionX - 1u);
+    const uint32_t Y1 = std::min(Y0 + 1u, ResolutionY - 1u);
+    const uint32_t Z1 = std::min(Z0 + 1u, ResolutionZ - 1u);
 
-    const auto At = [&](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> float
+    const float TX = GX - static_cast<float>(X0);
+    const float TY = GY - static_cast<float>(Y0);
+    const float TZ = GZ - static_cast<float>(Z0);
+
+    const auto Fetch = [this](uint32_t X, uint32_t Y, uint32_t Z) noexcept -> float
     {
-        const std::size_t Index = (static_cast<std::size_t>(Z) * ResolutionY + Y) * ResolutionX + X;
-        return UnpackHalf16ToFloat32(HalfDistanceSamples[Index]);
+        return DistanceSamples[(static_cast<std::size_t>(Z) * ResolutionY + Y) * ResolutionX + X];
     };
 
-    const float C00 = At(IX0, IY0, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0) * TX;
-    const float C10 = At(IX0, IY0 + 1u, IZ0) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0) * TX;
-    const float C01 = At(IX0, IY0, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0, IZ0 + 1u) * TX;
-    const float C11 = At(IX0, IY0 + 1u, IZ0 + 1u) * (1.0f - TX) + At(IX0 + 1u, IY0 + 1u, IZ0 + 1u) * TX;
+    const float C00 = Fetch(X0, Y0, Z0) * (1.0f - TX) + Fetch(X1, Y0, Z0) * TX;
+    const float C10 = Fetch(X0, Y1, Z0) * (1.0f - TX) + Fetch(X1, Y1, Z0) * TX;
+    const float C01 = Fetch(X0, Y0, Z1) * (1.0f - TX) + Fetch(X1, Y0, Z1) * TX;
+    const float C11 = Fetch(X0, Y1, Z1) * (1.0f - TX) + Fetch(X1, Y1, Z1) * TX;
     const float C0  = C00 * (1.0f - TY) + C10 * TY;
     const float C1  = C01 * (1.0f - TY) + C11 * TY;
     return C0 * (1.0f - TZ) + C1 * TZ;
@@ -347,31 +515,47 @@ float LocalSignedDistanceVolume::SampleSmoothWorldDistance(
     const RigidLocalVolumePlacement& Placement,
     Mathematics::Axis3D              WorldPos) noexcept
 {
-    if (!Placement.ActiveToggle || Placement.VolumeAsset == nullptr || Placement.VolumeAsset->HalfDistanceSamples.empty())
+    if (!Placement.ActiveToggle || Placement.VolumeAsset == nullptr || Placement.UniformScale <= 1.0e-4f)
     {
-        return 20.0f;
+        return 1.0e6f;
     }
 
-    const Mathematics::Axis3D Rel = WorldPos - Placement.Translation;
-    const Mathematics::Axis3D LocalP {
-         Placement.CosineYaw * Rel.X + Placement.SineYaw * Rel.Y,
-        -Placement.SineYaw * Rel.X + Placement.CosineYaw * Rel.Y,
-         Rel.Z,
-    };
-
-    const auto& Vol  = *Placement.VolumeAsset;
-    const float MX   = std::max(0.0f, std::max(Vol.LocalMin.X - LocalP.X, LocalP.X - Vol.LocalMax.X));
-    const float MY   = std::max(0.0f, std::max(Vol.LocalMin.Y - LocalP.Y, LocalP.Y - Vol.LocalMax.Y));
-    const float MZ   = std::max(0.0f, std::max(Vol.LocalMin.Z - LocalP.Z, LocalP.Z - Vol.LocalMax.Z));
-    const float BoxD = std::sqrt(MX * MX + MY * MY + MZ * MZ);
+    const LocalSignedDistanceVolume& Vol = *Placement.VolumeAsset;
+    const Mathematics::Axis3D Rel = (WorldPos - Placement.Translation) * (1.0f / Placement.UniformScale);
+    Mathematics::Axis3D Local {};
+    if (Placement.FullMatrixValid)
+    {
+        Local = {
+            Mathematics::EvaluateDot(Placement.WorldToLocalRow0, Rel),
+            Mathematics::EvaluateDot(Placement.WorldToLocalRow1, Rel),
+            Mathematics::EvaluateDot(Placement.WorldToLocalRow2, Rel),
+        };
+    }
+    else
+    {
+        Local = {
+            Rel.X * Placement.CosineYaw + Rel.Y * Placement.SineYaw,
+           -Rel.X * Placement.SineYaw   + Rel.Y * Placement.CosineYaw,
+            Rel.Z,
+        };
+    }
 
     const Mathematics::Axis3D Clamped {
-        std::clamp(LocalP.X, Vol.LocalMin.X, Vol.LocalMax.X),
-        std::clamp(LocalP.Y, Vol.LocalMin.Y, Vol.LocalMax.Y),
-        std::clamp(LocalP.Z, Vol.LocalMin.Z, Vol.LocalMax.Z),
+        std::clamp(Local.X, Vol.LocalMin.X, Vol.LocalMax.X),
+        std::clamp(Local.Y, Vol.LocalMin.Y, Vol.LocalMax.Y),
+        std::clamp(Local.Z, Vol.LocalMin.Z, Vol.LocalMax.Z),
     };
+
     const float BoundaryD = Vol.SampleTrilinearLocal(Clamped);
-    return (BoxD > 0.0f) ? std::hypot(BoundaryD, BoxD) : BoundaryD;
+    const float OX = Local.X - Clamped.X;
+    const float OY = Local.Y - Clamped.Y;
+    const float OZ = Local.Z - Clamped.Z;
+    const float BoxSq = OX * OX + OY * OY + OZ * OZ;
+    if (BoxSq <= 1.0e-12f)
+    {
+        return BoundaryD * Placement.UniformScale;
+    }
+    return std::sqrt(BoundaryD * BoundaryD + BoxSq) * Placement.UniformScale;
 }
 
 } // namespace Frontier::DistanceFieldSpace

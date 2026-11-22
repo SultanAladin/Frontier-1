@@ -1,10 +1,7 @@
 /*============================================================================================================================================
                                                             THOUGHTLOG.H
 ============================================================================================================================================*/
-// 🧠 In-memory timing "thought log": instrumented scopes write samples into a RAM ring buffer only.
-//    A background aggregator thread folds samples into per-name statistics (still RAM only — no disk I/O
-//    while the application runs). The report file is written exactly once, when the application closes
-//    (explicit ThoughtLog::Shutdown() at host exit, with an atexit fallback), and the log then closes.
+// 🧩 In-memory timing ledger: instrumented scopes write samples into a RAM ring buffer and flush once on application exit
 
 #pragma once
 
@@ -43,7 +40,7 @@ public:
     static void RecordSample(const char* Name, uint64_t DurationNs);
 
     // True between Initialize() (or first sample) and Shutdown()
-    [[nodiscard]] static bool IsRunning() noexcept;
+    [[nodiscard]] static bool QueryRunning() noexcept;
 
     // Writes the aggregated report for everything recorded so far (Shutdown calls this with the default path)
     static void FlushReport(const std::filesystem::path& TargetFile);
