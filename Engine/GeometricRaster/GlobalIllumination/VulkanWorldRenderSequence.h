@@ -13,8 +13,10 @@
 #include "Engine/GeometricRaster/Compute/ComputeDispatchEncoder.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
+#include <future>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -105,6 +107,32 @@ public:
         std::vector<uint8_t>&          OutDisplayRgba8);
 
 private:
+    enum PrecomputeUpdateBits : uint32_t
+    {
+        kPrecomputeFineShadow   = 1u << 0u,
+        kPrecomputeCoarseShadow = 1u << 1u,
+        kPrecomputeFineGdf      = 1u << 2u,
+        kPrecomputeCoarseGdf    = 1u << 3u,
+        kPrecomputeRadiosity    = 1u << 4u,
+        kPrecomputeSecondBounce = 1u << 5u,
+        kPrecomputeFullMask     = 0x3Fu,
+    };
+
+    struct CachedNaniteCutPayload
+    {
+        uint64_t                                          CutSignature        = 0ull;
+        uint64_t                                          TransformSignature  = 0ull;
+        std::vector<uint8_t>                              BvhBytes            {};
+        std::vector<uint8_t>                              ShadedTriangleBytes {};
+        uint32_t                                          BvhEntryCount       = 0u;
+        uint32_t                                          ActiveClusters      = 0u;
+        uint32_t                                          ActiveTriangles     = 0u;
+        uint32_t                                          CulledBackfaces     = 0u;
+        std::array<uint32_t, 8u>                          LevelTriangleCount  {};
+        std::array<uint32_t, 8u>                          LevelClusterCount   {};
+        uint64_t                                          LastUsedTick        = 0ull;
+    };
+
     void EnsureBufferCapacity(
         DeviceBufferResource& TargetBuffer,
         uint64_t              MinimumBytes,
@@ -125,6 +153,19 @@ private:
         uint64_t              ByteCount,
         VkBufferUsageFlags    UsageMask);
 
+    bool UploadDualDeviceBuffers(
+        DeviceBufferResource& TargetBufferA,
+        const void*           SourceDataA,
+        uint64_t              ByteCountA,
+        VkBufferUsageFlags    UsageMaskA,
+        DeviceBufferResource& TargetBufferB,
+        const void*           SourceDataB,
+        uint64_t              ByteCountB,
+        VkBufferUsageFlags    UsageMaskB);
+
+    void WaitPendingNaniteBuild() noexcept;
+    void ApplyNaniteCutPayload(const CachedNaniteCutPayload& Payload);
+
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
     void DispatchGpuStellarTileCull(
         VkCommandBuffer                Cmd,
@@ -134,7 +175,10 @@ private:
         uint32_t                       HeightPx);
     void UploadSolarCascadeDepth(const WorldSceneSpecification& Scene);
     [[nodiscard]] bool SynchronizeLocalSdfResources(const WorldSceneSpecification& Scene);
-    [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool RebuildGeometryFields = true);
+    [[nodiscard]] bool DispatchGpuScenePrecompute(
+        const WorldSceneSpecification& Scene,
+        bool                           RebuildGeometryFields = true,
+        uint32_t                       UpdateMask            = kPrecomputeFullMask);
     [[nodiscard]] Mathematics::Axis3D ResolveDynamicClipFocusWorld(
         const PerspectiveCameraBasis*  OptionalCamera,
         const WorldSceneSpecification& Scene) const noexcept;
@@ -143,7 +187,8 @@ private:
     void RefreshNaniteLodGeometry(
         const WorldRenderConfiguration& Config,
         const PerspectiveCameraBasis&   Camera,
-        const WorldSceneSpecification&  Scene);
+        const WorldSceneSpecification&  Scene,
+        bool                            AllowAsyncHysteresis);
     [[nodiscard]] bool ExecuteWorldRenderDispatch(
         const WorldRenderConfiguration& Config,
         uint32_t                        FrameIndex,
@@ -219,7 +264,12 @@ private:
     uint64_t               CachedLocalSdfAssetSignature    = 0ull;
     uint64_t               CachedDynamicSdfSignature       = 0ull;
     Mathematics::Axis3D    ActiveClipFocusWorld            { 0.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D    LastFineShadowFocusWorld        { 0.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D    LastCoarseShadowFocusWorld      { 0.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D    LastFineGdfFocusWorld           { 0.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D    LastCoarseGdfFocusWorld         { 0.0f, 0.0f, 0.0f };
     bool                   ActiveClipFocusInitialized      = false;
+    bool                   CascadeFocusInitialized         = false;
     uint32_t               UploadedLocalSdfInstanceCount   = 0u;
     std::vector<std::pair<const DistanceFieldSpace::LocalSignedDistanceVolume*, uint32_t>> CachedLocalSdfOffsets {};
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
@@ -233,6 +283,11 @@ private:
     NaniteViewportLodStats   NaniteLodStats              {};
     GlobalDistanceFieldStats DistanceFieldStats          {};
     uint64_t               CachedNaniteCutSignature      = 0u;
+    uint64_t               CachedNaniteTransformSig      = 0u;
+    uint64_t               NaniteCacheUseCounter         = 0u;
+    std::vector<CachedNaniteCutPayload> NaniteCutCache   {};
+    std::future<CachedNaniteCutPayload> PendingNaniteBuildFuture {};
+    uint64_t               PendingNaniteBuildSignature   = 0u;
     bool                   NaniteLodBuffersActive        = false;
     uint32_t               FrameSequenceIndex            = 0u;
     uint32_t               ProgressiveSampleCount        = 0u;

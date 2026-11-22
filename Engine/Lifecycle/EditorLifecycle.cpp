@@ -853,15 +853,30 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     }
     else if (!AltHeld && !RightHeld && !MiddleHeld)
     {
+        bool CursorNearGizmo = false;
+        if (LastGizmoSlot.Valid())
+        {
+            const Mathematics::Axis3D ToPivot = WorldTransformGizmo.QueryPivotOrigin() - CursorRay.Origin;
+            const float DistSq  = Mathematics::EvaluateDot(ToPivot, ToPivot);
+            const float Along   = Mathematics::EvaluateDot(ToPivot, CursorRay.Direction);
+            const float BoundR  = std::max(0.25f, WorldTransformGizmo.QueryWorldRadius() * 1.65f);
+            const float BoundSq = BoundR * BoundR;
+            CursorNearGizmo     = (DistSq <= BoundSq) || (Along > 0.0f && std::max(0.0f, DistSq - Along * Along) <= BoundSq);
+        }
+
         // 100% GPU Gizmo picking from WorldGizmoOverlayRasterization PickAttachment (R32G32B32A32_UINT)
         Editor::GizmoHandleOrdinal Hovered = Editor::GizmoHandleOrdinal::None;
-        if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
+        if (CursorNearGizmo && WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady())
         {
             const uint32_t PixX = static_cast<uint32_t>(NormU * static_cast<float>(PickSurfaceW - 1u));
             const uint32_t PixY = static_cast<uint32_t>(NormV * static_cast<float>(PickSurfaceH - 1u));
             Hovered             = WorldGizmoRasterizer->QueryLastGpuPickAtPixel(PixX, PixY);
+            if (Hovered == Editor::GizmoHandleOrdinal::None)
+            {
+                Hovered = WorldTransformGizmo.EvaluateRayHover(CursorRay, RenderRight, RenderUp);
+            }
         }
-        else if (LastGizmoSlot.Valid())
+        else if (CursorNearGizmo)
         {
             // Headless null-device fallback ONLY when no Vulkan Gizmo rasterizer is attached
             Hovered = WorldTransformGizmo.EvaluateRayHover(CursorRay, RenderRight, RenderUp);
@@ -871,9 +886,9 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
             WorldTransformGizmo.AssignHoveredHandle(Hovered);
             GizmoOverlayOnly = true;
         }
-        else if (LastGizmoSlot.Valid() && (std::fabs(RawCursorDeltaX) > 0.25f || std::fabs(RawCursorDeltaY) > 0.25f))
+        else if (CursorNearGizmo && (std::fabs(RawCursorDeltaX) > 0.75f || std::fabs(RawCursorDeltaY) > 0.75f))
         {
-            // Keep the 9x9 GPU pick patch fresh under the moving cursor without re-dispatching world GI
+            // Keep the 9x9 GPU pick patch fresh only when the cursor is actually over the gizmo sphere
             GizmoOverlayOnly = true;
         }
 
@@ -1888,6 +1903,29 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
             PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, LastTargetHeightPx) - 1u));
         }
 
+        bool CursorNearGizmo = false;
+        if (CursorInCanvas && LastGizmoSlot.Valid() && !CameraInteractiveDrag)
+        {
+            const float U = static_cast<float>(PickX) / static_cast<float>(std::max(1u, LastTargetWidthPx - 1u));
+            const float V = static_cast<float>(PickY) / static_cast<float>(std::max(1u, LastTargetHeightPx - 1u));
+            const auto& Cam = ShowcaseBundle->EditorCamera;
+            const Mathematics::Axis3D Fwd = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, { 0.0f, 1.0f, 0.0f });
+            const Mathematics::Axis3D WorldUp = Mathematics::NormalizeAxis(Cam.WorldUpAxis, { 0.0f, 0.0f, 1.0f });
+            const Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, WorldUp), { 1.0f, 0.0f, 0.0f });
+            const Mathematics::Axis3D Up = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
+            const float Aspect  = static_cast<float>(std::max(1u, LastTargetWidthPx)) / static_cast<float>(std::max(1u, LastTargetHeightPx));
+            const float TanHalf = std::tan(std::clamp(Cam.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
+            const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                Fwd + Right * ((U * 2.0f - 1.0f) * Aspect * TanHalf) + Up * ((1.0f - V * 2.0f) * TanHalf),
+                Fwd);
+            const Mathematics::Axis3D ToPivot = WorldTransformGizmo.QueryPivotOrigin() - Cam.CameraOrigin;
+            const float DistSq  = Mathematics::EvaluateDot(ToPivot, ToPivot);
+            const float Along   = Mathematics::EvaluateDot(ToPivot, RayDir);
+            const float BoundR  = std::max(0.25f, WorldTransformGizmo.QueryWorldRadius() * 1.65f);
+            const float BoundSq = BoundR * BoundR;
+            CursorNearGizmo     = (DistSq <= BoundSq) || (Along > 0.0f && std::max(0.0f, DistSq - Along * Along) <= BoundSq);
+        }
+
         GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
         CompReq.WorldSourceView      = LastWorldImageView;
         CompReq.TargetWidthPx        = LastTargetWidthPx;
@@ -1895,7 +1933,7 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
         CompReq.Camera               = ShowcaseBundle->EditorCamera;
         CompReq.Gizmo3D              = &WorldTransformGizmo;
         CompReq.DrawGizmo            = LastGizmoSlot.Valid();
-        CompReq.RequestPickPatch     = !CameraInteractiveDrag && CursorInCanvas && LastGizmoSlot.Valid();
+        CompReq.RequestPickPatch     = CursorNearGizmo;
         CompReq.PickCursorX          = PickX;
         CompReq.PickCursorY          = PickY;
 
@@ -2081,6 +2119,29 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
                 PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, TargetH) - 1u));
             }
 
+            bool CursorNearGizmo = false;
+            if (CursorInCanvas && LastGizmoSlot.Valid() && !CameraInteractiveDrag)
+            {
+                const float U = static_cast<float>(PickX) / static_cast<float>(std::max(1u, TargetW - 1u));
+                const float V = static_cast<float>(PickY) / static_cast<float>(std::max(1u, TargetH - 1u));
+                const auto& Cam = ShowcaseBundle->EditorCamera;
+                const Mathematics::Axis3D Fwd = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, { 0.0f, 1.0f, 0.0f });
+                const Mathematics::Axis3D WorldUp = Mathematics::NormalizeAxis(Cam.WorldUpAxis, { 0.0f, 0.0f, 1.0f });
+                const Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, WorldUp), { 1.0f, 0.0f, 0.0f });
+                const Mathematics::Axis3D Up = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
+                const float Aspect  = static_cast<float>(std::max(1u, TargetW)) / static_cast<float>(std::max(1u, TargetH));
+                const float TanHalf = std::tan(std::clamp(Cam.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
+                const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
+                    Fwd + Right * ((U * 2.0f - 1.0f) * Aspect * TanHalf) + Up * ((1.0f - V * 2.0f) * TanHalf),
+                    Fwd);
+                const Mathematics::Axis3D ToPivot = WorldTransformGizmo.QueryPivotOrigin() - Cam.CameraOrigin;
+                const float DistSq  = Mathematics::EvaluateDot(ToPivot, ToPivot);
+                const float Along   = Mathematics::EvaluateDot(ToPivot, RayDir);
+                const float BoundR  = std::max(0.25f, WorldTransformGizmo.QueryWorldRadius() * 1.65f);
+                const float BoundSq = BoundR * BoundR;
+                CursorNearGizmo     = (DistSq <= BoundSq) || (Along > 0.0f && std::max(0.0f, DistSq - Along * Along) <= BoundSq);
+            }
+
             GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
             CompReq.WorldSourceView      = WorldView;
             CompReq.TargetWidthPx        = TargetW;
@@ -2088,7 +2149,7 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             CompReq.Camera               = ShowcaseBundle->EditorCamera;
             CompReq.Gizmo3D              = &WorldTransformGizmo;
             CompReq.DrawGizmo            = LastGizmoSlot.Valid();
-            CompReq.RequestPickPatch     = !CameraInteractiveDrag && CursorInCanvas && LastGizmoSlot.Valid();
+            CompReq.RequestPickPatch     = CursorNearGizmo;
             CompReq.PickCursorX          = PickX;
             CompReq.PickCursorY          = PickY;
 

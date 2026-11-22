@@ -80,34 +80,29 @@ struct BinaryBuildSlot
     uint32_t       PrimitiveCount = 0u;
 };
 
-struct BuildPrimitiveEntry
-{
-    RayTrianglePrimitive Primitive        {};
-    AxisAlignedBox       Bounds           {};
-    Mathematics::Axis3D  Centroid         {};
-    uint32_t             SourceInputIndex = 0u;
-};
-
 [[nodiscard]] float ExtractAxisCoordinate(Mathematics::Axis3D Vec, uint32_t Axis) noexcept
 {
     return (Axis == 0u) ? Vec.X : ((Axis == 1u) ? Vec.Y : Vec.Z);
 }
 
 uint32_t BuildBinarySahSubtree(
-    std::vector<BinaryBuildSlot>&     OutBinarySlots,
-    std::vector<BuildPrimitiveEntry>& WorkPrimitives,
-    uint32_t                          Start,
-    uint32_t                          End)
+    std::vector<BinaryBuildSlot>& OutBinarySlots,
+    const AxisAlignedBox*         PrimBounds,
+    const Mathematics::Axis3D*    PrimCentroids,
+    uint32_t*                     PrimOrder,
+    uint32_t                      Start,
+    uint32_t                      End)
 {
     const uint32_t SlotIndex = static_cast<uint32_t>(OutBinarySlots.size());
     OutBinarySlots.push_back(BinaryBuildSlot{});
 
     AxisAlignedBox TotalBounds {};
     AxisAlignedBox CentroidBounds {};
-    for (uint32_t Idx = Start; Idx < End; ++Idx)
+    for (uint32_t Pos = Start; Pos < End; ++Pos)
     {
-        TotalBounds.ExpandBox(WorkPrimitives[Idx].Bounds);
-        CentroidBounds.ExpandPoint(WorkPrimitives[Idx].Centroid);
+        const uint32_t PrimIdx = PrimOrder[Pos];
+        TotalBounds.ExpandBox(PrimBounds[PrimIdx]);
+        CentroidBounds.ExpandPoint(PrimCentroids[PrimIdx]);
     }
 
     const uint32_t Count = End - Start;
@@ -119,7 +114,7 @@ uint32_t BuildBinarySahSubtree(
         return SlotIndex;
     }
 
-    // 📝 Choose split axis & bin via 12-bin Surface Area Heuristic
+    // 📝 Choose split axis & bin via 12-bin Surface Area Heuristic (raw-pointer 4-byte index stream)
     uint32_t BestAxis     = 0u;
     uint32_t BestSplitBin = 0u;
     float    BestSahCost  = std::numeric_limits<float>::max();
@@ -138,11 +133,12 @@ uint32_t BuildBinarySahSubtree(
         std::array<uint32_t, SahBinCount>       BinCounts {};
         const float Scale = static_cast<float>(SahBinCount) / AxisSpan;
 
-        for (uint32_t Idx = Start; Idx < End; ++Idx)
+        for (uint32_t Pos = Start; Pos < End; ++Pos)
         {
-            const float Coord = ExtractAxisCoordinate(WorkPrimitives[Idx].Centroid, Axis);
-            const uint32_t Bin = std::min<uint32_t>(SahBinCount - 1u, static_cast<uint32_t>((Coord - AxisMin) * Scale));
-            BinBoxes[Bin].ExpandBox(WorkPrimitives[Idx].Bounds);
+            const uint32_t PrimIdx = PrimOrder[Pos];
+            const float    Coord   = ExtractAxisCoordinate(PrimCentroids[PrimIdx], Axis);
+            const uint32_t Bin     = std::min<uint32_t>(SahBinCount - 1u, static_cast<uint32_t>((Coord - AxisMin) * Scale));
+            BinBoxes[Bin].ExpandBox(PrimBounds[PrimIdx]);
             ++BinCounts[Bin];
         }
 
@@ -190,25 +186,29 @@ uint32_t BuildBinarySahSubtree(
         const float AxisSpan = ExtractAxisCoordinate(CentroidBounds.Max, BestAxis) - AxisMin;
         const float Scale    = static_cast<float>(SahBinCount) / AxisSpan;
 
-        const auto MidIter = std::partition(
-            WorkPrimitives.begin() + Start,
-            WorkPrimitives.begin() + End,
-            [&](const BuildPrimitiveEntry& Candidate) noexcept
+        uint32_t* const RangeBegin = PrimOrder + Start;
+        uint32_t* const RangeEnd   = PrimOrder + End;
+        uint32_t* const MidPtr     = std::partition(
+            RangeBegin,
+            RangeEnd,
+            [PrimCentroids, BestAxis, AxisMin, Scale, BestSplitBin](uint32_t PrimIdx) noexcept
             {
-                const float Coord = ExtractAxisCoordinate(Candidate.Centroid, BestAxis);
+                const float Coord  = ExtractAxisCoordinate(PrimCentroids[PrimIdx], BestAxis);
                 const uint32_t Bin = std::min<uint32_t>(SahBinCount - 1u, static_cast<uint32_t>((Coord - AxisMin) * Scale));
                 return Bin < BestSplitBin;
             });
-        MidIndex = static_cast<uint32_t>(MidIter - WorkPrimitives.begin());
+        MidIndex = static_cast<uint32_t>(MidPtr - PrimOrder);
         if (MidIndex == Start || MidIndex == End)
         {
             MidIndex = Start + Count / 2u;
-            std::sort(
-                WorkPrimitives.begin() + Start,
-                WorkPrimitives.begin() + End,
-                [BestAxis](const BuildPrimitiveEntry& Left, const BuildPrimitiveEntry& Right) noexcept
+            std::nth_element(
+                RangeBegin,
+                PrimOrder + MidIndex,
+                RangeEnd,
+                [PrimCentroids, BestAxis](uint32_t LeftIdx, uint32_t RightIdx) noexcept
                 {
-                    return ExtractAxisCoordinate(Left.Centroid, BestAxis) < ExtractAxisCoordinate(Right.Centroid, BestAxis);
+                    return ExtractAxisCoordinate(PrimCentroids[LeftIdx], BestAxis) <
+                           ExtractAxisCoordinate(PrimCentroids[RightIdx], BestAxis);
                 });
         }
     }
@@ -220,8 +220,8 @@ uint32_t BuildBinarySahSubtree(
         return SlotIndex;
     }
 
-    const uint32_t LeftIdx  = BuildBinarySahSubtree(OutBinarySlots, WorkPrimitives, Start, MidIndex);
-    const uint32_t RightIdx = BuildBinarySahSubtree(OutBinarySlots, WorkPrimitives, MidIndex, End);
+    const uint32_t LeftIdx  = BuildBinarySahSubtree(OutBinarySlots, PrimBounds, PrimCentroids, PrimOrder, Start, MidIndex);
+    const uint32_t RightIdx = BuildBinarySahSubtree(OutBinarySlots, PrimBounds, PrimCentroids, PrimOrder, MidIndex, End);
 
     OutBinarySlots[SlotIndex].Bounds       = TotalBounds;
     OutBinarySlots[SlotIndex].SubtreeLeft  = LeftIdx;
@@ -456,8 +456,10 @@ bool WideBoundingTree::BuildFromPolygonNetwork(const GeometrySpace::PolygonNetwo
         return false;
     }
 
-    std::vector<BuildPrimitiveEntry> WorkPrimitives;
-    WorkPrimitives.reserve(Network.Faces.size() * 2u);
+    std::vector<RayTrianglePrimitive> ExtractedPrimitives;
+    ExtractedPrimitives.reserve(Network.Faces.size() * 2u);
+    std::vector<uint32_t> LoopVertices;
+    LoopVertices.reserve(16u);
 
     uint32_t PrimCounter = 0u;
     for (uint32_t FaceIdx = 0u; FaceIdx < static_cast<uint32_t>(Network.Faces.size()); ++FaceIdx)
@@ -468,8 +470,7 @@ bool WideBoundingTree::BuildFromPolygonNetwork(const GeometrySpace::PolygonNetwo
             continue;
         }
 
-        std::vector<uint32_t> LoopVertices;
-        LoopVertices.reserve(CurrentFace.CornerCount);
+        LoopVertices.clear();
         uint32_t Walk = CurrentFace.BoundaryLoopEdgeIndex;
         for (uint16_t Step = 0u; Step < CurrentFace.CornerCount && Walk < Network.Edges.size(); ++Step)
         {
@@ -483,52 +484,19 @@ bool WideBoundingTree::BuildFromPolygonNetwork(const GeometrySpace::PolygonNetwo
             const Mathematics::Axis3D P1 = Network.Vertices[LoopVertices[Fan]].Axes;
             const Mathematics::Axis3D P2 = Network.Vertices[LoopVertices[Fan + 1u]].Axes;
 
-            BuildPrimitiveEntry Rec {};
-            Rec.Primitive.Corner0          = P0;
-            Rec.Primitive.Edge01           = P1 - P0;
-            Rec.Primitive.Edge02           = P2 - P0;
-            Rec.Primitive.SourceFaceIndex  = FaceIdx;
-            Rec.Primitive.MaterialOrdinal  = CurrentFace.PartGroupOrdinal;
-            Rec.Primitive.OpaqueMask       = 1u;
-            Rec.Primitive.PrimitiveOrdinal = PrimCounter++;
-
-            Rec.Bounds.ExpandPoint(P0);
-            Rec.Bounds.ExpandPoint(P1);
-            Rec.Bounds.ExpandPoint(P2);
-            // Pad zero-thickness axis-aligned triangles by 1e-6 m to guarantee watertight slab tests
-            Rec.Bounds.Min = Rec.Bounds.Min - Mathematics::Axis3D{ 1.0e-6f, 1.0e-6f, 1.0e-6f };
-            Rec.Bounds.Max = Rec.Bounds.Max + Mathematics::Axis3D{ 1.0e-6f, 1.0e-6f, 1.0e-6f };
-            Rec.Centroid   = (P0 + P1 + P2) * (1.0f / 3.0f);
-            WorkPrimitives.push_back(Rec);
+            RayTrianglePrimitive Prim {};
+            Prim.Corner0          = P0;
+            Prim.Edge01           = P1 - P0;
+            Prim.Edge02           = P2 - P0;
+            Prim.SourceFaceIndex  = FaceIdx;
+            Prim.MaterialOrdinal  = CurrentFace.PartGroupOrdinal;
+            Prim.OpaqueMask       = 1u;
+            Prim.PrimitiveOrdinal = PrimCounter++;
+            ExtractedPrimitives.push_back(Prim);
         }
     }
 
-    if (WorkPrimitives.empty())
-    {
-        return false;
-    }
-
-    std::vector<BinaryBuildSlot> BinarySlots;
-    BinarySlots.reserve(WorkPrimitives.size() * 2u);
-    const uint32_t BinaryRoot = BuildBinarySahSubtree(
-        BinarySlots,
-        WorkPrimitives,
-        0u,
-        static_cast<uint32_t>(WorkPrimitives.size()));
-
-    RootBoundsMin = BinarySlots[BinaryRoot].Bounds.Min;
-    RootBoundsMax = BinarySlots[BinaryRoot].Bounds.Max;
-
-    Primitives.resize(WorkPrimitives.size());
-    for (std::size_t Idx = 0u; Idx < WorkPrimitives.size(); ++Idx)
-    {
-        Primitives[Idx] = WorkPrimitives[Idx].Primitive;
-    }
-
-    WideEntries.reserve(BinarySlots.size() / 2u + 4u);
-    MaxTreeDepth = 0u;
-    (void)CollapseBinaryToWide4(BinarySlots, BinaryRoot, WideEntries, 1u, MaxTreeDepth);
-    return !WideEntries.empty();
+    return BuildFromTrianglePrimitivesWithNormals(ExtractedPrimitives, {});
 }
 
 bool WideBoundingTree::BuildFromTrianglePrimitives(std::span<const RayTrianglePrimitive> InputPrimitives)
@@ -546,52 +514,68 @@ bool WideBoundingTree::BuildFromTrianglePrimitivesWithNormals(
         return false;
     }
 
-    const bool HasNormals = (InputNormals.size() == InputPrimitives.size());
+    const uint32_t   PrimCount  = static_cast<uint32_t>(InputPrimitives.size());
+    const bool       HasNormals = (InputNormals.size() == InputPrimitives.size());
+    const auto*      SrcPrims   = InputPrimitives.data();
+    const auto*      SrcNorms   = HasNormals ? InputNormals.data() : nullptr;
 
-    std::vector<BuildPrimitiveEntry> WorkPrimitives;
-    WorkPrimitives.reserve(InputPrimitives.size());
+    std::vector<AxisAlignedBox>      PrimBounds(PrimCount);
+    std::vector<Mathematics::Axis3D> PrimCentroids(PrimCount);
+    std::vector<uint32_t>            PrimOrder(PrimCount);
+    AxisAlignedBox*                  BoundsPtr    = PrimBounds.data();
+    Mathematics::Axis3D*             CentroidsPtr = PrimCentroids.data();
+    uint32_t*                        OrderPtr     = PrimOrder.data();
 
-    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(InputPrimitives.size()); ++Idx)
+    for (uint32_t Idx = 0u; Idx < PrimCount; ++Idx)
     {
-        const RayTrianglePrimitive& Src = InputPrimitives[Idx];
-        const Mathematics::Axis3D P0 = Src.Corner0;
-        const Mathematics::Axis3D P1 = P0 + Src.Edge01;
-        const Mathematics::Axis3D P2 = P0 + Src.Edge02;
+        const RayTrianglePrimitive& Src = SrcPrims[Idx];
+        const Mathematics::Axis3D   P0  = Src.Corner0;
+        const Mathematics::Axis3D   P1  = P0 + Src.Edge01;
+        const Mathematics::Axis3D   P2  = P0 + Src.Edge02;
 
-        BuildPrimitiveEntry Rec {};
-        Rec.Primitive        = Src;
-        Rec.SourceInputIndex = Idx;
-        Rec.Bounds.ExpandPoint(P0);
-        Rec.Bounds.ExpandPoint(P1);
-        Rec.Bounds.ExpandPoint(P2);
-        Rec.Bounds.Min = Rec.Bounds.Min - Mathematics::Axis3D{ 1.0e-6f, 1.0e-6f, 1.0e-6f };
-        Rec.Bounds.Max = Rec.Bounds.Max + Mathematics::Axis3D{ 1.0e-6f, 1.0e-6f, 1.0e-6f };
-        Rec.Centroid   = (P0 + P1 + P2) * (1.0f / 3.0f);
-        WorkPrimitives.push_back(Rec);
+        AxisAlignedBox Box {};
+        Box.ExpandPoint(P0);
+        Box.ExpandPoint(P1);
+        Box.ExpandPoint(P2);
+        // Pad zero-thickness axis-aligned triangles by 1e-6 m to guarantee watertight slab tests
+        Box.Min           = Box.Min - Mathematics::Axis3D{ 1.0e-6f, 1.0e-6f, 1.0e-6f };
+        Box.Max           = Box.Max + Mathematics::Axis3D{ 1.0e-6f, 1.0e-6f, 1.0e-6f };
+        BoundsPtr[Idx]    = Box;
+        CentroidsPtr[Idx] = (P0 + P1 + P2) * (1.0f / 3.0f);
+        OrderPtr[Idx]     = Idx;
     }
 
     std::vector<BinaryBuildSlot> BinarySlots;
-    BinarySlots.reserve(WorkPrimitives.size() * 2u);
+    BinarySlots.reserve(static_cast<std::size_t>(PrimCount) * 2u);
     const uint32_t BinaryRoot = BuildBinarySahSubtree(
         BinarySlots,
-        WorkPrimitives,
+        BoundsPtr,
+        CentroidsPtr,
+        OrderPtr,
         0u,
-        static_cast<uint32_t>(WorkPrimitives.size()));
+        PrimCount);
 
     RootBoundsMin = BinarySlots[BinaryRoot].Bounds.Min;
     RootBoundsMax = BinarySlots[BinaryRoot].Bounds.Max;
 
-    Primitives.resize(WorkPrimitives.size());
+    Primitives.resize(PrimCount);
+    RayTrianglePrimitive* DstPrims = Primitives.data();
     if (HasNormals)
     {
-        PrimitiveNormals.resize(WorkPrimitives.size());
-    }
-    for (std::size_t Idx = 0u; Idx < WorkPrimitives.size(); ++Idx)
-    {
-        Primitives[Idx] = WorkPrimitives[Idx].Primitive;
-        if (HasNormals)
+        PrimitiveNormals.resize(PrimCount);
+        TriangleSmoothNormals* DstNorms = PrimitiveNormals.data();
+        for (uint32_t Pos = 0u; Pos < PrimCount; ++Pos)
         {
-            PrimitiveNormals[Idx] = InputNormals[WorkPrimitives[Idx].SourceInputIndex];
+            const uint32_t SrcIdx = OrderPtr[Pos];
+            DstPrims[Pos]         = SrcPrims[SrcIdx];
+            DstNorms[Pos]         = SrcNorms[SrcIdx];
+        }
+    }
+    else
+    {
+        for (uint32_t Pos = 0u; Pos < PrimCount; ++Pos)
+        {
+            DstPrims[Pos] = SrcPrims[OrderPtr[Pos]];
         }
     }
 

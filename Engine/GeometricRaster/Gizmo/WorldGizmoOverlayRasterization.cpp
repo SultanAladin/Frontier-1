@@ -1187,7 +1187,7 @@ Editor::GizmoHandleOrdinal WorldGizmoOverlayRasterization::QueryLastGpuPickAtPix
                 const int32_t Dx = Sx - static_cast<int32_t>(ClampedX);
                 const uint32_t Ord = CachedPickOrdinals[static_cast<std::size_t>(Py) * CachedPickPatchW + static_cast<std::size_t>(Px)];
                 const int32_t Dist = Dx * Dx + Dy * Dy;
-                if (Ord != 0u && Ord <= static_cast<uint32_t>(Editor::GizmoHandleOrdinal::CenterRing) && Dist < BestDist)
+                if (Ord != 0u && Ord <= static_cast<uint32_t>(Editor::GizmoHandleOrdinal::CenterRing) && Dist <= 25 && Dist < BestDist)
                 {
                     BestOrd  = Ord;
                     BestDist = Dist;

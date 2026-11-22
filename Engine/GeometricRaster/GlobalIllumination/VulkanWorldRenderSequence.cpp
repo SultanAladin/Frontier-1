@@ -647,6 +647,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(DynamicLocalSdfInstanceBuffer);
         BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
     }
+    WaitPendingNaniteBuild();
+    NaniteCutCache.clear();
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle        = UINT32_MAX;
     CloudLayerProgramHandle         = UINT32_MAX;
@@ -667,9 +669,18 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     CachedLocalSdfAssetSignature    = 0ull;
     CachedDynamicSdfSignature       = 0ull;
     ActiveClipFocusWorld            = { 0.0f, 0.0f, 0.0f };
+    LastFineShadowFocusWorld        = { 0.0f, 0.0f, 0.0f };
+    LastCoarseShadowFocusWorld      = { 0.0f, 0.0f, 0.0f };
+    LastFineGdfFocusWorld           = { 0.0f, 0.0f, 0.0f };
+    LastCoarseGdfFocusWorld         = { 0.0f, 0.0f, 0.0f };
     ActiveClipFocusInitialized      = false;
+    CascadeFocusInitialized         = false;
     DistanceFieldStats              = {};
     CachedLocalSdfOffsets.clear();
+    CachedNaniteCutSignature        = 0u;
+    CachedNaniteTransformSig        = 0u;
+    PendingNaniteBuildSignature     = 0u;
+    NaniteLodBuffersActive          = false;
     FrameSequenceIndex              = 0u;
     BoundDevice                     = nullptr;
     SceneUploadedOnce               = false;
@@ -836,7 +847,147 @@ bool VulkanWorldRenderSequence::UploadToDeviceBuffer(
         0u,
         nullptr);
     const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(Cmd);
-    return BoundDevice->AwaitTimelineTick(SyncPoint);
+    const bool Ok = BoundDevice->AwaitTimelineTick(SyncPoint);
+    BoundDevice->FreeCommandBuffer(Cmd);
+    return Ok;
+}
+
+bool VulkanWorldRenderSequence::UploadDualDeviceBuffers(
+    DeviceBufferResource& TargetBufferA,
+    const void*           SourceDataA,
+    uint64_t              ByteCountA,
+    VkBufferUsageFlags    UsageMaskA,
+    DeviceBufferResource& TargetBufferB,
+    const void*           SourceDataB,
+    uint64_t              ByteCountB,
+    VkBufferUsageFlags    UsageMaskB)
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return false;
+    }
+    const uint64_t SafeBytesA = std::max<uint64_t>(4ull, ByteCountA);
+    const uint64_t SafeBytesB = std::max<uint64_t>(4ull, ByteCountB);
+    EnsureDeviceBufferCapacity(TargetBufferA, SafeBytesA, UsageMaskA);
+    EnsureDeviceBufferCapacity(TargetBufferB, SafeBytesB, UsageMaskB);
+    if (TargetBufferA.BufferHandle == VK_NULL_HANDLE || SourceDataA == nullptr ||
+        TargetBufferB.BufferHandle == VK_NULL_HANDLE || SourceDataB == nullptr)
+    {
+        return false;
+    }
+    if (TargetBufferA.HostAddress != nullptr && TargetBufferB.HostAddress != nullptr)
+    {
+        std::memcpy(TargetBufferA.HostAddress, SourceDataA, static_cast<std::size_t>(ByteCountA));
+        std::memcpy(TargetBufferB.HostAddress, SourceDataB, static_cast<std::size_t>(ByteCountB));
+        return true;
+    }
+
+    const uint64_t OffsetB    = (SafeBytesA + 255ull) & ~255ull;
+    const uint64_t TotalBytes = OffsetB + SafeBytesB;
+    if (UploadStagingBuffer.BufferHandle == VK_NULL_HANDLE || UploadStagingBuffer.ByteCapacity < TotalBytes)
+    {
+        BoundDevice->ReleaseBuffer(UploadStagingBuffer);
+        const uint64_t PaddedBytes = std::max<uint64_t>(TotalBytes, (TotalBytes * 5ull) / 4ull);
+        UploadStagingBuffer        = DispatchEncoder.AllocateUploadStagingBuffer(PaddedBytes);
+    }
+    if (UploadStagingBuffer.HostAddress == nullptr)
+    {
+        return false;
+    }
+
+    uint8_t* StagingBytes = static_cast<uint8_t*>(UploadStagingBuffer.HostAddress);
+    std::memcpy(StagingBytes, SourceDataA, static_cast<std::size_t>(ByteCountA));
+    std::memcpy(StagingBytes + OffsetB, SourceDataB, static_cast<std::size_t>(ByteCountB));
+
+    VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
+    if (Cmd == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    VkBufferCopy CopyA {};
+    CopyA.srcOffset = 0ull;
+    CopyA.dstOffset = 0ull;
+    CopyA.size      = ByteCountA;
+    vkCmdCopyBuffer(Cmd, UploadStagingBuffer.BufferHandle, TargetBufferA.BufferHandle, 1u, &CopyA);
+
+    VkBufferCopy CopyB {};
+    CopyB.srcOffset = OffsetB;
+    CopyB.dstOffset = 0ull;
+    CopyB.size      = ByteCountB;
+    vkCmdCopyBuffer(Cmd, UploadStagingBuffer.BufferHandle, TargetBufferB.BufferHandle, 1u, &CopyB);
+
+    VkMemoryBarrier CopyBarrier {};
+    CopyBarrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    CopyBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    CopyBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    vkCmdPipelineBarrier(
+        Cmd,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        0u,
+        1u,
+        &CopyBarrier,
+        0u,
+        nullptr,
+        0u,
+        nullptr);
+    const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(Cmd);
+    const bool Ok = BoundDevice->AwaitTimelineTick(SyncPoint);
+    BoundDevice->FreeCommandBuffer(Cmd);
+    return Ok;
+}
+
+void VulkanWorldRenderSequence::WaitPendingNaniteBuild() noexcept
+{
+    if (PendingNaniteBuildFuture.valid())
+    {
+        try
+        {
+            (void)PendingNaniteBuildFuture.get();
+        }
+        catch (...)
+        {
+        }
+    }
+    PendingNaniteBuildSignature = 0u;
+}
+
+void VulkanWorldRenderSequence::ApplyNaniteCutPayload(const CachedNaniteCutPayload& Payload)
+{
+    if (Payload.BvhBytes.empty() || Payload.ShadedTriangleBytes.empty() || Payload.BvhEntryCount == 0u)
+    {
+        return;
+    }
+    if (!UploadDualDeviceBuffers(
+            BvhEntryBuffer,
+            Payload.BvhBytes.data(),
+            static_cast<uint64_t>(Payload.BvhBytes.size()),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            ShadedTriangleBuffer,
+            Payload.ShadedTriangleBytes.data(),
+            static_cast<uint64_t>(Payload.ShadedTriangleBytes.size()),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
+    {
+        return;
+    }
+
+    UploadedBvhCount = Payload.BvhEntryCount;
+    const uint32_t PreviousRebuilds = NaniteLodStats.GeometryRebuildCount;
+    const uint32_t FullTris         = NaniteLodStats.FullTriangleCount;
+    NaniteLodStats = {};
+    NaniteLodStats.Enabled              = true;
+    NaniteLodStats.ActiveClusterCount   = Payload.ActiveClusters;
+    NaniteLodStats.ActiveTriangleCount  = Payload.ActiveTriangles;
+    NaniteLodStats.FullTriangleCount    = FullTris;
+    NaniteLodStats.GeometryRebuildCount = PreviousRebuilds + 1u;
+    for (uint32_t Level = 0u; Level < 8u; ++Level)
+    {
+        NaniteLodStats.LevelTriangleCount[Level] = Payload.LevelTriangleCount[Level];
+        NaniteLodStats.LevelClusterCount[Level]  = Payload.LevelClusterCount[Level];
+    }
+    CachedNaniteCutSignature = Payload.CutSignature;
+    CachedNaniteTransformSig = Payload.TransformSignature;
+    NaniteLodBuffersActive   = true;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1128,7 +1279,10 @@ Mathematics::Axis3D VulkanWorldRenderSequence::ResolveDynamicClipFocusWorld(
     return CameraFocus;
 }
 
-bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool RebuildGeometryFields)
+bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
+    const WorldSceneSpecification& Scene,
+    bool                           RebuildGeometryFields,
+    uint32_t                       UpdateMask)
 {
     if (!QueryReady() ||
         ShadowCascadeProgramHandle == UINT32_MAX ||
@@ -1142,6 +1296,20 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         (void)SynchronizeLocalSdfResources(Scene);
     }
 
+    uint32_t EffectiveMask = UpdateMask;
+    if (!CascadeFocusInitialized || !GlobalDistanceFieldReady)
+    {
+        EffectiveMask = kPrecomputeFullMask;
+    }
+    if (!RebuildGeometryFields && GlobalDistanceFieldReady)
+    {
+        EffectiveMask &= ~(kPrecomputeFineGdf | kPrecomputeCoarseGdf);
+    }
+    if (EffectiveMask == 0u)
+    {
+        return true;
+    }
+
     const bool AtmoActive = Scene.Atmosphere.Medium.AtmosphereEnabled || Scene.Atmosphere.Medium.OrbitalViewEnabled;
     const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Scene.Atmosphere.Solar);
     const Mathematics::Axis3D SunDir = AtmoActive
@@ -1152,19 +1320,47 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
     const Mathematics::Axis3D FocusCenter = ActiveClipFocusInitialized
         ? ActiveClipFocusWorld
         : ResolveDynamicClipFocusWorld(nullptr, Scene);
+    if (!CascadeFocusInitialized)
+    {
+        LastFineShadowFocusWorld   = FocusCenter;
+        LastCoarseShadowFocusWorld = FocusCenter;
+        LastFineGdfFocusWorld      = FocusCenter;
+        LastCoarseGdfFocusWorld    = FocusCenter;
+        CascadeFocusInitialized    = true;
+    }
+    else
+    {
+        if ((EffectiveMask & kPrecomputeFineShadow) != 0u)
+        {
+            LastFineShadowFocusWorld = FocusCenter;
+        }
+        if ((EffectiveMask & kPrecomputeCoarseShadow) != 0u)
+        {
+            LastCoarseShadowFocusWorld = FocusCenter;
+        }
+        if ((EffectiveMask & kPrecomputeFineGdf) != 0u)
+        {
+            LastFineGdfFocusWorld = FocusCenter;
+        }
+        if ((EffectiveMask & kPrecomputeCoarseGdf) != 0u)
+        {
+            LastCoarseGdfFocusWorld = FocusCenter;
+        }
+    }
+
     const Mathematics::Axis3D BoundsSpan  = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
     const float MaxHalfExtent = 0.5f * std::max({ std::abs(BoundsSpan.X), std::abs(BoundsSpan.Y), std::abs(BoundsSpan.Z), 5.6f });
     const float FineGdfHalf   = std::clamp(MaxHalfExtent * 1.18f, 3.2f, 4.2f);
     const float CoarseGdfHalf = FineGdfHalf * 2.5f;
     const float FineVoxelM    = (2.0f * FineGdfHalf) / 64.0f;
     const float CoarseVoxelM  = (2.0f * CoarseGdfHalf) / 64.0f;
-    CachedFineGdfCenterSpan[0]   = std::round(FocusCenter.X / FineVoxelM) * FineVoxelM;
-    CachedFineGdfCenterSpan[1]   = std::round(FocusCenter.Y / FineVoxelM) * FineVoxelM;
-    CachedFineGdfCenterSpan[2]   = std::round(FocusCenter.Z / FineVoxelM) * FineVoxelM;
+    CachedFineGdfCenterSpan[0]   = std::round(LastFineGdfFocusWorld.X / FineVoxelM) * FineVoxelM;
+    CachedFineGdfCenterSpan[1]   = std::round(LastFineGdfFocusWorld.Y / FineVoxelM) * FineVoxelM;
+    CachedFineGdfCenterSpan[2]   = std::round(LastFineGdfFocusWorld.Z / FineVoxelM) * FineVoxelM;
     CachedFineGdfCenterSpan[3]   = FineGdfHalf;
-    CachedCoarseGdfCenterSpan[0] = std::round(FocusCenter.X / CoarseVoxelM) * CoarseVoxelM;
-    CachedCoarseGdfCenterSpan[1] = std::round(FocusCenter.Y / CoarseVoxelM) * CoarseVoxelM;
-    CachedCoarseGdfCenterSpan[2] = std::round(FocusCenter.Z / CoarseVoxelM) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[0] = std::round(LastCoarseGdfFocusWorld.X / CoarseVoxelM) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[1] = std::round(LastCoarseGdfFocusWorld.Y / CoarseVoxelM) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[2] = std::round(LastCoarseGdfFocusWorld.Z / CoarseVoxelM) * CoarseVoxelM;
     CachedCoarseGdfCenterSpan[3] = CoarseGdfHalf;
 
     DistanceFieldStats.FineCascadeCenterWorld[0]   = CachedFineGdfCenterSpan[0];
@@ -1181,7 +1377,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
     Mathematics::Axis3D UpAxis    {};
     GeometrySpace::ConstructDuffOrthonormalBasis(LightFwd, RightAxis, UpAxis);
 
-    auto InitCascadeBasis = [&](OrthographicShadowCascade& Cascade, float HalfSpanMeters)
+    auto InitCascadeBasis = [&](OrthographicShadowCascade& Cascade, const Mathematics::Axis3D& AnchorWorld, float HalfSpanMeters)
     {
         Cascade.HalfSpanMeters    = HalfSpanMeters;
         Cascade.DepthExtentMeters = 28.0f;
@@ -1190,14 +1386,14 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         Cascade.LightUpAxis       = UpAxis;
         Cascade.LightForwardAxis  = LightFwd;
         const float TexelSizeM = (2.0f * HalfSpanMeters) / static_cast<float>(Cascade.ResolutionTexels);
-        const float ProjU      = std::round(Mathematics::EvaluateDot(FocusCenter, RightAxis) / TexelSizeM) * TexelSizeM;
-        const float ProjV      = std::round(Mathematics::EvaluateDot(FocusCenter, UpAxis) / TexelSizeM) * TexelSizeM;
-        const float ProjZ      = Mathematics::EvaluateDot(FocusCenter, LightFwd);
+        const float ProjU      = std::round(Mathematics::EvaluateDot(AnchorWorld, RightAxis) / TexelSizeM) * TexelSizeM;
+        const float ProjV      = std::round(Mathematics::EvaluateDot(AnchorWorld, UpAxis) / TexelSizeM) * TexelSizeM;
+        const float ProjZ      = Mathematics::EvaluateDot(AnchorWorld, LightFwd);
         Cascade.CenterWorld    = RightAxis * ProjU + UpAxis * ProjV + LightFwd * ProjZ;
         Cascade.ClosestLightDepth.clear();
     };
-    InitCascadeBasis(CachedFineSunCascade, 2.85f);
-    InitCascadeBasis(CachedSunCascade, 8.5f);
+    InitCascadeBasis(CachedFineSunCascade, LastFineShadowFocusWorld, 2.85f);
+    InitCascadeBasis(CachedSunCascade, LastCoarseShadowFocusWorld, 8.5f);
     CoarseShadowOffsetTexels = 1024u * 1024u;
 
     const uint64_t ShadowDepthBytes = static_cast<uint64_t>(CoarseShadowOffsetTexels) * 2ull * sizeof(float);
@@ -1395,20 +1591,35 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
     }
     else
     {
-        const auto CascadeSlots = ConstructPrecomputeSlots(0ull);
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, CascadeSlots, 128u, 128u, 2u))
+        const bool DoFineShadow   = (EffectiveMask & kPrecomputeFineShadow) != 0u;
+        const bool DoCoarseShadow = (EffectiveMask & kPrecomputeCoarseShadow) != 0u;
+        if (DoFineShadow || DoCoarseShadow)
         {
-            BoundDevice->FreeCommandBuffer(Cmd);
-            return false;
+            WorldViewportUniformBlockStd140 ShadowUni = Uniforms;
+            ShadowUni.GlobalDistanceBakeControl[0] = 0u;
+            ShadowUni.GlobalDistanceBakeControl[1] = (!DoFineShadow && DoCoarseShadow) ? 1u : 0u;
+            ShadowUni.GlobalDistanceBakeControl[2] = 1u;
+            std::memcpy(UniformHostBytes, &ShadowUni, sizeof(ShadowUni));
+
+            const uint32_t CascadeCount = (DoFineShadow && DoCoarseShadow) ? 2u : 1u;
+            const auto CascadeSlots = ConstructPrecomputeSlots(0ull);
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, CascadeSlots, 128u, 128u, CascadeCount))
+            {
+                BoundDevice->FreeCommandBuffer(Cmd);
+                return false;
+            }
         }
 
-        const bool DoBakeGdf =
-            (RebuildGeometryFields || !GlobalDistanceFieldReady) &&
-            (GlobalDistanceBakeProgramHandle != UINT32_MAX);
-        if (DoBakeGdf)
+        const bool DoFineGdf   = ((EffectiveMask & kPrecomputeFineGdf) != 0u) && (GlobalDistanceBakeProgramHandle != UINT32_MAX);
+        const bool DoCoarseGdf = ((EffectiveMask & kPrecomputeCoarseGdf) != 0u) && (GlobalDistanceBakeProgramHandle != UINT32_MAX);
+        if (DoFineGdf || DoCoarseGdf)
         {
             for (uint32_t CascadeIdx = 0u; CascadeIdx < 2u; ++CascadeIdx)
             {
+                if ((CascadeIdx == 0u && !DoFineGdf) || (CascadeIdx == 1u && !DoCoarseGdf))
+                {
+                    continue;
+                }
                 const uint64_t UniOffs = static_cast<uint64_t>(1u + CascadeIdx) * UniformStrideBytes;
                 WorldViewportUniformBlockStd140 GdfUni = Uniforms;
                 GdfUni.GlobalDistanceBakeControl[0] = 0u;
@@ -1427,10 +1638,12 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         }
         InsertPrecomputeBarrier();
 
-        if (GlobalRadiosityProgramHandle != UINT32_MAX)
+        const bool DoRadiosity = ((EffectiveMask & kPrecomputeRadiosity) != 0u) && (GlobalRadiosityProgramHandle != UINT32_MAX);
+        if (DoRadiosity)
         {
+            const uint32_t PhaseCount = ((EffectiveMask & kPrecomputeSecondBounce) != 0u) ? 8u : 4u;
             constexpr std::array<uint32_t, 8u> PhaseGroupCounts {{ 16u, 8u, 4u, 2u, 16u, 8u, 4u, 2u }};
-            for (uint32_t Phase = 0u; Phase < 8u; ++Phase)
+            for (uint32_t Phase = 0u; Phase < PhaseCount; ++Phase)
             {
                 const uint64_t UniOffs = static_cast<uint64_t>(3u + Phase) * UniformStrideBytes;
                 WorldViewportUniformBlockStd140 RadUni = Uniforms;
@@ -1449,8 +1662,25 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
                 InsertPrecomputeBarrier();
             }
             GlobalDistanceFieldReady = true;
+
+            auto HashMixBytes = [](uint64_t SeedVal, const void* BytesPtr, std::size_t ByteLen) -> uint64_t
+            {
+                const auto* Raw = static_cast<const uint8_t*>(BytesPtr);
+                for (std::size_t I = 0u; I < ByteLen; ++I)
+                {
+                    SeedVal ^= static_cast<uint64_t>(Raw[I]);
+                    SeedVal *= 1099511628211ull;
+                }
+                return SeedVal;
+            };
+            uint64_t LightingSig = 14695981039346656037ull;
+            LightingSig = HashMixBytes(LightingSig, Uniforms.SolarIrradiancePad, sizeof(Uniforms.SolarIrradiancePad));
+            LightingSig = HashMixBytes(LightingSig, Uniforms.SkyRadianceBvhCount, sizeof(float) * 3u);
+            LightingSig = HashMixBytes(LightingSig, Uniforms.AreaLights, sizeof(Uniforms.AreaLights));
+            LightingSig = HashMixBytes(LightingSig, &LightCount, sizeof(LightCount));
+            LastRadiosityLightingSignature = LightingSig;
         }
-        else if (DoBakeGdf)
+        else if (DoFineGdf || DoCoarseGdf)
         {
             GlobalDistanceFieldReady = true;
         }
@@ -1754,17 +1984,20 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     (void)SynchronizeLocalSdfResources(Scene);
 
     // 4. Build Two-Cascade Solar Shadow Depth + Global Distance Field + 2-Bounce Radiosity Volume on GPU
+    WaitPendingNaniteBuild();
+    NaniteCutCache.clear();
+    CascadeFocusInitialized = false;
     if (RebuildShadows || !SceneUploadedOnce || SolarShadowDepthBuffer.BufferHandle == VK_NULL_HANDLE)
     {
         UploadSolarCascadeDepth(Scene);
     }
     else if (GlobalDistanceFieldReady)
     {
-        (void)DispatchGpuScenePrecompute(Scene, false);
+        (void)DispatchGpuScenePrecompute(Scene, false, kPrecomputeFineShadow | kPrecomputeCoarseShadow | kPrecomputeRadiosity | kPrecomputeSecondBounce);
     }
-    LastRadiosityLightingSignature = 0ull;
 
     CachedNaniteCutSignature = 0u;
+    CachedNaniteTransformSig = 0u;
     NaniteLodBuffersActive   = false;
     SceneUploadedOnce      = true;
     ProgressiveSampleCount = 0u;
@@ -1779,11 +2012,13 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
 void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
     const WorldRenderConfiguration& Config,
     const PerspectiveCameraBasis&   Camera,
-    const WorldSceneSpecification&  Scene)
+    const WorldSceneSpecification&  Scene,
+    bool                            AllowAsyncHysteresis)
 {
     NaniteLodStats.FullTriangleCount = static_cast<uint32_t>(Scene.SceneTree.Primitives.size());
     if (!Config.NaniteLodEnabled || Scene.ClusterInstances.empty())
     {
+        WaitPendingNaniteBuild();
         if (NaniteLodBuffersActive)
         {
             SynchronizeSceneResources(Scene, true);
@@ -1791,6 +2026,59 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         NaniteLodStats.Enabled             = false;
         NaniteLodStats.ActiveTriangleCount = NaniteLodStats.FullTriangleCount;
         return;
+    }
+
+    auto RememberCachedPayload = [this](CachedNaniteCutPayload Payload) -> const CachedNaniteCutPayload*
+    {
+        Payload.LastUsedTick = ++NaniteCacheUseCounter;
+        for (auto& Existing : NaniteCutCache)
+        {
+            if (Existing.CutSignature == Payload.CutSignature)
+            {
+                Existing = std::move(Payload);
+                return &Existing;
+            }
+        }
+        constexpr std::size_t kMaxCachedNaniteCuts = 6u;
+        if (NaniteCutCache.size() < kMaxCachedNaniteCuts)
+        {
+            NaniteCutCache.push_back(std::move(Payload));
+            return &NaniteCutCache.back();
+        }
+        std::size_t OldestIdx = 0u;
+        for (std::size_t I = 1u; I < NaniteCutCache.size(); ++I)
+        {
+            if (NaniteCutCache[I].LastUsedTick < NaniteCutCache[OldestIdx].LastUsedTick)
+            {
+                OldestIdx = I;
+            }
+        }
+        NaniteCutCache[OldestIdx] = std::move(Payload);
+        return &NaniteCutCache[OldestIdx];
+    };
+
+    if (PendingNaniteBuildFuture.valid())
+    {
+        if (!AllowAsyncHysteresis)
+        {
+            CachedNaniteCutPayload Built = PendingNaniteBuildFuture.get();
+            PendingNaniteBuildSignature  = 0u;
+            if (Built.BvhEntryCount > 0u)
+            {
+                const auto* Stored = RememberCachedPayload(std::move(Built));
+                ApplyNaniteCutPayload(*Stored);
+            }
+        }
+        else if (PendingNaniteBuildFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            CachedNaniteCutPayload Built = PendingNaniteBuildFuture.get();
+            PendingNaniteBuildSignature  = 0u;
+            if (Built.BvhEntryCount > 0u)
+            {
+                const auto* Stored = RememberCachedPayload(std::move(Built));
+                ApplyNaniteCutPayload(*Stored);
+            }
+        }
     }
 
     const OrthonormalCameraBasis Basis = ComputeCameraBasis(Camera);
@@ -1806,15 +2094,22 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
     std::vector<InstanceCut> Cuts;
     Cuts.reserve(Scene.ClusterInstances.size());
 
-    uint64_t Signature = 1469598103934665603ull;
+    uint64_t Signature          = 1469598103934665603ull;
+    uint64_t TransformSignature = 1469598103934665603ull;
     const auto MixSignature = [&Signature](uint64_t Value) noexcept
     {
         Signature = (Signature ^ Value) * 1099511628211ull;
     };
+    const auto MixTransform = [&TransformSignature](uint64_t Value) noexcept
+    {
+        TransformSignature = (TransformSignature ^ Value) * 1099511628211ull;
+    };
     MixSignature(static_cast<uint64_t>(std::lround(PixelError * 100.0f)));
 
+    const bool QuantizeCameraForHysteresis = AllowAsyncHysteresis && NaniteLodBuffersActive;
     uint32_t ActiveClusters  = 0u;
     uint32_t ActiveTriangles = 0u;
+    uint32_t CulledBackfaces = 0u;
     for (uint32_t InstIdx = 0u; InstIdx < static_cast<uint32_t>(Scene.ClusterInstances.size()); ++InstIdx)
     {
         const RigidClusterInstance& Inst = Scene.ClusterInstances[InstIdx];
@@ -1824,7 +2119,7 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         }
         if (Inst.PyramidAsset == nullptr || Inst.PyramidAsset->Clusters.empty())
         {
-            // An instance without a baked pyramid has no LOD representation; keep full-res BVH.
+            WaitPendingNaniteBuild();
             if (NaniteLodBuffersActive)
             {
                 SynchronizeSceneResources(Scene, true);
@@ -1841,7 +2136,15 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         const bool  YawRotated = std::fabs(YawRad) > 1.0e-5f;
         const float CosZ       = YawRotated ? std::cos(YawRad) : 1.0f;
         const float SinZ       = YawRotated ? std::sin(YawRad) : 0.0f;
-        const Mathematics::Axis3D RelWorld = Camera.CameraOrigin - Inst.WorldTranslation;
+        Mathematics::Axis3D RelWorld = Camera.CameraOrigin - Inst.WorldTranslation;
+        if (QuantizeCameraForHysteresis)
+        {
+            const float RelDist = std::sqrt(std::max(1.0e-4f, Mathematics::EvaluateDot(RelWorld, RelWorld)));
+            const float StepM   = std::clamp(RelDist * 0.032f, 0.08f, 0.65f);
+            RelWorld.X = std::round(RelWorld.X / StepM) * StepM;
+            RelWorld.Y = std::round(RelWorld.Y / StepM) * StepM;
+            RelWorld.Z = std::round(RelWorld.Z / StepM) * StepM;
+        }
         const Mathematics::Axis3D Unrotated = YawRotated
             ? Mathematics::Axis3D{ RelWorld.X * CosZ + RelWorld.Y * SinZ, -RelWorld.X * SinZ + RelWorld.Y * CosZ, RelWorld.Z }
             : RelWorld;
@@ -1849,16 +2152,35 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         InstanceCut Cut {};
         Cut.InstanceIndex = InstIdx;
         Cut.Selection     = Inst.PyramidAsset->SelectMonotonicCut(LocalCamera, PixelsPerRadian, PixelError, false);
-        ActiveClusters += static_cast<uint32_t>(Cut.Selection.ActiveClusterIndices.size());
+        ActiveClusters  += static_cast<uint32_t>(Cut.Selection.ActiveClusterIndices.size());
         ActiveTriangles += Cut.Selection.ActiveTriangleCount;
+        CulledBackfaces += Cut.Selection.CulledBackfaceCount;
+
+        const uint64_t RotQ    = static_cast<uint64_t>(std::lround(Inst.RotationZDegrees * 100.0f));
+        const uint64_t ScaleXQ = static_cast<uint64_t>(std::lround(ScaleX * 1000.0f));
+        const uint64_t ScaleYQ = static_cast<uint64_t>(std::lround(ScaleY * 1000.0f));
+        const uint64_t ScaleZQ = static_cast<uint64_t>(std::lround(ScaleZ * 1000.0f));
+        const uint64_t TransXQ = static_cast<uint64_t>(std::lround(Inst.WorldTranslation.X * 1000.0f));
+        const uint64_t TransYQ = static_cast<uint64_t>(std::lround(Inst.WorldTranslation.Y * 1000.0f));
+        const uint64_t TransZQ = static_cast<uint64_t>(std::lround(Inst.WorldTranslation.Z * 1000.0f));
+        MixTransform(InstIdx + 1u);
+        MixTransform(reinterpret_cast<uintptr_t>(Inst.PyramidAsset));
+        MixTransform(RotQ);
+        MixTransform(ScaleXQ);
+        MixTransform(ScaleYQ);
+        MixTransform(ScaleZQ);
+        MixTransform(TransXQ);
+        MixTransform(TransYQ);
+        MixTransform(TransZQ);
+
         MixSignature(InstIdx + 1u);
-        MixSignature(static_cast<uint64_t>(std::lround(Inst.RotationZDegrees * 100.0f)));
-        MixSignature(static_cast<uint64_t>(std::lround(ScaleX * 1000.0f)));
-        MixSignature(static_cast<uint64_t>(std::lround(ScaleY * 1000.0f)));
-        MixSignature(static_cast<uint64_t>(std::lround(ScaleZ * 1000.0f)));
-        MixSignature(static_cast<uint64_t>(std::lround(Inst.WorldTranslation.X * 1000.0f)));
-        MixSignature(static_cast<uint64_t>(std::lround(Inst.WorldTranslation.Y * 1000.0f)));
-        MixSignature(static_cast<uint64_t>(std::lround(Inst.WorldTranslation.Z * 1000.0f)));
+        MixSignature(RotQ);
+        MixSignature(ScaleXQ);
+        MixSignature(ScaleYQ);
+        MixSignature(ScaleZQ);
+        MixSignature(TransXQ);
+        MixSignature(TransYQ);
+        MixSignature(TransZQ);
         for (const uint32_t ClusterIdx : Cut.Selection.ActiveClusterIndices)
         {
             MixSignature(ClusterIdx + 1u);
@@ -1866,10 +2188,30 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         Cuts.push_back(std::move(Cut));
     }
 
-    NaniteLodStats.ActiveClusterCount  = ActiveClusters;
-    NaniteLodStats.ActiveTriangleCount = ActiveTriangles;
     if (Signature == CachedNaniteCutSignature && NaniteLodBuffersActive)
     {
+        NaniteLodStats.Enabled = true;
+        return;
+    }
+
+    for (auto& Cached : NaniteCutCache)
+    {
+        if (Cached.CutSignature == Signature && Cached.TransformSignature == TransformSignature)
+        {
+            Cached.LastUsedTick = ++NaniteCacheUseCounter;
+            ApplyNaniteCutPayload(Cached);
+            return;
+        }
+    }
+
+    const bool AsyncCutPermitted =
+        AllowAsyncHysteresis &&
+        NaniteLodBuffersActive &&
+        (TransformSignature == CachedNaniteTransformSig);
+
+    if (AsyncCutPermitted && PendingNaniteBuildFuture.valid())
+    {
+        // Background thread is already building an updated LOD cut; keep rendering with current resident BVH4.
         NaniteLodStats.Enabled = true;
         return;
     }
@@ -1883,8 +2225,8 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
     LodNormals.reserve(std::max(1u, ActiveTriangles));
     LodPrimLevel.reserve(std::max(1u, ActiveTriangles));
     LodPrimCluster.reserve(std::max(1u, ActiveTriangles));
-    uint32_t LevelTriangles[8] {};
-    uint32_t LevelClusters[8] {};
+    std::array<uint32_t, 8u> LevelTriangles {};
+    std::array<uint32_t, 8u> LevelClusters {};
     uint32_t PrimOrdinal = 0u;
     uint32_t GlobalClusterOrdinal = 0u;
     for (const InstanceCut& Cut : Cuts)
@@ -1939,7 +2281,7 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
                 Prim.Edge01           = W1 - W0;
                 Prim.Edge02           = W2 - W0;
                 Prim.SourceFaceIndex  = Tri.SourceFaceIndex;
-                Prim.MaterialOrdinal  = Tri.MaterialOrdinal; // per-face material slot, preserved by the bake
+                Prim.MaterialOrdinal  = Tri.MaterialOrdinal;
                 Prim.OpaqueMask       = 1u;
                 Prim.PrimitiveOrdinal = PrimOrdinal++;
                 LodPrimLevel.push_back(Level);
@@ -1962,76 +2304,120 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
         return;
     }
 
-    SpatialAcceleration::WideBoundingTree LodTree {};
-    if (!LodTree.BuildFromTrianglePrimitivesWithNormals(LodPrims, LodNormals) || LodTree.WideEntries.empty())
+    auto BuildCutPayloadJob = [](
+        uint64_t                                                JobCutSig,
+        uint64_t                                                JobTransformSig,
+        uint32_t                                                JobActiveClusters,
+        uint32_t                                                JobCulledBackfaces,
+        std::array<uint32_t, 8u>                                JobLevelTriangles,
+        std::array<uint32_t, 8u>                                JobLevelClusters,
+        std::vector<SpatialAcceleration::RayTrianglePrimitive>  JobPrims,
+        std::vector<SpatialAcceleration::TriangleSmoothNormals> JobNormals,
+        std::vector<uint32_t>                                   JobPrimLevel,
+        std::vector<uint32_t>                                   JobPrimCluster) -> CachedNaniteCutPayload
+    {
+        CachedNaniteCutPayload Result {};
+        SpatialAcceleration::WideBoundingTree LodTree {};
+        if (!LodTree.BuildFromTrianglePrimitivesWithNormals(JobPrims, JobNormals) || LodTree.WideEntries.empty())
+        {
+            return Result;
+        }
+
+        const bool HasNormals = (LodTree.PrimitiveNormals.size() == LodTree.Primitives.size());
+        std::vector<GpuShadedTriangle96> ShadedTris(LodTree.Primitives.size());
+        const auto* TreePrimPtr   = LodTree.Primitives.data();
+        const auto* TreeNormalPtr = HasNormals ? LodTree.PrimitiveNormals.data() : nullptr;
+        const auto* LevelPtr      = JobPrimLevel.data();
+        const auto* ClusterPtr    = JobPrimCluster.data();
+        const std::size_t MetaCnt = JobPrimLevel.size();
+        for (std::size_t Idx = 0u; Idx < LodTree.Primitives.size(); ++Idx)
+        {
+            const auto& Prim = TreePrimPtr[Idx];
+            Mathematics::Axis3D N0 = HasNormals
+                ? TreeNormalPtr[Idx].Normal0
+                : Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02), { 0.0f, 0.0f, 1.0f });
+            Mathematics::Axis3D N1 = HasNormals ? TreeNormalPtr[Idx].Normal1 : N0;
+            Mathematics::Axis3D N2 = HasNormals ? TreeNormalPtr[Idx].Normal2 : N0;
+            GpuShadedTriangle96 OutTri {};
+            OutTri.Corner0Pad[0]  = Prim.Corner0.X;
+            OutTri.Corner0Pad[1]  = Prim.Corner0.Y;
+            OutTri.Corner0Pad[2]  = Prim.Corner0.Z;
+            OutTri.Edge01Pad[0]   = Prim.Edge01.X;
+            OutTri.Edge01Pad[1]   = Prim.Edge01.Y;
+            OutTri.Edge01Pad[2]   = Prim.Edge01.Z;
+            OutTri.Edge02Pad[0]   = Prim.Edge02.X;
+            OutTri.Edge02Pad[1]   = Prim.Edge02.Y;
+            OutTri.Edge02Pad[2]   = Prim.Edge02.Z;
+            OutTri.Normal0Pad[0]  = N0.X;
+            OutTri.Normal0Pad[1]  = N0.Y;
+            OutTri.Normal0Pad[2]  = N0.Z;
+            OutTri.Normal1Pad[0]  = N1.X;
+            OutTri.Normal1Pad[1]  = N1.Y;
+            OutTri.Normal1Pad[2]  = N1.Z;
+            OutTri.Normal2Slot[0] = N2.X;
+            OutTri.Normal2Slot[1] = N2.Y;
+            OutTri.Normal2Slot[2] = N2.Z;
+            OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
+            const uint32_t Ord = Prim.PrimitiveOrdinal;
+            OutTri.Corner0Pad[3] = (Ord < MetaCnt) ? static_cast<float>(LevelPtr[Ord]) : 0.0f;
+            OutTri.Edge01Pad[3]  = (Ord < MetaCnt) ? static_cast<float>(ClusterPtr[Ord]) : 0.0f;
+            ShadedTris[Idx]       = OutTri;
+        }
+
+        Result.CutSignature       = JobCutSig;
+        Result.TransformSignature = JobTransformSig;
+        Result.BvhEntryCount      = static_cast<uint32_t>(LodTree.WideEntries.size());
+        Result.ActiveClusters     = JobActiveClusters;
+        Result.ActiveTriangles    = static_cast<uint32_t>(JobPrims.size());
+        Result.CulledBackfaces    = JobCulledBackfaces;
+        Result.LevelTriangleCount = JobLevelTriangles;
+        Result.LevelClusterCount  = JobLevelClusters;
+        Result.BvhBytes.resize(LodTree.WideEntries.size() * sizeof(SpatialAcceleration::WideTreeEntry));
+        std::memcpy(Result.BvhBytes.data(), LodTree.WideEntries.data(), Result.BvhBytes.size());
+        Result.ShadedTriangleBytes.resize(ShadedTris.size() * sizeof(GpuShadedTriangle96));
+        std::memcpy(Result.ShadedTriangleBytes.data(), ShadedTris.data(), Result.ShadedTriangleBytes.size());
+        return Result;
+    };
+
+    if (AsyncCutPermitted)
+    {
+        PendingNaniteBuildSignature = Signature;
+        PendingNaniteBuildFuture    = std::async(
+            std::launch::async,
+            BuildCutPayloadJob,
+            Signature,
+            TransformSignature,
+            ActiveClusters,
+            CulledBackfaces,
+            LevelTriangles,
+            LevelClusters,
+            std::move(LodPrims),
+            std::move(LodNormals),
+            std::move(LodPrimLevel),
+            std::move(LodPrimCluster));
+        NaniteLodStats.Enabled = true;
+        return;
+    }
+
+    WaitPendingNaniteBuild();
+    CachedNaniteCutPayload SyncBuilt = BuildCutPayloadJob(
+        Signature,
+        TransformSignature,
+        ActiveClusters,
+        CulledBackfaces,
+        LevelTriangles,
+        LevelClusters,
+        std::move(LodPrims),
+        std::move(LodNormals),
+        std::move(LodPrimLevel),
+        std::move(LodPrimCluster));
+    if (SyncBuilt.BvhEntryCount == 0u)
     {
         NaniteLodStats.Enabled = false;
         return;
     }
-
-    const uint64_t BvhBytes = LodTree.WideEntries.size() * sizeof(SpatialAcceleration::WideTreeEntry);
-    if (!UploadToDeviceBuffer(BvhEntryBuffer, LodTree.WideEntries.data(), BvhBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
-    {
-        NaniteLodStats.Enabled = false;
-        return;
-    }
-    UploadedBvhCount = static_cast<uint32_t>(LodTree.WideEntries.size());
-
-    const bool HasNormals = (LodTree.PrimitiveNormals.size() == LodTree.Primitives.size());
-    std::vector<GpuShadedTriangle96> ShadedTris(LodTree.Primitives.size());
-    for (std::size_t Idx = 0u; Idx < LodTree.Primitives.size(); ++Idx)
-    {
-        const auto& Prim = LodTree.Primitives[Idx];
-        Mathematics::Axis3D N0 = HasNormals ? LodTree.PrimitiveNormals[Idx].Normal0 : Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02), { 0.0f, 0.0f, 1.0f });
-        Mathematics::Axis3D N1 = HasNormals ? LodTree.PrimitiveNormals[Idx].Normal1 : N0;
-        Mathematics::Axis3D N2 = HasNormals ? LodTree.PrimitiveNormals[Idx].Normal2 : N0;
-        GpuShadedTriangle96 OutTri {};
-        OutTri.Corner0Pad[0]  = Prim.Corner0.X;
-        OutTri.Corner0Pad[1]  = Prim.Corner0.Y;
-        OutTri.Corner0Pad[2]  = Prim.Corner0.Z;
-        OutTri.Edge01Pad[0]   = Prim.Edge01.X;
-        OutTri.Edge01Pad[1]   = Prim.Edge01.Y;
-        OutTri.Edge01Pad[2]   = Prim.Edge01.Z;
-        OutTri.Edge02Pad[0]   = Prim.Edge02.X;
-        OutTri.Edge02Pad[1]   = Prim.Edge02.Y;
-        OutTri.Edge02Pad[2]   = Prim.Edge02.Z;
-        OutTri.Normal0Pad[0]  = N0.X;
-        OutTri.Normal0Pad[1]  = N0.Y;
-        OutTri.Normal0Pad[2]  = N0.Z;
-        OutTri.Normal1Pad[0]  = N1.X;
-        OutTri.Normal1Pad[1]  = N1.Y;
-        OutTri.Normal1Pad[2]  = N1.Z;
-        OutTri.Normal2Slot[0] = N2.X;
-        OutTri.Normal2Slot[1] = N2.Y;
-        OutTri.Normal2Slot[2] = N2.Z;
-        OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
-        // Nanite debug packing in spare pad lanes: level in Corner0Pad.w, cluster in Edge01Pad.w
-        const uint32_t Ord = Prim.PrimitiveOrdinal;
-        OutTri.Corner0Pad[3] = (Ord < LodPrimLevel.size()) ? static_cast<float>(LodPrimLevel[Ord]) : 0.0f;
-        OutTri.Edge01Pad[3]  = (Ord < LodPrimCluster.size()) ? static_cast<float>(LodPrimCluster[Ord]) : 0.0f;
-        ShadedTris[Idx]       = OutTri;
-    }
-    const uint64_t TriBytes = ShadedTris.size() * sizeof(GpuShadedTriangle96);
-    if (!UploadToDeviceBuffer(ShadedTriangleBuffer, ShadedTris.data(), TriBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT))
-    {
-        NaniteLodStats.Enabled = false;
-        return;
-    }
-
-    const uint32_t PreviousRebuilds = NaniteLodStats.GeometryRebuildCount;
-    NaniteLodStats = {};
-    NaniteLodStats.Enabled              = true;
-    NaniteLodStats.ActiveClusterCount   = ActiveClusters;
-    NaniteLodStats.ActiveTriangleCount  = static_cast<uint32_t>(LodPrims.size());
-    NaniteLodStats.FullTriangleCount    = static_cast<uint32_t>(Scene.SceneTree.Primitives.size());
-    NaniteLodStats.GeometryRebuildCount = PreviousRebuilds + 1u;
-    for (uint32_t Level = 0u; Level < 8u; ++Level)
-    {
-        NaniteLodStats.LevelTriangleCount[Level] = LevelTriangles[Level];
-        NaniteLodStats.LevelClusterCount[Level]  = LevelClusters[Level];
-    }
-    CachedNaniteCutSignature = Signature;
-    NaniteLodBuffersActive   = true;
+    const auto* Stored = RememberCachedPayload(std::move(SyncBuilt));
+    ApplyNaniteCutPayload(*Stored);
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -2319,14 +2705,24 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         return false;
     }
 
+    const auto StartClock = std::chrono::steady_clock::now();
+    LastViewportTiming = {};
+
     if (!SceneUploadedOnce)
     {
         SynchronizeSceneResources(Scene, true);
     }
-    RefreshNaniteLodGeometry(Config, Camera, Scene);
+    if (LastSceneSyncMilliseconds > 0.0f)
+    {
+        LastViewportTiming.SceneSyncGpuMs += LastSceneSyncMilliseconds;
+        LastSceneSyncMilliseconds = 0.0f;
+    }
 
-    const auto StartClock = std::chrono::steady_clock::now();
-    LastViewportTiming = {};
+    const auto LodSyncStart = std::chrono::steady_clock::now();
+    RefreshNaniteLodGeometry(Config, Camera, Scene, !CopyToReadbackStaging);
+    const auto LodSyncEnd = std::chrono::steady_clock::now();
+    LastViewportTiming.SceneSyncGpuMs += static_cast<float>(
+        std::chrono::duration<double, std::milli>(LodSyncEnd - LodSyncStart).count());
 
     const uint32_t WidthPx    = std::max(1u, Camera.ViewportWidthPx);
     const uint32_t HeightPx   = std::max(1u, Camera.ViewportHeightPx);
@@ -2417,28 +2813,63 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const bool DynamicInstancesChanged =
         !Scene.ClusterInstances.empty() && SynchronizeLocalSdfResources(Scene);
     const Mathematics::Axis3D DesiredClipFocus = ResolveDynamicClipFocusWorld(&Camera, Scene);
-    const float CurrentFineHalf   = std::max(3.2f, CachedFineGdfCenterSpan[3]);
-    const float FineVoxelStep     = (2.0f * CurrentFineHalf) / 64.0f;
-    const Mathematics::Axis3D FocusDelta {
-        DesiredClipFocus.X - ActiveClipFocusWorld.X,
-        DesiredClipFocus.Y - ActiveClipFocusWorld.Y,
-        DesiredClipFocus.Z - ActiveClipFocusWorld.Z,
-    };
-    const float FocusShiftSq = Mathematics::EvaluateDot(FocusDelta, FocusDelta);
-    const float ScrollThreshold = FineVoxelStep * 2.5f;
-    const bool ClipFocusScrolled =
-        !ActiveClipFocusInitialized || (FocusShiftSq > ScrollThreshold * ScrollThreshold);
     const bool SunDirectionShifted = Mathematics::EvaluateDot(SunDir, LastSyncedSunDir) < 0.99995f;
 
-    if (ShadowCascadeProgramHandle != UINT32_MAX &&
-        (DynamicInstancesChanged || ClipFocusScrolled || SunDirectionShifted))
+    auto DistSq3 = [](const Mathematics::Axis3D& A, const Mathematics::Axis3D& B) noexcept -> float
+    {
+        const float DX = A.X - B.X;
+        const float DY = A.Y - B.Y;
+        const float DZ = A.Z - B.Z;
+        return DX * DX + DY * DY + DZ * DZ;
+    };
+
+    uint32_t PrecomputeMask = 0u;
+    if (!ActiveClipFocusInitialized || !CascadeFocusInitialized || DynamicInstancesChanged || SunDirectionShifted)
+    {
+        PrecomputeMask = kPrecomputeFullMask;
+    }
+    else
+    {
+        if (DistSq3(DesiredClipFocus, LastFineShadowFocusWorld) >= (1.15f * 1.15f))
+        {
+            PrecomputeMask |= kPrecomputeFineShadow;
+        }
+        if (DistSq3(DesiredClipFocus, LastCoarseShadowFocusWorld) >= (3.20f * 3.20f))
+        {
+            PrecomputeMask |= kPrecomputeCoarseShadow;
+        }
+        const bool DistanceRadiosityActive =
+            (Config.Engine != WorldRenderEngine::MatCap) || (Config.DebugChannel >= 12u);
+        if (DistanceRadiosityActive)
+        {
+            const float FineGdfScrollM =
+                (!CopyToReadbackStaging && Config.Engine == WorldRenderEngine::RealTimeGiHighEnd && Config.DebugChannel == 0u)
+                    ? 1.55f
+                    : 0.68f;
+            if (DistSq3(DesiredClipFocus, LastFineGdfFocusWorld) >= (FineGdfScrollM * FineGdfScrollM))
+            {
+                PrecomputeMask |= (kPrecomputeFineGdf | kPrecomputeRadiosity);
+                if (CopyToReadbackStaging)
+                {
+                    PrecomputeMask |= kPrecomputeSecondBounce;
+                }
+            }
+            if (DistSq3(DesiredClipFocus, LastCoarseGdfFocusWorld) >= (2.10f * 2.10f))
+            {
+                PrecomputeMask |= kPrecomputeCoarseGdf;
+            }
+        }
+    }
+
+    if (ShadowCascadeProgramHandle != UINT32_MAX && PrecomputeMask != 0u)
     {
         ActiveClipFocusWorld       = DesiredClipFocus;
         ActiveClipFocusInitialized = true;
         const auto PreSyncStart = std::chrono::steady_clock::now();
-        (void)DispatchGpuScenePrecompute(Scene, true);
+        const bool RebuildGdf   = ((PrecomputeMask & (kPrecomputeFineGdf | kPrecomputeCoarseGdf)) != 0u);
+        (void)DispatchGpuScenePrecompute(Scene, RebuildGdf, PrecomputeMask);
         const auto PreSyncEnd = std::chrono::steady_clock::now();
-        LastViewportTiming.SceneSyncGpuMs = static_cast<float>(
+        LastViewportTiming.SceneSyncGpuMs += static_cast<float>(
             std::chrono::duration<double, std::milli>(PreSyncEnd - PreSyncStart).count());
     }
     Uniforms.SunDirConeTan[0]       = SunDir.X;
@@ -2961,7 +3392,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             LightingSig != LastRadiosityLightingSignature)
         {
             const auto RadSyncStart = std::chrono::steady_clock::now();
-            (void)DispatchGpuScenePrecompute(Scene, false);
+            (void)DispatchGpuScenePrecompute(Scene, false, kPrecomputeRadiosity | kPrecomputeSecondBounce);
             const auto RadSyncEnd = std::chrono::steady_clock::now();
             LastViewportTiming.SceneSyncGpuMs += static_cast<float>(
                 std::chrono::duration<double, std::milli>(RadSyncEnd - RadSyncStart).count());
@@ -3375,7 +3806,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     LastViewportTiming.HardwareGpuActive   = QueryHardwareGpuActive();
     LastViewportTiming.WorldDispatched     = true;
     LastViewportTiming.AdapterName         = std::string(QueryAdapterTitle());
-    LastViewportTiming.GpuHostSubmitWaitMs = std::max(0.0f, (TotalDispatchMs - LastViewportTiming.GpuTotalPassMs)) + CpuUniformMs * 0.0f + CopyMs * 0.0f;
+    LastViewportTiming.GpuHostSubmitWaitMs = std::max(
+        0.0f,
+        TotalDispatchMs - LastViewportTiming.GpuTotalPassMs - LastViewportTiming.SceneSyncGpuMs) + CpuUniformMs * 0.0f + CopyMs * 0.0f;
     if (LastViewportTiming.SceneSyncGpuMs <= 0.0f && LastSceneSyncMilliseconds > 0.0f)
     {
         LastViewportTiming.SceneSyncGpuMs = LastSceneSyncMilliseconds;

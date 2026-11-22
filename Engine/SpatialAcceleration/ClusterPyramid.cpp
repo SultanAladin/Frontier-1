@@ -943,27 +943,37 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
     const float AllowedPx     = std::max(0.0f, MaxAllowedPixelError);
 
     // 📝 Group-uniform distance metric ensures all finer clusters in an EnclosingGroup transition together!
-    std::unordered_map<uint32_t, float> GroupMinDistance;
-    for (const ClusterHeaderEntry& Cluster : Clusters)
+    const uint32_t ClusterCount   = static_cast<uint32_t>(Clusters.size());
+    const auto*    ClusterPtr     = Clusters.data();
+    uint32_t       MaxGroupOrd    = 0u;
+    std::vector<float> SelfDistances(ClusterCount);
+    float*         SelfDistPtr    = SelfDistances.data();
+    for (uint32_t Idx = 0u; Idx < ClusterCount; ++Idx)
     {
-        if (Cluster.EnclosingGroupOrdinal == 0u)
-        {
-            continue;
-        }
-        const float RawDist = std::max(
+        const ClusterHeaderEntry& Cluster = ClusterPtr[Idx];
+        SelfDistPtr[Idx] = std::max(
             1.0e-3f,
             Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.SphereCenter) - Cluster.SphereRadiusMeters);
-        const auto Found = GroupMinDistance.find(Cluster.EnclosingGroupOrdinal);
-        if (Found == GroupMinDistance.end() || RawDist < Found->second)
+        MaxGroupOrd = std::max(MaxGroupOrd, Cluster.EnclosingGroupOrdinal);
+    }
+
+    std::vector<float> GroupMinDistance(static_cast<std::size_t>(MaxGroupOrd) + 1u, std::numeric_limits<float>::max());
+    float*             GroupMinPtr = GroupMinDistance.data();
+    for (uint32_t Idx = 0u; Idx < ClusterCount; ++Idx)
+    {
+        const uint32_t GroupOrd = ClusterPtr[Idx].EnclosingGroupOrdinal;
+        if (GroupOrd != 0u && SelfDistPtr[Idx] < GroupMinPtr[GroupOrd])
         {
-            GroupMinDistance[Cluster.EnclosingGroupOrdinal] = RawDist;
+            GroupMinPtr[GroupOrd] = SelfDistPtr[Idx];
         }
     }
 
+    Selection.ActiveClusterIndices.reserve(ClusterCount / 2u + 1u);
+
     // Evaluate each cluster against its self distance and enclosing group distance
-    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Clusters.size()); ++Idx)
+    for (uint32_t Idx = 0u; Idx < ClusterCount; ++Idx)
     {
-        const ClusterHeaderEntry& Cluster = Clusters[Idx];
+        const ClusterHeaderEntry& Cluster = ClusterPtr[Idx];
         const uint32_t EffectiveCoarsestLevel = std::min(
             CoarsestAllowedLevel,
             MaterialCoarsestAllowedLevels[Cluster.DominantMaterialOrdinal]);
@@ -971,11 +981,9 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
         {
             continue; // Per-asset / per-material final-level cap: coarser LOD exists in the bake but is never selected
         }
-        const float SelfDist = std::max(
-            1.0e-3f,
-            Mathematics::EvaluateDistance(CameraWorldPosition, Cluster.SphereCenter) - Cluster.SphereRadiusMeters);
+        const float SelfDist         = SelfDistPtr[Idx];
         const float CoarserGroupDist = (Cluster.EnclosingGroupOrdinal != 0u)
-            ? GroupMinDistance[Cluster.EnclosingGroupOrdinal]
+            ? GroupMinPtr[Cluster.EnclosingGroupOrdinal]
             : SelfDist;
 
         // When the coarser replacement is capped out, this cluster is terminal (never replaced).

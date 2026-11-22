@@ -397,6 +397,117 @@ int main()
         NaniteStatsAtDist[1].ActiveTriangleCount > NaniteStatsAtDist[2].ActiveTriangleCount,
         "Nanite active triangle count drops monotonically with camera distance (5.8 m -> 15.5 m -> 34.0 m)");
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // VALIDATION 4: Open GroundPlane Clipmap Seam Continuity (GTX GDF GI + HighEnd BVH4 GI)
+    // -----------------------------------------------------------------------------------------------------------------
+    {
+        ShowcaseWorldSceneBundle BlankFloorBundle {};
+        BuildBlankPlaneSkyScene(BlankFloorBundle, ViewW, ViewH);
+        GpuSeq.SynchronizeSceneResources(BlankFloorBundle.Scene, true);
+
+        PerspectiveCameraBasis FloorOverviewCam = BlankFloorBundle.EditorCamera;
+        FloorOverviewCam.CameraOrigin    = { 0.0f, -15.8f, 10.6f };
+        FloorOverviewCam.TargetPoint     = { 0.0f,  -0.5f,  0.0f };
+        FloorOverviewCam.ViewportWidthPx = ViewW;
+        FloorOverviewCam.ViewportHeightPx= ViewH;
+
+        auto RenderFloorMode = [&](uint32_t DebugCh, WorldRenderEngine Mode)
+        {
+            WorldRenderConfiguration Cfg {};
+            Cfg.Engine           = Mode;
+            Cfg.ShadowAlgorithm  = (Mode == WorldRenderEngine::RealTimeGiHighEnd)
+                ? SolarShadowAlgorithm::WideTreeRayQuery
+                : SolarShadowAlgorithm::ContactPcss;
+            Cfg.NaniteLodEnabled = false;
+            Cfg.DebugChannel     = DebugCh;
+            std::vector<uint8_t> OutPx {};
+            const bool Ok = GpuSeq.RenderWorldViewportWithEngine(Cfg, 0u, FloorOverviewCam, BlankFloorBundle.Scene, OutPx);
+            return std::pair<bool, std::vector<uint8_t>>{ Ok, std::move(OutPx) };
+        };
+
+        auto [MaskOk, FloorCascadeMask] = RenderFloorMode(16u, WorldRenderEngine::RealTimeGiGtxLowEnd);
+        auto [GtxFloorOk, GtxFloorRgba] = RenderFloorMode(0u,  WorldRenderEngine::RealTimeGiGtxLowEnd);
+        auto [BvhFloorOk, BvhFloorRgba] = RenderFloorMode(0u,  WorldRenderEngine::RealTimeGiHighEnd);
+
+        auto MeasureClipmapSeamStep = [&](const std::vector<uint8_t>& LitRgba) -> std::pair<float, float>
+        {
+            double InsideSum  = 0.0;
+            uint32_t InsideN  = 0u;
+            double OutsideSum = 0.0;
+            uint32_t OutsideN = 0u;
+            float MaxEdgeStep = 0.0f;
+
+            auto PixelLuma = [&](uint32_t X, uint32_t Y) -> float
+            {
+                float Sum = 0.0f;
+                for (int32_t Dy = -1; Dy <= 1; ++Dy)
+                {
+                    const uint32_t Sy = static_cast<uint32_t>(std::clamp(static_cast<int32_t>(Y) + Dy, 0, static_cast<int32_t>(ViewH) - 1));
+                    for (int32_t Dx = -1; Dx <= 1; ++Dx)
+                    {
+                        const uint32_t Sx = static_cast<uint32_t>(std::clamp(static_cast<int32_t>(X) + Dx, 0, static_cast<int32_t>(ViewW) - 1));
+                        const std::size_t Off = (static_cast<std::size_t>(Sy) * ViewW + Sx) * 4u;
+                        Sum += 0.2126f * static_cast<float>(LitRgba[Off + 0u]) +
+                               0.7152f * static_cast<float>(LitRgba[Off + 1u]) +
+                               0.0722f * static_cast<float>(LitRgba[Off + 2u]);
+                    }
+                }
+                return Sum * (1.0f / 9.0f);
+            };
+            auto VerifyFineGreen = [&](uint32_t X, uint32_t Y) -> bool
+            {
+                const std::size_t Off = (static_cast<std::size_t>(Y) * ViewW + X) * 4u;
+                return (FloorCascadeMask[Off + 1u] > 140u) && (FloorCascadeMask[Off + 1u] > FloorCascadeMask[Off + 0u] + 30u);
+            };
+            auto VerifyCoarseYellow = [&](uint32_t X, uint32_t Y) -> bool
+            {
+                const std::size_t Off = (static_cast<std::size_t>(Y) * ViewW + X) * 4u;
+                return (FloorCascadeMask[Off + 0u] > 120u) && (FloorCascadeMask[Off + 1u] > 100u) &&
+                       (FloorCascadeMask[Off + 0u] + 20u >= FloorCascadeMask[Off + 1u]);
+            };
+
+            for (uint32_t Y = ViewH / 3u; Y < (ViewH * 9u) / 10u; ++Y)
+            {
+                for (uint32_t X = 24u; X + 24u < ViewW; ++X)
+                {
+                    if (VerifyFineGreen(X, Y) && VerifyCoarseYellow(X - 6u, Y))
+                    {
+                        const float InL  = PixelLuma(X + 6u, Y);
+                        const float OutL = PixelLuma(X - 6u, Y);
+                        InsideSum  += InL;  ++InsideN;
+                        OutsideSum += OutL; ++OutsideN;
+                        MaxEdgeStep = std::max(MaxEdgeStep, std::fabs(InL - OutL));
+                    }
+                    if (VerifyFineGreen(X, Y) && VerifyCoarseYellow(X + 6u, Y))
+                    {
+                        const float InL  = PixelLuma(X - 6u, Y);
+                        const float OutL = PixelLuma(X + 6u, Y);
+                        InsideSum  += InL;  ++InsideN;
+                        OutsideSum += OutL; ++OutsideN;
+                        MaxEdgeStep = std::max(MaxEdgeStep, std::fabs(InL - OutL));
+                    }
+                }
+            }
+            const float MeanDiff = (InsideN > 0u && OutsideN > 0u)
+                ? static_cast<float>(std::fabs((InsideSum / InsideN) - (OutsideSum / OutsideN)))
+                : 999.0f;
+            return { MeanDiff, MaxEdgeStep };
+        };
+
+        const auto [GtxMeanSeam, GtxMaxStep] = MeasureClipmapSeamStep(GtxFloorRgba);
+        const auto [BvhMeanSeam, BvhMaxStep] = MeasureClipmapSeamStep(BvhFloorRgba);
+        std::printf(
+            "[DynamicClipmapNaniteViewportValidation] OpenFloor Clipmap Seam [0..255]: "
+            "GTX(MeanStep=%.2f, MaxStep=%.2f) | BVH4(MeanStep=%.2f, MaxStep=%.2f)\n",
+            GtxMeanSeam, GtxMaxStep, BvhMeanSeam, BvhMaxStep);
+
+        Checklist.Verify(MaskOk && GtxFloorOk && BvhFloorOk, "Rendered Blank GroundPlane Clipmap Seam views (GTX GI + BVH4 GI)");
+        Checklist.Verify(GtxMeanSeam < 1.25f && GtxMaxStep < 2.50f, "GTX GDF GI open floor has zero bright camera-following clipmap box seam");
+        Checklist.Verify(BvhMeanSeam < 1.25f && BvhMaxStep < 2.50f, "HighEnd BVH4 GI open floor has zero bright camera-following clipmap box seam");
+        Checklist.Verify(WriteSingleViewportPng(OutDir / "09_OpenFloorClipmapSeam_GtxGi.png",  ViewW, ViewH, GtxFloorRgba), "Saved 09_OpenFloorClipmapSeam_GtxGi.png");
+        Checklist.Verify(WriteSingleViewportPng(OutDir / "10_OpenFloorClipmapSeam_Bvh4Gi.png", ViewW, ViewH, BvhFloorRgba), "Saved 10_OpenFloorClipmapSeam_Bvh4Gi.png");
+    }
+
     // Write standalone high-resolution screenshots + labeled comparison sheets
     Checklist.Verify(WriteSingleViewportPng(OutDir / "01_SdfCascade_VehicleLeft.png",       ViewW, ViewH, CascadeLeftRgba),          "Saved 01_SdfCascade_VehicleLeft.png");
     Checklist.Verify(WriteSingleViewportPng(OutDir / "02_SdfCascade_VehicleMovedRight.png", ViewW, ViewH, CascadeRightFixedCamRgba), "Saved 02_SdfCascade_VehicleMovedRight.png");

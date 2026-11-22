@@ -81,22 +81,56 @@ struct ViewportTimingBreakdown
     }
 }
 
+namespace Detail
+{
+struct PersistentTimingLogChannel
+{
+    std::ofstream         Stream {};
+    std::filesystem::path OpenPath {};
+    uint32_t              UnflushedLines = 0u;
+};
+
+inline PersistentTimingLogChannel& AccessTimingLogChannel()
+{
+    static PersistentTimingLogChannel Instance {};
+    return Instance;
+}
+} // namespace Detail
+
 inline void InitializeTimingLogFile(const std::filesystem::path& LogPath, std::string_view AdapterName, bool HwGpu)
 {
-    std::ofstream Out(LogPath, std::ios::trunc);
-    if (!Out)
+    auto& LogChannel = Detail::AccessTimingLogChannel();
+    if (LogChannel.Stream.is_open())
+    {
+        LogChannel.Stream.close();
+    }
+    LogChannel.Stream.open(LogPath, std::ios::out | std::ios::trunc);
+    LogChannel.OpenPath       = LogPath;
+    LogChannel.UnflushedLines = 0u;
+    if (!LogChannel.Stream)
     {
         return;
     }
-    Out << "# Frontier Per-Stage Timing Log\n";
-    Out << "# Adapter: " << AdapterName << " | HardwareGPU: " << (HwGpu ? "YES" : "NO") << "\n";
-    Out << "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
+    LogChannel.Stream << "# Frontier Per-Stage Timing Log\n";
+    LogChannel.Stream << "# Adapter: " << AdapterName << " | HardwareGPU: " << (HwGpu ? "YES" : "NO") << "\n";
+    LogChannel.Stream << "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
+    LogChannel.Stream.flush();
 }
 
 inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const ViewportTimingBreakdown& T, const char* ReasonTag = "SAMPLE")
 {
-    std::ofstream Out(LogPath, std::ios::app);
-    if (!Out)
+    auto& LogChannel = Detail::AccessTimingLogChannel();
+    if (!LogChannel.Stream.is_open() || LogChannel.OpenPath != LogPath)
+    {
+        if (LogChannel.Stream.is_open())
+        {
+            LogChannel.Stream.close();
+        }
+        LogChannel.Stream.open(LogPath, std::ios::out | std::ios::app);
+        LogChannel.OpenPath       = LogPath;
+        LogChannel.UnflushedLines = 0u;
+    }
+    if (!LogChannel.Stream)
     {
         return;
     }
@@ -129,7 +163,12 @@ inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const View
         T.GizmoOverlayMs,
         T.DesktopPollAndUiMs,
         T.SwapchainPresentMs);
-    Out << Line;
+    LogChannel.Stream.write(Line, static_cast<std::streamsize>(std::char_traits<char>::length(Line)));
+    if (++LogChannel.UnflushedLines >= 24u)
+    {
+        LogChannel.Stream.flush();
+        LogChannel.UnflushedLines = 0u;
+    }
 }
 
 } // namespace Frontier
