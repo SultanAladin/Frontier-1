@@ -1,0 +1,13 @@
+{
+  "Summary": {
+    "RestartAt1": {
+      "MeanAbsoluteLevels": 5.630746527777778,
+      "PixelsOffByMoreThan8Levels": 0.16178819444444445
+    },
+    "ReprojectedAt1": {
+      "MeanAbsoluteLevels": 5.265127314814815,
+      "PixelsOffByMoreThan8Levels": 0.14326388888888889
+    }
+  },
+  "Note": "320 x 180 Hero after a 0.05 rad orbit from 32 spp; 8-bit display levels vs 64 spp at the moved view."
+}

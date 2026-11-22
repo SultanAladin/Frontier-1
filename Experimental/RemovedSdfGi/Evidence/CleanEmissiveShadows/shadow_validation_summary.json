@@ -1,0 +1,25 @@
+{
+  "denoiser_enabled": false,
+  "deform_rig_update_ms": 0.080977,
+  "shadow_rmse_vs_128spp_ref": {
+    "before_engine_sdf": 0.417013,
+    "cand1_hybrid_cone_capsules": 0.298272,
+    "cand2_surfel_disks_capsules": 0.297254,
+    "cand3_clipmap_cones_capsules": 0.306751
+  },
+  "lit_hdr_rmse_vs_ref": {
+    "before_engine_sdf": 0.196802,
+    "cand1_hybrid_stokes": 0.133973,
+    "cand2_surfel_ddgi": 0.181356,
+    "cand3_clipmap_l1": 0.246371
+  },
+  "timings_ms_560x315": {
+    "before_engine_sdf": 70.6497,
+    "ref_128spp_bvh": 1860.41,
+    "cand1_hybrid_cone": 616.655,
+    "cand2_surfel_disks": 806.37,
+    "cand3_clipmap_cones": 318.792
+  },
+  "verified": 11,
+  "failed": 0
+}
