@@ -77,13 +77,13 @@ struct HueCounts
         {
             ++Counts.GreenDominant;
         }
+        else if (R > 120u && G > 30u && G < 170u && B < 80u && R > G + 40u)
+        {
+            ++Counts.OrangeDominant;
+        }
         else if (R > 120u && G > 80u && B < 90u && R >= G)
         {
             ++Counts.YellowDominant;
-        }
-        else if (R > 120u && G > 30u && G < 170u && B < 80u && R > G + 30u)
-        {
-            ++Counts.OrangeDominant;
         }
         const std::size_t Key = static_cast<std::size_t>(((R >> 3u) << 10u) | ((G >> 3u) << 5u) | (B >> 3u));
         if (!Seen[Key])

@@ -1194,9 +1194,9 @@ void BuildVehicleClearSkyDefaultScene(
             const std::array<uint32_t, 3u> Loop {{ V0, V1, V2 }};
             (void)VehicleGeom->Network.AppendFace(Loop, {}, {}, 0u, SlotMat);
         }
-        (void)VehicleGeom->Pyramid.BuildFromPolygonNetwork(VehicleGeom->Network, 3u);
+        (void)VehicleGeom->Pyramid.BuildFromPolygonNetwork(VehicleGeom->Network, 5u);
         const uint16_t GlassSlot = VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::VehicleGlass)];
-        VehicleGeom->Pyramid.ConfigureMaterialCoarsestAllowedLevel(static_cast<uint8_t>(GlassSlot & 0xFFu), 1u);
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestAllowedLevel(static_cast<uint8_t>(GlassSlot & 0xFFu), 2u);
         (void)BakeAssetSignedLocalSdfFromSmoothTriangles(
             VehicleEntry.LocalSmoothTriangles,
             VehicleEntry.AuthoredDimensions,
@@ -1843,7 +1843,8 @@ bool SynchronizeShowcaseGalleryFromOutliner(
 bool SynchronizeShowcaseGallerySceneLive(
     OutlinerPanel&            InOutOutliner,
     ShowcaseWorldSceneBundle& InOutBundle,
-    bool&                     OutRequiresAccelerationRebuild)
+    bool&                     OutRequiresAccelerationRebuild,
+    bool                      DeferCpuAccelerationForGpuDynamic)
 {
     OutRequiresAccelerationRebuild = false;
     bool Changed                   = false;
@@ -2070,7 +2071,7 @@ bool SynchronizeShowcaseGallerySceneLive(
         }
     }
 
-    if (AccelInvalidated || OutRequiresAccelerationRebuild)
+    if (OutRequiresAccelerationRebuild || (AccelInvalidated && !DeferCpuAccelerationForGpuDynamic))
     {
         RebuildShowcaseSceneAcceleration(InOutBundle);
         OutRequiresAccelerationRebuild = true;
@@ -2078,8 +2079,11 @@ bool SynchronizeShowcaseGallerySceneLive(
 
     if (SynchronizeShowcaseGalleryFromOutliner(InOutOutliner, InOutBundle))
     {
-        Changed                        = true;
-        OutRequiresAccelerationRebuild = true;
+        Changed = true;
+        if (!DeferCpuAccelerationForGpuDynamic)
+        {
+            OutRequiresAccelerationRebuild = true;
+        }
     }
 
     return Changed;

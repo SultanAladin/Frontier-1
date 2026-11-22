@@ -50,6 +50,18 @@ public:
     [[nodiscard]] uint32_t                   QueryProgressiveSampleCount() const noexcept { return ProgressiveSampleCount; }
     void                                       ResetProgressiveAccumulation() noexcept { ProgressiveSampleCount = 0u; }
 
+    // Live Global Distance Field & dynamic instance SDF telemetry (proves 0 asset SDF rebuilds during motion).
+    struct GlobalDistanceFieldStats
+    {
+        uint32_t LocalAssetVoxelUploadCount     = 0u; // [cnt] - Static baked LocalSignedDistanceVolume uploads
+        uint32_t DynamicInstanceUploadCount     = 0u; // [cnt] - Per-instance 144 B rigid/scale transform uploads
+        uint32_t CascadeBakeCount               = 0u; // [cnt] - GPU 64^3 Fine+Coarse GDF cascade bake dispatches
+        float    FineCascadeCenterWorld[3]      {};   // [m]   - Active Fine GDF cascade center (voxel-snapped)
+        float    FineCascadeHalfSpanMeters      = 0.0f;
+        float    CoarseCascadeCenterWorld[3]    {};   // [m]   - Active Coarse GDF cascade center (voxel-snapped)
+        float    CoarseCascadeHalfSpanMeters    = 0.0f;
+    };
+
     // Live Nanite-like cluster LOD state of the geometry the viewport actually traced last frame.
     struct NaniteViewportLodStats
     {
@@ -61,8 +73,9 @@ public:
         uint32_t LevelClusterCount[8]  {};     // [cnt] - Active clusters per hierarchy level
         uint32_t GeometryRebuildCount = 0u;    // [cnt] - Times the cut changed enough to rebuild the GPU BVH
     };
-    [[nodiscard]] const NaniteViewportLodStats& QueryNaniteLodStats() const noexcept { return NaniteLodStats; }
-    [[nodiscard]] const ViewportTimingBreakdown& QueryLastTimingBreakdown() const noexcept { return LastViewportTiming; }
+    [[nodiscard]] const NaniteViewportLodStats&   QueryNaniteLodStats() const noexcept { return NaniteLodStats; }
+    [[nodiscard]] const GlobalDistanceFieldStats& QueryGlobalDistanceFieldStats() const noexcept { return DistanceFieldStats; }
+    [[nodiscard]] const ViewportTimingBreakdown&  QueryLastTimingBreakdown() const noexcept { return LastViewportTiming; }
 
     void SynchronizeSceneResources(
         const WorldSceneSpecification& Scene,
@@ -120,8 +133,11 @@ private:
         uint32_t                       WidthPx,
         uint32_t                       HeightPx);
     void UploadSolarCascadeDepth(const WorldSceneSpecification& Scene);
-    void SynchronizeLocalSdfResources(const WorldSceneSpecification& Scene);
+    [[nodiscard]] bool SynchronizeLocalSdfResources(const WorldSceneSpecification& Scene);
     [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool RebuildGeometryFields = true);
+    [[nodiscard]] Mathematics::Axis3D ResolveDynamicClipFocusWorld(
+        const PerspectiveCameraBasis*  OptionalCamera,
+        const WorldSceneSpecification& Scene) const noexcept;
     void EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx);
     // Rebuilds the GPU BVH from the per-camera monotonic cluster cut when the cut signature changes.
     void RefreshNaniteLodGeometry(
@@ -201,6 +217,9 @@ private:
     std::array<uint8_t, 128u> LastSkyViewUniformSnapshot   {};
     uint64_t               LastRadiosityLightingSignature  = 0ull;
     uint64_t               CachedLocalSdfAssetSignature    = 0ull;
+    uint64_t               CachedDynamicSdfSignature       = 0ull;
+    Mathematics::Axis3D    ActiveClipFocusWorld            { 0.0f, 0.0f, 0.0f };
+    bool                   ActiveClipFocusInitialized      = false;
     uint32_t               UploadedLocalSdfInstanceCount   = 0u;
     std::vector<std::pair<const DistanceFieldSpace::LocalSignedDistanceVolume*, uint32_t>> CachedLocalSdfOffsets {};
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
@@ -211,7 +230,8 @@ private:
     uint32_t               UploadedMaterialCount         = 0u;
     uint32_t               UploadedCatalogStarCount      = 0u;
     bool                   SceneUploadedOnce             = false;
-    NaniteViewportLodStats NaniteLodStats                {};
+    NaniteViewportLodStats   NaniteLodStats              {};
+    GlobalDistanceFieldStats DistanceFieldStats          {};
     uint64_t               CachedNaniteCutSignature      = 0u;
     bool                   NaniteLodBuffersActive        = false;
     uint32_t               FrameSequenceIndex            = 0u;

@@ -921,32 +921,70 @@ float TraceGlobalDistanceConeVisibility(
     return PointHard ? smoothstep(0.25, 0.75, MinVis) : (MinVis * MinVis * (3.0 - 2.0 * MinVis));
 }
 
-// Hemisphere cone AO over the baked Global Distance Field: 1 axial cone + 4 cones tilted 60 deg,
-// cosine weighted. This replaces the old 1-D march straight along the normal, which only measured
-// clearance directly above the point (leaking sideways occlusion, banding from its x1.85 step
-// progression, and blotchy trilinear voxel steps) and is why SDF AO looked dirty.
+// Distance-attenuated hemisphere cone AO over the baked Global Distance Field:
+// 1 axial cone + 4 cones tilted 48 deg from the surface normal, bounded to a physical contact
+// reach (~0.85 m, matching the BVH4 raytraced AO reach) with inverse-distance quadratic falloff
+// so occlusion hugs tyre contact patches, wheel wells, undercarriage crevices without leaking
+// a 2-meter grey skirt out across open ground planes.
+float TraceGlobalDistanceAmbientCone(
+    float3 Origin,
+    float3 GeomN,
+    float3 Dir,
+    float  MaxDist,
+    float  ConeTan)
+{
+    float  Vox0      = QueryFineGdfVoxelSize();
+    float  StartLift = Vox0 * 0.55;
+    float3 StartP    = Origin + GeomN * StartLift;
+    float  NdotD     = max(0.0, dot(GeomN, Dir));
+    float  T         = Vox0 * 0.55;
+    float  MaxOcc    = 0.0;
+
+    [loop]
+    for (uint Step = 0u; Step < 8u; ++Step)
+    {
+        if (T >= MaxDist) break;
+        float LocalVox = Vox0;
+        float Dist     = SampleGlobalDistanceWorld(StartP + Dir * T, LocalVox);
+
+        float SelfPlaneDist  = StartLift + T * NdotD;
+        bool  ReceiverClear  = (Dist >= SelfPlaneDist - LocalVox * 0.38);
+        float Aperture       = max(LocalVox * 0.22, T * ConeTan);
+        if (!ReceiverClear)
+        {
+            float RawOcc   = 1.0 - saturate((Dist + Aperture * 0.14) / (1.08 * Aperture));
+            float NormDist = saturate(T / MaxDist);
+            float Falloff  = (1.0 - NormDist * NormDist) / (1.0 + 1.85 * T * T);
+            MaxOcc         = max(MaxOcc, RawOcc * Falloff);
+            if (MaxOcc >= 0.96) break;
+        }
+        T += max(LocalVox * 0.52, max(max(0.0, Dist) * 0.80, Aperture * 0.55));
+    }
+    return 1.0 - saturate(MaxOcc);
+}
+
 float EvaluateGlobalDistanceAmbientOcclusion(float3 Pos, float3 N, float3 GeomN)
 {
     if (!IsGlobalDistanceFieldReady()) return 1.0;
     float Vox0   = QueryFineGdfVoxelSize();
-    float Radius = clamp(Vox0 * 16.0, 0.40, 2.75);
+    float Radius = clamp(Vox0 * 6.5, 0.45, 0.88);
 
     float3 TangentAxis = (abs(N.z) < 0.92) ? float3(0.0, 0.0, 1.0) : float3(0.0, 1.0, 0.0);
     float3 Tangent     = normalize(cross(TangentAxis, N));
     float3 Bitangent   = cross(N, Tangent);
 
-    // Axial cone (weight 1.0) + 4 tilted cones at 60 deg (weight cos(60 deg) = 0.5 each)
-    float VisSum    = TraceGlobalDistanceConeVisibility(Pos, GeomN, N, Radius, 0.42, false, 9u);
+    // Axial cone (weight 1.0) + 4 cones tilted ~48 deg (cos 48 = 0.67, sin 48 = 0.74)
+    float VisSum    = TraceGlobalDistanceAmbientCone(Pos, GeomN, N, Radius, 0.32);
     float WeightSum = 1.0;
     for (uint ConeIdx = 0u; ConeIdx < 4u; ++ConeIdx)
     {
         float  Azimuth = (float(ConeIdx) + 0.5) * 1.5707963;
-        float3 TiltDir = normalize(N * 0.5 + (Tangent * cos(Azimuth) + Bitangent * sin(Azimuth)) * 0.8660254);
-        VisSum    += 0.5 * TraceGlobalDistanceConeVisibility(Pos, GeomN, TiltDir, Radius, 0.58, false, 9u);
-        WeightSum += 0.5;
+        float3 TiltDir = normalize(N * 0.67 + (Tangent * cos(Azimuth) + Bitangent * sin(Azimuth)) * 0.74);
+        VisSum    += 0.67 * TraceGlobalDistanceAmbientCone(Pos, GeomN, TiltDir, Radius, 0.36);
+        WeightSum += 0.67;
     }
     float Ao = VisSum / WeightSum;
-    return clamp(1.0 - (1.0 - Ao) * 0.94, 0.06, 1.0);
+    return clamp(1.0 - (1.0 - Ao) * 1.32, 0.04, 1.0);
 }
 
 // Central-difference gradient of the Global Distance Field: the SDF surface normal at any point.

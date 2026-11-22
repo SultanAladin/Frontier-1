@@ -295,10 +295,24 @@ void PopulateClusterBoundsNormalCone(
         {
             const Mathematics::Axis3D UnitN = Cross * (1.0f / TwiceArea);
             const double OffsetD = -static_cast<double>(Mathematics::EvaluateDot(UnitN, P0));
-            const double Weight  = static_cast<double>(0.5f * TwiceArea);
+            const double Weight  = 1.0;
             VertexQuadrics[Tri.VertexIndex0].AccumulatePlane(UnitN, OffsetD, Weight);
             VertexQuadrics[Tri.VertexIndex1].AccumulatePlane(UnitN, OffsetD, Weight);
             VertexQuadrics[Tri.VertexIndex2].AccumulatePlane(UnitN, OffsetD, Weight);
+        }
+    }
+
+    std::unordered_map<uint32_t, double> VertexPlaneCounts;
+    for (const ClusterTriangleEntry& Tri : Working)
+    {
+        const Mathematics::Axis3D P0 = Positions[Tri.VertexIndex0];
+        const Mathematics::Axis3D P1 = Positions[Tri.VertexIndex1];
+        const Mathematics::Axis3D P2 = Positions[Tri.VertexIndex2];
+        if (Mathematics::EvaluateLength(Mathematics::EvaluateCross(P1 - P0, P2 - P0)) > 1.0e-10f)
+        {
+            VertexPlaneCounts[Tri.VertexIndex0] += 1.0;
+            VertexPlaneCounts[Tri.VertexIndex1] += 1.0;
+            VertexPlaneCounts[Tri.VertexIndex2] += 1.0;
         }
     }
 
@@ -326,13 +340,15 @@ void PopulateClusterBoundsNormalCone(
                     continue;
                 }
 
+                const double CombinedPlanes = std::max(1.0, VertexPlaneCounts[VA] + VertexPlaneCounts[VB]);
+
                 // Try collapsing VA -> VB if VA is unlocked
                 if (LockedVertex.find(VA) == LockedVertex.end())
                 {
                     SymmetricQuadric10 Combined = VertexQuadrics[VA];
                     Combined.AccumulateOther(VertexQuadrics[VB]);
                     const double EdgeLenSq = static_cast<double>(Mathematics::EvaluateLengthSquared(Positions[VB] - Positions[VA]));
-                    const double Cost      = Combined.EvaluateErrorSquared(Positions[VB]) + 1.0e-5 * EdgeLenSq;
+                    const double Cost      = (Combined.EvaluateErrorSquared(Positions[VB]) / CombinedPlanes) + 1.0e-5 * EdgeLenSq;
                     if (Cost < BestCost)
                     {
                         BestCost         = Cost;
@@ -349,7 +365,7 @@ void PopulateClusterBoundsNormalCone(
                     SymmetricQuadric10 Combined = VertexQuadrics[VB];
                     Combined.AccumulateOther(VertexQuadrics[VA]);
                     const double EdgeLenSq = static_cast<double>(Mathematics::EvaluateLengthSquared(Positions[VA] - Positions[VB]));
-                    const double Cost      = Combined.EvaluateErrorSquared(Positions[VA]) + 1.0e-5 * EdgeLenSq;
+                    const double Cost      = (Combined.EvaluateErrorSquared(Positions[VA]) / CombinedPlanes) + 1.0e-5 * EdgeLenSq;
                     if (Cost < BestCost)
                     {
                         BestCost         = Cost;
@@ -370,10 +386,11 @@ void PopulateClusterBoundsNormalCone(
 
         const float StepLinearError = std::max(
             static_cast<float>(std::sqrt(std::max(0.0, BestCost))),
-            0.25f * Mathematics::EvaluateDistance(Positions[BestFromVertex], Positions[BestToVertex]));
+            0.14f * Mathematics::EvaluateDistance(Positions[BestFromVertex], Positions[BestToVertex]));
         OutSimplifiedMaxErrorMeters = std::max(OutSimplifiedMaxErrorMeters, StepLinearError);
 
         VertexQuadrics[BestToVertex].AccumulateOther(VertexQuadrics[BestFromVertex]);
+        VertexPlaneCounts[BestToVertex] += VertexPlaneCounts[BestFromVertex];
 
         std::vector<ClusterTriangleEntry> NextTris;
         NextTris.reserve(Working.size());
@@ -536,36 +553,42 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
     {
         struct WeldKey
         {
-            uint32_t X = 0u;
-            uint32_t Y = 0u;
-            uint32_t Z = 0u;
+            int32_t X = 0;
+            int32_t Y = 0;
+            int32_t Z = 0;
             [[nodiscard]] bool operator==(const WeldKey& Rhs) const noexcept { return X == Rhs.X && Y == Rhs.Y && Z == Rhs.Z; }
         };
         struct WeldKeyHash
         {
             [[nodiscard]] std::size_t operator()(const WeldKey& Key) const noexcept
             {
-                return static_cast<std::size_t>((Key.X * 2654435761u) ^ (Key.Y * 40503u) ^ (Key.Z << 7u));
+                const uint32_t UX = static_cast<uint32_t>(Key.X);
+                const uint32_t UY = static_cast<uint32_t>(Key.Y);
+                const uint32_t UZ = static_cast<uint32_t>(Key.Z);
+                return static_cast<std::size_t>((UX * 2654435761u) ^ (UY * 40503u) ^ (UZ * 73856093u));
             }
         };
-        std::unordered_map<WeldKey, uint32_t, WeldKeyHash> WeldMap;
-        WeldMap.reserve(Network.Vertices.size());
+        std::unordered_map<WeldKey, uint32_t, WeldKeyHash> WeldRegistry;
+        WeldRegistry.reserve(Network.Vertices.size());
         std::vector<Mathematics::Axis3D> WeldedPositions;
         WeldedPositions.reserve(Network.Vertices.size());
         std::vector<uint8_t> WeldedLocks;
+        const float MaxExtent = std::max({ SceneMax.X - SceneMin.X, SceneMax.Y - SceneMin.Y, SceneMax.Z - SceneMin.Z, 1.0e-3f });
+        const float WeldInvQuantum = 1.0f / std::max(5.0e-5f, MaxExtent * 4.0e-5f);
         for (std::size_t VIdx = 0u; VIdx < Network.Vertices.size(); ++VIdx)
         {
             const Mathematics::Axis3D Pos = Network.Vertices[VIdx].Axes;
-            WeldKey Key {};
-            std::memcpy(&Key.X, &Pos.X, sizeof(float));
-            std::memcpy(&Key.Y, &Pos.Y, sizeof(float));
-            std::memcpy(&Key.Z, &Pos.Z, sizeof(float));
-            const auto Found = WeldMap.find(Key);
+            const WeldKey Key {
+                static_cast<int32_t>(std::lround(Pos.X * WeldInvQuantum)),
+                static_cast<int32_t>(std::lround(Pos.Y * WeldInvQuantum)),
+                static_cast<int32_t>(std::lround(Pos.Z * WeldInvQuantum)),
+            };
+            const auto Found = WeldRegistry.find(Key);
             uint32_t WeldedIdx = 0u;
-            if (Found == WeldMap.end())
+            if (Found == WeldRegistry.end())
             {
                 WeldedIdx = static_cast<uint32_t>(WeldedPositions.size());
-                WeldMap[Key] = WeldedIdx;
+                WeldRegistry[Key] = WeldedIdx;
                 WeldedPositions.push_back(Pos);
                 WeldedLocks.push_back(0u);
             }
@@ -745,38 +768,71 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
         });
 
         std::vector<uint32_t> NextLevelClusterIndices;
+        std::vector<uint8_t>  ConsumedInLevel(CurrentLevelClusterIndices.size(), 0u);
         bool AnyGroupReduced = false;
 
-        for (std::size_t GroupPos = 0u; GroupPos < CurrentLevelClusterIndices.size();)
+        for (std::size_t GroupPos = 0u; GroupPos < CurrentLevelClusterIndices.size(); ++GroupPos)
         {
-            // Group = up to 4 consecutive clusters sharing one material slot AND spatially
-            // adjacent to the group's first cluster (never merge across the asset, e.g. wheels).
+            if (ConsumedInLevel[GroupPos] != 0u)
+            {
+                continue;
+            }
+            // Group = up to MaxGroupClusters spatially adjacent clusters sharing one material slot
+            // (greedy nearest-neighbor within the material bucket so Morton Z-jumps never strand clusters,
+            // while still strictly forbidding cross-asset merges such as left-to-right wheels).
             const uint8_t GroupMaterial = Clusters[CurrentLevelClusterIndices[GroupPos]].DominantMaterialOrdinal;
             const ClusterHeaderEntry& GroupAnchor = Clusters[CurrentLevelClusterIndices[GroupPos]];
-            std::size_t GroupCount = 1u;
-            while (GroupCount < 4u && GroupPos + GroupCount < CurrentLevelClusterIndices.size() &&
-                   Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]].DominantMaterialOrdinal == GroupMaterial)
+            const std::size_t MaxGroupClusters = (Level >= 3u) ? 8u : 4u;
+            const float DistanceMultiplier = 2.0f + static_cast<float>(Level - 1u) * 1.15f;
+
+            std::vector<std::size_t> GroupSlotIndices;
+            GroupSlotIndices.reserve(MaxGroupClusters);
+            GroupSlotIndices.push_back(GroupPos);
+            ConsumedInLevel[GroupPos] = 1u;
+
+            while (GroupSlotIndices.size() < MaxGroupClusters)
             {
-                const ClusterHeaderEntry& Candidate = Clusters[CurrentLevelClusterIndices[GroupPos + GroupCount]];
-                const float CenterDistance = Mathematics::EvaluateDistance(Candidate.SphereCenter, GroupAnchor.SphereCenter);
-                if (CenterDistance > (GroupAnchor.SphereRadiusMeters + Candidate.SphereRadiusMeters) * 2.0f + 0.05f)
+                std::size_t BestPeerPos = CurrentLevelClusterIndices.size();
+                float       BestDist    = std::numeric_limits<float>::max();
+                for (std::size_t ScanPos = GroupPos + 1u; ScanPos < CurrentLevelClusterIndices.size(); ++ScanPos)
+                {
+                    if (ConsumedInLevel[ScanPos] != 0u)
+                    {
+                        continue;
+                    }
+                    const ClusterHeaderEntry& Candidate = Clusters[CurrentLevelClusterIndices[ScanPos]];
+                    if (Candidate.DominantMaterialOrdinal != GroupMaterial)
+                    {
+                        break; // Sorted by DominantMaterialOrdinal first
+                    }
+                    const float CenterDistance = Mathematics::EvaluateDistance(Candidate.SphereCenter, GroupAnchor.SphereCenter);
+                    const float MaxAllowedDist = (GroupAnchor.SphereRadiusMeters + Candidate.SphereRadiusMeters) * DistanceMultiplier + 0.12f;
+                    if (CenterDistance <= MaxAllowedDist && CenterDistance < BestDist)
+                    {
+                        BestDist    = CenterDistance;
+                        BestPeerPos = ScanPos;
+                    }
+                }
+                if (BestPeerPos >= CurrentLevelClusterIndices.size())
                 {
                     break;
                 }
-                ++GroupCount;
+                ConsumedInLevel[BestPeerPos] = 1u;
+                GroupSlotIndices.push_back(BestPeerPos);
             }
-            if (GroupCount < 2u)
+
+            if (GroupSlotIndices.size() < 2u)
             {
-                // Singleton (last cluster of its material) stays terminal at CoarserThresholdErrorMeters = +inf
-                GroupPos += 1u;
+                // Keep spatial singleton cluster available to merge at the next coarser level
+                NextLevelClusterIndices.push_back(CurrentLevelClusterIndices[GroupPos]);
                 continue;
             }
 
             std::vector<ClusterTriangleEntry> MergedTris;
             float MaxFinerError = 0.0f;
-            for (std::size_t Sub = 0u; Sub < GroupCount; ++Sub)
+            for (const std::size_t SlotPos : GroupSlotIndices)
             {
-                const ClusterHeaderEntry& Finer = Clusters[CurrentLevelClusterIndices[GroupPos + Sub]];
+                const ClusterHeaderEntry& Finer = Clusters[CurrentLevelClusterIndices[SlotPos]];
                 MaxFinerError = std::max(MaxFinerError, Finer.FinerSelfErrorMeters);
                 MergedTris.insert(
                     MergedTris.end(),
@@ -784,8 +840,11 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
                     Triangles.begin() + Finer.TriangleStartOffset + Finer.TriangleCount);
             }
 
+            const uint32_t MinTargetFloor = (Level >= 3u)
+                ? (MaxTrianglesPerCluster / 4u)
+                : (MaxTrianglesPerCluster / 2u);
             const uint32_t TargetSimplifiedCount = std::max<uint32_t>(
-                MaxTrianglesPerCluster / 2u,
+                MinTargetFloor,
                 static_cast<uint32_t>(MergedTris.size() / 2u));
 
             float CollapseError = 0.0f;
@@ -799,7 +858,10 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
 
             if (SimplifiedTris.size() >= MergedTris.size())
             {
-                GroupPos += GroupCount;
+                for (const std::size_t SlotPos : GroupSlotIndices)
+                {
+                    NextLevelClusterIndices.push_back(CurrentLevelClusterIndices[SlotPos]);
+                }
                 continue;
             }
 
@@ -807,12 +869,22 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             const float MonotonicGroupError = std::max(MaxFinerError + 1.0e-4f, MaxFinerError + CollapseError);
             const uint32_t CurrentGroupOrd  = GroupOrdinalCounter++;
 
-            for (std::size_t Sub = 0u; Sub < GroupCount; ++Sub)
+            for (const std::size_t SlotPos : GroupSlotIndices)
             {
-                ClusterHeaderEntry& Finer         = Clusters[CurrentLevelClusterIndices[GroupPos + Sub]];
+                ClusterHeaderEntry& Finer         = Clusters[CurrentLevelClusterIndices[SlotPos]];
                 Finer.CoarserThresholdErrorMeters = MonotonicGroupError;
                 Finer.EnclosingGroupOrdinal       = CurrentGroupOrd;
             }
+
+            std::sort(SimplifiedTris.begin(), SimplifiedTris.end(), [&](const ClusterTriangleEntry& Left, const ClusterTriangleEntry& Right) noexcept
+            {
+                const Mathematics::Axis3D CentroidL =
+                    (Positions[Left.VertexIndex0] + Positions[Left.VertexIndex1] + Positions[Left.VertexIndex2]) * (1.0f / 3.0f);
+                const Mathematics::Axis3D CentroidR =
+                    (Positions[Right.VertexIndex0] + Positions[Right.VertexIndex1] + Positions[Right.VertexIndex2]) * (1.0f / 3.0f);
+                return EncodeMorton30(CentroidL, SceneMin, InvSceneExtent) <
+                       EncodeMorton30(CentroidR, SceneMin, InvSceneExtent);
+            });
 
             for (std::size_t Chunk = 0u; Chunk < SimplifiedTris.size(); Chunk += MaxTrianglesPerCluster)
             {
@@ -838,7 +910,6 @@ bool ClusterPyramid::BuildFromPolygonNetwork(
             }
 
             AnyGroupReduced = true;
-            GroupPos += GroupCount;
         }
 
         if (!AnyGroupReduced)

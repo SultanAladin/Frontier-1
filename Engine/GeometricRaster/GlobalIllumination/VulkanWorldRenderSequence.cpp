@@ -665,6 +665,10 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     UploadedPhotometricLamps        = 0u;
     UploadedLocalSdfInstanceCount   = 0u;
     CachedLocalSdfAssetSignature    = 0ull;
+    CachedDynamicSdfSignature       = 0ull;
+    ActiveClipFocusWorld            = { 0.0f, 0.0f, 0.0f };
+    ActiveClipFocusInitialized      = false;
+    DistanceFieldStats              = {};
     CachedLocalSdfOffsets.clear();
     FrameSequenceIndex              = 0u;
     BoundDevice                     = nullptr;
@@ -839,12 +843,14 @@ bool VulkanWorldRenderSequence::UploadToDeviceBuffer(
 //                                               SCENE BUFFER UPLOAD
 //------------------------------------------------------------------------------------------------------------------------
 
-void VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpecification& Scene)
+bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpecification& Scene)
 {
     if (!QueryReady())
     {
-        return;
+        return false;
     }
+
+    bool ResourcesChanged = false;
 
     // 1. Collect unique baked LocalSignedDistanceVolume assets across active opaque instances (uploaded once per asset set)
     std::vector<const DistanceFieldSpace::LocalSignedDistanceVolume*> UniqueVolumes;
@@ -907,6 +913,8 @@ void VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
             static_cast<uint64_t>(PackedVoxels.size()) * sizeof(float),
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
         CachedLocalSdfAssetSignature = AssetSig;
+        DistanceFieldStats.LocalAssetVoxelUploadCount += 1u;
+        ResourcesChanged = true;
     }
 
     // 2. Upload compact per-instance dynamic rigid/scale transform array (< 0.02 ms even during gizmo drag)
@@ -1021,16 +1029,103 @@ void VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
         GpuInstances.push_back(Dst);
     }
 
-    UploadedLocalSdfInstanceCount = static_cast<uint32_t>(GpuInstances.size());
-    if (GpuInstances.empty())
+    uint64_t DynSig = 14695981039346656037ull;
     {
-        GpuInstances.emplace_back();
+        const auto* RawBytes = reinterpret_cast<const uint8_t*>(GpuInstances.data());
+        const std::size_t TotalBytes = GpuInstances.size() * sizeof(GpuDynamicLocalSdfInstance144);
+        for (std::size_t ByteIdx = 0u; ByteIdx < TotalBytes; ++ByteIdx)
+        {
+            DynSig ^= static_cast<uint64_t>(RawBytes[ByteIdx]);
+            DynSig *= 1099511628211ull;
+        }
     }
-    UploadToDeviceBuffer(
-        DynamicLocalSdfInstanceBuffer,
-        GpuInstances.data(),
-        static_cast<uint64_t>(GpuInstances.size()) * sizeof(GpuDynamicLocalSdfInstance144),
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+    UploadedLocalSdfInstanceCount = static_cast<uint32_t>(GpuInstances.size());
+    if (DynSig != CachedDynamicSdfSignature || DynamicLocalSdfInstanceBuffer.BufferHandle == VK_NULL_HANDLE)
+    {
+        if (GpuInstances.empty())
+        {
+            GpuInstances.emplace_back();
+        }
+        UploadToDeviceBuffer(
+            DynamicLocalSdfInstanceBuffer,
+            GpuInstances.data(),
+            static_cast<uint64_t>(GpuInstances.size()) * sizeof(GpuDynamicLocalSdfInstance144),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        CachedDynamicSdfSignature = DynSig;
+        DistanceFieldStats.DynamicInstanceUploadCount += 1u;
+        ResourcesChanged = true;
+    }
+    return ResourcesChanged;
+}
+
+Mathematics::Axis3D VulkanWorldRenderSequence::ResolveDynamicClipFocusWorld(
+    const PerspectiveCameraBasis*  OptionalCamera,
+    const WorldSceneSpecification& Scene) const noexcept
+{
+    Mathematics::Axis3D FallbackCenter = (Scene.SceneTree.RootBoundsMin + Scene.SceneTree.RootBoundsMax) * 0.5f;
+
+    // Anchor to movable non-floor foreground assets when no live camera is supplied,
+    // or blend camera view focus with foreground assets so moving either the camera OR the car
+    // shifts the voxel-snapped SDF clipmap smoothly instead of leaving it pinned at (0, 0, 0).
+    Mathematics::Axis3D ForegroundSum { 0.0f, 0.0f, 0.0f };
+    float               ForegroundWeight = 0.0f;
+    for (const RigidClusterInstance& Inst : Scene.ClusterInstances)
+    {
+        if (Inst.TransparentGlass || Inst.UniformScale <= 1.0e-4f)
+        {
+            continue;
+        }
+        const float MaxHalf = std::max({ Inst.LocalHalfExtents.X, Inst.LocalHalfExtents.Y, Inst.LocalHalfExtents.Z }) * Inst.UniformScale;
+        if (MaxHalf > 8.0f)
+        {
+            continue; // Exclude 24 m ground slab from pinning the fine clipmap center to world origin
+        }
+        const float Weight = (Inst.LocalSdfVolume != nullptr) ? 4.0f : 1.0f;
+        ForegroundSum      = ForegroundSum + Inst.WorldTranslation * Weight;
+        ForegroundWeight  += Weight;
+    }
+    if (ForegroundWeight > 0.0f)
+    {
+        FallbackCenter = ForegroundSum * (1.0f / ForegroundWeight);
+    }
+
+    if (OptionalCamera == nullptr)
+    {
+        return FallbackCenter;
+    }
+
+    const Mathematics::Axis3D ToTarget = OptionalCamera->TargetPoint - OptionalCamera->CameraOrigin;
+    const float TargetDist = std::sqrt(std::max(0.0f, Mathematics::EvaluateDot(ToTarget, ToTarget)));
+    const Mathematics::Axis3D ViewDir = (TargetDist > 1.0e-4f)
+        ? (ToTarget * (1.0f / TargetDist))
+        : Mathematics::Axis3D{ 0.0f, 1.0f, 0.0f };
+
+    // Camera-anchored clipmap look-ahead clamped to scene bounds so flying/panning/dollying moves the Fine + Coarse GDF cascades
+    const float LookAheadMeters = std::clamp(TargetDist, 2.2f, 11.5f);
+    Mathematics::Axis3D CameraFocus = OptionalCamera->CameraOrigin + ViewDir * LookAheadMeters;
+
+    // When a foreground hero asset sits inside camera reach, anchor strongly toward it while still shifting with camera pan
+    if (ForegroundWeight > 0.0f)
+    {
+        const Mathematics::Axis3D Delta = FallbackCenter - CameraFocus;
+        const float DistToForeground = std::sqrt(Mathematics::EvaluateDot(Delta, Delta));
+        if (DistToForeground < 14.0f)
+        {
+            const float Blend = 0.72f * (1.0f - DistToForeground / 14.0f);
+            CameraFocus = CameraFocus * (1.0f - Blend) + FallbackCenter * Blend;
+        }
+    }
+
+    const Mathematics::Axis3D SceneMin = Scene.SceneTree.RootBoundsMin;
+    const Mathematics::Axis3D SceneMax = Scene.SceneTree.RootBoundsMax;
+    if (SceneMax.X > SceneMin.X + 0.5f)
+    {
+        CameraFocus.X = std::clamp(CameraFocus.X, SceneMin.X, SceneMax.X);
+        CameraFocus.Y = std::clamp(CameraFocus.Y, SceneMin.Y, SceneMax.Y);
+        CameraFocus.Z = std::clamp(CameraFocus.Z, SceneMin.Z - 1.0f, SceneMax.Z + 3.5f);
+    }
+    return CameraFocus;
 }
 
 bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool RebuildGeometryFields)
@@ -1044,7 +1139,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
 
     if (RebuildGeometryFields && !Scene.ClusterInstances.empty())
     {
-        SynchronizeLocalSdfResources(Scene);
+        (void)SynchronizeLocalSdfResources(Scene);
     }
 
     const bool AtmoActive = Scene.Atmosphere.Medium.AtmosphereEnabled || Scene.Atmosphere.Medium.OrbitalViewEnabled;
@@ -1054,19 +1149,32 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
         : Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
     LastSyncedSunDir = SunDir;
 
-    const Mathematics::Axis3D FocusCenter = (Scene.SceneTree.RootBoundsMin + Scene.SceneTree.RootBoundsMax) * 0.5f;
+    const Mathematics::Axis3D FocusCenter = ActiveClipFocusInitialized
+        ? ActiveClipFocusWorld
+        : ResolveDynamicClipFocusWorld(nullptr, Scene);
     const Mathematics::Axis3D BoundsSpan  = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
     const float MaxHalfExtent = 0.5f * std::max({ std::abs(BoundsSpan.X), std::abs(BoundsSpan.Y), std::abs(BoundsSpan.Z), 5.6f });
     const float FineGdfHalf   = std::clamp(MaxHalfExtent * 1.18f, 3.2f, 4.2f);
-    const float CoarseGdfHalf = std::max(FineGdfHalf * 3.0f, MaxHalfExtent * 1.18f);
-    CachedFineGdfCenterSpan[0]   = FocusCenter.X;
-    CachedFineGdfCenterSpan[1]   = FocusCenter.Y;
-    CachedFineGdfCenterSpan[2]   = FocusCenter.Z;
+    const float CoarseGdfHalf = FineGdfHalf * 2.5f;
+    const float FineVoxelM    = (2.0f * FineGdfHalf) / 64.0f;
+    const float CoarseVoxelM  = (2.0f * CoarseGdfHalf) / 64.0f;
+    CachedFineGdfCenterSpan[0]   = std::round(FocusCenter.X / FineVoxelM) * FineVoxelM;
+    CachedFineGdfCenterSpan[1]   = std::round(FocusCenter.Y / FineVoxelM) * FineVoxelM;
+    CachedFineGdfCenterSpan[2]   = std::round(FocusCenter.Z / FineVoxelM) * FineVoxelM;
     CachedFineGdfCenterSpan[3]   = FineGdfHalf;
-    CachedCoarseGdfCenterSpan[0] = FocusCenter.X;
-    CachedCoarseGdfCenterSpan[1] = FocusCenter.Y;
-    CachedCoarseGdfCenterSpan[2] = FocusCenter.Z;
+    CachedCoarseGdfCenterSpan[0] = std::round(FocusCenter.X / CoarseVoxelM) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[1] = std::round(FocusCenter.Y / CoarseVoxelM) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[2] = std::round(FocusCenter.Z / CoarseVoxelM) * CoarseVoxelM;
     CachedCoarseGdfCenterSpan[3] = CoarseGdfHalf;
+
+    DistanceFieldStats.FineCascadeCenterWorld[0]   = CachedFineGdfCenterSpan[0];
+    DistanceFieldStats.FineCascadeCenterWorld[1]   = CachedFineGdfCenterSpan[1];
+    DistanceFieldStats.FineCascadeCenterWorld[2]   = CachedFineGdfCenterSpan[2];
+    DistanceFieldStats.FineCascadeHalfSpanMeters   = FineGdfHalf;
+    DistanceFieldStats.CoarseCascadeCenterWorld[0] = CachedCoarseGdfCenterSpan[0];
+    DistanceFieldStats.CoarseCascadeCenterWorld[1] = CachedCoarseGdfCenterSpan[1];
+    DistanceFieldStats.CoarseCascadeCenterWorld[2] = CachedCoarseGdfCenterSpan[2];
+    DistanceFieldStats.CoarseCascadeHalfSpanMeters = CoarseGdfHalf;
 
     const Mathematics::Axis3D LightFwd    = SunDir * -1.0f;
     Mathematics::Axis3D RightAxis {};
@@ -1315,6 +1423,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(const WorldSceneSpeci
                     return false;
                 }
             }
+            DistanceFieldStats.CascadeBakeCount += 1u;
         }
         InsertPrecomputeBarrier();
 
@@ -1641,8 +1750,8 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
         }
     }
 
-    // 3c. Upload Per-Asset Signed Local SDF Voxels (once per asset set) & Dynamic Rigid Instance Buffer
-    SynchronizeLocalSdfResources(Scene);
+    // 3c. Upload Per-Asset Signed Local SDF Voxels (once per asset set) + Dynamic Rigid Instance Buffer
+    (void)SynchronizeLocalSdfResources(Scene);
 
     // 4. Build Two-Cascade Solar Shadow Depth + Global Distance Field + 2-Bounce Radiosity Volume on GPU
     if (RebuildShadows || !SceneUploadedOnce || SolarShadowDepthBuffer.BufferHandle == VK_NULL_HANDLE)
@@ -1709,11 +1818,11 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
     for (uint32_t InstIdx = 0u; InstIdx < static_cast<uint32_t>(Scene.ClusterInstances.size()); ++InstIdx)
     {
         const RigidClusterInstance& Inst = Scene.ClusterInstances[InstIdx];
-        if (Inst.TransparentGlass)
+        if (Inst.TransparentGlass || Inst.UniformScale <= 1.0e-4f)
         {
             continue;
         }
-        if (Inst.PyramidAsset == nullptr || Inst.PyramidAsset->Clusters.empty() || Inst.UniformScale <= 1.0e-4f)
+        if (Inst.PyramidAsset == nullptr || Inst.PyramidAsset->Clusters.empty())
         {
             // An instance without a baked pyramid has no LOD representation; keep full-res BVH.
             if (NaniteLodBuffersActive)
@@ -2304,11 +2413,30 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const Mathematics::Axis3D SunDir = AtmoActive
         ? SolarSolved.WorldDirectionToSun
         : Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
+
+    const bool DynamicInstancesChanged =
+        !Scene.ClusterInstances.empty() && SynchronizeLocalSdfResources(Scene);
+    const Mathematics::Axis3D DesiredClipFocus = ResolveDynamicClipFocusWorld(&Camera, Scene);
+    const float CurrentFineHalf   = std::max(3.2f, CachedFineGdfCenterSpan[3]);
+    const float FineVoxelStep     = (2.0f * CurrentFineHalf) / 64.0f;
+    const Mathematics::Axis3D FocusDelta {
+        DesiredClipFocus.X - ActiveClipFocusWorld.X,
+        DesiredClipFocus.Y - ActiveClipFocusWorld.Y,
+        DesiredClipFocus.Z - ActiveClipFocusWorld.Z,
+    };
+    const float FocusShiftSq = Mathematics::EvaluateDot(FocusDelta, FocusDelta);
+    const float ScrollThreshold = FineVoxelStep * 2.5f;
+    const bool ClipFocusScrolled =
+        !ActiveClipFocusInitialized || (FocusShiftSq > ScrollThreshold * ScrollThreshold);
+    const bool SunDirectionShifted = Mathematics::EvaluateDot(SunDir, LastSyncedSunDir) < 0.99995f;
+
     if (ShadowCascadeProgramHandle != UINT32_MAX &&
-        Mathematics::EvaluateDot(SunDir, LastSyncedSunDir) < 0.99995f)
+        (DynamicInstancesChanged || ClipFocusScrolled || SunDirectionShifted))
     {
+        ActiveClipFocusWorld       = DesiredClipFocus;
+        ActiveClipFocusInitialized = true;
         const auto PreSyncStart = std::chrono::steady_clock::now();
-        (void)DispatchGpuScenePrecompute(Scene);
+        (void)DispatchGpuScenePrecompute(Scene, true);
         const auto PreSyncEnd = std::chrono::steady_clock::now();
         LastViewportTiming.SceneSyncGpuMs = static_cast<float>(
             std::chrono::duration<double, std::milli>(PreSyncEnd - PreSyncStart).count());

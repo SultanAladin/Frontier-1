@@ -148,7 +148,8 @@ bool SynchronizeShowcaseGalleryFromOutliner(
 bool SynchronizeShowcaseGallerySceneLive(
     OutlinerPanel&            InOutOutliner,
     ShowcaseWorldSceneBundle& InOutBundle,
-    bool&                     OutRequiresAccelerationRebuild);
+    bool&                     OutRequiresAccelerationRebuild,
+    bool                      DeferCpuAccelerationForGpuDynamic = false);
 
 // Rebuilds SceneTree (WideBoundingTree) across all visible opaque geometry
 void RebuildShowcaseSceneAcceleration(ShowcaseWorldSceneBundle& InOutBundle);

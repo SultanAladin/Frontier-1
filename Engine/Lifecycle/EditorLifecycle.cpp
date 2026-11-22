@@ -2483,17 +2483,24 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             SynchronizeComponentPlacementOverrides();
 
             bool       NeedsPrep = false;
+            const bool UseGpuDynamicSync = GpuReady && DisplayCfg.ClusterLodEnabled;
             const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(
                 Panes->Outliner,
                 *ShowcaseBundle,
-                NeedsPrep);
+                NeedsPrep,
+                UseGpuDynamicSync);
             if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
             {
                 if (!GpuReady)
                 {
                     GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle);
+                    NeedsPrep = true;
                 }
-                NeedsPrep = true;
+                else if (!DisplayCfg.ClusterLodEnabled)
+                {
+                    GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle);
+                    NeedsPrep = true;
+                }
             }
             if (NeedsPrep)
             {
