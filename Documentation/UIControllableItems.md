@@ -137,8 +137,8 @@ Sources: `PerspectiveCameraBasis` (live editor camera), `CameraConfiguration` / 
 
 Movement (live today, one Unreal model): RMB mouse-look · WASD/QE fly · Shift sprint ×3 · Ctrl
 slow ×0.3 · MMB / LMB+RMB pan · Alt+LMB orbit · Alt+RMB dolly · Wheel = fly speed ×0.10–×16
-(footer readout) · Arrow keys + PgUp/PgDn flight · F frame selected · W/E/R/Q gizmo mode keys
-(when not flying).
+(footer readout) · Arrow keys + PgUp/PgDn flight · F frame selected · 1/2/3/4 gizmo mode keys
+(translate/rotate/scale/universal, when not flying).
 
 | Control | Type | Range | Status |
 |---|---|---|---|
@@ -208,7 +208,7 @@ Emissive Radiance (colour) · Ceiling Softbox preset [UI via Outliner visibility
 ## 13. Transform & Gizmo (selected object)
 
 [UI]: Position (m, XYZ) · Rotation (deg) · Scale (×) numeric fields with reset · Enabled toggle ·
-Cast Shadows toggle. Gizmo: Universal/Translate/Rotate/Scale handle filter [UI keys W/E/R/Q] ·
+Cast Shadows toggle. Gizmo: Universal/Translate/Rotate/Scale handle filter [UI keys 1/2/3/4: translate/rotate/scale/universal] ·
 Ctrl snap: Move Step 0.25 m · Scale Step 0.10 · Rotation Step 5° (`GizmoSnapSettings`) [Backend]
 · Gizmo hover = GPU pick with CPU ray fallback [New].
 

@@ -178,8 +178,8 @@ int main()
         return 1;
     }
 
-    // Material slots present in the far cut must be a subset of the LOD0 slots (nothing invented,
-    // per-face assignment intact) and the vehicle must keep several distinct materials far away.
+    // With backface culling disabled, the far cut must retain all finest-level material slots
+    // and must not introduce any new slots. This does not prove per-face coverage or glass fidelity.
     {
         std::vector<uint16_t> FarMaterials {};
         for (const uint32_t ClusterIdx : FarCut.ActiveClusterIndices)
@@ -211,9 +211,17 @@ int main()
                 return 1;
             }
         }
-        if (!VerifyCheck(FarMaterials.size() >= 4u, "far LOD keeps multiple distinct vehicle material slots"))
+        for (const uint16_t Finest : Summaries.front().MaterialOrdinals)
         {
-            return 1;
+            bool InFarCut = false;
+            for (const uint16_t Ordinal : FarMaterials)
+            {
+                InFarCut = InFarCut || (Ordinal == Finest);
+            }
+            if (!VerifyCheck(InFarCut, "far cut lost a finest-level vehicle material slot"))
+            {
+                return 1;
+            }
         }
     }
 

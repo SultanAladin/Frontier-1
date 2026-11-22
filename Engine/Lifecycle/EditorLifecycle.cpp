@@ -666,6 +666,10 @@ void EditorLifecycle::ProcessShowcaseNavigationDirective(ViewportNavigationDirec
                                              ? std::clamp(CurDist * 0.85f, 0.55f, 18.0f)
                                              : std::clamp(CurDist * 1.18f, 0.55f, 18.0f);
     ShowcaseBundle->EditorCamera.CameraOrigin = ShowcaseBundle->EditorCamera.TargetPoint - Fwd * NextDist;
+    EditorCameraLag.SnapTo(ShowcaseBundle->EditorCamera.CameraOrigin, ShowcaseBundle->EditorCamera.TargetPoint);
+    DesiredCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
+    DesiredCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+    DesiredCameraValid  = true;
 
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
@@ -861,6 +865,19 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     const bool GizmoBusy = WorldTransformGizmo.QueryDragging();
     const bool FlyKeysPossible = !Io.WantTextInput && !GizmoBusy && RightHeld && !AltHeld;
 
+    // Hit testing above uses the rendered camera. Navigation must instead accumulate
+    // on the desired pose, not feed the lagged output back into the next input step.
+    const Mathematics::Axis3D RenderedOrigin = Cam.CameraOrigin;
+    const Mathematics::Axis3D RenderedTarget = Cam.TargetPoint;
+    if (DesiredCameraValid && !GizmoBusy)
+    {
+        Cam.CameraOrigin = DesiredCameraOrigin;
+        Cam.TargetPoint  = DesiredCameraTarget;
+        Fwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, Fwd);
+        Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), Right);
+        Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), Up);
+    }
+
     // Wheel source: InputExtension snapshot and ImGui carry the same packet in the desktop host;
     // take the larger magnitude so neither path is double-counted and headless ImGui-only frames still work.
     const float WheelDeltaY = (std::fabs(Input.WheelDeltaY) >= std::fabs(Io.MouseWheel)) ? Input.WheelDeltaY : Io.MouseWheel;
@@ -1021,25 +1038,25 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
 
     CameraInteractiveDrag = RightHeld || MiddleHeld || (AltHeld && LeftHeld) || WorldTransformGizmo.QueryDragging() || CameraMoved;
 
-    // 4. Gizmo & Frame-Selection Keyboard Shortcuts (when not flying RMB/LMB and not typing in text fields)
+    // 4. Gizmo modes use number keys so WASDQE flight cannot change the active handles.
     if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
     {
-        if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+        if (ImGui::IsKeyPressed(ImGuiKey_1, false))
         {
             WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::TranslateOnly);
             GizmoOverlayOnly = true;
         }
-        else if (ImGui::IsKeyPressed(ImGuiKey_E, false))
+        else if (ImGui::IsKeyPressed(ImGuiKey_2, false))
         {
             WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::RotateOnly);
             GizmoOverlayOnly = true;
         }
-        else if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+        else if (ImGui::IsKeyPressed(ImGuiKey_3, false))
         {
             WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::ScaleOnly);
             GizmoOverlayOnly = true;
         }
-        else if (ImGui::IsKeyPressed(ImGuiKey_U, false) || ImGui::IsKeyPressed(ImGuiKey_Q, false))
+        else if (ImGui::IsKeyPressed(ImGuiKey_4, false))
         {
             WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
             GizmoOverlayOnly = true;
@@ -1072,6 +1089,8 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         DesiredCameraTarget = Cam.TargetPoint;
         DesiredCameraValid  = true;
     }
+    Cam.CameraOrigin = RenderedOrigin;
+    Cam.TargetPoint  = RenderedTarget;
     if (DesiredCameraValid && !WorldTransformGizmo.QueryDragging())
     {
         if (!EditorCameraLag.QueryPrimed())
@@ -2288,6 +2307,10 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                         : Mathematics::Axis3D{ 0.00f, -3.55f, 0.42f };
                     break;
                 }
+                EditorCameraLag.SnapTo(Cam.CameraOrigin, Cam.TargetPoint);
+                DesiredCameraOrigin = Cam.CameraOrigin;
+                DesiredCameraTarget = Cam.TargetPoint;
+                DesiredCameraValid  = true;
             }
 
             const bool              DisplayChanged =
