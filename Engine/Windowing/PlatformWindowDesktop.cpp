@@ -697,6 +697,7 @@ bool DesktopPlatformWindow::ApplyPresentationMode(
         }
     }
 
+    ActiveExtent.RefreshRateHz = 0u;
     RefreshCachedExtent();
     if (NewMode == WindowPresentationMode::ExclusiveFullscreen && RefreshRateHz > 0)
     {
@@ -914,10 +915,19 @@ void DesktopPlatformWindow::RefreshCachedExtent() noexcept
     glfwGetFramebufferSize(Window, &PixelW, &PixelH);
     glfwGetWindowContentScale(Window, &ScaleX, &ScaleY);
 
+    const uint32_t NewPixelW = static_cast<uint32_t>(std::max(0, WinW));
+    const uint32_t NewPixelH = static_cast<uint32_t>(std::max(0, WinH));
+    const bool GeometryChanged =
+        (PosX != ActiveExtent.OriginX) ||
+        (PosY != ActiveExtent.OriginY) ||
+        (NewPixelW != ActiveExtent.PixelWidth) ||
+        (NewPixelH != ActiveExtent.PixelHeight) ||
+        (ActiveExtent.RefreshRateHz == 0u);
+
     ActiveExtent.OriginX             = PosX;
     ActiveExtent.OriginY             = PosY;
-    ActiveExtent.PixelWidth          = static_cast<uint32_t>(std::max(0, WinW));
-    ActiveExtent.PixelHeight         = static_cast<uint32_t>(std::max(0, WinH));
+    ActiveExtent.PixelWidth          = NewPixelW;
+    ActiveExtent.PixelHeight         = NewPixelH;
     ActiveExtent.SurfacePixelWidth  = static_cast<uint32_t>(std::max(0, PixelW));
     ActiveExtent.SurfacePixelHeight = static_cast<uint32_t>(std::max(0, PixelH));
     ActiveExtent.DpiScaleFactor      = std::max(ScaleX, ScaleY);
@@ -926,16 +936,19 @@ void DesktopPlatformWindow::RefreshCachedExtent() noexcept
     ActiveExtent.Focused             = (glfwGetWindowAttrib(Window, GLFW_FOCUSED) == GLFW_TRUE);
     ActiveExtent.Visible             = (glfwGetWindowAttrib(Window, GLFW_VISIBLE) == GLFW_TRUE);
 
-    GLFWmonitor* Monitor = glfwGetWindowMonitor(Window);
-    if (Monitor == nullptr)
+    if (GeometryChanged)
     {
-        Monitor = SelectTargetMonitor(TargetMonitorSlot);
-    }
-    if (Monitor != nullptr)
-    {
-        if (const GLFWvidmode* Mode = glfwGetVideoMode(Monitor))
+        GLFWmonitor* Monitor = glfwGetWindowMonitor(Window);
+        if (Monitor == nullptr)
         {
-            ActiveExtent.RefreshRateHz = static_cast<uint32_t>(std::max(1, Mode->refreshRate));
+            Monitor = SelectTargetMonitor(TargetMonitorSlot);
+        }
+        if (Monitor != nullptr)
+        {
+            if (const GLFWvidmode* Mode = glfwGetVideoMode(Monitor))
+            {
+                ActiveExtent.RefreshRateHz = static_cast<uint32_t>(std::max(1, Mode->refreshRate));
+            }
         }
     }
 }

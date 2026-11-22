@@ -334,6 +334,7 @@ frontier_compile_slang_shader(StretchRelaxCompute.slang               ComputeEnt
 frontier_compile_slang_shader(ConcaveSkylineCompute.slang             ComputeEntry  compute  ConcaveSkylineCompute.comp.spv)
 frontier_compile_slang_shader(CameraVisualEffects.slang               ComputeEntry  compute  CameraVisualEffects.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ComputeEntry              compute  WorldViewportRadiometricCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   HighEndBvhComputeEntry    compute  WorldViewportHighEndCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   CloudComputeEntry         compute  WorldViewportCloudCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DenoiseCompositeEntry     compute  WorldViewportDenoiseCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCascadeComputeEntry compute  WorldViewportShadowCascadeCompute.comp.spv)

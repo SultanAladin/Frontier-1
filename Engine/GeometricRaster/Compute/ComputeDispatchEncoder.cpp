@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
+#include <fstream>
 
 namespace Frontier::GeometricRaster
 {
@@ -22,6 +24,50 @@ namespace Frontier::GeometricRaster
 ComputeDispatchEncoder::~ComputeDispatchEncoder()
 {
     TeardownEncoder();
+}
+
+void ComputeDispatchEncoder::WriteProgramCacheToDisk() const noexcept
+{
+    if (DeviceInterchange == nullptr || !DeviceInterchange->Ready() ||
+        ProgramBinaryCache == VK_NULL_HANDLE || ProgramCacheFilePath.empty())
+    {
+        return;
+    }
+
+    const VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+    std::size_t CacheBytes = 0u;
+    if (vkGetPipelineCacheData(DeviceHandle, ProgramBinaryCache, &CacheBytes, nullptr) != VK_SUCCESS ||
+        CacheBytes < sizeof(VkPipelineCacheHeaderVersionOne))
+    {
+        return;
+    }
+
+    std::vector<uint8_t> CacheBlob(CacheBytes);
+    if (vkGetPipelineCacheData(DeviceHandle, ProgramBinaryCache, &CacheBytes, CacheBlob.data()) != VK_SUCCESS ||
+        CacheBytes < sizeof(VkPipelineCacheHeaderVersionOne))
+    {
+        return;
+    }
+
+    std::error_code FsErr {};
+    const std::filesystem::path TempPath = ProgramCacheFilePath.string() + ".tmp";
+    {
+        std::ofstream OutStream(TempPath, std::ios::binary | std::ios::trunc);
+        if (!OutStream.good())
+        {
+            return;
+        }
+        OutStream.write(reinterpret_cast<const char*>(CacheBlob.data()), static_cast<std::streamsize>(CacheBytes));
+        if (!OutStream.good())
+        {
+            return;
+        }
+    }
+    std::filesystem::rename(TempPath, ProgramCacheFilePath, FsErr);
+    if (FsErr)
+    {
+        std::filesystem::remove(TempPath, FsErr);
+    }
 }
 
 bool ComputeDispatchEncoder::InitializeEncoder(VulkanInterchange* BoundDevice, uint32_t MaxDispatchesPerAllocator)
@@ -54,6 +100,68 @@ bool ComputeDispatchEncoder::InitializeEncoder(VulkanInterchange* BoundDevice, u
         return false;
     }
     DescriptorAllocators.push_back(InitialAllocator);
+
+    // Initialize driver-UUID validated persistent VkPipelineCache so hardware SPIR-V -> ISA compilation happens once
+    if (DeviceInterchange->AccessPhysicalDevice() != VK_NULL_HANDLE)
+    {
+        VkPhysicalDeviceProperties AdapterProps {};
+        vkGetPhysicalDeviceProperties(DeviceInterchange->AccessPhysicalDevice(), &AdapterProps);
+
+        char FileTag[96] {};
+        std::snprintf(FileTag, sizeof(FileTag), "FrontierVkComputeCache_%08X_%08X.bin",
+            AdapterProps.vendorID, AdapterProps.deviceID);
+        std::error_code FsErr {};
+        const std::filesystem::path TempDir = std::filesystem::temp_directory_path(FsErr);
+        if (!FsErr && !TempDir.empty())
+        {
+            ProgramCacheFilePath = TempDir / FileTag;
+        }
+
+        std::vector<uint8_t> InitialBlob {};
+        if (!ProgramCacheFilePath.empty())
+        {
+            std::ifstream InStream(ProgramCacheFilePath, std::ios::binary | std::ios::ate);
+            if (InStream.good())
+            {
+                const std::streamsize ByteLen = InStream.tellg();
+                if (ByteLen >= static_cast<std::streamsize>(sizeof(VkPipelineCacheHeaderVersionOne)) &&
+                    ByteLen <= static_cast<std::streamsize>(128ull * 1024ull * 1024ull))
+                {
+                    InitialBlob.resize(static_cast<std::size_t>(ByteLen));
+                    InStream.seekg(0, std::ios::beg);
+                    if (InStream.read(reinterpret_cast<char*>(InitialBlob.data()), ByteLen))
+                    {
+                        VkPipelineCacheHeaderVersionOne Header {};
+                        std::memcpy(&Header, InitialBlob.data(), sizeof(Header));
+                        const bool ValidHeader =
+                            Header.headerSize == sizeof(VkPipelineCacheHeaderVersionOne) &&
+                            Header.headerVersion == VK_PIPELINE_CACHE_HEADER_VERSION_ONE &&
+                            Header.vendorID == AdapterProps.vendorID &&
+                            Header.deviceID == AdapterProps.deviceID &&
+                            std::memcmp(Header.pipelineCacheUUID, AdapterProps.pipelineCacheUUID, VK_UUID_SIZE) == 0;
+                        if (!ValidHeader)
+                        {
+                            InitialBlob.clear();
+                        }
+                    }
+                    else
+                    {
+                        InitialBlob.clear();
+                    }
+                }
+            }
+        }
+
+        VkPipelineCacheCreateInfo CacheSpec {};
+        CacheSpec.sType           = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        CacheSpec.initialDataSize = InitialBlob.size();
+        CacheSpec.pInitialData    = InitialBlob.empty() ? nullptr : InitialBlob.data();
+        if (vkCreatePipelineCache(DeviceInterchange->AccessDevice(), &CacheSpec, nullptr, &ProgramBinaryCache) != VK_SUCCESS)
+        {
+            ProgramBinaryCache = VK_NULL_HANDLE;
+        }
+    }
+
     return true;
 }
 
@@ -63,6 +171,12 @@ void ComputeDispatchEncoder::TeardownEncoder() noexcept
     {
         VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
         vkDeviceWaitIdle(DeviceHandle);
+        WriteProgramCacheToDisk();
+        if (ProgramBinaryCache != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineCache(DeviceHandle, ProgramBinaryCache, nullptr);
+            ProgramBinaryCache = VK_NULL_HANDLE;
+        }
         for (RegisteredComputeProgram& Prog : Programs)
         {
             if (Prog.ComputeProgram != VK_NULL_HANDLE)
@@ -93,6 +207,7 @@ void ComputeDispatchEncoder::TeardownEncoder() noexcept
         }
         DescriptorAllocators.clear();
     }
+    ProgramCacheFilePath.clear();
     DeviceInterchange = nullptr;
 }
 
@@ -165,7 +280,7 @@ uint32_t ComputeDispatchEncoder::RegisterProgram(
     PipeCreate.stage.pName        = EntryPointName;
     PipeCreate.layout             = Prog.ProgramLayout;
 
-    if (vkCreateComputePipelines(DeviceHandle, VK_NULL_HANDLE, 1u, &PipeCreate, nullptr, &Prog.ComputeProgram) != VK_SUCCESS)
+    if (vkCreateComputePipelines(DeviceHandle, ProgramBinaryCache, 1u, &PipeCreate, nullptr, &Prog.ComputeProgram) != VK_SUCCESS)
     {
         vkDestroyPipelineLayout(DeviceHandle, Prog.ProgramLayout, nullptr);
         vkDestroyDescriptorSetLayout(DeviceHandle, Prog.SlotLayout, nullptr);
@@ -177,6 +292,11 @@ uint32_t ComputeDispatchEncoder::RegisterProgram(
     const uint32_t AssignedIndex = static_cast<uint32_t>(Programs.size());
     Programs.push_back(Prog);
     return AssignedIndex;
+}
+
+void ComputeDispatchEncoder::PersistProgramCache() const noexcept
+{
+    WriteProgramCacheToDisk();
 }
 
 void ComputeDispatchEncoder::ResetTransientDescriptors() noexcept

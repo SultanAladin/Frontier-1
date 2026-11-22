@@ -467,7 +467,20 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         CompiledShaderDirectory / "WorldViewportGlobalRadiosityBake.comp.spv",
         SlotTypes,
         "GlobalRadiosityBakeEntry");
-    ViewportPathTraceProgramHandle = UINT32_MAX; // Lazily registered on first Engine 4/5 Path Tracer dispatch
+    HighEndBvhProgramHandle        = UINT32_MAX;
+    ViewportPathTraceProgramHandle = UINT32_MAX;
+    if (TargetDevice.QueryHardwareAccelerated())
+    {
+        HighEndBvhProgramHandle = DispatchEncoder.RegisterProgram(
+            CompiledShaderDirectory / "WorldViewportHighEndCompute.comp.spv",
+            SlotTypes,
+            "HighEndBvhComputeEntry");
+        ViewportPathTraceProgramHandle = DispatchEncoder.RegisterProgram(
+            CompiledShaderDirectory / "WorldViewportPathTraceCompute.comp.spv",
+            SlotTypes,
+            "ViewportPathTraceEntry");
+        DispatchEncoder.PersistProgramCache();
+    }
 
     if (TargetDevice.QueryTimestampValidBits() > 0u)
     {
@@ -675,6 +688,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     ShadowCascadeProgramHandle      = UINT32_MAX;
     GlobalDistanceBakeProgramHandle = UINT32_MAX;
     GlobalRadiosityProgramHandle    = UINT32_MAX;
+    HighEndBvhProgramHandle         = UINT32_MAX;
     ViewportPathTraceProgramHandle  = UINT32_MAX;
     UploadedCatalogStarCount        = 0u;
     UploadedPhotometricProfiles     = 0u;
@@ -3247,7 +3261,7 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     const auto SyncStart = std::chrono::steady_clock::now();
 
     // 1 & 2. Assemble Resident Multi-LOD Cluster BVH4 + Shaded Triangles once (or fall back to raw SceneTree)
-    if (!AssembleResidentClusterSceneBvh(Scene, true))
+    if (!AssembleResidentClusterSceneBvh(Scene, RebuildShadows))
     {
         ResidentClusterBvhActive = false;
         MaskSliceOffsetBytes     = 256ull;
@@ -4870,6 +4884,18 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             CachedCompiledShaderDir / "WorldViewportPathTraceCompute.comp.spv",
             LazyPtSlots,
             "ViewportPathTraceEntry");
+        DispatchEncoder.PersistProgramCache();
+    }
+    if (EngIdx == 3u && HighEndBvhProgramHandle == UINT32_MAX)
+    {
+        std::array<VkDescriptorType, 32u> LazyHighEndSlots {};
+        LazyHighEndSlots.fill(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        LazyHighEndSlots[0] = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        HighEndBvhProgramHandle = DispatchEncoder.RegisterProgram(
+            CachedCompiledShaderDir / "WorldViewportHighEndCompute.comp.spv",
+            LazyHighEndSlots,
+            "HighEndBvhComputeEntry");
+        DispatchEncoder.PersistProgramCache();
     }
 
     const bool UseDedicatedPathTracer =
@@ -4910,7 +4936,11 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     else
     {
         WriteStamp(4u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, RadiometricProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
+        const uint32_t PrimaryProgramHandle =
+            (EngIdx == 3u && HighEndBvhProgramHandle != UINT32_MAX)
+                ? HighEndBvhProgramHandle
+                : RadiometricProgramHandle;
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, PrimaryProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
         {
             BoundDevice->FreeCommandBuffer(Cmd);
             return false;

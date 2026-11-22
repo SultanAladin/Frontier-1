@@ -314,18 +314,19 @@ void ViewportPanel::PushDiagnosticsSample(double Δt) noexcept
         return;
     }
 
-    // Sample at 10 Hz (average frame time over each 100 ms bucket): the graph then shows a
-    // readable 15/30/60 s window scrolling slowly instead of a 2 s per-frame blur.
-    const float FrameMs = (Δt > 1.0e-5)
-        ? std::clamp(static_cast<float>(Δt * 1000.0), 1.0f, 120.0f)
-        : 16.67f;
-    HistoryPendingMs += FrameMs;
+    // Sample at 10 Hz (average execution time over each 100 ms wall-clock bucket) using active
+    // CPU+GPU execution duration rather than voluntary idle sleep Dt.
+    const float MeasuredWorkMs = (LastViewportTiming.TotalFrameMs > 0.05f)
+        ? LastViewportTiming.TotalFrameMs
+        : ((Δt > 1.0e-5) ? static_cast<float>(Δt * 1000.0) : 16.67f);
+    const float SampleDurationMs = std::clamp(MeasuredWorkMs, 0.25f, 120.0f);
+    HistoryPendingMs += SampleDurationMs;
     HistoryPendingSeconds += static_cast<float>(std::max(0.0, Δt));
     ++HistoryPendingFrames;
     if (HistoryPendingSeconds >= 0.1f)
     {
         IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()] = std::clamp(
-            HistoryPendingMs / static_cast<float>(std::max(1u, HistoryPendingFrames)), 1.0f, 120.0f);
+            HistoryPendingMs / static_cast<float>(std::max(1u, HistoryPendingFrames)), 0.25f, 120.0f);
         ++HistoryWriteCursor;
         HistoryPendingMs      = 0.0f;
         HistoryPendingSeconds = 0.0f;

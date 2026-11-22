@@ -64,6 +64,7 @@ public:
         const char*                         EntryPointName = "ComputeEntry",
         uint32_t                            PushConstantBytes = 0u);
 
+    void PersistProgramCache() const noexcept;
     void ResetTransientDescriptors() noexcept;
 
     [[nodiscard]] bool EncodeComputeDispatch(
@@ -100,7 +101,11 @@ public:
     }
 
 private:
+    void WriteProgramCacheToDisk() const noexcept;
+
     VulkanInterchange*                  DeviceInterchange        = nullptr;        // [-] - Non-owning Vulkan device interchange
+    VkPipelineCache                     ProgramBinaryCache       = VK_NULL_HANDLE; // [-] - Driver-UUID validated persistent ISA binary cache
+    std::filesystem::path               ProgramCacheFilePath     {};               // [-] - On-disk cache file path in OS temp directory
     std::vector<VkDescriptorPool>          DescriptorAllocators {}; // [-] - Separate allocators retained for one recorded command buffer
     uint32_t                              MaxDispatchesPerAllocator = 128u; // [-] - Capacity of each retained allocator
     std::vector<RegisteredComputeProgram> Programs       {};               // [-] - Registered .slang compute pipelines

@@ -148,8 +148,8 @@ ImFont* TypographyRepository::LoadFontFile(const std::filesystem::path& FontPath
     }
 
     ImFontConfig Configuration{};
-    Configuration.OversampleH = 3;
-    Configuration.OversampleV = 2;
+    Configuration.OversampleH = 2;
+    Configuration.OversampleV = 1;
     Configuration.GlyphRanges = ExtendedUnicodeRanges;
     return ImGui::GetIO().Fonts->AddFontFromFileTTF(FontPath.string().c_str(), PixelHeight, &Configuration);
 }
@@ -163,6 +163,12 @@ uint32_t TypographyRepository::LoadRepository(const std::filesystem::path& Repos
     if (ImGui::GetCurrentContext() == nullptr)
     {
         return 0u;
+    }
+
+    if (ImFontAtlas* Atlas = ImGui::GetIO().Fonts)
+    {
+        Atlas->TexMinWidth  = std::max(Atlas->TexMinWidth, 2048);
+        Atlas->TexMinHeight = std::max(Atlas->TexMinHeight, 2048);
     }
 
     std::error_code IoFailure{};

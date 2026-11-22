@@ -248,6 +248,7 @@ private:
     uint32_t               ShadowCascadeProgramHandle      = UINT32_MAX;
     uint32_t               GlobalDistanceBakeProgramHandle = UINT32_MAX;
     uint32_t               GlobalRadiosityProgramHandle    = UINT32_MAX;
+    uint32_t               HighEndBvhProgramHandle         = UINT32_MAX;
     uint32_t               ViewportPathTraceProgramHandle  = UINT32_MAX;
     VkQueryPool            TimestampQueryPool              = VK_NULL_HANDLE;
 

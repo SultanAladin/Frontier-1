@@ -67,6 +67,45 @@ namespace Frontier::Lifecycle
 namespace
 {
 
+#if defined(_WIN32)
+struct Win32HighResTimerScope
+{
+    using TimePeriodFn = UINT(WINAPI*)(UINT);
+    HMODULE      WinMmLibrary = nullptr;
+    TimePeriodFn EndPeriod    = nullptr;
+
+    Win32HighResTimerScope() noexcept
+    {
+        WinMmLibrary = LoadLibraryW(L"winmm.dll");
+        if (WinMmLibrary != nullptr)
+        {
+            const auto BeginPeriod = reinterpret_cast<TimePeriodFn>(GetProcAddress(WinMmLibrary, "timeBeginPeriod"));
+            EndPeriod              = reinterpret_cast<TimePeriodFn>(GetProcAddress(WinMmLibrary, "timeEndPeriod"));
+            if (BeginPeriod != nullptr && EndPeriod != nullptr)
+            {
+                BeginPeriod(1u);
+            }
+            else
+            {
+                EndPeriod = nullptr;
+            }
+        }
+    }
+
+    ~Win32HighResTimerScope() noexcept
+    {
+        if (EndPeriod != nullptr)
+        {
+            EndPeriod(1u);
+        }
+        if (WinMmLibrary != nullptr)
+        {
+            FreeLibrary(WinMmLibrary);
+        }
+    }
+};
+#endif
+
 void AppendBigEndian32(std::vector<uint8_t>& Buffer, uint32_t Word)
 {
     Buffer.push_back(static_cast<uint8_t>((Word >> 24u) & 0xFFu));
@@ -425,6 +464,10 @@ int LaunchDesktopWorkspace(
             InitialOptions.OpenWorldEditor         = true;
         }
     }
+
+#if defined(_WIN32)
+    Win32HighResTimerScope HighResTimer {};
+#endif
 
     GeometricRaster::VulkanInterchange DeviceInterchange {};
     std::string                          VkDiag {};
@@ -1821,13 +1864,10 @@ int LaunchDesktopWorkspace(
         {
             const bool AnyMouseDown =
                 Io.MouseDown[0] || Io.MouseDown[1] || Io.MouseDown[2] || Io.MouseDown[3] || Io.MouseDown[4];
-            const bool AnyPointerMotion =
-                (std::fabs(Io.MouseDelta.x) > 0.05f) ||
-                (std::fabs(Io.MouseDelta.y) > 0.05f) ||
-                (std::fabs(Io.MouseWheel) > 0.001f) ||
-                (std::fabs(Io.MouseWheelH) > 0.001f);
-            if (!AnyMouseDown && !AnyPointerMotion && !Io.WantTextInput)
+            if (!AnyMouseDown && !Io.WantTextInput)
             {
+                // WaitOperatingEventsTimeout wakes immediately on any OS input message while capping
+                // idle/UI-hover swapchain presentation to 240 Hz so MAILBOX never hits WDDM queue backpressure stalls.
                 constexpr double kTargetIdleStepSeconds = 1.0 / 240.0;
                 const double ElapsedSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - NowTick).count();
                 if (ElapsedSec + 0.0004 < kTargetIdleStepSeconds)

@@ -1349,9 +1349,8 @@ void ThumbnailSheetRepository::RequestVisibleTileStreaming(
     if (!BatchRequests.empty())
     {
         (void)Streamer.EnqueueSliceBatch(std::move(BatchRequests));
+        Streamer.FlushPendingSynchronously();
     }
-
-    Streamer.FlushPendingSynchronously();
 }
 
 ImportIntakeResult ThumbnailSheetRepository::IntakeExternalAssetDrop(
