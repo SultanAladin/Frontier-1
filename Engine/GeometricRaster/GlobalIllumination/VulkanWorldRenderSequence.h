@@ -58,6 +58,9 @@ public:
         uint32_t LocalAssetVoxelUploadCount     = 0u; // [cnt] - Static baked LocalSignedDistanceVolume uploads
         uint32_t DynamicInstanceUploadCount     = 0u; // [cnt] - Per-instance 144 B rigid/scale transform uploads
         uint32_t CascadeBakeCount               = 0u; // [cnt] - GPU 64^3 Fine+Coarse GDF cascade bake dispatches
+        uint32_t ToroidalSlabScrollCount        = 0u; // [cnt] - Incremental toroidal dirty-slab cascade scroll updates
+        uint32_t LastFineUpdatedVoxelCount      = 0u; // [cnt] - Fine cascade voxels baked on latest Fine update
+        uint32_t LastCoarseUpdatedVoxelCount    = 0u; // [cnt] - Coarse cascade voxels baked on latest Coarse update
         float    FineCascadeCenterWorld[3]      {};   // [m]   - Active Fine GDF cascade center (voxel-snapped)
         float    FineCascadeHalfSpanMeters      = 0.0f;
         float    CoarseCascadeCenterWorld[3]    {};   // [m]   - Active Coarse GDF cascade center (voxel-snapped)
@@ -109,13 +112,14 @@ public:
 private:
     enum PrecomputeUpdateBits : uint32_t
     {
-        kPrecomputeFineShadow   = 1u << 0u,
-        kPrecomputeCoarseShadow = 1u << 1u,
-        kPrecomputeFineGdf      = 1u << 2u,
-        kPrecomputeCoarseGdf    = 1u << 3u,
-        kPrecomputeRadiosity    = 1u << 4u,
-        kPrecomputeSecondBounce = 1u << 5u,
-        kPrecomputeFullMask     = 0x3Fu,
+        kPrecomputeFineShadow    = 1u << 0u,
+        kPrecomputeCoarseShadow  = 1u << 1u,
+        kPrecomputeFineGdf       = 1u << 2u,
+        kPrecomputeCoarseGdf     = 1u << 3u,
+        kPrecomputeRadiosity     = 1u << 4u,
+        kPrecomputeSecondBounce  = 1u << 5u,
+        kPrecomputeRadiosityFull = 1u << 6u,
+        kPrecomputeFullMask      = 0x7Fu,
     };
 
     struct CachedNaniteCutPayload
@@ -255,8 +259,14 @@ private:
 
     OrthographicShadowCascade CachedFineSunCascade         {};
     OrthographicShadowCascade CachedSunCascade             {};
-    float                  CachedFineGdfCenterSpan[4]      { 0.0f, 0.0f, 0.0f, 3.4f };
-    float                  CachedCoarseGdfCenterSpan[4]    { 0.0f, 0.0f, 0.0f, 10.2f };
+    float                  CachedFineGdfCenterSpan[4]      { 0.0f, 0.0f, 0.0f, 3.5f };
+    float                  CachedCoarseGdfCenterSpan[4]    { 0.0f, 0.0f, 0.0f, 8.75f };
+    int32_t                CachedFineToroidalMinCell[4]    { -32, -32, -32, 0 };
+    int32_t                CachedCoarseToroidalMinCell[4]  { -32, -32, -32, 0 };
+    bool                   FineToroidalValid               = false;
+    bool                   CoarseToroidalValid             = false;
+    bool                   PendingFineGeometryReset        = true;
+    bool                   PendingCoarseGeometryReset      = true;
     bool                   GlobalDistanceFieldReady        = false;
     bool                   SkyViewLutValid                 = false;
     std::array<uint8_t, 128u> LastSkyViewUniformSnapshot   {};

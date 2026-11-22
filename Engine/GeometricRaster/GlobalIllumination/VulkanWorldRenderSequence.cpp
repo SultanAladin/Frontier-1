@@ -192,12 +192,15 @@ struct WorldViewportUniformBlockStd140
     VolumetricFogUniformStd140   FogParams                        {};
     CelestialFieldUniformStd140  CelestialParams                  {};
     LensFlareUniformStd140       LensFlareParams                  {};
-    float                        GlobalDistanceFineCenterSpan[4]   {};
-    float                        GlobalDistanceCoarseCenterSpan[4] {};
-    uint32_t                     GlobalDistanceBakeControl[4]      {};
+    float                        GlobalDistanceFineCenterSpan[4]     {};
+    float                        GlobalDistanceCoarseCenterSpan[4]   {};
+    uint32_t                     GlobalDistanceBakeControl[4]        {};
+    int32_t                      GlobalDistanceFineToroidalCell[4]   {};
+    int32_t                      GlobalDistanceCoarseToroidalCell[4] {};
+    uint32_t                     GlobalDistanceSlabBounds[4]         {};
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 2960u, "WorldViewportUniformBlockStd140 must equal 2960 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3008u, "WorldViewportUniformBlockStd140 must equal 3008 bytes.");
 
 struct GpuShadedTriangle96
 {
@@ -675,6 +678,10 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     LastCoarseGdfFocusWorld         = { 0.0f, 0.0f, 0.0f };
     ActiveClipFocusInitialized      = false;
     CascadeFocusInitialized         = false;
+    FineToroidalValid               = false;
+    CoarseToroidalValid             = false;
+    PendingFineGeometryReset        = true;
+    PendingCoarseGeometryReset      = true;
     DistanceFieldStats              = {};
     CachedLocalSdfOffsets.clear();
     CachedNaniteCutSignature        = 0u;
@@ -1207,6 +1214,11 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
         DistanceFieldStats.DynamicInstanceUploadCount += 1u;
         ResourcesChanged = true;
     }
+    if (ResourcesChanged)
+    {
+        PendingFineGeometryReset   = true;
+        PendingCoarseGeometryReset = true;
+    }
     return ResourcesChanged;
 }
 
@@ -1350,17 +1362,178 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
 
     const Mathematics::Axis3D BoundsSpan  = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
     const float MaxHalfExtent = 0.5f * std::max({ std::abs(BoundsSpan.X), std::abs(BoundsSpan.Y), std::abs(BoundsSpan.Z), 5.6f });
-    const float FineGdfHalf   = std::clamp(MaxHalfExtent * 1.18f, 3.2f, 4.2f);
+    const float FineGdfHalf   = std::round(std::clamp(MaxHalfExtent * 1.18f, 3.25f, 4.25f) * 8.0f) * 0.125f;
     const float CoarseGdfHalf = FineGdfHalf * 2.5f;
     const float FineVoxelM    = (2.0f * FineGdfHalf) / 64.0f;
     const float CoarseVoxelM  = (2.0f * CoarseGdfHalf) / 64.0f;
-    CachedFineGdfCenterSpan[0]   = std::round(LastFineGdfFocusWorld.X / FineVoxelM) * FineVoxelM;
-    CachedFineGdfCenterSpan[1]   = std::round(LastFineGdfFocusWorld.Y / FineVoxelM) * FineVoxelM;
-    CachedFineGdfCenterSpan[2]   = std::round(LastFineGdfFocusWorld.Z / FineVoxelM) * FineVoxelM;
+
+    struct ToroidalSlabBox
+    {
+        uint32_t MinCoord[3] { 0u, 0u, 0u };
+        uint32_t MaxCoord[3] { 64u, 64u, 64u };
+    };
+
+    auto SnapMinCellStep4 = [](
+        float   FocusMeters,
+        float   VoxelMeters,
+        int32_t PrevMinCell,
+        bool    ForceSnap) noexcept -> int32_t
+    {
+        const float PrevCenterMeters = (static_cast<float>(PrevMinCell) + 32.0f) * VoxelMeters;
+        if (!ForceSnap && std::abs(FocusMeters - PrevCenterMeters) < VoxelMeters * 4.35f)
+        {
+            return PrevMinCell;
+        }
+        const float   StepMeters = VoxelMeters * 4.0f;
+        const int32_t CenterCell = static_cast<int32_t>(std::lround(FocusMeters / StepMeters)) * 4;
+        return CenterCell - 32;
+    };
+
+    auto ConstructToroidalDirtySlabs = [](
+        const int32_t                  PrevMin[3],
+        const int32_t                  NextMin[3],
+        bool                           ForceFullBox,
+        std::array<ToroidalSlabBox, 3>& OutSlabs,
+        uint32_t&                      OutVoxelCount) noexcept -> uint32_t
+    {
+        if (ForceFullBox)
+        {
+            OutSlabs[0]   = ToroidalSlabBox{ { 0u, 0u, 0u }, { 64u, 64u, 64u } };
+            OutVoxelCount = 262144u;
+            return 1u;
+        }
+
+        const int32_t Delta[3] {
+            NextMin[0] - PrevMin[0],
+            NextMin[1] - PrevMin[1],
+            NextMin[2] - PrevMin[2],
+        };
+        if (std::abs(Delta[0]) >= 64 || std::abs(Delta[1]) >= 64 || std::abs(Delta[2]) >= 64)
+        {
+            OutSlabs[0]   = ToroidalSlabBox{ { 0u, 0u, 0u }, { 64u, 64u, 64u } };
+            OutVoxelCount = 262144u;
+            return 1u;
+        }
+
+        uint32_t KeepMin[3]  { 0u, 0u, 0u };
+        uint32_t KeepMax[3]  { 64u, 64u, 64u };
+        uint32_t DirtyMin[3] { 0u, 0u, 0u };
+        uint32_t DirtyMax[3] { 0u, 0u, 0u };
+        for (int Axis = 0; Axis < 3; ++Axis)
+        {
+            if (Delta[Axis] > 0)
+            {
+                const uint32_t Shift = static_cast<uint32_t>(Delta[Axis]);
+                KeepMin[Axis]  = 0u;
+                KeepMax[Axis]  = 64u - Shift;
+                DirtyMin[Axis] = 64u - Shift;
+                DirtyMax[Axis] = 64u;
+            }
+            else if (Delta[Axis] < 0)
+            {
+                const uint32_t Shift = static_cast<uint32_t>(-Delta[Axis]);
+                KeepMin[Axis]  = Shift;
+                KeepMax[Axis]  = 64u;
+                DirtyMin[Axis] = 0u;
+                DirtyMax[Axis] = Shift;
+            }
+        }
+
+        uint32_t SlabCount = 0u;
+        OutVoxelCount      = 0u;
+        auto AppendSlab = [&](uint32_t X0, uint32_t X1, uint32_t Y0, uint32_t Y1, uint32_t Z0, uint32_t Z1)
+        {
+            if (X1 > X0 && Y1 > Y0 && Z1 > Z0)
+            {
+                OutSlabs[SlabCount++] = ToroidalSlabBox{ { X0, Y0, Z0 }, { X1, Y1, Z1 } };
+                OutVoxelCount += (X1 - X0) * (Y1 - Y0) * (Z1 - Z0);
+            }
+        };
+
+        if (Delta[0] != 0)
+        {
+            AppendSlab(DirtyMin[0], DirtyMax[0], 0u, 64u, 0u, 64u);
+        }
+        if (Delta[1] != 0)
+        {
+            AppendSlab(KeepMin[0], KeepMax[0], DirtyMin[1], DirtyMax[1], 0u, 64u);
+        }
+        if (Delta[2] != 0)
+        {
+            AppendSlab(KeepMin[0], KeepMax[0], KeepMin[1], KeepMax[1], DirtyMin[2], DirtyMax[2]);
+        }
+        return SlabCount;
+    };
+
+    const bool DoFineGdfUpdate   = ((EffectiveMask & kPrecomputeFineGdf) != 0u) && (GlobalDistanceBakeProgramHandle != UINT32_MAX);
+    const bool DoCoarseGdfUpdate = ((EffectiveMask & kPrecomputeCoarseGdf) != 0u) && (GlobalDistanceBakeProgramHandle != UINT32_MAX);
+    const bool FullFineReset =
+        PendingFineGeometryReset ||
+        !FineToroidalValid ||
+        !GlobalDistanceFieldReady ||
+        (std::abs(FineGdfHalf - CachedFineGdfCenterSpan[3]) > 1.0e-4f);
+    const bool FullCoarseReset =
+        PendingCoarseGeometryReset ||
+        !CoarseToroidalValid ||
+        !GlobalDistanceFieldReady ||
+        (std::abs(CoarseGdfHalf - CachedCoarseGdfCenterSpan[3]) > 1.0e-4f);
+
+    std::array<ToroidalSlabBox, 3u> FineSlabs {};
+    std::array<ToroidalSlabBox, 3u> CoarseSlabs {};
+    uint32_t FineSlabCount    = 0u;
+    uint32_t CoarseSlabCount  = 0u;
+    uint32_t FineVoxWritten   = 0u;
+    uint32_t CoarseVoxWritten = 0u;
+
+    if (DoFineGdfUpdate)
+    {
+        const int32_t NextFineMin[3] {
+            SnapMinCellStep4(LastFineGdfFocusWorld.X, FineVoxelM, CachedFineToroidalMinCell[0], FullFineReset),
+            SnapMinCellStep4(LastFineGdfFocusWorld.Y, FineVoxelM, CachedFineToroidalMinCell[1], FullFineReset),
+            SnapMinCellStep4(LastFineGdfFocusWorld.Z, FineVoxelM, CachedFineToroidalMinCell[2], FullFineReset),
+        };
+        FineSlabCount = ConstructToroidalDirtySlabs(
+            CachedFineToroidalMinCell,
+            NextFineMin,
+            FullFineReset,
+            FineSlabs,
+            FineVoxWritten);
+        CachedFineToroidalMinCell[0] = NextFineMin[0];
+        CachedFineToroidalMinCell[1] = NextFineMin[1];
+        CachedFineToroidalMinCell[2] = NextFineMin[2];
+        CachedFineToroidalMinCell[3] = 0;
+        FineToroidalValid            = true;
+        PendingFineGeometryReset     = false;
+    }
+
+    if (DoCoarseGdfUpdate)
+    {
+        const int32_t NextCoarseMin[3] {
+            SnapMinCellStep4(LastCoarseGdfFocusWorld.X, CoarseVoxelM, CachedCoarseToroidalMinCell[0], FullCoarseReset),
+            SnapMinCellStep4(LastCoarseGdfFocusWorld.Y, CoarseVoxelM, CachedCoarseToroidalMinCell[1], FullCoarseReset),
+            SnapMinCellStep4(LastCoarseGdfFocusWorld.Z, CoarseVoxelM, CachedCoarseToroidalMinCell[2], FullCoarseReset),
+        };
+        CoarseSlabCount = ConstructToroidalDirtySlabs(
+            CachedCoarseToroidalMinCell,
+            NextCoarseMin,
+            FullCoarseReset,
+            CoarseSlabs,
+            CoarseVoxWritten);
+        CachedCoarseToroidalMinCell[0] = NextCoarseMin[0];
+        CachedCoarseToroidalMinCell[1] = NextCoarseMin[1];
+        CachedCoarseToroidalMinCell[2] = NextCoarseMin[2];
+        CachedCoarseToroidalMinCell[3] = 0;
+        CoarseToroidalValid            = true;
+        PendingCoarseGeometryReset     = false;
+    }
+
+    CachedFineGdfCenterSpan[0]   = (static_cast<float>(CachedFineToroidalMinCell[0]) + 32.0f) * FineVoxelM;
+    CachedFineGdfCenterSpan[1]   = (static_cast<float>(CachedFineToroidalMinCell[1]) + 32.0f) * FineVoxelM;
+    CachedFineGdfCenterSpan[2]   = (static_cast<float>(CachedFineToroidalMinCell[2]) + 32.0f) * FineVoxelM;
     CachedFineGdfCenterSpan[3]   = FineGdfHalf;
-    CachedCoarseGdfCenterSpan[0] = std::round(LastCoarseGdfFocusWorld.X / CoarseVoxelM) * CoarseVoxelM;
-    CachedCoarseGdfCenterSpan[1] = std::round(LastCoarseGdfFocusWorld.Y / CoarseVoxelM) * CoarseVoxelM;
-    CachedCoarseGdfCenterSpan[2] = std::round(LastCoarseGdfFocusWorld.Z / CoarseVoxelM) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[0] = (static_cast<float>(CachedCoarseToroidalMinCell[0]) + 32.0f) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[1] = (static_cast<float>(CachedCoarseToroidalMinCell[1]) + 32.0f) * CoarseVoxelM;
+    CachedCoarseGdfCenterSpan[2] = (static_cast<float>(CachedCoarseToroidalMinCell[2]) + 32.0f) * CoarseVoxelM;
     CachedCoarseGdfCenterSpan[3] = CoarseGdfHalf;
 
     DistanceFieldStats.FineCascadeCenterWorld[0]   = CachedFineGdfCenterSpan[0];
@@ -1506,11 +1679,13 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
 
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
+    std::memcpy(Uniforms.GlobalDistanceFineToroidalCell, CachedFineToroidalMinCell, sizeof(CachedFineToroidalMinCell));
+    std::memcpy(Uniforms.GlobalDistanceCoarseToroidalCell, CachedCoarseToroidalMinCell, sizeof(CachedCoarseToroidalMinCell));
     Uniforms.GlobalDistanceBakeControl[2] = 1u;
     Uniforms.GlobalDistanceBakeControl[3] = (UploadedLocalSdfInstanceCount & 0xFFFFu) << 16u;
 
     constexpr uint64_t UniformStrideBytes = 8192ull;
-    EnsureBufferCapacity(UniformBuffer, UniformStrideBytes * 12ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(UniformBuffer, UniformStrideBytes * 24ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     uint8_t* UniformHostBytes = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
     std::memcpy(UniformHostBytes, &Uniforms, sizeof(Uniforms));
 
@@ -1588,21 +1763,26 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
         vkCmdFillBuffer(Cmd, GlobalRadiosityFieldBuffer.BufferHandle, 0ull, VK_WHOLE_SIZE, 0u);
         vkCmdFillBuffer(Cmd, GlobalSurfaceShellBuffer.BufferHandle, 0ull, VK_WHOLE_SIZE, 0u);
         GlobalDistanceFieldReady = false;
+        FineToroidalValid        = false;
+        CoarseToroidalValid      = false;
     }
     else
     {
+        uint32_t NextUniSlot = 0u;
+
         const bool DoFineShadow   = (EffectiveMask & kPrecomputeFineShadow) != 0u;
         const bool DoCoarseShadow = (EffectiveMask & kPrecomputeCoarseShadow) != 0u;
         if (DoFineShadow || DoCoarseShadow)
         {
+            const uint64_t UniOffs = static_cast<uint64_t>(NextUniSlot++) * UniformStrideBytes;
             WorldViewportUniformBlockStd140 ShadowUni = Uniforms;
             ShadowUni.GlobalDistanceBakeControl[0] = 0u;
             ShadowUni.GlobalDistanceBakeControl[1] = (!DoFineShadow && DoCoarseShadow) ? 1u : 0u;
             ShadowUni.GlobalDistanceBakeControl[2] = 1u;
-            std::memcpy(UniformHostBytes, &ShadowUni, sizeof(ShadowUni));
+            std::memcpy(UniformHostBytes + UniOffs, &ShadowUni, sizeof(ShadowUni));
 
             const uint32_t CascadeCount = (DoFineShadow && DoCoarseShadow) ? 2u : 1u;
-            const auto CascadeSlots = ConstructPrecomputeSlots(0ull);
+            const auto CascadeSlots = ConstructPrecomputeSlots(UniOffs);
             if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, CascadeSlots, 128u, 128u, CascadeCount))
             {
                 BoundDevice->FreeCommandBuffer(Cmd);
@@ -1610,56 +1790,149 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
             }
         }
 
-        const bool DoFineGdf   = ((EffectiveMask & kPrecomputeFineGdf) != 0u) && (GlobalDistanceBakeProgramHandle != UINT32_MAX);
-        const bool DoCoarseGdf = ((EffectiveMask & kPrecomputeCoarseGdf) != 0u) && (GlobalDistanceBakeProgramHandle != UINT32_MAX);
-        if (DoFineGdf || DoCoarseGdf)
+        auto PackSlabUniform = [](WorldViewportUniformBlockStd140& TargetUni, const ToroidalSlabBox& Box) noexcept
         {
+            TargetUni.GlobalDistanceSlabBounds[0] = Box.MinCoord[0] | (Box.MaxCoord[0] << 16u);
+            TargetUni.GlobalDistanceSlabBounds[1] = Box.MinCoord[1] | (Box.MaxCoord[1] << 16u);
+            TargetUni.GlobalDistanceSlabBounds[2] = Box.MinCoord[2] | (Box.MaxCoord[2] << 16u);
+            TargetUni.GlobalDistanceSlabBounds[3] = 1u;
+        };
+
+        if (DoFineGdfUpdate || DoCoarseGdfUpdate)
+        {
+            bool DispatchedAnySlab  = false;
+            bool IncrementalScrolled = false;
             for (uint32_t CascadeIdx = 0u; CascadeIdx < 2u; ++CascadeIdx)
             {
-                if ((CascadeIdx == 0u && !DoFineGdf) || (CascadeIdx == 1u && !DoCoarseGdf))
+                const bool      ActiveCascade = (CascadeIdx == 0u) ? DoFineGdfUpdate : DoCoarseGdfUpdate;
+                const uint32_t  SlabCnt       = (CascadeIdx == 0u) ? FineSlabCount   : CoarseSlabCount;
+                const auto&     SlabArray     = (CascadeIdx == 0u) ? FineSlabs       : CoarseSlabs;
+                if (!ActiveCascade || SlabCnt == 0u)
                 {
                     continue;
                 }
-                const uint64_t UniOffs = static_cast<uint64_t>(1u + CascadeIdx) * UniformStrideBytes;
-                WorldViewportUniformBlockStd140 GdfUni = Uniforms;
-                GdfUni.GlobalDistanceBakeControl[0] = 0u;
-                GdfUni.GlobalDistanceBakeControl[1] = CascadeIdx;
-                GdfUni.GlobalDistanceBakeControl[2] = 1u;
-                std::memcpy(UniformHostBytes + UniOffs, &GdfUni, sizeof(GdfUni));
 
-                const auto GdfSlots = ConstructPrecomputeSlots(UniOffs);
-                if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalDistanceBakeProgramHandle, GdfSlots, 16u, 16u, 16u))
+                for (uint32_t SlabIdx = 0u; SlabIdx < SlabCnt; ++SlabIdx)
                 {
-                    BoundDevice->FreeCommandBuffer(Cmd);
-                    return false;
+                    const ToroidalSlabBox& Box = SlabArray[SlabIdx];
+                    const uint32_t ExtX    = Box.MaxCoord[0] - Box.MinCoord[0];
+                    const uint32_t ExtY    = Box.MaxCoord[1] - Box.MinCoord[1];
+                    const uint32_t ExtZ    = Box.MaxCoord[2] - Box.MinCoord[2];
+                    const uint32_t GroupsX = (ExtX + 3u) / 4u;
+                    const uint32_t GroupsY = (ExtY + 3u) / 4u;
+                    const uint32_t GroupsZ = (ExtZ + 3u) / 4u;
+
+                    const uint64_t UniOffs = static_cast<uint64_t>(NextUniSlot++) * UniformStrideBytes;
+                    WorldViewportUniformBlockStd140 GdfUni = Uniforms;
+                    GdfUni.GlobalDistanceBakeControl[0] = 0u;
+                    GdfUni.GlobalDistanceBakeControl[1] = CascadeIdx;
+                    GdfUni.GlobalDistanceBakeControl[2] = 1u;
+                    PackSlabUniform(GdfUni, Box);
+                    std::memcpy(UniformHostBytes + UniOffs, &GdfUni, sizeof(GdfUni));
+
+                    const auto GdfSlots = ConstructPrecomputeSlots(UniOffs);
+                    if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalDistanceBakeProgramHandle, GdfSlots, GroupsX, GroupsY, GroupsZ))
+                    {
+                        BoundDevice->FreeCommandBuffer(Cmd);
+                        return false;
+                    }
+                    DispatchedAnySlab = true;
+                }
+
+                if (CascadeIdx == 0u)
+                {
+                    DistanceFieldStats.LastFineUpdatedVoxelCount = FineVoxWritten;
+                    if (!FullFineReset && FineVoxWritten < 262144u)
+                    {
+                        IncrementalScrolled = true;
+                    }
+                }
+                else
+                {
+                    DistanceFieldStats.LastCoarseUpdatedVoxelCount = CoarseVoxWritten;
+                    if (!FullCoarseReset && CoarseVoxWritten < 262144u)
+                    {
+                        IncrementalScrolled = true;
+                    }
                 }
             }
-            DistanceFieldStats.CascadeBakeCount += 1u;
+            if (DispatchedAnySlab)
+            {
+                DistanceFieldStats.CascadeBakeCount += 1u;
+            }
+            if (IncrementalScrolled)
+            {
+                DistanceFieldStats.ToroidalSlabScrollCount += 1u;
+            }
         }
         InsertPrecomputeBarrier();
 
         const bool DoRadiosity = ((EffectiveMask & kPrecomputeRadiosity) != 0u) && (GlobalRadiosityProgramHandle != UINT32_MAX);
         if (DoRadiosity)
         {
-            const uint32_t PhaseCount = ((EffectiveMask & kPrecomputeSecondBounce) != 0u) ? 8u : 4u;
-            constexpr std::array<uint32_t, 8u> PhaseGroupCounts {{ 16u, 8u, 4u, 2u, 16u, 8u, 4u, 2u }};
-            for (uint32_t Phase = 0u; Phase < PhaseCount; ++Phase)
-            {
-                const uint64_t UniOffs = static_cast<uint64_t>(3u + Phase) * UniformStrideBytes;
-                WorldViewportUniformBlockStd140 RadUni = Uniforms;
-                RadUni.GlobalDistanceBakeControl[0] = Phase;
-                RadUni.GlobalDistanceBakeControl[1] = 0u;
-                RadUni.GlobalDistanceBakeControl[2] = 1u;
-                std::memcpy(UniformHostBytes + UniOffs, &RadUni, sizeof(RadUni));
+            const bool IncrementalRadiositySlabs =
+                DoFineGdfUpdate &&
+                !FullFineReset &&
+                ((EffectiveMask & kPrecomputeRadiosityFull) == 0u);
+            const std::array<ToroidalSlabBox, 3u> FullVolumeSlabs {{
+                ToroidalSlabBox{ { 0u, 0u, 0u }, { 64u, 64u, 64u } },
+                ToroidalSlabBox{},
+                ToroidalSlabBox{},
+            }};
+            const auto&    RadSlabArray = IncrementalRadiositySlabs ? FineSlabs     : FullVolumeSlabs;
+            const uint32_t RadSlabCount = IncrementalRadiositySlabs ? FineSlabCount : 1u;
 
-                const uint32_t Groups   = PhaseGroupCounts[Phase];
-                const auto     RadSlots = ConstructPrecomputeSlots(UniOffs);
-                if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalRadiosityProgramHandle, RadSlots, Groups, Groups, Groups))
+            if (RadSlabCount > 0u)
+            {
+                const uint32_t PhaseCount = ((EffectiveMask & kPrecomputeSecondBounce) != 0u) ? 8u : 4u;
+                constexpr std::array<uint32_t, 8u> PhaseGroupCounts {{ 16u, 8u, 4u, 2u, 16u, 8u, 4u, 2u }};
+                for (uint32_t Phase = 0u; Phase < PhaseCount; ++Phase)
                 {
-                    BoundDevice->FreeCommandBuffer(Cmd);
-                    return false;
+                    if (Phase == 0u || Phase == 4u)
+                    {
+                        for (uint32_t SlabIdx = 0u; SlabIdx < RadSlabCount; ++SlabIdx)
+                        {
+                            const ToroidalSlabBox& Box = RadSlabArray[SlabIdx];
+                            const uint32_t GroupsX = (Box.MaxCoord[0] - Box.MinCoord[0] + 3u) / 4u;
+                            const uint32_t GroupsY = (Box.MaxCoord[1] - Box.MinCoord[1] + 3u) / 4u;
+                            const uint32_t GroupsZ = (Box.MaxCoord[2] - Box.MinCoord[2] + 3u) / 4u;
+
+                            const uint64_t UniOffs = static_cast<uint64_t>(NextUniSlot++) * UniformStrideBytes;
+                            WorldViewportUniformBlockStd140 RadUni = Uniforms;
+                            RadUni.GlobalDistanceBakeControl[0] = Phase;
+                            RadUni.GlobalDistanceBakeControl[1] = 0u;
+                            RadUni.GlobalDistanceBakeControl[2] = 1u;
+                            PackSlabUniform(RadUni, Box);
+                            std::memcpy(UniformHostBytes + UniOffs, &RadUni, sizeof(RadUni));
+
+                            const auto RadSlots = ConstructPrecomputeSlots(UniOffs);
+                            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalRadiosityProgramHandle, RadSlots, GroupsX, GroupsY, GroupsZ))
+                            {
+                                BoundDevice->FreeCommandBuffer(Cmd);
+                                return false;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        const uint64_t UniOffs = static_cast<uint64_t>(NextUniSlot++) * UniformStrideBytes;
+                        WorldViewportUniformBlockStd140 RadUni = Uniforms;
+                        RadUni.GlobalDistanceBakeControl[0] = Phase;
+                        RadUni.GlobalDistanceBakeControl[1] = 0u;
+                        RadUni.GlobalDistanceBakeControl[2] = 1u;
+                        RadUni.GlobalDistanceSlabBounds[3]  = 0u;
+                        std::memcpy(UniformHostBytes + UniOffs, &RadUni, sizeof(RadUni));
+
+                        const uint32_t Groups   = PhaseGroupCounts[Phase];
+                        const auto     RadSlots = ConstructPrecomputeSlots(UniOffs);
+                        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalRadiosityProgramHandle, RadSlots, Groups, Groups, Groups))
+                        {
+                            BoundDevice->FreeCommandBuffer(Cmd);
+                            return false;
+                        }
+                    }
+                    InsertPrecomputeBarrier();
                 }
-                InsertPrecomputeBarrier();
             }
             GlobalDistanceFieldReady = true;
 
@@ -1680,7 +1953,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
             LightingSig = HashMixBytes(LightingSig, &LightCount, sizeof(LightCount));
             LastRadiosityLightingSignature = LightingSig;
         }
-        else if (DoFineGdf || DoCoarseGdf)
+        else if (DoFineGdfUpdate || DoCoarseGdfUpdate)
         {
             GlobalDistanceFieldReady = true;
         }
@@ -1986,14 +2259,21 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     // 4. Build Two-Cascade Solar Shadow Depth + Global Distance Field + 2-Bounce Radiosity Volume on GPU
     WaitPendingNaniteBuild();
     NaniteCutCache.clear();
-    CascadeFocusInitialized = false;
     if (RebuildShadows || !SceneUploadedOnce || SolarShadowDepthBuffer.BufferHandle == VK_NULL_HANDLE)
     {
+        CascadeFocusInitialized    = false;
+        FineToroidalValid          = false;
+        CoarseToroidalValid        = false;
+        PendingFineGeometryReset   = true;
+        PendingCoarseGeometryReset = true;
         UploadSolarCascadeDepth(Scene);
     }
     else if (GlobalDistanceFieldReady)
     {
-        (void)DispatchGpuScenePrecompute(Scene, false, kPrecomputeFineShadow | kPrecomputeCoarseShadow | kPrecomputeRadiosity | kPrecomputeSecondBounce);
+        (void)DispatchGpuScenePrecompute(
+            Scene,
+            false,
+            kPrecomputeFineShadow | kPrecomputeCoarseShadow | kPrecomputeRadiosity | kPrecomputeRadiosityFull | kPrecomputeSecondBounce);
     }
 
     CachedNaniteCutSignature = 0u;
@@ -2824,12 +3104,16 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     };
 
     uint32_t PrecomputeMask = 0u;
-    if (!ActiveClipFocusInitialized || !CascadeFocusInitialized || DynamicInstancesChanged || SunDirectionShifted)
+    if (!ActiveClipFocusInitialized || !CascadeFocusInitialized || DynamicInstancesChanged)
     {
         PrecomputeMask = kPrecomputeFullMask;
     }
     else
     {
+        if (SunDirectionShifted)
+        {
+            PrecomputeMask |= (kPrecomputeFineShadow | kPrecomputeCoarseShadow | kPrecomputeRadiosity | kPrecomputeRadiosityFull | kPrecomputeSecondBounce);
+        }
         if (DistSq3(DesiredClipFocus, LastFineShadowFocusWorld) >= (1.15f * 1.15f))
         {
             PrecomputeMask |= kPrecomputeFineShadow;
@@ -2842,11 +3126,19 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             (Config.Engine != WorldRenderEngine::MatCap) || (Config.DebugChannel >= 12u);
         if (DistanceRadiosityActive)
         {
-            const float FineGdfScrollM =
-                (!CopyToReadbackStaging && Config.Engine == WorldRenderEngine::RealTimeGiHighEnd && Config.DebugChannel == 0u)
-                    ? 1.55f
-                    : 0.68f;
-            if (DistSq3(DesiredClipFocus, LastFineGdfFocusWorld) >= (FineGdfScrollM * FineGdfScrollM))
+            const Mathematics::Axis3D BoundsSpan    = Scene.SceneTree.RootBoundsMax - Scene.SceneTree.RootBoundsMin;
+            const float               MaxHalfExtent = 0.5f * std::max({ std::abs(BoundsSpan.X), std::abs(BoundsSpan.Y), std::abs(BoundsSpan.Z), 5.6f });
+            const float               FineGdfHalf   = std::round(std::clamp(MaxHalfExtent * 1.18f, 3.25f, 4.25f) * 8.0f) * 0.125f;
+            const float               CoarseGdfHalf = FineGdfHalf * 2.5f;
+            const float               FineVoxelM    = (2.0f * FineGdfHalf) / 64.0f;
+            const float               CoarseVoxelM  = (2.0f * CoarseGdfHalf) / 64.0f;
+
+            const float FineAxisDrift = std::max({
+                std::abs(DesiredClipFocus.X - CachedFineGdfCenterSpan[0]),
+                std::abs(DesiredClipFocus.Y - CachedFineGdfCenterSpan[1]),
+                std::abs(DesiredClipFocus.Z - CachedFineGdfCenterSpan[2]),
+            });
+            if (!FineToroidalValid || FineAxisDrift >= FineVoxelM * 4.35f)
             {
                 PrecomputeMask |= (kPrecomputeFineGdf | kPrecomputeRadiosity);
                 if (CopyToReadbackStaging)
@@ -2854,7 +3146,13 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
                     PrecomputeMask |= kPrecomputeSecondBounce;
                 }
             }
-            if (DistSq3(DesiredClipFocus, LastCoarseGdfFocusWorld) >= (2.10f * 2.10f))
+
+            const float CoarseAxisDrift = std::max({
+                std::abs(DesiredClipFocus.X - CachedCoarseGdfCenterSpan[0]),
+                std::abs(DesiredClipFocus.Y - CachedCoarseGdfCenterSpan[1]),
+                std::abs(DesiredClipFocus.Z - CachedCoarseGdfCenterSpan[2]),
+            });
+            if (!CoarseToroidalValid || CoarseAxisDrift >= CoarseVoxelM * 4.35f)
             {
                 PrecomputeMask |= kPrecomputeCoarseGdf;
             }
@@ -3392,7 +3690,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             LightingSig != LastRadiosityLightingSignature)
         {
             const auto RadSyncStart = std::chrono::steady_clock::now();
-            (void)DispatchGpuScenePrecompute(Scene, false, kPrecomputeRadiosity | kPrecomputeSecondBounce);
+            (void)DispatchGpuScenePrecompute(Scene, false, kPrecomputeRadiosity | kPrecomputeRadiosityFull | kPrecomputeSecondBounce);
             const auto RadSyncEnd = std::chrono::steady_clock::now();
             LastViewportTiming.SceneSyncGpuMs += static_cast<float>(
                 std::chrono::duration<double, std::milli>(RadSyncEnd - RadSyncStart).count());
@@ -3402,6 +3700,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
 
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
+    std::memcpy(Uniforms.GlobalDistanceFineToroidalCell, CachedFineToroidalMinCell, sizeof(CachedFineToroidalMinCell));
+    std::memcpy(Uniforms.GlobalDistanceCoarseToroidalCell, CachedCoarseToroidalMinCell, sizeof(CachedCoarseToroidalMinCell));
+    Uniforms.GlobalDistanceSlabBounds[3] = 0u;
     Uniforms.GlobalDistanceBakeControl[0] = 0u;
     Uniforms.GlobalDistanceBakeControl[1] = 0u;
     Uniforms.GlobalDistanceBakeControl[2] = GlobalDistanceFieldReady ? 1u : 0u;

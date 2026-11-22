@@ -52,9 +52,12 @@ struct WorldViewportUniformBlock
     VolumetricFogUniformBlock   FogParams;
     CelestialFieldUniformBlock  CelestialParams;
     LensFlareUniformBlock       LensFlareParams;
-    float4                      GlobalDistanceFineCenterSpan;   // xyz = FineCenterWorld,   w = FineHalfSpanMeters
-    float4                      GlobalDistanceCoarseCenterSpan; // xyz = CoarseCenterWorld, w = CoarseHalfSpanMeters
-    uint4                       GlobalDistanceBakeControl;      // x = BakePhase, y = CascadeIdx, z = GdfReadyMask, w = XeGTAO (bit0 enable, bits 8..15 strength)
+    float4                      GlobalDistanceFineCenterSpan;     // xyz = FineCenterWorld,   w = FineHalfSpanMeters
+    float4                      GlobalDistanceCoarseCenterSpan;   // xyz = CoarseCenterWorld, w = CoarseHalfSpanMeters
+    uint4                       GlobalDistanceBakeControl;        // x = BakePhase, y = CascadeIdx, z = GdfReadyMask, w = XeGTAO (bit0 enable, bits 8..15 strength)
+    int4                        GlobalDistanceFineToroidalCell;   // xyz = FineMinCellWorld,   w = Reserved
+    int4                        GlobalDistanceCoarseToroidalCell; // xyz = CoarseMinCellWorld, w = Reserved
+    uint4                       GlobalDistanceSlabBounds;         // xyz = (SlabMin | (SlabMax << 16)), w = SlabActiveFlag
 };
 
 struct GpuWideTreeEntry128
@@ -793,32 +796,39 @@ float SampleGlobalDistanceCascade(uint CascadeIdx, float3 WorldPos, out bool Out
         return 10.0;
     }
 
-    float3 NormCoord = (WorldPos - CenterSpan.xyz) / (2.0 * HalfSpan) + 0.5;
-    float  Margin    = 1.25 / float(GdfGridRes);
-    if (any(NormCoord < float3(Margin)) || any(NormCoord > float3(1.0 - Margin)))
+    float3 LogicalNorm = (WorldPos - CenterSpan.xyz) / (2.0 * HalfSpan) + 0.5;
+    float  Margin      = 1.25 / float(GdfGridRes);
+    if (any(LogicalNorm < float3(Margin)) || any(LogicalNorm > float3(1.0 - Margin)))
     {
         OutInBounds = false;
         return HalfSpan;
     }
     OutInBounds = true;
 
-    float3 GridF = NormCoord * float(GdfGridRes) - 0.5;
-    int3   P0    = clamp(int3(floor(GridF)), int3(0), int3(int(GdfGridRes) - 1));
-    int3   P1    = min(P0 + int3(1), int3(int(GdfGridRes) - 1));
-    float3 Fr    = saturate(GridF - float3(P0));
+    int3 MinCell = (CascadeIdx == 0u)
+        ? WorldUniforms.GlobalDistanceFineToroidalCell.xyz
+        : WorldUniforms.GlobalDistanceCoarseToroidalCell.xyz;
+
+    // Toroidal frac() wrap-around addressing over physical [0..63]^3 ring storage
+    float3 ToroidalNorm = frac(LogicalNorm + float3(MinCell & 63) * (1.0 / float(GdfGridRes)));
+    float3 ToroidalGrid = ToroidalNorm * float(GdfGridRes) - 0.5;
+    int3   BaseCell     = int3(floor(ToroidalGrid));
+    float3 Fr           = saturate(ToroidalGrid - float3(BaseCell));
+    uint3  P0           = uint3(BaseCell & 63);
+    uint3  P1           = uint3((BaseCell + int3(1)) & 63);
 
     uint BaseOff = CascadeIdx * GdfVoxCnt;
     uint R       = GdfGridRes;
     uint R2      = GdfGridRes * GdfGridRes;
 
-    float C000 = GlobalDistanceFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P0.y) * R + uint(P0.x)];
-    float C100 = GlobalDistanceFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P0.y) * R + uint(P1.x)];
-    float C010 = GlobalDistanceFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P1.y) * R + uint(P0.x)];
-    float C110 = GlobalDistanceFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P1.y) * R + uint(P1.x)];
-    float C001 = GlobalDistanceFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P0.y) * R + uint(P0.x)];
-    float C101 = GlobalDistanceFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P0.y) * R + uint(P1.x)];
-    float C011 = GlobalDistanceFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P1.y) * R + uint(P0.x)];
-    float C111 = GlobalDistanceFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P1.y) * R + uint(P1.x)];
+    float C000 = GlobalDistanceFieldBuffer[BaseOff + P0.z * R2 + P0.y * R + P0.x];
+    float C100 = GlobalDistanceFieldBuffer[BaseOff + P0.z * R2 + P0.y * R + P1.x];
+    float C010 = GlobalDistanceFieldBuffer[BaseOff + P0.z * R2 + P1.y * R + P0.x];
+    float C110 = GlobalDistanceFieldBuffer[BaseOff + P0.z * R2 + P1.y * R + P1.x];
+    float C001 = GlobalDistanceFieldBuffer[BaseOff + P1.z * R2 + P0.y * R + P0.x];
+    float C101 = GlobalDistanceFieldBuffer[BaseOff + P1.z * R2 + P0.y * R + P1.x];
+    float C011 = GlobalDistanceFieldBuffer[BaseOff + P1.z * R2 + P1.y * R + P0.x];
+    float C111 = GlobalDistanceFieldBuffer[BaseOff + P1.z * R2 + P1.y * R + P1.x];
 
     float C00 = lerp(C000, C100, Fr.x);
     float C10 = lerp(C010, C110, Fr.x);
@@ -1061,23 +1071,43 @@ float4 SampleRadiosityMipTrilinear(uint MipIdx, float3 WorldPos, out bool OutInB
     }
     OutInBounds = true;
 
-    uint Res = 64u, BaseOff = 0u;
+    uint   Res = 64u, BaseOff = 0u;
     QueryRadiosityMipLayout(MipIdx, Res, BaseOff);
 
-    float3 GridF = NormCoord * float(Res) - 0.5;
-    int3   P0    = clamp(int3(floor(GridF)), int3(0), int3(int(Res) - 1));
-    int3   P1    = min(P0 + int3(1), int3(int(Res) - 1));
-    float3 Fr    = saturate(GridF - float3(P0));
-    uint   R2    = Res * Res;
+    uint3  P0 = uint3(0u);
+    uint3  P1 = uint3(0u);
+    float3 Fr = float3(0.0);
+    if (MipIdx == 0u)
+    {
+        float  HalfTexel    = 0.5 / float(GdfGridRes);
+        float3 ClampedNorm  = clamp(NormCoord, float3(HalfTexel), float3(1.0 - HalfTexel));
+        int3   FineMinCell  = WorldUniforms.GlobalDistanceFineToroidalCell.xyz;
+        float3 ToroidalNorm = frac(ClampedNorm + float3(FineMinCell & 63) * (1.0 / float(GdfGridRes)));
+        float3 ToroidalGrid = ToroidalNorm * float(GdfGridRes) - 0.5;
+        int3   BaseCell     = int3(floor(ToroidalGrid));
+        Fr                  = saturate(ToroidalGrid - float3(BaseCell));
+        P0                  = uint3(BaseCell & 63);
+        P1                  = uint3((BaseCell + int3(1)) & 63);
+    }
+    else
+    {
+        float3 GridF = NormCoord * float(Res) - 0.5;
+        int3   L0    = clamp(int3(floor(GridF)), int3(0), int3(int(Res) - 1));
+        int3   L1    = min(L0 + int3(1), int3(int(Res) - 1));
+        Fr           = saturate(GridF - float3(L0));
+        P0           = uint3(L0);
+        P1           = uint3(L1);
+    }
+    uint R2 = Res * Res;
 
-    float4 V000 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P0.y) * Res + uint(P0.x)]);
-    float4 V100 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P0.y) * Res + uint(P1.x)]);
-    float4 V010 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P1.y) * Res + uint(P0.x)]);
-    float4 V110 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P0.z) * R2 + uint(P1.y) * Res + uint(P1.x)]);
-    float4 V001 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P0.y) * Res + uint(P0.x)]);
-    float4 V101 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P0.y) * Res + uint(P1.x)]);
-    float4 V011 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P1.y) * Res + uint(P0.x)]);
-    float4 V111 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + uint(P1.z) * R2 + uint(P1.y) * Res + uint(P1.x)]);
+    float4 V000 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P0.z * R2 + P0.y * Res + P0.x]);
+    float4 V100 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P0.z * R2 + P0.y * Res + P1.x]);
+    float4 V010 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P0.z * R2 + P1.y * Res + P0.x]);
+    float4 V110 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P0.z * R2 + P1.y * Res + P1.x]);
+    float4 V001 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P1.z * R2 + P0.y * Res + P0.x]);
+    float4 V101 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P1.z * R2 + P0.y * Res + P1.x]);
+    float4 V011 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P1.z * R2 + P1.y * Res + P0.x]);
+    float4 V111 = UnpackHalf4(GlobalRadiosityFieldBuffer[BaseOff + P1.z * R2 + P1.y * Res + P1.x]);
 
     float4 V00 = lerp(V000, V100, Fr.x);
     float4 V10 = lerp(V010, V110, Fr.x);
@@ -3517,11 +3547,29 @@ float EvaluateInstanceLocalSdf(GpuDynamicLocalSdfInstance144 Inst, uint ShapeCod
     return EvaluateAnalyticalPrimitiveLocalSdf(ShapeCode, Inst.LocalMaxPad.xyz, LocalP);
 }
 
+void QueryActiveToroidalSlab(out uint3 OutSlabMin, out uint3 OutSlabMax)
+{
+    if (WorldUniforms.GlobalDistanceSlabBounds.w != 0u)
+    {
+        uint3 Packed = WorldUniforms.GlobalDistanceSlabBounds.xyz;
+        OutSlabMin   = Packed & 0xFFFFu;
+        OutSlabMax   = min(uint3(GdfGridRes), Packed >> 16u);
+    }
+    else
+    {
+        OutSlabMin = uint3(0u);
+        OutSlabMax = uint3(GdfGridRes);
+    }
+}
+
 [shader("compute")]
 [numthreads(4, 4, 4)]
 void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
-    if (any(DispatchThreadID >= uint3(GdfGridRes)))
+    uint3 SlabMin = uint3(0u), SlabMax = uint3(GdfGridRes);
+    QueryActiveToroidalSlab(SlabMin, SlabMax);
+    uint3 LogicalCoord = SlabMin + DispatchThreadID;
+    if (any(LogicalCoord >= SlabMax))
     {
         return;
     }
@@ -3530,12 +3578,16 @@ void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float4 CenterSpan = (CascadeIdx == 0u)
         ? WorldUniforms.GlobalDistanceFineCenterSpan
         : WorldUniforms.GlobalDistanceCoarseCenterSpan;
+    int3   MinCell    = (CascadeIdx == 0u)
+        ? WorldUniforms.GlobalDistanceFineToroidalCell.xyz
+        : WorldUniforms.GlobalDistanceCoarseToroidalCell.xyz;
     float  HalfSpan   = max(0.25, CenterSpan.w);
     float  VoxSize    = (2.0 * HalfSpan) / float(GdfGridRes);
-    float3 NormUVW    = (float3(DispatchThreadID) + 0.5) / float(GdfGridRes);
-    float3 VoxelPos   = CenterSpan.xyz + (NormUVW * 2.0 - 1.0) * HalfSpan;
+    int3   WorldCell  = MinCell + int3(LogicalCoord);
+    float3 VoxelPos   = (float3(WorldCell) + 0.5) * VoxSize;
+    uint3  PhysCoord  = uint3(WorldCell & 63);
 
-    uint   LinearIdx         = DispatchThreadID.z * (GdfGridRes * GdfGridRes) + DispatchThreadID.y * GdfGridRes + DispatchThreadID.x;
+    uint   LinearIdx         = PhysCoord.z * (GdfGridRes * GdfGridRes) + PhysCoord.y * GdfGridRes + PhysCoord.x;
     uint   LocalSdfInstCount = (WorldUniforms.GlobalDistanceBakeControl.w >> 16u) & 0xFFFFu;
     float  MaxDist           = VoxSize * 5.5;
     float  SignedDist        = MaxDist;
@@ -3736,7 +3788,10 @@ void DownsampleRadiosityMipStep(uint3 Coord, uint DstMip)
         {
             for (uint DX = 0u; DX < 2u; ++DX)
             {
-                uint3  P = BaseSrc + uint3(DX, DY, DZ);
+                uint3  LogicalSrc = BaseSrc + uint3(DX, DY, DZ);
+                uint3  P = (DstMip == 1u)
+                    ? uint3((WorldUniforms.GlobalDistanceFineToroidalCell.xyz + int3(LogicalSrc)) & 63)
+                    : LogicalSrc;
                 float4 V = UnpackHalf4(GlobalRadiosityFieldBuffer[SrcOff + P.z * SrcR2 + P.y * SrcRes + P.x]);
                 SumPrem += V;
                 if (V.a > 0.02) ActiveCnt += 1.0;
@@ -3769,14 +3824,20 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (BakePhase == 2u || BakePhase == 6u) { DownsampleRadiosityMipStep(DispatchThreadID, 2u); return; }
     if (BakePhase == 3u || BakePhase == 7u) { DownsampleRadiosityMipStep(DispatchThreadID, 3u); return; }
 
-    if (any(DispatchThreadID >= uint3(GdfGridRes)))
+    uint3 SlabMin = uint3(0u), SlabMax = uint3(GdfGridRes);
+    QueryActiveToroidalSlab(SlabMin, SlabMax);
+    uint3 LogicalCoord = SlabMin + DispatchThreadID;
+    if (any(LogicalCoord >= SlabMax))
     {
         return;
     }
 
-    uint  LinearIdx = DispatchThreadID.z * (GdfGridRes * GdfGridRes) + DispatchThreadID.y * GdfGridRes + DispatchThreadID.x;
-    uint2 ShellMeta = GlobalSurfaceShellBuffer[LinearIdx];
-    float Opacity   = float((ShellMeta.y >> 16u) & 0xFFFFu) * (1.0 / 65535.0);
+    int3  FineMinCell = WorldUniforms.GlobalDistanceFineToroidalCell.xyz;
+    int3  WorldCell   = FineMinCell + int3(LogicalCoord);
+    uint3 PhysCoord   = uint3(WorldCell & 63);
+    uint  LinearIdx   = PhysCoord.z * (GdfGridRes * GdfGridRes) + PhysCoord.y * GdfGridRes + PhysCoord.x;
+    uint2 ShellMeta   = GlobalSurfaceShellBuffer[LinearIdx];
+    float Opacity     = float((ShellMeta.y >> 16u) & 0xFFFFu) * (1.0 / 65535.0);
     if (Opacity <= 0.01)
     {
         if (BakePhase == 0u)
@@ -3788,8 +3849,8 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     float4 CenterSpan = WorldUniforms.GlobalDistanceFineCenterSpan;
     float  HalfSpan   = max(0.25, CenterSpan.w);
-    float3 NormUVW    = (float3(DispatchThreadID) + 0.5) / float(GdfGridRes);
-    float3 VoxelPos   = CenterSpan.xyz + (NormUVW * 2.0 - 1.0) * HalfSpan;
+    float  VoxSize    = (2.0 * HalfSpan) / float(GdfGridRes);
+    float3 VoxelPos   = (float3(WorldCell) + 0.5) * VoxSize;
     float  SignedDist = GlobalDistanceFieldBuffer[LinearIdx];
     float3 SurfN      = UnpackOctNormal32(ShellMeta.x);
     float3 SurfPos    = VoxelPos - SurfN * clamp(SignedDist, -HalfSpan, HalfSpan);

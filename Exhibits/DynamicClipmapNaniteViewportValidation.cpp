@@ -504,6 +504,36 @@ int main()
         Checklist.Verify(MaskOk && GtxFloorOk && BvhFloorOk, "Rendered Blank GroundPlane Clipmap Seam views (GTX GI + BVH4 GI)");
         Checklist.Verify(GtxMeanSeam < 1.25f && GtxMaxStep < 2.50f, "GTX GDF GI open floor has zero bright camera-following clipmap box seam");
         Checklist.Verify(BvhMeanSeam < 1.25f && BvhMaxStep < 2.50f, "HighEnd BVH4 GI open floor has zero bright camera-following clipmap box seam");
+
+        // Scroll camera +0.75 m along +X to trigger a toroidal frac() dirty-slab update (only newly uncovered slab voxels)
+        const auto BeforeScrollStats = GpuSeq.QueryGlobalDistanceFieldStats();
+        FloorOverviewCam.CameraOrigin.X += 0.75f;
+        FloorOverviewCam.TargetPoint.X  += 0.75f;
+        auto [ScrollMaskOk, ScrolledFloorMask] = RenderFloorMode(16u, WorldRenderEngine::RealTimeGiGtxLowEnd);
+        auto [ScrollGtxOk,  ScrolledGtxRgba]   = RenderFloorMode(0u,  WorldRenderEngine::RealTimeGiGtxLowEnd);
+        const auto AfterScrollStats = GpuSeq.QueryGlobalDistanceFieldStats();
+        FloorCascadeMask = ScrolledFloorMask;
+        const auto [ScrolledMeanSeam, ScrolledMaxStep] = MeasureClipmapSeamStep(ScrolledGtxRgba);
+        std::printf(
+            "[DynamicClipmapNaniteViewportValidation] Toroidal Slab Scroll: "
+            "ScrollCount=%u -> %u | FineVoxUpdated=%u / 262144 (%.1f%%) | ScrolledSeam(Mean=%.2f, Max=%.2f)\n",
+            BeforeScrollStats.ToroidalSlabScrollCount,
+            AfterScrollStats.ToroidalSlabScrollCount,
+            AfterScrollStats.LastFineUpdatedVoxelCount,
+            100.0 * static_cast<double>(AfterScrollStats.LastFineUpdatedVoxelCount) / 262144.0,
+            ScrolledMeanSeam,
+            ScrolledMaxStep);
+
+        Checklist.Verify(
+            ScrollMaskOk && ScrollGtxOk &&
+            AfterScrollStats.ToroidalSlabScrollCount > BeforeScrollStats.ToroidalSlabScrollCount &&
+            AfterScrollStats.LastFineUpdatedVoxelCount > 0u &&
+            AfterScrollStats.LastFineUpdatedVoxelCount <= 65536u,
+            "Camera scroll updates only toroidal dirty voxel slabs instead of full 64^3 GDF grid");
+        Checklist.Verify(
+            ScrolledMeanSeam < 1.25f && ScrolledMaxStep < 2.50f,
+            "Toroidal frac() wrap-around addressing introduces zero interior or border seam after scroll");
+
         Checklist.Verify(WriteSingleViewportPng(OutDir / "09_OpenFloorClipmapSeam_GtxGi.png",  ViewW, ViewH, GtxFloorRgba), "Saved 09_OpenFloorClipmapSeam_GtxGi.png");
         Checklist.Verify(WriteSingleViewportPng(OutDir / "10_OpenFloorClipmapSeam_Bvh4Gi.png", ViewW, ViewH, BvhFloorRgba), "Saved 10_OpenFloorClipmapSeam_Bvh4Gi.png");
     }
