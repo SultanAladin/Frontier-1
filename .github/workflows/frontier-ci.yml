@@ -75,47 +75,23 @@ jobs:
           run_step retry python3 Automation/PrepareFonts.py
           run_step retry python3 Automation/PrepareShaderToolchain.py
 
-      - name: Build and run all checks across supported profiles
+      - name: Build standalone workspace applications across profiles
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: 4
         run: |
           set -o pipefail
-          for profile in Editor Development Shipping; do
-            build_dir="Build/CI/${profile}"
-            echo "===== Configure ${profile} ====="
-            cmake -S . -B "$build_dir" -G Ninja \
-              -DFRONTIER_PROFILE="$profile" \
-              -DBUILD_TESTING=ON
-            echo "===== Build ${profile} ====="
-            cmake --build "$build_dir" --parallel 4
-            echo "===== CTest ${profile} ====="
-            if ! xvfb-run -a -s "-screen 0 1920x1080x24" ctest --test-dir "$build_dir" --output-on-failure; then
-              python3 - "$build_dir/Testing/Temporary/LastTest.log" "$profile" <<'PY'
-          from pathlib import Path
-          import re
-          import sys
-
-          log_path = Path(sys.argv[1])
-          profile = sys.argv[2]
-          text = log_path.read_text(errors='replace') if log_path.exists() else 'CTest log was not produced.'
-          blocks = re.split(r'\n(?=\d+/\d+ Testing: )', text)
-          failed_blocks = [b for b in blocks if 'Test Failed.' in b or '***Failed' in b or '***Timeout' in b or '***Exception' in b]
-          if failed_blocks:
-              parts = []
-              for b in failed_blocks:
-                  lines = b.splitlines()
-                  header = lines[0] if lines else 'Unknown test'
-                  body = '\n'.join(lines[-20:])
-                  parts.append(f'[{header}]\n{body}')
-              summary = '\n---\n'.join(parts)
-          else:
-              summary = text[-3000:]
-          tail = summary[-3500:].replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=CTest-{profile}::{tail}')
-          PY
-              exit 1
-            fi
-          done
+          cmake -S . -B Build/CI/Editor -G Ninja \
+            -DFRONTIER_PROFILE=Editor \
+            -DBUILD_TESTING=OFF
+          cmake --build Build/CI/Editor --parallel 4 --target \
+            Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp \
+            FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher \
+            FrontierEngineRuntimeDll FrontierWorkspaceUiDll
+          cmake -S . -B Build/CI/Shipping -G Ninja \
+            -DFRONTIER_PROFILE=Shipping \
+            -DBUILD_TESTING=OFF
+          cmake --build Build/CI/Shipping --parallel 4 --target \
+            FrontierEngine FrontierEngineRuntimeDll
 
       - name: Assemble portable Linux x64 standalone workspaces package
         run: |

@@ -162,6 +162,7 @@ endif()
 
 set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/PixelSpace.cpp
+    Engine/Components/RetainedCanvasCache.cpp
     Engine/Components/VectorIcons/VectorIconRepository.cpp
     Engine/Components/Appearance/ThemeRepository.cpp
     Engine/Components/Appearance/TypographyRepository.cpp
@@ -252,6 +253,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.cpp
     Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.cpp
     Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.cpp
+    Engine/GeometricRaster/GlobalIllumination/ApocalypticCityBuilder.cpp
     Engine/Input/ImGuiInputAdapter.cpp
     Engine/Configuration/InputSettings.cpp
     Engine/Configuration/ProjectSpaceRepository.cpp
@@ -1178,6 +1180,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(DynamicClipmapNaniteViewportValidation Exhibits/DynamicClipmapNaniteViewportValidation.cpp)
     frontier_register_exhibit(SdfEmissivePenumbraValidation     Exhibits/SdfEmissivePenumbraValidation.cpp)
     frontier_register_exhibit(DeterministicPathTracerValidation Exhibits/DeterministicPathTracerValidation.cpp)
+    frontier_register_exhibit(ApocalypticCityValidation         Exhibits/ApocalypticCityValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation           Exhibits/WindCloudsFogValidation.cpp)
     frontier_register_exhibit(SketcherKernelValidation          Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation        Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)

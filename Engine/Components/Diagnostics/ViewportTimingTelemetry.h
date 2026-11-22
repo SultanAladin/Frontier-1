@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace Frontier
 {
@@ -85,9 +86,39 @@ namespace Detail
 {
 struct PersistentTimingLogChannel
 {
-    std::ofstream         Stream {};
-    std::filesystem::path OpenPath {};
-    uint32_t              UnflushedLines = 0u;
+    std::filesystem::path    TargetPath    {};
+    std::string              HeaderText    {};
+    std::vector<std::string> BufferedLines {};
+    bool                     PendingFlush  = false;
+
+    void FlushOnShutdown() noexcept
+    {
+        if (!PendingFlush || TargetPath.empty())
+        {
+            return;
+        }
+        PendingFlush = false;
+        std::ofstream OutFile(TargetPath, std::ios::out | std::ios::trunc);
+        if (!OutFile)
+        {
+            return;
+        }
+        if (!HeaderText.empty())
+        {
+            OutFile.write(HeaderText.data(), static_cast<std::streamsize>(HeaderText.size()));
+        }
+        for (const std::string& EntryLine : BufferedLines)
+        {
+            OutFile.write(EntryLine.data(), static_cast<std::streamsize>(EntryLine.size()));
+        }
+        OutFile.flush();
+        BufferedLines.clear();
+    }
+
+    ~PersistentTimingLogChannel() noexcept
+    {
+        FlushOnShutdown();
+    }
 };
 
 inline PersistentTimingLogChannel& AccessTimingLogChannel()
@@ -97,46 +128,47 @@ inline PersistentTimingLogChannel& AccessTimingLogChannel()
 }
 } // namespace Detail
 
+inline void ReleaseTimingLogOnExit() noexcept
+{
+    Detail::AccessTimingLogChannel().FlushOnShutdown();
+}
+
 inline void InitializeTimingLogFile(const std::filesystem::path& LogPath, std::string_view AdapterName, bool HwGpu)
 {
     auto& LogChannel = Detail::AccessTimingLogChannel();
-    if (LogChannel.Stream.is_open())
-    {
-        LogChannel.Stream.close();
-    }
-    LogChannel.Stream.open(LogPath, std::ios::out | std::ios::trunc);
-    LogChannel.OpenPath       = LogPath;
-    LogChannel.UnflushedLines = 0u;
-    if (!LogChannel.Stream)
-    {
-        return;
-    }
-    LogChannel.Stream << "# Frontier Per-Stage Timing Log\n";
-    LogChannel.Stream << "# Adapter: " << AdapterName << " | HardwareGPU: " << (HwGpu ? "YES" : "NO") << "\n";
-    LogChannel.Stream << "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
-    LogChannel.Stream.flush();
+    LogChannel.TargetPath = LogPath;
+    LogChannel.BufferedLines.clear();
+    LogChannel.BufferedLines.reserve(8192u);
+    LogChannel.HeaderText.clear();
+    LogChannel.HeaderText.reserve(320u);
+    LogChannel.HeaderText += "# Frontier Per-Stage Timing Log\n";
+    LogChannel.HeaderText += "# Adapter: ";
+    LogChannel.HeaderText.append(AdapterName.data(), AdapterName.size());
+    LogChannel.HeaderText += " | HardwareGPU: ";
+    LogChannel.HeaderText += (HwGpu ? "YES\n" : "NO\n");
+    LogChannel.HeaderText += "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
+    LogChannel.PendingFlush = false;
 }
 
 inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const ViewportTimingBreakdown& T, const char* ReasonTag = "SAMPLE")
 {
     auto& LogChannel = Detail::AccessTimingLogChannel();
-    if (!LogChannel.Stream.is_open() || LogChannel.OpenPath != LogPath)
+    if (!LogPath.empty() && LogChannel.TargetPath != LogPath)
     {
-        if (LogChannel.Stream.is_open())
-        {
-            LogChannel.Stream.close();
-        }
-        LogChannel.Stream.open(LogPath, std::ios::out | std::ios::app);
-        LogChannel.OpenPath       = LogPath;
-        LogChannel.UnflushedLines = 0u;
+        LogChannel.TargetPath = LogPath;
     }
-    if (!LogChannel.Stream)
+    if (LogChannel.BufferedLines.capacity() < 8192u)
+    {
+        LogChannel.BufferedLines.reserve(8192u);
+    }
+    // Cap RAM buffer capacity to 65,536 entries (~10 MB) so multi-hour sessions stay bounded in memory
+    if (LogChannel.BufferedLines.size() >= 65536u)
     {
         return;
     }
     const float Fps = (T.TotalFrameMs > 0.01f) ? (1000.0f / T.TotalFrameMs) : 0.0f;
     char Line[512]{};
-    std::snprintf(
+    const int Written = std::snprintf(
         Line,
         sizeof(Line),
         "[%s] F=%llu | %5.1f fps | Total=%6.2f ms | %s/%s Q%u | %ux%u | "
@@ -163,11 +195,10 @@ inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const View
         T.GizmoOverlayMs,
         T.DesktopPollAndUiMs,
         T.SwapchainPresentMs);
-    LogChannel.Stream.write(Line, static_cast<std::streamsize>(std::char_traits<char>::length(Line)));
-    if (++LogChannel.UnflushedLines >= 24u)
+    if (Written > 0)
     {
-        LogChannel.Stream.flush();
-        LogChannel.UnflushedLines = 0u;
+        LogChannel.BufferedLines.emplace_back(Line, static_cast<std::size_t>(std::min<int>(Written, static_cast<int>(sizeof(Line) - 1))));
+        LogChannel.PendingFlush = true;
     }
 }
 

@@ -2,8 +2,9 @@
 ExternalPackages/
 EngineContent/FontsArchives/
 
-# Local transient scratchpad
+# Local transient scratchpad & shutdown logs
 _ClaudeScratch/
+Logs/
 
 # Build & packaged output directories
 Build/

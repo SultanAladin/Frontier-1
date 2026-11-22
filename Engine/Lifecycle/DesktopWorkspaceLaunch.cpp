@@ -14,6 +14,7 @@
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/ContentBrowser/ContentBrowserPanel.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
+#include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
@@ -457,6 +458,14 @@ int LaunchDesktopWorkspace(
             InitialOptions.OpenProjectBrowser  = true;
             InitialOptions.OpenNewProjectModal = true;
         }
+        else if (Arg == "--apocalypse-city" || Arg == "--ruined-city")
+        {
+            InitialOptions.OpenProjectBrowser  = false;
+            InitialOptions.OpenWorldEditor     = true;
+            InitialOptions.OpenApocalypticCity = true;
+            InitialOptions.OpenContentBrowser  = false;
+            InitialOptions.WindowTitle         = "Frontier · Apocalyptic City Racing Level";
+        }
         else if (Arg.starts_with("--project="))
         {
             InitialOptions.StartupProjectSpacePath = std::filesystem::path(Arg.substr(10u));
@@ -771,6 +780,7 @@ int LaunchDesktopWorkspace(
             EditorCfg.ProjectSpacePath        = ProjectSpaceFile.empty() ? InitialOptions.StartupProjectSpacePath : ProjectSpaceFile;
             EditorCfg.PopulateShowcaseScene   = true;
             EditorCfg.PopulateBlankPlaneSkyScene = BlankPlaneSkyScene;
+            EditorCfg.PopulateApocalypticCityScene = InitialOptions.OpenApocalypticCity;
             EditorCfg.VulkanDevice            = &DeviceInterchange;
             EditorCfg.ImGuiPresenter          = &SwapchainPresenter;
             EditorCfg.CompiledShaderDirectory = CompiledShaderDir;
@@ -1361,8 +1371,15 @@ int LaunchDesktopWorkspace(
         return 1;
     }
 
-    uint32_t ExecutedSteps = 0u;
-    auto     LastTick       = std::chrono::steady_clock::now();
+    uint32_t ExecutedSteps          = 0u;
+    uint32_t SettleTicksRemaining   = 6u;
+    uint32_t LastPresentedSurfaceW  = 0u;
+    uint32_t LastPresentedSurfaceH  = 0u;
+    float    LastPresentedDpiScale  = 0.0f;
+#if FRONTIER_EDITOR_ENABLED
+    ActiveHostSurface LastPresentedSurface = CurrentSurface;
+#endif
+    auto     LastTick               = std::chrono::steady_clock::now();
 
     while (true)
     {
@@ -1377,9 +1394,33 @@ int LaunchDesktopWorkspace(
             break;
         }
 
+        bool ContinuousRefreshRequired = false;
+#if FRONTIER_EDITOR_ENABLED
+        if (CurrentSurface == ActiveHostSurface::WorldEditorSurface && EditorLoopPtr)
+        {
+            ContinuousRefreshRequired = EditorLoopPtr->QueryRequiresContinuousRefresh();
+        }
+        else if (StandaloneBrowserPtr != nullptr && StandaloneBrowserPtr->AccessPanel().QueryShelfAnimating())
+        {
+            ContinuousRefreshRequired = true;
+        }
+#endif
+#if !defined(__ANDROID__)
+        if (InitialOptions.BoundedStepLimit == 0u &&
+            SettleTicksRemaining == 0u &&
+            !ContinuousRefreshRequired)
+        {
+            DesktopWindow.WaitOperatingEventsTimeout(Io.WantTextInput ? 0.25 : 0.50);
+            if (DesktopWindow.CloseRequested())
+            {
+                break;
+            }
+        }
+#endif
+
         FRONTIER_THOUGHT_SCOPE("Host.Frame");
         const auto   NowTick = std::chrono::steady_clock::now();
-        const double Dt      = std::clamp(std::chrono::duration<double>(NowTick - LastTick).count(), 1.0e-4, 0.250);
+        const double Dt      = std::clamp(std::chrono::duration<double>(NowTick - LastTick).count(), 1.0e-4, 0.050);
         LastTick             = NowTick;
         float        UiBuildMs = 0.0f;
 
@@ -1395,7 +1436,7 @@ int LaunchDesktopWorkspace(
         const auto Extent = DesktopWindow.InspectExtent();
         if (Extent.SurfacePixelWidth == 0u || Extent.SurfacePixelHeight == 0u)
         {
-            DesktopWindow.WaitOperatingEventsTimeout(0.01);
+            DesktopWindow.WaitOperatingEventsTimeout(0.05);
             continue;
         }
         SurfaceW = Extent.SurfacePixelWidth;
@@ -1527,6 +1568,51 @@ int LaunchDesktopWorkspace(
             }
         }
 #endif
+        {
+            const auto& Snap = InputParticipant.InspectEditorSnapshot();
+            bool AnyKeyEdgeOrHold = false;
+            for (std::size_t K = 0u; K < Input::LogicalKeySlotCount; ++K)
+            {
+                if (Snap.HeldLogicalKeys[K] || Snap.PressedLogicalKeys[K] ||
+                    Snap.RepeatedLogicalKeys[K] || Snap.ReleasedLogicalKeys[K])
+                {
+                    AnyKeyEdgeOrHold = true;
+                    break;
+                }
+            }
+            const bool UserInputArrived =
+                std::fabs(Snap.TickDeltaX) > 0.01f ||
+                std::fabs(Snap.TickDeltaY) > 0.01f ||
+                std::fabs(Snap.ScrollDeltaX) > 1.0e-4f ||
+                std::fabs(Snap.ScrollDeltaY) > 1.0e-4f ||
+                Snap.HeldButtonsMask != 0u ||
+                Snap.PressedButtonsMask != 0u ||
+                Snap.ReleasedButtonsMask != 0u ||
+                Snap.DoubleClickedButtonsMask != 0u ||
+                Snap.TypedUtf8Length > 0u ||
+                Snap.TypedCodepointCount > 0u ||
+                AnyKeyEdgeOrHold ||
+                !DroppedPaths.empty();
+            const bool SurfaceModified =
+                SurfaceW != LastPresentedSurfaceW ||
+                SurfaceH != LastPresentedSurfaceH ||
+                std::fabs(Extent.DpiScaleFactor - LastPresentedDpiScale) > 1.0e-4f
+#if FRONTIER_EDITOR_ENABLED
+                || CurrentSurface != LastPresentedSurface
+#endif
+                ;
+            if (UserInputArrived || SurfaceModified || ContinuousRefreshRequired)
+            {
+                SettleTicksRemaining = 3u;
+            }
+            else if (InitialOptions.BoundedStepLimit == 0u &&
+                     SettleTicksRemaining == 0u &&
+                     !Io.WantTextInput &&
+                     !DesktopWindow.CloseRequested())
+            {
+                continue;
+            }
+        }
 #endif
 
         Io.DisplaySize = ImVec2(static_cast<float>(SurfaceW), static_cast<float>(SurfaceH));
@@ -1860,19 +1946,35 @@ int LaunchDesktopWorkspace(
         constexpr bool WorldDispatchedThisTick = false;
 #endif
 #if !defined(__ANDROID__)
+        LastPresentedSurfaceW = SurfaceW;
+        LastPresentedSurfaceH = SurfaceH;
+        LastPresentedDpiScale = DesktopWindow.InspectExtent().DpiScaleFactor;
+#if FRONTIER_EDITOR_ENABLED
+        const bool SurfaceSwitchedThisTick = (CurrentSurface != LastPresentedSurface);
+        LastPresentedSurface               = CurrentSurface;
+#else
+        constexpr bool SurfaceSwitchedThisTick = false;
+#endif
+        if (WorldDispatchedThisTick || SurfaceSwitchedThisTick)
+        {
+            SettleTicksRemaining = std::max(SettleTicksRemaining, 2u);
+        }
+        else if (SettleTicksRemaining > 0u)
+        {
+            --SettleTicksRemaining;
+        }
         if (InitialOptions.BoundedStepLimit == 0u && !WorldDispatchedThisTick)
         {
             const bool AnyMouseDown =
                 Io.MouseDown[0] || Io.MouseDown[1] || Io.MouseDown[2] || Io.MouseDown[3] || Io.MouseDown[4];
-            if (!AnyMouseDown && !Io.WantTextInput)
+            if (!AnyMouseDown && !Io.WantTextInput && SettleTicksRemaining > 0u)
             {
-                // WaitOperatingEventsTimeout wakes immediately on any OS input message while capping
-                // idle/UI-hover swapchain presentation to 240 Hz so MAILBOX never hits WDDM queue backpressure stalls.
-                constexpr double kTargetIdleStepSeconds = 1.0 / 240.0;
+                // Pace pure UI-only pointer-hover frames to 120 Hz before entering 0-FPS event-driven sleep.
+                constexpr double kTargetHoverStepSeconds = 1.0 / 120.0;
                 const double ElapsedSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - NowTick).count();
-                if (ElapsedSec + 0.0004 < kTargetIdleStepSeconds)
+                if (ElapsedSec + 0.0004 < kTargetHoverStepSeconds)
                 {
-                    DesktopWindow.WaitOperatingEventsTimeout(kTargetIdleStepSeconds - ElapsedSec);
+                    DesktopWindow.WaitOperatingEventsTimeout(kTargetHoverStepSeconds - ElapsedSec);
                 }
             }
         }
@@ -1896,6 +1998,7 @@ int LaunchDesktopWorkspace(
     }
 
     SwapchainPresenter.TeardownOverlay();
+    ReleaseTimingLogOnExit();
 #if FRONTIER_EDITOR_ENABLED
     if (HostProjectBrowserPtr)
     {

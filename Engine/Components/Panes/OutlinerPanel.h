@@ -11,6 +11,7 @@
 
 #include "Engine/Components/Controls/TextInputField.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Components/RetainedCanvasCache.h"
 
 #include <cstdint>
 #include <span>
@@ -260,6 +261,7 @@ private:
     OutlinerSettingsDirective              LastSettingsDirective   = OutlinerSettingsDirective::None;     // [-]   - Most recent settings selection
     Rectangle2D                            LastPhysicalBounds      {};                                    // [px]  - Last rendered Outliner physical bounds
     std::vector<OutlinerRowHitBounds>      LastRenderedRowBounds   {};                                    // [px]  - Last rendered row physical rects
+    RetainedCanvasCache                    RetainedCanvas          {};                                    // [-]   - Cached ImDrawList snapshot for unchanged ticks
 };
 
 //------------------------------------------------------------------------------------------------------------------------

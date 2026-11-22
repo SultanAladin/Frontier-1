@@ -1789,12 +1789,103 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     const Rectangle2D ScreenBounds{ WinPos.x, TopY, WinSize.x, PaneH };
     const Rectangle2D LogicalBounds{ 0.0f, 0.0f, WinSize.x / SafeScale, PaneH / SafeScale };
 
-    PixelSpace WindowSurface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
-    PixelSpace ForegroundSurface(ImGui::GetForegroundDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    ImDrawList* PaneCanvasList = ImGui::GetWindowDrawList();
+    PixelSpace  WindowSurface(PaneCanvasList, { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    PixelSpace  ForegroundSurface(ImGui::GetForegroundDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
 
     PaneInputReading Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
     WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
+
+    auto MixString = [](uint64_t Seed, std::string_view Text) noexcept -> uint64_t
+    {
+        uint64_t Fnv = 14695981039346656037ull;
+        for (const char Ch : Text)
+        {
+            Fnv ^= static_cast<uint8_t>(Ch);
+            Fnv *= 1099511628211ull;
+        }
+        return RetainedCanvasCache::MixHash(Seed, Fnv);
+    };
+    auto PackRgba = [](ColorRgba C) noexcept -> uint64_t
+    {
+        return (static_cast<uint64_t>(C.Red) << 24u) |
+               (static_cast<uint64_t>(C.Green) << 16u) |
+               (static_cast<uint64_t>(C.Blue) << 8u) |
+               static_cast<uint64_t>(C.Alpha);
+    };
+
+    uint64_t Sig = RetainedCanvasCache::MixBounds(0x51A7F00D9E3779B9ull, ScreenBounds, SafeScale);
+    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::SectionSurface));
+    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::PrimaryInk));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(TitleVariant));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(VisibilityFilter));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(CategoryFilter));
+    Sig = RetainedCanvasCache::MixHash(Sig, FilterStripOpen ? 1ull : 0ull);
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollOffsetY * 4.0f)));
+    Sig = MixString(Sig, std::string_view(SearchEditor.Text, SearchEditor.Length));
+    Sig = RetainedCanvasCache::MixHash(Sig, Entries.size());
+    for (const OutlinerSlotToken& Tok : SelectedTokens)
+    {
+        Sig = RetainedCanvasCache::MixHash(Sig, Tok.Identifier);
+    }
+    for (const OutlinerRecordEntry& Rec : Entries)
+    {
+        const uint64_t Bits =
+            (static_cast<uint64_t>(Rec.Token.Identifier) << 16u) |
+            (static_cast<uint64_t>(Rec.EnclosingToken.Identifier & 0xFFu) << 8u) |
+            (Rec.VisibilityEnabled ? 1ull : 0ull) |
+            (Rec.Expanded ? 2ull : 0ull) |
+            (Rec.Locked ? 4ull : 0ull) |
+            (Rec.DynamicMotion ? 8ull : 0ull) |
+            (Rec.CastShadows ? 16ull : 0ull) |
+            (static_cast<uint64_t>(Rec.Category) << 5u);
+        Sig = RetainedCanvasCache::MixHash(Sig, Bits);
+        Sig = MixString(Sig, Rec.Title);
+        Sig = MixString(Sig, Rec.Subtitle);
+    }
+    Sig = MixString(Sig, FooterReadings.RealtimeText);
+    Sig = MixString(Sig, FooterReadings.QualityText);
+    Sig = MixString(Sig, FooterReadings.PrimarySlot);
+    Sig = MixString(Sig, FooterReadings.SecondarySlot);
+    Sig = MixString(Sig, FooterReadings.CameraText);
+
+    const ImVec2 RawMouse = ImGui::GetIO().MousePos;
+    const Point2D PhysicalMouse{ RawMouse.x, RawMouse.y };
+    const bool ForceRebuild =
+        ImGui::IsMouseDown(0) ||
+        ConstructDropdownOpen ||
+        SettingsDropdownOpen ||
+        DirectiveSheetOpen ||
+        DragActive ||
+        PressedRowToken.Valid() ||
+        SearchEditor.Active ||
+        Input.PrimaryPointer.Down ||
+        Input.PrimaryPointer.Pressed ||
+        Input.PrimaryPointer.Released ||
+        Input.SecondaryPressed ||
+        std::fabs(Input.WheelDeltaY) > 1.0e-4f ||
+        Input.DeletePressed ||
+        Input.ShortcutDuplicate ||
+        Input.ShortcutAll;
+
+    if (RetainedCanvas.QueryReusable(Sig, ScreenBounds, PhysicalMouse, ForceRebuild) &&
+        RetainedCanvas.ReplayInto(PaneCanvasList, PhysicalMouse))
+    {
+        LastPhysicalBounds = ScreenBounds;
+        WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
+        return;
+    }
+
+    RetainedCanvas.BeginCapture(PaneCanvasList);
     Render(WindowSurface, LogicalBounds, Input, Δt, &ForegroundSurface);
+    if (!ForceRebuild)
+    {
+        RetainedCanvas.EndCapture(PaneCanvasList, Sig, ScreenBounds, PhysicalMouse);
+    }
+    else
+    {
+        RetainedCanvas.Invalidate();
+    }
     WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
 }
 

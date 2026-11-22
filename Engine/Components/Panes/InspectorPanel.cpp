@@ -1838,10 +1838,111 @@ void InspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     const Rectangle2D ScreenBounds{ WinPos.x, TopY, WinSize.x, PaneH };
     const Rectangle2D LogicalBounds{ 0.0f, 0.0f, WinSize.x / SafeScale, PaneH / SafeScale };
 
-    PixelSpace             WindowSurface(ImGui::GetWindowDrawList(), { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+    ImDrawList*            PaneCanvasList = ImGui::GetWindowDrawList();
+    PixelSpace             WindowSurface(PaneCanvasList, { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
     PaneInputReading       Input = WorkspaceAppearance::CaptureImGuiPaneInput(ScreenBounds, SafeScale);
     WorkspaceAppearance::EnforcePanePointerOwnership(this, Input);
+
+    auto MixString = [](uint64_t Seed, std::string_view Text) noexcept -> uint64_t
+    {
+        uint64_t Fnv = 14695981039346656037ull;
+        for (const char Ch : Text)
+        {
+            Fnv ^= static_cast<uint8_t>(Ch);
+            Fnv *= 1099511628211ull;
+        }
+        return RetainedCanvasCache::MixHash(Seed, Fnv);
+    };
+    auto MixFloat = [](uint64_t Seed, float Quantity) noexcept -> uint64_t
+    {
+        return RetainedCanvasCache::MixHash(Seed, static_cast<uint64_t>(std::llround(Quantity * 1000.0f)));
+    };
+    auto PackRgba = [](ColorRgba C) noexcept -> uint64_t
+    {
+        return (static_cast<uint64_t>(C.Red) << 24u) |
+               (static_cast<uint64_t>(C.Green) << 16u) |
+               (static_cast<uint64_t>(C.Blue) << 8u) |
+               static_cast<uint64_t>(C.Alpha);
+    };
+
+    uint64_t Sig = RetainedCanvasCache::MixBounds(0x8831C0DE71A55E11ull, ScreenBounds, SafeScale);
+    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::SectionSurface));
+    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::PrimaryInk));
+    Sig = RetainedCanvasCache::MixHash(Sig, ExternalRevision);
+    Sig = MixFloat(Sig, ScrollOffsetY);
+    Sig = RetainedCanvasCache::MixHash(Sig, NotesBoxExpanded ? 1ull : 0ull);
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(BrowseScope));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(BrowseSort));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(FolderVisibilityFilter));
+
+    if (AttachedOutliner != nullptr)
+    {
+        const auto Selected = AttachedOutliner->QuerySelectedTokens();
+        Sig = RetainedCanvasCache::MixHash(Sig, Selected.size());
+        for (const OutlinerSlotToken& Tok : Selected)
+        {
+            Sig = RetainedCanvasCache::MixHash(Sig, Tok.Identifier);
+            if (const OutlinerRecordEntry* Rec = AttachedOutliner->FindEntry(Tok))
+            {
+                Sig = MixString(Sig, Rec->Title);
+                Sig = MixString(Sig, Rec->CategoryLabel);
+                Sig = MixString(Sig, Rec->Subtitle);
+                Sig = MixString(Sig, Rec->AuthorNotes);
+                Sig = MixFloat(Sig, Rec->PositionX);
+                Sig = MixFloat(Sig, Rec->PositionY);
+                Sig = MixFloat(Sig, Rec->PositionZ);
+                Sig = MixFloat(Sig, Rec->RotationX);
+                Sig = MixFloat(Sig, Rec->RotationY);
+                Sig = MixFloat(Sig, Rec->RotationZ);
+                Sig = MixFloat(Sig, Rec->ScaleX);
+                Sig = MixFloat(Sig, Rec->ScaleY);
+                Sig = MixFloat(Sig, Rec->ScaleZ);
+                const uint64_t CapBits =
+                    (Rec->VisibilityEnabled ? 1ull : 0ull) |
+                    (Rec->Expanded ? 2ull : 0ull) |
+                    (Rec->Locked ? 4ull : 0ull) |
+                    (Rec->DynamicMotion ? 8ull : 0ull) |
+                    (Rec->CastShadows ? 16ull : 0ull);
+                Sig = RetainedCanvasCache::MixHash(Sig, CapBits);
+            }
+        }
+    }
+
+    const ImVec2  RawMouse = ImGui::GetIO().MousePos;
+    const Point2D PhysicalMouse{ RawMouse.x, RawMouse.y };
+    const bool    ForceRebuild =
+        static_cast<bool>(FullOverrideCallback) ||
+        ImGui::IsMouseDown(0) ||
+        ScopeDropdownOpen ||
+        SortDropdownOpen ||
+        NotesEditor.Active ||
+        FolderSearchEditor.Active ||
+        TransformCellEditor.Active ||
+        ActiveTransformCell >= 0 ||
+        DraggingTransformCell >= 0 ||
+        Input.PrimaryPointer.Down ||
+        Input.PrimaryPointer.Pressed ||
+        Input.PrimaryPointer.Released ||
+        Input.SecondaryPressed ||
+        std::fabs(Input.WheelDeltaY) > 1.0e-4f;
+
+    if (RetainedCanvas.QueryReusable(Sig, ScreenBounds, PhysicalMouse, ForceRebuild) &&
+        RetainedCanvas.ReplayInto(PaneCanvasList, PhysicalMouse))
+    {
+        WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
+        return;
+    }
+
+    RetainedCanvas.BeginCapture(PaneCanvasList);
     Render(WindowSurface, LogicalBounds, Input, Δt);
+    if (!ForceRebuild)
+    {
+        RetainedCanvas.EndCapture(PaneCanvasList, Sig, ScreenBounds, PhysicalMouse);
+    }
+    else
+    {
+        RetainedCanvas.Invalidate();
+    }
     WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, DraggingTransformCell >= 0);
 }
 

@@ -26,6 +26,7 @@
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.h"
+#include "Engine/GeometricRaster/GlobalIllumination/ApocalypticCityBuilder.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
 #include "Engine/Input/InputExtension.h"
@@ -66,6 +67,7 @@ struct EditorStartupConfiguration
     double                                MaximumStep             = 0.100;                          // [s] - Upper Δt clamp per authoring tick
     bool                                        PopulateShowcaseScene   = false;                          // [-] - Populate default ControlVehicle scene in Outliner & GTX Viewport
     bool                                        PopulateBlankPlaneSkyScene = false;                       // [-] - Populate blank Ground Plane & Clear Sky scene instead of the default scene
+    bool                                        PopulateApocalypticCityScene = false;                     // [-] - Populate procedural Apocalyptic City Racing Level
     GeometricRaster::VulkanInterchange*         VulkanDevice            = nullptr;                        // [-] - Optional hardware Vulkan device for GPU .slang World & Gizmo passes
     GeometricRaster::ImGuiOverlayRasterization* ImGuiPresenter          = nullptr;                        // [-] - Optional ImGui Vulkan presenter for zero-readback GPU viewport
     std::filesystem::path                       CompiledShaderDirectory {};                               // [-] - Optional CompiledShaders/ path for GPU .slang SPIR-V modules
@@ -113,6 +115,7 @@ public:
     void               ConfigureActiveProjectTitle(std::string_view ProjectTitle);
     void               PopulateShowcaseGallerySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
     void               PopulateBlankPlaneSkySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
+    void               PopulateApocalypticCitySession(uint32_t RenderWidthPx = 1280u, uint32_t RenderHeightPx = 720u);
     void               RefreshShowcaseViewportRaster();
     void               FrameShowcaseCameraSelection() noexcept;
 
@@ -140,6 +143,7 @@ public:
     void PresentPrimaryEditorImGui(double Δt);
     void RecordFramePresentationTiming(float DesktopPollAndUiMs, float SwapchainPresentMs, float TotalFrameMs) noexcept;
     [[nodiscard]] const ViewportTimingBreakdown& QueryLatestViewportTiming() const noexcept { return LatestViewportTiming; }
+    [[nodiscard]] bool                           QueryRequiresContinuousRefresh() noexcept;
 
     [[nodiscard]] bool                                       QueryActive() const noexcept;
     [[nodiscard]] EditorLifecycleReading                     InspectReading() const noexcept;
@@ -230,6 +234,8 @@ private:
     bool                                                             NavigationDragWasActive = false;
     bool                                                             RightMouseFlyActive  = false;
     bool                                                             BlankPlaneSkySessionActive = false;
+    bool                                                             ApocalypticCitySessionActive = false;
+    GeometricRaster::ApocalypticCitySimulationRegister               ApocalypticCitySim   {};
     bool                                                             CameraInteractiveDrag = false;
     bool                                                             CameraLagSettling     = false;
     bool                                                             PendingInteractionWorldRefresh = false;
@@ -246,7 +252,10 @@ private:
     Components::WorkspaceDockPaneToken         InspectorPaneToken     {};     // [idx]   - Registered right Inspector pane
     double                                     CurrentStepSeconds     = 0.016;// [s]     - Active authoring step passed to pane presenters
     uint32_t                                   RegisteredGpuOverlays = 0u;   // [count] - Registered GPU .slang viewport overlay hooks
-    ViewportTimingBreakdown                       LatestViewportTiming      {};     // [ms]    - Latest per-stage GPU/CPU telemetry
+    ViewportTimingBreakdown                    LatestViewportTiming      {};     // [ms]    - Latest per-stage GPU/CPU telemetry
+    float                                      LastActiveWorldTotalMs = 0.0f; // [ms]    - Last active 3D frame wall-clock time
+    double                                     FooterCooldownSeconds  = 0.0;  // [s]     - 4 Hz Outliner footer throttle
+    mutable float                              LastShadeProgress      = 0.0f; // [0-1]   - Last ControlCentre shade progress
     bool                                       TimingLogInitialized   = false;
     uint64_t                                   TimingFrameCounter     = 0ull;
     bool                                       Initialized            = false;// [-]     - True between Initialize and Finalize

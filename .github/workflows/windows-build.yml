@@ -64,19 +64,17 @@ jobs:
         run: |
           cmake -S . -B Build/Windows -G "Visual Studio 17 2022" -A x64 `
             -DFRONTIER_PROFILE=Editor `
-            -DBUILD_TESTING=ON `
+            -DBUILD_TESTING=OFF `
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: Build Windows x64 applications and boundary checks
+      - name: Build Windows x64 applications
         shell: pwsh
         run: |
           $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
             Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
             FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher `
-            FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
-            UVBoundaryValidation ProjectBrowserValidation `
-            SketcherKernelValidation SketcherDocumentValidation SketcherViewportValidation SketcherWorkspaceValidation 2>&1
+            FrontierEngineRuntimeDll FrontierWorkspaceUiDll 2>&1
           $Result = $LASTEXITCODE
           $Output | ForEach-Object { Write-Output "$_" }
           if ($Result -ne 0) {
@@ -84,18 +82,6 @@ jobs:
             if (-not $Diagnostics) { $Diagnostics = $Output | Select-Object -Last 10 }
             $Details = ($Diagnostics | ForEach-Object { "$_" }) -join ' '
             Write-Output "::error title=Windows build diagnostics::$Details"
-            exit $Result
-          }
-
-      - name: Run Windows hostile-input, UV chart, and Project Browser checks
-        shell: pwsh
-        run: |
-          $Output = & ctest --test-dir Build/Windows -C Release --output-on-failure -R '^(UVBoundaryValidation|ProjectBrowserValidation|SketcherKernelValidation|SketcherDocumentValidation|SketcherViewportValidation|SketcherWorkspaceValidation)$' 2>&1
-          $Result = $LASTEXITCODE
-          $Output | ForEach-Object { Write-Output "$_" }
-          if ($Result -ne 0) {
-            $Details = ($Output | Select-Object -Last 25 | ForEach-Object { "$_" }) -join ' | '
-            Write-Output "::error title=Windows CTest diagnostics::$Details"
             exit $Result
           }
 

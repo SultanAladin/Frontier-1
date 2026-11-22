@@ -174,6 +174,7 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
         Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume   });
         Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire   });
         Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera     });
+        Templates.push_back({ "Generate Apocalyptic City Level", "Apocalyptic City Level", "WorldGenerator", "Procedural Ruined Warzone Racing Level", ConstructSlotCategory::LayerGroup });
         Panes->Outliner.ConfigureConstructTemplates(std::move(Templates));
 
         Panes->Viewport.ConfigureOpenContentBrowserCallback(
@@ -233,7 +234,11 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     {
         (void)AttachVulkanGizmoOverlay(StartupConfig.VulkanDevice, StartupConfig.CompiledShaderDirectory);
     }
-    if (StartupConfig.PopulateBlankPlaneSkyScene)
+    if (StartupConfig.PopulateApocalypticCityScene)
+    {
+        PopulateApocalypticCitySession();
+    }
+    else if (StartupConfig.PopulateBlankPlaneSkyScene)
     {
         PopulateBlankPlaneSkySession();
     }
@@ -304,13 +309,24 @@ void EditorLifecycle::ConfigureActiveProjectTitle(std::string_view ProjectTitle)
 
 void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
 {
-    BlankPlaneSkySessionActive = false;
+    BlankPlaneSkySessionActive   = false;
+    ApocalypticCitySessionActive = false;
+    ApocalypticCitySim           = {};
     PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
 }
 
 void EditorLifecycle::PopulateBlankPlaneSkySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
 {
-    BlankPlaneSkySessionActive = true;
+    BlankPlaneSkySessionActive   = true;
+    ApocalypticCitySessionActive = false;
+    ApocalypticCitySim           = {};
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateApocalypticCitySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive   = false;
+    ApocalypticCitySessionActive = true;
     PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
 }
 
@@ -331,7 +347,16 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
 
     const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-    if (BlankPlaneSkySessionActive)
+    if (ApocalypticCitySessionActive)
+    {
+        GeometricRaster::BuildApocalypticCityRacingScene(*ShowcaseBundle, ApocalypticCitySim, RenderWidthPx, RenderHeightPx);
+        auto& MutDisp = Panes->Viewport.AccessDisplaySettings();
+        MutDisp.AtmosphereSkyEnabled    = true;
+        MutDisp.VolumetricCloudsEnabled = true;
+        MutDisp.CloudFraction           = 0.34f;
+        MutDisp.SolarTimeOfDayHours     = 10.35f;
+    }
+    else if (BlankPlaneSkySessionActive)
     {
         GeometricRaster::BuildBlankPlaneSkyScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
     }
@@ -371,11 +396,21 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     DesiredCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
     DesiredCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
     DesiredCameraValid  = true;
-    GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
+    if (ApocalypticCitySessionActive)
+    {
+        GeometricRaster::RegisterApocalypticCityInOutliner(Panes->Outliner, *ShowcaseBundle, true);
+    }
+    else
+    {
+        GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
+    }
+    const char* SceneSubtitle = ApocalypticCitySessionActive
+        ? "Apocalyptic City Racing Level"
+        : (BlankPlaneSkySessionActive ? "Blank Scene · Ground Plane & Sky" : "Vehicle & Clear Sky");
     Panes->Viewport.ConfigureSceneTitle(
         ActiveProjectTitle.empty()
-            ? (BlankPlaneSkySessionActive ? "Blank Scene · Ground Plane & Sky" : "Vehicle & Clear Sky")
-            : (ActiveProjectTitle + (BlankPlaneSkySessionActive ? " · Blank Scene" : " · Vehicle & Clear Sky")));
+            ? std::string(SceneSubtitle)
+            : (ActiveProjectTitle + " · " + SceneSubtitle));
 
     Panes->Viewport.ConfigureInteractionCallback(
         [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)
@@ -406,6 +441,12 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
                 if (static_cast<std::size_t>(TemplateIndex) < Templates.size())
                 {
                     const auto& Tpl = Templates[static_cast<std::size_t>(TemplateIndex)];
+                    if (Tpl.CategoryTitle == "WorldGenerator")
+                    {
+                        PopulateApocalypticCitySession();
+                        RefreshShowcaseViewportRaster();
+                        return;
+                    }
                     const std::string_view Title = Tpl.DefaultTitle.empty() ? std::string_view(Tpl.DropdownLabel) : std::string_view(Tpl.DefaultTitle);
                     (void)GeometricRaster::ConstructShowcaseModelInOutliner(
                         ActivePanes->Outliner,
@@ -2210,8 +2251,9 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     }
     if (RenderedOnGpu)
     {
-        const float GpuMs  = std::max(0.2f, GpuWorldRenderer->QueryLastDispatchMilliseconds());
-        const int   EstFps = std::clamp(static_cast<int>(std::lround(1000.0f / std::max(4.16f, GpuMs))), 1, 240);
+        const float GpuMs  = std::max(0.25f, GpuWorldRenderer->QueryLastDispatchMilliseconds());
+        const float RefMs  = (LastActiveWorldTotalMs > 0.5f) ? std::max(GpuMs, LastActiveWorldTotalMs) : GpuMs;
+        const int   EstFps = std::clamp(static_cast<int>(std::lround(1000.0f / RefMs)), 1, 999);
         char FpsBuf[32]{};
         std::snprintf(FpsBuf, sizeof(FpsBuf), "%d fps", EstFps);
         Footer.RealtimeText = FpsBuf;
@@ -2237,7 +2279,12 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         ShowcaseBundle->EditorCamera.CameraOrigin.Y,
         ShowcaseBundle->EditorCamera.CameraOrigin.Z);
     Footer.CameraText = CamBuffer;
-    Panes->Outliner.ConfigureFooterReadings(Footer);
+    FooterCooldownSeconds -= CurrentStepSeconds;
+    if (FooterCooldownSeconds <= 0.0 || Panes->Outliner.QueryEntries().empty())
+    {
+        Panes->Outliner.ConfigureFooterReadings(Footer);
+        FooterCooldownSeconds = 0.25;
+    }
 }
 
 bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
@@ -2481,13 +2528,38 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
 
             SynchronizeComponentPlacementOverrides();
 
+            // Trigger full procedural Apocalyptic City generation if user clicked it in the Outliner "+" menu
+            for (const OutlinerRecordEntry& Rec : Panes->Outliner.QueryEntries())
+            {
+                if (Rec.CategoryLabel == "WorldGenerator")
+                {
+                    PopulateApocalypticCitySession();
+                    RefreshShowcaseViewportRaster();
+                    EditorSequence.Tick(SafeStep);
+                    return !TerminationRequested;
+                }
+            }
+
+            // Advance live warzone collapse, smashable glass/walls & roaming deer when Play or Simulate is active
+            bool ApocalypticSimMutated = false;
+            if (ApocalypticCitySim.ActiveCityLevel &&
+                Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit &&
+                !Panes->Viewport.QueryPlayPaused())
+            {
+                ApocalypticSimMutated = GeometricRaster::StepApocalypticCitySimulation(
+                    *ShowcaseBundle,
+                    ApocalypticCitySim,
+                    &Panes->Outliner,
+                    SafeStep);
+            }
+
             bool       NeedsPrep = false;
             const bool UseGpuDynamicSync = GpuReady;
             const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(
                 Panes->Outliner,
                 *ShowcaseBundle,
                 NeedsPrep,
-                UseGpuDynamicSync);
+                UseGpuDynamicSync) || ApocalypticSimMutated;
             if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
             {
                 if (!GpuReady)
@@ -2557,6 +2629,55 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
     return !TerminationRequested;
 }
 
+bool EditorLifecycle::QueryRequiresContinuousRefresh() noexcept
+{
+    if (!Initialized || TerminationRequested)
+    {
+        return false;
+    }
+    if (CameraInteractiveDrag || CameraLagSettling || RightMouseFlyActive ||
+        PendingInteractionWorldRefresh || PendingInteractionGizmoRefresh || PendingInteractionSceneSync)
+    {
+        return true;
+    }
+    if (ContentBrowserDrawer.QueryPanel().QueryShelfAnimating())
+    {
+        return true;
+    }
+    if (ControlCentre.QueryActiveContact() ||
+        !ControlCentre.AccessNotificationStream().QueryPending().empty())
+    {
+        return true;
+    }
+    const float CurShade = ControlCentre.QueryShadeProgress();
+    const bool  ShadeMoving = std::fabs(CurShade - LastShadeProgress) > 5.0e-4f ||
+                              (ControlCentre.QueryDetent() == DrawerDetentStop::Closed && CurShade > 1.0e-3f);
+    LastShadeProgress = CurShade;
+    if (ShadeMoving)
+    {
+        return true;
+    }
+    if (const WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+    {
+        if (Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit &&
+            !Panes->Viewport.QueryPlayPaused())
+        {
+            return true;
+        }
+        const auto& Disp = Panes->Viewport.QueryDisplaySettings();
+        const bool  PtEngine = (Disp.RenderEngineIndex == 4u || Disp.RenderEngineIndex == 5u);
+        if (PtEngine && GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady())
+        {
+            if (Disp.PathTraceTargetSpp == 0u ||
+                GpuWorldRenderer->QueryProgressiveSampleCount() < Disp.PathTraceTargetSpp)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void EditorLifecycle::RecordFramePresentationTiming(
     float DesktopPollAndUiMs,
     float SwapchainPresentMs,
@@ -2566,7 +2687,15 @@ void EditorLifecycle::RecordFramePresentationTiming(
     LatestViewportTiming.FrameIndex         = TimingFrameCounter;
     LatestViewportTiming.DesktopPollAndUiMs = DesktopPollAndUiMs;
     LatestViewportTiming.SwapchainPresentMs = SwapchainPresentMs;
-    LatestViewportTiming.TotalFrameMs       = TotalFrameMs;
+    if (LatestViewportTiming.WorldDispatched || LastActiveWorldTotalMs <= 0.0f)
+    {
+        LastActiveWorldTotalMs            = TotalFrameMs;
+        LatestViewportTiming.TotalFrameMs = TotalFrameMs;
+    }
+    else
+    {
+        LatestViewportTiming.TotalFrameMs = LastActiveWorldTotalMs;
+    }
 
     if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady() && LatestViewportTiming.RenderWidthPx == 0u)
     {
@@ -2577,6 +2706,13 @@ void EditorLifecycle::RecordFramePresentationTiming(
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
         Panes->Viewport.ConfigureViewportTimingBreakdown(LatestViewportTiming);
+        const auto& Disp = Panes->Viewport.QueryDisplaySettings();
+        const uint64_t DispRev =
+            (static_cast<uint64_t>(Disp.RenderEngineIndex) << 24u) ^
+            (static_cast<uint64_t>(Disp.SdfShadowPenumbraIndex) << 16u) ^
+            (static_cast<uint64_t>(Disp.QualityTier) << 8u) ^
+            static_cast<uint64_t>(Disp.PathTraceTargetSpp);
+        Panes->Inspector.AssignExternalRevision(DispRev);
     }
 
     if (!TimingLogInitialized)
@@ -2588,9 +2724,10 @@ void EditorLifecycle::RecordFramePresentationTiming(
         TimingLogInitialized = true;
     }
 
-    const bool LogStartup = (TimingFrameCounter <= 5ull);
-    const bool LogPeriodic = (TimingFrameCounter % 60ull) == 0ull;
-    const bool LogSpike = (TotalFrameMs > 30.0f) || (LatestViewportTiming.SceneSyncGpuMs > 10.0f);
+    const bool LogStartup  = (TimingFrameCounter <= 5ull);
+    const bool LogPeriodic = LatestViewportTiming.WorldDispatched && ((TimingFrameCounter % 60ull) == 0ull);
+    const bool LogSpike    = LatestViewportTiming.WorldDispatched &&
+                             ((TotalFrameMs > 30.0f) || (LatestViewportTiming.SceneSyncGpuMs > 10.0f));
     if (LogStartup || LogPeriodic || LogSpike)
     {
         const char* Tag = LogStartup ? "INIT" : (LogSpike ? "SPIKE" : "SAMPLE");
@@ -2778,7 +2915,8 @@ void EditorLifecycle::Finalize() noexcept
         return;
     }
 
-    // 🔴 CRITICAL: Tear down GPU overlay hooks, then workspace sessions, then input, then dock windows.
+    // 🔴 CRITICAL: Flush RAM-buffered viewport timing telemetry to disk on editor exit before tearing down subsystems.
+    ReleaseTimingLogOnExit();
     if (RightMouseFlyActive)
     {
         RightMouseFlyActive = false;

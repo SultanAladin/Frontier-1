@@ -193,6 +193,7 @@ public:
 
     [[nodiscard]] ContentBrowserReading               InspectReading() const noexcept;
     [[nodiscard]] bool                                QueryOpen() const noexcept;
+    [[nodiscard]] bool                                QueryShelfAnimating() const noexcept;
     [[nodiscard]] bool                                QueryShelfDragging() const noexcept { return ShelfDragContact; }
     [[nodiscard]] bool                                QueryBlocksUnderlyingWorkspace() const noexcept;
     void SynchronizeHostBounds(Rectangle2D HostBoundsPhysical, float ScaleFactor) noexcept;
@@ -319,6 +320,7 @@ private:
     uint32_t                            LastHeaderInteractiveCount  = 0u;                               // [cnt] - Recorded header hitbox count
     Rectangle2D                         LastHostBoundsPhysical{ 0.0f, 0.0f, 1840.0f, 980.0f };          // [px]  - Last host viewport physical bounds
     float                               LastSafeScale         = 1.0f;                                   // [-]   - Last rendered DPI safe scale
+    RetainedCanvasCache                 RetainedCanvas        {};                                       // [-]   - Cached ImDrawList snapshot for settled shelf
 };
 
 } // namespace Frontier

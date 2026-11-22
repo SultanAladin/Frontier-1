@@ -75,6 +75,7 @@ public:
         double                  Δt);
 
     void PresentInImGuiPane(double Δt, float ScaleFactor = 1.0f);
+    void AssignExternalRevision(uint64_t Revision) noexcept { ExternalRevision = Revision; }
 
     [[nodiscard]] OutlinerPanel* QueryAttachedOutliner() const noexcept;
     [[nodiscard]] bool           QueryNotesBoxOpen() const noexcept;
@@ -128,7 +129,9 @@ private:
     float                          ScrollOffsetY            = 0.0f;                                  // [px] - Vertical inspector scroll offset
     float                          LastContentHeight        = 0.0f;                                  // [px] - Measured scroll document height
     InspectorSectionRenderCallback CustomSectionCallback {};                                  // [-]  - Optional domain extension cards
-    InspectorFullOverrideCallback    FullOverrideCallback     {};                                  // [-]  - Complete domain inspector replacement
+    InspectorFullOverrideCallback  FullOverrideCallback  {};                                  // [-]  - Complete domain inspector replacement
+    uint64_t                       ExternalRevision      = 0ull;                              // [cnt]- Optional host display-setting stamp
+    RetainedCanvasCache            RetainedCanvas        {};                                  // [-]  - Cached ImDrawList snapshot for unchanged ticks
 };
 
 //------------------------------------------------------------------------------------------------------------------------

@@ -52,6 +52,7 @@ struct DesktopLaunchOptions
     bool                          OpenProjectBrowser         = false;
     bool                          PreviewReaderOnStart       = false;
     bool                          OpenNewProjectModal        = false;
+    bool                          OpenApocalypticCity        = false;
 };
 
 [[nodiscard]] int LaunchDesktopWorkspace(

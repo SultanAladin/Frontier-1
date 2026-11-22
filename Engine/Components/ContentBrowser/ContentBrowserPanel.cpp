@@ -3344,8 +3344,98 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
         Pointer.WheelDeltaY   = Snapshot.ScrollDeltaY;
     }
 
+    const Rectangle2D DrawerPhys = QueryDrawerPhysicalBounds();
+    const Rectangle2D NotchPhys  = QueryNotchPhysicalBounds();
+    Rectangle2D       ActiveBrowserBounds = NotchPhys;
+    if (DrawerPhys.Height > 1.0f)
+    {
+        const float MinX = std::min(DrawerPhys.X, NotchPhys.X);
+        const float MinY = std::min(DrawerPhys.Y, NotchPhys.Y);
+        const float MaxX = std::max(DrawerPhys.Right(), NotchPhys.Right());
+        const float MaxY = std::max(DrawerPhys.Bottom(), NotchPhys.Bottom());
+        ActiveBrowserBounds = Rectangle2D{ MinX, MinY, MaxX - MinX, MaxY - MinY };
+    }
+
+    auto MixString = [](uint64_t Seed, std::string_view Text) noexcept -> uint64_t
+    {
+        uint64_t Fnv = 14695981039346656037ull;
+        for (const char Ch : Text)
+        {
+            Fnv ^= static_cast<uint8_t>(Ch);
+            Fnv *= 1099511628211ull;
+        }
+        return RetainedCanvasCache::MixHash(Seed, Fnv);
+    };
+    auto PackRgba = [](ColorRgba C) noexcept -> uint64_t
+    {
+        return (static_cast<uint64_t>(C.Red) << 24u) |
+               (static_cast<uint64_t>(C.Green) << 16u) |
+               (static_cast<uint64_t>(C.Blue) << 8u) |
+               static_cast<uint64_t>(C.Alpha);
+    };
+    uint64_t Sig = RetainedCanvasCache::MixBounds(0xC07E17B2035E1109ull, HostBoundsPhysical, SafeScale);
+    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::SectionSurface));
+    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::PrimaryInk));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ResolveCornerRadius() * 16.0f)));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(TargetExtent));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ShelfSpring.Axis(ShelfAxis).Current * 4096.0)));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(ActiveWorkspace));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(Category));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(OriginScope));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(StandardLayout));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(ColourLayout));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(ColourScope));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(ColourFilter));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(ColourSort));
+    Sig = RetainedCanvasCache::MixHash(Sig, SelectedColourIndex);
+    Sig = RetainedCanvasCache::MixHash(Sig, SelectedRampIndex);
+    Sig = RetainedCanvasCache::MixHash(Sig, SelectedContentIndex);
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(RepositoryScrollY * 4.0f)));
+    Sig = RetainedCanvasCache::MixHash(Sig, ThumbnailRepository.QueryAllEntries().size());
+    Sig = RetainedCanvasCache::MixHash(Sig, ThumbnailRepository.PageCount());
+    Sig = RetainedCanvasCache::MixHash(Sig, ColourMatCapLocked ? 1ull : 0ull);
+    Sig = MixString(Sig, SearchBuffer);
+    Sig = MixString(Sig, StatusMessage);
+
+    const bool AnyDragOrAnim =
+        QueryShelfAnimating() ||
+        SearchEditor.Active ||
+        PotentialColourDrag || DraggingColour ||
+        PotentialRampDrag || DraggingColourRamp ||
+        PotentialMatCapDrag || DraggingMatCap ||
+        PotentialContentDrag || DraggingContentEntry ||
+        Pointer.Pressed || Pointer.HeldDown || Pointer.Released ||
+        Pointer.DoubleClicked || std::fabs(Pointer.WheelDeltaY) > 1.0e-4f ||
+        CursorOnDrawerOrNotch;
+
+    if (RetainedCanvas.QueryReusable(Sig, ActiveBrowserBounds, PhysicalCursor, AnyDragOrAnim) &&
+        RetainedCanvas.ReplayInto(FgList, PhysicalCursor))
+    {
+        WorkspaceAppearance::AssignExternalDragSuppression(false);
+        return;
+    }
+
+    RetainedCanvas.BeginCapture(FgList);
     RenderWithInput(Canvas, LogicalBounds, Pointer, DeltaSeconds);
+    if (!AnyDragOrAnim && !QueryShelfAnimating())
+    {
+        RetainedCanvas.EndCapture(FgList, Sig, ActiveBrowserBounds, PhysicalCursor);
+    }
+    else
+    {
+        RetainedCanvas.Invalidate();
+    }
     WorkspaceAppearance::AssignExternalDragSuppression(DraggingColour || DraggingColourRamp || DraggingMatCap || DraggingContentEntry);
+}
+
+bool ContentBrowserPanel::QueryShelfAnimating() const noexcept
+{
+    if (ShelfDragContact)
+    {
+        return true;
+    }
+    const auto& Ax = ShelfSpring.Axis(ShelfAxis);
+    return std::fabs(Ax.Current - Ax.Target) > 5.0e-4 || std::fabs(Ax.Velocity) > 2.0e-3;
 }
 
 } // namespace Frontier
