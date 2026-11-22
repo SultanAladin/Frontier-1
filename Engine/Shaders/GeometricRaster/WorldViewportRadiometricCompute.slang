@@ -141,6 +141,14 @@ struct GpuDynamicLocalSdfInstance144
 [[vk::binding(28, 0)]] RWStructuredBuffer<uint2>                     GlobalSurfaceShellBuffer;
 [[vk::binding(29, 0)]] StructuredBuffer<float>                       LocalAssetSdfVoxelBuffer;
 [[vk::binding(30, 0)]] StructuredBuffer<GpuDynamicLocalSdfInstance144> DynamicLocalSdfInstanceBuffer;
+[[vk::binding(31, 0)]] StructuredBuffer<uint>                        ActiveClusterBitmask;
+
+bool QueryClusterBitActive(uint ClusterOrdinal)
+{
+    uint WordIdx = ClusterOrdinal >> 5u;
+    uint BitMask = 1u << (ClusterOrdinal & 31u);
+    return (ActiveClusterBitmask[WordIdx] & BitMask) != 0u;
+}
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -673,14 +681,18 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
             uint Lane = Order[LaneIdx];
             if (BoxT[Lane] >= Res.Distance) continue;
 
-            uint Ref  = Refs[Lane];
-            uint Cnt  = Cnts[Lane];
+            uint Ref = Refs[Lane];
+            uint Cnt = Cnts[Lane];
             if (Ref == 0xFFFFFFFFu) continue;
 
-            if (Cnt > 0u)
+            uint GatePlusOne = Cnt >> 4u;
+            if (GatePlusOne != 0u && !QueryClusterBitActive(GatePlusOne - 1u)) continue;
+
+            uint TriCnt = Cnt & 0xFu;
+            if (TriCnt > 0u)
             {
                 uint Start = Ref & 0x7FFFFFFFu;
-                for (uint P = 0u; P < Cnt; ++P)
+                for (uint P = 0u; P < TriCnt; ++P)
                 {
                     uint   TriIdx = Start + P;
                     float2 BaryUV;
@@ -704,15 +716,15 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
                             RawGeom = -RawGeom;
                             SmoothN = -SmoothN;
                         }
-                        Res.GeomNormal    = RawGeom;
-                        Res.ShadingNormal = SmoothN;
-                        Res.MaterialSlot  = uint(N2Slot.w + 0.5);
-                        Res.LodLevel      = uint(SceneTriangles[TriIdx].Corner0Pad.w + 0.5);
+                        Res.GeomNormal     = RawGeom;
+                        Res.ShadingNormal  = SmoothN;
+                        Res.MaterialSlot   = uint(N2Slot.w + 0.5);
+                        Res.LodLevel       = uint(SceneTriangles[TriIdx].Corner0Pad.w + 0.5);
                         Res.ClusterOrdinal = uint(SceneTriangles[TriIdx].Edge01Pad.w + 0.5);
                     }
                 }
             }
-            else if (StackTop <= 28)
+            else if (StackTop < 28)
             {
                 Stack[++StackTop] = Ref;
             }
@@ -749,10 +761,14 @@ bool TraceSceneAnyHit(float3 Origin, float3 Dir, float MinT, float MaxT)
             uint Cnt = Cnts[Lane];
             if (Ref == 0xFFFFFFFFu) continue;
 
-            if (Cnt > 0u)
+            uint GatePlusOne = Cnt >> 4u;
+            if (GatePlusOne != 0u && !QueryClusterBitActive(GatePlusOne - 1u)) continue;
+
+            uint TriCnt = Cnt & 0xFu;
+            if (TriCnt > 0u)
             {
                 uint Start = Ref & 0x7FFFFFFFu;
-                for (uint P = 0u; P < Cnt; ++P)
+                for (uint P = 0u; P < TriCnt; ++P)
                 {
                     if (IntersectTriangleShadowMT(Origin, Dir, MinT, MaxT, Start + P))
                     {
@@ -760,7 +776,7 @@ bool TraceSceneAnyHit(float3 Origin, float3 Dir, float MinT, float MaxT)
                     }
                 }
             }
-            else if (StackTop <= 28)
+            else if (StackTop < 28)
             {
                 Stack[++StackTop] = Ref;
             }
@@ -3703,10 +3719,14 @@ void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                     uint Cnt = Cnts[Lane];
                     if (Ref == 0xFFFFFFFFu) continue;
 
-                    if (Cnt > 0u)
+                    uint GatePlusOne = Cnt >> 4u;
+                    if (GatePlusOne != 0u && !QueryClusterBitActive(GatePlusOne - 1u)) continue;
+
+                    uint TriCnt = Cnt & 0xFu;
+                    if (TriCnt > 0u)
                     {
                         uint Start = Ref & 0x7FFFFFFFu;
-                        for (uint P = 0u; P < Cnt; ++P)
+                        for (uint P = 0u; P < TriCnt; ++P)
                         {
                             uint   TriIdx = Start + P;
                             float3 Bary   = float3(1.0, 0.0, 0.0);

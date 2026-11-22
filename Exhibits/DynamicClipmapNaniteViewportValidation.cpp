@@ -293,6 +293,10 @@ int main()
         SdfStatsRightFixedCam.LocalAssetVoxelUploadCount == 1u &&
         SdfStatsCameraPanned.LocalAssetVoxelUploadCount == 1u,
         "LocalSignedDistanceVolume asset voxels uploaded ONCE (zero asset SDF rebuilds during translation + rotation)");
+    Checklist.Verify(
+        SdfStatsCameraPanned.CoarseCascadeBakeCount == SdfStatsRightFixedCam.CoarseCascadeBakeCount &&
+        SdfStatsCameraPanned.SolarShadowBakeCount == SdfStatsRightFixedCam.SolarShadowBakeCount,
+        "Coarse Global SDF and Solar Shadow cascades built once and not rebuilt on camera pan");
 
     // Restore vehicle to canonical origin (0, 0) for AO + Nanite validations
     if (OutlinerRecordEntry* VehEntry = Outliner.AccessEntry(VehicleToken))
@@ -379,14 +383,16 @@ int main()
         NaniteClusterViews[Idx] = std::move(ClsRgba);
 
         std::printf(
-            "[DynamicClipmapNaniteViewportValidation] Nanite @ %.1f m: Enabled=%d | ActiveTris=%u (L0=%u, L1=%u, L2=%u) | Clusters=%u\n",
+            "[DynamicClipmapNaniteViewportValidation] Nanite @ %.1f m: Enabled=%d | ActiveTris=%u (L0=%u, L1=%u, L2=%u) | Clusters=%u | BvhRebuilds=%u | MaskUpdates=%u\n",
             Dist,
             NaniteStatsAtDist[Idx].Enabled ? 1 : 0,
             NaniteStatsAtDist[Idx].ActiveTriangleCount,
             NaniteStatsAtDist[Idx].LevelTriangleCount[0],
             NaniteStatsAtDist[Idx].LevelTriangleCount[1],
             NaniteStatsAtDist[Idx].LevelTriangleCount[2],
-            NaniteStatsAtDist[Idx].ActiveClusterCount);
+            NaniteStatsAtDist[Idx].ActiveClusterCount,
+            NaniteStatsAtDist[Idx].GeometryRebuildCount,
+            NaniteStatsAtDist[Idx].ClusterMaskUpdateCount);
     }
 
     Checklist.Verify(
@@ -396,6 +402,11 @@ int main()
         NaniteStatsAtDist[0].ActiveTriangleCount > NaniteStatsAtDist[1].ActiveTriangleCount &&
         NaniteStatsAtDist[1].ActiveTriangleCount > NaniteStatsAtDist[2].ActiveTriangleCount,
         "Nanite active triangle count drops monotonically with camera distance (5.8 m -> 15.5 m -> 34.0 m)");
+    Checklist.Verify(
+        NaniteStatsAtDist[0].GeometryRebuildCount == NaniteStatsAtDist[1].GeometryRebuildCount &&
+        NaniteStatsAtDist[1].GeometryRebuildCount == NaniteStatsAtDist[2].GeometryRebuildCount &&
+        NaniteStatsAtDist[2].ClusterMaskUpdateCount > NaniteStatsAtDist[0].ClusterMaskUpdateCount,
+        "Resident Multi-LOD BVH4 built once with ZERO GPU BVH rebuilds across Nanite camera flight (bitmask-only LOD switching)");
 
     // -----------------------------------------------------------------------------------------------------------------
     // VALIDATION 4: Open GroundPlane Clipmap Seam Continuity (GTX GDF GI + HighEnd BVH4 GI)

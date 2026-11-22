@@ -2080,10 +2080,6 @@ bool SynchronizeShowcaseGallerySceneLive(
     if (SynchronizeShowcaseGalleryFromOutliner(InOutOutliner, InOutBundle))
     {
         Changed = true;
-        if (!DeferCpuAccelerationForGpuDynamic)
-        {
-            OutRequiresAccelerationRebuild = true;
-        }
     }
 
     return Changed;

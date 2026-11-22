@@ -274,6 +274,7 @@ int main()
     auto [FarClusterOk, FarClusterRgba]   = RenderFrom(FarOrigin, true, 18u);
     auto [NearMatOk, NearMatRgba] = RenderFrom(NearOrigin, true, 6u);
     auto [FarMatOk, FarMatRgba]   = RenderFrom(FarOrigin, true, 6u);
+    const auto FinalLodStats = GpuSeq.QueryNaniteLodStats();
 
     const bool RendersOk = NearOk && FarOk && FarOffOk && NearLevelOk && FarLevelOk && NearClusterOk && FarClusterOk && NearMatOk && FarMatOk &&
         NearRgba.size() == ProofW * ProofH * 4u && FarRgba.size() == ProofW * ProofH * 4u && FarOffRgba.size() == ProofW * ProofH * 4u &&
@@ -286,13 +287,17 @@ int main()
     }
 
     std::printf(
-        "[NaniteViewportVehicleValidation] GPU viewport: near %u tris (L0 %u) | far %u tris (L0 %u, L1 %u, L2 %u) | far LOD-off %u tris (full %u)\n",
+        "[NaniteViewportVehicleValidation] GPU viewport: near %u tris (L0 %u) | far %u tris (L0 %u, L1 %u, L2 %u) | far LOD-off %u tris (full %u) | BVH rebuilds=%u maskUpdates=%u\n",
         NearStats.ActiveTriangleCount, NearStats.LevelTriangleCount[0],
         FarStats.ActiveTriangleCount, FarStats.LevelTriangleCount[0], FarStats.LevelTriangleCount[1], FarStats.LevelTriangleCount[2],
-        FarOffStats.ActiveTriangleCount, FarStats.FullTriangleCount);
+        FarOffStats.ActiveTriangleCount, FarStats.FullTriangleCount,
+        FinalLodStats.GeometryRebuildCount, FinalLodStats.ClusterMaskUpdateCount);
 
     bool Pass = true;
     Pass = VerifyCheck(NearStats.Enabled && FarStats.Enabled, "Nanite LOD drove the GPU viewport BVH") && Pass;
+    Pass = VerifyCheck(
+        FinalLodStats.GeometryRebuildCount == 1u && FinalLodStats.ClusterMaskUpdateCount >= 2u,
+        "resident multi-LOD BVH4 built once with zero rebuilds across near/far/LOD-off cuts") && Pass;
     Pass = VerifyCheck(
         NearStats.ActiveTriangleCount >= NearStats.FullTriangleCount / 2u &&
             NearStats.LevelTriangleCount[0] > NearStats.LevelTriangleCount[1] + NearStats.LevelTriangleCount[2],

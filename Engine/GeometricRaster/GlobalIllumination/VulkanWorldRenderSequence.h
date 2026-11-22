@@ -58,6 +58,8 @@ public:
         uint32_t LocalAssetVoxelUploadCount     = 0u; // [cnt] - Static baked LocalSignedDistanceVolume uploads
         uint32_t DynamicInstanceUploadCount     = 0u; // [cnt] - Per-instance 144 B rigid/scale transform uploads
         uint32_t CascadeBakeCount               = 0u; // [cnt] - GPU 64^3 Fine+Coarse GDF cascade bake dispatches
+        uint32_t CoarseCascadeBakeCount         = 0u; // [cnt] - GPU 64^3 Coarse GDF cascade bake dispatches
+        uint32_t SolarShadowBakeCount           = 0u; // [cnt] - GPU 1024^2 solar shadow cascade bake dispatches
         uint32_t ToroidalSlabScrollCount        = 0u; // [cnt] - Incremental toroidal dirty-slab cascade scroll updates
         uint32_t LastFineUpdatedVoxelCount      = 0u; // [cnt] - Fine cascade voxels baked on latest Fine update
         uint32_t LastCoarseUpdatedVoxelCount    = 0u; // [cnt] - Coarse cascade voxels baked on latest Coarse update
@@ -70,13 +72,14 @@ public:
     // Live Nanite-like cluster LOD state of the geometry the viewport actually traced last frame.
     struct NaniteViewportLodStats
     {
-        bool     Enabled              = false; // [-]   - LOD cut drove the uploaded BVH
-        uint32_t ActiveClusterCount   = 0u;    // [cnt] - Clusters in the current cut (all instances)
-        uint32_t ActiveTriangleCount  = 0u;    // [cnt] - Triangles the GPU BVH held last frame
-        uint32_t FullTriangleCount    = 0u;    // [cnt] - Full-resolution triangle count of the scene
-        uint32_t LevelTriangleCount[8] {};     // [cnt] - Active triangles per hierarchy level (0 = finest)
-        uint32_t LevelClusterCount[8]  {};     // [cnt] - Active clusters per hierarchy level
-        uint32_t GeometryRebuildCount = 0u;    // [cnt] - Times the cut changed enough to rebuild the GPU BVH
+        bool     Enabled                = false; // [-]   - LOD cut drove the active cluster bitmask
+        uint32_t ActiveClusterCount     = 0u;    // [cnt] - Clusters in the current cut (all instances)
+        uint32_t ActiveTriangleCount    = 0u;    // [cnt] - Active triangles traced via the cluster bitmask
+        uint32_t FullTriangleCount      = 0u;    // [cnt] - Full-resolution triangle count of the scene
+        uint32_t LevelTriangleCount[8]  {};      // [cnt] - Active triangles per hierarchy level (0 = finest)
+        uint32_t LevelClusterCount[8]   {};      // [cnt] - Active clusters per hierarchy level
+        uint32_t GeometryRebuildCount   = 0u;    // [cnt] - Times the resident GPU BVH buffer was uploaded
+        uint32_t ClusterMaskUpdateCount = 0u;    // [cnt] - Lightweight host-coherent bitmask updates (0 BVH rebuilds)
     };
     [[nodiscard]] const NaniteViewportLodStats&   QueryNaniteLodStats() const noexcept { return NaniteLodStats; }
     [[nodiscard]] const GlobalDistanceFieldStats& QueryGlobalDistanceFieldStats() const noexcept { return DistanceFieldStats; }
@@ -122,20 +125,44 @@ private:
         kPrecomputeFullMask      = 0x7Fu,
     };
 
-    struct CachedNaniteCutPayload
+    struct CachedLocalLevelSubtree
     {
-        uint64_t                                          CutSignature        = 0ull;
-        uint64_t                                          TransformSignature  = 0ull;
-        std::vector<uint8_t>                              BvhBytes            {};
-        std::vector<uint8_t>                              ShadedTriangleBytes {};
-        uint32_t                                          BvhEntryCount       = 0u;
-        uint32_t                                          ActiveClusters      = 0u;
-        uint32_t                                          ActiveTriangles     = 0u;
-        uint32_t                                          CulledBackfaces     = 0u;
-        std::array<uint32_t, 8u>                          LevelTriangleCount  {};
-        std::array<uint32_t, 8u>                          LevelClusterCount   {};
-        uint64_t                                          LastUsedTick        = 0ull;
+        SpatialAcceleration::WideBoundingTree       LocalBvh                  {};
+        std::vector<std::array<uint32_t, 4u>>       TransitionLaneClusterGate {};
+        std::vector<uint8_t>                        LocalShadedTriBytes       {};
+        std::vector<uint32_t>                       TriLocalClusterIndices    {};
+        Mathematics::Axis3D                         LocalBoundsMin            {};
+        Mathematics::Axis3D                         LocalBoundsMax            {};
+        uint32_t                                    HierarchyLevel            = 0u;
+        uint32_t                                    TriangleCount             = 0u;
     };
+
+    struct CachedAssetClusterHierarchy
+    {
+        const SpatialAcceleration::ClusterPyramid* PyramidAsset        = nullptr;
+        std::size_t                                SourceClusterCount  = 0u;
+        std::size_t                                SourceTriangleCount = 0u;
+        std::vector<CachedLocalLevelSubtree>       LevelSubtrees       {};
+    };
+
+    struct ResidentClusterInstanceSpan
+    {
+        uint32_t                 InstanceIndex             = 0u;
+        uint32_t                 FirstGlobalClusterOrdinal = 0u;
+        uint32_t                 ClusterCount              = 0u;
+        std::array<uint32_t, 8u> LevelGateOrdinals         {
+            UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX,
+            UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX
+        };
+    };
+
+    struct TopBranchGateRule
+    {
+        uint32_t GateOrdinal      = 0u;
+        uint32_t ChildOrdinals[4] { UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX };
+    };
+
+    void PropagateTopBranchGateBits(std::vector<uint32_t>& InOutMaskWords) const noexcept;
 
     void EnsureBufferCapacity(
         DeviceBufferResource& TargetBuffer,
@@ -167,8 +194,13 @@ private:
         uint64_t              ByteCountB,
         VkBufferUsageFlags    UsageMaskB);
 
-    void WaitPendingNaniteBuild() noexcept;
-    void ApplyNaniteCutPayload(const CachedNaniteCutPayload& Payload);
+    [[nodiscard]] const CachedAssetClusterHierarchy& AcquireAssetClusterHierarchy(
+        const SpatialAcceleration::ClusterPyramid* PyramidAsset);
+    [[nodiscard]] uint64_t ComputeResidentClusterTransformSignature(
+        const WorldSceneSpecification& Scene) const noexcept;
+    [[nodiscard]] bool AssembleResidentClusterSceneBvh(
+        const WorldSceneSpecification& Scene,
+        bool                           ForceReassemble);
 
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
     void DispatchGpuStellarTileCull(
@@ -254,6 +286,7 @@ private:
     DeviceBufferResource   GlobalSurfaceShellBuffer        {};
     DeviceBufferResource   LocalAssetSdfVoxelBuffer        {};
     DeviceBufferResource   DynamicLocalSdfInstanceBuffer   {};
+    DeviceBufferResource   ActiveClusterMaskBuffer         {};
 
     DeviceImageResource    DisplayOutputImage2D            {};
 
@@ -267,6 +300,7 @@ private:
     bool                   CoarseToroidalValid             = false;
     bool                   PendingFineGeometryReset        = true;
     bool                   PendingCoarseGeometryReset      = true;
+    bool                   PendingRadiosityRefresh         = false;
     bool                   GlobalDistanceFieldReady        = false;
     bool                   SkyViewLutValid                 = false;
     std::array<uint8_t, 128u> LastSkyViewUniformSnapshot   {};
@@ -292,13 +326,17 @@ private:
     bool                   SceneUploadedOnce             = false;
     NaniteViewportLodStats   NaniteLodStats              {};
     GlobalDistanceFieldStats DistanceFieldStats          {};
+    std::vector<CachedAssetClusterHierarchy> AssetClusterTreeCache {};
+    std::vector<ResidentClusterInstanceSpan> ResidentClusterInstances {};
+    std::vector<TopBranchGateRule>           TopBranchGateRules    {};
+    std::vector<uint32_t>  FinestClusterMaskWords        {};
+    std::vector<uint32_t>  ViewportClusterMaskWords      {};
+    uint64_t               MaskSliceOffsetBytes          = 256ull;
     uint64_t               CachedNaniteCutSignature      = 0u;
-    uint64_t               CachedNaniteTransformSig      = 0u;
-    uint64_t               NaniteCacheUseCounter         = 0u;
-    std::vector<CachedNaniteCutPayload> NaniteCutCache   {};
-    std::future<CachedNaniteCutPayload> PendingNaniteBuildFuture {};
-    uint64_t               PendingNaniteBuildSignature   = 0u;
-    bool                   NaniteLodBuffersActive        = false;
+    uint64_t               CachedResidentTransformSig    = 0u;
+    uint32_t               ResidentFinestTriangleCount   = 0u;
+    bool                   ResidentClusterBvhActive      = false;
+    bool                   ViewportMaskHoldsFinestOnly   = true;
     uint32_t               FrameSequenceIndex            = 0u;
     uint32_t               ProgressiveSampleCount        = 0u;
     uint32_t               LastEngineOrdinal             = UINT32_MAX;

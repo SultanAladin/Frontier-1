@@ -2544,7 +2544,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             SynchronizeComponentPlacementOverrides();
 
             bool       NeedsPrep = false;
-            const bool UseGpuDynamicSync = GpuReady && DisplayCfg.ClusterLodEnabled;
+            const bool UseGpuDynamicSync = GpuReady;
             const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(
                 Panes->Outliner,
                 *ShowcaseBundle,
@@ -2553,11 +2553,6 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
             {
                 if (!GpuReady)
-                {
-                    GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle);
-                    NeedsPrep = true;
-                }
-                else if (!DisplayCfg.ClusterLodEnabled)
                 {
                     GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle);
                     NeedsPrep = true;
