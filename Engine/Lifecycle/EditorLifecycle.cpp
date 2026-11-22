@@ -597,8 +597,11 @@ void EditorLifecycle::SynchronizeShowcaseGizmoAnchor() noexcept
         (Pivot.X - ShowcaseBundle->EditorCamera.CameraOrigin.X) * (Pivot.X - ShowcaseBundle->EditorCamera.CameraOrigin.X) +
         (Pivot.Y - ShowcaseBundle->EditorCamera.CameraOrigin.Y) * (Pivot.Y - ShowcaseBundle->EditorCamera.CameraOrigin.Y) +
         (Pivot.Z - ShowcaseBundle->EditorCamera.CameraOrigin.Z) * (Pivot.Z - ShowcaseBundle->EditorCamera.CameraOrigin.Z));
-    const float WorldRad = std::clamp(DistToCam * 0.17f, 0.28f, 1.85f);
-    WorldTransformGizmo.ConfigureAnchor(Pivot, WorldRad);
+    // Screen-constant gizmo size across all distances (from 0.25 m up to 5000 m):
+    // scales linearly with vertical FOV and distance to camera so handles never shrink into sub-pixel slivers!
+    const float TanHalfFov = std::tan(std::clamp(ShowcaseBundle->EditorCamera.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
+    const float WorldRad   = std::max(0.18f, DistToCam * TanHalfFov * 0.48f);
+    WorldTransformGizmo.ConfigureAnchor(Pivot, WorldRad, Entry->RotationZ);
     LastGizmoSlot = PrimarySlot;
 }
 
@@ -659,13 +662,20 @@ void EditorLifecycle::ProcessShowcaseNavigationDirective(ViewportNavigationDirec
         return;
     }
 
-    const Mathematics::Axis3D ToTarget = ShowcaseBundle->EditorCamera.TargetPoint - ShowcaseBundle->EditorCamera.CameraOrigin;
-    const float               CurDist  = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
-    const Mathematics::Axis3D Fwd      = Mathematics::NormalizeAxis(ToTarget, { 0.0f, 1.0f, 0.0f });
-    const float               NextDist = (Directive == ViewportNavigationDirective::ZoomIn)
-                                             ? std::clamp(CurDist * 0.85f, 0.55f, 18.0f)
-                                             : std::clamp(CurDist * 1.18f, 0.55f, 18.0f);
-    ShowcaseBundle->EditorCamera.CameraOrigin = ShowcaseBundle->EditorCamera.TargetPoint - Fwd * NextDist;
+    const Mathematics::Axis3D PriorOrigin  = DesiredCameraValid ? DesiredCameraOrigin : ShowcaseBundle->EditorCamera.CameraOrigin;
+    const Mathematics::Axis3D PriorTarget  = DesiredCameraValid ? DesiredCameraTarget : ShowcaseBundle->EditorCamera.TargetPoint;
+    const Mathematics::Axis3D ToTarget     = PriorTarget - PriorOrigin;
+    const float               CurDist      = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+    const Mathematics::Axis3D Fwd          = Mathematics::NormalizeAxis(ToTarget, { 0.0f, 1.0f, 0.0f });
+    const float               NextDist     = (Directive == ViewportNavigationDirective::ZoomIn)
+                                                 ? std::clamp(CurDist * 0.85f, 0.45f, 2500.0f)
+                                                 : std::clamp(CurDist * 1.18f, 0.45f, 2500.0f);
+    DesiredCameraOrigin = PriorTarget - Fwd * NextDist;
+    DesiredCameraTarget = PriorTarget;
+    DesiredCameraValid  = true;
+    ShowcaseBundle->EditorCamera.CameraOrigin = DesiredCameraOrigin;
+    ShowcaseBundle->EditorCamera.TargetPoint  = DesiredCameraTarget;
+    EditorCameraLag.SnapTo(DesiredCameraOrigin, DesiredCameraTarget);
 
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
@@ -718,8 +728,8 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         }
     }
 
-    const float NormU = std::clamp((Cursor.X - PaneBounds.X) / PaneBounds.Width, 0.0f, 1.0f);
-    const float NormV = std::clamp((Cursor.Y - PaneBounds.Y) / PaneBounds.Height, 0.0f, 1.0f);
+    const float RawNormU = std::clamp((Cursor.X - PaneBounds.X) / PaneBounds.Width, 0.0f, 1.0f);
+    const float RawNormV = std::clamp((Cursor.Y - PaneBounds.Y) / PaneBounds.Height, 0.0f, 1.0f);
 
     bool CameraMoved      = false;
     bool SceneChanged     = false;
@@ -727,9 +737,23 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     bool GizmoDragEnded   = false;
 
     auto& Cam = ShowcaseBundle->EditorCamera;
-    Mathematics::Axis3D Fwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, { 0.0f, 1.0f, 0.0f });
-    Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
-    Mathematics::Axis3D Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
+    if (!DesiredCameraValid)
+    {
+        DesiredCameraOrigin = Cam.CameraOrigin;
+        DesiredCameraTarget = Cam.TargetPoint;
+        DesiredCameraValid  = true;
+    }
+
+    // Rendered basis (matches exact on-screen camera for gizmo/scene ray picking)
+    const Mathematics::Axis3D RenderFwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, { 0.0f, 1.0f, 0.0f });
+    const Mathematics::Axis3D RenderRight = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(RenderFwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
+    const Mathematics::Axis3D RenderUp    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(RenderRight, RenderFwd), { 0.0f, 0.0f, 1.0f });
+
+    // Desired (undamped) basis: ALL navigation inputs integrate strictly onto DesiredCameraOrigin/Target
+    // so camera lag never feeds back into input integration and never discards mouse-look / fly deltas!
+    Mathematics::Axis3D Fwd   = Mathematics::NormalizeAxis(DesiredCameraTarget - DesiredCameraOrigin, RenderFwd);
+    Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), RenderRight);
+    Mathematics::Axis3D Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), RenderUp);
 
     // 1. Modifier & Mouse Button State (Unreal Engine Z-Up Viewport Controls)
     const bool RightHeld  = ImGui::IsMouseDown(ImGuiMouseButton_Right);
@@ -758,13 +782,40 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     NavigationDragWasActive     = AnyNavButtonHeld;
 
     // 2. GPU Gizmo Hover / Drag & 3D Ray Picking (evaluated first so Gizmo handles preempt LMB camera walk)
-    const float Aspect  = static_cast<float>(std::max(1u, Cam.ViewportWidthPx)) / static_cast<float>(std::max(1u, Cam.ViewportHeightPx));
+    const uint32_t PickSurfaceW = (LastTargetWidthPx > 0u)
+        ? LastTargetWidthPx
+        : ((CachedWorldWidthPx > 0u) ? CachedWorldWidthPx : std::max(1u, Cam.ViewportWidthPx));
+    const uint32_t PickSurfaceH = (LastTargetHeightPx > 0u)
+        ? LastTargetHeightPx
+        : ((CachedWorldHeightPx > 0u) ? CachedWorldHeightPx : std::max(1u, Cam.ViewportHeightPx));
+
+    // Match ViewportPanel::ConstructSingleViewportPane aspect-fit UV crop so cursor UVs align 1:1 with pixels!
+    const float SourceAspect = static_cast<float>(PickSurfaceW) / static_cast<float>(PickSurfaceH);
+    const float TargetAspect = PaneBounds.Width / std::max(1.0f, PaneBounds.Height);
+    Point2D     UvMin{ 0.0f, 0.0f };
+    Point2D     UvMax{ 1.0f, 1.0f };
+    if (TargetAspect > SourceAspect)
+    {
+        const float CropH = SourceAspect / TargetAspect;
+        UvMin.Y           = 0.5f * (1.0f - CropH);
+        UvMax.Y           = 1.0f - UvMin.Y;
+    }
+    else if (SourceAspect > TargetAspect)
+    {
+        const float CropW = TargetAspect / SourceAspect;
+        UvMin.X           = 0.5f * (1.0f - CropW);
+        UvMax.X           = 1.0f - UvMin.X;
+    }
+    const float NormU = std::clamp(UvMin.X + RawNormU * (UvMax.X - UvMin.X), 0.0f, 1.0f);
+    const float NormV = std::clamp(UvMin.Y + RawNormV * (UvMax.Y - UvMin.Y), 0.0f, 1.0f);
+
+    const float Aspect  = SourceAspect;
     const float TanHalf = std::tan(std::clamp(Cam.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
     const float NdcX    = (NormU * 2.0f - 1.0f) * Aspect * TanHalf;
     const float NdcY    = (1.0f - NormV * 2.0f) * TanHalf;
     const Editor::ViewportRay3D CursorRay{
         Cam.CameraOrigin,
-        Mathematics::NormalizeAxis(Fwd + Right * NdcX + Up * NdcY, Fwd),
+        Mathematics::NormalizeAxis(RenderFwd + RenderRight * NdcX + RenderUp * NdcY, RenderFwd),
     };
 
     if (WorldTransformGizmo.QueryDragging())
@@ -783,8 +834,11 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
                     SelectedEntry->ScaleX    = std::max(0.08f, GizmoActiveTransform.Scale.X);
                     SelectedEntry->ScaleY    = std::max(0.08f, GizmoActiveTransform.Scale.Y);
                     SelectedEntry->ScaleZ    = std::max(0.08f, GizmoActiveTransform.Scale.Z);
-                    SelectedEntry->RotationZ += Delta.RotationDegrees.Z;
-                    WorldTransformGizmo.ConfigureAnchor(GizmoActiveTransform.Position, WorldTransformGizmo.QueryWorldRadius());
+                    SelectedEntry->RotationZ = GizmoActiveTransform.Rotation.Z;
+                    WorldTransformGizmo.ConfigureAnchor(
+                        GizmoActiveTransform.Position,
+                        WorldTransformGizmo.QueryWorldRadius(),
+                        SelectedEntry->RotationZ);
                     SceneChanged = true;
                 }
             }
@@ -799,22 +853,27 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
     }
     else if (!AltHeld && !RightHeld && !MiddleHeld)
     {
+        // 100% GPU Gizmo picking from WorldGizmoOverlayRasterization PickAttachment (R32G32B32A32_UINT)
         Editor::GizmoHandleOrdinal Hovered = Editor::GizmoHandleOrdinal::None;
         if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
         {
-            const uint32_t PixX = static_cast<uint32_t>(NormU * static_cast<float>(std::max(1u, Cam.ViewportWidthPx) - 1u));
-            const uint32_t PixY = static_cast<uint32_t>(NormV * static_cast<float>(std::max(1u, Cam.ViewportHeightPx) - 1u));
+            const uint32_t PixX = static_cast<uint32_t>(NormU * static_cast<float>(PickSurfaceW - 1u));
+            const uint32_t PixY = static_cast<uint32_t>(NormV * static_cast<float>(PickSurfaceH - 1u));
             Hovered             = WorldGizmoRasterizer->QueryLastGpuPickAtPixel(PixX, PixY);
         }
-        if (Hovered == Editor::GizmoHandleOrdinal::None && LastGizmoSlot.Valid())
+        else if (LastGizmoSlot.Valid())
         {
-            // GPU pick is best-effort only (stale patch, CPU viewport, headless): fall back to the
-            // analytic CPU ray hover so the gizmo stays draggable on every presentation path.
-            Hovered = WorldTransformGizmo.EvaluateRayHover(CursorRay, Right, Up);
+            // Headless null-device fallback ONLY when no Vulkan Gizmo rasterizer is attached
+            Hovered = WorldTransformGizmo.EvaluateRayHover(CursorRay, RenderRight, RenderUp);
         }
         if (Hovered != WorldTransformGizmo.QueryHoveredHandle())
         {
             WorldTransformGizmo.AssignHoveredHandle(Hovered);
+            GizmoOverlayOnly = true;
+        }
+        else if (LastGizmoSlot.Valid() && (std::fabs(RawCursorDeltaX) > 0.25f || std::fabs(RawCursorDeltaY) > 0.25f))
+        {
+            // Keep the 9x9 GPU pick patch fresh under the moving cursor without re-dispatching world GI
             GizmoOverlayOnly = true;
         }
 
@@ -824,10 +883,11 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
             {
                 if (const OutlinerRecordEntry* SelectedEntry = Panes->Outliner.FindEntry(LastGizmoSlot))
                 {
-                    GizmoActiveTransform          = {};
-                    GizmoActiveTransform.Position = { SelectedEntry->PositionX, SelectedEntry->PositionY, SelectedEntry->PositionZ };
-                    GizmoActiveTransform.Scale    = { SelectedEntry->ScaleX, SelectedEntry->ScaleY, SelectedEntry->ScaleZ };
-                    (void)WorldTransformGizmo.BeginDragInteraction(Hovered, CursorRay, GizmoActiveTransform, Right, Up);
+                    GizmoActiveTransform            = {};
+                    GizmoActiveTransform.Position   = { SelectedEntry->PositionX, SelectedEntry->PositionY, SelectedEntry->PositionZ };
+                    GizmoActiveTransform.Rotation.Z = SelectedEntry->RotationZ;
+                    GizmoActiveTransform.Scale      = { SelectedEntry->ScaleX, SelectedEntry->ScaleY, SelectedEntry->ScaleZ };
+                    (void)WorldTransformGizmo.BeginDragInteraction(Hovered, CursorRay, GizmoActiveTransform, RenderRight, RenderUp);
                     CameraInteractiveDrag = true;
                     GizmoOverlayOnly      = true;
                 }
@@ -879,52 +939,52 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         {
             if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
             {
-                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
                 const float Dist  = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
                 const float Yaw   = std::atan2(Fwd.X, Fwd.Y) + NavDeltaX * 0.0042f;
                 const float Pitch = std::clamp(
                     std::asin(std::clamp(Fwd.Z, -0.995f, 0.995f)) - NavDeltaY * 0.0042f,
                     -1.52f,
                     1.52f);
-                const float CosP = std::cos(Pitch);
-                Fwd              = Mathematics::NormalizeAxis({ std::sin(Yaw) * CosP, std::cos(Yaw) * CosP, std::sin(Pitch) }, Fwd);
-                Cam.TargetPoint  = Cam.CameraOrigin + Fwd * Dist;
-                Right            = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
-                Up               = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
-                CameraMoved      = true;
+                const float CosP    = std::cos(Pitch);
+                Fwd                 = Mathematics::NormalizeAxis({ std::sin(Yaw) * CosP, std::cos(Yaw) * CosP, std::sin(Pitch) }, Fwd);
+                DesiredCameraTarget = DesiredCameraOrigin + Fwd * Dist;
+                Right               = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
+                Up                  = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
+                CameraMoved         = true;
             }
         }
         else if ((MiddleHeld && !AltHeld) || (LeftHeld && RightHeld && !AltHeld))
         {
             if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
             {
-                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
                 const float CurDist  = std::max(0.50f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
-                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.045f) * (ShiftHeld ? 2.5f : 1.0f);
+                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.45f) * (ShiftHeld ? 2.5f : 1.0f);
                 const Mathematics::Axis3D PanOffset = Right * (-NavDeltaX * PanScale) + Up * (NavDeltaY * PanScale);
-                Cam.CameraOrigin = Cam.CameraOrigin + PanOffset;
-                Cam.TargetPoint  = Cam.TargetPoint + PanOffset;
-                CameraMoved      = true;
+                DesiredCameraOrigin = DesiredCameraOrigin + PanOffset;
+                DesiredCameraTarget = DesiredCameraTarget + PanOffset;
+                CameraMoved         = true;
             }
         }
         else if (AltHeld && LeftHeld && !RightHeld && !MiddleHeld)
         {
             if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
             {
-                const Mathematics::Axis3D Offset = Cam.CameraOrigin - Cam.TargetPoint;
+                const Mathematics::Axis3D Offset = DesiredCameraOrigin - DesiredCameraTarget;
                 const float Dist  = std::max(0.45f, std::sqrt(Mathematics::EvaluateDot(Offset, Offset)));
                 const float Yaw   = std::atan2(Offset.X, Offset.Y) + NavDeltaX * 0.0055f;
                 const float Pitch = std::clamp(
                     std::asin(std::clamp(Offset.Z / Dist, -0.995f, 0.995f)) + NavDeltaY * 0.0055f,
                     -1.48f,
                     1.48f);
-                const float CosP = std::cos(Pitch);
-                Cam.CameraOrigin = Cam.TargetPoint + Mathematics::Axis3D{
+                const float CosP    = std::cos(Pitch);
+                DesiredCameraOrigin = DesiredCameraTarget + Mathematics::Axis3D{
                     std::sin(Yaw) * CosP * Dist,
                     std::cos(Yaw) * CosP * Dist,
                     std::sin(Pitch) * Dist
                 };
-                Fwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, Fwd);
+                Fwd   = Mathematics::NormalizeAxis(DesiredCameraTarget - DesiredCameraOrigin, Fwd);
                 Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), Right);
                 Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), Up);
                 CameraMoved = true;
@@ -934,25 +994,25 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         {
             if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
             {
-                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
-                const float CurDist   = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
-                const float DollyStep = (NavDeltaX - NavDeltaY) * std::max(0.008f, CurDist * 0.0055f) * (ShiftHeld ? 2.5f : 1.0f);
-                const float NextDist  = std::clamp(CurDist - DollyStep, 0.35f, 250.0f);
-                Cam.CameraOrigin      = Cam.TargetPoint - Fwd * NextDist;
-                CameraMoved           = true;
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
+                const float CurDist     = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float DollyStep   = (NavDeltaX - NavDeltaY) * std::max(0.008f, CurDist * 0.0055f) * (ShiftHeld ? 2.5f : 1.0f);
+                const float NextDist    = std::clamp(CurDist - DollyStep, 0.35f, 2500.0f);
+                DesiredCameraOrigin     = DesiredCameraTarget - Fwd * NextDist;
+                CameraMoved             = true;
             }
         }
         else if (AltHeld && MiddleHeld)
         {
             if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
             {
-                const Mathematics::Axis3D ToTarget = Cam.TargetPoint - Cam.CameraOrigin;
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
                 const float CurDist  = std::max(0.50f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
-                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.045f) * (ShiftHeld ? 2.5f : 1.0f);
+                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.45f) * (ShiftHeld ? 2.5f : 1.0f);
                 const Mathematics::Axis3D PanOffset = Right * (-NavDeltaX * PanScale) + Up * (NavDeltaY * PanScale);
-                Cam.CameraOrigin = Cam.CameraOrigin + PanOffset;
-                Cam.TargetPoint  = Cam.TargetPoint + PanOffset;
-                CameraMoved      = true;
+                DesiredCameraOrigin = DesiredCameraOrigin + PanOffset;
+                DesiredCameraTarget = DesiredCameraTarget + PanOffset;
+                CameraMoved         = true;
             }
         }
         // (No LMB camera branch: LMB is reserved for Gizmo drag & selection above.)
@@ -976,9 +1036,9 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
                     6.0f * CameraFlySpeedScalar * ModifierBoost *
                     static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
                 const Mathematics::Axis3D MoveVec = NormDir * StepMeters;
-                Cam.CameraOrigin = Cam.CameraOrigin + MoveVec;
-                Cam.TargetPoint  = Cam.TargetPoint + MoveVec;
-                CameraMoved      = true;
+                DesiredCameraOrigin = DesiredCameraOrigin + MoveVec;
+                DesiredCameraTarget = DesiredCameraTarget + MoveVec;
+                CameraMoved         = true;
             }
         }
         else if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
@@ -1000,9 +1060,9 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
                     6.0f * CameraFlySpeedScalar * (ShiftHeld ? 3.0f : 1.0f) *
                     static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
                 const Mathematics::Axis3D MoveVec = NormDir * StepMeters;
-                Cam.CameraOrigin = Cam.CameraOrigin + MoveVec;
-                Cam.TargetPoint  = Cam.TargetPoint + MoveVec;
-                CameraMoved      = true;
+                DesiredCameraOrigin = DesiredCameraOrigin + MoveVec;
+                DesiredCameraTarget = DesiredCameraTarget + MoveVec;
+                CameraMoved         = true;
             }
         }
 
@@ -1019,7 +1079,8 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         Panes->Viewport.ConfigureProbeReadoutText(SpeedReadout);
     }
 
-    CameraInteractiveDrag = RightHeld || MiddleHeld || (AltHeld && LeftHeld) || WorldTransformGizmo.QueryDragging() || CameraMoved;
+    const bool UserActivelyNavigating =
+        RightHeld || MiddleHeld || (AltHeld && LeftHeld) || WorldTransformGizmo.QueryDragging() || CameraMoved;
 
     // 4. Gizmo & Frame-Selection Keyboard Shortcuts (when not flying RMB/LMB and not typing in text fields)
     if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
@@ -1064,14 +1125,9 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         }
     }
 
-    // Camera lag: input above moves the DESIRED pose; the reusable lag component damps the
-    // rendered pose toward it every tick (also while settling after the keys are released).
-    if (CameraMoved)
-    {
-        DesiredCameraOrigin = Cam.CameraOrigin;
-        DesiredCameraTarget = Cam.TargetPoint;
-        DesiredCameraValid  = true;
-    }
+    // Camera lag: input above integrates strictly onto DesiredCameraOrigin/Target; the reusable
+    // CameraLagComponent damps the rendered pose toward DesiredCamera* every tick without feedback loss.
+    bool RenderedPoseUpdated = false;
     if (DesiredCameraValid && !WorldTransformGizmo.QueryDragging())
     {
         if (!EditorCameraLag.QueryPrimed())
@@ -1081,13 +1137,15 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         const float LagStepSeconds = static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
         if (EditorCameraLag.AdvanceLag(DesiredCameraOrigin, DesiredCameraTarget, LagStepSeconds))
         {
-            Cam.CameraOrigin = EditorCameraLag.QueryPosition();
-            Cam.TargetPoint  = EditorCameraLag.QueryTarget();
-            CameraMoved      = true;
+            Cam.CameraOrigin    = EditorCameraLag.QueryPosition();
+            Cam.TargetPoint     = EditorCameraLag.QueryTarget();
+            RenderedPoseUpdated = true;
         }
     }
+    CameraInteractiveDrag = UserActivelyNavigating;
+    CameraLagSettling     = RenderedPoseUpdated && !UserActivelyNavigating;
 
-    if (CameraMoved)
+    if (CameraMoved || RenderedPoseUpdated)
     {
         if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
         {
@@ -1098,7 +1156,7 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
         SynchronizeShowcaseGizmoAnchor();
     }
 
-    if (CameraMoved || SceneChanged)
+    if (CameraMoved || RenderedPoseUpdated || SceneChanged)
     {
         PendingInteractionWorldRefresh = true;
         if (SceneChanged)
@@ -1806,8 +1864,26 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
         uint32_t PickY = LastTargetHeightPx / 2u;
         if (CursorInCanvas)
         {
-            const float U = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
-            const float V = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+            const float RawU = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
+            const float RawV = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+            const float SrcAspect = static_cast<float>(std::max(1u, LastTargetWidthPx)) / static_cast<float>(std::max(1u, LastTargetHeightPx));
+            const float TgtAspect = CanvasBounds.Width / std::max(1.0f, CanvasBounds.Height);
+            Point2D     UvMin{ 0.0f, 0.0f };
+            Point2D     UvMax{ 1.0f, 1.0f };
+            if (TgtAspect > SrcAspect)
+            {
+                const float CropH = SrcAspect / TgtAspect;
+                UvMin.Y           = 0.5f * (1.0f - CropH);
+                UvMax.Y           = 1.0f - UvMin.Y;
+            }
+            else if (SrcAspect > TgtAspect)
+            {
+                const float CropW = TgtAspect / SrcAspect;
+                UvMin.X           = 0.5f * (1.0f - CropW);
+                UvMax.X           = 1.0f - UvMin.X;
+            }
+            const float U = std::clamp(UvMin.X + RawU * (UvMax.X - UvMin.X), 0.0f, 1.0f);
+            const float V = std::clamp(UvMin.Y + RawV * (UvMax.Y - UvMin.Y), 0.0f, 1.0f);
             PickX = static_cast<uint32_t>(U * static_cast<float>(std::max(1u, LastTargetWidthPx) - 1u));
             PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, LastTargetHeightPx) - 1u));
         }
@@ -1981,8 +2057,26 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
             uint32_t PickY = TargetH / 2u;
             if (CursorInCanvas)
             {
-                const float U = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
-                const float V = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+                const float RawU = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
+                const float RawV = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+                const float SrcAspect = static_cast<float>(std::max(1u, TargetW)) / static_cast<float>(std::max(1u, TargetH));
+                const float TgtAspect = CanvasBounds.Width / std::max(1.0f, CanvasBounds.Height);
+                Point2D     UvMin{ 0.0f, 0.0f };
+                Point2D     UvMax{ 1.0f, 1.0f };
+                if (TgtAspect > SrcAspect)
+                {
+                    const float CropH = SrcAspect / TgtAspect;
+                    UvMin.Y           = 0.5f * (1.0f - CropH);
+                    UvMax.Y           = 1.0f - UvMin.Y;
+                }
+                else if (SrcAspect > TgtAspect)
+                {
+                    const float CropW = TgtAspect / SrcAspect;
+                    UvMin.X           = 0.5f * (1.0f - CropW);
+                    UvMax.X           = 1.0f - UvMin.X;
+                }
+                const float U = std::clamp(UvMin.X + RawU * (UvMax.X - UvMin.X), 0.0f, 1.0f);
+                const float V = std::clamp(UvMin.Y + RawV * (UvMax.Y - UvMin.Y), 0.0f, 1.0f);
                 PickX = static_cast<uint32_t>(U * static_cast<float>(std::max(1u, TargetW) - 1u));
                 PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, TargetH) - 1u));
             }
@@ -2288,6 +2382,39 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                         : Mathematics::Axis3D{ 0.00f, -3.55f, 0.42f };
                     break;
                 }
+                DesiredCameraOrigin = Cam.CameraOrigin;
+                DesiredCameraTarget = Cam.TargetPoint;
+                DesiredCameraValid  = true;
+                EditorCameraLag.SnapTo(DesiredCameraOrigin, DesiredCameraTarget);
+            }
+
+            // Advance camera lag even when the cursor is outside the viewport pane so smooth settling never stalls
+            if (DesiredCameraValid && !PendingInteractionWorldRefresh && !WorldTransformGizmo.QueryDragging())
+            {
+                auto& Cam = ShowcaseBundle->EditorCamera;
+                if (!EditorCameraLag.QueryPrimed())
+                {
+                    EditorCameraLag.SnapTo(Cam.CameraOrigin, Cam.TargetPoint);
+                }
+                const float LagStepSeconds = static_cast<float>(std::clamp(SafeStep, 0.001, 0.100));
+                if (EditorCameraLag.AdvanceLag(DesiredCameraOrigin, DesiredCameraTarget, LagStepSeconds))
+                {
+                    Cam.CameraOrigin               = EditorCameraLag.QueryPosition();
+                    Cam.TargetPoint                = EditorCameraLag.QueryTarget();
+                    CameraLagSettling              = true;
+                    PendingInteractionWorldRefresh = true;
+                    if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+                    {
+                        CamEntry->PositionX = Cam.CameraOrigin.X;
+                        CamEntry->PositionY = Cam.CameraOrigin.Y;
+                        CamEntry->PositionZ = Cam.CameraOrigin.Z;
+                    }
+                    SynchronizeShowcaseGizmoAnchor();
+                }
+                else
+                {
+                    CameraLagSettling = false;
+                }
             }
 
             const bool              DisplayChanged =
@@ -2374,7 +2501,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 {
                     GpuWorldRenderer->SynchronizeSceneResources(
                         ShowcaseBundle->Scene,
-                        !WorldTransformGizmo.QueryDragging() && !InteractionFastDrag);
+                        true);
                 }
                 else if (ShowcaseRenderer != nullptr)
                 {

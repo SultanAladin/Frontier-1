@@ -378,10 +378,10 @@ int main()
             for (const auto& V : Verts)
             {
                 if ((V.NormalHandlePacked.W == 1.0f || V.NormalHandlePacked.W == 2.0f || V.NormalHandlePacked.W == 3.0f) &&
-                    V.ColorRGBAndShaded.W == 0.0f &&
-                    V.ColorRGBAndShaded.X > 0.99f &&
-                    V.ColorRGBAndShaded.Y > 0.99f &&
-                    V.ColorRGBAndShaded.Z > 0.99f)
+                    V.AccentLitWeight.W == 0.0f &&
+                    V.AccentLitWeight.X > 0.99f &&
+                    V.AccentLitWeight.Y > 0.99f &&
+                    V.AccentLitWeight.Z > 0.99f)
                 {
                     ++Count;
                 }

@@ -443,7 +443,7 @@ bool ComponentSpaceDecoder::ExtractDefinition(
                 {
                     Cam->VerticalFovDegrees = static_cast<float>((*Entry)["VerticalFovDegrees"].value_or(52.0));
                     Cam->NearClipMeters     = static_cast<float>((*Entry)["NearClipMeters"].value_or(0.1));
-                    Cam->FarClipMeters      = static_cast<float>((*Entry)["FarClipMeters"].value_or(120.0));
+                    Cam->FarClipMeters      = static_cast<float>((*Entry)["FarClipMeters"].value_or(5000.0));
                     Cam->AspectRatio        = static_cast<float>((*Entry)["AspectRatio"].value_or(16.0 / 9.0));
                 }
                 break;

@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/DistanceFieldSpace/LocalSignedDistanceVolume.h"
 #include "Engine/GeometricRaster/Visibility/DepthPyramidSequence.h"
 #include "Engine/SpatialAcceleration/ClusterPyramid.h"
 
@@ -25,12 +26,17 @@ namespace Frontier::GeometricRaster
 
 struct RigidClusterInstance
 {
-    const SpatialAcceleration::ClusterPyramid* PyramidAsset       = nullptr; // [-]   - Pre-built 128-triangle cluster LOD pyramid
-    Mathematics::Axis3D                        WorldTranslation   {};        // [m]   - Current-frame world position
-    Mathematics::Axis3D                        PreviousTranslation{};        // [m]   - Previous-frame world position (for motion vectors)
-    float                                      UniformScale       = 1.0f;    // [-]   - Uniform rigid world scale
-    uint16_t                                   MaterialSlot       = 0u;      // [idx] - CompactMaterialRegister slot
-    bool                                       TransparentGlass   = false;   // [-]   - Routed to 2-layer glass depth-peel pass
+    const SpatialAcceleration::ClusterPyramid*           PyramidAsset        = nullptr; // [-]   - Pre-built 128-triangle cluster LOD pyramid
+    Mathematics::Axis3D                                  WorldTranslation    {};        // [m]   - Active world position
+    Mathematics::Axis3D                                  PreviousTranslation {};        // [m]   - Prior world position (for motion vectors)
+    float                                                UniformScale        = 1.0f;    // [-]   - Uniform rigid world scale
+    uint16_t                                             MaterialSlot        = 0u;      // [idx] - CompactMaterialRegister slot
+    bool                                                 TransparentGlass    = false;   // [-]   - Routed to 2-layer glass depth-peel rasterization
+    float                                                RotationZDegrees    = 0.0f;    // [deg] - Rigid Z-up yaw rotation
+    Mathematics::Axis3D                                  NonUniformScale     { 1.0f, 1.0f, 1.0f }; // [-] - Full 3-axis rigid scale
+    Mathematics::Axis3D                                  LocalHalfExtents    { 0.5f, 0.5f, 0.5f }; // [m] - Unscaled local half-extents / shape radii
+    uint32_t                                             AnalyticalShapeCode = 0u;      // [id]  - 0=SignedVolume, 1=Box, 2=Sphere, 3=Cylinder, 4=Cone, 5=Torus
+    const DistanceFieldSpace::LocalSignedDistanceVolume* LocalSdfVolume      = nullptr; // [-]   - Optional per-asset signed local SDF volume
 };
 
 struct VisibleClusterCommand

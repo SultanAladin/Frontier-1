@@ -42,8 +42,9 @@ enum class ShowcasePrimitiveShape : uint8_t
 
 struct ShowcaseGeometryAsset
 {
-    GeometrySpace::PolygonNetwork       Network {}; // [-] - Authored polygon network primitive
-    SpatialAcceleration::ClusterPyramid Pyramid {}; // [-] - Built 3-level cluster hierarchy
+    GeometrySpace::PolygonNetwork                  Network  {}; // [-] - Authored polygon network primitive
+    SpatialAcceleration::ClusterPyramid            Pyramid  {}; // [-] - Built 3-level cluster pyramid
+    DistanceFieldSpace::LocalSignedDistanceVolume  LocalSdf {}; // [-] - Optional per-asset signed local SDF volume
 };
 
 struct CachedLocalSmoothTriangle

@@ -1508,6 +1508,9 @@ int LaunchDesktopWorkspace(
             Input::InputExtension::AssignActiveExtension(&InputParticipant);
             const auto UiStart = std::chrono::steady_clock::now();
             EditorLoopPtr->PresentPrimaryEditorImGui(Dt);
+#if !defined(__ANDROID__)
+            (void)InputParticipant.FlushOutboundDirectives(DesktopWindow);
+#endif
             UiBuildMs = static_cast<float>(
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - UiStart).count());
         }

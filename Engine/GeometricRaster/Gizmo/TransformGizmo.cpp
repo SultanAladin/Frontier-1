@@ -276,10 +276,14 @@ void TransformGizmo::ConfigureHandleFilter(GizmoHandleFilter Filter) noexcept
     HandleFilter = Filter;
 }
 
-void TransformGizmo::ConfigureAnchor(Mathematics::Axis3D PivotOrigin, float ConstantWorldRadius) noexcept
+void TransformGizmo::ConfigureAnchor(
+    Mathematics::Axis3D PivotOrigin,
+    float               ConstantWorldRadius,
+    float               NewAnchorYawDegrees) noexcept
 {
-    PivotPosition = PivotOrigin;
-    WorldRadius   = std::max(0.01f, ConstantWorldRadius);
+    PivotPosition    = PivotOrigin;
+    WorldRadius      = std::max(0.01f, ConstantWorldRadius);
+    AnchorYawDegrees = (DimensionMode == GizmoDimensionMode::Spatial3D) ? NewAnchorYawDegrees : 0.0f;
 }
 
 void TransformGizmo::AssignHoveredHandle(GizmoHandleOrdinal Handle) noexcept
@@ -304,13 +308,19 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
     const float TipDist = 0.95f * L;
     const float CylDist = TipDist - 0.28f * L; // 0.67 * L
 
-    const Mathematics::Axis3D UnitX { 1.0f, 0.0f, 0.0f };
-    const Mathematics::Axis3D UnitY { 0.0f, 1.0f, 0.0f };
-    const Mathematics::Axis3D UnitZ { 0.0f, 0.0f, 1.0f };
+    const float YawRad = (DimensionMode == GizmoDimensionMode::Spatial3D)
+        ? (AnchorYawDegrees * Constants::DegToRadFloat)
+        : 0.0f;
+    const float CosYaw = std::cos(YawRad);
+    const float SinYaw = std::sin(YawRad);
+
+    const Mathematics::Axis3D UnitX {  CosYaw, SinYaw, 0.0f };
+    const Mathematics::Axis3D UnitY { -SinYaw, CosYaw, 0.0f };
+    const Mathematics::Axis3D UnitZ {  0.0f,   0.0f,   1.0f };
 
     // Pure white axis stems radiating from the center ring (0.165 * L) and terminating cleanly at the scale cylinder
     // collar (CylDist - 0.06 * L) so stems never penetrate or cross through the scale cylinder.
-    const float StemRadius     = 0.0080f * L;
+    const float StemRadius     = 0.0110f * L;
     const float InnerStart     = 0.165f * L;
     const float InnerFinish    = EmitScale ? (CylDist - 0.06f * L) : (TipDist - 0.09f * L);
     const float InnerLen       = std::max(0.02f * L, InnerFinish - InnerStart);
@@ -451,7 +461,14 @@ GizmoHandleOrdinal TransformGizmo::EvaluateRayHover(
     GizmoHandleOrdinal BestHandle = GizmoHandleOrdinal::None;
     float              BestScore  = 1.0f; // Normalized: candidate distance / candidate threshold (must stay < 1)
 
-    const Mathematics::Axis3D UnitAxes[3] = { { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } };
+    const float YawRad = Spatial ? (AnchorYawDegrees * Constants::DegToRadFloat) : 0.0f;
+    const float CosYaw = std::cos(YawRad);
+    const float SinYaw = std::sin(YawRad);
+    const Mathematics::Axis3D UnitAxes[3] = {
+        {  CosYaw, SinYaw, 0.0f },
+        { -SinYaw, CosYaw, 0.0f },
+        {  0.0f,   0.0f,   1.0f },
+    };
     const GizmoHandleOrdinal  TranslateOrd[3] = { GizmoHandleOrdinal::TranslateX, GizmoHandleOrdinal::TranslateY, GizmoHandleOrdinal::TranslateZ };
     const GizmoHandleOrdinal  ScaleOrd[3]     = { GizmoHandleOrdinal::ScaleX, GizmoHandleOrdinal::ScaleY, GizmoHandleOrdinal::ScaleZ };
     const uint32_t            AxisCount       = Spatial ? 3u : 2u;
@@ -620,45 +637,54 @@ bool TransformGizmo::BeginDragInteraction(
     DragStartTransform      = BaselineTransform;
     DragStartPivotPosition  = PivotPosition;
 
+    const float YawRad = (DimensionMode == GizmoDimensionMode::Spatial3D)
+        ? (AnchorYawDegrees * Constants::DegToRadFloat)
+        : 0.0f;
+    const float CosYaw = std::cos(YawRad);
+    const float SinYaw = std::sin(YawRad);
+    const Mathematics::Axis3D LocalX {  CosYaw, SinYaw, 0.0f };
+    const Mathematics::Axis3D LocalY { -SinYaw, CosYaw, 0.0f };
+    const Mathematics::Axis3D LocalZ {  0.0f,   0.0f,   1.0f };
+
     switch (PickedHandle)
     {
         case GizmoHandleOrdinal::TranslateX:
         case GizmoHandleOrdinal::ScaleX:
-            DragAxisPrimary      = { 1.0f, 0.0f, 0.0f };
+            DragAxisPrimary      = LocalX;
             DragInitialAxisParam = EvaluateAxisRayParameter(PivotPosition, DragAxisPrimary, InitialRay);
             return true;
 
         case GizmoHandleOrdinal::TranslateY:
         case GizmoHandleOrdinal::ScaleY:
-            DragAxisPrimary      = { 0.0f, 1.0f, 0.0f };
+            DragAxisPrimary      = LocalY;
             DragInitialAxisParam = EvaluateAxisRayParameter(PivotPosition, DragAxisPrimary, InitialRay);
             return true;
 
         case GizmoHandleOrdinal::TranslateZ:
         case GizmoHandleOrdinal::ScaleZ:
-            DragAxisPrimary      = { 0.0f, 0.0f, 1.0f };
+            DragAxisPrimary      = LocalZ;
             DragInitialAxisParam = EvaluateAxisRayParameter(PivotPosition, DragAxisPrimary, InitialRay);
             return true;
 
         case GizmoHandleOrdinal::PlaneYZ:
         case GizmoHandleOrdinal::RotateX:
-            DragAxisPrimary   = { 0.0f, 1.0f, 0.0f };
-            DragAxisSecondary = { 0.0f, 0.0f, 1.0f };
-            DragPlaneNormal   = { 1.0f, 0.0f, 0.0f };
+            DragAxisPrimary   = LocalY;
+            DragAxisSecondary = LocalZ;
+            DragPlaneNormal   = LocalX;
             break;
 
         case GizmoHandleOrdinal::PlaneXZ:
         case GizmoHandleOrdinal::RotateY:
-            DragAxisPrimary   = { 0.0f, 0.0f, 1.0f };
-            DragAxisSecondary = { 1.0f, 0.0f, 0.0f };
-            DragPlaneNormal   = { 0.0f, 1.0f, 0.0f };
+            DragAxisPrimary   = LocalZ;
+            DragAxisSecondary = LocalX;
+            DragPlaneNormal   = LocalY;
             break;
 
         case GizmoHandleOrdinal::PlaneXY:
         case GizmoHandleOrdinal::RotateZ:
-            DragAxisPrimary   = { 1.0f, 0.0f, 0.0f };
-            DragAxisSecondary = { 0.0f, 1.0f, 0.0f };
-            DragPlaneNormal   = { 0.0f, 0.0f, 1.0f };
+            DragAxisPrimary   = LocalX;
+            DragAxisSecondary = LocalY;
+            DragPlaneNormal   = LocalZ;
             break;
 
         case GizmoHandleOrdinal::CenterRing:

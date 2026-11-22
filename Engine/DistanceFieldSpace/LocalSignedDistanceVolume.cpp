@@ -183,6 +183,131 @@ struct BvhClosestSurfaceStack
     return std::sqrt(BestDistSq);
 }
 
+[[nodiscard]] bool CountRayParityAlongDirection(
+    const SpatialAcceleration::WideBoundingTree& Tree,
+    Mathematics::Axis3D                          Origin,
+    Mathematics::Axis3D                          UnitDir) noexcept
+{
+    if (Tree.WideEntries.empty() || Tree.Primitives.empty())
+    {
+        return false;
+    }
+
+    const Mathematics::Axis3D InvDir {
+        1.0f / ((std::fabs(UnitDir.X) > 1.0e-8f) ? UnitDir.X : 1.0e-8f),
+        1.0f / ((std::fabs(UnitDir.Y) > 1.0e-8f) ? UnitDir.Y : 1.0e-8f),
+        1.0f / ((std::fabs(UnitDir.Z) > 1.0e-8f) ? UnitDir.Z : 1.0e-8f),
+    };
+
+    uint32_t Crossings = 0u;
+    std::array<uint32_t, 64u> Stack {};
+    uint32_t Top = 0u;
+    Stack[Top++] = 0u;
+
+    while (Top > 0u)
+    {
+        const uint32_t CurIndex = Stack[--Top];
+        if (CurIndex >= Tree.WideEntries.size())
+        {
+            continue;
+        }
+        const auto& CurEntry = Tree.WideEntries[CurIndex];
+        for (uint32_t S = 0u; S < 4u; ++S)
+        {
+            const uint32_t Ref = CurEntry.BranchReference[S];
+            if (Ref == SpatialAcceleration::EmptyBranchReference)
+            {
+                continue;
+            }
+            const float TX0 = (CurEntry.BranchBoundsMinX[S] - Origin.X) * InvDir.X;
+            const float TX1 = (CurEntry.BranchBoundsMaxX[S] - Origin.X) * InvDir.X;
+            const float TY0 = (CurEntry.BranchBoundsMinY[S] - Origin.Y) * InvDir.Y;
+            const float TY1 = (CurEntry.BranchBoundsMaxY[S] - Origin.Y) * InvDir.Y;
+            const float TZ0 = (CurEntry.BranchBoundsMinZ[S] - Origin.Z) * InvDir.Z;
+            const float TZ1 = (CurEntry.BranchBoundsMaxZ[S] - Origin.Z) * InvDir.Z;
+            const float TMin = std::max({ 0.0f, std::min(TX0, TX1), std::min(TY0, TY1), std::min(TZ0, TZ1) });
+            const float TMax = std::min({ std::max(TX0, TX1), std::max(TY0, TY1), std::max(TZ0, TZ1) });
+            if (TMax < TMin)
+            {
+                continue;
+            }
+
+            const uint32_t Count = CurEntry.BranchPrimitiveCount[S];
+            if (Count > 0u)
+            {
+                const uint32_t First = Ref & (~SpatialAcceleration::WideLeafReferenceMask);
+                for (uint32_t K = 0u; K < Count && (First + K) < Tree.Primitives.size(); ++K)
+                {
+                    const auto& Tri = Tree.Primitives[First + K];
+                    const Mathematics::Axis3D PVec = Mathematics::EvaluateCross(UnitDir, Tri.Edge02);
+                    const float Det = Mathematics::EvaluateDot(Tri.Edge01, PVec);
+                    if (std::fabs(Det) < 1.0e-9f)
+                    {
+                        continue;
+                    }
+                    const float InvDet = 1.0f / Det;
+                    const Mathematics::Axis3D TVec = Origin - Tri.Corner0;
+                    const float U = Mathematics::EvaluateDot(TVec, PVec) * InvDet;
+                    if (U < 0.0f || U > 1.0f)
+                    {
+                        continue;
+                    }
+                    const Mathematics::Axis3D QVec = Mathematics::EvaluateCross(TVec, Tri.Edge01);
+                    const float V = Mathematics::EvaluateDot(UnitDir, QVec) * InvDet;
+                    if (V < 0.0f || (U + V) > 1.0f)
+                    {
+                        continue;
+                    }
+                    const float HitT = Mathematics::EvaluateDot(Tri.Edge02, QVec) * InvDet;
+                    if (HitT > 1.0e-6f)
+                    {
+                        ++Crossings;
+                    }
+                }
+            }
+            else if (Top < Stack.size())
+            {
+                Stack[Top++] = Ref;
+            }
+        }
+    }
+
+    return (Crossings & 1u) != 0u;
+}
+
+[[nodiscard]] bool ClassifyInsideViaMajorityParity(
+    const SpatialAcceleration::WideBoundingTree& Tree,
+    Mathematics::Axis3D                          QueryPoint) noexcept
+{
+    if (QueryPoint.X <= Tree.RootBoundsMin.X || QueryPoint.X >= Tree.RootBoundsMax.X ||
+        QueryPoint.Y <= Tree.RootBoundsMin.Y || QueryPoint.Y >= Tree.RootBoundsMax.Y ||
+        QueryPoint.Z <= Tree.RootBoundsMin.Z || QueryPoint.Z >= Tree.RootBoundsMax.Z)
+    {
+        return false;
+    }
+
+    // Irrational non-axis-aligned unit directions prevent shared triangle-edge double-counting
+    static constexpr std::array<Mathematics::Axis3D, 3u> ParityAxes {{
+        {  0.9718253f,  0.1943651f,  0.1325216f },
+        { -0.1714986f,  0.9622504f, -0.2116951f },
+        {  0.1485221f, -0.2079310f,  0.9667892f },
+    }};
+
+    uint32_t InsideVotes = 0u;
+    for (const Mathematics::Axis3D& Dir : ParityAxes)
+    {
+        if (CountRayParityAlongDirection(Tree, QueryPoint, Dir))
+        {
+            ++InsideVotes;
+        }
+        if (InsideVotes >= 2u)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 float ClosedOccluderBox::EvaluateSignedDistance(Mathematics::Axis3D WorldPos) const noexcept
@@ -278,6 +403,99 @@ bool LocalSignedDistanceVolume::BakeFromTrianglesAspect(
                     const std::size_t Index = (static_cast<std::size_t>(IZ) * ResolutionY + IY) * ResolutionX + IX;
                     DistanceSamples[Index]        = Dist;
                     HalfDistanceSamples[Index]    = PackFloat32ToHalf16(Dist);
+                }
+            }
+        }
+    };
+
+    if (ThreadBudget <= 1u)
+    {
+        BakeDepthBand(0u, ResolutionZ);
+    }
+    else
+    {
+        std::vector<std::thread> Threads;
+        Threads.reserve(ThreadBudget);
+        const uint32_t Chunk = (ResolutionZ + ThreadBudget - 1u) / ThreadBudget;
+        for (uint32_t W = 0u; W < ThreadBudget; ++W)
+        {
+            const uint32_t Z0 = W * Chunk;
+            const uint32_t Z1 = std::min(ResolutionZ, Z0 + Chunk);
+            if (Z0 < Z1)
+            {
+                Threads.emplace_back([&, Z0, Z1]() { BakeDepthBand(Z0, Z1); });
+            }
+        }
+        for (auto& T : Threads)
+        {
+            T.join();
+        }
+    }
+
+    return true;
+}
+
+bool LocalSignedDistanceVolume::BakeSignedFromTrianglesAspect(
+    std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+    uint32_t                                                   ResX,
+    uint32_t                                                   ResY,
+    uint32_t                                                   ResZ,
+    float                                                      MarginMeters)
+{
+    Reset();
+    if (InputPrimitives.empty() || ResX < 8u || ResY < 8u || ResZ < 8u)
+    {
+        return false;
+    }
+
+    SpatialAcceleration::WideBoundingTree LocalTree {};
+    if (!LocalTree.BuildFromTrianglePrimitives(InputPrimitives))
+    {
+        return false;
+    }
+
+    ResolutionX = ResX;
+    ResolutionY = ResY;
+    ResolutionZ = ResZ;
+    LocalMin = {
+        LocalTree.RootBoundsMin.X - MarginMeters,
+        LocalTree.RootBoundsMin.Y - MarginMeters,
+        LocalTree.RootBoundsMin.Z - MarginMeters,
+    };
+    LocalMax = {
+        LocalTree.RootBoundsMax.X + MarginMeters,
+        LocalTree.RootBoundsMax.Y + MarginMeters,
+        LocalTree.RootBoundsMax.Z + MarginMeters,
+    };
+    VoxelSpacing = {
+        (LocalMax.X - LocalMin.X) / static_cast<float>(ResolutionX - 1u),
+        (LocalMax.Y - LocalMin.Y) / static_cast<float>(ResolutionY - 1u),
+        (LocalMax.Z - LocalMin.Z) / static_cast<float>(ResolutionZ - 1u),
+    };
+
+    const std::size_t TotalVoxels = static_cast<std::size_t>(ResolutionX) * ResolutionY * ResolutionZ;
+    HalfDistanceSamples.resize(TotalVoxels, 0u);
+    DistanceSamples.resize(TotalVoxels, 0.0f);
+
+    const uint32_t ThreadBudget = std::min(ResolutionZ, std::max(1u, std::thread::hardware_concurrency()));
+    const auto BakeDepthBand = [&](uint32_t ZBegin, uint32_t ZEnd)
+    {
+        for (uint32_t IZ = ZBegin; IZ < ZEnd; ++IZ)
+        {
+            const float PZ = LocalMin.Z + static_cast<float>(IZ) * VoxelSpacing.Z;
+            for (uint32_t IY = 0u; IY < ResolutionY; ++IY)
+            {
+                const float PY = LocalMin.Y + static_cast<float>(IY) * VoxelSpacing.Y;
+                for (uint32_t IX = 0u; IX < ResolutionX; ++IX)
+                {
+                    const float PX = LocalMin.X + static_cast<float>(IX) * VoxelSpacing.X;
+                    const Mathematics::Axis3D SamplePos { PX, PY, PZ };
+                    const float UnsignedDist = QueryExactUnsignedDistanceViaBvh(LocalTree, SamplePos);
+                    const bool  Inside       = ClassifyInsideViaMajorityParity(LocalTree, SamplePos);
+                    const float SignedDist   = Inside ? -UnsignedDist : UnsignedDist;
+                    const std::size_t Index  = (static_cast<std::size_t>(IZ) * ResolutionY + IY) * ResolutionX + IX;
+                    DistanceSamples[Index]     = SignedDist;
+                    HalfDistanceSamples[Index] = PackFloat32ToHalf16(SignedDist);
                 }
             }
         }

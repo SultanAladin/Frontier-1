@@ -448,10 +448,11 @@ void ClusterPyramid::Reset() noexcept
     Positions.clear();
     Triangles.clear();
     Clusters.clear();
-    HierarchyDepth     = 0u;
-    FinestClusterCount = 0u;
+    HierarchyDepth           = 0u;
+    FinestClusterCount       = 0u;
     CoarsestAllowedLevel     = 0xFFFFFFFFu;
     MaterialBoundariesLocked = true;
+    MaterialCoarsestAllowedLevels.fill(0xFFFFFFFFu);
 }
 
 bool ClusterPyramid::BuildFromPolygonNetwork(
@@ -892,9 +893,12 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
     for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Clusters.size()); ++Idx)
     {
         const ClusterHeaderEntry& Cluster = Clusters[Idx];
-        if (Cluster.HierarchyLevel > CoarsestAllowedLevel)
+        const uint32_t EffectiveCoarsestLevel = std::min(
+            CoarsestAllowedLevel,
+            MaterialCoarsestAllowedLevels[Cluster.DominantMaterialOrdinal]);
+        if (Cluster.HierarchyLevel > EffectiveCoarsestLevel)
         {
-            continue; // Per-asset final-level cap: coarser LOD exists in the bake but is never selected
+            continue; // Per-asset / per-material final-level cap: coarser LOD exists in the bake but is never selected
         }
         const float SelfDist = std::max(
             1.0e-3f,
@@ -906,7 +910,7 @@ ClusterCutSelection ClusterPyramid::SelectMonotonicCut(
         // When the coarser replacement is capped out, this cluster is terminal (never replaced).
         const bool CoarserCappedOut =
             Cluster.EnclosingGroupOrdinal != 0u &&
-            (static_cast<uint32_t>(Cluster.HierarchyLevel) + 1u > CoarsestAllowedLevel);
+            (static_cast<uint32_t>(Cluster.HierarchyLevel) + 1u > EffectiveCoarsestLevel);
         const float ProjectedSelfErrorPx    = (Cluster.FinerSelfErrorMeters / SelfDist) * SafeProjScale;
         const float ProjectedCoarserErrorPx = (CoarserCappedOut || Cluster.CoarserThresholdErrorMeters >= 1.0e20f)
             ? 1.0e30f

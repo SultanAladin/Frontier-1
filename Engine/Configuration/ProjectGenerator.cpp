@@ -381,7 +381,7 @@ ProjectScaffoldOutcome ProjectGenerator::GenerateProject(const ProjectScaffoldSp
         BlankWorld.EditorCamera.WorldUpAxis        = { 0.00f, 0.00f, 1.00f };
         BlankWorld.EditorCamera.VerticalFovRadians = 0.7330f;
         BlankWorld.EditorCamera.NearClipMeters     = 0.12f;
-        BlankWorld.EditorCamera.FarClipMeters      = 240.0f;
+        BlankWorld.EditorCamera.FarClipMeters      = 5000.0f;
 
         Codecs::WorldGeometryPlacementEntry GroundPlacement {};
         GroundPlacement.PlacementTitle        = "GroundPlane";

@@ -231,6 +231,7 @@ private:
     bool                                                             RightMouseFlyActive  = false;
     bool                                                             BlankPlaneSkySessionActive = false;
     bool                                                             CameraInteractiveDrag = false;
+    bool                                                             CameraLagSettling     = false;
     bool                                                             PendingInteractionWorldRefresh = false;
     bool                                                             PendingInteractionGizmoRefresh = false;
     bool                                                             PendingInteractionSceneSync    = false;

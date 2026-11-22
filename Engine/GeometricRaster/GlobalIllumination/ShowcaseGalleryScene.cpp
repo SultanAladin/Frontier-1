@@ -36,15 +36,6 @@ void BuildBoxGeometryAsset(ShowcaseGeometryAsset& OutAsset, Mathematics::Scalar3
     (void)OutAsset.Pyramid.BuildFromPolygonNetwork(OutAsset.Network, 3u);
 }
 
-void BuildSphereGeometryAsset(ShowcaseGeometryAsset& OutAsset, float Radius, uint32_t Sectors, uint32_t Rings)
-{
-    OutAsset = {};
-    GeometrySpace::AppendSpherePrimitive(OutAsset.Network, { 0.0f, 0.0f, 0.0f }, Radius, Sectors, Rings, {}, {});
-    OutAsset.Network.LinkOppositeEdges();
-    OutAsset.Network.RecomputeNormals();
-    (void)OutAsset.Pyramid.BuildFromPolygonNetwork(OutAsset.Network, 3u);
-}
-
 void BuildShapeGeometryAsset(
     ShowcaseGeometryAsset& OutAsset,
     ShowcasePrimitiveShape Shape,
@@ -422,6 +413,59 @@ void EnsureObjectLocalSmoothTriangles(ShowcaseWorldAssetEntry& Obj)
     }
 }
 
+[[nodiscard]] uint32_t EncodeAnalyticalShapeCode(ShowcasePrimitiveShape Shape) noexcept
+{
+    switch (Shape)
+    {
+        case ShowcasePrimitiveShape::Box:      return 1u;
+        case ShowcasePrimitiveShape::Sphere:   return 2u;
+        case ShowcasePrimitiveShape::Cylinder: return 3u;
+        case ShowcasePrimitiveShape::Cone:     return 4u;
+        case ShowcasePrimitiveShape::Torus:    return 5u;
+        default:                               return 1u;
+    }
+}
+
+[[nodiscard]] bool BakeAssetSignedLocalSdfFromSmoothTriangles(
+    std::span<const CachedLocalSmoothTriangle>    LocalTriangles,
+    Mathematics::Scalar3D                         DimensionsMeters,
+    DistanceFieldSpace::LocalSignedDistanceVolume& OutVolume)
+{
+    if (LocalTriangles.empty())
+    {
+        return false;
+    }
+
+    std::vector<SpatialAcceleration::RayTrianglePrimitive> LocalPrims;
+    LocalPrims.reserve(LocalTriangles.size());
+    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(LocalTriangles.size()); ++Idx)
+    {
+        const CachedLocalSmoothTriangle& Tri = LocalTriangles[Idx];
+        SpatialAcceleration::RayTrianglePrimitive Prim {};
+        Prim.Corner0          = Tri.Corner0;
+        Prim.Edge01           = Tri.Corner1 - Tri.Corner0;
+        Prim.Edge02           = Tri.Corner2 - Tri.Corner0;
+        Prim.SourceFaceIndex  = Idx;
+        Prim.MaterialOrdinal  = (Tri.MaterialSlotOverride != 0xFFFFu) ? Tri.MaterialSlotOverride : 0u;
+        Prim.OpaqueMask       = 1u;
+        Prim.PrimitiveOrdinal = Idx;
+        LocalPrims.push_back(Prim);
+    }
+
+    const float MaxSpan = std::max({ 0.25f, DimensionsMeters.X, DimensionsMeters.Y, DimensionsMeters.Z });
+    const float Pitch   = std::max(0.056f, MaxSpan / 80.0f);
+    const auto  ResFor  = [Pitch](float SpanMeters) noexcept -> uint32_t
+    {
+        const uint32_t Raw = static_cast<uint32_t>(std::lround(std::max(0.20f, SpanMeters) / Pitch));
+        return std::clamp(((Raw + 3u) / 4u) * 4u, 16u, 80u);
+    };
+    const uint32_t ResX   = ResFor(DimensionsMeters.X);
+    const uint32_t ResY   = ResFor(DimensionsMeters.Y);
+    const uint32_t ResZ   = ResFor(DimensionsMeters.Z);
+    const float    Margin = std::clamp(MaxSpan * 0.055f, 0.06f, 0.28f);
+    return OutVolume.BakeSignedFromTrianglesAspect(LocalPrims, ResX, ResY, ResZ, Margin);
+}
+
 void BuildCameraRay(
     const PerspectiveCameraBasis& Cam,
     float                         NormalizedU,
@@ -686,10 +730,31 @@ bool LoadWorldSceneFromSpaceFile(
             // Nanite-like per-asset LOD bake: glass keeps LOD 1 as its last level (silhouette
             // protection); every asset locks material boundaries so face material slots survive.
             SpatialAcceleration::ClusterLodBakeConfiguration LodBake {};
-            LodBake.MaximumLevels        = 3u;
-            LodBake.CoarsestAllowedLevel = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
+            LodBake.MaximumLevels          = 3u;
+            LodBake.CoarsestAllowedLevel   = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
             LodBake.LockMaterialBoundaries = true;
             (void)GeomAsset->Pyramid.BuildFromPolygonNetwork(GeomAsset->Network, LodBake);
+            for (const Codecs::GeometrySurfaceSlotLink& SlotLink : GeoDoc.SurfaceSlots)
+            {
+                if (ContainsCaseInsensitive(SlotLink.SlotTitle, "glass") ||
+                    ContainsCaseInsensitive(SlotLink.MaterialPath, "windshield") ||
+                    ContainsCaseInsensitive(SlotLink.MaterialPath, "glass"))
+                {
+                    if (const auto FoundSlot = SubSlotRemap.find(SlotLink.PartGroupOrdinal); FoundSlot != SubSlotRemap.end())
+                    {
+                        GeomAsset->Pyramid.ConfigureMaterialCoarsestAllowedLevel(
+                            static_cast<uint8_t>(FoundSlot->second & 0xFFu),
+                            1u);
+                    }
+                }
+            }
+            if (FaceCount > 64u && !Entry.GlassShell)
+            {
+                (void)BakeAssetSignedLocalSdfFromSmoothTriangles(
+                    Entry.LocalSmoothTriangles,
+                    Entry.AuthoredDimensions,
+                    GeomAsset->LocalSdf);
+            }
         }
         else
         {
@@ -706,8 +771,24 @@ bool LoadWorldSceneFromSpaceFile(
             EnsureObjectLocalSmoothTriangles(Entry);
         }
 
-        OutBundle.Scene.ClusterInstances.push_back(
-            { &GeomAsset->Pyramid, Entry.CenterWorld, Entry.CenterWorld, 1.0f, Entry.MaterialSlot, Entry.SphericalPrimitive });
+        const bool BakedLocalSdfPresent = !GeomAsset->LocalSdf.HalfDistanceSamples.empty();
+        RigidClusterInstance Inst {};
+        Inst.PyramidAsset        = &GeomAsset->Pyramid;
+        Inst.WorldTranslation    = Entry.CenterWorld;
+        Inst.PreviousTranslation = Entry.CenterWorld;
+        Inst.UniformScale        = 1.0f;
+        Inst.MaterialSlot        = Entry.MaterialSlot;
+        Inst.TransparentGlass    = Entry.SphericalPrimitive && Entry.GlassShell;
+        Inst.RotationZDegrees    = Entry.RotationZDegrees;
+        Inst.NonUniformScale     = { 1.0f, 1.0f, 1.0f };
+        Inst.LocalHalfExtents    = {
+            std::max(0.02f, Entry.AuthoredDimensions.X * 0.5f),
+            std::max(0.02f, Entry.AuthoredDimensions.Y * 0.5f),
+            std::max(0.02f, Entry.AuthoredDimensions.Z * 0.5f),
+        };
+        Inst.AnalyticalShapeCode = BakedLocalSdfPresent ? 0u : EncodeAnalyticalShapeCode(Entry.PrimitiveShape);
+        Inst.LocalSdfVolume      = BakedLocalSdfPresent ? &GeomAsset->LocalSdf : nullptr;
+        OutBundle.Scene.ClusterInstances.push_back(Inst);
         OutBundle.DynamicGeometryAssets.push_back(std::move(GeomAsset));
         OutBundle.Objects.push_back(std::move(Entry));
     }
@@ -770,6 +851,7 @@ bool LoadWorldSceneFromSpaceFile(
     RebuildShowcaseSceneAcceleration(OutBundle);
 
     OutBundle.EditorCamera                  = WorldDoc.EditorCamera;
+    OutBundle.EditorCamera.FarClipMeters    = std::max(5000.0f, WorldDoc.EditorCamera.FarClipMeters);
     OutBundle.EditorCamera.ViewportWidthPx  = std::max(1u, ViewportWidthPx);
     OutBundle.EditorCamera.ViewportHeightPx = std::max(1u, ViewportHeightPx);
     OutDiagnostic.clear();
@@ -803,8 +885,19 @@ void BuildBlankPlaneSkyScene(
         Face.PartGroupOrdinal = GroundSlot;
     }
     (void)OutBundle.GeometryAssets[0u].Pyramid.BuildFromPolygonNetwork(OutBundle.GeometryAssets[0u].Network, 3u);
-    OutBundle.Scene.ClusterInstances.push_back(
-        { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
+    {
+        RigidClusterInstance GroundInst {};
+        GroundInst.PyramidAsset        = &OutBundle.GeometryAssets[0u].Pyramid;
+        GroundInst.WorldTranslation    = GroundCenter;
+        GroundInst.PreviousTranslation = GroundCenter;
+        GroundInst.UniformScale        = 1.0f;
+        GroundInst.MaterialSlot        = GroundSlot;
+        GroundInst.TransparentGlass    = false;
+        GroundInst.NonUniformScale     = { 1.0f, 1.0f, 1.0f };
+        GroundInst.LocalHalfExtents    = { GroundDims.X * 0.5f, GroundDims.Y * 0.5f, GroundDims.Z * 0.5f };
+        GroundInst.AnalyticalShapeCode = 1u;
+        OutBundle.Scene.ClusterInstances.push_back(GroundInst);
+    }
 
     ShowcaseWorldAssetEntry GroundEntry {};
     GroundEntry.Title                = "GroundPlane";
@@ -856,7 +949,7 @@ void BuildBlankPlaneSkyScene(
     OutBundle.EditorCamera.WorldUpAxis        = { 0.00f, 0.00f, 1.00f };
     OutBundle.EditorCamera.VerticalFovRadians = 42.0f * Constants::DegToRadFloat;
     OutBundle.EditorCamera.NearClipMeters     = 0.12f;
-    OutBundle.EditorCamera.FarClipMeters      = 240.0f;
+    OutBundle.EditorCamera.FarClipMeters      = 5000.0f;
     OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
     OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
@@ -1008,8 +1101,19 @@ void BuildVehicleClearSkyDefaultScene(
         Face.PartGroupOrdinal = GroundSlot;
     }
     (void)OutBundle.GeometryAssets[0u].Pyramid.BuildFromPolygonNetwork(OutBundle.GeometryAssets[0u].Network, 3u);
-    OutBundle.Scene.ClusterInstances.push_back(
-        { &OutBundle.GeometryAssets[0u].Pyramid, GroundCenter, GroundCenter, 1.0f, GroundSlot, false });
+    {
+        RigidClusterInstance GroundInst {};
+        GroundInst.PyramidAsset        = &OutBundle.GeometryAssets[0u].Pyramid;
+        GroundInst.WorldTranslation    = GroundCenter;
+        GroundInst.PreviousTranslation = GroundCenter;
+        GroundInst.UniformScale        = 1.0f;
+        GroundInst.MaterialSlot        = GroundSlot;
+        GroundInst.TransparentGlass    = false;
+        GroundInst.NonUniformScale     = { 1.0f, 1.0f, 1.0f };
+        GroundInst.LocalHalfExtents    = { GroundDims.X * 0.5f, GroundDims.Y * 0.5f, GroundDims.Z * 0.5f };
+        GroundInst.AnalyticalShapeCode = 1u;
+        OutBundle.Scene.ClusterInstances.push_back(GroundInst);
+    }
 
     ShowcaseWorldAssetEntry GroundEntry {};
     GroundEntry.Title                = "GroundPlane";
@@ -1091,6 +1195,12 @@ void BuildVehicleClearSkyDefaultScene(
             (void)VehicleGeom->Network.AppendFace(Loop, {}, {}, 0u, SlotMat);
         }
         (void)VehicleGeom->Pyramid.BuildFromPolygonNetwork(VehicleGeom->Network, 3u);
+        const uint16_t GlassSlot = VehicleSlots[static_cast<std::size_t>(Codecs::VehicleSurfaceSlot::VehicleGlass)];
+        VehicleGeom->Pyramid.ConfigureMaterialCoarsestAllowedLevel(static_cast<uint8_t>(GlassSlot & 0xFFu), 1u);
+        (void)BakeAssetSignedLocalSdfFromSmoothTriangles(
+            VehicleEntry.LocalSmoothTriangles,
+            VehicleEntry.AuthoredDimensions,
+            VehicleGeom->LocalSdf);
     }
     else
     {
@@ -1103,8 +1213,26 @@ void BuildVehicleClearSkyDefaultScene(
         EnsureObjectLocalSmoothTriangles(VehicleEntry);
     }
 
-    OutBundle.Scene.ClusterInstances.push_back(
-        { &VehicleGeom->Pyramid, VehicleEntry.CenterWorld, VehicleEntry.CenterWorld, 1.0f, VehicleEntry.MaterialSlot, false });
+    {
+        const bool VehicleSdfPresent = !VehicleGeom->LocalSdf.HalfDistanceSamples.empty();
+        RigidClusterInstance VehicleInst {};
+        VehicleInst.PyramidAsset        = &VehicleGeom->Pyramid;
+        VehicleInst.WorldTranslation    = VehicleEntry.CenterWorld;
+        VehicleInst.PreviousTranslation = VehicleEntry.CenterWorld;
+        VehicleInst.UniformScale        = 1.0f;
+        VehicleInst.MaterialSlot        = VehicleEntry.MaterialSlot;
+        VehicleInst.TransparentGlass    = false;
+        VehicleInst.RotationZDegrees    = VehicleEntry.RotationZDegrees;
+        VehicleInst.NonUniformScale     = { 1.0f, 1.0f, 1.0f };
+        VehicleInst.LocalHalfExtents    = {
+            std::max(0.05f, VehicleEntry.AuthoredDimensions.X * 0.5f),
+            std::max(0.05f, VehicleEntry.AuthoredDimensions.Y * 0.5f),
+            std::max(0.05f, VehicleEntry.AuthoredDimensions.Z * 0.5f),
+        };
+        VehicleInst.AnalyticalShapeCode = VehicleSdfPresent ? 0u : 1u;
+        VehicleInst.LocalSdfVolume      = VehicleSdfPresent ? &VehicleGeom->LocalSdf : nullptr;
+        OutBundle.Scene.ClusterInstances.push_back(VehicleInst);
+    }
     OutBundle.DynamicGeometryAssets.push_back(std::move(VehicleGeom));
     OutBundle.Objects.push_back(std::move(VehicleEntry));
 
@@ -1144,7 +1272,7 @@ void BuildVehicleClearSkyDefaultScene(
     OutBundle.EditorCamera.WorldUpAxis        = { 0.00f,  0.00f, 1.00f };
     OutBundle.EditorCamera.VerticalFovRadians = 38.0f * Constants::DegToRadFloat;
     OutBundle.EditorCamera.NearClipMeters     = 0.12f;
-    OutBundle.EditorCamera.FarClipMeters      = 120.0f;
+    OutBundle.EditorCamera.FarClipMeters      = 5000.0f;
     OutBundle.EditorCamera.ViewportWidthPx    = std::max(1u, ViewportWidthPx);
     OutBundle.EditorCamera.ViewportHeightPx   = std::max(1u, ViewportHeightPx);
 }
@@ -1233,6 +1361,7 @@ void RegisterShowcaseGalleryInOutliner(
             Entry->PositionX         = Obj.CenterWorld.X;
             Entry->PositionY         = Obj.CenterWorld.Y;
             Entry->PositionZ         = Obj.CenterWorld.Z;
+            Entry->RotationZ         = Obj.RotationZDegrees;
             Entry->ScaleX            = Obj.DimensionsMeters.X;
             Entry->ScaleY            = Obj.DimensionsMeters.Y;
             Entry->ScaleZ            = Obj.DimensionsMeters.Z;
@@ -1557,9 +1686,10 @@ bool SynchronizeShowcaseGalleryFromOutliner(
         const float TargetScale = EffectiveVis ? UserScale : 0.0f;
         if (!NearlyEqualFloat(Inst.UniformScale, TargetScale))
         {
-            Inst.UniformScale = TargetScale;
-            Changed           = true;
-            AccelInvalidated  = true;
+            Inst.UniformScale    = TargetScale;
+            Inst.NonUniformScale = { TargetScale, TargetScale, TargetScale };
+            Changed              = true;
+            AccelInvalidated     = true;
         }
 
         if (Entry != nullptr)
@@ -1574,6 +1704,14 @@ bool SynchronizeShowcaseGalleryFromOutliner(
                 Obj.CenterWorld          = NextPos;
                 Changed                  = true;
                 AccelInvalidated         = true;
+            }
+            if (!NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ) ||
+                !NearlyEqualFloat(Inst.RotationZDegrees, Entry->RotationZ))
+            {
+                Obj.RotationZDegrees  = Entry->RotationZ;
+                Inst.RotationZDegrees = Entry->RotationZ;
+                Changed               = true;
+                AccelInvalidated      = true;
             }
         }
     }
@@ -1776,14 +1914,21 @@ bool SynchronizeShowcaseGallerySceneLive(
                 }
 
                 const uint32_t InstanceIdx = static_cast<uint32_t>(InOutBundle.Scene.ClusterInstances.size());
-                InOutBundle.Scene.ClusterInstances.push_back({
-                    &DynAsset->Pyramid,
-                    SpawnCenter,
-                    SpawnCenter,
-                    1.0f,
-                    MatSlot,
-                    false,
-                });
+                {
+                    RigidClusterInstance SpawnInst {};
+                    SpawnInst.PyramidAsset        = &DynAsset->Pyramid;
+                    SpawnInst.WorldTranslation    = SpawnCenter;
+                    SpawnInst.PreviousTranslation = SpawnCenter;
+                    SpawnInst.UniformScale        = 1.0f;
+                    SpawnInst.MaterialSlot        = MatSlot;
+                    SpawnInst.TransparentGlass    = false;
+                    SpawnInst.RotationZDegrees    = Entry.RotationZ;
+                    SpawnInst.NonUniformScale     = { 1.0f, 1.0f, 1.0f };
+                    SpawnInst.LocalHalfExtents    = { Dims.X * 0.5f, Dims.Y * 0.5f, Dims.Z * 0.5f };
+                    SpawnInst.AnalyticalShapeCode = EncodeAnalyticalShapeCode(Shape);
+                    SpawnInst.LocalSdfVolume      = nullptr;
+                    InOutBundle.Scene.ClusterInstances.push_back(SpawnInst);
+                }
                 InOutBundle.DynamicGeometryAssets.push_back(std::move(DynAsset));
 
                 ShowcaseWorldAssetEntry NewObj {};
@@ -1896,9 +2041,10 @@ bool SynchronizeShowcaseGallerySceneLive(
         const float TargetScale = EffectiveVis ? UserScale : 0.0f;
         if (!NearlyEqualFloat(Inst.UniformScale, TargetScale))
         {
-            Inst.UniformScale = TargetScale;
-            Changed           = true;
-            AccelInvalidated  = true;
+            Inst.UniformScale    = TargetScale;
+            Inst.NonUniformScale = { TargetScale, TargetScale, TargetScale };
+            Changed              = true;
+            AccelInvalidated     = true;
         }
         if (Entry != nullptr)
         {
@@ -1913,11 +2059,13 @@ bool SynchronizeShowcaseGallerySceneLive(
                 Changed                  = true;
                 AccelInvalidated         = true;
             }
-            if (!NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ))
+            if (!NearlyEqualFloat(Obj.RotationZDegrees, Entry->RotationZ) ||
+                !NearlyEqualFloat(Inst.RotationZDegrees, Entry->RotationZ))
             {
-                Obj.RotationZDegrees = Entry->RotationZ;
-                Changed              = true;
-                AccelInvalidated     = true;
+                Obj.RotationZDegrees  = Entry->RotationZ;
+                Inst.RotationZDegrees = Entry->RotationZ;
+                Changed               = true;
+                AccelInvalidated      = true;
             }
         }
     }
@@ -2423,7 +2571,19 @@ OutlinerSlotToken PickShowcaseGalleryEntryAtUv(
                 std::max(0.04f, 0.5f * Obj.DimensionsMeters.Y * Scale),
                 std::max(0.04f, 0.5f * Obj.DimensionsMeters.Z * Scale),
             };
-            Hit = IntersectRayAabb(RayOrigin, RayDir, Obj.CenterWorld, HalfExt, HitDist);
+            const float YawRad = Obj.RotationZDegrees * 0.01745329252f;
+            if (std::fabs(YawRad) > 1.0e-5f)
+            {
+                const float CosZ = std::cos(YawRad);
+                const float SinZ = std::sin(YawRad);
+                const Mathematics::Axis3D LocalOrig = RotateAroundZ(RayOrigin - Obj.CenterWorld, CosZ, -SinZ);
+                const Mathematics::Axis3D LocalDir  = RotateAroundZ(RayDir, CosZ, -SinZ);
+                Hit = IntersectRayAabb(LocalOrig, LocalDir, { 0.0f, 0.0f, 0.0f }, HalfExt, HitDist);
+            }
+            else
+            {
+                Hit = IntersectRayAabb(RayOrigin, RayDir, Obj.CenterWorld, HalfExt, HitDist);
+            }
         }
 
         if (Hit && HitDist < ClosestDistance)

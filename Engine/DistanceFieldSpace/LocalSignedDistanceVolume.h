@@ -72,6 +72,14 @@ public:
         uint32_t                                                   ResZ,
         float                                                      MarginMeters = 0.24f);
 
+    // True signed inside/outside bake (< 0 inside closed volumes, > 0 outside) via multi-axis BVH4 ray-parity voting
+    bool BakeSignedFromTrianglesAspect(
+        std::span<const SpatialAcceleration::RayTrianglePrimitive> InputPrimitives,
+        uint32_t                                                   ResX,
+        uint32_t                                                   ResY,
+        uint32_t                                                   ResZ,
+        float                                                      MarginMeters = 0.24f);
+
     // Trilinear lookup inside [LocalMin, LocalMax]
     [[nodiscard]] float SampleTrilinearLocal(Mathematics::Axis3D ClampedLocalPos) const noexcept;
 

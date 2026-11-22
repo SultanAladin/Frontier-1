@@ -127,7 +127,7 @@ private:
     VkCommandBuffer       PreviousCompositeCmd        = VK_NULL_HANDLE;
     uint64_t              PreviousCompositeSignal     = 0ull;
     std::vector<uint32_t> CachedPickOrdinals          {};
-    std::array<uint32_t, 25u> CachedPickPatch         {};
+    std::array<uint32_t, 81u> CachedPickPatch         {};
     uint32_t              CachedPickPatchX0           = 0u;
     uint32_t              CachedPickPatchY0           = 0u;
     uint32_t              CachedPickPatchW            = 0u;

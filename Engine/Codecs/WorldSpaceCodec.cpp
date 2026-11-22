@@ -235,7 +235,7 @@ bool WorldSpaceDecoder::ExtractModel(
         UnpackWorldVec3((*CameraTbl)["WorldUpAxis"], OutModel.EditorCamera.WorldUpAxis.X, OutModel.EditorCamera.WorldUpAxis.Y, OutModel.EditorCamera.WorldUpAxis.Z);
         OutModel.EditorCamera.VerticalFovRadians = static_cast<float>((*CameraTbl)["VerticalFovRadians"].value_or(0.78539816));
         OutModel.EditorCamera.NearClipMeters     = static_cast<float>((*CameraTbl)["NearClipMeters"].value_or(0.10));
-        OutModel.EditorCamera.FarClipMeters      = static_cast<float>((*CameraTbl)["FarClipMeters"].value_or(200.0));
+        OutModel.EditorCamera.FarClipMeters      = static_cast<float>((*CameraTbl)["FarClipMeters"].value_or(5000.0));
     }
 
     if (const auto* PlacementArr = Payload.DomainManifest[".WorldPlacement"].as_array())

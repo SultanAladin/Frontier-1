@@ -12,6 +12,7 @@
 #include "Engine/GeometrySpace/Network/PolygonNetwork.h"
 #include "Engine/Mathematics/AxisCoordinates.h"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -121,6 +122,19 @@ public:
 
     // Sets the coarsest LOD level SelectMonotonicCut may ever activate (per asset, e.g. glass).
     void ConfigureCoarsestAllowedLevel(uint32_t Level) noexcept { CoarsestAllowedLevel = Level; }
+
+    // Sets a per-material-slot coarsest LOD level floor (e.g. keeping thin windshield/window glass at LOD <= 1).
+    void ConfigureMaterialCoarsestAllowedLevel(uint8_t MaterialOrdinal, uint32_t MaxLevel) noexcept
+    {
+        MaterialCoarsestAllowedLevels[MaterialOrdinal] = MaxLevel;
+    }
+
+    std::array<uint32_t, 256u> MaterialCoarsestAllowedLevels = []() constexpr
+    {
+        std::array<uint32_t, 256u> LevelCaps {};
+        LevelCaps.fill(0xFFFFFFFFu);
+        return LevelCaps;
+    }();
 
     // Per-level bake report: clusters, triangles, worst error, and the material slots still present.
     [[nodiscard]] std::vector<ClusterLodLevelSummary> SummarizeLevels() const;

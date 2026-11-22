@@ -120,6 +120,7 @@ private:
         uint32_t                       WidthPx,
         uint32_t                       HeightPx);
     void UploadSolarCascadeDepth(const WorldSceneSpecification& Scene);
+    void SynchronizeLocalSdfResources(const WorldSceneSpecification& Scene);
     [[nodiscard]] bool DispatchGpuScenePrecompute(const WorldSceneSpecification& Scene, bool RebuildGeometryFields = true);
     void EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx);
     // Rebuilds the GPU BVH from the per-camera monotonic cluster cut when the cut signature changes.
@@ -186,6 +187,8 @@ private:
     DeviceBufferResource   PingIndirectIrradianceBuffer    {};
     DeviceBufferResource   PongIndirectIrradianceBuffer    {};
     DeviceBufferResource   GlobalSurfaceShellBuffer        {};
+    DeviceBufferResource   LocalAssetSdfVoxelBuffer        {};
+    DeviceBufferResource   DynamicLocalSdfInstanceBuffer   {};
 
     DeviceImageResource    DisplayOutputImage2D            {};
 
@@ -197,6 +200,9 @@ private:
     bool                   SkyViewLutValid                 = false;
     std::array<uint8_t, 128u> LastSkyViewUniformSnapshot   {};
     uint64_t               LastRadiosityLightingSignature  = 0ull;
+    uint64_t               CachedLocalSdfAssetSignature    = 0ull;
+    uint32_t               UploadedLocalSdfInstanceCount   = 0u;
+    std::vector<std::pair<const DistanceFieldSpace::LocalSignedDistanceVolume*, uint32_t>> CachedLocalSdfOffsets {};
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
     uint32_t               UploadedPhotometricProfiles   = 0u;
     uint32_t               UploadedPhotometricLamps      = 0u;

@@ -96,33 +96,48 @@ struct GpuPhotometricLamp64
     float4 PeakIntensityPad;   // xyz = PeakIntensity, w = Reserved
 };
 
-[[vk::binding(0,  0)]] ConstantBuffer<WorldViewportUniformBlock> WorldUniforms;
-[[vk::binding(1,  0)]] StructuredBuffer<GpuWideTreeEntry128>     SceneBvhEntries;
-[[vk::binding(2,  0)]] StructuredBuffer<GpuShadedTriangle96>     SceneTriangles;
-[[vk::binding(3,  0)]] StructuredBuffer<GpuWorldMaterial80>      MaterialEntries;
-[[vk::binding(4,  0)]] RWStructuredBuffer<uint>                  OutDisplayRgba8;
-[[vk::binding(5,  0)]] RWStructuredBuffer<float>                 SolarShadowDepthBuffer;
-[[vk::binding(6,  0)]] RWStructuredBuffer<float4>                AccumulationHdrBuffer;
-[[vk::binding(7,  0)]] StructuredBuffer<float4>                  AtmosphericSkyViewLut;
-[[vk::binding(8,  0)]] StructuredBuffer<uint>                    LunarSurfaceAtlasTexels;
-[[vk::binding(9,  0)]] StructuredBuffer<uint>                    BakedLensFlareAtlasTexels;
-[[vk::binding(10, 0)]] RWStructuredBuffer<float4>                GBufPosMask;
-[[vk::binding(11, 0)]] RWStructuredBuffer<float4>                GBufNormAo;
-[[vk::binding(12, 0)]] RWStructuredBuffer<float4>                GBufDirectBase;
-[[vk::binding(13, 0)]] RWStructuredBuffer<float4>                GBufSunContrib;
-[[vk::binding(14, 0)]] RWStructuredBuffer<float4>                GBufAlbedo;
-[[vk::binding(15, 0)]] RWStructuredBuffer<float4>                PingShadowAo;
-[[vk::binding(16, 0)]] RWStructuredBuffer<float4>                PongShadowAo;
-[[vk::binding(17, 0)]] RWStructuredBuffer<float4>                CloudRadiometricBuffer;
-[[vk::binding(18, 0)]] StructuredBuffer<GpuProjectedStar>        ProjectedCatalogStars;
-[[vk::binding(19, 0)]] StructuredBuffer<uint>                    StellarTileBins;
-[[vk::binding(22, 0)]] StructuredBuffer<float>                   PhotometricProfileTables;
-[[vk::binding(23, 0)]] StructuredBuffer<GpuPhotometricLamp64>    PhotometricLampEntries;
-[[vk::binding(24, 0)]] RWStructuredBuffer<float>                 GlobalDistanceFieldBuffer;
-[[vk::binding(25, 0)]] RWStructuredBuffer<uint2>                 GlobalRadiosityFieldBuffer;
-[[vk::binding(26, 0)]] RWStructuredBuffer<float4>                PingIndirectIrradiance;
-[[vk::binding(27, 0)]] RWStructuredBuffer<float4>                PongIndirectIrradiance;
-[[vk::binding(28, 0)]] RWStructuredBuffer<uint2>                 GlobalSurfaceShellBuffer;
+struct GpuDynamicLocalSdfInstance144
+{
+    float4 WorldToLocalRow0;     // xyz = R^T row 0 / scale, w = -dot(row0, T)
+    float4 WorldToLocalRow1;     // xyz = R^T row 1 / scale, w = -dot(row1, T)
+    float4 WorldToLocalRow2;     // xyz = R^T row 2 / scale, w = -dot(row2, T)
+    float4 LocalToWorldNormRow0; // xyz = R row 0,           w = UniformWorldScale
+    float4 LocalToWorldNormRow1; // xyz = R row 1,           w = VoxelSpacing.z
+    float4 LocalToWorldNormRow2; // xyz = R row 2,           w = Reserved
+    float4 LocalMinPad;          // xyz = LocalMin,          w = VoxelSpacing.x
+    float4 LocalMaxPad;          // xyz = LocalMax / HalfExt,w = VoxelSpacing.y
+    uint4  ResolutionOffset;     // x = ResX|(ResY<<16), y = ResZ|(ShapeCode<<16), z = VoxelFloatOffset, w = MaterialSlot|(Active<<16)
+};
+
+[[vk::binding(0,  0)]] ConstantBuffer<WorldViewportUniformBlock>     WorldUniforms;
+[[vk::binding(1,  0)]] StructuredBuffer<GpuWideTreeEntry128>         SceneBvhEntries;
+[[vk::binding(2,  0)]] StructuredBuffer<GpuShadedTriangle96>         SceneTriangles;
+[[vk::binding(3,  0)]] StructuredBuffer<GpuWorldMaterial80>          MaterialEntries;
+[[vk::binding(4,  0)]] RWStructuredBuffer<uint>                      OutDisplayRgba8;
+[[vk::binding(5,  0)]] RWStructuredBuffer<float>                     SolarShadowDepthBuffer;
+[[vk::binding(6,  0)]] RWStructuredBuffer<float4>                    AccumulationHdrBuffer;
+[[vk::binding(7,  0)]] StructuredBuffer<float4>                      AtmosphericSkyViewLut;
+[[vk::binding(8,  0)]] StructuredBuffer<uint>                        LunarSurfaceAtlasTexels;
+[[vk::binding(9,  0)]] StructuredBuffer<uint>                        BakedLensFlareAtlasTexels;
+[[vk::binding(10, 0)]] RWStructuredBuffer<float4>                    GBufPosMask;
+[[vk::binding(11, 0)]] RWStructuredBuffer<float4>                    GBufNormAo;
+[[vk::binding(12, 0)]] RWStructuredBuffer<float4>                    GBufDirectBase;
+[[vk::binding(13, 0)]] RWStructuredBuffer<float4>                    GBufSunContrib;
+[[vk::binding(14, 0)]] RWStructuredBuffer<float4>                    GBufAlbedo;
+[[vk::binding(15, 0)]] RWStructuredBuffer<float4>                    PingShadowAo;
+[[vk::binding(16, 0)]] RWStructuredBuffer<float4>                    PongShadowAo;
+[[vk::binding(17, 0)]] RWStructuredBuffer<float4>                    CloudRadiometricBuffer;
+[[vk::binding(18, 0)]] StructuredBuffer<GpuProjectedStar>            ProjectedCatalogStars;
+[[vk::binding(19, 0)]] StructuredBuffer<uint>                        StellarTileBins;
+[[vk::binding(22, 0)]] StructuredBuffer<float>                       PhotometricProfileTables;
+[[vk::binding(23, 0)]] StructuredBuffer<GpuPhotometricLamp64>        PhotometricLampEntries;
+[[vk::binding(24, 0)]] RWStructuredBuffer<float>                     GlobalDistanceFieldBuffer;
+[[vk::binding(25, 0)]] RWStructuredBuffer<uint2>                     GlobalRadiosityFieldBuffer;
+[[vk::binding(26, 0)]] RWStructuredBuffer<float4>                    PingIndirectIrradiance;
+[[vk::binding(27, 0)]] RWStructuredBuffer<float4>                    PongIndirectIrradiance;
+[[vk::binding(28, 0)]] RWStructuredBuffer<uint2>                     GlobalSurfaceShellBuffer;
+[[vk::binding(29, 0)]] StructuredBuffer<float>                       LocalAssetSdfVoxelBuffer;
+[[vk::binding(30, 0)]] StructuredBuffer<GpuDynamicLocalSdfInstance144> DynamicLocalSdfInstanceBuffer;
 
 static const float PiConst    = 3.14159265359;
 static const float TauConst   = 6.28318530718;
@@ -630,7 +645,7 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
     float3 SafeDir = select(abs(Dir) > float3(1.0e-8), Dir, float3(1.0e-8));
     float3 InvDir  = 1.0 / SafeDir;
 
-    uint Stack[12];
+    uint Stack[32];
     int  StackTop = 0;
     Stack[0]      = 0u;
 
@@ -694,7 +709,7 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
                     }
                 }
             }
-            else if (StackTop < 10)
+            else if (StackTop <= 28)
             {
                 Stack[++StackTop] = Ref;
             }
@@ -711,7 +726,7 @@ bool TraceSceneAnyHit(float3 Origin, float3 Dir, float MinT, float MaxT)
     float3 SafeDir = select(abs(Dir) > float3(1.0e-8), Dir, float3(1.0e-8));
     float3 InvDir  = 1.0 / SafeDir;
 
-    uint Stack[12];
+    uint Stack[32];
     int  StackTop = 0;
     Stack[0]      = 0u;
 
@@ -742,7 +757,7 @@ bool TraceSceneAnyHit(float3 Origin, float3 Dir, float MinT, float MaxT)
                     }
                 }
             }
-            else if (StackTop < 10)
+            else if (StackTop <= 28)
             {
                 Stack[++StackTop] = Ref;
             }
@@ -1624,26 +1639,50 @@ float SampleShadowVisBilinear(float2 TexelXY, float RecD, float Bias, uint Res, 
     return lerp(lerp(V00, V10, TX), lerp(V01, V11, TX), TY);
 }
 
+// Chiang/Estevez smooth-normal shadow-terminator offset: lifts origins off tessellated curved surfaces
+// proportionally to (1 - dot(GeomN, ShadingN)) so smooth-shaded triangles never self-occlude their own chord.
+float3 ComputeSmoothSurfaceRayOrigin(float3 WorldPos, float3 GeomN, float3 ShadingN, float NominalBias)
+{
+    float CosDiff = saturate(dot(GeomN, ShadingN));
+    float SinSq   = max(0.0, 1.0 - CosDiff * CosDiff);
+    float CurvatureLift = 0.018 * SinSq;
+    return WorldPos + GeomN * (NominalBias + CurvatureLift) + ShadingN * (0.35 * NominalBias);
+}
+
+float EvaluateSmoothTerminatorFade(float3 GeomN, float3 ShadingN, float3 LightDir)
+{
+    float NdotL = dot(ShadingN, LightDir);
+    if (NdotL <= 0.0) return 0.0;
+    float GdotL = dot(GeomN, LightDir);
+    float GdotN = max(0.15, dot(GeomN, ShadingN));
+    if (GdotL >= GdotN) return 1.0;
+    float T = saturate((GdotL + 0.08) / max(0.08, GdotN + 0.08));
+    return T * T * (3.0 - 2.0 * T);
+}
+
 float SampleCascadedSunShadowFast(float3 WorldPos, float3 GeomN, float3 N, float3 SunDir)
 {
     float NdotL = dot(N, SunDir);
     if (NdotL <= 1.0e-5) return 0.0;
+    float TermFade = EvaluateSmoothTerminatorFade(GeomN, N, SunDir);
+    if (TermFade <= 1.0e-4) return 0.0;
 
     float2 CenterTXY;
     float  RecD, TexelM;
     uint   Res, BufOffs;
-    float3 BiasedPos = WorldPos + GeomN * 0.006 + N * 0.004;
+    float3 BiasedPos = ComputeSmoothSurfaceRayOrigin(WorldPos, GeomN, N, 0.008);
     if (ProjectBestSunCascade(BiasedPos, CenterTXY, RecD, TexelM, Res, BufOffs))
     {
-        float SlopeScale = sqrt(max(0.0, 1.0 - NdotL * NdotL)) / max(0.18, NdotL);
-        float Bias       = TexelM * (1.35 + 0.90 * SlopeScale);
-        return SampleShadowVisBilinear(CenterTXY, RecD, Bias, Res, BufOffs);
+        float EffNdotL   = max(0.18, min(NdotL, max(0.0, dot(GeomN, SunDir))));
+        float SlopeScale = min(4.0, sqrt(max(0.0, 1.0 - EffNdotL * EffNdotL)) / EffNdotL);
+        float Bias       = TexelM * (1.40 + 0.95 * SlopeScale);
+        return SampleShadowVisBilinear(CenterTXY, RecD, Bias, Res, BufOffs) * TermFade;
     }
     if (IsGlobalDistanceFieldReady())
     {
-        return TraceGlobalDistanceConeVisibility(WorldPos, GeomN, SunDir, 12.0, max(0.01, WorldUniforms.SunDirConeTan.w), false, 8u);
+        return TraceGlobalDistanceConeVisibility(BiasedPos, GeomN, SunDir, 12.0, max(0.01, WorldUniforms.SunDirConeTan.w), false, 8u) * TermFade;
     }
-    return TraceSceneAnyHit(WorldPos + GeomN * 0.015, SunDir, 0.03, 80.0) ? 0.0 : 1.0;
+    return (TraceSceneAnyHit(BiasedPos + GeomN * 0.010, SunDir, 0.02, 80.0) ? 0.0 : 1.0) * TermFade;
 }
 
 bool IsCascadeCardinalOpen(float2 CenterTXY, float RadiusPx, float RecD, float Bias, uint Res, uint BufOffs)
@@ -1672,25 +1711,28 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
     uint ShadowAlg  = WorldUniforms.EngineShadowReflPad.y;
     float NdotL     = dot(Hit.ShadingNormal, SunDir);
     if (NdotL <= 1.0e-5) return 0.0;
+    float TermFade  = EvaluateSmoothTerminatorFade(Hit.GeomNormal, Hit.ShadingNormal, SunDir);
+    if (TermFade <= 1.0e-4) return 0.0;
 
-    float  TanSun = max(0.004, WorldUniforms.SunDirConeTan.w);
-    float2 R2P    = PixelR2(PixelXY);
-    float  RotPhi = R2P.x * TauConst;
+    float  TanSun    = max(0.004, WorldUniforms.SunDirConeTan.w);
+    float2 R2P       = PixelR2(PixelXY);
+    float  RotPhi    = R2P.x * TauConst;
+    float3 SmoothPos = ComputeSmoothSurfaceRayOrigin(Hit.Position, Hit.GeomNormal, Hit.ShadingNormal, 0.008);
 
     // Algorithm 4: WideTreeRayQuery (GDF-accelerated solar corridor cull + 3 rotated BVH4 solar disc rays)
     if (ShadowAlg == 4u)
     {
         if (EngineMode <= 2u && IsGlobalDistanceFieldReady())
         {
-            float GdfVis = TraceGlobalDistanceConeVisibility(Hit.Position, Hit.GeomNormal, SunDir, 12.0, TanSun * 2.0, false, 8u);
+            float GdfVis = TraceGlobalDistanceConeVisibility(SmoothPos, Hit.GeomNormal, SunDir, 12.0, TanSun * 2.0, false, 8u);
             if (GdfVis >= 0.99)
             {
-                return 1.0;
+                return TermFade;
             }
         }
         float3 T, B;
         ConstructOrthonormalBasis(SunDir, T, B);
-        float3 Orig      = Hit.Position + Hit.GeomNormal * 0.004;
+        float3 Orig      = SmoothPos;
         float  Vis       = 0.0;
         float  InvBlkSum = 0.0;
         uint   BlkCnt    = 0u;
@@ -1700,7 +1742,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
             float DiscR = sqrt((float(R) + 0.5) / float(RayCount)) * TanSun;
             float Ang   = float(R) * 2.39996323 + RotPhi;
             float3 JDir = normalize(SunDir + T * (DiscR * cos(Ang)) + B * (DiscR * sin(Ang)));
-            RayHitReading Blk = TraceSceneClosest(Orig, JDir, 0.004, 90.0);
+            RayHitReading Blk = TraceSceneClosest(Orig, JDir, 0.005, 90.0);
             if (!Blk.Hit)
             {
                 Vis += 1.0 / float(RayCount);
@@ -1712,27 +1754,27 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
             }
         }
         OutBlockerDist = (BlkCnt > 0u) ? (float(BlkCnt) / max(1.0e-5, InvBlkSum)) : 0.0;
-        return Vis;
+        return Vis * TermFade;
     }
 
     float2 CenterTXY;
     float  RecD, TexelM;
     uint   Res, BufOffs;
-    float3 BiasedPos = Hit.Position + Hit.GeomNormal * 0.004 + Hit.ShadingNormal * 0.004;
+    float3 BiasedPos = SmoothPos;
     if (!ProjectBestSunCascade(BiasedPos, CenterTXY, RecD, TexelM, Res, BufOffs))
     {
         if (EngineMode <= 2u && IsGlobalDistanceFieldReady())
         {
-            return TraceGlobalDistanceConeVisibility(Hit.Position, Hit.GeomNormal, SunDir, 14.0, TanSun, false, 8u);
+            return TraceGlobalDistanceConeVisibility(SmoothPos, Hit.GeomNormal, SunDir, 14.0, TanSun, false, 8u) * TermFade;
         }
-        float3 Orig = Hit.Position + Hit.GeomNormal * 0.012;
-        return TraceSceneAnyHit(Orig, SunDir, 0.028, 90.0) ? 0.0 : 1.0;
+        float3 Orig = SmoothPos + Hit.GeomNormal * 0.008;
+        return (TraceSceneAnyHit(Orig, SunDir, 0.020, 90.0) ? 0.0 : 1.0) * TermFade;
     }
 
     int   MaxIdx     = int(Res) - 1;
-    float EffNdotL   = min(NdotL, abs(dot(Hit.GeomNormal, SunDir)));
-    float SlopeScale = min(4.2, sqrt(max(0.0, 1.0 - EffNdotL * EffNdotL)) / max(0.16, EffNdotL));
-    float Bias       = TexelM * (1.35 + 0.95 * SlopeScale);
+    float EffNdotL   = max(0.16, min(NdotL, max(0.0, dot(Hit.GeomNormal, SunDir))));
+    float SlopeScale = min(4.2, sqrt(max(0.0, 1.0 - EffNdotL * EffNdotL)) / EffNdotL);
+    float Bias       = TexelM * (1.40 + 0.95 * SlopeScale);
 
     // Algorithm 3: PcfBilinear (8-Tap Smooth Bilinear Vogel PCF with 5-Tap Lit Early-Out)
     if (ShadowAlg == 3u)
@@ -1740,7 +1782,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
         float RadiusPx = 1.85;
         if (IsCascadeCardinalOpen(CenterTXY, RadiusPx, RecD, Bias, Res, BufOffs))
         {
-            return 1.0;
+            return TermFade;
         }
         float Vis = 0.0;
         for (uint Tap = 0u; Tap < 8u; ++Tap)
@@ -1751,7 +1793,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
         }
         Vis *= 0.125;
         OutBlockerDist = (Vis > 0.01 && Vis < 0.99) ? 0.28 : 0.0;
-        return Vis;
+        return Vis * TermFade;
     }
 
     // Algorithm 2: ShadowRayMarch (5-Tap Cardinal Early-Out + 4x10 Quadratic SMRT)
@@ -1761,7 +1803,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
         float MaxStepPx  = clamp((MaxMarchM * TanSun) / TexelM, 2.5, 44.0);
         if (IsCascadeCardinalOpen(CenterTXY, MaxStepPx * 0.85, RecD, Bias, Res, BufOffs))
         {
-            return 1.0;
+            return TermFade;
         }
         float ThicknessM = max(0.65, TexelM * 42.0);
         float Lit        = 0.0;
@@ -1805,7 +1847,7 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
             if (!Occ) Lit += 0.25;
         }
         OutBlockerDist = (BlkHits > 0u) ? (BlkDistSum / float(BlkHits)) : 0.0;
-        return Lit;
+        return Lit * TermFade;
     }
 
     // Algorithms 0 (ContactPcss) & 1 (PcssPlaneAware): 8-Tap Vogel Blocker Search + 12-Tap Bilinear Penumbra PCF
@@ -1852,19 +1894,19 @@ float EvaluateSolarShadow(RayHitReading Hit, float3 SunDir, uint2 PixelXY, out f
     {
         if (EngineMode <= 2u && IsGlobalDistanceFieldReady())
         {
-            float GdfGate = TraceGlobalDistanceConeVisibility(Hit.Position, Hit.GeomNormal, SunDir, 0.34, TanSun * 1.25, false, 4u);
+            float GdfGate = TraceGlobalDistanceConeVisibility(SmoothPos, Hit.GeomNormal, SunDir, 0.34, TanSun * 1.25, false, 4u);
             Vis = min(Vis, lerp(0.03, 1.0, GdfGate));
         }
-        else if (Vis > 0.02)
+        else if (Vis > 0.02 && dot(Hit.GeomNormal, SunDir) > 0.02)
         {
-            float3 COrig = Hit.Position + Hit.GeomNormal * 0.006;
-            if (TraceSceneAnyHit(COrig, SunDir, 0.004, 0.24))
+            float3 COrig = SmoothPos + Hit.GeomNormal * 0.004;
+            if (TraceSceneAnyHit(COrig, SunDir, 0.006, 0.24))
             {
                 Vis = min(Vis, 0.04);
             }
         }
     }
-    return Vis;
+    return Vis * TermFade;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -2032,7 +2074,7 @@ void ShadePrimarySurfaceDemod(
     OutFilterIndirect     = false;
     OutSunVis             = 1.0;
     OutBlockerDist        = 0.0;
-    float3 SafePrimaryPos = Hit.Position + Hit.GeomNormal * 0.012 + N * 0.006;
+    float3 SafePrimaryPos = ComputeSmoothSurfaceRayOrigin(Hit.Position, Hit.GeomNormal, N, 0.012);
     float  NdotL          = dot(N, SunDir);
     if (NdotL > 1.0e-5)
     {
@@ -2072,11 +2114,11 @@ void ShadePrimarySurfaceDemod(
     ConstructOrthonormalBasis(N, BasisT, BasisB);
     if (EngineMode <= 2u && IsGlobalDistanceFieldReady())
     {
-        OutDiffAo = EvaluateGlobalDistanceAmbientOcclusion(Hit.Position, N, Hit.GeomNormal);
+        OutDiffAo = EvaluateGlobalDistanceAmbientOcclusion(SafePrimaryPos, N, Hit.GeomNormal);
     }
     else
     {
-        float3 AoOrig = Hit.Position + Hit.GeomNormal * 0.008;
+        float3 AoOrig = ComputeSmoothSurfaceRayOrigin(Hit.Position, Hit.GeomNormal, N, 0.010);
         float  OccSum = 0.0;
         for (uint R = 0u; R < 3u; ++R)
         {
@@ -2085,7 +2127,7 @@ void ShadePrimarySurfaceDemod(
             float SinT = sqrt(saturate(U1));
             float CosT = sqrt(max(0.0, 1.0 - U1));
             float3 AoDir = BasisT * (SinT * cos(Phi)) + BasisB * (SinT * sin(Phi)) + N * CosT;
-            if (!TraceSceneAnyHit(AoOrig, AoDir, 0.006, 0.85))
+            if (dot(AoDir, Hit.GeomNormal) <= 0.02 || !TraceSceneAnyHit(AoOrig, AoDir, 0.008, 0.85))
             {
                 OccSum += (1.0 / 3.0);
             }
@@ -2399,9 +2441,11 @@ float3 EvaluateProgressiveViewportPath(float3 CamOrigin, float3 PrimaryDir, uint
         ? PixelR2(PixelXY)
         : float2(0.0, 0.0);
 
+    float PrimaryMaxT = max(120.0, WorldUniforms.SolarIrradiancePad.w);
+
     // Primary intersection handled outside bounce loop to avoid duplicating sky/cloud/glass raymarchers
-    RayHitReading CurHit = TraceSceneClosest(CamOrigin, PrimaryDir, 0.08, 120.0);
-    float         TriT0  = CurHit.Hit ? CurHit.Distance : 120.0;
+    RayHitReading CurHit = TraceSceneClosest(CamOrigin, PrimaryDir, 0.08, PrimaryMaxT);
+    float         TriT0  = CurHit.Hit ? CurHit.Distance : PrimaryMaxT;
     float         GlsT0  = TriT0;
     int           GlsId0 = FindClosestGlassSphere(CamOrigin, PrimaryDir, 0.08, TriT0, GlsT0);
     if (GlsId0 >= 0)
@@ -2438,7 +2482,7 @@ float3 EvaluateProgressiveViewportPath(float3 CamOrigin, float3 PrimaryDir, uint
         GpuWorldMaterial80 Mat = MaterialEntries[min(CurHit.MaterialSlot, MatCount - 1u)];
         float3 N        = CurHit.ShadingNormal;
         float3 V        = -RayD;
-        float3 SafePos  = CurHit.Position + CurHit.GeomNormal * 0.012 + N * 0.006;
+        float3 SafePos  = ComputeSmoothSurfaceRayOrigin(CurHit.Position, CurHit.GeomNormal, N, 0.012);
         float3 Emissive = Mat.EmissiveRadiancePad.xyz;
         if (Bounce > 0u)
         {
@@ -2458,10 +2502,11 @@ float3 EvaluateProgressiveViewportPath(float3 CamOrigin, float3 PrimaryDir, uint
             float  DiscR  = sqrt(Xi.x) * TanSun;
             float  DiscPh = TauConst * Xi.y;
             float3 JitSun = normalize(SunDir + SunT * (DiscR * cos(DiscPh)) + SunB * (DiscR * sin(DiscPh)));
-            if (dot(N, JitSun) > 0.0 && !TraceSceneAnyHit(SafePos, JitSun, 0.025, 110.0))
+            float  TermF  = EvaluateSmoothTerminatorFade(CurHit.GeomNormal, N, JitSun);
+            if (TermF > 1.0e-4 && dot(N, JitSun) > 0.0 && !TraceSceneAnyHit(SafePos, JitSun, 0.025, 110.0))
             {
                 float CloudTr = (Bounce == 0u) ? EvaluateSolarCloudTransmittanceGpu(CurHit.Position, SunDir) : 1.0;
-                Radiance += Throughput * EvaluateSurfaceBrdf(Mat, N, V, JitSun) * SunIrr * CloudTr;
+                Radiance += Throughput * EvaluateSurfaceBrdf(Mat, N, V, JitSun) * SunIrr * CloudTr * TermF;
             }
         }
 
@@ -2605,9 +2650,10 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         WorldUniforms.CameraRightTanY.xyz * (NdcX * WorldUniforms.CameraOriginTanX.w) +
         WorldUniforms.CameraUpWidth.xyz   * (NdcY * WorldUniforms.CameraRightTanY.w));
 
-    RayHitReading PrimaryHit = TraceSceneClosest(CamOrigin, RayDir, 0.08, 120.0);
+    float PrimaryMaxT = max(120.0, WorldUniforms.SolarIrradiancePad.w);
+    RayHitReading PrimaryHit = TraceSceneClosest(CamOrigin, RayDir, 0.08, PrimaryMaxT);
 
-    float TriHitT      = PrimaryHit.Hit ? PrimaryHit.Distance : 120.0;
+    float TriHitT      = PrimaryHit.Hit ? PrimaryHit.Distance : PrimaryMaxT;
     float BestGlassT   = TriHitT;
     int   BestGlassIdx = -1;
     if (EngineMode != 0u)
@@ -3277,6 +3323,103 @@ float3 ClosestPointOnTriangleBary(float3 P, float3 A, float3 AB, float3 AC, out 
     return A + AB * V + AC * W;
 }
 
+float SampleLocalAssetSignedSdf(
+    uint   VoxelFloatOffset,
+    uint3  Res,
+    float3 LocalMin,
+    float3 LocalMax,
+    float3 LocalP)
+{
+    float3 Span     = max(float3(1.0e-5), LocalMax - LocalMin);
+    float3 ClampedP = clamp(LocalP, LocalMin, LocalMax);
+    float3 Outside  = LocalP - ClampedP;
+    float  OutDist  = length(Outside);
+
+    float3 MaxIdxF = float3(max(uint3(1u), Res) - 1u);
+    float3 GridF   = saturate((ClampedP - LocalMin) / Span) * MaxIdxF;
+    uint3  Idx0    = min(uint3(floor(GridF)), max(uint3(1u), Res) - 1u);
+    uint3  Idx1    = min(Idx0 + 1u, max(uint3(1u), Res) - 1u);
+    float3 Frac    = GridF - float3(Idx0);
+
+    uint StrideY   = Res.x;
+    uint StrideZ   = Res.x * Res.y;
+    uint Origin000 = VoxelFloatOffset + Idx0.z * StrideZ + Idx0.y * StrideY + Idx0.x;
+    uint OffX      = Idx1.x - Idx0.x;
+    uint OffY      = (Idx1.y - Idx0.y) * StrideY;
+    uint OffZ      = (Idx1.z - Idx0.z) * StrideZ;
+
+    float C000 = LocalAssetSdfVoxelBuffer[Origin000];
+    float C100 = LocalAssetSdfVoxelBuffer[Origin000 + OffX];
+    float C010 = LocalAssetSdfVoxelBuffer[Origin000 + OffY];
+    float C110 = LocalAssetSdfVoxelBuffer[Origin000 + OffX + OffY];
+    float C001 = LocalAssetSdfVoxelBuffer[Origin000 + OffZ];
+    float C101 = LocalAssetSdfVoxelBuffer[Origin000 + OffX + OffZ];
+    float C011 = LocalAssetSdfVoxelBuffer[Origin000 + OffY + OffZ];
+    float C111 = LocalAssetSdfVoxelBuffer[Origin000 + OffX + OffY + OffZ];
+
+    float C00 = lerp(C000, C100, Frac.x);
+    float C10 = lerp(C010, C110, Frac.x);
+    float C01 = lerp(C001, C101, Frac.x);
+    float C11 = lerp(C011, C111, Frac.x);
+    float C0  = lerp(C00, C10, Frac.y);
+    float C1  = lerp(C01, C11, Frac.y);
+    float GridDist = lerp(C0, C1, Frac.z);
+    return (OutDist > 1.0e-5) ? sqrt(max(0.0, GridDist) * max(0.0, GridDist) + OutDist * OutDist) : GridDist;
+}
+
+float EvaluateAnalyticalPrimitiveLocalSdf(uint ShapeCode, float3 HalfExt, float3 P)
+{
+    if (ShapeCode == 2u) // Sphere
+    {
+        float R = max(1.0e-4, max(HalfExt.x, max(HalfExt.y, HalfExt.z)));
+        return length(P) - R;
+    }
+    if (ShapeCode == 3u) // Cylinder (Z-axis)
+    {
+        float Rad = max(1.0e-4, max(HalfExt.x, HalfExt.y));
+        float Hz  = max(1.0e-4, HalfExt.z);
+        float2 D  = float2(length(P.xy) - Rad, abs(P.z) - Hz);
+        return min(max(D.x, D.y), 0.0) + length(max(D, float2(0.0)));
+    }
+    if (ShapeCode == 4u) // Cone (Z-axis, tip at +Hz, foot radius Rad at -Hz)
+    {
+        float Rad = max(1.0e-4, max(HalfExt.x, HalfExt.y));
+        float Hz  = max(1.0e-4, HalfExt.z);
+        float H2  = 2.0 * Hz;
+        float2 Q  = float2(length(P.xy), P.z - Hz);
+        float2 K1 = float2(0.0, 0.0);
+        float2 K2 = float2(-Rad, H2);
+        float2 Ca = float2(Q.x - min(Q.x, (Q.y < 0.0) ? 0.0 : Rad), abs(Q.y + Hz) - Hz);
+        float2 Cb = Q - K1 + K2 * saturate(dot(K1 - Q, K2) / max(1.0e-8, dot(K2, K2)));
+        float  S  = (Cb.x < 0.0 && Ca.y < 0.0) ? -1.0 : 1.0;
+        return S * sqrt(max(0.0, min(dot(Ca, Ca), dot(Cb, Cb))));
+    }
+    if (ShapeCode == 5u) // Torus (XY-plane)
+    {
+        float MinorR = max(1.0e-4, HalfExt.z);
+        float MajorR = max(MinorR, max(HalfExt.x, HalfExt.y) - MinorR);
+        float2 Q = float2(length(P.xy) - MajorR, P.z);
+        return length(Q) - MinorR;
+    }
+    // Default ShapeCode == 1u: Box
+    float3 Q = abs(P) - HalfExt;
+    return length(max(Q, float3(0.0))) + min(max(Q.x, max(Q.y, Q.z)), 0.0);
+}
+
+float EvaluateInstanceLocalSdf(GpuDynamicLocalSdfInstance144 Inst, uint ShapeCode, uint3 Res, float3 LocalP)
+{
+    if (ShapeCode == 0u)
+    {
+        return SampleLocalAssetSignedSdf(
+            Inst.ResolutionOffset.z,
+            Res,
+            Inst.LocalMinPad.xyz,
+            Inst.LocalMaxPad.xyz,
+            LocalP);
+    }
+    return EvaluateAnalyticalPrimitiveLocalSdf(ShapeCode, Inst.LocalMaxPad.xyz, LocalP);
+}
+
 [shader("compute")]
 [numthreads(4, 4, 4)]
 void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -3295,99 +3438,176 @@ void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     float3 NormUVW    = (float3(DispatchThreadID) + 0.5) / float(GdfGridRes);
     float3 VoxelPos   = CenterSpan.xyz + (NormUVW * 2.0 - 1.0) * HalfSpan;
 
-    uint   LinearIdx  = DispatchThreadID.z * (GdfGridRes * GdfGridRes) + DispatchThreadID.y * GdfGridRes + DispatchThreadID.x;
-    uint   EntryCount = uint(WorldUniforms.SkyRadianceBvhCount.w + 0.5);
-    float  MaxDist    = VoxSize * 5.5;
-    float  BestDistSq = MaxDist * MaxDist;
-    float  BestAbsCos = -1.0;
-    float  BestSign   = 1.0;
-    float3 BestNormal = float3(0.0, 0.0, 1.0);
-    uint   BestMat    = 0u;
-    bool   FoundTri   = false;
+    uint   LinearIdx         = DispatchThreadID.z * (GdfGridRes * GdfGridRes) + DispatchThreadID.y * GdfGridRes + DispatchThreadID.x;
+    uint   LocalSdfInstCount = (WorldUniforms.GlobalDistanceBakeControl.w >> 16u) & 0xFFFFu;
+    float  MaxDist           = VoxSize * 5.5;
+    float  SignedDist        = MaxDist;
+    float3 BestNormal        = float3(0.0, 0.0, 1.0);
+    uint   BestMat           = 0u;
+    bool   FoundSurface      = false;
 
-    if (EntryCount > 0u)
+    if (LocalSdfInstCount > 0u)
     {
-        uint Stack[12];
-        int  StackTop = 0;
-        Stack[0]      = 0u;
+        float BestSignedDist  = MaxDist;
+        float BestAbsDist     = MaxDist;
+        float SurfaceBandDist = VoxSize * 1.45;
 
-        while (StackTop >= 0)
+        [loop]
+        for (uint InstIdx = 0u; InstIdx < LocalSdfInstCount; ++InstIdx)
         {
-            uint CurIdx = Stack[StackTop--];
-            if (CurIdx >= EntryCount) continue;
-
-            float4 BoxDSq = PointToFourBoxesDistSq(VoxelPos, CurIdx);
-            uint4  Refs   = SceneBvhEntries[CurIdx].BranchReference;
-            uint4  Cnts   = SceneBvhEntries[CurIdx].BranchPrimitiveCount;
-
-            uint4 Order = uint4(0u, 1u, 2u, 3u);
-            if (BoxDSq[Order.x] < BoxDSq[Order.y]) { uint Tmp = Order.x; Order.x = Order.y; Order.y = Tmp; }
-            if (BoxDSq[Order.z] < BoxDSq[Order.w]) { uint Tmp = Order.z; Order.z = Order.w; Order.w = Tmp; }
-            if (BoxDSq[Order.x] < BoxDSq[Order.z]) { uint Tmp = Order.x; Order.x = Order.z; Order.z = Tmp; }
-            if (BoxDSq[Order.y] < BoxDSq[Order.w]) { uint Tmp = Order.y; Order.y = Order.w; Order.w = Tmp; }
-            if (BoxDSq[Order.y] < BoxDSq[Order.z]) { uint Tmp = Order.y; Order.y = Order.z; Order.z = Tmp; }
-
-            for (int LaneIdx = 0; LaneIdx < 4; ++LaneIdx)
+            GpuDynamicLocalSdfInstance144 Inst = DynamicLocalSdfInstanceBuffer[InstIdx];
+            if ((Inst.ResolutionOffset.w >> 16u) == 0u)
             {
-                uint Lane = Order[LaneIdx];
-                if (BoxDSq[Lane] > BestDistSq + 1.0e-5) continue;
+                continue;
+            }
 
-                uint Ref = Refs[Lane];
-                uint Cnt = Cnts[Lane];
-                if (Ref == 0xFFFFFFFFu) continue;
+            float3 LocalP = float3(
+                dot(Inst.WorldToLocalRow0.xyz, VoxelPos) + Inst.WorldToLocalRow0.w,
+                dot(Inst.WorldToLocalRow1.xyz, VoxelPos) + Inst.WorldToLocalRow1.w,
+                dot(Inst.WorldToLocalRow2.xyz, VoxelPos) + Inst.WorldToLocalRow2.w);
 
-                if (Cnt > 0u)
+            float  MinWorldScale = max(1.0e-4, Inst.LocalToWorldNormRow0.w);
+            float3 ClampedLocal  = clamp(LocalP, Inst.LocalMinPad.xyz, Inst.LocalMaxPad.xyz);
+            float  BoxLowerWorld = length(LocalP - ClampedLocal) * MinWorldScale;
+            if (BoxLowerWorld > BestAbsDist + 1.0e-4)
+            {
+                continue;
+            }
+
+            uint  ShapeCode = (Inst.ResolutionOffset.y >> 16u) & 0xFFFFu;
+            uint3 Res       = uint3(
+                Inst.ResolutionOffset.x & 0xFFFFu,
+                (Inst.ResolutionOffset.x >> 16u) & 0xFFFFu,
+                Inst.ResolutionOffset.y & 0xFFFFu);
+
+            float LocalD = EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP);
+            float WorldD = LocalD * MinWorldScale;
+            float AbsD   = abs(WorldD);
+
+            // CSG union across opaque scene instances: preserve interior sign while tracking closest surface boundary
+            BestSignedDist = FoundSurface ? min(BestSignedDist, WorldD) : WorldD;
+            if (!FoundSurface || AbsD < BestAbsDist)
+            {
+                BestAbsDist  = AbsD;
+                BestMat      = Inst.ResolutionOffset.w & 0xFFFFu;
+                FoundSurface = true;
+
+                if (CascadeIdx == 0u && AbsD <= SurfaceBandDist)
                 {
-                    uint Start = Ref & 0x7FFFFFFFu;
-                    for (uint P = 0u; P < Cnt; ++P)
-                    {
-                        uint   TriIdx = Start + P;
-                        float3 Bary   = float3(1.0, 0.0, 0.0);
-                        float3 Corner = SceneTriangles[TriIdx].Corner0Pad.xyz;
-                        float3 Edge01 = SceneTriangles[TriIdx].Edge01Pad.xyz;
-                        float3 Edge02 = SceneTriangles[TriIdx].Edge02Pad.xyz;
-                        float3 CloseP = ClosestPointOnTriangleBary(VoxelPos, Corner, Edge01, Edge02, Bary);
-                        float3 Diff   = VoxelPos - CloseP;
-                        float  DistSq = dot(Diff, Diff);
-                        float  TieEps = max(1.0e-6, BestDistSq * 2.5e-4);
-                        if (DistSq <= BestDistSq + TieEps)
-                        {
-                            float4 N2Slot  = SceneTriangles[TriIdx].Normal2Slot;
-                            float3 SmoothN = normalize(
-                                SceneTriangles[TriIdx].Normal0Pad.xyz * Bary.x +
-                                SceneTriangles[TriIdx].Normal1Pad.xyz * Bary.y +
-                                N2Slot.xyz * Bary.z);
-                            float  InvDist = rsqrt(max(1.0e-12, DistSq));
-                            float  CosVal  = dot(Diff, SmoothN) * InvDist;
-                            float  AbsCos  = abs(CosVal);
-                            bool StrictlyCloser = !FoundTri || (DistSq < BestDistSq - TieEps);
-                            if (StrictlyCloser || AbsCos > BestAbsCos)
-                            {
-                                BestAbsCos = StrictlyCloser ? AbsCos : max(BestAbsCos, AbsCos);
-                                BestDistSq = min(BestDistSq, DistSq);
-                                BestSign   = (CosVal < -1.0e-4) ? -1.0 : 1.0;
-                                BestNormal = SmoothN;
-                                BestMat    = uint(N2Slot.w + 0.5);
-                                FoundTri   = true;
-                            }
-                        }
-                    }
-                }
-                else if (StackTop < 10)
-                {
-                    Stack[++StackTop] = Ref;
+                    float StepEps = (ShapeCode == 0u)
+                        ? max(1.0e-3, max(Inst.LocalMinPad.w, max(Inst.LocalMaxPad.w, Inst.LocalToWorldNormRow1.w)) * 0.85)
+                        : 0.008;
+                    float Dx = EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP + float3(StepEps, 0.0, 0.0))
+                             - EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP - float3(StepEps, 0.0, 0.0));
+                    float Dy = EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP + float3(0.0, StepEps, 0.0))
+                             - EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP - float3(0.0, StepEps, 0.0));
+                    float Dz = EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP + float3(0.0, 0.0, StepEps))
+                             - EvaluateInstanceLocalSdf(Inst, ShapeCode, Res, LocalP - float3(0.0, 0.0, StepEps));
+                    float3 LocalGrad = float3(Dx, Dy, Dz);
+                    float3 WorldGrad = float3(
+                        dot(Inst.LocalToWorldNormRow0.xyz, LocalGrad),
+                        dot(Inst.LocalToWorldNormRow1.xyz, LocalGrad),
+                        dot(Inst.LocalToWorldNormRow2.xyz, LocalGrad));
+                    float GradLenSq = dot(WorldGrad, WorldGrad);
+                    BestNormal = (GradLenSq > 1.0e-12) ? (WorldGrad * rsqrt(GradLenSq)) : float3(0.0, 0.0, 1.0);
                 }
             }
         }
+
+        SignedDist = FoundSurface ? clamp(BestSignedDist, -MaxDist, MaxDist) : MaxDist;
+    }
+    else
+    {
+        uint  EntryCount = uint(WorldUniforms.SkyRadianceBvhCount.w + 0.5);
+        float BestDistSq = MaxDist * MaxDist;
+        float BestAbsCos = -1.0;
+        float BestSign   = 1.0;
+
+        if (EntryCount > 0u)
+        {
+            uint Stack[32];
+            int  StackTop = 0;
+            Stack[0]      = 0u;
+
+            while (StackTop >= 0)
+            {
+                uint CurIdx = Stack[StackTop--];
+                if (CurIdx >= EntryCount) continue;
+
+                float4 BoxDSq = PointToFourBoxesDistSq(VoxelPos, CurIdx);
+                uint4  Refs   = SceneBvhEntries[CurIdx].BranchReference;
+                uint4  Cnts   = SceneBvhEntries[CurIdx].BranchPrimitiveCount;
+
+                uint4 Order = uint4(0u, 1u, 2u, 3u);
+                if (BoxDSq[Order.x] < BoxDSq[Order.y]) { uint Tmp = Order.x; Order.x = Order.y; Order.y = Tmp; }
+                if (BoxDSq[Order.z] < BoxDSq[Order.w]) { uint Tmp = Order.z; Order.z = Order.w; Order.w = Tmp; }
+                if (BoxDSq[Order.x] < BoxDSq[Order.z]) { uint Tmp = Order.x; Order.x = Order.z; Order.z = Tmp; }
+                if (BoxDSq[Order.y] < BoxDSq[Order.w]) { uint Tmp = Order.y; Order.y = Order.w; Order.w = Tmp; }
+                if (BoxDSq[Order.y] < BoxDSq[Order.z]) { uint Tmp = Order.y; Order.y = Order.z; Order.z = Tmp; }
+
+                for (int LaneIdx = 0; LaneIdx < 4; ++LaneIdx)
+                {
+                    uint Lane = Order[LaneIdx];
+                    if (BoxDSq[Lane] > BestDistSq + 1.0e-5) continue;
+
+                    uint Ref = Refs[Lane];
+                    uint Cnt = Cnts[Lane];
+                    if (Ref == 0xFFFFFFFFu) continue;
+
+                    if (Cnt > 0u)
+                    {
+                        uint Start = Ref & 0x7FFFFFFFu;
+                        for (uint P = 0u; P < Cnt; ++P)
+                        {
+                            uint   TriIdx = Start + P;
+                            float3 Bary   = float3(1.0, 0.0, 0.0);
+                            float3 Corner = SceneTriangles[TriIdx].Corner0Pad.xyz;
+                            float3 Edge01 = SceneTriangles[TriIdx].Edge01Pad.xyz;
+                            float3 Edge02 = SceneTriangles[TriIdx].Edge02Pad.xyz;
+                            float3 CloseP = ClosestPointOnTriangleBary(VoxelPos, Corner, Edge01, Edge02, Bary);
+                            float3 Diff   = VoxelPos - CloseP;
+                            float  DistSq = dot(Diff, Diff);
+                            float  TieEps = max(1.0e-6, BestDistSq * 2.5e-4);
+                            if (DistSq <= BestDistSq + TieEps)
+                            {
+                                float4 N2Slot  = SceneTriangles[TriIdx].Normal2Slot;
+                                float3 SmoothN = normalize(
+                                    SceneTriangles[TriIdx].Normal0Pad.xyz * Bary.x +
+                                    SceneTriangles[TriIdx].Normal1Pad.xyz * Bary.y +
+                                    N2Slot.xyz * Bary.z);
+                                float  InvDist = rsqrt(max(1.0e-12, DistSq));
+                                float  CosVal  = dot(Diff, SmoothN) * InvDist;
+                                float  AbsCos  = abs(CosVal);
+                                bool StrictlyCloser = !FoundSurface || (DistSq < BestDistSq - TieEps);
+                                if (StrictlyCloser || AbsCos > BestAbsCos)
+                                {
+                                    BestAbsCos   = StrictlyCloser ? AbsCos : max(BestAbsCos, AbsCos);
+                                    BestDistSq   = min(BestDistSq, DistSq);
+                                    BestSign     = (CosVal < -1.0e-4) ? -1.0 : 1.0;
+                                    BestNormal   = SmoothN;
+                                    BestMat      = uint(N2Slot.w + 0.5);
+                                    FoundSurface = true;
+                                }
+                            }
+                        }
+                    }
+                    else if (StackTop < 28)
+                    {
+                        Stack[++StackTop] = Ref;
+                    }
+                }
+            }
+        }
+
+        SignedDist = FoundSurface ? (BestSign * sqrt(BestDistSq)) : MaxDist;
     }
 
-    float SignedDist = FoundTri ? (BestSign * sqrt(BestDistSq)) : MaxDist;
     GlobalDistanceFieldBuffer[CascadeIdx * GdfVoxCnt + LinearIdx] = SignedDist;
 
     if (CascadeIdx == 0u)
     {
         float ShellBand = VoxSize * 0.92;
-        float Opacity   = FoundTri ? saturate(1.0 - abs(SignedDist) / ShellBand) : 0.0;
+        float Opacity   = FoundSurface ? saturate(1.0 - abs(SignedDist) / ShellBand) : 0.0;
         if (Opacity > 0.01)
         {
             uint PackedNrm = PackOctNormal32(BestNormal);
