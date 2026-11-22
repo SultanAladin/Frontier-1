@@ -2190,6 +2190,11 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         }
     }
 
+    if (RenderedOnGpu)
+    {
+        ViewportDispatchedSincePresentation = true;
+    }
+
     if (RenderedOnGpu && GpuWorldRenderer != nullptr && DisplayCfg.RenderEngineIndex < 4u)
     {
         // Live Nanite proof in the viewport footer: triangles actually traced vs full-res scene.
@@ -2629,6 +2634,25 @@ void EditorLifecycle::RecordFramePresentationTiming(
     LatestViewportTiming.DesktopPollAndUiMs = DesktopPollAndUiMs;
     LatestViewportTiming.SwapchainPresentMs = SwapchainPresentMs;
     LatestViewportTiming.TotalFrameMs       = TotalFrameMs;
+
+    // The world viewport is intentionally not dispatched on every desktop frame (e.g. after
+    // progressive path tracing converges). Do not carry the previous dispatch's GPU timestamps
+    // into this frame's profiler/log entry; that made idle frames look as if they were still tracing.
+    if (!ViewportDispatchedSincePresentation)
+    {
+        LatestViewportTiming.WorldDispatched     = false;
+        LatestViewportTiming.GpuTimestampsValid  = false;
+        LatestViewportTiming.GpuTotalPassMs      = 0.0f;
+        LatestViewportTiming.GpuSkyLutMs         = 0.0f;
+        LatestViewportTiming.GpuCloudsMs         = 0.0f;
+        LatestViewportTiming.GpuPrimaryTraceMs   = 0.0f;
+        LatestViewportTiming.GpuDenoiseMs        = 0.0f;
+        LatestViewportTiming.GpuReadbackCopyMs   = 0.0f;
+        LatestViewportTiming.GpuHostSubmitWaitMs = 0.0f;
+        LatestViewportTiming.SceneSyncGpuMs      = 0.0f;
+        LatestViewportTiming.GizmoOverlayMs      = 0.0f;
+    }
+    ViewportDispatchedSincePresentation = false;
 
     if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady() && LatestViewportTiming.RenderWidthPx == 0u)
     {

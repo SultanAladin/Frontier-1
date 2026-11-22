@@ -9,6 +9,7 @@
 | Plan Document | Domain |
 | :--- | :--- |
 | [DataDrivenSpaceContentFormattingPlan.md](DataDrivenSpaceContentFormattingPlan.md) | **🟢 Active Review Plan (`2026-11-21`)**: Zero-abbreviation `*Space` vs. `.InstanceSpace` decision table, `Content/` folder structure, domain codecs, and `FrontierDefaultContentGenerator` C++ tool |
+| [ViewportDispatchTimingReport.md](ViewportDispatchTimingReport.md) | **`2026-11-22`**: Per-frame renderer work, SDF/BVH rebuild conditions, stale GPU telemetry fix, progressive path-tracer default, and timing-log interpretation |
 | [WorldRenderingRedoReport.md](WorldRenderingRedoReport.md) | **🟢 Completion Report (`2026-11-20`)**: Quantitative & visual verification across Phase 0 (`757b5c6`), Order 1 Direct PBR (`4294a70`), Order 2 Real-Time GI (`18b3329`), and Order 3 Unified Deterministic Path Tracer (`GameRealtime` & `SceneFinalRender`) |
 | [WorldRenderingRedoPlan.md](WorldRenderingRedoPlan.md) | **🟢 Completed Master Plan (`2026-11-20`)**: Phase 0 `Engine/` SDF/SDF-baking purge → **(1st)** Standalone Direct PBR (`0` GI, `0` SDF) → **(2nd)** GTX SDF Shadows (`Candidate 1: HybridConeShadow`) + GI (`Candidates 1 + 2: StokesContour + SurfelRadiosity`, Low-End & High-End) → **(3rd)** Unified Deterministic Path Tracer (Games + Scene Rendering via settings) |
 | [DocumentationCleanupReport.md](DocumentationCleanupReport.md) | **2026-11-20** governance & documentation cleanup after retiring simplified `Fluid`, `ForceField`, `GI/SDF`, and `Particle` code + automatic HTML parity gate |
