@@ -12,12 +12,12 @@
 | `BroadphaseSolver.h` | Broadphase collision channels, raycast/overlap queries, and 80-byte RigidColliderProxy analytical solver |
 | `CollisionDetection.cpp` | Implementation of narrow-phase ContactImpulseJournal tracking peak impulses and impact energy per simulation step |
 | `CollisionDetection.h` | Narrow-phase contact impulse journal capturing peak impact impulses & energies for rigid bodies and fracture triggers |
-| `ConstraintSolver.cpp` | Strain-bond rupture ratio evaluation utilities for two-body physics constraints |
-| `ConstraintSolver.h` | Two-body joint & breakable strain-bond constraint descriptors, generation-checked tokens, and rupture telemetry |
+| `ConstraintSolver.cpp` | Strain rupture, Dock key verification, sweep/spin kinematics, `ComponentClass` conversion, and `ConstraintListSnapshot` lookups |
+| `ConstraintSolver.h` | Two-body joint descriptors (all 8 ProjectZero-parity constraint kinds), `ConstraintListSnapshot`, `ConstraintDirective`, and `ConstraintReading` |
 | `FractureSimulationRunner.cpp` | JoltPhysics v5.6.0 rigid-body fracture simulation runner: ConvexHull shards, BreakableBond strain rupture, and ground interaction |
 | `FractureSimulationRunner.h` | JoltPhysics v5.6.0 rigid-body fracture simulation runner: ConvexHull shards, BreakableBond strain rupture, and RHR +Z Up ground contacts |
-| `PhysicsExtension.cpp` | JoltPhysics v5.6.0 Pimpl runtime implementing rigid dynamics, breakable strain bonds, constraints & collider proxies |
-| `PhysicsExtension.h` | Deterministic JoltPhysics v5.6.0 lifecycle participant satisfying SuspendableParticipant, constraints & collider proxies |
+| `PhysicsExtension.cpp` | JoltPhysics v5.6.0 Pimpl runtime with `ThreadBoundaryExchange` wait-free cross-thread constraint snapshots, directives & collider proxies |
+| `PhysicsExtension.h` | Deterministic JoltPhysics v5.6.0 lifecycle participant with wait-free `AcquireConstraintSnapshot` and lock-free `SubmitConstraintDirective` |
 | `RigidBodyDynamics.cpp` | Analytic volume, effective mass, principal inertia, and quaternion rotation utilities for rigid bodies |
 | `RigidBodyDynamics.h` | Rigid-body shape descriptors, motion categories, generation-checked tokens, and inertial tensor evaluators (RHR +Z Up) |
 | `VehicleDynamicsSolver.cpp` | Implementation of VehicleDynamicsSolver TorqueCurve spline evaluation, 6-speed shifting & aero downforce telemetry |

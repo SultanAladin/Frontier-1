@@ -11,14 +11,16 @@
 | `AtomicQueue.h` | Bounded Vyukov lock-free multi-producer multi-consumer ring queue with zero post-initialization heap allocations |
 | `CompletionCounter.h` | Wait-free atomic countdown latch and non-blocking continuation trigger preventing dependent-task sleep waits |
 | `CriticalSection.h` | Adaptive mutual exclusion primitive for infrequent OS boundary and container registration regions |
+| `PublishedSnapshotExchange.h` | Generic wait-free multi-reader, single-writer generation-stamped snapshot bank with split-reference reclamation |
 | `SpinLock.h` | Leaf-only exponential-backoff atomic spin lock for short bounded critical regions |
+| `ThreadBoundaryExchange.h` | Generic bidirectional cross-thread boundary pairing `PublishedSnapshotExchange` with lock-free `AtomicQueue` directive intake |
 | `ThreadProgressionTracker.cpp` | Lock-free monotonic thread heartbeat implementation |
 | `ThreadProgressionTracker.h` | Cache-line-isolated lock-free thread liveness and active task-tag monitor for out-of-band stall detection |
 
 ## Namespaces & Primary Types
 
 - **Namespaces**: `Frontier::Threading`
-- **Primary Types**: `AtomicQueue`, `CompletionCounter`, `CriticalSection`, `ScopedCriticalGuard`, `ScopedSpinGuard`, `ThreadLivenessCondition`, `ThreadProgressionReading`, `ThreadProgressionTracker`
+- **Primary Types**: `AtomicQueue`, `CompletionCounter`, `CriticalSection`, `PublishedSnapshotExchange`, `SnapshotEpochHeader`, `SnapshotReadLease`, `ScopedCriticalGuard`, `ScopedSpinGuard`, `ThreadBoundaryExchange`, `ThreadLivenessCondition`, `ThreadProgressionReading`, `ThreadProgressionTracker`
 
 ## Usage
 

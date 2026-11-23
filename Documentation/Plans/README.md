@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [CrossThreadPhysicsConstraintPlan.md](CrossThreadPhysicsConstraintPlan.md) | **🟢 Completion Report (`2026-11-23`)**: Generic wait-free multi-reader `PublishedSnapshotExchange`, `ThreadBoundaryExchange`, dedicated `PhysicsThread`, and all 8 `ProjectZeroEditor`-parity Jolt physics constraints |
 | [ProjectLifecyclePolicyPlan.md](ProjectLifecyclePolicyPlan.md) | **🟢 Active Plan (`2026-11-23`)**: `Projects/` root, reference lean project `Projects/Untitled/` (`UntitledLifecycle`), tight zero-Editor `RuntimeLifecycle` fixed-step loop, `ProjectExecutionPolicy`, `GameplayRulePolicy`, and `DeterministicDrivingPolicy` |
 | [ModularInspectorArchitecturePlan.md](ModularInspectorArchitecturePlan.md) | **🟢 Approved & Active (`2026-11-23`)**: Standalone per-type generic Inspector architecture (`24` independent `.h/.cpp` Inspectors, zero monolithic buckets, zero hardcoded folders/singletons, multi-instance combination for Suns/Moons/Winds/Stars/Fogs/Lights/Cameras/Geometry, on-demand retained previews & real LUT previews) |
 | [EnvironmentConstructDirectivePlan.md](EnvironmentConstructDirectivePlan.md) | **🚩 Ready for Review (`2026-11-23`)**: Rendered HTML reference (`2fd4c62`, 9 PNG captures + DOM tokens), audited C++/`.slang` defects, decision tables, and 1:1 native blueprint for constructing/removing Sun, Clouds, Moon, Stars & Atmosphere + HTML-matched Outliner right-click directive sheet |

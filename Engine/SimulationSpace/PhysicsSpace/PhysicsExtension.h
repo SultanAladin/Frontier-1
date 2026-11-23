@@ -15,6 +15,7 @@
 #include "Engine/SimulationSpace/PhysicsSpace/CollisionDetection.h"
 #include "Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.h"
 #include "Engine/SimulationSpace/PhysicsSpace/RigidBodyDynamics.h"
+#include "Engine/Threading/Sync/ThreadBoundaryExchange.h"
 
 #include <cstdint>
 #include <memory>
@@ -92,11 +93,21 @@ public:
         const RigidOrientationQuaternion& Orientation) noexcept;
 
     // Constraints & breakable strain bonds
+    using ConstraintSnapshotLease    = Threading::SnapshotReadLease<ConstraintListSnapshot>;
+    using ConstraintSnapshotExchange = Threading::PublishedSnapshotExchange<ConstraintListSnapshot>;
+
     [[nodiscard]] ConstraintToken   IssueConstraint(const ConstraintDescriptor& Descriptor) noexcept;
     bool                            ReclaimConstraint(ConstraintToken Token) noexcept;
     bool                            BreakConstraint(ConstraintToken Token) noexcept;
     bool                            AssignConstraintMotorTarget(ConstraintToken Token, float TargetCoordinateOrVelocity) noexcept;
     [[nodiscard]] ConstraintReading InspectConstraintReading(ConstraintToken Token) const noexcept;
+
+    // Wait-free cross-thread constraint snapshot reads & lock-free directive intake (safe across PhysicsThread, GameThread, RenderThread, EditorThread)
+    [[nodiscard]] ConstraintSnapshotLease           AcquireConstraintSnapshot() const noexcept;
+    [[nodiscard]] bool                              SubmitConstraintDirective(const ConstraintDirective& Directive) noexcept;
+    [[nodiscard]] const ConstraintSnapshotExchange& InspectConstraintSnapshotExchange() const noexcept;
+    [[nodiscard]] uint64_t                          QueryPublishedConstraintGeneration() const noexcept;
+    [[nodiscard]] uint32_t                          QueryLiveConstraintCount() const noexcept;
 
     // Queries, collider proxy export & contact telemetry
     [[nodiscard]] RayCastHitReading ExecuteRayCast(const RayCastQuery& Query) const noexcept;

@@ -9,6 +9,7 @@
 | Directory | Summary |
 | :--- | :--- |
 | [`Audio/`](Audio/README.md) | Dedicated real-time `AudioThread` driving lock-free DSP block synthesis, endpoint handoff & watchdog pulses |
+| [`Physics/`](Physics/README.md) | Dedicated fixed-step `PhysicsThread` executing deterministic simulation ticks, suspend gating & watchdog pulses |
 | [`Streaming/`](Streaming/README.md) | Dual-path SSD random-access and HDD elevator-coalesced sequential streaming thread for .Space and ThumbnailSheet pages |
 | [`Workspace/`](Workspace/README.md) | Dedicated asynchronous workspace authoring, .Space codec I/O, and parametric revision replay domain thread |
 

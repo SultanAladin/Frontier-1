@@ -223,15 +223,71 @@ struct BodySlotEntry
 
 struct ConstraintSlotEntry
 {
-    JPH::Ref<JPH::TwoBodyConstraint> JoltConstraint   {};
-    ConstraintDescriptor             Descriptor       {};
-    uint32_t                         Generation       = 1u;
-    float                            AppliedForceN    = 0.0f;
-    float                            AppliedTorqueNm  = 0.0f;
-    float                            StrainRatio      = 0.0f;
-    bool                             Occupied         = false;
-    bool                             Intact           = false;
+    JPH::Ref<JPH::TwoBodyConstraint> JoltConstraint        {};
+    ConstraintDescriptor             Descriptor            {};
+    uint32_t                         Generation            = 1u;
+    JPH::Vec3                        LocalAnchorA          = JPH::Vec3::sZero();
+    JPH::Vec3                        LocalAnchorB          = JPH::Vec3::sZero();
+    JPH::Vec3                        LocalAxisA            = JPH::Vec3::sAxisY();
+    JPH::Quat                        InitialRelativeQuat   = JPH::Quat::sIdentity();
+    Mathematics::Axis3D              AnchorWorldMeters     { 0.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D              AttachedWorldMeters   { 0.0f, 0.0f, 0.0f };
+    RigidOrientationQuaternion       JointWorldOrientation { 0.0f, 0.0f, 0.0f, 1.0f };
+    Mathematics::Axis3D              RelativeOffsetMeters  { 0.0f, 0.0f, 0.0f };
+    RigidOrientationQuaternion       RelativeOrientation   { 0.0f, 0.0f, 0.0f, 1.0f };
+    float                            AppliedForceN         = 0.0f;
+    float                            AppliedTorqueNm       = 0.0f;
+    float                            StrainRatio           = 0.0f;
+    float                            CurrentCoordinate     = 0.0f;
+    float                            CurrentVelocity       = 0.0f;
+    float                            SwingAngleRad         = 0.0f;
+    float                            TwistAngleRad         = 0.0f;
+    float                            CurrentRpm            = 0.0f;
+    float                            DockGapMeters         = 0.0f;
+    float                            ExternalLoadNewtons   = 0.0f;
+    float                            LinearSpeedMps        = 0.0f;
+    DockLatchPhase                   DockPhase             = DockLatchPhase::Connected;
+    bool                             DockReconnectArmed    = false;
+    bool                             TautEngaged           = false;
+    bool                             Occupied              = false;
+    bool                             Intact                = false;
 };
+
+inline void DecomposeSwingTwistAngles(
+    JPH::QuatArg RelativeRotation,
+    JPH::Vec3Arg LocalTwistAxis,
+    float&       OutSwingAngleRad,
+    float&       OutTwistAngleRad) noexcept
+{
+    JPH::Quat NormRel = RelativeRotation.Normalized();
+    if (NormRel.GetW() < 0.0f)
+    {
+        NormRel = -NormRel;
+    }
+
+    const JPH::Vec3 Axis     = LocalTwistAxis.NormalizedOr(JPH::Vec3::sAxisY());
+    const JPH::Vec3 VecPart(NormRel.GetX(), NormRel.GetY(), NormRel.GetZ());
+    const float     ProjScalar = VecPart.Dot(Axis);
+    const JPH::Vec3 ProjVec    = Axis * ProjScalar;
+
+    JPH::Quat TwistQuat(ProjVec.GetX(), ProjVec.GetY(), ProjVec.GetZ(), NormRel.GetW());
+    const float TwistLen = TwistQuat.Length();
+    if (TwistLen > 1.0e-6f)
+    {
+        TwistQuat = TwistQuat / TwistLen;
+    }
+    else
+    {
+        TwistQuat = JPH::Quat::sIdentity();
+    }
+
+    const JPH::Vec3 TwistVec(TwistQuat.GetX(), TwistQuat.GetY(), TwistQuat.GetZ());
+    OutTwistAngleRad = 2.0f * std::atan2(TwistVec.Dot(Axis), TwistQuat.GetW());
+
+    const JPH::Quat SwingQuat = NormRel * TwistQuat.Conjugated();
+    const float     SwingSin  = JPH::Vec3(SwingQuat.GetX(), SwingQuat.GetY(), SwingQuat.GetZ()).Length();
+    OutSwingAngleRad          = 2.0f * std::atan2(SwingSin, std::abs(SwingQuat.GetW()));
+}
 
 } // namespace
 
@@ -254,6 +310,10 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
     std::vector<ConstraintSlotEntry> ConstraintSlots      {};
     std::vector<uint32_t>            RecycledConstraintSlots {};
 
+    // 💡 Generic wait-free multi-reader snapshot bank + lock-free directive queue for cross-thread constraint access
+    Threading::ThreadBoundaryExchange<ConstraintListSnapshot, ConstraintDirective> ConstraintBoundary { 1024u };
+    std::vector<ConstraintTransitionEvent>                                         PendingStepEvents  {};
+
     CollisionDetection               ContactJournal       {};
     std::mutex                       ContactMutex         {};
 
@@ -262,6 +322,828 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
     double   AccumulatedSeconds = 0.0;
     double   SimulatedSeconds   = 0.0;
     uint64_t CompletedSteps     = 0u;
+
+    [[nodiscard]] bool VerifyBodyResident(RigidBodyToken Token) const noexcept
+    {
+        if (!Initialized || !Token.Valid() || Token.SlotIndex > BodySlots.size())
+        {
+            return false;
+        }
+        const BodySlotEntry& Entry = BodySlots[Token.SlotIndex - 1u];
+        return Entry.Occupied && Entry.Generation == Token.Generation && !Entry.JoltId.IsInvalid();
+    }
+
+    [[nodiscard]] ConstraintSlotEntry* ResolveMutableConstraint(ConstraintToken Token) noexcept
+    {
+        if (!Initialized || !Token.Valid() || Token.SlotIndex > ConstraintSlots.size())
+        {
+            return nullptr;
+        }
+        ConstraintSlotEntry& CSlot = ConstraintSlots[Token.SlotIndex - 1u];
+        if (!CSlot.Occupied || CSlot.Generation != Token.Generation)
+        {
+            return nullptr;
+        }
+        return &CSlot;
+    }
+
+    [[nodiscard]] bool AttachDockJoltConstraint(ConstraintSlotEntry& Slot) noexcept
+    {
+        if (!JoltWorld || !VerifyBodyResident(Slot.Descriptor.FirstBody) || !VerifyBodyResident(Slot.Descriptor.SecondBody))
+        {
+            return false;
+        }
+
+        const JPH::BodyID IdA = BodySlots[Slot.Descriptor.FirstBody.SlotIndex - 1u].JoltId;
+        const JPH::BodyID IdB = BodySlots[Slot.Descriptor.SecondBody.SlotIndex - 1u].JoltId;
+        if (IdA == IdB)
+        {
+            return false;
+        }
+
+        const JPH::BodyID Ids[2] = { IdA, IdB };
+        JPH::BodyLockMultiWrite Lock(JoltWorld->GetBodyLockInterface(), Ids, 2);
+        JPH::Body* BodyA = Lock.GetBody(0);
+        JPH::Body* BodyB = Lock.GetBody(1);
+        if (BodyA == nullptr || BodyB == nullptr)
+        {
+            return false;
+        }
+
+        const JPH::RVec3 AnchorWorld = BodyA->GetPosition() + JPH::RVec3(BodyA->GetRotation() * Slot.LocalAnchorA);
+        JPH::FixedConstraintSettings FixedSettings;
+        FixedSettings.mSpace  = JPH::EConstraintSpace::WorldSpace;
+        FixedSettings.mPoint1 = AnchorWorld;
+        FixedSettings.mPoint2 = AnchorWorld;
+        JPH::Ref<JPH::TwoBodyConstraint> Created = FixedSettings.Create(*BodyA, *BodyB);
+        if (Created == nullptr)
+        {
+            return false;
+        }
+
+        JoltWorld->AddConstraint(Created);
+        Slot.JoltConstraint      = Created;
+        Slot.Intact              = true;
+        Slot.DockPhase           = DockLatchPhase::Connected;
+        Slot.ExternalLoadNewtons = 0.0f;
+        Slot.StrainRatio         = 0.0f;
+        return true;
+    }
+
+    void ApplyMotorTargetToSlot(ConstraintSlotEntry& Slot, float TargetCoordinateOrVelocity) noexcept
+    {
+        Slot.Descriptor.TargetMotorCoordinate = TargetCoordinateOrVelocity;
+        if (!Slot.Intact || Slot.JoltConstraint == nullptr)
+        {
+            return;
+        }
+
+        switch (Slot.Descriptor.Category)
+        {
+            case ConstraintCategory::Hinge:
+            case ConstraintCategory::Spin:
+            {
+                auto* Hinge = static_cast<JPH::HingeConstraint*>(Slot.JoltConstraint.GetPtr());
+                if (Slot.Descriptor.Category == ConstraintCategory::Spin
+                    && (Slot.Descriptor.SpinSource == SpinRateSourceCategory::Freewheel
+                        || Slot.Descriptor.DriveCategory == ConstraintDriveCategory::Freewheel))
+                {
+                    Hinge->SetMotorState(JPH::EMotorState::Off);
+                }
+                else if (Slot.Descriptor.MotorVelocityMode || Slot.Descriptor.Category == ConstraintCategory::Spin
+                    || Slot.Descriptor.DriveCategory == ConstraintDriveCategory::MotorVelocity)
+                {
+                    Hinge->SetMotorState(JPH::EMotorState::Velocity);
+                    Hinge->SetTargetAngularVelocity(TargetCoordinateOrVelocity);
+                }
+                else
+                {
+                    Hinge->SetMotorState(JPH::EMotorState::Position);
+                    Hinge->SetTargetAngle(TargetCoordinateOrVelocity);
+                }
+                break;
+            }
+            case ConstraintCategory::Slider:
+            case ConstraintCategory::Spring:
+            {
+                auto* Slider = static_cast<JPH::SliderConstraint*>(Slot.JoltConstraint.GetPtr());
+                Slider->SetMotorState(JPH::EMotorState::Position);
+                Slider->SetTargetPosition(TargetCoordinateOrVelocity);
+                break;
+            }
+            case ConstraintCategory::SwingTwist:
+            {
+                auto* SwingTwist = static_cast<JPH::SwingTwistConstraint*>(Slot.JoltConstraint.GetPtr());
+                const float ClampedAngle = std::clamp(
+                    TargetCoordinateOrVelocity,
+                    -Slot.Descriptor.ConeHalfAngleRad,
+                    Slot.Descriptor.ConeHalfAngleRad);
+                SwingTwist->SetSwingMotorState(JPH::EMotorState::Position);
+                SwingTwist->SetTargetOrientationCS(JPH::Quat::sRotation(JPH::Vec3::sAxisY(), ClampedAngle));
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    void ApplyConstraintDirective(const ConstraintDirective& Directive) noexcept
+    {
+        if (Directive.Category == ConstraintDirectiveCategory::None)
+        {
+            return;
+        }
+
+        ConstraintSlotEntry* SlotPtr = ResolveMutableConstraint(Directive.TargetToken);
+        if (SlotPtr == nullptr)
+        {
+            return;
+        }
+        ConstraintSlotEntry& Slot = *SlotPtr;
+
+        switch (Directive.Category)
+        {
+            case ConstraintDirectiveCategory::AssignMotorTarget:
+            {
+                ApplyMotorTargetToSlot(Slot, Directive.PrimaryScalar);
+                break;
+            }
+            case ConstraintDirectiveCategory::AssignDriveCategory:
+            {
+                Slot.Descriptor.DriveCategory = Directive.DriveCategory;
+                if (Directive.PrimaryScalar > 0.05f)
+                {
+                    Slot.Descriptor.CyclePeriodSeconds = Directive.PrimaryScalar;
+                }
+                if (Slot.Descriptor.Category == ConstraintCategory::Spin)
+                {
+                    if (Directive.DriveCategory == ConstraintDriveCategory::Freewheel)
+                    {
+                        Slot.Descriptor.SpinSource = SpinRateSourceCategory::Freewheel;
+                        ApplyMotorTargetToSlot(Slot, 0.0f);
+                    }
+                    else if (Slot.Descriptor.SpinSource == SpinRateSourceCategory::Freewheel)
+                    {
+                        Slot.Descriptor.SpinSource = SpinRateSourceCategory::FixedRpm;
+                    }
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::AssignNormalizedPose:
+            {
+                const float Pose = std::clamp(Directive.PrimaryScalar, 0.0f, 1.0f);
+                Slot.Descriptor.NormalizedPose = Pose;
+                if (Slot.Descriptor.Category == ConstraintCategory::Hinge
+                    || Slot.Descriptor.Category == ConstraintCategory::Slider)
+                {
+                    const float Target = Slot.Descriptor.MinLimit
+                        + (Slot.Descriptor.MaxLimit - Slot.Descriptor.MinLimit) * Pose;
+                    ApplyMotorTargetToSlot(Slot, Target);
+                }
+                else if (Slot.Descriptor.Category == ConstraintCategory::Spring)
+                {
+                    const float Target = (Slot.Descriptor.MinLimit
+                        + (Slot.Descriptor.MaxLimit - Slot.Descriptor.MinLimit) * Pose) * 0.5f;
+                    ApplyMotorTargetToSlot(Slot, Target);
+                }
+                else if (Slot.Descriptor.Category == ConstraintCategory::SwingTwist)
+                {
+                    ApplyMotorTargetToSlot(Slot, Slot.Descriptor.ConeHalfAngleRad * Pose);
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::AssignSpringTuning:
+            {
+                if (Slot.Descriptor.Category == ConstraintCategory::Spring
+                    && Slot.Intact && Slot.JoltConstraint != nullptr)
+                {
+                    auto* Slider = static_cast<JPH::SliderConstraint*>(Slot.JoltConstraint.GetPtr());
+                    if (Directive.PrimaryScalar > 0.1f)
+                    {
+                        Slot.Descriptor.SpringFrequencyHz = Directive.PrimaryScalar;
+                    }
+                    if (Directive.SecondaryScalar > 0.01f)
+                    {
+                        Slot.Descriptor.SpringDampingRatio = Directive.SecondaryScalar;
+                    }
+                    Slider->GetMotorSettings().mSpringSettings.mMode      = JPH::ESpringMode::FrequencyAndDamping;
+                    Slider->GetMotorSettings().mSpringSettings.mFrequency = Slot.Descriptor.SpringFrequencyHz;
+                    Slider->GetMotorSettings().mSpringSettings.mDamping   = Slot.Descriptor.SpringDampingRatio;
+                    Slot.Descriptor.TargetMotorCoordinate                 = Directive.TertiaryScalar;
+                    Slider->SetMotorState(JPH::EMotorState::Position);
+                    Slider->SetTargetPosition(Directive.TertiaryScalar);
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::AssignSpinLinearSpeed:
+            {
+                if (Slot.Descriptor.Category == ConstraintCategory::Spin)
+                {
+                    Slot.Descriptor.SpinSource = SpinRateSourceCategory::LinearSpeed;
+                    Slot.LinearSpeedMps        = Directive.PrimaryScalar;
+                    if (Directive.SecondaryScalar > 0.05f)
+                    {
+                        Slot.Descriptor.RollingRadiusMeters = Directive.SecondaryScalar;
+                    }
+                    const float Omega = ConstraintSolver::EvaluateSpinAngularVelocity(
+                        SpinRateSourceCategory::LinearSpeed,
+                        0.0f,
+                        Slot.LinearSpeedMps,
+                        Slot.Descriptor.RollingRadiusMeters);
+                    ApplyMotorTargetToSlot(Slot, Omega);
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::ApplyExternalLoad:
+            {
+                if (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                {
+                    Slot.ExternalLoadNewtons = std::max(0.0f, Directive.PrimaryScalar);
+                }
+                else if (Slot.Descriptor.Category == ConstraintCategory::Spring
+                    && VerifyBodyResident(Slot.Descriptor.SecondBody))
+                {
+                    const JPH::BodyID IdB = BodySlots[Slot.Descriptor.SecondBody.SlotIndex - 1u].JoltId;
+                    const JPH::Vec3   Axis = ToJoltVec3(Mathematics::NormalizeAxis(Slot.Descriptor.AxisUnit, { 0.0f, 1.0f, 0.0f }));
+                    JoltWorld->GetBodyInterface().AddImpulse(IdB, Axis * Directive.PrimaryScalar);
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::BreakConstraint:
+            {
+                if (Slot.Intact)
+                {
+                    if (Slot.JoltConstraint != nullptr && JoltWorld)
+                    {
+                        JoltWorld->RemoveConstraint(Slot.JoltConstraint);
+                        Slot.JoltConstraint = nullptr;
+                    }
+                    Slot.Intact = false;
+                    if (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                    {
+                        Slot.DockPhase          = DockLatchPhase::Released;
+                        Slot.DockReconnectArmed = false;
+                    }
+                    PendingStepEvents.push_back({
+                        Directive.TargetToken,
+                        ConstraintTransitionCategory::ManualBreak,
+                        Slot.AppliedForceN,
+                        SimulatedSeconds
+                    });
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::ReleaseDock:
+            {
+                if (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                {
+                    if (Slot.Intact && Slot.JoltConstraint != nullptr && JoltWorld)
+                    {
+                        JoltWorld->RemoveConstraint(Slot.JoltConstraint);
+                        Slot.JoltConstraint = nullptr;
+                    }
+                    const bool WasIntact    = Slot.Intact;
+                    Slot.Intact             = false;
+                    Slot.DockPhase          = DockLatchPhase::Released;
+                    Slot.DockReconnectArmed = false;
+                    Slot.ExternalLoadNewtons = 0.0f;
+                    if (WasIntact)
+                    {
+                        PendingStepEvents.push_back({
+                            Directive.TargetToken,
+                            ConstraintTransitionCategory::DockReleased,
+                            Slot.AppliedForceN,
+                            SimulatedSeconds
+                        });
+                    }
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::EngageDock:
+            {
+                if (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                {
+                    Slot.DockReconnectArmed = true;
+                    if (!Slot.Intact)
+                    {
+                        if (!Slot.Descriptor.DockKeyMatched)
+                        {
+                            Slot.DockPhase = DockLatchPhase::Rejected;
+                            PendingStepEvents.push_back({
+                                Directive.TargetToken,
+                                ConstraintTransitionCategory::DockRejected,
+                                0.0f,
+                                SimulatedSeconds
+                            });
+                        }
+                        else if (Directive.ToggleEnabled)
+                        {
+                            if (AttachDockJoltConstraint(Slot))
+                            {
+                                PendingStepEvents.push_back({
+                                    Directive.TargetToken,
+                                    ConstraintTransitionCategory::DockConnected,
+                                    0.0f,
+                                    SimulatedSeconds
+                                });
+                            }
+                        }
+                        else
+                        {
+                            Slot.DockPhase = DockLatchPhase::Returning;
+                        }
+                    }
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::AssignDockKeyCompatibility:
+            {
+                if (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                {
+                    Slot.Descriptor.DockKeyMatched = Directive.ToggleEnabled;
+                    if (!Directive.ToggleEnabled && !Slot.Intact)
+                    {
+                        Slot.DockPhase = DockLatchPhase::Rejected;
+                    }
+                }
+                break;
+            }
+            case ConstraintDirectiveCategory::ReclaimConstraint:
+            {
+                const uint32_t ZeroIdx = Directive.TargetToken.SlotIndex - 1u;
+                if (Slot.Intact && Slot.JoltConstraint != nullptr && JoltWorld)
+                {
+                    JoltWorld->RemoveConstraint(Slot.JoltConstraint);
+                }
+                Slot.JoltConstraint = nullptr;
+                Slot.Occupied       = false;
+                Slot.Intact         = false;
+                Slot.Generation     = (Slot.Generation + 1u == 0u) ? 1u : (Slot.Generation + 1u);
+                RecycledConstraintSlots.push_back(ZeroIdx);
+                break;
+            }
+            case ConstraintDirectiveCategory::None:
+                break;
+        }
+    }
+
+    void StepConstraintDrivers(float StepSeconds) noexcept
+    {
+        if (!JoltWorld || StepSeconds <= 1.0e-6f)
+        {
+            return;
+        }
+
+        const JPH::BodyInterface& Bodies = JoltWorld->GetBodyInterface();
+        for (uint32_t ZeroIdx = 0u; ZeroIdx < ConstraintSlots.size(); ++ZeroIdx)
+        {
+            ConstraintSlotEntry& Slot = ConstraintSlots[ZeroIdx];
+            if (!Slot.Occupied)
+            {
+                continue;
+            }
+
+            const ConstraintToken Token { ZeroIdx + 1u, Slot.Generation };
+
+            switch (Slot.Descriptor.Category)
+            {
+                case ConstraintCategory::Hinge:
+                {
+                    if (Slot.Intact && Slot.JoltConstraint != nullptr
+                        && Slot.Descriptor.DriveCategory == ConstraintDriveCategory::Sweep
+                        && Slot.Descriptor.MaxLimit > Slot.Descriptor.MinLimit)
+                    {
+                        const float Wave = ConstraintSolver::EvaluateSweepNormalizedWave(
+                            SimulatedSeconds,
+                            Slot.Descriptor.CyclePeriodSeconds);
+                        const float TargetAngle = Slot.Descriptor.MinLimit
+                            + (Slot.Descriptor.MaxLimit - Slot.Descriptor.MinLimit) * Wave;
+                        ApplyMotorTargetToSlot(Slot, TargetAngle);
+                    }
+                    break;
+                }
+                case ConstraintCategory::Slider:
+                {
+                    if (Slot.Intact && Slot.JoltConstraint != nullptr
+                        && Slot.Descriptor.DriveCategory == ConstraintDriveCategory::Sweep
+                        && Slot.Descriptor.MaxLimit > Slot.Descriptor.MinLimit)
+                    {
+                        const float Wave = ConstraintSolver::EvaluateSweepNormalizedWave(
+                            SimulatedSeconds,
+                            Slot.Descriptor.CyclePeriodSeconds);
+                        const float TargetPos = Slot.Descriptor.MinLimit
+                            + (Slot.Descriptor.MaxLimit - Slot.Descriptor.MinLimit) * Wave;
+                        ApplyMotorTargetToSlot(Slot, TargetPos);
+                    }
+                    break;
+                }
+                case ConstraintCategory::SwingTwist:
+                {
+                    if (Slot.Intact && Slot.JoltConstraint != nullptr
+                        && Slot.Descriptor.DriveCategory == ConstraintDriveCategory::Sweep)
+                    {
+                        auto* SwingTwist = static_cast<JPH::SwingTwistConstraint*>(Slot.JoltConstraint.GetPtr());
+                        const double Period = std::max(0.2, static_cast<double>(Slot.Descriptor.CyclePeriodSeconds));
+                        const float  Phi    = static_cast<float>((2.0 * Constants::Pi * SimulatedSeconds) / Period);
+                        const JPH::Vec3 OrbitAxis(0.0f, std::cos(Phi), std::sin(Phi));
+                        SwingTwist->SetSwingMotorState(JPH::EMotorState::Position);
+                        SwingTwist->SetTargetOrientationCS(JPH::Quat::sRotation(OrbitAxis, Slot.Descriptor.ConeHalfAngleRad));
+                    }
+                    break;
+                }
+                case ConstraintCategory::Spin:
+                {
+                    if (Slot.Intact && Slot.JoltConstraint != nullptr)
+                    {
+                        auto* Hinge = static_cast<JPH::HingeConstraint*>(Slot.JoltConstraint.GetPtr());
+                        if (Slot.Descriptor.SpinSource == SpinRateSourceCategory::Freewheel
+                            || Slot.Descriptor.DriveCategory == ConstraintDriveCategory::Freewheel)
+                        {
+                            Hinge->SetMotorState(JPH::EMotorState::Off);
+                        }
+                        else if (Slot.Descriptor.SpinSource == SpinRateSourceCategory::LinearSpeed)
+                        {
+                            const float Omega = ConstraintSolver::EvaluateSpinAngularVelocity(
+                                SpinRateSourceCategory::LinearSpeed,
+                                0.0f,
+                                Slot.LinearSpeedMps,
+                                Slot.Descriptor.RollingRadiusMeters);
+                            Hinge->SetMotorState(JPH::EMotorState::Velocity);
+                            Hinge->SetTargetAngularVelocity(Omega);
+                        }
+                    }
+                    break;
+                }
+                case ConstraintCategory::Dock:
+                {
+                    if (Slot.Intact)
+                    {
+                        if (Slot.Descriptor.DriveCategory == ConstraintDriveCategory::PullTest
+                            && Slot.Descriptor.BreakForceN > 1.0e-5f)
+                        {
+                            // 📝 ProjectZeroEditor pull-test ramp: climbs to 1.2x BreakForceN in 3 seconds
+                            Slot.ExternalLoadNewtons += Slot.Descriptor.BreakForceN * 0.4f * StepSeconds;
+                        }
+                        if (Slot.Descriptor.BreakForceN > 1.0e-5f
+                            && Slot.ExternalLoadNewtons > Slot.Descriptor.BreakForceN)
+                        {
+                            if (Slot.JoltConstraint != nullptr)
+                            {
+                                JoltWorld->RemoveConstraint(Slot.JoltConstraint);
+                                Slot.JoltConstraint = nullptr;
+                            }
+                            Slot.Intact    = false;
+                            Slot.DockPhase = DockLatchPhase::Released;
+                            Slot.StrainRatio = Slot.ExternalLoadNewtons / Slot.Descriptor.BreakForceN;
+                            Slot.AppliedForceN = std::max(Slot.AppliedForceN, Slot.ExternalLoadNewtons);
+                            PendingStepEvents.push_back({
+                                Token,
+                                ConstraintTransitionCategory::DockReleased,
+                                Slot.ExternalLoadNewtons,
+                                SimulatedSeconds
+                            });
+                        }
+                    }
+                    else if (Slot.DockReconnectArmed
+                        && VerifyBodyResident(Slot.Descriptor.FirstBody)
+                        && VerifyBodyResident(Slot.Descriptor.SecondBody))
+                    {
+                        const JPH::BodyID IdA = BodySlots[Slot.Descriptor.FirstBody.SlotIndex - 1u].JoltId;
+                        const JPH::BodyID IdB = BodySlots[Slot.Descriptor.SecondBody.SlotIndex - 1u].JoltId;
+                        const JPH::RVec3  AnchorA = Bodies.GetPosition(IdA) + JPH::RVec3(Bodies.GetRotation(IdA) * Slot.LocalAnchorA);
+                        const JPH::RVec3  AnchorB = Bodies.GetPosition(IdB) + JPH::RVec3(Bodies.GetRotation(IdB) * Slot.LocalAnchorB);
+                        const float       GapMeters = static_cast<float>((AnchorB - AnchorA).Length());
+                        Slot.DockGapMeters = GapMeters;
+
+                        const float CaptureRadius = std::max(0.05f, Slot.Descriptor.SnapRadiusMeters);
+                        if (GapMeters <= CaptureRadius)
+                        {
+                            if (Slot.Descriptor.DockKeyMatched)
+                            {
+                                if (AttachDockJoltConstraint(Slot))
+                                {
+                                    Slot.DockGapMeters = 0.0f;
+                                    PendingStepEvents.push_back({
+                                        Token,
+                                        ConstraintTransitionCategory::DockConnected,
+                                        0.0f,
+                                        SimulatedSeconds
+                                    });
+                                }
+                            }
+                            else if (Slot.DockPhase != DockLatchPhase::Rejected)
+                            {
+                                Slot.DockPhase = DockLatchPhase::Rejected;
+                                PendingStepEvents.push_back({
+                                    Token,
+                                    ConstraintTransitionCategory::DockRejected,
+                                    0.0f,
+                                    SimulatedSeconds
+                                });
+                            }
+                        }
+                        else if (Slot.DockPhase == DockLatchPhase::Released)
+                        {
+                            Slot.DockPhase = DockLatchPhase::Returning;
+                        }
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    }
+
+    void RefreshConstraintPoseTelemetry(ConstraintSlotEntry& Slot) noexcept
+    {
+        if (!JoltWorld
+            || !VerifyBodyResident(Slot.Descriptor.FirstBody)
+            || !VerifyBodyResident(Slot.Descriptor.SecondBody))
+        {
+            return;
+        }
+
+        const JPH::BodyInterface& Bodies = JoltWorld->GetBodyInterface();
+        const JPH::BodyID IdA = BodySlots[Slot.Descriptor.FirstBody.SlotIndex - 1u].JoltId;
+        const JPH::BodyID IdB = BodySlots[Slot.Descriptor.SecondBody.SlotIndex - 1u].JoltId;
+
+        const JPH::RVec3 PosA = Bodies.GetPosition(IdA);
+        const JPH::Quat  RotA = Bodies.GetRotation(IdA);
+        const JPH::Vec3  VelA = Bodies.GetLinearVelocity(IdA);
+        const JPH::Vec3  AngA = Bodies.GetAngularVelocity(IdA);
+
+        const JPH::RVec3 PosB = Bodies.GetPosition(IdB);
+        const JPH::Quat  RotB = Bodies.GetRotation(IdB);
+        const JPH::Vec3  VelB = Bodies.GetLinearVelocity(IdB);
+        const JPH::Vec3  AngB = Bodies.GetAngularVelocity(IdB);
+
+        const JPH::RVec3 AnchorWorldA = PosA + JPH::RVec3(RotA * Slot.LocalAnchorA);
+        const JPH::RVec3 AnchorWorldB = PosB + JPH::RVec3(RotB * Slot.LocalAnchorB);
+        const JPH::Vec3  SepWorld(
+            static_cast<float>(AnchorWorldB.GetX() - AnchorWorldA.GetX()),
+            static_cast<float>(AnchorWorldB.GetY() - AnchorWorldA.GetY()),
+            static_cast<float>(AnchorWorldB.GetZ() - AnchorWorldA.GetZ()));
+        const JPH::Quat  RelQuat = (RotA.Conjugated() * RotB).Normalized();
+        const JPH::Vec3  WorldAxis = (RotA * Slot.LocalAxisA).NormalizedOr(JPH::Vec3::sAxisY());
+
+        Slot.AnchorWorldMeters     = FromJoltRVec3(AnchorWorldA);
+        Slot.AttachedWorldMeters   = FromJoltRVec3(AnchorWorldB);
+        Slot.JointWorldOrientation = FromJoltQuat(RotB);
+        Slot.RelativeOffsetMeters  = FromJoltVec3(SepWorld);
+        Slot.RelativeOrientation   = FromJoltQuat(RelQuat);
+
+        const float SeparationMeters = SepWorld.Length();
+        Slot.CurrentVelocity = 0.0f;
+        Slot.SwingAngleRad   = 0.0f;
+        Slot.TwistAngleRad   = 0.0f;
+        Slot.CurrentRpm      = 0.0f;
+        Slot.TautEngaged     = false;
+
+        switch (Slot.Descriptor.Category)
+        {
+            case ConstraintCategory::Hinge:
+            case ConstraintCategory::Spin:
+            {
+                if (Slot.Intact && Slot.JoltConstraint != nullptr)
+                {
+                    Slot.CurrentCoordinate = static_cast<const JPH::HingeConstraint*>(Slot.JoltConstraint.GetPtr())->GetCurrentAngle();
+                }
+                const float RelOmega = (AngB - AngA).Dot(WorldAxis);
+                Slot.CurrentVelocity = RelOmega;
+                Slot.CurrentRpm      = static_cast<float>((static_cast<double>(RelOmega) * 60.0) / (2.0 * Constants::Pi));
+                break;
+            }
+            case ConstraintCategory::Slider:
+            case ConstraintCategory::Spring:
+            {
+                if (Slot.Intact && Slot.JoltConstraint != nullptr)
+                {
+                    Slot.CurrentCoordinate = static_cast<const JPH::SliderConstraint*>(Slot.JoltConstraint.GetPtr())->GetCurrentPosition();
+                }
+                else
+                {
+                    Slot.CurrentCoordinate = SepWorld.Dot(WorldAxis);
+                }
+                Slot.CurrentVelocity = (VelB - VelA).Dot(WorldAxis);
+                break;
+            }
+            case ConstraintCategory::SwingTwist:
+            {
+                const JPH::Quat DeltaRel = (Slot.InitialRelativeQuat.Conjugated() * RelQuat).Normalized();
+                DecomposeSwingTwistAngles(DeltaRel, Slot.LocalAxisA, Slot.SwingAngleRad, Slot.TwistAngleRad);
+                Slot.CurrentCoordinate = Slot.SwingAngleRad;
+                Slot.CurrentVelocity   = (AngB - AngA).Length();
+                break;
+            }
+            case ConstraintCategory::Distance:
+            case ConstraintCategory::Tether:
+            {
+                Slot.CurrentCoordinate = SeparationMeters;
+                if (Slot.Descriptor.MaxLimit > 1.0e-5f)
+                {
+                    Slot.TautEngaged = (SeparationMeters >= Slot.Descriptor.MaxLimit * 0.985f);
+                }
+                if (SeparationMeters > 1.0e-5f)
+                {
+                    const JPH::Vec3 Dir = SepWorld / SeparationMeters;
+                    const float     CosTheta = std::clamp(Dir.Dot(-WorldAxis), -1.0f, 1.0f);
+                    Slot.SwingAngleRad = std::acos(CosTheta);
+                }
+                Slot.CurrentVelocity = (VelB - VelA).Length();
+                break;
+            }
+            case ConstraintCategory::Dock:
+            {
+                Slot.DockGapMeters     = Slot.Intact ? 0.0f : SeparationMeters;
+                Slot.CurrentCoordinate = Slot.DockGapMeters;
+                break;
+            }
+            case ConstraintCategory::Fixed:
+            case ConstraintCategory::BreakableBond:
+            case ConstraintCategory::Point:
+            {
+                Slot.CurrentCoordinate = SeparationMeters;
+                break;
+            }
+        }
+    }
+
+    void EvaluateConstraintRuptures(float StepSeconds) noexcept
+    {
+        if (StepSeconds <= 1.0e-6f)
+        {
+            return;
+        }
+        for (uint32_t ZeroIdx = 0u; ZeroIdx < ConstraintSlots.size(); ++ZeroIdx)
+        {
+            ConstraintSlotEntry& Slot = ConstraintSlots[ZeroIdx];
+            if (!Slot.Occupied)
+            {
+                continue;
+            }
+
+            if (Slot.Intact && Slot.JoltConstraint != nullptr)
+            {
+                float ForceLambda  = 0.0f;
+                float TorqueLambda = 0.0f;
+                switch (Slot.Descriptor.Category)
+                {
+                    case ConstraintCategory::Fixed:
+                    case ConstraintCategory::BreakableBond:
+                    case ConstraintCategory::Dock:
+                    {
+                        const auto* Fixed = static_cast<const JPH::FixedConstraint*>(Slot.JoltConstraint.GetPtr());
+                        ForceLambda  = Fixed->GetTotalLambdaPosition().Length();
+                        TorqueLambda = Fixed->GetTotalLambdaRotation().Length();
+                        break;
+                    }
+                    case ConstraintCategory::Distance:
+                    case ConstraintCategory::Tether:
+                    {
+                        const auto* Dist = static_cast<const JPH::DistanceConstraint*>(Slot.JoltConstraint.GetPtr());
+                        ForceLambda = std::abs(Dist->GetTotalLambdaPosition());
+                        break;
+                    }
+                    case ConstraintCategory::Point:
+                    {
+                        const auto* Pt = static_cast<const JPH::PointConstraint*>(Slot.JoltConstraint.GetPtr());
+                        ForceLambda = Pt->GetTotalLambdaPosition().Length();
+                        break;
+                    }
+                    case ConstraintCategory::SwingTwist:
+                    {
+                        const auto* ST = static_cast<const JPH::SwingTwistConstraint*>(Slot.JoltConstraint.GetPtr());
+                        ForceLambda  = ST->GetTotalLambdaPosition().Length();
+                        TorqueLambda = std::hypot(ST->GetTotalLambdaSwingY(), ST->GetTotalLambdaSwingZ()) + std::abs(ST->GetTotalLambdaTwist());
+                        break;
+                    }
+                    case ConstraintCategory::Hinge:
+                    case ConstraintCategory::Spin:
+                    {
+                        const auto* Hinge = static_cast<const JPH::HingeConstraint*>(Slot.JoltConstraint.GetPtr());
+                        ForceLambda  = Hinge->GetTotalLambdaPosition().Length();
+                        TorqueLambda = Hinge->GetTotalLambdaRotation().Length();
+                        break;
+                    }
+                    case ConstraintCategory::Slider:
+                    case ConstraintCategory::Spring:
+                    {
+                        const auto* Slider = static_cast<const JPH::SliderConstraint*>(Slot.JoltConstraint.GetPtr());
+                        ForceLambda  = Slider->GetTotalLambdaPosition().Length();
+                        TorqueLambda = Slider->GetTotalLambdaRotation().Length();
+                        break;
+                    }
+                }
+
+                const float ReactionForceN = ForceLambda / StepSeconds;
+                Slot.AppliedForceN   = (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                    ? std::max(ReactionForceN, Slot.ExternalLoadNewtons)
+                    : ReactionForceN;
+                Slot.AppliedTorqueNm = TorqueLambda / StepSeconds;
+                Slot.StrainRatio     = ConstraintSolver::EvaluateBondStrainRatio(
+                    Slot.AppliedForceN,
+                    Slot.AppliedTorqueNm,
+                    Slot.Descriptor.BreakForceN,
+                    Slot.Descriptor.BreakTorqueNm);
+
+                if (Slot.StrainRatio > 1.0f)
+                {
+                    JoltWorld->RemoveConstraint(Slot.JoltConstraint);
+                    Slot.JoltConstraint = nullptr;
+                    Slot.Intact         = false;
+                    const ConstraintToken Token { ZeroIdx + 1u, Slot.Generation };
+                    if (Slot.Descriptor.Category == ConstraintCategory::Dock)
+                    {
+                        Slot.DockPhase = DockLatchPhase::Released;
+                        PendingStepEvents.push_back({
+                            Token,
+                            ConstraintTransitionCategory::DockReleased,
+                            Slot.AppliedForceN,
+                            SimulatedSeconds
+                        });
+                    }
+                    else
+                    {
+                        PendingStepEvents.push_back({
+                            Token,
+                            ConstraintTransitionCategory::Ruptured,
+                            Slot.AppliedForceN,
+                            SimulatedSeconds
+                        });
+                    }
+                }
+            }
+
+            RefreshConstraintPoseTelemetry(Slot);
+        }
+    }
+
+    void PublishConstraintSnapshot() noexcept
+    {
+        (void)ConstraintBoundary.PublishSnapshotInPlace(
+            [this](ConstraintListSnapshot& Destination) noexcept
+            {
+                Destination.ClearForRewrite();
+                Destination.CompletedStepOrdinal = CompletedSteps;
+                Destination.SimulatedSeconds     = SimulatedSeconds;
+                Destination.SlotToDenseIndex.assign(ConstraintSlots.size(), ConstraintListSnapshot::InvalidDenseIndex);
+
+                for (uint32_t ZeroIdx = 0u; ZeroIdx < ConstraintSlots.size(); ++ZeroIdx)
+                {
+                    const ConstraintSlotEntry& CSlot = ConstraintSlots[ZeroIdx];
+                    if (!CSlot.Occupied)
+                    {
+                        continue;
+                    }
+
+                    ConstraintReading Reading {};
+                    Reading.Token                 = { ZeroIdx + 1u, CSlot.Generation };
+                    Reading.Category              = CSlot.Descriptor.Category;
+                    Reading.DriveCategory         = CSlot.Descriptor.DriveCategory;
+                    Reading.FirstBody             = CSlot.Descriptor.FirstBody;
+                    Reading.SecondBody            = CSlot.Descriptor.SecondBody;
+                    Reading.ComponentInstanceTag  = CSlot.Descriptor.ComponentInstanceTag;
+                    Reading.AnchorWorldMeters     = CSlot.AnchorWorldMeters;
+                    Reading.AttachedWorldMeters   = CSlot.AttachedWorldMeters;
+                    Reading.JointWorldOrientation = CSlot.JointWorldOrientation;
+                    Reading.RelativeOffsetMeters  = CSlot.RelativeOffsetMeters;
+                    Reading.RelativeOrientation   = CSlot.RelativeOrientation;
+                    Reading.Resident              = true;
+                    Reading.Intact                = CSlot.Intact;
+                    Reading.TautEngaged           = CSlot.TautEngaged;
+                    Reading.DockKeyMatched        = CSlot.Descriptor.DockKeyMatched;
+                    Reading.DockPhase             = CSlot.DockPhase;
+                    Reading.AppliedForceN         = CSlot.AppliedForceN;
+                    Reading.AppliedTorqueNm       = CSlot.AppliedTorqueNm;
+                    Reading.StrainRatio           = CSlot.StrainRatio;
+                    Reading.CurrentCoordinate     = CSlot.CurrentCoordinate;
+                    Reading.CurrentVelocity       = CSlot.CurrentVelocity;
+                    Reading.SwingAngleRad         = CSlot.SwingAngleRad;
+                    Reading.TwistAngleRad         = CSlot.TwistAngleRad;
+                    Reading.CurrentRpm            = CSlot.CurrentRpm;
+                    Reading.DockGapMeters         = CSlot.DockGapMeters;
+
+                    const uint32_t DenseIndex = static_cast<uint32_t>(Destination.Constraints.size());
+                    Destination.Constraints.push_back(Reading);
+                    Destination.SlotToDenseIndex[ZeroIdx] = DenseIndex;
+                    if (CSlot.Intact)
+                    {
+                        ++Destination.IntactConstraintCount;
+                    }
+                    else
+                    {
+                        ++Destination.BrokenConstraintCount;
+                    }
+                }
+
+                Destination.StepEvents.assign(PendingStepEvents.begin(), PendingStepEvents.end());
+            },
+            SimulatedSeconds,
+            CompletedSteps);
+
+        PendingStepEvents.clear();
+    }
 
     RigidBodyToken ResolveBodyTokenFromTag(JPH::uint64 UserTag) const noexcept
     {
@@ -334,87 +1216,6 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
             BodySlots[Reading.BodyB.SlotIndex - 1u].PeakImpulseNs = std::max(
                 BodySlots[Reading.BodyB.SlotIndex - 1u].PeakImpulseNs,
                 MaxNormalImpulse);
-        }
-    }
-
-    void EvaluateConstraintRuptures(float StepSeconds) noexcept
-    {
-        if (StepSeconds <= 1.0e-6f)
-        {
-            return;
-        }
-        for (ConstraintSlotEntry& Slot : ConstraintSlots)
-        {
-            if (!Slot.Occupied || !Slot.Intact || Slot.JoltConstraint == nullptr)
-            {
-                continue;
-            }
-
-            float ForceLambda  = 0.0f;
-            float TorqueLambda = 0.0f;
-            switch (Slot.Descriptor.Category)
-            {
-                case ConstraintCategory::Fixed:
-                case ConstraintCategory::BreakableBond:
-                case ConstraintCategory::Dock:
-                {
-                    const auto* Fixed = static_cast<const JPH::FixedConstraint*>(Slot.JoltConstraint.GetPtr());
-                    ForceLambda  = Fixed->GetTotalLambdaPosition().Length();
-                    TorqueLambda = Fixed->GetTotalLambdaRotation().Length();
-                    break;
-                }
-                case ConstraintCategory::Distance:
-                case ConstraintCategory::Tether:
-                {
-                    const auto* Dist = static_cast<const JPH::DistanceConstraint*>(Slot.JoltConstraint.GetPtr());
-                    ForceLambda = std::abs(Dist->GetTotalLambdaPosition());
-                    break;
-                }
-                case ConstraintCategory::Point:
-                {
-                    const auto* Pt = static_cast<const JPH::PointConstraint*>(Slot.JoltConstraint.GetPtr());
-                    ForceLambda = Pt->GetTotalLambdaPosition().Length();
-                    break;
-                }
-                case ConstraintCategory::SwingTwist:
-                {
-                    const auto* ST = static_cast<const JPH::SwingTwistConstraint*>(Slot.JoltConstraint.GetPtr());
-                    ForceLambda  = ST->GetTotalLambdaPosition().Length();
-                    TorqueLambda = std::hypot(ST->GetTotalLambdaSwingY(), ST->GetTotalLambdaSwingZ()) + std::abs(ST->GetTotalLambdaTwist());
-                    break;
-                }
-                case ConstraintCategory::Hinge:
-                case ConstraintCategory::Spin:
-                {
-                    const auto* Hinge = static_cast<const JPH::HingeConstraint*>(Slot.JoltConstraint.GetPtr());
-                    ForceLambda  = Hinge->GetTotalLambdaPosition().Length();
-                    TorqueLambda = Hinge->GetTotalLambdaRotation().Length();
-                    break;
-                }
-                case ConstraintCategory::Slider:
-                case ConstraintCategory::Spring:
-                {
-                    const auto* Slider = static_cast<const JPH::SliderConstraint*>(Slot.JoltConstraint.GetPtr());
-                    ForceLambda  = Slider->GetTotalLambdaPosition().Length();
-                    TorqueLambda = Slider->GetTotalLambdaRotation().Length();
-                    break;
-                }
-            }
-
-            Slot.AppliedForceN   = ForceLambda / StepSeconds;
-            Slot.AppliedTorqueNm = TorqueLambda / StepSeconds;
-            Slot.StrainRatio     = ConstraintSolver::EvaluateBondStrainRatio(
-                Slot.AppliedForceN,
-                Slot.AppliedTorqueNm,
-                Slot.Descriptor.BreakForceN,
-                Slot.Descriptor.BreakTorqueNm);
-
-            if (Slot.StrainRatio > 1.0f)
-            {
-                JoltWorld->RemoveConstraint(Slot.JoltConstraint);
-                Slot.JoltConstraint = nullptr;
-                Slot.Intact         = false;
-            }
         }
     }
 };
@@ -490,8 +1291,10 @@ bool PhysicsExtension::Initialize() noexcept
     Runtime->AccumulatedSeconds = 0.0;
     Runtime->SimulatedSeconds   = 0.0;
     Runtime->CompletedSteps     = 0u;
+    Runtime->PendingStepEvents.clear();
     Runtime->Initialized        = true;
     Runtime->Suspended          = false;
+    Runtime->PublishConstraintSnapshot();
     return true;
 }
 
@@ -520,10 +1323,18 @@ void PhysicsExtension::Tick(double Δt) noexcept
         Runtime->ContactJournal.ClearTickJournal();
     }
 
+    // ① Drain cross-thread constraint directives submitted from GameThread / EditorThread / ExecutionChannels
+    const std::size_t DrainedDirectives = Runtime->ConstraintBoundary.DrainDirectives(
+        [this](const ConstraintDirective& IncomingDirective) noexcept
+        {
+            Runtime->ApplyConstraintDirective(IncomingDirective);
+        });
+
     uint32_t Substeps = 0u;
     const uint32_t MaxSteps = std::max(Config.MaxSubstepsPerTick, 1u);
     while (Runtime->AccumulatedSeconds + 1.0e-9 >= FixedStep && Substeps < MaxSteps)
     {
+        Runtime->StepConstraintDrivers(static_cast<float>(FixedStep));
         Runtime->JoltWorld->Update(
             static_cast<float>(FixedStep),
             1,
@@ -535,6 +1346,12 @@ void PhysicsExtension::Tick(double Δt) noexcept
         Runtime->SimulatedSeconds   += FixedStep;
         ++Runtime->CompletedSteps;
         ++Substeps;
+    }
+
+    // ② Publish an immutable generation-stamped constraint snapshot for wait-free multi-thread reads
+    if (Substeps > 0u || DrainedDirectives > 0u)
+    {
+        Runtime->PublishConstraintSnapshot();
     }
 }
 
@@ -571,6 +1388,8 @@ void PhysicsExtension::Finalize() noexcept
     }
     Runtime->ConstraintSlots.clear();
     Runtime->RecycledConstraintSlots.clear();
+    Runtime->PendingStepEvents.clear();
+    Runtime->PublishConstraintSnapshot();
 
     if (Runtime->JoltWorld)
     {
@@ -1041,169 +1860,264 @@ ConstraintToken PhysicsExtension::IssueConstraint(const ConstraintDescriptor& De
         return {};
     }
 
-    const JPH::BodyID Ids[2] = { IdA, IdB };
-    JPH::BodyLockMultiWrite Lock(Runtime->JoltWorld->GetBodyLockInterface(), Ids, 2);
-    JPH::Body* BodyA = Lock.GetBody(0);
-    JPH::Body* BodyB = Lock.GetBody(1);
-    if (BodyA == nullptr || BodyB == nullptr)
-    {
-        return {};
-    }
+    JPH::Ref<JPH::TwoBodyConstraint> Created {};
+    JPH::Vec3 LocalAnchorA        = JPH::Vec3::sZero();
+    JPH::Vec3 LocalAnchorB        = JPH::Vec3::sZero();
+    JPH::Vec3 LocalAxisA          = JPH::Vec3::sAxisY();
+    JPH::Quat InitialRelativeQuat = JPH::Quat::sIdentity();
+    bool      InitialIntact       = true;
+    DockLatchPhase InitialDockPhase = DockLatchPhase::Connected;
+    bool      InitialDockReconnect  = false;
 
-    JPH::Ref<JPH::TwoBodyConstraint> Created;
-    switch (Descriptor.Category)
     {
-        case ConstraintCategory::Fixed:
-        case ConstraintCategory::BreakableBond:
-        case ConstraintCategory::Dock:
+        const JPH::BodyID Ids[2] = { IdA, IdB };
+        JPH::BodyLockMultiWrite Lock(Runtime->JoltWorld->GetBodyLockInterface(), Ids, 2);
+        JPH::Body* BodyA = Lock.GetBody(0);
+        JPH::Body* BodyB = Lock.GetBody(1);
+        if (BodyA == nullptr || BodyB == nullptr)
         {
-            JPH::FixedConstraintSettings Cfg;
-            Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPoint1 = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPoint2 = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Created = Cfg.Create(*BodyA, *BodyB);
-            break;
+            return {};
         }
-        case ConstraintCategory::Distance:
-        case ConstraintCategory::Tether:
+
+        const JPH::RVec3 PrimaryAnchorWorld = ToJoltRVec3(Descriptor.AnchorWorldMeters);
+        const JPH::RVec3 SecondaryAnchorWorld =
+            (Descriptor.Category == ConstraintCategory::Distance || Descriptor.Category == ConstraintCategory::Tether)
+            ? ToJoltRVec3(Descriptor.SecondAnchorMeters)
+            : PrimaryAnchorWorld;
+
+        const JPH::Quat InvRotA = BodyA->GetRotation().Conjugated();
+        const JPH::Quat InvRotB = BodyB->GetRotation().Conjugated();
+        const JPH::RVec3 OffsetA = PrimaryAnchorWorld - BodyA->GetPosition();
+        const JPH::RVec3 OffsetB = SecondaryAnchorWorld - BodyB->GetPosition();
+
+        LocalAnchorA = InvRotA * JPH::Vec3(
+            static_cast<float>(OffsetA.GetX()),
+            static_cast<float>(OffsetA.GetY()),
+            static_cast<float>(OffsetA.GetZ()));
+        LocalAnchorB = InvRotB * JPH::Vec3(
+            static_cast<float>(OffsetB.GetX()),
+            static_cast<float>(OffsetB.GetY()),
+            static_cast<float>(OffsetB.GetZ()));
+
+        const JPH::Vec3 WorldAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 1.0f, 0.0f }));
+        LocalAxisA          = (InvRotA * WorldAxis).NormalizedOr(JPH::Vec3::sAxisY());
+        InitialRelativeQuat = (InvRotA * BodyB->GetRotation()).Normalized();
+
+        switch (Descriptor.Category)
         {
-            JPH::DistanceConstraintSettings Cfg;
-            Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPoint1 = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPoint2 = ToJoltRVec3(Descriptor.SecondAnchorMeters);
-            if (Descriptor.Category == ConstraintCategory::Tether)
+            case ConstraintCategory::Fixed:
+            case ConstraintCategory::BreakableBond:
             {
-                Cfg.mMinDistance = 0.0f;
-                Cfg.mMaxDistance = std::max(Descriptor.MaxLimit, 0.01f);
+                JPH::FixedConstraintSettings Cfg;
+                Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
+                Cfg.mPoint1 = PrimaryAnchorWorld;
+                Cfg.mPoint2 = PrimaryAnchorWorld;
+                Created = Cfg.Create(*BodyA, *BodyB);
+                break;
             }
-            else if (Descriptor.MaxLimit > Descriptor.MinLimit && Descriptor.MaxLimit > 0.0f)
+            case ConstraintCategory::Dock:
             {
-                Cfg.mMinDistance = std::max(Descriptor.MinLimit, 0.0f);
-                Cfg.mMaxDistance = Descriptor.MaxLimit;
-            }
-            if (Descriptor.SpringFrequencyHz > 0.0f)
-            {
-                Cfg.mLimitsSpringSettings.mMode      = JPH::ESpringMode::FrequencyAndDamping;
-                Cfg.mLimitsSpringSettings.mFrequency = Descriptor.SpringFrequencyHz;
-                Cfg.mLimitsSpringSettings.mDamping   = Descriptor.SpringDampingRatio;
-            }
-            Created = Cfg.Create(*BodyA, *BodyB);
-            break;
-        }
-        case ConstraintCategory::Point:
-        {
-            JPH::PointConstraintSettings Cfg;
-            Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPoint1 = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPoint2 = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Created = Cfg.Create(*BodyA, *BodyB);
-            break;
-        }
-        case ConstraintCategory::SwingTwist:
-        {
-            const JPH::Vec3 TwistAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 1.0f, 0.0f }));
-            const JPH::Vec3 PlaneAxis = TwistAxis.GetNormalizedPerpendicular();
-            JPH::SwingTwistConstraintSettings Cfg;
-            Cfg.mSpace               = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPosition1           = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPosition2           = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mTwistAxis1          = TwistAxis;
-            Cfg.mTwistAxis2          = TwistAxis;
-            Cfg.mPlaneAxis1          = PlaneAxis;
-            Cfg.mPlaneAxis2          = PlaneAxis;
-            Cfg.mNormalHalfConeAngle = std::clamp(Descriptor.ConeHalfAngleRad, 0.01f, 3.10f);
-            Cfg.mPlaneHalfConeAngle  = Cfg.mNormalHalfConeAngle;
-            Cfg.mTwistMinAngle       = -std::clamp(Descriptor.TwistHalfAngleRad, 0.01f, 3.14f);
-            Cfg.mTwistMaxAngle       = std::clamp(Descriptor.TwistHalfAngleRad, 0.01f, 3.14f);
-            Created = Cfg.Create(*BodyA, *BodyB);
-            break;
-        }
-        case ConstraintCategory::Hinge:
-        case ConstraintCategory::Spin:
-        {
-            const JPH::Vec3 HingeAxis  = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 0.0f, 1.0f }));
-            const JPH::Vec3 NormalAxis = HingeAxis.GetNormalizedPerpendicular();
-            JPH::HingeConstraintSettings Cfg;
-            Cfg.mSpace       = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPoint1      = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPoint2      = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mHingeAxis1  = HingeAxis;
-            Cfg.mHingeAxis2  = HingeAxis;
-            Cfg.mNormalAxis1 = NormalAxis;
-            Cfg.mNormalAxis2 = NormalAxis;
-            if (Descriptor.Category == ConstraintCategory::Hinge && Descriptor.MaxLimit > Descriptor.MinLimit)
-            {
-                Cfg.mLimitsMin = Descriptor.MinLimit;
-                Cfg.mLimitsMax = Descriptor.MaxLimit;
-            }
-            if (Descriptor.MotorDriveEnabled || Descriptor.Category == ConstraintCategory::Spin)
-            {
-                const float MaxT = std::max(Descriptor.MaxMotorTorqueOrForce, 1.0f);
-                Cfg.mMotorSettings = JPH::MotorSettings(10.0f, 1.0f, MaxT, MaxT);
-                Cfg.mMotorSettings.mMinTorqueLimit = -MaxT;
-                Cfg.mMotorSettings.mMaxTorqueLimit = MaxT;
-            }
-            Created = Cfg.Create(*BodyA, *BodyB);
-            if (Created != nullptr && (Descriptor.MotorDriveEnabled || Descriptor.Category == ConstraintCategory::Spin))
-            {
-                auto* Hinge = static_cast<JPH::HingeConstraint*>(Created.GetPtr());
-                if (Descriptor.MotorVelocityMode || Descriptor.Category == ConstraintCategory::Spin)
+                if (Descriptor.DockInitiallyConnected && Descriptor.DockKeyMatched)
                 {
-                    Hinge->SetMotorState(JPH::EMotorState::Velocity);
-                    Hinge->SetTargetAngularVelocity(Descriptor.TargetMotorCoordinate);
+                    JPH::FixedConstraintSettings Cfg;
+                    Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
+                    Cfg.mPoint1 = PrimaryAnchorWorld;
+                    Cfg.mPoint2 = PrimaryAnchorWorld;
+                    Created = Cfg.Create(*BodyA, *BodyB);
+                    InitialIntact    = (Created != nullptr);
+                    InitialDockPhase = DockLatchPhase::Connected;
                 }
                 else
                 {
-                    Hinge->SetMotorState(JPH::EMotorState::Position);
-                    Hinge->SetTargetAngle(Descriptor.TargetMotorCoordinate);
+                    InitialIntact        = false;
+                    InitialDockPhase     = Descriptor.DockKeyMatched ? DockLatchPhase::Released : DockLatchPhase::Rejected;
+                    InitialDockReconnect = Descriptor.DockInitiallyConnected;
                 }
+                break;
             }
-            break;
-        }
-        case ConstraintCategory::Slider:
-        case ConstraintCategory::Spring:
-        {
-            const JPH::Vec3 SliderAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 1.0f, 0.0f, 0.0f }));
-            const JPH::Vec3 NormalAxis = SliderAxis.GetNormalizedPerpendicular();
-            JPH::SliderConstraintSettings Cfg;
-            Cfg.mSpace        = JPH::EConstraintSpace::WorldSpace;
-            Cfg.mPoint1       = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mPoint2       = ToJoltRVec3(Descriptor.AnchorWorldMeters);
-            Cfg.mSliderAxis1  = SliderAxis;
-            Cfg.mSliderAxis2  = SliderAxis;
-            Cfg.mNormalAxis1  = NormalAxis;
-            Cfg.mNormalAxis2  = NormalAxis;
-            if (Descriptor.MaxLimit > Descriptor.MinLimit)
+            case ConstraintCategory::Distance:
+            case ConstraintCategory::Tether:
             {
-                Cfg.mLimitsMin = Descriptor.MinLimit;
-                Cfg.mLimitsMax = Descriptor.MaxLimit;
+                JPH::DistanceConstraintSettings Cfg;
+                Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
+                Cfg.mPoint1 = PrimaryAnchorWorld;
+                Cfg.mPoint2 = SecondaryAnchorWorld;
+                if (Descriptor.Category == ConstraintCategory::Tether)
+                {
+                    Cfg.mMinDistance = 0.0f;
+                    Cfg.mMaxDistance = std::max(Descriptor.MaxLimit, 0.01f);
+                }
+                else if (Descriptor.MaxLimit > Descriptor.MinLimit && Descriptor.MaxLimit > 0.0f)
+                {
+                    Cfg.mMinDistance = std::max(Descriptor.MinLimit, 0.0f);
+                    Cfg.mMaxDistance = Descriptor.MaxLimit;
+                }
+                if (Descriptor.SpringFrequencyHz > 0.0f)
+                {
+                    Cfg.mLimitsSpringSettings.mMode      = JPH::ESpringMode::FrequencyAndDamping;
+                    Cfg.mLimitsSpringSettings.mFrequency = Descriptor.SpringFrequencyHz;
+                    Cfg.mLimitsSpringSettings.mDamping   = Descriptor.SpringDampingRatio;
+                }
+                Created = Cfg.Create(*BodyA, *BodyB);
+                break;
             }
-            if (Descriptor.Category == ConstraintCategory::Spring)
+            case ConstraintCategory::Point:
             {
-                const float Freq = std::max(Descriptor.SpringFrequencyHz, 0.25f);
-                const float Damp = std::max(Descriptor.SpringDampingRatio, 0.05f);
-                const float MaxF = std::max(Descriptor.MaxMotorTorqueOrForce, 50000.0f);
-                Cfg.mMotorSettings = JPH::MotorSettings(Freq, Damp, MaxF, MaxF);
-                Cfg.mMotorSettings.mMinForceLimit = -MaxF;
-                Cfg.mMotorSettings.mMaxForceLimit = MaxF;
+                JPH::PointConstraintSettings Cfg;
+                Cfg.mSpace  = JPH::EConstraintSpace::WorldSpace;
+                Cfg.mPoint1 = PrimaryAnchorWorld;
+                Cfg.mPoint2 = PrimaryAnchorWorld;
+                Created = Cfg.Create(*BodyA, *BodyB);
+                break;
             }
-            Created = Cfg.Create(*BodyA, *BodyB);
-            if (Created != nullptr && Descriptor.Category == ConstraintCategory::Spring)
+            case ConstraintCategory::SwingTwist:
             {
-                auto* Slider = static_cast<JPH::SliderConstraint*>(Created.GetPtr());
-                Slider->SetMotorState(JPH::EMotorState::Position);
-                Slider->SetTargetPosition(Descriptor.TargetMotorCoordinate);
+                const JPH::Vec3 TwistAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 1.0f, 0.0f }));
+                const JPH::Vec3 PlaneAxis = TwistAxis.GetNormalizedPerpendicular();
+                JPH::SwingTwistConstraintSettings Cfg;
+                Cfg.mSpace               = JPH::EConstraintSpace::WorldSpace;
+                Cfg.mPosition1           = PrimaryAnchorWorld;
+                Cfg.mPosition2           = PrimaryAnchorWorld;
+                Cfg.mTwistAxis1          = TwistAxis;
+                Cfg.mTwistAxis2          = TwistAxis;
+                Cfg.mPlaneAxis1          = PlaneAxis;
+                Cfg.mPlaneAxis2          = PlaneAxis;
+                Cfg.mNormalHalfConeAngle = std::clamp(Descriptor.ConeHalfAngleRad, 0.01f, 3.10f);
+                Cfg.mPlaneHalfConeAngle  = Cfg.mNormalHalfConeAngle;
+                Cfg.mTwistMinAngle       = -std::clamp(Descriptor.TwistHalfAngleRad, 0.01f, 3.14f);
+                Cfg.mTwistMaxAngle       = std::clamp(Descriptor.TwistHalfAngleRad, 0.01f, 3.14f);
+                const bool EnableSwingMotor = Descriptor.MotorDriveEnabled
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::Sweep
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::MotorPosition;
+                if (EnableSwingMotor)
+                {
+                    const float MaxT = std::max(Descriptor.MaxMotorTorqueOrForce, 1.0f);
+                    Cfg.mSwingMotorSettings = JPH::MotorSettings(8.0f, 1.0f, MaxT, MaxT);
+                    Cfg.mTwistMotorSettings = JPH::MotorSettings(8.0f, 1.0f, MaxT, MaxT);
+                }
+                Created = Cfg.Create(*BodyA, *BodyB);
+                if (Created != nullptr && EnableSwingMotor)
+                {
+                    auto* SwingTwist = static_cast<JPH::SwingTwistConstraint*>(Created.GetPtr());
+                    SwingTwist->SetSwingMotorState(JPH::EMotorState::Position);
+                    SwingTwist->SetTwistMotorState(JPH::EMotorState::Position);
+                }
+                break;
             }
-            break;
+            case ConstraintCategory::Hinge:
+            case ConstraintCategory::Spin:
+            {
+                const JPH::Vec3 HingeAxis  = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 0.0f, 0.0f, 1.0f }));
+                const JPH::Vec3 NormalAxis = HingeAxis.GetNormalizedPerpendicular();
+                JPH::HingeConstraintSettings Cfg;
+                Cfg.mSpace       = JPH::EConstraintSpace::WorldSpace;
+                Cfg.mPoint1      = PrimaryAnchorWorld;
+                Cfg.mPoint2      = PrimaryAnchorWorld;
+                Cfg.mHingeAxis1  = HingeAxis;
+                Cfg.mHingeAxis2  = HingeAxis;
+                Cfg.mNormalAxis1 = NormalAxis;
+                Cfg.mNormalAxis2 = NormalAxis;
+                if (Descriptor.Category == ConstraintCategory::Hinge && Descriptor.MaxLimit > Descriptor.MinLimit)
+                {
+                    Cfg.mLimitsMin = Descriptor.MinLimit;
+                    Cfg.mLimitsMax = Descriptor.MaxLimit;
+                }
+                const bool EnableHingeMotor = Descriptor.MotorDriveEnabled
+                    || Descriptor.Category == ConstraintCategory::Spin
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::Sweep
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::Steer
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::MotorPosition
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::MotorVelocity;
+                if (EnableHingeMotor)
+                {
+                    const float MaxT = std::max(Descriptor.MaxMotorTorqueOrForce, 1.0f);
+                    Cfg.mMotorSettings = JPH::MotorSettings(10.0f, 1.0f, MaxT, MaxT);
+                    Cfg.mMotorSettings.mMinTorqueLimit = -MaxT;
+                    Cfg.mMotorSettings.mMaxTorqueLimit = MaxT;
+                }
+                Created = Cfg.Create(*BodyA, *BodyB);
+                if (Created != nullptr && EnableHingeMotor)
+                {
+                    auto* Hinge = static_cast<JPH::HingeConstraint*>(Created.GetPtr());
+                    if (Descriptor.Category == ConstraintCategory::Spin
+                        && (Descriptor.SpinSource == SpinRateSourceCategory::Freewheel
+                            || Descriptor.DriveCategory == ConstraintDriveCategory::Freewheel))
+                    {
+                        Hinge->SetMotorState(JPH::EMotorState::Off);
+                    }
+                    else if (Descriptor.MotorVelocityMode || Descriptor.Category == ConstraintCategory::Spin
+                        || Descriptor.DriveCategory == ConstraintDriveCategory::MotorVelocity)
+                    {
+                        Hinge->SetMotorState(JPH::EMotorState::Velocity);
+                        Hinge->SetTargetAngularVelocity(Descriptor.TargetMotorCoordinate);
+                    }
+                    else
+                    {
+                        Hinge->SetMotorState(JPH::EMotorState::Position);
+                        Hinge->SetTargetAngle(Descriptor.TargetMotorCoordinate);
+                    }
+                }
+                break;
+            }
+            case ConstraintCategory::Slider:
+            case ConstraintCategory::Spring:
+            {
+                const JPH::Vec3 SliderAxis = ToJoltVec3(Mathematics::NormalizeAxis(Descriptor.AxisUnit, { 1.0f, 0.0f, 0.0f }));
+                const JPH::Vec3 NormalAxis = SliderAxis.GetNormalizedPerpendicular();
+                JPH::SliderConstraintSettings Cfg;
+                Cfg.mSpace        = JPH::EConstraintSpace::WorldSpace;
+                Cfg.mPoint1       = PrimaryAnchorWorld;
+                Cfg.mPoint2       = PrimaryAnchorWorld;
+                Cfg.mSliderAxis1  = SliderAxis;
+                Cfg.mSliderAxis2  = SliderAxis;
+                Cfg.mNormalAxis1  = NormalAxis;
+                Cfg.mNormalAxis2  = NormalAxis;
+                if (Descriptor.MaxLimit > Descriptor.MinLimit)
+                {
+                    Cfg.mLimitsMin = Descriptor.MinLimit;
+                    Cfg.mLimitsMax = Descriptor.MaxLimit;
+                }
+                const bool EnableSliderMotor = (Descriptor.Category == ConstraintCategory::Spring)
+                    || Descriptor.MotorDriveEnabled
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::Sweep
+                    || Descriptor.DriveCategory == ConstraintDriveCategory::MotorPosition;
+                if (Descriptor.Category == ConstraintCategory::Spring)
+                {
+                    const float Freq = std::max(Descriptor.SpringFrequencyHz, 0.25f);
+                    const float Damp = std::max(Descriptor.SpringDampingRatio, 0.05f);
+                    const float MaxF = std::max(Descriptor.MaxMotorTorqueOrForce, 50000.0f);
+                    Cfg.mMotorSettings = JPH::MotorSettings(Freq, Damp, MaxF, MaxF);
+                    Cfg.mMotorSettings.mMinForceLimit = -MaxF;
+                    Cfg.mMotorSettings.mMaxForceLimit = MaxF;
+                }
+                else if (EnableSliderMotor)
+                {
+                    const float MaxF = std::max(Descriptor.MaxMotorTorqueOrForce, 500.0f);
+                    Cfg.mMotorSettings = JPH::MotorSettings(10.0f, 1.0f, MaxF, MaxF);
+                    Cfg.mMotorSettings.mMinForceLimit = -MaxF;
+                    Cfg.mMotorSettings.mMaxForceLimit = MaxF;
+                }
+                Created = Cfg.Create(*BodyA, *BodyB);
+                if (Created != nullptr && EnableSliderMotor)
+                {
+                    auto* Slider = static_cast<JPH::SliderConstraint*>(Created.GetPtr());
+                    Slider->SetMotorState(JPH::EMotorState::Position);
+                    Slider->SetTargetPosition(Descriptor.TargetMotorCoordinate);
+                }
+                break;
+            }
         }
     }
 
-    if (Created == nullptr)
+    if (Created == nullptr && Descriptor.Category != ConstraintCategory::Dock)
     {
         return {};
     }
 
-    Runtime->JoltWorld->AddConstraint(Created);
+    if (Created != nullptr)
+    {
+        Runtime->JoltWorld->AddConstraint(Created);
+    }
 
     uint32_t ZeroIdx = 0u;
     if (!Runtime->RecycledConstraintSlots.empty())
@@ -1218,14 +2132,22 @@ ConstraintToken PhysicsExtension::IssueConstraint(const ConstraintDescriptor& De
     }
 
     ConstraintSlotEntry& CSlot = Runtime->ConstraintSlots[ZeroIdx];
-    CSlot.JoltConstraint  = Created;
-    CSlot.Descriptor      = Descriptor;
-    CSlot.Generation      = CSlot.Generation == 0u ? 1u : CSlot.Generation;
-    CSlot.AppliedForceN   = 0.0f;
-    CSlot.AppliedTorqueNm = 0.0f;
-    CSlot.StrainRatio     = 0.0f;
-    CSlot.Occupied        = true;
-    CSlot.Intact          = true;
+    const uint32_t PreservedGen = CSlot.Generation == 0u ? 1u : CSlot.Generation;
+    CSlot                       = ConstraintSlotEntry{};
+    CSlot.JoltConstraint        = Created;
+    CSlot.Descriptor            = Descriptor;
+    CSlot.Generation            = PreservedGen;
+    CSlot.LocalAnchorA          = LocalAnchorA;
+    CSlot.LocalAnchorB          = LocalAnchorB;
+    CSlot.LocalAxisA            = LocalAxisA;
+    CSlot.InitialRelativeQuat   = InitialRelativeQuat;
+    CSlot.DockPhase             = InitialDockPhase;
+    CSlot.DockReconnectArmed    = InitialDockReconnect;
+    CSlot.Occupied              = true;
+    CSlot.Intact                = InitialIntact;
+
+    Runtime->RefreshConstraintPoseTelemetry(CSlot);
+    Runtime->PublishConstraintSnapshot();
 
     return { ZeroIdx + 1u, CSlot.Generation };
 }
@@ -1251,6 +2173,7 @@ bool PhysicsExtension::ReclaimConstraint(ConstraintToken Token) noexcept
     CSlot.Intact         = false;
     CSlot.Generation     = (CSlot.Generation + 1u == 0u) ? 1u : (CSlot.Generation + 1u);
     Runtime->RecycledConstraintSlots.push_back(ZeroIdx);
+    Runtime->PublishConstraintSnapshot();
     return true;
 }
 
@@ -1271,6 +2194,18 @@ bool PhysicsExtension::BreakConstraint(ConstraintToken Token) noexcept
         CSlot.JoltConstraint = nullptr;
     }
     CSlot.Intact = false;
+    if (CSlot.Descriptor.Category == ConstraintCategory::Dock)
+    {
+        CSlot.DockPhase          = DockLatchPhase::Released;
+        CSlot.DockReconnectArmed = false;
+    }
+    Runtime->PendingStepEvents.push_back({
+        Token,
+        ConstraintTransitionCategory::ManualBreak,
+        CSlot.AppliedForceN,
+        Runtime->SimulatedSeconds
+    });
+    Runtime->PublishConstraintSnapshot();
     return true;
 }
 
@@ -1286,33 +2221,16 @@ bool PhysicsExtension::AssignConstraintMotorTarget(ConstraintToken Token, float 
         return false;
     }
 
-    CSlot.Descriptor.TargetMotorCoordinate = TargetCoordinateOrVelocity;
     switch (CSlot.Descriptor.Category)
     {
         case ConstraintCategory::Hinge:
         case ConstraintCategory::Spin:
-        {
-            auto* Hinge = static_cast<JPH::HingeConstraint*>(CSlot.JoltConstraint.GetPtr());
-            if (CSlot.Descriptor.MotorVelocityMode || CSlot.Descriptor.Category == ConstraintCategory::Spin)
-            {
-                Hinge->SetMotorState(JPH::EMotorState::Velocity);
-                Hinge->SetTargetAngularVelocity(TargetCoordinateOrVelocity);
-            }
-            else
-            {
-                Hinge->SetMotorState(JPH::EMotorState::Position);
-                Hinge->SetTargetAngle(TargetCoordinateOrVelocity);
-            }
-            return true;
-        }
         case ConstraintCategory::Slider:
         case ConstraintCategory::Spring:
-        {
-            auto* Slider = static_cast<JPH::SliderConstraint*>(CSlot.JoltConstraint.GetPtr());
-            Slider->SetMotorState(JPH::EMotorState::Position);
-            Slider->SetTargetPosition(TargetCoordinateOrVelocity);
+        case ConstraintCategory::SwingTwist:
+            Runtime->ApplyMotorTargetToSlot(CSlot, TargetCoordinateOrVelocity);
+            Runtime->PublishConstraintSnapshot();
             return true;
-        }
         default:
             return false;
     }
@@ -1321,33 +2239,51 @@ bool PhysicsExtension::AssignConstraintMotorTarget(ConstraintToken Token, float 
 ConstraintReading PhysicsExtension::InspectConstraintReading(ConstraintToken Token) const noexcept
 {
     ConstraintReading Reading {};
-    if (!Runtime || !Runtime->Initialized || !Token.Valid() || Token.SlotIndex > Runtime->ConstraintSlots.size())
+    if (!Runtime || !Token.Valid())
     {
         return Reading;
     }
-    const ConstraintSlotEntry& CSlot = Runtime->ConstraintSlots[Token.SlotIndex - 1u];
-    if (!CSlot.Occupied || CSlot.Generation != Token.Generation)
+    // 📝 Wait-free read through PublishedSnapshotExchange: safe from GameThread, RenderThread, EditorThread, or PhysicsThread
+    const ConstraintSnapshotLease Lease = Runtime->ConstraintBoundary.AcquireReadLease();
+    if (const ConstraintReading* Resolved = Lease->ResolveConstraint(Token))
     {
-        return Reading;
-    }
-    Reading.Token           = Token;
-    Reading.Resident        = true;
-    Reading.Intact          = CSlot.Intact;
-    Reading.AppliedForceN   = CSlot.AppliedForceN;
-    Reading.AppliedTorqueNm = CSlot.AppliedTorqueNm;
-    Reading.StrainRatio     = CSlot.StrainRatio;
-    if (CSlot.Intact && CSlot.JoltConstraint != nullptr)
-    {
-        if (CSlot.Descriptor.Category == ConstraintCategory::Hinge || CSlot.Descriptor.Category == ConstraintCategory::Spin)
-        {
-            Reading.CurrentCoordinate = static_cast<const JPH::HingeConstraint*>(CSlot.JoltConstraint.GetPtr())->GetCurrentAngle();
-        }
-        else if (CSlot.Descriptor.Category == ConstraintCategory::Slider || CSlot.Descriptor.Category == ConstraintCategory::Spring)
-        {
-            Reading.CurrentCoordinate = static_cast<const JPH::SliderConstraint*>(CSlot.JoltConstraint.GetPtr())->GetCurrentPosition();
-        }
+        Reading = *Resolved;
     }
     return Reading;
+}
+
+PhysicsExtension::ConstraintSnapshotLease PhysicsExtension::AcquireConstraintSnapshot() const noexcept
+{
+    return Runtime->ConstraintBoundary.AcquireReadLease();
+}
+
+bool PhysicsExtension::SubmitConstraintDirective(const ConstraintDirective& Directive) noexcept
+{
+    if (!Runtime)
+    {
+        return false;
+    }
+    return Runtime->ConstraintBoundary.EnqueueDirective(Directive);
+}
+
+const PhysicsExtension::ConstraintSnapshotExchange& PhysicsExtension::InspectConstraintSnapshotExchange() const noexcept
+{
+    return Runtime->ConstraintBoundary.AccessSnapshotExchange();
+}
+
+uint64_t PhysicsExtension::QueryPublishedConstraintGeneration() const noexcept
+{
+    return Runtime ? Runtime->ConstraintBoundary.QueryPublishedGeneration() : 0ull;
+}
+
+uint32_t PhysicsExtension::QueryLiveConstraintCount() const noexcept
+{
+    if (!Runtime)
+    {
+        return 0u;
+    }
+    const ConstraintSnapshotLease Lease = Runtime->ConstraintBoundary.AcquireReadLease();
+    return Lease->QueryConstraintCount();
 }
 
 RayCastHitReading PhysicsExtension::ExecuteRayCast(const RayCastQuery& Query) const noexcept

@@ -1050,6 +1050,7 @@ add_library(FrontierThreading STATIC
     Engine/Threading/Sync/ThreadProgressionTracker.cpp
     Engine/Threading/Tasks/TaskChannel.cpp
     Engine/Threading/Tasks/ExecutionChannels.cpp
+    Engine/Threading/Threads/Physics/PhysicsThread.cpp
     Engine/Threading/Threads/Streaming/AssetStreamThread.cpp
 )
 target_include_directories(FrontierThreading PUBLIC "${CMAKE_SOURCE_DIR}")
@@ -1237,6 +1238,7 @@ if(BUILD_TESTING)
     endif()
     frontier_register_exhibit(PhysicsSpaceValidation                    Exhibits/PhysicsSpaceValidation.cpp)
     frontier_register_exhibit(ComponentClassPhysicsValidation           Exhibits/ComponentClassPhysicsValidation.cpp)
+    frontier_register_exhibit(CrossThreadConstraintValidation           Exhibits/CrossThreadConstraintValidation.cpp)
     frontier_register_exhibit(GeometryNetworkValidation                 Exhibits/GeometryNetworkValidation.cpp)
     frontier_register_exhibit(GeometryCompletionValidation              Exhibits/GeometryCompletionValidation.cpp)
     frontier_register_exhibit(VisibilityRasterValidation                Exhibits/VisibilityRasterValidation.cpp)
