@@ -422,6 +422,196 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     {
         GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
     }
+
+    // Protect primary Editor camera from accidental deletion & adopt scene environment into single Environment folder
+    if (OutlinerRecordEntry* CamRec = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+    {
+        CamRec->RemovalProtected = true;
+        CamRec->RemovalReason    = "Primary editor camera cannot be removed";
+    }
+    EnvironmentRegistry.AdoptInitialSceneState(Panes->Outliner, ShowcaseBundle->Scene, &Panes->Viewport.AccessDisplaySettings());
+    EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
+
+    // Wire Construct modal -> WorldEnvironmentRegistry
+    Panes->Viewport.ConfigureConstructApplyCallback(
+        [this](std::string_view RegistryKey, std::string_view CustomTitle)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerSlotToken Issued = EnvironmentRegistry.RegisterFromRegistryKey(
+                RegistryKey,
+                CustomTitle,
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            if (Issued.Valid())
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    // Wire Outliner directive sheet callbacks -> WorldEnvironmentRegistry
+    Panes->Outliner.ConfigureDeleteOverrideCallback(
+        [this](std::span<const OutlinerSlotToken> Tokens)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            if (EnvironmentRegistry.UnregisterSlots(
+                    Tokens,
+                    ActivePanes->Outliner,
+                    ShowcaseBundle->Scene,
+                    &ActivePanes->Viewport.AccessDisplaySettings()) > 0u)
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    Panes->Outliner.ConfigureDuplicateOverrideCallback(
+        [this](OutlinerSlotToken SourceToken)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerSlotToken Duplicated = EnvironmentRegistry.DuplicateSlot(
+                SourceToken,
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            if (Duplicated.Valid())
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    Panes->Outliner.ConfigureUndoDeleteCallback(
+        [this]() -> bool
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return false;
+            }
+            if (EnvironmentRegistry.UndoLastRemoval(
+                    ActivePanes->Outliner,
+                    ShowcaseBundle->Scene,
+                    &ActivePanes->Viewport.AccessDisplaySettings()))
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+                return true;
+            }
+            return false;
+        });
+
+    Panes->Outliner.ConfigureQueryUndoAvailableCallback(
+        [this]() -> bool
+        {
+            return EnvironmentRegistry.QueryUndoAvailable();
+        });
+
+    Panes->Outliner.ConfigureDirectConstructCallback(
+        [this](std::string_view RegistryKey)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerSlotToken Issued = EnvironmentRegistry.RegisterFromRegistryKey(
+                RegistryKey,
+                "",
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            if (Issued.Valid())
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    Panes->Inspector.ConfigureFullOverrideCallback(
+        [this](
+            PixelSpace&             Surface,
+            Rectangle2D             Bounds,
+            OutlinerPanel*          Outliner,
+            OutlinerRecordEntry*    /*PrimaryEntry*/,
+            const PaneInputReading& Input,
+            double                  /*DeltaTime*/) -> bool
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (Outliner == nullptr || ShowcaseBundle == nullptr)
+            {
+                return false;
+            }
+            bool Mutated = false;
+            const bool Handled = Inspectors.ConstructActiveInspector(
+                Surface,
+                Bounds,
+                *Outliner,
+                &EnvironmentRegistry,
+                ShowcaseBundle->Scene,
+                ActivePanes != nullptr ? &ActivePanes->Viewport.AccessDisplaySettings() : nullptr,
+                Input,
+                Mutated);
+            if (Mutated)
+            {
+                if (ActivePanes != nullptr)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+            return Handled;
+        });
+
+    Panes->Outliner.ConfigureFocusViewportCallback(
+        [this](OutlinerSlotToken Token)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerRecordEntry* Rec = ActivePanes->Outliner.FindEntry(Token);
+            if (Rec == nullptr)
+            {
+                return;
+            }
+            if (Rec->DomainTag.rfind("env:", 0u) == 0u)
+            {
+                // Frame the sky horizon cleanly for Environment entries
+                const auto& Cam = ShowcaseBundle->EditorCamera;
+                DesiredCameraOrigin = Cam.CameraOrigin;
+                DesiredCameraTarget = { Cam.CameraOrigin.X + 4.0f, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z + 2.4f };
+                DesiredCameraValid  = true;
+                PendingInteractionWorldRefresh = true;
+            }
+            else
+            {
+                DesiredCameraTarget = { Rec->PositionX, Rec->PositionY, Rec->PositionZ };
+                DesiredCameraOrigin = { Rec->PositionX - 3.6f, Rec->PositionY - 2.2f, Rec->PositionZ + 1.8f };
+                DesiredCameraValid  = true;
+                PendingInteractionWorldRefresh = true;
+            }
+        });
     const char* SceneSubtitle = ApocalypticCitySessionActive
         ? "Apocalyptic City Racing Level"
         : (BlankPlaneSkySessionActive ? "Blank Scene · Ground Plane & Sky" : "Vehicle & Clear Sky");
@@ -2371,13 +2561,41 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f ||
                 std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f;
 
+            auto MirrorToggleToRegistry = [&](WorldEnvironmentCategory Category, bool WantEnabled)
+            {
+                bool FoundExisting = false;
+                for (const RegisteredEnvironmentEntry& Reg : EnvironmentRegistry.QueryRegisteredEntries())
+                {
+                    if (Reg.Category == Category)
+                    {
+                        FoundExisting = true;
+                        if (OutlinerRecordEntry* Rec = Panes->Outliner.AccessEntry(Reg.Token))
+                        {
+                            Rec->VisibilityEnabled = WantEnabled;
+                        }
+                    }
+                }
+                if (!FoundExisting && WantEnabled)
+                {
+                    EnvironmentRegistry.RegisterCategory(
+                        Category,
+                        "",
+                        Panes->Outliner,
+                        ShowcaseBundle->Scene,
+                        &DisplayCfg);
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
+                }
+            };
+
             if (DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky)
             {
                 Atmo.Medium.AtmosphereEnabled = DisplayCfg.AtmosphereSkyEnabled;
+                MirrorToggleToRegistry(WorldEnvironmentCategory::Atmosphere, DisplayCfg.AtmosphereSkyEnabled);
             }
             if (DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled)
             {
                 Atmo.Clouds.CloudsEnabled = DisplayCfg.VolumetricCloudsEnabled;
+                MirrorToggleToRegistry(WorldEnvironmentCategory::Clouds, DisplayCfg.VolumetricCloudsEnabled);
             }
             if (DisplayCfg.CloudShadowsEnabled != LastCloudShadowsEnabled)
             {
@@ -2396,8 +2614,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             if (DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled)
             {
                 Atmo.Stars.StarfieldEnabled = DisplayCfg.CelestialStarsEnabled;
-                Atmo.Solar.SolarEnabled     = DisplayCfg.CelestialStarsEnabled;
-                Atmo.Moons[0].Visible       = DisplayCfg.CelestialStarsEnabled;
+                MirrorToggleToRegistry(WorldEnvironmentCategory::Stars, DisplayCfg.CelestialStarsEnabled);
             }
             if (std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f)
             {
@@ -2405,11 +2622,31 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             }
             Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
 
+            // Authoritative Outliner -> WorldScene environment sync (handles Hide/Show/Isolate/Delete/Construct)
+            const bool EnvRegistryChanged = EnvironmentRegistry.SyncToWorld(
+                Panes->Outliner,
+                ShowcaseBundle->Scene,
+                &Panes->Viewport.AccessDisplaySettings());
+            if (EnvRegistryChanged)
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
+            }
+
+            // Re-apply standalone multi-instance inspector bindings so user edits and multi-instance rigs stay authoritative
+            const bool InspectorEdited = PendingInteractionSceneSync;
+            if (InspectorEdited || EnvRegistryChanged)
+            {
+                Inspectors.AccessInstances().CombineIntoScene(
+                    Panes->Outliner,
+                    ShowcaseBundle->Scene,
+                    &Panes->Viewport.AccessDisplaySettings());
+            }
+
             const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-            const bool AtmoChanged = ViewportTogglesChanged || AtmoAnimTick;
+            const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || AtmoAnimTick;
             const bool NeedCpuSkySync =
                 ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
-                (ViewportTogglesChanged || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
+                (ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
             if (NeedCpuSkySync)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);

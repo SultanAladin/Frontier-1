@@ -190,6 +190,8 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Controls/TextInputField.cpp
     Engine/Components/Controls/ConfirmationDialogue.cpp
     Engine/Components/Controls/NotificationSequence.cpp
+    Engine/Components/Controls/InspectorSectionPrimitives.cpp
+    Engine/Components/Controls/PolarDirectionDial.cpp
     Engine/Components/Docking/WorkspaceTabStrip.cpp
     Engine/Components/Docking/WorkspaceDockContainer.cpp
     Engine/Components/Panes/WorkspaceAppearance.cpp
@@ -950,6 +952,33 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
     list(APPEND FRONTIER_ENGINE_SOURCES
         Engine/Editor/Explorer/ContentBrowser.cpp
         Engine/Editor/Explorer/ProjectBrowser.cpp
+        Engine/Editor/WorldEnvironmentRegistry.cpp
+        Engine/Editor/Inspectors/InspectorInstanceRegister.cpp
+        Engine/Editor/Inspectors/AtmosphereInspector.cpp
+        Engine/Editor/Inspectors/SolarInspector.cpp
+        Engine/Editor/Inspectors/CloudInspector.cpp
+        Engine/Editor/Inspectors/LocalCloudInspector.cpp
+        Engine/Editor/Inspectors/LunarInspector.cpp
+        Engine/Editor/Inspectors/StarfieldInspector.cpp
+        Engine/Editor/Inspectors/WindInspector.cpp
+        Engine/Editor/Inspectors/HeightFogInspector.cpp
+        Engine/Editor/Inspectors/AtmosphericFogInspector.cpp
+        Engine/Editor/Inspectors/LocalFogInspector.cpp
+        Engine/Editor/Inspectors/GodRaysInspector.cpp
+        Engine/Editor/Inspectors/PrecipitationInspector.cpp
+        Engine/Editor/Inspectors/RainbowInspector.cpp
+        Engine/Editor/Inspectors/CameraInspector.cpp
+        Engine/Editor/Inspectors/LensFlareInspector.cpp
+        Engine/Editor/Inspectors/MotionBlurInspector.cpp
+        Engine/Editor/Inspectors/LightInspector.cpp
+        Engine/Editor/Inspectors/EnvironmentLightInspector.cpp
+        Engine/Editor/Inspectors/PostProcessInspector.cpp
+        Engine/Editor/Inspectors/AnalyticPrimitiveInspector.cpp
+        Engine/Editor/Inspectors/NativeGeometryInspector.cpp
+        Engine/Editor/Inspectors/ImportedGeometryInspector.cpp
+        Engine/Editor/Inspectors/ProceduralGeometryInspector.cpp
+        Engine/Editor/Inspectors/FolderInspector.cpp
+        Engine/Editor/Inspectors/InspectorRegistry.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )
 endif()
@@ -1139,6 +1168,8 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ControlCentreValidation                   Exhibits/ControlCentreValidation.cpp)
     frontier_register_exhibit(WorkspacePanesValidation                  Exhibits/WorkspacePanesValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(EnvironmentConstructValidation        Exhibits/EnvironmentConstructValidation.cpp)
+        frontier_register_exhibit(StandaloneInspectorsValidation        Exhibits/StandaloneInspectorsValidation.cpp)
         frontier_register_exhibit(LifecycleValidation                   Exhibits/LifecycleValidation.cpp)
     endif()
     frontier_register_exhibit(WorkspaceRevisionValidation               Exhibits/WorkspaceRevisionValidation.cpp)

@@ -1016,6 +1016,204 @@ void ConstructSlotCategoryIcon(
     }
 }
 
+EnvironmentSymbolCategory ResolveEnvironmentSymbolFromTag(std::string_view DomainTag) noexcept
+{
+    if (DomainTag == "env:atmosphere")     return EnvironmentSymbolCategory::Atmosphere;
+    if (DomainTag == "env:sun")            return EnvironmentSymbolCategory::Sun;
+    if (DomainTag == "env:clouds")         return EnvironmentSymbolCategory::Clouds;
+    if (DomainTag == "env:moon")           return EnvironmentSymbolCategory::Moon;
+    if (DomainTag == "env:stars")          return EnvironmentSymbolCategory::Stars;
+    if (DomainTag == "env:wind")           return EnvironmentSymbolCategory::Wind;
+    if (DomainTag == "env:fog")            return EnvironmentSymbolCategory::Fog;
+    if (DomainTag == "env:precipitation")  return EnvironmentSymbolCategory::Precipitation;
+    if (DomainTag == "env:god-rays")       return EnvironmentSymbolCategory::GodRays;
+    if (DomainTag == "env:rainbow")        return EnvironmentSymbolCategory::Rainbow;
+    if (DomainTag == "env:vehicle")        return EnvironmentSymbolCategory::Vehicle;
+    return EnvironmentSymbolCategory::None;
+}
+
+void ConstructEnvironmentSymbolIcon(
+    PixelSpace&               Surface,
+    EnvironmentSymbolCategory Symbol,
+    Point2D                   TopLeft,
+    float                     Extent,
+    float                     Opacity) noexcept
+{
+    if (Extent <= 2.0f || Opacity <= 0.0f)
+    {
+        return;
+    }
+
+    const Point2D Center{ TopLeft.X + Extent * 0.5f, TopLeft.Y + Extent * 0.5f };
+    const float   R = Extent * 0.5f;
+
+    switch (Symbol)
+    {
+        case EnvironmentSymbolCategory::Atmosphere:
+        {
+            // Planetary sky limb glow + dark planetary core (matches HTML 03-ConstructModalEnvironment.png)
+            Surface.FillCircle(Center, R * 0.88f, ScaleAlpha({ 56, 134, 212, 62 }, Opacity));
+            Surface.FillCircle(Center, R * 0.72f, ScaleAlpha({ 92, 178, 252, 165 }, Opacity));
+            Surface.FillCircle(Center, R * 0.58f, ScaleAlpha({ 28, 62, 102, 240 }, Opacity));
+            Surface.FillCircle(Center, R * 0.44f, ScaleAlpha({ 14, 22, 34, 255 }, Opacity));
+            Surface.StrokeCircle(Center, R * 0.64f, ScaleAlpha({ 148, 214, 255, 220 }, Opacity), std::max(1.2f, Extent * 0.055f));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Sun:
+        {
+            // Golden-orange photosphere with layered warm corona (matches HTML 03-ConstructModalEnvironment.png)
+            Surface.FillCircle(Center, R * 0.86f, ScaleAlpha({ 255, 166, 48, 52 }, Opacity));
+            Surface.FillCircle(Center, R * 0.66f, ScaleAlpha({ 246, 138, 28, 255 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.10f, Center.Y - R * 0.10f }, R * 0.46f, ScaleAlpha({ 255, 198, 72, 235 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.14f, Center.Y - R * 0.14f }, R * 0.24f, ScaleAlpha({ 255, 236, 152, 215 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Clouds:
+        {
+            // Multi-lobe silver-white cumulus cloud with soft lower shadow (matches HTML 04-ConstructModalWeather.png)
+            const float BaseY = Center.Y + R * 0.18f;
+            Surface.FillCircle({ Center.X - R * 0.30f, BaseY }, R * 0.34f, ScaleAlpha({ 166, 174, 184, 245 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.30f, BaseY }, R * 0.32f, ScaleAlpha({ 152, 160, 172, 245 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.04f, BaseY - R * 0.18f }, R * 0.44f, ScaleAlpha({ 214, 220, 228, 255 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.20f, BaseY - R * 0.06f }, R * 0.30f, ScaleAlpha({ 200, 208, 218, 255 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.14f, BaseY - R * 0.24f }, R * 0.24f, ScaleAlpha({ 242, 246, 252, 240 }, Opacity));
+            Surface.FillRectangle(
+                { Center.X - R * 0.36f, BaseY + R * 0.04f, R * 0.72f, R * 0.30f },
+                ScaleAlpha({ 146, 154, 166, 250 }, Opacity),
+                R * 0.12f);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Moon:
+        {
+            // Soft silver-grey lunar disc with subtle mare craters (matches HTML 03-ConstructModalEnvironment.png)
+            Surface.FillCircle(Center, R * 0.66f, ScaleAlpha({ 184, 188, 196, 255 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.12f, Center.Y + R * 0.08f }, R * 0.56f, ScaleAlpha({ 148, 152, 162, 180 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.20f, Center.Y - R * 0.14f }, R * 0.17f, ScaleAlpha({ 124, 128, 138, 190 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.16f, Center.Y - R * 0.18f }, R * 0.12f, ScaleAlpha({ 116, 120, 130, 175 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.06f, Center.Y + R * 0.20f }, R * 0.14f, ScaleAlpha({ 112, 116, 126, 180 }, Opacity));
+            Surface.StrokeCircle(Center, R * 0.66f, ScaleAlpha({ 214, 218, 226, 140 }, Opacity), std::max(1.0f, Extent * 0.03f));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Stars:
+        {
+            // Twin 4-point violet-white crystalline sparkles (matches HTML 03-ConstructModalEnvironment.png)
+            auto DrawFourPointStar = [&](Point2D Origin, float Outer, float Inner, ColorRgba Fill, ColorRgba Edge)
+            {
+                const std::array<Point2D, 8> StarPts = {{
+                    { Origin.X,           Origin.Y - Outer },
+                    { Origin.X + Inner,   Origin.Y - Inner },
+                    { Origin.X + Outer,   Origin.Y         },
+                    { Origin.X + Inner,   Origin.Y + Inner },
+                    { Origin.X,           Origin.Y + Outer },
+                    { Origin.X - Inner,   Origin.Y + Inner },
+                    { Origin.X - Outer,   Origin.Y         },
+                    { Origin.X - Inner,   Origin.Y - Inner },
+                }};
+                Surface.FillPolygon(StarPts, Fill);
+                Surface.StrokePolyline(StarPts, Edge, std::max(1.0f, Extent * 0.032f), true);
+            };
+            DrawFourPointStar(
+                { Center.X - R * 0.16f, Center.Y + R * 0.08f },
+                R * 0.56f,
+                R * 0.16f,
+                ScaleAlpha({ 226, 210, 255, 255 }, Opacity),
+                ScaleAlpha({ 172, 136, 242, 230 }, Opacity));
+            DrawFourPointStar(
+                { Center.X + R * 0.36f, Center.Y - R * 0.34f },
+                R * 0.30f,
+                R * 0.09f,
+                ScaleAlpha({ 242, 232, 255, 255 }, Opacity),
+                ScaleAlpha({ 186, 152, 246, 220 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Wind:
+        {
+            const ColorRgba Ink = ScaleAlpha({ 182, 196, 212, 235 }, Opacity);
+            const float     W   = std::max(1.2f, Extent * 0.055f);
+            Surface.StrokeLine({ Center.X - R * 0.58f, Center.Y - R * 0.24f }, { Center.X + R * 0.34f, Center.Y - R * 0.24f }, Ink, W);
+            Surface.StrokeLine({ Center.X - R * 0.64f, Center.Y },             { Center.X + R * 0.56f, Center.Y },             Ink, W);
+            Surface.StrokeLine({ Center.X - R * 0.44f, Center.Y + R * 0.26f }, { Center.X + R * 0.24f, Center.Y + R * 0.26f }, Ink, W);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Fog:
+        {
+            Surface.FillCircle({ Center.X - R * 0.22f, Center.Y + R * 0.02f }, R * 0.30f, ScaleAlpha({ 134, 140, 150, 175 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.16f, Center.Y - R * 0.04f }, R * 0.34f, ScaleAlpha({ 152, 158, 168, 185 }, Opacity));
+            Surface.FillRectangle(
+                { Center.X - R * 0.52f, Center.Y + R * 0.14f, R * 1.04f, R * 0.20f },
+                ScaleAlpha({ 124, 130, 140, 165 }, Opacity),
+                R * 0.10f);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Precipitation:
+        {
+            Surface.FillCircle({ Center.X - R * 0.22f, Center.Y - R * 0.12f }, R * 0.28f, ScaleAlpha({ 134, 178, 214, 240 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.14f, Center.Y - R * 0.16f }, R * 0.34f, ScaleAlpha({ 150, 192, 226, 250 }, Opacity));
+            const ColorRgba DropInk = ScaleAlpha({ 136, 178, 212, 230 }, Opacity);
+            const float     DropW   = std::max(1.2f, Extent * 0.055f);
+            for (int32_t Drop = -1; Drop <= 1; ++Drop)
+            {
+                const float X = Center.X + static_cast<float>(Drop) * R * 0.26f;
+                Surface.StrokeLine({ X, Center.Y + R * 0.20f }, { X - R * 0.08f, Center.Y + R * 0.48f }, DropInk, DropW);
+            }
+            break;
+        }
+
+        case EnvironmentSymbolCategory::GodRays:
+        {
+            Surface.FillCircle({ Center.X, Center.Y - R * 0.26f }, R * 0.32f, ScaleAlpha({ 246, 198, 102, 220 }, Opacity));
+            const ColorRgba RayInk = ScaleAlpha({ 242, 206, 134, 175 }, Opacity);
+            const float     RayW   = std::max(1.2f, Extent * 0.05f);
+            for (int32_t Ray = -1; Ray <= 1; ++Ray)
+            {
+                Surface.StrokeLine(
+                    { Center.X + static_cast<float>(Ray) * R * 0.10f, Center.Y + R * 0.04f },
+                    { Center.X + static_cast<float>(Ray) * R * 0.36f, Center.Y + R * 0.54f },
+                    RayInk,
+                    RayW);
+            }
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Rainbow:
+        {
+            const float StrokeW = std::max(1.2f, Extent * 0.07f);
+            Surface.StrokeCircle({ Center.X, Center.Y + R * 0.26f }, R * 0.56f, ScaleAlpha({ 238, 122, 108, 210 }, Opacity), StrokeW);
+            Surface.StrokeCircle({ Center.X, Center.Y + R * 0.26f }, R * 0.44f, ScaleAlpha({ 142, 216, 152, 210 }, Opacity), StrokeW);
+            Surface.StrokeCircle({ Center.X, Center.Y + R * 0.26f }, R * 0.32f, ScaleAlpha({ 112, 172, 242, 210 }, Opacity), StrokeW);
+            Surface.FillRectangle(
+                { TopLeft.X, Center.Y + R * 0.26f, Extent, R * 0.74f },
+                ScaleAlpha({ 30, 30, 30, 255 }, Opacity),
+                0.0f);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::Vehicle:
+        {
+            const Rectangle2D Body{ Center.X - R * 0.58f, Center.Y - R * 0.10f, R * 1.16f, R * 0.38f };
+            Surface.FillRectangle(Body, ScaleAlpha({ 166, 174, 186, 235 }, Opacity), R * 0.12f);
+            Surface.FillRectangle(
+                { Center.X - R * 0.34f, Center.Y - R * 0.34f, R * 0.68f, R * 0.28f },
+                ScaleAlpha({ 134, 144, 156, 235 }, Opacity),
+                R * 0.10f);
+            Surface.FillCircle({ Center.X - R * 0.32f, Center.Y + R * 0.28f }, R * 0.16f, ScaleAlpha({ 76, 80, 88, 255 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.32f, Center.Y + R * 0.28f }, R * 0.16f, ScaleAlpha({ 76, 80, 88, 255 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::None:
+        default:
+            break;
+    }
+}
+
 void ConstructFilterSlidersIcon(
     PixelSpace& Surface,
     Point2D     TopLeft,

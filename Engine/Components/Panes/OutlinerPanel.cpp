@@ -210,9 +210,25 @@ OutlinerSlotToken OutlinerPanel::ConstructFolder(std::string_view FolderTitle, O
     return Issued;
 }
 
+OutlinerSlotToken OutlinerPanel::ConstructDirectEntry(OutlinerRecordEntry Record)
+{
+    Record.Token = OutlinerSlotToken{ NextTokenCounter++ };
+    if (Record.EnclosingToken.Valid() && FindEntry(Record.EnclosingToken) == nullptr)
+    {
+        Record.EnclosingToken = {};
+    }
+    if (OutlinerRecordEntry* EnclosureEntry = AccessEntry(Record.EnclosingToken))
+    {
+        EnclosureEntry->Expanded = true;
+    }
+    Entries.push_back(std::move(Record));
+    return Entries.back().Token;
+}
+
 bool OutlinerPanel::DeleteSlot(OutlinerSlotToken Token) noexcept
 {
-    if (!Token.Valid() || FindEntry(Token) == nullptr)
+    const OutlinerRecordEntry* Root = FindEntry(Token);
+    if (!Token.Valid() || Root == nullptr || Root->RemovalProtected)
     {
         return false;
     }
@@ -223,7 +239,7 @@ bool OutlinerPanel::DeleteSlot(OutlinerSlotToken Token) noexcept
         const OutlinerSlotToken Current = Condemned[Cursor];
         for (const auto& Entry : Entries)
         {
-            if (Entry.EnclosingToken == Current)
+            if (Entry.EnclosingToken == Current && !Entry.RemovalProtected)
             {
                 Condemned.push_back(Entry.Token);
             }
@@ -234,6 +250,15 @@ bool OutlinerPanel::DeleteSlot(OutlinerSlotToken Token) noexcept
     {
         return std::find(Condemned.begin(), Condemned.end(), Candidate) != Condemned.end();
     };
+
+    // Re-parent any protected descendant out of condemned folder to root
+    for (auto& Entry : Entries)
+    {
+        if (Entry.RemovalProtected && MatchesCondemned(Entry.EnclosingToken))
+        {
+            Entry.EnclosingToken = {};
+        }
+    }
 
     Entries.erase(
         std::remove_if(
@@ -265,6 +290,129 @@ uint32_t OutlinerPanel::DeleteSelection() noexcept
         }
     }
     return Removed;
+}
+
+void OutlinerPanel::AssignSelectionHidden(bool Hidden) noexcept
+{
+    for (const OutlinerSlotToken Token : SelectedTokens)
+    {
+        if (OutlinerRecordEntry* Entry = AccessEntry(Token))
+        {
+            if (!Entry->VisibilityLocked)
+            {
+                Entry->VisibilityEnabled = !Hidden;
+            }
+        }
+    }
+}
+
+void OutlinerPanel::IsolateSelection() noexcept
+{
+    if (SelectedTokens.empty())
+    {
+        return;
+    }
+
+    // Collect selected slots, their enclosing folders, and nested descendants
+    std::vector<OutlinerSlotToken> Kept = SelectedTokens;
+    for (std::size_t Cursor = 0u; Cursor < Kept.size(); ++Cursor)
+    {
+        const OutlinerSlotToken Current = Kept[Cursor];
+        if (const OutlinerRecordEntry* Entry = FindEntry(Current))
+        {
+            if (Entry->EnclosingToken.Valid() &&
+                std::find(Kept.begin(), Kept.end(), Entry->EnclosingToken) == Kept.end())
+            {
+                Kept.push_back(Entry->EnclosingToken);
+            }
+        }
+        for (const auto& Entry : Entries)
+        {
+            if (Entry.EnclosingToken == Current &&
+                std::find(Kept.begin(), Kept.end(), Entry.Token) == Kept.end())
+            {
+                Kept.push_back(Entry.Token);
+            }
+        }
+    }
+
+    for (auto& Entry : Entries)
+    {
+        if (Entry.VisibilityLocked)
+        {
+            continue;
+        }
+        const bool KeepVisible = std::find(Kept.begin(), Kept.end(), Entry.Token) != Kept.end();
+        Entry.VisibilityEnabled = KeepVisible;
+    }
+}
+
+void OutlinerPanel::SelectNestedForSelection() noexcept
+{
+    std::vector<OutlinerSlotToken> Expanded{};
+    for (const OutlinerSlotToken RootToken : SelectedTokens)
+    {
+        if (OutlinerRecordEntry* RootEntry = AccessEntry(RootToken))
+        {
+            RootEntry->Expanded = true;
+        }
+        std::vector<OutlinerSlotToken> Queue{ RootToken };
+        for (std::size_t Cursor = 0u; Cursor < Queue.size(); ++Cursor)
+        {
+            const OutlinerSlotToken Current = Queue[Cursor];
+            for (const auto& Entry : Entries)
+            {
+                if (Entry.EnclosingToken == Current)
+                {
+                    Queue.push_back(Entry.Token);
+                    if (std::find(Expanded.begin(), Expanded.end(), Entry.Token) == Expanded.end())
+                    {
+                        Expanded.push_back(Entry.Token);
+                    }
+                }
+            }
+        }
+    }
+    if (!Expanded.empty())
+    {
+        SelectedTokens  = std::move(Expanded);
+        SelectionAnchor = SelectedTokens.front();
+    }
+}
+
+void OutlinerPanel::ConfigureFocusViewportCallback(std::function<void(OutlinerSlotToken)> Callback) noexcept
+{
+    FocusViewportCallback = std::move(Callback);
+}
+
+void OutlinerPanel::ConfigureDeleteOverrideCallback(std::function<void(std::span<const OutlinerSlotToken>)> Callback) noexcept
+{
+    DeleteOverrideCallback = std::move(Callback);
+}
+
+void OutlinerPanel::ConfigureDuplicateOverrideCallback(std::function<void(OutlinerSlotToken)> Callback) noexcept
+{
+    DuplicateOverrideCallback = std::move(Callback);
+}
+
+void OutlinerPanel::ConfigureUndoDeleteCallback(std::function<bool()> Callback) noexcept
+{
+    UndoDeleteCallback = std::move(Callback);
+}
+
+void OutlinerPanel::ConfigureQueryUndoAvailableCallback(std::function<bool()> Callback) noexcept
+{
+    QueryUndoAvailableCallback = std::move(Callback);
+}
+
+void OutlinerPanel::ConfigureClipboardCopyCallback(std::function<void(std::string_view)> Callback) noexcept
+{
+    ClipboardCopyCallback = std::move(Callback);
+}
+
+void OutlinerPanel::ConfigureDirectConstructCallback(std::function<void(std::string_view)> Callback) noexcept
+{
+    DirectConstructCallback = std::move(Callback);
 }
 
 OutlinerSlotToken OutlinerPanel::DuplicateSlot(OutlinerSlotToken Token)
@@ -882,6 +1030,63 @@ void OutlinerPanel::Render(
         DragActive = false;
     }
 
+    // Keyboard shortcuts when search field is not actively editing
+    if (!SearchEditor.Active && Input.KeyboardFocused)
+    {
+        if (Input.ShortcutUndo && UndoDeleteCallback)
+        {
+            if (UndoDeleteCallback())
+            {
+                CloseOverlays();
+            }
+        }
+        else if (Input.DeletePressed && !SelectedTokens.empty())
+        {
+            std::vector<OutlinerSlotToken> Removable{};
+            for (const OutlinerSlotToken Tok : SelectedTokens)
+            {
+                if (const OutlinerRecordEntry* Rec = FindEntry(Tok); Rec != nullptr && !Rec->RemovalProtected)
+                {
+                    Removable.push_back(Tok);
+                }
+            }
+            if (!Removable.empty())
+            {
+                if (DeleteOverrideCallback)
+                {
+                    DeleteOverrideCallback(Removable);
+                }
+                else
+                {
+                    for (const OutlinerSlotToken Tok : Removable)
+                    {
+                        DeleteSlot(Tok);
+                    }
+                }
+                CloseOverlays();
+            }
+        }
+        else if (Input.ShortcutDuplicate && !SelectedTokens.empty())
+        {
+            const OutlinerSlotToken Primary = SelectedTokens.front();
+            if (const OutlinerRecordEntry* Rec = FindEntry(Primary); Rec != nullptr && !Rec->DuplicateProtected)
+            {
+                if (DuplicateOverrideCallback)
+                {
+                    DuplicateOverrideCallback(Primary);
+                }
+                else
+                {
+                    DuplicateSlot(Primary);
+                }
+            }
+        }
+        else if (Input.ShortcutGroup)
+        {
+            GroupSelectionIntoFolder("Collection");
+        }
+    }
+
     const ColorRgba DockFill = WorkspaceAppearance::QueryDockedPaneBackground();
     Surface.PushClip(Bounds);
     Surface.FillRectangle(Bounds, DockFill);
@@ -1355,15 +1560,23 @@ void OutlinerPanel::Render(
                 }
             }
 
-            // 24px Showcase folder or category icon
-            const Point2D IconOrigin{ DisclosureRect.Right() + 4.0f, RowRect.Y + 7.5f };
-            WorkspaceAppearance::ConstructSlotCategoryIcon(
-                Surface,
-                Entry->Category,
-                IconOrigin,
-                24.0f,
-                Entry->FolderTint,
-                RowAlpha);
+            // 24px Showcase folder, environment symbol, or category icon
+            const Point2D                   IconOrigin{ DisclosureRect.Right() + 4.0f, RowRect.Y + 7.5f };
+            const EnvironmentSymbolCategory EnvSymbol = WorkspaceAppearance::ResolveEnvironmentSymbolFromTag(Entry->DomainTag);
+            if (EnvSymbol != EnvironmentSymbolCategory::None)
+            {
+                WorkspaceAppearance::ConstructEnvironmentSymbolIcon(Surface, EnvSymbol, IconOrigin, 24.0f, RowAlpha);
+            }
+            else
+            {
+                WorkspaceAppearance::ConstructSlotCategoryIcon(
+                    Surface,
+                    Entry->Category,
+                    IconOrigin,
+                    24.0f,
+                    Entry->FolderTint,
+                    RowAlpha);
+            }
 
             // Right-side visibility status indicator & eye toggle
             const Rectangle2D EyeHit{ RowRect.Right() - 24.0f, RowRect.Y + 9.5f, 18.0f, 20.0f };
@@ -1684,30 +1897,218 @@ void OutlinerPanel::Render(
 
     if (DirectiveSheetOpen)
     {
+        enum class OutlinerDirectiveAction : uint8_t
+        {
+            None = 0,
+            ShowSelection,
+            HideSelection,
+            IsolateSelection,
+            FocusViewport,
+            SelectNested,
+            GroupIntoCollection,
+            DuplicateSingle,
+            CopyNames,
+            UndoDelete,
+            DeleteTargets,
+            QuickNewCollection,
+            QuickAddEmpty,
+            QuickAddSun,
+            QuickAddAtmosphere,
+            QuickAddClouds,
+            QuickAddMoon,
+            QuickAddStars,
+        };
+
         OutlinerRecordEntry* TargetEntry   = AccessEntry(DirectiveTargetToken);
         const bool           TargetPresent = (TargetEntry != nullptr);
-        const bool           Nested        = TargetPresent && TargetEntry->EnclosingToken.Valid();
+        const bool           TargetInSel   = TargetPresent && QuerySlotSelected(TargetEntry->Token);
 
-        std::vector<DropdownDirectiveEntry> DirectiveRows{};
+        std::vector<OutlinerSlotToken> ActionTargets{};
         if (TargetPresent)
         {
-            DirectiveRows.push_back({ "Inspect", "Enter", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ TargetEntry->VisibilityEnabled ? "Hide" : "Show", "H", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ "Duplicate", "Ctrl+D", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ "Group in Folder", "Ctrl+G", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            if (Nested)
+            if (TargetInSel && SelectedTokens.size() > 1u)
             {
-                DirectiveRows.push_back({ "Move to Root", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
+                ActionTargets = SelectedTokens;
             }
-            DirectiveRows.push_back({ "Delete", "Del", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, true, true, false });
+            else
+            {
+                ActionTargets.push_back(TargetEntry->Token);
+            }
+        }
+
+        const bool MultiSelection = ActionTargets.size() > 1u;
+        const bool SingleFolder   = TargetPresent && !MultiSelection && TargetEntry->Category == ConstructSlotCategory::Folder;
+        const bool UndoAvailable  = QueryUndoAvailableCallback ? QueryUndoAvailableCallback() : false;
+
+        std::vector<DropdownDirectiveEntry>  DirectiveRows{};
+        std::vector<OutlinerDirectiveAction> DirectiveActions{};
+        auto PushRow = [&](DropdownDirectiveEntry Row, OutlinerDirectiveAction Action)
+        {
+            DirectiveRows.push_back(Row);
+            DirectiveActions.push_back(Action);
+        };
+
+        // Persistent strings for dynamic labels in this frame
+        std::string ShowLabelText   = "Show";
+        std::string HideLabelText   = "Hide";
+        std::string DeleteLabelText = "Delete";
+
+        if (TargetPresent)
+        {
+            bool AnyHidden  = false;
+            bool AnyVisible = false;
+            uint32_t DeletableCount = 0u;
+            for (const OutlinerSlotToken Tok : ActionTargets)
+            {
+                if (const OutlinerRecordEntry* Rec = FindEntry(Tok))
+                {
+                    if (!Rec->VisibilityLocked)
+                    {
+                        if (Rec->VisibilityEnabled) AnyVisible = true;
+                        else AnyHidden = true;
+                    }
+                    if (!Rec->RemovalProtected)
+                    {
+                        ++DeletableCount;
+                    }
+                }
+            }
+
+            if (MultiSelection)
+            {
+                ShowLabelText = "Show (" + std::to_string(ActionTargets.size()) + ")";
+                HideLabelText = "Hide (" + std::to_string(ActionTargets.size()) + ")";
+            }
+
+            if (MultiSelection)
+            {
+                if (AnyHidden)
+                {
+                    PushRow({ ShowLabelText.c_str(), "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::ShowSelection);
+                }
+                if (AnyVisible)
+                {
+                    PushRow({ HideLabelText.c_str(), "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::HideSelection);
+                }
+            }
+            else if (!TargetEntry->VisibilityLocked)
+            {
+                if (TargetEntry->VisibilityEnabled)
+                {
+                    PushRow({ "Hide", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::HideSelection);
+                }
+                else
+                {
+                    PushRow({ "Show", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::ShowSelection);
+                }
+            }
+
+            PushRow({ "Isolate", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::IsolateSelection);
+            PushRow(
+                { "Focus in viewport", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, !static_cast<bool>(FocusViewportCallback), "Viewport focus not bound" },
+                OutlinerDirectiveAction::FocusViewport);
+
+            // Section divider + Hierarchy operations (exact 1:1 HTML order)
+            if (SingleFolder)
+            {
+                const bool HasNested = CountDirectNested(TargetEntry->Token) > 0u;
+                PushRow(
+                    { "Select children", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false, !HasNested, "Folder is empty" },
+                    OutlinerDirectiveAction::SelectNested);
+                PushRow(
+                    { "Move into new collection", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false },
+                    OutlinerDirectiveAction::GroupIntoCollection);
+                PushRow(
+                    { "Ungroup / dissolve", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, true, "Not yet implemented" },
+                    OutlinerDirectiveAction::None);
+            }
+            else if (MultiSelection)
+            {
+                PushRow(
+                    { "Group into collection", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false },
+                    OutlinerDirectiveAction::GroupIntoCollection);
+            }
+            else
+            {
+                PushRow(
+                    { "Move into new collection", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false },
+                    OutlinerDirectiveAction::GroupIntoCollection);
+            }
+
+            // Unimplemented hierarchy actions kept visibly greyed out to match HTML reference 1:1
+            PushRow(
+                { "Make parent (first selected)", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, true, "Not yet implemented" },
+                OutlinerDirectiveAction::None);
+            PushRow(
+                { "Unparent", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, true, "Not yet implemented" },
+                OutlinerDirectiveAction::None);
+
+            // Section divider + Edit / Copy operations
+            const bool DuplicateBlocked = MultiSelection || SingleFolder || TargetEntry->DuplicateProtected;
+            const char* DuplicateTip    = MultiSelection
+                                              ? "Select a single entry to duplicate"
+                                              : (SingleFolder
+                                                     ? "Folder duplication not yet implemented"
+                                                     : (TargetEntry->DuplicateReason.empty() ? "Cannot duplicate this entry" : TargetEntry->DuplicateReason.c_str()));
+            PushRow(
+                { "Duplicate", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false, DuplicateBlocked, DuplicateBlocked ? DuplicateTip : nullptr },
+                DuplicateBlocked ? OutlinerDirectiveAction::None : OutlinerDirectiveAction::DuplicateSingle);
+
+            PushRow(
+                { "Rename", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, true, "Inline rename not yet implemented" },
+                OutlinerDirectiveAction::None);
+
+            PushRow(
+                { "Copy name(s)", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false },
+                OutlinerDirectiveAction::CopyNames);
+
+            PushRow(
+                { "Copy path", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, true, "Asset path copy not yet implemented" },
+                OutlinerDirectiveAction::None);
+
+            // Section divider + Undo / Delete
+            PushRow(
+                { "Undo delete", "Ctrl+Z", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false, !UndoAvailable, "Nothing to undo" },
+                UndoAvailable ? OutlinerDirectiveAction::UndoDelete : OutlinerDirectiveAction::None);
+
+            if (MultiSelection)
+            {
+                DeleteLabelText = "Delete (" + std::to_string(DeletableCount) + ")";
+            }
+            const bool DeleteBlocked = (DeletableCount == 0u);
+            const char* DeleteTip    = (!MultiSelection && !TargetEntry->RemovalReason.empty())
+                                           ? TargetEntry->RemovalReason.c_str()
+                                           : "Protected entry cannot be removed";
+            PushRow(
+                { DeleteLabelText.c_str(), "Del", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, true, false, false, DeleteBlocked, DeleteBlocked ? DeleteTip : nullptr },
+                DeleteBlocked ? OutlinerDirectiveAction::None : OutlinerDirectiveAction::DeleteTargets);
         }
         else
         {
-            DirectiveRows.push_back({ "Add Item 1", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ "+ Add Folder", "Ctrl+G", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
+            // Empty-area right-click directive sheet (matches 09-OutlinerContextMenuEmpty.png)
+            PushRow({ "New Collection", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::QuickNewCollection);
+            PushRow({ "Add Empty", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false }, OutlinerDirectiveAction::QuickAddEmpty);
+            PushRow(
+                { "Add Sun", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false, !static_cast<bool>(DirectConstructCallback), "Use Construct modal" },
+                OutlinerDirectiveAction::QuickAddSun);
+            PushRow(
+                { "Add Atmosphere", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, !static_cast<bool>(DirectConstructCallback), "Use Construct modal" },
+                OutlinerDirectiveAction::QuickAddAtmosphere);
+            PushRow(
+                { "Add Clouds", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, !static_cast<bool>(DirectConstructCallback), "Use Construct modal" },
+                OutlinerDirectiveAction::QuickAddClouds);
+            PushRow(
+                { "Add Moon", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, !static_cast<bool>(DirectConstructCallback), "Use Construct modal" },
+                OutlinerDirectiveAction::QuickAddMoon);
+            PushRow(
+                { "Add Stars", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false, !static_cast<bool>(DirectConstructCallback), "Use Construct modal" },
+                OutlinerDirectiveAction::QuickAddStars);
+            PushRow(
+                { "Undo delete", "Ctrl+Z", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, true, false, !UndoAvailable, "Nothing to undo" },
+                UndoAvailable ? OutlinerDirectiveAction::UndoDelete : OutlinerDirectiveAction::None);
         }
 
-        const float       SheetW   = 222.0f;
+        const float       SheetW   = 236.0f;
         const Rectangle2D RawSheet = DropdownSelector::QueryDirectiveSheetBounds(DirectiveSheetAnchor, SheetW, DirectiveRows);
         const Rectangle2D Sheet{
             std::clamp(RawSheet.X, Bounds.X + 8.0f, std::max(Bounds.X + 8.0f, Bounds.Right() - RawSheet.Width - 8.0f)),
@@ -1717,49 +2118,144 @@ void OutlinerPanel::Render(
         };
 
         int32_t ChosenRow = -1;
-        if (DropdownSelector::ConstructDirectiveSheet(ActiveOverlay, Sheet, DirectiveRows, Input.PrimaryPointer, ChosenRow).Clicked && ChosenRow >= 0)
+        if (DropdownSelector::ConstructDirectiveSheet(ActiveOverlay, Sheet, DirectiveRows, Input.PrimaryPointer, ChosenRow).Clicked &&
+            ChosenRow >= 0 && ChosenRow < static_cast<int32_t>(DirectiveActions.size()))
         {
-            if (TargetPresent)
+            const OutlinerDirectiveAction Chosen = DirectiveActions[static_cast<std::size_t>(ChosenRow)];
+            switch (Chosen)
             {
-                if (ChosenRow == 0)
+                case OutlinerDirectiveAction::ShowSelection:
                 {
-                    SelectSingle(TargetEntry->Token);
+                    if (!TargetInSel && TargetPresent) SelectSingle(TargetEntry->Token);
+                    AssignSelectionHidden(false);
+                    break;
                 }
-                else if (ChosenRow == 1)
+                case OutlinerDirectiveAction::HideSelection:
                 {
-                    TargetEntry->VisibilityEnabled = !TargetEntry->VisibilityEnabled;
+                    if (!TargetInSel && TargetPresent) SelectSingle(TargetEntry->Token);
+                    AssignSelectionHidden(true);
+                    break;
                 }
-                else if (ChosenRow == 2)
+                case OutlinerDirectiveAction::IsolateSelection:
                 {
-                    DuplicateSlot(TargetEntry->Token);
+                    if (!TargetInSel && TargetPresent) SelectSingle(TargetEntry->Token);
+                    IsolateSelection();
+                    break;
                 }
-                else if (ChosenRow == 3)
+                case OutlinerDirectiveAction::FocusViewport:
                 {
-                    GroupSelectionIntoFolder("Folder");
-                }
-                else if (Nested && ChosenRow == 4)
-                {
-                    AttachToEnclosure(TargetEntry->Token, OutlinerSlotToken{});
-                }
-                else
-                {
-                    if (SelectedTokens.size() > 1u && QuerySlotSelected(TargetEntry->Token))
+                    if (TargetPresent && FocusViewportCallback)
                     {
-                        DeleteSelection();
+                        FocusViewportCallback(TargetEntry->Token);
                     }
-                    else
-                    {
-                        DeleteSlot(TargetEntry->Token);
-                    }
+                    break;
                 }
-            }
-            else if (ChosenRow == 0)
-            {
-                ConstructFromTemplate(0u);
-            }
-            else if (ChosenRow == 1)
-            {
-                ConstructFolder("Folder");
+                case OutlinerDirectiveAction::SelectNested:
+                {
+                    if (TargetPresent)
+                    {
+                        SelectSingle(TargetEntry->Token);
+                        SelectNestedForSelection();
+                    }
+                    break;
+                }
+                case OutlinerDirectiveAction::GroupIntoCollection:
+                {
+                    if (!TargetInSel && TargetPresent) SelectSingle(TargetEntry->Token);
+                    GroupSelectionIntoFolder("Collection");
+                    break;
+                }
+                case OutlinerDirectiveAction::DuplicateSingle:
+                {
+                    if (TargetPresent)
+                    {
+                        if (DuplicateOverrideCallback) DuplicateOverrideCallback(TargetEntry->Token);
+                        else DuplicateSlot(TargetEntry->Token);
+                    }
+                    break;
+                }
+                case OutlinerDirectiveAction::CopyNames:
+                {
+                    std::string Joined{};
+                    for (std::size_t Idx = 0u; Idx < ActionTargets.size(); ++Idx)
+                    {
+                        if (const OutlinerRecordEntry* Rec = FindEntry(ActionTargets[Idx]))
+                        {
+                            if (!Joined.empty()) Joined += '\n';
+                            Joined += Rec->Title;
+                        }
+                    }
+                    if (!Joined.empty())
+                    {
+                        if (ClipboardCopyCallback)
+                        {
+                            ClipboardCopyCallback(Joined);
+                        }
+                        else if (ImGui::GetCurrentContext() != nullptr)
+                        {
+                            ImGui::SetClipboardText(Joined.c_str());
+                        }
+                    }
+                    break;
+                }
+                case OutlinerDirectiveAction::UndoDelete:
+                {
+                    if (UndoDeleteCallback)
+                    {
+                        UndoDeleteCallback();
+                    }
+                    break;
+                }
+                case OutlinerDirectiveAction::DeleteTargets:
+                {
+                    std::vector<OutlinerSlotToken> Removable{};
+                    for (const OutlinerSlotToken Tok : ActionTargets)
+                    {
+                        if (const OutlinerRecordEntry* Rec = FindEntry(Tok); Rec != nullptr && !Rec->RemovalProtected)
+                        {
+                            Removable.push_back(Tok);
+                        }
+                    }
+                    if (!Removable.empty())
+                    {
+                        if (DeleteOverrideCallback)
+                        {
+                            DeleteOverrideCallback(Removable);
+                        }
+                        else
+                        {
+                            for (const OutlinerSlotToken Tok : Removable)
+                            {
+                                DeleteSlot(Tok);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case OutlinerDirectiveAction::QuickNewCollection:
+                    ConstructFolder("Collection");
+                    break;
+                case OutlinerDirectiveAction::QuickAddEmpty:
+                    if (!ConstructTemplates.empty()) ConstructFromTemplate(0u);
+                    break;
+                case OutlinerDirectiveAction::QuickAddSun:
+                    if (DirectConstructCallback) DirectConstructCallback("env:sun");
+                    break;
+                case OutlinerDirectiveAction::QuickAddAtmosphere:
+                    if (DirectConstructCallback) DirectConstructCallback("env:atmosphere");
+                    break;
+                case OutlinerDirectiveAction::QuickAddClouds:
+                    if (DirectConstructCallback) DirectConstructCallback("env:clouds");
+                    break;
+                case OutlinerDirectiveAction::QuickAddMoon:
+                    if (DirectConstructCallback) DirectConstructCallback("env:moon");
+                    break;
+                case OutlinerDirectiveAction::QuickAddStars:
+                    if (DirectConstructCallback) DirectConstructCallback("env:stars");
+                    break;
+                case OutlinerDirectiveAction::None:
+                default:
+                    break;
             }
             DirectiveSheetOpen = false;
         }
@@ -1842,6 +2338,7 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
         Sig = RetainedCanvasCache::MixHash(Sig, Bits);
         Sig = MixString(Sig, Rec.Title);
         Sig = MixString(Sig, Rec.Subtitle);
+        Sig = MixString(Sig, Rec.DomainTag);
     }
     Sig = MixString(Sig, FooterReadings.RealtimeText);
     Sig = MixString(Sig, FooterReadings.QualityText);
@@ -1866,6 +2363,8 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
         std::fabs(Input.WheelDeltaY) > 1.0e-4f ||
         Input.DeletePressed ||
         Input.ShortcutDuplicate ||
+        Input.ShortcutUndo ||
+        Input.ShortcutGroup ||
         Input.ShortcutAll;
 
     if (RetainedCanvas.QueryReusable(Sig, ScreenBounds, PhysicalMouse, ForceRebuild) &&

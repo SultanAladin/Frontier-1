@@ -4553,8 +4553,18 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.DenoiseStepParams[3]   = FrameSequenceIndex++;
 
     const bool AtmoActive = Scene.Atmosphere.Medium.AtmosphereEnabled || Scene.Atmosphere.Medium.OrbitalViewEnabled;
+    bool       AnyMoonVisible = false;
+    for (const auto& Moon : Scene.Atmosphere.Moons)
+    {
+        if (Moon.Visible) { AnyMoonVisible = true; break; }
+    }
+    const bool CelestialOrCloudsActive =
+        Scene.Atmosphere.Solar.SolarEnabled ||
+        Scene.Atmosphere.Clouds.CloudsEnabled ||
+        Scene.Atmosphere.Stars.StarfieldEnabled ||
+        AnyMoonVisible;
     const auto SolarSolved = CelestialEphemerisSolver::SolveSolarEphemeris(Scene.Atmosphere.Solar);
-    const Mathematics::Axis3D SunDir = AtmoActive
+    const Mathematics::Axis3D SunDir = (AtmoActive || Scene.Atmosphere.Solar.SolarEnabled)
         ? SolarSolved.WorldDirectionToSun
         : Mathematics::NormalizeAxis(Scene.Sun.DirectionToSun, { 0.42f, -0.55f, 0.72f });
 
@@ -4809,7 +4819,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.FineCascadeParams[1] = CachedFineSunCascade.DepthExtentMeters;
     Uniforms.FineCascadeParams[2] = static_cast<float>(CoarseShadowOffsetTexels);
 
-    Uniforms.AtmosphereMaskPad[0] = AtmoActive ? 1u : 0u;
+    Uniforms.AtmosphereMaskPad[0] = (AtmoActive ? 1u : 0u) | (CelestialOrCloudsActive ? 2u : 0u);
     Uniforms.AtmosphereMaskPad[1] = AtmosphericSkySequence::SkyViewWidthPx;
     Uniforms.AtmosphereMaskPad[2] = AtmosphericSkySequence::SkyViewHeightPx;
     Uniforms.AtmosphereMaskPad[3] =
@@ -5232,6 +5242,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     if (AtmoActive)
     {
         DispatchGpuSkyViewLut(Cmd, Scene);
+    }
+    if (AtmoActive || CelestialOrCloudsActive)
+    {
         const bool IsOrbitalSky = Scene.Atmosphere.Medium.OrbitalViewEnabled ||
                                   (Scene.Atmosphere.Medium.ObserverAltitudeMeters > Scene.Atmosphere.Medium.AtmosphereThicknessMeters);
         const bool StarsVisible = Scene.Atmosphere.Stars.StarfieldEnabled &&

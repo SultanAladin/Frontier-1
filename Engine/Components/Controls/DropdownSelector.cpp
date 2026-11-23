@@ -201,12 +201,19 @@ ControlContact ConstructDirectiveSheet(
     ControlContact         Contact{};
     ChosenIndex = -1;
 
-    Surface.FillRectangle(SheetBounds, Colors.Field.Faded(Opacity).ToRgba8(), ControlMetrics::DropdownCornerRadius);
-    ControlAppearance::ConstructRoundedOutline(
-        Surface,
-        SheetBounds,
-        Colors.StrokeStrong.Faded(Opacity),
-        ControlMetrics::DropdownCornerRadius);
+    constexpr float     SheetCornerRadius = 14.0f; // [px] - HTML .popup-menu border-radius
+    constexpr float     RowCornerRadius   = 8.0f;  // [px] - HTML .popup-menu button border-radius
+    constexpr float     DisabledAlpha     = 0.40f; // [0-1] - HTML button:disabled opacity
+    constexpr ColorRgba HtmlSheetFill     { 26u,  26u,  26u,  255u }; // [-] - #1A1A1A
+    constexpr ColorRgba HtmlSheetBorder   { 255u, 255u, 255u, 19u  }; // [-] - #FFFFFF13
+    constexpr ColorRgba HtmlHoverFill     { 44u,  44u,  44u,  255u }; // [-] - #2C2C2C
+    constexpr ColorRgba HtmlDividerStroke { 255u, 255u, 255u, 12u  }; // [-] - #FFFFFF0B
+
+    Surface.FillRectangle(SheetBounds, HtmlSheetFill.ScaledAlpha(Opacity), SheetCornerRadius);
+    Surface.StrokeRectangle(SheetBounds, HtmlSheetBorder.ScaledAlpha(Opacity), SheetCornerRadius, 1.0f);
+
+    Rectangle2D HoveredDisabledRow   {};
+    const char* HoveredDisabledTip   = nullptr;
 
     float CursorY = SheetBounds.Y + ControlMetrics::DropdownPaddingY;
     for (std::size_t Index = 0u; Index < Entries.size(); ++Index)
@@ -214,12 +221,11 @@ ControlContact ConstructDirectiveSheet(
         const DropdownDirectiveEntry& Entry = Entries[Index];
         if (Entry.DividerAbove)
         {
-            ControlAppearance::ConstructHairline(
-                Surface,
-                SheetBounds.X + 8.0f,
-                CursorY + 4.0f,
-                SheetBounds.Width - 16.0f,
-                Colors.Divider.Faded(Opacity));
+            Surface.StrokeLine(
+                { SheetBounds.X + 8.0f, CursorY + 4.0f },
+                { SheetBounds.Right() - 8.0f, CursorY + 4.0f },
+                HtmlDividerStroke.ScaledAlpha(Opacity),
+                1.0f);
             CursorY += 9.0f;
         }
 
@@ -242,7 +248,13 @@ ControlContact ConstructDirectiveSheet(
             SheetBounds.Width - 2.0f * ControlMetrics::DropdownPaddingX,
             34.0f,
         };
-        const bool Hover = ControlAppearance::QueryPointerOver(Row, Pointer);
+        const bool RawHover = ControlAppearance::QueryPointerOver(Row, Pointer);
+        const bool Hover    = !Entry.Disabled && RawHover;
+        if (RawHover && Entry.Disabled && Entry.DisabledReason != nullptr && Entry.DisabledReason[0] != '\0')
+        {
+            HoveredDisabledRow = Row;
+            HoveredDisabledTip = Entry.DisabledReason;
+        }
         if (Hover)
         {
             Contact.Hovered = true;
@@ -259,45 +271,52 @@ ControlContact ConstructDirectiveSheet(
             }
         }
 
-        if (Entry.Selected)
+        if (!Entry.Disabled && Entry.Selected)
         {
-            Surface.FillRectangle(Row, Colors.Raised.Faded(Opacity).ToRgba8(), ControlMetrics::DropdownRowRadius);
+            Surface.FillRectangle(Row, Colors.Raised.Faded(Opacity).ToRgba8(), RowCornerRadius);
         }
         else if (Hover)
         {
-            Surface.FillRectangle(Row, Colors.Inset.Faded(Opacity).ToRgba8(), ControlMetrics::DropdownRowRadius);
+            Surface.FillRectangle(Row, HtmlHoverFill.ScaledAlpha(Opacity), RowCornerRadius);
         }
+
+        const float RowOpacity = Entry.Disabled ? (Opacity * DisabledAlpha) : Opacity;
 
         float PadX = 12.0f;
         if (Entry.LeadingTint.Alpha > 0u)
         {
-            Surface.FillCircle({ Row.X + PadX + 4.0f, Row.Y + Row.Height * 0.5f }, 3.8f, Entry.LeadingTint.ScaledAlpha(Opacity));
+            Surface.FillCircle({ Row.X + PadX + 4.0f, Row.Y + Row.Height * 0.5f }, 3.8f, Entry.LeadingTint.ScaledAlpha(RowOpacity));
             PadX += 16.0f;
         }
         else if (Entry.LeadingIcon != ControlIcon::Count)
         {
+            const ColorQuad IconTone = Entry.Disabled
+                                           ? Colors.TextDim
+                                           : (Entry.Destructive ? Colors.Danger : (Hover || Entry.Selected ? Colors.Text : Colors.TextDim));
             ControlAppearance::ConstructIcon(
                 Surface,
                 Row.X + PadX,
                 Row.Y + (Row.Height - 14.0f) * 0.5f,
                 14.0f,
-                (Entry.Destructive ? Colors.Danger : (Hover || Entry.Selected ? Colors.Text : Colors.TextDim)).Faded(Opacity),
+                IconTone.Faded(RowOpacity),
                 Entry.LeadingIcon,
                 1.7f);
             PadX += 20.0f;
         }
 
-        const ColorQuad LabelTone = Entry.Destructive
-                                        ? Colors.Danger
-                                        : ((Entry.Selected || Hover) ? Colors.Text : Colors.Text.Faded(0.76f));
-        ControlAppearance::TextLeading(Surface, Row, PadX, LabelTone.Faded(Opacity), Entry.Label, 12.5f);
+        const ColorQuad DangerQuad         = ColorQuad{ 1.0f, 138.0f / 255.0f, 128.0f / 255.0f, 1.0f };
+        const ColorQuad DisabledDangerQuad = ColorQuad{ 107.0f / 255.0f, 107.0f / 255.0f, 107.0f / 255.0f, 1.0f };
+        const ColorQuad LabelTone          = Entry.Destructive
+                                                 ? (Entry.Disabled ? DisabledDangerQuad : DangerQuad)
+                                                 : ((Entry.Selected || Hover) ? Colors.Text : Colors.Text.Faded(0.92f));
+        ControlAppearance::TextLeading(Surface, Row, PadX, LabelTone.Faded(RowOpacity), Entry.Label, 12.0f);
 
         if (Entry.ShortcutHint != nullptr && Entry.ShortcutHint[0] != '\0')
         {
             const Rectangle2D HintBounds{ Row.X, Row.Y, Row.Width - 12.0f, Row.Height };
-            Surface.TextRightAligned(HintBounds, 10.5f, Colors.TextFaint.Faded(Opacity).ToRgba8(), Entry.ShortcutHint);
+            Surface.TextRightAligned(HintBounds, 10.0f, Colors.TextFaint.Faded(RowOpacity).ToRgba8(), Entry.ShortcutHint);
         }
-        else if (Entry.Selected)
+        else if (Entry.Selected && !Entry.Disabled)
         {
             const Point2D CheckCenter{ Row.Right() - 18.0f, Row.Y + Row.Height * 0.5f };
             const Point2D CheckMarks[3] = {
@@ -309,6 +328,21 @@ ControlContact ConstructDirectiveSheet(
         }
 
         CursorY += 34.0f + ControlMetrics::DropdownRowGap;
+    }
+
+    if (HoveredDisabledTip != nullptr)
+    {
+        const float       TipTextW = Surface.MeasureTextWidth(10.0f, HoveredDisabledTip);
+        const float       TipW     = std::clamp(TipTextW + 18.0f, 90.0f, 280.0f);
+        const Rectangle2D TipRect{
+            SheetBounds.Right() + 6.0f,
+            HoveredDisabledRow.Y + 4.0f,
+            TipW,
+            26.0f,
+        };
+        Surface.FillRectangle(TipRect, ColorRgba{ 18u, 18u, 18u, 248u }, 6.0f);
+        Surface.StrokeRectangle(TipRect, ColorRgba{ 66u, 66u, 66u, 255u }, 6.0f, 1.0f);
+        ControlAppearance::TextLeading(Surface, TipRect, 9.0f, ColorQuad{ 196.0f / 255.0f, 196.0f / 255.0f, 196.0f / 255.0f, 1.0f }, HoveredDisabledTip, 10.0f);
     }
 
     return Contact;

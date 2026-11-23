@@ -24,6 +24,8 @@
 #include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
+#include "Engine/Editor/Inspectors/InspectorRegistry.h"
+#include "Engine/Editor/WorldEnvironmentRegistry.h"
 #include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ApocalypticCityBuilder.h"
@@ -129,6 +131,8 @@ public:
     [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
+    [[nodiscard]] WorldEnvironmentRegistry&                  AccessEnvironmentRegistry() noexcept { return EnvironmentRegistry; }
+    [[nodiscard]] InspectorRegistry&                         AccessInspectorRegistry() noexcept { return Inspectors; }
     [[nodiscard]] float QueryCameraFlySpeedScalar() const noexcept { return CameraFlySpeedScalar; }
     [[nodiscard]] Components::CameraLagComponent& AccessEditorCameraLag() noexcept { return EditorCameraLag; }
     [[nodiscard]] const Components::CameraLagComponent& InspectEditorCameraLag() const noexcept { return EditorCameraLag; }
@@ -186,6 +190,8 @@ private:
     Input::InputExtension                      InputParticipant       {};     // [-]     - Hardware input & OS feedback participant
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
     std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted default world scene & Outliner tokens
+    WorldEnvironmentRegistry                                         EnvironmentRegistry  {}; // [-] - Authoritative Environment Outliner & WorldScene registry
+    InspectorRegistry                                                Inspectors           {}; // [-] - Modular per-type Inspector registry & multi-instance register
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated MatCap / OpenPBR Direct world renderer
     std::unique_ptr<GeometricRaster::VulkanWorldRenderSequence>      GpuWorldRenderer     {}; // [-] - Hardware Vulkan .slang compute world render sequence
     std::unique_ptr<GeometricRaster::WorldGizmoOverlayRasterization> WorldGizmoRasterizer {}; // [-] - Vulkan .slang 3D Gizmo overlay rasterizer
