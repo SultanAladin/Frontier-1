@@ -15,6 +15,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherImagePlane.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherIcons.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherWorkspaceHost.h"
 #include "Engine/Workspaces/WorkspaceCapabilityRegister.h"
 
@@ -697,6 +698,97 @@ int main()
             !VerifyCheck(LineToolRearmed, "Completed Construct sketch keeps its drawing tool active") ||
             !VerifyCheck(EmptyRmbConstruct, "Empty viewport RMB requests Construct menu at pointer") ||
             !VerifyCheck(ContextToolOptions, "Context tool selection slides to options without closing the menu"))
+        {
+            Host.Finalize();
+            Dock.Finalize();
+            ImGui::DestroyContext(Gui);
+            return 1;
+        }
+        ++Passed;
+    }
+
+    // 9. Typography weights (Regular vs Light, never Thin), Fullscreen viewport toggle, and Inspector zero-overflow bounds
+    {
+        auto& State = Host.AccessState();
+        const auto& Faces = QuerySketcherTypefaces();
+        bool TypographyWeightsValid = true;
+        if (Typefaces.QueryGroupCount() > 0u)
+        {
+            const std::string RegName = Faces.Regular ? static_cast<ImFont*>(Faces.Regular)->GetDebugName() : "";
+            const std::string LgtName = Faces.Light   ? static_cast<ImFont*>(Faces.Light)->GetDebugName()   : "";
+            std::string RegLow = RegName;
+            for (char& Ch : RegLow) Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+            TypographyWeightsValid = (Faces.Regular != nullptr) && (Faces.Light != nullptr)
+                                  && (RegLow.find("thin") == std::string::npos)
+                                  && (RegLow.find("regular") != std::string::npos);
+        }
+
+        // Fullscreen viewport toggle expands ViewportRect to full display width and exits cleanly
+        const float DockedWidth = State.ViewportRect[2];
+        State.ViewportMaximizedEnabled = true;
+        for (int F = 0; F < 2; ++F)
+        {
+            ImGui::NewFrame();
+            Host.BeginFrame(1.0 / 60.0);
+            Host.RenderFullscreenViewport(1440.0f, 900.0f);
+            Host.EndFrame(1.0 / 60.0, true, true);
+            ImGui::Render();
+        }
+        const bool FullscreenExpanded = Host.QueryViewportMaximized() && State.ViewportRect[2] >= 1400.0f && State.ViewportRect[2] > DockedWidth + 200.0f;
+        State.ViewportMaximizedEnabled = false;
+        for (int F = 0; F < 2; ++F)
+        {
+            ImGui::NewFrame();
+            Host.BeginFrame(1.0 / 60.0);
+            Dock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            Host.EndFrame(1.0 / 60.0, true, true);
+            ImGui::Render();
+        }
+        const bool FullscreenRestored = !Host.QueryViewportMaximized() && State.ViewportRect[2] < 1200.0f;
+
+        // Inspector zero-overflow bounds check at 330 px width with focused reference surface + Opacity slider
+        SketcherReferenceSurface MockRef {};
+        MockRef.Name        = "Egoist";
+        MockRef.SummaryNote = "Blender 5.02 · 44 parts · 240068 tris · 82 modifiers · 550 ms";
+        MockRef.Opacity     = 0.85f;
+        MockRef.VisibleCondition = true;
+        State.Document.ReferenceSurfaces.push_back(MockRef);
+        State.FocusedReference    = "Egoist";
+        State.SurfaceTraceEnabled = false;
+        State.InspectorTab        = SketcherInspectorTab::Geometry;
+        const ImVec2 SavedDisplay = Io.DisplaySize;
+        Io.DisplaySize = ImVec2(330.0f, 3600.0f);
+        for (int F = 0; F < 2; ++F)
+        {
+            ImGui::NewFrame();
+            Host.BeginFrame(1.0 / 60.0);
+            ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+            ImGui::SetNextWindowSize(ImVec2(330.0f, 3600.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+            if (ImGui::Begin("##ValidationInspector", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize))
+                DrawSketcherInspectorPanel(State);
+            ImGui::End();
+            ImGui::PopStyleVar();
+            Host.EndFrame(1.0 / 60.0, false, true);
+            ImGui::Render();
+        }
+        Io.DisplaySize = SavedDisplay;
+        const ImVec4* VisRect = State.Widgets.Find("RefVisible0");
+        const ImVec4* NameRect = State.Widgets.Find("RefName0");
+        const ImVec4* RemRect = State.Widgets.Find("RefRemove0");
+        const ImVec4* SliderRect = State.Widgets.Find("RefOpacity");
+        const bool InspectorBoundsClean = (VisRect != nullptr && NameRect != nullptr && RemRect != nullptr && SliderRect != nullptr)
+                                       && (VisRect->z < NameRect->x)
+                                       && (NameRect->z <= RemRect->x)
+                                       && (RemRect->z <= 330.0f)
+                                       && (SliderRect->z <= 330.0f)
+                                       && (NameRect->z - NameRect->x >= 60.0f);
+        State.Document.ReferenceSurfaces.pop_back();
+        State.FocusedReference.clear();
+
+        if (!VerifyCheck(TypographyWeightsValid, "Typography resolves Regular (400) + Light (300) without Thin fallback") ||
+            !VerifyCheck(FullscreenExpanded && FullscreenRestored, "Fullscreen viewport button expands to full display and restores docked layout") ||
+            !VerifyCheck(InspectorBoundsClean, "Inspector Reference toggle/name/remove row and Opacity slider stay strictly within 330 px"))
         {
             Host.Finalize();
             Dock.Finalize();

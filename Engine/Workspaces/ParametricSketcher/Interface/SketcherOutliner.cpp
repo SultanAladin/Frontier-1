@@ -307,7 +307,7 @@ SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State,
         const float InputLeft  = Search.MinimumX + 13.0f + 14.0f + 9.0f;
         const float InputWidth = Search.MaximumX - 13.0f - KeyWidth - 9.0f - InputLeft;
         const float FontSize   = 11.0f * SketcherStyleTokens::FontScale;
-        ImGui::PushFont(static_cast<ImFont*>(QuerySketcherTypefaces().Light), FontSize);
+        ImGui::PushFont(static_cast<ImFont*>(QuerySketcherTypefaces().Regular), FontSize);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
@@ -332,23 +332,30 @@ SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State,
     }
     Y += 40.0f;
 
-    // .filter-chips — margin 10 12 11, gap 5; chip 10 px, padding 5 9, radius 14, #ffffff0d border; active #262626 / #ddd.
+    // .filter-chips — margin 10 12 11, gap 5; chip 10 px, padding 5 9, radius 14, #ffffff0d border; wraps cleanly when narrow.
     Y += 10.0f;
     const float ChipHeight = 10.0f * SketcherStyleTokens::FontScale + 10.0f + 2.0f;
     const struct { const char* Label; int Filter; } Chips[] = { { "All", -1 }, { "Bodies", 2 }, { "Sketches", 0 }, { "Surfaces", 1 }, { "Images", 3 }, { "Refs", 4 } };
     Cursor = Left + 12.0f;
+    const float ChipMaxRight = Right - 12.0f;
     for (const auto& Chip : Chips)
     {
         if (Chip.Filter == 3 && State.Document.ImagePlanes.empty()) continue;                // Only when the document has pictures
         if (Chip.Filter == 4 && State.Document.ReferenceSurfaces.empty()) continue;          // Only when the document has Blender references
-        const float       ChipWidth = Sheet.Measure(Chip.Label, 10.0f) + 18.0f + 2.0f;
-        const PlaneExtent Extent    = Spanning(Cursor, Y, ChipWidth, ChipHeight);
+        const bool  Active    = Outliner.Filter == Chip.Filter;
+        const auto  ChipWgt   = Active ? SketcherWeight::Regular : SketcherWeight::Light;
+        const float ChipWidth = Sheet.Measure(Chip.Label, 10.0f, SketcherWeight::Regular) + 18.0f + 2.0f;
+        if (Cursor > Left + 12.0f + 1.0f && Cursor + ChipWidth > ChipMaxRight)
+        {
+            Cursor = Left + 12.0f;
+            Y += ChipHeight + 5.0f;
+        }
+        const PlaneExtent Extent    = Spanning(Cursor, Y, std::min(ChipWidth, ChipMaxRight - Cursor), ChipHeight);
         const SketcherPress Press   = PressSketcherRegion(State.Widgets, std::string("Filter") + Chip.Label, Extent);
-        const bool        Active    = Outliner.Filter == Chip.Filter;
         Sheet.Box(Extent, Press.HoveredCondition ? Ink(HoverFill) : Active ? Ink(0x262626) : Clear, 14.0f, SketcherWash(0x0d));
-        Sheet.Text(Cursor + 10.0f, Y + 0.5f * ChipHeight, 10.0f, Press.HoveredCondition ? Ink(0xffffff) : Active ? Ink(0xdddddd) : Ink(0x979797), Chip.Label);
+        Sheet.Text(Cursor + 10.0f, Y + 0.5f * ChipHeight, 10.0f, Press.HoveredCondition ? Ink(0xffffff) : Active ? Ink(0xeeeeee) : Ink(0x9a9a9a), Chip.Label, ChipWgt);
         if (Press.ClickedCondition) Outliner.Filter = Chip.Filter;
-        Cursor += ChipWidth + 5.0f;
+        Cursor += Extent.Width() + 5.0f;
     }
     Y += ChipHeight + 11.0f;
 
@@ -356,11 +363,11 @@ SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State,
     const float CollectionHeight = 11.0f * SketcherStyleTokens::FontScale + 12.0f;
     const float CollectionCentre = Y + 0.5f * CollectionHeight;
     {
-        const float ChevronWidth = 6.0f + Sheet.Measure(" \xC2\xA0", 11.0f);
-        const float CaptionWidth = Sheet.Measure("Geometry collection", 11.0f);
+        const float ChevronWidth = 6.0f + Sheet.Measure(" \xC2\xA0", 11.0f, SketcherWeight::Regular);
+        const float CaptionWidth = Sheet.Measure("Geometry collection", 11.0f, SketcherWeight::Regular);
         const PlaneExtent Fold   = Spanning(Left + 12.0f, Y, 8.0f + ChevronWidth + 8.0f + 13.0f + 8.0f + CaptionWidth + 8.0f, CollectionHeight);
         const SketcherPress Press = PressSketcherRegion(State.Widgets, "OutlinerFold", Fold);
-        const ColorQuad   Tint   = Press.HoveredCondition ? Ink(0xffffff) : Ink(0x969696);
+        const ColorQuad   Tint   = Press.HoveredCondition ? Ink(0xffffff) : Ink(0xa8a8a8);
         Sheet.Box(Fold, Press.HoveredCondition ? Ink(HoverFill) : Clear, 16.0f);
         float FoldCursor = Fold.MinimumX + 8.0f;
         // DM Sans has no ⌄ / ›: the chevron is two strokes in the advance of the glyph and its trailing spaces.
@@ -377,7 +384,7 @@ SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State,
         }
         FoldCursor += ChevronWidth + 8.0f;
         Sheet.Icon(IconSymbol::SketcherFolder, FoldCursor, CollectionCentre - 6.5f, 13.0f, Tint);
-        Sheet.Text(FoldCursor + 13.0f + 8.0f, CollectionCentre, 11.0f, Tint, "Geometry collection");
+        Sheet.Text(FoldCursor + 13.0f + 8.0f, CollectionCentre, 11.0f, Tint, "Geometry collection", SketcherWeight::Regular);
         if (Press.ClickedCondition) Outliner.FoldedEnabled = !Outliner.FoldedEnabled;
         const PlaneExtent AddSpan = Spanning(Right - 12.0f - 24.0f, CollectionCentre - 12.0f, 24.0f, 24.0f);
         if (IconButton(State, Sheet, "OutlinerAdd", AddSpan, IconSymbol::SketcherPlus, 13.0f, SketcherWash(0x08)))
@@ -443,9 +450,10 @@ SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State,
             if (Figure.Rank >= 0) std::snprintf(Tag, sizeof(Tag), "%d %s", Figure.Rank + 1, Active ? "ACTIVE" : "SELECTED");
             else if (Figure.LiveCutterCondition) std::snprintf(Tag, sizeof(Tag), "CUTTER");
             else std::snprintf(Tag, sizeof(Tag), "%s", CategoryTag(Figure.Category));
-            const float TagWidth = Rows.TextRight(Lock.MinimumX - 9.0f, Centre, 8.0f, ControlKit::Faded(Figure.SelectedCondition ? Accent : Ink(0x666666), Opacity), Tag,
+            const float TagWidth = Rows.TextRight(Lock.MinimumX - 9.0f, Centre, 8.0f, ControlKit::Faded(Figure.SelectedCondition ? Accent : Ink(0x787878), Opacity), Tag,
                                                   SketcherWeight::Light, 0.5f);
-            Rows.TextClipped(RowCursor, Centre, Lock.MinimumX - 9.0f - TagWidth - 9.0f - RowCursor, 11.0f, ControlKit::Faded(Ink(TextInk), Opacity), Figure.Name.c_str());
+            Rows.TextClipped(RowCursor, Centre, Lock.MinimumX - 9.0f - TagWidth - 9.0f - RowCursor, 11.0f, ControlKit::Faded(Ink(TextInk), Opacity), Figure.Name.c_str(),
+                             SketcherWeight::Regular);
             const SketcherPress Toggle = PressSketcherRegion(State.Widgets, "Visibility:" + Figure.Key, Eye);
             if (Toggle.HoveredCondition) Rows.Box(Eye, Ink(HoverFill), 11.5f);
             const ColorQuad EyeInk = Toggle.HoveredCondition ? Ink(0xffffff) : Ink(0x858585);
