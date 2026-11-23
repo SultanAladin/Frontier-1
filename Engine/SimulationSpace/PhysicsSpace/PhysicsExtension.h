@@ -77,7 +77,12 @@ public:
     [[nodiscard]] RigidBodyReading InspectBodyReading(RigidBodyToken Token) const noexcept;
 
     void ApplyForce(RigidBodyToken Token, const Mathematics::Axis3D& ForceNewtons) noexcept;
+    void ApplyForceAtPoint(
+        RigidBodyToken             Token,
+        const Mathematics::Axis3D& ForceNewtons,
+        const Mathematics::Axis3D& WorldPointMeters) noexcept;
     void ApplyTorque(RigidBodyToken Token, const Mathematics::Axis3D& TorqueNm) noexcept;
+    void AssignBodyMassKg(RigidBodyToken Token, float MassKg) noexcept;
     void ApplyLinearImpulse(RigidBodyToken Token, const Mathematics::Axis3D& ImpulseNs) noexcept;
     void ApplyImpulseAtPoint(
         RigidBodyToken             Token,
@@ -111,6 +116,9 @@ public:
 
     // Queries, collider proxy export & contact telemetry
     [[nodiscard]] RayCastHitReading ExecuteRayCast(const RayCastQuery& Query) const noexcept;
+    [[nodiscard]] RayCastHitReading ExecuteRayCastIgnoringBody(
+        const RayCastQuery& Query,
+        RigidBodyToken      IgnoredBody) const noexcept;
     void QuerySphereOverlaps(const SphereOverlapQuery& Query, std::vector<RigidBodyToken>& OutBodies) const;
     void ExportRigidColliderProxies(
         std::vector<RigidColliderProxy>& OutProxies,

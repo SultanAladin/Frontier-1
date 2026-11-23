@@ -17,6 +17,7 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
@@ -1782,6 +1783,21 @@ void PhysicsExtension::ApplyForce(RigidBodyToken Token, const Mathematics::Axis3
     Runtime->JoltWorld->GetBodyInterface().AddForce(Runtime->BodySlots[Token.SlotIndex - 1u].JoltId, ToJoltVec3(ForceNewtons));
 }
 
+void PhysicsExtension::ApplyForceAtPoint(
+    RigidBodyToken             Token,
+    const Mathematics::Axis3D& ForceNewtons,
+    const Mathematics::Axis3D& WorldPointMeters) noexcept
+{
+    if (!AuthenticateBodyToken(Token))
+    {
+        return;
+    }
+    Runtime->JoltWorld->GetBodyInterface().AddForce(
+        Runtime->BodySlots[Token.SlotIndex - 1u].JoltId,
+        ToJoltVec3(ForceNewtons),
+        ToJoltRVec3(WorldPointMeters));
+}
+
 void PhysicsExtension::ApplyTorque(RigidBodyToken Token, const Mathematics::Axis3D& TorqueNm) noexcept
 {
     if (!AuthenticateBodyToken(Token))
@@ -1789,6 +1805,30 @@ void PhysicsExtension::ApplyTorque(RigidBodyToken Token, const Mathematics::Axis
         return;
     }
     Runtime->JoltWorld->GetBodyInterface().AddTorque(Runtime->BodySlots[Token.SlotIndex - 1u].JoltId, ToJoltVec3(TorqueNm));
+}
+
+void PhysicsExtension::AssignBodyMassKg(RigidBodyToken Token, float MassKg) noexcept
+{
+    if (!AuthenticateBodyToken(Token) || !std::isfinite(MassKg) || MassKg <= 0.1f)
+    {
+        return;
+    }
+    BodySlotEntry& Slot = Runtime->BodySlots[Token.SlotIndex - 1u];
+    const JPH::BodyLockWrite WriteLock(Runtime->JoltWorld->GetBodyLockInterface(), Slot.JoltId);
+    if (!WriteLock.Succeeded())
+    {
+        return;
+    }
+    JPH::Body& Body = WriteLock.GetBody();
+    if (!Body.IsDynamic())
+    {
+        return;
+    }
+    JPH::MotionProperties* Motion = Body.GetMotionProperties();
+    if (Motion != nullptr)
+    {
+        Motion->ScaleToMass(MassKg);
+    }
 }
 
 void PhysicsExtension::ApplyLinearImpulse(RigidBodyToken Token, const Mathematics::Axis3D& ImpulseNs) noexcept
@@ -2288,6 +2328,13 @@ uint32_t PhysicsExtension::QueryLiveConstraintCount() const noexcept
 
 RayCastHitReading PhysicsExtension::ExecuteRayCast(const RayCastQuery& Query) const noexcept
 {
+    return ExecuteRayCastIgnoringBody(Query, RigidBodyToken{});
+}
+
+RayCastHitReading PhysicsExtension::ExecuteRayCastIgnoringBody(
+    const RayCastQuery& Query,
+    RigidBodyToken      IgnoredBody) const noexcept
+{
     RayCastHitReading Reading {};
     if (!Runtime || !Runtime->Initialized || !Runtime->JoltWorld)
     {
@@ -2299,9 +2346,19 @@ RayCastHitReading PhysicsExtension::ExecuteRayCast(const RayCastQuery& Query) co
     const JPH::RRayCast Ray(ToJoltRVec3(Query.OriginMeters), ToJoltVec3(Dir) * Dist);
 
     JPH::RayCastResult Hit {};
-    const ChannelMaskLayerFilter       LayerFilter(Query.ChannelMask);
-    const JPH::BroadPhaseLayerFilter   BroadFilter;
-    if (!Runtime->JoltWorld->GetNarrowPhaseQuery().CastRay(Ray, Hit, BroadFilter, LayerFilter))
+    const ChannelMaskLayerFilter     LayerFilter(Query.ChannelMask);
+    const JPH::BroadPhaseLayerFilter BroadFilter;
+    bool HitFound = false;
+    if (AuthenticateBodyToken(IgnoredBody))
+    {
+        const JPH::IgnoreSingleBodyFilter BodyFilter(Runtime->BodySlots[IgnoredBody.SlotIndex - 1u].JoltId);
+        HitFound = Runtime->JoltWorld->GetNarrowPhaseQuery().CastRay(Ray, Hit, BroadFilter, LayerFilter, BodyFilter);
+    }
+    else
+    {
+        HitFound = Runtime->JoltWorld->GetNarrowPhaseQuery().CastRay(Ray, Hit, BroadFilter, LayerFilter);
+    }
+    if (!HitFound)
     {
         return Reading;
     }
