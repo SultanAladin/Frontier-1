@@ -546,6 +546,42 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
             }
         });
 
+    Panes->Inspector.ConfigureFullOverrideCallback(
+        [this](
+            PixelSpace&             Surface,
+            Rectangle2D             Bounds,
+            OutlinerPanel*          Outliner,
+            OutlinerRecordEntry*    /*PrimaryEntry*/,
+            const PaneInputReading& Input,
+            double                  /*DeltaTime*/) -> bool
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (Outliner == nullptr || ShowcaseBundle == nullptr)
+            {
+                return false;
+            }
+            bool Mutated = false;
+            const bool Handled = Inspectors.ConstructActiveInspector(
+                Surface,
+                Bounds,
+                *Outliner,
+                &EnvironmentRegistry,
+                ShowcaseBundle->Scene,
+                ActivePanes != nullptr ? &ActivePanes->Viewport.AccessDisplaySettings() : nullptr,
+                Input,
+                Mutated);
+            if (Mutated)
+            {
+                if (ActivePanes != nullptr)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+            return Handled;
+        });
+
     Panes->Outliner.ConfigureFocusViewportCallback(
         [this](OutlinerSlotToken Token)
         {
@@ -2596,11 +2632,21 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
             }
 
+            // Re-apply standalone multi-instance inspector bindings so user edits and multi-instance rigs stay authoritative
+            const bool InspectorEdited = PendingInteractionSceneSync;
+            if (InspectorEdited || EnvRegistryChanged)
+            {
+                Inspectors.AccessInstances().CombineIntoScene(
+                    Panes->Outliner,
+                    ShowcaseBundle->Scene,
+                    &Panes->Viewport.AccessDisplaySettings());
+            }
+
             const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-            const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || AtmoAnimTick;
+            const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || AtmoAnimTick;
             const bool NeedCpuSkySync =
                 ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
-                (ViewportTogglesChanged || EnvRegistryChanged || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
+                (ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
             if (NeedCpuSkySync)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);

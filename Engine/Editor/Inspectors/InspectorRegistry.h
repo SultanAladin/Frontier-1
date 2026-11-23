@@ -1,0 +1,116 @@
+/*============================================================================================================================================
+                                                           INSPECTORREGISTRY.H
+============================================================================================================================================*/
+// 🧩 Generic Editor Inspector registry dispatching any Outliner entry to its standalone Inspector with dynamic breadcrumbs & multi-instance sync
+
+#pragma once
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                        INCLUDES
+//------------------------------------------------------------------------------------------------------------------------
+
+#include "Engine/Components/Panes/InspectorPanel.h"
+#include "Engine/Components/Panes/OutlinerPanel.h"
+#include "Engine/Components/Panes/ViewportPanel.h"
+#include "Engine/Editor/Inspectors/AtmosphereInspector.h"
+#include "Engine/Editor/Inspectors/AtmosphericFogInspector.h"
+#include "Engine/Editor/Inspectors/CameraInspector.h"
+#include "Engine/Editor/Inspectors/CloudInspector.h"
+#include "Engine/Editor/Inspectors/EnvironmentLightInspector.h"
+#include "Engine/Editor/Inspectors/FolderInspector.h"
+#include "Engine/Editor/Inspectors/GeometryInspector.h"
+#include "Engine/Editor/Inspectors/GodRaysInspector.h"
+#include "Engine/Editor/Inspectors/HeightFogInspector.h"
+#include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
+#include "Engine/Editor/Inspectors/LensFlareInspector.h"
+#include "Engine/Editor/Inspectors/LightInspector.h"
+#include "Engine/Editor/Inspectors/LocalCloudInspector.h"
+#include "Engine/Editor/Inspectors/LocalFogInspector.h"
+#include "Engine/Editor/Inspectors/LunarInspector.h"
+#include "Engine/Editor/Inspectors/MotionBlurInspector.h"
+#include "Engine/Editor/Inspectors/PostProcessInspector.h"
+#include "Engine/Editor/Inspectors/PrecipitationInspector.h"
+#include "Engine/Editor/Inspectors/RainbowInspector.h"
+#include "Engine/Editor/Inspectors/SolarInspector.h"
+#include "Engine/Editor/Inspectors/StarfieldInspector.h"
+#include "Engine/Editor/Inspectors/WindInspector.h"
+#include "Engine/Editor/WorldEnvironmentRegistry.h"
+#include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
+
+#include <cstdint>
+
+namespace Frontier
+{
+
+class InspectorRegistry
+{
+public:
+    InspectorRegistry() noexcept = default;
+
+    // Dispatches the currently selected Outliner entry to its dedicated standalone Inspector.
+    [[nodiscard]] bool ConstructActiveInspector(
+        PixelSpace&                               Surface,
+        const Rectangle2D&                        PaneBounds,
+        OutlinerPanel&                            Outliner,
+        WorldEnvironmentRegistry*                 EnvironmentRegistry,
+        GeometricRaster::WorldSceneSpecification& Scene,
+        ViewportDisplaySettings*                  DisplaySettings,
+        const PaneInputReading&                   Input,
+        bool&                                     OutMutated) noexcept;
+
+    void SetScrollOffset(float ScrollPixels) noexcept { ScrollOffsetY = std::max(0.0f, ScrollPixels); }
+    void ClearInstances() noexcept { Instances.Clear(); }
+
+    [[nodiscard]] InspectorInstanceRegister& QueryInstances() noexcept { return Instances; }
+    [[nodiscard]] AtmosphereInspector&       QueryAtmosphere() noexcept { return Atmosphere; }
+    [[nodiscard]] SolarInspector&            QuerySolar() noexcept { return Solar; }
+    [[nodiscard]] CloudInspector&            QueryCloud() noexcept { return Cloud; }
+    [[nodiscard]] LocalCloudInspector&       QueryLocalCloud() noexcept { return LocalCloud; }
+    [[nodiscard]] LunarInspector&            QueryLunar() noexcept { return Lunar; }
+    [[nodiscard]] StarfieldInspector&        QueryStarfield() noexcept { return Starfield; }
+    [[nodiscard]] WindInspector&             QueryWind() noexcept { return Wind; }
+    [[nodiscard]] HeightFogInspector&        QueryHeightFog() noexcept { return HeightFog; }
+    [[nodiscard]] AtmosphericFogInspector&   QueryAtmosphericFog() noexcept { return AtmosphericFog; }
+    [[nodiscard]] LocalFogInspector&         QueryLocalFog() noexcept { return LocalFog; }
+    [[nodiscard]] GodRaysInspector&          QueryGodRays() noexcept { return GodRays; }
+    [[nodiscard]] PrecipitationInspector&    QueryPrecipitation() noexcept { return Precipitation; }
+    [[nodiscard]] RainbowInspector&          QueryRainbow() noexcept { return Rainbow; }
+    [[nodiscard]] CameraInspector&           QueryCamera() noexcept { return Camera; }
+    [[nodiscard]] LensFlareInspector&        QueryLensFlare() noexcept { return LensFlare; }
+    [[nodiscard]] MotionBlurInspector&       QueryMotionBlur() noexcept { return MotionBlur; }
+    [[nodiscard]] LightInspector&            QueryLight() noexcept { return Light; }
+    [[nodiscard]] EnvironmentLightInspector& QueryEnvironmentLight() noexcept { return EnvironmentLight; }
+    [[nodiscard]] PostProcessInspector&      QueryPostProcess() noexcept { return PostProcess; }
+    [[nodiscard]] GeometryInspector&         QueryGeometry() noexcept { return Geometry; }
+    [[nodiscard]] InspectorInstanceRegister& AccessInstances() noexcept { return Instances; }
+    [[nodiscard]] FolderInspector&           QueryFolder() noexcept { return Folder; }
+
+private:
+    InspectorInstanceRegister Instances        {};
+    AtmosphereInspector       Atmosphere       {};
+    SolarInspector            Solar            {};
+    CloudInspector            Cloud            {};
+    LocalCloudInspector       LocalCloud       {};
+    LunarInspector            Lunar            {};
+    StarfieldInspector        Starfield        {};
+    WindInspector             Wind             {};
+    HeightFogInspector        HeightFog        {};
+    AtmosphericFogInspector   AtmosphericFog   {};
+    LocalFogInspector         LocalFog         {};
+    GodRaysInspector          GodRays          {};
+    PrecipitationInspector    Precipitation    {};
+    RainbowInspector          Rainbow          {};
+    CameraInspector           Camera           {};
+    LensFlareInspector        LensFlare        {};
+    MotionBlurInspector       MotionBlur       {};
+    LightInspector            Light            {};
+    EnvironmentLightInspector EnvironmentLight {};
+    PostProcessInspector      PostProcess      {};
+    GeometryInspector         Geometry         {};
+    FolderInspector           Folder           {};
+
+    uint32_t LastEntryId   = 0u;
+    float    ScrollOffsetY = 0.0f;
+};
+
+} // namespace Frontier

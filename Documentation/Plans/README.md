@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [ModularInspectorArchitecturePlan.md](ModularInspectorArchitecturePlan.md) | **🟢 Approved & Active (`2026-11-23`)**: Standalone per-type generic Inspector architecture (`21` independent `.h/.cpp` Inspectors, zero monolithic buckets, zero hardcoded folders/singletons, multi-instance combination for Suns/Moons/Winds/Stars/Fogs/Lights/Cameras/Geometry, on-demand retained previews & real LUT previews) |
 | [EnvironmentConstructDirectivePlan.md](EnvironmentConstructDirectivePlan.md) | **🚩 Ready for Review (`2026-11-23`)**: Rendered HTML reference (`2fd4c62`, 9 PNG captures + DOM tokens), audited C++/`.slang` defects, decision tables, and 1:1 native blueprint for constructing/removing Sun, Clouds, Moon, Stars & Atmosphere + HTML-matched Outliner right-click directive sheet |
 | [SerializationArchitecturePlan.md](SerializationArchitecturePlan.md) | **🟢 Active Plan (`2026-11-23`)**: `*Space` Stratification Rule, 5–6 alternatives across all 15 general-purpose categories, embedded multi-pillar `.Instance`/`.WorldSpace`/`.ParticleSpace` containers, `Engine/Serialization/` layout, persistent `DependencyOrder` & hardcoded showcase removal |
 | [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
