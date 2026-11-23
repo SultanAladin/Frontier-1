@@ -213,6 +213,7 @@ Use the following distinct visual nouns according to their exact structural role
 - **2026-11-15 (User Ruling)**: Barred `Coordinator` across filenames, types, identifiers, and prose — replace with concrete mechanical/lifecycle nouns (e.g., `…Extension` for designated lifecycle participants, `…Session`, `…Register`, or `…Executor`).
 - **2026-11-23 (User Ruling)**: Hard-banned `Manifest`, `Config` (must always write `Configuration`), `Bridge`, `Artifact`, `Asset`, `Cache`, `Domain`, and `Digest` everywhere, and re-affirmed `System` / `Subsystem` hard-banned everywhere.
 - **2026-11-23 (User Ruling — Follow-Up)**: Hard-banned `DAG`, `Provenance`, `Recipe`, `Tree` (use `Network`, e.g. `FractureNetwork`), `Studio` (`WorkspaceLayout`, never `StudioLayout`), `Peer`, and `Script` / `Scripting` everywhere. Also locked the `*Space` suffix rule: `*Space` applies exclusively to top-level foundational pillars that have nothing higher above them (e.g. `GeometrySpace`, `ParticleSpace`, `PhysicsSpace`, `AudioSpace`, `PixelSpace`, `MaterialSpace`, `TextureSpace`, `ImageSpace`, `VectorSpace`, `FontSpace`, `ColourSpace`, `VolumetricSpace`, `WorldSpace`), while specialized sub-formats (e.g. `CameraOptics`, `Atmosphere`, `FractureNetwork`) do not end in `Space`.
+- **2026-11-23 (User Ruling — Container & Entrypoint Naming)**: Hard-banned `Hybrid` for container/codec naming (use `DocumentContainerCodec` / `TomlWithBinarySection`) and hard-banned generic `Main.cpp` / `main.cpp` entrypoint filenames across the engine and all projects (use `<ProjectName>Launch.cpp` or `<TargetName>Launch.cpp`, matching `FrontierEditorLaunch.cpp`, `FrontierHostLaunch.cpp`, `UntitledLaunch.cpp`).
 
 ---
 
@@ -227,11 +228,11 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **E**: `Element` / `element`, `emblem` / `Emblem`, `Emission` / `Emit` / `emitter`, `Entity`, `evaluator`, `extension` *(restricted — §3.1)*
 - **F**: `Facet` / `facet` / `Facets` / `facets`, `family`, `fence`, `flag`, `floating`, `flow`, `Frame` / `frame`
 - **G**: `Genesis`, `glide`, `glyph`, `Goliath`, `Graph` / `graph`
-- **H**: `Handler`, `harness`, `Helios`, `Helper`, `Hierarchy`, `hook`, `Horizon`, `Hub` / `hub`
+- **H**: `Handler`, `harness`, `Helios`, `Helper`, `Hierarchy`, `hook`, `Horizon`, `Hub` / `hub`, `Hybrid`
 - **I**: `Info`, `Inscription` / `inscription`, `interpolant`, `Item` / `item`
 - **K**: `Kernel`, `kin`, `Kind`, `Kronos`
 - **L**: `Law` / `Laws`, `lineage`, `Listener` / `listener`
-- **M**: `Maestro`, `Manager`, `manifest`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Model` *(restricted — Force/Turbulence models only, §3.1)*, `Module`, `morph`, `mutation`
+- **M**: `Maestro`, `Main.cpp` / `main.cpp` *(entrypoint filenames — use `<TargetName>Launch.cpp`)*, `Manager`, `manifest`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Model` *(restricted — Force/Turbulence models only, §3.1)*, `Module`, `morph`, `mutation`
 - **N**: `Nexus` / `nexus`, `Node`, `Nova`
 - **O**: `Object`, `Observer` *(restricted — §3.1)*, `occupant`, `Odyssey`, `Oracle`, `Orion`, `Orphan`
 - **P**: `palette`, `Parent`, `Pass` / `pass`, `peer`, `pill`, `pipeline`, `pool`, `popover`, `popup` / `popups`, `predicate`, `probe`, `Processor`, `proof`, `provenance`, `Provider`

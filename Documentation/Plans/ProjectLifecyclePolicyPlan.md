@@ -16,7 +16,7 @@ With Frontier's 63-format `DocumentContainerCodec` (`TOML Header` + `64 B`-align
    - Replaces the minimal 4-tick stub in `FrontierRunShippingProjectLoop` (`ProjectExecutionRunner.cpp`) with a genuine `RuntimeLifecycle` driver.
 2. **Canonical `Projects/` Root & Reference Project `Projects/Untitled/`**:
    - Establishes the top-level `Projects/` directory (`Projects/CMakeLists.txt`) isolated cleanly from `Engine/`.
-   - Creates **`Projects/Untitled/`** as the clean, lean reference template (`UntitledLifecycle`, `UntitledPolicies`, `Configuration/*.{EngineSettings,RuntimeConfiguration,PlatformSettings}`, `Content/Untitled.ProjectIndex`, `Content/Worlds/MainWorld.WorldSpace`, `Source/Main.cpp`) where game/project code writes only what it wants with zero editor bloat.
+   - Creates **`Projects/Untitled/`** as the clean, lean reference template (`UntitledLifecycle`, `UntitledPolicies`, `Configuration/*.{EngineSettings,RuntimeConfiguration,PlatformSettings}`, `Content/Untitled.ProjectIndex`, `Content/Worlds/MainWorld.WorldSpace`, `Source/UntitledLaunch.cpp`) where game/project code writes only what it wants with zero editor bloat.
 3. **Complete Unified Policy Suite (`NetworkingPolicyBringupPlan.md` §3)**:
    - Integrates the 4 existing `Engine/NetworkingSpace/Policies/` (`AuthenticationScopePolicy`, `TransportSelectionPolicy`, `ReplicationPolicy`, `SessionLifecyclePolicy`) with the 3 new declarative C++20 policies:
      - **`Engine/Lifecycle/ProjectExecutionPolicy.{h,cpp}`** (fixed cadence, worker channels, opt-in domain mask, frame-budget guardrails)
@@ -43,7 +43,7 @@ Projects/
     └── Source/
         ├── UntitledLifecycle.{h,cpp}                   // Reference tight project loop driving RuntimeLifecycle
         ├── UntitledPolicies.{h,cpp}                    // Project-owned Execution / Gameplay / Driving / Networking policies
-        └── Main.cpp                                    // Lean CLI/window entrypoint (--headless, --ticks=N, --verify-policy)
+        └── UntitledLaunch.cpp                          // Lean CLI/window entrypoint (--headless, --ticks=N, --verify-policy)
 ```
 
 ---
@@ -65,5 +65,5 @@ Projects/
 | :---: | :--- | :--- |
 | **P1** | `Engine/Lifecycle/ProjectExecutionPolicy.{h,cpp}`, upgraded `RuntimeLifecycle.{h,cpp}`, upgraded `ProjectExecutionRunner.cpp`. | TOML boot chain loading from `Projects/Untitled/`, fixed-step accumulator determinism, opt-in worker/stream channels, and zero-Editor shipping runner. |
 | **P2** | `Engine/SimulationSpace/Policies/GameplayRulePolicy.{h,cpp}` & `DeterministicDrivingPolicy.{h,cpp}`. | `< 128 B` wire pack/unpack, `64-bit` alignment hash mismatch detection, host directive rejection, `1,612 B` `DocumentContainerCodec` round-trip, `4 B` quantized controls, and deterministic `CEM-RL` epoch progression. |
-| **P3** | `Projects/CMakeLists.txt` + `Projects/Untitled/` (`Configuration/`, `Content/`, `Source/UntitledLifecycle.{h,cpp}`, `Source/UntitledPolicies.{h,cpp}`, `Source/Main.cpp`) + `CMakeLists.txt` wiring. | Standalone `Untitled` binary builds cleanly without `FrontierImGui` and passes `Untitled --headless --ticks=12 --verify-policy` (`exit 0`). |
+| **P3** | `Projects/CMakeLists.txt` + `Projects/Untitled/` (`Configuration/`, `Content/`, `Source/UntitledLifecycle.{h,cpp}`, `Source/UntitledPolicies.{h,cpp}`, `Source/UntitledLaunch.cpp`) + `CMakeLists.txt` wiring. | Standalone `Untitled` binary builds cleanly without `FrontierImGui` and passes `Untitled --headless --ticks=12 --verify-policy` (`exit 0`). |
 | **P4** | `Exhibits/ProjectLifecyclePolicyValidation.cpp` + `Exhibits/Images/Projects/UntitledLifecyclePolicyVerification.png` + full CTest pass + `MarkdownStudioViewer.html` rebuild. | 100% pass across `ProjectLifecyclePolicyValidation`, `SerializationValidation`, `LifecycleValidation`, `NetworkingSpaceValidation`, `DataDrivenSpaceContentValidation`, and `ProjectBrowserValidation`. |

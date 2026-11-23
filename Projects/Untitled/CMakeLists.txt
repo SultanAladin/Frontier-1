@@ -23,7 +23,7 @@ target_compile_definitions(UntitledRuntimeLibrary PUBLIC
 )
 
 add_executable(Untitled
-    Source/Main.cpp
+    Source/UntitledLaunch.cpp
 )
 
 target_link_libraries(Untitled PRIVATE
