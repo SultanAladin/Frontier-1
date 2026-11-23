@@ -39,6 +39,7 @@ Related governance documents: [FolderStructure.md](FolderStructure.md) · [Codin
 - `continuum`
 - `contract`
 - `coverage`
+- `dag` *(use `DependencyOrder`, `BuildOrder`, `IncrementalOrder`, `ExecutionChain`, or `DependencyLedger`)*
 - `dev`
 - `digest` *(use `Fingerprint`, `Hash64`, `Hash256`, `Checksum64`, or `ContentHash`)*
 - `domain` *(use `Category`, `Scope`, `Space`, or `Unit`)*
@@ -72,20 +73,26 @@ Related governance documents: [FolderStructure.md](FolderStructure.md) · [Codin
 - `occupant`
 - `palette`
 - `pass`
+- `peer` *(use `NextLateralIndex`, `NextEntryIndex`, `AdjacentIndex`, or `Endpoint`)*
 - `pill`
 - `pipeline`
 - `pool`
 - `popup` / `popups`
 - `predicate`
 - `probe`
+- `provenance` *(use `SourceTrace`, `BuildOrigin`, `OriginStamp`, or `InputSignature`)*
+- `recipe` *(use `Specification`, `Definition`, `BuildDescriptor`, `RuleSet`, or `Procedure`)*
 - `reclamation`
 - `reservoir`
+- `script` / `scripting` *(use `Behavior`, `Logic`, `Directive`, `ExecutionRule`, or `Automation`)*
 - `stage`
 - `store`
 - `strata` / `stratum` *(use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, or `MaterialLayerStack`)*
+- `studio` *(use `Workspace`, `Workbench`, or `Authoring`)*
 - `submission`
 - `table`
 - `topology`
+- `tree` *(use `Network`, `ContainmentIndex`, `Index`, `Partition`, or `Pyramid` — e.g. `FractureNetwork`)*
 - `vacancy`
 
 ### 1.2 Thematic & Structural Trope Categories
@@ -135,6 +142,13 @@ When replacing or avoiding a banned concept, name the **concrete layout, index l
 | `Digest` | `Fingerprint`, `Hash64`, `Hash256`, `Checksum64`, or `ContentHash` |
 | `Domain` | `Category`, `Scope`, `Space`, or `Unit` |
 | `Manifest` | `TomlHeader`, `DocumentHeader`, `HeaderSection`, or `IndexHeader` |
+| `DAG` | `DependencyOrder`, `BuildOrder`, `IncrementalOrder`, `ExecutionChain`, or `DependencyLedger` |
+| `Peer` | `NextLateralIndex`, `NextEntryIndex`, `AdjacentIndex`, or `Endpoint` |
+| `Provenance` | `SourceTrace`, `BuildOrigin`, `OriginStamp`, or `InputSignature` |
+| `Recipe` | `Specification`, `Definition`, `BuildDescriptor`, `RuleSet`, or `Procedure` |
+| `Script` / `Scripting` | `Behavior`, `Logic`, `Directive`, `ExecutionRule`, or `Automation` |
+| `Studio` | `Workspace`, `Workbench`, or `Authoring` (`WorkspaceLayout`, never `StudioLayout`) |
+| `Tree` | `Network`, `ContainmentIndex`, `Partition`, or `Pyramid` (`FractureNetwork`, never `FractureTree`) |
 
 ### 2.1 Approved Visual, Iconography & Token Vocabulary
 
@@ -198,6 +212,7 @@ Use the following distinct visual nouns according to their exact structural role
 - **2026-11-15 (User Ruling)**: Re-affirmed `Law` / `Laws` strictly barred even inside ForceFields — use `Model` (`ForceModel`, `TurbulenceModel`, `StreamTransportModel`, `VectorFieldModel`) as the **sole** narrow domain exemption where `Model` is permitted.
 - **2026-11-15 (User Ruling)**: Barred `Coordinator` across filenames, types, identifiers, and prose — replace with concrete mechanical/lifecycle nouns (e.g., `…Extension` for designated lifecycle participants, `…Session`, `…Register`, or `…Executor`).
 - **2026-11-23 (User Ruling)**: Hard-banned `Manifest`, `Config` (must always write `Configuration`), `Bridge`, `Artifact`, `Asset`, `Cache`, `Domain`, and `Digest` everywhere, and re-affirmed `System` / `Subsystem` hard-banned everywhere.
+- **2026-11-23 (User Ruling — Follow-Up)**: Hard-banned `DAG`, `Provenance`, `Recipe`, `Tree` (use `Network`, e.g. `FractureNetwork`), `Studio` (`WorkspaceLayout`, never `StudioLayout`), `Peer`, and `Script` / `Scripting` everywhere. Also locked the `*Space` suffix rule: `*Space` applies exclusively to top-level foundational pillars that have nothing higher above them (e.g. `GeometrySpace`, `ParticleSpace`, `PhysicsSpace`, `AudioSpace`, `PixelSpace`, `MaterialSpace`, `TextureSpace`, `ImageSpace`, `VectorSpace`, `FontSpace`, `ColourSpace`, `VolumetricSpace`, `WorldSpace`), while specialized sub-formats (e.g. `CameraOptics`, `Atmosphere`, `FractureNetwork`) do not end in `Space`.
 
 ---
 
@@ -208,7 +223,7 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **A**: `action`, `adjacency`, `Aether`, `affinity`, `Ancestor`, `And` *(conjunction in filenames/identifiers)*, `Apex`, `archive` / `archives`, `arena`, `artifact`, `artwork`, `Assembly` / `assembly`, `asset` *(avoid: `atlas`)*
 - **B**: `backend`, `badge`, `Base`, `binding`, `bloom`, `BooleanSwitch` *(renamed to `ExclusiveSelector`)*, `bridge`
 - **C**: `cache`, `cadence`, `card`, `carousel`, `catalog` / `catalogue`, `Catalyst`, `Child`, `Children`, `classification`, `Commit`, `Common`, `Complex` / `complex`, `Compose` / `compose`, `concurrence` / `concurrency` / `concurrent`, `Conductor`, `config` *(use `Configuration`)*, `context`, `continuum`, `contract`, `Controller`, `Coordinator`, `Core`, `coverage`
-- **D**: `Data`, `Descendant`, `Designation`, `dev`, `digest`, `Dispatcher`, `domain`, `Draw` / `draw`
+- **D**: `DAG`, `Data`, `Descendant`, `Designation`, `dev`, `digest`, `Dispatcher`, `domain`, `Draw` / `draw`
 - **E**: `Element` / `element`, `emblem` / `Emblem`, `Emission` / `Emit` / `emitter`, `Entity`, `evaluator`, `extension` *(restricted — §3.1)*
 - **F**: `Facet` / `facet` / `Facets` / `facets`, `family`, `fence`, `flag`, `floating`, `flow`, `Frame` / `frame`
 - **G**: `Genesis`, `glide`, `glyph`, `Goliath`, `Graph` / `graph`
@@ -219,10 +234,10 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **M**: `Maestro`, `Manager`, `manifest`, `map`, `Matrix`, `member`, `menu`, `Mesh` / `mesh`, `Model` *(restricted — Force/Turbulence models only, §3.1)*, `Module`, `morph`, `mutation`
 - **N**: `Nexus` / `nexus`, `Node`, `Nova`
 - **O**: `Object`, `Observer` *(restricted — §3.1)*, `occupant`, `Odyssey`, `Oracle`, `Orion`, `Orphan`
-- **P**: `palette`, `Parent`, `Pass` / `pass`, `pill`, `pipeline`, `pool`, `popover`, `popup` / `popups`, `predicate`, `probe`, `Processor`, `proof`, `Provider`
-- **R**: `reclamation`, `Record` *(bare & `RecordStore` barred — §3.1)*, `Representation`, `reservoir`, `Role`
-- **S**: `Sentinel`, `Service`, `shell`, `Sibling`, `stage`, `state`, `store`, `strata` / `stratum`, `Stuff`, `submission`, `Subsystem`, `system` *(avoid: `slice`, `substrate`)*
-- **T**: `table`, `Thing`, `Titan`, `Topology` / `topology`, `Traversal` *(exempt only at `SelectionTraversal` — §3.1)*, `Trial` / `Trials`, `Tween`
+- **P**: `palette`, `Parent`, `Pass` / `pass`, `peer`, `pill`, `pipeline`, `pool`, `popover`, `popup` / `popups`, `predicate`, `probe`, `Processor`, `proof`, `provenance`, `Provider`
+- **R**: `recipe`, `reclamation`, `Record` *(bare & `RecordStore` barred — §3.1)*, `Representation`, `reservoir`, `Role`
+- **S**: `script` / `scripting`, `Sentinel`, `Service`, `shell`, `Sibling`, `stage`, `state`, `store`, `strata` / `stratum`, `studio`, `Stuff`, `submission`, `Subsystem`, `system` *(avoid: `slice`, `substrate`)*
+- **T**: `table`, `Thing`, `Titan`, `Topology` / `topology`, `Traversal` *(exempt only at `SelectionTraversal` — §3.1)*, `tree`, `Trial` / `Trials`, `Tween`
 - **U**: `Utility`
 - **V**: `vacancy`, `value`, `Vanguard`, `Vortex`
 - **W**: `Worker`

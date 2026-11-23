@@ -8,7 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
-| [WorldSerializationDagPlan.md](WorldSerializationDagPlan.md) | **🟢 Active Plan (`2026-11-23`)**: `Engine/Serialization/` layout, 41 priority + 15 retained suffixes, Two-Tier Hybrid TTF-style container, persistent Dependency DAG (`Build/CompiledRepository/`), and hardcoded showcase removal |
+| [SerializationArchitecturePlan.md](SerializationArchitecturePlan.md) | **🟢 Active Plan (`2026-11-23`)**: `*Space` Stratification Rule, 5–6 alternatives across all 15 general-purpose categories, embedded multi-pillar `.Instance`/`.WorldSpace`/`.ParticleSpace` containers, `Engine/Serialization/` layout, persistent `DependencyOrder` & hardcoded showcase removal |
 | [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
 | [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
 | [ViewportTelemetrySpikeRemediationReport.md](ViewportTelemetrySpikeRemediationReport.md) | **🟢 Completion Report (`2026-11-22`)**: `FrontierTiming.log` (`40,080` ticks on `GTX 1650 SUPER`) spike & ray-budget audit, dedicated `HighEndBvhComputeEntry` (`2..3` rays/pixel), persistent `VkPipelineCache`, `2048x2048` font atlas, and zero-stall gizmo/UI hover pacing |
