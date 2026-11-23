@@ -255,7 +255,8 @@ void PopulateCenteredAssetEntry(
     ShowcaseGeometryAsset&   InOutGeom,
     ShowcaseWorldAssetEntry& InOutEntry,
     Mathematics::Axis3D      DesiredWorldOffset,
-    uint32_t                 MaxPyramidLevels = 3u)
+    uint32_t                 MaxPyramidLevels      = 3u,
+    bool                     KeepAuthoredNormals   = false)
 {
     if (InOutGeom.Network.Vertices.empty())
     {
@@ -283,7 +284,10 @@ void PopulateCenteredAssetEntry(
     {
         V.Axes = V.Axes - LocalMid;
     }
-    InOutGeom.Network.RecomputeNormals();
+    if (!KeepAuthoredNormals)
+    {
+        InOutGeom.Network.RecomputeNormals();
+    }
     (void)InOutGeom.Pyramid.BuildFromPolygonNetwork(InOutGeom.Network, MaxPyramidLevels);
 
     InOutEntry.CenterWorld = DesiredWorldOffset + LocalMid;
@@ -1209,6 +1213,9 @@ void BuildApocalypticCityRacingScene(
                 const uint32_t V0 = VehGeom->Network.AppendVertex(P0);
                 const uint32_t V1 = VehGeom->Network.AppendVertex(P1);
                 const uint32_t V2 = VehGeom->Network.AppendVertex(P2);
+                VehGeom->Network.Vertices[V0].Normal = RotateEulerRpy(Tri.NormalA, RollDeg, PitchDeg, 0.0f);
+                VehGeom->Network.Vertices[V1].Normal = RotateEulerRpy(Tri.NormalB, RollDeg, PitchDeg, 0.0f);
+                VehGeom->Network.Vertices[V2].Normal = RotateEulerRpy(Tri.NormalC, RollDeg, PitchDeg, 0.0f);
                 const std::array<uint32_t, 3u> Loop {{ V0, V1, V2 }};
                 (void)VehGeom->Network.AppendFace(Loop, {}, {}, 0u, Mat);
             }
@@ -1227,7 +1234,7 @@ void BuildApocalypticCityRacingScene(
             : "Wreck · Overturned Scorched Vehicle Hull";
         Entry.RotationZDegrees = YawDeg;
         Entry.MaterialSlot     = SlotIndices[0u];
-        PopulateCenteredAssetEntry(*VehGeom, Entry, WorldPos, 5u);
+        PopulateCenteredAssetEntry(*VehGeom, Entry, WorldPos, 5u, VehicleGeometryReady);
         return RegisterDynamicAssetInBundle(OutBundle, std::move(VehGeom), std::move(Entry), 1u);
     };
 

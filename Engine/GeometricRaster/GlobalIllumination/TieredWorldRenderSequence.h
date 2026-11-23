@@ -68,16 +68,18 @@ struct WorldRenderConfiguration
     SpecularReflectionSource              ReflectionSource    = SpecularReflectionSource::WideTreeRaytrace;
     RealTimeGiCandidate                   GiCandidate         = RealTimeGiCandidate::SurfelRadiosity;
     DirectLighting::SdfShadowPenumbraMode SdfPenumbraMode     = DirectLighting::SdfShadowPenumbraMode::AnalyticSdfConePenumbra;
-    uint32_t                              DebugChannel        = 0u;   // [0..16] - 0=Lit, 1=Depth, 2=Albedo, 3=ShadingNrm, 4=Roughness, 5=Metalness, 6=ClusterId, 7=GeomNrm, 8=SunShadow, 9=AmbientOcc, 10=DirectLit, 11=Specular, 12=SdfDistance, 13=SdfMaterial, 14=SdfNormal, 15=SdfAoRaw, 16=SdfCascade, 17=NaniteLodLevel, 18=NaniteClusters
-    bool                                  ReflectionsEnabled  = true; // [-]     - Specular reflection toggle
-    bool                                  RaytracingEnabled   = true; // [-]     - Hardware/BVH raytracing toggle
-    bool                                  XeGtaoEnabled       = false; // [-]    - XeGTAO screen-space AO for direct PBR (no GI contribution)
-    float                                 XeGtaoStrength      = 1.0f;  // [x]    - XeGTAO occlusion strength multiplier [0..2]
-    uint32_t                              QualityTier         = 1u;   // [0..4]  - Quality tier
-    uint32_t                              PathTraceSamples    = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
-    uint32_t                              PathTraceTargetSpp  = 0u;   // [spp]   - Convergence target for progressive PT (0 = continuous, no cap)
-    bool                                  NaniteLodEnabled    = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut (Nanite-like) instead of full-res geometry
-    float                                 NanitePixelError    = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
+    uint32_t                              DebugChannel           = 0u;   // [0..22] - 0=Lit, 1..16=Modular channels, 17=NaniteLodLevel, 18=NaniteClusters, 19=NaniteGroups, 20=NaniteTriangles, 21=NaniteError, 22=NaniteUvSeams
+    bool                                  ReflectionsEnabled     = true; // [-]     - Specular reflection toggle
+    bool                                  RaytracingEnabled      = true; // [-]     - Hardware/BVH raytracing toggle
+    bool                                  XeGtaoEnabled          = false; // [-]    - XeGTAO screen-space AO for direct PBR (no GI contribution)
+    float                                 XeGtaoStrength         = 1.0f;  // [x]    - XeGTAO occlusion strength multiplier [0..2]
+    uint32_t                              QualityTier            = 1u;   // [0..4]  - Quality tier
+    uint32_t                              PathTraceSamples       = 4u;   // [spp]   - Progressive/realtime sample batch when Order 3 is active
+    uint32_t                              PathTraceTargetSpp     = 0u;   // [spp]   - Convergence target for progressive PT (0 = continuous, no cap)
+    bool                                  NaniteLodEnabled       = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut
+    float                                 NanitePixelError       = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
+    int32_t                               NaniteForcedLodLevel   = -1;    // [lvl]  - -1 = automatic cut, >= 0 = force exact pyramid level
+    bool                                  NaniteWireframeOverlay = false; // [-]    - Analytical triangle edge wireframe overlay across active view
 };
 
 struct WorldSceneSpecification

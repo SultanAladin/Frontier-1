@@ -168,8 +168,16 @@ struct RayHitReading
     float3 ShadingNormal;
     float3 GeomNormal;
     uint   MaterialSlot;
-    uint   LodLevel;       // Nanite debug: cluster hierarchy level of the hit triangle (packed in Corner0Pad.w)
-    uint   ClusterOrdinal; // Nanite debug: global cluster ordinal of the hit triangle (packed in Edge01Pad.w)
+    uint   LodLevel;        // Nanite pyramid level of the hit triangle
+    uint   MaxLodLevel;     // Coarsest pyramid level of the hit asset
+    uint   ClusterOrdinal;  // Global cluster ordinal
+    uint   GroupOrdinal;    // Simplification group ordinal
+    uint   TriangleOrdinal; // Global triangle ordinal
+    uint   SeamEdgeMask;    // 3-bit mask of open/material/UV seam edges
+    float  SelfErrorMeters; // World-space simplification error of producing group
+    float  EdgeDistMeters;  // Analytical world distance to nearest triangle edge
+    float  SeamDistMeters;  // Analytical world distance to nearest seam edge
+    float2 SurfaceUv;       // Interpolated parameterized UV coordinate
 };
 
 uint PcgNext(inout uint SeedVal)
@@ -706,8 +714,10 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
                         float3 Edge01  = SceneTriangles[TriIdx].Edge01Pad.xyz;
                         float3 Edge02  = SceneTriangles[TriIdx].Edge02Pad.xyz;
                         float4 N2Slot  = SceneTriangles[TriIdx].Normal2Slot;
-                        float3 RawGeom = normalize(cross(Edge01, Edge02));
-                        float3 SmoothN = normalize(
+                        float3 RawCross = cross(Edge01, Edge02);
+                        float  Area2    = length(RawCross);
+                        float3 RawGeom  = (Area2 > 1.0e-12) ? (RawCross / Area2) : float3(0.0, 0.0, 1.0);
+                        float3 SmoothN  = normalize(
                             SceneTriangles[TriIdx].Normal0Pad.xyz * W0 +
                             SceneTriangles[TriIdx].Normal1Pad.xyz * BaryUV.x +
                             N2Slot.xyz * BaryUV.y);
@@ -716,11 +726,41 @@ RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float Max
                             RawGeom = -RawGeom;
                             SmoothN = -SmoothN;
                         }
-                        Res.GeomNormal     = RawGeom;
-                        Res.ShadingNormal  = SmoothN;
-                        Res.MaterialSlot   = uint(N2Slot.w + 0.5);
-                        Res.LodLevel       = uint(SceneTriangles[TriIdx].Corner0Pad.w + 0.5);
-                        Res.ClusterOrdinal = uint(SceneTriangles[TriIdx].Edge01Pad.w + 0.5);
+                        if (dot(SmoothN, -Dir) < 0.0)
+                        {
+                            // Grazing silhouette normal guard (GeometryCompiler ViewportRasterization.js parity)
+                            SmoothN = normalize(SmoothN - Dir * (dot(SmoothN, -Dir) - 0.02));
+                        }
+
+                        uint   MetaWord = asuint(SceneTriangles[TriIdx].Corner0Pad.w) & 0x3FFFFFFFu;
+                        uint   UvWordA  = asuint(SceneTriangles[TriIdx].Normal0Pad.w) & 0x3FFFFFFFu;
+                        uint   UvWordB  = asuint(SceneTriangles[TriIdx].Normal1Pad.w) & 0x3FFFFFFFu;
+                        float2 Uv0      = float2(float(UvWordA & 0x3FFu), float((UvWordA >> 10u) & 0x3FFu)) * (4.0 / 1023.0);
+                        float2 Uv1      = float2(float((UvWordA >> 20u) & 0x3FFu), float(UvWordB & 0x3FFu)) * (4.0 / 1023.0);
+                        float2 Uv2      = float2(float((UvWordB >> 10u) & 0x3FFu), float((UvWordB >> 20u) & 0x3FFu)) * (4.0 / 1023.0);
+
+                        float  DistE01  = BaryUV.y * Area2 / max(1.0e-6, length(Edge01));
+                        float  DistE12  = W0 * Area2 / max(1.0e-6, length(Edge02 - Edge01));
+                        float  DistE20  = BaryUV.x * Area2 / max(1.0e-6, length(Edge02));
+                        uint   SeamMask = (MetaWord >> 8u) & 0x7u;
+                        float  SeamDist = 1.0e9;
+                        if ((SeamMask & 1u) != 0u) SeamDist = min(SeamDist, DistE01);
+                        if ((SeamMask & 2u) != 0u) SeamDist = min(SeamDist, DistE12);
+                        if ((SeamMask & 4u) != 0u) SeamDist = min(SeamDist, DistE20);
+
+                        Res.GeomNormal      = RawGeom;
+                        Res.ShadingNormal   = SmoothN;
+                        Res.MaterialSlot    = uint(N2Slot.w + 0.5);
+                        Res.LodLevel        = MetaWord & 0xFu;
+                        Res.MaxLodLevel     = (MetaWord >> 4u) & 0xFu;
+                        Res.SeamEdgeMask    = SeamMask;
+                        Res.GroupOrdinal    = (MetaWord >> 11u) & 0x7FFFFu;
+                        Res.ClusterOrdinal  = uint(SceneTriangles[TriIdx].Edge01Pad.w + 0.5);
+                        Res.TriangleOrdinal = TriIdx;
+                        Res.SelfErrorMeters = max(0.0, SceneTriangles[TriIdx].Edge02Pad.w);
+                        Res.EdgeDistMeters  = min(DistE01, min(DistE12, DistE20));
+                        Res.SeamDistMeters  = SeamDist;
+                        Res.SurfaceUv       = Uv0 * W0 + Uv1 * BaryUV.x + Uv2 * BaryUV.y;
                     }
                 }
             }
@@ -2747,6 +2787,109 @@ void CloudComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     CloudRadiometricBuffer[PIdx] = float4(CloudRad, CloudTrans);
 }
 
+bool QueryNaniteWireframeEnabled()
+{
+    return (WorldUniforms.AtmosphereMaskPad.w & (1u << 22u)) != 0u;
+}
+
+// GeometryCompiler ViewportRasterization.js 5-stop blue -> cyan -> green -> amber -> red ramp (converted to linear RGB)
+float3 EvaluateGeometryCompilerRamp(float Ratio)
+{
+    float T = saturate(Ratio) * 4.0;
+    int   Idx = min(3, int(floor(T)));
+    float Fr  = T - float(Idx);
+    float3 Stops[5] = {
+        float3(0.027, 0.147, 0.694), // sRGB (0.18, 0.42, 0.85)
+        float3(0.020, 0.477, 0.448), // sRGB (0.15, 0.72, 0.70)
+        float3(0.147, 0.571, 0.084), // sRGB (0.42, 0.78, 0.32)
+        float3(0.831, 0.420, 0.027), // sRGB (0.92, 0.68, 0.18)
+        float3(0.749, 0.047, 0.040), // sRGB (0.88, 0.24, 0.22)
+    };
+    return lerp(Stops[Idx], Stops[Idx + 1], Fr);
+}
+
+// GeometryCompiler ViewportRasterization.js golden-ratio HSL idColor(id) (s=0.58, l=0.56) in linear RGB
+float3 EvaluateGeometryCompilerIdColor(uint Ordinal)
+{
+    float Hue = frac(float(Ordinal) * 0.61803398875);
+    float Sat = 0.58;
+    float Lit = 0.56;
+    float Amp = Sat * min(Lit, 1.0 - Lit);
+    float3 Srgb;
+    float K0 = fmod(Hue * 12.0, 12.0);
+    float K8 = fmod(8.0 + Hue * 12.0, 12.0);
+    float K4 = fmod(4.0 + Hue * 12.0, 12.0);
+    Srgb.x = Lit - Amp * max(-1.0, min(K0 - 3.0, min(9.0 - K0, 1.0)));
+    Srgb.y = Lit - Amp * max(-1.0, min(K8 - 3.0, min(9.0 - K8, 1.0)));
+    Srgb.z = Lit - Amp * max(-1.0, min(K4 - 3.0, min(9.0 - K4, 1.0)));
+    return pow(saturate(Srgb), 2.2);
+}
+
+float EvaluateAnalyticalWireframeAlpha(RayHitReading Hit, float3 RayDir, float EdgeMeters)
+{
+    float TanHalfY   = max(1.0e-4, WorldUniforms.CameraRightTanY.w);
+    float ViewHeight = max(1.0, WorldUniforms.CameraForwardHeight.w);
+    float GrazingCos = max(0.28, abs(dot(Hit.GeomNormal, RayDir)));
+    float PixelSpan  = Hit.Distance * (2.0 * TanHalfY / ViewHeight) / GrazingCos;
+    float EdgeInPx   = EdgeMeters / max(1.0e-6, PixelSpan);
+    return 1.0 - smoothstep(0.30, 1.35, EdgeInPx);
+}
+
+float3 EvaluateNaniteDebugChannelHdr(uint DebugMode, RayHitReading Hit, float3 RayDir)
+{
+    float3 KeyLightA = normalize(WorldUniforms.SunDirConeTan.xyz);
+    float3 KeyLightB = normalize(float3(-KeyLightA.y, KeyLightA.x, 0.55));
+    float3 ShadeNorm = (DebugMode == 20u) ? Hit.GeomNormal : Hit.ShadingNormal;
+    float  StudioLit = 0.24 + 0.58 * max(0.0, dot(ShadeNorm, KeyLightA)) + 0.20 * max(0.0, dot(ShadeNorm, KeyLightB));
+
+    float3 DebugTint = float3(0.5);
+    if (DebugMode == 17u)
+    {
+        float Ratio = float(Hit.LodLevel) / float(max(1u, Hit.MaxLodLevel));
+        DebugTint   = EvaluateGeometryCompilerRamp(Ratio);
+    }
+    else if (DebugMode == 18u)
+    {
+        DebugTint = EvaluateGeometryCompilerIdColor(Hit.ClusterOrdinal + 1u);
+    }
+    else if (DebugMode == 19u)
+    {
+        DebugTint = EvaluateGeometryCompilerIdColor(Hit.GroupOrdinal * 7u + 3u);
+    }
+    else if (DebugMode == 20u)
+    {
+        DebugTint = EvaluateGeometryCompilerIdColor(Hit.TriangleOrdinal + 1u);
+    }
+    else if (DebugMode == 21u)
+    {
+        float PixelsPerRadian = max(1.0, WorldUniforms.CameraForwardHeight.w / max(1.0e-5, 2.0 * WorldUniforms.CameraRightTanY.w));
+        float BudgetPx        = max(0.10, WorldUniforms.SunCascadeForwardPad.w);
+        float ProjErrPx       = (Hit.SelfErrorMeters * PixelsPerRadian) / max(1.0e-3, Hit.Distance);
+        DebugTint             = EvaluateGeometryCompilerRamp(saturate(ProjErrPx / BudgetPx));
+    }
+    else if (DebugMode == 22u)
+    {
+        int   CellX   = int(floor(Hit.SurfaceUv.x * 16.0));
+        int   CellY   = int(floor(Hit.SurfaceUv.y * 16.0));
+        float Checker = (((CellX + CellY) & 1) != 0) ? 0.88 : 0.34;
+        float2 TileUv = frac(Hit.SurfaceUv);
+        DebugTint     = float3(0.18 + 0.72 * TileUv.x, 0.22 + 0.68 * TileUv.y, 0.58) * Checker;
+    }
+
+    float3 Result = DebugTint * StudioLit;
+    if (DebugMode == 22u && Hit.SeamDistMeters < 1.0e8)
+    {
+        float SeamAlpha = EvaluateAnalyticalWireframeAlpha(Hit, RayDir, Hit.SeamDistMeters * 0.65);
+        Result          = lerp(Result, float3(1.00, 0.62, 0.04), SeamAlpha * 0.92);
+    }
+    if (DebugMode == 20u || QueryNaniteWireframeEnabled())
+    {
+        float WireAlpha = EvaluateAnalyticalWireframeAlpha(Hit, RayDir, Hit.EdgeDistMeters);
+        Result          = lerp(Result, Result * 0.14 + float3(0.012), WireAlpha * 0.78);
+    }
+    return Result;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -2847,28 +2990,9 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                     : ((CascadeIdx == 1u) ? float3(0.95, 0.60, 0.15) : float3(0.90, 0.20, 0.20));
                 DbgHdr = CascadeTint * (0.30 + 0.70 * Mat.DiffuseAlbedoRoughness.xyz);
             }
-            else if (DebugMode == 17u)
+            else if (DebugMode >= 17u && DebugMode <= 22u)
             {
-                // Nanite LOD Level: green L0 finest, yellow L1, orange L2, red L3, purple L4+
-                float3 LevelColor = float3(0.10, 0.85, 0.35);
-                if (PrimaryHit.LodLevel == 1u)      LevelColor = float3(0.95, 0.85, 0.10);
-                else if (PrimaryHit.LodLevel == 2u) LevelColor = float3(0.98, 0.45, 0.08);
-                else if (PrimaryHit.LodLevel == 3u) LevelColor = float3(0.92, 0.10, 0.15);
-                else if (PrimaryHit.LodLevel >= 4u) LevelColor = float3(0.75, 0.20, 0.95);
-                float FormShade = 0.30 + 0.70 * saturate(dot(PrimaryHit.GeomNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
-                DbgHdr = LevelColor * FormShade;
-            }
-            else if (DebugMode == 18u)
-            {
-                // Nanite Cluster ID: one vivid colour per cluster so cluster granularity is visible
-                uint CId = PrimaryHit.ClusterOrdinal + 1u;
-                float H1 = frac(float(CId) * 0.3819660113);
-                float H2 = frac(float(CId) * 0.6180339887 + 0.27);
-                float H3 = frac(float(CId) * 0.7548776662 + 0.53);
-                float3 ClusterColor = float3(H1, H2, H3);
-                ClusterColor /= max(ClusterColor.r, max(ClusterColor.g, ClusterColor.b));
-                float FormShade = 0.35 + 0.65 * saturate(dot(PrimaryHit.GeomNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
-                DbgHdr = ClusterColor * FormShade;
+                DbgHdr = EvaluateNaniteDebugChannelHdr(DebugMode, PrimaryHit, RayDir);
             }
         }
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
@@ -2953,6 +3077,10 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (EngineMode == 0u && DebugMode == 0u)
     {
         float3 MatCapHdr = EvaluateMatCapSurface(PrimaryHit);
+        if (QueryNaniteWireframeEnabled())
+        {
+            MatCapHdr *= (1.0 - 0.72 * EvaluateAnalyticalWireframeAlpha(PrimaryHit, RayDir, PrimaryHit.EdgeDistMeters));
+        }
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
         GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, 1.0);
         GBufDirectBase[PixelIdx]         = float4(MatCapHdr, HitDistForClouds);
@@ -2985,6 +3113,15 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         DiffAo,
         SpecRough,
         SpecAo);
+
+    if (QueryNaniteWireframeEnabled())
+    {
+        float WireKeep     = 1.0 - 0.72 * EvaluateAnalyticalWireframeAlpha(PrimaryHit, RayDir, PrimaryHit.EdgeDistMeters);
+        DirectBaseHdr      *= WireKeep;
+        UnoccludedSunHdr   *= WireKeep;
+        DiffuseAlbedoMatte *= WireKeep;
+        SpecReflHdr        *= WireKeep;
+    }
 
     AccumulationHdrBuffer[PixelIdx]  = float4(SpecReflHdr, SpecRough);
     GBufPosMask[PixelIdx]            = float4(PrimaryHit.Position, 1.0 + SpecRough);
@@ -3152,26 +3289,9 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                             : ((CascadeIdx == 1u) ? float3(0.95, 0.60, 0.15) : float3(0.90, 0.20, 0.20));
                         DbgHdr = CascadeTint * (0.30 + 0.70 * Mat.DiffuseAlbedoRoughness.xyz);
                     }
-                    else if (DebugMode == 17u)
+                    else if (DebugMode >= 17u && DebugMode <= 22u)
                     {
-                        float3 LevelColor = float3(0.10, 0.85, 0.35);
-                        if (PrimaryHit.LodLevel == 1u)      LevelColor = float3(0.95, 0.85, 0.10);
-                        else if (PrimaryHit.LodLevel == 2u) LevelColor = float3(0.98, 0.45, 0.08);
-                        else if (PrimaryHit.LodLevel == 3u) LevelColor = float3(0.92, 0.10, 0.15);
-                        else if (PrimaryHit.LodLevel >= 4u) LevelColor = float3(0.75, 0.20, 0.95);
-                        float FormShade = 0.30 + 0.70 * saturate(dot(PrimaryHit.GeomNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
-                        DbgHdr = LevelColor * FormShade;
-                    }
-                    else if (DebugMode == 18u)
-                    {
-                        uint CId = PrimaryHit.ClusterOrdinal + 1u;
-                        float H1 = frac(float(CId) * 0.3819660113);
-                        float H2 = frac(float(CId) * 0.6180339887 + 0.27);
-                        float H3 = frac(float(CId) * 0.7548776662 + 0.53);
-                        float3 ClusterColor = float3(H1, H2, H3);
-                        ClusterColor /= max(ClusterColor.r, max(ClusterColor.g, ClusterColor.b));
-                        float FormShade = 0.35 + 0.65 * saturate(dot(PrimaryHit.GeomNormal, WorldUniforms.SunDirConeTan.xyz) * 0.5 + 0.5);
-                        DbgHdr = ClusterColor * FormShade;
+                        DbgHdr = EvaluateNaniteDebugChannelHdr(DebugMode, PrimaryHit, RayDir);
                     }
                 }
                 GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
@@ -3372,6 +3492,15 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     AccumulationHdrBuffer[PixelIdx]  = float4(SpecReflHdr, SpecRough);
     GBufPosMask[PixelIdx]            = float4(PrimaryHit.Position, 1.0 + SpecRough);
+    if (QueryNaniteWireframeEnabled())
+    {
+        float WireKeep     = 1.0 - 0.72 * EvaluateAnalyticalWireframeAlpha(PrimaryHit, RayDir, PrimaryHit.EdgeDistMeters);
+        DirectSurfaceHdr   *= WireKeep;
+        UnoccludedSunHdr   *= WireKeep;
+        DiffuseAlbedoMatte *= WireKeep;
+        SpecReflHdr        *= WireKeep;
+    }
+
     GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, DiffAo);
     GBufDirectBase[PixelIdx]         = float4(DirectSurfaceHdr, HitDistForClouds);
     GBufSunContrib[PixelIdx]         = float4(UnoccludedSunHdr, HitDistForFog);

@@ -429,6 +429,43 @@ static_assert(
         return false;
     }
 
+    // Verify per-tick unthrottled FPS & interval telemetry updates (no 0.25 s throttle, no 240 FPS clamp)
+    Editor.RecordFramePresentationTiming(0.8f, 0.2f, 2.0f);
+    if (!VerifyCondition(
+            SessionPanes->Outliner.QueryFooterReadings().RealtimeText == "500 fps" &&
+                Editor.QueryLatestViewportTiming().TotalFrameMs == 2.0f,
+            "RecordFramePresentationTiming updates Outliner footer & TotalFrameMs immediately to 500 fps / 2.0 ms"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(Context);
+        return false;
+    }
+    Editor.RecordFramePresentationTiming(1.2f, 0.4f, 8.0f);
+    if (!VerifyCondition(
+            SessionPanes->Outliner.QueryFooterReadings().RealtimeText == "125 fps" &&
+                Editor.QueryLatestViewportTiming().TotalFrameMs == 8.0f,
+            "RecordFramePresentationTiming updates immediately on the very next tick to 125 fps / 8.0 ms"))
+    {
+        Editor.Finalize();
+        ImGui::DestroyContext(Context);
+        return false;
+    }
+
+    auto* MutablePanes = Editor.AccessWorkspaces().AccessSessionPanes(ActiveSession);
+    if (MutablePanes != nullptr)
+    {
+        MutablePanes->Viewport.ConfigureDiagnosticsVisible(true);
+        if (!VerifyCondition(
+                Editor.QueryRequiresContinuousRefresh(),
+                "EditorLifecycle requests continuous per-tick refresh while Diagnostics overlay is open"))
+        {
+            Editor.Finalize();
+            ImGui::DestroyContext(Context);
+            return false;
+        }
+        MutablePanes->Viewport.ConfigureDiagnosticsVisible(false);
+    }
+
     if (!VerifyCondition(Editor.Suspend(), "EditorLifecycle Suspend") ||
         !VerifyCondition(Editor.Resume(), "EditorLifecycle Resume"))
     {

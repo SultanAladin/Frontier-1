@@ -1406,15 +1406,9 @@ int LaunchDesktopWorkspace(
         }
 #endif
 #if !defined(__ANDROID__)
-        if (InitialOptions.BoundedStepLimit == 0u &&
-            SettleTicksRemaining == 0u &&
-            !ContinuousRefreshRequired)
+        if (DesktopWindow.CloseRequested())
         {
-            DesktopWindow.WaitOperatingEventsTimeout(Io.WantTextInput ? 0.25 : 0.50);
-            if (DesktopWindow.CloseRequested())
-            {
-                break;
-            }
+            break;
         }
 #endif
 
@@ -1963,21 +1957,7 @@ int LaunchDesktopWorkspace(
         {
             --SettleTicksRemaining;
         }
-        if (InitialOptions.BoundedStepLimit == 0u && !WorldDispatchedThisTick)
-        {
-            const bool AnyMouseDown =
-                Io.MouseDown[0] || Io.MouseDown[1] || Io.MouseDown[2] || Io.MouseDown[3] || Io.MouseDown[4];
-            if (!AnyMouseDown && !Io.WantTextInput && SettleTicksRemaining > 0u)
-            {
-                // Pace pure UI-only pointer-hover frames to 120 Hz before entering 0-FPS event-driven sleep.
-                constexpr double kTargetHoverStepSeconds = 1.0 / 120.0;
-                const double ElapsedSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - NowTick).count();
-                if (ElapsedSec + 0.0004 < kTargetHoverStepSeconds)
-                {
-                    DesktopWindow.WaitOperatingEventsTimeout(kTargetHoverStepSeconds - ElapsedSec);
-                }
-            }
-        }
+        (void)WorldDispatchedThisTick;
 #endif
         ++ExecutedSteps;
     }

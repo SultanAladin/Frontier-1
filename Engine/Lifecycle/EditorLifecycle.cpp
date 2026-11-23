@@ -2047,14 +2047,16 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.RaytracingEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
         ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
         : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
-    RenderConfig.DebugChannel       = std::min(18u, DisplayCfg.DebugChannelIndex);
-    RenderConfig.XeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
-    RenderConfig.XeGtaoStrength     = DisplayCfg.XeGtaoStrength;
-    RenderConfig.PathTraceSamples   = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
-    RenderConfig.PathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
-    RenderConfig.NaniteLodEnabled   = DisplayCfg.ClusterLodEnabled;
-    RenderConfig.NanitePixelError   = DisplayCfg.ClusterLodPixelError;
-    RenderConfig.QualityTier        = QTier;
+    RenderConfig.DebugChannel           = std::min(22u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.XeGtaoEnabled          = DisplayCfg.XeGtaoEnabled;
+    RenderConfig.XeGtaoStrength         = DisplayCfg.XeGtaoStrength;
+    RenderConfig.PathTraceSamples       = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
+    RenderConfig.PathTraceTargetSpp     = DisplayCfg.PathTraceTargetSpp;
+    RenderConfig.NaniteLodEnabled       = DisplayCfg.ClusterLodEnabled;
+    RenderConfig.NanitePixelError       = DisplayCfg.ClusterLodPixelError;
+    RenderConfig.NaniteForcedLodLevel   = DisplayCfg.ClusterForcedLodLevel;
+    RenderConfig.NaniteWireframeOverlay = DisplayCfg.ClusterWireframeOverlay;
+    RenderConfig.QualityTier            = QTier;
     RenderConfig.ReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
     RenderConfig.RaytracingEnabled  = DisplayCfg.RaytracingEnabled;
 
@@ -2228,63 +2230,73 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         Panes->Viewport.AssignCanvasRasterImage(CleanWorldRgba.data(), OutWidthPx, OutHeightPx);
     }
 
-    const float SunElevDeg = std::asin(std::clamp(ShowcaseBundle->Scene.Sun.DirectionToSun.Z, -1.0f, 1.0f)) * 57.2957795f;
-    uint32_t    ActiveLtc  = 0u;
-    for (const auto& Quad : ShowcaseBundle->Scene.AreaLights)
+    RefreshOutlinerFooterTelemetry();
+}
+
+void EditorLifecycle::RefreshOutlinerFooterTelemetry() noexcept
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr)
     {
-        if (Quad.EmittedRadiance.R + Quad.EmittedRadiance.G + Quad.EmittedRadiance.B > 0.01f)
-        {
-            ++ActiveLtc;
-        }
+        return;
     }
 
-    OutlinerFooterReadings Footer {};
+    const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
+    const bool  GpuReady   = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool  HwGpu      = GpuReady && GpuWorldRenderer->QueryHardwareGpuActive();
+
+    OutlinerFooterReadings Footer = Panes->Outliner.QueryFooterReadings();
     const char* EngineShortTag = "OpenPBR";
-    switch (RenderConfig.Engine)
+    switch (DisplayCfg.RenderEngineIndex)
     {
-    case GeometricRaster::WorldRenderEngine::MatCap:                     EngineShortTag = "MatCap";   break;
-    case GeometricRaster::WorldRenderEngine::OpenPbrDirect:              EngineShortTag = "OpenPBR";  break;
-    case GeometricRaster::WorldRenderEngine::RealTimeGiGtxLowEnd:        EngineShortTag = "GTX GI";   break;
-    case GeometricRaster::WorldRenderEngine::RealTimeGiHighEnd:          EngineShortTag = "BVH4 GI";  break;
-    case GeometricRaster::WorldRenderEngine::PathTracerGameRealtime:     EngineShortTag = "PT RT";    break;
-    case GeometricRaster::WorldRenderEngine::PathTracerSceneFinalRender: EngineShortTag = "PT Final"; break;
+    case 0u: EngineShortTag = "MatCap";   break;
+    case 1u: EngineShortTag = "OpenPBR";  break;
+    case 2u: EngineShortTag = "GTX GI";   break;
+    case 3u: EngineShortTag = "BVH4 GI";  break;
+    case 4u: EngineShortTag = "PT RT";    break;
+    case 5u: EngineShortTag = "PT Final"; break;
+    default: EngineShortTag = "GTX GI";   break;
     }
-    if (RenderedOnGpu)
+
+    const float LiveIntervalMs = (LatestViewportTiming.TotalFrameMs > 0.01f)
+        ? LatestViewportTiming.TotalFrameMs
+        : static_cast<float>(std::max(0.0001, CurrentStepSeconds) * 1000.0);
+    const int EstFps = std::clamp(static_cast<int>(std::lround(1000.0f / std::max(0.05f, LiveIntervalMs))), 1, 9999);
+    char FpsBuf[32]{};
+    std::snprintf(FpsBuf, sizeof(FpsBuf), "%d fps", EstFps);
+    Footer.RealtimeText = FpsBuf;
+    Footer.QualityText  = GpuReady
+        ? (std::string(HwGpu ? "GPU " : "VK ") + EngineShortTag)
+        : (std::string("CPU ") + EngineShortTag);
+
+    if (ShowcaseBundle != nullptr)
     {
-        const float GpuMs  = std::max(0.25f, GpuWorldRenderer->QueryLastDispatchMilliseconds());
-        const float RefMs  = (LastActiveWorldTotalMs > 0.5f) ? std::max(GpuMs, LastActiveWorldTotalMs) : GpuMs;
-        const int   EstFps = std::clamp(static_cast<int>(std::lround(1000.0f / RefMs)), 1, 999);
-        char FpsBuf[32]{};
-        std::snprintf(FpsBuf, sizeof(FpsBuf), "%d fps", EstFps);
-        Footer.RealtimeText = FpsBuf;
-        Footer.QualityText  = std::string(HwGpu ? "GPU " : "VK ") + EngineShortTag;
+        const float SunElevDeg = std::asin(std::clamp(ShowcaseBundle->Scene.Sun.DirectionToSun.Z, -1.0f, 1.0f)) * 57.2957795f;
+        uint32_t    ActiveLtc  = 0u;
+        for (const auto& Quad : ShowcaseBundle->Scene.AreaLights)
+        {
+            if (Quad.EmittedRadiance.R + Quad.EmittedRadiance.G + Quad.EmittedRadiance.B > 0.01f)
+            {
+                ++ActiveLtc;
+            }
+        }
+        char SunBuf[32]{};
+        std::snprintf(SunBuf, sizeof(SunBuf), "Sun %.0f°", std::max(0.0f, SunElevDeg));
+        Footer.PrimarySlot = SunBuf;
+        char LtcBuf[32]{};
+        std::snprintf(LtcBuf, sizeof(LtcBuf), "LTC %u", ActiveLtc);
+        Footer.SecondarySlot = LtcBuf;
+        char CamBuffer[48]{};
+        std::snprintf(
+            CamBuffer,
+            sizeof(CamBuffer),
+            "%.1f, %.1f, %.1f",
+            ShowcaseBundle->EditorCamera.CameraOrigin.X,
+            ShowcaseBundle->EditorCamera.CameraOrigin.Y,
+            ShowcaseBundle->EditorCamera.CameraOrigin.Z);
+        Footer.CameraText = CamBuffer;
     }
-    else
-    {
-        Footer.RealtimeText = "CPU GI";
-        Footer.QualityText  = std::string("CPU ") + EngineShortTag;
-    }
-    char SunBuf[32]{};
-    std::snprintf(SunBuf, sizeof(SunBuf), "Sun %.0f°", std::max(0.0f, SunElevDeg));
-    Footer.PrimarySlot = SunBuf;
-    char LtcBuf[32]{};
-    std::snprintf(LtcBuf, sizeof(LtcBuf), "LTC %u", ActiveLtc);
-    Footer.SecondarySlot = LtcBuf;
-    char CamBuffer[48]{};
-    std::snprintf(
-        CamBuffer,
-        sizeof(CamBuffer),
-        "%.1f, %.1f, %.1f",
-        ShowcaseBundle->EditorCamera.CameraOrigin.X,
-        ShowcaseBundle->EditorCamera.CameraOrigin.Y,
-        ShowcaseBundle->EditorCamera.CameraOrigin.Z);
-    Footer.CameraText = CamBuffer;
-    FooterCooldownSeconds -= CurrentStepSeconds;
-    if (FooterCooldownSeconds <= 0.0 || Panes->Outliner.QueryEntries().empty())
-    {
-        Panes->Outliner.ConfigureFooterReadings(Footer);
-        FooterCooldownSeconds = 0.25;
-    }
+    Panes->Outliner.ConfigureFooterReadings(Footer);
 }
 
 bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
@@ -2476,6 +2488,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
                 DisplayCfg.ClusterLodEnabled != LastClusterLodEnabled ||
                 DisplayCfg.ClusterLodPixelError != LastClusterLodPixelError ||
+                DisplayCfg.ClusterForcedLodLevel != LastClusterForcedLod ||
+                DisplayCfg.ClusterWireframeOverlay != LastClusterWireframe ||
                 DisplayCfg.PathTraceTargetSpp != LastPathTraceTargetSpp ||
                 DisplayCfg.PathTraceBatchSpp != LastPathTraceBatchSpp ||
                 DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
@@ -2501,6 +2515,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
             LastClusterLodEnabled  = DisplayCfg.ClusterLodEnabled;
             LastClusterLodPixelError = DisplayCfg.ClusterLodPixelError;
+            LastClusterForcedLod   = DisplayCfg.ClusterForcedLodLevel;
+            LastClusterWireframe   = DisplayCfg.ClusterWireframeOverlay;
             LastPathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
             LastPathTraceBatchSpp  = DisplayCfg.PathTraceBatchSpp;
             LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
@@ -2596,7 +2612,9 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 GpuReady && PathTracerEngineActive &&
                 (DisplayCfg.PathTraceTargetSpp == 0u ||
                  GpuWorldRenderer->QueryProgressiveSampleCount() < DisplayCfg.PathTraceTargetSpp);
-            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active)
+            const bool DiagnosticsLiveActive =
+                Panes->Viewport.QueryDiagnosticsVisible() && !Panes->Viewport.QueryDiagnosticsPaused();
+            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active || DiagnosticsLiveActive)
             {
                 FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
                 RefreshShowcaseViewportRaster();
@@ -2664,6 +2682,10 @@ bool EditorLifecycle::QueryRequiresContinuousRefresh() noexcept
         {
             return true;
         }
+        if (Panes->Viewport.QueryDiagnosticsVisible() && !Panes->Viewport.QueryDiagnosticsPaused())
+        {
+            return true;
+        }
         const auto& Disp = Panes->Viewport.QueryDisplaySettings();
         const bool  PtEngine = (Disp.RenderEngineIndex == 4u || Disp.RenderEngineIndex == 5u);
         if (PtEngine && GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady())
@@ -2687,14 +2709,10 @@ void EditorLifecycle::RecordFramePresentationTiming(
     LatestViewportTiming.FrameIndex         = TimingFrameCounter;
     LatestViewportTiming.DesktopPollAndUiMs = DesktopPollAndUiMs;
     LatestViewportTiming.SwapchainPresentMs = SwapchainPresentMs;
-    if (LatestViewportTiming.WorldDispatched || LastActiveWorldTotalMs <= 0.0f)
+    LatestViewportTiming.TotalFrameMs       = TotalFrameMs;
+    if (LatestViewportTiming.WorldDispatched)
     {
-        LastActiveWorldTotalMs            = TotalFrameMs;
-        LatestViewportTiming.TotalFrameMs = TotalFrameMs;
-    }
-    else
-    {
-        LatestViewportTiming.TotalFrameMs = LastActiveWorldTotalMs;
+        LastActiveWorldTotalMs = TotalFrameMs;
     }
 
     if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady() && LatestViewportTiming.RenderWidthPx == 0u)
@@ -2706,6 +2724,7 @@ void EditorLifecycle::RecordFramePresentationTiming(
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
         Panes->Viewport.ConfigureViewportTimingBreakdown(LatestViewportTiming);
+        RefreshOutlinerFooterTelemetry();
         const auto& Disp = Panes->Viewport.QueryDisplaySettings();
         const uint64_t DispRev =
             (static_cast<uint64_t>(Disp.RenderEngineIndex) << 24u) ^

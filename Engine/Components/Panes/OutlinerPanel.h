@@ -215,6 +215,7 @@ public:
     [[nodiscard]] bool                                     QueryDirectiveSheetOpen() const noexcept;
     [[nodiscard]] Rectangle2D                              QueryLastPhysicalBounds() const noexcept;
     [[nodiscard]] OutlinerSlotToken                        QuerySlotAtPhysicalPoint(Point2D PhysicalPoint) const noexcept;
+    [[nodiscard]] const OutlinerFooterReadings&            QueryFooterReadings() const noexcept { return FooterReadings; }
 
     void BuildVisibleRows(std::vector<OutlinerVisibleRow>& OutRows) const;
 

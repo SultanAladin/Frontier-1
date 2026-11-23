@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <unordered_map>
 
 namespace Frontier::GeometricRaster
 {
@@ -971,6 +972,58 @@ bool VulkanWorldRenderSequence::UploadDualDeviceBuffers(
     return Ok;
 }
 
+[[nodiscard]] float PackSafeBits30ToFloat(uint32_t Word30) noexcept
+{
+    const uint32_t SafeWord = Word30 & 0x3FFFFFFFu;
+    float          OutFloat = 0.0f;
+    std::memcpy(&OutFloat, &SafeWord, sizeof(float));
+    return OutFloat;
+}
+
+[[nodiscard]] uint32_t UnpackSafeBits30FromFloat(float InFloat) noexcept
+{
+    uint32_t Word = 0u;
+    std::memcpy(&Word, &InFloat, sizeof(uint32_t));
+    return Word & 0x3FFFFFFFu;
+}
+
+[[nodiscard]] float PackNaniteTriangleMetaWord(
+    uint32_t LodLevel,
+    uint32_t MaxLodLevel,
+    uint32_t SeamEdgeMask,
+    uint32_t GroupOrdinal) noexcept
+{
+    const uint32_t Word =
+        (LodLevel & 0xFu) |
+        ((MaxLodLevel & 0xFu) << 4u) |
+        ((SeamEdgeMask & 0x7u) << 8u) |
+        ((GroupOrdinal & 0x7FFFFu) << 11u);
+    return PackSafeBits30ToFloat(Word);
+}
+
+void PackNaniteTriangleUvsToFloats(
+    Mathematics::UVAxes Uv0,
+    Mathematics::UVAxes Uv1,
+    Mathematics::UVAxes Uv2,
+    float&              OutWordA,
+    float&              OutWordB) noexcept
+{
+    auto QuantizeUv10 = [](float Coord) noexcept -> uint32_t
+    {
+        const float   Wrapped = Coord - std::floor(Coord * 0.25f) * 4.0f;
+        const int32_t Quant   = static_cast<int32_t>(std::lround(std::clamp(Wrapped * 0.25f, 0.0f, 1.0f) * 1023.0f));
+        return static_cast<uint32_t>(std::clamp(Quant, 0, 1023));
+    };
+    const uint32_t U0 = QuantizeUv10(Uv0.U);
+    const uint32_t V0 = QuantizeUv10(Uv0.V);
+    const uint32_t U1 = QuantizeUv10(Uv1.U);
+    const uint32_t V1 = QuantizeUv10(Uv1.V);
+    const uint32_t U2 = QuantizeUv10(Uv2.U);
+    const uint32_t V2 = QuantizeUv10(Uv2.V);
+    OutWordA = PackSafeBits30ToFloat(U0 | (V0 << 10u) | (U1 << 20u));
+    OutWordB = PackSafeBits30ToFloat(V1 | (U2 << 10u) | (V2 << 20u));
+}
+
 const VulkanWorldRenderSequence::CachedAssetClusterHierarchy&
 VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
     const SpatialAcceleration::ClusterPyramid* PyramidAsset)
@@ -998,8 +1051,19 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
     }
     Built.LevelSubtrees.resize(LevelCount);
 
+    const uint32_t MaxLevelIndex = (LevelCount > 0u) ? (LevelCount - 1u) : 0u;
+    struct LocalTriangleNaniteAux
+    {
+        uint32_t GroupOrdinal    = 0u;
+        uint32_t SeamEdgeMask    = 0u;
+        float    SelfErrorMeters = 0.0f;
+        float    PackedUvWordA   = 0.0f;
+        float    PackedUvWordB   = 0.0f;
+    };
+
     std::vector<SpatialAcceleration::RayTrianglePrimitive>  LocalPrims {};
     std::vector<SpatialAcceleration::TriangleSmoothNormals> LocalNormals {};
+    std::vector<LocalTriangleNaniteAux>                     LocalAux {};
 
     for (uint32_t Level = 0u; Level < LevelCount; ++Level)
     {
@@ -1008,8 +1072,71 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
 
         LocalPrims.clear();
         LocalNormals.clear();
+        LocalAux.clear();
         Mathematics::Axis3D BMin {  1.0e30f,  1.0e30f,  1.0e30f };
         Mathematics::Axis3D BMax { -1.0e30f, -1.0e30f, -1.0e30f };
+
+        struct LevelEdgeEntry
+        {
+            uint32_t            UseCount     = 0u;
+            uint16_t            FirstMat     = 0u;
+            Mathematics::UVAxes FirstUvLo    {};
+            Mathematics::UVAxes FirstUvHi    {};
+            bool                SeamDetected = false;
+        };
+        std::unordered_map<uint64_t, LevelEdgeEntry> LevelEdges;
+        auto EncodeEdgeKey = [](uint32_t A, uint32_t B) noexcept -> uint64_t
+        {
+            const uint32_t Lo = std::min(A, B);
+            const uint32_t Hi = std::max(A, B);
+            return (static_cast<uint64_t>(Lo) << 32u) | static_cast<uint64_t>(Hi);
+        };
+
+        for (std::size_t ClusterIdx = 0u; ClusterIdx < PyramidAsset->Clusters.size(); ++ClusterIdx)
+        {
+            const auto&    Cluster      = PyramidAsset->Clusters[ClusterIdx];
+            const uint32_t ClampedLevel = std::min(7u, static_cast<uint32_t>(Cluster.HierarchyLevel));
+            if (ClampedLevel != Level)
+            {
+                continue;
+            }
+            for (uint32_t TriOff = 0u; TriOff < Cluster.TriangleCount; ++TriOff)
+            {
+                const uint32_t TriGlobalIdx = Cluster.TriangleStartOffset + TriOff;
+                if (TriGlobalIdx >= PyramidAsset->Triangles.size())
+                {
+                    break;
+                }
+                const auto& Tri = PyramidAsset->Triangles[TriGlobalIdx];
+                const uint32_t V[3] = { Tri.VertexIndex0, Tri.VertexIndex1, Tri.VertexIndex2 };
+                const Mathematics::UVAxes Uv[3] = { Tri.CornerUV0, Tri.CornerUV1, Tri.CornerUV2 };
+                for (uint32_t K = 0u; K < 3u; ++K)
+                {
+                    const uint32_t NextK = (K + 1u) % 3u;
+                    const bool     Swap  = (V[K] > V[NextK]);
+                    const Mathematics::UVAxes UvLo = Swap ? Uv[NextK] : Uv[K];
+                    const Mathematics::UVAxes UvHi = Swap ? Uv[K]     : Uv[NextK];
+                    auto [It, Inserted] = LevelEdges.try_emplace(EncodeEdgeKey(V[K], V[NextK]));
+                    LevelEdgeEntry& EdgeEntry = It->second;
+                    ++EdgeEntry.UseCount;
+                    if (Inserted)
+                    {
+                        EdgeEntry.FirstMat  = Tri.MaterialOrdinal;
+                        EdgeEntry.FirstUvLo = UvLo;
+                        EdgeEntry.FirstUvHi = UvHi;
+                    }
+                    else
+                    {
+                        const float JumpLo = std::fabs(EdgeEntry.FirstUvLo.U - UvLo.U) + std::fabs(EdgeEntry.FirstUvLo.V - UvLo.V);
+                        const float JumpHi = std::fabs(EdgeEntry.FirstUvHi.U - UvHi.U) + std::fabs(EdgeEntry.FirstUvHi.V - UvHi.V);
+                        if (EdgeEntry.FirstMat != Tri.MaterialOrdinal || std::max(JumpLo, JumpHi) > 2.0e-3f)
+                        {
+                            EdgeEntry.SeamDetected = true;
+                        }
+                    }
+                }
+            }
+        }
 
         for (std::size_t ClusterIdx = 0u; ClusterIdx < PyramidAsset->Clusters.size(); ++ClusterIdx)
         {
@@ -1045,15 +1172,33 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
                 BMax.Y = std::max({ BMax.Y, P0.Y, P1.Y, P2.Y });
                 BMax.Z = std::max({ BMax.Z, P0.Z, P1.Z, P2.Z });
 
+                uint32_t SeamMask = 0u;
+                const uint32_t V[3] = { Tri.VertexIndex0, Tri.VertexIndex1, Tri.VertexIndex2 };
+                for (uint32_t K = 0u; K < 3u; ++K)
+                {
+                    const auto EdgeIt = LevelEdges.find(EncodeEdgeKey(V[K], V[(K + 1u) % 3u]));
+                    if (EdgeIt != LevelEdges.end() && (EdgeIt->second.UseCount == 1u || EdgeIt->second.SeamDetected))
+                    {
+                        SeamMask |= (1u << K);
+                    }
+                }
+
+                LocalTriangleNaniteAux Aux {};
+                Aux.GroupOrdinal    = Cluster.EnclosingGroupOrdinal;
+                Aux.SeamEdgeMask    = SeamMask;
+                Aux.SelfErrorMeters = std::max(0.0f, Cluster.FinerSelfErrorMeters);
+                PackNaniteTriangleUvsToFloats(Tri.CornerUV0, Tri.CornerUV1, Tri.CornerUV2, Aux.PackedUvWordA, Aux.PackedUvWordB);
+
                 SpatialAcceleration::RayTrianglePrimitive Prim {};
                 Prim.Corner0          = P0;
                 Prim.Edge01           = P1 - P0;
                 Prim.Edge02           = P2 - P0;
-                Prim.SourceFaceIndex  = Tri.SourceFaceIndex;
+                Prim.SourceFaceIndex  = static_cast<uint32_t>(LocalAux.size());
                 Prim.MaterialOrdinal  = Tri.MaterialOrdinal;
                 Prim.OpaqueMask       = 1u;
                 Prim.PrimitiveOrdinal = static_cast<uint32_t>(ClusterIdx);
                 LocalPrims.push_back(Prim);
+                LocalAux.push_back(Aux);
 
                 SpatialAcceleration::TriangleSmoothNormals Smooth {};
                 Smooth.Normal0 = GeometrySpace::UnpackOctahedralDirection32(Tri.PackedNormal0);
@@ -1087,6 +1232,9 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
         {
             const auto& Prim = Subtree.LocalBvh.Primitives[Idx];
             Subtree.TriLocalClusterIndices[Idx] = Prim.PrimitiveOrdinal;
+            const LocalTriangleNaniteAux Aux = (Prim.SourceFaceIndex < LocalAux.size())
+                ? LocalAux[Prim.SourceFaceIndex]
+                : LocalTriangleNaniteAux{};
 
             const Mathematics::Axis3D N0 = HasNormals
                 ? Subtree.LocalBvh.PrimitiveNormals[Idx].Normal0
@@ -1098,7 +1246,7 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
             OutTri.Corner0Pad[0]  = Prim.Corner0.X;
             OutTri.Corner0Pad[1]  = Prim.Corner0.Y;
             OutTri.Corner0Pad[2]  = Prim.Corner0.Z;
-            OutTri.Corner0Pad[3]  = static_cast<float>(Level);
+            OutTri.Corner0Pad[3]  = PackNaniteTriangleMetaWord(Level, MaxLevelIndex, Aux.SeamEdgeMask, Aux.GroupOrdinal);
             OutTri.Edge01Pad[0]   = Prim.Edge01.X;
             OutTri.Edge01Pad[1]   = Prim.Edge01.Y;
             OutTri.Edge01Pad[2]   = Prim.Edge01.Z;
@@ -1106,12 +1254,15 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
             OutTri.Edge02Pad[0]   = Prim.Edge02.X;
             OutTri.Edge02Pad[1]   = Prim.Edge02.Y;
             OutTri.Edge02Pad[2]   = Prim.Edge02.Z;
+            OutTri.Edge02Pad[3]   = Aux.SelfErrorMeters;
             OutTri.Normal0Pad[0]  = N0.X;
             OutTri.Normal0Pad[1]  = N0.Y;
             OutTri.Normal0Pad[2]  = N0.Z;
+            OutTri.Normal0Pad[3]  = Aux.PackedUvWordA;
             OutTri.Normal1Pad[0]  = N1.X;
             OutTri.Normal1Pad[1]  = N1.Y;
             OutTri.Normal1Pad[2]  = N1.Z;
+            OutTri.Normal1Pad[3]  = Aux.PackedUvWordB;
             OutTri.Normal2Slot[0] = N2.X;
             OutTri.Normal2Slot[1] = N2.Y;
             OutTri.Normal2Slot[2] = N2.Z;
@@ -2159,11 +2310,20 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
                 const uint32_t LocalClust = (TriIdx < Sub.TriLocalClusterIndices.size())
                     ? Sub.TriLocalClusterIndices[TriIdx]
                     : 0u;
-                const uint32_t GlobalOrd = Span.FirstGlobalClusterOrdinal + LocalClust;
+                const uint32_t GlobalOrd   = Span.FirstGlobalClusterOrdinal + LocalClust;
+                const float    MaxScaleAbs = std::max({ ScaleX, ScaleY, ScaleZ });
+                const uint32_t SrcMetaWord = UnpackSafeBits30FromFloat(DstTri.Corner0Pad[3]);
+                const uint32_t LocalGroup  = (SrcMetaWord >> 11u) & 0x7FFFFu;
+                const uint32_t GlobalGroup = Span.FirstGlobalClusterOrdinal + LocalGroup;
 
                 DstTri.Corner0Pad[0]  = WC0.X;
                 DstTri.Corner0Pad[1]  = WC0.Y;
                 DstTri.Corner0Pad[2]  = WC0.Z;
+                DstTri.Corner0Pad[3]  = PackNaniteTriangleMetaWord(
+                    SrcMetaWord & 0xFu,
+                    (SrcMetaWord >> 4u) & 0xFu,
+                    (SrcMetaWord >> 8u) & 0x7u,
+                    GlobalGroup);
                 DstTri.Edge01Pad[0]   = WE01.X;
                 DstTri.Edge01Pad[1]   = WE01.Y;
                 DstTri.Edge01Pad[2]   = WE01.Z;
@@ -2171,6 +2331,7 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
                 DstTri.Edge02Pad[0]   = WE02.X;
                 DstTri.Edge02Pad[1]   = WE02.Y;
                 DstTri.Edge02Pad[2]   = WE02.Z;
+                DstTri.Edge02Pad[3]   = DstTri.Edge02Pad[3] * MaxScaleAbs;
                 DstTri.Normal0Pad[0]  = WN0.X;
                 DstTri.Normal0Pad[1]  = WN0.Y;
                 DstTri.Normal0Pad[2]  = WN0.Z;
@@ -3316,8 +3477,24 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
                 OutTri.Normal2Slot[1] = Smooth.Normal2.Y;
                 OutTri.Normal2Slot[2] = Smooth.Normal2.Z;
                 OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
-                OutTri.Corner0Pad[3]  = 0.0f; // full-res: LOD level 0
-                OutTri.Edge01Pad[3]   = static_cast<float>(Idx / 128u); // full-res pseudo-cluster (128-tri groups)
+                OutTri.Corner0Pad[3]  = PackNaniteTriangleMetaWord(0u, 0u, 0u, static_cast<uint32_t>(Idx / 512u));
+                OutTri.Edge01Pad[3]   = static_cast<float>(Idx / 128u);
+                OutTri.Edge02Pad[3]   = 0.0f;
+                {
+                    const Mathematics::Axis3D C0 = Prim.Corner0;
+                    const Mathematics::Axis3D C1 = Prim.Corner0 + Prim.Edge01;
+                    const Mathematics::Axis3D C2 = Prim.Corner0 + Prim.Edge02;
+                    const Mathematics::Axis3D Fn = Mathematics::EvaluateCross(Prim.Edge01, Prim.Edge02);
+                    const bool UseXY = (std::fabs(Fn.Z) >= std::fabs(Fn.X) && std::fabs(Fn.Z) >= std::fabs(Fn.Y));
+                    const bool UseXZ = (!UseXY && std::fabs(Fn.Y) >= std::fabs(Fn.X));
+                    auto Proj = [&](Mathematics::Axis3D P) noexcept -> Mathematics::UVAxes
+                    {
+                        return UseXY ? Mathematics::UVAxes { P.X * 0.25f, P.Y * 0.25f }
+                             : UseXZ ? Mathematics::UVAxes { P.X * 0.25f, P.Z * 0.25f }
+                                     : Mathematics::UVAxes { P.Y * 0.25f, P.Z * 0.25f };
+                    };
+                    PackNaniteTriangleUvsToFloats(Proj(C0), Proj(C1), Proj(C2), OutTri.Normal0Pad[3], OutTri.Normal1Pad[3]);
+                }
                 ShadedTris[Idx]       = OutTri;
             }
         }
@@ -3396,8 +3573,23 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
                 OutTri.Normal2Slot[1] = SmoothCorners[2u].Y;
                 OutTri.Normal2Slot[2] = SmoothCorners[2u].Z;
                 OutTri.Normal2Slot[3] = static_cast<float>(Prim.MaterialOrdinal);
-                OutTri.Corner0Pad[3]  = 0.0f; // full-res: LOD level 0
-                OutTri.Edge01Pad[3]   = static_cast<float>(Idx / 128u); // full-res pseudo-cluster (128-tri groups)
+                OutTri.Corner0Pad[3]  = PackNaniteTriangleMetaWord(0u, 0u, 0u, static_cast<uint32_t>(Idx / 512u));
+                OutTri.Edge01Pad[3]   = static_cast<float>(Idx / 128u);
+                OutTri.Edge02Pad[3]   = 0.0f;
+                {
+                    const Mathematics::Axis3D C0 = Prim.Corner0;
+                    const Mathematics::Axis3D C1 = Prim.Corner0 + Prim.Edge01;
+                    const Mathematics::Axis3D C2 = Prim.Corner0 + Prim.Edge02;
+                    const bool UseXY = (std::fabs(UnitFaceN.Z) >= std::fabs(UnitFaceN.X) && std::fabs(UnitFaceN.Z) >= std::fabs(UnitFaceN.Y));
+                    const bool UseXZ = (!UseXY && std::fabs(UnitFaceN.Y) >= std::fabs(UnitFaceN.X));
+                    auto Proj = [&](Mathematics::Axis3D P) noexcept -> Mathematics::UVAxes
+                    {
+                        return UseXY ? Mathematics::UVAxes { P.X * 0.25f, P.Y * 0.25f }
+                             : UseXZ ? Mathematics::UVAxes { P.X * 0.25f, P.Z * 0.25f }
+                                     : Mathematics::UVAxes { P.Y * 0.25f, P.Z * 0.25f };
+                    };
+                    PackNaniteTriangleUvsToFloats(Proj(C0), Proj(C1), Proj(C2), OutTri.Normal0Pad[3], OutTri.Normal1Pad[3]);
+                }
                 ShadedTris[Idx]       = OutTri;
             }
         }
@@ -3617,6 +3809,7 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
     };
     MixSignature(TransformSig);
     MixSignature(static_cast<uint64_t>(std::lround(PixelError * 100.0f)));
+    MixSignature(static_cast<uint64_t>(static_cast<int64_t>(Config.NaniteForcedLodLevel) + 16));
 
     uint32_t ActiveClusters  = 0u;
     uint32_t ActiveTriangles = 0u;
@@ -3648,7 +3841,12 @@ void VulkanWorldRenderSequence::RefreshNaniteLodGeometry(
 
         InstanceCut Cut {};
         Cut.SpanOrdinal = SpanOrd;
-        Cut.Selection   = Inst.PyramidAsset->SelectMonotonicCut(LocalCamera, PixelsPerRadian, PixelError, false);
+        Cut.Selection   = Inst.PyramidAsset->SelectMonotonicCut(
+            LocalCamera,
+            PixelsPerRadian,
+            PixelError,
+            false,
+            Config.NaniteForcedLodLevel);
         ActiveClusters  += static_cast<uint32_t>(Cut.Selection.ActiveClusterIndices.size());
         ActiveTriangles += Cut.Selection.ActiveTriangleCount;
 
@@ -4352,6 +4550,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.SunCascadeForwardPad[0] = CachedSunCascade.LightForwardAxis.X;
     Uniforms.SunCascadeForwardPad[1] = CachedSunCascade.LightForwardAxis.Y;
     Uniforms.SunCascadeForwardPad[2] = CachedSunCascade.LightForwardAxis.Z;
+    Uniforms.SunCascadeForwardPad[3] = std::clamp(Config.NanitePixelError, 0.10f, 16.0f);
 
     Uniforms.FineCascadeCenterSpan[0] = CachedFineSunCascade.CenterWorld.X;
     Uniforms.FineCascadeCenterSpan[1] = CachedFineSunCascade.CenterWorld.Y;
@@ -4366,10 +4565,11 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.AtmosphereMaskPad[1] = AtmosphericSkySequence::SkyViewWidthPx;
     Uniforms.AtmosphereMaskPad[2] = AtmosphericSkySequence::SkyViewHeightPx;
     Uniforms.AtmosphereMaskPad[3] =
-        (Config.ReflectionsEnabled ? 0u : 2u) |
-        (Config.RaytracingEnabled  ? 0u : 8u) |
+        (Config.ReflectionsEnabled     ? 0u : 2u) |
+        (Config.RaytracingEnabled      ? 0u : 8u) |
         ((static_cast<uint32_t>(Config.SdfPenumbraMode) & 0x7u) << 16u) |
-        ((static_cast<uint32_t>(Config.GiCandidate) & 0x3u) << 20u);
+        ((static_cast<uint32_t>(Config.GiCandidate) & 0x3u) << 20u) |
+        (Config.NaniteWireframeOverlay ? (1u << 22u) : 0u);
 
     {
         const auto& Atmo = Scene.Atmosphere;

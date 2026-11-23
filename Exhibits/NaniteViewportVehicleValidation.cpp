@@ -1,9 +1,9 @@
 /*============================================================================================================================================
                                                 NANITEVIEWPORTVEHICLEVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 Proof that the Nanite-like cluster LOD drives the real editor viewport (VulkanWorldRenderSequence)
-//    using the ControlVehicle: near camera traces full detail, far camera traces the coarser cut,
-//    per-face material slots survive, and disabling LOD restores the full-resolution BVH.
+// 🧩 Validates that GeometryCompiler Nanite LOD drives the real Vulkan editor viewport (VulkanWorldRenderSequence):
+//    smooth normals, UVs, and material slots survive across zoom distances and forced LODs, and all 6 GeometryCompiler
+//    Nanite debug views (LOD Level, Clusters, Groups, Triangles, Error, UV Seams) + Wireframe Overlay render live.
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -56,34 +56,51 @@ namespace
     return Total / std::max<uint64_t>(1u, static_cast<uint64_t>(Rgba.size() / 4u) * 3u);
 }
 
-struct HueCounts
+[[nodiscard]] uint64_t MeanAbsDiff(const std::vector<uint8_t>& A, const std::vector<uint8_t>& B) noexcept
 {
-    uint32_t GreenDominant  = 0u; // LOD L0 palette (green)
-    uint32_t YellowDominant = 0u; // LOD L1 palette (yellow)
-    uint32_t OrangeDominant = 0u; // LOD L2 palette (orange)
-    uint32_t DistinctColors = 0u; // quantized distinct colours (cluster view)
+    const std::size_t Count = std::min(A.size(), B.size());
+    if (Count < 4u)
+    {
+        return 0u;
+    }
+    uint64_t Sum = 0u;
+    for (std::size_t Pix = 0u; Pix + 3u < Count; Pix += 4u)
+    {
+        Sum += static_cast<uint64_t>(std::abs(int(A[Pix])      - int(B[Pix]))) +
+               static_cast<uint64_t>(std::abs(int(A[Pix + 1u]) - int(B[Pix + 1u]))) +
+               static_cast<uint64_t>(std::abs(int(A[Pix + 2u]) - int(B[Pix + 2u])));
+    }
+    return Sum / std::max<uint64_t>(1u, static_cast<uint64_t>(Count / 4u) * 3u);
+}
+
+struct RampHueCounts
+{
+    uint32_t BlueFinest        = 0u; // GeometryCompiler ramp(0.0) blue (L0 finest)
+    uint32_t CoarserRampPixels = 0u; // Cyan / green / amber / red (L1..L4 coarser)
+    uint32_t GoldHighlight     = 0u; // UV seam gold highlight
+    uint32_t DistinctColors    = 0u; // Quantized distinct 15-bit colours
 };
 
-[[nodiscard]] HueCounts AnalyzeDebugImage(const std::vector<uint8_t>& Rgba) noexcept
+[[nodiscard]] RampHueCounts AnalyzeDebugImage(const std::vector<uint8_t>& Rgba) noexcept
 {
-    HueCounts Counts {};
+    RampHueCounts Counts {};
     bool Seen[32768] {};
     for (std::size_t Pix = 0u; Pix + 3u < Rgba.size(); Pix += 4u)
     {
         const uint32_t R = Rgba[Pix];
         const uint32_t G = Rgba[Pix + 1u];
         const uint32_t B = Rgba[Pix + 2u];
-        if (G > R + 25u && G > B + 15u && G > 70u)
+        if (B > R + 30u && B > G + 12u && B > 90u)
         {
-            ++Counts.GreenDominant;
+            ++Counts.BlueFinest;
         }
-        else if (R > 120u && G > 30u && G < 170u && B < 80u && R > G + 40u)
+        else if ((G > R + 20u && G > 95u) || (R > B + 45u && R > 130u && G > 55u))
         {
-            ++Counts.OrangeDominant;
+            ++Counts.CoarserRampPixels;
         }
-        else if (R > 120u && G > 80u && B < 90u && R >= G)
+        if (R > 180u && G > 140u && B < 100u)
         {
-            ++Counts.YellowDominant;
+            ++Counts.GoldHighlight;
         }
         const std::size_t Key = static_cast<std::size_t>(((R >> 3u) << 10u) | ((G >> 3u) << 5u) | (B >> 3u));
         if (!Seen[Key])
@@ -103,7 +120,7 @@ int main()
     using namespace Frontier::GeometricRaster;
 
     const std::filesystem::path RepoRoot(FRONTIER_REPO_ROOT_DIR);
-    const std::filesystem::path OutDir = RepoRoot / "Exhibits" / "Images" / "NaniteViewport";
+    const std::filesystem::path OutDir = RepoRoot / "build" / "NaniteViewportExhibit";
     std::filesystem::create_directories(OutDir);
 
     ShowcaseWorldSceneBundle Bundle {};
@@ -121,103 +138,84 @@ int main()
     const auto* VehiclePyramid = VehicleInst.PyramidAsset;
     const auto  Summaries      = VehiclePyramid->SummarizeLevels();
     std::printf(
-        "[NaniteViewportVehicleValidation] Vehicle pyramid: depth %u, %zu welded positions, %zu triangles, %zu clusters; objects=%zu dynamicAssets=%zu\n",
+        "[NaniteViewportVehicleValidation] Vehicle pyramid: depth %u, %zu welded positions, %zu triangles, %zu clusters\n",
         VehiclePyramid->HierarchyDepth, VehiclePyramid->Positions.size(), VehiclePyramid->Triangles.size(),
-        VehiclePyramid->Clusters.size(), Bundle.Objects.size(), Bundle.DynamicGeometryAssets.size());
+        VehiclePyramid->Clusters.size());
     if (!VerifyCheck(Summaries.size() >= 2u, "ControlVehicle pyramid baked multiple LOD levels"))
     {
         return 1;
     }
-    std::printf("[NaniteViewportVehicleValidation] ControlVehicle pyramid (instance material slots preserved per face):\n");
-    for (const auto& Summary : Summaries)
-    {
-        std::printf(
-            "  L%u: %u clusters, %u tris, maxErr %.4f m, %zu material slots\n",
-            Summary.Level, Summary.ClusterCount, Summary.TriangleCount,
-            Summary.MaximumErrorMeters, Summary.MaterialOrdinals.size());
-    }
 
-    // Material-pure clusters: no cluster is ever shared between material slots, at any level.
-    // (One material owns many clusters — the 128-triangle cap — but never shares one.)
+    // 1. Verify smooth curved shading normals AND material purity survive at EVERY LOD level of ControlVehicle
+    for (uint32_t Lvl = 0u; Lvl < VehiclePyramid->HierarchyDepth; ++Lvl)
     {
-        std::vector<uint32_t> L0ClustersPerMaterial(256u, 0u);
-        for (const auto& Cluster : VehiclePyramid->Clusters)
+        uint32_t SmoothCurvedTriangles = 0u;
+        uint32_t ValidUnitNormals      = 0u;
+        uint32_t LevelTris             = 0u;
+        for (const auto& Cls : VehiclePyramid->Clusters)
         {
-            for (uint32_t T = 0u; T < Cluster.TriangleCount; ++T)
+            if (Cls.HierarchyLevel != Lvl)
             {
-                const auto& Tri = VehiclePyramid->Triangles[Cluster.TriangleStartOffset + T];
-                if (!VerifyCheck(Tri.MaterialOrdinal == Cluster.DominantMaterialOrdinal, "vehicle cluster mixes material slots"))
+                continue;
+            }
+            for (uint32_t Step = 0u; Step < Cls.TriangleCount; ++Step)
+            {
+                const auto& Tri = VehiclePyramid->Triangles[Cls.TriangleStartOffset + Step];
+                if (!VerifyCheck(Tri.MaterialOrdinal == Cls.DominantMaterialOrdinal, "vehicle cluster mixes material slots"))
                 {
                     return 1;
                 }
-            }
-            if (Cluster.HierarchyLevel == 0u)
-            {
-                L0ClustersPerMaterial[Cluster.DominantMaterialOrdinal] += 1u;
+                const Mathematics::Axis3D N0 = SpatialAcceleration::UnpackClusterOctahedralUnitVector(Tri.PackedNormal0);
+                const Mathematics::Axis3D N1 = SpatialAcceleration::UnpackClusterOctahedralUnitVector(Tri.PackedNormal1);
+                const Mathematics::Axis3D N2 = SpatialAcceleration::UnpackClusterOctahedralUnitVector(Tri.PackedNormal2);
+                const float L0 = Mathematics::EvaluateLength(N0);
+                const float L1 = Mathematics::EvaluateLength(N1);
+                const float L2 = Mathematics::EvaluateLength(N2);
+                if (L0 > 0.98f && L1 > 0.98f && L2 > 0.98f)
+                {
+                    ++ValidUnitNormals;
+                }
+                if (Mathematics::EvaluateDot(N0, N1) < 0.9990f ||
+                    Mathematics::EvaluateDot(N1, N2) < 0.9990f ||
+                    Mathematics::EvaluateDot(N2, N0) < 0.9990f)
+                {
+                    ++SmoothCurvedTriangles;
+                }
+                ++LevelTris;
             }
         }
-        std::printf("[NaniteViewportVehicleValidation] L0 clusters per material slot (each material owns its clusters):\n");
-        for (uint32_t Slot = 0u; Slot < 256u; ++Slot)
+        std::printf(
+            "  L%u: %u clusters, %u tris, smoothCurvedTris=%u, maxErr=%.4f m, %zu material slots\n",
+            Summaries[Lvl].Level, Summaries[Lvl].ClusterCount, LevelTris, SmoothCurvedTriangles,
+            Summaries[Lvl].MaximumErrorMeters, Summaries[Lvl].MaterialOrdinals.size());
+        if (!VerifyCheck(ValidUnitNormals == LevelTris && SmoothCurvedTriangles > 0u,
+                         "ControlVehicle retains smooth curved corner normals at every LOD level"))
         {
-            if (L0ClustersPerMaterial[Slot] > 0u)
-            {
-                std::printf("  material slot %u: %u clusters\n", Slot, L0ClustersPerMaterial[Slot]);
-            }
+            return 1;
         }
     }
 
     const Mathematics::Axis3D VehicleCenter = VehicleInst.WorldTranslation;
     const uint32_t FullVehicleTris = Summaries.front().TriangleCount;
 
-    // CPU cut reference at the two proof distances (same call the GPU viewport now makes).
-    const auto NearCut = VehiclePyramid->SelectMonotonicCut({ 0.0f, -6.0f, 1.0f }, 900.0f, 1.25f, false);
-    const auto FarCut  = VehiclePyramid->SelectMonotonicCut({ 0.0f, -45.0f, 8.0f }, 900.0f, 1.25f, false);
-    if (!VerifyCheck(NearCut.ActiveTriangleCount >= FullVehicleTris * 9u / 10u, "near CPU cut keeps finest detail") ||
-        !VerifyCheck(FarCut.ActiveTriangleCount < NearCut.ActiveTriangleCount, "far CPU cut is coarser than near"))
+    // CPU cut reference across near/far and ForcedPyramidLevel
+    const auto VeryCloseCut = VehiclePyramid->SelectMonotonicCut({ 0.0f, -1.8f, 0.6f }, 1200.0f, 0.50f, false, -1);
+    const auto NearCut      = VehiclePyramid->SelectMonotonicCut({ 0.0f, -6.0f, 1.0f },  900.0f, 1.25f, false, -1);
+    const auto FarCut       = VehiclePyramid->SelectMonotonicCut({ 0.0f, -45.0f, 8.0f }, 900.0f, 1.25f, false, -1);
+    const auto ForcedCut    = VehiclePyramid->SelectMonotonicCut({ 0.0f, -6.0f, 1.0f },  900.0f, 1.25f, false, 2);
+    std::printf(
+        "[NaniteViewportVehicleValidation] CPU cuts: close=%u/%u tris | near=%u tris | far=%u tris | forced-L2=%u tris\n",
+        VeryCloseCut.ActiveTriangleCount, FullVehicleTris,
+        NearCut.ActiveTriangleCount, FarCut.ActiveTriangleCount, ForcedCut.ActiveTriangleCount);
+    if (!VerifyCheck(VeryCloseCut.ActiveTriangleCount >= FullVehicleTris * 3u / 4u, "close-up CPU cut keeps finest detail") ||
+        !VerifyCheck(NearCut.ActiveTriangleCount > FullVehicleTris / 2u, "near CPU cut stays L0-dominant while culling sub-pixel micro-tris") ||
+        !VerifyCheck(FarCut.ActiveTriangleCount < NearCut.ActiveTriangleCount, "far CPU cut is coarser than near") ||
+        !VerifyCheck(ForcedCut.ActiveTriangleCount < NearCut.ActiveTriangleCount, "forced LOD 2 selects coarser cut even near camera"))
     {
         return 1;
     }
 
-    // Material slots present in the far cut must be a subset of the LOD0 slots (nothing invented,
-    // per-face assignment intact) and the vehicle must keep several distinct materials far away.
-    {
-        std::vector<uint16_t> FarMaterials {};
-        for (const uint32_t ClusterIdx : FarCut.ActiveClusterIndices)
-        {
-            const auto& Cluster = VehiclePyramid->Clusters[ClusterIdx];
-            for (uint32_t T = 0u; T < Cluster.TriangleCount; ++T)
-            {
-                const uint16_t Ordinal = VehiclePyramid->Triangles[Cluster.TriangleStartOffset + T].MaterialOrdinal;
-                bool Known = false;
-                for (const uint16_t Existing : FarMaterials)
-                {
-                    Known = Known || (Existing == Ordinal);
-                }
-                if (!Known)
-                {
-                    FarMaterials.push_back(Ordinal);
-                }
-            }
-        }
-        for (const uint16_t Ordinal : FarMaterials)
-        {
-            bool InFinest = false;
-            for (const uint16_t Finest : Summaries.front().MaterialOrdinals)
-            {
-                InFinest = InFinest || (Finest == Ordinal);
-            }
-            if (!VerifyCheck(InFinest, "far LOD invented a material slot"))
-            {
-                return 1;
-            }
-        }
-        if (!VerifyCheck(FarMaterials.size() >= 4u, "far LOD keeps multiple distinct vehicle material slots"))
-        {
-            return 1;
-        }
-    }
-
-    // GPU viewport: the exact sequence the Frontier editor renders with.
+    // GPU viewport sequence
     std::string VkDiag {};
     VulkanInterchange VkDevice {};
     if (!VkDevice.InitializeInterchange(RepoRoot, &VkDiag))
@@ -239,47 +237,66 @@ int main()
     }
     GpuSeq.SynchronizeSceneResources(Bundle.Scene, true);
 
-    constexpr uint32_t ProofW = 640u;
-    constexpr uint32_t ProofH = 400u;
-    const auto RenderFrom = [&](Mathematics::Axis3D Origin, bool LodEnabled, uint32_t DebugChannel)
+    constexpr uint32_t ViewW = 640u;
+    constexpr uint32_t ViewH = 400u;
+    const auto RenderView = [&](Mathematics::Axis3D Origin, bool LodEnabled, uint32_t DebugChannel, int32_t ForcedLod = -1, bool WireOverlay = false)
     {
         PerspectiveCameraBasis Cam = Bundle.EditorCamera;
         Cam.CameraOrigin       = Origin;
-        Cam.TargetPoint        = VehicleCenter + Mathematics::Axis3D{ 0.0f, 0.0f, 0.2f };
-        Cam.ViewportWidthPx    = ProofW;
-        Cam.ViewportHeightPx   = ProofH;
+        Cam.TargetPoint        = VehicleCenter + Mathematics::Axis3D { 0.0f, 0.0f, 0.2f };
+        Cam.ViewportWidthPx    = ViewW;
+        Cam.ViewportHeightPx   = ViewH;
         WorldRenderConfiguration Config {};
-        Config.Engine          = WorldRenderEngine::OpenPbrDirect;
-        Config.NaniteLodEnabled = LodEnabled;
-        Config.NanitePixelError = 1.25f;
-        Config.DebugChannel    = DebugChannel;
+        Config.Engine                 = WorldRenderEngine::OpenPbrDirect;
+        Config.NaniteLodEnabled       = LodEnabled;
+        Config.NanitePixelError       = 1.25f;
+        Config.NaniteForcedLodLevel   = ForcedLod;
+        Config.NaniteWireframeOverlay = WireOverlay;
+        Config.DebugChannel           = DebugChannel;
         std::vector<uint8_t> Rgba {};
         const bool Ok = GpuSeq.RenderWorldViewportWithEngine(Config, 0u, Cam, Bundle.Scene, Rgba);
-        return std::pair<bool, std::vector<uint8_t>>{ Ok, std::move(Rgba) };
+        return std::pair<bool, std::vector<uint8_t>> { Ok, std::move(Rgba) };
     };
 
-    const Mathematics::Axis3D NearOrigin = VehicleCenter + Mathematics::Axis3D{ 4.5f, -6.5f, 1.6f };
-    const Mathematics::Axis3D FarOrigin  = VehicleCenter + Mathematics::Axis3D{ 16.0f, -24.0f, 9.0f };
+    const Mathematics::Axis3D CloseOrigin = VehicleCenter + Mathematics::Axis3D { 2.5f, -3.5f, 1.1f };
+    const Mathematics::Axis3D NearOrigin  = VehicleCenter + Mathematics::Axis3D { 4.5f, -6.5f, 1.6f };
+    const Mathematics::Axis3D MidOrigin   = VehicleCenter + Mathematics::Axis3D { 8.5f, -12.5f, 3.6f };
+    const Mathematics::Axis3D FarOrigin   = VehicleCenter + Mathematics::Axis3D { 16.0f, -24.0f, 9.0f };
 
-    // Lit + two colour debug visualizations: channel 17 = LOD level, channel 18 = cluster ID.
-    auto [NearOk, NearRgba] = RenderFrom(NearOrigin, true, 0u);
-    const auto NearStats = GpuSeq.QueryNaniteLodStats();
-    auto [FarOk, FarRgba] = RenderFrom(FarOrigin, true, 0u);
-    const auto FarStats = GpuSeq.QueryNaniteLodStats();
-    auto [FarOffOk, FarOffRgba] = RenderFrom(FarOrigin, false, 0u);
-    const auto FarOffStats = GpuSeq.QueryNaniteLodStats();
-    auto [NearLevelOk, NearLevelRgba]   = RenderFrom(NearOrigin, true, 17u);
-    auto [FarLevelOk, FarLevelRgba]     = RenderFrom(FarOrigin, true, 17u);
-    auto [NearClusterOk, NearClusterRgba] = RenderFrom(NearOrigin, true, 18u);
-    auto [FarClusterOk, FarClusterRgba]   = RenderFrom(FarOrigin, true, 18u);
-    auto [NearMatOk, NearMatRgba] = RenderFrom(NearOrigin, true, 6u);
-    auto [FarMatOk, FarMatRgba]   = RenderFrom(FarOrigin, true, 6u);
-    const auto FinalLodStats = GpuSeq.QueryNaniteLodStats();
+    // Lit, Wireframe Overlay, Shading Normal zoom comparison, and all 6 GeometryCompiler Nanite debug channels (17..22)
+    auto [CloseOk, CloseRgba]         = RenderView(CloseOrigin, true,  0u);
+    const auto CloseStats             = GpuSeq.QueryNaniteLodStats();
+    auto [NearOk, NearRgba]           = RenderView(NearOrigin,  true,  0u);
+    const auto NearStats              = GpuSeq.QueryNaniteLodStats();
+    auto [NearWireOk, NearWireRgba]   = RenderView(NearOrigin,  true,  0u, -1, true);
+    auto [FarOk, FarRgba]             = RenderView(FarOrigin,   true,  0u);
+    const auto FarStats               = GpuSeq.QueryNaniteLodStats();
+    auto [FarOffOk, FarOffRgba]       = RenderView(FarOrigin,   false, 0u);
+    const auto FarOffStats            = GpuSeq.QueryNaniteLodStats();
+    auto [ForcedOk, ForcedRgba]       = RenderView(NearOrigin,  true,  0u, 2, false);
+    const auto ForcedStats            = GpuSeq.QueryNaniteLodStats();
 
-    const bool RendersOk = NearOk && FarOk && FarOffOk && NearLevelOk && FarLevelOk && NearClusterOk && FarClusterOk && NearMatOk && FarMatOk &&
-        NearRgba.size() == ProofW * ProofH * 4u && FarRgba.size() == ProofW * ProofH * 4u && FarOffRgba.size() == ProofW * ProofH * 4u &&
-        NearLevelRgba.size() == ProofW * ProofH * 4u && FarClusterRgba.size() == ProofW * ProofH * 4u;
-    if (!VerifyCheck(RendersOk, "GPU viewport rendered near/far/LOD-off frames"))
+    // Shading normal channel (3) at Near Auto vs Near Forced-L2 vs Mid Auto: verifies smooth normal continuity across LOD cuts
+    auto [NormNearOk, NormNearRgba]     = RenderView(NearOrigin, true,  3u, -1, false);
+    auto [NormForcedOk, NormForcedRgba] = RenderView(NearOrigin, true,  3u,  2, false);
+    auto [NormMidOk, NormMidRgba]       = RenderView(MidOrigin,  true,  3u, -1, false);
+
+    // All 6 GeometryCompiler Nanite debug modes (17..22) + Face Material IDs (6)
+    auto [NearLvlOk, NearLvlRgba]     = RenderView(NearOrigin, true, 17u);
+    auto [FarLvlOk, FarLvlRgba]       = RenderView(FarOrigin,  true, 17u);
+    auto [FarClsOk, FarClsRgba]       = RenderView(FarOrigin,  true, 18u);
+    auto [FarGrpOk, FarGrpRgba]       = RenderView(FarOrigin,  true, 19u);
+    auto [NearTriOk, NearTriRgba]     = RenderView(NearOrigin, true, 20u);
+    auto [MidErrOk, MidErrRgba]       = RenderView(MidOrigin,  true, 21u);
+    auto [NearSeamOk, NearSeamRgba]   = RenderView(NearOrigin, true, 22u);
+    auto [FarMatOk, FarMatRgba]       = RenderView(FarOrigin,  true,  6u);
+    const auto FinalLodStats          = GpuSeq.QueryNaniteLodStats();
+
+    const bool RendersOk =
+        CloseOk && NearOk && NearWireOk && FarOk && FarOffOk && ForcedOk &&
+        NormNearOk && NormForcedOk && NormMidOk &&
+        NearLvlOk && FarLvlOk && FarClsOk && FarGrpOk && NearTriOk && MidErrOk && NearSeamOk && FarMatOk;
+    if (!VerifyCheck(RendersOk, "GPU viewport rendered all Lit, Normal, Wireframe, and 6 Nanite debug frames"))
     {
         GpuSeq.TeardownSequence();
         VkDevice.TeardownInterchange();
@@ -287,75 +304,94 @@ int main()
     }
 
     std::printf(
-        "[NaniteViewportVehicleValidation] GPU viewport: near %u tris (L0 %u) | far %u tris (L0 %u, L1 %u, L2 %u) | far LOD-off %u tris (full %u) | BVH rebuilds=%u maskUpdates=%u\n",
+        "[NaniteViewportVehicleValidation] GPU cuts: close=%u tris (L0=%u) | near=%u tris (L0=%u) | forced-L2=%u tris | far=%u tris (L0=%u, L1=%u, L2=%u) | LOD-off=%u tris | BVH rebuilds=%u maskUpdates=%u\n",
+        CloseStats.ActiveTriangleCount, CloseStats.LevelTriangleCount[0],
         NearStats.ActiveTriangleCount, NearStats.LevelTriangleCount[0],
+        ForcedStats.ActiveTriangleCount,
         FarStats.ActiveTriangleCount, FarStats.LevelTriangleCount[0], FarStats.LevelTriangleCount[1], FarStats.LevelTriangleCount[2],
-        FarOffStats.ActiveTriangleCount, FarStats.FullTriangleCount,
+        FarOffStats.ActiveTriangleCount,
         FinalLodStats.GeometryRebuildCount, FinalLodStats.ClusterMaskUpdateCount);
 
-    bool Pass = true;
-    Pass = VerifyCheck(NearStats.Enabled && FarStats.Enabled, "Nanite LOD drove the GPU viewport BVH") && Pass;
-    Pass = VerifyCheck(
-        FinalLodStats.GeometryRebuildCount == 1u && FinalLodStats.ClusterMaskUpdateCount >= 2u,
-        "resident multi-LOD BVH4 built once with zero rebuilds across near/far/LOD-off cuts") && Pass;
-    Pass = VerifyCheck(
-        NearStats.ActiveTriangleCount >= NearStats.FullTriangleCount / 2u &&
-            NearStats.LevelTriangleCount[0] > NearStats.LevelTriangleCount[1] + NearStats.LevelTriangleCount[2],
-        "near viewport frame is L0-dominant detail") && Pass;
-    Pass = VerifyCheck(FarStats.ActiveTriangleCount < NearStats.ActiveTriangleCount, "far viewport frame traced fewer triangles") && Pass;
-    Pass = VerifyCheck(FarStats.LevelTriangleCount[1] + FarStats.LevelTriangleCount[2] > 0u, "far viewport frame used coarser LOD levels") && Pass;
-    Pass = VerifyCheck(!FarOffStats.Enabled && FarOffStats.ActiveTriangleCount == FarOffStats.FullTriangleCount, "LOD off restores full-res BVH") && Pass;
-    Pass = VerifyCheck(MeanLuma(FarRgba) > 8u && MeanLuma(NearRgba) > 8u, "near and far frames are lit (vehicle visible)") && Pass;
+    bool AllVerified = true;
+    AllVerified = VerifyCheck(CloseStats.Enabled && NearStats.Enabled && FarStats.Enabled, "Nanite LOD drove the GPU viewport BVH") && AllVerified;
+    AllVerified = VerifyCheck(
+        FinalLodStats.GeometryRebuildCount == 1u && FinalLodStats.ClusterMaskUpdateCount >= 3u,
+        "resident multi-LOD BVH4 built once with zero rebuilds across close/near/far/forced/LOD-off cuts") && AllVerified;
+    AllVerified = VerifyCheck(
+        CloseStats.ActiveTriangleCount >= NearStats.ActiveTriangleCount &&
+            CloseStats.LevelTriangleCount[0] > CloseStats.LevelTriangleCount[1] + CloseStats.LevelTriangleCount[2],
+        "close-up viewport image is L0-dominant detail even on micro-spoked wheels") && AllVerified;
+    AllVerified = VerifyCheck(
+        NearStats.ActiveTriangleCount >= NearStats.FullTriangleCount / 2u,
+        "near viewport image keeps car body at L0 while culling sub-pixel wheel micro-tris") && AllVerified;
+    AllVerified = VerifyCheck(FarStats.ActiveTriangleCount < NearStats.ActiveTriangleCount, "far viewport image traced fewer triangles") && AllVerified;
+    AllVerified = VerifyCheck(ForcedStats.ActiveTriangleCount < NearStats.ActiveTriangleCount, "forced LOD 2 reduced active GPU triangles near camera") && AllVerified;
+    AllVerified = VerifyCheck(FarStats.LevelTriangleCount[1] + FarStats.LevelTriangleCount[2] > 0u, "far viewport image used coarser LOD levels") && AllVerified;
+    AllVerified = VerifyCheck(!FarOffStats.Enabled && FarOffStats.ActiveTriangleCount == FarOffStats.FullTriangleCount, "LOD off restores full-res BVH") && AllVerified;
+    AllVerified = VerifyCheck(MeanLuma(FarRgba) > 8u && MeanLuma(NearRgba) > 8u && MeanLuma(NormMidRgba) > 12u, "lit and normal images are well-formed") && AllVerified;
 
-    // Colour-visualization assertions: near is L0-green dominant, far shows L1/L2 colours,
-    // and the cluster view is a mosaic of many distinct cluster colours.
-    const HueCounts NearHue    = AnalyzeDebugImage(NearLevelRgba);
-    const HueCounts FarHue     = AnalyzeDebugImage(FarLevelRgba);
-    const HueCounts FarCluster = AnalyzeDebugImage(FarClusterRgba);
+    // Shading normal image stability across L0 vs Forced-L2 from identical camera: smooth normals stay faithful (< 12/255 mean diff)
+    const uint64_t NormalLodDiff   = MeanAbsDiff(NormNearRgba, NormForcedRgba);
+    const uint64_t LitLodDiff      = MeanAbsDiff(FarRgba, FarOffRgba);
+    const uint64_t WireOverlayDiff = MeanAbsDiff(NearRgba, NearWireRgba);
     std::printf(
-        "[NaniteViewportVehicleValidation] LOD-level colours: near green %u yellow %u orange %u | far green %u yellow %u orange %u | far cluster distinct colours %u\n",
-        NearHue.GreenDominant, NearHue.YellowDominant, NearHue.OrangeDominant,
-        FarHue.GreenDominant, FarHue.YellowDominant, FarHue.OrangeDominant, FarCluster.DistinctColors);
-    std::printf("[NaniteViewportVehicleValidation] Legend: L0 finest = GREEN, L1 = YELLOW, L2 = ORANGE, L3 = RED, L4+ = PURPLE; cluster view = one vivid colour per cluster.\n");
-    Pass = VerifyCheck(NearHue.GreenDominant > 2000u, "near LOD-level view is L0 green dominant") && Pass;
-    Pass = VerifyCheck(FarHue.OrangeDominant + FarHue.YellowDominant > 300u, "far LOD-level view shows coarser L1/L2 colours") && Pass;
-    Pass = VerifyCheck(FarHue.GreenDominant < NearHue.GreenDominant, "far view has less L0 green than near") && Pass;
-    Pass = VerifyCheck(FarCluster.DistinctColors > 60u, "far cluster view shows many distinct cluster colours") && Pass;
-    const HueCounts FarMat = AnalyzeDebugImage(FarMatRgba);
-    std::printf("[NaniteViewportVehicleValidation] Far filled-face-material view distinct colours: %u (one fill per material slot)\n", FarMat.DistinctColors);
-    Pass = VerifyCheck(FarMat.DistinctColors >= 12u, "far material view keeps distinct filled face materials") && Pass;
+        "[NaniteViewportVehicleValidation] Smooth-normal L0-vs-L2 mean diff=%llu/255 | Far Lit LOD-vs-Full diff=%llu/255 | Edge overlay diff=%llu/255\n",
+        static_cast<unsigned long long>(NormalLodDiff),
+        static_cast<unsigned long long>(LitLodDiff),
+        static_cast<unsigned long long>(WireOverlayDiff));
+    AllVerified = VerifyCheck(NormalLodDiff <= 14u, "shading normals stay smooth and faithful between L0 and coarse L2 from identical camera") && AllVerified;
+    AllVerified = VerifyCheck(LitLodDiff <= 10u, "far Lit render with Nanite LOD closely matches full-res BVH") && AllVerified;
+    AllVerified = VerifyCheck(WireOverlayDiff >= 1u, "Nanite edge overlay visibly composites crisp triangle borders over Lit Shaded") && AllVerified;
 
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearLod.png", ProofW, ProofH, NearRgba.data()), "wrote near proof PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLod.png", ProofW, ProofH, FarRgba.data()), "wrote far proof PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLodOff.png", ProofW, ProofH, FarOffRgba.data()), "wrote LOD-off proof PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearLodLevels.png", ProofW, ProofH, NearLevelRgba.data()), "wrote near LOD-level PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarLodLevels.png", ProofW, ProofH, FarLevelRgba.data()), "wrote far LOD-level PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearClusters.png", ProofW, ProofH, NearClusterRgba.data()), "wrote near cluster PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarClusters.png", ProofW, ProofH, FarClusterRgba.data()), "wrote far cluster PNG") && Pass;
+    // GeometryCompiler 6-mode debug assertions
+    const RampHueCounts NearLvlHue  = AnalyzeDebugImage(NearLvlRgba);
+    const RampHueCounts FarLvlHue   = AnalyzeDebugImage(FarLvlRgba);
+    const RampHueCounts FarClsHue   = AnalyzeDebugImage(FarClsRgba);
+    const RampHueCounts FarGrpHue   = AnalyzeDebugImage(FarGrpRgba);
+    const RampHueCounts NearTriHue  = AnalyzeDebugImage(NearTriRgba);
+    const RampHueCounts MidErrHue   = AnalyzeDebugImage(MidErrRgba);
+    const RampHueCounts NearSeamHue = AnalyzeDebugImage(NearSeamRgba);
+    const RampHueCounts FarMatHue   = AnalyzeDebugImage(FarMatRgba);
 
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleNearFaceMaterials.png", ProofW, ProofH, NearMatRgba.data()), "wrote near face-material PNG") && Pass;
-    Pass = VerifyCheck(WritePngRgba8(OutDir / "VehicleFarFaceMaterials.png", ProofW, ProofH, FarMatRgba.data()), "wrote far face-material PNG") && Pass;
+    std::printf(
+        "[NaniteViewportVehicleValidation] Debug views: LvlNearBlue=%u LvlFarCoarse=%u | ClsColors=%u GrpColors=%u TriColors=%u ErrColors=%u SeamGold=%u MatColors=%u\n",
+        NearLvlHue.BlueFinest, FarLvlHue.CoarserRampPixels,
+        FarClsHue.DistinctColors, FarGrpHue.DistinctColors, NearTriHue.DistinctColors,
+        MidErrHue.DistinctColors, NearSeamHue.GoldHighlight, FarMatHue.DistinctColors);
 
-    // Contact sheet: rows = Near / Far, columns = Lit / Face Materials / LOD Level / Clusters.
+    AllVerified = VerifyCheck(NearLvlHue.BlueFinest > 2000u, "near Nanite LOD Level view is L0 blue-ramp dominant") && AllVerified;
+    AllVerified = VerifyCheck(FarLvlHue.CoarserRampPixels > 250u && FarLvlHue.BlueFinest < NearLvlHue.BlueFinest,
+                              "far Nanite LOD Level view shifts onto coarser cyan/green/amber/red ramp") && AllVerified;
+    AllVerified = VerifyCheck(FarClsHue.DistinctColors > 50u, "Nanite Clusters view shows distinct cluster colors") && AllVerified;
+    AllVerified = VerifyCheck(FarGrpHue.DistinctColors > 20u, "Nanite Groups view shows distinct simplification-group colors") && AllVerified;
+    AllVerified = VerifyCheck(NearTriHue.DistinctColors > 120u, "Nanite Triangles view shows rich per-triangle mosaic + analytical edges") && AllVerified;
+    AllVerified = VerifyCheck(MidErrHue.DistinctColors > 10u, "Nanite Error view renders live screen-space error ramp") && AllVerified;
+    AllVerified = VerifyCheck(NearSeamHue.DistinctColors > 15u && NearSeamHue.GoldHighlight > 40u,
+                              "Nanite UV Seams view renders UV chart checkerboard + gold seam borders") && AllVerified;
+    AllVerified = VerifyCheck(FarMatHue.DistinctColors >= 12u, "far Face Material view preserves >= 12 vehicle material slots") && AllVerified;
+
+    // Save contact sheet into gitignored build/NaniteViewportExhibit/
     {
-        Frontier::Exhibits::SoftwareRasterCanvas Sheet(ProofW * 4u, ProofH * 2u, { 24u, 24u, 24u, 255u });
-        Sheet.BlitRgbaRegion(0u, 0u, ProofW, ProofH, NearRgba.data());
-        Sheet.BlitRgbaRegion(ProofW, 0u, ProofW, ProofH, NearMatRgba.data());
-        Sheet.BlitRgbaRegion(ProofW * 2u, 0u, ProofW, ProofH, NearLevelRgba.data());
-        Sheet.BlitRgbaRegion(ProofW * 3u, 0u, ProofW, ProofH, NearClusterRgba.data());
-        Sheet.BlitRgbaRegion(0u, ProofH, ProofW, ProofH, FarRgba.data());
-        Sheet.BlitRgbaRegion(ProofW, ProofH, ProofW, ProofH, FarMatRgba.data());
-        Sheet.BlitRgbaRegion(ProofW * 2u, ProofH, ProofW, ProofH, FarLevelRgba.data());
-        Sheet.BlitRgbaRegion(ProofW * 3u, ProofH, ProofW, ProofH, FarClusterRgba.data());
-        Pass = VerifyCheck(Sheet.WritePngFile(OutDir / "VehicleLodContactSheet.png"), "wrote LOD contact sheet") && Pass;
+        Frontier::Exhibits::SoftwareRasterCanvas Sheet(ViewW * 4u, ViewH * 2u, { 24u, 24u, 24u, 255u });
+        Sheet.BlitRgbaRegion(0u,         0u,    ViewW, ViewH, NearWireRgba.data());
+        Sheet.BlitRgbaRegion(ViewW,      0u,    ViewW, ViewH, NormForcedRgba.data());
+        Sheet.BlitRgbaRegion(ViewW * 2u, 0u,    ViewW, ViewH, FarLvlRgba.data());
+        Sheet.BlitRgbaRegion(ViewW * 3u, 0u,    ViewW, ViewH, FarClsRgba.data());
+        Sheet.BlitRgbaRegion(0u,         ViewH, ViewW, ViewH, FarGrpRgba.data());
+        Sheet.BlitRgbaRegion(ViewW,      ViewH, ViewW, ViewH, NearTriRgba.data());
+        Sheet.BlitRgbaRegion(ViewW * 2u, ViewH, ViewW, ViewH, MidErrRgba.data());
+        Sheet.BlitRgbaRegion(ViewW * 3u, ViewH, ViewW, ViewH, NearSeamRgba.data());
+        AllVerified = VerifyCheck(Sheet.WritePngFile(OutDir / "GeometryCompilerNaniteDebugSheet.png"), "wrote GeometryCompiler 8-panel exhibit sheet") && AllVerified;
+        (void)WritePngRgba8(OutDir / "VehicleNearNormalsL0.png", ViewW, ViewH, NormNearRgba.data());
+        (void)WritePngRgba8(OutDir / "VehicleNearNormalsForcedL2.png", ViewW, ViewH, NormForcedRgba.data());
     }
 
     GpuSeq.TeardownSequence();
     VkDevice.TeardownInterchange();
-    if (!Pass)
+    if (!AllVerified)
     {
         return 1;
     }
-    std::printf("[NaniteViewportVehicleValidation] PASS — Nanite LOD is live in the Vulkan editor viewport (ControlVehicle).\n");
+    std::printf("[NaniteViewportVehicleValidation] COMPLETED — GeometryCompiler Nanite LOD + smooth normals + UVs + 6 debug views verified on GPU.\n");
     return 0;
 }

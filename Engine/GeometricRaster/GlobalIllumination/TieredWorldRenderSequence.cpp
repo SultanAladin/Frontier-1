@@ -365,34 +365,54 @@ struct CpuDownsampledCloudField
     uint32_t                              HitLodLevel     = 0u,
     uint32_t                              HitClusterKey   = 0u) noexcept
 {
-    if (DebugChannel == 17u)
+    if (DebugChannel >= 17u && DebugChannel <= 22u)
     {
-        // Nanite LOD Level: green L0 finest, yellow L1, orange L2, red L3, purple L4+
-        Mathematics::LinearRGB LevelColor { 0.10f, 0.85f, 0.35f };
-        if (HitLodLevel == 1u)      LevelColor = { 0.95f, 0.85f, 0.10f };
-        else if (HitLodLevel == 2u) LevelColor = { 0.98f, 0.45f, 0.08f };
-        else if (HitLodLevel == 3u) LevelColor = { 0.92f, 0.10f, 0.15f };
-        else if (HitLodLevel >= 4u) LevelColor = { 0.75f, 0.20f, 0.95f };
-        const float FormShade = 0.30f + 0.70f * std::clamp(Hit.TangentFrame.NormalZ.Z * 0.5f + 0.5f, 0.0f, 1.0f);
-        return LevelColor * FormShade;
-    }
-    if (DebugChannel == 18u)
-    {
-        // Nanite Cluster ID: one vivid colour per cluster
-        const uint32_t CId = HitClusterKey + 1u;
-        const auto Frac = [](float V) noexcept { return V - std::floor(V); };
-        Mathematics::LinearRGB ClusterColor {
-            Frac(static_cast<float>(CId) * 0.3819660113f),
-            Frac(static_cast<float>(CId) * 0.6180339887f + 0.27f),
-            Frac(static_cast<float>(CId) * 0.7548776662f + 0.53f),
-        };
-        const float MaxComp = std::max(ClusterColor.R, std::max(ClusterColor.G, ClusterColor.B));
-        if (MaxComp > 1.0e-5f)
+        auto IdColor = [](uint32_t Ord) noexcept -> Mathematics::LinearRGB
         {
-            ClusterColor = ClusterColor * (1.0f / MaxComp);
+            const float Hue = std::fmod(static_cast<float>(Ord) * 0.61803398875f, 1.0f);
+            const float Sat = 0.58f;
+            const float Lit = 0.56f;
+            const float Amp = Sat * std::min(Lit, 1.0f - Lit);
+            auto Ch = [&](float Off) noexcept -> float
+            {
+                const float K = std::fmod(Off + Hue * 12.0f, 12.0f);
+                const float S = std::clamp(Lit - Amp * std::max(-1.0f, std::min({ K - 3.0f, 9.0f - K, 1.0f })), 0.0f, 1.0f);
+                return std::pow(S, 2.2f);
+            };
+            return { Ch(0.0f), Ch(8.0f), Ch(4.0f) };
+        };
+        auto RampColor = [](float Ratio) noexcept -> Mathematics::LinearRGB
+        {
+            constexpr Mathematics::LinearRGB Stops[5] = {
+                { 0.027f, 0.147f, 0.694f },
+                { 0.020f, 0.477f, 0.448f },
+                { 0.147f, 0.571f, 0.084f },
+                { 0.831f, 0.420f, 0.027f },
+                { 0.749f, 0.047f, 0.040f },
+            };
+            const float Scaled = std::clamp(Ratio, 0.0f, 1.0f) * 4.0f;
+            const int   Idx    = std::min(3, static_cast<int>(std::floor(Scaled)));
+            const float Frac   = Scaled - static_cast<float>(Idx);
+            return Stops[Idx] * (1.0f - Frac) + Stops[Idx + 1] * Frac;
+        };
+
+        Mathematics::LinearRGB DebugTone { 0.5f, 0.5f, 0.5f };
+        if (DebugChannel == 17u)      DebugTone = RampColor(static_cast<float>(HitLodLevel) / 4.0f);
+        else if (DebugChannel == 18u) DebugTone = IdColor(HitClusterKey + 1u);
+        else if (DebugChannel == 19u) DebugTone = IdColor((HitClusterKey / 4u) * 7u + 3u);
+        else if (DebugChannel == 20u) DebugTone = IdColor(Hit.ClusterOrdinal * 128u + Hit.TriangleOrdinal + 1u);
+        else if (DebugChannel == 21u) DebugTone = RampColor(static_cast<float>(HitLodLevel) * 0.28f);
+        else
+        {
+            const int   Cx      = static_cast<int>(std::floor(Hit.Footprint.SurfaceUV.U * 16.0f));
+            const int   Cy      = static_cast<int>(std::floor(Hit.Footprint.SurfaceUV.V * 16.0f));
+            const float Checker = (((Cx + Cy) & 1) != 0) ? 0.88f : 0.34f;
+            const float Tu      = Hit.Footprint.SurfaceUV.U - std::floor(Hit.Footprint.SurfaceUV.U);
+            const float Tv      = Hit.Footprint.SurfaceUV.V - std::floor(Hit.Footprint.SurfaceUV.V);
+            DebugTone = Mathematics::LinearRGB{ 0.18f + 0.72f * Tu, 0.22f + 0.68f * Tv, 0.58f } * Checker;
         }
-        const float FormShade = 0.35f + 0.65f * std::clamp(Hit.TangentFrame.NormalZ.Z * 0.5f + 0.5f, 0.0f, 1.0f);
-        return ClusterColor * FormShade;
+        const float FormShade = 0.32f + 0.68f * std::clamp(Hit.TangentFrame.NormalZ.Z * 0.5f + 0.5f, 0.0f, 1.0f);
+        return DebugTone * FormShade;
     }
     if (DebugChannel == 1u)
     {

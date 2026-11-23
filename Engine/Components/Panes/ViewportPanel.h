@@ -74,8 +74,10 @@ struct ViewportDisplaySettings
     float    XeGtaoStrength        = 1.0f;   // [x]   - XeGTAO occlusion strength [0..2]
     uint32_t PathTraceTargetSpp    = 256u;   // [spp] - Progressive PT convergence target (0 = render continuously, no cap)
     uint32_t PathTraceBatchSpp     = 1u;     // [spp] - PT samples accumulated per frame (1/2/4/8, HTML lab parity)
-    bool     ClusterLodEnabled     = true;   // [-]   - Nanite-like cluster LOD drives the viewport BVH
-    float    ClusterLodPixelError  = 1.25f;  // [px]  - Screen-space LOD error budget (0.5 quality / 1.25 balanced / 2.5 / 5 aggressive)
+    bool     ClusterLodEnabled       = true;   // [-]   - Nanite-like cluster LOD drives the viewport BVH
+    float    ClusterLodPixelError    = 1.25f;  // [px]  - Screen-space LOD error budget (0.5 quality / 1.25 balanced / 2.5 / 5 aggressive)
+    int32_t  ClusterForcedLodLevel   = -1;     // [lvl] - -1 = automatic view cut, >= 0 = force exact pyramid level
+    bool     ClusterWireframeOverlay = false;  // [-]   - Analytical triangle wireframe overlay across active viewport view
     bool     AtmosphereSkyEnabled  = true;   // [-]   - Physical Bruneton/Hillaire atmospheric sky toggle
     bool     VolumetricCloudsEnabled = false;// [-]   - Raymarched volumetric cloud deck toggle (default off for Clear Sky)
     bool     CloudShadowsEnabled   = false;  // [-]   - Volumetric cloud ground shadow casting toggle
@@ -138,7 +140,7 @@ public:
     void TogglePlayPause() noexcept;
     void ConfigureSplitViewport(bool SplitEnabled) noexcept;
     void ConfigureDiagnosticsVisible(bool Visible) noexcept;
-    void AdvanceDebugChannelCycle() noexcept { DisplaySettings.DebugChannelIndex = (DisplaySettings.DebugChannelIndex + 1u) % 19u; }
+    void AdvanceDebugChannelCycle() noexcept { DisplaySettings.DebugChannelIndex = (DisplaySettings.DebugChannelIndex + 1u) % 23u; }
     void ConfigureRenderSettingsSheetOpen(bool Open) noexcept;
     void ConfigureSdfPenumbraDropdownOpen(bool Open) noexcept { SdfPenumbraDropdownOpen = Open; }
     void ConfigureConstructSheetOpen(bool Open) noexcept;
@@ -159,6 +161,7 @@ public:
     [[nodiscard]] bool                           QueryPlayPaused() const noexcept;
     [[nodiscard]] bool                           QuerySplitViewportEnabled() const noexcept;
     [[nodiscard]] bool                           QueryDiagnosticsVisible() const noexcept;
+    [[nodiscard]] bool                           QueryDiagnosticsPaused() const noexcept { return DiagnosticsPaused; }
     [[nodiscard]] bool                           QueryRenderSettingsSheetOpen() const noexcept;
     [[nodiscard]] bool                           QueryConstructSheetOpen() const noexcept;
     [[nodiscard]] bool                           QueryProjectionDropdownOpen() const noexcept;

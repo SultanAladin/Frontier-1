@@ -167,6 +167,7 @@ private:
     };
 
     void PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx);
+    void RefreshOutlinerFooterTelemetry() noexcept;
     void SynchronizeShowcaseGizmoAnchor() noexcept;
     void RefreshGizmoOverlayFromCachedWorld();
     void ProcessShowcaseViewportInteraction(uint32_t PaneIndex, Rectangle2D PaneBounds, const PaneInputReading& Input);
@@ -205,6 +206,8 @@ private:
     uint32_t                                                         LastTraceResolutionIdx = UINT32_MAX;
     bool                                                             LastClusterLodEnabled  = true;
     float                                                            LastClusterLodPixelError = 1.25f;
+    int32_t                                                          LastClusterForcedLod   = -1;
+    bool                                                             LastClusterWireframe   = false;
     uint32_t                                                         LastPathTraceTargetSpp = 256u;
     uint32_t                                                         LastPathTraceBatchSpp  = 1u;
     bool                                                             LastXeGtaoEnabled    = false;

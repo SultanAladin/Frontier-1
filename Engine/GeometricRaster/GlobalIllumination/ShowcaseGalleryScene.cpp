@@ -730,9 +730,10 @@ bool LoadWorldSceneFromSpaceFile(
             // Nanite-like per-asset LOD bake: glass keeps LOD 1 as its last level (silhouette
             // protection); every asset locks material boundaries so face material slots survive.
             SpatialAcceleration::ClusterLodBakeConfiguration LodBake {};
-            LodBake.MaximumLevels          = 3u;
-            LodBake.CoarsestAllowedLevel   = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
-            LodBake.LockMaterialBoundaries = true;
+            LodBake.MaximumLevels             = 5u;
+            LodBake.CoarsestAllowedLevel      = Entry.GlassShell ? 1u : 0xFFFFFFFFu;
+            LodBake.LockMaterialBoundaries    = true;
+            LodBake.AuthoredFaceCornerNormals = GeoDoc.FaceCornerNormals;
             (void)GeomAsset->Pyramid.BuildFromPolygonNetwork(GeomAsset->Network, LodBake);
             for (const Codecs::GeometrySurfaceSlotLink& SlotLink : GeoDoc.SurfaceSlots)
             {

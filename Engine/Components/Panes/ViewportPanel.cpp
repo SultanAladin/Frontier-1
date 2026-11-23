@@ -75,7 +75,7 @@ namespace
 
 [[nodiscard]] const char* QueryDebugChannelName(uint32_t Channel) noexcept
 {
-    constexpr std::array<const char*, 19> Names = {{
+    constexpr std::array<const char*, 23> Names = {{
         "Off",
         "Depth",
         "Albedo",
@@ -94,7 +94,11 @@ namespace
         "SDF AO Raw",
         "SDF Cascade",
         "Nanite LOD Level",
-        "Nanite Clusters"
+        "Nanite Clusters",
+        "Nanite Groups",
+        "Nanite Triangles",
+        "Nanite Error",
+        "Nanite UV Seams"
     }};
     return Names[std::min<std::size_t>(Channel, Names.size() - 1u)];
 }
@@ -314,24 +318,15 @@ void ViewportPanel::PushDiagnosticsSample(double Δt) noexcept
         return;
     }
 
-    // Sample at 10 Hz (average execution time over each 100 ms wall-clock bucket) using active
-    // CPU+GPU execution duration rather than voluntary idle sleep Dt.
-    const float MeasuredWorkMs = (LastViewportTiming.TotalFrameMs > 0.05f)
+    const float MeasuredWorkMs = (LastViewportTiming.TotalFrameMs > 0.01f)
         ? LastViewportTiming.TotalFrameMs
         : ((Δt > 1.0e-5) ? static_cast<float>(Δt * 1000.0) : 16.67f);
-    const float SampleDurationMs = std::clamp(MeasuredWorkMs, 0.25f, 120.0f);
-    HistoryPendingMs += SampleDurationMs;
-    HistoryPendingSeconds += static_cast<float>(std::max(0.0, Δt));
-    ++HistoryPendingFrames;
-    if (HistoryPendingSeconds >= 0.1f)
-    {
-        IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()] = std::clamp(
-            HistoryPendingMs / static_cast<float>(std::max(1u, HistoryPendingFrames)), 0.25f, 120.0f);
-        ++HistoryWriteCursor;
-        HistoryPendingMs      = 0.0f;
-        HistoryPendingSeconds = 0.0f;
-        HistoryPendingFrames  = 0u;
-    }
+    const float SampleDurationMs = std::clamp(MeasuredWorkMs, 0.05f, 250.0f);
+    IntervalHistoryMs[HistoryWriteCursor % IntervalHistoryMs.size()] = SampleDurationMs;
+    ++HistoryWriteCursor;
+    HistoryPendingMs      = SampleDurationMs;
+    HistoryPendingSeconds = 0.0f;
+    HistoryPendingFrames  = std::min<uint32_t>(HistoryWriteCursor, static_cast<uint32_t>(IntervalHistoryMs.size()));
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -641,13 +636,24 @@ void ViewportPanel::RenderDiagnosticsPanel(
     uint32_t                VisibleCount,
     const PaneInputReading& Input)
 {
-    std::vector<float> Sorted(IntervalHistoryMs.begin(), IntervalHistoryMs.end());
+    const std::size_t ActiveSampleCount = (HistoryPendingFrames > 0u)
+        ? std::min<std::size_t>(HistoryPendingFrames, IntervalHistoryMs.size())
+        : IntervalHistoryMs.size();
+    std::vector<float> Sorted {};
+    Sorted.reserve(ActiveSampleCount);
+    const std::size_t RingSize = IntervalHistoryMs.size();
+    for (std::size_t Step = 0u; Step < ActiveSampleCount; ++Step)
+    {
+        Sorted.push_back(IntervalHistoryMs[(HistoryWriteCursor + RingSize - 1u - Step) % RingSize]);
+    }
     std::sort(Sorted.begin(), Sorted.end());
     const float MinMs = Sorted.front();
     const float MaxMs = Sorted.back();
     const float AvgMs = std::accumulate(Sorted.begin(), Sorted.end(), 0.0f) / static_cast<float>(Sorted.size());
     const float P95Ms = Sorted[static_cast<std::size_t>(Sorted.size() * 95u / 100u)];
-    const float CurMs = IntervalHistoryMs[(HistoryWriteCursor + IntervalHistoryMs.size() - 1u) % IntervalHistoryMs.size()];
+    const float CurMs = (LastViewportTiming.TotalFrameMs > 0.01f && !DiagnosticsPaused)
+        ? LastViewportTiming.TotalFrameMs
+        : IntervalHistoryMs[(HistoryWriteCursor + RingSize - 1u) % RingSize];
 
     auto FormatMs = [](float V) -> std::string
     {
@@ -663,10 +669,8 @@ void ViewportPanel::RenderDiagnosticsPanel(
     std::snprintf(WholeMs, sizeof(WholeMs), "%d", WholeInt);
     std::snprintf(FracMs, sizeof(FracMs), ".%d", Tenths);
 
-    // 10 Hz samples over the selected window (15/30/60 s): slow, readable graph scroll.
     const uint32_t WindowSamples = std::clamp(DiagnosticsSession.HistorySeconds, 15u, 60u) * 10u;
     std::vector<float> OrderedSamples(WindowSamples);
-    const std::size_t RingSize = IntervalHistoryMs.size();
     for (std::size_t Step = 0u; Step < OrderedSamples.size(); ++Step)
     {
         const std::size_t Back = OrderedSamples.size() - 1u - Step;
@@ -692,8 +696,8 @@ void ViewportPanel::RenderDiagnosticsPanel(
     std::snprintf(ScaleText, sizeof(ScaleText), "%.0f", DisplaySettings.RenderScalePercent);
 
     char FpsText[24]{};
-    std::snprintf(FpsText, sizeof(FpsText), "%.1f fps", 1000.0f / std::max(0.1f, AvgMs));
-    const float RealFps = 1000.0f / std::max(0.1f, AvgMs);
+    std::snprintf(FpsText, sizeof(FpsText), "%.1f fps", 1000.0f / std::max(0.05f, AvgMs));
+    const float RealFps = 1000.0f / std::max(0.05f, CurMs);
     char FpsUnitBuf[32]{};
     std::snprintf(FpsUnitBuf, sizeof(FpsUnitBuf), "ms  (%.1f fps)", RealFps);
 
@@ -826,7 +830,7 @@ void ViewportPanel::RenderDiagnosticsPanel(
     DiagnosticsOverlaySpec Spec {};
     Spec.Title                   = "Diagnostics";
     Spec.ShortcutBadge           = "F3";
-    Spec.FooterSampleLabel       = "10 Hz samples";
+    Spec.FooterSampleLabel       = "Live per-tick";
     Spec.AllowDragResize         = false;
     Spec.ShowViewSpanControls    = true;
     Spec.DefaultWidthPx          = 324.0f;
@@ -1054,7 +1058,7 @@ void ViewportPanel::RenderSettingsSheet(
 {
     const float SheetW = 286.0f;
     // Dedicated Render Settings panel: height follows the active section.
-    constexpr std::array<float, 5> SectionHeights = {{ 560.0f, 220.0f, 240.0f, 200.0f, 380.0f }};
+    constexpr std::array<float, 5> SectionHeights = {{ 560.0f, 220.0f, 240.0f, 360.0f, 380.0f }};
     const float SheetH = std::min(
         SectionHeights[std::min(4u, RenderSettingsSection)],
         std::max(240.0f, Bounds.Height - 22.0f));
@@ -1341,7 +1345,99 @@ void ViewportPanel::RenderSettingsSheet(
                 }
             }
             RowY += 32.0f;
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+                WorkspaceSurfaceColors::SecondaryInk, "Force LOD");
+            constexpr std::array<const char*, 6> ForceLabels = {{ "Auto", "L0", "L1", "L2", "L3", "L4" }};
+            constexpr std::array<int32_t, 6>     ForceLevels = {{ -1, 0, 1, 2, 3, 4 }};
+            const float ForceGroupW   = 186.0f;
+            const float ForceCapsuleW = (ForceGroupW - 20.0f) / 6.0f;
+            const float ForceGroupX   = Sheet.Right() - 16.0f - ForceGroupW;
+            for (uint32_t Idx = 0u; Idx < 6u; ++Idx)
+            {
+                const Rectangle2D Capsule{ ForceGroupX + static_cast<float>(Idx) * (ForceCapsuleW + 4.0f), RowY + 1.0f, ForceCapsuleW, 22.0f };
+                const bool        Active = (DisplaySettings.ClusterForcedLodLevel == ForceLevels[Idx]);
+                Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+                Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+                const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 8.5f, ForceLabels[Idx]);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.5f }, 8.5f,
+                    Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, ForceLabels[Idx]);
+                if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+                {
+                    DisplaySettings.ClusterForcedLodLevel = ForceLevels[Idx];
+                }
+            }
+            RowY += 32.0f;
         }
+
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Regular, { Sheet.X + 16.0f, RowY + 5.0f }, 11.5f,
+            WorkspaceSurfaceColors::SecondaryInk, "Wireframe");
+        constexpr std::array<const char*, 2> WireLabels = {{ "Off", "On" }};
+        const float WireGroupW   = 102.0f;
+        const float WireCapsuleW = (WireGroupW - 4.0f) / 2.0f;
+        const float WireGroupX   = Sheet.Right() - 16.0f - WireGroupW;
+        for (uint32_t Idx = 0u; Idx < 2u; ++Idx)
+        {
+            const Rectangle2D Capsule{ WireGroupX + static_cast<float>(Idx) * (WireCapsuleW + 4.0f), RowY + 1.0f, WireCapsuleW, 22.0f };
+            const bool        Active = (DisplaySettings.ClusterWireframeOverlay == (Idx == 1u));
+            Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+            Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 9.0f, WireLabels[Idx]);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.0f }, 9.0f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, WireLabels[Idx]);
+            if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                DisplaySettings.ClusterWireframeOverlay = (Idx == 1u);
+            }
+        }
+        RowY += 34.0f;
+
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay, FontWeightClass::Medium, { Sheet.X + 16.0f, RowY }, 9.5f,
+            ColorRgba{ 138, 138, 138, 255 }, "NANITE DEBUG VIEW");
+        RowY += 18.0f;
+
+        struct NaniteViewChoice
+        {
+            const char* Label   = "";
+            uint32_t    Channel = 0u;
+        };
+        constexpr std::array<NaniteViewChoice, 7> NaniteViews = {{
+            { "Shaded",    0u  },
+            { "Clusters",  18u },
+            { "Groups",    19u },
+            { "LOD Level", 17u },
+            { "Triangles", 20u },
+            { "Error",     21u },
+            { "UV Seams",  22u },
+        }};
+        const float GridW = Sheet.Width - 32.0f;
+        const float ColW3 = (GridW - 8.0f) / 3.0f;
+        const float ColW4 = (GridW - 12.0f) / 4.0f;
+        for (uint32_t Idx = 0u; Idx < 7u; ++Idx)
+        {
+            const bool  FirstRow = (Idx < 3u);
+            const float CellW    = FirstRow ? ColW3 : ColW4;
+            const float CellX    = Sheet.X + 16.0f + static_cast<float>(FirstRow ? Idx : (Idx - 3u)) * (CellW + 4.0f);
+            const float CellY    = FirstRow ? RowY : (RowY + 28.0f);
+            const Rectangle2D Capsule{ CellX, CellY, CellW, 22.0f };
+            const bool Active = (DisplaySettings.DebugChannelIndex == NaniteViews[Idx].Channel);
+            Overlay.FillRectangle(Capsule, Active ? ColorRgba{ 62, 62, 62, 255 } : ColorRgba{ 36, 36, 36, 255 }, 11.0f);
+            Overlay.StrokeRectangle(Capsule, Active ? WorkspaceSurfaceColors::PreviewGoldInk : ColorRgba{ 255, 255, 255, 16 }, 11.0f, 1.0f);
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 8.5f, NaniteViews[Idx].Label);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay, FontWeightClass::Regular, { Capsule.Center().X - TW * 0.5f, Capsule.Y + 5.5f }, 8.5f,
+                Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 162, 162, 162, 255 }, NaniteViews[Idx].Label);
+            if (!AnyDropdownOpen && Capsule.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                DisplaySettings.DebugChannelIndex = NaniteViews[Idx].Channel;
+            }
+        }
+        RowY += 60.0f;
     }
 
     } // Section: Nanite
@@ -1616,7 +1712,7 @@ void ViewportPanel::RenderSettingsSheet(
     }
     else if (DebugDropdownOpen)
     {
-        constexpr std::array<const char*, 19> DebugOptions = {{
+        constexpr std::array<const char*, 23> DebugOptions = {{
             "Debug View: Off",
             "Debug View: Depth",
             "Debug View: Albedo",
@@ -1636,9 +1732,13 @@ void ViewportPanel::RenderSettingsSheet(
             "Debug View: SDF Cascade",
             "Debug View: Nanite LOD Level",
             "Debug View: Nanite Clusters",
+            "Debug View: Nanite Groups",
+            "Debug View: Nanite Triangles",
+            "Debug View: Nanite Error",
+            "Debug View: Nanite UV Seams",
         }};
         const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugButtonBounds, static_cast<uint32_t>(DebugOptions.size()));
-        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % 19u;
+        const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % static_cast<uint32_t>(DebugOptions.size());
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 Overlay,
@@ -2093,7 +2193,7 @@ void ViewportPanel::Render(
 
     if (HeaderDebugDropdownOpen)
     {
-        constexpr std::array<const char*, 19> HeaderDebugOptions = {{
+        constexpr std::array<const char*, 23> HeaderDebugOptions = {{
             "00 · Lit (Off)",
             "01 · Depth",
             "02 · Albedo",
@@ -2113,10 +2213,14 @@ void ViewportPanel::Render(
             "16 · SDF Cascade",
             "17 · Nanite LOD Level",
             "18 · Nanite Clusters",
+            "19 · Nanite Groups",
+            "20 · Nanite Triangles",
+            "21 · Nanite Error",
+            "22 · Nanite UV Seams",
         }};
         const Rectangle2D DropSheet = DropdownSelector::QuerySheetBounds(
             HeaderDebugButtonBounds, static_cast<uint32_t>(HeaderDebugOptions.size()));
-        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % 19u;
+        const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % static_cast<uint32_t>(HeaderDebugOptions.size());
         uint32_t       ChosenIdx = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
                 ActiveOverlay, HeaderDebugButtonBounds, HeaderDebugOptions.data(),
