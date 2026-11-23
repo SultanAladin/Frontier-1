@@ -862,13 +862,9 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Lifecycle/ProjectExecutionRunner.cpp
     Engine/Workspaces/WorkspaceCapabilityRegister.cpp
     Engine/Windowing/PlatformWindowStub.cpp
-    Engine/Threading/Sync/ThreadProgressionTracker.cpp
-    Engine/Threading/Tasks/TaskChannel.cpp
-    Engine/Threading/Tasks/ExecutionChannels.cpp
     Engine/Threading/Tasks/TaskScheduler.cpp
     Engine/Threading/Threads/Audio/AudioThread.cpp
     Engine/Threading/Threads/Workspace/WorkspaceThread.cpp
-    Engine/Threading/Threads/Streaming/AssetStreamThread.cpp
     Engine/Codecs/AcousticCodec.cpp
     Engine/Codecs/SpaceContainerCodec.cpp
     Engine/Codecs/RevisionCodec.cpp
@@ -964,10 +960,20 @@ include(Automation/JoltPhysics.cmake)
 set_source_files_properties(Engine/GeometricRaster/Vector/VulkanVectorRenderMethod.cpp
     PROPERTIES INCLUDE_DIRECTORIES "${THORVG_VECTOR_SPI_INCLUDES}")
 
+add_library(FrontierThreading STATIC
+    Engine/Threading/Sync/ThreadProgressionTracker.cpp
+    Engine/Threading/Tasks/TaskChannel.cpp
+    Engine/Threading/Tasks/ExecutionChannels.cpp
+    Engine/Threading/Threads/Streaming/AssetStreamThread.cpp
+)
+target_include_directories(FrontierThreading PUBLIC "${CMAKE_SOURCE_DIR}")
+target_link_libraries(FrontierThreading PUBLIC FrontierCompileSettings Threads::Threads)
+
 add_library(FrontierSerialization STATIC
     Engine/Serialization/Container/SuffixRegistry.cpp
     Engine/Serialization/Container/AtomicFileWriter.cpp
-    Engine/Serialization/Container/HybridContainerCodec.cpp
+    Engine/Serialization/Container/MemoryMappedFileView.cpp
+    Engine/Serialization/Container/DocumentContainerCodec.cpp
     Engine/Serialization/DependencyOrder/ContentHashCalculator.cpp
     Engine/Serialization/DependencyOrder/DependencyOrderLedger.cpp
     Engine/Serialization/DependencyOrder/CompiledDiskRepository.cpp
@@ -979,7 +985,7 @@ target_include_directories(FrontierSerialization PUBLIC
     "${CMAKE_SOURCE_DIR}"
     "${CMAKE_SOURCE_DIR}/ExternalPackages/tomlpp/include"
 )
-target_link_libraries(FrontierSerialization PUBLIC FrontierCompileSettings)
+target_link_libraries(FrontierSerialization PUBLIC FrontierThreading FrontierCompileSettings)
 
 add_library(FrontierEngine STATIC ${FRONTIER_ENGINE_SOURCES})
 add_dependencies(FrontierEngine FrontierShaders thorvg_static Jolt)

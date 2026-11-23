@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         SERIALIZATIONVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 End-to-end validation exhibit for Engine/Serialization: 63-format registry, Hybrid container, Multi-pillar embedding, DependencyOrder & examples
+// 🧩 End-to-end validation exhibit for Engine/Serialization: 63-format registry, DocumentContainerCodec, mmap, ExecutionChannels & AssetStreamThread
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -10,12 +10,15 @@
 #include "Engine/Serialization/Codecs/FormatCodecSuite.h"
 #include "Engine/Serialization/Configuration/BootConfigurationLoader.h"
 #include "Engine/Serialization/Container/AtomicFileWriter.h"
-#include "Engine/Serialization/Container/HybridContainerCodec.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
+#include "Engine/Serialization/Container/MemoryMappedFileView.h"
 #include "Engine/Serialization/Container/SuffixRegistry.h"
 #include "Engine/Serialization/DependencyOrder/CompiledDiskRepository.h"
 #include "Engine/Serialization/DependencyOrder/ContentHashCalculator.h"
 #include "Engine/Serialization/DependencyOrder/DependencyOrderLedger.h"
 #include "Engine/Serialization/Embedding/InstanceContainerCodec.h"
+#include "Engine/Threading/Tasks/ExecutionChannels.h"
+#include "Engine/Threading/Threads/Streaming/AssetStreamThread.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -37,12 +40,11 @@ using namespace Frontier::Serialization;
 
 struct GateReport
 {
-    std::string Title   {}; // [-] - Verification gate title
-    std::string Metrics {}; // [-] - Quantitative result summary
+    std::string Title   {};    // [-] - Verification gate title
+    std::string Metrics {};    // [-] - Quantitative result summary
     bool        Passed  = false; // [-] - Verification outcome
 };
 
-// Minimal crisp 5x7 uppercase bitmap font for clean telemetry PNG rendering
 void StampPixel(std::vector<uint8_t>& Rgba, int W, int H, int X, int Y, uint8_t R, uint8_t G, uint8_t B)
 {
     if (X < 0 || Y < 0 || X >= W || Y >= H)
@@ -176,24 +178,24 @@ void RenderVerificationTelemetryPng(
     uint32_t                       ColdBakes,
     uint32_t                       WarmHits,
     uint32_t                       PartialInvalidations,
-    uint32_t                       CorruptRepairs)
+    uint32_t                       CorruptRepairs,
+    uint64_t                       ParallelTasksExecuted,
+    uint64_t                       StreamedSlicesCompleted)
 {
     constexpr int W = 1280;
-    constexpr int H = 760;
+    constexpr int H = 880;
     std::vector<uint8_t> Rgba(static_cast<std::size_t>(W) * static_cast<std::size_t>(H) * 4u, 255u);
 
-    // Dark graphite slate canvas
     FillRect(Rgba, W, H, 0, 0, W, H, 18, 21, 28);
-    // Top title banner
     FillRect(Rgba, W, H, 0, 0, W, 68, 26, 32, 44);
     FillRect(Rgba, W, H, 0, 66, W, 2, 79, 140, 255);
-    StampText(Rgba, W, H, 28, 16, 3, "FRONTIER SERIALIZATION ARCHITECTURE VERIFICATION", 236, 242, 252);
-    StampText(Rgba, W, H, 28, 44, 2, "TWO-TIER HYBRID TOML + 64B SFNT BINARY + 63 FORMATS + ZERO-RECOMPUTE REPOSITORY", 148, 176, 224);
+    StampText(Rgba, W, H, 28, 16, 3, "FRONTIER DOCUMENT CONTAINER VERIFICATION", 236, 242, 252);
+    StampText(Rgba, W, H, 28, 44, 2, "SECTIONED TOML+64B BINARY + MMAP + EXECUTIONCHANNELS + ASSETSTREAM", 148, 176, 224);
 
-    // Left column: 10 Validation Gates
-    FillRect(Rgba, W, H, 24, 88, 720, 648, 24, 28, 37);
-    StrokeRect(Rgba, W, H, 24, 88, 720, 648, 52, 62, 82);
-    StampText(Rgba, W, H, 40, 102, 2, "VERIFICATION GATES (10/10 AUTOMATED CHECKS)", 218, 228, 245);
+    // Left column: 12 Validation Gates
+    FillRect(Rgba, W, H, 24, 88, 720, 768, 24, 28, 37);
+    StrokeRect(Rgba, W, H, 24, 88, 720, 768, 52, 62, 82);
+    StampText(Rgba, W, H, 40, 102, 2, "VERIFICATION GATES (12/12 AUTOMATED CHECKS)", 218, 228, 245);
 
     int RowY = 136;
     for (std::size_t Index = 0u; Index < Gates.size(); ++Index)
@@ -202,16 +204,15 @@ void RenderVerificationTelemetryPng(
         FillRect(Rgba, W, H, 38, RowY, 692, 52, 31, 37, 49);
         StrokeRect(Rgba, W, H, 38, RowY, 692, 52, Gate.Passed ? 48 : 190, Gate.Passed ? 156 : 52, Gate.Passed ? 96 : 52);
 
-        // Status pill
         FillRect(Rgba, W, H, 48, RowY + 12, 74, 28, Gate.Passed ? 34 : 184, Gate.Passed ? 148 : 42, Gate.Passed ? 84 : 42);
         StampText(Rgba, W, H, 60, RowY + 19, 2, Gate.Passed ? "PASS" : "FAIL", 245, 250, 255);
 
         StampText(Rgba, W, H, 136, RowY + 9,  2, Gate.Title,   232, 238, 248);
         StampText(Rgba, W, H, 136, RowY + 31, 1, Gate.Metrics, 152, 172, 204);
-        RowY += 58;
+        RowY += 59;
     }
 
-    // Right top: 63-Format Stratification Grid (18 Tier A *Space + 45 Tier B Sub-Formats)
+    // Right top: 63-Format Stratification Grid
     FillRect(Rgba, W, H, 764, 88, 492, 316, 24, 28, 37);
     StrokeRect(Rgba, W, H, 764, 88, 492, 316, 52, 62, 82);
     StampText(Rgba, W, H, 780, 102, 2, "63-FORMAT GRID: 18 TIER A + 45 TIER B", 218, 228, 245);
@@ -238,9 +239,9 @@ void RenderVerificationTelemetryPng(
         StampText(Rgba, W, H, CX + 10, CY + 11, 1, Label, 245, 250, 255);
     }
 
-    // Right bottom: Zero-Recompute CompiledDiskRepository Telemetry Bars
-    FillRect(Rgba, W, H, 764, 424, 492, 312, 24, 28, 37);
-    StrokeRect(Rgba, W, H, 764, 424, 492, 312, 52, 62, 82);
+    // Right middle: Zero-Recompute CompiledDiskRepository Telemetry Bars
+    FillRect(Rgba, W, H, 764, 424, 492, 276, 24, 28, 37);
+    StrokeRect(Rgba, W, H, 764, 424, 492, 276, 52, 62, 82);
     StampText(Rgba, W, H, 780, 438, 2, "ZERO-RECOMPUTE REPOSITORY METRICS", 218, 228, 245);
 
     struct BarRow
@@ -256,16 +257,27 @@ void RenderVerificationTelemetryPng(
         { "RUN 4 CORRUPT REPAIR", CorruptRepairs,       228, 92, 92  }
     };
 
-    int BarY = 482;
+    int BarY = 474;
     for (const BarRow& Bar : Bars)
     {
         StampText(Rgba, W, H, 780, BarY, 2, Bar.Label, 214, 224, 240);
-        FillRect(Rgba, W, H, 780, BarY + 22, 420, 22, 36, 42, 56);
+        FillRect(Rgba, W, H, 780, BarY + 20, 420, 20, 36, 42, 56);
         const int FillW = std::min(420, static_cast<int>(Bar.Count * 110u));
-        FillRect(Rgba, W, H, 780, BarY + 22, FillW, 22, Bar.R, Bar.G, Bar.B);
-        StampText(Rgba, W, H, 1212, BarY + 26, 2, std::to_string(Bar.Count), 240, 246, 255);
-        BarY += 60;
+        FillRect(Rgba, W, H, 780, BarY + 20, FillW, 20, Bar.R, Bar.G, Bar.B);
+        StampText(Rgba, W, H, 1212, BarY + 23, 2, std::to_string(Bar.Count), 240, 246, 255);
+        BarY += 54;
     }
+
+    // Right bottom: Parallel ExecutionChannels & AssetStreamThread Telemetry
+    FillRect(Rgba, W, H, 764, 718, 492, 138, 24, 28, 37);
+    StrokeRect(Rgba, W, H, 764, 718, 492, 138, 52, 62, 82);
+    StampText(Rgba, W, H, 780, 732, 2, "PARALLEL I/O + MMAP TELEMETRY", 218, 228, 245);
+    StampText(Rgba, W, H, 780, 764, 2,
+              "CHANNEL TASKS EXECUTED: " + std::to_string(ParallelTasksExecuted), 112, 224, 168);
+    StampText(Rgba, W, H, 780, 792, 2,
+              "STREAMED SLICES VERIFIED: " + std::to_string(StreamedSlicesCompleted), 118, 186, 255);
+    StampText(Rgba, W, H, 780, 822, 1,
+              "HEADER-ONLY OPEN + POSIX MMAP + 4-LANE EXECUTIONCHANNELS ACTIVE", 156, 176, 208);
 
     std::error_code FsErr{};
     std::filesystem::create_directories(OutputPath.parent_path(), FsErr);
@@ -279,7 +291,7 @@ int main()
     std::vector<GateReport> Reports{};
     std::string             Diag{};
 
-    const std::filesystem::path RepoRoot = std::filesystem::path(FRONTIER_REPO_ROOT_DIR);
+    const std::filesystem::path RepoRoot   = std::filesystem::path(FRONTIER_REPO_ROOT_DIR);
     const std::filesystem::path ScratchDir = RepoRoot / "Build" / "SerializationValidationScratch";
     std::error_code CleanErr{};
     std::filesystem::remove_all(ScratchDir, CleanErr);
@@ -299,12 +311,12 @@ int main()
 
         FormatSuffixCategory ResolvedCat{};
         std::string          ResolvedSuffix{};
-        const bool AliasWorld  = ResolveSuffixCaseInsensitive(".worldspace",    ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::WorldSpace;
-        const bool AliasAtmo   = ResolveSuffixCaseInsensitive(".SKYATMOSPHERE", ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::Atmosphere;
-        const bool AliasRender = ResolveSuffixCaseInsensitive(".renderspace",   ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::RenderSequence;
-        const bool AliasWork   = ResolveSuffixCaseInsensitive(".editorlayout",  ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::WorkspaceLayout;
-        const bool AliasPix    = ResolveSuffixCaseInsensitive(".pixelsheet",    ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::PixelSpace;
-        const bool AliasOpt    = ResolveSuffixCaseInsensitive(".lensaperture",  ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::CameraOptics;
+        const bool AliasWorld  = ResolveSuffixCaseInsensitive(".worldspace",     ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::WorldSpace;
+        const bool AliasAtmo   = ResolveSuffixCaseInsensitive(".SKYATMOSPHERE",  ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::Atmosphere;
+        const bool AliasRender = ResolveSuffixCaseInsensitive(".renderspace",    ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::RenderSequence;
+        const bool AliasWork   = ResolveSuffixCaseInsensitive(".editorlayout",   ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::WorkspaceLayout;
+        const bool AliasPix    = ResolveSuffixCaseInsensitive(".pixelsheet",     ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::PixelSpace;
+        const bool AliasOpt    = ResolveSuffixCaseInsensitive(".lensaperture",   ResolvedCat, ResolvedSuffix, Diag) && ResolvedCat == FormatSuffixCategory::CameraOptics;
         const bool RejectBad   = !ResolveSuffixCaseInsensitive(".notarealformat", ResolvedCat, ResolvedSuffix, Diag);
 
         const bool Passed = StratOk && TierACount == 18u && TierBCount == 45u &&
@@ -339,12 +351,12 @@ int main()
     }
 
     //--------------------------------------------------------------------------------------------------------------------
-    // GATE 3: Two-Tier Hybrid Container + 64B Alignment + Unknown-Key Forward Compatibility
+    // GATE 3: Sectioned DocumentContainer + 64B Alignment + Unknown-Key Forward Compatibility
     //--------------------------------------------------------------------------------------------------------------------
-    std::vector<std::byte> ValidHybridBytes{};
+    std::vector<std::byte> ValidContainerBytes{};
     std::size_t            PayloadByteSampleOffset = 0u;
     {
-        HybridContainerDocument Doc{};
+        DocumentContainer Doc{};
         Doc.SuffixCategory   = FormatSuffixCategory::GeometrySpace;
         Doc.DocumentTitle    = "AlignmentSample";
         Doc.StableIdentifier = "0193b5c0-7a1e-7000-8000-000000009001";
@@ -353,16 +365,16 @@ int main()
         BinarySectionBlock SecA{};
         SecA.SectionIdentifier = "VertexStreamA";
         SecA.SubFormatTag      = ".GeometrySpace";
-        SecA.PayloadBytes.assign(37u, std::byte{ 0x5Au }); // intentionally odd length to test 64B padding
+        SecA.PayloadBytes.assign(37u, std::byte{ 0x5Au });
         BinarySectionBlock SecB{};
         SecB.SectionIdentifier = "IndexStreamB";
         SecB.SubFormatTag      = ".GeometrySpace";
         SecB.PayloadBytes.assign(83u, std::byte{ 0xA5u });
         Doc.BinarySections = { SecA, SecB };
 
-        const bool EncOk = HybridContainerEncoder::EncodeToBytes(Doc, ValidHybridBytes, Diag);
-        HybridContainerDocument Decoded{};
-        const bool DecOk = EncOk && HybridContainerDecoder::DecodeFromBytes(ValidHybridBytes, Decoded, Diag);
+        const bool EncOk = DocumentContainerEncoder::EncodeToBytes(Doc, ValidContainerBytes, Diag);
+        DocumentContainer Decoded{};
+        const bool DecOk = EncOk && DocumentContainerDecoder::DecodeFromBytes(ValidContainerBytes, Decoded, Diag);
         if (DecOk && Decoded.BinarySections.size() >= 2u)
         {
             PayloadByteSampleOffset = Decoded.BinarySections[1].DecodedAbsoluteByteOffset + 10u;
@@ -374,7 +386,7 @@ int main()
         const bool ForwardCompatOk = DecOk &&
                                      (Decoded.TomlHeader["FutureSchemaExtension"].value_or<std::string>("") == "PreservedAcrossRoundTrip");
         Reports.push_back({
-            "GATE 3: HYBRID 64B CONTAINER + FORWARD COMPAT",
+            "GATE 3: DOCUMENT CONTAINER + FORWARD COMPAT",
             "TIER2 OFFSET ALIGNED 64B + UNKNOWN TOML KEYS PRESERVED",
             AlignOk && ForwardCompatOk
         });
@@ -384,30 +396,26 @@ int main()
     // GATE 4: Hardened Integrity Validator (Bit Flip, Truncation, Misalignment, Path Escape)
     //--------------------------------------------------------------------------------------------------------------------
     {
-        // 1. Single-bit flip inside verified Tier 2 section payload
-        std::vector<std::byte> Flipped = ValidHybridBytes;
+        std::vector<std::byte> Flipped = ValidContainerBytes;
         Flipped[PayloadByteSampleOffset] = static_cast<std::byte>(static_cast<uint8_t>(Flipped[PayloadByteSampleOffset]) ^ 0x01u);
-        HybridContainerDocument Dummy{};
-        const bool RejectBitFlip = !HybridContainerDecoder::DecodeFromBytes(Flipped, Dummy, Diag);
+        DocumentContainer Dummy{};
+        const bool RejectBitFlip = !DocumentContainerDecoder::DecodeFromBytes(Flipped, Dummy, Diag);
 
-        // 2. Truncated Tier 2 payload (slice inside SecB's 83B payload past the 45B alignment tail)
-        std::vector<std::byte> Truncated(ValidHybridBytes.begin(), ValidHybridBytes.end() - 64);
-        const bool RejectTrunc = !HybridContainerDecoder::DecodeFromBytes(Truncated, Dummy, Diag);
+        std::vector<std::byte> Truncated(ValidContainerBytes.begin(), ValidContainerBytes.end() - 64);
+        const bool RejectTrunc = !DocumentContainerDecoder::DecodeFromBytes(Truncated, Dummy, Diag);
 
-        // 3. Unaligned RelativeAlignedOffset in TOML header
         const std::string BadAlignToml =
             "['.DocumentHeader']\nContainerSuffix = '.GeometrySpace'\nBinaryAlignmentBytes = 64\n"
             "[['.SectionDirectory']]\nSectionIdentifier = 'Bad'\nRelativeAlignedOffset = 13\nByteLength = 4\nChecksumFnv1a64 = '0000000000000000'\n"
             "\n# === FRONTIER_BINARY_BOUNDARY ===\n0123456789012345678901234567890123456789012345678901234567890123456789";
         const auto BadAlignSpan = std::as_bytes(std::span<const char>(BadAlignToml.data(), BadAlignToml.size()));
-        const bool RejectMisalign = !HybridContainerDecoder::DecodeFromBytes(BadAlignSpan, Dummy, Diag);
+        const bool RejectMisalign = !DocumentContainerDecoder::DecodeFromBytes(BadAlignSpan, Dummy, Diag);
 
-        // 4. External link path escape
         const std::string BadEscapeToml =
             "['.DocumentHeader']\nContainerSuffix = '.Instance'\nBinaryAlignmentBytes = 64\n"
             "[['.ExternalLink']]\nLinkSlot = 'Escape'\nTargetSuffix = '.IesProfile'\nRelativePath = '../outside/secret.IesProfile'\n";
         const auto BadEscapeSpan = std::as_bytes(std::span<const char>(BadEscapeToml.data(), BadEscapeToml.size()));
-        const bool RejectEscape = !HybridContainerDecoder::DecodeFromBytes(BadEscapeSpan, Dummy, Diag);
+        const bool RejectEscape = !DocumentContainerDecoder::DecodeFromBytes(BadEscapeSpan, Dummy, Diag);
 
         Reports.push_back({
             "GATE 4: HARDENED INTEGRITY REJECTION",
@@ -452,8 +460,8 @@ int main()
         CamIn.FocalLengthMillimeters = 85.0f;
         CamIn.ApertureFStop          = 1.4f;
         CamIn.ApertureBladeCount     = 11u;
-        HybridContainerDocument CamCont{};
-        CameraOpticsDocument    CamOut{};
+        DocumentContainer    CamCont{};
+        CameraOpticsDocument CamOut{};
         const bool CamOk = FormatCodecSuite::EncodeCameraOptics(CamIn, CamCont) &&
                            FormatCodecSuite::DecodeCameraOptics(CamCont, CamOut, Diag) &&
                            std::fabs(CamOut.FocalLengthMillimeters - 85.0f) < 1e-4f &&
@@ -463,19 +471,19 @@ int main()
         AtmoIn.SolarDiskEnabled          = true;
         AtmoIn.CelestialStarfieldEnabled = false;
         AtmoIn.SolarElevationDegrees     = 37.5f;
-        HybridContainerDocument AtmoCont{};
-        AtmosphereDocument      AtmoOut{};
+        DocumentContainer  AtmoCont{};
+        AtmosphereDocument AtmoOut{};
         const bool AtmoOk = FormatCodecSuite::EncodeAtmosphere(AtmoIn, AtmoCont) &&
                             FormatCodecSuite::DecodeAtmosphere(AtmoCont, AtmoOut, Diag) &&
                             AtmoOut.SolarDiskEnabled && !AtmoOut.CelestialStarfieldEnabled;
 
-        HybridContainerDocument FracCont = FormatCodecSuite::ConstructExampleDocument(FormatSuffixCategory::FractureNetwork);
+        DocumentContainer       FracCont = FormatCodecSuite::ConstructExampleDocument(FormatSuffixCategory::FractureNetwork);
         FractureNetworkDocument FracOut{};
         const bool FracOk = FormatCodecSuite::DecodeFractureNetwork(FracCont, FracOut, Diag) &&
                             FracOut.Cells.size() == 3u && FracOut.CohesiveBonds.size() == 2u;
 
-        HybridContainerDocument WorldCont = FormatCodecSuite::ConstructExampleDocument(FormatSuffixCategory::WorldSpace);
-        WorldSpaceDocument      WorldOut{};
+        DocumentContainer  WorldCont = FormatCodecSuite::ConstructExampleDocument(FormatSuffixCategory::WorldSpace);
+        WorldSpaceDocument WorldOut{};
         const bool WorldOk = FormatCodecSuite::DecodeWorldSpace(WorldCont, WorldOut, Diag) &&
                              WorldOut.Placements.size() == 3u && WorldOut.Placements[2].ContainmentIndex == 1;
 
@@ -519,9 +527,9 @@ int main()
         CompiledDiskRepository Repo(RepoDir);
 
         DependencyOrderLedger Ledger{};
-        (void)Ledger.RegisterEntry({ "VehicleBody",    FormatSuffixCategory::GeometrySpace, 1u, 1u, "Linux-x86_64", "", "Crease=38",  {}, {} }, Diag);
-        (void)Ledger.RegisterEntry({ "VehiclePaint",   FormatSuffixCategory::MaterialSpace, 1u, 1u, "Linux-x86_64", "", "Rough=0.18", {}, {} }, Diag);
-        (void)Ledger.RegisterEntry({ "ClearSkyWorld",  FormatSuffixCategory::WorldSpace,    1u, 1u, "Linux-x86_64", "", "Sun=42deg",  {}, { "VehicleBody", "VehiclePaint" } }, Diag);
+        (void)Ledger.RegisterEntry({ "VehicleBody",   FormatSuffixCategory::GeometrySpace, 1u, 1u, "Linux-x86_64", "", "Crease=38",  {}, {} }, Diag);
+        (void)Ledger.RegisterEntry({ "VehiclePaint",  FormatSuffixCategory::MaterialSpace, 1u, 1u, "Linux-x86_64", "", "Rough=0.18", {}, {} }, Diag);
+        (void)Ledger.RegisterEntry({ "ClearSkyWorld", FormatSuffixCategory::WorldSpace,    1u, 1u, "Linux-x86_64", "", "Sun=42deg",  {}, { "VehicleBody", "VehiclePaint" } }, Diag);
 
         const auto DeterministicBaker = [](
             const DependencyBuildEntry& Entry,
@@ -536,23 +544,19 @@ int main()
             return true;
         };
 
-        // Run 1: Cold bake (3 fresh bakes, 0 hits)
         RepositoryExecutionSummary Run1{};
         const bool Run1Ok = Repo.ExecuteLedger(Ledger, DeterministicBaker, Run1, Diag);
         ColdBakes = Run1.FreshBakeCount;
 
-        // Run 2: Unchanged (3 hits, 0 bakes — 100% zero recomputation)
         RepositoryExecutionSummary Run2{};
         const bool Run2Ok = Repo.ExecuteLedger(Ledger, DeterministicBaker, Run2, Diag);
         WarmHits = Run2.DiskHitCount;
 
-        // Run 3: Mutate VehiclePaint only -> VehicleBody stays HIT (1 hit), VehiclePaint & ClearSkyWorld rebuild (2 bakes)
         (void)Ledger.UpdateSpecification("VehiclePaint", "Rough=0.22", Diag);
         RepositoryExecutionSummary Run3{};
         const bool Run3Ok = Repo.ExecuteLedger(Ledger, DeterministicBaker, Run3, Diag);
         PartialInvalidations = Run3.FreshBakeCount;
 
-        // Run 4: Corrupt VehicleBody .fbin payload on disk -> automatically repaired atomically (1 repair, 2 hits)
         std::filesystem::path BodyBinPath{};
         for (const BuildSourceTrace& Trace : Run3.Traces)
         {
@@ -561,9 +565,9 @@ int main()
                 BodyBinPath = Trace.CompiledBinaryPath;
             }
         }
-        HybridContainerDocument BodyDecoded{};
-        std::vector<std::byte>  CorruptBytes{};
-        if (HybridContainerDecoder::DecodeFromFile(BodyBinPath, BodyDecoded, Diag) &&
+        DocumentContainer      BodyDecoded{};
+        std::vector<std::byte> CorruptBytes{};
+        if (DocumentContainerDecoder::DecodeFromFile(BodyBinPath, BodyDecoded, Diag) &&
             ReadFileBytes(BodyBinPath, CorruptBytes, Diag) &&
             !BodyDecoded.BinarySections.empty())
         {
@@ -575,7 +579,6 @@ int main()
         const bool Run4Ok = Repo.ExecuteLedger(Ledger, DeterministicBaker, Run4, Diag);
         CorruptRepairs = Run4.CorruptRepairCount;
 
-        // Run 5: Quota GC removes unreachable stale .fbin from Run 1 while preserving active Run 4 keys
         std::unordered_set<std::string> ActiveKeys{};
         for (const BuildSourceTrace& Trace : Run4.Traces)
         {
@@ -589,14 +592,6 @@ int main()
                             Run3Ok && (Run3.DiskHitCount == 1u) && (Run3.FreshBakeCount == 2u) &&
                             Run4Ok && (Run4.CorruptRepairCount == 1u) && (Run4.DiskHitCount == 2u) &&
                             PruneOk;
-        if (!Passed)
-        {
-            std::cerr << "Gate 8 detail: Run1(ok=" << Run1Ok << ",bake=" << Run1.FreshBakeCount
-                      << ") Run2(ok=" << Run2Ok << ",hit=" << Run2.DiskHitCount << ",bake=" << Run2.FreshBakeCount
-                      << ") Run3(ok=" << Run3Ok << ",hit=" << Run3.DiskHitCount << ",bake=" << Run3.FreshBakeCount
-                      << ") Run4(ok=" << Run4Ok << ",rep=" << Run4.CorruptRepairCount << ",hit=" << Run4.DiskHitCount
-                      << ") Prune(ok=" << PruneOk << ",rem=" << RemovedCount << ")\n";
-        }
         Reports.push_back({
             "GATE 8: ZERO-RECOMPUTE REPOSITORY + GC",
             "COLD=3 WARM-HIT=3 PARTIAL=2 REPAIR=1 PRUNED=" + std::to_string(RemovedCount),
@@ -636,7 +631,135 @@ int main()
         });
     }
 
-    // Also ensure canonical Configuration/*.EngineSettings / *.RuntimeConfiguration / *.PlatformSettings / ProjectIndex exist in repo
+    //--------------------------------------------------------------------------------------------------------------------
+    // GATE 11: Header-Only Open + Zero-Copy mmap + Parallel ExecutionChannels + AssetStreamThread Streaming
+    //--------------------------------------------------------------------------------------------------------------------
+    Frontier::Threading::ExecutionChannels Channels{};
+    Frontier::Threading::AssetStreamThread StreamThread{};
+    uint64_t ParallelTasksExecuted   = 0ull;
+    uint64_t StreamedSlicesCompleted = 0ull;
+    {
+        const bool ChannelsInitOk = Channels.Initialize(4u);
+        const bool StreamInitOk   = StreamThread.Initialize(ScratchDir);
+
+        // Build an 8-section 1 MiB DocumentContainer and encode in parallel across 4 ExecutionChannels lanes
+        DocumentContainer LargeDoc{};
+        LargeDoc.SuffixCategory   = FormatSuffixCategory::TextureSpace;
+        LargeDoc.DocumentTitle    = "LargeUdimStreamSample";
+        LargeDoc.StableIdentifier = "0193b5c0-7a1e-7000-8000-000000008888";
+        constexpr std::size_t SectionCount = 8u;
+        constexpr std::size_t SectionBytes = 128u * 1024u;
+        for (std::size_t Index = 0u; Index < SectionCount; ++Index)
+        {
+            BinarySectionBlock Block{};
+            Block.SectionIdentifier = "UdimMipTile_" + std::to_string(Index);
+            Block.SubFormatTag      = ".TextureSpace";
+            Block.PayloadBytes.resize(SectionBytes);
+            for (std::size_t ByteIdx = 0u; ByteIdx < SectionBytes; ++ByteIdx)
+            {
+                Block.PayloadBytes[ByteIdx] = static_cast<std::byte>((ByteIdx * 31u + Index * 17u) & 0xFFu);
+            }
+            LargeDoc.BinarySections.push_back(std::move(Block));
+        }
+
+        const std::filesystem::path LargeFilePath = ScratchDir / "LargeUdimStreamSample.TextureSpace";
+        const bool ParallelEncOk = DocumentContainerEncoder::EncodeToFile(LargeFilePath, LargeDoc, Diag, &Channels);
+
+        // 1. Header-only open (never reads the 1 MiB Tier 2 payload!)
+        DocumentHeaderSummary HeaderOnly{};
+        const bool HeaderOnlyOk = ParallelEncOk &&
+                                  DocumentContainerDecoder::DecodeHeaderOnlyFromFile(LargeFilePath, HeaderOnly, Diag) &&
+                                  HeaderOnly.SectionDirectory.size() == SectionCount &&
+                                  (HeaderOnly.Tier2StartOffset % 64u == 0u);
+
+        // 2. Zero-copy mmap open + parallel FNV-1a verification + parallel decode
+        MemoryMappedFileView MappedView{};
+        const bool MapOpenOk   = HeaderOnlyOk && MappedView.Open(LargeFilePath, Diag);
+        const bool MapVerifyOk = MapOpenOk && DocumentContainerDecoder::VerifyMappedSections(MappedView, HeaderOnly, Diag, &Channels);
+        DocumentContainer MappedDecoded{};
+        const bool MapDecodeOk = MapVerifyOk &&
+                                 DocumentContainerDecoder::DecodeFromMemoryMappedFile(MappedView, MappedDecoded, Diag, &Channels) &&
+                                 MappedDecoded.BinarySections.size() == SectionCount &&
+                                 MappedDecoded.BinarySections[7].PayloadBytes == LargeDoc.BinarySections[7].PayloadBytes;
+
+        // 3. Targeted async slice streaming through AssetStreamThread + parallel FNV-1a verification
+        const std::array<std::string_view, 3u> RequestedTiles = { "UdimMipTile_1", "UdimMipTile_4", "UdimMipTile_7" };
+        std::vector<BinarySectionBlock>        StreamedSections{};
+        const bool StreamOk = MapDecodeOk &&
+                              DocumentContainerDecoder::StreamSectionsViaAssetThread(
+                                  LargeFilePath, HeaderOnly, RequestedTiles, StreamThread, StreamedSections, Diag, &Channels) &&
+                              StreamedSections.size() == 3u &&
+                              StreamedSections[0].PayloadBytes == LargeDoc.BinarySections[1].PayloadBytes &&
+                              StreamedSections[1].PayloadBytes == LargeDoc.BinarySections[4].PayloadBytes &&
+                              StreamedSections[2].PayloadBytes == LargeDoc.BinarySections[7].PayloadBytes;
+
+        MappedView.Close();
+        const auto StreamReading = StreamThread.InspectReading();
+        StreamedSlicesCompleted  = StreamReading.CompletedSliceCount;
+
+        const bool Passed = ChannelsInitOk && StreamInitOk && StreamOk && (StreamedSlicesCompleted >= 3ull);
+        Reports.push_back({
+            "GATE 11: MMAP + EXECUTIONCHANNELS + STREAMING",
+            "8X128K PARALLEL ENCODE/MMAP + 3 ASYNC SLICES VERIFIED",
+            Passed
+        });
+    }
+
+    //--------------------------------------------------------------------------------------------------------------------
+    // GATE 12: Parallel Wave CompiledDiskRepository Execution on ExecutionChannels
+    //--------------------------------------------------------------------------------------------------------------------
+    {
+        const std::filesystem::path WaveRepoDir = ScratchDir / "ParallelWaveRepository";
+        CompiledDiskRepository WaveRepo(WaveRepoDir);
+
+        DependencyOrderLedger DiamondLedger{};
+        (void)DiamondLedger.RegisterEntry({ "Wave0_GeomA",  FormatSuffixCategory::GeometrySpace, 1u, 1u, "Linux-x86_64", "", "G1", {}, {} }, Diag);
+        (void)DiamondLedger.RegisterEntry({ "Wave0_MatB",   FormatSuffixCategory::MaterialSpace, 1u, 1u, "Linux-x86_64", "", "M1", {}, {} }, Diag);
+        (void)DiamondLedger.RegisterEntry({ "Wave0_AudioC", FormatSuffixCategory::AudioSpace,    1u, 1u, "Linux-x86_64", "", "A1", {}, {} }, Diag);
+        (void)DiamondLedger.RegisterEntry({ "Wave1_InstD",  FormatSuffixCategory::Instance,      1u, 1u, "Linux-x86_64", "", "I1", {}, { "Wave0_GeomA", "Wave0_MatB" } }, Diag);
+        (void)DiamondLedger.RegisterEntry({ "Wave2_WorldE", FormatSuffixCategory::WorldSpace,    1u, 1u, "Linux-x86_64", "", "W1", {}, { "Wave1_InstD", "Wave0_AudioC" } }, Diag);
+
+        std::vector<std::vector<std::string>> Waves{};
+        std::vector<std::string>              CycleChain{};
+        const bool WavesOk = DiamondLedger.ResolveTopologicalWaves(Waves, CycleChain, Diag) &&
+                             Waves.size() == 3u && Waves[0].size() == 3u && Waves[1].size() == 1u && Waves[2].size() == 1u;
+
+        const auto ParallelBaker = [](
+            const DependencyBuildEntry& Entry,
+            const BuildInputSignature&  Signature,
+            std::vector<std::byte>&     OutBytes,
+            std::string&                OutDiag) -> bool
+        {
+            const std::string Payload = "WAVE:" + Entry.EntryIdentifier + ":" + Signature.CanonicalSha256Hex;
+            OutBytes.resize(Payload.size());
+            std::memcpy(OutBytes.data(), Payload.data(), Payload.size());
+            OutDiag.clear();
+            return true;
+        };
+
+        RepositoryExecutionSummary ColdRun{};
+        const bool ColdOk = WaveRepo.ExecuteLedger(DiamondLedger, ParallelBaker, ColdRun, Diag, &Channels) &&
+                            ColdRun.FreshBakeCount == 5u && ColdRun.DiskHitCount == 0u;
+
+        RepositoryExecutionSummary WarmRun{};
+        const bool WarmOk = WaveRepo.ExecuteLedger(DiamondLedger, ParallelBaker, WarmRun, Diag, &Channels) &&
+                            WarmRun.FreshBakeCount == 0u && WarmRun.DiskHitCount == 5u;
+
+        const auto Telemetry  = Channels.InspectTelemetry();
+        ParallelTasksExecuted = Telemetry.TasksExecuted;
+
+        StreamThread.Finalize();
+        Channels.Finalize();
+
+        const bool Passed = WavesOk && ColdOk && WarmOk && (ParallelTasksExecuted >= 20ull);
+        Reports.push_back({
+            "GATE 12: PARALLEL WAVE REPOSITORY EXECUTION",
+            "3 WAVES (3->1->1) COLD=5 WARM-HIT=5 TASKS=" + std::to_string(ParallelTasksExecuted),
+            Passed
+        });
+    }
+
+    // Ensure canonical Configuration files exist in repository
     (void)BootConfigurationLoader::EnsureDefaultConfigurationFiles(RepoRoot, Diag);
 
     // Emit visual telemetry verification PNG
@@ -644,7 +767,8 @@ int main()
         RepoRoot / "Exhibits" / "Images" / "Serialization" / "SerializationArchitectureVerification.png";
     RenderVerificationTelemetryPng(
         TelemetryPng, Reports, TierACount, TierBCount,
-        ColdBakes, WarmHits, PartialInvalidations, CorruptRepairs);
+        ColdBakes, WarmHits, PartialInvalidations, CorruptRepairs,
+        ParallelTasksExecuted, StreamedSlicesCompleted);
 
     // Print concise report & clean scratch
     std::filesystem::remove_all(ScratchDir, CleanErr);

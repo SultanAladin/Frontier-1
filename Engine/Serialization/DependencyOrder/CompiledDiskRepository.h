@@ -10,6 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Serialization/DependencyOrder/DependencyOrderLedger.h"
+#include "Engine/Threading/Tasks/ExecutionChannels.h"
 
 #include <concepts>
 #include <cstddef>
@@ -89,7 +90,8 @@ public:
         const DependencyOrderLedger&  Ledger,
         const BakeProcedureCallback&  BakeProcedure,
         RepositoryExecutionSummary&   OutSummary,
-        std::string&                  OutDiagnostic) const;
+        std::string&                  OutDiagnostic,
+        Threading::ExecutionChannels* OptionalChannels = nullptr) const;
 
     [[nodiscard]] bool PruneUnreachableAboveQuota(
         const std::unordered_set<std::string>& ActiveSha256HexKeys,

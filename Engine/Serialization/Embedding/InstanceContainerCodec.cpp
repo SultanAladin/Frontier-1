@@ -38,15 +38,16 @@ namespace
 bool InstanceContainerCodec::EncodeToBytes(
     const MultiPillarInstanceDocument& Document,
     std::vector<std::byte>&            OutContainerBytes,
-    std::string&                       OutDiagnostic)
+    std::string&                       OutDiagnostic,
+    Threading::ExecutionChannels*      OptionalChannels)
 {
-    HybridContainerDocument Hybrid{};
-    Hybrid.SuffixCategory     = Document.RootCategory;
-    Hybrid.SchemaVersion      = Document.SchemaVersion;
-    Hybrid.StableIdentifier   = Document.StableIdentifier;
-    Hybrid.DocumentTitle      = Document.DocumentTitle;
-    Hybrid.AuthoringWorkspace = Document.AuthoringWorkspace;
-    Hybrid.ExternalLinks      = Document.ExternalLinks;
+    DocumentContainer Container{};
+    Container.SuffixCategory     = Document.RootCategory;
+    Container.SchemaVersion      = Document.SchemaVersion;
+    Container.StableIdentifier   = Document.StableIdentifier;
+    Container.DocumentTitle      = Document.DocumentTitle;
+    Container.AuthoringWorkspace = Document.AuthoringWorkspace;
+    Container.ExternalLinks      = Document.ExternalLinks;
 
     toml::table EmbeddedSectionRoot{};
     for (const EmbeddedPillarPayload& Pillar : Document.EmbeddedPillars)
@@ -63,7 +64,7 @@ bool InstanceContainerCodec::EncodeToBytes(
         Decl.SectionIdentifier = Pillar.SectionIdentifier;
         Decl.ResidencyMode     = Pillar.ResidencyMode;
         Decl.SummaryNotes      = Pillar.SummaryNotes;
-        Hybrid.EmbeddedPillars.push_back(std::move(Decl));
+        Container.EmbeddedPillars.push_back(std::move(Decl));
 
         if (!Pillar.TomlSection.empty())
         {
@@ -76,62 +77,65 @@ bool InstanceContainerCodec::EncodeToBytes(
             Block.SectionIdentifier = Pillar.SectionIdentifier;
             Block.SubFormatTag      = std::string(Desc.CanonicalSuffix);
             Block.PayloadBytes      = Pillar.BinaryPayload;
-            Hybrid.BinarySections.push_back(std::move(Block));
+            Container.BinarySections.push_back(std::move(Block));
         }
     }
 
     if (!EmbeddedSectionRoot.empty())
     {
-        Hybrid.TomlHeader.insert("EmbeddedSections", std::move(EmbeddedSectionRoot));
+        Container.TomlHeader.insert("EmbeddedSections", std::move(EmbeddedSectionRoot));
     }
 
-    return HybridContainerEncoder::EncodeToBytes(Hybrid, OutContainerBytes, OutDiagnostic);
+    return DocumentContainerEncoder::EncodeToBytes(Container, OutContainerBytes, OutDiagnostic, OptionalChannels);
 }
 
 bool InstanceContainerCodec::EncodeToFile(
     const std::filesystem::path&       TargetPath,
     const MultiPillarInstanceDocument& Document,
-    std::string&                       OutDiagnostic)
+    std::string&                       OutDiagnostic,
+    Threading::ExecutionChannels*      OptionalChannels)
 {
     std::vector<std::byte> Bytes{};
-    if (!EncodeToBytes(Document, Bytes, OutDiagnostic))
+    if (!EncodeToBytes(Document, Bytes, OutDiagnostic, OptionalChannels))
     {
         return false;
     }
-    return HybridContainerEncoder::EncodeToFile(
+    return DocumentContainerEncoder::EncodeToFile(
         TargetPath,
         [&]()
         {
-            HybridContainerDocument Parsed{};
-            std::string             Ignored{};
-            (void)HybridContainerDecoder::DecodeFromBytes(Bytes, Parsed, Ignored);
+            DocumentContainer Parsed{};
+            std::string       Ignored{};
+            (void)DocumentContainerDecoder::DecodeFromBytes(Bytes, Parsed, Ignored, OptionalChannels);
             return Parsed;
         }(),
-        OutDiagnostic);
+        OutDiagnostic,
+        OptionalChannels);
 }
 
 bool InstanceContainerCodec::DecodeFromBytes(
-    std::span<const std::byte>   InputBytes,
-    MultiPillarInstanceDocument& OutDocument,
-    std::string&                 OutDiagnostic)
+    std::span<const std::byte>    InputBytes,
+    MultiPillarInstanceDocument&  OutDocument,
+    std::string&                  OutDiagnostic,
+    Threading::ExecutionChannels* OptionalChannels)
 {
-    HybridContainerDocument Hybrid{};
-    if (!HybridContainerDecoder::DecodeFromBytes(InputBytes, Hybrid, OutDiagnostic))
+    DocumentContainer Container{};
+    if (!DocumentContainerDecoder::DecodeFromBytes(InputBytes, Container, OutDiagnostic, OptionalChannels))
     {
         return false;
     }
 
     OutDocument = {};
-    OutDocument.RootCategory       = Hybrid.SuffixCategory;
-    OutDocument.SchemaVersion      = Hybrid.SchemaVersion;
-    OutDocument.StableIdentifier   = Hybrid.StableIdentifier;
-    OutDocument.DocumentTitle      = Hybrid.DocumentTitle;
-    OutDocument.AuthoringWorkspace = Hybrid.AuthoringWorkspace;
-    OutDocument.ExternalLinks      = Hybrid.ExternalLinks;
+    OutDocument.RootCategory       = Container.SuffixCategory;
+    OutDocument.SchemaVersion      = Container.SchemaVersion;
+    OutDocument.StableIdentifier   = Container.StableIdentifier;
+    OutDocument.DocumentTitle      = Container.DocumentTitle;
+    OutDocument.AuthoringWorkspace = Container.AuthoringWorkspace;
+    OutDocument.ExternalLinks      = Container.ExternalLinks;
 
-    const toml::table* EmbeddedSectionRoot = Hybrid.TomlHeader["EmbeddedSections"].as_table();
+    const toml::table* EmbeddedSectionRoot = Container.TomlHeader["EmbeddedSections"].as_table();
 
-    for (const EmbeddedPillarEntry& Decl : Hybrid.EmbeddedPillars)
+    for (const EmbeddedPillarEntry& Decl : Container.EmbeddedPillars)
     {
         EmbeddedPillarPayload Payload{};
         Payload.PillarCategory    = Decl.PillarCategory;
@@ -147,7 +151,7 @@ bool InstanceContainerCodec::DecodeFromBytes(
             }
         }
 
-        if (const BinarySectionBlock* Block = HybridContainerDecoder::FindBinarySection(Hybrid, Decl.SectionIdentifier))
+        if (const BinarySectionBlock* Block = DocumentContainerDecoder::FindBinarySection(Container, Decl.SectionIdentifier))
         {
             Payload.BinaryPayload = Block->PayloadBytes;
         }
@@ -160,21 +164,22 @@ bool InstanceContainerCodec::DecodeFromBytes(
 }
 
 bool InstanceContainerCodec::DecodeFromFile(
-    const std::filesystem::path& SourcePath,
-    MultiPillarInstanceDocument& OutDocument,
-    std::string&                 OutDiagnostic)
+    const std::filesystem::path&  SourcePath,
+    MultiPillarInstanceDocument&  OutDocument,
+    std::string&                  OutDiagnostic,
+    Threading::ExecutionChannels* OptionalChannels)
 {
-    HybridContainerDocument Hybrid{};
-    if (!HybridContainerDecoder::DecodeFromFile(SourcePath, Hybrid, OutDiagnostic))
+    DocumentContainer Container{};
+    if (!DocumentContainerDecoder::DecodeFromFile(SourcePath, Container, OutDiagnostic, OptionalChannels))
     {
         return false;
     }
     std::vector<std::byte> RoundTripBytes{};
-    if (!HybridContainerEncoder::EncodeToBytes(Hybrid, RoundTripBytes, OutDiagnostic))
+    if (!DocumentContainerEncoder::EncodeToBytes(Container, RoundTripBytes, OutDiagnostic, OptionalChannels))
     {
         return false;
     }
-    return DecodeFromBytes(RoundTripBytes, OutDocument, OutDiagnostic);
+    return DecodeFromBytes(RoundTripBytes, OutDocument, OutDiagnostic, OptionalChannels);
 }
 
 const EmbeddedPillarPayload* InstanceContainerCodec::FindEmbeddedPillar(
@@ -209,7 +214,7 @@ MultiPillarInstanceDocument InstanceContainerCodec::ConstructVehicleDefaultExamp
         EmbeddedPillarPayload Geom{};
         Geom.PillarCategory    = FormatSuffixCategory::GeometrySpace;
         Geom.SectionIdentifier = "ControlVehicleGeometry";
-        Geom.ResidencyMode     = EmbeddedResidencyMode::HybridTwoTier;
+        Geom.ResidencyMode     = EmbeddedResidencyMode::TomlWithBinarySection;
         Geom.SummaryNotes      = "Body + 4 Rims + 4 Tyres PolygonNetwork, 38 deg creased normals, 11 surface slots.";
         Geom.TomlSection.insert("CreaseAngleDegrees", 38.0);
         Geom.TomlSection.insert("FaceCount",          static_cast<int64_t>(25068));
@@ -224,7 +229,7 @@ MultiPillarInstanceDocument InstanceContainerCodec::ConstructVehicleDefaultExamp
         EmbeddedPillarPayload Pix{};
         Pix.PillarCategory    = FormatSuffixCategory::PixelSpace;
         Pix.SectionIdentifier = "DashboardPixelSheet";
-        Pix.ResidencyMode     = EmbeddedResidencyMode::HybridTwoTier;
+        Pix.ResidencyMode     = EmbeddedResidencyMode::TomlWithBinarySection;
         Pix.SummaryNotes      = "Packed vehicle dashboard icon & decal coordinate sheet.";
         Pix.TomlSection.insert("SheetWidthPixels",  static_cast<int64_t>(1024));
         Pix.TomlSection.insert("SheetHeightPixels", static_cast<int64_t>(1024));
@@ -239,7 +244,7 @@ MultiPillarInstanceDocument InstanceContainerCodec::ConstructVehicleDefaultExamp
         EmbeddedPillarPayload Tex{};
         Tex.PillarCategory    = FormatSuffixCategory::TextureSpace;
         Tex.SectionIdentifier = "VehicleUdimMipChain";
-        Tex.ResidencyMode     = EmbeddedResidencyMode::HybridTwoTier;
+        Tex.ResidencyMode     = EmbeddedResidencyMode::TomlWithBinarySection;
         Tex.SummaryNotes      = "Channel-packed BC7 albedo/roughness/normal UDIM 1001..1002 specification.";
         Tex.TomlSection.insert("BlockEncoding",   "BC7_UNORM");
         Tex.TomlSection.insert("MipLevelCount",   static_cast<int64_t>(11));
@@ -281,7 +286,7 @@ MultiPillarInstanceDocument InstanceContainerCodec::ConstructVehicleDefaultExamp
         EmbeddedPillarPayload Force{};
         Force.PillarCategory    = FormatSuffixCategory::ForceField;
         Force.SectionIdentifier = "AerodynamicWakeField";
-        Force.ResidencyMode     = EmbeddedResidencyMode::HybridTwoTier;
+        Force.ResidencyMode     = EmbeddedResidencyMode::TomlWithBinarySection;
         Force.SummaryNotes      = "3D velocity/downforce wake field generated by vehicle bodywork at speed.";
         Force.TomlSection.insert("FieldCategory",        "AerodynamicWake");
         Force.TomlSection.insert("GridResolutionX",      static_cast<int64_t>(4));
@@ -370,7 +375,7 @@ MultiPillarInstanceDocument InstanceContainerCodec::ConstructExhaustPlumeParticl
         EmbeddedPillarPayload Field{};
         Field.PillarCategory    = FormatSuffixCategory::ForceField;
         Field.SectionIdentifier = "CurlTurbulenceField";
-        Field.ResidencyMode     = EmbeddedResidencyMode::HybridTwoTier;
+        Field.ResidencyMode     = EmbeddedResidencyMode::TomlWithBinarySection;
         Field.TomlSection.insert("CurlFrequency", 1.85);
         Field.TomlSection.insert("DragStrength",  0.42);
         const std::array<float, 6u> VelocitySamples = { 0.2f, 0.5f, 1.1f, -0.3f, 0.4f, 0.9f };

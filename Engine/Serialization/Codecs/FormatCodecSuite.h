@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            FORMATCODECSUITE.H
 ============================================================================================================================================*/
-// 🧩 Typed Two-Tier Hybrid codecs and complete 63-format concrete example generator (including paused engine pillars)
+// 🧩 Typed Sectioned Document codecs and complete 63-format concrete example generator (including paused engine pillars)
 
 #pragma once
 
@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Serialization/Codecs/FormatSpecifications.h"
-#include "Engine/Serialization/Container/HybridContainerCodec.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
 
 #include <filesystem>
 #include <string>
@@ -29,79 +29,79 @@ public:
     // ① Configuration Family Codecs
     [[nodiscard]] static bool EncodeEngineSettings(
         const EngineSettingsDocument& Document,
-        HybridContainerDocument&      OutContainer);
+        DocumentContainer&      OutContainer);
 
     [[nodiscard]] static bool DecodeEngineSettings(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         EngineSettingsDocument&        OutDocument,
         std::string&                   OutDiagnostic);
 
     [[nodiscard]] static bool EncodeRuntimeConfiguration(
         const RuntimeConfigurationDocument& Document,
-        HybridContainerDocument&            OutContainer);
+        DocumentContainer&            OutContainer);
 
     [[nodiscard]] static bool DecodeRuntimeConfiguration(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         RuntimeConfigurationDocument&  OutDocument,
         std::string&                   OutDiagnostic);
 
     [[nodiscard]] static bool EncodePlatformSettings(
         const PlatformSettingsDocument& Document,
-        HybridContainerDocument&        OutContainer);
+        DocumentContainer&        OutContainer);
 
     [[nodiscard]] static bool DecodePlatformSettings(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         PlatformSettingsDocument&      OutDocument,
         std::string&                   OutDiagnostic);
 
     [[nodiscard]] static bool EncodeProjectIndex(
         const ProjectIndexDocument& Document,
-        HybridContainerDocument&    OutContainer);
+        DocumentContainer&    OutContainer);
 
     [[nodiscard]] static bool DecodeProjectIndex(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         ProjectIndexDocument&          OutDocument,
         std::string&                   OutDiagnostic);
 
     // ② CameraOptics, Atmosphere, FractureNetwork & WorldSpace Codecs
     [[nodiscard]] static bool EncodeCameraOptics(
         const CameraOpticsDocument& Document,
-        HybridContainerDocument&    OutContainer);
+        DocumentContainer&    OutContainer);
 
     [[nodiscard]] static bool DecodeCameraOptics(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         CameraOpticsDocument&          OutDocument,
         std::string&                   OutDiagnostic);
 
     [[nodiscard]] static bool EncodeAtmosphere(
         const AtmosphereDocument& Document,
-        HybridContainerDocument&  OutContainer);
+        DocumentContainer&  OutContainer);
 
     [[nodiscard]] static bool DecodeAtmosphere(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         AtmosphereDocument&            OutDocument,
         std::string&                   OutDiagnostic);
 
     [[nodiscard]] static bool EncodeFractureNetwork(
         const FractureNetworkDocument& Document,
-        HybridContainerDocument&       OutContainer);
+        DocumentContainer&       OutContainer);
 
     [[nodiscard]] static bool DecodeFractureNetwork(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         FractureNetworkDocument&       OutDocument,
         std::string&                   OutDiagnostic);
 
     [[nodiscard]] static bool EncodeWorldSpace(
         const WorldSpaceDocument& Document,
-        HybridContainerDocument&  OutContainer);
+        DocumentContainer&  OutContainer);
 
     [[nodiscard]] static bool DecodeWorldSpace(
-        const HybridContainerDocument& Container,
+        const DocumentContainer& Container,
         WorldSpaceDocument&            OutDocument,
         std::string&                   OutDiagnostic);
 
     // ③ Universal Example Builder & On-Disk Generator for ALL 63 Frontier Formats (including paused pillars)
-    [[nodiscard]] static HybridContainerDocument ConstructExampleDocument(FormatSuffixCategory Category);
+    [[nodiscard]] static DocumentContainer ConstructExampleDocument(FormatSuffixCategory Category);
 
     [[nodiscard]] static WorldSpaceDocument ConstructVehicleClearSkyWorldExample();
 

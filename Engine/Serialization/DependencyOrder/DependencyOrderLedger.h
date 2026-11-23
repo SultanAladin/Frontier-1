@@ -71,6 +71,11 @@ public:
         std::vector<std::string>& OutCycleChain,
         std::string&              OutDiagnostic) const;
 
+    [[nodiscard]] bool ResolveTopologicalWaves(
+        std::vector<std::vector<std::string>>& OutParallelWaves,
+        std::vector<std::string>&              OutCycleChain,
+        std::string&                           OutDiagnostic) const;
+
     [[nodiscard]] bool ComputeAllInputSignatures(
         std::unordered_map<std::string, BuildInputSignature>& OutSignatures,
         std::string&                                          OutDiagnostic) const;

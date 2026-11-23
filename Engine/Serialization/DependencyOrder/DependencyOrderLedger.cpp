@@ -211,6 +211,48 @@ bool DependencyOrderLedger::ResolveTopologicalOrder(
     return true;
 }
 
+bool DependencyOrderLedger::ResolveTopologicalWaves(
+    std::vector<std::vector<std::string>>& OutParallelWaves,
+    std::vector<std::string>&              OutCycleChain,
+    std::string&                           OutDiagnostic) const
+{
+    OutParallelWaves.clear();
+    OutCycleChain.clear();
+
+    std::vector<std::string> OrderedIds{};
+    if (!ResolveTopologicalOrder(OrderedIds, OutCycleChain, OutDiagnostic))
+    {
+        return false;
+    }
+
+    // Assign each entry its topological depth (0 for roots, 1 + max(upstream depth)) so same-depth entries run concurrently
+    std::unordered_map<std::string, std::size_t> DepthById{};
+    std::size_t MaxDepth = 0u;
+    for (const std::string& EntryId : OrderedIds)
+    {
+        const DependencyBuildEntry& Entry = Entries[IndexByIdentifier.at(EntryId)];
+        std::size_t Depth = 0u;
+        for (const std::string& UpstreamId : Entry.UpstreamIdentifiers)
+        {
+            Depth = std::max(Depth, DepthById.at(UpstreamId) + 1u);
+        }
+        DepthById.emplace(EntryId, Depth);
+        MaxDepth = std::max(MaxDepth, Depth);
+    }
+
+    if (!OrderedIds.empty())
+    {
+        OutParallelWaves.resize(MaxDepth + 1u);
+        for (const std::string& EntryId : OrderedIds)
+        {
+            OutParallelWaves[DepthById.at(EntryId)].push_back(EntryId);
+        }
+    }
+
+    OutDiagnostic.clear();
+    return true;
+}
+
 bool DependencyOrderLedger::ComputeAllInputSignatures(
     std::unordered_map<std::string, BuildInputSignature>& OutSignatures,
     std::string&                                          OutDiagnostic) const

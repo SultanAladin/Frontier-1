@@ -9,7 +9,7 @@
 | Rule | Enforcement Policy |
 | :--- | :--- |
 | **① `*Space` Stratification Rule** | Suffix **`*Space`** is reserved **exclusively** for foundational top-level pillars that have nothing higher above them (`WorldSpace`, `GeometrySpace`, `MaterialSpace`, `TextureSpace`, `ImageSpace`, `PixelSpace`, `VectorSpace`, `ColourSpace`, `FontSpace`, `ParticleSpace`, `PhysicsSpace`, `VolumetricSpace`, `AudioSpace`, `MotionSpace`, `BehaviorSpace`, `InterfaceSpace`, `NetworkSpace`, `InputSpace`). Specialized sub-formats, optics, settings, profiles, and networks **never** end in `Space` (`.CameraOptics`, `.Atmosphere`, `.FractureNetwork`, `.WorkspaceLayout`, `.EngineSettings`, `.RuntimeConfiguration`, `.PlatformSettings`, `.ProjectIndex`). |
-| **② Hybrid Embed-or-Link Containers** | Any container (`.Instance`, `.WorldSpace`, `.ParticleSpace`, `.InterfaceSpace`) can **embed** nested pillars directly inside its own Tier 1 TOML header + Tier 2 `64 B`-aligned SFNT/TTF-style binary section directory **and/or** **link** external shared files by `StableIdentifier` + relative path + `SHA-256`. |
+| **② Embed-or-Link Containers** | Any container (`.Instance`, `.WorldSpace`, `.ParticleSpace`, `.InterfaceSpace`) can **embed** nested pillars directly inside its own Tier 1 TOML header + Tier 2 `64 B`-aligned SFNT/TTF-style binary section directory **and/or** **link** external shared files by `StableIdentifier` + relative path + `SHA-256`. |
 | **③ Option 2A Casing & Zero Abbreviations** | Encoders write canonical **PascalCase** suffixes; decoders match case-insensitively across Windows, Linux, and Android. Shortened suffixes (`.InSpace` or truncated `Configuration`) are permanently barred. |
 | **④ Old-Plan Continuity** | Preserves `215 MiB` per-document and `750 MiB` global `.Revision` parametric undo budgets (strictly separate from compiled disk binaries), `.UVTile` (never `.UVChart`), `Serialization/` vs. `Interchange/` vs. `*Exchange` boundaries, `.slang`-only shaders, and `Editor` / `Development` / `Shipping` isolation. |
 | **⑤ Zero Banned Vocabulary** | Every folder, file, C++ identifier, TOML header key, and specification complies strictly with `Documentation/BannedWordsVocabulary.md` including all `2026-11-23` user rulings. |
@@ -116,8 +116,9 @@ Engine/
 └── Serialization/                                     // Sole owner of native Frontier persistence & zero-recompute builds
     ├── README.md                                      // Suffix registry, embedding rules, wire layout & naming audit
     │
-    ├── Container/                                     // Two-Tier Hybrid TOML Header + SFNT/TTF-style 64B binary framing
-    │   ├── SpaceContainerCodec.{h,cpp}                // Universal UTF-8 PascalCase TOML + 64B sections + FNV-1a 64 check
+    ├── Container/                                     // Sectioned Document Container (TOML Header + SFNT/TTF 64B binary + mmap)
+    │   ├── DocumentContainerCodec.{h,cpp}             // UTF-8 PascalCase TOML + 64B sections + FNV-1a 64 + ExecutionChannels + AssetStreamThread
+    │   ├── MemoryMappedFileView.{h,cpp}               // Cross-platform read-only zero-copy OS mmap / Win32 MapViewOfFile
     │   ├── SuffixRegistry.{h,cpp}                     // Canonical PascalCase registry + case-insensitive alias decoder
     │   ├── RevisionSectionCodec.{h,cpp}               // Embedded .Revision stream (215 MiB per-doc / 750 MiB global cap)
     │   └── AtomicFileWriter.{h,cpp}                   // Same-volume temp write, fsync flush & atomic rename (Win/Linux/Android)
@@ -414,7 +415,7 @@ Because declarative/compiled behavior logic controlling instances, vehicles, and
 
 ## 5. Multi-Pillar Embedded Container Architecture (Concrete Blueprints)
 
-Frontier's **Two-Tier Hybrid Container** natively supports **both standalone files and single-file multi-pillar embedding** with zero format fragmentation. Every container begins with a human-readable UTF-8 PascalCase TOML header, followed by an SFNT/TTF-inspired `64 B`-aligned binary section directory (`[['.SectionDirectory']]`) and `FNV-1a 64` per-section checksums.
+Frontier's **Sectioned Document Container (`DocumentContainerCodec`)** natively supports **both standalone files and single-file multi-pillar embedding** with zero format fragmentation. Every container begins with a human-readable UTF-8 PascalCase TOML header (fast header-only open without reading Tier 2 payloads), followed by an SFNT/TTF-inspired `64 B`-aligned binary section directory (`[['.SectionDirectory']]`) verified in parallel across `ExecutionChannels`, zero-copy OS memory mapping (`MemoryMappedFileView`), and storage-aware slice streaming via `AssetStreamThread`.
 
 ### 5.1 Embedded Multi-Pillar Blueprints
 
@@ -428,7 +429,7 @@ Frontier's **Two-Tier Hybrid Container** natively supports **both standalone fil
 ### 5.2 Concrete Wire Layout Example (`VehicleDefault.Instance`)
 
 ```toml
-# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
 ['.DocumentHeader']
 SchemaVersion        = 1
 ContainerSuffix      = '.Instance'
@@ -456,7 +457,7 @@ EmbeddedFormat    = 'Tier2Binary'
 [['.EmbeddedPillar']]
 PillarSuffix      = '.MaterialSpace'
 SectionIdentifier = 'ElevenSlotOpenPbr'
-EmbeddedFormat    = 'HybridTwoTier'
+EmbeddedFormat    = 'TomlWithBinarySection'
 
 [['.EmbeddedPillar']]
 PillarSuffix      = '.ForceField'
@@ -466,12 +467,12 @@ EmbeddedFormat    = 'Tier2Binary'
 [['.EmbeddedPillar']]
 PillarSuffix      = '.VolumetricSpace'
 SectionIdentifier = 'ExhaustPlumeVolume'
-EmbeddedFormat    = 'HybridTwoTier'
+EmbeddedFormat    = 'TomlWithBinarySection'
 
 [['.EmbeddedPillar']]
 PillarSuffix      = '.BehaviorSpace'
 SectionIdentifier = 'VehicleDrivetrainLogic'
-EmbeddedFormat    = 'HybridTwoTier'
+EmbeddedFormat    = 'TomlWithBinarySection'
 
 # Shared External Files Linked Without Duplication (Resolved by ExternalLinkResolver)
 [['.ExternalLink']]

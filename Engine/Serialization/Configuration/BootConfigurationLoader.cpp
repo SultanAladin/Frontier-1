@@ -11,7 +11,7 @@
 
 #include "Engine/Serialization/Codecs/FormatCodecSuite.h"
 #include "Engine/Serialization/Container/AtomicFileWriter.h"
-#include "Engine/Serialization/Container/HybridContainerCodec.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
 
 namespace Frontier::Serialization
 {
@@ -21,7 +21,7 @@ namespace
 
 [[nodiscard]] bool WriteIfAbsent(
     const std::filesystem::path&   TargetPath,
-    const HybridContainerDocument& DefaultDoc,
+    const DocumentContainer& DefaultDoc,
     std::string&                   OutDiagnostic)
 {
     std::error_code FsError{};
@@ -29,7 +29,7 @@ namespace
     {
         return true;
     }
-    return HybridContainerEncoder::EncodeToFile(TargetPath, DefaultDoc, OutDiagnostic);
+    return DocumentContainerEncoder::EncodeToFile(TargetPath, DefaultDoc, OutDiagnostic);
 }
 
 } // namespace
@@ -47,10 +47,10 @@ bool BootConfigurationLoader::EnsureDefaultConfigurationFiles(
     const std::filesystem::path PlatformPath             = RepositoryRoot / "Configuration" / "PlatformDefault.PlatformSettings";
     const std::filesystem::path ProjectIndexPath         = RepositoryRoot / "Content" / "Project" / "Frontier.ProjectIndex";
 
-    HybridContainerDocument EngineDoc{};
-    HybridContainerDocument RuntimeDoc{};
-    HybridContainerDocument PlatformDoc{};
-    HybridContainerDocument ProjectDoc{};
+    DocumentContainer EngineDoc{};
+    DocumentContainer RuntimeDoc{};
+    DocumentContainer PlatformDoc{};
+    DocumentContainer ProjectDoc{};
 
     (void)FormatCodecSuite::EncodeEngineSettings(EngineSettingsDocument{}, EngineDoc);
     (void)FormatCodecSuite::EncodeRuntimeConfiguration(RuntimeConfigurationDocument{}, RuntimeDoc);
@@ -81,8 +81,8 @@ bool BootConfigurationLoader::LoadFromRepositoryRoot(
     const std::filesystem::path PlatformPath       = RepositoryRoot / "Configuration" / "PlatformDefault.PlatformSettings";
 
     // ① Decode EngineSettings
-    HybridContainerDocument EngineContainer{};
-    if (!HybridContainerDecoder::DecodeFromFile(EngineSettingsPath, EngineContainer, OutDiagnostic) ||
+    DocumentContainer EngineContainer{};
+    if (!DocumentContainerDecoder::DecodeFromFile(EngineSettingsPath, EngineContainer, OutDiagnostic) ||
         !FormatCodecSuite::DecodeEngineSettings(EngineContainer, OutResolved.EngineSettings, OutDiagnostic))
     {
         OutDiagnostic = "Failed to load .EngineSettings (" + EngineSettingsPath.string() + "): " + OutDiagnostic;
@@ -90,8 +90,8 @@ bool BootConfigurationLoader::LoadFromRepositoryRoot(
     }
 
     // ② Decode RuntimeConfiguration
-    HybridContainerDocument RuntimeContainer{};
-    if (!HybridContainerDecoder::DecodeFromFile(RuntimePath, RuntimeContainer, OutDiagnostic) ||
+    DocumentContainer RuntimeContainer{};
+    if (!DocumentContainerDecoder::DecodeFromFile(RuntimePath, RuntimeContainer, OutDiagnostic) ||
         !FormatCodecSuite::DecodeRuntimeConfiguration(RuntimeContainer, OutResolved.RuntimeConfiguration, OutDiagnostic))
     {
         OutDiagnostic = "Failed to load .RuntimeConfiguration (" + RuntimePath.string() + "): " + OutDiagnostic;
@@ -99,8 +99,8 @@ bool BootConfigurationLoader::LoadFromRepositoryRoot(
     }
 
     // ③ Decode PlatformSettings
-    HybridContainerDocument PlatformContainer{};
-    if (!HybridContainerDecoder::DecodeFromFile(PlatformPath, PlatformContainer, OutDiagnostic) ||
+    DocumentContainer PlatformContainer{};
+    if (!DocumentContainerDecoder::DecodeFromFile(PlatformPath, PlatformContainer, OutDiagnostic) ||
         !FormatCodecSuite::DecodePlatformSettings(PlatformContainer, OutResolved.PlatformSettings, OutDiagnostic))
     {
         OutDiagnostic = "Failed to load .PlatformSettings (" + PlatformPath.string() + "): " + OutDiagnostic;
@@ -118,8 +118,8 @@ bool BootConfigurationLoader::LoadFromRepositoryRoot(
         return false;
     }
 
-    HybridContainerDocument ProjectContainer{};
-    if (!HybridContainerDecoder::DecodeFromFile(ProjectIndexPath, ProjectContainer, OutDiagnostic) ||
+    DocumentContainer ProjectContainer{};
+    if (!DocumentContainerDecoder::DecodeFromFile(ProjectIndexPath, ProjectContainer, OutDiagnostic) ||
         !FormatCodecSuite::DecodeProjectIndex(ProjectContainer, OutResolved.ProjectIndex, OutDiagnostic))
     {
         OutDiagnostic = "Failed to load .ProjectIndex (" + ProjectIndexPath.string() + "): " + OutDiagnostic;

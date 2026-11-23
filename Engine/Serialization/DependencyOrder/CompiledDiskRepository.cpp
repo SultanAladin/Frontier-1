@@ -9,9 +9,11 @@
 
 #include "Engine/Serialization/DependencyOrder/CompiledDiskRepository.h"
 
-#include "Engine/Serialization/Container/HybridContainerCodec.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
+#include "Engine/Threading/Sync/CompletionCounter.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 
 namespace Frontier::Serialization
@@ -80,13 +82,13 @@ bool CompiledDiskRepository::ResolveOrBakeEntry(
     std::error_code FsError{};
     if (std::filesystem::exists(BinaryPath, FsError))
     {
-        HybridContainerDocument LoadedDoc{};
-        std::string             DecodeDiag{};
-        if (HybridContainerDecoder::DecodeFromFile(BinaryPath, LoadedDoc, DecodeDiag))
+        DocumentContainer LoadedDoc{};
+        std::string       DecodeDiag{};
+        if (DocumentContainerDecoder::DecodeFromFile(BinaryPath, LoadedDoc, DecodeDiag))
         {
             const toml::table* SigSection = LoadedDoc.TomlHeader[".InputSignature"].as_table();
             const BinarySectionBlock* PayloadBlock =
-                HybridContainerDecoder::FindBinarySection(LoadedDoc, CompiledPayloadSectionName);
+                DocumentContainerDecoder::FindBinarySection(LoadedDoc, CompiledPayloadSectionName);
 
             const bool SignatureMatched =
                 (SigSection != nullptr) &&
@@ -116,8 +118,8 @@ bool CompiledDiskRepository::ResolveOrBakeEntry(
         return false;
     }
 
-    // ② Wrap compiled bytes in a verified Two-Tier Hybrid .fbin container with InputSignature stamp
-    HybridContainerDocument CompiledDoc{};
+    // ② Wrap compiled bytes in a verified Sectioned Document Container (.fbin) with InputSignature stamp
+    DocumentContainer CompiledDoc{};
     CompiledDoc.SuffixCategory     = Entry.Category;
     CompiledDoc.SchemaVersion      = Entry.SchemaVersion;
     CompiledDoc.StableIdentifier   = Entry.EntryIdentifier;
@@ -140,7 +142,7 @@ bool CompiledDiskRepository::ResolveOrBakeEntry(
     PayloadSection.PayloadBytes      = OutCompiledBytes;
     CompiledDoc.BinarySections.push_back(std::move(PayloadSection));
 
-    if (!HybridContainerEncoder::EncodeToFile(BinaryPath, CompiledDoc, OutDiagnostic))
+    if (!DocumentContainerEncoder::EncodeToFile(BinaryPath, CompiledDoc, OutDiagnostic))
     {
         return false;
     }
@@ -159,16 +161,17 @@ bool CompiledDiskRepository::ResolveOrBakeEntry(
 }
 
 bool CompiledDiskRepository::ExecuteLedger(
-    const DependencyOrderLedger& Ledger,
-    const BakeProcedureCallback& BakeProcedure,
-    RepositoryExecutionSummary&  OutSummary,
-    std::string&                 OutDiagnostic) const
+    const DependencyOrderLedger&  Ledger,
+    const BakeProcedureCallback&  BakeProcedure,
+    RepositoryExecutionSummary&   OutSummary,
+    std::string&                  OutDiagnostic,
+    Threading::ExecutionChannels* OptionalChannels) const
 {
     OutSummary = {};
 
-    std::vector<std::string> OrderedIds{};
-    std::vector<std::string> CycleChain{};
-    if (!Ledger.ResolveTopologicalOrder(OrderedIds, CycleChain, OutDiagnostic))
+    std::vector<std::vector<std::string>> ParallelWaves{};
+    std::vector<std::string>              CycleChain{};
+    if (!Ledger.ResolveTopologicalWaves(ParallelWaves, CycleChain, OutDiagnostic))
     {
         return false;
     }
@@ -179,29 +182,80 @@ bool CompiledDiskRepository::ExecuteLedger(
         return false;
     }
 
-    for (const std::string& EntryId : OrderedIds)
+    for (const std::vector<std::string>& Wave : ParallelWaves)
     {
-        const DependencyBuildEntry* EntryPtr = Ledger.FindEntry(EntryId);
-        if (EntryPtr == nullptr)
+        const std::size_t WaveCount = Wave.size();
+        std::vector<BuildSourceTrace> WaveTraces(WaveCount);
+        std::vector<std::string>      WaveErrors(WaveCount);
+        std::atomic<bool>             WaveFailed{ false };
+
+        const auto RunEntry = [&](std::size_t Index)
         {
-            OutDiagnostic = "Internal ledger lookup miss for: " + EntryId;
+            const std::string&          EntryId  = Wave[Index];
+            const DependencyBuildEntry* EntryPtr = Ledger.FindEntry(EntryId);
+            if (EntryPtr == nullptr)
+            {
+                WaveErrors[Index] = "Internal ledger lookup miss for: " + EntryId;
+                WaveFailed.store(true, std::memory_order_relaxed);
+                return;
+            }
+            std::vector<std::byte> CompiledBytes{};
+            if (!ResolveOrBakeEntry(*EntryPtr, Signatures.at(EntryId), BakeProcedure, CompiledBytes, WaveTraces[Index], WaveErrors[Index]))
+            {
+                WaveFailed.store(true, std::memory_order_relaxed);
+            }
+        };
+
+        if (OptionalChannels != nullptr && OptionalChannels->QueryActive() && WaveCount > 1u)
+        {
+            Threading::CompletionCounter Latch(static_cast<uint32_t>(WaveCount));
+            for (std::size_t Index = 0u; Index < WaveCount; ++Index)
+            {
+                Threading::ScheduledTaskUnit Unit{};
+                Unit.TaskIdentifier   = static_cast<uint32_t>(Index + 1u);
+                Unit.PriorityTier     = Threading::TaskPriorityTier::WorkspaceAuthoring;
+                Unit.CompletionTarget = &Latch;
+                Unit.Callable         = [&RunEntry, Index]() { RunEntry(Index); };
+                if (!OptionalChannels->EnqueueTask(std::move(Unit)))
+                {
+                    RunEntry(Index);
+                    Latch.Decrement();
+                }
+            }
+            OptionalChannels->AssistUntilComplete(Latch);
+        }
+        else
+        {
+            for (std::size_t Index = 0u; Index < WaveCount; ++Index)
+            {
+                RunEntry(Index);
+            }
+        }
+
+        if (WaveFailed.load(std::memory_order_acquire))
+        {
+            for (const std::string& Err : WaveErrors)
+            {
+                if (!Err.empty())
+                {
+                    OutDiagnostic = Err;
+                    return false;
+                }
+            }
+            OutDiagnostic = "Parallel wave execution failed.";
             return false;
         }
 
-        std::vector<std::byte> CompiledBytes{};
-        BuildSourceTrace       Trace{};
-        if (!ResolveOrBakeEntry(*EntryPtr, Signatures.at(EntryId), BakeProcedure, CompiledBytes, Trace, OutDiagnostic))
+        for (BuildSourceTrace& Trace : WaveTraces)
         {
-            return false;
+            switch (Trace.ResolutionReason)
+            {
+                case RepositoryResolutionReason::LoadedFromDisk:      ++OutSummary.DiskHitCount;       break;
+                case RepositoryResolutionReason::BakedMissingBinary:  ++OutSummary.FreshBakeCount;     break;
+                case RepositoryResolutionReason::RebakedAfterCorrupt: ++OutSummary.CorruptRepairCount; break;
+            }
+            OutSummary.Traces.push_back(std::move(Trace));
         }
-
-        switch (Trace.ResolutionReason)
-        {
-            case RepositoryResolutionReason::LoadedFromDisk:      ++OutSummary.DiskHitCount;       break;
-            case RepositoryResolutionReason::BakedMissingBinary:  ++OutSummary.FreshBakeCount;     break;
-            case RepositoryResolutionReason::RebakedAfterCorrupt: ++OutSummary.CorruptRepairCount; break;
-        }
-        OutSummary.Traces.push_back(std::move(Trace));
     }
 
     OutDiagnostic.clear();

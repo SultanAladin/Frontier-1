@@ -1,4 +1,4 @@
-# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
 ['.DocumentHeader']
 AuthoringWorkspace = 'Frontier.ProjectWorkspace'
 BinaryAlignmentBytes = 64

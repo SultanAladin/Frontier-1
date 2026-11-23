@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           FORMATCODECSUITE.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of typed Frontier codecs and concrete Two-Tier Hybrid example generation across all 63 formats
+// 🧩 Implementation of typed Frontier codecs and concrete Sectioned Document example generation across all 63 formats
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -180,7 +180,7 @@ void ReadAtmosphereFields(const toml::table& Section, AtmosphereDocument& OutDoc
 
 bool FormatCodecSuite::EncodeEngineSettings(
     const EngineSettingsDocument& Document,
-    HybridContainerDocument&      OutContainer)
+    DocumentContainer&      OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::EngineSettings;
@@ -202,7 +202,7 @@ bool FormatCodecSuite::EncodeEngineSettings(
 }
 
 bool FormatCodecSuite::DecodeEngineSettings(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     EngineSettingsDocument&        OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -233,7 +233,7 @@ bool FormatCodecSuite::DecodeEngineSettings(
 
 bool FormatCodecSuite::EncodeRuntimeConfiguration(
     const RuntimeConfigurationDocument& Document,
-    HybridContainerDocument&            OutContainer)
+    DocumentContainer&            OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::RuntimeConfiguration;
@@ -255,7 +255,7 @@ bool FormatCodecSuite::EncodeRuntimeConfiguration(
 }
 
 bool FormatCodecSuite::DecodeRuntimeConfiguration(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     RuntimeConfigurationDocument&  OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -286,7 +286,7 @@ bool FormatCodecSuite::DecodeRuntimeConfiguration(
 
 bool FormatCodecSuite::EncodePlatformSettings(
     const PlatformSettingsDocument& Document,
-    HybridContainerDocument&        OutContainer)
+    DocumentContainer&        OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::PlatformSettings;
@@ -306,7 +306,7 @@ bool FormatCodecSuite::EncodePlatformSettings(
 }
 
 bool FormatCodecSuite::DecodePlatformSettings(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     PlatformSettingsDocument&      OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -335,7 +335,7 @@ bool FormatCodecSuite::DecodePlatformSettings(
 
 bool FormatCodecSuite::EncodeProjectIndex(
     const ProjectIndexDocument& Document,
-    HybridContainerDocument&    OutContainer)
+    DocumentContainer&    OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::ProjectIndex;
@@ -368,7 +368,7 @@ bool FormatCodecSuite::EncodeProjectIndex(
 }
 
 bool FormatCodecSuite::DecodeProjectIndex(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     ProjectIndexDocument&          OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -421,7 +421,7 @@ bool FormatCodecSuite::DecodeProjectIndex(
 
 bool FormatCodecSuite::EncodeCameraOptics(
     const CameraOpticsDocument& Document,
-    HybridContainerDocument&    OutContainer)
+    DocumentContainer&    OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::CameraOptics;
@@ -437,7 +437,7 @@ bool FormatCodecSuite::EncodeCameraOptics(
 }
 
 bool FormatCodecSuite::DecodeCameraOptics(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     CameraOpticsDocument&          OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -461,7 +461,7 @@ bool FormatCodecSuite::DecodeCameraOptics(
 
 bool FormatCodecSuite::EncodeAtmosphere(
     const AtmosphereDocument& Document,
-    HybridContainerDocument&  OutContainer)
+    DocumentContainer&  OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::Atmosphere;
@@ -477,7 +477,7 @@ bool FormatCodecSuite::EncodeAtmosphere(
 }
 
 bool FormatCodecSuite::DecodeAtmosphere(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     AtmosphereDocument&            OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -501,7 +501,7 @@ bool FormatCodecSuite::DecodeAtmosphere(
 
 bool FormatCodecSuite::EncodeFractureNetwork(
     const FractureNetworkDocument& Document,
-    HybridContainerDocument&       OutContainer)
+    DocumentContainer&       OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::FractureNetwork;
@@ -564,7 +564,7 @@ bool FormatCodecSuite::EncodeFractureNetwork(
 }
 
 bool FormatCodecSuite::DecodeFractureNetwork(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     FractureNetworkDocument&       OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -623,7 +623,7 @@ bool FormatCodecSuite::DecodeFractureNetwork(
 
 bool FormatCodecSuite::EncodeWorldSpace(
     const WorldSpaceDocument& Document,
-    HybridContainerDocument&  OutContainer)
+    DocumentContainer&  OutContainer)
 {
     OutContainer = {};
     OutContainer.SuffixCategory     = FormatSuffixCategory::WorldSpace;
@@ -673,7 +673,7 @@ bool FormatCodecSuite::EncodeWorldSpace(
 }
 
 bool FormatCodecSuite::DecodeWorldSpace(
-    const HybridContainerDocument& Container,
+    const DocumentContainer& Container,
     WorldSpaceDocument&            OutDocument,
     std::string&                   OutDiagnostic)
 {
@@ -769,10 +769,10 @@ WorldSpaceDocument FormatCodecSuite::ConstructVehicleClearSkyWorldExample()
     return World;
 }
 
-HybridContainerDocument FormatCodecSuite::ConstructExampleDocument(FormatSuffixCategory Category)
+DocumentContainer FormatCodecSuite::ConstructExampleDocument(FormatSuffixCategory Category)
 {
     // ① Use rich specialized encoders for showcase formats
-    HybridContainerDocument Doc{};
+    DocumentContainer Doc{};
     switch (Category)
     {
         case FormatSuffixCategory::EngineSettings:
@@ -824,7 +824,7 @@ HybridContainerDocument FormatCodecSuite::ConstructExampleDocument(FormatSuffixC
             std::vector<std::byte> Encoded{};
             std::string            Ignored{};
             (void)InstanceContainerCodec::EncodeToBytes(MultiDoc, Encoded, Ignored);
-            (void)HybridContainerDecoder::DecodeFromBytes(Encoded, Doc, Ignored);
+            (void)DocumentContainerDecoder::DecodeFromBytes(Encoded, Doc, Ignored);
             return Doc;
         }
         default:
@@ -960,15 +960,15 @@ bool FormatCodecSuite::GenerateAllFormatExamples(
         const std::string StemName = std::string("Example") + std::string(Desc.CanonicalSuffix.substr(1u));
         const std::filesystem::path FilePath = SubFolder / (StemName + std::string(Desc.CanonicalSuffix));
 
-        const HybridContainerDocument ExampleDoc = ConstructExampleDocument(Desc.Category);
-        if (!HybridContainerEncoder::EncodeToFile(FilePath, ExampleDoc, OutDiagnostic))
+        const DocumentContainer ExampleDoc = ConstructExampleDocument(Desc.Category);
+        if (!DocumentContainerEncoder::EncodeToFile(FilePath, ExampleDoc, OutDiagnostic))
         {
             return false;
         }
 
         // Immediately round-trip verify every written example file on disk
-        HybridContainerDocument VerifiedDoc{};
-        if (!HybridContainerDecoder::DecodeFromFile(FilePath, VerifiedDoc, OutDiagnostic))
+        DocumentContainer VerifiedDoc{};
+        if (!DocumentContainerDecoder::DecodeFromFile(FilePath, VerifiedDoc, OutDiagnostic))
         {
             return false;
         }

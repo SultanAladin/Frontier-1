@@ -24,7 +24,7 @@
 #include "Engine/Codecs/VolumetricSpaceCodec.h"
 #include "Engine/Codecs/WorldSpaceCodec.h"
 #include "Engine/Constants/MathConstants.h"
-#include "Engine/Serialization/Container/HybridContainerCodec.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
 
 #include <algorithm>
 #include <array>
@@ -1161,21 +1161,21 @@ bool DefaultContentGenerator::VerifyRepositoryContent(
             continue;
         }
 
-        // Validate canonical 63-format Two-Tier Hybrid containers (Engine/Serialization/)
-        Serialization::HybridContainerDocument HybridDecoded{};
-        std::string                            HybridDiag{};
-        if (Serialization::HybridContainerDecoder::DecodeFromFile(DirEntry.path(), HybridDecoded, HybridDiag))
+        // Validate canonical 63-format Sectioned Document containers (Engine/Serialization/)
+        Serialization::DocumentContainer DocumentDecoded{};
+        std::string                            DocumentDiag{};
+        if (Serialization::DocumentContainerDecoder::DecodeFromFile(DirEntry.path(), DocumentDecoded, DocumentDiag))
         {
-            if (!HybridDecoded.BinarySections.empty() && (HybridDecoded.Tier2StartOffset % 64u) != 0u)
+            if (!DocumentDecoded.BinarySections.empty() && (DocumentDecoded.Tier2StartOffset % 64u) != 0u)
             {
-                OutDiagnostic = "Hybrid Tier2StartOffset is not 64-byte aligned in " + DirEntry.path().generic_string();
+                OutDiagnostic = "DocumentContainer Tier2StartOffset is not 64-byte aligned in " + DirEntry.path().generic_string();
                 return false;
             }
             ++OutVerifiedCount;
             continue;
         }
 
-        OutDiagnostic = LegacyDiag + " | Hybrid: " + HybridDiag + " (" + DirEntry.path().generic_string() + ")";
+        OutDiagnostic = LegacyDiag + " | DocumentContainer: " + DocumentDiag + " (" + DirEntry.path().generic_string() + ")";
         return false;
     }
 

@@ -9,7 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Serialization/Container/HybridContainerCodec.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -29,7 +29,7 @@ struct EmbeddedPillarPayload
 {
     FormatSuffixCategory   PillarCategory    = FormatSuffixCategory::GeometrySpace; // [-]   - Embedded pillar suffix category
     std::string            SectionIdentifier {};                                    // [-]   - Unique section name inside enclosing container
-    EmbeddedResidencyMode  ResidencyMode     = EmbeddedResidencyMode::HybridTwoTier;// [-]   - Tier 1 / Tier 2 residency mode
+    EmbeddedResidencyMode  ResidencyMode     = EmbeddedResidencyMode::TomlWithBinarySection;// [-] - Tier 1 / Tier 2 residency mode
     std::string            SummaryNotes      {};                                    // [-]   - Human-readable summary comment
     toml::table            TomlSection       {};                                    // [-]   - Embedded Tier 1 TOML parameters
     std::vector<std::byte> BinaryPayload     {};                                    // [B]   - Optional 64B-aligned Tier 2 binary stream
@@ -56,22 +56,26 @@ public:
     [[nodiscard]] static bool EncodeToBytes(
         const MultiPillarInstanceDocument& Document,
         std::vector<std::byte>&            OutContainerBytes,
-        std::string&                       OutDiagnostic);
+        std::string&                       OutDiagnostic,
+        Threading::ExecutionChannels*      OptionalChannels = nullptr);
 
     [[nodiscard]] static bool EncodeToFile(
         const std::filesystem::path&       TargetPath,
         const MultiPillarInstanceDocument& Document,
-        std::string&                       OutDiagnostic);
+        std::string&                       OutDiagnostic,
+        Threading::ExecutionChannels*      OptionalChannels = nullptr);
 
     [[nodiscard]] static bool DecodeFromBytes(
-        std::span<const std::byte>   InputBytes,
-        MultiPillarInstanceDocument& OutDocument,
-        std::string&                 OutDiagnostic);
+        std::span<const std::byte>    InputBytes,
+        MultiPillarInstanceDocument&  OutDocument,
+        std::string&                  OutDiagnostic,
+        Threading::ExecutionChannels* OptionalChannels = nullptr);
 
     [[nodiscard]] static bool DecodeFromFile(
-        const std::filesystem::path& SourcePath,
-        MultiPillarInstanceDocument& OutDocument,
-        std::string&                 OutDiagnostic);
+        const std::filesystem::path&  SourcePath,
+        MultiPillarInstanceDocument&  OutDocument,
+        std::string&                  OutDiagnostic,
+        Threading::ExecutionChannels* OptionalChannels = nullptr);
 
     [[nodiscard]] static const EmbeddedPillarPayload* FindEmbeddedPillar(
         const MultiPillarInstanceDocument& Document,
