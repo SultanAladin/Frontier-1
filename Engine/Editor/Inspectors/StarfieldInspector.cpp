@@ -216,11 +216,13 @@ float StarfieldInspector::Construct(
         UpdateStarSheetSurface(Stars, Entry.VisibilityEnabled);
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Equirectangular celestial sheet");
         CursorY += 20.0f;
+        bool RebakeHit = false;
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
             Surface, LeftX, CursorY, InnerWidth, "Star field bake", "1024 x 512",
             "RGBA8 sRGB  ·  equirectangular, celestial J2000",
             "X: Right ascension (0..24 h)   ·   Y: Declination (+90..-90 deg)",
-            StarSheetBake, 118.0f);
+            StarSheetBake, 118.0f, &Input, &BakeSettingsOpen, &BakeResolutionTier, &RebakeHit);
+        if (RebakeHit) OutMutated = true;
     }
 
     return CursorY;

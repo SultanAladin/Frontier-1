@@ -106,10 +106,55 @@ struct CameraInstanceData
     float    ApertureFStop       = 2.8f;
     float    FocusDistanceMeters = 6.0f;
     uint32_t RigPresetIndex      = 0u;    // [0..2] - Cinema, Rig, Compact
-    bool     TripodMounted       = true;
+    bool     TripodMounted       = true;  // [-]    - true = On tripod (fixed), false = Floating (crane/drone/rig)
+    float    MountHeightMeters   = 1.45f; // [m]    - Camera mount height above ground
+    float    CameraRollDegrees   = 0.0f;  // [deg]  - Dutch roll angle (Floating mount)
+    bool     AimAtShowcase       = true;  // [-]    - Auto-aim pitch & yaw at scene focal subject
     bool     MotionBlurEnabled   = false;
     float    ShutterAngleDegrees = 180.0f;
     GeometricRaster::LensFlareConfiguration LensFlare {};
+};
+
+// Camera Settings (formerly Render Engine - F77/F78): per-renderer independent parameters + Output + Quality budget
+struct CameraSettingsData
+{
+    uint32_t RendererIndex         = 0u;     // [0..3] - 0=PBR, 1=SDF, 2=Ray traced, 3=MatCap
+    uint32_t QualityTierIndex      = 2u;     // [0..3] - Low, Medium, High, Ultra
+
+    // PBR raster settings
+    uint32_t PbrShadowIndex        = 1u;     // [0..2] - PCF, PCSS, SMRT
+    float    PbrShadowCascadeRes    = 2048.0f;// [px]   - Cascade shadow resolution
+    bool     PbrAreaLights         = true;   // [-]    - Heitz LTC polygonal area lights
+    float    PbrFillGain           = 1.00f;  // [x]    - Sky fill radiance multiplier
+    bool     PbrAoEnabled          = true;   // [-]    - XeGTAO screen-space ambient occlusion
+
+    // SDF tracing settings
+    uint32_t SdfShadowIndex        = 1u;     // [0..2] - Hard SDF, Soft Cone, Hybrid Cascade
+    float    SdfTraceSteps         = 48.0f;  // [cnt]  - Maximum sphere-trace steps
+    bool     SdfConeGiEnabled      = true;   // [-]    - Real-time SDF cone GI
+    float    SdfConeCount          = 6.0f;   // [cnt]  - Diffuse GI cones per pixel
+    float    SdfFillGain           = 1.00f;  // [x]    - Ambient fallback fill multiplier
+    bool     SdfAoEnabled          = true;   // [-]    - Distance-field ambient occlusion
+
+    // Ray traced settings
+    uint32_t RayTracerIndex        = 0u;     // [0..2] - WideTree BVH, ReSTIR GI, Path Tracer
+    bool     RayGiEnabled          = true;   // [-]    - Hardware/BVH traced indirect GI
+    float    RayGiSamples          = 4.0f;   // [spp]  - GI rays per pixel
+    float    RayShadowRays         = 2.0f;   // [spp]  - Area shadow rays per pixel
+    bool     RayReflectionsEnabled = true;   // [-]    - Traced glossy reflections
+    float    RayReflectionBounces  = 2.0f;   // [cnt]  - Specular bounce depth
+    bool     RayAoEnabled          = true;   // [-]    - Short-ray cavity AO
+
+    // MatCap studio shading settings
+    uint32_t MatcapShadowIndex     = 1u;     // [0..2] - None, Contact floor, Soft studio
+    float    MatcapLightAngleDeg   = 38.0f;  // [deg]  - Studio key angle
+    float    MatcapRimGain         = 0.35f;  // [0-1]  - Grazing silhouette rim boost
+    uint32_t MatcapChannelIndex    = 0u;     // [0..3] - Clay, Ceramic, Metallic, Normal
+
+    // Output settings
+    float    RenderScalePercent    = 100.0f; // [%]    - Internal resolution scale [50..200]
+    float    ExposureGain          = 1.00f;  // [x]    - Linear output exposure multiplier
+    bool     TemporalAntiAliasing  = true;   // [-]    - Temporal accumulation jitter
 };
 
 struct LensFlareInstanceData
@@ -323,6 +368,7 @@ public:
     PrecipitationInstanceData&    AccessPrecipitation(OutlinerSlotToken Token);
     RainbowInstanceData&          AccessRainbow(OutlinerSlotToken Token);
     CameraInstanceData&           AccessCamera(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    CameraSettingsData&           AccessCameraSettings(OutlinerSlotToken Token);
     LensFlareInstanceData&        AccessLensFlare(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     MotionBlurInstanceData&       AccessMotionBlur(OutlinerSlotToken Token);
     PointLightData&               AccessPointLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
@@ -365,6 +411,7 @@ private:
     std::unordered_map<uint64_t, PrecipitationInstanceData>    Precipitations    {};
     std::unordered_map<uint64_t, RainbowInstanceData>          Rainbows          {};
     std::unordered_map<uint64_t, CameraInstanceData>           Cameras           {};
+    std::unordered_map<uint64_t, CameraSettingsData>           CameraSettingsEntries {};
     std::unordered_map<uint64_t, LensFlareInstanceData>        LensFlares        {};
     std::unordered_map<uint64_t, MotionBlurInstanceData>       MotionBlurs       {};
     std::unordered_map<uint64_t, PointLightData>               PointLights       {};

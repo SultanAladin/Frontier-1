@@ -293,7 +293,38 @@ void ConstructCurvePlot(
     const char*            RightCaption    = nullptr,
     float                  MarkerX01       = -1.0f) noexcept;
 
-// Exact 1:1 Baked LUT / Equirectangular texture preview section (Baking pages)
+// Floating hover tooltip fact row (used by Baked LUT capsules and field help triggers)
+struct InspectorTooltipFact
+{
+    std::string Label   {};
+    std::string Reading {};
+};
+
+// Clear queued hover tooltip at the start of an Inspector frame
+void ResetTooltipQueue() noexcept;
+
+// Queue a simple text tooltip anchored near AnchorRect (rendered on top of the pane by FlushTooltipOverlay)
+void QueueTooltip(Rectangle2D AnchorRect, std::string_view Heading, std::string_view BodyText) noexcept;
+
+// Queue a structured multi-row fact tooltip (F76 Baked LUT details tooltip parity)
+void QueueFactTooltip(
+    Rectangle2D                             AnchorRect,
+    std::string_view                        Heading,
+    std::span<const InspectorTooltipFact>   Facts) noexcept;
+
+// Render the active queued tooltip floating cleanly inside PaneBounds (never clipped by cards)
+void FlushTooltipOverlay(PixelSpace& Surface, Rectangle2D PaneBounds) noexcept;
+
+// Small circular '?' hover trigger that queues a tooltip when hovered
+void ConstructTooltipTrigger(
+    PixelSpace&             Surface,
+    Point2D                 Center,
+    std::string_view        Heading,
+    std::string_view        BodyText,
+    const PaneInputReading& Input) noexcept;
+
+// Exact 1:1 F76 Baked LUT / Equirectangular texture preview section (Baking pages)
+// Includes green Baked capsule with hover details tooltip, resolution readout, Rebake & Save icon buttons, and optional Bake Settings face
 [[nodiscard]] float ConstructBakedLutSection(
     PixelSpace&              Surface,
     float                    LeftX,
@@ -304,7 +335,12 @@ void ConstructCurvePlot(
     const char*              FormatText,
     const char*              AxisCaption,
     InspectorPreviewSurface& Preview,
-    float                    PreviewHeightPx) noexcept;
+    float                    PreviewHeightPx,
+    const PaneInputReading*  OptionalInput          = nullptr,
+    bool*                    OptionalSettingsOpen   = nullptr,
+    uint32_t*                OptionalScaleTier      = nullptr,
+    bool*                    OptionalRebakeClicked  = nullptr,
+    bool*                    OptionalSaveClicked    = nullptr) noexcept;
 
 // Exact 1:1 Tags section (.tags-card with #24303F / #BCD8FF chips)
 [[nodiscard]] float ConstructTagsSection(

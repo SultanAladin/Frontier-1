@@ -31,14 +31,15 @@
 ### Layer A — Generic Reusable UI Primitives (`Engine/Components/Controls/`)
 | File Pair | Responsibility |
 | :--- | :--- |
-| `InspectorSectionPrimitives.{h,cpp}` | Generic CSS-exact `InspectorMetrics`, `InspectorPreviewSurface` (on-demand retained RGBA32 `ImTextureData`), header, `PageStrip`, section surface, metric readout, KPI metric grid, `Quick controls` grid, scalar/toggle/colour/choice rows, curve plot, LUT preview section, tags, notes, footer |
+| `InspectorSectionPrimitives.{h,cpp}` | Generic CSS-exact `InspectorMetrics`, `InspectorPreviewSurface` (on-demand retained RGBA32 `ImTextureData`), header, `PageStrip`, section surface, metric readout, KPI metric grid, `Quick controls` grid, scalar/toggle/colour/choice rows, curve plot, F76 upgraded LUT preview section (`✓ Baked` capsule + tooltip, `↺ Rebake` -> Bake Settings, `↓ Save PNG`, cursor crosshair), floating hover tooltip overlay queue, tags, notes, footer |
 | `PolarDirectionDial.{h,cpp}` | Generic reusable interactive compass / sky-dome azimuth & elevation dial control |
 
-### Layer B — Generic Multi-Instance Register & Dispatch (`Engine/Editor/Inspectors/`)
+### Layer B — Generic Multi-Instance Register, Dispatch & Project User UI Host (`Engine/Editor/Inspectors/`)
 | File Pair | Responsibility |
 | :--- | :--- |
-| `InspectorInstanceRegister.{h,cpp}` | Per-entry (`OutlinerSlotToken`) independent parameter register for all multi-instance types + combination pass syncing active visible entries into `WorldSceneSpecification` & `ViewportDisplaySettings` |
-| `InspectorRegistry.{h,cpp}` | Generic dispatch registry mapping any selected `OutlinerRecordEntry` to its dedicated standalone Inspector, resolving dynamic enclosing-folder breadcrumbs, handling scroll/Reset/Delete |
+| `InspectorInstanceRegister.{h,cpp}` | Per-entry (`OutlinerSlotToken`) independent parameter register for all multi-instance types (including `CameraSettingsData` & F78 Camera Mount) + combination pass syncing active visible entries into `WorldSceneSpecification` & `ViewportDisplaySettings` |
+| `ProjectInspectorFoundation.{h,cpp}` | Tier 2 Project-Defined User UI Inspector host parsing `<ProjectRoot>/Inspectors/*.Inspector.toml` via `toml++` + programmatic C++ blueprints, with per-entry multi-instance storage & native Layer A rendering (see `ProjectUserInspectorFoundation.md`) |
+| `InspectorRegistry.{h,cpp}` | Generic dispatch registry routing any selected `OutlinerRecordEntry` to a matching Project User Blueprint or its dedicated Native Standalone Inspector, resolving dynamic enclosing-folder breadcrumbs, handling scroll/Reset/Delete, and flushing top-level floating tooltip overlays |
 
 ### Layer C — Standalone Per-Type Inspectors (`Engine/Editor/Inspectors/`)
 | # | File Pair | Pages | Own Retained Preview(s) | Multi-Instance |
@@ -56,23 +57,24 @@
 | 11 | `GodRaysInspector.{h,cpp}` | `Overview`, `Optics` | Scattering anisotropy phase curve | Yes |
 | 12 | `PrecipitationInspector.{h,cpp}` | `Overview`, `Weather` | Rate / wind-slant profile | Yes |
 | 13 | `RainbowInspector.{h,cpp}` | `Overview`, `Optics` | Primary / secondary bow dispersion curve | Yes |
-| 14 | `CameraInspector.{h,cpp}` | `Overview`, `Lens`, `Body`, `Motion blur`, `Lens flare` | Retained optical glass lens preview | Yes |
-| 15 | `LensFlareInspector.{h,cpp}` | `Overview`, `Optics` | Optical glare & ghost response preview | Yes |
-| 16 | `MotionBlurInspector.{h,cpp}` | `Overview`, `Shutter` | Shutter angle exposure profile | Yes |
-| 17 | `PointLightInspector.{h,cpp}` | `Overview`, `Output`, `Attenuation`, `Placement`, `Shadows` | Retained radial falloff rings + 12 rays + 1–10 m inverse-power curve | Yes |
-| 18 | `SpotLightInspector.{h,cpp}` | `Overview`, `Output`, `Beam`, `Placement`, `Shadows` | Retained beam envelope cone + dashed inner penumbra + depth bars | Yes |
-| 19 | `IesLightInspector.{h,cpp}` | `Overview`, `Output`, `Distribution`, `Placement`, `Shadows` | Retained C0 solid / C90 dashed polar candela study + 8 LM-63 presets | Yes |
-| 20 | `AreaLightInspector.{h,cpp}` | `Overview`, `Output`, `Aperture`, `Placement`, `Shadows` | Retained orthographic Rectangle/Disk diffuser elevation (syncs to Heitz LTC quads) | Yes |
-| 21 | `TubeLightInspector.{h,cpp}` | `Overview`, `Output`, `Emitter`, `Placement`, `Shadows` | Retained linear cylindrical radiance bar + end-caps + downward rays | Yes |
-| 22 | `LedLightInspector.{h,cpp}` | `Overview`, `Driver`, `Optic`, `Placement`, `Shadows` | Retained PCB star-board + 4x4 glowing COB die array + optic arc | Yes |
-| 23 | `LedStripInspector.{h,cpp}` | `Overview`, `Output`, `Layout`, `Placement`, `Shadows` | Retained extruded channel + discrete SMD packages or opal diffuser + electrical budget | Yes |
-| 24 | `EnvironmentLightInspector.{h,cpp}` | `Overview`, `Source`, `Response` | Retained sky-dome lit sphere + top-down bright-patch compass + 5 sky/HDRI presets | Yes |
-| 25 | `PostProcessInspector.{h,cpp}` | `Overview`, `Tone`, `Colour` | Tone-curve response plot | Yes |
-| 26 | `AnalyticPrimitiveInspector.{h,cpp}` | `Overview`, `Shape`, `Transform`, `Material`, `Physics` | Category 1 Geometry: retained analytic raycast preview (Sphere/Box/Cylinder/Cone/Torus/Capsule/Plane) | Yes |
-| 27 | `NativeGeometryInspector.{h,cpp}` | `Overview`, `Geometry`, `Transform`, `Material`, `Physics` | Category 2 Geometry: retained native `.GeometrySpace` preview + Cluster-LOD / Local SDF KPIs (universal fallback) | Yes |
-| 28 | `ImportedGeometryInspector.{h,cpp}` | `Overview`, `Import`, `Transform`, `Material`, `Physics` | Category 3 Geometry: retained exchange preview + glTF/FBX/OBJ/USD/STEP/STL import pipeline & re-import | Yes |
-| 29 | `ProceduralGeometryInspector.{h,cpp}` | `Overview`, `Generator`, `Transform`, `Material`, `Physics` | Category 4 Geometry: retained procedural preview + Sweep/Terrain/Boolean/Spline/Voronoi generator & rebuild | Yes |
-| 30 | `FolderInspector.{h,cpp}` | `Overview`, `Contents` | Generic container summary for any Outliner folder | Yes |
+| 14 | `CameraInspector.{h,cpp}` | `Overview`, `Lens`, `Body`, `Mount`, `Motion blur`, `Lens flare` | Retained optical glass lens preview + F78 Mount tripod/floating diagram | Yes |
+| 15 | `CameraSettingsInspector.{h,cpp}` | `Overview`, dynamic per-renderer pages (`PBR`/`SDF`/`Ray traced`/`MatCap`), `Output` | F77/F78 Render type hero sphere + active renderer carousel + sample budget KPI | Yes |
+| 16 | `LensFlareInspector.{h,cpp}` | `Overview`, `Optics` | Optical glare & ghost response preview | Yes |
+| 17 | `MotionBlurInspector.{h,cpp}` | `Overview`, `Shutter` | Shutter angle exposure profile | Yes |
+| 18 | `PointLightInspector.{h,cpp}` | `Overview`, `Output`, `Attenuation`, `Placement`, `Shadows` | Retained radial falloff rings + 12 rays + 1–10 m inverse-power curve | Yes |
+| 19 | `SpotLightInspector.{h,cpp}` | `Overview`, `Output`, `Beam`, `Placement`, `Shadows` | Retained beam envelope cone + dashed inner penumbra + depth bars | Yes |
+| 20 | `IesLightInspector.{h,cpp}` | `Overview`, `Output`, `Distribution`, `Placement`, `Shadows` | Retained C0 solid / C90 dashed polar candela study + 8 LM-63 presets | Yes |
+| 21 | `AreaLightInspector.{h,cpp}` | `Overview`, `Output`, `Aperture`, `Placement`, `Shadows` | Retained orthographic Rectangle/Disk diffuser elevation (syncs to Heitz LTC quads) | Yes |
+| 22 | `TubeLightInspector.{h,cpp}` | `Overview`, `Output`, `Tube`, `Placement`, `Shadows` | Retained linear cylindrical radiance bar + end-caps + downward rays | Yes |
+| 23 | `LedLightInspector.{h,cpp}` | `Overview`, `Driver`, `Optic`, `Placement`, `Shadows` | Retained PCB star-board + 4x4 glowing COB die array + optic arc | Yes |
+| 24 | `LedStripInspector.{h,cpp}` | `Overview`, `Output`, `Layout`, `Placement`, `Shadows` | Retained extruded channel + discrete SMD packages or opal diffuser + electrical budget | Yes |
+| 25 | `EnvironmentLightInspector.{h,cpp}` | `Overview`, `Source`, `Response` | Retained sky-dome lit sphere + top-down bright-patch compass + 5 sky/HDRI presets | Yes |
+| 26 | `PostProcessInspector.{h,cpp}` | `Overview`, `Tone`, `Colour` | Tone-curve response plot | Yes |
+| 27 | `AnalyticPrimitiveInspector.{h,cpp}` | `Overview`, `Shape`, `Transform`, `Material`, `Physics` | Category 1 Geometry: retained analytic raycast preview (Sphere/Box/Cylinder/Cone/Torus/Capsule/Plane) | Yes |
+| 28 | `NativeGeometryInspector.{h,cpp}` | `Overview`, `Geometry`, `Transform`, `Material`, `Physics` | Category 2 Geometry: retained native `.GeometrySpace` preview + Cluster-LOD / Local SDF KPIs (universal fallback) | Yes |
+| 29 | `ImportedGeometryInspector.{h,cpp}` | `Overview`, `Import`, `Transform`, `Material`, `Physics` | Category 3 Geometry: retained exchange preview + glTF/FBX/OBJ/USD/STEP/STL import pipeline & re-import | Yes |
+| 30 | `ProceduralGeometryInspector.{h,cpp}` | `Overview`, `Generator`, `Transform`, `Material`, `Physics` | Category 4 Geometry: retained procedural preview + Sweep/Terrain/Boolean/Spline/Voronoi generator & rebuild | Yes |
+| 31 | `FolderInspector.{h,cpp}` | `Overview`, `Contents` | Generic container summary for any Outliner folder | Yes |
 
 ---
 

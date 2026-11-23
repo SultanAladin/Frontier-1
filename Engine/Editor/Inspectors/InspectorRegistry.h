@@ -17,6 +17,7 @@
 #include "Engine/Editor/Inspectors/AtmosphereInspector.h"
 #include "Engine/Editor/Inspectors/AtmosphericFogInspector.h"
 #include "Engine/Editor/Inspectors/CameraInspector.h"
+#include "Engine/Editor/Inspectors/CameraSettingsInspector.h"
 #include "Engine/Editor/Inspectors/CloudInspector.h"
 #include "Engine/Editor/Inspectors/EnvironmentLightInspector.h"
 #include "Engine/Editor/Inspectors/FolderInspector.h"
@@ -37,6 +38,7 @@
 #include "Engine/Editor/Inspectors/PostProcessInspector.h"
 #include "Engine/Editor/Inspectors/PrecipitationInspector.h"
 #include "Engine/Editor/Inspectors/ProceduralGeometryInspector.h"
+#include "Engine/Editor/Inspectors/ProjectInspectorFoundation.h"
 #include "Engine/Editor/Inspectors/RainbowInspector.h"
 #include "Engine/Editor/Inspectors/SolarInspector.h"
 #include "Engine/Editor/Inspectors/SpotLightInspector.h"
@@ -68,8 +70,9 @@ public:
         bool&                                     OutMutated) noexcept;
 
     void SetScrollOffset(float ScrollPixels) noexcept { ScrollOffsetY = std::max(0.0f, ScrollPixels); }
-    void ClearInstances() noexcept { Instances.Clear(); }
+    void ClearInstances() noexcept { Instances.Clear(); ProjectHost.ClearAll(); }
 
+    [[nodiscard]] ProjectInspectorHost&      QueryProjectHost() noexcept { return ProjectHost; }
     [[nodiscard]] InspectorInstanceRegister& QueryInstances() noexcept { return Instances; }
     [[nodiscard]] AtmosphereInspector&       QueryAtmosphere() noexcept { return Atmosphere; }
     [[nodiscard]] SolarInspector&            QuerySolar() noexcept { return Solar; }
@@ -85,6 +88,7 @@ public:
     [[nodiscard]] PrecipitationInspector&    QueryPrecipitation() noexcept { return Precipitation; }
     [[nodiscard]] RainbowInspector&          QueryRainbow() noexcept { return Rainbow; }
     [[nodiscard]] CameraInspector&           QueryCamera() noexcept { return Camera; }
+    [[nodiscard]] CameraSettingsInspector&   QueryCameraSettings() noexcept { return CameraSettings; }
     [[nodiscard]] LensFlareInspector&        QueryLensFlare() noexcept { return LensFlare; }
     [[nodiscard]] MotionBlurInspector&         QueryMotionBlur() noexcept { return MotionBlur; }
     [[nodiscard]] PointLightInspector&         QueryPointLight() noexcept { return PointLight; }
@@ -119,6 +123,7 @@ private:
     PrecipitationInspector      Precipitation      {};
     RainbowInspector            Rainbow            {};
     CameraInspector             Camera             {};
+    CameraSettingsInspector     CameraSettings     {};
     LensFlareInspector          LensFlare          {};
     MotionBlurInspector         MotionBlur         {};
     PointLightInspector         PointLight         {};
@@ -135,6 +140,7 @@ private:
     ImportedGeometryInspector   ImportedGeometry   {};
     ProceduralGeometryInspector ProceduralGeometry {};
     FolderInspector             Folder             {};
+    ProjectInspectorHost        ProjectHost        {};
 
     uint32_t LastEntryId   = 0u;
     float    ScrollOffsetY = 0.0f;

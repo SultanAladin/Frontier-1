@@ -34,21 +34,22 @@ enum class ResolvedInspectorTarget : uint8_t
     Precipitation    = 12u,
     Rainbow          = 13u,
     Camera           = 14u,
-    LensFlare        = 15u,
-    MotionBlur         = 16u,
-    PointLight         = 17u,
-    SpotLight          = 18u,
-    IesLight           = 19u,
-    AreaLight          = 20u,
-    TubeLight          = 21u,
-    LedLight         = 22u,
-    LedStrip           = 23u,
-    EnvironmentLight   = 24u,
-    PostProcess        = 25u,
-    AnalyticPrimitive  = 26u,
-    NativeGeometry     = 27u,
-    ImportedGeometry   = 28u,
-    ProceduralGeometry = 29u,
+    CameraSettings   = 15u,
+    LensFlare        = 16u,
+    MotionBlur       = 17u,
+    PointLight         = 18u,
+    SpotLight          = 19u,
+    IesLight           = 20u,
+    AreaLight          = 21u,
+    TubeLight          = 22u,
+    LedLight           = 23u,
+    LedStrip           = 24u,
+    EnvironmentLight   = 25u,
+    PostProcess        = 26u,
+    AnalyticPrimitive  = 27u,
+    NativeGeometry     = 28u,
+    ImportedGeometry   = 29u,
+    ProceduralGeometry = 30u,
 };
 
 [[nodiscard]] bool ContainsCaseFold(std::string_view Haystack, std::string_view Needle) noexcept
@@ -159,9 +160,13 @@ enum class ResolvedInspectorTarget : uint8_t
     if (Tag == "env:rainbow")           return ResolvedInspectorTarget::Rainbow;
     if (Tag == "env:lens-flare")        return ResolvedInspectorTarget::LensFlare;
     if (Tag == "env:motion-blur")       return ResolvedInspectorTarget::MotionBlur;
+    if (Tag == "env:camera-settings" || Tag == "env:render-engine" || Tag == "camera:settings" || Tag == "render:settings")
+        return ResolvedInspectorTarget::CameraSettings;
     if (Tag == "env:environment-light") return ResolvedInspectorTarget::EnvironmentLight;
     if (Tag == "env:post-process")      return ResolvedInspectorTarget::PostProcess;
     if (Tag.rfind("light:", 0u) == 0u)  return ClassifyLuminaireEntry(Entry);
+    if (ContainsCaseFold(Entry.Title, "camera settings") || ContainsCaseFold(Entry.Title, "render engine"))
+        return ResolvedInspectorTarget::CameraSettings;
 
     switch (Entry.Category)
     {
@@ -190,6 +195,7 @@ enum class ResolvedInspectorTarget : uint8_t
         case ResolvedInspectorTarget::Precipitation:      return PrecipitationInspector::QuerySubtitle();
         case ResolvedInspectorTarget::Rainbow:            return RainbowInspector::QuerySubtitle();
         case ResolvedInspectorTarget::Camera:             return CameraInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::CameraSettings:     return CameraSettingsInspector::QuerySubtitle();
         case ResolvedInspectorTarget::LensFlare:          return LensFlareInspector::QuerySubtitle();
         case ResolvedInspectorTarget::MotionBlur:         return MotionBlurInspector::QuerySubtitle();
         case ResolvedInspectorTarget::PointLight:         return PointLightInspector::QuerySubtitle();
@@ -247,6 +253,17 @@ bool InspectorRegistry::ConstructActiveInspector(
     }
 
     const ResolvedInspectorTarget Target = ResolveTarget(*Entry);
+    const ProjectInspectorBlueprint* ProjectBp = ProjectHost.ResolveBlueprint(*Entry);
+    const bool ExplicitNativeTag =
+        Entry->DomainTag.rfind("env:", 0u) == 0u ||
+        Entry->DomainTag.rfind("light:", 0u) == 0u ||
+        Entry->DomainTag.rfind("geom:", 0u) == 0u ||
+        Entry->DomainTag == "camera:settings" ||
+        Entry->DomainTag == "render:settings";
+    const bool UseProjectBlueprint = (ProjectBp != nullptr) && (ProjectBp->OverrideNative || !ExplicitNativeTag);
+    const char* ActiveSubtitle = UseProjectBlueprint ? ProjectBp->Subtitle.c_str() : ResolveSubtitle(Target, *Entry);
+
+    InspectorPrimitives::ResetTooltipQueue();
 
     Surface.FillRectangle(PaneBounds, ColorRgba{ 24u, 24u, 24u, 255u }, 0.0f);
     Surface.StrokeLine({ PaneBounds.X + 0.5f, PaneBounds.Y }, { PaneBounds.X + 0.5f, PaneBounds.Bottom() }, ColorRgba{ 255u, 255u, 255u, 14u }, 1.0f);
@@ -272,12 +289,16 @@ bool InspectorRegistry::ConstructActiveInspector(
     const std::string Breadcrumb = InspectorInstanceRegister::ResolveEnclosingBreadcrumb(Outliner, Entry->Token);
     CursorY = InspectorPrimitives::ConstructInspectorHeader(
         Surface, InnerLeft, CursorY, InnerWidth,
-        Breadcrumb.c_str(), Entry->Title.c_str(), ResolveSubtitle(Target, *Entry));
+        Breadcrumb.c_str(), Entry->Title.c_str(), ActiveSubtitle);
 
     bool LocalMutated = false;
     bool PageSwitched = false;
 
-    switch (Target)
+    if (UseProjectBlueprint)
+    {
+        CursorY = ProjectHost.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, *ProjectBp, Input, LocalMutated, PageSwitched);
+    }
+    else switch (Target)
     {
         case ResolvedInspectorTarget::Folder:
             CursorY = Folder.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Outliner, Input, LocalMutated, PageSwitched);
@@ -326,6 +347,9 @@ bool InspectorRegistry::ConstructActiveInspector(
             break;
         case ResolvedInspectorTarget::Camera:
             CursorY = Camera.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessCamera(Entry->Token, Scene), DisplaySettings, Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::CameraSettings:
+            CursorY = CameraSettings.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessCameraSettings(Entry->Token), DisplaySettings, Input, LocalMutated, PageSwitched);
             break;
         case ResolvedInspectorTarget::LensFlare:
             CursorY = LensFlare.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessLensFlare(Entry->Token, Scene), Input, LocalMutated, PageSwitched);
@@ -405,6 +429,7 @@ bool InspectorRegistry::ConstructActiveInspector(
     if (ResetRequested)
     {
         Instances.EraseEntry(Entry->Token);
+        ProjectHost.EraseEntryReadings(Entry->Token);
         if (Target == ResolvedInspectorTarget::AnalyticPrimitive ||
             Target == ResolvedInspectorTarget::NativeGeometry    ||
             Target == ResolvedInspectorTarget::ImportedGeometry  ||
@@ -421,6 +446,7 @@ bool InspectorRegistry::ConstructActiveInspector(
     {
         const OutlinerSlotToken TargetToken = Entry->Token;
         Instances.EraseEntry(TargetToken);
+        ProjectHost.EraseEntryReadings(TargetToken);
         bool RemovedViaRegistry = false;
         if (EnvironmentRegistry != nullptr)
         {
@@ -458,7 +484,8 @@ bool InspectorRegistry::ConstructActiveInspector(
     ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, MaxScroll);
 
     Surface.PopClip();
-    InspectorPrimitives::ConstructInspectorFooter(Surface, FooterRect, ResolveSubtitle(Target, *Entry), "F11");
+    InspectorPrimitives::ConstructInspectorFooter(Surface, FooterRect, ActiveSubtitle, "F11");
+    InspectorPrimitives::FlushTooltipOverlay(Surface, PaneBounds);
     return true;
 }
 

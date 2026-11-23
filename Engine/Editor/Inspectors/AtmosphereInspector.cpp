@@ -418,16 +418,18 @@ float AtmosphereInspector::Construct(
         UpdateSkyViewSurface(Medium, ActiveSolar);
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Live atmospheric LUTs");
         CursorY += 20.0f;
+        bool TransRebake = false, SkyRebake = false;
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
             Surface, LeftX, CursorY, InnerWidth, "Transmittance LUT", "256 x 64",
             "RGB32F -> RGBA8 sRGB  ·  elevation x altitude",
             "X: View elevation (-6..90 deg)   ·   Y: Altitude (0..60 km)",
-            TransmittanceLut, 74.0f);
+            TransmittanceLut, 74.0f, &Input, &TransSettingsOpen, &TransResolutionTier, &TransRebake);
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
             Surface, LeftX, CursorY, InnerWidth, "Sky-view LUT", "192 x 108",
             "RGBA32F -> RGBA8 sRGB  ·  equirectangular sky dome",
             "X: Azimuth (0..360 deg)   ·   Y: Elevation (+90..-90 deg)",
-            SkyViewLut, 112.0f);
+            SkyViewLut, 112.0f, &Input, &SkyViewSettingsOpen, &SkyViewResolutionTier, &SkyRebake);
+        if (TransRebake || SkyRebake) OutMutated = true;
     }
 
     return CursorY;

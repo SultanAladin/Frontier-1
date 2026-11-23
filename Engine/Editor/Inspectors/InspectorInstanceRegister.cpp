@@ -40,6 +40,7 @@ void InspectorInstanceRegister::Clear() noexcept
     Precipitations.clear();
     Rainbows.clear();
     Cameras.clear();
+    CameraSettingsEntries.clear();
     LensFlares.clear();
     MotionBlurs.clear();
     PointLights.clear();
@@ -74,6 +75,7 @@ void InspectorInstanceRegister::EraseEntry(OutlinerSlotToken Token) noexcept
     Precipitations.erase(Key);
     Rainbows.erase(Key);
     Cameras.erase(Key);
+    CameraSettingsEntries.erase(Key);
     LensFlares.erase(Key);
     MotionBlurs.erase(Key);
     PointLights.erase(Key);
@@ -202,6 +204,11 @@ CameraInstanceData& InspectorInstanceRegister::AccessCamera(
     auto [It, Inserted] = Cameras.try_emplace(Token.Identifier);
     if (Inserted) It->second.LensFlare = Scene.Atmosphere.LensFlare;
     return It->second;
+}
+
+CameraSettingsData& InspectorInstanceRegister::AccessCameraSettings(OutlinerSlotToken Token)
+{
+    return CameraSettingsEntries[Token.Identifier];
 }
 
 LensFlareInstanceData& InspectorInstanceRegister::AccessLensFlare(

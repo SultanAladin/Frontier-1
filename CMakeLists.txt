@@ -965,6 +965,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Inspectors/PrecipitationInspector.cpp
         Engine/Editor/Inspectors/RainbowInspector.cpp
         Engine/Editor/Inspectors/CameraInspector.cpp
+        Engine/Editor/Inspectors/CameraSettingsInspector.cpp
         Engine/Editor/Inspectors/LensFlareInspector.cpp
         Engine/Editor/Inspectors/MotionBlurInspector.cpp
         Engine/Editor/Inspectors/PointLightInspector.cpp
@@ -980,6 +981,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Inspectors/NativeGeometryInspector.cpp
         Engine/Editor/Inspectors/ImportedGeometryInspector.cpp
         Engine/Editor/Inspectors/ProceduralGeometryInspector.cpp
+        Engine/Editor/Inspectors/ProjectInspectorFoundation.cpp
         Engine/Editor/Inspectors/FolderInspector.cpp
         Engine/Editor/Inspectors/InspectorRegistry.cpp
         Engine/Lifecycle/EditorLifecycle.cpp

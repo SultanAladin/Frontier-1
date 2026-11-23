@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -183,6 +184,7 @@ int main()
     const OutlinerSlotToken PrecipTok     = AppendEntry(Outliner, "Rain Shower",      "Precipitation",   "env:precipitation",     ConstructSlotCategory::LayerGroup,     WeatherFolder);
     const OutlinerSlotToken RainbowTok    = AppendEntry(Outliner, "Primary Bow",      "Optical Arc",     "env:rainbow",           ConstructSlotCategory::LayerGroup,     WeatherFolder);
     const OutlinerSlotToken CameraTok     = AppendEntry(Outliner, "Main Camera",      "Optics Camera",   "optics:camera",         ConstructSlotCategory::OpticsCamera,   {});
+    const OutlinerSlotToken CamSetTok     = AppendEntry(Outliner, "Camera Settings",  "Render pipeline", "env:camera-settings",   ConstructSlotCategory::OpticsCamera,   {});
     const OutlinerSlotToken LensFlareTok  = AppendEntry(Outliner, "Anamorphic Flare", "Lens Flare",      "env:lens-flare",        ConstructSlotCategory::LayerGroup,     {});
     const OutlinerSlotToken MotionBlurTok = AppendEntry(Outliner, "Motion Shutter",   "Motion Blur",     "env:motion-blur",       ConstructSlotCategory::LayerGroup,     {});
     // All 8 Lighting Inspectors: Point, Spot, IES Photometric, Area/Softbox, Tube, LED Emitter, LED Strip + Environment IBL
@@ -406,13 +408,157 @@ int main()
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SkyRigFolder, OutDir / "15-Folder-Overview.png"), "15-Folder-Overview.png");
 
-    // 4. Exercise remaining inspectors + untagged universal fallback geometry entry cleanly
+    // 4. F77/F78 Camera Settings Inspector (Render Type Hero + Dynamic per-renderer pages + preserved settings)
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CamSetTok, OutDir / "26-CameraSettings-Overview.png"), "26-CameraSettings-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CamSetTok, OutDir / "26-CameraSettings-Overview.png");
+    AllOk &= VerifyRequirement(
+        Inspectors.QueryCameraSettings().QueryPreviewUploads() == 1u,
+        "Camera Settings Render Type hero sphere stays at 1 retained upload");
+
+    auto& CamSet = Reg.AccessCameraSettings(CamSetTok);
+    CamSet.PbrFillGain = 1.65f;
+    CamSet.RendererIndex = 2u; // Switch to Ray Traced
+    CamSet.RayGiSamples  = 12.0f;
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CamSetTok, OutDir / "27-CameraSettings-RayTraced.png"), "27-CameraSettings-RayTraced.png");
+    CamSet.RendererIndex = 0u; // Switch back to PBR and verify PBR settings survived untouched
+    AllOk &= VerifyRequirement(
+        std::fabs(CamSet.PbrFillGain - 1.65f) < 1e-4f && std::fabs(CamSet.RayGiSamples - 12.0f) < 1e-4f,
+        "Switching Camera Settings renderer preserves per-renderer parameters independently");
+
+    // 5. F78 Camera Mount page (On tripod vs Floating diagram + height/roll controls)
+    auto& CamInst = Reg.AccessCamera(CameraTok, Bundle.Scene);
+    CamInst.TripodMounted = false; // Floating crane / rig
+    CamInst.MountHeightMeters = 2.4f;
+    CamInst.CameraRollDegrees = -8.0f;
+    Inspectors.QueryCamera().SetActivePage(3u); // Mount page
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CameraTok, OutDir / "28-Camera-Mount.png"), "28-Camera-Mount.png");
+    Inspectors.QueryCamera().SetActivePage(0u);
+
+    // 6. F76 Baking card hover tooltip over green Baked capsule + Bake Settings resolution picker
+    Inspectors.QueryAtmosphere().SetActivePage(5u); // Baking page
+    {
+        PaneInputReading HoverBaked {};
+        HoverBaked.PrimaryPointer.X = 88.0f;
+        HoverBaked.PrimaryPointer.Y = 230.0f; // Over the green ✓ Baked capsule on the first LUT section
+        AllOk &= VerifyRequirement(
+            RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "29-Atmosphere-BakingTooltip.png", HoverBaked),
+            "29-Atmosphere-BakingTooltip.png");
+
+        PaneInputReading ClickRebake {};
+        ClickRebake.PrimaryPointer.X = 248.0f;
+        ClickRebake.PrimaryPointer.Y = 230.0f; // Click the ↺ Rebake button to open Bake Settings
+        ClickRebake.PrimaryPointer.Pressed = true;
+        (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "30-Atmosphere-BakeSettings.png", ClickRebake);
+        AllOk &= VerifyRequirement(
+            RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "30-Atmosphere-BakeSettings.png"),
+            "30-Atmosphere-BakeSettings.png");
+    }
+    Inspectors.QueryAtmosphere().SetActivePage(0u);
+
+    // 7. Tier 2 Project-Defined Custom User UI Inspector loaded from <TempProject>/Inspectors/*.Inspector.toml
+    {
+        const std::filesystem::path TempProjDir = std::filesystem::temp_directory_path() / "FrontierProjectInspectorTest";
+        const std::filesystem::path TempInspDir = TempProjDir / "Inspectors";
+        std::filesystem::create_directories(TempInspDir, DirEc);
+        const std::filesystem::path TomlPath = TempInspDir / "VehicleAero.Inspector.toml";
+        {
+            std::ofstream Out(TomlPath);
+            Out << R"([inspector]
+id = "project.vehicle-aero"
+target_tag = "project:vehicle-aero"
+subtitle = "Project custom inspector · aerodynamics"
+override_native = false
+tags = ["project", "aero", "telemetry"]
+
+[[pages]]
+title = "Overview"
+
+  [[pages.sections]]
+  heading = "Active Aero Surface"
+  caption = "User UI"
+  tooltip = "Author-defined aerodynamic downforce profile loaded from Project/Inspectors."
+
+    [[pages.sections.fields]]
+    key = "downforce_bias"
+    label = "Front downforce bias"
+    control = "slider"
+    unit = "%"
+    format = "%.1f"
+    min = 25.0
+    max = 75.0
+    default = 48.5
+    tooltip = "Percentage of total downforce on the front axle."
+
+    [[pages.sections.fields]]
+    key = "drs_enabled"
+    label = "Active DRS flap"
+    control = "toggle"
+    default = true
+
+    [[pages.sections.fields]]
+    key = "aero_mode"
+    label = "Wing package"
+    control = "choice"
+    columns = 3
+    options = ["Low drag", "Balanced", "Track"]
+    default = 2
+
+    [[pages.sections.fields]]
+    key = "livery_accent"
+    label = "Trace colour"
+    control = "colour"
+    default_rgb = [0.35, 0.72, 0.98]
+
+    [[pages.sections.fields]]
+    key = "solver_profile"
+    label = "CFD profile"
+    control = "metadata"
+    default = "WindTunnel_v4"
+
+    [[pages.sections.fields]]
+    key = "recompute_aero"
+    label = "Recompute Aero Curve"
+    control = "action"
+)";
+        }
+
+        std::vector<std::string> ScanDiags {};
+        const uint32_t LoadedCount = Inspectors.QueryProjectHost().ScanProjectDirectory(TempProjDir, &ScanDiags);
+        AllOk &= VerifyRequirement(LoadedCount == 1u && ScanDiags.empty(), "ProjectInspectorHost scans & parses <ProjectRoot>/Inspectors/*.Inspector.toml cleanly");
+
+        const OutlinerSlotToken AeroA = AppendEntry(Outliner, "GT3 Aero Package A", "Custom UI", "project:vehicle-aero", ConstructSlotCategory::GeometryVolume, PropsFolder);
+        const OutlinerSlotToken AeroB = AppendEntry(Outliner, "GT3 Aero Package B", "Custom UI", "project:vehicle-aero", ConstructSlotCategory::GeometryVolume, PropsFolder);
+
+        const ProjectInspectorBlueprint* Bp = Inspectors.QueryProjectHost().ResolveBlueprint(*Outliner.FindEntry(AeroA));
+        AllOk &= VerifyRequirement(Bp != nullptr && Bp->BlueprintId == "project.vehicle-aero", "ProjectInspectorHost resolves blueprint for project:vehicle-aero");
+        if (Bp != nullptr)
+        {
+            auto& ReadA = Inspectors.QueryProjectHost().AccessReadings(AeroA, *Bp);
+            auto& ReadB = Inspectors.QueryProjectHost().AccessReadings(AeroB, *Bp);
+            ReadA.Fields["downforce_bias"].ScalarReading = 54.0f;
+            ReadB.Fields["downforce_bias"].ScalarReading = 41.0f;
+            AllOk &= VerifyRequirement(
+                std::fabs(Inspectors.QueryProjectHost().AccessReadings(AeroA, *Bp).Fields["downforce_bias"].ScalarReading - 54.0f) < 1e-4f &&
+                std::fabs(Inspectors.QueryProjectHost().AccessReadings(AeroB, *Bp).Fields["downforce_bias"].ScalarReading - 41.0f) < 1e-4f,
+                "Project User UI Inspector preserves independent multi-instance readings per Outliner entry");
+        }
+
+        PaneInputReading HoverTip {};
+        HoverTip.PrimaryPointer.X = 274.0f;
+        HoverTip.PrimaryPointer.Y = 212.0f; // Hover over the section '?' tooltip trigger
+        AllOk &= VerifyRequirement(
+            RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AeroA, OutDir / "31-ProjectCustomInspector-Overview.png", HoverTip),
+            "31-ProjectCustomInspector-Overview.png");
+        std::filesystem::remove_all(TempProjDir, DirEc);
+    }
+
+    // 8. Exercise remaining inspectors + untagged universal fallback geometry entry cleanly
     for (OutlinerSlotToken Tok : { LocalCloudTok, AerialFogTok, LocalFogTok, GodRaysTok, PrecipTok, RainbowTok, LensFlareTok, MotionBlurTok, UntaggedTok })
     {
         AllOk &= RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, Tok, OutDir / "99-AuxCheck.png");
     }
     std::filesystem::remove(OutDir / "99-AuxCheck.png", DirEc);
-    AllOk &= VerifyRequirement(true, "All 30 standalone inspectors (including all 8 Lighting & 4 Geometry categories) exercised cleanly");
+    AllOk &= VerifyRequirement(true, "All 31 native standalone inspectors + Project User UI Inspector foundation exercised cleanly");
 
     TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiSession);
