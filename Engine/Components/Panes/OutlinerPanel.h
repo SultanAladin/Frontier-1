@@ -14,6 +14,7 @@
 #include "Engine/Components/RetainedCanvasCache.h"
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -111,9 +112,16 @@ struct OutlinerRecordEntry
     bool                 VisibilityEnabled = true;                                     // [-]  - Direct visibility switch
     bool                 Expanded          = true;                                     // [-]  - Disclosure branch open indicator
     bool                 Locked            = false;                                    // [-]  - Transform edit lock switch
-    bool                 DynamicMotion     = false;                                    // [-]  - Dynamic simulation switch
-    bool                 CastShadows       = true;                                     // [-]  - Shadow caster capability switch
-    std::string          MotionTagText     {};                                         // [-]  - Optional compact motion indicator
+    bool                 DynamicMotion      = false;                                    // [-]  - Dynamic simulation switch
+    bool                 CastShadows        = true;                                     // [-]  - Shadow caster capability switch
+    std::string          MotionTagText      {};                                         // [-]  - Optional compact motion indicator
+    bool                 RemovalProtected   = false;                                    // [-]  - Prevents deletion (e.g. primary camera)
+    bool                 RenameProtected    = false;                                    // [-]  - Prevents renaming
+    bool                 VisibilityLocked   = false;                                    // [-]  - Disables visibility toggles
+    bool                 DuplicateProtected = false;                                    // [-]  - Disables duplication (e.g. singleton slot)
+    std::string          DuplicateReason    {};                                         // [-]  - Hover tooltip reason when Duplicate is disabled
+    std::string          RemovalReason      {};                                         // [-]  - Hover tooltip reason when Delete is disabled
+    std::string          DomainTag          {};                                         // [-]  - Domain identifier (e.g. "env:sun", "env:folder")
 };
 
 struct OutlinerVisibleRow
@@ -156,11 +164,23 @@ public:
 
     OutlinerSlotToken ConstructFromTemplate(uint32_t TemplateIndex, OutlinerSlotToken ExplicitEnclosure = {});
     OutlinerSlotToken ConstructFolder(std::string_view FolderTitle = "Folder", OutlinerSlotToken ExplicitEnclosure = {});
+    OutlinerSlotToken ConstructDirectEntry(OutlinerRecordEntry Record);
     bool              DeleteSlot(OutlinerSlotToken Token) noexcept;
     uint32_t          DeleteSelection() noexcept;
     OutlinerSlotToken DuplicateSlot(OutlinerSlotToken Token);
     OutlinerSlotToken GroupSelectionIntoFolder(std::string_view FolderTitle = "Folder");
+    void              AssignSelectionHidden(bool Hidden) noexcept;
+    void              IsolateSelection() noexcept;
+    void              SelectNestedForSelection() noexcept;
     void              ClearAll() noexcept;
+
+    void ConfigureFocusViewportCallback(std::function<void(OutlinerSlotToken)> Callback) noexcept;
+    void ConfigureDeleteOverrideCallback(std::function<void(std::span<const OutlinerSlotToken>)> Callback) noexcept;
+    void ConfigureDuplicateOverrideCallback(std::function<void(OutlinerSlotToken)> Callback) noexcept;
+    void ConfigureUndoDeleteCallback(std::function<bool()> Callback) noexcept;
+    void ConfigureQueryUndoAvailableCallback(std::function<bool()> Callback) noexcept;
+    void ConfigureClipboardCopyCallback(std::function<void(std::string_view)> Callback) noexcept;
+    void ConfigureDirectConstructCallback(std::function<void(std::string_view)> Callback) noexcept;
 
     bool AttachToEnclosure(OutlinerSlotToken Token, OutlinerSlotToken NewEnclosure) noexcept;
     bool RepositionRelativeToTarget(
@@ -263,6 +283,14 @@ private:
     Rectangle2D                            LastPhysicalBounds      {};                                    // [px]  - Last rendered Outliner physical bounds
     std::vector<OutlinerRowHitBounds>      LastRenderedRowBounds   {};                                    // [px]  - Last rendered row physical rects
     RetainedCanvasCache                    RetainedCanvas          {};                                    // [-]   - Cached ImDrawList snapshot for unchanged ticks
+
+    std::function<void(OutlinerSlotToken)>                     FocusViewportCallback      {};             // [-]   - Optional viewport focus handler
+    std::function<void(std::span<const OutlinerSlotToken>)>    DeleteOverrideCallback     {};             // [-]   - Optional world-aware deletion handler
+    std::function<void(OutlinerSlotToken)>                     DuplicateOverrideCallback  {};             // [-]   - Optional world-aware duplication handler
+    std::function<bool()>                                      UndoDeleteCallback         {};             // [-]   - Optional Undo Delete handler
+    std::function<bool()>                                      QueryUndoAvailableCallback {};             // [-]   - Optional Undo availability probe
+    std::function<void(std::string_view)>                      ClipboardCopyCallback      {};             // [-]   - Optional clipboard writer
+    std::function<void(std::string_view)>                      DirectConstructCallback    {};             // [-]   - Optional empty-area quick construct handler
 };
 
 //------------------------------------------------------------------------------------------------------------------------

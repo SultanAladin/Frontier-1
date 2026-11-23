@@ -275,9 +275,46 @@ void ViewportPanel::ConfigureConstructSheetOpen(bool Open) noexcept
     ConstructSheetOpen = Open;
     if (Open)
     {
-        RenderSettingsSheetOpen       = false;
+        RenderSettingsSheetOpen = false;
         ProjectionDropdownOpen  = false;
         HeaderDebugDropdownOpen = false;
+        ConstructStage          = ConstructModalStage::Entities;
+        ConstructSelectedKey.clear();
+        ConstructGridScrollY    = 0.0f;
+        ConstructSearchEditor.Active = false;
+        ConstructTitleEditor.Active  = false;
+    }
+}
+
+void ViewportPanel::ConfigureConstructRegistry(std::vector<ConstructRegistryEntry> Entries)
+{
+    ConstructRegistry = std::move(Entries);
+}
+
+void ViewportPanel::ConfigureConstructApplyCallback(ConstructApplyCallback Callback)
+{
+    OnConstructApply = std::move(Callback);
+}
+
+void ViewportPanel::ConfigureConstructRail(ConstructCategoryRail Rail) noexcept
+{
+    ConstructRail        = Rail;
+    ConstructGridScrollY = 0.0f;
+}
+
+void ViewportPanel::SelectConstructPreviewEntry(std::string_view RegistryKey)
+{
+    for (const ConstructRegistryEntry& Entry : ConstructRegistry)
+    {
+        if (Entry.RegistryKey == RegistryKey && !Entry.Disabled)
+        {
+            ConstructSelectedKey = Entry.RegistryKey;
+            const std::string& InitialName = Entry.DefaultTitle.empty() ? Entry.Title : Entry.DefaultTitle;
+            ConstructTitleEditor.Begin(InitialName.c_str());
+            ConstructTitleEditor.Active = false;
+            ConstructStage              = ConstructModalStage::Properties;
+            return;
+        }
     }
 }
 
@@ -852,6 +889,17 @@ void ViewportPanel::RenderDiagnosticsPanel(
 
 Rectangle2D ViewportPanel::QueryConstructDialogBounds(Rectangle2D Bounds) const noexcept
 {
+    if (!ConstructRegistry.empty())
+    {
+        const float DialogW = std::min(860.0f, std::max(460.0f, Bounds.Width - 48.0f));
+        const float DialogH = std::min(760.0f, std::max(380.0f, Bounds.Height - 48.0f));
+        return {
+            Bounds.Center().X - DialogW * 0.5f,
+            Bounds.Center().Y - DialogH * 0.5f,
+            DialogW,
+            DialogH,
+        };
+    }
     const float DialogW = std::min(532.0f, std::max(300.0f, Bounds.Width - 36.0f));
     const float DialogH = std::min(346.0f, std::max(240.0f, Bounds.Height - 70.0f));
     return { Bounds.Center().X - DialogW * 0.5f, Bounds.Y + 94.0f, DialogW, DialogH };
@@ -860,11 +908,576 @@ Rectangle2D ViewportPanel::QueryConstructDialogBounds(Rectangle2D Bounds) const 
 void ViewportPanel::RenderConstructDialog(
     PixelSpace&             Overlay,
     Rectangle2D             Bounds,
-    const PaneInputReading& Input)
+    const PaneInputReading& Input,
+    double                  Δt)
 {
     const Rectangle2D Dialog = QueryConstructDialogBounds(Bounds);
+    const Point2D     Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
 
-    const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    // 1:1 HTML ProjectZeroEditor Construct Modal when ConstructRegistry is populated
+    if (!ConstructRegistry.empty())
+    {
+        // Translucent dark backdrop behind the centered 860x760 modal
+        Overlay.FillRectangle(Bounds, ColorRgba{ 8u, 8u, 8u, 152u }, 0.0f);
+
+        // Modal shell: #171717, 1px #373737, 12px radius (HtmlMeasurements.json)
+        Overlay.FillRectangle(Dialog, ColorRgba{ 23u, 23u, 23u, 255u }, 12.0f);
+        Overlay.StrokeRectangle(Dialog, ColorRgba{ 55u, 55u, 55u, 255u }, 12.0f, 1.0f);
+
+        Overlay.PushClip(Dialog);
+
+        // Step 01 / 02 top header bar (64px height)
+        const float HeaderH = 64.0f;
+        Overlay.StrokeLine(
+            { Dialog.X, Dialog.Y + HeaderH },
+            { Dialog.Right(), Dialog.Y + HeaderH },
+            ColorRgba{ 42u, 42u, 42u, 255u },
+            1.0f);
+
+        const bool InStepTwo = (ConstructStage == ConstructModalStage::Properties);
+
+        // Breadcrumb: "01  Entities"  >  "02  Properties"
+        const Rectangle2D StepOneBtn{ Dialog.X + 20.0f, Dialog.Y + 16.0f, 118.0f, 32.0f };
+        const bool        StepOneHover = InStepTwo && StepOneBtn.Contains(Cursor);
+        if (StepOneHover)
+        {
+            Overlay.FillRectangle(StepOneBtn, ColorRgba{ 36u, 36u, 36u, 255u }, 8.0f);
+        }
+        Overlay.FillRectangle(
+            { StepOneBtn.X + 4.0f, StepOneBtn.Y + 6.0f, 22.0f, 20.0f },
+            !InStepTwo ? ColorRgba{ 244u, 244u, 244u, 255u } : ColorRgba{ 44u, 44u, 44u, 255u },
+            5.0f);
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Medium,
+            { StepOneBtn.X + 8.5f, StepOneBtn.Y + 9.5f },
+            10.0f,
+            !InStepTwo ? ColorRgba{ 18u, 18u, 18u, 255u } : ColorRgba{ 176u, 176u, 176u, 255u },
+            "01");
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Medium,
+            { StepOneBtn.X + 34.0f, StepOneBtn.Y + 8.5f },
+            13.0f,
+            !InStepTwo ? ColorRgba{ 244u, 244u, 244u, 255u } : ColorRgba{ 156u, 156u, 156u, 255u },
+            "Entities");
+        if (StepOneHover && Input.PrimaryPointer.Pressed)
+        {
+            ConstructStage              = ConstructModalStage::Entities;
+            ConstructTitleEditor.Active = false;
+        }
+
+        // Chevron separator
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Regular,
+            { StepOneBtn.Right() + 8.0f, Dialog.Y + 23.0f },
+            13.0f,
+            ColorRgba{ 86u, 86u, 86u, 255u },
+            ">");
+
+        const Rectangle2D StepTwoBadge{ StepOneBtn.Right() + 28.0f, Dialog.Y + 16.0f, 132.0f, 32.0f };
+        Overlay.FillRectangle(
+            { StepTwoBadge.X + 4.0f, StepTwoBadge.Y + 6.0f, 22.0f, 20.0f },
+            InStepTwo ? ColorRgba{ 244u, 244u, 244u, 255u } : ColorRgba{ 36u, 36u, 36u, 255u },
+            5.0f);
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Medium,
+            { StepTwoBadge.X + 8.5f, StepTwoBadge.Y + 9.5f },
+            10.0f,
+            InStepTwo ? ColorRgba{ 18u, 18u, 18u, 255u } : ColorRgba{ 112u, 112u, 112u, 255u },
+            "02");
+        WorkspaceAppearance::ConstructWeightedText(
+            Overlay,
+            FontWeightClass::Medium,
+            { StepTwoBadge.X + 34.0f, StepTwoBadge.Y + 8.5f },
+            13.0f,
+            InStepTwo ? ColorRgba{ 244u, 244u, 244u, 255u } : ColorRgba{ 112u, 112u, 112u, 255u },
+            "Properties");
+
+        // Close button + optional Content Browser pill
+        const Rectangle2D CloseBtn{ Dialog.Right() - 44.0f, Dialog.Y + 18.0f, 28.0f, 28.0f };
+        const bool        CloseHov = CloseBtn.Contains(Cursor);
+        Overlay.FillCircle(CloseBtn.Center(), 14.0f, CloseHov ? ColorRgba{ 48u, 48u, 48u, 255u } : ColorRgba{ 34u, 34u, 34u, 255u });
+        VectorIconRepository::ConstructControl(
+            Overlay,
+            ControlIcon::CloseCross,
+            VectorIconPlacement{ CloseBtn.X + 7.5f, CloseBtn.Y + 7.5f, 13.0f, ColorRgba{ 184u, 184u, 184u, 255u }, 1.85f });
+        if (CloseHov && Input.PrimaryPointer.Pressed)
+        {
+            ConstructSheetOpen = false;
+        }
+
+        if (OpenContentBrowserCallback)
+        {
+            const Rectangle2D BrowserBtn{ CloseBtn.X - 138.0f, Dialog.Y + 19.0f, 126.0f, 26.0f };
+            const bool        BrowserHov = BrowserBtn.Contains(Cursor);
+            Overlay.FillRectangle(BrowserBtn, BrowserHov ? ColorRgba{ 46u, 42u, 34u, 255u } : ColorRgba{ 32u, 32u, 34u, 255u }, 13.0f);
+            Overlay.StrokeRectangle(BrowserBtn, BrowserHov ? WorkspaceSurfaceColors::SelectionAmber : ColorRgba{ 62u, 62u, 66u, 255u }, 13.0f, 1.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Overlay,
+                FontWeightClass::Medium,
+                { BrowserBtn.X + 15.0f, BrowserBtn.Y + 6.5f },
+                10.5f,
+                BrowserHov ? WorkspaceSurfaceColors::SelectionAmber : ColorRgba{ 214u, 214u, 218u, 255u },
+                "Content Browser");
+            if (BrowserHov && Input.PrimaryPointer.Pressed)
+            {
+                ConstructSheetOpen = false;
+                OpenContentBrowserCallback();
+            }
+        }
+
+        if (!InStepTwo)
+        {
+            // Step 01: 7-category left rail (138px) + Search bar + scrollable 161x116 entity grid
+            WorkspaceAppearance::ForwardInputToTextBuffer(ConstructSearchEditor, Input, Δt);
+
+            const float RailW = 138.0f;
+            Overlay.StrokeLine(
+                { Dialog.X + RailW, Dialog.Y + HeaderH },
+                { Dialog.X + RailW, Dialog.Bottom() },
+                ColorRgba{ 42u, 42u, 42u, 255u },
+                1.0f);
+
+            const std::array<std::pair<const char*, ConstructCategoryRail>, 7> Rails = {{
+                { "All",         ConstructCategoryRail::All         },
+                { "Environment", ConstructCategoryRail::Environment },
+                { "Weather",     ConstructCategoryRail::Weather     },
+                { "Cameras",     ConstructCategoryRail::Cameras     },
+                { "Geometry",    ConstructCategoryRail::Geometry    },
+                { "Lighting",    ConstructCategoryRail::Lighting    },
+                { "Vehicle",     ConstructCategoryRail::Vehicle     },
+            }};
+
+            for (std::size_t Idx = 0u; Idx < Rails.size(); ++Idx)
+            {
+                const Rectangle2D RailRow{
+                    Dialog.X + 12.0f,
+                    Dialog.Y + HeaderH + 16.0f + static_cast<float>(Idx) * 38.0f,
+                    RailW - 24.0f,
+                    32.0f,
+                };
+                const bool Active  = (ConstructRail == Rails[Idx].second);
+                const bool Hovered = RailRow.Contains(Cursor);
+                if (Active)
+                {
+                    Overlay.FillRectangle(RailRow, ColorRgba{ 244u, 244u, 244u, 255u }, 8.0f);
+                }
+                else if (Hovered)
+                {
+                    Overlay.FillRectangle(RailRow, ColorRgba{ 36u, 36u, 36u, 255u }, 8.0f);
+                }
+
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    Active ? FontWeightClass::Medium : FontWeightClass::Regular,
+                    { RailRow.X + 12.0f, RailRow.Y + 9.0f },
+                    11.5f,
+                    Active ? ColorRgba{ 18u, 18u, 18u, 255u } : ColorRgba{ 168u, 168u, 168u, 255u },
+                    Rails[Idx].first);
+
+                if (Hovered && Input.PrimaryPointer.Pressed)
+                {
+                    ConstructRail        = Rails[Idx].second;
+                    ConstructGridScrollY = 0.0f;
+                }
+            }
+
+            // Right content area: Search input (38px height) + Grid
+            const float ContentX = Dialog.X + RailW + 18.0f;
+            const float ContentW = std::max(180.0f, Dialog.Right() - 18.0f - ContentX);
+
+            const Rectangle2D SearchBox{ ContentX, Dialog.Y + HeaderH + 16.0f, ContentW, 38.0f };
+            Overlay.FillRectangle(SearchBox, ColorRgba{ 30u, 30u, 30u, 255u }, 10.0f);
+            Overlay.StrokeRectangle(
+                SearchBox,
+                ConstructSearchEditor.Active ? ColorRgba{ 126u, 132u, 146u, 255u } : ColorRgba{ 52u, 52u, 52u, 255u },
+                10.0f,
+                1.0f);
+            VectorIconRepository::ConstructControl(
+                Overlay,
+                ControlIcon::SearchGlass,
+                VectorIconPlacement{ SearchBox.X + 12.0f, SearchBox.Y + 11.5f, 15.0f, ColorRgba{ 118u, 118u, 118u, 255u }, 1.85f });
+
+            if (Input.PrimaryPointer.Pressed)
+            {
+                if (SearchBox.Contains(Cursor))
+                {
+                    if (!ConstructSearchEditor.Active)
+                    {
+                        ConstructSearchEditor.Active          = true;
+                        ConstructSearchEditor.Caret           = ConstructSearchEditor.Length;
+                        ConstructSearchEditor.SelectionAnchor = ConstructSearchEditor.Caret;
+                    }
+                }
+                else if (ConstructSearchEditor.Active)
+                {
+                    ConstructSearchEditor.Finalize();
+                }
+            }
+
+            const std::string_view SearchView(ConstructSearchEditor.Text, ConstructSearchEditor.Length);
+            if (SearchView.empty() && !ConstructSearchEditor.Active)
+            {
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Regular,
+                    { SearchBox.X + 36.0f, SearchBox.Y + 12.0f },
+                    11.5f,
+                    ColorRgba{ 110u, 110u, 110u, 255u },
+                    "Search entities...");
+            }
+            else
+            {
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Overlay,
+                    FontWeightClass::Regular,
+                    { SearchBox.X + 36.0f, SearchBox.Y + 12.0f },
+                    SearchBox.Width - 54.0f,
+                    11.5f,
+                    WorkspaceSurfaceColors::PrimaryInk,
+                    SearchView);
+            }
+
+            // Filter registry entries by active rail & search query
+            std::vector<const ConstructRegistryEntry*> Filtered{};
+            Filtered.reserve(ConstructRegistry.size());
+            for (const ConstructRegistryEntry& Entry : ConstructRegistry)
+            {
+                if (ConstructRail != ConstructCategoryRail::All && Entry.Rail != ConstructRail)
+                {
+                    continue;
+                }
+                if (!SearchView.empty() &&
+                    !CaseInsensitiveMatch(Entry.Title, SearchView) &&
+                    !CaseInsensitiveMatch(Entry.CategoryLabel, SearchView))
+                {
+                    continue;
+                }
+                Filtered.push_back(&Entry);
+            }
+
+            const Rectangle2D GridViewport{
+                ContentX,
+                SearchBox.Bottom() + 14.0f,
+                ContentW,
+                std::max(80.0f, Dialog.Bottom() - 16.0f - (SearchBox.Bottom() + 14.0f)),
+            };
+
+            const float    CellGap = 12.0f;
+            const uint32_t Columns = std::max(1u, static_cast<uint32_t>((GridViewport.Width + CellGap) / (161.0f + CellGap)));
+            const float    TileW   = std::floor((GridViewport.Width - static_cast<float>(Columns - 1u) * CellGap) / static_cast<float>(Columns));
+            const float    TileH   = 116.0f;
+            const uint32_t RowCount = (static_cast<uint32_t>(Filtered.size()) + Columns - 1u) / Columns;
+            const float    ContentH = static_cast<float>(RowCount) * TileH +
+                                      static_cast<float>(RowCount > 0u ? RowCount - 1u : 0u) * CellGap;
+            const float    MaxScroll = std::max(0.0f, ContentH - GridViewport.Height);
+
+            if (GridViewport.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 1.0e-4f)
+            {
+                ConstructGridScrollY -= Input.WheelDeltaY * 40.0f;
+            }
+            ConstructGridScrollY = std::clamp(ConstructGridScrollY, 0.0f, MaxScroll);
+
+            const char* HoveredDisabledTip = nullptr;
+
+            Overlay.PushClip(GridViewport);
+            for (std::size_t Idx = 0u; Idx < Filtered.size(); ++Idx)
+            {
+                const ConstructRegistryEntry& Entry = *Filtered[Idx];
+                const uint32_t Col   = static_cast<uint32_t>(Idx) % Columns;
+                const uint32_t Row   = static_cast<uint32_t>(Idx) / Columns;
+                const float    CellX = GridViewport.X + static_cast<float>(Col) * (TileW + CellGap);
+                const float    CellY = GridViewport.Y + static_cast<float>(Row) * (TileH + CellGap) - ConstructGridScrollY;
+
+                if (CellY + TileH < GridViewport.Y || CellY > GridViewport.Bottom())
+                {
+                    continue;
+                }
+
+                const Rectangle2D Cell{ CellX, CellY, TileW, TileH };
+                const bool        Hovered = GridViewport.Contains(Cursor) && Cell.Contains(Cursor);
+                const float       TileAlpha = Entry.Disabled ? 0.38f : 1.0f;
+
+                if (Entry.Disabled)
+                {
+                    Overlay.FillRectangle(Cell, ColorRgba{ 26u, 26u, 26u, 255u }, 10.0f);
+                    Overlay.StrokeRectangle(Cell, ColorRgba{ 40u, 40u, 40u, 255u }, 10.0f, 1.0f);
+                    if (Hovered && !Entry.DisabledReason.empty())
+                    {
+                        HoveredDisabledTip = Entry.DisabledReason.c_str();
+                    }
+                }
+                else
+                {
+                    Overlay.FillRectangle(Cell, Hovered ? ColorRgba{ 44u, 44u, 44u, 255u } : ColorRgba{ 32u, 32u, 32u, 255u }, 10.0f);
+                    Overlay.StrokeRectangle(
+                        Cell,
+                        Hovered ? ColorRgba{ 92u, 92u, 92u, 255u } : ColorRgba{ 48u, 48u, 48u, 255u },
+                        10.0f,
+                        1.0f);
+                }
+
+                // Centered 46px vector icon
+                const float   IconSide = 46.0f;
+                const Point2D IconPos{ Cell.Center().X - IconSide * 0.5f, Cell.Y + 18.0f };
+                if (Entry.Symbol != EnvironmentSymbolCategory::None)
+                {
+                    WorkspaceAppearance::ConstructEnvironmentSymbolIcon(Overlay, Entry.Symbol, IconPos, IconSide, TileAlpha);
+                }
+                else
+                {
+                    WorkspaceAppearance::ConstructSlotCategoryIcon(
+                        Overlay,
+                        Entry.FallbackIcon,
+                        IconPos,
+                        IconSide,
+                        WorkspaceSurfaceColors::SageCollection,
+                        TileAlpha);
+                }
+
+                // Optional top-right status pill ("Added", "1 / 6", "Soon")
+                if (!Entry.BadgeText.empty())
+                {
+                    const float BadgeTextW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Medium, 9.0f, Entry.BadgeText);
+                    const Rectangle2D BadgeRect{
+                        Cell.Right() - BadgeTextW - 18.0f,
+                        Cell.Y + 8.0f,
+                        BadgeTextW + 10.0f,
+                        16.0f,
+                    };
+                    Overlay.FillRectangle(
+                        BadgeRect,
+                        Entry.Disabled ? ColorRgba{ 36u, 36u, 36u, 255u } : ColorRgba{ 44u, 46u, 52u, 255u },
+                        8.0f);
+                    WorkspaceAppearance::ConstructWeightedText(
+                        Overlay,
+                        FontWeightClass::Medium,
+                        { BadgeRect.X + 5.0f, BadgeRect.Y + 3.0f },
+                        9.0f,
+                        Entry.Disabled ? ColorRgba{ 138u, 138u, 138u, 255u } : ColorRgba{ 196u, 206u, 224u, 255u },
+                        Entry.BadgeText);
+                }
+
+                // Centered tile title
+                const float MaxTitleW = Cell.Width - 16.0f;
+                const float TitleW    = std::min(
+                    MaxTitleW,
+                    WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 12.0f, Entry.Title));
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Overlay,
+                    FontWeightClass::Regular,
+                    { Cell.Center().X - TitleW * 0.5f, Cell.Bottom() - 28.0f },
+                    MaxTitleW,
+                    12.0f,
+                    Entry.Disabled ? ColorRgba{ 120u, 120u, 120u, 255u } : WorkspaceSurfaceColors::PrimaryInk,
+                    Entry.Title);
+
+                if (!Entry.Disabled && Hovered && Input.PrimaryPointer.Pressed)
+                {
+                    SelectConstructPreviewEntry(Entry.RegistryKey);
+                }
+            }
+            Overlay.PopClip();
+
+            // Hover tooltip for disabled Construct tiles
+            if (HoveredDisabledTip != nullptr && HoveredDisabledTip[0] != '\0')
+            {
+                const float TipTextW = WorkspaceAppearance::MeasureWeightedTextWidth(Overlay, FontWeightClass::Regular, 10.0f, HoveredDisabledTip);
+                const float TipW     = std::clamp(TipTextW + 18.0f, 96.0f, 260.0f);
+                const Rectangle2D TipRect{
+                    std::clamp(Cursor.X + 12.0f, Dialog.X + 8.0f, Dialog.Right() - TipW - 8.0f),
+                    std::clamp(Cursor.Y + 14.0f, Dialog.Y + 8.0f, Dialog.Bottom() - 32.0f),
+                    TipW,
+                    24.0f,
+                };
+                Overlay.FillRectangle(TipRect, ColorRgba{ 16u, 16u, 16u, 248u }, 6.0f);
+                Overlay.StrokeRectangle(TipRect, ColorRgba{ 68u, 68u, 68u, 255u }, 6.0f, 1.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Regular,
+                    { TipRect.X + 9.0f, TipRect.Y + 6.5f },
+                    10.0f,
+                    ColorRgba{ 196u, 196u, 196u, 255u },
+                    HoveredDisabledTip);
+            }
+        }
+        else
+        {
+            // Step 02: Properties preview + editable display name + Cancel / "Add to scene +"
+            WorkspaceAppearance::ForwardInputToTextBuffer(ConstructTitleEditor, Input, Δt);
+
+            const ConstructRegistryEntry* SelectedEntry = nullptr;
+            for (const ConstructRegistryEntry& Entry : ConstructRegistry)
+            {
+                if (Entry.RegistryKey == ConstructSelectedKey)
+                {
+                    SelectedEntry = &Entry;
+                    break;
+                }
+            }
+
+            if (SelectedEntry == nullptr)
+            {
+                ConstructStage = ConstructModalStage::Entities;
+            }
+            else
+            {
+                const float BodyPadX  = 32.0f;
+                const float BodyTopY  = Dialog.Y + HeaderH + 28.0f;
+                const float BodyW     = Dialog.Width - BodyPadX * 2.0f;
+
+                // Preview header block
+                const Rectangle2D PreviewBox{ Dialog.X + BodyPadX, BodyTopY, BodyW, 108.0f };
+                Overlay.FillRectangle(PreviewBox, ColorRgba{ 30u, 30u, 30u, 255u }, 12.0f);
+                Overlay.StrokeRectangle(PreviewBox, ColorRgba{ 48u, 48u, 48u, 255u }, 12.0f, 1.0f);
+
+                const Point2D PreviewIconPos{ PreviewBox.X + 24.0f, PreviewBox.Center().Y - 28.0f };
+                if (SelectedEntry->Symbol != EnvironmentSymbolCategory::None)
+                {
+                    WorkspaceAppearance::ConstructEnvironmentSymbolIcon(Overlay, SelectedEntry->Symbol, PreviewIconPos, 56.0f, 1.0f);
+                }
+                else
+                {
+                    WorkspaceAppearance::ConstructSlotCategoryIcon(Overlay, SelectedEntry->FallbackIcon, PreviewIconPos, 56.0f);
+                }
+
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Medium,
+                    { PreviewBox.X + 96.0f, PreviewBox.Y + 22.0f },
+                    17.0f,
+                    WorkspaceSurfaceColors::PrimaryInk,
+                    SelectedEntry->Title);
+
+                const std::string Subtitle = SelectedEntry->FolderCaption.empty()
+                                                 ? SelectedEntry->CategoryLabel
+                                                 : (SelectedEntry->CategoryLabel + "  •  Folder: " + SelectedEntry->FolderCaption);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Regular,
+                    { PreviewBox.X + 96.0f, PreviewBox.Y + 46.0f },
+                    11.0f,
+                    ColorRgba{ 148u, 152u, 160u, 255u },
+                    Subtitle);
+
+                if (!SelectedEntry->Description.empty())
+                {
+                    WorkspaceAppearance::ConstructTruncatedText(
+                        Overlay,
+                        FontWeightClass::Regular,
+                        { PreviewBox.X + 96.0f, PreviewBox.Y + 68.0f },
+                        PreviewBox.Width - 116.0f,
+                        11.0f,
+                        ColorRgba{ 176u, 176u, 176u, 255u },
+                        SelectedEntry->Description);
+                }
+
+                // Editable Name field
+                const float FieldY = PreviewBox.Bottom() + 28.0f;
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Medium,
+                    { Dialog.X + BodyPadX, FieldY },
+                    11.5f,
+                    ColorRgba{ 186u, 186u, 186u, 255u },
+                    "Name");
+
+                const Rectangle2D NameBox{ Dialog.X + BodyPadX, FieldY + 22.0f, BodyW, 40.0f };
+                Overlay.FillRectangle(NameBox, ColorRgba{ 28u, 28u, 28u, 255u }, 10.0f);
+                Overlay.StrokeRectangle(
+                    NameBox,
+                    ConstructTitleEditor.Active ? ColorRgba{ 138u, 144u, 158u, 255u } : ColorRgba{ 54u, 54u, 54u, 255u },
+                    10.0f,
+                    1.0f);
+
+                if (Input.PrimaryPointer.Pressed)
+                {
+                    if (NameBox.Contains(Cursor))
+                    {
+                        if (!ConstructTitleEditor.Active)
+                        {
+                            ConstructTitleEditor.Active          = true;
+                            ConstructTitleEditor.Caret           = ConstructTitleEditor.Length;
+                            ConstructTitleEditor.SelectionAnchor = ConstructTitleEditor.Caret;
+                        }
+                    }
+                    else if (ConstructTitleEditor.Active)
+                    {
+                        ConstructTitleEditor.Finalize();
+                    }
+                }
+
+                const std::string_view NameView(ConstructTitleEditor.Text, ConstructTitleEditor.Length);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Overlay,
+                    FontWeightClass::Regular,
+                    { NameBox.X + 14.0f, NameBox.Y + 12.5f },
+                    NameBox.Width - 28.0f,
+                    12.5f,
+                    WorkspaceSurfaceColors::PrimaryInk,
+                    NameView.empty() ? std::string_view(SelectedEntry->Title) : NameView);
+
+                // Footer action bar (66px height)
+                const float FooterY = Dialog.Bottom() - 66.0f;
+                Overlay.StrokeLine(
+                    { Dialog.X, FooterY },
+                    { Dialog.Right(), FooterY },
+                    ColorRgba{ 42u, 42u, 42u, 255u },
+                    1.0f);
+
+                const Rectangle2D CancelBtn{ Dialog.X + BodyPadX, FooterY + 14.0f, 96.0f, 38.0f };
+                const bool        CancelHov = CancelBtn.Contains(Cursor);
+                Overlay.FillRectangle(CancelBtn, CancelHov ? ColorRgba{ 44u, 44u, 44u, 255u } : ColorRgba{ 32u, 32u, 32u, 255u }, 10.0f);
+                Overlay.StrokeRectangle(CancelBtn, ColorRgba{ 54u, 54u, 54u, 255u }, 10.0f, 1.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Medium,
+                    { CancelBtn.X + 26.0f, CancelBtn.Y + 12.0f },
+                    12.0f,
+                    ColorRgba{ 212u, 212u, 212u, 255u },
+                    "Cancel");
+
+                const Rectangle2D AddBtn{ Dialog.Right() - BodyPadX - 156.0f, FooterY + 14.0f, 156.0f, 38.0f };
+                const bool        AddHov = AddBtn.Contains(Cursor);
+                Overlay.FillRectangle(AddBtn, AddHov ? ColorRgba{ 255u, 255u, 255u, 255u } : ColorRgba{ 238u, 238u, 238u, 255u }, 10.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Overlay,
+                    FontWeightClass::Medium,
+                    { AddBtn.X + 26.0f, AddBtn.Y + 12.0f },
+                    12.0f,
+                    ColorRgba{ 18u, 18u, 18u, 255u },
+                    "Add to scene +");
+
+                if (CancelHov && Input.PrimaryPointer.Pressed)
+                {
+                    ConstructStage              = ConstructModalStage::Entities;
+                    ConstructTitleEditor.Active = false;
+                }
+                else if ((AddHov && Input.PrimaryPointer.Pressed) || (Input.EnterPressed && ConstructStage == ConstructModalStage::Properties))
+                {
+                    const std::string_view FinalTitle = NameView.empty()
+                                                            ? std::string_view(SelectedEntry->DefaultTitle.empty() ? SelectedEntry->Title : SelectedEntry->DefaultTitle)
+                                                            : NameView;
+                    const std::string KeyCopy(SelectedEntry->RegistryKey);
+                    const std::string TitleCopy(FinalTitle);
+                    ConstructSheetOpen          = false;
+                    ConstructStage              = ConstructModalStage::Entities;
+                    ConstructTitleEditor.Active = false;
+                    if (OnConstructApply)
+                    {
+                        OnConstructApply(KeyCopy, TitleCopy);
+                    }
+                }
+            }
+        }
+
+        Overlay.PopClip();
+        return;
+    }
+
     Overlay.FillRectangle(Dialog, ColorRgba{ 23, 23, 23, 254 }, 14.0f);
     Overlay.StrokeRectangle(Dialog, ColorRgba{ 58, 58, 58, 255 }, 14.0f, 1.0f);
 
@@ -2266,7 +2879,7 @@ void ViewportPanel::Render(
 
     if (ConstructSheetOpen)
     {
-        RenderConstructDialog(ActiveOverlay, Bounds, Input);
+        RenderConstructDialog(ActiveOverlay, Bounds, Input, Δt);
         if (OverlayOpenBefore && Input.PrimaryPointer.Pressed && !ConstructBtn.Contains(Cursor) && !ConstructDragActive)
         {
             const Rectangle2D DialogRect = QueryConstructDialogBounds(Bounds);

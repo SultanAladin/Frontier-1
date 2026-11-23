@@ -48,14 +48,42 @@ enum class DiagnosticsTabCategory : uint8_t
 
 enum class ConstructCategoryRail : uint8_t
 {
-    All             = 0, // [-] - All constructable templates and folders
-    ScenePrimitives = 1, // [-] - Generic constructable entries (generic construct slots)
-    Organization    = 2, // [-] - Organizational folders
+    All             = 0, // [-] - All constructable entries
+    Environment     = 1, // [-] - Atmosphere, Sun, Moon, Stars
+    Weather         = 2, // [-] - Clouds, Wind, Fog, Precipitation, God Rays, Rainbow
+    Cameras         = 3, // [-] - Perspective, Orthographic, Cinematic cameras
+    Geometry        = 4, // [-] - Primitive meshes and volumes
+    Lighting        = 5, // [-] - Point, Spot, Directional, Area luminaires
+    Vehicle         = 6, // [-] - Wheeled and airborne vehicles
+    ScenePrimitives = 7, // [-] - Legacy generic fallback rail (WorkspacePanesValidation)
+    Organization    = 8, // [-] - Legacy organizational folders rail (WorkspacePanesValidation)
+};
+
+enum class ConstructModalStage : uint8_t
+{
+    Entities   = 0, // [-] - Step 01: browse & search entity grid
+    Properties = 1, // [-] - Step 02: edit display name & add to scene
 };
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
+
+struct ConstructRegistryEntry
+{
+    std::string               RegistryKey    {};                                         // [-] - Stable key (e.g. "env:sun")
+    std::string               Title          {};                                         // [-] - Tile display title ("Sun")
+    std::string               DefaultTitle   {};                                         // [-] - Initial Step 02 editable title ("Sun" / "Moon 2")
+    std::string               CategoryLabel  {};                                         // [-] - Subtitle shown in Step 02 ("Environment")
+    std::string               Description    {};                                         // [-] - Short summary shown in Step 02
+    std::string               FolderCaption  {};                                         // [-] - Target folder label ("Environment")
+    ConstructCategoryRail     Rail           = ConstructCategoryRail::Environment;       // [-] - Left rail membership
+    EnvironmentSymbolCategory Symbol         = EnvironmentSymbolCategory::None;          // [-] - Dedicated environment vector icon
+    ConstructSlotCategory     FallbackIcon   = ConstructSlotCategory::GeometryVolume;    // [-] - Fallback icon when Symbol == None
+    bool                      Disabled       = false;                                    // [-] - Greyed out (already added or not yet implemented)
+    std::string               BadgeText      {};                                         // [-] - Optional short pill ("Added", "1 / 6", "Soon")
+    std::string               DisabledReason {};                                         // [-] - Hover tooltip explanation when Disabled == true
+};
 
 struct ViewportDisplaySettings
 {
@@ -117,6 +145,7 @@ class ViewportPanel
 public:
     using NavigationCallback          = std::function<void(ViewportNavigationDirective)>;
     using ConstructCanvasDropCallback = std::function<void(int32_t TemplateIndex, int32_t PresetIndex, Point2D CanvasLogicalPos)>;
+    using ConstructApplyCallback      = std::function<void(std::string_view RegistryKey, std::string_view CustomTitle)>;
 
     ViewportPanel() noexcept;
     ~ViewportPanel() noexcept;
@@ -130,6 +159,10 @@ public:
     void AssignCanvasGpuTexture(uint64_t NativeTextureHandle, uint32_t WidthPx, uint32_t HeightPx) noexcept;
     void ClearCanvasRasterImage() noexcept;
     void ConfigureConstructCanvasDropCallback(ConstructCanvasDropCallback Callback);
+    void ConfigureConstructRegistry(std::vector<ConstructRegistryEntry> Entries);
+    void ConfigureConstructApplyCallback(ConstructApplyCallback Callback);
+    void ConfigureConstructRail(ConstructCategoryRail Rail) noexcept;
+    void SelectConstructPreviewEntry(std::string_view RegistryKey);
     void ConfigureOpenContentBrowserCallback(std::function<void()> Callback);
     void ConfigureRasterCallback(ViewportPaneRasterCallback Callback);
     void ConfigureInteractionCallback(ViewportPaneInteractionCallback Callback);
@@ -164,6 +197,8 @@ public:
     [[nodiscard]] bool                           QueryDiagnosticsPaused() const noexcept { return DiagnosticsPaused; }
     [[nodiscard]] bool                           QueryRenderSettingsSheetOpen() const noexcept;
     [[nodiscard]] bool                           QueryConstructSheetOpen() const noexcept;
+    [[nodiscard]] ConstructCategoryRail          QueryConstructRail() const noexcept { return ConstructRail; }
+    [[nodiscard]] ConstructModalStage            QueryConstructStage() const noexcept { return ConstructStage; }
     [[nodiscard]] bool                           QueryProjectionDropdownOpen() const noexcept;
     [[nodiscard]] ViewportProjectionPreset       QueryPrimaryProjection() const noexcept;
     [[nodiscard]] ViewportProjectionPreset       QuerySecondaryProjection() const noexcept;
@@ -195,7 +230,8 @@ private:
     void RenderConstructDialog(
         PixelSpace&             Overlay,
         Rectangle2D             Bounds,
-        const PaneInputReading& Input);
+        const PaneInputReading& Input,
+        double                  Δt);
     void RenderSettingsSheet(
         PixelSpace&             Overlay,
         Rectangle2D             Bounds,
@@ -238,8 +274,13 @@ private:
     uint32_t                   HistoryPendingFrames    = 0u;                                      // [cnt] - Frames inside the pending sample bucket
     ViewportTimingBreakdown       LastViewportTiming     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
+    ConstructModalStage        ConstructStage          = ConstructModalStage::Entities;           // [-]   - Step 01 Entities vs Step 02 Properties
     float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset
-    TextEditBuffer             ConstructSearchEditor   {};                                        // [-]   - Construct search filter buffer
+    TextEditBuffer             ConstructSearchEditor   {};                                        // [-]   - Construct Step 01 search filter buffer
+    TextEditBuffer             ConstructTitleEditor    {};                                        // [-]   - Construct Step 02 editable title buffer
+    std::string                ConstructSelectedKey    {};                                        // [-]   - RegistryKey chosen in Step 01
+    std::vector<ConstructRegistryEntry> ConstructRegistry {};                                     // [-]   - Configured Construct modal entries (empty = legacy fallback)
+    ConstructApplyCallback     OnConstructApply        {};                                        // [-]   - Invoked when Step 02 "Add to scene +" triggers
     float                      ViewportZoomScale       = 1.0f;                                    // [x]   - Interactive canvas zoom multiplier
     Rectangle2D                LastCanvasPaneBounds    {};                                        // [px]  - Last rendered active sub-viewport rect
     Rectangle2D                LastCanvasPhysicalBounds{};                                        // [px]  - Last rendered active sub-viewport physical rect

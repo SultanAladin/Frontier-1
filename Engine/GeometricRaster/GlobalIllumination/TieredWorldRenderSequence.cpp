@@ -53,6 +53,26 @@ namespace
     return { Curve(Hdr.R), Curve(Hdr.G), Curve(Hdr.B) };
 }
 
+[[nodiscard]] bool QueryAnyEnvironmentBodyActive(const WorldAtmosphereConfiguration& Atmo) noexcept
+{
+    if (Atmo.Medium.AtmosphereEnabled ||
+        Atmo.Medium.OrbitalViewEnabled ||
+        Atmo.Solar.SolarEnabled ||
+        Atmo.Clouds.CloudsEnabled ||
+        Atmo.Stars.StarfieldEnabled)
+    {
+        return true;
+    }
+    for (const auto& Moon : Atmo.Moons)
+    {
+        if (Moon.Visible)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] Mathematics::LinearRGB EvaluateSkyDome(
     Mathematics::Axis3D            Dir,
     Mathematics::LinearRGB         SkyRadiance,
@@ -89,7 +109,7 @@ struct CpuDownsampledCloudField
         const AtmosphericSkySequence&  SkySeq)
     {
         const auto& Atmo = Scene.Atmosphere;
-        if (!Atmo.Medium.AtmosphereEnabled || Atmo.Medium.OrbitalViewEnabled || !Atmo.Clouds.CloudsEnabled || FullW == 0u || FullH == 0u)
+        if (Atmo.Medium.OrbitalViewEnabled || !Atmo.Clouds.CloudsEnabled || FullW == 0u || FullH == 0u)
         {
             WidthPx = HeightPx = 0u;
             RgbaT.clear();
@@ -123,8 +143,10 @@ struct CpuDownsampledCloudField
                 {
                     continue;
                 }
-                const auto LowAngleSky = SkySeq.SampleSkyViewDirection(
-                    Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) }));
+                const auto LowAngleDir = Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) });
+                const auto LowAngleSky = Atmo.Medium.AtmosphereEnabled
+                    ? SkySeq.SampleSkyViewDirection(LowAngleDir)
+                    : EvaluateSkyDome(LowAngleDir, Scene.SkyRadiance, nullptr, nullptr);
                 float CloudTrans = 1.0f;
                 const auto CloudRad = VolumetricCloudSequence::EvaluateVolumetricCloudsWithWind(
                     Basis.CameraOrigin,
@@ -186,7 +208,7 @@ struct CpuDownsampledCloudField
     const auto& Atmo = Scene.Atmosphere;
     const bool IsOrbital = Atmo.Medium.OrbitalViewEnabled ||
                            (Atmo.Medium.ObserverAltitudeMeters > Atmo.Medium.AtmosphereThicknessMeters);
-    if (!Atmo.Medium.AtmosphereEnabled && !IsOrbital)
+    if (!QueryAnyEnvironmentBodyActive(Atmo) && !IsOrbital)
     {
         return EvaluateSkyDome(RayDir, Scene.SkyRadiance, nullptr, nullptr);
     }
@@ -244,12 +266,18 @@ struct CpuDownsampledCloudField
         };
     }
 
-    const auto SolarTrans = AtmosphericSkySequence::ComputeSolarTransmittance(
-        SolarSolved.WorldDirectionToSun, Atmo.Medium, Atmo.Medium.ObserverAltitudeMeters);
-    const auto SkyRad = SkySeq.SampleSkyViewDirection(RayDir);
+    const bool MediumActive = Atmo.Medium.AtmosphereEnabled;
+    const auto SolarTrans = MediumActive
+        ? AtmosphericSkySequence::ComputeSolarTransmittance(
+              SolarSolved.WorldDirectionToSun, Atmo.Medium, Atmo.Medium.ObserverAltitudeMeters)
+        : Mathematics::LinearRGB{ 1.0f, 1.0f, 1.0f };
+    const auto SkyRad = MediumActive
+        ? SkySeq.SampleSkyViewDirection(RayDir)
+        : EvaluateSkyDome(RayDir, Scene.SkyRadiance, nullptr, nullptr);
     Mathematics::LinearRGB MoonOccT { 1.0f, 1.0f, 1.0f };
     const auto MoonStarRad = LunarStarfieldSequence::EvaluateCelestialField(
-        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds, &Atmo.Medium, {}, PixelAngularSizeRad, &MoonOccT);
+        RayDir, SolarSolved.WorldDirectionToSun, Atmo.Moons, Atmo.Stars, Atmo.SimulationSeconds,
+        MediumActive ? &Atmo.Medium : nullptr, {}, PixelAngularSizeRad, &MoonOccT);
     float GlareEclipseVis = 1.0f;
     const float SunR = std::max(0.0008f, Atmo.Solar.AngularDiameterDegrees * 0.5f * Constants::DegToRadFloat);
     for (std::size_t MIdx = 0u; MIdx < std::min<std::size_t>(Atmo.Moons.size(), LunarStarfieldSequence::MaxMoonSlots); ++MIdx)
@@ -268,7 +296,7 @@ struct CpuDownsampledCloudField
     }
     const auto SunRad = AtmosphericSkySequence::EvaluateSolarCoronaRadiance(
         RayDir, SolarSolved.WorldDirectionToSun, Atmo.Solar, SolarTrans, SolarSolved.EffectiveSolarTint, false,
-        &Atmo.Medium, PixelAngularSizeRad, MoonOccT, GlareEclipseVis);
+        MediumActive ? &Atmo.Medium : nullptr, PixelAngularSizeRad, MoonOccT, GlareEclipseVis);
 
     float CloudTrans = 1.0f;
     Mathematics::LinearRGB CloudRad {};
@@ -282,8 +310,10 @@ struct CpuDownsampledCloudField
         };
     }
 
-    const auto LowAngleSky = SkySeq.SampleSkyViewDirection(
-        Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) }));
+    const auto LowAngleDir = Mathematics::NormalizeAxis({ RayDir.X, RayDir.Y, std::max(0.05f, RayDir.Z) });
+    const auto LowAngleSky = MediumActive
+        ? SkySeq.SampleSkyViewDirection(LowAngleDir)
+        : EvaluateSkyDome(LowAngleDir, Scene.SkyRadiance, nullptr, nullptr);
     WorldAtmosphereConfiguration DeckOnlyAtmo = Atmo;
     DeckOnlyAtmo.LocalCloud.LocalEnabled      = false;
     DeckOnlyAtmo.LocalClouds.clear();
@@ -760,7 +790,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                         ? EvaluateDebugChannelColor(Config.DebugChannel, CurBasis.CameraOrigin, Hit, Mat, ResolveHitLodLevel(PreparedScene, Hit), Hit.InstanceOrdinal * 4096u + Hit.ClusterOrdinal)
                         : EvaluateMatCapShading(CurBasis, Hit.TangentFrame.NormalZ, Mat, SunVis);
                 }
-                else if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled && Config.DebugChannel == 0u)
+                else if (QueryAnyEnvironmentBodyActive(PreparedScene.Atmosphere) && Config.DebugChannel == 0u)
                 {
                     const float FU = (static_cast<float>(PX) + 0.5f) / static_cast<float>(Result.WidthPx);
                     const float FV = (static_cast<float>(PY) + 0.5f) / static_cast<float>(Result.HeightPx);
@@ -1021,8 +1051,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
             Mathematics::LinearRGB FinalHdr = Result.DirectLighting.DirectHdrRadiance[Off];
             if (Hit.ValidHit && Hit.MaterialSlot < MatCount)
             {
-                if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled &&
-                    PreparedScene.Atmosphere.Clouds.CloudsEnabled &&
+                if (PreparedScene.Atmosphere.Clouds.CloudsEnabled &&
                     PreparedScene.Atmosphere.Clouds.CloudShadow.ShadowEnabled &&
                     PreparedScene.AreaLights.empty())
                 {
@@ -1081,7 +1110,7 @@ WorldRenderOutput TieredWorldRenderSequence::RenderWorldFrameWithEngine(
                 const float NdcY = 1.0f - FV * 2.0f;
                 const Mathematics::Axis3D RayDir = Mathematics::NormalizeAxis(
                     CurBasis.ForwardAxis + CurBasis.RightAxis * (NdcX * CurBasis.TanHalfFovX) + CurBasis.UpAxis * (NdcY * CurBasis.TanHalfFovY));
-                if (PreparedScene.Atmosphere.Medium.AtmosphereEnabled)
+                if (QueryAnyEnvironmentBodyActive(PreparedScene.Atmosphere))
                 {
                     const float PixelSizeRad = (2.0f * CurBasis.TanHalfFovY) / static_cast<float>(std::max(1u, Result.HeightPx));
                     FinalHdr = EvaluateBackgroundSkyRadiance(

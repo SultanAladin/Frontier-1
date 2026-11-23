@@ -36,6 +36,22 @@ enum class ConstructSlotCategory : uint8_t
     OpticsCamera   = 4, // [-] - Generic constructible slot category 4 (Camera icon)
 };
 
+enum class EnvironmentSymbolCategory : uint8_t
+{
+    None          = 0, // [-] - Fallback to ConstructSlotCategory icon
+    Atmosphere    = 1, // [-] - Planetary limb + Rayleigh blue glow disc
+    Sun           = 2, // [-] - Solar golden-orange photosphere + corona
+    Clouds        = 3, // [-] - Multi-lobe cumulus cloud silhouette
+    Moon          = 4, // [-] - Lunar regolith sphere with craters
+    Stars         = 5, // [-] - Twin 4-point celestial starfield sparkles
+    Wind          = 6, // [-] - Curled wind streamlines
+    Fog           = 7, // [-] - Soft layered mist bank
+    Precipitation = 8, // [-] - Cloud with rain streaks
+    GodRays       = 9, // [-] - Solar crepuscular rays
+    Rainbow       = 10,// [-] - Spectral optical arc
+    Vehicle       = 11,// [-] - Stylized vehicle silhouette
+};
+
 enum class VisualTokenShape : uint8_t
 {
     Circle        = 0, // [-] - Circular filled/stroked color token
@@ -271,6 +287,15 @@ void ConstructSlotCategoryIcon(
     float                 Extent,
     ColorRgba             FolderTint = WorkspaceSurfaceColors::SageCollection,
     float                 Opacity    = 1.0f) noexcept;
+
+void ConstructEnvironmentSymbolIcon(
+    PixelSpace&               Surface,
+    EnvironmentSymbolCategory Symbol,
+    Point2D                   TopLeft,
+    float                     Extent,
+    float                     Opacity = 1.0f) noexcept;
+
+[[nodiscard]] EnvironmentSymbolCategory ResolveEnvironmentSymbolFromTag(std::string_view DomainTag) noexcept;
 
 void ConstructCameraIcon(
     PixelSpace& Surface,

@@ -951,6 +951,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
     list(APPEND FRONTIER_ENGINE_SOURCES
         Engine/Editor/Explorer/ContentBrowser.cpp
         Engine/Editor/Explorer/ProjectBrowser.cpp
+        Engine/Editor/WorldEnvironmentRegistry.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )
 endif()
@@ -1113,6 +1114,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(ControlCentreValidation                   Exhibits/ControlCentreValidation.cpp)
     frontier_register_exhibit(WorkspacePanesValidation                  Exhibits/WorkspacePanesValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(EnvironmentConstructValidation        Exhibits/EnvironmentConstructValidation.cpp)
         frontier_register_exhibit(LifecycleValidation                   Exhibits/LifecycleValidation.cpp)
     endif()
     frontier_register_exhibit(WorkspaceRevisionValidation               Exhibits/WorkspaceRevisionValidation.cpp)

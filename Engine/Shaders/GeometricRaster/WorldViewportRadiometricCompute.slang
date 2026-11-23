@@ -244,7 +244,7 @@ bool IsRaytracingEnabled()  { return (WorldUniforms.AtmosphereMaskPad.w & 8u) ==
 
 float3 EvaluateSkyDome(float3 Dir)
 {
-    if (WorldUniforms.AtmosphereMaskPad.x != 0u)
+    if ((WorldUniforms.AtmosphereMaskPad.x & 1u) != 0u)
     {
         float PlanetRadiusM = max(500000.0, WorldUniforms.CelestialParams.SolarOpticsParams.w);
         float ObsAltM       = WorldUniforms.CelestialParams.SolarOpticsParams.z;
