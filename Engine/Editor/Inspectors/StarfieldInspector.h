@@ -36,9 +36,11 @@ public:
 private:
     void UpdateStarSheetSurface(const GeometricRaster::StarfieldConfiguration& Stars, bool EntryVisible);
 
-    uint32_t                ActivePage    = 0u;
-    uint32_t                ActiveDragId  = 0u;
-    InspectorPreviewSurface StarSheetBake {};
+    uint32_t                ActivePage         = 0u;
+    uint32_t                ActiveDragId       = 0u;
+    bool                    BakeSettingsOpen   = false;
+    uint32_t                BakeResolutionTier = 1u;
+    InspectorPreviewSurface StarSheetBake      {};
 };
 
 } // namespace Frontier

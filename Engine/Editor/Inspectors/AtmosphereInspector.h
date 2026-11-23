@@ -40,12 +40,16 @@ private:
     void UpdateTransmittanceSurface(const GeometricRaster::AtmosphericMediumConfiguration& Medium);
     void UpdateSkyViewSurface(const GeometricRaster::AtmosphericMediumConfiguration& Medium, const GeometricRaster::SolarCelestialConfiguration& Solar);
 
-    uint32_t                ActivePage         = 0u;
-    uint32_t                ActiveDragId       = 0u;
-    InspectorPreviewSurface LimbPreview        {};
-    InspectorPreviewSurface OrbitalPreview     {};
-    InspectorPreviewSurface TransmittanceLut   {};
-    InspectorPreviewSurface SkyViewLut         {};
+    uint32_t                ActivePage             = 0u;
+    uint32_t                ActiveDragId           = 0u;
+    bool                    TransSettingsOpen      = false;
+    bool                    SkyViewSettingsOpen    = false;
+    uint32_t                TransResolutionTier    = 1u;
+    uint32_t                SkyViewResolutionTier  = 1u;
+    InspectorPreviewSurface LimbPreview            {};
+    InspectorPreviewSurface OrbitalPreview         {};
+    InspectorPreviewSurface TransmittanceLut       {};
+    InspectorPreviewSurface SkyViewLut             {};
 };
 
 } // namespace Frontier

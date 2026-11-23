@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             CAMERAINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance Camera Inspector (Overview + retained optical lens preview, Lens, Body, Motion blur, Lens flare)
+// 🧩 Standalone multi-instance Camera Inspector (Overview, Lens, Body, Mount [F78 On tripod / Floating], Motion blur, Lens flare)
 
 #pragma once
 
@@ -15,7 +15,7 @@ class CameraInspector
 {
 public:
     CameraInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Optical lens  ·  sensor gate  ·  rig"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Optical lens  ·  sensor gate  ·  mount"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -25,13 +25,16 @@ public:
 
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
     [[nodiscard]] uint32_t QueryPreviewUploads() const noexcept { return LensPreview.QueryUploadCount(); }
+    [[nodiscard]] uint32_t QueryMountUploads()   const noexcept { return MountPreview.QueryUploadCount(); }
 
 private:
     void UpdateLensSurface(const CameraInstanceData& Instance);
+    void UpdateMountSurface(const CameraInstanceData& Instance);
 
     uint32_t                ActivePage   = 0u;
     uint32_t                ActiveDragId = 0u;
     InspectorPreviewSurface LensPreview  {};
+    InspectorPreviewSurface MountPreview {};
 };
 
 } // namespace Frontier

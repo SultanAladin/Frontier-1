@@ -40,9 +40,16 @@ void InspectorInstanceRegister::Clear() noexcept
     Precipitations.clear();
     Rainbows.clear();
     Cameras.clear();
+    CameraSettingsEntries.clear();
     LensFlares.clear();
     MotionBlurs.clear();
-    Lights.clear();
+    PointLights.clear();
+    SpotLights.clear();
+    IesLights.clear();
+    AreaLights.clear();
+    TubeLights.clear();
+    LedLights.clear();
+    LedStrips.clear();
     EnvironmentLights.clear();
     PostProcesses.clear();
     AnalyticPrimitives.clear();
@@ -68,9 +75,16 @@ void InspectorInstanceRegister::EraseEntry(OutlinerSlotToken Token) noexcept
     Precipitations.erase(Key);
     Rainbows.erase(Key);
     Cameras.erase(Key);
+    CameraSettingsEntries.erase(Key);
     LensFlares.erase(Key);
     MotionBlurs.erase(Key);
-    Lights.erase(Key);
+    PointLights.erase(Key);
+    SpotLights.erase(Key);
+    IesLights.erase(Key);
+    AreaLights.erase(Key);
+    TubeLights.erase(Key);
+    LedLights.erase(Key);
+    LedStrips.erase(Key);
     EnvironmentLights.erase(Key);
     PostProcesses.erase(Key);
     AnalyticPrimitives.erase(Key);
@@ -192,6 +206,11 @@ CameraInstanceData& InspectorInstanceRegister::AccessCamera(
     return It->second;
 }
 
+CameraSettingsData& InspectorInstanceRegister::AccessCameraSettings(OutlinerSlotToken Token)
+{
+    return CameraSettingsEntries[Token.Identifier];
+}
+
 LensFlareInstanceData& InspectorInstanceRegister::AccessLensFlare(
     OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
 {
@@ -203,31 +222,6 @@ LensFlareInstanceData& InspectorInstanceRegister::AccessLensFlare(
 MotionBlurInstanceData& InspectorInstanceRegister::AccessMotionBlur(OutlinerSlotToken Token)
 {
     return MotionBlurs[Token.Identifier];
-}
-
-LightInstanceData& InspectorInstanceRegister::AccessLight(
-    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
-{
-    auto [It, Inserted] = Lights.try_emplace(Token.Identifier);
-    if (Inserted && !Scene.PointLights.empty())
-    {
-        It->second.LightTint     = Scene.PointLights.front().Color;
-        It->second.LuminousPower = std::max(100.0f, Scene.PointLights.front().Intensity * 500.0f);
-    }
-    return It->second;
-}
-
-EnvironmentLightInstanceData& InspectorInstanceRegister::AccessEnvironmentLight(
-    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
-{
-    auto [It, Inserted] = EnvironmentLights.try_emplace(Token.Identifier);
-    if (Inserted) It->second.SkyRadiance = Scene.SkyRadiance;
-    return It->second;
-}
-
-PostProcessInstanceData& InspectorInstanceRegister::AccessPostProcess(OutlinerSlotToken Token)
-{
-    return PostProcesses[Token.Identifier];
 }
 
 namespace
@@ -261,6 +255,92 @@ void SeedSurfaceFromScene(GeometrySurfaceBinding& Binding, const GeometricRaster
     }
 }
 } // namespace
+
+PointLightData& InspectorInstanceRegister::AccessPointLight(
+    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = PointLights.try_emplace(Token.Identifier);
+    if (Inserted && !Scene.PointLights.empty())
+    {
+        It->second.RadiantTint       = Scene.PointLights.front().Color;
+        It->second.IntensityCandela   = std::clamp(Scene.PointLights.front().Intensity * 12.0f, 1.0f, 60.0f);
+        It->second.ReachMeters        = std::max(4.0f, Scene.PointLights.front().RangeMeters);
+        It->second.SourceRadiusMeters = std::max(0.02f, Scene.PointLights.front().RadiusMeters);
+    }
+    return It->second;
+}
+
+SpotLightData& InspectorInstanceRegister::AccessSpotLight(
+    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = SpotLights.try_emplace(Token.Identifier);
+    if (Inserted && !Scene.PointLights.empty())
+    {
+        It->second.RadiantTint = Scene.PointLights.front().Color;
+    }
+    return It->second;
+}
+
+IesLightData& InspectorInstanceRegister::AccessIesLight(
+    OutlinerSlotToken Token, const OutlinerRecordEntry& Entry)
+{
+    auto [It, Inserted] = IesLights.try_emplace(Token.Identifier);
+    if (Inserted)
+    {
+        const std::string Combined = Entry.Title + " " + Entry.Subtitle + " " + Entry.DomainTag;
+        if (ContainsLower(Combined, "wall"))        It->second.ProfilePresetIndex = 1u;
+        else if (ContainsLower(Combined, "batwing"))It->second.ProfilePresetIndex = 2u;
+        else if (ContainsLower(Combined, "ece"))    { It->second.ProfilePresetIndex = 3u; It->second.FieldAngleDegrees = 58.0f; It->second.RangeMeters = 120.0f; }
+        else if (ContainsLower(Combined, "sae"))    { It->second.ProfilePresetIndex = 4u; It->second.FieldAngleDegrees = 54.0f; It->second.RangeMeters = 110.0f; }
+        else if (ContainsLower(Combined, "high"))   { It->second.ProfilePresetIndex = 5u; It->second.FieldAngleDegrees = 36.0f; It->second.RangeMeters = 180.0f; }
+        else if (ContainsLower(Combined, "fog"))    { It->second.ProfilePresetIndex = 6u; It->second.FieldAngleDegrees = 82.0f; }
+        else if (ContainsLower(Combined, "parking"))It->second.ProfilePresetIndex = 7u;
+        else                                        It->second.ProfilePresetIndex = 0u;
+    }
+    return It->second;
+}
+
+AreaLightData& InspectorInstanceRegister::AccessAreaLight(
+    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = AreaLights.try_emplace(Token.Identifier);
+    if (Inserted && !Scene.AreaLights.empty())
+    {
+        const auto& First = Scene.AreaLights.front();
+        It->second.WidthMeters      = std::clamp(First.HalfWidthMeters * 2.0f, 0.2f, 20.0f);
+        It->second.HeightMeters     = std::clamp(First.HalfHeightMeters * 2.0f, 0.2f, 20.0f);
+        It->second.TwoSidedRadiator = First.TwoSidedEmission;
+    }
+    return It->second;
+}
+
+TubeLightData& InspectorInstanceRegister::AccessTubeLight(OutlinerSlotToken Token)
+{
+    return TubeLights[Token.Identifier];
+}
+
+LedLightData& InspectorInstanceRegister::AccessLedLight(OutlinerSlotToken Token)
+{
+    return LedLights[Token.Identifier];
+}
+
+LedStripData& InspectorInstanceRegister::AccessLedStrip(OutlinerSlotToken Token)
+{
+    return LedStrips[Token.Identifier];
+}
+
+EnvironmentLightInstanceData& InspectorInstanceRegister::AccessEnvironmentLight(
+    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = EnvironmentLights.try_emplace(Token.Identifier);
+    if (Inserted) It->second.SkyRadiance = Scene.SkyRadiance;
+    return It->second;
+}
+
+PostProcessInstanceData& InspectorInstanceRegister::AccessPostProcess(OutlinerSlotToken Token)
+{
+    return PostProcesses[Token.Identifier];
+}
 
 AnalyticPrimitiveData& InspectorInstanceRegister::AccessAnalyticPrimitive(
     OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene)
@@ -573,14 +653,117 @@ void InspectorInstanceRegister::CombineIntoScene(
             {
                 if (const auto It = EnvironmentLights.find(Key); It != EnvironmentLights.end())
                 {
+                    const float EvGain = It->second.GainScale * std::pow(2.0f, It->second.ExposureEv);
                     Scene.SkyRadiance = {
-                        It->second.SkyRadiance.R * It->second.GainScale,
-                        It->second.SkyRadiance.G * It->second.GainScale,
-                        It->second.SkyRadiance.B * It->second.GainScale,
+                        It->second.SkyRadiance.R * EvGain,
+                        It->second.SkyRadiance.G * EvGain,
+                        It->second.SkyRadiance.B * EvGain,
                     };
                 }
             }
         }
+    }
+
+    // Sync active multi-instance luminaires into WorldSceneSpecification (PointLights & Heitz LTC AreaLights)
+    const bool AuthoredLuminairesPresent = !PointLights.empty() || !SpotLights.empty() || !IesLights.empty() ||
+                                           !AreaLights.empty()  || !TubeLights.empty() || !LedLights.empty() || !LedStrips.empty();
+    if (AuthoredLuminairesPresent)
+    {
+        std::vector<GeometricRaster::DirectPointLightSpec>   CombinedPointLights {};
+        std::vector<GeometricRaster::PolygonalAreaQuadLight> CombinedAreaLights  {};
+        for (const auto& E : Outliner.QueryEntries())
+        {
+            if (E.Category == ConstructSlotCategory::Folder || !Outliner.QueryEffectiveVisibility(E.Token)) continue;
+            const uint64_t Key = E.Token.Identifier;
+            const Mathematics::Axis3D PosWorld { E.PositionX, E.PositionY, E.PositionZ };
+            const auto CombineTint = [](const Mathematics::LinearRGB& SourceRgb, float Kelvin) noexcept -> Mathematics::LinearRGB
+            {
+                const auto K = InspectorPrimitives::ComputeKelvinRgb(Kelvin);
+                return { SourceRgb.R * K.R, SourceRgb.G * K.G, SourceRgb.B * K.B };
+            };
+            if (const auto It = PointLights.find(Key); It != PointLights.end())
+            {
+                const auto& P = It->second;
+                GeometricRaster::DirectPointLightSpec Spec {};
+                Spec.PositionWorld = PosWorld; Spec.RangeMeters = P.ReachMeters;
+                Spec.Color = CombineTint(P.RadiantTint, P.KelvinTemperature);
+                Spec.Intensity = P.IntensityCandela; Spec.RadiusMeters = P.SourceRadiusMeters;
+                CombinedPointLights.push_back(Spec);
+            }
+            else if (const auto It = SpotLights.find(Key); It != SpotLights.end())
+            {
+                const auto& S = It->second;
+                GeometricRaster::DirectPointLightSpec Spec {};
+                Spec.PositionWorld = PosWorld; Spec.RangeMeters = S.ReachMeters;
+                Spec.Color = CombineTint(S.RadiantTint, S.KelvinTemperature);
+                Spec.Intensity = S.IntensityCandela; Spec.RadiusMeters = S.SourceRadiusMeters;
+                CombinedPointLights.push_back(Spec);
+            }
+            else if (const auto It = IesLights.find(Key); It != IesLights.end())
+            {
+                const auto& I = It->second;
+                GeometricRaster::DirectPointLightSpec Spec {};
+                Spec.PositionWorld = PosWorld; Spec.RangeMeters = I.RangeMeters;
+                Spec.Color = CombineTint(I.RadiantTint, I.KelvinTemperature);
+                Spec.Intensity = (I.LuminousFlux * I.ProfileMultiplier) / (4.0f * PiF); Spec.RadiusMeters = 0.08f;
+                CombinedPointLights.push_back(Spec);
+            }
+            else if (const auto It = LedLights.find(Key); It != LedLights.end())
+            {
+                const auto& L = It->second;
+                GeometricRaster::DirectPointLightSpec Spec {};
+                Spec.PositionWorld = PosWorld; Spec.RangeMeters = 18.0f;
+                Spec.Color = CombineTint(L.RadiantTint, L.KelvinTemperature);
+                Spec.Intensity = (L.DriverWatts * L.EfficacyLmPerW * L.Dimmer) / (2.0f * PiF);
+                Spec.RadiusMeters = L.PackageDiameterMm * 0.0005f;
+                CombinedPointLights.push_back(Spec);
+            }
+            else if (const auto It = AreaLights.find(Key); It != AreaLights.end())
+            {
+                const auto& A = It->second;
+                const float AreaM2 = std::max(0.01f, A.WidthMeters * A.HeightMeters);
+                const float RadScale = (A.LuminousFlux / AreaM2) * 0.004f;
+                const auto  C = CombineTint(A.RadiantTint, A.KelvinTemperature);
+                GeometricRaster::PolygonalAreaQuadLight Quad {};
+                Quad.CenterWorld      = PosWorld;
+                Quad.HalfWidthMeters  = A.WidthMeters * 0.5f;
+                Quad.HalfHeightMeters = A.HeightMeters * 0.5f;
+                Quad.EmittedRadiance  = { C.R * RadScale, C.G * RadScale, C.B * RadScale };
+                Quad.TwoSidedEmission = A.TwoSidedRadiator;
+                CombinedAreaLights.push_back(Quad);
+            }
+            else if (const auto It = TubeLights.find(Key); It != TubeLights.end())
+            {
+                const auto& T = It->second;
+                const float AreaM2   = std::max(0.01f, T.LengthMeters * T.TubeRadiusMeters * 2.0f);
+                const float RadScale = (T.LuminousFlux / AreaM2) * 0.003f;
+                const auto  C = CombineTint(T.RadiantTint, T.KelvinTemperature);
+                GeometricRaster::PolygonalAreaQuadLight Quad {};
+                Quad.CenterWorld      = PosWorld;
+                Quad.HalfWidthMeters  = T.LengthMeters * 0.5f;
+                Quad.HalfHeightMeters = T.TubeRadiusMeters;
+                Quad.EmittedRadiance  = { C.R * RadScale, C.G * RadScale, C.B * RadScale };
+                Quad.TwoSidedEmission = true;
+                CombinedAreaLights.push_back(Quad);
+            }
+            else if (const auto It = LedStrips.find(Key); It != LedStrips.end())
+            {
+                const auto& S = It->second;
+                const float TotalLm  = S.LumensPerMetre * S.LengthMeters * S.Dimmer;
+                const float AreaM2   = std::max(0.01f, S.LengthMeters * 0.02f);
+                const float RadScale = (TotalLm / AreaM2) * 0.002f;
+                const auto  C = CombineTint(S.RadiantTint, S.KelvinTemperature);
+                GeometricRaster::PolygonalAreaQuadLight Quad {};
+                Quad.CenterWorld      = PosWorld;
+                Quad.HalfWidthMeters  = S.LengthMeters * 0.5f;
+                Quad.HalfHeightMeters = 0.015f;
+                Quad.EmittedRadiance  = { C.R * RadScale, C.G * RadScale, C.B * RadScale };
+                Quad.TwoSidedEmission = false;
+                CombinedAreaLights.push_back(Quad);
+            }
+        }
+        if (!CombinedPointLights.empty()) Scene.PointLights = std::move(CombinedPointLights);
+        if (!CombinedAreaLights.empty())  Scene.AreaLights  = std::move(CombinedAreaLights);
     }
 
     if (FoundAnyAtmo)

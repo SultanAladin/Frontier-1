@@ -367,11 +367,13 @@ float SolarInspector::Construct(
         UpdateSolarBakeSurface(ActiveMedium, Solar);
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Live solar sky-view LUT");
         CursorY += 20.0f;
+        bool RebakeHit = false;
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
             Surface, LeftX, CursorY, InnerWidth, "Solar sky-view bake", "192 x 108",
             "RGBA32F -> RGBA8 sRGB  ·  sun direction coupled",
             "X: Azimuth (0..360 deg)   ·   Y: Elevation (+90..-90 deg)",
-            SolarBakeLut, 118.0f);
+            SolarBakeLut, 118.0f, &Input, &BakeSettingsOpen, &BakeResolutionTier, &RebakeHit);
+        if (RebakeHit) OutMutated = true;
     }
 
     return CursorY;

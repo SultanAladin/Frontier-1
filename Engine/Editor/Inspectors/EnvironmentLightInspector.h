@@ -24,6 +24,7 @@ public:
         const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched);
 
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
+    [[nodiscard]] uint32_t QueryPreviewUploads() const noexcept { return HemispherePreview.QueryUploadCount(); }
 
 private:
     void UpdateHemisphereSurface(const EnvironmentLightInstanceData& Instance);

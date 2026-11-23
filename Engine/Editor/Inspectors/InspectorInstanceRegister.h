@@ -106,10 +106,55 @@ struct CameraInstanceData
     float    ApertureFStop       = 2.8f;
     float    FocusDistanceMeters = 6.0f;
     uint32_t RigPresetIndex      = 0u;    // [0..2] - Cinema, Rig, Compact
-    bool     TripodMounted       = true;
+    bool     TripodMounted       = true;  // [-]    - true = On tripod (fixed), false = Floating (crane/drone/rig)
+    float    MountHeightMeters   = 1.45f; // [m]    - Camera mount height above ground
+    float    CameraRollDegrees   = 0.0f;  // [deg]  - Dutch roll angle (Floating mount)
+    bool     AimAtShowcase       = true;  // [-]    - Auto-aim pitch & yaw at scene focal subject
     bool     MotionBlurEnabled   = false;
     float    ShutterAngleDegrees = 180.0f;
     GeometricRaster::LensFlareConfiguration LensFlare {};
+};
+
+// Camera Settings (formerly Render Engine - F77/F78): per-renderer independent parameters + Output + Quality budget
+struct CameraSettingsData
+{
+    uint32_t RendererIndex         = 0u;     // [0..3] - 0=PBR, 1=SDF, 2=Ray traced, 3=MatCap
+    uint32_t QualityTierIndex      = 2u;     // [0..3] - Low, Medium, High, Ultra
+
+    // PBR raster settings
+    uint32_t PbrShadowIndex        = 1u;     // [0..2] - PCF, PCSS, SMRT
+    float    PbrShadowCascadeRes    = 2048.0f;// [px]   - Cascade shadow resolution
+    bool     PbrAreaLights         = true;   // [-]    - Heitz LTC polygonal area lights
+    float    PbrFillGain           = 1.00f;  // [x]    - Sky fill radiance multiplier
+    bool     PbrAoEnabled          = true;   // [-]    - XeGTAO screen-space ambient occlusion
+
+    // SDF tracing settings
+    uint32_t SdfShadowIndex        = 1u;     // [0..2] - Hard SDF, Soft Cone, Hybrid Cascade
+    float    SdfTraceSteps         = 48.0f;  // [cnt]  - Maximum sphere-trace steps
+    bool     SdfConeGiEnabled      = true;   // [-]    - Real-time SDF cone GI
+    float    SdfConeCount          = 6.0f;   // [cnt]  - Diffuse GI cones per pixel
+    float    SdfFillGain           = 1.00f;  // [x]    - Ambient fallback fill multiplier
+    bool     SdfAoEnabled          = true;   // [-]    - Distance-field ambient occlusion
+
+    // Ray traced settings
+    uint32_t RayTracerIndex        = 0u;     // [0..2] - WideTree BVH, ReSTIR GI, Path Tracer
+    bool     RayGiEnabled          = true;   // [-]    - Hardware/BVH traced indirect GI
+    float    RayGiSamples          = 4.0f;   // [spp]  - GI rays per pixel
+    float    RayShadowRays         = 2.0f;   // [spp]  - Area shadow rays per pixel
+    bool     RayReflectionsEnabled = true;   // [-]    - Traced glossy reflections
+    float    RayReflectionBounces  = 2.0f;   // [cnt]  - Specular bounce depth
+    bool     RayAoEnabled          = true;   // [-]    - Short-ray cavity AO
+
+    // MatCap studio shading settings
+    uint32_t MatcapShadowIndex     = 1u;     // [0..2] - None, Contact floor, Soft studio
+    float    MatcapLightAngleDeg   = 38.0f;  // [deg]  - Studio key angle
+    float    MatcapRimGain         = 0.35f;  // [0-1]  - Grazing silhouette rim boost
+    uint32_t MatcapChannelIndex    = 0u;     // [0..3] - Clay, Ceramic, Metallic, Normal
+
+    // Output settings
+    float    RenderScalePercent    = 100.0f; // [%]    - Internal resolution scale [50..200]
+    float    ExposureGain          = 1.00f;  // [x]    - Linear output exposure multiplier
+    bool     TemporalAntiAliasing  = true;   // [-]    - Temporal accumulation jitter
 };
 
 struct LensFlareInstanceData
@@ -125,21 +170,110 @@ struct MotionBlurInstanceData
     float MaxSampleRadiusPx   = 24.0f;
 };
 
-struct LightInstanceData
+// Luminaire 1: Omnidirectional Point Light
+struct PointLightData
 {
-    uint32_t               LuminaireFormIndex = 0u;   // [0..4] - Point, Spot, Area, Rect, Tube
-    float                  LuminousPower      = 1200.0f;
-    float                  KelvinTemperature = 5600.0f;
-    Mathematics::LinearRGB LightTint         { 1.00f, 0.96f, 0.90f };
-    float                  ConeDegrees       = 45.0f;
-    float                  SourceRadiusMeters = 0.25f;
+    float                  IntensityCandela   = 22.0f;    // [cd]  - Authored luminous intensity
+    float                  KelvinTemperature  = 5600.0f;  // [K]   - Blackbody colour temperature
+    Mathematics::LinearRGB RadiantTint       { 1.00f, 0.96f, 0.90f };
+    float                  ReachMeters        = 26.0f;    // [m]   - Smooth attenuation reach
+    float                  DecayExponent      = 2.00f;    // [-]   - Distance falloff exponent (2.0 = inverse square)
+    float                  SourceRadiusMeters = 0.08f;    // [m]   - Emitter sphere radius
+    bool                   ShowGlow           = true;     // [-]   - Show emitter glow helper in viewport
 };
 
+// Luminaire 2: Conical Spot Light
+struct SpotLightData
+{
+    float                  IntensityCandela   = 90.0f;    // [cd]  - Authored axial luminous intensity
+    float                  KelvinTemperature  = 5400.0f;  // [K]   - Blackbody colour temperature
+    Mathematics::LinearRGB RadiantTint       { 1.00f, 0.97f, 0.92f };
+    float                  FullConeDegrees    = 26.0f;    // [deg] - Outer full beam cone angle
+    float                  Penumbra           = 0.40f;    // [0-1] - Soft outer edge transition ratio
+    float                  ReachMeters        = 35.0f;    // [m]   - Smooth attenuation cutoff distance
+    float                  SourceRadiusMeters = 0.14f;    // [m]   - Lens aperture radius
+    bool                   ShowCone           = true;     // [-]   - Show beam cone helper in viewport
+};
+
+// Luminaire 3: IES Photometric Distribution Light (LM-63 / PhotometricPointRadiator)
+struct IesLightData
+{
+    float                  LuminousFlux       = 1600.0f;  // [lm]  - Profile source luminous flux
+    float                  ProfileMultiplier  = 1.00f;    // [x]   - Output scale multiplier
+    float                  KelvinTemperature  = 4000.0f;  // [K]   - Blackbody colour temperature
+    Mathematics::LinearRGB RadiantTint       { 1.00f, 0.98f, 0.94f };
+    uint32_t               ProfilePresetIndex = 0u;       // [0..7]- Downlight, Wall wash, Batwing, ECE Low, SAE Low, High Beam, Fog, Parking
+    float                  FieldAngleDegrees  = 60.0f;    // [deg] - Photometric field beam angle
+    float                  CutoffPitchDegrees = 0.0f;     // [deg] - Cut-off pitch tilt [-5..+5 deg]
+    float                  RangeMeters        = 30.0f;    // [m]   - Photometric range cutoff
+    bool                   ShowDistribution   = true;     // [-]   - Show polar distribution wire in viewport
+};
+
+// Luminaire 4: Polygonal Area / Softbox Light (Heitz LTC PolygonalAreaQuadLight)
+struct AreaLightData
+{
+    float                  LuminousFlux       = 2400.0f;  // [lm]  - Authored luminous flux
+    float                  KelvinTemperature  = 5600.0f;  // [K]   - Blackbody colour temperature
+    Mathematics::LinearRGB RadiantTint       { 1.00f, 0.98f, 0.95f };
+    uint32_t               ApertureFormIndex  = 0u;       // [idx] - 0=Rectangle, 1=Disk
+    float                  WidthMeters        = 2.00f;    // [m]   - Aperture horizontal width
+    float                  HeightMeters       = 1.00f;    // [m]   - Aperture vertical height
+    float                  SpreadDegrees      = 120.0f;   // [deg] - Beam spread angle
+    bool                   TwoSidedRadiator   = false;    // [-]   - Emit from both front & back faces
+    bool                   ShowFixture        = true;     // [-]   - Show glowing aperture face in viewport
+};
+
+// Luminaire 5: Linear Tube Light
+struct TubeLightData
+{
+    float                  LuminousFlux       = 1800.0f;  // [lm]  - Total linear luminous flux
+    float                  KelvinTemperature  = 4600.0f;  // [K]   - Blackbody colour temperature
+    Mathematics::LinearRGB RadiantTint       { 0.96f, 0.99f, 1.00f };
+    float                  LengthMeters       = 1.50f;    // [m]   - Linear emitter length
+    float                  TubeRadiusMeters   = 0.04f;    // [m]   - Cylindrical glass radius
+    float                  ReachMeters        = 24.0f;    // [m]   - Smooth attenuation cutoff distance
+    bool                   ShowFixture        = true;     // [-]   - Show glowing tube body in viewport
+};
+
+// Luminaire 6: Solid-State LED Emitter (COB / Star Board)
+struct LedLightData
+{
+    float                  DriverWatts        = 10.0f;    // [W]   - Electrical driver input power
+    float                  EfficacyLmPerW     = 110.0f;   // [lm/W]- Luminous efficacy target
+    float                  Dimmer             = 1.00f;    // [0-1] - Dimmer output level
+    float                  KelvinTemperature  = 4000.0f;  // [K]   - Phosphor colour temperature
+    Mathematics::LinearRGB RadiantTint       { 1.00f, 1.00f, 1.00f };
+    float                  PackageDiameterMm  = 40.0f;    // [mm]  - Emitter package diameter
+    float                  OpticAngleDeg   = 120.0f;   // [deg] - Primary lens optic angle
+    bool                   ShowFixture        = true;     // [-]   - Show emitter fixture in viewport
+};
+
+// Luminaire 7: Linear LED Strip / Ribbon
+struct LedStripData
+{
+    float                  LumensPerMetre     = 1000.0f;  // [lm/m]- Luminous flux per metre
+    float                  WattsPerMetre      = 14.4f;    // [W/m] - Electrical load per metre
+    float                  Dimmer             = 1.00f;    // [0-1] - Dimmer output level
+    float                  KelvinTemperature  = 3000.0f;  // [K]   - Warm/cool phosphor temperature
+    Mathematics::LinearRGB RadiantTint       { 1.00f, 0.98f, 0.94f };
+    float                  LengthMeters       = 2.40f;    // [m]   - Continuous ribbon run length
+    float                  DiodesPerMetre   = 60.0f;    // [/m]  - SMD LED density per metre
+    float                  SupplyVolts        = 24.0f;    // [V]   - DC bus supply voltage
+    bool                   OpalDiffuser       = false;    // [-]   - Opal polycarbonate diffuser channel
+    bool                   ShowFixture        = true;     // [-]   - Show lit channel in viewport
+};
+
+// Luminaire 8: Environment Sky / HDRI Light
 struct EnvironmentLightInstanceData
 {
-    Mathematics::LinearRGB SkyRadiance { 0.42f, 0.56f, 0.78f };
-    float                  GainScale   = 1.0f;
-    bool                   IndirectGi  = true;
+    uint32_t               SourcePresetIndex  = 0u;       // [0..4]- Sky atmosphere, HDRI Studio, HDRI Overcast, HDRI Sunset, Uniform colour
+    Mathematics::LinearRGB SkyRadiance        { 0.42f, 0.56f, 0.78f };
+    float                  RotationDegrees    = 0.0f;     // [deg] - Environment azimuth rotation
+    float                  GainScale          = 1.0f;     // [x]   - Intensity multiplier
+    float                  ExposureEv         = 0.0f;     // [EV]  - Exposure offset [-4..+4]
+    float                  Saturation         = 1.0f;     // [x]   - Chromatic saturation [0..2]
+    float                  GroundBounce       = 0.30f;    // [0-1] - Lower hemisphere bounce reflectance
+    bool                   IndirectGi         = true;
 };
 
 struct PostProcessInstanceData
@@ -234,9 +368,16 @@ public:
     PrecipitationInstanceData&    AccessPrecipitation(OutlinerSlotToken Token);
     RainbowInstanceData&          AccessRainbow(OutlinerSlotToken Token);
     CameraInstanceData&           AccessCamera(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    CameraSettingsData&           AccessCameraSettings(OutlinerSlotToken Token);
     LensFlareInstanceData&        AccessLensFlare(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     MotionBlurInstanceData&       AccessMotionBlur(OutlinerSlotToken Token);
-    LightInstanceData&            AccessLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    PointLightData&               AccessPointLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    SpotLightData&                AccessSpotLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    IesLightData&                 AccessIesLight(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry);
+    AreaLightData&                AccessAreaLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    TubeLightData&                AccessTubeLight(OutlinerSlotToken Token);
+    LedLightData&               AccessLedLight(OutlinerSlotToken Token);
+    LedStripData&                 AccessLedStrip(OutlinerSlotToken Token);
     EnvironmentLightInstanceData& AccessEnvironmentLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     PostProcessInstanceData&      AccessPostProcess(OutlinerSlotToken Token);
     AnalyticPrimitiveData&        AccessAnalyticPrimitive(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene);
@@ -270,9 +411,16 @@ private:
     std::unordered_map<uint64_t, PrecipitationInstanceData>    Precipitations    {};
     std::unordered_map<uint64_t, RainbowInstanceData>          Rainbows          {};
     std::unordered_map<uint64_t, CameraInstanceData>           Cameras           {};
+    std::unordered_map<uint64_t, CameraSettingsData>           CameraSettingsEntries {};
     std::unordered_map<uint64_t, LensFlareInstanceData>        LensFlares        {};
     std::unordered_map<uint64_t, MotionBlurInstanceData>       MotionBlurs       {};
-    std::unordered_map<uint64_t, LightInstanceData>            Lights            {};
+    std::unordered_map<uint64_t, PointLightData>               PointLights       {};
+    std::unordered_map<uint64_t, SpotLightData>                SpotLights        {};
+    std::unordered_map<uint64_t, IesLightData>                 IesLights         {};
+    std::unordered_map<uint64_t, AreaLightData>                AreaLights        {};
+    std::unordered_map<uint64_t, TubeLightData>                TubeLights        {};
+    std::unordered_map<uint64_t, LedLightData>               LedLights       {};
+    std::unordered_map<uint64_t, LedStripData>                 LedStrips         {};
     std::unordered_map<uint64_t, EnvironmentLightInstanceData> EnvironmentLights {};
     std::unordered_map<uint64_t, PostProcessInstanceData>      PostProcesses     {};
     std::unordered_map<uint64_t, AnalyticPrimitiveData>        AnalyticPrimitives{};

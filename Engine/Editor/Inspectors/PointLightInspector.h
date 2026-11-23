@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                             LIGHTINSPECTOR.H
+                                                          POINTLIGHTINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance Light Inspector (Point/Spot/Area/Rect/Tube; owns retained photometric beam preview; Overview, Intensity, Beam, Shadows)
+// 🧩 Standalone multi-instance Point Light Inspector (Radial falloff preview; Overview, Output, Attenuation, Placement, Shadows)
 
 #pragma once
 
@@ -11,26 +11,26 @@
 namespace Frontier
 {
 
-class LightInspector
+class PointLightInspector
 {
 public:
-    LightInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Photometric scene luminaire"; }
+    PointLightInspector() noexcept = default;
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Point light · omnidirectional"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
-        OutlinerRecordEntry& Entry, LightInstanceData& Instance,
+        OutlinerRecordEntry& Entry, PointLightData& Instance,
         const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched);
 
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
-    [[nodiscard]] uint32_t QueryPreviewUploads() const noexcept { return BeamPreview.QueryUploadCount(); }
+    [[nodiscard]] uint32_t QueryPreviewUploads() const noexcept { return FalloffPreview.QueryUploadCount(); }
 
 private:
-    void UpdateBeamSurface(const LightInstanceData& Instance);
+    void UpdateFalloffSurface(const PointLightData& Instance);
 
-    uint32_t                ActivePage   = 0u;
-    uint32_t                ActiveDragId = 0u;
-    InspectorPreviewSurface BeamPreview  {};
+    uint32_t                ActivePage     = 0u;
+    uint32_t                ActiveDragId   = 0u;
+    InspectorPreviewSurface FalloffPreview {};
 };
 
 } // namespace Frontier

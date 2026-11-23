@@ -38,10 +38,12 @@ private:
     void UpdateSolarSkySurface(const GeometricRaster::AtmosphericMediumConfiguration& Medium, const GeometricRaster::SolarCelestialConfiguration& Solar, uint32_t DesignIndex);
     void UpdateSolarBakeSurface(const GeometricRaster::AtmosphericMediumConfiguration& Medium, const GeometricRaster::SolarCelestialConfiguration& Solar);
 
-    uint32_t                ActivePage    = 0u;
-    uint32_t                ActiveDragId  = 0u;
-    InspectorPreviewSurface SunNowPreview {};
-    InspectorPreviewSurface SolarBakeLut  {};
+    uint32_t                ActivePage            = 0u;
+    uint32_t                ActiveDragId          = 0u;
+    bool                    BakeSettingsOpen      = false;
+    uint32_t                BakeResolutionTier    = 1u;
+    InspectorPreviewSurface SunNowPreview         {};
+    InspectorPreviewSurface SolarBakeLut          {};
 };
 
 } // namespace Frontier
