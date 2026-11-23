@@ -15,6 +15,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherImagePlane.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherIcons.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherProjectBrowser.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherWorkspaceHost.h"
 #include "Engine/Workspaces/WorkspaceCapabilityRegister.h"
@@ -794,6 +795,77 @@ int main()
             Dock.Finalize();
             ImGui::DestroyContext(Gui);
             return 1;
+        }
+        ++Passed;
+    }
+
+    // 10. In-app SolidArc Project Browser: PC folder navigation (no OS popup), .solidarc-only filter, project folder CAD previews,
+    //     MatCap+B&W / B&W CAD / MatCap render modes, and opening .solidarc into SolidArc
+    {
+        auto& State = Host.AccessState();
+        const std::filesystem::path SolidArcRoot = RepoRoot / "Content/SolidArc";
+        const std::filesystem::path VehiclesDir  = SolidArcRoot / "Vehicles";
+        if (std::filesystem::is_directory(VehiclesDir))
+        {
+            OpenSketcherProjectBrowser(State, SolidArcRoot);
+            for (int F = 0; F < 2; ++F)
+            {
+                ImGui::NewFrame();
+                Host.BeginFrame(1.0 / 60.0);
+                Dock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+                Host.EndFrame(1.0 / 60.0, true, true);
+                ImGui::Render();
+            }
+            const SketcherBrowserDiagnostic FolderDiag = InspectSketcherProjectBrowser(State);
+            const bool FolderPreviewOk = FolderDiag.OpenCondition && FolderDiag.ProjectFolders >= 1u && FolderDiag.RenderedPreviews >= 1u;
+
+            // Navigate into Content/Geometry/Vehicles/Blends — must show ZERO .blend files (strictly .solidarc + folders only!)
+            bool StrictFilterOk = true;
+            const std::filesystem::path BlendsDir = RepoRoot / "Content/Geometry/Vehicles/Blends";
+            if (std::filesystem::is_directory(BlendsDir))
+            {
+                (void)NavigateSketcherProjectBrowser(State, BlendsDir);
+                const SketcherBrowserDiagnostic BlendsDiag = InspectSketcherProjectBrowser(State);
+                StrictFilterOk = (BlendsDiag.VisibleSolidArcs == 0u);
+            }
+
+            // Navigate into Vehicles, verify all 3 .solidarc files appear and render in MatCap+B&W and B&W CAD
+            (void)NavigateSketcherProjectBrowser(State, VehiclesDir);
+            ConfigureSketcherBrowserPreviewStyle(State, SketcherCadPreviewStyle::MatcapOverlay);
+            for (int F = 0; F < 2; ++F)
+            {
+                ImGui::NewFrame();
+                Host.BeginFrame(1.0 / 60.0);
+                Dock.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+                Host.EndFrame(1.0 / 60.0, true, true);
+                ImGui::Render();
+            }
+            const SketcherBrowserDiagnostic VehDiag = InspectSketcherProjectBrowser(State);
+
+            std::vector<uint8_t> MatcapBwRgba {}, PureBwRgba {}, PureMatcapRgba {};
+            const std::filesystem::path EgoistPath = VehiclesDir / "Egoist.solidarc";
+            const bool RenderOk = RenderSolidArcCadPreviewRgba(EgoistPath, SketcherCadPreviewStyle::MatcapOverlay, 160u, 100u, true, false, -0.68f, 0.42f, 1.0f, MatcapBwRgba)
+                               && RenderSolidArcCadPreviewRgba(EgoistPath, SketcherCadPreviewStyle::DraftingBw,    160u, 100u, true, false, -0.68f, 0.42f, 1.0f, PureBwRgba)
+                               && RenderSolidArcCadPreviewRgba(EgoistPath, SketcherCadPreviewStyle::MatcapStudio,  160u, 100u, true, false, -0.68f, 0.42f, 1.0f, PureMatcapRgba)
+                               && (MatcapBwRgba != PureBwRgba)
+                               && (MatcapBwRgba != PureMatcapRgba);
+
+            const bool SelectOpenOk = SelectSketcherBrowserEntry(State, EgoistPath)
+                                   && ActivateSketcherBrowserSelection(State)
+                                   && !State.ProjectBrowserOpen
+                                   && !State.Document.ReferenceSurfaces.empty();
+
+            if (!VerifyCheck(FolderPreviewOk, "Project folder containing .solidarc renders live CAD preview") ||
+                !VerifyCheck(StrictFilterOk, "Browser hides non-.solidarc files (.blend/etc.) while allowing folder navigation") ||
+                !VerifyCheck(VehDiag.VisibleSolidArcs >= 3u && VehDiag.RenderedPreviews >= 3u, "Vehicles directory lists & previews all .solidarc files") ||
+                !VerifyCheck(RenderOk, "CAD preview renderer produces distinct MatCap+B&W, B&W CAD, and MatCap outputs") ||
+                !VerifyCheck(SelectOpenOk, "Activating a .solidarc file opens it into SolidArc and closes the browser"))
+            {
+                Host.Finalize();
+                Dock.Finalize();
+                ImGui::DestroyContext(Gui);
+                return 1;
+            }
         }
         ++Passed;
     }

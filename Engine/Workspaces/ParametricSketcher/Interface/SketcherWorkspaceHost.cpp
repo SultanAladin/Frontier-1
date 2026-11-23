@@ -7,6 +7,7 @@
 
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherIcons.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherProjectBrowser.h"
 
 #include <volk.h>
 
@@ -79,6 +80,7 @@ void SketcherWorkspaceHost::Finalize() noexcept
         Thumbnail->DestroyPixels();
         Thumbnail->SetStatus(ImTextureStatus_Destroyed);
     }
+    Sketcher::ReleaseSketcherProjectBrowserTextures(State);
     UploadedMatcapGen = 0u;
 
     if (RasterReady)

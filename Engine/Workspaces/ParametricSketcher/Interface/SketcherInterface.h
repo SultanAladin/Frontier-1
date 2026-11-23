@@ -107,6 +107,8 @@ struct SketcherRepeat
     double                      Depth     = 0.0;                                             // [len] - Inset depth (Amount = inset distance)
 };
 
+struct SketcherProjectBrowserSession;
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    STRUCTS
 //------------------------------------------------------------------------------------------------------------------------
@@ -1053,6 +1055,8 @@ struct SketcherWorkspaceStatus
     std::string                           EdgeGroupVariable = {};                            // [-]   - Optional variable bound to edge weight
     int                                   AddModifierKind   = 0;                             // [-]   - Selected ModifierCategory in '+ Add Modifier'
     bool                                  DimensionsEnabled = true;                          // [-]   - Persistent CAD dimension lines overlay
+    bool                                  ProjectBrowserOpen = false;                        // [-]   - In-app SolidArc Project Browser overlay open
+    std::shared_ptr<SketcherProjectBrowserSession> ProjectBrowser = {};                      // [-]   - In-app PC filesystem & CAD preview browser state
 };
 
 //------------------------------------------------------------------------------------------------------------------------
