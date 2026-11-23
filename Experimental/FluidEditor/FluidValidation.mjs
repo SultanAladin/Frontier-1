@@ -101,7 +101,8 @@ function parseUniforms(source)
     for (const match of stripped.matchAll(/uniform\s+(?:lowp|mediump|highp\s+)?(\w+)\s+(\w+)(?:\s*\[\s*(\w+)\s*\])?\s*;/g))
     {
         const [, type, name, arraySize] = match;
-        names.set(name, { type, array: arraySize !== undefined });
+        const parsedLen = Number(arraySize);
+        names.set(name, { type, array: arraySize !== undefined, arrayLength: Number.isFinite(parsedLen) && parsedLen > 0 ? parsedLen : 0 });
     }
     return names;
 }
@@ -159,7 +160,17 @@ function createMockGl()
         drawArrays: () => { calls.draws += 1; },
     };
     for (const setter of ['uniform1i', 'uniform1f', 'uniform2i', 'uniform2f', 'uniform3i', 'uniform3f', 'uniform3fv', 'uniform4fv', 'uniformMatrix4fv'])
-        gl[setter] = (location) => requireLocation(location, setter);
+        gl[setter] = (location, value) =>
+        {
+            requireLocation(location, setter);
+            if ((setter === 'uniform3fv' || setter === 'uniform4fv') && location && location.program && value && value.length)
+            {
+                const info = location.program.uniforms.get(location.name);
+                const stride = setter === 'uniform3fv' ? 3 : 4;
+                if (info && info.arrayLength && value.length > info.arrayLength * stride)
+                    calls.uniformErrors.push(`${location.program.label}: ${setter}(${location.name}) length ${value.length} exceeds array capacity ${info.arrayLength * stride}`);
+            }
+        };
     gl.__calls = calls;
     gl.__labelProgram = (programRecord) => { programs.get(programRecord.program).label = programRecord.label; };
     return gl;

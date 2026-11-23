@@ -583,7 +583,14 @@ export class ParticleSimulation
             const additive = ParticleBlendModes.indexOf(node.Blend) === 1;
             gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
             this.renderBacking(node, record, matrices, camera, pixelRatio);
-            if (ParticleStrandModes.indexOf(node.StrandMode) > 0) this.renderStrands(node, matrices, camera, pixelRatio);
+            const strandMode = ParticleStrandModes.indexOf(node.StrandMode);
+            if (strandMode > 0)
+            {
+                this.renderStrands(node, matrices, camera, pixelRatio);
+                // Pure strand/web/rigging/flora systems (modes 1..8) draw continuous silk/botanical/cable geometry
+                // without scattering loose billboard particle dots over the strands; electrical arcs (9..11) keep corona sparks.
+                if (strandMode <= 8 && ParticleCarrierModes.indexOf(node.CarrierMode) !== 1) continue;
+            }
             const trailMode = ParticleTrailModes.indexOf(node.Trail);
             if (record.trails && trailMode > 0) this.renderTrails(node, record, matrices, camera, pixelRatio);
             // The visual carrier is a billboard sprite or a shaded 3D mesh — the Sprite layer decides.

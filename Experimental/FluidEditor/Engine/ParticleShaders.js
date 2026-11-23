@@ -1564,7 +1564,7 @@ uniform vec3  uOrigin;
 uniform vec3  uAxis;
 uniform float uRadius;
 uniform float uTime;
-uniform vec3  uPalette[6];
+uniform vec3  uPalette[8];
 uniform int   uPaletteCount;
 uniform int   uStrandMode;       // 1 OrbWeave, 2 Cobweb, 3 CablesChains, 4 HangingVines, 5 TallReeds, 6 WoodlandFern, 7 GiantKelp, 8 SeaAnemone, 9 TeslaArcs, 10 PlasmaCage, 11 StormWeb
 uniform int   uStrandVariant;    // 0 Primary, 1 Secondary
@@ -1601,9 +1601,9 @@ float StrandHash(float n, float salt)
 void StrandBasis(out vec3 rAxis, out vec3 uVec, out vec3 fAxis)
 {
     uVec = length(uAxis) > 1e-4 ? normalize(uAxis) : vec3(0.0, 1.0, 0.0);
-    vec3 ref = abs(uVec.y) < 0.92 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-    rAxis = normalize(cross(ref, uVec));
-    fAxis = cross(uVec, rAxis);
+    vec3 ref = abs(uVec.z) < 0.92 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    rAxis = normalize(cross(uVec, ref));
+    fAxis = cross(rAxis, uVec);
 }
 
 vec2 OrbAnchor(int idx, float R)
@@ -1934,7 +1934,7 @@ void main()
         : (uStrandMode == 6 ? sin(pow(clamp(along, 0.02, 0.99), 0.72) * 3.14159265)
         : (uStrandMode == 7 ? (0.45 + 0.55 * sin(along * 3.14159265)) : 1.0));
     float widthMetres = max(0.003, uStrandThickness * widthScale * max(taper, 0.14));
-    float widthPixels = max(widthMetres * uFocalPixels / max(depth, 0.08), styleTag < 2.5 ? 1.15 : 1.5);
+    float widthPixels = max(widthMetres * uFocalPixels / max(depth, 0.08), styleTag < 2.5 ? 1.65 : 2.0);
     clip.xy += normal * side * widthPixels * 0.5 / uViewport * 2.0 * clip.w;
 
     vec3 colour = StrandPalette(clamp(mix(colT, along, styleTag > 4.5 ? 0.55 : 0.25), 0.0, 1.0)) * uBrightness;
@@ -1966,11 +1966,11 @@ void main()
 
     if (tag < 2.5)
     {
-        // Spiderweb / Cobweb: gossamer silk filament + twinkling morning dewdrop beads
-        float core = exp(-aAbs * aAbs * 4.5);
-        float dew = tag > 1.25 ? exp(-pow(fract(u * 5.0 + seed) - 0.5, 2.0) * 90.0) * uStrandGlow : 0.0;
-        rgb = mix(rgb * 0.85, vec3(0.96, 0.99, 1.0), clamp(core * 0.45 + dew, 0.0, 1.0));
-        alpha *= clamp(core * 0.72 + dew * 0.95, 0.0, 1.0);
+        // Spiderweb / Cobweb: crisp backlit gossamer silk filament + twinkling morning dewdrop beads
+        float core = exp(-aAbs * aAbs * 3.2);
+        float dew = tag > 1.25 ? exp(-pow(fract(u * 4.0 + seed) - 0.5, 2.0) * 64.0) * uStrandGlow : 0.0;
+        rgb = mix(rgb * 0.95, vec3(1.0, 1.0, 1.0), clamp(core * 0.55 + dew, 0.0, 1.0));
+        alpha *= clamp(core * 0.92 + dew, 0.0, 1.0);
     }
     else if (tag < 3.8)
     {
