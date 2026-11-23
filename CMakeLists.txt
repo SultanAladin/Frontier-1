@@ -157,6 +157,33 @@ if(NOT ANDROID)
 endif()
 
 #------------------------------------------------------------------------------------------------------------------------
+#                                    PINNED ZSTD DECOMPRESSION (SOLIDARC .BLEND IMPORT)
+#------------------------------------------------------------------------------------------------------------------------
+
+set(ZSTD_ROOT "${CMAKE_SOURCE_DIR}/ExternalPackages/zstd")
+if(NOT EXISTS "${ZSTD_ROOT}/lib/zstd.h")
+    message(FATAL_ERROR "Pinned zstd not found at ${ZSTD_ROOT}. Run: python3 Automation/PrepareDependencies.py")
+endif()
+
+add_library(FrontierZstdDecompress STATIC
+    "${ZSTD_ROOT}/lib/common/debug.c"
+    "${ZSTD_ROOT}/lib/common/entropy_common.c"
+    "${ZSTD_ROOT}/lib/common/error_private.c"
+    "${ZSTD_ROOT}/lib/common/fse_decompress.c"
+    "${ZSTD_ROOT}/lib/common/pool.c"
+    "${ZSTD_ROOT}/lib/common/threading.c"
+    "${ZSTD_ROOT}/lib/common/xxhash.c"
+    "${ZSTD_ROOT}/lib/common/zstd_common.c"
+    "${ZSTD_ROOT}/lib/decompress/huf_decompress.c"
+    "${ZSTD_ROOT}/lib/decompress/zstd_ddict.c"
+    "${ZSTD_ROOT}/lib/decompress/zstd_decompress.c"
+    "${ZSTD_ROOT}/lib/decompress/zstd_decompress_block.c"
+)
+target_include_directories(FrontierZstdDecompress PUBLIC "${ZSTD_ROOT}/lib" "${ZSTD_ROOT}/lib/common")
+target_compile_definitions(FrontierZstdDecompress PRIVATE ZSTD_DISABLE_ASM=1)
+set_target_properties(FrontierZstdDecompress PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+#------------------------------------------------------------------------------------------------------------------------
 #                                               ENGINE RUNTIME LIBRARY
 #------------------------------------------------------------------------------------------------------------------------
 
@@ -475,8 +502,12 @@ frontier_compile_sketcher_slang_shader(SketcherGrid.slang       SketcherGridVert
 frontier_compile_sketcher_slang_shader(SketcherGrid.slang       SketcherGridFragment           fragment SketcherGrid.frag.spv)
 frontier_compile_sketcher_slang_shader(SketcherImagePlane.slang SketcherImagePlaneVertex       vertex   SketcherImagePlane.vert.spv)
 frontier_compile_sketcher_slang_shader(SketcherImagePlane.slang SketcherImagePlaneFragment     fragment SketcherImagePlane.frag.spv)
-frontier_compile_sketcher_slang_shader(SketcherGizmo.slang      SketcherGizmoVertex            vertex   SketcherGizmo.vert.spv)
-frontier_compile_sketcher_slang_shader(SketcherGizmo.slang      SketcherGizmoFragment          fragment SketcherGizmo.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherGizmo.slang            SketcherGizmoVertex            vertex   SketcherGizmo.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherGizmo.slang            SketcherGizmoFragment          fragment SketcherGizmo.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherReferenceSurface.slang SketcherReferenceSurfaceVertex   vertex   SketcherReferenceSurface.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherReferenceSurface.slang SketcherReferenceSurfaceFragment fragment SketcherReferenceSurface.frag.spv)
+frontier_compile_sketcher_slang_shader(SketcherReferenceSurface.slang SketcherReferenceCreaseVertex    vertex   SketcherReferenceCrease.vert.spv)
+frontier_compile_sketcher_slang_shader(SketcherReferenceSurface.slang SketcherReferenceCreaseFragment  fragment SketcherReferenceCrease.frag.spv)
 
 function(frontier_compile_vector_slang_shader SLANG_REL_PATH ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/Vector/${SLANG_REL_PATH}")
@@ -805,6 +836,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherRasterization.cpp
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherSnapping.cpp
     Engine/Workspaces/ParametricSketcher/Viewport/SketcherSurfaceTracing.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherBlendDecoder.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherCurveImport.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.cpp
@@ -814,6 +846,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Workspaces/ParametricSketcher/Document/SketcherKnife.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherMeasurement.cpp
+    Engine/Workspaces/ParametricSketcher/Document/SketcherReferenceSurface.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherScene.cpp
     Engine/Workspaces/ParametricSketcher/Document/SketcherSpecimen.cpp
     Engine/DistanceFieldSpace/LocalSignedDistanceVolume.cpp
@@ -1035,7 +1068,7 @@ target_compile_definitions(FrontierEngine PUBLIC
     "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\""
 )
 target_link_libraries(FrontierEngine PUBLIC FrontierSerialization FrontierCompileSettings thorvg_static Threads::Threads ${CMAKE_DL_LIBS})
-target_link_libraries(FrontierEngine PRIVATE Jolt)
+target_link_libraries(FrontierEngine PRIVATE Jolt FrontierZstdDecompress)
 if(WIN32)
     target_link_libraries(FrontierEngine PUBLIC ws2_32)
 endif()
@@ -1216,6 +1249,7 @@ if(BUILD_TESTING)
     target_link_libraries(SerializationValidation PRIVATE FrontierSerialization)
     add_test(NAME SerializationValidation COMMAND SerializationValidation)
 
+    frontier_register_exhibit(SketcherBlendImportValidation             Exhibits/ParametricSketcher/SketcherBlendImportValidation.cpp)
     frontier_register_exhibit(DataDrivenSpaceContentValidation          Exhibits/DataDrivenSpaceContentValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(SketcherWorkspaceValidation           Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)

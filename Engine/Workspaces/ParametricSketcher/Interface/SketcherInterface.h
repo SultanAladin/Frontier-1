@@ -975,6 +975,7 @@ struct SketcherWorkspaceStatus
     SketcherDeviationPlot                  Deviation      = {};                               // [-]   - Cached per document revision
     bool                                  ImagePlanesEnabled = true;                         // [-]   - Blueprint image planes drawn (toolbar Images)
     std::string                           FocusedImage       = {};                           // [-]   - Image plane picked in the Outliner (its Inspector rows open)
+    std::string                           FocusedReference   = {};                           // [-]   - Blender reference surface picked in the Outliner
     int                                   RingPicks          = 0;                            // [-]   - Alt / Alt+Shift edge picks (script evidence)
     SketcherPictureShelf                  Pictures       = {};                               // [-]   - Decoded image-plane pictures (frame-owned)
     SketcherMatcapShelf                   Matcaps        = {};                               // [-]   - Matcap library + thumbnails + M picker

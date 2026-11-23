@@ -48,6 +48,34 @@ std::string BrowseSketcherPicture()
 #endif
 }
 
+std::string BrowseSketcherImportFile()
+{
+#if defined(_WIN32)
+    std::vector<wchar_t> Chosen(32768, L'\0');
+    OPENFILENAMEW Request{};
+    Request.lStructSize = sizeof(Request);
+    Request.hwndOwner   = GetActiveWindow();
+    Request.lpstrFilter =
+        L"SolidArc Imports (*.blend;*.step;*.stp;*.toml)\0*.blend;*.step;*.stp;*.toml\0"
+        L"Blender Vehicle Reference (*.blend)\0*.blend\0"
+        L"STEP Solid (*.step;*.stp)\0*.step;*.stp\0"
+        L"Vehicle Curves (*.toml)\0*.toml\0"
+        L"All files (*.*)\0*.*\0";
+    Request.lpstrFile   = Chosen.data();
+    Request.nMaxFile    = static_cast<DWORD>(Chosen.size());
+    Request.lpstrTitle  = L"Import into SolidArc";
+    Request.Flags       = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    if (!GetOpenFileNameW(&Request)) return {};
+    const int Bytes = WideCharToMultiByte(CP_UTF8, 0, Chosen.data(), -1, nullptr, 0, nullptr, nullptr);
+    if (Bytes <= 1) return {};
+    std::string Path(static_cast<size_t>(Bytes - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, Chosen.data(), -1, Path.data(), Bytes, nullptr, nullptr);
+    return Path;
+#else
+    return {};
+#endif
+}
+
 bool SketcherFileDialogAvailableCondition() noexcept
 {
 #if defined(_WIN32)

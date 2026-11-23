@@ -593,6 +593,10 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     const VkShaderModule PlaneFragment   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherImagePlane.frag.spv");
     const VkShaderModule GizmoVertexModule   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.vert.spv");
     const VkShaderModule GizmoFragmentModule = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherGizmo.frag.spv");
+    const VkShaderModule RefSurfVertex       = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherReferenceSurface.vert.spv");
+    const VkShaderModule RefSurfFragment     = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherReferenceSurface.frag.spv");
+    const VkShaderModule RefCreaseVertex     = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherReferenceCrease.vert.spv");
+    const VkShaderModule RefCreaseFragment   = LoadShaderOrThrow(*Device, CompiledShaderDirectory, "SketcherReferenceCrease.frag.spv");
 
     RenderProgramRecipe Surface;
     Surface.Samples    = Samples;
@@ -682,8 +686,47 @@ void SketcherRasterization::CreatePipelines(const std::filesystem::path& Compile
     Gizmo.IdentityWrite = false;
     GizmoPipeline       = CreatePipeline(LogicalDevice, RenderPass, PipelineLayout, Gizmo);
 
+    RenderProgramRecipe RefSurf;
+    RefSurf.Samples    = Samples;
+    RefSurf.Vertex     = RefSurfVertex;
+    RefSurf.Fragment   = RefSurfFragment;
+    RefSurf.Bindings   = { { 0u, sizeof(SketcherReferenceCorner), VK_VERTEX_INPUT_RATE_VERTEX } };
+    RefSurf.Attributes = {
+        { 0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 0u },
+        { 1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 12u },
+        { 2u, 0u, VK_FORMAT_R32_UINT,         24u },
+        { 3u, 0u, VK_FORMAT_R32_UINT,         28u },
+    };
+    ReferenceSurfacePipeline = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, RefSurf);
+
+    RenderProgramRecipe RefSurfDepth = RefSurf;
+    RefSurfDepth.ColourWrite         = false;
+    ReferenceSurfaceDepthPipeline    = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, RefSurfDepth);
+
+    RenderProgramRecipe RefSurfGhost = RefSurf;
+    RefSurfGhost.DepthWrite          = false;
+    RefSurfGhost.ColourBlend         = true;
+    RefSurfGhost.IdentityWrite       = false;
+    ReferenceSurfaceGhostPipeline    = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, RefSurfGhost);
+
+    RenderProgramRecipe RefCrease;
+    RefCrease.Samples       = Samples;
+    RefCrease.Vertex        = RefCreaseVertex;
+    RefCrease.Fragment      = RefCreaseFragment;
+    RefCrease.Bindings      = { { 0u, sizeof(SketcherReferenceSegment), VK_VERTEX_INPUT_RATE_INSTANCE } };
+    RefCrease.Attributes    = {
+        { 0u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 0u },
+        { 1u, 0u, VK_FORMAT_R32G32B32_SFLOAT, 12u },
+        { 2u, 0u, VK_FORMAT_R32_UINT,         24u },
+    };
+    RefCrease.ColourBlend   = true;
+    RefCrease.DepthWrite    = false;
+    RefCrease.IdentityWrite = false;
+    ReferenceCreasePipeline = CreatePipeline(LogicalDevice, RenderPass, PlaneLayout, RefCrease);
+
     for (VkShaderModule Module : { SurfaceVertex, SurfaceFragment, EdgeVertex, EdgeFragment, EdgeOccluded, EdgeIdentity,
-                                   GridVertex, GridFragment, PlaneVertex, PlaneFragment, GizmoVertexModule, GizmoFragmentModule })
+                                   GridVertex, GridFragment, PlaneVertex, PlaneFragment, GizmoVertexModule, GizmoFragmentModule,
+                                   RefSurfVertex, RefSurfFragment, RefCreaseVertex, RefCreaseFragment })
     {
         vkDestroyShaderModule(LogicalDevice, Module, nullptr);
     }
@@ -698,10 +741,15 @@ void SketcherRasterization::Destroy()
     const VkDevice LogicalDevice = Device->AccessDevice();
     vkDeviceWaitIdle(LogicalDevice);
     DestroyTargets();
-    for (GeometricRaster::DeviceBufferResource* Buffer : { &ProbeReadback, &CornerBuffer, &SegmentBuffer, &FaceStateBuffer, &EdgeStateBuffer, &SectionBuffer, &GizmoBuffer })
+    for (GeometricRaster::DeviceBufferResource* Buffer : { &ProbeReadback, &CornerBuffer, &SegmentBuffer, &FaceStateBuffer, &EdgeStateBuffer,
+                                                           &SectionBuffer, &GizmoBuffer, &ReferenceCornerBuffer, &ReferenceSegmentBuffer })
     {
         DestroyBuffer(*Buffer);
     }
+    ReferenceDraws.clear();
+    ReferenceCornersTotal     = 0u;
+    ReferenceSegmentsTotal    = 0u;
+    UploadedReferenceRevision = UINT64_MAX;
     ReleasePictures();
     DestroyGpuImage(MatcapArray);
     if (MatcapPool != VK_NULL_HANDLE) vkDestroyDescriptorPool(LogicalDevice, MatcapPool, nullptr);
@@ -710,6 +758,7 @@ void SketcherRasterization::Destroy()
     MatcapLayers = 0u;
 
     for (VkPipeline* Pipeline : { &SurfacePipeline, &SurfaceDepthPipeline, &SurfaceGhostPipeline, &CutterDepthPipeline, &CutterGhostPipeline,
+                                  &ReferenceSurfacePipeline, &ReferenceSurfaceDepthPipeline, &ReferenceSurfaceGhostPipeline, &ReferenceCreasePipeline,
                                   &EdgePipeline, &EdgeIdentityPipeline, &EdgeOccludedPipeline, &EdgeOccludedIdentityPipeline,
                                   &GridPipeline, &PlanePipeline, &GizmoPipeline })
     {
@@ -842,6 +891,140 @@ void SketcherRasterization::UploadScene(const SketcherScene& Scene)
     catch (const std::exception& Failure)
     {
         std::fprintf(stderr, "[SketcherRasterization] UploadScene failed: %s\n", Failure.what());
+    }
+}
+
+void SketcherRasterization::UploadReferenceSurfaces(const std::vector<SketcherReferenceSurface>& Surfaces, uint64_t Revision)
+{
+    if (!Device || !Device->Ready())
+    {
+        return;
+    }
+    try
+    {
+        vkDeviceWaitIdle(Device->AccessDevice());
+        DestroyBuffer(ReferenceCornerBuffer);
+        DestroyBuffer(ReferenceSegmentBuffer);
+        ReferenceDraws.clear();
+        ReferenceCornersTotal  = 0u;
+        ReferenceSegmentsTotal = 0u;
+
+        // Measure total GPU buffer requirements across all imported reference surfaces
+        size_t TotalCorners  = 0u;
+        size_t TotalSegments = 0u;
+        for (const SketcherReferenceSurface& Surf : Surfaces)
+        {
+            if (!Surf.Geometry) continue;
+            TotalCorners  += Surf.Geometry->Corners.size();
+            TotalSegments += Surf.Geometry->CreaseSegments.size();
+        }
+
+        if (TotalCorners > 0u)
+        {
+            const VkDeviceSize CornerBytes = VkDeviceSize(TotalCorners) * sizeof(SketcherReferenceCorner);
+            GeometricRaster::DeviceBufferResource Staging = CreateHostBuffer(CornerBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+            auto* DstCorners = static_cast<SketcherReferenceCorner*>(Staging.HostAddress);
+
+            GeometricRaster::DeviceBufferResource SegStaging {};
+            SketcherReferenceSegment* DstSegments = nullptr;
+            VkDeviceSize SegBytes = 0ull;
+            if (TotalSegments > 0u)
+            {
+                SegBytes   = VkDeviceSize(TotalSegments) * sizeof(SketcherReferenceSegment);
+                SegStaging = CreateHostBuffer(SegBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+                DstSegments = static_cast<SketcherReferenceSegment*>(SegStaging.HostAddress);
+            }
+
+            uint32_t CornerCursor  = 0u;
+            uint32_t SegmentCursor = 0u;
+            for (const SketcherReferenceSurface& Surf : Surfaces)
+            {
+                if (!Surf.Geometry) continue;
+                const auto& Corners = Surf.Geometry->Corners;
+                const auto& Segs    = Surf.Geometry->CreaseSegments;
+                if (!Corners.empty())
+                {
+                    std::memcpy(DstCorners + CornerCursor, Corners.data(), Corners.size() * sizeof(SketcherReferenceCorner));
+                }
+                if (!Segs.empty() && DstSegments != nullptr)
+                {
+                    std::memcpy(DstSegments + SegmentCursor, Segs.data(), Segs.size() * sizeof(SketcherReferenceSegment));
+                }
+
+                for (const SketcherReferencePart& Part : Surf.Parts)
+                {
+                    ReferenceDrawPart Draw;
+                    Draw.FirstCorner        = CornerCursor + Part.FirstCorner;
+                    Draw.CornerCount        = Part.CornerCount;
+                    Draw.FirstSegment       = SegmentCursor + Part.FirstSegment;
+                    Draw.SegmentCount       = Part.SegmentCount;
+                    Draw.SurfaceColour[0]      = Part.SurfaceColour[0];
+                    Draw.SurfaceColour[1]      = Part.SurfaceColour[1];
+                    Draw.SurfaceColour[2]      = Part.SurfaceColour[2];
+                    Draw.Opacity            = Surf.Opacity;
+                    Draw.MatcapLayer        = Surf.MatcapLayer;
+                    Draw.VisibleCondition   = Surf.VisibleCondition && Part.VisibleCondition;
+                    Draw.WireframeCondition = Surf.WireframeCondition;
+                    ReferenceDraws.push_back(Draw);
+                }
+
+                CornerCursor  += static_cast<uint32_t>(Corners.size());
+                SegmentCursor += static_cast<uint32_t>(Segs.size());
+            }
+
+            // Upload corners directly to DEVICE_LOCAL GPU VRAM via staging transfer (zero per-frame CPU touch)
+            ReferenceCornerBuffer = Device->AllocateBuffer(
+                CornerBytes,
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            if (TotalSegments > 0u)
+            {
+                ReferenceSegmentBuffer = Device->AllocateBuffer(
+                    SegBytes,
+                    VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            }
+
+            SubmitImmediately([&](VkCommandBuffer Cmd)
+            {
+                const VkBufferCopy CornerCopy{ 0ull, 0ull, CornerBytes };
+                vkCmdCopyBuffer(Cmd, Staging.BufferHandle, ReferenceCornerBuffer.BufferHandle, 1u, &CornerCopy);
+                if (TotalSegments > 0u)
+                {
+                    const VkBufferCopy SegCopy{ 0ull, 0ull, SegBytes };
+                    vkCmdCopyBuffer(Cmd, SegStaging.BufferHandle, ReferenceSegmentBuffer.BufferHandle, 1u, &SegCopy);
+                }
+            });
+
+            DestroyBuffer(Staging);
+            DestroyBuffer(SegStaging);
+            ReferenceCornersTotal  = CornerCursor;
+            ReferenceSegmentsTotal = SegmentCursor;
+        }
+
+        UploadedReferenceRevision = Revision;
+    }
+    catch (const std::exception& Failure)
+    {
+        std::fprintf(stderr, "[SketcherRasterization] UploadReferenceSurfaces failed: %s\n", Failure.what());
+    }
+}
+
+void SketcherRasterization::SyncReferenceDisplay(const std::vector<SketcherReferenceSurface>& Surfaces)
+{
+    size_t Cursor = 0u;
+    for (const SketcherReferenceSurface& Surf : Surfaces)
+    {
+        if (!Surf.Geometry) continue;
+        for (const SketcherReferencePart& Part : Surf.Parts)
+        {
+            if (Cursor >= ReferenceDraws.size()) return;
+            ReferenceDrawPart& Draw = ReferenceDraws[Cursor++];
+            Draw.Opacity            = Surf.Opacity;
+            Draw.MatcapLayer        = Surf.MatcapLayer;
+            Draw.VisibleCondition   = Surf.VisibleCondition && Part.VisibleCondition;
+            Draw.WireframeCondition = Surf.WireframeCondition;
+        }
     }
 }
 
@@ -1197,6 +1380,103 @@ void SketcherRasterization::RecordPanes(
         };
         const auto DrawSurfaces = [&](VkPipeline Pipeline) { DrawSurfaceSpan(Pipeline, 0u, CornerCount, -1.0f); };
 
+        const auto DrawReferenceSurfaces = [&](bool ForceGhost)
+        {
+            if (!Style.SurfacesEnabled || ReferenceDraws.empty() || ReferenceCornerBuffer.BufferHandle == VK_NULL_HANDLE
+                || ReferenceSurfacePipeline == VK_NULL_HANDLE)
+            {
+                return;
+            }
+            const VkDescriptorSet SurfaceSets[2] = { BufferSet, MatcapSet };
+            vkCmdBindDescriptorSets(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, PlaneLayout, 0u, 2u, SurfaceSets, 0u, nullptr);
+            vkCmdBindVertexBuffers(Commands, 0u, 1u, &ReferenceCornerBuffer.BufferHandle, &Origin);
+
+            // 1. Opaque reference parts (write depth + colour + identity directly)
+            bool BoundOpaque = false;
+            for (const ReferenceDrawPart& Part : ReferenceDraws)
+            {
+                if (!Part.VisibleCondition || Part.CornerCount == 0u) continue;
+                const float Alpha = ForceGhost ? std::min(Part.Opacity, std::clamp(Style.XRayOpacity, 0.15f, 0.85f)) : Part.Opacity;
+                if (Alpha < 0.98f) continue;
+
+                if (!BoundOpaque)
+                {
+                    vkCmdBindPipeline(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, ReferenceSurfacePipeline);
+                    BoundOpaque = true;
+                }
+                SketcherReferencePushBlock Push;
+                Narrow(Frame.ClipFromWorld, Push.ClipFromWorld);
+                Narrow(Frame.Right, Push.ViewRight, Frame.OrthographicEnabled ? 1.0f : 0.0f);
+                Narrow(Frame.Up, Push.ViewUp, Style.ZebraStripes);
+                Narrow(Frame.Forward, Push.ViewForward, 1.0f);
+                Push.SurfaceTintMode[0] = Part.SurfaceColour[0];
+                Push.SurfaceTintMode[1] = Part.SurfaceColour[1];
+                Push.SurfaceTintMode[2] = Part.SurfaceColour[2];
+                Push.SurfaceTintMode[3] = float(Part.MatcapLayer);
+                vkCmdPushConstants(Commands, PlaneLayout, PushStages, 0u, sizeof(Push), &Push);
+                vkCmdDraw(Commands, Part.CornerCount, 1u, Part.FirstCorner, 0u);
+            }
+
+            // 2. Ghost / translucent reference parts (depth prepass first so overlapping fenders stay crisp, then alpha blend)
+            bool AnyGhost = false;
+            for (const ReferenceDrawPart& Part : ReferenceDraws)
+            {
+                if (!Part.VisibleCondition || Part.CornerCount == 0u) continue;
+                const float Alpha = ForceGhost ? std::min(Part.Opacity, std::clamp(Style.XRayOpacity, 0.15f, 0.85f)) : Part.Opacity;
+                if (Alpha < 0.98f) { AnyGhost = true; break; }
+            }
+            if (AnyGhost)
+            {
+                for (VkPipeline Pipe : { ReferenceSurfaceDepthPipeline, ReferenceSurfaceGhostPipeline })
+                {
+                    vkCmdBindPipeline(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipe);
+                    for (const ReferenceDrawPart& Part : ReferenceDraws)
+                    {
+                        if (!Part.VisibleCondition || Part.CornerCount == 0u) continue;
+                        const float Alpha = ForceGhost ? std::min(Part.Opacity, std::clamp(Style.XRayOpacity, 0.15f, 0.85f)) : Part.Opacity;
+                        if (Alpha >= 0.98f) continue;
+
+                        SketcherReferencePushBlock Push;
+                        Narrow(Frame.ClipFromWorld, Push.ClipFromWorld);
+                        Narrow(Frame.Right, Push.ViewRight, Frame.OrthographicEnabled ? 1.0f : 0.0f);
+                        Narrow(Frame.Up, Push.ViewUp, Style.ZebraStripes);
+                        Narrow(Frame.Forward, Push.ViewForward, Alpha);
+                        Push.SurfaceTintMode[0] = Part.SurfaceColour[0];
+                        Push.SurfaceTintMode[1] = Part.SurfaceColour[1];
+                        Push.SurfaceTintMode[2] = Part.SurfaceColour[2];
+                        Push.SurfaceTintMode[3] = float(Part.MatcapLayer);
+                        vkCmdPushConstants(Commands, PlaneLayout, PushStages, 0u, sizeof(Push), &Push);
+                        vkCmdDraw(Commands, Part.CornerCount, 1u, Part.FirstCorner, 0u);
+                    }
+                }
+            }
+
+            // 3. GPU crease / feature lines (sharp edges, strong creases, panel seams for precision tracing)
+            if (Style.EdgesEnabled && ReferenceSegmentsTotal > 0u && ReferenceSegmentBuffer.BufferHandle != VK_NULL_HANDLE
+                && ReferenceCreasePipeline != VK_NULL_HANDLE)
+            {
+                vkCmdBindPipeline(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, ReferenceCreasePipeline);
+                vkCmdBindVertexBuffers(Commands, 0u, 1u, &ReferenceSegmentBuffer.BufferHandle, &Origin);
+                for (const ReferenceDrawPart& Part : ReferenceDraws)
+                {
+                    if (!Part.VisibleCondition || !Part.WireframeCondition || Part.SegmentCount == 0u) continue;
+                    SketcherReferencePushBlock Push;
+                    Narrow(Frame.ClipFromWorld, Push.ClipFromWorld);
+                    Narrow(Frame.Right, Push.ViewRight, Frame.OrthographicEnabled ? 1.0f : 0.0f);
+                    Narrow(Frame.Up, Push.ViewUp, 0.0f);
+                    Narrow(Frame.Forward, Push.ViewForward, 1.0f);
+                    Push.SurfaceTintMode[0] = float(ClampedW);
+                    Push.SurfaceTintMode[1] = float(ClampedH);
+                    Push.SurfaceTintMode[2] = std::max(0.85f, Style.EdgeStroke * 0.65f);
+                    Push.SurfaceTintMode[3] = ForceGhost ? 0.35f : 0.55f;
+                    vkCmdPushConstants(Commands, PlaneLayout, PushStages, 0u, sizeof(Push), &Push);
+                    vkCmdDraw(Commands, 6u, Part.SegmentCount, 0u, Part.FirstSegment);
+                }
+            }
+
+            vkCmdBindDescriptorSets(Commands, VK_PIPELINE_BIND_POINT_GRAPHICS, PipelineLayout, 0u, 1u, &BufferSet, 0u, nullptr);
+        };
+
         const auto DrawEdgeSpan = [&](VkPipeline Pipeline, VkPipeline CodesPipeline, float DepthMargin, uint32_t FirstSegment, uint32_t SpanSegments)
         {
             if (!Style.EdgesEnabled || SpanSegments == 0u || SegmentBuffer.BufferHandle == VK_NULL_HANDLE)
@@ -1295,6 +1575,7 @@ void SketcherRasterization::RecordPanes(
         {
             DrawPlanes();
             DrawGrid();
+            DrawReferenceSurfaces(true);
             DrawSurfaces(SurfaceDepthPipeline);
             DrawSurfaces(SurfaceGhostPipeline);
             DrawEdges(EdgeOccludedPipeline, EdgeOccludedIdentityPipeline, -float(OccludedMarginPixels * Frame.WorldPerPixel));
@@ -1304,12 +1585,14 @@ void SketcherRasterization::RecordPanes(
         {
             DrawPlanes();
             DrawGrid();
+            DrawReferenceSurfaces(false);
             DrawSurfaceSpan(SurfacePipeline, 0u, SolidCornerCount, 0.0f);
             DrawLiveCutters();
             DrawEdges(EdgePipeline, EdgeIdentityPipeline, Style.EdgeDepthMargin);
         }
         else
         {
+            DrawReferenceSurfaces(false);
             DrawSurfaceSpan(SurfacePipeline, 0u, SolidCornerCount, 0.0f);
             DrawPlanes();
             DrawGrid();

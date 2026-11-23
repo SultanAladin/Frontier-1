@@ -11,6 +11,7 @@
 
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherImagePlane.h"
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherReferenceSurface.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherScene.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherCamera.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherGizmoSpace.h"
@@ -68,6 +69,17 @@ struct SketcherImagePlaneBlock
     float Crop[4]           = {};                                                            // [0-1] - u0, v0, u1, v1
 };
 static_assert(sizeof(SketcherImagePlaneBlock) == 128, "SketcherImagePlaneProjection push constant must stay 128 bytes");
+
+// 📝 Host mirror of SketcherReferencePush in SketcherReferenceSurface.slang (128 bytes).
+struct SketcherReferencePushBlock
+{
+    float ClipFromWorld[16] = {};                                                            // [-]   - Projection × view
+    float ViewRight[4]      = {};                                                            // [-]   - w: orthographic condition
+    float ViewUp[4]         = {};                                                            // [-]   - w: zebra stripe count
+    float ViewForward[4]    = {};                                                            // [-]   - w: surface opacity
+    float SurfaceTintMode[4]    = {};                                                            // [-]   - Surface: (R,G,B,Matcap); Crease: (W,H,StrokePx,Alpha)
+};
+static_assert(sizeof(SketcherReferencePushBlock) == 128, "SketcherReferencePushBlock must stay 128 bytes");
 
 // One image plane to draw this frame: the uploaded picture it samples and its world parallelogram.
 struct SketcherImagePlaneQuad
@@ -138,6 +150,8 @@ public:
     // Recreates the targets when the extent changes (waits for the device first).
     void Resize(uint32_t Width, uint32_t Height);
     void UploadScene(const SketcherScene& Scene);
+    void UploadReferenceSurfaces(const std::vector<SketcherReferenceSurface>& Surfaces, uint64_t Revision);
+    void SyncReferenceDisplay(const std::vector<SketcherReferenceSurface>& Surfaces);
     void AssignStates(const std::vector<uint32_t>& FaceStates, const std::vector<uint32_t>& EdgeStates);
     void UploadPictures(const std::vector<SketcherPicture>& Pictures);
     [[nodiscard]] size_t PictureCount() const { return Pictures.size(); }
@@ -162,6 +176,9 @@ public:
     [[nodiscard]] uint32_t    Width() const { return Colour.WidthPx; }
     [[nodiscard]] uint32_t    Height() const { return Colour.HeightPx; }
     [[nodiscard]] uint64_t    SceneGeneration() const { return UploadedGeneration; }
+    [[nodiscard]] uint64_t    ReferenceRevision() const { return UploadedReferenceRevision; }
+    [[nodiscard]] uint32_t    ReferenceCornerCount() const { return ReferenceCornersTotal; }
+    [[nodiscard]] uint32_t    ReferenceSegmentCount() const { return ReferenceSegmentsTotal; }
 
 private:
     struct GpuImage
@@ -213,17 +230,36 @@ private:
     GeometricRaster::DeviceBufferResource CornerBuffer     = {};
     GeometricRaster::DeviceBufferResource SegmentBuffer    = {};
     GeometricRaster::DeviceBufferResource FaceStateBuffer  = {};
-    GeometricRaster::DeviceBufferResource EdgeStateBuffer  = {};
-    GeometricRaster::DeviceBufferResource SectionBuffer    = {};
-    GeometricRaster::DeviceBufferResource GizmoBuffer      = {};
-    uint32_t                              CornerCount      = 0u;
-    uint32_t                              SolidCornerCount = 0u;
-    uint32_t                              SegmentCount     = 0u;
-    uint32_t                              SolidSegmentCount = 0u;
-    uint32_t                              FaceCount        = 0u;
-    uint32_t                              EdgeCount        = 0u;
-    uint64_t                              UploadedGeneration = UINT64_MAX;
-    uint64_t                              BuiltTargets       = 0u;
+    GeometricRaster::DeviceBufferResource EdgeStateBuffer       = {};
+    GeometricRaster::DeviceBufferResource SectionBuffer         = {};
+    GeometricRaster::DeviceBufferResource GizmoBuffer           = {};
+    GeometricRaster::DeviceBufferResource ReferenceCornerBuffer  = {};
+    GeometricRaster::DeviceBufferResource ReferenceSegmentBuffer = {};
+    uint32_t                              CornerCount           = 0u;
+    uint32_t                              SolidCornerCount      = 0u;
+    uint32_t                              SegmentCount          = 0u;
+    uint32_t                              SolidSegmentCount     = 0u;
+    uint32_t                              ReferenceCornersTotal  = 0u;
+    uint32_t                              ReferenceSegmentsTotal = 0u;
+    uint32_t                              FaceCount             = 0u;
+    uint32_t                              EdgeCount             = 0u;
+    uint64_t                              UploadedGeneration        = UINT64_MAX;
+    uint64_t                              UploadedReferenceRevision = UINT64_MAX;
+    uint64_t                              BuiltTargets              = 0u;
+
+    struct ReferenceDrawPart
+    {
+        uint32_t FirstCorner        = 0u;
+        uint32_t CornerCount        = 0u;
+        uint32_t FirstSegment       = 0u;
+        uint32_t SegmentCount       = 0u;
+        float    SurfaceColour[3]      = { 0.68f, 0.72f, 0.76f };
+        float    Opacity            = 0.88f;
+        uint32_t MatcapLayer        = 0u;
+        bool     VisibleCondition   = true;
+        bool     WireframeCondition = true;
+    };
+    std::vector<ReferenceDrawPart> ReferenceDraws = {};
 
     VkDescriptorSetLayout       BufferLayout                 = VK_NULL_HANDLE;
     VkDescriptorPool            DescriptorPool               = VK_NULL_HANDLE;
@@ -234,6 +270,10 @@ private:
     VkPipeline                  SurfaceGhostPipeline         = VK_NULL_HANDLE;
     VkPipeline                  CutterDepthPipeline          = VK_NULL_HANDLE;
     VkPipeline                  CutterGhostPipeline          = VK_NULL_HANDLE;
+    VkPipeline                  ReferenceSurfacePipeline      = VK_NULL_HANDLE;
+    VkPipeline                  ReferenceSurfaceDepthPipeline = VK_NULL_HANDLE;
+    VkPipeline                  ReferenceSurfaceGhostPipeline = VK_NULL_HANDLE;
+    VkPipeline                  ReferenceCreasePipeline       = VK_NULL_HANDLE;
     VkPipeline                  EdgeOccludedPipeline         = VK_NULL_HANDLE;
     VkPipeline                  EdgePipeline                 = VK_NULL_HANDLE;
     VkPipeline                  EdgeIdentityPipeline         = VK_NULL_HANDLE;

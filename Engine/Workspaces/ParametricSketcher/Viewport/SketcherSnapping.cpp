@@ -715,9 +715,11 @@ SketcherSnap FindSketcherSnap(SketcherSnapRepository& Catalogue, const SketcherD
         if (Best.Kind != SketcherSnapCategory::None) return Best;
     }
 
-    // ---- The face under the pointer: its centre (planar faces) or the exact ray hit
+    // ---- The face under the pointer: its centre (planar faces) or the exact ray hit (B-rep or GPU reference surface)
     if (Query.Filter.FaceEnabled || Query.Filter.CentreEnabled)
     {
+        double BrepDistance = 1.0e300;
+        std::optional<SketcherSnap> BrepSnap;
         const std::optional<SketcherPick> Hit = PickSketcherScene(Scene, Ray, 0.0, false, Query.Section);
         if (Hit && Hit->Identity != 0 && Hit->Identity != IdentitySectionCap && !(Hit->Identity & IdentityEdgeBit) && Hit->Identity - 1 < Catalogue.Surfaces.size())
         {
@@ -744,10 +746,32 @@ SketcherSnap FindSketcherSnap(SketcherSnapRepository& Catalogue, const SketcherD
                 {
                     Vector3 Normal;
                     const Vector3 Position = PierceSurface(*Surface, Ray, Hit->Distance, Normal, Scale);
-                    return { SketcherSnapCategory::Face, Position, {}, Normal * Sense, "Face " + Catalogue.FaceNames[Face], MeasurePixels(Query, Position) };
+                    BrepDistance = Hit->Distance;
+                    BrepSnap     = { SketcherSnapCategory::Face, Position, {}, Normal * Sense, "Face " + Catalogue.FaceNames[Face], MeasurePixels(Query, Position) };
                 }
             }
         }
+
+        // O(log N) BVH ray hit against high-poly GPU Blender reference surfaces (retopology profile tracing)
+        if (Query.Filter.FaceEnabled && !Document.ReferenceSurfaces.empty())
+        {
+            const std::array<double, 4>* SectionPlane = Query.Section ? &Query.Section->Plane : nullptr;
+            const auto RefHit = IntersectReferenceSurfaces(Document.ReferenceSurfaces, RayOrigin(Ray), RayDirection(Ray), BrepDistance, SectionPlane);
+            if (RefHit && RefHit->Distance < BrepDistance)
+            {
+                std::string SourceName = "Reference";
+                if (RefHit->SurfaceIndex < Document.ReferenceSurfaces.size())
+                {
+                    const auto& Surf = Document.ReferenceSurfaces[RefHit->SurfaceIndex];
+                    SourceName = (RefHit->PartIndex < Surf.Parts.size())
+                               ? (Surf.Name + " · " + Surf.Parts[RefHit->PartIndex].Name)
+                               : Surf.Name;
+                }
+                return { SketcherSnapCategory::Face, RefHit->Position, {}, RefHit->Normal, SourceName, MeasurePixels(Query, RefHit->Position) };
+            }
+        }
+
+        if (BrepSnap) return *BrepSnap;
     }
     return {};
 }

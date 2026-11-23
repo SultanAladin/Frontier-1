@@ -231,6 +231,15 @@ void SketcherWorkspaceHost::RenderViewportTarget()
             Rasterizer.UploadScene(Scene);
         }
 
+        if (State.Document.ReferenceRevision != Rasterizer.ReferenceRevision())
+        {
+            Rasterizer.UploadReferenceSurfaces(State.Document.ReferenceSurfaces, State.Document.ReferenceRevision);
+        }
+        else if (!State.Document.ReferenceSurfaces.empty())
+        {
+            Rasterizer.SyncReferenceDisplay(State.Document.ReferenceSurfaces);
+        }
+
         // Decode each distinct image-plane source only when its path set changes,
         // then rebuild the lightweight draw quads from current document placement.
         std::string PictureKey;
