@@ -272,6 +272,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Workspaces/ParametricSketcher/Interface/SketcherIcons.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherOutliner.cpp
+    Engine/Workspaces/ParametricSketcher/Interface/SketcherProjectBrowser.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherOptions.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherNavigation.cpp
     Engine/Workspaces/ParametricSketcher/Interface/SketcherFileDialog.cpp

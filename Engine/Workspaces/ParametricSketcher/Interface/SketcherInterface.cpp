@@ -13,6 +13,7 @@
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherNavigation.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherOperationInput.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherOutliner.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherProjectBrowser.h"
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherStyleSheet.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
@@ -15314,7 +15315,7 @@ void DrawFileMenu(SketcherWorkspaceStatus& State)
         return Pressed;
     };
     if (Entry("New document###MenuNew", "Ctrl+N")) StartNewDocument(State);
-    if (Entry("Open…###MenuOpen", "Ctrl+O")) State.PopupRequest = "Open document";
+    if (Entry("Open…###MenuOpen", "Ctrl+O")) OpenSketcherProjectBrowser(State);
     if (Entry("Save###MenuSave", "Ctrl+S"))
     {
         if (State.DocumentPath.empty()) State.PopupRequest = "Save document";
@@ -20377,6 +20378,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
 #ifdef FRONTIER_DEVELOPMENT_TRACE
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) State.TraceShown = !State.TraceShown;          // development: operation trace panel
 #endif
+    if (State.ProjectBrowserOpen) return;
     if (Io.WantTextInput || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) return;
     const bool Control   = Io.KeyCtrl;
     const bool Shift     = Io.KeyShift;
@@ -20989,7 +20991,7 @@ void ApplyShortcuts(SketcherWorkspaceStatus& State)
             Announce(State, std::string("Viewport layout: ") + ViewportLayoutShortLabel(TargetLayout) + " (Ctrl+Alt+Q)");
             return;
         }
-        if (Pressed(ImGuiKey_O)) State.PopupRequest = "Open document";
+        if (Pressed(ImGuiKey_O)) OpenSketcherProjectBrowser(State);
         if (Pressed(ImGuiKey_A) && !Shift && !Alternate) SelectAll(State);                  // edit:select-all (Ctrl+A)
         if (Pressed(ImGuiKey_I))
         {
@@ -21662,6 +21664,7 @@ void DrawSketcherInterface(SketcherWorkspaceStatus& State, ImTextureID ViewportT
             }
         }
     }
+    DrawSketcherProjectBrowserOverlay(State);
     { SketcherPhaseClock Clock(Profile, "autosave"); AdvanceAutosave(State, DeltaSeconds); }
     { SketcherPhaseClock Clock(Profile, "bevel preview"); StageBevelPreview(State); }
     State.FrameNumber += 1;
@@ -21792,6 +21795,7 @@ void EndSketcherHostedFrame(SketcherWorkspaceStatus& State, double DeltaSeconds,
         DrawWorkspacePopups(State);
         DrawMatcapPicker(State);
         DrawWelcome(State);
+        DrawSketcherProjectBrowserOverlay(State);
         { SketcherPhaseClock Clock(Profile, "trace panel"); DrawTracePanel(State); }
     }
     { SketcherPhaseClock Clock(Profile, "autosave"); AdvanceAutosave(State, DeltaSeconds); }
