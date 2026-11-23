@@ -896,8 +896,8 @@ bool DocumentContainerDecoder::DecodeFromFile(
 {
     // Prefer OS memory-mapped view when available; fall back cleanly to buffered read on tiny/special files
     MemoryMappedFileView MappedView{};
-    std::string          MapDiag{};
-    if (MappedView.Open(SourcePath, MapDiag))
+    std::string          ViewDiag{};
+    if (MappedView.Open(SourcePath, ViewDiag))
     {
         return DecodeFromMemoryMappedFile(MappedView, OutDocument, OutDiagnostic, OptionalChannels);
     }
