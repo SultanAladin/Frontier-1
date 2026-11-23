@@ -2863,8 +2863,9 @@ Mathematics::Axis3D VulkanWorldRenderSequence::ResolveDynamicClipFocusWorld(
     Mathematics::Axis3D FallbackCenter = (Scene.SceneTree.RootBoundsMin + Scene.SceneTree.RootBoundsMax) * 0.5f;
 
     // Anchor to movable non-floor foreground assets when no live camera is supplied,
-    // or blend camera view focus with foreground assets so moving either the camera OR the car
-    // shifts the voxel-snapped SDF clipmap smoothly instead of leaving it pinned at (0, 0, 0).
+    // or blend surface-projected camera focus with foreground assets so moving either the camera
+    // OR a hero asset shifts the voxel-snapped SDF clipmap smoothly without detaching into mid-air
+    // during forward/backward dolly or yaw/pitch camera-angle changes.
     Mathematics::Axis3D ForegroundSum { 0.0f, 0.0f, 0.0f };
     float               ForegroundWeight = 0.0f;
     for (const RigidClusterInstance& Inst : Scene.ClusterInstances)
@@ -2892,30 +2893,74 @@ Mathematics::Axis3D VulkanWorldRenderSequence::ResolveDynamicClipFocusWorld(
         return FallbackCenter;
     }
 
+    const Mathematics::Axis3D SceneMin   = Scene.SceneTree.RootBoundsMin;
+    const Mathematics::Axis3D SceneMax   = Scene.SceneTree.RootBoundsMax;
+    const Mathematics::Axis3D BoundsSpan = SceneMax - SceneMin;
+    const float SceneMaxSpan = std::max({ std::abs(BoundsSpan.X), std::abs(BoundsSpan.Y), std::abs(BoundsSpan.Z), 12.0f });
+    const float AnchorPlaneZ = (ForegroundWeight > 0.0f) ? FallbackCenter.Z : SceneMin.Z;
+
     const Mathematics::Axis3D ToTarget = OptionalCamera->TargetPoint - OptionalCamera->CameraOrigin;
     const float TargetDist = std::sqrt(std::max(0.0f, Mathematics::EvaluateDot(ToTarget, ToTarget)));
     const Mathematics::Axis3D ViewDir = (TargetDist > 1.0e-4f)
         ? (ToTarget * (1.0f / TargetDist))
         : Mathematics::Axis3D{ 0.0f, 1.0f, 0.0f };
 
-    // Camera-anchored clipmap look-ahead clamped to scene bounds so flying/panning/dollying moves the Fine + Coarse GDF cascades
-    const float LookAheadMeters = std::clamp(TargetDist, 2.2f, 11.5f);
-    Mathematics::Axis3D CameraFocus = OptionalCamera->CameraOrigin + ViewDir * LookAheadMeters;
+    // Project the camera view ray onto the active scene/foreground datum plane instead of clamping
+    // a fixed look-ahead distance in mid-air: dollying forward/back keeps the fine clipmap locked
+    // on the viewed surface, and pitching upward never launches the fine cascade into empty sky.
+    const float MaxFocusDist = std::clamp(SceneMaxSpan * 0.85f, 14.0f, 40.0f);
+    Mathematics::Axis3D CameraFocus = OptionalCamera->TargetPoint;
+    if (ViewDir.Z < -0.05f && OptionalCamera->CameraOrigin.Z > AnchorPlaneZ + 0.05f)
+    {
+        const float PlaneHitDist = std::clamp(
+            (AnchorPlaneZ - OptionalCamera->CameraOrigin.Z) / ViewDir.Z,
+            1.5f,
+            MaxFocusDist);
+        CameraFocus = OptionalCamera->CameraOrigin + ViewDir * PlaneHitDist;
+    }
+    else if (ForegroundWeight > 0.0f)
+    {
+        const Mathematics::Axis3D ToForeground = FallbackCenter - OptionalCamera->CameraOrigin;
+        const float AlongForeground = Mathematics::EvaluateDot(ToForeground, ViewDir);
+        const float FocusDist = (AlongForeground > -3.0f && AlongForeground < MaxFocusDist)
+            ? std::clamp(AlongForeground, 1.5f, 16.0f)
+            : std::clamp(TargetDist, 2.2f, 11.5f);
+        CameraFocus   = OptionalCamera->CameraOrigin + ViewDir * FocusDist;
+        CameraFocus.Z = AnchorPlaneZ;
+    }
+    else
+    {
+        CameraFocus   = OptionalCamera->CameraOrigin + ViewDir * std::clamp(TargetDist, 2.2f, 11.5f);
+        CameraFocus.Z = AnchorPlaneZ;
+    }
 
-    // When a foreground hero asset sits inside camera reach, anchor strongly toward it while still shifting with camera pan
+    // When a foreground hero asset sits near the camera focus or inside the near view cone,
+    // keep the fine clipmap anchored across camera-angle rotations while still responding to camera pan.
     if (ForegroundWeight > 0.0f)
     {
         const Mathematics::Axis3D Delta = FallbackCenter - CameraFocus;
-        const float DistToForeground = std::sqrt(Mathematics::EvaluateDot(Delta, Delta));
-        if (DistToForeground < 14.0f)
+        const float DistToForeground = std::sqrt(std::max(0.0f, Mathematics::EvaluateDot(Delta, Delta)));
+        float Blend = (DistToForeground < 14.0f) ? (0.55f * (1.0f - DistToForeground / 14.0f)) : 0.0f;
+
+        const Mathematics::Axis3D ToFg = FallbackCenter - OptionalCamera->CameraOrigin;
+        const float CamToFgDist = std::sqrt(std::max(0.0f, Mathematics::EvaluateDot(ToFg, ToFg)));
+        const float AlongFg     = Mathematics::EvaluateDot(ToFg, ViewDir);
+        if (CamToFgDist < 12.0f && AlongFg > -2.5f)
         {
-            const float Blend = 0.72f * (1.0f - DistToForeground / 14.0f);
+            const Mathematics::Axis3D PerpVec = ToFg - ViewDir * std::max(0.0f, AlongFg);
+            const float RayPerpDist = std::sqrt(std::max(0.0f, Mathematics::EvaluateDot(PerpVec, PerpVec)));
+            if (RayPerpDist < 5.5f)
+            {
+                const float AngleStableBlend = 0.72f * (1.0f - RayPerpDist / 5.5f);
+                Blend = std::max(Blend, AngleStableBlend);
+            }
+        }
+        if (Blend > 0.0f)
+        {
             CameraFocus = CameraFocus * (1.0f - Blend) + FallbackCenter * Blend;
         }
     }
 
-    const Mathematics::Axis3D SceneMin = Scene.SceneTree.RootBoundsMin;
-    const Mathematics::Axis3D SceneMax = Scene.SceneTree.RootBoundsMax;
     if (SceneMax.X > SceneMin.X + 0.5f)
     {
         CameraFocus.X = std::clamp(CameraFocus.X, SceneMin.X, SceneMax.X);
@@ -2979,10 +3024,18 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
     const Mathematics::Axis3D FocusCenter = ActiveClipFocusInitialized
         ? ActiveClipFocusWorld
         : SceneObjectAnchor;
+    constexpr float FineSunCascadeHalfSpanMeters = 6.00f;
+    const float FocusFromObjectAnchor = std::max({
+        std::abs(FocusCenter.X - SceneObjectAnchor.X),
+        std::abs(FocusCenter.Y - SceneObjectAnchor.Y),
+        std::abs(FocusCenter.Z - SceneObjectAnchor.Z),
+    });
+    const Mathematics::Axis3D FineShadowAnchor =
+        (FocusFromObjectAnchor <= FineSunCascadeHalfSpanMeters * 0.55f) ? SceneObjectAnchor : FocusCenter;
     const Mathematics::Axis3D CoarseGdfAnchor = (MaxHalfExtent <= CoarseGdfHalf) ? SceneCenter : FocusCenter;
     if (!CascadeFocusInitialized)
     {
-        LastFineShadowFocusWorld   = SceneObjectAnchor;
+        LastFineShadowFocusWorld   = FineShadowAnchor;
         LastCoarseShadowFocusWorld = SceneCenter;
         LastFineGdfFocusWorld      = FocusCenter;
         LastCoarseGdfFocusWorld    = CoarseGdfAnchor;
@@ -2992,7 +3045,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
     {
         if ((EffectiveMask & kPrecomputeFineShadow) != 0u)
         {
-            LastFineShadowFocusWorld = SceneObjectAnchor;
+            LastFineShadowFocusWorld = FineShadowAnchor;
         }
         if ((EffectiveMask & kPrecomputeCoarseShadow) != 0u)
         {
@@ -3191,11 +3244,15 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
     Mathematics::Axis3D UpAxis    {};
     GeometrySpace::ConstructDuffOrthonormalBasis(LightFwd, RightAxis, UpAxis);
 
-    auto InitCascadeBasis = [&](OrthographicShadowCascade& Cascade, const Mathematics::Axis3D& AnchorWorld, float HalfSpanMeters)
+    auto InitCascadeBasis = [&](
+        OrthographicShadowCascade& Cascade,
+        const Mathematics::Axis3D& AnchorWorld,
+        float                      HalfSpanMeters,
+        uint32_t                   ResolutionTexels)
     {
         Cascade.HalfSpanMeters    = HalfSpanMeters;
         Cascade.DepthExtentMeters = 28.0f;
-        Cascade.ResolutionTexels  = 1024u;
+        Cascade.ResolutionTexels  = ResolutionTexels;
         Cascade.LightRightAxis    = RightAxis;
         Cascade.LightUpAxis       = UpAxis;
         Cascade.LightForwardAxis  = LightFwd;
@@ -3206,11 +3263,15 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
         Cascade.CenterWorld    = RightAxis * ProjU + UpAxis * ProjV + LightFwd * ProjZ;
         Cascade.ClosestLightDepth.clear();
     };
-    InitCascadeBasis(CachedFineSunCascade, LastFineShadowFocusWorld, 3.60f);
-    InitCascadeBasis(CachedSunCascade, LastCoarseShadowFocusWorld, std::clamp(MaxHalfExtent * 1.15f, 12.5f, 36.0f));
-    CoarseShadowOffsetTexels = 1024u * 1024u;
+    const uint32_t FineShadowRes = QueryHardwareGpuActive() ? 2048u : 1024u;
+    InitCascadeBasis(CachedFineSunCascade, LastFineShadowFocusWorld, FineSunCascadeHalfSpanMeters, FineShadowRes);
+    InitCascadeBasis(CachedSunCascade, LastCoarseShadowFocusWorld, std::clamp(MaxHalfExtent * 1.15f, 12.5f, 36.0f), 1024u);
+    CoarseShadowOffsetTexels = CachedFineSunCascade.ResolutionTexels * CachedFineSunCascade.ResolutionTexels;
 
-    const uint64_t ShadowDepthBytes = static_cast<uint64_t>(CoarseShadowOffsetTexels) * 2ull * sizeof(float);
+    const uint64_t ShadowDepthTexels =
+        static_cast<uint64_t>(CoarseShadowOffsetTexels) +
+        static_cast<uint64_t>(CachedSunCascade.ResolutionTexels) * static_cast<uint64_t>(CachedSunCascade.ResolutionTexels);
+    const uint64_t ShadowDepthBytes = ShadowDepthTexels * sizeof(float);
     EnsureDeviceBufferCapacity(SolarShadowDepthBuffer, ShadowDepthBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(GlobalDistanceFieldBuffer, 2ull * 262144ull * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(GlobalRadiosityFieldBuffer, 299520ull * sizeof(uint32_t) * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -3426,8 +3487,12 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
             std::memcpy(UniformHostBytes + UniOffs, &ShadowUni, sizeof(ShadowUni));
 
             const uint32_t CascadeCount = (DoFineShadow && DoCoarseShadow) ? 2u : 1u;
+            const uint32_t MaxActiveRes = DoFineShadow
+                ? std::max(CachedFineSunCascade.ResolutionTexels, DoCoarseShadow ? CachedSunCascade.ResolutionTexels : 0u)
+                : CachedSunCascade.ResolutionTexels;
+            const uint32_t ShadowGroups = (MaxActiveRes + 7u) / 8u;
             const auto CascadeSlots = ConstructPrecomputeSlots(UniOffs);
-            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, CascadeSlots, 128u, 128u, CascadeCount))
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, CascadeSlots, ShadowGroups, ShadowGroups, CascadeCount))
             {
                 BoundDevice->FreeCommandBuffer(Cmd);
                 return false;
@@ -4652,6 +4717,27 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             {
                 PrecomputeMask |= kPrecomputeCoarseGdf;
             }
+        }
+
+        // Scroll the Fine Sun Shadow Cascade when the camera focus navigates outside its active core,
+        // while keeping it anchored with wide hysteresis near foreground subjects (zero shimmer or redundant bakes).
+        constexpr float FineSunHalfMeters = 6.00f;
+        const Mathematics::Axis3D SceneObjectAnchor = ResolveDynamicClipFocusWorld(nullptr, Scene);
+        const float FocusFromObject = std::max({
+            std::abs(DesiredClipFocus.X - SceneObjectAnchor.X),
+            std::abs(DesiredClipFocus.Y - SceneObjectAnchor.Y),
+            std::abs(DesiredClipFocus.Z - SceneObjectAnchor.Z),
+        });
+        const Mathematics::Axis3D DesiredFineShadowAnchor =
+            (FocusFromObject <= FineSunHalfMeters * 0.55f) ? SceneObjectAnchor : DesiredClipFocus;
+        const float FineShadowDrift = std::max({
+            std::abs(DesiredFineShadowAnchor.X - LastFineShadowFocusWorld.X),
+            std::abs(DesiredFineShadowAnchor.Y - LastFineShadowFocusWorld.Y),
+            std::abs(DesiredFineShadowAnchor.Z - LastFineShadowFocusWorld.Z),
+        });
+        if (FineShadowDrift >= FineSunHalfMeters * 0.55f)
+        {
+            PrecomputeMask |= kPrecomputeFineShadow;
         }
     }
 

@@ -3838,9 +3838,9 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 CamOrig    = WorldUniforms.CameraOriginTanX.xyz;
         float  CamDist    = max(0.25, length(CenterPos.xyz - CamOrig));
         float  TanSun     = max(0.004, WorldUniforms.SunDirConeTan.w);
-        float  EdgeBlock  = (OutSunVis > 0.005 && OutSunVis < 0.995) ? max(OutBlocker, 0.30) : OutBlocker;
+        float  EdgeBlock  = (OutSunVis > 0.005 && OutSunVis < 0.995) ? max(OutBlocker, 0.06) : OutBlocker;
         float  Penumbra   = EdgeBlock * TanSun;
-        float  SigmaSh    = clamp(1.10 + (Penumbra / CamDist) * float(Height) * 1.65, 1.10, 9.0);
+        float  SigmaSh    = clamp(0.85 + (Penumbra / max(CamDist, 1.25)) * float(Height) * 0.90, 0.85, 4.0);
         float  Inv2SigS   = 1.0 / (2.0 * SigmaSh * SigmaSh);
         float  SigmaAo    = max(1.15, float(StridePx) * 1.35);
         float  Inv2SigA   = 1.0 / (2.0 * SigmaAo * SigmaAo);

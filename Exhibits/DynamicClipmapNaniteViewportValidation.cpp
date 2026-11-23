@@ -323,6 +323,49 @@ int main()
     }
     (void)SynchronizeShowcaseGallerySceneLive(Outliner, SceneBundle, NeedsCpuRebuild, true);
 
+    // VALIDATION 1D: Forward/Backward Dolly & Camera-Angle Yaw/Pitch Retain Fine Clipmap Over Hero Subject
+    {
+        PerspectiveCameraBasis DollyFarCam = FixedOverviewCam;
+        DollyFarCam.ViewportWidthPx  = 160u;
+        DollyFarCam.ViewportHeightPx = 90u;
+        DollyFarCam.CameraOrigin     = { 0.0f, -19.5f, 10.5f };
+        DollyFarCam.TargetPoint      = { 0.0f,   0.0f,  0.65f };
+        auto [DollyFarOk, DollyFarRgba] = RenderViewport(DollyFarCam, 16u, WorldRenderEngine::RealTimeGiGtxLowEnd);
+        const auto DollyFarStats = GpuSeq.QueryGlobalDistanceFieldStats();
+        const float DollyFarDrift = std::max({
+            std::fabs(DollyFarStats.FineCascadeCenterWorld[0] - SceneBundle.Objects[1u].CenterWorld.X),
+            std::fabs(DollyFarStats.FineCascadeCenterWorld[1] - SceneBundle.Objects[1u].CenterWorld.Y),
+            std::fabs(DollyFarStats.FineCascadeCenterWorld[2] - SceneBundle.Objects[1u].CenterWorld.Z),
+        });
+
+        PerspectiveCameraBasis AngledNearCam = FixedOverviewCam;
+        AngledNearCam.ViewportWidthPx  = 160u;
+        AngledNearCam.ViewportHeightPx = 90u;
+        AngledNearCam.CameraOrigin     = { -2.4f, -4.8f, 1.35f };
+        AngledNearCam.TargetPoint      = { -4.4f,  0.8f, 2.25f }; // Yawed left + pitched slightly upward
+        auto [AngledNearOk, AngledNearRgba] = RenderViewport(AngledNearCam, 16u, WorldRenderEngine::RealTimeGiGtxLowEnd);
+        const auto AngledNearStats = GpuSeq.QueryGlobalDistanceFieldStats();
+        const float AngledNearDrift = std::max({
+            std::fabs(AngledNearStats.FineCascadeCenterWorld[0] - SceneBundle.Objects[1u].CenterWorld.X),
+            std::fabs(AngledNearStats.FineCascadeCenterWorld[1] - SceneBundle.Objects[1u].CenterWorld.Y),
+            std::fabs(AngledNearStats.FineCascadeCenterWorld[2] - SceneBundle.Objects[1u].CenterWorld.Z),
+        });
+
+        std::printf(
+            "[DynamicClipmapNaniteViewportValidation] Dolly/Angle Fine Retention: "
+            "DollyFarDrift=%.2f m | AngledNearDrift=%.2f m (FineHalf=%.2f m)\n",
+            DollyFarDrift,
+            AngledNearDrift,
+            AngledNearStats.FineCascadeHalfSpanMeters);
+        (void)DollyFarRgba;
+        (void)AngledNearRgba;
+        Checklist.Verify(
+            DollyFarOk && AngledNearOk &&
+            DollyFarDrift < DollyFarStats.FineCascadeHalfSpanMeters * 0.45f &&
+            AngledNearDrift < AngledNearStats.FineCascadeHalfSpanMeters * 0.55f,
+            "Forward/back dolly and yaw/pitch camera-angle changes keep hero subject inside Fine Clipmap");
+    }
+
     //------------------------------------------------------------------------------------------------------------------------
     // VALIDATION 2: Tight Contact-Bounded UDF Clipmap Ambient Occlusion (3/4 Camera Angle)
     //------------------------------------------------------------------------------------------------------------------------
