@@ -86,7 +86,30 @@ SketcherControlTrace MakeSketcherControlTrace(const std::vector<Vector3>& Contro
     if (Kind != SketcherDrawingCategory::Line && Kind != SketcherDrawingCategory::Curve)
     { Result.Refusal = "Use Line, Curve or Arc"; return Result; }
     if (Kind == SketcherDrawingCategory::Curve && Form != SketchSplineForm::Nurbs && Form != SketchSplineForm::Bezier)
-    { Result.Refusal = "Point-only tracing uses NURBS (3) or Bezier (2); interpolating forms need extra tangent poles"; return Result; }
+    {
+        const std::vector<Vector3> Seed = SampleThroughCurve(Controls, Closed, Form, 32);
+        if (Seed.size() < 2) { Result.Refusal = "Curve form takes no curve through these controls"; return Result; }
+        double Chord = 0.0;
+        for (size_t I = 1; I < Seed.size(); ++I) Chord += Distance(Seed[I - 1], Seed[I]);
+        CurveFitSettings Settings;
+        Settings.Tolerance = std::max(1.0e-5, Chord * 2.5e-4);
+        Settings.Fairing   = 1.0e-10;
+        Settings.SpanLimit = 48;
+        const CurveFitOutcome Fitted = FitSpaceCurve(Seed, Settings);
+        if (!Fitted.Refusal.empty() || !Fitted.Curve.Definition)
+        {
+            Result.Refusal = Fitted.Refusal.empty() ? "Curve fit failed" : Fitted.Refusal;
+            return Result;
+        }
+        NurbsCurveDefinition Exact = *Fitted.Curve.Definition;
+        Exact.Poles.front() = Controls.front();
+        Exact.Poles.back()  = Closed ? Controls.front() : Controls.back();
+        Result.Curve.Definition = std::make_shared<NurbsCurveDefinition>(std::move(Exact));
+        const int Samples = std::max(32, int(Controls.size()) * 16);
+        for (int I = 0; I <= Samples; ++I)
+            Result.Samples.push_back(EvaluateNurbsCurve(*Result.Curve.Definition, double(I) / Samples).Position);
+        return Result;
+    }
     const int Degree = Kind == SketcherDrawingCategory::Line ? 1 : Form == SketchSplineForm::Bezier ? int(Controls.size()) - 1 : std::min(3, int(Controls.size()) - 1);
     if (Degree > 15) { Result.Refusal = "Bezier supports at most 16 controls; use NURBS"; return Result; }
     NurbsCurveDefinition Definition;
@@ -102,6 +125,154 @@ SketcherControlTrace MakeSketcherControlTrace(const std::vector<Vector3>& Contro
     for (int I = 0; I <= Samples; ++I)
         Result.Samples.push_back(EvaluateNurbsCurve(*Result.Curve.Definition, double(I) / Samples).Position);
     return Result;
+}
+
+SketcherControlTrace ConstructReferenceConformingTrace(const SketcherDocument& Document,
+    const std::vector<Vector3>& Controls, SketcherDrawingCategory Kind, SketchSplineForm Form, bool Closed)
+{
+    SketcherControlTrace Fallback = MakeSketcherControlTrace(Controls, Kind, Form, Closed);
+    if (!Fallback.Refusal.empty() || Fallback.Arc || Document.ReferenceSurfaces.empty() || !Fallback.Curve.Definition)
+    {
+        return Fallback;
+    }
+
+    double TotalChord = 0.0;
+    for (size_t I = 1; I < Controls.size(); ++I) TotalChord += Distance(Controls[I - 1], Controls[I]);
+    if (!(TotalChord > 1.0e-9)) return Fallback;
+
+    const double SearchRadius = std::max(0.05, TotalChord * 0.25);
+
+    // Estimate a consistent outward panel normal from the clicked controls so Solidify shells always hit the OUTER skin
+    Vector3 RefCentroid{ 0.0, 0.0, 0.0 };
+    int RefCount = 0;
+    for (const SketcherReferenceSurface& Surf : Document.ReferenceSurfaces)
+    {
+        if (!Surf.VisibleCondition || !Surf.Geometry || Surf.Geometry->Corners.empty()) continue;
+        RefCentroid = RefCentroid + Vector3{ 0.5 * (Surf.MinBound[0] + Surf.MaxBound[0]),
+                                             0.5 * (Surf.MinBound[1] + Surf.MaxBound[1]),
+                                             0.5 * (Surf.MinBound[2] + Surf.MaxBound[2]) };
+        ++RefCount;
+    }
+    if (RefCount > 0) RefCentroid = RefCentroid * (1.0 / double(RefCount));
+
+    Vector3 PanelNormal{ 0.0, 0.0, 0.0 };
+    for (const Vector3& Ctrl : Controls)
+    {
+        if (const auto Hit = ProjectOntoReferenceSurfaces(Document.ReferenceSurfaces, Ctrl, SearchRadius * 0.2))
+        {
+            Vector3 N = Hit->Normal;
+            if (Length(PanelNormal) > 0.5)
+            {
+                if (Dot(N, PanelNormal) < 0.0) N = N * -1.0;
+            }
+            else if (Dot(N, Ctrl - RefCentroid) < 0.0)
+            {
+                N = N * -1.0;
+            }
+            PanelNormal = PanelNormal + N;
+        }
+    }
+    const bool PanelNormalReady = Length(PanelNormal) > 1.0e-6;
+    if (PanelNormalReady) PanelNormal = Normalize(PanelNormal);
+
+    auto ProjectOuterSkin = [&](const Vector3& QueryPt) -> std::optional<Vector3>
+    {
+        if (PanelNormalReady)
+        {
+            const double RayLift = std::max(0.05, TotalChord * 0.15);
+            const Vector3 RayStart = QueryPt + PanelNormal * RayLift;
+            const Vector3 RayDir   = PanelNormal * -1.0;
+            if (const auto RayHit = IntersectReferenceSurfaces(Document.ReferenceSurfaces, RayStart, RayDir, RayLift * 2.5))
+            {
+                if (Distance(RayHit->Position, QueryPt) <= SearchRadius) return RayHit->Position;
+            }
+        }
+        if (const auto ClosestHit = ProjectOntoReferenceSurfaces(Document.ReferenceSurfaces, QueryPt, SearchRadius))
+        {
+            return ClosestHit->Position;
+        }
+        return std::nullopt;
+    };
+
+    constexpr int DenseCount = 64;
+    std::vector<Vector3> Conformed;
+    Conformed.reserve(DenseCount + 1);
+
+    int HitSamples = 0;
+    double MaxLift = 0.0;
+    for (int Step = 0; Step <= DenseCount; ++Step)
+    {
+        const double Param = double(Step) / double(DenseCount);
+        const Vector3 SeedPoint = EvaluateNurbsCurve(*Fallback.Curve.Definition, Param).Position;
+        Vector3 Placed = SeedPoint;
+        if (Step == 0)
+        {
+            Placed = Controls.front();
+            ++HitSamples;
+        }
+        else if (Step == DenseCount)
+        {
+            Placed = Closed ? Controls.front() : Controls.back();
+            ++HitSamples;
+        }
+        else if (const auto OuterPt = ProjectOuterSkin(SeedPoint))
+        {
+            MaxLift = std::max(MaxLift, Distance(SeedPoint, *OuterPt));
+            Placed  = *OuterPt;
+            ++HitSamples;
+        }
+        if (Conformed.empty() || Distance(Conformed.back(), Placed) > 1.0e-9 * std::max(1.0, TotalChord))
+        {
+            Conformed.push_back(Placed);
+        }
+    }
+    if (HitSamples < DenseCount / 2 || Conformed.size() < 3) return Fallback;
+    Conformed.front() = Controls.front();
+    Conformed.back()  = Closed ? Controls.front() : Controls.back();
+    if (MaxLift <= std::max(1.0e-5, TotalChord * 2.0e-4)) return Fallback;
+
+    // 2-sweep gentle fairing + outer-skin re-projection keeps curves smooth and flush on the exact outer skin
+    for (int Sweep = 0; Sweep < 2; ++Sweep)
+    {
+        std::vector<Vector3> Smoothed = Conformed;
+        for (size_t I = 1; I + 1 < Conformed.size(); ++I)
+        {
+            const Vector3 Avg = (Conformed[I - 1] + Conformed[I] * 2.0 + Conformed[I + 1]) * 0.25;
+            if (const auto OuterPt = ProjectOuterSkin(Avg)) Smoothed[I] = *OuterPt;
+            else Smoothed[I] = Avg;
+        }
+        Conformed = std::move(Smoothed);
+    }
+
+    CurveFitSettings Settings;
+    Settings.Tolerance = std::max(2.0e-4, TotalChord * 4.0e-4);
+    Settings.Fairing   = 1.0e-7;
+    Settings.SpanLimit = 18;
+    CurveFitOutcome Fitted = FitSpaceCurve(Conformed, Settings);
+    if (!Fitted.Refusal.empty() || !Fitted.Curve.Definition || Fitted.Curve.Definition->Poles.size() < 2)
+    {
+        Settings.Tolerance = std::max(1.0e-3, TotalChord * 2.0e-3);
+        Settings.SpanLimit = 28;
+        Fitted = FitSpaceCurve(Conformed, Settings);
+    }
+    if (!Fitted.Refusal.empty() || !Fitted.Curve.Definition || Fitted.Curve.Definition->Poles.size() < 2)
+    {
+        return Fallback;
+    }
+
+    NurbsCurveDefinition Exact = *Fitted.Curve.Definition;
+    Exact.Poles.front() = Controls.front();
+    Exact.Poles.back()  = Closed ? Controls.front() : Controls.back();
+
+    SketcherControlTrace ConformedTrace;
+    ConformedTrace.Curve.Definition = std::make_shared<NurbsCurveDefinition>(std::move(Exact));
+    const int DisplaySamples = std::max(48, int(ConformedTrace.Curve.Definition->Poles.size()) * 12);
+    ConformedTrace.Samples.reserve(static_cast<size_t>(DisplaySamples + 1));
+    for (int I = 0; I <= DisplaySamples; ++I)
+    {
+        ConformedTrace.Samples.push_back(EvaluateNurbsCurve(*ConformedTrace.Curve.Definition, double(I) / DisplaySamples).Position);
+    }
+    return ConformedTrace;
 }
 
 SketcherSurfaceTrace ProjectSketcherTrace(SketcherSnapRepository& Catalogue, const SketcherDocument& Document,

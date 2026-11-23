@@ -2288,7 +2288,30 @@ SketcherCommandOutcome DrawSketcherSpaceCurve(SketcherDocument& Document, const 
 
 namespace
 {
-    std::string SplitCrossingsInPlace(SketcherDocument&, double, const std::string& Only = {});
+    double ComputeEffectiveCrossingTolerance(const SketcherDocument& Document, double Tolerance)
+    {
+        double Effective = Tolerance;
+        if (!Document.ReferenceSurfaces.empty())
+        {
+            double Low[3]  = {  1.0e30,  1.0e30,  1.0e30 };
+            double High[3] = { -1.0e30, -1.0e30, -1.0e30 };
+            bool AnyRef = false;
+            for (const SketcherReferenceSurface& Surf : Document.ReferenceSurfaces)
+            {
+                if (!Surf.VisibleCondition || !Surf.Geometry || Surf.Geometry->Corners.empty()) continue;
+                for (int A = 0; A < 3; ++A) { Low[A] = std::min(Low[A], Surf.MinBound[A]); High[A] = std::max(High[A], Surf.MaxBound[A]); }
+                AnyRef = true;
+            }
+            if (AnyRef)
+            {
+                const double RefSpan = std::hypot(High[0] - Low[0], High[1] - Low[1], High[2] - Low[2]);
+                if (RefSpan > 10.0) Effective = std::max(Effective, RefSpan * 3.0e-4);
+            }
+        }
+        return Effective;
+    }
+
+    std::string SplitCrossingsInPlace(SketcherDocument&, double, const std::string& Only = {}, bool RetireSubdividedNetworks = false);
     std::string BuildLoopsInPlace(SketcherDocument&, double, bool OnlyUnbuilt, int* BuiltCount = nullptr);
 }
 SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, const NurbsCurve& Curve, bool Closed, bool AutoSplit, double IntersectionTolerance, bool AutoSurface)
@@ -2303,14 +2326,15 @@ SketcherCommandOutcome DrawSketcherProjectedCurve(SketcherDocument& Document, co
         if (Closed && Distance(Definition.Poles.front(), Definition.Poles.back()) > 1.0e-8) return "surface trace is not closed";
         ExactThrough Exact{ Definition.Poles, Definition.Knots };
         Label = AppendSpaceCurveStep(Document, Definition.Poles, Closed, NextCaption(Document, "Surface trace"), Exact);
+        const double EffectiveTol = ComputeEffectiveCrossingTolerance(Document, IntersectionTolerance);
         if (AutoSplit)
         {
-            const std::string SplitErr = SplitCrossingsInPlace(Document, IntersectionTolerance, Label);
+            const std::string SplitErr = SplitCrossingsInPlace(Document, EffectiveTol, {}, AutoSurface);
             if (!SplitErr.empty()) return SplitErr;
         }
         if (AutoSurface)
         {
-            const std::string LoopErr = BuildLoopsInPlace(Document, IntersectionTolerance, true);
+            const std::string LoopErr = BuildLoopsInPlace(Document, EffectiveTol, true);
             if (!LoopErr.empty()) return LoopErr;
         }
         return {};
@@ -2342,7 +2366,7 @@ void StoreControlDefinition(FeatureStep& Step, const NurbsCurveDefinition& D)
 namespace {
 // Exact curve splitting after a genuine 3D proximity root, never a screen-space
 // intersection. The tolerance is explicit: near joints share the same endpoint.
-std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std::string& Only)
+std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std::string& Only,bool RetireSubdividedNetworks)
 {
     if(!(Tolerance>0) || !std::isfinite(Tolerance)) return "Intersection tolerance must be finite and positive";
     struct Curve {std::string Label;NurbsCurveDefinition Definition;std::vector<Vector3> Samples;};
@@ -2363,9 +2387,84 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
         Curves.push_back(std::move(C));
     }
     struct Joint {double T;Vector3 P;};std::map<std::string,std::vector<Joint>> Cuts;
+    auto RegisterJointPair = [&](const Curve& CA, double X, const Curve& CB, double Y, const Vector3& P, const Vector3& Q)
+    {
+        auto JointPoint = (P + Q) * 0.5;
+        if (!D.ReferenceSurfaces.empty())
+        {
+            if (const auto RefSnap = ProjectOntoReferenceSurfaces(D.ReferenceSurfaces, JointPoint, Tolerance * 2.0))
+            {
+                if (Distance(RefSnap->Position, JointPoint) <= Tolerance) JointPoint = RefSnap->Position;
+            }
+        }
+        for (auto Entry : { std::pair<std::string, double>{ CA.Label, X }, { CB.Label, Y } })
+        {
+            auto& List = Cuts[Entry.first];
+            if (std::none_of(List.begin(), List.end(), [&](const auto& C)
+                { return std::abs(C.T - Entry.second) < 1e-3 || Distance(C.P, JointPoint) < Tolerance * 3.0; }))
+            {
+                List.push_back({ Entry.second, JointPoint });
+            }
+        }
+    };
+    auto ProjectEndpointOntoCurve = [&](const Curve& EndpointCurve, double EndParam, const Curve& TargetCurve)
+    {
+        const Vector3 EndPt = EvaluateNurbsCurve(EndpointCurve.Definition, EndParam).Position;
+        double BestT = 0.0;
+        double BestDist = 1.0e300;
+        for (int K = 0; K < Samples; ++K)
+        {
+            const Vector3 SegA = TargetCurve.Samples[K], SegB = TargetCurve.Samples[K + 1];
+            const Vector3 SegD = SegB - SegA;
+            const double LenSq = Dot(SegD, SegD);
+            const double LocalU = LenSq > 1e-24 ? std::clamp(Dot(EndPt - SegA, SegD) / LenSq, 0.0, 1.0) : 0.0;
+            const double CandDist = Distance(EndPt, SegA + SegD * LocalU);
+            if (CandDist < BestDist)
+            {
+                BestDist = CandDist;
+                BestT    = (K + LocalU) / double(Samples);
+            }
+        }
+        if (BestDist > Tolerance * 4.0 + 0.05) return;
+        double T = BestT;
+        for (int Iter = 0; Iter < 24; ++Iter)
+        {
+            const auto Eval = EvaluateNurbsCurveDerivatives(TargetCurve.Definition, T);
+            const Vector3 R = Eval.Position - EndPt;
+            const double Grad = Dot(R, Eval.First);
+            const double Hess = Dot(Eval.First, Eval.First) + Dot(R, Eval.Second);
+            if (Hess <= 1e-24) break;
+            double StepT = -Grad / Hess;
+            const double CurDist = Length(R);
+            double Alpha = 1.0;
+            double NextT = std::clamp(T + StepT, 0.0, 1.0);
+            for (int Back = 0; Back < 6; ++Back)
+            {
+                NextT = std::clamp(T + Alpha * StepT, 0.0, 1.0);
+                if (Distance(EvaluateNurbsCurve(TargetCurve.Definition, NextT).Position, EndPt) <= CurDist + 1e-14) break;
+                Alpha *= 0.5;
+            }
+            const double Moved = std::abs(NextT - T);
+            T = NextT;
+            if (Moved < 1e-13) break;
+        }
+        const Vector3 Foot = EvaluateNurbsCurve(TargetCurve.Definition, T).Position;
+        if (Distance(EndPt, Foot) <= Tolerance)
+        {
+            RegisterJointPair(EndpointCurve, EndParam, TargetCurve, T, EndPt, Foot);
+        }
+    };
     for(size_t A=0;A<Curves.size();++A)for(size_t B=A;B<Curves.size();++B) {
         const auto& CA=Curves[A];const auto& CB=Curves[B];
         if(!Only.empty() && CA.Label!=Only && CB.Label!=Only)continue;
+        if (A != B)
+        {
+            // Explicit T-junction / endpoint-on-curve checks (guarantees exact cuts even at shallow angles or endpoints).
+            ProjectEndpointOntoCurve(CA, 0.0, CB);
+            ProjectEndpointOntoCurve(CA, 1.0, CB);
+            ProjectEndpointOntoCurve(CB, 0.0, CA);
+            ProjectEndpointOntoCurve(CB, 1.0, CA);
+        }
         for(int I=0;I<Samples;++I)for(int J=0;J<Samples;++J) {
             if(A==B && (J<=I+2 || (I==0 && J==Samples-1)))continue;
             auto PA=CA.Samples[I],QA=CA.Samples[I+1],PB=CB.Samples[J],QB=CB.Samples[J+1];
@@ -2386,6 +2485,7 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
             for(int Iter=0;Iter<32;++Iter) {
                 auto E=EvaluateNurbsCurveDerivatives(CA.Definition,X),F=EvaluateNurbsCurveDerivatives(CB.Definition,Y);
                 auto R=E.Position-F.Position;
+                const double CurDist=Length(R);
                 const double GradX=Dot(R,E.First),GradY=-Dot(R,F.First);
                 const double Hxx=Dot(E.First,E.First)+Dot(R,E.Second),Hyy=Dot(F.First,F.First)-Dot(R,F.Second);
                 const double Hxy=-Dot(E.First,F.First);
@@ -2398,24 +2498,29 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
                 if(FixX) { DX=0.0; DY=Hyy>0.0 ? -GradY/Hyy : 0.0; }
                 if(FixY) { DY=0.0; DX=Hxx>0.0 ? -GradX/Hxx : 0.0; }
                 if(Det<=1e-30 && !FixX && !FixY) break;
-                const double NX=std::clamp(X+DX,0.0,1.0),NY=std::clamp(Y+DY,0.0,1.0);
+                double Alpha=1.0;
+                double NX=std::clamp(X+DX,0.0,1.0),NY=std::clamp(Y+DY,0.0,1.0);
+                for(int Back=0;Back<6;++Back) {
+                    NX=std::clamp(X+Alpha*DX,0.0,1.0);
+                    NY=std::clamp(Y+Alpha*DY,0.0,1.0);
+                    const double NextDist=Distance(EvaluateNurbsCurve(CA.Definition,NX).Position,EvaluateNurbsCurve(CB.Definition,NY).Position);
+                    if(NextDist<=CurDist+1e-14) break;
+                    Alpha*=0.5;
+                }
                 const double Moved=std::abs(NX-X)+std::abs(NY-Y);
                 X=NX; Y=NY;
                 if(Moved<1e-13) break;
             }
             auto P=EvaluateNurbsCurve(CA.Definition,X).Position,Q=EvaluateNurbsCurve(CB.Definition,Y).Position;
             if(Distance(P,Q)>Tolerance || (A==B && std::abs(X-Y)<1e-5))continue;
-            // Skip near-parallel collinear overlap away from endpoints unless both are endpoints.
+            // Skip near-parallel grazing overlap away from endpoints unless both are endpoints.
             auto EEnd=EvaluateNurbsCurveDerivatives(CA.Definition,X),FEnd=EvaluateNurbsCurveDerivatives(CB.Definition,Y);
             const double TanLen=Length(EEnd.First)*Length(FEnd.First);
-            if(TanLen>1e-24 && std::abs(Dot(EEnd.First,FEnd.First))>(1.0-1e-10)*TanLen) {
-                const bool EndA=(X<=1e-6 || X>=1.0-1e-6),EndB=(Y<=1e-6 || Y>=1.0-1e-6);
+            if(TanLen>1e-24 && std::abs(Dot(EEnd.First,FEnd.First))>0.996*TanLen) {
+                const bool EndA=(X<=1e-5 || X>=1.0-1e-5),EndB=(Y<=1e-5 || Y>=1.0-1e-5);
                 if(!EndA || !EndB) continue;
             }
-            auto JointPoint=(P+Q)*.5;
-            for(auto Entry:{std::pair<std::string,double>{CA.Label,X},{CB.Label,Y}}) {
-                auto& List=Cuts[Entry.first];if(std::none_of(List.begin(),List.end(),[&](const auto& C){return std::abs(C.T-Entry.second)<1e-6;}))List.push_back({Entry.second,JointPoint});
-            }
+            RegisterJointPair(CA, X, CB, Y, P, Q);
         }
     }
     auto HasNonNetworkDependent = [&](const std::string& CurveLabel) -> bool
@@ -2431,23 +2536,25 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
         return std::any_of(D.Tree.Modifiers.begin(), D.Tree.Modifiers.end(),
                            [&](const FeatureModifier& Modifier) { return Modifier.Curve == CurveLabel; });
     };
+    std::set<std::string> RetiredNetworks;
     for(const auto& C:Curves) {
         auto It=Cuts.find(C.Label);if(It==Cuts.end())continue;
         auto& J=It->second;std::sort(J.begin(),J.end(),[](auto A,auto B){return A.T<B.T;});
-        const bool Interior=std::any_of(J.begin(),J.end(),[](auto P){return P.T>1e-7 && P.T<1-1e-7;});
+        const bool Interior=std::any_of(J.begin(),J.end(),[](auto P){return P.T>1e-5 && P.T<1-1e-5;});
         auto Step=std::find_if(D.Tree.Steps.begin(),D.Tree.Steps.end(),[&](const auto& S){return S.Label==C.Label;});
+        if(Step==D.Tree.Steps.end())continue;
         if(!Step->CurveOffsetGuide.empty() || (Interior && HasNonNetworkDependent(C.Label)))
             return "A crossing curve has live dependents; detach those dependencies before auto-splitting (nothing changed)";
         FeatureStep Original=*Step;size_t Index=Step-D.Tree.Steps.begin();auto Remaining=C.Definition;
         std::vector<NurbsCurveDefinition> Pieces;
-        for(auto Joint:J) if(Joint.T>1e-7 && Joint.T<1-1e-7) {
+        for(auto Joint:J) if(Joint.T>1e-5 && Joint.T<1-1e-5) {
             auto Split=SplitNurbsCurve(Remaining,Joint.T);if(!Split)return "Intersection boundary cannot be split exactly";
             Split->first.Poles.back()=Joint.P;Split->second.Poles.front()=Joint.P;
             Pieces.push_back(Split->first);Remaining=Split->second;
         }
         Pieces.push_back(Remaining);
-        if(J.front().T<=1e-7)Pieces.front().Poles.front()=J.front().P;
-        if(J.back().T>=1-1e-7)Pieces.back().Poles.back()=J.back().P;
+        if(J.front().T<=1e-5)Pieces.front().Poles.front()=J.front().P;
+        if(J.back().T>=1-1e-5)Pieces.back().Poles.back()=J.back().P;
         std::vector<FeatureStep> InsertedPieces;
         std::vector<std::string> NewPieceLabels;
         int Ordinal = NextStepOrdinal(D.Tree);
@@ -2466,9 +2573,20 @@ std::string SplitCrossingsInPlace(SketcherDocument& D,double Tolerance,const std
             for(FeatureStep& Dependent:D.Tree.Steps) {
                 if(Dependent.Kind!=FeatureStepCategory::Network)continue;
                 auto Pos=std::find(Dependent.Sections.begin(),Dependent.Sections.end(),C.Label);
-                if(Pos!=Dependent.Sections.end()) Dependent.Sections.insert(Pos+1,NewPieceLabels.begin(),NewPieceLabels.end());
+                if(Pos!=Dependent.Sections.end())
+                {
+                    if (RetireSubdividedNetworks) RetiredNetworks.insert(Dependent.Label);
+                    else Dependent.Sections.insert(Pos+1,NewPieceLabels.begin(),NewPieceLabels.end());
+                }
             }
         }
+    }
+    if (!RetiredNetworks.empty())
+    {
+        D.Tree.Steps.erase(
+            std::remove_if(D.Tree.Steps.begin(), D.Tree.Steps.end(),
+                [&](const FeatureStep& S) { return S.Kind == FeatureStepCategory::Network && RetiredNetworks.contains(S.Label); }),
+            D.Tree.Steps.end());
     }
     return {};
 }
@@ -2565,6 +2683,13 @@ std::string BuildLoopsInPlace(SketcherDocument& Document, double Tolerance, bool
                 const double Gap = Distance(Position, Sample.Position);
                 if (Gap < Nearest) { Nearest = Gap; Expected = { Corner.Normal[0], Corner.Normal[1], Corner.Normal[2] }; }
             }
+            if (!Document.ReferenceSurfaces.empty())
+            {
+                if (const auto RefHit = ProjectOntoReferenceSurfaces(Document.ReferenceSurfaces, Sample.Position, Nearest))
+                {
+                    Expected = RefHit->Normal;
+                }
+            }
             if (Length(Expected) < 1e-12)
             {
                 const double X = std::abs(Normal.X), Y = std::abs(Normal.Y), Z = std::abs(Normal.Z);
@@ -2625,9 +2750,10 @@ SketcherCommandOutcome SplitSketcherSpaceCurveAt(SketcherDocument& Document, con
 SketcherCommandOutcome SplitSketcherCurveCrossings(SketcherDocument& D,double Tolerance,bool AutoSurface)
 {
     return RunCommand(D,"Split 3D curve crossings",false,[&]() -> std::string {
-        const std::string SplitErr = SplitCrossingsInPlace(D,Tolerance);
+        const double EffectiveTol = ComputeEffectiveCrossingTolerance(D, Tolerance);
+        const std::string SplitErr = SplitCrossingsInPlace(D, EffectiveTol, {}, AutoSurface);
         if (!SplitErr.empty()) return SplitErr;
-        return AutoSurface ? BuildLoopsInPlace(D, Tolerance, true) : std::string{};
+        return AutoSurface ? BuildLoopsInPlace(D, EffectiveTol, true) : std::string{};
     },0);
 }
 
@@ -2635,10 +2761,11 @@ SketcherCommandOutcome BuildSketcherClosedLoopSurfaces(SketcherDocument& Documen
 {
     return RunCommand(Document, "Build surfaces from closed loops", false, [&]() -> std::string
     {
-        const std::string SplitErr = SplitCrossingsInPlace(Document, Tolerance);
+        const double EffectiveTol = ComputeEffectiveCrossingTolerance(Document, Tolerance);
+        const std::string SplitErr = SplitCrossingsInPlace(Document, EffectiveTol, {}, true);
         if (!SplitErr.empty()) return SplitErr;
         int Built = 0;
-        const std::string LoopErr = BuildLoopsInPlace(Document, Tolerance, true, &Built);
+        const std::string LoopErr = BuildLoopsInPlace(Document, EffectiveTol, true, &Built);
         if (!LoopErr.empty()) return LoopErr;
         if (Built == 0) return "No unbuilt closed curve loops found (draw or close 3+ crossing curves)";
         return {};

@@ -471,6 +471,101 @@ int main(int Argc, char** Argv)
 #endif
     }
 
+    // 6. Validate 4-line overlapping / T-junction cutting (on flat plane, subdivided triangle, AND directly on curved Egoist.solidarc!)
+    {
+        using GeometrySpace::Parametric::FeatureStepCategory;
+        using GeometrySpace::Parametric::SketchSplineForm;
+
+        // 6a. 4 overlapping straight lines (# / square with overhangs) -> all 4 lines including 1st line must split into 12 pieces + 1 Network
+        SketcherDocument SquareDoc = CreateSketcherDocument("FourLineSquare");
+        const std::vector<std::vector<Vector3>> SqLines = {
+            { { -1.2,  0.5, 0.0 }, {  1.2,  0.5, 0.0 } },
+            { {  0.5,  1.2, 0.0 }, {  0.5, -1.2, 0.0 } },
+            { {  1.2, -0.5, 0.0 }, { -1.2, -0.5, 0.0 } },
+            { { -0.5, -1.2, 0.0 }, { -0.5,  1.2, 0.0 } },
+        };
+        bool SqOk = true;
+        for (const auto& Pts : SqLines)
+        {
+            const auto T = MakeSketcherControlTrace(Pts, SketcherDrawingCategory::Line, SketchSplineForm::Nurbs, false);
+            SqOk = SqOk && DrawSketcherProjectedCurve(SquareDoc, T.Curve, false, true, 0.001, true).AcceptedCondition;
+        }
+        int SqCurves = 0, SqNets = 0;
+        for (const auto& S : SquareDoc.Tree.Steps)
+        {
+            if (S.Kind == FeatureStepCategory::SpaceCurve) ++SqCurves;
+            if (S.Kind == FeatureStepCategory::Network)    ++SqNets;
+        }
+        Tally.Check(SqOk && SqCurves == 12 && SqNets == 1 && SquareDoc.Summary.Bodies.size() == 1u,
+            "4 overlapping lines cut ALL 4 lines (including 1st line -> 12 pieces, 1 auto-surface)");
+
+        // 6b. 3 lines close a triangle, then 4th line cuts across the 1st line -> parent triangle retired cleanly, 2 valid sub-surfaces built!
+        SketcherDocument SubdivDoc = CreateSketcherDocument("TriSubdividedBy4thLine");
+        const std::vector<std::vector<Vector3>> TriLines = {
+            { { -1.2,  0.0, 0.0 }, {  1.2,  0.0, 0.0 } },
+            { { -0.8, -0.3, 0.0 }, {  0.2,  1.3, 0.0 } },
+            { {  0.8, -0.3, 0.0 }, { -0.2,  1.3, 0.0 } },
+            { {  0.0, -0.4, 0.0 }, {  0.0,  1.2, 0.0 } },
+        };
+        bool TriOk = true;
+        for (const auto& Pts : TriLines)
+        {
+            const auto T = MakeSketcherControlTrace(Pts, SketcherDrawingCategory::Line, SketchSplineForm::Nurbs, false);
+            TriOk = TriOk && DrawSketcherProjectedCurve(SubdivDoc, T.Curve, false, true, 0.001, true).AcceptedCondition;
+        }
+        int TriNets = 0, TriFaces = 0;
+        for (const auto& S : SubdivDoc.Tree.Steps) if (S.Kind == FeatureStepCategory::Network) ++TriNets;
+        for (const auto& B : SubdivDoc.Summary.Bodies) TriFaces += B.Faces;
+        Tally.Check(TriOk && TriNets == 2 && TriFaces >= 2,
+            "4th line cutting 1st line of an auto-surfaced triangle retires parent loop and builds 2 clean sub-surfaces");
+
+        // 6c. 4 overlapping T-junction / X-crossing curves sketched DIRECTLY onto curved Egoist.solidarc hood!
+        const SketcherDocumentFile EgoistFile = LoadSketcherDocumentFile((VehiclesDir / "Egoist.solidarc").string());
+        if (EgoistFile.Refusal.empty() && !EgoistFile.ReferenceSurfaces.empty())
+        {
+            SketcherDocument HoodDoc = CreateSketcherDocument("EgoistHoodCage");
+            HoodDoc.ReferenceSurfaces = EgoistFile.ReferenceSurfaces;
+            HoodDoc.ReferenceRevision = 1u;
+            const SketcherScene HoodScene = BuildSketcherScene(HoodDoc);
+            const auto& Surf = HoodDoc.ReferenceSurfaces.front();
+            // 4 strokes overlapping in a crisp # quad on Egoist's curved GuideSurface.005 top deck (top-3/4 view)
+            const OrbitCamera HoodCam = BuildHeroCamera(Surf.MinBound, Surf.MaxBound, 125.0, 52.0, 0.80);
+            const OrbitCameraBasis HoodBasis = FrameOrbitCamera(HoodCam, double(RenderWidth), double(RenderHeight));
+            SketcherSnapRepository HoodCat;
+
+            const std::vector<std::vector<std::pair<double, double>>> HoodStrokes = {
+                { { 0.44, 0.48 }, { 0.50, 0.50 }, { 0.56, 0.52 } }, // Line 1 (upper deck)
+                { { 0.54, 0.47 }, { 0.52, 0.53 }, { 0.50, 0.59 } }, // Line 2 (front cross, crosses #1)
+                { { 0.54, 0.57 }, { 0.48, 0.55 }, { 0.42, 0.53 } }, // Line 3 (lower deck, crosses #2)
+                { { 0.44, 0.58 }, { 0.46, 0.52 }, { 0.48, 0.46 } }, // Line 4 (rear cross, crosses #3 AND #1!)
+            };
+            bool AllHoodAccepted = true;
+            for (const auto& Stroke : HoodStrokes)
+            {
+                std::vector<Vector3> Controls;
+                for (const auto& [U, V] : Stroke)
+                {
+                    const SketcherSnap Hit = SnapSketcherTrace(HoodCat, HoodDoc, HoodScene, HoodBasis, U * RenderWidth, V * RenderHeight, false, false);
+                    if (Hit.Kind != SketcherSnapCategory::None) Controls.push_back(Hit.Position);
+                }
+                const auto Conformed = ConstructReferenceConformingTrace(HoodDoc, Controls, SketcherDrawingCategory::Curve, SketchSplineForm::Nurbs, false);
+                if (!Conformed.Refusal.empty()) { AllHoodAccepted = false; continue; }
+                const auto Outcome = DrawSketcherProjectedCurve(HoodDoc, Conformed.Curve, false, true, 0.001, true);
+                AllHoodAccepted = AllHoodAccepted && Outcome.AcceptedCondition;
+            }
+            int HoodPieces = 0, HoodNetworks = 0;
+            for (const auto& S : HoodDoc.Tree.Steps)
+            {
+                if (S.Kind == FeatureStepCategory::SpaceCurve) ++HoodPieces;
+                if (S.Kind == FeatureStepCategory::Network)    ++HoodNetworks;
+            }
+            char HoodMsg[200];
+            std::snprintf(HoodMsg, sizeof(HoodMsg), "4 overlapping conformed curves on curved Egoist.solidarc hood cut ALL 4 lines (%d pieces · %d auto-surface · %zu bodies)",
+                HoodPieces, HoodNetworks, HoodDoc.Summary.Bodies.size());
+            Tally.Check(AllHoodAccepted && HoodPieces >= 12 && HoodNetworks >= 1 && HoodDoc.Summary.Bodies.size() >= 1u, HoodMsg);
+        }
+    }
+
     if (HasGpu) Raster.Destroy();
     std::printf("[SketcherBlendImportValidation] Passed=%d Failed=%d\n", Tally.Passed, Tally.Failed);
     return Tally.Failed == 0 ? 0 : 1;
