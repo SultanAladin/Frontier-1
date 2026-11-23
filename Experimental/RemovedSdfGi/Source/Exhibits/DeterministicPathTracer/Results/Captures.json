@@ -1,0 +1,38 @@
+{
+  "Summary": {
+    "Images": 7
+  },
+  "Captures": [
+    {
+      "Name": "HeroProgression_1spp",
+      "Seconds": 1.0627000000001863
+    },
+    {
+      "Name": "HeroProgression_4spp",
+      "Seconds": 4.2205
+    },
+    {
+      "Name": "HeroProgression_16spp",
+      "Seconds": 16.774099999999628
+    },
+    {
+      "Name": "HeroProgression_64spp",
+      "Seconds": 65.1775
+    },
+    {
+      "Name": "Hero_Authored_128spp.png",
+      "Seconds": 464.2014000000004,
+      "Digest": "b19096e3"
+    },
+    {
+      "Name": "Spheres_Authored_128spp.png",
+      "Seconds": 482.0935,
+      "Digest": "938371a7"
+    },
+    {
+      "Name": "Rear_Racing_64spp.png",
+      "Seconds": 190.25889999999944,
+      "Digest": "fba37cb8"
+    }
+  ]
+}
