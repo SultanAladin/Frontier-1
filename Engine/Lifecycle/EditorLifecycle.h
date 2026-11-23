@@ -24,7 +24,6 @@
 #include "Engine/Components/Diagnostics/ViewportTimingTelemetry.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
 #include "Engine/Editor/Explorer/ContentBrowser.h"
-#include "Engine/Editor/WorldEnvironmentInspector.h"
 #include "Engine/Editor/WorldEnvironmentRegistry.h"
 #include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.h"
@@ -190,8 +189,6 @@ private:
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
     std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted default world scene & Outliner tokens
     WorldEnvironmentRegistry                                         EnvironmentRegistry  {}; // [-] - Authoritative Environment Outliner & WorldScene registry
-    WorldEnvironmentInspector                                        EnvironmentInspector {}; // [-] - Dedicated 5-category Environment Inspector UI
-    bool                                                             EnvironmentInspectorMutated = false; // [-] - Dirty latch when Inspector mutates sky/celestials
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated MatCap / OpenPBR Direct world renderer
     std::unique_ptr<GeometricRaster::VulkanWorldRenderSequence>      GpuWorldRenderer     {}; // [-] - Hardware Vulkan .slang compute world render sequence
     std::unique_ptr<GeometricRaster::WorldGizmoOverlayRasterization> WorldGizmoRasterizer {}; // [-] - Vulkan .slang 3D Gizmo overlay rasterizer

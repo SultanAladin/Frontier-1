@@ -951,7 +951,6 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
     list(APPEND FRONTIER_ENGINE_SOURCES
         Engine/Editor/Explorer/ContentBrowser.cpp
         Engine/Editor/Explorer/ProjectBrowser.cpp
-        Engine/Editor/WorldEnvironmentInspector.cpp
         Engine/Editor/WorldEnvironmentRegistry.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )

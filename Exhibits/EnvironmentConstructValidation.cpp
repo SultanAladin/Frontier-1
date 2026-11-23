@@ -10,10 +10,8 @@
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/ControlCentre/ControlCentrePanel.h"
 #include "Engine/Components/Docking/WorkspaceDockContainer.h"
-#include "Engine/Components/Panes/InspectorPanel.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
-#include "Engine/Editor/WorldEnvironmentInspector.h"
 #include "Engine/Editor/WorldEnvironmentRegistry.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
@@ -33,7 +31,6 @@ namespace
 using Frontier::ConstructCategoryRail;
 using Frontier::ConstructModalStage;
 using Frontier::ControlCentrePanel;
-using Frontier::InspectorPanel;
 using Frontier::OutlinerPanel;
 using Frontier::OutlinerRecordEntry;
 using Frontier::OutlinerSlotToken;
@@ -44,7 +41,6 @@ using Frontier::TypographyRepository;
 using Frontier::ViewportDisplaySettings;
 using Frontier::ViewportPanel;
 using Frontier::WorldEnvironmentCategory;
-using Frontier::WorldEnvironmentInspector;
 using Frontier::WorldEnvironmentRegistry;
 using Frontier::Components::ConfigureImGuiWorkspaceTheme;
 using Frontier::Components::DockPlacementDirection;
@@ -388,43 +384,11 @@ bool RenderUiExhibitSnapshots(const std::filesystem::path& OutDir)
     ShowcaseWorldSceneBundle Bundle{};
     Frontier::GeometricRaster::BuildBlankPlaneSkyScene(Bundle, 240u, 144u);
 
-    OutlinerPanel             Outliner{};
-    ViewportPanel             Viewport{};
-    InspectorPanel            Inspector{};
-    WorldEnvironmentRegistry  Registry{};
-    WorldEnvironmentInspector EnvInspector{};
+    OutlinerPanel            Outliner{};
+    ViewportPanel            Viewport{};
+    WorldEnvironmentRegistry Registry{};
     Viewport.AttachOutliner(&Outliner);
-    Inspector.AttachOutliner(&Outliner);
     Viewport.ConfigureSceneTitle("Frontier · Environment Authoring");
-
-    bool AnyInspectorMutation = false;
-    Inspector.ConfigureFullOverrideCallback(
-        [&](
-            Frontier::PixelSpace&             Surface,
-            Frontier::Rectangle2D             Bounds,
-            OutlinerPanel*                    SourceOutliner,
-            OutlinerRecordEntry*              PrimaryEntry,
-            const Frontier::PaneInputReading& Input,
-            double                            Δt) -> bool
-        {
-            bool Mutated = false;
-            const bool Handled = EnvInspector.RenderIfEnvironment(
-                Surface,
-                Bounds,
-                SourceOutliner,
-                PrimaryEntry,
-                Registry,
-                Bundle.Scene,
-                &Viewport.AccessDisplaySettings(),
-                Input,
-                Δt,
-                Mutated);
-            if (Mutated)
-            {
-                AnyInspectorMutation = true;
-            }
-            return Handled;
-        });
 
     OutlinerRecordEntry CamRecord{};
     CamRecord.Title            = "Editor Camera";
@@ -439,12 +403,10 @@ bool RenderUiExhibitSnapshots(const std::filesystem::path& OutDir)
     const OutlinerSlotToken CloudsTok = Registry.RegisterFromRegistryKey("env:clouds",     "Clouds",     Outliner, Bundle.Scene, &Viewport.AccessDisplaySettings());
     const OutlinerSlotToken MoonTok   = Registry.RegisterFromRegistryKey("env:moon",       "Moon",       Outliner, Bundle.Scene, &Viewport.AccessDisplaySettings());
     const OutlinerSlotToken StarsTok  = Registry.RegisterFromRegistryKey("env:stars",      "Stars",      Outliner, Bundle.Scene, &Viewport.AccessDisplaySettings());
-
-    // Match iconic reference inspector readouts for clear side-by-side visual verification
-    Bundle.Scene.Atmosphere.Solar.LocalHours             = 15.5f;
-    Bundle.Scene.Atmosphere.Moons[0].SynodicPhaseFraction = 0.62f;
-    Bundle.Scene.Atmosphere.Stars.LimitingMagnitude      = 5.5f;
-    (void)Registry.SyncToWorld(Outliner, Bundle.Scene, &Viewport.AccessDisplaySettings());
+    (void)AtmoTok;
+    (void)CloudsTok;
+    (void)MoonTok;
+    (void)StarsTok;
 
     Outliner.ConfigureFocusViewportCallback([](OutlinerSlotToken) {});
     Outliner.ConfigureDirectConstructCallback([](std::string_view) {});
@@ -461,21 +423,15 @@ bool RenderUiExhibitSnapshots(const std::filesystem::path& OutDir)
         (void)Container.RegisterPane(WorkspaceDockPaneDescriptor{
             "Outliner",
             DockPlacementDirection::SplitLeft,
-            0.21f,
+            0.22f,
             PaneDirectiveMask::StandardPaneDirectives,
             [&]() { Outliner.PresentInImGuiPane(1.0 / 60.0, 1.0f); } });
         (void)Container.RegisterPane(WorkspaceDockPaneDescriptor{
             "Viewport",
             DockPlacementDirection::CenterTabGroup,
-            0.55f,
+            0.78f,
             PaneDirectiveMask::StandardPaneDirectives,
             [&]() { Viewport.PresentInImGuiPane(1.0 / 60.0, 1.0f); } });
-        (void)Container.RegisterPane(WorkspaceDockPaneDescriptor{
-            "Inspector",
-            DockPlacementDirection::SplitRight,
-            0.24f,
-            PaneDirectiveMask::StandardPaneDirectives,
-            [&]() { Inspector.PresentInImGuiPane(1.0 / 60.0, 1.0f); } });
 
         ControlCentrePanel ControlCentre{};
         for (int Step = 0; Step < 3; ++Step)
@@ -493,7 +449,6 @@ bool RenderUiExhibitSnapshots(const std::filesystem::path& OutDir)
     };
 
     // 1. Construct Modal - Step 01 All (with Environment items showing live "Added" / "1 / 6" badges)
-    Outliner.SelectSingle(AtmoTok);
     Viewport.ConfigureConstructSheetOpen(true);
     Viewport.ConfigureConstructRail(ConstructCategoryRail::All);
     if (!CaptureFrame("01-NativeConstructAll.png")) { ImGui::DestroyContext(GuiSession); return false; }
@@ -524,93 +479,6 @@ bool RenderUiExhibitSnapshots(const std::filesystem::path& OutDir)
     Outliner.CloseOverlays();
     Outliner.OpenDirectiveSheetForSlot(OutlinerSlotToken{}, Point2D{ 96.0f, 520.0f });
     if (!CaptureFrame("05-NativeOutlinerEmptySheet.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    // 6-12. Full 3-Pane Dedicated Environment Inspectors (Atmosphere, Sun, Clouds, Moon, Stars, Folder, Atmosphere Scattering)
-    Outliner.CloseOverlays();
-
-    Outliner.SelectSingle(AtmoTok);
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Atmosphere, 0u);
-    if (!CaptureFrame("08-InspectorAtmosphere.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    Outliner.SelectSingle(SunTok);
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Sun, 0u);
-    if (!CaptureFrame("09-InspectorSun.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    Outliner.SelectSingle(CloudsTok);
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Clouds, 0u);
-    if (!CaptureFrame("10-InspectorClouds.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    Outliner.SelectSingle(MoonTok);
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Moon, 0u);
-    if (!CaptureFrame("11-InspectorMoon.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    Outliner.SelectSingle(StarsTok);
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Stars, 0u);
-    if (!CaptureFrame("12-InspectorStars.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    Outliner.SelectSingle(EnvFolderTok);
-    if (!CaptureFrame("13-InspectorEnvironmentFolder.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    // Page carousel verification + Atmosphere Scattering page capture
-    Outliner.SelectSingle(AtmoTok);
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Atmosphere, 1u);
-    if (!VerifyCheck(EnvInspector.QueryActivePage(WorldEnvironmentCategory::Atmosphere) == 1u, "Inspector page carousel switches to Scattering page"))
-    {
-        ImGui::DestroyContext(GuiSession);
-        return false;
-    }
-    if (!CaptureFrame("14-InspectorAtmosphereScattering.png")) { ImGui::DestroyContext(GuiSession); return false; }
-
-    // Interactive mutation verification: click "Orbital view" quick-control tile on Atmosphere Overview
-    EnvInspector.ConfigureActivePage(WorldEnvironmentCategory::Atmosphere, 0u);
-    {
-        Frontier::PixelSpace       DummySurface{ nullptr, Frontier::Point2D{ 0.0f, 0.0f }, 1.0f, Io.FontDefault };
-        const Frontier::Rectangle2D PanelBounds{ 0.0f, 0.0f, 345.0f, 860.0f };
-        Frontier::PaneInputReading  ClickInput{};
-        // Quick Controls Grid is at Y = 18 + 28 + 34 + 24 + 44 + 252 + 14 = 414; Tile[1] ("Orbital view") is right column, row 0 (~X=240, Y=495)
-        ClickInput.PrimaryPointer.X       = 240.0f;
-        ClickInput.PrimaryPointer.Y       = 495.0f;
-        ClickInput.PrimaryPointer.Pressed = true;
-        ClickInput.PrimaryPointer.Down    = true;
-        bool Mutated = false;
-        const bool Handled = EnvInspector.RenderIfEnvironment(
-            DummySurface,
-            PanelBounds,
-            &Outliner,
-            Outliner.AccessEntry(AtmoTok),
-            Registry,
-            Bundle.Scene,
-            &Viewport.AccessDisplaySettings(),
-            ClickInput,
-            1.0 / 60.0,
-            Mutated);
-        if (!VerifyCheck(
-                Handled && Mutated && Bundle.Scene.Atmosphere.Medium.OrbitalViewEnabled,
-                "Inspector Quick Control click toggles Atmosphere.Medium.OrbitalViewEnabled live"))
-        {
-            ImGui::DestroyContext(GuiSession);
-            return false;
-        }
-        // Verify non-environment folder returns false (clean fallthrough to Folder Inspector)
-        bool FolderMutated = false;
-        const bool FolderHandled = EnvInspector.RenderIfEnvironment(
-            DummySurface,
-            PanelBounds,
-            &Outliner,
-            Outliner.AccessEntry(EnvFolderTok),
-            Registry,
-            Bundle.Scene,
-            &Viewport.AccessDisplaySettings(),
-            Frontier::PaneInputReading{},
-            1.0 / 60.0,
-            FolderMutated);
-        if (!VerifyCheck(!FolderHandled && !FolderMutated, "Environment folder falls through cleanly to built-in Folder Inspector"))
-        {
-            ImGui::DestroyContext(GuiSession);
-            return false;
-        }
-    }
-    (void)AnyInspectorMutation;
 
     TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiSession);

@@ -414,42 +414,6 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     EnvironmentRegistry.AdoptInitialSceneState(Panes->Outliner, ShowcaseBundle->Scene, &Panes->Viewport.AccessDisplaySettings());
     EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
 
-    // Wire dedicated Environment Inspectors (Atmosphere, Sun, Clouds, Moon, Stars) via InspectorPanel FullOverrideCallback
-    Panes->Inspector.ConfigureFullOverrideCallback(
-        [this](
-            PixelSpace&             Surface,
-            Rectangle2D             Bounds,
-            OutlinerPanel*          Outliner,
-            OutlinerRecordEntry*    PrimaryEntry,
-            const PaneInputReading& Input,
-            double                  Δt) -> bool
-        {
-            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
-            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
-            {
-                return false;
-            }
-            bool Mutated = false;
-            const bool Handled = EnvironmentInspector.RenderIfEnvironment(
-                Surface,
-                Bounds,
-                Outliner,
-                PrimaryEntry,
-                EnvironmentRegistry,
-                ShowcaseBundle->Scene,
-                &ActivePanes->Viewport.AccessDisplaySettings(),
-                Input,
-                Δt,
-                Mutated);
-            if (Mutated)
-            {
-                EnvironmentInspectorMutated    = true;
-                PendingInteractionWorldRefresh = true;
-                PendingInteractionSceneSync    = true;
-            }
-            return Handled;
-        });
-
     // Wire Construct modal -> WorldEnvironmentRegistry
     Panes->Viewport.ConfigureConstructApplyCallback(
         [this](std::string_view RegistryKey, std::string_view CustomTitle)
@@ -2614,13 +2578,11 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
             }
 
-            const bool InspectorEnvDirty = EnvironmentInspectorMutated;
-            EnvironmentInspectorMutated  = false;
             const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
-            const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || InspectorEnvDirty || AtmoAnimTick;
+            const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || AtmoAnimTick;
             const bool NeedCpuSkySync =
                 ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
-                (ViewportTogglesChanged || EnvRegistryChanged || InspectorEnvDirty || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
+                (ViewportTogglesChanged || EnvRegistryChanged || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
             if (NeedCpuSkySync)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
