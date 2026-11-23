@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [ProjectZeroInspectorExactPortPlan.md](ProjectZeroInspectorExactPortPlan.md) | **🟢 Active Plan (`2026-11-23`)**: Strict 1:1 pixel-for-pixel C++ port of `ProjectZeroEditor` HTML inspector cards (`6392b471` Sun Direction, F76 3-face Baking, F77/F78 Camera Settings & Camera Mount, pure-vector Lights/Atmosphere/Wind, zero `vkQueueWaitIdle` stalls, live `.cpp`/`.slang` variable bindings) |
 | [CrossThreadPhysicsConstraintPlan.md](CrossThreadPhysicsConstraintPlan.md) | **🟢 Completion Report (`2026-11-23`)**: Generic wait-free multi-reader `PublishedReadingExchange`, `ThreadBoundaryExchange`, dedicated `PhysicsThread`, and all 8 `ProjectZeroEditor`-parity Jolt physics constraints |
 | [ProjectLifecyclePolicyPlan.md](ProjectLifecyclePolicyPlan.md) | **🟢 Active Plan (`2026-11-23`)**: `Projects/` root, reference lean project `Projects/Untitled/` (`UntitledLifecycle`), tight zero-Editor `RuntimeLifecycle` fixed-step loop, `ProjectExecutionPolicy`, `GameplayRulePolicy`, and `DeterministicDrivingPolicy` |
 | [ModularInspectorArchitecturePlan.md](ModularInspectorArchitecturePlan.md) | **🟢 Approved & Active (`2026-11-23`)**: Standalone per-type generic Inspector architecture (`24` independent `.h/.cpp` Inspectors, zero monolithic buckets, zero hardcoded folders/singletons, multi-instance combination for Suns/Moons/Winds/Stars/Fogs/Lights/Cameras/Geometry, on-demand retained previews & real LUT previews) |

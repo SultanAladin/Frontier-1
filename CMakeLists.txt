@@ -231,6 +231,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Controls/ConfirmationDialogue.cpp
     Engine/Components/Controls/NotificationSequence.cpp
     Engine/Components/Controls/InspectorSectionPrimitives.cpp
+    Engine/Components/Controls/InspectorVectorGraphics.cpp
     Engine/Components/Controls/PolarDirectionDial.cpp
     Engine/Components/Docking/WorkspaceTabStrip.cpp
     Engine/Components/Docking/WorkspaceDockContainer.cpp

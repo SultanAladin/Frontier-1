@@ -5,6 +5,7 @@
 
 #include "Engine/Editor/Inspectors/AtmosphereInspector.h"
 
+#include "Engine/Components/Controls/InspectorVectorGraphics.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
 #include "Engine/GeometricRaster/Atmosphere/CelestialEphemerisSolver.h"
@@ -296,20 +297,14 @@ float AtmosphereInspector::Construct(
     else if (ActivePage == 1u)
     {
         {
-            const Rectangle2D S { LeftX, CursorY, InnerWidth, 286.0f };
+            const Rectangle2D S { LeftX, CursorY, InnerWidth, 324.0f };
             InspectorPrimitives::ConstructSectionSurface(Surface, S, "Atmospheric scattering");
             float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
             char Num[16]{}; std::snprintf(Num, sizeof(Num), "%.1f", Medium.RayleighStrength);
-            Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, Num, "x", "How air molecules scatter sunlight");
-            std::array<float, 32u> Curve{};
-            for (std::size_t I = 0u; I < Curve.size(); ++I)
-            {
-                const float Lambda = 0.40f + 0.30f * (static_cast<float>(I) / 31.0f);
-                Curve[I] = std::clamp(std::pow(0.45f / Lambda, 4.0f) * 0.42f * Medium.RayleighStrength, 0.0f, 1.0f);
-            }
-            InspectorPrimitives::ConstructCurvePlot(Surface, { LeftX + PadX, Y, BodyW, 82.0f }, Curve, ColorRgba{ 116u, 178u, 255u, 255u }, ColorRgba{ 76u, 138u, 232u, 42u }, "400 nm", "700 nm");
-            Y += 94.0f;
-            (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 1101u, "Rayleigh", "x", "%.2f", 0.0f, 4.0f, Medium.RayleighStrength, ActiveDragId, Input, OutMutated);
+            Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, Num, "×", "How air molecules scatter sunlight");
+            InspectorVector::ConstructScatteringGraph(Surface, { LeftX + PadX, Y, BodyW, 122.0f }, Medium.RayleighStrength, Medium.MieStrength * 10.0f);
+            Y += 132.0f;
+            (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 1101u, "Rayleigh", "×", "%.2f", 0.0f, 4.0f, Medium.RayleighStrength, ActiveDragId, Input, OutMutated);
             CursorY = S.Bottom() + InspectorMetrics::SectionGap;
         }
         {
@@ -414,22 +409,22 @@ float AtmosphereInspector::Construct(
     }
     else
     {
-        UpdateTransmittanceSurface(Medium);
-        UpdateSkyViewSurface(Medium, ActiveSolar);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Live atmospheric LUTs");
+        // F76: Unbaked by default (zero automatic CPU rasterization or texture upload until explicit Bake click!)
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Atmospheric LUTs");
         CursorY += 20.0f;
         bool TransRebake = false, SkyRebake = false;
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
-            Surface, LeftX, CursorY, InnerWidth, "Transmittance LUT", "256 x 64",
-            "RGB32F -> RGBA8 sRGB  ·  elevation x altitude",
-            "X: View elevation (-6..90 deg)   ·   Y: Altitude (0..60 km)",
+            Surface, LeftX, CursorY, InnerWidth, "Transmittance LUT", "256 × 64",
+            "RGB32F → RGBA8 sRGB",
+            "X: View elevation (-6..90°) · Y: Altitude (0..60 km)",
             TransmittanceLut, 74.0f, &Input, &TransSettingsOpen, &TransResolutionTier, &TransRebake);
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
-            Surface, LeftX, CursorY, InnerWidth, "Sky-view LUT", "192 x 108",
-            "RGBA32F -> RGBA8 sRGB  ·  equirectangular sky dome",
-            "X: Azimuth (0..360 deg)   ·   Y: Elevation (+90..-90 deg)",
+            Surface, LeftX, CursorY, InnerWidth, "Sky-view LUT", "192 × 108",
+            "RGBA32F → RGBA8 sRGB",
+            "X: Azimuth (0..360°) · Y: Elevation (+90..-90°)",
             SkyViewLut, 112.0f, &Input, &SkyViewSettingsOpen, &SkyViewResolutionTier, &SkyRebake);
-        if (TransRebake || SkyRebake) OutMutated = true;
+        if (TransRebake) { UpdateTransmittanceSurface(Medium); OutMutated = true; }
+        if (SkyRebake)   { UpdateSkyViewSurface(Medium, ActiveSolar); OutMutated = true; }
     }
 
     return CursorY;

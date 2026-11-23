@@ -5,6 +5,7 @@
 
 #include "Engine/Editor/Inspectors/WindInspector.h"
 
+#include "Engine/Components/Controls/InspectorVectorGraphics.h"
 #include "Engine/Components/Controls/PolarDirectionDial.h"
 
 #include <array>
@@ -37,9 +38,7 @@ float WindInspector::Construct(
         InspectorPrimitives::ConstructSectionSurface(Surface, S, "Prevailing wind");
         char Spd[16]{}; std::snprintf(Spd, sizeof(Spd), "%.1f", Wind.SpeedMetersPerSecond);
         (void)InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, CursorY + InspectorMetrics::SectionPadTop + 28.0f, Spd, "m/s", PolarDirectionDial::ResolveCompassLabel(Wind.BearingDegrees));
-        float DummyEl = 45.0f; bool DialChanged = false;
-        PolarDirectionDial::Construct(Surface, { S.Right() - PadX - 50.0f, CursorY + 132.0f }, 46.0f, Wind.BearingDegrees, 45.0f, false, Input, Wind.BearingDegrees, DummyEl, DialChanged, true);
-        if (DialChanged) OutMutated = true;
+        InspectorVector::ConstructWindCompass(Surface, { S.Right() - PadX - 134.0f, CursorY + 42.0f, 134.0f, 182.0f }, Wind.BearingDegrees);
         CursorY = S.Bottom() + InspectorMetrics::SectionGap;
 
         const std::array<InspectorQuickSwitchSpec, 2u> Quick = {{

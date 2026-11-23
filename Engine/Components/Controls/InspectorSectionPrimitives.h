@@ -134,6 +134,8 @@ public:
         float       CornerRadius = 12.0f,
         ColorRgba   Tint         = { 255u, 255u, 255u, 255u }) noexcept;
 
+    void Release() noexcept;
+
     [[nodiscard]] bool     QueryResident() const noexcept { return ResidentTexture.Pixels != nullptr && WidthPx > 0u && HeightPx > 0u; }
     [[nodiscard]] uint64_t QueryRevision() const noexcept { return RetainedSignature; }
     [[nodiscard]] uint32_t QueryWidthPx()  const noexcept { return WidthPx; }

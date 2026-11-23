@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             SOLARINSPECTOR.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of standalone multi-instance SolarInspector (Sun now A/B/C, daylight scrub, polar dome, Temperature, Sun disc, Dynamic, Baking)
+// 🧩 Standalone SolarInspector — 1:1 pure-vector port of ProjectZeroEditor Sun inspector (F81 6392b471 Sun direction + F76 3-face Baking)
 
 #include "Engine/Editor/Inspectors/SolarInspector.h"
 
@@ -53,83 +53,79 @@ inline Mathematics::LinearRGB SampleSolarSky(
     const float B  = (((1.0f - std::exp(-0.310f * Air * Medium.RayleighStrength)) * 1.48f) * Medium.RayleighStrength * 0.42f * PhRay + MieS * SolarTint.B * (1.0f - SunsetW * 0.25f)) * Br * Medium.SkyTint.B;
     return { std::max(0.0f, R), std::max(0.0f, Gc), std::max(0.0f, B) };
 }
+
+// Pure-vector Sun Now sky card (0 CPU pixel loops, 0 texture uploads, 0 vkQueueWaitIdle stalls)
+void ConstructVectorSunNowSky(
+    PixelSpace&                                            Surface,
+    Rectangle2D                                            Rect,
+    float                                                  LocalHours,
+    float                                                  ElevationDegrees,
+    const GeometricRaster::AtmosphericMediumConfiguration& Medium,
+    const Mathematics::LinearRGB&                          SolarTint,
+    uint32_t                                               DesignIndex) noexcept
+{
+    Surface.PushClip(Rect, true);
+
+    const float SunElRad = ElevationDegrees * (PiF / 180.0f);
+    const float GroundY  = Rect.Y + Rect.Height * 0.78f;
+    const uint32_t Bands = 24u;
+    const float BandH    = (GroundY - Rect.Y) / static_cast<float>(Bands);
+
+    for (uint32_t I = 0u; I < Bands; ++I)
+    {
+        const float Frac   = (static_cast<float>(I) + 0.5f) / static_cast<float>(Bands);
+        const float ViewEl = (1.0f - Frac) * 1.15f;
+        const auto Col = SampleSolarSky(ViewEl, std::cos(std::fabs(ViewEl - std::max(0.0f, SunElRad))), SunElRad, Medium, SolarTint);
+        const ColorRgba BandCol { ToneSrgb8(Col.R), ToneSrgb8(Col.G), ToneSrgb8(Col.B), 255u };
+        Surface.FillRectangle({ Rect.X, Rect.Y + static_cast<float>(I) * BandH, Rect.Width, BandH + 1.0f }, BandCol, 0.0f);
+    }
+
+    // Ground horizon reflection strip
+    Surface.FillRectangle({ Rect.X, GroundY, Rect.Width, Rect.Bottom() - GroundY }, ColorRgba{ 16u, 18u, 24u, 255u }, 0.0f);
+    Surface.StrokeLine({ Rect.X, GroundY }, { Rect.Right(), GroundY }, ColorRgba{ 255u, 255u, 255u, 32u }, 1.0f);
+
+    // Sun position along daylight arc + smooth radial vector glow
+    const float DayFrac    = std::clamp(std::fmod(std::max(0.0f, LocalHours), 24.0f) / 24.0f, 0.0f, 1.0f);
+    const float SunScreenX = (DesignIndex == 1u) ? Rect.Center().X : (Rect.X + (0.14f + 0.72f * DayFrac) * Rect.Width);
+    const float SunScreenY = GroundY - std::clamp(ElevationDegrees / 85.0f, -0.25f, 1.0f) * (Rect.Height * 0.56f);
+    const ColorRgba SunRgb = InspectorPrimitives::EncodeLinearRgbToSrgb8(SolarTint);
+
+    if (ElevationDegrees > -4.0f)
+    {
+        const Point2D SunPt { SunScreenX, SunScreenY };
+        for (int32_t Ring = 6; Ring >= 1; --Ring)
+        {
+            const float T = static_cast<float>(Ring) / 6.0f;
+            const uint8_t A = static_cast<uint8_t>((1.0f - T * 0.80f) * 58.0f);
+            Surface.FillCircle(SunPt, 8.0f + T * 34.0f, SunRgb.WithAlpha(A));
+        }
+        Surface.FillCircle(SunPt, 7.5f, SunRgb);
+        Surface.FillCircle(SunPt, 4.5f, ColorRgba{ 255u, 252u, 240u, 255u });
+    }
+
+    Surface.PopClip();
+    Surface.StrokeRectangle(Rect, ColorRgba{ 255u, 255u, 255u, 18u }, 14.0f, 1.0f);
+}
 } // namespace
 
-void SolarInspector::UpdateSolarSkySurface(
+void SolarInspector::BakeSolarLutSurface(
     const GeometricRaster::AtmosphericMediumConfiguration& Medium,
     const GeometricRaster::SolarCelestialConfiguration&    Solar,
-    uint32_t                                               DesignIndex)
+    uint32_t                                               ResolutionTier)
 {
     const auto Ephem = GeometricRaster::CelestialEphemerisSolver::SolveSolarEphemeris(Solar);
-    uint64_t Sig = 0x5C004004ull;
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Solar.LocalHours);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.ElevationDegrees);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.AzimuthDegrees);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Solar.SolarIntensityMultiplier);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.EffectiveSolarTint.R);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.EffectiveSolarTint.G);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.EffectiveSolarTint.B);
-    Sig = InspectorPrimitives::MixRevisionU64(Sig, DesignIndex);
+    static constexpr std::array<std::pair<uint32_t, uint32_t>, 4u> Sizes = {{
+        { 48u, 27u }, { 96u, 54u }, { 192u, 108u }, { 384u, 216u },
+    }};
+    const auto [W, H] = Sizes[std::min<uint32_t>(ResolutionTier, 3u)];
 
-    const uint32_t W = 224u;
-    const uint32_t H = (DesignIndex == 2u) ? 140u : 178u;
-    SunNowPreview.EnsureUpdated(Sig, W, H, [&](std::vector<uint8_t>& Pixels)
-    {
-        const float SunElRad   = Ephem.ElevationDegrees * (PiF / 180.0f);
-        const float DayFrac    = std::clamp(std::fmod(std::max(0.0f, Solar.LocalHours), 24.0f) / 24.0f, 0.0f, 1.0f);
-        const float SunScreenX = (DesignIndex == 1u) ? (0.5f * static_cast<float>(W)) : ((0.14f + 0.72f * DayFrac) * static_cast<float>(W));
-        const float GroundY    = static_cast<float>(H) * 0.78f;
-        const float SunScreenY = GroundY - std::clamp(Ephem.ElevationDegrees / 85.0f, -0.25f, 1.0f) * (static_cast<float>(H) * 0.56f);
-
-        for (uint32_t Y = 0u; Y < H; ++Y)
-        {
-            const float FY = static_cast<float>(Y) + 0.5f;
-            for (uint32_t X = 0u; X < W; ++X)
-            {
-                const float FX   = static_cast<float>(X) + 0.5f;
-                const float DX   = (FX - SunScreenX) / static_cast<float>(W);
-                const float DY   = (FY - SunScreenY) / static_cast<float>(W);
-                const float Dist = std::sqrt(DX * DX + DY * DY);
-                Mathematics::LinearRGB Col{};
-                if (FY < GroundY)
-                {
-                    const float ViewEl = std::clamp((GroundY - FY) / GroundY, 0.0f, 1.0f) * 1.15f;
-                    Col = SampleSolarSky(ViewEl, std::cos(Dist * 2.4f), SunElRad, Medium, Ephem.EffectiveSolarTint);
-                    if (Ephem.ElevationDegrees > -4.0f)
-                    {
-                        const float Corona = std::exp(-Dist * 14.0f) * 0.75f + std::exp(-Dist * 45.0f) * 1.8f;
-                        const float Disc   = (Dist < 0.026f) ? 6.0f : 0.0f;
-                        Col.R += (Corona + Disc) * Ephem.EffectiveSolarTint.R;
-                        Col.G += (Corona + Disc) * Ephem.EffectiveSolarTint.G;
-                        Col.B += (Corona + Disc) * Ephem.EffectiveSolarTint.B;
-                    }
-                }
-                else
-                {
-                    const float T    = (FY - GroundY) / std::max(1.0f, static_cast<float>(H) - GroundY);
-                    const float Glow = std::exp(-T * 5.0f) * std::clamp((Ephem.ElevationDegrees + 8.0f) / 30.0f, 0.05f, 0.35f);
-                    Col = { 0.025f + Glow * Ephem.EffectiveSolarTint.R * 0.35f, 0.026f + Glow * Ephem.EffectiveSolarTint.G * 0.28f, 0.032f + Glow * Ephem.EffectiveSolarTint.B * 0.24f };
-                }
-                PutPixel(Pixels, W, X, Y, ToneSrgb8(Col.R), ToneSrgb8(Col.G), ToneSrgb8(Col.B));
-            }
-        }
-    });
-}
-
-void SolarInspector::UpdateSolarBakeSurface(
-    const GeometricRaster::AtmosphericMediumConfiguration& Medium,
-    const GeometricRaster::SolarCelestialConfiguration&    Solar)
-{
-    const auto Ephem = GeometricRaster::CelestialEphemerisSolver::SolveSolarEphemeris(Solar);
-    uint64_t Sig = 0x5D004105ull;
+    uint64_t Sig = 0x5D004105ull ^ (static_cast<uint64_t>(SolarBakeLut.QueryUploadCount()) * 0x9E3779B97F4A7C15ull);
     Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.AzimuthDegrees);
     Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.ElevationDegrees);
     Sig = InspectorPrimitives::MixRevisionFloat(Sig, Solar.SolarIntensityMultiplier);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.EffectiveSolarTint.R);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.EffectiveSolarTint.G);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Ephem.EffectiveSolarTint.B);
+    Sig = InspectorPrimitives::MixRevisionU64(Sig, W);
+    Sig = InspectorPrimitives::MixRevisionU64(Sig, H);
 
-    const uint32_t W = 192u, H = 96u;
     SolarBakeLut.EnsureUpdated(Sig, W, H, [&](std::vector<uint8_t>& Pixels)
     {
         const float SunAz = Ephem.AzimuthDegrees * (PiF / 180.0f);
@@ -187,14 +183,16 @@ float SolarInspector::Construct(
 
     if (ActivePage == 0u)
     {
-        UpdateSolarSkySurface(ActiveMedium, Solar, Instance.DesignIndex);
-        const float PicH = (Instance.DesignIndex == 2u) ? std::round(BodyW / 1.6f) : std::round(BodyW / 1.25f);
-        const float BoxH = InspectorMetrics::SectionPadTop + 28.0f + PicH + 12.0f + 28.0f + InspectorMetrics::SectionPadBottom;
+        //----------------------------------------------------------------------------------------------------------------
+        // CARD 1: SUN NOW (Pure-vector sky + daylight scrub bar — exact FollowUp55_Sun-Overview.png, 0 texture uploads)
+        //----------------------------------------------------------------------------------------------------------------
+        const float PicH = (Instance.DesignIndex == 2u) ? std::round(BodyW / 1.6f) : std::round(BodyW / 1.32f);
+        const float BoxH = InspectorMetrics::SectionPadTop + 28.0f + PicH + 12.0f + 30.0f + InspectorMetrics::SectionPadBottom;
         const Rectangle2D Section { LeftX, CursorY, InnerWidth, BoxH };
         InspectorPrimitives::ConstructSectionSurface(Surface, Section, "Sun now");
 
         const Rectangle2D PicRect { LeftX + PadX, CursorY + InspectorMetrics::SectionPadTop + 28.0f, BodyW, PicH };
-        SunNowPreview.Present(Surface, PicRect, 14.0f);
+        ConstructVectorSunNowSky(Surface, PicRect, Solar.LocalHours, Solved.ElevationDegrees, ActiveMedium, Solved.EffectiveSolarTint, Instance.DesignIndex);
 
         const float WrappedH = std::fmod(std::max(0.0f, Solar.LocalHours), 24.0f);
         const int32_t HInt = static_cast<int32_t>(std::floor(WrappedH));
@@ -203,7 +201,7 @@ float SolarInspector::Construct(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Light, { PicRect.X + 14.0f, PicRect.Y + 12.0f }, 30.0f, ColorRgba{ 255u, 255u, 255u, 255u }, ClockBuf);
 
         char DirBuf[64]{};
-        std::snprintf(DirBuf, sizeof(DirBuf), "%.0f deg %s, facing %s", std::fabs(Solved.ElevationDegrees), Solved.ElevationDegrees >= 0.0f ? "up" : "below", PolarDirectionDial::ResolveCompassLabel(Solved.AzimuthDegrees));
+        std::snprintf(DirBuf, sizeof(DirBuf), "%.0f° %s, facing %s", std::fabs(Solved.ElevationDegrees), Solved.ElevationDegrees >= 0.0f ? "up" : "below", PolarDirectionDial::ResolveCompassLabel(Solved.AzimuthDegrees));
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { PicRect.X + 14.0f, PicRect.Y + 46.0f }, 11.0f, ColorRgba{ 255u, 255u, 255u, 212u }, DirBuf);
 
         const Rectangle2D AbcBar { PicRect.Right() - 80.0f, PicRect.Y + 10.0f, 70.0f, 26.0f };
@@ -243,6 +241,9 @@ float SolarInspector::Construct(
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DayBar.Right() - 24.0f - SetW, DayBar.Bottom() + 4.0f }, 9.5f, InspectorMetrics::DimInk, "18:08");
         CursorY = Section.Bottom() + InspectorMetrics::SectionGap;
 
+        //----------------------------------------------------------------------------------------------------------------
+        // CARD 2: QUICK CONTROLS (Enabled / Real time / Day cycle / Manual direction)
+        //----------------------------------------------------------------------------------------------------------------
         const std::array<InspectorQuickSwitchSpec, 4u> Quick = {{
             { "Enabled",          InspectorSwitchSymbol::Sun,     Entry.VisibilityEnabled,       false },
             { "Real time",        InspectorSwitchSymbol::Clock,   Instance.RealTime,             false },
@@ -254,35 +255,84 @@ float SolarInspector::Construct(
         if (Clicked == 0) { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; OutMutated = true; }
         else if (Clicked == 1) { Instance.RealTime = !Instance.RealTime; if (Instance.RealTime) { Solar.CycleAnimationEnabled = false; Solar.ManualDirectionOverride = false; } OutMutated = true; }
         else if (Clicked == 2) { Solar.CycleAnimationEnabled = !Solar.CycleAnimationEnabled; if (Solar.CycleAnimationEnabled) { Instance.RealTime = false; Solar.ManualDirectionOverride = false; } OutMutated = true; }
-        else if (Clicked == 3) { Solar.ManualDirectionOverride = !Solar.ManualDirectionOverride; if (Solar.ManualDirectionOverride) { Instance.RealTime = false; Solar.CycleAnimationEnabled = false; } OutMutated = true; }
-
+        else if (Clicked == 3)
         {
-            const Rectangle2D DirSec { LeftX, CursorY, InnerWidth, 232.0f };
-            InspectorPrimitives::ConstructSectionSurface(Surface, DirSec, "Sun direction", Solar.ManualDirectionOverride ? "Manual" : "Solved");
-            float Az = Solar.ManualDirectionOverride ? Solar.ManualAzimuthDegrees : Solved.AzimuthDegrees;
-            float El = Solar.ManualDirectionOverride ? Solar.ManualElevationDegrees : Solved.ElevationDegrees;
-            bool DialChanged = false;
-            PolarDirectionDial::Construct(Surface, { DirSec.Center().X, CursorY + 128.0f }, 68.0f, Az, El, true, Input, Az, El, DialChanged, true);
-            if (DialChanged)
+            if (!Solar.ManualDirectionOverride)
             {
-                Solar.ManualDirectionOverride = true; Solar.CycleAnimationEnabled = false; Instance.RealTime = false;
-                Solar.ManualAzimuthDegrees = Az; Solar.ManualElevationDegrees = El; OutMutated = true;
+                // Copy solved angles so switching to manual never causes a sudden jump
+                Solar.ManualAzimuthDegrees   = Solved.AzimuthDegrees;
+                Solar.ManualElevationDegrees = Solved.ElevationDegrees;
             }
-            char Readout[48]{}; std::snprintf(Readout, sizeof(Readout), "Az %.0f deg  ·  El %.0f deg", Az, El);
-            const float RW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, Readout);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DirSec.Center().X - RW * 0.5f, DirSec.Bottom() - 24.0f }, 10.0f, InspectorMetrics::MutedInk, Readout);
+            Solar.ManualDirectionOverride = !Solar.ManualDirectionOverride;
+            if (Solar.ManualDirectionOverride) { Instance.RealTime = false; Solar.CycleAnimationEnabled = false; }
+            OutMutated = true;
+        }
+
+        //----------------------------------------------------------------------------------------------------------------
+        // CARD 3: SUN DIRECTION (Exact F81 commit 6392b471 — gold celestial-orbit icon + Azimuth/Elevation sliders + SunGizmo)
+        //----------------------------------------------------------------------------------------------------------------
+        {
+            const float GizmoH = std::round(BodyW * (280.0f / 360.0f));
+            const float DirCardH = InspectorMetrics::SectionPadTop + 30.0f + 118.0f + GizmoH + InspectorMetrics::SectionPadBottom;
+            const Rectangle2D DirSec { LeftX, CursorY, InnerWidth, DirCardH };
+            InspectorVector::ConstructSectionSurfaceWithIcon(
+                Surface, DirSec, InspectorVector::HtmlGlyph::CelestialOrbit, ColorRgba{ 226u, 172u, 91u, 255u },
+                "Sun direction", Solar.ManualDirectionOverride ? "Manual" : "Solved",
+                Solar.ManualDirectionOverride ? ColorRgba{ 244u, 205u, 117u, 255u } : InspectorMetrics::MutedInk);
+
+            float Y = CursorY + InspectorMetrics::SectionPadTop + 30.0f;
+            float DisplayAz = Solar.ManualDirectionOverride ? Solar.ManualAzimuthDegrees   : Solved.AzimuthDegrees;
+            float DisplayEl = Solar.ManualDirectionOverride ? Solar.ManualElevationDegrees : Solved.ElevationDegrees;
+            bool AzChanged = false, ElChanged = false;
+            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2051u, "Azimuth",   "°", "%.0f",   0.0f, 360.0f, DisplayAz, ActiveDragId, Input, AzChanged);
+            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2052u, "Elevation", "°", "%.0f", -90.0f,  90.0f, DisplayEl, ActiveDragId, Input, ElChanged);
+            if (AzChanged || ElChanged)
+            {
+                // Commit 6392b471 exact rule: dragging either slider copies solved angles into Manual without jumping
+                Solar.ManualDirectionOverride = true;
+                Solar.CycleAnimationEnabled   = false;
+                Instance.RealTime             = false;
+                Solar.ManualAzimuthDegrees    = DisplayAz;
+                Solar.ManualElevationDegrees  = DisplayEl;
+                OutMutated = true;
+            }
+
+            const Rectangle2D GizmoBox { LeftX + PadX, Y + 4.0f, BodyW, GizmoH };
+            float NewAz = DisplayAz, NewEl = DisplayEl;
+            if (InspectorVector::ConstructSunOrbitGizmo(Surface, GizmoBox, DisplayAz, DisplayEl, OrbitDragState, Input, NewAz, NewEl))
+            {
+                Solar.ManualDirectionOverride = true;
+                Solar.CycleAnimationEnabled   = false;
+                Instance.RealTime             = false;
+                Solar.ManualAzimuthDegrees    = NewAz;
+                Solar.ManualElevationDegrees  = NewEl;
+                OutMutated = true;
+            }
             CursorY = DirSec.Bottom() + InspectorMetrics::SectionGap;
         }
+
+        //----------------------------------------------------------------------------------------------------------------
+        // CARD 4: SUNLIGHT INTENSITY (Exact FollowUp55_Sun-Overview.png — split metric + IlluminanceCurve + slider)
+        //----------------------------------------------------------------------------------------------------------------
         {
-            const Rectangle2D IntSec { LeftX, CursorY, InnerWidth, 232.0f };
+            const Rectangle2D IntSec { LeftX, CursorY, InnerWidth, 344.0f };
             InspectorPrimitives::ConstructSectionSurface(Surface, IntSec, "Sunlight intensity");
             float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-            char Num[16]{}; std::snprintf(Num, sizeof(Num), "%.1f", Solar.SolarIntensityMultiplier);
-            Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, Num, "x", "Sunlight intensity multiplier");
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y + 4.0f, BodyW, 2001u, "Intensity", "x", "%.1f", 0.0f, 60.0f, Solar.SolarIntensityMultiplier, ActiveDragId, Input, OutMutated);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + PadX, Y - 4.0f }, 9.5f, InspectorMetrics::DimInk, "0 x");
-            const float MaxW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.5f, "60 x");
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { IntSec.Right() - PadX - MaxW, Y - 4.0f }, 9.5f, InspectorMetrics::DimInk, "60 x");
+            const int32_t WholeInt = static_cast<int32_t>(std::floor(Solar.SolarIntensityMultiplier));
+            const int32_t Tenths   = static_cast<int32_t>(std::lround((Solar.SolarIntensityMultiplier - static_cast<float>(WholeInt)) * 10.0f)) % 10;
+            char WholeBuf[16]{}, FracBuf[8]{};
+            std::snprintf(WholeBuf, sizeof(WholeBuf), "%d", WholeInt);
+            std::snprintf(FracBuf,  sizeof(FracBuf),  ".%d", std::abs(Tenths));
+            Y = InspectorVector::ConstructSplitMetricReadout(Surface, LeftX + PadX, Y, WholeBuf, FracBuf, "×", "Sunlight intensity multiplier", 32.0f);
+
+            const Rectangle2D CurveBox { LeftX + PadX, Y + 4.0f, BodyW, 138.0f };
+            InspectorVector::ConstructIlluminanceCurve(Surface, CurveBox, Solar.SolarIntensityMultiplier, Solar.DirectGainMultiplier, 60.0f);
+            Y = CurveBox.Bottom() + 10.0f;
+
+            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2001u, "Intensity", "×", "%.1f", 0.0f, 60.0f, Solar.SolarIntensityMultiplier, ActiveDragId, Input, OutMutated);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + PadX, Y - 4.0f }, 9.5f, InspectorMetrics::DimInk, "0 ×");
+            const float MaxW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.5f, "60 ×");
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { IntSec.Right() - PadX - MaxW, Y - 4.0f }, 9.5f, InspectorMetrics::DimInk, "60 ×");
             CursorY = IntSec.Bottom() + InspectorMetrics::SectionGap;
         }
 
@@ -324,7 +374,7 @@ float SolarInspector::Construct(
         const Rectangle2D S { LeftX, CursorY, InnerWidth, 396.0f };
         InspectorPrimitives::ConstructSectionSurface(Surface, S, "Sun disc");
         float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        char Deg[20]{}; std::snprintf(Deg, sizeof(Deg), "%.2f deg", Solar.AngularDiameterDegrees);
+        char Deg[20]{}; std::snprintf(Deg, sizeof(Deg), "%.2f°", Solar.AngularDiameterDegrees);
         Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, Deg, "");
         const float DiscR = std::clamp(10.0f + Solar.AngularDiameterDegrees * 12.0f, 10.0f, 44.0f);
         const Point2D DiscC { S.Center().X, Y + 52.0f };
@@ -332,12 +382,12 @@ float SolarInspector::Construct(
         Surface.FillCircle(DiscC, DiscR * 1.25f, ColorRgba{ 255u, 230u, 172u, 96u });
         Surface.FillCircle(DiscC, DiscR,         ColorRgba{ 255u, 248u, 232u, 255u });
         Y += 116.0f;
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2201u, "Angular Diameter", "deg", "%.2f", 0.1f, 5.0f, Solar.AngularDiameterDegrees, ActiveDragId, Input, OutMutated);
+        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2201u, "Angular Diameter", "°", "%.2f", 0.1f, 5.0f, Solar.AngularDiameterDegrees, ActiveDragId, Input, OutMutated);
         static constexpr std::array<const char*, 2u> Modes = {{ "Muted", "Radiant" }};
         int32_t Chosen = -1;
         Y = InspectorPrimitives::ConstructChoiceRow(Surface, LeftX + PadX, Y, BodyW, "Appearance", Modes, Solar.AppearanceMode == GeometricRaster::SolarAppearanceMode::Radiant ? 1u : 0u, 2u, Input, Chosen);
         if (Chosen >= 0) { Solar.AppearanceMode = (Chosen == 1) ? GeometricRaster::SolarAppearanceMode::Radiant : GeometricRaster::SolarAppearanceMode::Muted; OutMutated = true; }
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2202u, "Flare / glare", "x", "%.2f", 0.0f, 2.0f, Solar.SunGlareStrength, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2202u, "Flare / glare", "×", "%.2f", 0.0f, 2.0f, Solar.SunGlareStrength, ActiveDragId, Input, OutMutated);
         CursorY = S.Bottom() + InspectorMetrics::SectionGap;
     }
     else if (ActivePage == 3u)
@@ -356,24 +406,28 @@ float SolarInspector::Construct(
             const Rectangle2D S { LeftX, CursorY, InnerWidth, 260.0f };
             InspectorPrimitives::ConstructSectionSurface(Surface, S, "Dynamic settings");
             float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2302u, "Direct gain", "x", "%.2f", 0.0f, 5.0f, Solar.DirectGainMultiplier, ActiveDragId, Input, OutMutated);
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2303u, "Site latitude", "deg", "%.1f", -90.0f, 90.0f, Solar.SiteLatitudeDegrees, ActiveDragId, Input, OutMutated);
-            (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2304u, "Site longitude", "deg", "%.1f", -180.0f, 180.0f, Solar.SiteLongitudeDegrees, ActiveDragId, Input, OutMutated);
+            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2302u, "Direct gain", "×", "%.2f", 0.0f, 5.0f, Solar.DirectGainMultiplier, ActiveDragId, Input, OutMutated);
+            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2303u, "Site latitude", "°", "%.1f", -90.0f, 90.0f, Solar.SiteLatitudeDegrees, ActiveDragId, Input, OutMutated);
+            (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 2304u, "Site longitude", "°", "%.1f", -180.0f, 180.0f, Solar.SiteLongitudeDegrees, ActiveDragId, Input, OutMutated);
             CursorY = S.Bottom() + InspectorMetrics::SectionGap;
         }
     }
     else
     {
-        UpdateSolarBakeSurface(ActiveMedium, Solar);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Live solar sky-view LUT");
+        // F76: Unbaked by default (zero automatic CPU rasterization or texture upload until explicit Bake click!)
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Solar sky-view LUT");
         CursorY += 20.0f;
-        bool RebakeHit = false;
+        bool BakeNow = false;
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
-            Surface, LeftX, CursorY, InnerWidth, "Solar sky-view bake", "192 x 108",
-            "RGBA32F -> RGBA8 sRGB  ·  sun direction coupled",
-            "X: Azimuth (0..360 deg)   ·   Y: Elevation (+90..-90 deg)",
-            SolarBakeLut, 118.0f, &Input, &BakeSettingsOpen, &BakeResolutionTier, &RebakeHit);
-        if (RebakeHit) OutMutated = true;
+            Surface, LeftX, CursorY, InnerWidth, "Solar sky-view bake", "192 × 108",
+            "RGBA32F → RGBA8 sRGB",
+            "X: Azimuth (0..360°) · Y: Elevation (+90..-90°)",
+            SolarBakeLut, 118.0f, &Input, &BakeSettingsOpen, &BakeResolutionTier, &BakeNow);
+        if (BakeNow)
+        {
+            BakeSolarLutSurface(ActiveMedium, Solar, BakeResolutionTier);
+            OutMutated = true;
+        }
     }
 
     return CursorY;

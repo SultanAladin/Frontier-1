@@ -17,90 +17,9 @@ namespace
 {
 constexpr float PiF = 3.14159265359f;
 
-inline uint8_t ToneSrgb8(float Hdr) noexcept
-{
-    const float M = std::clamp(Hdr / (1.0f + std::max(0.0f, Hdr)), 0.0f, 1.0f);
-    const float S = (M <= 0.0031308f) ? (M * 12.92f) : (1.055f * std::pow(M, 1.0f / 2.4f) - 0.055f);
-    return static_cast<uint8_t>(std::clamp(std::lround(S * 255.0f), 0l, 255l));
-}
 } // namespace
 
-void PointLightInspector::UpdateFalloffSurface(const PointLightData& Instance)
-{
-    uint64_t Sig = 0x1A010001ull;
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.IntensityCandela);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.KelvinTemperature);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RadiantTint.R);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RadiantTint.G);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RadiantTint.B);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.ReachMeters);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.DecayExponent);
 
-    const uint32_t W = 240u, H = 152u;
-    FalloffPreview.EnsureUpdated(Sig, W, H, [&](std::vector<uint8_t>& Pixels)
-    {
-        const auto K = InspectorPrimitives::ComputeKelvinRgb(Instance.KelvinTemperature);
-        const float TR = Instance.RadiantTint.R * K.R;
-        const float TG = Instance.RadiantTint.G * K.G;
-        const float TB = Instance.RadiantTint.B * K.B;
-        const float CX = static_cast<float>(W) * 0.5f;
-        const float CY = static_cast<float>(H) * 0.5f;
-        const float MaxR = 62.0f;
-        const float Gain = std::clamp(Instance.IntensityCandela / 24.0f, 0.2f, 2.2f);
-        const float Dec  = std::clamp(Instance.DecayExponent, 0.3f, 4.0f);
-
-        for (uint32_t Y = 0u; Y < H; ++Y)
-        {
-            const float DY = static_cast<float>(Y) + 0.5f - CY;
-            for (uint32_t X = 0u; X < W; ++X)
-            {
-                const float DX = static_cast<float>(X) + 0.5f - CX;
-                const float D  = std::sqrt(DX * DX + DY * DY);
-                float R = 0.024f, G = 0.026f, B = 0.030f;
-
-                // Omnidirectional inverse-power falloff glow
-                const float NormD = D / MaxR;
-                const float Falloff = std::pow(1.0f / (1.0f + NormD * 2.4f), Dec * 0.85f) * Gain * 0.85f;
-                R += TR * Falloff; G += TG * Falloff; B += TB * Falloff;
-
-                // 4 concentric reach rings
-                for (int Ring = 1; Ring <= 4; ++Ring)
-                {
-                    const float RR = MaxR * (static_cast<float>(Ring) * 0.25f);
-                    if (std::fabs(D - RR) < 0.75f)
-                    {
-                        R += 0.075f; G += 0.080f; B += 0.088f;
-                    }
-                }
-
-                // 12 dashed radial rays
-                if (D > 16.0f && D < MaxR)
-                {
-                    const float Ang = std::atan2(DY, DX);
-                    const float Sector = std::fmod(Ang + PiF, PiF / 6.0f);
-                    const float AngDist = std::min(Sector, (PiF / 6.0f) - Sector) * D;
-                    const bool  DashOn  = (static_cast<int>(D) % 8) < 4;
-                    if (AngDist < 0.7f && DashOn)
-                    {
-                        R += TR * 0.18f; G += TG * 0.18f; B += TB * 0.18f;
-                    }
-                }
-
-                // Central luminous bulb core
-                if (D < 6.5f)
-                {
-                    const float Core = 1.0f - D / 6.5f;
-                    R += TR * (1.2f + Core * 3.0f);
-                    G += TG * (1.2f + Core * 3.0f);
-                    B += TB * (1.2f + Core * 3.0f);
-                }
-
-                const std::size_t Off = (static_cast<std::size_t>(Y) * W + X) * 4u;
-                Pixels[Off + 0u] = ToneSrgb8(R); Pixels[Off + 1u] = ToneSrgb8(G); Pixels[Off + 2u] = ToneSrgb8(B); Pixels[Off + 3u] = 255u;
-            }
-        }
-    });
-}
 
 float PointLightInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -115,14 +34,24 @@ float PointLightInspector::Construct(
 
     if (ActivePage == 0u)
     {
-        UpdateFalloffSurface(Instance);
-        char CapBuf[56]{};
-        std::snprintf(CapBuf, sizeof(CapBuf), "Omnidirectional · decay %.1f", Instance.DecayExponent);
-        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 250.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, PrevSec, "Radial falloff", "Point");
-        FalloffPreview.Present(Surface, { LeftX + PadX, CursorY + InspectorMetrics::SectionPadTop + 28.0f, BodyW, 152.0f }, 12.0f);
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::Regular, { LeftX + PadX, PrevSec.Bottom() - 28.0f }, BodyW, 10.5f, InspectorMetrics::MutedInk, CapBuf);
+        const auto K = InspectorPrimitives::ComputeKelvinRgb(Instance.KelvinTemperature);
+        const Mathematics::LinearRGB EffTint { Instance.RadiantTint.R * K.R, Instance.RadiantTint.G * K.G, Instance.RadiantTint.B * K.B };
+        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 286.0f };
+        InspectorVector::ConstructSectionSurfaceWithIcon(
+            Surface, PrevSec, InspectorVector::HtmlGlyph::PointLight, InspectorPrimitives::EncodeLinearRgbToSrgb8(EffTint),
+            "Radial falloff", "Point");
+        float HY = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
+        char WBuf[20]{}, FBuf[8]{}, CapBuf[64]{};
+        std::snprintf(WBuf, sizeof(WBuf), "%.0f", std::floor(std::max(0.0f, Instance.IntensityCandela)));
+        std::snprintf(FBuf, sizeof(FBuf), ".%d", static_cast<int>(std::lround((Instance.IntensityCandela - std::floor(Instance.IntensityCandela)) * 10.0f)) % 10);
+        std::snprintf(CapBuf, sizeof(CapBuf), "Omnidirectional · decay %.1f · %.0f K", Instance.DecayExponent, Instance.KelvinTemperature);
+        HY = InspectorVector::ConstructSplitMetricReadout(Surface, LeftX + PadX, HY, WBuf, FBuf, "cd", CapBuf, 30.0f);
+        InspectorVector::LightBlueprintParams Bp{};
+        Bp.Kind = InspectorVector::LightBlueprintKind::Point;
+        Bp.TintRgb = EffTint;
+        Bp.WidthMeters = Instance.ReachMeters;
+        Bp.FalloffPower = Instance.DecayExponent;
+        InspectorVector::ConstructLightBlueprint(Surface, { LeftX + PadX, HY + 2.0f, BodyW, 158.0f }, Bp);
         CursorY = PrevSec.Bottom() + InspectorMetrics::SectionGap;
 
         char CdBuf[20]{}, LuxBuf[20]{}, ReachBuf[20]{}, RadBuf[20]{};

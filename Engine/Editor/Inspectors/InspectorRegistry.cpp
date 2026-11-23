@@ -5,6 +5,7 @@
 
 #include "Engine/Editor/Inspectors/InspectorRegistry.h"
 
+#include "Engine/Components/Controls/InspectorVectorGraphics.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 
 #include <algorithm>
@@ -265,7 +266,7 @@ bool InspectorRegistry::ConstructActiveInspector(
 
     InspectorPrimitives::ResetTooltipQueue();
 
-    Surface.FillRectangle(PaneBounds, ColorRgba{ 24u, 24u, 24u, 255u }, 0.0f);
+    Surface.FillRectangle(PaneBounds, ColorRgba{ 9u, 9u, 9u, 255u }, 0.0f);
     Surface.StrokeLine({ PaneBounds.X + 0.5f, PaneBounds.Y }, { PaneBounds.X + 0.5f, PaneBounds.Bottom() }, ColorRgba{ 255u, 255u, 255u, 14u }, 1.0f);
 
     const float FooterH    = 28.0f;
@@ -285,11 +286,30 @@ bool InspectorRegistry::ConstructActiveInspector(
     Surface.PushClip(ScrollClip);
     float CursorY = PaneBounds.Y + 18.0f - ScrollOffsetY;
 
-    // Dynamic breadcrumb from actual enclosing Outliner hierarchy (zero hardcoded folder names!)
+    // Dynamic breadcrumb + F78 "+ Add notes" pill + optional parent-camera linked component card
     const std::string Breadcrumb = InspectorInstanceRegister::ResolveEnclosingBreadcrumb(Outliner, Entry->Token);
-    CursorY = InspectorPrimitives::ConstructInspectorHeader(
+    const OutlinerRecordEntry* LinkedParent = nullptr;
+    if (Target == ResolvedInspectorTarget::CameraSettings && Entry->EnclosingToken.Identifier != 0u)
+    {
+        LinkedParent = Outliner.AccessEntry(Entry->EnclosingToken);
+    }
+    bool AddNotesClicked   = false;
+    bool ParentLinkClicked = false;
+    CursorY = InspectorVector::ConstructInspectorHeaderEx(
         Surface, InnerLeft, CursorY, InnerWidth,
-        Breadcrumb.c_str(), Entry->Title.c_str(), ActiveSubtitle);
+        Breadcrumb.c_str(), Entry->Title.c_str(), ActiveSubtitle,
+        LinkedParent ? LinkedParent->Title.c_str() : nullptr,
+        LinkedParent ? "Component of this camera · values are stored on it" : nullptr,
+        Input, AddNotesClicked, ParentLinkClicked);
+    if (AddNotesClicked && Entry->AuthorNotes.empty())
+    {
+        Entry->AuthorNotes = "Scene notes…";
+        OutMutated = true;
+    }
+    if (ParentLinkClicked && LinkedParent != nullptr)
+    {
+        Outliner.SelectSingle(LinkedParent->Token);
+    }
 
     bool LocalMutated = false;
     bool PageSwitched = false;

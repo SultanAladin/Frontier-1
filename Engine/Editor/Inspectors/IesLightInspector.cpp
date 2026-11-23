@@ -17,13 +17,6 @@ namespace
 {
 constexpr float PiF = 3.14159265359f;
 
-inline uint8_t ToneSrgb8(float Hdr) noexcept
-{
-    const float M = std::clamp(Hdr / (1.0f + std::max(0.0f, Hdr)), 0.0f, 1.0f);
-    const float S = (M <= 0.0031308f) ? (M * 12.92f) : (1.055f * std::pow(M, 1.0f / 2.4f) - 0.055f);
-    return static_cast<uint8_t>(std::clamp(std::lround(S * 255.0f), 0l, 255l));
-}
-
 // Analytical photometric lobe matching ProjectZeroEditor IesProfile.js (Section 0 = C0 plane, Section 1 = C90 plane)
 [[nodiscard]] float EvaluatePresetLobe(uint32_t ProfileIdx, float SignedAngleRad, float ConeDeg, bool PlaneC90) noexcept
 {
@@ -51,93 +44,7 @@ inline uint8_t ToneSrgb8(float Hdr) noexcept
 }
 } // namespace
 
-void IesLightInspector::UpdatePolarSurface(const IesLightData& Instance)
-{
-    uint64_t Sig = 0x1C010001ull;
-    Sig = InspectorPrimitives::MixRevisionU64(Sig, Instance.ProfilePresetIndex);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.LuminousFlux);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.ProfileMultiplier);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.KelvinTemperature);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RadiantTint.R);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RadiantTint.G);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RadiantTint.B);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.FieldAngleDegrees);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.CutoffPitchDegrees);
 
-    const uint32_t W = 240u, H = 152u;
-    PolarPreview.EnsureUpdated(Sig, W, H, [&](std::vector<uint8_t>& Pixels)
-    {
-        const auto K = InspectorPrimitives::ComputeKelvinRgb(Instance.KelvinTemperature);
-        const float TR = Instance.RadiantTint.R * K.R;
-        const float TG = Instance.RadiantTint.G * K.G;
-        const float TB = Instance.RadiantTint.B * K.B;
-        const float CX = static_cast<float>(W) * 0.5f;
-        const float CY = static_cast<float>(H) * 0.48f;
-        const float MaxR = 60.0f;
-        const float PitchRad = Instance.CutoffPitchDegrees * (PiF / 180.0f);
-        const float Gain = std::clamp((Instance.LuminousFlux * Instance.ProfileMultiplier) / 2400.0f, 0.25f, 1.8f);
-
-        for (uint32_t Y = 0u; Y < H; ++Y)
-        {
-            const float DY = static_cast<float>(Y) + 0.5f - CY;
-            for (uint32_t X = 0u; X < W; ++X)
-            {
-                const float DX = static_cast<float>(X) + 0.5f - CX;
-                const float D  = std::sqrt(DX * DX + DY * DY);
-                float R = 0.024f, G = 0.026f, B = 0.030f;
-
-                // Polar concentric rings & 8 radial spokes
-                for (int Ring = 1; Ring <= 4; ++Ring)
-                {
-                    if (std::fabs(D - MaxR * (static_cast<float>(Ring) * 0.25f)) < 0.7f)
-                    {
-                        R += 0.07f; G += 0.075f; B += 0.082f;
-                    }
-                }
-                if (D < MaxR && D > 3.0f)
-                {
-                    const float Ang = std::atan2(DX, DY);
-                    const float Mod = std::fmod(std::fabs(Ang), PiF * 0.25f);
-                    const float SpokeDist = std::min(Mod, PiF * 0.25f - Mod) * D;
-                    if (SpokeDist < 0.65f && (static_cast<int>(D) % 6) < 3)
-                    {
-                        R += 0.045f; G += 0.050f; B += 0.055f;
-                    }
-
-                    // C0 (solid warm-tinted) & C90 (dashed mint-tinted) polar lobes
-                    const float SignedGamma = Ang - PitchRad;
-                    const float R0 = MaxR * EvaluatePresetLobe(Instance.ProfilePresetIndex, SignedGamma, Instance.FieldAngleDegrees, false);
-                    const float R9 = MaxR * EvaluatePresetLobe(Instance.ProfilePresetIndex, SignedGamma, Instance.FieldAngleDegrees, true);
-
-                    if (D <= R9)
-                    {
-                        R += 0.035f; G += 0.055f; B += 0.052f;
-                    }
-                    if (D <= R0)
-                    {
-                        const float Fill = 0.16f + 0.14f * Gain;
-                        R += TR * Fill; G += TG * Fill; B += TB * Fill;
-                    }
-                    if (std::fabs(D - R9) < 1.15f && (static_cast<int>(X + Y) % 7) < 4)
-                    {
-                        R += 0.34f; G += 0.52f; B += 0.48f;
-                    }
-                    if (std::fabs(D - R0) < 1.25f)
-                    {
-                        R += TR * 0.85f; G += TG * 0.85f; B += TB * 0.85f;
-                    }
-                }
-                if (D < 3.0f)
-                {
-                    R += TR * 0.9f; G += TG * 0.9f; B += TB * 0.9f;
-                }
-
-                const std::size_t Off = (static_cast<std::size_t>(Y) * W + X) * 4u;
-                Pixels[Off + 0u] = ToneSrgb8(R); Pixels[Off + 1u] = ToneSrgb8(G); Pixels[Off + 2u] = ToneSrgb8(B); Pixels[Off + 3u] = 255u;
-            }
-        }
-    });
-}
 
 float IesLightInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -156,14 +63,22 @@ float IesLightInspector::Construct(
 
     if (ActivePage == 0u)
     {
-        UpdatePolarSurface(Instance);
-        char CapBuf[64]{};
-        std::snprintf(CapBuf, sizeof(CapBuf), "%s · C0 solid / C90 dashed", PresetName);
-        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 250.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, PrevSec, "Photometric distribution", PresetName);
-        PolarPreview.Present(Surface, { LeftX + PadX, CursorY + InspectorMetrics::SectionPadTop + 28.0f, BodyW, 152.0f }, 12.0f);
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::Regular, { LeftX + PadX, PrevSec.Bottom() - 28.0f }, BodyW, 10.5f, InspectorMetrics::MutedInk, CapBuf);
+        const auto K = InspectorPrimitives::ComputeKelvinRgb(Instance.KelvinTemperature);
+        const Mathematics::LinearRGB EffTint { Instance.RadiantTint.R * K.R, Instance.RadiantTint.G * K.G, Instance.RadiantTint.B * K.B };
+        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 286.0f };
+        InspectorVector::ConstructSectionSurfaceWithIcon(
+            Surface, PrevSec, InspectorVector::HtmlGlyph::IesLight, InspectorPrimitives::EncodeLinearRgbToSrgb8(EffTint),
+            "Photometric distribution", PresetName);
+        float HY = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
+        char WBuf[20]{}, CapBuf[64]{};
+        std::snprintf(WBuf, sizeof(WBuf), "%.0f", ScaledLumens);
+        std::snprintf(CapBuf, sizeof(CapBuf), "%s · %.0f° field angle", PresetName, Instance.FieldAngleDegrees);
+        HY = InspectorVector::ConstructSplitMetricReadout(Surface, LeftX + PadX, HY, WBuf, nullptr, "lm", CapBuf, 30.0f);
+        InspectorVector::LightBlueprintParams Bp{};
+        Bp.Kind = InspectorVector::LightBlueprintKind::Ies;
+        Bp.TintRgb = EffTint;
+        Bp.CountOrPreset = Instance.ProfilePresetIndex % 3u;
+        InspectorVector::ConstructLightBlueprint(Surface, { LeftX + PadX, HY + 2.0f, BodyW, 158.0f }, Bp);
         CursorY = PrevSec.Bottom() + InspectorMetrics::SectionGap;
 
         char LmBuf[20]{}, FieldBuf[20]{}, MultBuf[20]{}, RangeBuf[20]{};

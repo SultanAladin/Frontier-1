@@ -44,8 +44,8 @@ private:
     uint32_t                ActiveDragId           = 0u;
     bool                    TransSettingsOpen      = false;
     bool                    SkyViewSettingsOpen    = false;
-    uint32_t                TransResolutionTier    = 1u;
-    uint32_t                SkyViewResolutionTier  = 1u;
+    uint32_t                TransResolutionTier    = 2u;
+    uint32_t                SkyViewResolutionTier  = 2u;
     InspectorPreviewSurface LimbPreview            {};
     InspectorPreviewSurface OrbitalPreview         {};
     InspectorPreviewSurface TransmittanceLut       {};

@@ -1,11 +1,12 @@
 /*============================================================================================================================================
                                                              SOLARINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone Solar Inspector (multi-instance: supports 2+ Suns; 5 pages: Overview, Temperature, Sun disc, Dynamic, Baking LUT)
+// 🧩 Standalone Solar Inspector — verbatim 1:1 port of ProjectZeroEditor Sun inspector (F76 Baking + F81 6392b471 Sun direction)
 
 #pragma once
 
 #include "Engine/Components/Controls/InspectorSectionPrimitives.h"
+#include "Engine/Components/Controls/InspectorVectorGraphics.h"
 #include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
 
 namespace Frontier
@@ -35,15 +36,17 @@ public:
     [[nodiscard]] uint32_t QuerySkyViewUploads() const noexcept { return SolarBakeLut.QueryUploadCount(); }
 
 private:
-    void UpdateSolarSkySurface(const GeometricRaster::AtmosphericMediumConfiguration& Medium, const GeometricRaster::SolarCelestialConfiguration& Solar, uint32_t DesignIndex);
-    void UpdateSolarBakeSurface(const GeometricRaster::AtmosphericMediumConfiguration& Medium, const GeometricRaster::SolarCelestialConfiguration& Solar);
+    void BakeSolarLutSurface(
+        const GeometricRaster::AtmosphericMediumConfiguration& Medium,
+        const GeometricRaster::SolarCelestialConfiguration&    Solar,
+        uint32_t                                               ResolutionTier);
 
-    uint32_t                ActivePage            = 0u;
-    uint32_t                ActiveDragId          = 0u;
-    bool                    BakeSettingsOpen      = false;
-    uint32_t                BakeResolutionTier    = 1u;
-    InspectorPreviewSurface SunNowPreview         {};
-    InspectorPreviewSurface SolarBakeLut          {};
+    uint32_t                            ActivePage         = 0u;
+    uint32_t                            ActiveDragId       = 0u;
+    bool                                BakeSettingsOpen   = false;
+    uint32_t                            BakeResolutionTier = 2u; // [idx] - 2 = 1.0x default (192x108)
+    InspectorVector::SunOrbitGizmoState OrbitDragState     {};
+    InspectorPreviewSurface             SolarBakeLut       {};
 };
 
 } // namespace Frontier

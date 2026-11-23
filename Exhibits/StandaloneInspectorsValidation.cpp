@@ -302,22 +302,17 @@ int main()
 
     // 3. Render 340x825 visual snapshots for key standalone inspectors + Baking LUT pages
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "01-Atmosphere-Overview.png"), "01-Atmosphere-Overview.png");
-    Inspectors.QueryAtmosphere().SetActivePage(5u); // Baking page (Transmittance LUT + Sky-View LUT)
+    Inspectors.QueryAtmosphere().SetActivePage(5u); // Baking page (F76 Unbaked default -> 0 uploads until explicit Bake!)
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "02-Atmosphere-Baking.png"), "02-Atmosphere-Baking.png");
     const uint32_t TransUploadsBefore = Inspectors.QueryAtmosphere().QueryTransmittanceLutUploads();
     const uint32_t SkyUploadsBefore   = Inspectors.QueryAtmosphere().QuerySkyViewLutUploads();
-    // Re-render unchanged frame -> retained preview surfaces must NOT re-bake or re-upload
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "02-Atmosphere-Baking.png");
-    AllOk &= VerifyRequirement(
-        TransUploadsBefore == 1u && Inspectors.QueryAtmosphere().QueryTransmittanceLutUploads() == 1u &&
-        SkyUploadsBefore   == 1u && Inspectors.QueryAtmosphere().QuerySkyViewLutUploads() == 1u,
-        "Retained Atmosphere LUT surfaces stay at 1 upload across static frames");
+    // F76 zero-jerk guarantee: unbaked LUTs perform 0 CPU rasterizations / GPU uploads across frames or slider drags
     Reg.AccessAtmosphere(AtmoTok, Bundle.Scene).Medium.OzoneStrength = 1.65f;
     (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "02-Atmosphere-Baking.png");
     AllOk &= VerifyRequirement(
-        Inspectors.QueryAtmosphere().QueryTransmittanceLutUploads() == 2u &&
-        Inspectors.QueryAtmosphere().QuerySkyViewLutUploads() == 2u,
-        "Retained Atmosphere LUT surfaces re-bake cleanly when Ozone changes (upload count -> 2)");
+        TransUploadsBefore == 0u && Inspectors.QueryAtmosphere().QueryTransmittanceLutUploads() == 0u &&
+        SkyUploadsBefore   == 0u && Inspectors.QueryAtmosphere().QuerySkyViewLutUploads() == 0u,
+        "F76 Atmosphere LUT cards remain Unbaked (0 uploads) until explicit Bake click");
     Reg.AccessAtmosphere(AtmoTok, Bundle.Scene).Medium.OzoneStrength = 1.0f;
     Inspectors.QueryAtmosphere().SetActivePage(0u);
 
@@ -329,53 +324,45 @@ int main()
     Inspectors.QueryLunar().SetActivePage(0u);
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, StarsOneTok, OutDir / "06-Stars-Overview.png"), "06-Stars-Overview.png");
-    Inspectors.QueryStarfield().SetActivePage(3u); // Baking page (Baked equatorial star sheet)
+    Inspectors.QueryStarfield().SetActivePage(3u); // Baking page (F76 Unbaked default)
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, StarsOneTok, OutDir / "07-Stars-Baking.png"), "07-Stars-Baking.png");
     (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, StarsOneTok, OutDir / "07-Stars-Baking.png");
     AllOk &= VerifyRequirement(
-        Inspectors.QueryStarfield().QueryStarSheetUploads() == 1u,
-        "Retained Starfield baked sheet stays at 1 upload across static frames");
+        Inspectors.QueryStarfield().QueryStarSheetUploads() == 0u,
+        "F76 Starfield baked sheet remains Unbaked (0 uploads) until explicit Bake click");
     Inspectors.QueryStarfield().SetActivePage(0u);
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, WindOneTok, OutDir / "08-Wind-Overview.png"), "08-Wind-Overview.png");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, HeightFog1Tok, OutDir / "09-HeightFog-Overview.png"), "09-HeightFog-Overview.png");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CameraTok, OutDir / "10-Camera-Overview.png"), "10-Camera-Overview.png");
 
-    // All 8 Lighting Inspectors visual exhibits + retained preview upload-count proofs
+    // All 8 Lighting Inspectors visual exhibits + pure-vector zero-upload proofs
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PointLightTok, OutDir / "11-PointLight-Overview.png"), "11-PointLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PointLightTok, OutDir / "11-PointLight-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QueryPointLight().QueryPreviewUploads() == 1u, "Point Light radial falloff preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QueryPointLight().QueryPreviewUploads() == 0u, "Point Light radial falloff blueprint runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SpotLightTok, OutDir / "20-SpotLight-Overview.png"), "20-SpotLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SpotLightTok, OutDir / "20-SpotLight-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QuerySpotLight().QueryPreviewUploads() == 1u, "Spot Light beam envelope preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QuerySpotLight().QueryPreviewUploads() == 0u, "Spot Light beam envelope blueprint runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, IesLightTok, OutDir / "21-IesLight-Overview.png"), "21-IesLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, IesLightTok, OutDir / "21-IesLight-Overview.png");
     AllOk &= VerifyRequirement(
-        Inspectors.QueryIesLight().QueryPreviewUploads() == 1u &&
+        Inspectors.QueryIesLight().QueryPreviewUploads() == 0u &&
         Reg.AccessIesLight(IesLightTok, *Outliner.FindEntry(IesLightTok)).ProfilePresetIndex == 3u,
-        "IES Light auto-detects ECE Low Beam polar lobe & stays at 1 retained upload");
+        "IES Light auto-detects ECE Low Beam polar lobe & runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AreaLightTok, OutDir / "22-AreaLight-Overview.png"), "22-AreaLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AreaLightTok, OutDir / "22-AreaLight-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QueryAreaLight().QueryPreviewUploads() == 1u, "Area/Softbox Light aperture preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QueryAreaLight().QueryPreviewUploads() == 0u, "Area/Softbox Light aperture blueprint runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, TubeLightTok, OutDir / "23-TubeLight-Overview.png"), "23-TubeLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, TubeLightTok, OutDir / "23-TubeLight-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QueryTubeLight().QueryPreviewUploads() == 1u, "Tube Light linear radiance preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QueryTubeLight().QueryPreviewUploads() == 0u, "Tube Light linear radiance blueprint runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedLightTok, OutDir / "24-LedLight-Overview.png"), "24-LedLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedLightTok, OutDir / "24-LedLight-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QueryLedLight().QueryPreviewUploads() == 1u, "LED Emitter COB die-array preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QueryLedLight().QueryPreviewUploads() == 0u, "LED Emitter COB die-array blueprint runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedStripTok, OutDir / "25-LedStrip-Overview.png"), "25-LedStrip-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedStripTok, OutDir / "25-LedStrip-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QueryLedStrip().QueryPreviewUploads() == 1u, "LED Strip ribbon preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QueryLedStrip().QueryPreviewUploads() == 0u, "LED Strip ribbon blueprint runs pure-vector (0 uploads)");
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, EnvLightTok, OutDir / "12-EnvironmentLight-Overview.png"), "12-EnvironmentLight-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, EnvLightTok, OutDir / "12-EnvironmentLight-Overview.png");
-    AllOk &= VerifyRequirement(Inspectors.QueryEnvironmentLight().QueryPreviewUploads() == 1u, "Environment Light dome & compass preview stays at 1 retained upload");
+    AllOk &= VerifyRequirement(Inspectors.QueryEnvironmentLight().QueryPreviewUploads() == 0u, "Environment Light hemisphere blueprint runs pure-vector (0 uploads)");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PostFxTok, OutDir / "13-PostProcess-Overview.png"), "13-PostProcess-Overview.png");
 
     // All 4 Geometry Categories visual exhibits + retained preview upload-count proofs
@@ -408,50 +395,57 @@ int main()
 
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SkyRigFolder, OutDir / "15-Folder-Overview.png"), "15-Folder-Overview.png");
 
-    // 4. F77/F78 Camera Settings Inspector (Render Type Hero + Dynamic per-renderer pages + preserved settings)
+    // 4. F77/F78 Camera Settings Inspector (Render Type Hero + 4-col A/B/C/D + BudgetBar + Tracer)
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CamSetTok, OutDir / "26-CameraSettings-Overview.png"), "26-CameraSettings-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CamSetTok, OutDir / "26-CameraSettings-Overview.png");
     AllOk &= VerifyRequirement(
-        Inspectors.QueryCameraSettings().QueryPreviewUploads() == 1u,
-        "Camera Settings Render Type hero sphere stays at 1 retained upload");
+        Inspectors.QueryCameraSettings().QueryPreviewUploads() == 0u,
+        "Camera Settings Render Type hero runs pure-vector (0 uploads)");
 
     auto& CamSet = Reg.AccessCameraSettings(CamSetTok);
     CamSet.PbrFillGain = 1.65f;
     CamSet.RendererIndex = 2u; // Switch to Ray Traced
     CamSet.RayGiSamples  = 12.0f;
+    Inspectors.QueryCameraSettings().SetActivePage(1u); // Tracer page
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CamSetTok, OutDir / "27-CameraSettings-RayTraced.png"), "27-CameraSettings-RayTraced.png");
+    Inspectors.QueryCameraSettings().SetActivePage(0u);
     CamSet.RendererIndex = 0u; // Switch back to PBR and verify PBR settings survived untouched
     AllOk &= VerifyRequirement(
         std::fabs(CamSet.PbrFillGain - 1.65f) < 1e-4f && std::fabs(CamSet.RayGiSamples - 12.0f) < 1e-4f,
         "Switching Camera Settings renderer preserves per-renderer parameters independently");
 
-    // 5. F78 Camera Mount page (On tripod vs Floating diagram + height/roll controls)
+    // 5. F78 Camera Mount page (Page 2 / 5: On tripod vs Floating diagram + XYZ table)
     auto& CamInst = Reg.AccessCamera(CameraTok, Bundle.Scene);
     CamInst.TripodMounted = false; // Floating crane / rig
     CamInst.MountHeightMeters = 2.4f;
     CamInst.CameraRollDegrees = -8.0f;
-    Inspectors.QueryCamera().SetActivePage(3u); // Mount page
+    Inspectors.QueryCamera().SetActivePage(1u); // F78 Mount page (Page 2 / 5)
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CameraTok, OutDir / "28-Camera-Mount.png"), "28-Camera-Mount.png");
     Inspectors.QueryCamera().SetActivePage(0u);
 
-    // 6. F76 Baking card hover tooltip over green Baked capsule + Bake Settings resolution picker
+    // 6. F76 Baking card: Unbaked -> click Bake (opens Bake Settings 2x2 gold grid) -> click gold Bake -> Baked + tooltip
     Inspectors.QueryAtmosphere().SetActivePage(5u); // Baking page
     {
-        PaneInputReading HoverBaked {};
-        HoverBaked.PrimaryPointer.X = 88.0f;
-        HoverBaked.PrimaryPointer.Y = 230.0f; // Over the green ✓ Baked capsule on the first LUT section
-        AllOk &= VerifyRequirement(
-            RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "29-Atmosphere-BakingTooltip.png", HoverBaked),
-            "29-Atmosphere-BakingTooltip.png");
-
-        PaneInputReading ClickRebake {};
-        ClickRebake.PrimaryPointer.X = 248.0f;
-        ClickRebake.PrimaryPointer.Y = 230.0f; // Click the ↺ Rebake button to open Bake Settings
-        ClickRebake.PrimaryPointer.Pressed = true;
-        (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "30-Atmosphere-BakeSettings.png", ClickRebake);
+        PaneInputReading ClickOpenBake {};
+        ClickOpenBake.PrimaryPointer.X = 220.0f;
+        ClickOpenBake.PrimaryPointer.Y = 236.0f; // Click "Bake" button on Unbaked card #1
+        ClickOpenBake.PrimaryPointer.Pressed = true;
+        (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "30-Atmosphere-BakeSettings.png", ClickOpenBake);
         AllOk &= VerifyRequirement(
             RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "30-Atmosphere-BakeSettings.png"),
             "30-Atmosphere-BakeSettings.png");
+
+        PaneInputReading ClickConfirmBake {};
+        ClickConfirmBake.PrimaryPointer.X = 276.0f;
+        ClickConfirmBake.PrimaryPointer.Y = 472.0f; // Click gold "Bake" button inside Bake Settings
+        ClickConfirmBake.PrimaryPointer.Pressed = true;
+        (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "29-Atmosphere-BakingTooltip.png", ClickConfirmBake);
+
+        PaneInputReading HoverBaked {};
+        HoverBaked.PrimaryPointer.X = 64.0f;
+        HoverBaked.PrimaryPointer.Y = 230.0f; // Hover over green ✓ Baked pill
+        AllOk &= VerifyRequirement(
+            RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "29-Atmosphere-BakingTooltip.png", HoverBaked),
+            "29-Atmosphere-BakingTooltip.png");
     }
     Inspectors.QueryAtmosphere().SetActivePage(0u);
 

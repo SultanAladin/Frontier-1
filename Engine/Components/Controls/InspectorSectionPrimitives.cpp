@@ -9,6 +9,7 @@
 
 #include "Engine/Components/Controls/InspectorSectionPrimitives.h"
 
+#include "Engine/Components/Controls/InspectorVectorGraphics.h"
 #include "Engine/Components/Controls/ScalarSlider.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 
@@ -85,6 +86,16 @@ void InspectorPreviewSurface::Present(
         return;
     }
     Surface.FillTexturedRectangle(Bounds, &ResidentTexture, { 0.0f, 0.0f }, { 1.0f, 1.0f }, CornerRadius, Tint);
+}
+
+void InspectorPreviewSurface::Release() noexcept
+{
+    ResidentTexture.DestroyPixels();
+    ResidentTexture.SetStatus(ImTextureStatus_Destroyed);
+    StagingPixels.clear();
+    WidthPx           = 0u;
+    HeightPx          = 0u;
+    RetainedSignature = 0ull;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -1131,125 +1142,259 @@ float ConstructBakedLutSection(
     bool*                    OptionalRebakeClicked,
     bool*                    OptionalSaveClicked) noexcept
 {
+    if (OptionalRebakeClicked) *OptionalRebakeClicked = false;
+    if (OptionalSaveClicked)   *OptionalSaveClicked   = false;
+
     const float PadX  = InspectorMetrics::SectionPadX;
     const float BodyW = InnerWidth - PadX * 2.0f;
     const Point2D Cur = OptionalInput ? Point2D{ OptionalInput->PrimaryPointer.X, OptionalInput->PrimaryPointer.Y } : Point2D{ -9999.0f, -9999.0f };
-    const bool Clicked = OptionalInput && OptionalInput->PrimaryPointer.Pressed;
+    const bool Clicked      = OptionalInput && OptionalInput->PrimaryPointer.Pressed;
+    const bool SettingsOpen = OptionalSettingsOpen && *OptionalSettingsOpen;
+    const bool IsBaked      = Preview.QueryResident();
 
-    // Bake Settings face (F76): resolution tier selector + texel/memory facts + Cancel / Bake buttons
-    if (OptionalSettingsOpen && *OptionalSettingsOpen)
+    // Parse base resolution ("256 × 64" / "64x64") to build exact F76 2x2 resolution tiers (0.25x, 0.5x, 1x default, 2x)
+    uint32_t BaseW = 256u, BaseH = 64u;
+    if (ResolutionText != nullptr)
     {
-        const float BoxH = InspectorMetrics::SectionPadTop + 28.0f + 56.0f + 114.0f + 40.0f + InspectorMetrics::SectionPadBottom;
-        const Rectangle2D Section { LeftX, TopY, InnerWidth, BoxH };
-        ConstructSectionSurface(Surface, Section, "Bake settings", Title, InspectorMetrics::MutedInk);
-
-        float Y = TopY + InspectorMetrics::SectionPadTop + 28.0f;
-        uint32_t Tier = OptionalScaleTier ? *OptionalScaleTier : 1u;
-        static constexpr std::array<const char*, 3u> TierLabels = {{ "Half", "Default", "2x Fine" }};
-        const float SegW = (BodyW - 12.0f) / 3.0f;
-        for (uint32_t I = 0u; I < 3u; ++I)
+        unsigned int Pw = 0u, Ph = 0u;
+        if (std::sscanf(ResolutionText, "%u × %u", &Pw, &Ph) == 2 ||
+            std::sscanf(ResolutionText, "%u x %u", &Pw, &Ph) == 2 ||
+            std::sscanf(ResolutionText, "%ux%u",   &Pw, &Ph) == 2)
         {
-            const Rectangle2D Seg { LeftX + PadX + static_cast<float>(I) * (SegW + 6.0f), Y, SegW, 44.0f };
-            const bool On  = (Tier == I);
-            const bool Hov = Seg.Contains(Cur);
-            Surface.FillRectangle(Seg, On ? ColorRgba{ 46u, 52u, 62u, 255u } : (Hov ? ColorRgba{ 36u, 37u, 42u, 255u } : ColorRgba{ 28u, 29u, 32u, 255u }), 9.0f);
-            Surface.StrokeRectangle(Seg, On ? ColorRgba{ 146u, 190u, 245u, 140u } : ColorRgba{ 255u, 255u, 255u, 18u }, 9.0f, 1.0f);
-            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 10.5f, TierLabels[I]);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Seg.Center().X - TW * 0.5f, Seg.Y + 9.0f }, 10.5f, InspectorMetrics::HeadingInk, TierLabels[I]);
-            const char* Sub = (I == 0u) ? "0.5x res" : (I == 1u ? "default" : "2.0x res");
-            const float SW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.0f, Sub);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Seg.Center().X - SW * 0.5f, Seg.Y + 25.0f }, 9.0f, InspectorMetrics::DimInk, Sub);
+            BaseW = std::max(16u, Pw);
+            BaseH = std::max(16u, Ph);
+        }
+    }
+    struct BakeTier { uint32_t W; uint32_t H; bool IsDefault; };
+    const std::array<BakeTier, 4u> Tiers = {{
+        { std::max(16u, BaseW / 4u), std::max(16u, BaseH / 4u), false },
+        { std::max(16u, BaseW / 2u), std::max(16u, BaseH / 2u), false },
+        { BaseW,                     BaseH,                     true  },
+        { BaseW * 2u,                BaseH * 2u,                false },
+    }};
+    uint32_t TierIdx = OptionalScaleTier ? std::min<uint32_t>(*OptionalScaleTier, 3u) : 2u;
+    const auto FormatBytes = [](uint32_t W, uint32_t H, char* Out, std::size_t OutCap) noexcept
+    {
+        const uint64_t Bytes = static_cast<uint64_t>(W) * static_cast<uint64_t>(H) * 4ull;
+        if (Bytes >= 1024ull * 1024ull) std::snprintf(Out, OutCap, "%.1f MB", static_cast<double>(Bytes) / (1024.0 * 1024.0));
+        else if (Bytes >= 1024ull)      std::snprintf(Out, OutCap, "%llu KB", static_cast<unsigned long long>(Bytes / 1024ull));
+        else                            std::snprintf(Out, OutCap, "%llu B",  static_cast<unsigned long long>(Bytes));
+    };
+
+    //--------------------------------------------------------------------------------------------------------------------
+    // FACE 2: F76 BAKE SETTINGS (FollowUp66_LutBakeSettings.png)
+    //--------------------------------------------------------------------------------------------------------------------
+    if (SettingsOpen)
+    {
+        const float BoxH = 342.0f;
+        const Rectangle2D Section { LeftX, TopY, InnerWidth, BoxH };
+        Surface.FillRectangle(Section, InspectorMetrics::SectionFill, InspectorMetrics::SectionRadius);
+        Surface.StrokeRectangle(Section, InspectorMetrics::SectionBorder, InspectorMetrics::SectionRadius, 1.0f);
+
+        float Y = TopY + InspectorMetrics::SectionPadTop;
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + PadX, Y }, 12.5f, InspectorMetrics::HeadingInk, "Bake settings");
+        if (Title != nullptr)
+        {
+            const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.5f, Title);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + InnerWidth - PadX - TW, Y + 1.5f }, 10.5f, InspectorMetrics::MutedInk, Title);
+        }
+        Y += 26.0f;
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + PadX, Y }, 10.5f, InspectorMetrics::MutedInk, "Resolution");
+        Y += 20.0f;
+
+        // 2x2 gold-highlighted resolution grid
+        const float CellGap = 8.0f;
+        const float CellW   = (BodyW - CellGap) * 0.5f;
+        const float CellH   = 46.0f;
+        for (uint32_t I = 0u; I < 4u; ++I)
+        {
+            const uint32_t Col = I % 2u;
+            const uint32_t Row = I / 2u;
+            const Rectangle2D Cell { LeftX + PadX + static_cast<float>(Col) * (CellW + CellGap), Y + static_cast<float>(Row) * (CellH + CellGap), CellW, CellH };
+            const bool Active = (TierIdx == I);
+            const bool Hov    = Cell.Contains(Cur);
+            const ColorRgba Fill   = Active ? ColorRgba{ 255u, 178u, 56u, 26u } : (Hov ? ColorRgba{ 32u, 33u, 36u, 255u } : ColorRgba{ 26u, 27u, 30u, 255u });
+            const ColorRgba Border = Active ? ColorRgba{ 255u, 178u, 56u, 170u } : ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(Hov ? 36u : 18u) };
+            Surface.FillRectangle(Cell, Fill, 10.0f);
+            Surface.StrokeRectangle(Cell, Border, 10.0f, 1.0f);
+
+            char ResBuf[32]{}, SubBuf[32]{};
+            std::snprintf(ResBuf, sizeof(ResBuf), "%u × %u", Tiers[I].W, Tiers[I].H);
+            if (Tiers[I].IsDefault) std::snprintf(SubBuf, sizeof(SubBuf), "default");
+            else FormatBytes(Tiers[I].W, Tiers[I].H, SubBuf, sizeof(SubBuf));
+
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, Active ? FontWeightClass::Medium : FontWeightClass::Regular, { Cell.X + 10.0f, Cell.Y + 8.0f }, 11.5f,
+                Active ? ColorRgba{ 255u, 211u, 138u, 255u } : ColorRgba{ 232u, 232u, 236u, 255u }, ResBuf);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { Cell.X + 10.0f, Cell.Y + 25.0f }, 9.5f, InspectorMetrics::MutedInk, SubBuf);
+
             if (Hov && Clicked)
             {
-                Tier = I;
+                TierIdx = I;
                 if (OptionalScaleTier) *OptionalScaleTier = I;
             }
         }
-        Y += 54.0f;
+        Y += (CellH * 2.0f + CellGap) + 12.0f;
 
-        const uint32_t SourceW = std::max(1u, Preview.QueryWidthPx());
-        const uint32_t SourceH = std::max(1u, Preview.QueryHeightPx());
-        const uint32_t MulNum = (Tier == 0u) ? 1u : (Tier == 1u ? 2u : 4u);
-        const uint32_t OutW = std::max(16u, (SourceW * MulNum) / 2u);
-        const uint32_t OutH = std::max(16u, (SourceH * MulNum) / 2u);
-        const uint32_t BytesTotal = OutW * OutH * 4u;
-        char ResLine[32]{}, TexLine[32]{}, MemLine[32]{};
-        std::snprintf(ResLine, sizeof(ResLine), "%u x %u", OutW, OutH);
-        std::snprintf(TexLine, sizeof(TexLine), "%u texels", OutW * OutH);
-        std::snprintf(MemLine, sizeof(MemLine), "%u KB (RGBA8)", std::max(1u, BytesTotal / 1024u));
+        // Exact baked-map-facts box (RESOLUTION / FORMAT / TEXELS / SIZE / AXES)
+        const BakeTier& Sel = Tiers[TierIdx];
+        const Rectangle2D FactsBox { LeftX + PadX, Y, BodyW, 104.0f };
+        Surface.FillRectangle(FactsBox, ColorRgba{ 16u, 17u, 19u, 255u }, 10.0f);
+        Surface.StrokeRectangle(FactsBox, ColorRgba{ 255u, 255u, 255u, 12u }, 10.0f, 1.0f);
 
-        const Rectangle2D FactBox { LeftX + PadX, Y, BodyW, 104.0f };
-        Surface.FillRectangle(FactBox, ColorRgba{ 255u, 255u, 255u, 8u }, 8.0f);
-        Surface.StrokeRectangle(FactBox, ColorRgba{ 255u, 255u, 255u, 14u }, 8.0f, 1.0f);
-        float FY = FactBox.Y + 8.0f;
-        FY = ConstructMetadataRow(Surface, FactBox.X + 10.0f, FY, FactBox.Width - 20.0f, "Resolution", ResLine);
-        FY = ConstructMetadataRow(Surface, FactBox.X + 10.0f, FY, FactBox.Width - 20.0f, "Format", FormatText);
-        FY = ConstructMetadataRow(Surface, FactBox.X + 10.0f, FY, FactBox.Width - 20.0f, "Texels", TexLine);
-        (void)ConstructMetadataRow(Surface, FactBox.X + 10.0f, FY, FactBox.Width - 20.0f, "Memory", MemLine);
-        Y = FactBox.Bottom() + 10.0f;
+        char ResFact[32]{}, TexelFact[32]{}, SizeFact[32]{};
+        std::snprintf(ResFact, sizeof(ResFact), "%u × %u px", Sel.W, Sel.H);
+        std::snprintf(TexelFact, sizeof(TexelFact), "%llu", static_cast<unsigned long long>(Sel.W) * static_cast<unsigned long long>(Sel.H));
+        FormatBytes(Sel.W, Sel.H, SizeFact, sizeof(SizeFact));
 
-        const float HalfBtnW = (BodyW - 8.0f) * 0.5f;
-        if (OptionalInput && ConstructSectionActionButton(Surface, LeftX + PadX, Y, HalfBtnW, "Cancel", *OptionalInput, false))
+        const std::array<std::pair<const char*, const char*>, 5u> FactRows = {{
+            { "RESOLUTION", ResFact },
+            { "FORMAT",     (FormatText != nullptr && FormatText[0] != '\0') ? FormatText : "RGBA8" },
+            { "TEXELS",     TexelFact },
+            { "SIZE",       SizeFact },
+            { "AXES",       (AxisCaption != nullptr && AxisCaption[0] != '\0') ? AxisCaption : "U × V domain" },
+        }};
+        for (std::size_t R = 0u; R < FactRows.size(); ++R)
+        {
+            const float Ry = FactsBox.Y + 9.0f + static_cast<float>(R) * 18.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { FactsBox.X + 10.0f, Ry }, 8.5f, InspectorMetrics::DimInk, FactRows[R].first);
+            const float VW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.2f, FactRows[R].second);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { std::max(FactsBox.X + 86.0f, FactsBox.Right() - 10.0f - VW), Ry - 0.5f },
+                FactsBox.Width - 96.0f, 9.2f, ColorRgba{ 226u, 228u, 232u, 255u }, FactRows[R].second);
+        }
+        Y = FactsBox.Bottom() + 12.0f;
+
+        // Right-aligned Cancel + warm gold Bake button
+        const float BakeW = 78.0f, CancelW = 68.0f, BtnH = 30.0f;
+        const Rectangle2D BakeBtn   { LeftX + InnerWidth - PadX - BakeW, Y, BakeW, BtnH };
+        const Rectangle2D CancelBtn { BakeBtn.X - 8.0f - CancelW, Y, CancelW, BtnH };
+        const bool CancelHov = CancelBtn.Contains(Cur);
+        const bool BakeHov   = BakeBtn.Contains(Cur);
+
+        Surface.FillRectangle(CancelBtn, CancelHov ? ColorRgba{ 34u, 35u, 38u, 255u } : ColorRgba{ 24u, 25u, 28u, 255u }, 15.0f);
+        Surface.StrokeRectangle(CancelBtn, ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(CancelHov ? 42u : 20u) }, 15.0f, 1.0f);
+        const float CW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.5f, "Cancel");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CancelBtn.Center().X - CW * 0.5f, CancelBtn.Y + 8.5f }, 10.5f, InspectorMetrics::MutedInk, "Cancel");
+
+        Surface.FillRectangle(BakeBtn, BakeHov ? ColorRgba{ 255u, 178u, 56u, 62u } : ColorRgba{ 255u, 178u, 56u, 34u }, 15.0f);
+        Surface.StrokeRectangle(BakeBtn, ColorRgba{ 255u, 178u, 56u, 180u }, 15.0f, 1.0f);
+        InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::BakeSparkle, { BakeBtn.X + 18.0f, BakeBtn.Center().Y }, 13.0f, ColorRgba{ 255u, 211u, 138u, 255u });
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { BakeBtn.X + 30.0f, BakeBtn.Y + 8.5f }, 10.5f, ColorRgba{ 255u, 211u, 138u, 255u }, "Bake");
+
+        if (CancelHov && Clicked && OptionalSettingsOpen)
         {
             *OptionalSettingsOpen = false;
         }
-        if (OptionalInput && ConstructSectionActionButton(Surface, LeftX + PadX + HalfBtnW + 8.0f, Y, HalfBtnW, "Bake now", *OptionalInput, true))
+        if (BakeHov && Clicked)
         {
-            *OptionalSettingsOpen = false;
+            if (OptionalSettingsOpen)  *OptionalSettingsOpen  = false;
             if (OptionalRebakeClicked) *OptionalRebakeClicked = true;
         }
         return Section.Bottom() + InspectorMetrics::SectionGap;
     }
 
-    // Standard Baked face (F76): Title header, Baked status bar (green Baked capsule + tooltip + res + Rebake/Save icons), LUT image, axis/format captions
+    //--------------------------------------------------------------------------------------------------------------------
+    // FACE 1: F76 UNBAKED DEFAULT (FollowUp66_LutDefaultCard.png)
+    //--------------------------------------------------------------------------------------------------------------------
+    if (!IsBaked)
+    {
+        const float BoxH = 152.0f;
+        const Rectangle2D Section { LeftX, TopY, InnerWidth, BoxH };
+        ConstructSectionSurface(Surface, Section, Title, "", InspectorMetrics::MutedInk);
+
+        const float RowY = TopY + InspectorMetrics::SectionPadTop + 28.0f;
+        const float TileW = 108.0f, TileH = 98.0f;
+        const Rectangle2D Tile { LeftX + PadX, RowY, TileW, TileH };
+        Surface.FillRectangle(Tile, ColorRgba{ 26u, 26u, 29u, 255u }, 12.0f);
+        Surface.StrokeRectangle(Tile, ColorRgba{ 255u, 255u, 255u, 18u }, 12.0f, 1.0f);
+
+        const Rectangle2D IconWell { Tile.Center().X - 18.0f, Tile.Y + 12.0f, 36.0f, 36.0f };
+        Surface.FillRectangle(IconWell, ColorRgba{ 16u, 16u, 18u, 255u }, 9.0f);
+        Surface.StrokeRectangle(IconWell, ColorRgba{ 255u, 255u, 255u, 12u }, 9.0f, 1.0f);
+        InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::BakeSparkle, IconWell.Center(), 16.0f, InspectorMetrics::MutedInk);
+
+        const float UseW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.8f, "Use baked image");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Tile.Center().X - UseW * 0.5f, Tile.Y + 56.0f }, 9.8f, ColorRgba{ 152u, 152u, 158u, 255u }, "Use baked image");
+        const float UnavW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 8.2f, "UNAVAILABLE");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Tile.Center().X - UnavW * 0.5f, Tile.Y + 74.0f }, 8.2f, InspectorMetrics::DimInk, "UNAVAILABLE");
+
+        const float RightX = Tile.Right() + 10.0f;
+        const float RightW = (LeftX + InnerWidth - PadX) - RightX;
+        const Rectangle2D BakeBtn { RightX, RowY, RightW, 34.0f };
+        const Rectangle2D LoadBtn { RightX, RowY + 42.0f, RightW, 32.0f };
+        const bool BakeHov = BakeBtn.Contains(Cur);
+
+        Surface.FillRectangle(BakeBtn, BakeHov ? ColorRgba{ 46u, 46u, 52u, 255u } : ColorRgba{ 32u, 33u, 36u, 255u }, 10.0f);
+        Surface.StrokeRectangle(BakeBtn, ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(BakeHov ? 46u : 22u) }, 10.0f, 1.0f);
+        const float BakeTxtW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 11.0f, "Bake");
+        const float BakeStart = BakeBtn.Center().X - (BakeTxtW + 18.0f) * 0.5f;
+        InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::BakeSparkle, { BakeStart + 7.0f, BakeBtn.Center().Y }, 14.0f, ColorRgba{ 238u, 238u, 242u, 255u });
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { BakeStart + 18.0f, BakeBtn.Y + 10.0f }, 11.0f, ColorRgba{ 238u, 238u, 242u, 255u }, "Bake");
+
+        Surface.FillRectangle(LoadBtn, ColorRgba{ 20u, 20u, 22u, 255u }, 10.0f);
+        Surface.StrokeRectangle(LoadBtn, ColorRgba{ 255u, 255u, 255u, 10u }, 10.0f, 1.0f);
+        const float LoadTxtW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.2f, "Load image");
+        const float LoadStart = LoadBtn.Center().X - (LoadTxtW + 16.0f) * 0.5f;
+        InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::LoadUpload, { LoadStart + 6.0f, LoadBtn.Center().Y }, 12.0f, InspectorMetrics::DimInk);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LoadStart + 16.0f, LoadBtn.Y + 9.5f }, 10.2f, InspectorMetrics::DimInk, "Load image");
+
+        char NotBakedBuf[64]{};
+        std::snprintf(NotBakedBuf, sizeof(NotBakedBuf), "Not baked · %s", (ResolutionText != nullptr) ? ResolutionText : "256 × 64");
+        WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { RightX + 2.0f, RowY + 82.0f }, RightW, 9.5f, InspectorMetrics::DimInk, NotBakedBuf);
+
+        if (BakeHov && Clicked)
+        {
+            if (OptionalSettingsOpen) *OptionalSettingsOpen = true;
+            else if (OptionalRebakeClicked) *OptionalRebakeClicked = true;
+        }
+        return Section.Bottom() + InspectorMetrics::SectionGap;
+    }
+
+    //--------------------------------------------------------------------------------------------------------------------
+    // FACE 3: F76 BAKED STATUS BAR + HOVER TOOLTIP + REBAKE/SAVE + LUT CANVAS (FollowUp66_LutBakedTooltip.png)
+    //--------------------------------------------------------------------------------------------------------------------
     const float BarH = 26.0f;
     const float BoxH = InspectorMetrics::SectionPadTop + 26.0f + BarH + 6.0f + PreviewHeightPx + 42.0f + InspectorMetrics::SectionPadBottom;
     const Rectangle2D Section { LeftX, TopY, InnerWidth, BoxH };
     ConstructSectionSurface(Surface, Section, Title, "", InspectorMetrics::MutedInk);
 
     const float BarY = TopY + InspectorMetrics::SectionPadTop + 24.0f;
-    // Green "Baked" capsule (hover opens F76 details tooltip)
-    const Rectangle2D BakedCap { LeftX + PadX, BarY + 2.0f, 68.0f, 22.0f };
+    const Rectangle2D BakedCap { LeftX + PadX, BarY + 2.0f, 70.0f, 22.0f };
     const bool BakedHover = BakedCap.Contains(Cur);
-    Surface.FillRectangle(BakedCap, BakedHover ? ColorRgba{ 28u, 62u, 42u, 255u } : ColorRgba{ 22u, 46u, 33u, 255u }, 11.0f);
-    Surface.StrokeRectangle(BakedCap, ColorRgba{ 88u, 214u, 141u, 110u }, 11.0f, 1.0f);
-    // Crisp check stroke inside Baked capsule
-    Surface.StrokeLine({ BakedCap.X + 9.0f, BakedCap.Y + 11.5f }, { BakedCap.X + 12.0f, BakedCap.Y + 14.5f }, ColorRgba{ 118u, 232u, 162u, 255u }, 1.5f);
-    Surface.StrokeLine({ BakedCap.X + 12.0f, BakedCap.Y + 14.5f }, { BakedCap.X + 17.5f, BakedCap.Y + 8.0f }, ColorRgba{ 118u, 232u, 162u, 255u }, 1.5f);
-    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { BakedCap.X + 23.0f, BakedCap.Y + 5.0f }, 10.0f, ColorRgba{ 150u, 238u, 184u, 255u }, "Baked");
+    Surface.FillRectangle(BakedCap, BakedHover ? ColorRgba{ 62u, 207u, 142u, 44u } : ColorRgba{ 62u, 207u, 142u, 26u }, 11.0f);
+    Surface.StrokeRectangle(BakedCap, ColorRgba{ 62u, 207u, 142u, 78u }, 11.0f, 1.0f);
+    InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::Check, { BakedCap.X + 12.0f, BakedCap.Center().Y }, 11.0f, ColorRgba{ 127u, 224u, 178u, 255u });
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { BakedCap.X + 22.0f, BakedCap.Y + 5.0f }, 10.0f, ColorRgba{ 127u, 224u, 178u, 255u }, "Baked");
 
-    // Monospace resolution readout beside Baked capsule
+    char LiveResBuf[32]{};
+    std::snprintf(LiveResBuf, sizeof(LiveResBuf), "%u × %u", Preview.QueryWidthPx(), Preview.QueryHeightPx());
     WorkspaceAppearance::ConstructTruncatedText(
-        Surface, FontWeightClass::Regular, { BakedCap.Right() + 8.0f, BarY + 7.0f }, BodyW - 134.0f, 9.8f, InspectorMetrics::MutedInk, ResolutionText);
+        Surface, FontWeightClass::Regular, { BakedCap.Right() + 8.0f, BarY + 7.0f }, BodyW - 150.0f, 9.8f, InspectorMetrics::MutedInk, LiveResBuf);
 
-    // Right-side Rebake (↺) & Save PNG (↓) icon buttons
-    const Rectangle2D SaveBtn   { LeftX + PadX + BodyW - 24.0f, BarY + 1.0f, 24.0f, 24.0f };
-    const Rectangle2D RebakeBtn { SaveBtn.X - 28.0f,            BarY + 1.0f, 24.0f, 24.0f };
+    const Rectangle2D SaveBtn   { LeftX + PadX + BodyW - 26.0f, BarY + 1.0f, 26.0f, 24.0f };
+    const Rectangle2D RebakeBtn { SaveBtn.X - 68.0f,            BarY + 1.0f, 62.0f, 24.0f };
     const bool RebakeHov = RebakeBtn.Contains(Cur);
     const bool SaveHov   = SaveBtn.Contains(Cur);
 
-    Surface.FillRectangle(RebakeBtn, RebakeHov ? ColorRgba{ 46u, 48u, 54u, 255u } : ColorRgba{ 30u, 31u, 35u, 255u }, 7.0f);
-    Surface.StrokeRectangle(RebakeBtn, ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(RebakeHov ? 42u : 18u) }, 7.0f, 1.0f);
-    Surface.StrokeCircle(RebakeBtn.Center(), 5.0f, ColorRgba{ 210u, 214u, 222u, 255u }, 1.3f);
-    Surface.StrokeLine({ RebakeBtn.Center().X - 5.5f, RebakeBtn.Center().Y - 4.0f }, { RebakeBtn.Center().X - 2.0f, RebakeBtn.Center().Y - 4.0f }, ColorRgba{ 210u, 214u, 222u, 255u }, 1.3f);
+    Surface.FillRectangle(RebakeBtn, RebakeHov ? ColorRgba{ 46u, 48u, 54u, 255u } : ColorRgba{ 30u, 31u, 35u, 255u }, 12.0f);
+    Surface.StrokeRectangle(RebakeBtn, ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(RebakeHov ? 42u : 18u) }, 12.0f, 1.0f);
+    InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::Rebake, { RebakeBtn.X + 11.0f, RebakeBtn.Center().Y }, 10.5f, InspectorMetrics::MutedInk);
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { RebakeBtn.X + 20.0f, RebakeBtn.Y + 6.0f }, 9.5f, ColorRgba{ 228u, 230u, 236u, 255u }, "Rebake");
 
-    Surface.FillRectangle(SaveBtn, SaveHov ? ColorRgba{ 46u, 48u, 54u, 255u } : ColorRgba{ 30u, 31u, 35u, 255u }, 7.0f);
-    Surface.StrokeRectangle(SaveBtn, ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(SaveHov ? 42u : 18u) }, 7.0f, 1.0f);
-    Surface.StrokeLine({ SaveBtn.Center().X, SaveBtn.Y + 6.0f }, { SaveBtn.Center().X, SaveBtn.Y + 14.0f }, ColorRgba{ 210u, 214u, 222u, 255u }, 1.3f);
-    Surface.StrokeLine({ SaveBtn.Center().X - 3.5f, SaveBtn.Y + 11.0f }, { SaveBtn.Center().X, SaveBtn.Y + 14.5f }, ColorRgba{ 210u, 214u, 222u, 255u }, 1.3f);
-    Surface.StrokeLine({ SaveBtn.Center().X + 3.5f, SaveBtn.Y + 11.0f }, { SaveBtn.Center().X, SaveBtn.Y + 14.5f }, ColorRgba{ 210u, 214u, 222u, 255u }, 1.3f);
-    Surface.StrokeLine({ SaveBtn.X + 6.5f, SaveBtn.Bottom() - 6.0f }, { SaveBtn.Right() - 6.5f, SaveBtn.Bottom() - 6.0f }, ColorRgba{ 210u, 214u, 222u, 255u }, 1.3f);
+    Surface.FillRectangle(SaveBtn, SaveHov ? ColorRgba{ 46u, 48u, 54u, 255u } : ColorRgba{ 30u, 31u, 35u, 255u }, 12.0f);
+    Surface.StrokeRectangle(SaveBtn, ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(SaveHov ? 42u : 18u) }, 12.0f, 1.0f);
+    InspectorVector::ConstructHtmlGlyph(Surface, InspectorVector::HtmlGlyph::SaveDownload, SaveBtn.Center(), 12.0f, InspectorMetrics::MutedInk);
 
     if (BakedHover)
     {
-        const uint32_t Wpx = std::max(1u, Preview.QueryWidthPx());
-        const uint32_t Hpx = std::max(1u, Preview.QueryHeightPx());
         char SizeBuf[32]{}, CountBuf[32]{};
-        std::snprintf(SizeBuf,  sizeof(SizeBuf),  "%u KB · 4 B/texel", std::max(1u, (Wpx * Hpx * 4u) / 1024u));
+        FormatBytes(Preview.QueryWidthPx(), Preview.QueryHeightPx(), SizeBuf, sizeof(SizeBuf));
         std::snprintf(CountBuf, sizeof(CountBuf), "Retained bake #%u", Preview.QueryUploadCount());
         const std::array<InspectorTooltipFact, 5u> Facts = {{
             { "MAP",        Title ? Title : "Baked LUT" },
-            { "RESOLUTION", ResolutionText ? ResolutionText : "-" },
+            { "RESOLUTION", LiveResBuf },
             { "FORMAT",     FormatText ? FormatText : "RGBA8" },
             { "SIZE",       SizeBuf },
             { "STATUS",     CountBuf },
@@ -1258,7 +1403,7 @@ float ConstructBakedLutSection(
     }
     else if (RebakeHov)
     {
-        QueueTooltip(RebakeBtn, "Rebake", "Open resolution settings & re-bake this LUT");
+        QueueTooltip(RebakeBtn, "Rebake", "Drop baked LUT and return to Unbaked state");
     }
     else if (SaveHov)
     {
@@ -1267,8 +1412,9 @@ float ConstructBakedLutSection(
 
     if (RebakeHov && Clicked)
     {
-        if (OptionalSettingsOpen) *OptionalSettingsOpen = true;
-        else if (OptionalRebakeClicked) *OptionalRebakeClicked = true;
+        // F76 exact behavior: Rebake drops the baked texture and returns to Unbaked default card
+        Preview.Release();
+        if (OptionalSettingsOpen) *OptionalSettingsOpen = false;
     }
     if (SaveHov && Clicked && OptionalSaveClicked)
     {
@@ -1279,7 +1425,6 @@ float ConstructBakedLutSection(
     Preview.Present(Surface, ImgBox, 10.0f);
     Surface.StrokeRectangle(ImgBox, ColorRgba{ 255u, 255u, 255u, 22u }, 10.0f, 1.0f);
 
-    // Live cursor crosshair readout when pointing inside the baked image
     if (ImgBox.Contains(Cur))
     {
         Surface.StrokeCircle(Cur, 5.5f, ColorRgba{ 255u, 255u, 255u, 220u }, 1.0f);

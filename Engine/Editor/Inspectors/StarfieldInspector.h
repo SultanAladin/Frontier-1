@@ -39,7 +39,7 @@ private:
     uint32_t                ActivePage         = 0u;
     uint32_t                ActiveDragId       = 0u;
     bool                    BakeSettingsOpen   = false;
-    uint32_t                BakeResolutionTier = 1u;
+    uint32_t                BakeResolutionTier    = 2u;
     InspectorPreviewSurface StarSheetBake      {};
 };
 

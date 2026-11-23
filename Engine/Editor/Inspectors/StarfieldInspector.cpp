@@ -213,16 +213,20 @@ float StarfieldInspector::Construct(
     }
     else
     {
-        UpdateStarSheetSurface(Stars, Entry.VisibilityEnabled);
+        // F76: Unbaked by default (zero automatic CPU rasterization or texture upload until explicit Bake click!)
         WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { LeftX + 2.0f, CursorY }, 9.5f, InspectorMetrics::DimInk, "BAKING   ·   Equirectangular celestial sheet");
         CursorY += 20.0f;
         bool RebakeHit = false;
         CursorY = InspectorPrimitives::ConstructBakedLutSection(
-            Surface, LeftX, CursorY, InnerWidth, "Star field bake", "1024 x 512",
-            "RGBA8 sRGB  ·  equirectangular, celestial J2000",
-            "X: Right ascension (0..24 h)   ·   Y: Declination (+90..-90 deg)",
+            Surface, LeftX, CursorY, InnerWidth, "Star field bake", "1024 × 512",
+            "RGBA8 sRGB · J2000",
+            "X: Right ascension (0..24 h) · Y: Declination (+90..-90°)",
             StarSheetBake, 118.0f, &Input, &BakeSettingsOpen, &BakeResolutionTier, &RebakeHit);
-        if (RebakeHit) OutMutated = true;
+        if (RebakeHit)
+        {
+            UpdateStarSheetSurface(Stars, Entry.VisibilityEnabled);
+            OutMutated = true;
+        }
     }
 
     return CursorY;

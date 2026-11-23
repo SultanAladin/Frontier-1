@@ -38,13 +38,6 @@ constexpr std::array<EnvironmentPresetSpec, 5u> EnvironmentPresets = {{
     { "Uniform colour", { 0.62f, 0.71f, 0.80f }, { 0.62f, 0.71f, 0.80f }, { 0.32f, 0.36f, 0.40f },  1000.0f,   0.0f, 90.0f, { 1.00f, 1.00f, 1.00f }, 0.00f },
 }};
 
-inline uint8_t ToneSrgb8(float Hdr) noexcept
-{
-    const float M = std::clamp(Hdr / (1.0f + std::max(0.0f, Hdr)), 0.0f, 1.0f);
-    const float S = (M <= 0.0031308f) ? (M * 12.92f) : (1.055f * std::pow(M, 1.0f / 2.4f) - 0.055f);
-    return static_cast<uint8_t>(std::clamp(std::lround(S * 255.0f), 0l, 255l));
-}
-
 inline Mathematics::LinearRGB ApplySat(Mathematics::LinearRGB C, float Sat) noexcept
 {
     const float L = 0.2126f * C.R + 0.7152f * C.G + 0.0722f * C.B;
@@ -56,115 +49,7 @@ inline Mathematics::LinearRGB ApplySat(Mathematics::LinearRGB C, float Sat) noex
 }
 } // namespace
 
-void EnvironmentLightInspector::UpdateHemisphereSurface(const EnvironmentLightInstanceData& Instance)
-{
-    uint64_t Sig = 0xE1010002ull;
-    Sig = InspectorPrimitives::MixRevisionU64(Sig, Instance.SourcePresetIndex);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.SkyRadiance.R);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.SkyRadiance.G);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.SkyRadiance.B);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.RotationDegrees);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.GainScale);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.ExposureEv);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.Saturation);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Instance.GroundBounce);
 
-    const uint32_t W = 240u, H = 152u;
-    HemispherePreview.EnsureUpdated(Sig, W, H, [&](std::vector<uint8_t>& Pixels)
-    {
-        const auto& Preset = EnvironmentPresets[std::min<std::size_t>(Instance.SourcePresetIndex, EnvironmentPresets.size() - 1u)];
-        const bool Uniform = (Instance.SourcePresetIndex == 4u);
-        const Mathematics::LinearRGB Overhead = ApplySat(Uniform ? Instance.SkyRadiance : Preset.Overhead, Instance.Saturation);
-        const Mathematics::LinearRGB Skyline  = ApplySat(Uniform ? Instance.SkyRadiance : Preset.Skyline,  Instance.Saturation);
-        const Mathematics::LinearRGB Ground   = ApplySat(Preset.Ground, Instance.Saturation);
-        const float Gain = Instance.GainScale * std::pow(2.0f, Instance.ExposureEv * 0.5f);
-
-        const float AzRad = (Preset.PatchAzimuthDeg + Instance.RotationDegrees) * (PiF / 180.0f);
-        const float ElRad = Preset.PatchElevationDeg * (PiF / 180.0f);
-        const float SunX  = std::cos(ElRad) * std::sin(AzRad);
-        const float SunY  = std::sin(ElRad);
-        const float SunZ  = std::cos(ElRad) * std::cos(AzRad);
-
-        const float SphereCX = static_cast<float>(W) * 0.34f, SphereCY = static_cast<float>(H) * 0.54f, SphereR = 36.0f;
-        const float CompassCX = static_cast<float>(W) * 0.76f, CompassCY = static_cast<float>(H) * 0.54f, CompassR = 32.0f;
-
-        for (uint32_t Y = 0u; Y < H; ++Y)
-        {
-            const float FY = static_cast<float>(Y) + 0.5f;
-            const float V  = FY / static_cast<float>(H);
-            for (uint32_t X = 0u; X < W; ++X)
-            {
-                const float FX = static_cast<float>(X) + 0.5f;
-                // Left backdrop: subtle sky dome gradient
-                float R = 0.03f, G = 0.032f, B = 0.038f;
-                if (V < 0.56f)
-                {
-                    const float T = V / 0.56f;
-                    R = (Overhead.R * (1.0f - T) + Skyline.R * T) * 0.32f * Gain;
-                    G = (Overhead.G * (1.0f - T) + Skyline.G * T) * 0.32f * Gain;
-                    B = (Overhead.B * (1.0f - T) + Skyline.B * T) * 0.32f * Gain;
-                }
-                else
-                {
-                    const float T = (V - 0.56f) / 0.44f;
-                    R = (Skyline.R * (1.0f - T) * 0.2f + Ground.R * T * 0.25f) * Gain;
-                    G = (Skyline.G * (1.0f - T) * 0.2f + Ground.G * T * 0.25f) * Gain;
-                    B = (Skyline.B * (1.0f - T) * 0.2f + Ground.B * T * 0.25f) * Gain;
-                }
-
-                // Left specimen sphere illuminated by sky dome + ground bounce + key patch
-                const float SX = (FX - SphereCX) / SphereR;
-                const float SY = (SphereCY - FY) / SphereR;
-                const float S2 = SX * SX + SY * SY;
-                if (S2 <= 1.0f)
-                {
-                    const float SZ = std::sqrt(std::max(0.0f, 1.0f - S2));
-                    const float Up = std::clamp(SY, 0.0f, 1.0f);
-                    const float Dn = std::clamp(-SY, 0.0f, 1.0f);
-                    const float Hor = 1.0f - std::fabs(SY);
-                    float LR = Overhead.R * Up + Skyline.R * Hor * 0.75f + Ground.R * Dn * Instance.GroundBounce;
-                    float LG = Overhead.G * Up + Skyline.G * Hor * 0.75f + Ground.G * Dn * Instance.GroundBounce;
-                    float LB = Overhead.B * Up + Skyline.B * Hor * 0.75f + Ground.B * Dn * Instance.GroundBounce;
-                    const float NdotS = std::max(0.0f, SX * SunX + SY * SunY + SZ * SunZ);
-                    const float Spec  = std::pow(NdotS, 22.0f) * Preset.PatchShare * 1.4f;
-                    LR += Preset.PatchTint.R * (NdotS * Preset.PatchShare * 0.9f + Spec);
-                    LG += Preset.PatchTint.G * (NdotS * Preset.PatchShare * 0.9f + Spec);
-                    LB += Preset.PatchTint.B * (NdotS * Preset.PatchShare * 0.9f + Spec);
-                    R = LR * Gain * 0.75f; G = LG * Gain * 0.75f; B = LB * Gain * 0.75f;
-                }
-
-                // Right top-down hemisphere compass showing rotated bright patch direction
-                const float CDX = FX - CompassCX, CDY = FY - CompassCY;
-                const float CD  = std::sqrt(CDX * CDX + CDY * CDY);
-                if (CD <= CompassR + 1.0f)
-                {
-                    if (CD <= CompassR)
-                    {
-                        const float Fade = CD / CompassR;
-                        R = (Overhead.R * (1.0f - Fade) + Skyline.R * Fade) * 0.45f * Gain;
-                        G = (Overhead.G * (1.0f - Fade) + Skyline.G * Fade) * 0.45f * Gain;
-                        B = (Overhead.B * (1.0f - Fade) + Skyline.B * Fade) * 0.45f * Gain;
-                        const float PX = CompassCX + std::sin(AzRad) * std::cos(ElRad) * (CompassR * 0.82f);
-                        const float PY = CompassCY - std::cos(AzRad) * std::cos(ElRad) * (CompassR * 0.82f);
-                        const float PD = std::sqrt((FX - PX) * (FX - PX) + (FY - PY) * (FY - PY));
-                        if (Preset.PatchShare > 0.01f && PD < 12.0f)
-                        {
-                            const float Glow = std::exp(-PD * PD / 34.0f) * Preset.PatchShare * 2.2f * Gain;
-                            R += Preset.PatchTint.R * Glow; G += Preset.PatchTint.G * Glow; B += Preset.PatchTint.B * Glow;
-                        }
-                    }
-                    if (std::fabs(CD - CompassR) < 1.0f || std::fabs(CD - CompassR * 0.5f) < 0.65f)
-                    {
-                        R += 0.18f; G += 0.20f; B += 0.22f;
-                    }
-                }
-
-                const std::size_t Off = (static_cast<std::size_t>(Y) * W + X) * 4u;
-                Pixels[Off + 0u] = ToneSrgb8(R); Pixels[Off + 1u] = ToneSrgb8(G); Pixels[Off + 2u] = ToneSrgb8(B); Pixels[Off + 3u] = 255u;
-            }
-        }
-    });
-}
 
 float EnvironmentLightInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -184,14 +69,22 @@ float EnvironmentLightInspector::Construct(
 
     if (ActivePage == 0u)
     {
-        UpdateHemisphereSurface(Instance);
-        char CapBuf[64]{};
-        std::snprintf(CapBuf, sizeof(CapBuf), "%s · %.0f deg azimuth", Preset.Title, Instance.RotationDegrees);
-        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 250.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, PrevSec, "Environment hemisphere", Preset.Title);
-        HemispherePreview.Present(Surface, { LeftX + PadX, CursorY + InspectorMetrics::SectionPadTop + 28.0f, BodyW, 152.0f }, 12.0f);
-        WorkspaceAppearance::ConstructTruncatedText(
-            Surface, FontWeightClass::Regular, { LeftX + PadX, PrevSec.Bottom() - 28.0f }, BodyW, 10.5f, InspectorMetrics::MutedInk, CapBuf);
+        const Mathematics::LinearRGB EffTint = Preset.PatchTint;
+        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 286.0f };
+        InspectorVector::ConstructSectionSurfaceWithIcon(
+            Surface, PrevSec, InspectorVector::HtmlGlyph::Environment, InspectorPrimitives::EncodeLinearRgbToSrgb8(EffTint),
+            "Environment hemisphere", Preset.Title);
+        float HY = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
+        char WBuf[20]{}, FBuf[8]{}, CapBuf[64]{};
+        const float Klx = EffectiveLux * 0.001f;
+        std::snprintf(WBuf, sizeof(WBuf), "%.0f", std::floor(std::max(0.0f, Klx)));
+        std::snprintf(FBuf, sizeof(FBuf), ".%d", static_cast<int>(std::lround((Klx - std::floor(Klx)) * 10.0f)) % 10);
+        std::snprintf(CapBuf, sizeof(CapBuf), "%s · %.0f° azimuth · %+.1f EV", Preset.Title, Instance.RotationDegrees, Instance.ExposureEv);
+        HY = InspectorVector::ConstructSplitMetricReadout(Surface, LeftX + PadX, HY, WBuf, FBuf, "klx", CapBuf, 30.0f);
+        InspectorVector::LightBlueprintParams Bp{};
+        Bp.Kind = InspectorVector::LightBlueprintKind::Environment;
+        Bp.TintRgb = EffTint;
+        InspectorVector::ConstructLightBlueprint(Surface, { LeftX + PadX, HY + 2.0f, BodyW, 158.0f }, Bp);
         CursorY = PrevSec.Bottom() + InspectorMetrics::SectionGap;
 
         char LuxBuf[20]{}, EvBuf[20]{}, RotBuf[20]{}, BncBuf[20]{};
