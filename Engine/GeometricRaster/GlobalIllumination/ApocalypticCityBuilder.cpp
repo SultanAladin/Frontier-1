@@ -251,12 +251,29 @@ void AppendTaperedTubeSegment(
     }
 }
 
+constexpr uint16_t UnassignedMaterialOverride  = 0xFFFFu; // [mask]  - Marker when triangle inherits instance slot
+constexpr uint32_t MinimumUdfBakeResolution    = 16u;     // [count] - Threshold enabling per-asset local UDF bake
+constexpr uint32_t MinimumUdfAxisCells         = 12u;     // [count] - Minimum cell count along shortest asset axis
+constexpr uint32_t UdfResolutionAlignment      = 4u;      // [count] - Brick alignment multiple for local UDF grids
+constexpr float    MinimumUdfSpanMeters        = 0.25f;   // [m]     - Lower span floor for thin architectural parts
+constexpr float    MinimumUdfAxisExtentMeters  = 0.20f;   // [m]     - Minimum axis extent before cell rounding
+constexpr float    MinimumUdfVoxelPitchMeters  = 0.05f;   // [m]     - Finest local UDF voxel pitch in city scene
+constexpr float    UdfMarginSpanFraction       = 0.05f;   // [-]     - Exterior AABB padding fraction of asset span
+constexpr float    MinimumUdfMarginMeters      = 0.08f;   // [m]     - Minimum exterior AABB padding around asset
+constexpr float    MaximumUdfMarginMeters      = 0.36f;   // [m]     - Maximum exterior AABB padding around asset
+constexpr uint32_t DeerUdfMaxResolution        = 40u;     // [count] - Peak local UDF axis cells for roaming deer
+constexpr uint32_t WreckUdfMaxResolution       = 44u;     // [count] - Peak local UDF axis cells for vehicle wrecks
+constexpr uint32_t TerrainRuinUdfMaxResolution = 48u;     // [count] - Peak local UDF axis cells for crater & ruins
+constexpr uint32_t StructureUdfMaxResolution   = 56u;     // [count] - Peak local UDF axis cells for hollow towers
+constexpr uint32_t VehicleUdfMaxResolution     = 72u;     // [count] - Peak local UDF axis cells for hero vehicles
+
 void PopulateCenteredAssetEntry(
     ShowcaseGeometryAsset&   InOutGeom,
     ShowcaseWorldAssetEntry& InOutEntry,
     Mathematics::Axis3D      DesiredWorldOffset,
-    uint32_t                 MaxPyramidLevels      = 3u,
-    bool                     KeepAuthoredNormals   = false)
+    uint32_t                 MaxPyramidLevels   = 3u,
+    bool                     KeepAuthoredNormals = false,
+    uint32_t                 MaxLocalUdfAxisRes = 0u)
 {
     if (InOutGeom.Network.Vertices.empty())
     {
@@ -340,13 +357,63 @@ void PopulateCenteredAssetEntry(
             InOutEntry.LocalSmoothTriangles.push_back(Tri);
         }
     }
+
+    if (MaxLocalUdfAxisRes >= MinimumUdfBakeResolution && !InOutEntry.LocalSmoothTriangles.empty())
+    {
+        std::vector<SpatialAcceleration::RayTrianglePrimitive> LocalPrimitives;
+        LocalPrimitives.reserve(InOutEntry.LocalSmoothTriangles.size());
+        for (uint32_t TriangleIndex = 0u; TriangleIndex < static_cast<uint32_t>(InOutEntry.LocalSmoothTriangles.size()); ++TriangleIndex)
+        {
+            const CachedLocalSmoothTriangle& SourceTriangle = InOutEntry.LocalSmoothTriangles[TriangleIndex];
+            SpatialAcceleration::RayTrianglePrimitive Primitive {};
+            Primitive.Corner0          = SourceTriangle.Corner0;
+            Primitive.Edge01           = SourceTriangle.Corner1 - SourceTriangle.Corner0;
+            Primitive.Edge02           = SourceTriangle.Corner2 - SourceTriangle.Corner0;
+            Primitive.SourceFaceIndex  = TriangleIndex;
+            Primitive.MaterialOrdinal  = (SourceTriangle.MaterialSlotOverride != UnassignedMaterialOverride)
+                ? SourceTriangle.MaterialSlotOverride
+                : 0u;
+            Primitive.OpaqueMask       = 1u;
+            Primitive.PrimitiveOrdinal = TriangleIndex;
+            LocalPrimitives.push_back(Primitive);
+        }
+
+        // 💡 Unsigned local surface distance prevents hollow drivable interiors and skybridges from sealing into solid boxes
+        const float MaximumSpanMeters = std::max({
+            MinimumUdfSpanMeters,
+            InOutEntry.DimensionsMeters.X,
+            InOutEntry.DimensionsMeters.Y,
+            InOutEntry.DimensionsMeters.Z
+        });
+        const float VoxelPitchMeters  = std::max(
+            MinimumUdfVoxelPitchMeters,
+            MaximumSpanMeters / static_cast<float>(MaxLocalUdfAxisRes));
+        const auto ResolveAxisResolution = [VoxelPitchMeters, MaxLocalUdfAxisRes](float SpanMeters) noexcept -> uint32_t
+        {
+            const uint32_t UnalignedCells = static_cast<uint32_t>(
+                std::lround(std::max(MinimumUdfAxisExtentMeters, SpanMeters) / VoxelPitchMeters));
+            const uint32_t AlignedCells   =
+                ((UnalignedCells + (UdfResolutionAlignment - 1u)) / UdfResolutionAlignment) * UdfResolutionAlignment;
+            return std::clamp(AlignedCells, MinimumUdfAxisCells, MaxLocalUdfAxisRes);
+        };
+        const float MarginMeters = std::clamp(
+            MaximumSpanMeters * UdfMarginSpanFraction,
+            MinimumUdfMarginMeters,
+            MaximumUdfMarginMeters);
+        (void)InOutGeom.LocalSdf.BakeFromTrianglesAspect(
+            LocalPrimitives,
+            ResolveAxisResolution(InOutEntry.DimensionsMeters.X),
+            ResolveAxisResolution(InOutEntry.DimensionsMeters.Y),
+            ResolveAxisResolution(InOutEntry.DimensionsMeters.Z),
+            MarginMeters);
+    }
 }
 
 uint32_t RegisterDynamicAssetInBundle(
     ShowcaseWorldSceneBundle&              InOutBundle,
     std::unique_ptr<ShowcaseGeometryAsset> GeomAsset,
     ShowcaseWorldAssetEntry                Entry,
-    uint32_t                               AnalyticalShapeCode = 1u,
+    uint32_t                               AnalyticalShapeCode = DistanceShapeBox,
     bool                                   InitiallyVisible    = true)
 {
     const uint32_t ClusterIdx  = static_cast<uint32_t>(InOutBundle.Scene.ClusterInstances.size());
@@ -367,7 +434,7 @@ uint32_t RegisterDynamicAssetInBundle(
         std::max(0.03f, Entry.AuthoredDimensions.Z * 0.5f),
     };
     const bool LocalSdfPresent = !GeomAsset->LocalSdf.HalfDistanceSamples.empty() || !GeomAsset->LocalSdf.DistanceSamples.empty();
-    Inst.AnalyticalShapeCode   = LocalSdfPresent ? 0u : AnalyticalShapeCode;
+    Inst.AnalyticalShapeCode   = LocalSdfPresent ? DistanceShapeBakedVolume : AnalyticalShapeCode;
     Inst.LocalSdfVolume        = LocalSdfPresent ? &GeomAsset->LocalSdf : nullptr;
 
     InOutBundle.Scene.ClusterInstances.push_back(Inst);
@@ -863,9 +930,6 @@ void BuildApocalypticCityRacingScene(
             AppendOrientedBoxToNetwork(SubgradeGeom->Network, { -0.22f, YPos, 0.145f }, { 0.08f, 1.35f, 0.012f }, 0.0f, 0.0f, 0.0f, MatLaneStripe);
             AppendOrientedBoxToNetwork(SubgradeGeom->Network, {  0.22f, YPos, 0.145f }, { 0.08f, 1.35f, 0.012f }, 0.0f, 0.0f, 0.0f, MatLaneStripe);
         }
-        // Raised concrete curbs along West (-X) and East (+X) tower frontages
-        AppendOrientedBoxToNetwork(SubgradeGeom->Network, { -10.8f, 2.0f, 0.16f }, { 1.6f, 34.0f, 0.18f }, 0.0f, 0.0f, 0.0f, MatConcreteExt);
-        AppendOrientedBoxToNetwork(SubgradeGeom->Network, {  10.8f, 2.0f, 0.16f }, { 1.6f, 34.0f, 0.18f }, 0.0f, 0.0f, 0.0f, MatConcreteExt);
 
         ShowcaseWorldAssetEntry Entry {};
         Entry.Title            = "CentralBoulevardRoadbed";
@@ -878,7 +942,7 @@ void BuildApocalypticCityRacingScene(
         (void)RegisterDynamicAssetInBundle(OutBundle, std::move(SubgradeGeom), std::move(Entry), 1u);
     }
 
-    // Real 3D Convex Boussinesq-Fractured Boulevard Pavement & Blast Crater Heave
+    // Real 3D Convex Boussinesq-Fractured Boulevard Pavement, Sidewalk Curbs & Blast Crater Heave
     {
         const Mathematics::Axis3D CraterImpact { 1.2f, 1.6f, 0.0f };
         const auto RoadFractured = FractureWorldBoxDomain(
@@ -891,6 +955,9 @@ void BuildApocalypticCityRacingScene(
             9500.0);
         auto CraterRoadGeom = std::make_unique<ShowcaseGeometryAsset>();
         CraterRoadGeom->Network.NetworkTitle = "FracturedAsphaltCraterSlabs";
+        // Raised concrete curbs along West (-X) and East (+X) tower frontages
+        AppendOrientedBoxToNetwork(CraterRoadGeom->Network, { -10.8f, 2.0f, 0.16f }, { 1.6f, 34.0f, 0.18f }, 0.0f, 0.0f, 0.0f, MatConcreteExt);
+        AppendOrientedBoxToNetwork(CraterRoadGeom->Network, {  10.8f, 2.0f, 0.16f }, { 1.6f, 34.0f, 0.18f }, 0.0f, 0.0f, 0.0f, MatConcreteExt);
 
         for (const auto& Piece : RoadFractured.Fragments)
         {
@@ -924,8 +991,8 @@ void BuildApocalypticCityRacingScene(
         Entry.Subtitle         = "Roadway · 22 Convex Voronoi Asphalt Slabs";
         Entry.AuthorNotes      = "Radial-blast fractured asphalt pavement with buckled rim heave around central crater.";
         Entry.MaterialSlot     = MatAsphalt;
-        PopulateCenteredAssetEntry(*CraterRoadGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(CraterRoadGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*CraterRoadGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u, false, TerrainRuinUdfMaxResolution);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(CraterRoadGeom), std::move(Entry), DistanceShapeBox);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -965,8 +1032,8 @@ void BuildApocalypticCityRacingScene(
         Entry.Subtitle         = "Roadway · Drivable 15.4° Bridge Ramp -> West Tower F2";
         Entry.AuthorNotes      = "Collapsed reinforced-concrete highway viaduct forming a drivable ramp directly into West Tower Floor 2.";
         Entry.MaterialSlot     = MatConcreteExt;
-        PopulateCenteredAssetEntry(*BridgeGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(BridgeGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*BridgeGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u, false, StructureUdfMaxResolution);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(BridgeGeom), std::move(Entry), DistanceShapeBox);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -1031,8 +1098,8 @@ void BuildApocalypticCityRacingScene(
         Entry.Subtitle         = "Building · 4 Drivable Floors + 2 Interior Pancake Ramps";
         Entry.AuthorNotes      = "Voronoi-fractured reinforced concrete skyscraper with drivable Floor 1->2->3 interior ramps.";
         Entry.MaterialSlot     = MatConcreteExt;
-        PopulateCenteredAssetEntry(*WestTowerGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(WestTowerGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*WestTowerGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u, false, StructureUdfMaxResolution);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(WestTowerGeom), std::move(Entry), DistanceShapeBox);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -1064,8 +1131,8 @@ void BuildApocalypticCityRacingScene(
         Entry.Subtitle         = "Ramp · 22.4 m Steel Skybridge (West F3 -> East F2)";
         Entry.AuthorNotes      = "Sheared structural steel skybridge ramp connecting West Tower Floor 3 directly into East Tower Floor 2.";
         Entry.MaterialSlot     = MatRustSteel;
-        PopulateCenteredAssetEntry(*SkybridgeGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(SkybridgeGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*SkybridgeGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u, false, StructureUdfMaxResolution);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(SkybridgeGeom), std::move(Entry), DistanceShapeBox);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -1123,8 +1190,8 @@ void BuildApocalypticCityRacingScene(
         Entry.Subtitle         = "Building · 3 Stories + Skybridge Landing + Plunge Ramp";
         Entry.AuthorNotes      = "Fractured limestone & concrete tower receiving the Floor 2 skybridge with exit ramp to street.";
         Entry.MaterialSlot     = MatWarmFacade;
-        PopulateCenteredAssetEntry(*EastTowerGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(EastTowerGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*EastTowerGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u, false, StructureUdfMaxResolution);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(EastTowerGeom), std::move(Entry), DistanceShapeBox);
     }
 
     // Distant North Urban Canyon Ruin Silhouettes (multi-tier stepped skyscrapers with window spandrels & bombed-out roof notches)
@@ -1170,8 +1237,8 @@ void BuildApocalypticCityRacingScene(
         Entry.MaterialTitle    = FacadeConcrete.MaterialName;
         Entry.Subtitle         = "Building · 3 Stepped Fractured High-Rise Ruin Towers";
         Entry.MaterialSlot     = MatConcreteExt;
-        PopulateCenteredAssetEntry(*CanyonGeom, Entry, { 0.0f, 0.0f, 0.0f }, 3u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(CanyonGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*CanyonGeom, Entry, { 0.0f, 0.0f, 0.0f }, 3u, false, TerrainRuinUdfMaxResolution);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(CanyonGeom), std::move(Entry), DistanceShapeBox);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -1234,8 +1301,8 @@ void BuildApocalypticCityRacingScene(
             : "Wreck · Overturned Scorched Vehicle Hull";
         Entry.RotationZDegrees = YawDeg;
         Entry.MaterialSlot     = SlotIndices[0u];
-        PopulateCenteredAssetEntry(*VehGeom, Entry, WorldPos, 5u, VehicleGeometryReady);
-        return RegisterDynamicAssetInBundle(OutBundle, std::move(VehGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*VehGeom, Entry, WorldPos, 5u, VehicleGeometryReady, VehicleUdfMaxResolution);
+        return RegisterDynamicAssetInBundle(OutBundle, std::move(VehGeom), std::move(Entry), DistanceShapeBox);
     };
 
     // Hero Racing Vehicle on the starting boulevard charging toward the Buckled Viaduct Ramp!
@@ -1301,8 +1368,8 @@ void BuildApocalypticCityRacingScene(
         Entry.Subtitle         = "Wreck · Overturned Scorched Vehicle Hull";
         Entry.RotationZDegrees = YawDeg;
         Entry.MaterialSlot     = BodyMat;
-        PopulateCenteredAssetEntry(*WreckGeom, Entry, WorldPos, 4u);
-        return RegisterDynamicAssetInBundle(OutBundle, std::move(WreckGeom), std::move(Entry), 1u);
+        PopulateCenteredAssetEntry(*WreckGeom, Entry, WorldPos, 4u, false, WreckUdfMaxResolution);
+        return RegisterDynamicAssetInBundle(OutBundle, std::move(WreckGeom), std::move(Entry), DistanceShapeBox);
     };
 
     // 3 Overturned / Rolled Wrecked Cars: Foreground 25k-tri upside-down ControlVehicle + 2 sculpted crushed wrecks
@@ -1345,7 +1412,7 @@ void BuildApocalypticCityRacingScene(
         Entry.AuthorNotes      = "Wild chlorophyll and sun-bleached rye grass reclaiming boulevard cracks and craters.";
         Entry.MaterialSlot     = MatLushGrass;
         PopulateCenteredAssetEntry(*FloraGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(FloraGeom), std::move(Entry), 1u);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(FloraGeom), std::move(Entry), DistanceShapeExcluded);
     }
 
     {
@@ -1367,7 +1434,7 @@ void BuildApocalypticCityRacingScene(
         Entry.AuthorNotes      = "Hanging woody vine tendrils and subsurface-scattered ivy foliage draped over ruined ledges.";
         Entry.MaterialSlot     = MatVineLeaf;
         PopulateCenteredAssetEntry(*VinesGeom, Entry, { 0.0f, 0.0f, 0.0f }, 4u);
-        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(VinesGeom), std::move(Entry), 1u);
+        (void)RegisterDynamicAssetInBundle(OutBundle, std::move(VinesGeom), std::move(Entry), DistanceShapeExcluded);
     }
 
     //--------------------------------------------------------------------------------------------------------------------
@@ -1404,9 +1471,9 @@ void BuildApocalypticCityRacingScene(
         Entry.AuthorNotes      = "Autonomous obstacle-avoiding Woodland Deer roaming the overgrown boulevard.";
         Entry.RotationZDegrees = Spec.HeadingDeg;
         Entry.MaterialSlot     = MatDeerCoat;
-        PopulateCenteredAssetEntry(*DeerGeom, Entry, Spec.Pos, 4u);
+        PopulateCenteredAssetEntry(*DeerGeom, Entry, Spec.Pos, 4u, false, DeerUdfMaxResolution);
         const float GroundedZ = Entry.CenterWorld.Z;
-        const uint32_t ObjIdx = RegisterDynamicAssetInBundle(OutBundle, std::move(DeerGeom), std::move(Entry), 1u);
+        const uint32_t ObjIdx = RegisterDynamicAssetInBundle(OutBundle, std::move(DeerGeom), std::move(Entry), DistanceShapeBox);
 
         ApocalypticDeerWanderer Agent {};
         Agent.AssetSlotIndex       = ObjIdx;

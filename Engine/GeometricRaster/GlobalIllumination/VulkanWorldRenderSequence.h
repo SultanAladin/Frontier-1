@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <future>
 #include <span>
@@ -145,6 +146,13 @@ private:
         std::vector<CachedLocalLevelSubtree>       LevelSubtrees       {};
     };
 
+    struct PreparedPyramidDistanceVolume
+    {
+        const SpatialAcceleration::ClusterPyramid*     PyramidAsset        = nullptr; // [-]     - Source cluster pyramid key
+        std::size_t                                    SourceTriangleCount = 0u;      // [count] - Triangle count when baked
+        DistanceFieldSpace::LocalSignedDistanceVolume  Volume              {};        // [m]     - Value-owned unsigned UDF grid
+    };
+
     struct ResidentClusterInstanceSpan
     {
         uint32_t                 InstanceIndex             = 0u;
@@ -195,6 +203,8 @@ private:
         VkBufferUsageFlags    UsageMaskB);
 
     [[nodiscard]] const CachedAssetClusterHierarchy& AcquireAssetClusterHierarchy(
+        const SpatialAcceleration::ClusterPyramid* PyramidAsset);
+    [[nodiscard]] const DistanceFieldSpace::LocalSignedDistanceVolume* AcquirePyramidDistanceVolume(
         const SpatialAcceleration::ClusterPyramid* PyramidAsset);
     [[nodiscard]] uint64_t ComputeResidentClusterTransformSignature(
         const WorldSceneSpecification& Scene) const noexcept;
@@ -316,6 +326,7 @@ private:
     bool                   ActiveClipFocusInitialized      = false;
     bool                   CascadeFocusInitialized         = false;
     uint32_t               UploadedLocalSdfInstanceCount   = 0u;
+    float                  ActiveAnalyticGroundPlaneZ      = UnsetAnalyticGroundPlaneZ;
     std::vector<std::pair<const DistanceFieldSpace::LocalSignedDistanceVolume*, uint32_t>> CachedLocalSdfOffsets {};
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
     uint32_t               UploadedPhotometricProfiles   = 0u;
@@ -327,7 +338,8 @@ private:
     bool                   SceneUploadedOnce             = false;
     NaniteViewportLodStats   NaniteLodStats              {};
     GlobalDistanceFieldStats DistanceFieldStats          {};
-    std::vector<CachedAssetClusterHierarchy> AssetClusterTreeCache {};
+    std::vector<CachedAssetClusterHierarchy> AssetClusterTreeCache   {};
+    std::deque<PreparedPyramidDistanceVolume> PreparedPyramidVolumes {};
     std::vector<ResidentClusterInstanceSpan> ResidentClusterInstances {};
     std::vector<TopBranchGateRule>           TopBranchGateRules    {};
     std::vector<uint32_t>  FinestClusterMaskWords        {};

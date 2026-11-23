@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
 | [ViewportTelemetrySpikeRemediationReport.md](ViewportTelemetrySpikeRemediationReport.md) | **🟢 Completion Report (`2026-11-22`)**: `FrontierTiming.log` (`40,080` ticks on `GTX 1650 SUPER`) spike & ray-budget audit, dedicated `HighEndBvhComputeEntry` (`2..3` rays/pixel), persistent `VkPipelineCache`, `2048x2048` font atlas, and zero-stall gizmo/UI hover pacing |
 | [DataDrivenSpaceContentFormattingPlan.md](DataDrivenSpaceContentFormattingPlan.md) | **🟢 Active Review Plan (`2026-11-21`)**: Zero-abbreviation `*Space` vs. `.InstanceSpace` decision table, `Content/` folder structure, domain codecs, and `FrontierDefaultContentGenerator` C++ tool |
 | [WorldRenderingRedoReport.md](WorldRenderingRedoReport.md) | **🟢 Completion Report (`2026-11-20`)**: Quantitative & visual verification across Phase 0 (`757b5c6`), Order 1 Direct PBR (`4294a70`), Order 2 Real-Time GI (`18b3329`), and Order 3 Unified Deterministic Path Tracer (`GameRealtime` & `SceneFinalRender`) |

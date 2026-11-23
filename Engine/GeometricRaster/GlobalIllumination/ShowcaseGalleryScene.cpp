@@ -417,18 +417,29 @@ void EnsureObjectLocalSmoothTriangles(ShowcaseWorldAssetEntry& Obj)
 {
     switch (Shape)
     {
-        case ShowcasePrimitiveShape::Box:      return 1u;
-        case ShowcasePrimitiveShape::Sphere:   return 2u;
-        case ShowcasePrimitiveShape::Cylinder: return 3u;
-        case ShowcasePrimitiveShape::Cone:     return 4u;
-        case ShowcasePrimitiveShape::Torus:    return 5u;
-        default:                               return 1u;
+        case ShowcasePrimitiveShape::Box:      return DistanceShapeBox;
+        case ShowcasePrimitiveShape::Sphere:   return DistanceShapeSphere;
+        case ShowcasePrimitiveShape::Cylinder: return DistanceShapeCylinder;
+        case ShowcasePrimitiveShape::Cone:     return DistanceShapeCone;
+        case ShowcasePrimitiveShape::Torus:    return DistanceShapeTorus;
+        default:                               return DistanceShapeBox;
     }
 }
 
+constexpr uint16_t UnassignedMaterialOverride = 0xFFFFu; // [mask]  - Marker when triangle inherits instance slot
+constexpr float    MinimumBakeSpanMeters      = 0.25f;   // [m]     - Lower span floor for degenerate flat parts
+constexpr float    MinimumAxisExtentMeters    = 0.20f;   // [m]     - Minimum axis extent before cell rounding
+constexpr float    MinimumVoxelPitchMeters    = 0.045f;  // [m]     - Finest isotropic local UDF voxel pitch
+constexpr uint32_t MinimumAxisResolution      = 16u;     // [count] - Minimum grid cells along any local axis
+constexpr uint32_t MaximumAxisResolution      = 96u;     // [count] - Peak grid cells along longest vehicle axis
+constexpr uint32_t ResolutionAlignmentQuantum = 4u;      // [count] - Brick alignment multiple for local UDF grids
+constexpr float    MarginSpanFraction         = 0.065f;  // [-]     - Exterior AABB padding as fraction of span
+constexpr float    MinimumMarginMeters        = 0.08f;   // [m]     - Minimum exterior AABB padding around asset
+constexpr float    MaximumMarginMeters        = 0.32f;   // [m]     - Maximum exterior AABB padding around asset
+
 [[nodiscard]] bool BakeAssetSignedLocalSdfFromSmoothTriangles(
-    std::span<const CachedLocalSmoothTriangle>    LocalTriangles,
-    Mathematics::Scalar3D                         DimensionsMeters,
+    std::span<const CachedLocalSmoothTriangle>     LocalTriangles,
+    Mathematics::Scalar3D                          DimensionsMeters,
     DistanceFieldSpace::LocalSignedDistanceVolume& OutVolume)
 {
     if (LocalTriangles.empty())
@@ -436,34 +447,52 @@ void EnsureObjectLocalSmoothTriangles(ShowcaseWorldAssetEntry& Obj)
         return false;
     }
 
-    std::vector<SpatialAcceleration::RayTrianglePrimitive> LocalPrims;
-    LocalPrims.reserve(LocalTriangles.size());
-    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(LocalTriangles.size()); ++Idx)
+    std::vector<SpatialAcceleration::RayTrianglePrimitive> LocalPrimitives;
+    LocalPrimitives.reserve(LocalTriangles.size());
+    for (uint32_t TriangleIndex = 0u; TriangleIndex < static_cast<uint32_t>(LocalTriangles.size()); ++TriangleIndex)
     {
-        const CachedLocalSmoothTriangle& Tri = LocalTriangles[Idx];
-        SpatialAcceleration::RayTrianglePrimitive Prim {};
-        Prim.Corner0          = Tri.Corner0;
-        Prim.Edge01           = Tri.Corner1 - Tri.Corner0;
-        Prim.Edge02           = Tri.Corner2 - Tri.Corner0;
-        Prim.SourceFaceIndex  = Idx;
-        Prim.MaterialOrdinal  = (Tri.MaterialSlotOverride != 0xFFFFu) ? Tri.MaterialSlotOverride : 0u;
-        Prim.OpaqueMask       = 1u;
-        Prim.PrimitiveOrdinal = Idx;
-        LocalPrims.push_back(Prim);
+        const CachedLocalSmoothTriangle& SourceTriangle = LocalTriangles[TriangleIndex];
+        SpatialAcceleration::RayTrianglePrimitive Primitive {};
+        Primitive.Corner0          = SourceTriangle.Corner0;
+        Primitive.Edge01           = SourceTriangle.Corner1 - SourceTriangle.Corner0;
+        Primitive.Edge02           = SourceTriangle.Corner2 - SourceTriangle.Corner0;
+        Primitive.SourceFaceIndex  = TriangleIndex;
+        Primitive.MaterialOrdinal  = (SourceTriangle.MaterialSlotOverride != UnassignedMaterialOverride)
+            ? SourceTriangle.MaterialSlotOverride
+            : 0u;
+        Primitive.OpaqueMask       = 1u;
+        Primitive.PrimitiveOrdinal = TriangleIndex;
+        LocalPrimitives.push_back(Primitive);
     }
 
-    const float MaxSpan = std::max({ 0.25f, DimensionsMeters.X, DimensionsMeters.Y, DimensionsMeters.Z });
-    const float Pitch   = std::max(0.056f, MaxSpan / 80.0f);
-    const auto  ResFor  = [Pitch](float SpanMeters) noexcept -> uint32_t
+    // 💡 Bake unsigned surface distance so open panels, thin trim, and wheel arches never invent negative interior pockets
+    const float MaximumSpanMeters = std::max({
+        MinimumBakeSpanMeters,
+        DimensionsMeters.X,
+        DimensionsMeters.Y,
+        DimensionsMeters.Z
+    });
+    const float VoxelPitchMeters  = std::max(
+        MinimumVoxelPitchMeters,
+        MaximumSpanMeters / static_cast<float>(MaximumAxisResolution));
+
+    const auto ResolveAxisResolution = [VoxelPitchMeters](float SpanMeters) noexcept -> uint32_t
     {
-        const uint32_t Raw = static_cast<uint32_t>(std::lround(std::max(0.20f, SpanMeters) / Pitch));
-        return std::clamp(((Raw + 3u) / 4u) * 4u, 16u, 80u);
+        const uint32_t UnalignedCells = static_cast<uint32_t>(
+            std::lround(std::max(MinimumAxisExtentMeters, SpanMeters) / VoxelPitchMeters));
+        const uint32_t AlignedCells   =
+            ((UnalignedCells + (ResolutionAlignmentQuantum - 1u)) / ResolutionAlignmentQuantum) * ResolutionAlignmentQuantum;
+        return std::clamp(AlignedCells, MinimumAxisResolution, MaximumAxisResolution);
     };
-    const uint32_t ResX   = ResFor(DimensionsMeters.X);
-    const uint32_t ResY   = ResFor(DimensionsMeters.Y);
-    const uint32_t ResZ   = ResFor(DimensionsMeters.Z);
-    const float    Margin = std::clamp(MaxSpan * 0.055f, 0.06f, 0.28f);
-    return OutVolume.BakeSignedFromTrianglesAspect(LocalPrims, ResX, ResY, ResZ, Margin);
+
+    const uint32_t ResolutionX  = ResolveAxisResolution(DimensionsMeters.X);
+    const uint32_t ResolutionY  = ResolveAxisResolution(DimensionsMeters.Y);
+    const uint32_t ResolutionZ  = ResolveAxisResolution(DimensionsMeters.Z);
+    const float    MarginMeters = std::clamp(
+        MaximumSpanMeters * MarginSpanFraction,
+        MinimumMarginMeters,
+        MaximumMarginMeters);
+    return OutVolume.BakeFromTrianglesAspect(LocalPrimitives, ResolutionX, ResolutionY, ResolutionZ, MarginMeters);
 }
 
 void BuildCameraRay(
