@@ -1,0 +1,18 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.PillarWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.BehaviorSpace'
+DocumentTitle = 'ExampleBehaviorSpace'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003f6'
+
+[FormatExample]
+CanonicalSuffix = '.BehaviorSpace'
+EditorOnly = false
+EvaluationCadenceHz = 60
+FoundationalPillar = true
+RuleSetIdentifier = 'DeterministicBehaviorExample'
+StrictZeroAllocation = true
+SupportsEmbedding = true
+UsesTier2Binary = false

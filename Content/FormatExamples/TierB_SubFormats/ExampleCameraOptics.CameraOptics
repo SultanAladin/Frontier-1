@@ -1,0 +1,28 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.OpticsWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.CameraOptics'
+DocumentTitle = 'CinePrime50mm'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-00000000040d'
+
+[CameraOptics]
+ApertureBladeCount = 9
+ApertureFStop = 2.7999999523162842
+BladeCurvature = 0.34999999403953552
+BokehCatsEyeFactor = 0.18000000715255737
+BokehSphericalAberration = 0.11999999731779099
+ChromaticDispersionRms = 0.00079999997979030013
+FocalLengthMillimeters = 50.0
+FocusBreathingRatio = 0.014999999664723873
+FocusDistanceMeters = 6.5
+OpticalVignettingStrength = 0.2199999988079071
+OpticsTitle = 'CinePrime50mm'
+RadialDistortionK = [ -0.012000000104308128, 0.0020000000949949026, 0.0 ]
+SensorHeightMillimeters = 24.0
+SensorIsoSensitivity = 100.0
+SensorWidthMillimeters = 36.0
+ShutterAngleDegrees = 180.0
+ShutterSpeedSeconds = 0.0080000003799796104
+TangentialDistortionP = [ 0.0, 0.0 ]

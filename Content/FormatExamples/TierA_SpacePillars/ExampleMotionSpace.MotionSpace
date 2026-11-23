@@ -1,0 +1,17 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.PillarWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.MotionSpace'
+DocumentTitle = 'ExampleMotionSpace'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003f5'
+
+[FormatExample]
+CanonicalSuffix = '.MotionSpace'
+EditorOnly = false
+ExampleSeed = 492
+FoundationalPillar = true
+SupportsEmbedding = true
+Units = 'SI-Meters-Seconds-Radians'
+UsesTier2Binary = false

@@ -1,0 +1,17 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.FormatWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.TimerProfile'
+DocumentTitle = 'ExampleTimerProfile'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-000000000423'
+
+[FormatExample]
+CanonicalSuffix = '.TimerProfile'
+EditorOnly = false
+ExampleSeed = 2194
+FoundationalPillar = false
+SupportsEmbedding = true
+Units = 'SI-Meters-Seconds-Radians'
+UsesTier2Binary = false

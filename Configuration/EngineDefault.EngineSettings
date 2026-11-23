@@ -1,0 +1,17 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.Configuration'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.EngineSettings'
+DocumentTitle = 'EngineDefault'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003fa'
+
+[EngineSettings]
+ActiveProjectIndexPath = 'Content/Project/Frontier.ProjectIndex'
+CompiledRepositoryDirectory = 'Build/CompiledRepository'
+DefaultGraphicsSettingsPath = 'Configuration/GraphicsDefault.GraphicsSettings'
+DefaultStartupWorldPath = 'Content/Worlds/VehicleClearSkyDefault.WorldSpace'
+DocumentRevisionLimitMiB = 215
+GlobalRevisionLimitMiB = 750
+RepositoryQuotaMegabytes = 2048

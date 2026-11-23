@@ -1,0 +1,17 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.FormatWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.GraphicsSettings'
+DocumentTitle = 'ExampleGraphicsSettings'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003fe'
+
+[FormatExample]
+CanonicalSuffix = '.GraphicsSettings'
+EditorOnly = false
+ExampleSeed = 825
+FoundationalPillar = false
+SupportsEmbedding = false
+Units = 'SI-Meters-Seconds-Radians'
+UsesTier2Binary = false

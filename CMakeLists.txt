@@ -964,6 +964,23 @@ include(Automation/JoltPhysics.cmake)
 set_source_files_properties(Engine/GeometricRaster/Vector/VulkanVectorRenderMethod.cpp
     PROPERTIES INCLUDE_DIRECTORIES "${THORVG_VECTOR_SPI_INCLUDES}")
 
+add_library(FrontierSerialization STATIC
+    Engine/Serialization/Container/SuffixRegistry.cpp
+    Engine/Serialization/Container/AtomicFileWriter.cpp
+    Engine/Serialization/Container/HybridContainerCodec.cpp
+    Engine/Serialization/DependencyOrder/ContentHashCalculator.cpp
+    Engine/Serialization/DependencyOrder/DependencyOrderLedger.cpp
+    Engine/Serialization/DependencyOrder/CompiledDiskRepository.cpp
+    Engine/Serialization/Embedding/InstanceContainerCodec.cpp
+    Engine/Serialization/Codecs/FormatCodecSuite.cpp
+    Engine/Serialization/Configuration/BootConfigurationLoader.cpp
+)
+target_include_directories(FrontierSerialization PUBLIC
+    "${CMAKE_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/ExternalPackages/tomlpp/include"
+)
+target_link_libraries(FrontierSerialization PUBLIC FrontierCompileSettings)
+
 add_library(FrontierEngine STATIC ${FRONTIER_ENGINE_SOURCES})
 add_dependencies(FrontierEngine FrontierShaders thorvg_static Jolt)
 
@@ -979,7 +996,7 @@ target_compile_definitions(FrontierEngine PUBLIC
     "FRONTIER_COMPILED_SHADER_DIR=\"${FRONTIER_COMPILED_SHADER_DIR}\""
     "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\""
 )
-target_link_libraries(FrontierEngine PUBLIC FrontierCompileSettings thorvg_static Threads::Threads ${CMAKE_DL_LIBS})
+target_link_libraries(FrontierEngine PUBLIC FrontierSerialization FrontierCompileSettings thorvg_static Threads::Threads ${CMAKE_DL_LIBS})
 target_link_libraries(FrontierEngine PRIVATE Jolt)
 if(WIN32)
     target_link_libraries(FrontierEngine PUBLIC ws2_32)
@@ -1153,6 +1170,12 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SketcherKernelValidation                  Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation                Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
     frontier_register_exhibit(SketcherViewportValidation                Exhibits/ParametricSketcher/SketcherViewportValidation.cpp)
+    add_executable(SerializationValidation Exhibits/SerializationValidation.cpp)
+    target_include_directories(SerializationValidation PRIVATE "${CMAKE_SOURCE_DIR}/ExternalPackages/stb")
+    target_compile_definitions(SerializationValidation PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    target_link_libraries(SerializationValidation PRIVATE FrontierSerialization)
+    add_test(NAME SerializationValidation COMMAND SerializationValidation)
+
     frontier_register_exhibit(DataDrivenSpaceContentValidation          Exhibits/DataDrivenSpaceContentValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(SketcherWorkspaceValidation           Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
