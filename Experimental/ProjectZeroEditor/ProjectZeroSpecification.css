@@ -1,0 +1,334 @@
+/*==========================================================================================================================================
+                                                        PROJECTZEROSPECIFICATION.CSS
+==========================================================================================================================================*/
+/* 🧩 Follow-up 48: specification notes, the closing specification card, the viewport render header, the Project Browser and the
+   diagnostics tabs and Thought Log. */
+
+.specification-note {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: help;
+  filter: saturate(0.85);
+}
+.specification-card .specification-caption {
+  font-size: 11px;
+  color: #9a9a9a;
+  margin: 0 0 10px;
+}
+.specification-card .specification-group h4 {
+  margin: 14px 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #bababa;
+  font-weight: 500;
+}
+
+/* Viewport settings sheet: taller now that it carries the render header. */
+.viewport-settings {
+  width: 320px;
+  max-height: calc(100% - 120px);
+  overflow-y: auto;
+}
+.viewport-render-header h4 {
+  margin: 4px 0 2px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #d0d0d0;
+  font-weight: 500;
+}
+.viewport-settings .viewport-render-header label.vrh-field {
+  margin: 8px 0;
+  gap: 6px;
+}
+.vrh-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 14px;
+}
+.viewport-settings .vrh-toggles label.vrh-toggle {
+  margin: 6px 0;
+}
+.viewport-settings .vrh-slider {
+  display: grid !important;
+  grid-template-columns: 1fr;
+}
+.vrh-slider output {
+  font-size: 10px;
+  color: #ddd;
+}
+
+/* Diagnostics tabs, timing table and Thought Log. */
+.debug-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 10px;
+}
+.debug-tabs button {
+  flex: 1;
+  height: 26px;
+  font-size: 11px;
+  border-radius: 13px;
+  border: 1px solid #3b3b3b;
+  background: #1b1b1b;
+  color: #aaa;
+}
+.debug-tabs button[aria-selected="true"] {
+  background: #e8e8e8;
+  color: #111;
+}
+.timing-table,
+.thought-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.timing-table th,
+.thought-table th {
+  text-align: left;
+  color: #888;
+  font-weight: 500;
+  padding: 3px 4px;
+  border-bottom: 1px solid #333;
+}
+.timing-table td,
+.thought-table td {
+  padding: 3px 4px;
+  color: #ddd;
+  border-bottom: 1px solid #262626;
+}
+.thought-table td:first-child {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+}
+.thought-table th:not(:first-child),
+.thought-table td:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 2px;
+}
+.thought-table tr.unmeasured td {
+  color: #666;
+}
+.timing-spark {
+  width: 100%;
+  height: 44px;
+  display: block;
+  margin: 6px 0 10px;
+}
+.thought-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.thought-actions button {
+  font-size: 11px;
+  height: 26px;
+  padding: 0 10px;
+}
+
+/* Project Browser (§14). */
+.project-browser-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #000a;
+  display: grid;
+  place-items: center;
+}
+.project-browser {
+  width: min(880px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: #181818;
+  border: 1px solid #3a3a3a;
+  border-radius: 18px;
+  box-shadow: 0 30px 60px #000c;
+  padding: 22px 24px;
+  color: #e8e8e8;
+}
+.project-browser header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.project-browser header h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0;
+  flex: 1;
+}
+.project-browser .pb-tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.project-browser .pb-tools input[type="search"],
+.project-browser .pb-tools input[type="text"] {
+  flex: 1;
+  height: 32px;
+  border-radius: 16px;
+  border: 1px solid #3a3a3a;
+  background: #111;
+  color: #eee;
+  padding: 0 14px;
+  font-size: 12px;
+}
+.project-browser .pb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.project-browser .pb-card {
+  border: 1px solid #333;
+  border-radius: 14px;
+  background: #1f1f1f;
+  padding: 14px;
+  text-align: left;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 150px;
+}
+.project-browser .pb-card[aria-pressed="true"] {
+  border-color: #cfcfcf;
+}
+.project-browser .pb-card small {
+  color: #999;
+  font-size: 11px;
+}
+.project-browser .pb-thumb {
+  height: 70px;
+  border-radius: 9px;
+  background: linear-gradient(#6aa4d8 0 58%, #8f8a80 58% 100%);
+}
+.project-browser .pb-new {
+  border-style: dashed;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+.project-browser .pb-create {
+  margin-top: 16px;
+  border-top: 1px solid #2c2c2c;
+  padding-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.project-browser label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: #aaa;
+}
+.project-browser label input,
+.project-browser label select {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+  background: #111;
+  color: #eee;
+  padding: 0 10px;
+}
+.project-browser .pb-primary {
+  height: 32px;
+  border-radius: 16px;
+  padding: 0 16px;
+  background: #e8e8e8;
+  color: #111;
+  border: 0;
+  font-weight: 600;
+}
+.project-browser .pb-note {
+  font-size: 11px;
+  color: #888;
+  margin-top: 12px;
+}
+
+/* Transform gizmo (§13). */
+.gizmo-card {
+  margin-top: 12px;
+  border: 1px solid #2f2f2f;
+  border-radius: 14px;
+  padding: 14px;
+  background: #1b1b1b;
+}
+.gizmo-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.gizmo-card header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.gizmo-card header span {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #999;
+}
+.gizmo-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.gizmo-modes button {
+  min-width: 0;
+  padding: 0 8px;
+  height: 30px;
+  font-size: 11px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.gizmo-modes button[aria-checked="true"] {
+  background: #e8e8e8;
+  color: #111;
+}
+.gizmo-modes kbd {
+  font-size: 9px;
+  opacity: 0.7;
+}
+.gizmo-snap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 0 6px;
+  font-size: 11px;
+  color: #bbb;
+}
+.gizmo-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.gizmo-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: #999;
+}
+.gizmo-step input {
+  height: 28px;
+  width: 100%;
+}
+.gizmo-card p {
+  font-size: 10px;
+  color: #888;
+  margin: 10px 0 0;
+}

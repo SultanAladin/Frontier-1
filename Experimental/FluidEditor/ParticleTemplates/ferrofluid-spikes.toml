@@ -1,0 +1,79 @@
+# Ferrofluid Spikes — particle template (FX & Shields). Magnetic liquid: a sphere formation pinched into spikes by a fast Noise Field while each droplet carries a hard metallic micro-sphere with almost no roughness.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 50
+Id = "ferrofluid-spikes"
+Name = "Ferrofluid Spikes"
+Category = "FX & Shields"
+Icon = "fluid"
+Tint = "#64748b"
+Summary = "Magnetic liquid: a sphere formation pinched into spikes by a fast Noise Field while each droplet carries a hard metallic micro-sphere with almost no roughness."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 1, Position = [0, 0.05, 0], Direction = [0, 1, 0], Radius = 1.15, Fill = 0.55, Count = 3072, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 8.2, Damping = 2.1, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.18, NoiseScale = 2.4, NoiseSpeed = 0.9 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#f8fafc", "#cbd5e1", "#64748b", "#0f172a"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 0.4, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.15, Brightness = 1.25, Flicker = 0.06 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.048, SizeEnd = 0.036, SizeRandom = 0.25 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 17, Glow = 0.25, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 1, CarrierObject = 1, ObjectSpin = 0.25, ObjectTilt = 0.05, ObjectRoughness = 0.08, ObjectMetallic = 0.95, ObjectGlow = 0.45 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 4, EffectorStrength = 1.35, EffectorFrequency = 4.2, EffectorSpeed = 1.6, EffectorPush = 0.45, EffectorScaleBoost = 0.75, EffectorColourShift = 0.15 }

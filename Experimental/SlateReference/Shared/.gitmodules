@@ -1,0 +1,38 @@
+[submodule "ExternalPackages/cgltf"]
+	path = ExternalPackages/cgltf
+	url = https://github.com/jkuhlmann/cgltf.git
+[submodule "ExternalPackages/fast_obj"]
+	path = ExternalPackages/fast_obj
+	url = https://github.com/thisistherk/fast_obj.git
+[submodule "ExternalPackages/earcut"]
+	path = ExternalPackages/earcut
+	url = https://github.com/mapbox/earcut.hpp.git
+[submodule "ExternalPackages/clipper2"]
+	path = ExternalPackages/clipper2
+	url = https://github.com/AngusJohnson/Clipper2.git
+[submodule "ExternalPackages/glfw"]
+	path = ExternalPackages/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "ExternalPackages/jolt"]
+	path = ExternalPackages/jolt
+	url = https://github.com/jrouwe/JoltPhysics.git
+[submodule "ExternalPackages/miniaudio"]
+	path = ExternalPackages/miniaudio
+	url = https://github.com/mackron/miniaudio.git
+[submodule "ExternalPackages/stb"]
+	path = ExternalPackages/stb
+	url = https://github.com/nothings/stb.git
+[submodule "ExternalPackages/thorvg"]
+	path = ExternalPackages/thorvg
+	url = https://github.com/thorvg/thorvg.git
+[submodule "ExternalPackages/tomlpp"]
+	path = ExternalPackages/tomlpp
+	url = https://github.com/marzer/tomlplusplus.git
+[submodule "ExternalPackages/ufbx"]
+	path = ExternalPackages/ufbx
+	url = https://github.com/ufbx/ufbx.git
+[submodule "ExternalPackages/imgui"]
+	path = ExternalPackages/imgui
+	url = https://github.com/ocornut/imgui.git
+	branch = docking
+	branch = docking

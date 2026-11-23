@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Terrain Node Icon Vocabulary — Gaea-style Set</title>
+<style>
+  :root{
+    --bg:#0a0c10; --panel:#141821; --panel2:#0f131b; --border:#232a36;
+    --txt:#e6eaf0; --dim:#8a94a4; --faint:#5a6474; --head:#fff; --accent:#5aa9ff;
+  }
+  html,body{background:var(--bg);color:var(--txt);
+    font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:28px 30px 60px}
+  h1{color:var(--head);font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:.2px}
+  p.sub{color:var(--dim);max-width:780px;margin:0 0 22px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
+  .bar button{background:var(--panel);color:var(--dim);border:1px solid var(--border);
+    border-radius:7px;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s}
+  .bar button:hover{border-color:#3a4658;color:var(--txt)}
+  .bar button.on{border-color:var(--accent);color:#bfe0ff;background:#0f1a2a}
+  h2{color:var(--head);font-size:15px;font-weight:600;margin:34px 0 3px;
+     border-left:3px solid var(--accent);padding-left:10px}
+  h2 span{color:var(--faint);font-weight:500;font-size:12px;margin-left:8px}
+  p.catnote{color:var(--dim);margin:0 0 12px;padding-left:13px;font-size:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px}
+  .cell{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+        padding:14px 11px 12px;display:flex;flex-direction:column;align-items:center;gap:9px;
+        cursor:pointer;transition:border-color .15s,transform .15s,background .15s}
+  .cell:hover{border-color:#3a4658;transform:translateY(-2px)}
+  .cell.copied{border-color:#5aa9ff}
+  .cell > svg{width:76px;height:76px;display:block}
+  .cap{font-size:11px;color:var(--dim);text-align:center;line-height:1.35}
+  .cap b{display:block;color:var(--txt);font-weight:600;font-size:11.5px;margin-bottom:2px}
+  .strip{display:flex;gap:9px;align-items:flex-end;border-top:1px solid var(--border);
+         padding-top:9px;margin-top:2px;width:100%;justify-content:center}
+  .strip svg{display:block}
+  .s16 svg{width:16px;height:16px}
+  .s24 svg{width:24px;height:24px}
+  .s32 svg{width:32px;height:32px}
+  body.pale .cell{background:#e9eef4;border-color:#cfd8e2}
+  body.pale .cell:hover{border-color:#b4c0ce}
+  body.pale .cap{color:#556072}
+  body.pale .cap b{color:#182130}
+  body.pale .strip{border-top-color:#cfd8e2}
+  footer{color:var(--faint);margin-top:44px;font-size:11px;
+         border-top:1px solid var(--border);padding-top:14px}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+    background:#122238;border:1px solid #2f5a8a;color:#c2ddff;padding:8px 15px;border-radius:8px;
+    font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<h1>Terrain Node Icon Vocabulary</h1>
+<p class="sub">A node-graph icon set for a <b>Gaea-style terrain editor</b>, drawn on a
+<code>0 0 160 160</code> canvas with a shared 3D material system — radial/linear gradient bodies,
+blur and glow filters, cast shadows, and specular highlights. Every <code>&lt;defs&gt;</code> entry
+is suffixed with the icon's unique id, so any number of icons coexist on one page without collisions.
+Click a tile to copy its standalone SVG.</p>
+
+<div class="bar">
+  <button id="paleToggle">Pale tile</button>
+  <button id="gridToggle">Alignment grid</button>
+  <span style="color:var(--faint);font-size:12px" id="tally"></span>
+</div>
+
+<div id="root"></div>
+
+<footer>Terrain Node Icon Vocabulary · 6 groups · shared gradient / filter / horizon material system ·
+self-contained SVG · namespaced defs ids.</footer>
+
+<div id="toast">SVG copied</div>
+
+<script>
+//====================================================================================================================================
+//                                                    3D TERRAIN MATERIAL SYSTEM
+//====================================================================================================================================
+// Shared gradient / filter / baseplane helpers used by every node icon. Each icon gets a unique `id`
+// string; every local <defs> entry is suffixed with it so ids never collide across tiles/sizes/copy.
+
+const ROCK   = ['#f0eae0','#c9b79c','#9c8163','#5f4a34','#2e2114']; // exposed rock / soil
+const SLATE  = ['#eef1f5','#c3ccd6','#8b97a6','#565f6c','#282e38']; // cool grey stone
+const SNOW   = ['#ffffff','#e8f1fb','#c5d7ee','#8fa9cc','#5a6f92']; // snow / ice
+const SAND   = ['#fff3d6','#f0cf88','#d6a24e','#a4701f','#5c3c0c']; // dune sand
+const GRASS  = ['#e6f7c8','#a9d86a','#6faa3c','#43711f','#213a0e']; // vegetated slope
+const WATER  = ['#dcf6ff','#7fd0ee','#3f9fd8','#2160a0','#0f2f5c']; // river / lake blue
+const LAVA   = ['#fff2c4','#ffb347','#ff5f2e','#b21f14','#4a0c08']; // heat / sediment hot
+const LAND   = ['#f3e9d6','#cdb489','#a07c4c','#6b4f28','#39270f']; // generic landmass tan
+const NODE   = ['#dfe9f7','#9fb6d6','#5f7ba0','#37496a','#1a2436']; // ui / data node blue-grey
+const ACC    = ['#eafaff','#8fd6ff','#4aa5ff','#1f66c0','#0d2f6b']; // accent flow blue
+
+function stops(list){
+  return list.map(([o,c,op]) => `<stop offset="${o}" stop-color="${c}"${op!==undefined?` stop-opacity="${op}"`:''}/>`).join('');
+}
+function radial(defs,id,cList,opts){
+  const o=opts||{}, cx=o.cx??0.35, cy=o.cy??0.28, r=o.r??0.85;
+  defs.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}">${stops(cList)}</radialGradient>`);
+  return `url(#${id})`;
+}
+function linear(defs,id,cList,opts){
+  const o=opts||{}, x1=o.x1??0, y1=o.y1??0, x2=o.x2??1, y2=o.y2??0;
+  defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops(cList)}</linearGradient>`);
+  return `url(#${id})`;
+}
+function mat(defs,id,pal,opts){ return radial(defs,id,[['0%',pal[0]],['48%',pal[1]],['100%',pal[2]]],opts); }
+function matL(defs,id,pal,opts){ return linear(defs,id,[['0%',pal[0]],['55%',pal[1]],['100%',pal[2]]],opts); }
+function blurF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}"/></filter>`); return `url(#${id})`; }
+function glowF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`); return `url(#${id})`; }
+function shadow(defs,id,cx,cy,rx,ry,op){
+  const o=op??0.5;
+  const f=radial(defs,id,[['0%','#000',o],['70%','#000',o*0.35],['100%','#000',0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${f}"/>`;
+}
+function specular(cx,cy,rx,ry,op){ return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" opacity="${op??0.4}"/>`; }
+
+// Baseplane — the shared "sitting on a terrain tile" cue. A soft ground shadow + a faint horizon line.
+function baseplane(defs,id,cx,rx){
+  const wash=radial(defs,id,[['0%','#000',0.38],['100%','#000',0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<ellipse cx="${cx}" cy="134" rx="${rx}" ry="${(rx*0.22).toFixed(1)}" fill="${wash}"/>
+    <line x1="${cx-rx-4}" y1="134" x2="${cx+rx+4}" y2="134" stroke="#3a4658" stroke-width="1.4" opacity="0.55"/>`;
+}
+// A ridge silhouette path helper — a jagged mountain profile between two x anchors at a base y.
+function ridge(x0,x1,base,peaks){
+  let d=`M${x0},${base} `;
+  peaks.forEach(([px,py])=>{ d+=`L${px},${py} `; });
+  d+=`L${x1},${base} Z`;
+  return d;
+}
+
+//====================================================================================================================================
+//                                                    GROUP REGISTRY
+//====================================================================================================================================
+const CATS = [
+  ['Primitive', 'Primitives',        'Base shape generators — the starting heightfields of a graph'],
+  ['Terrain',   'Terrain & Shapers', 'Large-scale forming, warping, and stratification nodes'],
+  ['Erosion',   'Erosion',           'Simulated weathering — hydraulic, thermal, and sediment'],
+  ['Water',     'Water',             'Rivers, lakes, and sea level generation'],
+  ['Surface',   'Surface & Climate', 'Snow, texture, and surface-classifying nodes'],
+  ['Data',      'Data & Output',     'Masks, combines, and graph flow control'],
+];
+
+const ICONS = [];
+function add(name, cat, note, build){ ICONS.push({name, cat, note, build}); }
+
+//====================================================================================================================================
+//                                                    PRIMITIVES
+//====================================================================================================================================
+
+// 📝 A single sharp lit peak with a shaded right face — the two-tone facet split gives it 3D volume.
+// The lone tall summit is what says "Mountain" versus the multi-tooth Ridge below.
+add('Mountain','Primitive','A single peaked massif — the base heightfield generator',(defs,id)=>{
+  const Lit =matL(defs,id+'g1',ROCK,{x1:0,y1:0,x2:1,y2:1});
+  const Dark=linear(defs,id+'g2',[['0%',ROCK[2]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Cap =linear(defs,id+'g3',[['0%',SNOW[0]],['100%',SNOW[2]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <path d="M28,120 L78,40 L80,40 L110,120 Z" fill="${Dark}"/>
+    <path d="M28,120 L78,40 L60,120 Z" fill="${Lit}"/>
+    <path d="M66,64 L78,40 L88,60 L80,66 L74,60 Z" fill="${Cap}"/>
+    <path d="M78,40 L60,120" stroke="${ROCK[4]}" stroke-width="1" opacity="0.4"/>
+    ${specular(58,84,7,16,0.25)}`;
+});
+
+// 📝 A row of tapering teeth of descending height — the repeated crest line is the Ridge read; a
+// single peak would collapse it into a Mountain.
+add('Ridge','Primitive','A linear crest line of successive peaks',(defs,id)=>{
+  const Body=matL(defs,id+'g1',SLATE,{x1:0,y1:0,x2:0,y2:1});
+  const d=ridge(24,136,120,[[44,86],[62,64],[80,48],[100,70],[120,90]]);
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="${d}" fill="${Body}"/>
+    <path d="M62,64 L80,48 L100,70 L80,120 Z" fill="${SLATE[3]}" opacity="0.45"/>
+    <path d="M24,120 L44,86 L62,64 L80,48" fill="none" stroke="${SLATE[0]}" stroke-width="1.4" opacity="0.5"/>
+    ${specular(50,90,5,12,0.22)}`;
+});
+
+// 📝 Stacked crescent wind-ripples with a lit crest and shaded lee slope — the sickle curve and the
+// warm sand palette are the Dunes signature, distinct from the angular rock primitives.
+add('Dunes','Primitive','Wind-formed sand ripples with slip faces',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',SAND[0]],['100%',SAND[2]]],{x1:0,y1:0,x2:0,y2:1});
+  const B=linear(defs,id+'g2',[['0%',SAND[2]],['100%',SAND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M24,118 Q60,86 96,104 Q118,112 130,118 Z" fill="${B}"/>
+    <path d="M30,120 Q56,96 84,108 Q106,116 122,120 Z" fill="${A}"/>
+    <path d="M24,118 Q60,86 96,104" fill="none" stroke="${SAND[1]}" stroke-width="1.4" opacity="0.7"/>
+    ${specular(52,100,10,4,0.3)}`;
+});
+
+// 📝 A landmass ellipse ringed by water with a beach halo — the surrounding blue ring is the Island
+// read; without the water it would just be a low hill.
+add('Island','Primitive','A landmass surrounded by sea',(defs,id)=>{
+  const Sea =radial(defs,id+'g1',[['0%',WATER[1]],['60%',WATER[2]],['100%',WATER[4]]],{cx:0.4,cy:0.4,r:0.7});
+  const Land=radial(defs,id+'g2',[['0%',LAND[0]],['45%',LAND[1]],['100%',LAND[3]]],{cx:0.42,cy:0.38,r:0.8});
+  return `${baseplane(defs,id+'bp',80,46)}
+    <ellipse cx="80" cy="98" rx="52" ry="26" fill="${Sea}"/>
+    <ellipse cx="80" cy="92" rx="34" ry="18" fill="${SAND[1]}" opacity="0.85"/>
+    <path d="M52,92 Q62,66 80,70 Q100,66 108,92 Q92,102 80,100 Q66,102 52,92 Z" fill="${Land}"/>
+    ${specular(66,78,8,4,0.35)}`;
+});
+
+// 📝 A deep V-cut cleaving a lit plateau, with a shaded gorge wall — the incised gap and its inner
+// shadow are the Canyon read, the inverse of the raised Mountain.
+add('Canyon','Primitive','A plateau incised by a deep gorge',(defs,id)=>{
+  const Top =matL(defs,id+'g1',LAND,{x1:0,y1:0,x2:0,y2:1});
+  const Wall=linear(defs,id+'g2',[['0%',ROCK[2]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M26,116 L26,74 L134,66 L134,116 Z" fill="${Top}"/>
+    <path d="M62,70 Q72,110 78,120 Q86,110 92,110 Q98,90 100,68 Z" fill="${Wall}"/>
+    <path d="M78,120 Q84,102 92,110" fill="none" stroke="${WATER[2]}" stroke-width="2.2" opacity="0.7"/>
+    <path d="M26,74 L134,66" stroke="${LAND[0]}" stroke-width="1.4" opacity="0.5"/>
+    ${specular(44,80,12,3,0.3)}`;
+});
+
+// 📝 A smooth low rounded swell — a single soft dome with no sharp facets. The gentle curve is the
+// Hills read; any crest angle would push it toward Mountain.
+add('Hills','Primitive','Soft rolling low-relief mounds',(defs,id)=>{
+  const A=radial(defs,id+'g1',[['0%',GRASS[0]],['50%',GRASS[1]],['100%',GRASS[3]]],{cx:0.4,cy:0.3,r:0.9});
+  const B=radial(defs,id+'g2',[['0%',GRASS[1]],['100%',GRASS[3]]],{cx:0.4,cy:0.3,r:0.9});
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M20,120 Q46,86 74,116 Q84,120 96,112 Q116,92 140,120 Z" fill="${B}"/>
+    <path d="M20,120 Q46,86 74,116 Q60,120 20,120 Z" fill="${A}"/>
+    ${specular(44,98,10,5,0.3)}`;
+});
+
+// 📝 Concentric contour bands stepping up to a summit dot — the topographic rings are the abstract
+// "generator / procedural base" read, echoing a contour map.
+add('Contour Field','Primitive','A procedural base shown as topographic rings',(defs,id)=>{
+  const rings=[[52,GRASS[3]],[40,GRASS[2]],[28,SAND[2]],[16,SAND[1]]];
+  const mk=rings.map(([r,c],i)=>`<ellipse cx="80" cy="86" rx="${r}" ry="${(r*0.62).toFixed(1)}" fill="none" stroke="${c}" stroke-width="${3.4-i*0.4}"/>`).join('');
+  return `${baseplane(defs,id+'bp',80,44)}
+    ${mk}
+    <circle cx="80" cy="86" r="4" fill="${ROCK[3]}"/>
+    ${specular(80,86,3,2,0.5)}`;
+});
+
+//====================================================================================================================================
+//                                                    TERRAIN & SHAPERS
+//====================================================================================================================================
+
+// 📝 A grid mesh bent into a curved warp field — the distorted lattice is the Warp read; a flat grid
+// would read as an untouched plane instead.
+add('Warp','Terrain','Domain distortion bending the heightfield',(defs,id)=>{
+  const Line=ACC[2];
+  let mesh='';
+  for(let i=0;i<=5;i++){ const y=60+i*13; mesh+=`<path d="M28,${y} Q60,${y-14+i*3} 92,${y} T132,${y-6}" fill="none" stroke="${Line}" stroke-width="1.6" opacity="${0.8-i*0.08}"/>`; }
+  for(let j=0;j<=5;j++){ const x=32+j*20; mesh+=`<path d="M${x},58 Q${x+10},92 ${x-4},126" fill="none" stroke="${NODE[1]}" stroke-width="1.4" opacity="0.55"/>`; }
+  return `${baseplane(defs,id+'bp',80,44)}${mesh}
+    <path d="M28,110 Q60,80 92,102 T132,96" fill="none" stroke="${ACC[0]}" stroke-width="2" opacity="0.6"/>`;
+});
+
+// 📝 Horizontal stepped shelves cut into a slope — the flat stratified terraces are the read; a
+// smooth ramp with no steps would be a plain slope.
+add('Terraces','Terrain','Stratified stepped shelves',(defs,id)=>{
+  const Body=matL(defs,id+'g1',ROCK,{x1:0,y1:0,x2:0,y2:1});
+  let steps='';
+  const S=[[30,112,100],[42,98,84],[54,84,66],[66,70,48]];
+  S.forEach(([x,y,w])=>{ steps+=`<rect x="${x}" y="${y}" width="${w}" height="12" rx="2" fill="${Body}"/>
+    <rect x="${x}" y="${y}" width="${w}" height="4" rx="2" fill="${ROCK[0]}" opacity="0.4"/>`; });
+  return `${baseplane(defs,id+'bp',80,44)}${steps}
+    ${specular(40,90,6,3,0.3)}`;
+});
+
+// 📝 A ramped plane feeding a slope-gradient bar — the tilted surface with an incline arrow is the
+// Slope read, used for slope-driven masks.
+add('Slope','Terrain','Gradient of terrain steepness',(defs,id)=>{
+  const Ramp=linear(defs,id+'g1',[['0%',GRASS[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:1,y2:1});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <path d="M28,118 L118,118 L118,60 Z" fill="${Ramp}"/>
+    <path d="M44,110 L100,72" fill="none" stroke="#fff" stroke-width="2" opacity="0.7" stroke-dasharray="5 4"/>
+    <polygon points="100,72 90,74 96,82" fill="#fff" opacity="0.8"/>
+    ${specular(52,108,8,3,0.3)}`;
+});
+
+// 📝 A rugged fractal profile with self-similar sub-ridges — the recursive spiky detail is the
+// Fractal read, denser and noisier than a plain Ridge.
+add('Fractal','Terrain','Self-similar procedural roughness',(defs,id)=>{
+  const Body=matL(defs,id+'g1',SLATE,{x1:0,y1:0,x2:0,y2:1});
+  const d=ridge(22,138,120,[[34,96],[42,72],[52,88],[64,50],[74,80],[84,58],[96,86],[108,66],[122,94]]);
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="${d}" fill="${Body}"/>
+    <path d="M22,120 L34,96 L42,72 L52,88 L64,50 L74,80 L84,58 L96,86 L108,66 L122,94 L138,120"
+      fill="none" stroke="${SLATE[0]}" stroke-width="1.2" opacity="0.5"/>`;
+});
+
+// 📝 A cratered volcanic cone with a hot vent glow at the summit — the ringed caldera and warm core
+// separate it from an ordinary Mountain.
+add('Volcano','Terrain','A cone with a summit caldera vent',(defs,id)=>{
+  const Cone=linear(defs,id+'g1',[['0%',ROCK[2]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Lit =linear(defs,id+'g2',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Vent=radial(defs,id+'g3',[['0%',LAVA[0]],['55%',LAVA[2]],['100%',LAVA[3]]],{cx:0.5,cy:0.5,r:0.5});
+  const Glow=glowF(defs,id+'f1',2.4);
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M30,120 L64,60 L96,60 L128,120 Z" fill="${Cone}"/>
+    <path d="M30,120 L64,60 L74,120 Z" fill="${Lit}"/>
+    <ellipse cx="80" cy="60" rx="16" ry="6" fill="${ROCK[4]}"/>
+    <g filter="${Glow}"><ellipse cx="80" cy="60" rx="10" ry="4" fill="${Vent}"/></g>
+    ${specular(52,90,5,12,0.22)}`;
+});
+
+// 📝 Sharp exposed strata plates jutting at an angle — the tilted layered bedding is the Stratify
+// read; horizontal layers alone would read as Terraces.
+add('Stratify','Terrain','Tilted exposed rock bedding',(defs,id)=>{
+  const cols=[SLATE[3],SLATE[2],ROCK[2],SLATE[1],ROCK[3]];
+  let plates='';
+  cols.forEach((c,i)=>{ const x=34+i*16; plates+=`<path d="M${x},120 L${x+10},58 L${x+22},58 L${x+12},120 Z" fill="${c}"/>`; });
+  return `${baseplane(defs,id+'bp',80,44)}${plates}
+    ${specular(46,80,4,16,0.25)}`;
+});
+
+//====================================================================================================================================
+//                                                    EROSION
+//====================================================================================================================================
+
+// 📝 A slope carved by branching downhill gullies feeding a debris fan — the dendritic channels plus
+// the sediment fan are the Hydraulic Erosion read.
+add('Hydraulic Erosion','Erosion','Water-carved channels and debris fans',(defs,id)=>{
+  const Slope=matL(defs,id+'g1',ROCK,{x1:0,y1:0,x2:0,y2:1});
+  const Fan  =radial(defs,id+'g2',[['0%',SAND[1]],['100%',SAND[3]]],{cx:0.5,cy:0.2,r:0.9});
+  let ch='';
+  for(const [x,sway] of [[58,-10],[76,2],[94,10]]){
+    ch+=`<path d="M${x},58 Q${x+sway},88 ${x+sway*1.4},116" fill="none" stroke="${ROCK[4]}" stroke-width="2.2" opacity="0.7"/>`;
+    ch+=`<path d="M${x+3},70 Q${x-4},84 ${x-8},98" fill="none" stroke="${ROCK[4]}" stroke-width="1.4" opacity="0.55"/>`;
+  }
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M28,118 L80,52 L132,118 Z" fill="${Slope}"/>
+    <path d="M52,118 Q80,104 108,118 Z" fill="${Fan}" opacity="0.85"/>
+    ${ch}
+    ${specular(58,86,6,12,0.2)}`;
+});
+
+// 📝 A peak shedding angular scree that piles into talus cones at the base — the loose debris skirt
+// is the Thermal Erosion read, the dry counterpart to hydraulic channels.
+add('Thermal Erosion','Erosion','Angular scree sliding into talus cones',(defs,id)=>{
+  const Rock =matL(defs,id+'g1',SLATE,{x1:0,y1:0,x2:0,y2:1});
+  const Talus=linear(defs,id+'g2',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:0,y2:1});
+  let scree='';
+  for(let i=0;i<9;i++){ const x=48+(i*67%64), y=96+(i*41%20); scree+=`<circle cx="${x}" cy="${y}" r="${1.8+(i%3)}" fill="${ROCK[3]}" opacity="0.75"/>`; }
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M30,116 L80,50 L130,116 Z" fill="${Rock}"/>
+    <path d="M44,116 Q80,96 116,116 Z" fill="${Talus}"/>
+    ${scree}
+    ${specular(58,84,5,12,0.22)}`;
+});
+
+// 📝 A layered deposit of graded sediment bands settling in a basin — the horizontal fine-to-coarse
+// striations are the Sediment read, distinct from carving-based erosion.
+add('Sediment','Erosion','Graded deposition settling in a basin',(defs,id)=>{
+  const bands=[[SAND[1],72],[ROCK[2],84],[SAND[2],96],[ROCK[3],108]];
+  let ly='';
+  bands.forEach(([c,y])=>{ ly+=`<path d="M32,${y} Q80,${y+10} 128,${y} L128,${y+12} Q80,${y+22} 32,${y+12} Z" fill="${c}" opacity="0.9"/>`; });
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M28,68 Q80,58 132,68 L132,116 Q80,126 28,116 Z" fill="${LAND[3]}" opacity="0.25"/>
+    ${ly}
+    ${specular(52,72,10,3,0.3)}`;
+});
+
+// 📝 A mountain fed through a magic-wand overlay producing instant detail — the wand + sparkle over a
+// peak is the "Wizard / auto-erosion" read for one-click weathering presets.
+add('Erosion Wizard','Erosion','One-click composite erosion preset',(defs,id)=>{
+  const Peak=matL(defs,id+'g1',ROCK,{x1:0,y1:0,x2:0,y2:1});
+  const Wand=linear(defs,id+'g2',[['0%',NODE[1]],['100%',NODE[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Glow=glowF(defs,id+'f1',1.8);
+  const star=(x,y,s)=>`<path d="M${x},${y-s} L${x+s*0.3},${y-s*0.3} L${x+s},${y} L${x+s*0.3},${y+s*0.3} L${x},${y+s} L${x-s*0.3},${y+s*0.3} L${x-s},${y} L${x-s*0.3},${y-s*0.3} Z" fill="${ACC[0]}"/>`;
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M26,118 L70,58 L114,118 Z" fill="${Peak}"/>
+    <path d="M26,118 L70,58 L84,118 Z" fill="${ROCK[3]}" opacity="0.4"/>
+    <rect x="96" y="46" width="8" height="52" rx="4" transform="rotate(38 100 72)" fill="${Wand}"/>
+    <g filter="${Glow}">${star(112,50,7)}${star(96,44,4)}${star(124,64,3.5)}</g>
+    ${specular(50,88,5,11,0.22)}`;
+});
+
+// 📝 A slope with hardline rocky outcrops resisting erosion around softer scoured soil — the exposed
+// caprock bumps are the Rockify / hardness read.
+add('Rockify','Erosion','Exposing hard rock beneath eroded soil',(defs,id)=>{
+  const Soil=matL(defs,id+'g1',LAND,{x1:0,y1:0,x2:0,y2:1});
+  const Rock=linear(defs,id+'g2',[['0%',SLATE[1]],['100%',SLATE[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const knob=(x,y,w,h)=>`<path d="M${x-w},${y} L${x-w*0.4},${y-h} L${x+w*0.3},${y-h*0.8} L${x+w},${y} Z" fill="${Rock}"/>`;
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M26,116 L80,54 L134,116 Z" fill="${Soil}"/>
+    ${knob(58,100,12,14)}${knob(80,82,14,16)}${knob(102,102,11,13)}
+    ${specular(56,86,5,11,0.2)}`;
+});
+
+//====================================================================================================================================
+//                                                    WATER
+//====================================================================================================================================
+
+// 📝 A dendritic river network branching from headwaters down a valley — the tree-like tributaries
+// joining a main channel are the Rivers read, distinct from a still lake.
+add('Rivers','Water','A branching river network with tributaries',(defs,id)=>{
+  const Slope=matL(defs,id+'g1',GRASS,{x1:0,y1:0,x2:0,y2:1});
+  const Flow =linear(defs,id+'g2',[['0%',WATER[1]],['100%',WATER[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M26,116 L80,52 L134,116 Z" fill="${Slope}" opacity="0.85"/>
+    <path d="M80,120 Q78,96 82,80 Q84,68 80,56" fill="none" stroke="${Flow}" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M81,88 Q66,80 58,66" fill="none" stroke="${Flow}" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M81,96 Q96,88 104,74" fill="none" stroke="${Flow}" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M58,66 Q52,60 50,54" fill="none" stroke="${Flow}" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M104,74 Q110,66 112,60" fill="none" stroke="${Flow}" stroke-width="1.6" stroke-linecap="round"/>
+    ${specular(80,118,4,2,0.5)}`;
+});
+
+// 📝 A still enclosed water body nestled in a basin with a reflective sheen — the flat filled pool
+// with a shoreline is the Lakes read, the opposite of flowing rivers.
+add('Lakes','Water','A still water body filling a basin',(defs,id)=>{
+  const Basin=radial(defs,id+'g1',[['0%',LAND[1]],['100%',LAND[3]]],{cx:0.5,cy:0.3,r:0.9});
+  const Pool =radial(defs,id+'g2',[['0%',WATER[0]],['45%',WATER[1]],['100%',WATER[3]]],{cx:0.4,cy:0.35,r:0.8});
+  return `${baseplane(defs,id+'bp',80,46)}
+    <path d="M30,110 Q40,72 80,70 Q120,72 130,110 Q110,124 80,124 Q50,124 30,110 Z" fill="${Basin}"/>
+    <ellipse cx="80" cy="98" rx="40" ry="18" fill="${Pool}"/>
+    <path d="M56,94 Q80,88 104,94" fill="none" stroke="#fff" stroke-width="2" opacity="0.55" stroke-linecap="round"/>
+    ${specular(66,90,10,3,0.4)}`;
+});
+
+// 📝 A flooded horizon plane meeting a partial landmass at a waterline — the wide flat sea level with
+// a coast is the Sea read, larger and flatter than a Lake.
+add('Sea Level','Water','A global water plane and coastline',(defs,id)=>{
+  const Land=matL(defs,id+'g1',SAND,{x1:0,y1:0,x2:0,y2:1});
+  const Sea =linear(defs,id+'g2',[['0%',WATER[1]],['100%',WATER[3]]],{x1:0,y1:0,x2:0,y2:1});
+  let waves='';
+  [96,106,116].forEach((y,i)=>{ waves+=`<path d="M30,${y} q10,-4 20,0 t20,0 t20,0 t20,0" fill="none" stroke="${WATER[0]}" stroke-width="1.4" opacity="${0.5-i*0.1}"/>`; });
+  return `${baseplane(defs,id+'bp',80,46)}
+    <path d="M28,120 L28,86 Q52,60 84,72 L84,120 Z" fill="${Land}"/>
+    <path d="M84,88 L132,88 L132,120 L84,120 Z" fill="${Sea}"/>
+    <rect x="30" y="86" width="102" height="3" fill="${WATER[0]}" opacity="0.5"/>
+    ${waves}
+    ${specular(50,80,8,3,0.3)}`;
+});
+
+// 📝 A tumbling stepped watercourse dropping over ledges with spray — the vertical cascade over rock
+// steps is the Waterfall read, distinct from a flat river or lake.
+add('Waterfall','Water','A cascade dropping over rock ledges',(defs,id)=>{
+  const Rock=matL(defs,id+'g1',SLATE,{x1:0,y1:0,x2:0,y2:1});
+  const Fall=linear(defs,id+'g2',[['0%',WATER[0]],['100%',WATER[2]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <path d="M40,120 L40,54 L72,54 L72,80 L96,80 L96,104 L120,104 L120,120 Z" fill="${Rock}"/>
+    <path d="M56,54 L56,80 L80,80 L80,104 L104,104 L104,120" fill="none" stroke="${Fall}" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+    <circle cx="80" cy="82" r="3" fill="#fff" opacity="0.7"/>
+    <circle cx="104" cy="106" r="3" fill="#fff" opacity="0.7"/>
+    ${specular(56,60,3,6,0.4)}`;
+});
+
+//====================================================================================================================================
+//                                                    SURFACE & CLIMATE
+//====================================================================================================================================
+
+// 📝 A peak with a white cap pooling on high ground and gullies of bare rock below the snowline — the
+// altitude-driven white blanket is the Snow read.
+add('Snow','Surface','Altitude-driven snow cover',(defs,id)=>{
+  const Rock=matL(defs,id+'g1',SLATE,{x1:0,y1:0,x2:0,y2:1});
+  const Cap =linear(defs,id+'g2',[['0%',SNOW[0]],['100%',SNOW[2]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M26,118 L80,50 L134,118 Z" fill="${Rock}"/>
+    <path d="M56,86 L80,50 L106,88 Q94,80 88,90 Q80,78 72,90 Q64,80 56,86 Z" fill="${Cap}"/>
+    ${specular(58,90,5,11,0.2)}`;
+});
+
+// 📝 A slope split into altitude/steepness color zones by dashed bands — the banded classification is
+// the Texture / Splat read used to drive material maps.
+add('Texture Splat','Surface','Rule-based material classification',(defs,id)=>{
+  const Snow =linear(defs,id+'g1',[['0%',SNOW[0]],['100%',SNOW[2]]],{x1:0,y1:0,x2:0,y2:1});
+  const Rockc=linear(defs,id+'g2',[['0%',SLATE[1]],['100%',SLATE[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Grass=linear(defs,id+'g3',[['0%',GRASS[1]],['100%',GRASS[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M28,118 L80,52 L132,118 Z" fill="${Grass}"/>
+    <path d="M55,84 L80,52 L105,84 L80,118 Z" fill="${Rockc}"/>
+    <path d="M68,66 L80,52 L92,66 L80,84 Z" fill="${Snow}"/>
+    <path d="M55,84 L105,84 M68,66 L92,66" stroke="#fff" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.6"/>
+    ${specular(58,90,5,10,0.2)}`;
+});
+
+// 📝 A rock face colored by weathered oxide staining and lichen mottling — the mottled patina over
+// grey stone is the Weathering / colorize read.
+add('Weathering','Surface','Oxide staining and lichen patina',(defs,id)=>{
+  const Face=matL(defs,id+'g1',SLATE,{x1:0,y1:0,x2:1,y2:1});
+  let mottle='';
+  const cols=[LAVA[2],GRASS[2],SAND[2],ROCK[3]];
+  for(let i=0;i<12;i++){ const x=44+(i*83%72), y=64+(i*57%52); mottle+=`<circle cx="${x}" cy="${y}" r="${3+(i%3)*2}" fill="${cols[i%4]}" opacity="0.35"/>`; }
+  return `${baseplane(defs,id+'bp',80,42)}
+    <path d="M40,116 L48,58 L112,54 L120,116 Z" fill="${Face}"/>
+    ${mottle}
+    ${specular(56,68,7,10,0.22)}`;
+});
+
+// 📝 A slope with wind-driven sand streaks and a scoured deflation hollow — the directional erosion
+// striae are the Wind / Aeolian read.
+add('Wind Erosion','Surface','Aeolian scouring and drift streaks',(defs,id)=>{
+  const Body=matL(defs,id+'g1',SAND,{x1:0,y1:0,x2:0,y2:1});
+  const Gust=linear(defs,id+'g2',[['0%',SAND[0],0],['100%',SAND[0],0.85]],{x1:0,y1:0,x2:1,y2:0});
+  let streaks='';
+  [74,86,98,110].forEach((y,i)=>{ streaks+=`<path d="M36,${y} q40,-6 88,0" fill="none" stroke="${Gust}" stroke-width="${2.4-i*0.3}" stroke-linecap="round"/>`; });
+  return `${baseplane(defs,id+'bp',80,44)}
+    <path d="M28,118 Q80,88 132,118 Z" fill="${Body}"/>
+    ${streaks}
+    <polygon points="120,74 130,71 123,80" fill="${SAND[0]}" opacity="0.8"/>
+    ${specular(56,102,9,3,0.3)}`;
+});
+
+//====================================================================================================================================
+//                                                    DATA & OUTPUT
+//====================================================================================================================================
+
+// 📝 A soft black-to-white radial falloff disc — the greyscale gradient is the universal Mask read,
+// selecting where downstream effects apply.
+add('Mask','Data','A greyscale selection falloff',(defs,id)=>{
+  const M=radial(defs,id+'g1',[['0%','#ffffff'],['55%','#9aa4b2'],['100%','#1a2130']],{cx:0.42,cy:0.4,r:0.75});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <rect x="34" y="40" width="92" height="92" rx="14" fill="${NODE[4]}"/>
+    <circle cx="80" cy="86" r="40" fill="${M}"/>
+    ${specular(66,72,10,7,0.5)}`;
+});
+
+// 📝 Two input ports merging through an overlap junction into one output — the two-into-one blend of
+// overlapping fields is the Combine / mix read.
+add('Combine','Data','Blend two heightfields into one',(defs,id)=>{
+  const A=radial(defs,id+'g1',[['0%',ACC[1]],['100%',ACC[3]]],{cx:0.4,cy:0.4,r:0.8});
+  const B=radial(defs,id+'g2',[['0%',LAVA[1]],['100%',LAVA[3]]],{cx:0.4,cy:0.4,r:0.8});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <circle cx="64" cy="76" r="26" fill="${A}" opacity="0.85"/>
+    <circle cx="96" cy="76" r="26" fill="${B}" opacity="0.85"/>
+    <path d="M80,54 Q86,76 80,98 Q74,76 80,54 Z" fill="#fff" opacity="0.35"/>
+    <line x1="80" y1="102" x2="80" y2="124" stroke="${NODE[1]}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="80" cy="126" r="4" fill="${NODE[1]}"/>
+    ${specular(56,64,6,4,0.4)}`;
+});
+
+// 📝 A height ramp mapped through an S-curve grid — the curve over a value graph is the Adjust /
+// Clamp read, remapping the heightfield's tonal range.
+add('Height Curve','Data','Remap the heightfield value range',(defs,id)=>{
+  const Ramp=linear(defs,id+'g1',[['0%','#1a2130'],['100%',ACC[1]]],{x1:0,y1:1,x2:0,y2:0});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <rect x="38" y="44" width="84" height="84" rx="8" fill="${NODE[4]}"/>
+    <rect x="38" y="44" width="84" height="84" rx="8" fill="${Ramp}" opacity="0.25"/>
+    <path d="M46,120 L46,44 M46,120 L122,120" stroke="${NODE[1]}" stroke-width="1.4" opacity="0.5"/>
+    <path d="M46,116 C74,116 78,54 118,52" fill="none" stroke="${ACC[0]}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="46" cy="116" r="3.2" fill="#fff"/><circle cx="118" cy="52" r="3.2" fill="#fff"/>
+    ${specular(58,58,8,5,0.4)}`;
+});
+
+// 📝 A terrain chip flowing into an export arrow / disk — the outward arrow off a tile is the Output /
+// Build read, marking the graph's final export node.
+add('Output','Data','Export the final built terrain',(defs,id)=>{
+  const Tile=matL(defs,id+'g1',LAND,{x1:0,y1:0,x2:1,y2:1});
+  const Arr =linear(defs,id+'g2',[['0%',ACC[0]],['100%',ACC[2]]],{x1:0,y1:0,x2:1,y2:1});
+  return `${baseplane(defs,id+'bp',80,42)}
+    <rect x="36" y="52" width="60" height="60" rx="10" fill="${Tile}"/>
+    <path d="M46,104 L60,80 L72,92 L84,68" fill="none" stroke="${GRASS[2]}" stroke-width="2.2" opacity="0.7"/>
+    <path d="M96,82 L124,82 M114,72 L126,82 L114,92" fill="none" stroke="${Arr}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${specular(52,64,10,5,0.35)}`;
+});
+
+// 📝 A stack of small node cards wired in sequence — the connected chain of nodes is the Graph /
+// group read, representing a reusable sub-network.
+add('Node Group','Data','A wired sub-network of nodes',(defs,id)=>{
+  const Card=linear(defs,id+'g1',[['0%',NODE[1]],['100%',NODE[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const node=(x,y)=>`<rect x="${x}" y="${y}" width="30" height="18" rx="4" fill="${Card}"/><circle cx="${x}" cy="${y+9}" r="2.4" fill="${ACC[0]}"/><circle cx="${x+30}" cy="${y+9}" r="2.4" fill="${ACC[0]}"/>`;
+  return `${baseplane(defs,id+'bp',80,40)}
+    <path d="M74,63 Q92,72 52,90" fill="none" stroke="${ACC[1]}" stroke-width="2" opacity="0.7"/>
+    <path d="M82,99 Q64,108 104,84" fill="none" stroke="${ACC[1]}" stroke-width="2" opacity="0.7"/>
+    ${node(44,54)}${node(86,74)}${node(52,94)}
+    ${specular(50,58,7,3,0.4)}`;
+});
+
+//====================================================================================================================================
+//                                                    RENDER
+//====================================================================================================================================
+// Each build() pushes its gradients/filters into a fresh `defs` array and returns the body markup.
+// The two are stitched into one standalone <svg> per requested pixel size, with a per-instance id
+// suffix so the 76px tile, the 32/24/16px strip, and the clipboard copy never share gradient ids.
+
+const GRID_OVERLAY =
+  '<g class="alignGrid" stroke="#5aa9ff" stroke-width="0.6" opacity="0.22" fill="none">' +
+  '<rect x="24" y="24" width="112" height="112"/>' +
+  '<line x1="80" y1="16" x2="80" y2="144"/><line x1="16" y1="80" x2="144" y2="80"/>' +
+  '<circle cx="80" cy="80" r="56"/></g>';
+
+function BuildIconMarkup(Icon, InstanceId, Overlay){
+  const defs = [];
+  const body = Icon.build(defs, InstanceId);
+  const head = defs.length ? `<defs>${defs.join('')}</defs>` : '';
+  return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">${head}${body}${Overlay||''}</svg>`;
+}
+
+const root  = document.getElementById('root');
+const toast = document.getElementById('toast');
+let InstanceCounter = 0;
+
+CATS.forEach(([Key, Title, Note])=>{
+  const Members = ICONS.filter(Icon => Icon.cat === Key);
+  if (!Members.length) return;
+
+  const Heading = document.createElement('h2');
+  Heading.innerHTML = `${Title}<span>${Members.length} nodes</span>`;
+  root.appendChild(Heading);
+
+  const CategoryNote = document.createElement('p');
+  CategoryNote.className = 'catnote';
+  CategoryNote.textContent = Note;
+  root.appendChild(CategoryNote);
+
+  const Grid = document.createElement('div');
+  Grid.className = 'grid';
+
+  Members.forEach(Icon=>{
+    const Stem = 'te' + (InstanceCounter++);
+    const Cell = document.createElement('div');
+    Cell.className = 'cell';
+    Cell.innerHTML =
+      BuildIconMarkup(Icon, Stem + 'a', GRID_OVERLAY) +
+      `<div class="cap"><b>${Icon.name}</b>${Icon.note}</div>` +
+      `<div class="strip">` +
+        `<span class="s32">${BuildIconMarkup(Icon, Stem + 'b')}</span>` +
+        `<span class="s24">${BuildIconMarkup(Icon, Stem + 'c')}</span>` +
+        `<span class="s16">${BuildIconMarkup(Icon, Stem + 'd')}</span>` +
+      `</div>`;
+
+    Cell.addEventListener('click', ()=>{
+      const Standalone = BuildIconMarkup(Icon, Stem);
+      navigator.clipboard.writeText(Standalone).then(()=>{
+        Cell.classList.add('copied');
+        toast.textContent = Icon.name + ' — SVG copied';
+        toast.classList.add('show');
+        setTimeout(()=>{ Cell.classList.remove('copied'); toast.classList.remove('show'); }, 1100);
+      });
+    });
+
+    Grid.appendChild(Cell);
+  });
+
+  root.appendChild(Grid);
+});
+
+document.getElementById('tally').textContent =
+  ICONS.length + ' nodes · ' + CATS.length + ' groups · click a tile to copy its SVG';
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    INSPECTION TOGGLES
+//------------------------------------------------------------------------------------------------------------------------
+
+const PaleToggle = document.getElementById('paleToggle');
+PaleToggle.addEventListener('click', ()=>{
+  document.body.classList.toggle('pale');
+  PaleToggle.classList.toggle('on');
+});
+
+const GridToggle = document.getElementById('gridToggle');
+let GridVisible = false;
+function ApplyGridVisibility(){
+  document.querySelectorAll('.alignGrid').forEach(Node=>{
+    Node.style.display = GridVisible ? '' : 'none';
+  });
+}
+GridToggle.addEventListener('click', ()=>{
+  GridVisible = !GridVisible;
+  GridToggle.classList.toggle('on', GridVisible);
+  ApplyGridVisibility();
+});
+ApplyGridVisibility();
+
+//====================================================================================================================================
+//                                                    EXPORTS
+//====================================================================================================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { ICONS, CATS };
+}
+</script>
+</body>
+</html>

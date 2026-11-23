@@ -1,0 +1,139 @@
+Path	Label	PortedTo	ApprovedRemoval
+Source/AtmosphereInspectorDashboard.js	Toggle atmosphere		
+Source/AtmosphereInspectorDashboard.js	Atmosphere inspector sections		
+Source/AtmosphereIntegrator.js	Sky view		
+Source/AtmosphereMediumLight.js	Sun /		
+Source/Cabin/ClusterSequence.js	· ·		
+Source/Cabin/ClusterSequence.js	CONTROLVEHICLE		
+Source/CabinSequence.js	Cabin clear		
+Source/CabinSequence.js	Garage preview		
+Source/CabinSequence.js	Cabin optical transmission		
+Source/CabinSequence.js	Cabin overlay		
+Source/CelestialAtlas.js	Native six-body lunar atlas · 2K sRGB		
+Source/CloudInspectorDashboard.js	· × · cloud target · depth-aware reconstruction. Every target pixel traces each frame.		
+Source/CloudInspectorDashboard.js	Toggle global clouds		
+Source/CloudInspectorDashboard.js	Cloud inspector sections		
+Source/CloudInspectorDashboard.js	Open cloud formation controls		
+Source/CloudInspectorDashboard.js	Cloud formation		
+Source/CloudSequence.js	Cloud shape (baked once)		
+Source/CloudSequence.js	Clouds		
+Source/CloudShadow.js	Cloud shadow optical depth		
+Source/CloudShadow.js	Projected cloud shadows		
+Source/ClusteredGeometry.js	Geometry cluster frustum culling		
+Source/CsvDownload.js	Preparing CSV download…		
+Source/CsvDownload.js	Save CSV		
+Source/CsvDownload.js	Show CSV / copy manually		
+Source/CsvDownload.js	Complete CSV selected. Press Ctrl+C / Cmd+C to copy; paste into a .csv file.		
+Source/CsvDownload.js	Complete session CSV		
+Source/DiagnosticsInspector.js	All recorded rows copied as CSV.		
+Source/DiagnosticsInspector.js	Clipboard blocked: press Ctrl+C / Cmd+C to copy all selected CSV below.		
+Source/DiagnosticsInspector.js	Preparing complete session CSV…		
+Source/DiagnosticsInspector.js	CSV export failed:		
+Source/DisplayProjection.js	Cabin optical transmission		
+Source/DisplayProjection.js	Solar source visibility		
+Source/DisplayProjection.js	Cached optical flare		
+Source/DisplayProjection.js	Idle plume		
+Source/DisplayProjection.js	Inspection march		
+Source/DisplayProjection.js	Display resolve		
+Source/DisplayProjection.js	Display antialias		
+Source/DisplayProjection.js	Display exposure		
+Source/DisplayProjection.js	Display present		
+Source/EditorShell.js	· fps		
+Source/EditorShell.js	· ms		
+Source/EditorShell.js	·°		
+Source/EditorShell.js	· km/h·		
+Source/EditorShell.js	Drag to resize inspector		
+Source/EditorShell.js	Find an object…		
+Source/EditorShell.js	Open particle authoring workspace		
+Source/EditorTransforms.js	World		
+Source/FogInspectorDashboard.js	Fog tint		
+Source/HierarchyDebugOverlay.js	Geometry hierarchy — virtualized geometry debug		
+Source/HierarchyDebugOverlay.js	Waiting for scene…		
+Source/HierarchyDebugOverlay.js	Bounds are error-expanded. Wireframe is the simplified level geometry.		
+Source/IlluminationHost.js	Capture		
+Source/InspectorPages.js	azimuth ·°		
+Source/InspectorPages.js	density		
+Source/InspectorPages.js	heat		
+Source/InspectorPages.js	12 s		
+Source/InspectorPages.js	tip · K		
+Source/InspectorPages.js	core · K		
+Source/InspectorPages.js	impact speed →		
+Source/InspectorPages.js	threshold		
+Source/InspectorPages.js	· fragments · ·		
+Source/LightningSequence.js	Lightning radiance + reverse depth		
+Source/LightningSequence.js	Lightning		
+Source/MoonInspectorInfographics.js	Active moon instance		
+Source/MoonInspectorInfographics.js	Previous Moon bodies		
+Source/MoonInspectorInfographics.js	Next Moon bodies		
+Source/MoonInspectorInfographics.js	Choose		
+Source/NativeCloudPanel.js	· × · × · m		
+Source/NativeFlarePanel.js	SOURCE · / ·		
+Source/NativeFlarePanel.js	· ray pairs · ·		
+Source/NativeFlarePanel.js	Toggle lens flare		
+Source/NativeWindPanel.js	FROM ·°		
+Source/NativeWindPanel.js	Toggle shared wind		
+Source/OccupantDistanceSpace.js	Occupant distance space		
+Source/OccupantDistanceSpace.js	Distance transfer		
+Source/OccupantDistanceSpace.js	Fragment distance volumes		
+Source/OverlayDock.js	⊞ ·		
+Source/ParticleWorkspace.js	Particle and fracture authoring workspace		
+Source/PlumeSpace.js	Plume detail		
+Source/PlumeSpace.js	Plume radiance		
+Source/PlumeSpace.js	Plume transport		
+Source/PlumeSpace.js	Plume march		
+Source/PrecipitationSequence.js	GPU cloud precipitation		
+Source/PrecipitationSequence.js	Stopped precipitation mesh grains		
+Source/PrecipitationSequence.js	GPU cloud snowflakes		
+Source/PreviewStartup.js	Could not load the app runtime.		
+Source/RayTracingSpace.js	Fallback HMI screen texture		
+Source/ResamplingSequence.js	ReSTIR GI		
+Source/ResamplingSequence.js	Reflection traversal		
+Source/SceneDistanceSpace.js	Scene distance union		
+Source/ShadowProjection.js	Shadow cascades		
+Source/SkyLutPreview.js	Sky LUT inspector readback		
+Source/SkyLutPreview.js	Sky LUT inspector copy		
+Source/SnowfallSequence.js	Falling snow		
+Source/SparkSequence.js	Sparks		
+Source/StarCatalogue.js	Native star catalogue cells + records		
+Source/SunInspectorDashboard.js	Reset Sun settings		
+Source/SunInspectorDashboard.js	Sun inspector sections		
+Source/SunInspectorDashboard.js	Toggle automatic Sun position		
+Source/SunInspectorDashboard.js	Solar calendar date		
+Source/SunInspectorDashboard.js	Sun colour source		
+Source/SunInspectorDashboard.js	Sun Tint		
+Source/SurfaceCardDepot.js	Card direct irradiance		
+Source/SurfaceCardDepot.js	Card final radiance		
+Source/SurfaceCardDepot.js	Card capture depth		
+Source/SurfaceCardDepot.js	Card capture		
+Source/SurfaceCardDepot.js	Card lighting		
+Source/SurfaceDepositSequence.js	Settled surface deposits		
+Source/SurfaceProjection.js	Surface depth		
+Source/SurfaceProjection.js	Surface attributes		
+Source/SurfaceProjection.js	Surface motion		
+Source/SurfaceProjection.js	Direct radiance		
+Source/TyreMarkDepot.js	Rubber and rim scrape deposit		
+Source/VehicleCollisionOverlay.js	Vehicle collision diagnostic x-ray		
+Source/VehicleCollisionOverlay.js	COLLISION X-RAY · hull sample centres + wheel radii		
+Source/VehicleCollisionOverlay.js	Not render meshes / not the Jolt convex surface		
+Source/VehicleSystemsInspector.js	ASSEMBLY / CONTROLVEHICLE /		
+Source/VirtualizedGeometry.js	Hi-Z dummy		
+Source/VirtualizedGeometry.js	Resolve dummy (storage slot)		
+Source/VirtualizedGeometry.js	Resolve dummy (sampled slot)		
+Source/VirtualizedGeometry.js	Virtualized geometry cut + phase-1 cull		
+Source/VirtualizedGeometry.js	Hi-Z seed		
+Source/VirtualizedGeometry.js	Virtualized geometry phase-2 disocclusion cull		
+Source/VirtualizedGeometry.js	Visibility raster (opaque + glass front)		
+Source/VirtualizedGeometry.js	Visibility raster (glass back peel)		
+Source/VirtualizedGeometry.js	Cluster debug view		
+index.html	Frontier · Proving Grounds — distance-field GI, smoke + fire, fracture		
+index.html	Outliner		
+index.html	Viewport		
+index.html	Proving Grounds		
+index.html	Starting…		
+index.html	GDF slice · blue inside · amber outside · magenta = rewritten by a moving occupant · teal = scrolled · green = cascade 0		
+index.html	Frontier · Proving Grounds		
+index.html	Starting		
+index.html	Inspector		
+index.html	Hide the editor columns (P)		
+index.html	Hide the readout (H)		
+index.html	Hide the distance slice (J)		

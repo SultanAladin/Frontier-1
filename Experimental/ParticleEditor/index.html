@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--
+    PARTICLE EDITOR — standalone web app (awaiting approval). Serve this folder on its own:
+    python3 ServeParticleEditor.py 8097, or any static server rooted here.
+    🧩 The Filament particle looks inside the Frontier Editor layout: outliner of particle layers and scene objects,
+       a WebGL viewport, and an inspector of cards, sliders, switches and colour fields. Layers stack, so a light-speed
+       tunnel and a vehicle transition can run together. The UI is the Frontier Editor's own stylesheet and inspector
+       builders (Style/FrontierEditor.css, Source/Interface/), copied unchanged from the Proving Grounds exhibit.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier · Particle editor</title>
+<link rel="stylesheet" href="./Style/FrontierEditor.css">
+<link rel="stylesheet" href="./Style/ParticleEditor.css">
+</head>
+<body>
+    <div id="shell">
+        <aside id="outliner" class="column editor-column">
+            <div class="column-tabs">
+                <div class="column-tab">Outliner <button data-panels title="Hide the editor columns (P)">×</button></div>
+                <div class="tab-fill"></div>
+            </div>
+            <div class="outliner-body" id="outliner-body"></div>
+        </aside>
+        <section id="viewport-column" class="column">
+            <div class="column-tabs viewport-tabs">
+                <div class="column-tab">Viewport</div>
+                <div class="scene-pill">Filament</div>
+                <div class="tab-fill"></div>
+            </div>
+            <div class="viewport-bar" id="viewport-bar"></div>
+            <div id="stage">
+                <canvas id="viewport"></canvas>
+                <div id="hud"><button class="overlay-close" data-hud title="Hide the readout (H)">×</button><pre id="hud-text">Starting…</pre></div>
+                <div id="caption-chip" class="hidden"></div>
+                <div id="event-notice" class="hidden"></div>
+                <div id="bring-up">
+                    <h2>Frontier · Filament</h2>
+                    <div class="bring-up-caption">Building the car surface…</div>
+                    <div class="bring-up-bar"><div></div></div>
+                </div>
+                <div id="failure" class="hidden"></div>
+            </div>
+        </section>
+        <aside id="inspector" class="column editor-column">
+            <div class="column-tabs">
+                <div class="column-tab">Inspector <button data-panels title="Hide the editor columns (P)">×</button></div>
+                <div class="tab-fill"></div>
+            </div>
+            <div class="inspector-top" id="inspector-top"></div>
+            <div class="inspector-content" id="inspector-content"></div>
+        </aside>
+        <footer id="status"></footer>
+    </div>
+    <input type="file" id="recipe-file" accept="application/json,.json" class="hidden">
+    <script type="module" src="./Source/ParticleEditor.js"></script>
+</body>
+</html>

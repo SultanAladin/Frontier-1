@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+    TIDE — DASHBOARD CLUSTER FOR NOCTURNE (car C)
+    🧩 The display behind the steering wheel, separate from the Nocturne centre HMI. Round RPM / turbo / eco /
+       battery gauge after the third reference, moon-white rails over a night lake, no boxes: panels float on thin
+       rules. Drive modes: Cruise · Eco · Sport · Race. Fuel gauge and range always on.
+    🚩 Name proposal awaiting approval.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Tide · Nocturne dashboard cluster</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../../Shared/DisplayKit.css">
+    <link rel="stylesheet" href="../ClusterDeck.css">
+    <link rel="stylesheet" href="Tide.css">
+</head>
+<body>
+<div class="Stage" id="Stage">
+    <div class="Dash Tide" id="Dash" data-mode="Cruise">
+        <div class="Lake"><i class="Moon"></i><i class="Horizon"></i><i class="Glitter"></i></div>
+        <header class="DashTop">
+            <div class="TopLeft"><b id="DashClock">06:00</b><span>Tue 17 Nov · 14°</span></div>
+            <div class="TopRight"><span>ODO</span><b id="OdoValue">0</b><span>km</span></div>
+        </header>
+        <div class="Telltales" id="Telltales"></div>
+        <div class="ShiftLights" id="ShiftLights"></div>
+
+        <section class="Wing Left">
+            <div class="Group" data-modes="Cruise"><div data-panel="Route"></div></div>
+            <div class="Group" data-modes="Eco"><div data-panel="Coach"></div></div>
+            <div class="Group" data-modes="Sport"><div data-panel="Engine"></div></div>
+            <div class="Group" data-modes="Race"><div data-panel="Lap"></div></div>
+            <div class="FuelDock" data-panel="Fuel"></div>
+        </section>
+        <section class="Core" id="Core"></section>
+        <section class="Wing Right">
+            <div class="Group" data-modes="Cruise"><div data-panel="Media"></div><div data-panel="Trip"></div></div>
+            <div class="Group" data-modes="Eco"><div data-panel="EcoHistory"></div><div data-panel="Trip"></div></div>
+            <div class="Group" data-modes="Sport"><div data-panel="GForce"></div></div>
+            <div class="Group" data-modes="Race"><div data-panel="Tyres"></div></div>
+        </section>
+        <div class="ModeBadge"><b class="ModeName" id="ModeName">Cruise</b><small id="ModeLine"></small></div>
+        <div class="ModeWash" id="ModeWash"></div>
+    </div>
+    <nav class="Wheel" id="Wheel"></nav>
+</div>
+<div class="ProtoTag">Dashboard cluster · Tide (Nocturne) · awaiting approval</div>
+
+<script type="module">
+    import { Powertrain } from '../../Shared/Powertrain.js';
+    import { MountDeck } from '../ClusterDeck.js';
+    import { MountTideGauge } from './TideGauge.js';
+
+    // Nocturne: 2.0 turbo hybrid saloon, six speeds, 55 L tank plus the hybrid cell on the blue fan.
+    const Train = new Powertrain({ Ratios: [3.6, 2.4, 1.75, 1.32, 1.02, 0.8], Final: 3.4, Redline: 6200, Limit: 6900, PeakTorque: 520, Mass: 1580, Tank: 55 });
+    Train.Fuel = 0.47;
+    const Core = MountTideGauge(document.getElementById('Core'), Train);
+    MountDeck({ Car: 'Nocturne', Train, Core, Hmi: '../../Nocturne/Nocturne.html', Song: { Title: 'Low Tide Lights', Artist: 'Ines Marlow', Length: 228 } });
+</script>
+</body>
+</html>

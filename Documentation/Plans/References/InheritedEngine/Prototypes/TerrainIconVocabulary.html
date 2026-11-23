@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Terrain Icon Vocabulary — Erosion Node Set</title>
+<style>
+  :root{
+    --bg:#0a0c0e; --panel:#12161a; --panel2:#0e1215; --border:#20272e;
+    --txt:#e4e8ec; --dim:#889098; --faint:#586069; --head:#fff; --accent:#e0a24a;
+  }
+  html,body{background:var(--bg);color:var(--txt);
+    font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:28px 30px 60px}
+  h1{color:var(--head);font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:.2px}
+  p.sub{color:var(--dim);max-width:780px;margin:0 0 22px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
+  .bar button{background:var(--panel);color:var(--dim);border:1px solid var(--border);
+    border-radius:7px;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s}
+  .bar button:hover{border-color:#3a444d;color:var(--txt)}
+  .bar button.on{border-color:var(--accent);color:#f5d29a;background:#1c1610}
+  h2{color:var(--head);font-size:15px;font-weight:600;margin:34px 0 3px;
+     border-left:3px solid var(--accent);padding-left:10px}
+  h2 span{color:var(--faint);font-weight:500;font-size:12px;margin-left:8px}
+  p.catnote{color:var(--dim);margin:0 0 12px;padding-left:13px;font-size:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px}
+  .cell{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+        padding:14px 11px 12px;display:flex;flex-direction:column;align-items:center;gap:9px;
+        cursor:pointer;transition:border-color .15s,transform .15s,background .15s}
+  .cell:hover{border-color:#3a444d;transform:translateY(-2px)}
+  .cell.copied{border-color:#5ad469}
+  .cell > svg{width:76px;height:76px;display:block}
+  .cap{font-size:11px;color:var(--dim);text-align:center;line-height:1.35}
+  .cap b{display:block;color:var(--txt);font-weight:600;font-size:11.5px;margin-bottom:2px}
+  .strip{display:flex;gap:9px;align-items:flex-end;border-top:1px solid var(--border);
+         padding-top:9px;margin-top:2px;width:100%;justify-content:center}
+  .strip svg{display:block}
+  .s16 svg{width:16px;height:16px}
+  .s24 svg{width:24px;height:24px}
+  .s32 svg{width:32px;height:32px}
+  /* node-canvas inspection — proves the set reads on the editor's mid-grey node body too */
+  body.pale .cell{background:#e9edf1;border-color:#cdd5dd}
+  body.pale .cell:hover{border-color:#b3bcc6}
+  body.pale .cap{color:#59616a}
+  body.pale .cap b{color:#1a2027}
+  body.pale .strip{border-top-color:#cdd5dd}
+  footer{color:var(--faint);margin-top:44px;font-size:11px;
+         border-top:1px solid var(--border);padding-top:14px}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+    background:#1b2a1d;border:1px solid #33613a;color:#b9ecc2;padding:8px 15px;border-radius:8px;
+    font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<h1>Terrain Icon Vocabulary</h1>
+<p class="sub">A node-graph icon set for a <b>terrain erosion editor</b>, drawn on a <code>0 0 160 160</code>
+canvas with a shared 3D material system — radial/linear gradient bodies, blur filters, grounding shadows,
+and specular highlights. Every <code>&lt;defs&gt;</code> entry is suffixed with the icon's unique id, so
+any number of icons coexist on one page without collisions. Each glyph shows what its node <i>does to the
+heightfield</i>, not just a generic label. Click a tile to copy its standalone SVG.</p>
+
+<div class="bar">
+  <button id="paleToggle">Node tile</button>
+  <button id="gridToggle">Alignment grid</button>
+  <span style="color:var(--faint);font-size:12px" id="tally"></span>
+</div>
+
+<div id="root"></div>
+
+<footer>Terrain Icon Vocabulary · 5 categories · shared gradient / filter / grounding material system ·
+self-contained SVG · namespaced defs ids · sized for node-graph ports.</footer>
+
+<div id="toast">SVG copied</div>
+
+<script>
+//====================================================================================================================================
+//                                                    3D ICON MATERIAL SYSTEM
+//====================================================================================================================================
+// Shared gradient / filter / grounding helpers used by every icon builder below.
+// Each icon receives a unique `id` string; every local <defs> entry is suffixed with it so IDs never collide.
+
+const ROCK  = ['#eef1f4','#c3c9d0','#8b939c','#565f69','#2a3038']; // grey stone
+const SOIL  = ['#e8d5b8','#c39a6b','#8f6a44','#5c4128','#2f2013']; // earth brown
+const SED   = ['#f4e2c2','#dcb877','#b98a43','#7c5626','#3f2c11']; // sediment / sand
+const WATER = ['#dff4ff','#8fd0f5','#4bb0e6','#2a72a8','#123048']; // hydraulic blue
+const GRASS = ['#e9ffdd','#9be06a','#5ab13a','#2c6f22','#123d10']; // vegetation green
+const SNOW  = ['#ffffff','#e4f0fb','#b9d4ec','#7d9bbd','#3d5570']; // snow / glacier
+const HEAT  = ['#fff4d6','#ffcf66','#f28a2c','#c04a17','#5a2609']; // elevation warm
+const CHROME= ['#ffffff','#d8ecfa','#8fb6d9','#4c6d8c','#1c2732']; // metal / device
+
+function stops(list){
+  return list.map(([o,c,op]) => `<stop offset="${o}" stop-color="${c}"${op!==undefined?` stop-opacity="${op}"`:''}/>`).join('');
+}
+function radial(defs,id,cList,opts){
+  const o=opts||{}, cx=o.cx??0.35, cy=o.cy??0.28, r=o.r??0.85;
+  defs.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}">${stops(cList)}</radialGradient>`);
+  return `url(#${id})`;
+}
+function linear(defs,id,cList,opts){
+  const o=opts||{}, x1=o.x1??0, y1=o.y1??0, x2=o.x2??1, y2=o.y2??0;
+  defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops(cList)}</linearGradient>`);
+  return `url(#${id})`;
+}
+function mat(defs,id,pal,opts){ return radial(defs,id,[['0%',pal[0]],['48%',pal[1]],['100%',pal[2]]],opts); }
+function matL(defs,id,pal,opts){ return linear(defs,id,[['0%',pal[0]],['55%',pal[1]],['100%',pal[2]]],opts); }
+function blurF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}"/></filter>`); return `url(#${id})`; }
+function glowF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`); return `url(#${id})`; }
+function shadow(defs,id,cx,cy,rx,ry,op){
+  const o=op??0.5;
+  const f=radial(defs,id,[['0%','#000',o],['70%','#000',o*0.35],['100%','#000',0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${f}"/>`;
+}
+function specular(cx,cy,rx,ry,op){ return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" opacity="${op??0.4}"/>`; }
+
+//====================================================================================================================================
+//                                                    TERRAIN PRIMITIVES
+//====================================================================================================================================
+// The shared vocabulary every terrain node is built from: a heightfield tile (the "canvas" a node
+// operates on), a mountain silhouette, and a plot frame. Reusing these keeps the whole set coherent.
+
+// An isometric heightfield tile — the diamond "patch of terrain" that most nodes sit on or modify.
+function tile(defs,id,pal,cx,cy,w,h,liftFn){
+  const top = matL(defs,id,pal.slice(0,3),{x1:0,y1:0,x2:1,y2:1});
+  const L=(x)=>x, lift=liftFn||(()=>0);
+  // four corners of the diamond, optionally raised by lift() to fake relief
+  const pts=[[cx,cy-h/2],[cx+w/2,cy],[cx,cy+h/2],[cx-w/2,cy]];
+  const poly=pts.map(p=>`${p[0]},${p[1]}`).join(' ');
+  return {top, poly, pts};
+}
+// A simple back-lit mountain range silhouette — three overlapping peaks.
+function range(defs,id,pal,baseY){
+  const g=matL(defs,id,pal.slice(1,4),{x1:0,y1:0,x2:0,y2:1});
+  const y=baseY??118;
+  return `<path d="M28,${y} L54,${y-40} L70,${y-18} L92,${y-56} L112,${y-24} L132,${y} Z" fill="${g}"/>`;
+}
+// A plot frame with axes — the backdrop for curve/remap and profile nodes.
+function frame(x,y,w,h){
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="#0e1418" stroke="#28313a" stroke-width="1.2"/>`;
+}
+// A little connector arrow — the "flows into / becomes" cue between two panels.
+function arrow(x,y,dir){
+  const d=dir??1;
+  return `<g stroke="${HEAT[1]}" stroke-width="2.4" stroke-linecap="round" fill="none" opacity="0.9">
+    <line x1="${x-8*d}" y1="${y}" x2="${x+8*d}" y2="${y}"/>
+    <line x1="${x+2*d}" y1="${y-6}" x2="${x+8*d}" y2="${y}"/>
+    <line x1="${x+2*d}" y1="${y+6}" x2="${x+8*d}" y2="${y}"/></g>`;
+}
+
+//====================================================================================================================================
+//                                                    CATEGORY REGISTRY
+//====================================================================================================================================
+const CATS = [
+  ['Source',  'Sources & Generators',   'Nodes that create a heightfield from noise, cells, or imported data'],
+  ['Erode',   'Erosion & Weathering',   'Physical processes that move material — water, gravity, wind, ice'],
+  ['Shape',   'Shaping & Filters',      'Deterministic reshaping of the existing height — terrace, warp, blur'],
+  ['Combine', 'Combine & Remap',        'Blend, mask, and remap two or more heightfields together'],
+  ['Output',  'Masks & Output',         'Derived data and final outputs — flow, normals, splat, mesh'],
+];
+
+const ICONS = [];
+function add(name, cat, note, build){ ICONS.push({name, cat, note, build}); }
+
+//====================================================================================================================================
+//                                                    SOURCES & GENERATORS
+//====================================================================================================================================
+
+// 📝 The generic heightfield input: an iso tile with a relief bump on top and a wire grid, so it
+// reads as "a patch of terrain data entering the graph" rather than any specific generator.
+add('Heightfield','Source','A raw terrain patch entering the graph',(defs,id)=>{
+  const Top=linear(defs,id+'g1',[['0%',SOIL[1]],['55%',SOIL[2]],['100%',SOIL[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Bump=linear(defs,id+'g2',[['0%',HEAT[1]],['100%',SOIL[2]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,120,40,9,0.4)}
+    <polygon points="80,54 128,86 80,118 32,86" fill="${Top}"/>
+    <path d="M32,86 L80,58 L128,86 L80,100 Z" fill="${Bump}" opacity="0.55"/>
+    <g stroke="${SOIL[4]}" stroke-width="0.8" opacity="0.35" fill="none">
+      <path d="M56,70 L104,98 M80,54 L80,118 M104,70 L56,98"/></g>
+    <polygon points="80,54 128,86 80,118 32,86" fill="none" stroke="${SOIL[4]}" stroke-width="1.2" opacity="0.5"/>
+    ${specular(66,74,9,5,0.3)}`;
+});
+
+// 📝 Rolling smooth lobes of a Perlin field — the signature is soft, blobby, band-free hills; a
+// single smooth hump surface says "gradient noise" where hard cells would say Voronoi.
+add('Perlin Noise','Source','Smooth gradient noise — soft rolling hills',(defs,id)=>{
+  const Surf=linear(defs,id+'g1',[['0%',HEAT[0]],['45%',HEAT[1]],['100%',SOIL[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const iso=[0.28,0.5,0.72].map(o=>`<path d="M34,${112-o*40} Q56,${112-o*40-14} 80,${112-o*40} Q104,${112-o*40+12} 126,${112-o*40-8}" fill="none" stroke="${SOIL[4]}" stroke-width="1" opacity="0.3"/>`).join('');
+  return `${shadow(defs,id+'s1',80,120,42,8,0.35)}
+    <path d="M32,112 Q46,74 64,86 Q80,96 96,72 Q112,54 128,84 L128,116 L32,116 Z" fill="${Surf}"/>
+    ${iso}
+    ${specular(60,80,10,6,0.28)}`;
+});
+
+// 📝 Ridged noise is Perlin folded at the crest — the read is sharp SAW-TOOTH ridgelines with V
+// valleys, unmistakably different from the round Perlin lobes above.
+add('Ridged Noise','Source','Folded noise — sharp mountain ridgelines',(defs,id)=>{
+  const Surf=linear(defs,id+'g1',[['0%',ROCK[0]],['45%',ROCK[2]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,120,42,8,0.35)}
+    <path d="M32,116 L46,78 L58,100 L72,60 L86,96 L100,66 L114,102 L128,80 L128,116 Z" fill="${Surf}"/>
+    <path d="M46,78 L58,100 L72,60 L86,96 L100,66 L114,102 L128,80" fill="none" stroke="${SNOW[0]}" stroke-width="1.2" opacity="0.5"/>
+    ${specular(70,86,10,5,0.25)}`;
+});
+
+// 📝 Voronoi is a mosaic of hard-edged cells around scattered seeds — the polygonal partition with
+// visible seed dots is the whole read; no smooth surface, just faceted regions.
+add('Voronoi Cells','Source','Cellular partition — faceted plateau regions',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',SED[1]],['100%',SED[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const B=linear(defs,id+'g2',[['0%',SOIL[1]],['100%',SOIL[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const C=linear(defs,id+'g3',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const seeds=[[60,66],[100,60],[86,96],[54,104],[112,98]];
+  return `${shadow(defs,id+'s1',80,122,40,8,0.35)}
+    <polygon points="42,58 82,50 78,86 48,96" fill="${A}"/>
+    <polygon points="82,50 120,58 118,90 78,86" fill="${B}"/>
+    <polygon points="48,96 78,86 92,116 54,120" fill="${C}"/>
+    <polygon points="78,86 118,90 116,118 92,116" fill="${A}"/>
+    <g stroke="#0e1216" stroke-width="1.4" fill="none" opacity="0.7">
+      <path d="M82,50 L78,86 L48,96 M78,86 L118,90 M78,86 L92,116"/></g>
+    ${seeds.map(([x,y])=>`<circle cx="${x}" cy="${y}" r="2.2" fill="${HEAT[1]}"/>`).join('')}`;
+});
+
+// 📝 A dead-flat constant plane at one height — the level slab plus a single height tick reads as
+// "fill with a constant value", the identity element every graph needs.
+add('Constant Height','Source','A flat plane at a single fixed elevation',(defs,id)=>{
+  const Top=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Side=linear(defs,id+'g2',[['0%',ROCK[3]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,124,40,8,0.4)}
+    <polygon points="80,72 124,94 124,104 80,126 36,104 36,94" fill="${Side}"/>
+    <polygon points="80,72 124,94 80,116 36,94" fill="${Top}"/>
+    <line x1="80" y1="46" x2="80" y2="72" stroke="${HEAT[2]}" stroke-width="2" stroke-dasharray="3 3"/>
+    <line x1="74" y1="52" x2="86" y2="52" stroke="${HEAT[1]}" stroke-width="2"/>
+    ${specular(66,86,10,4,0.4)}`;
+});
+
+// 📝 A DEM import: a satellite-style raster swatch feeding a card with a corner fold — the pixel
+// grid plus the file card says "real-world elevation data loaded from disk".
+add('Import DEM','Source','Load real-world elevation data from a file',(defs,id)=>{
+  const Card=linear(defs,id+'g1',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Ras=linear(defs,id+'g2',[['0%',WATER[2]],['40%',GRASS[2]],['70%',SOIL[2]],['100%',SNOW[1]]],{x1:0,y1:0,x2:1,y2:1});
+  const px=[]; for(let x=54;x<104;x+=10)for(let y=60;y<104;y+=10)px.push(`<rect x="${x}" y="${y}" width="9" height="9" fill="${((x+y)/10)%2?'#000':'#fff'}" opacity="0.06"/>`);
+  return `${shadow(defs,id+'s1',80,122,34,7,0.4)}
+    <path d="M48,44 H104 L116,56 V116 H48 Z" fill="${Card}"/>
+    <path d="M104,44 V56 H116 Z" fill="${CHROME[3]}"/>
+    <rect x="54" y="60" width="50" height="44" rx="2" fill="${Ras}"/>
+    ${px.join('')}
+    <rect x="54" y="60" width="50" height="44" rx="2" fill="none" stroke="${CHROME[4]}" stroke-width="1" opacity="0.5"/>`;
+});
+
+//====================================================================================================================================
+//                                                    EROSION & WEATHERING
+//====================================================================================================================================
+
+// 📝 Hydraulic erosion: water carving dendritic channels down a slope, carrying sediment. The
+// branching blue drainage network cut into the slope is the read — the defining terrain operator.
+add('Hydraulic Erosion','Erode','Water carves branching channels, moving sediment',(defs,id)=>{
+  const Slope=linear(defs,id+'g1',[['0%',SOIL[1]],['55%',SOIL[2]],['100%',SOIL[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Flow=linear(defs,id+'g2',[['0%',WATER[1]],['100%',WATER[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,122,42,8,0.35)}
+    <path d="M32,116 L60,52 L100,52 L128,116 Z" fill="${Slope}"/>
+    <g fill="none" stroke="${Flow}" stroke-linecap="round">
+      <path d="M80,54 Q80,80 78,116" stroke-width="4"/>
+      <path d="M80,66 Q66,74 58,96" stroke-width="2.6"/>
+      <path d="M80,66 Q94,74 102,96" stroke-width="2.6"/>
+      <path d="M78,88 Q70,94 66,116" stroke-width="2"/>
+      <path d="M79,88 Q88,96 92,116" stroke-width="2"/></g>
+    <path d="M60,52 L100,52" stroke="${SED[1]}" stroke-width="2" opacity="0.6"/>
+    ${specular(70,66,7,4,0.25)}`;
+});
+
+// 📝 Thermal erosion: material sliding off slopes steeper than the talus angle, piling as scree at
+// the base. The read is the crumbling arrows + the talus cone, not flowing water.
+add('Thermal Erosion','Erode','Steep slopes crumble to talus at the repose angle',(defs,id)=>{
+  const Cliff=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Scree=linear(defs,id+'g2',[['0%',SED[1]],['100%',SED[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,122,42,8,0.35)}
+    <path d="M50,116 L58,50 L84,50 L84,116 Z" fill="${Cliff}"/>
+    <path d="M84,116 L84,74 Q118,92 122,116 Z" fill="${Scree}"/>
+    <g stroke="${HEAT[1]}" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.85">
+      <path d="M90,72 L100,82 M96,72 L100,82 L94,84"/>
+      <path d="M100,88 L110,98 M106,88 L110,98 L104,100"/></g>
+    ${[92,104,114].map((x,i)=>`<circle cx="${x}" cy="${110-i*2}" r="2.2" fill="${SED[3]}"/>`).join('')}
+    ${specular(66,64,5,7,0.25)}`;
+});
+
+// 📝 Sediment deposition: fine material dropping out where flow slows, building up flat layered
+// beds. The stratified fan of sediment layers is the read, the inverse of erosion.
+add('Sediment Deposit','Erode','Carried material settles into layered beds',(defs,id)=>{
+  const beds=[['#f4e2c2',108,44],['#e0c48f',96,34],['#c9a566',86,24]];
+  return `${shadow(defs,id+'s1',80,122,42,7,0.35)}
+    <path d="M32,116 L58,70 L74,70" fill="none" stroke="${SOIL[3]}" stroke-width="4" stroke-linecap="round"/>
+    ${beds.map(([c,y,half],i)=>`<path d="M${80-half},${y} Q80,${y-6} ${80+half},${y} L${80+half+6},${y+12} L${80-half-6},${y+12} Z" fill="${c}" opacity="0.9"/>`).join('')}
+    <g stroke="${WATER[2]}" stroke-width="2" stroke-linecap="round" opacity="0.7" fill="none">
+      <path d="M60,66 Q70,72 78,68"/></g>
+    ${[[68,90],[92,92],[80,102]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="1.8" fill="${SED[4]}" opacity="0.6"/>`).join('')}`;
+});
+
+// 📝 Wind erosion: abrasion sculpting long streamlined ridges (yardangs) aligned to the prevailing
+// wind. The read is the horizontal wind streaks shaving a low aerodynamic mound.
+add('Wind Erosion','Erode','Airborne abrasion carves aligned wind ridges',(defs,id)=>{
+  const Dune=linear(defs,id+'g1',[['0%',SED[0]],['50%',SED[1]],['100%',SED[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Gust=linear(defs,id+'g2',[['0%',CHROME[1],0],['100%',CHROME[1],0.9]],{x1:0,y1:0,x2:1,y2:0});
+  return `${shadow(defs,id+'s1',80,120,44,8,0.35)}
+    <path d="M34,116 Q64,84 96,96 Q116,102 126,116 Z" fill="${Dune}"/>
+    <path d="M34,116 Q64,84 96,96" fill="none" stroke="${SED[4]}" stroke-width="1" opacity="0.4"/>
+    <g stroke="${Gust}" stroke-width="2.4" stroke-linecap="round">
+      <path d="M28,64 Q56,60 88,66"/><path d="M30,76 Q60,72 96,78"/><path d="M34,88 Q66,84 100,90"/></g>
+    <polygon points="98,66 106,64 100,72" fill="${CHROME[2]}"/>
+    ${specular(70,98,8,3,0.3)}`;
+});
+
+// 📝 Coastal / wave erosion: surf cutting a notch and a flat platform into a headland, spray at the
+// contact. The waterline + the cut cliff base is the read where a river channel would not fit.
+add('Coastal Erosion','Erode','Waves cut a notch and shore platform',(defs,id)=>{
+  const Cliff=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Sea=linear(defs,id+'g2',[['0%',WATER[1]],['100%',WATER[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,124,42,7,0.35)}
+    <path d="M34,116 L36,52 L78,50 L80,94 L60,98 L58,116 Z" fill="${Cliff}"/>
+    <path d="M58,100 L128,100 L128,120 L52,120 Z" fill="${Sea}"/>
+    <path d="M58,96 Q54,92 60,90 Q66,92 62,96 Z" fill="${SNOW[0]}" opacity="0.85"/>
+    <g stroke="${SNOW[0]}" stroke-width="1.4" opacity="0.55" fill="none">
+      <path d="M70,108 Q80,104 90,108 Q100,112 110,108"/></g>
+    ${specular(52,66,5,8,0.25)}`;
+});
+
+// 📝 Snow / glacier: an ice mass gouging a U-shaped valley and depositing a moraine ridge. The read
+// is the white ice sheet + the U-profile it carves, distinct from water's V channels.
+add('Glacial Erosion','Erode','Ice gouges a U-valley and drops a moraine',(defs,id)=>{
+  const Ice=linear(defs,id+'g1',[['0%',SNOW[0]],['45%',SNOW[1]],['100%',SNOW[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Rock=linear(defs,id+'g2',[['0%',ROCK[2]],['100%',ROCK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,122,42,8,0.35)}
+    <path d="M32,116 L48,54 L58,54 Q60,100 80,102 Q100,100 102,54 L112,54 L128,116 Z" fill="${Rock}"/>
+    <path d="M56,54 Q58,96 80,98 Q102,96 104,54 Q92,46 80,50 Q68,46 56,54 Z" fill="${Ice}"/>
+    <g stroke="${WATER[2]}" stroke-width="1" opacity="0.5" fill="none"><path d="M66,58 Q68,84 80,88 M94,58 Q92,84 80,88"/></g>
+    <path d="M118,110 Q126,104 128,116 L112,116 Z" fill="${SED[3]}"/>
+    ${specular(72,60,10,4,0.4)}`;
+});
+
+//====================================================================================================================================
+//                                                    SHAPING & FILTERS
+//====================================================================================================================================
+
+// 📝 Terrace: quantising height into flat stepped benches — the read is the staircase profile, a
+// hard step function applied to the slope. Rice-paddy / mesa silhouette.
+add('Terrace','Shape','Quantise height into flat stepped benches',(defs,id)=>{
+  const Step=linear(defs,id+'g1',[['0%',SED[1]],['100%',SOIL[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const steps=[[40,108,88],[50,96,72],[60,84,56],[70,72,40],[80,60,24]];
+  return `${shadow(defs,id+'s1',80,122,42,8,0.35)}
+    ${steps.map(([x,y,w])=>`<rect x="${x}" y="${y}" width="${w}" height="12" fill="${Step}" stroke="${SOIL[4]}" stroke-width="0.8" opacity="1"/>`).join('')}
+    ${steps.map(([x,y,w])=>`<rect x="${x}" y="${y}" width="${w}" height="3" fill="${SED[0]}" opacity="0.5"/>`).join('')}
+    ${specular(70,66,8,3,0.3)}`;
+});
+
+// 📝 Domain warp: pushing the field through a distortion so straight isolines become swirled. The
+// read is a grid that has been visibly bent/twisted — the tool that breaks up regularity.
+add('Domain Warp','Shape','Distort the field through a warp function',(defs,id)=>{
+  const g=linear(defs,id+'g1',[['0%',HEAT[1]],['100%',WATER[2]]],{x1:0,y1:0,x2:1,y2:1});
+  let lines='';
+  for(let i=0;i<6;i++){const y=54+i*11; lines+=`<path d="M40,${y} Q64,${y-10+((i%2)*20)} 88,${y} Q112,${y+10-((i%2)*20)} 122,${y}" fill="none" stroke="${g}" stroke-width="2" opacity="0.85"/>`;}
+  for(let i=0;i<5;i++){const x=48+i*17; lines+=`<path d="M${x},52 Q${x+12-((i%2)*24)},80 ${x},116" fill="none" stroke="${SOIL[3]}" stroke-width="1.2" opacity="0.35"/>`;}
+  return `${lines}`;
+});
+
+// 📝 Slope / gradient: measuring steepness — the read is a slope face shaded from flat (dark) to
+// steep (hot), with a gradient arrow pointing downhill. Produces a steepness mask.
+add('Slope','Shape','Derive steepness — flat to vertical',(defs,id)=>{
+  const Face=linear(defs,id+'g1',[['0%',GRASS[2]],['50%',HEAT[1]],['100%',HEAT[3]]],{x1:0,y1:0,x2:1,y2:1});
+  return `${shadow(defs,id+'s1',80,122,42,8,0.35)}
+    <path d="M32,116 L32,104 L124,52 L124,64 Z" fill="${Face}"/>
+    <path d="M32,116 L124,64 L124,116 Z" fill="${SOIL[3]}" opacity="0.55"/>
+    <g stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.9">
+      <line x1="96" y1="72" x2="82" y2="98"/><path d="M82,98 L88,92 M82,98 L76,94"/></g>
+    ${specular(60,86,9,4,0.3)}`;
+});
+
+// 📝 Canyon / carve: subtracting a deep steep-walled channel from the terrain — the read is the
+// negative V-gorge cut through a plateau, the erosive stamp brush.
+add('Canyon Carve','Shape','Subtract a deep steep-walled gorge',(defs,id)=>{
+  const Top=linear(defs,id+'g1',[['0%',SED[1]],['100%',SOIL[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Deep=linear(defs,id+'g2',[['0%',SOIL[3]],['100%',SOIL[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,122,42,8,0.35)}
+    <path d="M32,116 L32,64 L70,64 L80,110 L90,64 L128,64 L128,116 Z" fill="${Top}"/>
+    <path d="M70,64 L80,110 L90,64 Z" fill="${Deep}"/>
+    ${[74,80,86].map(x=>`<path d="M${x},70 L80,104" stroke="${SOIL[4]}" stroke-width="0.8" opacity="0.4" fill="none"/>`).join('')}
+    <path d="M32,64 L70,64 M90,64 L128,64" stroke="${SED[0]}" stroke-width="2" opacity="0.5"/>
+    ${specular(50,78,8,4,0.3)}`;
+});
+
+// 📝 Smooth / blur: a low-pass that softens the height — the read is the same ragged profile shown
+// sharp on the left morphing to gently rounded on the right across an arrow.
+add('Smooth','Shape','Low-pass blur — soften ridges and noise',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const soft=blurF(defs,id+'f1',2.2);
+  return `<path d="M30,110 L38,80 L44,96 L52,70 L60,92 L66,110 Z" fill="${A}"/>
+    ${arrow(80,90,1)}
+    <path d="M96,110 Q104,78 112,92 Q120,74 128,110 Z" fill="${A}" filter="${soft}"/>
+    <path d="M96,110 Q104,78 112,92 Q120,74 128,110" fill="none" stroke="${SNOW[1]}" stroke-width="1.2" opacity="0.5"/>`;
+});
+
+// 📝 Sharpen / ridge: the inverse of blur — accentuating crests. The read is a soft profile on the
+// left becoming crisp and spiky on the right, emphasising the ridgelines.
+add('Sharpen','Shape','Accentuate crests and ridgelines',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',ROCK[0]],['100%',ROCK[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `<path d="M30,110 Q38,86 44,96 Q52,74 60,96 Q66,88 66,110 Z" fill="${A}" opacity="0.7"/>
+    ${arrow(80,90,1)}
+    <path d="M96,110 L104,72 L110,96 L118,68 L124,96 L128,110 Z" fill="${A}"/>
+    <path d="M104,72 L110,96 L118,68 L124,96" fill="none" stroke="#fff" stroke-width="1" opacity="0.6"/>`;
+});
+
+//====================================================================================================================================
+//                                                    COMBINE & REMAP
+//====================================================================================================================================
+
+// 📝 Blend / mix: two heightfields fading into one across a slider — the read is two tinted panels
+// with a soft interpolation seam, plus a mix handle. The graph's lerp.
+add('Blend','Combine','Interpolate between two heightfields',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',GRASS[1]],['100%',GRASS[3]]],{x1:0,y1:0,x2:1,y2:0});
+  const B=linear(defs,id+'g2',[['0%',SOIL[1]],['100%',SOIL[3]]],{x1:0,y1:0,x2:1,y2:0});
+  const Mix=linear(defs,id+'g3',[['0%',GRASS[2]],['100%',SOIL[2]]],{x1:0,y1:0,x2:1,y2:0});
+  return `<rect x="38" y="52" width="30" height="56" rx="4" fill="${A}"/>
+    <rect x="92" y="52" width="30" height="56" rx="4" fill="${B}"/>
+    <rect x="66" y="52" width="28" height="56" fill="${Mix}"/>
+    <rect x="38" y="52" width="84" height="56" rx="4" fill="none" stroke="${ROCK[4]}" stroke-width="1.2" opacity="0.5"/>
+    <line x1="80" y1="44" x2="80" y2="116" stroke="${CHROME[2]}" stroke-width="1.5"/>
+    <circle cx="80" cy="80" r="7" fill="${CHROME[1]}" stroke="${ROCK[4]}" stroke-width="1.5"/>`;
+});
+
+// 📝 Mask: a black/white selection deciding where an op applies — the read is a grey field with a
+// white lobe cut out of a black surround, the classic matte thumbnail.
+add('Mask','Combine','A black/white selection gating an operation',(defs,id)=>{
+  const Grad=radial(defs,id+'g1',[['0%','#ffffff'],['55%','#c8ccd2'],['100%','#14181d']],{cx:0.42,cy:0.4,r:0.7});
+  return `<rect x="40" y="48" width="80" height="64" rx="6" fill="#14181d" stroke="${ROCK[4]}" stroke-width="1.2"/>
+    <path d="M58,96 Q54,60 82,60 Q108,62 104,88 Q100,104 78,100 Q62,98 58,96 Z" fill="${Grad}"/>
+    <circle cx="82" cy="76" r="3" fill="#fff" opacity="0.7"/>`;
+});
+
+// 📝 Height clamp: flattening everything above/below thresholds — the read is a profile pinned
+// between two dashed limit lines, the peaks and troughs shaved to the bounds.
+add('Height Clamp','Combine','Flatten above and below set limits',(defs,id)=>{
+  const P=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${frame(38,48,84,64)}
+    <line x1="38" y1="62" x2="122" y2="62" stroke="${HEAT[1]}" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <line x1="38" y1="98" x2="122" y2="98" stroke="${WATER[2]}" stroke-width="1.4" stroke-dasharray="4 3"/>
+    <path d="M44,98 L44,62 L58,62 L66,80 L78,62 L92,62 L100,98 L112,98 L118,62 L118,98 Z" fill="${P}" opacity="0.9"/>
+    ${specular(60,74,8,3,0.25)}`;
+});
+
+// 📝 Combine math: adding or subtracting two fields — the read is two stacked panels joined by a
+// bold ± operator, the arithmetic node.
+add('Add / Subtract','Combine','Sum or difference two heightfields',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',HEAT[1]],['100%',HEAT[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const B=linear(defs,id+'g2',[['0%',WATER[1]],['100%',WATER[3]]],{x1:0,y1:0,x2:1,y2:1});
+  return `<rect x="34" y="46" width="46" height="34" rx="5" fill="${A}"/>
+    <rect x="80" y="80" width="46" height="34" rx="5" fill="${B}"/>
+    <g stroke="#fff" stroke-width="3.4" stroke-linecap="round" opacity="0.95">
+      <line x1="52" y1="63" x2="64" y2="63"/><line x1="58" y1="57" x2="58" y2="69"/>
+      <line x1="96" y1="97" x2="108" y2="97"/></g>
+    ${specular(46,54,7,4,0.3)}`;
+});
+
+// 📝 Curve / remap: a transfer function reshaping the value range — the read is an editable spline
+// on an axis frame with control points, the master tonal control.
+add('Curve Remap','Combine','Reshape the value range via a curve',(defs,id)=>{
+  const Curve=linear(defs,id+'g1',[['0%',WATER[1]],['100%',HEAT[2]]],{x1:0,y1:0,x2:1,y2:1});
+  return `${frame(40,46,80,68)}
+    <g stroke="#28313a" stroke-width="0.8" opacity="0.7"><line x1="40" y1="80" x2="120" y2="80"/><line x1="80" y1="46" x2="80" y2="114"/></g>
+    <path d="M46,108 C64,106 70,72 82,68 C94,64 104,54 114,52" fill="none" stroke="${Curve}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="46" cy="108" r="3.4" fill="${WATER[0]}"/>
+    <circle cx="82" cy="68" r="3.4" fill="#fff"/>
+    <circle cx="114" cy="52" r="3.4" fill="${HEAT[1]}"/>`;
+});
+
+//====================================================================================================================================
+//                                                    MASKS & OUTPUT
+//====================================================================================================================================
+
+// 📝 Colormap / splat: assigning materials by height/slope — the read is a terrain sliced into
+// stratified colour bands (water/grass/rock/snow), the texture-splat output.
+add('Splat Map','Output','Assign materials by height and slope',(defs,id)=>{
+  const bands=[[WATER[2],104,116],[GRASS[2],90,104],[SOIL[2],74,90],[ROCK[2],62,74],[SNOW[1],52,62]];
+  return `${shadow(defs,id+'s1',80,122,42,7,0.35)}
+    <clipPath id="${id}clip"><path d="M32,116 L58,58 L96,52 L128,116 Z"/></clipPath>
+    <g clip-path="url(#${id}clip)">
+      ${bands.map(([c,y0,y1])=>`<rect x="30" y="${y0}" width="100" height="${y1-y0+1}" fill="${c}"/>`).join('')}
+    </g>
+    <path d="M32,116 L58,58 L96,52 L128,116 Z" fill="none" stroke="${ROCK[4]}" stroke-width="1.2" opacity="0.5"/>
+    ${specular(64,72,8,4,0.3)}`;
+});
+
+// 📝 Normal map: encoding surface orientation to RGB — the read is the classic lilac normal-map
+// swatch with a lit sphere, the canonical XYZ-to-RGB output.
+add('Normal Map','Output','Encode surface orientation to RGB',(defs,id)=>{
+  const N=radial(defs,id+'g1',[['0%','#b9c0ff'],['50%','#7f83f0'],['100%','#4a4fb0']],{cx:0.42,cy:0.4,r:0.85});
+  return `${shadow(defs,id+'s1',80,124,26,6,0.4)}
+    <rect x="46" y="48" width="68" height="60" rx="6" fill="#6f74e0"/>
+    <circle cx="80" cy="78" r="24" fill="${N}"/>
+    <path d="M64,72 Q80,58 96,72" fill="none" stroke="#d6d9ff" stroke-width="1.5" opacity="0.6"/>
+    ${specular(70,66,7,5,0.55)}`;
+});
+
+// 📝 Flow map: the accumulated water flow / drainage — the read is a heat-tinted dendritic network
+// where line thickness grows with accumulated upstream area. The hydrology output.
+add('Flow Map','Output','Accumulated drainage and flow direction',(defs,id)=>{
+  const Bg=linear(defs,id+'g1',[['0%',SOIL[3]],['100%',SOIL[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Flow=linear(defs,id+'g2',[['0%',WATER[0]],['100%',WATER[2]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,122,42,7,0.35)}
+    <path d="M32,116 L58,54 L100,54 L128,116 Z" fill="${Bg}"/>
+    <g fill="none" stroke="${Flow}" stroke-linecap="round">
+      <path d="M80,56 Q82,86 80,114" stroke-width="5.5"/>
+      <path d="M80,68 Q64,74 56,110" stroke-width="3"/>
+      <path d="M80,68 Q98,76 104,110" stroke-width="3"/>
+      <path d="M72,92 Q64,98 62,112" stroke-width="1.6"/>
+      <path d="M88,92 Q96,98 98,112" stroke-width="1.6"/></g>`;
+});
+
+// 📝 Preview / viewport: the live 3D render of the current graph output — the read is a shaded
+// terrain mesh inside a monitor frame, the "look at result" node.
+add('Preview','Output','Live shaded render of the graph output',(defs,id)=>{
+  const Screen=linear(defs,id+'g1',[['0%','#101820'],['100%','#0a0e12']],{x1:0,y1:0,x2:0,y2:1});
+  const Terr=linear(defs,id+'g2',[['0%',SNOW[1]],['40%',SOIL[2]],['100%',GRASS[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,126,32,6,0.4)}
+    <rect x="38" y="42" width="84" height="62" rx="6" fill="#2a323a"/>
+    <rect x="44" y="48" width="72" height="46" rx="3" fill="${Screen}"/>
+    <path d="M46,92 L64,64 L78,78 L96,54 L114,92 Z" fill="${Terr}"/>
+    <path d="M46,92 L114,92" stroke="${GRASS[4]}" stroke-width="1" opacity="0.5"/>
+    <rect x="72" y="104" width="16" height="6" fill="#2a323a"/><rect x="62" y="110" width="36" height="4" rx="2" fill="#2a323a"/>
+    ${specular(60,58,10,5,0.25)}`;
+});
+
+// 📝 Export mesh: baking the heightfield to a triangulated model file — the read is a wireframe
+// terrain quad feeding a file card, the terminal "write to disk" node.
+add('Export Mesh','Output','Bake the heightfield to a mesh file',(defs,id)=>{
+  const Face=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',ROCK[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Card=linear(defs,id+'g2',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',72,120,34,7,0.4)}
+    <polygon points="40,92 62,60 92,72 74,104" fill="${Face}"/>
+    <g stroke="${ROCK[0]}" stroke-width="1" opacity="0.6" fill="none">
+      <polygon points="40,92 62,60 92,72 74,104"/><line x1="40" y1="92" x2="92" y2="72"/><line x1="62" y1="60" x2="74" y2="104"/></g>
+    <path d="M96,52 H120 L128,60 V104 H96 Z" fill="${Card}"/>
+    <path d="M120,52 V60 H128 Z" fill="${CHROME[3]}"/>
+    <g stroke="${CHROME[4]}" stroke-width="1.4" opacity="0.6"><line x1="102" y1="70" x2="122" y2="70"/><line x1="102" y1="80" x2="122" y2="80"/><line x1="102" y1="90" x2="116" y2="90"/></g>`;
+});
+
+// 📝 Water level: flooding the terrain to a sea plane — the read is a translucent flat water sheet
+// intersecting a peak, with the shoreline where it cuts. The lake/ocean output.
+add('Water Level','Output','Flood the terrain to a sea plane',(defs,id)=>{
+  const Peak=linear(defs,id+'g1',[['0%',ROCK[1]],['100%',SOIL[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Sea=linear(defs,id+'g2',[['0%',WATER[1],0.75],['100%',WATER[3],0.75]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,124,42,7,0.35)}
+    <path d="M40,118 L74,52 L92,64 L120,118 Z" fill="${Peak}"/>
+    <path d="M30,92 L130,92 L130,120 L30,120 Z" fill="${Sea}"/>
+    <line x1="30" y1="92" x2="130" y2="92" stroke="${WATER[0]}" stroke-width="1.4" opacity="0.8"/>
+    <g stroke="${WATER[0]}" stroke-width="1" opacity="0.5" fill="none"><path d="M42,104 Q52,100 62,104 M74,110 Q84,106 94,110"/></g>
+    ${specular(66,72,6,7,0.3)}`;
+});
+
+//====================================================================================================================================
+//                                                    RENDER
+//====================================================================================================================================
+// Each build() pushes its gradients/filters into a fresh `defs` array and returns the body markup.
+// The two are stitched into one standalone <svg> per requested pixel size, with a per-instance id
+// suffix so the 76px tile, the 32/24/16px strip, and the clipboard copy never share gradient ids.
+
+const GRID_OVERLAY =
+  '<g class="alignGrid" stroke="#e0a24a" stroke-width="0.6" opacity="0.22" fill="none">' +
+  '<rect x="24" y="24" width="112" height="112"/>' +
+  '<line x1="80" y1="16" x2="80" y2="144"/><line x1="16" y1="80" x2="144" y2="80"/>' +
+  '<circle cx="80" cy="80" r="56"/></g>';
+
+function BuildIconMarkup(Icon, InstanceId, Overlay){
+  const defs = [];
+  const body = Icon.build(defs, InstanceId);
+  const head = defs.length ? `<defs>${defs.join('')}</defs>` : '';
+  return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">${head}${body}${Overlay||''}</svg>`;
+}
+
+const root  = document.getElementById('root');
+const toast = document.getElementById('toast');
+let InstanceCounter = 0;
+
+CATS.forEach(([Key, Title, Note])=>{
+  const Members = ICONS.filter(Icon => Icon.cat === Key);
+  if (!Members.length) return;
+
+  const Heading = document.createElement('h2');
+  Heading.innerHTML = `${Title}<span>${Members.length} nodes</span>`;
+  root.appendChild(Heading);
+
+  const CategoryNote = document.createElement('p');
+  CategoryNote.className = 'catnote';
+  CategoryNote.textContent = Note;
+  root.appendChild(CategoryNote);
+
+  const Grid = document.createElement('div');
+  Grid.className = 'grid';
+
+  Members.forEach(Icon=>{
+    const Stem = 'te' + (InstanceCounter++);
+    const Cell = document.createElement('div');
+    Cell.className = 'cell';
+    Cell.innerHTML =
+      BuildIconMarkup(Icon, Stem + 'a', GRID_OVERLAY) +
+      `<div class="cap"><b>${Icon.name}</b>${Icon.note}</div>` +
+      `<div class="strip">` +
+        `<span class="s32">${BuildIconMarkup(Icon, Stem + 'b')}</span>` +
+        `<span class="s24">${BuildIconMarkup(Icon, Stem + 'c')}</span>` +
+        `<span class="s16">${BuildIconMarkup(Icon, Stem + 'd')}</span>` +
+      `</div>`;
+
+    Cell.addEventListener('click', ()=>{
+      const Standalone = BuildIconMarkup(Icon, Stem);
+      navigator.clipboard.writeText(Standalone).then(()=>{
+        Cell.classList.add('copied');
+        toast.textContent = Icon.name + ' — SVG copied';
+        toast.classList.add('show');
+        setTimeout(()=>{ Cell.classList.remove('copied'); toast.classList.remove('show'); }, 1100);
+      });
+    });
+
+    Grid.appendChild(Cell);
+  });
+
+  root.appendChild(Grid);
+});
+
+document.getElementById('tally').textContent =
+  ICONS.length + ' nodes · ' + CATS.length + ' categories · click a tile to copy its SVG';
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    INSPECTION TOGGLES
+//------------------------------------------------------------------------------------------------------------------------
+
+const PaleToggle = document.getElementById('paleToggle');
+PaleToggle.addEventListener('click', ()=>{
+  document.body.classList.toggle('pale');
+  PaleToggle.classList.toggle('on');
+});
+
+const GridToggle = document.getElementById('gridToggle');
+let GridVisible = false;
+function ApplyGridVisibility(){
+  document.querySelectorAll('.alignGrid').forEach(Node=>{
+    Node.style.display = GridVisible ? '' : 'none';
+  });
+}
+GridToggle.addEventListener('click', ()=>{
+  GridVisible = !GridVisible;
+  GridToggle.classList.toggle('on', GridVisible);
+  ApplyGridVisibility();
+});
+ApplyGridVisibility();
+
+//====================================================================================================================================
+//                                                    EXPORTS
+//====================================================================================================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { ICONS, CATS };
+}
+</script>
+</body>
+</html>

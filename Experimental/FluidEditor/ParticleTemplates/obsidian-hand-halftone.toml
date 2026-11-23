@@ -1,0 +1,70 @@
+# Obsidian Hand Halftone — particle template (FX & Shields). A sculpted hand dissolved into a halftone shell: densest dots sit on the knuckle creases while a Noise Field ripples the whole sculpture under a ghost wireframe plinth.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 45
+Id = "obsidian-hand-halftone"
+Name = "Obsidian Hand Halftone"
+Category = "FX & Shields"
+Icon = "hand"
+Tint = "#94a3b8"
+Summary = "A sculpted hand dissolved into a halftone shell: densest dots sit on the knuckle creases while a Noise Field ripples the whole sculpture under a ghost wireframe plinth."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 11, Position = [0, 0.1, 0], Direction = [0, 1, 0], Radius = 1.55, Fill = 0.08, Count = 2048, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0, ShapeDetail = 8.0, SpawnObject = 8, SpawnSampleMode = 0, ObjectYaw = -12.0, BackingSurface = 3 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 6.8, Damping = 3.2, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 4, EffectorStrength = 0.55, EffectorFrequency = 2.6, EffectorSpeed = 1.1, EffectorPush = 0.18, EffectorScaleBoost = 0.35, EffectorColourShift = 0.4 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 3, Palette = ["#f8fafc", "#94a3b8", "#22d3ee", "#0e7490"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.25, Brightness = 1.2, Flicker = 0.08 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.01, SizeEnd = 0.004, SizeRandom = 0.55 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 1, Glow = 0.35, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }

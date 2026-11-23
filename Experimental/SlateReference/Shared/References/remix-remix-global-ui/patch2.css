@@ -1,0 +1,19 @@
+/* Valuebox */
+.valuebox {
+  height: 32px; border-radius: 12px; overflow: hidden;
+  display: flex; align-items: stretch; background: var(--value-bg);
+}
+
+/* Slider */
+.slider { position: relative; height: 32px; background: #0a0a0b; border-radius: 12px; cursor: pointer; touch-action: none; overflow: hidden; }
+.slider .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--track-fill); border-radius: 12px; pointer-events: none; }
+.slider .knob {
+  position: absolute; top: 4px; height: 24px; width: 12px; background: #fff;
+  border-radius: 999px; transform: translateX(-50%); pointer-events: none;
+}
+
+/* Switch */
+.switch { width: 50px; height: 32px; border-radius: 12px; background: #0a0a0b; position: relative; cursor: pointer; transition: background .16s; }
+.switch.on { background: var(--track-fill); }
+.switch .nub { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: left .16s cubic-bezier(.4,0,.2,1); }
+.switch.on .nub { left: 22px; }

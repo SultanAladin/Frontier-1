@@ -1,0 +1,79 @@
+# Field Streamlines — particle template (Trails). Diagnostic tool: massless tracers that follow the force field exactly, coloured by speed — see what your gizmos are doing.
+# Converted from the legacy template object by script; node fingerprint 7187caaeeea32594 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 1
+Id = "field-streamlines"
+Name = "Field Streamlines"
+Category = "Trails"
+Icon = "streamlines"
+Tint = "#34c759"
+Summary = "Diagnostic tool: massless tracers that follow the force field exactly, coloured by speed — see what your gizmos are doing."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 2, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 2.4, Fill = 0.0, Count = 2048, Rate = 1.5, Lifetime = 12.0, Linger = 2.0, Speed = 0.05, Spread = 1.0, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 4.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 3.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#34c759", "#ffb454"], RampSource = 1, Ramp = 0, MaxSpeed = 4.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.1, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.01, SizeEnd = 0.01, SizeRandom = 0.2 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 1, Glow = 0.3, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 2, TrailLength = 64, TrailInterval = 0.08, TrailWidth = 0.008, TrailTaper = 0.4, TrailFade = 0.5, TrailSubdivisions = 2, TrailColour = 0, TrailRatio = 1.0 }

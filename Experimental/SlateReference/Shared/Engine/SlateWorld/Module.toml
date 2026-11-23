@@ -1,0 +1,22 @@
+# SlateWorld — host-independent world content shared by editor, player and spectator applications.
+
+# 🔴 `subject` names a real folder on disk. Step 4 renamed `Engine/SlateScene/Scene/` to
+#    `Engine/SlateWorld/World/` and updated the unit name here but not the subject, which left this
+#    manifest naming `Scene` — a folder that no longer exists. A StaticLibrary archives its whole tree and
+#    ignores `subject`, so nothing failed; the stale name would have surfaced only when something read it.
+
+[unit]
+name    = "SlateWorld"
+product = "StaticLibrary"
+subject = [ "World" ]
+
+[requires]
+unit = []
+
+[external]
+include = []
+declare = []
+
+[link]
+unit    = []
+library = []

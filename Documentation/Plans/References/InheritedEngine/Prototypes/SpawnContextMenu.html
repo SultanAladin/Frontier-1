@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier — Spawn Context Menu</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════════
+     Palette — kept in the ToolOptionsWidget family, tightened for a minimalist
+     rail+grid create menu (not another flat list). Ink is near-black; the icon
+     art is the only colour, so chrome stays quiet.
+     ═════════════════════════════════════════════════════════════════════════ */
+  :root{
+    --desk:        #0a0a0b;
+    --menu:        #17171a;
+    --menu-2:      #101012;   /* item-grid pane, one notch darker */
+    --rail-sel:    #232327;
+    --tile:        #1d1d21;
+    --tile-hi:     #26262b;
+    --hair:        rgba(255,255,255,.06);
+    --hair-strong: rgba(255,255,255,.10);
+    --accent:      #5b8cff;
+    --ink:         #ececf0;
+    --muted:       #82828c;
+    --faint:       #55555d;
+
+    --r-menu: 18px;
+    --r-tile: 12px;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--desk); color:var(--ink);
+    font:14px/1 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none; cursor:default;
+  }
+
+  /* viewport backdrop */
+  .viewport{
+    position:fixed; inset:0;
+    background:radial-gradient(1200px 820px at 50% 40%, #17181c 0%, #0d0e10 58%, #08090a 100%);
+  }
+  .viewport::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size:46px 46px; background-position:center;
+    -webkit-mask-image:radial-gradient(circle at 50% 42%, #000 40%, transparent 82%);
+            mask-image:radial-gradient(circle at 50% 42%, #000 40%, transparent 82%);
+  }
+  .hint{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:var(--faint); font-size:14px; text-align:center; line-height:1.9; pointer-events:none;
+  }
+  .hint kbd{
+    background:var(--tile); border:1px solid var(--hair-strong); border-radius:7px;
+    padding:3px 9px; font:inherit; font-size:12px; color:var(--muted);
+  }
+
+  /* ═════════════════════════════════════ SPAWN MENU ═════════════════════════════════════ */
+  /* Two panes: a slim category RAIL (icon + word) and a GRID of item tiles that
+     swaps as you move down the rail. Big art, quiet chrome, lots of air. */
+  .spawn{
+    position:fixed; z-index:100; display:none;
+    background:var(--menu); border:1px solid var(--hair-strong);
+    border-radius:var(--r-menu); overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+    transform-origin:top left;
+  }
+  .spawn.open{ display:grid; grid-template-columns:auto 1fr; animation:pop .14s cubic-bezier(.16,1,.3,1); }
+  @keyframes pop{ from{ opacity:0; transform:scale(.97) translateY(-4px); } to{ opacity:1; transform:none; } }
+
+  /* ── left rail ── */
+  .rail{
+    padding:10px; background:var(--menu); border-right:1px solid var(--hair);
+    display:flex; flex-direction:column; gap:2px; min-width:158px;
+  }
+  .rail-cap{
+    display:flex; align-items:center; gap:8px; padding:6px 10px 11px;
+    font-size:10.5px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase; color:var(--faint);
+  }
+  .rail-cap svg{ width:14px; height:14px; }
+  .rail-item{
+    position:relative; display:flex; align-items:center; gap:11px;
+    height:40px; padding:0 12px 0 11px; border-radius:11px;
+    color:var(--muted); font-size:13.5px; cursor:pointer;
+    transition:background .12s, color .12s;
+  }
+  .rail-item:hover{ color:var(--ink); }
+  .rail-item.active{ background:var(--rail-sel); color:var(--ink); }
+  /* accent tick on the active category */
+  .rail-item.active::before{
+    content:""; position:absolute; left:-10px; top:50%; transform:translateY(-50%);
+    width:3px; height:18px; border-radius:0 3px 3px 0; background:var(--accent);
+  }
+  .rail-item .r-ic{ width:24px; height:24px; flex:0 0 auto; }
+  .rail-item .r-ic svg{ width:24px; height:24px; border-radius:6px; }
+  .rail-item .r-lbl{ flex:1; }
+  .rail-item .r-n{ font-size:11px; color:var(--faint); font-variant-numeric:tabular-nums; }
+
+  .rail-sep{ height:1px; background:var(--hair); margin:7px 8px; }
+
+  /* single-shot rail actions (Light/Camera/…): icon acts as spawn button */
+  .rail-item.shot .r-n{ color:var(--faint); }
+
+  /* ── right grid ── */
+  .grid-pane{
+    background:var(--menu-2); padding:13px; min-width:296px;
+    display:flex; flex-direction:column;
+  }
+  .grid-head{
+    display:flex; align-items:baseline; justify-content:space-between;
+    padding:2px 4px 12px; color:var(--ink); font-size:13px; font-weight:600;
+  }
+  .grid-head .sub{ color:var(--faint); font-size:11px; font-weight:500; letter-spacing:.3px; }
+  .grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:9px; }
+
+  .tile{
+    display:flex; flex-direction:column; align-items:center; gap:9px;
+    padding:14px 8px 11px; border-radius:var(--r-tile);
+    background:var(--tile); border:1px solid transparent;
+    cursor:pointer; transition:background .11s, border-color .11s, transform .08s;
+  }
+  .tile:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+  .tile:active{ transform:translateY(1px) scale(.98); }
+  .tile.fired{ border-color:var(--accent); }
+  .tile svg{ width:40px; height:40px; border-radius:8px; }
+  .tile .t-lbl{ font-size:12px; color:var(--muted); text-align:center; line-height:1.2; }
+  .tile:hover .t-lbl{ color:var(--ink); }
+
+  /* the grid swaps content per category with a whisper of motion */
+  .grid.swap{ animation:fade .13s ease; }
+  @keyframes fade{ from{ opacity:0; transform:translateX(4px); } to{ opacity:1; transform:none; } }
+
+  /* ═════════════════════════════════════ SPAWNED CHIPS ═════════════════════════════════════ */
+  .spawned{
+    position:fixed; display:flex; align-items:center; gap:9px;
+    background:var(--menu); border:1px solid var(--hair-strong);
+    border-radius:12px; padding:8px 13px 8px 9px; z-index:60; cursor:grab;
+    box-shadow:0 10px 26px rgba(0,0,0,.52);
+    animation:drop .2s cubic-bezier(.16,1,.3,1);
+  }
+  .spawned svg{ width:30px; height:30px; border-radius:7px; }
+  .spawned .nm{ font-size:13px; color:var(--ink); }
+  @keyframes drop{ from{ transform:scale(.55) translateY(-8px); opacity:0; } to{ transform:none; opacity:1; } }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+    background:var(--menu); border:1px solid var(--hair-strong); color:var(--ink); font-size:13px;
+    padding:9px 17px; border-radius:999px; z-index:120; opacity:0;
+    transition:opacity .18s, transform .18s; pointer-events:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5);
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast b{ color:var(--accent); font-weight:600; }
+</style>
+</head>
+<body>
+
+  <div class="viewport"></div>
+  <div class="hint"><kbd>Right-click</kbd> anywhere to create<br>primitives · solids · sketch entities · 2D shapes</div>
+
+  <div class="spawn" id="spawn"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ═════════════════════════════════════════════════════════════════════════
+   ICON ARTWORK — ported 1:1 from "Object Icon Set.html": same C palette and the
+   same P/PF/CI/CF/L/R/RF/ngon builders + iso/prism, so glyphs are identical art.
+   ═════════════════════════════════════════════════════════════════════════ */
+const C = {
+  ink:"#e8e8f0", dim:"#8a8a99", blue:"#5b8cff", cyan:"#37d6d6", green:"#4fd18b",
+  amber:"#ffb24d", red:"#ff6b6b", violet:"#b98bff", pink:"#ff7ab8", sky:"#7ec8ff", glass:"#2a2a33"
+};
+const P  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const PF = (d,f,s="none",w=0)=>`<path d="${d}" fill="${f}" ${s!=="none"?`stroke="${s}" stroke-width="${w}"`:""} stroke-linejoin="round"/>`;
+const L  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}" stroke-linecap="round"/>`;
+const CI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const CF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+const R  = (x,y,w,h,rx,s,sw=1.6,f="none")=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" stroke="${s}" stroke-width="${sw}" fill="${f}"/>`;
+const RF = (x,y,w,h,rx,f)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${f}"/>`;
+function ngon(cx,cy,r,n,rot=-Math.PI/2){
+  let pts=[]; for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;pts.push([+(cx+r*Math.cos(a)).toFixed(2),+(cy+r*Math.sin(a)).toFixed(2)]);}
+  return "M"+pts.map(p=>p.join(" ")).join("L")+"Z";
+}
+const ISO_CX=12, ISO_CY=13;
+function iso(x,y,z){ return [ +(ISO_CX+(x-y)*0.87).toFixed(2), +(ISO_CY+(x+y)*0.5-z).toFixed(2) ]; }
+function ring(r,n,rot=-Math.PI/2){ const p=[]; for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;p.push([r*Math.cos(a),r*Math.sin(a)]);} return p; }
+const projPoly = pts => "M"+pts.map(p=>p.join(" ")).join("L")+"Z";
+const ringAt=(gr,z)=>gr.map(([x,y])=>iso(x,y,z));
+function prism(gr,H){
+  const bot=ringAt(gr,0), top=ringAt(gr,H), n=gr.length, walls=[];
+  for(let i=0;i<n;i++){ const j=(i+1)%n; const mx=(bot[i][0]+bot[j][0])/2, my=(bot[i][1]+bot[j][1])/2;
+    walls.push({d:my, cx:mx, path:projPoly([bot[i],bot[j],top[j],top[i]])}); }
+  walls.sort((a,b)=>a.d-b.d);
+  return {topFace:projPoly(top), walls};
+}
+function apexFan(gr,H){
+  const bot=ringAt(gr,0), apex=iso(0,0,H), faces=[];
+  for(let i=0;i<gr.length;i++){ const j=(i+1)%gr.length; const mx=(bot[i][0]+bot[j][0])/2, my=(bot[i][1]+bot[j][1])/2;
+    faces.push({d:my, cx:mx, path:projPoly([bot[i],bot[j],apex])}); }
+  faces.sort((a,b)=>a.d-b.d); return faces;
+}
+const wallTone=(w,left,right)=> w.cx<ISO_CX?left:right;
+function icon(shapes){
+  return `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">`
+       + `<rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>${shapes.join("")}</svg>`;
+}
+
+const GLYPHS = {
+  /* 3D primitives (iso) */
+  cube:    ()=>{const pr=prism(ring(7,4,Math.PI/4),8);return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),...pr.walls.map(w=>P(w.path,C.ink,.9)),P(pr.topFace,C.ink,1)];},
+  sphere:  ()=>[CF(12,12,8,C.blue),PF("M8 6a8 8 0 0 1 4 13 8 8 0 0 0 0-15z",C.sky),CF(9,9,1.6,"#ffffff88")],
+  cylinder:()=>{const pr=prism(ring(6,20),9);return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),P(pr.topFace,C.ink,1)];},
+  cone:    ()=>{const f=apexFan(ring(6.5,24),10);return[...f.map(x=>PF(x.path,wallTone(x,C.blue,C.dim))),...f.map(x=>P(x.path,C.ink,.7))];},
+  pyramid: ()=>{const f=apexFan(ring(7,4,Math.PI/4),9);return[...f.map(x=>PF(x.path,wallTone(x,C.blue,C.dim))),...f.map(x=>P(x.path,C.ink,.8))];},
+  torus:   ()=>[`<ellipse cx="12" cy="12" rx="9" ry="4.4" fill="none" stroke="${C.blue}" stroke-width="1.8"/>`,`<ellipse cx="12" cy="12" rx="4.4" ry="1.9" fill="none" stroke="${C.sky}" stroke-width="1.5"/>`],
+  prism3:  ()=>{const pr=prism(ring(7,6,0),8);return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),P(pr.topFace,C.ink,1)];},
+  plane:   ()=>[PF("M4 9L14 4l6 4-10 5z",C.blue),L(10,13,10,20,C.dim,1.5),PF("M4 9v6l6 5v-7z",C.sky)],
+
+  /* solids / faceted */
+  gem:     ()=>{const cx=12,apex=[12,2.5],waistY=13,botY=21.5,wr=6.2,wsq=1.9;const W=[];for(let i=0;i<6;i++){const a=-Math.PI/2+i*Math.PI/3;W.push([+(cx+wr*Math.cos(a)).toFixed(2),+(waistY+wsq*Math.sin(a)).toFixed(2)]);}const culet=[12,botY];const cT=[C.cyan,C.sky,C.blue,C.blue,C.sky,C.cyan],pT=[C.blue,C.blue,C.violet,C.violet,C.blue,C.blue];const crown=i=>projPoly([apex,W[i],W[(i+1)%6]]),pav=i=>projPoly([W[i],W[(i+1)%6],culet]);const sil=projPoly([apex,W[1],W[2],culet,W[4],W[5]]);return[...[0,1,2,3,4,5].map(i=>PF(crown(i),cT[i])),...[0,1,2,3,4,5].map(i=>PF(pav(i),pT[i])),P(sil,C.ink,1)];},
+  faceted: ()=>{const pr=prism([[7,-2],[4,-6],[-3,-6.5],[-7,-1],[-5,5],[1,7],[6,4]],7.5);return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.violet))),PF(pr.topFace,C.cyan),...pr.walls.map(w=>P(w.path,C.ink,.9)),P(pr.topFace,C.ink,1)];},
+  tetra:   ()=>[PF("M12 3L4 18l8-4z",C.blue),PF("M12 3l8 15-8-4z",C.cyan),PF("M4 18l8-4 8 4z",C.violet)],
+  vase:    ()=>{const body="M9 4h6c0 2-2 2-2 4s3 3 3 7a4 4 0 0 1-8 0c0-4 3-5 3-7s-2-2-2-4z";return[PF(body,C.blue),PF("M9 4h6c0 2-2 2-2 4s3 3 3 7a4 4 0 0 1-4 4V4z",C.sky),`<ellipse cx="12" cy="4" rx="3" ry="1" fill="none" stroke="${C.ink}" stroke-width="1.4"/>`];},
+
+  /* sketch entities */
+  point:       ()=>[CI(12,12,4,C.cyan,1.2),CF(12,12,2,C.blue)],
+  sketchLine:  ()=>[L(4,20,20,4,C.blue,2),CF(4,20,2,C.sky),CF(20,4,2,C.sky)],
+  sketchArc:   ()=>[P("M4 18a10 10 0 0 1 16 0",C.blue,2),CF(4,18,2,C.sky),CF(20,18,2,C.sky)],
+  sketchCircle:()=>[CI(12,12,8,C.blue,2),CF(12,12,1.5,C.sky),L(12,12,20,12,C.dim,1)],
+  sketchRect:  ()=>[R(5,7,14,10,1,C.blue,2),CF(5,7,1.8,C.sky),CF(19,17,1.8,C.sky)],
+  spline:      ()=>[P("M4 18C8 4 16 4 20 18",C.blue,2),CF(4,18,1.8,C.sky),CF(20,18,1.8,C.sky),CF(12,7,1.5,C.cyan)],
+
+  /* 2D shapes */
+  square:   ()=>[R(6,6,12,12,0,C.blue,1.6,C.blue+"33"),R(6,6,12,12,0,C.blue,1.6)],
+  rectangle:()=>[R(4,7,16,10,0,C.blue,1.6,C.blue+"33")],
+  circle:   ()=>[CF(12,12,8,C.blue),CI(12,12,8,C.sky,1.4)],
+  ellipse:  ()=>[`<ellipse cx="12" cy="12" rx="9" ry="5.5" fill="${C.blue}"/>`,`<ellipse cx="12" cy="12" rx="9" ry="5.5" fill="none" stroke="${C.sky}" stroke-width="1.4"/>`],
+  triangle: ()=>[PF("M12 4l8 15H4z",C.blue),P("M12 4l8 15H4z",C.sky,1.4)],
+  pentagon: ()=>{const d=ngon(12,12.5,8,5);return[PF(d,C.blue),P(d,C.sky,1.4)];},
+  hexagon:  ()=>{const d=ngon(12,12,8,6,0);return[PF(d,C.blue),P(d,C.sky,1.4)];},
+  star:     ()=>{const d="M12 3.6l2.1 4.3 4.7.7-3.4 3.3.8 4.7-4.2-2.2-4.2 2.2.8-4.7L5 8.6l4.7-.7z";return[PF(d,C.amber),P(d,C.ink,1.1)];},
+  arc:      ()=>[P("M4 18a10 10 0 0 1 16 0",C.blue,2),CF(4,18,1.5,C.ink),CF(20,18,1.5,C.ink)],
+
+  /* scene items */
+  light:  ()=>[CF(12,10,5,C.amber),RF(9,15,6,2.4,1,C.dim),L(12,3,12,1,C.amber,1.6),L(19,7,21,5,C.amber,1.6),L(5,7,3,5,C.amber,1.6)],
+  camera: ()=>[RF(3,7,13,11,2,C.blue),PF("M16 10l5-3v11l-5-3z",C.sky),CF(9,12,2.4,C.ink)],
+  group:  ()=>[RF(4,4,7,7,1,C.blue),RF(13,4,7,7,1,C.cyan),RF(4,13,7,7,1,C.violet),RF(13,13,7,7,1,C.green)],
+  empty:  ()=>[L(12,4,12,20,C.blue,1.8),L(4,12,20,12,C.blue,1.8),CF(12,12,1.8,C.sky)],
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   CATEGORY MODEL — rail entries. A `items` category swaps the grid; a `shot`
+   category spawns immediately on click.
+   ═════════════════════════════════════════════════════════════════════════ */
+const CATS = [
+  { key:"prim",   label:"Primitive",  glyph:"cube",       items:[
+      {glyph:"cube",label:"Cube"},{glyph:"sphere",label:"Sphere"},{glyph:"cylinder",label:"Cylinder"},
+      {glyph:"cone",label:"Cone"},{glyph:"pyramid",label:"Pyramid"},{glyph:"torus",label:"Torus"},
+      {glyph:"prism3",label:"Prism"},{glyph:"plane",label:"Plane"},
+  ]},
+  { key:"solid",  label:"Solid",      glyph:"gem",        items:[
+      {glyph:"gem",label:"Gemstone"},{glyph:"faceted",label:"Faceted"},
+      {glyph:"tetra",label:"Tetra"},{glyph:"vase",label:"Lathe Vase"},
+  ]},
+  { key:"sketch", label:"Sketch",     glyph:"spline",     items:[
+      {glyph:"point",label:"Point"},{glyph:"sketchLine",label:"Line"},{glyph:"sketchArc",label:"Arc"},
+      {glyph:"sketchCircle",label:"Circle"},{glyph:"sketchRect",label:"Rect"},{glyph:"spline",label:"Spline"},
+      {glyph:"plane",label:"Plane"},
+  ]},
+  { key:"shape",  label:"2D Shape",   glyph:"hexagon",    items:[
+      {glyph:"square",label:"Square"},{glyph:"rectangle",label:"Rect"},{glyph:"circle",label:"Circle"},
+      {glyph:"ellipse",label:"Ellipse"},{glyph:"triangle",label:"Triangle"},{glyph:"pentagon",label:"Pentagon"},
+      {glyph:"hexagon",label:"Hexagon"},{glyph:"star",label:"Star"},{glyph:"arc",label:"Arc"},
+  ]},
+  { sep:true },
+  { key:"light",  label:"Light",  glyph:"light",  accel:"L",  shot:true },
+  { key:"camera", label:"Camera", glyph:"camera", accel:"C",  shot:true },
+  { key:"group",  label:"Group",  glyph:"group",  accel:"⌃G", shot:true },
+  { key:"empty",  label:"Empty",  glyph:"empty",  accel:"E",  shot:true },
+];
+
+/* ═════════════════════════════════════ BUILD ═════════════════════════════════════ */
+const spawn   = document.getElementById("spawn");
+const plusCap = `<svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+
+let rail, gridPane, gridHead, grid, railRows = {};
+let activeCat = null;
+
+function build(){
+  spawn.innerHTML = "";
+  rail = document.createElement("div"); rail.className = "rail";
+  const cap = document.createElement("div"); cap.className = "rail-cap";
+  cap.innerHTML = `${plusCap}<span>Create</span>`;
+  rail.appendChild(cap);
+
+  railRows = {};
+  CATS.forEach(cat => {
+    if(cat.sep){ const s=document.createElement("div"); s.className="rail-sep"; rail.appendChild(s); return; }
+    const row = document.createElement("div");
+    row.className = "rail-item" + (cat.shot ? " shot" : "");
+    row.innerHTML =
+      `<span class="r-ic">${icon(GLYPHS[cat.glyph]())}</span>`
+    + `<span class="r-lbl">${cat.label}</span>`
+    + (cat.shot ? `<span class="r-n">${cat.accel||""}</span>` : `<span class="r-n">${cat.items.length}</span>`);
+
+    if(cat.shot){
+      row.addEventListener("mouseenter", () => setActive(null));
+      row.addEventListener("click", () => spawnItem({glyph:cat.glyph,label:cat.label}, row));
+    } else {
+      row.addEventListener("mouseenter", () => setActive(cat.key));
+      row.addEventListener("click", () => setActive(cat.key));
+    }
+    rail.appendChild(row);
+    railRows[cat.key] = row;
+  });
+
+  gridPane = document.createElement("div"); gridPane.className = "grid-pane";
+  gridHead = document.createElement("div"); gridHead.className = "grid-head";
+  grid     = document.createElement("div"); grid.className = "grid";
+  gridPane.appendChild(gridHead); gridPane.appendChild(grid);
+
+  spawn.appendChild(rail);
+  spawn.appendChild(gridPane);
+}
+
+function setActive(key){
+  const cat = CATS.find(c => c.key === key && c.items);
+  Object.values(railRows).forEach(r => r.classList.remove("active"));
+  if(!cat){ activeCat = null; return; }
+  if(activeCat === key) return;
+  activeCat = key;
+  railRows[key].classList.add("active");
+
+  gridHead.innerHTML = `<span>${cat.label}</span><span class="sub">${cat.items.length} items</span>`;
+  grid.innerHTML = "";
+  cat.items.forEach(it => {
+    const tile = document.createElement("div");
+    tile.className = "tile";
+    tile.innerHTML = `${icon(GLYPHS[it.glyph]())}<span class="t-lbl">${it.label}</span>`;
+    tile.addEventListener("click", () => spawnItem(it, tile));
+    grid.appendChild(tile);
+  });
+  grid.classList.remove("swap"); void grid.offsetWidth; grid.classList.add("swap");
+}
+
+/* ═════════════════════════════════════ OPEN / CLOSE ═════════════════════════════════════ */
+let originX = 120, originY = 120;
+function openAt(x, y){
+  if(!spawn.childElementCount) build();
+  setActive("prim");                    // default the grid to primitives
+  spawn.classList.add("open");
+  const pad = 10, w = spawn.offsetWidth, h = spawn.offsetHeight;
+  if(x + w > innerWidth  - pad) x = innerWidth  - w - pad;
+  if(y + h > innerHeight - pad) y = Math.max(pad, innerHeight - h - pad);
+  originX = Math.max(pad, x); originY = Math.max(pad, y);
+  spawn.style.left = originX + "px"; spawn.style.top = originY + "px";
+}
+function close(){ spawn.classList.remove("open"); }
+
+/* ═════════════════════════════════════ SPAWN ═════════════════════════════════════ */
+let spawnCount = 0;
+function spawnItem(item, tile){
+  tile.classList.add("fired");
+  const chip = document.createElement("div");
+  chip.className = "spawned";
+  chip.innerHTML = `${icon(GLYPHS[item.glyph]())}<span class="nm">${item.label}</span>`;
+  chip.style.left = clampX(originX + 40 + (spawnCount % 6) * 16) + "px";
+  chip.style.top  = clampY(originY + 40 + (spawnCount % 6) * 16) + "px";
+  document.body.appendChild(chip);
+  spawnCount++;
+  makeDraggable(chip);
+  showToast(item.label);
+  setTimeout(close, 100);
+}
+const clampX = x => Math.min(innerWidth  - 190, Math.max(12, x));
+const clampY = y => Math.min(innerHeight - 80,  Math.max(12, y));
+
+let toastTimer;
+function showToast(name){
+  const t = document.getElementById("toast");
+  t.innerHTML = `Spawned <b>${name}</b>`;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 1300);
+}
+
+function makeDraggable(el){
+  el.addEventListener("pointerdown", e => {
+    const r = el.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
+    el.setPointerCapture(e.pointerId); el.style.cursor = "grabbing";
+    const mv = ev => { el.style.left = clampX(ev.clientX - ox) + "px"; el.style.top = clampY(ev.clientY - oy) + "px"; };
+    const up = () => { el.style.cursor=""; el.removeEventListener("pointermove",mv); el.removeEventListener("pointerup",up); };
+    el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up);
+  });
+}
+
+/* ═════════════════════════════════════ WIRING ═════════════════════════════════════ */
+window.addEventListener("contextmenu", e => { e.preventDefault(); openAt(e.clientX, e.clientY); });
+window.addEventListener("pointerdown", e => { if(!e.target.closest("#spawn")) close(); });
+window.addEventListener("keydown", e => { if(e.key === "Escape") close(); });
+window.addEventListener("blur", close);
+window.addEventListener("resize", close);
+</script>
+</body>
+</html>

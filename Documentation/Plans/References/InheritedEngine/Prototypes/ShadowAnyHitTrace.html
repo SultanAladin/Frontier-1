@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Shade shadow — closest-hit vs any-hit</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --dim:#8b949e;
+    --line:#30363d; --hot:#f6685e; --cool:#57c7ff; --good:#4cd07d; --warn:#e3b341;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 system-ui,Segoe UI,sans-serif;padding:28px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card h2{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .tag{font:11px var(--mono);padding:2px 7px;border-radius:5px}
+  .t-hot{background:rgba(246,104,94,.15);color:var(--hot)}
+  .t-good{background:rgba(76,208,125,.15);color:var(--good)}
+  svg{width:100%;height:200px;display:block}
+  code{font-family:var(--mono);color:var(--cool)}
+  .note{color:var(--dim);font-size:13px;margin-top:10px}
+  .row{display:flex;gap:10px;align-items:baseline;margin:4px 0;font-size:14px}
+  .k{font-family:var(--mono);color:var(--warn);min-width:120px}
+  .full{grid-column:1/-1}
+  ul{margin:6px 0 0 18px;padding:0}
+  li{margin:3px 0}
+  .win{background:rgba(76,208,125,.08);border-left:3px solid var(--good);
+       padding:12px 14px;border-radius:0 8px 8px 0;margin-top:14px}
+  b.hot{color:var(--hot)} b.good{color:var(--good)}
+</style>
+</head>
+<body>
+  <h1>Sun-shadow trace — what the shade pass is paying for</h1>
+  <p class="sub"><code>SunVisibility()</code> in SurfaceShade.frag · <b>N rays / pixel / frame</b> · ~7–14 ms, tracks camera</p>
+
+  <div class="grid">
+
+    <div class="card">
+      <h2>Now <span class="tag t-hot">closest-hit</span></h2>
+      <svg viewBox="0 0 320 200">
+        <defs>
+          <marker id="ah" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#f6685e"/></marker>
+        </defs>
+        <!-- surface -->
+        <rect x="16" y="150" width="288" height="10" fill="#222b36"/>
+        <circle cx="40" cy="150" r="4" fill="#57c7ff"/>
+        <text x="30" y="176" fill="#8b949e" font-size="11">shaded pixel</text>
+        <!-- sun -->
+        <circle cx="280" cy="30" r="12" fill="#e3b341"/>
+        <text x="256" y="22" fill="#e3b341" font-size="11">sun</text>
+        <!-- occluders -->
+        <rect x="120" y="70" width="18" height="80" fill="#3d4653"/>
+        <rect x="185" y="55" width="18" height="95" fill="#3d4653"/>
+        <!-- ray keeps going past first hit -->
+        <path d="M40,150 L260,42" stroke="#f6685e" stroke-width="2" marker-end="url(#ah)"/>
+        <circle cx="129" cy="107" r="4" fill="#f6685e"/>
+        <circle cx="194" cy="75" r="4" fill="#f6685e" opacity=".6"/>
+        <text x="60" y="120" fill="#f6685e" font-size="11">walks WHOLE scene</text>
+      </svg>
+      <p class="note">Each ray runs <code>TraceTwoLevel</code>, which finds the <b>closest</b> hit: it keeps tightening <code>FarLimit</code> and draining the BVH stack even after it already knows the point is blocked. On the shadowed side — the expensive side — it visits the entire subtree for an answer we throw away.</p>
+      <div class="row"><span class="k">reads back</span> only <code>Hit.HitCondition</code> (yes/no)</div>
+      <div class="row"><span class="k">computes</span> nearest triangle, distance, barycentrics — all discarded</div>
+    </div>
+
+    <div class="card">
+      <h2>Fix <span class="tag t-good">any-hit</span></h2>
+      <svg viewBox="0 0 320 200">
+        <defs>
+          <marker id="ah2" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#4cd07d"/></marker>
+        </defs>
+        <rect x="16" y="150" width="288" height="10" fill="#222b36"/>
+        <circle cx="40" cy="150" r="4" fill="#57c7ff"/>
+        <text x="30" y="176" fill="#8b949e" font-size="11">shaded pixel</text>
+        <circle cx="280" cy="30" r="12" fill="#e3b341"/>
+        <text x="256" y="22" fill="#e3b341" font-size="11">sun</text>
+        <rect x="120" y="70" width="18" height="80" fill="#3d4653"/>
+        <rect x="185" y="55" width="18" height="95" fill="#3d4653" opacity=".35"/>
+        <!-- ray stops at first hit -->
+        <path d="M40,150 L129,107" stroke="#4cd07d" stroke-width="2" marker-end="url(#ah2)"/>
+        <circle cx="129" cy="107" r="5" fill="#4cd07d"/>
+        <text x="55" y="128" fill="#4cd07d" font-size="11">STOP — first blocker</text>
+      </svg>
+      <p class="note">An <b>any-hit</b> traversal returns <code>true</code> the instant it finds one triangle between the point and the light. No <code>FarLimit</code> tightening, no near/far ordering, no stack drain. The far occluder is never even tested.</p>
+      <div class="row"><span class="k">returns</span> <code>bool</code> occluded — that's the whole question</div>
+      <div class="row"><span class="k">quality</span> <b class="good">bit-for-bit identical</b> visibility</div>
+    </div>
+
+    <div class="card full">
+      <h2>Why it's free — and where it wins most</h2>
+      <ul>
+        <li>Both shadow consumers ask a pure yes/no: shade's <code>SunVisibility</code> and integrate's sun-shadow ray (<code>SurfelIntegrate.comp</code>).</li>
+        <li>Closest-hit is only needed when you want <i>which</i> surface + <i>where</i>. Shadows don't — occlusion is boolean.</li>
+        <li>The win scales with occlusion: a lit pixel exits fast either way, but a <b class="hot">shadowed</b> pixel is exactly where closest-hit drains the most stack — and any-hit cuts that to the first blocker.</li>
+      </ul>
+      <div class="win">
+        <b>Plan:</b> add <code>bool TraceAnyHitTwoLevel(Origin, Dir, Near, Max)</code> next to <code>TraceTwoLevel</code> — same walk, but <code>return true</code> on the first bottom-level hit (no FarLimit tighten, no stack drain). Swap the shade's N shadow rays onto it first, measure, then wire integrate's sun ray. <b>No temporal, no denoiser, no quality change.</b>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

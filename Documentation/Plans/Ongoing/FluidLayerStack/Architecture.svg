@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" font-family="DM Sans, Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#9aa3ad"/>
+    </marker>
+    <style>
+      .panel { fill: #1c1f24; stroke: #3a3f47; stroke-width: 1.2; }
+      .layer { fill: #262a31; stroke: #4a515b; stroke-width: 1; }
+      .req { fill: #22312a; stroke: #4fbf86; }
+      .fx { fill: #2f2633; stroke: #c27ad8; }
+      .t { fill: #e8eaed; font-size: 15px; }
+      .s { fill: #9aa3ad; font-size: 12px; }
+      .h { fill: #ffffff; font-size: 18px; font-weight: 600; }
+      .c { fill: #7ab8ff; font-size: 11px; letter-spacing: 1.2px; }
+      .line { stroke: #9aa3ad; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #9aa3ad; stroke-width: 1.2; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+      .key { fill: #ffb454; }
+    </style>
+  </defs>
+  <rect width="1200" height="760" fill="#121417"/>
+  <text x="30" y="40" class="h">Layer stack · timeline · one specification for browser and C++  (approved · Option A)</text>
+
+  <!-- Specification -->
+  <rect x="30" y="70" width="270" height="250" rx="10" class="panel"/>
+  <text x="48" y="98" class="c">SINGLE SOURCE</text>
+  <text x="48" y="124" class="t">LayerSpecifications.toml</text>
+  <text x="48" y="146" class="s">per category: parameters, type, range,</text>
+  <text x="48" y="162" class="s">default, unit, keyable, enum codes,</text>
+  <text x="48" y="178" class="s">phase, capacity</text>
+  <rect x="48" y="196" width="234" height="40" rx="6" class="layer"/>
+  <text x="60" y="221" class="t">→ Browser JSON + inspector</text>
+  <rect x="48" y="246" width="234" height="40" rx="6" class="layer"/>
+  <text x="60" y="271" class="t">→ C++ structs + codec</text>
+  <text x="48" y="306" class="s">hashes must match · corpus round trip</text>
+
+  <!-- Gas stack -->
+  <rect x="330" y="70" width="400" height="330" rx="10" class="panel"/>
+  <text x="348" y="98" class="c">GAS VOLUME · LAYER STACK</text>
+  <g>
+    <rect x="348" y="110" width="364" height="30" rx="5" class="layer req"/><text x="360" y="130" class="t">Domain</text><text x="600" y="130" class="s">Inject · required</text>
+    <rect x="348" y="146" width="364" height="30" rx="5" class="layer"/><text x="360" y="166" class="t">Source ×n</text><text x="600" y="166" class="s">Inject</text>
+    <rect x="348" y="182" width="364" height="30" rx="5" class="layer"/><text x="360" y="202" class="t">Buoyancy</text><text x="600" y="202" class="s">Advance</text>
+    <rect x="348" y="218" width="364" height="30" rx="5" class="layer"/><text x="360" y="238" class="t">Combustion · Expansion</text><text x="600" y="238" class="s">Advance</text>
+    <rect x="348" y="254" width="364" height="30" rx="5" class="layer"/><text x="360" y="274" class="t">Vorticity · Dissipation</text><text x="600" y="274" class="s">Advance</text>
+    <rect x="348" y="290" width="364" height="30" rx="5" class="layer"/><text x="360" y="310" class="t">Smoke shading · Fire shading</text><text x="600" y="310" class="s">Shade</text>
+    <rect x="348" y="326" width="364" height="30" rx="5" class="layer fx"/><text x="360" y="346" class="t">Heat shimmer</text><text x="600" y="346" class="s">Overlay</text>
+  </g>
+  <text x="348" y="386" class="s">+ Add layer · drag to reorder · Weight / Blend / Solo per layer</text>
+
+  <!-- Particle stack -->
+  <rect x="760" y="70" width="410" height="330" rx="10" class="panel"/>
+  <text x="778" y="98" class="c">PARTICLE CLOUD · LAYER STACK</text>
+  <g>
+    <rect x="778" y="110" width="374" height="30" rx="5" class="layer req"/><text x="790" y="130" class="t">Spawn</text><text x="1030" y="130" class="s">Inject · required</text>
+    <rect x="778" y="146" width="374" height="30" rx="5" class="layer"/><text x="790" y="166" class="t">Lifetime · Gravity · Drag</text><text x="1030" y="166" class="s">Advance</text>
+    <rect x="778" y="182" width="374" height="30" rx="5" class="layer"/><text x="790" y="202" class="t">Field influence</text><text x="1030" y="202" class="s">Advance</text>
+    <rect x="778" y="218" width="374" height="30" rx="5" class="layer"/><text x="790" y="238" class="t">Gas coupling</text><text x="1030" y="238" class="s">Advance</text>
+    <rect x="778" y="254" width="374" height="30" rx="5" class="layer"/><text x="790" y="274" class="t">Colour rule · Size over life</text><text x="1030" y="274" class="s">Shade</text>
+    <rect x="778" y="290" width="374" height="30" rx="5" class="layer"/><text x="790" y="310" class="t">Sprite · Trail</text><text x="1030" y="310" class="s">Shade</text>
+    <rect x="778" y="326" width="374" height="30" rx="5" class="layer fx"/><text x="790" y="346" class="t">Glitch · Distortion · Dissolve</text><text x="1030" y="346" class="s">Overlay</text>
+  </g>
+  <text x="778" y="386" class="s">templates insert layer sets; nothing hardcoded</text>
+
+  <!-- Force fields -->
+  <rect x="30" y="350" width="270" height="110" rx="10" class="panel"/>
+  <text x="48" y="378" class="c">FORCE FIELDS · FLAT (NO STACK)</text>
+  <text x="48" y="404" class="t">20 generator types, unchanged</text>
+  <text x="48" y="426" class="s">referenced by token from</text>
+  <text x="48" y="442" class="s">Field influence</text>
+  <path d="M300 440 L 320 440 L 320 470 L 1180 470 L 1180 197 L 1154 197" class="dash"/>
+  <path d="M712 233 C 740 233, 750 233, 776 233" class="dash"/>
+  <text x="716" y="226" class="s">token</text>
+  <path d="M300 220 L 346 220" class="line"/>
+  
+  <!-- Timeline -->
+  <rect x="30" y="490" width="1140" height="240" rx="10" class="panel"/>
+  <text x="48" y="518" class="c">TIMELINE · KEYED TRACKS (path = volume / layer / parameter)</text>
+  <text x="48" y="548" class="t">▶ 00:03.25 / 00:08.00 · 30 Hz · Auto-key · Checkpoints every 0.5 s</text>
+  <g stroke="#3a3f47">
+    <line x1="300" y1="570" x2="1150" y2="570"/>
+    <line x1="300" y1="610" x2="1150" y2="610"/>
+    <line x1="300" y1="650" x2="1150" y2="650"/>
+    <line x1="300" y1="690" x2="1150" y2="690"/>
+  </g>
+  <g class="s">
+    <text x="300" y="565">0 s</text><text x="406" y="565">1 s</text><text x="512" y="565">2 s</text><text x="618" y="565">3 s</text><text x="724" y="565">4 s</text><text x="830" y="565">5 s</text><text x="936" y="565">6 s</text><text x="1042" y="565">7 s</text>
+  </g>
+  <text x="48" y="594" class="t">Source · Weight</text>
+  <text x="48" y="634" class="t">Source · Temperature</text>
+  <text x="48" y="674" class="t">Heat shimmer · Strength</text>
+  <text x="48" y="714" class="t">Spawn · Rate</text>
+  <polyline points="300,600 320,582 780,582 800,600" fill="none" stroke="#7ab8ff" stroke-width="1.5"/>
+  <path d="M300 622 C 450 622, 600 640, 724 640" fill="none" stroke="#7ab8ff" stroke-width="1.5"/>
+  <path d="M500 670 L 640 658 L 900 676" fill="none" stroke="#7ab8ff" stroke-width="1.5"/>
+  <g class="key">
+    <path d="M300 594 l6 6 -6 6 -6 -6z"/><path d="M320 576 l6 6 -6 6 -6 -6z"/><path d="M780 576 l6 6 -6 6 -6 -6z"/><path d="M800 594 l6 6 -6 6 -6 -6z"/>
+    <path d="M300 616 l6 6 -6 6 -6 -6z"/><path d="M724 634 l6 6 -6 6 -6 -6z"/>
+    <path d="M500 664 l6 6 -6 6 -6 -6z"/><path d="M640 652 l6 6 -6 6 -6 -6z"/><path d="M900 670 l6 6 -6 6 -6 -6z"/>
+    <path d="M300 704 l6 6 -6 6 -6 -6z"/><path d="M360 704 l6 6 -6 6 -6 -6z"/>
+  </g>
+  <line x1="644" y1="560" x2="644" y2="725" stroke="#ff5a5f" stroke-width="2"/>
+  <text x="652" y="724" class="s">playhead · scrub back = restore checkpoint + re-step</text>
+  <path d="M600 490 L 560 404" class="dash"/>
+  <text x="1010" y="462" class="s">token → Field influence</text>
+  <path d="M760 490 L 900 404" class="dash"/>
+</svg>

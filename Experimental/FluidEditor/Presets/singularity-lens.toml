@@ -1,0 +1,195 @@
+# Singularity Lensing — scene preset (Particles). Relativistic gravitational lensing bending a hot nebula plume around an event horizon and photon ring.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "193ceeab39c3eb37"
+
+[Scene]
+Order = 39
+Id = "preset-singularity-lens"
+Name = "Singularity Lensing"
+Family = "VFX"
+Icon = "blackhole"
+Boundary = "OpenAll"
+Summary = "Relativistic gravitational lensing bending a hot nebula plume around an event horizon and photon ring."
+
+[Grid]
+Resolution = [48, 64, 48]
+Size = [4.5, 6, 4.5]
+
+[Render]
+Visible = true
+Exposure = 1.25
+Steps = 80
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 1.4, AmbientTemperature = 0.0, Cooling = 0.45 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.3, BurnRate = 2.2, BurnHeat = 4.5, Soot = 0.3 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 1.2 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.996, VelocityDissipation = 0.992, DensityDissipation = 0.985, TemperatureDissipation = 0.985, FuelDissipation = 0.98 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 0.9, Albedo = "#7c3aed", Absorption = 2.6, Anisotropy = 0.55, Ambient = "#312e81", LightIntensity = 1.5 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 3.8, FireThreshold = 0.9, FireSoftness = 3.2, FireOpacity = 1.2, FireEmber = "#6d28d9", FireFlame = "#f59e0b", FireCore = "#fef3c7", FireLight = 1.2 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Nebula Plume"
+  Enabled = true
+  Visible = true
+  Shape = "Sphere"
+  Position = [0, -1.2, -0.8]
+  Radius = 0.55
+  Density = 2.8
+  Temperature = 3.4
+  Fuel = 1.4
+  Velocity = [0, 1.4, 0]
+  Orientation = [0, 1, 0]
+  PathKind = "Circle"
+  PathRadius = 0.9
+  PathSpeed = 0.5
+  PulsePeriod = 0
+  PulseDuty = 1
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+[[Particle]]
+  Template = "black-hole-lens"
+  Name = "Black Hole Accretion Lens"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 4, Position = [0, 0, 0], Direction = [0.15, 0.96, 0.22], Radius = 1.25, Fill = 0.0, Count = 8192, Rate = 12.0, Lifetime = 3.5, Linger = 0.6, Speed = 1.8, Spread = 0.18, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 0.4 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 216
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SwarmStrength = 1.8, SwarmCohesion = 0.45, SwarmOrbit = 2.8, SwarmWingRate = 4.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 218
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { DistortionMode = 1, DistortionStrength = 0.62, DistortionRadius = 0.34, DistortionHorizon = 0.11, DistortionChromatic = 0.42 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 1, Palette = ["#7c2d12", "#ea580c", "#fbbf24", "#fef3c7"], RampSource = 0, Ramp = 0, MaxSpeed = 5.5, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.4, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 4.5, SizeEnd = 1.5, SizeRandom = 0.3 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 0, Glow = 1.1, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }

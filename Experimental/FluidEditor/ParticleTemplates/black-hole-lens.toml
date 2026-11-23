@@ -1,0 +1,78 @@
+# Black Hole Accretion Lens — particle template (FX & Shields). Relativistic gravitational lens with dark event horizon, bright photon ring and swirling accretion disc.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "193ceeab39c3eb37"
+
+[Template]
+Order = 38
+Id = "black-hole-lens"
+Name = "Black Hole Accretion Lens"
+Category = "FX & Shields"
+Icon = "blackhole"
+Tint = "#f59e0b"
+Summary = "Relativistic gravitational lens with dark event horizon, bright photon ring and swirling accretion disc."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 4, Position = [0, 0, 0], Direction = [0.15, 0.96, 0.22], Radius = 1.25, Fill = 0.0, Count = 8192, Rate = 12.0, Lifetime = 3.5, Linger = 0.6, Speed = 1.8, Spread = 0.18, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.4 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 216
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SwarmStrength = 1.8, SwarmCohesion = 0.45, SwarmOrbit = 2.8, SwarmWingRate = 4.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 218
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { DistortionMode = 1, DistortionStrength = 0.62, DistortionRadius = 0.34, DistortionHorizon = 0.11, DistortionChromatic = 0.42 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#7c2d12", "#ea580c", "#fbbf24", "#fef3c7"], RampSource = 0, Ramp = 0, MaxSpeed = 5.5, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.4, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 4.5, SizeEnd = 1.5, SizeRandom = 0.3 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 1.1, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }

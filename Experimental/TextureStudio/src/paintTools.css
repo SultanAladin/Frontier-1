@@ -1,0 +1,458 @@
+.paint-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  background: #0008;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 14px;
+}
+.alloy-paint-menu {
+  width: min(560px, calc(100vw - 28px));
+  max-width: calc(100vw - 28px);
+  min-width: 0;
+  max-height: min(760px, 90dvh);
+  background: #0e0e0e;
+  border: 1px solid #29292c;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: #dededb;
+  box-shadow: 0 24px 70px #000b;
+  font:
+    12px "DM Sans",
+    system-ui,
+    sans-serif;
+}
+.alloy-paint-menu > header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px;
+  border-bottom: 1px solid #252525;
+}
+.alloy-paint-menu > header > span {
+  flex: 1;
+  min-width: 0;
+}
+.alloy-paint-menu > header > small {
+  color: #737373;
+  font-size: 10px;
+}
+.alloy-paint-menu button {
+  background: #161616;
+  border: 1px solid #252525;
+  color: #d0d0c5;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.alloy-paint-menu > header > button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+}
+.alloy-paint-menu > footer {
+  padding: 12px;
+  color: #858581;
+  border-top: 1px solid #242424;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.paint-menu-body {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  height: 530px;
+}
+.paint-menu-body > nav {
+  padding: 7px;
+  border-right: 1px solid #222;
+  overflow-y: auto;
+}
+.paint-menu-body > nav > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  padding: 11px 7px;
+  margin: 2px 0;
+  background: none;
+  border-color: transparent;
+  font-size: 10px;
+}
+.paint-menu-body > nav i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.paint-menu-body > nav small {
+  margin-left: auto;
+  color: #656563;
+}
+.paint-menu-body > nav [aria-pressed="true"] {
+  background: #252525;
+  border-color: #41413a;
+  color: #eee;
+}
+.paint-instruments {
+  padding: 12px;
+  overflow-y: auto;
+}
+.paint-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #292929;
+  background: #151515;
+  border-radius: 9px;
+  padding: 8px;
+  margin-bottom: 12px;
+}
+.paint-search input {
+  width: 100%;
+  background: none;
+  border: 0;
+  color: #ddd;
+  min-width: 0;
+  font: inherit;
+}
+.paint-instrument-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+/* Keep the icon well circular; the clickable card and its label are not a pill.
+   The extra scope wins against the shared studio's rounded-button defaults. */
+.alloy-paint-menu .paint-instrument-grid > .paint-instrument-card {
+  min-width: 0;
+  min-height: 132px;
+  padding: 8px 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 9px;
+  box-shadow: none;
+}
+.alloy-paint-menu .paint-instrument-card > .paint-instrument-portrait {
+  width: min(100%, 96px);
+  aspect-ratio: 1;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ffffff10;
+  border-radius: 50%;
+  background: #252525;
+  overflow: hidden;
+}
+.alloy-paint-menu .paint-instrument-portrait > img {
+  display: block;
+  width: 66%;
+  height: 66%;
+  object-fit: contain;
+}
+.alloy-paint-menu .paint-instrument-card > .paint-instrument-label {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  text-align: center;
+  font-size: 9px;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: #b9b9aa;
+}
+.alloy-paint-menu .paint-instrument-card:hover > .paint-instrument-portrait {
+  background: #30302b;
+  border-color: #8e97834d;
+}
+.alloy-paint-menu
+  .paint-instrument-card[aria-pressed="true"]
+  > .paint-instrument-portrait {
+  background: #30332a;
+  border-color: #b4c18e;
+  box-shadow: 0 0 0 2px #a7b98014 inset;
+}
+.alloy-paint-menu
+  .paint-instrument-card[aria-pressed="true"]
+  > .paint-instrument-label {
+  color: #e0e7d1;
+}
+.alloy-paint-menu .paint-instrument-card:focus-visible {
+  outline: 0;
+}
+.alloy-paint-menu
+  .paint-instrument-card:focus-visible
+  > .paint-instrument-portrait {
+  outline: 2px solid #c5d69d;
+  outline-offset: 3px;
+}
+.paint-tool-properties {
+  padding: 14px;
+  overflow-y: auto;
+  color: #ccc;
+  background: #111;
+  min-height: 0;
+}
+.paint-tool-hero {
+  text-align: center;
+}
+.paint-tool-hero > img {
+  width: 100%;
+  max-width: 340px;
+  height: 68px;
+  object-fit: contain;
+}
+.paint-tool-hero h3 {
+  font:
+    400 17px "DM Sans",
+    sans-serif;
+  margin: 8px 0;
+}
+.paint-tool-hero > span {
+  font-size: 9px;
+  color: #7e8378;
+}
+.paint-mark-preview {
+  height: 70px;
+  border: 1px solid #292b26;
+  border-radius: 10px;
+  margin: 13px 0 3px;
+  background: #e8e5db;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  overflow: hidden;
+}
+.paint-mark-preview i {
+  width: 65%;
+  height: var(--size);
+  background: var(--ink);
+  opacity: var(--opacity);
+  border-radius: 50%;
+  transform: rotate(-7deg);
+}
+.paint-mark-preview b {
+  width: var(--size);
+  height: var(--size);
+  background: var(--ink);
+  opacity: var(--opacity);
+  border-radius: 50%;
+}
+.paint-preview-note {
+  font-size: 9px;
+  color: #8a8a7c;
+  text-align: center;
+  margin: 4px 0 14px;
+}
+.paint-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 9px;
+}
+.paint-color input {
+  width: 75px;
+  height: 25px;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.paint-swatches {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.paint-swatches button {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #333;
+  cursor: pointer;
+}
+.paint-swatches button[aria-pressed="true"] {
+  outline: 1px solid #deded0;
+}
+.paint-control-group {
+  padding: 10px 0;
+  border-top: 1px solid #272727;
+  margin-top: 10px;
+}
+.paint-control-group h4 {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font:
+    500 10px "DM Sans",
+    sans-serif;
+  color: #7e8378;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 3px 0 12px;
+}
+.paint-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  margin: 12px 0;
+  font-size: 10px;
+}
+.paint-control > span {
+  flex: 0 0 92px;
+  color: #b3b4a6;
+}
+.paint-control > div {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.paint-control input[type="range"] {
+  width: 100%;
+  min-width: 25px;
+  accent-color: #d7debd;
+}
+.paint-control input[type="number"] {
+  width: 49px;
+  flex: none;
+  font: 10px "DM Sans";
+  background: #000;
+  color: #ddd;
+  border: 1px solid #303030;
+  border-radius: 5px;
+  padding: 5px;
+  text-align: right;
+}
+.paint-control small {
+  font-size: 9px;
+  color: #777;
+}
+.paint-control select {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #303030;
+  border-radius: 7px;
+  background: #181818;
+  color: #ddd;
+}
+.paint-control input[type="checkbox"] {
+  accent-color: #c0cca8;
+}
+.paint-segments > button {
+  flex: 1;
+  font-size: 9px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  white-space: normal;
+}
+.paint-segments > button[aria-pressed="true"] {
+  background: #d9ddcb;
+  color: #111;
+  border-color: #d9ddcb;
+}
+@media (max-width: 580px) {
+  .paint-instrument-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .paint-menu-body {
+    grid-template-columns: 90px minmax(0, 1fr);
+    height: 55dvh;
+  }
+  .alloy-paint-menu > header > small {
+    display: none;
+  }
+  .paint-control > span {
+    flex-basis: 75px;
+  }
+}
+.alloy-paint-menu .paint-tool-properties {
+  background: #141414;
+  padding: 17px;
+}
+.alloy-paint-menu .paint-tool-properties .tp-property-card {
+  background: #222;
+  border: 1px solid #ffffff0a;
+  border-radius: 22px;
+  padding: 17px;
+  margin: 0 0 15px;
+}
+.alloy-paint-menu .paint-tool-properties .paint-control-group {
+  margin-top: 17px;
+}
+.alloy-paint-menu .paint-control-group > h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #a8b293;
+  font-size: 10px;
+  font-weight: 400;
+  padding-bottom: 13px;
+  margin: 0 0 13px;
+  border-bottom: 1px solid #ffffff07;
+}
+.alloy-paint-menu .paint-shared-segment {
+  margin: 13px 0;
+}
+.alloy-paint-menu .paint-shared-segment > label {
+  display: block;
+  font-size: 10px;
+  color: #a9af96;
+  margin-bottom: 8px;
+}
+.alloy-paint-menu .paint-tool-properties .tp-toggle-row {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 15px 0;
+  color: #b2b89d;
+}
+.alloy-paint-menu .paint-tool-properties .tp-toggle-row input {
+  accent-color: #a0b570;
+}
+.alloy-paint-menu .paint-tool-properties .tp-source-pills {
+  display: flex;
+  gap: 4px;
+  background: #121212;
+  padding: 4px;
+  border-radius: 999px;
+}
+.alloy-paint-menu .paint-tool-properties .tp-source-pills button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  flex: 1;
+  font-size: 9px;
+  padding: 6px 4px;
+}
+.alloy-paint-menu
+  .paint-tool-properties
+  .tp-source-pills
+  button[aria-pressed="true"] {
+  background: #38402b;
+  color: #cddbb2;
+}
+.alloy-paint-menu .paint-control-group > h2 > span {
+  flex: 1;
+  text-align: left;
+}
+.alloy-paint-menu .paint-control-group > h2 > svg {
+  margin: 0;
+  flex: none;
+}

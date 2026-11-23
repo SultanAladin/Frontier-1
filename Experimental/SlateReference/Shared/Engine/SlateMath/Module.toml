@@ -1,0 +1,29 @@
+# SlateMath — core numerical rules and tier enforcement.
+# Depends on nothing. Every other unit depends on it.
+
+[unit]
+name    = "SlateMath"
+product = "StaticLibrary"
+subject = [ "Platform", "Numeric" ]
+
+# 🔴 An empty requirement list is the load-bearing declaration here, not an omission. SlateMath compiles
+#    with no engine include path but its own, which is what makes a device or document reference in it a
+#    compile error rather than a review finding.
+[requires]
+unit = []
+
+# 📝 GLFW is reached by WindowInterchange only, and only inside its source file. GLFW_DLL selects the
+#    import declarations that match glfw3dll.lib; omitting it links glfw3.lib's static declarations against
+#    a dynamic library and produces a build that links and then misbehaves.
+[external]
+include = [ "ExternalPackages/glfw/include" ]
+declare = [ "GLFW_DLL" ]
+
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+#    statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+#    what an executable must **link** so every reference resolves. They coincide for most units and part
+#    for `SlateUI`, which links four archives and is permitted to include none of them — a static archive
+#    only satisfies references the linker has already seen, so the order is load-bearing.
+unit    = []
+library = [ "ExternalPackages/glfw/lib-vc2022/glfw3dll.lib" ]

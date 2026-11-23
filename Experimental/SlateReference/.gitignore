@@ -1,0 +1,18 @@
+# Downloaded dependencies and local build products are not part of the pinned source snapshots.
+node_modules/
+.next/
+.nuxt/
+dist/
+build/
+coverage/
+.env.local
+.env.*.local
+*.log
+__pycache__/
+*.pyc
+
+# These three upstream files are build SOURCE recipes, not generated build outputs.
+!Shared/Build/
+!Shared/Build/Construct.bat
+!Shared/Build/Construct.ps1
+!Shared/Build/ImportFlatten.bat

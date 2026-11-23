@@ -1,0 +1,10 @@
+# 🧩 CodeRabbit auto-review config. The repo's registered GitHub default branch is `master`, but all
+# active work targets `Frontier` (and its per-session `arena/*` working branches), so CodeRabbit's
+# out-of-the-box "only review PRs into the default branch" behaviour silently skipped every PR here.
+# Point auto-review at the branches actually used as PR bases.
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      - "^Frontier$"
+      - "^arena/.*$"

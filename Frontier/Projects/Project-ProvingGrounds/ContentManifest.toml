@@ -1,0 +1,6 @@
+# EngineContent-relative paths this project actually uses.
+# Build.bat stages exactly these entries beside the executable at build time;
+# everything else stays referenced in the shared EngineContent tree.
+# Example once real fonts are recovered:
+#   Stage = ["FontArchives/FontCatalogue.toml", "FontArchives/DM Sans"]
+Stage = []

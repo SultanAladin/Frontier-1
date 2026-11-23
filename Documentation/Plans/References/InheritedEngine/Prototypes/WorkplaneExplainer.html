@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workplane — what it is + settings</title>
+<style>
+  :root{
+    --bg:#0b0d11; --panel:#12151b; --panel2:#171b23; --line:#2a2f3a;
+    --ink:#e7ebf2; --dim:#9aa4b4; --faint:#6b7482;
+    --accent:#5b9dff; --accent2:#ffb454; --good:#54d38a; --grid:#212633;
+    --plane:#5b9dff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:.2px}
+  h2{font-size:18px;margin:38px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;margin:20px 0 4px;color:var(--accent)}
+  p{color:var(--dim);margin:8px 0}
+  .lead{color:var(--ink);font-size:15px}
+  code{background:#0f1218;border:1px solid var(--line);border-radius:4px;
+    padding:1px 6px;color:#cfe0ff;font:12.5px ui-monospace,Consolas,monospace}
+  .kbd{background:#1b2029;border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:5px;padding:1px 7px;font:12px ui-monospace,monospace;color:#dce4f2}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card h3{margin-top:0}
+  .muted{color:var(--faint);font-size:12.5px}
+  /* --- interactive 3D stage --- */
+  .stage{background:linear-gradient(180deg,#0d1016,#0a0c11);border:1px solid var(--line);
+    border-radius:12px;padding:0;overflow:hidden;position:relative}
+  .stage svg{display:block;width:100%;height:360px;cursor:grab}
+  .stage.drag svg{cursor:grabbing}
+  .hint{position:absolute;left:12px;bottom:10px;color:var(--faint);font-size:11.5px;
+    background:rgba(10,12,17,.6);padding:3px 8px;border-radius:6px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn.on{border-color:var(--accent);background:#16233b;color:#dce9ff}
+  /* --- properties table --- */
+  table{width:100%;border-collapse:collapse;margin:6px 0 2px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--faint);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+  td:first-child{color:var(--ink);white-space:nowrap}
+  td .t{color:var(--faint);font:12px ui-monospace,monospace}
+  .pill{display:inline-block;background:#0f1218;border:1px solid var(--line);border-radius:20px;
+    padding:2px 10px;font-size:12px;color:var(--dim);margin:2px 4px 2px 0}
+  .note{background:#101722;border:1px solid #23364f;border-left:3px solid var(--accent);
+    border-radius:8px;padding:12px 14px;margin:14px 0;color:#c9d7ec}
+  .swatch{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  ol.steps{color:var(--dim);padding-left:20px}
+  ol.steps li{margin:5px 0}
+  .src{color:var(--faint);font-size:12px}
+  .src a{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>The Workplane</h1>
+  <p class="lead">A <b>workplane</b> (also called a <b>sketch plane</b>, <b>construction plane</b>, or <b>reference plane</b>)
+  is the flat 2D surface you draw a sketch on. You can't draw a line, arc, or circle "in mid-air" — every 2D
+  element has to live <i>on</i> a plane. That plane fixes <b>where</b> in 3D space your 2D drawing sits and
+  <b>which way it faces</b>. Extrude/revolve/sweep then lift that flat sketch into a solid.</p>
+
+  <div class="note">
+    <b>One sentence:</b> a workplane is an infinite flat sheet with an origin and an orientation — pick one,
+    and your sketch tools snap onto it so everything you draw is coplanar and locatable.
+  </div>
+
+  <!-- ============================ WHY ============================ -->
+  <h2>Why you need one before drawing</h2>
+  <div class="grid3">
+    <div class="card"><h3>Location</h3><p>A 2D point <code>(u, v)</code> on the plane maps to a real 3D point.
+      Without a plane, "x = 40" is ambiguous.</p></div>
+    <div class="card"><h3>Orientation</h3><p>The plane's <b>normal</b> is the direction "up out of the paper" —
+      it's the direction an <b>Extrude</b> pushes.</p></div>
+    <div class="card"><h3>Coplanarity</h3><p>Everything you sketch shares one flat surface, so constraints
+      (parallel, tangent, dimension) are solvable in 2D.</p></div>
+  </div>
+
+  <!-- ============================ STAGE ============================ -->
+  <h2>See it — drag to orbit</h2>
+  <div class="stage" id="stage">
+    <svg id="svg" viewBox="0 0 900 360"></svg>
+    <div class="hint">drag = orbit · the blue sheet is the active workplane · orange arrow = its normal</div>
+  </div>
+  <div class="toolbar" id="planeBtns">
+    <button class="btn on" data-plane="XY">XY (top)</button>
+    <button class="btn" data-plane="XZ">XZ (front)</button>
+    <button class="btn" data-plane="YZ">YZ (right)</button>
+    <button class="btn" data-plane="OFFSET">Offset XY +60</button>
+    <button class="btn" data-plane="ANGLE">Angle 35°</button>
+    <button class="btn" data-plane="normalToggle" id="normBtn">normal: shown</button>
+    <button class="btn" data-plane="gridToggle" id="gridBtn">grid: shown</button>
+  </div>
+  <p class="muted">The three default planes (XY, XZ, YZ) are handed to you in every new document. Everything else
+  is a plane you <i>build</i> from existing geometry.</p>
+
+  <!-- ============================ DEFAULTS ============================ -->
+  <h2>The three planes you always start with</h2>
+  <div class="grid3">
+    <div class="card"><h3><span class="swatch" style="background:#5b9dff"></span>XY — Top</h3>
+      <p>Horizontal. Looking straight down. Usually the default active plane. Normal = <b>+Z</b>.</p></div>
+    <div class="card"><h3><span class="swatch" style="background:#54d38a"></span>XZ — Front</h3>
+      <p>Vertical, facing you (front↔back). Normal = <b>+Y</b> (in a Y-up world).</p></div>
+    <div class="card"><h3><span class="swatch" style="background:#ffb454"></span>YZ — Right</h3>
+      <p>Vertical, side profile (left↔right). Normal = <b>+X</b>.</p></div>
+  </div>
+  <p class="muted">Axis convention differs per app (Y-up vs Z-up). Frontier's atmosphere profile is Y-up, so use
+  Y-up here unless the modelling core says otherwise.</p>
+
+  <!-- ============================ TYPES ============================ -->
+  <h2>Ways to make a new workplane</h2>
+  <p>Beyond the 3 defaults, you build a plane by <b>referencing existing geometry</b>. These are the standard
+  construction methods (identical set across Fusion 360, SolidWorks, Onshape — only names differ):</p>
+
+  <table>
+    <thead><tr><th style="width:150px">Method</th><th>What you pick</th><th>What it makes</th></tr></thead>
+    <tbody>
+      <tr><td>Offset <span class="t">/ Plane Point</span></td>
+        <td>A plane/face + a <b>distance</b></td>
+        <td>A parallel copy shifted along the normal by that distance. The workhorse.</td></tr>
+      <tr><td>At Angle <span class="t">/ Line Angle</span></td>
+        <td>An <b>edge/axis</b> to pivot on + a plane + an <b>angle</b></td>
+        <td>A plane rotated about the edge — for chamfered/slanted faces.</td></tr>
+      <tr><td>Three Point</td>
+        <td>Three <b>points/vertices</b></td>
+        <td>The unique plane through all three.</td></tr>
+      <tr><td>Mid Plane <span class="t">/ Midplane</span></td>
+        <td>Two parallel faces/planes</td>
+        <td>A plane centred exactly between them (symmetry).</td></tr>
+      <tr><td>Tangent</td>
+        <td>A <b>cylindrical/curved face</b> + a point or reference plane</td>
+        <td>A flat plane touching the curve — to sketch onto a round body.</td></tr>
+      <tr><td>Point &amp; Normal <span class="t">/ Curve Point</span></td>
+        <td>A <b>point</b> (origin) + a <b>line/curve</b> (normal)</td>
+        <td>Plane through the point, perpendicular to the line/tangent — for sweeps along a path.</td></tr>
+      <tr><td>On a Face</td>
+        <td>Any existing <b>planar face</b> of a solid</td>
+        <td>Not a new plane — you just sketch directly on the model face.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================ SETTINGS ============================ -->
+  <h2>Properties &amp; settings you'd expose</h2>
+  <p>Split into <b>definition</b> (what the plane <i>is</i> — parametric, re-solves when geometry moves) and
+  <b>display</b> (how it looks in the viewport). This is the settings menu you'd build for Frontier.</p>
+
+  <h3>Definition (parametric)</h3>
+  <table>
+    <thead><tr><th style="width:170px">Setting</th><th>Type</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Method</td><td class="t">enum</td><td>Offset · Angle · 3-Point · Midplane · Tangent · Point-Normal · On-Face</td></tr>
+      <tr><td>Reference(s)</td><td class="t">pick set</td><td>The face/edge/point(s) the plane is anchored to. Deleting these breaks the plane.</td></tr>
+      <tr><td>Offset distance</td><td class="t">length</td><td>Offset method. Can be negative or driven by a parameter/equation.</td></tr>
+      <tr><td>Angle</td><td class="t">angle</td><td>Angle method. Degrees, ± about the pivot edge.</td></tr>
+      <tr><td>Flip normal</td><td class="t">bool</td><td>Reverses which side is "up" — flips extrude direction &amp; sketch handedness.</td></tr>
+      <tr><td>Flip alignment</td><td class="t">bool</td><td>Midplane/parallel case: swaps which reference the plane aligns to.</td></tr>
+      <tr><td>Local origin / axes</td><td class="t">transform</td><td>Where the 2D <code>(u,v)</code> origin sits and how U/V point — sets what "horizontal" means to the sketch.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Display (viewport only, non-parametric)</h3>
+  <table>
+    <thead><tr><th style="width:170px">Setting</th><th>Type</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Visible</td><td class="t">bool</td><td>Show/hide this one plane. Global "hide all planes" is <span class="kbd">P</span> in Onshape.</td></tr>
+      <tr><td>Size / extent</td><td class="t">length</td><td>Planes are infinite; you just draw a finite rectangle to click on. Auto-fit or manual.</td></tr>
+      <tr><td>Colour / opacity</td><td class="t">rgba</td><td>Tint + translucency of the sheet.</td></tr>
+      <tr><td>Grid on plane</td><td class="t">bool + spacing</td><td>Snap grid drawn <i>on</i> the plane, with a spacing (e.g. 10 mm) and subdivisions.</td></tr>
+      <tr><td>Snap to grid</td><td class="t">bool</td><td>Whether the cursor snaps to grid intersections while sketching.</td></tr>
+      <tr><td>Lock plane</td><td class="t">bool</td><td>Freeze the active sketch plane so the cursor can't wander onto another face (<span class="kbd">F3</span> in SolidWorks).</td></tr>
+      <tr><td>Section view</td><td class="t">action</td><td>Use the plane to slice the model and see inside.</td></tr>
+      <tr><td>Name</td><td class="t">text</td><td>Appears in the feature tree / outliner.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================ WORKFLOW ============================ -->
+  <h2>The workflow it fits into</h2>
+  <ol class="steps">
+    <li>Pick or build a <b>workplane</b>.</li>
+    <li><b>Start a sketch</b> on it — the view snaps flat to it, the sketch grid appears.</li>
+    <li>Draw 2D geometry + add <b>constraints/dimensions</b>.</li>
+    <li>Finish the sketch, then <b>Extrude / Revolve / Sweep</b> along (or about) the plane's normal.</li>
+    <li>Sketch on a <b>face of the new solid</b>, or build another workplane, and repeat.</li>
+  </ol>
+
+  <div class="note">
+    <b>For Frontier specifically:</b> you have no plane concept yet — this is greenfield. Minimum first cut =
+    the 3 default planes + <b>Offset</b> + <b>On-Face</b>, each carrying an origin, a normal, and a grid.
+    Everything else (Angle, 3-Point, Tangent…) is additive later. Keep the plane <b>parametric</b> (store the
+    method + references, re-solve the transform) so it moves when its host geometry moves — matching your
+    parametric-authoring direction.
+  </div>
+
+  <p class="src">Sources:
+    <a href="https://cad.onshape.com/help/Content/PartStudio/plane.htm">Onshape — Plane feature (all 8 types + inputs)</a> ·
+    <a href="https://www.onshape.com/en/resource-center/tech-tips/create-construction-planes">Onshape Tech Tip — construction planes</a> ·
+    <a href="https://thefusionessentials.com/using-construction-planes-in-fusion-360-8-kinds-of-construction-planes/">Fusion 360 — 8 kinds of construction planes</a> ·
+    <a href="https://www.cad-elearning.com/fusion-360/frequent-question-how-to-create-plane-in-fusion-360/">Fusion 360 — creating a plane</a>.
+    (SolidWorks <span class="kbd">F3</span> plane-lock is the standard sketch-plane lock shortcut.)
+  </p>
+
+</div>
+
+<script>
+/* ---- tiny hand-rolled 3D: rotate points, project, draw. No libs. ---- */
+const svg = document.getElementById('svg');
+const NS = 'http://www.w3.org/2000/svg';
+let yaw = -0.7, pitch = -0.45;         // camera angles (radians)
+let plane = 'XY', showNormal = true, showGrid = true;
+const CX = 450, CY = 190, SCALE = 2.05, DIST = 900;
+
+function rot(p){
+  // yaw about Y, then pitch about X
+  let [x,y,z] = p;
+  let cx=Math.cos(yaw), sx=Math.sin(yaw);
+  let x1 = x*cx + z*sx, z1 = -x*sx + z*cx, y1 = y;
+  let cp=Math.cos(pitch), sp=Math.sin(pitch);
+  let y2 = y1*cp - z1*sp, z2 = y1*sp + z1*cp;
+  return [x1, y2, z2];
+}
+function proj(p){
+  const [x,y,z] = rot(p);
+  const f = DIST / (DIST + z + 260);
+  return [CX + x*SCALE*f, CY - y*SCALE*f, z];   // return z for depth sort
+}
+function line(a,b,stroke,w,dash){
+  const A=proj(a),B=proj(b);
+  const l=document.createElementNS(NS,'line');
+  l.setAttribute('x1',A[0]);l.setAttribute('y1',A[1]);
+  l.setAttribute('x2',B[0]);l.setAttribute('y2',B[1]);
+  l.setAttribute('stroke',stroke);l.setAttribute('stroke-width',w||1);
+  if(dash)l.setAttribute('stroke-dasharray',dash);
+  l.dataset.z = (A[2]+B[2])/2;
+  return l;
+}
+function poly(pts,fill,stroke){
+  const P=pts.map(proj);
+  const el=document.createElementNS(NS,'polygon');
+  el.setAttribute('points',P.map(p=>p[0]+','+p[1]).join(' '));
+  el.setAttribute('fill',fill);el.setAttribute('stroke',stroke||'none');
+  el.setAttribute('stroke-width',1.5);
+  el.dataset.z = P.reduce((s,p)=>s+p[2],0)/P.length;
+  return el;
+}
+function label(p,txt,col){
+  const P=proj(p);
+  const t=document.createElementNS(NS,'text');
+  t.setAttribute('x',P[0]);t.setAttribute('y',P[1]);
+  t.setAttribute('fill',col);t.setAttribute('font-size','13');
+  t.setAttribute('font-family','ui-monospace,monospace');
+  t.textContent=txt;t.dataset.z=P[2]+5;
+  return t;
+}
+
+// plane definition -> a transform mapping local (u,v) into world + a normal
+function planeDef(name){
+  const S=70;
+  switch(name){
+    case 'XY': return {o:[0,0,0], u:[1,0,0], v:[0,0,1], n:[0,1,0], col:'#5b9dff'}; // horizontal (top)
+    case 'XZ': return {o:[0,0,0], u:[1,0,0], v:[0,1,0], n:[0,0,1], col:'#54d38a'}; // front
+    case 'YZ': return {o:[0,0,0], u:[0,0,1], v:[0,1,0], n:[1,0,0], col:'#ffb454'}; // right
+    case 'OFFSET': return {o:[0,60,0], u:[1,0,0], v:[0,0,1], n:[0,1,0], col:'#8b9bff'};
+    case 'ANGLE': {
+      const a=35*Math.PI/180;
+      return {o:[0,0,0], u:[1,0,0], v:[0,Math.sin(a),Math.cos(a)], n:[0,Math.cos(a),-Math.sin(a)], col:'#c98bff'};
+    }
+  }
+}
+const add=(a,b,s)=>[a[0]+b[0]*s,a[1]+b[1]*s,a[2]+b[2]*s];
+
+function build(){
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const items=[];
+  const AX=120;
+  // world axes
+  items.push(line([-AX,0,0],[AX,0,0],'#3a4152',1));
+  items.push(line([0,-AX,0],[0,AX,0],'#3a4152',1));
+  items.push(line([0,0,-AX],[0,0,AX],'#3a4152',1));
+  items.push(label([AX+6,0,0],'X','#6b7482'));
+  items.push(label([0,AX+8,0],'Y','#6b7482'));
+  items.push(label([0,0,AX+6],'Z','#6b7482'));
+
+  const d=planeDef(plane), S=80;
+  const c=[[-S,-S],[S,-S],[S,S],[-S,S]].map(([a,b])=>{
+    let p=d.o.slice(); p=add(p,d.u,a); p=add(p,d.v,b); return p;
+  });
+  // the plane sheet
+  items.push(poly(c, plane==='XY'?'rgba(91,157,255,.16)':
+                    plane==='XZ'?'rgba(84,211,138,.16)':
+                    plane==='YZ'?'rgba(255,180,84,.16)':'rgba(139,155,255,.16)', d.col));
+  // grid on the plane
+  if(showGrid){
+    for(let i=-3;i<=3;i++){
+      const t=i*S/3;
+      items.push(line(add(add(d.o,d.u,t),d.v,-S), add(add(d.o,d.u,t),d.v,S), d.col, .5, '2 3'));
+      items.push(line(add(add(d.o,d.v,t),d.u,-S), add(add(d.o,d.v,t),d.u,S), d.col, .5, '2 3'));
+    }
+  }
+  // normal arrow
+  if(showNormal){
+    const base=d.o, tip=add(d.o,d.n,70);
+    items.push(line(base,tip,'#ffb454',2.5));
+    // arrowhead
+    const back=add(tip,d.n,-14);
+    items.push(line(tip,add(back,d.u,7),'#ffb454',2.5));
+    items.push(line(tip,add(back,d.u,-7),'#ffb454',2.5));
+    items.push(label(add(tip,d.n,10),'normal','#ffb454'));
+  }
+  // a little sketch drawn ON the plane (a circle + a rectangle) to show "you draw here"
+  const cyc=[];
+  for(let k=0;k<=24;k++){const a=k/24*Math.PI*2; cyc.push(add(add(d.o,d.u,Math.cos(a)*28+ -30),d.v,Math.sin(a)*28));}
+  for(let k=0;k<cyc.length-1;k++) items.push(line(cyc[k],cyc[k+1],'#e7ebf2',1.6));
+  const r=[[20,-24],[64,-24],[64,24],[20,24],[20,-24]].map(([a,b])=>add(add(d.o,d.u,a),d.v,b));
+  for(let k=0;k<r.length-1;k++) items.push(line(r[k],r[k+1],'#e7ebf2',1.6));
+
+  // depth sort then append
+  items.sort((a,b)=>a.dataset.z-b.dataset.z);
+  items.forEach(el=>svg.appendChild(el));
+}
+
+// interaction
+let drag=false,lx=0,ly=0;
+const stage=document.getElementById('stage');
+svg.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;stage.classList.add('drag');svg.setPointerCapture(e.pointerId);});
+svg.addEventListener('pointermove',e=>{if(!drag)return;yaw+=(e.clientX-lx)*.01;pitch+=(e.clientY-ly)*.01;pitch=Math.max(-1.4,Math.min(1.4,pitch));lx=e.clientX;ly=e.clientY;build();});
+svg.addEventListener('pointerup',e=>{drag=false;stage.classList.remove('drag');});
+
+document.getElementById('planeBtns').addEventListener('click',e=>{
+  const b=e.target.closest('.btn'); if(!b)return;
+  const k=b.dataset.plane;
+  if(k==='normalToggle'){showNormal=!showNormal;document.getElementById('normBtn').textContent='normal: '+(showNormal?'shown':'hidden');build();return;}
+  if(k==='gridToggle'){showGrid=!showGrid;document.getElementById('gridBtn').textContent='grid: '+(showGrid?'shown':'hidden');build();return;}
+  plane=k;
+  [...document.querySelectorAll('#planeBtns .btn')].forEach(x=>{if(x.dataset.plane===k)x.classList.add('on');else if(['XY','XZ','YZ','OFFSET','ANGLE'].includes(x.dataset.plane))x.classList.remove('on');});
+  build();
+});
+build();
+</script>
+</body>
+</html>

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Probe Spawn A — Tile Election (screen-space)</title>
+<style>
+    :root { --ink: #e8e6e1; --dim: #8a8680; --line: #2a2824; --bg: #131211; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+           font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow: hidden; }
+    #stage { position: fixed; inset: 0; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+    #stats { position: fixed; top: 12px; left: 12px; z-index: 10;
+             display: grid; grid-template-columns: auto auto; gap: 1px 14px;
+             background: rgba(14,13,12,.88); border: 1px solid var(--line);
+             padding: 10px 13px; border-radius: 5px; backdrop-filter: blur(7px);
+             font-size: 11.5px; min-width: 214px; }
+    #stats .k { color: var(--dim); }
+    #stats .v { text-align: right; font-variant-numeric: tabular-nums; }
+
+    #panel { position: fixed; top: 12px; right: 12px; z-index: 10; width: 292px;
+             background: rgba(14,13,12,.88); border: 1px solid var(--line);
+             padding: 13px 15px; border-radius: 5px; backdrop-filter: blur(7px); }
+    #panel h1 { margin: 0 0 3px; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; }
+    #panel .sub { color: var(--dim); font-size: 11px; margin-bottom: 12px; line-height: 1.45; }
+    .row { display: grid; grid-template-columns: 1fr auto; align-items: center;
+           gap: 8px; margin-bottom: 7px; font-size: 11.5px; }
+    .row output { color: var(--dim); font-variant-numeric: tabular-nums; }
+    input[type=range] { width: 100%; accent-color: #c8792e; }
+    label.check { display: flex; align-items: center; gap: 7px; font-size: 11.5px;
+                  margin-bottom: 7px; cursor: pointer; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+    .note { color: var(--dim); font-size: 10.5px; line-height: 1.5; }
+    .warn { color: #d98b45; }
+    button { width: 100%; background: #1e1c1a; color: var(--ink);
+             border: 1px solid var(--line); padding: 7px; border-radius: 4px;
+             font: inherit; font-size: 11.5px; cursor: pointer; margin-top: 4px; }
+    button:hover { background: #272421; }
+    #hint { position: fixed; bottom: 10px; left: 12px; color: var(--dim); font-size: 10.5px; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="view"></canvas></div>
+<div id="stats"></div>
+
+<div id="panel">
+    <h1>A · Tile Election</h1>
+    <div class="sub">The pipeline as it stands: an 8&times;8 pixel tile votes, one lane wins, one probe per tile per frame.</div>
+
+    <label class="check"><input type="checkbox" id="uncap"> Append buffer (lift 1/tile cap)</label>
+    <label class="check"><input type="checkbox" id="areaWeight"> Area-correct throttle (dist&sup2;)</label>
+    <label class="check"><input type="checkbox" id="showTiles"> Show tile grid</label>
+    <label class="check"><input type="checkbox" id="showProbes" checked> Show probes</label>
+
+    <hr>
+    <div class="row"><span>Tile size</span><output id="tileOut">8 px</output></div>
+    <input type="range" id="tile" min="4" max="32" step="4" value="8">
+
+    <div class="row"><span>Probe radius</span><output id="radOut">0.30</output></div>
+    <input type="range" id="rad" min="0.10" max="0.90" step="0.02" value="0.30">
+
+    <div class="row"><span>Density &times;</span><output id="densOut">1.0</output></div>
+    <input type="range" id="dens" min="0.1" max="24" step="0.1" value="1.0">
+
+    <div class="row"><span>Pool capacity</span><output id="capOut">8192</output></div>
+    <input type="range" id="cap" min="512" max="24576" step="512" value="8192">
+
+    <hr>
+    <div class="note" id="diag"></div>
+    <button id="reset">Reset probes</button>
+</div>
+
+<div id="hint">drag &middot; orbit &nbsp;|&nbsp; wheel &middot; zoom</div>
+
+<script type="module">
+import {
+    LoadObj, BuildScene, CreateCamera, CameraBasis, ProjectPoint, VisibilityBuffer,
+    StatsOverlay, FormatBytes, Sub, Dot, Length, Normalise,
+} from './SharedScene.js';
+
+// =============================================================================
+// STRATEGY A — screen-space tile election, transcribed from
+// SurfelSpawnRequest.comp + SurfelAllocate.comp.
+//
+// The shape of the real pass is preserved exactly, because the shape IS the
+// problem being demonstrated:
+//   * one workgroup owns an 8x8 pixel tile
+//   * every lane measures coverage in ITS OWN grid cell only
+//   * passing lanes vote; atomicMin elects the least-covered lane
+//   * the winner writes ONE request; allocate consumes one per tile
+//
+// The two checkboxes are the fixes I proposed, so you can watch each one:
+//   "Append buffer"  -> every passing lane emits, not just the tile winner
+//   "Area-correct"   -> replaces dist/64 with dist^2 (near field densifies)
+// =============================================================================
+
+const Canvas = document.getElementById('view');
+const Context = Canvas.getContext('2d', { alpha: false });
+const Overlay = new StatsOverlay(document.getElementById('stats'));
+
+const Camera = CreateCamera();
+let Scene = null, Visibility = null, Pixels = null;
+let RenderWidth = 0, RenderHeight = 0;
+
+// ------------------------------------------------------------ the probe pool
+const GRID_CELL = 0.62;                 // world-space hash cell edge
+const PER_CELL_CAP = 24;                // g_SurfelPerCellCap analogue
+const NORMAL_SQUISH = 2.0;              // SURFEL_NORMAL_DIRECTION_SQUISH
+const RADIUS_OVERSCALE = 2.0;           // SURFEL_RADIUS_OVERSCALE
+
+let Probes = [];                        // {World, Normal, Colour, Age, Frame}
+let CellMap = new Map();                // hash -> probe index array
+let FrameIndex = 0;
+let SpawnedThisFrame = 0, RejectedFull = 0, VotesThisFrame = 0, RequestsThisFrame = 0;
+
+const Settings = {
+    Uncap: false, AreaWeight: false, ShowTiles: false, ShowProbes: true,
+    TileSize: 8, Radius: 0.30, Density: 1.0, Capacity: 8192,
+};
+
+function CellHash(World)
+{
+    const X = Math.floor(World[0] / GRID_CELL);
+    const Y = Math.floor(World[1] / GRID_CELL);
+    const Z = Math.floor(World[2] / GRID_CELL);
+    return `${X},${Y},${Z}`;
+}
+
+function RebuildCellMap()
+{
+    CellMap = new Map();
+    for (let I = 0; I < Probes.length; ++I)
+    {
+        const Key = CellHash(Probes[I].World);
+        let Bucket = CellMap.get(Key);
+        if (!Bucket) { Bucket = []; CellMap.set(Key, Bucket); }
+        Bucket.push(I);
+    }
+}
+
+// The coverage measurement, 1:1 with SurfelSpawnRequest.comp:223-246.
+// NOTE it reads ONE cell — this is the cell-boundary blindness I flagged.
+function MeasureCoverage(World, Normal)
+{
+    const Bucket = CellMap.get(CellHash(World));
+    let Total = 0, Scoring = 0, Highest = 0, Second = 0, Count = 0;
+    if (Bucket)
+    {
+        Count = Bucket.length;
+        for (const Index of Bucket)
+        {
+            const Probe = Probes[Index];
+            const Offset = Sub(World, Probe.World);
+            const Distance = Length(Offset);
+            const AlignPenalty = Math.abs(Dot(Offset, Probe.Normal)) * NORMAL_SQUISH;
+            const Mahalanobis = Distance * (1.0 + AlignPenalty);
+            const DotNormal = Math.max(Dot(Probe.Normal, Normal), 0.0);
+
+            const Weight = SmoothStep(Settings.Radius * RADIUS_OVERSCALE, 0.0, Mahalanobis) * DotNormal;
+            const Score  = SmoothStep(Settings.Radius, 0.0, Mahalanobis) * DotNormal;
+            Total += Weight; Scoring += Score;
+            if (Weight > Highest) { Second = Highest; Highest = Weight; }
+            else if (Weight > Second) { Second = Weight; }
+        }
+    }
+    return { Total, Scoring, Second, Count };
+}
+
+function SmoothStep(Edge0, Edge1, X)
+{
+    const T = Math.min(1, Math.max(0, (X - Edge0) / (Edge1 - Edge0)));
+    return T * T * (3 - 2 * T);
+}
+
+function HashCombine(A, B)
+{
+    let H = (A * 747796405 + 2891336453) >>> 0;
+    H = (((H >>> ((H >>> 28) + 4)) ^ H) * 277803737) >>> 0;
+    H = (H ^ (B + 0x9E3779B9 + (H << 6) + (H >>> 2))) >>> 0;
+    return H >>> 0;
+}
+
+// ------------------------------------------------------------- the spawn pass
+function RunSpawnPass(Basis)
+{
+    SpawnedThisFrame = 0; RejectedFull = 0; VotesThisFrame = 0; RequestsThisFrame = 0;
+    const Tile = Settings.TileSize;
+    const TilesX = Math.ceil(RenderWidth / Tile);
+    const TilesY = Math.ceil(RenderHeight / Tile);
+    const Requests = [];
+
+    for (let Ty = 0; Ty < TilesY; ++Ty)
+    for (let Tx = 0; Tx < TilesX; ++Tx)
+    {
+        // Per-tile election state — the shared TileMinVote of the real shader.
+        let BestScore = Infinity, BestHit = null;
+
+        for (let Ly = 0; Ly < Tile; ++Ly)
+        for (let Lx = 0; Lx < Tile; ++Lx)
+        {
+            const X = Tx * Tile + Lx, Y = Ty * Tile + Ly;
+            if (X >= RenderWidth || Y >= RenderHeight) continue;
+
+            const Hit = Visibility.Reconstruct(X, Y, Scene.WorldTriangles, Basis, Camera);
+            if (!Hit) continue;
+
+            const Cover = MeasureCoverage(Hit.World, Hit.Normal);
+
+            // The gate, SurfelSpawnRequest.comp:283.
+            const GateCoverage = Cover.Second < 0.4 && Cover.Scoring < 0.1 && Cover.Count < PER_CELL_CAP;
+            if (!GateCoverage) continue;
+
+            // The throttle, :273-281. Baseline dist/64 makes NEAR pixels spawn
+            // LESS; the area-correct option flips it to scale with world area.
+            const Distance = Length(Sub(Hit.World, Basis.Eye));
+            const DepthWeight = Settings.AreaWeight
+                ? Math.min(4.0, (Distance * Distance) / 900.0)
+                : Distance / 64.0;
+            const Probability = 5000.0 * Settings.Density * DepthWeight / (RenderWidth * RenderHeight);
+            const Seed = HashCombine(HashCombine(X, Y), FrameIndex);
+            const Random = (Seed & 0x00FFFFFF) / 0x01000000;
+            if (Random >= Probability) continue;
+
+            VotesThisFrame++;
+
+            if (Settings.Uncap)
+            {
+                // Append-buffer form: every passing lane emits its own request.
+                Requests.push(Hit);
+            }
+            else if (Cover.Total < BestScore)
+            {
+                // atomicMin election: least-covered lane wins the whole tile.
+                BestScore = Cover.Total; BestHit = Hit;
+            }
+        }
+
+        if (!Settings.Uncap && BestHit) Requests.push(BestHit);
+    }
+
+    RequestsThisFrame = Requests.length;
+
+    // ---- allocate: pop a pool slot per request, roll back on overflow ----
+    for (const Request of Requests)
+    {
+        if (Probes.length >= Settings.Capacity) { RejectedFull++; continue; }
+        Probes.push({
+            World: Request.World, Normal: Request.Normal,
+            Colour: Request.Colour, Age: 0, Frame: FrameIndex,
+        });
+        SpawnedThisFrame++;
+    }
+    if (SpawnedThisFrame > 0) RebuildCellMap();
+    for (const Probe of Probes) Probe.Age++;
+}
+
+// ------------------------------------------------------------------ rendering
+function DrawFrame()
+{
+    Overlay.BeginFrame();
+    const Basis = CameraBasis(Camera);
+
+    Visibility.Render(Scene.WorldTriangles, Basis, Camera);
+    RunSpawnPass(Basis);
+
+    // Composite the visibility buffer to RGBA.
+    const Data = Pixels.data;
+    for (let Slot = 0; Slot < RenderWidth * RenderHeight; ++Slot)
+    {
+        const Id = Visibility.Identity[Slot];
+        const Base = Slot * 4;
+        if (Id < 0)
+        {
+            Data[Base] = 19; Data[Base + 1] = 18; Data[Base + 2] = 17; Data[Base + 3] = 255;
+            continue;
+        }
+        const Tri = Scene.WorldTriangles[Id];
+        const Shade = Visibility.Shade[Slot] * 0.34;   // dim, so probes read clearly
+        Data[Base]     = Math.min(255, Tri.Colour[0] * 255 * Shade + 26);
+        Data[Base + 1] = Math.min(255, Tri.Colour[1] * 255 * Shade + 25);
+        Data[Base + 2] = Math.min(255, Tri.Colour[2] * 255 * Shade + 24);
+        Data[Base + 3] = 255;
+    }
+    Context.putImageData(Pixels, 0, 0);
+
+    if (Settings.ShowTiles)
+    {
+        Context.strokeStyle = 'rgba(200,120,46,.19)';
+        Context.lineWidth = 1;
+        Context.beginPath();
+        for (let X = 0; X <= RenderWidth; X += Settings.TileSize) { Context.moveTo(X, 0); Context.lineTo(X, RenderHeight); }
+        for (let Y = 0; Y <= RenderHeight; Y += Settings.TileSize) { Context.moveTo(0, Y); Context.lineTo(RenderWidth, Y); }
+        Context.stroke();
+    }
+
+    if (Settings.ShowProbes) DrawProbes(Basis);
+
+    const PoolBytes = Settings.Capacity * 32;                        // stride-32 SurfelRecord
+    const TileCount = Math.ceil(RenderWidth / Settings.TileSize) * Math.ceil(RenderHeight / Settings.TileSize);
+    const TileBytes = TileCount * (4 + 32);                          // TileAlloc + 2x vec4 candidate
+    const VisBytes  = RenderWidth * RenderHeight * 8;
+
+    Overlay.Publish({
+        'Strategy': 'tile-elect',
+        'Probes': Probes.length.toLocaleString() + ' / ' + Settings.Capacity.toLocaleString(),
+        'Fill': (100 * Probes.length / Settings.Capacity).toFixed(1) + '%',
+        'Votes/frame': VotesThisFrame.toLocaleString(),
+        'Requests': RequestsThisFrame.toLocaleString(),
+        'Spawned': SpawnedThisFrame.toLocaleString(),
+        'Pool full': RejectedFull.toLocaleString(),
+        'Tiles': TileCount.toLocaleString(),
+        'VRAM pool': FormatBytes(PoolBytes),
+        'VRAM tiles': FormatBytes(TileBytes),
+        'VRAM vis': FormatBytes(VisBytes),
+        'Resolution': RenderWidth + '×' + RenderHeight,
+    });
+
+    const Loss = VotesThisFrame - RequestsThisFrame;
+    document.getElementById('diag').innerHTML = Settings.Uncap
+        ? `Append buffer on. Every passing lane emits &mdash; requests now track votes.`
+        : `<span class="warn">${Loss.toLocaleString()} votes discarded this frame</span> by the one-per-tile cap. ` +
+          `${VotesThisFrame.toLocaleString()} lanes passed the gate; only ${RequestsThisFrame.toLocaleString()} became probes.`;
+
+    FrameIndex++;
+    requestAnimationFrame(DrawFrame);
+}
+
+function DrawProbes(Basis)
+{
+    // Painter's order, far to near, so nearer probes sit on top.
+    const Visible = [];
+    for (const Probe of Probes)
+    {
+        if (Dot(Probe.Normal, Sub(Basis.Eye, Probe.World)) <= 0) continue;   // backfacing
+        const Point = ProjectPoint(Probe.World, Basis, Camera, RenderWidth, RenderHeight);
+        if (!Point) continue;
+        Visible.push({ Probe, Point });
+    }
+    Visible.sort((A, B) => B.Point.Depth - A.Point.Depth);
+
+    for (const { Probe, Point } of Visible)
+    {
+        // Screen radius from the world radius at that depth.
+        const HalfHeight = Math.tan(Camera.Fov * 0.5);
+        const PixelRadius = Math.max(1.1,
+            (Settings.Radius / (Point.Depth * HalfHeight)) * (RenderHeight * 0.5));
+        const Fade = Math.min(1, Probe.Age / 8);   // fade-in, so spawning is visible
+        const [R, G, B] = Probe.Colour;
+        Context.beginPath();
+        Context.arc(Point.X, Point.Y, PixelRadius, 0, Math.PI * 2);
+        Context.fillStyle = `rgba(${R*255|0},${G*255|0},${B*255|0},${0.30*Fade})`;
+        Context.fill();
+        Context.strokeStyle = `rgba(255,246,232,${0.72*Fade})`;
+        Context.lineWidth = 1;
+        Context.stroke();
+    }
+}
+
+// ----------------------------------------------------------------- interaction
+function Resize()
+{
+    const Scale = 0.5;   // half-res visibility buffer keeps the CPU raster honest
+    RenderWidth  = Math.max(160, Math.floor(window.innerWidth  * Scale));
+    RenderHeight = Math.max(120, Math.floor(window.innerHeight * Scale));
+    Canvas.width = RenderWidth; Canvas.height = RenderHeight;
+    Visibility = new VisibilityBuffer(RenderWidth, RenderHeight);
+    Pixels = Context.createImageData(RenderWidth, RenderHeight);
+}
+window.addEventListener('resize', Resize);
+
+let Dragging = false, LastX = 0, LastY = 0;
+Canvas.addEventListener('pointerdown', E => { Dragging = true; LastX = E.clientX; LastY = E.clientY; });
+window.addEventListener('pointerup', () => Dragging = false);
+window.addEventListener('pointermove', E =>
+{
+    if (!Dragging) return;
+    Camera.Yaw   += (E.clientX - LastX) * 0.006;
+    Camera.Pitch  = Math.max(-1.4, Math.min(1.4, Camera.Pitch - (E.clientY - LastY) * 0.006));
+    LastX = E.clientX; LastY = E.clientY;
+});
+Canvas.addEventListener('wheel', E =>
+{
+    E.preventDefault();
+    Camera.Distance = Math.max(3, Math.min(30, Camera.Distance * (1 + Math.sign(E.deltaY) * 0.08)));
+}, { passive: false });
+
+function Bind(Id, Key, Format, Transform = Number)
+{
+    const Input = document.getElementById(Id);
+    const Out = document.getElementById(Id + 'Out');
+    const Apply = () =>
+    {
+        Settings[Key] = Transform(Input.value);
+        if (Out) Out.textContent = Format(Settings[Key]);
+    };
+    Input.addEventListener('input', Apply); Apply();
+}
+Bind('tile', 'TileSize', V => V + ' px');
+Bind('rad',  'Radius',   V => V.toFixed(2));
+Bind('dens', 'Density',  V => V.toFixed(1) + '×');
+Bind('cap',  'Capacity', V => V.toLocaleString());
+
+for (const [Id, Key] of [['uncap','Uncap'],['areaWeight','AreaWeight'],['showTiles','ShowTiles'],['showProbes','ShowProbes']])
+{
+    const Box = document.getElementById(Id);
+    Box.addEventListener('change', () => Settings[Key] = Box.checked);
+    Settings[Key] = Box.checked;
+}
+document.getElementById('reset').addEventListener('click', () =>
+{
+    Probes = []; RebuildCellMap();
+});
+
+// --------------------------------------------------------------------- startup
+const Mesh = await LoadObj('./Suzzane.obj');
+Scene = BuildScene(Mesh);
+Resize();
+RebuildCellMap();
+requestAnimationFrame(DrawFrame);
+</script>
+</body>
+</html>

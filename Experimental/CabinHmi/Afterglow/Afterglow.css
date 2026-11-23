@@ -1,0 +1,286 @@
+/* AFTERGLOW — CABIN HMI PROTOTYPE B
+   🧩 Ambient panoramic display: frosted lilac glass over a full-bleed dusk scene, thin oversized numerals,
+      round planet widgets, a floating climate bar. Accent follows the drive mood (--Accent). Fixed 1600 × 900. */
+
+.Afterglow {
+    --Ink:      #fbf7ff;
+    --InkSoft:  rgba(251, 247, 255, 0.72);
+    --InkDim:   rgba(251, 247, 255, 0.64);
+    --Glass:    rgba(38, 26, 58, 0.34);
+    --GlassHi:  rgba(255, 255, 255, 0.10);
+    --Edge:     rgba(255, 255, 255, 0.16);
+    --Accent:   #ffc9a8;
+    --AccentRGB: 255, 201, 168;
+    width: 1600px; height: 900px;
+    background: #1a1024;
+    color: var(--Ink);
+    font-size: 14px;
+}
+.Afterglow [hidden] { display: none !important; }
+.Veil { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 80% at 50% 0%, transparent 55%, rgba(10, 4, 20, 0.45)), linear-gradient(0deg, rgba(10, 4, 20, 0.55), transparent 26%); transition: background 1200ms; }
+.Afterglow.Resting .Veil { background: radial-gradient(120% 80% at 50% 0%, rgba(5, 2, 12, 0.25) 40%, rgba(5, 2, 12, 0.75)), linear-gradient(0deg, rgba(5, 2, 12, 0.7), transparent 30%); }
+
+.Glass { background: var(--Glass); backdrop-filter: blur(22px) saturate(1.3); -webkit-backdrop-filter: blur(22px) saturate(1.3); border: 1px solid var(--Edge); }
+
+/* ------------------------------------------------------------------ clock */
+.ClockBlock { position: absolute; left: 64px; top: 40px; transition: opacity 600ms, transform 600ms; }
+.BigClock { font-weight: 300; font-size: 112px; line-height: 1; letter-spacing: -0.02em; display: flex; align-items: baseline; text-shadow: 0 2px 30px rgba(255, 190, 220, 0.35); font-variant-numeric: tabular-nums; }
+.BigClock i { font-style: normal; margin: 0 14px; opacity: 0.85; animation: ColonBreath 2s ease-in-out infinite; transform: translateY(-8px); display: inline-block; }
+@keyframes ColonBreath { 50% { opacity: 0.25; } }
+.ClockDate { margin-top: 8px; font-size: 17px; color: var(--InkSoft); letter-spacing: 0.02em; }
+
+.StatusChips { position: absolute; right: 40px; top: 36px; display: flex; gap: 10px; }
+.Chip { height: 38px; border-radius: 19px; padding: 0 14px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--InkSoft); background: var(--Glass); backdrop-filter: blur(16px); border: 1px solid var(--Edge); }
+.Chip svg { width: 18px; height: 18px; fill: var(--InkSoft); }
+.Chip b { font-weight: 500; color: var(--Ink); }
+.Battery .Cell { width: 30px; height: 14px; border-radius: 4px; border: 1.5px solid var(--InkSoft); padding: 1.5px; position: relative; }
+.Battery .Cell::after { content: ''; position: absolute; right: -4px; top: 3px; width: 2px; height: 5px; border-radius: 1px; background: var(--InkSoft); }
+.Battery .Cell i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #9cf2c8, #d6ffe9); transition: width 800ms; width: 78%; }
+.Profile span { width: 24px; height: 24px; margin-left: -8px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 500; color: #2a1838; background: linear-gradient(135deg, #ffd6bd, #e2b6ff); }
+
+/* ------------------------------------------------------------------ planet orbs */
+.Orbs { position: absolute; left: 64px; top: 236px; display: flex; gap: 18px; }
+.Orb { width: 112px; height: 112px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; color: #fff;
+       box-shadow: inset -14px -18px 30px rgba(10, 2, 26, 0.65), inset 6px 8px 18px rgba(255, 255, 255, 0.28), 0 14px 40px rgba(10, 2, 26, 0.45);
+       animation: OrbFloat 6s ease-in-out infinite; transition: transform 300ms cubic-bezier(.3,1.5,.5,1), box-shadow 300ms; }
+.Orb:nth-child(2) { animation-delay: -2s; }
+.Orb:nth-child(3) { animation-delay: -4s; }
+.Orb::before { content: ''; position: absolute; inset: -20%; background: repeating-linear-gradient(-18deg, rgba(255,255,255,0.10) 0 6px, transparent 6px 15px, rgba(0,0,0,0.08) 15px 19px, transparent 19px 30px); animation: OrbSpin 26s linear infinite; }
+.Orb::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22) inset; }
+.Orb > * { position: relative; z-index: 1; }
+.Orb > * { text-shadow: 0 1px 6px rgba(40, 10, 50, 0.55); }
+.Orb small { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.8; }
+.Orb b { font-weight: 300; font-size: 34px; line-height: 1.05; }
+.Orb em { font-style: normal; font-size: 12px; opacity: 0.75; }
+.Orb.Rose  { background: radial-gradient(circle at 34% 30%, #ffd2c2, #e87a8f 48%, #6b2a5c 100%); }
+.Orb.Lilac { background: radial-gradient(circle at 34% 30%, #e6dcff, #9a84e6 48%, #3a2a78 100%); }
+.Orb.Ember { background: radial-gradient(circle at 34% 30%, #ffe8b0, #f2a35a 48%, #7a3420 100%); }
+.Orb:hover { transform: translateY(-4px) scale(1.04); }
+.Orb:active { transform: scale(0.95); }
+@keyframes OrbFloat { 50% { translate: 0 -6px; } }
+@keyframes OrbSpin { to { transform: translateX(30px); } }
+
+/* ------------------------------------------------------------------ mini player */
+.MiniPlayer { position: absolute; left: 64px; top: 640px; width: 372px; height: 84px; border-radius: 26px; padding: 12px; display: flex; align-items: center; gap: 14px; background: var(--Glass); backdrop-filter: blur(22px); border: 1px solid var(--Edge); transition: opacity 420ms, transform 420ms cubic-bezier(.3,1.3,.5,1); }
+.MiniPlayer.Away { opacity: 0; transform: translateY(16px) scale(0.96); pointer-events: none; }
+.Cover { width: 60px; height: 60px; border-radius: 18px; flex: none; overflow: hidden; background: conic-gradient(from 200deg, #ff9fb4, #ffcf9e, #b49cff, #ff9fb4); position: relative; }
+.Cover i, .BigCover > i { position: absolute; inset: 0; background: radial-gradient(circle at 30% 70%, rgba(255,255,255,0.55), transparent 40%), radial-gradient(circle at 75% 25%, rgba(60,20,90,0.55), transparent 50%); }
+.Playing .Cover { animation: CoverPulse 1.1s ease-in-out infinite; }
+@keyframes CoverPulse { 50% { filter: brightness(1.18) saturate(1.2); } }
+.MiniText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.MiniText b { font-weight: 500; font-size: 15px; }
+.MiniText small { color: var(--InkDim); font-size: 12.5px; }
+.MiniBar { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.16); margin-top: 6px; overflow: hidden; }
+.MiniBar i { display: block; height: 100%; width: 32%; background: var(--Ink); border-radius: 2px; }
+.MiniPlay { width: 50px; height: 50px; border-radius: 50%; flex: none; display: grid; place-items: center; background: rgba(255,255,255,0.14); transition: transform 200ms, background 200ms; }
+.MiniPlay:active, .Transport button:active { transform: scale(0.9); }
+.PlayGlyph, .PauseGlyph { width: 22px; height: 22px; fill: var(--Ink); grid-area: 1 / 1; transition: transform 260ms cubic-bezier(.3,1.6,.5,1), opacity 200ms; }
+.PauseGlyph { opacity: 0; transform: scale(0.4) rotate(-40deg); }
+.Playing .PlayGlyph { opacity: 0; transform: scale(0.4) rotate(40deg); }
+.Playing .PauseGlyph { opacity: 1; transform: none; }
+
+/* ------------------------------------------------------------------ speed readout */
+.SpeedReadout { position: absolute; left: 64px; top: 210px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; width: 420px; opacity: 0; transform: translateY(10px); transition: opacity 500ms, transform 500ms; pointer-events: none; }
+.SpeedReadout b { font-weight: 300; font-size: 168px; line-height: 0.9; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; text-shadow: 0 0 40px rgba(var(--AccentRGB), 0.35); }
+.SpeedReadout span { font-size: 22px; color: var(--InkSoft); }
+.SpeedReadout small { flex-basis: 100%; font-size: 15px; color: var(--InkDim); letter-spacing: 0.04em; }
+.Driving .SpeedReadout { opacity: 1; transform: none; }
+.Driving .Orbs, .Driving .MiniPlayer:not(.Away) { opacity: 0; pointer-events: none; transform: translateY(12px); }
+.Orbs { transition: opacity 400ms, transform 400ms; }
+
+/* ------------------------------------------------------------------ menu sheet */
+.Sheet { position: absolute; right: 40px; top: 100px; width: 404px; height: 640px; border-radius: 32px; padding: 30px 30px; overflow: hidden; background: var(--Glass); backdrop-filter: blur(26px) saturate(1.35); -webkit-backdrop-filter: blur(26px) saturate(1.35); border: 1px solid var(--Edge); box-shadow: 0 30px 80px rgba(10, 2, 26, 0.35); }
+.Sheet::before { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(255,255,255,0.12), transparent 40%); pointer-events: none; }
+.Page { position: absolute; inset: 30px; display: flex; flex-direction: column; gap: 18px; opacity: 0; transform: translateY(18px); pointer-events: none; transition: opacity 360ms, transform 480ms cubic-bezier(.2,.9,.3,1); }
+.Page.On { opacity: 1; transform: none; pointer-events: auto; transition-delay: 120ms; }
+.Page h2 { margin: 0; font-weight: 300; font-size: 32px; letter-spacing: -0.01em; }
+.Lead { margin: -10px 0 4px; color: var(--InkDim); font-size: 14px; }
+.Page > * { opacity: 0; transform: translateY(8px); transition: opacity 300ms, transform 400ms cubic-bezier(.2,.9,.3,1); }
+.Page.On > * { opacity: 1; transform: none; }
+.Page.On > :nth-child(2) { transition-delay: 160ms; } .Page.On > :nth-child(3) { transition-delay: 200ms; }
+.Page.On > :nth-child(4) { transition-delay: 240ms; } .Page.On > :nth-child(5) { transition-delay: 280ms; }
+.Page.On > :nth-child(6) { transition-delay: 320ms; } .Page.On > :nth-child(7) { transition-delay: 360ms; }
+
+.Row { display: flex; align-items: center; gap: 14px; min-height: 44px; color: var(--InkSoft); }
+.Row > span { flex: 1; }
+.Row > b { width: 34px; text-align: right; font-weight: 400; color: var(--Ink); font-variant-numeric: tabular-nums; }
+.Toggle { width: 52px; height: 30px; border-radius: 15px; background: rgba(255,255,255,0.16); position: relative; transition: background 260ms; flex: none; }
+.Toggle i { position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.25); transition: transform 320ms cubic-bezier(.3,1.6,.5,1); }
+.Toggle.On { background: rgba(var(--AccentRGB), 0.85); }
+.Toggle.On i { transform: translateX(22px); }
+.Slider { flex: 1.6; height: 30px; position: relative; cursor: pointer; touch-action: none; }
+.Slider::before { content: ''; position: absolute; left: 0; right: 0; top: 13px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.16); }
+.Slider .Fill { position: absolute; left: 0; top: 13px; height: 4px; border-radius: 2px; background: var(--Accent); }
+.Slider .Knob { position: absolute; top: 4px; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.3); transition: transform 200ms; }
+.Slider:active .Knob { transform: scale(1.2); }
+
+.Scenes { display: flex; flex-direction: column; gap: 10px; }
+.SceneCard { display: grid; grid-template-columns: 74px 1fr; grid-template-rows: auto auto; column-gap: 14px; align-items: center; text-align: left; padding: 10px; border-radius: 22px; background: rgba(255,255,255,0.06); border: 1px solid transparent; transition: background 260ms, border-color 260ms, transform 200ms; }
+.SceneCard:hover { background: rgba(255,255,255,0.1); }
+.SceneCard:active { transform: scale(0.98); }
+.SceneCard.On { border-color: rgba(var(--AccentRGB), 0.8); background: rgba(var(--AccentRGB), 0.12); }
+.SceneCard .Thumb { grid-row: 1 / 3; width: 74px; height: 54px; border-radius: 14px; position: relative; overflow: hidden; }
+.SceneCard b { font-weight: 500; font-size: 15px; align-self: end; }
+.SceneCard small { color: var(--InkDim); font-size: 12.5px; align-self: start; }
+.Thumb.Dunes { background: radial-gradient(circle at 70% 30%, #ffe2c6 0 9px, transparent 10px), linear-gradient(180deg, #4b2c6e, #e88aa0 60%, #f6c09a); }
+.Thumb.Dunes::after { content: ''; position: absolute; left: -10%; right: -10%; bottom: -30%; height: 60%; border-radius: 50% 50% 0 0; background: #8a4a6a; }
+.Thumb.Lake  { background: radial-gradient(circle at 28% 32%, #fff 0 6px, transparent 7px), linear-gradient(180deg, #8e86d8, #d6b4e6 52%, #b5a6e8 53%, #6d62b8); }
+.Thumb.Camp  { background: radial-gradient(1px 1px at 20% 20%, #fff, transparent), radial-gradient(1px 1px at 60% 35%, #fff, transparent), radial-gradient(1.5px 1.5px at 80% 15%, #fff, transparent), linear-gradient(180deg, #050a26, #16285a 60%, #2b6c7a); }
+.Thumb.Camp::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 30%; background: #0b1230; clip-path: polygon(0 60%, 25% 10%, 45% 70%, 70% 0, 100% 50%, 100% 100%, 0 100%); }
+
+.Moods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.Moods button { height: 86px; border-radius: 22px; background: rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--InkSoft); border: 1px solid transparent; transition: all 260ms; }
+.Moods button i { width: 26px; height: 26px; border-radius: 50%; transition: transform 400ms cubic-bezier(.3,1.6,.5,1), box-shadow 300ms; }
+.Moods button:nth-child(1) i { background: radial-gradient(circle at 35% 30%, #e1fff4, #7fe0c4); }
+.Moods button:nth-child(2) i { background: radial-gradient(circle at 35% 30%, #f2e8ff, #b39cff); }
+.Moods button:nth-child(3) i { background: radial-gradient(circle at 35% 30%, #ffe6dc, #ff7f8e); }
+.Moods button.On { color: var(--Ink); border-color: rgba(var(--AccentRGB), 0.8); background: rgba(var(--AccentRGB), 0.12); }
+.Moods button.On i { transform: scale(1.18); box-shadow: 0 0 22px rgba(var(--AccentRGB), 0.8); }
+
+.RegenDial { position: relative; height: 150px; }
+.RegenDial svg { width: 240px; display: block; margin: 0 auto; overflow: visible; }
+.RegenDial .Track, .RegenDial .Arc { fill: none; stroke-width: 10; stroke-linecap: round; }
+.RegenDial .Track { stroke: rgba(255,255,255,0.12); }
+.RegenDial .Arc { stroke: var(--Accent); stroke-dasharray: 252; stroke-dashoffset: 84; transition: stroke-dashoffset 600ms cubic-bezier(.3,1.3,.5,1), stroke 600ms; filter: drop-shadow(0 0 6px rgba(var(--AccentRGB), 0.7)); }
+.RegenText { position: absolute; left: 0; right: 0; top: 50px; text-align: center; display: flex; flex-direction: column; }
+.RegenText b { font-weight: 300; font-size: 44px; line-height: 1; }
+.RegenText small { color: var(--InkDim); font-size: 12px; }
+.RegenSteps { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); display: flex; gap: 8px; }
+.RegenSteps button { width: 40px; height: 28px; border-radius: 14px; background: rgba(255,255,255,0.08); font-size: 13px; color: var(--InkSoft); transition: all 220ms; }
+.RegenSteps button.On { background: var(--Ink); color: #2a1838; }
+.Facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.Facts div { padding: 14px 16px; border-radius: 20px; background: rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.Facts small { flex-basis: 100%; color: var(--InkDim); font-size: 12px; }
+.Facts b { font-weight: 300; font-size: 28px; }
+.Facts em { font-style: normal; color: var(--InkDim); font-size: 12px; }
+.Wide { height: 56px; border-radius: 28px; font-size: 15px; background: rgba(255,255,255,0.12); transition: transform 200ms, background 260ms, box-shadow 260ms; margin-top: auto; }
+.Wide.Accent { background: var(--Accent); color: #2a1838; font-weight: 500; box-shadow: 0 10px 30px rgba(var(--AccentRGB), 0.35); }
+.Wide:active { transform: scale(0.97); }
+
+.FanDial { position: relative; width: 220px; height: 220px; margin: 0 auto; touch-action: none; cursor: grab; }
+.FanDial svg { width: 100%; height: 100%; transform: rotate(135deg); }
+.FanDial .Track, .FanDial .Arc { fill: none; stroke-width: 12; stroke-linecap: round; stroke-dasharray: 433.5 578; }
+.FanDial .Track { stroke: rgba(255,255,255,0.12); }
+.FanDial .Arc { stroke: var(--Accent); transition: stroke-dasharray 400ms cubic-bezier(.3,1.3,.5,1); filter: drop-shadow(0 0 8px rgba(var(--AccentRGB), 0.6)); }
+.FanBlades { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -52px 0 0 -32px; }
+.FanBlades svg { width: 100%; height: 100%; fill: var(--InkSoft); transform: none; }
+.FanText { position: absolute; left: 0; right: 0; top: 128px; text-align: center; display: flex; flex-direction: column; }
+.FanText b { font-weight: 300; font-size: 40px; line-height: 1; }
+.FanText small { color: var(--InkDim); font-size: 12px; }
+.Segment { position: relative; display: flex; height: 46px; border-radius: 23px; padding: 4px; background: rgba(255,255,255,0.08); }
+.Segment i { position: absolute; top: 4px; left: 4px; height: 38px; border-radius: 19px; background: rgba(255,255,255,0.9); transition: transform 420ms cubic-bezier(.3,1.4,.5,1), width 420ms; }
+.Segment button { flex: 1; position: relative; z-index: 1; color: var(--InkSoft); font-size: 14px; transition: color 300ms; }
+.Segment button.On { color: #2a1838; font-weight: 500; }
+
+.RestRing { position: relative; width: 240px; height: 240px; margin: 0 auto; }
+.RestRing svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+.RestRing .Track { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 6; }
+.RestRing .Arc { fill: none; stroke: var(--Ink); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 653.5; stroke-dashoffset: 0; filter: drop-shadow(0 0 8px rgba(255,255,255,0.6)); }
+.RestRing .Breath { fill: rgba(var(--AccentRGB), 0.10); stroke: rgba(var(--AccentRGB), 0.4); stroke-width: 1; transform-origin: 120px 120px; }
+.Resting .RestRing .Breath { animation: Breathe 8s ease-in-out infinite; }
+@keyframes Breathe { 0%, 100% { transform: scale(0.82); opacity: 0.6; } 45% { transform: scale(1.08); opacity: 1; } }
+.RestText { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.RestText b { font-weight: 300; font-size: 54px; font-variant-numeric: tabular-nums; }
+.RestText small { color: var(--InkDim); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; }
+.Presets { display: flex; gap: 10px; justify-content: center; }
+.Presets button { width: 80px; height: 40px; border-radius: 20px; background: rgba(255,255,255,0.08); color: var(--InkSoft); transition: all 220ms; }
+.Presets button.On { background: rgba(255,255,255,0.9); color: #2a1838; }
+
+.BigCover { position: relative; height: 196px; border-radius: 26px; overflow: hidden; background: conic-gradient(from 200deg at 40% 60%, #ff9fb4, #ffcf9e, #b49cff, #ff9fb4); }
+.Spectrum { position: absolute; left: 18px; right: 18px; bottom: 16px; height: 70px; display: flex; align-items: flex-end; gap: 4px; }
+.Spectrum i { flex: 1; border-radius: 3px; background: rgba(255,255,255,0.85); height: 8%; transition: height 120ms; }
+.Page[data-page="Media"] .Track { display: flex; flex-direction: column; gap: 2px; }
+.Page[data-page="Media"] .Track b { font-weight: 400; font-size: 22px; }
+.Page[data-page="Media"] .Track small { color: var(--InkDim); font-size: 13px; }
+.Scrub { height: 24px; position: relative; cursor: pointer; margin-top: -6px; touch-action: none; }
+.Scrub::before { content: ''; position: absolute; left: 0; right: 0; top: 10px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.16); }
+.Scrub .Fill { position: absolute; left: 0; top: 10px; height: 4px; border-radius: 2px; background: var(--Ink); }
+.Scrub .Knob { position: absolute; top: 5px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #fff; transition: transform 200ms; }
+.Scrub:hover .Knob { transform: scale(1.3); }
+.Times { display: flex; justify-content: space-between; color: var(--InkDim); font-size: 12px; margin-top: -14px; font-variant-numeric: tabular-nums; }
+.Transport { display: flex; justify-content: center; align-items: center; gap: 26px; }
+.Transport button { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; transition: transform 200ms, background 200ms; }
+.Transport button svg { width: 24px; height: 24px; fill: var(--Ink); }
+.Transport button:hover { background: rgba(255,255,255,0.08); }
+.Transport .Main { width: 68px; height: 68px; background: var(--Ink); }
+.Transport .Main svg { fill: #2a1838; width: 28px; height: 28px; }
+
+/* ------------------------------------------------------------------ climate bar */
+.ClimateBar { position: absolute; left: 24px; right: 24px; bottom: 20px; height: 92px; border-radius: 46px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; background: rgba(28, 18, 44, 0.42); backdrop-filter: blur(26px) saturate(1.3); -webkit-backdrop-filter: blur(26px) saturate(1.3); border: 1px solid var(--Edge); }
+.Zone { display: flex; align-items: center; gap: 8px; width: 420px; }
+.Zone.Right { justify-content: flex-end; }
+.Chevron { width: 46px; height: 46px; border-radius: 50%; font-size: 30px; line-height: 1; color: var(--InkSoft); transition: background 200ms, transform 160ms, color 200ms; }
+.Chevron:hover { background: rgba(255,255,255,0.08); color: var(--Ink); }
+.Chevron:active { transform: scale(0.88); }
+.Temp { width: 116px; text-align: center; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; }
+.Temp b { font-weight: 300; font-size: 40px; line-height: 1; text-align: right; font-variant-numeric: tabular-nums; transition: color 500ms; }
+.Temp em { font-style: normal; font-size: 22px; align-self: start; color: var(--InkSoft); }
+.Temp small { grid-column: 1 / 3; font-size: 11px; color: var(--InkDim); letter-spacing: 0.1em; text-transform: uppercase; }
+.Temp.Warm b { color: #ffc6a2; } .Temp.Cool b { color: #b9dcff; }
+.SeatHeat { width: 64px; height: 56px; border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; margin: 0 8px; background: rgba(255,255,255,0.06); transition: background 260ms; }
+.SeatHeat svg { width: 24px; height: 24px; fill: none; stroke: var(--InkSoft); stroke-width: 1.8; stroke-linecap: round; }
+.SeatHeat span { display: flex; gap: 3px; }
+.SeatHeat span i { width: 10px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.2); transition: background 260ms, box-shadow 260ms; }
+.SeatHeat[data-level="1"] span i:nth-child(1), .SeatHeat[data-level="2"] span i:nth-child(-n+2), .SeatHeat[data-level="3"] span i { background: #ffb07a; box-shadow: 0 0 6px #ff9a5a; }
+.SeatHeat:not([data-level="0"]) { background: rgba(255, 150, 90, 0.14); }
+
+.Dock { position: relative; display: flex; gap: 6px; padding: 6px; border-radius: 36px; background: rgba(255,255,255,0.06); }
+.Dock button { width: 98px; height: 60px; border-radius: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; position: relative; z-index: 1; color: var(--InkSoft); transition: color 300ms; }
+.Dock button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform 380ms cubic-bezier(.3,1.7,.5,1); }
+.Dock button span { font-size: 11.5px; letter-spacing: 0.04em; }
+.Dock button.On { color: #2a1838; }
+.Dock button.On svg { transform: translateY(-1px) scale(1.12); }
+.DockPill { position: absolute; top: 6px; left: 6px; width: 98px; height: 60px; border-radius: 30px; background: var(--Ink); box-shadow: 0 6px 24px rgba(255,255,255,0.25); transition: transform 520ms cubic-bezier(.3,1.35,.45,1); }
+
+.Toast { position: absolute; left: 50%; top: 40px; transform: translate(-50%, -20px); padding: 12px 22px; border-radius: 24px; background: rgba(28, 18, 44, 0.6); backdrop-filter: blur(20px); border: 1px solid var(--Edge); font-size: 14px; opacity: 0; transition: opacity 300ms, transform 400ms cubic-bezier(.3,1.4,.5,1); pointer-events: none; }
+.Toast.Show { opacity: 1; transform: translate(-50%, 0); }
+.Toast b { font-weight: 500; color: var(--Accent); }
+
+.Resting .ClockBlock { transform: scale(1.06); transform-origin: left top; }
+.Resting .Orbs, .Resting .MiniPlayer, .Resting .StatusChips { opacity: 0.25; }
+.StatusChips, .MiniPlayer { transition: opacity 600ms, transform 420ms cubic-bezier(.3,1.3,.5,1); }
+
+/* ------------------------------------------------------------------ dock (7 menus) */
+.Dock button { width: 88px; }
+.DockPill { width: 88px; }
+
+/* ------------------------------------------------------------------ lamp tell-tales */
+.Sheet { transition: opacity 420ms, transform 600ms cubic-bezier(.2,.9,.3,1); }
+
+
+
+.Telltales { position: absolute; left: 50%; top: 40px; transform: translate(-50%, -8px); display: flex; gap: 14px; padding: 9px 16px; border-radius: 22px; background: var(--Glass); backdrop-filter: blur(18px); border: 1px solid var(--Edge); opacity: 0; transition: opacity 400ms, transform 500ms; pointer-events: none; }
+.LightsOn .Telltales { opacity: 1; transform: translate(-50%, 0); }
+.Telltales i { width: 22px; height: 22px; color: rgba(255, 255, 255, 0.22); transition: color 120ms, filter 120ms; }
+.Telltales i.Lit.Mint { color: #9ff0d4; filter: drop-shadow(0 0 5px rgba(159, 240, 212, 0.8)); }
+.Telltales i.Lit.Blue { color: #8fb4ff; filter: drop-shadow(0 0 6px rgba(143, 180, 255, 0.9)); }
+.Telltales i.Lit.Amber { color: #ffb648; filter: drop-shadow(0 0 6px rgba(255, 182, 72, 0.9)); }
+.Telltales i.Lit.Coral { color: #ff6f7d; filter: drop-shadow(0 0 6px rgba(255, 111, 125, 0.9)); }
+.Telltales i[data-telltale="Left"].Lit svg, .Telltales i[data-telltale="Right"].Lit svg { fill: currentColor; }
+[data-glyph] svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; }
+
+/* ------------------------------------------------------------------ lights page */
+.Page.Lights { gap: 12px; }
+.Segment.Beams { height: 64px; border-radius: 22px; }
+.Segment.Beams i { height: 56px; border-radius: 18px; }
+.Segment.Beams button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11.5px; }
+.Segment.Beams button span { width: 22px; height: 22px; }
+.Reach { position: relative; height: 112px; border-radius: 22px; background: rgba(255, 255, 255, 0.06); padding: 4px 0; }
+.Reach svg { width: 100%; height: 104px; display: block; }
+.Reach .Cone { fill: rgba(255, 255, 255, 0.04); stroke: rgba(255, 255, 255, 0.12); stroke-width: 1; transition: fill 500ms, stroke 500ms; }
+.Reach .Cone.Lit { fill: rgba(var(--AccentRGB), 0.3); stroke: rgba(var(--AccentRGB), 0.9); }
+.Reach .Cone.High.Lit { fill: rgba(143, 180, 255, 0.28); stroke: #8fb4ff; }
+.Reach .Cone.Fog.Lit { fill: rgba(255, 233, 184, 0.28); stroke: #ffe9b8; }
+.Reach .Source { fill: #fff; filter: drop-shadow(0 0 6px #fff); }
+.Reach .Mark { fill: var(--InkDim); font-size: 10px; text-anchor: middle; }
+.ReachNote { position: absolute; left: 16px; top: 10px; font-size: 12px; color: var(--InkSoft); }
+.LampRows .Row { min-height: 40px; }
+.RowGlyph { flex: none !important; width: 22px; height: 22px; color: var(--InkSoft); }
+.Signals { display: grid; grid-template-columns: 56px 1fr 56px; gap: 10px; margin-top: auto; }
+.Signals button { height: 52px; border-radius: 26px; background: rgba(255, 255, 255, 0.1); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: var(--Ink); transition: background 260ms, transform 140ms, color 200ms; }
+.Signals button span { width: 22px; height: 22px; }
+.Signals button.On { background: rgba(255, 182, 72, 0.3); color: #ffcf85; }
+.Signals button.On span svg { fill: currentColor; animation: GlowBlink 0.75s steps(1) infinite; }
+.Signals .HazardKey.On { background: rgba(255, 111, 125, 0.35); color: #fff; }
+@keyframes GlowBlink { 50% { opacity: 0.2; } }
+.Signals button:active { transform: scale(0.95); }

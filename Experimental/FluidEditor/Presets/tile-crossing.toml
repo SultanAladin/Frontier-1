@@ -1,0 +1,141 @@
+# Tile Crossing · World Grid — Fluid Studio scene preset (Studio). Static 4 × 1 × 2 tile grid: a smoke source in the first tile is blown clean across every seam by a steady wind, curls round a vortex two tiles downstream and leaves at the far end — the bright box is one tile, the dim outline the whole grid.
+# Converted from the legacy preset object by script; scene fingerprint 545deb5ecd65a9ef (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 9
+Id = "preset-tile-crossing"
+Name = "Tile Crossing · World Grid"
+Family = "Studio"
+Icon = "grid"
+Summary = "Static 4 × 1 × 2 tile grid: a smoke source in the first tile is blown clean across every seam by a steady wind, curls round a vortex two tiles downstream and leaves at the far end — the bright box is one tile, the dim outline the whole grid."
+Boundary = "OpenAll"
+
+[Grid]
+Resolution = [144, 30, 72]
+Size = [3, 2.5, 3]
+MaxCells = 36
+Tiles = [4, 1, 2]
+Follow = "None"
+
+[Render]
+Exposure = 1.1
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.1, ForceResponse = 1.0, PressureIterations = 20, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.25, AmbientTemperature = 0.0, Cooling = 0.3 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.997, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#d9dde3", Absorption = 2.6, Anisotropy = 0.55, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Smoke Source"
+  Shape = "Sphere"
+  Position = [-4.6, -0.7, -1.4]
+  Radius = 0.3
+  Density = 2.0
+  Temperature = 0.5
+  Fuel = 0
+  Velocity = [2, 0.6, 0.4]
+  Jitter = 0.3
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Tailwind"
+  Position = [0, 0, 0]
+  Strength = 1.6
+  Direction = [1, 0, 0.12]
+  Falloff = "Constant"
+  Frequency = 0.3
+  Secondary = 0.4
+
+[[Force]]
+  Type = "VortexColumn"
+  Name = "Mid-field Vortex"
+  Position = [1.5, -0.3, 0.6]
+  Strength = 3.5
+  Radius = 1.6
+  Falloff = "Gaussian"
+  Direction = [0, 1, 0]
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 0.9, 0]
+  Strength = 1.2
+  Radius = 7
+  Falloff = "Plateau"

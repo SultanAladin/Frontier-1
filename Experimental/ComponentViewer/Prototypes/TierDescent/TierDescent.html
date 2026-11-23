@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+    TIER DESCENT — PROTOTYPE 01 (awaiting approval)
+    🧩 Interactive infographic card: how a part sheds triangles tier by tier, which tier the deviation budget
+       elects, and whether material seams survive. Real data: ControlVehicle FCT1 facets run through
+       Shared/GeometryCompile/Engine/ClusterHierarchy.js in the page. Standalone; not wired into either viewer.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype 01 · Tier Descent</title>
+<link rel="stylesheet" href="./TierDescent.css">
+</head>
+<body>
+<main class="Backdrop">
+    <header class="ShowcaseCaption">
+        <span class="CaptionDot"></span>
+        <span>Prototype 01</span>
+        <b>Tier Descent card</b>
+        <span class="CaptionDim">awaiting approval · standalone</span>
+    </header>
+
+    <article class="TierCard" id="TierCard">
+        <!-- ① Heading -->
+        <section class="CardHeading">
+            <div>
+                <h1>Tier Descent</h1>
+                <p data-id="HeadingNote">Cluster tiers · reading facet…</p>
+            </div>
+            <div class="PartChips" data-id="PartChips"></div>
+            <button class="RoundAction" title="Open the tier workspace (not wired in the prototype)" aria-label="Open tier workspace">
+                <svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>
+            </button>
+        </section>
+
+        <!-- ② Readout column -->
+        <section class="ReadoutColumn">
+            <div class="Tile ShedTile">
+                <span class="TileLabel">Triangles shed at elected tier</span>
+                <div class="BigReadout"><span data-id="ShedWhole">0</span><span class="ReadoutFraction" data-id="ShedFraction">.0</span><span class="ReadoutUnit">%</span></div>
+                <div class="ShedFooter">
+                    <span class="TierBadge" data-id="TierBadge">Tier 0</span>
+                    <span class="Dim" data-id="ElectionNote">auto · within budget</span>
+                </div>
+            </div>
+
+            <div class="Tile CompareTile">
+                <div class="CompareColumn">
+                    <span class="TileLabel">Source</span>
+                    <b data-id="SourceCount">0</b>
+                    <div class="CompareBar Hatched" data-id="SourceBar"></div>
+                </div>
+                <div class="CompareColumn">
+                    <span class="TileLabel" data-id="TierLabel">Tier 0</span>
+                    <b data-id="TierCount">0</b>
+                    <div class="CompareBar Solid" data-id="TierBar"><span class="DeltaPill" data-id="DeltaPill">0%</span></div>
+                </div>
+            </div>
+
+            <div class="Tile SeamTile">
+                <div class="SeamHeading">
+                    <span class="TileLabel">Material seams</span>
+                    <div class="Segmented" data-id="SeamMode">
+                        <button data-mode="off">Free</button>
+                        <button data-mode="slide" class="On">Slide</button>
+                        <button data-mode="pin">Pin</button>
+                    </div>
+                </div>
+                <div class="FidelityRow">
+                    <svg class="FidelityRing" viewBox="0 0 84 84">
+                        <circle cx="42" cy="42" r="34" class="RingTrack"/>
+                        <circle cx="42" cy="42" r="34" class="RingArc" data-id="RingArc"/>
+                    </svg>
+                    <div class="FidelityText">
+                        <div class="MidReadout"><span data-id="DriftWhole">0</span><span class="ReadoutFraction" data-id="DriftFraction">.00</span><span class="ReadoutUnit">%</span></div>
+                        <span class="Dim">surface showing the wrong material</span>
+                        <span class="StatusChip" data-id="DriftStatus"><i></i>Faithful</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ③ Silhouette preview -->
+        <section class="PreviewColumn">
+            <div class="PreviewChrome">
+                <div class="Segmented Small" data-id="Shading">
+                    <button data-shading="clusters" class="On">Clusters</button>
+                    <button data-shading="materials">Materials</button>
+                    <button data-shading="clay">Clay</button>
+                </div>
+                <span class="Dim" data-id="PreviewNote">drag to turn</span>
+            </div>
+            <canvas data-id="Preview" class="Preview"></canvas>
+            <div class="Pin" data-id="Pin" hidden>
+                <i></i>
+                <div><b data-id="PinTitle">Cluster</b><small data-id="PinNote"></small></div>
+            </div>
+            <div class="PreviewFooter">
+                <span><b data-id="ClusterCount">0</b> clusters</span>
+                <span><b data-id="BuildTime">0</b> ms build</span>
+                <span><b data-id="TierTotal">0</b> tiers</span>
+            </div>
+        </section>
+
+        <!-- ④ Tier staircase -->
+        <section class="StairColumn">
+            <div class="StairHeading">
+                <span class="TileLabel">Tier staircase</span>
+                <button class="TextAction" data-id="AutoElect">Auto</button>
+            </div>
+            <div class="StairPlot">
+                <svg data-id="Stair" class="Stair" preserveAspectRatio="none"></svg>
+                <div class="BudgetHandle" data-id="BudgetHandle" title="Drag the deviation budget">
+                    <span data-id="BudgetLabel">budget 0.10</span>
+                </div>
+            </div>
+            <div class="StairLegend">
+                <span><i class="LegendBar"></i>triangles</span>
+                <span><i class="LegendLine"></i>deviation</span>
+                <span><i class="LegendDash"></i>budget</span>
+            </div>
+            <ol class="TierRail" data-id="TierRail"></ol>
+        </section>
+    </article>
+
+    <footer class="ShowcaseFooter">
+        Inspiration: SourceImages/General UI — large thin numerals with dimmed fraction, hatched vs solid comparison
+        blocks, dashed target line on a trace, pinned callouts over a model, pill chips.
+    </footer>
+</main>
+<script type="module" src="./TierDescent.js"></script>
+</body>
+</html>

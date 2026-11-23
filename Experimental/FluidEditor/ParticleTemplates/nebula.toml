@@ -1,0 +1,79 @@
+# Nebula Burst — particle template (Cinematic). A slow-blooming cloud: warm core, cold blue filaments, curl-noise tendrils and sparse large bokeh.
+# Converted from the legacy template object by script; node fingerprint 6b78e1e881b4440f (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 7
+Id = "nebula"
+Name = "Nebula Burst"
+Category = "Cinematic"
+Icon = "nebula"
+Tint = "#7dd3fc"
+Summary = "A slow-blooming cloud: warm core, cold blue filaments, curl-noise tendrils and sparse large bokeh."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 1, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 0.5, Fill = 0.0, Count = 16384, Rate = 2.5, Lifetime = 12.0, Linger = 0.6, Speed = 0.9, Spread = 1.0, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.7 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 1.8, NoiseScale = 0.6, NoiseSpeed = 0.2 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 3, Palette = ["#7dd3fc", "#bfe9ff", "#ffd9a8", "#ff9f5a"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.05, BrightnessJitter = 0.5, Brightness = 1.2, Flicker = 0.25 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.008, SizeEnd = 0.005, SizeRandom = 0.8 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.5, Blend = 1, Style = 0, FocusDistance = 6.0, Aperture = 0.35 }

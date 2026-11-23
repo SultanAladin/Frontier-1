@@ -1,0 +1,171 @@
+/* BAKING sections: the maps the 3D viewport uses (BakedMapCards.jsx). */
+.baked-map {
+  margin: 12px 0 4px;
+}
+.baked-map + .baked-map {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #ffffff0c;
+}
+.baked-map-image {
+  position: relative;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #101012;
+  box-shadow: inset 0 0 0 1px #ffffff10;
+}
+.baked-map-image canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.baked-map-image.pixelated canvas {
+  image-rendering: pixelated;
+}
+.baked-map-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: #8a8a8a;
+}
+.baked-map-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid #ffb238;
+  pointer-events: none;
+}
+.baked-map-marker span {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 9px;
+  font-style: normal;
+  white-space: nowrap;
+  color: #ffd38a;
+  text-shadow: 0 1px 2px #000;
+}
+.baked-map-plot.with-axes {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto 16px;
+}
+.baked-map-plot.with-axes .baked-map-image {
+  grid-column: 2;
+}
+.baked-map-y,
+.baked-map-x {
+  position: relative;
+  font: 500 8.5px/1 var(--mono, ui-monospace, monospace);
+  color: #8a8f98;
+  font-variant-numeric: tabular-nums;
+}
+.baked-map-y {
+  grid-column: 1;
+  grid-row: 1;
+  border-right: 1px solid #ffffff14;
+  margin-right: 4px;
+}
+.baked-map-y span {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+.baked-map-y span:first-child {
+  transform: none;
+}
+.baked-map-y span:last-child {
+  transform: translateY(-100%);
+}
+.baked-map-x {
+  grid-column: 2;
+  grid-row: 2;
+  border-top: 1px solid #ffffff14;
+  margin-top: 4px;
+}
+.baked-map-x span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.baked-map-x span:first-child {
+  transform: none;
+}
+.baked-map-x span:last-child {
+  transform: translateX(-100%);
+}
+.baked-map-cursor {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  margin: -6px 0 0 -6px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #0009;
+  pointer-events: none;
+}
+.baked-map-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #ffffff06;
+  box-shadow: inset 0 0 0 1px #ffffff0a;
+  font-size: 10px;
+}
+.baked-map-facts dt {
+  color: #7d828b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 8.5px;
+  line-height: 15px;
+}
+.baked-map-facts dd {
+  margin: 0;
+  min-width: 0;
+  color: #d9dbe0;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.baked-map-facts dd b {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin: 0 5px 0 8px;
+  border-radius: 2px;
+  vertical-align: -1px;
+  box-shadow: inset 0 0 0 1px #fff3;
+}
+.baked-map.unbaked .bake-content {
+  margin-top: 4px;
+}
+.baked-map-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 9px;
+  color: #8d8d8d;
+}
+.baked-map-status button {
+  font-size: 10px;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+.flare-preview canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

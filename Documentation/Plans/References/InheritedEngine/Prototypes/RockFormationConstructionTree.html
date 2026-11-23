@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Rock Formation Construction Tree</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#b0fab0;
+    --bg:#0a0a0b;
+    --bg-panel:#0d0d0f;
+    --bg-head:#111113;
+    --bg-raise:#131315;
+    --bg-entry:#1a1a1c;
+    --border:#1c1c20;
+    --border-soft:#161618;
+    --border-entry:#2c2c30;
+    --border-hover:#44444a;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+
+    /* semantic: port categories — the three-tier port model */
+    --port-scalar:#aaaaab;
+    --port-distance:#55da55;
+    --port-resistance:#daaa55;
+    --port-warp:#a355da;
+    --port-tint:#da55a3;
+
+    --bad:#e8564a;
+    --good:#3ecf8e;
+    --warn:#e8b64a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:'Archivo',system-ui,sans-serif;font-size:15px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+
+  /* ---------------------------------------------------------------- layout */
+  #Frame{display:flex;flex-direction:column;height:100vh;width:100vw}
+  #UpperRegion{flex:1;display:flex;min-height:0}
+  #Stage{flex:1;position:relative;background:#050506;min-width:0}
+  #Surface{display:block;width:100%;height:100%}
+
+  #LowerRegion{
+    height:42%;min-height:200px;display:flex;
+    border-top:1px solid var(--border);background:#0c0c0e;
+  }
+  #TreeRegion{flex:1;position:relative;overflow:hidden;min-width:0}
+
+  #SplitGrip{
+    height:5px;background:var(--bg);cursor:ns-resize;flex:0 0 5px;
+    border-top:1px solid var(--border-soft);
+  }
+  #SplitGrip:hover{background:#18181b}
+
+  /* ---------------------------------------------------------------- panel */
+  #Panel{
+    width:308px;flex:0 0 308px;background:var(--bg-panel);
+    border-left:1px solid var(--border);
+    display:flex;flex-direction:column;overflow-y:auto;
+  }
+  #Panel::-webkit-scrollbar{width:9px}
+  #Panel::-webkit-scrollbar-track{background:var(--bg-panel)}
+  #Panel::-webkit-scrollbar-thumb{background:#232328;border-radius:5px}
+
+  .PanelHead{padding:16px 18px 13px;border-bottom:1px solid var(--border);background:var(--bg-head)}
+  .PanelHead h1{
+    margin:0;font-size:12px;font-weight:700;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--text);
+  }
+  .PanelHead p{
+    margin:5px 0 0;font-size:11px;color:var(--text-faint);
+    font-family:var(--mono);letter-spacing:.02em;
+  }
+
+  .Division{border-bottom:1px solid var(--border-soft);padding:14px 18px 16px}
+  .DivisionTitle{
+    font-size:10px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+    color:var(--text-faint);margin-bottom:11px;
+  }
+
+  .Readout{
+    font-family:var(--mono);font-size:11px;
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:3px 0;color:var(--text-dim);gap:10px;
+  }
+  .Readout b{color:var(--text);font-weight:500;text-align:right}
+  .Readout .Good{color:var(--good)}
+  .Readout .Warn{color:var(--warn)}
+  .Readout .Bad{color:var(--bad)}
+
+  .Hint{
+    font-size:10.5px;color:var(--text-faint);font-family:var(--mono);
+    margin-top:9px;letter-spacing:.01em;line-height:1.7;
+  }
+  .Hint b{color:var(--text-dim);font-weight:500}
+
+  .Dial{margin-bottom:9px}
+  .DialLabel{
+    font-family:var(--mono);font-size:10.5px;display:flex;justify-content:space-between;
+    align-items:baseline;color:var(--text-dim);margin-bottom:4px;gap:8px;
+  }
+  .DialLabel b{color:var(--accent);font-weight:500}
+  .Dial input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:3px;
+    background:var(--border);border-radius:2px;outline:none;cursor:pointer;
+  }
+  .Dial input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:11px;height:11px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:0;
+  }
+  .Dial input[type=range]::-moz-range-thumb{
+    width:11px;height:11px;border-radius:50%;background:var(--accent);cursor:pointer;border:0;
+  }
+
+  .ToggleRow{display:flex;gap:4px;margin-bottom:9px;flex-wrap:wrap}
+  .ToggleButton{
+    flex:1 1 auto;background:var(--bg-raise);border:1px solid var(--border);
+    color:var(--text-dim);font-family:var(--mono);font-size:10.5px;
+    padding:5px 8px;border-radius:4px;cursor:pointer;transition:all .12s;white-space:nowrap;
+  }
+  .ToggleButton:hover{border-color:#2c2c33;color:var(--text)}
+  .ToggleButton.Engaged{
+    background:rgba(176,250,176,.11);border-color:var(--accent);color:var(--accent);font-weight:700;
+  }
+
+  /* ---------------------------------------------------------------- notice */
+  #Notice{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:40px}
+  #Notice.Visible{display:flex}
+  .NoticeCard{
+    max-width:560px;background:var(--bg-panel);
+    border:1px solid var(--border);border-radius:10px;padding:26px 30px;
+  }
+  .NoticeCard h2{margin:0 0 12px;font-size:15px;font-weight:700;letter-spacing:.02em;color:var(--bad)}
+  .NoticeCard p{margin:0 0 10px;font-size:13.5px;color:var(--text-dim)}
+  .NoticeCard code{
+    font-family:var(--mono);font-size:12px;color:var(--accent);
+    background:#141418;padding:1.5px 5px;border-radius:3px;
+  }
+  .NoticeCard ul{margin:10px 0 0;padding-left:20px;font-size:13px;color:var(--text-dim)}
+  .NoticeCard li{margin-bottom:5px}
+
+  #BootLog{
+    position:absolute;left:16px;bottom:14px;
+    font-family:var(--mono);font-size:10.5px;line-height:1.85;
+    color:var(--text-faint);pointer-events:none;
+  }
+  #BootLog .Ok{color:var(--good)}
+  #BootLog .No{color:var(--bad)}
+  #BootLog .Hm{color:var(--warn)}
+
+  #Overlay{
+    position:absolute;right:14px;top:12px;text-align:right;
+    font-family:var(--mono);font-size:10.5px;line-height:1.8;
+    color:var(--text-faint);pointer-events:none;
+  }
+  #Overlay b{color:var(--text-dim);font-weight:500}
+
+  /* ---------------------------------------------------------------- tree canvas */
+  #TreeCanvas{
+    position:absolute;inset:0;
+    background-color:#0c0c0e;
+    background-image:radial-gradient(circle,#2a2a2e 1.4px,transparent 1.4px);
+    background-size:32px 32px;
+    cursor:grab;
+  }
+  #TreeCanvas.Panning{cursor:grabbing}
+  #TreeTransform{position:absolute;top:0;left:0;transform-origin:0 0}
+  #LinkCanvas{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
+
+  /* ---------------------------------------------------------------- entry */
+  .ConstructionEntry{
+    position:absolute;min-width:196px;
+    background:rgba(26,26,28,.9);backdrop-filter:blur(18px);
+    border:1px solid var(--border-entry);border-radius:1.5rem;
+    box-shadow:0 18px 34px -12px rgba(0,0,0,.7);
+    transition:border-color .13s,box-shadow .13s;
+    display:flex;flex-direction:column;cursor:grab;user-select:none;
+  }
+  .ConstructionEntry:hover{border-color:var(--border-hover)}
+  .ConstructionEntry.Engaged{border-color:#fff;box-shadow:0 0 30px rgba(255,255,255,.05)}
+  .ConstructionEntry.Dragging{cursor:grabbing}
+  .ConstructionEntry.Muted{opacity:.38}
+
+  .EntryHead{display:flex;align-items:center;gap:9px;padding:13px 15px 11px}
+  .EntryBadge{
+    width:26px;height:26px;flex:0 0 26px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:#232327;color:var(--accent);
+  }
+  .EntryBadge svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;
+    stroke-linecap:round;stroke-linejoin:round}
+  .EntryTitle{flex:1;min-width:0}
+  .EntryTitle .Label{
+    font-size:12.5px;font-weight:600;letter-spacing:.01em;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .EntryTitle .Family{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--text-faint);
+  }
+
+  .PortRegion{padding:2px 0 12px}
+  .PortRow{position:relative;display:flex;align-items:center;height:22px;padding:0 15px}
+  .PortRow.Yield{justify-content:flex-end}
+  .PortName{
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--text-dim);
+    white-space:nowrap;
+  }
+  .PortStud{
+    position:absolute;width:12px;height:12px;border-radius:50%;
+    border:2.5px solid var(--bg-entry);cursor:crosshair;
+    transition:transform .1s;
+  }
+  .PortStud:hover{transform:scale(1.35)}
+  .PortStud.Intake{left:-7px}
+  .PortStud.Yield{right:-7px}
+  .PortStud.Candidate{box-shadow:0 0 0 4px rgba(176,250,176,.24)}
+  .PortStud.Barred{opacity:.22;cursor:not-allowed}
+
+  .DialRegion{padding:0 15px 13px;display:none;flex-direction:column;gap:7px}
+  .ConstructionEntry.Unfolded .DialRegion{display:flex}
+  .EntryDial{display:flex;flex-direction:column;gap:3px}
+  .EntryDial label{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;
+    color:var(--text-faint);display:flex;justify-content:space-between;gap:8px;
+  }
+  .EntryDial label b{color:var(--accent);font-weight:500}
+  .EntryDial input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:2.5px;
+    background:#26262b;border-radius:2px;outline:none;cursor:pointer;
+  }
+  .EntryDial input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:10px;height:10px;border-radius:50%;
+    background:var(--accent);cursor:pointer;border:0;
+  }
+  .EntryDial input[type=range]::-moz-range-thumb{
+    width:10px;height:10px;border-radius:50%;background:var(--accent);cursor:pointer;border:0;
+  }
+  .EntrySelect{
+    background:var(--bg-raise);border:1px solid var(--border);color:var(--text-dim);
+    font-family:var(--mono);font-size:10px;padding:4px 6px;border-radius:4px;
+    outline:none;cursor:pointer;width:100%;
+  }
+
+  .EntryTools{
+    position:absolute;top:-46px;left:50%;transform:translateX(-50%);
+    display:flex;gap:3px;padding:5px;
+    background:rgba(22,22,26,.95);backdrop-filter:blur(22px);
+    border:1px solid var(--border-entry);border-radius:9999px;
+    opacity:0;pointer-events:none;transition:opacity .13s;white-space:nowrap;
+  }
+  .ConstructionEntry:hover .EntryTools{opacity:1;pointer-events:auto}
+  .ToolStud{
+    width:27px;height:27px;border-radius:50%;border:0;background:transparent;
+    color:var(--text-faint);cursor:pointer;display:flex;align-items:center;
+    justify-content:center;transition:all .11s;
+  }
+  .ToolStud:hover{background:#26262c;color:var(--accent)}
+  .ToolStud svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round}
+
+  .LinkCurve{fill:none;stroke:#444;stroke-width:2}
+  .LinkCurve.Live{stroke:var(--accent);stroke-dasharray:5 4}
+
+  /* ---------------------------------------------------------------- catalogue */
+  #Catalogue{
+    position:absolute;width:262px;max-height:420px;
+    background:rgba(22,22,26,.96);backdrop-filter:blur(30px);
+    border:1px solid var(--border-entry);border-radius:1.5rem;
+    box-shadow:0 24px 48px -12px rgba(0,0,0,.8);
+    display:none;flex-direction:column;overflow:hidden;z-index:60;
+  }
+  #Catalogue.Visible{display:flex}
+  #CatalogueQuery{
+    background:transparent;border:0;border-bottom:1px solid var(--border-soft);
+    color:var(--text);font-family:var(--mono);font-size:11.5px;
+    padding:14px 18px;outline:none;
+  }
+  #CatalogueQuery::placeholder{color:var(--text-faint)}
+  #CatalogueList{overflow-y:auto;padding:7px}
+  #CatalogueList::-webkit-scrollbar{width:8px}
+  #CatalogueList::-webkit-scrollbar-track{background:transparent}
+  #CatalogueList::-webkit-scrollbar-thumb{background:#26262b;border-radius:4px}
+  .CatalogueFamily{
+    font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text-faint);padding:9px 11px 5px;
+  }
+  .CatalogueOffer{
+    display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:12px;
+    cursor:pointer;transition:background .1s;
+  }
+  .CatalogueOffer:hover{background:#232328}
+  .CatalogueOffer .Bullet{width:8px;height:8px;border-radius:50%;flex:0 0 8px}
+  .CatalogueOffer .Naming{font-size:12px;color:var(--text);flex:1}
+  .CatalogueOffer .Yields{font-family:var(--mono);font-size:9px;color:var(--text-faint)}
+
+  #TreeLegend{
+    position:absolute;left:14px;bottom:12px;display:flex;gap:14px;
+    font-family:var(--mono);font-size:9.5px;color:var(--text-faint);
+    pointer-events:none;flex-wrap:wrap;max-width:60%;
+  }
+  #TreeLegend span{display:flex;align-items:center;gap:5px}
+  #TreeLegend i{width:8px;height:8px;border-radius:50%;display:block}
+
+  #TreeHint{
+    position:absolute;right:14px;bottom:12px;
+    font-family:var(--mono);font-size:9.5px;color:var(--text-faint);
+    pointer-events:none;text-align:right;line-height:1.8;
+  }
+</style>
+</head>
+<body>
+
+<div id="Frame">
+  <div id="UpperRegion">
+    <div id="Stage">
+      <canvas id="Surface"></canvas>
+      <div id="Overlay"></div>
+      <div id="BootLog"></div>
+      <div id="Notice">
+        <div class="NoticeCard">
+          <h2 id="NoticeTitle">WebGPU unavailable</h2>
+          <div id="NoticeBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="Panel">
+      <div class="PanelHead">
+        <h1>Rock Formation Tree</h1>
+        <p>WebGPU · Raymarched · Sphere-traced</p>
+      </div>
+
+      <div class="Division">
+        <div class="DivisionTitle">Device</div>
+        <div class="Readout"><span>Adapter</span><b id="ReadAdapter">—</b></div>
+        <div class="Readout"><span>Architecture</span><b id="ReadArch">—</b></div>
+        <div class="Readout"><span>Resolve</span><b id="ReadResolve">—</b></div>
+        <div class="Readout"><span>Interval</span><b id="ReadInterval">—</b></div>
+        <div class="Readout"><span>Recompiles</span><b id="ReadRecompile">0</b></div>
+      </div>
+
+      <div class="Division">
+        <div class="DivisionTitle">Construction Tree</div>
+        <div class="Readout"><span>Entries</span><b id="ReadEntries">0</b></div>
+        <div class="Readout"><span>Links</span><b id="ReadLinks">0</b></div>
+        <div class="Readout"><span>Emitted lines</span><b id="ReadEmitted">0</b></div>
+        <div class="Readout"><span>Compile</span><b id="ReadCompile">—</b></div>
+      </div>
+
+      <div class="Division">
+        <div class="DivisionTitle">Sphere Trace</div>
+        <div id="TraceDials"></div>
+        <div class="Hint">
+          <b>Step clamp.</b> Additive noise breaks the Euclidean
+          metric, so the march scales each step by a Lipschitz
+          factor below 1. Lower it if surfaces punch through.
+        </div>
+      </div>
+
+      <div class="Division">
+        <div class="DivisionTitle">Illumination</div>
+        <div id="LightDials"></div>
+      </div>
+
+      <div class="Division">
+        <div class="DivisionTitle">Resolve</div>
+        <div id="ResolveSelector" class="ToggleRow"></div>
+        <div id="ResolveDials"></div>
+      </div>
+
+      <div class="Division">
+        <div class="DivisionTitle">Stratum Palette</div>
+        <div class="Hint" id="PaletteNote">
+          Munsell chips converted to sRGB — hematite, goethite,
+          calcite and manganese varnish. Colour and resistance
+          share one cause (the cement), so the palette is indexed
+          by the same stratum field that drives the shape.
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="SplitGrip"></div>
+
+  <div id="LowerRegion">
+    <div id="TreeRegion">
+      <div id="TreeCanvas">
+        <svg id="LinkCanvas"></svg>
+        <div id="TreeTransform"></div>
+      </div>
+      <div id="Catalogue">
+        <input id="CatalogueQuery" placeholder="Search construction entries…" autocomplete="off">
+        <div id="CatalogueList"></div>
+      </div>
+      <div id="TreeLegend"></div>
+      <div id="TreeHint">
+        drag pane to shift · wheel to scale · drag a stud to link<br>
+        release on empty pane for the catalogue · double-click an entry to unfold
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+"use strict";
+
+/*====================================================================================================================================
+                                        ROCKFORMATIONCONSTRUCTIONTREE.HTML
+====================================================================================================================================*/
+// 🧩 WebGPU raymarched rock formations — construction tree of distance expressions, transcribed to WGSL and sphere-traced
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    BOOT DIAGNOSTICS
+//------------------------------------------------------------------------------------------------------------------------
+
+const BootLogSurface = document.getElementById("BootLog");
+const BootLogEntries = [];
+
+function InscribeBootLine(LineText, Classification = "")
+{
+    BootLogEntries.push(`<div class="${Classification}">${LineText}</div>`);
+    BootLogSurface.innerHTML = BootLogEntries.join("");
+}
+
+function PresentNotice(TitleText, BodyMarkup)
+{
+    document.getElementById("NoticeTitle").textContent = TitleText;
+    document.getElementById("NoticeBody").innerHTML    = BodyMarkup;
+    document.getElementById("Notice").classList.add("Visible");
+}
+
+function InscribeReadout(ReadoutIdentifier, ReadoutText, Classification = "")
+{
+    const ReadoutSurface = document.getElementById(ReadoutIdentifier);
+    if (!ReadoutSurface) return;
+    ReadoutSurface.textContent = ReadoutText;
+    ReadoutSurface.className   = Classification;
+}
+
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                   PORT CATEGORIES
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 Three-tier port model. Distance is the only category that can reach the tree root: a Resistance
+//    port carries rock hardness (Paris 2019 keeps this in a SEPARATE tree that never blends into the
+//    surface), a Warp port carries a coordinate displacement, and a Tint port carries colour.
+const PortCategoryTable =
+{
+    Scalar     : { Naming: "Scalar",     Stain: "var(--port-scalar)"     },
+    Distance   : { Naming: "Distance",   Stain: "var(--port-distance)"   },
+    Resistance : { Naming: "Resistance", Stain: "var(--port-resistance)" },
+    Warp       : { Naming: "Warp",       Stain: "var(--port-warp)"       },
+    Tint       : { Naming: "Tint",       Stain: "var(--port-tint)"       }
+};
+
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                  GEOLOGY REFERENCE
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 Every default below is a MEASURED value with a citation, not a tuned guess. Scene units are metres.
+//
+//    Bed thicknesses — NPS Geologic Resource Evaluation reports:
+//      Claron pink limestone member  122-213 m   (hoodoo-forming, resistance "moderate to low")
+//      Claron white limestone member   0-91 m    (caprock,        resistance "moderate to high")
+//      Entrada Slick Rock member      61-107 m   (fin-forming,    colour banded)
+//      Carmel Dewey Bridge member     21-61 m    (weak, forms the recess under the fins)
+//      Curtis Moab member             18-36 m    (resistant cap, weathers white)
+//
+//    Joint spacing — Bai & Pollard 2000 (J. Struct. Geol.): fracture spacing to bed thickness ratio
+//      saturates at S/T = 0.8-1.2, critical value 0.976. Field range spans <0.1 to >10.
+//      Ji 2022 over 16 sandstone localities: mean 1.04, median 0.99. So SpacingRatio defaults to 1.0.
+//
+//    Angle of repose — Peytavie 2009 "Arches", verbatim: sand 30-35 deg, rocks 40-45 deg. Bedrock is
+//      always stable. Carson 1977 and granular physics both find ANGULARITY, not grain size, is the
+//      control, so this is keyed to angularity when erosion lands in M3.
+//
+//    Arch geometry — Landscape Arch (NPS): span 93 m, thinnest section 1.8 m, centre hump 6 m.
+//      Delicate Arch: horizontal span 10 m, vertical span 14 m. Skyline Arch: 22 m wide, 10 m high.
+//      So an arch aperture is roughly 5-9x its thinnest ligament — the default ratio here.
+//
+//    Hoodoo height — Bryce (NPS): under 12 m to 61 m or more. Column DIAMETER and caprock overhang
+//      ratio: no measured value published anywhere found. Those two defaults are mine, flagged below.
+const GeologyReference =
+{
+    ClaronPinkThickness      : 167.0,  // [m] - midpoint of the measured 122-213 m range
+    ClaronWhiteThickness     :  45.0,  // [m] - midpoint of the measured 0-91 m range
+    SlickRockThickness       :  84.0,  // [m] - midpoint of the measured 61-107 m range
+    DeweyBridgeThickness     :  41.0,  // [m] - midpoint of the measured 21-61 m range
+    MoabThickness            :  27.0,  // [m] - midpoint of the measured 18-36 m range
+    JointSpacingRatio        :   1.00, // [-] - Ji 2022 median S/T over 16 sandstone localities
+    ReposeAngleSand          :  32.5,  // [deg] - midpoint of Peytavie's 30-35 deg
+    ReposeAngleRocks         :  42.5,  // [deg] - midpoint of Peytavie's 40-45 deg
+    ArchApertureToLigament   :   7.0   // [-] - from Landscape Arch 93 m span over 1.8-6 m ligament
+};
+
+// 📝 Munsell chips converted through renotation -> xyY -> XYZ -> Bradford C-to-D65 -> sRGB. Every value
+//    landed inside the sRGB gamut, so none of these are clipped approximations.
+//      Hematite   ~0.1 um  10R 4/8   #9A4832    Hematite  ~0.4 um  5R 3/6    #743335
+//      Goethite   ~0.2 um  7.5YR 5/6 #A16F3F    Goethite  1-2 um   10YR 8/6  #ECC181
+//      Calcite/dolomite    10YR 8/2  #D6C6AF    Gypsum             10YR 8/3  #DCC5A4
+//      Mn varnish/humus    10YR 2/1  #373029    Glauconite         5Y 5/1    #7E796D
+//    Aztec Sandstone field Munsell (Eichhubl 2004, GSA Bulletin), same conversion:
+//      Red 10R 6/8 #D17D62 · Orange 2.5YR 5/8 #B3653D · Yellow 10YR 7/6 #D1A768
+//      Purple 10R 6/3 #AE8C82 (goethite-pigmented despite the red hue) · Bleached 10YR 8/1 #CFC7BC
+const MunsellStratumPalette =
+{
+    HematiteFine   : [0.604, 0.282, 0.196],   // #9A4832  10R 4/8
+    HematiteCoarse : [0.455, 0.200, 0.208],   // #743335  5R 3/6
+    GoethiteFine   : [0.631, 0.435, 0.247],   // #A16F3F  7.5YR 5/6
+    GoethiteCoarse : [0.925, 0.757, 0.506],   // #ECC181  10YR 8/6
+    CalciteWhite   : [0.839, 0.776, 0.686],   // #D6C6AF  10YR 8/2
+    GypsumPale     : [0.863, 0.773, 0.643],   // #DCC5A4  10YR 8/3
+    VarnishBlack   : [0.216, 0.188, 0.161],   // #373029  10YR 2/1
+    AztecRed       : [0.820, 0.490, 0.384],   // #D17D62  10R 6/8
+    AztecOrange    : [0.702, 0.396, 0.239],   // #B3653D  2.5YR 5/8
+    AztecYellow    : [0.820, 0.655, 0.408],   // #D1A768  10YR 7/6
+    AztecBleached  : [0.812, 0.780, 0.737]    // #CFC7BC  10YR 8/1
+};
+
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              CONSTRUCTION SPECIFICATIONS
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 Each specification is a WGSL fragment factory. Transcribe() receives the resolved operand
+//    expressions plus this entry's own dials and returns one WGSL expression string. The tree is
+//    flattened into straight-line WGSL rather than interpreted, so a topology edit is a recompile
+//    and a dial turn is only a uniform write.
+const GlyphTable =
+{
+    Sphere   : `<circle cx="8" cy="8" r="5.4"/>`,
+    Cube     : `<rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1.1"/>`,
+    Column   : `<path d="M5 2.6h6M5 13.4h6M6.2 2.6v10.8M9.8 2.6v10.8"/>`,
+    Strata   : `<path d="M2.4 5h11.2M2.4 8h11.2M2.4 11h11.2"/>`,
+    Noise    : `<path d="M2 10.5c1.6 0 2-4.4 3.4-4.4S7 11 8.4 11s1.8-5.6 3.2-5.6 1.4 3.6 2.4 3.6"/>`,
+    Ridge    : `<path d="M2 12.4l4-8 3 5 2.4-3 2.6 6z"/>`,
+    Warp     : `<path d="M2.4 8c2.2-3.4 3.4 3.4 5.6 0s3.4 3.4 5.6 0"/>`,
+    Blend    : `<path d="M6 3.4a5 5 0 100 9.2M10 3.4a5 5 0 110 9.2"/>`,
+    Carve    : `<path d="M8 2.6v10.8M3.2 8h9.6" /><circle cx="8" cy="8" r="5.6" stroke-dasharray="2 2"/>`,
+    Repeat   : `<rect x="2.4" y="2.4" width="5" height="5" rx=".8"/><rect x="8.6" y="8.6" width="5" height="5" rx=".8"/>`,
+    Resolve  : `<path d="M8 2.4l5.2 3v5.2L8 13.6 2.8 10.6V5.4z"/>`,
+    Joint    : `<path d="M2.4 3.2h11.2M2.4 12.8h11.2M4.6 3.2l2.4 9.6M10.2 3.2l2 9.6"/>`,
+    Tint     : `<circle cx="6.4" cy="6.4" r="3.6"/><circle cx="9.6" cy="9.6" r="3.6"/>`
+};
+
+// 📝 Dial declarations: [Key, Label, Minimum, Maximum, Default, Precision, Unit]
+const ConstructionSpecificationTable =
+{
+    //-------------------------------------------------------------------- rock masses
+    BoulderMass:
+    {
+        Naming: "Boulder Mass", Family: "Mass", Glyph: "Sphere", Yields: "Distance",
+        Intakes: [{ Naming: "warp", Category: "Warp", Optional: true }],
+        Dials:
+        [
+            ["Radius",     "radius",     0.4,  6.0, 2.2,  2, "m"],
+            ["FaceCount",  "cut faces",  0.0, 14.0, 8.0,  0, ""],
+            ["FaceBias",   "cut depth",  0.0,  1.0, 0.55, 2, ""],
+            ["Rounding",   "arris",      0.01, 0.6, 0.14, 2, "m"]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Position = Operands.warp || "Probe";
+            return `EvaluateAngularBoulder(${Position}, U.Entry${Slot})`;
+        }
+    },
+
+    MesaMass:
+    {
+        Naming: "Mesa Mass", Family: "Mass", Glyph: "Cube", Yields: "Distance",
+        Intakes: [{ Naming: "warp", Category: "Warp", Optional: true }],
+        Dials:
+        [
+            ["Radius",   "plan radius",  1.0, 9.0, 4.4,  2, "m"],
+            ["Height",   "rise",         0.5, 8.0, 3.0,  2, "m"],
+            ["Batter",   "batter",       0.0, 0.7, 0.16, 2, ""],
+            ["Rounding", "arris",        0.01, 0.8, 0.2,  2, "m"]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Position = Operands.warp || "Probe";
+            return `EvaluateBatteredMesa(${Position}, U.Entry${Slot})`;
+        }
+    },
+
+    // 📝 The radius profile r(y) is scaled by the stratum resistance field, which is what actually
+    //    produces the caprock-over-neck silhouette. Bryce hoodoo heights are measured (under 12 m to
+    //    61 m); the column DIAMETER and the caprock overhang ratio have no published measurement, so
+    //    Waist and CapFlare are my own tuning. Flagged rather than dressed up as sourced.
+    HoodooMass:
+    {
+        Naming: "Hoodoo Mass", Family: "Mass", Glyph: "Column", Yields: "Distance",
+        Intakes:
+        [
+            { Naming: "resist", Category: "Resistance", Optional: true },
+            { Naming: "warp",   Category: "Warp",       Optional: true }
+        ],
+        Dials:
+        [
+            ["Height",   "height",       1.0, 9.0, 4.6,  2, "m"],
+            ["Waist",    "neck radius",  0.1, 2.0, 0.62, 2, "m"],
+            ["CapFlare", "cap flare",    0.0, 2.2, 0.95, 2, ""],
+            ["Lean",     "lean",         0.0, 0.6, 0.1,  2, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Position   = Operands.warp   || "Probe";
+            const Resistance = Operands.resist || "1.0";
+            return `EvaluateHoodooColumn(${Position}, ${Resistance}, U.Entry${Slot})`;
+        }
+    },
+
+    FinMass:
+    {
+        Naming: "Fin Mass", Family: "Mass", Glyph: "Ridge", Yields: "Distance",
+        Intakes: [{ Naming: "warp", Category: "Warp", Optional: true }],
+        Dials:
+        [
+            ["Length",    "length",     1.0, 14.0, 7.0,  2, "m"],
+            ["Thickness", "thickness",  0.15, 2.4, 0.72, 2, "m"],
+            ["Height",    "height",     0.5,  8.0, 3.4,  2, "m"],
+            ["Bearing",   "bearing",    0.0,  3.14159, 0.4, 2, "rad"]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Position = Operands.warp || "Probe";
+            return `EvaluateFinWall(${Position}, U.Entry${Slot})`;
+        }
+    },
+
+    //-------------------------------------------------------------------- resistance
+    // 📝 Paris 2019's GeoStrata primitive is a triplet (altitude, falloff radius, energy) with the
+    //    Wyvill cubic falloff on SQUARED vertical distance. Negative energy marks a WEAK stratum —
+    //    that is the whole mechanism behind their sea arches. Their code deliberately leaves this
+    //    field unnormalized, so this one is clamped only where it is consumed.
+    StratumBand:
+    {
+        Naming: "Stratum Band", Family: "Resistance", Glyph: "Strata", Yields: "Resistance",
+        Intakes: [{ Naming: "under", Category: "Resistance", Optional: true }],
+        Dials:
+        [
+            ["Thickness", "bed",       0.08, 3.0, 0.62, 2, "m"],
+            ["Dip",       "dip",       0.0,  0.5, 0.07, 2, ""],
+            ["Contrast",  "contrast",  0.0,  1.0, 0.62, 2, ""],
+            ["Offset",    "offset",    0.0,  4.0, 0.0,  2, "m"]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Beneath = Operands.under || "0.5";
+            return `EvaluateStratumBand(Probe, ${Beneath}, U.Entry${Slot})`;
+        }
+    },
+
+    // 📝 Voronoi cell distance, not smooth noise. This is what makes rock read as fractured rather
+    //    than as clay: the cell BOUNDARY distance gives flat faces meeting at sharp arrises.
+    //    Spacing defaults to the measured S/T ratio times the bed thickness.
+    JointNetwork:
+    {
+        Naming: "Joint Network", Family: "Resistance", Glyph: "Joint", Yields: "Resistance",
+        Intakes: [{ Naming: "under", Category: "Resistance", Optional: true }],
+        Dials:
+        [
+            ["Spacing",   "spacing",   0.2, 4.0, 1.05, 2, "m"],
+            ["Aperture",  "aperture",  0.0, 0.5, 0.11, 2, "m"],
+            ["Bearing",   "bearing",   0.0, 3.14159, 0.55, 2, "rad"],
+            ["Weakening", "weakening", 0.0, 1.0, 0.7,  2, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Beneath = Operands.under || "0.5";
+            return `EvaluateJointNetwork(Probe, ${Beneath}, U.Entry${Slot})`;
+        }
+    },
+
+    //-------------------------------------------------------------------- warp
+    // 📝 IQ's domain warp. The amplitude is the danger: displacing the domain by A multiplies the
+    //    Lipschitz bound, so the sphere trace must scale its step by roughly 1/(1+A*frequency).
+    //    The panel reports the resulting bound so it is visible rather than mysterious.
+    DomainWarp:
+    {
+        Naming: "Domain Warp", Family: "Warp", Glyph: "Warp", Yields: "Warp",
+        Intakes: [{ Naming: "inbound", Category: "Warp", Optional: true }],
+        Dials:
+        [
+            ["Amplitude", "amplitude", 0.0, 1.2, 0.28, 2, "m"],
+            ["Frequency", "frequency", 0.1, 4.0, 0.72, 2, ""],
+            ["Octaves",   "octaves",   1.0, 5.0, 3.0,  0, ""],
+            ["Twist",     "twist",     0.0, 1.0, 0.2,  2, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Inbound = Operands.inbound || "Probe";
+            return `ApplyDomainWarp(${Inbound}, U.Entry${Slot})`;
+        }
+    },
+
+    // 📝 Ridged multifractal. "Ridged" is a TRANSFORM of the noise, not a different basis:
+    //    r = (1 - |noise|)^2, which folds the zero crossing into a crease. Standard choices are
+    //    lacunarity 2.0 and gain 0.5, both exposed here.
+    RidgedRelief:
+    {
+        Naming: "Ridged Relief", Family: "Warp", Glyph: "Noise", Yields: "Warp",
+        Intakes: [{ Naming: "inbound", Category: "Warp", Optional: true }],
+        Dials:
+        [
+            ["Amplitude",  "amplitude",  0.0, 0.9, 0.19, 2, "m"],
+            ["Frequency",  "frequency",  0.2, 6.0, 1.5,  2, ""],
+            ["Octaves",    "octaves",    1.0, 6.0, 4.0,  0, ""],
+            ["Lacunarity", "lacunarity", 1.4, 3.0, 2.0,  2, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Inbound = Operands.inbound || "Probe";
+            return `ApplyRidgedRelief(${Inbound}, U.Entry${Slot})`;
+        }
+    },
+
+    //-------------------------------------------------------------------- combination
+    // 📝 IQ's polynomial smooth minimum. Union is EXACT for true distance fields; the smooth variant
+    //    is a bound only, and only outside the surface. Setting Softness to 0 recovers the exact min.
+    SmoothUnion:
+    {
+        Naming: "Smooth Union", Family: "Combination", Glyph: "Blend", Yields: "Distance",
+        Intakes:
+        [
+            { Naming: "left",  Category: "Distance" },
+            { Naming: "right", Category: "Distance" }
+        ],
+        Dials: [["Softness", "softness", 0.0, 1.2, 0.22, 2, "m"]],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Left  = Operands.left  || "1e9";
+            const Right = Operands.right || "1e9";
+            return `SmoothMinimum(${Left}, ${Right}, U.Entry${Slot}.x)`;
+        }
+    },
+
+    // 📝 This is the arch maker. Subtraction is max(field, -carver) and is a BOUND, never exact.
+    //    Aperture defaults from Landscape Arch's measured 93 m span over a 1.8-6 m ligament.
+    ApertureCarve:
+    {
+        Naming: "Aperture Carve", Family: "Combination", Glyph: "Carve", Yields: "Distance",
+        Intakes:
+        [
+            { Naming: "mass",   Category: "Distance" },
+            { Naming: "carver", Category: "Distance", Optional: true },
+            { Naming: "resist", Category: "Resistance", Optional: true }
+        ],
+        Dials:
+        [
+            ["Aperture", "aperture",  0.1, 4.0, 1.35, 2, "m"],
+            ["Span",     "span",      0.2, 8.0, 2.6,  2, "m"],
+            ["Elevation","elevation",-3.0, 4.0, 0.35, 2, "m"],
+            ["Softness", "softness",  0.0, 0.8, 0.16, 2, "m"]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Mass       = Operands.mass || "1e9";
+            const Resistance = Operands.resist || "0.5";
+            const Carver     = Operands.carver
+                ? Operands.carver
+                : `EvaluateApertureCapsule(Probe, ${Resistance}, U.Entry${Slot})`;
+            return `SmoothSubtraction(${Mass}, ${Carver}, U.Entry${Slot}.w)`;
+        }
+    },
+
+    ResistanceCarve:
+    {
+        Naming: "Resistance Carve", Family: "Combination", Glyph: "Carve", Yields: "Distance",
+        Intakes:
+        [
+            { Naming: "mass",   Category: "Distance" },
+            { Naming: "resist", Category: "Resistance" }
+        ],
+        Dials:
+        [
+            ["Depth",     "depth",     0.0, 1.4, 0.34, 2, "m"],
+            ["Threshold", "threshold", 0.0, 1.0, 0.52, 2, ""],
+            ["Sharpness", "sharpness", 0.2, 6.0, 2.1,  2, ""],
+            ["Undercut",  "undercut",  0.0, 1.0, 0.4,  2, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Mass       = Operands.mass   || "1e9";
+            const Resistance = Operands.resist || "0.5";
+            return `ApplyResistanceCarve(${Mass}, ${Resistance}, U.Entry${Slot})`;
+        }
+    },
+
+    LateralRepeat:
+    {
+        Naming: "Lateral Repeat", Family: "Combination", Glyph: "Repeat", Yields: "Warp",
+        Intakes: [{ Naming: "inbound", Category: "Warp", Optional: true }],
+        Dials:
+        [
+            ["Spacing", "spacing", 0.6, 9.0, 3.6, 2, "m"],
+            ["Extent",  "extent",  0.0, 4.0, 1.0, 0, ""],
+            ["Jitter",  "jitter",  0.0, 1.0, 0.3, 2, ""],
+            ["Axis",    "axis",    0.0, 2.0, 0.0, 0, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Inbound = Operands.inbound || "Probe";
+            return `ApplyLateralRepeat(${Inbound}, U.Entry${Slot})`;
+        }
+    },
+
+    //-------------------------------------------------------------------- tint
+    // 📝 Colour is derived from the SAME fields that drive shape, because in the real rock the cement
+    //    sets both the hue and the strength. So the resistance field indexes the palette, curvature
+    //    darkens cavities (varnish plus moisture plus shadow), and slope masks the ledges.
+    StratumTint:
+    {
+        Naming: "Stratum Tint", Family: "Tint", Glyph: "Tint", Yields: "Tint",
+        Intakes: [{ Naming: "resist", Category: "Resistance", Optional: true }],
+        Dials:
+        [
+            ["Palette",   "palette",   0.0, 3.0, 0.0,  0, ""],
+            ["Saturation","saturation",0.0, 1.6, 1.0,  2, ""],
+            ["Mottling",  "mottling",  0.0, 1.0, 0.34, 2, ""],
+            ["Varnish",   "varnish",   0.0, 1.0, 0.42, 2, ""]
+        ],
+        Transcribe: (Operands, Dials, Slot) =>
+        {
+            const Resistance = Operands.resist || "0.5";
+            return `EvaluateStratumTint(Probe, ${Resistance}, U.Entry${Slot})`;
+        }
+    },
+
+    //-------------------------------------------------------------------- root
+    // 📝 Exactly one SurfaceResolve is the tree root. Its distance intake is the isosurface; its tint
+    //    intake is optional and falls back to the stratum palette driven by whatever resistance the
+    //    shape tree already computed.
+    SurfaceResolve:
+    {
+        Naming: "Surface Resolve", Family: "Resolve", Glyph: "Resolve", Yields: null,
+        Singular: true,
+        Intakes:
+        [
+            { Naming: "distance", Category: "Distance" },
+            { Naming: "tint",     Category: "Tint", Optional: true }
+        ],
+        Dials: [],
+        Transcribe: () => ""
+    }
+};
+
+const CatalogueFamilyOrder = ["Mass", "Resistance", "Warp", "Combination", "Tint", "Resolve"];

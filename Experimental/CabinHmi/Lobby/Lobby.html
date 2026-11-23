@@ -1,0 +1,85 @@
+<!doctype html>
+<!--
+    LOBBY — PROCEDURAL GARAGE CONFIGURATOR (awaiting approval)
+    🧩 Game prototype: the ControlVehicle parked in one of nine procedural garage sets. Orbit the camera, move the key
+       light, then customise the garage (seeded) and the car like a game car configurator (hotspot dots,
+       bolt-on parts, underglow, light colours and a see-through drivetrain cutaway).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lobby · procedural garage configurator</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Lobby.css">
+</head>
+<body>
+    <canvas id="Scene"></canvas>
+    <div class="Spots" id="Spots"></div>
+    <div class="Tags" id="Tags"></div>
+    <div class="Curtain" id="Curtain"></div>
+
+    <div class="FocusBar" id="FocusBar">
+        <button id="Overview" title="Back to the whole car (Esc)">‹ Overview</button>
+        <span id="FocusName"></span>
+    </div>
+
+    <aside class="Spec" id="Spec">
+        <b>Drivetrain</b>
+        <h2 id="SpecTitle"></h2>
+        <p id="SpecNote"></p>
+        <div class="Figures" id="SpecFigures"></div>
+    </aside>
+
+    <header class="Title">
+        <b>Lobby</b>
+        <h1 id="SetName">Garage</h1>
+        <p id="SetTagline"></p>
+    </header>
+
+    <aside class="Panel" id="Panel">
+        <nav class="Tabs" id="Tabs">
+            <button data-tab="Garage" class="On">Garage</button>
+            <button data-tab="Car">Car</button>
+            <button data-tab="Light">Light</button>
+            <button data-tab="Camera">Camera</button>
+        </nav>
+        <section class="Sheet On" data-sheet="Garage">
+            <div class="Controls" id="SetControls"></div>
+            <div class="SeedRow">
+                <label>Seed <input id="Seed" type="number" min="1" max="99999" step="1" value="1"></label>
+                <button id="Reseed" title="Same options, new layout">New seed</button>
+                <button id="Shuffle" title="Random options and seed">Shuffle all</button>
+            </div>
+            <p class="Note" id="Reference"></p>
+        </section>
+        <section class="Sheet" data-sheet="Car">
+            <div class="Controls" id="CarControls"></div>
+        </section>
+        <section class="Sheet" data-sheet="Light">
+            <div class="PlotWrap">
+                <canvas id="Plot" width="560" height="400"></canvas>
+                <span class="PlotHint">Drag to swing the key light around the car</span>
+            </div>
+            <div class="Controls" id="LightControls"></div>
+            <button class="Wide" id="ResetLight">Reset to the set's lighting</button>
+        </section>
+        <section class="Sheet" data-sheet="Camera">
+            <div class="Presets" id="Presets"></div>
+            <div class="Controls" id="CameraControls"></div>
+        </section>
+    </aside>
+
+    <nav class="Strip" id="Strip"></nav>
+
+    <aside class="Hints" id="Hints">
+        <span>Click a <i class="HintDot"></i> dot to configure that part</span>
+        <span><kbd>Left drag</kbd> orbit · <kbd>Right drag</kbd> pan · <kbd>Wheel</kbd> zoom</span>
+        <span><kbd>1</kbd>–<kbd>9</kbd> sets · <kbd>O</kbd> auto orbit · <kbd>H</kbd> hide the interface · <kbd>Esc</kbd> overview</span>
+    </aside>
+
+    <div class="Loading" id="Loading"><i></i><span>Building the garage…</span></div>
+    <span class="ProtoTag">Lobby · procedural garage prototype · names awaiting approval</span>
+    <script type="module" src="./Lobby.js"></script>
+</body>
+</html>

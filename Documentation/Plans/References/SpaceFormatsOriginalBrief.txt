@@ -1,0 +1,237 @@
+Frontier Space Formats — DAG and Embedded-Asset Rewrite Brief
+1. Objective and scope
+Review and, where necessary, redesign Frontier’s native project/asset format family so that it supports:
+
+Directed acyclic graphs (DAGs) for asset dependencies and editable construction operations.
+Standalone, externally referenced, and embedded assets with consistent semantics.
+Shared geometry/materials without unnecessary duplication.
+Editable CAD, UV and texture-paint documents—not only flattened render outputs.
+Deterministic serialization, safe loading, versioned migration and reproducible validation.
+Start with inspection and a written specification. Present the plan before implementing. Do not assume the existing implementation must all be discarded, or that its historical verification proves the new requirements.
+
+This brief authorizes planning, not a commit, push, branch change or wholesale source migration.
+
+2. Authoritative source baseline
+Repository: SultanAladin/Frontier-
+Reference commit: 338293863d7df4e585dec0c4acae45fe9c524ed5
+
+Do not confuse this with SultanAladin/Frontier. The repositories have different layouts. If working in another checkout, establish the intended baseline and an approved migration approach before changing source.
+
+Required sources to inspect
+All links below are pinned to that commit.
+
+Source	Inspect for
+Docs/ProjectFormat.md	Existing specification, file family, embedding/reference policies, deferred work and documented implementation divergences
+Engine/ContentInterchange/SpaceFormat.h	Actual byte layouts, type table, versions, tags, references, material slots and payload structures
+SpaceCodec.h / SpaceCodec.cpp	Reader/writer, validation, hashing, reference resolution, embedding, pack/explode and rewriting
+SpaceExport.h / SpaceExport.cpp	Conversion between live application content and serialized assets
+SpaceFamilyProof.cpp	Existing assertions, fixtures, omissions and historical coverage
+CheckSpaceFamily.sh	Actual verification commands and skipped checks
+SpaceTool.cpp	Export, inspection, verification and packaging command behavior
+PackProject.sh / ExplodeProject.sh	Packaging/extraction behavior and path handling
+CommandLine.h / CommandLine.cpp	Project opening, launch configuration and format-facing options
+CAD sources to inspect before designing editable geometry
+Under Editor/AuthoringTools/Modelling/SolidArc/Document/:
+
+FigureRecipe.h and FigureRecipe.cpp
+SceneDocument.h and SceneDocument.cpp
+UndoSequence.h and UndoSequence.cpp
+Trace their consumers and existing save/load paths. Do not invent a second CAD document model without understanding the existing one.
+
+3. Existing behavior versus proposed requirements
+The current sources already define:
+
+One FSPC container shared by 13 file types.
+Tagged tables and embedded payloads.
+External references and content hashes.
+Reader/writer, pack/explode and export tooling.
+However, these capabilities do not by themselves establish a complete dependency DAG, editable authoring DAG, revision model or durable CAD serialization contract.
+
+Known specification caveats:
+
+The implemented header is 20 bytes, despite an earlier 16-byte description.
+The implementation uses separate instance and material-slot records; do not design against superseded sizes in the prose.
+.state domain payloads remain deferred in the document.
+UV, paint, terrain and workflow/script authoring editors are described as deferred.
+Historical test results must be distinguished from checks run against the proposed revision.
+Every audit finding must be marked confirmed, suspected, or proposed requirement, with a source reference.
+
+4. Separate the graph models
+Do not use one overloaded graph for unrelated responsibilities.
+
+Model	Responsibility
+Asset dependency DAG	Assets and the exact revisions of other assets required to interpret or evaluate them
+Authoring DAG	Typed operations and connections that construct editable results
+Revision DAG	Relationships between immutable document versions, including branches and merges
+Scene placement structure	Placement, nesting and geometry/material assignments
+Storage containment	Which container physically stores a payload
+Derived cache	Disposable evaluated geometry, baked textures and acceleration content
+Undo/redo is editor navigation over changes or revisions; it is not automatically the authoring DAG.
+
+Only designated dependency edges must be acyclic. Ordinary application links, annotations and usage indexes must not accidentally become evaluation dependencies.
+
+Example dependency direction:
+
+text
+
+Project
+└── Instance
+    ├── Geometry
+    │   └── Editable construction operations
+    ├── UV mapping
+    │   └── Specific geometry revision
+    └── Material
+        └── Pigment document / baked outputs
+            └── Specific UV mapping revision
+Avoid a material → pigment → same material cycle. Derive “used by” indexes rather than persisting them as reverse dependency edges.
+
+5. Retain the file family, clarify each contract
+Extension	Intended responsibility
+.projectspace	Project roots, levels, asset catalogue, dependency pins and project configuration
+.solution	Project collection, engine/toolchain requirements and content roots
+.geometry	Editable geometry definition plus derived polygon/render representations
+.uvspace	UV mapping, seams, islands, packing and editable operations, tied to geometry revisions
+.material	Material definition, parameters, typed inputs and texture/pigment dependencies
+.pigment	Editable channels, layers, masks, strokes, brush references and operation dependencies
+.instance	Placement and geometry/material/UV assignments; shared assets remain shared
+.environment	Terrain and world-authoring inputs, dependencies and derived environment outputs
+.script	Source, language/version metadata and declared dependencies
+.workflow	Execution DAG with typed steps, declared inputs/outputs and script dependencies
+.archive	Packaged dependency closure, deduplication and streaming index
+.runtime	Resolved launch configuration pinned to intended content revisions
+.state	Versioned session, recovery, save and capture domains; implement after the core contract
+Do not introduce more extensions without demonstrating a genuine semantic need.
+
+Editable CAD requirements
+Investigate support for:
+
+Sketch geometry and constraints.
+Curves, surfaces and topological relationships.
+Construction operations and parameters.
+Stable references to selected faces, edges and other outputs.
+Units, tolerances and operation/schema versions.
+Derived tessellation as a cache, not the sole source of truth.
+Stable topology references require an explicit strategy. A changing array index is not a durable face identity.
+
+Editable paint requirements
+Define persistence for:
+
+Layer order and blend behavior.
+Masks and channel connections.
+Stroke samples and brush parameters.
+Raster tiles and imported images where applicable.
+Geometry/UV compatibility.
+Baked outputs and their source revision/digest.
+Do not force every chronological stroke into a separate DAG entry. Choose an operation granularity that preserves editing semantics without unnecessary overhead.
+
+6. Identity and reference contract
+Separate these concepts:
+
+Concept	Meaning
+Asset identity	Stable logical asset identity across moves and edits
+Revision identity	A particular version of that asset
+Content digest	Integrity and byte-content identity
+Output identity	A specific result, channel or operation output
+Storage locator	Where the bytes can currently be found
+A reference should specify the intended identity/revision, expected type, selected output where necessary, and supported locator information.
+
+Paths must not be the sole identity.
+
+Use pinned dependencies for reproducible saves and packaging. If the editor offers “follow latest,” resolve that policy explicitly and record the chosen revisions before producing a reproducible package.
+
+Recommend a collision-resistant digest such as SHA-256 for persistent content addressing. Existing noncryptographic checksums may remain useful for fast corruption checks, but should not be the sole durable identity mechanism.
+
+7. Embedded formats and packaging
+Standalone and embedded forms must have identical asset semantics.
+
+text
+
+Instance → Geometry asset X, revision R
+
+Storage may be:
+- Assets/Bracket.geometry
+- An embedded asset inside Assembly.projectspace
+- A payload inside Release.archive
+Requirements:
+
+Embedded Space assets carry their type, schema and required metadata.
+Foreign image/font/other payloads declare their media type and decoder requirements.
+Dependency resolution works across standalone, embedded and archive boundaries.
+Shared dependencies are deduplicated without merging distinct mutable identities.
+Package generation traverses the required dependency closure.
+Missing required dependencies fail with a complete diagnostic chain.
+Extraction prevents path traversal and accidental overwrites.
+Opening a project never executes embedded scripts automatically.
+Bound nesting depth, decoded sizes, operation counts and aggregate resource use.
+Make embed/reference policy explicit rather than dependent on whichever file happens to exist locally.
+Pack/explode correctness means preservation of logical content and relationships. Require byte-identical output only where canonical serialization makes that a defined guarantee.
+
+8. Binary format and compatibility
+Before implementing a new layout, specify:
+
+Endianness, alignment, integer widths and offset ranges.
+Container version versus per-type/per-operation schema versions.
+Explicit serialization independent of compiler ABI and live GPU structs.
+Required versus optional features.
+Duplicate table handling and mandatory table validation.
+Bounds/overflow checks before allocation or indexing.
+Corruption detection and digest verification.
+Deterministic ordering and canonical hashing rules.
+Atomic save and interrupted-write recovery.
+Unknown-section preservation when safe.
+Unknown required operations must not silently disappear. Preserve recoverable content and clearly report that evaluation/editing is unsupported.
+
+For cycles, report the actual chain:
+
+text
+
+Material A → Pigment B → Material A
+Do not merely report “invalid file.”
+
+9. Implementation sequence
+Phase 1 — Audit and specification only
+Inspect all required sources and trace actual consumers.
+Document implemented behavior, missing guarantees and contradictions.
+Define the DAG, identity, embedding and compatibility contracts.
+Produce worked CAD and paint examples.
+Present the plan for approval before source changes.
+Phase 2 — Shared foundation
+Implement one reusable container codec and dependency-resolution implementation.
+Add typed connection validation, cycle detection and dependency-order traversal.
+Keep durable serialized schemas separate from application memory layouts.
+Phase 3 — End-to-end slices
+Two instances sharing one geometry asset.
+External versus embedded versions of the same assets.
+UV → pigment → material dependencies.
+Editable CAD construction and regeneration.
+Workflow execution dependencies.
+State/recovery domains after the foundation is stable.
+Phase 4 — Migration and packaging
+Preserve a reader for supported old files.
+Convert to new files without overwriting originals.
+Report unsupported content rather than silently dropping it.
+Reconnect project launch, export, pack and explode consumers.
+Retire old writers only after migration is demonstrated.
+10. Acceptance evidence
+Case	Required result
+Shared geometry	Two placements, one shared geometry payload
+Standalone/embedded round trip	Same asset identities, revisions and interpreted content
+Offline package	Required dependencies resolve after original asset paths are unavailable
+Cross-file or embedded dependency cycle	Rejected with the dependency chain
+Copy-on-write material edit	Intended assignment changes; other users remain unchanged
+Geometry changes under UV/paint	Stale compatibility detected, not silently accepted
+CAD save/load	Construction, constraints and references survive; derived output regenerates
+Paint save/load	Layer/mask/channel/stroke semantics survive
+Unknown required operation	Honest unsupported result; no silent destructive rewrite
+Malformed container	Safe rejection within defined resource limits
+Deterministic export	Identical inputs produce canonical output where promised
+Old-format migration	Original preserved; supported content retained; omissions reported
+Retain validation code, fixtures, results and actual images together under Exhibits/. Reuse production Engine code rather than implementing a separate “proof-only” codec.
+
+For every reported result, record the tested revision, relevant uncommitted changes, command, configuration and limitations. Mark checks passed, failed, blocked, or not run. Browser mockups do not establish native editor correctness.
+
+11. Folder ownership and first deliverable
+Engine/: reusable production codec, asset resolution and graph evaluation code.
+Exhibits/: verification code, proof images and retained results.
+Experimental/: prototypes and exploratory HTML.
+Documentation: one approved specification/plan and links from the project’s single tracker.

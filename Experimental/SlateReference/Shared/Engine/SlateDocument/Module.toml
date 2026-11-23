@@ -1,0 +1,28 @@
+# SlateDocument — population indexing and revision content.
+# Depends strictly on SlateMath. Peers with SlateVulkan and never references it.
+
+[unit]
+name    = "SlateDocument"
+product = "StaticLibrary"
+subject = [ "Format", "Document" ]
+
+# 🔴 SlateVulkan is absent from this list and stays absent. The document model has no device dependency,
+#    and the partition is what makes acquiring one a link error rather than something a reviewer must catch.
+[requires]
+unit = [ "SlateShape", "SlateMath" ]
+
+# 🔴 `10` §1: the vendored readers are compiled into the codec translation units and nowhere else, so exactly
+#    one copy of each implementation exists in the process. The package root is reachable from this unit alone;
+#    a second unit including "stb/stb_image.h" would compile a second copy and the link would refuse it.
+[external]
+include = [ "Engine/Shared", "ExternalPackages" ]
+declare = []
+
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+# statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+# what an executable must **link** so every reference resolves. They coincide for most units and part
+# for `SlateUI`, which links four archives and is permitted to include none of them — a static archive
+# only satisfies references the linker has already seen, so the order is load-bearing.
+unit    = [ "SlateShape", "SlateMath" ]
+library = []

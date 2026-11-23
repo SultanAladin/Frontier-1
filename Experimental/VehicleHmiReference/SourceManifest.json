@@ -1,0 +1,131 @@
+{
+  "repository": "SultanAladin/Frontier",
+  "commit": "6afb6f00b5f25c45f7cda92c7da65b64845768f3",
+  "prefix": "Experimental/VehicleHmiPrototype/",
+  "files": [
+    {
+      "path": "Source/CelestialAtlas.js",
+      "git_blob": "6893540f2d2a3d688e3b108a53f0121de92e1e3d"
+    },
+    {
+      "path": "Source/NativeLensFlareKernel.js",
+      "git_blob": "62e42e79ef9f5b37887cb3af008cfe3afa974b4c"
+    },
+    {
+      "path": "Shader/CelestialSky.wgsl",
+      "git_blob": "17f915eb859e59df790b69185ee2eb10be592207"
+    },
+    {
+      "path": "Shader/LensFlare.wgsl",
+      "git_blob": "b6906f6ebb04618be8161b6148588bc80edf266b"
+    },
+    {
+      "path": "Shader/AtmosphereScattering.wgsl",
+      "git_blob": "02ab1bb7f00750f28ccf3c023a16c98102aa4467"
+    },
+    {
+      "path": "Tools/VolumetricTyrePhysics.test.mjs",
+      "git_blob": "7e2372a39d8bebc2f2fd71e1d7271b4f98c5e550"
+    },
+    {
+      "path": "Source/VehicleVisualState.js",
+      "git_blob": "75ee8cb6daa5b6fd729e9f24ae873218cd4b3cbe"
+    },
+    {
+      "path": "Source/TransformProjection.js",
+      "git_blob": "7d669de08c6dd7019ccd9d075f9bdc22bd92b6b3"
+    },
+    {
+      "path": "Source/TyreContinuumElasticity.js",
+      "git_blob": "0d62f516175845d2b842b73ff9ff491419451208"
+    },
+    {
+      "path": "Source/VehicleSolver.js",
+      "git_blob": "6e5f9afa0e7d358fdd4e9d904a2c707ee30977d2"
+    },
+    {
+      "path": "Source/TyreSlipSolver.js",
+      "git_blob": "be41b73a4c6c40fe5320217bd5915687c29672ef"
+    },
+    {
+      "path": "Source/VehicleSpecification.js",
+      "git_blob": "e76779117b3eaeed9eea59daf6ad1d04b7cfc03c"
+    },
+    {
+      "path": "Source/TyreCarcassProjection.js",
+      "git_blob": "8d2719e5c9959f88c7b8f4fda8c81d1cbd1ab26e"
+    },
+    {
+      "path": "Source/CourseStructure.js",
+      "git_blob": "c943f7eca90d643a68f8056dfcd8e1720a6853da"
+    },
+    {
+      "path": "Source/MaterialSpecification.js",
+      "git_blob": "617d9a966742611ecf6a922304684ec472326ea6"
+    },
+    {
+      "path": "Shader/VehicleVisual.wgsl",
+      "git_blob": "22359e7e799da472c7cb4e6a7d518458278c5813"
+    },
+    {
+      "path": "Shader/ReservoirRecords.wgsl",
+      "git_blob": "a999b1cff7a48f6a34594dd611ce501bda424c7a"
+    },
+    {
+      "path": "Shader/ReservoirSpatial.wgsl",
+      "git_blob": "be6c589140c8fb9bc8ef699c5bb8abdd9284a3e6"
+    },
+    {
+      "path": "Shader/ReservoirTemporal.wgsl",
+      "git_blob": "a1d4f4eb272f38690ebde1f79d90d59cece6ede9"
+    },
+    {
+      "path": "Source/PlumeSpace.js",
+      "git_blob": "180cb02e8bd5ba29a63db820c5e5430460718727"
+    },
+    {
+      "path": "Source/SpatialGrid.js",
+      "git_blob": "01db6519bc8569d8442910373b6a1aa939a7746f"
+    },
+    {
+      "path": "Source/PlumeSourceProjection.js",
+      "git_blob": "f16facc11ebaa199439a055cb789aef5c8a7bd79"
+    },
+    {
+      "path": "Source/SmokeSequence.js",
+      "git_blob": "89fa45b85b86bfb9c090ccb88c4051dabdf728d2"
+    },
+    {
+      "path": "Shader/PlumeAdvection.wgsl",
+      "git_blob": "4c0b128800bf63f3e9c048f48ad089c534316cb5"
+    },
+    {
+      "path": "Shader/PlumeMarch.wgsl",
+      "git_blob": "26d673d451760fce7a6bb9a795d756bd0c7aa9cc"
+    },
+    {
+      "path": "Shader/PlumePressure.wgsl",
+      "git_blob": "3ac6350519526ec2584e1f4fceadfafa19eac573"
+    },
+    {
+      "path": "Shader/PlumeRecords.wgsl",
+      "git_blob": "be2f043db792f5dd45692c65d761b2e58892be4f"
+    },
+    {
+      "path": "Shader/PlumeVorticity.wgsl",
+      "git_blob": "3fa7354077e5b8f239099289dd2d4702253cafd7"
+    },
+    {
+      "path": "Shader/SceneRecords.wgsl",
+      "git_blob": "e49e8f269ab8c46ea6ef35136e1092edbc0dc6da"
+    },
+    {
+      "path": "Shader/DistanceRecords.wgsl",
+      "git_blob": "0bee46f9ba11725592d21521533891aa6b8e36fd"
+    },
+    {
+      "path": "Shader/DistanceTraversal.wgsl",
+      "git_blob": "fdda8728de49a2c7ffc445f337f351a2338d18c0"
+    }
+  ]
+}

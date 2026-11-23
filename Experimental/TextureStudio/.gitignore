@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.playwright/
+test-results/
+
+# Visual research only: never material inputs or part of the deployed app.
+image-search/
+
+# Generated bake deliverables / quality reports, not source assets.
+bake-audits/

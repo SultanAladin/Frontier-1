@@ -1,0 +1,416 @@
+/* NOCTURNE — CABIN HMI PROTOTYPE C
+   🧩 Night-lake display: deep navy glass over a full-bleed moonlit scene, thin oversized numerals, a glass card row
+      riding a full-width dock. Each menu brings its own light: ice blue (home), curtain colours (drive),
+      aurora green (charge), warm and cool seat glow (comfort). Fixed 1600 × 900. */
+
+.Nocturne {
+    --Ink:      #eef3ff;
+    --InkSoft:  rgba(226, 234, 255, 0.74);
+    --InkDim:   rgba(214, 226, 255, 0.5);
+    --Glass:    rgba(18, 30, 54, 0.46);
+    --GlassHi:  rgba(170, 196, 255, 0.10);
+    --Edge:     rgba(170, 196, 255, 0.16);
+    --Ice:      #a9c8ff;
+    --Aurora:   #5dffa8;
+    --Warm:     #ff5d6c;
+    --Cool:     #4f7dff;
+    --Accent:   #a9c8ff;
+    --AccentRGB: 169, 200, 255;
+    width: 1600px; height: 900px;
+    background: #050811;
+    color: var(--Ink);
+    font-size: 14px;
+}
+.Nocturne [hidden] { display: none !important; }
+.Nocturne[data-menu-now="Charge"] { --Accent: #5dffa8; --AccentRGB: 93, 255, 168; }
+.Nocturne[data-menu-now="Drive"]  { --Accent: var(--ModeTone, #ffb48a); --AccentRGB: var(--ModeRGB, 255, 180, 138); }
+.Nocturne[data-menu-now="Media"]  { --Accent: #c9b6ff; --AccentRGB: 201, 182, 255; }
+.Vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 90% at 50% 30%, transparent 55%, rgba(2, 4, 10, 0.6)), linear-gradient(0deg, rgba(3, 6, 14, 0.78), transparent 34%), linear-gradient(180deg, rgba(3, 6, 14, 0.55), transparent 14%); }
+
+svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+svg.Fill, .PlayGlyph, .PauseGlyph, .Bolt { fill: currentColor; stroke: none; }
+
+/* ------------------------------------------------------------------ top bar */
+.TopBar { position: absolute; left: 40px; right: 40px; top: 26px; display: flex; justify-content: space-between; align-items: center; }
+.DateLine { font-size: 15px; color: var(--InkSoft); letter-spacing: 0.02em; }
+.TopRight { display: flex; align-items: center; gap: 18px; color: var(--InkSoft); }
+.TopRight .Glyph { width: 18px; height: 18px; }
+.TopClock { font-weight: 400; font-size: 17px; color: var(--Ink); font-variant-numeric: tabular-nums; }
+.Avatar { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.Avatar i { width: 28px; height: 28px; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #fff 0 22%, transparent 23%), radial-gradient(circle at 50% 100%, #fff 0 40%, transparent 41%), #3a4a6e; border: 1.5px solid rgba(255, 255, 255, 0.5); }
+
+/* ------------------------------------------------------------------ layers */
+.Layer { position: absolute; inset: 0; pointer-events: none; }
+.Layer > * { opacity: 0; translate: 0 16px; filter: blur(6px); transition: opacity 420ms ease, translate 560ms cubic-bezier(.2,.9,.25,1), filter 420ms; transition-delay: 0ms; pointer-events: none; }
+.Layer.On > * { opacity: 1; translate: 0 0; filter: blur(0); transition-delay: calc(var(--Order, 0) * 70ms + 160ms); pointer-events: auto; }
+
+.GlassCard { background: var(--Glass); backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3); border: 1px solid var(--Edge); }
+
+/* ------------------------------------------------------------------ home cards */
+.CardRow { position: absolute; left: 40px; right: 40px; bottom: 100px; display: grid; grid-template-columns: 1fr 1.25fr 1fr 1.25fr; gap: 16px; }
+.Card { position: relative; height: 112px; border-radius: 18px; padding: 18px 20px; display: flex; align-items: center; gap: 16px; text-align: left; overflow: hidden;
+        background: linear-gradient(160deg, rgba(40, 60, 100, 0.42), rgba(14, 22, 42, 0.5)); backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3); border: 1px solid var(--Edge);
+        box-shadow: 0 18px 40px rgba(0, 2, 10, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08); transition: transform 320ms cubic-bezier(.3,1.4,.5,1), border-color 300ms, box-shadow 300ms; }
+.Card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.10) 45%, transparent 60%); translate: -110% 0; transition: translate 900ms ease; pointer-events: none; }
+.Card:hover { transform: translateY(-6px); border-color: rgba(var(--AccentRGB), 0.45); box-shadow: 0 26px 50px rgba(0, 2, 10, 0.55), 0 0 0 1px rgba(var(--AccentRGB), 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.Card:hover::before { translate: 110% 0; }
+.Card:active { transform: translateY(-2px) scale(0.98); }
+.Card b { display: block; font-weight: 500; font-size: 18px; }
+.Card small { display: block; margin-top: 4px; font-size: 13px; color: var(--InkDim); }
+
+.TurnBadge { width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center; background: rgba(var(--AccentRGB), 0.14); color: var(--Ice); flex: none; }
+.TurnBadge svg { width: 28px; height: 28px; stroke-width: 2; animation: TurnNudge 2.4s ease-in-out infinite; }
+@keyframes TurnNudge { 50% { translate: 3px 0; } }
+.RouteDots { position: absolute; right: 18px; top: 18px; display: flex; gap: 4px; }
+.RouteDots i { width: 5px; height: 5px; border-radius: 50%; background: var(--Ice); opacity: 0.25; animation: RouteDot 1.5s infinite; }
+.RouteDots i:nth-child(2) { animation-delay: 0.2s; } .RouteDots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes RouteDot { 30% { opacity: 1; } }
+
+.Orb { position: relative; width: 56px; height: 56px; flex: none; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffffff, #b8c8ff 30%, #6f6cf0 62%, #2a2f8a 100%); box-shadow: 0 0 24px rgba(140, 150, 255, 0.55); }
+.Orb i { position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid rgba(180, 190, 255, 0.5); opacity: 0; }
+.Assist.Listening .Orb { animation: OrbBreathe 1.1s ease-in-out infinite; }
+.Assist.Listening .Orb i { animation: OrbWave 1.6s ease-out infinite; }
+.Assist.Listening .Orb i:nth-child(2) { animation-delay: 0.5s; } .Assist.Listening .Orb i:nth-child(3) { animation-delay: 1s; }
+@keyframes OrbBreathe { 50% { transform: scale(1.08); } }
+@keyframes OrbWave { from { opacity: 0.9; transform: scale(0.9); } to { opacity: 0; transform: scale(1.7); } }
+.AssistText b { transition: opacity 240ms; }
+
+.Weather .Temp { font-weight: 300; font-size: 50px; line-height: 1; flex: none; }
+.Weather .Temp sup { font-size: 22px; vertical-align: top; position: relative; top: 4px; }
+.Cloud { position: absolute; right: -6px; bottom: -8px; width: 120px; height: 70px; animation: CloudDrift 9s ease-in-out infinite; opacity: 0.9; }
+.Cloud i { position: absolute; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #ffffff, #cfd8ea 55%, #8d9ab8); filter: blur(0.4px); }
+.Cloud i:nth-child(1) { width: 58px; height: 58px; left: 34px; top: 4px; }
+.Cloud i:nth-child(2) { width: 44px; height: 44px; left: 8px; top: 22px; }
+.Cloud i:nth-child(3) { width: 50px; height: 46px; left: 66px; top: 22px; }
+@keyframes CloudDrift { 50% { translate: -10px 2px; } }
+
+.TrackCover { width: 58px; height: 58px; border-radius: 12px; flex: none; background-size: cover; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); transition: background-image 300ms; }
+.TrackCover.Small { width: 52px; height: 52px; border-radius: 8px; }
+.Bars { position: absolute; right: 20px; top: 20px; display: flex; gap: 3px; align-items: flex-end; height: 18px; }
+.Bars i { width: 3px; height: 30%; border-radius: 2px; background: var(--Ice); opacity: 0.6; }
+.Playing .Bars i { animation: BarHop 0.9s ease-in-out infinite; }
+.Playing .Bars i:nth-child(2) { animation-delay: -0.3s; } .Playing .Bars i:nth-child(3) { animation-delay: -0.6s; } .Playing .Bars i:nth-child(4) { animation-delay: -0.15s; }
+@keyframes BarHop { 50% { height: 100%; } }
+
+/* ------------------------------------------------------------------ drive */
+.TripColumn { position: absolute; left: 40px; top: 120px; width: 300px; }
+.TripHead { display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--InkSoft); padding-bottom: 10px; border-bottom: 2px solid rgba(255, 255, 255, 0.85); }
+.LinkButton { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--InkSoft); padding: 4px 6px; border-radius: 6px; }
+.LinkButton svg { width: 16px; height: 16px; transition: translate 220ms; }
+.LinkButton:hover svg { translate: 4px 0; }
+.BigFigure { margin-top: 22px; display: flex; align-items: baseline; gap: 6px; }
+.BigFigure b { font-weight: 300; font-size: 84px; line-height: 0.95; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.BigFigure span { font-weight: 300; font-size: 34px; color: var(--InkSoft); }
+.Rule { margin-top: 12px; height: 3px; background: rgba(255, 255, 255, 0.12); border-radius: 2px; }
+.Rule i { display: block; height: 100%; border-radius: 2px; background: #fff; transition: width 800ms; }
+.Rule.Dim i { background: rgba(255, 255, 255, 0.55); }
+.TripNote { margin-top: 26px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.14); }
+.TripNote b { font-weight: 500; font-size: 15px; }
+.TripNote small { display: block; margin-top: 6px; font-size: 13px; line-height: 1.5; color: var(--InkDim); }
+
+.EnergyHead { margin-top: 26px; display: flex; align-items: center; gap: 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--InkSoft); }
+.EnergyHead svg { width: 18px; height: 18px; }
+.EnergyHead small { margin-left: auto; text-transform: none; letter-spacing: 0.02em; font-size: 12.5px; color: var(--InkDim); font-variant-numeric: tabular-nums; }
+.EnergyHead.Fuel svg { color: #ffb36b; }
+.EnergyHead.Cell svg { color: #5fe3ff; }
+.TripColumn .BigFigure { margin-top: 6px; }
+.TripColumn .BigFigure b { font-size: 64px; }
+.TripColumn .BigFigure span { font-size: 26px; }
+.Rule.Fuel i { background: linear-gradient(90deg, #ff8a3d, #ffd39a); box-shadow: 0 0 10px rgba(255, 160, 80, 0.5); }
+.Rule.Cell i { background: linear-gradient(90deg, #2fb8ff, #a6f4ff); box-shadow: 0 0 10px rgba(80, 200, 255, 0.5); }
+.Charging-Cell .Rule.Cell i { animation: CellFill 1.4s linear infinite; background-size: 200% 100%; background-image: linear-gradient(90deg, #2fb8ff, #a6f4ff, #2fb8ff); }
+@keyframes CellFill { to { background-position: -200% 0; } }
+.RangeSplit { margin-top: 26px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.14); }
+.RangeTotal b { font-weight: 300; font-size: 34px; font-variant-numeric: tabular-nums; }
+.RangeTotal span { margin-left: 6px; font-size: 14px; color: var(--InkSoft); }
+.RangeBar { margin-top: 10px; height: 6px; display: flex; gap: 3px; }
+.RangeBar i { display: block; height: 100%; border-radius: 3px; transition: flex-grow 800ms cubic-bezier(.3,1.2,.5,1); }
+.RangeBar i.Ev { background: #5fe3ff; } .RangeBar i.Gas { background: #ffb36b; }
+.RangeKeys { margin-top: 8px; display: flex; justify-content: space-between; font-size: 12px; color: var(--InkDim); }
+.RangeKeys i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+.RangeKeys i.Ev { background: #5fe3ff; } .RangeKeys i.Gas { background: #ffb36b; }
+.RangeKeys b { color: var(--Ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+.TripColumn .TripNote { margin-top: 18px; }
+
+.FlowCard { position: absolute; right: 40px; top: 120px; width: 318px; padding: 20px 22px; border-radius: 22px; background: var(--Glass); backdrop-filter: blur(18px); border: 1px solid var(--Edge); }
+.FlowHead { display: flex; align-items: baseline; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.14); }
+.FlowHead small { font-size: 11px; letter-spacing: 0.16em; color: var(--InkDim); }
+.FlowHead b { font-weight: 500; font-size: 17px; }
+.FlowSpeed { margin-top: 10px; display: flex; align-items: baseline; gap: 8px; }
+.FlowSpeed b { font-weight: 200; font-size: 92px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; text-shadow: 0 0 36px rgba(var(--AccentRGB), 0.35); }
+.FlowSpeed span { font-size: 20px; color: var(--InkSoft); }
+.FlowState { display: block; margin-top: 4px; font-size: 13px; color: var(--Accent); transition: color 400ms; }
+.FlowRows { margin-top: 16px; display: grid; gap: 12px; }
+.FlowRow { display: grid; grid-template-columns: 10px 76px minmax(0, 1fr) 44px 26px; align-items: center; gap: 8px; font-size: 13px; color: var(--InkSoft); }
+.FlowRow .Dot { width: 8px; height: 8px; border-radius: 50%; background: var(--Tone); opacity: 0.35; transition: opacity 300ms, box-shadow 300ms; }
+.FlowRow.Live .Dot { opacity: 1; box-shadow: 0 0 10px var(--Tone); }
+.FlowRow em { position: relative; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.FlowRow em i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; background: var(--Tone); transition: width 400ms; }
+.FlowRow.Reverse em i { left: auto; right: 0; background: #67f5b1; }
+.FlowRow b { text-align: right; font-weight: 500; font-size: 15px; color: var(--Ink); font-variant-numeric: tabular-nums; }
+.FlowRow small { font-size: 11px; color: var(--InkDim); }
+.FlowRow[data-flow="Engine"] { --Tone: #ff9a4a; }
+.FlowRow[data-flow="Battery"] { --Tone: #5fe3ff; }
+.FlowRow[data-flow="Drive"] { --Tone: var(--Accent); }
+.FlowRow[data-flow="Fuel"] { --Tone: #ffd36b; }
+.FlowCard .SpeedNote { display: block; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 12px; color: var(--InkDim); }
+
+.Layer.On > .FlowTags, .FlowTags { pointer-events: none; }
+.FlowTags { position: absolute; inset: 0; }
+.FlowTag { position: absolute; left: 0; top: 0; translate: -50% calc(-100% - 34px); padding: 6px 11px; border-radius: 10px; background: rgba(10, 14, 26, 0.72); border: 1px solid rgba(255, 255, 255, 0.12); white-space: nowrap; transition: border-color 300ms, box-shadow 300ms, opacity 300ms; opacity: 0.55; }
+.FlowTag::after { content: ''; position: absolute; left: 50%; top: 100%; width: 1px; height: 30px; background: linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)); }
+.FlowTag b { display: block; font-weight: 500; font-size: 12.5px; }
+.FlowTag small { display: block; font-size: 10.5px; color: var(--InkDim); }
+.FlowTag.Live { opacity: 1; border-color: var(--Tone); box-shadow: 0 0 18px -4px var(--Tone); }
+.FlowTag[data-part="Engine"] { --Tone: #ff9a4a; } .FlowTag[data-part="Motor"] { --Tone: #c9b6ff; }
+.FlowTag[data-part="Cell"] { --Tone: #5fe3ff; } .FlowTag[data-part="Tank"] { --Tone: #ffd36b; }
+
+.ModeBar { position: absolute; left: 50%; bottom: 104px; translate: -50% 16px; display: flex; gap: 14px; align-items: center; }
+.Layer.On > .ModeBar { translate: -50% 0; }
+.ModePills { position: relative; display: flex; padding: 5px; border-radius: 28px; background: var(--Glass); backdrop-filter: blur(18px); border: 1px solid var(--Edge); }
+.ModePills button { position: relative; z-index: 1; height: 44px; padding: 0 24px; border-radius: 22px; font-size: 14px; color: var(--InkSoft); transition: color 280ms; }
+.ModePills button.On { color: #0b1020; font-weight: 500; }
+.PillGlide { position: absolute; top: 5px; height: 44px; border-radius: 22px; background: linear-gradient(135deg, #ffffff, rgba(var(--AccentRGB), 1)); box-shadow: 0 6px 20px rgba(var(--AccentRGB), 0.35); transition: left 420ms cubic-bezier(.3,1.3,.5,1), width 420ms cubic-bezier(.3,1.3,.5,1), background 400ms; }
+.CruiseButton { height: 54px; padding: 0 22px 0 18px; border-radius: 27px; display: flex; align-items: center; gap: 8px; font-weight: 500; background: rgba(var(--AccentRGB), 0.18); border: 1px solid rgba(var(--AccentRGB), 0.5); color: var(--Ink); transition: background 260ms, transform 160ms; }
+.CruiseButton:active { transform: scale(0.95); }
+.CruiseButton.On { background: rgba(var(--AccentRGB), 0.9); color: #0b1020; }
+.CruiseButton.On svg path { d: path('M7 5h4v14H7Zm6 0h4v14h-4Z'); }
+.CruiseButton svg { fill: currentColor; stroke: none; }
+
+/* ------------------------------------------------------------------ charge */
+.ForecastColumn { position: absolute; left: 40px; top: 120px; width: 300px; padding: 24px 24px 20px; border-radius: 22px; background: linear-gradient(170deg, rgba(14, 40, 40, 0.5), rgba(6, 14, 24, 0.55)); backdrop-filter: blur(20px); border: 1px solid rgba(93, 255, 168, 0.14); }
+.NowTemp { font-weight: 300; font-size: 78px; line-height: 1; }
+.NowTemp sup { font-size: 30px; vertical-align: top; }
+.ForecastColumn > b { display: block; margin-top: 6px; font-weight: 500; font-size: 20px; }
+.ForecastColumn > small { display: block; margin-top: 4px; color: var(--InkDim); }
+.Forecast { margin-top: 22px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.Forecast div { text-align: center; font-size: 11px; color: var(--InkDim); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.Forecast div b { font-weight: 500; font-size: 13px; color: var(--Ink); }
+.Forecast div i { width: 22px; height: 14px; border-radius: 8px; background: radial-gradient(circle at 35% 40%, #fff, #c8d2e6 60%, transparent 62%), radial-gradient(circle at 70% 55%, #e8eef8, #aab6cc 55%, transparent 58%); animation: CloudDrift 7s ease-in-out infinite; }
+.Forecast div:nth-child(2n) i { animation-delay: -3s; }
+.Forecast div.Moon i { border-radius: 50%; width: 14px; height: 14px; background: radial-gradient(circle at 65% 35%, transparent 38%, #f4f0d8 40%); }
+
+.ChargeCard { position: absolute; left: 380px; top: 270px; width: 340px; padding: 24px; border-radius: 22px; background: linear-gradient(165deg, rgba(20, 52, 44, 0.55), rgba(6, 16, 20, 0.6)); backdrop-filter: blur(22px) saturate(1.3); border: 1px solid rgba(93, 255, 168, 0.22); box-shadow: 0 24px 60px rgba(0, 10, 6, 0.5), 0 0 60px rgba(93, 255, 168, 0.06); }
+.ChargeState { display: block; text-align: center; font-size: 13px; letter-spacing: 0.18em; color: var(--InkSoft); }
+.Charging .ChargeState { color: var(--Aurora); }
+.BatteryShape { position: relative; margin: 14px auto 0; width: 230px; height: 92px; border-radius: 18px; border: 3px solid rgba(220, 255, 236, 0.85); padding: 6px; display: flex; align-items: center; justify-content: center; }
+.BatteryShape::after { content: ''; position: absolute; right: -11px; top: 30px; width: 6px; height: 26px; border-radius: 0 4px 4px 0; background: rgba(220, 255, 236, 0.85); }
+.BatteryFill { position: absolute; left: 6px; top: 6px; bottom: 6px; border-radius: 11px; background: linear-gradient(90deg, #1f8a58, #3fd98a); overflow: hidden; transition: width 900ms cubic-bezier(.3,.9,.3,1); max-width: calc(100% - 12px); }
+.Shimmer { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.45) 50%, transparent 80%); translate: -100% 0; }
+.Charging .Shimmer { animation: Shimmer 1.8s ease-in-out infinite; }
+@keyframes Shimmer { to { translate: 100% 0; } }
+.BatteryShape b { position: relative; font-weight: 500; font-size: 54px; letter-spacing: -0.02em; color: #fff; text-shadow: 0 2px 14px rgba(0, 40, 20, 0.6); font-variant-numeric: tabular-nums; }
+.Bolt { position: relative; width: 30px; height: 30px; color: rgba(255, 255, 255, 0.5); margin-left: 4px; }
+.Charging .Bolt { color: #fff; animation: BoltFlicker 1.4s ease-in-out infinite; }
+@keyframes BoltFlicker { 50% { opacity: 0.45; } }
+.BatteryLimit { position: absolute; top: -6px; bottom: -6px; width: 2px; background: rgba(255, 255, 255, 0.85); border-radius: 1px; transition: left 300ms; }
+.BatteryLimit::before { content: ''; position: absolute; top: -5px; left: -4px; border: 5px solid transparent; border-top-color: #fff; }
+.ChargeStats { margin-top: 22px; display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; }
+.ChargeStats div + div { border-left: 1px solid rgba(255, 255, 255, 0.1); }
+.ChargeStats b { display: block; font-weight: 300; font-size: 28px; font-variant-numeric: tabular-nums; }
+.ChargeStats small { font-size: 11px; color: var(--InkDim); letter-spacing: 0.04em; }
+.LimitRow { margin-top: 22px; display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--InkSoft); }
+.LimitRow b { width: 40px; text-align: right; font-weight: 500; color: var(--Ink); }
+.Slider { position: relative; flex: 1; height: 28px; cursor: pointer; touch-action: none; }
+.Slider .Track { position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+.Slider .Fill { position: absolute; left: 0; top: 12px; height: 4px; border-radius: 2px; background: var(--Aurora); box-shadow: 0 0 10px rgba(93, 255, 168, 0.6); }
+.Slider .Knob { position: absolute; top: 5px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); transition: transform 160ms; }
+.Slider:active .Knob { transform: scale(1.25); }
+.ChargeButton { margin-top: 20px; width: 100%; height: 48px; border-radius: 14px; font-weight: 500; letter-spacing: 0.02em; background: var(--Aurora); color: #04170c; transition: background 260ms, color 260ms, transform 140ms; }
+.ChargeButton:active { transform: scale(0.97); }
+.Charging .ChargeButton { background: rgba(255, 255, 255, 0.1); color: var(--Ink); }
+
+/* ------------------------------------------------------------------ comfort */
+.ClimateTabs { position: absolute; left: 50%; top: 92px; translate: -50% 16px; display: flex; align-items: center; gap: 34px; padding: 0 10px; }
+.Layer.On > .ClimateTabs { translate: -50% 0; }
+.ClimateTabs button { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 6px; font-weight: 500; font-size: 15px; letter-spacing: 0.06em; color: var(--InkDim); transition: color 260ms; }
+.ClimateTabs button svg { width: 18px; height: 18px; }
+.ClimateTabs button::after { content: ''; position: absolute; left: 50%; right: 50%; bottom: 2px; height: 2px; border-radius: 1px; background: var(--Warm); transition: left 300ms cubic-bezier(.3,1.3,.5,1), right 300ms cubic-bezier(.3,1.3,.5,1); }
+.ClimateTabs button.On { color: var(--Ink); }
+.ClimateTabs button.On::after { left: 6px; right: 6px; }
+.TabSeat { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.06); color: var(--InkSoft); }
+
+.TempColumn { position: absolute; top: 210px; width: 120px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.TempColumn.Left { left: 70px; }
+.TempColumn.Right { right: 70px; }
+.TempFigure b { font-weight: 300; font-size: 54px; font-variant-numeric: tabular-nums; }
+.TempFigure sup { font-size: 22px; vertical-align: top; position: relative; top: 8px; }
+.TempBar { position: relative; width: 34px; height: 250px; display: flex; flex-direction: column-reverse; gap: 4px; padding: 6px 0; cursor: ns-resize; touch-action: none; }
+.TempBar i { flex: 1; border-radius: 2px; background: rgba(255, 255, 255, 0.08); transition: background 220ms, box-shadow 220ms, transform 220ms; }
+.TempBar i.Lit { background: var(--Tone); box-shadow: 0 0 10px var(--Tone); }
+.TempBar i.Head { transform: scaleX(1.35); }
+.SeatKey { width: 64px; height: 64px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--Edge); color: var(--InkSoft); transition: background 260ms, color 260ms, border-color 260ms; }
+.SeatKey svg { width: 24px; height: 24px; }
+.SeatKey .Levels { display: flex; gap: 3px; }
+.SeatKey .Levels i { width: 10px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); transition: background 200ms; }
+.SeatKey[data-heat] .Levels i.Lit { background: var(--Warm); box-shadow: 0 0 6px var(--Warm); }
+.SeatKey[data-vent] .Levels i.Lit { background: var(--Cool); box-shadow: 0 0 6px var(--Cool); }
+.SeatKey.Live[data-heat] { color: #ffb3ba; border-color: rgba(255, 93, 108, 0.5); background: rgba(255, 93, 108, 0.1); }
+.SeatKey.Live[data-vent] { color: #b4c8ff; border-color: rgba(79, 125, 255, 0.5); background: rgba(79, 125, 255, 0.12); }
+
+.AutoBlock { position: absolute; left: 50%; top: 330px; width: 120px; margin-left: -60px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.AutoButton { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--Edge); color: var(--Ink); transition: background 260ms; }
+.AutoButton svg { width: 28px; height: 28px; animation: FanSpin var(--FanPeriod, 3s) linear infinite; }
+@keyframes FanSpin { to { rotate: 360deg; } }
+.AutoBlock b { margin-top: 8px; font-weight: 500; font-size: 12px; letter-spacing: 0.14em; }
+.AutoBlock small { font-size: 11px; color: var(--InkDim); }
+.FanSteps { display: flex; gap: 8px; margin-top: 8px; }
+.FanSteps button { width: 34px; height: 30px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); font-size: 18px; line-height: 1; color: var(--InkSoft); }
+
+.InfoRow { position: absolute; left: 260px; right: 260px; bottom: 100px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.InfoCard { height: 88px; border-radius: 14px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: rgba(16, 20, 32, 0.66); backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, 0.07); }
+.InfoCard > div:nth-child(2) { flex: 1; min-width: 0; }
+.InfoCard small { display: block; font-size: 10px; letter-spacing: 0.12em; color: var(--InkDim); }
+.InfoCard b { display: block; margin-top: 3px; font-weight: 500; font-size: 16px; }
+.InfoCard span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--InkDim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.InfoBadge { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); font-weight: 500; font-size: 18px; font-style: italic; flex: none; }
+.RoundKey { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); flex: none; transition: transform 140ms; }
+.RoundKey:active { transform: scale(0.9); }
+.PauseGlyph { display: none; }
+.Playing .PlayGlyph { display: none; }
+.Playing .PauseGlyph { display: block; }
+
+/* ------------------------------------------------------------------ media */
+.FlowArrow { position: absolute; top: 330px; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--Glass); backdrop-filter: blur(14px); border: 1px solid var(--Edge); transition: transform 200ms cubic-bezier(.3,1.5,.5,1), background 200ms; }
+.FlowArrow:hover { transform: scale(1.08); background: rgba(var(--AccentRGB), 0.2); }
+.FlowArrow:active { transform: scale(0.92); }
+.FlowArrow.Left { left: 40px; }
+.FlowArrow.Right { left: 1090px; }
+.PlayerPanel { position: absolute; right: 40px; top: 96px; bottom: 100px; width: 380px; padding: 26px; border-radius: 22px; background: linear-gradient(170deg, rgba(34, 28, 66, 0.5), rgba(10, 10, 24, 0.6)); backdrop-filter: blur(22px) saturate(1.3); border: 1px solid rgba(201, 182, 255, 0.16); display: flex; flex-direction: column; }
+.PanelLabel { font-size: 12px; letter-spacing: 0.1em; font-weight: 500; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.4); }
+.PanelLabel span { font-weight: 400; color: var(--InkDim); letter-spacing: 0.02em; margin-left: 6px; text-transform: none; }
+.NowTitle { margin-top: 20px; font-weight: 400; font-size: 28px; transition: opacity 200ms; }
+.NowArtist { margin-top: 4px; font-size: 14px; color: var(--InkDim); }
+.Progress { position: relative; margin-top: 22px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); cursor: pointer; }
+.Progress i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: #fff; }
+.Progress em { position: absolute; top: -5px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #fff; box-shadow: 0 0 12px rgba(var(--AccentRGB), 0.8); }
+.Times { margin-top: 8px; display: flex; justify-content: space-between; font-size: 11px; color: var(--InkDim); font-variant-numeric: tabular-nums; }
+.Transport { margin-top: 14px; display: flex; justify-content: center; align-items: center; gap: 26px; }
+.Transport button { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; transition: transform 140ms, background 200ms; }
+.Transport button:hover { background: rgba(255, 255, 255, 0.07); }
+.Transport button:active { transform: scale(0.88); }
+.Transport button svg { fill: currentColor; }
+.Transport .Main { width: 64px; height: 64px; background: #fff; color: #120e24; box-shadow: 0 10px 30px rgba(var(--AccentRGB), 0.35); }
+.Transport .Main:hover { background: #fff; }
+.Transport .Main svg { width: 26px; height: 26px; }
+.Queue { margin-top: 18px; display: flex; flex-direction: column; gap: 4px; flex: 1; overflow: hidden; }
+.QueueRow { display: flex; align-items: center; gap: 12px; padding: 7px 8px; border-radius: 10px; text-align: left; transition: background 200ms; }
+.QueueRow:hover { background: rgba(255, 255, 255, 0.06); }
+.QueueRow.On { background: rgba(var(--AccentRGB), 0.14); }
+.QueueRow i { width: 36px; height: 36px; border-radius: 6px; background-size: cover; flex: none; }
+.QueueRow b { display: block; font-weight: 500; font-size: 13.5px; }
+.QueueRow small { display: block; font-size: 11.5px; color: var(--InkDim); }
+.QueueRow em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--InkDim); font-variant-numeric: tabular-nums; }
+.PulseRow { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px; color: var(--InkSoft); }
+.Toggle { position: relative; width: 46px; height: 26px; border-radius: 13px; background: rgba(255, 255, 255, 0.14); transition: background 260ms; }
+.Toggle i { position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 320ms cubic-bezier(.3,1.5,.5,1); }
+.Toggle.On { background: rgba(var(--AccentRGB), 0.75); }
+.Toggle.On i { transform: translateX(20px); }
+
+/* ------------------------------------------------------------------ dock */
+.Dock { position: absolute; left: 24px; right: 24px; bottom: 16px; height: 68px; border-radius: 20px; display: flex; align-items: center; padding: 0 18px; gap: 6px;
+        background: linear-gradient(180deg, rgba(30, 44, 74, 0.55), rgba(12, 18, 34, 0.7)); backdrop-filter: blur(24px) saturate(1.3); border: 1px solid var(--Edge); box-shadow: 0 -10px 40px rgba(0, 2, 10, 0.3); }
+.TempStep { width: 36px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--InkSoft); transition: background 200ms; }
+.TempStep:hover { background: rgba(255, 255, 255, 0.06); }
+.TempStep:active { transform: scale(0.9); }
+.TempStep svg { width: 18px; height: 18px; }
+.DockTemp { width: 58px; text-align: center; font-weight: 300; font-size: 24px; font-variant-numeric: tabular-nums; transition: color 300ms; }
+.DockMenu { position: relative; display: flex; gap: 4px; margin: 0 auto; padding: 4px; }
+.DockMenu button { position: relative; z-index: 1; width: 104px; height: 52px; border-radius: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; color: var(--InkDim); transition: color 260ms; }
+.DockMenu button svg { width: 21px; height: 21px; transition: transform 300ms cubic-bezier(.3,1.6,.5,1); }
+.DockMenu button:hover svg { transform: translateY(-2px); }
+.DockMenu button.On { color: var(--Ink); }
+.DockMenu button.On svg { color: var(--Accent); }
+.DockGlide { position: absolute; top: 4px; height: 52px; width: 104px; border-radius: 15px; background: rgba(var(--AccentRGB), 0.14); border: 1px solid rgba(var(--AccentRGB), 0.35); box-shadow: 0 0 24px rgba(var(--AccentRGB), 0.18); transition: left 460ms cubic-bezier(.3,1.25,.5,1), background 400ms, border-color 400ms; }
+.DockGlide::after { content: ''; position: absolute; left: 36px; right: 36px; bottom: -5px; height: 2px; border-radius: 1px; background: var(--Accent); box-shadow: 0 0 10px var(--Accent); }
+
+/* ------------------------------------------------------------------ toast, loading */
+.Toast { position: absolute; left: 50%; top: 74px; translate: -50% -10px; opacity: 0; padding: 10px 18px; border-radius: 20px; background: rgba(14, 20, 36, 0.86); backdrop-filter: blur(14px); border: 1px solid var(--Edge); font-size: 13px; transition: opacity 260ms, translate 360ms cubic-bezier(.3,1.4,.5,1); pointer-events: none; }
+.Toast.On { opacity: 1; translate: -50% 0; }
+.Loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: #050811; color: var(--InkSoft); font-size: 13px; letter-spacing: 0.06em; transition: opacity 700ms; }
+.Loading i { width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.12); border-top-color: var(--Ice); animation: FanSpin 0.9s linear infinite; }
+.Loading.Done { opacity: 0; pointer-events: none; }
+
+/* ------------------------------------------------------------------ lights accent, dock, tell-tales */
+.Nocturne[data-menu-now="Lights"]  { --Accent: #e8f0ff; --AccentRGB: 232, 240, 255; }
+.DockMenu button { width: 96px; }
+.DockGlide { width: 96px; }
+
+
+.TellRow { position: absolute; left: 50%; top: 18px; translate: -50% 16px; display: flex; gap: 14px; padding: 8px 16px; border-radius: 20px; background: var(--Glass); backdrop-filter: blur(16px); border: 1px solid var(--Edge); }
+.Layer.On > .TellRow { translate: -50% 0; pointer-events: none; }
+.TellRow i { width: 22px; height: 22px; color: rgba(214, 226, 255, 0.2); transition: color 120ms, filter 120ms; }
+.TellRow i.Lit.Green { color: #3ddc78; filter: drop-shadow(0 0 5px rgba(61, 220, 120, 0.8)); }
+.TellRow i.Lit.Blue { color: #2a8cff; filter: drop-shadow(0 0 6px rgba(42, 140, 255, 0.9)); }
+.TellRow i.Lit.Amber { color: #ffb02e; filter: drop-shadow(0 0 6px rgba(255, 176, 46, 0.9)); }
+.TellRow i.Lit.Red { color: #ff3550; filter: drop-shadow(0 0 6px rgba(255, 53, 80, 0.9)); }
+.TellRow i[data-telltale="Left"].Lit svg, .TellRow i[data-telltale="Right"].Lit svg { fill: currentColor; }
+.Nocturne [data-glyph] svg { width: 100%; height: 100%; display: block; fill: none; stroke: currentColor; stroke-width: 1.6; }
+
+/* ------------------------------------------------------------------ lights */
+.LampColumn { position: absolute; left: 40px; top: 120px; width: 330px; padding: 20px; border-radius: 20px; background: var(--Glass); backdrop-filter: blur(20px) saturate(1.3); border: 1px solid var(--Edge); display: flex; flex-direction: column; gap: 14px; }
+.LampKeys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.LampKey { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 4px 12px; border-radius: 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--Edge); color: var(--InkSoft); transition: background 260ms, border-color 260ms, color 260ms, transform 160ms; }
+.LampKey span { width: 30px; height: 30px; display: block; transition: transform 320ms cubic-bezier(.3,1.6,.5,1), filter 260ms; }
+.LampKey b { font-weight: 400; font-size: 12px; }
+.LampKey.On { background: linear-gradient(160deg, rgba(232, 240, 255, 0.22), rgba(232, 240, 255, 0.04)); border-color: rgba(232, 240, 255, 0.7); color: #ffffff; }
+.LampKey.On span { transform: scale(1.12); filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.85)); }
+.LampKey[data-lamp="FogRear"].On { border-color: rgba(255, 176, 46, 0.7); color: #ffcf7a; background: linear-gradient(160deg, rgba(255, 176, 46, 0.2), transparent); }
+.LampKey[data-lamp="Wing"].On { border-color: rgba(255, 53, 80, 0.7); color: #ff8a98; background: linear-gradient(160deg, rgba(255, 53, 80, 0.2), transparent); }
+.LampKey[data-lamp="Rock"].On { border-color: rgba(111, 156, 255, 0.7); color: #a9c8ff; background: linear-gradient(160deg, rgba(111, 156, 255, 0.22), transparent); }
+.LampKey.Hazard.On { border-color: rgba(255, 53, 80, 0.8); color: #ff6a7c; animation: NightHazard 0.75s steps(1) infinite; }
+@keyframes NightHazard { 50% { background: rgba(255, 53, 80, 0.25); } }
+.LampKey:active { transform: scale(0.95); }
+.SignalKeys { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.SignalKeys button { height: 46px; border-radius: 23px; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--Edge); color: var(--InkSoft); font-size: 13px; transition: color 200ms, border-color 200ms; }
+.SignalKeys button span { width: 20px; height: 20px; display: block; }
+.SignalKeys button.On { color: #ffb02e; border-color: rgba(255, 176, 46, 0.7); }
+.SignalKeys button.On span svg { fill: currentColor; animation: NightBlink 0.75s steps(1) infinite; }
+@keyframes NightBlink { 50% { opacity: 0.15; } }
+.GreetCard { position: absolute; right: 40px; top: 120px; width: 320px; padding: 20px; border-radius: 20px; background: var(--Glass); backdrop-filter: blur(20px) saturate(1.3); border: 1px solid var(--Edge); display: flex; flex-direction: column; gap: 10px; }
+.GreetCard b { font-weight: 400; font-size: 22px; }
+.GreetCard > span { font-size: 13px; color: var(--InkSoft); line-height: 1.5; }
+.GreetSteps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 6px 0; }
+.GreetSteps i { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); transition: background 300ms, box-shadow 300ms; }
+.GreetSteps i.Lit { background: #ffffff; box-shadow: 0 0 10px rgba(255, 255, 255, 0.8); }
+.BeamPills button { display: flex; align-items: center; gap: 8px; padding: 0 20px; }
+.BeamPills button span { width: 20px; height: 20px; display: block; }
+
+/* ------------------------------------------------------------------ comfort: seat position */
+.SeatDeck { position: absolute; left: 230px; right: 230px; bottom: 98px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 120px; }
+.SeatCard { padding: 12px 16px 12px; border-radius: 16px; background: rgba(16, 20, 32, 0.68); backdrop-filter: blur(18px); border: 1px solid rgba(255, 255, 255, 0.08); display: grid; gap: 8px; }
+.SeatTop { display: flex; align-items: center; justify-content: space-between; }
+.SeatTop small { font-size: 10.5px; letter-spacing: 0.14em; color: var(--InkDim); }
+.Memory { display: flex; gap: 6px; }
+.Memory button { height: 24px; min-width: 26px; padding: 0 9px; border-radius: 12px; font-size: 11.5px; color: var(--InkSoft); background: rgba(255, 255, 255, 0.06); border: 1px solid transparent; transition: background 220ms, border-color 220ms, color 220ms; }
+.Memory button.On { color: var(--Ink); border-color: rgba(var(--SeatRGB), 0.7); background: rgba(var(--SeatRGB), 0.18); }
+.SeatCard[data-seat="0"] { --SeatRGB: 255, 93, 108; }
+.SeatCard[data-seat="1"] { --SeatRGB: 79, 125, 255; }
+.SeatLine { display: flex; align-items: center; gap: 10px; height: 30px; }
+.SeatLabel { width: 44px; font-size: 12.5px; color: var(--InkSoft); }
+.TrackEnd { font-style: normal; font-size: 9.5px; letter-spacing: 0.12em; color: var(--InkDim); }
+.SlideTrack { position: relative; flex: 1; height: 26px; cursor: ew-resize; touch-action: none; }
+.SlideTrack::before { content: ''; position: absolute; left: 0; right: 0; top: 12px; height: 2px; border-radius: 1px; background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.28) 0 1px, transparent 1px 10%); }
+.SlideTrack .Notch { position: absolute; left: 50%; top: 6px; width: 1px; height: 14px; background: rgba(255, 255, 255, 0.35); }
+.SlideTrack .Fill { position: absolute; top: 12px; height: 2px; background: rgb(var(--SeatRGB)); box-shadow: 0 0 8px rgb(var(--SeatRGB)); transition: left 180ms, width 180ms; }
+.SlideTrack .Knob { position: absolute; top: 5px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(var(--SeatRGB), 0.3), 0 2px 8px rgba(0, 0, 0, 0.4); transition: left 180ms cubic-bezier(.3,1.4,.5,1), transform 160ms; }
+.SlideTrack.Held .Knob { transform: scale(1.25); transition: transform 160ms; }
+.SlideText, .TiltText { width: 64px; text-align: right; font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums; }
+.TiltText { width: 46px; text-align: center; }
+.TiltKey { width: 30px; height: 26px; border-radius: 9px; background: rgba(255, 255, 255, 0.06); font-size: 16px; line-height: 1; color: var(--InkSoft); transition: background 200ms, transform 140ms; }
+.TiltKey:active { transform: scale(0.9); background: rgba(var(--SeatRGB), 0.25); }
+.AngleGlyph { width: 30px; height: 30px; fill: none; stroke: rgb(var(--SeatRGB)); stroke-width: 2.4; stroke-linecap: round; }
+.AngleGlyph circle { fill: #fff; stroke: none; }
+.AngleGlyph .Back { transform-origin: 12px 30px; rotate: calc(var(--Tilt, 14) * -1deg); transition: rotate 260ms cubic-bezier(.3,1.4,.5,1); }
+.SeatCard[data-seat="0"] .AngleGlyph { scale: -1 1; }
+.TiltHint { margin-left: auto; font-size: 11px; color: var(--InkDim); }
+.Layer.On > .DotChip, .DotChip { pointer-events: none; }
+.DotChip { position: absolute; left: 0; top: 0; translate: -50% -50%; padding: 4px 9px; border-radius: 10px; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; background: rgba(10, 14, 26, 0.72); border: 1px solid rgba(255, 255, 255, 0.16); white-space: nowrap; }
+.DotChip.Held { border-color: #fff; box-shadow: 0 0 16px rgba(255, 255, 255, 0.35); }
+.Nocturne.Gripping, .Nocturne.Gripping canvas { cursor: grabbing; }
+.Nocturne.Hovering canvas { cursor: grab; }
+.AirTargets { display: flex; gap: 6px; margin-top: 12px; }
+.AirTargets button { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.05); border: 1px solid transparent; color: var(--InkDim); transition: background 220ms, color 220ms, border-color 220ms; }
+.AirTargets button svg { width: 19px; height: 19px; }
+.AirTargets button.On { color: var(--Ink); border-color: var(--Edge); background: rgba(170, 196, 255, 0.14); }
+

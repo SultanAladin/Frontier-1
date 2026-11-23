@@ -1,0 +1,2608 @@
+<!DOCTYPE html>
+<!--====================================================================================================================================
+                                              SCENEDIRECTORYINSPECTOR.HTML
+====================================================================================================================================-->
+<!-- 🧩 SceneDirectoryPanel + property inspector merged into one surface, plus a Tab-summoned compact card -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scene Directory Inspector</title>
+<style>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       TOKENS
+----------------------------------------------------------------------------------------------------------------------*/
+:root{
+  /* surfaces — carried over from ConstructionCatalogueMenu so both read as one product */
+  --desk:#0a0a0b; --menu:#17171a; --menu-2:#101012; --rail-sel:#232327;
+  --tile:#1d1d21; --tile-hi:#26262b;
+  --hair:rgba(255,255,255,.06); --hair-strong:rgba(255,255,255,.10);
+  --accent:#5b8cff; --ink:#ececf0; --muted:#82828c; --faint:#55555d;
+  --r-menu:18px; --r-tile:12px;
+
+  /* field widgets */
+  --value-black:#0a0a0b; --value-unit:#33333a; --value-focus:#303035;
+  --track-bg:#2f2f33; --track-fill:#8a8a8e; --knob:#f4f4f5;
+  --outline:rgba(255,255,255,.22); --text-value:#f2f2f4; --row-h:38px;
+
+  /* row states */
+  --row-hover:rgba(255,255,255,.045); --row-sel:var(--rail-sel);
+
+  /* classification hues — one hue per RecordClassification, reused everywhere */
+  --hue-scene:#7ec8ff; --hue-folder:#b98bff; --hue-sketch:#37d6d6;
+  --hue-solid:#ffb24d; --hue-cylinder:#4fd18b; --hue-sphere:#ff7ab8;
+  --hue-cone:#ff6b6b; --hue-revolve:#c99b6a; --hue-loft:#5b8cff;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                        BASE
+----------------------------------------------------------------------------------------------------------------------*/
+*{ box-sizing:border-box; }
+html,body{ height:100%; margin:0; }
+body{
+  background:var(--desk); color:var(--ink);
+  font:14px/1 "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden; user-select:none;
+}
+button,input{ font-family:inherit; }
+.no-bar{ scrollbar-width:none; -ms-overflow-style:none; }
+.no-bar::-webkit-scrollbar{ width:0; height:0; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       LAYOUT
+----------------------------------------------------------------------------------------------------------------------*/
+.workspace-host{ height:100%; display:flex; flex-direction:column; }
+
+/* thin top strip so the menu reads as chrome inside a host, not a bare page */
+.host-bar{
+  flex:0 0 auto; height:36px; display:flex; align-items:center; gap:12px;
+  padding:0 14px; background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.host-bar .hb-mark{ width:18px; height:18px; color:var(--accent); }
+.host-bar .hb-name{ font-size:12.5px; font-weight:600; letter-spacing:.2px; }
+.host-bar .hb-path{ font-size:11px; color:var(--faint); }
+.host-bar .hb-spacer{ flex:1; }
+.host-bar .hb-hint{
+  font-size:10.5px; color:var(--muted); background:var(--menu);
+  border:1px solid var(--hair); border-radius:999px; padding:4px 10px;
+}
+.host-bar .hb-hint b{ color:var(--ink); font-weight:600; }
+
+.host-body{ flex:1; min-height:0; display:flex; }
+
+/* the viewport is the whole host — there is no docked panel, the menu is summoned over it */
+.viewport{ flex:1; min-width:0; position:relative; background:var(--desk); overflow:hidden; }
+.viewport-weave{
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+  background-size:28px 28px, 28px 28px, 140px 140px, 140px 140px;
+}
+.viewport-vignette{
+  position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(0,0,0,.55) 100%);
+}
+.viewport-note{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  text-align:center; color:var(--faint); font-size:12px; line-height:1.7; pointer-events:none;
+}
+.viewport-note kbd{
+  display:inline-block; background:var(--menu); color:var(--ink);
+  border:1px solid var(--hair-strong); border-bottom-width:2px; border-radius:6px;
+  padding:3px 8px; font:600 11px/1 "Segoe UI", sans-serif; margin:0 2px;
+}
+.viewport-foot{
+  position:absolute; left:0; right:0; bottom:0; height:28px;
+  display:flex; align-items:center; gap:9px; padding:0 13px;
+  background:linear-gradient(transparent, rgba(0,0,0,.5));
+  font-size:10.5px; color:var(--faint); pointer-events:none;
+}
+.viewport-foot .vf-dot{ color:var(--value-unit); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE HEAD
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 both panes share one 53px band so the seam between tree and properties never steps */
+.pane-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  height:53px; padding:0 11px; box-sizing:border-box;
+  background:var(--rail-sel); border-bottom:1px solid var(--hair);
+}
+.pane-head .h-ic{
+  width:26px; height:26px; flex:0 0 auto; color:var(--ink);
+  background:#000; border-radius:7px; display:grid; place-items:center;
+}
+.pane-head .h-ic svg{ width:18px; height:18px; }
+.pane-head .h-txt{ flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; }
+.pane-head .h-txt .h-lbl{
+  display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pane-head .h-txt .fn{
+  display:block; color:var(--faint); font-weight:400; font-size:10px;
+  letter-spacing:.3px; margin-top:3px;
+}
+.pane-head .h-n{
+  flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+  background:var(--menu-2); padding:4px 9px; border-radius:999px;
+}
+.pane-head .h-n.accent{ color:var(--accent); }
+.pane-head .h-acts{ display:flex; align-items:center; gap:3px; flex:0 0 auto; }
+.hdr-btn{
+  width:27px; height:27px; display:grid; place-items:center;
+  background:none; border:0; border-radius:8px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.hdr-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+.hdr-btn:disabled{ opacity:.3; cursor:default; }
+.hdr-btn:disabled:hover{ background:none; color:var(--muted); }
+.hdr-btn svg{ width:15px; height:15px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   SEARCH STRIP
+----------------------------------------------------------------------------------------------------------------------*/
+.search-wrap{ flex:0 0 auto; padding:7px 7px 4px; }
+.search{
+  display:flex; align-items:center; gap:7px; height:30px; padding:0 9px;
+  background:var(--menu-2); border:1px solid var(--hair); border-radius:9px;
+  transition:border-color .12s;
+}
+.search:focus-within{ border-color:var(--outline); }
+.search svg{ width:14px; height:14px; color:var(--faint); flex:0 0 auto; }
+.search input{
+  flex:1; min-width:0; background:none; border:0; outline:none;
+  color:var(--ink); font-size:12px;
+}
+.search input::placeholder{ color:var(--faint); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  DIRECTORY ROWS
+----------------------------------------------------------------------------------------------------------------------*/
+.directory-body{
+  flex:1; min-height:0; overflow-y:auto;
+  padding:4px 7px 8px; display:flex; flex-direction:column; gap:1px;
+}
+/* 📝 rail-item language from the catalogue: 32px, r9, 3×15 accent tick on the selected row */
+.row{
+  position:relative; display:flex; align-items:center; gap:8px;
+  height:32px; padding-right:7px; border-radius:9px;
+  color:var(--muted); font-size:12.5px; cursor:pointer;
+  transition:background .12s, color .12s, opacity .12s;
+}
+.row:hover{ background:var(--row-hover); color:var(--ink); }
+.row.active{ background:var(--row-sel); color:var(--ink); }
+.row.active::before{
+  content:""; position:absolute; left:-7px; top:50%; transform:translateY(-50%);
+  width:3px; height:15px; border-radius:0 3px 3px 0; background:var(--accent);
+}
+.row.drop-target{ background:rgba(91,140,255,.15); box-shadow:inset 0 0 0 1px rgba(91,140,255,.4); }
+.row.dragging{ opacity:.4; }
+.twisty{
+  width:15px; height:15px; flex:0 0 auto; display:grid; place-items:center;
+  color:var(--faint); transition:transform .12s, color .12s;
+}
+.twisty:hover{ color:var(--ink); }
+.twisty.collapsed{ transform:rotate(-90deg); }
+.twisty.leaf{ visibility:hidden; }
+.twisty svg{ width:9px; height:9px; }
+.type-icon{ width:18px; height:18px; flex:0 0 auto; display:grid; place-items:center; }
+.type-icon svg{ display:block; }
+.row-label{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.row-label.editing{
+  background:#000; border:1px solid var(--accent); border-radius:5px;
+  padding:1px 4px; outline:none; color:var(--ink);
+}
+.row-tally{ font-size:10px; color:var(--faint); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.row-visibility{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  opacity:0; color:var(--faint); border-radius:5px; transition:opacity .12s, color .12s, background .12s;
+}
+.row:hover .row-visibility{ opacity:1; }
+.row-visibility:hover{ background:var(--tile-hi); color:var(--ink); }
+.row-visibility svg{ width:14px; height:14px; }
+.row.obj-hidden .row-label,
+.row.obj-hidden .type-icon{ opacity:.4; }
+.row.obj-hidden .row-visibility{ opacity:1; }
+.empty-state{
+  padding:26px 14px; text-align:center; color:var(--faint);
+  font-size:11.5px; line-height:1.7;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE FOOT
+----------------------------------------------------------------------------------------------------------------------*/
+.pane-foot{
+  flex:0 0 auto; height:29px; display:flex; align-items:center; gap:7px;
+  padding:0 12px; background:var(--menu-2); border-top:1px solid var(--hair);
+  font-size:10.5px; color:var(--muted);
+}
+.slide-pane.detail .pane-foot{ background:var(--menu); }
+.pf-strong{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-dot{ color:var(--value-unit); }
+.pf-spacer{ flex:1; }
+.pf-hue{ width:8px; height:8px; border-radius:2px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   CONTEXT MENU
+----------------------------------------------------------------------------------------------------------------------*/
+.ctx-menu{
+  position:fixed; display:none; z-index:1000; min-width:174px; padding:5px;
+  background:#141416; border:1px solid #2a2a30; border-radius:11px;
+  box-shadow:0 18px 50px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+}
+.ctx-menu.open{ display:block; animation:pop .12s cubic-bezier(.16,1,.3,1); }
+.ctx-item{
+  display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px;
+  font-size:12.5px; color:var(--ink); cursor:pointer;
+}
+.ctx-item:hover{ background:#22222a; }
+.ctx-item .ic{ width:16px; height:16px; flex:0 0 auto; display:grid; place-items:center; }
+.ctx-item .ic svg{ width:16px; height:16px; }
+.ctx-item .kbd{
+  margin-left:auto; font-size:10px; color:var(--faint); font-variant-numeric:tabular-nums;
+}
+.ctx-item.has-sub::after{
+  content:""; margin-left:auto; width:5px; height:5px;
+  border-right:1.4px solid var(--muted); border-top:1.4px solid var(--muted);
+  transform:rotate(45deg);
+}
+.ctx-item.danger{ color:#ff6b6b; }
+.ctx-item.danger:hover{ background:rgba(255,107,107,.12); }
+.ctx-sep{ height:1px; background:#232328; margin:5px 6px; }
+.ctx-label{
+  font-size:10px; letter-spacing:1px; color:var(--faint); font-weight:600;
+  padding:6px 9px 4px; text-transform:uppercase;
+}
+@keyframes pop{
+  from{ opacity:0; transform:scale(.97) translateY(-4px); }
+  to  { opacity:1; transform:none; }
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   PROPERTY CARDS
+----------------------------------------------------------------------------------------------------------------------*/
+.prop-body{ flex:1; min-height:0; overflow-y:auto; padding:8px 8px 12px; }
+.card{
+  background:var(--menu); border:1px solid var(--hair); border-radius:var(--r-tile);
+  margin-bottom:7px; overflow:hidden; animation:cardRise .22s cubic-bezier(.16,1,.3,1) both;
+}
+.card:nth-child(1){ animation-delay:.03s; }
+.card:nth-child(2){ animation-delay:.06s; }
+.card:nth-child(3){ animation-delay:.09s; }
+.card:nth-child(4){ animation-delay:.12s; }
+.card:nth-child(5){ animation-delay:.15s; }
+@keyframes cardRise{
+  from{ opacity:0; transform:translateY(8px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+.card-head{
+  display:flex; align-items:center; gap:8px; height:31px; padding:0 10px;
+  font-size:10.5px; font-weight:600; letter-spacing:1px; text-transform:uppercase;
+  color:var(--muted); cursor:pointer; background:var(--menu-2);
+  border-bottom:1px solid var(--hair); transition:color .12s;
+}
+.card-head:hover{ color:var(--ink); }
+.card-head .ch-tw{
+  width:10px; height:10px; flex:0 0 auto; color:var(--faint); transition:transform .16s;
+}
+.card-head .ch-tw svg{ width:10px; height:10px; }
+.card.collapsed .card-head .ch-tw{ transform:rotate(-90deg); }
+.card.collapsed .card-head{ border-bottom-color:transparent; }
+.card-head .ch-n{ margin-left:auto; font-size:9.5px; color:var(--faint); letter-spacing:0; }
+/* 📝 1fr → 0fr grid row: collapses without measuring height */
+.card-shell{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .2s cubic-bezier(.4,0,.2,1); }
+.card.collapsed .card-shell{ grid-template-rows:0fr; }
+.card-body-inner{ min-height:0; overflow:hidden; }
+.card-body{ padding:7px 10px 9px; display:flex; flex-direction:column; gap:2px; }
+
+.prow{
+  display:grid; grid-template-columns:88px minmax(0,1fr); column-gap:10px;
+  align-items:center; min-height:var(--row-h);
+}
+.prow.stack{ grid-template-columns:88px minmax(0,1fr); }
+.plabel{
+  font-size:11.5px; color:var(--muted); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; transition:color .2s;
+}
+.prow.changed .plabel{ color:var(--accent); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   FIELD WIDGETS
+----------------------------------------------------------------------------------------------------------------------*/
+.valuebox{
+  display:flex; align-items:stretch; height:26px; min-width:0;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  overflow:hidden; transition:border-color .12s;
+}
+.valuebox:focus-within{ border-color:var(--outline); background:var(--value-focus); }
+.valuebox .num{ flex:1; min-width:0; display:flex; align-items:center; padding:0 6px; }
+.valuebox input{
+  width:100%; min-width:0; background:none; border:0; outline:none;
+  color:var(--text-value); font-size:11.5px; font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield;
+}
+.valuebox input::-webkit-outer-spin-button,
+.valuebox input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.axisseg,.unitseg{
+  flex:0 0 auto; display:grid; place-items:center; padding:0 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted); background:var(--value-unit);
+}
+.axisseg{ border-right:1px solid var(--hair); }
+.unitseg{ border-left:1px solid var(--hair); }
+
+.vec{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
+.textfield{ display:flex; min-width:0; }
+.textfield .value{
+  flex:1; min-width:0; display:flex; align-items:center; height:26px; padding:0 7px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+}
+.textfield .value:focus-within{ border-color:var(--outline); }
+.textfield input{
+  width:100%; min-width:0; background:none; border:0; outline:none;
+  color:var(--text-value); font-size:11.5px;
+}
+
+.sliderrow{ display:flex; align-items:center; gap:7px; min-width:0; }
+.sliderrow .valuebox{ flex:0 0 78px; }
+.slider{
+  flex:1; min-width:0; position:relative; height:4px;
+  background:var(--track-bg); border-radius:999px; cursor:pointer;
+}
+.slider .fill{ position:absolute; left:0; top:0; bottom:0; background:var(--track-fill); border-radius:999px; }
+.slider .knob{
+  position:absolute; top:50%; width:12px; height:12px; margin-left:-6px;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+
+.switch{
+  width:38px; height:22px; flex:0 0 auto; position:relative; cursor:pointer;
+  background:var(--track-bg); border-radius:999px; transition:background .16s;
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  background:var(--knob); border-radius:50%; transition:left .16s cubic-bezier(.4,0,.2,1);
+}
+.switch.on .nub{ left:19px; }
+
+.segment{
+  display:flex; height:26px; background:var(--value-black);
+  border:1px solid var(--hair-strong); border-radius:7px; overflow:hidden;
+}
+.seg-opt{
+  flex:1; min-width:0; display:grid; place-items:center; font-size:11px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.seg-opt:hover{ color:var(--ink); }
+.seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+.dropdown{ position:relative; min-width:0; }
+.dd-head{
+  display:flex; align-items:center; height:26px; padding:0 0 0 8px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  cursor:pointer; transition:border-color .12s;
+}
+.dropdown.open .dd-head{ border-color:var(--outline); }
+.dd-head .cur{
+  flex:1; min-width:0; font-size:11.5px; color:var(--text-value);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.dd-head .caret{
+  flex:0 0 auto; width:22px; display:grid; place-items:center; align-self:stretch;
+  color:var(--muted); background:var(--value-unit); border-left:1px solid var(--hair);
+  font-size:10px;
+}
+/* 📝 fixed + JS-placed so the list escapes the scrolling card */
+.dd-list{
+  position:fixed; display:none; z-index:1200; max-height:280px; overflow-y:auto; padding:4px;
+  background:#141416; border:1px solid #2a2a30; border-radius:9px;
+  box-shadow:0 16px 44px rgba(0,0,0,.6);
+}
+.dropdown.open .dd-list{ display:block; }
+.dd-item{
+  display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px;
+  font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.dd-item:hover{ background:#22222a; }
+.dd-item .radio{
+  margin-left:auto; width:10px; height:10px; border-radius:50%;
+  border:1.4px solid var(--value-unit); flex:0 0 auto;
+}
+.dd-item.sel .radio{ border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 2px #141416; }
+
+.colorbar{
+  display:flex; align-items:center; height:26px; padding:0 0 0 5px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  cursor:pointer; transition:border-color .12s;
+}
+.colorbar.open{ border-color:var(--outline); }
+.colorbar .swatchseg{ flex:1; min-width:0; display:flex; align-items:center; gap:7px; }
+.colorbar .circle{
+  width:15px; height:15px; flex:0 0 auto; border-radius:50%;
+  box-shadow:0 0 0 1px var(--hair-strong);
+}
+.colorbar .cname{
+  min-width:0; font-size:10.5px; color:var(--text-value);
+  font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.colorbar .cname .dim{ color:var(--muted); }
+.colorbar .caret{
+  flex:0 0 auto; width:22px; display:grid; place-items:center; align-self:stretch;
+  color:var(--muted); background:var(--value-unit); border-left:1px solid var(--hair); font-size:10px;
+}
+.picker{
+  display:none; margin-top:5px; padding:8px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:9px;
+}
+.picker.open{ display:block; }
+.svbox{ position:relative; height:88px; border-radius:7px; cursor:crosshair; }
+.svknob{
+  position:absolute; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
+  border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.5);
+}
+.barstack{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.cbar{ position:relative; height:9px; border-radius:999px; cursor:pointer; }
+.huebar{ background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+.alphabar{ overflow:hidden; }
+.alphagrid{
+  position:absolute; inset:0; border-radius:999px;
+  background-image:linear-gradient(45deg,#3a3a40 25%,transparent 25%,transparent 75%,#3a3a40 75%),
+                   linear-gradient(45deg,#3a3a40 25%,transparent 25%,transparent 75%,#3a3a40 75%);
+  background-size:8px 8px; background-position:0 0,4px 4px;
+}
+.alphafill{ position:absolute; inset:0; border-radius:999px; }
+.cknob{
+  position:absolute; top:50%; width:13px; height:13px; margin-left:-6.5px;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.6);
+}
+.hexrow{ display:flex; align-items:center; gap:7px; margin-top:8px; }
+.hexrow input{
+  flex:1; min-width:0; height:24px; padding:0 7px;
+  background:var(--value-focus); border:1px solid var(--hair-strong); border-radius:6px;
+  outline:none; color:var(--text-value); font-size:11px; text-transform:uppercase;
+}
+.hexrow .arow{
+  flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+}
+
+.pathfield{ display:flex; align-items:center; gap:5px; min-width:0; }
+.pathfield .value{
+  flex:1; min-width:0; display:flex; align-items:center; height:26px; padding:0 7px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+}
+.pathfield input{
+  width:100%; min-width:0; background:none; border:0; outline:none;
+  color:var(--text-value); font-size:11px;
+}
+.pathfield .browse{
+  flex:0 0 auto; width:26px; height:26px; background:var(--value-unit);
+  border:1px solid var(--hair-strong); border-radius:7px;
+  color:var(--ink); cursor:pointer; font-size:12px; line-height:1;
+}
+.pathfield .browse:hover{ background:var(--tile-hi); }
+
+.selpick{
+  display:flex; align-items:center; gap:7px; height:26px; padding:0 8px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  font-size:11.5px; color:var(--text-value); cursor:pointer;
+}
+.selpick:hover{ border-color:var(--outline); }
+.selpick .sp-hue{ width:9px; height:9px; border-radius:2px; flex:0 0 auto; }
+.selpick .sp-n{ margin-left:auto; font-size:10px; color:var(--faint); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     CAROUSEL
+----------------------------------------------------------------------------------------------------------------------*/
+.prop-carousel{
+  flex:0 0 auto; display:flex; align-items:stretch; height:33px; padding:0 6px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.pc-seg{
+  flex:1 1 50%; width:50%; margin-bottom:-1px;
+  background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-size:12px; font-weight:500; cursor:pointer;
+  transition:color .15s ease, border-color .15s ease;
+}
+.pc-seg:hover{ color:var(--ink); }
+.pc-seg.active{ color:var(--ink); font-weight:600; border-bottom-color:var(--accent); }
+
+.inspect-viewport{ flex:1; min-height:0; overflow:hidden; position:relative; }
+.inspect-track{
+  display:flex; width:100%; height:100%; transform:translateX(0);
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+}
+.inspect-track.show-history{ transform:translateX(-100%); }
+.inspect-pane{
+  flex:0 0 100%; width:100%; min-height:0; height:100%;
+  display:flex; flex-direction:column;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   HISTORY RAIL
+----------------------------------------------------------------------------------------------------------------------*/
+.hx-trees{
+  flex:0 0 auto; display:flex; align-items:center; gap:4px;
+  padding:7px 8px; overflow-x:auto; border-bottom:1px solid var(--hair);
+}
+.hx-tree{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto; height:23px; padding:0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  font-size:10.5px; color:var(--muted); cursor:pointer; transition:background .12s, color .12s, border-color .12s;
+}
+.hx-tree:hover{ background:var(--tile-hi); color:var(--ink); }
+.hx-tree.active{ background:rgba(91,140,255,.14); border-color:var(--accent); color:var(--ink); }
+.hx-tree-ct{ font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.hx-tree-x{ color:var(--faint); font-size:11px; line-height:1; }
+.hx-tree-x:hover{ color:#ff6b6b; }
+.hx-tree-add{
+  flex:0 0 auto; width:23px; height:23px; display:grid; place-items:center;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  color:var(--muted); cursor:pointer; font-size:13px; line-height:1;
+}
+.hx-tree-add:hover{ background:var(--tile-hi); color:var(--ink); }
+
+.hx-scroll{ flex:1; min-height:0; overflow-y:auto; padding:6px 8px 10px; }
+.hx-ev{
+  display:flex; gap:8px; padding:3px 5px; border-radius:8px; cursor:pointer;
+  transition:background .12s;
+}
+.hx-ev:hover{ background:var(--row-hover); }
+.hx-ev.at-cursor{ background:var(--row-sel); box-shadow:inset 0 0 0 1px var(--hair-strong); }
+.hx-ev.future{ opacity:.4; }
+.hx-rail{
+  flex:0 0 22px; display:flex; flex-direction:column; align-items:center;
+}
+.hx-line{ width:2px; flex:1; min-height:5px; background:var(--value-unit); }
+.hx-line.blank{ background:transparent; }
+.hx-node{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  background:var(--menu-2); border-radius:50%; box-shadow:0 0 0 2px var(--hair-strong);
+}
+.hx-ev.at-cursor .hx-node{ box-shadow:0 0 0 2px var(--accent); }
+.hx-body{ flex:1; min-width:0; padding:3px 0 6px; }
+.hx-main{ display:flex; align-items:baseline; gap:7px; min-width:0; }
+.hx-evt-title{
+  font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-type{
+  flex:0 0 auto; font-size:9.5px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  padding:2px 6px; border-radius:999px; background:var(--menu); color:var(--muted);
+}
+.hx-type.gen{ color:#c084fc; }
+.hx-type.mat{ color:#7dd3fc; }
+.hx-type.param{ color:#fbbf24; }
+.hx-sub{ font-size:10px; color:var(--faint); margin-top:3px; }
+.hx-time{
+  flex:0 0 auto; margin-left:auto; font-size:10px; color:var(--faint);
+  font-variant-numeric:tabular-nums;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 one menu, two slides, fixed 548×372 — the catalogue's browse→options translate, not two surfaces */
+.summon-menu{
+  position:fixed; z-index:900; display:none;
+  width:548px; height:372px;
+  background:var(--menu); border:1px solid var(--hair-strong); border-radius:var(--r-menu);
+  overflow:hidden; transform-origin:top left;
+  box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+}
+.summon-menu.open{ display:block; animation:pop .14s cubic-bezier(.16,1,.3,1); }
+
+.menu-view{ height:100%; overflow:hidden; }
+/* 📝 200%-wide track: slide 1 is the directory, slide 2 is properties + history */
+.menu-track{
+  display:flex; width:200%; height:100%;
+  transition:transform .34s cubic-bezier(.5,.05,.2,1);
+}
+.menu-track.to-inspect{ transform:translateX(-50%); }
+/* 🔴 the left column is pinned at 214px on BOTH slides so the seam never steps mid-translate */
+.menu-slide{
+  width:50%; height:100%; display:grid;
+  grid-template-columns:214px minmax(0,1fr); min-height:0;
+}
+.slide-pane{ min-width:0; min-height:0; display:flex; flex-direction:column; }
+.slide-pane.rail{ background:var(--menu); border-right:1px solid var(--hair); }
+.slide-pane.detail{ background:var(--menu-2); }
+
+/* compact overrides — the menu is small, so every widget loses a few px */
+.summon-menu .pane-head{ height:46px; padding:0 10px; }
+.summon-menu .pane-head .h-ic{ width:24px; height:24px; border-radius:6px; }
+.summon-menu .pane-head .h-ic svg{ width:17px; height:17px; }
+.summon-menu .pane-head .h-txt{ font-size:12.5px; }
+.summon-menu .prop-carousel{ height:31px; }
+.summon-menu .pc-seg{ font-size:11.5px; }
+.summon-menu .prop-body{ padding:7px 7px 10px; }
+.summon-menu .card{ margin-bottom:6px; }
+.summon-menu .card-body{ padding:6px 9px 8px; }
+.summon-menu .prow{ grid-template-columns:74px minmax(0,1fr); min-height:32px; column-gap:8px; }
+.summon-menu .plabel{ font-size:11px; }
+.summon-menu .valuebox,
+.summon-menu .textfield .value,
+.summon-menu .dd-head,
+.summon-menu .colorbar,
+.summon-menu .segment,
+.summon-menu .pathfield .value{ height:24px; }
+.summon-menu .sliderrow .valuebox{ flex:0 0 66px; }
+.summon-menu .hx-scroll{ padding:5px 7px 9px; }
+.summon-menu .pane-foot{ height:26px; padding:0 10px; font-size:10px; }
+
+/* pane-head that acts as the advance / back affordance */
+.pane-head.stepper{ cursor:pointer; }
+.pane-head.stepper:hover{ background:#292930; }
+.pane-head .h-step{
+  flex:0 0 auto; width:22px; height:22px; display:grid; place-items:center;
+  color:var(--muted); border-radius:6px;
+}
+.pane-head.stepper:hover .h-step{ color:var(--ink); background:var(--tile-hi); }
+.pane-head .h-step svg{ width:13px; height:13px; }
+.h-back{
+  flex:0 0 auto; width:20px; height:20px; display:grid; place-items:center; color:var(--muted);
+}
+.h-back svg{ width:14px; height:14px; }
+
+/* metadata pane — slide 1 right side */
+.meta-body{ flex:1; min-height:0; overflow-y:auto; padding:9px 10px 12px; }
+.meta-hero{
+  display:flex; align-items:center; gap:10px; padding:9px 10px; margin-bottom:8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:var(--r-tile);
+}
+.meta-hero .mh-ic{
+  width:34px; height:34px; flex:0 0 auto; background:#000; border-radius:8px;
+  display:grid; place-items:center;
+}
+.meta-hero .mh-ic svg{ width:24px; height:24px; }
+.meta-hero .mh-txt{ min-width:0; flex:1; }
+.meta-hero .mh-name{
+  font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.meta-hero .mh-class{ font-size:10.5px; margin-top:4px; }
+.meta-row{
+  display:flex; align-items:center; gap:8px; height:28px;
+  font-size:11.5px; border-bottom:1px solid var(--hair);
+}
+.meta-row:last-child{ border-bottom:0; }
+.meta-row .mr-k{ color:var(--muted); }
+.meta-row .mr-v{
+  margin-left:auto; color:var(--text-value); font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%;
+}
+.meta-cta{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  height:32px; margin-top:10px; border-radius:9px; cursor:pointer;
+  background:rgba(91,140,255,.13); border:1px solid var(--accent);
+  color:var(--ink); font-size:11.5px; font-weight:600;
+}
+.meta-cta:hover{ background:rgba(91,140,255,.2); }
+.meta-cta svg{ width:13px; height:13px; }
+.meta-cta .cta-kbd{
+  font-size:9.5px; font-weight:400; color:var(--muted);
+  background:var(--menu-2); border-radius:999px; padding:2px 7px;
+}
+
+/* 🔴 the record actions live INLINE here — the tree carries no right-click menu at all */
+.meta-actions{ margin-top:11px; }
+.act-label{
+  font-size:9.5px; letter-spacing:1.1px; color:var(--faint);
+  font-weight:600; text-transform:uppercase; padding:0 2px 6px;
+}
+.act-item{
+  display:flex; align-items:center; gap:9px; height:29px; padding:0 8px;
+  border-radius:8px; font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.act-item:hover{ background:var(--tile-hi); }
+.act-item .ic{ width:15px; height:15px; flex:0 0 auto; display:grid; place-items:center; color:var(--muted); }
+.act-item .ic svg{ width:15px; height:15px; }
+.act-item:hover .ic{ color:var(--ink); }
+.act-item .kbd{ margin-left:auto; font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.act-item.danger{ color:#ff6b6b; }
+.act-item.danger .ic{ color:#ff6b6b; }
+.act-item.danger:hover{ background:rgba(255,107,107,.12); }
+.act-item.armed{ background:var(--tile-hi); }
+.act-item .fold{
+  margin-left:auto; width:5px; height:5px; transition:transform .16s ease;
+  border-right:1.4px solid var(--muted); border-top:1.4px solid var(--muted); transform:rotate(45deg);
+}
+.act-item.armed .fold{ transform:rotate(135deg); }
+.act-sep{ height:1px; background:var(--hair); margin:6px 8px; }
+/* 📝 the classification choices unfold in place — grid-rows 0fr→1fr, no floating list to place */
+.act-fold{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .2s ease; }
+.act-fold.open{ grid-template-rows:1fr; }
+.act-fold > .af-clip{ overflow:hidden; min-height:0; }
+.af-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:4px;
+  padding:5px 4px 3px 22px;
+}
+.af-choice{
+  display:flex; align-items:center; gap:7px; height:27px; padding:0 7px;
+  border-radius:7px; font-size:11px; color:var(--ink); cursor:pointer;
+  background:var(--tile); border:1px solid var(--hair);
+}
+.af-choice:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+.af-choice svg{ width:14px; height:14px; flex:0 0 auto; }
+
+/* dimmer so the menu reads as focused without hiding the viewport */
+.summon-veil{
+  position:fixed; inset:0; z-index:880; display:none; background:rgba(0,0,0,.34);
+}
+.summon-veil.open{ display:block; animation:veilIn .14s ease both; }
+@keyframes veilIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.flash{ animation:flashRow .5s ease; }
+@keyframes flashRow{
+  0%,100%{ background:transparent; }
+  25%    { background:rgba(91,140,255,.13); }
+}
+</style>
+</head>
+<body>
+
+<div class="workspace-host">
+
+  <!-- host strip -->
+  <div class="host-bar">
+    <span class="hb-mark" id="hostMark"></span>
+    <span class="hb-name">DraftingWorkspace</span>
+    <span class="hb-path">Bracket_Rev4.wsdoc</span>
+    <span class="hb-spacer"></span>
+    <span class="hb-hint"><b>Tab</b> &nbsp;summon inspector card</span>
+    <span class="hb-hint"><b>Right-click</b> &nbsp;record menu</span>
+  </div>
+
+  <div class="host-body">
+    <main class="viewport" id="viewport">
+      <div class="viewport-weave"></div>
+      <div class="viewport-vignette"></div>
+      <div class="viewport-note">
+        press <kbd>Tab</kbd> to summon the scene directory<br>
+        <kbd>Tab</kbd> again slides through to properties + history
+      </div>
+      <div class="viewport-foot">
+        <span>Orbit LMB</span><span class="vf-dot">·</span>
+        <span>Pan MMB</span><span class="vf-dot">·</span>
+        <span>Zoom Wheel</span><span class="vf-dot">·</span>
+        <span>Inspector Tab</span>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!--============================ summoned menu: one card, two slides ============================-->
+<div class="summon-veil" id="summonVeil"></div>
+
+<div class="summon-menu" id="summonMenu">
+  <div class="menu-view">
+    <div class="menu-track" id="menuTrack">
+
+      <!--———————————————— slide 1: directory | metadata ————————————————-->
+      <div class="menu-slide">
+
+        <div class="slide-pane rail">
+          <div class="pane-head">
+            <span class="h-ic" id="directoryIcon"></span>
+            <span class="h-txt">
+              <span class="h-lbl">Directory</span>
+              <span class="fn">Bracket_Rev4</span>
+            </span>
+            <span class="h-n" id="recordTally">0</span>
+          </div>
+
+          <div class="search-wrap">
+            <label class="search">
+              <span id="searchIcon"></span>
+              <input type="text" id="filterInput" placeholder="Filter…" spellcheck="false">
+            </label>
+          </div>
+
+          <div class="directory-body no-bar" id="directoryBody"></div>
+          <div class="pane-foot" id="directoryFoot"></div>
+        </div>
+
+        <div class="slide-pane detail">
+          <div class="pane-head stepper" id="advanceHead" title="Properties + History">
+            <span class="h-ic" id="metaIcon"></span>
+            <span class="h-txt">
+              <span class="h-lbl" id="metaName">Nothing selected</span>
+              <span class="fn" id="metaClass">—</span>
+            </span>
+            <span class="h-acts">
+              <button class="hdr-btn" id="collapseAll" title="Collapse all"></button>
+              <button class="hdr-btn" id="addRecord" title="New record"></button>
+            </span>
+            <span class="h-step" id="advanceStep"></span>
+          </div>
+
+          <div class="meta-body no-bar" id="metaBody"></div>
+          <div class="pane-foot" id="metaFoot"></div>
+        </div>
+      </div>
+
+      <!--———————————————— slide 2: back | properties ⇄ history ————————————————-->
+      <div class="menu-slide">
+
+        <div class="slide-pane rail">
+          <div class="pane-head stepper back" id="returnHead" title="Back to directory">
+            <span class="h-back" id="returnStep"></span>
+            <span class="h-txt">
+              <span class="h-lbl">Back</span>
+              <span class="fn">Directory</span>
+            </span>
+          </div>
+
+          <div class="meta-body no-bar" id="inspectIdentity"></div>
+          <div class="pane-foot" id="inspectFoot"></div>
+        </div>
+
+        <div class="slide-pane detail">
+          <div class="pane-head">
+            <span class="h-ic" id="inspectIcon"></span>
+            <span class="h-txt">
+              <span class="h-lbl" id="inspectName">Nothing selected</span>
+              <span class="fn" id="inspectSub">—</span>
+            </span>
+            <span class="h-acts" id="summonActs">
+              <button class="hdr-btn" id="summonUndo" title="Undo"></button>
+              <button class="hdr-btn" id="summonRedo" title="Redo"></button>
+            </span>
+          </div>
+
+          <div class="prop-carousel" id="summonCarousel">
+            <button class="pc-seg active" data-inspect="properties">Properties</button>
+            <button class="pc-seg" data-inspect="history">History</button>
+          </div>
+
+          <div class="inspect-viewport">
+            <div class="inspect-track" id="inspectTrack">
+              <div class="inspect-pane">
+                <div class="prop-body no-bar" id="summonPropBody"></div>
+              </div>
+              <div class="inspect-pane">
+                <div class="hx-trees no-bar" id="hxTrees"></div>
+                <div class="hx-scroll no-bar" id="hxScroll"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane-foot" id="summonFoot"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!--============================ context menus ============================-->
+<div class="ctx-menu" id="addMenu"></div>
+
+<script>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    ICON PALETTE
+----------------------------------------------------------------------------------------------------------------------*/
+const C = {
+  ink:"#e8e8f0", dim:"#8a8a99", blue:"#5b8cff", cyan:"#37d6d6", green:"#4fd18b",
+  amber:"#ffb24d", red:"#ff6b6b", violet:"#b98bff", pink:"#ff7ab8", sky:"#7ec8ff",
+  earth:"#c99b6a", mud:"#8a6a45", glass:"#2a2a33"
+};
+
+/* 🔴 one hue per RecordClassification — colour carries type, consistently, everywhere it appears */
+const CLASSIFICATION_HUE = {
+  scene:C.sky, folder:C.violet, sketch:C.cyan, solid:C.amber,
+  cylinder:C.green, sphere:C.pink, cone:C.red, revolve:C.earth, loft:C.blue
+};
+const hueOf = (cls)=>CLASSIFICATION_HUE[cls]||C.dim;
+
+/* shade helper: darken a hex toward black by 0-1, used for the shaded face of a solid */
+function shade(hex, amount){
+  const n=parseInt(hex.slice(1),16);
+  const r=Math.round(((n>>16)&255)*(1-amount));
+  const g=Math.round(((n>>8)&255)*(1-amount));
+  const b=Math.round((n&255)*(1-amount));
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   SHAPE BUILDERS
+----------------------------------------------------------------------------------------------------------------------*/
+const P  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const PF = (d,f,s="none",w=0)=>`<path d="${d}" fill="${f}" ${s!=="none"?`stroke="${s}" stroke-width="${w}"`:""}/>`;
+const L  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}"/>`;
+const CI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const CF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+const R  = (x,y,w,h,rx,s,sw=1.6,f="none")=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" stroke="${s}" stroke-width="${sw}" fill="${f}"/>`;
+const RF = (x,y,w,h,rx,f)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${f}"/>`;
+const DA = (d,s,w=1.4)=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="none" stroke-dasharray="2.6 2.4"/>`;
+
+function svgWrap(shapes, size, tile){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"
+    stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+    ${tile?`<rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>`:''}
+    ${shapes.join("")}</svg>`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              CLASSIFICATION GLYPHS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 each glyph takes its hue as an argument instead of hardcoding blue — that is the whole recolour */
+const GLYPH = {};
+const def = (name,fn)=>{ GLYPH[name]=fn; };
+
+def("Layers", h=>[
+  PF("M12 3l8 4-8 4-8-4z", h),
+  P("M4 12l8 4 8-4", shade(h,.28), 1.7),
+  P("M4 17l8 4 8-4", shade(h,.52), 1.7)
+]);
+
+def("Folder", h=>[
+  PF("M3 7.5a1.5 1.5 0 011.5-1.5h4l2 2.2h8A1.5 1.5 0 0120 9.7V18a1.5 1.5 0 01-1.5 1.5h-14A1.5 1.5 0 013 18z", shade(h,.55)),
+  PF("M3 10.6h18V18a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 18z", h)
+]);
+
+def("Cube", h=>[
+  PF("M12 3l8 4.5-8 4.5-8-4.5z", h),
+  PF("M4 7.5v9L12 21v-9z", shade(h,.34)),
+  PF("M20 7.5v9L12 21v-9z", shade(h,.58))
+]);
+
+def("Cylinder", h=>[
+  PF("M5 7.5h14v9a7 2.6 0 01-14 0z", shade(h,.42)),
+  `<ellipse cx="12" cy="7.5" rx="7" ry="2.6" fill="${h}"/>`,
+  P("M5 7.5v9M19 7.5v9", shade(h,.62), 1.5)
+]);
+
+def("Sphere", h=>[
+  CF(12,12,8.4,shade(h,.38)),
+  PF("M12 3.6a8.4 8.4 0 000 16.8 5 8.4 0 010-16.8z", h),
+  `<ellipse cx="12" cy="12" rx="8.4" ry="3.1" fill="none" stroke="${shade(h,.66)}" stroke-width="1.3"/>`
+]);
+
+def("Cone", h=>[
+  PF("M12 3.4L19 18.2H5z", h),
+  PF("M12 3.4L19 18.2h-7z", shade(h,.4)),
+  `<ellipse cx="12" cy="18.2" rx="7" ry="2.5" fill="${shade(h,.6)}"/>`
+]);
+
+def("Draw Sketch", h=>[
+  DA("M4 20V4h16", C.dim, 1.4),
+  P("M5.5 16.5c3-7 7.5-8.5 13-9", h, 1.9),
+  CF(5.5,16.5,1.9,h),
+  CF(18.5,7.5,1.9,shade(h,.3))
+]);
+
+def("Revolve", h=>[
+  DA("M12 2.5v19", C.dim, 1.4),
+  P("M12 5.5c3.6 0 6.5 2.9 6.5 6.5S15.6 18.5 12 18.5", h, 1.9),
+  `<ellipse cx="12" cy="12" rx="3" ry="6.5" fill="none" stroke="${shade(h,.34)}" stroke-width="1.6"/>`
+]);
+
+def("Loft", h=>[
+  `<ellipse cx="8" cy="6.5" rx="4" ry="1.9" fill="none" stroke="${h}" stroke-width="1.7"/>`,
+  `<ellipse cx="16" cy="17.5" rx="4" ry="1.9" fill="none" stroke="${shade(h,.4)}" stroke-width="1.7"/>`,
+  P("M4 6.5L12 17.5M12 6.5L20 17.5", shade(h,.2), 1.5)
+]);
+
+/* accessor: raw <svg> for a classification, hue applied from the map */
+function classificationSvg(cls, size, tile){
+  const key = CLASSIFICATION_GLYPH[cls] || "Cube";
+  const fn  = GLYPH[key] || GLYPH["Cube"];
+  return svgWrap(fn(hueOf(cls)), size, !!tile);
+}
+const CLASSIFICATION_GLYPH = {
+  scene:"Layers", folder:"Folder", solid:"Cube", sketch:"Draw Sketch",
+  cylinder:"Cylinder", sphere:"Sphere", cone:"Cone", revolve:"Revolve", loft:"Loft"
+};
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  CHROME GLYPHS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 chrome stays monochrome currentColor — colour is reserved for classification, so it stays legible as a signal */
+const S = (d,w=1.6)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const mono = (body)=>`<svg viewBox="0 0 24 24" fill="none">${body}</svg>`;
+
+const UI = {
+  search:    mono(S("M10.5 4a6.5 6.5 0 104.2 11.4L20 20.7")+`<circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6"/>`),
+  collapse:  mono(S("M6 9l6-5 6 5")+S("M6 15l6 5 6-5")),
+  plus:      mono(S("M12 5v14M5 12h14")),
+  chevron:   mono(S("M4 8l6 6 6-6", 1.7)),
+  stepNext:  mono(S("M8 4l8 8-8 8", 1.8)),
+  stepPrev:  mono(S("M16 4l-8 8 8 8", 1.8)),
+  undo:      mono(S("M9 7H5V3")+S("M5 7a8 8 0 1114 5.3")),
+  redo:      mono(S("M15 7h4V3")+S("M19 7A8 8 0 105 12.3")),
+  sliders:   mono(S("M4 7h9M17 7h3M4 17h3M11 17h9")+`<circle cx="15" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.6"/>`),
+  clock:     mono(S("M12 7v5l3.5 2.2")+S("M4.5 10.5A8 8 0 1112 20a8 8 0 01-6-2.7")+S("M3 6.5v4h4")),
+  mark:      mono(S("M12 3l8 4.5v9L12 21l-8-4.5v-9z")+S("M4 7.5l8 4.5 8-4.5M12 12v9", 1.3)),
+  eyeOpen:   mono(S("M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z")+`<circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.6"/>`),
+  eyeOff:    mono(S("M4 4l16 16")+S("M9.6 5.9A9.8 9.8 0 0112 5.7c6 0 9.5 6.3 9.5 6.3a17 17 0 01-2.6 3.4")+S("M6.3 8.2A16.6 16.6 0 002.5 12S6 18.3 12 18.3a9.6 9.6 0 003.3-.6")),
+  rename:    mono(S("M4 20h4L20 8l-4-4L4 16z")+S("M14 6l4 4", 1.4)),
+  duplicate: mono(S("M9 9h11v11H9z")+S("M15 5H4v11", 1.4)),
+  group:     mono(S("M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3")+S("M9 9h6v6H9z", 1.4)),
+  trash:     mono(S("M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13")),
+  target:    mono(`<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/>`+S("M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3")+CF(12,12,2.2,'currentColor'))
+};
+const uiIcon = (key)=>UI[key]||'';
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  RECORD STORE
+----------------------------------------------------------------------------------------------------------------------*/
+let tokenSeq = 0;
+const issueToken = ()=>'r'+(++tokenSeq);
+
+let recordStore = [
+  { token:issueToken(), name:'Part', classification:'scene', expanded:true, nested:[
+    { token:issueToken(), name:'Sketches', classification:'folder', expanded:true, nested:[
+      { token:issueToken(), name:'SK_BasePlate', classification:'sketch', nested:[] },
+      { token:issueToken(), name:'SK_BoltHoles', classification:'sketch', nested:[] },
+    ]},
+    { token:issueToken(), name:'Bodies', classification:'folder', expanded:true, nested:[
+      { token:issueToken(), name:'BODY_Bracket', classification:'folder', expanded:true, nested:[
+        { token:issueToken(), name:'SOL_Plate',  classification:'solid',    nested:[] },
+        { token:issueToken(), name:'SOL_Boss',   classification:'cylinder', nested:[] },
+        { token:issueToken(), name:'SOL_Rib',    classification:'solid',    nested:[] },
+      ]},
+      { token:issueToken(), name:'SOL_Housing', classification:'solid', nested:[] },
+      { token:issueToken(), name:'SOL_Dome',    classification:'sphere', nested:[] },
+    ]},
+  ]},
+];
+
+const CLASSIFICATION_LABEL = {
+  scene:'Part', folder:'Body', solid:'Solid', cylinder:'Cylinder', sphere:'Sphere',
+  cone:'Cone', sketch:'Sketch', revolve:'Revolve', loft:'Loft'
+};
+
+let selection = new Set();
+let anchorToken = null;
+let filterText = '';
+const selected = (token)=>selection.has(token);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 STORE TRAVERSAL
+----------------------------------------------------------------------------------------------------------------------*/
+function traverse(entries, fn, enclosure=null, depth=0){
+  for(const entry of entries){
+    fn(entry, enclosure, depth);
+    if(entry.nested) traverse(entry.nested, fn, entry, depth+1);
+  }
+}
+function resolveToken(token, entries=recordStore, enclosure=null){
+  for(const entry of entries){
+    if(entry.token===token) return { entry, enclosure, region:entries };
+    if(entry.nested){ const found=resolveToken(token, entry.nested, entry); if(found) return found; }
+  }
+  return null;
+}
+const nestedCount = (entry)=>entry.nested?entry.nested.length:0;
+const terminal = (entry)=>!entry.nested || entry.nested.length===0;
+
+function storeTally(){
+  let groups=0, bodies=0, hidden=0;
+  traverse(recordStore, entry=>{
+    if(terminal(entry)) bodies++; else groups++;
+    if(entry.hidden) hidden++;
+  });
+  return { groups, bodies, hidden };
+}
+function enclosesToken(outerToken, innerToken){
+  const outer=resolveToken(outerToken); if(!outer) return false;
+  let found=false;
+  traverse([outer.entry], entry=>{ if(entry.token===innerToken && entry.token!==outerToken) found=true; });
+  return found;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                               FILTER EVALUATION
+----------------------------------------------------------------------------------------------------------------------*/
+const matchesText   = (entry)=>!filterText || entry.name.toLowerCase().includes(filterText);
+const filterActive  = ()=>!!filterText;
+function retained(entry){
+  if(matchesText(entry)) return true;
+  if(entry.nested) return entry.nested.some(retained);
+  return false;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              DIRECTORY RENDER
+----------------------------------------------------------------------------------------------------------------------*/
+const directoryBody = document.getElementById('directoryBody');
+
+function renderDirectory(){
+  directoryBody.innerHTML='';
+  const roots = recordStore.filter(entry=>!filterActive() || retained(entry));
+  if(filterActive() && roots.length===0){
+    directoryBody.innerHTML='<div class="empty-state">No records match the filter.</div>';
+  } else {
+    for(const entry of roots) renderRecordRow(entry, 0);
+  }
+
+  const tally = storeTally();
+  document.getElementById('recordTally').textContent =
+    selection.size>1 ? (selection.size+' sel') : (tally.bodies+tally.groups);
+  document.getElementById('recordTally').classList.toggle('accent', selection.size>1);
+
+  const bits=[];
+  if(tally.groups) bits.push(`<span class="pf-strong">${tally.groups}</span> group${tally.groups===1?'':'s'}`);
+  bits.push(`<span class="pf-strong">${tally.bodies}</span> bod${tally.bodies===1?'y':'ies'}`);
+  if(tally.hidden) bits.push(`<span class="pf-strong">${tally.hidden}</span> hidden`);
+  document.getElementById('directoryFoot').innerHTML = bits.join(' <span class="pf-dot">·</span> ');
+
+  syncInspectors();
+}
+
+function renderRecordRow(entry, depth){
+  if(filterActive() && !retained(entry)) return;
+  const branching = nestedCount(entry)>0;
+
+  const row=document.createElement('div');
+  row.className='row';
+  row.dataset.token=entry.token;
+  if(selected(entry.token)) row.classList.add('active');
+  if(entry.hidden) row.classList.add('obj-hidden');
+  row.style.paddingLeft=(8+depth*15)+'px';
+  row.draggable=true;
+
+  const tw=document.createElement('span');
+  tw.className='twisty'+(branching?(entry.expanded?'':' collapsed'):' leaf');
+  tw.innerHTML=uiIcon('chevron');
+  tw.onclick=(e)=>{ e.stopPropagation(); entry.expanded=!entry.expanded; renderDirectory(); };
+  row.appendChild(tw);
+
+  const ic=document.createElement('span');
+  ic.className='type-icon';
+  ic.innerHTML=classificationSvg(entry.classification, 18, false);
+  row.appendChild(ic);
+
+  const lbl=document.createElement('span');
+  lbl.className='row-label'; lbl.textContent=entry.name;
+  if(filterActive() && !matchesText(entry)) lbl.style.opacity='.45';
+  row.appendChild(lbl);
+
+  if(branching){
+    const ct=document.createElement('span');
+    ct.className='row-tally'; ct.textContent=nestedCount(entry);
+    row.appendChild(ct);
+  }
+
+  const eye=document.createElement('span');
+  eye.className='row-visibility';
+  eye.innerHTML=entry.hidden?uiIcon('eyeOff'):uiIcon('eyeOpen');
+  eye.title='Toggle visibility';
+  eye.onclick=(e)=>{ e.stopPropagation(); toggleVisibility(entry); };
+  row.appendChild(eye);
+
+  row.onclick=(e)=>resolveRowClick(entry,e);
+  row.ondblclick=(e)=>{ e.stopPropagation(); beginRename(entry,lbl); };
+  /* 🔴 no right-click menu on the tree — right-click only selects; the actions sit in the right pane */
+  row.oncontextmenu=(e)=>{
+    e.preventDefault();
+    if(!selected(entry.token)) selectSolely(entry.token);
+  };
+
+  row.ondragstart=(e)=>{
+    if(!selected(entry.token)) selectSolely(entry.token);
+    e.dataTransfer.setData('text/plain', entry.token);
+    row.classList.add('dragging');
+  };
+  row.ondragend=()=>{ row.classList.remove('dragging'); clearDropTargets(); };
+  row.ondragover=(e)=>{ e.preventDefault(); clearDropTargets(); row.classList.add('drop-target'); };
+  row.ondragleave=()=>row.classList.remove('drop-target');
+  row.ondrop=(e)=>{
+    e.preventDefault(); row.classList.remove('drop-target');
+    relocateRecord(e.dataTransfer.getData('text/plain'), entry.token);
+  };
+
+  directoryBody.appendChild(row);
+
+  if(branching && (entry.expanded || filterActive())){
+    for(const inner of entry.nested) renderRecordRow(inner, depth+1);
+  }
+}
+function clearDropTargets(){
+  document.querySelectorAll('.drop-target').forEach(r=>r.classList.remove('drop-target'));
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   SELECTION
+----------------------------------------------------------------------------------------------------------------------*/
+function linearOrder(){
+  const order=[];
+  const descend=(entries)=>{
+    for(const entry of entries){
+      if(filterActive() && !retained(entry)) continue;
+      order.push(entry.token);
+      if(nestedCount(entry) && (entry.expanded||filterActive())) descend(entry.nested);
+    }
+  };
+  descend(recordStore); return order;
+}
+function selectSolely(token){ selection=new Set([token]); anchorToken=token; renderDirectory(); }
+function toggleSelection(token){
+  if(selection.has(token)) selection.delete(token); else selection.add(token);
+  anchorToken=token; renderDirectory();
+}
+function selectSpan(toToken){
+  const order=linearOrder();
+  const a=order.indexOf(anchorToken), b=order.indexOf(toToken);
+  if(a===-1||b===-1){ selectSolely(toToken); return; }
+  const [lo,hi]=a<b?[a,b]:[b,a];
+  selection=new Set(order.slice(lo,hi+1)); renderDirectory();
+}
+function resolveRowClick(entry, ev){
+  if(ev.shiftKey && anchorToken) selectSpan(entry.token);
+  else if(ev.ctrlKey||ev.metaKey) toggleSelection(entry.token);
+  else selectSolely(entry.token);
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              STORE MUTATIONS
+----------------------------------------------------------------------------------------------------------------------*/
+function toggleVisibility(entry){
+  const to=!entry.hidden;
+  traverse([entry], inner=>{ inner.hidden=to; });
+  recordRevision(to?'drop':'edit', (to?'Hide ':'Show ')+entry.name, CLASSIFICATION_LABEL[entry.classification]);
+  renderDirectory();
+}
+
+function beginRename(entry, labelNode){
+  labelNode.contentEditable='true';
+  labelNode.classList.add('editing');
+  labelNode.focus();
+  const range=document.createRange(); range.selectNodeContents(labelNode);
+  const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+
+  const finalize=()=>{
+    labelNode.contentEditable='false';
+    labelNode.classList.remove('editing');
+    const next=labelNode.textContent.trim();
+    if(next && next!==entry.name){
+      entry.name=next;
+      recordRevision('edit','Rename → '+next, CLASSIFICATION_LABEL[entry.classification]);
+    }
+    renderDirectory();
+  };
+  labelNode.onblur=finalize;
+  labelNode.onkeydown=(e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); labelNode.blur(); }
+    if(e.key==='Escape'){ labelNode.textContent=entry.name; labelNode.blur(); }
+    e.stopPropagation();
+  };
+}
+
+function relocateRecord(movingToken, targetToken){
+  if(!movingToken || movingToken===targetToken) return;
+  if(enclosesToken(movingToken, targetToken)) return;
+  const moving=resolveToken(movingToken), target=resolveToken(targetToken);
+  if(!moving||!target) return;
+  moving.region.splice(moving.region.indexOf(moving.entry),1);
+  if(!target.entry.nested) target.entry.nested=[];
+  target.entry.nested.push(moving.entry);
+  target.entry.expanded=true;
+  recordRevision('transform','Relocate '+moving.entry.name, '→ '+target.entry.name);
+  renderDirectory();
+}
+
+function duplicateRecord(entry){
+  const found=resolveToken(entry.token); if(!found) return;
+  const clone=(src)=>({
+    token:issueToken(), name:src.name, classification:src.classification,
+    expanded:src.expanded, hidden:src.hidden,
+    nested:(src.nested||[]).map(clone)
+  });
+  const copy=clone(entry); copy.name=entry.name+'_Copy';
+  found.region.splice(found.region.indexOf(found.entry)+1, 0, copy);
+  recordRevision('add','Duplicate '+entry.name, copy.name);
+  selectSolely(copy.token);
+}
+
+function dropRecord(entry){
+  const found=resolveToken(entry.token); if(!found) return;
+  found.region.splice(found.region.indexOf(found.entry),1);
+  selection.delete(entry.token);
+  recordRevision('drop','Delete '+entry.name, CLASSIFICATION_LABEL[entry.classification]);
+  renderDirectory();
+}
+
+function encloseSelection(entry){
+  const found=resolveToken(entry.token); if(!found) return;
+  const group={ token:issueToken(), name:'GRP_'+entry.name, classification:'folder', expanded:true, nested:[found.entry] };
+  found.region.splice(found.region.indexOf(found.entry), 1, group);
+  recordRevision('body','Group '+entry.name, group.name);
+  selectSolely(group.token);
+}
+
+function appendRecord(classification, targetEntry){
+  const prefix={ folder:'GRP', sketch:'SK', solid:'SOL', cylinder:'SOL', sphere:'SOL', cone:'SOL', revolve:'REV', loft:'LFT' }[classification]||'REC';
+  const fresh={ token:issueToken(), name:prefix+'_New', classification, expanded:true, nested:[] };
+  if(targetEntry && !terminal(targetEntry)){
+    targetEntry.nested.push(fresh); targetEntry.expanded=true;
+  } else if(targetEntry){
+    const found=resolveToken(targetEntry.token);
+    found.region.splice(found.region.indexOf(found.entry)+1, 0, fresh);
+  } else {
+    recordStore[0].nested.push(fresh); recordStore[0].expanded=true;
+  }
+  recordRevision('add','Create '+fresh.name, CLASSIFICATION_LABEL[classification]);
+  selectSolely(fresh.token);
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                RECORD ACTIONS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 the tree has no context menu. #addMenu survives only for the pane-head + button. */
+const addMenu    = document.getElementById('addMenu');
+let menuTarget   = null;
+
+const ADD_CHOICES = ['folder','sketch','solid','cylinder','sphere','cone','revolve','loft'];
+
+/* 📝 one table drives the inline list — order here is the order on screen */
+const RECORD_ACTIONS = [
+  { act:'rename',     glyph:'rename',    label:'Rename',           kbd:'F2'     },
+  { act:'duplicate',  glyph:'duplicate', label:'Duplicate',        kbd:'Ctrl D' },
+  { act:'visibility', glyph:'eyeOpen',   label:'Hide',             kbd:'H'      },
+  { act:'isolate',    glyph:'target',    label:'Isolate',          kbd:'I'      },
+  { act:'group',      glyph:'group',     label:'Enclose in group', kbd:''       },
+  { act:'drop',       glyph:'trash',     label:'Delete',           kbd:'Del', danger:true }
+];
+
+function applyRecordAction(act, entry){
+  switch(act){
+    case 'rename': {
+      const row=directoryBody.querySelector(`.row[data-token="${entry.token}"]`);
+      if(row) beginRename(entry, row.querySelector('.row-label'));
+      break;
+    }
+    case 'duplicate':  duplicateRecord(entry); break;
+    case 'visibility': toggleVisibility(entry); break;
+    case 'isolate':    isolateSelection(); break;
+    case 'group':      encloseSelection(entry); break;
+    case 'inspect':    slideToInspect(); break;
+    case 'drop':       dropRecord(entry); break;
+  }
+}
+
+function placeMenu(menu, x, y, width){
+  const pad=8;
+  menu.classList.add('open');
+  menu.style.left='-9999px'; menu.style.top='-9999px';
+  const h=menu.offsetHeight;
+  let left=x, top=y;
+  if(left+width > innerWidth-pad)  left=Math.max(pad, innerWidth-pad-width);
+  if(top+h     > innerHeight-pad)  top =Math.max(pad, innerHeight-pad-h);
+  menu.style.left=left+'px'; menu.style.top=top+'px';
+}
+const closeMenu    = (menu)=>menu.classList.remove('open');
+const closeAllMenus= ()=>{ closeMenu(addMenu); };
+
+document.addEventListener('pointerdown',(e)=>{
+  if(!addMenu.contains(e.target)) closeAllMenus();
+});
+document.addEventListener('scroll',closeAllMenus,true);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              PROPERTY PROFILES
+----------------------------------------------------------------------------------------------------------------------*/
+const clamp = (v,lo,hi)=>v<lo?lo:(v>hi?hi:v);
+const fmt   = (v,dec=2)=>Number(v).toFixed(dec);
+
+function establishProfile(entry){
+  if(entry.profile) return entry.profile;
+  const p = {
+    Name:entry.name, Visible:!entry.hidden,
+    Position:[0,0,0], Rotation:[0,0,0], Scale:[1,1,1],
+    Albedo:[214,216,222,255], Roughness:0.42, Metalness:0.08,
+    ShadingMode:0, Selectable:true
+  };
+  switch(entry.classification){
+    case 'scene':    Object.assign(p,{ Units:1, ToleranceLinear:0.01, ToleranceAngular:0.5, DocumentPath:'/Projects/Bracket_Rev4.wsdoc' }); break;
+    case 'folder':   Object.assign(p,{ NestedTally:nestedCount(entry), BooleanMode:0, Suppressed:false }); break;
+    case 'sketch':   Object.assign(p,{ PlaneChoice:0, ConstraintTally:12, CurveTally:8, FullyConstrained:false, GridSnap:0.5 }); break;
+    case 'solid':    Object.assign(p,{ ExtrudeDepth:12.5, DraftAngle:0, WallThickness:2.5, CappedEnds:true }); break;
+    case 'cylinder': Object.assign(p,{ Radius:6.25, Height:18, SegmentTally:32, CappedEnds:true }); break;
+    case 'sphere':   Object.assign(p,{ Radius:8.4, SegmentTally:48, RingTally:24 }); break;
+    case 'cone':     Object.assign(p,{ BaseRadius:7, TipRadius:0, Height:16, SegmentTally:32 }); break;
+    case 'revolve':  Object.assign(p,{ SweepAngle:360, AxisChoice:1, ProfileClosed:true }); break;
+    case 'loft':     Object.assign(p,{ SectionTally:3, TangencyStart:0, TangencyEnd:0, Ruled:false }); break;
+  }
+  entry.profile=p; return p;
+}
+
+const TRANSFORM_CARD = { title:'Transform', fields:[
+  { ctl:'vector', key:'Position', label:'Position', step:0.1,  fmt:2 },
+  { ctl:'vector', key:'Rotation', label:'Rotation', step:0.5,  fmt:1 },
+  { ctl:'vector', key:'Scale',    label:'Scale',    step:0.01, fmt:3 },
+]};
+const APPEARANCE_CARD = { title:'Appearance', fields:[
+  { ctl:'color',    key:'Albedo',      label:'Albedo' },
+  { ctl:'slider',   key:'Roughness',   label:'Roughness', min:0, max:1, fmt:2, unit:'·' },
+  { ctl:'slider',   key:'Metalness',   label:'Metalness', min:0, max:1, fmt:2, unit:'·' },
+  { ctl:'dropdown', key:'ShadingMode', label:'Shading',   options:['Smooth','Faceted','Flat'] },
+]};
+
+function profileCards(entry){
+  const cards=[];
+  const identity={ title:'Record', fields:[
+    { ctl:'text',    key:'Name',    label:'Name' },
+    { ctl:'boolean', key:'Visible', label:'Visible' },
+  ]};
+  cards.push(identity);
+
+  switch(entry.classification){
+    case 'scene':
+      identity.fields.push({ ctl:'dropdown', key:'Units', label:'Units', options:['Inches','Millimetres','Centimetres','Metres'] });
+      cards.push({ title:'Tolerance', fields:[
+        { ctl:'scalar', key:'ToleranceLinear',  label:'Linear',  step:0.001, fmt:3, unit:'mm' },
+        { ctl:'scalar', key:'ToleranceAngular', label:'Angular', step:0.1,   fmt:1, unit:'°'  },
+        { ctl:'path',   key:'DocumentPath',     label:'Document' },
+      ]});
+      break;
+    case 'folder':
+      cards.push({ title:'Group', fields:[
+        { ctl:'selection', key:'BooleanMode', label:'Boolean', options:['Union','Subtract','Intersect'] },
+        { ctl:'boolean',   key:'Suppressed',  label:'Suppress' },
+        { ctl:'scalar',    key:'NestedTally', label:'Records', step:1, fmt:0, unit:'ct' },
+      ]});
+      cards.push(TRANSFORM_CARD);
+      break;
+    case 'sketch':
+      cards.push({ title:'Sketch', fields:[
+        { ctl:'dropdown',  key:'PlaneChoice',      label:'Plane', options:['XY Plane','XZ Plane','YZ Plane','Custom'] },
+        { ctl:'slider',    key:'GridSnap',         label:'Snap',  min:0.1, max:5, fmt:2, unit:'mm' },
+        { ctl:'scalar',    key:'CurveTally',       label:'Curves',      step:1, fmt:0, unit:'ct' },
+        { ctl:'scalar',    key:'ConstraintTally',  label:'Constraints', step:1, fmt:0, unit:'ct' },
+        { ctl:'boolean',   key:'FullyConstrained', label:'Constrained' },
+      ]});
+      cards.push(TRANSFORM_CARD);
+      break;
+    case 'solid':
+      cards.push({ title:'Extrusion', fields:[
+        { ctl:'scalar',  key:'ExtrudeDepth',  label:'Depth',     step:0.1, fmt:2, unit:'mm' },
+        { ctl:'slider',  key:'DraftAngle',    label:'Draft',     min:-30, max:30, fmt:1, unit:'°' },
+        { ctl:'scalar',  key:'WallThickness', label:'Wall',      step:0.1, fmt:2, unit:'mm' },
+        { ctl:'boolean', key:'CappedEnds',    label:'Cap ends' },
+      ]});
+      cards.push(TRANSFORM_CARD, APPEARANCE_CARD);
+      break;
+    case 'cylinder':
+      cards.push({ title:'Cylinder', fields:[
+        { ctl:'scalar',  key:'Radius',       label:'Radius',   step:0.05, fmt:2, unit:'mm' },
+        { ctl:'scalar',  key:'Height',       label:'Height',   step:0.1,  fmt:2, unit:'mm' },
+        { ctl:'slider',  key:'SegmentTally', label:'Segments', min:6, max:128, fmt:0, unit:'ct' },
+        { ctl:'boolean', key:'CappedEnds',   label:'Cap ends' },
+      ]});
+      cards.push(TRANSFORM_CARD, APPEARANCE_CARD);
+      break;
+    case 'sphere':
+      cards.push({ title:'Sphere', fields:[
+        { ctl:'scalar', key:'Radius',       label:'Radius',   step:0.05, fmt:2, unit:'mm' },
+        { ctl:'slider', key:'SegmentTally', label:'Segments', min:6, max:128, fmt:0, unit:'ct' },
+        { ctl:'slider', key:'RingTally',    label:'Rings',    min:3, max:64,  fmt:0, unit:'ct' },
+      ]});
+      cards.push(TRANSFORM_CARD, APPEARANCE_CARD);
+      break;
+    case 'cone':
+      cards.push({ title:'Cone', fields:[
+        { ctl:'scalar', key:'BaseRadius',   label:'Base R',   step:0.05, fmt:2, unit:'mm' },
+        { ctl:'scalar', key:'TipRadius',    label:'Tip R',    step:0.05, fmt:2, unit:'mm' },
+        { ctl:'scalar', key:'Height',       label:'Height',   step:0.1,  fmt:2, unit:'mm' },
+        { ctl:'slider', key:'SegmentTally', label:'Segments', min:6, max:128, fmt:0, unit:'ct' },
+      ]});
+      cards.push(TRANSFORM_CARD, APPEARANCE_CARD);
+      break;
+    case 'revolve':
+      cards.push({ title:'Revolve', fields:[
+        { ctl:'slider',    key:'SweepAngle',    label:'Sweep', min:1, max:360, fmt:0, unit:'°' },
+        { ctl:'selection', key:'AxisChoice',    label:'Axis',  options:['X','Y','Z'] },
+        { ctl:'boolean',   key:'ProfileClosed', label:'Closed' },
+      ]});
+      cards.push(TRANSFORM_CARD, APPEARANCE_CARD);
+      break;
+    case 'loft':
+      cards.push({ title:'Loft', fields:[
+        { ctl:'scalar',  key:'SectionTally',  label:'Sections', step:1,   fmt:0, unit:'ct' },
+        { ctl:'slider',  key:'TangencyStart', label:'Tan start', min:0, max:1, fmt:2, unit:'·' },
+        { ctl:'slider',  key:'TangencyEnd',   label:'Tan end',   min:0, max:1, fmt:2, unit:'·' },
+        { ctl:'boolean', key:'Ruled',         label:'Ruled' },
+      ]});
+      cards.push(TRANSFORM_CARD, APPEARANCE_CARD);
+      break;
+  }
+  return cards;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                             PROPERTY RENDER
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 slide 1's right pane is read-only metadata; slide 2 owns the editable fields */
+const propertySurface = { body:'summonPropBody', foldMemory:{} };
+let renderSignature = '';
+let suppressRebuild = false;
+
+function selectionSignature(){
+  return [...selection].join(',')+'|'+selection.size;
+}
+
+function syncInspectors(){
+  if(suppressRebuild) return;
+  const sig=selectionSignature();
+  if(renderSignature===sig) return;
+  renderSignature=sig;
+  renderMetadata();
+  renderProperties();
+  refreshInspectHead();
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                          SLIDE 1 — METADATA PANE
+----------------------------------------------------------------------------------------------------------------------*/
+function renderMetadata(){
+  const body=document.getElementById('metaBody');
+  const iconHost=document.getElementById('metaIcon');
+  const nameHost=document.getElementById('metaName');
+  const classHost=document.getElementById('metaClass');
+  const footHost=document.getElementById('metaFoot');
+  const stepHost=document.getElementById('advanceStep');
+  body.innerHTML='';
+  stepHost.innerHTML=uiIcon('stepNext');
+
+  if(selection.size===0){
+    iconHost.innerHTML=uiIcon('target');
+    nameHost.textContent='Nothing selected';
+    classHost.textContent='—'; classHost.style.color='';
+    body.innerHTML='<div class="empty-state">Select a record to read its metadata.</div>';
+    footHost.innerHTML='<span class="pf-dot">no selection</span>';
+    stepHost.style.visibility='hidden';
+    return;
+  }
+  stepHost.style.visibility='visible';
+
+  if(selection.size>1){
+    const entries=[...selection].map(t=>resolveToken(t)).filter(Boolean).map(f=>f.entry);
+    iconHost.innerHTML=uiIcon('target');
+    nameHost.textContent=selection.size+' records';
+    classHost.textContent='multiple selection'; classHost.style.color='';
+
+    const byClass={};
+    entries.forEach(e=>{ byClass[e.classification]=(byClass[e.classification]||0)+1; });
+    Object.keys(byClass).forEach(cls=>{
+      const row=document.createElement('div'); row.className='meta-row';
+      row.innerHTML=
+        `<span class="pf-hue" style="background:${hueOf(cls)}"></span>` +
+        `<span class="mr-k">${CLASSIFICATION_LABEL[cls]}</span>` +
+        `<span class="mr-v">${byClass[cls]}</span>`;
+      body.appendChild(row);
+    });
+    body.appendChild(actionList(entries[0]));
+    body.appendChild(advanceButton());
+    footHost.innerHTML=`<span class="pf-strong">${selection.size}</span> selected`;
+    return;
+  }
+
+  const entry=resolveToken([...selection][0])?.entry;
+  if(!entry) return;
+  const profile=establishProfile(entry);
+  const hue=hueOf(entry.classification);
+
+  iconHost.innerHTML=classificationSvg(entry.classification, 18, false);
+  nameHost.textContent=entry.name;
+  classHost.textContent=CLASSIFICATION_LABEL[entry.classification];
+  classHost.style.color=hue;
+
+  const hero=document.createElement('div'); hero.className='meta-hero';
+  hero.innerHTML=
+    `<span class="mh-ic">${classificationSvg(entry.classification, 24, false)}</span>` +
+    `<span class="mh-txt">` +
+      `<span class="mh-name">${entry.name}</span>` +
+      `<span class="mh-class" style="color:${hue}">${CLASSIFICATION_LABEL[entry.classification]}</span>` +
+    `</span>`;
+  body.appendChild(hero);
+
+  /* read-only summary — a handful of telling numbers, not the whole schema */
+  const fieldTally=profileCards(entry).reduce((sum,card)=>sum+card.fields.length, 0);
+  const lines=[
+    ['Token', entry.token],
+    ['Nested', terminal(entry)?'terminal':nestedCount(entry)+' records'],
+    ['Visible', entry.hidden?'hidden':'shown'],
+    ['Fields', fieldTally]
+  ];
+  if(profile.Position) lines.push(['Position', profile.Position.map(v=>fmt(v,1)).join(', ')]);
+  if(profile.Radius!==undefined)       lines.push(['Radius', fmt(profile.Radius,2)+' mm']);
+  if(profile.Height!==undefined)       lines.push(['Height', fmt(profile.Height,2)+' mm']);
+  if(profile.ExtrudeDepth!==undefined) lines.push(['Depth',  fmt(profile.ExtrudeDepth,2)+' mm']);
+  if(profile.CurveTally!==undefined)   lines.push(['Curves', profile.CurveTally]);
+  if(profile.SweepAngle!==undefined)   lines.push(['Sweep',  fmt(profile.SweepAngle,0)+'°']);
+
+  lines.forEach(([key,val])=>{
+    const row=document.createElement('div'); row.className='meta-row';
+    row.innerHTML=`<span class="mr-k">${key}</span><span class="mr-v">${val}</span>`;
+    body.appendChild(row);
+  });
+
+  body.appendChild(actionList(entry));
+  body.appendChild(advanceButton());
+
+  footHost.innerHTML=
+    `<span class="pf-hue" style="background:${hue}"></span>` +
+    `<span>${CLASSIFICATION_LABEL[entry.classification]}</span>` +
+    `<span class="pf-spacer"></span><span>${entry.token}</span>`;
+}
+
+function advanceButton(){
+  const cta=document.createElement('div'); cta.className='meta-cta';
+  cta.innerHTML=`${uiIcon('sliders')}<span>Properties + History</span><span class="cta-kbd">Tab</span>`;
+  cta.onclick=(ev)=>{ ev.stopPropagation(); slideToInspect(); };
+  return cta;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                          INLINE ACTION LIST
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 the fold's open/shut survives a metadata rebuild, so toggling visibility doesn't slam it closed */
+let addFoldOpen = false;
+const collapseAddFold = ()=>{
+  addFoldOpen=false;
+  document.querySelectorAll('.act-fold.open').forEach(f=>f.classList.remove('open'));
+  document.querySelectorAll('.act-item.armed').forEach(i=>i.classList.remove('armed'));
+};
+
+function actionList(entry){
+  const host=document.createElement('div'); host.className='meta-actions';
+  const many=selection.size>1;
+
+  const head=document.createElement('div'); head.className='act-label';
+  head.textContent=many?selection.size+' records':'Actions';
+  host.appendChild(head);
+
+  /* New record + its in-place classification fold */
+  const adder=document.createElement('div');
+  adder.className='act-item'+(addFoldOpen?' armed':'');
+  adder.innerHTML=`<span class="ic">${uiIcon('plus')}</span><span>New record</span><span class="fold"></span>`;
+  host.appendChild(adder);
+
+  const fold=document.createElement('div');
+  fold.className='act-fold'+(addFoldOpen?' open':'');
+  const clip=document.createElement('div'); clip.className='af-clip';
+  const grid=document.createElement('div'); grid.className='af-grid';
+  ADD_CHOICES.forEach(cls=>{
+    const choice=document.createElement('div'); choice.className='af-choice';
+    choice.innerHTML=classificationSvg(cls,14,false)+`<span>${CLASSIFICATION_LABEL[cls]}</span>`;
+    choice.onclick=(ev)=>{
+      ev.stopPropagation();
+      collapseAddFold();
+      appendRecord(cls, entry);
+    };
+    grid.appendChild(choice);
+  });
+  clip.appendChild(grid); fold.appendChild(clip); host.appendChild(fold);
+
+  adder.onclick=(ev)=>{
+    ev.stopPropagation();
+    addFoldOpen=!addFoldOpen;
+    fold.classList.toggle('open', addFoldOpen);
+    adder.classList.toggle('armed', addFoldOpen);
+  };
+
+  host.appendChild(Object.assign(document.createElement('div'),{className:'act-sep'}));
+
+  RECORD_ACTIONS.forEach(spec=>{
+    /* 📝 a multi-selection can't be renamed as one name, so that row drops out */
+    if(many && spec.act==='rename') return;
+    const item=document.createElement('div');
+    item.className='act-item'+(spec.danger?' danger':'');
+    let glyph=spec.glyph, label=spec.label;
+    if(spec.act==='visibility' && !many){
+      glyph=entry.hidden?'eyeOff':'eyeOpen';
+      label=entry.hidden?'Show':'Hide';
+    }
+    item.innerHTML=
+      `<span class="ic">${uiIcon(glyph)}</span><span>${label}</span>` +
+      (spec.kbd?`<span class="kbd">${spec.kbd}</span>`:'');
+    item.onclick=(ev)=>{ ev.stopPropagation(); applyRecordAction(spec.act, entry); };
+    host.appendChild(item);
+  });
+
+  return host;
+}
+
+/* 💡 isolate = show the selection and its enclosing spine, hide everything else */
+function isolateSelection(){
+  if(selection.size===0) return;
+  const keep=new Set();
+  selection.forEach(token=>{
+    keep.add(token);
+    traverse(recordStore, entry=>{
+      if(entry.token===token || enclosesToken(entry.token, token)) keep.add(entry.token);
+    });
+    const found=resolveToken(token);
+    if(found) traverse([found.entry], nested=>keep.add(nested.token));
+  });
+  traverse(recordStore, entry=>{ entry.hidden = !keep.has(entry.token); });
+  recordRevision('edit','Isolate', keep.size+' records retained');
+  renderDirectory();
+  renderSignature=''; syncInspectors();
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                       SLIDE 2 — PROPERTY FIELDS
+----------------------------------------------------------------------------------------------------------------------*/
+function renderProperties(){
+  const body=document.getElementById('summonPropBody');
+  const identity=document.getElementById('inspectIdentity');
+  const iconHost=document.getElementById('inspectIcon');
+  const nameHost=document.getElementById('inspectName');
+  const subHost=document.getElementById('inspectSub');
+  const footHost=document.getElementById('inspectFoot');
+  body.innerHTML=''; identity.innerHTML='';
+
+  if(selection.size===0){
+    iconHost.innerHTML=uiIcon('sliders');
+    nameHost.textContent='Nothing selected';
+    subHost.textContent='—'; subHost.style.color='';
+    body.innerHTML='<div class="empty-state">Select a record to inspect its properties.</div>';
+    footHost.innerHTML='<span class="pf-dot">no selection</span>';
+    return;
+  }
+
+  if(selection.size>1){
+    const entries=[...selection].map(t=>resolveToken(t)).filter(Boolean).map(f=>f.entry);
+    iconHost.innerHTML=uiIcon('target');
+    nameHost.textContent=selection.size+' records';
+    subHost.textContent='multiple selection'; subHost.style.color='';
+    renderMultiSummary(body, entries);
+    footHost.innerHTML=`<span class="pf-strong">${selection.size}</span> selected`;
+    return;
+  }
+
+  const entry=resolveToken([...selection][0])?.entry;
+  if(!entry) return;
+  const profile=establishProfile(entry);
+  const hue=hueOf(entry.classification);
+
+  iconHost.innerHTML=classificationSvg(entry.classification, 18, false);
+  nameHost.textContent=entry.name;
+  subHost.textContent=CLASSIFICATION_LABEL[entry.classification];
+  subHost.style.color=hue;
+
+  /* slide 2's left pane keeps the record identity in view while the fields are edited */
+  const hero=document.createElement('div'); hero.className='meta-hero';
+  hero.innerHTML=
+    `<span class="mh-ic">${classificationSvg(entry.classification, 24, false)}</span>` +
+    `<span class="mh-txt">` +
+      `<span class="mh-name">${entry.name}</span>` +
+      `<span class="mh-class" style="color:${hue}">${CLASSIFICATION_LABEL[entry.classification]}</span>` +
+    `</span>`;
+  identity.appendChild(hero);
+
+  let fieldTally=0;
+  profileCards(entry).forEach(spec=>{
+    fieldTally+=spec.fields.length;
+    body.appendChild(buildCard(propertySurface, entry, profile, spec));
+  });
+
+  [['Token',entry.token],['Fields',fieldTally]].forEach(([key,val])=>{
+    const row=document.createElement('div'); row.className='meta-row';
+    row.innerHTML=`<span class="mr-k">${key}</span><span class="mr-v">${val}</span>`;
+    identity.appendChild(row);
+  });
+
+  footHost.innerHTML=
+    `<span class="pf-hue" style="background:${hue}"></span>` +
+    `<span class="pf-strong">${fieldTally}</span> fields`;
+}
+
+function renderMultiSummary(body, entries){
+  const byClass={};
+  entries.forEach(e=>{ byClass[e.classification]=(byClass[e.classification]||0)+1; });
+  const card=document.createElement('div'); card.className='card';
+  card.innerHTML=`<div class="card-head"><span class="ch-tw">${uiIcon('chevron')}</span>Selection<span class="ch-n">${entries.length}</span></div>`;
+  const shell=document.createElement('div'); shell.className='card-shell';
+  const inner=document.createElement('div'); inner.className='card-body-inner';
+  const inBody=document.createElement('div'); inBody.className='card-body';
+  Object.keys(byClass).forEach(cls=>{
+    const row=document.createElement('div'); row.className='prow';
+    row.innerHTML=`<div class="plabel">${CLASSIFICATION_LABEL[cls]}</div>`;
+    const pick=document.createElement('div'); pick.className='selpick';
+    pick.innerHTML=`<span class="sp-hue" style="background:${hueOf(cls)}"></span>` +
+                   `<span>${byClass[cls]} record${byClass[cls]===1?'':'s'}</span>` +
+                   `<span class="sp-n">${cls}</span>`;
+    row.appendChild(pick); inBody.appendChild(row);
+  });
+  inner.appendChild(inBody); shell.appendChild(inner); card.appendChild(shell);
+  card.querySelector('.card-head').onclick=()=>card.classList.toggle('collapsed');
+  body.appendChild(card);
+}
+
+function buildCard(surface, entry, profile, spec){
+  const card=document.createElement('div'); card.className='card';
+  const foldKey=entry.classification+'/'+spec.title;
+  if(surface.foldMemory[foldKey]) card.classList.add('collapsed');
+
+  const head=document.createElement('div'); head.className='card-head';
+  head.innerHTML=`<span class="ch-tw">${uiIcon('chevron')}</span>${spec.title}<span class="ch-n">${spec.fields.length}</span>`;
+  head.onclick=()=>{
+    card.classList.toggle('collapsed');
+    surface.foldMemory[foldKey]=card.classList.contains('collapsed');
+  };
+  card.appendChild(head);
+
+  const shell=document.createElement('div'); shell.className='card-shell';
+  const inner=document.createElement('div'); inner.className='card-body-inner';
+  const cardBody=document.createElement('div'); cardBody.className='card-body';
+  spec.fields.forEach(field=>cardBody.appendChild(buildField(entry, profile, field)));
+  inner.appendChild(cardBody); shell.appendChild(inner); card.appendChild(shell);
+  return card;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                             FIELD BUILDERS
+----------------------------------------------------------------------------------------------------------------------*/
+let colorSeq=0;
+function flashRow(row){
+  row.classList.add('changed');
+  row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+  clearTimeout(row._flashTimer);
+  row._flashTimer=setTimeout(()=>row.classList.remove('changed'), 900);
+}
+function rowShell(label){
+  const row=document.createElement('div'); row.className='prow';
+  const lab=document.createElement('div'); lab.className='plabel'; lab.textContent=label;
+  row.appendChild(lab); return row;
+}
+
+function buildField(entry, profile, field){
+  switch(field.ctl){
+    case 'text':      return makeTextRow(entry, profile, field);
+    case 'vector':    return makeVectorRow(profile, field);
+    case 'slider':    return makeSliderRow(profile, field);
+    case 'scalar':    return makeScalarRow(profile, field);
+    case 'boolean':   return makeBooleanRow(entry, profile, field);
+    case 'selection': return makeSelectionRow(profile, field);
+    case 'dropdown':  return makeDropdownRow(profile, field);
+    case 'color':     return makeColorRow(profile, field);
+    case 'path':      return makePathRow(profile, field);
+    default:          return document.createElement('div');
+  }
+}
+
+/* ── text: Name writes straight through to the record ── */
+function makeTextRow(entry, profile, field){
+  const row=rowShell(field.label);
+  const wrap=document.createElement('div'); wrap.className='textfield';
+  const box=document.createElement('div'); box.className='value';
+  const input=document.createElement('input'); input.type='text';
+  input.value = field.key==='Name' ? entry.name : (profile[field.key] ?? '');
+  input.addEventListener('input',()=>{
+    if(field.key==='Name'){
+      entry.name=input.value;
+      ['metaName','inspectName'].forEach(id=>{ document.getElementById(id).textContent=input.value; });
+      suppressRebuild=true; renderDirectory(); suppressRebuild=false;
+    } else profile[field.key]=input.value;
+    flashRow(row);
+  });
+  box.appendChild(input); wrap.appendChild(box); row.appendChild(wrap); return row;
+}
+
+/* ── vector: three axis-tagged boxes ── */
+function makeVectorRow(profile, field){
+  const row=rowShell(field.label);
+  const vec=document.createElement('div'); vec.className='vec';
+  const store=profile[field.key];
+  ['X','Y','Z'].forEach((axis,index)=>{
+    const box=document.createElement('div'); box.className='valuebox';
+    const seg=document.createElement('div'); seg.className='axisseg'; seg.textContent=axis;
+    const num=document.createElement('div'); num.className='num';
+    const input=document.createElement('input'); input.type='number'; input.step=field.step??0.01;
+    input.value=fmt(store[index], field.fmt);
+    input.addEventListener('input',()=>{
+      const parsed=parseFloat(input.value);
+      if(!isNaN(parsed)){ store[index]=parsed; flashRow(row); }
+    });
+    num.appendChild(input); box.appendChild(seg); box.appendChild(num); vec.appendChild(box);
+  });
+  row.appendChild(vec); return row;
+}
+
+/* ── slider: bounded, fill + knob ── */
+function makeSliderRow(profile, field){
+  const row=rowShell(field.label);
+  const wrap=document.createElement('div'); wrap.className='sliderrow';
+  const box=document.createElement('div'); box.className='valuebox';
+  const num=document.createElement('div'); num.className='num';
+  const input=document.createElement('input'); input.type='number';
+  const unit=document.createElement('div'); unit.className='unitseg'; unit.textContent=field.unit||'·';
+  num.appendChild(input); box.appendChild(num); box.appendChild(unit);
+
+  const track=document.createElement('div'); track.className='slider';
+  const fill=document.createElement('div'); fill.className='fill';
+  const knob=document.createElement('div'); knob.className='knob';
+  track.appendChild(fill); track.appendChild(knob);
+  wrap.appendChild(box); wrap.appendChild(track); row.appendChild(wrap);
+
+  const { min, max } = field;
+  function paint(){
+    const t=(profile[field.key]-min)/(max-min);
+    fill.style.width=(t*100)+'%'; knob.style.left=(t*100)+'%';
+    input.value=fmt(profile[field.key], field.fmt);
+  }
+  function driveTo(clientX){
+    const rect=track.getBoundingClientRect();
+    const t=clamp((clientX-rect.left)/rect.width, 0, 1);
+    profile[field.key]=clamp(min+t*(max-min), min, max);
+    if(field.fmt===0) profile[field.key]=Math.round(profile[field.key]);
+    paint(); flashRow(row);
+  }
+  track.addEventListener('pointerdown',ev=>{
+    track.setPointerCapture(ev.pointerId); driveTo(ev.clientX);
+    const move=e=>driveTo(e.clientX);
+    const lift=()=>{ track.removeEventListener('pointermove',move); track.removeEventListener('pointerup',lift); };
+    track.addEventListener('pointermove',move); track.addEventListener('pointerup',lift);
+  });
+  input.addEventListener('input',()=>{
+    const parsed=parseFloat(input.value);
+    if(!isNaN(parsed)){
+      profile[field.key]=clamp(parsed,min,max);
+      const t=(profile[field.key]-min)/(max-min);
+      fill.style.width=(t*100)+'%'; knob.style.left=(t*100)+'%'; flashRow(row);
+    }
+  });
+  paint(); return row;
+}
+
+/* ── scalar: unbounded, drag the knob to nudge ── */
+function makeScalarRow(profile, field){
+  const row=rowShell(field.label);
+  const wrap=document.createElement('div'); wrap.className='sliderrow';
+  const box=document.createElement('div'); box.className='valuebox';
+  const num=document.createElement('div'); num.className='num';
+  const input=document.createElement('input'); input.type='number'; input.step=field.step??0.01;
+  const unit=document.createElement('div'); unit.className='unitseg'; unit.textContent=field.unit||'·';
+  num.appendChild(input); box.appendChild(num); box.appendChild(unit);
+
+  const track=document.createElement('div'); track.className='slider';
+  const knob=document.createElement('div'); knob.className='knob'; knob.style.left='50%';
+  track.appendChild(knob);
+  wrap.appendChild(box); wrap.appendChild(track); row.appendChild(wrap);
+
+  const step=field.step??0.01;
+  input.value=fmt(profile[field.key], field.fmt);
+  track.addEventListener('pointerdown',ev=>{
+    track.setPointerCapture(ev.pointerId);
+    let lastX=ev.clientX;
+    const move=e=>{
+      const deltaX=e.clientX-lastX; lastX=e.clientX;
+      profile[field.key]+=deltaX*step;
+      if(field.fmt===0) profile[field.key]=Math.round(profile[field.key]);
+      input.value=fmt(profile[field.key], field.fmt); flashRow(row);
+    };
+    const lift=()=>{ track.removeEventListener('pointermove',move); track.removeEventListener('pointerup',lift); };
+    track.addEventListener('pointermove',move); track.addEventListener('pointerup',lift);
+  });
+  input.addEventListener('input',()=>{
+    const parsed=parseFloat(input.value);
+    if(!isNaN(parsed)){ profile[field.key]=parsed; flashRow(row); }
+  });
+  return row;
+}
+
+/* ── boolean: Visible drives the record + directory ── */
+function makeBooleanRow(entry, profile, field){
+  const row=rowShell(field.label);
+  const sw=document.createElement('div'); sw.className='switch';
+  const nub=document.createElement('div'); nub.className='nub'; sw.appendChild(nub);
+
+  const read = ()=> field.key==='Visible' ? !entry.hidden : !!profile[field.key];
+  sw.classList.toggle('on', read());
+  sw.addEventListener('click',()=>{
+    const next=!read();
+    profile[field.key]=next;
+    if(field.key==='Visible'){
+      traverse([entry], inner=>{ inner.hidden=!next; });
+      suppressRebuild=true; renderDirectory(); suppressRebuild=false;
+    }
+    sw.classList.toggle('on', next); flashRow(row);
+  });
+  row.appendChild(sw); return row;
+}
+
+/* ── segmented selection ── */
+function makeSelectionRow(profile, field){
+  const row=rowShell(field.label);
+  const seg=document.createElement('div'); seg.className='segment';
+  field.options.forEach((option,index)=>{
+    const opt=document.createElement('div');
+    opt.className='seg-opt'+(index===profile[field.key]?' sel':'');
+    opt.textContent=option;
+    opt.addEventListener('click',()=>{
+      profile[field.key]=index;
+      seg.querySelectorAll('.seg-opt').forEach((el,i)=>el.classList.toggle('sel', i===index));
+      flashRow(row);
+    });
+    seg.appendChild(opt);
+  });
+  row.appendChild(seg); return row;
+}
+
+/* ── dropdown: fixed list, placed by JS so it escapes the card's overflow ── */
+function makeDropdownRow(profile, field){
+  const row=rowShell(field.label);
+  const dd=document.createElement('div'); dd.className='dropdown';
+  const head=document.createElement('div'); head.className='dd-head';
+  head.innerHTML=`<span class="cur"></span><span class="caret"><span>▾</span></span>`;
+  const list=document.createElement('div'); list.className='dd-list';
+  dd.appendChild(head); document.body.appendChild(list); row.appendChild(dd);
+  const current=head.querySelector('.cur');
+
+  function build(){
+    current.textContent=field.options[profile[field.key]];
+    list.innerHTML='';
+    field.options.forEach((option,index)=>{
+      const item=document.createElement('div');
+      item.className='dd-item'+(index===profile[field.key]?' sel':'');
+      item.innerHTML=`<span>${option}</span><span class="radio"></span>`;
+      item.addEventListener('click',ev=>{
+        ev.stopPropagation();
+        profile[field.key]=index; list.classList.remove('shown'); dd.classList.remove('open');
+        build(); flashRow(row);
+      });
+      list.appendChild(item);
+    });
+  }
+  function placeList(){
+    const rect=head.getBoundingClientRect(); const pad=8, gap=5;
+    list.style.width=rect.width+'px';
+    list.style.left=rect.left+'px';
+    list.style.top='-9999px'; list.style.display='block';
+    const height=Math.min(list.offsetHeight, 280);
+    let top=rect.bottom+gap;
+    if(top+height > innerHeight-pad) top=Math.max(pad, rect.top-gap-height);
+    list.style.top=top+'px';
+  }
+  head.addEventListener('click',ev=>{
+    ev.stopPropagation();
+    document.querySelectorAll('.dd-list').forEach(l=>{ if(l!==list) l.style.display='none'; });
+    document.querySelectorAll('.dropdown.open').forEach(d=>{ if(d!==dd) d.classList.remove('open'); });
+    const opening=!dd.classList.contains('open');
+    dd.classList.toggle('open');
+    if(opening) placeList(); else list.style.display='none';
+  });
+  build(); return row;
+}
+function closeDropdowns(){
+  document.querySelectorAll('.dropdown.open').forEach(d=>d.classList.remove('open'));
+  document.querySelectorAll('.dd-list').forEach(l=>l.style.display='none');
+}
+document.addEventListener('click',closeDropdowns);
+document.addEventListener('scroll',closeDropdowns,true);
+
+/* ── path ── */
+function makePathRow(profile, field){
+  const row=rowShell(field.label);
+  const wrap=document.createElement('div'); wrap.className='pathfield';
+  const box=document.createElement('div'); box.className='value';
+  const input=document.createElement('input'); input.type='text'; input.value=profile[field.key]||'';
+  const browse=document.createElement('button'); browse.className='browse'; browse.textContent='…';
+  box.appendChild(input); wrap.appendChild(box); wrap.appendChild(browse); row.appendChild(wrap);
+  input.addEventListener('input',()=>{ profile[field.key]=input.value; flashRow(row); });
+  browse.addEventListener('click',()=>{
+    const picked=prompt('Document path', profile[field.key]);
+    if(picked!=null){ profile[field.key]=picked; input.value=picked; flashRow(row); }
+  });
+  return row;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              COLOUR PICKER
+----------------------------------------------------------------------------------------------------------------------*/
+function rgbToHsv(r,g,b){
+  r/=255; g/=255; b/=255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b), delta=max-min;
+  let hue=0;
+  if(delta){
+    if(max===r)      hue=((g-b)/delta)%6;
+    else if(max===g) hue=(b-r)/delta+2;
+    else             hue=(r-g)/delta+4;
+    hue*=60; if(hue<0) hue+=360;
+  }
+  return { h:hue, s:max?delta/max:0, v:max };
+}
+function hsvToRgb(h,s,v){
+  const chroma=v*s, x=chroma*(1-Math.abs((h/60)%2-1)), m=v-chroma;
+  let r,g,b;
+  if(h<60)       [r,g,b]=[chroma,x,0];
+  else if(h<120) [r,g,b]=[x,chroma,0];
+  else if(h<180) [r,g,b]=[0,chroma,x];
+  else if(h<240) [r,g,b]=[0,x,chroma];
+  else if(h<300) [r,g,b]=[x,0,chroma];
+  else           [r,g,b]=[chroma,0,x];
+  return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)];
+}
+const hex2=(n)=>n.toString(16).padStart(2,'0').toUpperCase();
+
+function makeColorRow(profile, field){
+  const row=rowShell(field.label);
+  colorSeq++;
+  const bar=document.createElement('div'); bar.className='colorbar';
+  bar.innerHTML=`<div class="swatchseg"><div class="circle"></div><div class="cname"></div></div><div class="caret"><span>▾</span></div>`;
+  const picker=document.createElement('div'); picker.className='picker';
+  picker.innerHTML=`
+    <div class="svbox"><div class="svknob"></div></div>
+    <div class="barstack">
+      <div class="cbar huebar"><div class="cknob"></div></div>
+      <div class="cbar alphabar"><div class="alphagrid"></div><div class="alphafill"></div><div class="cknob"></div></div>
+    </div>
+    <div class="hexrow"><input type="text" maxlength="7"><div class="arow"></div></div>`;
+
+  /* the picker occupies the full row width beneath the bar */
+  const holder=document.createElement('div'); holder.style.minWidth='0';
+  holder.appendChild(bar); holder.appendChild(picker);
+  row.appendChild(holder);
+
+  const circle=bar.querySelector('.circle'), cname=bar.querySelector('.cname');
+  const svbox=picker.querySelector('.svbox'), svknob=picker.querySelector('.svknob');
+  const hueBar=picker.querySelector('.huebar'), hueKnob=hueBar.querySelector('.cknob');
+  const alphaBar=picker.querySelector('.alphabar'), alphaKnob=alphaBar.querySelector('.cknob');
+  const alphaFill=picker.querySelector('.alphafill');
+  const hexInput=picker.querySelector('.hexrow input'), readout=picker.querySelector('.arow');
+
+  let hsv=rgbToHsv(...profile[field.key].slice(0,3));
+  function paint(){
+    const [r,g,b]=hsvToRgb(hsv.h,hsv.s,hsv.v);
+    const alpha=profile[field.key][3];
+    profile[field.key]=[r,g,b,alpha];
+    const css=`rgba(${r},${g},${b},${alpha/255})`;
+    circle.style.background=css;
+    cname.innerHTML=`${r}, ${g}, ${b} <span class="dim">${(alpha/255).toFixed(2)}</span>`;
+    svbox.style.background=`linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),hsl(${hsv.h},100%,50%)`;
+    svknob.style.left=(hsv.s*100)+'%'; svknob.style.top=((1-hsv.v)*100)+'%'; svknob.style.background=css;
+    hueKnob.style.left=(hsv.h/360*100)+'%';
+    alphaFill.style.background=`linear-gradient(90deg,transparent,rgb(${r},${g},${b}))`;
+    alphaKnob.style.left=(alpha/255*100)+'%';
+    hexInput.value='#'+hex2(r)+hex2(g)+hex2(b);
+    readout.textContent=`A ${Math.round(alpha/255*100)}%`;
+  }
+  bar.addEventListener('click',()=>{ picker.classList.toggle('open'); bar.classList.toggle('open'); });
+
+  function dragArea(el, onMove){
+    el.addEventListener('pointerdown',ev=>{
+      el.setPointerCapture(ev.pointerId); onMove(ev);
+      const move=e=>onMove(e);
+      const lift=()=>{ el.removeEventListener('pointermove',move); el.removeEventListener('pointerup',lift); };
+      el.addEventListener('pointermove',move); el.addEventListener('pointerup',lift);
+    });
+  }
+  dragArea(svbox, ev=>{
+    const rect=svbox.getBoundingClientRect();
+    hsv.s=clamp((ev.clientX-rect.left)/rect.width, 0, 1);
+    hsv.v=clamp(1-(ev.clientY-rect.top)/rect.height, 0, 1);
+    paint(); flashRow(row);
+  });
+  dragArea(hueBar, ev=>{
+    const rect=hueBar.getBoundingClientRect();
+    hsv.h=clamp((ev.clientX-rect.left)/rect.width, 0, 1)*360;
+    paint(); flashRow(row);
+  });
+  dragArea(alphaBar, ev=>{
+    const rect=alphaBar.getBoundingClientRect();
+    profile[field.key][3]=Math.round(clamp((ev.clientX-rect.left)/rect.width, 0, 1)*255);
+    paint(); flashRow(row);
+  });
+  hexInput.addEventListener('input',()=>{
+    const match=/^#?([0-9a-f]{6})$/i.exec(hexInput.value.trim());
+    if(match){
+      const packed=parseInt(match[1],16);
+      hsv=rgbToHsv((packed>>16)&255, (packed>>8)&255, packed&255);
+      paint(); flashRow(row);
+    }
+  });
+  paint(); return row;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                             REVISION STORE
+----------------------------------------------------------------------------------------------------------------------*/
+const REVISION_CLASS = {
+  start:     { glyph:'Cube',        label:'Start'     },
+  feature:   { glyph:'Cube',        label:'Feature',   tone:'param' },
+  param:     { glyph:'Cylinder',    label:'Params',    tone:'param' },
+  sketch:    { glyph:'Draw Sketch', label:'Sketch',    tone:'gen'   },
+  transform: { glyph:'Loft',        label:'Relocate',  tone:'gen'   },
+  body:      { glyph:'Folder',      label:'Group',     tone:'mat'   },
+  add:       { glyph:'Layers',      label:'Create',    tone:'gen'   },
+  edit:      { glyph:'Revolve',     label:'Edit',      tone:'mat'   },
+  drop:      { glyph:'Cone',        label:'Drop',      tone:'param' }
+};
+/* hue for a revision marker — reuses the classification palette so the two panes speak one language */
+const REVISION_HUE = {
+  start:C.sky, feature:C.amber, param:C.green, sketch:C.cyan, transform:C.blue,
+  body:C.violet, add:C.sky, edit:C.earth, drop:C.red
+};
+
+let revisionSeq=0, branchSeq=0;
+let revisionStore = { branches:[], active:0 };
+
+function newBranch(name, revisions){
+  return {
+    token:'br'+(++branchSeq),
+    name: name || ('Branch '+branchSeq),
+    revisions: revisions || [],
+    cursor: revisions ? revisions.length-1 : -1
+  };
+}
+function makeRevision(category, title, subtitle){
+  return { token:'v'+(++revisionSeq), at:new Date(), category, title, subtitle };
+}
+
+/* 📝 recording while the cursor sits behind the tip forks a lateral branch instead of truncating */
+function recordRevision(category, title, subtitle){
+  const branch=revisionStore.branches[revisionStore.active];
+  if(!branch) return;
+  if(branch.cursor < branch.revisions.length-1){
+    const retained=branch.revisions.slice(0, branch.cursor+1);
+    const fork=newBranch('Branch '+(branchSeq+1), retained.slice());
+    fork.revisions.push(makeRevision(category,title,subtitle));
+    fork.cursor=fork.revisions.length-1;
+    revisionStore.branches.push(fork);
+    revisionStore.active=revisionStore.branches.length-1;
+  } else {
+    branch.revisions.push(makeRevision(category,title,subtitle));
+    branch.cursor=branch.revisions.length-1;
+  }
+  renderBranches(); renderRevisions(); refreshInspectHead();
+}
+
+function seedRevisions(){
+  const seeded=[
+    makeRevision('start','Document opened','Bracket_Rev4.wsdoc'),
+    makeRevision('sketch','SK_BasePlate','8 curves · XY plane'),
+    makeRevision('feature','Extrude SOL_Plate','12.5 mm'),
+    makeRevision('param','Radius 6.25 mm','SOL_Boss'),
+  ];
+  revisionStore.branches=[newBranch('Trunk', seeded)];
+  revisionStore.active=0;
+}
+
+const activeBranch = ()=>revisionStore.branches[revisionStore.active];
+function jumpToRevision(index){
+  const branch=activeBranch(); if(!branch) return;
+  branch.cursor=clamp(index, -1, branch.revisions.length-1);
+  renderRevisions(); refreshInspectHead();
+}
+function stepBack(){
+  const branch=activeBranch();
+  if(branch && branch.cursor>=0){ branch.cursor--; renderRevisions(); refreshInspectHead(); }
+}
+function stepForward(){
+  const branch=activeBranch();
+  if(branch && branch.cursor<branch.revisions.length-1){ branch.cursor++; renderRevisions(); refreshInspectHead(); }
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            REVISION RENDER
+----------------------------------------------------------------------------------------------------------------------*/
+function renderBranches(){
+  const host=document.getElementById('hxTrees');
+  host.innerHTML='';
+  revisionStore.branches.forEach((branch,index)=>{
+    const pill=document.createElement('div');
+    pill.className='hx-tree'+(index===revisionStore.active?' active':'');
+    pill.innerHTML=`<span>${branch.name}</span><span class="hx-tree-ct">${branch.revisions.length}</span>`;
+    pill.onclick=()=>{ revisionStore.active=index; renderBranches(); renderRevisions(); refreshInspectHead(); };
+    if(revisionStore.branches.length>1){
+      const shut=document.createElement('span'); shut.className='hx-tree-x'; shut.textContent='×';
+      shut.onclick=(e)=>{
+        e.stopPropagation();
+        revisionStore.branches.splice(index,1);
+        revisionStore.active=clamp(revisionStore.active, 0, revisionStore.branches.length-1);
+        renderBranches(); renderRevisions(); refreshInspectHead();
+      };
+      pill.appendChild(shut);
+    }
+    host.appendChild(pill);
+  });
+  const add=document.createElement('div'); add.className='hx-tree-add'; add.textContent='+'; add.title='Fork here';
+  add.onclick=()=>{
+    const branch=activeBranch(); if(!branch) return;
+    const fork=newBranch(null, branch.revisions.slice(0, branch.cursor+1));
+    revisionStore.branches.push(fork);
+    revisionStore.active=revisionStore.branches.length-1;
+    renderBranches(); renderRevisions(); refreshInspectHead();
+  };
+  host.appendChild(add);
+}
+
+function renderRevisions(){
+  const host=document.getElementById('hxScroll');
+  const branch=activeBranch();
+  host.innerHTML='';
+  if(!branch || branch.revisions.length===0){
+    host.innerHTML='<div class="empty-state">No revisions on this branch.</div>';
+    return;
+  }
+  branch.revisions.forEach((revision,index)=>{
+    const spec=REVISION_CLASS[revision.category]||REVISION_CLASS.edit;
+    const hue=REVISION_HUE[revision.category]||C.dim;
+
+    const rowEl=document.createElement('div');
+    rowEl.className='hx-ev'
+      + (index===branch.cursor?' at-cursor':'')
+      + (index> branch.cursor?' future':'');
+
+    const rail=document.createElement('div'); rail.className='hx-rail';
+    const above=document.createElement('div'); above.className='hx-line'+(index===0?' blank':'');
+    const marker=document.createElement('div'); marker.className='hx-node';
+    marker.innerHTML=svgWrap((GLYPH[spec.glyph]||GLYPH.Cube)(hue), 12, false);
+    const below=document.createElement('div'); below.className='hx-line'+(index===branch.revisions.length-1?' blank':'');
+    rail.appendChild(above); rail.appendChild(marker); rail.appendChild(below);
+
+    const body=document.createElement('div'); body.className='hx-body';
+    const main=document.createElement('div'); main.className='hx-main';
+    main.innerHTML=
+      `<span class="hx-evt-title">${revision.title}</span>` +
+      `<span class="hx-type ${spec.tone||''}">${spec.label}</span>` +
+      `<span class="hx-time">${revision.at.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+    body.appendChild(main);
+    if(revision.subtitle){
+      const sub=document.createElement('div'); sub.className='hx-sub'; sub.textContent=revision.subtitle;
+      body.appendChild(sub);
+    }
+
+    rowEl.appendChild(rail); rowEl.appendChild(body);
+    rowEl.onclick=()=>jumpToRevision(index);
+    host.appendChild(rowEl);
+  });
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+const summonMenu  = document.getElementById('summonMenu');
+const summonVeil  = document.getElementById('summonVeil');
+const menuTrack   = document.getElementById('menuTrack');
+const inspectTrack= document.getElementById('inspectTrack');
+const MENU_W=548, MENU_H=372;
+
+let summonOpen=false;
+let lastPointerX=innerWidth/2, lastPointerY=innerHeight/2;
+
+document.addEventListener('pointermove',(e)=>{ lastPointerX=e.clientX; lastPointerY=e.clientY; });
+
+const onInspectSlide = ()=>menuTrack.classList.contains('to-inspect');
+
+/* place the menu at the cursor, clamped fully on-screen */
+function summonMenuAt(x,y){
+  const pad=12;
+  let left=x+10, top=y+10;
+  if(left+MENU_W > innerWidth-pad)  left=Math.max(pad, x-MENU_W-10);
+  if(top+MENU_H  > innerHeight-pad) top =Math.max(pad, innerHeight-pad-MENU_H);
+  summonMenu.style.left=left+'px';
+  summonMenu.style.top=top+'px';
+  summonMenu.classList.add('open');
+  summonVeil.classList.add('open');
+  summonOpen=true;
+
+  /* always open on slide 1 and force a fresh render of the live selection */
+  menuTrack.classList.remove('to-inspect');
+  renderSignature='';
+  syncInspectors();
+  document.getElementById('filterInput').focus();
+}
+function dismissMenu(){
+  summonMenu.classList.remove('open');
+  summonVeil.classList.remove('open');
+  summonOpen=false;
+  closeAllMenus(); closeDropdowns();
+}
+summonVeil.addEventListener('pointerdown',dismissMenu);
+
+/* outer slide: directory ⇄ properties+history */
+function slideToInspect(){
+  if(selection.size===0) return;
+  menuTrack.classList.add('to-inspect');
+  renderSignature='';
+  syncInspectors();
+  closeAllMenus();
+}
+function slideToDirectory(){
+  menuTrack.classList.remove('to-inspect');
+  closeAllMenus(); closeDropdowns();
+}
+document.getElementById('advanceHead').addEventListener('click',(ev)=>{
+  if(ev.target.closest('.hdr-btn')) return;   // the head also carries collapse/add buttons
+  slideToInspect();
+});
+document.getElementById('returnHead').addEventListener('click',slideToDirectory);
+
+/* inner carousel: Properties ⇄ History */
+function switchInspector(key){
+  const showHistory = key==='history';
+  inspectTrack.classList.toggle('show-history', showHistory);
+  document.querySelectorAll('#summonCarousel .pc-seg').forEach(seg=>{
+    seg.classList.toggle('active', seg.dataset.inspect===key);
+  });
+  document.getElementById('summonActs').style.display = showHistory ? 'flex' : 'none';
+  refreshInspectHead();
+}
+document.querySelectorAll('#summonCarousel .pc-seg').forEach(seg=>{
+  seg.addEventListener('click',()=>switchInspector(seg.dataset.inspect));
+});
+
+function refreshInspectHead(){
+  const showHistory=inspectTrack.classList.contains('show-history');
+  const branch=activeBranch();
+  const foot=document.getElementById('summonFoot');
+
+  document.getElementById('summonUndo').disabled = !branch || branch.cursor<0;
+  document.getElementById('summonRedo').disabled = !branch || branch.cursor>=branch.revisions.length-1;
+
+  if(showHistory && branch){
+    document.getElementById('inspectIcon').innerHTML=uiIcon('clock');
+    document.getElementById('inspectName').textContent=branch.name;
+    const sub=document.getElementById('inspectSub');
+    sub.textContent=(branch.cursor+1)+' of '+branch.revisions.length+' revisions';
+    sub.style.color='';
+    foot.innerHTML=
+      `<span class="pf-strong">${branch.revisions.length}</span> revisions` +
+      `<span class="pf-dot">·</span><span class="pf-strong">${revisionStore.branches.length}</span> branch${revisionStore.branches.length===1?'':'es'}` +
+      `<span class="pf-spacer"></span><span>Ctrl Z / Y</span>`;
+  } else {
+    foot.innerHTML=`<span class="pf-dot">·</span> editable fields`;
+    const entry=selection.size===1 ? resolveToken([...selection][0])?.entry : null;
+    if(entry){
+      document.getElementById('inspectIcon').innerHTML=classificationSvg(entry.classification,18,false);
+      document.getElementById('inspectName').textContent=entry.name;
+      const sub=document.getElementById('inspectSub');
+      sub.textContent=CLASSIFICATION_LABEL[entry.classification];
+      sub.style.color=hueOf(entry.classification);
+    }
+  }
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            KEY ASSIGNMENT
+----------------------------------------------------------------------------------------------------------------------*/
+const editingText = ()=>{
+  const focused=document.activeElement;
+  if(!focused) return false;
+  return focused.tagName==='INPUT' || focused.isContentEditable;
+};
+
+/* the filter input lives inside the menu, so Tab must still work while it holds focus */
+const renamingText = ()=>{
+  const focused=document.activeElement;
+  return !!focused && focused.isContentEditable;
+};
+
+window.addEventListener('keydown',(ev)=>{
+  /* 🔴 Tab: summon, then toggle slides. Always swallowed so focus never walks the DOM */
+  if(ev.key==='Tab' && !renamingText()){
+    ev.preventDefault();
+    if(!summonOpen){ summonMenuAt(lastPointerX, lastPointerY); return; }
+    if(onInspectSlide()) slideToDirectory(); else slideToInspect();
+    return;
+  }
+  if(ev.key==='Escape'){
+    if(addMenu.classList.contains('open')){ closeAllMenus(); return; }
+    if(addFoldOpen){ collapseAddFold(); return; }
+    if(summonOpen && onInspectSlide()){ slideToDirectory(); return; }
+    if(summonOpen){ dismissMenu(); return; }
+    closeDropdowns();
+    return;
+  }
+  if(editingText()) return;
+
+  if((ev.ctrlKey||ev.metaKey) && ev.key.toLowerCase()==='z'){ ev.preventDefault(); stepBack();    return; }
+  if((ev.ctrlKey||ev.metaKey) && ev.key.toLowerCase()==='y'){ ev.preventDefault(); stepForward(); return; }
+  if((ev.ctrlKey||ev.metaKey) && ev.key.toLowerCase()==='d'){
+    ev.preventDefault();
+    const focusedToken=[...selection][0];
+    const found=focusedToken?resolveToken(focusedToken):null;
+    if(found) duplicateRecord(found.entry);
+    return;
+  }
+
+  const focusedToken=[...selection][0];
+  const found=focusedToken?resolveToken(focusedToken):null;
+
+  if(ev.key==='F2' && found){
+    const row=directoryBody.querySelector(`.row[data-token="${focusedToken}"]`);
+    if(row) beginRename(found.entry, row.querySelector('.row-label'));
+    return;
+  }
+  if(ev.key.toLowerCase()==='h' && found){ toggleVisibility(found.entry); return; }
+  if(ev.key.toLowerCase()==='i' && found){ isolateSelection(); return; }
+  if(ev.key==='Delete' && found){ dropRecord(found.entry); return; }
+
+  if(ev.key==='ArrowDown' || ev.key==='ArrowUp'){
+    ev.preventDefault();
+    const order=linearOrder();
+    if(order.length===0) return;
+    const at=order.indexOf(focusedToken);
+    const next=ev.key==='ArrowDown'
+      ? order[clamp(at+1, 0, order.length-1)]
+      : order[clamp(at-1, 0, order.length-1)];
+    selectSolely(next);
+    return;
+  }
+  if((ev.key==='ArrowRight'||ev.key==='ArrowLeft') && found && nestedCount(found.entry)){
+    found.entry.expanded = ev.key==='ArrowRight';
+    renderDirectory();
+  }
+});
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                             CHROME WIRING
+----------------------------------------------------------------------------------------------------------------------*/
+document.getElementById('hostMark').innerHTML     = uiIcon('mark');
+document.getElementById('searchIcon').innerHTML   = uiIcon('search');
+document.getElementById('directoryIcon').innerHTML= uiIcon('mark');
+document.getElementById('collapseAll').innerHTML  = uiIcon('collapse');
+document.getElementById('addRecord').innerHTML    = uiIcon('plus');
+document.getElementById('summonUndo').innerHTML   = uiIcon('undo');
+document.getElementById('summonRedo').innerHTML   = uiIcon('redo');
+document.getElementById('advanceStep').innerHTML  = uiIcon('stepNext');
+document.getElementById('returnStep').innerHTML   = uiIcon('stepPrev');
+
+document.getElementById('filterInput').addEventListener('input',(ev)=>{
+  filterText=ev.target.value.trim().toLowerCase();
+  renderDirectory();
+});
+document.getElementById('collapseAll').addEventListener('click',()=>{
+  traverse(recordStore, entry=>{ if(nestedCount(entry)) entry.expanded=false; });
+  renderDirectory();
+});
+document.getElementById('addRecord').addEventListener('click',(ev)=>{
+  const focusedToken=[...selection][0];
+  menuTarget = focusedToken ? resolveToken(focusedToken)?.entry : null;
+  const rect=ev.currentTarget.getBoundingClientRect();
+  addMenu.innerHTML = `<div class="ctx-label">Classification</div>` + ADD_CHOICES.map(cls=>
+    `<div class="ctx-item" data-cls="${cls}"><span class="ic">${classificationSvg(cls,16,false)}</span>${CLASSIFICATION_LABEL[cls]}</div>`
+  ).join('');
+  placeMenu(addMenu, rect.left-70, rect.bottom+5, 168);
+  addMenu.querySelectorAll('.ctx-item').forEach(item=>{
+    item.onclick=()=>{ appendRecord(item.dataset.cls, menuTarget); closeAllMenus(); };
+  });
+  ev.stopPropagation();
+});
+document.getElementById('summonUndo').addEventListener('click',stepBack);
+document.getElementById('summonRedo').addEventListener('click',stepForward);
+
+/* right-click empty directory space → add menu rooted at the document */
+directoryBody.addEventListener('contextmenu',(ev)=>{
+  if(ev.target!==directoryBody) return;
+  ev.preventDefault();
+  menuTarget=null;
+  addMenu.innerHTML = `<div class="ctx-label">New at root</div>` + ADD_CHOICES.map(cls=>
+    `<div class="ctx-item" data-cls="${cls}"><span class="ic">${classificationSvg(cls,16,false)}</span>${CLASSIFICATION_LABEL[cls]}</div>`
+  ).join('');
+  placeMenu(addMenu, ev.clientX, ev.clientY, 168);
+  addMenu.querySelectorAll('.ctx-item').forEach(item=>{
+    item.onclick=()=>{ appendRecord(item.dataset.cls, null); closeAllMenus(); };
+  });
+});
+
+/* right-click the bare viewport also summons the menu — a pointer route alongside Tab */
+document.getElementById('viewport').addEventListener('contextmenu',(ev)=>{
+  ev.preventDefault();
+  if(!summonOpen) summonMenuAt(ev.clientX, ev.clientY);
+});
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  BOOT
+----------------------------------------------------------------------------------------------------------------------*/
+seedRevisions();
+renderBranches();
+renderRevisions();
+switchInspector('properties');
+renderDirectory();
+/* open on SOL_Boss so a cylinder's green hue is on screen immediately — resolved by name, not a token literal */
+function tokenForName(name){
+  let match=null;
+  traverse(recordStore, entry=>{ if(!match && entry.name===name) match=entry.token; });
+  return match;
+}
+selectSolely(tokenForName('SOL_Boss') || recordStore[0].token);
+</script>
+</body>
+</html>

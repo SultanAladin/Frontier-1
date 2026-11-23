@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Channel Property Panel — port target</title>
+<style>
+/*====================================================================================================================================
+                                              CHANNELPROPERTYPANEL.HTML
+====================================================================================================================================*/
+/* 🧩 PaintingSurface channel slide — Outliner-mockup chip/dropdown pattern, ControlsGallery tones */
+
+/* ── ControlsGallery palette (ColorPaletteDescriptor.cpp :: ResolveDarkPalette) ───────────────── */
+:root{
+    --desk:          #000000;   /* DeskBackground        */
+    --menu:          #0e0e0e;   /* PanelBackground       */
+    --menu-2:        #0e0e0e;   /* PanelHeader (= body)  */
+    --hair:          #1c1c1c;   /* PanelBorder           */
+    --hair-strong:   #2a2a30;
+    --tile:          #141414;   /* ControlBackground     */
+    --tile-hi:       #1a1a1a;   /* ControlHovered        */
+    --tile-active:   #1f1f1f;   /* ControlActive         */
+    --accent:        #e8e8e8;   /* AccentPrimary         */
+    --marker:        #4a90e2;   /* SelectionMarker       */
+    --ink:           #ededed;   /* TextPrimary           */
+    --muted:         #8a8a8a;   /* TextMuted             */
+    --faint:         #6a6a6a;
+    --on-accent:     #111111;   /* TextOnAccent          */
+    --value-black:   #000000;   /* ValueNumberSegment    */
+    --value-unit:    #141414;   /* ValueSideSegment      */
+    --track-bg:      #141414;   /* SliderTrack           */
+    --track-fill:    #5a5a5a;   /* SliderFill            */
+    --knob:          #ffffff;   /* SliderKnob            */
+    --text-value:    #ffffff;   /* ValueText             */
+    --danger:        #e05a5a;
+    --row-hover:     rgba(255,255,255,.045);
+
+    --r-tile:   12px;
+    --card-gap: 6px;
+    --row-h:    32px;
+
+    --hue-material:  #8b5cf6;
+    --hue-generator: #10b981;
+    --hue-brushwork: #f97316;
+    --hue-flood:     #3b82f6;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+    background:var(--desk);
+    font:12px/1.4 "Segoe UI",system-ui,sans-serif;
+    color:var(--ink);
+    display:flex;justify-content:center;
+    padding:22px 0 90px;
+    -webkit-font-smoothing:antialiased;
+}
+.stage{width:360px}
+.stage-note{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);padding:0 2px 9px}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                              INSPECTOR SLIDE FRAME
+------------------------------------------------------------------------------------------------------------------------*/
+/* RenderChannels(): head (name + sub + icon) · body (chips region + one panel per channel) · foot */
+
+.slide{background:var(--menu);border:1px solid var(--hair);border-radius:var(--r-tile)}
+
+.slide-head{
+    display:flex;align-items:center;gap:9px;
+    height:44px;padding:0 11px;
+    background:var(--menu-2);border-bottom:1px solid var(--hair);
+    border-radius:var(--r-tile) var(--r-tile) 0 0
+}
+.head-icon{
+    flex:0 0 22px;height:22px;border-radius:6px;
+    background:var(--tile);border:1px solid var(--hair);
+    display:flex;align-items:center;justify-content:center;color:var(--muted)
+}
+.head-text{min-width:0;flex:1}
+.head-name{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.head-sub{font-size:10px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+
+.slide-body{padding:8px}
+.slide-foot{
+    display:flex;align-items:center;
+    height:28px;padding:0 11px;
+    font-size:10px;color:var(--faint);
+    background:var(--menu-2);border-top:1px solid var(--hair);
+    border-radius:0 0 var(--r-tile) var(--r-tile)
+}
+.pf-strong{color:var(--muted);font-weight:600}
+.pf-spacer{flex:1}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                              CHANNEL CHIPS  (Outliner.html filter pattern)
+------------------------------------------------------------------------------------------------------------------------*/
+/* .filters-section / .filters-head / .chips / .chip / .add-filter-btn / .add-filter-menu — 1:1 */
+
+.chips-region{padding:9px 10px;border:1px solid var(--hair);border-radius:var(--r-tile);background:var(--menu-2);margin-bottom:var(--card-gap)}
+.chips-region.menu-open{position:relative;z-index:70}
+.chips-head{
+    display:flex;align-items:center;gap:7px;
+    font-size:10px;letter-spacing:.9px;text-transform:uppercase;
+    color:var(--faint);font-weight:600;margin-bottom:8px
+}
+.chips-head svg{width:12px;height:12px}
+.ccount{
+    background:var(--accent);color:var(--on-accent);border-radius:9px;
+    font-size:9.5px;padding:1px 6px;letter-spacing:0;font-weight:600;
+    opacity:0;transform:scale(.6);transition:.18s
+}
+.ccount.show{opacity:1;transform:scale(1)}
+.clear-all{
+    cursor:pointer;font-size:10px;letter-spacing:.3px;color:var(--faint);
+    text-transform:none;font-weight:500;transition:color .15s;display:none
+}
+.clear-all:hover{color:var(--danger)}
+.clear-all.show{display:inline}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--tile);border:1px solid var(--hair);
+    border-radius:999px;padding:4px 5px 4px 10px;
+    font-size:11.5px;color:var(--ink);
+    transition:border-color .15s,background .15s;
+    animation:chip-in .18s cubic-bezier(.34,1.4,.64,1) both
+}
+@keyframes chip-in{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
+.chip:hover{border-color:var(--hair-strong)}
+.chip .cswatch{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.chip .cx{
+    width:17px;height:17px;border-radius:50%;border:none;cursor:pointer;
+    background:var(--tile-active);color:var(--muted);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    transition:background .15s,color .15s,transform .15s
+}
+.chip .cx svg{width:9px;height:9px}
+.chip .cx:hover{background:var(--danger);color:#fff;transform:rotate(90deg)}
+.chip.locked .cx{opacity:.3;cursor:default}
+.chip.locked .cx:hover{background:var(--tile-active);color:var(--muted);transform:none}
+
+.add-wrap{position:relative;display:inline-flex}
+.add-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:27px;height:27px;
+    background:transparent;border:1px dashed var(--hair);
+    border-radius:50%;cursor:pointer;color:var(--muted);
+    transition:border-color .15s,color .15s,background .15s,transform .15s
+}
+.add-btn:hover{border-color:var(--accent);color:var(--ink);background:rgba(255,255,255,.05)}
+.add-btn svg{width:13px;height:13px;transition:transform .2s cubic-bezier(.4,0,.2,1)}
+.add-btn.open svg{transform:rotate(135deg)}
+
+/* dropdown — micro-animated: scale + lift on the shell, staggered rise per row */
+.add-menu{
+    position:absolute;left:0;top:33px;z-index:60;
+    background:#141416;border:1px solid var(--hair-strong);
+    border-radius:9px;padding:6px;min-width:196px;
+    box-shadow:0 14px 34px rgba(0,0,0,.7);
+    transform-origin:top left;
+    opacity:0;transform:scale(.94) translateY(-4px);pointer-events:none;
+    transition:opacity .16s,transform .16s
+}
+.add-menu.open{opacity:1;transform:none;pointer-events:auto}
+.afm-head{font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.6px;padding:5px 7px;font-weight:600}
+.afm-item{
+    display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;
+    cursor:pointer;font-size:12px;color:var(--ink);
+    transition:background .12s,padding-left .12s
+}
+.afm-item:hover{background:var(--row-hover);padding-left:11px}
+.afm-item.disabled{opacity:.34;pointer-events:none}
+.afm-item .swatch{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.afm-item .afm-sub{margin-left:auto;font-size:9.5px;color:var(--faint);letter-spacing:.3px}
+.afm-item .tick{margin-left:auto;color:var(--accent);display:none;align-items:center}
+.afm-item.on .tick{display:inline-flex}
+.afm-item .tick svg{width:13px;height:13px}
+.afm-sep{height:1px;background:var(--hair);margin:5px 3px}
+
+/* staggered row entrance — the micro-animation.
+   ⚠️ The delay is set per row from script (--afm-i), not by nth-child: the channel menu now runs
+   to ~18 rows and a hand-written nth-child ladder silently stops animating past its last entry. */
+.add-menu.open .afm-item,
+.add-menu.open .afm-head{
+    animation:afm-rise .2s cubic-bezier(.4,0,.2,1) both;
+    animation-delay:calc(var(--afm-i,0) * 18ms)
+}
+@keyframes afm-rise{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+/* fourteen channels overflow the viewport — the menu scrolls, capped to a comfortable height */
+.add-menu{max-height:330px;overflow-y:auto;overscroll-behavior:contain}
+.add-menu::-webkit-scrollbar{width:8px}
+.add-menu::-webkit-scrollbar-thumb{background:#26262c;border-radius:99px}
+.add-menu::-webkit-scrollbar-track{background:transparent}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                              PER-CHANNEL ACCORDION
+------------------------------------------------------------------------------------------------------------------------*/
+/* BuildChannelPanel(): .chan-panel > .chan-head(chevron + dot + title) + .chan-shell > .chan-body */
+
+.chan-panel{background:var(--menu);border:1px solid var(--hair);border-radius:10px;margin-bottom:5px;overflow:hidden}
+/* ⚠️ overflow:hidden is what clips a spawned dropdown. A panel holding an OPEN menu goes
+   overflow:visible and lifts its z-index; the fold clip lives on .chan-clip, so the
+   accordion still works. Collapsed panels keep hidden so nothing bleeds while folding. */
+.chan-panel.menu-open{overflow:visible;position:relative;z-index:70}
+.chan-panel.menu-open .chan-shell,
+.chan-panel.menu-open .chan-clip{overflow:visible}
+.chan-head{
+    display:flex;align-items:center;gap:8px;
+    height:29px;padding:0 9px;
+    background:var(--menu-2);border-bottom:1px solid var(--hair);
+    cursor:pointer;user-select:none;transition:background .13s
+}
+.chan-panel.collapsed .chan-head{border-bottom-color:transparent}
+.chan-head:hover{background:var(--tile)}
+/* chevron springs slightly past its mark on the way open */
+.ch-tw{
+    display:flex;align-items:center;justify-content:center;
+    width:9px;height:9px;color:var(--faint);
+    transition:transform .26s cubic-bezier(.34,1.5,.64,1),color .15s
+}
+.chan-panel.collapsed .ch-tw{transform:rotate(-90deg)}
+.chan-head:hover .ch-tw{color:var(--ink)}
+
+/* the classification dot dims and shrinks while folded */
+.ch-dot{
+    flex:0 0 6px;width:6px;height:6px;border-radius:50%;
+    transition:transform .22s cubic-bezier(.34,1.5,.64,1),opacity .2s
+}
+.chan-panel.collapsed .ch-dot{transform:scale(.72);opacity:.5}
+
+.ch-title{flex:1;font-size:11px}
+
+/* the source tag slides in from the right as the card closes — it is the folded summary */
+.ch-src{
+    font-size:9.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);
+    transition:opacity .2s ease,transform .24s cubic-bezier(.4,0,.2,1)
+}
+.chan-panel:not(.collapsed) .ch-src{opacity:.45;transform:translateX(3px)}
+
+/*  fold: the grid row carries the height, the body carries fade + lift.
+    Opening runs slightly longer than closing so it reads as unfurling, not snapping. */
+.chan-shell{display:grid;grid-template-rows:1fr;transition:grid-template-rows .28s cubic-bezier(.4,0,.2,1)}
+.chan-panel.collapsed .chan-shell{grid-template-rows:0fr;transition:grid-template-rows .22s cubic-bezier(.4,0,.2,1)}
+.chan-clip{overflow:hidden;min-height:0}
+.chan-body{
+    padding:6px 9px 8px;
+    transition:opacity .24s ease .04s,transform .28s cubic-bezier(.4,0,.2,1)
+}
+.chan-panel.collapsed .chan-body{opacity:0;transform:translateY(-6px);transition:opacity .14s ease,transform .2s ease}
+.chan-note{font-size:10.5px;line-height:1.6;color:var(--faint);padding:2px 1px}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                              PROPERTY ROW + CONTROLS
+------------------------------------------------------------------------------------------------------------------------*/
+/* PropertyRow / BuildSlider / BuildColourField.
+   Metrics from ValueSlider.cpp:54 + ThemeConfiguration.cpp:115 (PillRowHeight 30, SideSegmentWidth 30). */
+
+.prow{display:grid;grid-template-columns:88px minmax(0,1fr);column-gap:10px;align-items:center;min-height:var(--row-h)}
+.plabel{font-size:11.5px;color:var(--muted)}
+
+.valuebox{display:flex;align-items:center;overflow:hidden;height:26px;background:var(--value-black);border-radius:999px}
+.valuebox .num{flex:1;min-width:0;display:flex;align-items:center;justify-content:center}
+.valuebox input{
+    width:100%;border:0;background:none;outline:none;text-align:center;
+    color:var(--text-value);font:600 12.6px/1 "Segoe UI",system-ui,sans-serif;
+    font-variant-numeric:tabular-nums
+}
+.unitseg{
+    flex:0 0 30px;display:flex;align-items:center;justify-content:center;align-self:stretch;
+    font-size:10.5px;color:var(--muted);background:var(--value-unit)
+}
+
+.sliderrow{display:flex;align-items:center;gap:9px}
+.sliderrow .valuebox{flex:0 0 92px}
+.slider{position:relative;flex:1;height:19px;background:var(--track-bg);border-radius:999px;cursor:pointer}
+.fill{position:absolute;inset:0 auto 0 0;background:var(--track-fill);border-radius:999px}
+.knob{
+    position:absolute;top:50%;width:21px;height:21px;margin-left:-10.5px;
+    transform:translateY(-50%);border-radius:50%;
+    background:var(--knob);box-shadow:0 0 0 1px rgba(0,0,0,.35);
+    transition:box-shadow .13s
+}
+.slider:hover .knob{box-shadow:0 0 0 1px rgba(0,0,0,.35),0 0 0 4px rgba(255,255,255,.07)}
+
+/* source picker — segmented pill: [ Value | Texture | Generator ] */
+.segrow{display:flex;height:26px;background:var(--tile);border:1px solid var(--hair);border-radius:999px;overflow:hidden}
+.seg{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none;
+    transition:background .13s,color .13s
+}
+.seg:hover{background:var(--tile-hi);color:var(--ink)}
+.seg.on{background:var(--accent);color:var(--on-accent);font-weight:600}
+
+/* generator picker keeps the dropdown — it has 10 entries in 3 groups */
+.pickbar{
+    display:flex;align-items:center;gap:8px;
+    height:26px;padding:0 4px 0 10px;
+    background:var(--tile);border:1px solid var(--hair);border-radius:999px;
+    cursor:pointer;transition:border-color .15s,background .15s
+}
+.pickbar:hover{border-color:var(--hair-strong);background:var(--tile-hi)}
+.pickbar .pname{flex:1;font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pickbar .caret{flex:0 0 16px;color:var(--faint);display:flex;align-items:center;justify-content:center;transition:transform .2s cubic-bezier(.4,0,.2,1)}
+.pickbar.open .caret{transform:rotate(180deg)}
+.pickwrap{position:relative}
+.pickwrap .add-menu{top:30px;min-width:100%}
+
+/* colour field */
+.colorbar{
+    display:flex;align-items:center;gap:8px;
+    height:26px;padding:0 4px;
+    background:var(--tile);border:1px solid var(--hair);border-radius:999px;
+    cursor:pointer;transition:border-color .15s
+}
+.colorbar:hover{border-color:var(--hair-strong)}
+.chip-round{flex:0 0 18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.cname{flex:1;font-size:11px;color:var(--text-value);font-variant-numeric:tabular-nums;text-transform:uppercase;letter-spacing:.4px}
+.caret{flex:0 0 16px;color:var(--faint);display:flex;align-items:center;justify-content:center}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                              TEXTURE SLOT + GENERATOR SLOT
+------------------------------------------------------------------------------------------------------------------------*/
+
+.slot{
+    display:flex;align-items:center;gap:9px;
+    padding:6px;margin-top:5px;
+    background:var(--tile);border:1px solid var(--hair);border-radius:9px
+}
+.slot-thumb{
+    flex:0 0 38px;height:38px;border-radius:6px;border:1px solid var(--hair);
+    background-image:linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%),
+                     linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%);
+    background-size:8px 8px;background-position:0 0,4px 4px;background-color:#0a0a0a;
+    display:flex;align-items:center;justify-content:center;color:var(--faint)
+}
+.slot-text{flex:1;min-width:0}
+.slot-name{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot-meta{font-size:9.5px;color:var(--faint);margin-top:2px;font-variant-numeric:tabular-nums}
+.slot-acts{display:flex;gap:4px;flex-shrink:0}
+.iconbtn{
+    width:24px;height:24px;border-radius:6px;border:1px solid var(--hair);
+    background:var(--menu-2);color:var(--muted);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .14s,color .14s,border-color .14s,transform .14s
+}
+.iconbtn svg{width:13px;height:13px}
+.iconbtn:hover{background:var(--tile-hi);color:var(--ink);border-color:var(--hair-strong)}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn.danger:hover{background:rgba(224,90,90,.16);color:var(--danger);border-color:rgba(224,90,90,.4)}
+.iconbtn:disabled{opacity:.3;cursor:default}
+.iconbtn:disabled:hover{background:var(--menu-2);color:var(--muted);border-color:var(--hair)}
+
+/* a painted thumb carries the channel hue, so paint reads as present at a glance */
+.slot-thumb.painted{color:rgba(0,0,0,.62);background-image:none}
+
+/* the divider naming the optional imported base beneath the paint */
+.slot-label{
+    font-size:9px;letter-spacing:.7px;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:8px 1px 1px
+}
+
+.slot-empty{
+    display:flex;align-items:center;justify-content:center;gap:7px;
+    height:44px;margin-top:5px;
+    background:transparent;border:1px dashed var(--hair);border-radius:9px;
+    color:var(--muted);font-size:11px;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s
+}
+.slot-empty:hover{border-color:var(--accent);color:var(--ink);background:rgba(255,255,255,.035)}
+.slot-empty svg{width:13px;height:13px}
+
+/* generator parameter rows revealed under the picker */
+.gen-params{margin-top:4px;padding-top:4px;border-top:1px solid var(--hair);animation:afm-rise .22s cubic-bezier(.4,0,.2,1) both}
+
+.chan-prev{display:flex;align-items:center;gap:8px;margin-top:5px;padding:5px 1px 1px}
+.prev-tile{
+    flex:0 0 34px;height:34px;border-radius:7px;border:1px solid var(--hair);
+    background-image:linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%),
+                     linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%);
+    background-size:8px 8px;background-position:0 0,4px 4px;background-color:#0a0a0a
+}
+.prev-text{min-width:0}
+.prev-line1{font-size:10.5px;color:var(--muted)}
+.prev-line2{font-size:9.5px;color:var(--faint);margin-top:2px;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div class="stage">
+    <div class="stage-note">Inspector &middot; slide 2 &middot; channels</div>
+    <div class="slide" id="Slide"></div>
+</div>
+
+<script type="module">
+/*------------------------------------------------------------------------------------------------------------------------
+                                              CHANNEL SCHEMA
+------------------------------------------------------------------------------------------------------------------------*/
+// Mirrors Layers/ChannelSet.js + LayerInspector.js CHANNEL_EDIT.
+
+// 📝 Fourteen channels over five RGBA8 atlases. Group drives the "+" menu sections; Placement is the
+//    atlas + component the paint deposit lands in. `normal` alone has no storage — central differences
+//    off the painted height. Every scalar spans 0..1 except AnisotropyAngle, which spans 0..360°.
+
+const CHANNEL_SLOTS = {
+    baseColour:       { Group: "Surface",     Hue: "#b87333", Label: "Base Colour",       Edit: "colour",                                    Placement: "Colour atlas · RGB"    },
+    metallic:         { Group: "Surface",     Hue: "#8b5cf6", Label: "Metallic",          Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · R"    },
+    roughness:        { Group: "Surface",     Hue: "#3b82f6", Label: "Roughness",         Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · G"    },
+    height:           { Group: "Surface",     Hue: "#8a8a8a", Label: "Height",            Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · B"    },
+    normal:           { Group: "Surface",     Hue: "#10b981", Label: "Normal",            Edit: "derived", Source: "height",                  Placement: "No storage · derived"  },
+    opacity:          { Group: "Surface",     Hue: "#94a3b8", Label: "Opacity",           Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · A"    },
+
+    emission:         { Group: "Radiance",    Hue: "#f59e0b", Label: "Emissive",          Edit: "colour",                                     Placement: "Emissive atlas · RGB"  },
+    ambientOcclusion: { Group: "Radiance",    Hue: "#6b7280", Label: "Ambient Occlusion", Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Emissive atlas · A"    },
+
+    anisotropy:       { Group: "Reflectance", Hue: "#22d3ee", Label: "Anisotropy",        Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Reflect atlas · R"     },
+    anisotropyAngle:  { Group: "Reflectance", Hue: "#0ea5e9", Label: "Anisotropy Angle",  Edit: "scalar",  Min: 0, Max: 360, Step: 1, Unit: "°", Placement: "Reflect atlas · G"  },
+    clearcoat:        { Group: "Reflectance", Hue: "#e2e8f0", Label: "Clearcoat",         Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Reflect atlas · B"     },
+    refractionIndex:  { Group: "Reflectance", Hue: "#a78bfa", Label: "Refraction Index",  Edit: "scalar",  Min: 1, Max: 3,   Step: 0.01,      Placement: "Reflect atlas · A"     },
+
+    sheen:            { Group: "Scattering",  Hue: "#f472b6", Label: "Sheen",             Edit: "colour",                                     Placement: "Scatter atlas · RGB"   },
+    subsurface:       { Group: "Scattering",  Hue: "#fb7185", Label: "Subsurface",        Edit: "colour",                                     Placement: "Sheen atlas · RGB"     }
+};
+
+const CHANNEL_ORDER = Object.keys(CHANNEL_SLOTS);
+
+const CHANNEL_GROUPS = ["Surface", "Radiance", "Reflectance", "Scattering"];
+
+const ATLAS_TOTAL = 5;
+
+const CHANNEL_LABEL     = Object.fromEntries(CHANNEL_ORDER.map(Key => [Key, CHANNEL_SLOTS[Key].Label]));
+const ATLAS_COMPONENT   = Object.fromEntries(CHANNEL_ORDER.map(Key => [Key, CHANNEL_SLOTS[Key].Placement]));
+const CHANNEL_HUE       = Object.fromEntries(CHANNEL_ORDER.map(Key => [Key, CHANNEL_SLOTS[Key].Hue]));
+
+const HUE = {
+    Material:  "var(--hue-material)",
+    Generator: "var(--hue-generator)",
+    Brushwork: "var(--hue-brushwork)",
+    Flood:     "var(--hue-flood)"
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              GENERATOR CATALOGUE
+//------------------------------------------------------------------------------------------------------------------------
+// 📝 Substance-Painter-style generator families. Parameters drive the same slider/colour controls.
+
+const GENERATOR_CATALOGUE = [
+    { Group: "Mask" },
+    { Key: "CurvatureEdges", Label: "Curvature",       Note: "Convex edge wear",
+      Parameters: [{ Key: "Balance", Label: "Balance", Min: 0, Max: 1, Default: 0.5 },
+                   { Key: "Contrast", Label: "Contrast", Min: 0, Max: 1, Default: 0.7 },
+                   { Key: "Radius", Label: "Radius", Min: 0, Max: 1, Default: 0.25 }] },
+    { Key: "AmbientOcclusion", Label: "Ambient Occlusion", Note: "Cavity dirt",
+      Parameters: [{ Key: "Spread", Label: "Spread",  Min: 0, Max: 1, Default: 0.4 },
+                   { Key: "Contrast", Label: "Contrast", Min: 0, Max: 1, Default: 0.6 }] },
+    { Key: "Thickness", Label: "Thickness",            Note: "Translucent falloff",
+      Parameters: [{ Key: "Depth", Label: "Depth",    Min: 0, Max: 1, Default: 0.5 },
+                   { Key: "Contrast", Label: "Contrast", Min: 0, Max: 1, Default: 0.5 }] },
+    { Key: "PositionGradient", Label: "Position Gradient", Note: "World-axis ramp",
+      Parameters: [{ Key: "Origin", Label: "Origin",  Min: 0, Max: 1, Default: 0.5 },
+                   { Key: "Falloff", Label: "Falloff", Min: 0, Max: 1, Default: 0.35 }] },
+
+    { Group: "Wear" },
+    { Key: "MetalEdgeWear", Label: "Metal Edge Wear",  Note: "Curvature + grunge",
+      Parameters: [{ Key: "Intensity", Label: "Intensity", Min: 0, Max: 1, Default: 0.6 },
+                   { Key: "Softness", Label: "Softness", Min: 0, Max: 1, Default: 0.3 },
+                   { Key: "Roughness", Label: "Grain", Min: 0, Max: 1, Default: 0.45 }] },
+    { Key: "DirtAccumulation", Label: "Dirt",          Note: "Occlusion-driven",
+      Parameters: [{ Key: "Amount", Label: "Amount",  Min: 0, Max: 1, Default: 0.5 },
+                   { Key: "Scale", Label: "Scale",    Min: 0, Max: 1, Default: 0.3 }] },
+    { Key: "WaterRunoff", Label: "Water Runoff",       Note: "Gravity streaks",
+      Parameters: [{ Key: "Length", Label: "Length",  Min: 0, Max: 1, Default: 0.55 },
+                   { Key: "Density", Label: "Density", Min: 0, Max: 1, Default: 0.4 },
+                   { Key: "Gravity", Label: "Gravity", Min: 0, Max: 1, Default: 0.8 }] },
+
+    { Group: "Procedural" },
+    { Key: "PerlinNoise", Label: "Perlin Noise",       Note: "Fractal value noise",
+      Parameters: [{ Key: "Scale", Label: "Scale",    Min: 0, Max: 1, Default: 0.4 },
+                   { Key: "Octaves", Label: "Octaves", Min: 0, Max: 1, Default: 0.5 },
+                   { Key: "Contrast", Label: "Contrast", Min: 0, Max: 1, Default: 0.5 }] },
+    { Key: "VoronoiCells", Label: "Voronoi",           Note: "Cellular partition",
+      Parameters: [{ Key: "Density", Label: "Density", Min: 0, Max: 1, Default: 0.35 },
+                   { Key: "Jitter", Label: "Jitter",  Min: 0, Max: 1, Default: 0.7 }] },
+    { Key: "BrushedAnisotropy", Label: "Brushed Metal", Note: "Anisotropic streaks",
+      Parameters: [{ Key: "Direction", Label: "Angle", Min: 0, Max: 1, Default: 0.0 },
+                   { Key: "Grain", Label: "Grain",    Min: 0, Max: 1, Default: 0.6 }] }
+];
+
+const GENERATOR_ENTRIES = GENERATOR_CATALOGUE.filter(Entry => Entry.Key);
+const FindGenerator = Key => GENERATOR_ENTRIES.find(Entry => Entry.Key === Key);
+
+// 🔴 LayerKinds.js:68 — "Texture" means PAINTED BY HAND, not loaded from disk. The atlas IS the storage.
+//    An imported map is an optional BASE beneath the strokes, not a replacement for them: deleting the
+//    import leaves the paint intact and the channel stays in Texture mode.
+const SOURCE_CATALOGUE = [
+    { Key: "Value",     Label: "Value",     Note: "Flat authored"   },
+    { Key: "Texture",   Label: "Texture",   Note: "Painted by hand" },
+    { Key: "Generator", Label: "Generator", Note: "Procedural"      }
+];
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              FOCUSED LAYER
+//------------------------------------------------------------------------------------------------------------------------
+
+const Layer = {
+    Name:           "Brushed Copper",
+    Classification: "Material",
+    Blend:          "Normal",
+    Enabled:        ["baseColour", "metallic", "roughness", "height", "normal",
+                     "ambientOcclusion", "anisotropy", "anisotropyAngle", "clearcoat"],
+    Modes:     { baseColour: "Texture", metallic: "Value", roughness: "Generator", height: "Value",
+                 opacity: "Value", ambientOcclusion: "Generator", anisotropy: "Value",
+                 anisotropyAngle: "Value", clearcoat: "Value", refractionIndex: "Value",
+                 emission: "Value", sheen: "Value", subsurface: "Value" },
+    Amounts:   { metallic: 0.94, roughness: 0.38, height: 0.50, opacity: 1.0,
+                 ambientOcclusion: 1.0, anisotropy: 0.72, anisotropyAngle: 35, clearcoat: 0.15,
+                 refractionIndex: 1.45 },
+    Colours:   { baseColour: "#b87333", emission: "#000000", sheen: "#3a3a3a", subsurface: "#d98a72" },
+    Textures:  { baseColour: { Name: "copper_basecolour.png", Width: 2048, Height: 2048, Format: "sRGB 8" } },
+    Strokes:   { baseColour: 148, height: 62 },
+    Generators:{ roughness:        { Key: "MetalEdgeWear",     Parameters: { Intensity: 0.6, Softness: 0.3, Roughness: 0.45 } },
+                 ambientOcclusion: { Key: "AmbientOcclusion",  Parameters: { Spread: 0.4, Contrast: 0.6 } } }
+};
+
+const Collapsed = new Set(["height", "normal", "ambientOcclusion", "anisotropy",
+                           "anisotropyAngle", "clearcoat"]);
+let OpenPicker = null;      // "chips" | `${ChannelKey}:source` | `${ChannelKey}:generator`
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              GLYPHS
+//------------------------------------------------------------------------------------------------------------------------
+
+const GLYPH = {
+    ChevronDown: Size => `<svg width="${Size}" height="${Size}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+    Plus:  `<svg viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`,
+    Cross: `<svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+    Check: `<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    Stack: `<svg viewBox="0 0 16 16" fill="none"><path d="M2 4.5L8 2l6 2.5L8 7 2 4.5zM2 8l6 2.5L14 8M2 11.5L8 14l6-2.5"
+        stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
+    Image: `<svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+        <circle cx="6" cy="6.5" r="1.1" fill="currentColor"/><path d="M3 11l3-2.5 2.5 2L11 8l2 2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`,
+    Import:`<svg viewBox="0 0 16 16" fill="none"><path d="M8 2v7m0 0L5.2 6.2M8 9l2.8-2.8M3 11.5v1A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-1"
+        stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    Trash: `<svg viewBox="0 0 16 16" fill="none"><path d="M3 5h10M6.5 5V3.5h3V5M4.5 5l.6 8.5h5.8L11.5 5M6.8 7.5v4M9.2 7.5v4"
+        stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    Reload:`<svg viewBox="0 0 16 16" fill="none"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 3v2.6h-2.6"
+        stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    Brush: `<svg viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5l2 2-6 6-2.6.6.6-2.6 6-6z" stroke="currentColor"
+        stroke-width="1.3" stroke-linejoin="round"/><path d="M4.5 11.5c-.8.8-1 2-1 2s1.2-.2 2-1"
+        stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+    Cog:   `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2L3.5 12.5"
+        stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+    Circle:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>`
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              PANEL CONSTRUCTION
+//------------------------------------------------------------------------------------------------------------------------
+
+function Construct()
+{
+    const Count = Layer.Enabled.length;
+
+    const Panels = CHANNEL_ORDER
+        .filter(Key => Layer.Enabled.includes(Key))
+        .map(ConstructChannelPanel)
+        .join("");
+
+    document.getElementById("Slide").innerHTML = `
+        <div class="slide-head">
+            <div class="head-icon">${GLYPH.Circle}</div>
+            <div class="head-text">
+                <div class="head-name">${Layer.Name}</div>
+                <div class="head-sub">${Layer.Classification} &middot; ${Layer.Blend}</div>
+            </div>
+        </div>
+        <div class="slide-body">
+            ${ConstructChipsRegion(Count)}
+            ${Panels}
+        </div>
+        <div class="slide-foot">
+            <span><span class="pf-strong">${Count}</span> channels</span>
+            <span class="pf-spacer"></span>
+            <span><span class="pf-strong">${ATLAS_TOTAL}</span> atlases</span>
+        </div>`;
+
+    Attach();
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              CHIPS REGION  (Outliner filter pattern)
+//------------------------------------------------------------------------------------------------------------------------
+
+function ConstructChipsRegion(Count)
+{
+    const Chips = CHANNEL_ORDER
+        .filter(Key => Layer.Enabled.includes(Key))
+        .map(Key =>
+        {
+            const Locked = (Key === "baseColour");
+            return `<div class="chip${Locked ? " locked" : ""}">
+                        <span class="cswatch" style="background:${CHANNEL_HUE[Key]}"></span>
+                        <span>${CHANNEL_LABEL[Key]}</span>
+                        <button class="cx" data-remove="${Key}" title="Remove channel">${GLYPH.Cross}</button>
+                    </div>`;
+        })
+        .join("");
+
+    // 📝 Fourteen entries need sectioning — the menu groups them the way the schema does.
+    const Rows = CHANNEL_GROUPS.map(Group =>
+    {
+        const Section = CHANNEL_ORDER
+            .filter(Key => CHANNEL_SLOTS[Key].Group === Group)
+            .map(Key =>
+            {
+                const Active = Layer.Enabled.includes(Key);
+                const Locked = (Key === "baseColour");
+                return `<div class="afm-item${Active ? " on" : ""}${Locked ? " disabled" : ""}" data-toggle="${Key}">
+                            <span class="swatch" style="background:${CHANNEL_HUE[Key]}"></span>
+                            <span>${CHANNEL_LABEL[Key]}</span>
+                            <span class="tick">${GLYPH.Check}</span>
+                        </div>`;
+            }).join("");
+
+        return `<div class="afm-head">${Group}</div>${Section}`;
+    }).join('<div class="afm-sep"></div>');
+
+    const MenuOpen = (OpenPicker === "chips");
+    const Removable = Count - 1;
+
+    return `
+        <div class="chips-region">
+            <div class="chips-head">
+                ${GLYPH.Stack}
+                <span>Channels</span>
+                <span class="ccount${Count ? " show" : ""}">${Count}</span>
+                <span style="flex:1"></span>
+                <span class="clear-all${Removable > 0 ? " show" : ""}" data-clear="1">Clear all</span>
+            </div>
+            <div class="chips">
+                ${Chips}
+                <div class="add-wrap">
+                    <button class="add-btn${MenuOpen ? " open" : ""}" data-open="chips" title="Add channel">${GLYPH.Plus}</button>
+                    <div class="add-menu${MenuOpen ? " open" : ""}">${Rows}</div>
+                </div>
+            </div>
+        </div>`;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              CHANNEL PANEL
+//------------------------------------------------------------------------------------------------------------------------
+
+function ConstructChannelPanel(Key)
+{
+    const Folded = Collapsed.has(Key);
+    const Slot   = CHANNEL_SLOTS[Key];
+    const Mode   = Slot.Edit === "derived" ? "Derived" : (Layer.Modes[Key] ?? "Value");
+
+    return `
+        <div class="chan-panel${Folded ? " collapsed" : ""}">
+            <div class="chan-head" data-fold="${Key}">
+                <span class="ch-tw">${GLYPH.ChevronDown(9)}</span>
+                <span class="ch-dot" style="background:${HUE[Layer.Classification]}"></span>
+                <span class="ch-title">${CHANNEL_LABEL[Key]}</span>
+                <span class="ch-src">${Mode}</span>
+            </div>
+            <div class="chan-shell"><div class="chan-clip">
+                <div class="chan-body">${ConstructChannelBody(Key)}</div>
+            </div></div>
+        </div>`;
+}
+
+function ConstructChannelBody(Key)
+{
+    const Slot = CHANNEL_SLOTS[Key];
+
+    if (Slot.Edit === "derived")
+    {
+        return `<div class="chan-note">Derived from the painted height. No value to author.</div>
+                ${ConstructPreview(Key, "Central differences")}`;
+    }
+
+    const Mode = Layer.Modes[Key] ?? "Value";
+    let Body   = PropertyRow("Source", ConstructSourcePicker(Key, Mode));
+
+    if (Mode === "Texture")       { Body += ConstructTextureSlot(Key);   }
+    else if (Mode === "Generator"){ Body += ConstructGeneratorSlot(Key); }
+    else if (Slot.Edit === "colour") { Body += PropertyRow("Colour", ConstructColourField(Key)); }
+    else                             { Body += PropertyRow("Amount", ConstructSlider(Key, Slot)); }
+
+    return Body + ConstructPreview(Key, Mode);
+}
+
+function PropertyRow(Label, Field)
+{
+    return `<div class="prow"><div class="plabel">${Label}</div><div>${Field}</div></div>`;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              SOURCE PICKER
+//------------------------------------------------------------------------------------------------------------------------
+
+function ConstructSourcePicker(Key, Mode)
+{
+    return `<div class="segrow">${SOURCE_CATALOGUE.map(Entry =>
+        `<div class="seg${Entry.Key === Mode ? " on" : ""}" data-mode="${Key}" data-name="${Entry.Key}">${Entry.Label}</div>`
+    ).join("")}</div>`;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              TEXTURE SLOT
+//------------------------------------------------------------------------------------------------------------------------
+
+// Texture mode = the painted atlas. The paint slot is ALWAYS present; an import is a base under it.
+function ConstructTextureSlot(Key)
+{
+    const Texture = Layer.Textures[Key];
+    const Strokes = Layer.Strokes[Key] ?? 0;
+    const Painted = Strokes > 0;
+
+    const PaintSlot = `
+        <div class="slot">
+            <div class="slot-thumb${Painted ? " painted" : ""}" style="background:${Painted ? CHANNEL_HUE[Key] : ""}">
+                ${Painted ? GLYPH.Brush : GLYPH.Image}
+            </div>
+            <div class="slot-text">
+                <div class="slot-name">${Painted ? "Painted strokes" : "No strokes yet"}</div>
+                <div class="slot-meta">${Painted
+                    ? `${Strokes} strokes &middot; 2048 &times; 2048 atlas`
+                    : "Atlas allocates on the first stroke"}</div>
+            </div>
+            <div class="slot-acts">
+                <button class="iconbtn danger" data-clearpaint="${Key}" title="Erase painted strokes"
+                        ${Painted ? "" : "disabled"}>${GLYPH.Trash}</button>
+            </div>
+        </div>`;
+
+    const BaseSlot = Texture
+        ? `<div class="slot">
+               <div class="slot-thumb">${GLYPH.Image}</div>
+               <div class="slot-text">
+                   <div class="slot-name">${Texture.Name}</div>
+                   <div class="slot-meta">${Texture.Width} &times; ${Texture.Height} &middot; ${Texture.Format}</div>
+               </div>
+               <div class="slot-acts">
+                   <button class="iconbtn" data-reimport="${Key}" title="Replace imported base">${GLYPH.Reload}</button>
+                   <button class="iconbtn danger" data-drop="${Key}" title="Delete imported base">${GLYPH.Trash}</button>
+               </div>
+           </div>`
+        : `<div class="slot-empty" data-import="${Key}">${GLYPH.Import}<span>Import base texture</span></div>`;
+
+    return `${PaintSlot}
+            <div class="slot-label">Imported base${Texture ? "" : " &mdash; optional"}</div>
+            ${BaseSlot}`;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              GENERATOR SLOT
+//------------------------------------------------------------------------------------------------------------------------
+
+function ConstructGeneratorSlot(Key)
+{
+    const Assigned = Layer.Generators[Key];
+    const Open     = (OpenPicker === `${Key}:generator`);
+
+    const Rows = GENERATOR_CATALOGUE.map(Entry =>
+    {
+        if (Entry.Group) return `<div class="afm-head">${Entry.Group}</div>`;
+        const On = Assigned && Assigned.Key === Entry.Key;
+        return `<div class="afm-item${On ? " on" : ""}" data-generator="${Key}" data-name="${Entry.Key}">
+                    <span>${Entry.Label}</span>
+                    <span class="${On ? "tick" : "afm-sub"}">${On ? GLYPH.Check : Entry.Note}</span>
+                </div>`;
+    }).join("");
+
+    const Picker = `
+        <div class="pickwrap">
+            <div class="pickbar${Open ? " open" : ""}" data-open="${Key}:generator">
+                <span class="pname">${Assigned ? FindGenerator(Assigned.Key).Label : "Choose generator"}</span>
+                <span class="caret">${GLYPH.ChevronDown(9)}</span>
+            </div>
+            <div class="add-menu${Open ? " open" : ""}">${Rows}</div>
+        </div>`;
+
+    let Body = PropertyRow("Generator", Picker);
+
+    if (!Assigned) return Body;
+
+    const Definition = FindGenerator(Assigned.Key);
+    const Parameters = Definition.Parameters.map(Parameter =>
+    {
+        const Amount = Assigned.Parameters[Parameter.Key] ?? Parameter.Default;
+        return PropertyRow(Parameter.Label, ConstructParameterSlider(Key, Parameter, Amount));
+    }).join("");
+
+    Body += `<div class="gen-params">
+                <div style="display:flex;align-items:center;gap:6px;padding:1px 1px 3px">
+                    <span style="font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);font-weight:600;flex:1">${Definition.Note}</span>
+                    <button class="iconbtn" data-genreset="${Key}" title="Reset parameters">${GLYPH.Cog}</button>
+                    <button class="iconbtn danger" data-gendrop="${Key}" title="Remove generator">${GLYPH.Trash}</button>
+                </div>
+                ${Parameters}
+            </div>`;
+
+    return Body;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              VALUE CONTROLS
+//------------------------------------------------------------------------------------------------------------------------
+
+function ConstructSlider(Key, Slot)
+{
+    const Amount = Layer.Amounts[Key] ?? Slot.Min;
+    return SliderMarkup(Amount, Slot.Min, Slot.Max, Slot.Unit,
+                        `data-slider="${Key}"`, `data-number="${Key}"`);
+}
+
+function ConstructParameterSlider(Key, Parameter, Amount)
+{
+    return SliderMarkup(Amount, Parameter.Min, Parameter.Max, Parameter.Unit,
+                        `data-genslider="${Key}" data-param="${Parameter.Key}"`,
+                        `data-gennumber="${Key}" data-param="${Parameter.Key}"`);
+}
+
+// 📝 A degree span reads as a whole number; a 0..1 span needs two decimals.
+function FormatAmount(Amount, Unit)
+{
+    return Unit === "°" ? String(Math.round(Amount)) : Amount.toFixed(2);
+}
+
+function SliderMarkup(Amount, Minimum, Maximum, Unit, TrackAttributes, FieldAttributes)
+{
+    const Fraction = (Amount - Minimum) / (Maximum - Minimum);
+    const Segment  = Unit ? Unit : "&ndash;";
+    return `<div class="sliderrow">
+                <div class="valuebox">
+                    <div class="num"><input ${FieldAttributes} value="${FormatAmount(Amount, Unit)}"></div>
+                    <div class="unitseg">${Segment}</div>
+                </div>
+                <div class="slider" ${TrackAttributes}
+                     data-min="${Minimum}" data-max="${Maximum}" data-unit="${Unit ?? ""}">
+                    <div class="fill" style="right:${(1 - Fraction) * 100}%"></div>
+                    <div class="knob" style="left:${Fraction * 100}%"></div>
+                </div>
+            </div>`;
+}
+
+function ConstructColourField(Key)
+{
+    const Hex = Layer.Colours[Key] ?? "#000000";
+    return `<div class="colorbar" data-colour="${Key}">
+                <span class="chip-round" style="background:${Hex}"></span>
+                <span class="cname">${Hex}</span>
+                <span class="caret">${GLYPH.ChevronDown(9)}</span>
+            </div>`;
+}
+
+function ConstructPreview(Key, Mode)
+{
+    const Slot = CHANNEL_SLOTS[Key];
+    let Fill   = "";
+
+    if (Mode === "Value" && Slot.Edit === "colour")
+    {
+        Fill = `background-image:none;background-color:${Layer.Colours[Key] ?? "#000"}`;
+    }
+    else if (Mode === "Value" && Slot.Edit === "scalar")
+    {
+        // 📝 Normalise against the channel's own span — refractionIndex starts at 1, the angle runs to 360.
+        const Amount   = Layer.Amounts[Key] ?? Slot.Min;
+        const Fraction = (Amount - Slot.Min) / (Slot.Max - Slot.Min);
+        const Level    = Math.round(Fraction * 255);
+        Fill = `background-image:none;background-color:rgb(${Level},${Level},${Level})`;
+    }
+
+    return `<div class="chan-prev">
+                <div class="prev-tile" style="${Fill}"></div>
+                <div class="prev-text">
+                    <div class="prev-line1">${Mode} preview</div>
+                    <div class="prev-line2">${ATLAS_COMPONENT[Key]}</div>
+                </div>
+            </div>`;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                              INTERACTION
+//------------------------------------------------------------------------------------------------------------------------
+
+function DefaultParameters(Definition)
+{
+    const Bag = {};
+    Definition.Parameters.forEach(Parameter => { Bag[Parameter.Key] = Parameter.Default; });
+    return Bag;
+}
+
+function Bind(Selector, Attribute, Action)
+{
+    document.querySelectorAll(Selector).forEach(Node =>
+    {
+        Node.onclick = Event =>
+        {
+            Event.stopPropagation();
+            Action(Node.dataset[Attribute], Node);
+        };
+    });
+}
+
+function Attach()
+{
+    // ── dropdown open/close ──
+    Bind("[data-open]", "open", Token => { OpenPicker = (OpenPicker === Token) ? null : Token; Construct(); });
+
+    // 📝 A card with an open menu must stop clipping it. The fold's overflow lives on
+    //    .chan-clip, so lifting the card to overflow:visible costs the accordion nothing.
+    const Menu = document.querySelector(".add-menu.open");
+    if (Menu)
+    {
+        const Host = Menu.closest(".chan-panel") ?? Menu.closest(".chips-region");
+        if (Host) Host.classList.add("menu-open");
+
+        // stagger index per row, so the cascade covers any menu length
+        [...Menu.children].forEach((Row, Ordinal) => Row.style.setProperty("--afm-i", Ordinal));
+    }
+
+    document.onclick = () => { if (OpenPicker) { OpenPicker = null; Construct(); } };
+
+    // ── channel folding ──
+    Bind("[data-fold]", "fold", Key =>
+    {
+        if (Collapsed.has(Key)) Collapsed.delete(Key); else Collapsed.add(Key);
+        Construct();
+    });
+
+    // ── chips: remove / toggle / clear ──
+    Bind("[data-remove]", "remove", Key =>
+    {
+        if (Key === "baseColour") return;
+        Layer.Enabled = Layer.Enabled.filter(Name => Name !== Key);
+        Construct();
+    });
+
+    Bind("[data-toggle]", "toggle", Key =>
+    {
+        if (Key === "baseColour") return;
+        if (Layer.Enabled.includes(Key)) Layer.Enabled = Layer.Enabled.filter(Name => Name !== Key);
+        else                             Layer.Enabled.push(Key);
+        Construct();
+    });
+
+    Bind("[data-clear]", "clear", () => { Layer.Enabled = ["baseColour"]; OpenPicker = null; Construct(); });
+
+    // ── source mode ──
+    Bind("[data-mode]", "mode", (Key, Node) =>
+    {
+        Layer.Modes[Key] = Node.dataset.name;
+        OpenPicker = null;
+        Construct();
+    });
+
+    // ── texture actions ──
+    Bind("[data-import]", "import", Key =>
+    {
+        Layer.Textures[Key] = { Name: `${Key.toLowerCase()}_import.png`, Width: 2048, Height: 2048, Format: "Linear 8" };
+        Construct();
+    });
+
+    Bind("[data-reimport]", "reimport", Key =>
+    {
+        const Existing = Layer.Textures[Key];
+        Layer.Textures[Key] = { ...Existing, Name: `${Key.toLowerCase()}_replaced.png`, Format: "Linear 16" };
+        Construct();
+    });
+
+    // deleting the imported base leaves the paint untouched — the channel stays in Texture mode
+    Bind("[data-drop]", "drop", Key => { delete Layer.Textures[Key]; Construct(); });
+
+    Bind("[data-clearpaint]", "clearpaint", Key => { delete Layer.Strokes[Key]; Construct(); });
+
+    // ── generator actions ──
+    Bind("[data-generator]", "generator", (Key, Node) =>
+    {
+        const Definition = FindGenerator(Node.dataset.name);
+        Layer.Generators[Key] = { Key: Definition.Key, Parameters: DefaultParameters(Definition) };
+        OpenPicker = null;
+        Construct();
+    });
+
+    Bind("[data-genreset]", "genreset", Key =>
+    {
+        const Assigned = Layer.Generators[Key];
+        Assigned.Parameters = DefaultParameters(FindGenerator(Assigned.Key));
+        Construct();
+    });
+
+    Bind("[data-gendrop]", "gendrop", Key => { delete Layer.Generators[Key]; Construct(); });
+
+    // ── sliders ──
+    AttachSlider("[data-slider]", (Node, Amount) => { Layer.Amounts[Node.dataset.slider] = Amount; });
+    AttachSlider("[data-genslider]", (Node, Amount) =>
+    {
+        Layer.Generators[Node.dataset.genslider].Parameters[Node.dataset.param] = Amount;
+    });
+
+    AttachField("[data-number]", (Node, Amount) => { Layer.Amounts[Node.dataset.number] = Amount; });
+    AttachField("[data-gennumber]", (Node, Amount) =>
+    {
+        Layer.Generators[Node.dataset.gennumber].Parameters[Node.dataset.param] = Amount;
+    });
+}
+
+function AttachSlider(Selector, Store)
+{
+    document.querySelectorAll(Selector).forEach(Track =>
+    {
+        const Minimum = parseFloat(Track.dataset.min);
+        const Maximum = parseFloat(Track.dataset.max);
+
+        const Apply = Event =>
+        {
+            const Box      = Track.getBoundingClientRect();
+            const Fraction = Math.min(1, Math.max(0, (Event.clientX - Box.left) / Box.width));
+            Store(Track, Minimum + Fraction * (Maximum - Minimum));
+
+            // live paint without a rebuild, so the drag stays smooth
+            Track.querySelector(".fill").style.right = `${(1 - Fraction) * 100}%`;
+            Track.querySelector(".knob").style.left  = `${Fraction * 100}%`;
+            const Field = Track.closest(".sliderrow").querySelector("input");
+            Field.value = FormatAmount(Minimum + Fraction * (Maximum - Minimum), Track.dataset.unit);
+        };
+
+        Track.onpointerdown = Event =>
+        {
+            Event.stopPropagation();
+            Track.setPointerCapture(Event.pointerId);
+            Apply(Event);
+            Track.onpointermove = Move => { if (Move.buttons) Apply(Move); };
+        };
+        Track.onpointerup = () => { Track.onpointermove = null; Construct(); };
+        Track.onclick     = Event => Event.stopPropagation();
+    });
+}
+
+function AttachField(Selector, Store)
+{
+    document.querySelectorAll(Selector).forEach(Field =>
+    {
+        Field.onclick  = Event => Event.stopPropagation();
+        Field.onchange = () =>
+        {
+            const Track   = Field.closest(".sliderrow").querySelector(".slider");
+            const Minimum = parseFloat(Track.dataset.min);
+            const Maximum = parseFloat(Track.dataset.max);
+            const Parsed  = parseFloat(Field.value);
+            if (!Number.isNaN(Parsed)) Store(Track, Math.min(Maximum, Math.max(Minimum, Parsed)));
+            Construct();
+        };
+    });
+}
+
+Construct();
+</script>
+</body>
+</html>

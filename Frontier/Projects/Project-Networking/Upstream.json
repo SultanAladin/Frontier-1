@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/unassignedinbox/Slate.git",
+  "branch": "arena/01a0fd48-slate",
+  "inspected_revision": "bf0bdd5005f97b6375c21bc74e9a4bd8b41417cd",
+  "layout": "Project overlay; existing Slate host and SDK must be supplied separately",
+  "code_interchange_number": 3,
+  "interface_fingerprint": "0xb6725f24d0869173"
+}

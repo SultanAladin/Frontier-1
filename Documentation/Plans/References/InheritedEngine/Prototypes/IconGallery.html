@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<!-- ============================================================================================================================
+                                                    IconGallery.html
+     🧩 Canonical CAD icon sheet for review: reused icons from zip + corrected (🔧) + new (🆕), grouped by category.
+        Multi-color per user direction. This sheet is the source the C++ IconPackGlobal / IconPackCad will encode.
+     ============================================================================================================================ -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Frontier · CAD Icon Gallery (review)</title>
+<style>
+    :root{
+        --bg:#15171b; --panel:#1e2126; --panel2:#252932; --line:#33383f;
+        --text:#dfe3ea; --dim:#8b9199; --faint:#5b616b;
+        --fixed:#e0a34a; --new:#57c777; --reuse:#5b616b;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,sans-serif;font-size:13px;padding:26px 30px 60px;-webkit-font-smoothing:antialiased;}
+    h1{font-size:20px;font-weight:600;margin-bottom:4px;}
+    .lede{color:var(--dim);max-width:820px;line-height:1.55;margin-bottom:18px;}
+    .controls{display:flex;gap:10px;align-items:center;margin-bottom:24px;flex-wrap:wrap;}
+    .toggle{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 11px;cursor:pointer;user-select:none;}
+    .toggle:hover{border-color:var(--dim);}
+    .toggle input{accent-color:#4a9eff;}
+    .keylegend{display:flex;gap:16px;margin-left:auto;color:var(--dim);align-items:center;flex-wrap:wrap;}
+    .badge{font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;}
+    .badge.fixed{background:rgba(224,163,74,.16);color:var(--fixed);border:1px solid rgba(224,163,74,.35);}
+    .badge.new{background:rgba(87,199,119,.16);color:var(--new);border:1px solid rgba(87,199,119,.35);}
+    .badge.reuse{background:rgba(120,128,140,.14);color:var(--dim);border:1px solid rgba(120,128,140,.3);}
+    .tier{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--faint);margin:30px 0 6px;}
+    .cat{margin-bottom:8px;}
+    .cat-name{font-size:14px;font-weight:600;margin:18px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line);color:#cdd2da;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px;}
+    .cell{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;transition:transform .08s ease,border-color .08s ease;}
+    .cell:hover{transform:translateY(-2px);border-color:var(--dim);}
+    .cell .art{width:46px;height:46px;background:var(--panel2);border-radius:8px;display:grid;place-items:center;}
+    .cell .art svg{width:34px;height:34px;}
+    .cell .nm{font-size:11px;color:var(--text);text-align:center;line-height:1.3;}
+    .cell .tag{position:absolute;top:6px;right:6px;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;}
+    .cell .tag.fixed{background:rgba(224,163,74,.2);color:var(--fixed);}
+    .cell .tag.new{background:rgba(87,199,119,.2);color:var(--new);}
+    .cell.hidden{display:none;}
+    .bgtoggle{margin-left:6px;}
+    body.light-cells .cell .art{background:#f1f3f7;}
+    .note{color:var(--faint);font-size:11px;margin:2px 0 0;}
+</style>
+</head>
+<body>
+<h1>CAD Icon Gallery — review sheet</h1>
+<p class="lede">
+    Every icon slated for the outliner + toolbar, grouped by category. <span class="badge reuse">REUSE</span> = kept from your zip as-is,
+    <span class="badge fixed">FIX</span> = redrawn per your notes, <span class="badge new">NEW</span> = added.
+    Multi-color kept as you chose. Approve or mark up any glyph; this sheet is what the C++ registry will encode.
+</p>
+<div class="controls">
+    <label class="toggle"><input type="checkbox" id="onlyChanged" onchange="filterCells()"/> Show only 🔧 fixed / 🆕 new</label>
+    <label class="toggle bgtoggle"><input type="checkbox" id="lightBg" onchange="document.body.classList.toggle('light-cells',this.checked)"/> Light icon backdrop</label>
+    <div class="keylegend">
+        <span><span class="badge reuse">REUSE</span> unchanged</span>
+        <span><span class="badge fixed">FIX</span> redrawn</span>
+        <span><span class="badge new">NEW</span> added</span>
+    </div>
+</div>
+
+<div id="gallery"></div>
+
+<!-- ================================================================================================================
+     SVG SYMBOL LIBRARY — all glyphs as <symbol>. FIX/NEW glyphs are authored here; REUSE glyphs copied from zip.
+     ================================================================================================================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+
+<!-- ============================ GLOBAL · CHROME ============================ -->
+<symbol id="chevron-up" viewBox="0 0 32 32"><path d="M8 20L16 12L24 20" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="chevron-down" viewBox="0 0 32 32"><path d="M8 12L16 20L24 12" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="chevron-left" viewBox="0 0 32 32"><path d="M20 8L12 16L20 24" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="chevron-right" viewBox="0 0 32 32"><path d="M12 8L20 16L12 24" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="folder-closed" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="folder-open" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V14M4 24V8M4 24L8 14H29L25 26H6C4.9 26 4 25.1 4 24Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="folder-add" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><path d="M16 14V22M12 18H20" stroke="#10b981" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="folder-delete" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><path d="M13 15L19 21M19 15L13 21" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="folder-visible" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><path d="M10 18C10 18 12 14 16 14C20 14 22 18 22 18C22 18 20 22 16 22C12 22 10 18 10 18Z" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="16" cy="18" r="2" fill="#f59e0b"/></symbol>
+<symbol id="folder-hidden" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><path d="M11 16C12.5 14.5 14 14 16 14C20 14 22 18 22 18C22 18 21.5 19 20.5 20M18 21.5C17.5 21.8 16.8 22 16 22C12 22 10 18 10 18C10 18 10.3 17.5 10.7 16.8" stroke="#64748b" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M10 14L22 22" stroke="#64748b" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="folder-lock" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><rect x="13" y="17" width="6" height="5" rx="1" stroke="#ec4899" stroke-width="2" fill="none"/><path d="M14 17V15C14 13.9 14.9 13 16 13C17.1 13 18 13.9 18 15V17" stroke="#ec4899" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
+<symbol id="folder-search" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><circle cx="15" cy="17" r="3" stroke="#10b981" stroke-width="2" fill="none"/><path d="M17.5 19.5L21 23" stroke="#10b981" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="folder-export" viewBox="0 0 32 32"><path d="M4 8C4 6.9 4.9 6 6 6H12L16 10H26C27.1 10 28 10.9 28 12V24C28 25.1 27.1 26 26 26H6C4.9 26 4 25.1 4 24V8Z" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><path d="M16 21V13M16 13L13 16M16 13L19 16" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="eye-open" viewBox="0 0 32 32"><path d="M4 16C4 16 9 8 16 8C23 8 28 16 28 16C28 16 23 24 16 24C9 24 4 16 4 16Z" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16" cy="16" r="4" stroke="#3b82f6" stroke-width="2" fill="none"/><circle cx="16" cy="16" r="1.5" fill="#10b981"/></symbol>
+<symbol id="eye-closed" viewBox="0 0 32 32"><path d="M4 16C4 16 9 8 16 8C23 8 28 16 28 16C28 16 23 24 16 24C9 24 4 16 4 16Z" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16" cy="16" r="4" stroke="#64748b" stroke-width="2" fill="none"/><path d="M6 6L26 26" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="lock" viewBox="0 0 32 32"><rect x="8" y="14" width="16" height="12" rx="2" fill="#3b82f6" stroke="#3b82f6" stroke-width="2"/><path d="M11 14V10C11 7.2 13.2 5 16 5C18.8 5 21 7.2 21 10V14" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="20" r="1.5" fill="#ffffff"/></symbol>
+
+<!-- PIN 🔧 redrawn: proper pushpin — round head, tapered needle, highlight -->
+<symbol id="pin" viewBox="0 0 32 32"><path d="M16 19V29" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/><path d="M16 19C11.6 19 8 15.4 8 11C8 6.6 11.6 3 16 3C20.4 3 24 6.6 24 11C24 15.4 20.4 19 16 19Z" fill="#ef4444" stroke="#ef4444" stroke-width="1.5" stroke-linejoin="round"/><circle cx="13" cy="8.5" r="2.4" fill="#fca5a5"/><path d="M16 19L16 24" stroke="#64748b" stroke-width="2" stroke-linecap="round" opacity="0.5"/></symbol>
+
+<!-- ============================ GLOBAL · SYSTEM ============================ -->
+<!-- SETTINGS 🔧 clean 8-tooth gear, even spokes -->
+<symbol id="settings" viewBox="0 0 32 32"><g stroke="#3b82f6" stroke-width="2" stroke-linecap="round"><path d="M16 3V8M16 24V29M3 16H8M24 16H29M6.8 6.8L10.3 10.3M21.7 21.7L25.2 25.2M25.2 6.8L21.7 10.3M10.3 21.7L6.8 25.2"/></g><circle cx="16" cy="16" r="7" fill="#3b82f6" fill-opacity="0.15" stroke="#3b82f6" stroke-width="2"/><circle cx="16" cy="16" r="2.6" fill="#ec4899"/></symbol>
+
+<!-- PROPERTIES (re-added from zip) -->
+<symbol id="properties" viewBox="0 0 32 32"><path d="M12 8H26M12 16H26M12 24H26" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="8" r="2" fill="#ec4899"/><circle cx="6" cy="16" r="2" fill="#10b981"/><circle cx="6" cy="24" r="2" fill="#f59e0b"/><path d="M20 6V10M16 14V18M22 22V26" stroke="#64748b" stroke-width="2" stroke-linecap="round"/></symbol>
+<!-- CONFIGURATION 🆕 sliders / faders (distinct from gear) -->
+<symbol id="configuration" viewBox="0 0 32 32"><path d="M6 9H26M6 16H26M6 23H26" stroke="#64748b" stroke-width="2" stroke-linecap="round"/><circle cx="11" cy="9" r="3" fill="#3b82f6" stroke="#3b82f6" stroke-width="1.5"/><circle cx="21" cy="16" r="3" fill="#10b981" stroke="#10b981" stroke-width="1.5"/><circle cx="14" cy="23" r="3" fill="#f59e0b" stroke="#f59e0b" stroke-width="1.5"/></symbol>
+<!-- HISTORY 🆕 clock + counter-clockwise arrow -->
+<symbol id="history" viewBox="0 0 32 32"><path d="M6 16a10 10 0 1 0 3-7.1" stroke="#3b82f6" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M9 4v5h5" stroke="#3b82f6" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 11v5l4 2.5" stroke="#ec4899" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="console" viewBox="0 0 32 32"><rect x="4" y="6" width="24" height="20" rx="2" fill="#1e293b" stroke="#64748b" stroke-width="2"/><path d="M10 12L14 16L10 20" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 20H22" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/></symbol>
+<!-- COMPILE 🔧 cleaner brackets -> play/arrow -->
+<symbol id="compile" viewBox="0 0 32 32"><path d="M10 9L4 16l6 7" stroke="#8b5cf6" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 9l6 7-6 7" stroke="#8b5cf6" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 24l6-16" stroke="#ec4899" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="16" cy="16" r="1.6" fill="#f59e0b"/></symbol>
+<symbol id="flag" viewBox="0 0 32 32"><path d="M8 30V4" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><path d="M8 4H18L20 6H26V18H18L16 16H8" fill="#10b981" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round"/></symbol>
+<!-- WARNING 🔧 balanced triangle, centred bang -->
+<symbol id="warning" viewBox="0 0 32 32"><path d="M16 5L28.5 27H3.5L16 5Z" fill="#f59e0b" fill-opacity="0.18" stroke="#f59e0b" stroke-width="2.4" stroke-linejoin="round"/><path d="M16 13V20" stroke="#b45309" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="23.5" r="1.7" fill="#b45309"/></symbol>
+<symbol id="caution" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#ef4444" fill-opacity="0.2" stroke="#ef4444" stroke-width="2.5"/><path d="M16 10V18" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="22" r="2" fill="#f59e0b"/></symbol>
+
+<!-- ============================ CAD · SKETCH GEOMETRY ============================ -->
+<symbol id="line" viewBox="0 0 32 32"><path d="M6 26L26 6" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="26" r="3" fill="#ec4899"/><circle cx="26" cy="6" r="3" fill="#ec4899"/><path d="M6 26H26V6" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2 2"/></symbol>
+<symbol id="polyline" viewBox="0 0 32 32"><path d="M4 24L12 12L20 20L28 8" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" fill="none"/><circle cx="4" cy="24" r="2.5" fill="#ec4899"/><circle cx="12" cy="12" r="2.5" fill="#10b981"/><circle cx="20" cy="20" r="2.5" fill="#10b981"/><circle cx="28" cy="8" r="2.5" fill="#ec4899"/></symbol>
+<symbol id="arc" viewBox="0 0 32 32"><path d="M6 22C6 13.2 13.2 6 22 6" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M22 22L6 22M22 22L22 6" stroke="#64748b" stroke-width="1" stroke-dasharray="2 2"/><circle cx="22" cy="22" r="2.5" fill="#ec4899"/><circle cx="6" cy="22" r="2" fill="#10b981"/><circle cx="22" cy="6" r="2" fill="#10b981"/></symbol>
+<symbol id="circle" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" stroke="#2563eb" stroke-width="2.5" fill="none"/><path d="M16 4V28M4 16H28" stroke="#64748b" stroke-width="1" stroke-dasharray="2 2"/><path d="M16 16L24.48 24.48" stroke="#f59e0b" stroke-width="1.5"/><circle cx="16" cy="16" r="2" fill="#ec4899"/><circle cx="24.48" cy="24.48" r="2" fill="#10b981"/></symbol>
+<symbol id="rectangle" viewBox="0 0 32 32"><rect x="6" y="8" width="20" height="16" stroke="#2563eb" stroke-width="2.5" fill="none"/><path d="M6 8L26 24M26 8L6 24" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2 2"/><rect x="4" y="6" width="4" height="4" fill="#ec4899"/><rect x="24" y="22" width="4" height="4" fill="#10b981"/></symbol>
+<!-- POLYGON 🔧 dropped the unnecessary circle -->
+<symbol id="polygon" viewBox="0 0 32 32"><path d="M16 4L26.4 10V22L16 28L5.6 22V10L16 4Z" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" fill="none"/><path d="M16 16L16 4M16 16L26.4 10M16 16L26.4 22M16 16L5.6 22M16 16L5.6 10" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="2 2" opacity="0.7"/><circle cx="16" cy="16" r="2" fill="#ec4899"/><circle cx="16" cy="4" r="2" fill="#10b981"/></symbol>
+<symbol id="spline" viewBox="0 0 32 32"><path d="M4 16C8 4 16 28 28 8" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M4 16L8 4L16 28L28 8" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2 2" fill="none"/><rect x="6.5" y="2.5" width="3" height="3" fill="#ec4899"/><rect x="14.5" y="26.5" width="3" height="3" fill="#10b981"/><circle cx="4" cy="16" r="2" fill="#64748b"/><circle cx="28" cy="8" r="2" fill="#64748b"/></symbol>
+<symbol id="bezier" viewBox="0 0 32 32"><path d="M4 24C4 8 28 8 28 24" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M4 24L4 8M28 24L28 8" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2 2"/><circle cx="4" cy="8" r="2.5" fill="#ec4899"/><circle cx="28" cy="8" r="2.5" fill="#ec4899"/><rect x="2.5" y="22.5" width="3" height="3" fill="#10b981"/><rect x="26.5" y="22.5" width="3" height="3" fill="#10b981"/></symbol>
+<symbol id="nurbs" viewBox="0 0 32 32"><path d="M4 24Q10 10 16 16T28 8" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M4 24L10 10L22 22L28 8" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="2 2" fill="none"/><circle cx="10" cy="10" r="2.5" fill="#f59e0b"/><circle cx="22" cy="22" r="2.5" fill="#f59e0b"/><circle cx="4" cy="24" r="2" fill="#10b981"/><circle cx="28" cy="8" r="2" fill="#10b981"/></symbol>
+<symbol id="conic" viewBox="0 0 32 32"><path d="M6 26Q16 2 26 26" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M6 26L16 2L26 26" stroke="#f59e0b" stroke-width="1" stroke-dasharray="2 2" fill="none"/><circle cx="16" cy="2" r="2.5" fill="#ec4899"/><rect x="4" y="24" width="4" height="4" fill="#10b981"/><rect x="24" y="24" width="4" height="4" fill="#10b981"/><circle cx="16" cy="14" r="2" fill="#3b82f6"/></symbol>
+<symbol id="hatch" viewBox="0 0 32 32"><path d="M6 8C6 6.9 6.9 6 8 6H24C25.1 6 26 6.9 26 8V24C26 25.1 25.1 26 24 26H8C6.9 26 6 25.1 6 24V8Z" stroke="#2563eb" stroke-width="2" fill="none"/><path d="M6 14L14 6M6 20L20 6M6 26L26 6M12 26L26 12M18 26L26 18" stroke="#10b981" stroke-width="1.5"/><rect x="4" y="4" width="4" height="4" fill="#ec4899"/><rect x="24" y="24" width="4" height="4" fill="#f59e0b"/></symbol>
+
+<!-- ============================ CAD · MODIFY TOOLS ============================ -->
+<!-- MOVE 🔧 proper 4-way move gizmo: centre hub, arrows not bleeding to edge -->
+<symbol id="move" viewBox="0 0 32 32"><path d="M16 7V25M7 16H25" stroke="#3b82f6" stroke-width="2"/><path d="M16 4L12 8H20L16 4ZM16 28L12 24H20L16 28ZM4 16L8 12V20L4 16ZM28 16L24 12V20L28 16Z" fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linejoin="round"/><circle cx="16" cy="16" r="3" fill="#ec4899"/></symbol>
+<symbol id="copy" viewBox="0 0 32 32"><rect x="12" y="12" width="16" height="16" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round" fill="none"/><path d="M20 12V6H4V20H12" stroke="#ec4899" stroke-width="2.5" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="rotate" viewBox="0 0 32 32"><path d="M26 16C26 21.5 21.5 26 16 26C10.5 26 6 21.5 6 16C6 10.5 10.5 6 16 6" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" fill="none"/><path d="M16 2L20 6L16 10" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="16" cy="16" r="2.5" fill="#ec4899"/></symbol>
+<symbol id="scale" viewBox="0 0 32 32"><rect x="6" y="14" width="12" height="12" stroke="#64748b" stroke-width="1.5" stroke-dasharray="2 2" fill="none"/><rect x="6" y="6" width="20" height="20" stroke="#2563eb" stroke-width="2.5" fill="none"/><path d="M18 14L26 6M26 6H20M26 6V12" stroke="#ec4899" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="6" cy="26" r="3" fill="#10b981"/></symbol>
+<symbol id="mirror" viewBox="0 0 32 32"><path d="M16 4V28" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 2"/><path d="M12 8L4 16L12 24Z" fill="#10b981" fill-opacity="0.2" stroke="#10b981" stroke-width="2" stroke-linejoin="round"/><path d="M20 8L28 16L20 24Z" stroke="#2563eb" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="12" cy="8" r="1.5" fill="#ec4899"/><circle cx="20" cy="8" r="1.5" fill="#ec4899"/></symbol>
+<symbol id="trim" viewBox="0 0 32 32"><path d="M4 16H28" stroke="#2563eb" stroke-width="2.5"/><path d="M16 4V16" stroke="#10b981" stroke-width="2.5"/><path d="M16 16V28" stroke="#ec4899" stroke-width="2.5" stroke-dasharray="3 3"/><path d="M12 12L20 20M20 12L12 20" stroke="#f59e0b" stroke-width="1.5"/></symbol>
+<symbol id="extend" viewBox="0 0 32 32"><path d="M24 4V28" stroke="#2563eb" stroke-width="2.5"/><path d="M4 16H16" stroke="#64748b" stroke-width="2"/><path d="M16 16H24" stroke="#10b981" stroke-width="2" stroke-dasharray="3 3"/><path d="M20 12L24 16L20 20" stroke="#10b981" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="4" cy="16" r="2" fill="#ec4899"/></symbol>
+<!-- FILLET 🔧 bigger sweeping arc, clearly rounded corner -->
+<symbol id="fillet" viewBox="0 0 32 32"><path d="M5 27V19C5 11.3 11.3 5 19 5H27" stroke="#2563eb" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M5 5H19M5 5V19" stroke="#64748b" stroke-width="1.2" stroke-dasharray="2 2" opacity="0.8"/><path d="M5 5L19 19" stroke="#f59e0b" stroke-width="1.2" stroke-dasharray="2 2"/><path d="M19 19m-8 0a8 8 0 0 1 8-8" stroke="#f59e0b" stroke-width="1.4" fill="none"/><circle cx="19" cy="19" r="1.8" fill="#f59e0b"/><circle cx="5" cy="27" r="2" fill="#ec4899"/><circle cx="27" cy="5" r="2" fill="#10b981"/></symbol>
+<symbol id="chamfer" viewBox="0 0 32 32"><path d="M4 24H14L24 14V4" stroke="#2563eb" stroke-width="2.5" fill="none"/><path d="M14 24H24V14" stroke="#64748b" stroke-width="1" stroke-dasharray="2 2"/><circle cx="14" cy="24" r="2" fill="#ec4899"/><circle cx="24" cy="14" r="2" fill="#10b981"/><path d="M14 24L10 20M24 14L20 10" stroke="#f59e0b" stroke-width="1"/></symbol>
+<!-- OFFSET 🔧 redesign: source L-corner + inner offset copy + offset-gap distance arrow -->
+<symbol id="offset" viewBox="0 0 32 32"><path d="M4 28V10L10 4H28" stroke="#2563eb" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 28V14L15 10H28" stroke="#ec4899" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20H11" stroke="#10b981" stroke-width="1.8" stroke-linecap="round"/><path d="M6.5 18L4 20L6.5 22M8.5 18L11 20L8.5 22" stroke="#10b981" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="array" viewBox="0 0 32 32"><rect x="4" y="4" width="6" height="6" fill="#3b82f6"/><rect x="13" y="4" width="6" height="6" fill="#3b82f6" fill-opacity="0.8"/><rect x="22" y="4" width="6" height="6" fill="#3b82f6" fill-opacity="0.6"/><rect x="4" y="13" width="6" height="6" fill="#3b82f6" fill-opacity="0.8"/><rect x="13" y="13" width="6" height="6" fill="#3b82f6" fill-opacity="0.6"/><rect x="22" y="13" width="6" height="6" fill="#3b82f6" fill-opacity="0.4"/><rect x="4" y="22" width="6" height="6" fill="#3b82f6" fill-opacity="0.6"/><rect x="13" y="22" width="6" height="6" fill="#3b82f6" fill-opacity="0.4"/><rect x="22" y="22" width="6" height="6" fill="#3b82f6" fill-opacity="0.2"/></symbol>
+<!-- ERASE 🔧 filled eraser: angled body, filled rubber tip, motion crumbs -->
+<symbol id="erase" viewBox="0 0 32 32"><path d="M13 25L5 17a2 2 0 0 1 0-2.8L15.2 4a2 2 0 0 1 2.8 0l7 7a2 2 0 0 1 0 2.8L15.8 24" fill="#3b82f6" fill-opacity="0.25" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/><path d="M18.5 7.5L24.5 13.5" stroke="#3b82f6" stroke-width="1.6"/><path d="M13 25H26" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><path d="M9.5 20.5L15.5 14.5L21.5 20.5L15.8 25H13.2Z" fill="#ec4899" stroke="#ec4899" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+<symbol id="delete" viewBox="0 0 32 32"><path d="M8 8L24 24M24 8L8 24" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></symbol>
+<symbol id="explode" viewBox="0 0 32 32"><rect x="12" y="12" width="8" height="8" stroke="#64748b" stroke-width="1.5" stroke-dasharray="2 2" fill="none"/><path d="M10 10L4 4M22 10L28 4M10 22L4 28M22 22L28 28" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/><rect x="4" y="14" width="4" height="4" fill="#2563eb"/><rect x="24" y="14" width="4" height="4" fill="#10b981"/><rect x="14" y="4" width="4" height="4" fill="#ec4899"/><rect x="14" y="24" width="4" height="4" fill="#ec4899"/></symbol>
+
+<!-- ============================ CAD · CONSTRAINTS ============================ -->
+<symbol id="c-coincident" viewBox="0 0 32 32"><path d="M8 8L24 24M24 8L8 24" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="16" r="3" fill="#ef4444"/></symbol>
+<symbol id="c-parallel" viewBox="0 0 32 32"><path d="M11 26L17 6M17 26L23 6" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></symbol>
+<!-- PERPENDICULAR 🔧 clean vertical+horizontal, right-angle square correctly seated -->
+<symbol id="c-perpendicular" viewBox="0 0 32 32"><path d="M8 4V26H28" stroke="#ef4444" stroke-width="3" stroke-linecap="round" fill="none"/><path d="M8 20H14V26" stroke="#ef4444" stroke-width="2" fill="none"/></symbol>
+<symbol id="c-tangent" viewBox="0 0 32 32"><circle cx="14" cy="14" r="8" stroke="#64748b" stroke-width="2.5" fill="none"/><path d="M6 28L28 6" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><circle cx="19.5" cy="19.5" r="2.5" fill="#ef4444"/><path d="M14 14L19.5 19.5" stroke="#ef4444" stroke-width="2" stroke-dasharray="2 2"/></symbol>
+<symbol id="c-concentric" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" stroke="#ef4444" stroke-width="2.5" fill="none"/><circle cx="16" cy="16" r="5" stroke="#ef4444" stroke-width="2.5" fill="none"/><circle cx="16" cy="16" r="1.5" fill="#64748b"/></symbol>
+<symbol id="c-collinear" viewBox="0 0 32 32"><path d="M4 28L28 4" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 4"/><path d="M12 20L20 12" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></symbol>
+<symbol id="c-horizontal" viewBox="0 0 32 32"><path d="M6 16H26" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></symbol>
+<symbol id="c-vertical" viewBox="0 0 32 32"><path d="M16 6V26" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></symbol>
+<symbol id="c-equal" viewBox="0 0 32 32"><path d="M10 12H22M10 20H22" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></symbol>
+<symbol id="c-symmetric" viewBox="0 0 32 32"><path d="M16 4V28" stroke="#64748b" stroke-width="2" stroke-dasharray="4 4"/><path d="M10 10L6 16L10 22M22 10L26 16L22 22" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+<symbol id="c-fix" viewBox="0 0 32 32"><path d="M16 8V18" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/><path d="M12 24L20 24" stroke="#64748b" stroke-width="3" stroke-linecap="round"/><path d="M10 28L14 24M14 28L18 24M18 28L22 24" stroke="#64748b" stroke-width="2" stroke-linecap="round"/></symbol>
+<symbol id="c-midpoint" viewBox="0 0 32 32"><path d="M6 22H26" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><path d="M16 8L22 18H10L16 8Z" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linejoin="round"/></symbol>
+<symbol id="c-intersection" viewBox="0 0 32 32"><path d="M8 8L24 24M24 8L8 24" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="16" r="3.5" fill="#ef4444"/></symbol>
+
+<!-- ============================ CAD · DIMENSIONS (🔧 redrawn: extension lines + filled arrowheads + value gap) ======= -->
+<!-- LINEAR 🔧 : two extension lines, dimension line broken by value gap, filled arrowheads -->
+<symbol id="dim-linear" viewBox="0 0 32 32"><path d="M6 10V25M26 10V25" stroke="#64748b" stroke-width="1.4" stroke-linecap="round"/><path d="M6 16H13M19 16H26" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M6 16L11 13.5V18.5Z" fill="#3b82f6"/><path d="M26 16L21 13.5V18.5Z" fill="#3b82f6"/></symbol>
+<!-- ALIGNED 🔧 : dimension along a sloped edge, extension lines perpendicular to it -->
+<symbol id="dim-aligned" viewBox="0 0 32 32"><path d="M7 25L12 20M20 12L25 7" stroke="#64748b" stroke-width="1.4" stroke-linecap="round"/><path d="M9 23L14.5 17.5M17.5 14.5L23 9" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M9 23L14 21.5L10.5 18Z" fill="#3b82f6"/><path d="M23 9L18 10.5L21.5 14Z" fill="#3b82f6"/></symbol>
+<!-- VERTICAL 🔧 -->
+<symbol id="dim-vertical" viewBox="0 0 32 32"><path d="M7 6H22M7 26H22" stroke="#64748b" stroke-width="1.4" stroke-linecap="round"/><path d="M13 6V13M13 19V26" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M13 6L10.5 11H15.5Z" fill="#3b82f6"/><path d="M13 26L10.5 21H15.5Z" fill="#3b82f6"/></symbol>
+<!-- RADIUS 🔧 : arc + single leader from centre to arc, arrowhead at arc, R label -->
+<symbol id="dim-radius" viewBox="0 0 32 32"><path d="M4 22A16 16 0 0 1 22 5" stroke="#64748b" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M13.5 14.5L23.5 6.5" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M23.5 6.5L18 7.5L20.5 11.5Z" fill="#3b82f6"/><circle cx="13.5" cy="14.5" r="1.6" fill="#ec4899"/><text x="4" y="12" font-size="9" font-family="Segoe UI" font-weight="700" fill="#f59e0b">R</text></symbol>
+<!-- DIAMETER 🔧 : full circle + through-diameter dimension line, arrowheads both ends, Ø label -->
+<symbol id="dim-diameter" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" stroke="#64748b" stroke-width="1.8" fill="none"/><path d="M8 16H24" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/><path d="M8 16L13 13.5V18.5Z" fill="#3b82f6"/><path d="M24 16L19 13.5V18.5Z" fill="#3b82f6"/><path d="M23 9L9 23" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/></symbol>
+<!-- ANGULAR (unchanged — approved) -->
+<symbol id="dim-angular" viewBox="0 0 32 32"><path d="M6 26H28M6 26L26 10" stroke="#64748b" stroke-width="2" stroke-linecap="round"/><path d="M20 26A14 14 0 0 0 15 15" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M18 25L20 26L18.5 24M15.5 17L15 15L17 16" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" fill="none"/></symbol>
+<!-- ARC LENGTH 🔧 : the arc + a curved dimension line over it with arrowheads + extension ticks -->
+<symbol id="dim-arclength" viewBox="0 0 32 32"><path d="M6 24A18 18 0 0 1 24 6" stroke="#64748b" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M6 24V27M24 6H27" stroke="#64748b" stroke-width="1.4" stroke-linecap="round"/><path d="M8 27A22 22 0 0 1 27 8" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M8 27L13 26L10 22Z" fill="#3b82f6"/><path d="M27 8L22 9L26 12Z" fill="#3b82f6"/></symbol>
+<!-- ORDINATE 🔧 : datum origin corner + stepped leader up to a feature point with value tick -->
+<symbol id="dim-ordinate" viewBox="0 0 32 32"><path d="M5 27V5M5 27H27" stroke="#64748b" stroke-width="1.6" stroke-linecap="round"/><path d="M5 5L2.5 10H7.5Z" fill="#64748b"/><path d="M27 27L22 24.5V29.5Z" fill="#64748b"/><path d="M21 27V13H27" stroke="#3b82f6" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21" cy="27" r="2" fill="#ec4899"/><path d="M24.5 10.5L27 13L24.5 15.5" stroke="#3b82f6" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<!-- CHAMFER DIM 🔧 : chamfered corner + leader pointing at the chamfer, C×45 label -->
+<symbol id="dim-chamfer" viewBox="0 0 32 32"><path d="M5 27V13L13 5H27" stroke="#2563eb" stroke-width="2.2" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M5 13L13 5" stroke="#ec4899" stroke-width="2.6" stroke-linecap="round"/><path d="M22 20L11 9" stroke="#f59e0b" stroke-width="1.6" stroke-linecap="round"/><path d="M11 9L16.5 9.5L13 14Z" fill="#f59e0b"/><text x="17" y="26" font-size="8" font-family="Segoe UI" font-weight="700" fill="#f59e0b">45°</text></symbol>
+
+<!-- ============================ CAD · OBJECT SNAPS ============================ -->
+<!-- ENDPOINT 🔧 unique: line that TERMINATES at a hollow SQUARE marker (CAD endpoint glyph = square) -->
+<symbol id="snap-endpoint" viewBox="0 0 32 32"><path d="M26 24L11 9" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><rect x="4" y="2" width="10" height="10" rx="1" fill="#f59e0b" fill-opacity="0.25" stroke="#f59e0b" stroke-width="2.5"/></symbol>
+<!-- MIDPOINT 🔧 unique: line runs THROUGH both sides, filled TRIANGLE at dead centre + equal-half ticks -->
+<symbol id="snap-midpoint" viewBox="0 0 32 32"><path d="M4 24L28 24" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><path d="M11 24V21M21 24V21" stroke="#64748b" stroke-width="1.8" stroke-linecap="round"/><path d="M16 10L23 24H9L16 10Z" fill="#10b981" fill-opacity="0.3" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round"/></symbol>
+<symbol id="snap-center" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" stroke="#64748b" stroke-width="2.5" fill="none"/><circle cx="16" cy="16" r="3" stroke="#10b981" stroke-width="2.5" fill="none"/></symbol>
+<symbol id="snap-intersection" viewBox="0 0 32 32"><path d="M8 8L24 24M24 8L8 24" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/><path d="M13 13L19 19M19 13L13 19" stroke="#10b981" stroke-width="3" stroke-linecap="round"/></symbol>
+
+<!-- ============================ CAD · SELECTION ============================ -->
+<symbol id="sel-window" viewBox="0 0 32 32"><rect x="4" y="6" width="20" height="16" fill="#3b82f6" fill-opacity="0.2" stroke="#3b82f6" stroke-width="1.5"/><path d="M18 18L26 26M26 26L22 26M26 26L26 22" stroke="#ec4899" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><rect x="4" y="6" width="4" height="4" fill="#10b981"/></symbol>
+<symbol id="sel-crossing" viewBox="0 0 32 32"><rect x="4" y="6" width="20" height="16" fill="#10b981" fill-opacity="0.2" stroke="#10b981" stroke-width="1.5" stroke-dasharray="4 2"/><path d="M18 18L26 26M26 26L22 26M26 26L26 22" stroke="#ec4899" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="24" cy="22" r="2.5" fill="#f59e0b"/></symbol>
+<symbol id="sel-lasso" viewBox="0 0 32 32"><path d="M10 6C16 4 22 8 24 14C26 20 20 26 14 26C8 26 4 20 6 14C8 8 10 6 10 6Z" fill="#a855f7" fill-opacity="0.2" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="3 3"/><path d="M18 18L26 26M26 26L22 26M26 26L26 22" stroke="#ec4899" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+<symbol id="sel-group" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" stroke="#64748b" stroke-width="1.5" stroke-dasharray="3 3" fill="none"/><circle cx="12" cy="12" r="4" fill="#3b82f6"/><rect x="16" y="16" width="8" height="8" fill="#ec4899"/><path d="M22 6L26 10H18Z" fill="#10b981"/></symbol>
+<symbol id="sel-ungroup" viewBox="0 0 32 32"><path d="M4 4H10M22 4H28M4 28H10M22 28H28M4 10V4M4 28V22M28 10V4M28 28V22" stroke="#64748b" stroke-width="1.5" fill="none"/><circle cx="10" cy="10" r="4" fill="#3b82f6" stroke="#f59e0b" stroke-width="1.5"/><rect x="18" y="18" width="8" height="8" fill="#ec4899" stroke="#f59e0b" stroke-width="1.5"/></symbol>
+
+</defs></svg>
+
+<script>
+// ================================================================================================================
+//  CATALOGUE — status: reuse | fix | new. Drives rendering + the "only changed" filter.
+// ================================================================================================================
+const SHEET = [
+  { tier:"GLOBAL", cat:"Chrome", items:[
+    ["chevron-up","Chevron Up","reuse"],["chevron-down","Chevron Down","reuse"],["chevron-left","Chevron Left","reuse"],["chevron-right","Chevron Right","reuse"],
+    ["folder-closed","Folder Closed","reuse"],["folder-open","Folder Open","reuse"],["folder-add","Folder Add","reuse"],["folder-delete","Folder Delete","reuse"],
+    ["folder-visible","Folder Visible","reuse"],["folder-hidden","Folder Hidden","reuse"],["folder-lock","Folder Lock","reuse"],["folder-search","Folder Search","reuse"],["folder-export","Folder Export","reuse"],
+    ["eye-open","Eye Open","reuse"],["eye-closed","Eye Closed","reuse"],["lock","Lock","reuse"],["pin","Pin","fix"],
+  ]},
+  { tier:"GLOBAL", cat:"System", items:[
+    ["settings","Settings","fix"],["configuration","Configuration","new"],["history","History","new"],["properties","Properties","reuse"],
+    ["console","Console","reuse"],["compile","Compile","fix"],["flag","Flag","reuse"],["warning","Warning","fix"],["caution","Caution","reuse"],
+  ]},
+  { tier:"CAD", cat:"Sketch Geometry", items:[
+    ["line","Line","reuse"],["polyline","Polyline","reuse"],["arc","Arc","reuse"],["circle","Circle","reuse"],["rectangle","Rectangle","reuse"],
+    ["polygon","Polygon","fix"],["spline","Spline","reuse"],["bezier","Bezier","reuse"],["nurbs","NURBS","reuse"],["conic","Conic","reuse"],["hatch","Hatch / Fill","reuse"],
+  ]},
+  { tier:"CAD", cat:"Modify Tools", items:[
+    ["move","Move","fix"],["copy","Copy","reuse"],["rotate","Rotate","reuse"],["scale","Scale","reuse"],["mirror","Mirror","reuse"],
+    ["trim","Trim","reuse"],["extend","Extend","reuse"],["fillet","Fillet","fix"],["chamfer","Chamfer","reuse"],["offset","Offset","fix"],
+    ["array","Array","reuse"],["erase","Erase","fix"],["delete","Delete","reuse"],["explode","Explode","reuse"],
+  ]},
+  { tier:"CAD", cat:"Constraints", items:[
+    ["c-coincident","Coincident","reuse"],["c-parallel","Parallel","reuse"],["c-perpendicular","Perpendicular","fix"],["c-tangent","Tangent","reuse"],
+    ["c-concentric","Concentric","reuse"],["c-collinear","Collinear","reuse"],["c-horizontal","Horizontal","reuse"],["c-vertical","Vertical","reuse"],
+    ["c-equal","Equal","reuse"],["c-symmetric","Symmetric","reuse"],["c-fix","Fix / Anchor","reuse"],["c-midpoint","Midpoint","reuse"],["c-intersection","Intersection","reuse"],
+  ]},
+  { tier:"CAD", cat:"Dimensions", items:[
+    ["dim-linear","Linear","fix"],["dim-aligned","Aligned","new"],["dim-vertical","Vertical","new"],["dim-radius","Radius (R)","new"],
+    ["dim-diameter","Diameter (Ø)","new"],["dim-angular","Angular (°)","new"],["dim-arclength","Arc Length","new"],["dim-ordinate","Ordinate","new"],["dim-chamfer","Chamfer (C×45°)","new"],
+  ]},
+  { tier:"CAD", cat:"Object Snaps", items:[
+    ["snap-endpoint","Endpoint","fix"],["snap-midpoint","Midpoint","fix"],["snap-center","Center","reuse"],["snap-intersection","Intersection","reuse"],
+  ]},
+  { tier:"CAD", cat:"Selection", items:[
+    ["sel-window","Window","reuse"],["sel-crossing","Crossing","reuse"],["sel-lasso","Lasso","reuse"],["sel-group","Group","reuse"],["sel-ungroup","Ungroup","reuse"],
+  ]},
+];
+
+function render(){
+  let h="", curTier="";
+  SHEET.forEach(sec=>{
+    if(sec.tier!==curTier){ h+=`<div class="tier">${sec.tier==="GLOBAL"?"GLOBAL TIER · shared by all outliners":"LOCAL · CAD TIER"}</div>`; curTier=sec.tier; }
+    h+=`<div class="cat"><div class="cat-name">${sec.cat} <span style="color:var(--faint);font-weight:400">· ${sec.items.length}</span></div><div class="grid">`;
+    sec.items.forEach(([id,nm,st])=>{
+      const tag = st==="fix"?`<span class="tag fixed">FIX</span>`: st==="new"?`<span class="tag new">NEW</span>`:"";
+      h+=`<div class="cell" data-st="${st}"><div class="art"><svg><use href="#${id}"/></svg></div><div class="nm">${nm}</div>${tag}</div>`;
+    });
+    h+=`</div></div>`;
+  });
+  document.getElementById("gallery").innerHTML=h;
+}
+function filterCells(){
+  const only=document.getElementById("onlyChanged").checked;
+  document.querySelectorAll(".cell").forEach(c=>{
+    const changed = c.dataset.st!=="reuse";
+    c.classList.toggle("hidden", only && !changed);
+  });
+  document.querySelectorAll(".cat").forEach(cat=>{
+    const anyVisible=[...cat.querySelectorAll(".cell")].some(c=>!c.classList.contains("hidden"));
+    cat.style.display=anyVisible?"":"none";
+  });
+}
+render();
+</script>
+</body>
+</html>

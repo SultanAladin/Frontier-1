@@ -1,0 +1,164 @@
+# Tornado Funnel — Fluid Studio scene preset (Studio). Tight vortex with inward pull and axis attraction lofting a dust funnel — no turbulence to break the shape.
+# Converted from the legacy preset object by script; scene fingerprint d5f09ea1a068ff4f (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 6
+Id = "preset-tornado"
+Name = "Tornado Funnel"
+Family = "Studio"
+Icon = "vortex"
+Summary = "Tight vortex with inward pull and axis attraction lofting a dust funnel — no turbulence to break the shape."
+
+[Grid]
+Resolution = [48, 84, 48]
+Size = [4, 7, 4]
+
+[Debris]
+Visible = true
+Count = 1536
+Lifetime = 9
+Size = 3.5
+Drag = 3
+Bounce = 0.1
+Glow = 0.1
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-2" }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.15, AmbientTemperature = 0.0, Cooling = 0.3 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.1 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.997, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#b89c74", Absorption = 2.6, Anisotropy = 0.3, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-9"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Dust Ring"
+  Shape = "Disc"
+  Position = [0, -3.4, 0]
+  Radius = 0.9
+  Density = 0.9
+  Temperature = 0.1
+  Fuel = 0
+  Velocity = [0, 0.4, 0]
+  Jitter = 0.35
+
+[[Emitter]]
+  Token = "emitter-2"
+  Name = "Loose Paper"
+  Shape = "Disc"
+  Position = [0, -3.4, 0]
+  Radius = 1.7
+  Density = 0.0
+  Temperature = 0
+  Fuel = 0
+  Velocity = [0, 0, 0]
+  Jitter = 0
+  Debris = 0.08
+  DebrisSpeed = 1.2
+  DebrisKind = "Paper"
+
+[[Force]]
+  Type = "VortexColumn"
+  Position = [0, 0, 0]
+  Strength = 14
+  Radius = 1.1
+  Falloff = "Plateau"
+  Frequency = 1.8
+  Secondary = 2.2
+
+[[Force]]
+  Type = "AxisAttractor"
+  Name = "Funnel Core"
+  Position = [0, 0, 0]
+  Strength = 6
+  Radius = 1.6
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 2.8, 0]
+  Strength = 1.5
+  Radius = 2
+  Falloff = "Plateau"

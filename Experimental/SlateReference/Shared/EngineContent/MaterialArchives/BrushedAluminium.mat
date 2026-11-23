@@ -1,0 +1,9 @@
+# BrushedAluminium — a dummy material declaration.
+[material]
+naming    = "Brushed Aluminium"
+archive   = "Metals"
+
+[surface]
+albedo    = [ 0.913, 0.921, 0.925 ]
+metallic  = 1.0
+roughness = 0.34

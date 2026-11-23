@@ -1,0 +1,39 @@
+/* Valuebox */
+.valuebox {
+  height: 32px; border-radius: 12px; overflow: hidden;
+  display: flex; align-items: stretch; background: #0a0a0b;
+}
+.valuebox .num {
+  flex: 1; display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 6px 0 12px; cursor: text; transition: box-shadow 0.12s;
+}
+.valuebox .num:focus-within { box-shadow: 0 0 0 1.5px var(--accent) inset; }
+.valuebox .num input {
+  background: none; border: none; outline: none; color: var(--text-value);
+  font: 500 14px/1 inherit; text-align: right; width: 100%;
+  font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+}
+.valuebox .num input::-webkit-outer-spin-button, .valuebox .num input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.valuebox .unitseg {
+  color: var(--text-muted);
+  display: flex; align-items: center; justify-content: flex-start;
+  padding: 0 12px 0 0; font-size: 14px; min-width: auto; font-weight: 500;
+}
+.valuebox .axisseg {
+  background: #131315; color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center; width: 24px; font-weight: 600; font-size: 11px;
+}
+
+/* Slider */
+.slider { position: relative; height: 32px; background: #0a0a0b; border-radius: 16px; cursor: pointer; touch-action: none; overflow: hidden; }
+.slider .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--track-fill); border-radius: 16px; pointer-events: none; }
+.slider .knob {
+  position: absolute; top: 4px; height: 24px; width: 12px; background: #fff;
+  border-radius: 999px; transform: translateX(-50%); pointer-events: none;
+}
+
+/* Switch */
+.switch { width: 50px; height: 32px; border-radius: 16px; background: #0a0a0b; position: relative; cursor: pointer; transition: background .16s; }
+.switch.on { background: var(--track-fill); }
+.switch .nub { position: absolute; top: 4px; left: 4px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: left .16s cubic-bezier(.4,0,.2,1); }
+.switch.on .nub { left: 22px; }

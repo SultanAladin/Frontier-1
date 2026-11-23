@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Isometric Hero Scene — House, 10 Style Variations</title>
+<style>
+  :root{
+    --c-line:#e8e8ea; --c-dim:#8a8a92; --c-accent:#4db3ff;
+    --c-warm:#ffb347; --c-green:#5ad469; --c-red:#ff5c6c;
+    --c-violet:#9d7cff; --c-teal:#3fd8c8; --c-sky:#8fd0ff;
+  }
+  html,body{background:#0a0a0c;color:#d8d8dc;font:13px/1.4 system-ui,sans-serif;margin:0;padding:24px}
+  h1{color:#fff;font-weight:700;margin:0 0 4px}
+  p.sub{color:#8a8a92;max-width:680px;margin:0 0 24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+  .stage{background:#000;border:1px solid #1b1b20;border-radius:12px;padding:10px;
+         display:flex;flex-direction:column;align-items:center;gap:8px}
+  .stage svg{width:100%;height:auto;display:block;border-radius:8px}
+  .lbl{font-size:11px;color:#9a9aa4;text-align:center;letter-spacing:.3px}
+  .lbl b{color:#e8e8ea;font-weight:600}
+  footer{color:#5a5a62;margin-top:32px;font-size:11px}
+</style>
+</head>
+<body>
+<h1>Isometric Hero Scene — House</h1>
+<p class="sub">One scene marker, authored on a true 2:1 isometric lattice with connected geometry
+(seated roof, walls, door, window, grounded tree). Rendered in 10 styles below — all share the exact
+same projected point set; only the material treatment changes.</p>
+<div class="grid" id="grid"></div>
+<footer>Isometric Hero Pack · one shared geometry · 2:1 iso lattice · black canvas · all styles procedural.</footer>
+
+<script>
+//====================================================================================================================================
+//                                                    ISO PROJECTION + SHARED GEOMETRY
+//====================================================================================================================================
+// True 2:1 isometric (dimetric) projection. One geometry, projected once, reused by every style renderer.
+const W = 34, H = 17, ZS = 30, CX = 260, CY = 215;
+function iso(X, Y, Z){ return [ (X - Y) * W + CX, (X + Y) * H - Z * ZS + CY ]; }
+const pt = (a) => a.map(n => Math.round(n * 10) / 10).join(',');
+
+// Footprint is a unit square 0..1 in the XY plane; eave at Z=1, ridge at Z=1.55.
+// Camera looks down +X+Y, so the visible walls are the Y=1 face and the X=1 face; C11 is the near corner.
+const G = {
+  pad:   [iso(-0.4,-0.4,0), iso(1.4,-0.4,0), iso(1.4,1.4,0), iso(-0.4,1.4,0)],
+  // vertical corners: base + eave-top
+  c00b: iso(0,0,0), c00t: iso(0,0,1),
+  c10b: iso(1,0,0), c10t: iso(1,0,1),
+  c11b: iso(1,1,0), c11t: iso(1,1,1),
+  c01b: iso(0,1,0), c01t: iso(0,1,1),
+  ridgeA: iso(0,0.5,1.55), ridgeB: iso(1,0.5,1.55),
+  door: [iso(1,0.85,0), iso(1,0.55,0), iso(1,0.55,0.62), iso(1,0.85,0.62)],
+  win:  [iso(0.15,1,0.45), iso(0.4,1,0.45), iso(0.4,1,0.75), iso(0.15,1,0.75)],
+  treeBase: iso(-0.2,1.25,0), treeTop: iso(-0.2,1.25,0.55),
+};
+
+// The five visible faces of the house shell, as closed point rings.
+const FACES = {
+  wallLeft:  [G.c01b, G.c11b, G.c11t, G.c01t],           // Y=1 face (faces lower-left)
+  wallRight: [G.c11b, G.c10b, G.c10t, G.c11t],           // X=1 face (faces lower-right)
+  roofLeft:  [G.c01t, G.c11t, G.ridgeB, G.ridgeA],        // slope over the left eave
+  roofRight: [G.c11t, G.c10t, G.ridgeB],                  // gable-side slope (triangle to ridge B)
+  gableFront:[G.c11t, G.ridgeB],                          // (ridge line, handled per-style)
+};
+// Roof as two clean quads/tris meeting at the ridge:
+const ROOF_L = [G.c01t, G.c11t, G.ridgeB, G.ridgeA];      // big left slope
+const ROOF_R = [G.c11t, G.c10t, G.ridgeB];                // right slope triangle
+const GABLE  = [G.c10t, G.ridgeB, G.c11t];                // front gable fill under ridge
+
+function poly(ring){ return ring.map(pt).join(' '); }
+
+//====================================================================================================================================
+//                                                    STYLE RENDERERS
+//====================================================================================================================================
+// Each renderer receives a unique id-suffix (for <defs>) and returns the inner SVG markup for the shared geometry.
+// Draw order is always back-to-front: pad, roof-left, walls, roof-right/gable, details, tree.
+
+function tree(trunk, foliageFill, foliageStroke){
+  const [tx,ty] = G.treeBase, [fx,fy] = G.treeTop;
+  return `<path d="M${tx} ${ty} L${fx} ${fy}" stroke="${trunk}" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="${fx}" cy="${fy-2}" r="9" fill="${foliageFill}" stroke="${foliageStroke||'none'}" stroke-width="1"/>`;
+}
+
+const STYLES = [
+  { name:'Flat', note:'solid fills, no shading — the baseline marker', bg:'#000',
+    draw:(s)=>`
+      <polygon points="${poly(G.pad)}" fill="#12181f" stroke="#2a3540" stroke-width="1"/>
+      <polygon points="${poly(ROOF_L)}" fill="#ff5c6c"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#3a5a8c"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#2f4d78"/>
+      <polygon points="${poly(GABLE)}" fill="#ff5c6c"/>
+      <polygon points="${poly(ROOF_R)}" fill="#e04a5a"/>
+      <polygon points="${poly(G.door)}" fill="#ffb347"/>
+      <polygon points="${poly(G.win)}"  fill="#8fd0ff"/>
+      ${tree('#7a5a2a','#5ad469')}` },
+
+  { name:'Shaded', note:'per-face iso value: lit top, mid left, dark right + ground shadow', bg:'#000',
+    draw:(s)=>`
+      <ellipse cx="${CX}" cy="252" rx="70" ry="20" fill="#000" opacity="0"/>
+      <polygon points="${poly(G.pad)}" fill="#141b23"/>
+      <polygon points="215,246 305,246 275,262 245,262" fill="#05070a" opacity="0.6"/>
+      <polygon points="${poly(ROOF_L)}" fill="#ff6f7c"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#3f6096"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#294169"/>
+      <polygon points="${poly(GABLE)}" fill="#d84654"/>
+      <polygon points="${poly(ROOF_R)}" fill="#c53f4d"/>
+      <polygon points="${poly(G.door)}" fill="#ffb347"/>
+      <polygon points="${poly(G.door)}" fill="#000" opacity="0.15"/>
+      <polygon points="${poly(G.win)}"  fill="#8fd0ff"/>
+      ${tree('#6a4e24','#4fc65e','#2f7d3a')}` },
+
+  { name:'Wireframe', note:'edges only — every visible ring stroked, no fills', bg:'#04060a',
+    draw:(s)=>`
+      <polygon points="${poly(G.pad)}" fill="none" stroke="#1e3350" stroke-width="1"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="none" stroke="#4db3ff" stroke-width="1.2"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="none" stroke="#4db3ff" stroke-width="1.2"/>
+      <polygon points="${poly(ROOF_L)}" fill="none" stroke="#8fd0ff" stroke-width="1.2"/>
+      <polygon points="${poly(ROOF_R)}" fill="none" stroke="#8fd0ff" stroke-width="1.2"/>
+      <line x1="${G.ridgeA[0]}" y1="${G.ridgeA[1]}" x2="${G.ridgeB[0]}" y2="${G.ridgeB[1]}" stroke="#ffb347" stroke-width="1.2"/>
+      <polygon points="${poly(G.door)}" fill="none" stroke="#ffb347" stroke-width="1"/>
+      <polygon points="${poly(G.win)}"  fill="none" stroke="#5ad469" stroke-width="1"/>
+      ${tree('#3a4a5a','none','#5ad469')}` },
+
+  { name:'Blueprint', note:'cyan lines on ink, dimension ticks — CAD draft look', bg:'#071722',
+    draw:(s)=>`
+      <defs><pattern id="bpg${s}" width="12" height="12" patternUnits="userSpaceOnUse">
+        <path d="M12 0H0V12" fill="none" stroke="#0e3550" stroke-width="0.5"/></pattern></defs>
+      <rect x="0" y="0" width="520" height="300" fill="url(#bpg${s})"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="none" stroke="#7fdcff" stroke-width="1"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="none" stroke="#7fdcff" stroke-width="1"/>
+      <polygon points="${poly(ROOF_L)}" fill="none" stroke="#7fdcff" stroke-width="1"/>
+      <polygon points="${poly(ROOF_R)}" fill="none" stroke="#7fdcff" stroke-width="1"/>
+      <line x1="${G.ridgeA[0]}" y1="${G.ridgeA[1]}" x2="${G.ridgeB[0]}" y2="${G.ridgeB[1]}" stroke="#7fdcff" stroke-width="1"/>
+      <polygon points="${poly(G.door)}" fill="none" stroke="#7fdcff" stroke-width="0.8" stroke-dasharray="3 2"/>
+      <polygon points="${poly(G.win)}"  fill="none" stroke="#7fdcff" stroke-width="0.8" stroke-dasharray="3 2"/>
+      <path d="M${G.c01b[0]-14} ${G.c01b[1]+8} L${G.c11b[0]-14} ${G.c11b[1]+8}" stroke="#7fdcff" stroke-width="0.6"/>
+      ${tree('#3f6d7a','none','#7fdcff')}` },
+
+  { name:'Neon glow', note:'emissive edges with SVG blur bloom', bg:'#05060c',
+    draw:(s)=>`
+      <defs><filter id="glow${s}" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <g filter="url(#glow${s})">
+      <polygon points="${poly(FACES.wallLeft)}"  fill="none" stroke="#4db3ff" stroke-width="1.4"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="none" stroke="#9d7cff" stroke-width="1.4"/>
+      <polygon points="${poly(ROOF_L)}" fill="none" stroke="#ff5c6c" stroke-width="1.4"/>
+      <polygon points="${poly(ROOF_R)}" fill="none" stroke="#ff5c6c" stroke-width="1.4"/>
+      <line x1="${G.ridgeA[0]}" y1="${G.ridgeA[1]}" x2="${G.ridgeB[0]}" y2="${G.ridgeB[1]}" stroke="#ffb347" stroke-width="1.6"/>
+      <polygon points="${poly(G.win)}"  fill="none" stroke="#3fd8c8" stroke-width="1.2"/>
+      ${tree('#5ad469','none','#5ad469')}</g>` },
+
+  { name:'Low-poly facets', note:'each face split into triangles with jittered value', bg:'#000',
+    draw:(s)=>{
+      // Split the left roof quad and walls diagonally into shaded facets.
+      const L=FACES.wallLeft, R=FACES.wallRight;
+      return `
+      <polygon points="${poly(G.pad)}" fill="#10161d"/>
+      <polygon points="${pt(ROOF_L[0])} ${pt(ROOF_L[1])} ${pt(ROOF_L[2])}" fill="#ff6f7c"/>
+      <polygon points="${pt(ROOF_L[0])} ${pt(ROOF_L[2])} ${pt(ROOF_L[3])}" fill="#ec5966"/>
+      <polygon points="${pt(L[0])} ${pt(L[1])} ${pt(L[2])}" fill="#41639b"/>
+      <polygon points="${pt(L[0])} ${pt(L[2])} ${pt(L[3])}" fill="#37547f"/>
+      <polygon points="${pt(R[0])} ${pt(R[1])} ${pt(R[2])}" fill="#2c4571"/>
+      <polygon points="${pt(R[0])} ${pt(R[2])} ${pt(R[3])}" fill="#233a5f"/>
+      <polygon points="${poly(GABLE)}" fill="#d84654"/>
+      <polygon points="${poly(ROOF_R)}" fill="#c53f4d"/>
+      <polygon points="${poly(G.door)}" fill="#ffb347"/>
+      <polygon points="${poly(G.win)}"  fill="#8fd0ff"/>
+      ${tree('#6a4e24','#4fc65e')}`; } },
+
+  { name:'Glass', note:'translucent fills, layered transparency', bg:'#04070c',
+    draw:(s)=>`
+      <polygon points="${poly(G.pad)}" fill="#0d141c"/>
+      <polygon points="${poly(ROOF_L)}" fill="#ff5c6c" opacity="0.32" stroke="#ff9aa4" stroke-width="0.8"/>
+      <polygon points="${poly(ROOF_R)}" fill="#ff5c6c" opacity="0.28" stroke="#ff9aa4" stroke-width="0.8"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#4db3ff" opacity="0.28" stroke="#8fd0ff" stroke-width="0.8"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#4db3ff" opacity="0.20" stroke="#8fd0ff" stroke-width="0.8"/>
+      <polygon points="${poly(GABLE)}" fill="#ff5c6c" opacity="0.30"/>
+      <line x1="${G.ridgeA[0]}" y1="${G.ridgeA[1]}" x2="${G.ridgeB[0]}" y2="${G.ridgeB[1]}" stroke="#ffd9a0" stroke-width="1"/>
+      <polygon points="${poly(G.win)}"  fill="#3fd8c8" opacity="0.5" stroke="#8ff0e6" stroke-width="0.8"/>
+      ${tree('#7a5a2a','#5ad469')}` },
+
+  { name:'Toon', note:'flat cel fills + heavy black contour outline', bg:'#000',
+    draw:(s)=>`
+      <g stroke="#0a0a0c" stroke-width="2" stroke-linejoin="round">
+      <polygon points="${poly(G.pad)}" fill="#151d26"/>
+      <polygon points="${poly(ROOF_L)}" fill="#ff5c6c"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#3a5a8c"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#2f4d78"/>
+      <polygon points="${poly(GABLE)}" fill="#ff5c6c"/>
+      <polygon points="${poly(ROOF_R)}" fill="#e04a5a"/>
+      <polygon points="${poly(G.door)}" fill="#ffb347"/>
+      <polygon points="${poly(G.win)}"  fill="#8fd0ff"/>
+      </g>${tree('#7a5a2a','#5ad469','#0a0a0c')}` },
+
+  { name:'Hologram', note:'scanline overlay + cyan additive fills', bg:'#03080c',
+    draw:(s)=>`
+      <defs><pattern id="scan${s}" width="4" height="4" patternUnits="userSpaceOnUse">
+        <rect width="4" height="2" fill="#3fd8c8" opacity="0.08"/></pattern></defs>
+      <polygon points="${poly(ROOF_L)}" fill="#3fd8c8" opacity="0.30" stroke="#8ff0e6" stroke-width="0.8"/>
+      <polygon points="${poly(ROOF_R)}" fill="#3fd8c8" opacity="0.24" stroke="#8ff0e6" stroke-width="0.8"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#3fd8c8" opacity="0.22" stroke="#8ff0e6" stroke-width="0.8"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#3fd8c8" opacity="0.16" stroke="#8ff0e6" stroke-width="0.8"/>
+      <line x1="${G.ridgeA[0]}" y1="${G.ridgeA[1]}" x2="${G.ridgeB[0]}" y2="${G.ridgeB[1]}" stroke="#c9fff8" stroke-width="1"/>
+      <polygon points="${poly(G.win)}"  fill="#c9fff8" opacity="0.6"/>
+      ${tree('#2f7d74','none','#8ff0e6')}
+      <rect x="180" y="150" width="160" height="120" fill="url(#scan${s})"/>` },
+
+  { name:'Night-lit', note:'dark shell with warm emissive windows + door glow', bg:'#02030a',
+    draw:(s)=>`
+      <defs><filter id="win${s}" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <polygon points="${poly(G.pad)}" fill="#080b14"/>
+      <polygon points="${poly(ROOF_L)}" fill="#241820"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#141c2c"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#0e1523"/>
+      <polygon points="${poly(GABLE)}" fill="#20161c"/>
+      <polygon points="${poly(ROOF_R)}" fill="#1b131a"/>
+      <g filter="url(#win${s})">
+        <polygon points="${poly(G.door)}" fill="#ffb347"/>
+        <polygon points="${poly(G.win)}"  fill="#ffe08a"/>
+      </g>
+      ${tree('#2a2418','#20321f','#3a5a3a')}` },
+
+  { name:'Clay AO', note:'monochrome clay with baked ambient occlusion in the crevices', bg:'#0a0a0c',
+    draw:(s)=>`
+      <defs><radialGradient id="ao${s}" cx="0.5" cy="1" r="0.9">
+        <stop offset="0" stop-color="#000" stop-opacity="0.45"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+      <ellipse cx="${G.c11b[0]}" cy="${G.c11b[1]+6}" rx="60" ry="16" fill="url(#ao${s})"/>
+      <polygon points="${poly(G.pad)}" fill="#1a1a1e"/>
+      <polygon points="${poly(ROOF_L)}" fill="#cfcfd6"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#a7a7b0"/>
+      <polygon points="${poly(FACES.wallRight)}" fill="#87878f"/>
+      <polygon points="${poly(GABLE)}" fill="#bcbcc4"/>
+      <polygon points="${poly(ROOF_R)}" fill="#b4b4bc"/>
+      <polygon points="${poly(G.door)}" fill="#6f6f77"/>
+      <polygon points="${poly(G.win)}"  fill="#9a9aa2"/>
+      <polygon points="${poly(FACES.wallLeft)}"  fill="#000" opacity="0.12"/>
+      ${tree('#6a6a72','#8f8f97')}` },
+];
+
+//====================================================================================================================================
+//                                                    RENDER GRID
+//====================================================================================================================================
+const grid = document.getElementById('grid');
+STYLES.forEach((st, i) => {
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.innerHTML =
+    `<svg viewBox="0 0 520 300" style="background:${st.bg}">${st.draw(i)}</svg>` +
+    `<div class="lbl"><b>${i+1}. ${st.name}</b> · ${st.note}</div>`;
+  grid.appendChild(stage);
+});
+</script>
+</body>
+</html>

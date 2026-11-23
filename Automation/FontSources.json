@@ -1,0 +1,303 @@
+{
+  "repository": "SultanAladin/Frontier-",
+  "revision": "338293863d7df4e585dec0c4acae45fe9c524ed5",
+  "licence": "SIL Open Font License 1.1; per-family notices retained",
+  "files": [
+    {
+      "family": "Inter",
+      "file": "Inter-Black.otf",
+      "git_blob": "8e18e362ba5bbb81bc1b5f5cdd5d66b49965bd52",
+      "sha256": "d108d003dd5e5a692a586e25aec09f5643f8078613e53d6d5e7ae45e1adf2fb4",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/8e18e362ba5bbb81bc1b5f5cdd5d66b49965bd52"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-Bold.otf",
+      "git_blob": "c74cc0c6c13ccda9d3beac6c5a7aac5176da4a7c",
+      "sha256": "1e9dfd6a6e33ac63a8fe3b4ed7ae0df9eac2d0b25e444e8e7daef4ac77943fc1",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/c74cc0c6c13ccda9d3beac6c5a7aac5176da4a7c"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-ExtraBold.otf",
+      "git_blob": "3633fe8e859330b99fc419abceaedf6f24cdea67",
+      "sha256": "158144ef2ad48baf0e45907951a00a1d3264f85c742ccfbc087e90d3d9288cfa",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/3633fe8e859330b99fc419abceaedf6f24cdea67"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-ExtraLight.otf",
+      "git_blob": "6dc068dc90b394ad7d20e4e3156ec9d23fcc2a17",
+      "sha256": "a0f33dfec7784ebf09b19d4ea50ffa49e2595f880082351124aacf9ebfa48442",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/6dc068dc90b394ad7d20e4e3156ec9d23fcc2a17"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-Light.otf",
+      "git_blob": "2a83ae168def2d07982cd5f15e40bf2711ab0ea5",
+      "sha256": "e66f130fbadda71e297a9a78025e2f05e8d225ae9dfcea9f51f6570b68fdd905",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/2a83ae168def2d07982cd5f15e40bf2711ab0ea5"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-Medium.otf",
+      "git_blob": "ca7bfcd4340ea6125717ff6c6e8dad0a65c5795e",
+      "sha256": "99dab2bdcb613c4c8264000a94351d1227f74dc95a86d1249493aeee0c0179c4",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/ca7bfcd4340ea6125717ff6c6e8dad0a65c5795e"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-Regular.otf",
+      "git_blob": "84e6a61c3c0f11fc8c88c9e7a8f6ed7f7bbc43b3",
+      "sha256": "a7e791e8f5a0fb02b65663f7fca73e1d1ca9543f772ad480cbd76f4e3fe3f8cc",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/84e6a61c3c0f11fc8c88c9e7a8f6ed7f7bbc43b3"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-SemiBold.otf",
+      "git_blob": "daf4c4413f7b682ee421fbde5097c7963e2fcdc4",
+      "sha256": "8c1990b6012254ea2b487161697d107357dd0ee55811cfd91c8c11227bbef457",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/daf4c4413f7b682ee421fbde5097c7963e2fcdc4"
+    },
+    {
+      "family": "Inter",
+      "file": "Inter-Thin.otf",
+      "git_blob": "22592e045c72403eaf2cdbb9c1941bff08e50914",
+      "sha256": "4d9bb6a256c5a9a4f3c7a7f5f27eb0f7e849a1ceee20638d44c9073b41a0b015",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/22592e045c72403eaf2cdbb9c1941bff08e50914"
+    },
+    {
+      "family": "Inter",
+      "file": "LICENSE.txt",
+      "git_blob": "ff80f8c615684e796c37ab5ff82a9b31d7390d6e",
+      "sha256": "4d7d9c95e7d7f2f0ebf76d5e0b344826b74e903a34028ee18ab54bb639e45906",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/ff80f8c615684e796c37ab5ff82a9b31d7390d6e"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-Black.ttf",
+      "git_blob": "5a6499306e1e9d0c7747457b39b50c5175fa81d5",
+      "sha256": "37bafecd27daf830ceee55a55e6e2b8b4178159a8b7cab982a83fd51197e7f07",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/5a6499306e1e9d0c7747457b39b50c5175fa81d5"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-Bold.ttf",
+      "git_blob": "959f673e871ea6b1d18f08fef260be4084458a70",
+      "sha256": "951a0ebab63b1bb0d90a26c27625bda803d570dace3851fa2f1eea65852d8983",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/959f673e871ea6b1d18f08fef260be4084458a70"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-ExtraBold.ttf",
+      "git_blob": "506a8c323400dc3fafac3c912a68d2fefec0e69f",
+      "sha256": "9fff67922ae2bc376a9e5c6d644eebf8c5b17f62a0f38e5f016e4b7e3903662f",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/506a8c323400dc3fafac3c912a68d2fefec0e69f"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-ExtraLight.ttf",
+      "git_blob": "cb83118c6aaa2d44dba2e5471f6e7f83cd157ae5",
+      "sha256": "e9da78a3dcfb6463001ffc4da8af7c24913db50c43a94ab09d02059041de367f",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/cb83118c6aaa2d44dba2e5471f6e7f83cd157ae5"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-Light.ttf",
+      "git_blob": "62d77f1b4fe39a50d8cae44079ec666a23644cdd",
+      "sha256": "950fc47e639af87cf403aa6617bffd72bd9cbfdfdacdc14141b374e059586892",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/62d77f1b4fe39a50d8cae44079ec666a23644cdd"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-Medium.ttf",
+      "git_blob": "9f4c82f8d9e2726fe6df56e958f242fc429b7f5e",
+      "sha256": "6d42123d7954e72600b2e29284a9c8c95cddb4372b21cd3d2a5e8cd4f231f36b",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/9f4c82f8d9e2726fe6df56e958f242fc429b7f5e"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-Regular.ttf",
+      "git_blob": "b723389b5d9f03dbb4db52c9cb88ac50374b86bd",
+      "sha256": "59fbfd8a9bb41301bfe950e7b097fd42d52af224a07761e2c1b2c959a4c9cf9a",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/b723389b5d9f03dbb4db52c9cb88ac50374b86bd"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-SemiBold.ttf",
+      "git_blob": "797332569da3203a97ad55eb232446d761944db6",
+      "sha256": "6598b6ed816158767a7633bdfb01d78daf54cab4cd4d9d3cc0cfd995f4723083",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/797332569da3203a97ad55eb232446d761944db6"
+    },
+    {
+      "family": "Archivo",
+      "file": "Archivo-Thin.ttf",
+      "git_blob": "f63d7c4d897d4d2765b78db965980852cd889d80",
+      "sha256": "1c978a04b40728bf9afac3575fbcd483342c3d7809967949471a87b76cb93d6a",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/f63d7c4d897d4d2765b78db965980852cd889d80"
+    },
+    {
+      "family": "Archivo",
+      "file": "OFL.txt",
+      "git_blob": "8597481ebc941863ab228e79ea4305507cd73cc6",
+      "sha256": "108b4e57c9c796d3d38d0428ca7ee39de47ad93187302718d9b2d8864b9b716b",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/8597481ebc941863ab228e79ea4305507cd73cc6"
+    },
+    {
+      "family": "SpaceGrotesk",
+      "file": "OFL.txt",
+      "git_blob": "cb512b9af44ff61e75e1aad387b7424cdfab36a3",
+      "sha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/cb512b9af44ff61e75e1aad387b7424cdfab36a3"
+    },
+    {
+      "family": "SpaceGrotesk",
+      "file": "SpaceGrotesk-Bold.ttf",
+      "git_blob": "f8eb245d1ec7fd02d77f5a9b55ef6afc4c9ed1c1",
+      "sha256": "7209bbb75fc0f5c546a5f5773b0db74ffc6abf04c2148c1105cace5765a96bdb",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/f8eb245d1ec7fd02d77f5a9b55ef6afc4c9ed1c1"
+    },
+    {
+      "family": "SpaceGrotesk",
+      "file": "SpaceGrotesk-Light.ttf",
+      "git_blob": "b2c106e99ab6f29715b298c3f7c4aa6c869410d6",
+      "sha256": "48ebce72bd4fc089b7750a2a56c3424103f95c63fb4a25f39ca672bb39bb1913",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/b2c106e99ab6f29715b298c3f7c4aa6c869410d6"
+    },
+    {
+      "family": "SpaceGrotesk",
+      "file": "SpaceGrotesk-Medium.ttf",
+      "git_blob": "341b633572a9af2c4440fa8060f83d08bca70a7f",
+      "sha256": "3183b7eb0b4241476360e2cd8e527868616cc16d3ce332c4376505989b772b44",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/341b633572a9af2c4440fa8060f83d08bca70a7f"
+    },
+    {
+      "family": "SpaceGrotesk",
+      "file": "SpaceGrotesk-Regular.ttf",
+      "git_blob": "46aa5dada9c4833e55256a4f3437388f42c5f666",
+      "sha256": "5ede28c4425f3fe4830c8f4754b39e9a87a93d0c3baa5e0a9924532aaa8a98bd",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/46aa5dada9c4833e55256a4f3437388f42c5f666"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-Bold.ttf",
+      "git_blob": "cd1bee0704e05a899cd70f0640a801f1afe046b2",
+      "sha256": "d22c4f3821d725eb01210d278d95dfcfcaadc34699a06658d47c8a5cc5830ada",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/cd1bee0704e05a899cd70f0640a801f1afe046b2"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-ExtraBold.ttf",
+      "git_blob": "437259bb490047abfb788bc1af86dfb3e21440e2",
+      "sha256": "ee43f7507a07ed15c4bf6211d5cc78fa0bacca58e7afbc170f4b1e38a5d0cde4",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/437259bb490047abfb788bc1af86dfb3e21440e2"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-ExtraLight.ttf",
+      "git_blob": "0fc4d9b436be36e6a9e5e517705fccde7bb5152a",
+      "sha256": "a6d4b0e43eecb3823925617bd8052af10cb1ff90247687f07c7676f1bd507714",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/0fc4d9b436be36e6a9e5e517705fccde7bb5152a"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-Light.ttf",
+      "git_blob": "23df09981c389d3396d41a5459e2091d158fc249",
+      "sha256": "ba7e27ea0e9803e57fc1837eae3fa7dc4fe59f3dc548859958fa3f8b77f6909b",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/23df09981c389d3396d41a5459e2091d158fc249"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-Medium.ttf",
+      "git_blob": "dc2e5d08677d603b6755dc6c34fc8ad9aa6fc8a5",
+      "sha256": "d16e6dc99672734698d629705f617c79f6eb6040f5113efe3a145204dc988109",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/dc2e5d08677d603b6755dc6c34fc8ad9aa6fc8a5"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-Regular.ttf",
+      "git_blob": "711830ede02a366f8b99f88e52f3148405e67eaf",
+      "sha256": "e6fd0d7e91550b3ed2b735d4312474362c4716edc4fc0577a0f61ed782d5aed1",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/711830ede02a366f8b99f88e52f3148405e67eaf"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-SemiBold.ttf",
+      "git_blob": "2bf8e48f23d8c58ad66490ec1cb3efd52c06e56f",
+      "sha256": "12d4b18fe6e1af528e4bea69cb0997aeff22f9e52fccffcf66342dd88aa32ab8",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/2bf8e48f23d8c58ad66490ec1cb3efd52c06e56f"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono-Thin.ttf",
+      "git_blob": "c78583e083fc285fdfbf3a5dc711c72058ea4ca7",
+      "sha256": "7ac062c7792f4539841b74b929e9fa3e74a108ef668c6c167e0e6733b0297ad7",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/c78583e083fc285fdfbf3a5dc711c72058ea4ca7"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "OFL.txt",
+      "git_blob": "5ceee0025da23d2cd5fd14b28569708a8db4db2b",
+      "sha256": "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697",
+      "url": "https://api.github.com/repos/SultanAladin/Frontier-/git/blobs/5ceee0025da23d2cd5fd14b28569708a8db4db2b"
+    },
+    {
+      "family": "DMSans",
+      "file": "DMSans-Light.ttf",
+      "url": "https://registry.npmjs.org/@fontsource/dm-sans/-/dm-sans-5.3.0.tgz",
+      "archive_sha256": "48109b74c1a2758ce0274766b877132f023fde5325911f7172c43a5d4b5d8c7a",
+      "archive_member": "package/files/dm-sans-latin-300-normal.woff",
+      "decode": "woff",
+      "sha256": "7a4f52a9d9b356996d04c4081076e5806c6529968dbdeb5aab9b871756fd2a74",
+      "family_name": "DM Sans"
+    },
+    {
+      "family": "DMSans",
+      "file": "DMSans-Regular.ttf",
+      "url": "https://registry.npmjs.org/@fontsource/dm-sans/-/dm-sans-5.3.0.tgz",
+      "archive_sha256": "48109b74c1a2758ce0274766b877132f023fde5325911f7172c43a5d4b5d8c7a",
+      "archive_member": "package/files/dm-sans-latin-400-normal.woff",
+      "decode": "woff",
+      "sha256": "8d46324b491bdf99232f4299ef339e3e736814c2a51ac47e0de9192bc3f8c32d",
+      "family_name": "DM Sans"
+    },
+    {
+      "family": "DMSans",
+      "file": "DMSans-Medium.ttf",
+      "url": "https://registry.npmjs.org/@fontsource/dm-sans/-/dm-sans-5.3.0.tgz",
+      "archive_sha256": "48109b74c1a2758ce0274766b877132f023fde5325911f7172c43a5d4b5d8c7a",
+      "archive_member": "package/files/dm-sans-latin-500-normal.woff",
+      "decode": "woff",
+      "sha256": "dae1d5d53d6daed071079e53fa79be8f9284aa08522cac34ade3ccc4fd728ffc",
+      "family_name": "DM Sans"
+    },
+    {
+      "family": "DMSans",
+      "file": "DMSans-SemiBold.ttf",
+      "url": "https://registry.npmjs.org/@fontsource/dm-sans/-/dm-sans-5.3.0.tgz",
+      "archive_sha256": "48109b74c1a2758ce0274766b877132f023fde5325911f7172c43a5d4b5d8c7a",
+      "archive_member": "package/files/dm-sans-latin-600-normal.woff",
+      "decode": "woff",
+      "sha256": "7c1f78cde4f99bb966c724c88c8bb1dd3b73b558c6b17b40110751940a34e6a9",
+      "family_name": "DM Sans"
+    },
+    {
+      "family": "DMSans",
+      "file": "DMSans-Bold.ttf",
+      "url": "https://registry.npmjs.org/@fontsource/dm-sans/-/dm-sans-5.3.0.tgz",
+      "archive_sha256": "48109b74c1a2758ce0274766b877132f023fde5325911f7172c43a5d4b5d8c7a",
+      "archive_member": "package/files/dm-sans-latin-700-normal.woff",
+      "decode": "woff",
+      "sha256": "a78b797d5b71ec775b8a2146ffff4c93250183120da42442ef665a0ef18fb83e",
+      "family_name": "DM Sans"
+    },
+    {
+      "family": "DMSans",
+      "file": "OFL.txt",
+      "url": "https://api.github.com/repos/google/fonts/git/blobs/4430b85ac62998e2edb914360f9ebdfe43f4deaa",
+      "git_blob": "4430b85ac62998e2edb914360f9ebdfe43f4deaa",
+      "sha256": "9af36190332437f5ecd09974de43c1f7c77a310a996cdd8ceb25628b458840e1",
+      "family_name": "DM Sans"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# MatteRedPlastic — a dummy material declaration.
+[material]
+naming    = "Matte Red Plastic"
+archive   = "Plastics"
+
+[surface]
+albedo    = [ 0.712, 0.118, 0.118 ]
+metallic  = 0.0
+roughness = 0.78

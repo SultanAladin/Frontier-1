@@ -1,0 +1,262 @@
+name: Project-Networking Windows binary
+on:
+  push:
+    branches: ['arena/**']
+    paths:
+      - '.github/workflows/networking-windows.yml'
+      - 'Frontier/Projects/Project-Networking/**'
+      - 'VisualProof/Networking/**'
+      - 'Docs/NetworkingLogin.md'
+      - 'Docs/NetworkingLobbyPlan.md'
+      - 'Docs/XsollaStorePlan.md'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch latest Slate branch for its real project ABI
+        uses: actions/checkout@v4
+        with:
+          repository: unassignedinbox/Slate
+          ref: arena/01a0fd48-slate
+          path: _AgentScratch/Slate
+          sparse-checkout: |
+            Frontier/Engine/ProjectInterchange
+          sparse-checkout-cone-mode: true
+          persist-credentials: false
+      - name: Fetch pinned GLFW
+        uses: actions/checkout@v4
+        with:
+          repository: glfw/glfw
+          ref: 7b6aead9fb88b3623e3b3725ebb42670cbe4c579
+          path: _AgentScratch/Gui/glfw
+          persist-credentials: false
+      - name: Fetch pinned Dear ImGui
+        uses: actions/checkout@v4
+        with:
+          repository: ocornut/imgui
+          ref: f5befd2d29e66809cd1110a152e375a7f1981f06
+          path: _AgentScratch/Gui/imgui
+          persist-credentials: false
+      - name: Fetch pinned Photon Realtime headers (compile now, link later)
+        uses: actions/checkout@v4
+        with:
+          repository: defold/extension-photon-realtime
+          ref: 8dad867470f2eb75aeae0c437e10ee723d8d1ccf
+          path: _AgentScratch/Photon
+          sparse-checkout: |
+            realtime/include
+            realtime/license.txt
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch and verify EOS SDK (never included in Git or uploaded as an SDK artifact)
+        shell: pwsh
+        run: |
+          python -m pip install gdown==5.2.0
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+          python Frontier/Projects/Project-Networking/Build/FetchWindowsSdk.py "$env:RUNNER_TEMP/EOS"
+          if ($LASTEXITCODE -ne 0) { throw 'SDK fetch or hash verification failed' }
+          python Frontier/Projects/Project-Networking/Build/FetchWindowsSdk.py "$env:RUNNER_TEMP/EOS" --manifest Frontier/Projects/Project-Networking/Build/BootstrapperManifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapper fetch or hash verification failed' }
+          python Frontier/Projects/Project-Networking/Build/FetchWindowsSdk.py "$env:RUNNER_TEMP/EOS" --manifest Frontier/Projects/Project-Networking/Build/WindowsPhotonManifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Photon lib fetch or hash verification failed' }
+      - name: Fetch hash-pinned Microsoft XAudio2 redistributable for EOS voice
+        shell: pwsh
+        run: |
+          $Archive = "$env:RUNNER_TEMP/xaudio.zip"
+          Invoke-WebRequest 'https://www.nuget.org/api/v2/package/Microsoft.XAudio2.Redist/1.2.11' -OutFile $Archive
+          if ((Get-FileHash $Archive -Algorithm SHA256).Hash -ne '4552e0b5b59de0cdbc6c217261c45f5968f7bbf1e8ab5f208e4bca6fd8fc5780') { throw 'XAudio package hash mismatch' }
+          Expand-Archive $Archive "$env:RUNNER_TEMP/XAudio"
+          $Dll = "$env:RUNNER_TEMP/XAudio/build/native/release/bin/x64/xaudio2_9redist.dll"
+          if (-not (Test-Path $Dll)) { throw 'XAudio x64 runtime missing' }
+          Copy-Item $Dll "$env:RUNNER_TEMP/EOS/Bin/xaudio2_9redist.dll"
+          $Licenses = @(Get-ChildItem "$env:RUNNER_TEMP/XAudio" -Recurse -File | Where-Object { $_.Name -match 'license|eula' })
+          if (-not $Licenses.Count) { throw 'XAudio license not found' }
+          New-Item -ItemType Directory "$env:RUNNER_TEMP/XAudioNotices" | Out-Null
+          $Index = 0
+          $Licenses | ForEach-Object { Copy-Item $_.FullName "$env:RUNNER_TEMP/XAudioNotices/$Index-$($_.Name)"; $Index++ }
+      - name: Prepare software OpenGL for headless CI only
+        shell: pwsh
+        run: |
+          $Archive = "$env:RUNNER_TEMP/mesa.7z"
+          Invoke-WebRequest 'https://github.com/pal1000/mesa-dist-win/releases/download/26.2.4/mesa3d-26.2.4-release-msvc.7z' -OutFile $Archive
+          if ((Get-FileHash $Archive -Algorithm SHA256).Hash -ne '351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695') {
+            throw 'Mesa hash mismatch'
+          }
+          & 7z x $Archive "-o$env:RUNNER_TEMP/Mesa" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Mesa extraction failed' }
+      - name: Build with MSVC x64 C++20 MD and run real SDK smoke checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          trap { Write-Host "::error::$($_.Exception.Message)"; exit 1 }
+          $VsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $VisualStudio = & $VsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $VisualStudio) { throw 'Visual Studio C++ tools not found' }
+          $VcVars = Join-Path $VisualStudio 'VC\Auxiliary\Build\vcvars64.bat'
+          cmd /c "`"$VcVars`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { Set-Item "Env:$($Matches[1])" $Matches[2] }
+          }
+          $Project = Join-Path $env:GITHUB_WORKSPACE 'Frontier/Projects/Project-Networking'
+          & "$Project/Build/ToolchainSequence.ps1" -SdkRoot "$env:RUNNER_TEMP/EOS" -SlateRoot "$env:GITHUB_WORKSPACE/_AgentScratch/Slate" -GuiRoot "$env:GITHUB_WORKSPACE/_AgentScratch/Gui" -PhotonRoot "$env:GITHUB_WORKSPACE/_AgentScratch/Photon"
+          $Output = "$Project/Build/Output"
+          Start-Transcript -Path "$Output/WindowsChecks.log"
+          try {
+            & "$Output/LoginHost.exe" --sdk-check
+            if ($LASTEXITCODE -ne 0) { throw 'Real EOS initialization/shutdown failed' }
+            $PlatformCheck = & "$Output/LoginHost.exe" --platform-check
+            $PlatformCheck | Write-Host
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::$($PlatformCheck -join '%0A')"
+              throw 'Real platform creation failed before authentication'
+            }
+            $Lifecycle = & "$Output/LoginHost.exe" --lifecycle-check
+            if ($LASTEXITCODE -ne 0) { throw 'Same-process SDK lifecycle regression' }
+            $Lifecycle | Write-Host
+            if (($Lifecycle | Where-Object { $_ -eq 'sdk_initialized_once=1' }).Count -ne 1 -or
+                ($Lifecycle | Where-Object { $_ -eq 'sdk_shutdown_once=1' }).Count -ne 1 -or
+                ($Lifecycle -match 'EOS_AlreadyConfigured')) { throw 'Unexpected SDK reinitialization' }
+            & "$Output/LoginHost.exe"
+            if ($LASTEXITCODE -ne 2) { throw 'Missing-secret refusal did not fail closed' }
+            $Check = "$env:GITHUB_WORKSPACE/VisualProof/Networking/LoginSequenceChecks.cpp"
+            & cl.exe /nologo /std:c++20 /MD /EHsc /W4 /utf-8 $Check "/Fe:$Output/LoginSequenceChecks.exe" "/Fo:$Output/LoginSequenceChecks.obj"
+            if ($LASTEXITCODE -ne 0) { throw 'Login checks compilation failed' }
+            & "$Output/LoginSequenceChecks.exe"
+            if ($LASTEXITCODE -ne 0) { throw 'Login checks failed' }
+            & cl.exe /nologo /std:c++20 /MD /EHsc /W4 /utf-8 "$env:GITHUB_WORKSPACE/VisualProof/Networking/LobbyChecks.cpp" "/Fe:$Output/LobbyChecks.exe" "/Fo:$Output/LobbyChecks.obj"
+            if ($LASTEXITCODE -ne 0) { throw 'Lobby/history checks compilation failed' }
+            & "$Output/LobbyChecks.exe"
+            if ($LASTEXITCODE -ne 0) { throw 'Lobby/history checks failed' }
+            & cl.exe /nologo /std:c++20 /MD /EHsc /W4 /utf-8 "$env:GITHUB_WORKSPACE/VisualProof/Networking/TransportChecks.cpp" "/Fe:$Output/TransportChecks.exe" "/Fo:$Output/TransportChecks.obj"
+            if ($LASTEXITCODE -ne 0) { throw 'Transport checks compilation failed' }
+            & "$Output/TransportChecks.exe"
+            if ($LASTEXITCODE -ne 0) { throw 'Transport checks failed' }
+            & "$Output/LoginHost.exe" --transport-check
+            if ($LASTEXITCODE -ne 0) { throw 'Linked transport self-test failed' }
+            & cl.exe /nologo /std:c++20 /MD /EHsc /W4 /utf-8 "$env:GITHUB_WORKSPACE/VisualProof/Networking/XsollaChecks.cpp" "/Fe:$Output/XsollaChecks.exe" "/Fo:$Output/XsollaChecks.obj"
+            if ($LASTEXITCODE -ne 0) { throw 'Xsolla checks compilation failed' }
+            & "$Output/XsollaChecks.exe"
+            if ($LASTEXITCODE -ne 0) { throw 'Xsolla checks failed' }
+            & "$Output/LoginHost.exe" --xsolla-check
+            if ($LASTEXITCODE -ne 0) { throw 'Linked Xsolla self-test failed' }
+            # Hosted runner has no hardware OpenGL ICD. These DLLs are NOT shipped.
+            Copy-Item "$env:RUNNER_TEMP/Mesa/x64/*.dll" $Output -Force
+            $env:GALLIUM_DRIVER = 'llvmpipe'
+            $Window = Start-Process -FilePath "$Output/NetworkingLogin.exe" -ArgumentList '--ui-smoke' -WorkingDirectory $Output -PassThru
+            if (-not $Window.WaitForExit(60000)) {
+              $Window.Kill()
+              throw 'Window smoke check timed out'
+            }
+            if ($Window.ExitCode -ne 0) {
+              if (Test-Path "$Output/WindowChecks.log") {
+                $Detail = (Get-Content "$Output/WindowChecks.log" -Raw).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Host "::error::$Detail"
+              }
+              throw "GLFW/ImGui window check failed: $($Window.ExitCode)"
+            }
+            if (-not (Test-Path "$Output/WindowProof.bmp")) { throw 'Window screenshot missing' }
+            Get-Content "$Output/WindowChecks.log"
+            Write-Host 'PASS Windows build and SDK smoke checks. PLAYER AUTHENTICATION NOT ATTEMPTED.'
+          } finally {
+            Stop-Transcript
+          }
+      - name: Publish synthetic lobby layout proof for visual inspection
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $Image = [System.Drawing.Image]::FromFile((Resolve-Path 'Frontier/Projects/Project-Networking/Build/Output/LobbyProof.bmp'))
+          $Stream = [System.IO.MemoryStream]::new()
+          $Image.Save($Stream, [System.Drawing.Imaging.ImageFormat]::Png)
+          $Data = [Convert]::ToBase64String($Stream.ToArray())
+          $Image.Dispose(); $Stream.Dispose()
+          $Parts = [Math]::Ceiling($Data.Length / 32000)
+          for ($I = 0; $I -lt $Parts; $I++) {
+            $Chunk = $Data.Substring($I * 32000, [Math]::Min(32000, $Data.Length - $I * 32000))
+            Write-Host "::notice title=LobbyPreviewPNG-$I-of-$Parts::$Chunk"
+          }
+      - name: Package binaries with EOS runtime, without credentials
+        shell: pwsh
+        run: |
+          $Project = 'Frontier/Projects/Project-Networking'
+          $Package = '_AgentScratch/Package/Project-Networking'
+          New-Item -ItemType Directory -Force "$Package/Build/Output", "$Package/Content/Scenes", "$Package/App" | Out-Null
+          foreach ($Name in @('NetworkingLogin.exe', 'ProjectNetworking.dll', 'EOSSDK-Win64-Shipping.dll', 'BuildEvidence.json', 'WindowsChecks.log', 'WindowChecks.log', 'WindowProof.bmp', 'LobbyProof.bmp')) {
+            Copy-Item "$Project/Build/Output/$Name" "$Package/Build/Output/"
+          }
+          Move-Item "$Package/Build/Output/NetworkingLogin.exe" "$Package/App/NetworkingLogin.exe"
+          Copy-Item "$Package/Build/Output/EOSSDK-Win64-Shipping.dll" "$Package/App/EOSSDK-Win64-Shipping.dll"
+          # Epic's tool generates the real signed launcher AND its matching configuration.
+          & "$env:RUNNER_TEMP/EOS/Tools/EOSBootstrapperTool.exe" --help
+          & "$env:RUNNER_TEMP/EOS/Tools/EOSBootstrapperTool.exe" --output-path "$Package/Charge.exe" --app-path 'App/NetworkingLogin.exe' --working-dir 'App'
+          if ($LASTEXITCODE -ne 0) { throw 'Official Bootstrapper configuration failed' }
+          $Expected = (Get-FileHash "$env:RUNNER_TEMP/EOS/Tools/EOSBootstrapper.exe" -Algorithm SHA256).Hash
+          if ((Get-FileHash "$Package/Charge.exe" -Algorithm SHA256).Hash -ne $Expected) { throw 'Generated launcher differs from pinned vendor Bootstrapper' }
+          $Config = @(Get-ChildItem "$Package/Charge*" -File | Where-Object Extension -ne '.exe')
+          if ($Config.Count -ne 1) { throw 'Expected one vendor-generated Bootstrapper config' }
+          $Config | Get-Content | Tee-Object -FilePath "$Package/Build/Output/BootstrapperChecks.log"
+          if ((Get-Content $Config[0].FullName -Raw) -notmatch 'ApplicationPath.*App[/\\]NetworkingLogin.exe') { throw 'Unexpected launcher target' }
+          # Never install/start the service or simulate an account login on CI.
+          Copy-Item "$env:RUNNER_TEMP/EOS/Bin/xaudio2_9redist.dll" "$Package/App/xaudio2_9redist.dll"
+          Copy-Item "$env:RUNNER_TEMP/XAudioNotices" "$Package/XAudioNotices" -Recurse
+          # The portable credential/data-key file is private and must never enter public artifacts.
+          if (Get-ChildItem $Package -Recurse -File | Where-Object { $_.Name -match '\.local\.|\.pending$' }) { throw 'Private/local file found in release staging' }
+          Copy-Item '_AgentScratch/Gui/glfw/LICENSE.md' "$Package/GLFW-LICENSE.md"
+          Copy-Item '_AgentScratch/Gui/imgui/LICENSE.txt' "$Package/IMGUI-LICENSE.txt"
+          Copy-Item '_AgentScratch/Photon/realtime/license.txt' "$Package/PHOTON-LICENSE.txt"
+          Copy-Item "$Project/ProjectNetworking.frontier" "$Package/"
+          Copy-Item "$Project/Content/Scenes/Networking.gltf" "$Package/Content/Scenes/"
+          Copy-Item Docs/NetworkingLogin.md "$Package/INSTRUCTIONS.md"
+          Copy-Item "$Project/Build/BinaryInstructions.txt" "$Package/START-HERE.txt"
+          Copy-Item "$Project/Build/ThirdPartyNotices.txt" "$Package/THIRD-PARTY.txt"
+          Get-ChildItem $Package -Recurse -File | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $([IO.Path]::GetRelativePath((Resolve-Path $Package), $_.Path))" } |
+            Set-Content "$Package/SHA256SUMS.txt"
+          Compress-Archive -Path $Package -DestinationPath '_AgentScratch/Project-Networking-Windows-x64.zip'
+          $Zip = '_AgentScratch/Project-Networking-Windows-x64.zip'
+          "$((Get-FileHash $Zip -Algorithm SHA256).Hash)  Project-Networking-Windows-x64.zip" |
+            Set-Content '_AgentScratch/Project-Networking-Windows-x64.zip.sha256'
+          Expand-Archive $Zip '_AgentScratch/VerifyPackage'
+          $Extracted = (Resolve-Path '_AgentScratch/VerifyPackage/Project-Networking').Path
+          # Inject software GL only into the verification directory, never the ZIP.
+          Copy-Item "$env:RUNNER_TEMP/Mesa/x64/*.dll" "$Extracted/App" -Force
+          $env:GALLIUM_DRIVER = 'llvmpipe'
+          $Window = Start-Process -FilePath "$Extracted/App/NetworkingLogin.exe" -ArgumentList '--ui-smoke' -WorkingDirectory "$Extracted/App" -PassThru
+          if (-not $Window.WaitForExit(60000)) { $Window.Kill(); throw 'Extracted GUI timed out' }
+          if ($Window.ExitCode -ne 0) { throw 'Extracted package failed GUI/EOS startup' }
+      - name: Upload Windows test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project-Networking-Windows-x64
+          path: _AgentScratch/Project-Networking-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish persistent release download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $Tag = "networking-test-$env:GITHUB_RUN_ID"
+          $Zip = '_AgentScratch/Project-Networking-Windows-x64.zip'
+          $Published = $false
+          for ($Attempt = 0; $Attempt -lt 3; $Attempt++) {
+            $Existing = & gh release view $Tag --repo $env:GITHUB_REPOSITORY 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              $Create = & gh release create $Tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title 'Frontier - EOS Lobby Lab' --notes-file 'Frontier/Projects/Project-Networking/Build/ReleaseNotes.txt' 2>&1
+              $Create | Write-Host
+            }
+            $Upload = & gh release upload $Tag $Zip "$Zip.sha256" --clobber --repo $env:GITHUB_REPOSITORY 2>&1
+            $Code = $LASTEXITCODE
+            $Upload | Write-Host
+            if ($Code -eq 0) { $Published = $true; break }
+            $Detail = (($Upload | Select-Object -Last 12) -join "`n").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::warning::Release upload attempt failed: $Detail"
+            if ($Attempt -lt 2) { Start-Sleep -Seconds 5 }
+          }
+          if (-not $Published) { throw 'Release publication failed; the checked ZIP remains available as the workflow artifact' }

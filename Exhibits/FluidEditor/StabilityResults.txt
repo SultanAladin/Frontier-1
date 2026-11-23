@@ -1,0 +1,29 @@
+# FluidMetrics, 24-cell grid, after Follow-up 47. Inside the smoke (density > 0.05 or fire > 1): mean speed v, 95th-percentile speed, mean vorticity ω, at simulation times t (s).
+page.evaluate: Target page, context or browser has been closed
+preset-campfire        14x24x14  t1: v1.57 p95 4.30 ω8.0 | t4: v2.01 p95 5.26 ω9.4 | t7: v1.79 p95 5.75 ω8.4 | t10: v1.76 p95 5.21 ω7.4
+preset-explosion       18x24x18  t1: v1.29 p95 1.61 ω3.5 | t6: v0.00 p95 0.00 ω0.0 | t8: v0.00 p95 0.00 ω0.0 | t10: v0.00 p95 0.00 ω0.0
+preset-mograph-grid    24x24x24  t1: v0.00 p95 0.00 ω0.0 | t4: v0.00 p95 0.00 ω0.0 | t7: v0.00 p95 0.00 ω0.0 | t10: v0.00 p95 0.00 ω0.0
+preset-smoke-plume     14x24x14  t1: v1.12 p95 1.25 ω5.1 | t6: v1.39 p95 1.80 ω3.4 | t8: v1.11 p95 1.75 ω2.9 | t10: v1.05 p95 1.74 ω2.7
+preset-smoke-ring      16x16x24  t1: v1.02 p95 1.64 ω4.8 | t6: v0.71 p95 1.71 ω3.5 | t8: v0.64 p95 1.75 ω3.2 | t10: v0.58 p95 1.53 ω3.0
+preset-tornado         14x24x14  t1: v4.25 p95 5.86 ω11.1 | t4: v2.30 p95 5.91 ω6.4 | t7: v2.16 p95 5.47 ω5.6 | t10: v2.02 p95 5.28 ω5.4
+preset-wind-tunnel     24x12x12  t1: v3.05 p95 4.52 ω4.3 | t6: v3.23 p95 4.34 ω2.5 | t8: v3.25 p95 4.32 ω2.4 | t10: v3.25 p95 4.30 ω2.4
+pyro-ashfall-motes     21x24x21  t1: v1.38 p95 2.30 ω3.2 | t4: v0.72 p95 1.29 ω1.4 | t7: v0.25 p95 0.51 ω0.5 | t10: v0.17 p95 0.36 ω0.3
+pyro-brick-fracture-dust 24x22x24  t1: v0.25 p95 0.70 ω1.2 | t4: v0.34 p95 0.74 ω1.3 | t7: v0.25 p95 0.55 ω0.9 | t10: v0.22 p95 0.45 ω0.7
+pyro-camp-fire         17x24x17  t1: v1.92 p95 4.01 ω7.3 | t4: v1.67 p95 5.61 ω6.9 | t7: v2.08 p95 5.91 ω8.2 | t10: v2.51 p95 5.97 ω9.7
+pyro-camp-fire         17x24x17  t7: v2.08 p95 5.91 ω8.2 | t10: v2.51 p95 5.97 ω9.7 | t13: v2.15 p95 5.40 ω7.9 | t16: v1.92 p95 5.36 ω7.7 | t20: v1.95 p95 5.50 ω7.5
+pyro-dust-tornado      15x24x15  t1: v0.75 p95 1.07 ω2.5 | t4: v0.79 p95 1.42 ω2.3 | t7: v0.67 p95 1.28 ω2.0 | t10: v0.58 p95 1.25 ω1.6
+pyro-lantern-flame     18x24x18  t1: v0.98 p95 1.37 ω6.8 | t4: v1.38 p95 2.37 ω7.8 | t7: v1.45 p95 2.39 ω8.8 | t10: v1.19 p95 2.30 ω7.3
+pyro-ledge-sandfall    16x24x16  t1: v0.13 p95 0.21 ω0.6 | t4: v0.21 p95 0.51 ω1.0 | t7: v0.25 p95 0.72 ω1.1 | t10: v0.25 p95 0.78 ω1.1
+pyro-low-gpu-performance 22x24x22  t1: v2.98 p95 5.28 ω5.7 | t4: v1.19 p95 4.82 ω2.9 | t7: v1.01 p95 5.45 ω2.8 | t10: v1.28 p95 6.52 ω3.6
+pyro-megaton-open-bounds 23x24x23  t1: v3.30 p95 6.16 ω5.4 | t4: v0.73 p95 1.07 ω0.9 | t7: v0.19 p95 0.27 ω0.1 | t10: v0.11 p95 0.15 ω0.0
+pyro-obstacle-deflection 21x24x21  t1: v3.10 p95 6.06 ω6.8 | t4: v1.34 p95 4.65 ω3.5 | t7: v1.17 p95 5.21 ω3.5 | t10: v1.38 p95 5.56 ω4.1
+pyro-oil-well-inferno  19x24x19  t1: v2.87 p95 7.50 ω11.0 | t4: v2.54 p95 8.88 ω11.5 | t7: v2.95 p95 8.31 ω10.7 | t10: v3.10 p95 8.68 ω11.1
+pyro-settling-dust     24x19x24  t1: v0.15 p95 0.19 ω0.4 | t4: v0.19 p95 0.30 ω0.6 | t7: v0.23 p95 0.37 ω0.7 | t10: v0.24 p95 0.38 ω0.7
+pyro-shrapnel-airburst 23x24x23  t1: v2.62 p95 4.72 ω4.9 | t4: v0.61 p95 0.96 ω0.9 | t7: v0.16 p95 0.21 ω0.1 | t10: v0.11 p95 0.15 ω0.0
+pyro-small-gust        24x14x24  t1: v0.54 p95 0.86 ω1.6 | t4: v0.87 p95 1.43 ω1.7 | t7: v0.86 p95 1.38 ω1.7 | t10: v0.82 p95 1.36 ω1.7
+pyro-tactical-ordnance 23x24x23  t1: v2.26 p95 3.95 ω4.3 | t4: v0.53 p95 0.96 ω0.9 | t7: v0.13 p95 0.22 ω0.1 | t10: v0.10 p95 0.16 ω0.1
+pyro-tyre-burnout      24x16x24  t1: v0.60 p95 0.83 ω1.0 | t4: v0.87 p95 1.19 ω1.2 | t7: v0.88 p95 1.20 ω1.1 | t10: v0.86 p95 1.22 ω1.1
+pyro-ue5-pyro-default  21x24x21  t1: v2.87 p95 6.21 ω6.4 | t4: v1.40 p95 6.90 ω3.8 | t7: v1.55 p95 7.01 ω4.5 | t10: v1.65 p95 7.02 ω4.7
+pyro-voxelized-stylized 21x24x21  t1: v2.85 p95 5.38 ω5.8 | t4: v1.13 p95 4.13 ω3.0 | t7: v0.99 p95 5.19 ω3.0 | t10: v1.23 p95 6.31 ω3.8
+pyro-wildfire-tornado  20x24x20  t1: v3.43 p95 7.18 ω6.6 | t4: v1.76 p95 7.08 ω4.4 | t7: v1.97 p95 8.05 ω5.4 | t10: v2.76 p95 9.57 ω7.5
+pyro-wildfire-tornado  20x24x20  t7: v1.97 p95 8.05 ω5.4 | t10: v2.76 p95 9.57 ω7.5 | t13: v3.26 p95 9.68 ω8.9 | t16: v2.89 p95 8.76 ω7.7 | t20: v2.65 p95 7.73 ω6.7

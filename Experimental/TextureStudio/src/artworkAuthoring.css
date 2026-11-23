@@ -1,0 +1,179 @@
+/* Shared Pattern / Stamp authoring: compact command groups and subordinate mask rows. */
+.artwork-mask-row { display:flex; position:relative; margin:0 4px 6px 27px; border:1px solid transparent; border-radius:13px; background:#191919; min-width:0; }
+.artwork-mask-row::before { content:""; position:absolute; width:11px; height:26px; border-left:1px solid #48483e; border-bottom:1px solid #48483e; left:-14px; top:-12px; border-radius:0 0 0 6px; }
+.artwork-mask-row.selected { background:#292722; border-color:#d9b28166; }
+.artwork-mask-row > button { display:flex; align-items:center; gap:9px; background:none!important; border:0!important; padding:9px!important; min-width:0; border-radius:12px; }
+.artwork-mask-row > button:first-child { flex:1; text-align:left; }
+.artwork-mask-row > button:last-child { flex:none; width:29px; justify-content:center; }
+.artwork-mask-row img { width:28px; height:28px; border-radius:6px; border:1px solid #ffffff24; }
+.artwork-mask-row strong,.artwork-mask-row small { display:block; font-size:10px; font-weight:400; }
+.artwork-mask-row small { font-size:8px; color:#96968a; margin-top:4px; }
+.artwork-mask-editor { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; background:#141414; margin:10px; border:1px solid #ffffff0e; border-radius:15px; overflow:auto; }
+.artwork-mask-editor > header { display:flex; align-items:center; justify-content:space-between; padding:14px; gap:12px; border-bottom:1px solid #ffffff0a; }
+.artwork-mask-editor > header strong { display:block; font-weight:500; font-size:13px; }
+.artwork-mask-editor > header span { display:block; color:#97978b; font-size:10px; margin-top:5px; }
+.artwork-mask-editor button { display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid #ffffff10; border-radius:16px; padding:7px 11px; background:#20201e; color:#cecec1; font-size:10px; cursor:pointer; }
+.artwork-mask-editor button[aria-pressed=true] { border-color:#d9b28180; background:#38362e; color:#f0e5cd; }
+.artwork-mask-editor fieldset { border:0; padding:12px; min-width:0; display:flex; flex-direction:column; gap:10px; flex:1; margin:0; }
+.artwork-mask-tools,.artwork-mask-ink,.artwork-mask-fill { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.artwork-mask-tools > button { width:32px; height:32px; padding:7px; }
+.artwork-mask-ink { color:#99998b; font-size:10px; }
+.artwork-mask-ink > button { width:26px; height:26px; background:var(--mask-ink); border:2px solid #646459; border-radius:50%; padding:0; }
+.artwork-mask-ink > button[aria-pressed=true] { background:var(--mask-ink); outline:1px solid #d9b281; outline-offset:2px; }
+.artwork-mask-ink label { display:inline-flex!important; align-items:center; gap:7px; font-size:10px; margin:0 6px; }
+.artwork-mask-ink input[type=range] { width:95px; accent-color:#dedecb; }
+.artwork-mask-ink details { position:relative; margin-left:auto; }
+.artwork-mask-ink summary { cursor:pointer; padding:8px; }
+.artwork-mask-ink details > div { position:absolute; z-index:30; right:0; top:100%; padding:15px; display:grid; gap:12px; width:230px; background:#242421; border:1px solid #ffffff18; border-radius:16px; box-shadow:0 12px 35px #0008; }
+.artwork-mask-surface { position:relative; width:min(100%,512px); aspect-ratio:1; flex:none; align-self:center; outline:1px solid #555548; touch-action:none; cursor:crosshair; margin:auto; background:black; }
+.artwork-mask-surface:focus-visible { outline:2px solid #d9b281; }
+.artwork-mask-surface > img,.artwork-mask-surface > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; user-select:none; }
+.artwork-mask-editor footer { padding:10px 14px; color:#aaa997; font-size:9px; border-top:1px solid #ffffff0a; line-height:1.5; }
+.artwork-mask-editor footer small { display:block; color:#78786c; }
+.artwork-mask-properties .artwork-mask-coordinate-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+/* Pattern's layer rows reuse tp-layer-row verbatim (see PatternEditor.jsx/textureStudio.css) so the
+   stack reads identically to the Texture workspace's; only the stat-chip sizing differs here. */
+.studio-pattern .pe-layers-dock .tp-layer-stats button { border-radius:20px; height:65px; }
+.studio-pattern .pe-layers-dock .tp-layer-stats strong { font-size:20px; line-height:22px; }
+.studio-pattern .pe-layers-dock .tp-layer-stats small { font-size:9px; }
+.studio-pattern .pe-inspector[data-mask-editing=true] > :not(.studio-dock-tab):not(.se-selected-panel) { display:none; }
+.studio-pattern .pe-inspector[data-mask-editing=true] .se-property-fields > :not(.artwork-mask-properties) { display:none; }
+.stamp-right[data-mask-editing=true] .stamp-inspector-scroll > :not(fieldset:has(>.artwork-mask-properties)) { display:none; }
+/* Disclosure groups keep the canvas tall; no tool is removed. */
+.se-toolbar-wrap .se-drawing-tools { display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:7px; }
+.se-toolbar-wrap .se-drawing-tools button { margin:0!important; }
+.se-toolbar-wrap .se-drawing-tools kbd { display:none; }
+.se-tool-menu { position:relative; font-size:10px; }
+.se-tool-menu > summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid #ffffff10; border-radius:16px; color:#aeae9f; white-space:nowrap; }
+.se-tool-menu > summary::-webkit-details-marker { display:none; }
+.se-tool-menu[open] > summary { color:#e8e2cd; border-color:#d9b28155; }
+.se-tool-menu > .se-menu-content { position:absolute; z-index:55; top:calc(100% + 7px); left:0; padding:12px; min-width:220px; max-width:min(340px,70vw); border:1px solid #ffffff18; border-radius:17px; background:#242422; box-shadow:0 14px 36px #0009; display:flex; flex-wrap:wrap; gap:6px; }
+.se-tool-menu .se-options-tools { display:grid; gap:12px; padding:0; border:0; }
+.se-tool-menu .se-options-tools > span { display:none; }
+.se-selection-context { display:flex; gap:6px; align-items:center; padding:5px 9px; border-bottom:1px solid #ffffff0b; flex-wrap:wrap; }
+.se-selection-context > .vector-boolean-actions { border:0; padding:0; background:none; flex:none; }
+.se-selection-context .vector-boolean-actions > strong,.se-selection-context .vector-boolean-actions > small { display:none; }
+.se-selection-context .vector-boolean-actions > button { padding:5px; width:30px; height:30px; min-height:0; }
+.se-selection-context .se-arrange-tools { border:0; padding:0; gap:5px; }
+.se-selection-context .se-align-tools { display:grid; grid-template-columns:repeat(4,30px); gap:5px; }
+.se-selection-context .se-align-tools button,.se-selection-context .se-object-tools button { width:30px; height:30px; padding:5px; }
+.se-selection-context .se-object-tools { display:flex; gap:5px; }
+.stamp-vector-workbench .stamp-canvas-appearance { padding:0 0 6px; }
+.stamp-vector-workbench .stamp-canvas-appearance small { display:none; }
+@media(max-width:900px) { .artwork-mask-editor fieldset { padding:9px; } .artwork-mask-tools { gap:3px; } .artwork-mask-tools > button { width:29px; height:29px; } .artwork-mask-surface { width:min(100%,430px); } }
+
+.studio-pattern .pe-workspace[data-mask-editing=true] > .pe-repeat-heading,
+.studio-pattern .pe-workspace[data-mask-editing=true] > .pe-repeat { display:none; }
+.studio-pattern .pe-workspace[data-mask-editing=true] > .artwork-mask-editor { min-height:480px; }
+
+/* Fit the mask to the available canvas bounds: painting must not scroll the title/Done button out of view. */
+.artwork-mask-editor { overflow:hidden; }
+.artwork-mask-editor > header,.artwork-mask-editor > footer { flex:none; }
+.artwork-mask-editor fieldset { min-height:0; }
+.artwork-mask-tools,.artwork-mask-ink,.artwork-mask-fill { flex:none; }
+.artwork-mask-bounds { container-type:size; display:flex; flex:1; min-height:120px; align-items:center; justify-content:center; }
+.artwork-mask-bounds .artwork-mask-surface { width:min(100cqw,100cqh,512px); margin:0; }
+.stamp-transform-tools[hidden] { display:none!important; }
+.se-toolbar-wrap .se-drawing-tools > button { width:32px!important; min-width:32px!important; height:32px!important; padding:7px!important; }
+.studio-pattern .pe-canvas-heading { padding-top:10px; padding-bottom:10px; }
+.studio-pattern .pe-canvas-heading input { font-size:18px; }
+
+.artwork-mask-body { display:flex; flex-direction:column; flex:1; min-height:0; }
+.artwork-mask-body > fieldset { flex:none; }
+.artwork-mask-body > .artwork-mask-bounds { container-type:normal; margin:0 12px 12px; }
+.studio-pattern .pe-workspace[data-mask-editing=true] { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.studio-pattern .pe-workspace[data-mask-editing=true] > .studio-dock-tab,
+.studio-pattern .pe-workspace[data-mask-editing=true] > .pe-mode-switch { flex:none; }
+.studio-pattern .pe-workspace[data-mask-editing=true] > .pe-canvas-heading { display:none; }
+.studio-pattern .pe-workspace[data-mask-editing=true] > .artwork-mask-editor { min-height:0; }
+.studio-pattern .pe-layers-dock .pattern-layer-heading h1 { font-size:23px; font-weight:300; }
+.studio-pattern .pe-layers-dock .pattern-layer-heading { padding:17px 16px; }
+.studio-pattern .pe-layers-dock .artwork-mask-row > button:first-child { width:auto; flex:1; }
+.studio-pattern .pe-layers-dock .artwork-mask-row > button:last-child { width:29px; flex:0 0 29px; padding:5px!important; }
+.studio-pattern .pe-layers-dock .artwork-mask-row > button > span { background:none; border:0; width:auto; height:auto; display:block; flex:1; min-width:0; }
+.artwork-mask-row strong,.artwork-mask-row small { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+/* tp-layer-row ported 1:1 from the Texture workspace keeps its own thumbnail/kind-icon/name sizing;
+   cancel the legacy 12px swatch-square meant for the retired se-layer-row's plain icon slot. */
+.studio-pattern .pe-layers-dock .tp-layer-select > span { width:auto; height:auto; border-radius:0; flex-shrink:1; }
+.studio-pattern .pe-layers-dock .tp-layer-select > .tp-layer-thumbnail { border-radius:8px; }
+.studio-pattern .pe-layers-dock .tp-layer-select > .tp-kind-icon { border-radius:9px; }
+.studio-pattern .pe-layers-dock .tp-layer-select small { margin-left:0; }
+.pattern-library-toggle { margin-left:10px; padding:0!important; width:21px; height:21px; display:inline-grid; place-items:center; }
+.studio-pattern .pe-library[data-collapsed=true] > :not(.studio-dock-tab) { display:none; }
+@media(min-width:601px) { .studio-pattern .pe-body:has(>.pe-library[data-collapsed=true]) { grid-template-rows:32px minmax(180px,1fr); } }
+.artwork-document-menu > .se-menu-content { left:auto; right:0; flex-direction:column; min-width:180px; }
+.artwork-document-menu .se-menu-content > button { justify-content:flex-start; min-height:32px; padding:8px 12px; font-size:10px; gap:8px; }
+.artwork-document-menu > summary { padding:6px 8px; border:0; }
+
+.artwork-mask-tools .se-tool-menu > summary { width:32px; height:32px; padding:0; display:grid; place-items:center; border:1px solid #ffffff12; border-radius:50%; }
+.artwork-mask-tools .se-menu-content { min-width:190px; }
+@media(max-width:1100px) {
+    .stamp-studio .tp-layer-stats .tp-status-disc,.studio-pattern .tp-layer-stats .tp-status-disc { width:14px; height:14px; }
+    .stamp-studio .tp-layer-stats button,.studio-pattern .tp-layer-stats button { padding:9px 8px; }
+    .stamp-studio .tp-layer-stats strong,.studio-pattern .tp-layer-stats strong { font-size:19px; right:7px; top:7px; bottom:auto; }
+}
+/* Selection operations belong to the Inspector, never above the canvas. */
+.pe-inspector .se-selection-context,.stamp-right .se-selection-context { display:flex; flex-direction:column; align-items:stretch; padding:14px; margin:12px 0; border:1px solid #ffffff12; border-radius:16px; background:#191919; gap:14px; }
+.artwork-alignment h3,.artwork-selection-mask h3 { margin:0 0 10px; font-size:12px; font-weight:500; }
+.artwork-alignment .se-align-tools { display:grid; grid-template-columns:repeat(4,32px); gap:7px; }
+.artwork-alignment button { padding:7px; border-radius:10px; }
+.artwork-selection-mask { display:grid; gap:8px; }
+.artwork-selection-mask small { font-size:9px; color:#99998b; line-height:1.6; }
+.artwork-selection-mask button { font-size:10px; padding:9px; text-align:left; }
+.artwork-multiple-heading { font-size:13px; font-weight:500; padding:12px 0; }
+.studio-pattern input[role=switch]:not(.se-row-flag input),.stamp-studio input[role=switch] { appearance:none!important; -webkit-appearance:none!important; width:32px!important; min-width:32px!important; height:18px!important; padding:0!important; border:1px solid #636357!important; border-radius:20px!important; background:#33332e!important; position:relative; cursor:pointer; vertical-align:middle; flex:none; }
+.studio-pattern input[role=switch]:not(.se-row-flag input)::after,.stamp-studio input[role=switch]::after { content:""; position:absolute; width:12px; height:12px; border-radius:50%; background:#c6c6b8; left:2px; top:2px; transition:transform .12s; }
+.studio-pattern input[role=switch]:not(.se-row-flag input):checked,.stamp-studio input[role=switch]:checked { background:#687a5a!important; }
+.studio-pattern input[role=switch]:not(.se-row-flag input):checked::after,.stamp-studio input[role=switch]:checked::after { transform:translateX(14px); background:#eff1df; }
+input[role=switch]:focus-visible { outline:2px solid #d9b281; outline-offset:3px; }
+input[role=switch]:disabled { opacity:.4; cursor:default; }
+
+.artwork-shared-properties { margin:12px 0; padding:12px; background:#191919; border-radius:14px; font-size:11px; }
+.artwork-shared-properties p { color:#a5a594; font-size:10px; line-height:1.6; }
+.artwork-selection-heading { font-size:13px; font-weight:500; margin:0; }
+.artwork-selection-inspector:empty { display:none; }
+.artwork-shared-properties > label { display:flex; flex-direction:column; gap:8px; }
+.artwork-shared-properties input[type=number] { box-sizing:border-box; width:100%; min-height:33px; padding:8px 10px; border:1px solid #ffffff12; border-radius:12px; background:#090909; color:#d7d7c8; }
+.artwork-array-controls { margin:12px 0; padding:14px; border:1px solid #ffffff12; border-radius:16px; background:#191919; font-size:11px; }
+.artwork-array-controls > summary { cursor:pointer; font-weight:500; padding:4px 0; }
+.artwork-array-controls fieldset { border:0; min-width:0; margin:12px 0 0; padding:0; display:grid; gap:12px; }
+.artwork-array-controls label { display:flex!important; flex-direction:column; gap:7px; margin:0!important; font-size:10px; }
+.artwork-array-controls select,.artwork-array-controls input[type=number] { box-sizing:border-box; width:100%; min-width:0; min-height:32px; padding:7px 9px; border:1px solid #ffffff16; border-radius:10px; background:#090909; color:#d7d7c8; }
+.artwork-array-numbers { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.artwork-array-controls small { color:#99998b; font-size:9px; line-height:1.6; }
+.artwork-array-controls .artwork-array-toggle { flex-direction:row!important; align-items:center; }
+.artwork-array-controls button { padding:9px 12px; border-radius:14px; font-size:10px; }
+
+/* Pattern surface channels and reusable nested artwork. */
+.pattern-organization, .pattern-surface-channels { margin: 8px; color: var(--text); font-size: 11px; }
+.pattern-organization details, .pattern-surface-channels { padding: 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); }
+.pattern-organization details + details { margin-top: 8px; }
+.pattern-organization summary, .pattern-surface-channels summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.pattern-organization label, .pattern-surface-channels label { display: flex; flex-direction: column; gap: 5px; margin: 9px 0; }
+.pattern-organization input:not([role=switch]), .pattern-organization select, .pattern-surface-channels input:not([role=switch]), .pattern-surface-channels select { background: var(--input, #101010); color: inherit; border: 1px solid var(--border); border-radius: 9px; padding: 8px; width: 100%; min-width: 0; }
+.pattern-organization button, .pattern-surface-channels button, .pattern-channel-download { background: var(--input, #171717); border: 1px solid var(--border); border-radius: 9px; padding: 8px; color: inherit; cursor: pointer; margin: 3px 0; }
+.pattern-organization button:disabled { opacity: .4; cursor: default; }
+.pattern-organization-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.pattern-organization small, .pattern-surface-channels small { display: block; color: var(--muted); line-height: 1.5; }
+.pattern-channel-toggle { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.pattern-channel-toggle input[role=switch] { appearance: none; flex: 0 0 29px; width: 29px; height: 17px; border-radius: 20px; border: 1px solid var(--border); background: #3c3c37; position: relative; cursor: pointer; }
+.pattern-channel-toggle input[role=switch]::after { content: ''; position: absolute; width: 11px; height: 11px; border-radius: 50%; top: 2px; left: 2px; background: #c5c4b8; }
+.pattern-channel-toggle input[role=switch]:checked { background: #567761; }
+.pattern-channel-toggle input[role=switch]:checked::after { left: 14px; }
+.pattern-enclosure-tree, .pattern-stored-groups { max-height: 230px; overflow: auto; }
+.pattern-enclosure .pattern-enclosure { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 5px; }
+.pattern-enclosure-heading { display: flex; gap: 3px; }
+.pattern-enclosure-heading button:last-child { flex: 1; text-align: left; }
+.pattern-enclosure-heading button[aria-pressed=true] { outline: 1px solid var(--accent); }
+.pattern-stored-groups article { padding: 9px 0; border-top: 1px solid var(--border); }
+.pattern-stored-groups img { width: 70px; height: 60px; object-fit: contain; background: #353630; float: left; margin-right: 8px; }
+.pattern-stored-groups .pattern-organization-actions { clear: both; }
+.pattern-surface-channels fieldset { border: none; padding: 0; min-width: 0; }
+.pattern-channel-row { padding: 7px 0; border-bottom: 1px solid var(--border); }
+.pattern-channel-preview { width: 100%; max-height: 250px; object-fit: contain; background: repeating-conic-gradient(#444 0% 25%, #333 0% 50%) 0 / 16px 16px; border-radius: 10px; }
+.pattern-channel-download { display: block; text-align: center; text-decoration: none; }
+.studio-pattern .pe-layers-dock { overflow-y: auto; }
+.studio-pattern .pe-layers-dock > * { flex-shrink: 0; }
+.studio-pattern .pe-layers-dock .pattern-organization { max-height: 290px; overflow-y: auto; }
+.studio-pattern .pe-layers-dock .se-layer-panel { flex: 1 0 150px; min-height: 150px; }
+.pattern-organization input:focus-visible, .pattern-organization button:focus-visible, .pattern-surface-channels input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

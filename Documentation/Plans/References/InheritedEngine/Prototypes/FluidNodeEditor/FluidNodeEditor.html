@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Fluid Node Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#b0fab0;
+
+    --bg-canvas:#141416;
+    --bg-viewport:#0a0a0b;
+    --bg-entry:#1a1a1c;
+    --bg-chrome:#16161a;
+    --bg-raise:#2c2c30;
+    --bg-raise-hi:#3c3c40;
+    --bg-input:#0f0f12;
+
+    --border:#2c2c30;
+    --border-hover:#44444a;
+    --border-soft:#3c3c40;
+    --border-pill:#3f3f42;
+    --border-entry:#3c3c40;
+
+    --text:#f3f4f6;
+    --text-dim:#d1d5db;
+    --text-mid:#9ca3af;
+    --text-faint:#6b7280;
+    --text-ghost:#4b5563;
+
+    --dot-grid:#2a2a2e;
+    --edge:#444;
+    --bad:#ef4444;
+    --bad-hi:#f87171;
+    --warn:#eab308;
+
+    --port-float:#aaaaab;
+    --port-vec2:#daaa55;
+    --port-vec3:#55da55;
+    --port-color:#a355da;
+
+    /* 📝 The four liquid payloads. Volume is the live sim state and gets the coolest, most saturated
+          blue because it is the spine of every graph; region borrows the warm red the heightmap used,
+          since a collider is the same kind of "bounded shape" input; force is amber for motion; and
+          surface is a pale cyan, reading as the water skin rather than the water body. */
+    --port-volume:#4aa8ff;
+    --port-region:#da5555;
+    --port-force:#e0a13a;
+    --port-surface:#6fe3d6;
+    --port-any:#666;
+
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+
+    --ease:cubic-bezier(.32,.72,0,1);
+
+    /* Control vocabulary carried over from ControlsPreview.html. */
+    --outline-hair:rgba(255,255,255,.22);
+    --track-bg:#2f2f33;
+    --track-fill:#8a8a8e;
+    --knob-face:#f4f4f5;
+    --value-black:#0a0a0b;
+    --value-unit:#33333a;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  html{background:var(--bg-canvas);overflow:hidden}
+  body{
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--text);
+    background:var(--bg-canvas);
+    -webkit-font-smoothing:antialiased;
+    width:100vw;height:100vh;overflow:hidden;
+    display:flex;flex-direction:row;
+  }
+  button{font-family:inherit;border:none;background:none;color:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit}
+
+  .CustomScroll::-webkit-scrollbar{width:8px;height:8px}
+  .CustomScroll::-webkit-scrollbar-track{background:transparent}
+  .CustomScroll::-webkit-scrollbar-thumb{background:var(--bg-raise);border-radius:4px}
+  .CustomScroll::-webkit-scrollbar-thumb:hover{background:var(--bg-raise-hi)}
+
+  /* ══════════════════ LAYOUT ══════════════════ */
+
+  /* 📝 The split is one number — the graph's share of the width — and the viewport simply takes the
+        rest. Driving both from a single variable keeps them from ever disagreeing about the total. */
+  .GraphRegion{
+    position:relative;height:100%;overflow:hidden;min-width:0;
+    flex:0 0 var(--split-fraction,50%);
+    background:var(--bg-canvas);
+  }
+  .ViewportRegion{
+    position:relative;height:100%;flex:1 1 auto;min-width:0;
+    background:var(--bg-viewport);
+  }
+  .ViewportRegion.SideLeft{border-right:1px solid var(--border)}
+  .ViewportRegion.SideRight{border-left:1px solid var(--border)}
+  .ViewportRegion.Concealed{display:none}
+  body.ViewportHidden .GraphRegion{flex:1 1 100%}
+  body.ViewportHidden .SplitHandle{display:none}
+
+  /* 📝 The grip is a hair wide but claims a wider invisible hit strip via padding, so it can be caught
+        without pixel-hunting; the visible rule is drawn by the inner bar. Sits above both regions so
+        the canvas and the WebGL viewport never steal the drag. */
+  .SplitHandle{
+    flex:0 0 auto;position:relative;z-index:40;
+    width:11px;margin:0 -5px;
+    cursor:col-resize;
+    display:flex;align-items:center;justify-content:center;
+    background:none;touch-action:none;
+  }
+  .SplitGrip{
+    width:1px;height:100%;background:var(--border);
+    transition:background .15s,width .15s;
+  }
+  .SplitHandle:hover .SplitGrip,
+  .SplitHandle.Hauling .SplitGrip{width:3px;background:var(--accent)}
+
+  /* While hauling, nothing underneath should select text or fight for the cursor. */
+  body.Hauling{cursor:col-resize;user-select:none}
+  body.Hauling .PanSurface{pointer-events:none}
+
+  /* ══════════════════ CANVAS SURFACE ══════════════════ */
+
+  .PanSurface{
+    position:absolute;inset:0;overflow:hidden;
+    background-color:var(--bg-canvas);
+    background-image:radial-gradient(var(--dot-grid) 1.5px,transparent 1.5px);
+    cursor:default;
+  }
+  .PanSurface.Grabbing{cursor:grabbing}
+  .PanSurface.Locked{cursor:not-allowed}
+
+  .TransformPlane{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+
+  .EdgeCanvas{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;width:1px;height:1px}
+  .EdgeCurve{fill:none;stroke:var(--edge);stroke-width:2;pointer-events:stroke;cursor:pointer}
+  .EdgeCurve:hover{stroke:var(--accent)}
+  .EdgeHalo{fill:none;stroke:transparent;stroke-width:14;pointer-events:stroke;cursor:pointer}
+  .EdgeDraft{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:6 5;pointer-events:none}
+
+  .SelectionBand{
+    position:absolute;border:1px solid rgba(176,250,176,.55);
+    background:rgba(176,250,176,.07);pointer-events:none;z-index:5;
+  }
+
+  /* ══════════════════ NODE ENTRY ══════════════════ */
+
+  .NodeEntry{position:absolute;top:0;left:0;will-change:transform}
+
+  .EntryBody{
+    position:relative;display:flex;flex-direction:column;min-width:200px;
+    border-radius:1.5rem;background:rgba(26,26,28,.9);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.6);
+    transition:border-color .15s,box-shadow .15s;
+    cursor:grab;
+  }
+  .EntryBody:hover{border-color:var(--border-hover)}
+  .NodeEntry.Chosen .EntryBody{border-color:#fff;box-shadow:0 0 30px rgba(255,255,255,.05)}
+  .NodeEntry.Immobile .EntryBody{box-shadow:0 0 0 2px rgba(234,179,8,.3),0 25px 50px -12px rgba(0,0,0,.6);cursor:default}
+  .NodeEntry.Dragging .EntryBody{cursor:grabbing}
+
+  .EntryHead{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-bottom:1px solid var(--border);
+    background:rgba(26,26,28,.4);border-radius:1.5rem 1.5rem 0 0;
+  }
+  .HeadNaming{display:flex;align-items:center;gap:12px}
+  .HeadGlyph{
+    width:36px;height:36px;border-radius:9999px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:inset 0 2px 4px rgba(0,0,0,.06);
+  }
+  .HeadText{display:flex;flex-direction:column}
+  .HeadTitle{font-size:13px;font-weight:600;letter-spacing:.025em;color:#f3f4f6}
+  .HeadSubtitle{font-size:11px;font-weight:500;color:var(--text-faint);margin-top:2px}
+
+  .GlyphInput{background:rgba(99,102,241,.2);color:#818cf8}
+  .GlyphEmitter{background:rgba(74,168,255,.2);color:#7cc4ff}
+  .GlyphCollider{background:rgba(218,85,85,.2);color:#f08a8a}
+  .GlyphForce{background:rgba(224,161,58,.2);color:#f0bd6a}
+  .GlyphSolver{background:rgba(20,184,166,.2);color:#2dd4bf}
+  .GlyphSurface{background:rgba(111,227,214,.2);color:#8ceee3}
+  .GlyphMath{background:rgba(244,63,94,.2);color:#fb7185}
+  .GlyphUtility{background:rgba(107,114,128,.2);color:#9ca3af}
+  .GlyphNeutral{background:rgba(255,255,255,.1);color:#fff}
+
+  .PinRegion{display:flex;flex-direction:row;justify-content:space-between;padding:16px;gap:16px}
+  .NodeEntry.Folded .PinRegion{display:none}
+
+  .PinColumn{display:flex;flex-direction:column;gap:10px;position:relative}
+  .PinColumn.Outbound{align-items:flex-end}
+  .PinCaption{
+    display:flex;align-items:center;gap:8px;margin-bottom:6px;
+    font-size:10px;color:var(--text-faint);
+    text-transform:uppercase;letter-spacing:.1em;font-weight:700;
+  }
+  .CaptionAdd{
+    padding:2px;border-radius:9999px;color:var(--text-faint);
+    display:flex;align-items:center;transition:background .15s,color .15s;
+  }
+  .CaptionAdd:hover{background:#333;color:#fff}
+
+  .PinRow{position:relative;display:flex;align-items:center;height:20px}
+  .PinRow.Outbound{justify-content:flex-end}
+  .PinLabel{font-size:11px;font-weight:500;color:var(--text-faint);white-space:nowrap}
+
+  .PinDot{
+    width:12px;height:12px;border-radius:9999px;flex-shrink:0;
+    border:2.5px solid #1a1a1c;cursor:crosshair;
+    transition:background .12s,transform .12s;
+  }
+  .PinDot:hover{background:#fff !important;transform:scale(1.15)}
+  .PinDot.Inbound{margin-right:8px;margin-left:-20px}
+  .PinDot.Outbound{margin-left:8px;margin-right:-20px}
+
+  .DotFloat{background:var(--port-float)}
+  .DotVec2{background:var(--port-vec2)}
+  .DotVec3{background:var(--port-vec3)}
+  .DotColor{background:var(--port-color)}
+  .DotVolume{background:var(--port-volume)}
+  .DotRegion{background:var(--port-region)}
+  .DotForce{background:var(--port-force)}
+  .DotSurface{background:var(--port-surface)}
+  .DotAny{background:var(--port-any)}
+
+  .PinAffordance{
+    padding:2px;margin-left:6px;color:var(--text-ghost);
+    opacity:0;transition:opacity .15s,color .15s;display:flex;align-items:center;
+  }
+  .PinRow.Outbound .PinAffordance{margin-left:0;margin-right:6px}
+  .PinRow:hover .PinAffordance{opacity:1}
+  .PinAffordance:hover{color:var(--accent)}
+  .PinAffordance.Severing:hover{color:var(--bad-hi)}
+
+  .PinScalarField{
+    margin-left:8px;width:48px;background:rgba(44,44,48,.5);
+    border:1px solid #444;border-radius:4px;padding:2px 4px;
+    font-size:10px;color:#fff;outline:none;transition:border-color .15s;
+  }
+  .PinScalarField:focus{border-color:rgba(176,250,176,.5)}
+
+  /* ══════════════════ HOVER TOOLBAR ══════════════════ */
+
+  .EntryToolbar{
+    position:absolute;top:-56px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:4px;padding:6px;
+    background:rgba(22,22,24,.95);
+    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+    border-radius:9999px;border:1px solid var(--border);
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;
+  }
+  /* 📝 The bar floats 56px clear of the body, so travelling to it would leave the node's hover
+        region and dismiss the bar mid-reach. This bridges the gap with a transparent hit area,
+        and the bar keeps itself revealed once the pointer is on it. */
+  .EntryToolbar::after{
+    content:'';position:absolute;left:-8px;right:-8px;top:100%;height:56px;
+    z-index:-1;
+  }
+  .NodeEntry:hover .EntryToolbar,
+  .EntryToolbar:hover{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(-4px)}
+  .ToolbarAction{
+    padding:6px;border-radius:9999px;color:var(--text-mid);
+    display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;
+  }
+  .ToolbarAction:hover{color:#fff;background:#2c2c2f}
+  .ToolbarAction.Engaged{color:#fff;background:#333}
+  .ToolbarAction.EngagedIndigo{color:#818cf8;background:rgba(99,102,241,.2)}
+  .ToolbarAction.EngagedAmber{color:#facc15;background:rgba(234,179,8,.2)}
+  .ToolbarAction.Destructive{color:var(--bad)}
+  .ToolbarAction.Destructive:hover{color:var(--bad-hi);background:rgba(239,68,68,.2)}
+  .ToolbarRule{width:1px;height:16px;background:#333;margin:0 4px}
+
+  .ActionHint{position:relative;display:flex;align-items:center;justify-content:center}
+  .ActionHint::after{
+    content:attr(data-hint);position:absolute;bottom:100%;margin-bottom:8px;
+    left:50%;transform:translateX(-50%);
+    background:#2c2c2f;color:#e5e7eb;font-size:12px;font-weight:500;
+    padding:4px 10px;border-radius:9999px;white-space:nowrap;
+    border:1px solid var(--border-pill);box-shadow:0 10px 20px rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;transition:opacity .15s;z-index:100;
+  }
+  .ActionHint:hover::after{opacity:1}
+
+  /* ══════════════════ EXPORT BADGE · TOOLTIP · COMMENT ══════════════════ */
+
+  .ExportBadge{
+    position:absolute;top:-12px;right:-12px;z-index:30;
+    background:var(--accent);color:#0f0f12;
+    padding:4px 10px;border-radius:9999px;
+    font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.15em;
+    border:2px solid #0f0f12;box-shadow:0 10px 20px rgba(176,250,176,.2);
+    transition:background .15s;
+  }
+  .ExportBadge:hover{background:#fff}
+  .ExportBadge.Compact{top:-8px;right:-8px;padding:1px 8px;font-size:8px}
+
+  .EntryTooltip{
+    position:absolute;right:100%;margin-right:16px;top:50%;transform:translateY(-50%);
+    background:var(--accent);color:#0a0a0a;font-size:12px;font-weight:500;
+    padding:6px 12px;border-radius:9999px;white-space:nowrap;
+    box-shadow:0 0 20px rgba(176,250,176,.3);
+    opacity:0;pointer-events:none;transition:opacity .2s;z-index:40;
+  }
+  .NodeEntry:hover .EntryTooltip{opacity:1}
+
+  .CommentPane{
+    position:absolute;top:calc(100% + 12px);left:-10%;width:120%;padding:16px;
+    background:rgba(26,26,28,.8);border:1px solid var(--border);
+    border-radius:1.5rem;box-shadow:0 25px 50px -12px rgba(0,0,0,.7);
+    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+    z-index:30;opacity:0;pointer-events:none;transition:opacity .2s;
+  }
+  .NodeEntry:hover .CommentPane,.CommentPane.Composing{opacity:1;pointer-events:auto}
+  .CommentPane.Compact{left:50%;transform:translateX(-50%);width:192px}
+  .CommentField{
+    width:100%;background:transparent;border:none;outline:none;resize:none;
+    font-size:13px;color:var(--text-dim);font-weight:500;letter-spacing:.025em;
+  }
+  .CommentField::placeholder{color:var(--text-ghost)}
+  .CommentBody{
+    font-size:13px;color:var(--text-mid);font-weight:500;letter-spacing:.025em;
+    cursor:text;white-space:pre-wrap;word-break:break-word;min-height:20px;
+  }
+  .CommentBody.Vacant{font-style:italic;opacity:.4}
+
+  /* ══════════════════ MATH ENTRY ══════════════════ */
+
+  .MathBody{
+    position:relative;display:flex;align-items:center;justify-content:center;
+    border:1.5px solid var(--border-entry);background:rgba(26,26,28,.9);
+    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.6);
+    transition:border-color .3s,box-shadow .3s,background .3s;
+    color:var(--accent);cursor:grab;
+  }
+  .MathBody:hover{border-color:#5c5c60}
+  .NodeEntry.Chosen .MathBody{
+    border-color:var(--accent);background:rgba(176,250,176,.1);
+    box-shadow:0 0 30px rgba(176,250,176,.15),0 0 0 4px rgba(176,250,176,.1);
+  }
+  .NodeEntry.Immobile .MathBody{box-shadow:0 0 0 2px rgba(234,179,8,.3);cursor:default}
+  .NodeEntry.Dragging .MathBody{cursor:grabbing}
+
+  .MathBody.Operator{width:64px;height:64px;border-radius:9999px}
+  .MathBody.Compound{padding:12px 16px;height:56px;border-radius:9999px}
+  .MathBody.Regulator{width:176px;padding:12px 16px;border-radius:1rem;flex-direction:column}
+
+  .OperatorGlyph{display:flex;align-items:center;justify-content:center}
+  .OperatorGlyph .Symbol{font-family:var(--mono);font-size:30px;line-height:1}
+  .OperatorGlyph .Word{font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .OperatorGlyph .WordWide{font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:-.02em}
+  .WaveCaption{
+    font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;
+    color:rgba(176,250,176,.7);margin-top:4px;
+  }
+
+  .RegulatorStack{display:flex;flex-direction:column;width:100%;gap:8px;margin-top:4px}
+  .RegulatorCaption{
+    font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--text-faint);text-align:center;width:100%;
+  }
+  .RegulatorField{
+    width:100%;background:var(--bg-input);color:var(--accent);
+    border:1px solid var(--border-entry);border-radius:.75rem;
+    padding:6px 12px;font-size:14px;font-family:var(--mono);text-align:center;outline:none;
+    transition:border-color .15s;
+  }
+  .RegulatorField:focus{border-color:rgba(176,250,176,.5)}
+  .AxisRow{display:flex;gap:8px}
+  .AxisField{
+    width:100%;background:var(--bg-input);border:1px solid var(--border-entry);
+    border-radius:.5rem;padding:6px 8px;font-size:12px;font-family:var(--mono);
+    text-align:center;outline:none;transition:border-color .15s;
+  }
+  .AxisField.AxisX{color:#facc15}
+  .AxisField.AxisX:focus{border-color:rgba(250,204,21,.5)}
+  .AxisField.AxisY{color:#4ade80}
+  .AxisField.AxisY:focus{border-color:rgba(74,222,128,.5)}
+  .AxisField.AxisZ{color:#60a5fa}
+  .AxisField.AxisZ:focus{border-color:rgba(96,165,250,.5)}
+
+  .SweepField{
+    -webkit-appearance:none;appearance:none;width:100%;height:6px;
+    background:var(--bg-raise);border-radius:.5rem;outline:none;cursor:pointer;margin-top:8px;
+  }
+  .SweepField::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:14px;height:14px;
+    border-radius:9999px;background:var(--accent);cursor:pointer;
+  }
+  .SweepField::-moz-range-thumb{
+    width:14px;height:14px;border:none;border-radius:9999px;background:var(--accent);cursor:pointer;
+  }
+
+  .RadialDial{
+    width:48px;height:48px;border-radius:9999px;border:2px solid var(--border-entry);
+    margin:8px auto 0;position:relative;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .DialPivot{width:6px;height:6px;background:var(--accent);border-radius:9999px;z-index:10}
+  .DialNeedle{
+    position:absolute;top:50%;left:50%;width:50%;height:2px;
+    background:var(--accent);transform-origin:0% 50%;
+  }
+
+  .MathPinColumn{
+    position:absolute;top:0;bottom:0;display:flex;flex-direction:column;
+    justify-content:center;gap:12px;
+  }
+  .MathPinColumn.Inbound{left:0;transform:translateX(-12px)}
+  .MathPinColumn.Outbound{right:0;transform:translateX(12px)}
+  .MathPinColumn .PinDot{margin:0}
+
+  /* ══════════════════ TOP BAR ══════════════════ */
+
+  .TopBar{
+    position:absolute;top:24px;left:0;right:0;padding:0 32px;
+    display:flex;flex-direction:column;align-items:center;
+    z-index:20;pointer-events:none;
+  }
+  .TopRow{display:flex;align-items:center;justify-content:space-between;width:100%}
+  .TopFlank{width:180px;display:flex;align-items:center}
+  .TopFlank.Trailing{justify-content:flex-end;position:relative;pointer-events:auto}
+
+  .PillCluster{
+    display:flex;align-items:center;padding:6px;gap:4px;
+    background:rgba(22,22,26,.8);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:9999px;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);pointer-events:auto;
+  }
+  .ClusterAnchor{position:relative}
+  .NavAction{
+    position:relative;padding:10px;border-radius:9999px;
+    display:flex;align-items:center;justify-content:center;
+    color:#888;transition:background .15s,color .15s;
+  }
+  .NavAction:hover{color:#fff;background:var(--bg-raise)}
+  .NavAction.Chosen{color:#111;background:#fff}
+  .NavAction.Chosen:hover{color:#111;background:#fff}
+  .NavAction.Running{color:var(--accent);background:rgba(176,250,176,.2)}
+  .ClusterRule{width:1px;height:24px;background:var(--border-soft);margin:0 4px}
+
+  /* 📝 The shell is the dismissal boundary: it wraps the trigger AND the pane, so `pointerleave` on it
+        fires only on a genuine exit from the pair — not on the trip from button to pane. Sized to its
+        contents and pointer-transparent so it never swallows a canvas drag; the button and pane each
+        take their own pointer-events back. */
+  .SettingsShell{position:relative}
+
+  /* 📝 In the viewport the shell must hug the button + pane rather than fill the frame — stretched to
+        `inset:0` it would only report a leave at the frame edge, which is the very bug being fixed.
+        Both children are absolute, so the shell would collapse to 0x0 and never report a leave at all;
+        it is given explicit bounds spanning the button (top 24) down past the open pane, widened a
+        little past the 256px pane so the pointer gets a margin before dismissal. Pointer-transparent
+        so the canvas underneath still receives drags. */
+  .ViewportFrame > .SettingsShell{
+    position:absolute;top:0;left:0;width:304px;height:calc(80vh + 96px);max-height:100%;
+    pointer-events:none;z-index:20;
+  }
+  .ViewportFrame > .SettingsShell > *{pointer-events:auto}
+
+  /* Collapsed to just the button's reach while the pane is shut, so a shut pane's footprint is not a
+     dead zone hovering over the canvas. */
+  .ViewportFrame > .SettingsShell.Shut{width:80px;height:80px}
+
+  /* 📝 Cards open by transitioning opacity + a small lift/scale off the anchored corner, the way the
+        UVEditor popups do. Kept off `display` so both the reveal and the dismissal animate — a
+        display flip would snap straight to the end state with no tween to watch. */
+  .SettingsPane{
+    position:absolute;top:100%;margin-top:8px;right:0;width:208px;
+    background:rgba(22,22,26,.95);
+    -webkit-backdrop-filter:blur(48px);backdrop-filter:blur(48px);
+    border:1px solid var(--border);border-radius:.75rem;padding:8px;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);
+    display:flex;flex-direction:column;gap:4px;
+    opacity:0;pointer-events:none;
+    transform:translateY(-6px) scale(.97);transform-origin:top right;
+    transition:opacity .14s var(--ease),transform .14s var(--ease);
+  }
+  .SettingsPane.Open{opacity:1;pointer-events:auto;transform:translateY(0) scale(1)}
+  .ToggleRow{
+    width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:8px 12px;font-size:14px;color:var(--text-dim);
+    border-radius:.5rem;transition:background .15s,color .15s;
+  }
+  .ToggleRow:hover{color:#fff;background:var(--bg-raise)}
+  /* 📝 The ControlsPreview switch, scaled from its 56x32 to 36x20 — the 3px nub inset is kept as a ratio
+        so the nub still sits visually centred in the track. Its `left` transition is preserved rather
+        than swapped for a transform: the travel is then stated as the two endpoint positions, which is
+        what makes the off state read as flush against the track wall. */
+  .ToggleTrack{
+    flex:0 0 auto;width:36px;height:20px;border-radius:9999px;position:relative;
+    background:var(--track-bg);transition:background .15s;
+  }
+  .ToggleTrack.Engaged{background:var(--accent)}
+  .ToggleKnob{
+    position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:9999px;
+    background:var(--knob-face);transition:left .15s var(--ease);box-shadow:0 1px 3px rgba(0,0,0,.5);
+  }
+  .ToggleTrack.Engaged .ToggleKnob{left:18px}
+  .PaneRule{height:1px;width:100%;background:var(--border-soft);margin:4px 0}
+
+  /* ══════════════════ PROGRESS · CONTROLS ══════════════════ */
+
+  .ProgressPill{
+    position:absolute;bottom:24px;left:24px;z-index:20;
+    background:rgba(22,22,26,.8);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:9999px;
+    padding:6px 12px;display:flex;align-items:center;gap:12px;
+    box-shadow:0 20px 25px -5px rgba(0,0,0,.5);
+  }
+  .ProgressStack{display:flex;flex-direction:column;gap:2px;min-width:70px}
+  .ProgressRow{display:flex;align-items:center;justify-content:space-between}
+  .ProgressNaming{
+    color:var(--text-dim);font-size:8px;font-weight:600;
+    letter-spacing:.025em;text-transform:uppercase;
+    max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .ProgressTally{font-size:8px;font-weight:500;color:var(--text-mid)}
+  .ProgressTally.Failed{color:var(--bad-hi)}
+  .ProgressTrack{width:100%;height:4px;background:#2a2a2e;border-radius:9999px;overflow:hidden}
+  .ProgressFill{height:100%;border-radius:9999px;background:#fff;transition:width .5s}
+  .ProgressFill.Building{background:var(--accent)}
+  .ProgressFill.Failed{background:var(--bad)}
+
+  .ControlStack{
+    position:absolute;bottom:24px;right:24px;z-index:20;
+    display:flex;flex-direction:column;gap:6px;padding:6px;
+    background:rgba(22,22,26,.8);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:9999px;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);
+  }
+  .ControlAction{
+    width:32px;height:32px;border-radius:9999px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--text-mid);transition:background .15s,color .15s;
+  }
+  .ControlAction:hover{color:#fff;background:var(--bg-raise)}
+  .ControlAction.Engaged{color:#fbbf24;background:var(--bg-raise)}
+  .ControlRule{width:20px;height:1px;background:var(--border-soft);margin:2px auto}
+
+  .SideHint{position:relative;display:flex;align-items:center;justify-content:center}
+  .SideHint::after{
+    content:attr(data-hint);position:absolute;
+    background:#2c2c2f;color:#e5e7eb;font-size:12px;font-weight:500;
+    padding:6px 12px;border-radius:9999px;white-space:nowrap;
+    border:1px solid var(--border-pill);box-shadow:0 10px 20px rgba(0,0,0,.5);
+    opacity:0;pointer-events:none;transition:opacity .15s;z-index:100;
+  }
+  .SideHint:hover::after{opacity:1}
+  .SideHint.HintLeading::after{right:100%;margin-right:16px;top:50%;transform:translateY(-50%)}
+  .SideHint.HintTrailing::after{left:100%;margin-left:16px;top:50%;transform:translateY(-50%)}
+  .SideHint.HintBelow::after{top:100%;margin-top:8px;left:50%;transform:translateX(-50%)}
+  .SideHint.HintAbove::after{bottom:100%;margin-bottom:8px;left:50%;transform:translateX(-50%)}
+
+  /* ══════════════════ CONTEXT MENU ══════════════════ */
+
+  .MenuScreen{position:fixed;inset:0;z-index:40}
+
+  .CatalogueMenu{
+    position:fixed;z-index:50;width:256px;
+    background:rgba(22,22,26,.95);
+    -webkit-backdrop-filter:blur(48px);backdrop-filter:blur(48px);
+    border:1px solid var(--border);border-radius:1.5rem;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.8);
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  .MenuSearchRegion{padding:12px;border-bottom:1px solid var(--border);background:rgba(26,26,28,.5)}
+  .MenuSearchField{
+    display:flex;align-items:center;gap:8px;padding:6px 8px;
+    background:rgba(44,44,48,.5);border-radius:.75rem;
+    border:1px solid rgba(60,60,64,.5);transition:border-color .15s;
+  }
+  .MenuSearchField:focus-within{border-color:rgba(176,250,176,.5)}
+  .MenuSearchField input{
+    background:transparent;border:none;outline:none;
+    font-size:12px;color:#e5e7eb;width:100%;
+  }
+  .MenuSearchField input::placeholder{color:var(--text-faint)}
+
+  .MenuRoster{overflow-y:auto;flex:1;max-height:350px;padding:8px}
+  .MenuVacant{padding:16px;text-align:center;font-size:12px;color:var(--text-faint)}
+
+  .CategoryFold{display:flex;flex-direction:column}
+  .CategoryPill{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px;border-radius:1rem;transition:background .15s;
+  }
+  .CategoryPill:hover{background:var(--bg-raise)}
+  .CategoryNaming{display:flex;align-items:center;gap:12px;color:var(--text-mid);transition:color .15s}
+  .CategoryPill:hover .CategoryNaming{color:#fff}
+  .CategoryNaming span{font-size:13px;font-weight:500}
+  .FoldChevron{color:var(--text-faint);display:flex;align-items:center}
+
+  .CatalogueItems{padding:4px 4px 4px 36px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+  .CatalogueItem{
+    width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:8px;border-radius:.75rem;color:var(--text-faint);
+    transition:background .15s,color .15s;
+  }
+  .CatalogueItem:hover{background:var(--bg-raise);color:#fff}
+  .CatalogueItem span{font-size:12px;font-weight:500;letter-spacing:.025em}
+  .ItemAdd{opacity:0;transition:opacity .15s;display:flex;align-items:center}
+  .CatalogueItem:hover .ItemAdd{opacity:1}
+
+  .EntryMenu{
+    position:fixed;z-index:50;background:rgba(22,22,26,.95);
+    -webkit-backdrop-filter:blur(48px);backdrop-filter:blur(48px);
+    border:1px solid var(--border);border-radius:.75rem;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.8);
+    display:flex;flex-direction:column;overflow:hidden;padding:4px 0;
+  }
+  .EntryMenuAction{
+    padding:8px 16px;font-size:14px;color:var(--text-dim);
+    text-align:left;min-width:160px;transition:background .15s,color .15s;
+  }
+  .EntryMenuAction:hover{color:#fff;background:var(--bg-raise)}
+
+  /* ══════════════════ VIEWPORT CHROME ══════════════════ */
+
+  .ViewportFrame{width:100%;height:100%;position:relative;background:var(--bg-viewport)}
+  .ViewportFrame canvas{display:block;width:100%;height:100%}
+
+  /* Revealed only when no WebGPU adapter could be acquired; the graph stays usable behind it. */
+  .AdapterNotice{
+    position:absolute;inset:0;z-index:10;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    padding:32px;text-align:center;background:var(--bg-viewport);
+  }
+  .AdapterNotice.Revealed{display:flex}
+  .NoticeGlyph{color:var(--warn);display:flex}
+  .NoticeTitle{font-size:14px;font-weight:600;color:var(--text-dim)}
+  .NoticeBody{font-size:12px;color:var(--text-faint);max-width:280px;line-height:1.5}
+
+  /* 📝 A readout strip rather than a control: substep count and particle tally are outputs of the
+        solver, so they are reported here instead of being dialled. Sits opposite the shading bar. */
+  .SolverReadout{
+    position:absolute;top:24px;right:24px;z-index:20;
+    display:flex;align-items:center;gap:10px;padding:6px 12px;
+    background:rgba(22,22,26,.8);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:9999px;
+    box-shadow:0 20px 25px -5px rgba(0,0,0,.5);
+    font-family:var(--mono);font-size:10px;color:var(--text-mid);
+  }
+  .ReadoutField{display:flex;align-items:center;gap:5px}
+  .ReadoutNaming{color:var(--text-ghost);text-transform:uppercase;letter-spacing:.08em;font-size:9px}
+  .ReadoutValue{color:var(--text-dim);font-variant-numeric:tabular-nums}
+  .ReadoutValue.Strained{color:var(--warn)}
+  .ReadoutRule{width:1px;height:12px;background:var(--border-soft)}
+
+  .ViewportSettingsAnchor{position:absolute;top:24px;left:24px;z-index:20}
+  .RoundAction{
+    padding:10px;border-radius:9999px;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--border);background:rgba(22,22,26,.95);color:var(--text-mid);
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  .RoundAction:hover{color:#fff;background:var(--bg-raise)}
+  .RoundAction.Engaged{background:#fff;color:#000;border-color:#fff}
+
+  .ViewportSettingsPane{
+    position:absolute;top:64px;left:24px;width:256px;max-height:80vh;overflow-y:auto;
+    background:rgba(22,22,26,.95);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:1rem;padding:16px;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);
+    z-index:20;display:flex;flex-direction:column;gap:8px;color:var(--text-dim);
+    opacity:0;pointer-events:none;
+    transform:translateY(-6px) scale(.97);transform-origin:top left;
+    transition:opacity .14s var(--ease),transform .14s var(--ease);
+  }
+  .ViewportSettingsPane.Open{opacity:1;pointer-events:auto;transform:translateY(0) scale(1)}
+
+  /* 📝 A caption is the fold handle for the section that follows it. The chevron rotates and the body
+        eases its max-height to 0 — the same two-property move the UVEditor transform section makes.
+        Max-height is seeded from JS scrollHeight, since a CSS keyword can't be transitioned. */
+  .PaneCaption{
+    display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+    border-bottom:1px solid var(--border);padding-bottom:8px;
+    transition:color .15s;
+  }
+  .PaneCaption:hover .PaneNaming{color:#fff}
+  .PaneCaption:hover .FoldChevron{color:#fff}
+  /* 📝 Scoped to the label rather than every span: as a bare `span` rule this also claimed the glyph
+        and the chevron, overriding the colours set for them further down. */
+  .PaneCaption .PaneNaming{font-size:14px;font-weight:600;color:#f3f4f6}
+  .PaneCaption .Glyph{color:var(--accent);display:flex;align-items:center}
+  .PaneCaption .FoldChevron{
+    margin-left:auto;display:flex;align-items:center;color:var(--text-mid);
+    transition:transform .2s var(--ease),color .15s;
+  }
+  .PaneCaption.Folded .FoldChevron{transform:rotate(-90deg)}
+  .PaneSection{
+    display:flex;flex-direction:column;gap:16px;overflow:hidden;
+    padding-top:8px;
+    transition:max-height .25s var(--ease),opacity .2s,padding-top .25s var(--ease);
+  }
+  .PaneCaption.Folded + .PaneSection{max-height:0!important;opacity:0;padding-top:0}
+  /* The pane scrolls itself, so a section must never win a scrollbar of its own mid-fold. */
+  .PaneSection{scrollbar-width:none}
+  .DialGroup{display:flex;flex-direction:column;gap:6px}
+  .DialNaming{font-size:12px;color:var(--text-mid)}
+  .SplitChoice{display:flex;gap:8px}
+  .ChoiceAction{
+    flex:1;padding:4px 8px;border-radius:.5rem;font-size:12px;
+    background:var(--bg-raise);color:var(--text-dim);transition:background .15s,color .15s;
+  }
+  .ChoiceAction:hover{background:var(--bg-raise-hi)}
+  .ChoiceAction.Chosen{background:#fff;color:#000}
+  .DialSelect{
+    width:100%;background:var(--bg-raise);border:1px solid var(--border-soft);
+    border-radius:.5rem;padding:4px 8px;font-size:12px;color:#fff;outline:none;
+  }
+  .DialSelect:focus{border-color:rgba(176,250,176,.5)}
+  /* 📝 Sweep and Switch are ported from ControlsPreview.html so the editor's dials match the component
+        vocabulary rather than the browser's. The construction is kept verbatim — pill track, inset fill,
+        floating knob, white hairline outline — while the metrics are scaled to this 256px pane, since
+        ControlsPreview is drawn against a 20px base font and its 36px track would swamp the card.
+        A hand-built track also replaces `input[type=range]`, whose thumb cannot be styled consistently
+        across engines and whose fill has no standard at all. */
+  .SweepRow{display:flex;align-items:center;gap:8px}
+  .Sweep{
+    position:relative;flex:1;min-width:0;height:20px;
+    background:#000;border:1px solid var(--outline-hair);border-radius:9999px;
+    cursor:pointer;touch-action:none;
+  }
+  .SweepFill{
+    position:absolute;left:0;top:0;bottom:0;
+    background:var(--track-fill);border-radius:9999px;pointer-events:none;
+  }
+  .SweepKnob{
+    position:absolute;top:50%;width:16px;height:16px;background:var(--knob-face);
+    border-radius:9999px;transform:translate(-50%,-50%);
+    box-shadow:0 2px 6px rgba(0,0,0,.5);pointer-events:none;
+    transition:transform .12s var(--ease);
+  }
+  .Sweep:active .SweepKnob{transform:translate(-50%,-50%) scale(1.12)}
+
+  /* The split value box: black number segment, grey unit segment, one hairline pill around both. */
+  .ValueBox{
+    flex:0 0 auto;display:flex;align-items:stretch;height:20px;
+    border:1px solid var(--outline-hair);border-radius:9999px;overflow:hidden;
+  }
+  .ValueNumber{
+    background:var(--value-black);display:flex;align-items:center;justify-content:flex-end;
+    padding:0 5px;cursor:text;
+  }
+  .ValueNumber:focus-within{box-shadow:0 0 0 1px var(--accent) inset}
+  .ValueNumber input{
+    background:none;border:none;outline:none;color:#f2f2f4;
+    font:500 11px/1 inherit;text-align:right;width:34px;
+    font-variant-numeric:tabular-nums;-moz-appearance:textfield;
+  }
+  .ValueNumber input::-webkit-outer-spin-button,
+  .ValueNumber input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .ValueUnit{
+    background:var(--value-unit);color:var(--text-mid);
+    display:flex;align-items:center;justify-content:center;
+    padding:0 5px;font-size:10px;min-width:20px;
+  }
+
+  .ShadingBar{
+    position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+    padding:6px;display:flex;flex-direction:row;align-items:center;gap:4px;
+    background:rgba(22,22,26,.95);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:9999px;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);z-index:20;
+  }
+  .ShadingAction{
+    padding:8px;border-radius:9999px;color:var(--text-mid);
+    display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;
+  }
+  .ShadingAction:hover{color:#fff;background:var(--bg-raise)}
+  .ShadingAction.Chosen{background:#fff;color:#000}
+  .ShadingAction.Running{color:var(--accent);background:rgba(176,250,176,.2)}
+  .ShadingRule{width:1px;height:20px;background:var(--border-soft);margin:0 4px}
+
+  /* 📝 Transport sits opposite the look bar rather than beside it: pausing the sim and changing its
+        appearance are different intents, and merging them into one strip invites mis-clicks mid-run. */
+  .SimulationBar{
+    position:absolute;bottom:24px;left:24px;
+    padding:6px;display:flex;flex-direction:row;align-items:center;gap:4px;
+    background:rgba(22,22,26,.95);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--border);border-radius:9999px;
+    box-shadow:0 25px 50px -12px rgba(0,0,0,.7);z-index:20;
+  }
+</style>
+</head>
+<body>
+
+<div class="GraphRegion" id="GraphRegion">
+  <div class="PanSurface" id="PanSurface">
+    <div class="TransformPlane" id="TransformPlane">
+      <svg class="EdgeCanvas" id="EdgeCanvas"></svg>
+      <div id="EntryPlane"></div>
+    </div>
+    <div class="SelectionBand" id="SelectionBand" style="display:none"></div>
+  </div>
+
+  <div class="TopBar">
+    <div class="TopRow">
+      <div class="TopFlank"></div>
+
+      <div class="ClusterAnchor">
+        <div class="PillCluster">
+          <div class="SideHint HintBelow" data-hint="Simulate" id="SimulateHint">
+            <button class="NavAction" id="SimulateAction"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="TopFlank Trailing">
+        <div class="SettingsShell" id="ChromeSettingsShell">
+          <div class="PillCluster">
+            <div class="SideHint HintBelow" data-hint="Settings">
+              <button class="NavAction" id="ChromeSettingsAction"></button>
+            </div>
+          </div>
+          <div class="SettingsPane" id="ChromeSettingsPane">
+            <button class="ToggleRow" id="ViewportToggle">
+              <span>3D Viewport</span>
+              <div class="ToggleTrack Engaged"><div class="ToggleKnob"></div></div>
+            </button>
+            <div class="PaneRule"></div>
+            <button class="ToggleRow" id="ControlsToggle">
+              <span>Canvas Controls</span>
+              <div class="ToggleTrack"><div class="ToggleKnob"></div></div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ProgressAnchor"></div>
+  <div id="ControlAnchor"></div>
+</div>
+
+<div class="SplitHandle" id="SplitHandle" title="Drag to resize"><div class="SplitGrip"></div></div>
+
+<div class="ViewportRegion SideRight" id="ViewportRegion">
+  <div class="ViewportFrame" id="ViewportFrame">
+    <canvas id="FluidCanvas"></canvas>
+
+    <!-- 📝 WebGPU is not universal, and a missing adapter must not read as a broken prototype. The
+            notice sits under the canvas and is only revealed when initialization actually fails. -->
+    <div class="AdapterNotice" id="AdapterNotice">
+      <span class="NoticeGlyph" id="NoticeGlyph"></span>
+      <span class="NoticeTitle">WebGPU unavailable</span>
+      <span class="NoticeBody" id="NoticeBody">
+        This viewport needs a WebGPU adapter. The graph remains fully usable.
+      </span>
+    </div>
+
+    <div class="SettingsShell Shut" id="ViewportSettingsShell">
+      <div class="ViewportSettingsAnchor">
+        <div class="SideHint HintTrailing" data-hint="Viewport Settings">
+          <button class="RoundAction" id="ViewportSettingsAction"></button>
+        </div>
+      </div>
+
+      <div class="ViewportSettingsPane CustomScroll" id="ViewportSettingsPane">
+        <div class="PaneCaption" data-fold="Display">
+          <span class="Glyph" id="DisplayGlyph"></span><span class="PaneNaming">Display</span>
+          <span class="FoldChevron"></span>
+        </div>
+        <div class="PaneSection">
+          <div class="DialGroup">
+            <span class="DialNaming">Camera Mode</span>
+            <div class="SplitChoice">
+              <button class="ChoiceAction Chosen" id="CameraSolid">3D View</button>
+              <button class="ChoiceAction" id="CameraPlanar">2D Side</button>
+            </div>
+          </div>
+
+          <!-- 📝 The grid resolution IS the simulation cost, not a display setting: it sets the MAC grid
+                  the pressure solve runs over, so the options are stated with their particle budgets. -->
+          <div class="DialGroup">
+            <span class="DialNaming">Simulation Grid</span>
+            <select class="DialSelect" id="ResolutionSelect">
+              <option value="32">32&sup3; &mdash; draft</option>
+              <option value="48">48&sup3; &mdash; light</option>
+              <option value="64" selected>64&sup3; &mdash; balanced</option>
+              <option value="96">96&sup3; &mdash; heavy</option>
+              <option value="128">128&sup3; &mdash; offline</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="PaneCaption" data-fold="Environment" style="margin-top:8px">
+          <span class="Glyph" id="EnvironmentGlyph"></span><span class="PaneNaming">Environment</span>
+          <span class="FoldChevron"></span>
+        </div>
+        <div class="PaneSection">
+          <div class="DialGroup" data-sweep="SunElevation"
+               data-least="-10" data-most="90" data-step="1" data-places="0" data-unit="&deg;">
+            <span class="DialNaming">Sun Elevation</span>
+            <div class="SweepRow">
+              <div class="Sweep"><div class="SweepFill"></div><div class="SweepKnob"></div></div>
+              <div class="ValueBox">
+                <div class="ValueNumber"><input type="number"></div>
+                <div class="ValueUnit">&deg;</div>
+              </div>
+            </div>
+          </div>
+          <div class="DialGroup" data-sweep="SunAzimuth"
+               data-least="0" data-most="360" data-step="1" data-places="0" data-unit="&deg;">
+            <span class="DialNaming">Sun Azimuth</span>
+            <div class="SweepRow">
+              <div class="Sweep"><div class="SweepFill"></div><div class="SweepKnob"></div></div>
+              <div class="ValueBox">
+                <div class="ValueNumber"><input type="number"></div>
+                <div class="ValueUnit">&deg;</div>
+              </div>
+            </div>
+          </div>
+          <div class="DialGroup" data-sweep="Turbidity"
+               data-least="0" data-most="20" data-step="0.1" data-places="1" data-unit="&mdash;">
+            <span class="DialNaming">Sky Turbidity</span>
+            <div class="SweepRow">
+              <div class="Sweep"><div class="SweepFill"></div><div class="SweepKnob"></div></div>
+              <div class="ValueBox">
+                <div class="ValueNumber"><input type="number"></div>
+                <div class="ValueUnit">&mdash;</div>
+              </div>
+            </div>
+          </div>
+          <div class="DialGroup" data-sweep="FogDensity"
+               data-least="0" data-most="0.05" data-step="0.001" data-places="3" data-unit="1/m">
+            <span class="DialNaming">Fog Density</span>
+            <div class="SweepRow">
+              <div class="Sweep"><div class="SweepFill"></div><div class="SweepKnob"></div></div>
+              <div class="ValueBox">
+                <div class="ValueNumber"><input type="number"></div>
+                <div class="ValueUnit">1/m</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="PaneCaption" data-fold="Diagnostics" style="margin-top:8px">
+          <span class="Glyph" id="DiagnosticGlyph"></span><span class="PaneNaming">Diagnostics</span>
+          <span class="FoldChevron"></span>
+        </div>
+        <div class="PaneSection">
+          <!-- 🔴 These are inspection modes, not looks. The solver is being built from scratch and a
+                  free-surface sim fails in ways a shaded render hides completely — a divergent velocity
+                  field still renders as plausible water. Being able to look at the raw particles, the
+                  velocity field and the occupancy grid is how a fault gets found at all. -->
+          <div class="DialGroup">
+            <span class="DialNaming">Inspect</span>
+            <select class="DialSelect" id="InspectSelect">
+              <option value="surface" selected>Shaded Surface</option>
+              <option value="particles">Particles</option>
+              <option value="velocity">Velocity Field</option>
+              <option value="occupancy">Cell Occupancy</option>
+              <option value="pressure">Pressure</option>
+              <option value="divergence">Divergence (post-solve)</option>
+            </select>
+          </div>
+
+          <button class="ToggleRow" id="BoundsToggle" style="padding:8px 0">
+            <span style="font-size:12px">Domain Bounds</span>
+            <div class="ToggleTrack Engaged"><div class="ToggleKnob"></div></div>
+          </button>
+
+          <button class="ToggleRow" id="ColliderToggle" style="padding:8px 0">
+            <span style="font-size:12px">Collider Outlines</span>
+            <div class="ToggleTrack Engaged"><div class="ToggleKnob"></div></div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="SolverReadout" id="SolverReadout">
+      <div class="ReadoutField">
+        <span class="ReadoutNaming">Grid</span><span class="ReadoutValue" id="ReadoutGrid">&mdash;</span>
+      </div>
+      <div class="ReadoutRule"></div>
+      <div class="ReadoutField">
+        <span class="ReadoutNaming">Particles</span><span class="ReadoutValue" id="ReadoutParticles">&mdash;</span>
+      </div>
+      <div class="ReadoutRule"></div>
+      <div class="ReadoutField">
+        <span class="ReadoutNaming">Step</span><span class="ReadoutValue" id="ReadoutStep">&mdash;</span>
+      </div>
+      <div class="ReadoutRule"></div>
+      <div class="ReadoutField">
+        <span class="ReadoutNaming">Frame</span><span class="ReadoutValue" id="ReadoutFrame">&mdash;</span>
+      </div>
+    </div>
+
+    <!-- 📝 Four water looks rather than the terrain's four material modes: refractive is the real
+            target, opaque isolates the surface geometry from the shading, depth reads the thickness the
+            absorption integral uses, and points drops to raw particles. -->
+    <div class="ShadingBar">
+      <div class="SideHint HintAbove" data-hint="Refractive Water">
+        <button class="ShadingAction Chosen" id="ShadeRefractive"></button>
+      </div>
+      <div class="SideHint HintAbove" data-hint="Opaque Surface">
+        <button class="ShadingAction" id="ShadeOpaque"></button>
+      </div>
+      <div class="SideHint HintAbove" data-hint="Thickness">
+        <button class="ShadingAction" id="ShadeThickness"></button>
+      </div>
+      <div class="ShadingRule"></div>
+      <div class="SideHint HintAbove" data-hint="Particles">
+        <button class="ShadingAction" id="ShadePoints"></button>
+      </div>
+    </div>
+
+    <div class="SimulationBar" id="SimulationBar">
+      <div class="SideHint HintAbove" data-hint="Play / Pause">
+        <button class="ShadingAction" id="SimulationPlay"></button>
+      </div>
+      <div class="SideHint HintAbove" data-hint="Step One Frame">
+        <button class="ShadingAction" id="SimulationStep"></button>
+      </div>
+      <div class="ShadingRule"></div>
+      <div class="SideHint HintAbove" data-hint="Reset">
+        <button class="ShadingAction" id="SimulationReset"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module" src="./FluidEditorEntry.js"></script>
+
+</body>
+</html>

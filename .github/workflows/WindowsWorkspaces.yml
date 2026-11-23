@@ -1,0 +1,178 @@
+name: Windows standalone workspaces
+on:
+  workflow_dispatch:
+    inputs:
+      allow_unsigned_preview:
+        description: Explicitly authorize a scanned, clearly labelled unsigned preview
+        type: boolean
+        required: false
+        default: false
+      publish_release:
+        description: Publish a verified Windows package directly on GitHub
+        type: boolean
+        required: false
+        default: false
+      debug_preview:
+        description: Build Debug with Pattern GPU trace logging (pushes also accept a [debug-preview] commit marker)
+        type: boolean
+        required: false
+        default: false
+  push:
+    branches: [Frontier, arena/73e163a3-frontier, arena/db2f9953-frontier]
+permissions:
+  contents: read
+concurrency:
+  group: windows-workspaces-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  Windows:
+    outputs:
+      distribution_ready: ${{ steps.distribution.outputs.distribution_ready }}
+      unsigned_preview_authorized: ${{ steps.distribution.outputs.unsigned_preview_authorized }}
+      build_configuration: ${{ steps.configuration.outputs.build_configuration }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: 1
+      ALLOW_UNSIGNED_PREVIEW: ${{ inputs.allow_unsigned_preview == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-windows-unsigned-preview]')) }}
+      BUILD_CONFIGURATION: ${{ (inputs.debug_preview == true || (github.event_name == 'push' && contains(github.event.head_commit.message, '[debug-preview]'))) && 'Debug' || 'Release' }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record build configuration
+        id: configuration
+        run: |
+          "build_configuration=$env:BUILD_CONFIGURATION" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
+          Write-Output "Windows configuration: $env:BUILD_CONFIGURATION"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recover pinned UI dependencies and fonts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force Build/Diagnostics | Out-Null
+          python -m pip install -r Automation/FontRequirements.txt 2>&1 | Tee-Object Build/Diagnostics/Python.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python Automation/PrepareUI.py 2>&1 | Tee-Object Build/Diagnostics/Dependencies.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python Automation/PrepareFonts.py 2>&1 | Tee-Object Build/Diagnostics/Fonts.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Validate web Pattern to native geometry import
+        run: |
+          node --test Automation/ConvertWebPattern.test.mjs 2>&1 | Tee-Object Build/Diagnostics/PatternImport.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Provision pinned portable Slang compiler
+        run: |
+          npm install --prefix Build/ShaderTools --no-audit --no-fund --ignore-scripts slang-loader@0.0.7
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Configure Windows x64 applications and compiled shaders
+        run: |
+          $Compiler = (Resolve-Path Build/ShaderTools/node_modules/slang-loader/vendor/slang-wasm.js).Path
+          cmake -S . -B Build/Windows -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTING=ON "-DFRONTIER_SLANG_WASM=$Compiler" '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>' 2>&1 | Tee-Object Build/Diagnostics/Configure.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Compile Frontier, Texture Workspace, shader entries and acceptance tests
+        run: |
+          cmake --build Build/Windows --config $env:BUILD_CONFIGURATION --parallel 4 --target Frontier TextureStudio FrontierSurfaceShaders VectorAuthoringImportValidation MaterialPreviewConfigurationValidation MaterialLibraryValidation MaterialAtlasValidation IconDomainValidation ProjectBrowserValidation SurfaceGeometryValidation 2>&1 | Tee-Object Build/Diagnostics/Compile.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Execute Windows CPU and native UI acceptance tests
+        run: |
+          ctest --test-dir Build/Windows -C $env:BUILD_CONFIGURATION --output-on-failure -R '^(WebPatternNativeImportFixture|WebPatternNativeImportValidation|MaterialPreviewConfigurationValidation|MaterialLibraryValidation|IconDomainValidation|ProjectBrowserValidation|SurfaceGeometryValidation)$' 2>&1 | Tee-Object Build/Diagnostics/Acceptance.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Verify fail-closed distribution checks
+        run: |
+          python Exhibits/TextureStudio/Code/WindowsDistributionValidation.py 2>&1 | Tee-Object Build/Diagnostics/DistributionValidation.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Verify publisher signatures and antivirus scan before distribution
+        id: distribution
+        run: |
+          ./Automation/VerifyWindowsDistribution.ps1 -BinaryDirectory "Build/Windows/$env:BUILD_CONFIGURATION" -ReportPath Build/Diagnostics/DistributionChecks.json -AllowUnsignedPreview:([Convert]::ToBoolean($env:ALLOW_UNSIGNED_PREVIEW))
+      - name: Package and verify executable, content and shader placement
+        if: steps.distribution.outputs.distribution_ready == 'true'
+        run: |
+          [string[]]$UnsignedArguments = @()
+          if ($env:ALLOW_UNSIGNED_PREVIEW -eq 'true') {
+            $UnsignedArguments = @('--allow-unsigned-preview')
+            python -c "import sys; assert sys.argv[1:] == ['--allow-unsigned-preview']" @UnsignedArguments
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          python Automation/PackageWorkspacesWindows.py @UnsignedArguments --build Build/Windows --configuration $env:BUILD_CONFIGURATION --security-report Build/Diagnostics/DistributionChecks.json --output Binaries/Frontier-TextureWorkspace-Windows-x64.zip 2>&1 | Tee-Object Build/Diagnostics/Package.log
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload verified Windows applications
+        if: steps.distribution.outputs.distribution_ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Frontier-TextureWorkspace-Windows-x64
+          path: |
+            Binaries/Frontier-TextureWorkspace-Windows-x64.zip
+            Binaries/Frontier-TextureWorkspace-Windows-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Expose actionable diagnostic tails in check annotations
+        if: failure()
+        run: |
+          Get-ChildItem Build/Diagnostics/*.log -ErrorAction SilentlyContinue | ForEach-Object {
+            $Tail = (Get-Content $_.FullName -Tail 35) -join "`n"
+            if ($Tail.Length -gt 7000) { $Tail = $Tail.Substring($Tail.Length - 7000) }
+            $Tail = $Tail.Replace('%','%25').Replace("`r",'%0D').Replace("`n",'%0A')
+            Write-Output "::error title=$($_.Name)::$Tail"
+          }
+      - name: Upload diagnostics even after failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-build-diagnostics
+          path: |
+            Build/Diagnostics
+            Build/Windows/Testing/Temporary
+            Build/Windows/ShaderArchives/Surface
+            Build/Windows/MaterialLibraryEvidence
+            Build/Windows/MaterialPreviewConfigurationChecks.json
+            Build/Windows/IconDomainChecks.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  PublishWindows:
+    name: Publish verified Windows download on GitHub
+    needs: Windows
+    if: >-
+      needs.Windows.outputs.distribution_ready == 'true' &&
+      needs.Windows.outputs.build_configuration != 'Debug' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.publish_release) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-windows-unsigned-preview]')))
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Frontier-TextureWorkspace-Windows-x64
+          path: VerifiedWindows
+      - name: Verify published archive checksum
+        shell: pwsh
+        run: |
+          $Archive = 'VerifiedWindows/Frontier-TextureWorkspace-Windows-x64.zip'
+          $Expected = ((Get-Content "$Archive.sha256" -Raw).Trim() -split '\s+')[0]
+          $Actual = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash
+          if ($Expected -notmatch '^[a-fA-F0-9]{64}$' -or $Actual -ne $Expected) {
+            throw 'Archive fingerprint differs from the verified build; release blocked.'
+          }
+      - name: Publish original verified archive without rehosting or repacking
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UNSIGNED_PREVIEW_AUTHORIZED: ${{ needs.Windows.outputs.unsigned_preview_authorized }}
+        run: |
+          $Qualifier = if ($env:UNSIGNED_PREVIEW_AUTHORIZED -eq 'true') { 'UNSIGNED preview' } else { 'preview' }
+          gh release create "frontier-windows-$env:GITHUB_RUN_ID" `
+            'VerifiedWindows/Frontier-TextureWorkspace-Windows-x64.zip' `
+            'VerifiedWindows/Frontier-TextureWorkspace-Windows-x64.zip.sha256' `
+            --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" `
+            --title "Frontier and TextureWorkspace Windows $Qualifier" --prerelease `
+            --notes "Windows $Qualifier from $env:GITHUB_SHA. A clean Defender scan does not certify browser reputation. Do not bypass Chrome or antivirus blocks. See the matching Actions run for signatures, antivirus results and acceptance tests. Browser reputation and interactive Windows GPU startup are not certified."
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

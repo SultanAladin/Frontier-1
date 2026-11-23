@@ -1,0 +1,38 @@
+# SlateRuntime — how a product starts, ticks and stops.
+# One bring-up, one tick, one teardown, shared by every windowed product.
+
+# 🔴 This unit exists because three hosts had each written the same bring-up, the same tick prologue and
+#    the same teardown, and the three copies had drifted. Twenty-six seam calls were identical across all
+#    of them. `HostLifecycle` already owns the five device lifetimes and `ViewportSequence` already owns
+#    one interface tick; what was still copied was the ORDER the two are driven in — and an order that
+#    lives in three files is an order that is three orders.
+#
+# 📝 The boundary, from `References/UnitAndProductPlan.md` §2.1: if it runs every frame regardless of
+#    discipline it is Runtime; if it differs between texture and parametric it is Workspace; if the artist
+#    picks it up and puts it down it is Toolset. Nothing here names a panel, a tool or a document.
+
+[unit]
+name    = "SlateRuntime"
+product = "StaticLibrary"
+subject = [ "Session" ]
+
+# 📝 A session is the span from the window opening to the window closing. It is the one concern this unit
+#    holds, so it is the one subject — `SessionSequence` orders that span the way `ViewportSequence`
+#    orders one tick inside it.
+
+# 🔴 SlateRuntime sits ABOVE SlateUI and SlateVulkan and below SlateWorkspace, so it may include both. It
+#    names no panel type and no document type, which is what keeps a discipline out of it; the arrow
+#    points down and `Tools/VerifyHostPartition.py` is what checks that it still does.
+[requires]
+unit = [ "SlateUI", "SlateVulkan", "SlateDocument", "SlateShape", "SlateMath" ]
+
+[external]
+include = [ "$VULKAN_SDK/Include", "ExternalPackages/glfw/include" ]
+declare = []
+
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+#    statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+#    what an executable must **link** so every reference resolves.
+unit    = [ "SlateUI", "SlateVulkan", "SlateDocument", "SlateShape", "SlateMath" ]
+library = []

@@ -1,0 +1,60 @@
+Engine plume footprints and retained transport WGSL; release
+Base cc7906a, plus working changes if any; source hashes below.
+Platform: Linux x86_64
+c++ (Debian 12.2.0-14+deb12u1) 12.2.0
+v22.22.3
+Python 3.11.2 wgpu 0.32.0 numpy 2.3.4
+70bc6c2a35324bda3c6384ee08af037973a275d07003a4e4ecd5f81655474853  Frontier/Engine/Rendering/PlumeLatticeFootprint.h
+29ec2b1c55c84d2d0a33b9db1fe616ec9d77af9861fe57d2cb9c70acfccd451a  Frontier/Engine/Rendering/PlumeLatticeFootprint.cpp
+80d67639c26d7cec3ad596bc4ad4e69c9c8fa02de64ffc68c8da6ff296bb0111  Exhibits/FluidReference/Code/PlumeLatticeFootprintValidation.cpp
+df8651efc8a52f815e46f665828f2ac181c5834c0cc02872d3ad69f719a248ac  Exhibits/FluidReference/Code/PlumeLatticeReference.mjs
+b2d353cc43f8dd291e7b28f1a454161c2e0b99c1e3e4646757eba0863687e307  Exhibits/FluidReference/Code/PlumeTransportValidation.py
+778170ebf9a1b277dc99b9481697e6734d6863df6cdfd91677ccf59e9cca5959  Experimental/VehicleHmiReference/Shader/PlumeRecords.wgsl
+6422ea68c051b5d0a51eae219bc2cb9a1768f09669d952d24b8f3a36b1dddf40  Experimental/VehicleHmiReference/Shader/PlumeAdvection.wgsl
+145fad545c52a4254a5e633866906d9b02e6e84c0ccf753dfdc47b82653dee96  Experimental/VehicleHmiReference/Shader/PlumeVorticity.wgsl
+d56f1e63a73cbb0310b268dd14c96042dbf9c1aa370cd3e05dbdac1cd3e0ce8a  Experimental/VehicleHmiReference/Shader/PlumePressure.wgsl
+fe1c9b8c71f189747b5bd3c25e2869d2b5a56e9e4fefc188aa04977e5ef5457e  Experimental/VehicleHmiReference/Shader/SceneRecords.wgsl
+c80f2b766174c8ce99f23d884f23d07047f3dfadb47b106cf875007c4c1b7727  Experimental/VehicleHmiReference/Shader/DistanceRecords.wgsl
+602951da99997ee47b6a5ffd5e43c8d32e6578f7491138e542703e81aaa2a07b  Experimental/VehicleHmiReference/Shader/DistanceTraversal.wgsl
+8ee5ac00fd7968e863b05e0f6808057db16a00ad322777e5a05bed51d4f84085  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/libvulkan.so.1
+2f3ceffaaca7d031bc3943f8eacf398a5d9c42c5fe0d15d8840b9acfa630b58e  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/libvk_swiftshader.so
+c9eef28b6b984fec220ef0abfecc40b502d46946706e47bfe97707027cb818bd  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/vk_swiftshader_icd.json
+UpdateCTestConfiguration  from :/home/user/Frontier/_ClaudeScratch/build/plume-transport-release/DartConfiguration.tcl
+Test project /home/user/Frontier/_ClaudeScratch/build/plume-transport-release
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: PlumeLatticeFootprintGuards
+
+1: Test command: /home/user/Frontier/_ClaudeScratch/build/plume-transport-release/PlumeLatticeFootprintValidation "--guards"
+1: Working Directory: /home/user/Frontier/_ClaudeScratch/build/plume-transport-release
+1: Test timeout computed to be: 10000000
+1: PLUME_FOOTPRINT_GUARDS rejected=17 valid_lattice=1 valid_source=1 empty_sources=1
+1/1 Test #1: PlumeLatticeFootprintGuards ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.00 sec
+Forcing backend: Vulkan (6)
+ADAPTER {'vendor': 'SwiftShader driver', 'architecture': '', 'device': 'SwiftShader Device (Subzero)', 'description': '', 'stackgroup_min_size': 4, 'stackgroup_max_size': 128, 'vendor_id': 6880, 'device_id': 49374, 'adapter_type': 'CPU', 'backend_type': 'Vulkan'}
+REFERENCE PlumeRecords.wgsl sha256=778170ebf9a1b277dc99b9481697e6734d6863df6cdfd91677ccf59e9cca5959
+REFERENCE PlumeAdvection.wgsl sha256=6422ea68c051b5d0a51eae219bc2cb9a1768f09669d952d24b8f3a36b1dddf40
+REFERENCE PlumeVorticity.wgsl sha256=145fad545c52a4254a5e633866906d9b02e6e84c0ccf753dfdc47b82653dee96
+REFERENCE PlumePressure.wgsl sha256=d56f1e63a73cbb0310b268dd14c96042dbf9c1aa370cd3e05dbdac1cd3e0ce8a
+REFERENCE SceneRecords.wgsl sha256=fe1c9b8c71f189747b5bd3c25e2869d2b5a56e9e4fefc188aa04977e5ef5457e
+REFERENCE DistanceRecords.wgsl sha256=c80f2b766174c8ce99f23d884f23d07047f3dfadb47b106cf875007c4c1b7727
+REFERENCE DistanceTraversal.wgsl sha256=602951da99997ee47b6a5ffd5e43c8d32e6578f7491138e542703e81aaa2a07b
+PLUME_FOOTPRINT_JS grades=4 bytes=1024 sha256=cd0155ded41f3552e8aee506574f9a892a5283f88a5a8618940513314382fd73 exact_roundtrip=1
+VELOCITY_BUOYANCY cells=512 expected_z=0.533203125 max_error=0
+MOVING_DISTANCE_SOLID velocity_inside=[2.0, 0.0, 0.0, 1.0] velocity_outside=[0.0, 0.0, 0.0, 0.0] thermo_inside=0 thermo_outside=1 sampled_cascade=1
+PLUME_SOURCES centre_error=0 neighbour_error=0 momentum_error=0 combustion_retention_error=0
+TRANSPORT_CHAIN cells=4096 dispatches=15 pressure_sweeps=8 same_submission=1 impulse_error=0 coverage=[6, 6, 7, 6, 6, 7] boundary_exit_no_wrap=1 light_range=[0.833496094,1]
+LIGHT_UNIFORM cells=512 analytic_max_error=0.000113998836
+VORTICITY interior_curl_max_error=0 confinement_expected_y=0.967773438 confinement_error=0 solid_cell_unchanged=1
+PLUME_FOOTPRINT_GPU validated_lattices=7 validated_sources=1
+PLUME_READBACK_SHA256 254545aa7c2111cb6c1aa7239edbe5ebf61ae90e5e6c307403ccbf212f7b1c9c
+PLUME_TRANSPORT_SUMMARY PASS reference_wgsl=1 actual_distance_sampling=1 pressure_in_chain=1

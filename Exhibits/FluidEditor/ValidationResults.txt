@@ -1,0 +1,762 @@
+
+[1] Force generator catalog
+  🟢 DirectionalWind has unique GLSL code 0
+  🟢 DirectionalWind default falloff is registered
+  🟢 DirectionalWind is evaluated by the GLSL force kernel
+  🟢 WindShear has unique GLSL code 17
+  🟢 WindShear default falloff is registered
+  🟢 WindShear is evaluated by the GLSL force kernel
+  🟢 FlowStream has unique GLSL code 16
+  🟢 FlowStream default falloff is registered
+  🟢 FlowStream is evaluated by the GLSL force kernel
+  🟢 DirectionalBurst has unique GLSL code 14
+  🟢 DirectionalBurst default falloff is registered
+  🟢 DirectionalBurst is evaluated by the GLSL force kernel
+  🟢 PointAttractor has unique GLSL code 1
+  🟢 PointAttractor default falloff is registered
+  🟢 PointAttractor is evaluated by the GLSL force kernel
+  🟢 PointRepulsor has unique GLSL code 2
+  🟢 PointRepulsor default falloff is registered
+  🟢 PointRepulsor is evaluated by the GLSL force kernel
+  🟢 AxisAttractor has unique GLSL code 8
+  🟢 AxisAttractor default falloff is registered
+  🟢 AxisAttractor is evaluated by the GLSL force kernel
+  🟢 Orbit has unique GLSL code 10
+  🟢 Orbit default falloff is registered
+  🟢 Orbit is evaluated by the GLSL force kernel
+  🟢 Containment has unique GLSL code 11
+  🟢 Containment default falloff is registered
+  🟢 Containment is evaluated by the GLSL force kernel
+  🟢 MagneticDipole has unique GLSL code 19
+  🟢 MagneticDipole default falloff is registered
+  🟢 MagneticDipole is evaluated by the GLSL force kernel
+  🟢 VortexColumn has unique GLSL code 3
+  🟢 VortexColumn default falloff is registered
+  🟢 VortexColumn is evaluated by the GLSL force kernel
+  🟢 VortexRing has unique GLSL code 9
+  🟢 VortexRing default falloff is registered
+  🟢 VortexRing is evaluated by the GLSL force kernel
+  🟢 Spin has unique GLSL code 18
+  🟢 Spin default falloff is registered
+  🟢 Spin is evaluated by the GLSL force kernel
+  🟢 CurlNoiseTurbulence has unique GLSL code 4
+  🟢 CurlNoiseTurbulence default falloff is registered
+  🟢 CurlNoiseTurbulence is evaluated by the GLSL force kernel
+  🟢 BrownianJitter has unique GLSL code 15
+  🟢 BrownianJitter default falloff is registered
+  🟢 BrownianJitter is evaluated by the GLSL force kernel
+  🟢 RadialBurst has unique GLSL code 6
+  🟢 RadialBurst default falloff is registered
+  🟢 RadialBurst is evaluated by the GLSL force kernel
+  🟢 ShockwaveShell has unique GLSL code 12
+  🟢 ShockwaveShell default falloff is registered
+  🟢 ShockwaveShell is evaluated by the GLSL force kernel
+  🟢 Implosion has unique GLSL code 13
+  🟢 Implosion default falloff is registered
+  🟢 Implosion is evaluated by the GLSL force kernel
+  🟢 DragBaffle has unique GLSL code 5
+  🟢 DragBaffle default falloff is registered
+  🟢 DragBaffle is evaluated by the GLSL force kernel
+  🟢 ThermalUpdraft has unique GLSL code 7
+  🟢 ThermalUpdraft default falloff is registered
+  🟢 ThermalUpdraft is evaluated by the GLSL force kernel
+  🟢 20 generator types registered across 7 categories
+  🟢 Falloff SmoothStep handled by GLSL
+  🟢 Falloff Linear handled by GLSL
+  🟢 Falloff InverseSquare handled by GLSL
+  🟢 Falloff Constant handled by GLSL
+  🟢 Falloff Gaussian handled by GLSL
+  🟢 Falloff Plateau handled by GLSL
+  🟢 Falloff Cosine handled by GLSL
+  🟢 Blank Stage: boundary mode resolves
+  🟢 Blank Stage: resolution inside solver limits
+  🟢 Campfire: force DirectionalWind resolves
+  🟢 Campfire: force CurlNoiseTurbulence resolves
+  🟢 Campfire: emitter shape Disc resolves
+  🟢 Campfire: boundary mode resolves
+  🟢 Campfire: resolution inside solver limits
+  🟢 Smoke Plume: force VortexColumn resolves
+  🟢 Smoke Plume: force DragBaffle resolves
+  🟢 Smoke Plume: emitter shape Sphere resolves
+  🟢 Smoke Plume: boundary mode resolves
+  🟢 Smoke Plume: resolution inside solver limits
+  🟢 Explosion: force RadialBurst resolves
+  🟢 Explosion: force CurlNoiseTurbulence resolves
+  🟢 Explosion: force DragBaffle resolves
+  🟢 Explosion: emitter shape Sphere resolves
+  🟢 Explosion: boundary mode resolves
+  🟢 Explosion: resolution inside solver limits
+  🟢 Demolition Blast: force RadialBurst resolves
+  🟢 Demolition Blast: force CurlNoiseTurbulence resolves
+  🟢 Demolition Blast: force DragBaffle resolves
+  🟢 Demolition Blast: emitter shape Sphere resolves
+  🟢 Demolition Blast: emitter shape Disc resolves
+  🟢 Demolition Blast: boundary mode resolves
+  🟢 Demolition Blast: resolution inside solver limits
+  🟢 Tornado Funnel: force VortexColumn resolves
+  🟢 Tornado Funnel: force AxisAttractor resolves
+  🟢 Tornado Funnel: force DragBaffle resolves
+  🟢 Tornado Funnel: emitter shape Disc resolves
+  🟢 Tornado Funnel: emitter shape Disc resolves
+  🟢 Tornado Funnel: boundary mode resolves
+  🟢 Tornado Funnel: resolution inside solver limits
+  🟢 Infinite Grid · Drift: force DirectionalWind resolves
+  🟢 Infinite Grid · Drift: force DragBaffle resolves
+  🟢 Infinite Grid · Drift: emitter shape Disc resolves
+  🟢 Infinite Grid · Drift: boundary mode resolves
+  🟢 Infinite Grid · Drift: resolution inside solver limits
+  🟢 Infinite Grid · Plume: force DirectionalWind resolves
+  🟢 Infinite Grid · Plume: force CurlNoiseTurbulence resolves
+  🟢 Infinite Grid · Plume: emitter shape Disc resolves
+  🟢 Infinite Grid · Plume: boundary mode resolves
+  🟢 Infinite Grid · Plume: resolution inside solver limits
+  🟢 Tile Crossing · World Grid: force DirectionalWind resolves
+  🟢 Tile Crossing · World Grid: force VortexColumn resolves
+  🟢 Tile Crossing · World Grid: force DragBaffle resolves
+  🟢 Tile Crossing · World Grid: emitter shape Sphere resolves
+  🟢 Tile Crossing · World Grid: boundary mode resolves
+  🟢 Tile Crossing · World Grid: resolution inside solver limits
+  🟢 Drift Run · World Grid: force DirectionalWind resolves
+  🟢 Drift Run · World Grid: force DragBaffle resolves
+  🟢 Drift Run · World Grid: emitter shape Disc resolves
+  🟢 Drift Run · World Grid: boundary mode resolves
+  🟢 Drift Run · World Grid: resolution inside solver limits
+  🟢 Tyre Drift Smoke: force DirectionalWind resolves
+  🟢 Tyre Drift Smoke: force DragBaffle resolves
+  🟢 Tyre Drift Smoke: emitter shape Disc resolves
+  🟢 Tyre Drift Smoke: boundary mode resolves
+  🟢 Tyre Drift Smoke: resolution inside solver limits
+  🟢 Mograph Field: force PointRepulsor resolves
+  🟢 Mograph Field: force RadialBurst resolves
+  🟢 Mograph Field: force VortexColumn resolves
+  🟢 Mograph Field: force CurlNoiseTurbulence resolves
+  🟢 Mograph Field: boundary mode resolves
+  🟢 Mograph Field: resolution inside solver limits
+  🟢 Stardust: force VortexColumn resolves
+  🟢 Stardust: force WindShear resolves
+  🟢 Stardust: force PointAttractor resolves
+  🟢 Stardust: boundary mode resolves
+  🟢 Stardust: resolution inside solver limits
+  🟢 Light Strands: force DirectionalWind resolves
+  🟢 Light Strands: force Orbit resolves
+  🟢 Light Strands: force CurlNoiseTurbulence resolves
+  🟢 Light Strands: force DragBaffle resolves
+  🟢 Light Strands: boundary mode resolves
+  🟢 Light Strands: resolution inside solver limits
+  🟢 Dissolving Form: force CurlNoiseTurbulence resolves
+  🟢 Dissolving Form: force ThermalUpdraft resolves
+  🟢 Dissolving Form: boundary mode resolves
+  🟢 Dissolving Form: resolution inside solver limits
+  🟢 Celebration: force DirectionalWind resolves
+  🟢 Celebration: boundary mode resolves
+  🟢 Celebration: resolution inside solver limits
+  🟢 Wind Tunnel: force DirectionalWind resolves
+  🟢 Wind Tunnel: emitter shape Disc resolves
+  🟢 Wind Tunnel: boundary mode resolves
+  🟢 Wind Tunnel: resolution inside solver limits
+  🟢 Smoke Ring Cannon: force VortexRing resolves
+  🟢 Smoke Ring Cannon: emitter shape Disc resolves
+  🟢 Smoke Ring Cannon: boundary mode resolves
+  🟢 Smoke Ring Cannon: resolution inside solver limits
+  🟢 UE5 Niagara Pyro Plume + Blast: force RadialBurst resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: force DirectionalWind resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: force CurlNoiseTurbulence resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: force DragBaffle resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: emitter shape Disc resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: emitter shape Sphere resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: boundary mode resolves
+  🟢 UE5 Niagara Pyro Plume + Blast: resolution inside solver limits
+  🟢 Ordnance Shrapnel Airburst: force RadialBurst resolves
+  🟢 Ordnance Shrapnel Airburst: force DirectionalWind resolves
+  🟢 Ordnance Shrapnel Airburst: force CurlNoiseTurbulence resolves
+  🟢 Ordnance Shrapnel Airburst: force DragBaffle resolves
+  🟢 Ordnance Shrapnel Airburst: emitter shape Sphere resolves
+  🟢 Ordnance Shrapnel Airburst: boundary mode resolves
+  🟢 Ordnance Shrapnel Airburst: resolution inside solver limits
+  🟢 Megaton Wide-Bounds Blast: force RadialBurst resolves
+  🟢 Megaton Wide-Bounds Blast: force DirectionalWind resolves
+  🟢 Megaton Wide-Bounds Blast: force CurlNoiseTurbulence resolves
+  🟢 Megaton Wide-Bounds Blast: force DragBaffle resolves
+  🟢 Megaton Wide-Bounds Blast: emitter shape Sphere resolves
+  🟢 Megaton Wide-Bounds Blast: boundary mode resolves
+  🟢 Megaton Wide-Bounds Blast: resolution inside solver limits
+  🟢 Low-End GPU Fast Mode: force RadialBurst resolves
+  🟢 Low-End GPU Fast Mode: force DirectionalWind resolves
+  🟢 Low-End GPU Fast Mode: force CurlNoiseTurbulence resolves
+  🟢 Low-End GPU Fast Mode: force DragBaffle resolves
+  🟢 Low-End GPU Fast Mode: emitter shape Disc resolves
+  🟢 Low-End GPU Fast Mode: emitter shape Sphere resolves
+  🟢 Low-End GPU Fast Mode: boundary mode resolves
+  🟢 Low-End GPU Fast Mode: resolution inside solver limits
+  🟢 Tactical C4 / HE Blast Wave: force RadialBurst resolves
+  🟢 Tactical C4 / HE Blast Wave: force DirectionalWind resolves
+  🟢 Tactical C4 / HE Blast Wave: force CurlNoiseTurbulence resolves
+  🟢 Tactical C4 / HE Blast Wave: force DragBaffle resolves
+  🟢 Tactical C4 / HE Blast Wave: emitter shape Sphere resolves
+  🟢 Tactical C4 / HE Blast Wave: boundary mode resolves
+  🟢 Tactical C4 / HE Blast Wave: resolution inside solver limits
+  🟢 Raging Oil Well Inferno: force DirectionalWind resolves
+  🟢 Raging Oil Well Inferno: force CurlNoiseTurbulence resolves
+  🟢 Raging Oil Well Inferno: force DragBaffle resolves
+  🟢 Raging Oil Well Inferno: emitter shape Disc resolves
+  🟢 Raging Oil Well Inferno: boundary mode resolves
+  🟢 Raging Oil Well Inferno: resolution inside solver limits
+  🟢 Voxel Collider Flow Deflection: force RadialBurst resolves
+  🟢 Voxel Collider Flow Deflection: force DirectionalWind resolves
+  🟢 Voxel Collider Flow Deflection: force CurlNoiseTurbulence resolves
+  🟢 Voxel Collider Flow Deflection: force DragBaffle resolves
+  🟢 Voxel Collider Flow Deflection: emitter shape Disc resolves
+  🟢 Voxel Collider Flow Deflection: emitter shape Sphere resolves
+  🟢 Voxel Collider Flow Deflection: boundary mode resolves
+  🟢 Voxel Collider Flow Deflection: resolution inside solver limits
+  🟢 Fire Tornado / Alchemical Vortex: force VortexColumn resolves
+  🟢 Fire Tornado / Alchemical Vortex: force RadialBurst resolves
+  🟢 Fire Tornado / Alchemical Vortex: force DirectionalWind resolves
+  🟢 Fire Tornado / Alchemical Vortex: force CurlNoiseTurbulence resolves
+  🟢 Fire Tornado / Alchemical Vortex: force DragBaffle resolves
+  🟢 Fire Tornado / Alchemical Vortex: emitter shape Disc resolves
+  🟢 Fire Tornado / Alchemical Vortex: emitter shape Sphere resolves
+  🟢 Fire Tornado / Alchemical Vortex: boundary mode resolves
+  🟢 Fire Tornado / Alchemical Vortex: resolution inside solver limits
+  🟢 Ashfall / Grey Fireflies: force RadialBurst resolves
+  🟢 Ashfall / Grey Fireflies: force DirectionalWind resolves
+  🟢 Ashfall / Grey Fireflies: force CurlNoiseTurbulence resolves
+  🟢 Ashfall / Grey Fireflies: force DragBaffle resolves
+  🟢 Ashfall / Grey Fireflies: emitter shape Sphere resolves
+  🟢 Ashfall / Grey Fireflies: boundary mode resolves
+  🟢 Ashfall / Grey Fireflies: resolution inside solver limits
+  🟢 Voxelized Stylized Grid: force RadialBurst resolves
+  🟢 Voxelized Stylized Grid: force DirectionalWind resolves
+  🟢 Voxelized Stylized Grid: force CurlNoiseTurbulence resolves
+  🟢 Voxelized Stylized Grid: force DragBaffle resolves
+  🟢 Voxelized Stylized Grid: emitter shape Disc resolves
+  🟢 Voxelized Stylized Grid: emitter shape Sphere resolves
+  🟢 Voxelized Stylized Grid: boundary mode resolves
+  🟢 Voxelized Stylized Grid: resolution inside solver limits
+  🟢 Dust Tornado / Debris Vortex: force VortexColumn resolves
+  🟢 Dust Tornado / Debris Vortex: force DirectionalWind resolves
+  🟢 Dust Tornado / Debris Vortex: force CurlNoiseTurbulence resolves
+  🟢 Dust Tornado / Debris Vortex: force DragBaffle resolves
+  🟢 Dust Tornado / Debris Vortex: emitter shape Disc resolves
+  🟢 Dust Tornado / Debris Vortex: boundary mode resolves
+  🟢 Dust Tornado / Debris Vortex: resolution inside solver limits
+  🟢 Tyre Burnout: force VortexColumn resolves
+  🟢 Tyre Burnout: force DirectionalWind resolves
+  🟢 Tyre Burnout: force CurlNoiseTurbulence resolves
+  🟢 Tyre Burnout: force DragBaffle resolves
+  🟢 Tyre Burnout: emitter shape Disc resolves
+  🟢 Tyre Burnout: boundary mode resolves
+  🟢 Tyre Burnout: resolution inside solver limits
+  🟢 Sand Falling From A Ledge: force DirectionalWind resolves
+  🟢 Sand Falling From A Ledge: force CurlNoiseTurbulence resolves
+  🟢 Sand Falling From A Ledge: force DragBaffle resolves
+  🟢 Sand Falling From A Ledge: emitter shape Disc resolves
+  🟢 Sand Falling From A Ledge: boundary mode resolves
+  🟢 Sand Falling From A Ledge: resolution inside solver limits
+  🟢 Settling Dust: force DirectionalWind resolves
+  🟢 Settling Dust: force CurlNoiseTurbulence resolves
+  🟢 Settling Dust: force DragBaffle resolves
+  🟢 Settling Dust: emitter shape Disc resolves
+  🟢 Settling Dust: boundary mode resolves
+  🟢 Settling Dust: resolution inside solver limits
+  🟢 Small Gust / Drifting Haze: force DirectionalWind resolves
+  🟢 Small Gust / Drifting Haze: force CurlNoiseTurbulence resolves
+  🟢 Small Gust / Drifting Haze: force DragBaffle resolves
+  🟢 Small Gust / Drifting Haze: emitter shape Disc resolves
+  🟢 Small Gust / Drifting Haze: boundary mode resolves
+  🟢 Small Gust / Drifting Haze: resolution inside solver limits
+  🟢 Fractured Brick Burst: force RadialBurst resolves
+  🟢 Fractured Brick Burst: force DirectionalWind resolves
+  🟢 Fractured Brick Burst: force CurlNoiseTurbulence resolves
+  🟢 Fractured Brick Burst: force DragBaffle resolves
+  🟢 Fractured Brick Burst: emitter shape Sphere resolves
+  🟢 Fractured Brick Burst: boundary mode resolves
+  🟢 Fractured Brick Burst: resolution inside solver limits
+  🟢 Lantern / Oil Lamp Flame: force DirectionalWind resolves
+  🟢 Lantern / Oil Lamp Flame: force CurlNoiseTurbulence resolves
+  🟢 Lantern / Oil Lamp Flame: force DragBaffle resolves
+  🟢 Lantern / Oil Lamp Flame: emitter shape Disc resolves
+  🟢 Lantern / Oil Lamp Flame: boundary mode resolves
+  🟢 Lantern / Oil Lamp Flame: resolution inside solver limits
+  🟢 Camp Fire: force DirectionalWind resolves
+  🟢 Camp Fire: force CurlNoiseTurbulence resolves
+  🟢 Camp Fire: force DragBaffle resolves
+  🟢 Camp Fire: emitter shape Disc resolves
+  🟢 Camp Fire: boundary mode resolves
+  🟢 Camp Fire: resolution inside solver limits
+  🟢 Derez Voxel Chamber: boundary mode resolves
+  🟢 Derez Voxel Chamber: resolution inside solver limits
+  🟢 Mocap Kinetic Performer: boundary mode resolves
+  🟢 Mocap Kinetic Performer: resolution inside solver limits
+  🟢 Singularity Lensing: emitter shape Sphere resolves
+  🟢 Singularity Lensing: boundary mode resolves
+  🟢 Singularity Lensing: resolution inside solver limits
+  🟢 Thermal Shimmer Plume: emitter shape Disc resolves
+  🟢 Thermal Shimmer Plume: boundary mode resolves
+  🟢 Thermal Shimmer Plume: resolution inside solver limits
+  🟢 Obsidian Gallery: boundary mode resolves
+  🟢 Obsidian Gallery: resolution inside solver limits
+  🟢 Aviary at Dusk: boundary mode resolves
+  🟢 Aviary at Dusk: resolution inside solver limits
+  🟢 Coral Reef Drift: boundary mode resolves
+  🟢 Coral Reef Drift: resolution inside solver limits
+  🟢 Mint Vault: boundary mode resolves
+  🟢 Mint Vault: resolution inside solver limits
+  🟢 Sakura Courtyard: boundary mode resolves
+  🟢 Sakura Courtyard: resolution inside solver limits
+  🟢 Signal Array: boundary mode resolves
+  🟢 Signal Array: resolution inside solver limits
+  🟢 Particle shape Point sampled by GLSL
+  🟢 Particle shape Sphere sampled by GLSL
+  🟢 Particle shape Box sampled by GLSL
+  🟢 Particle shape Disc sampled by GLSL
+  🟢 Particle shape Ring sampled by GLSL
+  🟢 Particle shape Line sampled by GLSL
+  🟢 Particle shape Grid sampled by GLSL
+  🟢 Particle shape Torus sampled by GLSL
+  🟢 Particle shape SurfaceShell sampled by GLSL
+  🟢 Particle shape MocapFigure sampled by GLSL
+  🟢 Particle shape Dome sampled by GLSL
+  🟢 Particle shape ObjectSurface sampled by GLSL
+  🟢 Particle shape Spiderweb sampled by GLSL
+  🟢 Particle shape ClothGrid sampled by GLSL
+  🟢 Particle shape FloraBed sampled by GLSL
+  🟢 Particle shape FireworkBurst sampled by GLSL
+  🟢 Particle colour rule Life shaded by GLSL
+  🟢 Particle colour rule Speed shaded by GLSL
+  🟢 Particle colour rule Displacement shaded by GLSL
+  🟢 Particle colour rule Height shaded by GLSL
+  🟢 Particle colour rule Seed shaded by GLSL
+  🟢 Particle colour rule Swatch shaded by GLSL
+  🟢 Particle colour rule Cycle shaded by GLSL
+  🟢 Trail history ring + Catmull-Rom ribbon shaders present
+  🟢 Sprite footprint Glow shaded by GLSL
+  🟢 Sprite footprint Disc shaded by GLSL
+  🟢 Sprite footprint Bokeh shaded by GLSL
+  🟢 Sprite footprint Star shaded by GLSL
+  🟢 Sprite footprint Square shaded by GLSL
+  🟢 Sprite footprint Cube3D shaded by GLSL
+  🟢 Sprite footprint Butterfly shaded by GLSL
+  🟢 Sprite footprint HexTile shaded by GLSL
+  🟢 Sprite footprint HoloGlyph shaded by GLSL
+  🟢 Sprite footprint SnowCrystal shaded by GLSL
+  🟢 Sprite footprint RainDrop shaded by GLSL
+  🟢 Sprite footprint LeafBlade shaded by GLSL
+  🟢 Sprite footprint BlossomPetal shaded by GLSL
+  🟢 Sprite footprint CrystalShard2D shaded by GLSL
+  🟢 Sprite footprint ShockRing shaded by GLSL
+  🟢 Sprite footprint RadarArc shaded by GLSL
+  🟢 Sprite footprint AuroraCurtain shaded by GLSL
+  🟢 Sprite footprint CoinDisc shaded by GLSL
+  🟢 54 particle templates · texture sizing
+  🟢 Palettes: every template carries 2–8 stops; legacy Start/End back-fill
+  🟢 Mograph Field: particle template grid-cloner resolves
+  🟢 Mograph Field: particle template ring-cloner resolves
+  🟢 Stardust: particle template stardust resolves
+  🟢 Stardust: particle template nebula resolves
+  🟢 Light Strands: particle template light-strands resolves
+  🟢 Light Strands: particle template silk-ribbons resolves
+  🟢 Dissolving Form: particle template dissolving-sphere resolves
+  🟢 Dissolving Form: particle template bioluminescent resolves
+  🟢 Celebration: particle template confetti resolves
+  🟢 Celebration: particle template confetti resolves
+  🟢 Celebration: particle template sparks resolves
+  🟢 Celebration: particle template fireflies resolves
+  🟢 Derez Voxel Chamber: particle template derez-cube resolves
+  🟢 Mocap Kinetic Performer: particle template mocap-sprint-ribbons resolves
+  🟢 Mocap Kinetic Performer: particle template mocap-dancer-cloner resolves
+  🟢 Singularity Lensing: particle template black-hole-lens resolves
+  🟢 Obsidian Gallery: particle template obsidian-hand-halftone resolves
+  🟢 Obsidian Gallery: particle template crystal-shatter resolves
+  🟢 Obsidian Gallery: particle template spiderweb-orb resolves
+  🟢 Aviary at Dusk: particle template starling-murmuration resolves
+  🟢 Aviary at Dusk: particle template autumn-leaves resolves
+  🟢 Aviary at Dusk: particle template aurora-curtain resolves
+  🟢 Coral Reef Drift: particle template fish-school resolves
+  🟢 Coral Reef Drift: particle template flora-meadow resolves
+  🟢 Coral Reef Drift: particle template bubbles resolves
+  🟢 Mint Vault: particle template coin-fountain resolves
+  🟢 Mint Vault: particle template ferrofluid-spikes resolves
+  🟢 Mint Vault: particle template radar-sweep resolves
+  🟢 Sakura Courtyard: particle template sakura-petals resolves
+  🟢 Sakura Courtyard: particle template cloth-flag resolves
+  🟢 Sakura Courtyard: particle template flora-meadow resolves
+  🟢 Signal Array: particle template object-surface-pour resolves
+  🟢 Signal Array: particle template radar-sweep resolves
+  🟢 Signal Array: particle template spiderweb-orb resolves
+
+[2] GLSL ES 3.00 shaders
+  🟢 32 shader stages exported
+  🟢 AdvectFragment compiles
+  🟢 ColourFragment compiles
+  🟢 CurlFragment compiles
+  🟢 DebrisRenderVertex compiles
+  🟢 DebrisUpdateFragment compiles
+  🟢 DivergenceFragment compiles
+  🟢 ForceVectorVertex compiles
+  🟢 ForcesFragment compiles
+  🟢 FullscreenVertex compiles
+  🟢 GradientFragment compiles
+  🟢 InjectFragment compiles
+  🟢 LineVertex compiles
+  🟢 MacCormackFragment compiles
+  🟢 OccupancyFragment compiles
+  🟢 PostOverlayFragment compiles
+  🟢 PressureFragment compiles
+  🟢 SceneFragment compiles
+  🟢 ShiftFragment compiles
+  🟢 SliceFragment compiles
+  🟢 SliceVertex compiles
+  🟢 ThermodynamicsFragment compiles
+  🟢 TracerRenderVertex compiles
+  🟢 TracerUpdateFragment compiles
+  🟢 VectorVertex compiles
+  🟢 VorticityFragment compiles
+  🟢 ObjectFragment compiles
+  🟢 ObjectRenderVertex compiles
+  🟢 ParticleFragment compiles
+  🟢 ParticleRenderVertex compiles
+  🟢 ParticleUpdateFragment compiles
+  🟢 TrailUpdateFragment compiles
+  🟢 TrailVertex compiles
+  🟢 AdvectFragment.sparse compiles
+  🟢 CurlFragment.sparse compiles
+  🟢 DebrisUpdateFragment.sparse compiles
+  🟢 DivergenceFragment.sparse compiles
+  🟢 ForceVectorVertex.sparse compiles
+  🟢 ForcesFragment.sparse compiles
+  🟢 GradientFragment.sparse compiles
+  🟢 InjectFragment.sparse compiles
+  🟢 MacCormackFragment.sparse compiles
+  🟢 PressureFragment.sparse compiles
+  🟢 SceneFragment.sparse compiles
+  🟢 ShiftFragment.sparse compiles
+  🟢 SliceFragment.sparse compiles
+  🟢 ThermodynamicsFragment.sparse compiles
+  🟢 TracerUpdateFragment.sparse compiles
+  🟢 VectorVertex.sparse compiles
+  🟢 VorticityFragment.sparse compiles
+  🟢 ParticleUpdateFragment.sparse compiles
+
+[3] Mock WebGL2 pass sequencing + uniform wiring
+  🟢 Domain grid derives 96×48×48 @ 6.25 cm from Size 6×3×3 / MaxCells 96
+  🟢 Tiled layout for 96×48×48 is 672×336 (7×7 tiles)
+  🟢 Force packing saturates at 16 slots (21 authored)
+  🟢 Emitter + collider packing
+  🟢 MacCormack step issues 50 GPU passes (expected 50)
+  🟢 Semi-Lagrangian step drops the 4 MacCormack correction passes
+  🟢 Every particle template allocates GPU state (54 systems)
+  🟢 Every uniform written exists in its shader (0 mismatches)
+  🟢 Gizmos and wireframe overlays completely off by default (0 line vertices)
+  🟢 Gizmo batch produced 19602 line vertices for 21 forces
+
+[4] Serialisation
+  🟢 Scene document round-trips through JSON
+  🟢 Force generators rebuild with identical parameters
+
+[5] index.html DOM contract
+  🟢 #pz-outliner exists in markup
+  🟢 #pz-inspector exists in markup
+  🟢 #pz-toolbar exists in markup
+  🟢 #pz-transport exists in markup
+  🟢 #pz-legend exists in markup
+  🟢 #pz-notch exists in markup
+  🟢 #pz-notch-menu exists in markup
+  🟢 #pz-drawer exists in markup
+  🟢 #pz-drawer-tab exists in markup
+  🟢 #pz-timeline exists in markup
+  🟢 #status-fps exists in markup
+  🟢 #status-step exists in markup
+  🟢 #status-grid exists in markup
+  🟢 #status-forces exists in markup
+  🟢 #status-text exists in markup
+  🟢 #fluid-canvas exists in markup
+  🟢 #pz-error exists in markup
+  🟢 #pz-error-text exists in markup
+  🟢 #transport-time is created by StudioPanels before lookup
+  🟢 #transport-frame is created by StudioPanels before lookup
+  🟢 #flipbook-preview is created by StudioPanels before lookup
+  🟢 #flipbook-frame is created by StudioPanels before lookup
+  🟢 #flipbook-label is created by StudioPanels before lookup
+  🟢 Styles/FluidEditor.css present
+  🟢 Fonts/dm-sans-latin-300-normal.woff2 present
+  🟢 Fonts/dm-sans-latin-400-normal.woff2 present
+  🟢 Fonts/dm-sans-latin-500-normal.woff2 present
+  🟢 Fonts/OFL.txt present
+  🟢 Serve.py present
+  🟢 No hot-linked fonts or CDN scripts
+
+[6] Studio panel render smoke test
+  🟢 App initialises against mock GPU context
+  🟢 Outliner + inspector populate for the Domain selection
+  🟢 Add Directional Wind selects the new node
+  🟢 Add Wind Shear selects the new node
+  🟢 Add Flow Stream selects the new node
+  🟢 Add Directional Burst selects the new node
+  🟢 Add Point Attractor selects the new node
+  🟢 Add Point Repulsor selects the new node
+  🟢 Add Axis Attractor selects the new node
+  🟢 Add Orbit selects the new node
+  🟢 Add Containment selects the new node
+  🟢 Add Magnetic Dipole selects the new node
+  🟢 Add Vortex Column selects the new node
+  🟢 Add Vortex Ring selects the new node
+  🟢 Add Rigid Spin selects the new node
+  🟢 Add Curl Noise Turbulence selects the new node
+  🟢 Add Brownian Jitter selects the new node
+  🟢 Add Radial Burst selects the new node
+  🟢 Add Shockwave Shell selects the new node
+  🟢 Add Implosion selects the new node
+  🟢 Add Drag Baffle selects the new node
+  🟢 Add Thermal Updraft selects the new node
+  🟢 All generator types construct into the blank starting scene
+  🟢 Sparse-volume force vector overlay renders
+  🟢 Volume Render inspector renders
+  🟢 Velocity Vectors inspector renders
+  🟢 Scalar Slice inspector renders
+  🟢 Flow Tracers inspector renders
+  🟢 Debris inspector renders
+  🟢 Force Vectors inspector renders
+  🟢 Force Gizmos inspector renders
+  🟢 Solver advanced 4 frames through the app loop (3 live + 1 stepped)
+  🟢 Preset Blank Stage loads + reconfigures grid
+  🟢 Preset Campfire loads + reconfigures grid
+  🟢 Preset Smoke Plume loads + reconfigures grid
+  🟢 Preset Explosion loads + reconfigures grid
+  🟢 Preset Demolition Blast loads + reconfigures grid
+  🟢 Preset Tornado Funnel loads + reconfigures grid
+  🟢 Preset Infinite Grid · Drift loads + reconfigures grid
+  🟢 Preset Infinite Grid · Plume loads + reconfigures grid
+  🟢 Preset Tile Crossing · World Grid loads + reconfigures grid
+  🟢 Preset Drift Run · World Grid loads + reconfigures grid
+  🟢 Preset Tyre Drift Smoke loads + reconfigures grid
+  🟢 Preset Mograph Field loads + reconfigures grid
+  🟢 Preset Stardust loads + reconfigures grid
+  🟢 Preset Light Strands loads + reconfigures grid
+  🟢 Preset Dissolving Form loads + reconfigures grid
+  🟢 Preset Celebration loads + reconfigures grid
+  🟢 Preset Wind Tunnel loads + reconfigures grid
+  🟢 Preset Smoke Ring Cannon loads + reconfigures grid
+  🟢 Preset UE5 Niagara Pyro Plume + Blast loads + reconfigures grid
+  🟢 Preset Ordnance Shrapnel Airburst loads + reconfigures grid
+  🟢 Preset Megaton Wide-Bounds Blast loads + reconfigures grid
+  🟢 Preset Low-End GPU Fast Mode loads + reconfigures grid
+  🟢 Preset Tactical C4 / HE Blast Wave loads + reconfigures grid
+  🟢 Preset Raging Oil Well Inferno loads + reconfigures grid
+  🟢 Preset Voxel Collider Flow Deflection loads + reconfigures grid
+  🟢 Preset Fire Tornado / Alchemical Vortex loads + reconfigures grid
+  🟢 Preset Ashfall / Grey Fireflies loads + reconfigures grid
+  🟢 Preset Voxelized Stylized Grid loads + reconfigures grid
+  🟢 Preset Dust Tornado / Debris Vortex loads + reconfigures grid
+  🟢 Preset Tyre Burnout loads + reconfigures grid
+  🟢 Preset Sand Falling From A Ledge loads + reconfigures grid
+  🟢 Preset Settling Dust loads + reconfigures grid
+  🟢 Preset Small Gust / Drifting Haze loads + reconfigures grid
+  🟢 Preset Fractured Brick Burst loads + reconfigures grid
+  🟢 Preset Lantern / Oil Lamp Flame loads + reconfigures grid
+  🟢 Preset Camp Fire loads + reconfigures grid
+  🟢 Preset Derez Voxel Chamber loads + reconfigures grid
+  🟢 Preset Mocap Kinetic Performer loads + reconfigures grid
+  🟢 Preset Singularity Lensing loads + reconfigures grid
+  🟢 Preset Thermal Shimmer Plume loads + reconfigures grid
+  🟢 Preset Obsidian Gallery loads + reconfigures grid
+  🟢 Preset Aviary at Dusk loads + reconfigures grid
+  🟢 Preset Coral Reef Drift loads + reconfigures grid
+  🟢 Preset Mint Vault loads + reconfigures grid
+  🟢 Preset Sakura Courtyard loads + reconfigures grid
+  🟢 Preset Signal Array loads + reconfigures grid
+  🟢 Asset drawer lists every force generator card grouped by category
+  🟢 MaxCells edits rebuild the solver fields at fixed world size (3×5×3 m → 29×48×29)
+  🟢 Size edits keep the voxel count on the longest axis
+  🟢 Export → import preserves the edited domain
+  🟢 Timing keys gate the ground charge (waiting → live → done)
+  🟢 Repeat keys loop; un-keyed nodes stay on
+  🟢 Debris particle ping-pong integrates + renders through the app loop
+  🟢 Scene loop restarts the solver clock
+  🟢 World Grid 3×1×3 tiles of 40×22×40 cells solve as one 120×22×120 field
+  🟢 Following emitter at 10 m/s stepped the window 2× along X to tile 2,0,0 (height locked)
+  🟢 Window centre tracks the tile origin without reallocating the fields
+  🟢 Recentre returns the window to tile 0
+  🟢 Shift kernel zero-fills cells scrolling in from outside the old window
+  🟢 Infinite grid allocates a 8×7 slot atlas (960×840) for 56 tiles of 24³
+  🟢 Emitter pins 4 ground tile(s); nothing allocates below the floor
+  🟢 Occupancy drives growth: 4 → 10 resident tiles, +X and +Y neighbours allocated
+  🟢 Empty tiles are freed after their grace period (4 pinned remain)
+  🟢 Sparse rewrite swaps the addressing chunk in every kernel
+  🟢 Sparse programs: every uniform written exists (0 mismatches)
+  🟢 Switching back to a fixed-box preset rebuilds the window solver
+
+[7] Layer specifications + gas layer stack
+  🟢 LayerSpecifications.toml follows the rules
+  🟢 Engine/LayerSpecifications.js is up to date with the TOML (run node GenerateLayerSpecifications.mjs)
+  🟢 Specification hash a214aa4e57e2d742 matches the TOML
+  🟢 Validator refuses duplicate choice codes and out-of-range defaults
+  🟢 Engine/PresetLibrary.js is up to date with Presets/*.toml (run node GeneratePresetLibrary.mjs) · library 606a88708237c496
+  🟢 46/46 preset documents build the identical scene the legacy preset objects built
+  🟢 46/46 preset stacks evaluate without problems and round-trip through TOML byte for byte
+  🟢 Fingerprint detects a 0.01 change in one layer parameter
+  🟢 Save as preset writes a valid document that rebuilds the current scene exactly
+  🟢 Unknown layer category and unknown parameter are kept and written back unchanged
+  🟢 Unknown layer is reported as inert and does not stop the volume
+  🟢 Disabling the Buoyancy layer returns buoyancy and cooling to neutral (0)
+  🟢 Weight 0.5 halves the contribution (1.3 → 0.65)
+  🟢 Solo keeps only the soloed layer (and the required Domain) contributing
+  🟢 Un-solo restores every layer
+  🟢 Editing a stack-owned Domain field writes into its layer (existing controls keep working)
+  🟢 Volume Render fire edits are written to the Fire shading layer
+  🟢 Capacity is enforced when adding (Buoyancy ≤ 4)
+  🟢 Later Replace layers win over earlier ones (top to bottom): 1.2
+  🟢 Add blend sums onto the layers above (1.3 + 0.5 = 1.8)
+  🟢 The required Domain layer cannot be deleted
+  🟢 Nothing can be moved above the Domain layer
+  🟢 A stack without its Domain layer stops the volume with a reason ("Domain layer missing")
+  🟢 Stopped volume holds the gas still while the app keeps running
+  🟢 Adding an emitter adds its linked Source layer
+  🟢 Disabling a Source layer disables its emitter
+  🟢 Enabling the emitter from its inspector re-enables the Source layer
+  🟢 Deleting the emitter removes its Source layer
+  🟢 Version 5 export → import keeps the stack and relinks Source layers to the re-created emitters
+  🟢 Version 2 files (no stack) convert to a stack with the same values
+
+[8] Particle layer stacks + templates as documents
+  🟢 Engine/ParticleTemplateLibrary.js is up to date with ParticleTemplates/*.toml · library 1bc71793193d372b
+  🟢 18 particle layer categories (201–218), all writing the particle node
+  🟢 Every GPU field of a particle node is owned by a layer; only identity and timing stay flat (Id, Kind, Template, Name, Enabled, Visible, StartTime, Duration, Fade, Repeat, Tracks, Stack)
+  🟢 26/26 legacy templates rebuild the identical particle node from their document
+  🟢 54/54 template stacks evaluate without problems; 54 round-trip through TOML byte for byte
+  🟢 evaluate(convert(node)) equals the node field for field for every template and preset particle system (88)
+  🟢 Empty Cloud template = Spawn + Sprite (the "+ New particle cloud" starting point) and evaluates
+  🟢 Form Sphere stack: Spawn → Home spring → Noise → Field influence → Bounce → Colour rule → Size over life → Sprite & Object
+  🟢 + Add layer → Gravity adds 9.8 m/s² to the selected particle system (9.8)
+  🟢 Weight 0.5 halves it (4.9)
+  🟢 Disabling the layer returns gravity to neutral (0)
+  🟢 A flat edit with no owning layer inserts it in phase order (Advance before Shade)
+  🟢 Moving the gizmo writes the Spawn layer position
+  🟢 The required Spawn layer cannot be deleted
+  🟢 Capacity holds: a second Sprite layer is refused
+  🟢 Editing a Spawn layer parameter evaluates into the node the GPU reads
+  🟢 Scene fingerprint detects a 0.01 change in one particle layer parameter
+  🟢 Save as preset writes each particle system with its layer stack and rebuilds it exactly
+  🟢 Version 4 export → import keeps every particle stack (layers, weights, amounts)
+  🟢 Duplicating a particle system copies its stack with fresh layer tokens and offsets the Spawn position
+  🟢 A gas layer inside a particle stack stops that system with a reason ("Buoyancy does not belong in this stack")
+  🟢 A particle stack without Spawn holds that system (not simulated or drawn)
+  🟢 The rest of the scene keeps running while one particle system is held
+  🟢 A new particle system from Empty Cloud is created and runs without failures
+
+[9] Timeline, keys and scrubbing (phase 4)
+  🟢 Envelope → Weight track: 31 timed forces, sources and particle clouds in the 36 presets, 113231 samples at 1 ms, max difference 1.11e-15 (≤ 1e-6)
+  🟢 Envelope → Weight track over 300 synthetic Start/Duration/Fade/Repeat cases (rise-and-hold, trapezoid, triangle, repeat shorter than duration): max difference 2.22e-13
+  🟢 Plan §5.3 shapes: trapezoid = 4 linear keys, Fade > Duration/2 = triangle peaking at Duration/(2·Fade), Duration 0 = rise then hold
+  🟢 Repeat → Cycle extrapolation with Period = Repeat; un-timed nodes have no Weight track (Weight 1)
+  🟢 Linear ease interpolates; the first amount holds before the first key and Hold keeps the last
+  🟢 Constant ease holds until the next key
+  🟢 Smooth ease (monotone cubic Hermite, auto tangents) passes through every key without overshoot
+  🟢 Bezier ease follows explicit Out / In tangents (amount per second)
+  🟢 Cycle wraps and Ping-pong reflects after the last key
+  🟢 Int32 rounds after easing; Choice and Bool step
+  🟢 ColourLinear eases in linear light (#000 → #fff at 0.5 = #bcbcbc); Vector3 eases per component
+  🟢 setKey keeps keys sorted and replaces a key within half a 240 Hz step
+  🟢 Moving keys keeps the order valid
+  🟢 Scaling keys about a pivot
+  🟢 Removing the last key removes the track
+  🟢 A key edit invalidates from two keys back (Smooth tangents); editing before the first key affects t = 0
+  🟢 A keyed parameter replaces the static amount at the playhead; layer Weight blends after it; no time = static
+  🟢 Layer Weight is keyable (0 = layer silent, 1 = full)
+  🟢 Tracks round-trip through TOML as [[Volume.Track]] / [[Volume.Track.Keys]] (Time, Amount, In, Out written as floats)
+  🟢 Fresh layer tokens (duplicates, template instances) carry their tracks along
+  🟢 Track rules: missing layer, keys out of order and timing fields are rejected
+  🟢 Domain inspector fields resolve to their owning layer for ◆
+  🟢 Auto-key off: an edit of an un-keyed parameter stays static
+  🟢 ◆ keys the current amount at the playhead
+  🟢 Editing a keyed parameter writes a key at the playhead; the static amount is untouched; the solver reads the keyed amount
+  🟢 Scrubbing re-folds keyed stacks at the new playhead
+  🟢 Auto-key on: any edit (here a layer Weight) writes a key
+  🟢 Removing a layer removes its tracks
+  🟢 Timed nodes show their generated Weight track in the timeline (4 in Demolition)
+  🟢 ◆ on a timed node turns its timing into explicit Weight keys (timing fields cleared) and adds a key
+  🟢 Setting timing fields again hands Weight back to the generated envelope
+  🟢 Force fields are keyable; the solver packs the keyed amount, the static one stays
+  🟢 Save as preset (Revision 2) writes [[Force.Track]] and rebuilds the keyed scene exactly
+  🟢 Version 5 scene files keep tracks and the timeline
+  🟢 Particle layer parameters are keyable; the cloud reads the keyed amount
+  🟢 Duplicating a cloud copies its tracks onto the fresh layer tokens
+  🟢 Particle tracks are saved as [[Particle.Track]] with document layer tokens and rebuild exactly
+  🟢 Checkpoint ring sized by budget: 26 × 7.3 MB
+  🟢 Scrubbing forward steps the simulation (96 steps) and stores a checkpoint every 0.5 s (0.50, 1.00, 1.50)
+  🟢 Scrubbing back restores the newest checkpoint ≤ t (1.0 s) and re-steps 12 steps; clock and step index restored
+  🟢 Scrubbing before the first checkpoint restarts from the empty grid at t = 0
+  🟢 A key at t = 0.2 s invalidates the checkpoints after it
+  🟢 Keys at 0.2 / 0.6 / 0.8 s, then a new key at 1.4 s: Smooth tangents reach back two keys (0.6 s), so only the 0.5 s checkpoint survives (0.50)
+  🟢 A key edit before the playhead re-simulates from the surviving checkpoint back to the playhead (the 1.0 s checkpoint is recaptured with the new keys)
+  🟢 A static edit invalidates every checkpoint
+  🟢 Loop wraps the playhead at the timeline End
+  🟢 Timeline dock renders dope sheet and curves with 1 track(s)
+  🟢 Infinite grid: scrubbing back restores the sparse checkpoint at 0.5 s and re-steps 3 steps
+
+[10] Scene-only Outliner, Project Zero Inspector + Content Directory previews
+  🟢 Blank Stage Outliner shows only its Simulation Folder and Gas Domain (2 rows, zero Overlays or Global clutter)
+  🟢 Campfire Outliner nests Gas Domain (with Sources), Force Fields and collapsed Overlays inside its Simulation Folder
+  🟢 Domain Inspector exposes 4 lettered Project Zero pages (Stack / Grid / Shading / Solver)
+  🟢 Domain Inspector page 1/4 renders cleanly
+  🟢 Domain Inspector page 2/4 renders cleanly
+  🟢 Domain Inspector page 3/4 renders cleanly
+  🟢 Domain Inspector page 4/4 renders cleanly
+  🟢 Force Inspector exposes 3 pages (Field / Transform / Timing)
+  🟢 Force Transform page renders the Project Zero XYZ matrix card
+  🟢 Content Directory renders all 46 Scene Presets with canvas previews
+  🟢 Content Directory renders all 54 Particle Cloud templates with previews
+  🟢 Content Directory Sources & Colliders tab renders 4 visual cards
+
+[11] Project Zero Simulation Folders, Global/Local scoping + FolderInspector
+  🟢 Explosion loads into its own Simulation Folder (sim-preset-explosion-1)
+  🟢 Selecting Explosion folder renders Project Zero FolderInspector (COLLECTION / SCENE INVENTORY)
+  🟢 Promoting a Force Field to Global creates Global folder and removes it from Explosion local forces
+  🟢 Promoting an Overlay to Global stores it under Global OverlayScope
+  🟢 Adding Campfire as a second Simulation Folder isolates Campfire local forces (DirectionalWind) while sharing Global Force + Global Overlay
+  🟢 Activating Explosion Simulation Folder restores Explosion local Domain/RadialBurst alongside Global items without Campfire clutter
+  🟢 Promoting Gas Domain to Global moves Gas Domain into Global folder and shares it across simulations
+  🟢 FluidScene JSON round-trip preserves Simulation Folders and Global/Local scoping
+
+[12] Phase 5 LayerStack Effects (Derez, Mocap, MoGraph, Glitch, Lensing, Shimmer) & Zero-Default Overlays
+  🟢 Spawning particles never enables Overlays or Force Gizmos (0 gizmo line vertices, 0 Outliner overlay rows)
+  🟢 Derez Voxel Shatter evaluates Layer 213 (Dissolve & Derez) + Voxel Cube sprite
+  🟢 Weighting Dissolve & Derez to 0.5 halves DerezMix and DerezEdgeGlow
+  🟢 Disabling Dissolve & Derez resets DerezMode to Off and intensities to 0
+  🟢 Mocap Sprint Ribbons evaluates Layer 214 (Mocap performer) on MocapFigure shape
+  🟢 Weighting Mocap performer scales skeletal pose blend
+  🟢 Dual MoGraph effector layers compose additively and enforce Capacity = 2
+  🟢 Gas Layer 109 (Heat shimmer) evaluates into Volume and activates PostOverlay pass
+  🟢 Muting Heat shimmer bypasses the PostOverlay pass cleanly (zero overhead)
+  🟢 Singularity Lensing evaluates Layer 218 (Distortion & Lensing) with relativistic event horizon
+  🟢 PostOverlay offscreen capture target renders cleanly through the live frame loop
+  🟢 Hologram Data Glitch evaluates Layer 217 (Glitch) + HoloGlyph sprite
+  🟢 Phase 5 ParticleCloud stacks round-trip through TOML
+  🟢 No 4-particle limit: 9 simultaneous particle clouds spawn, duplicate, and step on GPU
+  🟢 replaceParticleTemplate swaps template in-place at 9 clouds
+  🟢 Inline Outliner delete button removes particle cloud and prunes GPU record immediately
+  🟢 Inspector header quick-delete button removes selected particle cloud
+  🟢 removeSelection() deletes selected particle cloud
+  🟢 Deleting Particle Clouds folder removes all local particle clouds and frees all GPU records
+
+[13] 3D Object visual carriers, object-surface spawn & custom mesh import
+  🟢 Spawn and Sprite & Object both offer the same 19 3D objects (built-in + CustomObject)
+  🟢 Object sampling modes, backing surfaces and the Sprite/Object3D carrier choice are specified
+  🟢 Spawn shape catalogue carries the 3D object surface plus the web / cloth / flora / shell origins
+  🟢 Sprite & Object offers 18 cutouts (9 original + 9 ported analytical SDFs)
+  🟢 All 19 object meshes build with finite corners and normals (10061 triangles total)
+  🟢 Surface, interior-volume and ridge anchor sampling produce finite positions (166 of 256 volume anchors pulled inward)
+  🟢 RidgeAccent walks 434 crease segments (378 of 512 anchors on ridges)
+  🟢 Anchor sampling is deterministic (same mesh, count, mode and yaw → identical texels)
+  🟢 Texel packing: 1276 triangles → 1024×8 mesh texture, 512 anchors → 256×4 anchor texture
+  🟢 Custom mesh import parses .obj (4 tris), binary .stl (1 tri) and .json (4 tris)
+  🟢 CustomObject resolves the imported mesh and falls back to the Teapot when the id is unknown
+  🟢 ObjectSurface spawn bakes 4096 ridge anchors for 4096 particles and uploads them as 256×32 RGBA32F
+  🟢 Obsidian Hand packs 1704 triangles into a 1024-wide texel mesh for gl_VertexID instancing
+  🟢 3D carrier + obsidian backing surface draw through gl_TRIANGLES with every uniform resolved (6 draw calls, 0 mismatches)
+  🟢 Ghost wireframe backing surface draws gl_LINES through the same object program
+  🟢 Importing a mesh sets the shared CustomObjectId and switches both the spawn object and the 3D carrier to CustomObject
+  🟢 Sprite & Object Inspector renders the custom object importer with the active mesh id
+  🟢 Spawn Inspector renders the same custom object importer
+
+🟢 Fluid Studio validation passed

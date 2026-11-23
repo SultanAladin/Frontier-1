@@ -1,0 +1,72 @@
+# Obsidian Gallery — scene preset (Particles). Three particle sculptures staged at eye level in a dark room — each uses a different 3D origin (hand mesh, crystal crease ridges, catenary web) instead of a primitive.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Scene]
+Order = 41
+Id = "preset-obsidian-gallery"
+Name = "Obsidian Gallery"
+Family = "VFX"
+Icon = "cube"
+Boundary = "ClosedBox"
+Summary = "A sculpture gallery: the halftone hand sits on its ghost-wire plinth opposite a fracturing crystal, with a dim spiderweb chandelier hanging behind them."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [6.0, 6.0, 6.0]
+
+[Render]
+Visible = false
+Exposure = 1.25
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Particle]]
+  Template = "obsidian-hand-halftone"
+  Name = "Halftone Hand"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.05, 0.12, 0.15]
+  Radius = 1.35
+  Palette = ["#f8fafc", "#94a3b8", "#22d3ee", "#0e7490"]
+
+[[Particle]]
+  Template = "crystal-shatter"
+  Name = "Fracture Study"
+  StartTime = 0.4
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [1.15, 0.05, 0.35]
+  Radius = 1.15
+  ObjectYaw = 24.0
+
+[[Particle]]
+  Template = "spiderweb-orb"
+  Name = "Web Chandelier"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.7, -0.9]
+  Radius = 1.55
+  Brightness = 0.7
+  Count = 4096

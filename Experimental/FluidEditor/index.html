@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project-Zero · Frontier Fluid Studio</title>
+    <link rel="stylesheet" href="./Styles/FluidEditor.css">
+</head>
+<body>
+    <div class="studio-shell">
+        <!-- Outliner dock -->
+        <aside class="dock dock-left">
+            <div class="tabstrip">
+                <div class="tab active">Outliner<span class="tab-close">×</span></div>
+                <button class="tab-add" title="Add panel">+</button>
+            </div>
+            <div class="panel-body" id="pz-outliner"></div>
+        </aside>
+
+        <!-- Viewport dock -->
+        <main class="dock dock-centre">
+            <div class="tabstrip">
+                <div class="tab active">Viewport<span class="tab-close">×</span></div>
+                <div class="notch" id="pz-notch"></div>
+                <div class="notch-menu" id="pz-notch-menu"></div>
+            </div>
+            <section class="viewport-shell" id="pz-viewport">
+                <div class="viewport-canvas-host"><canvas id="fluid-canvas"></canvas></div>
+                <div class="viewport-toolbar" id="pz-toolbar"></div>
+                <div class="viewport-hint">HTML preview · GPU gas solver · analytical gizmos</div>
+                <div class="viewport-footer">
+                    <div class="transport" id="pz-transport"></div>
+                    <div class="viewport-legend" id="pz-legend"></div>
+                </div>
+                <div class="viewport-error" id="pz-error"><div class="card"><h2>Viewport unavailable</h2><p id="pz-error-text"></p></div></div>
+                <div class="drawer" id="pz-drawer"></div>
+                <div class="drawer-tab" id="pz-drawer-tab"></div>
+            </section>
+            <section class="timeline-dock" id="pz-timeline" aria-label="Timeline"></section>
+        </main>
+
+        <!-- Inspector dock -->
+        <aside class="dock dock-right">
+            <div class="tabstrip">
+                <div class="tab active">Inspector<span class="tab-close">×</span></div>
+            </div>
+            <div class="panel-body" id="pz-inspector"></div>
+        </aside>
+
+        <!-- Status bar -->
+        <footer class="statusbar">
+            <div class="cell"><span>Realtime</span><span id="status-fps">— fps</span></div>
+            <div class="cell"><span>Solver</span><span id="status-step">—</span></div>
+            <div class="cell"><span>Grid</span><span id="status-grid">—</span></div>
+            <div class="cell"><span>Forces</span><span id="status-forces">—</span></div>
+            <div class="status-text" id="status-text">HTML preview · initialising</div>
+        </footer>
+    </div>
+
+    <script type="module">
+        import { FluidStudioApp } from './Engine/FluidStudioApp.js';
+        import { mountStudioUI } from './UI/StudioPanels.js';
+
+        const refs = {
+            outliner: document.getElementById('pz-outliner'),
+            inspector: document.getElementById('pz-inspector'),
+            toolbar: document.getElementById('pz-toolbar'),
+            transport: document.getElementById('pz-transport'),
+            legend: document.getElementById('pz-legend'),
+            notch: document.getElementById('pz-notch'),
+            notchMenu: document.getElementById('pz-notch-menu'),
+            drawer: document.getElementById('pz-drawer'),
+            drawerTab: document.getElementById('pz-drawer-tab'),
+            timeline: document.getElementById('pz-timeline'),
+            statusFps: document.getElementById('status-fps'),
+            statusStep: document.getElementById('status-step'),
+            statusGrid: document.getElementById('status-grid'),
+            statusForces: document.getElementById('status-forces'),
+            statusText: document.getElementById('status-text'),
+        };
+
+        let ui = null;
+        const app = new FluidStudioApp({
+            canvas: document.getElementById('fluid-canvas'),
+            onMetrics: (metrics) => ui && ui.updateMetrics(metrics),
+            onStateChange: (snapshot) => ui && ui.renderAll(snapshot),
+            onError: (error) =>
+            {
+                console.error('Fluid Studio failure:', error);
+                document.getElementById('pz-error').classList.add('visible');
+                document.getElementById('pz-error-text').innerHTML = 'The GPU solver needs WebGL2 with float render targets (EXT_color_buffer_float). ' +
+                    'Enable hardware acceleration or try a current Chromium / Firefox build.<code>' + String(error.message || error) + '</code>';
+                refs.statusText.textContent = 'HTML preview · viewport unavailable';
+            },
+        });
+
+        ui = mountStudioUI({ app, refs });
+        app.init();
+        if (app.scene) ui.renderAll(app.snapshot());
+        window.__FLUID_STUDIO__ = app;
+    </script>
+</body>
+</html>

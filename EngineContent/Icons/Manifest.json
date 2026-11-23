@@ -1,0 +1,908 @@
+[
+  {
+    "symbol": "ArcadeJoystick",
+    "file": "arcade-joystick.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/arcade-joystick.svg",
+    "sha256": "2651a101ff6df19d263f90711e2a0a169726ffc7f987294125e46a3be5a8ec15"
+  },
+  {
+    "symbol": "AssetFileBlend",
+    "file": "asset-file-blend.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-blend.svg",
+    "sha256": "eb04dd8789c2270be0bd41a86576573790c458d5d5961b64cf7172fd38c86fef"
+  },
+  {
+    "symbol": "AssetFileExr",
+    "file": "asset-file-exr.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-exr.svg",
+    "sha256": "542f89f3c27e9180d0fe5b68e5da932343e3233e6a69c3e1081a56d0dcad6e80"
+  },
+  {
+    "symbol": "AssetFileFbx",
+    "file": "asset-file-fbx.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-fbx.svg",
+    "sha256": "cdb311073504017d1734f103f7667ee9bf56cf0bdefe7e65addf714a0e9704b0"
+  },
+  {
+    "symbol": "AssetFileGlsl",
+    "file": "asset-file-glsl.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-glsl.svg",
+    "sha256": "34fa9fd9a42446d9ad5f41f3624de64f9dbf257670cd8871a00b28b99aec9977"
+  },
+  {
+    "symbol": "AssetFileGltf",
+    "file": "asset-file-gltf.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-gltf.svg",
+    "sha256": "692f856de6a7f5d635c1a7f6434344a337b9335d2cbe749d4c78bc743b7f488d"
+  },
+  {
+    "symbol": "AssetFileJpg",
+    "file": "asset-file-jpg.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-jpg.svg",
+    "sha256": "a4bdfdd06b492d85773c79a89302d0d15422f411359b325cadfff2c01a121caf"
+  },
+  {
+    "symbol": "AssetFileJson",
+    "file": "asset-file-json.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-json.svg",
+    "sha256": "be82d6813d2a5e81429f1919258c0c9d030307cd8559ebfd1098c7f6e3043ec4"
+  },
+  {
+    "symbol": "AssetFileMat",
+    "file": "asset-file-mat.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-mat.svg",
+    "sha256": "ba1d85d8579b1a02666d86ebb049c2dd7ae2d887a4aa141941a06769c5ba9217"
+  },
+  {
+    "symbol": "AssetFileMp3",
+    "file": "asset-file-mp3.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-mp3.svg",
+    "sha256": "8f3f19337e3c4e77c466ec0f1df3225644ab0468d7569a580ad7b29cf97a4ef9"
+  },
+  {
+    "symbol": "AssetFileObj",
+    "file": "asset-file-obj.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-obj.svg",
+    "sha256": "be7351b8c7bdfe4d5059e71a4645239fa61c495658b155c6fc090366ba40f18d"
+  },
+  {
+    "symbol": "AssetFileOgg",
+    "file": "asset-file-ogg.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-ogg.svg",
+    "sha256": "1086ed65cedda8ae7cd70418c0bc5b84eec55efb031989c80007663642ce0f25"
+  },
+  {
+    "symbol": "AssetFileOtf",
+    "file": "asset-file-otf.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-otf.svg",
+    "sha256": "cefc3ea60b7dd6bed81d6ac1d985327cb6e52edaa4108043e33654b8cab046a0"
+  },
+  {
+    "symbol": "AssetFilePng",
+    "file": "asset-file-png.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-png.svg",
+    "sha256": "f0076136fe3520a9bab92d695e724ff72dd1f91a866095ea727f481584de8716"
+  },
+  {
+    "symbol": "AssetFilePy",
+    "file": "asset-file-py.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-py.svg",
+    "sha256": "fcfe9d9c6d87f6991de8748ca0ca2c2a061b70fec7061aaf60431e213b14e508"
+  },
+  {
+    "symbol": "AssetFileSvg",
+    "file": "asset-file-svg.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-svg.svg",
+    "sha256": "ecb2df968cf73468cf0514104fde24c1f952f6931b4cf0497bf5c37363405d48"
+  },
+  {
+    "symbol": "AssetFileTtf",
+    "file": "asset-file-ttf.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-ttf.svg",
+    "sha256": "eb9b28551736ca17a6b6d7674de489e77c1d59604e6749db015f952695c6eebc"
+  },
+  {
+    "symbol": "AssetFileWav",
+    "file": "asset-file-wav.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-wav.svg",
+    "sha256": "86c7fb8a9bbae5ee7100768c5abae60774a2daac04f4cd1f2266a1a7b42257f6"
+  },
+  {
+    "symbol": "AssetFileWoff",
+    "file": "asset-file-woff.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-woff.svg",
+    "sha256": "8d1ab959459c25f0c9bbdd591a92f94c72f474eca062d89b1eab8f00cbc5db76"
+  },
+  {
+    "symbol": "AssetFileWoff2",
+    "file": "asset-file-woff2.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-woff2.svg",
+    "sha256": "9e989b0a458bbe4491ee864e1da691660ceda9def4c387b3c5e9a2b4fd9c2815"
+  },
+  {
+    "symbol": "AssetFileZip",
+    "file": "asset-file-zip.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-file-zip.svg",
+    "sha256": "697188a7c5cfb319e3c21f7a26348e5c5acbdee0b762e3453459b2aa7e241b43"
+  },
+  {
+    "symbol": "AssetFolderAnimation",
+    "file": "asset-folder-animation.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-animation.svg",
+    "sha256": "12f0c3b7a0be7d1b63d8c2a08c7104413ae2a3cb397968e3e2a98dd219fc810b"
+  },
+  {
+    "symbol": "AssetFolderArchives",
+    "file": "asset-folder-archives.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-archives.svg",
+    "sha256": "11dbe320b1eef6dc722f5fa98399cc74e1ce531d80e75b27e3ff8d7b4a43b3a9"
+  },
+  {
+    "symbol": "AssetFolderAudio",
+    "file": "asset-folder-audio.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-audio.svg",
+    "sha256": "41923cde540f88df0374f5f0491bfe15d7ff41f0841af675e9f4a3e6431a30de"
+  },
+  {
+    "symbol": "AssetFolderFonts",
+    "file": "asset-folder-fonts.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-fonts.svg",
+    "sha256": "0515688d5b66676da3342350f7c02f9081a4dd83cc1648e1ad6d8a57769b4020"
+  },
+  {
+    "symbol": "AssetFolderImages",
+    "file": "asset-folder-images.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-images.svg",
+    "sha256": "36f809c1fa2b7ae91ebd28ccf255795107e615b68c610aaad368e36587bbf909"
+  },
+  {
+    "symbol": "AssetFolderMaterials",
+    "file": "asset-folder-materials.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-materials.svg",
+    "sha256": "de020cf1767642ada8062205ad953cf7553adcb920347406a1b095a39d702081"
+  },
+  {
+    "symbol": "AssetFolderModels",
+    "file": "asset-folder-models.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-models.svg",
+    "sha256": "59bb80c3bdce4ac84bfef211d0423216396b12c71d2041b184c833803db50fe3"
+  },
+  {
+    "symbol": "AssetFolderScenes",
+    "file": "asset-folder-scenes.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-scenes.svg",
+    "sha256": "209e68c6cc02dfcdc606828eabfee6e2c242433e5a859614e917dd0d72b7b82e"
+  },
+  {
+    "symbol": "AssetFolderScripts",
+    "file": "asset-folder-scripts.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-scripts.svg",
+    "sha256": "d8e624b4d108890e17b46f0c1e4f668d8f56709ff6b972cc2dc82221b498c7d1"
+  },
+  {
+    "symbol": "AssetFolderShaders",
+    "file": "asset-folder-shaders.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-shaders.svg",
+    "sha256": "78039577191b55508104755cd0aa3b592068b327e60839d8bfd7e3da8e9c19cc"
+  },
+  {
+    "symbol": "AssetFolderTextures",
+    "file": "asset-folder-textures.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-textures.svg",
+    "sha256": "4488eac1a610748aabcd0fa78eab4bcba5ad5e43e35851bfbda561bb89bd17a9"
+  },
+  {
+    "symbol": "AssetFolderVideo",
+    "file": "asset-folder-video.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-video.svg",
+    "sha256": "7d037273b896ee9549baf27f722dabc81c110e6de948f791124ca7d52a7a82f0"
+  },
+  {
+    "symbol": "Camera",
+    "file": "camera.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/camera.svg",
+    "sha256": "04b275cffafc53cf69f92c337e4c741cd8b0e06db428770930794447e86d50eb"
+  },
+  {
+    "symbol": "Clapperboard",
+    "file": "clapperboard.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/clapperboard.svg",
+    "sha256": "f570a413fddfc7e1ca758e3fdd4a1c69154e06f14c7a6f0e4ae037aaf4b4bc3b"
+  },
+  {
+    "symbol": "Clouds",
+    "file": "clouds.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/clouds.svg",
+    "sha256": "59b9cb51633a3171d54db77160d483744436f47e3e0d73cb5b4a7a73414c6412"
+  },
+  {
+    "symbol": "CollectionBracketedObjects",
+    "file": "collection-bracketed-objects.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/collection-bracketed-objects.svg",
+    "sha256": "0511cc3a04649dbff923c34a734302636a7912e964fd5720748d2b613c83fd6e"
+  },
+  {
+    "symbol": "CollectionLinkedNodes",
+    "file": "collection-linked-nodes.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/collection-linked-nodes.svg",
+    "sha256": "1d313d101d89bb9f11a7eb8ee5620db248b5c4bbfa7821c655819afb84e555f7"
+  },
+  {
+    "symbol": "CollectionOverlappingTiles",
+    "file": "collection-overlapping-tiles.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/collection-overlapping-tiles.svg",
+    "sha256": "b61ae18043822a39672fee2fd9f5c2c403af05f8425d6b93261a81eed68c54c0"
+  },
+  {
+    "symbol": "CollectionStackedLayers",
+    "file": "collection-stacked-layers.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/collection-stacked-layers.svg",
+    "sha256": "810f71dc446ea5d7225f511b56f671c5f71606c44cbf74d7f93d540f980a6dd0"
+  },
+  {
+    "symbol": "Collection",
+    "file": "collection.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/collection.svg",
+    "sha256": "564b1d0636ccfd639822d08067308d4019e71dda4fb2afd9c50eb78cfd643483"
+  },
+  {
+    "symbol": "CommandKey",
+    "file": "command-key.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/command-key.svg",
+    "sha256": "17e7c9d507719b5bed752b7bc316758cd1b4d2e6d127693bc4fd32f991723087"
+  },
+  {
+    "symbol": "Dice",
+    "file": "dice.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/dice.svg",
+    "sha256": "b30d48863fefe26d5993c5949ddffd634af7c27a2396a0c822626189b83f042b"
+  },
+  {
+    "symbol": "Earth",
+    "file": "earth.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/earth.svg",
+    "sha256": "41b39082afc23716e6a3e1d06c2f6162ead0a815c30944757b13498f5815d7e2"
+  },
+  {
+    "symbol": "EditorAreaLight",
+    "file": "editor-area-light.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-area-light.svg",
+    "sha256": "17f11dfc8e5eab93bc49c333b0217f0c72b3f0dd5454c11fb53a09b8b75cfdde"
+  },
+  {
+    "symbol": "EditorBake",
+    "file": "editor-bake.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-bake.svg",
+    "sha256": "612e52acbdcf51ed622509164c795ac9248c7064f70bc4c9ed7f068a943b8ae5"
+  },
+  {
+    "symbol": "EditorBone",
+    "file": "editor-bone.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-bone.svg",
+    "sha256": "2ccba75c7319295b6d04fb1442e7ae6e61beb52166d4ca478ad7084ab716e310"
+  },
+  {
+    "symbol": "EditorBoxCollider",
+    "file": "editor-box-collider.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-box-collider.svg",
+    "sha256": "a9846235d5cfa327b25cdbac068a72848d90ab6e5800bb6d3b71026e58493c14"
+  },
+  {
+    "symbol": "EditorBrakeLight",
+    "file": "editor-brake-light.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-brake-light.svg",
+    "sha256": "04ec17639bc1535c89f34b336dd0d1dd451c9ed4cec0535c16a73b274298f2fb"
+  },
+  {
+    "symbol": "EditorCollection",
+    "file": "editor-collection.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-collection.svg",
+    "sha256": "19c096cf0257ff54daedf35b33fc6acd078c2816471ea71c99c73c452919fdc2"
+  },
+  {
+    "symbol": "EditorDebugBreakpoint",
+    "file": "editor-debug-breakpoint.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-debug-breakpoint.svg",
+    "sha256": "a2d5cbfc8f286b589b6244b6b4e62c683173127b1ba6f9b5b9e6f84be59b8c8c"
+  },
+  {
+    "symbol": "EditorDebugBug",
+    "file": "editor-debug-bug.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-debug-bug.svg",
+    "sha256": "72a5ec7a57bcf4b4cdb2dd683e860d75bb1fafcbf2920e46d4bfe955d4730290"
+  },
+  {
+    "symbol": "EditorDebugRun",
+    "file": "editor-debug-run.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-debug-run.svg",
+    "sha256": "f84190ae45954947dd9ec24c1b703b595b6df5690db229eab90b68ada4a800be"
+  },
+  {
+    "symbol": "EditorDomeLight",
+    "file": "editor-dome-light.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-dome-light.svg",
+    "sha256": "d45fe8e9fec257ffec5f26f9ca70a769119a59e6f49dba60d75bf05320faee5c"
+  },
+  {
+    "symbol": "EditorGrid",
+    "file": "editor-grid.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-grid.svg",
+    "sha256": "99e6baf799003b1dcdbc021e58cd3827d72e7b814bd724d362d936b85d64411d"
+  },
+  {
+    "symbol": "EditorHazardLights",
+    "file": "editor-hazard-lights.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-hazard-lights.svg",
+    "sha256": "2714601d0084ee6848a92178052181d431fe6ae6890e24eb98adbbdc0a369085"
+  },
+  {
+    "symbol": "EditorHdriLight",
+    "file": "editor-hdri-light.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-hdri-light.svg",
+    "sha256": "5205f31a5e4fe28f670cb3dd3517c9483cffcd3d2270d07529f0e7bead72db85"
+  },
+  {
+    "symbol": "EditorHidden",
+    "file": "editor-hidden.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-hidden.svg",
+    "sha256": "d1b5619a66b87f05ef47ca5222a6ba5312015beb22cc2f15a8e1219b7f05844c"
+  },
+  {
+    "symbol": "EditorInstance",
+    "file": "editor-instance.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-instance.svg",
+    "sha256": "21f893f28affaad68912680e41635662c6c5d0b7fc78e045885cab12a05ead7c"
+  },
+  {
+    "symbol": "EditorLock",
+    "file": "editor-lock.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-lock.svg",
+    "sha256": "c378ba74f7b49a9dafcd8ce7b8d5660efa8456a2b26a28fc491662158e43a28b"
+  },
+  {
+    "symbol": "EditorMaterial",
+    "file": "editor-material.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-material.svg",
+    "sha256": "f329a6001a302aac16ed14eed8a28ccc706bbe783c37ae8c8033c4c0cc7ab2f5"
+  },
+  {
+    "symbol": "EditorMesh",
+    "file": "editor-mesh.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-mesh.svg",
+    "sha256": "63ccaeb5df75fbd4847297b84eaab4615698fa2597d0f319bf3c0f2036c85973"
+  },
+  {
+    "symbol": "EditorMove",
+    "file": "editor-move.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-move.svg",
+    "sha256": "44a9366102b19ffd4e33f4ced87c8bb4d40699761b1da1bd9a073e7bea1098b7"
+  },
+  {
+    "symbol": "EditorParticleEmitter",
+    "file": "editor-particle-emitter.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-particle-emitter.svg",
+    "sha256": "5316ddd8d3c5c65e377e1dd34a2b9a8ba33ca0f4684b67d7d2b1986fa41fb127"
+  },
+  {
+    "symbol": "EditorPause",
+    "file": "editor-pause.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-pause.svg",
+    "sha256": "f0f42e3620ca31f5c47752c6060caa52801d9c8c3d6f7cbe6dafcc00a02e2e83"
+  },
+  {
+    "symbol": "EditorPhysics",
+    "file": "editor-physics.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-physics.svg",
+    "sha256": "43b60c3b818d42a84c736c19005820455d89e25e746bdb6eea5594e24aaf3d30"
+  },
+  {
+    "symbol": "EditorPivot",
+    "file": "editor-pivot.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-pivot.svg",
+    "sha256": "7a31c017d5c5dcfd477e60c02f058921cc23fb2f14c343f1245d8b4a3c458356"
+  },
+  {
+    "symbol": "EditorPlayMode",
+    "file": "editor-play-mode.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-play-mode.svg",
+    "sha256": "2ad62086a654a90bc176d51392a59c3757a1245dfcae990624c9d3b2846c52eb"
+  },
+  {
+    "symbol": "EditorPointLight",
+    "file": "editor-point-light.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-point-light.svg",
+    "sha256": "e1de167da958fbe7e8c298e7e3d3e98589f92a3e1639c99f54f01868538f84bf"
+  },
+  {
+    "symbol": "EditorPrefab",
+    "file": "editor-prefab.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-prefab.svg",
+    "sha256": "975af7f097e47307235beb6d2eae3ee14c9dfb4047e0d3f8fefafa3dcbed9669"
+  },
+  {
+    "symbol": "EditorRotate",
+    "file": "editor-rotate.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-rotate.svg",
+    "sha256": "4eb2f4a044fb4183b74fd2fd705e564868ebdf02836ed86121a20b53817ac880"
+  },
+  {
+    "symbol": "EditorScale",
+    "file": "editor-scale.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-scale.svg",
+    "sha256": "831f345d595d700a9054e4c786cf266bbec5a3438acba7d4a9d1da182beb8bff"
+  },
+  {
+    "symbol": "EditorSelect",
+    "file": "editor-select.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-select.svg",
+    "sha256": "a073fca4635c8fe30d5b2b8824c57dd1e01c9b0a2e8d965dc76cef6b28664c74"
+  },
+  {
+    "symbol": "EditorSimulate",
+    "file": "editor-simulate.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-simulate.svg",
+    "sha256": "09d1b2aa94178dcdecdcd9230adaf5a8178781fcc8642f0b49ceb5a7a139f1b8"
+  },
+  {
+    "symbol": "EditorSnap",
+    "file": "editor-snap.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-snap.svg",
+    "sha256": "99c4364eb1688dfc11c86bcaad4e78e9821b5e9ae01dea42d9bff15b64c88a9b"
+  },
+  {
+    "symbol": "EditorSphereCollider",
+    "file": "editor-sphere-collider.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-sphere-collider.svg",
+    "sha256": "4dc2d488c928178df9b4c90a4cf1f127b74475658ae0b2453dbd561d106d2b0b"
+  },
+  {
+    "symbol": "EditorSpotlight",
+    "file": "editor-spotlight.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-spotlight.svg",
+    "sha256": "db321c87b8c6deb1864d9ffefc37a05cbf2ad02568c9b563784ec2434b7e7014"
+  },
+  {
+    "symbol": "EditorStop",
+    "file": "editor-stop.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-stop.svg",
+    "sha256": "353a1e279218dbfcb03fba9b4f1b4319548f0420c83d71cb72015787be8b7195"
+  },
+  {
+    "symbol": "EditorTexture",
+    "file": "editor-texture.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-texture.svg",
+    "sha256": "79ace07e263ee9c2cc8cad0b5ffd0c655c69705f28b460cf8dda3b34d91a1d6f"
+  },
+  {
+    "symbol": "EditorTrigger",
+    "file": "editor-trigger.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-trigger.svg",
+    "sha256": "76d5ed76cccfa8813bd7187e429d5ca710ab650bc3b0a6d09071f17fb24e1f3d"
+  },
+  {
+    "symbol": "EditorUnlock",
+    "file": "editor-unlock.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-unlock.svg",
+    "sha256": "7ae8f8c60db7a8821ff441a09c0180f89b25457c89411a01f8f149ff5a000ef4"
+  },
+  {
+    "symbol": "EditorVisibility",
+    "file": "editor-visibility.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/editor-visibility.svg",
+    "sha256": "435ca82b0513fe52ba0954678538df78d0e4a271d72c146c2f108048a18fda2d"
+  },
+  {
+    "symbol": "EnvironmentExposure",
+    "file": "environment-exposure.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/environment-exposure.svg",
+    "sha256": "34bdba1cbddf82f092a6d3a52becd6d729947b4bfd30e8b69f9b61b85f7adf1d"
+  },
+  {
+    "symbol": "Fire",
+    "file": "fire.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/fire.svg",
+    "sha256": "b3eeea4613c7d0e2dc1882a976a6a137d7ddf3376a3cbea372d3bce8e11750a6"
+  },
+  {
+    "symbol": "FluidGlass",
+    "file": "fluid-glass.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/fluid-glass.svg",
+    "sha256": "d059912713df8e698ae739195608508ad4181c6b347c2064d9e28c26e3f66c4a"
+  },
+  {
+    "symbol": "Fluid",
+    "file": "fluid.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/fluid.svg",
+    "sha256": "24aac61899369dd192be6183883963c7d47bf8fa052cb263e2f4720a016b0df4"
+  },
+  {
+    "symbol": "Fog",
+    "file": "fog.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/fog.svg",
+    "sha256": "aacb7841c660e317f50522f0d95b3b663fee33eae33c743ce7a0b9354a902d78"
+  },
+  {
+    "symbol": "Forest",
+    "file": "forest.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/forest.svg",
+    "sha256": "2375050a102965aab5b0a85babe96c2cf10a88524a8eecab0395bee88065f463"
+  },
+  {
+    "symbol": "GameController",
+    "file": "game-controller.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/game-controller.svg",
+    "sha256": "48b360616dea20268e7adcb076d5a140096894b7fbd95ad460de8186475135ad"
+  },
+  {
+    "symbol": "GraphicsCard2D",
+    "file": "graphics-card-2d.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/graphics-card-2d.svg",
+    "sha256": "52b19c2a925f0c5e1fe2c728377d4801c9801a5685de84d8fa7db1f3d52ab5c7"
+  },
+  {
+    "symbol": "HardDrive",
+    "file": "hard-drive.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/hard-drive.svg",
+    "sha256": "62a2d21b2fc26dec93196c975df7f64e9df8fe262ea257099711067fa712730a"
+  },
+  {
+    "symbol": "Home",
+    "file": "home.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/home.svg",
+    "sha256": "5f930a421b9c3d6fd5a1be7ad8cc61d3185eeeed0ea6c7d73aee16f87dabe390"
+  },
+  {
+    "symbol": "LensFlare",
+    "file": "lens-flare.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/lens-flare.svg",
+    "sha256": "0c4f717df2cb6a002a7f0daeef5caf43436dceb51257d2f3663d4920af6e9b17"
+  },
+  {
+    "symbol": "LightArea2D",
+    "file": "light-area-2d.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/light-area-2d.svg",
+    "sha256": "3aa5d861699070071b9bf773273d46fba28b08240fa036676a32c4b53ef15116"
+  },
+  {
+    "symbol": "LightIncandescent2D",
+    "file": "light-incandescent-2d.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/light-incandescent-2d.svg",
+    "sha256": "c62fb0ff0dad1c317b6d0f350c9349cf8f03f08b575481477a80c646b8c8eee3"
+  },
+  {
+    "symbol": "LightPoint2D",
+    "file": "light-point-2d.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/light-point-2d.svg",
+    "sha256": "5631ef20f4ae012f5d17f9623fde2545d836ad80a0c8aad479e1d3dd04b6ac51"
+  },
+  {
+    "symbol": "Lightning",
+    "file": "lightning.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/lightning.svg",
+    "sha256": "999269d21fddebe56aa55a55f6eb9204f5c1e0294c77590e7fc7716f74bc7eb8"
+  },
+  {
+    "symbol": "Material",
+    "file": "material.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/material.svg",
+    "sha256": "529adaccfea921a520714f6a488eeb1ea4b6b44382cdc5b42c237579439375f8"
+  },
+  {
+    "symbol": "Mesh",
+    "file": "mesh.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/mesh.svg",
+    "sha256": "8d014a1010c289918bce638c8058e9511ebcfdcf2d929ae84eed1f9b159143d4"
+  },
+  {
+    "symbol": "Microphone",
+    "file": "microphone.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/microphone.svg",
+    "sha256": "820fd9c71a641d71f219332d9d85cb085ea7e0732cc3d789c2f64012cde4d36a"
+  },
+  {
+    "symbol": "Moon",
+    "file": "moon.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/moon.svg",
+    "sha256": "e3272801cd5d98b7edc5ffc02407cb2694593c0fcbaef59938daa648f9980b2f"
+  },
+  {
+    "symbol": "Package",
+    "file": "package.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/package.svg",
+    "sha256": "c5c2779cb3ea567677d959780597a2a856da2a388a0b8c901a1adf2c8d34e20c"
+  },
+  {
+    "symbol": "Rainbow",
+    "file": "rainbow.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/rainbow.svg",
+    "sha256": "65937b1f01eb12e7933b047b6c2f129c2d5930e46d9398bf338bd8d51c6c7322"
+  },
+  {
+    "symbol": "Ram2D",
+    "file": "ram-2d.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/ram-2d.svg",
+    "sha256": "e4c1bdf6c322559192a361683c55f75fc930b5a0c887c8ef5a44163ce5cd3872"
+  },
+  {
+    "symbol": "RetroTerminal",
+    "file": "retro-terminal.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/retro-terminal.svg",
+    "sha256": "96e32443852e07a0db350560b8521244b28e56843df2c267318da14bbc688166"
+  },
+  {
+    "symbol": "SkyScattering",
+    "file": "sky-scattering.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/sky-scattering.svg",
+    "sha256": "a067f10fbb711602ae457405da43b7f9cd2ad43b146d5bef5662b7050ebc48d3"
+  },
+  {
+    "symbol": "SlateAnimationCurve",
+    "file": "slate-animation-curve.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-animation-curve.svg",
+    "sha256": "c8d6934ce1c160a64e2adbc47f60a77fe6e7d26ce1c58138187e99fe5d850419"
+  },
+  {
+    "symbol": "SlateBuild",
+    "file": "slate-build.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-build.svg",
+    "sha256": "aac92f50e7c2f75309c713f29cd8313fb28f40864d5f82cc4bf5b628624ae3a9"
+  },
+  {
+    "symbol": "SlateClapboard",
+    "file": "slate-clapboard.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-clapboard.svg",
+    "sha256": "d1d8165b0c3be8211dec7980aa6faf6734286f8061c73d32e930cb4ed8900752"
+  },
+  {
+    "symbol": "SlateColorPicker",
+    "file": "slate-color-picker.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-color-picker.svg",
+    "sha256": "501e4d00b8d848628906ab25055d4ef627240c2fd5b30eef456c3922e69fc3b5"
+  },
+  {
+    "symbol": "SlateDocument",
+    "file": "slate-document.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-document.svg",
+    "sha256": "26dc1c296b95d834d98667832e78d923f077db5ea39e8b07fbb2fc7dd5b0c801"
+  },
+  {
+    "symbol": "SlateFabric",
+    "file": "slate-fabric.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-fabric.svg",
+    "sha256": "132d99665dd84afe0d0730150a59471b9564b48b7e6b78b97e5313287537dd97"
+  },
+  {
+    "symbol": "SlateFilmStrip",
+    "file": "slate-film-strip.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-film-strip.svg",
+    "sha256": "e32a08223b626b3058f9c1133b7b48fa8679ac5fa777df6bec39f48117af5f6c"
+  },
+  {
+    "symbol": "SlateImageWidgetVariant2",
+    "file": "slate-image-widget-variant2.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-image-widget-variant2.svg",
+    "sha256": "8d3194f01bf265832949b9ef58df7a97c746e7eaa8d6a4fd84bc167d7d5d8f54"
+  },
+  {
+    "symbol": "SlateImageWidgetVariant3",
+    "file": "slate-image-widget-variant3.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-image-widget-variant3.svg",
+    "sha256": "c684b4298b5b3265662f9ca3c97ac430d85a5a95ae37b095f3be06d8ebf9f425"
+  },
+  {
+    "symbol": "SlateImageWidgetVariant4",
+    "file": "slate-image-widget-variant4.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-image-widget-variant4.svg",
+    "sha256": "81fb686510a49a17317d28a0d6b691d51ba4173548e1f10a8822fe6d3a8a8c4d"
+  },
+  {
+    "symbol": "SlateImage",
+    "file": "slate-image.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-image.svg",
+    "sha256": "5199a2068586948ebb6b285c196f6f431ac19f4d3edda9bf2cc313cac297faea"
+  },
+  {
+    "symbol": "SlateLEDPanel",
+    "file": "slate-l-e-d-panel.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-l-e-d-panel.svg",
+    "sha256": "ff123534416bbe08c213cf34b8221037f1eb268663c328eb3dbe7a02877d2557"
+  },
+  {
+    "symbol": "SlateLantern",
+    "file": "slate-lantern.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-lantern.svg",
+    "sha256": "5154c835c70445072140e1fd93a4774b90bbda0cb70c50fadbb418ac58422397"
+  },
+  {
+    "symbol": "SlateLiveBroadcast",
+    "file": "slate-live-broadcast.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-live-broadcast.svg",
+    "sha256": "bbc2bdc3f64ef57a0812105eedd89f3e51c3a26d697f88d7ceccaf90382f1428"
+  },
+  {
+    "symbol": "SlateMeetingGrid",
+    "file": "slate-meeting-grid.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-meeting-grid.svg",
+    "sha256": "82960616acacafa330051ae5bc29ad01a4ab28f390b4cd7cf2eded0252b284e6"
+  },
+  {
+    "symbol": "SlateOldGamepadClassic",
+    "file": "slate-old-gamepad-classic.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-old-gamepad-classic.svg",
+    "sha256": "adf83919432b5022a88fce5fb2a243eff613902c3b46ccc597e56d0871fc2ab5"
+  },
+  {
+    "symbol": "SlateRingLight",
+    "file": "slate-ring-light.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-ring-light.svg",
+    "sha256": "c5f5708941d47b95203932953709285d9c37e706e18e384537571325092acaf0"
+  },
+  {
+    "symbol": "SlateSceneHierarchy",
+    "file": "slate-scene-hierarchy.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-scene-hierarchy.svg",
+    "sha256": "a833b8f34149c305d8c3234304b0e8d567cd5fe1225029f0e20bf1d736258eba"
+  },
+  {
+    "symbol": "SlateScriptNode",
+    "file": "slate-script-node.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-script-node.svg",
+    "sha256": "c1c9a8a93dff32555b43f3f79ba56c52b1a590cdb97ab80bc3f3670d6d873f68"
+  },
+  {
+    "symbol": "SlateShaderNode",
+    "file": "slate-shader-node.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-shader-node.svg",
+    "sha256": "27c8a5b38a0c3cbeefa803266bb5396386cd0987e5c31c665ac27d42e5353e9e"
+  },
+  {
+    "symbol": "SlateSpotlight",
+    "file": "slate-spotlight.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-spotlight.svg",
+    "sha256": "99179d347933c26372cd60953831aa225fefbab8260fc60484c32fd7dd8622cb"
+  },
+  {
+    "symbol": "SlateSpriteSheet",
+    "file": "slate-sprite-sheet.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-sprite-sheet.svg",
+    "sha256": "e8912adec848b5a5a4921552b3f358795341a14880b4bbe133c0f1c642a4cecc"
+  },
+  {
+    "symbol": "SlateTerminal",
+    "file": "slate-terminal.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-terminal.svg",
+    "sha256": "b25c135bfea576ba3358d394fe1cc8bc5ee50f0578d66c5db1c11ae1d894e386"
+  },
+  {
+    "symbol": "SlateTilemap",
+    "file": "slate-tilemap.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-tilemap.svg",
+    "sha256": "aaf37d7e88540685931bee9500dcec6863e0dd6d7bb0c4accb43c0e0df24020e"
+  },
+  {
+    "symbol": "SlateTimeline",
+    "file": "slate-timeline.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-timeline.svg",
+    "sha256": "a62a6345334d61b5b013f7c7aa96a3df20f214ad26e47913eba30a850ddb0518"
+  },
+  {
+    "symbol": "SlateVideoPlayer",
+    "file": "slate-video-player.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/slate-video-player.svg",
+    "sha256": "7370dacff725bbec176bb513a95a09d20362fe31ca3b3e6b9424779ba16f3701"
+  },
+  {
+    "symbol": "Smoke",
+    "file": "smoke.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/smoke.svg",
+    "sha256": "e85bbf4b491300500bd4ff57d893a37f83bd9dfa3ebd41e11271475c73d8d581"
+  },
+  {
+    "symbol": "Speaker",
+    "file": "speaker.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/speaker.svg",
+    "sha256": "88c9976f122b3f88d419dc4b3da44154d661839398b837bdd795a124dbc93fb8"
+  },
+  {
+    "symbol": "Stars",
+    "file": "stars.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/stars.svg",
+    "sha256": "247e8f05a547a41fbf2c97339e2c104220354f44692df71edb24a9cd161197ac"
+  },
+  {
+    "symbol": "Sun",
+    "file": "sun.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/sun.svg",
+    "sha256": "4784b0b90011b710a1345a8048901404a4cc8a1f15c98e886589f47133f6a1c3"
+  },
+  {
+    "symbol": "Terrain",
+    "file": "terrain.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/terrain.svg",
+    "sha256": "d84ac696528da7c166710e55d32b9c576efa10f2930b8edae85158f9f9b5e34b"
+  },
+  {
+    "symbol": "WeatherHail",
+    "file": "weather-hail.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/weather-hail.svg",
+    "sha256": "68f7fde98b04b309f3900f5fb6d3ec45c4cec3be91f2038913aa022319bebce2"
+  },
+  {
+    "symbol": "WeatherRain",
+    "file": "weather-rain.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/weather-rain.svg",
+    "sha256": "f28e17bc17dedf92adc908931400e38d5306a8c4575465f49a578b8b59833c23"
+  },
+  {
+    "symbol": "WeatherSnow",
+    "file": "weather-snow.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/weather-snow.svg",
+    "sha256": "95f74c0132f2d951e0e726ca6b3d88bf1134a6ee505a4bcb66c1f8648cdcfc87"
+  },
+  {
+    "symbol": "Wind",
+    "file": "wind.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/wind.svg",
+    "sha256": "8b281a793b21674a43f73cd5d2b4d1346422b0b3138a21310eed608a240dbe86"
+  },
+  {
+    "symbol": "FolderEnvironment",
+    "file": "folder-environment.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/folder-environment.svg",
+    "sha256": "c5466bebab157d04c982b388398e09a5323fb266aafb9df083df8d37fd3c9d59"
+  },
+  {
+    "symbol": "FolderGeneric",
+    "file": "folder-generic.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/folder-generic.svg",
+    "sha256": "aa34317849f2b5b702f15d331eab5ec2a9ac16a1332ba19e687ee8a697a357dd"
+  },
+  {
+    "symbol": "FolderWater",
+    "file": "folder-water.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/folder-water.svg",
+    "sha256": "d7b87372cc4742bfd85cb7f0e189ee76bce67522a99bc7e00fa93a479dd8016f"
+  },
+  {
+    "symbol": "LocalCloud",
+    "file": "local-cloud.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/local-cloud.svg",
+    "sha256": "23d26bf08b231711078d7c1704800aa56c20cd78172dce27b79ee1b5e0946604"
+  },
+  {
+    "symbol": "LocalFog",
+    "file": "local-fog.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/local-fog.svg",
+    "sha256": "249f200719a9f6d78c2181c72971d941b4e470f5940b54841a104c2bb2546ba3"
+  },
+  {
+    "symbol": "OutlinerPrecipitation",
+    "file": "outliner-precipitation.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/outliner-precipitation.svg",
+    "sha256": "16cbd74b2299a42aa33245d0324a18c3727c514ff30febd0f51e4350bca5ebcf"
+  },
+  {
+    "symbol": "OutlinerStars",
+    "file": "outliner-stars.svg",
+    "reference": "Experimental/FrontierEditor/ui-icons/outliner-stars.svg",
+    "sha256": "1872e91208ff4c78cfd11787a3bc2a45eba0771bf082080de0deb15083e166e8"
+  },
+  {
+    "symbol": "FolderScene",
+    "file": "folder-scene.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-scenes.svg",
+    "sha256": "af03f1e3c2e1b672311c567630d5ac61a4eab0c8387cb14bd8483e28c0df378a"
+  },
+  {
+    "symbol": "FolderWorld",
+    "file": "folder-world.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-models.svg",
+    "sha256": "102287756f5080782ed58a7fecda029b287ddb981705f87fe54bd8e1e5ed3392"
+  },
+  {
+    "symbol": "FolderMaterials",
+    "file": "folder-materials.svg",
+    "reference": "Experimental/FrontierEditor/custom-icons/asset-folder-materials.svg",
+    "sha256": "d54e1446185d42ba46556652cfc4ab355778a1e35ba86a0a62f48a81a1dc3cb6"
+  }
+]

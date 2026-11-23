@@ -1,0 +1,58 @@
+Engine matched face-flux gas projection via wgpu/Naga Vulkan; sanitized
+Base ce2f506, plus working changes if any; source hashes below.
+Linux 6.1.158+ x86_64
+c++ (Debian 12.2.0-14+deb12u1) 12.2.0
+Python 3.11.2 wgpu 0.32.0 numpy 2.3.4
+7a88657d06be83b31539b39fad0b201e78e60f52e4a5bbe98211a29cbbbadaae  Frontier/Engine/Rendering/GasProjectionFootprint.h
+783339733a49e8af3f8be4cac93f111c106cbacdc5e8133fed3a19a85fe5b91e  Frontier/Engine/Rendering/Shaders/GasPressureProjection.slang
+9ee1e41472c3d5345f1cce53527fc91d85d3c53d46524197a67dea568c09e5fc  Frontier/Engine/Rendering/CMakeLists.txt
+caae60fab2549f22d2ab42c5d21e73bd9a74bfa977ff57846ca8c8aeee3de1d9  Exhibits/FluidReference/CMakeLists.txt
+13a97561d7e56bcb254dfb6286526d6c12e53f698f533c46d3511d995824a39e  Exhibits/FluidReference/Code/GasProjectionFootprintValidation.cpp
+925964522a076426a031005a863fa3948da59b9b2b736a17cd7d435d419d79b8  Exhibits/FluidReference/Code/GasProjectionValidation.py
+5cc0134d42cf414f0dcde8c31a813337801a6afdc5443033ef39e28b1262d336  /home/user/Frontier/ExternalPackages/VulkanCompute/Slang/slangtorch/bin/slangc
+8ee5ac00fd7968e863b05e0f6808057db16a00ad322777e5a05bed51d4f84085  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/libvulkan.so.1
+2f3ceffaaca7d031bc3943f8eacf398a5d9c42c5fe0d15d8840b9acfa630b58e  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/libvk_swiftshader.so
+c9eef28b6b984fec220ef0abfecc40b502d46946706e47bfe97707027cb818bd  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/vk_swiftshader_icd.json
+UpdateCTestConfiguration  from :/home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized/DartConfiguration.tcl
+Test project /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: PlumeLatticeFootprintGuards
+
+1: Test command: /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized/PlumeLatticeFootprintValidation "--guards"
+1: Working Directory: /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized
+1: Test timeout computed to be: 10000000
+1: PLUME_FOOTPRINT_GUARDS rejected=17 valid_lattice=1 valid_source=1 empty_sources=1
+1/2 Test #1: PlumeLatticeFootprintGuards ......   Passed    0.01 sec
+test 2
+    Start 2: GasProjectionFootprintGuards
+
+2: Test command: /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized/GasProjectionFootprintValidation "--guards"
+2: Working Directory: /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized
+2: Test timeout computed to be: 10000000
+2: GAS_PROJECTION_FOOTPRINT valid=2 invalid=14 max_cells=16777216
+2/2 Test #2: GasProjectionFootprintGuards .....   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.03 sec
+	libasan.so.8 => /lib/x86_64-linux-gnu/libasan.so.8 (0x00007fe577a00000)
+	libubsan.so.1 => /lib/x86_64-linux-gnu/libubsan.so.1 (0x00007fe576e00000)
+68f2a5ff4839fa186c35a5dbd400b6f94799110b5361b46d7117d58136674046  /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized/MeasureGasDivergence.spv
+24f0040fc25242a6570a1e954e329709ec799fa137f83b4c8ef939ec843084fe  /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized/RelaxGasPressure.spv
+61beb938ee704b3a911e43a4640cb3478d526afd1dac05a37824343f83b1a858  /home/user/Frontier/_ClaudeScratch/build/gas-projection-sanitized/ProjectGasVelocity.spv
+Forcing backend: Vulkan (6)
+GAS_ADAPTER <GPUAdapterInfo dict with vendor='SwiftShader driver', architecture='', device='SwiftShader Device (Subzero)', description='', stackgroup_min_size=4, stackgroup_max_size=128, vendor_id=6880, device_id=49374, adapter_type='CPU', backend_type='Vulkan'>
+GAS_PROJECTION_GUARDS rounded_tail=1 short_velocity=1 invalid_weight=1 short_pressure=1
+GAS_MODE width=16 mode=1 sweeps=1024 observed_divergence_ratio=0.0125006524 analytic_ratio=0.0125031105
+GAS_MODE width=32 mode=31 sweeps=128 observed_divergence_ratio=3.66359428e-08 analytic_ratio=2.7045075e-33
+GAS_MATRIX cells=56 solid=8 matrix_rank=55 pressure_gauge_dimension=1 divergence_ratio=8.64029803e-08 velocity_max_error=1.67887092e-07
+GAS_DISCONNECTED fluid_cells=4 components=2 matrix_rank=2 divergence_ratio=3.50615556e-08
+GAS_SOLID_ONLY cells=8 pressure_zero=1 velocity_preserved=1
+GAS_PROJECTION_READBACK_SHA256 062e600b267caa2150d5a91f2bf7e91e2f5ed0335f9f71dfab0ef53aaa67c721
+GAS_PROJECTION_SUMMARY PASS closed_static_solids=1 cell_centered_advection_integrated=0

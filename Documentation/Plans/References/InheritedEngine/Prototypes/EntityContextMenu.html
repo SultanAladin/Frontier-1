@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier — Entity Context Menu</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design tokens — mirrored from ToolOptionsWidget.html. Same panel/value
+     family; this menu shows EVERY tool for the right-clicked entity type
+     (unlike the widget, which shows only the active tool's options).
+     ═════════════════════════════════════════════════════════════════════════ */
+  :root{
+    --desk-bg:      #2b2b2d;
+    --panel-bg:     #131315;
+    --panel-head:   #1b1b1e;
+    --value-bg:     #232326;
+    --value-black:  #0a0a0b;
+    --value-focus:  #303035;
+    --outline:      rgba(255,255,255,.22);
+    --hair:         rgba(255,255,255,.07);
+    --knob:         #f4f4f5;
+    --accent:       #4a90e2;
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --text-faint:   #55555b;
+
+    --panel-radius: 20px;
+    --value-radius: 13px;
+    --item-radius:  12px;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--desk-bg); color:var(--text-primary);
+    font:15px/1 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none; cursor:default;
+  }
+  .icon{ width:1em; height:1em; flex:0 0 auto; display:inline-block; vertical-align:-.12em; }
+
+  /* ── viewport backdrop with a few selectable entities ── */
+  .stage{
+    position:fixed; inset:0;
+    background:radial-gradient(1200px 820px at 50% 42%, #333336 0%, #212123 58%, #161618 100%);
+  }
+  .stage::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size:44px 44px; background-position:center;
+    -webkit-mask-image:radial-gradient(circle at 50% 44%, #000 42%, transparent 84%);
+            mask-image:radial-gradient(circle at 50% 44%, #000 42%, transparent 84%);
+  }
+
+  .banner{
+    position:fixed; top:22px; left:50%; transform:translateX(-50%);
+    color:var(--text-muted); font-size:13px; background:var(--panel-bg);
+    border-radius:999px; padding:9px 18px; z-index:20; text-align:center;
+  }
+  .banner b{ color:var(--text-primary); font-weight:600; }
+
+  /* selectable proxy entities on the stage */
+  .ent{
+    position:fixed; display:flex; flex-direction:column; align-items:center; gap:9px;
+    padding:16px 20px; border-radius:16px; cursor:pointer;
+    background:var(--panel-bg); border:1.5px solid transparent;
+    transition:border-color .12s, transform .1s;
+  }
+  .ent:hover{ border-color:var(--outline); transform:translateY(-2px); }
+  .ent .badge{ width:52px; height:52px; }
+  .ent .badge svg{ width:52px; height:52px; }
+  .ent .cap{ font-size:12.5px; color:var(--text-muted); }
+  .ent .cap b{ color:var(--text-primary); font-weight:600; }
+
+  /* ═════════════════════════════════════ ENTITY MENU ═════════════════════════════════════ */
+  .ctx{
+    position:fixed; z-index:100; width:284px; display:none;
+    background:var(--panel-bg); border-radius:var(--panel-radius);
+    overflow:hidden; transform-origin:top left;
+    box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .ctx.open{ display:block; animation:pop .13s cubic-bezier(.16,1,.3,1); }
+  @keyframes pop{ from{ opacity:0; transform:scale(.97) translateY(-4px); } to{ opacity:1; transform:none; } }
+
+  /* header — mirrors widget-head: entity glyph + name + tool count */
+  .ctx-head{
+    background:var(--panel-head); display:flex; align-items:center; gap:11px;
+    padding:13px 14px 13px 16px;
+  }
+  .ctx-head .h-ic{ width:26px; height:26px; }
+  .ctx-head .h-ic svg{ width:26px; height:26px; border-radius:6px; }
+  .ctx-head .h-txt{ flex:1; font-size:15.5px; font-weight:600; letter-spacing:.2px; }
+  .ctx-head .h-txt .fn{ display:block; color:var(--text-muted); font-weight:400; font-size:11.5px; margin-top:3px; }
+  .ctx-head .h-n{
+    font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums;
+    background:var(--value-bg); padding:4px 9px; border-radius:999px;
+  }
+
+  /* body — the full tool list for this entity */
+  .ctx-body{ padding:8px; max-height:70vh; overflow-y:auto; }
+  .ctx-body::-webkit-scrollbar{ width:9px; }
+  .ctx-body::-webkit-scrollbar-thumb{ background:var(--value-bg); border-radius:9px; }
+
+  .grp-cap{
+    padding:11px 10px 6px; font-size:10px; font-weight:700; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--text-faint);
+  }
+
+  .tool{
+    position:relative; display:flex; align-items:center; gap:12px;
+    height:42px; padding:0 10px; border-radius:var(--item-radius);
+    color:var(--text-primary); cursor:pointer;
+    transition:background .1s, color .1s;
+  }
+  .tool:hover{ background:var(--value-bg); }
+  .tool .t-ic{
+    width:30px; height:30px; display:grid; place-items:center; flex:0 0 auto;
+    background:var(--value-black); border-radius:9px; color:var(--text-muted);
+    transition:color .1s, background .1s;
+  }
+  .tool:hover .t-ic{ color:var(--text-primary); }
+  .tool.hot:hover .t-ic{ background:var(--accent); color:#fff; }
+  .tool .t-ic .icon{ width:17px; height:17px; }
+  .tool .t-name{ flex:1; font-size:14px; }
+  .tool .t-key{
+    font-size:11px; color:var(--text-faint); font-variant-numeric:tabular-nums;
+    letter-spacing:.5px;
+  }
+  .tool.disabled{ opacity:.34; pointer-events:none; }
+
+  /* items that open a submenu get a chevron */
+  .tool.has-sub .t-key::after{ content:"›"; margin-left:8px; color:var(--text-muted); font-size:15px; }
+
+  .sep{ height:1px; background:var(--hair); margin:6px 10px; }
+
+  /* destructive tools tint on hover */
+  .tool.warn:hover{ background:rgba(255,90,90,.12); color:#ff8f8f; }
+  .tool.warn:hover .t-ic{ color:#ff8f8f; }
+
+  /* ═════════════════════════════════════ SUBMENU ═════════════════════════════════════ */
+  .sub{
+    position:fixed; z-index:101; width:220px; display:none;
+    background:var(--panel-bg); border-radius:16px; overflow:hidden; padding:8px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .sub.open{ display:block; animation:pop .12s cubic-bezier(.16,1,.3,1); }
+
+  /* ═════════════════════════════════════ FEEDBACK ═════════════════════════════════════ */
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+    background:var(--panel-bg); color:var(--text-primary); font-size:13px;
+    padding:9px 17px; border-radius:999px; z-index:120; opacity:0;
+    transition:opacity .18s, transform .18s; pointer-events:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5);
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast b{ color:var(--accent); font-weight:600; }
+</style>
+</head>
+<body>
+
+  <div class="stage"></div>
+  <div class="banner">Right-click an entity to open its tool menu — each menu lists <b>every tool</b> for that type</div>
+
+  <!-- selectable proxy entities (right-click any of them) -->
+  <!-- positions set in JS so they stay centred -->
+
+  <div class="ctx"  id="ctx"></div>
+  <div class="sub"  id="sub"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ═════════════════════════════════════════════════════════════════════════
+   ICON ARTWORK
+   • Tool glyphs: hand-authored 24×24 line icons (currentColor), same visual
+     weight as the ToolOptionsWidget sprite.
+   • Entity badges: ported C palette + P/PF/L/CI/CF/R/RF builders from the
+     Object Icon Set, so the entity artwork matches the house set.
+   ═════════════════════════════════════════════════════════════════════════ */
+const C = {
+  ink:"#e8e8f0", dim:"#8a8a99", blue:"#5b8cff", cyan:"#37d6d6", green:"#4fd18b",
+  amber:"#ffb24d", red:"#ff6b6b", violet:"#b98bff", sky:"#7ec8ff"
+};
+const P  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const PF = (d,f,s="none",w=0)=>`<path d="${d}" fill="${f}" ${s!=="none"?`stroke="${s}" stroke-width="${w}"`:""} stroke-linejoin="round"/>`;
+const L  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}" stroke-linecap="round"/>`;
+const CI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const CF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+const RF = (x,y,w,h,rx,f)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${f}"/>`;
+
+/* iso helpers (from Object Icon Set) for the Object badge */
+const ISO_CX=12, ISO_CY=13;
+function iso(x,y,z){ return [ +(ISO_CX+(x-y)*0.87).toFixed(2), +(ISO_CY+(x+y)*0.5-z).toFixed(2) ]; }
+function ring(r,n,rot=-Math.PI/2){ const p=[]; for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;p.push([r*Math.cos(a),r*Math.sin(a)]);} return p; }
+const projPoly = pts => "M"+pts.map(p=>p.join(" ")).join("L")+"Z";
+const ringAt=(gr,z)=>gr.map(([x,y])=>iso(x,y,z));
+function prism(gr,H){
+  const bot=ringAt(gr,0), top=ringAt(gr,H), n=gr.length, walls=[];
+  for(let i=0;i<n;i++){ const j=(i+1)%n; const mx=(bot[i][0]+bot[j][0])/2, my=(bot[i][1]+bot[j][1])/2;
+    walls.push({d:my, cx:mx, path:projPoly([bot[i],bot[j],top[j],top[i]])}); }
+  walls.sort((a,b)=>a.d-b.d);
+  return {topFace:projPoly(top), walls};
+}
+const wallTone=(w,left,right)=> w.cx<ISO_CX?left:right;
+
+function badge(shapes){
+  return `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">`
+       + `<rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>${shapes.join("")}</svg>`;
+}
+
+/* entity badges — one per selectable type */
+const BADGE = {
+  object: ()=>{const pr=prism(ring(7,4,Math.PI/4),8);return badge([...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),...pr.walls.map(w=>P(w.path,C.ink,.9)),P(pr.topFace,C.ink,1)]);},
+  face:   ()=>badge([PF("M4 8L12 4l8 4-8 4z",C.blue+"cc"),P("M4 8L12 4l8 4-8 4z",C.sky,1.4),CF(4,8,1.6,C.ink),CF(20,8,1.6,C.ink),CF(12,12,1.6,C.ink),CF(12,4,1.6,C.ink)]),
+  edge:   ()=>badge([L(4,20,20,4,C.blue,2.4),CF(4,20,2.4,C.sky),CF(20,4,2.4,C.sky)]),
+  vertex: ()=>badge([L(4,20,20,20,C.dim,1.4),L(4,20,18,6,C.dim,1.4),CI(12,12,3.4,C.blue,1.6),CF(12,12,4.6,C.blue+"33")]),
+  edgeloop:()=>badge([P("M4 12a8 8 0 0 0 16 0",C.blue,2.2),P("M4 12a8 8 0 0 1 16 0",C.sky,1.6),CF(4,12,2,C.ink),CF(20,12,2,C.ink),CF(12,4,2,C.ink),CF(12,20,2,C.ink)]),
+};
+
+/* ── tool glyphs (line icons, currentColor) ── */
+const T = {
+  select:   `<path d="M4 3l7 17 2.5-6.5L20 11z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>`,
+  move:     `<path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+  rotate:   `<path d="M20 12a8 8 0 1 1-2.3-5.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M20 4v4h-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  scale:    `<path d="M5 19V9M5 19h10M5 19l14-14M19 5h-4M19 5v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  extrude:  `<path d="M4 8l8-4 8 4-8 4z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M4 8v6l8 4 8-4V8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 12v6" stroke="currentColor" stroke-width="1.4" opacity=".6"/>`,
+  inset:    `<rect x="4" y="4" width="16" height="16" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="8" y="8" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".7"/>`,
+  bevel:    `<path d="M4 12L12 4l8 8-8 8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 12l4-4 4 4-4 4z" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".55"/>`,
+  subdivide:`<rect x="4" y="4" width="16" height="16" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.4" opacity=".7"/>`,
+  bridge:   `<path d="M4 7v10M20 7v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 9c5 5 11 5 16 0" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
+  knife:    `<path d="M3 17l11-11 4 4-9 9z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>`,
+  loopcut:  `<rect x="4" y="4" width="16" height="16" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 4v16" stroke="currentColor" stroke-width="1.9"/>`,
+  slide:    `<path d="M3 12h18" stroke="currentColor" stroke-width="1.7"/><path d="M8 8l-4 4 4 4M16 8l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/>`,
+  weld:     `<path d="M5 7h6M5 7v10M5 17h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M13 12h6M16 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  dissolve: `<circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="9" r="1.4" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".8"/><circle cx="11" cy="15" r="1" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".6"/><circle cx="17" cy="16" r=".7" fill="currentColor" opacity=".45"/>`,
+  crease:   `<path d="M4 18L12 6l8 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 18h16" stroke="currentColor" stroke-width="1.3" opacity=".5"/>`,
+  flip:     `<path d="M12 4v16" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/><path d="M9 8L4 12l5 4zM15 8l5 4-5 4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  connect:  `<circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7.5l9 9" stroke="currentColor" stroke-width="1.6"/>`,
+  smooth:   `<path d="M3 16c4 0 5-8 9-8s5 8 9 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  merge:    `<path d="M5 5l7 7 7-7M5 12l7 7 7-7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  align:    `<path d="M4 5v14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="8" y="7" width="9" height="4" rx="1" fill="currentColor" opacity=".85"/><rect x="8" y="13" width="6" height="4" rx="1" fill="currentColor" opacity=".55"/>`,
+  duplicate:`<rect x="4" y="4" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 20h12V8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  mirror:   `<path d="M12 3v18" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 3"/><path d="M9 7L4 12l5 5zM15 7l5 5-5 5z" fill="currentColor" opacity=".85"/>`,
+  hide:     `<path d="M4 4l16 16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M2 12s3.5-7 10-7c1.7 0 3.2.4 4.5 1M22 12s-3.5 7-10 7c-1.7 0-3.2-.4-4.5-1" fill="none" stroke="currentColor" stroke-width="1.6"/>`,
+  isolate:  `<rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="4" fill="currentColor" opacity=".85"/>`,
+  material: `<path d="M12 3a9 9 0 000 18c1.5 0 2-1 2-2 0-1.5 1-2 2.5-2H18a3 3 0 003-3c0-5-4-9-9-9z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="10" r="1.1" fill="currentColor"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/>`,
+  group:    `<rect x="3" y="3" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 7h6v6" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".6"/>`,
+  rename:   `<path d="M4 20h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M14 5l5 5-9 9H5v-5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>`,
+  copy:     `<rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M4 16V4h12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>`,
+  fill:     `<path d="M4 8l8 8 8-8-8-4z" fill="currentColor" opacity=".85"/><path d="M20 12v4a2 2 0 01-4 0" fill="none" stroke="currentColor" stroke-width="1.5"/>`,
+  del:      `<path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  detach:   `<path d="M11 5H7a2 2 0 00-2 2v10a2 2 0 002 2h4M13 12h8M18 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  poke:     `<path d="M4 6l8-2 8 2-8 3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 6l8 14 8-14M12 9v11" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>`,
+  spin:     `<path d="M12 4a8 8 0 108 8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`,
+};
+function tico(id){ return `<svg class="icon" viewBox="0 0 24 24">${T[id]||""}</svg>`; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   ENTITY → TOOL MODEL
+   Each entity type lists EVERY tool available to it, grouped. Unlike the
+   ToolOptionsWidget (one active tool), this menu surfaces the full set.
+   item: {ico, name, key?, sub?, hot?, warn?, disabled?}
+   group: {cap, items:[…]}
+   ═════════════════════════════════════════════════════════════════════════ */
+const MENUS = {
+  object: {
+    name:"Cube.001", type:"Object", badge:"object",
+    groups:[
+      { cap:"Transform", items:[
+        {ico:"move",   name:"Move",   key:"G", hot:true},
+        {ico:"rotate", name:"Rotate", key:"R", hot:true},
+        {ico:"scale",  name:"Scale",  key:"S", hot:true},
+        {ico:"align",  name:"Align",  sub:"align"},
+      ]},
+      { cap:"Edit", items:[
+        {ico:"duplicate", name:"Duplicate",  key:"⌃D", hot:true},
+        {ico:"mirror",    name:"Mirror",     sub:"axis"},
+        {ico:"smooth",    name:"Shade Smooth"},
+        {ico:"subdivide", name:"Subdivide"},
+        {ico:"material",  name:"Assign Material", sub:"material"},
+      ]},
+      { cap:"Organise", items:[
+        {ico:"group",  name:"Group",   key:"⌃G"},
+        {ico:"rename", name:"Rename",  key:"F2"},
+        {ico:"isolate",name:"Isolate", key:"/"},
+        {ico:"hide",   name:"Hide",    key:"H"},
+      ]},
+      { cap:"", items:[
+        {ico:"del", name:"Delete", key:"Del", warn:true},
+      ]},
+    ],
+  },
+
+  face: {
+    name:"Face ×3", type:"Face selection", badge:"face",
+    groups:[
+      { cap:"Transform", items:[
+        {ico:"move",   name:"Move",   key:"G", hot:true},
+        {ico:"rotate", name:"Rotate", key:"R", hot:true},
+        {ico:"scale",  name:"Scale",  key:"S", hot:true},
+      ]},
+      { cap:"Build", items:[
+        {ico:"extrude",   name:"Extrude",     key:"E", hot:true},
+        {ico:"inset",     name:"Inset",       key:"I", hot:true},
+        {ico:"bevel",     name:"Bevel",       key:"⌃B"},
+        {ico:"bridge",    name:"Bridge",      disabled:true},
+        {ico:"subdivide", name:"Subdivide"},
+        {ico:"poke",      name:"Poke"},
+      ]},
+      { cap:"Modify", items:[
+        {ico:"flip",     name:"Flip Normals"},
+        {ico:"smooth",   name:"Shade Smooth"},
+        {ico:"detach",   name:"Detach"},
+        {ico:"material", name:"Assign Material", sub:"material"},
+      ]},
+      { cap:"", items:[
+        {ico:"del", name:"Delete Faces", key:"⌫", warn:true},
+      ]},
+    ],
+  },
+
+  edge: {
+    name:"Edge ×5", type:"Edge selection", badge:"edge",
+    groups:[
+      { cap:"Transform", items:[
+        {ico:"move",  name:"Move",       key:"G", hot:true},
+        {ico:"slide", name:"Edge Slide", key:"⇧V", hot:true},
+      ]},
+      { cap:"Build", items:[
+        {ico:"extrude", name:"Extrude",   key:"E", hot:true},
+        {ico:"bevel",   name:"Bevel",     key:"⌃B", hot:true},
+        {ico:"loopcut", name:"Loop Cut",  key:"⌃R"},
+        {ico:"bridge",  name:"Bridge",    disabled:true},
+        {ico:"connect", name:"Connect"},
+      ]},
+      { cap:"Modify", items:[
+        {ico:"crease",   name:"Mark Crease"},
+        {ico:"flip",     name:"Rotate Edge"},
+        {ico:"subdivide",name:"Subdivide"},
+        {ico:"dissolve", name:"Dissolve"},
+      ]},
+      { cap:"", items:[
+        {ico:"del", name:"Delete Edges", key:"⌫", warn:true},
+      ]},
+    ],
+  },
+
+  vertex: {
+    name:"Vertex ×1", type:"Vertex selection", badge:"vertex",
+    groups:[
+      { cap:"Transform", items:[
+        {ico:"move", name:"Move", key:"G", hot:true},
+      ]},
+      { cap:"Build", items:[
+        {ico:"extrude", name:"Extrude",  key:"E", hot:true},
+        {ico:"bevel",   name:"Bevel",    key:"⌃⇧B"},
+        {ico:"connect", name:"Connect Verts", key:"J"},
+        {ico:"slide",   name:"Vertex Slide", key:"⇧V"},
+      ]},
+      { cap:"Merge", items:[
+        {ico:"weld",  name:"Weld"},
+        {ico:"merge", name:"Merge",       sub:"merge", hot:true},
+        {ico:"smooth",name:"Smooth Verts"},
+      ]},
+      { cap:"", items:[
+        {ico:"dissolve", name:"Dissolve"},
+        {ico:"del",      name:"Delete Verts", key:"⌫", warn:true},
+      ]},
+    ],
+  },
+
+  edgeloop: {
+    name:"Edge Loop", type:"Loop selection", badge:"edgeloop",
+    groups:[
+      { cap:"Loop", items:[
+        {ico:"slide",   name:"Loop Slide", key:"⇧V", hot:true},
+        {ico:"loopcut", name:"Insert Loop",key:"⌃R", hot:true},
+        {ico:"bevel",   name:"Bevel Loop"},
+        {ico:"bridge",  name:"Bridge Loops"},
+      ]},
+      { cap:"Modify", items:[
+        {ico:"crease",   name:"Mark Crease"},
+        {ico:"subdivide",name:"Subdivide"},
+        {ico:"smooth",   name:"Relax"},
+        {ico:"dissolve", name:"Dissolve Loop"},
+      ]},
+      { cap:"", items:[
+        {ico:"del", name:"Delete Loop", key:"⌫", warn:true},
+      ]},
+    ],
+  },
+};
+
+/* submenu payloads */
+const SUBS = {
+  align:    { cap:"Align to", items:[ {ico:"align",name:"X Axis"},{ico:"align",name:"Y Axis"},{ico:"align",name:"Z Axis"},{ico:"align",name:"View"} ] },
+  axis:     { cap:"Mirror axis", items:[ {ico:"mirror",name:"X"},{ico:"mirror",name:"Y"},{ico:"mirror",name:"Z"} ] },
+  merge:    { cap:"Merge at", items:[ {ico:"merge",name:"Center"},{ico:"merge",name:"First"},{ico:"merge",name:"Last"},{ico:"merge",name:"By Distance"} ] },
+  material: { cap:"Material", items:[ {ico:"fill",name:"Default"},{ico:"fill",name:"Metal"},{ico:"fill",name:"Glass"},{ico:"fill",name:"Emissive"} ] },
+};
+
+/* ═════════════════════════════════════ BUILD MENU ═════════════════════════════════════ */
+const ctx   = document.getElementById("ctx");
+const sub   = document.getElementById("sub");
+const toast = document.getElementById("toast");
+
+function toolRow(it){
+  const row = document.createElement("div");
+  row.className = "tool"
+    + (it.hot?" hot":"") + (it.warn?" warn":"")
+    + (it.disabled?" disabled":"") + (it.sub?" has-sub":"");
+  row.innerHTML =
+      `<span class="t-ic">${tico(it.ico)}</span>`
+    + `<span class="t-name">${it.name}</span>`
+    + `<span class="t-key">${it.disabled?"n/a":(it.key||"")}</span>`;
+
+  if(it.sub){
+    row.addEventListener("mouseenter", () => openSub(it.sub, row));
+    row.addEventListener("click", () => openSub(it.sub, row));
+  } else {
+    row.addEventListener("mouseenter", () => closeSub());
+    row.addEventListener("click", () => { fire(it.name); });
+  }
+  return row;
+}
+
+function buildMenu(key){
+  const m = MENUS[key];
+  ctx.innerHTML = "";
+  const total = m.groups.reduce((n,g)=>n+g.items.length,0);
+
+  const head = document.createElement("div");
+  head.className = "ctx-head";
+  head.innerHTML =
+      `<span class="h-ic">${BADGE[m.badge]()}</span>`
+    + `<span class="h-txt">${m.name}<span class="fn">${m.type}</span></span>`
+    + `<span class="h-n">${total} tools</span>`;
+  ctx.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "ctx-body";
+  m.groups.forEach((g,gi) => {
+    if(gi>0 && !g.cap){ const s=document.createElement("div"); s.className="sep"; body.appendChild(s); }
+    if(g.cap){ const c=document.createElement("div"); c.className="grp-cap"; c.textContent=g.cap; body.appendChild(c); }
+    g.items.forEach(it => body.appendChild(toolRow(it)));
+  });
+  ctx.appendChild(body);
+}
+
+/* ═════════════════════════════════════ SUBMENU ═════════════════════════════════════ */
+function openSub(subKey, anchor){
+  const s = SUBS[subKey];
+  sub.innerHTML = "";
+  const cap = document.createElement("div"); cap.className="grp-cap"; cap.textContent=s.cap; sub.appendChild(cap);
+  s.items.forEach(it => {
+    const row = toolRow({...it});
+    sub.appendChild(row);
+  });
+  sub.classList.add("open");
+  const r = anchor.getBoundingClientRect();
+  let x = r.right + 6, y = r.top - 8;
+  if(x + sub.offsetWidth > innerWidth-10) x = r.left - sub.offsetWidth - 6;
+  if(y + sub.offsetHeight > innerHeight-10) y = innerHeight - sub.offsetHeight - 10;
+  sub.style.left = Math.max(10,x)+"px"; sub.style.top = Math.max(10,y)+"px";
+}
+function closeSub(){ sub.classList.remove("open"); }
+
+/* ═════════════════════════════════════ OPEN / CLOSE ═════════════════════════════════════ */
+function openAt(x, y, key){
+  buildMenu(key);
+  ctx.classList.add("open");
+  const pad = 10, w = ctx.offsetWidth, h = ctx.offsetHeight;
+  if(x + w > innerWidth  - pad) x = innerWidth  - w - pad;
+  if(y + h > innerHeight - pad) y = Math.max(pad, innerHeight - h - pad);
+  ctx.style.left = Math.max(pad,x)+"px"; ctx.style.top = Math.max(pad,y)+"px";
+}
+function closeAll(){ ctx.classList.remove("open"); closeSub(); }
+
+/* ═════════════════════════════════════ FEEDBACK ═════════════════════════════════════ */
+let toastTimer;
+function fire(name){
+  toast.innerHTML = `<b>${name}</b>`;
+  toast.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toast.classList.remove("on"), 1200);
+  closeAll();
+}
+
+/* ═════════════════════════════════════ STAGE ENTITIES ═════════════════════════════════════ */
+/* place a few right-clickable proxies so every entity menu is reachable */
+const ENTITIES = [
+  { key:"object",   label:"Object", sub:"Cube.001" },
+  { key:"face",     label:"Face",   sub:"×3 selected" },
+  { key:"edge",     label:"Edge",   sub:"×5 selected" },
+  { key:"vertex",   label:"Vertex", sub:"×1 selected" },
+  { key:"edgeloop", label:"Edge Loop", sub:"ring" },
+];
+function placeEntities(){
+  document.querySelectorAll(".ent").forEach(e=>e.remove());
+  const n = ENTITIES.length, gap = 150, startX = innerWidth/2 - (n-1)*gap/2, y = innerHeight/2;
+  ENTITIES.forEach((ent,i)=>{
+    const el = document.createElement("div");
+    el.className = "ent";
+    el.style.left = (startX + i*gap - 60) + "px";
+    el.style.top  = (y - 60) + "px";
+    el.dataset.key = ent.key;
+    el.innerHTML = `<span class="badge">${BADGE[ent.key]()}</span><span class="cap"><b>${ent.label}</b> · ${ent.sub}</span>`;
+    el.addEventListener("contextmenu", e => { e.preventDefault(); e.stopPropagation(); openAt(e.clientX, e.clientY, ent.key); });
+    document.body.appendChild(el);
+  });
+}
+placeEntities();
+addEventListener("resize", () => { closeAll(); placeEntities(); });
+
+/* ═════════════════════════════════════ WIRING ═════════════════════════════════════ */
+/* right-click empty stage → default to the Object menu */
+addEventListener("contextmenu", e => { e.preventDefault(); openAt(e.clientX, e.clientY, "object"); });
+addEventListener("pointerdown", e => { if(!e.target.closest("#ctx") && !e.target.closest("#sub")) closeAll(); });
+addEventListener("keydown", e => { if(e.key === "Escape") closeAll(); });
+addEventListener("blur", closeAll);
+</script>
+</body>
+</html>

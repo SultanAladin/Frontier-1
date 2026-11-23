@@ -1,0 +1,75 @@
+{
+  "schema": "alloy.pattern.v1",
+  "name": "Native importer acceptance fixture",
+  "repeat": "straight",
+  "tileAxes": "xy",
+  "mapping": "uv",
+  "layers": [
+    {
+      "kind": "rect",
+      "name": "Masked textile swatch",
+      "x": 256,
+      "y": 256,
+      "width": 150,
+      "height": 100,
+      "rotation": 18,
+      "color": "#557799",
+      "roughness": 0.68,
+      "metalness": 0.02,
+      "mask": {
+        "category": "ellipse",
+        "x": 50,
+        "y": 50,
+        "width": 76,
+        "height": 82,
+        "opacity": 0.9,
+        "mode": "alpha"
+      }
+    },
+    {
+      "kind": "star",
+      "name": "Gold thread",
+      "x": 145,
+      "y": 230,
+      "width": 64,
+      "height": 64,
+      "starPoints": 6,
+      "innerRadius": 0.42,
+      "color": "#c18a2e",
+      "roughness": 0.24,
+      "metalness": 0.92,
+      "relief": 0.7,
+      "stitchRole": "thread",
+      "SurfaceChannels": {
+        "Height": { "Enabled": true, "Strength": 0.75 },
+        "Normal": { "Enabled": true, "Strength": 1.25 },
+        "Roughness": { "Enabled": true },
+        "Metalness": { "Enabled": true }
+      }
+    },
+    {
+      "kind": "text",
+      "name": "Outlined label",
+      "x": 350,
+      "y": 340,
+      "width": 90,
+      "height": 48,
+      "rotation": -7,
+      "path": "M10 10 L90 10 L50 90 Z",
+      "color": "#eeeeee",
+      "paint": true,
+      "fillEnabled": true
+    },
+    {
+      "kind": "rect",
+      "name": "Seam-crossing accent",
+      "x": 4,
+      "y": 256,
+      "width": 40,
+      "height": 40,
+      "color": "#224466",
+      "roughness": 0.45,
+      "metalness": 0.1
+    }
+  ]
+}

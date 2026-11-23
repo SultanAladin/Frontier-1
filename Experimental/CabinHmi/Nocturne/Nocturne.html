@@ -1,0 +1,252 @@
+<!doctype html>
+<!--
+    NOCTURNE — CABIN HMI PROTOTYPE C (awaiting approval)
+    🧩 Night-lake display for the winged ControlVehicle: a still mirror lake under stars and mountains, a glass card
+       row over a full-width dock, light-curtain drive modes, an aurora charging scene, 3D seat climate and a 3D
+       cover flow. Fixed 1600 × 900.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nocturne · Cabin HMI C</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Nocturne.css">
+</head>
+<body>
+<div class="DisplayHost Nocturne" id="Display" data-menu-now="Home">
+    <canvas class="Scene" id="Scene"></canvas>
+    <div class="Vignette"></div>
+
+    <!-- ① Top bar -->
+    <header class="TopBar">
+        <div class="DateLine" id="DateLine">Monday, November 17</div>
+        <div class="TopRight">
+            <svg viewBox="0 0 24 24" class="Glyph"><path d="M4 7h11v10H4zM15 10l5-3v10l-5-3"/></svg>
+            <svg viewBox="0 0 24 24" class="Glyph"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg>
+            <svg viewBox="0 0 24 24" class="Glyph Fill"><path d="M3 19h2v-3H3zm5 0h2v-6H8zm5 0h2v-9h-2zm5 0h2V6h-2z"/></svg>
+            <b class="TopClock" id="TopClock">20:31</b>
+            <div class="Avatar"><i></i><span>Guest</span></div>
+        </div>
+    </header>
+
+    <!-- ② Home: card row -->
+    <section class="Layer On" data-layer="Home">
+        <div class="CardRow">
+            <button class="Card Route" data-open="Drive" data-ripple style="--Order:0">
+                <div class="TurnBadge"><svg viewBox="0 0 24 24"><path d="M9 20v-7a3 3 0 0 1 3-3h6M14 6l4 4-4 4"/></svg></div>
+                <div><b><span id="TurnDistance">3.5</span> km</b><small>Harbour Road</small></div>
+                <div class="RouteDots"><i></i><i></i><i></i></div>
+            </button>
+            <button class="Card Assist" id="AssistCard" data-ripple style="--Order:1">
+                <div class="Orb"><i></i><i></i><i></i></div>
+                <div class="AssistText"><b id="AssistLine">Can I help you?</b><small id="AssistHint">Tap and say “warm my seat”</small></div>
+            </button>
+            <button class="Card Weather" data-open="Charge" data-ripple style="--Order:2">
+                <div class="Temp">17<sup>°</sup></div>
+                <div><b>Cloudy</b><small>Lakeside · wind 9 km/h</small></div>
+                <div class="Cloud"><i></i><i></i><i></i></div>
+            </button>
+            <button class="Card Track" data-open="Media" data-ripple style="--Order:3">
+                <div class="TrackCover" id="HomeCover"></div>
+                <div><b id="HomeTitle">Low Tide Lights</b><small id="HomeArtist">Ines Marlow</small></div>
+                <div class="Bars" id="HomeBars"><i></i><i></i><i></i><i></i></div>
+            </button>
+        </div>
+    </section>
+
+    <!-- ③ Drive: power current (the body turns to glass; the hybrid's energy flows through it) -->
+    <section class="Layer" data-layer="Drive">
+        <div class="TripColumn" style="--Order:0">
+            <div class="TripHead"><span>Amara K.</span><button class="LinkButton" id="ProfileButton" data-ripple>Change profile <svg viewBox="0 0 24 24"><path d="M5 12h13M13 7l5 5-5 5"/></svg></button></div>
+            <div class="EnergyHead Fuel"><svg viewBox="0 0 24 24"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M3 21h13M15 9h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3M7 7h5"/></svg><span>Fuel</span><small id="TripLitres">25.9 L of 55</small></div>
+            <div class="BigFigure"><b id="TripFuel">47</b><span>%</span></div>
+            <div class="Rule Fuel"><i id="TripFuelBar" style="width:47%"></i></div>
+            <div class="EnergyHead Cell"><svg viewBox="0 0 24 24"><path d="M3 8h16v8H3ZM19 10.5h2v3h-2M8 10l-2 2h4l-2 2"/></svg><span>Battery</span><small id="TripCellState">holding</small></div>
+            <div class="BigFigure"><b id="TripCell">64</b><span>%</span></div>
+            <div class="Rule Cell"><i id="TripCellBar" style="width:64%"></i></div>
+            <div class="RangeSplit">
+                <div class="RangeTotal"><b id="TripRange">471</b><span>km range</span></div>
+                <div class="RangeBar"><i class="Ev" id="RangeEvBar"></i><i class="Gas" id="RangeGasBar"></i></div>
+                <div class="RangeKeys"><span><i class="Ev"></i>Electric <b id="RangeEvText">38</b> km</span><span><i class="Gas"></i>Fuel <b id="RangeGasText">433</b> km</span></div>
+            </div>
+            <div class="TripNote"><b>Information</b><small id="TripNote">Electric below 50 km/h · the engine tops up the battery.</small></div>
+        </div>
+        <div class="FlowCard" style="--Order:1">
+            <div class="FlowHead"><small>MODE</small><b id="ModeName">City cruise</b></div>
+            <div class="FlowSpeed"><b id="SpeedText">0</b><span>km/h</span></div>
+            <small class="FlowState" id="FlowState">Ready · engine asleep</small>
+            <div class="FlowRows">
+                <div class="FlowRow" data-flow="Engine"><i class="Dot"></i><span>Engine</span><em><i></i></em><b id="FlowEngine">0</b><small>kW</small></div>
+                <div class="FlowRow" data-flow="Battery"><i class="Dot"></i><span>Battery</span><em><i></i></em><b id="FlowBattery">0</b><small>kW</small></div>
+                <div class="FlowRow" data-flow="Drive"><i class="Dot"></i><span>Rear axle</span><em><i></i></em><b id="FlowDrive">0</b><small>kW</small></div>
+                <div class="FlowRow" data-flow="Fuel"><i class="Dot"></i><span>Fuel flow</span><em><i></i></em><b id="FlowFuel">0.0</b><small>L/h</small></div>
+            </div>
+            <small class="SpeedNote" id="SpeedNote">Parked · tap Cruise to preview</small>
+        </div>
+        <div class="FlowTags" id="FlowTags">
+            <div class="FlowTag" data-part="Engine"><b>Engine</b><small>2.0 turbo</small></div>
+            <div class="FlowTag" data-part="Motor"><b>E-motor</b><small>P2 · 85 kW</small></div>
+            <div class="FlowTag" data-part="Cell"><b>Battery</b><small>14 kWh</small></div>
+            <div class="FlowTag" data-part="Tank"><b>Tank</b><small>55 L</small></div>
+        </div>
+        <div class="ModeBar" style="--Order:3">
+            <div class="ModePills" id="ModePills">
+                <i class="PillGlide"></i>
+                <button data-mode="0" data-ripple>Eco</button>
+                <button data-mode="1" class="On" data-ripple>City cruise</button>
+                <button data-mode="2" data-ripple>Highway</button>
+                <button data-mode="3" data-ripple>Sport</button>
+            </div>
+            <button class="CruiseButton" id="CruiseButton" data-ripple><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><span>Cruise</span></button>
+        </div>
+    </section>
+
+    <!-- ③c Lights: lamp keys, beam pills, greeting -->
+    <section class="Layer" data-layer="Lights" id="LightsLayer">
+        <div class="LampColumn" style="--Order:0">
+            <small class="DeckLabel">LAMPS</small>
+            <div class="LampKeys">
+                <button class="LampKey" data-lamp="FogFront" data-ripple><span data-glyph="FogFront"></span><b>Front fog</b></button>
+                <button class="LampKey" data-lamp="FogRear" data-ripple><span data-glyph="FogRear"></span><b>Rear fog</b></button>
+                <button class="LampKey" data-lamp="AutoHigh" data-ripple><span data-glyph="Auto"></span><b>Auto high</b></button>
+                <button class="LampKey" data-lamp="Wing" data-ripple><span data-glyph="Wing"></span><b>Wing blade</b></button>
+                <button class="LampKey" data-lamp="Rock" data-ripple><span data-glyph="Rock"></span><b>Ground halo</b></button>
+                <button class="LampKey Hazard" data-signal="Hazard" data-ripple><span data-glyph="Hazard"></span><b>Hazard</b></button>
+            </div>
+            <div class="SignalKeys"><button data-signal="Left" data-ripple><span data-glyph="Left"></span>Left</button><button data-signal="Right" data-ripple>Right<span data-glyph="Right"></span></button></div>
+        </div>
+        <div class="GreetCard" style="--Order:1">
+            <small class="DeckLabel">LIGHT SIGNATURE</small>
+            <b>Moonrise greeting</b>
+            <span>Lamps wake in sequence: daytime strip, low beam, wing blade, ground halo, double hazard blink.</span>
+            <div class="GreetSteps" id="GreetSteps"><i></i><i></i><i></i><i></i><i></i></div>
+            <button class="DeckKey Accent" id="GreetButton" data-ripple>Play greeting</button>
+        </div>
+        <div class="ModeBar BeamBar" style="--Order:2">
+            <div class="ModePills BeamPills" id="BeamPills">
+                <i class="PillGlide"></i>
+                <button data-beam="Off" data-ripple><span data-glyph="Drl"></span>Off</button>
+                <button data-beam="Auto" data-ripple><span data-glyph="Auto"></span>Auto</button>
+                <button data-beam="Parking" data-ripple><span data-glyph="Parking"></span>Park</button>
+                <button data-beam="Low" data-ripple><span data-glyph="Low"></span>Low</button>
+                <button data-beam="High" data-ripple><span data-glyph="High"></span>High</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ④ Charge: aurora -->
+    <section class="Layer" data-layer="Charge">
+        <div class="ForecastColumn" style="--Order:0">
+            <div class="NowTemp">21<sup>°</sup></div>
+            <b>Clear</b><small>H 28° · L 18°</small>
+            <div class="Forecast" id="Forecast"></div>
+        </div>
+        <div class="ChargeCard" style="--Order:1">
+            <small class="ChargeState" id="ChargeState">PLUGGED IN</small>
+            <div class="BatteryShape">
+                <div class="BatteryFill" id="BatteryFill" style="width:64%"><i class="Shimmer"></i></div>
+                <b id="BatteryText">64</b>
+                <svg class="Bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></svg>
+                <span class="BatteryLimit" id="BatteryLimit" style="left:90%"></span>
+            </div>
+            <div class="ChargeStats">
+                <div><b id="ChargeRate">0</b><small>kW</small></div>
+                <div><b id="ChargeEta">—</b><small id="ChargeEtaLabel">to 90%</small></div>
+                <div><b id="ChargeAdded">0</b><small>km added</small></div>
+            </div>
+            <div class="LimitRow"><span>Limit</span><div class="Slider" id="LimitSlider"><i class="Track"></i><i class="Fill" id="LimitFill"></i><i class="Knob" id="LimitKnob"></i></div><b id="LimitText">90%</b></div>
+            <button class="ChargeButton" id="ChargeButton" data-ripple><span id="ChargeButtonText">Start charging</span></button>
+        </div>
+    </section>
+
+    <!-- ⑤ Comfort: seat position (slide and back angle) and climate -->
+    <section class="Layer" data-layer="Comfort">
+        <nav class="ClimateTabs" style="--Order:0">
+            <button data-tab="Ac" class="On" data-ripple><svg viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7"/></svg>A/C</button>
+            <button data-tab="Max" data-ripple><svg viewBox="0 0 24 24"><path d="M5 20c0-4 3-4 3-8s-3-4-3-8M11 20c0-4 3-4 3-8s-3-4-3-8M17 20c0-4 3-4 3-8s-3-4-3-8"/></svg>MAX</button>
+            <span class="TabSeat"><svg viewBox="0 0 24 24"><path d="M8 3v11h9l2 6M8 14l-2 6"/></svg></span>
+            <button data-tab="Rear" data-ripple><svg viewBox="0 0 24 24"><path d="M3 14h18M6 18c0-3 2-3 2-6M12 18c0-3 2-3 2-6M18 18c0-3 2-3 2-6M4 10l8-6 8 6"/></svg>REAR</button>
+            <button data-tab="Eco" data-ripple><svg viewBox="0 0 24 24"><path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15M5 19l7-7"/></svg>ECO</button>
+        </nav>
+        <div class="TempColumn Left" style="--Order:1">
+            <div class="TempFigure"><b id="TempLeftText">25</b><sup>°</sup></div>
+            <div class="TempBar" id="TempBarLeft" data-zone="0"></div>
+            <button class="SeatKey" data-heat="0" data-ripple><svg viewBox="0 0 24 24"><path d="M7 4v10h9l2 6M7 14l-2 6M11 2c-1 1 1 2 0 3M14 2c-1 1 1 2 0 3"/></svg><span class="Levels"><i></i><i></i><i></i></span></button>
+        </div>
+        <div class="TempColumn Right" style="--Order:1">
+            <div class="TempFigure"><b id="TempRightText">19</b><sup>°</sup></div>
+            <div class="TempBar" id="TempBarRight" data-zone="1"></div>
+            <button class="SeatKey" data-vent="1" data-ripple><svg viewBox="0 0 24 24"><path d="M17 4v10H8l-2 6M17 14l2 6M12 7l2 2-2 2 2 2"/></svg><span class="Levels"><i></i><i></i><i></i></span></button>
+        </div>
+        <div class="AutoBlock" style="--Order:2">
+            <button class="AutoButton" id="AutoButton" data-ripple><svg viewBox="0 0 24 24"><path d="M12 12c0-4 2-7 4-7 3 0 3 4-4 7Zm0 0c4 0 7 2 7 4 0 3-4 3-7-4Zm0 0c0 4-2 7-4 7-3 0-3-4 4-7Zm0 0c-4 0-7-2-7-4 0-3 4-3 7 4Z"/></svg></button>
+            <b id="FanText">AUTO</b><small id="FanSub">fan 3</small>
+            <div class="FanSteps" id="FanSteps"><button data-fan="-1" data-ripple>−</button><button data-fan="1" data-ripple>+</button></div>
+            <div class="AirTargets" id="AirTargets">
+                <button data-air="Screen" title="Screen" data-ripple><svg viewBox="0 0 24 24"><path d="M3 9c6-4 12-4 18 0l-2 7H5ZM9 4v3M12 3.5v3M15 4v3"/></svg></button>
+                <button data-air="Face" title="Face" data-ripple><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M6 21v-6a3 3 0 0 1 6 0M14 8h7M14 11h5M14 5h5"/></svg></button>
+                <button data-air="Feet" title="Feet" data-ripple><svg viewBox="0 0 24 24"><circle cx="9" cy="4.5" r="2.5"/><path d="M9 9v6l4 5h3M14 13h7M15 16h6"/></svg></button>
+            </div>
+        </div>
+        <div class="SeatDeck" style="--Order:3">
+            <div class="SeatCard" data-seat="0">
+                <div class="SeatTop"><small>DRIVER SEAT</small><div class="Memory"><button data-memory="0" data-ripple>1</button><button data-memory="1" data-ripple>2</button><button data-memory="2" data-ripple>Easy entry</button></div></div>
+                <div class="SeatLine"><span class="SeatLabel">Slide</span><em class="TrackEnd">FORE</em><div class="SlideTrack" data-slide="0"><i class="Notch"></i><i class="Fill"></i><i class="Knob"></i></div><em class="TrackEnd">AFT</em><b class="SlideText">+0 mm</b></div>
+                <div class="SeatLine"><span class="SeatLabel">Angle</span><button class="TiltKey" data-tilt="-2" data-ripple>−</button><svg class="AngleGlyph" viewBox="0 0 40 40"><path class="Base" d="M10 30h20"/><path class="Back" d="M12 30 12 8"/><circle cx="12" cy="30" r="2"/></svg><b class="TiltText">104°</b><button class="TiltKey" data-tilt="2" data-ripple>+</button><small class="TiltHint">or drag the ring dot</small></div>
+            </div>
+            <div class="SeatCard" data-seat="1">
+                <div class="SeatTop"><small>PASSENGER SEAT</small><div class="Memory"><button data-memory="0" data-ripple>1</button><button data-memory="1" data-ripple>2</button><button data-memory="2" data-ripple>Easy entry</button></div></div>
+                <div class="SeatLine"><span class="SeatLabel">Slide</span><em class="TrackEnd">AFT</em><div class="SlideTrack" data-slide="1"><i class="Notch"></i><i class="Fill"></i><i class="Knob"></i></div><em class="TrackEnd">FORE</em><b class="SlideText">+0 mm</b></div>
+                <div class="SeatLine"><span class="SeatLabel">Angle</span><button class="TiltKey" data-tilt="-2" data-ripple>−</button><svg class="AngleGlyph" viewBox="0 0 40 40"><path class="Base" d="M10 30h20"/><path class="Back" d="M12 30 12 8"/><circle cx="12" cy="30" r="2"/></svg><b class="TiltText">104°</b><button class="TiltKey" data-tilt="2" data-ripple>+</button><small class="TiltHint">or drag the ring dot</small></div>
+            </div>
+        </div>
+        <div class="DotChip" data-chip="0"></div><div class="DotChip" data-chip="1"></div>
+    </section>
+
+    <!-- ⑥ Media: 3D cover flow + player -->
+    <section class="Layer" data-layer="Media">
+        <button class="FlowArrow Left" id="PrevCover" data-ripple style="--Order:0"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button class="FlowArrow Right" id="NextCover" data-ripple style="--Order:0"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+        <aside class="PlayerPanel" style="--Order:1">
+            <small class="PanelLabel">MUSIC <span id="PlayState">Paused</span></small>
+            <b class="NowTitle" id="NowTitle">Low Tide Lights</b>
+            <span class="NowArtist" id="NowArtist">Ines Marlow · Harbour Sessions</span>
+            <div class="Progress" id="Progress"><i id="ProgressFill"></i><em id="ProgressKnob"></em></div>
+            <div class="Times"><span id="TimeNow">1:12</span><span id="TimeAll">3:48</span></div>
+            <div class="Transport">
+                <button id="PrevTrack" data-ripple><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5 9 12l10 7Z"/></svg></button>
+                <button class="Main" id="PlayButton" data-ripple><svg class="PlayGlyph" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><svg class="PauseGlyph" viewBox="0 0 24 24"><path d="M7 5h4v14H7Zm6 0h4v14h-4Z"/></svg></button>
+                <button id="NextTrack" data-ripple><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7Z"/></svg></button>
+            </div>
+            <div class="Queue" id="Queue"></div>
+            <div class="PulseRow"><span>Lake pulse</span><button class="Toggle On" id="PulseToggle" data-ripple><i></i></button></div>
+        </aside>
+    </section>
+
+    <!-- ⑦ Dock -->
+    <footer class="Dock">
+        <button class="TempStep" data-zone="0" data-step="-1" data-ripple><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <b class="DockTemp" id="DockTempLeft">25°</b>
+        <button class="TempStep" data-zone="0" data-step="1" data-ripple><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        <nav class="DockMenu" id="DockMenu">
+            <i class="DockGlide" id="DockGlide"></i>
+            <button data-menu="Home" class="On" data-ripple><svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-5H9v5H4Z"/></svg><span>Home</span></button>
+            <button data-menu="Drive" data-ripple><svg viewBox="0 0 24 24"><path d="M12 3 5 20l7-4 7 4Z"/></svg><span>Drive</span></button>
+            <button data-menu="Lights" data-ripple><svg viewBox="0 0 24 24"><path d="M11 6c5 0 8 2.6 8 6s-3 6-8 6Z"/><path d="M3 8.5l5 1.2M3 12l5 1.2M3 15.5l5 1.2"/></svg><span>Lights</span></button>
+            <button data-menu="Charge" data-ripple><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></svg><span>Charge</span></button>
+            <button data-menu="Comfort" data-ripple><svg viewBox="0 0 24 24"><path d="M12 12c0-4 2-7 4-7 3 0 3 4-4 7Zm0 0c4 0 7 2 7 4 0 3-4 3-7-4Zm0 0c0 4-2 7-4 7-3 0-3-4 4-7Zm0 0c-4 0-7-2-7-4 0-3 4-3 7 4Z"/></svg><span>Comfort</span></button>
+            <button data-menu="Media" data-ripple><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3Zm11-2a3 3 0 1 1-3-3 3 3 0 0 1 3 3Z"/></svg><span>Media</span></button>
+        </nav>
+        <button class="TempStep" data-zone="1" data-step="-1" data-ripple><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <b class="DockTemp" id="DockTempRight">19°</b>
+        <button class="TempStep" data-zone="1" data-step="1" data-ripple><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+    </footer>
+
+    <div class="Toast" id="Toast"></div>
+    <div class="Loading" id="Loading"><i></i><span>Waking the lake…</span></div>
+</div>
+<div class="ProtoTag">Prototype C · Nocturne · awaiting approval</div>
+<script type="module" src="./Nocturne.js"></script>
+</body>
+</html>

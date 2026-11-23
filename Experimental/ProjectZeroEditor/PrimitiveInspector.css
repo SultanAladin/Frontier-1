@@ -1,0 +1,892 @@
+/* 🧩 Showcase primitive inspector — one dark theme: rounded cards, pill chips, big thin numerals, dial gauges and small
+      round status badges. Everything is scoped under .primitive-inspector so the global button and range rules in
+      Editor.css (bundled later) cannot override it. */
+
+.primitive-inspector {
+  --pi-card: #1a1a1a;
+  --pi-raised: #232323;
+  --pi-line: #ffffff0f;
+  --pi-ink: #f2f2f2;
+  --pi-soft: #9a9a9a;
+  --pi-faint: #6a6a6a;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-weight: 300;
+}
+.primitive-inspector button {
+  font-weight: 400;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────────────────────────────────────────────── */
+.primitive-inspector .pi-card {
+  background: var(--pi-card);
+  border: 1px solid var(--pi-line);
+  border-radius: 24px;
+  padding: 16px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.primitive-inspector .pi-card-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 28px;
+}
+.primitive-inspector .pi-card-head h3 {
+  color: var(--pi-ink);
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: -0.1px;
+  flex: 1;
+  min-width: 0;
+}
+.primitive-inspector .pi-card-glyph {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 14%, #202020);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+  flex: none;
+}
+.primitive-inspector .pi-card-aside {
+  font-size: 10px;
+  color: var(--pi-soft);
+  white-space: nowrap;
+}
+.primitive-inspector .pi-card-aside b {
+  color: var(--pi-ink);
+  font-weight: 500;
+}
+.primitive-inspector .pi-footnote {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--pi-faint);
+}
+
+/* ── Quick controls: dark square tiles in the style of the Checks passed / Warnings cards ─────────────────────────── */
+.primitive-inspector .pi-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+@container (min-width: 560px) {
+  .primitive-inspector .pi-quick-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+.primitive-inspector .pi-quick-tile {
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0;
+  border-radius: 20px;
+  border: 1px solid var(--pi-line);
+  background: var(--pi-raised);
+  color: var(--pi-soft);
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 120ms ease;
+}
+.primitive-inspector .pi-quick-tile:hover {
+  background: #2a2a2a;
+  border-color: #ffffff1c;
+}
+.primitive-inspector .pi-quick-tile:active {
+  transform: scale(0.97);
+}
+.primitive-inspector .pi-quick-tile:focus-visible {
+  outline: 2px solid #d8d8d8;
+  outline-offset: 2px;
+}
+.primitive-inspector .pi-quick-tile.on {
+  color: var(--pi-ink);
+}
+/* The badge alone tells the state: green and lit when on, grey and dim when off. */
+.primitive-inspector .pi-quick-tile > .pi-status-icon {
+  width: 38px;
+  height: 38px;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+.primitive-inspector .pi-quick-tile.on > .pi-status-icon {
+  box-shadow: 0 0 0 4px #2fd27a1f, 0 0 18px #2fd27a33;
+}
+.primitive-inspector .pi-quick-tile:not(.on) > .pi-status-icon {
+  opacity: 0.7;
+}
+.primitive-inspector .pi-quick-tile:not(.on) .pi-quick-label {
+  color: var(--pi-faint);
+}
+.primitive-inspector .pi-quick-label {
+  font-size: 12px;
+  line-height: 1.1;
+  font-weight: 400;
+  color: #cfcfcf;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── Categories: the pages; the Orbit menu that picks them is OrbitMenu.css ───────────────────────────────────────── */
+.primitive-inspector .pi-carousel {
+  overflow-x: clip;
+  overflow-clip-margin: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.primitive-inspector .pi-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  touch-action: pan-y;
+}
+.primitive-inspector .pi-page > .generic-card,
+.primitive-inspector .pi-page > section {
+  margin-bottom: 0;
+}
+.primitive-inspector .pi-page > .generic-card {
+  border-radius: 24px;
+}
+.primitive-inspector .pi-enter-next {
+  animation: pi-from-right 220ms ease both;
+}
+.primitive-inspector .pi-enter-previous {
+  animation: pi-from-left 220ms ease both;
+}
+@keyframes pi-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+@keyframes pi-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .primitive-inspector .pi-enter-next,
+  .primitive-inspector .pi-enter-previous {
+    animation: none;
+  }
+}
+
+/* ── Figures, chips, status ────────────────────────────────────────────────────────────────────────────────────── */
+.primitive-inspector .pi-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+.primitive-inspector .pi-figure-number {
+  font-size: 46px;
+  line-height: 1;
+  font-weight: 200;
+  letter-spacing: -1.6px;
+  font-variant-numeric: tabular-nums;
+}
+.primitive-inspector .pi-figure-fraction {
+  color: var(--pi-faint);
+}
+.primitive-inspector .pi-figure small {
+  font-size: 13px;
+  color: var(--pi-soft);
+}
+.primitive-inspector .pi-figure p {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--pi-soft);
+}
+.primitive-inspector .pi-status-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.primitive-inspector .pi-status {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border-radius: 22px;
+  background: var(--pi-card);
+  border: 1px solid var(--pi-line);
+  min-height: 102px;
+}
+.primitive-inspector .pi-status-label {
+  font-size: 12px;
+  color: #cfcfcf;
+}
+.primitive-inspector .pi-status-number {
+  grid-column: 1 / -1;
+  align-self: end;
+  font-size: 44px;
+  line-height: 1;
+  font-weight: 200;
+  letter-spacing: -1.2px;
+}
+.primitive-inspector .pi-status-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: none;
+  color: #111;
+}
+.primitive-inspector .pi-status-icon.ok {
+  background: #34d17a;
+}
+.primitive-inspector .pi-status-icon.idle {
+  background: #3a3a3a;
+  color: #9a9a9a;
+}
+.primitive-inspector .pi-status-icon.warn {
+  background: #ff5d5d;
+  border-radius: 6px;
+}
+.primitive-inspector .pi-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.primitive-inspector .pi-stat-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 10px 9px;
+  border-radius: 14px;
+  background: var(--pi-raised);
+  min-width: 0;
+}
+.primitive-inspector .pi-stat-grid span {
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--pi-faint);
+}
+.primitive-inspector .pi-stat-grid b {
+  font-size: 18px;
+  font-weight: 300;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.primitive-inspector .pi-stat-grid small {
+  font-size: 10px;
+  color: var(--pi-soft);
+}
+.primitive-inspector .pi-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.primitive-inspector .pi-checks li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  background: var(--pi-raised);
+}
+.primitive-inspector .pi-checks li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.primitive-inspector .pi-checks b {
+  font-size: 12px;
+  font-weight: 400;
+}
+.primitive-inspector .pi-checks small {
+  font-size: 10px;
+  color: var(--pi-soft);
+}
+
+/* ── Text, tags ────────────────────────────────────────────────────────────────────────────────────────────────── */
+.primitive-inspector .pi-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.primitive-inspector .pi-text-block > span,
+.primitive-inspector .pi-caption {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--pi-soft);
+}
+/* Notes card: the purpose sits in its own inset block above the free notes. */
+.primitive-inspector .pi-notes-card .pi-purpose {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 18px;
+  background: #ffffff05;
+  border: 1px solid var(--pi-line);
+}
+.primitive-inspector .pi-notes-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #e6cf72;
+}
+.primitive-inspector textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--pi-line);
+  background: var(--pi-raised);
+  color: var(--pi-ink);
+  font-size: 12px;
+  line-height: 1.45;
+  outline: none;
+}
+.primitive-inspector textarea:focus {
+  border-color: #ffffff30;
+}
+.primitive-inspector .pi-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.primitive-inspector .pi-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 11px;
+  border-radius: 99px;
+  background: #24303f;
+  color: #bcd8ff;
+  font-size: 11px;
+}
+.primitive-inspector .pi-tag button {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff12;
+  color: inherit;
+}
+.primitive-inspector .pi-tag-add input {
+  width: 84px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 99px;
+  border: 1px dashed #464646;
+  background: transparent;
+  color: var(--pi-ink);
+  font-size: 11px;
+  outline: none;
+}
+
+/* ── Inputs ────────────────────────────────────────────────────────────────────────────────────────────────────── */
+.primitive-inspector .pi-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.primitive-inspector .pi-slider.is-disabled {
+  opacity: 0.42;
+}
+.primitive-inspector .pi-slider-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #d4d4d4;
+}
+.primitive-inspector .pi-number {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.primitive-inspector .pi-number input {
+  width: 70px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 99px;
+  border: 1px solid var(--pi-line);
+  background: var(--pi-raised);
+  color: var(--pi-ink);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.primitive-inspector .pi-number input::-webkit-inner-spin-button,
+.primitive-inspector .pi-number input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.primitive-inspector .pi-number small {
+  font-size: 10px;
+  color: var(--pi-soft);
+  min-width: 14px;
+}
+.primitive-inspector .pi-slider input[type="range"] {
+  --pi-tone: #e8e8e8;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  margin: 0;
+  padding: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--pi-tone) var(--pi-fill), #2c2c2c var(--pi-fill));
+  border: none;
+  outline: none;
+}
+.primitive-inspector .pi-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fafafa;
+  border: 3px solid #1a1a1a;
+  box-shadow: 0 0 0 1px #ffffff30;
+  cursor: grab;
+}
+.primitive-inspector .pi-slider input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fafafa;
+  border: 3px solid #1a1a1a;
+  cursor: grab;
+}
+.primitive-inspector .pi-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--pi-line);
+  background: var(--pi-raised);
+  text-align: left;
+}
+.primitive-inspector .pi-switch:hover {
+  background: #2a2a2a;
+}
+.primitive-inspector .pi-switch:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.primitive-inspector .pi-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.primitive-inspector .pi-switch-text > span {
+  font-size: 12px;
+  color: #e4e4e4;
+}
+.primitive-inspector .pi-switch-text small {
+  font-size: 10px;
+  color: var(--pi-soft);
+}
+.primitive-inspector .pi-switch-track {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 21px;
+  border-radius: 99px;
+  background: #3a3a3a;
+  transition: background 160ms ease;
+}
+.primitive-inspector .pi-switch-track > span {
+  position: absolute;
+  top: 2.5px;
+  left: 2.5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #d8d8d8;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+.primitive-inspector .pi-switch.on .pi-switch-track {
+  background: var(--pi-tone, #34d17a);
+}
+.primitive-inspector .pi-switch.on .pi-switch-track > span {
+  transform: translateX(15px);
+  background: #fff;
+}
+.primitive-inspector .pi-segmented-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.primitive-inspector .pi-segmented-block.is-disabled {
+  opacity: 0.42;
+}
+.primitive-inspector .pi-segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 99px;
+  background: #121212;
+  border: 1px solid var(--pi-line);
+}
+.primitive-inspector .pi-segmented button {
+  flex: 1;
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--pi-soft);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.primitive-inspector .pi-segmented button:hover {
+  color: #e0e0e0;
+  background: #ffffff08;
+}
+.primitive-inspector .pi-segmented button.active {
+  background: #2e2e2e;
+  color: var(--pi-ink);
+  box-shadow: 0 1px 6px #0007;
+}
+.primitive-inspector .pi-density {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.primitive-inspector .pi-density button {
+  min-height: 26px;
+  padding: 3px 10px;
+  gap: 5px;
+  border-radius: 99px;
+  font-size: 11px;
+}
+.primitive-inspector .pi-density button small {
+  font-size: 9px;
+  color: var(--pi-faint);
+}
+
+/* ── Rigid Body: body tiles, facts, contact panels, damping ──────────────────────────────────────────────────────── */
+.primitive-inspector .pi-body-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.primitive-inspector .pi-body-tiles button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 10px 10px 11px;
+  border-radius: 16px;
+  background: var(--pi-raised);
+  border: 1px solid var(--pi-line);
+  color: #8a8a8a;
+  text-align: left;
+  cursor: pointer;
+}
+.primitive-inspector .pi-body-tiles button b {
+  font-size: 12px;
+  font-weight: 500;
+  color: #cfcfcf;
+}
+.primitive-inspector .pi-body-tiles button small {
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--pi-faint);
+}
+.primitive-inspector .pi-body-tiles button[aria-checked="true"] {
+  background: #2a2420;
+  border-color: #ff9f5a66;
+  color: #ff9f5a;
+}
+.primitive-inspector .pi-body-tiles button[aria-checked="true"] b {
+  color: var(--pi-ink);
+}
+.primitive-inspector .pi-body-glyph {
+  width: 40px;
+  height: 30px;
+  margin-bottom: 2px;
+}
+.primitive-inspector .pi-body-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--pi-line);
+  border-bottom: 1px solid var(--pi-line);
+}
+.primitive-inspector .pi-body-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 2px 9px 0;
+  min-width: 0;
+}
+.primitive-inspector .pi-body-facts > div + div {
+  padding-left: 10px;
+  border-left: 1px solid var(--pi-line);
+}
+.primitive-inspector .pi-body-facts span {
+  font-size: 9.5px;
+  color: var(--pi-faint);
+}
+.primitive-inspector .pi-body-facts b {
+  font-size: 17px;
+  font-weight: 300;
+  white-space: nowrap;
+}
+.primitive-inspector .pi-body-facts small {
+  font-size: 10px;
+  color: var(--pi-soft);
+}
+.primitive-inspector .pi-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.primitive-inspector .pi-contact-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-radius: 16px;
+  background: #161616;
+  border: 1px solid #ffffff0a;
+  min-width: 0;
+}
+.primitive-inspector .pi-mini-study {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+}
+.primitive-inspector .pi-mini-study text {
+  font: 9.5px "DM Sans", sans-serif;
+  fill: #8a8a8a;
+}
+.primitive-inspector .pi-contact-panel .pi-number input {
+  width: 48px;
+  padding: 0 8px;
+}
+.primitive-inspector .pi-contact-panel .pi-slider-line > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.primitive-inspector .pi-mini-study text.pi-mini-strong {
+  font-size: 12px;
+  fill: #e6cf72;
+}
+.primitive-inspector .pi-damping-card.is-muted .pi-study,
+.primitive-inspector .pi-damping-card.is-muted .pi-figure {
+  opacity: 0.5;
+}
+.primitive-inspector .pi-study-svg[data-study="decay"] text {
+  font-size: 8.5px;
+}
+
+/* ── Mass: direct entry and units ──────────────────────────────────────────────────────────────────────────────── */
+.primitive-inspector .pi-mass-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 6px 8px 6px 14px;
+  border-radius: 14px;
+  background: #121212;
+  border: 1px solid var(--pi-line);
+}
+.primitive-inspector .pi-mass-entry span {
+  font-size: 11px;
+  color: var(--pi-soft);
+}
+.primitive-inspector .pi-mass-entry input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--pi-ink);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 300;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.primitive-inspector .pi-mass-entry input:focus {
+  outline: none;
+}
+.primitive-inspector .pi-mass-entry b {
+  min-width: 26px;
+  padding: 5px 8px;
+  border-radius: 9px;
+  background: #2a2a2a;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+.primitive-inspector .pi-unit-pills {
+  display: flex;
+  gap: 4px;
+  margin: 10px 0 12px;
+}
+.primitive-inspector .pi-unit-pills button {
+  flex: 1;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid var(--pi-line);
+  background: transparent;
+  color: var(--pi-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+.primitive-inspector .pi-unit-pills button[aria-checked="true"] {
+  background: #e6e6e6;
+  border-color: #e6e6e6;
+  color: #141414;
+}
+
+/* ── Origin picker ─────────────────────────────────────────────────────────────────────────────────────────────── */
+.primitive-inspector button:disabled {
+  cursor: default;
+}
+
+/* Study cards (Damping, Collision, Shading): big reading, a diagram on a dark inset, a caption, then controls —
+   the same composition as the camera lens cards. */
+.primitive-inspector .pi-study {
+  border-radius: 18px;
+  background: #161616;
+  border: 1px solid #ffffff0a;
+  padding: 10px 8px 6px;
+  line-height: 0;
+}
+.primitive-inspector .pi-study-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.primitive-inspector .pi-study-svg text {
+  font:
+    8px "DM Sans",
+    sans-serif;
+  fill: #7a7a7a;
+  letter-spacing: 0.2px;
+}
+.primitive-inspector .pi-study-svg text.pi-study-accent {
+  fill: #cfcfcf;
+}
+.primitive-inspector .pi-study-svg text.pi-study-dark {
+  fill: #111;
+  font-weight: 600;
+}
+.primitive-inspector .pi-study-note {
+  margin: -2px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--pi-faint);
+}
+
+/* Mass balance (standard property card). */
+.pi-mass-card .pi-balance-wrap {
+  margin: 4px 0 14px;
+}
+.pi-mass-card .pi-balance {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.pi-mass-card .pi-balance text {
+  font:
+    9px "DM Sans",
+    sans-serif;
+  fill: #8a8a8a;
+}
+.pi-mass-card .pi-balance text.pi-balance-strong {
+  fill: #dfe8f3;
+}
+
+/* Collision: custom collider import */
+.primitive-inspector .pi-custom-collider {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #151515;
+  border: 1px solid #ffffff0b;
+}
+.primitive-inspector .pi-custom-record {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+.primitive-inspector .pi-custom-record b {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e8e8e8;
+}
+.primitive-inspector .pi-custom-record small {
+  font-size: 10px;
+  color: #8f8f8f;
+}
+.primitive-inspector .pi-custom-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.primitive-inspector .pi-custom-actions button {
+  flex: 1;
+  min-height: 30px;
+  border-radius: 999px;
+  border: 1px solid #ffffff14;
+  background: #262626;
+  color: #dedede;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.primitive-inspector .pi-warning {
+  color: #e9c27c;
+}

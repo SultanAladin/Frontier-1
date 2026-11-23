@@ -1,0 +1,97 @@
+# Electric Sparks — particle template (Emitters). Short-lived violent arcs: star sprites, hard flicker, jittery turbulence, white-blue.
+# Converted from the legacy template object by script; node fingerprint ed752947d6072c04 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 12
+Id = "electric-sparks"
+Name = "Electric Sparks"
+Category = "Emitters"
+Icon = "electric"
+Tint = "#e0f2fe"
+Summary = "Short-lived violent arcs: star sprites, hard flicker, jittery turbulence, white-blue."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 1, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 0.12, Fill = 0.0, Count = 2048, Rate = 30.0, Lifetime = 0.35, Linger = 0.1, Speed = 6.0, Spread = 1.0, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 2.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 2.5 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 4.0, NoiseScale = 3.5, NoiseSpeed = 2.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.4 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#ffffff", "#e0f2fe", "#60a5fa"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 2.0, Flicker = 1.0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.02, SizeEnd = 0.004, SizeRandom = 0.7 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 3, Glow = 1.2, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }

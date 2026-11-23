@@ -1,0 +1,2076 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..16efd7c
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,14 @@
++# OS / editor
++.DS_Store
++Thumbs.db
++*.swp
++.idea/
++.vscode/
++
++# dependencies & build output
++node_modules/
++dist/
++build/
++
++# logs
++*.log
+diff --git a/app/fonts/LICENSE-inter.txt b/app/fonts/LICENSE-inter.txt
+new file mode 100644
+index 0000000..40589da
+--- /dev/null
++++ b/app/fonts/LICENSE-inter.txt
+@@ -0,0 +1,93 @@
++Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter) Inter-Italic[opsz,wght].ttf: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
++
++This Font Software is licensed under the SIL Open Font License, Version 1.1.
++This license is copied below, and is also available with a FAQ at:
++http://scripts.sil.org/OFL
++
++
++-----------------------------------------------------------
++SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
++-----------------------------------------------------------
++
++PREAMBLE
++The goals of the Open Font License (OFL) are to stimulate worldwide
++development of collaborative font projects, to support the font creation
++efforts of academic and linguistic communities, and to provide a free and
++open framework in which fonts may be shared and improved in partnership
++with others.
++
++The OFL allows the licensed fonts to be used, studied, modified and
++redistributed freely as long as they are not sold by themselves. The
++fonts, including any derivative works, can be bundled, embedded,
++redistributed and/or sold with any software provided that any reserved
++names are not used by derivative works. The fonts and derivatives,
++however, cannot be released under any other type of license. The
++requirement for fonts to remain under this license does not apply
++to any document created using the fonts or their derivatives.
++
++DEFINITIONS
++"Font Software" refers to the set of files released by the Copyright
++Holder(s) under this license and clearly marked as such. This may
++include source files, build scripts and documentation.
++
++"Reserved Font Name" refers to any names specified as such after the
++copyright statement(s).
++
++"Original Version" refers to the collection of Font Software components as
++distributed by the Copyright Holder(s).
++
++"Modified Version" refers to any derivative made by adding to, deleting,
++or substituting -- in part or in whole -- any of the components of the
++Original Version, by changing formats or by porting the Font Software to a
++new environment.
++
++"Author" refers to any designer, engineer, programmer, technical
++writer or other person who contributed to the Font Software.
++
++PERMISSION & CONDITIONS
++Permission is hereby granted, free of charge, to any person obtaining
++a copy of the Font Software, to use, study, copy, merge, embed, modify,
++redistribute, and sell modified and unmodified copies of the Font
++Software, subject to the following conditions:
++
++1) Neither the Font Software nor any of its individual components,
++in Original or Modified Versions, may be sold by itself.
++
++2) Original or Modified Versions of the Font Software may be bundled,
++redistributed and/or sold with any software, provided that each copy
++contains the above copyright notice and this license. These can be
++included either as stand-alone text files, human-readable headers or
++in the appropriate machine-readable metadata fields within text or
++binary files as long as those fields can be easily viewed by the user.
++
++3) No Modified Version of the Font Software may use the Reserved Font
++Name(s) unless explicit written permission is granted by the corresponding
++Copyright Holder. This restriction only applies to the primary font name as
++presented to the users.
++
++4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
++Software shall not be used to promote, endorse or advertise any
++Modified Version, except to acknowledge the contribution(s) of the
++Copyright Holder(s) and the Author(s) or with their explicit written
++permission.
++
++5) The Font Software, modified or unmodified, in part or in whole,
++must be distributed entirely under this license, and must not be
++distributed under any other license. The requirement for fonts to
++remain under this license does not apply to any document created
++using the Font Software.
++
++TERMINATION
++This license becomes null and void if any of the above conditions are
++not met.
++
++DISCLAIMER
++THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
++MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
++OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
++COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
++DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
++OTHER DEALINGS IN THE FONT SOFTWARE.
+diff --git a/app/fonts/inter-latin-wght-normal.woff2 b/app/fonts/inter-latin-wght-normal.woff2
+new file mode 100644
+index 0000000..d15208d
+Binary files /dev/null and b/app/fonts/inter-latin-wght-normal.woff2 differ
+diff --git a/app/index.html b/app/index.html
+new file mode 100644
+index 0000000..bc3e862
+--- /dev/null
++++ b/app/index.html
+@@ -0,0 +1,1214 @@
++<!doctype html>
++<html lang="en">
++<head>
++<meta charset="utf-8" />
++<meta name="viewport" content="width=device-width, initial-scale=1" />
++<meta name="color-scheme" content="dark" />
++<title>FRONTIER · Lobby</title>
++<link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
++<style>
++@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/inter-latin-wght-normal.woff2) format('woff2')}
++
++/* ============================================================
++   TOKENS  (palette: blue · black · white · dark grey)
++   ============================================================ */
++:root{
++  --blue:#1f5eff; --blue-soft:#4d80ff; --blue-deep:#1a4fe0;
++  --bg:#0a0a0a; --panel:#121212; --inset:#1a1a1a; --field:#000; --raised:#222; --selected:#1c1c1c; --row:#161616;
++  --stroke:rgba(255,255,255,.06); --stroke-strong:#2e2e2e;
++  --text:#fff; --dim:#8a8a8a; --faint:#5c5c5c;
++  --font:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
++  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
++  --ease:cubic-bezier(.22,.61,.36,1);
++  --shadow-pop:0 24px 60px rgba(0,0,0,.75);
++  --r-pill:999px;
++}
++*{box-sizing:border-box;margin:0;padding:0}
++html,body{height:100%}
++body{background:var(--blue);font-family:var(--font);color:var(--text);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden;font-feature-settings:"cv11","ss01"}
++button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
++input{font:inherit;color:inherit}
++svg{display:block}
++.ic{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
++:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:6px}
++@keyframes rowIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
++@keyframes menuIn{from{opacity:0;transform:translateY(-4px)}}
++@keyframes pop{from{opacity:0;transform:scale(.85)}}
++@keyframes spin{to{transform:rotate(360deg)}}
++@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(31,94,255,.55)}70%{box-shadow:0 0 0 6px rgba(31,94,255,0)}}
++@keyframes pulseW{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.5)}70%{box-shadow:0 0 0 6px rgba(255,255,255,0)}}
++@keyframes blink{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-2px)}}
++
++/* ============================================================
++   STAGE / DEVICE
++   ============================================================ */
++.stage{position:fixed;inset:0;display:grid;place-items:center;padding:4vh 4vw}
++.device{position:relative;width:min(1180px,100%,calc((100vh - 8vh) * 1.5));aspect-ratio:4/3;border-radius:38px;background:#111;padding:14px;box-shadow:0 60px 120px -30px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08),inset 0 0 0 2px #2b2b2b}
++.device::before,.device::after{content:"";position:absolute;left:-3px;width:3px;height:9%;border-radius:2px 0 0 2px;background:#1b1b1b}
++.device::before{top:18%}.device::after{top:31%}
++.screen{position:relative;width:100%;height:100%;border-radius:26px;background:var(--bg);overflow:hidden}
++.ui{position:absolute;inset:0;width:1000px;height:750px;transform-origin:0 0;transform:scale(var(--s,1));overflow:hidden;display:flex;flex-direction:column}
++
++/* mode swap */
++.hero-body,.left,.right{transition:opacity .16s,transform .22s var(--ease)}
++.ui.swapping .hero-body,.ui.swapping .left,.ui.swapping .right{opacity:0;transform:translateY(6px)}
++
++/* ============================================================
++   HERO
++   ============================================================ */
++.hero{position:relative;flex:none;height:196px;background:var(--blue);padding:20px 24px 18px;display:flex;flex-direction:column}
++.nav{display:flex;align-items:center;gap:14px;height:32px}
++.logo{height:32px;padding:0 14px;border-radius:16px;background:#fff;color:var(--blue);font-weight:800;font-size:12px;letter-spacing:.14em;display:flex;align-items:center}
++.tabs{height:32px;padding:3px;border-radius:16px;background:rgba(255,255,255,.14);display:flex;align-items:center;gap:2px;position:relative}
++.tab{position:relative;height:26px;padding:0 14px;border-radius:13px;font-size:12px;font-weight:500;color:#fff;white-space:nowrap;z-index:1;transition:color .2s;display:inline-flex;align-items:center;text-decoration:none}
++.tab.is-on{color:var(--blue)}
++.tab-ink{position:absolute;top:3px;height:26px;border-radius:13px;background:#fff;transition:left .35s var(--ease),width .35s var(--ease)}
++.hero-body{flex:1;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;min-width:0}
++.hero-left{min-width:0;display:flex;flex-direction:column;gap:10px}
++.crumb{display:none;align-items:center;gap:6px;height:26px;padding:0 11px 0 7px;border-radius:13px;background:rgba(255,255,255,.14);font-size:11px;font-weight:500;width:max-content;color:#fff;transition:background .15s}
++.crumb:hover{background:rgba(255,255,255,.24)}
++.crumb .ic{width:12px;height:12px}
++.hero h1{font-size:72px;font-weight:400;letter-spacing:-.045em;line-height:.85;margin-bottom:-6px;white-space:nowrap}
++.hero h1.sm{font-size:50px;letter-spacing:-.035em;line-height:.95;margin-bottom:-2px;max-width:620px;overflow:hidden;text-overflow:ellipsis}
++.hero-actions{display:flex;gap:8px;align-items:center;flex:none}
++.hbtn{height:32px;padding:0 6px 0 14px;border-radius:16px;background:#fff;color:#111;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:8px;transition:transform .2s var(--ease),box-shadow .2s;white-space:nowrap;max-width:300px}
++.hbtn i{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;flex:none}
++.hbtn i .ic{width:12px;height:12px;stroke-width:2.5}
++.hbtn em{width:8px;height:8px;border-radius:50%;background:var(--blue);flex:none;animation:pulse 1.6s infinite}
++.hbtn span{overflow:hidden;text-overflow:ellipsis}
++.hbtn:hover{transform:translateY(-1px);box-shadow:0 8px 20px -8px rgba(0,0,0,.5)}
++.hbtn:active{transform:none}
++
++/* ============================================================
++   CONTENT
++   ============================================================ */
++.content{flex:1;min-height:0;display:grid;grid-template-columns:1fr;gap:16px;padding:16px 24px 18px}
++[data-mode="room"] .content{grid-template-columns:1fr 316px}
++.left,.right{min-width:0;min-height:0;display:flex;flex-direction:column}
++.right{display:none}
++[data-mode="room"] .right{display:flex}
++.browse{flex:1;min-height:0;display:flex;flex-direction:column}
++[data-mode="room"] .browse{display:none}
++.room{display:none}
++[data-mode="room"] .room{display:flex;flex-direction:column;gap:10px;min-height:0;flex:1}
++
++/* --- toolbar: search · filter (Slate pill fields) --- */
++.toolbar{display:flex;align-items:center;gap:8px;position:relative;z-index:30}
++.field{height:32px;border-radius:var(--r-pill);background:var(--field);border:1px solid var(--stroke);display:flex;align-items:center;gap:8px;padding:0 12px;min-width:0;transition:border-color .15s}
++.field:focus-within{border-color:var(--stroke-strong)}
++.field .ic{color:var(--faint)}
++.field input{flex:1;min-width:0;background:transparent;border:0;outline:0;font-size:12px}
++.field input::placeholder{color:var(--faint)}
++.field kbd{font:600 9.5px/1 var(--font);color:var(--faint);border:1px solid var(--stroke-strong);border-radius:5px;padding:3px 5px}
++.field:focus-within kbd,.field.has kbd{display:none}
++.search{width:360px;flex:none}
++.count{margin-left:auto;font-size:10px;color:var(--faint);white-space:nowrap}
++.count b{font-weight:600;color:var(--dim)}
++.count .eos{margin-left:10px}
++
++.dd{position:relative;flex:none}
++.dd-btn{display:flex;align-items:stretch;height:32px;border-radius:var(--r-pill);overflow:hidden;border:1px solid var(--stroke);width:100%;text-align:left}
++.dd-btn .cur{flex:1;background:var(--field);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.dd-btn .caret{width:32px;background:var(--inset);border-left:1px solid var(--stroke);display:grid;place-items:center;color:var(--dim);transition:background .15s}
++.dd-btn:hover .caret{background:var(--raised)}
++.dd-btn .caret .ic{transition:transform .2s var(--ease)}
++.open>.dd-btn .caret .ic{transform:rotate(180deg)}
++.dd-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;z-index:40;background:var(--field);border:1px solid var(--stroke-strong);border-radius:16px;padding:5px;display:none;flex-direction:column;gap:2px;box-shadow:var(--shadow-pop)}
++.open>.dd-menu{display:flex;animation:menuIn .18s var(--ease)}
++.opt{padding:7px 12px;border-radius:var(--r-pill);color:var(--dim);font-size:12px;font-weight:500;text-align:left;white-space:nowrap;transition:background .12s,color .12s}
++.opt:hover{background:#141414;color:#fff}
++.opt.sel{color:#fff;background:#181818}
++
++/* filter = dropdown whose options become chips */
++.filter{position:relative;flex:none}
++.filter .cur .ic{color:var(--dim)}
++.fcount{min-width:16px;height:16px;padding:0 5px;border-radius:8px;background:var(--blue);color:#fff;font-size:9.5px;font-weight:700;display:grid;place-items:center}
++.fcount:empty{display:none}
++.fmenu{position:absolute;top:calc(100% + 6px);left:0;width:250px;z-index:40;background:var(--field);border:1px solid var(--stroke-strong);border-radius:16px;padding:6px;display:none;box-shadow:var(--shadow-pop);max-height:400px;overflow:auto;scrollbar-width:none}
++.open>.fmenu{display:block;animation:menuIn .18s var(--ease)}
++.fsec+.fsec{margin-top:4px;padding-top:4px;border-top:1px solid var(--stroke)}
++.fsec-h{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:7px 12px 4px}
++.fopt{display:flex;align-items:center;justify-content:space-between;width:100%;padding:7px 10px 7px 12px;border-radius:var(--r-pill);color:var(--dim);font-size:12px;font-weight:500;transition:background .12s,color .12s}
++.fopt .ic{width:12px;height:12px;color:var(--faint)}
++.fopt:hover{background:#141414;color:#fff}
++.fopt:hover .ic{color:#fff}
++.fempty{padding:14px 12px;font-size:12px;color:var(--faint);text-align:center}
++
++/* chips */
++.chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-height:0;opacity:0;overflow:hidden;transition:max-height .3s var(--ease),opacity .25s,margin .3s var(--ease)}
++.chips.has{max-height:80px;opacity:1;margin-top:10px}
++.chip{height:26px;padding:0 4px 0 10px;border-radius:13px;background:var(--inset);border:1px solid var(--stroke);display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:#fff}
++.chip.new{animation:pop .25s var(--ease)}
++.chip .g{color:var(--faint);font-weight:500}
++.chip .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--dim);transition:background .12s,color .12s}
++.chip .x .ic{width:10px;height:10px;stroke-width:2.5}
++.chip .x:hover{background:var(--raised);color:#fff}
++.clear{height:26px;padding:0 8px;font-size:11px;font-weight:500;color:var(--dim);border-radius:13px;transition:color .12s,background .12s}
++.clear:hover{color:#fff;background:var(--inset)}
++
++/* list — square rows */
++.cols,.row{display:grid;grid-template-columns:22px minmax(0,1fr) 112px 82px 76px 108px 62px 46px 46px 74px;gap:10px;align-items:center;padding:0 12px}
++.cols{margin-top:12px;padding-top:6px;padding-bottom:7px;font-size:9.5px;color:var(--faint);letter-spacing:.02em;border-bottom:1px solid var(--stroke)}
++.rows{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:1px;padding-top:1px;scrollbar-width:none}
++.rows::-webkit-scrollbar{display:none}
++.row{position:relative;height:42px;background:var(--row);font-size:10px;color:var(--dim);cursor:pointer;transition:background .15s;animation:rowIn .45s var(--ease) both;animation-delay:calc(var(--i) * 30ms);flex:none}
++.row:hover{background:var(--selected)}
++.row.is-sel{background:var(--selected)}
++.row .bar{position:absolute;left:0;top:0;bottom:0;width:3px;background:transparent;transition:background .15s}
++.row.is-sel .bar{background:var(--blue)}
++.row .n{font-size:10px;color:#fff;font-weight:500;text-align:center}
++.row .who{display:flex;align-items:center;gap:8px;min-width:0}
++.dot{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:7.5px;font-weight:700;letter-spacing:.02em}
++.row .name{min-width:0;display:flex;flex-direction:column;gap:2px}
++.row .name b{font-size:11px;font-weight:500;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.row .name small{font-size:9px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.row .name small u{text-decoration:none;color:var(--blue-soft);font-weight:600}
++.row .track{color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.badge{display:inline-block;font-style:normal;border:1px solid var(--stroke-strong);border-radius:9px;padding:2px 7px;font-size:9px;font-weight:600;letter-spacing:.03em;color:var(--dim);white-space:nowrap}
++.acc{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);white-space:nowrap}
++.acc .ic{width:11px;height:11px}
++.acc.prv{color:#fff}
++.st{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);white-space:nowrap}
++.st i{width:6px;height:6px;border-radius:50%;background:var(--faint);flex:none}
++.st.open i{background:var(--blue)}
++.st.soon,.st.starting,.st.live{color:#fff}
++.st.soon i,.st.starting i{background:var(--blue);animation:pulse 1.6s infinite}
++.st.live i{background:#fff;animation:pulseW 1.6s infinite}
++.st.full{color:var(--faint)}
++.row .num{font-variant-numeric:tabular-nums}
++.row .soon{color:#fff}
++.row.is-dim .track,.row.is-dim .name b{color:var(--dim)}
++.row .lock{display:inline-flex;vertical-align:-2px;margin-left:4px;color:var(--faint)}
++.row .lock .ic{width:10px;height:10px}
++.play{height:24px;padding:0 12px;border-radius:12px;background:var(--blue);color:#fff;font-size:9.5px;font-weight:600;justify-self:end;white-space:nowrap;transition:transform .2s var(--ease),background .2s,box-shadow .2s;position:relative;display:inline-flex;align-items:center;gap:5px}
++.play .ic{width:11px;height:11px}
++.play:hover{background:var(--blue-soft);transform:translateY(-1px);box-shadow:0 6px 16px -6px rgba(31,94,255,.8)}
++.play:active{transform:scale(.96)}
++.play:disabled{background:var(--raised);color:var(--faint);cursor:default;transform:none;box-shadow:none}
++.play.in{background:#fff;color:#111}
++.play.in:hover{background:#e6e6e6;box-shadow:none}
++.play.spec{background:transparent;border:1px solid var(--stroke-strong);color:var(--dim)}
++.play.spec:hover{color:#fff;border-color:var(--dim);box-shadow:none;transform:none}
++.loading{color:transparent!important;pointer-events:none}
++.loading::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:1.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
++.empty{padding:40px 20px;text-align:center;color:var(--faint);font-size:12px;display:flex;flex-direction:column;gap:8px;align-items:center}
++.empty .ic{width:22px;height:22px;stroke-width:1.5}
++.empty button{color:var(--dim);font-size:11.5px;font-weight:500;text-decoration:underline;text-underline-offset:3px}
++.empty button:hover{color:#fff}
++
++/* ============================================================
++   BUTTONS / PANELS
++   ============================================================ */
++.btn{height:34px;padding:0 16px;border-radius:var(--r-pill);border:1px solid var(--stroke);background:var(--inset);color:#fff;font-size:12px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background .15s,transform .12s var(--ease),color .15s;position:relative;white-space:nowrap}
++.btn:hover{background:var(--raised)}
++.btn:active{transform:scale(.97)}
++.btn.primary{background:var(--blue);border-color:transparent;font-weight:600;box-shadow:0 8px 24px -8px rgba(31,94,255,.6)}
++.btn.primary:hover{background:var(--blue-soft)}
++.btn.white{background:#fff;color:#111;border-color:transparent;font-weight:600}
++.btn.white:hover{background:#e6e6e6}
++.btn.ghost{background:transparent;border-color:transparent;color:var(--dim)}
++.btn.ghost:hover{background:var(--inset);color:#fff}
++.btn.icon{width:34px;padding:0}
++.btn.sm{height:30px;width:30px}
++.btn.wide{flex:1}
++.btn[disabled]{opacity:.45;pointer-events:none}
++.btn.white[disabled]{opacity:1;background:#fff;color:#111}
++.eos{font-size:9.5px;color:var(--faint);letter-spacing:.01em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.panel{background:var(--panel);border:1px solid var(--stroke);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.03);display:flex;flex-direction:column;overflow:hidden}
++.right>.panel{flex:1;min-height:0}
++
++/* ============================================================
++   ROOM · header (unchanged) · roster squares · chat
++   ============================================================ */
++.room-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);border:1px solid var(--stroke);border-radius:16px;flex:none}
++.status{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px 0 10px;flex:none;border-radius:14px;background:var(--inset);border:1px solid var(--stroke);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
++.status i{width:6px;height:6px;border-radius:50%;background:var(--faint)}
++.status.wait i{background:var(--blue);animation:pulse 1.6s infinite}
++.status.count{color:#fff;border-color:var(--blue)}
++.status.count i{background:var(--blue)}
++.status.live{color:#fff;background:var(--blue);border-color:transparent}
++.status.live i{background:#fff}
++.room-stats{display:flex;gap:14px;margin-left:auto;margin-right:6px;min-width:0}
++.room-stats div{display:flex;flex-direction:column;gap:3px;text-align:right}
++.room-stats small{font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
++.room-stats b{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
++.room-body{flex:1;min-height:0;display:grid;grid-template-columns:224px 1fr;gap:10px}
++.roster-col{min-height:0;display:flex;flex-direction:column;gap:8px}
++.roster-col .roster{flex:1}
++
++.roster{min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-content:start;scrollbar-width:none;padding:1px}
++.roster::-webkit-scrollbar{display:none}
++.pcard{position:relative;aspect-ratio:1;min-width:0;background:var(--row);border:1px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 6px;text-align:center}
++.roster.anim .pcard{animation:rowIn .4s var(--ease) both;animation-delay:calc(var(--i) * 40ms)}
++.pcard.you{border-color:var(--blue)}
++.pcard em{position:absolute;top:7px;left:8px;font-style:normal;font-size:7px;font-weight:700;letter-spacing:.12em;color:var(--blue-soft)}
++.pcard .dot{width:44px;height:44px;font-size:13px;margin-bottom:4px}
++.pcard b{font-size:10.5px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.pcard small{font-size:8.5px;color:var(--dim);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
++.pcard .tag{font-size:7.5px;font-weight:700;letter-spacing:.1em;color:var(--faint);margin-top:2px;transition:color .2s}
++.pcard .tag.on{color:var(--blue-soft)}
++.pcard .tag.host{color:#fff}
++.pcard.open{background:transparent;border:1px dashed var(--stroke-strong);color:var(--faint);cursor:pointer;transition:color .15s,border-color .15s;gap:6px}
++.pcard.open:hover{color:#fff;border-color:var(--dim)}
++.pcard.open .ic{width:18px;height:18px;stroke-width:1.5}
++.pcard.open small{color:inherit;font-size:9.5px}
++
++.chat{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel);border:1px solid var(--stroke);border-radius:16px;overflow:hidden}
++.chat-head{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.02);flex:none}
++.chat-head b{font-size:12.5px;font-weight:600;display:block}
++.chat-head span{font-size:9.5px;color:var(--dim);display:block;margin-top:2px}
++.stack{display:flex;margin-left:auto;align-items:center}
++.stack .dot,.stack .more{width:24px;height:24px;font-size:7px;border:2px solid var(--panel);margin-left:-7px}
++.stack .dot:first-child{margin-left:0}
++.stack .more{border-radius:50%;background:var(--raised);color:var(--dim);font-size:8px;font-weight:700;display:grid;place-items:center}
++.msgs{flex:1;min-height:0;overflow:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:2px;scrollbar-width:none}
++.msgs::-webkit-scrollbar{display:none}
++.msg{display:flex;align-items:flex-end;gap:6px;max-width:82%;flex:none}
++.msg.first{margin-top:6px}
++.msg.out{align-self:flex-end}
++.msg .dot{width:22px;height:22px;font-size:7px;visibility:hidden}
++.msg.last .dot{visibility:visible}
++.bubble{padding:7px 10px;border-radius:14px;font-size:11px;line-height:1.35;background:var(--raised);color:#fff;overflow-wrap:anywhere;min-width:0;animation:pop .2s var(--ease)}
++.msg.in .bubble{border-bottom-left-radius:4px}
++.msg.out .bubble{background:var(--blue);border-bottom-right-radius:4px}
++.msg-meta{font-size:9px;color:var(--faint);margin:2px 0 4px 30px;flex:none}
++.msg-meta.out{align-self:flex-end;margin:2px 4px 4px 0}
++.sys{align-self:center;text-align:center;font-size:9.5px;color:var(--faint);margin:6px 0;max-width:100%;flex:none;animation:pop .2s var(--ease)}
++.sys b{color:var(--dim);font-weight:600}
++.sys i{font-style:normal;color:#444;margin-left:6px;font-family:var(--mono);font-size:8.5px}
++.typing .bubble{display:flex;gap:3px;padding:10px 11px}
++.typing .bubble i{width:5px;height:5px;border-radius:50%;background:var(--dim);animation:blink 1.2s infinite}
++.typing .bubble i:nth-child(2){animation-delay:.2s}.typing .bubble i:nth-child(3){animation-delay:.4s}
++.composer{display:flex;align-items:center;gap:6px;padding:8px 10px;border-top:1px solid var(--stroke);background:rgba(255,255,255,.02);flex:none}
++.composer .field{flex:1;height:32px}
++.composer .rbtn{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:var(--dim);transition:background .15s,color .15s,transform .15s var(--ease);flex:none}
++.composer .rbtn:hover{background:var(--inset);color:#fff}
++.composer .send{background:var(--blue);color:#fff}
++.composer .send:hover{background:var(--blue-soft);color:#fff}
++.composer .send:active{transform:scale(.92)}
++
++.voice{flex:none;display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--stroke);border-radius:14px}
++.voice-top{display:flex;align-items:center;gap:8px}
++.voice-top b{font-size:11px;font-weight:600;display:block}
++.voice-top small{font-size:9px;color:var(--faint);display:block;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.voice-top>div{min-width:0;flex:1}
++.vu{display:flex;align-items:flex-end;gap:2px;height:14px;flex:none}
++.vu i{width:3px;height:3px;border-radius:2px;background:var(--faint);transition:height .12s,background .12s}
++.vu.on i{background:var(--blue-soft)}
++.ptt{height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--stroke);background:var(--inset);font-size:10.5px;font-weight:600;color:var(--dim);display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:background .15s,color .15s,border-color .15s;user-select:none;-webkit-user-select:none;flex:1}
++.ptt .ic{width:12px;height:12px}
++.ptt:hover{color:#fff}
++.ptt.live{background:var(--blue);border-color:transparent;color:#fff;animation:pulse 1.2s infinite}
++.ptt.muted{color:var(--faint)}
++.vbtn{width:30px;height:30px;border-radius:50%;border:1px solid var(--stroke);background:var(--inset);display:grid;place-items:center;color:var(--dim);transition:background .15s,color .15s;flex:none}
++.vbtn:hover{background:var(--raised);color:#fff}
++.vbtn.on{color:#fff}
++.vbtn.off{color:var(--faint)}
++.vbtn.off::after{content:"";position:absolute;width:16px;height:1.5px;background:currentColor;transform:rotate(-45deg)}
++.vbtn{position:relative}
++.voice-row{display:flex;gap:6px;align-items:center}
++.pcard .dot{position:relative;transition:box-shadow .15s}
++.pcard.speaking .dot{box-shadow:0 0 0 3px var(--panel),0 0 0 5px var(--blue-soft)}
++.pcard .vs{position:absolute;top:7px;right:8px;width:14px;height:14px;border-radius:50%;background:var(--raised);display:grid;place-items:center;color:var(--faint)}
++.pcard .vs .ic{width:8px;height:8px;stroke-width:2.5}
++.pcard.speaking .vs{background:var(--blue);color:#fff}
++.pcard .vs.muted{color:var(--faint)}
++.pcard .vs.deaf{background:transparent;border:1px solid var(--stroke-strong)}
++.chat-head .live-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue-soft);margin-right:5px;vertical-align:1px}
++
++/* ============================================================
++   TICKET (boarding-pass style)
++   ============================================================ */
++.tk-scroll{flex:1;min-height:0;overflow:auto;scrollbar-width:none;padding:10px;display:flex;flex-direction:column;gap:10px}
++.tk-scroll::-webkit-scrollbar{display:none}
++.tk-card{background:var(--inset);border:1px solid var(--stroke);border-radius:16px;padding:10px;animation:rowIn .4s var(--ease) both}
++.tk-card+.tk-card{animation-delay:80ms}
++.tk-air{display:flex;align-items:center;gap:10px;background:var(--raised);border-radius:12px;padding:8px 10px}
++.tk-logo{width:36px;height:36px;border-radius:10px;background:var(--blue);flex:none;overflow:hidden}
++.tk-air b{display:block;font-size:12.5px;font-weight:600}
++.tk-air span{display:block;font-size:10px;color:var(--dim);margin-top:2px}
++.tk-route{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;padding:14px 4px 12px;border-bottom:1px dashed var(--stroke-strong)}
++.tk-end{display:flex;flex-direction:column;gap:4px;min-width:0}
++.tk-end.r{text-align:right}
++.tk-end small{font-size:10px;color:var(--dim)}
++.tk-end b{font-size:24px;font-weight:600;letter-spacing:-.03em;line-height:1}
++.tk-end span{font-size:10px;color:var(--dim)}
++.tk-mid{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:104px}
++.tk-mid small{font-size:9.5px;color:var(--dim);white-space:nowrap}
++.tk-line{display:flex;align-items:center;width:100%}
++.tk-line::before,.tk-line::after{content:"";flex:1;border-top:1px dashed var(--stroke-strong)}
++.tk-line i{width:26px;height:26px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;margin:0 4px}
++.tk-line i .ic{width:13px;height:13px}
++.tk-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:12px 4px 4px}
++.tk-grid small{display:block;font-size:9.5px;color:var(--dim);margin-bottom:3px}
++.tk-grid b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.tk-code{padding:12px 4px 2px;text-align:center}
++.tk-code svg{width:100%;height:42px}
++.tk-code span{display:block;font-size:9.5px;color:var(--dim);margin-top:8px;font-family:var(--mono)}
++.pb-head b{display:block;font-size:13px;font-weight:600}
++.pb-head span{display:block;font-size:10px;color:var(--dim);margin-top:2px}
++.legend{display:flex;gap:12px;margin:10px 0 8px;font-size:9.5px;color:var(--dim)}
++.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--raised);vertical-align:-1px;margin-right:5px}
++.legend i.tk{background:#4a4a4a}
++.legend i.me{background:#fff}
++.boxes{display:grid;grid-template-columns:22px 26px 26px 14px 26px 26px;gap:5px 4px;align-items:center;justify-items:center;justify-content:center}
++.boxes .hd{font-size:9px;color:var(--faint);font-weight:500}
++.box{width:26px;height:26px;border-radius:6px;background:var(--raised);border:1px solid transparent;transition:transform .15s var(--ease),background .15s,border-color .15s}
++.box:hover{border-color:var(--blue-soft);transform:scale(1.06)}
++.box.tk{background:#4a4a4a;cursor:default}
++.box.tk:hover{border-color:transparent;transform:none}
++.box.me{background:#fff}
++.tk-foot{padding:10px 12px 12px;border-top:1px solid var(--stroke);display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.02)}
++.tk-foot .btn{height:38px;font-size:12.5px}
++
++/* ============================================================
++   MODAL · CREATE LOBBY
++   ============================================================ */
++.modal{position:absolute;inset:0;z-index:100;display:grid;place-items:center;background:rgba(0,0,0,.6);opacity:0;pointer-events:none;transition:opacity .25s}
++.modal.open{opacity:1;pointer-events:auto}
++.modal .panel{width:600px;transform:translateY(14px) scale(.98);transition:transform .35s var(--ease);overflow:visible}
++.modal.open .panel{transform:none}
++.panel-header{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.02);border-radius:20px 20px 0 0}
++.ph-icon{width:28px;height:28px;border-radius:9px;background:var(--inset);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--dim)}
++.ph-title{font-size:13.5px;font-weight:600}
++.ph-sub{font-size:10.5px;color:var(--faint);margin-top:1px}
++.spacer{flex:1}
++.panel-body{padding:14px 18px;display:flex;flex-direction:column;gap:9px}
++.crow{display:flex;align-items:center;gap:12px;min-height:32px}
++.crow>.clabel{width:150px;flex:none;color:var(--dim);font-size:12px;font-weight:500}
++.crow>.clabel small{display:block;font:500 9px/1.2 var(--mono);color:var(--faint);margin-top:2px;white-space:nowrap}
++.crow>.field,.crow>.dd,.crow>.seg{flex:1}
++.crow .hint{font-size:10px;color:var(--faint);flex:none}
++.seg{display:flex;background:var(--field);border:1px solid var(--stroke);border-radius:var(--r-pill);padding:3px;gap:3px;height:32px}
++.seg button{flex:1;color:var(--dim);font-size:11.5px;font-weight:500;border-radius:var(--r-pill);transition:background .15s,color .15s}
++.seg button:hover{color:#fff}
++.seg button.active{background:#fff;color:#111;font-weight:600}
++.stepper{display:flex;align-items:stretch;height:32px;width:118px;border-radius:var(--r-pill);overflow:hidden;border:1px solid var(--stroke);flex:none}
++.stepper button{width:32px;background:var(--inset);color:var(--dim);display:grid;place-items:center;transition:background .15s,color .15s}
++.stepper button:hover{background:var(--raised);color:#fff}
++.stepper button:first-child{border-right:1px solid var(--stroke)}
++.stepper button:last-child{border-left:1px solid var(--stroke)}
++.stepper .v{flex:1;background:var(--field);display:grid;place-items:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
++.switches{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 14px;flex:1}
++.sw{display:flex;align-items:center;gap:8px;height:28px;cursor:pointer;border-radius:8px;font-size:11px;font-weight:500;color:var(--dim);transition:color .15s;min-width:0}
++.sw[data-on="true"]{color:#fff}
++.sw span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.switch{width:34px;height:20px;border-radius:var(--r-pill);flex:none;background:var(--raised);border:1px solid var(--stroke);position:relative;transition:background .18s var(--ease)}
++.switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#bdbdbd;transition:transform .18s var(--ease),background .18s}
++.sw[data-on="true"] .switch{background:var(--blue);border-color:transparent}
++.sw[data-on="true"] .switch::after{transform:translateX(14px);background:#fff}
++.panel-footer{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--stroke);background:rgba(255,255,255,.02);border-radius:0 0 20px 20px}
++.panel-footer .eos{flex:1}
++.mono{font-family:var(--mono);font-size:11px;letter-spacing:0}
++
++/* ============================================================
++   TOAST
++   ============================================================ */
++.toast{position:absolute;left:50%;bottom:18px;transform:translate(-50%,10px);padding:9px 14px;border-radius:10px;background:#fff;color:#111;font-size:11.5px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .25s,transform .35s var(--ease);white-space:nowrap;box-shadow:0 10px 30px -10px rgba(0,0,0,.6);z-index:200}
++.toast.show{opacity:1;transform:translate(-50%,0)}
++.toast i{font-style:normal;color:#666;margin-left:8px;font-size:10.5px}
++
++@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}}
++</style>
++</head>
++<body>
++<div class="stage">
++  <div class="device">
++    <div class="screen" id="screen">
++      <div class="ui" id="ui" data-mode="browse">
++
++        <header class="hero">
++          <nav class="nav">
++            <span class="logo">FRNT</span>
++            <div class="tabs" id="tabs">
++              <i class="tab-ink" id="tabInk"></i>
++              <button class="tab">Home</button>
++              <button class="tab is-on">Lobby</button>
++              <button class="tab">Leaderboard</button>
++              <a class="tab" href="wallet.html">Wallet</a>
++            </div>
++          </nav>
++          <div class="hero-body">
++            <div class="hero-left">
++              <button class="crumb" id="crumb" type="button"><svg class="ic" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>All lobbies</button>
++              <h1 id="h1">Lobby</h1>
++            </div>
++            <div class="hero-actions" id="heroActions"></div>
++          </div>
++        </header>
++
++        <main class="content">
++          <section class="left">
++            <!-- browse -->
++            <div class="browse">
++              <div class="toolbar">
++                <label class="field search" id="searchField">
++                  <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
++                  <input id="q" type="text" placeholder="Search lobbies, hosts, tracks" spellcheck="false" autocomplete="off" />
++                  <kbd>/</kbd>
++                </label>
++                <div class="filter dd" id="filter">
++                  <button class="dd-btn" type="button" aria-haspopup="true">
++                    <span class="cur"><svg class="ic" viewBox="0 0 24 24"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5Z"/></svg>Filter<span class="fcount" id="fcount"></span></span>
++                    <span class="caret"><svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span>
++                  </button>
++                  <div class="fmenu" id="fmenu"></div>
++                </div>
++                <span class="count" id="count"></span>
++              </div>
++              <div class="chips" id="chips"></div>
++              <div class="cols"><span>#</span><span>Lobby</span><span>Track</span><span>Type</span><span>Access</span><span>Status</span><span>Starts</span><span>Drivers</span><span>Entry</span><span></span></div>
++              <div class="rows" id="rows"></div>
++            </div>
++
++            <!-- room -->
++            <div class="room" id="room">
++              <div class="room-head" id="roomHead"></div>
++              <div class="room-body">
++                <div class="roster-col"><div class="roster" id="roster"></div><div class="voice" id="voice"></div></div>
++                <div class="chat">
++                  <div class="chat-head" id="chatHead"></div>
++                  <div class="msgs" id="msgs"></div>
++                  <form class="composer" id="composer" autocomplete="off">
++                    <label class="field"><input id="chatInput" type="text" placeholder="Message the lobby…" maxlength="200" spellcheck="false" /></label>
++                    <button class="rbtn" type="button" id="chatLike" title="Send a thumbs up"><svg class="ic" viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 2 2v4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg></button>
++                    <button class="rbtn send" type="submit" id="chatSend" title="Send"><svg class="ic" viewBox="0 0 24 24"><path d="M21 3 3 10l8 3 3 8z"/><path d="M11 13l10-10"/></svg></button>
++                  </form>
++                </div>
++              </div>
++            </div>
++          </section>
++          <aside class="right"><div class="panel ticket" id="ticket"></div></aside>
++        </main>
++
++        <!-- create lobby -->
++        <div class="modal" id="modal" aria-hidden="true">
++          <div class="panel" role="dialog" aria-labelledby="mTitle">
++            <div class="panel-header">
++              <div class="ph-icon"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
++              <div><div class="ph-title" id="mTitle">Create lobby</div><div class="ph-sub">EOS_Lobby_CreateLobby · settings are a visual mock-up</div></div>
++              <div class="spacer"></div>
++              <button class="btn ghost icon sm" id="mClose" aria-label="Close"><svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
++            </div>
++            <div class="panel-body">
++              <div class="crow"><div class="clabel">Lobby name</div><label class="field"><input id="mName" type="text" value="Sunday sprint" spellcheck="false" maxlength="32" /></label></div>
++              <div class="crow"><div class="clabel">Track</div><div class="dd" id="mTrack"></div></div>
++              <div class="crow"><div class="clabel">Session</div><div class="seg" id="mType"><button class="active">Sprint</button><button>Endurance</button><button>Drift</button><button>Time attack</button></div></div>
++              <div class="crow"><div class="clabel">Laps</div><div class="stepper" id="mLaps" data-min="1" data-max="60"><button type="button" data-d="-1"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button><span class="v">5</span><button type="button" data-d="1"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div><div class="clabel" style="width:auto;margin-left:auto;margin-right:2px;text-align:right">Max drivers<small>MaxLobbyMembers</small></div><div class="stepper" id="mMax" data-min="2" data-max="16"><button type="button" data-d="-1"><svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button><span class="v">8</span><button type="button" data-d="1"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
++              <div class="crow"><div class="clabel">Permission<small>EOS_ELobbyPermissionLevel</small></div><div class="dd" id="mPerm"></div></div>
++              <div class="crow"><div class="clabel">Bucket ID<small>BucketId</small></div><label class="field"><input id="mBucket" class="mono" type="text" value="sprint:kyalami:s3" spellcheck="false" /></label></div>
++              <div class="crow"><div class="clabel">Entry</div><div class="dd" id="mEntry" style="flex:0 0 150px"></div><div class="hint">Fee is held in escrow until the race starts</div></div>
++              <div class="crow" style="align-items:flex-start;padding-top:4px"><div class="clabel" style="padding-top:5px">Options</div>
++                <div class="switches" id="mOpts">
++                  <button class="sw" type="button" data-on="true" data-k="bAllowInvites" role="switch" aria-checked="true"><span class="switch"></span><span>Allow invites</span></button>
++                  <button class="sw" type="button" data-on="true" data-k="bPresenceEnabled" role="switch" aria-checked="true"><span class="switch"></span><span>Presence</span></button>
++                  <button class="sw" type="button" data-on="true" data-k="bEnableRTCRoom" role="switch" aria-checked="true"><span class="switch"></span><span>Voice (RTC)</span></button>
++                  <button class="sw" type="button" data-on="false" data-k="bRanked" role="switch" aria-checked="false"><span class="switch"></span><span>Ranked</span></button>
++                  <button class="sw" type="button" data-on="true" data-k="bCrossplay" role="switch" aria-checked="true"><span class="switch"></span><span>Crossplay</span></button>
++                  <button class="sw" type="button" data-on="false" data-k="bAllowJoinById" role="switch" aria-checked="false"><span class="switch"></span><span>Join by ID</span></button>
++                </div>
++              </div>
++            </div>
++            <div class="panel-footer">
++              <span class="eos" id="mEos">EOS_Lobby_CreateLobby · LocalUserId 397b…c899</span>
++              <button class="btn ghost" id="mCancel">Cancel</button>
++              <button class="btn primary" id="mCreate">Create lobby</button>
++            </div>
++          </div>
++        </div>
++
++        <div class="toast" id="toast"></div>
++      </div>
++    </div>
++  </div>
++</div>
++
++<script>
++/* ============================================================
++   UTILS
++   ============================================================ */
++const $ = (s, r=document) => r.querySelector(s);
++const $$ = (s, r=document) => [...r.querySelectorAll(s)];
++const wait = ms => new Promise(r => setTimeout(r, ms));
++const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
++const seed = s => { let a = 0; for (const c of s) a = (a * 31 + c.charCodeAt(0)) >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
++const pick = (rnd, arr) => arr[Math.floor(rnd() * arr.length)];
++const hex = (rnd, n) => Array.from({length:n}, () => '0123456789abcdef'[Math.floor(rnd()*16)]).join('');
++const pad2 = n => String(n).padStart(2, '0');
++const fmtTime = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
++const IC = {
++  chev: '<svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
++  plus: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
++  x: '<svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
++  arrow: '<svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
++  lock: '<svg class="ic" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
++  globe: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
++  eye: '<svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
++  flag: '<svg class="ic" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/></svg>',
++  invite: '<svg class="ic" viewBox="0 0 24 24"><circle cx="10" cy="8" r="3.5"/><path d="M3 20a7 7 0 0 1 14 0"/><path d="M19 8v6M16 11h6"/></svg>',
++  search: '<svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
++  copy: '<svg class="ic" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
++  out: '<svg class="ic" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M13 3h6v18h-6"/></svg>',
++  check: '<svg class="ic" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>',
++  mic: '<svg class="ic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
++  micOff: '<svg class="ic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path d="M4 4l16 16"/></svg>',
++  head: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="7" rx="1.5"/><rect x="17" y="13" width="4" height="7" rx="1.5"/></svg>',
++  wave: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/></svg>',
++};
++
++/* scale the 1000×750 canvas to the screen */
++new ResizeObserver(([e]) => $('#ui').style.setProperty('--s', (e.contentRect.width / 1000).toFixed(4))).observe($('#screen'));
++
++/* tabs */
++const ink = t => { const i = $('#tabInk'); i.style.left = t.offsetLeft + 'px'; i.style.width = t.offsetWidth + 'px'; };
++ink($('.tab.is-on'));
++addEventListener('load', () => ink($('.tab.is-on')));
++$('#tabs').addEventListener('click', e => {
++  const t = e.target.closest('.tab'); if (!t || t.tagName === 'A') return;
++  $$('.tab').forEach(x => x.classList.toggle('is-on', x === t)); ink(t);
++  if (t.textContent !== 'Lobby') toast(`${t.textContent} — coming next`);
++});
++
++/* ============================================================
++   DATA (mock — deterministic)
++   ============================================================ */
++const ME = { name: 'You', display: 'Nomvula D.', initials: 'ND', car: 'GT-X' };
++const HOSTS = ['SIPHO_X','MPHO.R','VOSS_R','YUKI_N','IKER_9','ANDI_B','KAI.SEVEN','MIRA_T','THABO_77','LERATO.GT','NOVA_K','HALO_M','RAV3N','OKONKWO','JUNO.B','TARIQ_F'];
++const NAMES = ['Sunday sprint','Late braking club','Clean racing only','Rookies welcome','Endurance night','Wet setup practice','No assists','Sim rig gang','Quali then race','Chill laps','Podium or nothing','Night stint','Hotlap hour','Full grid please','Setup testing','Short and fast','Rolling start only','Tyre saving school'];
++const CARS = ['GT-X','Aria GT3','Vanta S','Kestrel 900','Mako RS','GT-X R'];
++const TRACKS = [
++  { n:'Kyalami', c:'ZA', code:'KYA', km:'4.52', d:'M20 44 C10 30 18 14 34 14 C50 14 52 26 64 22 C80 18 90 26 86 38 C82 50 62 46 50 50 C38 54 28 54 20 44 Z', s:[20,44] },
++  { n:'Spa-Francorchamps', c:'BE', code:'SPA', km:'7.00', d:'M14 50 C6 40 12 26 24 22 C36 18 40 8 54 10 C70 12 66 26 80 28 C94 30 96 46 82 52 C68 58 60 44 48 46 C36 48 24 60 14 50 Z', s:[54,10] },
++  { n:'Suzuka', c:'JP', code:'SUZ', km:'5.81', d:'M18 40 C10 28 22 12 38 16 C52 20 54 30 68 26 C84 22 92 34 84 44 C76 54 60 50 50 44 C40 38 28 54 18 40 Z', s:[38,16] },
++  { n:'Monza', c:'IT', code:'MNZ', km:'5.79', d:'M12 48 L12 22 C12 14 20 12 28 14 L84 30 C92 32 92 42 84 44 L28 52 C20 54 12 54 12 48 Z', s:[12,35] },
++  { n:'Silverstone', c:'GB', code:'SIL', km:'5.89', d:'M20 46 C8 40 14 24 26 24 C38 24 40 14 54 12 C70 10 74 22 86 24 C96 26 94 40 84 42 C74 44 70 52 56 52 C42 52 32 52 20 46 Z', s:[56,52] },
++  { n:'Interlagos', c:'BR', code:'INT', km:'4.31', d:'M16 36 C10 24 20 12 34 14 C46 16 44 28 58 26 C72 24 78 12 88 20 C96 28 88 40 76 44 C64 48 58 42 46 46 C34 50 22 48 16 36 Z', s:[34,14] },
++  { n:'Bathurst', c:'AU', code:'BAT', km:'6.21', d:'M10 52 C8 40 14 34 24 30 C34 26 30 14 44 12 C60 10 70 20 82 18 C94 16 96 30 88 36 C80 42 64 38 52 44 C40 50 22 62 10 52 Z', s:[10,52] },
++  { n:'Zandvoort', c:'NL', code:'ZAN', km:'4.26', d:'M18 42 C10 32 20 18 34 18 C48 18 50 30 62 28 C76 26 84 14 92 24 C98 34 84 42 74 46 C64 50 52 44 40 48 C30 52 24 50 18 42 Z', s:[34,18] },
++];
++const trackOf = name => TRACKS.find(t => t.n === name) || TRACKS[0];
++const TYPES = ['Sprint','Endurance','Drift','Time attack'];
++const SERIES = ['Sprint Series','Endurance Cup','FRONTIER Open'];
++const seriesCode = s => s.split(' ').map(w => w[0]).join('').toUpperCase();
++const SESSION = {
++  'Sprint':      { a:'QUAL', aDur:10, b:'RACE', bLabel: n => `${n} laps` },
++  'Endurance':   { a:'QUAL', aDur:15, b:'RACE', bLabel: n => `${n} laps` },
++  'Drift':       { a:'PRAC', aDur:10, b:'RUNS', bLabel: n => `${n} runs` },
++  'Time attack': { a:'WARM', aDur:5,  b:'HOT',  bLabel: () => '1 lap' },
++};
++const REGIONS = { ZA:[26,46], EU:[148,176], NA:[198,236], AP:[214,268] };
++const AV = [['#1f5eff','#fff'],['#4d80ff','#fff'],['#123fb8','#fff'],['#8fb0ff','#0a1a4d'],['#2a2a2a','#fff'],['#3a3a3a','#fff'],['#ffffff','#111'],['#dfe8ff','#0a1a4d']];
++const avatar = name => name === 'You' ? ['#fff','#1f5eff'] : AV[[...name].reduce((a,c) => a + c.charCodeAt(0), 0) % AV.length];
++const initials = name => name === 'You' ? ME.initials : name.replace(/[^A-Z0-9]/gi,'').slice(0,2).toUpperCase();
++const nameOf = m => m.you ? ME.display : m.name;
++const isPublic = l => l.access === 'Open';
++
++function makeLobbies(n){
++  const rnd = seed('frontier-lobbies-v5');
++  const list = [];
++  for (let i = 0; i < n; i++){
++    const type = i % 4 === 0 ? 'Sprint' : pick(rnd, TYPES);
++    const series = type === 'Sprint' ? (rnd() < .7 ? 'Sprint Series' : 'FRONTIER Open') : type === 'Endurance' ? 'Endurance Cup' : 'FRONTIER Open';
++    const track = pick(rnd, TRACKS), region = pick(rnd, ['ZA','ZA','EU','NA','AP']);
++    const host = HOSTS[i % HOSTS.length], spots = pick(rnd, [8,8,8,10,12,16]);
++    const live = i % 6 === 5;
++    const taken = live ? Math.max(3, Math.floor(spots * .75)) : Math.min(spots, 2 + Math.floor(rnd() * spots));
++    const [lo, hi] = REGIONS[region], ping = lo + Math.floor(rnd() * (hi - lo));
++    const pool = HOSTS.filter(h => h !== host).sort(() => rnd() - .5);
++    const mem = nm => ({ name: nm, ready: live || rnd() < .6, car: pick(rnd, CARS), ping: Math.max(8, ping + Math.floor(rnd() * 30) - 15), voice: pick(rnd, ['on','on','on','on','muted','off']) });
++    const members = [{ ...mem(host), host: true, ready: true }, ...pool.slice(0, taken - 1).map(mem)];
++    const laps = type === 'Sprint' ? 4 + Math.floor(rnd()*5) : type === 'Endurance' ? 20 + Math.floor(rnd()*4)*5 : type === 'Drift' ? 3 : 1;
++    list.push({
++      id: 'lobby-' + i, eosId: hex(rnd, 12), name: NAMES[i % NAMES.length], host, track: track.n, type, series, region, ping, laps,
++      live, lap: live ? 1 + Math.floor(rnd() * laps) : 0,
++      startsIn: live ? -(3 + Math.floor(rnd() * 30)) : 1 + Math.floor(rnd() * 190), spots, members,
++      entry: pick(rnd, ['Free','Free','Free','Free','5 CR','10 CR','25 CR']),
++      access: pick(rnd, ['Open','Open','Open','Friends','Invite only']), ranked: rnd() < .4,
++    });
++  }
++  return list.sort((a, b) => (a.live ? 1e6 - a.startsIn : a.startsIn) - (b.live ? 1e6 - b.startsIn : b.startsIn));
++}
++const LOBBIES = makeLobbies(18);
++const byId = id => LOBBIES.find(l => l.id === id);
++const isFull = l => l.members.length >= l.spots;
++const startsLabel = m => m <= 0 ? 'Now' : m < 60 ? `${m} min` : fmtTime(new Date(Date.now() + m * 60000));
++function lobbyStatus(l){
++  if (state.joined === l.id){ if (state.phase === 'live') return ['live', 'In progress']; if (state.phase === 'count') return ['starting', `Starting 0:${pad2(state.countdown)}`]; }
++  if (l.live) return ['live', 'In progress'];
++  if (isFull(l)) return ['full', 'Full'];
++  if (l.startsIn <= 5) return ['soon', 'Starting soon'];
++  return ['open', 'Open'];
++}
++function startsCell(l){
++  if (state.joined === l.id && state.phase === 'count') return `0:${pad2(state.countdown)}`;
++  if (l.live || (state.joined === l.id && state.phase === 'live')) return (l.type === 'Sprint' || l.type === 'Endurance') ? `Lap ${l.lap || 1}/${l.laps}` : 'Live';
++  return startsLabel(l.startsIn);
++}
++
++/* filter groups — options within a group match ANY; Status options must ALL match */
++const FILTERS = [
++  { g:'Series', key:'series', opts: SERIES,                             test: (l, v) => l.series === v },
++  { g:'Type',   key:'type',   opts: TYPES,                              test: (l, v) => l.type === v },
++  { g:'Region', key:'region', opts: ['ZA','EU','NA','AP'],              test: (l, v) => l.region === v },
++  { g:'Entry',  key:'entry',  opts: ['Free','Paid'],                    test: (l, v) => v === 'Free' ? l.entry === 'Free' : l.entry !== 'Free' },
++  { g:'Access', key:'access', opts: ['Public','Friends','Invite only'], test: (l, v) => v === 'Public' ? isPublic(l) : l.access === v },
++  { g:'Status', key:'status', opts: ['Open spots','Starting soon','In progress','Ranked'], all: true, test: (l, v) => v === 'Open spots' ? !isFull(l) && !l.live : v === 'Starting soon' ? !l.live && l.startsIn <= 15 : v === 'In progress' ? l.live : l.ranked },
++];
++
++/* ============================================================
++   STATE
++   ============================================================ */
++const state = { q: '', filters: new Set(), selected: null, joined: null, mode: 'browse', ready: false, box: null, phase: 'wait', countdown: 0, simJoins: 0, typing: null, muted: false, deaf: false, ptt: false, talking: false, lastChip: null };
++const ui = $('#ui');
++
++function visible(){
++  const q = state.q.trim().toLowerCase();
++  return LOBBIES.filter(l => {
++    if (q && !`${l.name} ${l.host} ${l.track} ${l.type} ${l.region} ${l.series} ${l.access} ${lobbyStatus(l)[1]}`.toLowerCase().includes(q)) return false;
++    for (const f of FILTERS){
++      const vals = f.opts.filter(o => state.filters.has(f.key + ':' + o));
++      if (!vals.length) continue;
++      if (f.all ? !vals.every(v => f.test(l, v)) : !vals.some(v => f.test(l, v))) return false;
++    }
++    return true;
++  });
++}
++
++/* ============================================================
++   DROPDOWN (Slate .dd: split caret pill + floating menu)
++   ============================================================ */
++function dropdown(root, { options, value, onChange }){
++  const label = v => (options.find(o => o.value === v) || { label: v }).label;
++  const render = () => {
++    root.innerHTML = `<button class="dd-btn" type="button" aria-haspopup="listbox"><span class="cur">${esc(label(value))}</span><span class="caret">${IC.chev}</span></button>
++      <div class="dd-menu" role="listbox">${options.map(o => `<button class="opt ${o.value === value ? 'sel' : ''}" role="option" data-v="${esc(o.value)}">${esc(o.label)}</button>`).join('')}</div>`;
++  };
++  render();
++  root.addEventListener('click', e => {
++    if (e.target.closest('.dd-btn')){ const open = root.classList.contains('open'); closeMenus(); root.classList.toggle('open', !open); return; }
++    const o = e.target.closest('.opt'); if (!o) return;
++    value = o.dataset.v; render(); root.classList.remove('open'); onChange?.(value);
++  });
++  return { get value(){ return value; }, set(v){ value = v; render(); } };
++}
++function closeMenus(){ $$('.open').forEach(x => x.classList.remove('open')); }
++document.addEventListener('pointerdown', e => { if (!e.target.closest('.dd, .filter')) closeMenus(); });
++
++/* search */
++$('#q').addEventListener('input', e => { state.q = e.target.value; $('#searchField').classList.toggle('has', !!state.q); renderList(); });
++
++/* ============================================================
++   FILTER  (dropdown → chips → back into dropdown)
++   ============================================================ */
++const filterEl = $('#filter');
++function renderFilter(){
++  const secs = FILTERS.map(f => {
++    const opts = f.opts.filter(o => !state.filters.has(f.key + ':' + o));
++    if (!opts.length) return '';
++    return `<div class="fsec"><div class="fsec-h">${f.g}</div>${opts.map(o => `<button class="fopt" type="button" data-k="${f.key}:${esc(o)}">${esc(o)}${IC.plus}</button>`).join('')}</div>`;
++  }).join('');
++  $('#fmenu').innerHTML = secs || `<div class="fempty">All filters applied</div>`;
++  $('#fcount').textContent = state.filters.size || '';
++}
++function renderChips(){
++  const el = $('#chips');
++  el.innerHTML = [...state.filters].map(k => {
++    const [key, val] = k.split(':'); const g = FILTERS.find(f => f.key === key).g;
++    return `<span class="chip ${k === state.lastChip ? 'new' : ''}" data-k="${esc(k)}"><span class="g">${g}</span>${esc(val)}<button class="x" type="button" aria-label="Remove ${esc(val)}">${IC.x}</button></span>`;
++  }).join('') + (state.filters.size > 1 ? `<button class="clear" type="button">Clear all</button>` : '');
++  el.classList.toggle('has', state.filters.size > 0);
++  state.lastChip = null;
++}
++filterEl.addEventListener('click', e => {
++  if (e.target.closest('.dd-btn')){ const open = filterEl.classList.contains('open'); closeMenus(); filterEl.classList.toggle('open', !open); return; }
++  const o = e.target.closest('.fopt'); if (!o) return;
++  state.filters.add(o.dataset.k); state.lastChip = o.dataset.k;
++  renderFilter(); renderChips(); renderList();
++  if (!$('.fopt')) filterEl.classList.remove('open');
++});
++$('#chips').addEventListener('click', e => {
++  const x = e.target.closest('.x'); const c = e.target.closest('.clear');
++  if (x){ state.filters.delete(x.closest('.chip').dataset.k); }
++  else if (c){ state.filters.clear(); }
++  else return;
++  renderFilter(); renderChips(); renderList();
++});
++
++/* ============================================================
++   HERO (changes with mode / joined)
++   ============================================================ */
++function renderHero(){
++  const l = byId(state.joined), room = state.mode === 'room' && l;
++  $('#crumb').style.display = room ? 'inline-flex' : 'none';
++  const h = $('#h1'); h.textContent = room ? l.name : 'Lobby'; h.classList.toggle('sm', !!room);
++  $('#heroActions').innerHTML = room
++    ? `<button class="hbtn" id="btnLeave" type="button">Leave lobby <i>${IC.out}</i></button>`
++    : (l ? `<button class="hbtn" id="btnOpen" type="button"><em></em><span>In lobby · ${esc(l.name)}</span> <i>${IC.arrow}</i></button>` : '') + `<button class="hbtn" id="btnCreate" type="button">Create lobby <i>${IC.plus}</i></button>`;
++}
++$('#heroActions').addEventListener('click', e => {
++  if (e.target.closest('#btnLeave')) leave();
++  else if (e.target.closest('#btnOpen')) setMode('room');
++  else if (e.target.closest('#btnCreate')) openModal();
++});
++$('#crumb').addEventListener('click', () => setMode('browse'));
++
++async function setMode(mode){
++  if (state.mode === mode) return;
++  ui.classList.add('swapping'); await wait(170);
++  state.mode = mode; ui.dataset.mode = mode;
++  renderHero();
++  if (mode === 'room'){ renderRoom(true); renderTicket(); } else renderList();
++  void ui.offsetWidth; ui.classList.remove('swapping');
++}
++
++/* ============================================================
++   LIST
++   ============================================================ */
++function rowHTML(l, i){
++  const [bg, fg] = avatar(l.host), full = isFull(l), joined = state.joined === l.id, [sk, sl] = lobbyStatus(l), pub = isPublic(l);
++  const btn = joined ? `<button class="play in" type="button" data-act="open">Open</button>`
++    : l.live ? `<button class="play spec" type="button" data-act="spec">${IC.eye}Spectate</button>`
++    : full ? `<button class="play" type="button" disabled>Full</button>`
++    : `<button class="play" type="button" data-act="join">Play</button>`;
++  return `<div class="row ${state.selected === l.id ? 'is-sel' : ''} ${(full || l.live) && !joined ? 'is-dim' : ''}" data-id="${l.id}" style="--i:${Math.min(i, 12)}" tabindex="0">
++    <span class="bar"></span>
++    <span class="n">${i + 1}</span>
++    <span class="who"><span class="dot" style="background:${bg};color:${fg}">${initials(l.host)}</span><span class="name"><b>${esc(l.name)}</b><small>${esc(l.host === 'You' ? ME.display : l.host)} · ${l.region}${l.ranked ? ' · <u>Ranked</u>' : ''}</small></span></span>
++    <span class="track">${esc(l.track)}</span>
++    <span><i class="badge">${l.type}</i></span>
++    <span class="acc ${pub ? 'pub' : 'prv'}" title="${pub ? 'Public · advertised in search' : l.access}">${pub ? IC.globe : IC.lock}${pub ? 'Public' : 'Private'}</span>
++    <span class="st ${sk}"><i></i>${sl}</span>
++    <span class="num ${l.startsIn <= 15 && !l.live ? 'soon' : ''}">${startsCell(l)}</span>
++    <span class="num">${l.members.length}/${l.spots}</span>
++    <span>${l.entry}</span>
++    ${btn}
++  </div>`;
++}
++function renderList(){
++  const list = visible(), live = list.filter(l => l.live).length;
++  $('#count').innerHTML = (list.length ? `<b>${list.length}</b> ${list.length === 1 ? 'lobby' : 'lobbies'}${live ? ` · ${live} in progress` : ''}` : 'No lobbies') + `<span class="eos">EOS_LobbySearch_Find · MaxResults 50</span>`;
++  $('#rows').innerHTML = list.length ? list.map(rowHTML).join('') :
++    `<div class="empty">${IC.search}<span>No lobbies match your search or filters.</span>${(state.filters.size || state.q) ? `<button type="button" id="resetAll">Clear search and filters</button>` : ''}</div>`;
++}
++function refreshRow(id){ const l = byId(id), row = $(`.row[data-id="${id}"]`); if (!l || !row) return; const [sk, sl] = lobbyStatus(l); $('.st', row).className = 'st ' + sk; $('.st', row).innerHTML = `<i></i>${sl}`; $$('.num', row)[0].textContent = startsCell(l); }
++$('#rows').addEventListener('click', e => {
++  if (e.target.closest('#resetAll')){ state.filters.clear(); state.q = ''; $('#q').value = ''; $('#searchField').classList.remove('has'); renderFilter(); renderChips(); renderList(); return; }
++  const row = e.target.closest('.row'); if (!row) return;
++  const btn = e.target.closest('.play');
++  if (btn){
++    e.stopPropagation();
++    if (btn.dataset.act === 'open') setMode('room');
++    else if (btn.dataset.act === 'spec') toast('Spectator mode — coming next', 'EOS_Sessions_JoinSession · spectator');
++    else if (btn.dataset.act === 'join') join(row.dataset.id, btn);
++    return;
++  }
++  select(row.dataset.id);
++});
++$('#rows').addEventListener('dblclick', e => { const row = e.target.closest('.row'); if (row && !e.target.closest('.play')) act(row.dataset.id); });
++$('#rows').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('row')) act(e.target.dataset.id); });
++function select(id){ state.selected = id; $$('.row').forEach(r => r.classList.toggle('is-sel', r.dataset.id === id)); }
++function act(id){ const l = byId(id); if (!l) return; select(id); if (state.joined === id) setMode('room'); else if (!l.live && !isFull(l)) join(id, $(`.row[data-id="${id}"] .play`)); }
++
++/* ============================================================
++   JOIN / LEAVE
++   ============================================================ */
++async function join(id, btn){
++  const l = byId(id); if (!l || isFull(l) || l.live || state.joined === id) return;
++  if (l.access === 'Invite only'){ btn?.classList.add('loading'); await wait(600); btn?.classList.remove('loading'); toast(`Invite requested from ${l.host}`, 'EOS_Lobby_SendInvite'); return; }
++  btn?.classList.add('loading'); await wait(700); btn?.classList.remove('loading');
++  if (state.joined) detach(byId(state.joined));
++  Room.stop(); resetRoomState();
++  l.members.push({ name: 'You', you: true, ready: false, car: ME.car, ping: Math.max(8, l.ping - 6) });
++  state.joined = id; state.selected = id;
++  chatOf(l); sys(`<b>${esc(ME.display)}</b> joined the lobby`, 'EOS_Lobby_JoinLobby · EOS_Success');
++  renderList();
++  toast(`Joined ${l.name}`, 'EOS_Lobby_JoinLobby → EOS_Success');
++  await setMode('room'); Room.start();
++}
++function detach(l){ if (!l) return; l.members.forEach(m => m.speaking = false); l.members = l.members.filter(m => !m.you); if (l.you){ const i = LOBBIES.indexOf(l); if (i > -1) LOBBIES.splice(i, 1); if (state.selected === l.id) state.selected = null; } }
++function resetRoomState(){ Object.assign(state, { ready: false, box: null, phase: 'wait', countdown: 0, simJoins: 0, typing: null }); }
++async function leave(){
++  const l = byId(state.joined); if (!l) return;
++  const wasHost = !!l.you; Room.stop(); detach(l); state.joined = null; resetRoomState();
++  if (state.mode === 'room') await setMode('browse'); else { renderHero(); renderList(); }
++  toast(wasHost ? 'Lobby closed' : `Left ${l.name}`, wasHost ? 'EOS_Lobby_DestroyLobby' : 'EOS_Lobby_LeaveLobby');
++}
++
++/* ============================================================
++   ROOM · header · roster · chat
++   ============================================================ */
++function statusOf(l){
++  if (state.phase === 'live') return ['live', 'Session live'];
++  if (state.phase === 'count') return ['count', `Starting in 0:${pad2(state.countdown)}`];
++  if (l.members.length < 2) return ['wait', 'Waiting for drivers'];
++  return ['wait', l.members.every(m => m.ready) ? (l.host === 'You' ? 'Ready to start' : 'All drivers ready') : 'Waiting for ready'];
++}
++function renderRoomHead(){
++  const l = byId(state.joined); if (!l) return;
++  const [cls, label] = statusOf(l), ready = l.members.filter(m => m.ready).length;
++  $('#roomHead').innerHTML = `
++    <span class="status ${cls}"><i></i>${label}</span>
++    <div class="room-stats">
++      <div><small>Drivers</small><b>${l.members.length}/${l.spots}</b></div>
++      <div><small>Ready</small><b>${ready}/${l.members.length}</b></div>
++      <div><small>Starts</small><b>${startsLabel(l.startsIn)}</b></div>
++      <div><small>Access</small><b>${isPublic(l) ? 'Public' : 'Private'}</b></div>
++      <div><small>Host</small><b>${esc(l.host === 'You' ? ME.display : l.host)}</b></div>
++    </div>
++    <button class="btn icon sm" id="roomInvite" type="button" title="Invite friends">${IC.invite}</button>
++    <button class="btn icon sm" id="roomCopy" type="button" title="Copy lobby ID">${IC.copy}</button>`;
++}
++function pcardHTML(m, i){
++  const [bg, fg] = avatar(m.name);
++  const vs = m.you ? (state.deaf ? 'deaf' : state.muted ? 'muted' : '') : (m.voice === 'muted' ? 'muted' : m.voice === 'deaf' ? 'deaf' : '');
++  const vsIc = vs === 'deaf' ? IC.head : vs === 'muted' ? IC.micOff : IC.mic;
++  return `<div class="pcard ${m.you ? 'you' : ''} ${m.speaking ? 'speaking' : ''}" style="--i:${i}" data-name="${esc(m.name)}">${m.you ? '<em>YOU</em>' : ''}<span class="vs ${vs}" title="${vs === 'deaf' ? 'Deafened' : vs === 'muted' ? 'Muted' : 'Voice on'}">${vsIc}</span>
++    <span class="dot" style="background:${bg};color:${fg}">${initials(m.name)}</span>
++    <b>${esc(nameOf(m))}</b><small>${esc(m.car)} · ${m.ping} ms</small>
++    <span class="tag ${m.host ? 'host' : m.ready ? 'on' : ''}">${m.host ? 'HOST' : m.ready ? 'READY' : 'NOT READY'}</span>
++  </div>`;
++}
++function renderRoster(animate){
++  const l = byId(state.joined); if (!l) return;
++  const el = $('#roster'); el.classList.toggle('anim', !!animate);
++  el.innerHTML = l.members.map(pcardHTML).join('') + Array.from({ length: l.spots - l.members.length }, (_, i) => `<button type="button" class="pcard open inv" style="--i:${l.members.length + i}">${IC.invite}<small>Invite</small></button>`).join('');
++}
++function renderChatHead(){
++  const l = byId(state.joined); if (!l) return;
++  const others = l.members.filter(m => !m.you);
++  const talking = l.members.filter(m => m.speaking).map(m => nameOf(m));
++  $('#chatHead').innerHTML = `<div><b>Lobby chat</b><span>${talking.length ? `<i class="live-dot"></i>${esc(talking.join(', '))} ${talking.length > 1 ? 'are' : 'is'} talking` : `${l.members.length} drivers · ${state.deaf ? 'deafened' : state.muted ? 'mic muted' : 'voice on'} · EOS_RTC`}</span></div>
++    <div class="stack">${others.slice(0, 3).map(m => { const [bg, fg] = avatar(m.name); return `<span class="dot" style="background:${bg};color:${fg}">${initials(m.name)}</span>`; }).join('')}${others.length > 3 ? `<span class="more">+${others.length - 3}</span>` : ''}</div>
++    <button class="btn icon sm" id="micBtn" type="button" title="${state.muted ? 'Unmute' : 'Mute'}">${state.muted ? IC.micOff : IC.mic}</button>`;
++}
++function renderRoom(animate){ renderRoomHead(); renderRoster(animate); renderVoice(); renderChatHead(); renderChat(); }
++function renderStatus(){
++  const l = byId(state.joined); if (!l) return;
++  const s = $('#roomHead .status'); if (s){ const [cls, label] = statusOf(l); s.className = 'status ' + cls; s.innerHTML = `<i></i>${label}`; }
++  const f = $('#ticket .tk-foot'); if (f) f.innerHTML = footHTML(l);
++}
++function refreshRoom(){ if (state.mode === 'room'){ renderRoomHead(); renderRoster(false); renderVoice(); renderChatHead(); renderTicket(); } else renderList(); }
++$('#room').addEventListener('click', e => {
++  if (e.target.closest('#roomInvite') || e.target.closest('.inv')) toast('Invite sent to 4 online friends', 'EOS_Lobby_SendInvite');
++  else if (e.target.closest('#roomCopy')){ const l = byId(state.joined); try { navigator.clipboard?.writeText(l.eosId); } catch {} toast(`Lobby ID copied · ${l.eosId}`); }
++  else if (e.target.closest('#micBtn')) Voice.mute();
++  else if (e.target.closest('#vMute')) Voice.mute();
++  else if (e.target.closest('#vDeaf')) Voice.deafen();
++});
++
++/* ---------- voice (EOS RTC · simulated) ---------- */
++function renderVoice(){
++  const l = byId(state.joined); if (!l) return;
++  const inVoice = l.members.filter(m => !m.you && m.voice !== 'off').length + 1;
++  $('#voice').innerHTML = `
++    <div class="voice-top"><span class="vbtn ${state.talking ? 'on' : ''}" style="cursor:default">${IC.wave}</span><div><b>Voice</b><small>${inVoice}/${l.members.length} connected · ${state.ptt ? 'push to talk' : 'open mic'} · EOS_RTC</small></div><span class="vu" id="vu">${'<i></i>'.repeat(6)}</span></div>
++    <div class="voice-row">
++      <button class="ptt ${state.talking ? 'live' : ''} ${state.muted || state.deaf ? 'muted' : ''}" id="ptt" type="button" title="${state.ptt ? 'Hold to talk · or hold V' : 'Click to switch to push to talk'}">${state.muted || state.deaf ? IC.micOff : IC.mic}${state.deaf ? 'Deafened' : state.muted ? 'Muted' : state.ptt ? (state.talking ? 'Talking…' : 'Hold to talk') : (state.talking ? 'Talking…' : 'Open mic')}</button>
++      <button class="vbtn ${state.muted ? 'off' : ''}" id="vMute" type="button" title="${state.muted ? 'Unmute' : 'Mute'}">${IC.mic}</button>
++      <button class="vbtn ${state.deaf ? 'off' : ''}" id="vDeaf" type="button" title="${state.deaf ? 'Undeafen' : 'Deafen'}">${IC.head}</button>
++    </div>`;
++}
++const Voice = {
++  timers: new Set(), vuTimer: null,
++  after(ms, fn){ const id = setTimeout(() => { this.timers.delete(id); fn(); }, ms); this.timers.add(id); },
++  mute(){ state.muted = !state.muted; if (state.muted) this.setTalking(false); renderVoice(); renderChatHead(); renderRoster(false); toast(state.muted ? 'Microphone muted' : 'Microphone on', 'EOS_RTCAudio_UpdateSending'); },
++  deafen(){ state.deaf = !state.deaf; if (state.deaf){ state.muted = true; this.setTalking(false); const l = byId(state.joined); l?.members.forEach(m => { if (!m.you) m.speaking = false; }); } renderVoice(); renderChatHead(); renderRoster(false); toast(state.deaf ? 'Deafened · you will not hear the lobby' : 'Audio on', 'EOS_RTCAudio_UpdateReceiving'); },
++  setTalking(on){
++    const l = byId(state.joined); if (!l) return; const me = l.members.find(m => m.you); if (!me) return;
++    on = on && !state.muted && !state.deaf; if (me.speaking === on) return;
++    me.speaking = state.talking = on; renderVoice(); renderChatHead(); renderRoster(false);
++  },
++  start(){
++    this.stop();
++    /* other drivers talk in short bursts */
++    const loop = () => this.after(2500 + Math.random() * 5000, () => {
++      const l = byId(state.joined); if (!l) return;
++      if (!state.deaf){
++        const pool = l.members.filter(m => !m.you && m.voice !== 'off' && m.voice !== 'muted' && !m.speaking);
++        if (pool.length && Math.random() < .75){
++          const m = pick(Math.random, pool); m.speaking = true; renderRoster(false); renderChatHead();
++          this.after(1200 + Math.random() * 3500, () => { m.speaking = false; if (state.mode === 'room'){ renderRoster(false); renderChatHead(); } });
++        }
++      }
++      loop();
++    });
++    loop();
++    /* VU meter for your own mic */
++    this.vuTimer = setInterval(() => { const vu = $('#vu'); if (!vu) return; vu.classList.toggle('on', state.talking); $$('i', vu).forEach((b, i) => { b.style.height = state.talking ? (3 + Math.random() * 11 * (1 - Math.abs(i - 2.5) / 4)) + 'px' : '3px'; }); }, 90);
++  },
++  stop(){ this.timers.forEach(clearTimeout); this.timers.clear(); clearInterval(this.vuTimer); this.vuTimer = null; state.talking = false; state.ptt = false; state.deaf = false; state.muted = false; },
++};
++/* push-to-talk: hold the button or hold V; click toggles PTT / open mic */
++let pttHeld = false, pttDownAt = 0;
++$('#room').addEventListener('pointerdown', e => { const b = e.target.closest('#ptt'); if (!b) return; pttHeld = true; pttDownAt = Date.now(); if (state.ptt) Voice.setTalking(true); });
++addEventListener('pointerup', () => { if (!pttHeld) return; pttHeld = false; if (state.ptt){ if (Date.now() - pttDownAt < 220 && !state.talking){ state.ptt = false; renderVoice(); toast('Open mic', 'EOS_RTCAudio · always sending'); } Voice.setTalking(false); } else if (Date.now() - pttDownAt < 220){ state.ptt = true; renderVoice(); toast('Push to talk · hold the button or V', 'EOS_RTCAudio · send on key'); } });
++document.addEventListener('keydown', e => { if (e.repeat || state.mode !== 'room' || /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) return; if (e.key === 'v' || e.key === 'V'){ if (state.ptt) Voice.setTalking(true); else if (!e.repeat) Voice.mute(); } });
++document.addEventListener('keyup', e => { if ((e.key === 'v' || e.key === 'V') && state.ptt) Voice.setTalking(false); });
++
++/* ---------- chat ---------- */
++const CHAT = {
++  history: [['host', 'welcome in, quali starts on the timer'], ['any', 'anyone running the default setup here?'], ['any', 'softs front, mediums rear worked for me last night'], ['host', 'clean first corner please']],
++  ambient: ['gg last one, that was close', 'lag spikes anyone? I am at 40 ms', 'brb 1 min', 'who was on pole last round?', 'first time at this track for me', 'wet or dry for quali?', 'no divebombs into T1 please', 'running no assists tonight', 'same setup as last week', 'ready when you are'],
++  replies: [
++    [/\b(ready|go|start|lets|let's)\b/i, ["same, let's go", 'waiting on {n} more', 'ready here']],
++    [/\b(gg|nice|good|great|wp)\b/i, ['gg', 'cheers', 'wp']],
++    [/\b(setup|tyre|tire|soft|medium|hard|wing|aero)\b/i, ['softs front, mediums rear works here', 'default setup is fine for this track', 'low wing for the straights']],
++    [/\b(hi|hey|hello|yo|sup|morning|evening)\b/i, ['hey', 'welcome', 'o7']],
++    [/\b(lag|ping|ms|server|region)\b/i, ['I am on 31 ms, stable', 'ZA server is fine for me', 'host region is ZA']],
++    [/\?\s*$/, ['not sure tbh', 'ask the host', 'yes']],
++  ],
++  fallback: ['yeah', 'true', 'haha', 'same', 'ok', 'we will see in quali', 'noted'],
++  onReady: ["let's go", 'nice, {n} to go', 'gl hf'],
++  onCountdown: ['starting, everyone in your boxes', 'here we go', 'gl hf all'],
++};
++function chatOf(l){
++  if (l.chat) return l.chat;
++  const rnd = seed('chat-' + l.id), others = l.members.filter(m => !m.you), host = l.members.find(m => m.host && !m.you) || others[0];
++  const base = Date.now() - 9 * 60000, lines = [];
++  if (host) CHAT.history.forEach(([who, text], i) => {
++    if (i && rnd() > .85) return;
++    const m = who === 'host' ? host : (pick(rnd, others.filter(o => o !== host)) || host);
++    lines.push({ from: m.name, text, t: new Date(base + i * 70000 + rnd() * 30000) });
++  });
++  return (l.chat = lines);
++}
++function push(l, msg){ chatOf(l).push(msg); if (state.mode === 'room' && state.joined === l.id) renderChat(); }
++function sys(html, eos){ const l = byId(state.joined); if (l) push(l, { sys: true, html, eos, t: new Date() }); }
++function say(from, text){ const l = byId(state.joined); if (l) push(l, { from, text, t: new Date() }); }
++function renderChat(){
++  const l = byId(state.joined); if (!l) return;
++  const msgs = chatOf(l), el = $('#msgs'); let html = '';
++  msgs.forEach((m, i) => {
++    if (m.sys){ html += `<div class="sys">${m.html}${m.eos ? `<i>${esc(m.eos)}</i>` : ''}</div>`; return; }
++    const prev = msgs[i - 1], next = msgs[i + 1];
++    const first = !prev || prev.sys || prev.from !== m.from, last = !next || next.sys || next.from !== m.from, you = m.from === 'You', [bg, fg] = avatar(m.from);
++    html += `<div class="msg ${you ? 'out' : 'in'} ${first ? 'first' : ''} ${last ? 'last' : ''}">${you ? '' : `<span class="dot" style="background:${bg};color:${fg}">${initials(m.from)}</span>`}<div class="bubble">${esc(m.text)}</div></div>`;
++    if (last){
++      if (you){ const later = msgs.slice(i + 1).find(x => !x.sys && x.from !== 'You'); html += `<div class="msg-meta out">${later ? 'Seen ' + fmtTime(later.t) : 'Sent ' + fmtTime(m.t)}</div>`; }
++      else html += `<div class="msg-meta">${esc(m.from)} · ${fmtTime(m.t)}</div>`;
++    }
++  });
++  if (state.typing){ const [bg, fg] = avatar(state.typing); html += `<div class="msg in first last typing"><span class="dot" style="background:${bg};color:${fg}">${initials(state.typing)}</span><div class="bubble"><i></i><i></i><i></i></div></div>`; }
++  el.innerHTML = html; el.scrollTop = el.scrollHeight;
++}
++const Chat = {
++  timers: new Set(),
++  after(ms, fn){ const id = setTimeout(() => { this.timers.delete(id); fn(); }, ms); this.timers.add(id); },
++  stop(){ this.timers.forEach(clearTimeout); this.timers.clear(); state.typing = null; },
++  botSay(m, text, delay = 900 + Math.random() * 1200){
++    if (!m || state.typing) return;
++    state.typing = m.name; if (state.mode === 'room') renderChat();
++    this.after(delay, () => { state.typing = null; const l = byId(state.joined); if (!l || !l.members.includes(m)) return; say(m.name, text.replace('{n}', Math.max(1, l.members.filter(x => !x.ready).length))); });
++  },
++  reply(text){
++    const l = byId(state.joined); if (!l) return; const others = l.members.filter(m => !m.you); if (!others.length) return;
++    let pool = CHAT.fallback; for (const [re, p] of CHAT.replies) if (re.test(text)){ pool = p; break; }
++    const host = l.members.find(x => x.host && !x.you), m = (host && Math.random() < .35) ? host : pick(Math.random, others);
++    this.after(500 + Math.random() * 900, () => this.botSay(m, pick(Math.random, pool)));
++  },
++  ambient(){ const l = byId(state.joined); if (!l || state.phase !== 'wait' || Math.random() > .5) return; const others = l.members.filter(m => !m.you); if (others.length) this.botSay(pick(Math.random, others), pick(Math.random, CHAT.ambient)); },
++  event(pool, hostOnly){ const l = byId(state.joined); if (!l) return; const host = l.members.find(x => x.host && !x.you), others = l.members.filter(m => !m.you); const m = hostOnly ? host : (host && Math.random() < .5 ? host : pick(Math.random, others)); if (m) this.after(600 + Math.random() * 800, () => this.botSay(m, pick(Math.random, pool))); },
++};
++$('#composer').addEventListener('submit', e => {
++  e.preventDefault(); const inp = $('#chatInput'), text = inp.value.trim(); if (!text) return;
++  inp.value = ''; say('You', text); Chat.reply(text);
++});
++$('#chatLike').addEventListener('click', () => { say('You', '👍'); Chat.reply('gg'); });
++
++/* ---------- simulation: other drivers ready up / join, countdown, session start ---------- */
++const Room = {
++  tick: null, sim: null, amb: null,
++  start(){
++    this.stop();
++    this.tick = setInterval(() => {
++      if (state.phase !== 'count') return;
++      state.countdown--;
++      if (state.countdown <= 0){ state.phase = 'live'; const l = byId(state.joined); sys(`Session started · loading <b>${esc(l.track)}</b>`, 'EOS_Sessions_StartSession'); toast(`Session live · this is where the game loads ${l.track}`); if (state.mode !== 'room') renderList(); }
++      renderStatus(); if (state.mode === 'browse') refreshRow(state.joined);
++    }, 1000);
++    this.sim = setInterval(() => {
++      const l = byId(state.joined); if (!l || state.phase !== 'wait') return;
++      const r = Math.random(), notReady = l.members.filter(m => !m.ready && !m.you);
++      if (notReady.length && r < .7){ const m = pick(Math.random, notReady); m.ready = true; sys(`<b>${esc(m.name)}</b> is ready`, 'LobbyMemberUpdateReceived'); }
++      else if (!isFull(l) && state.simJoins < 3 && r < .9){
++        const free = HOSTS.filter(h => !l.members.some(m => m.name === h)); if (!free.length) return;
++        const nm = pick(Math.random, free); l.members.push({ name: nm, ready: false, car: pick(Math.random, CARS), ping: Math.max(8, l.ping + Math.floor(Math.random() * 30) - 15), voice: pick(Math.random, ['on','on','on','muted']) });
++        state.simJoins++; sys(`<b>${esc(nm)}</b> joined the lobby`, 'LobbyMemberStatusReceived · JOINED');
++        if (Math.random() < .6) Chat.after(1500, () => Chat.botSay(l.members.find(m => m.name === nm), pick(Math.random, ['hey all', 'o7', 'evening', 'room for one more?'])));
++      } else return;
++      refreshRoom(); checkStart();
++    }, 4500);
++    this.amb = setInterval(() => Chat.ambient(), 9000);
++    Voice.start();
++  },
++  stop(){ clearInterval(this.tick); clearInterval(this.sim); clearInterval(this.amb); this.tick = this.sim = this.amb = null; Chat.stop(); Voice.stop(); },
++};
++function checkStart(){
++  const l = byId(state.joined); if (!l || state.phase !== 'wait' || l.host === 'You') return;
++  if (l.members.length >= 2 && l.members.every(m => m.ready)) startCountdown();
++}
++function startCountdown(){
++  state.phase = 'count'; state.countdown = 10;
++  sys('All drivers ready · <b>starting in 10 s</b>', 'EOS_Lobby_UpdateLobby · STATE=COUNTDOWN');
++  Chat.event(CHAT.onCountdown, true);
++  renderStatus(); if (state.mode === 'browse') refreshRow(state.joined);
++}
++function toggleReady(){
++  const l = byId(state.joined); if (!l || state.phase === 'live') return;
++  const me = l.members.find(m => m.you); if (!me) return;
++  if (l.host === 'You'){ if (state.phase === 'wait' && l.members.length >= 2 && l.members.every(m => m.ready)) startCountdown(); return; }
++  if (state.phase === 'count'){ state.phase = 'wait'; state.countdown = 0; me.ready = state.ready = false; sys(`<b>${esc(ME.display)}</b> cancelled the countdown`, 'STATE=WAITING'); }
++  else { me.ready = state.ready = !state.ready; sys(`<b>${esc(ME.display)}</b> is ${state.ready ? 'ready' : 'not ready'}`, 'EOS_Lobby_UpdateLobbyModification · READY'); if (state.ready && Math.random() < .7) Chat.event(CHAT.onReady); }
++  renderRoomHead(); renderRoster(false); renderStatus(); checkStart();
++}
++
++/* ============================================================
++   TICKET (boarding-pass style)
++   ============================================================ */
++function boxPerm(l){ const rnd = seed('boxes-' + l.id); const a = Array.from({ length: l.spots }, (_, i) => i); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
++function takenBoxes(l){ const perm = boxPerm(l), m = new Map(); l.members.filter(x => !x.you).forEach((x, i) => m.set(perm[i % perm.length], x)); return m; }
++function myBox(l){ const taken = takenBoxes(l); if (state.box != null && !taken.has(state.box) && state.box < l.spots) return state.box; for (let i = 0; i < l.spots; i++) if (!taken.has(i)) return (state.box = i); return 0; }
++const boxLabel = i => `${Math.floor(i / 4) + 1}${'ABCD'[i % 4]}`;
++function boxesHTML(l, mine){
++  const taken = takenBoxes(l), rows = Math.ceil(l.spots / 4);
++  let h = `<span></span><span class="hd">A</span><span class="hd">B</span><span></span><span class="hd">C</span><span class="hd">D</span>`;
++  for (let r = 0; r < rows; r++){
++    h += `<span class="hd">${r + 1}</span>`;
++    for (let c = 0; c < 4; c++){
++      if (c === 2) h += `<span></span>`;
++      const i = r * 4 + c;
++      if (i >= l.spots){ h += `<span></span>`; continue; }
++      const t = taken.get(i);
++      h += `<button type="button" class="box ${t ? 'tk' : ''} ${i === mine ? 'me' : ''}" data-i="${i}" title="Box ${boxLabel(i)}${t ? ' · ' + esc(t.name) : ''}" ${t ? 'disabled' : ''}></button>`;
++    }
++  }
++  return h;
++}
++function barcode(id){
++  const rnd = seed('bar-' + id); let x = 0, bars = '';
++  while (x < 296){ const w = 1 + Math.floor(rnd() * 3), g = 1 + Math.floor(rnd() * 2); bars += `<rect x="${x}" y="0" width="${w}" height="40" fill="#fff"/>`; x += w + g; }
++  return `<svg viewBox="0 0 300 40" preserveAspectRatio="none">${bars}</svg>`;
++}
++function footHTML(l){
++  const host = l.host === 'You', all = l.members.length >= 2 && l.members.every(m => m.ready);
++  let btn, note;
++  if (state.phase === 'live'){ btn = `<button class="btn wide" disabled>Session live</button>`; note = 'EOS_Sessions_StartSession · presence updated'; }
++  else if (state.phase === 'count'){ btn = host ? `<button class="btn white wide" disabled>Starting in 0:${pad2(state.countdown)}</button>` : `<button class="btn white wide" id="btnReady" type="button">Starting in 0:${pad2(state.countdown)} · cancel</button>`; note = 'EOS_Lobby_UpdateLobby · STATE=COUNTDOWN'; }
++  else if (host){ btn = `<button class="btn ${all ? 'white' : 'primary'} wide" id="btnReady" type="button" ${all ? '' : 'disabled'}>Start race</button>`; note = all ? 'All drivers ready · you can start' : l.members.length < 2 ? 'Waiting for drivers to join' : 'Waiting for all drivers to ready up'; }
++  else { btn = `<button class="btn ${state.ready ? 'white' : 'primary'} wide" id="btnReady" type="button">${state.ready ? `${IC.check} Ready` : 'Ready up'}</button>`; note = state.ready ? 'Race starts when all drivers are ready' : 'Ready up to lock your pit box'; }
++  return `${btn}<span class="eos">${note}</span>`;
++}
++function renderTicket(){
++  const l = byId(state.joined); if (!l) return;
++  const t = trackOf(l.track), q = SESSION[l.type], mine = myBox(l);
++  const start = new Date(Date.now() + Math.max(0, l.startsIn) * 60000), raceAt = new Date(start.getTime() + q.aDur * 60000);
++  const code = (l.eosId.slice(0, 4) + '-' + l.eosId.slice(4, 8)).toUpperCase();
++  $('#ticket').innerHTML = `
++    <div class="tk-scroll">
++      <div class="tk-card">
++        <div class="tk-air"><span class="tk-logo"><svg viewBox="0 0 36 36" width="36" height="36"><text x="18" y="18" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="Inter,system-ui,sans-serif" font-weight="800" font-size="12" letter-spacing="0.5">${seriesCode(l.series)}</text></svg></span><div><b>${l.series}</b><span>${code} · ${l.type} · ${isPublic(l) ? 'Public' : 'Private'}${l.ranked ? ' · Ranked' : ''}</span></div></div>
++        <div class="tk-route">
++          <div class="tk-end"><small>${fmtTime(start)}</small><b>${q.a}</b><span>${q.aDur} min</span></div>
++          <div class="tk-mid"><small>${t.code} · ${t.km} km</small><div class="tk-line"><i>${IC.flag}</i></div><small>${esc(l.track)}</small></div>
++          <div class="tk-end r"><small>${fmtTime(raceAt)}</small><b>${q.b}</b><span>${q.bLabel(l.laps)}</span></div>
++        </div>
++        <div class="tk-grid">
++          <div><small>Driver</small><b>${esc(ME.display)}</b></div>
++          <div><small>Lobby code</small><b>${code}</b></div>
++          <div><small>Pit box</small><b>${boxLabel(mine)}</b></div>
++          <div><small>Car</small><b>${ME.car}</b></div>
++          <div><small>Region</small><b>${l.region} · ${l.ping} ms</b></div>
++          <div><small>Entry</small><b>${l.entry}</b></div>
++        </div>
++        <div class="tk-code">${barcode(l.eosId)}<span>LobbyId ${l.eosId} · JoinLobbyById</span></div>
++      </div>
++      <div class="tk-card">
++        <div class="pb-head"><b>Pit boxes</b><span>${esc(l.track)} · Box ${boxLabel(mine)} is yours · tap to change</span></div>
++        <div class="legend"><span><i></i>Available</span><span><i class="tk"></i>Taken</span><span><i class="me"></i>Yours</span></div>
++        <div class="boxes" id="boxes">${boxesHTML(l, mine)}</div>
++      </div>
++    </div>
++    <div class="tk-foot">${footHTML(l)}</div>`;
++}
++$('#ticket').addEventListener('click', e => {
++  const b = e.target.closest('.box');
++  if (b && !b.disabled){ state.box = +b.dataset.i; renderTicket(); toast(`Pit box ${boxLabel(state.box)}`, 'EOS_Lobby_UpdateLobbyModification · PIT_BOX'); return; }
++  if (e.target.closest('#btnReady')) toggleReady();
++});
++
++/* ============================================================
++   CREATE LOBBY (modal)
++   ============================================================ */
++const modal = $('#modal');
++const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
++const form = {
++  track: dropdown($('#mTrack'), { options: TRACKS.map(t => ({ value: t.n, label: `${t.n} · ${t.c}` })), value: 'Kyalami', onChange: bucket }),
++  perm: dropdown($('#mPerm'), { options: [{ value:'Open', label:'Public · advertised in search' }, { value:'Friends', label:'Private · friends via presence' }, { value:'Invite only', label:'Private · invite only' }], value: 'Open' }),
++  entry: dropdown($('#mEntry'), { options: ['Free','5 CR','10 CR','25 CR'].map(v => ({ value: v, label: v })), value: 'Free' }),
++  type: () => $('#mType .active').textContent,
++  laps: () => +$('#mLaps .v').textContent,
++  max: () => +$('#mMax .v').textContent,
++  opts: () => Object.fromEntries($$('#mOpts .sw').map(s => [s.dataset.k, s.dataset.on === 'true'])),
++};
++function bucket(){ $('#mBucket').value = `${slug(form.type())}:${slug(form.track.value)}:s3`; }
++$('#mType').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('#mType button').forEach(x => x.classList.toggle('active', x === b)); const t = b.textContent; $('#mLaps .v').textContent = t === 'Sprint' ? 5 : t === 'Endurance' ? 25 : t === 'Drift' ? 3 : 1; bucket(); });
++$$('.stepper').forEach(s => s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const v = $('.v', s); v.textContent = Math.min(+s.dataset.max, Math.max(+s.dataset.min, +v.textContent + +b.dataset.d)); }));
++$('#mOpts').addEventListener('click', e => { const s = e.target.closest('.sw'); if (!s) return; const on = s.dataset.on !== 'true'; s.dataset.on = on; s.setAttribute('aria-checked', on); });
++
++let lastFocus = null;
++function openModal(){ lastFocus = document.activeElement; closeMenus(); modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); setTimeout(() => { $('#mName').focus(); $('#mName').select(); }, 80); }
++function closeModal(){ modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); closeMenus(); lastFocus?.focus?.(); }
++$('#mClose').addEventListener('click', closeModal);
++$('#mCancel').addEventListener('click', closeModal);
++modal.addEventListener('pointerdown', e => { if (e.target === modal) closeModal(); });
++$('#mCreate').addEventListener('click', async e => {
++  const b = e.currentTarget; b.classList.add('loading'); $('#mEos').textContent = 'EOS_Lobby_CreateLobby · waiting for callback…';
++  await wait(900);
++  b.classList.remove('loading'); $('#mEos').textContent = 'EOS_Lobby_CreateLobby · LocalUserId 397b…c899';
++  const rnd = seed('you' + Date.now()), type = form.type(), track = trackOf(form.track.value), o = form.opts();
++  if (state.joined) detach(byId(state.joined));
++  Room.stop(); resetRoomState();
++  const l = { id: 'you-' + Date.now(), eosId: hex(rnd, 12), you: true, name: $('#mName').value.trim() || 'My lobby', host: 'You', track: track.n, type,
++    series: type === 'Sprint' ? 'Sprint Series' : type === 'Endurance' ? 'Endurance Cup' : 'FRONTIER Open', region: 'ZA', ping: 12, laps: form.laps(), startsIn: 0, live: false, lap: 0,
++    spots: form.max(), members: [{ name: 'You', you: true, host: true, ready: true, car: ME.car, ping: 8 }], entry: form.entry.value, access: form.perm.value, ranked: o.bRanked, settings: o, bucket: $('#mBucket').value, chat: [] };
++  LOBBIES.unshift(l); state.joined = l.id; state.selected = l.id; state.ready = true;
++  sys(`<b>${esc(ME.display)}</b> created the lobby`, 'EOS_Lobby_CreateLobby · EOS_Success');
++  closeModal(); renderList();
++  toast(`Lobby created · ${l.name}`, 'EOS_Lobby_CreateLobby → EOS_Success');
++  await setMode('room'); Room.start();
++});
++
++/* ============================================================
++   KEYBOARD
++   ============================================================ */
++document.addEventListener('keydown', e => {
++  const typing = /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '');
++  if (e.key === 'Escape'){
++    if (modal.classList.contains('open')) closeModal();
++    else if ($('.open')) closeMenus();
++    else if (typing) document.activeElement.blur();
++    else if (state.mode === 'room') setMode('browse');
++    return;
++  }
++  if (typing || modal.classList.contains('open')) return;
++  if (state.mode === 'room'){ if (e.key === 'Enter') toggleReady(); return; }
++  if (e.key === '/'){ e.preventDefault(); $('#q').focus(); return; }
++  if (e.key === 'n' || e.key === 'N'){ openModal(); return; }
++  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
++    e.preventDefault(); const list = visible(); if (!list.length) return;
++    const i = list.findIndex(l => l.id === state.selected), n = (i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length;
++    select(list[i < 0 ? 0 : n].id); $(`.row[data-id="${state.selected}"]`)?.scrollIntoView({ block: 'nearest' });
++  }
++  if (e.key === 'Enter' && state.selected) act(state.selected);
++});
++
++/* ============================================================
++   TOAST
++   ============================================================ */
++function toast(msg, sub){ const t = $('#toast'); t.innerHTML = esc(msg) + (sub ? `<i>${esc(sub)}</i>` : ''); t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2400); }
++
++/* init */
++renderHero(); renderFilter(); renderChips(); renderList();
++</script>
++</body>
++</html>
+diff --git a/app/wallet.html b/app/wallet.html
+new file mode 100644
+index 0000000..07a5e73
+--- /dev/null
++++ b/app/wallet.html
+@@ -0,0 +1,727 @@
++<!doctype html>
++<html lang="en">
++<head>
++<meta charset="utf-8" />
++<meta name="viewport" content="width=device-width, initial-scale=1" />
++<meta name="color-scheme" content="dark" />
++<title>FRONTIER · Wallet</title>
++<link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
++<style>
++@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/inter-latin-wght-normal.woff2) format('woff2')}
++
++/* ============================================================
++   TOKENS  (palette: blue · black · white · dark grey)
++   ============================================================ */
++:root{
++  --blue:#1f5eff; --blue-soft:#4d80ff; --blue-deep:#1a4fe0;
++  --bg:#0a0a0a; --panel:#121212; --inset:#1a1a1a; --field:#000; --raised:#222; --selected:#1c1c1c; --row:#161616;
++  --stroke:rgba(255,255,255,.06); --stroke-strong:#2e2e2e;
++  --text:#fff; --dim:#8a8a8a; --faint:#5c5c5c;
++  --font:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
++  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
++  --ease:cubic-bezier(.22,.61,.36,1);
++  --shadow-pop:0 24px 60px rgba(0,0,0,.75);
++  --r-pill:999px;
++}
++*{box-sizing:border-box;margin:0;padding:0}
++html,body{height:100%}
++body{background:var(--blue);font-family:var(--font);color:var(--text);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden;font-feature-settings:"cv11","ss01"}
++button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
++input{font:inherit;color:inherit}
++a{color:inherit;text-decoration:none}
++svg{display:block}
++.ic{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
++:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:6px}
++@keyframes rowIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
++@keyframes menuIn{from{opacity:0;transform:translateY(-4px)}}
++@keyframes pop{from{opacity:0;transform:scale(.85)}}
++@keyframes spin{to{transform:rotate(360deg)}}
++@keyframes drift{from{transform:translate(-4%,-3%) rotate(0deg) scale(1)}to{transform:translate(5%,4%) rotate(10deg) scale(1.1)}}
++@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
++
++/* ============================================================
++   STAGE / DEVICE
++   ============================================================ */
++.stage{position:fixed;inset:0;display:grid;place-items:center;padding:4vh 4vw}
++.device{position:relative;width:min(1180px,100%,calc((100vh - 8vh) * 1.5));aspect-ratio:4/3;border-radius:38px;background:#111;padding:14px;box-shadow:0 60px 120px -30px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08),inset 0 0 0 2px #2b2b2b}
++.device::before,.device::after{content:"";position:absolute;left:-3px;width:3px;height:9%;border-radius:2px 0 0 2px;background:#1b1b1b}
++.device::before{top:18%}.device::after{top:31%}
++.screen{position:relative;width:100%;height:100%;border-radius:26px;background:var(--bg);overflow:hidden}
++.ui{position:absolute;inset:0;width:1000px;height:750px;transform-origin:0 0;transform:scale(var(--s,1));overflow:hidden;display:flex;flex-direction:column}
++
++/* ============================================================
++   HERO
++   ============================================================ */
++.hero{position:relative;flex:none;height:196px;background:var(--blue);padding:20px 24px 18px;display:flex;flex-direction:column}
++.nav{display:flex;align-items:center;gap:14px;height:32px}
++.logo{height:32px;padding:0 14px;border-radius:16px;background:#fff;color:var(--blue);font-weight:800;font-size:12px;letter-spacing:.14em;display:flex;align-items:center}
++.tabs{height:32px;padding:3px;border-radius:16px;background:rgba(255,255,255,.14);display:flex;align-items:center;gap:2px;position:relative}
++.tab{position:relative;height:26px;padding:0 14px;border-radius:13px;font-size:12px;font-weight:500;color:#fff;white-space:nowrap;z-index:1;transition:color .2s;display:inline-flex;align-items:center}
++.tab.is-on{color:var(--blue)}
++.tab-ink{position:absolute;top:3px;height:26px;border-radius:13px;background:#fff;transition:left .35s var(--ease),width .35s var(--ease)}
++.hero-body{flex:1;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;min-width:0}
++.hero h1{font-size:72px;font-weight:400;letter-spacing:-.045em;line-height:.85;margin-bottom:-6px;white-space:nowrap}
++.hero-actions{display:flex;gap:8px;align-items:center;flex:none}
++.hbtn{height:32px;padding:0 6px 0 14px;border-radius:16px;background:#fff;color:#111;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:8px;transition:transform .2s var(--ease),box-shadow .2s;white-space:nowrap}
++.hbtn i{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;flex:none}
++.hbtn i .ic{width:12px;height:12px;stroke-width:2.5}
++.hbtn.ghost{background:rgba(255,255,255,.14);color:#fff;padding:0 14px}
++.hbtn:hover{transform:translateY(-1px);box-shadow:0 8px 20px -8px rgba(0,0,0,.5)}
++.hbtn:active{transform:none}
++
++/* ============================================================
++   CONTENT
++   ============================================================ */
++.content{flex:1;min-height:0;display:grid;grid-template-columns:372px 1fr;gap:16px;padding:16px 24px 18px}
++.col{min-width:0;min-height:0;display:flex;flex-direction:column;gap:10px}
++
++/* profile */
++.profile{display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--panel);border:1px solid var(--stroke);border-radius:16px;flex:none}
++.dot{border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;letter-spacing:.02em}
++.profile .dot{width:44px;height:44px;font-size:14px;background:#fff;color:var(--blue)}
++.profile .who{min-width:0;flex:1}
++.profile .who b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.profile .who small{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.profile .who small i{width:6px;height:6px;border-radius:50%;background:var(--blue);flex:none}
++.xp{height:4px;border-radius:2px;background:var(--raised);margin-top:8px;overflow:hidden}
++.xp i{display:block;height:100%;width:var(--p);background:var(--blue);border-radius:2px;transition:width .8s var(--ease)}
++.pstats{display:flex;gap:14px;text-align:right;flex:none}
++.pstats div{display:flex;flex-direction:column;gap:3px}
++.pstats small{font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:600}
++.pstats b{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
++
++/* balance card */
++.card{position:relative;height:190px;border-radius:20px;overflow:hidden;background:#000;border:1px solid rgba(255,255,255,.08);padding:16px 18px;display:flex;flex-direction:column;color:#fff;isolation:isolate;flex:none;box-shadow:0 30px 60px -30px rgba(31,94,255,.6)}
++.card .glow{position:absolute;inset:-40%;z-index:-2;background:radial-gradient(38% 46% at 68% 40%,#6f9bff 0%,#1f5eff 22%,rgba(26,79,224,.85) 42%,transparent 68%),radial-gradient(34% 44% at 22% 82%,rgba(31,94,255,.9),transparent 62%),radial-gradient(60% 60% at 50% 50%,#0a2a9a,transparent 74%);filter:blur(16px);animation:drift 16s ease-in-out infinite alternate}
++.card .grain{position:absolute;inset:0;z-index:-1;opacity:.16;mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
++.card::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.45))}
++.card-top{display:flex;justify-content:space-between;align-items:flex-start}
++.card-top small{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.72);font-weight:600}
++.sym{height:24px;padding:0 10px 0 6px;border-radius:12px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.14);font-size:10px;font-weight:700;letter-spacing:.08em;display:inline-flex;align-items:center;gap:6px}
++.sym i{width:14px;height:14px;border-radius:50%;background:#fff;color:var(--blue);font-size:7px;font-style:normal;display:grid;place-items:center}
++.card .amt{margin-top:auto;font-size:36px;font-weight:500;letter-spacing:-.035em;line-height:1;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:8px}
++.card .amt em{font-style:normal;font-size:15px;font-weight:600;letter-spacing:.04em;color:rgba(255,255,255,.85)}
++.card .amt.bump{animation:bump .5s var(--ease)}
++.card .sub{display:flex;gap:14px;align-items:center;margin-top:9px;font-size:10.5px;color:rgba(255,255,255,.72);white-space:nowrap}
++.card .sub b{color:#fff;font-weight:600}
++.up{color:#fff}
++.up::before{content:"▲";font-size:7px;margin-right:4px;vertical-align:1px}
++
++/* quick actions */
++.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:none}
++.act{height:66px;border-radius:14px;background:var(--panel);border:1px solid var(--stroke);display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:11px 12px 10px;font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);transition:background .15s,color .15s,transform .15s var(--ease)}
++.act .ic{width:16px;height:16px;color:#fff}
++.act:hover{background:var(--inset);color:#fff;transform:translateY(-1px)}
++.act:active{transform:none}
++
++/* portfolio tiles */
++.port{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none}
++.ptile{background:var(--panel);border:1px solid var(--stroke);border-radius:14px;padding:11px 12px;display:flex;flex-direction:column;gap:7px;min-width:0}
++.ptile .h{display:flex;align-items:center;gap:7px;font-size:9.5px;color:var(--dim);font-weight:600;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.ptile .h i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:7px;font-weight:800;color:#fff;background:var(--blue);font-style:normal;flex:none}
++.ptile .h i.rp{background:#fff;color:#111}
++.ptile b{font-size:15px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
++.ptile small{font-size:9.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.ptile small.up{color:var(--blue-soft)}
++.note{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:0 4px}
++.eos{font-size:9.5px;color:var(--faint);letter-spacing:.01em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.link{font-size:9.5px;color:var(--faint);text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
++.link:hover{color:#fff}
++
++/* ============================================================
++   RIGHT PANEL · store / owned / history
++   ============================================================ */
++.panel{background:var(--panel);border:1px solid var(--stroke);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.03);display:flex;flex-direction:column;overflow:hidden;min-height:0}
++.col>.panel{flex:1}
++.ptabs{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.02);flex:none;position:relative;z-index:5}
++.seg{display:flex;background:var(--field);border:1px solid var(--stroke);border-radius:var(--r-pill);padding:3px;gap:3px;height:32px}
++.seg button{color:var(--dim);font-size:11.5px;font-weight:500;border-radius:var(--r-pill);padding:0 14px;transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:6px}
++.seg button:hover{color:#fff}
++.seg button.active{background:#fff;color:#111;font-weight:600}
++.seg button em{font-style:normal;font-size:9px;font-weight:700;color:var(--faint)}
++.seg button.active em{color:#666}
++.pcount{font-size:10px;color:var(--faint);margin-left:auto;white-space:nowrap}
++.pcount b{color:var(--dim);font-weight:600}
++.pills{display:flex;gap:6px;padding:10px 12px 6px;overflow:auto;scrollbar-width:none;flex:none}
++.pills::-webkit-scrollbar{display:none}
++.pill{height:26px;padding:0 11px;border-radius:13px;background:var(--inset);border:1px solid var(--stroke);font-size:11px;font-weight:500;color:var(--dim);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s;flex:none}
++.pill .ic{width:11px;height:11px}
++.pill:hover{color:#fff}
++.pill.on{background:#fff;color:#111;border-color:transparent;font-weight:600}
++.list{flex:1;min-height:0;overflow:auto;padding:2px 8px 8px;scrollbar-width:none}
++.list::-webkit-scrollbar{display:none}
++.item{display:grid;grid-template-columns:36px minmax(0,1fr) auto 78px;gap:12px;align-items:center;padding:9px 6px;border-bottom:1px solid var(--stroke);animation:rowIn .35s var(--ease) both;animation-delay:calc(var(--i) * 22ms);cursor:pointer;transition:background .15s;border-radius:10px}
++.item:hover{background:var(--inset)}
++.item:last-child{border-bottom:0}
++.ico{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:none;color:#fff}
++.ico .ic{width:16px;height:16px}
++.item .t{min-width:0}
++.item .t b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.item .t small{display:block;font-size:9.5px;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.item .t small u{text-decoration:none;color:var(--blue-soft);font-weight:600}
++.item .t small s{text-decoration:none;color:var(--faint)}
++.price{text-align:right;white-space:nowrap}
++.price b{display:block;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
++.price b.plus{color:#fff}.price b.minus{color:var(--dim)}
++.price small{display:block;font-size:9.5px;color:var(--dim);margin-top:3px;font-variant-numeric:tabular-nums}
++.price small.up{color:var(--blue-soft)}
++.buy{height:26px;padding:0 12px;border-radius:13px;background:var(--blue);color:#fff;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:5px;position:relative;justify-self:end;min-width:66px;white-space:nowrap;transition:background .15s,transform .15s var(--ease)}
++.buy .ic{width:11px;height:11px}
++.buy:hover{background:var(--blue-soft);transform:translateY(-1px)}
++.buy.owned{background:transparent;border:1px solid var(--stroke-strong);color:var(--dim)}
++.buy.owned:hover{color:#fff;transform:none}
++.buy.eq{background:#fff;color:#111}
++.buy.eq:hover{background:#e6e6e6}
++.wish{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--faint);transition:color .15s,background .15s}
++.wish:hover{background:var(--raised);color:#fff}
++.wish.on{color:#fff}
++.wish.on .ic{fill:#fff}
++.empty{padding:40px 20px;text-align:center;color:var(--faint);font-size:12px;display:flex;flex-direction:column;gap:8px;align-items:center}
++.empty .ic{width:22px;height:22px;stroke-width:1.5}
++.loading{color:transparent!important;pointer-events:none}
++.loading::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border:1.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
++.buy.loading::after{border-color:rgba(255,255,255,.35);border-top-color:#fff}
++
++/* ============================================================
++   DROPDOWN (Slate split-caret pill)
++   ============================================================ */
++.dd{position:relative;flex:none}
++.dd-btn{display:flex;align-items:stretch;height:32px;border-radius:var(--r-pill);overflow:hidden;border:1px solid var(--stroke);width:100%;text-align:left}
++.dd-btn .cur{flex:1;background:var(--field);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.dd-btn .caret{width:32px;background:var(--inset);border-left:1px solid var(--stroke);display:grid;place-items:center;color:var(--dim);transition:background .15s}
++.dd-btn:hover .caret{background:var(--raised)}
++.dd-btn .caret .ic{transition:transform .2s var(--ease)}
++.open>.dd-btn .caret .ic{transform:rotate(180deg)}
++.dd-menu{position:absolute;top:calc(100% + 6px);right:0;min-width:100%;z-index:40;background:var(--field);border:1px solid var(--stroke-strong);border-radius:16px;padding:5px;display:none;flex-direction:column;gap:2px;box-shadow:var(--shadow-pop)}
++.open>.dd-menu{display:flex;animation:menuIn .18s var(--ease)}
++.opt{padding:7px 12px;border-radius:var(--r-pill);color:var(--dim);font-size:12px;font-weight:500;text-align:left;white-space:nowrap;transition:background .12s,color .12s}
++.opt:hover{background:#141414;color:#fff}
++.opt.sel{color:#fff;background:#181818}
++.dd.sm .dd-btn{height:28px}.dd.sm .cur{font-size:11px}.dd.sm .caret{width:28px}
++
++/* ============================================================
++   BUTTONS / FIELDS / MODAL
++   ============================================================ */
++.btn{height:34px;padding:0 16px;border-radius:var(--r-pill);border:1px solid var(--stroke);background:var(--inset);color:#fff;font-size:12px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background .15s,transform .12s var(--ease),color .15s;position:relative;white-space:nowrap}
++.btn:hover{background:var(--raised)}
++.btn:active{transform:scale(.97)}
++.btn.primary{background:var(--blue);border-color:transparent;font-weight:600;box-shadow:0 8px 24px -8px rgba(31,94,255,.6)}
++.btn.primary:hover{background:var(--blue-soft)}
++.btn.white{background:#fff;color:#111;border-color:transparent;font-weight:600}
++.btn.white:hover{background:#e6e6e6}
++.btn.ghost{background:transparent;border-color:transparent;color:var(--dim)}
++.btn.ghost:hover{background:var(--inset);color:#fff}
++.btn.icon{width:34px;padding:0}
++.btn.sm{height:30px;width:30px}
++.btn[disabled]{opacity:.45;pointer-events:none}
++.field{height:32px;border-radius:var(--r-pill);background:var(--field);border:1px solid var(--stroke);display:flex;align-items:center;gap:8px;padding:0 12px;min-width:0;transition:border-color .15s}
++.field:focus-within{border-color:var(--stroke-strong)}
++.field.err{border-color:#fff}
++.field .ic{color:var(--faint)}
++.field input{flex:1;min-width:0;background:transparent;border:0;outline:0;font-size:12px}
++.field input::placeholder{color:var(--faint)}
++.field .unit{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--dim)}
++.mono{font-family:var(--mono);font-size:11px;letter-spacing:0}
++
++.modal{position:absolute;inset:0;z-index:100;display:grid;place-items:center;background:rgba(0,0,0,.62);opacity:0;pointer-events:none;transition:opacity .25s}
++.modal.open{opacity:1;pointer-events:auto}
++.modal .panel{width:560px;transform:translateY(14px) scale(.98);transition:transform .35s var(--ease);overflow:visible;box-shadow:var(--shadow-pop)}
++.modal.open .panel{transform:none}
++.panel-header{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--stroke);background:rgba(255,255,255,.02);border-radius:20px 20px 0 0}
++.ph-icon{width:28px;height:28px;border-radius:9px;background:var(--inset);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--dim);flex:none}
++.ph-icon.ico{border-radius:50%;width:34px;height:34px;border:0}
++.ph-title{font-size:13.5px;font-weight:600}
++.ph-sub{font-size:10.5px;color:var(--faint);margin-top:1px}
++.spacer{flex:1}
++.panel-body{padding:14px 18px;display:flex;flex-direction:column;gap:10px}
++.panel-footer{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--stroke);background:rgba(255,255,255,.02);border-radius:0 0 20px 20px}
++.panel-footer .eos{flex:1}
++.crow{display:flex;align-items:center;gap:12px;min-height:32px}
++.crow>.clabel{width:120px;flex:none;color:var(--dim);font-size:12px;font-weight:500}
++.crow>.clabel small{display:block;font:500 9px/1.2 var(--mono);color:var(--faint);margin-top:2px;white-space:nowrap}
++.crow>.field,.crow>.dd{flex:1}
++.crow .hint{font-size:10px;color:var(--faint);flex:none}
++.quick{display:flex;gap:6px}
++.quick button{height:26px;padding:0 10px;border-radius:13px;background:var(--inset);border:1px solid var(--stroke);font-size:10.5px;font-weight:500;color:var(--dim);transition:background .15s,color .15s}
++.quick button:hover,.quick button.on{color:#fff;background:var(--raised)}
++.packs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
++.pack{position:relative;border:1px solid var(--stroke);background:var(--inset);border-radius:14px;padding:22px 10px 10px;display:flex;flex-direction:column;gap:4px;text-align:left;transition:border-color .15s,background .15s;min-width:0}
++.pack:hover{background:var(--raised)}
++.pack.on{border-color:var(--blue);background:rgba(31,94,255,.12)}
++.pack b{font-size:15px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
++.pack small{font-size:9.5px;color:var(--dim)}
++.pack .bonus{position:absolute;top:8px;right:9px;font-size:8.5px;font-weight:700;color:var(--blue-soft);letter-spacing:.06em}
++.pack .flag{position:absolute;top:8px;left:10px;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
++.pack.on .flag{color:#fff}
++.summary{display:flex;gap:8px}
++.summary div{flex:1;background:var(--field);border:1px solid var(--stroke);border-radius:14px;padding:10px 12px;min-width:0}
++.summary small{display:block;font-size:8.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:4px}
++.summary b{display:block;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
++.summary span{display:block;font-size:9.5px;color:var(--dim);margin-top:3px}
++.summary div.warn{border-color:#fff}
++.summary div.warn b{color:#fff}
++.desc{font-size:11.5px;line-height:1.45;color:var(--dim)}
++.desc b{color:#fff;font-weight:600}
++.tags{display:flex;gap:6px;flex-wrap:wrap}
++.tag{height:22px;padding:0 9px;border-radius:11px;border:1px solid var(--stroke-strong);font-size:9.5px;font-weight:600;letter-spacing:.03em;color:var(--dim);display:inline-flex;align-items:center;gap:5px}
++.tag .ic{width:10px;height:10px}
++.tag.hi{border-color:transparent;background:#fff;color:#111}
++.earn{display:flex;flex-direction:column;gap:2px}
++.earn div{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--stroke);font-size:11.5px}
++.earn div:last-child{border-bottom:0}
++.earn .ico{width:28px;height:28px}
++.earn .ico .ic{width:13px;height:13px}
++.earn small{display:block;font-size:9.5px;color:var(--faint);margin-top:2px}
++.earn b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
++.done{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 10px 10px;text-align:center;animation:pop .3s var(--ease)}
++.done .ok{width:44px;height:44px;border-radius:50%;background:var(--blue);display:grid;place-items:center;color:#fff}
++.done .ok .ic{width:20px;height:20px;stroke-width:2.5}
++.done b{font-size:15px;font-weight:600}
++.done span{font-size:11px;color:var(--dim)}
++.errmsg{font-size:10.5px;color:#fff;padding-left:132px;min-height:14px}
++
++/* ============================================================
++   TOAST
++   ============================================================ */
++.toast{position:absolute;left:50%;bottom:18px;transform:translate(-50%,10px);padding:9px 14px;border-radius:10px;background:#fff;color:#111;font-size:11.5px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .25s,transform .35s var(--ease);white-space:nowrap;box-shadow:0 10px 30px -10px rgba(0,0,0,.6);z-index:200}
++.toast.show{opacity:1;transform:translate(-50%,0)}
++.toast i{font-style:normal;color:#666;margin-left:8px;font-size:10.5px}
++
++@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}}
++</style>
++</head>
++<body>
++<div class="stage">
++  <div class="device">
++    <div class="screen" id="screen">
++      <div class="ui" id="ui">
++
++        <header class="hero">
++          <nav class="nav">
++            <span class="logo">FRNT</span>
++            <div class="tabs" id="tabs">
++              <i class="tab-ink" id="tabInk"></i>
++              <button class="tab">Home</button>
++              <a class="tab" href="index.html">Lobby</a>
++              <button class="tab">Leaderboard</button>
++              <button class="tab is-on">Wallet</button>
++            </div>
++          </nav>
++          <div class="hero-body">
++            <h1>Wallet</h1>
++            <div class="hero-actions">
++              <button class="hbtn ghost" id="btnRedeemTop" type="button">Redeem code</button>
++              <button class="hbtn" id="btnTopupTop" type="button">Top up <i><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></i></button>
++            </div>
++          </div>
++        </header>
++
++        <main class="content">
++          <section class="col">
++            <div class="profile" id="profile"></div>
++            <div class="card" id="card"><div class="glow"></div><div class="grain"></div></div>
++            <div class="actions" id="actions"></div>
++            <div class="port" id="port"></div>
++            <div class="note"><span class="eos">Top-ups · EOS_Ecom_Checkout → RedeemEntitlements · store purchases settle on the game backend</span><button class="link" id="reset" type="button">Reset demo</button></div>
++          </section>
++          <section class="col">
++            <div class="panel">
++              <div class="ptabs">
++                <div class="seg" id="seg">
++                  <button class="active" data-t="store">Store</button>
++                  <button data-t="owned">Owned <em id="ownedN"></em></button>
++                  <button data-t="history">History</button>
++                </div>
++                <span class="pcount" id="pcount"></span>
++                <div class="dd sm" id="sort"></div>
++              </div>
++              <div class="pills" id="pills"></div>
++              <div class="list" id="list"></div>
++            </div>
++          </section>
++        </main>
++
++        <div class="modal" id="modal" aria-hidden="true"><div class="panel" role="dialog" id="mpanel"></div></div>
++        <div class="toast" id="toast"></div>
++      </div>
++    </div>
++  </div>
++</div>
++
++<script>
++/* ============================================================
++   UTILS
++   ============================================================ */
++const $ = (s, r=document) => r.querySelector(s);
++const $$ = (s, r=document) => [...r.querySelectorAll(s)];
++const wait = ms => new Promise(r => setTimeout(r, ms));
++const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
++const fmt = n => Math.round(n).toLocaleString('en-US');
++const usd = n => '$' + n.toFixed(2);
++const ago = ms => { const m = Math.round(ms / 60000); if (m < 1) return 'Just now'; if (m < 60) return `${m} min ago`; const h = Math.round(m / 60); if (h < 24) return `${h} h ago`; const d = Math.round(h / 24); return d === 1 ? 'Yesterday' : `${d} days ago`; };
++const IC = {
++  chev: '<svg class="ic" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
++  plus: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
++  x: '<svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
++  check: '<svg class="ic" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>',
++  star: '<svg class="ic" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>',
++  sent: '<svg class="ic" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></svg>',
++  recv: '<svg class="ic" viewBox="0 0 24 24"><path d="M17 7 7 17M16 17H7V8"/></svg>',
++  topup: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
++  gift: '<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4"/><path d="M12 8v13M5 12v9h14v-9"/><path d="M12 8c-2-3-6-3-6-1s4 1 6 1zM12 8c2-3 6-3 6-1s-4 1-6 1z"/></svg>',
++  ticket: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 9a2 2 0 0 0 2-2V6h14v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H5v-1a2 2 0 0 0-2-2z"/><path d="M13 6v12" stroke-dasharray="2 3"/></svg>',
++  bolt: '<svg class="ic" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
++  bag: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>',
++  clock: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
++  trophy: '<svg class="ic" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 21h8M9 17h6"/></svg>',
++  flag: '<svg class="ic" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/></svg>',
++  decal: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7l-7 7H6a2 2 0 0 1-2-2z"/><path d="M13 20v-5a2 2 0 0 1 2-2h5"/></svg>',
++  skin: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>',
++  wheel: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M3.5 10.5 9 12M20.5 10.5 15 12M12 15v6"/></svg>',
++  audio: '<svg class="ic" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg>',
++  light: '<svg class="ic" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.5h6c0-1.1.3-1.9 1-2.5A6 6 0 0 0 12 3z"/></svg>',
++  engine: '<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>',
++  level: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 20l6-3 6 3 6-3V4l-6 3-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg>',
++  spark: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg>',
++};
++
++/* scale the 1000×750 canvas to the screen */
++new ResizeObserver(([e]) => $('#ui').style.setProperty('--s', (e.contentRect.width / 1000).toFixed(4))).observe($('#screen'));
++
++/* tabs */
++const ink = t => { const i = $('#tabInk'); i.style.left = t.offsetLeft + 'px'; i.style.width = t.offsetWidth + 'px'; };
++ink($('.tab.is-on')); addEventListener('load', () => ink($('.tab.is-on')));
++$('#tabs').addEventListener('click', e => {
++  const t = e.target.closest('.tab'); if (!t || t.tagName === 'A') return;
++  $$('.tab').forEach(x => x.classList.toggle('is-on', x === t)); ink(t);
++  if (t.textContent !== 'Wallet') toast(`${t.textContent} — coming next`);
++});
++
++/* ============================================================
++   DATA
++   ============================================================ */
++const CUR = { code: 'CR', name: 'Credits', usd: 0.01 };            /* 100 CR = $1.00 — rename here */
++const RP = { code: 'RP', name: 'Race points' };                     /* earned, not purchasable */
++const ME = { name: 'Nomvula D.', initials: 'ND', level: 27, xp: 3420, xpNext: 5000, races: 318, wins: 73, rank: 1204, season: 'Season 3 · Tier 14' };
++const FRIENDS = ['SIPHO_X','MPHO.R','VOSS_R','YUKI_N','MIRA_T','THABO_77','LERATO.GT','HALO_M'];
++const PACKS = [
++  { cr: 1000,  usd: 9.99,  bonus: 0 },
++  { cr: 2600,  usd: 24.99, bonus: 4 },
++  { cr: 5500,  usd: 49.99, bonus: 10, flag: 'Popular' },
++  { cr: 12000, usd: 99.99, bonus: 20, flag: 'Best value' },
++];
++const CATS = [
++  { k: 'decal',  label: 'Decals',        one: 'Decal',        bg: '#1f5eff', fg: '#fff' },
++  { k: 'skin',   label: 'Skins',         one: 'Skin',         bg: '#ffffff', fg: '#111' },
++  { k: 'wheel',  label: 'Wheels',        one: 'Steering wheel', bg: '#2a2a2a', fg: '#fff' },
++  { k: 'audio',  label: 'Audio',         one: 'Audio',        bg: '#4d80ff', fg: '#fff' },
++  { k: 'light',  label: 'Lights',        one: 'Lighting',     bg: '#dfe8ff', fg: '#0a1a4d' },
++  { k: 'engine', label: 'Engine sounds', one: 'Engine sound', bg: '#123fb8', fg: '#fff' },
++  { k: 'level',  label: 'Levels',        one: 'Premium level', bg: '#3a3a3a', fg: '#fff' },
++];
++const catOf = k => CATS.find(c => c.k === k);
++const ITEMS = [
++  { id:'d1', cat:'decal', name:'Carbon weave pack', sub:'Set of 6 · matte finish', price:450, rarity:'Common', rating:4.6, trend:12, age:40 },
++  { id:'d2', cat:'decal', name:'Retro stripes', sub:'Triple stripe · 3 colourways', price:300, rarity:'Common', rating:4.4, trend:3, age:120 },
++  { id:'d3', cat:'decal', name:'Night hex', sub:'Reflective honeycomb', price:600, rarity:'Rare', rating:4.8, trend:19, age:3 },
++  { id:'d4', cat:'decal', name:'Season 3 sponsor set', sub:'Official partners · limited', price:900, rarity:'Epic', rating:4.9, trend:28, age:12 },
++  { id:'s1', cat:'skin', name:'Midnight chrome', sub:'Full livery · mirror finish', price:2400, rarity:'Legendary', rating:4.9, trend:18, age:30 },
++  { id:'s2', cat:'skin', name:'Frost matte', sub:'Full livery · satin white', price:1800, rarity:'Epic', rating:4.7, trend:6, age:90 },
++  { id:'s3', cat:'skin', name:'Onyx pearl', sub:'Full livery · flip pearl', price:3200, rarity:'Legendary', rating:4.8, trend:24, age:2 },
++  { id:'s4', cat:'skin', name:'Cobalt racing', sub:'Factory livery · No. 07', price:1500, rarity:'Rare', rating:4.5, trend:-2, age:200 },
++  { id:'w1', cat:'wheel', name:'GT alcantara', sub:'330 mm · shift lights', price:1200, rarity:'Rare', rating:4.7, trend:8, age:60 },
++  { id:'w2', cat:'wheel', name:'Formula carbon', sub:'280 mm · integrated display', price:2000, rarity:'Epic', rating:4.8, trend:9, age:45 },
++  { id:'w3', cat:'wheel', name:'Classic wood', sub:'360 mm · polished spokes', price:900, rarity:'Common', rating:4.3, trend:1, age:300 },
++  { id:'a1', cat:'audio', name:'Pit radio · pro engineer', sub:'Voice pack · 240 lines', price:700, rarity:'Rare', rating:4.6, trend:11, age:25 },
++  { id:'a2', cat:'audio', name:'Shift beep pack', sub:'Cockpit sounds · 5 variants', price:250, rarity:'Common', rating:4.2, trend:0, age:180 },
++  { id:'a3', cat:'audio', name:'Launch control chime', sub:'Cockpit sounds', price:300, rarity:'Common', rating:4.4, trend:7, age:5 },
++  { id:'l1', cat:'light', name:'Interior ambient · ice', sub:'Cabin lighting · 3 zones', price:500, rarity:'Common', rating:4.5, trend:5, age:70 },
++  { id:'l2', cat:'light', name:'Underglow · arctic', sub:'Exterior · animated', price:800, rarity:'Rare', rating:4.7, trend:22, age:14 },
++  { id:'l3', cat:'light', name:'Halo DRL', sub:'Exterior · signature daytime lights', price:650, rarity:'Rare', rating:4.6, trend:4, age:110 },
++  { id:'e1', cat:'engine', name:'V10 naturally aspirated', sub:'9,000 rpm · recorded on dyno', price:1600, rarity:'Epic', rating:4.9, trend:31, age:20 },
++  { id:'e2', cat:'engine', name:'Flat-6 turbo', sub:'Wastegate flutter · pops', price:1400, rarity:'Rare', rating:4.6, trend:10, age:80 },
++  { id:'e3', cat:'engine', name:'Electric whine', sub:'Synthesised · 3 profiles', price:1100, rarity:'Rare', rating:4.4, trend:14, age:4 },
++  { id:'v1', cat:'level', name:'Kyalami · Night', sub:'4.52 km · floodlit · 2 layouts', price:2500, rarity:'Premium', rating:4.9, trend:15, age:35 },
++  { id:'v2', cat:'level', name:'Spa · Wet weekend', sub:'7.00 km · dynamic rain', price:2800, rarity:'Premium', rating:4.8, trend:21, age:1 },
++  { id:'v3', cat:'level', name:'Interlagos · Sunset', sub:'4.31 km · golden hour', price:2600, rarity:'Premium', rating:4.7, trend:9, age:150 },
++  { id:'v4', cat:'level', name:'Bathurst · Dawn', sub:'6.21 km · fog on the mountain', price:3000, rarity:'Premium', rating:4.9, trend:40, age:8 },
++];
++const itemOf = id => ITEMS.find(i => i.id === id);
++const H = 3600000, D = 24 * H;
++const SEED_HISTORY = () => [
++  { kind:'earn', title:'Race reward', sub:'P3 · Spa endurance', amt:250, cur:'RP', t: Date.now() - 2 * H },
++  { kind:'buy', title:'Interlagos · Sunset', sub:'Premium level', amt:-2600, cur:'CR', t: Date.now() - 5 * H },
++  { kind:'earn', title:'Season 3 · Tier 10 reward', sub:'Season pass', amt:1000, cur:'CR', t: Date.now() - 1 * D },
++  { kind:'buy', title:'Halo DRL', sub:'Lighting · exterior', amt:-650, cur:'CR', t: Date.now() - 1 * D - 3 * H },
++  { kind:'in', title:'Gift from SIPHO_X', sub:'"gg last night"', amt:250, cur:'CR', t: Date.now() - 2 * D },
++  { kind:'earn', title:'Race reward', sub:'P1 · Kyalami sprint', amt:400, cur:'RP', t: Date.now() - 2 * D - 6 * H },
++  { kind:'buy', title:'Frost matte', sub:'Skin · full livery', amt:-1800, cur:'CR', t: Date.now() - 3 * D },
++  { kind:'topup', title:'Top up', sub:'5,500 CR pack · Epic Games Store', amt:5500, cur:'CR', usd:49.99, t: Date.now() - 3 * D - 1 * H },
++];
++
++/* ============================================================
++   STATE (persisted)
++   ============================================================ */
++const KEY = 'frontier.wallet.v1';
++const DEFAULT = () => ({ balance: 23688, rp: 12450, owned: ['s2','l3','v3'], equipped: { skin:'s2', light:'l3' }, wish: ['s1','e1'], history: SEED_HISTORY() });
++let W = load();
++function load(){ try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s.balance === 'number') return s; } catch {} return DEFAULT(); }
++function save(){ try { localStorage.setItem(KEY, JSON.stringify(W)); } catch {} }
++const view = { tab: 'store', cat: 'all', sort: 'rated' };
++const owned = id => W.owned.includes(id);
++
++/* ============================================================
++   LEFT COLUMN
++   ============================================================ */
++function renderProfile(){
++  $('#profile').innerHTML = `<span class="dot">${ME.initials}</span>
++    <div class="who"><b>${esc(ME.name)}</b><small><i></i>Epic account · linked · Level ${ME.level}</small><div class="xp" title="${fmt(ME.xp)} / ${fmt(ME.xpNext)} XP"><i style="--p:${Math.round(ME.xp / ME.xpNext * 100)}%"></i></div></div>
++    <div class="pstats"><div><small>Races</small><b>${fmt(ME.races)}</b></div><div><small>Wins</small><b>${ME.wins}</b></div><div><small>Rank</small><b>#${fmt(ME.rank)}</b></div></div>`;
++}
++let shownBalance = W.balance;
++function renderCard(animate){
++  const earned = W.history.filter(h => h.cur === 'CR' && h.amt > 0 && h.kind !== 'topup' && Date.now() - h.t < 7 * D).reduce((a, h) => a + h.amt, 0);
++  const el = $('#card');
++  if (!$('.card-top', el)) el.insertAdjacentHTML('beforeend', `<div class="card-top"><small>Total balance</small><span class="sym"><i>₵</i>${CUR.code}</span></div><div class="amt" id="amt"><span id="amtN">${fmt(shownBalance)}</span><em>${CUR.code}</em></div><div class="sub"><span>≈ <b id="amtUsd">${usd(shownBalance * CUR.usd)}</b></span><span class="up" id="amtEarned">${fmt(earned)} CR earned this week</span><span>${ME.season}</span></div>`);
++  $('#amtEarned').textContent = `${fmt(earned)} CR earned this week`;
++  if (animate && shownBalance !== W.balance){
++    const from = shownBalance, to = W.balance, t0 = performance.now(), n = $('#amtN'), u = $('#amtUsd'), a = $('#amt');
++    a.classList.remove('bump'); void a.offsetWidth; a.classList.add('bump');
++    const step = t => { const p = Math.min(1, (t - t0) / 800), e = 1 - Math.pow(1 - p, 3), v = from + (to - from) * e; n.textContent = fmt(v); u.textContent = usd(v * CUR.usd); if (p < 1) requestAnimationFrame(step); else shownBalance = to; };
++    requestAnimationFrame(step);
++  } else { shownBalance = W.balance; $('#amtN').textContent = fmt(W.balance); $('#amtUsd').textContent = usd(W.balance * CUR.usd); }
++}
++function renderActions(){
++  $('#actions').innerHTML = [['topup','Top up',IC.topup],['gift','Gift',IC.gift],['redeem','Redeem',IC.ticket],['earn','Earn',IC.bolt]].map(([k, l, ic]) => `<button class="act" type="button" data-m="${k}">${ic}<span>${l}</span></button>`).join('');
++}
++function renderPort(){
++  const rpWeek = W.history.filter(h => h.cur === 'RP' && Date.now() - h.t < 7 * D).reduce((a, h) => a + h.amt, 0);
++  $('#port').innerHTML = `
++    <div class="ptile"><div class="h"><i>₵</i>${CUR.code} · ${CUR.name}</div><b>${fmt(W.balance)}</b><small>Premium · bought with real money</small></div>
++    <div class="ptile"><div class="h"><i class="rp">RP</i>${RP.code} · ${RP.name}</div><b>${fmt(W.rp)}</b><small class="up">${fmt(rpWeek)} earned this week · not purchasable</small></div>`;
++}
++$('#actions').addEventListener('click', e => { const b = e.target.closest('.act'); if (b) openModal(b.dataset.m); });
++$('#btnTopupTop').addEventListener('click', () => openModal('topup'));
++$('#btnRedeemTop').addEventListener('click', () => openModal('redeem'));
++$('#reset').addEventListener('click', () => { W = DEFAULT(); save(); shownBalance = W.balance; renderAll(); toast('Demo wallet reset'); });
++
++/* ============================================================
++   RIGHT PANEL
++   ============================================================ */
++const SORTS = [['rated','Top rated'],['trend','Trending'],['new','Newest'],['low','Price · low to high'],['high','Price · high to low']];
++dropdown($('#sort'), { options: SORTS.map(([v, l]) => ({ value: v, label: l })), value: view.sort, onChange: v => { view.sort = v; renderList(); } });
++$('#seg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; view.tab = b.dataset.t; $$('#seg button').forEach(x => x.classList.toggle('active', x === b)); renderPills(); renderList(); });
++function renderPills(){
++  const el = $('#pills');
++  if (view.tab === 'history'){ el.innerHTML = ''; el.style.display = 'none'; return; }
++  el.style.display = '';
++  el.innerHTML = [['all','All'],['wish',`${IC.star}`],['new','New'],...CATS.map(c => [c.k, c.label])].map(([k, l]) => `<button class="pill ${view.cat === k ? 'on' : ''}" data-c="${k}" type="button" ${k === 'wish' ? 'title="Wishlist"' : ''}>${l}</button>`).join('');
++}
++$('#pills').addEventListener('click', e => { const p = e.target.closest('.pill'); if (!p) return; view.cat = p.dataset.c; renderPills(); renderList(); });
++
++function sorted(list){
++  const s = view.sort;
++  return [...list].sort((a, b) => s === 'rated' ? b.rating - a.rating : s === 'trend' ? b.trend - a.trend : s === 'new' ? a.age - b.age : s === 'low' ? a.price - b.price : b.price - a.price);
++}
++function filtered(){
++  return ITEMS.filter(i => view.cat === 'all' ? true : view.cat === 'wish' ? W.wish.includes(i.id) : view.cat === 'new' ? i.age <= 14 : i.cat === view.cat);
++}
++function itemRow(i, idx){
++  const c = catOf(i.cat), own = owned(i.id), eq = W.equipped[i.cat] === i.id;
++  const btn = view.tab === 'owned'
++    ? `<button class="buy ${eq ? 'eq' : 'owned'}" type="button" data-a="equip" data-id="${i.id}">${eq ? IC.check + 'Equipped' : 'Equip'}</button>`
++    : own ? `<button class="buy owned" type="button" data-a="detail" data-id="${i.id}">${IC.check}Owned</button>` : `<button class="buy" type="button" data-a="buy" data-id="${i.id}">Buy</button>`;
++  return `<div class="item" style="--i:${Math.min(idx, 14)}" data-id="${i.id}">
++    <span class="ico" style="background:${c.bg};color:${c.fg}">${IC[i.cat]}</span>
++    <div class="t"><b>${esc(i.name)}</b><small>${c.one} · ${i.rarity} · <s>★ ${i.rating.toFixed(1)}</s>${i.age <= 14 ? ' · <u>New</u>' : ''}${esc(i.sub) ? ' · ' + esc(i.sub) : ''}</small></div>
++    <div class="price"><b>${fmt(i.price)} ${CUR.code}</b><small class="${i.trend >= 10 ? 'up' : ''}">${i.trend >= 10 ? `${i.trend}% this week` : '≈ ' + usd(i.price * CUR.usd)}</small></div>
++    ${btn}
++  </div>`;
++}
++function historyRow(h, idx){
++  const plus = h.amt > 0, ic = h.kind === 'topup' ? IC.topup : h.kind === 'buy' ? IC.bag : h.kind === 'earn' ? IC.trophy : h.kind === 'out' ? IC.sent : IC.recv;
++  const bg = h.kind === 'topup' ? '#1f5eff' : h.kind === 'earn' ? '#fff' : h.kind === 'out' ? '#3a3a3a' : h.kind === 'in' ? '#4d80ff' : '#2a2a2a', fg = h.kind === 'earn' ? '#111' : '#fff';
++  return `<div class="item" style="--i:${Math.min(idx, 14)};cursor:default">
++    <span class="ico" style="background:${bg};color:${fg}">${ic}</span>
++    <div class="t"><b>${esc(h.title)}</b><small>${esc(h.sub)}${h.usd ? ` · ${usd(h.usd)}` : ''}</small></div>
++    <div class="price"><b class="${plus ? 'plus' : 'minus'}">${plus ? '+' : '−'}${fmt(Math.abs(h.amt))} ${h.cur}</b><small>${ago(Date.now() - h.t)}</small></div>
++    <span class="tag" style="justify-self:end">${IC.check}Confirmed</span>
++  </div>`;
++}
++function renderList(){
++  const el = $('#list'); let rows = '', count = '';
++  if (view.tab === 'history'){ rows = W.history.map(historyRow).join(''); count = `<b>${W.history.length}</b> transactions`; }
++  else {
++    let list = filtered(); if (view.tab === 'owned') list = list.filter(i => owned(i.id));
++    list = sorted(list); rows = list.map(itemRow).join('');
++    count = view.tab === 'owned' ? `<b>${W.owned.length}</b> of ${ITEMS.length} owned` : `<b>${list.length}</b> items`;
++    if (!list.length) rows = `<div class="empty">${IC.bag}<span>${view.tab === 'owned' ? 'Nothing owned in this category yet.' : view.cat === 'wish' ? 'Your wishlist is empty — tap ★ on an item.' : 'No items here.'}</span></div>`;
++  }
++  el.innerHTML = rows; $('#pcount').innerHTML = count; $('#ownedN').textContent = W.owned.length;
++}
++$('#list').addEventListener('click', e => {
++  const b = e.target.closest('.buy'), row = e.target.closest('.item');
++  if (b){ e.stopPropagation(); if (b.dataset.a === 'equip') equip(b.dataset.id); else openModal('buy', itemOf(b.dataset.id)); return; }
++  if (row && row.dataset.id) openModal('buy', itemOf(row.dataset.id));
++});
++function equip(id){ const i = itemOf(id); if (W.equipped[i.cat] === id) delete W.equipped[i.cat]; else W.equipped[i.cat] = id; save(); renderList(); toast(W.equipped[i.cat] === id ? `${i.name} equipped` : `${i.name} unequipped`, 'EOS_PlayerDataStorage · loadout.json'); }
++
++/* ============================================================
++   DROPDOWN
++   ============================================================ */
++function dropdown(root, { options, value, onChange }){
++  const label = v => (options.find(o => o.value === v) || { label: v }).label;
++  const render = () => { root.innerHTML = `<button class="dd-btn" type="button"><span class="cur">${esc(label(value))}</span><span class="caret">${IC.chev}</span></button><div class="dd-menu">${options.map(o => `<button class="opt ${o.value === value ? 'sel' : ''}" data-v="${esc(o.value)}" type="button">${esc(o.label)}</button>`).join('')}</div>`; };
++  render();
++  root.addEventListener('click', e => {
++    if (e.target.closest('.dd-btn')){ const open = root.classList.contains('open'); closeMenus(); root.classList.toggle('open', !open); return; }
++    const o = e.target.closest('.opt'); if (!o) return; value = o.dataset.v; render(); root.classList.remove('open'); onChange?.(value);
++  });
++  return { get value(){ return value; } };
++}
++function closeMenus(){ $$('.open').forEach(x => x.classList.remove('open')); }
++document.addEventListener('pointerdown', e => { if (!e.target.closest('.dd')) closeMenus(); });
++
++/* ============================================================
++   MODALS · top up · gift · redeem · earn · buy
++   ============================================================ */
++const modal = $('#modal'), mp = $('#mpanel');
++let M = null;
++function header(icon, title, sub, iconStyle){ return `<div class="panel-header"><div class="ph-icon ${iconStyle ? 'ico' : ''}" ${iconStyle ? `style="${iconStyle}"` : ''}>${icon}</div><div><div class="ph-title">${title}</div><div class="ph-sub">${sub}</div></div><div class="spacer"></div><button class="btn ghost icon sm" data-close type="button" aria-label="Close">${IC.x}</button></div>`; }
++function footer(eos, primary, primaryId, extra = ''){ return `<div class="panel-footer"><span class="eos">${eos}</span>${extra}<button class="btn ghost" data-close type="button">Cancel</button>${primary ? `<button class="btn primary" id="${primaryId}" type="button">${primary}</button>` : ''}</div>`; }
++
++function openModal(kind, data){
++  M = { kind, data, pack: 2, amount: 250, friend: FRIENDS[0] };
++  render[kind]();
++  modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
++  setTimeout(() => $('input', mp)?.focus(), 80);
++}
++function closeModal(){ modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); closeMenus(); M = null; }
++modal.addEventListener('pointerdown', e => { if (e.target === modal) closeModal(); });
++mp.addEventListener('click', e => { if (e.target.closest('[data-close]')) closeModal(); });
++
++const render = {
++  topup(){
++    const p = PACKS[M.pack], base = Math.round(p.cr / (1 + p.bonus / 100));
++    mp.innerHTML = header(IC.topup, 'Top up Credits', 'Real money → CR · processed by the Epic Games Store') + `
++      <div class="panel-body">
++        <div class="packs">${PACKS.map((k, i) => `<button class="pack ${i === M.pack ? 'on' : ''}" type="button" data-p="${i}">${k.flag ? `<span class="flag">${k.flag}</span>` : ''}${k.bonus ? `<span class="bonus">+${k.bonus}%</span>` : ''}<b>${fmt(k.cr)}</b><small>${CUR.code} · ${usd(k.usd)}</small></button>`).join('')}</div>
++        <div class="summary">
++          <div><small>You pay</small><b>${usd(p.usd)}</b><span>Epic Games Store checkout</span></div>
++          <div><small>You receive</small><b>${fmt(p.cr)} ${CUR.code}</b><span>${p.bonus ? `${fmt(base)} + ${fmt(p.cr - base)} bonus` : 'No bonus on this pack'}</span></div>
++          <div><small>Balance after</small><b>${fmt(W.balance + p.cr)} ${CUR.code}</b><span>≈ ${usd((W.balance + p.cr) * CUR.usd)}</span></div>
++        </div>
++        <p class="desc">Payment methods, taxes and receipts are handled by Epic. The game only receives an <b>entitlement</b> for the pack, redeems it once and credits your wallet.</p>
++      </div>` + footer('EOS_Ecom_Checkout · EOS_Ecom_QueryEntitlements · EOS_Ecom_RedeemEntitlements', `Pay ${usd(p.usd)} with Epic`, 'mPay');
++    $$('.pack', mp).forEach(b => b.addEventListener('click', () => { M.pack = +b.dataset.p; render.topup(); }));
++    $('#mPay').addEventListener('click', async e => {
++      const b = e.currentTarget; b.classList.add('loading'); $('.panel-footer .eos', mp).textContent = 'EOS_Ecom_Checkout · waiting for the Epic overlay…';
++      await wait(1300);
++      W.balance += p.cr; W.history.unshift({ kind: 'topup', title: 'Top up', sub: `${fmt(p.cr)} CR pack · Epic Games Store`, amt: p.cr, cur: 'CR', usd: p.usd, t: Date.now() }); save();
++      $('.panel-body', mp).innerHTML = `<div class="done"><span class="ok">${IC.check}</span><b>${fmt(p.cr)} ${CUR.code} added</b><span>Entitlement redeemed · new balance ${fmt(W.balance)} ${CUR.code}</span></div>`;
++      $('.panel-footer', mp).innerHTML = `<span class="eos">EOS_Ecom_RedeemEntitlements → EOS_Success</span><button class="btn white" data-close type="button">Done</button>`;
++      renderAll(true); toast(`Top up complete · +${fmt(p.cr)} ${CUR.code}`, 'EOS_Ecom_RedeemEntitlements → EOS_Success');
++    });
++  },
++  gift(){
++    mp.innerHTML = header(IC.gift, 'Gift Credits', 'Send CR to a friend on your Epic friends list') + `
++      <div class="panel-body">
++        <div class="crow"><div class="clabel">Friend<small>EOS_Friends_GetFriendAtIndex</small></div><div class="dd" id="gFriend"></div></div>
++        <div class="crow"><div class="clabel">Amount</div><label class="field"><input id="gAmt" type="number" min="50" max="${W.balance}" step="50" value="${M.amount}" /><span class="unit">${CUR.code}</span></label><div class="quick">${[100,250,500,1000].map(v => `<button type="button" data-v="${v}" class="${v === M.amount ? 'on' : ''}">${fmt(v)}</button>`).join('')}</div></div>
++        <div class="crow"><div class="clabel">Message</div><label class="field"><input id="gMsg" type="text" maxlength="60" placeholder="gg — see you on track" /></label></div>
++        <div class="summary"><div><small>Your balance after</small><b id="gAfter">${fmt(W.balance - M.amount)} ${CUR.code}</b><span>Gifts are final</span></div><div><small>Delivery</small><b>Instant</b><span>Shown in their wallet + a notification</span></div></div>
++      </div>` + footer('Game backend · transfer · EOS_Connect token', 'Send gift', 'mSend');
++    dropdown($('#gFriend'), { options: FRIENDS.map(f => ({ value: f, label: f })), value: M.friend, onChange: v => M.friend = v });
++    const upd = () => { const v = Math.max(0, Math.min(W.balance, +$('#gAmt').value || 0)); M.amount = v; $('#gAfter').textContent = `${fmt(W.balance - v)} ${CUR.code}`; $('#mSend').disabled = v < 50; $$('.quick button', mp).forEach(b => b.classList.toggle('on', +b.dataset.v === v)); };
++    $('#gAmt').addEventListener('input', upd);
++    $$('.quick button', mp).forEach(b => b.addEventListener('click', () => { $('#gAmt').value = b.dataset.v; upd(); }));
++    $('#mSend').addEventListener('click', async e => {
++      const b = e.currentTarget; b.classList.add('loading'); await wait(800);
++      const amount = M.amount, friend = M.friend, msg = $('#gMsg').value.trim();
++      W.balance -= amount; W.history.unshift({ kind: 'out', title: `Gift to ${friend}`, sub: msg ? `"${msg}"` : 'Gift', amt: -amount, cur: 'CR', t: Date.now() }); save();
++      closeModal(); renderAll(true); toast(`Sent ${fmt(amount)} ${CUR.code} to ${friend}`, 'Game backend · transfer confirmed');
++    });
++  },
++  redeem(){
++    mp.innerHTML = header(IC.ticket, 'Redeem a code', 'Promo, creator or event codes · try FRNT-S3-WELCOME') + `
++      <div class="panel-body">
++        <div class="crow"><div class="clabel">Code</div><label class="field" id="rField"><input id="rCode" class="mono" type="text" placeholder="FRNT-XXXX-XXXX" maxlength="20" spellcheck="false" autocapitalize="characters" /></label></div>
++        <div class="errmsg" id="rErr"></div>
++        <p class="desc">Codes are validated server-side and can only be redeemed once per Epic account. Rewards land in your wallet immediately.</p>
++      </div>` + footer('Game backend · code redemption · EOS_Connect ProductUserId', 'Redeem', 'mRedeem');
++    const inp = $('#rCode');
++    inp.addEventListener('input', () => { inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); $('#rField').classList.remove('err'); $('#rErr').textContent = ''; });
++    inp.addEventListener('keydown', e => { if (e.key === 'Enter') $('#mRedeem').click(); });
++    $('#mRedeem').addEventListener('click', async e => {
++      const code = inp.value.trim(), b = e.currentTarget; if (!code) return;
++      b.classList.add('loading'); await wait(700); b.classList.remove('loading');
++      if (!/^FRNT-/.test(code)){ $('#rField').classList.add('err'); $('#rErr').textContent = 'Code not recognised — check the letters and dashes.'; return; }
++      if (W.history.some(h => h.kind === 'in' && h.sub === `Code ${code}`)){ $('#rField').classList.add('err'); $('#rErr').textContent = 'This code has already been redeemed on your account.'; return; }
++      const amt = 500; W.balance += amt; W.history.unshift({ kind: 'in', title: 'Code redeemed', sub: `Code ${code}`, amt, cur: 'CR', t: Date.now() }); save();
++      closeModal(); renderAll(true); toast(`Code redeemed · +${fmt(amt)} ${CUR.code}`);
++    });
++  },
++  earn(){
++    const rows = [
++      [IC.flag, 'Finish a race', 'Any online lobby · once per race', '+150 RP', '#2a2a2a', '#fff'],
++      [IC.trophy, 'Win a race', 'P1 in a ranked or casual lobby', '+400 RP', '#fff', '#111'],
++      [IC.spark, 'Clean race bonus', 'No contact, no track limits', '+50 RP', '#4d80ff', '#fff'],
++      [IC.clock, 'Daily first race', 'Resets 00:00 UTC', '+100 RP', '#3a3a3a', '#fff'],
++      [IC.bolt, 'Season pass · tiers 10 / 20 / 30', `${ME.season} · next CR reward at tier 20`, `+1,000 ${CUR.code}`, '#1f5eff', '#fff'],
++      [IC.gift, 'Refer a friend', 'When they finish their first 5 races', `+500 ${CUR.code}`, '#123fb8', '#fff'],
++    ];
++    mp.innerHTML = header(IC.bolt, 'Ways to earn', `${RP.name} come from racing · ${CUR.name} from the season pass and referrals`) + `
++      <div class="panel-body"><div class="earn">${rows.map(([ic, t, s, v, bg, fg]) => `<div><span class="ico" style="background:${bg};color:${fg}">${ic}</span><div>${t}<small>${s}</small></div><b>${v}</b></div>`).join('')}</div></div>
++      <div class="panel-footer"><span class="eos">EOS_Stats_IngestStat · EOS_Achievements_UnlockAchievements</span><button class="btn ghost" data-close type="button">Close</button><a class="btn primary" href="index.html">Go race</a></div>`;
++  },
++  buy(){
++    const i = M.data, c = catOf(i.cat), own = owned(i.id), short = i.price - W.balance, wish = W.wish.includes(i.id);
++    const pack = PACKS.findIndex(p => p.cr >= short);
++    mp.innerHTML = header(IC[i.cat], esc(i.name), `${c.one} · ${i.rarity}`, `background:${c.bg};color:${c.fg}`) + `
++      <div class="panel-body">
++        <div class="tags"><span class="tag">${IC.star}${i.rating.toFixed(1)}</span>${i.trend >= 10 ? `<span class="tag">▲ ${i.trend}% this week</span>` : ''}${i.age <= 14 ? `<span class="tag hi">New</span>` : ''}<span class="tag">${c.label}</span>${i.cat === 'level' ? `<span class="tag">Premium designed level</span>` : `<span class="tag">Applies to GT-X · GT-X R</span>`}</div>
++        <p class="desc">${esc(i.sub)}. ${i.cat === 'level' ? 'A hand-built track variant with its own lighting, weather and leaderboards. <b>Unlocks for every lobby you host</b> — drivers who join do not need to own it.' : `Purely cosmetic — <b>no effect on performance</b>. Equip it from the Owned tab or in the Garage.`}</p>
++        <div class="summary">
++          <div><small>Price</small><b>${fmt(i.price)} ${CUR.code}</b><span>≈ ${usd(i.price * CUR.usd)}</span></div>
++          <div class="${short > 0 && !own ? 'warn' : ''}"><small>${own ? 'Status' : short > 0 ? 'Short by' : 'Balance after'}</small><b>${own ? 'Owned' : short > 0 ? `${fmt(short)} ${CUR.code}` : `${fmt(W.balance - i.price)} ${CUR.code}`}</b><span>${own ? (W.equipped[i.cat] === i.id ? 'Equipped' : 'Not equipped') : short > 0 ? `You have ${fmt(W.balance)} ${CUR.code}` : `≈ ${usd((W.balance - i.price) * CUR.usd)}`}</span></div>
++        </div>
++      </div>
++      <div class="panel-footer">
++        <span class="eos">${own ? 'EOS_PlayerDataStorage · loadout.json' : 'Game backend · debit CR · grant item · EOS_Connect token'}</span>
++        <button class="btn icon wish ${wish ? 'on' : ''}" id="mWish" type="button" title="Wishlist" style="width:34px;height:34px">${IC.star}</button>
++        <button class="btn ghost" data-close type="button">Cancel</button>
++        ${own ? `<button class="btn white" id="mEquip" type="button">${W.equipped[i.cat] === i.id ? 'Unequip' : 'Equip'}</button>` : short > 0 ? `<button class="btn primary" id="mTop" type="button">Top up ${pack >= 0 ? fmt(PACKS[pack].cr) + ' ' + CUR.code : ''}</button>` : `<button class="btn primary" id="mBuy" type="button">Buy for ${fmt(i.price)} ${CUR.code}</button>`}
++      </div>`;
++    $('#mWish').addEventListener('click', e => { const on = W.wish.includes(i.id); W.wish = on ? W.wish.filter(x => x !== i.id) : [...W.wish, i.id]; save(); e.currentTarget.classList.toggle('on', !on); if (view.cat === 'wish') renderList(); toast(on ? 'Removed from wishlist' : 'Added to wishlist'); });
++    $('#mEquip')?.addEventListener('click', () => { equip(i.id); closeModal(); });
++    $('#mTop')?.addEventListener('click', () => { openModal('topup'); M.pack = Math.max(0, pack); render.topup(); });
++    $('#mBuy')?.addEventListener('click', async e => {
++      const b = e.currentTarget; b.classList.add('loading'); $('.panel-footer .eos', mp).textContent = 'Backend · reserving item · verifying balance…';
++      await wait(900);
++      W.balance -= i.price; W.owned.push(i.id); if (!W.equipped[i.cat]) W.equipped[i.cat] = i.id; W.wish = W.wish.filter(x => x !== i.id);
++      W.history.unshift({ kind: 'buy', title: i.name, sub: `${c.one}${i.cat === 'level' ? '' : ' · ' + i.sub.split(' · ')[0].toLowerCase()}`, amt: -i.price, cur: 'CR', t: Date.now() }); save();
++      $('.panel-body', mp).innerHTML = `<div class="done"><span class="ok">${IC.check}</span><b>${esc(i.name)} is yours</b><span>${W.equipped[i.cat] === i.id ? 'Equipped automatically' : 'Find it in the Owned tab'} · balance ${fmt(W.balance)} ${CUR.code}</span></div>`;
++      $('.panel-footer', mp).innerHTML = `<span class="eos">Purchase confirmed · entitlement granted</span><button class="btn white" data-close type="button">Done</button>`;
++      renderAll(true); toast(`Bought ${i.name}`, `−${fmt(i.price)} ${CUR.code}`);
++    });
++  },
++};
++
++/* ============================================================
++   KEYBOARD · TOAST · INIT
++   ============================================================ */
++document.addEventListener('keydown', e => {
++  const typing = /INPUT|TEXTAREA/.test(document.activeElement?.tagName || '');
++  if (e.key === 'Escape'){ if (modal.classList.contains('open')) closeModal(); else if ($('.open')) closeMenus(); else if (typing) document.activeElement.blur(); return; }
++  if (typing || modal.classList.contains('open')) return;
++  if (e.key === 't' || e.key === 'T') openModal('topup');
++  if (e.key === 'g' || e.key === 'G') openModal('gift');
++  if (e.key === 'r' || e.key === 'R') openModal('redeem');
++  if (e.key === '1' || e.key === '2' || e.key === '3') $$('#seg button')[+e.key - 1].click();
++});
++function toast(msg, sub){ const t = $('#toast'); t.innerHTML = esc(msg) + (sub ? `<i>${esc(sub)}</i>` : ''); t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2400); }
++function renderAll(animate){ renderProfile(); renderCard(animate); renderActions(); renderPort(); renderPills(); renderList(); }
++renderAll(false);
++</script>
++</body>
++</html>

@@ -1,0 +1,215 @@
+/* Level vehicles (VehicleAssetInspector.jsx). */
+.va-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 12px;
+  padding: 10px 8px 14px;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse 60% 16% at 50% 74%, #00000080, transparent),
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--va-paint) 18%, #2a2d33), #17181b 72%);
+  box-shadow: inset 0 0 0 1px #ffffff0d;
+  text-align: center;
+}
+.va-hero img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 560 / 300;
+  object-fit: contain;
+  user-select: none;
+}
+.va-hero b {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+.va-hero small {
+  font-size: 10.5px;
+  color: #9aa0a8;
+}
+.va-paints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.va-paints button {
+  all: unset;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff60, transparent 45%), var(--swatch);
+  box-shadow: inset 0 0 0 1px #ffffff26;
+  transition: transform 120ms ease;
+}
+.va-paints button:hover {
+  transform: scale(1.12);
+}
+.va-paints button.on {
+  box-shadow: 0 0 0 2px #151515, 0 0 0 3.5px #f2f2f2;
+}
+.va-paints span {
+  margin-left: 4px;
+  font-size: 11px;
+  color: #c4c8ce;
+}
+.va-plan {
+  width: 100%;
+  height: auto;
+  margin: 6px 0 12px;
+}
+.va-plan rect {
+  fill: #ffffff0a;
+  stroke: #ffffff40;
+  stroke-width: 1;
+}
+.va-plan .va-plan-wheel {
+  fill: #ffffff30;
+  stroke: none;
+}
+.va-plan line {
+  stroke: #ffb238;
+  stroke-width: 1.2;
+}
+.va-plan text {
+  fill: #c4c8ce;
+  font-size: 9px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+.va-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.va-fact {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #ffffff06;
+  box-shadow: inset 0 0 0 1px #ffffff0f;
+}
+.va-fact small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #8d939b;
+}
+.va-fact b {
+  font-size: 15px;
+  font-weight: 300;
+  color: #ededed;
+  white-space: nowrap;
+}
+.va-fact em {
+  font-style: normal;
+  font-size: 10px;
+  color: #9aa0a8;
+}
+.va-driver {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #ffffff06;
+  box-shadow: inset 0 0 0 1px #ffffff10;
+}
+.va-driver i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #5c6068;
+}
+.va-driver.on i {
+  background: #34c759;
+  box-shadow: 0 0 8px #34c759;
+}
+.va-driver b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ececec;
+}
+.va-driver small {
+  font-size: 10px;
+  color: #9aa0a8;
+}
+.va-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.va-part {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #121212;
+  box-shadow: inset 0 0 0 1px #ffffff0c;
+}
+.va-part:hover {
+  background: #1b1b1b;
+}
+.va-part b {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #e6e6e6;
+}
+.va-part small {
+  font-size: 9.5px;
+  color: #8d939b;
+}
+/* Follow-up 62: the Controlled Vehicle opens its Component Viewer panel from here. */
+.va-viewer {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px 10px 10px;
+  border-radius: 14px;
+  background: #ececec;
+  color: #141414;
+}
+.va-viewer:hover {
+  background: #ffffff;
+}
+.va-viewer:focus-visible {
+  outline: 2px solid #ffb238;
+  outline-offset: 2px;
+}
+.va-viewer-icons {
+  display: grid;
+  grid-template-columns: repeat(2, 18px);
+  gap: 3px;
+  padding: 6px;
+  border-radius: 10px;
+  background: #141416;
+}
+.va-viewer-text {
+  flex: 1;
+  min-width: 0;
+}
+.va-viewer-text b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.va-viewer-text small {
+  font-size: 10px;
+  color: #55585e;
+}

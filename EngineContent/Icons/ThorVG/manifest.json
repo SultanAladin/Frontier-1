@@ -1,0 +1,744 @@
+{
+  "asset-file-blend.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "b9089274b988213c"
+  },
+  "asset-file-exr.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "f37f0a2fe73aaaae"
+  },
+  "asset-file-fbx.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "db9387f96f30446f"
+  },
+  "asset-file-glsl.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "d517ca51a19d3acf"
+  },
+  "asset-file-gltf.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "f10d26fc2a81955f"
+  },
+  "asset-file-jpg.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "afe59549582fcc1f"
+  },
+  "asset-file-json.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "c1c6d6e3268e2614"
+  },
+  "asset-file-mat.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "1afe05fc9b3d69b5"
+  },
+  "asset-file-mp3.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "cab70c74b54bf113"
+  },
+  "asset-file-obj.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "b53541cde2d58560"
+  },
+  "asset-file-ogg.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "8081100829840d82"
+  },
+  "asset-file-otf.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "2bf39729ef47cc3b"
+  },
+  "asset-file-png.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "45c7ffa1b12a3b54"
+  },
+  "asset-file-py.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "1ba205114e887f9a"
+  },
+  "asset-file-svg.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "b94c9a3b0e0fa9df"
+  },
+  "asset-file-ttf.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "c6191f171a5dba9b"
+  },
+  "asset-file-wav.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "fe43caeed0146d16"
+  },
+  "asset-file-woff.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "b3c78ad2adfafef2"
+  },
+  "asset-file-woff2.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "834b08ea4a140d0c"
+  },
+  "asset-file-zip.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "86d005858c98b8a6"
+  },
+  "asset-folder-animation.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "e50a8f34da516d7b"
+  },
+  "asset-folder-archives.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "01e83950e526f70a"
+  },
+  "asset-folder-audio.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "611a2ee6fdb8532f"
+  },
+  "asset-folder-fonts.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "3a30863dea6bb3b7"
+  },
+  "asset-folder-images.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "6d2b4817100210a2"
+  },
+  "asset-folder-materials.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "69f8e38eb87f6801"
+  },
+  "asset-folder-models.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "46e23faaa94a27fa"
+  },
+  "asset-folder-scenes.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "6c80ecbeda0aef40"
+  },
+  "asset-folder-scripts.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "8df089c92b2d6822"
+  },
+  "asset-folder-shaders.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "ffa482b6eb98e481"
+  },
+  "asset-folder-textures.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "530954cc6cda4c87"
+  },
+  "asset-folder-video.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency)."
+    ],
+    "source_fnv1a64": "1aafe3fb99c79740"
+  },
+  "clouds.svg": {
+    "original_unsupported": [
+      "feColorMatrix",
+      "feComposite",
+      "feDisplacementMap",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feColorMatrix, feComposite",
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feDisplacementMap"
+    ],
+    "source_fnv1a64": "9639da3135d817c0"
+  },
+  "fog.svg": {
+    "original_unsupported": [
+      "feColorMatrix",
+      "feComposite",
+      "feDisplacementMap",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feDisplacementMap, feColorMatrix, feComposite"
+    ],
+    "source_fnv1a64": "3227b37f760bb88a"
+  },
+  "moon.svg": {
+    "original_unsupported": [
+      "feColorMatrix",
+      "feComponentTransfer",
+      "feComposite",
+      "feFuncA",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feColorMatrix, feComponentTransfer, feComposite"
+    ],
+    "source_fnv1a64": "1dd99b17425ea10d"
+  },
+  "slate-animation-curve.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "5849ddbeff9c6050"
+  },
+  "slate-build.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "4c42d29de6ff07bd"
+  },
+  "slate-clapboard.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "927bfd1632e85394"
+  },
+  "slate-color-picker.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "3f03702d4fabf169"
+  },
+  "slate-document.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "f58948ed5156509e"
+  },
+  "slate-fabric.svg": {
+    "original_unsupported": [
+      "feDropShadow",
+      "pattern",
+      "text"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops).",
+      "Text outlined using bundled OFL Archivo (no runtime/system-font dependency).",
+      "Weave pattern expanded into clipped vector strokes."
+    ],
+    "source_fnv1a64": "4889890b14bbee85"
+  },
+  "slate-film-strip.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "dcfcccea0f3b1a30"
+  },
+  "slate-image-widget-variant2.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "2c884504a00ccefd"
+  },
+  "slate-image-widget-variant3.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "9087ef9943b51f16"
+  },
+  "slate-image-widget-variant4.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "a0a593bf1794d85a"
+  },
+  "slate-image.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "3ba57bd0e58705a8"
+  },
+  "slate-l-e-d-panel.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "2cc452ae650c5f56"
+  },
+  "slate-lantern.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "158356f362203f50"
+  },
+  "slate-live-broadcast.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "b20281e762724155"
+  },
+  "slate-meeting-grid.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "52ec15a9854d9c1f"
+  },
+  "slate-old-gamepad-classic.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "6efddcbc72551a16"
+  },
+  "slate-ring-light.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "fd9bcc4ba7a146ff"
+  },
+  "slate-scene-hierarchy.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "f510a62b13046f35"
+  },
+  "slate-script-node.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "f80f5334334e0684"
+  },
+  "slate-shader-node.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "9ae06b2f52fcb737"
+  },
+  "slate-spotlight.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "87d397972b673f72"
+  },
+  "slate-sprite-sheet.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "dbcefa9431f87387"
+  },
+  "slate-terminal.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "4b85ea77c4c04841"
+  },
+  "slate-tilemap.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "e520fe74248ddbf2"
+  },
+  "slate-timeline.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "f4099def3edddc70"
+  },
+  "slate-video-player.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ.",
+      "SVG2 rgba() colors normalized to RGB + explicit opacity (including gradient stops)."
+    ],
+    "source_fnv1a64": "ece8dc37243bb8a1"
+  },
+  "smoke.svg": {
+    "original_unsupported": [
+      "feDisplacementMap",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feDisplacementMap",
+      "Smoke fade mask expanded to 64 vector-opacity strips; avoids pinned ThorVG gradient-in-mask failure."
+    ],
+    "source_fnv1a64": "7c3520e26755c267"
+  },
+  "speaker.svg": {
+    "original_unsupported": [
+      "feBlend",
+      "feComposite",
+      "feDistantLight",
+      "feSpecularLighting"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feSpecularLighting, feComposite, feBlend"
+    ],
+    "source_fnv1a64": "e08d5c76e66c08d8"
+  },
+  "sun.svg": {
+    "original_unsupported": [
+      "feColorMatrix",
+      "feComposite",
+      "feDisplacementMap",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feColorMatrix, feComposite",
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feDisplacementMap"
+    ],
+    "source_fnv1a64": "3ec0a0fd1193105f"
+  },
+  "local-cloud.svg": {
+    "original_unsupported": [
+      "feColorMatrix",
+      "feComposite",
+      "feDisplacementMap",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feColorMatrix, feComposite",
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feDisplacementMap"
+    ],
+    "source_fnv1a64": "b59770cb164634d4"
+  },
+  "local-fog.svg": {
+    "original_unsupported": [
+      "feColorMatrix",
+      "feComposite",
+      "feDisplacementMap",
+      "feTurbulence"
+    ],
+    "changes": [
+      "Procedural filter primitives omitted in vector variant: feTurbulence, feDisplacementMap, feColorMatrix, feComposite"
+    ],
+    "source_fnv1a64": "35dc7e93e142e72c"
+  },
+  "folder-scene.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ."
+    ],
+    "source_fnv1a64": "8593747c1546f272"
+  },
+  "folder-world.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ."
+    ],
+    "source_fnv1a64": "cb57583edf56cf1e"
+  },
+  "folder-materials.svg": {
+    "original_unsupported": [
+      "feDropShadow"
+    ],
+    "changes": [
+      "Drop shadow uses cloned vector silhouettes + ThorVG Gaussian blur; filter bounds/compositing may differ."
+    ],
+    "source_fnv1a64": "b0368245a51cf3ec"
+  }
+}

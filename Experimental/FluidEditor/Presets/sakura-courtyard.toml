@@ -1,0 +1,72 @@
+# Sakura Courtyard — scene preset (Particles). Soft-systems composition — notched petal cutouts on a slow thermal, a catenary cloth grid for the banner and a rooted flora bed beneath — tuned to one pink-and-green grade.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Scene]
+Order = 45
+Id = "preset-sakura-courtyard"
+Name = "Sakura Courtyard"
+Family = "VFX"
+Icon = "leaf"
+Boundary = "OpenTop"
+Summary = "A courtyard in bloom: petals drift past a cloth banner snapping in the wind above a meadow of bending blades."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [6.5, 5.0, 6.5]
+
+[Render]
+Visible = false
+Exposure = 1.3
+Steps = 78
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Particle]]
+  Template = "sakura-petals"
+  Name = "Petal Drift"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.6, 0.0]
+  Radius = 1.8
+  Rate = 48.0
+  Count = 2304
+
+[[Particle]]
+  Template = "cloth-flag"
+  Name = "Banner"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.55, 0.5, -0.75]
+  Radius = 1.15
+  Count = 6144
+
+[[Particle]]
+  Template = "flora-meadow"
+  Name = "Garden Bed"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -1.35, 0.0]
+  Radius = 1.9
+  ShapeDetail = 30.0

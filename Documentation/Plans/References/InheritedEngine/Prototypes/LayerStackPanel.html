@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<!--==============================================================================================================================================
+                                                            LAYERSTACKPANEL.HTML
+==============================================================================================================================================-->
+<!-- 🧩 An editable HTML mirror of what Binaries\Validation\LayerStackValidation.exe draws today, so the layout can be fixed HERE and then ported
+        back to Executables\Validation\LayerStackValidation\LayerStackPanel.cpp.
+
+     🔴 THE BASELINE IS TRANSCRIBED, THE THREE FIXES ARE NOT. Palette, geometry and state still come straight from the C++ — the palette is
+        ColorPaletteDescriptor.cpp, the geometry is the constant block at LayerStackPanel.cpp:44-55, the six-layer pose is
+        InitializeLayerStackSample (LayerRecordTable.cpp:198) — so the two can still be diffed mechanically.
+
+        Deliberately CHANGED against the C++, and owed back to it (see "Fixed here" in the side column):
+          1. visibility is an eye (open / slashed), always on screen — the expand's Shown/Hidden chip pair is deleted;
+          2. blend mode is a dropdown over all seven BLEND_MODES, not a chip strip that could only fit four;
+          3. the tag hue became an L<n> bubble on a continuous track, styled after the reference in Downloads\layer\src\App.tsx;
+          4. every fly-out and fold animates OPEN AND CLOSED;
+          5. a layer can be DRAGGED above or below another to reorder it, which finally calls RelocateLayer;
+          6. sliders and dropdowns are ControlsGallery's exact primitives (ValueSlider.cpp / Dropdown.cpp / ControlLayout.cpp),
+             not lookalikes — the slider's pill/track order was reversed here before.
+
+     📝 Toggle the OUTLINE switch in the head to stroke every box, which is how the "reads as two stacked panels" fault is spotted.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frontier — Layer Stack Panel (transcription)</title>
+<style>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    THEME TOKENS
+  Straight from Internal/EngineContext/Interface/Theme/ColorPaletteDescriptor.cpp — no translation.
+----------------------------------------------------------------------------------------------------------------------*/
+:root{
+    --desk:            #000000;   /* DeskBackground    */
+    --panel:           #0e0e0e;   /* PanelBackground   */
+    --panel-header:    #0e0e0e;   /* PanelHeader       */
+    --border:          #1c1c1c;   /* PanelBorder       */
+    --control:         #141414;   /* ControlBackground */
+    --control-hover:   #1a1a1a;   /* ControlHovered    */
+    --control-active:  #1f1f1f;   /* ControlActive     */
+    --accent:          #e8e8e8;   /* AccentPrimary     */
+    --accent-soft:     rgba(255,255,255,.122);
+    --marker:          #4a90e2;   /* SelectionMarker   */
+    --text:            #ededed;   /* TextPrimary       */
+    --text-dim:        #8a8a8a;   /* TextMuted         */
+    --on-accent:       #111111;   /* TextOnAccent      */
+    --track:           #141414;   /* SliderTrack       */
+    --fill:            #5a5a5a;   /* SliderFill        */
+    --knob:            #ffffff;   /* SliderKnob        */
+    --danger:          #e05a5a;   /* the ONE hardcoded literal in the C++ (mask delete hover) */
+
+    /* Geometry — LayerStackPanel.cpp:44-55 */
+    --row-h:      44px;
+    --row-gap:     2px;
+    --tag-w:       4px;
+    --tag-h:      28px;
+    --thumb:      30px;
+    --pill-w:     41px;
+    --eye:        20px;
+    --caret:      18px;
+    --spine:       3px;
+    --add-h:      30px;
+    --filter-h:   30px;
+    --mask-tool:  24px;
+    --head-h:     44px;
+    --foot-h:     26px;
+
+    /* Control metrics — ThemeConfiguration.cpp:104-117, the same numbers ControlsGallery.exe resolves */
+    --pill-h:     30px;    /* PillRowHeight    */
+    --side-seg:   30px;    /* SideSegmentWidth — the grey unit / caret cap */
+    --label-col:  40%;     /* LabelColumnRatio 0.40 */
+    --field-gap:  12px;    /* ControlSpacing 6 x 2, the pill-to-track gap */
+    --value-number: #000000;   /* ValueNumberSegment */
+    --value-side:   #141414;   /* ValueSideSegment   */
+
+    /* The open card's head tone. Darker than ControlBackground so the header outranks the sections under it. */
+    --header-dark:  #080808;
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; height:100%; }
+body{
+    background:var(--desk);
+    color:var(--text);
+    font:13px/1.35 "Segoe UI", system-ui, sans-serif;
+    display:flex; align-items:flex-start; gap:26px; padding:26px;
+}
+
+/* The rail is measured at the host's window width: PlatformWindow 420px wide (LayerStackValidationHost.cpp:55). */
+.rail{ width:420px; background:var(--panel); border:1px solid var(--border); position:relative; }
+
+/* -- docked: SurfaceInspectorCarousel.html frames this page ----------------------------------------------------------
+   🔴 The side column and the page's 26px frame are the PAGE, not the panel, so both go. The rail then fills the well
+      and its BODY scrolls — the one fault the notes below call out ("the rail has no scroll"), which a fixed-height
+      well makes unavoidable rather than optional. */
+html.Docked body{ padding:0; gap:0; display:block; overflow:hidden; }
+html.Docked .notes{ display:none; }
+html.Docked .rail{
+    width:100%; height:100%; border:none; display:flex; flex-direction:column;
+}
+html.Docked .rail .pane-head,
+html.Docked .rail .pane-foot{ flex:0 0 auto; }
+html.Docked .rail .pane-body{ flex:1; min-height:0; overflow-y:auto; }
+html.Docked .rail .pane-body::-webkit-scrollbar{ width:9px; }
+html.Docked .rail .pane-body::-webkit-scrollbar-track{ background:transparent; }
+html.Docked .rail .pane-body::-webkit-scrollbar-thumb{
+    background:#242424; border-radius:99px; border:2px solid var(--panel);
+}
+/* The mask head is a focus target once docked, so it must read as one. */
+html.Docked .mask-head{ cursor:pointer; border-radius:7px; margin:0 -4px; padding:0 4px; }
+html.Docked .mask-head:hover{ background:var(--control-hover); }
+
+/* -- micro-animation: the fold, the caret, every tone change ----------------------------------------------------------
+   Unfold/Fold are a matched pair so a dropdown COLLAPSES on close instead of vanishing; the transform-origin at the top
+   makes it grow downward out of its face. clip-path carries the wipe, since a keyframed `height:auto` cannot animate. */
+@keyframes Unfold{
+    from{ opacity:0; transform:scaleY(.82) translateY(-4px); clip-path:inset(0 0 100% 0); }
+    to  { opacity:1; transform:none;                         clip-path:inset(0 0 0 0);    }
+}
+@keyframes Fold{
+    from{ opacity:1; transform:none;                         clip-path:inset(0 0 0 0);    }
+    to  { opacity:0; transform:scaleY(.82) translateY(-4px); clip-path:inset(0 0 100% 0); }
+}
+
+/* -- outline mode: stroke every box so seams and double-boxes are visible ------------------------------------------- */
+body.outline .rail *{ outline:1px solid rgba(255,80,80,.45); outline-offset:-1px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE HEAD
+  ConstructLayerStackPanel, the 44px header: "Layers" over the surface name, tally hard right.
+----------------------------------------------------------------------------------------------------------------------*/
+.pane-head{
+    height:var(--head-h); background:var(--panel-header); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; padding:0 14px 0 12px;
+}
+.pane-head .t{ flex:1; }
+.pane-head .t b{ display:block; font-weight:500; font-size:13px; line-height:1.15; }
+.pane-head .t span{ display:block; font-size:11px; color:var(--text-dim); line-height:1.25; }
+.pane-head .tally{ font-size:13px; color:var(--text-dim); }
+
+/* The body carries the 7px indent the C++ applies with ImGui::Indent(7.0f). */
+.pane-body{ padding:6px 7px 0 7px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  ADD + FILTER
+  InscribeAddAffordance (dashed-looking button, squares its bottom while the list is open) + InscribeFilterField.
+----------------------------------------------------------------------------------------------------------------------*/
+.add{
+    height:var(--add-h); width:100%; border-radius:9px; background:var(--panel-header);
+    border:1px solid var(--border); color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; font-size:13px;
+}
+.add:hover{ background:var(--control-hover); border-color:var(--control-active); color:var(--text); }
+.add.open{ border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom-color:transparent; }
+.add.capped{ color:rgba(138,138,138,.35); cursor:default; background:var(--panel-header); border-color:var(--border); }
+.add .plus{ width:9px; height:9px; position:relative; }
+.add .plus::before,.add .plus::after{ content:""; position:absolute; background:currentColor; }
+.add .plus::before{ left:50%; top:0; width:1.5px; height:100%; transform:translateX(-50%); }
+.add .plus::after{ top:50%; left:0; height:1.5px; width:100%; transform:translateY(-50%); }
+
+/* the kind list, flush beneath the button — one card, no seam */
+.kind-list{
+    border:1px solid var(--border); border-top:none; border-radius:0 0 9px 9px;
+    background:var(--panel-header); overflow:hidden;
+    transform-origin:top center; animation:Unfold .16s cubic-bezier(.2,.9,.3,1);
+}
+.kind-list[hidden]{ display:none; }
+.kind{ display:flex; align-items:center; gap:10px; height:26px; padding:0 10px; cursor:pointer; }
+.kind:hover{ background:var(--control-hover); }
+.kind .sw{ width:9px; height:9px; border-radius:2px; flex:none; }
+.kind .lb{ font-size:12px; }
+.kind .sm{ margin-left:auto; font-size:11px; color:var(--text-dim); }
+
+.filter{
+    margin-top:5px; height:var(--filter-h); border-radius:9px; background:var(--panel-header);
+    border:1px solid var(--border); display:flex; align-items:center; gap:8px; padding:0 10px 0 8px;
+}
+.filter:focus-within{ border-color:var(--control-active); }
+.filter svg{ flex:none; opacity:.8; }
+.filter input{
+    flex:1; background:none; border:none; outline:none; color:var(--text); font:inherit; font-size:12.5px;
+}
+.filter input::placeholder{ color:rgba(138,138,138,.55); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   STACK ROWS
+  🔴 InscribeStackRow + InscribeInlineExpand are ONE CARD when open: the row owns top/left/right and DROPS its bottom
+     edge; the expand continues left/right and closes the bottom. .card is that wrapper — the border lives HERE, not on
+     the row and the body separately, which is exactly the two-boxes fault LayerInspector.css:186 names.
+----------------------------------------------------------------------------------------------------------------------*/
+.stack{ margin-top:4px; position:relative; }
+
+/* Each entry is BUBBLE | TIMELINE | CARD, so the tag hue reads as an identity chip on a continuous track. */
+.entry{ display:flex; position:relative; }
+.entry .bubble{ cursor:grab; }
+
+.entry .bubble{ width:34px; flex:none; padding-top:7px; }
+.entry .bubble .b{
+    width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
+    font-size:11px; font-weight:600; letter-spacing:-.02em;
+    transition:background-color .25s, color .25s;
+}
+
+/* the continuous track: the segment is full-height, capped on the first and last entry */
+.entry .track-col{ width:16px; flex:none; display:flex; justify-content:center; position:relative; }
+.entry .track-col .seg-line{ position:absolute; width:7px; top:0; bottom:0; transition:background-color .25s; }
+.entry:first-child .track-col .seg-line{ top:20px; border-radius:4px 4px 0 0; }
+.entry:last-child  .track-col .seg-line{ bottom:auto; height:20px; border-radius:0 0 4px 4px; }
+.entry .track-col .knot{
+    position:absolute; top:20px; width:7px; height:7px; border-radius:50%; background:var(--knob);
+    box-shadow:0 0 0 3px var(--panel); transform:translateY(-50%);
+}
+
+.entry .card-col{ flex:1; min-width:0; padding:0 0 var(--row-gap) 8px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 DRAG TO REORDER
+  🔴 The stack ORDER is the composite order, so dragging a layer above or below another is the panel's most important
+     verb — and the C++ has it declared (RelocateLayer, LayerRecordTable.h) but wired to nothing.
+
+     Press and hold a row, then move: the lifted entry ghosts in place, an accent line shows where it will land, and
+     releasing commits. The drag only ARMS after 4px of travel so a plain click still focuses the row.
+----------------------------------------------------------------------------------------------------------------------*/
+.entry.lifted{ opacity:.35; }
+.entry.lifted .card{ border-color:var(--accent-soft); }
+
+/* the insertion line: sits in the gap the layer would drop into, spanning bubble through card */
+.drop-line{
+    position:absolute; left:0; right:0; height:2px; background:var(--accent); border-radius:1px;
+    pointer-events:none; z-index:8; box-shadow:0 0 7px rgba(232,232,232,.5);
+}
+.drop-line::before{
+    content:""; position:absolute; left:-1px; top:-3px; width:8px; height:8px; border-radius:50%;
+    background:var(--accent);
+}
+
+/* while a drag is live nothing else should highlight or select */
+body.dragging{ cursor:grabbing; user-select:none; }
+body.dragging .row:hover{ background:none !important; }
+body.dragging .eye,body.dragging .caret,body.dragging .pill{ pointer-events:none; }
+
+/* the floating proxy that follows the pointer */
+.drag-proxy{
+    position:fixed; z-index:40; pointer-events:none; opacity:.94;
+    border:1px solid var(--accent-soft); border-radius:12px; background:var(--control-active);
+    box-shadow:0 16px 34px rgba(0,0,0,.9); overflow:hidden;
+}
+
+/* 🔴 The HEAD (name + eye + caret) is the DARKEST part of the card, and the expand below it sits lighter. That ranking is
+      what makes the head read as the thing you selected and the body as its contents — the reverse made the head look
+      like just another section. The card owns the light body tone; the row paints itself darker on top. */
+.card{ position:relative; border:1px solid transparent; border-radius:12px; overflow:hidden;
+       transition:background-color .2s, border-color .2s; }
+.card.open{ border-color:var(--border); background:var(--control); }
+.card.open .row{ background:var(--header-dark); }
+.card.open.focus .row{ background:#000000; }
+
+/* the focus spine, hard against the rail's left edge (the C++ draws it at TopLeft.x - 6) */
+.card.focus::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:var(--spine);
+    background:var(--accent); border-radius:2px; z-index:2;
+}
+
+.row{ height:var(--row-h); display:flex; align-items:center; gap:7px; padding:0 8px 0 8px; cursor:pointer; position:relative; }
+.card:not(.open) .row:hover{ background:var(--control-hover); }
+.card:not(.open).focus{ background:var(--control-active); border-color:var(--border); }
+.row.muted .thumb,.row.muted .txt{ opacity:.42; }
+
+/* The tag hue moved OUT of the row onto the bubble + track, so there is no flat tag strip inside the card any more.
+   --tag-w / --tag-h are kept in the token block because the C++ still declares them. */
+.row .thumb{
+    width:var(--thumb); height:var(--thumb); border-radius:8px; background:#000;
+    border:1px solid var(--border); position:relative; flex:none;
+}
+.row .thumb .ink{ position:absolute; inset:0; margin:auto; width:15px; height:15px; border-radius:3px; }
+.row .thumb .kind{ position:absolute; right:3px; top:3px; width:6px; height:6px; border-radius:50%; }
+
+.row .txt{ flex:1; min-width:0; }
+.row .txt b{ display:block; font-weight:400; font-size:13px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.row .txt span{ display:block; font-size:10.7px; color:var(--text-dim); line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* The opacity pill is a horizontal SCRUB (cursor:ew-resize), not a click. Borderless capsule on ValueNumberSegment, so
+   it reads as the same family as the expand's value pills — just compact enough for a 44px row. */
+.row .pill{
+    width:var(--pill-w); height:18px; border-radius:999px; background:var(--value-number);
+    display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text-dim);
+    cursor:ew-resize; flex:none; user-select:none; transition:color .15s;
+}
+.row .pill:hover{ color:var(--text); }
+
+/* 🔴 Visibility is an EYE — open eye = shown, slashed eye = hidden. It is always on screen (it is the control, not a
+      hover affordance) and it is the ONLY visibility widget; the expand no longer repeats it as a Shown/Hidden pair. */
+.row .eye,.row .caret{
+    width:var(--eye); height:var(--eye); border-radius:6px; display:grid; place-items:center; flex:none; cursor:pointer;
+    color:var(--text-dim); transition:background-color .15s, color .15s;
+}
+.row .caret{ width:var(--caret); height:var(--caret); }
+.row .eye:hover{ background:var(--control-hover); color:var(--text); }
+.row .caret:hover{ background:var(--control-hover); }
+.row .eye svg,.row .caret svg{ display:block; }
+.row.muted .eye{ color:#48484a; }
+.row .caret svg{ transition:transform .25s ease; }
+.card.open .caret{ color:var(--text); }
+.card.open .caret svg{ transform:rotate(180deg); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  INLINE EXPAND
+  The card's lower half: Visible / Blend / Opacity / Paint / Tag, then the mask editor.
+----------------------------------------------------------------------------------------------------------------------*/
+/* The expand animates only on a real fold. Scrubbing re-renders every pointermove, and without this guard the class
+   would be re-applied each frame and Unfold would restart forever, making the panel strobe under the drag. */
+/* A hairline under the darker head, so the tone step reads as deliberate rather than as a rendering seam. */
+.expand{ padding:8px 8px 8px 8px; border-top:1px solid var(--border); }
+body:not(.scrubbing) .expand{ animation:Unfold .2s cubic-bezier(.2,.9,.3,1); }
+
+/* BeginControlRow splits at LabelColumnRatio 0.40 — the label column, then the field takes the exact remainder. */
+.ctl{ display:flex; align-items:center; min-height:var(--pill-h); margin-bottom:6px; }
+.ctl > .k{ width:var(--label-col); flex:none; font-size:12px; color:var(--text-dim); }
+.ctl > .v{ flex:1; min-width:0; }
+
+/* ConstructSelectionEntry — the segmented chip strip */
+/* The segmented chip strip is GONE: visibility is the row's eye and blend is a dropdown, so nothing needed chips. */
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     DROPDOWN
+  🔴 Blend mode is a DROPDOWN, not a chip strip: there are seven modes (BLEND_MODES, LayerStack.js:58) and a segmented
+     strip could only ever show the first four.
+
+  🔴 Shape is ConstructDropdown (Dropdown.cpp) VERBATIM, so it matches ControlsGallery.exe:
+       · the head is a DrawValuePill capsule — fully rounded (PillRounding 999), black number segment, grey ">" cap
+         of SideSegmentWidth 30px on the right. NO border: "the pill reads as a flat filled capsule".
+       · the text sits 14px into the black segment (Dropdown.cpp:52).
+       · an item is SHARP-cornered: hover paints ControlActive plus a 4px SelectionMarker bar full-height on the LEFT,
+         and the label indents 14px -> 20px on hover (Dropdown.cpp:113-123).
+       · EVERY row carries a 16px radio: a faint PanelBorder ring, or a SelectionMarker ring with a filled centre when
+         it is the current mode (Dropdown.cpp:127-139). It is a radio, NOT a tick.
+       · item height is 0.86 x the row height, gaps 2px, window padding 6px (Dropdown.cpp:67-69).
+----------------------------------------------------------------------------------------------------------------------*/
+.drop{ position:relative; height:var(--pill-h); }
+
+.drop .face{
+    height:var(--pill-h); border-radius:999px; background:var(--value-number); overflow:hidden;
+    display:flex; align-items:center; cursor:pointer; font-size:12px; color:var(--text);
+}
+.drop .face .lb{
+    flex:1; min-width:0; padding-left:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* the grey caret cap — a SideSegmentWidth-wide right segment, exactly like a value pill's unit cap */
+.drop .face .cap{
+    width:var(--side-seg); flex:none; align-self:stretch; background:var(--value-side);
+    display:grid; place-items:center; color:var(--text-dim);
+}
+.drop .face .cap svg{ transition:transform .2s ease; }
+.drop.open .face .cap svg{ transform:rotate(180deg); }
+.drop .face:hover .cap{ color:var(--text); }
+
+.drop .menu{
+    position:absolute; left:0; right:0; top:calc(var(--pill-h) + 6px); z-index:5; padding:6px;
+    background:var(--panel-header); box-shadow:0 10px 26px rgba(0,0,0,.85);
+    display:flex; flex-direction:column; gap:2px;
+    transform-origin:top center; animation:Unfold .16s cubic-bezier(.2,.9,.3,1);
+}
+.drop .menu[hidden]{ display:none; }
+
+.drop .menu .opt{
+    height:calc(var(--pill-h) * .86); position:relative; display:flex; align-items:center;
+    padding:0 14px; font-size:12px; color:var(--text); cursor:pointer;
+    transition:padding-left .12s, background-color .12s;   /* the 14 -> 20px indent slide */
+}
+.drop .menu .opt:hover{ background:var(--control-active); padding-left:20px; }
+/* the 4px full-height accent bar on the left of a hovered item */
+.drop .menu .opt::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--marker); opacity:0;
+    transition:opacity .12s;
+}
+.drop .menu .opt:hover::before{ opacity:1; }
+
+.drop .menu .opt .lb{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* the radio every row carries: a ring, filled at its centre on the current mode */
+.drop .menu .opt .radio{
+    width:16px; height:16px; flex:none; border-radius:50%; border:1.5px solid var(--border);
+    display:grid; place-items:center;
+}
+.drop .menu .opt.on .radio{ border-color:var(--marker); border-width:2px; }
+.drop .menu .opt.on .radio::after{
+    content:""; width:8px; height:8px; border-radius:50%; background:var(--marker);
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    VALUE SLIDER
+  🔴 ConstructValueSlider (ValueSlider.cpp) VERBATIM, so it matches ControlsGallery.exe:
+       · the value pill is on the LEFT at 42% of the field width, then a gap of 2 x ControlSpacing, then the track fills
+         the rest (ValueSlider.cpp:40-41). This page previously had them the other way round.
+       · the pill is a fully-rounded capsule with NO border: black number segment, grey unit cap of SideSegmentWidth.
+       · the track is 0.72 x the row height, a borderless capsule: black bed, grey travelled fill, white knob whose
+         radius is half the track height PLUS 1px, ringed in 35%-black (ControlLayout.cpp:190-195).
+----------------------------------------------------------------------------------------------------------------------*/
+.slider{ display:flex; align-items:center; gap:var(--field-gap); height:var(--pill-h); }
+
+.slider .num{
+    width:42%; flex:none; height:var(--pill-h); border-radius:999px; overflow:hidden;
+    display:flex; align-items:stretch; font-size:12px;
+}
+.slider .num .n{
+    flex:1; min-width:0; background:var(--value-number); color:#fff; display:grid; place-items:center;
+    cursor:ew-resize; user-select:none;
+}
+.slider .num .u{
+    width:var(--side-seg); flex:none; background:var(--value-side); color:var(--text-dim);
+    display:grid; place-items:center;
+}
+
+.slider .track{
+    flex:1; min-width:0; height:calc(var(--pill-h) * .72); border-radius:999px;
+    background:var(--track); position:relative; cursor:ew-resize;
+}
+.slider .track .f{ position:absolute; left:0; top:0; bottom:0; border-radius:999px; background:var(--fill); }
+.slider .track .h{
+    position:absolute; top:50%; left:0;
+    width:calc(var(--pill-h) * .72 + 2px); height:calc(var(--pill-h) * .72 + 2px);
+    border-radius:50%; background:var(--knob); border:1px solid rgba(0,0,0,.35);
+    transform:translate(-50%,-50%); box-sizing:border-box;
+}
+
+/* ConstructColorEntry — a swatch plus its hex */
+.swatch{ display:flex; align-items:center; gap:8px; }
+.swatch .sw{ width:34px; height:18px; border-radius:5px; border:1px solid var(--border); flex:none; }
+.swatch .hex{ font-size:11px; color:var(--text-dim); font-family:ui-monospace, Consolas, monospace; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   MASK REGION
+----------------------------------------------------------------------------------------------------------------------*/
+.cap{ font-size:10.5px; letter-spacing:.08em; color:rgba(138,138,138,.75); margin:6px 0 4px; }
+
+.mask-head{ display:flex; align-items:center; gap:8px; height:34px; }
+.mask-head .tile{ width:30px; height:30px; border-radius:6px; border:1px solid var(--border); flex:none; }
+.mask-head .t{ flex:1; min-width:0; }
+.mask-head .t b{ display:block; font-weight:400; font-size:12.5px; line-height:1.2; }
+.mask-head .x{ width:18px; height:18px; display:grid; place-items:center; cursor:pointer; color:var(--text-dim); flex:none; }
+.mask-head .x:hover{ color:var(--danger); }
+
+/* No fill/invert tool row and no component list: the mask here is create + strength + remove, nothing more. */
+
+.add-mask{
+    height:26px; border-radius:7px; background:var(--panel-header); border:1px solid var(--border);
+    color:var(--text-dim); display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer;
+    font-size:12px;
+}
+.add-mask:hover{ background:var(--control-hover); border-color:var(--control-active); color:var(--text); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    FOOT TALLY
+----------------------------------------------------------------------------------------------------------------------*/
+.pane-foot{
+    height:var(--foot-h); border-top:1px solid var(--border); margin-top:4px;
+    display:flex; align-items:center; padding:0 12px; font-size:12px; color:var(--text-dim);
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    SIDE NOTES
+----------------------------------------------------------------------------------------------------------------------*/
+.notes{ width:430px; color:var(--text-dim); font-size:12.5px; line-height:1.6; }
+.notes h1{ font-size:14px; color:var(--text); margin:0 0 4px; font-weight:600; }
+.notes h2{ font-size:12px; color:var(--text); margin:16px 0 5px; font-weight:600; letter-spacing:.03em; }
+.notes code{ font-family:ui-monospace, Consolas, monospace; color:#c8c8c8; font-size:11.5px; }
+.notes ul{ margin:5px 0; padding-left:17px; }
+.notes li{ margin:3px 0; }
+.notes .sw{ display:inline-block; width:9px; height:9px; border-radius:2px; vertical-align:-1px; margin-right:3px; }
+.toggle{ display:flex; align-items:center; gap:8px; margin:12px 0 0; cursor:pointer; color:var(--text); font-size:12px; }
+.toggle input{ accent-color:var(--marker); }
+.notes .warn{ color:#d8a657; }
+</style>
+</head>
+<body>
+
+<div class="rail" id="rail"></div>
+
+<div class="notes">
+    <h1>Layer Stack — current C++ state, transcribed</h1>
+    This mirrors <code>LayerStackValidation.exe</code> as it draws <em>today</em>. Numbers come from
+    <code>LayerStackPanel.cpp:44-55</code>, colours from <code>ColorPaletteDescriptor.cpp</code>, the pose from
+    <code>InitializeLayerStackSample</code>. Edit this file to fix the layout, then the C++ follows.
+
+    <label class="toggle"><input type="checkbox" id="outline"> Outline every box (shows seams &amp; double-borders)</label>
+
+    <h2>Fixed here — the C++ must follow</h2>
+    <ul>
+        <li><b>Visibility is an eye</b>, open vs slashed, always on screen. It was a
+            <code>Shown / Hidden</code> chip pair inside the expand, which gave two widgets for one fact and hid the
+            state until you opened the card. The expand's Visible row is gone.</li>
+        <li><b>Blend is a dropdown</b>, showing all seven of <code>BLEND_MODES</code>. As a chip strip it could only fit
+            the first four, so <em>Darken</em> and <em>Linear Dodge</em> were unreachable.</li>
+        <li><b>Bubble + timeline</b>: the layer's tag hue is now an <code>L<i>n</i></code> identity chip on a continuous
+            track, instead of a 4px strip buried inside the row. A hidden layer greys its bubble and its track segment,
+            so the stack reads at a glance.</li>
+        <li><b>Micro-animation both ways.</b> Every fly-out grows out of its face and <em>collapses back into it</em> —
+            the exit runs on the live node and the re-render waits on <code>animationend</code>, because a straight
+            re-render would rip the panel out before the close could be seen.</li>
+        <li><b>Drag a layer to reorder it.</b> Press a row and move: it ghosts in place, an accent line marks the gap it
+            will drop into, and release commits through <code>RelocateLayer</code>. Focus follows the layer. The drag
+            arms only after 4px so a plain click still just focuses.</li>
+        <li><b>Sliders and dropdowns are ControlsGallery's</b>, not invented here — see below.</li>
+    </ul>
+
+    <h2>Controls copied from ControlsGallery.exe</h2>
+    Transcribed from <code>ValueSlider.cpp</code>, <code>Dropdown.cpp</code> and
+    <code>ControlLayout.cpp</code>, with the metrics from <code>ThemeConfiguration.cpp:104-117</code>:
+    <ul>
+        <li>Row height <code>30px</code>, label column <code>0.40</code>, side segment <code>30px</code>, pill rounding
+            <code>999</code> — i.e. a true capsule.</li>
+        <li>A slider is <b>pill on the LEFT at 42%</b>, a <code>12px</code> gap, then the track. This page had them
+            reversed before. The track is <code>0.72×</code> the row height; the knob's radius is half the track plus
+            <code>1px</code>, ringed in 35% black.</li>
+        <li>Both the pill number <em>and</em> the track drag. The pill moves at <code>range/400</code> per pixel; the
+            track jumps absolutely to the pointer.</li>
+        <li>Pills and tracks are <b>borderless</b> — the C++ says so twice: <em>"the pill reads as a flat filled
+            capsule"</em>, <em>"no track outline"</em>.</li>
+        <li>A dropdown head is a value pill with a grey <code>&gt;</code> cap. Its items are <b>sharp-cornered</b>, hover
+            paints <code>ControlActive</code> plus a <code>4px</code> blue bar on the left and slides the label
+            <code>14px→20px</code>, and <b>every</b> row carries a radio — a grey ring, or a blue ring with a filled
+            centre when current. A tick mark would be wrong.</li>
+    </ul>
+
+    <h2>What the C++ claims about the card</h2>
+    <ul>
+        <li>An <b>open row + its expand are ONE card</b>. The row is the head: it owns top/left/right and
+            <em>drops its bottom edge</em>; the expand closes the bottom.</li>
+        <li>An open head <b>stops recolouring on hover</b>, so the head can't light alone and split the card.</li>
+        <li>The opacity pill is a <b>drag</b> (<code>ew-resize</code>), not a click.</li>
+        <li>The caret toggles the fold <b>without</b> touching focus; clicking the row body focuses <em>and</em> opens.</li>
+    </ul>
+
+    <h2>Kind tints (LayerKinds.js)</h2>
+    <ul>
+        <li><span class="sw" style="background:#f97316"></span>Paint — hand-painted, accepts strokes</li>
+        <li><span class="sw" style="background:#3b82f6"></span>Fill — uniform authored values</li>
+        <li><span class="sw" style="background:#8b5cf6"></span>Material — a PBR preset, flooded</li>
+        <li><span class="sw" style="background:#10b981"></span>Generator — procedural over the UV atlas</li>
+    </ul>
+
+    <h2>Things worth questioning</h2>
+    <ul>
+        <li class="warn">The rail has <b>no scroll</b>. Twelve open layers overrun the pane; the C++ just keeps drawing.</li>
+        <li class="warn">The head's tally and the foot's disagree (below) — and <code>RelocateLayer</code> is now wired
+            <em>here</em> but still called by nothing in the C++.</li>
+        <li class="warn">The head's tally is a bare count (<code>6</code>) while the foot says <code>6 / 12</code> — two
+            different readings of the same fact.</li>
+        <li class="warn">Rename is stubbed: <code>RenameOrdinal</code> is seeded to <code>-1</code> and never set.</li>
+        <li class="warn">The C++ fold is <b>instant</b>. This page now animates it (and both fly-outs), so the port owes
+            ControlsGallery's eased fold (<code>FoldRate 0.28</code>) rather than a snap.</li>
+    </ul>
+</div>
+
+<script>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    VOCABULARY
+  Transcribed from LayerStack.js / LayerKinds.js and the C++ tables.
+----------------------------------------------------------------------------------------------------------------------*/
+const BLEND_MODES = ["Normal","Multiply","Screen","Overlay","Add","Darken","Linear Dodge"];
+const LAYER_CAPACITY = 12;
+
+const KINDS = [
+    { Label:"Paint",     Tint:"#f97316", Summary:"Accepts brush strokes",      Paintable:true,  Flooded:false },
+    { Label:"Fill",      Tint:"#3b82f6", Summary:"Uniform authored values",    Paintable:false, Flooded:true  },
+    { Label:"Material",  Tint:"#8b5cf6", Summary:"A PBR preset, flooded",      Paintable:false, Flooded:true  },
+    { Label:"Generator", Tint:"#10b981", Summary:"Procedural over the atlas",  Paintable:false, Flooded:true  },
+];
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                      STATE
+  InitializeLayerStackSample (LayerRecordTable.cpp:198) — six layers, ordinal 0 is the TOPMOST.
+----------------------------------------------------------------------------------------------------------------------*/
+const State = {
+    SurfaceName:"Suzanne",
+    FilterTerm:"",
+    AddListOpen:false,
+    FocusOrdinal:0,
+    BlendMenuOrdinal:-1,   /* which layer has its blend dropdown open; -1 == none */
+    LiftedOrdinal:-1,      /* the layer currently being dragged;      -1 == none */
+    // 📝 Paint / PaintsBaseColour survive because the ROW THUMB still shows that ink chip; only the expand's swatch went.
+    //    MaskFill / MaskInverted survive because they resolve the mask tile's shade, but nothing edits them here now.
+    Layers:[
+        { Name:"Edge Wear",      Kind:0, BlendIndex:1, Opacity:78,  Shown:true,  Expanded:true,
+          Tag:"#f97316", Paint:"#2e2d2b", PaintsBaseColour:true,  ChannelTotal:3, StrokeCount:148,
+          MaskEnabled:true,  MaskFill:"Black", MaskInverted:false, MaskStrength:92 },
+
+        { Name:"Cavity Dirt",    Kind:3, BlendIndex:1, Opacity:55,  Shown:false, Expanded:false,
+          Tag:"#10b981", Paint:"#2e2d2b", PaintsBaseColour:false, ChannelTotal:2, StrokeCount:0,
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100 },
+
+        { Name:"Hand Detail",    Kind:0, BlendIndex:0, Opacity:100, Shown:true,  Expanded:false,
+          Tag:"#ef4444", Paint:"#2e2d2b", PaintsBaseColour:true,  ChannelTotal:3, StrokeCount:62,
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100 },
+
+        { Name:"Roughness Lift", Kind:1, BlendIndex:4, Opacity:40,  Shown:true,  Expanded:false,
+          Tag:"#3b82f6", Paint:"#2e2d2b", PaintsBaseColour:false, ChannelTotal:1, StrokeCount:0,
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100 },
+
+        { Name:"Brushed Copper", Kind:2, BlendIndex:0, Opacity:100, Shown:true,  Expanded:false,
+          Tag:"#8b5cf6", Paint:"#b87333", PaintsBaseColour:true,  ChannelTotal:5, StrokeCount:0,
+          MaskEnabled:true,  MaskFill:"White", MaskInverted:true,  MaskStrength:100 },
+
+        { Name:"Base Steel",     Kind:2, BlendIndex:0, Opacity:100, Shown:true,  Expanded:false,
+          Tag:"#94a3b8", Paint:"#4c4f53", PaintsBaseColour:true,  ChannelTotal:5, StrokeCount:0,
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100 },
+    ],
+};
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   MARK BUILDERS
+  The C++ draws every mark from primitives (no icon pack), so these are inline SVGs of the same shapes.
+----------------------------------------------------------------------------------------------------------------------*/
+const Chevron   = () => `<svg width="9" height="6" viewBox="0 0 9 6"><path d="M1 1.4 4.5 4.6 8 1.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const Magnifier = () => `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9.2 9.2 12.4 12.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const CrossMark = () => `<svg width="9" height="9" viewBox="0 0 9 9"><path d="M.8.8 8.2 8.2M8.2.8 .8 8.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+
+// The eye: an almond of two arcs, with a pupil when open and a slash when hidden.
+function EyeMark(Open)
+{
+    const Body = `<path d="M1 7 Q7 1.2 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="M1 7 Q7 12.8 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/>`;
+    const Inner = Open ? `<circle cx="7" cy="7" r="2.4" fill="currentColor"/>`
+                       : `<path d="M1.4 10.4 12.6 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`;
+    return `<svg width="14" height="14" viewBox="0 0 14 14">${Body}${Inner}</svg>`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     HELPERS
+----------------------------------------------------------------------------------------------------------------------*/
+const Escape = (Text) => String(Text).replace(/[&<>"]/g, (Ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[Ch]));
+const PassesFilter = (Record) => !State.FilterTerm ||
+    Record.Name.toLowerCase().includes(State.FilterTerm.toLowerCase());
+const HiddenCount = () => State.Layers.filter((R) => !R.Shown).length;
+
+// A tag bubble carries its own hue, so its glyph must pick the readable ink (the YIQ split, App.tsx:119).
+function ResolveInkOver(Hex)
+{
+    const Red   = parseInt(Hex.slice(1, 3), 16);
+    const Green = parseInt(Hex.slice(3, 5), 16);
+    const Blue  = parseInt(Hex.slice(5, 7), 16);
+    return (Red * 299 + Green * 587 + Blue * 114) / 1000 >= 128 ? "#111111" : "#ffffff";
+}
+
+// The mask tile shows the RESOLVED shade: the fill, then the invert on top.
+function ResolveMaskTone(Record)
+{
+    const Base  = Record.MaskFill === "Black" ? 0 : 1;
+    const Light = Record.MaskInverted ? 1 - Base : Base;
+    const Byte  = Math.round(Light * 255);
+    return `rgb(${Byte},${Byte},${Byte})`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     BUILDERS
+----------------------------------------------------------------------------------------------------------------------*/
+function BuildControlRow(Key, Field)
+{
+    return `<div class="ctl"><div class="k">${Key}</div><div class="v">${Field}</div></div>`;
+}
+
+// The blend dropdown: a face carrying the current mode, and a menu of ALL seven when open.
+function BuildDropdown(Options, SelectedIndex, Ordinal, Open)
+{
+    const Items = Options.map((Label, Index) =>
+        `<div class="opt ${Index === SelectedIndex ? 'on' : ''}" data-act="blend-pick" data-arg="${Ordinal}:${Index}">
+            <div class="lb">${Escape(Label)}</div><div class="radio"></div>
+        </div>`
+    ).join("");
+
+    return `<div class="drop ${Open ? 'open' : ''}">
+        <div class="face" data-act="blend-menu" data-arg="${Ordinal}">
+            <div class="lb">${Escape(Options[SelectedIndex])}</div>
+            <div class="cap">${Chevron()}</div>
+        </div>
+        <div class="menu" ${Open ? "" : "hidden"}>${Items}</div>
+    </div>`;
+}
+
+function BuildSlider(Value, Minimum, Maximum, Unit, Action)
+{
+    // The pill leads, the track follows — and the pill's NUMBER is itself a drag-scrub (EditPillNumber), at the C++'s
+    // speed of range/400 per pixel.
+    const Ratio = (Value - Minimum) / (Maximum - Minimum);
+    return `<div class="slider">
+        <div class="num">
+            <div class="n" data-scrub="${Action}" data-min="${Minimum}" data-max="${Maximum}"
+                 data-speed="${(Maximum - Minimum) / 400}">${Math.round(Value)}</div>
+            <div class="u">${Unit}</div>
+        </div>
+        <div class="track" data-scrub="${Action}" data-min="${Minimum}" data-max="${Maximum}">
+            <div class="f" style="width:${Ratio * 100}%"></div>
+            <div class="h" style="left:${Ratio * 100}%"></div>
+        </div>
+    </div>`;
+}
+
+function BuildSwatch(Hex)
+{
+    return `<div class="swatch"><div class="sw" style="background:${Hex}"></div><div class="hex">${Hex}</div></div>`;
+}
+
+// 🔴 The mask is DELIBERATELY minimal: create it, set its strength, remove it. Nothing else.
+//    The fill/invert toggles and the procedural component list (curvature, grunge noise, position gradient) are GONE —
+//    they belong to the mask's own properties panel, not to a row in the layer stack.
+function BuildMaskRegion(Record, Ordinal)
+{
+    if (!Record.MaskEnabled)
+    {
+        return `<div class="cap">MASK</div>
+                <div class="add-mask" data-act="mask-add" data-arg="${Ordinal}"><span class="plus"></span> Add mask</div>`;
+    }
+
+    return `<div class="cap">MASK</div>
+        <div class="mask-head" data-act="focus" data-arg="${Ordinal}" data-face="mask" title="Edit this mask">
+            <div class="tile" style="background:${ResolveMaskTone(Record)}"></div>
+            <div class="t"><b>Layer mask</b></div>
+            <div class="x" data-act="mask-drop" data-arg="${Ordinal}">${CrossMark()}</div>
+        </div>
+        ${BuildControlRow("Strength", BuildSlider(Record.MaskStrength, 0, 100, "%", `mask-strength:${Ordinal}`))}`;
+}
+
+function BuildExpand(Record, Ordinal)
+{
+    // 🔴 No "Visible" row here: the row's eye is the one visibility control, so repeating it as a Shown/Hidden pair
+    //    gave two widgets for one fact. Blend is the full seven-mode dropdown, not the first four as chips.
+    //    No "Paint" swatch either — the base-colour chip was noise; the thumb already carries that hue.
+    return `<div class="expand">
+        ${BuildControlRow("Blend",   BuildDropdown(BLEND_MODES, Record.BlendIndex, Ordinal, State.BlendMenuOrdinal === Ordinal))}
+        ${BuildControlRow("Opacity", BuildSlider(Record.Opacity, 0, 100, "%", `opacity:${Ordinal}`))}
+        ${BuildControlRow("Tag", BuildSwatch(Record.Tag))}
+        ${BuildMaskRegion(Record, Ordinal)}
+    </div>`;
+}
+
+function BuildRow(Record, Ordinal)
+{
+    const Kind = KINDS[Record.Kind];
+    const Meta = `${Kind.Label} · ${BLEND_MODES[Record.BlendIndex]} · ${Record.ChannelTotal} ch`;
+    const Ink  = Record.PaintsBaseColour ? `<div class="ink" style="background:${Record.Paint}"></div>` : "";
+
+    return `<div class="row ${Record.Shown ? '' : 'muted'}" data-act="focus" data-arg="${Ordinal}" data-face="layer">
+        <div class="thumb">${Ink}<div class="kind" style="background:${Kind.Tint}"></div></div>
+        <div class="txt"><b>${Escape(Record.Name)}</b><span>${Escape(Meta)}</span></div>
+        <div class="pill" data-scrub="opacity:${Ordinal}" data-min="0" data-max="100">${Math.round(Record.Opacity)}%</div>
+        <div class="eye"   data-act="visible-toggle" data-arg="${Ordinal}">${EyeMark(Record.Shown)}</div>
+        <div class="caret" data-act="fold"           data-arg="${Ordinal}">${Chevron()}</div>
+    </div>`;
+}
+
+function Render()
+{
+    const Cards = State.Layers.map((Record, Ordinal) =>
+    {
+        if (!PassesFilter(Record)) { return ""; }
+        const Classes = ["card"];
+        if (Record.Expanded)                  { Classes.push("open"); }
+        if (State.FocusOrdinal === Ordinal)   { Classes.push("focus"); }
+        const Bubble = `<div class="bubble"><div class="b" style="background:${Record.Shown ? Record.Tag : '#2a2a2a'};
+                            color:${Record.Shown ? ResolveInkOver(Record.Tag) : '#6c6c70'}">
+                            L${State.Layers.length - Ordinal}</div></div>`;
+
+        const Track = `<div class="track-col">
+                          <div class="seg-line" style="background:${Record.Shown ? Record.Tag : '#2a2a2a'}"></div>
+                          <div class="knot"></div>
+                      </div>`;
+
+        return `<div class="entry ${State.LiftedOrdinal === Ordinal ? 'lifted' : ''}" data-ord="${Ordinal}">
+            ${Bubble}${Track}
+            <div class="card-col"><div class="${Classes.join(' ')}">
+                ${BuildRow(Record, Ordinal)}
+                ${Record.Expanded ? BuildExpand(Record, Ordinal) : ""}
+            </div></div>
+        </div>`;
+    }).join("");
+
+    const AtCapacity = State.Layers.length >= LAYER_CAPACITY;
+    const KindRows = KINDS.map((Kind, Ordinal) =>
+        `<div class="kind" data-act="add-kind" data-arg="${Ordinal}">
+            <div class="sw" style="background:${Kind.Tint}"></div>
+            <div class="lb">${Kind.Label}</div><div class="sm">${Escape(Kind.Summary)}</div>
+        </div>`
+    ).join("");
+
+    const Hidden = HiddenCount();
+    const Foot   = Hidden > 0 ? `${State.Layers.length} / ${LAYER_CAPACITY}   ·   ${Hidden} hidden`
+                              : `${State.Layers.length} / ${LAYER_CAPACITY}`;
+
+    document.getElementById("rail").innerHTML = `
+        <div class="pane-head">
+            <div class="t"><b>Layers</b><span>${Escape(State.SurfaceName)}</span></div>
+            <div class="tally">${State.Layers.length}</div>
+        </div>
+        <div class="pane-body">
+            <div class="add ${State.AddListOpen ? 'open' : ''} ${AtCapacity ? 'capped' : ''}" data-act="add-open">
+                ${AtCapacity ? `Layer cap of ${LAYER_CAPACITY} reached` : `<span class="plus"></span> Add Layer`}
+            </div>
+            <div class="kind-list" ${State.AddListOpen ? "" : "hidden"}>${KindRows}</div>
+            <div class="filter">
+                ${Magnifier()}
+                <input id="filter" type="text" placeholder="Filter…" value="${Escape(State.FilterTerm)}">
+            </div>
+            <div class="stack">${Cards}</div>
+        </div>
+        <div class="pane-foot">${Foot}</div>`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     VERBS
+  🔴 Mutations are applied and then the whole rail is re-rendered, mirroring the C++'s deferred-verb pass: acting
+     mid-iteration would shift the records the remaining rows draw from.
+----------------------------------------------------------------------------------------------------------------------*/
+const Verbs = {
+    /* "add-open" is NOT here: it is intercepted above so its close can play an exit animation first. */
+    "focus":          (Ordinal)   => { State.FocusOrdinal = Ordinal; State.Layers[Ordinal].Expanded = true; },
+    "fold":           (Ordinal)   => { State.Layers[Ordinal].Expanded = !State.Layers[Ordinal].Expanded;
+                                       State.BlendMenuOrdinal = -1; },
+    "visible-toggle": (Ordinal)   => { State.Layers[Ordinal].Shown = !State.Layers[Ordinal].Shown; },
+    "blend-menu":     (Ordinal)   => { State.BlendMenuOrdinal = State.BlendMenuOrdinal === Ordinal ? -1 : Ordinal; },
+    "mask-add":       (Ordinal)   => { State.Layers[Ordinal].MaskEnabled = true; },
+    "mask-drop":      (Ordinal)   => { State.Layers[Ordinal].MaskEnabled = false; },
+};
+
+function InsertLayerOfKind(KindOrdinal)
+{
+    if (State.Layers.length >= LAYER_CAPACITY) { return; }
+    State.Layers.unshift({
+        Name:`${KINDS[KindOrdinal].Label} ${State.Layers.length + 1}`, Kind:KindOrdinal, BlendIndex:0,
+        Opacity:100, Shown:true, Expanded:false, Tag:KINDS[KindOrdinal].Tint, Paint:"#2e2d2b",
+        PaintsBaseColour:KINDS[KindOrdinal].Paintable || KindOrdinal === 2, ChannelTotal:3, StrokeCount:0,
+        MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100,
+    });
+    State.FocusOrdinal = 0;
+    State.AddListOpen  = false;
+}
+
+/* 🔴 Closing needs the node to still BE there while it collapses. A straight Render() would rip the panel out of the DOM
+      on the same frame and the exit would never be seen — so the animation runs on the LIVE element and the state change
+      plus re-render wait for animationend. Both fly-outs (the blend menu, the Add-Layer kind list) close through here. */
+function PlayExit(Element, Settle)
+{
+    if (!Element) { Settle(); Render(); return; }
+
+    Element.style.animation = "Fold .15s cubic-bezier(.4,0,.7,.2) forwards";
+    Element.addEventListener("animationend", () => { Settle(); Render(); }, { once:true });
+}
+
+function CloseBlendMenu()
+{
+    const Menu = document.querySelector(".drop.open .menu");
+    Menu?.closest(".drop").classList.remove("open");   /* the face chevron rotates back at once */
+    PlayExit(Menu, () => { State.BlendMenuOrdinal = -1; });
+}
+
+function CloseKindList()
+{
+    const List = document.querySelector(".kind-list:not([hidden])");
+    document.querySelector(".add")?.classList.remove("open");
+    PlayExit(List, () => { State.AddListOpen = false; });
+}
+
+// A finished drag ends in a pointerup that browsers follow with a click. Without this the click would land on whatever
+// row is now under the pointer and focus it, undoing the drag's own focus-follows-the-layer rule.
+let SuppressNextClick = false;
+
+document.getElementById("rail").addEventListener("click", (Event) =>
+{
+    if (SuppressNextClick) { SuppressNextClick = false; Event.stopPropagation(); return; }
+
+    const Target = Event.target.closest("[data-act]");
+    if (!Target) { return; }
+    Event.stopPropagation();
+
+    const Action = Target.dataset.act;
+    const Argument = Target.dataset.arg || "";
+
+    if (Action === "add-open")
+    {
+        if (State.AddListOpen) { CloseKindList(); }
+        else                   { State.AddListOpen = true; Render(); }
+        return;
+    }
+    if (Action === "add-kind")
+    {
+        const Chosen = Number(Argument);
+        PlayExit(Target.closest(".kind-list"), () => { InsertLayerOfKind(Chosen); });
+        return;
+    }
+    if (Action === "blend-pick")
+    {
+        const [Ordinal, Index] = Argument.split(":").map(Number);
+        State.Layers[Ordinal].BlendIndex = Index;
+        CloseBlendMenu();
+        return;
+    }
+    if (Verbs[Action]) { Verbs[Action](Number(Argument)); Render(); return; }
+});
+
+// A click anywhere off the menu dismisses it — with the same closing animation.
+document.addEventListener("pointerdown", (Event) =>
+{
+    if (State.BlendMenuOrdinal < 0) { return; }
+    if (Event.target.closest(".drop")) { return; }
+    CloseBlendMenu();
+});
+
+/*---- the horizontal scrub shared by the row pill and every slider track --------------------------------------------*/
+let Scrub = null;
+
+document.getElementById("rail").addEventListener("pointerdown", (Event) =>
+{
+    const Target = Event.target.closest("[data-scrub]");
+    if (!Target) { return; }
+    Event.preventDefault();
+    Event.stopPropagation();
+
+    const [Verb, OrdinalText] = Target.dataset.scrub.split(":");
+    Scrub = {
+        Verb, Ordinal:Number(OrdinalText),
+        Minimum:Number(Target.dataset.min), Maximum:Number(Target.dataset.max),
+        Track:Target.classList.contains("track") ? Target : null,
+        /* the row pill keeps the C++'s MouseDelta.x * 0.6; a value-pill number uses range/400 per pixel */
+        Speed:Number(Target.dataset.speed) || 0.6,
+        LastX:Event.clientX,
+    };
+    document.body.classList.add("scrubbing");
+    Target.setPointerCapture?.(Event.pointerId);
+});
+
+window.addEventListener("pointermove", (Event) =>
+{
+    if (!Scrub) { return; }
+    const Record = State.Layers[Scrub.Ordinal];
+    const Span   = Scrub.Maximum - Scrub.Minimum;
+
+    let Value;
+    if (Scrub.Track)
+    {
+        // a track scrubs absolutely, from where the pointer is along its width
+        const Box = Scrub.Track.getBoundingClientRect();
+        Value = Scrub.Minimum + Span * Math.min(1, Math.max(0, (Event.clientX - Box.left) / Box.width));
+    }
+    else
+    {
+        // a pill scrubs RELATIVELY, at its own per-pixel speed
+        const Current = Scrub.Verb === "opacity" ? Record.Opacity : Record.MaskStrength;
+        Value = Current + (Event.clientX - Scrub.LastX) * Scrub.Speed;
+        Scrub.LastX = Event.clientX;
+    }
+    Value = Math.min(Scrub.Maximum, Math.max(Scrub.Minimum, Value));
+
+    if (Scrub.Verb === "opacity")           { Record.Opacity      = Value; }
+    else if (Scrub.Verb === "mask-strength"){ Record.MaskStrength = Value; }
+    Render();
+});
+
+window.addEventListener("pointerup", () =>
+{
+    Scrub = null;
+    document.body.classList.remove("scrubbing");
+});
+
+/*---- the filter box -------------------------------------------------------------------------------------------------*/
+document.getElementById("rail").addEventListener("input", (Event) =>
+{
+    if (Event.target.id !== "filter") { return; }
+    State.FilterTerm = Event.target.value;
+    Render();
+    const Field = document.getElementById("filter");
+    if (Field) { Field.focus(); Field.setSelectionRange(Field.value.length, Field.value.length); }
+});
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 DRAG TO REORDER
+  🔴 This is the verb the C++ declares (RelocateLayer, LayerRecordTable.h) and never calls. Ordinal 0 is the TOPMOST
+     layer, so dragging UP lowers the ordinal and dragging DOWN raises it.
+
+     Two ordinals are in play and conflating them is the classic off-by-one: Lifted is where the layer came FROM, and
+     Slot is the GAP it will drop into (0 .. Length, so Length means "past the last row"). Removing the layer first
+     shifts every ordinal above it down by one, which is why the insert index is decremented when moving downward.
+----------------------------------------------------------------------------------------------------------------------*/
+function RelocateLayer(FromOrdinal, ToSlot)
+{
+    if (FromOrdinal < 0 || ToSlot < 0) { return false; }
+    if (ToSlot === FromOrdinal || ToSlot === FromOrdinal + 1) { return false; }   // dropped back where it started
+
+    const [Moved] = State.Layers.splice(FromOrdinal, 1);
+    State.Layers.splice(ToSlot > FromOrdinal ? ToSlot - 1 : ToSlot, 0, Moved);
+    return true;
+}
+
+let Lift = null;
+
+// The gap the pointer is nearest: each row claims the slot above it in its top half, below it in its bottom half.
+function ResolveDropSlot(PointerY)
+{
+    const Entries = [...document.querySelectorAll(".entry")];
+    for (const Entry of Entries)
+    {
+        const Box = Entry.getBoundingClientRect();
+        if (PointerY < Box.top + Box.height * 0.5) { return Number(Entry.dataset.ord); }
+    }
+    return State.Layers.length;
+}
+
+function PaintDropLine(Slot)
+{
+    document.querySelector(".drop-line")?.remove();
+    const Stack = document.querySelector(".stack");
+    if (!Stack) { return; }
+
+    const Entries = [...document.querySelectorAll(".entry")];
+    const StackBox = Stack.getBoundingClientRect();
+    let OffsetY;
+
+    if (Slot >= Entries.length)
+    {
+        const Last = Entries[Entries.length - 1].getBoundingClientRect();
+        OffsetY = Last.bottom - StackBox.top - 1;
+    }
+    else
+    {
+        OffsetY = Entries[Slot].getBoundingClientRect().top - StackBox.top - 1;
+    }
+
+    const Line = document.createElement("div");
+    Line.className = "drop-line";
+    Line.style.top = `${OffsetY}px`;
+    Stack.appendChild(Line);
+}
+
+document.getElementById("rail").addEventListener("pointerdown", (Event) =>
+{
+    if (Event.target.closest("[data-scrub]")) { return; }     // a scrub owns the drag instead
+    if (Event.target.closest(".eye,.caret,.drop,.mask-head .x,.add-mask")) { return; }
+
+    const Entry = Event.target.closest(".entry");
+    if (!Entry) { return; }
+
+    // Armed but not yet dragging: a plain click must still focus the row, so wait for 4px of travel.
+    Lift = { Ordinal:Number(Entry.dataset.ord), StartY:Event.clientY, StartX:Event.clientX, Live:false, Proxy:null };
+});
+
+window.addEventListener("pointermove", (Event) =>
+{
+    if (!Lift) { return; }
+
+    if (!Lift.Live)
+    {
+        if (Math.abs(Event.clientY - Lift.StartY) < 4) { return; }
+
+        Lift.Live = true;
+        State.LiftedOrdinal = Lift.Ordinal;
+        document.body.classList.add("dragging");
+
+        // Clone the row into a floating proxy BEFORE the re-render replaces the DOM.
+        const Source = document.querySelector(`.entry[data-ord="${Lift.Ordinal}"] .card`);
+        const Box    = Source.getBoundingClientRect();
+        Lift.Proxy = Source.cloneNode(true);
+        Lift.Proxy.className = "drag-proxy";
+        Lift.Proxy.style.width  = `${Box.width}px`;
+        Lift.Proxy.style.left   = `${Box.left}px`;
+        Lift.Proxy.querySelector(".expand")?.remove();   // carry only the row, never the open body
+        document.body.appendChild(Lift.Proxy);
+        Lift.GrabDy = Event.clientY - Box.top;
+
+        Render();
+    }
+
+    Lift.Proxy.style.top = `${Event.clientY - Lift.GrabDy}px`;
+    Lift.Slot = ResolveDropSlot(Event.clientY);
+    PaintDropLine(Lift.Slot);
+});
+
+window.addEventListener("pointerup", () =>
+{
+    if (!Lift) { return; }
+
+    if (Lift.Live)
+    {
+        SuppressNextClick = true;
+        Lift.Proxy?.remove();
+        document.querySelector(".drop-line")?.remove();
+        document.body.classList.remove("dragging");
+
+        const Moved = RelocateLayer(Lift.Ordinal, Lift.Slot ?? Lift.Ordinal);
+        // Focus follows the layer to its new home, so the card you dragged stays the selected one.
+        if (Moved)
+        {
+            State.FocusOrdinal = Lift.Slot > Lift.Ordinal ? Lift.Slot - 1 : Lift.Slot;
+        }
+        State.LiftedOrdinal = -1;
+        Render();
+    }
+    Lift = null;
+});
+
+document.getElementById("outline").addEventListener("change", (Event) =>
+{
+    document.body.classList.toggle("outline", Event.target.checked);
+});
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 CAROUSEL BRIDGE
+  🧩 Live ONLY when SurfaceInspectorCarousel.html frames this page. It docks the rail into its well and broadcasts the
+     focused layer upward, so the property pane beside it shows what this stack points at.
+
+  🔴 Registered AFTER the rail's own click listener and on the SAME element: the existing handler calls
+     stopPropagation (which does not silence a sibling listener on that element) and has already applied the verb, so
+     State.FocusOrdinal is settled by the time this reads it. A capture-phase listener would read the PREVIOUS focus.
+----------------------------------------------------------------------------------------------------------------------*/
+(function(){
+    if (window.parent === window) { return; }
+    document.documentElement.classList.add("Docked");
+
+    const Post = (Message) =>
+        window.parent.postMessage(Object.assign({ Bridge:"SurfaceInspector" }, Message), "*");
+
+    // 📝 The pane's schema, not this panel's: Kind/BlendIndex ordinals and the flat Mask* fields are translated
+    //    here so neither side has to know the other's tables.
+    const Describe = (Ordinal) =>
+    {
+        const Record = State.Layers[Ordinal];
+        if (!Record) { return null; }
+        const Classification = ["paint", "fill", "material", "generator"][Record.Kind] ?? "paint";
+        return {
+            Token:`L${Ordinal}`, Name:Record.Name,
+            Classification, Kind:Classification,
+            Shown:Record.Shown, Blend:BLEND_MODES[Record.BlendIndex], Opacity:Math.round(Record.Opacity),
+            Tint:Record.Tag, Paint:Record.Paint, ChannelTotal:Record.ChannelTotal,
+            StrokeCount:Record.StrokeCount,
+            Mask:Record.MaskEnabled ? {
+                Enabled:true, Fill:Record.MaskFill, Invert:Record.MaskInverted,
+                Strength:Math.round(Record.MaskStrength)
+            } : null
+        };
+    };
+
+    let LastBroadcast = -1;
+
+    const Announce = (Face) =>
+    {
+        LastBroadcast = State.FocusOrdinal;
+        Post({ Note:"Focus", Record:Describe(State.FocusOrdinal), Face:Face });
+    };
+
+    document.getElementById("rail").addEventListener("click", (Event) =>
+    {
+        const Target = Event.target.closest("[data-act]");
+        if (!Target) { return; }
+
+        // A layer row asks for the layer's channels; its mask tile asks for the mask. Every other verb
+        // (fold, eye, blend, add) still re-broadcasts, because it changed what the pane is showing.
+        if (Target.dataset.act === "focus") { Announce(Target.dataset.face || "layer"); }
+        else                                { Announce(null); }
+    });
+
+    // A drag that moves the layer carries focus with it, so the pane must follow the same record.
+    window.addEventListener("pointerup", () => {
+        if (State.FocusOrdinal !== LastBroadcast) { Announce(null); }
+    });
+
+    // The shell owns the carousel; a Tab landing in this frame belongs to it.
+    window.addEventListener("keydown", (Event) => {
+        if (Event.key !== "Tab") { return; }
+        Event.preventDefault();
+        Post({ Note:"Key", Key:"Tab" });
+    });
+
+    Post({ Note:"Ready", Face:"stack" });
+    Announce("layer");
+})();
+
+Render();
+</script>
+</body>
+</html>

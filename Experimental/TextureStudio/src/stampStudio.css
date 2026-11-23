@@ -1,0 +1,729 @@
+.stamp-studio {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: #151515;
+  color: #c8c8b8;
+  font:
+    11px "DM Sans",
+    sans-serif;
+  min-width: 0;
+}
+.stamp-studio button,
+.stamp-studio input,
+.stamp-studio select,
+.stamp-studio textarea {
+  font: inherit;
+  color: inherit;
+}
+.stamp-studio button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid #ffffff12;
+  background: #242423;
+  border-radius: 7px;
+  padding: 7px 10px;
+  min-height: 28px;
+  cursor: pointer;
+}
+.stamp-studio button:hover:not(:disabled) {
+  background: #34342e;
+  border-color: #d9b28166;
+}
+.stamp-studio button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.stamp-studio button:focus-visible,
+.stamp-studio [contenteditable]:focus-visible {
+  outline: 2px solid #d9b281;
+  outline-offset: 2px;
+}
+.stamp-studio .tp-workspace-header {
+  flex: none;
+  min-height: 58px;
+}
+.stamp-studio .stamp-use,
+.stamp-studio .stamp-save-preset {
+  color: #e8cba2;
+  background: #3b3022;
+  border-color: #b99b6055;
+}
+.stamp-layout {
+  display: grid;
+  grid-template-columns: 245px minmax(220px, 1fr) 335px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.stamp-left,
+.stamp-right,
+.stamp-centre {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.stamp-left {
+  background: #181818;
+  border-right: 1px solid #ffffff0d;
+}
+.stamp-right {
+  background: #202020;
+  border-left: 1px solid #ffffff0d;
+}
+.stamp-left-title,
+.stamp-property-heading,
+.stamp-preset-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+  gap: 8px;
+}
+.stamp-left-title h1 {
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0;
+  color: #dedecf;
+}
+.stamp-left-title small {
+  color: #7f7f72;
+}
+.stamp-add-tools {
+  display: flex;
+  padding: 10px 12px;
+  gap: 6px;
+}
+.stamp-add-tools > button {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 10px;
+}
+.stamp-component-list {
+  flex: 0 1 290px;
+  overflow: auto;
+  min-height: 90px;
+  padding: 0 8px;
+}
+.stamp-component-row {
+  display: flex;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  margin-bottom: 3px;
+}
+.stamp-component-row.selected {
+  background: #292722;
+  border-color: #d9b28144;
+}
+.stamp-component-row > button {
+  background: none;
+  border: 0;
+}
+.stamp-component-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 7px;
+  justify-content: flex-start;
+  gap: 10px;
+  text-align: left;
+}
+.stamp-component-row > button:first-child > span {
+  min-width: 0;
+}
+.stamp-component-row strong {
+  display: block;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.stamp-component-row small {
+  display: block;
+  font-size: 8px;
+  color: #8c8b78;
+  margin-top: 5px;
+}
+.stamp-component-row > button:last-child {
+  width: 24px;
+  padding: 0;
+  flex: none;
+  color: #8a8a7c;
+}
+.stamp-layer-actions {
+  display: flex;
+  padding: 8px 13px;
+  gap: 6px;
+  border-bottom: 1px solid #ffffff0d;
+}
+.stamp-layer-actions > button {
+  background: none;
+  border: 0;
+  width: 28px;
+  padding: 5px;
+}
+.stamp-preset-heading h2 {
+  font-weight: 500;
+  font-size: 12px;
+  margin: 0;
+}
+.stamp-preset-heading > button {
+  padding: 0;
+  width: 26px;
+}
+.stamp-preset-list {
+  overflow: auto;
+  flex: 1;
+  min-height: 80px;
+  padding: 8px 12px;
+}
+.stamp-preset-list > button {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  margin-bottom: 8px;
+}
+.stamp-preset-list img {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  object-fit: contain;
+}
+.stamp-preset-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stamp-preset-list small {
+  display: block;
+  font-size: 8px;
+  color: #90907e;
+  padding-top: 5px;
+}
+.stamp-centre {
+  background: radial-gradient(ellipse at 50% 45%, #232320, #151515 75%);
+}
+.stamp-canvas-size {
+  margin-left: 9px;
+  font-size: 8px;
+  color: #727267;
+}
+.stamp-canvas-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  border-bottom: 1px solid #ffffff08;
+  flex: none;
+}
+.stamp-transform-tools,
+.stamp-canvas-exports {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.stamp-transform-tools {
+  flex-wrap: wrap;
+}
+.stamp-canvas-exports {
+  margin-left: auto;
+}
+.stamp-studio .stamp-canvas-toolbar button {
+  min-height: 25px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 9px;
+}
+.stamp-studio .stamp-transform-tools button[aria-pressed="true"] {
+  background: #3b3022;
+  border-color: #d9b28166;
+  color: #e8cba2;
+}
+.stamp-transform-tools kbd {
+  font: inherit;
+  color: #9f9988;
+  padding: 1px 4px;
+  border: 1px solid #ffffff12;
+  border-radius: 4px;
+}
+.stamp-transform-help {
+  flex: none;
+  padding: 7px 15px;
+  color: #929283;
+  font-size: 9px;
+  line-height: 1.7;
+}
+.stamp-canvas-surround {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px;
+  overflow: hidden;
+}
+.stamp-canvas {
+  position: relative;
+  width: min(100%, 512px);
+  max-height: 100%;
+  aspect-ratio: 1;
+  background: repeating-conic-gradient(#292927 0% 25%, #242422 0% 50%) 0 0 /
+    24px 24px;
+  border: 1px solid #ffffff17;
+  box-shadow: 0 22px 80px #0005;
+  flex: none;
+  touch-action: none;
+}
+.stamp-canvas > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  object-fit: contain;
+  pointer-events: none;
+}
+.stamp-studio .stamp-canvas .stamp-canvas-object {
+  position: absolute;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+  min-height: 0;
+  touch-action: none;
+  cursor: move;
+  transition: border-color 0.12s;
+}
+/* These buttons are transparent hit areas, not UI cards. Never let a shared
+   button hover/active background obscure the composed SVG underneath them. */
+.stamp-studio .stamp-canvas .stamp-canvas-object:hover,
+.stamp-studio .stamp-canvas .stamp-canvas-object:active {
+  background: transparent;
+  border-color: #d9b28166;
+}
+.stamp-studio .stamp-canvas .stamp-canvas-object.selected {
+  border-color: #d9b281;
+  background: transparent;
+}
+.stamp-transform-move,
+.stamp-transform-move .stamp-canvas,
+.stamp-studio .stamp-transform-move .stamp-canvas-object {
+  cursor: move;
+}
+.stamp-transform-rotate,
+.stamp-transform-rotate .stamp-canvas,
+.stamp-studio .stamp-transform-rotate .stamp-canvas-object {
+  cursor: crosshair;
+}
+.stamp-transform-scale,
+.stamp-transform-scale .stamp-canvas,
+.stamp-studio .stamp-transform-scale .stamp-canvas-object {
+  cursor: nwse-resize;
+}
+.stamp-object-label {
+  position: absolute;
+  left: -1px;
+  bottom: 100%;
+  background: #d9b281;
+  color: #241c12;
+  padding: 3px 5px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.stamp-resize-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  bottom: -5px;
+  right: -5px;
+  background: #e4c498;
+  border: 1px solid #1b1b18;
+  cursor: nwse-resize;
+}
+.stamp-canvas-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex: none;
+  padding: 18px;
+  color: #b8b8a4;
+}
+.stamp-canvas-caption small {
+  display: block;
+  font-size: 9px;
+  color: #7e7e6e;
+  margin-top: 5px;
+}
+.stamp-inspector-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+.stamp-identity {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 22px;
+}
+.stamp-identity > svg {
+  color: #d9b281;
+  flex: none;
+}
+.stamp-identity small {
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  color: #949480;
+}
+.stamp-identity h1 {
+  margin: 5px 0 4px;
+  font-size: 19px;
+  font-weight: 500;
+  color: #e2e2d2;
+}
+.stamp-identity p {
+  font-size: 9px;
+  line-height: 1.6;
+  margin: 0;
+  color: #929282;
+}
+.stamp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 10px;
+  color: #a5a591;
+}
+.stamp-field input,
+.stamp-field select,
+.stamp-rich-toolbar input,
+.stamp-rich-toolbar select {
+  min-width: 0;
+  background: #151515;
+  border: 1px solid #ffffff16;
+  border-radius: 6px;
+  padding: 8px 9px;
+  outline-color: #d9b281;
+  color: #d7d7c2;
+}
+.stamp-component-properties {
+  margin-top: 18px;
+  border-top: 1px solid #ffffff12;
+}
+.stamp-property-heading {
+  padding: 14px 0;
+}
+.stamp-property-heading h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.stamp-property-heading > button {
+  padding: 4px;
+  border: 0;
+  background: none;
+}
+.stamp-note {
+  margin: 10px 0;
+  font-size: 9px;
+  line-height: 1.7;
+  color: #939383;
+}
+.stamp-rich-toolbar {
+  display: flex;
+  gap: 5px;
+}
+.stamp-rich-toolbar > select {
+  width: 145px;
+  flex: 1;
+  font-size: 10px;
+  padding: 6px;
+}
+.stamp-rich-toolbar > input {
+  width: 54px;
+  padding: 6px;
+}
+.stamp-rich-toolbar > button {
+  width: 28px;
+  padding: 3px;
+}
+.stamp-rich-toolbar > button[aria-pressed="true"] {
+  border-color: #d9b281;
+  color: #e5cfa3;
+}
+.stamp-text-selection {
+  font-size: 8px;
+  line-height: 1.5;
+  color: #969580;
+  margin: 8px 0;
+}
+.stamp-rich-text [contenteditable] {
+  white-space: pre-wrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  overflow: auto;
+  min-height: 90px;
+  max-height: 230px;
+  padding: 12px;
+  background: #151515;
+  border: 1px solid #ffffff18;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  line-height: 1.2;
+}
+.stamp-rich-text [contenteditable]:empty::before {
+  content: "Type stamp text…";
+  color: #7a7a6e;
+  font-size: 16px;
+}
+.stamp-svg-editor > textarea {
+  display: block;
+  width: 100%;
+  height: 160px;
+  resize: vertical;
+  font: 9px/1.6 monospace;
+  background: #151515;
+  border: 1px solid #ffffff16;
+  border-radius: 8px;
+  padding: 9px;
+}
+.stamp-svg-editor > div {
+  display: flex;
+  gap: 7px;
+  margin-top: 9px;
+}
+.stamp-image-source img {
+  width: 100%;
+  max-height: 130px;
+  object-fit: contain;
+  background: #171717;
+  border-radius: 8px;
+}
+.stamp-shared-controls {
+  margin: 16px 0 22px;
+}
+.stamp-shared-controls .slider-field {
+  margin-bottom: 14px;
+}
+.stamp-channel-controls {
+  margin: 22px 0 18px;
+  border-top: 1px solid #ffffff12;
+  padding-top: 14px;
+}
+.stamp-channel-controls h3 {
+  font-size: 12px;
+  margin: 0 0 12px;
+  font-weight: 500;
+}
+.stamp-channel-controls h3 small {
+  float: right;
+  font-size: 8px;
+  color: #9b9b85;
+}
+.stamp-channel-chips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.stamp-channel-chips > button {
+  font-size: 9px;
+  text-align: left;
+  justify-content: flex-start;
+  color: #999988;
+  padding: 6px;
+  min-width: 0;
+}
+.stamp-channel-chips > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stamp-channel-chips > button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--channel-color), transparent 40%);
+  background: #2d2d24;
+  color: #dbdbbc;
+}
+.stamp-channel-value {
+  margin-top: 13px;
+}
+.stamp-save-preset {
+  width: 100%;
+  margin-top: 10px;
+}
+.stamp-error {
+  color: #f5b6a2;
+  background: #502b2522;
+  border: 1px solid #d5856640;
+  border-radius: 7px;
+  padding: 9px;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.stamp-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 14px;
+  min-height: 31px;
+  flex: none;
+  border-top: 1px solid #ffffff0b;
+  font-size: 9px;
+  color: #959583;
+  background: #191918;
+}
+.stamp-status > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stamp-status button {
+  background: none;
+  border: 0;
+  min-height: 21px;
+  padding: 3px;
+}
+.stamp-status small {
+  font-size: 8px;
+}
+.stamp-mobile-nav {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .stamp-layout {
+    grid-template-columns: 205px minmax(160px, 1fr) 310px;
+  }
+  .stamp-canvas-surround {
+    padding: 26px;
+  }
+  .stamp-studio .tp-workspace-brand {
+    min-width: 150px;
+  }
+}
+@media (max-width: 760px) {
+  .stamp-layout {
+    display: flex;
+    position: relative;
+  }
+  .stamp-left,
+  .stamp-centre,
+  .stamp-right {
+    width: 100%;
+    flex: 1;
+    display: none;
+  }
+  .stamp-mobile-layers .stamp-left,
+  .stamp-mobile-canvas .stamp-centre,
+  .stamp-mobile-inspector .stamp-right {
+    display: flex;
+  }
+  .stamp-mobile-nav {
+    display: flex;
+    gap: 5px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #ffffff0c;
+  }
+  .stamp-mobile-nav > button {
+    flex: 1;
+    text-transform: capitalize;
+  }
+  .stamp-mobile-nav > button[aria-pressed="true"] {
+    border-color: #d9b28166;
+    background: #363024;
+  }
+  .stamp-canvas-surround {
+    padding: 24px;
+  }
+  .stamp-studio .stamp-use {
+    font-size: 9px;
+    padding: 5px;
+  }
+  .stamp-studio .tp-file-name {
+    max-width: 65px;
+  }
+  .stamp-status > span:first-child {
+    max-width: 47%;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .stamp-status small {
+    display: none;
+  }
+}
+
+.stamp-preset-row {
+  display: flex;
+  margin-bottom: 8px;
+  gap: 3px;
+  min-width: 0;
+}
+.stamp-preset-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+  justify-content: flex-start;
+}
+.stamp-preset-row > button:last-child {
+  flex: none;
+  width: 23px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: #83836f;
+}
+.stamp-studio .stamp-save-copy {
+  width: 100%;
+  margin-top: 7px;
+  color: #aaa994;
+  font-size: 10px;
+}
+
+/* Keep file actions reachable on phones instead of clipping them behind the
+   fifth workspace pill. The composition stays a single, full-width panel. */
+@media (max-width: 680px) {
+  .stamp-studio .studio-shared-header {
+    display: grid;
+    grid-template-columns: minmax(45px, 1fr) auto;
+    grid-template-rows: auto auto;
+    height: auto;
+    min-height: 76px;
+    padding: 5px 10px;
+    gap: 3px 8px;
+  }
+  .stamp-studio .tp-workspace-brand {
+    min-width: 0;
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .stamp-studio .studio-header-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+  .stamp-studio .studio-header-actions > .stamp-use {
+    width: auto;
+    padding: 4px 7px;
+    white-space: nowrap;
+    background: #3b3022 !important;
+  }
+  .stamp-studio .tp-workspace-switch {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-left: 0;
+    justify-self: stretch;
+    justify-content: center;
+  }
+  .stamp-studio .tp-workspace-switch > button {
+    flex: 1;
+  }
+}

@@ -1,0 +1,2633 @@
+?<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier — Construction Catalogue Menu</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════════
+     Palette — lifted verbatim from ModellingToolMenu.html. Same rail+grid two-pane
+     shape, same near-black ink, same single blue accent. This is the CAD counterpart
+     of that menu: identical chrome, different payload. Where the modelling menu asks
+     "what can I do to this selection?", this one asks "what can I bring into
+     existence here?" — 128 B-rep construction operations across 11 bands, gated by
+     OpenCASCADE's dimension-raising law rather than by a hand-written table.
+     ═════════════════════════════════════════════════════════════════════════ */
+  :root{
+    --desk:        #0a0a0b;
+    --menu:        #17171a;
+    --menu-2:      #101012;   /* item-grid pane, one notch darker */
+    --rail-sel:    #232327;
+    --tile:        #1d1d21;
+    --tile-hi:     #26262b;
+    --hair:        rgba(255,255,255,.06);
+    --hair-strong: rgba(255,255,255,.10);
+    --accent:      #5b8cff;
+    --ink:         #ececf0;
+    --muted:       #82828c;
+    --faint:       #55555d;
+
+    --r-menu: 18px;
+    --r-tile: 12px;
+
+    /* Value-pill + control tokens, mirrored from ToolOptionsWidget.html so the options
+       pane is the same widget set, not a lookalike rebuilt against this menu's palette. */
+    --value-black:  #0a0a0b;
+    --value-unit:   #33333a;
+    --value-focus:  #303035;
+    --track-bg:     #2f2f33;
+    --track-fill:   #8a8a8e;
+    --knob:         #f4f4f5;
+    --outline:      rgba(255,255,255,.22);
+    --text-value:   #f2f2f4;
+    --row-h:        38px;
+
+    /* 🔴 CAD-only tokens. The construction menu carries two signals the modelling menu
+       has no use for: a RESULT-TYPE prediction (amber — "this runs, but you get a shell
+       not a solid") and an OFFER-THE-FIX chip (blue — "set a workplane", one click away).
+       Both are new colour roles, so both are named here rather than reused from --accent:
+       a prediction is not an action, and a remedy is not a complaint. */
+    --shortfall:   #c9a227;   /* gated reason text — the modelling menu's .t-why tone */
+    --predict:     #d9a441;   /* result-type badge: "→ shell" */
+    --remedy:      #5b8cff;   /* offer-the-fix chip; deliberately the accent */
+    --ok:          #4ac26b;   /* condition dot, satisfied */
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--desk); color:var(--ink);
+    font:14px/1 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none; cursor:default;
+  }
+
+  /* viewport backdrop */
+  .viewport{
+    position:fixed; inset:0;
+    background:radial-gradient(1200px 820px at 50% 40%, #17181c 0%, #0d0e10 58%, #08090a 100%);
+  }
+  .viewport::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size:46px 46px; background-position:center;
+    -webkit-mask-image:radial-gradient(circle at 50% 42%, #000 40%, transparent 82%);
+            mask-image:radial-gradient(circle at 50% 42%, #000 40%, transparent 82%);
+  }
+  .hint{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:var(--faint); font-size:14px; text-align:center; line-height:1.9; pointer-events:none;
+  }
+  .hint kbd{
+    background:var(--tile); border:1px solid var(--hair-strong); border-radius:7px;
+    padding:3px 9px; font:inherit; font-size:12px; color:var(--muted);
+  }
+
+  /* dimension switch — sets which topological input the catalogue is gated against.
+     The modelling menu's stratum bar, relabelled: GeometryDimension in place of
+     TopologyStratum, because the CAD gate reads dimension, not selection stratum. */
+  .dimension{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:6px; z-index:80;
+    background:var(--menu); border:1px solid var(--hair-strong); border-radius:999px; padding:6px;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);
+  }
+  .dimension .lbl{
+    font-size:10px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--faint); padding:0 8px 0 10px;
+  }
+  .dimension button{
+    background:none; border:0; color:var(--muted); font:inherit; font-size:12.5px;
+    padding:6px 13px; border-radius:999px; cursor:pointer; transition:background .12s, color .12s;
+  }
+  .dimension button:hover{ color:var(--ink); }
+  .dimension button.on{ background:var(--rail-sel); color:var(--ink); }
+
+  /* ═════════════════════════════════ CATALOGUE MENU ═════════════════════════════════ */
+  /* Two panes, exactly as the modelling menu: a slim BAND rail (icon + word + count)
+     and a GRID of construction tiles that swaps as you move down the rail. */
+  .catalogue{
+    position:fixed; z-index:100; display:none;
+    background:var(--menu); border:1px solid var(--hair-strong);
+    border-radius:var(--r-menu); overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+    transform-origin:top left;
+  }
+  .catalogue.open{
+    display:block;
+    /* 🔴 The card is fixed on BOTH axes, and each pane scrolls INSIDE that box.
+       Height: left uncapped, the rail alone is ~600 px and the card reaches the screen
+       edge, which reads as a docked panel rather than a transient menu.
+       Width: the carousel track is 200% of the card, so a shrink-to-fit card would
+       size itself to BOTH slides laid side by side — roughly double the intended
+       width. The width is therefore stated once here, and the track derives from it:
+       rail/probe column 196 px + grid/options column 326 px + the 1 px hairline. */
+    width:523px;
+    height:min(396px, 76vh);
+    animation:pop .14s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes pop{ from{ opacity:0; transform:scale(.97) translateY(-4px); } to{ opacity:1; transform:none; } }
+
+  /* ═════════════════════════════════ CAROUSEL ═════════════════════════════════ */
+  /* Two slides on one track. The card is the viewport; the track is twice its width and
+     translates by exactly half.
+     🔴 The card HEIGHT is fixed (not max-height) rather than left to the content: the
+     options pane is routinely taller than the tile grid, and a card that grows while it
+     is mid-translate reads as broken rather than as one surface moving. Each pane scrolls
+     inside the fixed cap instead. */
+  .cat-view{ height:100%; overflow:hidden; }
+  .cat-track{
+    display:flex; width:200%; height:100%;
+    transition:transform .34s cubic-bezier(.5,.05,.2,1);
+  }
+  .cat-track.to-options{ transform:translateX(-50%); }
+  /* Each slide re-declares the SAME two-pane split the card used to own, so the rail and
+     the metadata column are one width and the grid and options column are another. Panes
+     that resized mid-slide would read as two cards swapping, not one card moving. */
+  /* 🔴 The left column is PINNED, not `auto`. Under `auto` the rail sizes to its widest
+     label and the probe pane to its widest readout, so the two slides would disagree
+     by a few pixels and the seam would visibly step as the track translates. */
+  .cat-slide{ width:50%; height:100%; display:grid; grid-template-columns:196px minmax(0,1fr); min-height:0; }
+
+  /* Both panes share one shape: a pinned header over a scrolling body. The header must
+     NOT scroll away — it names what the body is showing, which is the one thing a reader
+     needs while mid-scroll. */
+  .rail, .grid-pane{ display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+
+  /* ── pane headers ── */
+  /* 🔴 Badge tile · two-line text block · pill. Both panes use the SAME rule, so the two
+     headers are pixel-identical in height and land on one continuous band across the card
+     — a 31 px header beside a 52 px one reads as two stacked cards rather than one menu
+     with two panes. Height is fixed rather than left to the content, because the right
+     pane's subtitle is one line and the left's is two, and intrinsic sizing would drift
+     them apart. */
+  .pane-head{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    height:53px; padding:0 13px; box-sizing:border-box;
+    background:var(--rail-sel); border-bottom:1px solid var(--hair);
+  }
+  /* Both header icons sit on the same black tile. The left one is coloured badge art with
+     its own <rect> backing; the right is a monochrome construction glyph, so the tile is
+     supplied here — otherwise the two headers carry visibly different artwork weight. */
+  .pane-head .h-ic{
+    width:24px; height:24px; flex:0 0 auto; color:var(--ink);
+    background:#000; border-radius:6px; display:grid; place-items:center;
+  }
+  .pane-head .h-ic svg{ width:24px; height:24px; border-radius:6px; }
+  .grid-pane .pane-head .h-ic svg{ width:17px; height:17px; }   /* inset, the badge art is full-bleed */
+  .pane-head .h-txt{
+    flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+  }
+  /* the muted second line — "N of M operations", "Wire · open" — under the title */
+  .pane-head .h-txt .fn{
+    display:block; color:var(--faint); font-weight:400; font-size:10px; letter-spacing:.3px;
+    margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .pane-head .h-n{
+    flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+    background:var(--menu-2); padding:4px 9px; border-radius:999px;
+  }
+  .pane-head .h-n.accent{ color:var(--accent); }
+
+  /* ── scrolling bodies ── */
+  /* Scrollbar is hidden on both: a 10 px gutter inside the card is real width spent on
+     chrome, and the clipped last row already signals more. */
+  .rail-body, .grid-body{
+    flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .rail-body::-webkit-scrollbar, .grid-body::-webkit-scrollbar{ width:0; height:0; }
+
+  /* ── left rail ── */
+  .rail{ background:var(--menu); border-right:1px solid var(--hair); }
+  /* The 196 px column width is pinned on `.cat-slide`; it is set by the HEADER, not the
+     rows. The body just fills the column. */
+  .rail-body{ padding:7px; display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .rail-item{
+    position:relative; display:flex; align-items:center; gap:9px;
+    height:32px; padding:0 9px 0 8px; border-radius:9px;
+    color:var(--muted); font-size:12.5px; cursor:pointer;
+    transition:background .12s, color .12s, opacity .12s;
+  }
+  .rail-item:hover{ color:var(--ink); }
+  .rail-item.active{ background:var(--rail-sel); color:var(--ink); }
+  /* accent tick on the active band */
+  .rail-item.active::before{
+    content:""; position:absolute; left:-7px; top:50%; transform:translateY(-50%);
+    width:3px; height:15px; border-radius:0 3px 3px 0; background:var(--accent);
+  }
+  /* 📝 A band with nothing live for the current dimension is omitted from the rail entirely
+     rather than dimmed — the modelling menu settled this, and the same reasoning holds:
+     a row you cannot click is noise wearing the shape of a control. */
+  .rail-item .r-ic{ width:18px; height:18px; flex:0 0 auto; color:var(--ink); }
+  .rail-item .r-ic svg{ width:18px; height:18px; }
+  .rail-item .r-lbl{ flex:1; }
+  .rail-item .r-n{ font-size:10px; color:var(--faint); font-variant-numeric:tabular-nums; }
+
+  /* A band whose every row is gated still lists — you can open it and read WHY each
+     tile is unavailable — but its count drops to the faintest tone so the rail reads
+     as a gradient of reachability rather than a flat list of equals. */
+  .rail-item .r-n.none{ color:var(--faint); opacity:.45; }
+  /* The gated overflow, e.g. "12 +10". Amber because it is the same fact the tile's
+     reason chip carries: reachable, but not from here. */
+  .rail-item .r-g{ font-size:9px; color:var(--shortfall); opacity:.75;
+    font-variant-numeric:tabular-nums; margin-left:-2px; }
+
+  .rail-sep{ height:1px; background:var(--hair); margin:5px 7px; flex:0 0 auto; }
+
+  /* ── right grid ── */
+  .grid-pane{ background:var(--menu-2); min-width:0; }
+  .grid-body{ padding:9px; }
+  .grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+
+  .tile{
+    position:relative;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:10px 5px 8px; border-radius:9px;
+    background:var(--tile); border:1px solid transparent;
+    cursor:pointer; transition:background .11s, border-color .11s, transform .08s;
+  }
+  .tile:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+  .tile:active{ transform:translateY(1px) scale(.98); }
+  .tile.fired{ border-color:var(--accent); }
+  .tile svg{ width:27px; height:27px; color:var(--ink); }
+  .tile .t-lbl{ font-size:10.5px; color:var(--muted); text-align:center; line-height:1.2; }
+  .tile:hover .t-lbl{ color:var(--ink); }
+  /* the accelerator sits in the corner rather than under the label: a second line of
+     text per tile would double the tile height for information read maybe once */
+  .tile .t-key{
+    position:absolute; top:5px; right:6px; font-size:8.5px; color:var(--faint);
+    font-variant-numeric:tabular-nums; letter-spacing:.3px;
+  }
+
+  /* 🔴 An operation whose precondition fails greys but stays PRESENT, and the reason
+     replaces the label on hover. Hiding it would teach the reader the operation does not
+     exist; the shortfall is the one thing they actually need to know. Wrong-DIMENSION
+     operations are a different case entirely — those are dropped from the grid, because a
+     solid selection listing "Revolve" is not a disabled affordance, it is a lie. */
+  .tile.gated{ cursor:not-allowed; background:#16161a; }
+  .tile.gated svg{ color:var(--faint); opacity:.5; }
+  .tile.gated .t-lbl{ color:var(--faint); }
+  .tile.gated:hover{ background:#16161a; border-color:var(--hair); }
+  .tile.gated:active{ transform:none; }
+  .tile.gated .t-why{
+    display:none; font-size:9px; color:var(--shortfall); text-align:center; line-height:1.2;
+  }
+  .tile.gated:hover .t-lbl{ display:none; }
+  .tile.gated:hover .t-why{ display:block; }
+
+  /* 🔴 The offer-the-fix variant, taken from Dune3D's constraint-repair affordance. A tile
+     gated ONLY on the workplane is one click from working, so its chip carries the REMEDY
+     rather than the complaint — "set a workplane", in the accent, because it is an action.
+     Every other shortfall keeps the amber complaint tone: there is no honest one-click fix
+     for "needs 2 profiles", and dressing one up as an offer would be a false promise. */
+  .tile.gated.fixable .t-why{ color:var(--remedy); }
+
+  /* 🔴 The result-type badge — the direct payoff of the dimension-raising law, and the one
+     thing no surveyed application does. A tile that WILL run but raises to a shell rather
+     than a solid stays fully live and states the truth up front. FreeCAD ships a Solid
+     checkbox that silently does nothing instead. Amber, not red: this is a prediction, not
+     a fault. */
+  .tile .t-badge{
+    position:absolute; bottom:4px; left:50%; transform:translateX(-50%);
+    font-size:8px; letter-spacing:.2px; color:var(--predict); white-space:nowrap;
+    background:rgba(217,164,65,.12); border-radius:4px; padding:1px 5px;
+  }
+  .tile.badged{ padding-bottom:17px; }   /* the badge needs its own room, not the caption's */
+
+  /* the grid swaps content per band with a whisper of motion */
+  .grid.swap{ animation:fade .13s ease; }
+  @keyframes fade{ from{ opacity:0; transform:translateX(4px); } to{ opacity:1; transform:none; } }
+
+  /* 🔴 Never an empty tile field. Blender filed the blank-submenu case as a bug (T55214)
+     and fixed it to a disabled explanatory label; a band with zero available operations
+     shows WHY rather than showing nothing. */
+  .grid-void{
+    display:flex; flex-direction:column; gap:8px; align-items:center; text-align:center;
+    color:var(--faint); font-size:11px; line-height:1.6; padding:30px 18px;
+  }
+  .grid-void svg{ width:26px; height:26px; color:var(--muted); opacity:.7; }
+  .grid-void b{ color:var(--muted); font-weight:600; }
+
+  /* Pinned below the scroll, not inside it: a tally that scrolls out of view is a tally
+     nobody reads. */
+  .grid-foot{
+    flex:0 0 auto; display:flex; align-items:center; gap:11px;
+    height:27px; padding:0 13px; border-top:1px solid var(--hair);
+    color:var(--faint); font-size:9.5px; letter-spacing:.3px;
+  }
+  .grid-foot .live{ color:var(--muted); }
+  .grid-foot .live b{ color:var(--accent); font-weight:600; font-variant-numeric:tabular-nums; }
+
+  /* ═════════════════════ SLIDE 1 — DOCUMENT STATE (left) ═════════════════════ */
+  /* Same shape as the rail: pinned header over a scrolling body, sharing the pinned 196 px
+     column on `.cat-slide`, so the column does not jump width when the track slides.
+     🔴 This is where this prototype departs from the modelling menu's read-only PROBE. That
+     pane REPORTS a measurement; this one is the document state's CONTROL SURFACE — the
+     dimension, the workplane, the counts and the closure flags are all editable here, and
+     flipping any of them re-filters the whole catalogue behind you. That is the actual
+     thing under test: the gate is driven by state, so the state has to be reachable. */
+  .probe-pane{ background:var(--menu); border-right:1px solid var(--hair); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .probe-body{ flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-width:none; -ms-overflow-style:none; padding:9px; min-width:0; }
+  .probe-body::-webkit-scrollbar{ width:0; height:0; }
+
+  /* The back row lives INSIDE the 53 px header band, not above it — the header line has to
+     stay continuous across both slides or the card looks like it changed shape. */
+  .pane-head.back{ cursor:pointer; gap:8px; }
+  .pane-head.back:hover{ background:#292930; }
+  .pane-head .b-arrow{ width:16px; height:16px; flex:0 0 auto; color:var(--muted); }
+  .pane-head.back:hover .b-arrow{ color:var(--ink); }
+
+  .probe-sec{ margin-bottom:9px; }
+  .probe-sec-head{
+    font-size:9px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--faint); padding:4px 4px 6px;
+  }
+  /* read-only measurement rows: label left, value right, units in a dim trailing span */
+  .probe-row{
+    display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:7px;
+    font-size:11px; color:var(--muted);
+  }
+  .probe-row:hover{ background:var(--tile); }
+  .probe-row .p-k{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .probe-row .p-v{ color:var(--ink); font-variant-numeric:tabular-nums; letter-spacing:.2px; }
+  .probe-row .p-u{ color:var(--faint); font-size:9.5px; min-width:20px; }
+  /* a measurement outside its valid band reads red — the limit is the point of showing it */
+  .probe-row.breach .p-v{ color:#e0603f; }
+
+  /* 🔴 The RESULT TYPE readout — the second thing under test after the tile field itself. It
+     proves the dimension-raising law is DRIVING the answer rather than a lookup table
+     agreeing with it by coincidence: change the dimension or the closure bit and the arrow
+     changes with it. Stated as `input → output`, with the reason underneath. */
+  .probe-result{
+    background:var(--value-black); border-radius:9px; padding:9px 10px; margin:2px 2px 9px;
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .probe-result .r-law{
+    display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink);
+    font-variant-numeric:tabular-nums;
+  }
+  .probe-result .r-law .arw{ color:var(--faint); }
+  .probe-result .r-law .out{ color:var(--predict); font-weight:600; }
+  /* A dimension with no successor is the whole point of the Solid case — it reads as a
+     terminal state, not as a missing value. */
+  .probe-result .r-law .out.void{ color:var(--faint); font-weight:400; font-style:italic; }
+  .probe-result .r-note{ font-size:9px; color:var(--faint); line-height:1.5; }
+
+  /* ── interactive state controls ── */
+  /* Compact variants of the options-pane widgets. They have to fit a 196 px column, so the
+     labels sit ABOVE the control rather than beside it, and the chips wrap. */
+  .state-chips{ display:flex; gap:4px; flex-wrap:wrap; padding:0 2px 4px; }
+  .state-chip{
+    display:flex; align-items:center; height:24px; padding:0 8px; border-radius:7px;
+    background:var(--tile); border:1px solid transparent; color:var(--muted);
+    cursor:pointer; font-size:10.5px; transition:background .11s, color .11s, border-color .11s;
+  }
+  .state-chip:hover{ color:var(--ink); background:var(--tile-hi); }
+  .state-chip.on{ background:rgba(91,140,255,.14); border-color:var(--accent); color:var(--ink); }
+
+  /* label + switch on one line, as the options pane's toggle-row but at rail scale */
+  .state-toggle{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:4px 7px; border-radius:7px; font-size:11px; color:var(--muted); cursor:pointer;
+  }
+  .state-toggle:hover{ background:var(--tile); color:var(--ink); }
+  .state-toggle .s-box{
+    width:15px; height:15px; flex:0 0 auto; border-radius:4px;
+    background:var(--value-black); border:1.5px solid var(--hair-strong);
+    display:grid; place-items:center; transition:background .12s, border-color .12s;
+  }
+  .state-toggle .s-box svg{ width:11px; height:11px; color:#0b0b0d; opacity:0; }
+  .state-toggle.on .s-box{ background:var(--accent); border-color:var(--accent); }
+  .state-toggle.on .s-box svg{ opacity:1; }
+  .state-toggle.on{ color:var(--ink); }
+  /* 🔴 The workplane row is the most-failed gate in every surveyed tool, so it is the one
+     control that is visually promoted above its neighbours rather than filed among them. */
+  .state-toggle.keystone{ background:rgba(91,140,255,.07); }
+
+  /* ◄ N ► stepper for the count fields */
+  .state-step{
+    display:flex; align-items:center; gap:6px; padding:3px 7px; border-radius:7px;
+    font-size:11px; color:var(--muted);
+  }
+  .state-step:hover{ background:var(--tile); }
+  .state-step .s-k{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .state-step .s-btn{
+    width:18px; height:18px; flex:0 0 auto; border-radius:5px; background:var(--tile);
+    color:var(--muted); display:grid; place-items:center; cursor:pointer;
+    font-size:11px; line-height:1; transition:background .11s, color .11s;
+  }
+  .state-step .s-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+  .state-step .s-v{
+    min-width:17px; text-align:center; color:var(--ink);
+    font-variant-numeric:tabular-nums; font-size:11.5px;
+  }
+
+  /* preset rows — each drives one gate class to a KNOWN outcome, and says which */
+  .state-preset{
+    display:flex; flex-direction:column; gap:2px; padding:5px 7px; border-radius:7px;
+    cursor:pointer; transition:background .11s;
+  }
+  .state-preset:hover{ background:var(--tile); }
+  .state-preset .p-n{ font-size:10.5px; color:var(--ink); }
+  .state-preset .p-x{ font-size:9px; color:var(--faint); line-height:1.4; }
+
+  /* 🔴 The live availability invariant. Every catalogue row lands in exactly one bucket, and
+     the sum is displayed rather than asserted so a reviewer watches it hold while clicking
+     — an assertion that only fires in a test run is an assertion nobody sees. */
+  .state-tally{
+    display:flex; align-items:baseline; gap:5px; flex-wrap:wrap;
+    background:var(--value-black); border-radius:9px; padding:8px 10px; margin:2px;
+    font-size:10px; color:var(--faint); font-variant-numeric:tabular-nums;
+  }
+  .state-tally b{ font-size:12.5px; font-weight:600; }
+  .state-tally .av{ color:var(--ok); }
+  .state-tally .gt{ color:var(--shortfall); }
+  .state-tally .hd{ color:var(--faint); }
+  .state-tally .sum{ color:var(--muted); width:100%; margin-top:3px; font-size:9px; }
+  .state-tally .sum.hold{ color:var(--ok); }
+  .state-tally .sum.broken{ color:#e0603f; font-weight:700; }
+
+  .probe-flag{
+    display:flex; align-items:center; gap:7px; padding:5px 7px; font-size:10.5px; color:var(--muted);
+  }
+  .probe-flag .dot{ width:7px; height:7px; border-radius:999px; flex:0 0 auto; }
+
+  /* ═════════════════════ SLIDE 1 — CONSTRUCTION OPTIONS (right) ═════════════════════ */
+  .options-pane{ background:var(--menu-2); min-width:0; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .options-body{
+    flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    padding:13px; display:flex; flex-direction:column; gap:13px;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .options-body::-webkit-scrollbar{ width:0; height:0; }
+
+  .param{ display:flex; flex-direction:column; gap:7px; }
+  .param-label{ display:flex; align-items:center; justify-content:space-between;
+    color:var(--muted); font-size:11px; letter-spacing:.2px; }
+  .param-label .name{ display:flex; align-items:center; gap:6px; }
+  .param-label .name svg{ width:13px; height:13px; color:var(--faint); }
+
+  /* ── slider: split value pill + track (ToolOptionsWidget.html) ── */
+  .slider-ctl{ display:flex; align-items:center; gap:9px; }
+  .valuebox{ height:var(--row-h); border-radius:999px; overflow:hidden; display:flex; align-items:stretch; flex:0 0 84px; }
+  .valuebox .num{ flex:1; background:var(--value-black); display:flex; align-items:center; justify-content:flex-end; padding:0 9px; cursor:text; }
+  .valuebox .num:focus-within{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+  .valuebox .num input{ background:none; border:none; outline:none; color:var(--text-value);
+    font:500 14px/1 inherit; text-align:right; width:100%; font-variant-numeric:tabular-nums; -moz-appearance:textfield; }
+  .valuebox .num input::-webkit-outer-spin-button,
+  .valuebox .num input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .valuebox .unitseg{ background:var(--value-unit); color:var(--muted);
+    display:flex; align-items:center; justify-content:center; padding:0 9px; font-size:11px; min-width:32px; }
+
+  .slider{ position:relative; flex:1; height:26px; background:#000; border-radius:999px; cursor:pointer;
+    touch-action:none; border:1.5px solid var(--outline); }
+  .slider .fill{ position:absolute; left:0; top:0; bottom:0; background:var(--track-fill); border-radius:999px; pointer-events:none; }
+  .slider .knob{ position:absolute; top:50%; width:21px; height:21px; background:var(--knob);
+    border-radius:999px; transform:translate(-50%,-50%); box-shadow:0 2px 6px rgba(0,0,0,.5); pointer-events:none; }
+  .slider:active .knob{ transform:translate(-50%,-50%) scale(1.08); }
+
+  /* ── segmented pills ── */
+  .segment{ display:flex; gap:6px; flex-wrap:wrap; }
+  .seg-opt{ padding:0 12px; height:32px; display:flex; align-items:center; border-radius:9px;
+    background:var(--tile); color:var(--muted); cursor:pointer; font-size:11.5px; transition:background .11s, color .11s; }
+  .seg-opt:hover{ color:var(--ink); background:var(--tile-hi); }
+  .seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+  /* ── boolean switch ── */
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; }
+  .toggle-row .name{ display:flex; align-items:center; gap:7px; color:var(--ink); font-size:11.5px; }
+  .toggle-row .name svg{ width:13px; height:13px; color:var(--faint); }
+  .switch{ width:42px; height:24px; border-radius:999px; background:var(--track-bg); position:relative;
+    cursor:pointer; transition:background .15s; flex:0 0 auto; }
+  .switch.on{ background:var(--accent); }
+  .switch .nub{ position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:999px;
+    background:var(--knob); transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .switch.on .nub{ left:21px; }
+
+  /* ── axis constraint: segmented + a negate pill that only lights on a real axis ── */
+  .axis-ctl{ display:flex; gap:6px; align-items:center; }
+  .axis-ctl .segment{ flex:1; }
+  .neg-pill{
+    height:32px; padding:0 10px; display:flex; align-items:center; border-radius:9px;
+    background:var(--tile); color:var(--faint); cursor:pointer; font-size:11.5px;
+    font-variant-numeric:tabular-nums; transition:background .11s, color .11s, opacity .11s;
+  }
+  .neg-pill:hover{ color:var(--ink); }
+  .neg-pill.on{ background:var(--accent); color:#0b0b0d; font-weight:700; }
+  .neg-pill.void{ opacity:.3; cursor:not-allowed; }
+  .neg-pill.void:hover{ color:var(--faint); }
+
+  /* ── snap targets: multi-select chips ── */
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{
+    display:flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:9px;
+    background:var(--tile); border:1px solid transparent; color:var(--muted);
+    cursor:pointer; font-size:11px; transition:background .11s, color .11s, border-color .11s;
+  }
+  .chip svg{ width:12px; height:12px; }
+  .chip:hover{ color:var(--ink); background:var(--tile-hi); }
+  .chip.on{ background:rgba(91,140,255,.14); border-color:var(--accent); color:var(--ink); }
+
+  /* ── swatch row ── */
+  .swatches{ display:flex; gap:6px; }
+  .swatch{ width:22px; height:22px; border-radius:7px; cursor:pointer; border:2px solid transparent;
+    transition:transform .1s, border-color .12s; }
+  .swatch:hover{ transform:scale(1.1); }
+  .swatch.on{ border-color:#fff; }
+
+  /* an operation that takes no parameters still gets a pane that says so, rather than a void */
+  .shot-note{
+    display:flex; flex-direction:column; gap:7px; align-items:center; text-align:center;
+    color:var(--faint); font-size:11px; line-height:1.6; padding:26px 16px;
+  }
+  .shot-note svg{ width:26px; height:26px; color:var(--muted); }
+  .shot-note b{ color:var(--muted); font-weight:600; }
+
+  /* 🔴 The result-type banner, restated on the options slide. A reader who has walked into a
+     parameter dialog has lost sight of the tile's badge, and "you will get a shell" is
+     precisely the fact they need before pressing Apply — not after. */
+  .opt-predict{
+    display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:9px;
+    background:rgba(217,164,65,.10); border:1px solid rgba(217,164,65,.22);
+    color:var(--predict); font-size:10.5px; line-height:1.5;
+  }
+  .opt-predict svg{ width:15px; height:15px; flex:0 0 auto; }
+  .opt-predict b{ font-weight:600; }
+
+  /* ── options footer: Apply / Cancel ── */
+  .opt-foot{
+    flex:0 0 auto; display:flex; align-items:center; gap:7px;
+    height:44px; padding:0 11px; border-top:1px solid var(--hair);
+  }
+  .opt-foot .spend{ flex:1; color:var(--faint); font-size:9.5px; letter-spacing:.3px; }
+  .opt-foot .spend b{ color:var(--accent); font-weight:600; font-variant-numeric:tabular-nums; }
+  .obtn{
+    height:28px; padding:0 14px; display:flex; align-items:center; border-radius:8px;
+    font-size:11.5px; cursor:pointer; border:1px solid transparent; transition:background .11s, color .11s;
+  }
+  .obtn.ghost{ background:var(--tile); color:var(--muted); }
+  .obtn.ghost:hover{ background:var(--tile-hi); color:var(--ink); }
+  .obtn.go{ background:var(--accent); color:#0b0b0d; font-weight:600; }
+  .obtn.go:hover{ background:#6f9bff; }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+    background:var(--menu); border:1px solid var(--hair-strong); color:var(--ink); font-size:13px;
+    padding:9px 17px; border-radius:999px; z-index:120; opacity:0;
+    transition:opacity .18s, transform .18s; pointer-events:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5);
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(-58px); }
+  .toast b{ color:var(--accent); font-weight:600; }
+  .toast .pred{ color:var(--predict); font-weight:600; }
+</style>
+</head>
+<body>
+
+  <div class="viewport"></div>
+  <div class="hint"><kbd>Right-click</kbd> anywhere for the construction catalogue<br>pick an operation to slide to its options · <kbd>Esc</kbd> steps back</div>
+
+  <div class="dimension" id="dimensionBar"><span class="lbl">Input</span></div>
+
+  <div class="catalogue" id="catalogue"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ═════════════════════════════════════════════════════════════════════════
+   GLYPH ARTWORK — the same S/D/F/O/B stroke builders as ModellingToolMenu.html,
+   over a 24×24 box in currentColor, so the C++ unit (which draws these as
+   ImDrawList strokes through GlyphInscription) renders identical art. Glyphs are
+   SHARED across an operation family: ~92 identities cover 128 operations, because
+   128 distinct pictures would be 128 pictures nobody can tell apart, whereas one
+   glyph per family plus the tile caption reads at a glance.
+   ═════════════════════════════════════════════════════════════════════════ */
+const S = (d,w=1.6,o=1)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" opacity="${o}"/>`;
+const D = (d,w=1.4,o=.55)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="2 2.4" opacity="${o}"/>`;
+const F = (d,o=1)=>`<path d="${d}" fill="currentColor" opacity="${o}"/>`;
+const O = (cx,cy,r,w=1.5,o=1)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="${w}" opacity="${o}"/>`;
+const B = (cx,cy,r,o=1)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor" opacity="${o}"/>`;
+
+const GLYPH = {
+  /* ── Band 1 · SOLID PRIMITIVE ──────────────────────────────────────────────────
+     Each drawn in the same 3/4 view so the band reads as one family. The near faces
+     are full-weight and the receding edges drop to ~.6, which is what separates a
+     SOLID from the flat sketch and reference art further down. */
+  SolidBox:          S("M12 3l8 4.5v9L12 21l-8-4.5v-9z",1.6)+S("M4 7.5l8 4.5 8-4.5",1.4,.6)+S("M12 12v9",1.4,.6),
+  SolidWedge:        S("M4 19V6l16 13z",1.7)+S("M4 19h16",1.4,.6)+S("M4 6l6 3",1.2,.4),
+  SolidPrism:        S("M12 3l8 5v8l-8 5-8-5V8z",1.6)+S("M12 3v18",1.2,.4)+S("M4 8l8 5 8-5",1.3,.55),
+  SolidCylinder:     S("M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z",1.6)+S("M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7",1.5,.7),
+  SolidCone:         S("M12 3l7 14H5z",1.7)+S("M5 17c0 1.7 3.1 3 7 3s7-1.3 7-3",1.4,.6),
+  SolidSphere:       O(12,12,8.5,1.7)+S("M3.5 12c0-2.2 3.8-4 8.5-4s8.5 1.8 8.5 4",1.3,.6)+S("M3.5 12c0 2.2 3.8 4 8.5 4s8.5-1.8 8.5-4",1.3,.35),
+  SolidTorus:        O(12,12,8.5,1.7)+S("M4.5 12c0 1.9 3.4 3.4 7.5 3.4s7.5-1.5 7.5-3.4-3.4-3.4-7.5-3.4S4.5 10.1 4.5 12z",1.3,.6),
+  SolidPyramid:      S("M12 3L21 18H3z",1.7)+S("M12 3v15",1.2,.4)+S("M3 18l9 3 9-3",1.4,.6),
+  SolidCapsule:      S("M7 9a5 5 0 0 1 10 0v6a5 5 0 0 1-10 0z",1.7)+S("M7 12h10",1.2,.4),
+  SolidTube:         S("M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z",1.6)+S("M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7",1.5,.7)+O(12,7,3,1.3,.55),
+  SolidEllipsoid:    O(12,12,8.5,1.7)+S("M3.5 12c0-3 3.8-5.5 8.5-5.5S20.5 9 20.5 12",1.3,.55)+S("M12 3.5c-2.4 0-4.4 3.8-4.4 8.5s2 8.5 4.4 8.5",1.2,.4),
+  /* 🔴 The alias tier, from BRL-CAD. Cuboid, Box-from-3-points, Wedge and Prism are four
+     tiles that all construct one internal hexahedron; the menu offers the construction
+     METHOD the caller is thinking in, not the storage format. So these share art with
+     their family head but carry their own caption. */
+  SolidBoxPoints:    S("M12 3l8 4.5v9L12 21l-8-4.5v-9z",1.5,.75)+B(12,3,2)+B(20,7.5,2)+B(4,16.5,2),
+  SolidBoxCentre:    S("M12 3l8 4.5v9L12 21l-8-4.5v-9z",1.5,.75)+B(12,12,2.2)+S("M12 8v8M8 10v4M16 10v4",1.2,.4),
+  SolidTruncCone:    S("M8 5h8l3 12H5z",1.7)+S("M5 17c0 1.7 3.1 3 7 3s7-1.3 7-3",1.4,.6)+S("M8 5c0-1 1.8-1.8 4-1.8S16 4 16 5",1.3,.5),
+  SolidEllipCyl:     S("M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z",1.6)+S("M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7",1.5,.7)+S("M5 7h14",1.2,.35),
+  SolidHalfSpace:    S("M2 12h20",1.9)+F("M2 12h20v9H2z",.14)+S("M12 12V5",1.6)+S("M9 8l3-3 3 3",1.5)+D("M2 16h20M2 20h20",1.2,.4),
+  SolidPolyhedron:   S("M12 3l8 6-3 10H7L4 9z",1.7)+S("M12 3v16M4 9h16M7 19l5-10 5 10",1.2,.45),
+  SolidThicken:      S("M3 8c4-3 14-3 18 0",1.8)+S("M3 13c4-3 14-3 18 0",1.5,.6)+S("M3 8v5M21 8v5",1.4,.6),
+
+  /* ── Band 2 · SKETCH GEOMETRY ─────────────────────────────────────────────────
+     Flat, thin, planar art — everything here is drawn ON the workplane, and the
+     absence of any receding edge is what says so. All 22 are workplane-gated. */
+  SketchLine:        B(5,19,2.6)+B(19,5,2.6)+S("M6.6 17.4L17.4 6.6",1.7),
+  SketchPolyline:    B(4,18,2.2)+B(10,9,2.2)+B(16,15,2.2)+B(21,6,2.2)+S("M5.4 16.6L8.9 11M11.3 10.5L14.8 13.6M17.4 13.7L19.8 8",1.6),
+  SketchRectangle:   S("M4 6h16v12H4z",1.7)+B(4,6,1.8)+B(20,18,1.8),
+  SketchCentreRect:  S("M4 6h16v12H4z",1.6,.8)+B(12,12,2.2)+S("M12 8v8M8 12h8",1.2,.4),
+  SketchCircle:      O(12,12,8,1.7)+B(12,12,1.8),
+  SketchArc:         S("M4 19a15 15 0 0 1 16-13",1.8)+B(4,19,2.2)+B(20,6,2.2),
+  SketchEllipse:     S("M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z",1.7)+S("M4 12h16",1.2,.4)+B(12,12,1.6,.8),
+  SketchSlot:        S("M8 8h8a4 4 0 0 1 0 8H8a4 4 0 0 1 0-8z",1.7)+B(8,12,1.5,.7)+B(16,12,1.5,.7),
+  SketchPolygon:     S("M12 3l8 6-3 10H7L4 9z",1.7)+B(12,12,1.6,.6),
+  SketchSpline:      S("M3 18C7 6 17 22 21 8",1.7)+B(3,18,1.9,.8)+B(9,12,1.6,.55)+B(15,15,1.6,.55)+B(21,8,1.9,.8),
+  SketchBezier:      S("M3 19C3 9 21 19 21 6",1.7)+B(3,19,2.2)+B(21,6,2.2)+D("M3 19l6-3M21 6l-6 4",1.2,.5),
+  SketchBSpline:     S("M3 18C7 8 9 8 12 12s5 4 9-6",1.7)+D("M3 18l5-4M12 12l4-3M21 6l-4 3",1.2,.45)+B(8,10,1.5,.6)+B(16,13,1.5,.6),
+  SketchNurbs:       S("M3 18C7 8 9 8 12 12s5 4 9-6",1.7)+D("M3 18l5-4M21 6l-4 3",1.2,.45)+B(8,10,1.8,.8)+B(16,13,1.4,.5)+O(12,12,1.6,1.1,.7),
+  SketchConic:       S("M4 20a16 16 0 0 1 16-16",1.7,.85)+B(4,20,2.1)+B(12,10.5,1.8)+B(20,4,2.1),
+  SketchPoint:       B(12,12,3)+D("M12 2v6M12 16v6M2 12h6M16 12h6",1.3,.5),
+  SketchFillet:      S("M5 19V11a6 6 0 0 1 6-6h8",1.8)+D("M5 5h6M5 5v6",1.3,.45)+B(5,5,1.4,.4),
+  SketchChamfer:     S("M5 19V10l5-5h9",1.8)+D("M5 5h5M5 5v5",1.3,.45)+B(5,5,1.4,.4),
+  SketchTrim:        S("M4 12h7",1.8)+D("M11 12h9",1.3,.4)+S("M15 8l4 4-4 4",1.5,.65)+B(11,12,1.8),
+  SketchExtend:      S("M4 12h9",1.8)+D("M13 12h7",1.4,.6)+S("M17 9l3 3-3 3",1.6),
+  SketchOffset:      S("M5 8h14",1.8)+D("M5 14h14",1.4)+S("M12 10v2",1.3,.6),
+  SketchCut:         S("M4 12h16",1.8)+S("M12 5v14",1.5,.7)+B(12,12,2)+D("M8 8l-3-3M16 8l3-3",1.2,.4),
+  SketchJoin:        S("M4 16a6 6 0 0 1 6-6",1.8)+S("M20 8a6 6 0 0 0-6 6",1.8)+B(12,11,2.1)+D("M10 10h4",1.3,.5),
+  SketchRemove:      D("M5 12h14",1.4,.45)+S("M8 8l8 8M16 8l-8 8",1.8)+B(12,12,1.5,.5),
+  SketchMirrorLine:  D("M12 3v18",1.4,.8)+S("M9 7L4 12l5 5z",1.6)+S("M15 7l5 5-5 5z",1.6)+B(12,12,1.5,.6),
+  SketchConstruction:D("M4 20L20 4",1.5,.8)+B(4,20,2.2,.7)+B(20,4,2.2,.7),
+  SketchProject:     S("M4 4h7v7H4z",1.6,.8)+D("M11 7.5h7",1.3,.6)+S("M13 18h7v-7",1.7)+S("M16 15l4-4",1.3,.5),
+
+  /* ── Band 3 · PROFILE SWEEP ───────────────────────────────────────────────────
+     🔴 The dimension-raising band, and the art carries the law: every glyph shows a
+     PROFILE (full weight) and the SWEPT RESULT (lighter), because the whole point is
+     that the input is one dimension and the output is one higher. */
+  SweepPrism:        S("M4 14l8-4 8 4-8 4z",1.6)+S("M12 10V3",1.7)+S("M9 6l3-3 3 3",1.6),
+  SweepRevolve:      D("M12 2v20",1.4,.8)+S("M14 6h5v12h-5z",1.7)+S("M14 8c-4 1.5-4 6.5 0 8",1.4,.6)+S("M12 6.5a9 9 0 0 1 0 11",1.3,.5),
+  SweepPipe:         D("M4 19C8 19 8 6 20 6")+S("M4 16v6M1 19h6",1.6)+O(20,6,2.6,1.6),
+  SweepLoft:         S("M3 18h9l-2-4H5z",1.7)+S("M13 8h8l-1.5-3h-5z",1.6,.7)+D("M5 14L14.5 5M12 18l9-10",1.2,.45),
+  SweepHelical:      S("M8 4c8 0 8 4 0 4s-8 4 0 4 8 4 0 4",1.7)+S("M16 4v16",1.2,.4),
+  SweepDraft:        S("M7 4h10l-3 16h-4z",1.6)+S("M4 20h16",1.3,.5)+S("M17 4l-3 16",1.2,.35),
+  SweepRuled:        S("M4 6c5-3 11-3 16 0",1.7)+S("M4 18c5-3 11-3 16 0",1.7)+S("M4 6v12M9.3 4.4v12M14.6 4.4v12M20 6v12",1.2,.45),
+  SweepThickenFace:  S("M4 9l8-4 8 4-8 4z",1.7)+S("M4 14l8-4 8 4-8 4z",1.4,.55)+S("M4 9v5M20 9v5",1.3,.5),
+  SweepShellSolid:   S("M12 3l8 4.5v9L12 21l-8-4.5v-9z",1.5,.6)+S("M12 7l4 2.2v4.6L12 16l-4-2.2V9.2z",1.7)+S("M12 3v4",1.2,.4),
+  SweepEvolve:       D("M4 20C4 10 14 20 20 6",1.4,.6)+S("M3 17l3 3 3-3",1.5)+O(6,20,2.2,1.5)+S("M17 4h5v5",1.4,.6),
+  SweepBoss:         S("M5 20h14",1.6,.6)+S("M9 20V9h6v11",1.7)+S("M9 9l3-4 3 4",1.5)+D("M5 20h14",1.2,.35),
+  SweepPocket:       S("M4 6h16v14H4z",1.5,.6)+F("M9 6h6v8H9z",.16)+S("M9 6v8h6V6",1.7)+S("M12 18V11",1.5)+S("M9 14l3 4 3-4",1.4),
+
+  /* ── Band 4 · CURVE CONSTRUCTION ──────────────────────────────────────────────
+     Open, one-dimensional, handle-annotated. These are things you build WITH. */
+  CurveLine3d:       B(4,19,2.4)+B(20,5,2.4)+S("M5.6 17.4L18.4 6.6",1.7)+D("M4 19h16M20 19V5",1.1,.3),
+  CurveArcTangent:   S("M3 18h7",1.7)+S("M10 18a7 7 0 0 1 7-7",1.8)+B(10,18,2.2)+D("M10 18v-7",1.2,.4),
+  CurveInterpolate:  S("M3 18C7 6 17 22 21 8",1.7)+B(3,18,2)+B(8.6,12.2,2)+B(15.2,15.4,2)+B(21,8,2),
+  CurveApproximate:  D("M3 18C7 6 17 22 21 8",1.5,.75)+B(4,16,1.5,.6)+B(8,11,1.5,.6)+B(12,15,1.5,.6)+B(16,17,1.5,.6)+B(20,9,1.5,.6),
+  CurveHelix:        S("M8 4c8 0 8 4 0 4s-8 4 0 4 8 4 0 4",1.7)+S("M16 4v16",1.2,.4),
+  CurveSpiral:       S("M12 12a2 2 0 1 1 2 2 4 4 0 1 1-4-4 6 6 0 1 1 6 6 8 8 0 1 1-8-8",1.6),
+  CurveIntersect:    S("M3 8c6 0 12 8 18 8",1.6,.7)+S("M3 16c6 0 12-8 18-8",1.6,.7)+B(12,12,2.4),
+  CurveProject:      S("M4 6C8 6 8 14 20 14",1.7)+D("M4 20h16",1.3,.5)+D("M6 8v11M14 13v6M20 15v4",1.1,.35),
+  CurveOffset:       S("M4 16C8 16 8 6 20 6",1.7)+D("M4 20C8 20 8 10 20 10",1.4,.6),
+  CurveBlend:        S("M3 18h6",1.8)+S("M15 6h6",1.8)+S("M9 18c3 0 3-12 6-12",1.6,.85)+B(9,18,2)+B(15,6,2),
+  CurveIsoparam:     S("M4 7c5-3 11-3 16 0",1.5,.6)+S("M4 17c5-3 11-3 16 0",1.5,.6)+S("M12 5.2v13.6",1.9)+S("M4 7v10M20 7v10",1.2,.4),
+  CurveEdgeExtract:  S("M12 3l8 5v8l-8 5-8-5V8z",1.4,.4)+S("M12 3l8 5",2)+B(12,3,2.1)+B(20,8,2.1),
+  CurveSection:      S("M12 3l8 5v8l-8 5-8-5V8z",1.4,.45)+S("M2 12h20",1.8)+F("M4 11h16v2H4z",.18),
+  CurveBoundary:     S("M4 8c4-3 12-3 16 0",1.9)+D("M4 8v8c4 3 12 3 16 0V8",1.3,.45)+B(4,8,1.7)+B(20,8,1.7),
+
+  /* ── Band 5 · SURFACE CONSTRUCTION ────────────────────────────────────────────
+     Two-dimensional and open: a surface is drawn as a single quad sheet with its
+     boundary emphasised, never as a closed volume. */
+  SurfacePlanar:     S("M2 15l10-6 10 6-10 6z",1.7)+S("M7 15l5-3 5 3",1.2,.45),
+  SurfaceFill:       S("M4 8c4-3 12-3 16 0v8c-4 3-12 3-16 0z",1.7)+S("M7 11h10M9 15h6",1.3,.5),
+  SurfaceLoftSurf:   S("M4 7c5-3 11-3 16 0",1.8)+S("M4 17c5-3 11-3 16 0",1.8)+S("M4 7v10M20 7v10",1.3,.5)+D("M12 5.4v13.2",1.1,.3),
+  SurfaceExtrudeSurf:S("M3 16h10",1.9)+S("M3 16v-5h10v5",1.4,.6)+S("M16 13V6",1.6)+S("M13.5 8.5L16 6l2.5 2.5",1.4),
+  SurfaceRevolveSurf:D("M12 2v20",1.4,.8)+S("M15 6c-3 4-3 8 0 12",1.8)+S("M12 7a8 8 0 0 1 0 10",1.3,.5)+B(15,6,1.6,.7),
+  SurfaceSweepSurf:  D("M4 18C8 18 8 7 20 7",1.4,.6)+S("M2 15c2.6 0 2.6 6 0 6",1.7)+S("M6 14c2.6 0 2.6 6 0 6",1.4,.5),
+  SurfaceOffsetSurf: S("M3 9c4-3 14-3 18 0",1.8)+D("M3 15c4-3 14-3 18 0",1.4,.6)+S("M12 11.4v2.4",1.3,.6),
+  SurfaceTrimSurf:   S("M4 6h16v12H4z",1.5,.55)+F("M4 6h8v12H4z",.14)+S("M12 4v16",1.8)+S("M15 9l-3 3 3 3",1.4,.6),
+  SurfaceExtendSurf: S("M4 7h8v10H4z",1.7)+D("M12 7h8v10h-8z",1.4,.6)+S("M15 12h4",1.5)+S("M17 10l2 2-2 2",1.4),
+  SurfaceSewFaces:   S("M3 7h8v10H3z",1.6)+S("M13 7h8v10h-8z",1.6)+S("M11 8.5l2 1.5-2 1.5 2 1.5-2 1.5",1.5,.9),
+  SurfaceBlendSurf:  S("M3 6h6v6H3z",1.6,.8)+S("M15 12h6v6h-6z",1.6,.8)+S("M9 9c3 0 3 6 6 6",1.8),
+
+  /* ── Band 6 · BOOLEAN CONSTRUCTION ────────────────────────────────────────────
+     Two overlapping bodies, and what survives is filled. The whole band is one
+     picture with the fill moved, which is exactly right: these are the same
+     operation with different survivors. */
+  BooleanUnion:      F("M9 12a6 6 0 1 1 6 0 6 6 0 1 1-6 0z",.18)+O(9,12,6,1.8)+O(15,12,6,1.8),
+  BooleanCut:        F("M9 12a6 6 0 0 0 0 0z",.0)+O(15,12,6,1.4,.5)+O(9,12,6,1.8)+F("M9 6a6 6 0 0 0 0 12 6 6 0 0 0 5.2-3 6 6 0 0 1 0-6A6 6 0 0 0 9 6z",.2),
+  BooleanIntersect:  O(9,12,6,1.5,.6)+O(15,12,6,1.5,.6)+F("M12 6.6a6 6 0 0 0 0 10.8 6 6 0 0 0 0-10.8z",.26)+S("M12 6.6a6 6 0 0 0 0 10.8",1.8)+S("M12 6.6a6 6 0 0 1 0 10.8",1.8),
+  BooleanSection:    O(9,12,6,1.5,.55)+O(15,12,6,1.5,.55)+S("M12 6.6a6 6 0 0 0 0 10.8",2)+S("M12 6.6a6 6 0 0 1 0 10.8",2),
+  BooleanSplit:      O(12,12,7,1.7)+S("M12 3v18",1.8)+D("M9 12H5M15 12h4",1.2,.4),
+  BooleanFuseCompound:O(8,9,4.5,1.6)+O(16,9,4.5,1.6)+O(12,16,4.5,1.6)+F("M8 9a4.5 4.5 0 0 0 4 4.5 4.5 4.5 0 0 0 4-4.5z",.15),
+  BooleanImprint:    S("M4 6h16v12H4z",1.7)+D("M9 9h6v6H9z",1.5,.8)+B(12,12,1.4,.5),
+  BooleanGlue:       S("M3 7h8v10H3z",1.6)+S("M13 7h8v10h-8z",1.6)+S("M11 12h2",2)+B(12,9,1.2,.6)+B(12,15,1.2,.6),
+  BooleanCommonEdge: O(9,12,6,1.4,.5)+O(15,12,6,1.4,.5)+S("M12 6.6v10.8",2.1)+B(12,6.6,1.8)+B(12,17.4,1.8),
+
+  /* ── Band 7 · PATTERN CONSTRUCTION ────────────────────────────────────────────
+     One full-weight seed and its lighter repeats — the seed/instance distinction is
+     the only thing these glyphs need to convey. */
+  PatternLinear:     S("M3 8h5v8H3z",1.7)+S("M10 8h5v8h-5z",1.4,.6)+S("M17 8h4v8h-4z",1.3,.4),
+  PatternPolar:      O(12,12,8,1.3,.4)+S("M10 2h4v4h-4z",1.7)+S("M18.5 8.5l2.8 2.8-2.8 2.8-2.8-2.8z",1.4,.55)+S("M5.5 8.5l2.8 2.8-2.8 2.8L2.7 11.3z",1.3,.45)+B(12,12,1.5,.6),
+  PatternPath:       D("M3 19C8 19 8 7 21 7",1.4,.6)+S("M2 16h4v4H2z",1.7)+S("M8 12h3.5v3.5H8z",1.4,.55)+S("M17 5h4v4h-4z",1.3,.45),
+  PatternMirror:     D("M12 3v18",1.4,.8)+S("M9 7L4 12l5 5z",1.7)+S("M15 7l5 5-5 5z",1.4,.55),
+  PatternGrid:       S("M3 4h6v6H3z",1.7)+S("M13 4h6v6h-6z",1.4,.55)+S("M3 14h6v6H3z",1.4,.55)+S("M13 14h6v6h-6z",1.3,.4),
+  PatternScale:      S("M4 16V8h8v8z",1.7)+D("M4 16h16V4",1.3,.5)+S("M20 4h-4M20 4v4",1.4,.6),
+  PatternHelixPat:   S("M6 4c8 0 8 4 0 4s-8 4 0 4 8 4 0 4",1.4,.5)+S("M4 2h4v4H4z",1.7)+S("M14 9h3.5v3.5H14z",1.4,.55)+S("M4 18h3.5v3.5H4z",1.3,.45),
+  PatternMove:       S("M4 4h8v8H4z",1.4,.5)+S("M12 12h8v8h-8z",1.7)+S("M11 11l-3-3M11 11l3 3",1.3,.5)+S("M9 8h3v3",1.3,.5),
+  PatternRotateCopy: S("M6 4h6v6H6z",1.7)+S("M16 12a8 8 0 0 1-8 8",1.4,.6)+S("M14 4.5a8 8 0 0 1 5 5",1.4,.6)+S("M18.6 6.4l.9 3.4",1.3,.6)+B(12,12,1.5,.55),
+  PatternTransform:  S("M4 4h7v7H4z",1.6,.75)+S("M13 13h7v7h-7z",1.6,.75)+S("M11 11l2 2",1.5)+D("M11 4h9v7",1.2,.35),
+
+  /* ── Band 8 · REFERENCE GEOMETRY ──────────────────────────────────────────────
+     Low-dimension construction aids: flat, thin, mostly dashed. These are things
+     you build WITH, not things you render, and the art says so. 🔴 This band is
+     ungated — and it CREATES the workplane that band 2 demands, which is why the
+     fix chip can point here. */
+  RefPlane:          D("M2 15l10-6 10 6-10 6z",1.4,.7)+S("M12 9V3",1.6)+S("M9.5 5.5L12 3l2.5 2.5",1.4),
+  RefAxis:           S("M12 21V3",1.6)+S("M12 21L3 16M12 21l9-5",1.5,.7)+B(12,21,1.8),
+  RefPoint:          B(12,12,3)+D("M12 2v6M12 16v6M2 12h6M16 12h6",1.3,.5),
+  RefCoordSystem:    S("M6 18V8M6 18h10",1.7)+S("M6 18l-3 3",1.5,.7)+S("M6 8l-2 2M6 8l2 2",1.3,.6)+S("M16 18l-2-2M16 18l-2 2",1.3,.6)+B(6,18,1.6),
+  RefWorkplane:      S("M2 15l10-6 10 6-10 6z",1.7)+S("M7 15l5-3 5 3",1.2,.45)+S("M12 9V2",1.6)+S("M9.5 4.5L12 2l2.5 2.5",1.4),
+  RefGridPlane:      S("M3 3h18v18H3z",1.5,.8)+S("M9 3v18M15 3v18M3 9h18M3 15h18",1.2,.5),
+  RefMidplane:       D("M4 6h16",1.4,.55)+D("M4 18h16",1.4,.55)+S("M4 12h16",1.9)+S("M12 8v-2M12 16v2",1.2,.4),
+  RefTangentPlane:   O(9,14,6,1.6)+S("M3 4h18",1.8)+B(9,8,1.8)+D("M9 8v6",1.2,.4),
+  RefLocalOrigin:    O(12,12,4.5,1.4,.7)+S("M12 2v5M12 17v5M2 12h5M17 12h5",1.5)+B(12,12,1.6),
+
+  /* ── Band 9 · DATA-SOURCED ────────────────────────────────────────────────────
+     Geometry that arrives from OUTSIDE the document: a file, an image, a point
+     cloud. Each glyph carries the source medium, because that is the gate. */
+  DataImportStep:    S("M12 3v11",1.7)+S("M8 10l4 4 4-4",1.6)+S("M4 17v3h16v-3",1.5,.7),
+  DataHeightfield:   S("M3 5h18v14H3z",1.5,.7)+S("M3 16l5-6 4 4 3-3 6 5",1.7)+B(7.5,8.5,1.4,.7),
+  DataPointCloud:    B(6,8,1.3,.8)+B(11,6,1.3,.8)+B(16,9,1.3,.8)+B(8,13,1.3,.8)+B(13,11,1.3,.8)+B(18,14,1.3,.8)+B(6,18,1.3,.8)+B(12,17,1.3,.8)+B(17,19,1.3,.8),
+  DataMeshConvert:   S("M12 3l8 6-3 10H7L4 9z",1.5,.6)+S("M12 3v16M4 9h16",1.2,.4)+S("M12 3l8 6-3 10H7L4 9z",1.8,.35)+O(12,12,3,1.7),
+  DataImageTrace:    S("M3 5h18v14H3z",1.6)+S("M3 16l5-5 4 4 3-3 6 6",1.4,.55)+S("M8 8.5C10 6 14 10 16 7.5",1.7),
+  DataScanFit:       B(5,17,1.4,.6)+B(9,13,1.4,.6)+B(13,15,1.4,.6)+B(17,10,1.4,.6)+B(20,12,1.4,.6)+S("M3 19C7 12 15 18 21 8",1.8),
+  DataProfileTable:  S("M3 5h18v14H3z",1.6)+S("M3 10h18M9 5v14",1.3,.55)+B(6,13,1.2,.6)+B(6,16.5,1.2,.6),
+  DataScriptSolid:   S("M8 5L3 12l5 7",1.7)+S("M16 5l5 7-5 7",1.7)+S("M13 7l-2 10",1.4,.6),
+
+  /* ── Band 10 · ILLUMINATION & FRAMING ─────────────────────────────────────────
+     Scene furniture rather than geometry. Ungated: a light has no topological
+     precondition, which is the same reasoning that makes band 1 ungated. */
+  LightPoint:        O(12,10,4.5,1.6)+S("M12 14.5V18",1.5)+S("M9.5 20h5",1.6)+S("M12 2v2M4.5 6l1.4 1.4M19.5 6l-1.4 1.4",1.3,.6),
+  LightSun:          O(12,12,4,1.7)+S("M12 2v3M12 19v3M2 12h3M19 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",1.4,.75),
+  LightSpot:         S("M9 3h6l5 6H4z",1.7)+D("M7 11l-2 9M17 11l2 9M12 11v9",1.3,.55),
+  LightArea:         S("M3 4h18v6H3z",1.7)+D("M6 12v8M12 12v8M18 12v8",1.3,.55),
+  FramingCamera:     S("M3 8h11v9H3z",1.6)+S("M14 12l6-3.5v9L14 14z",1.5,.75)+B(6.5,11,1.4,.8),
+  FramingEnvironment:O(12,12,8.5,1.7)+S("M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17",1.2,.5),
+  FramingTurntable:  O(12,17,7,1.5,.55)+S("M12 17V6",1.7)+S("M9 9l3-3 3 3",1.5)+S("M5 17a7 7 0 0 0 14 0",1.4,.7),
+
+  /* ── Band 11 · ANNOTATION ─────────────────────────────────────────────────────
+     Witness lines and arrowheads. These measure the model rather than adding to
+     it, so every glyph is built from extension lines plus a dimension arrow. */
+  AnnotateLinear:    S("M4 8v8M20 8v8",1.5,.7)+S("M4 12h16",1.7)+S("M7 9l-3 3 3 3M17 9l3 3-3 3",1.5),
+  AnnotateAngular:   S("M4 20h16M4 20L18 6",1.7)+S("M12 20a10 10 0 0 0-2.6-6.4",1.4,.75)+S("M10 13l-.6 2.5",1.2,.6),
+  AnnotateRadial:    O(12,12,8,1.4,.5)+S("M12 12l6.4-4.8",1.7)+S("M15.5 7.5l3-.5-.5 3",1.4)+B(12,12,1.7),
+  AnnotateDiameter:  O(12,12,8,1.4,.5)+S("M5.6 15.2L18.4 8.8",1.7)+S("M8.6 15.6l-3-.4.4-3M15.4 8.4l3 .4-.4 3",1.3),
+  AnnotateOrdinate:  S("M4 20V4",1.6,.7)+S("M4 20h16",1.6,.7)+D("M11 20v-7M4 13h7",1.3,.5)+B(11,13,2)+S("M13 11h6",1.5),
+  AnnotateLeader:    B(6,17,2.2)+S("M7.4 15.6L13 10h7",1.7)+S("M11 10l2-2",1.2,.4),
+  AnnotateSurfText:  S("M4 6V4h16v2",1.6)+S("M12 4v16",1.7)+S("M8 20h8",1.5),
+  AnnotateWeldMark:  S("M3 16h18",1.6,.7)+S("M7 16l3-5 3 5",1.7)+S("M13 16l3-5 3 5",1.5,.7)+D("M3 19h18",1.2,.4),
+
+  /* ── Parameter-row glyphs ─────────────────────────────────────────────────────
+     Small, single-idea marks: they sit at 13 px beside a label, where the
+     multi-stroke construction art above turns to mush. */
+  ParamAxis:         S("M12 21V9M12 21l-7-4M12 21l7-4",1.6)+B(12,7,1.6),
+  ParamDistance:     S("M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4",1.6),
+  ParamAngle:        S("M4 20h16M4 20L18 6",1.6)+S("M11 20a7 7 0 0 0-2-4.4",1.3,.7),
+  ParamWidth:        S("M3 12h18M6 9l-3 3 3 3M18 9l3 3-3 3",1.6),
+  ParamHeight:       S("M12 4v16",1.7)+S("M8 8l4-4 4 4M8 16l4 4 4-4",1.5),
+  ParamDepth:        S("M4 8l8-4 8 4-8 4z",1.6)+S("M4 8v6l8 4 8-4V8",1.5,.65),
+  ParamRadius:       O(12,12,8,1.5,.6)+S("M12 12L19 8",1.7)+B(12,12,1.8),
+  ParamCount:        S("M3 12h18",1.5)+S("M7 9v6M12 9v6M17 9v6",1.6),
+  ParamRing:         O(12,12,8,1.6)+O(12,12,3.4,1.4,.6),
+  ParamThickness:    S("M4 9h16M4 15h16",1.7)+S("M12 9v6",1.3,.5),
+  ParamTaper:        S("M7 4h10l-3 16h-4z",1.6),
+  ParamProfile:      S("M4 20c6 0 6-16 16-16",1.7),
+  ParamPath:         S("M4 18C4 8 12 18 12 8s8 2 8-4",1.7)+B(4,18,2.2)+B(20,4,2.2),
+  ParamPivot:        O(12,12,7,1.5,.55)+B(12,12,2.3)+S("M12 2v3M12 19v3M2 12h3M19 12h3",1.4,.8),
+  ParamPlane:        D("M2 15l10-6 10 6-10 6z",1.4,.7)+S("M12 9V3",1.6),
+  ParamClosed:       O(12,12,7.5,1.7)+S("M9.5 12l1.8 1.8 3.2-3.6",1.5),
+  ParamSnap:         S("M6 4v7a6 6 0 0 0 12 0V4",1.7)+S("M6 4h4M14 4h4",1.7),
+  // Construction geometry: dashed span with hollow endpoints — the same "reference,
+  // not material" reading the Wire badge uses, so the two agree on sight.
+  ParamConstruction: D("M5 19L19 5",1.5,.9)+O(5,19,2,1.4)+O(19,5,2,1.4),
+  ParamTolerance:    S("M3 9h18M3 15h18",1.5,.6)+S("M12 5v14",1.7)+B(12,12,1.9),
+  ParamMode:         O(8,12,5,1.5,.7)+O(16,12,5,1.5,.7)+F("M12 7.8a5 5 0 0 0 0 8.4 5 5 0 0 0 0-8.4z",.24),
+  ParamMaterial:     S("M4 4h16v16H4z",1.6)+F("M6 6h12v12H6z",.8),
+  ParamUnit:         S("M3 9h18v6H3z",1.6)+S("M8 9v3M13 9v3M18 9v3",1.3,.6),
+  ParamSeed:         B(12,12,2.2)+B(6,7,1.4,.7)+B(18,8,1.4,.7)+B(7,17,1.4,.7)+B(17,16,1.4,.7),
+  ParamStrength:     S("M13 3L5 14h6l-2 7 8-11h-6z",1.6),
+  ParamSmooth:       S("M3 16c4 0 5-8 9-8s5 8 9 8",1.7),
+  ParamVisible:      S("M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6z",1.6)+B(12,12,2.4),
+  ParamLink:         S("M9 12h6",1.6)+S("M10 8H8a4 4 0 0 0 0 8h2M14 8h2a4 4 0 0 1 0 8h-2",1.6),
+  ParamMirror:       D("M12 3v18",1.4,.8)+S("M9 7L4 12l5 5z",1.5)+S("M15 7l5 5-5 5z",1.5),
+  ParamDirection:    S("M4 12h13",1.7)+S("M14 8l4 4-4 4",1.6)+B(4,12,1.8),
+  ParamOperand:      S("M4 6h7v7H4z",1.6)+S("M13 11h7v7h-7z",1.4,.6),
+
+  /* Shown by the never-empty grid when a band has nothing live — a struck-through
+     workplane, because the workplane is what is missing in nearly every such case. */
+  VoidBand:          D("M2 15l10-6 10 6-10 6z",1.4,.6)+S("M5 5l14 14",1.9),
+};
+function glyph(id){ return `<svg viewBox="0 0 24 24" fill="none">${GLYPH[id]||""}</svg>`; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   DIMENSION BADGES — the left header's artwork, one per GeometryDimension.
+   Coloured art on a black tile, unlike the currentColor construction glyphs
+   above: the badge states WHAT THE DOCUMENT OFFERS, and colour is what separates
+   that from the monochrome list of things you could build from it.
+   🔴 The badges are drawn to make the DIMENSION-RAISING CHAIN legible at a glance:
+   Vertex is a dot, Edge a segment, Wire a chain of segments, Face a filled plane,
+   Shell a plane bent into an open surface, Solid a closed volume. Ascending
+   dimension reads as ascending visual weight, so the reader can see why Wire
+   cannot reach Solid without a closure — the picture is one link short.
+   ═════════════════════════════════════════════════════════════════════════ */
+const BC = { ink:"#e8e8f0", dim:"#8a8a99", blue:"#5b8cff", sky:"#7ec8ff", warm:"#d9a441" };
+const bP  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const bPF = (d,f)=>`<path d="${d}" fill="${f}" stroke-linejoin="round"/>`;
+const bL  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}" stroke-linecap="round"/>`;
+const bCI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const bCF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+const bDash = (d,s,w=1.4)=>bP(d,s,w).replace("/>",' stroke-dasharray="2.6 2.4"/>');
+function badgeArt(shapes){
+  return `<svg viewBox="0 0 24 24" fill="none"><rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>${shapes.join("")}</svg>`;
+}
+
+const BADGE = {
+  // A single point on the working plane: dimension zero, the bottom of the chain.
+  Vertex: ()=>badgeArt([bDash("M4 17h16",BC.dim,1.3),bCI(12,11,3.4,BC.blue,1.6),bCF(12,11,4.6,BC.blue+"33")]),
+  // One segment with both endpoints stated — dimension one, and it raises to a Face.
+  Edge:   ()=>badgeArt([bL(4,20,20,4,BC.blue,2.4),bCF(4,20,2.4,BC.sky),bCF(20,4,2.4,BC.sky)]),
+  // 🔴 A chain of edges that does NOT close. The visible gap at the top right is the whole
+  //    reason ClosureShortfall exists: this input raises to a Shell, never to a Solid, and
+  //    the badge has to show the missing link rather than imply a loop.
+  Wire:   ()=>badgeArt([bP("M5 18L5 9l7-5 7 5v4",BC.blue,2.2),bCF(5,18,2.1,BC.sky),bCF(19,13,2.1,BC.sky),bCF(12,4,1.7,BC.ink),bCF(5,9,1.7,BC.ink)]),
+  // A bounded planar region — dimension two, and it raises to a Solid directly, which is
+  // why the fill is confident rather than hatched.
+  Face:   ()=>badgeArt([bPF("M4 8L12 4l8 4-8 4z",BC.blue+"cc"),bP("M4 8L12 4l8 4-8 4z",BC.sky,1.4),bCF(4,8,1.6,BC.ink),bCF(20,8,1.6,BC.ink),bCF(12,12,1.6,BC.ink),bCF(12,4,1.6,BC.ink)]),
+  // An OPEN surface: faces sewn together but not sealed. Warm-toned rather than blue,
+  // because a shell is the thing the law hands you when you wanted a solid.
+  Shell:  ()=>badgeArt([bPF("M4 8c4-3 12-3 16 0v6c-4 3-12 3-16 0z",BC.warm+"55"),bP("M4 8c4-3 12-3 16 0",BC.warm,2.2),bP("M4 8v6c4 3 12 3 16 0V8",BC.dim,1.4),bCF(4,8,2,BC.warm),bCF(20,8,2,BC.warm)]),
+  // A closed volume — the top of the chain. 🔴 It has NO successor, which is why Revolve
+  // goes absent rather than greyed under this badge.
+  Solid:  ()=>badgeArt([bPF("M12 3l8 5v8l-8 5-8-5V8z",BC.blue+"aa"),bP("M12 3l8 5v8l-8 5-8-5V8z",BC.sky,1.5),bP("M4 8l8 5 8-5M12 13v8",BC.ink,1.1)]),
+  // Nothing selected: a dashed empty cell with the 3D cursor at its centre. Deliberately
+  // the ONLY dim badge in the set — the absence of an input is what it has to convey, so
+  // it must not read as confidently as the six that describe real topology. Under it the
+  // ungated creation bands are all that stay live.
+  Nothing:()=>badgeArt([bDash("M5 5h14v14H5z",BC.dim,1.3),bL(12,8.5,12,15.5,BC.sky,1.4),bL(8.5,12,15.5,12,BC.sky,1.4),bCI(12,12,2.2,BC.blue,1.4)]),
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   🔴 THE DIMENSION-RAISING LAW — the design centre, and the whole reason this
+   menu is not a table of 128 hand-written gates.
+
+       Vertex ──→ Edge ──→ Face ──→ Solid       Wire ──→ Shell       Shell ──→ Solid
+
+   OpenCASCADE states it in one sentence: BRepPrimAPI_MakePrism / MakeRevol raise
+   topological dimension by EXACTLY ONE. Three facts that every surveyed
+   application documents as a *limitation* fall out of it as theorems:
+
+     · "Extruding an open wire gives a shell, not a solid"  → Wire has no path to Solid
+     · "A face input needs no Solid checkbox"               → Face raises to Solid directly
+     · "MakeRevol rejects solids outright"                  → Solid has no successor
+
+   So availability is COMPUTED here, never tabulated. One rule, uniformly correct.
+   ═════════════════════════════════════════════════════════════════════════ */
+const DIMENSIONS = ["Nothing","Vertex","Edge","Wire","Face","Shell","Solid"];
+
+/* One step along the chain. Returns null for an input with NO successor — which is
+   exactly what makes Revolve go ABSENT rather than greyed on a solid selection.
+   The closure bit is the only thing that forks the Wire and Shell cases, and that
+   fork is the entire content of `ClosureShortfall`. */
+function raiseDimension(Dimension, ClosureCondition){
+  switch(Dimension){
+    case "Vertex": return "Edge";                                  // a point swept traces a curve
+    case "Edge":   return "Face";                                   // a curve swept sweeps out a surface
+    // 🔴 The theorem. An open chain cannot bound a face, so it can never reach Solid;
+    //    a closed one bounds a face and rides the chain up to Solid.
+    case "Wire":   return ClosureCondition ? "Solid" : "Shell";
+    case "Face":   return "Solid";                                  // directly; no closure flag is meaningful
+    // A sealed shell IS the boundary of a solid. An open one has nothing to raise.
+    case "Shell":  return ClosureCondition ? "Solid" : null;
+    case "Solid":  return null;                                     // 🔴 no successor in the chain
+    default:       return null;                                     // Nothing — nothing to raise
+  }
+}
+
+/* Why the law produced that answer, for the RESULT TYPE readout's second line. The
+   reason is stated rather than left implicit because "→ Shell" without "an open wire
+   has no path to Solid" is the same silent surprise the design exists to kill. */
+function describeLaw(Dimension, ClosureCondition){
+  switch(Dimension){
+    case "Vertex": return "A swept point traces a curve — dimension rises by one.";
+    case "Edge":   return "A swept curve sweeps out a surface.";
+    case "Wire":   return ClosureCondition
+                     ? "A closed wire bounds a face, and a face raises to a solid."
+                     : "🔴 An open wire raises to a shell. There is no path to Solid.";
+    case "Face":   return "A face raises to a solid directly — no closure flag applies.";
+    case "Shell":  return ClosureCondition
+                     ? "A sealed shell is already the boundary of a solid."
+                     : "An open shell has no successor — nothing to raise.";
+    case "Solid":  return "🔴 Solid is the top of the chain. It has no successor.";
+    default:       return "No input selected — creation is unconditioned.";
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   DOCUMENT GEOMETRY PROFILE — everything the gate is allowed to read. A real
+   editor fills this by interrogating the shape once per document change; here the
+   probe pane's controls fill it. Every field earns its place by gating at least one
+   surveyed operation; this is not a general document summary.
+   ═════════════════════════════════════════════════════════════════════════ */
+const DOC = {
+  ActiveDimension:     "Nothing",
+  SelectedCount:       0,
+  ProfileCount:        0,
+  BoundaryEdgeCount:   0,
+  ExistingCircleCount: 0,
+  SolidCount:          0,
+
+  // Input facts, each mirroring one requirement key below. Named without is/has prefixes,
+  // per the naming discipline the shipped headers follow.
+  WorkplaneActivation:      false,   // 🔴 the most-failed create-time gate in every surveyed tool
+  ClosedProfileCondition:   false,   // the profile closes, so it can bound a face
+  PlanarProfileCondition:   true,    // planar and coplanar with the axis
+  AxisAvailability:         false,   // 🔴 Revolve: mandatory, never defaulted
+  PathAvailability:         false,   // Sweep takes profile AND path
+  UniformClosureCondition:  true,    // 🔴 Sweep refuses a mix of open and closed profiles
+  PendingGeometryCondition: false,   // CadQuery's stateful un-consumed-wires gate
+  SupportMaterialCondition: false,   // "To first"/"To last" fail silently without material
+  TangentEndpointCondition: false,   // SolveSpace's tangent-arc gate
+  OpeningCondition:         false,   // 🔴 Thickness: OCCT shelling needs a removed face
+  ReferencePlaneCondition:  false,   // Mirror / array plane
+  SourceImageryCondition:   false,   // an imported image or point set
+  MeasurableCondition:      false,   // at least one measurable component
+};
+
+/* The requirement table: key → [profile field, shortfall text]. 🔴 Each text names the
+   SHORTFALL, never the operation, so one string serves every operation sharing the gate.
+   The wording is the point — the four documented misreports this design exists to avoid
+   are all cases where a tool named the wrong constraint. */
+const REQUIREMENT = {
+  workplane: ["WorkplaneActivation",      "set a workplane"],
+  closed:    ["ClosedProfileCondition",   "profile must close"],
+  planar:    ["PlanarProfileCondition",   "profile must be planar"],
+  axis:      ["AxisAvailability",         "needs an axis"],
+  path:      ["PathAvailability",         "needs a path"],
+  uniform:   ["UniformClosureCondition",  "profiles must share closure"],
+  pending:   ["PendingGeometryCondition", "no pending geometry"],
+  support:   ["SupportMaterialCondition", "needs material to reach"],
+  tangent:   ["TangentEndpointCondition", "needs a shared endpoint"],
+  // 🔴 FreeCAD #30460 reports this as "Wrong selection" — a selection-TYPE error — when the
+  //    real constraint is architectural: OCCT cannot shell a closed solid with no opening.
+  opening:   ["OpeningCondition",         "needs an opening"],
+  refplane:  ["ReferencePlaneCondition",  "needs a reference plane"],
+  imagery:   ["SourceImageryCondition",   "needs an imported source"],
+  measurable:["MeasurableCondition",      "needs a measurable component"],
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   THE FIVE-STATE GATE. Checked in widening order, and the order matters twice:
+     ① dimension  — wrong dimension must HIDE the tile, never fall through to a
+                    complaint about an input that is irrelevant at that dimension
+     ② workplane  — cheapest fix, so the tile offers it rather than reporting a count
+                    the caller cannot act on yet
+     ③ counts     — profiles, boundary edges, solids, circles
+     ④ inputs     — the remaining requirement bits
+     ⑤ closure    — LAST, because ClosureShortfall is a LIVE result: reaching it means
+                    every genuine gate already passed
+   ═════════════════════════════════════════════════════════════════════════ */
+function evaluate(Op){
+  // ① Dimension. `dims` lists the dimensions the operation serves; absent means "any".
+  //    🔴 "any" deliberately EXCLUDES Nothing — an operation that CONSUMES input does not
+  //    apply to an empty document. Unconditioned creation names Nothing explicitly.
+  const Accepted = Op.dims || DIMENSIONS.filter(d => d !== "Nothing");
+  if(!Accepted.includes(DOC.ActiveDimension)) return "DimensionMismatch";
+
+  // ② The workplane, promoted above every other requirement so its remedy can be offered.
+  if((Op.needs||[]).includes("workplane") && !DOC.WorkplaneActivation) return "WorkplaneAbsent";
+
+  // ③ Counts. Each is its own field rather than one generic minimum, because "needs
+  //    exactly 2" and "needs 2 to 4 edges" are different diagnostics and the survey found
+  //    conflating them is precisely how tools send users chasing the wrong fix.
+  if(Op.minCount    && DOC.SelectedCount       <  Op.minCount)    return "ProfileShortfall";
+  if(Op.minProfile  && DOC.ProfileCount        <  Op.minProfile)  return "ProfileShortfall";
+  if(Op.exactSolid  && DOC.SolidCount         !== Op.exactSolid)  return "ProfileShortfall";
+  if(Op.minSolid    && DOC.SolidCount          <  Op.minSolid)    return "ProfileShortfall";
+  if(Op.minCircle   && DOC.ExistingCircleCount <  Op.minCircle)   return "ProfileShortfall";
+  if(Op.boundary){
+    const [Floor, Ceiling] = Op.boundary;
+    if(DOC.BoundaryEdgeCount < Floor || DOC.BoundaryEdgeCount > Ceiling) return "ProfileShortfall";
+  }
+
+  // ④ The remaining input facts.
+  for(const Key of (Op.needs||[])){
+    if(Key === "workplane") continue;                          // already resolved at ②
+    const Entry = REQUIREMENT[Key];
+    if(Entry && !DOC[Entry[0]]) return "ProfileShortfall";
+  }
+
+  // ⑤ 🔴 Closure — a LIVE state, not a failure. The operation runs; the badge states the
+  //    truthful result type the law predicts. No surveyed application does this: FreeCAD
+  //    ships a Solid checkbox that silently does nothing instead.
+  if(Op.raising){
+    const Result = raiseDimension(DOC.ActiveDimension, DOC.ClosedProfileCondition);
+    if(Result === null)   return "DimensionMismatch";   // no successor — hide, do not grey
+    if(Result !== "Solid") return "ClosureShortfall";   // runs, but you get a shell
+  }
+  return "Available";
+}
+
+/* The first shortfall text for a greyed tile's chip. Counts are checked in the same order
+   as the gate, so the chip always names the reason the gate actually stopped on. */
+function shortfallText(Op){
+  if((Op.needs||[]).includes("workplane") && !DOC.WorkplaneActivation) return REQUIREMENT.workplane[1];
+  if(Op.minCount   && DOC.SelectedCount       <  Op.minCount)   return `needs ${Op.minCount} selected`;
+  if(Op.minProfile && DOC.ProfileCount        <  Op.minProfile) return `needs ${Op.minProfile} profiles`;
+  if(Op.exactSolid && DOC.SolidCount         !== Op.exactSolid) return `needs exactly ${Op.exactSolid}`;
+  if(Op.minSolid   && DOC.SolidCount          <  Op.minSolid)   return `needs ${Op.minSolid} solids`;
+  if(Op.minCircle  && DOC.ExistingCircleCount <  Op.minCircle)  return `needs ${Op.minCircle} circles`;
+  if(Op.boundary){
+    const [Floor, Ceiling] = Op.boundary;
+    if(DOC.BoundaryEdgeCount < Floor || DOC.BoundaryEdgeCount > Ceiling)
+      return Floor === Ceiling ? `needs ${Floor} edges` : `needs ${Floor}–${Ceiling} edges`;
+  }
+  for(const Key of (Op.needs||[])){
+    const Entry = REQUIREMENT[Key];
+    if(Entry && !DOC[Entry[0]]) return Entry[1];
+  }
+  return "unavailable";
+}
+
+/* The result type this operation would produce RIGHT NOW, for the live tile badge and the
+   probe pane's RESULT TYPE readout. Null when the operation does not raise dimension — a
+   primitive's result is declared, not derived. */
+function resultType(Op){
+  if(!Op.raising) return null;
+  return raiseDimension(DOC.ActiveDimension, DOC.ClosedProfileCondition);
+}
+
+/* ── the four rendering buckets ─────────────────────────────────────────────────
+   Hide-not-grey for the wrong dimension; grey-with-reason for a shortfall; live for
+   everything else, including ClosureShortfall. `revealGated` is the validation
+   affordance: it does not change the gate, only whether greyed tiles are drawn. */
+let revealGated = true;
+
+function conditionOf(Op){ return evaluate(Op); }
+function omitted(Op)    { return conditionOf(Op) === "DimensionMismatch"; }
+function gated(Op)      { const c = conditionOf(Op); return c === "WorkplaneAbsent" || c === "ProfileShortfall"; }
+function fixable(Op)    { return conditionOf(Op) === "WorkplaneAbsent"; }
+function live(Op)       { const c = conditionOf(Op); return c === "Available" || c === "ClosureShortfall"; }
+
+/* Tiles the grid draws for a band, and the live subset of them. */
+function visible(Band){
+  return (Band.ops||[]).filter(Op => !omitted(Op) && (revealGated || !gated(Op)));
+}
+function liveCount(Band){ return (Band.ops||[]).filter(live).length; }
+
+/* 🔴 The invariant, computed rather than asserted: every catalogue row lands in exactly
+   one bucket, and available + gated + hidden must equal the catalogue total. Displayed in
+   the probe pane so a reviewer watches it hold while clicking — an assertion that only
+   fires in a test run is an assertion nobody sees. */
+function tally(){
+  let Available = 0, Gated = 0, Hidden = 0;
+  BANDS.forEach(Band => (Band.ops||[]).forEach(Op => {
+    if(omitted(Op))      Hidden++;
+    else if(gated(Op))   Gated++;
+    else                 Available++;
+  }));
+  return { Available, Gated, Hidden, Total: Available + Gated + Hidden };
+}
+
+function catalogueTotal(){
+  return BANDS.reduce((Sum, Band) => Sum + (Band.ops||[]).length, 0);
+}
+
+/*════════════════════════════════════════════════════════════════════════════════
+   THE CATALOGUE — 11 bands, 128 operations.
+
+   Per-op schema, all fields optional except glyph/label:
+     dims:[…]      accepted active dimensions; absent means "any real geometry"
+     needs:[…]     REQUIREMENT keys; "workplane" is special-cased into its own state
+     minCount / minProfile / minSolid / exactSolid / minCircle / boundary:[lo,hi]
+     raising:true  the op raises dimension by one — the LAW decides the result type,
+                   so its availability is COMPUTED, never tabulated
+     params:[…]    the slide-1 parameter tail
+   🔴 No op carries an "available" flag. That is the whole point: 128 rows and not one
+      hand-written gate.
+════════════════════════════════════════════════════════════════════════════════*/
+/* 🔴 Creation's dimension set: every dimension INCLUDING Nothing. The gate's default
+   is "any real geometry" — deliberately excluding Nothing, because an operation that
+   transforms existing topology has nothing to act on in an empty document. Creation
+   inverts that, and says so explicitly rather than relying on the default. Without
+   this an empty document offers 0 of 128 operations: a menu that opens onto nothing
+   at the exact moment the user most needs somewhere to start. */
+const ANY = DIMENSIONS.slice();
+
+const BANDS = [
+
+  /*── Band 2 · SKETCH GEOMETRY (22) ─────────────────────────────────────────────
+     🔴 Every op in this band carries needs:["workplane"]. A sketch curve has no
+     meaning without a plane to lie in, so with no workplane set the whole band
+     greys AS A BLOCK and each tile offers the fix — one click, then 22 tiles wake
+     together. That block behaviour is why WorkplaneAbsent is its own state and not
+     just another ProfileShortfall: it is the only shortfall with an honest
+     one-click remedy. */
+  { key:"sketch-draw", label:"Sketch Draw", glyph:"SketchLine", ops:[
+      {glyph:"SketchLine",        label:"Line",         accel:"L", dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Length", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle",  min:-180, max:180, value:0, unit:"°"},
+          {kind:"toggle",    ico:"ParamConstruction", label:"Construction geometry", value:false},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to", on:["Grid","Endpoint"]},
+      ]},
+      {glyph:"SketchPolyline",    label:"Polyline",     accel:"⇧L", dims:ANY, needs:["workplane"], params:[
+          {kind:"toggle",    ico:"ParamClosed",   label:"Close on finish", value:false},
+          {kind:"segmented", ico:"ParamMode",     label:"Segment",  options:["Line","Arc tangent","Arc perp."], value:0},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to", on:["Grid","Endpoint"]},
+      ]},
+      {glyph:"SketchRectangle",   label:"Rectangle",    accel:"R", dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",  min:0.1, max:5000, value:120, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height", min:0.1, max:5000, value:80,  unit:"mm"},
+          {kind:"slider",    ico:"ParamRadius",   label:"Corner radius", min:0, max:500, value:0, unit:"mm"},
+          {kind:"toggle",    ico:"ParamConstruction", label:"Construction geometry", value:false},
+      ]},
+      {glyph:"SketchCentreRect",  label:"Centre Rect.", dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",  min:0.1, max:5000, value:120, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height", min:0.1, max:5000, value:80,  unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Rotation", min:-180, max:180, value:0, unit:"°"},
+      ]},
+      {glyph:"SketchSlot",        label:"Slot",         dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Centre span", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamRadius",   label:"End radius",  min:0.1, max:500, value:15, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle",  min:-180, max:180, value:0, unit:"°"},
+      ]},
+      {glyph:"SketchCircle",      label:"Circle",       accel:"C", dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.1, max:2500, value:40, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Defined by", options:["Centre","Diameter"], value:0},
+          {kind:"toggle",    ico:"ParamConstruction", label:"Construction geometry", value:false},
+      ]},
+      {glyph:"SketchArc",         label:"Arc",          accel:"A", dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.1, max:2500, value:50, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Included angle", min:1, max:359, value:90, unit:"°"},
+          {kind:"segmented", ico:"ParamDirection",label:"Direction", options:["CCW","CW"], value:0},
+      ]},
+      {glyph:"SketchEllipse",     label:"Ellipse",      dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Major radius", min:0.1, max:2500, value:70, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Minor radius", min:0.1, max:2500, value:40, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Rotation", min:-180, max:180, value:0, unit:"°"},
+      ]},
+      {glyph:"SketchPolygon",     label:"Polygon",      dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",  min:3, max:64, value:6, unit:"−"},
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.1, max:2500, value:50, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Radius is", options:["Inscribed","Circumscribed"], value:0},
+      ]},
+      {glyph:"SketchSpline",      label:"Spline",       dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Degree", min:1, max:9, value:3, unit:"−"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Periodic", value:false},
+          {kind:"slider",    ico:"ParamTolerance",label:"Fit tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"SketchBezier",      label:"Bézier",       dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Degree", min:2, max:9, value:3, unit:"−"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Tangent continuity", value:true},
+      ]},
+      {glyph:"SketchBSpline",     label:"B-Spline",     dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Degree", min:2, max:9, value:3, unit:"−"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Periodic", value:false},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to", on:["Grid","Endpoint"]},
+      ]},
+      {glyph:"SketchNurbs",       label:"NURBS",        dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Degree", min:2, max:9, value:3, unit:"−"},
+          {kind:"slider",    ico:"ParamRadius",   label:"Weight", min:0.1, max:10, value:1, unit:"−"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Periodic", value:false},
+      ]},
+      {glyph:"SketchConic",       label:"Conic",        dims:ANY, needs:["workplane"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Rho", min:0.01, max:0.99, value:0.5, unit:"−"},
+          {kind:"segmented", ico:"ParamMode",     label:"Family", options:["Ellipse","Parabola","Hyperbola"], value:0},
+      ]},
+      {glyph:"SketchPoint",       label:"Point",        dims:ANY, needs:["workplane"], params:[
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to", on:["Grid"]},
+          {kind:"toggle",    ico:"ParamConstruction", label:"Construction geometry", value:true},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band · SKETCH MODIFY ──────────────────────────────────────────────────────
+     Curve-editing ops that consume EXISTING sketch geometry rather than drawing a
+     new primitive from scratch: fillet/chamfer a shared corner, trim/extend an
+     edge to its neighbours, offset a wire. Split out of the flat Sketch Geometry
+     band so "draw a shape" and "edit an edge that already exists" no longer share
+     one undifferentiated list. */
+  { key:"sketch-modify", label:"Sketch Modify", glyph:"SketchFillet", ops:[
+      /* Fillet and Chamfer need a shared endpoint between two curves — the
+         "needs a shared endpoint" chip, not the vague "Wrong selection" that
+         FreeCAD #30460 shows for the analogous case. */
+      {glyph:"SketchFillet",      label:"Fillet",       needs:["workplane","tangent"], minCount:2, params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.01, max:500, value:5, unit:"mm"},
+          {kind:"toggle",    ico:"ParamMode",     label:"Trim originals", value:true},
+      ]},
+      {glyph:"SketchChamfer",     label:"Chamfer",      needs:["workplane","tangent"], minCount:2, params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:0.01, max:500, value:5, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle",  min:1, max:89, value:45, unit:"°"},
+      ]},
+      {glyph:"SketchTrim",        label:"Trim",         needs:["workplane"], dims:["Edge","Wire"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Extent", options:["To nearest","To pick","All"], value:0},
+      ]},
+      {glyph:"SketchExtend",      label:"Extend",       needs:["workplane"], dims:["Edge","Wire"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:0.01, max:5000, value:20, unit:"mm"},
+          {kind:"toggle",    ico:"ParamSnap",     label:"Extend to boundary", value:true},
+      ]},
+      {glyph:"SketchOffset",      label:"Offset",       needs:["workplane"], dims:["Edge","Wire","Face"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:-500, max:500, value:5, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Corners", options:["Arc","Extend","Chamfer"], value:0},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Both sides", value:false},
+      ]},
+      /* Cut SPLITS one curve at the clicked point (Plasticity "Cut Curve") — a closed
+         loop opens, an open run divides into head + tail. One operand, no shared
+         endpoint needed, so no "tangent" chip: unlike Fillet it acts mid-span. */
+      {glyph:"SketchCut",         label:"Cut",          needs:["workplane"], dims:["Edge","Wire"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"At", options:["Pick point","Crossings"], value:0},
+      ]},
+      /* Join welds the multi-selection: all-open runs concatenate end-to-end (closing
+         into a Profile when the free ends meet), any closed operand routes to a boolean
+         Union instead. Needs ≥2 operands — the one op here that really does. */
+      {glyph:"SketchJoin",        label:"Join",         needs:["workplane"], dims:["Edge","Wire"], minCount:2, params:[
+          {kind:"slider",    ico:"ParamSnap",     label:"Weld tolerance", min:0.01, max:50, value:1, unit:"mm"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Close if ends meet", value:true},
+      ]},
+      /* Remove detaches the picked shape outright. No parameters, every dimension. */
+      {glyph:"SketchRemove",      label:"Remove",       needs:["workplane"], dims:["Vertex","Edge","Wire","Face"], params:[
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band · SKETCH REFERENCE ───────────────────────────────────────────────────
+     Ops that reference or re-cast existing geometry rather than draw or edit it in
+     place: mirror across an axis, demote to construction geometry, project 3D
+     edges down onto the active workplane. Kept apart from Sketch Modify because
+     these produce derived / linked geometry, not an edit of the source curve. */
+  { key:"sketch-reference", label:"Sketch Reference", glyph:"SketchMirrorLine", ops:[
+      {glyph:"SketchMirrorLine",  label:"Mirror",       needs:["workplane","axis"], dims:["Edge","Wire","Face"], params:[
+          {kind:"toggle",    ico:"ParamMirror",   label:"Keep source", value:true},
+          {kind:"axis",      ico:"ParamAxis",     label:"Mirror line"},
+      ]},
+      {glyph:"SketchConstruction",label:"To Construction", needs:["workplane"], dims:["Edge","Wire"], params:[
+          {kind:"toggle",    ico:"ParamConstruction", label:"Construction geometry", value:true},
+      ]},
+      {glyph:"SketchProject",     label:"Project Edges", needs:["workplane"], dims:["Edge","Wire","Face","Shell","Solid"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Result", options:["Reference","Editable"], value:0},
+          {kind:"toggle",    ico:"ParamLink",     label:"Track source geometry", value:true},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 1 · SOLID PRIMITIVE (18) ─────────────────────────────────────────────
+     Creation, so it answers to `Nothing` — but unlike the modelling menu's
+     primitives these stay offered on real geometry too, because a CAD document
+     accretes bodies: you place a second box beside the first without deselecting.
+     Nothing here raises dimension (a primitive's result type is DECLARED, not
+     derived), so no tile in this band can ever wear a result badge. */
+  { key:"primitive", label:"Solid Primitive", glyph:"SolidBox", ops:[
+      {glyph:"SolidBox",         label:"Box",           accel:"⇧B", dims:ANY, params:[
+          {kind:"slider",    ico:"ParamWidth",   label:"Length X", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Length Y", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",   label:"Height Z", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"segmented", ico:"ParamPivot",   label:"Placement", options:["Corner","Centre","Base"], value:0},
+          {kind:"axis",      ico:"ParamAxis",    label:"Align to"},
+          {kind:"snap",      ico:"ParamSnap",    label:"Snap to", on:["Grid"]},
+      ]},
+      {glyph:"SolidBoxPoints",   label:"Box 2 Points",  minCount:2, dims:ANY, params:[
+          {kind:"slider",    ico:"ParamHeight",  label:"Height Z", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"toggle",    ico:"ParamSnap",    label:"Snap corners to grid", value:true},
+      ]},
+      {glyph:"SolidBoxCentre",   label:"Box Centred",   dims:ANY, params:[
+          {kind:"slider",    ico:"ParamWidth",   label:"Length X", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Length Y", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",   label:"Height Z", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"snap",      ico:"ParamSnap",    label:"Snap to", on:["Grid"]},
+      ]},
+      {glyph:"SolidCylinder",    label:"Cylinder",      accel:"⇧C", dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Radius",  min:0.1, max:2500, value:50,  unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",  min:0.1, max:5000, value:200, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",   label:"Sweep",   min:1, max:360, value:360, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+          {kind:"snap",      ico:"ParamSnap",    label:"Snap to", on:["Grid"]},
+      ]},
+      {glyph:"SolidEllipCyl",    label:"Elliptic Cyl.", dims:ANY, params:[
+          {kind:"slider",    ico:"ParamWidth",   label:"Radius A", min:0.1, max:2500, value:60, unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",   label:"Radius B", min:0.1, max:2500, value:35, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",   min:0.1, max:5000, value:200, unit:"mm"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+      ]},
+      {glyph:"SolidTube",        label:"Tube",          dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Outer radius", min:0.2, max:2500, value:50, unit:"mm"},
+          {kind:"slider",    ico:"ParamRing",    label:"Inner radius", min:0.1, max:2499, value:38, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",   min:0.1, max:5000, value:200, unit:"mm"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+      ]},
+      {glyph:"SolidCone",        label:"Cone",          dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Radius",  min:0.1, max:2500, value:60, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",  min:0.1, max:5000, value:180, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",   label:"Sweep",   min:1, max:360, value:360, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+      ]},
+      {glyph:"SolidTruncCone",   label:"Frustum",       dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Radius 1", min:0.1, max:2500, value:60, unit:"mm"},
+          {kind:"slider",    ico:"ParamRing",    label:"Radius 2", min:0,   max:2500, value:30, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",   min:0.1, max:5000, value:180, unit:"mm"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+      ]},
+      {glyph:"SolidSphere",      label:"Sphere",        accel:"⇧S", dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Radius",  min:0.1, max:2500, value:80, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",   label:"Sweep",   min:1, max:360, value:360, unit:"°"},
+          {kind:"segmented", ico:"ParamMode",    label:"Extent",  options:["Full","Hemisphere","Wedge"], value:0},
+          {kind:"snap",      ico:"ParamSnap",    label:"Snap to", on:["Grid"]},
+      ]},
+      {glyph:"SolidEllipsoid",   label:"Ellipsoid",     dims:ANY, params:[
+          {kind:"slider",    ico:"ParamWidth",   label:"Radius X", min:0.1, max:2500, value:90, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Radius Y", min:0.1, max:2500, value:55, unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",   label:"Radius Z", min:0.1, max:2500, value:40, unit:"mm"},
+      ]},
+      {glyph:"SolidTorus",       label:"Torus",         dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Ring radius", min:0.2, max:2500, value:90, unit:"mm"},
+          {kind:"slider",    ico:"ParamRing",    label:"Tube radius", min:0.1, max:1250, value:24, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",   label:"Sweep",   min:1, max:360, value:360, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+      ]},
+      {glyph:"SolidWedge",       label:"Wedge",         dims:ANY, params:[
+          {kind:"slider",    ico:"ParamWidth",   label:"Length X", min:0.1, max:5000, value:120, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Length Y", min:0.1, max:5000, value:80,  unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",   label:"Height Z", min:0.1, max:5000, value:60,  unit:"mm"},
+          {kind:"slider",    ico:"ParamTaper",   label:"Taper X",  min:0, max:100, value:40, unit:"%"},
+      ]},
+      {glyph:"SolidPrism",       label:"Prism",         dims:ANY, params:[
+          {kind:"slider",    ico:"ParamCount",   label:"Sides",   min:3, max:64, value:6, unit:"−"},
+          {kind:"slider",    ico:"ParamRadius",  label:"Circumradius", min:0.1, max:2500, value:60, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",  min:0.1, max:5000, value:150, unit:"mm"},
+          {kind:"slider",    ico:"ParamTaper",   label:"Draft",   min:-45, max:45, value:0, unit:"°"},
+      ]},
+      {glyph:"SolidPyramid",     label:"Pyramid",       dims:ANY, params:[
+          {kind:"slider",    ico:"ParamCount",   label:"Base sides",   min:3, max:64, value:4, unit:"−"},
+          {kind:"slider",    ico:"ParamRadius",  label:"Circumradius", min:0.1, max:2500, value:70, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Height",  min:0.1, max:5000, value:140, unit:"mm"},
+      ]},
+      {glyph:"SolidCapsule",     label:"Capsule",       dims:ANY, params:[
+          {kind:"slider",    ico:"ParamRadius",  label:"Radius",  min:0.1, max:2500, value:35, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",  label:"Body length", min:0, max:5000, value:120, unit:"mm"},
+          {kind:"axis",      ico:"ParamAxis",    label:"Axis"},
+      ]},
+      {glyph:"SolidPolyhedron",  label:"Polyhedron",    dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",    label:"Family",  options:["Tetra","Octa","Dodeca","Icosa"], value:3},
+          {kind:"slider",    ico:"ParamRadius",  label:"Circumradius", min:0.1, max:2500, value:70, unit:"mm"},
+      ]},
+      /* 🔴 HalfSpace is unbounded — infinite geometry has no size, so it takes an
+         orientation and nothing else. Offering a "size" slider would be a lie. */
+      {glyph:"SolidHalfSpace",   label:"Half Space",    needs:["refplane"], dims:ANY, params:[
+          {kind:"axis",      ico:"ParamDirection", label:"Keep side"},
+          {kind:"toggle",    ico:"ParamVisible",   label:"Show cutting plane", value:true},
+      ]},
+      /* Thicken consumes a shell — the one primitive-band op that needs existing
+         material, hence a dimension restriction the other 17 don't carry. */
+      {glyph:"SolidThicken",     label:"Thicken Shell", dims:["Shell","Face"], needs:["support"], params:[
+          {kind:"slider",    ico:"ParamThickness", label:"Thickness", min:0.01, max:250, value:2, unit:"mm"},
+          {kind:"segmented", ico:"ParamDirection", label:"Side",   options:["Outward","Inward","Both"], value:0},
+          {kind:"slider",    ico:"ParamTolerance", label:"Tolerance", min:0.001, max:1, value:0.01, unit:"mm"},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 3 · PROFILE SWEEP (12) ───────────────────────────────────────────────
+     🔴 THE LAW'S HOME BAND. Every op here is raising:true, which means not one of
+     them declares which dimensions it accepts a result for — `raiseDimension`
+     answers that. Read the consequences off the law rather than off a table:
+       · on a Solid    → successor is null → the whole band VANISHES. Revolve is
+                         absent, not greyed: a solid has nowhere to be raised to.
+       · on an open Wire → successor is Shell → tiles stay LIVE with "→ shell".
+                         Three surveyed tools grey these out and claim the input is
+                         invalid; it isn't, it just yields a surface.
+       · on a Face     → successor is Solid → clean, and no "make solid" checkbox
+                         is drawn, because for a face there is nothing to choose. */
+  { key:"sweep", label:"Profile Sweep", glyph:"SweepPrism", ops:[
+      {glyph:"SweepPrism",       label:"Extrude",   accel:"E", raising:true, params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Length", min:0.01, max:5000, value:50, unit:"mm"},
+          {kind:"segmented", ico:"ParamDirection",label:"Direction", options:["Normal","Reversed","Symmetric"], value:0},
+          {kind:"slider",    ico:"ParamTaper",    label:"Draft angle", min:-60, max:60, value:0, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Along"},
+      ]},
+      /* Revolve's axis is MANDATORY, not defaulted. A silently-assumed axis is how
+         you get a self-intersecting solid and a modal error dialog. */
+      {glyph:"SweepRevolve",     label:"Revolve",   accel:"⇧R", raising:true, needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle",  min:1, max:360, value:360, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+          {kind:"segmented", ico:"ParamDirection",label:"Direction", options:["CCW","CW","Symmetric"], value:0},
+      ]},
+      {glyph:"SweepPipe",        label:"Sweep",     raising:true, needs:["path"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Orientation", options:["Frenet","Corrected","Fixed"], value:1},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Scale to path", value:false},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:1, value:0.01, unit:"mm"},
+      ]},
+      /* Loft's uniform-closure requirement is real geometry, not fussiness: mixing
+         a closed profile with an open one has no well-defined ruled surface. */
+      {glyph:"SweepLoft",        label:"Loft",      raising:true, minProfile:2, needs:["uniform"], params:[
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Ruled sections", value:false},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Close loop", value:false},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:1, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"SweepHelical",     label:"Helical Sweep", raising:true, needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Pitch",  min:0.01, max:1000, value:10, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height", min:0.1, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Turns",  min:0.1, max:200, value:10, unit:"−"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+      ]},
+      {glyph:"SweepDraft",       label:"Draft Extrude", raising:true, params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Length", min:0.01, max:5000, value:50, unit:"mm"},
+          {kind:"slider",    ico:"ParamTaper",    label:"Draft angle", min:-60, max:60, value:5, unit:"°"},
+          {kind:"toggle",    ico:"ParamMode",     label:"Draft outward", value:true},
+      ]},
+      {glyph:"SweepRuled",       label:"Ruled Sweep", raising:true, minProfile:2, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Pairing", options:["By order","By proximity"], value:0},
+      ]},
+      {glyph:"SweepEvolve",      label:"Evolve",    raising:true, needs:["path"], params:[
+          {kind:"slider",    ico:"ParamAngle",    label:"Spine angle", min:-89, max:89, value:0, unit:"°"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Rotate profile", value:true},
+      ]},
+      /* ThickenFace and ShellSolid raise via a different route — they add material
+         rather than sweep a profile — but they still obey the law, so they still
+         report their result type through the same badge. */
+      {glyph:"SweepThickenFace", label:"Thicken",   raising:true, dims:["Face","Shell"], params:[
+          {kind:"slider",    ico:"ParamThickness",label:"Thickness", min:0.01, max:250, value:2, unit:"mm"},
+          {kind:"segmented", ico:"ParamDirection",label:"Side",  options:["Outward","Inward","Both"], value:0},
+      ]},
+      {glyph:"SweepShellSolid",  label:"Close Shell", dims:["Shell"], needs:["closed"], params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Sew tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Report open edges", value:true},
+      ]},
+      /* Boss and Pocket consume a profile AND existing material to fuse with or cut
+         from — hence minSolid on top of the raising rule. */
+      {glyph:"SweepBoss",        label:"Boss",      raising:true, minSolid:1, needs:["support"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Length", min:0.01, max:5000, value:20, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Extent", options:["Blind","Through","To face"], value:0},
+          {kind:"slider",    ico:"ParamTaper",    label:"Draft angle", min:-60, max:60, value:0, unit:"°"},
+      ]},
+      {glyph:"SweepPocket",      label:"Pocket",    minSolid:1, needs:["support"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Depth",  min:0.01, max:5000, value:20, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Extent", options:["Blind","Through all","To face"], value:0},
+          {kind:"toggle",    ico:"ParamMirror",   label:"Symmetric to plane", value:false},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 4 · CURVE (14) ───────────────────────────────────────────────────────
+     Free 3D curves, which is what separates this band from Sketch Geometry: a
+     sketch curve is CONFINED to a workplane, a curve here is not — so not one op
+     in this band carries needs:["workplane"]. That contrast is the band's whole
+     reason to exist, and it is why splitting curves across two bands is right
+     rather than redundant.
+     Nothing here raises dimension: a curve produces a curve. */
+  { key:"curve", label:"3D Curves", glyph:"CurveInterpolate", ops:[
+      {glyph:"CurveArcTangent",  label:"Tangent Arc",   dims:["Edge","Wire"], needs:["tangent"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.1, max:2500, value:50, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Included angle", min:1, max:359, value:90, unit:"°"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Maintain tangency", value:true},
+      ]},
+      /* Interpolate passes THROUGH its points, Approximate passes NEAR them. The
+         distinction is the whole choice between the two, so each states it in its
+         own parameter set rather than hiding behind a shared "fit" mode. */
+      {glyph:"CurveInterpolate", label:"Interpolate",   minCount:2, params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Degree", min:1, max:9, value:3, unit:"−"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Periodic", value:false},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Tangent at ends", value:false},
+      ]},
+      {glyph:"CurveApproximate", label:"Approximate",   minCount:3, params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:50, value:0.1, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Max degree", min:1, max:9, value:3, unit:"−"},
+          {kind:"segmented", ico:"ParamSmooth",   label:"Continuity", options:["C0","C1","C2"], value:2},
+      ]},
+      {glyph:"CurveHelix",       label:"Helix",         dims:ANY, needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.1, max:2500, value:40, unit:"mm"},
+          {kind:"slider",    ico:"ParamDistance", label:"Pitch",  min:0.01, max:1000, value:10, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Turns",  min:0.1, max:200, value:5, unit:"−"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+      ]},
+      {glyph:"CurveSpiral",      label:"Spiral",        dims:ANY, needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Start radius", min:0.1, max:2500, value:10, unit:"mm"},
+          {kind:"slider",    ico:"ParamRing",     label:"End radius",   min:0.1, max:2500, value:80, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Turns",  min:0.1, max:200, value:4, unit:"−"},
+      ]},
+      {glyph:"CurveIntersect",   label:"Intersection",  minCount:2, params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+          {kind:"toggle",    ico:"ParamLink",     label:"Track sources", value:true},
+      ]},
+      {glyph:"CurveProject",     label:"Project Curve", dims:["Edge","Wire"], needs:["support"], params:[
+          {kind:"segmented", ico:"ParamDirection",label:"Along",  options:["Normal","View","Axis"], value:0},
+          {kind:"toggle",    ico:"ParamMode",     label:"Keep original", value:true},
+      ]},
+      {glyph:"CurveOffset",      label:"Offset Curve",  dims:["Edge","Wire"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:-500, max:500, value:5, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Corners", options:["Arc","Extend","Chamfer"], value:0},
+      ]},
+      /* BlendCurve joins exactly two curves. Not "two or more" — a blend between
+         three ends is not a defined operation, and "needs exactly 2" tells the
+         user something a bare "invalid selection" never would. */
+      {glyph:"CurveBlend",       label:"Blend Curve",   dims:["Edge","Wire"], minCount:2, needs:["tangent"], params:[
+          {kind:"segmented", ico:"ParamSmooth",   label:"Continuity", options:["G0","G1","G2"], value:1},
+          {kind:"slider",    ico:"ParamStrength", label:"Tension", min:0.1, max:5, value:1, unit:"−"},
+      ]},
+      {glyph:"CurveIsoparam",    label:"Isoparametric", dims:["Face","Shell"], params:[
+          {kind:"segmented", ico:"ParamDirection",label:"Direction", options:["U","V","Both"], value:0},
+          {kind:"slider",    ico:"ParamCount",    label:"Count",  min:1, max:200, value:5, unit:"−"},
+      ]},
+      {glyph:"CurveEdgeExtract", label:"Extract Edges", dims:["Face","Shell","Solid"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Which",  options:["All","Boundary","Selected"], value:1},
+          {kind:"toggle",    ico:"ParamLink",     label:"Track source body", value:false},
+      ]},
+      {glyph:"CurveSection",     label:"Section Curve", dims:["Face","Shell","Solid"], needs:["refplane"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Offset", min:-5000, max:5000, value:0, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sections", min:1, max:200, value:1, unit:"−"},
+      ]},
+      /* Boundary traces the OPEN border of a surface. On a closed solid there is
+         no open border — but the op still applies to Face/Shell, so it greys with
+         "needs an opening" rather than vanishing. That is the FreeCAD #30460 case
+         reported honestly: the constraint is the geometry, and the chip says so. */
+      {glyph:"CurveBoundary",    label:"Boundary",      dims:["Face","Shell"], needs:["opening"], params:[
+          {kind:"toggle",    ico:"ParamClosed",   label:"Join into single wire", value:true},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 5 · SURFACE (11) ─────────────────────────────────────────────────────
+     🔴 Surfaces land ON the Shell rung of the law, one below Solid, and that is
+     the band's honest position: these operations build skin, not material. The
+     four raising ops here (Extrude/Revolve/Sweep/Loft Surface) will report
+     "→ shell" far more often than their band-3 counterparts, and that is correct
+     rather than a defect — asking for a surface and being told you got a surface
+     is the tool agreeing with you. */
+  { key:"surface", label:"Surface", glyph:"SurfacePlanar", ops:[
+      {glyph:"SurfacePlanar",     label:"Planar Face",  dims:["Wire"], needs:["closed","planar"], params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      /* Fill needs 2 to 4 boundary edges — a range, not a minimum. Five edges is
+         as wrong as one, and only a range can say that. */
+      {glyph:"SurfaceFill",       label:"Fill Boundary", dims:["Edge","Wire"], boundary:[2,4], params:[
+          {kind:"segmented", ico:"ParamSmooth",   label:"Continuity", options:["G0","G1","G2"], value:1},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"SurfaceExtrudeSurf",label:"Extrude Surf.", raising:true, params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Length", min:0.01, max:5000, value:50, unit:"mm"},
+          {kind:"segmented", ico:"ParamDirection",label:"Direction", options:["Normal","Reversed","Symmetric"], value:0},
+      ]},
+      {glyph:"SurfaceRevolveSurf",label:"Revolve Surf.", raising:true, needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle",  min:1, max:360, value:360, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+      ]},
+      {glyph:"SurfaceSweepSurf",  label:"Sweep Surf.",  raising:true, needs:["path"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Orientation", options:["Frenet","Corrected","Fixed"], value:1},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Scale to path", value:false},
+      ]},
+      {glyph:"SurfaceLoftSurf",   label:"Loft Surf.",   raising:true, minProfile:2, needs:["uniform"], params:[
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Ruled sections", value:false},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Close loop", value:false},
+      ]},
+      {glyph:"SurfaceOffsetSurf", label:"Offset Surf.", dims:["Face","Shell"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:-500, max:500, value:2, unit:"mm"},
+          {kind:"toggle",    ico:"ParamMode",     label:"Keep original", value:false},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"SurfaceTrimSurf",   label:"Trim Surf.",   dims:["Face","Shell"], minCount:2, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Keep",   options:["Inside","Outside"], value:1},
+          {kind:"toggle",    ico:"ParamLink",     label:"Keep trimming curve", value:true},
+      ]},
+      {glyph:"SurfaceExtendSurf", label:"Extend Surf.", dims:["Face","Shell"], needs:["opening"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:0.01, max:5000, value:10, unit:"mm"},
+          {kind:"segmented", ico:"ParamSmooth",   label:"Method", options:["Natural","Linear","Reflective"], value:0},
+      ]},
+      /* Sew is the operation that walks a Shell UP the law to a Solid — provided
+         the sewn result closes. Its result type therefore is not predictable from
+         dimension alone, which is exactly why it declares needs:["closed"]. */
+      {glyph:"SurfaceSewFaces",   label:"Sew Faces",    dims:["Face","Shell"], minCount:2, params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Sew tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Make solid if closed", value:true},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Report open edges", value:true},
+      ]},
+      {glyph:"SurfaceBlendSurf",  label:"Blend Surf.",  dims:["Face","Shell"], minCount:2, params:[
+          {kind:"segmented", ico:"ParamSmooth",   label:"Continuity", options:["G0","G1","G2"], value:1},
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius", min:0.01, max:500, value:5, unit:"mm"},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 6 · BOOLEAN (9) ──────────────────────────────────────────────────────
+     🔴 The band where COUNT is the whole story. Union takes 2 or more; Cut takes
+     exactly 2, because "subtract these three from each other" has no meaning and
+     an order-dependent operation cannot accept an unordered set. Every op here
+     names its own count so the chip can say "needs exactly 2" instead of the
+     "Wrong selection" that sends users hunting for a selection TYPE problem when
+     the real issue is arithmetic. */
+  { key:"boolean", label:"Boolean", glyph:"BooleanUnion", ops:[
+      {glyph:"BooleanUnion",       label:"Union",      accel:"⇧U", minSolid:2, params:[
+          {kind:"toggle",    ico:"ParamMode",     label:"Keep operands", value:false},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Refine result", value:true},
+          {kind:"slider",    ico:"ParamTolerance",label:"Fuzzy tolerance", min:0, max:5, value:0, unit:"mm"},
+      ]},
+      {glyph:"BooleanCut",         label:"Cut",        accel:"⇧X", exactSolid:2, params:[
+          {kind:"segmented", ico:"ParamOperand",  label:"Subtract", options:["Second from first","First from second"], value:0},
+          {kind:"toggle",    ico:"ParamMode",     label:"Keep operands", value:false},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Refine result", value:true},
+      ]},
+      {glyph:"BooleanIntersect",   label:"Intersect",  accel:"⇧I", minSolid:2, params:[
+          {kind:"toggle",    ico:"ParamMode",     label:"Keep operands", value:false},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Refine result", value:true},
+      ]},
+      {glyph:"BooleanSection",     label:"Section",    minSolid:2, params:[
+          {kind:"toggle",    ico:"ParamClosed",   label:"Join section wires", value:true},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"BooleanSplit",       label:"Split",      exactSolid:2, params:[
+          {kind:"toggle",    ico:"ParamMode",     label:"Keep all pieces", value:true},
+          {kind:"toggle",    ico:"ParamLink",     label:"Group as compound", value:true},
+      ]},
+      {glyph:"BooleanFuseCompound",label:"Fuse Compound", minSolid:2, params:[
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Refine result", value:true},
+          {kind:"slider",    ico:"ParamTolerance",label:"Fuzzy tolerance", min:0, max:5, value:0, unit:"mm"},
+      ]},
+      {glyph:"BooleanImprint",     label:"Imprint",    minSolid:2, params:[
+          {kind:"toggle",    ico:"ParamMode",     label:"Imprint both ways", value:false},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"BooleanGlue",        label:"Glue",       minSolid:2, needs:["support"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Contact", options:["Full face","Partial"], value:0},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"BooleanCommonEdge",  label:"Common Edges", minSolid:2, params:[
+          {kind:"toggle",    ico:"ParamVisible",  label:"Highlight result", value:true},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 7 · PATTERN (10) ─────────────────────────────────────────────────────
+     Replication. Dimension-agnostic by nature — you can array a vertex as readily
+     as a solid — so these carry no dims restriction and stay offered on anything
+     real. None raises dimension: ten copies of a face are still faces. */
+  { key:"pattern", label:"Pattern", glyph:"PatternLinear", ops:[
+      {glyph:"PatternLinear",   label:"Linear Array",  accel:"⇧A", params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Count",   min:1, max:1000, value:5, unit:"−"},
+          {kind:"slider",    ico:"ParamDistance", label:"Spacing", min:0.01, max:5000, value:50, unit:"mm"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Direction"},
+          {kind:"segmented", ico:"ParamMode",     label:"Spacing is", options:["Interval","Total span"], value:0},
+      ]},
+      {glyph:"PatternGrid",     label:"Grid Array",    params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Count X", min:1, max:1000, value:4, unit:"−"},
+          {kind:"slider",    ico:"ParamRing",     label:"Count Y", min:1, max:1000, value:3, unit:"−"},
+          {kind:"slider",    ico:"ParamWidth",    label:"Spacing X", min:0.01, max:5000, value:50, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Spacing Y", min:0.01, max:5000, value:50, unit:"mm"},
+      ]},
+      {glyph:"PatternPolar",    label:"Polar Array",   needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Count",   min:1, max:1000, value:8, unit:"−"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Total angle", min:1, max:360, value:360, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Rotate copies", value:true},
+      ]},
+      {glyph:"PatternPath",     label:"Path Array",    needs:["path"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Count",   min:1, max:1000, value:10, unit:"−"},
+          {kind:"segmented", ico:"ParamMode",     label:"Spacing", options:["Even","By distance"], value:0},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Align to path", value:true},
+      ]},
+      {glyph:"PatternHelixPat", label:"Helical Array", needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Count",   min:1, max:1000, value:12, unit:"−"},
+          {kind:"slider",    ico:"ParamDistance", label:"Pitch",   min:0.01, max:1000, value:10, unit:"mm"},
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",  min:0.1, max:2500, value:40, unit:"mm"},
+      ]},
+      {glyph:"PatternMirror",   label:"Mirror",        accel:"⇧M", needs:["refplane"], params:[
+          {kind:"toggle",    ico:"ParamMirror",   label:"Keep source", value:true},
+          {kind:"axis",      ico:"ParamPlane",    label:"Mirror plane"},
+          {kind:"toggle",    ico:"ParamLink",     label:"Link to source", value:false},
+      ]},
+      {glyph:"PatternScale",    label:"Scale Copy",    params:[
+          {kind:"slider",    ico:"ParamStrength", label:"Factor",  min:0.01, max:100, value:2, unit:"×"},
+          {kind:"toggle",    ico:"ParamMode",     label:"Uniform", value:true},
+          {kind:"segmented", ico:"ParamPivot",    label:"About",   options:["Centre","Origin","Pick"], value:0},
+      ]},
+      {glyph:"PatternMove",     label:"Move Copy",     params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Offset X", min:-5000, max:5000, value:100, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Offset Y", min:-5000, max:5000, value:0, unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",    label:"Offset Z", min:-5000, max:5000, value:0, unit:"mm"},
+      ]},
+      {glyph:"PatternRotateCopy",label:"Rotate Copy",  needs:["axis"], params:[
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle",   min:-360, max:360, value:90, unit:"°"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+          {kind:"toggle",    ico:"ParamMirror",   label:"Keep source", value:true},
+      ]},
+      {glyph:"PatternTransform",label:"Transform",     needs:["refplane"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"From",    options:["Origin","Plane","Pick"], value:1},
+          {kind:"toggle",    ico:"ParamMirror",   label:"Keep source", value:true},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 8 · REFERENCE (9) ────────────────────────────────────────────────────
+     🔴 Datum geometry — the band that BREAKS the deadlock. When the catalogue is
+     mostly grey because no workplane is set, this is where the user goes to set
+     one, so it must never itself require a workplane. Every op here is dims:ANY
+     and none needs:["workplane"]: the fix for an empty document has to be
+     reachable FROM an empty document, or the offer-the-fix chip points nowhere. */
+  { key:"reference", label:"Reference", glyph:"RefPlane", ops:[
+      {glyph:"RefWorkplane",   label:"Workplane",     accel:"⇧W", dims:ANY, params:[
+          {kind:"segmented", ico:"ParamPlane",    label:"Base",    options:["XY","XZ","YZ","Pick face"], value:0},
+          {kind:"slider",    ico:"ParamDistance", label:"Offset",  min:-5000, max:5000, value:0, unit:"mm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Rotation", min:-180, max:180, value:0, unit:"°"},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show in viewport", value:true},
+      ]},
+      {glyph:"RefPlane",       label:"Datum Plane",   dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Defined by", options:["3 points","Face + offset","Normal"], value:0},
+          {kind:"slider",    ico:"ParamDistance", label:"Offset",  min:-5000, max:5000, value:0, unit:"mm"},
+      ]},
+      {glyph:"RefAxis",        label:"Datum Axis",    dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Defined by", options:["2 points","Edge","Intersection"], value:0},
+          {kind:"axis",      ico:"ParamAxis",     label:"Direction"},
+      ]},
+      {glyph:"RefPoint",       label:"Datum Point",   dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Defined by", options:["Coordinate","Vertex","Centre","Intersection"], value:0},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to", on:["Grid"]},
+      ]},
+      {glyph:"RefCoordSystem", label:"Coord. System", dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Placed at", options:["Origin","Pick","Body centre"], value:0},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show triad", value:true},
+      ]},
+      {glyph:"RefLocalOrigin", label:"Local Origin",  dims:ANY, params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"X", min:-5000, max:5000, value:0, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Y", min:-5000, max:5000, value:0, unit:"mm"},
+          {kind:"slider",    ico:"ParamDepth",    label:"Z", min:-5000, max:5000, value:0, unit:"mm"},
+      ]},
+      {glyph:"RefGridPlane",   label:"Grid Plane",    dims:ANY, params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Cell size", min:0.1, max:1000, value:10, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Divisions", min:1, max:100, value:10, unit:"−"},
+          {kind:"toggle",    ico:"ParamSnap",     label:"Snap to grid", value:true},
+      ]},
+      /* Midplane and TangentPlane derive from existing geometry, so unlike the
+         seven above they DO carry a requirement — but still never a workplane. */
+      {glyph:"RefMidplane",    label:"Mid Plane",     minCount:2, params:[
+          {kind:"toggle",    ico:"ParamLink",     label:"Track sources", value:true},
+      ]},
+      {glyph:"RefTangentPlane",label:"Tangent Plane", dims:["Face","Shell","Solid"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"At",      options:["Pick point","Centre","Vertex"], value:0},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show in viewport", value:true},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 9 · DATA-SOURCED (8) ─────────────────────────────────────────────────
+     Geometry built from something OUTSIDE the document — a file, a scan, a table,
+     a script. The distinguishing gate is needs:["imagery"] on the ops that read a
+     source: without an import there is nothing to trace, and saying so beats an
+     empty file-picker that closes with no explanation. */
+  { key:"sourced", label:"Data-Sourced", glyph:"DataImportStep", ops:[
+      {glyph:"DataImportStep",  label:"Import STEP",   dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Units",   options:["From file","mm","cm","in"], value:0},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Sew on import", value:true},
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:5, value:0.01, unit:"mm"},
+      ]},
+      {glyph:"DataMeshConvert", label:"Mesh to Solid", dims:ANY, needs:["imagery"], params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Tolerance", min:0.001, max:50, value:0.1, unit:"mm"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Merge coplanar faces", value:true},
+      ]},
+      {glyph:"DataPointCloud",  label:"Point Cloud",   dims:ANY, needs:["imagery"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Decimate to", min:1, max:100, value:100, unit:"%"},
+          {kind:"slider",    ico:"ParamDistance", label:"Point size",  min:0.1, max:50, value:1, unit:"mm"},
+      ]},
+      {glyph:"DataScanFit",     label:"Fit to Scan",   dims:ANY, needs:["imagery"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Fit",     options:["Plane","Cylinder","Sphere","Free"], value:3},
+          {kind:"slider",    ico:"ParamTolerance",label:"Max deviation", min:0.001, max:50, value:0.5, unit:"mm"},
+      ]},
+      {glyph:"DataHeightfield", label:"Heightfield",   dims:ANY, needs:["imagery"], params:[
+          {kind:"slider",    ico:"ParamHeight",   label:"Z scale", min:0.01, max:1000, value:50, unit:"mm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Samples", min:2, max:2048, value:256, unit:"−"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Smooth normals", value:true},
+      ]},
+      {glyph:"DataImageTrace",  label:"Trace Image",   needs:["workplane","imagery"], params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Trace tolerance", min:0.01, max:20, value:1, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Output",  options:["Polyline","Spline"], value:1},
+      ]},
+      {glyph:"DataProfileTable",label:"Profile Table", dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Source",  options:["CSV","Clipboard","Expression"], value:0},
+          {kind:"toggle",    ico:"ParamLink",     label:"Link to file", value:true},
+      ]},
+      {glyph:"DataScriptSolid", label:"Script Solid",  dims:ANY, params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Language", options:["Expression","Python"], value:0},
+          {kind:"slider",    ico:"ParamSeed",     label:"Seed",    min:0, max:9999, value:0, unit:"−"},
+          {kind:"toggle",    ico:"ParamLink",     label:"Re-run on edit", value:true},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 10 · ILLUMINATION (7) ────────────────────────────────────────────────
+     Lights and framing. Not geometry at all — they build no topology and answer to
+     no dimension — which is exactly why they are dims:ANY and ungated. A band that
+     is always available is not a failure of the gate; it is the gate correctly
+     reporting that nothing here depends on what you have selected. */
+  { key:"illumination", label:"Illumination", glyph:"LightPoint", ops:[
+      {glyph:"LightPoint",       label:"Point Light",  dims:ANY, params:[
+          {kind:"slider",    ico:"ParamStrength", label:"Intensity", min:0, max:10000, value:1000, unit:"lm"},
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",  min:0, max:1000, value:10, unit:"mm"},
+          {kind:"swatches",  ico:"ParamMaterial", label:"Colour"},
+      ]},
+      {glyph:"LightSun",         label:"Sun Light",    dims:ANY, params:[
+          {kind:"slider",    ico:"ParamStrength", label:"Intensity", min:0, max:200, value:100, unit:"klx"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Elevation", min:-90, max:90, value:45, unit:"°"},
+          {kind:"axis",      ico:"ParamDirection",label:"Direction"},
+      ]},
+      {glyph:"LightSpot",        label:"Spot Light",   dims:ANY, params:[
+          {kind:"slider",    ico:"ParamStrength", label:"Intensity", min:0, max:10000, value:1500, unit:"lm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Cone angle", min:1, max:179, value:45, unit:"°"},
+          {kind:"slider",    ico:"ParamSmooth",   label:"Falloff", min:0, max:100, value:20, unit:"%"},
+      ]},
+      {glyph:"LightArea",        label:"Area Light",   dims:ANY, params:[
+          {kind:"slider",    ico:"ParamStrength", label:"Intensity", min:0, max:10000, value:800, unit:"lm"},
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",   min:1, max:5000, value:200, unit:"mm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",  min:1, max:5000, value:200, unit:"mm"},
+      ]},
+      {glyph:"FramingCamera",    label:"Camera",       dims:ANY, params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Focal length", min:4, max:800, value:50, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Projection", options:["Perspective","Orthographic"], value:0},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show frustum", value:true},
+      ]},
+      {glyph:"FramingEnvironment",label:"Environment", dims:ANY, params:[
+          {kind:"slider",    ico:"ParamStrength", label:"Intensity", min:0, max:10, value:1, unit:"×"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Rotation", min:-180, max:180, value:0, unit:"°"},
+          {kind:"swatches",  ico:"ParamMaterial", label:"Tint"},
+      ]},
+      {glyph:"FramingTurntable", label:"Turntable",    dims:ANY, params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Frames",  min:2, max:1000, value:120, unit:"−"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Axis"},
+      ]},
+  ]},
+
+  { sep:true },
+
+  /*── Band 11 · ANNOTATION (8) ──────────────────────────────────────────────────
+     🔴 The band that closes the argument. Annotation needs something MEASURABLE —
+     and "Nothing" is not measurable, so on an empty document these correctly
+     vanish rather than greying. Dimensioning also discriminates by shape: a radial
+     dimension is meaningless on a straight edge, so RadialSize and Diameter demand
+     a circle (minCircle) and say "needs 1 circles" rather than shrugging. This is
+     the finest-grained gate in the catalogue and it costs one field. */
+  { key:"annotation", label:"Annotation", glyph:"AnnotateLinear", ops:[
+      {glyph:"AnnotateLinear",   label:"Linear Dim.",  accel:"D", needs:["measurable"], minCount:1, params:[
+          {kind:"segmented", ico:"ParamDirection",label:"Along",   options:["Aligned","Horizontal","Vertical"], value:0},
+          {kind:"slider",    ico:"ParamTolerance",label:"Precision", min:0, max:6, value:2, unit:"dp"},
+          {kind:"toggle",    ico:"ParamUnit",     label:"Show unit", value:true},
+      ]},
+      {glyph:"AnnotateAngular",  label:"Angular Dim.", needs:["measurable"], minCount:2, params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Precision", min:0, max:6, value:1, unit:"dp"},
+          {kind:"segmented", ico:"ParamMode",     label:"Measure", options:["Interior","Exterior"], value:0},
+      ]},
+      {glyph:"AnnotateRadial",   label:"Radial Dim.",  needs:["measurable"], minCircle:1, params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Precision", min:0, max:6, value:2, unit:"dp"},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show centre mark", value:true},
+      ]},
+      {glyph:"AnnotateDiameter", label:"Diameter Dim.", needs:["measurable"], minCircle:1, params:[
+          {kind:"slider",    ico:"ParamTolerance",label:"Precision", min:0, max:6, value:2, unit:"dp"},
+          {kind:"toggle",    ico:"ParamUnit",     label:"Show ⌀ symbol", value:true},
+      ]},
+      {glyph:"AnnotateOrdinate", label:"Ordinate Dim.", needs:["measurable","refplane"], params:[
+          {kind:"segmented", ico:"ParamDirection",label:"Axis",    options:["X","Y","Z"], value:0},
+          {kind:"slider",    ico:"ParamTolerance",label:"Precision", min:0, max:6, value:2, unit:"dp"},
+      ]},
+      {glyph:"AnnotateLeader",   label:"Leader Note",  needs:["measurable"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Arrow",   options:["Filled","Open","Dot","None"], value:0},
+          {kind:"slider",    ico:"ParamDistance", label:"Shoulder", min:0, max:200, value:10, unit:"mm"},
+      ]},
+      {glyph:"AnnotateSurfText", label:"Surface Text", dims:["Face","Shell","Solid"], params:[
+          {kind:"slider",    ico:"ParamHeight",   label:"Text height", min:0.1, max:500, value:10, unit:"mm"},
+          {kind:"slider",    ico:"ParamThickness",label:"Depth",   min:-50, max:50, value:1, unit:"mm"},
+          {kind:"segmented", ico:"ParamMode",     label:"Cut",     options:["Emboss","Engrave"], value:0},
+      ]},
+      {glyph:"AnnotateWeldMark", label:"Weld Symbol",  dims:["Edge","Wire"], needs:["measurable"], params:[
+          {kind:"segmented", ico:"ParamMode",     label:"Type",    options:["Fillet","Groove","Plug","Spot"], value:0},
+          {kind:"slider",    ico:"ParamThickness",label:"Size",    min:0.1, max:100, value:5, unit:"mm"},
+      ]},
+  ]},
+
+];
+
+/* The phrase the footers use to name what the tally was resolved against. */
+function subjectPhrase(){
+  if(DOC.ActiveDimension === "Nothing") return `into the <b>document</b>`;
+  const Closure = DOC.ClosedProfileCondition ? "closed" : "open";
+  return `on a <b>${DOC.ActiveDimension.toLowerCase()}</b> · ${Closure}`;
+}
+
+/*════════════════════════════════════════════════════════════════════════════════
+   PART 6 — BUILD, RENDER, CAROUSEL
+════════════════════════════════════════════════════════════════════════════════*/
+
+const catalogue = document.getElementById("catalogue");
+const toast     = document.getElementById("toast");
+
+let rail, railBody, gridPane, gridHead, gridBody, grid, gridFoot, railRows = {};
+let track, probePane, probeHead, probeBody, optionsPane, optionsHead, optionsBody, optionsFoot;
+let activeBand = null;
+let activeOp   = null;
+let railScrolling = false, railScrollTimer;
+
+function build(){
+  catalogue.innerHTML = "";
+
+  const View = document.createElement("div"); View.className = "cat-view";
+  track = document.createElement("div"); track.className = "cat-track";
+  const SlideBrowse = document.createElement("div"); SlideBrowse.className = "cat-slide";
+  const SlideDetail = document.createElement("div"); SlideDetail.className = "cat-slide";
+
+  //---------------------------------------------- LEFT PANE ----------------------------------------------
+  rail = document.createElement("div"); rail.className = "rail";
+
+  /* The ratio is live-vs-ADMITTED, not live-vs-128. Quoting the catalogue total
+     would name a denominator the rail no longer shows — "35 of 128" beside a rail
+     listing 41 — so both figures are scoped to what this document state admits. */
+  const BandsLive = BANDS.filter(b => b.ops).reduce((n,b) => n + liveCount(b), 0);
+  const OpsShown  = BANDS.filter(b => b.ops).reduce((n,b) => n + visible(b).length, 0);
+
+  const RailHead = document.createElement("div"); RailHead.className = "pane-head";
+  const VoidPick = DOC.ActiveDimension === "Nothing";
+  RailHead.innerHTML =
+      `<span class="h-ic">${BADGE[DOC.ActiveDimension]()}</span>`
+    + `<span class="h-txt">${VoidPick ? "Empty document" : DOC.ActiveDimension}`
+    + `<span class="fn">${BandsLive} of ${OpsShown} available</span></span>`
+    + `<span class="h-n${VoidPick ? "" : " accent"}">`
+    + `${VoidPick ? "nothing selected" : DOC.SelectedCount + " selected"}</span>`;
+  rail.appendChild(RailHead);
+
+  railBody = document.createElement("div"); railBody.className = "rail-body";
+  rail.appendChild(railBody);
+
+  // ⚠️ Hover-to-swap muted while the rail scrolls: the pointer stays put but the rows
+  //    travel under it, so every row that passes fires mouseenter and the grid thrashes
+  //    through five bands on one wheel throw. Re-armed shortly after the wheel stops.
+  railBody.addEventListener("scroll", () => {
+    railScrolling = true;
+    clearTimeout(railScrollTimer);
+    railScrollTimer = setTimeout(() => { railScrolling = false; }, 130);
+  });
+
+  /* 🔴 The rail lists only bands with something to show. A band with nothing visible is
+     dropped, not dimmed — on a Solid that removes Sketch Geometry entirely rather than
+     leaving 22 dead rows. Separators are resolved AFTER filtering, because a divider
+     stranded at the top, at the bottom, or doubled where the band between two of them
+     vanished is the exact artefact that makes a filtered list look broken. */
+  railRows = {};
+  const Surviving = BANDS.filter(Band => Band.sep || visible(Band).length > 0);
+  const RailPlan = Surviving.filter((Band, Index) => {
+    if(!Band.sep) return true;
+    const Before  = Surviving.slice(0, Index).some(b => !b.sep);
+    const After   = Surviving.slice(Index + 1).some(b => !b.sep);
+    const Doubled = Index > 0 && Surviving[Index - 1].sep;
+    return Before && After && !Doubled;
+  });
+
+  RailPlan.forEach(Band => {
+    if(Band.sep){
+      const S = document.createElement("div"); S.className = "rail-sep";
+      railBody.appendChild(S); return;
+    }
+    const Row = document.createElement("div");
+    Row.className = "rail-item";
+    /* The rail count is the LIVE count, not the visible count. A row reading "22" that
+       opens onto 22 greyed tiles promises something it cannot deliver. */
+    const Live = liveCount(Band), Shown = visible(Band).length;
+    Row.innerHTML =
+        `<span class="r-ic">${glyph(Band.glyph)}</span>`
+      + `<span class="r-lbl">${Band.label}</span>`
+      + `<span class="r-n${Live === 0 ? " none" : ""}">${Live}</span>`
+      + (Shown - Live ? `<span class="r-g">+${Shown - Live}</span>` : "");
+    Row.addEventListener("mouseenter", () => { if(!railScrolling) setActive(Band.key); });
+    Row.addEventListener("click",      () => setActive(Band.key));
+    railBody.appendChild(Row);
+    railRows[Band.key] = Row;
+  });
+
+  //---------------------------------------------- RIGHT PANE ----------------------------------------------
+  gridPane = document.createElement("div"); gridPane.className = "grid-pane";
+  gridHead = document.createElement("div"); gridHead.className = "pane-head";
+  gridPane.appendChild(gridHead);
+  gridBody = document.createElement("div"); gridBody.className = "grid-body";
+  grid     = document.createElement("div"); grid.className = "grid";
+  gridBody.appendChild(grid);
+  gridPane.appendChild(gridBody);
+  gridFoot = document.createElement("div"); gridFoot.className = "grid-foot";
+  gridPane.appendChild(gridFoot);
+
+  //------------------------------------------ SLIDE 1 — PROBE ------------------------------------------
+  // 📝 The back row occupies the header band itself rather than sitting above it, so the
+  //    53 px header line stays unbroken across both slides while the track is moving.
+  probePane = document.createElement("div"); probePane.className = "probe-pane";
+  probeHead = document.createElement("div"); probeHead.className = "pane-head back";
+  probeHead.addEventListener("click", slideToBrowse);
+  probePane.appendChild(probeHead);
+  probeBody = document.createElement("div"); probeBody.className = "probe-body";
+  probePane.appendChild(probeBody);
+
+  //----------------------------------------- SLIDE 1 — OPTIONS -----------------------------------------
+  optionsPane = document.createElement("div"); optionsPane.className = "options-pane";
+  optionsHead = document.createElement("div"); optionsHead.className = "pane-head";
+  optionsPane.appendChild(optionsHead);
+  optionsBody = document.createElement("div"); optionsBody.className = "options-body";
+  optionsPane.appendChild(optionsBody);
+  optionsFoot = document.createElement("div"); optionsFoot.className = "opt-foot";
+  optionsPane.appendChild(optionsFoot);
+
+  SlideBrowse.appendChild(rail);        SlideBrowse.appendChild(gridPane);
+  SlideDetail.appendChild(probePane);   SlideDetail.appendChild(optionsPane);
+  track.appendChild(SlideBrowse);       track.appendChild(SlideDetail);
+  View.appendChild(track);
+  catalogue.appendChild(View);
+}
+
+/*───────────────────────────────────────────────────────────────────────────────
+   THE FOUR RENDERINGS. Every tile is exactly one of:
+     Available         plain, clickable
+     ClosureShortfall  plain, clickable, + amber "→ shell" badge stating the truth
+     WorkplaneAbsent   greyed, accent chip offering the one-click fix
+     ProfileShortfall  greyed, amber chip naming the specific shortfall
+   (DimensionMismatch never reaches here — those tiles are omitted upstream.)
+───────────────────────────────────────────────────────────────────────────────*/
+function setActive(Key){
+  const Band = BANDS.find(b => b.key === Key && b.ops);
+  Object.values(railRows).forEach(r => r.classList.remove("active"));
+  /* 🔴 Two different failures used to share one guard, and the second one lost.
+     "No such band" is a bail — there is nothing to draw. "Band exists but every
+     op in it is gated" is a RESULT, and it has to reach the .grid-void panel
+     below. Collapsing them left a blank grid on a legitimate filter outcome. */
+  if(!Band){ activeBand = null; return; }
+  if(activeBand === Key) return;
+  activeBand = Key;
+  /* A band with no live ops may have been dropped from the rail entirely, so there
+     is no row to mark — but the grid still owes the user the void panel below.
+     Absence of a rail row is not a reason to skip rendering. */
+  if(railRows[Key]) railRows[Key].classList.add("active");
+
+  const Shown = visible(Band);
+  const Live  = Shown.filter(live).length;
+
+  gridHead.innerHTML =
+      `<span class="h-ic">${glyph(Band.glyph)}</span>`
+    + `<span class="h-txt">${Band.label}`
+    + `<span class="fn">${Live} of ${Shown.length} available`
+    + `${Shown.length - Live ? ` · ${Shown.length - Live} gated` : ""}</span></span>`
+    + `<span class="h-n">${Shown.length} ops</span>`;
+
+  grid.innerHTML = "";
+
+  /* 🔴 Never an empty tile field. With revealGated off a band can filter down to
+     nothing, and a blank grid reads as a rendering fault rather than a filter
+     result (Blender T55214). Say what happened and how to undo it. */
+  if(Shown.length === 0){
+    grid.innerHTML =
+        `<div class="grid-void">${glyph(Band.glyph)}`
+      + `<div>Every operation here is gated on the current state.<br>`
+      + `<b>Show gated</b> to see them and their reasons.</div></div>`;
+  }
+
+  Shown.forEach(Op => {
+    const Condition = conditionOf(Op);
+    const Off       = gated(Op);
+    const Result    = resultType(Op);
+    // The badge appears only when the law predicts something OTHER than the clean
+    // outcome — a face extruding to a solid needs no announcement, a wire extruding
+    // to a shell very much does.
+    const Badged    = Condition === "ClosureShortfall" && Result;
+
+    const Tile = document.createElement("div");
+    Tile.className = "tile"
+      + (Off ? " gated" : "")
+      + (Condition === "WorkplaneAbsent" ? " fixable" : "")
+      + (Badged ? " badged" : "");
+    Tile.innerHTML =
+        glyph(Op.glyph)
+      + `<span class="t-lbl">${Op.label}</span>`
+      + (Off ? `<span class="t-why">${Condition === "WorkplaneAbsent"
+                                       ? "set workplane ↦" : shortfallText(Op)}</span>` : "")
+      + (Badged ? `<span class="t-badge">→ ${Result.toLowerCase()}</span>` : "")
+      + (Op.accel && !Off ? `<span class="t-key">${Op.accel}</span>` : "");
+
+    // The offer-the-fix chip is a real affordance, not decoration: clicking a
+    // workplane-gated tile sets the workplane and re-renders, waking all 22.
+    if(Condition === "WorkplaneAbsent"){
+      Tile.addEventListener("click", () => {
+        DOC.WorkplaneActivation = true;
+        refresh();
+        // Count what actually woke rather than quoting the band size — on an empty
+        // document the curve-editing ops stay gated, and claiming otherwise would
+        // have the toast contradict the grid the user is looking at.
+        showToast("Workplane set", liveCount(Band) + " sketch operations now available");
+      });
+    } else if(!Off){
+      Tile.addEventListener("click", () => slideToOptions(Op));
+    }
+    grid.appendChild(Tile);
+  });
+
+  gridFoot.innerHTML =
+      `<span class="live">${subjectPhrase()}</span>`
+    + `<span style="margin-left:auto">pick an operation for its options</span>`;
+
+  gridBody.scrollTop = 0;
+  grid.classList.remove("swap"); void grid.offsetWidth; grid.classList.add("swap");
+}
+
+/* The first band with anything visible — never open onto an empty grid. */
+function firstPopulated(){
+  const Band = BANDS.find(b => b.ops && visible(b).length > 0);
+  return Band ? Band.key : null;
+}
+
+/* Re-evaluate everything against the current DOC and repaint, holding the open band
+   if it still exists. Every state control calls this — the gate is never patched in
+   place, it is always recomputed, which is what keeps the invariant true by
+   construction rather than by maintenance. */
+function refresh(){
+  const Held = activeBand;
+  build();
+  activeBand = null;
+  const Target = (Held && BANDS.some(b => b.key === Held && visible(b).length > 0))
+               ? Held : firstPopulated();
+  setActive(Target);
+  if(track) track.classList.remove("to-options");
+}
+
+/*═══════════════════════════ SLIDE 1 · THE PROBE PANE ═══════════════════════════
+   In ModellingToolMenu.html this pane is a read-only readout. Here it is the
+   document-state CONTROL surface — the deliberate departure the user asked for.
+   That inversion is what makes the prototype demonstrable: the gate's inputs are
+   the only things you can touch, so every change to the tile field is visibly
+   caused by a change to state, never by a hidden per-op rule.
+═══════════════════════════════════════════════════════════════════════════════*/
+
+const CHECK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"
+  stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>`;
+
+/* The 9 presets from plan §8. Each is a document state worth ONE click, because the
+   interesting gate behaviour lives in combinations a reviewer would otherwise have to
+   assemble by hand — and the ones that reveal bugs are the ones nobody assembles. */
+const PRESETS = [
+  { name:"Empty document",   note:"nothing selected · no workplane",
+    state:{ ActiveDimension:"Nothing", SelectedCount:0, ProfileCount:0, SolidCount:0,
+            WorkplaneActivation:false, ClosedProfileCondition:false, AxisAvailability:false,
+            PathAvailability:false, SupportMaterialCondition:false, ReferencePlaneCondition:false,
+            SourceImageryCondition:false, MeasurableCondition:false } },
+  { name:"Workplane set",    note:"the 22 sketch operations wake",
+    state:{ ActiveDimension:"Nothing", SelectedCount:0, WorkplaneActivation:true,
+            ReferencePlaneCondition:true, MeasurableCondition:false } },
+  { name:"Open wire",        note:"🔴 raising ops stay LIVE, badged → shell",
+    state:{ ActiveDimension:"Wire", SelectedCount:1, ProfileCount:1, ClosedProfileCondition:false,
+            WorkplaneActivation:true, AxisAvailability:true, PathAvailability:true,
+            MeasurableCondition:true } },
+  { name:"Closed wire",      note:"same ops, now → solid",
+    state:{ ActiveDimension:"Wire", SelectedCount:1, ProfileCount:1, ClosedProfileCondition:true,
+            WorkplaneActivation:true, AxisAvailability:true, PathAvailability:true,
+            MeasurableCondition:true } },
+  { name:"Planar face",      note:"the clean case — no solid checkbox needed",
+    state:{ ActiveDimension:"Face", SelectedCount:1, ProfileCount:1, ClosedProfileCondition:true,
+            PlanarProfileCondition:true, WorkplaneActivation:true, AxisAvailability:true,
+            PathAvailability:true, MeasurableCondition:true, SupportMaterialCondition:true } },
+  { name:"Two profiles",     note:"loft and ruled sweep reach their minimum",
+    state:{ ActiveDimension:"Wire", SelectedCount:2, ProfileCount:2, ClosedProfileCondition:true,
+            UniformClosureCondition:true, WorkplaneActivation:true, AxisAvailability:true,
+            PathAvailability:true, MeasurableCondition:true } },
+  { name:"Open shell",       note:"needs sewing before it can be a solid",
+    state:{ ActiveDimension:"Shell", SelectedCount:1, ClosedProfileCondition:false,
+            OpeningCondition:true, WorkplaneActivation:true, SupportMaterialCondition:true,
+            MeasurableCondition:true } },
+  { name:"One solid",        note:"🔴 profile sweep VANISHES — no successor",
+    state:{ ActiveDimension:"Solid", SelectedCount:1, SolidCount:1, ClosedProfileCondition:true,
+            WorkplaneActivation:true, SupportMaterialCondition:true, MeasurableCondition:true,
+            AxisAvailability:true, ReferencePlaneCondition:true } },
+  { name:"Two solids",       note:"the booleans reach their counts",
+    state:{ ActiveDimension:"Solid", SelectedCount:2, SolidCount:2, ClosedProfileCondition:true,
+            WorkplaneActivation:true, SupportMaterialCondition:true, MeasurableCondition:true,
+            AxisAvailability:true, ReferencePlaneCondition:true } },
+];
+
+function sectionOf(Title){
+  const S = document.createElement("div"); S.className = "probe-sec";
+  S.innerHTML = `<div class="probe-sec-head">${Title}</div>`;
+  return S;
+}
+
+/* A ◄ N ► stepper for the count fields. Counts are the second most common gate in the
+   catalogue after dimension, and typing is the wrong verb for a value you nudge. */
+function stepRow(Label, Field, Floor, Ceiling){
+  const Row = document.createElement("div"); Row.className = "state-step";
+  Row.innerHTML =
+      `<span class="s-k">${Label}</span>`
+    + `<span class="s-btn" data-d="-1">◄</span>`
+    + `<span class="s-v">${DOC[Field]}</span>`
+    + `<span class="s-btn" data-d="1">►</span>`;
+  Row.querySelectorAll(".s-btn").forEach(B => B.addEventListener("click", Event => {
+    Event.stopPropagation();
+    const Next = DOC[Field] + Number(B.dataset.d);
+    if(Next < Floor || Next > Ceiling) return;
+    DOC[Field] = Next;
+    refresh();
+  }));
+  return Row;
+}
+
+/* A checkbox bound straight to a DOC flag. `Keystone` promotes the workplane row,
+   because it is the one flag that moves 22 tiles at once. */
+function toggleRow(Label, Field, Keystone){
+  const Row = document.createElement("div");
+  Row.className = "state-toggle" + (DOC[Field] ? " on" : "") + (Keystone ? " keystone" : "");
+  Row.innerHTML = `<span class="s-box">${CHECK}</span><span>${Label}</span>`;
+  Row.addEventListener("click", () => { DOC[Field] = !DOC[Field]; refresh(); });
+  return Row;
+}
+
+function renderProbeReadout(){
+  probeHead.innerHTML =
+      `<span class="h-ic">${BADGE[DOC.ActiveDimension]()}</span>`
+    + `<span class="h-txt">Document state<span class="fn">edit to re-evaluate the gate</span></span>`
+    + `<span class="h-n">back</span>`;
+
+  probeBody.innerHTML = "";
+
+  //──────────────────────────── INPUT DIMENSION ────────────────────────────
+  const DimSec = sectionOf("Input dimension");
+  const Chips = document.createElement("div"); Chips.className = "state-chips";
+  DIMENSIONS.forEach(Dim => {
+    const Chip = document.createElement("span");
+    Chip.className = "state-chip" + (Dim === DOC.ActiveDimension ? " on" : "");
+    Chip.textContent = Dim;
+    Chip.addEventListener("click", () => {
+      DOC.ActiveDimension = Dim;
+      if(Dim === "Nothing") DOC.SelectedCount = 0;
+      else if(DOC.SelectedCount === 0) DOC.SelectedCount = 1;
+      refresh();
+    });
+    Chips.appendChild(Chip);
+  });
+  DimSec.appendChild(Chips);
+  probeBody.appendChild(DimSec);
+
+  //──────────────────────────── THE LAW'S VERDICT ────────────────────────────
+  /* 🔴 The centrepiece: the law stated as an equation, with its reason. This is the
+     single readout that replaces 128 tabulated availability rules, so it is shown
+     even when the answer is "nothing" — a terminal dimension is a RESULT, not an
+     absence, and rendering it as blank would hide the most interesting case. */
+  const Raised = raiseDimension(DOC.ActiveDimension, DOC.ClosedProfileCondition);
+  const LawSec = sectionOf("Dimension-raising law");
+  const Result = document.createElement("div"); Result.className = "probe-result";
+  Result.innerHTML =
+      `<div class="r-law"><span>${DOC.ActiveDimension}</span>`
+    + `<span class="arw">──raise──▸</span>`
+    + `<span class="out${Raised ? "" : " void"}">${Raised || "no successor"}</span></div>`
+    + `<div class="r-note">${describeLaw(DOC.ActiveDimension, DOC.ClosedProfileCondition)}</div>`;
+  LawSec.appendChild(Result);
+  probeBody.appendChild(LawSec);
+
+  //──────────────────────────── COUNTS ────────────────────────────
+  const CountSec = sectionOf("Counts");
+  CountSec.appendChild(stepRow("Selected",       "SelectedCount",       0, 12));
+  CountSec.appendChild(stepRow("Profiles",       "ProfileCount",        0, 12));
+  CountSec.appendChild(stepRow("Solids",         "SolidCount",          0, 12));
+  CountSec.appendChild(stepRow("Boundary edges", "BoundaryEdgeCount",   0, 12));
+  CountSec.appendChild(stepRow("Circles",        "ExistingCircleCount", 0, 12));
+  probeBody.appendChild(CountSec);
+
+  //──────────────────────────── CONDITIONS ────────────────────────────
+  const FlagSec = sectionOf("Conditions");
+  FlagSec.appendChild(toggleRow("Workplane set", "WorkplaneActivation", true));
+  FlagSec.appendChild(toggleRow("Profile closed",       "ClosedProfileCondition"));
+  FlagSec.appendChild(toggleRow("Profile planar",       "PlanarProfileCondition"));
+  FlagSec.appendChild(toggleRow("Axis available",       "AxisAvailability"));
+  FlagSec.appendChild(toggleRow("Path available",       "PathAvailability"));
+  FlagSec.appendChild(toggleRow("Uniform closure",      "UniformClosureCondition"));
+  FlagSec.appendChild(toggleRow("Material to reach",    "SupportMaterialCondition"));
+  FlagSec.appendChild(toggleRow("Shared endpoint",      "TangentEndpointCondition"));
+  FlagSec.appendChild(toggleRow("Has an opening",       "OpeningCondition"));
+  FlagSec.appendChild(toggleRow("Reference plane",      "ReferencePlaneCondition"));
+  FlagSec.appendChild(toggleRow("Imported source",      "SourceImageryCondition"));
+  FlagSec.appendChild(toggleRow("Measurable",           "MeasurableCondition"));
+  FlagSec.appendChild(toggleRow("Pending geometry",     "PendingGeometryCondition"));
+  probeBody.appendChild(FlagSec);
+
+  //──────────────────────────── PRESETS ────────────────────────────
+  const PresetSec = sectionOf("Presets");
+  PRESETS.forEach(Preset => {
+    const Row = document.createElement("div"); Row.className = "state-preset";
+    Row.innerHTML = `<span class="p-n">${Preset.name}</span><span class="p-x">${Preset.note}</span>`;
+    Row.addEventListener("click", () => { Object.assign(DOC, Preset.state); refresh(); });
+    PresetSec.appendChild(Row);
+  });
+  probeBody.appendChild(PresetSec);
+
+  //──────────────────────────── THE INVARIANT ────────────────────────────
+  /* 🔴 Displayed, not asserted. An assertion that only fires in a test run is an
+     assertion nobody sees; this one is under the reviewer's thumb while they click. */
+  const Count = tally();
+  const Holds = Count.Available + Count.Gated + Count.Hidden === catalogueTotal();
+  const TallySec = sectionOf("Live tally");
+  const Box = document.createElement("div"); Box.className = "state-tally";
+  Box.innerHTML =
+      `<span class="av"><b>${Count.Available}</b> available</span>`
+    + `<span class="gt"><b>${Count.Gated}</b> gated</span>`
+    + `<span class="hd"><b>${Count.Hidden}</b> hidden</span>`
+    + `<span class="sum ${Holds ? "hold" : "broken"}">`
+    + `${Count.Available} + ${Count.Gated} + ${Count.Hidden} = ${catalogueTotal()}`
+    + `${Holds ? " ✓ invariant holds" : " ✗ INVARIANT BROKEN"}</span>`;
+  TallySec.appendChild(Box);
+  probeBody.appendChild(TallySec);
+
+  //──────────────────────────── REVEAL ────────────────────────────
+  const ViewSec = sectionOf("Tile field");
+  const Reveal = document.createElement("div");
+  Reveal.className = "state-toggle" + (revealGated ? " on" : "");
+  Reveal.innerHTML = `<span class="s-box">${CHECK}</span><span>Show gated operations</span>`;
+  Reveal.addEventListener("click", () => { revealGated = !revealGated; refresh(); });
+  ViewSec.appendChild(Reveal);
+  const Note = document.createElement("div"); Note.className = "probe-flag";
+  Note.innerHTML = `<span class="dot" style="background:var(--faint)"></span>`
+    + `<span>Wrong-dimension operations are always hidden — this toggle only affects`
+    + ` the ${Count.Gated} shortfall tiles.</span>`;
+  ViewSec.appendChild(Note);
+  probeBody.appendChild(ViewSec);
+}
+
+/*═══════════════════════════ SLIDE 1 · THE OPTIONS PANE ═══════════════════════════*/
+
+function clampRange(Value, Floor, Ceiling){ return Math.min(Ceiling, Math.max(Floor, Value)); }
+
+function buildParameterRow(Parameter){
+  const Row = document.createElement("div"); Row.className = "param";
+  const Mark = Parameter.ico ? glyph(Parameter.ico) : "";
+
+  if(Parameter.kind === "slider"){
+    Row.innerHTML = `
+      <div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div>
+      <div class="slider-ctl">
+        <div class="valuebox">
+          <div class="num"><input type="number" value="${Parameter.value}"></div>
+          <div class="unitseg">${Parameter.unit || ""}</div>
+        </div>
+        <div class="slider"><div class="fill"></div><div class="knob"></div></div>
+      </div>`;
+    const Field = Row.querySelector("input"), Fill = Row.querySelector(".fill");
+    const Knob  = Row.querySelector(".knob"),  Track = Row.querySelector(".slider");
+    const Paint = Reading => {
+      const Normalized = (Reading - Parameter.min) / (Parameter.max - Parameter.min);
+      Fill.style.width = (Normalized * 100) + "%";
+      Knob.style.left  = (Normalized * 100) + "%";
+    };
+    const ResolveFromPointer = PointerX => {
+      const Bounds = Track.getBoundingClientRect();
+      const Normalized = clampRange((PointerX - Bounds.left) / Bounds.width, 0, 1);
+      const Reading = Math.round((Parameter.min + Normalized * (Parameter.max - Parameter.min)) * 1000) / 1000;
+      Field.value = Reading; Paint(Reading);
+    };
+    Track.addEventListener("pointerdown", Event => {
+      Track.setPointerCapture(Event.pointerId);
+      ResolveFromPointer(Event.clientX);
+      const Drag = Moved => ResolveFromPointer(Moved.clientX);
+      const Release = () => { Track.removeEventListener("pointermove", Drag);
+                              Track.removeEventListener("pointerup", Release); };
+      Track.addEventListener("pointermove", Drag);
+      Track.addEventListener("pointerup", Release);
+    });
+    Field.addEventListener("input", () => {
+      const Reading = parseFloat(Field.value);
+      if(!isNaN(Reading)) Paint(clampRange(Reading, Parameter.min, Parameter.max));
+    });
+    Paint(Parameter.value);
+  }
+
+  else if(Parameter.kind === "segmented"){
+    Row.innerHTML = `<div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div><div class="segment"></div>`;
+    const Strip = Row.querySelector(".segment");
+    Parameter.options.forEach((Option, Position) => {
+      const Pill = document.createElement("div");
+      Pill.className = "seg-opt" + (Position === Parameter.value ? " sel" : "");
+      Pill.textContent = Option;
+      Pill.addEventListener("click", () => {
+        Strip.querySelectorAll(".seg-opt").forEach(Other => Other.classList.remove("sel"));
+        Pill.classList.add("sel");
+      });
+      Strip.appendChild(Pill);
+    });
+  }
+
+  else if(Parameter.kind === "toggle"){
+    Row.innerHTML = `
+      <div class="toggle-row">
+        <span class="name">${Mark}${Parameter.label}</span>
+        <div class="switch ${Parameter.value ? "on" : ""}"><div class="nub"></div></div>
+      </div>`;
+    const Switch = Row.querySelector(".switch");
+    Switch.addEventListener("click", () => Switch.classList.toggle("on"));
+  }
+
+  else if(Parameter.kind === "axis"){
+    // 💡 Negate is meaningless on Normal/View, so the pill voids rather than vanishing —
+    //    a control that disappears teaches the reader it was never there.
+    const Axes = ["Free","X","Y","Z","Normal","View"];
+    Row.innerHTML = `
+      <div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div>
+      <div class="axis-ctl"><div class="segment"></div><div class="neg-pill void" title="Negate the axis">−</div></div>`;
+    const Strip = Row.querySelector(".segment"), Negate = Row.querySelector(".neg-pill");
+    const Negatable = Name => Name === "X" || Name === "Y" || Name === "Z";
+    Axes.forEach((Name, Position) => {
+      const Pill = document.createElement("div");
+      Pill.className = "seg-opt" + (Position === 0 ? " sel" : "");
+      Pill.textContent = Name;
+      Pill.addEventListener("click", () => {
+        Strip.querySelectorAll(".seg-opt").forEach(Other => Other.classList.remove("sel"));
+        Pill.classList.add("sel");
+        Negate.classList.toggle("void", !Negatable(Name));
+        if(!Negatable(Name)) Negate.classList.remove("on");
+      });
+      Strip.appendChild(Pill);
+    });
+    Negate.addEventListener("click", () => {
+      if(Negate.classList.contains("void")) return;
+      Negate.classList.toggle("on");
+    });
+  }
+
+  else if(Parameter.kind === "snap"){
+    const Targets = Parameter.targets || ["Grid","Vertex","Edge","Face","Angle"];
+    Row.innerHTML = `<div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div><div class="chips"></div>`;
+    const Strip = Row.querySelector(".chips");
+    Targets.forEach(Name => {
+      const Chip = document.createElement("div");
+      Chip.className = "chip" + ((Parameter.on || []).includes(Name) ? " on" : "");
+      Chip.textContent = Name;
+      Chip.addEventListener("click", () => Chip.classList.toggle("on"));
+      Strip.appendChild(Chip);
+    });
+  }
+
+  else if(Parameter.kind === "swatches"){
+    Row.innerHTML = `<div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div><div class="swatches"></div>`;
+    const Strip = Row.querySelector(".swatches");
+    /* 📝 Reads its palette defensively — the reference prototype took the whole options
+       pane down with a TypeError when one tool omitted `colors`. */
+    const Palette = Parameter.colors || ["#c8c8cf","#e0603f","#4d9fff","#6bff8f","#c77dff"];
+    Palette.forEach((Tint, Position) => {
+      const Chip = document.createElement("div");
+      Chip.className = "swatch" + (Position === Parameter.value ? " on" : "");
+      Chip.style.background = Tint;
+      Chip.addEventListener("click", () => {
+        Strip.querySelectorAll(".swatch").forEach(Other => Other.classList.remove("on"));
+        Chip.classList.add("on");
+      });
+      Strip.appendChild(Chip);
+    });
+  }
+
+  return Row;
+}
+
+function renderConstructionOptions(Op){
+  const Condition = conditionOf(Op);
+  const Result    = resultType(Op);
+
+  optionsHead.innerHTML =
+      `<span class="h-ic">${glyph(Op.glyph)}</span>`
+    + `<span class="h-txt">${Op.label}<span class="fn">${(Op.params||[]).length} parameters</span></span>`
+    + (Op.accel ? `<span class="h-n">${Op.accel}</span>` : "");
+
+  optionsBody.innerHTML = "";
+
+  /* 🔴 The prediction restated at the point of commitment. The tile badge is easy to
+     miss on the way past; this sits directly above Apply, where the user is deciding.
+     Surveyed tools put a "create solid" CHECKBOX here and silently ignore it when the
+     profile is open — this states the outcome instead of pretending to offer a choice. */
+  if(Result){
+    const Banner = document.createElement("div");
+    Banner.className = "opt-predict";
+    Banner.innerHTML = Condition === "ClosureShortfall"
+      ? `${BADGE[Result]()}<span>Produces a <b>${Result.toLowerCase()}</b> — `
+        + `the profile is open, so the law cannot reach a solid.</span>`
+      : `${BADGE[Result]()}<span>Produces a <b>${Result.toLowerCase()}</b>.</span>`;
+    optionsBody.appendChild(Banner);
+  }
+
+  (Op.params || []).forEach(Parameter => optionsBody.appendChild(buildParameterRow(Parameter)));
+
+  /* 🔴 A gated op reaches this pane by keyboard and by a caller that does not
+     re-check, so Apply is disabled HERE rather than trusted to never be offered.
+     The reason travels with the button instead of leaving a dead control. */
+  const Blocked = gated(Op);
+
+  optionsFoot.innerHTML =
+      `<span class="spend">${Blocked ? shortfallText(Op) : subjectPhrase()}</span>`
+    + `<span class="obtn ghost" id="optCancel">Cancel</span>`
+    + `<span class="obtn go${Blocked ? " off" : ""}" id="optApply">Apply</span>`;
+  // Cancel is not decoration: without it the only way back was the Escape key.
+  optionsFoot.querySelector("#optCancel").addEventListener("click", slideToBrowse);
+  if(!Blocked){
+    optionsFoot.querySelector("#optApply").addEventListener("click", () => finalizeOp(Op));
+  }
+  optionsBody.scrollTop = 0;
+}
+
+/*═══════════════════════════ THE CAROUSEL ═══════════════════════════*/
+function slideToOptions(Op){
+  activeOp = Op;
+  renderProbeReadout();
+  renderConstructionOptions(Op);
+  track.classList.add("to-options");
+}
+function slideToBrowse(){
+  activeOp = null;
+  track.classList.remove("to-options");
+}
+
+/*═══════════════════════════ RUN ═══════════════════════════*/
+function finalizeOp(Op){
+  const Result = resultType(Op);
+  showToast(Op.label, Result ? `produced a ${Result.toLowerCase()}` : null);
+  setTimeout(close, 100);
+}
+
+let toastTimer;
+function showToast(Name, Detail){
+  toast.innerHTML = `<b>${Name}</b>`
+    + (Detail ? ` <span class="pred">${Detail}</span>` : "");
+  toast.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("on"), 1600);
+}
+
+/*═══════════════════════════ OPEN / CLOSE ═══════════════════════════*/
+let originX = 120, originY = 120;
+function openAt(x, y){
+  build();
+  setActive(firstPopulated());
+  catalogue.classList.add("open");
+  const Pad = 10, W = catalogue.offsetWidth, H = catalogue.offsetHeight;
+  if(x + W > innerWidth  - Pad) x = innerWidth  - W - Pad;
+  if(y + H > innerHeight - Pad) y = innerHeight - H - Pad;
+  originX = Math.max(Pad, x); originY = Math.max(Pad, y);
+  catalogue.style.left = originX + "px";
+  catalogue.style.top  = originY + "px";
+}
+function close(){
+  catalogue.classList.remove("open");
+  activeBand = null; activeOp = null;
+}
+
+/*═══════════════════════════ THE DIMENSION BAR ═══════════════════════════*/
+/* The desk-level shortcut for the one control that matters most. It duplicates the
+   probe pane's chips deliberately: you need to change dimension WITHOUT opening the
+   menu to see how the menu changes. */
+const dimensionBar = document.getElementById("dimensionBar");
+DIMENSIONS.forEach(Dim => {
+  const Button = document.createElement("button");
+  Button.textContent = Dim;
+  Button.className = (Dim === DOC.ActiveDimension) ? "on" : "";
+  Button.addEventListener("click", () => {
+    DOC.ActiveDimension = Dim;
+    if(Dim === "Nothing") DOC.SelectedCount = 0;
+    else if(DOC.SelectedCount === 0) DOC.SelectedCount = 1;
+    [...dimensionBar.querySelectorAll("button")]
+      .forEach(X => X.classList.toggle("on", X.textContent === Dim));
+    // Rebuild rather than patch: rail length, tile set and every head count move
+    // together, so a rebuild is the honest update.
+    if(catalogue.classList.contains("open")) refresh();
+  });
+  dimensionBar.appendChild(Button);
+});
+
+/*═══════════════════════════ WIRING ═══════════════════════════*/
+window.addEventListener("contextmenu", e => { e.preventDefault(); openAt(e.clientX, e.clientY); });
+window.addEventListener("pointerdown", e => {
+  if(e.target.closest("#catalogue") || e.target.closest("#dimensionBar")) return;
+  close();
+});
+// Escape steps back one slide before it closes the card — on the options slide the
+// reader's mental "cancel" is the operation, not the menu.
+window.addEventListener("keydown", e => {
+  if(e.key !== "Escape") return;
+  if(activeOp) slideToBrowse(); else close();
+});
+window.addEventListener("blur", close);
+window.addEventListener("resize", () => { if(catalogue.classList.contains("open")) close(); });
+</script>
+</body>
+</html>

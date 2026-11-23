@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Scene Directory Variants II</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#5b8cff;
+    --bg:#0a0a0b;
+    --bg-panel:#0d0d0f;
+    --border:#1c1c20;
+    --border-soft:#161618;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --row-hover:#161618;
+    --row-active:#242428;
+    --panel-bg:     #131315;
+    --panel-head:   #1b1b1e;
+    --value-bg:     #232326;
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --rail-bg:      #08080a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  html{ background:#050506; overflow:hidden; }
+  body{
+    background:#050506;
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--text); -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; height:100vh; width:100vw; overflow:hidden;
+    user-select:none;
+  }
+  .picker{
+    flex:0 0 auto; height:44px; display:flex; align-items:center; gap:8px;
+    padding:0 14px; background:var(--rail-bg); border-bottom:1px solid var(--border);
+  }
+  .picker .brand{ font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700;
+    color:var(--text-faint); margin-right:6px; }
+  .pk{ display:flex; align-items:center; gap:7px; height:28px; padding:0 12px;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:8px;
+    color:var(--text-dim); font-size:12px; font-family:inherit; cursor:pointer; transition:.13s; }
+  .pk:hover{ color:var(--text); border-color:#2e2e38 }
+  .pk.on{ background:color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color:var(--accent); color:var(--text-primary); }
+  .pk .num{ font-weight:700; opacity:.6; font-size:10.5px }
+  .picker .hint{ margin-left:auto; font-size:11px; color:var(--text-faint) }
+  .picker .hint kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:10px; color:var(--text-dim) }
+
+  .stage{ position:relative; flex:1; min-height:0; overflow:hidden; background:#0b0b0d }
+  .grid-floor{ position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size:26px 26px,26px 26px,130px 130px,130px 130px;
+    mask-image:radial-gradient(ellipse 78% 68% at 50% 52%, #000 32%, transparent 100%); }
+  .stage-glow{ position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse 60% 50% at 50% 45%, rgba(91,140,255,.055), transparent 70%) }
+  .vlabel{ position:absolute; left:16px; bottom:14px; z-index:4; pointer-events:none;
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:#33333a; font-weight:700 }
+  .vlabel em{ font-style:normal; color:#27272d; letter-spacing:.4px; text-transform:none;
+    display:block; margin-top:4px; font-weight:400; font-size:11px; max-width:360px; line-height:1.55 }
+  .variant{ display:none } .variant.live{ display:block }
+  .ti{ display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:var(--text-dim) }
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#1e1e22;border-radius:4px}
+
+  /* ══ the scene: real 3D-ish bodies laid out in the viewport, so directory ══
+     ══ interactions can attach to actual geometry rather than abstract rows ══ */
+  .scene-body{
+    position:absolute; transform:translate(-50%,-50%);
+    display:grid; place-items:center; cursor:pointer;
+    transition:transform .3s cubic-bezier(.34,1.2,.5,1), opacity .25s;
+  }
+  .sb-form{
+    border:1.5px solid rgba(140,150,170,.30); border-radius:5px;
+    background:linear-gradient(150deg, rgba(150,160,185,.10), rgba(120,130,155,.03));
+    transition:.2s; }
+  .scene-body:hover .sb-form{ border-color:rgba(140,150,170,.55) }
+  .scene-body.sel .sb-form{ border-color:var(--accent);
+    background:linear-gradient(150deg, rgba(91,140,255,.16), rgba(91,140,255,.03));
+    box-shadow:0 0 30px rgba(91,140,255,.20) }
+  .scene-body.hid{ opacity:.16 }
+  .sb-cap{ position:absolute; top:calc(100% + 6px); font-size:9.5px; letter-spacing:.5px;
+    color:#3c3c44; white-space:nowrap; transition:.2s }
+  .scene-body:hover .sb-cap{ color:var(--text-dim) }
+  .scene-body.sel .sb-cap{ color:var(--accent) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ① ORBIT SATELLITES — the directory has no panel at all. Each body's contents
+        orbit the body itself, in the viewport, at its own screen position.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .sat{
+    position:absolute; transform:translate(-50%,-50%); z-index:12;
+    display:flex; align-items:center; gap:5px; height:22px; padding:0 8px;
+    background:rgba(19,19,21,.94); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--border); border-radius:11px; cursor:pointer; white-space:nowrap;
+    font-size:11px; color:var(--text-dim); box-shadow:0 6px 18px rgba(0,0,0,.45);
+    animation:satin .2s cubic-bezier(.34,1.4,.5,1); }
+  @keyframes satin{ from{ opacity:0; transform:translate(-50%,-50%) scale(.5) } }
+  .sat:hover{ background:#22222a; color:var(--text); border-color:#33333c }
+  .sat.sel{ background:color-mix(in srgb, var(--accent) 22%, #131315);
+    border-color:var(--accent); color:var(--text-primary) }
+  .sat.hid{ opacity:.45 }
+  .sat-link{ position:absolute; z-index:11; height:1px; transform-origin:0 50%;
+    background:linear-gradient(90deg, rgba(91,140,255,.35), rgba(91,140,255,.06));
+    pointer-events:none; animation:satin .2s }
+  .orb-hint{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:4;
+    font-size:11px; color:#2e2e34 } .orb-hint b{ color:#4a4a52; font-weight:600 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ② WHEEL — a thumb-reachable arc pinned to one corner. Contents ride the arc;
+        depth is a twist of the wheel, not a nested list.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .wheel-mount{ position:absolute; right:-104px; bottom:-104px; width:340px; height:340px; z-index:15 }
+  .wheel-hub{
+    position:absolute; right:74px; bottom:74px; width:60px; height:60px; border-radius:50%;
+    background:rgba(19,19,21,.95); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--border); box-shadow:0 10px 30px rgba(0,0,0,.6);
+    display:grid; place-items:center; cursor:pointer; z-index:3; transition:.14s; }
+  .wheel-hub:hover{ border-color:#2e2e38 }
+  .wheel-hub .wh-n{ font-size:8.5px; letter-spacing:.6px; color:var(--text-muted); font-weight:600;
+    max-width:46px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center }
+  .wheel-hub .wh-ic{ color:var(--text-faint); margin-bottom:1px }
+  .wheel-arc{ position:absolute; inset:0; border-radius:50%;
+    border:1px dashed rgba(255,255,255,.045); pointer-events:none }
+  .wheel-tooth{
+    position:absolute; transform-origin:50% 50%;
+    display:flex; align-items:center; gap:6px; height:26px; padding:0 10px;
+    background:rgba(19,19,21,.94); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border:1px solid var(--border); border-radius:13px; cursor:pointer; white-space:nowrap;
+    font-size:11.5px; color:var(--text-dim); box-shadow:0 8px 22px rgba(0,0,0,.5);
+    transition:background .12s, border-color .12s, color .12s; }
+  .wheel-tooth:hover{ background:#22222a; color:var(--text); border-color:#33333c }
+  .wheel-tooth.sel{ background:color-mix(in srgb, var(--accent) 22%, #131315);
+    border-color:var(--accent); color:var(--text-primary) }
+  .wheel-tooth.hid{ opacity:.42 }
+  .wheel-scrub{ position:absolute; right:14px; bottom:150px; display:flex; flex-direction:column; gap:5px }
+  .ws-btn{ width:24px; height:24px; display:grid; place-items:center; border-radius:7px;
+    background:rgba(19,19,21,.9); border:1px solid var(--border); color:var(--text-faint);
+    cursor:pointer; transition:.12s }
+  .ws-btn:hover{ color:var(--text); border-color:#2e2e38 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ③ TAB SPILL — a single 96px tab on the edge. Clicking spills exactly ONE tier
+        as a short horizontal tray; you never see the whole tree, only the slice.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .spill-tab{
+    position:absolute; left:0; top:50%; transform:translateY(-50%); z-index:16;
+    width:26px; padding:12px 0; display:flex; flex-direction:column; align-items:center; gap:8px;
+    background:rgba(19,19,21,.94); border:1px solid var(--border); border-left:none;
+    border-radius:0 10px 10px 0; cursor:pointer; transition:.14s; }
+  .spill-tab:hover{ background:#1c1c22 }
+  .spill-tab .st-txt{ writing-mode:vertical-rl; font-size:9.5px; letter-spacing:1.6px;
+    text-transform:uppercase; font-weight:700; color:var(--text-faint) }
+  .spill-tab .st-n{ font-size:9px; color:var(--accent); font-weight:700 }
+  .spill-tray{
+    position:absolute; left:26px; top:50%; transform:translateY(-50%); z-index:15;
+    display:none; align-items:stretch; gap:7px; padding:8px 10px;
+    background:rgba(13,13,15,.9); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border); border-left:none; border-radius:0 12px 12px 0;
+    box-shadow:0 18px 46px rgba(0,0,0,.55); }
+  .spill-tray.open{ display:flex }
+  .sp-card{
+    width:104px; display:flex; flex-direction:column; align-items:center; gap:7px;
+    padding:11px 7px 9px; background:var(--panel-bg); border:1px solid var(--border);
+    border-radius:10px; cursor:pointer; transition:.13s;
+    animation:spin2 .18s cubic-bezier(.34,1.3,.5,1) backwards; }
+  @keyframes spin2{ from{ opacity:0; transform:translateX(-10px) } }
+  .sp-card:hover{ border-color:#2e2e38; background:#17171b }
+  .sp-card.sel{ border-color:var(--accent);
+    background:color-mix(in srgb, var(--accent) 12%, var(--panel-bg)) }
+  .sp-card.hid{ opacity:.4 }
+  .sp-card .sc-ic{ color:var(--text-dim) } .sp-card.sel .sc-ic{ color:var(--accent) }
+  .sp-card .sc-nm{ font-size:10.5px; color:var(--text); text-align:center; line-height:1.35;
+    word-break:break-word }
+  .sp-card .sc-sub{ font-size:9px; letter-spacing:.6px; color:#3a3a42; text-transform:uppercase }
+  .sp-back{ width:34px; display:grid; place-items:center; background:var(--panel-bg);
+    border:1px solid var(--border); border-radius:10px; color:var(--text-faint); cursor:pointer;
+    transition:.13s }
+  .sp-back:hover{ color:var(--text); border-color:#2e2e38 }
+  .sp-crumb{ position:absolute; left:0; top:-11px; font-size:9.5px; letter-spacing:1px;
+    text-transform:uppercase; color:#3a3a42; font-weight:700; white-space:nowrap; padding-left:2px }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ④ LENS — a small circular magnifier that follows the cursor over the viewport.
+        Whatever body it hovers, it reveals that body's tier inside the lens.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .lens{
+    position:absolute; width:186px; height:186px; border-radius:50%; z-index:18;
+    transform:translate(-50%,-50%); pointer-events:none; display:none;
+    background:rgba(13,13,15,.86); backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(22px) saturate(150%);
+    border:1px solid rgba(91,140,255,.28);
+    box-shadow:0 0 0 1px rgba(0,0,0,.5), 0 20px 50px rgba(0,0,0,.6),
+               inset 0 0 40px rgba(91,140,255,.05); }
+  .lens.up{ display:block }
+  .lens-inner{ position:absolute; inset:0; border-radius:50%; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:16px; text-align:center; }
+  .lens-ttl{ font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:#3d3d45;
+    font-weight:700; margin-bottom:7px }
+  .lens-nm{ font-size:12.5px; font-weight:600; color:var(--text-primary); margin-bottom:2px }
+  .lens-sub{ font-size:9.5px; letter-spacing:.6px; color:var(--text-faint); margin-bottom:9px;
+    text-transform:uppercase }
+  .lens-kids{ display:flex; flex-direction:column; gap:3px; width:100%; max-width:132px }
+  .lens-kid{ display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--text-dim);
+    padding:2px 6px; border-radius:5px; background:rgba(255,255,255,.028); }
+  .lens-kid.sel{ background:color-mix(in srgb, var(--accent) 20%, transparent);
+    color:var(--text-primary) }
+  .lens-kid .lk-nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .lens-empty{ font-size:10px; color:#33333a; letter-spacing:.4px }
+  .lens-ring{ position:absolute; inset:-5px; border-radius:50%;
+    border:1px solid rgba(91,140,255,.10); pointer-events:none }
+  .lens-hint{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:4;
+    font-size:11px; color:#2e2e34 } .lens-hint b{ color:#4a4a52; font-weight:600 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑤ TICKER — one 26px strip at the very bottom. The directory is a linear reel
+        you scrub; enclosure shown as a subtle group ribbon above the reel.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .ticker{
+    position:absolute; left:0; right:0; bottom:0; z-index:15; height:44px;
+    background:rgba(17,17,19,.93); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border-top:1px solid var(--border); display:flex; flex-direction:column; }
+  .tk-ribbon{ flex:0 0 auto; height:15px; display:flex; align-items:stretch; padding:0 8px; gap:2px }
+  .tk-grp{ display:flex; align-items:center; justify-content:center; min-width:0;
+    font-size:8.5px; letter-spacing:1px; text-transform:uppercase; font-weight:700;
+    color:#3a3a42; border-top:2px solid var(--border); border-radius:0 0 3px 3px;
+    overflow:hidden; white-space:nowrap; cursor:pointer; transition:.13s; }
+  .tk-grp:hover{ color:var(--text-dim); border-top-color:#33333c }
+  .tk-grp.act{ color:var(--accent); border-top-color:var(--accent) }
+  .tk-reel{ flex:1; display:flex; align-items:center; gap:3px; padding:0 8px 2px;
+    overflow-x:auto; scrollbar-width:none }
+  .tk-reel::-webkit-scrollbar{ display:none }
+  .tk-cell{ display:flex; align-items:center; gap:5px; height:22px; padding:0 8px; flex:0 0 auto;
+    border-radius:6px; font-size:11px; color:var(--text-dim); cursor:pointer; transition:.12s;
+    background:rgba(255,255,255,.022) }
+  .tk-cell:hover{ background:#22222a; color:var(--text) }
+  .tk-cell.sel{ background:color-mix(in srgb, var(--accent) 22%, transparent);
+    color:var(--text-primary); box-shadow:inset 0 0 0 1px rgba(91,140,255,.5) }
+  .tk-cell.hid{ opacity:.4 }
+  .tk-cell .tc-d{ width:3px; height:3px; border-radius:50%; background:currentColor; opacity:.4 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑥ MARGIN NOTES — no container whatsoever. Names float in the dead margin at the
+        viewport's left edge, hairline-linked to their body. Pure annotation.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .note{
+    position:absolute; z-index:14; transform:translateY(-50%);
+    display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap;
+    font-size:11px; color:var(--text-faint); transition:color .14s; padding:2px 0; }
+  .note:hover{ color:var(--text) }
+  .note.sel{ color:var(--accent) }
+  .note.hid{ opacity:.4 }
+  .note .nt-tier{ font-size:8.5px; letter-spacing:.8px; color:#2f2f36; font-weight:700;
+    min-width:26px; text-align:right }
+  .note .nt-nm{ border-bottom:1px solid transparent; transition:.14s }
+  .note:hover .nt-nm{ border-bottom-color:#33333c }
+  .note.sel .nt-nm{ border-bottom-color:var(--accent) }
+  .leader{ position:absolute; z-index:13; height:1px; transform-origin:0 50%; pointer-events:none;
+    background:linear-gradient(90deg, rgba(255,255,255,.10), rgba(255,255,255,.02)); }
+  .leader.sel{ background:linear-gradient(90deg, rgba(91,140,255,.5), rgba(91,140,255,.08)) }
+  .note-hint{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:4;
+    font-size:11px; color:#2e2e34 } .note-hint b{ color:#4a4a52; font-weight:600 }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="g-scene"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".55"/></g>
+  <g id="g-folder"><path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h7A1.5 1.5 0 0119 9v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 013 17.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
+  <g id="g-solid"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-cylinder"><ellipse cx="12" cy="6.5" rx="7" ry="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 6.5v11c0 1.66 3.13 3 7 3s7-1.34 7-3v-11" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-sphere"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".65"/></g>
+  <g id="g-cone"><path d="M12 3l7.5 15h-15z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-sketch"><path d="M4 20c3-1 5-3.5 6.5-7S13 6 16 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4" cy="20" r="1.7" fill="currentColor"/><circle cx="16" cy="4" r="1.7" fill="currentColor"/></g>
+  <g id="g-revolve"><path d="M12 3v18" stroke="currentColor" stroke-width="1.4" opacity=".55" stroke-dasharray="2.5 2.5"/><path d="M12 5c4 0 7 3.1 7 7s-3 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9 7l3-2 3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></g>
+  <g id="g-loft"><path d="M4 18h16M7 6h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 18L7 6M20 18L17 6" stroke="currentColor" stroke-width="1.5"/></g>
+  <g id="g-right"><path d="M3.5 1.5l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-left"><path d="M7.5 1.5l-4 4 4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-up"><path d="M12 20V6M6 12l6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-down"><path d="M12 4v14M6 12l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-layers"><rect x="3" y="4" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="10" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="16" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+</defs></svg>
+
+<div class="picker" id="picker"><span class="brand">Directory II</span></div>
+
+<div class="stage" id="stage">
+  <div class="grid-floor"></div>
+  <div class="stage-glow"></div>
+  <div id="sceneMount"></div>
+  <div class="vlabel" id="vlabel"></div>
+
+  <div class="variant" id="v1">
+    <div id="satMount"></div>
+    <div class="orb-hint">Click a body in the viewport — its contents <b>orbit the body itself</b></div>
+  </div>
+
+  <div class="variant" id="v2">
+    <div class="wheel-mount">
+      <div class="wheel-arc"></div>
+      <div id="wheelTeeth"></div>
+      <div class="wheel-hub" id="wheelHub"></div>
+    </div>
+    <div class="wheel-scrub">
+      <div class="ws-btn" id="wheelUp"><svg width="13" height="13" viewBox="0 0 24 24"><use href="#g-up"/></svg></div>
+      <div class="ws-btn" id="wheelDown"><svg width="13" height="13" viewBox="0 0 24 24"><use href="#g-down"/></svg></div>
+    </div>
+  </div>
+
+  <div class="variant" id="v3">
+    <div class="spill-tab" id="spillTab">
+      <span class="st-txt">Directory</span><span class="st-n" id="spillN"></span>
+    </div>
+    <div class="spill-tray" id="spillTray"></div>
+  </div>
+
+  <div class="variant" id="v4">
+    <div class="lens" id="lens"><div class="lens-ring"></div><div class="lens-inner" id="lensInner"></div></div>
+    <div class="lens-hint">Move the cursor over the viewport — the <b>lens</b> reveals whatever it passes over</div>
+  </div>
+
+  <div class="variant" id="v5">
+    <div class="ticker">
+      <div class="tk-ribbon" id="tkRibbon"></div>
+      <div class="tk-reel" id="tkReel"></div>
+    </div>
+  </div>
+
+  <div class="variant" id="v6">
+    <div id="noteMount"></div>
+    <div class="note-hint">Names live in the <b>dead margin</b> — hairlines tie each to its body</div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   DIRECTORY STORE — every entry carries a viewport coordinate, because these six
+   presentations attach to geometry in the scene rather than to abstract rows.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TokenCounter = 0;
+const IssueToken = () => 'n' + (++TokenCounter);
+
+/* ViewportAnchor = fractional stage coordinate; FormExtent = on-screen size in px */
+const DirectoryRoot = [
+  { RecordToken:IssueToken(), Label:'Part', Classification:'scene', FoldOpen:true,
+    ViewportAnchor:[.50,.16], FormExtent:0, SubtreeRegion:[
+
+    { RecordToken:IssueToken(), Label:'BODY_Bracket', Classification:'folder', FoldOpen:true,
+      ViewportAnchor:[.33,.42], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Plate', Classification:'solid',    ViewportAnchor:[.26,.36], FormExtent:74, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Boss',  Classification:'cylinder', ViewportAnchor:[.40,.30], FormExtent:52, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Rib',   Classification:'solid',    ViewportAnchor:[.30,.55], FormExtent:44, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'FIL_Edges', Classification:'revolve',  ViewportAnchor:[.42,.50], FormExtent:38, VisibilityEnabled:false, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'BODY_Housing', Classification:'folder', FoldOpen:false,
+      ViewportAnchor:[.68,.44], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Wall', Classification:'solid',  ViewportAnchor:[.63,.37], FormExtent:80, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Dome', Classification:'sphere', ViewportAnchor:[.74,.32], FormExtent:58, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'LFT_Neck', Classification:'loft',   ViewportAnchor:[.70,.55], FormExtent:46, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'Sketches', Classification:'folder', FoldOpen:false,
+      ViewportAnchor:[.50,.70], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SK_BasePlate', Classification:'sketch', ViewportAnchor:[.44,.75], FormExtent:34, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SK_BoltHoles', Classification:'sketch', ViewportAnchor:[.55,.78], FormExtent:30, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'SOL_Spindle', Classification:'cylinder',
+      ViewportAnchor:[.84,.66], FormExtent:40, VisibilityEnabled:false, SubtreeRegion:[] },
+  ]},
+];
+
+function TraverseDirectory(Region, Visit, EnclosureEntry=null, DepthTier=0){
+  for(const Entry of Region){
+    Visit(Entry, EnclosureEntry, DepthTier);
+    if(Entry.SubtreeRegion) TraverseDirectory(Entry.SubtreeRegion, Visit, Entry, DepthTier+1);
+  }
+}
+function ResolveEntry(Token, Region=DirectoryRoot, EnclosureEntry=null){
+  for(const Entry of Region){
+    if(Entry.RecordToken===Token) return { Entry, EnclosureEntry };
+    if(Entry.SubtreeRegion){
+      const Found = ResolveEntry(Token, Entry.SubtreeRegion, Entry);
+      if(Found) return Found;
+    }
+  }
+  return null;
+}
+function ResolveEnclosurePath(Token){
+  const Path = [];
+  (function Descend(Region, Trail){
+    for(const Entry of Region){
+      const Extended = Trail.concat(Entry);
+      if(Entry.RecordToken===Token){ Path.push(...Extended); return true; }
+      if(Entry.SubtreeRegion && Descend(Entry.SubtreeRegion, Extended)) return true;
+    }
+    return false;
+  })(DirectoryRoot, []);
+  return Path;
+}
+const GroupCondition  = (Entry)=> !!(Entry.SubtreeRegion && Entry.SubtreeRegion.length);
+const VisibleCondition = (Entry)=> Entry.VisibilityEnabled !== false;
+const GlyphMarkup = (Classification, Size=15)=>
+  `<svg width="${Size}" height="${Size}" viewBox="0 0 24 24"><use href="#g-${Classification}"/></svg>`;
+
+/* renderable bodies = leaves that occupy screen space */
+function EnumerateRenderableBodies(){
+  const Bodies = [];
+  TraverseDirectory(DirectoryRoot, (Entry)=>{ if(Entry.FormExtent) Bodies.push(Entry); });
+  return Bodies;
+}
+function StageBounds(){ return document.getElementById('stage').getBoundingClientRect(); }
+function AnchorPixels(Entry){
+  const Bounds = StageBounds();
+  return { X: Entry.ViewportAnchor[0] * Bounds.width, Y: Entry.ViewportAnchor[1] * Bounds.height };
+}
+
+let SelectedToken = null;
+function ApplySelection(Token){ SelectedToken = Token; RenderScene(); RenderActiveVariant(); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   THE SCENE — drawn for every variant, so each presentation is judged against real
+   geometry occupying the viewport.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const FormShape = {
+  solid:    (Extent)=> ({ w:Extent, h:Extent, r:'5px',   tf:'rotate(45deg) skewY(-12deg)' }),
+  cylinder: (Extent)=> ({ w:Extent*.72, h:Extent, r:`${Extent*.36}px / 14px`, tf:'none' }),
+  sphere:   (Extent)=> ({ w:Extent, h:Extent, r:'50%',   tf:'none' }),
+  cone:     (Extent)=> ({ w:Extent, h:Extent, r:'4px',   tf:'rotate(45deg)' }),
+  sketch:   (Extent)=> ({ w:Extent, h:Extent*.62, r:'3px', tf:'skewX(-16deg)' }),
+  revolve:  (Extent)=> ({ w:Extent, h:Extent*.8, r:'40% 40% 12% 12%', tf:'none' }),
+  loft:     (Extent)=> ({ w:Extent*.8, h:Extent, r:'30% 30% 8% 8%', tf:'none' }),
+};
+function RenderScene(){
+  const Mount = document.getElementById('sceneMount');
+  Mount.innerHTML = '';
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Shape = (FormShape[Entry.Classification] || FormShape.solid)(Entry.FormExtent);
+    const Body = document.createElement('div');
+    Body.className = 'scene-body' + (Entry.RecordToken===SelectedToken ? ' sel' : '')
+                   + (VisibleCondition(Entry) ? '' : ' hid');
+    Body.style.left = Anchor.X + 'px'; Body.style.top = Anchor.Y + 'px';
+    Body.dataset.token = Entry.RecordToken;
+    Body.innerHTML =
+      `<div class="sb-form" style="width:${Shape.w}px;height:${Shape.h}px;border-radius:${Shape.r};transform:${Shape.tf}"></div>
+       <div class="sb-cap">${Entry.Label}</div>`;
+    Body.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Body);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ① ORBIT SATELLITES — contents orbit their enclosure's own screen position.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderSatellites(){
+  const Mount = document.getElementById('satMount');
+  Mount.innerHTML = '';
+  if(!SelectedToken) return;
+
+  /* orbit the selected entry if it is a group, else orbit its enclosure */
+  const Resolved = ResolveEntry(SelectedToken);
+  if(!Resolved) return;
+  const Pivot = GroupCondition(Resolved.Entry) ? Resolved.Entry : Resolved.EnclosureEntry;
+  if(!Pivot) return;
+
+  const PivotAnchor = Pivot.FormExtent ? AnchorPixels(Pivot)
+    : AveragedAnchor(Pivot);
+  const Contents = Pivot.SubtreeRegion;
+  const Population = Contents.length;
+  const OrbitRadius = 96 + Population * 6;
+
+  Contents.forEach((Entry, Index)=>{
+    const Angle = (-Math.PI/2) + (Index / Population) * Math.PI * 2;
+    const SatX = PivotAnchor.X + Math.cos(Angle) * OrbitRadius;
+    const SatY = PivotAnchor.Y + Math.sin(Angle) * OrbitRadius * .74;
+
+    /* hairline from pivot to satellite */
+    const Span = Math.hypot(SatX - PivotAnchor.X, SatY - PivotAnchor.Y);
+    const Link = document.createElement('div');
+    Link.className = 'sat-link';
+    Link.style.left = PivotAnchor.X + 'px'; Link.style.top = PivotAnchor.Y + 'px';
+    Link.style.width = Span + 'px';
+    Link.style.transform = `rotate(${Math.atan2(SatY - PivotAnchor.Y, SatX - PivotAnchor.X)}rad)`;
+    Mount.appendChild(Link);
+
+    const Satellite = document.createElement('div');
+    Satellite.className = 'sat' + (Entry.RecordToken===SelectedToken ? ' sel' : '')
+                        + (VisibleCondition(Entry) ? '' : ' hid');
+    Satellite.style.left = SatX + 'px'; Satellite.style.top = SatY + 'px';
+    Satellite.style.animationDelay = (Index * 22) + 'ms';
+    Satellite.innerHTML = `<span class="ti">${GlyphMarkup(Entry.Classification,13)}</span>${Entry.Label}`
+      + (GroupCondition(Entry) ? `<span class="ti"><svg width="8" height="8" viewBox="0 0 11 11"><use href="#g-right"/></svg></span>` : '');
+    Satellite.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Satellite);
+  });
+
+  /* the pivot itself, labelled at its own position */
+  const PivotChip = document.createElement('div');
+  PivotChip.className = 'sat sel';
+  PivotChip.style.left = PivotAnchor.X + 'px'; PivotChip.style.top = PivotAnchor.Y + 'px';
+  PivotChip.innerHTML = `<span class="ti">${GlyphMarkup(Pivot.Classification,13)}</span>${Pivot.Label}`;
+  PivotChip.onclick = (Signal)=>{
+    Signal.stopPropagation();
+    const Above = ResolveEntry(Pivot.RecordToken);
+    if(Above && Above.EnclosureEntry) ApplySelection(Above.EnclosureEntry.RecordToken);
+  };
+  Mount.appendChild(PivotChip);
+}
+/* a group has no geometry of its own — sit it at the centroid of its contents */
+function AveragedAnchor(Entry){
+  const Bodies = [];
+  TraverseDirectory([Entry], (Candidate)=>{ if(Candidate.FormExtent) Bodies.push(Candidate); });
+  if(!Bodies.length) return AnchorPixels(Entry);
+  const Bounds = StageBounds();
+  const SumX = Bodies.reduce((Total,Body)=> Total + Body.ViewportAnchor[0], 0) / Bodies.length;
+  const SumY = Bodies.reduce((Total,Body)=> Total + Body.ViewportAnchor[1], 0) / Bodies.length;
+  return { X: SumX * Bounds.width, Y: SumY * Bounds.height };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ② WHEEL
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let WheelFocusToken = DirectoryRoot[0].RecordToken;
+let WheelOffset = 0;
+
+function RenderWheel(){
+  const Focus = ResolveEntry(WheelFocusToken);
+  const Contents = Focus ? Focus.Entry.SubtreeRegion : DirectoryRoot;
+  const Hub = document.getElementById('wheelHub');
+  const Teeth = document.getElementById('wheelTeeth');
+
+  Hub.innerHTML =
+    `<div style="text-align:center">
+       <div class="wh-ic">${GlyphMarkup(Focus ? Focus.Entry.Classification : 'layers', 17)}</div>
+       <div class="wh-n">${Focus ? Focus.Entry.Label : 'Directory'}</div>
+     </div>`;
+  Hub.onclick = ()=>{
+    if(Focus && Focus.EnclosureEntry){ WheelFocusToken = Focus.EnclosureEntry.RecordToken; WheelOffset = 0; RenderWheel(); }
+    else { WheelFocusToken = null; WheelOffset = 0; RenderWheel(); }
+  };
+
+  /* teeth ride a quarter-arc sweeping up-and-left out of the corner hub */
+  Teeth.innerHTML = '';
+  const Visible = Math.min(Contents.length, 6);
+  const ArcStart = Math.PI * 1.04, ArcEnd = Math.PI * 1.52;
+  for(let Slot=0; Slot<Visible; Slot++){
+    const Index = (WheelOffset + Slot) % Contents.length;
+    const Entry = Contents[Index];
+    const Fraction = Visible===1 ? .5 : Slot/(Visible-1);
+    const Angle = ArcStart + Fraction * (ArcEnd - ArcStart);
+    const Radius = 132;
+    const Tooth = document.createElement('div');
+    Tooth.className = 'wheel-tooth' + (Entry.RecordToken===SelectedToken?' sel':'')
+                    + (VisibleCondition(Entry)?'':' hid');
+    /* hub centre inside .wheel-mount is (340-74-30, 340-74-30) = (236,236) */
+    Tooth.style.left = (236 + Math.cos(Angle) * Radius) + 'px';
+    Tooth.style.top  = (236 + Math.sin(Angle) * Radius) + 'px';
+    Tooth.style.transform = 'translate(-50%,-50%)';
+    Tooth.innerHTML = `<span class="ti">${GlyphMarkup(Entry.Classification,14)}</span>${Entry.Label}`
+      + (GroupCondition(Entry) ? `<span class="ti"><svg width="8" height="8" viewBox="0 0 11 11"><use href="#g-right"/></svg></span>` : '');
+    Tooth.onclick = ()=>{
+      ApplySelection(Entry.RecordToken);
+      if(GroupCondition(Entry)){ WheelFocusToken = Entry.RecordToken; WheelOffset = 0; RenderWheel(); }
+    };
+    Teeth.appendChild(Tooth);
+  }
+  const Overflow = Math.max(0, Contents.length - Visible);
+  document.getElementById('wheelUp').style.opacity   = Overflow ? '1' : '.3';
+  document.getElementById('wheelDown').style.opacity = Overflow ? '1' : '.3';
+  WheelSpan = Contents.length;
+}
+let WheelSpan = 0;
+document.getElementById('wheelUp').onclick   = ()=>{ if(WheelSpan){ WheelOffset = (WheelOffset - 1 + WheelSpan) % WheelSpan; RenderWheel(); } };
+document.getElementById('wheelDown').onclick = ()=>{ if(WheelSpan){ WheelOffset = (WheelOffset + 1) % WheelSpan; RenderWheel(); } };
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ③ TAB SPILL
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let SpillFocusToken = DirectoryRoot[0].RecordToken;
+const SpillTray = document.getElementById('spillTray');
+document.getElementById('spillTab').onclick = ()=>{
+  SpillTray.classList.toggle('open'); RenderSpill();
+};
+function RenderSpill(){
+  const Focus = ResolveEntry(SpillFocusToken);
+  const Contents = Focus ? Focus.Entry.SubtreeRegion : DirectoryRoot;
+  const Path = Focus ? ResolveEnclosurePath(SpillFocusToken).map(Step=>Step.Label).join(' / ') : 'Directory';
+  document.getElementById('spillN').textContent = Contents.length;
+  SpillTray.innerHTML = `<div class="sp-crumb">${Path}</div>`;
+
+  if(Focus && Focus.EnclosureEntry !== undefined){
+    const Back = document.createElement('div');
+    Back.className = 'sp-back';
+    Back.innerHTML = `<svg width="13" height="13" viewBox="0 0 11 11"><use href="#g-left"/></svg>`;
+    Back.onclick = ()=>{
+      SpillFocusToken = Focus.EnclosureEntry ? Focus.EnclosureEntry.RecordToken : null;
+      RenderSpill();
+    };
+    SpillTray.appendChild(Back);
+  }
+  Contents.forEach((Entry, Index)=>{
+    const Group = GroupCondition(Entry);
+    const Card = document.createElement('div');
+    Card.className = 'sp-card' + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' hid');
+    Card.style.animationDelay = (Index * 26) + 'ms';
+    Card.innerHTML =
+      `<span class="sc-ic">${GlyphMarkup(Entry.Classification,26)}</span>
+       <span class="sc-nm">${Entry.Label}</span>
+       <span class="sc-sub">${Group ? Entry.SubtreeRegion.length+' inside' : Entry.Classification}</span>`;
+    Card.onclick = ()=>{
+      ApplySelection(Entry.RecordToken);
+      if(Group){ SpillFocusToken = Entry.RecordToken; RenderSpill(); }
+    };
+    SpillTray.appendChild(Card);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ④ LENS — follows the cursor; reveals the tier under whatever it passes over.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const LensBody  = document.getElementById('lens');
+const LensInner = document.getElementById('lensInner');
+let LensToken = null;
+
+function RenderLens(){
+  const Resolved = LensToken ? ResolveEntry(LensToken) : null;
+  if(!Resolved){
+    const Statistics = { Bodies: EnumerateRenderableBodies().length };
+    LensInner.innerHTML =
+      `<div class="lens-ttl">Directory</div>
+       <div class="lens-nm">Part</div>
+       <div class="lens-sub">${Statistics.Bodies} bodies</div>
+       <div class="lens-empty">pass over a body</div>`;
+    return;
+  }
+  const { Entry, EnclosureEntry } = Resolved;
+  const Peers = EnclosureEntry ? EnclosureEntry.SubtreeRegion : DirectoryRoot;
+  LensInner.innerHTML =
+    `<div class="lens-ttl">${EnclosureEntry ? EnclosureEntry.Label : 'Directory'}</div>
+     <div class="lens-nm">${Entry.Label}</div>
+     <div class="lens-sub">${Entry.Classification}</div>
+     <div class="lens-kids">${
+       Peers.slice(0,4).map(Peer=>
+         `<div class="lens-kid ${Peer.RecordToken===Entry.RecordToken?'sel':''}">
+            <span class="ti">${GlyphMarkup(Peer.Classification,11)}</span>
+            <span class="lk-nm">${Peer.Label}</span></div>`).join('')
+     }${ Peers.length>4 ? `<div class="lens-kid" style="justify-content:center;color:#33333a">+${Peers.length-4} more</div>` : '' }</div>`;
+}
+document.getElementById('stage').addEventListener('mousemove', (Signal)=>{
+  if(ActiveVariant !== 3) return;
+  const Bounds = StageBounds();
+  LensBody.classList.add('up');
+  LensBody.style.left = (Signal.clientX - Bounds.left) + 'px';
+  LensBody.style.top  = (Signal.clientY - Bounds.top)  + 'px';
+
+  /* which body is nearest the cursor, within its own extent */
+  let Nearest = null, NearestSpan = Infinity;
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Span = Math.hypot(Signal.clientX - Bounds.left - Anchor.X, Signal.clientY - Bounds.top - Anchor.Y);
+    if(Span < Entry.FormExtent * .9 && Span < NearestSpan){ Nearest = Entry; NearestSpan = Span; }
+  }
+  const Token = Nearest ? Nearest.RecordToken : null;
+  if(Token !== LensToken){ LensToken = Token; RenderLens(); }
+});
+document.getElementById('stage').addEventListener('mouseleave', ()=>{
+  LensBody.classList.remove('up');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑤ TICKER — a 44px bottom reel; the ribbon above shows enclosure spans.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderTicker(){
+  /* linearize every leaf, remembering which top-level group each fell under */
+  const Reel = [];
+  for(const TopEntry of DirectoryRoot[0].SubtreeRegion){
+    const Span = { Group:TopEntry, Start:Reel.length, Length:0 };
+    if(GroupCondition(TopEntry)){
+      TraverseDirectory(TopEntry.SubtreeRegion, (Entry)=>{
+        if(!GroupCondition(Entry)){ Reel.push({ Entry, Span }); Span.Length++; }
+      });
+    } else { Reel.push({ Entry:TopEntry, Span }); Span.Length++; }
+    if(Span.Length) Reel[Span.Start].SpanHead = Span;
+  }
+
+  const Ribbon = document.getElementById('tkRibbon');
+  const ReelBand = document.getElementById('tkReel');
+  Ribbon.innerHTML = ''; ReelBand.innerHTML = '';
+
+  const Spans = [];
+  for(const Cell of Reel) if(Cell.SpanHead) Spans.push(Cell.SpanHead);
+  const SelectedSpan = (Reel.find(Cell=>Cell.Entry.RecordToken===SelectedToken)||{}).Span;
+  for(const Span of Spans){
+    const Band = document.createElement('div');
+    Band.className = 'tk-grp' + (Span===SelectedSpan ? ' act' : '');
+    Band.style.flex = Span.Length;
+    Band.textContent = Span.Group.Label;
+    Band.onclick = ()=> ApplySelection(Span.Group.RecordToken);
+    Ribbon.appendChild(Band);
+  }
+  for(const { Entry } of Reel){
+    const Cell = document.createElement('div');
+    Cell.className = 'tk-cell' + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' hid');
+    Cell.innerHTML = `<span class="ti">${GlyphMarkup(Entry.Classification,13)}</span>${Entry.Label}`;
+    Cell.onclick = ()=> ApplySelection(Entry.RecordToken);
+    ReelBand.appendChild(Cell);
+  }
+  const Current = ReelBand.querySelector('.tk-cell.sel');
+  if(Current) Current.scrollIntoView({ inline:'center', block:'nearest' });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑥ MARGIN NOTES — names in the left margin, leader lines to the geometry.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderNotes(){
+  const Mount = document.getElementById('noteMount');
+  Mount.innerHTML = '';
+  const Bounds = StageBounds();
+  const MarginX = 14, LabelSpan = 132;
+
+  /* sort by screen height so leader lines never cross */
+  const Bodies = EnumerateRenderableBodies()
+    .map(Entry=>({ Entry, Anchor:AnchorPixels(Entry) }))
+    .sort((Left,Right)=> Left.Anchor.Y - Right.Anchor.Y);
+
+  /* de-collide vertically: push each note down until it clears the one above */
+  const RowPitch = 21;
+  let PreviousY = -Infinity;
+  for(const Slot of Bodies){
+    Slot.NoteY = Math.max(Slot.Anchor.Y, PreviousY + RowPitch);
+    PreviousY = Slot.NoteY;
+  }
+
+  for(const { Entry, Anchor, NoteY } of Bodies){
+    const Path = ResolveEnclosurePath(Entry.RecordToken);
+    const Tier = Path.length > 1 ? Path[Path.length-2].Label.replace(/^(BODY_|SK_)/,'').slice(0,6) : '—';
+    const Selected = Entry.RecordToken===SelectedToken;
+
+    const Leader = document.createElement('div');
+    Leader.className = 'leader' + (Selected?' sel':'');
+    Leader.style.left = (MarginX + LabelSpan) + 'px';
+    Leader.style.top  = NoteY + 'px';
+    const Span = Math.hypot(Anchor.X - (MarginX+LabelSpan), Anchor.Y - NoteY);
+    Leader.style.width = Math.max(0, Span) + 'px';
+    Leader.style.transform = `rotate(${Math.atan2(Anchor.Y - NoteY, Anchor.X - (MarginX+LabelSpan))}rad)`;
+    Mount.appendChild(Leader);
+
+    const Note = document.createElement('div');
+    Note.className = 'note' + (Selected?' sel':'') + (VisibleCondition(Entry)?'':' hid');
+    Note.style.left = MarginX + 'px';
+    Note.style.top  = NoteY + 'px';
+    Note.innerHTML =
+      `<span class="nt-tier">${Tier}</span>
+       <span class="ti">${GlyphMarkup(Entry.Classification,12)}</span>
+       <span class="nt-nm">${Entry.Label}</span>`;
+    Note.onclick = ()=> ApplySelection(Entry.RecordToken);
+    Mount.appendChild(Note);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   HARNESS
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const VariantTable = [
+  { Key:'v1', Name:'Orbit',       Caption:'No panel exists. Select a body and its tier orbits <em>that body</em>, hairline-linked, at its own screen position. The directory has no home.', Repaint:RenderSatellites },
+  { Key:'v2', Name:'Wheel',       Caption:'A thumb-reachable quarter-arc in the corner. Hub = current enclosure (click steps out); teeth ride the arc. Scrub with the arrows for long tiers.', Repaint:RenderWheel },
+  { Key:'v3', Name:'Tab spill',   Caption:'A 26px vertical tab. Clicking spills exactly one tier as a short card tray — you never see the whole tree, only the slice you asked for.',        Repaint:RenderSpill },
+  { Key:'v4', Name:'Lens',        Caption:'A magnifier riding the cursor. Whatever geometry it passes over, it reveals that tier inside the glass. Zero chrome, zero clicks.',               Repaint:RenderLens },
+  { Key:'v5', Name:'Ticker',      Caption:'One 44px bottom strip: leaves as a scrubbable reel, enclosure spans as a proportional ribbon above it. Horizontal, so it costs no width.',        Repaint:RenderTicker },
+  { Key:'v6', Name:'Margin notes',Caption:'No container at all — names float in the dead left margin, each tied to its body by a hairline leader. Reads like a technical drawing callout.',  Repaint:RenderNotes },
+];
+let ActiveVariant = 0;
+function RenderActiveVariant(){ VariantTable[ActiveVariant].Repaint(); }
+
+function ActivateVariant(Index){
+  ActiveVariant = Index;
+  VariantTable.forEach((Variant,Position)=>
+    document.getElementById(Variant.Key).classList.toggle('live', Position===Index));
+  document.querySelectorAll('.pk').forEach((Button,Position)=>
+    Button.classList.toggle('on', Position===Index));
+  const Variant = VariantTable[Index];
+  document.getElementById('vlabel').innerHTML = `${Index+1} — ${Variant.Name}<em>${Variant.Caption}</em>`;
+  SpillTray.classList.remove('open');
+  LensBody.classList.remove('up');
+  RenderScene(); RenderActiveVariant();
+}
+
+const Picker = document.getElementById('picker');
+VariantTable.forEach((Variant,Index)=>{
+  const Button = document.createElement('button');
+  Button.className = 'pk';
+  Button.innerHTML = `<span class="num">${Index+1}</span>${Variant.Name}`;
+  Button.onclick = ()=> ActivateVariant(Index);
+  Picker.appendChild(Button);
+});
+Picker.insertAdjacentHTML('beforeend', `<span class="hint"><kbd>1</kbd>–<kbd>6</kbd> switch</span>`);
+
+window.addEventListener('keydown', (Signal)=>{
+  if(Signal.key>='1' && Signal.key<='6') ActivateVariant(+Signal.key - 1);
+});
+window.addEventListener('resize', ()=>{ RenderScene(); RenderActiveVariant(); });
+document.getElementById('stage').onclick = (Signal)=>{
+  if(Signal.target.id==='stage' || Signal.target.classList.contains('grid-floor')) ApplySelection(null);
+};
+
+ApplySelection(DirectoryRoot[0].SubtreeRegion[0].SubtreeRegion[0].RecordToken);
+ActivateVariant(0);
+</script>
+</body>
+</html>

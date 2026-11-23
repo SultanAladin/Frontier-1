@@ -1,0 +1,2118 @@
+<!DOCTYPE html>
+<!--============================================================================================================
+                                              LAYERPROPERTYPANEL.HTML
+=============================================================================================================
+  The LAYER PROPERTIES slide of the paint-surface inspector, lifted 1:1 out of
+  Documentation/Prototypes/PaintingSurface/Interface/LayerInspector.{js,css} so it can be read on its own
+  ahead of the C++ port.
+
+  Ported regions, with their source anchors:
+
+    .pane-head.stepper        LayerInspector.js:248-257   (MetaIcon / MetaName / MetaClass + the Tab stepper)
+    RenderProperties          LayerInspector.js:1481      (head + foot fill, empty state, carousel mount)
+    BuildTargetCarousel       LayerInspector.js:1539      ([ Layer | Mask ] toggle over a sliding 2-pane track)
+    RenderLayerProperties     LayerInspector.js:1639      (Visible / Blend / Opacity / Channels + Actions + CTA)
+    RenderMaterialProperties  LayerInspector.js:1692      (preset identity + a row per authored channel)
+    RenderMaskPane            LayerInspector.js:1602      (create-mask empty state, else the full editor + CTA)
+    BuildMaskSection          LayerInspector.js:1102      (preview row / Base + flip / Strength / comps)
+    BuildActions              LayerInspector.js:1876      (Delete, disabled on the stack's last layer)
+    BuildDropdown             Controls/Dropdown.cpp:21    (head pill + fixed popup, radio per row, edge flip)
+
+  🔴 Invariants carried across, each of which the CSS earned the hard way:
+
+   1. NO hero card in the body. The head three rows up already carries icon + name + classification; a
+      .meta-hero repeating it read as the header followed by a smaller header (js:1507).
+   2. BOTH carousel panes are built every render, not just the visible one — the slide is a transform over a
+      track holding both side by side, so the off-screen pane must exist for the transition to have a
+      destination. Building only the active one makes the toggle a hard swap (js:1533).
+   3. The track transform is applied INLINE from the persisted tab, never by a class a click handler flips:
+      the pane subtree is rebuilt on every refresh, so a class set by a prior click would be gone (js:1536).
+   4. .mc-pane is a HARD containment boundary (overflow:hidden) AND re-budgets its rows: the full-width
+      88px label + rigid 92px value pill overflowed a half-width pane, and because the track is 200% wide
+      with the panes adjacent, that overflow ran into the NEXT pane — the opacity slider appearing in the
+      neighbouring panel. .mc-view's clip cannot catch it (css:1210).
+   5. The mask shade is fill AND invert resolved together: `Light = Invert ? 1-Base : Base`. Reading the
+      fill alone draws an inverted black mask as black (js:1131).
+   6. Material rows come from the preset's channel list INTERSECTED with what the layer still has enabled —
+      a row for a disabled channel would edit a value the flood then skips (js:1728).
+   7. The incoming-pane lift fires only when the tab actually flipped, never on a plain rebuild (js:1577).
+   8. The dropdown list is position:fixed and JS-placed against the head's live screen rect — it CANNOT be
+      in-flow, because .mc-pane clips (invariant 4) and the 200%-wide track would spill it into the adjacent
+      pane. The corollary is that it does not die with the body subtree, so Refresh() must dismiss it.
+   9. Only one dropdown is open at a time, and it closes on outside-mousedown, on scroll, and on resize —
+      the three ways a fixed list otherwise detaches from the head it was measured against.
+
+  🚩 Revisions in this pass, each replacing a shape that misdescribed its control:
+
+    Blend   chip row (7 pills, wrapping to 2 lines) → the executable's Dropdown.cpp combo, transcribed.
+    Mask    `White | Black | Invert` as three equal pills → labelled `Base [ White | Black ]` segment plus a
+            separate icon-only flip button. Two exclusive bases and one independent modifier are not one
+            radio group of three, and the old row said they were.
+    Delete  a red `.act-item` text row → a bordered full-width danger button; disabled state drops the red
+            entirely and states why the last layer cannot go.
+
+  📝 No icon artwork: every mark here is CSS/SVG primitives, matching the executable's own draw-from-
+     primitives rule for these panels.
+============================================================================================================-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frontier — Layer Properties</title>
+<style>
+:root{
+  /* Palette repointed at the executable's ColorPaletteDescriptor, same mapping the source CSS documents. */
+  --menu:#0e0e0e;            /* PanelBackground */
+  --menu-2:#0e0e0e;          /* PanelHeader — shares the card fill, no darker strip */
+  --hair:#1c1c1c;            /* PanelBorder */
+  --hair-strong:#1c1c1c;     /* PanelBorder — one border tone only */
+  --tile:#141414;            /* ControlBackground */
+  --tile-hi:#1a1a1a;         /* ControlHovered */
+  --rail-sel:#1a1a1a;        /* ControlActive */
+  --ink:#ededed;             /* TextPrimary */
+  --muted:#8a8a8a;           /* TextMuted */
+  --faint:#8a8a8a;           /* TextMuted — no third text tone exists */
+  --accent:#e8e8e8;          /* AccentPrimary — near-WHITE, not a blue */
+  --accent-soft:rgba(255,255,255,.12);   /* AccentSubtle */
+  --value-black:#000;        /* ValueNumberSegment */
+  --value-unit:#141414;      /* ValueSideSegment */
+  --text-value:#fff;         /* ValueText */
+  --track-bg:#000;           /* SliderTrack */
+  --track-fill:#3a3a3a;      /* SliderFill */
+  --knob:#e8e8e8;            /* SliderKnob */
+  --r-tile:9px;
+  --row-h:30px;
+  --ease-ms:.16s;
+  --ease-out:cubic-bezier(.4,0,.2,1);
+}
+*{ box-sizing:border-box; }
+body{
+  margin:0; padding:34px; background:#000; min-height:100vh;
+  font:400 11px/1.45 "Segoe UI",system-ui,sans-serif; color:var(--ink);
+  display:flex; justify-content:center; align-items:flex-start;
+}
+
+/*---------------------------------------------------------------------------------------------------------
+                                            THE PANE SHELL
+---------------------------------------------------------------------------------------------------------*/
+/* The properties pane as it sits in the inspector: a fixed-width card, head + scrolling body + foot. */
+.slide-pane{
+  width:326px; height:620px; display:flex; flex-direction:column;
+  background:var(--menu); border:1px solid var(--hair); border-radius:12px; overflow:hidden;
+}
+
+.pane-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  height:53px; padding:0 11px;
+  background:var(--rail-sel); border-bottom:1px solid var(--hair);
+}
+.pane-head.stepper{ cursor:pointer; }
+.pane-head.stepper:hover{ background:var(--tile-hi); }
+.pane-head .h-ic{
+  width:26px; height:26px; flex:0 0 auto; color:var(--ink);
+  background:#000; border-radius:7px; display:grid; place-items:center;
+}
+.pane-head .h-ic svg{ width:18px; height:18px; }
+.pane-head .h-txt{ flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; }
+.pane-head .h-txt .h-lbl{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pane-head .h-txt .fn{
+  display:block; color:var(--faint); font-weight:400; font-size:10px;
+  letter-spacing:.3px; margin-top:3px;
+}
+.pane-head .h-step{
+  flex:0 0 auto; width:22px; height:22px; display:grid; place-items:center;
+  color:var(--muted); border-radius:6px;
+}
+.pane-head.stepper:hover .h-step{ color:var(--ink); background:var(--tile-hi); }
+.pane-head .h-step svg{ width:13px; height:13px; }
+
+.meta-body{ flex:1; min-height:0; overflow-y:auto; padding:9px 10px 12px; }
+.meta-body::-webkit-scrollbar{ width:9px; }
+.meta-body::-webkit-scrollbar-track{ background:transparent; }
+.meta-body::-webkit-scrollbar-thumb{ background:#242424; border-radius:99px; border:2px solid var(--menu); }
+.meta-body::-webkit-scrollbar-thumb:hover{ background:#333; }
+
+.pane-foot{
+  flex:0 0 auto; height:29px; display:flex; align-items:center; gap:7px;
+  padding:0 12px; background:var(--menu); border-top:1px solid var(--hair);
+  font-size:10.5px; color:var(--muted);
+}
+.pf-strong{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-dot{ color:var(--value-unit); }
+.pf-spacer{ flex:1; }
+.pf-hue{ width:8px; height:8px; border-radius:2px; flex:0 0 auto; }
+
+.empty-state{ padding:26px 14px; text-align:center; color:var(--faint); font-size:11.5px; line-height:1.7; }
+
+/*---------------------------------------------------------------------------------------------------------
+                                    [ LAYER | MASK ] CAROUSEL
+---------------------------------------------------------------------------------------------------------*/
+/* 🔴 A two-segment toggle over a two-panel track that slides on translateX. Both panels are laid side by
+   side at 50% each inside a 200%-wide track; selecting a segment moves the track by one panel width. */
+.meta-carousel{ display:flex; flex-direction:column; margin-top:2px; }
+.mc-toggle{
+  position:relative; display:flex; align-items:stretch; height:30px; flex:0 0 auto;
+  margin-bottom:9px; border-bottom:1px solid var(--hair);
+}
+.mc-seg{
+  flex:1 1 50%; min-width:0; display:grid; place-items:center;
+  cursor:pointer; font-size:12px; font-weight:500; color:var(--muted);
+  transition:color .15s ease;
+}
+.mc-seg:hover{ color:var(--ink); }
+.mc-seg.active{ color:var(--ink); font-weight:600; }
+/* the sliding underline: half-width, parked under a segment, translated by the toggle's data-tab */
+.mc-thumb{
+  position:absolute; left:0; bottom:-1px; width:50%; height:2px;
+  background:var(--accent); border-radius:2px;
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+}
+.mc-toggle[data-tab="mask"] .mc-thumb{ transform:translateX(100%); }
+
+.mc-view{ overflow:hidden; }
+.mc-track{ display:flex; width:200%; transition:transform .32s cubic-bezier(.4,0,.2,1); }
+/* 🔴 Invariant 4 — containment boundary AND a narrower row budget inside a half-width pane. */
+.mc-pane{ flex:0 0 50%; width:50%; min-width:0; overflow:hidden; }
+.mc-pane .prow{ grid-template-columns:60px minmax(0,1fr); column-gap:7px; }
+.mc-pane .sliderrow{ gap:6px; }
+/* 🔴 `flex:0 1` not `0 0`: the pill must be ALLOWED to shrink. Left rigid it is what pushes the rail to 0. */
+.mc-pane .sliderrow .valuebox{ flex:0 1 70px; min-width:0; }
+/* 📝 Floor the rail so it degrades to a short slider instead of vanishing. */
+.mc-pane .sliderrow .slider{ min-width:40px; }
+
+/* 📝 Invariant 7 — the incoming pane lifts its content in, layered over the .32s slide. */
+.mc-pane.mc-incoming > *{ animation:mcRise .34s cubic-bezier(.4,0,.2,1) both; }
+@keyframes mcRise{ from{ opacity:0; transform:translateY(7px); } to{ opacity:1; transform:translateY(0); } }
+
+.mc-empty{
+  display:flex; flex-direction:column; gap:9px; align-items:stretch;
+  padding:12px 2px 6px; text-align:center;
+}
+.mc-empty .mc-empty-note{ font-size:11px; line-height:1.6; color:var(--faint); }
+
+/* 🔴 The create state offers the three SOURCES, not one bare "Create mask" button. Each is a full row
+   carrying its own summary, because "Solid" and "Generator" do not explain themselves at 10px. */
+.mc-sources{ display:flex; flex-direction:column; gap:5px; text-align:left; }
+.mc-source{
+  display:flex; align-items:center; gap:9px; padding:7px 9px; cursor:pointer;
+  background:var(--tile); border:1px solid var(--hair); border-radius:8px;
+  transition:background .12s, border-color .12s;
+}
+.mc-source:hover{ background:var(--tile-hi); border-color:var(--accent); }
+.ms-ic{
+  width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center;
+  color:var(--muted); background:#000; border-radius:6px;
+}
+.mc-source:hover .ms-ic{ color:var(--ink); }
+.ms-txt{ min-width:0; display:flex; flex-direction:column; gap:2px; }
+.ms-nm{ font-size:11.5px; font-weight:600; color:var(--ink); }
+.ms-sum{ font-size:9.5px; line-height:1.4; color:var(--faint); }
+
+/*---------------------------------------------------------------------------------------------------------
+                                        ROWS / SECTIONS / CTA
+---------------------------------------------------------------------------------------------------------*/
+.meta-sect{
+  font-size:9.5px; letter-spacing:1.1px; color:var(--faint);
+  font-weight:600; text-transform:uppercase; padding:11px 2px 5px;
+  display:flex; align-items:center; gap:7px;
+}
+.meta-sect svg{ width:12px; height:12px; }
+.meta-sect .ms-tail{ margin-left:auto; letter-spacing:0; text-transform:none; }
+
+.meta-row{
+  display:flex; align-items:center; gap:8px; height:28px;
+  font-size:11.5px; border-bottom:1px solid var(--hair);
+}
+.meta-row:last-child{ border-bottom:0; }
+.meta-row .mr-k{ color:var(--muted); }
+.meta-row .mr-v{
+  margin-left:auto; color:var(--text-value); font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%;
+}
+
+.prow{
+  display:grid; grid-template-columns:88px minmax(0,1fr); column-gap:10px;
+  align-items:center; min-height:var(--row-h);
+}
+.plabel{
+  font-size:11.5px; color:var(--muted); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis;
+}
+
+.meta-cta{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  height:32px; margin-top:10px; border-radius:9px; cursor:pointer;
+  background:var(--accent-soft); border:1px solid var(--accent);
+  color:var(--ink); font-size:11.5px; font-weight:600;
+}
+.meta-cta:hover{ background:rgba(255,255,255,.20); }
+.meta-cta svg{ width:13px; height:13px; }
+.meta-cta .cta-kbd{
+  font-size:9.5px; font-weight:400; color:var(--muted);
+  background:var(--menu-2); border-radius:999px; padding:2px 7px;
+}
+/* Disabled-with-a-reason beats a live-looking button that does nothing (js:1825). */
+.meta-cta.disabled{ opacity:.4; pointer-events:none; background:var(--tile); border-color:var(--hair); }
+
+.tgt-hint{ font-size:10px; line-height:1.5; color:var(--faint); padding:2px 1px; }
+
+/* 🔴 The layer actions live INLINE here — the stack carries no right-click menu at all. */
+.meta-actions{ margin-top:4px; }
+.act-item{
+  display:flex; align-items:center; gap:9px; height:29px; padding:0 8px;
+  border-radius:8px; font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.act-item:hover{ background:var(--tile-hi); }
+.act-item .ic{ width:15px; height:15px; flex:0 0 auto; display:grid; place-items:center; color:var(--muted); }
+.act-item .ic svg{ width:15px; height:15px; }
+.act-item:hover .ic{ color:var(--ink); }
+.act-item.disabled{ opacity:.35; pointer-events:none; }
+
+/* 🔴 DELETE is a BUTTON, not a menu row. As an `.act-item danger` it was red text on the panel fill with a
+   hover tint — indistinguishable in weight from the settings rows above it, so the one irreversible control
+   in the pane carried the least visual commitment. A bordered full-width button with a red hairline reads as
+   a deliberate act at rest, and only FILLS red under the cursor, so the pane is not shouting danger while
+   the user is editing opacity.
+
+   💡 Centred, not left-aligned: the rows above are label→value pairs read left-to-right, and matching that
+      alignment is what made the old row scan as another one of them. */
+.act-danger{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; height:30px; margin-top:2px; padding:0 10px;
+  border-radius:8px; cursor:pointer; font-size:11px; font-weight:500; letter-spacing:.2px;
+  color:#ff6b6b; background:transparent; border:1px solid rgba(255,107,107,.34);
+  transition:background .14s, border-color .14s, color .14s;
+}
+.act-danger .ic{ display:grid; place-items:center; color:currentColor; }
+.act-danger .ic svg{ width:14px; height:14px; display:block; }
+.act-danger:hover{ background:#ff6b6b; border-color:#ff6b6b; color:#120404; }
+.act-danger:active{ background:#e85f5f; border-color:#e85f5f; }
+/* 📝 The stack refuses to remove its last layer. Disabled drops the red ENTIRELY rather than fading it —
+   a translucent red still reads as "destructive, dimmed", when the truth is there is nothing to destroy. */
+.act-danger.disabled{
+  pointer-events:none; color:var(--faint); border-color:var(--hair); background:transparent;
+}
+.act-note{ font-size:9.5px; line-height:1.45; color:var(--faint); padding:5px 1px 0; text-align:center; }
+
+/*---------------------------------------------------------------------------------------------------------
+                                          FIELD WIDGETS
+---------------------------------------------------------------------------------------------------------*/
+/* 🔴 BooleanEntry.cpp: AccentPrimary is near-WHITE, NOT a blue — a pale track under a white nub. Using a
+   blue here is the single most visible way to get this control wrong. */
+.switch{
+  width:38px; height:22px; flex:0 0 auto; position:relative; cursor:pointer;
+  background:var(--rail-sel); border-radius:999px;
+  transition:background var(--ease-ms) var(--ease-out);
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  background:var(--knob); border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.35);
+  transition:left var(--ease-ms) var(--ease-out);
+}
+.switch.on .nub{ left:19px; }
+
+/* Split value box — a rounded [ number | unit ] pill. */
+.valuebox{
+  display:flex; align-items:stretch; height:26px; min-width:0;
+  background:var(--value-black); border-radius:999px; overflow:hidden;
+}
+.valuebox .num{
+  flex:1; min-width:0; display:flex; align-items:center; justify-content:center;
+  padding:0 8px; background:var(--value-black);
+}
+.valuebox .num:focus-within{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+/* 🔴 Scaled UP and CENTRED: the readout is the loudest thing in the row, and ImGui centres a drag widget's
+   text, so a right-aligned number would sit against the grey cap instead of in its own cell. */
+.valuebox input{
+  width:100%; min-width:0; background:none; border:0; outline:none; text-align:center;
+  color:var(--text-value); font-size:12.6px; font-variant-numeric:tabular-nums;
+}
+/* 🔴 A FIXED 30px cap, not a text-sized one, so the number cell's width cannot drift row to row. */
+.unitseg{
+  flex:0 0 30px; width:30px; display:grid; place-items:center; overflow:hidden;
+  font-size:10.5px; color:var(--muted); background:var(--value-unit);
+}
+
+.sliderrow{ display:flex; align-items:center; gap:9px; min-width:0; }
+.sliderrow .valuebox{ flex:0 0 92px; }
+/* 🔴 A THICK capsule rail, not a hairline: ValueSlider.cpp sizes the track Height*0.72 off a 30px pill row. */
+.slider{
+  flex:1; min-width:0; position:relative; height:19px;
+  background:var(--track-bg); border-radius:999px; cursor:pointer;
+  touch-action:none; user-select:none;
+}
+.slider .fill{
+  position:absolute; left:0; top:0; bottom:0; z-index:0;
+  background:var(--track-fill); border-radius:999px; pointer-events:none;
+}
+/* 🔴 KnobRadius = Size.y*0.5 + 1 — as tall as the track plus a pixel each side. pointer-events off: the
+   capture belongs to the TRACK, and the maths reads clientX against the track's box. */
+.slider .knob{
+  position:absolute; top:50%; width:21px; height:21px; margin-left:-10.5px; z-index:1;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35); pointer-events:none;
+  transition:box-shadow var(--ease-ms) var(--ease-out);
+}
+/* 🔴 A press RING, not a grow: the C++ knob is a fixed radius and never scales on grab. */
+.slider:active .knob{ box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 0 4px var(--accent-soft); }
+
+/* 🔴 SelectionEntry.cpp draws SEPARATE rounded chips that flow and wrap — no container fill, no container
+   border. One outlined box with flush dividers reads as a segmented toggle, which is the wrong control. */
+.chiprow{ display:flex; flex-wrap:wrap; gap:5px; min-width:0; }
+.chip{
+  display:flex; align-items:center; height:24px; padding:0 10px; border-radius:999px;
+  background:var(--tile); color:var(--muted); cursor:pointer; font-size:10.5px;
+  border:1px solid transparent; transition:background .12s, color .12s, border-color .12s;
+}
+.chip:hover{ background:var(--tile-hi); color:var(--ink); }
+.chip.on{ background:var(--accent); color:#111; font-weight:600; }
+
+/* 🔴 The DROPDOWN, transcribed from Controls/Dropdown.cpp — which is itself the executable's port of
+   ControlsPreview.html `.dd-*`. Blend was a 7-chip wrapping row that spent two lines of the pane on a
+   single-choice enum; the executable already owns a combo control for exactly this, so the prototype now
+   shows what the C++ draws rather than a second idiom the port would have to reconcile.
+
+   The head is DrawValuePill's two-segment geometry (Dropdown.cpp:45): a black name segment carrying the
+   current option left-aligned at 14px, capped by a grey caret segment. Same pill as the slider's readout,
+   so a value that opens a list and a value that scrubs read as the same family of control. */
+.dropdown{ position:relative; min-width:0; flex:1; }
+.dd-head{
+  height:26px; border-radius:999px; overflow:hidden;
+  display:flex; align-items:stretch; cursor:pointer;
+  transition:box-shadow .13s;
+}
+.dd-head .cur{
+  flex:1; min-width:0; display:flex; align-items:center; padding:0 11px;
+  background:var(--value-black); color:var(--text-value); font-size:10.5px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* The caret cap lightens on hover — ControlsPreview `.dd-head:hover .caret{ background:var(--value-focus) }`. */
+.dd-head .caret{
+  flex:0 0 26px; display:grid; place-items:center;
+  background:var(--value-unit); color:var(--muted);
+  transition:background .13s, color .13s;
+}
+.dd-head .caret svg{ width:11px; height:11px; transition:transform .16s var(--ease-out); }
+.dd-head:hover .caret{ background:var(--tile-hi); color:var(--ink); }
+.dropdown.open .dd-head .caret svg{ transform:rotate(180deg); }
+
+/* 🔴 `position:fixed` and JS-placed, NOT absolutely positioned inside the row. `.mc-pane` is a hard
+   overflow:hidden containment boundary (invariant 4) and the pane track is 200% wide — an in-flow list
+   would be clipped at the pane edge, or worse, bleed into the neighbouring pane the way the opacity
+   slider once did. Fixed + measured places it over the whole document, so neither can happen. */
+.dd-list{
+  position:fixed; display:none; z-index:1200; max-height:214px; overflow-y:auto; padding:4px;
+  background:var(--menu-2); border:1px solid var(--hair-strong); border-radius:9px;
+  box-shadow:0 16px 44px rgba(0,0,0,.6);
+}
+.dropdown.open .dd-list{ display:block; }
+/* 📝 Sharp (unrounded) hover fill plus a 4px full-height accent bar on the left, and the row's text shifts
+   14px → 20px under the cursor. Dropdown.cpp:113-123 draws exactly this, bar width and both indents. */
+.dd-item{
+  position:relative; display:flex; align-items:center; gap:8px;
+  height:24px; padding:0 10px 0 14px;
+  font-size:10.5px; color:var(--ink); cursor:pointer;
+  transition:background .1s, padding-left .1s;
+}
+.dd-item:hover{ background:var(--rail-sel); padding-left:20px; }
+.dd-item:hover::before{
+  content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--accent);
+}
+/* A ring on EVERY row, filled on the current one (Dropdown.cpp:127-139) — so the list reads as a set of
+   choices with one taken, not as one highlighted row among plain text. */
+.dd-item .radio{
+  margin-left:auto; width:10px; height:10px; flex:0 0 auto; border-radius:50%;
+  border:1.4px solid var(--hair-strong);
+}
+.dd-item.sel .radio{
+  border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 2px var(--menu-2);
+}
+
+/* The colour field: a swatch pill that opens an inline hue/value picker. */
+.colfield{ display:flex; align-items:center; gap:8px; min-width:0; }
+.colswatch{
+  width:44px; height:24px; flex:0 0 auto; border-radius:7px; cursor:pointer;
+  border:1px solid var(--hair-strong); box-shadow:inset 0 0 0 1px rgba(0,0,0,.45);
+}
+.colhex{
+  font-size:10.5px; color:var(--muted); font-variant-numeric:tabular-nums;
+  text-transform:uppercase; letter-spacing:.4px;
+}
+
+/*---------------------------------------------------------------------------------------------------------
+                                         THE MASK EDITOR
+---------------------------------------------------------------------------------------------------------*/
+.se-sect{
+  display:flex; align-items:center; gap:6px; margin-top:2px;
+  font-size:9.5px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted);
+}
+.se-sect::after{ content:""; flex:1; height:1px; background:var(--hair); }
+
+.se-row{ display:flex; align-items:center; gap:8px; min-height:24px; }
+.se-row > .se-k{
+  flex:0 0 52px; font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint);
+}
+.se-row > .se-v{ flex:1; min-width:0; display:flex; align-items:center; justify-content:flex-end; }
+.se-row .sliderrow{ flex:1; }
+
+.msk-preview{ display:flex; align-items:flex-start; gap:9px; padding:5px 1px 3px; }
+/* 🔴 78px fixed, not aspect-ratio: this tile shares a row with a toggle and a reading rather than sitting
+   in a grid track, so a flexible width would let the caption's length decide how big the mask reads. */
+.msk-preview .msk-tile{
+  width:78px; height:78px; flex:0 0 auto; border-radius:6px; overflow:hidden;
+  border:1px solid var(--hair-strong); background:#000; display:block;
+}
+/* 🔴 The canvas is evaluated at 52² and scaled up, so it MUST NOT be smoothed: a blurred thumbnail of a
+   noise field hides exactly the feature size the Scale slider controls. `pixelated` keeps the texels
+   honest — the preview shows the field's real frequency, not an interpolation of it. */
+.msk-canvas{
+  display:block; width:100%; height:100%;
+  image-rendering:pixelated; image-rendering:crisp-edges;
+}
+.msk-side{ display:flex; flex-direction:column; gap:5px; min-width:0; flex:1; }
+.msk-note{ font-size:10px; line-height:1.45; color:var(--faint); }
+.msk-caveat{ font-size:9px; line-height:1.4; color:#6a6a6a; font-style:italic; }
+/* Changes what the VIEWPORT shows, not a property of the layer — so deliberately not a settings row. */
+.msk-onmesh{
+  display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
+  height:24px; padding:0 10px; border-radius:999px; cursor:pointer;
+  font-size:10.5px; color:var(--muted);
+  background:var(--tile); border:1px solid var(--hair);
+  transition:background .13s, border-color .13s, color .13s;
+}
+.msk-onmesh:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-onmesh.on{ background:var(--accent-soft); border-color:var(--accent); color:var(--ink); }
+
+/* 📝 `.msk-prev` / `.msk-grad` (the 34px flat-fill swatch) were deleted with the tile they styled, rather
+   than left as dead rules for a future reader to wire back up. */
+.msk-row{ display:flex; align-items:center; gap:9px; margin-bottom:7px; }
+.msk-info{ min-width:0; flex:1; }
+.msk-nm{ font-size:11.5px; color:var(--ink); }
+.msk-meta{ font-size:9.5px; color:var(--faint); margin-top:3px; }
+.mc-x{
+  width:20px; height:20px; display:grid; place-items:center; border-radius:6px;
+  color:var(--muted); cursor:pointer; font-size:14px; line-height:1;
+}
+.mc-x:hover{ background:rgba(255,107,107,.14); color:#ff6b6b; }
+
+/* 🔴 `White | Black | Invert` as three identical pills was a LIE about the control's shape. White and Black
+   are two mutually-exclusive BASES — the field the component stack is evaluated over — while Invert is an
+   independent modifier applied after the stack runs (EvaluateMaskTexel: base first, invert last). Drawn as
+   three equal siblings the row read as a one-of-three radio group, so "Invert" looked like a third fill and
+   the fact that it composes with either base was invisible. Worse, the toolbar carried no label at all: the
+   three words had to explain their own axis.
+
+   Now the axis is named once ("Base") and the shape matches the semantics:
+     • a SEGMENTED two-cell pill  → one of these two, always exactly one
+     • a separate icon-only FLIP button → a modifier, on top of whichever base is chosen
+
+   💡 The words stay literally `White` / `Black`. They are the greyscale value the mask is filled with, which
+      is what the evaluated tile directly above is showing — relabelling them to their effect ("Reveal all")
+      would have made the row and the picture beside it disagree about what is being named. */
+.msk-baserow{ display:flex; align-items:center; gap:8px; }
+.msk-baserow > .se-k{
+  flex:0 0 52px; font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint);
+}
+
+/* One pill, split by a hairline — the enclosing border and single radius are what say "these two are one
+   choice". Separate rounded pills (the old shape) say "these are independent toggles". */
+.msk-seg{
+  flex:1; display:flex; align-items:stretch; height:26px; min-width:0;
+  background:#000; border:1px solid var(--hair); border-radius:999px; overflow:hidden;
+}
+.msk-seg .sg{
+  flex:1; display:flex; align-items:center; justify-content:center; gap:6px; min-width:0;
+  cursor:pointer; font-size:10.5px; font-weight:500; color:var(--muted);
+  transition:background .13s, color .13s;
+}
+.msk-seg .sg + .sg{ border-left:1px solid var(--hair); }
+.msk-seg .sg:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-seg .sg.on{ background:var(--accent); color:#111; font-weight:600; }
+/* A dot of the ACTUAL fill value beside each word, so the choice is legible without reading. It carries a
+   hairline because a pure-white dot on the selected (near-white) cell would otherwise vanish. */
+.msk-seg .dot{
+  width:9px; height:9px; flex:0 0 auto; border-radius:50%; border:1px solid rgba(130,130,130,.55);
+}
+.msk-seg .dot.w{ background:#fff; }
+.msk-seg .dot.k{ background:#000; }
+
+/* The modifier. Icon-only and square-ish so it cannot be mistaken for a third member of the segment; its
+   tooltip and the identity line above ("· inverted") carry the word. */
+.msk-flip{
+  flex:0 0 30px; height:26px; display:grid; place-items:center; cursor:pointer;
+  border-radius:8px; color:var(--muted);
+  background:var(--tile); border:1px solid var(--hair);
+  transition:background .13s, border-color .13s, color .13s;
+}
+.msk-flip svg{ width:13px; height:13px; display:block; }
+.msk-flip:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-flip.on{ background:var(--accent); border-color:var(--accent); color:#111; }
+
+.msk-comps{ display:flex; flex-direction:column; gap:4px; margin-top:5px; }
+/* A component row selects a step; the selected one unfolds its parameters directly beneath. */
+.msk-comp{
+  display:flex; align-items:center; gap:7px; padding:6px 7px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:8px; cursor:pointer;
+  transition:background .12s, border-color .12s;
+}
+.msk-comp:hover{ background:var(--tile-hi); }
+/* 🔴 The selected row squares its BOTTOM corners and drops its bottom border so the row and its unfolded
+   parameters read as ONE card. Left rounded, the fold looks like a second unrelated block. */
+.msk-comp.on{
+  border-color:var(--accent); background:var(--accent-soft);
+  border-bottom-color:transparent; border-bottom-left-radius:0; border-bottom-right-radius:0;
+}
+/* The stack ordinal — shown because the order is load-bearing, not decoration: Levels remaps what the
+   steps above produced, so the same components in another order are a different mask. */
+.msk-ord{
+  flex:0 0 auto; width:13px; text-align:center;
+  font-size:9px; color:var(--faint); font-variant-numeric:tabular-nums;
+}
+.msk-dot{
+  width:10px; height:10px; flex:0 0 auto; border-radius:50%;
+  border:1.5px solid var(--muted); position:relative;
+}
+.msk-comp.on .msk-dot{ border-color:var(--accent); }
+.msk-comp.on .msk-dot::after{
+  content:""; position:absolute; inset:2px; border-radius:50%; background:var(--accent);
+}
+.msk-cbody{ min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+.msk-cnm{
+  font-size:11px; color:var(--ink); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.msk-ccat{ font-size:9px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.msk-eye{
+  width:19px; height:19px; flex:0 0 auto; display:grid; place-items:center;
+  border-radius:5px; color:var(--muted);
+}
+.msk-eye:hover{ background:var(--tile-hi); color:var(--ink); }
+/* 🔴 A disabled step dims its TEXT but keeps the eye legible — the eye is how it comes back, so fading it
+   with the rest of the row hides the only way out of the state. */
+.msk-comp.off .msk-cbody{ opacity:.42; }
+
+/* the selected step's parameters, continuing the row's card */
+.msk-fold{
+  display:flex; flex-direction:column; gap:5px; padding:7px 8px 8px;
+  background:var(--accent-soft);
+  border:1px solid var(--accent); border-top:0;
+  border-bottom-left-radius:8px; border-bottom-right-radius:8px;
+  margin-top:-4px;   /* close the .msk-comps gap so head and fold touch */
+}
+.msk-fold .tgt-hint{ padding:0 0 2px; }
+.msk-fold .meta-cta{ margin-top:4px; height:27px; font-size:10.5px; }
+
+.msk-add{
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  height:28px; border-radius:8px; cursor:pointer; margin-top:6px;
+  font-size:11px; font-weight:600; color:var(--ink);
+  background:var(--menu-2); border:1px dashed var(--hair-strong);
+  transition:background .13s, border-color .13s;
+}
+.msk-add:hover{ background:var(--accent-soft); border-color:var(--accent); border-style:solid; }
+/* Open, it becomes the head of the list below it — solid, squared at the bottom, one card. */
+.msk-add.on{
+  background:var(--accent-soft); border-color:var(--accent); border-style:solid;
+  border-bottom-color:transparent; border-bottom-left-radius:0; border-bottom-right-radius:0;
+}
+.msk-add svg{ width:13px; height:13px; }
+
+.msk-addlist{
+  display:flex; flex-direction:column;
+  border:1px solid var(--accent); border-top:0;
+  border-bottom-left-radius:8px; border-bottom-right-radius:8px;
+  background:var(--menu-2); overflow:hidden;
+}
+.msk-addopt{
+  display:flex; align-items:center; gap:8px; padding:6px 8px; cursor:pointer;
+  border-top:1px solid var(--hair);
+}
+.msk-addopt:first-child{ border-top:0; }
+.msk-addopt:hover{ background:var(--tile-hi); }
+.msk-addopt .ms-ic{ width:20px; height:20px; }
+.msk-addopt .ms-nm{ font-size:11px; }
+
+/*---------------------------------------------------------------------------------------------------------
+                                     THE PAGE'S OWN SCAFFOLD
+---------------------------------------------------------------------------------------------------------*/
+/* Not part of the port — just the harness that centres the pane and lets the focused layer be changed.
+   📝 `.caption` (+ its `b`) was deleted with the three extra panes it labelled, rather than left behind as
+      a rule with nothing to style. */
+.column{ display:flex; flex-direction:column; gap:11px; }
+.switcher{ display:flex; gap:5px; flex-wrap:wrap; width:326px; }
+.switcher .chip{ font-size:10px; }
+</style>
+</head>
+<body>
+
+<!-- ONE pane, as it sits in the inspector. The layer switcher beneath it is not part of the port: it is how
+     every branch of the pane (material rows, a mask with a stack, a layer with no mask at all) is reached
+     without four copies of the panel on screen. -->
+<div class="column">
+  <div class="slide-pane" id="Pane"></div>
+  <div class="switcher" id="Switch"></div>
+</div>
+
+<script>
+"use strict";
+
+/*==========================================================================================================
+                                              DOMAIN TABLES
+  Transcribed from PaintingSurface/Layers/LayerStack.js (BLEND_MODES) and Layers/LayerKinds.js
+  (LAYER_KINDS tints + labels), plus the channel table CHANNEL_PANELS is built from.
+==========================================================================================================*/
+
+const BLEND_MODES = ["Normal", "Multiply", "Screen", "Overlay", "Add", "Darken", "Linear Dodge"];
+
+const CLASSIFICATION = {
+  paint:     { Label:"Paint",     Tint:"#f97316" },
+  fill:      { Label:"Fill",      Tint:"#3b82f6" },
+  material:  { Label:"Material",  Tint:"#8b5cf6" },
+  generator: { Label:"Generator", Tint:"#10b981" }
+};
+
+// The six PBR channels. `derived` never gets a row: normal is resolved from height at shade time.
+const CHANNEL_PANELS = [
+  { Key:"baseColour", Label:"Base colour", Edit:"colour" },
+  { Key:"roughness",  Label:"Roughness",   Edit:"scalar", Min:0, Max:1, Step:0.01 },
+  { Key:"metalness",  Label:"Metalness",   Edit:"scalar", Min:0, Max:1, Step:0.01 },
+  { Key:"height",     Label:"Height",      Edit:"scalar", Min:0, Max:1, Step:0.01 },
+  { Key:"emissive",   Label:"Emissive",    Edit:"colour" },
+  { Key:"normal",     Label:"Normal",      Edit:"derived" }
+];
+
+const MATERIAL_PRESETS = {
+  brushedCopper: {
+    Label:"Brushed Copper", Family:"Metal",
+    Note:"An anisotropic brushed finish. Roughness runs with the grain.",
+    Channels:["baseColour", "roughness", "metalness"]
+  },
+  baseSteel: {
+    Label:"Base Steel", Family:"Metal", Note:"",
+    Channels:["baseColour", "roughness", "metalness", "height"]
+  }
+};
+
+/*----------------------------------------------------------------------------------------------------------
+                                        MASK COMPONENT MODEL
+  Transcribed from PaintingSurface/Layers/LayerMask.js — MASK_COMPONENT_CATEGORY:22, _ORDER:49, _PARAMS:52.
+
+  🔴 The category is a CAPABILITY, exactly as a layer kind is. Only `paint` accepts brush strokes and it is
+     the only one that owns storage; the other three are evaluated from their parameters every time the
+     sequence runs. Treating them uniformly would mean allocating 4 MiB for a Levels component that holds
+     no image at all (LayerMask.js:18).
+  🔴 Params are NOT invented sliders. They are the exact uniforms MaskStepFragment reads, so the inspector
+     cannot drift from the shader: fill→Control.z, generator→Control.zw + Shape.xy, levels→Shape.zw.
+----------------------------------------------------------------------------------------------------------*/
+
+const MASK_COMPONENT_CATEGORY = {
+  paint: {
+    Label:"Paint", Paintable:true,
+    Summary:"Hand-painted mask strokes.",
+    Defaults:{}
+  },
+  fill: {
+    Label:"Solid", Paintable:false,
+    Summary:"Uniform fill region.",
+    Defaults:{ Value:1.0 }
+  },
+  generator: {
+    Label:"Generator", Paintable:false,
+    Summary:"Procedural mottling over the UV atlas.",
+    Defaults:{ Scale:0.5, Contrast:0.5, Amount:1.0, Seed:12 }
+  },
+  levels: {
+    Label:"Levels", Paintable:false,
+    Summary:"Remap mask contrast and range.",
+    Defaults:{ Low:0.0, High:1.0 }
+  }
+};
+
+// 📝 The order the "add component" picker offers, and the order a fresh mask's source choice is presented
+//    in: the three real SOURCES first, with Levels last because it remaps what the others produced.
+const MASK_COMPONENT_ORDER = ["paint", "fill", "generator", "levels"];
+const MASK_SOURCE_ORDER    = ["paint", "fill", "generator"];
+
+const MASK_COMPONENT_PARAMS = {
+  fill:      [{ Key:"Value",    Label:"Value",    Min:0,    Max:1,   Step:0.01 }],
+  generator: [{ Key:"Scale",    Label:"Scale",    Min:0.02, Max:1,   Step:0.01 },
+              { Key:"Contrast", Label:"Contrast", Min:0,    Max:1,   Step:0.01 },
+              { Key:"Amount",   Label:"Amount",   Min:0,    Max:1,   Step:0.01 },
+              // 🔴 Integer seed, step 1 — a fractional seed walks a continuum of near-identical patterns
+              //    instead of giving the discrete re-rolls the control implies (LayerMask.js:57).
+              { Key:"Seed",     Label:"Seed",     Min:0,    Max:999, Step:1 }],
+  levels:    [{ Key:"Low",      Label:"Low",      Min:0,    Max:1,   Step:0.01 },
+              { Key:"High",     Label:"High",     Min:0,    Max:1,   Step:0.01 }],
+  paint:     []
+};
+
+const CategoryLabel = (Key) => (MASK_COMPONENT_CATEGORY[Key] ?? MASK_COMPONENT_CATEGORY.fill).Label;
+
+let ComponentSequence = 0;
+const NextComponentToken = () => `M${(ComponentSequence += 1).toString().padStart(3, "0")}`;
+
+function CreateMaskComponent(Category, Name)
+{
+  const Key = MASK_COMPONENT_CATEGORY[Category] ? Category : "fill";
+  return {
+    Token:NextComponentToken(), Category:Key,
+    Name:Name ?? MASK_COMPONENT_CATEGORY[Key].Label,
+    Opacity:100,
+    Params:{ ...MASK_COMPONENT_CATEGORY[Key].Defaults }
+  };
+}
+
+// 🔴 `FocusToken`, not a `Selected` field. It carries a MEANING beyond highlighting: it is where brush
+//    strokes land. Null means "strokes go to the layer's channels" (LayerMask.js:101).
+function CreateLayerMask(Override)
+{
+  return Object.assign({
+    Enabled:false, Fill:"white", Invert:false, Opacity:100,
+    Components:[], FocusToken:null
+  }, Override ?? {});
+}
+
+// 🔴 Resolved from BOTH the mask being enabled and the focused component actually being PAINTABLE. A focus
+//    left pointing at a Levels component after the Paint one was dropped would redirect every stroke into
+//    a component with no storage — dabs would vanish with no refusal (LayerMask.js:110).
+function ResolveMaskPaintTarget(Layer)
+{
+  const Mask = Layer?.Mask;
+  if (!Mask || !Mask.Enabled || !Mask.FocusToken) { return null; }
+  const Component = Mask.Components.find((C) => C.Token === Mask.FocusToken);
+  if (!Component) { return null; }
+  return MASK_COMPONENT_CATEGORY[Component.Category]?.Paintable ? Component : null;
+}
+
+//----------------------------------------------------------------------------------------------------------
+//                                            SAMPLE LAYERS
+//----------------------------------------------------------------------------------------------------------
+// Four poses, chosen so every conditional branch in the pane is on screen somewhere:
+//   • a paint layer with a mask + components (the opening pose)
+//   • a material layer, so the Material section and its per-channel rows render
+//   • a fill layer with no mask, so the Mask tab shows its create affordance
+//   • no selection at all, so the empty state renders
+
+function MakeLayers()
+{
+  return [
+    {
+      Token:"L0", Name:"Edge Wear", Classification:"paint", Kind:"paint",
+      Shown:true, Blend:"Multiply", Opacity:78,
+      Enabled:["baseColour", "roughness", "height"],
+      Values:{ baseColour:"#2e2d2b", roughness:0.62, height:0.24 },
+      // 📝 A three-step stack chosen so the preview shows a real chain rather than one flat field, and so
+      //    the Levels-remaps-the-accumulation rule is visible: the two generators build the mottling and
+      //    the Levels step tightens it. Params are spelled out — a component on bare defaults evaluates to
+      //    a field that responds to nothing, which reads as a dead preview.
+      Mask:{
+        Enabled:true, Fill:"black", Invert:false, Opacity:92, OnMesh:false,
+        Components:[
+          { Token:"C0", Name:"Curvature", Category:"generator", Enabled:true, Opacity:100,
+            Params:{ Scale:0.62, Contrast:0.74, Amount:1.0, Seed:12 } },
+          { Token:"C1", Name:"Grunge Noise", Category:"generator", Enabled:true, Opacity:55,
+            Params:{ Scale:0.16, Contrast:0.42, Amount:0.85, Seed:207 } },
+          { Token:"C2", Name:"Tighten", Category:"levels", Enabled:true, Opacity:100,
+            Params:{ Low:0.18, High:0.82 } },
+          { Token:"C3", Name:"Hand Erase", Category:"paint", Enabled:false, Opacity:100, Params:{} }
+        ],
+        // The paint step is disabled, so the brush is NOT aimed into it — strokes stay on the channels.
+        FocusToken:null
+      }
+    },
+    {
+      Token:"L1", Name:"Brushed Copper", Classification:"material", Kind:"material",
+      Preset:"brushedCopper", Shown:true, Blend:"Normal", Opacity:100,
+      Enabled:["baseColour", "roughness", "metalness"],
+      Values:{ baseColour:"#b87333", roughness:0.34, metalness:0.92 },
+      // A live PAINT step, so the paint-target chip and the indicative-strokes caveat both show.
+      Mask:{
+        Enabled:true, Fill:"white", Invert:true, Opacity:100, OnMesh:true,
+        Components:[
+          { Token:"C4", Name:"Wear Mask", Category:"paint", Enabled:true, Opacity:100, Params:{} },
+          { Token:"C5", Name:"Position Gradient", Category:"fill", Enabled:false, Opacity:50,
+            Params:{ Value:0.5 } }
+        ],
+        FocusToken:"C4"
+      }
+    },
+    {
+      Token:"L2", Name:"Roughness Lift", Classification:"fill", Kind:"fill",
+      Shown:true, Blend:"Add", Opacity:40,
+      Enabled:["roughness"], Values:{ roughness:0.78 },
+      Mask:null
+    },
+    {
+      Token:"L3", Name:"Cavity Dirt", Classification:"generator", Kind:"generator",
+      Shown:false, Blend:"Multiply", Opacity:55,
+      Enabled:["baseColour", "roughness"],
+      Values:{ baseColour:"#1a1712", roughness:0.5 },
+      Mask:null
+    }
+  ];
+}
+
+//----------------------------------------------------------------------------------------------------------
+//                                          SHARED HELPERS
+//----------------------------------------------------------------------------------------------------------
+
+const Svg = (Body, Size) =>
+  `<svg viewBox="0 0 24 24" width="${Size}" height="${Size}" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${Body}</svg>`;
+
+// 📝 Every mark is drawn from primitives — there is no icon pack behind this pane.
+const Glyph = {
+  sliders:   (S) => Svg(`<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/>` +
+                        `<circle cx="10" cy="17" r="2"/>`, S),
+  mask:      (S) => Svg(`<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 3v18"/>` +
+                        `<path d="M3 12h9"/>`, S),
+  stack:     (S) => Svg(`<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>`, S),
+  trash:     (S) => Svg(`<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>`, S),
+  chevron:   (S) => Svg(`<path d="M9 6l6 6-6 6"/>`, S),
+  chevronDown:(S) => Svg(`<path d="M6 9l6 6 6-6"/>`, S),
+  // 📝 The invert mark: two opposed arrows over a split axis — the mask's light and dark trading places,
+  //    which is what inversion does to it. Not a "swap two items" mark, which would read as reordering.
+  flip:      (S) => Svg(`<path d="M4 12h16"/><path d="M8.5 7.5L12 4l3.5 3.5"/>` +
+                        `<path d="M15.5 16.5L12 20l-3.5-3.5"/>`, S),
+  plus:      (S) => Svg(`<path d="M12 5v14M5 12h14"/>`, S),
+  paint:     (S) => Svg(`<path d="M5 19c0-4 3-6 6-6M11 13l6-6a2.8 2.8 0 10-4-4l-6 6"/>` +
+                        `<circle cx="6" cy="18" r="1.6"/>`, S),
+  fill:      (S) => Svg(`<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 14h16"/>`, S),
+  material:  (S) => Svg(`<circle cx="12" cy="12" r="8"/><path d="M7 15a7 7 0 019-7"/>`, S),
+  generator: (S) => Svg(`<path d="M3 15c3-8 6 8 9 0s6 8 9 0"/>`, S),
+  levels:    (S) => Svg(`<path d="M4 4v16M4 8h6M4 14h11M4 20h16"/>`, S),
+  eyeOpen:   (S) => Svg(`<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/>` +
+                        `<circle cx="12" cy="12" r="2.6"/>`, S),
+  eyeShut:   (S) => Svg(`<path d="M3 4l18 18"/><path d="M10.6 6.2A10.6 10.6 0 0112 6c6.4 0 10 6 10 6a17 ` +
+                        `17 0 01-3.3 3.8M6.6 7.9A17 17 0 002 12s3.6 6.5 10 6.5a10 10 0 003.2-.5"/>`, S)
+};
+
+const ClassificationGlyph = (Key, Size) => (Glyph[Key] ?? Glyph.paint)(Size);
+const Hue                 = (Key) => (CLASSIFICATION[Key] ?? CLASSIFICATION.paint).Tint;
+const LabelOf             = (Key) => (CLASSIFICATION[Key] ?? CLASSIFICATION.paint).Label;
+
+// The layer's live channel set, in the panel table's order.
+const ChannelsOf   = (Layer) => CHANNEL_PANELS.filter((P) => (Layer.Enabled ?? []).includes(P.Key));
+const PaintsChannel = (Layer, Key) => (Layer.Enabled ?? []).includes(Key);
+
+// 📝 `MaskShade` — a fill+invert-to-one-grey helper — lived here and is GONE, not kept "just in case": the
+//    evaluated preview below supersedes it entirely, and the two flat tiles it fed were the bug (a swatch
+//    of the fill standing in for a picture of the mask). Its invariant did not vanish with it, though —
+//    EvaluateMaskTexel still resolves fill AND invert together, because reading the fill alone renders an
+//    inverted black mask as black, the exact opposite of what the compositor weights with.
+
+/*----------------------------------------------------------------------------------------------------------
+                                    THE MASK PREVIEW EVALUATOR
+  A CPU transcription of MaskStepFragment (LayerMask.js:214-274) — Hash / ValueNoise / Fbm and the four
+  category branches, in the same order, with the same accumulate-then-mix contract.
+
+  🔴 This exists because a flat swatch of the FILL setting is not a preview of the MASK. The fill row says
+     what the mask STARTED as; only an evaluated tile says what it IS after the components have run. The
+     mask never appears in the viewport (the compositor uses it as a weight, so its visible effect is "the
+     layer beneath shows through", which is not a picture of the mask), so without this tile there is no
+     way to see a mask at all.
+  🔴 Transcribed, not approximated — a stand-in gradient would show a mask that responds to no slider, and
+     a Contrast drag that changes nothing reads as a broken control rather than a fake preview. The known
+     trap here is that a re-implementation goes STALE against the shader: if MaskStepFragment changes,
+     THIS CHANGES IN THE SAME EDIT.
+  📝 The chain is a SEQUENCE, not a set: Levels remaps whatever the components beneath it produced, so the
+     result of step N is the input of step N+1 (LayerMask.js:282).
+----------------------------------------------------------------------------------------------------------*/
+
+const Fract = (X) => X - Math.floor(X);
+
+function Hash(X, Y)
+{
+  const WrappedX = Fract(X * 0.3183099 + 0.1);
+  const WrappedY = Fract(Y * 0.3678794 + 0.1);
+  const ScaledX  = WrappedX * 50.0;
+  const ScaledY  = WrappedY * 50.0;
+  return Fract(ScaledX * ScaledY * (ScaledX + ScaledY));
+}
+
+function ValueNoise(X, Y)
+{
+  const CellX = Math.floor(X), CellY = Math.floor(Y);
+  const Fx = X - CellX,        Fy = Y - CellY;
+
+  // Quintic smoothstep — a linear blend leaves grid creases whose DERIVATIVE is discontinuous, and a mask
+  // feeds the compositor's weight, so those creases show as hard edges in the blend.
+  const Wx = Fx * Fx * Fx * (Fx * (Fx * 6.0 - 15.0) + 10.0);
+  const Wy = Fy * Fy * Fy * (Fy * (Fy * 6.0 - 15.0) + 10.0);
+
+  const A = Hash(CellX,       CellY);
+  const B = Hash(CellX + 1.0, CellY);
+  const C = Hash(CellX,       CellY + 1.0);
+  const D = Hash(CellX + 1.0, CellY + 1.0);
+
+  const Top    = A + (B - A) * Wx;
+  const Bottom = C + (D - C) * Wx;
+  return Top + (Bottom - Top) * Wy;
+}
+
+function Fbm(X, Y)
+{
+  let Sum = 0.0, Amplitude = 0.5, Fx = X, Fy = Y;
+  for (let Octave = 0; Octave < 5; Octave += 1)
+  {
+    Sum       += Amplitude * ValueNoise(Fx, Fy);
+    Fx        *= 2.02;
+    Fy        *= 2.02;
+    Amplitude *= 0.5;
+  }
+  return Sum;
+}
+
+const Clamp01 = (X) => Math.min(1, Math.max(0, X));
+const Mix     = (A, B, T) => A + (B - A) * T;
+
+// One texel of the resolved mask at (U,V), run through the whole component stack.
+function EvaluateMaskTexel(Mask, U, V)
+{
+  // The base the stack is evaluated OVER (LayerMask.js:97).
+  let Prior = Mask.Fill === "black" ? 0.0 : 1.0;
+
+  for (const Component of Mask.Components)
+  {
+    // 📝 A disabled component is skipped outright rather than mixed at zero — the stack is what runs, and
+    //    a skipped step must not consume its slot in the chain.
+    if (Component.Enabled === false) { continue; }
+
+    const Params  = Component.Params ?? {};
+    const Opacity = Clamp01((Component.Opacity ?? 100) / 100);
+    let   Next    = Prior;
+
+    if (Component.Category === "fill")
+    {
+      Next = Clamp01(Params.Value ?? 1.0);
+    }
+    else if (Component.Category === "paint")
+    {
+      // 🔴 A paint component's content is its own atlas, which this prototype has no readback of. Rather
+      //    than inventing strokes, it contributes its coverage as a soft radial dab field so the preview
+      //    shows SOMETHING responding to opacity — and the caption says the strokes are indicative.
+      const Dx = U - 0.5, Dy = V - 0.5;
+      const Coverage = Clamp01(1.0 - Math.sqrt(Dx * Dx + Dy * Dy) * 2.2);
+      const Painted  = Clamp01(0.15 + Fbm(U * 9.0 + 4.0, V * 9.0 + 4.0) * 0.9);
+      Next = Mix(Prior, Painted, Coverage);
+    }
+    else if (Component.Category === "generator")
+    {
+      const Seed    = Params.Seed ?? 12;
+      const Amount  = Clamp01(Params.Amount ?? 1.0);
+      const OffsetX = Hash(Seed, 11.0) * 64.0;
+      const OffsetY = Hash(Seed, 23.0) * 64.0;
+      // Scale reads as FEATURE SIZE, so frequency is its reciprocal: dragging right enlarges features.
+      const Frequency = Mix(48.0, 3.0, Clamp01(Params.Scale ?? 0.5));
+      let   Pattern   = Fbm(U * Frequency + OffsetX, V * Frequency + OffsetY);
+
+      // Contrast pivots about the midpoint so raising it does not also brighten the field.
+      const Steepness = Mix(1.0, 12.0, Clamp01(Params.Contrast ?? 0.5));
+      Pattern = Clamp01((Pattern - 0.5) * Steepness + 0.5);
+
+      Next = Mix(Prior, Pattern, Amount);
+    }
+    else
+    {
+      // Levels — remaps the ACCUMULATED result, which is why it is its own pass.
+      //
+      // 🔴 The span is guarded rather than trusted. Low and High are independent sliders, so a user can
+      //    drag High below Low; an unguarded divide then yields a negative or infinite scale and the whole
+      //    mask flips to a hard black-or-white step with no way to read what went wrong.
+      const Low  = Params.Low  ?? 0.0;
+      const High = Params.High ?? 1.0;
+      const Span = Math.max(High - Low, 1e-4);
+      Next = Clamp01((Prior - Low) / Span);
+    }
+
+    Prior = Mix(Prior, Next, Opacity);
+  }
+
+  // 🔴 Invert then STRENGTH, in that order and both here. Invert flips what the mask reads; Strength is
+  //    how strongly the mask applies, NOT how bright it is (LayerMask.js:99) — so it pulls the mask toward
+  //    fully-open white, which is what "a weaker mask hides less" means.
+  const Inverted = Mask.Invert ? 1.0 - Prior : Prior;
+  return Mix(1.0, Inverted, Clamp01((Mask.Opacity ?? 100) / 100));
+}
+
+// Paint the resolved mask into a canvas. Small and nearest-neighboured up by CSS: this is a thumbnail of a
+// noise field, and evaluating 78² texels of 5-octave FBM every keystroke is what makes a scrub stutter.
+const PreviewExtent = 52;
+
+function BuildMaskCanvas(Mask, CssSize)
+{
+  const Canvas = document.createElement("canvas");
+  Canvas.width  = PreviewExtent;
+  Canvas.height = PreviewExtent;
+  Canvas.className = "msk-canvas";
+  Canvas.style.width  = `${CssSize}px`;
+  Canvas.style.height = `${CssSize}px`;
+
+  const Context = Canvas.getContext("2d");
+  const Image   = Context.createImageData(PreviewExtent, PreviewExtent);
+
+  for (let Row = 0; Row < PreviewExtent; Row += 1)
+  {
+    for (let Column = 0; Column < PreviewExtent; Column += 1)
+    {
+      const U = (Column + 0.5) / PreviewExtent;
+      const V = (Row + 0.5) / PreviewExtent;
+      const Shade = Math.round(Clamp01(EvaluateMaskTexel(Mask, U, V)) * 255);
+      const At = (Row * PreviewExtent + Column) * 4;
+      Image.data[At]     = Shade;
+      Image.data[At + 1] = Shade;
+      Image.data[At + 2] = Shade;
+      Image.data[At + 3] = 255;
+    }
+  }
+  Context.putImageData(Image, 0, 0);
+  return Canvas;
+}
+
+function DecimalsFor(Step)
+{
+  if (!Step || Step >= 1) { return 0; }
+  return String(Step).split(".")[1]?.length ?? 0;
+}
+
+function SectionLabel(Text, GlyphKey, Tail)
+{
+  const El = document.createElement("div");
+  El.className = "meta-sect";
+  El.innerHTML = (GlyphKey ? `<span>${Glyph[GlyphKey](12)}</span>` : "") + `<span>${Text}</span>` +
+                 (Tail ? `<span class="ms-tail">${Tail}</span>` : "");
+  return El;
+}
+
+function SectionLabel2(Text)
+{
+  const El = document.createElement("div");
+  El.className = "se-sect";
+  El.textContent = Text;
+  return El;
+}
+
+function PropertyRow(Label, Field)
+{
+  const Row = document.createElement("div");
+  Row.className = "prow";
+  const Tag = document.createElement("div");
+  Tag.className = "plabel";
+  Tag.textContent = Label;
+  Row.appendChild(Tag);
+  Row.appendChild(Field);
+  return Row;
+}
+
+function MetaRow(Key, Value)
+{
+  const Row = document.createElement("div");
+  Row.className = "meta-row";
+  Row.innerHTML = `<span class="mr-k"></span><span class="mr-v"></span>`;
+  Row.querySelector(".mr-k").textContent = Key;
+  Row.querySelector(".mr-v").textContent = Value;
+  return Row;
+}
+
+function Hint(Text)
+{
+  const El = document.createElement("div");
+  El.className = "tgt-hint";
+  El.textContent = Text;
+  return El;
+}
+
+function BuildSwitch(On, OnFlip)
+{
+  const Host = document.createElement("div");
+  Host.className = "switch" + (On ? " on" : "");
+  Host.innerHTML = '<span class="nub"></span>';
+  Host.onclick = () => { On = !On; Host.classList.toggle("on", On); OnFlip(On); };
+  return Host;
+}
+
+// The chip row standing in for SelectionEntry: separate rounded chips that flow and wrap.
+function BuildChips(Options, Current, OnPick)
+{
+  const Host = document.createElement("div");
+  Host.className = "chiprow";
+  for (const Option of Options)
+  {
+    const Chip = document.createElement("div");
+    Chip.className = "chip" + (Option === Current ? " on" : "");
+    Chip.textContent = Option;
+    Chip.onclick = () => OnPick(Option);
+    Host.appendChild(Chip);
+  }
+  return Host;
+}
+
+//----------------------------------------------------------------------------------------------------------
+//                                          BuildDropdown
+//----------------------------------------------------------------------------------------------------------
+// 🔴 A 1:1 transcription of Controls/Dropdown.cpp — the executable's own combo control — NOT a styled
+//    <select>. A native select renders with the OS's own popup: a different font, a different highlight
+//    colour and a scrollbar none of this panel's palette reaches, so the one control the prototype exists to
+//    preview would be the one control it could not show.
+//
+// 🔴 Three behaviours the C++ gets from ImGui::BeginPopup for free and this must therefore do by hand
+//    (Dropdown.cpp:60, :64-89), because leaving any of them out is how a hand-rolled dropdown ends up
+//    permanently stuck open behind another panel:
+//     ① CLICK-OUTSIDE-TO-CLOSE — one capture-phase document listener, armed only while open.
+//     ② VIEWPORT FLIP — the list is placed under the head, but flips ABOVE when it would run past the
+//       bottom edge. Blend sits high in the pane and Fill sits low; without the flip the low one is clipped.
+//     ③ MEASURED PLACEMENT — position:fixed at the head's live screen rect (invariant 4: the pane clips).
+//
+// 📝 Only ONE list may be open at a time, so opening closes any other. Two open lists can overlap, and the
+//    one underneath then takes clicks aimed at the one on top.
+let OpenDropdown = null;
+
+function CloseOpenDropdown()
+{
+  if (!OpenDropdown) { return; }
+  OpenDropdown.classList.remove("open");
+  document.removeEventListener("mousedown", OpenDropdown.OutsideWatch, true);
+  window.removeEventListener("resize", OpenDropdown.DismissWatch, true);
+  // Capture-phase + `true` so ANY ancestor scroll dismisses: the list is fixed-positioned, so it does not
+  // travel with the pane body it was measured against and would otherwise detach from its own head.
+  window.removeEventListener("scroll", OpenDropdown.DismissWatch, true);
+  OpenDropdown = null;
+}
+
+function BuildDropdown(Options, Current, OnPick)
+{
+  const Host = document.createElement("div");
+  Host.className = "dropdown";
+
+  const Head = document.createElement("div");
+  Head.className = "dd-head";
+  Head.innerHTML = `<span class="cur"></span><span class="caret">${Glyph.chevronDown(11)}</span>`;
+  Head.querySelector(".cur").textContent = Current;
+  Head.title = Current;
+
+  const List = document.createElement("div");
+  List.className = "dd-list";
+
+  for (const Option of Options)
+  {
+    const Item = document.createElement("div");
+    Item.className = "dd-item" + (Option === Current ? " sel" : "");
+    Item.innerHTML = `<span class="lb"></span><span class="radio"></span>`;
+    Item.querySelector(".lb").textContent = Option;
+    // mousedown would fire before the outside-watch could distinguish inside from outside; click is correct.
+    Item.onclick = (Event) => {
+      Event.stopPropagation();
+      CloseOpenDropdown();
+      OnPick(Option);
+    };
+    List.appendChild(Item);
+  }
+
+  Host.OutsideWatch = (Event) => { if (!Host.contains(Event.target)) { CloseOpenDropdown(); } };
+  Host.DismissWatch = () => CloseOpenDropdown();
+
+  Head.onclick = (Event) => {
+    Event.stopPropagation();
+    if (OpenDropdown === Host) { CloseOpenDropdown(); return; }
+    CloseOpenDropdown();
+
+    Host.classList.add("open");
+    OpenDropdown = Host;
+
+    // Measured AFTER the class is on, so the list has a laid-out height to test against the viewport.
+    const Anchor = Head.getBoundingClientRect();
+    List.style.width = `${Anchor.width}px`;
+    List.style.left  = `${Anchor.left}px`;
+    List.style.top   = "0px";
+
+    const Extent    = List.getBoundingClientRect().height;
+    const Below     = Anchor.bottom + 4;
+    const Above     = Anchor.top - 4 - Extent;
+    const FitsBelow = (Below + Extent) <= window.innerHeight;
+    const FitsAbove = Above >= 0;
+    // Prefer below; flip above only when below clips AND above actually fits; else clamp (Dropdown.cpp:79).
+    let Placement;
+    if (FitsBelow || !FitsAbove) { Placement = FitsBelow ? Below : Math.max(0, window.innerHeight - Extent); }
+    else                         { Placement = Above; }
+    List.style.top = `${Placement}px`;
+
+    document.addEventListener("mousedown", Host.OutsideWatch, true);
+    window.addEventListener("resize", Host.DismissWatch, true);
+    window.addEventListener("scroll", Host.DismissWatch, true);
+  };
+
+  Host.appendChild(Head);
+  Host.appendChild(List);
+  return Host;
+}
+
+// A numeric pill plus a track.
+//
+// 📝 OnInput is called with (Value, Live). Live is true while the pointer is down: the caller writes the
+//    value without rebuilding the pane, and rebuilds once on release. That is what lets a scrub stay smooth
+//    across a pane that is otherwise rebuilt wholesale on every change.
+function BuildSlider(Spec)
+{
+  const Host  = document.createElement("div"); Host.className  = "sliderrow";
+  const Box   = document.createElement("div"); Box.className   = "valuebox";
+  const Num   = document.createElement("div"); Num.className   = "num";
+  const Input = document.createElement("input"); Input.type = "text";
+
+  Num.appendChild(Input);
+  Box.appendChild(Num);
+  if (Spec.Unit)
+  {
+    const Unit = document.createElement("span");
+    Unit.className = "unitseg";
+    Unit.textContent = Spec.Unit;
+    Box.appendChild(Unit);
+  }
+
+  const Track = document.createElement("div"); Track.className = "slider";
+  const Fill  = document.createElement("div"); Fill.className  = "fill";
+  const Knob  = document.createElement("div"); Knob.className  = "knob";
+  Track.appendChild(Fill);
+  Track.appendChild(Knob);
+  Host.appendChild(Box);
+  Host.appendChild(Track);
+
+  const Places = DecimalsFor(Spec.Step);
+  let   Value  = Spec.Value;
+
+  const Paint = () => {
+    const Percent = ((Value - Spec.Min) / (Spec.Max - Spec.Min)) * 100;
+    Fill.style.width = `${Percent}%`;
+    Knob.style.left  = `${Percent}%`;
+    Input.value      = Value.toFixed(Places);
+  };
+
+  // 🔴 Quantised RELATIVE TO Min, not to zero. `round(v/Step)*Step` only lands on the offered values when
+  //    Min is a whole multiple of Step; on a 0.05-stepped range starting at 0.1 it snaps to a lattice the
+  //    endpoints are not on, so the track could never reach its own Max. Re-clamped after, because the
+  //    rounding can overshoot Max by a part-step.
+  const Quantise = (Raw) => {
+    const Snapped = Spec.Min + Math.round((Raw - Spec.Min) / Spec.Step) * Spec.Step;
+    return Math.min(Spec.Max, Math.max(Spec.Min, Snapped));
+  };
+
+  const ReadPointer = (Event) => {
+    const Box2    = Track.getBoundingClientRect();
+    const Portion = Math.min(1, Math.max(0, (Event.clientX - Box2.left) / Box2.width));
+    return Quantise(Spec.Min + Portion * (Spec.Max - Spec.Min));
+  };
+
+  Track.onpointerdown = (Event) => {
+    Track.setPointerCapture(Event.pointerId);
+    Value = ReadPointer(Event);
+    Paint();
+    Spec.OnInput?.(Value, true);
+
+    Track.onpointermove = (Move) => {
+      if (!Track.hasPointerCapture(Move.pointerId)) { return; }
+      Value = ReadPointer(Move);
+      Paint();
+      Spec.OnInput?.(Value, true);
+    };
+    Track.onpointerup = (Up) => {
+      Track.releasePointerCapture(Up.pointerId);
+      Track.onpointermove = null;
+      Track.onpointerup   = null;
+      Spec.OnInput?.(Value, false);
+    };
+  };
+
+  Input.onchange = () => {
+    const Parsed = Number.parseFloat(Input.value);
+    Value = Number.isFinite(Parsed) ? Quantise(Parsed) : Value;
+    Paint();
+    Spec.OnInput?.(Value, false);
+  };
+
+  Paint();
+  return Host;
+}
+
+// The colour field: a swatch that cycles nothing on its own — the picker is out of scope for this slide,
+// so it reports the value and takes an edit through the native input rather than faking a wheel.
+function BuildColourField(Current, OnPick)
+{
+  const Host = document.createElement("div");
+  Host.className = "colfield";
+
+  const Swatch = document.createElement("label");
+  Swatch.className = "colswatch";
+  Swatch.style.background = Current;
+
+  const Native = document.createElement("input");
+  Native.type  = "color";
+  Native.value = Current;
+  Native.style.cssText = "position:absolute;width:0;height:0;opacity:0;pointer-events:none";
+
+  const Hex = document.createElement("span");
+  Hex.className   = "colhex";
+  Hex.textContent = Current;
+
+  Native.oninput = () => {
+    Swatch.style.background = Native.value;
+    Hex.textContent         = Native.value;
+    OnPick(Native.value, true);
+  };
+  Native.onchange = () => OnPick(Native.value, false);
+
+  Swatch.appendChild(Native);
+  Host.appendChild(Swatch);
+  Host.appendChild(Hex);
+  return Host;
+}
+
+/*==========================================================================================================
+                                        THE PROPERTIES PANE
+==========================================================================================================*/
+
+class LayerPropertyPane
+{
+  constructor(Host, Layers, FocusToken)
+  {
+    this.Host       = Host;
+    this.Layers     = Layers;
+    this.FocusToken = FocusToken;
+
+    // The carousel tab, persisted PER LAYER: switching layers must not drag the previous layer's tab along.
+    this.PaintTab = new Map();
+    // 🔴 The last tab actually rendered, so the incoming-pane lift fires on a real flip and not on a
+    //    rebuild (invariant 7).
+    this.LastTab  = new Map();
+
+    // Which mask component has its parameters unfolded, and whether the add-component list is open. Both
+    // are VIEW state, not layer data: they belong to the pane, not to the mask.
+    //
+    // 🔴 Deliberately distinct from Mask.FocusToken. The focus is where STROKES land — a domain fact that
+    //    outlives this pane — while this is only which row is expanded. Folding them into one field means
+    //    unfolding a Levels step to read its Low/High silently re-aims the brush.
+    this.Selected = null;
+    this.AddOpen  = false;
+
+    this.BuildShell();
+    this.Refresh();
+  }
+
+  get Focus() { return this.Layers.find((L) => L.Token === this.FocusToken) ?? null; }
+  get Count() { return this.Layers.length; }
+
+  TabOf(Layer) { return this.PaintTab.get(Layer.Token) ?? "layer"; }
+
+  // 🔴 Slides IN PLACE rather than rebuilding: the transform and the active classes are moved directly, so
+  //    the CSS transition has an unbroken subtree to animate. A full Refresh here would replace the track
+  //    mid-transition and the slide would never be seen.
+  SetTab(Layer, Tab)
+  {
+    this.PaintTab.set(Layer.Token, Tab);
+    this.LastTab.set(Layer.Token, Tab);
+
+    const Toggle = this.Part.MetaBody.querySelector(".mc-toggle");
+    const Track  = this.Part.MetaBody.querySelector(".mc-track");
+    if (!Toggle || !Track) { return; }
+
+    Toggle.dataset.tab = Tab;
+    Toggle.querySelectorAll(".mc-seg").forEach((Seg, Index) =>
+      Seg.classList.toggle("active", (Index === 0) === (Tab === "layer")));
+    Track.style.transform = Tab === "mask" ? "translateX(-50%)" : "translateX(0)";
+
+    this.Part.AdvanceHead.title = Tab === "mask" ? "Mask components" : "Channels";
+  }
+
+  Apply()  { this.Refresh(); }          // a structural edit: rebuild the pane
+  Commit() { /* a live scrub: the caller repaints in place, no rebuild */ }
+
+  BuildShell()
+  {
+    this.Host.innerHTML =
+      `<div class="pane-head stepper" data-part="AdvanceHead" title="Channels">` +
+        `<span class="h-ic" data-part="MetaIcon"></span>` +
+        `<span class="h-txt">` +
+          `<span class="h-lbl" data-part="MetaName">Nothing selected</span>` +
+          `<span class="fn" data-part="MetaClass">—</span>` +
+        `</span>` +
+        `<span class="h-step">${Glyph.chevron(13)}</span>` +
+      `</div>` +
+      `<div class="meta-body" data-part="MetaBody"></div>` +
+      `<div class="pane-foot" data-part="MetaFoot"></div>`;
+
+    this.Part = {};
+    for (const El of this.Host.querySelectorAll("[data-part]")) { this.Part[El.dataset.part] = El; }
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                       RenderProperties
+  //------------------------------------------------------------------------------------------------------
+  Refresh()
+  {
+    // 🔴 Dismiss any open dropdown HERE, not at the call sites. The list is position:fixed, so it is the one
+    //    thing in this pane that does not disappear when the body subtree does — and the wipe below orphans
+    //    the element while `OpenDropdown` still points at it, leaving its document-level mousedown watcher
+    //    attached to a node no longer in the tree. That is a leak per rebuild AND a list left hovering over a
+    //    pane it can no longer edit. Refresh is the single choke point every structural edit passes through,
+    //    so guarding it once covers the tab toggle, the switcher, and every future caller.
+    CloseOpenDropdown();
+
+    const Layer = this.Focus;
+    const Body  = this.Part.MetaBody;
+    Body.innerHTML = "";
+
+    if (!Layer)
+    {
+      this.Part.MetaName.textContent  = "Nothing selected";
+      this.Part.MetaClass.textContent = "—";
+      this.Part.MetaIcon.innerHTML    = Glyph.stack(17);
+      Body.innerHTML = '<div class="empty-state">No layer focused.<br>Pick one in the stack.</div>';
+      this.Part.MetaFoot.innerHTML = "<span>—</span>";
+      return;
+    }
+
+    const Tint = Hue(Layer.Classification);
+    this.Part.MetaName.textContent  = Layer.Name;
+    this.Part.MetaClass.textContent = `${LabelOf(Layer.Classification)} layer`;
+    this.Part.MetaIcon.innerHTML    = ClassificationGlyph(Layer.Classification, 17);
+
+    // The stepper's destination tracks the carousel, so the head cannot promise the wrong slide.
+    this.Part.AdvanceHead.title = this.TabOf(Layer) === "mask" ? "Mask components" : "Channels";
+
+    // 🔴 NO hero card here (invariant 1) — the head above IS the identity line; the body starts at controls.
+    Body.appendChild(this.BuildTargetCarousel(Layer));
+
+    this.Part.MetaFoot.innerHTML =
+      `<span class="pf-hue" style="background:${Tint}"></span>` +
+      `<span>${LabelOf(Layer.Classification)}</span>` +
+      `<span class="pf-dot">·</span><span class="pf-strong">${Layer.Opacity}%</span>` +
+      `<span class="pf-spacer"></span><span>${Layer.Blend}</span>`;
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                     BuildTargetCarousel
+  //------------------------------------------------------------------------------------------------------
+  BuildTargetCarousel(Layer)
+  {
+    const Tab  = this.TabOf(Layer);
+    const Host = document.createElement("div");
+    Host.className = "meta-carousel";
+
+    // ---- the [ Layer | Mask ] toggle -----------------------------------------------------------------
+    const Toggle = document.createElement("div");
+    Toggle.className   = "mc-toggle";
+    Toggle.dataset.tab = Tab;
+    for (const [Key, Label] of [["layer", "Layer"], ["mask", "Mask"]])
+    {
+      const Seg = document.createElement("div");
+      Seg.className   = "mc-seg" + (Tab === Key ? " active" : "");
+      Seg.textContent = Label;
+      // 🔴 Guard against the LIVE tab, not this closure's build-time `Tab`. SetTab slides without
+      //    rebuilding, so the captured value goes stale after the first switch and comparing to it would
+      //    wedge the toggle — a second click would read the old value and no-op. TabOf is the truth.
+      Seg.onclick = () => { if (Key !== this.TabOf(Layer)) { this.SetTab(Layer, Key); } };
+      Toggle.appendChild(Seg);
+    }
+    const Thumb = document.createElement("div");
+    Thumb.className = "mc-thumb";
+    Toggle.appendChild(Thumb);
+    Host.appendChild(Toggle);
+
+    // ---- the sliding track ---------------------------------------------------------------------------
+    const View  = document.createElement("div"); View.className  = "mc-view";
+    const Track = document.createElement("div"); Track.className = "mc-track";
+    // 🔴 Inline from the persisted tab (invariant 3), never a class a click handler flipped.
+    Track.style.transform = Tab === "mask" ? "translateX(-50%)" : "translateX(0)";
+
+    const LayerPane = document.createElement("div"); LayerPane.className = "mc-pane";
+    const MaskPane  = document.createElement("div"); MaskPane.className  = "mc-pane";
+
+    // Fire the entrance only when the tab actually flipped since the last build (invariant 7).
+    const Previous = this.LastTab.get(Layer.Token);
+    if (Previous !== undefined && Previous !== Tab)
+    {
+      (Tab === "mask" ? MaskPane : LayerPane).classList.add("mc-incoming");
+    }
+    this.LastTab.set(Layer.Token, Tab);
+
+    // 🔴 BOTH panes built every time (invariant 2) — the off-screen one is the slide's destination.
+    this.RenderLayerProperties(LayerPane, Layer);
+    this.RenderMaskPane(MaskPane, Layer);
+
+    Track.appendChild(LayerPane);
+    Track.appendChild(MaskPane);
+    View.appendChild(Track);
+    Host.appendChild(View);
+    return Host;
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                   RenderLayerProperties
+  //------------------------------------------------------------------------------------------------------
+  RenderLayerProperties(Body, Layer)
+  {
+    Body.appendChild(SectionLabel("Layer paint", "sliders"));
+
+    Body.appendChild(PropertyRow("Visible", BuildSwitch(Layer.Shown, (On) => {
+      Layer.Shown = On;
+      this.Apply();
+    })));
+
+    // 🔴 A DROPDOWN, not the chip row it was. Blend is a 7-option single-choice enum, and as chips it wrapped
+    //    onto two lines inside a 326px pane — the widest control here, spent on the least-often-changed
+    //    setting, and growing again with every mode the compositor gains. The executable draws this exact row
+    //    with Controls/Dropdown.cpp, so the chip row was also the prototype disagreeing with the port target.
+    //    Chips stay where they earn their width: few options, all worth showing at once.
+    Body.appendChild(PropertyRow("Blend", BuildDropdown(BLEND_MODES, Layer.Blend, (Pick) => {
+      Layer.Blend = Pick;
+      this.Apply();
+    })));
+
+    Body.appendChild(PropertyRow("Opacity", BuildSlider({
+      Min:0, Max:100, Step:1, Value:Layer.Opacity, Unit:"%",
+      OnInput:(Value, Live) => {
+        Layer.Opacity = Value;
+        // The foot's reading is repainted live so a scrub is visible without a rebuild.
+        const Strong = this.Part.MetaFoot.querySelector(".pf-strong");
+        if (Strong) { Strong.textContent = `${Value}%`; }
+        if (!Live) { this.Apply(); }
+      }
+    })));
+
+    Body.appendChild(MetaRow("Channels",
+      `${ChannelsOf(Layer).length} / ${CHANNEL_PANELS.length} active`));
+
+    // The material's own settings, when this layer is one. Above Actions, so the thing the layer IS reads
+    // before the things that can be done to it.
+    this.RenderMaterialProperties(Body, Layer);
+
+    Body.appendChild(SectionLabel("Actions"));
+    Body.appendChild(this.BuildActions(Layer));
+
+    const Cta = document.createElement("div");
+    Cta.className = "meta-cta";
+    Cta.innerHTML = `<span>Channels</span>${Glyph.chevron(13)}<span class="cta-kbd">Tab</span>`;
+    Body.appendChild(Cta);
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                 RenderMaterialProperties
+  //------------------------------------------------------------------------------------------------------
+  // 🔴 Silent no-op for every other kind, checked on the LAYER not the preset. A fill layer retargeted by
+  //    the shelf becomes kind `material` and carries a preset; a paint layer never does. Keying on
+  //    Layer.Preset alone would show material rows on a layer whose content is its strokes.
+  RenderMaterialProperties(Body, Layer)
+  {
+    if (Layer.Kind !== "material") { return; }
+
+    const Preset = MATERIAL_PRESETS[Layer.Preset];
+
+    // A material layer with no preset is a real state, not an impossible one. Saying so beats rendering an
+    // empty section that looks like a load failure.
+    if (!Preset)
+    {
+      Body.appendChild(SectionLabel("Material", "sliders"));
+      Body.appendChild(Hint("No preset assigned. Open the material shelf with Ctrl+Space and click a swatch."));
+      return;
+    }
+
+    // 📝 The family rides in the section's TAIL slot, which is what that slot is for — it is the material's
+    //    classification, not a second heading.
+    Body.appendChild(SectionLabel("Material", "sliders", Preset.Family ?? ""));
+    Body.appendChild(MetaRow("Preset", Preset.Label));
+    if (Preset.Note) { Body.appendChild(Hint(Preset.Note)); }
+
+    // 🔴 The preset's channel list INTERSECTED with what the layer still has enabled (invariant 6), in the
+    //    panel table's order, and never a `derived` channel.
+    const Rows = (Preset.Channels ?? [])
+      .filter((Key) => PaintsChannel(Layer, Key))
+      .map((Key) => CHANNEL_PANELS.find((Panel) => Panel.Key === Key))
+      .filter((Panel) => Panel && Panel.Edit !== "derived");
+
+    for (const Panel of Rows)
+    {
+      if (Panel.Edit === "colour")
+      {
+        const Current = Layer.Values[Panel.Key] ?? "#808080";
+        Body.appendChild(PropertyRow(Panel.Label, BuildColourField(Current, (Hex, Live) => {
+          Layer.Values[Panel.Key] = Hex;
+          if (!Live) { this.Apply(); }
+        })));
+        continue;
+      }
+
+      Body.appendChild(PropertyRow(Panel.Label, BuildSlider({
+        Min:Panel.Min, Max:Panel.Max, Step:Panel.Step,
+        Value:Number(Layer.Values[Panel.Key] ?? 0),
+        OnInput:(Value, Live) => {
+          Layer.Values[Panel.Key] = Value;
+          if (!Live) { this.Apply(); }
+        }
+      })));
+    }
+
+    // 🔴 Says the edit is the LAYER's, not the preset's. Both readings are plausible from the rows above and
+    //    the difference matters: another layer on the same preset is untouched. Without this the user cannot
+    //    tell whether they just edited one layer or the whole library.
+    Body.appendChild(Hint("Edits apply to this layer only. The preset in the shelf is unchanged."));
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                      RenderMaskPane
+  //------------------------------------------------------------------------------------------------------
+  RenderMaskPane(Body, Layer)
+  {
+    const Mask = Layer.Mask;
+
+    // ---- no mask: the SOURCE picker ------------------------------------------------------------------
+    // 🔴 Creating a mask asks WHAT THE MASK IS, it does not silently make an empty one. A bare "Create
+    //    mask" button lands the user on a mask with no components — a flat white field that carves
+    //    nothing — and the next thing they must do is find "Add component" to make it mean anything. The
+    //    three real sources are offered up front, and the pick becomes the mask's first component.
+    // 📝 Levels is deliberately NOT offered here: it remaps what the components beneath it produced, so as
+    //    a mask's only component it has nothing to remap.
+    if (!Mask || !Mask.Enabled)
+    {
+      const Empty = document.createElement("div");
+      Empty.className = "mc-empty";
+
+      const Note = document.createElement("div");
+      Note.className   = "mc-empty-note";
+      Note.textContent = "This layer has no mask. A mask carves where the layer applies.";
+      Empty.appendChild(Note);
+
+      const Choices = document.createElement("div");
+      Choices.className = "mc-sources";
+      for (const Key of MASK_SOURCE_ORDER)
+      {
+        const Category = MASK_COMPONENT_CATEGORY[Key];
+        const Choice   = document.createElement("div");
+        Choice.className = "mc-source";
+        Choice.innerHTML =
+          `<span class="ms-ic">${(Glyph[Key] ?? Glyph.fill)(16)}</span>` +
+          `<span class="ms-txt">` +
+            `<span class="ms-nm">${Category.Label}</span>` +
+            `<span class="ms-sum">${Category.Summary}</span>` +
+          `</span>`;
+        Choice.onclick = () => {
+          // Creating the mask KEEPS the carousel on Mask so the pane fills in place.
+          this.PaintTab.set(Layer.Token, "mask");
+          const Component = CreateMaskComponent(Key);
+          Layer.Mask = CreateLayerMask({
+            Enabled:true, OnMesh:false,
+            Components:[Component],
+            // A paintable source takes the stroke target immediately; the others leave strokes on the
+            // layer's own channels, since there is nothing paintable to aim at.
+            FocusToken:MASK_COMPONENT_CATEGORY[Key].Paintable ? Component.Token : null
+          });
+          this.Selected = Component.Token;
+          this.Apply();
+        };
+        Choices.appendChild(Choice);
+      }
+      Empty.appendChild(Choices);
+      Body.appendChild(Empty);
+      return;
+    }
+
+    // ---- mask present: the identical full editor, then the deep-dive CTA -----------------------------
+    // 🔴 The SAME BuildMaskSection the stack's inline expand calls, so the two cannot drift — there is no
+    //    second copy of the mask editor anywhere.
+    this.BuildMaskSection(Body, Layer);
+
+    const Cta = document.createElement("div");
+    Cta.className = "meta-cta";
+    Cta.innerHTML = `<span>Mask components</span>${Glyph.chevron(13)}<span class="cta-kbd">Tab</span>`;
+    Body.appendChild(Cta);
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                     BuildMaskSection
+  //------------------------------------------------------------------------------------------------------
+  BuildMaskSection(Body, Layer)
+  {
+    const Mask = Layer.Mask;
+
+    Body.appendChild(SectionLabel2("Mask"));
+
+    // ---- the mask ITSELF, as a picture ---------------------------------------------------------------
+    // 🔴 The mask's RESOLVED greyscale content, evaluated through the component stack — not a swatch of
+    //    the fill setting. The fill row below says what the mask STARTED as; only this says what it IS.
+    const Preview = document.createElement("div");
+    Preview.className = "msk-preview";
+
+    const Tile = document.createElement("span");
+    Tile.className = "msk-tile";
+    Tile.appendChild(BuildMaskCanvas(Mask, 78));
+    Preview.appendChild(Tile);
+
+    const Side = document.createElement("span");
+    Side.className = "msk-side";
+
+    // What the stack resolved to, in words, so the tile is readable rather than just decorative.
+    const Live = Mask.Components.filter((C) => C.Enabled !== false);
+    const Note = document.createElement("span");
+    Note.className = "msk-note";
+    Note.textContent = Live.length === 0
+      ? `Flat ${Mask.Fill === "black" ? "black" : "white"} — no live component to shape it.`
+      : `${Live.length} live ${Live.length === 1 ? "step" : "steps"}: ` +
+        Live.map((C) => CategoryLabel(C.Category)).join(" → ");
+    Side.appendChild(Note);
+
+    // 📝 The paint source has no atlas readback in this prototype, so the tile's strokes are indicative.
+    //    Saying so beats letting the user read a dab field as their own brushwork.
+    if (Live.some((C) => C.Category === "paint"))
+    {
+      const Caveat = document.createElement("span");
+      Caveat.className   = "msk-caveat";
+      Caveat.textContent = "Painted strokes shown indicatively.";
+      Side.appendChild(Caveat);
+    }
+
+    const OnMesh = document.createElement("span");
+    OnMesh.className   = "msk-onmesh" + (Mask.OnMesh ? " on" : "");
+    OnMesh.textContent = Mask.OnMesh ? "On mesh · shown" : "Show on mesh";
+    OnMesh.onclick = () => { Mask.OnMesh = !Mask.OnMesh; this.Apply(); };
+    Side.appendChild(OnMesh);
+
+    Preview.appendChild(Side);
+    Body.appendChild(Preview);
+
+    // ---- identity + remove ---------------------------------------------------------------------------
+    // 🔴 NO second tile here. This row used to lead with its own 34px swatch of the fill, which sat beside
+    //    the evaluated preview above showing a DIFFERENT image — two tiles answering "what is this mask?"
+    //    with two answers, the flat one looking authoritative because it was next to the name. The
+    //    evaluated tile is the picture; this row is the identity line and the delete.
+    const HeadRow = document.createElement("div");
+    HeadRow.className = "msk-row";
+    HeadRow.innerHTML =
+      `<span class="msk-info">` +
+        `<span class="msk-nm"></span>` +
+        `<span class="msk-meta">${Mask.Fill === "black" ? "Black" : "White"} fill` +
+          `${Mask.Invert ? " · inverted" : ""} · ${Mask.Components.length} comp</span>` +
+      `</span>` +
+      `<span class="mc-x" title="Delete mask" style="margin-left:auto">×</span>`;
+    HeadRow.querySelector(".msk-nm").textContent = "Layer mask";
+    // Deleting the mask drops the carousel back to Layer — there is no mask left to edit or aim at.
+    HeadRow.querySelector(".mc-x").onclick = () => {
+      this.PaintTab.set(Layer.Token, "layer");
+      Layer.Mask = null;
+      this.Apply();
+    };
+    Body.appendChild(HeadRow);
+
+    // ---- Base [ White | Black ] + flip ---------------------------------------------------------------
+    // 🔴 Two controls on one labelled row, replacing three unlabelled equal pills. The segment is the BASE the
+    //    component stack is evaluated over (EvaluateMaskTexel's `Prior` seed); the flip button is the invert
+    //    applied AFTER the stack has run. They are different kinds of thing and now look like it — see the
+    //    .msk-seg / .msk-flip CSS for why the old shape misdescribed the control.
+    //
+    // 📝 "Base" names the axis once, so neither control has to explain itself in its own label. The word is
+    //    the seed value's own name in the evaluator, not a UI invention.
+    const BaseRow = document.createElement("div");
+    BaseRow.className = "msk-baserow";
+    BaseRow.innerHTML = `<span class="se-k">Base</span>`;
+
+    const Segment = document.createElement("div");
+    Segment.className = "msk-seg";
+    const Cell = (Label, Swatch, On, Run) => {
+      const El = document.createElement("div");
+      El.className = "sg" + (On ? " on" : "");
+      El.innerHTML = `<span class="dot ${Swatch}"></span><span class="lb"></span>`;
+      El.querySelector(".lb").textContent = Label;
+      El.title   = Label === "White"
+        ? "White base — the layer applies everywhere the stack does not carve it away"
+        : "Black base — the layer applies nowhere until the stack opens it up";
+      El.onclick = Run;
+      return El;
+    };
+    Segment.appendChild(Cell("White", "w", Mask.Fill !== "black",
+      () => { Mask.Fill = "white"; this.Apply(); }));
+    Segment.appendChild(Cell("Black", "k", Mask.Fill === "black",
+      () => { Mask.Fill = "black"; this.Apply(); }));
+    BaseRow.appendChild(Segment);
+
+    const Flip = document.createElement("div");
+    Flip.className = "msk-flip" + (Mask.Invert === true ? " on" : "");
+    Flip.innerHTML = Glyph.flip(13);
+    // The button is icon-only, so the tooltip carries the whole meaning AND its current setting — the mark
+    // alone cannot say whether inversion is presently on.
+    Flip.title = Mask.Invert
+      ? "Inverted — light and dark are swapped. Click to restore."
+      : "Invert — swap the mask's light and dark, after its components have run.";
+    Flip.onclick = () => { Mask.Invert = !Mask.Invert; this.Apply(); };
+    BaseRow.appendChild(Flip);
+
+    Body.appendChild(BaseRow);
+
+    // ---- mask strength ------------------------------------------------------------------------------
+    const StrengthRow = document.createElement("div");
+    StrengthRow.className = "se-row";
+    StrengthRow.innerHTML = `<span class="se-k">Strength</span>`;
+    const StrengthValue = document.createElement("span");
+    StrengthValue.className = "se-v";
+    StrengthValue.appendChild(BuildSlider({
+      Min:0, Max:100, Step:1, Value:Mask.Opacity ?? 100, Unit:"%",
+      OnInput:(Value, Live) => { Mask.Opacity = Value; if (!Live) { this.Apply(); } }
+    }));
+    StrengthRow.appendChild(StrengthValue);
+    Body.appendChild(StrengthRow);
+
+    // ---- component stack ----------------------------------------------------------------------------
+    this.BuildMaskComponents(Body, Layer);
+  }
+
+  // The mask's component stack: one selectable row per step, and the SELECTED row unfolds its own real
+  // parameters in place.
+  //
+  // 🔴 The selected row's settings unfold HERE rather than only behind the "Mask components" CTA. A mask
+  //    whose whole point is one Generator would otherwise show a preview it cannot explain and no way to
+  //    reach Scale/Contrast/Amount/Seed without leaving the pane — the source picker creates a component,
+  //    so the pane that created it must be able to tune it.
+  // 🔴 The rows carry the STACK ORDER top-to-bottom and it is load-bearing, not cosmetic: Levels remaps
+  //    what the steps above it produced, so the same two components in the other order are a different
+  //    mask. The ordinal is shown for that reason.
+  BuildMaskComponents(Body, Layer)
+  {
+    const Mask = Layer.Mask;
+
+    Body.appendChild(SectionLabel2("Components"));
+
+    const Host = document.createElement("div");
+    Host.className = "msk-comps";
+
+    Mask.Components.forEach((Component, Ordinal) => {
+      const Chosen  = this.Selected === Component.Token;
+      const Live    = Component.Enabled !== false;
+      const Painted = MASK_COMPONENT_CATEGORY[Component.Category]?.Paintable === true;
+
+      const Row = document.createElement("div");
+      Row.className = "msk-comp" + (Chosen ? " on" : "") + (Live ? "" : " off");
+      Row.innerHTML =
+        `<span class="msk-ord">${Ordinal + 1}</span>` +
+        `<span class="msk-dot"></span>` +
+        `<span class="msk-cbody">` +
+          `<span class="msk-cnm"></span>` +
+          `<span class="msk-ccat">${CategoryLabel(Component.Category)} · ${Component.Opacity}%` +
+            `${Painted && Mask.FocusToken === Component.Token ? " · paint target" : ""}</span>` +
+        `</span>` +
+        `<span class="msk-eye" title="${Live ? "Disable" : "Enable"} this step">` +
+          `${Live ? Glyph.eyeOpen(13) : Glyph.eyeShut(13)}</span>` +
+        `<span class="mc-x" title="Remove this component">×</span>`;
+      Row.querySelector(".msk-cnm").textContent = Component.Name;
+
+      Row.onclick = () => {
+        this.Selected = Component.Token;
+        // 🔴 Selecting a PAINTABLE component also aims the brush at it; selecting a procedural one clears
+        //    the target rather than leaving it on a component the user is no longer looking at. A stale
+        //    FocusToken silently routes strokes into an invisible destination.
+        Mask.FocusToken = Painted ? Component.Token : null;
+        this.Apply();
+      };
+
+      Row.querySelector(".msk-eye").onclick = (Event) => {
+        Event.stopPropagation();
+        Component.Enabled = !Live;
+        this.Apply();
+      };
+
+      Row.querySelector(".mc-x").onclick = (Event) => {
+        Event.stopPropagation();
+        Mask.Components.splice(Ordinal, 1);
+        // Drop a focus that pointed at the removed step, or strokes would route nowhere.
+        if (Mask.FocusToken === Component.Token) { Mask.FocusToken = null; }
+        if (this.Selected === Component.Token)   { this.Selected   = null; }
+        this.Apply();
+      };
+
+      Host.appendChild(Row);
+
+      // ---- the selected step's own parameters, unfolded in place ------------------------------------
+      if (!Chosen) { return; }
+
+      const Fold = document.createElement("div");
+      Fold.className = "msk-fold";
+
+      const Category = MASK_COMPONENT_CATEGORY[Component.Category] ?? MASK_COMPONENT_CATEGORY.fill;
+      Fold.appendChild(Hint(Category.Summary));
+
+      // Every component carries its own opacity — how strongly this step mixes into the mask beneath it.
+      Fold.appendChild(this.MaskParamRow("Opacity", BuildSlider({
+        Min:0, Max:100, Step:1, Value:Component.Opacity ?? 100, Unit:"%",
+        OnInput:(Value, Live2) => {
+          Component.Opacity = Value;
+          if (!Live2) { this.Apply(); }
+        }
+      })));
+
+      // 🔴 The category's REAL parameters, straight from MASK_COMPONENT_PARAMS — the uniforms the shader
+      //    reads. Paint has none: its content is the strokes themselves.
+      for (const Spec of MASK_COMPONENT_PARAMS[Component.Category] ?? [])
+      {
+        Fold.appendChild(this.MaskParamRow(Spec.Label, BuildSlider({
+          Min:Spec.Min, Max:Spec.Max, Step:Spec.Step,
+          Value:Number(Component.Params?.[Spec.Key] ?? Category.Defaults?.[Spec.Key] ?? Spec.Min),
+          OnInput:(Value, Live2) => {
+            Component.Params = Component.Params ?? {};
+            Component.Params[Spec.Key] = Value;
+            if (!Live2) { this.Apply(); }
+          }
+        })));
+      }
+
+      if (Category.Paintable)
+      {
+        Fold.appendChild(Hint("Strokes paint this component in greyscale."));
+      }
+      // Fill can take a bitmap in a fuller build. The affordance is shown so the intent is legible, but
+      // DISABLED: there is no texture-import path here, and a live-looking button that does nothing is
+      // worse than one that says why.
+      if (Component.Category === "fill")
+      {
+        const Load = document.createElement("div");
+        Load.className = "meta-cta disabled";
+        Load.title     = "Bitmap import is not available in this prototype.";
+        Load.innerHTML = `<span>Load texture…</span>`;
+        Fold.appendChild(Load);
+      }
+
+      Host.appendChild(Fold);
+    });
+
+    if (Mask.Components.length === 0)
+    {
+      Host.appendChild(Hint(
+        `No components — the mask is a flat ${Mask.Fill === "black" ? "black" : "white"} field and ` +
+        `carves nothing. Add a source below.`));
+    }
+
+    Body.appendChild(Host);
+
+    // ---- add a component: the same source list, plus Levels ----------------------------------------
+    const Add = document.createElement("div");
+    Add.className = "msk-add" + (this.AddOpen ? " on" : "");
+    Add.innerHTML = `${Glyph.plus(13)}<span>Add component</span>`;
+    Add.onclick = () => { this.AddOpen = !this.AddOpen; this.Apply(); };
+    Body.appendChild(Add);
+
+    if (!this.AddOpen) { return; }
+
+    const List = document.createElement("div");
+    List.className = "msk-addlist";
+    for (const Key of MASK_COMPONENT_ORDER)
+    {
+      const Category = MASK_COMPONENT_CATEGORY[Key];
+      const Item     = document.createElement("div");
+      Item.className = "msk-addopt";
+      Item.innerHTML =
+        `<span class="ms-ic">${(Glyph[Key] ?? Glyph.fill)(14)}</span>` +
+        `<span class="ms-txt">` +
+          `<span class="ms-nm">${Category.Label}</span>` +
+          `<span class="ms-sum">${Category.Summary}</span>` +
+        `</span>`;
+      Item.onclick = () => {
+        const Component = CreateMaskComponent(Key);
+        Mask.Components.push(Component);
+        this.Selected   = Component.Token;
+        Mask.FocusToken = Category.Paintable ? Component.Token : Mask.FocusToken;
+        this.AddOpen    = false;
+        this.Apply();
+      };
+      List.appendChild(Item);
+    }
+    Body.appendChild(List);
+  }
+
+  // A parameter row inside an unfolded component: the narrow key column the half-width pane can afford.
+  MaskParamRow(Label, Field)
+  {
+    const Row = document.createElement("div");
+    Row.className = "se-row";
+    const Key = document.createElement("span");
+    Key.className   = "se-k";
+    Key.textContent = Label;
+    const Value = document.createElement("span");
+    Value.className = "se-v";
+    Value.appendChild(Field);
+    Row.appendChild(Key);
+    Row.appendChild(Value);
+    return Row;
+  }
+
+  //------------------------------------------------------------------------------------------------------
+  //                                       BuildActions
+  //------------------------------------------------------------------------------------------------------
+  // 🔴 Delete is the ONE per-layer action left in this pane. Raise / Lower moved to the stack's own
+  //    drag-reorder and adding a layer moved to the "+ Add Layer" footer picker, leaving this list to the
+  //    single verb with no other home.
+  BuildActions(Layer)
+  {
+    const Host = document.createElement("div");
+    Host.className = "meta-actions";
+
+    // 🔴 The stack refuses to remove its last layer, so the control is DISABLED rather than offered and then
+    //    silently ignored — and, being the only action in the pane, a dead-looking row with no stated reason
+    //    reads as a broken panel. The note below says WHY, and only appears in that state.
+    const Enabled = this.Count > 1;
+    const Item    = document.createElement("div");
+    Item.className = "act-danger" + (Enabled ? "" : " disabled");
+    // 📝 "Delete layer", not bare "Delete": this pane also deletes MASKS (BuildMaskSection's × ) and mask
+    //    COMPONENTS, so an unqualified verb here names the wrong noun for the reader who just scrolled past
+    //    two other delete affordances.
+    Item.innerHTML = `<span class="ic">${Glyph.trash(14)}</span><span>Delete layer</span>`;
+    Item.title = Enabled ? `Remove "${Layer.Name}" from the stack` : "";
+    if (Enabled)
+    {
+      Item.onclick = () => {
+        // A fixed-position dropdown outlives the subtree it was measured against, so any open list must be
+        // dismissed before the rebuild — otherwise it hangs over the pane pointing at a layer that is gone.
+        CloseOpenDropdown();
+        const At = this.Layers.findIndex((L) => L.Token === Layer.Token);
+        this.Layers.splice(At, 1);
+        this.FocusToken = this.Layers[Math.min(At, this.Layers.length - 1)]?.Token ?? null;
+        this.Apply();
+      };
+    }
+    Host.appendChild(Item);
+
+    if (!Enabled)
+    {
+      const Note = document.createElement("div");
+      Note.className   = "act-note";
+      Note.textContent = "The stack keeps at least one layer.";
+      Host.appendChild(Note);
+    }
+    return Host;
+  }
+}
+
+/*==========================================================================================================
+                                            THE THREE POSES
+==========================================================================================================*/
+
+// A layer switcher under each pane, so every conditional branch can be reached by clicking.
+function AttachSwitcher(HostId, Pane)
+{
+  const Host = document.getElementById(HostId);
+  if (!Host) { return; }
+
+  const Paint = () => {
+    Host.innerHTML = "";
+    for (const Layer of Pane.Layers)
+    {
+      const Chip = document.createElement("div");
+      Chip.className   = "chip" + (Layer.Token === Pane.FocusToken ? " on" : "");
+      Chip.textContent = Layer.Name;
+      Chip.onclick = () => { Pane.FocusToken = Layer.Token; Pane.Refresh(); Paint(); };
+      Host.appendChild(Chip);
+    }
+  };
+  Paint();
+}
+
+// The one pane, opening on the masked paint layer with the Layer tab live — the pose the inspector holds
+// when a layer is focused. Every other branch is reached through the pane's own controls: the Mask segment
+// slides to the editor, and the switcher below changes which layer is focused.
+const Pane = new LayerPropertyPane(document.getElementById("Pane"), MakeLayers(), "L0");
+AttachSwitcher("Switch", Pane);
+</script>
+</body>
+</html>

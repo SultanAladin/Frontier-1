@@ -1,0 +1,8 @@
+[Project]
+ProjectName = "ProjectProvingGrounds"
+ProjectFormatNumber = 1
+ContentLocation = "Content"
+OpeningScene = "ProvingGrounds"
+CodeImage = "Build/Output/ProjectProvingGrounds.dll"
+CodeInterchangeNumber = 3
+InterfaceFingerprint = 0xb6725f24d0869173

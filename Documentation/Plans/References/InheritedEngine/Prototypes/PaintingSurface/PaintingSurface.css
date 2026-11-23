@@ -1,0 +1,123 @@
+/*====================================================================================================================================
+                                                   PAINTINGSURFACE.CSS
+====================================================================================================================================*/
+/* 🧩 Host page chrome for the WebGPU painting surface — viewport, readout, hint strip */
+
+:root
+{
+    --SurfaceVoid:      #0b0b0c;
+    --SurfacePanel:     #16161a;
+    --SurfaceBorder:    #2a2a31;
+    --TextPrimary:      #e6e6ea;
+    --TextSecondary:    #8d8d99;
+    --AccentPrimary:    #5b8cff;
+    --AccentFault:      #e2364a;
+}
+
+*
+{
+    box-sizing: border-box;
+}
+
+html, body
+{
+    margin: 0;
+    height: 100%;
+    background: var(--SurfaceVoid);
+    color: var(--TextPrimary);
+    font: 12px/1.5 "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+}
+
+#Stage
+{
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+}
+
+#PaintCanvas
+{
+    display: block;
+    width: 1600px;
+    height: 900px;
+    max-width: 100%;
+    max-height: 100%;
+    background: var(--SurfaceVoid);
+    cursor: crosshair;
+    touch-action: none;
+}
+
+#Readout
+{
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    min-width: 208px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--SurfacePanel) 88%, transparent);
+    border: 1px solid var(--SurfaceBorder);
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+.ReadoutRow
+{
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.ReadoutLabel
+{
+    color: var(--TextSecondary);
+}
+
+#Hint
+{
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 12px;
+    color: var(--TextSecondary);
+    background: color-mix(in srgb, var(--SurfacePanel) 88%, transparent);
+    border: 1px solid var(--SurfaceBorder);
+    border-radius: 999px;
+    pointer-events: none;
+}
+
+#Hint b
+{
+    color: var(--TextPrimary);
+    font-weight: 600;
+}
+
+#Hint kbd
+{
+    padding: 1px 5px;
+    color: var(--TextPrimary);
+    background: #24242b;
+    border: 1px solid var(--SurfaceBorder);
+    border-radius: 3px;
+    font: inherit;
+}
+
+#Fault
+{
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    max-width: 460px;
+    padding: 10px 12px;
+    color: #ffd9de;
+    background: color-mix(in srgb, var(--AccentFault) 22%, var(--SurfacePanel));
+    border: 1px solid var(--AccentFault);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    font-family: Consolas, "Cascadia Mono", monospace;
+}

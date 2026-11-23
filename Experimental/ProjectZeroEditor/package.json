@@ -1,0 +1,8 @@
+{
+  "name": "project-zero-editor",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node Build.mjs" },
+  "dependencies": { "react": "18.3.1", "react-dom": "18.3.1" },
+  "devDependencies": { "esbuild": "^0.25.12" }
+}

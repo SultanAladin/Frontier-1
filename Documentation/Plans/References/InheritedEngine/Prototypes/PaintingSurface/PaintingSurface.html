@@ -1,0 +1,2050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Painting Surface — WebGPU</title>
+<link rel="stylesheet" href="PaintingSurface.css">
+<link rel="stylesheet" href="Interface/ToolMenu.css">
+<link rel="stylesheet" href="Interface/LayerInspector.css">
+<!-- 🔴 AFTER LayerInspector.css, which is where the live :root palette is defined. DesignTokens.css is not
+     linked by anything, so a sheet loaded before the inspector's would resolve every var() to nothing. -->
+<link rel="stylesheet" href="Interface/MaterialShelf.css">
+</head>
+<body>
+
+<div id="Stage">
+    <canvas id="PaintCanvas" width="1600" height="900"></canvas>
+
+    <div id="Readout">
+        <div class="ReadoutRow"><span class="ReadoutLabel">Adapter</span><span id="ReadoutAdapter">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Triangles</span><span id="ReadoutTriangles">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Vertices</span><span id="ReadoutVertices">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Atlas</span><span id="ReadoutAtlas">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Orbit</span><span id="ReadoutOrbit">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Strokes</span><span id="ReadoutStrokes">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Brush</span><span id="ReadoutBrush">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Layer</span><span id="ReadoutLayer">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">Channels</span><span id="ReadoutChannels">—</span></div>
+        <div class="ReadoutRow"><span class="ReadoutLabel">View</span><span id="ReadoutView">—</span></div>
+    </div>
+
+    <div id="Hint">
+        <b>drag paint</b> · right-<b>click</b> tools · right-drag orbit · middle-drag pan · wheel zoom ·
+        <kbd>Tab</kbd> layers · <kbd>U</kbd> cycle channel view · <kbd>E</kbd> erase ·
+        <kbd>Ctrl</kbd>+<kbd>Space</kbd> materials · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
+    </div>
+
+    <div id="Fault" hidden></div>
+</div>
+
+<script type="module">
+import { UploadSurfaceFromAddress }                            from "./Ingest/SurfaceUpload.js";
+import { ComposeGroundTruthAtlas, UploadAtlas,
+         RetrievePatchRoster, AtlasFormat }                     from "./Ingest/AtlasGroundTruth.js";
+import { OrbitProjection }                                      from "./Projection/OrbitProjection.js";
+import { SurfaceRasterization, CreateDepthTarget }              from "./Projection/SurfaceRasterization.js";
+import { CreateCaptureTarget, EncodeCapture,
+         ResolveCapture, MeasureCoverage }                      from "./Projection/SurfaceCapture.js";
+import { PaintPass }                                            from "./Deposit/PaintPass.js";
+import { StrokeLedger, ReplayIntoLayers }                       from "./Deposit/StrokeRecord.js";
+import { SnapshotStore, RebuildAtlas }                          from "./Deposit/SnapshotStore.js";
+import { StrokeDriver }                                         from "./Instruments/StrokeDriver.js";
+import { ResolveObjectRadius, DefaultSpacing }                  from "./Deposit/DabFootprint.js";
+import { ToolMenu }                                            from "./Interface/ToolMenu.js";
+import { LayerInspector }                                     from "./Interface/LayerInspector.js";
+import { MaterialShelf }                                      from "./Interface/MaterialShelf.js";
+import { InvalidateMaterialSwatch }                           from "./Layers/MaterialSwatch.js";
+import { SeedLayerStack, LayerStack, RESOLUTIONS }              from "./Layers/LayerStack.js";
+import { LayerComposite }                                      from "./Layers/LayerComposite.js";
+import { MaskSequence, CreateMaskComponent, ResolveMaskPaintTarget,
+         MASK_COMPONENT_CATEGORY, MaskComponentSummary }        from "./Layers/LayerMask.js";
+import { CHANNEL_ATLASES, CHANNEL_SLOTS, CHANNEL_ORDER,
+         CHANNEL_LABEL, ResolveAtlasWrite }                     from "./Layers/ChannelSet.js";
+import { LAYER_KINDS, DefaultChannels, GENERATOR_PARAMS,
+         MATERIAL_PRESETS, GENERATOR_RECIPES, CHANNEL_MODES }  from "./Layers/LayerKinds.js";
+import { GeneratorPass }                                       from "./Layers/GeneratorPass.js";
+import { ChannelPreview }                                      from "./Layers/ChannelPreview.js";
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                       CONSTANTS
+//------------------------------------------------------------------------------------------------------------------------
+
+const SurfaceAddress = "/EngineContent/GeometryArchives/ReferenceGeometry/Suzzane.obj";
+const UnwrapAddress  = "/_ClaudeScratch/tmp/suzanne_uv.json";
+const AtlasExtent    = 1024;                    // [px]
+
+const ClearColour = { r: 0.043, g: 0.043, b: 0.047, a: 1.0 };
+const ClearByte   = [11, 11, 12];               // ClearColour rendered to 8-bit, for coverage measurement
+
+// 📝 The harness reads window.ProbeReport and gates exit 0 on it, exactly as WebGpuAdapterProbe.html
+//    did. Keeping the same contract means one harness verifies every step of this prototype.
+window.ProbeReport = { Stage: "start" };
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                     STATE
+//------------------------------------------------------------------------------------------------------------------------
+
+const State = {
+    Device:      null,
+    Context:     null,
+    ColourFormat: null,
+    Surface:     null,
+    Atlas:       null,
+    AtlasView:   null,
+    Raster:      null,
+    Depth:       null,
+    Camera:      null,
+    DisplayMode: 0.0,
+    Redraw:      true,
+
+    // ---- painting ---------------------------------------------------------------------------------
+    Pass:     null,
+    Ledger:   null,
+    Snapshot: null,
+    Driver:   null,
+
+    // The summoned instrument card. Drives Brush directly; the page only reads back for the readout.
+    Menu:     null,
+
+    // ---- layers -----------------------------------------------------------------------------------
+    Stack:     null,
+    Composite: null,
+    // Evaluates a layer's mask component stack into its resolved mask atlas. One instance, shared scratch.
+    Mask:      null,
+    // Height-to-normal strength. 📝 Exposed as state rather than a constant because it is the one
+    //    parameter that has to be tuned against the model, not derived from it.
+    NormalStrength: 6.0,
+    StackRevision:  -1
+};
+
+// The live brush. 📝 PixelRadius is the authored quantity because that is what the pointer feels like;
+//    it is converted to an object-space radius at stroke time and only the object radius is recorded.
+const Brush = {
+    PixelRadius:  34.0,       // [px]
+    Radius:       0.10,       // [object units] - recomputed per stroke from PixelRadius
+    Hardness:     0.55,       // [-]
+    Flow:         0.85,       // [-]
+    Spacing:      DefaultSpacing,
+    NormalCutoff: 0.0,        // [-]  - cos of the angle beyond which a dab stops depositing
+    Ink:          [0.85, 0.16, 0.20],
+    Erase:        false,
+    // The value a MASK stroke deposits: 1 reveals, 0 hides, and anything between is a partial mask.
+    //
+    // 🔴 A field of its own rather than a reading of Erase, and that separation is the whole fix for
+    //    "it's now not painting on the mask". Erase belongs to the CHANNEL brush and ToolMenu.ApplyToBrush
+    //    clears it on every Commit — which fires on every slider drag, swatch click and instrument pick —
+    //    so a mask level derived from Erase was silently reset to "reveal" by ordinary tool use. Painting
+    //    reveal over the default white fill is a no-op, so the mask stopped responding for reasons the
+    //    user had no way to connect to the tool card they had just touched.
+    // 🔴 Also a LEVEL rather than a boolean, because a mask is a greyscale quantity. A half-strength mask
+    //    is a legitimate thing to paint and a two-state flag cannot express it.
+    MaskLevel:    0.0
+};
+
+window.Brush = Brush;
+
+const Element = (Identifier) => document.getElementById(Identifier);
+
+function ReportFault(Message)
+{
+    const Panel = Element("Fault");
+    Panel.hidden = false;
+    Panel.textContent = Message;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                   INITIALISATION
+//------------------------------------------------------------------------------------------------------------------------
+
+async function Initialise()
+{
+    const Report = window.ProbeReport;
+    const Canvas = Element("PaintCanvas");
+
+    Report.NavigatorGpuPresence = (typeof navigator.gpu !== "undefined");
+    if (!Report.NavigatorGpuPresence) { Report.Stage = "no-navigator-gpu"; ReportFault("WebGPU unavailable in this browser."); return; }
+
+    const Adapter = await navigator.gpu.requestAdapter();
+    Report.AdapterPresence = (Adapter !== null);
+    if (!Adapter) { Report.Stage = "no-adapter"; ReportFault("No WebGPU adapter."); return; }
+
+    const Device = await Adapter.requestDevice();
+    Report.DevicePresence = true;
+    State.Device = Device;
+
+    Device.addEventListener("uncapturederror", (Event) => {
+        Report.UncapturedError = String(Event.error?.message ?? Event.error);
+        ReportFault("GPU error: " + Report.UncapturedError);
+    });
+
+    const Info = Adapter.info ?? {};
+    Report.AdapterVendor       = Info.vendor       ?? "(unknown)";
+    Report.AdapterArchitecture = Info.architecture ?? "(unknown)";
+    Element("ReadoutAdapter").textContent = `${Report.AdapterVendor} / ${Report.AdapterArchitecture}`;
+
+    const Context      = Canvas.getContext("webgpu");
+    const ColourFormat = navigator.gpu.getPreferredCanvasFormat();
+    Report.ContextPresence = (Context !== null);
+    Report.SurfaceFormat   = ColourFormat;
+
+    Context.configure({
+        device:    Device,
+        format:    ColourFormat,
+        alphaMode: "opaque",
+        usage:     GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
+    });
+
+    State.Context      = Context;
+    State.ColourFormat = ColourFormat;
+
+    // ---- surface ------------------------------------------------------------------------------------
+    Report.Stage = "loading-surface";
+    const Surface = await UploadSurfaceFromAddress(Device, SurfaceAddress);
+    State.Surface = Surface;
+
+    Report.TriangleCount = Surface.TriangleCount;
+    Report.VertexCount   = Surface.VertexCount;
+    Report.CoordinateBounds = Surface.Decoded.CoordinateBounds;
+    Report.MinimumBoundary  = Surface.Decoded.MinimumBoundary;
+    Report.MaximumBoundary  = Surface.Decoded.MaximumBoundary;
+
+    Element("ReadoutTriangles").textContent = Surface.TriangleCount.toLocaleString();
+    Element("ReadoutVertices").textContent  = Surface.VertexCount.toLocaleString();
+
+    // ---- atlas --------------------------------------------------------------------------------------
+    Report.Stage = "composing-atlas";
+    let PatchRoster = null;
+    try
+    {
+        PatchRoster = await RetrievePatchRoster(UnwrapAddress);
+    }
+    catch (Fault)
+    {
+        // 📝 The unwrap overlay is a diagnostic, not a dependency. Losing it degrades the atlas to a
+        //    plain checker rather than failing the whole page.
+        Report.UnwrapFault = String(Fault?.message ?? Fault);
+    }
+
+    const Composed = ComposeGroundTruthAtlas(AtlasExtent, PatchRoster);
+    Report.AtlasLoopTally = Composed.LoopTally;
+    Report.AtlasExtent    = AtlasExtent;
+    Report.AtlasFormat    = AtlasFormat;
+
+    State.Atlas     = UploadAtlas(Device, Composed);
+    State.AtlasView = State.Atlas.createView();
+    Element("ReadoutAtlas").textContent = `${AtlasExtent}² · ${Composed.LoopTally} loops`;
+
+    // ---- layers -------------------------------------------------------------------------------------
+    // 🔴 Built BEFORE the raster binds its atlases. The raster samples the compositor's resolved
+    //    textures, so they have to exist first — binding the ground-truth atlas and rebinding later
+    //    would work but would ship one frame of the wrong material.
+    Report.Stage = "building-layers";
+    // 📝 Built before the seed, because a generator layer runs its pass at creation and a seeded stack is
+    //    allowed to contain one.
+    State.Generator = new GeneratorPass(Device);
+    State.Stack     = SeedLayerStack(Device, AtlasExtent);
+    State.Composite = new LayerComposite(Device, AtlasExtent);
+    State.Mask      = new MaskSequence(Device, AtlasExtent);
+    State.Composite.Resolve(State.Stack);
+    State.StackRevision = State.Stack.Revision;
+
+    // The channel thumbnails in the inspector. Owns its own small target and mip pyramids, so it costs
+    // nothing until a preview is actually asked for.
+    State.Preview = new ChannelPreview(Device);
+
+    Report.LayerCount    = State.Stack.Count;
+    Report.LayerTokens   = State.Stack.Layers.map(L => L.Token);
+    Report.ChannelAtlases = CHANNEL_ATLASES.map(A => A.Key);
+
+    // ---- pipeline -----------------------------------------------------------------------------------
+    Report.Stage = "building-pipeline";
+    const Raster = new SurfaceRasterization(Device, ColourFormat);
+    BindResolved(Raster);
+    State.Raster = Raster;
+
+    // ---- painting -----------------------------------------------------------------------------------
+    Report.Stage = "building-paint";
+    State.Pass     = new PaintPass(Device, AtlasFormat);
+    State.Ledger   = new StrokeLedger();
+    State.Snapshot = new SnapshotStore(Device, AtlasExtent, AtlasFormat);
+    State.Driver   = new StrokeDriver(Device, State.Pass, State.Ledger);
+
+    // 🔴 The base must be captured BEFORE any dab lands, and after the ground-truth atlas is uploaded.
+    //    Capture it late and undo rewinds to a half-painted atlas instead of the clean checker.
+    State.Snapshot.CaptureBase(State.Atlas);
+
+    const PaintCompilation = await State.Pass.ShaderModule.getCompilationInfo();
+    Report.PaintShaderDiagnostic = PaintCompilation.messages.map(M => `${M.type}: ${M.message}`);
+
+    const Compilation = await Raster.ShaderModule.getCompilationInfo();
+    Report.ShaderDiagnostic = Compilation.messages.map(M => `${M.type}: ${M.message}`);
+
+    State.Depth  = CreateDepthTarget(Device, Canvas.width, Canvas.height);
+    State.Camera = new OrbitProjection(Surface.Framing);
+
+    Report.FramingCentre = Surface.Framing.Centre;
+    Report.FramingRadius = Surface.Framing.Radius;
+    Report.OrbitDistance = State.Camera.Distance;
+
+    // 📝 Mounted on Stage rather than body so the card shares the viewport's stacking context and
+    //    cannot be painted over by the canvas.
+    // 🔴 The masking predicate is a CALLBACK, evaluated when the card renders rather than a flag pushed at
+    //    it. The focused layer and component change from the inspector, the keyboard and the probe, and any
+    //    of those would have to remember to notify the tool card — so the card asks instead, and cannot go
+    //    stale. This is the same resolve the stroke path uses, so the picker and the deposit cannot disagree.
+    State.Menu = new ToolMenu(
+        Element("Stage"), Brush, () => UpdateReadout(),
+        () => ResolveMaskPaintTarget(State.Stack?.Focus) !== null);
+    window.ToolMenu = State.Menu;
+
+    // 🔴 The inspector is handed window.LayerCommand — the SAME command surface the probe drives — rather
+    //    than the stack itself. Two paths into the stack would be two places for a mutation to forget to
+    //    bump the revision, and the probe would then be verifying behaviour the UI does not share.
+    State.Inspector = new LayerInspector(
+        Element("Stage"), State.Stack,
+        (Command, Payload) => window.LayerCommand(Command, Payload),
+        () => UpdateReadout(),
+        // 📝 Handed the same cached entry point a probe calls, for the same reason as the command surface
+        //    above: one path, so what the panel shows is what an assertion can measure.
+        (Token, Channel) => window.CapturePreview(Token, Channel),
+        (Channel) => window.CaptureComposite(Channel),
+        // The mask's own content, and the mask-on-mesh viewport mode. Same reasoning as above: the panel and
+        // a probe reach both through one seam.
+        (Token) => window.CaptureMask(Token),
+        { Set: (On) => window.SetMaskPreview(On), On: () => window.MaskPreviewOn() });
+    window.LayerInspector = State.Inspector;
+
+    // The material browser. Mounted on Stage for the same reason as the inspector, and handed the same command
+    // surface — so a probe assigning a material and a user clicking a swatch travel the identical path.
+    //
+    // 📝 The stack is passed as well as the commands, but READ-ONLY: the shelf needs to know which layer has
+    //    focus and what kind it is before it can decide whether an assignment is legal. It never mutates it.
+    State.Shelf = new MaterialShelf(
+        Element("Stage"), State.Stack,
+        (Command, Payload) => window.LayerCommand(Command, Payload),
+        () =>
+        {
+            // 🔴 The inspector is refreshed too, not just the readout. An assignment changes the focused
+            //    layer's kind, name and channel set, and the properties pane is built from all three — without
+            //    this it keeps showing the previous material's rows until the user clicks the row again.
+            RefreshComposite(true);
+            State.Inspector?.Refresh();
+            UpdateReadout();
+        });
+    window.MaterialShelf = State.Shelf;
+
+    AttachInput(Canvas);
+
+    // ---- first frame + verification -----------------------------------------------------------------
+    Report.Stage = "drawing";
+    await DrawAndVerify();
+    Report.Stage = "drawn";
+
+    requestAnimationFrame(Present);
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                        DRAW
+//------------------------------------------------------------------------------------------------------------------------
+
+// Point the raster at the compositor's current resolved atlases.
+//
+// 🔴 Must be called after EVERY LayerComposite.Resolve. The compositor ping-pongs between two textures
+//    per channel and swaps which one holds the answer, so a bind group built before a resolve can end up
+//    pointing at the scratch target — which holds the second-from-last layer's result, not the finished
+//    stack. That reads as "the top layer does nothing", intermittently, depending on layer parity.
+// 🔴 The mask view is the FOCUSED layer's, and it is re-read here on every rebind rather than latched when
+//    the mask preview is switched on. A rebind happens after every flatten, and the focus can change
+//    between two of them — latching would leave the mask-inspection mode showing the mask of whichever
+//    layer happened to be focused when the toggle was pressed, which reads as "the preview is stuck".
+function BindResolved(Raster)
+{
+    const View  = State.Composite.View;
+    const Focus = State.Stack.Focus;
+    Raster.BindAtlas(View.Colour, View.Material, View.Emissive, Focus?.MaskView ?? null);
+}
+
+function EncodeSurface(Encoder, ColourView)
+{
+    const Canvas   = Element("PaintCanvas");
+    const Resolved = State.Camera.Resolve(Canvas.width, Canvas.height);
+
+    State.Raster.WriteProjection(
+        Resolved, Canvas.width, Canvas.height, State.DisplayMode,
+        AtlasExtent, State.NormalStrength);
+
+    State.Raster.Encode(Encoder, ColourView, State.Depth.createView(), State.Surface, ClearColour);
+
+    return Resolved;
+}
+
+// Re-evaluate one layer's mask into its resolved mask atlas, then force a re-flatten so the compositor
+// re-reads it. Returns false when the layer carries no enabled mask.
+//
+// 🔴 The composite is FORCED, not left to the revision check. A mask change — a stroke into a component,
+//    a slider, a fill flip — alters what the layer resolves to WITHOUT touching the stack's Revision, so
+//    relying on the revision would evaluate the new mask into its atlas and never show it.
+function ReEvaluateMask(Layer)
+{
+    if (!Layer || !State.Mask) { return false; }
+    const Changed = State.Mask.Evaluate(Layer);
+    if (Changed) { RefreshComposite(true); }
+    return Changed;
+}
+
+// Re-flatten the stack and rebind, if anything changed since the last flatten.
+function RefreshComposite(Force)
+{
+    if (!Force && State.StackRevision === State.Stack.Revision) { return false; }
+
+    State.Composite.Resolve(State.Stack);
+    BindResolved(State.Raster);
+    State.StackRevision = State.Stack.Revision;
+    State.Redraw = true;
+    return true;
+}
+
+// 📝 Draws twice into the same encoder: once to the swapchain for the interactive view and once to an
+//    offscreen target that gets read back. Headless Chrome never composites the WebGPU canvas, so the
+//    offscreen copy is the only reading that proves pixels exist.
+async function DrawAndVerify()
+{
+    const Device = State.Device;
+    const Canvas = Element("PaintCanvas");
+    const Report = window.ProbeReport;
+
+    const CaptureTexture = CreateCaptureTarget(Device, Canvas.width, Canvas.height, State.ColourFormat);
+    const Encoder        = Device.createCommandEncoder({ label: "SurfaceFrameVerified" });
+
+    const Resolved = EncodeSurface(Encoder, State.Context.getCurrentTexture().createView());
+    EncodeSurface(Encoder, CaptureTexture.createView());
+
+    const ReadbackStore = EncodeCapture(Device, Encoder, CaptureTexture, Canvas.width, Canvas.height);
+    Device.queue.submit([Encoder.finish()]);
+
+    const Capture = await ResolveCapture(ReadbackStore, Canvas.width, Canvas.height, State.ColourFormat);
+
+    Report.OffscreenDistinctColourCount = Capture.DistinctColourCount;
+    Report.OffscreenDominantColour      = Capture.DominantColour;
+    Report.SurfaceCoverage              = MeasureCoverage(Capture, ClearByte[0], ClearByte[1], ClearByte[2]);
+    Report.OffscreenPortableNetworkGraphic = Capture.PortableNetworkGraphic;
+
+    // 📝 The gate is coverage, not colour count. A single stray pixel or a gradient artefact would pass
+    //    a "two or more colours" test; demanding the surface occupy a plausible slice of the frame is
+    //    what actually distinguishes a rendered Suzanne from noise.
+    Report.OffscreenDrawVerified = Capture.DistinctColourCount >= 8
+                                && Report.SurfaceCoverage > 0.06
+                                && Report.SurfaceCoverage < 0.92;
+
+    Report.EyePosition = Resolved.Eye;
+    CaptureTexture.destroy();
+
+    UpdateReadout();
+}
+
+function Present()
+{
+    // The shelf's slide is integrated here rather than on its own rAF loop, so there is ONE frame clock and
+    // the drawer cannot animate while the viewport is stalled on a resolve — which would look like the two
+    // halves of the UI running at different speeds.
+    //
+    // 🔴 The delta comes from the frame timestamps, not a fixed 1/60. A spring integrated with an assumed
+    //    step runs at a different speed on a 144 Hz display than on a 60 Hz one, so the drawer would snap
+    //    open on one machine and drift on another.
+    const Now       = performance.now();
+    const DeltaTime = State.ShelfClock ? (Now - State.ShelfClock) / 1000 : 1 / 60;
+    State.ShelfClock = Now;
+    State.Shelf?.Step(DeltaTime);
+
+    // 🔴 Dabs are laid into the layer BEFORE the surface is drawn, in a separate submission. Encoding
+    //    both into one encoder would sample the atlas in the same submission that renders to it, which
+    //    is a read-write hazard on the same texture.
+    const Focus = State.Stack.Focus;
+    // 🔴 Resolved BEFORE the flush drains the pending dabs. A dab into a focused paint mask component lands
+    //    in that component's own atlas, which the mask sequence — not the compositor — reads; so a mask
+    //    stroke has to re-evaluate the mask, whereas a channel stroke only re-flattens. Reading the target
+    //    after the flush would always see the same focus but no longer know which path the dabs took.
+    const MaskStroke = ResolveMaskPaintTarget(Focus) !== null;
+
+    const Laid = State.Driver.FlushToLayer(
+        Focus, State.Surface, Brush, ResolveAtlasWrite, CHANNEL_ATLASES);
+
+    // 🔴 A stroke changes a layer's CONTENTS without changing the stack's Revision, so the composite is
+    //    forced here rather than left to the revision check. Relying on the revision alone would paint
+    //    into the layer and never show it — the atlas would fill up invisibly. A mask stroke additionally
+    //    re-evaluates the component stack, because the painted component atlas is one input to the mask,
+    //    not the mask itself.
+    if (Laid > 0 && MaskStroke) { ReEvaluateMask(Focus); }
+    else if (Laid > 0)          { RefreshComposite(true); }
+    else                        { RefreshComposite(false); }
+
+    if (State.Redraw)
+    {
+        const Encoder = State.Device.createCommandEncoder({ label: "SurfaceFrame" });
+        EncodeSurface(Encoder, State.Context.getCurrentTexture().createView());
+        State.Device.queue.submit([Encoder.finish()]);
+        State.Redraw = false;
+        UpdateReadout();
+    }
+    requestAnimationFrame(Present);
+}
+
+function UpdateReadout()
+{
+    const Camera = State.Camera;
+    if (!Camera) return;
+    const Degree = (Radian) => (Radian * 180 / Math.PI).toFixed(0);
+    Element("ReadoutOrbit").textContent =
+        `yaw ${Degree(Camera.Yaw)}° pitch ${Degree(Camera.Pitch)}° d ${Camera.Distance.toFixed(2)}`;
+
+    const Ledger = State.Ledger;
+    if (Ledger)
+    {
+        Element("ReadoutStrokes").textContent =
+            `${Ledger.ActiveCount} live / ${Ledger.StrokeCount} kept · ${Ledger.TotalDabCount} dabs`;
+    }
+
+    const Instrument = State.Menu ? `${State.Menu.Active.Label} · ` : "";
+
+    // 🔴 A mask stroke reports its LEVEL, not erase. The two modes deposit different quantities and a
+    //    readout that says "ERASE" while the dab is actually writing a mask value describes the wrong brush.
+    const OnMask   = State.Stack ? ResolveMaskPaintTarget(State.Stack.Focus) !== null : false;
+    const Mode     = OnMask
+        ? ` · mask ${Brush.MaskLevel > 0.5 ? "REVEAL" : "HIDE"} ${Brush.MaskLevel.toFixed(2)}`
+        : (Brush.Erase ? " · ERASE" : "");
+
+    Element("ReadoutBrush").textContent =
+        `${Instrument}${Brush.PixelRadius.toFixed(0)} px · hard ${Brush.Hardness.toFixed(2)} · ` +
+        `flow ${Brush.Flow.toFixed(2)}${Mode}`;
+
+    const Stack = State.Stack;
+    if (Stack)
+    {
+        const Focus    = Stack.Focus;
+        const Channels = Focus ? [...Focus.Enabled].join(" ") : "—";
+        Element("ReadoutLayer").textContent =
+            `${Focus ? Focus.Name : "(none)"} · ${Stack.EnabledCount}/${Stack.Count} shown`;
+        Element("ReadoutChannels").textContent = Channels;
+    }
+
+    Element("ReadoutView").textContent = DisplayModeName(State.DisplayMode);
+}
+
+// 🔴 Indexed by the same integer the shader switches on. A name list that drifts from the shader's
+//    branches labels the viewport with the wrong channel, which is worse than no label at all.
+//
+// 📝 "mask" is index 7 and is NOT part of the U cycle below, which stays at seven. A mask is not a channel
+//    of the surface — it belongs to one layer rather than to the flattened result — so stepping into it
+//    while cycling channels would show a per-layer selection in the middle of a run of stack-wide views.
+//    It is reached only by the mask editor's own toggle.
+const DisplayModeNames = ["shaded", "base colour", "metallic", "roughness", "emissive", "normal", "height",
+                          "mask"];
+function DisplayModeName(Mode) { return DisplayModeNames[Mode] ?? "shaded"; }
+
+// The mask-on-mesh inspection mode's integer, shared by the shader branch, the name list and the toggle.
+const MaskDisplayMode = 7;
+
+// Turn the mask-on-mesh preview on or off. Returns the resulting state.
+//
+// 🔴 Turning it OFF restores "shaded" rather than whatever mode preceded it. Remembering the previous mode
+//    sounds friendlier but the previous mode is almost always shaded anyway, and the one case where it is
+//    not — the user was cycling channels with U, then opened a mask — makes releasing the mask preview drop
+//    them back into a raw roughness view they have to work out how to leave.
+window.SetMaskPreview = function (On)
+{
+    State.DisplayMode = On ? MaskDisplayMode : 0.0;
+
+    // The bind group carries the focused layer's mask, and the focus may have moved since the last flatten.
+    BindResolved(State.Raster);
+
+    State.Redraw = true;
+    UpdateReadout();
+    return State.DisplayMode === MaskDisplayMode;
+};
+
+window.MaskPreviewOn = function () { return State.DisplayMode === MaskDisplayMode; };
+
+// Whether a brush stroke would land in a MASK rather than in the layer's channels.
+//
+// 🔴 Exposed because it is the difference between "the mask is not painting" and "the mask is painting and
+//    I cannot see it", and no other reading distinguishes them. When a mask has no focused paint component
+//    every dab silently goes to the colour channels — the app looks like it ignored the mask — and a probe
+//    with no view of this routing decision cannot tell that apart from a broken preview. It resolves through
+//    exactly the function the stroke path calls, so it cannot report a route the dabs do not take.
+window.MaskPaintTargeted = function ()
+{
+    return ResolveMaskPaintTarget(State.Stack?.Focus) !== null;
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                        INPUT
+//------------------------------------------------------------------------------------------------------------------------
+
+// Everything the picker needs to cast a ray, gathered fresh because the camera moves.
+//
+// 🔴 Resolve against the CANVAS backing-store size, and convert pointer coordinates into that same
+//    space below. A canvas displayed at a different CSS size than its width/height attribute would
+//    otherwise pick a point offset from the cursor, which reads as "the brush paints beside my mouse".
+function PaintContext(Canvas)
+{
+    // 🔴 The stroke's TARGET is resolved here, in the host, and carried into the record at Begin. The driver
+    //    has no view of the layer stack by design — FlushToLayer is handed its layer as an argument — so this
+    //    is the only seam that can see which layer and channels a stroke is about to land in.
+    // 🔴 Resolved per pointer event but only READ at stroke open, which is correct: a stroke belongs to the
+    //    layer it started on. Re-reading it mid-drag would let a focus change (a keyboard shortcut during a
+    //    drag) retarget the record's caption without retargeting the dabs, which already went elsewhere.
+    const Focus      = State.Stack.Focus;
+    const MaskTarget = ResolveMaskPaintTarget(Focus);
+
+    return {
+        Decoded:       State.Surface.Decoded,
+        Resolved:      State.Camera.Resolve(Canvas.width, Canvas.height),
+        SurfaceWidth:  Canvas.width,
+        SurfaceHeight: Canvas.height,
+        Brush,
+        // 🔴 The TOOL, snapshotted here for the same reason as Target: this is the only seam that sees both
+        //    the menu and the stroke. The driver never learns which instrument is selected — it is handed a
+        //    finished Brush — and the Brush itself is the collapsed form with the instrument already
+        //    discarded, so a record built from Brush alone can never say what made the stroke.
+        // 🔴 Guarded on State.Menu rather than assumed present. The harness path (line ~750) builds a context
+        //    before the menu is constructed, and an unguarded `.Snapshot()` would throw there — turning a
+        //    metadata nicety into a crash in the automated probe path.
+        Instrument: State.Menu ? State.Menu.Snapshot() : null,
+        // The authored radius and the view that converted it, recorded as provenance beside the object-space
+        // radius that Brush.Radius already carries. See StrokeRecord's `Authored` block for why both exist.
+        Authored: {
+            PixelRadius:   Brush.PixelRadius,
+            Distance:      State.Camera.Distance,
+            VerticalField: State.Camera.VerticalField,
+            SurfaceHeight: Canvas.height
+        },
+        Target: Focus ? {
+            Token:     Focus.Token,
+            Name:      Focus.Name,
+            // 📝 A copy of the Set as an array: Layer.Enabled keeps mutating as the user toggles channels,
+            //    and a live reference would make every historic entry list today's channels.
+            Channels:  [...Focus.Enabled],
+            MaskToken: MaskTarget ? MaskTarget.Token : null
+        } : null
+    };
+}
+
+// Convert the authored pixel radius into object units at the current orbit.
+//
+// 🔴 Reads Camera.VerticalField — the name OrbitProjection actually exposes. An optional-chained guess
+//    at a different name would fall back to a default silently and paint at the wrong size forever.
+function ResolveBrushRadius(Canvas)
+{
+    return ResolveObjectRadius(
+        Brush.PixelRadius, State.Camera.Distance, State.Camera.VerticalField, Canvas.height);
+}
+
+// Pointer position in canvas backing-store pixels.
+function PointerOnCanvas(Canvas, Event)
+{
+    const Box = Canvas.getBoundingClientRect();
+    return [
+        (Event.clientX - Box.left) * (Canvas.width  / Box.width),
+        (Event.clientY - Box.top)  * (Canvas.height / Box.height)
+    ];
+}
+
+// 📝 Pressure of exactly 0 means "device reports no pressure" (a mouse), not "touching infinitely
+//    lightly". Treating it as 0 makes a mouse paint nothing at all.
+function PressureOf(Event)
+{
+    if (Event.pointerType === "mouse") { return 1.0; }
+    return Event.pressure > 0 ? Event.pressure : 1.0;
+}
+
+function AttachInput(Canvas)
+{
+    let Dragging  = 0;                          // 0 none, 1 orbit, 2 pan, 3 paint
+    let PreviousX = 0;
+    let PreviousY = 0;
+
+    // 🔴 Right-drag already orbits, and that control is not being taken away. The tool menu is summoned
+    //    by a right-click TAP instead: the press starts an orbit as before, and only if the pointer is
+    //    released having travelled less than a few pixels is the gesture reinterpreted as a click. A
+    //    plain `contextmenu` binding would open the card at the end of every orbit drag.
+    const TapSlack = 5;                         // [px] - travel below which a right-press is a tap
+    let PressX     = 0;
+    let PressY     = 0;
+    let Travelled  = 0;
+
+    Canvas.addEventListener("pointerdown", (Event) => {
+        // A press anywhere on the canvas dismisses an open card rather than painting through it.
+        if (State.Menu && State.Menu.Open) { State.Menu.Hide(); }
+
+        Canvas.setPointerCapture(Event.pointerId);
+        Event.preventDefault();
+
+        PreviousX = Event.clientX;
+        PreviousY = Event.clientY;
+        PressX    = Event.clientX;
+        PressY    = Event.clientY;
+        Travelled = 0;
+
+        // Middle or shift-drag pans, right-drag orbits, left-drag paints.
+        if (Event.button === 1 || Event.shiftKey) { Dragging = 2; return; }
+        if (Event.button === 2)                   { Dragging = 1; return; }
+        if (Event.button !== 0)                   { Dragging = 0; return; }
+
+        const [PointerX, PointerY] = PointerOnCanvas(Canvas, Event);
+        const Context = PaintContext(Canvas);
+
+        // 🔴 The object-space radius is resolved ONCE per stroke, from the camera as it stands at
+        //    stroke start. Recomputing it mid-stroke would make a stroke change width when the user
+        //    zooms, and the recorded stroke would no longer be replayable at a single radius.
+        Brush.Radius = ResolveBrushRadius(Canvas);
+
+        // The pre-stroke atlas is what wash mode reads and what a single-stroke undo returns to.
+        State.Snapshot.CaptureStroke(State.Atlas);
+
+        if (State.Driver.Begin(Context, PointerX, PointerY, PressureOf(Event)))
+        {
+            Dragging = 3;
+        }
+        else
+        {
+            // 📝 A left-press that misses the silhouette falls through to orbiting rather than doing
+            //    nothing — dragging from empty space is the natural way to reframe the model.
+            Dragging = 1;
+        }
+    });
+
+    Canvas.addEventListener("pointermove", (Event) => {
+        if (Dragging === 0) return;
+
+        Travelled = Math.hypot(Event.clientX - PressX, Event.clientY - PressY);
+
+        if (Dragging === 3)
+        {
+            const Context = PaintContext(Canvas);
+
+            // 📝 Coalesced events carry the samples the OS captured between frames. Ignoring them
+            //    turns a fast stroke into a run of straight chords between widely spaced points.
+            const Samples = Event.getCoalescedEvents ? Event.getCoalescedEvents() : [];
+            const Stream  = Samples.length > 0 ? Samples : [Event];
+
+            for (const Sample of Stream)
+            {
+                const [PointerX, PointerY] = PointerOnCanvas(Canvas, Sample);
+                State.Driver.Extend(Context, PointerX, PointerY, PressureOf(Sample));
+            }
+            return;
+        }
+
+        const DeltaX = Event.clientX - PreviousX;
+        const DeltaY = Event.clientY - PreviousY;
+        PreviousX = Event.clientX;
+        PreviousY = Event.clientY;
+
+        if (Dragging === 1) { State.Camera.Orbit(DeltaX, DeltaY); }
+        else                { State.Camera.Pan(DeltaX, DeltaY); }
+
+        State.Redraw = true;
+    });
+
+    const Release = (Event) => {
+        if (Dragging === 3) { State.Driver.Finish(); UpdateReadout(); }
+
+        // A right-press that never travelled was a tap, not an orbit: summon the instrument card.
+        if (Event.button === 2 && Travelled < TapSlack && State.Menu)
+        {
+            State.Menu.Show(Event.clientX, Event.clientY);
+        }
+
+        Dragging = 0;
+        if (Canvas.hasPointerCapture(Event.pointerId)) { Canvas.releasePointerCapture(Event.pointerId); }
+    };
+    Canvas.addEventListener("pointerup",     Release);
+    Canvas.addEventListener("pointercancel", Release);
+
+    Canvas.addEventListener("wheel", (Event) => {
+        State.Camera.Zoom(Event.deltaY);
+        State.Redraw = true;
+        Event.preventDefault();
+    }, { passive: false });
+
+    // 🔴 Bound on the WINDOW, not the canvas. Suppressing it on the canvas alone leaves every other
+    //    element — the tool card, the inspector, the readout, the margin around the canvas — opening
+    //    Chrome's own menu on right-click, which lands on top of the app's card and swallows the next
+    //    click. The whole page is a painting surface as far as the right button is concerned.
+    window.addEventListener("contextmenu", (Event) => Event.preventDefault());
+
+    window.addEventListener("keydown", (Event) => {
+        // Ctrl+Space toggles the material shelf.
+        //
+        // 🔴 Handled BEFORE the typing guard below, and deliberately. The shelf owns a search field, so once
+        //    the user has typed into it the guard's early return would swallow the very shortcut that closes
+        //    the drawer — leaving the only exit a click on the notch, with the keystroke that opened it dead.
+        //    A modified chord is safe to admit here: it types nothing, so it cannot corrupt a field's content.
+        //
+        // 📝 Chosen because it collides with nothing. Tab, Escape, U, E and Ctrl+Z/Y are all taken, and a bare
+        //    Space would be unusable next to a search box.
+        if (Event.code === "Space" && Event.ctrlKey && !Event.altKey && !Event.metaKey)
+        {
+            Event.preventDefault();
+            State.Shelf?.Toggle();
+            return;
+        }
+
+        // 🔴 Typing must never reach the shortcuts below. The inspector has a filter box and an
+        //    in-place rename, and without this guard typing a layer name called "Rust" would toggle
+        //    the eraser on the "u"; those fields stop propagation themselves, but a contentEditable
+        //    that has lost its handler must not fall through to a single-key binding either.
+        const Typing = Event.target instanceof HTMLInputElement ||
+                       Event.target instanceof HTMLTextAreaElement ||
+                       (Event.target instanceof HTMLElement && Event.target.isContentEditable);
+        if (Typing) { return; }
+
+        // 🔴 Tab steps the inspector: closed → stack → channels → closed. preventDefault is not
+        //    optional — Tab's default action moves focus to the next focusable element, so without it
+        //    the card opens AND the focus ring walks off into the readout, and the second Tab is
+        //    delivered to whatever now has focus instead of to the inspector.
+        if (Event.key === "Tab")
+        {
+            Event.preventDefault();
+            if (State.Menu && State.Menu.Open) { State.Menu.Hide(); }
+            if (State.Inspector) { State.Inspector.Advance(); }
+            return;
+        }
+
+        if (Event.key === "Escape")
+        {
+            // The inspector unwinds one step at a time; only when it has nothing left to close does
+            // Escape fall through to the tool card.
+            if (State.Inspector && State.Inspector.Retreat()) { Event.preventDefault(); return; }
+            if (State.Menu && State.Menu.Open) { State.Menu.Hide(); Event.preventDefault(); }
+            return;
+        }
+
+        // 📝 U now CYCLES the channel views rather than toggling one. Seven modes: shaded, base colour,
+        //    metallic, roughness, emissive, normal, height — the six the user named plus the shaded
+        //    result. Inspecting a channel in isolation is the only way to tell "the brush is not
+        //    painting roughness" from "roughness is painted but looks the same under this lighting".
+        if (Event.key === "u" || Event.key === "U")
+        {
+            State.DisplayMode = (State.DisplayMode + 1) % 7;
+            State.Redraw = true;
+            UpdateReadout();
+            return;
+        }
+
+        if (Event.key === "e" || Event.key === "E")
+        {
+            // 🔴 E means "the other value" in both worlds, but they are DIFFERENT quantities. Painting a mask,
+            //    it flips the mask level between hide and reveal; painting channels, it flips erase. Routing
+            //    both through Brush.Erase is what broke mask painting, because the tool card clears Erase.
+            if (ResolveMaskPaintTarget(State.Stack?.Focus))
+            {
+                Brush.MaskLevel = Brush.MaskLevel > 0.5 ? 0.0 : 1.0;
+                State.Menu?.SyncMaskValue?.();
+            }
+            else
+            {
+                Brush.Erase = !Brush.Erase;
+                // Erasing writes the checker's own light tone back over the ink.
+                Brush.Ink   = Brush.Erase ? [0.847, 0.847, 0.863] : [0.85, 0.16, 0.20];
+            }
+            UpdateReadout();
+            return;
+        }
+
+        const Undo = (Event.ctrlKey || Event.metaKey) && (Event.key === "z" || Event.key === "Z");
+        const Redo = (Event.ctrlKey || Event.metaKey) && (Event.key === "y" || Event.key === "Y" ||
+                     (Event.shiftKey && (Event.key === "z" || Event.key === "Z")));
+
+        if (Redo)      { if (State.Ledger.Redo()) { Rebuild(); } Event.preventDefault(); return; }
+        if (Undo)      { if (State.Ledger.Undo()) { Rebuild(); } Event.preventDefault(); return; }
+    });
+}
+
+// Rewind to the captured base and re-lay every surviving stroke.
+function Rebuild()
+{
+    RebuildAtlas(
+        State.Device, State.Snapshot, State.Pass,
+        State.Atlas, State.AtlasView, State.Surface, State.Ledger);
+
+    State.Redraw = true;
+    UpdateReadout();
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    HARNESS HOOKS
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 Exposed so the harness can drive the camera to a named viewpoint and capture it, rather than only
+//    ever verifying the default framing.
+window.CaptureViewpoint = async function (Yaw, Pitch, DisplayMode)
+{
+    State.Camera.Yaw   = Yaw;
+    State.Camera.Pitch = Pitch;
+    State.DisplayMode  = DisplayMode ?? 0.0;
+    await DrawAndVerify();
+    return {
+        DistinctColourCount: window.ProbeReport.OffscreenDistinctColourCount,
+        SurfaceCoverage:     window.ProbeReport.SurfaceCoverage,
+        Verified:            window.ProbeReport.OffscreenDrawVerified
+    };
+};
+
+// 📝 Lets the harness lay a stroke and read back the atlas, which is the only way to prove that dabs
+//    actually landed — a screenshot of the shaded model cannot distinguish paint from lighting.
+window.PaintStroke = async function (Path, Overrides)
+{
+    const Canvas = Element("PaintCanvas");
+    Object.assign(Brush, Overrides ?? {});
+
+    Brush.Radius = ResolveBrushRadius(Canvas);
+
+    const Context = PaintContext(Canvas);
+    State.Snapshot.CaptureStroke(State.Atlas);
+
+    let Opened = false;
+    let Placed = 0;
+
+    for (const [PointerX, PointerY] of Path)
+    {
+        if (!Opened)
+        {
+            Opened = State.Driver.Begin(Context, PointerX, PointerY, 1.0);
+            if (Opened) { Placed += 1; }
+            continue;
+        }
+        Placed += State.Driver.Extend(Context, PointerX, PointerY, 1.0);
+    }
+
+    const Focus      = State.Stack.Focus;
+    const MaskStroke = ResolveMaskPaintTarget(Focus) !== null;
+
+    const Drawn = State.Driver.FlushToLayer(
+        Focus, State.Surface, Brush, ResolveAtlasWrite, CHANNEL_ATLASES);
+
+    State.Driver.Finish();
+    // A mask stroke re-evaluates the component stack; a channel stroke only re-flattens.
+    if (MaskStroke) { ReEvaluateMask(Focus); }
+    else            { RefreshComposite(true); }
+    await State.Device.queue.onSubmittedWorkDone();
+
+    State.Redraw = true;
+    return {
+        Opened, Placed, Drawn, MaskStroke,
+        ActiveStrokes: State.Ledger.ActiveCount,
+        Layer:         Focus?.Token ?? null
+    };
+};
+
+// Read the atlas itself back and tally how many texels carry ink.
+//
+// 🔴 This is the only honest test of "did paint land". The shaded viewport mixes paint with lighting, so
+//    a red-tinted highlight and a red dab are indistinguishable there; the atlas is unlit ground truth.
+window.ReadAtlas = async function ()
+{
+    const Device  = State.Device;
+    const Encoder = Device.createCommandEncoder({ label: "AtlasReadback" });
+
+    const ReadbackStore = EncodeCapture(Device, Encoder, State.Atlas, AtlasExtent, AtlasExtent);
+    Device.queue.submit([Encoder.finish()]);
+
+    // 📝 AtlasFormat is rgba8unorm, not the preferred canvas format, so no BGRA swizzle applies here.
+    //    Passing the canvas format would exchange red and blue and make an ink assertion fail silently.
+    const Capture = await ResolveCapture(ReadbackStore, AtlasExtent, AtlasExtent, AtlasFormat);
+
+    // 🔴 "Inked" means DIFFERENT FROM THE BASE, not "looks reddish". Two colour heuristics were tried
+    //    first and both were wrong: an absolute red threshold missed ink blended over the orange ear
+    //    patch, and a red-over-grey excess reclassified the pink and yellow patch tints as paint. The
+    //    base atlas is the substrate by definition, so differencing against it needs no heuristic.
+    const Base   = await State.Snapshot.RetrieveBase(EncodeCapture, ResolveCapture, AtlasFormat);
+    const Pixels = Capture.Straightened;
+    const Ground = Base.Straightened;
+
+    let InkTexels   = 0;
+    let InkRedTotal = 0;
+
+    for (let Offset = 0; Offset < Pixels.length; Offset += 4)
+    {
+        // A texel counts as painted once it has moved appreciably from the substrate. The threshold
+        // sits above readback/encode noise but well below a visible deposit.
+        const Moved = Math.abs(Pixels[Offset + 0] - Ground[Offset + 0])
+                    + Math.abs(Pixels[Offset + 1] - Ground[Offset + 1])
+                    + Math.abs(Pixels[Offset + 2] - Ground[Offset + 2]);
+
+        if (Moved > 24)
+        {
+            InkTexels   += 1;
+            InkRedTotal += Pixels[Offset + 0];
+        }
+    }
+
+    return {
+        Extent:              AtlasExtent,
+        DistinctColourCount: Capture.DistinctColourCount,
+        InkTexels,
+        InkFraction:         InkTexels / Capture.PixelTotal,
+        MeanInkRed:          InkTexels > 0 ? InkRedTotal / InkTexels : 0,
+        PortableNetworkGraphic: Capture.PortableNetworkGraphic
+    };
+};
+
+// Where the ink actually sits in the atlas, in UV space, plus where the ledger says it should sit.
+//
+// 🔴 A texel COUNT cannot catch a v-flip: a mirrored stroke paints exactly as many texels as a correct
+//    one. Comparing the ink's centroid against the recorded dab coordinates is what catches it.
+window.LocateInk = async function ()
+{
+    const Device  = State.Device;
+    const Encoder = Device.createCommandEncoder({ label: "AtlasLocate" });
+
+    const ReadbackStore = EncodeCapture(Device, Encoder, State.Atlas, AtlasExtent, AtlasExtent);
+    Device.queue.submit([Encoder.finish()]);
+
+    const Capture = await ResolveCapture(ReadbackStore, AtlasExtent, AtlasExtent, AtlasFormat);
+    const Base    = await State.Snapshot.RetrieveBase(EncodeCapture, ResolveCapture, AtlasFormat);
+
+    const Pixels = Capture.Straightened;
+    const Ground = Base.Straightened;
+
+    // 🔴 Painted means "moved from the substrate", matching ReadAtlas. See the note there: every
+    //    colour-based rule tried before this one misclassified either the ear patch or the tints.
+    const MovedAt = (Offset) =>
+          Math.abs(Pixels[Offset + 0] - Ground[Offset + 0])
+        + Math.abs(Pixels[Offset + 1] - Ground[Offset + 1])
+        + Math.abs(Pixels[Offset + 2] - Ground[Offset + 2]);
+
+    let Tally = 0, SumU = 0, SumV = 0;
+
+    for (let RowOrdinal = 0; RowOrdinal < AtlasExtent; RowOrdinal += 1)
+    {
+        for (let ColumnOrdinal = 0; ColumnOrdinal < AtlasExtent; ColumnOrdinal += 1)
+        {
+            if (MovedAt((RowOrdinal * AtlasExtent + ColumnOrdinal) * 4) > 24)
+            {
+                Tally += 1;
+                SumU  += (ColumnOrdinal + 0.5) / AtlasExtent;
+                // 📝 Atlas row 0 is v = 1: the composer writes y = (1 - v) * extent. Reading the row
+                //    ordinal as v directly would report a vertically mirrored centroid and make a
+                //    CORRECT paint pass look flipped.
+                SumV  += 1.0 - (RowOrdinal + 0.5) / AtlasExtent;
+            }
+        }
+    }
+
+    // What the record says: the mean coordinate of every live dab.
+    let DabTally = 0, DabU = 0, DabV = 0;
+    for (const Stroke of State.Ledger.ActiveStrokes())
+    {
+        for (const Dab of Stroke.Dabs)
+        {
+            DabTally += 1;
+            DabU += Dab.Coordinate[0];
+            DabV += Dab.Coordinate[1];
+        }
+    }
+
+    // 🔴 Is there ink AT each recorded dab coordinate? This, not the centroid, is the honest placement
+    //    test. A dab is a sphere in object space, so it inks every UV island its volume passes through
+    //    — eyes and ears are separate islands far from the cursor's island, which drags the centroid
+    //    away from the cursor on BOTH axes even when placement is perfect.
+    const OffsetOf = (U, V) => {
+        const Column = Math.min(AtlasExtent - 1, Math.max(0, Math.floor(U * AtlasExtent)));
+        const Row    = Math.min(AtlasExtent - 1, Math.max(0, Math.floor((1.0 - V) * AtlasExtent)));
+        return (Row * AtlasExtent + Column) * 4;
+    };
+
+    const SampleAt = (U, V) => {
+        const Offset = OffsetOf(U, V);
+        return [Pixels[Offset], Pixels[Offset + 1], Pixels[Offset + 2]];
+    };
+
+    const IsInk = (U, V) => MovedAt(OffsetOf(U, V)) > 24;
+
+    let HitAtDab = 0, HitAtMirror = 0;
+    const Misses = [];
+
+    for (const Stroke of State.Ledger.ActiveStrokes())
+    {
+        for (const Dab of Stroke.Dabs)
+        {
+            const Direct = IsInk(Dab.Coordinate[0], Dab.Coordinate[1]);
+            if (Direct) { HitAtDab += 1; }
+            // The same query against a v-mirrored coordinate: a flipped pass scores high here instead.
+            if (IsInk(Dab.Coordinate[0], 1.0 - Dab.Coordinate[1])) { HitAtMirror += 1; }
+
+            if (!Direct && Misses.length < 12)
+            {
+                // 📝 Report the neighbourhood too. A dab whose exact texel is clean but whose
+                //    surroundings are inked sits on a seam or a texel-rounding boundary — a very
+                //    different diagnosis from one sitting in a wholly unpainted region.
+                let Near = 0;
+                for (let Down = -3; Down <= 3; Down += 1)
+                {
+                    for (let Across = -3; Across <= 3; Across += 1)
+                    {
+                        const Step = 1 / AtlasExtent;
+                        if (IsInk(Dab.Coordinate[0] + Across * Step,
+                                  Dab.Coordinate[1] + Down   * Step)) { Near += 1; }
+                    }
+                }
+                Misses.push({
+                    Coordinate: Dab.Coordinate,
+                    NeighbourInk: Near, Of: 49,
+                    // The actual texel colour, so a classifier fault is distinguishable from a
+                    // placement fault without guessing.
+                    Texel: SampleAt(Dab.Coordinate[0], Dab.Coordinate[1])
+                });
+            }
+        }
+    }
+
+    return {
+        InkTexels:    Tally,
+        InkCentroid:  Tally > 0 ? [SumU / Tally, SumV / Tally] : null,
+        DabCount:     DabTally,
+        DabCentroid:  DabTally > 0 ? [DabU / DabTally, DabV / DabTally] : null,
+        InkAtDabFraction:    DabTally > 0 ? HitAtDab    / DabTally : 0,
+        InkAtMirrorFraction: DabTally > 0 ? HitAtMirror / DabTally : 0,
+        Misses
+    };
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                   LAYER HARNESS HOOKS
+//------------------------------------------------------------------------------------------------------------------------
+
+// Read one channel atlas of one layer, or of the resolved stack when Token is null.
+//
+// 🔴 Coverage (alpha) is the honest measure of "did this layer get painted", NOT a colour difference.
+//    A layer clears to alpha 0 and every dab writes alpha, so counting covered texels needs no threshold
+//    and no reference snapshot — unlike the pre-layer ReadAtlas, which had to difference against a base
+//    because the ground-truth checker had no alpha to read.
+window.ReadLayerChannel = async function (Token, AtlasKey)
+{
+    const Device = State.Device;
+
+    const Texture = Token === null
+        ? State.Composite.Resolved[AtlasKey]
+        : State.Stack.Resolve(Token)?.Atlas[AtlasKey];
+
+    if (!Texture) { return { Fault: `no atlas ${AtlasKey} on ${Token ?? "resolved"}` }; }
+
+    const Encoder       = Device.createCommandEncoder({ label: "LayerReadback" });
+    const ReadbackStore = EncodeCapture(Device, Encoder, Texture, AtlasExtent, AtlasExtent);
+    Device.queue.submit([Encoder.finish()]);
+
+    const Capture = await ResolveCapture(ReadbackStore, AtlasExtent, AtlasExtent, AtlasFormat);
+    // 🔴 WithAlpha, NOT Straightened. Straightened forces alpha to 255 so its PNG is viewable, which
+    //    makes the coverage test below true for every texel in the atlas.
+    const Pixels  = Capture.WithAlpha;
+
+    let Covered = 0;
+    const Total = [0, 0, 0];
+
+    for (let Offset = 0; Offset < Pixels.length; Offset += 4)
+    {
+        // 8 of 255 sits above readback quantization and far below any deliberate deposit.
+        if (Pixels[Offset + 3] <= 8) { continue; }
+        Covered  += 1;
+        Total[0] += Pixels[Offset + 0];
+        Total[1] += Pixels[Offset + 1];
+        Total[2] += Pixels[Offset + 2];
+    }
+
+    return {
+        Atlas:        AtlasKey,
+        Token:        Token,
+        CoveredTexels: Covered,
+        CoveredFraction: Covered / Capture.PixelTotal,
+        // The mean of the COVERED texels only. Averaging the whole atlas would drown a small stroke in
+        // the clear value and make every channel look like its default.
+        MeanValue: Covered > 0 ? Total.map(V => V / Covered / 255) : [0, 0, 0],
+        DistinctColourCount: Capture.DistinctColourCount
+    };
+};
+
+// Read the RESOLVED atlas, but average only over the texels where `Token`'s layer has coverage.
+//
+// 🔴 This is the only honest way to measure a blend mode or an opacity. Those settings change the resolve
+//    exclusively where the layer was painted, and a stroke covers a few percent of a 1024² atlas — so a
+//    whole-atlas mean divides the real difference by ~25 and it vanishes into rounding. Every mode then
+//    reports an identical number and a correct compositor looks like a no-op.
+window.ReadLayerRegion = async function (Token, AtlasKey)
+{
+    const Device = State.Device;
+
+    const Layer = State.Stack.Resolve(Token);
+    if (!Layer) { return { Fault: `no layer ${Token}` }; }
+
+    const Mask     = Layer.Atlas[AtlasKey];
+    const Resolved = State.Composite.Resolved[AtlasKey];
+    if (!Mask || !Resolved) { return { Fault: `no atlas ${AtlasKey}` }; }
+
+    // Both readbacks ride one encoder so they capture the same submission.
+    const Encoder    = Device.createCommandEncoder({ label: "LayerRegionReadback" });
+    const MaskStore  = EncodeCapture(Device, Encoder, Mask,     AtlasExtent, AtlasExtent);
+    const ValueStore = EncodeCapture(Device, Encoder, Resolved, AtlasExtent, AtlasExtent);
+    Device.queue.submit([Encoder.finish()]);
+
+    const MaskCapture  = await ResolveCapture(MaskStore,  AtlasExtent, AtlasExtent, AtlasFormat);
+    const ValueCapture = await ResolveCapture(ValueStore, AtlasExtent, AtlasExtent, AtlasFormat);
+
+    const Coverage = MaskCapture.WithAlpha;
+    const Pixels   = ValueCapture.WithAlpha;
+
+    let Covered = 0;
+    const Total = [0, 0, 0];
+
+    for (let Offset = 0; Offset < Pixels.length; Offset += 4)
+    {
+        // Gate on the LAYER's alpha, and read the RESOLVED colour there.
+        if (Coverage[Offset + 3] <= 8) { continue; }
+        Covered  += 1;
+        Total[0] += Pixels[Offset + 0];
+        Total[1] += Pixels[Offset + 1];
+        Total[2] += Pixels[Offset + 2];
+    }
+
+    return {
+        Atlas: AtlasKey,
+        Token: Token,
+        CoveredTexels: Covered,
+        MeanValue: Covered > 0 ? Total.map(V => V / Covered / 255) : [0, 0, 0]
+    };
+};
+
+// The stack as plain data, for assertions about order, focus, blend and channels.
+// Read a single texel of one layer's atlas, in [0..1] atlas coordinates.
+//
+// 🔴 Exists to test the UV GUTTERS. A whole-atlas coverage fraction cannot distinguish "the pass covered
+//    the entire target" from "the pass rasterized the mesh", because a patchy generator legitimately leaves
+//    most texels uncovered either way. Sampling a corner — which no UV island on this model reaches —
+//    answers the question directly: content there means the pass really did cover the gutters, which is
+//    what stops bilinear sampling dragging the clear colour in across every island edge.
+window.ReadLayerTexel = async function (Token, AtlasKey, U, V)
+{
+    const Device  = State.Device;
+    const Texture = Token === null
+        ? State.Composite.Resolved[AtlasKey]
+        : State.Stack.Resolve(Token)?.Atlas[AtlasKey];
+    if (!Texture) { return { Fault: `no atlas ${AtlasKey} on ${Token ?? "resolved"}` }; }
+
+    const Encoder       = Device.createCommandEncoder({ label: "LayerTexelReadback" });
+    const ReadbackStore = EncodeCapture(Device, Encoder, Texture, AtlasExtent, AtlasExtent);
+    Device.queue.submit([Encoder.finish()]);
+
+    const Capture = await ResolveCapture(ReadbackStore, AtlasExtent, AtlasExtent, AtlasFormat);
+    const Pixels  = Capture.WithAlpha;
+
+    const X = Math.min(AtlasExtent - 1, Math.max(0, Math.round(U * (AtlasExtent - 1))));
+    const Y = Math.min(AtlasExtent - 1, Math.max(0, Math.round(V * (AtlasExtent - 1))));
+    const Offset = (Y * AtlasExtent + X) * 4;
+
+    return {
+        Texel: [X, Y],
+        Value: [Pixels[Offset] / 255, Pixels[Offset + 1] / 255, Pixels[Offset + 2] / 255],
+        Alpha: Pixels[Offset + 3] / 255
+    };
+};
+
+// The vocabulary tables, exposed so a probe (and the inspector) can enumerate what the engine actually
+// supports rather than restating it.
+//
+// 🔴 Read, never written. A probe that hard-codes "rust drives baseColour/roughness/height" passes while
+//    silently disagreeing with the engine the moment a recipe changes — the test then proves only that the
+//    test is self-consistent. Enumerating from here means a recipe edit is picked up by every consumer.
+window.LAYER_KINDS       = LAYER_KINDS;
+window.MATERIAL_PRESETS  = MATERIAL_PRESETS;
+window.GENERATOR_RECIPES = GENERATOR_RECIPES;
+window.GENERATOR_PARAMS  = GENERATOR_PARAMS;
+window.CHANNEL_ATLASES   = CHANNEL_ATLASES;
+window.CHANNEL_SLOTS     = CHANNEL_SLOTS;
+window.CHANNEL_ORDER     = CHANNEL_ORDER;
+window.CHANNEL_MODES     = CHANNEL_MODES;
+window.CHANNEL_LABEL     = CHANNEL_LABEL;
+
+// ---- channel previews ------------------------------------------------------------------------------
+// 🔴 CACHED, and keyed by the layer's content revision rather than time. The inspector rebuilds its whole
+//    channel pane on every Refresh() — which now happens on every LayerCommand — so an uncached preview
+//    would re-render and map-read six tiles per repaint, and a repaint happens on every slider tick. The
+//    cache turns that into one capture per channel per actual content change.
+//
+// 🔴 Keyed on Stack.Revision and NOT on the layer alone: a stroke changes a layer's CONTENTS without
+//    changing its identity, and the compositor already relies on Touch() to signal exactly that. Keying on
+//    the token only would freeze every thumbnail at whatever it showed when first drawn, so painting would
+//    visibly do nothing to the previews — the one thing they exist to show.
+const PreviewCache = new Map();
+
+window.CapturePreview = async function (Token, ChannelKey)
+{
+    const Layer = State.Stack.Resolve(Token);
+    if (!Layer || !State.Preview) { return null; }
+
+    const Key   = `${Token}:${ChannelKey}`;
+    const Stamp = State.Stack.Revision;
+    const Held  = PreviewCache.get(Key);
+    if (Held && Held.Stamp === Stamp) { return Held.Tile; }
+
+    // 🔴 An in-flight capture is shared rather than started twice. Six channel panels rendering at once
+    //    each await this, and without the promise being cached the first render fires six captures per
+    //    channel before any of them resolves and writes its result.
+    if (Held && Held.Pending && Held.Stamp === Stamp) { return Held.Pending; }
+
+    const Pending = State.Preview.Capture(Layer, ChannelKey, AtlasExtent)
+        .then((Tile) => { PreviewCache.set(Key, { Stamp, Tile }); return Tile; })
+        .catch((Fault) => { console.error(`CapturePreview ${Key} failed`, Fault); return null; });
+
+    PreviewCache.set(Key, { Stamp, Pending });
+    return Pending;
+};
+
+// The RESOLVED stack — every visible layer flattened — previewed for one channel.
+//
+// 🔴 Reuses ChannelPreview.Capture by handing it a STAND-IN layer whose `Atlas` points at the compositor's
+//    resolved textures instead of any one layer's. Capture only ever reads `Layer.Atlas[Slot.Atlas]`
+//    (ChannelPreview.js:307), so this needs no second shader path and cannot drift from the per-layer
+//    previews: both go through the same component-splat and the same readback.
+// 🔴 Cached on Stack.Revision like PreviewCache above, and for the extra reason that the combined card asks
+//    for every stored channel in one render: the first miss flattens, and because the flatten does NOT bump
+//    Revision, the other four find that first call's shared Pending under the same stamp and cost nothing.
+const CompositeCache = new Map();
+
+window.CaptureComposite = async function (ChannelKey)
+{
+    if (!State.Preview) { return null; }
+
+    // 🔴 The cache is consulted BEFORE the forced flatten, not after. The combined card asks for five
+    //    channels at once, so checking afterwards would re-flatten the entire stack five times per render —
+    //    and RefreshComposite(true) skips the revision guard by definition, so nothing downstream would
+    //    absorb the repeats. A cache hit must cost nothing.
+    const Stamp = State.Stack.Revision;
+    const Held  = CompositeCache.get(ChannelKey);
+    if (Held && Held.Stamp === Stamp)
+    {
+        if (Held.Pending) { return Held.Pending; }
+        return Held.Tile;
+    }
+
+    // 🔴 Forced, not RefreshComposite(false). A stroke changes a layer's CONTENTS without bumping Revision
+    //    (the same reason Present() forces it after laying dabs), so the revision guard would report the
+    //    composite current and this card would show the stack as it stood before the last dab.
+    // 🔴 BindResolved after it, exactly as RefreshComposite's other callers do: the pass ping-pongs, so the
+    //    rasterizer's bind group would otherwise sample the stale half and the 3D view would freeze while
+    //    only this preview updated.
+    RefreshComposite(true);
+    BindResolved(State.Raster);
+
+    // The stand-in: `Atlas` is the resolved set, so CHANNEL_SLOTS' Atlas key resolves against the composite.
+    const StandIn = { Atlas: State.Composite.Resolved };
+
+    const Pending = State.Preview.Capture(StandIn, ChannelKey, AtlasExtent)
+        .then((Tile) => { CompositeCache.set(ChannelKey, { Stamp, Tile }); return Tile; })
+        .catch((Fault) => { console.error(`CaptureComposite ${ChannelKey} failed`, Fault); return null; });
+
+    CompositeCache.set(ChannelKey, { Stamp, Pending });
+    return Pending;
+};
+
+// One layer's RESOLVED mask, as a preview tile — the picture of the mask itself, in greyscale.
+//
+// 🔴 Reuses ChannelPreview.Capture through the same stand-in trick CaptureComposite uses: Capture only ever
+//    reads `Layer.Atlas[Slot.Atlas]` and the component to splat, so handing it an Atlas whose one entry is
+//    the mask texture, under a channel key whose slot names that entry, previews the mask with no second
+//    shader path. A hand-rolled readback here would be a fourth copy of the same pass to keep in step.
+//
+// 🔴 Component 0, so the red channel is splatted to grey. The mask atlas stores its coverage in .r and its
+//    other components carry the same value, but relying on that would make the tile silently wrong the day
+//    the mask format changes to pack something else alongside — asking for the one component that IS the
+//    mask is the honest read.
+//
+// 🔴 NOT cached on Stack.Revision. A stroke into a mask component deliberately does not bump the revision
+//    (that is why ReEvaluateMask forces the composite), so a revision-keyed cache would hand back the
+//    pre-stroke tile for the entire painting session — the mask would look like it never changed, which is
+//    precisely the "I cannot see the mask being painted" this exists to answer. The mask atlas is one
+//    texture and the tile is 64², so an uncached capture per rebuild is affordable.
+const MaskPreviewSlot = "maskCoverage";
+
+window.CaptureMask = async function (Token)
+{
+    if (!State.Preview) { return null; }
+
+    const Layer = State.Stack.Resolve(Token);
+    if (!Layer || !Layer.MaskTexture) { return null; }
+
+    // The mask atlas is evaluated lazily, so make sure what we are about to read is current before reading
+    // it. Evaluate() is a no-op when the mask carries no components to re-run.
+    State.Mask?.Evaluate(Layer);
+
+    const StandIn = { Atlas: { [MaskPreviewSlot]: Layer.MaskTexture } };
+
+    return State.Preview.Capture(StandIn, MaskPreviewSlot, AtlasExtent)
+        .catch((Fault) => { console.error(`CaptureMask ${Token} failed`, Fault); return null; });
+};
+
+window.ReadLayerStack = function ()
+{
+    return {
+        Count:       State.Stack.Count,
+        FocusToken:  State.Stack.FocusToken,
+        EnabledCount: State.Stack.EnabledCount,
+        Revision:    State.Stack.Revision,
+        Layers: State.Stack.Layers.map((L, Index) => ({
+            Index, Token: L.Token, Name: L.Name,
+            Kind: L.Kind,
+            // 📝 Kept alongside Kind so anything still reading Classification keeps working.
+            Classification: L.Classification,
+            // The per-layer identity colour the rail tags each row with (see LAYER_COLOUR_PALETTE).
+            Colour: L.Colour,
+            Paintable: L.Paintable,
+            Preset:    L.Preset,
+            Generator: L.Generator,
+            Params:    L.Params,
+            Modes:     L.Modes,
+            // Which atlases actually hold storage — the observable side of lazy allocation.
+            Allocated: Object.keys(L.Atlas),
+            Shown: L.Shown, Blend: L.Blend, Opacity: L.Opacity,
+            Channels: [...L.Enabled],
+            Values:   L.Values,
+            // 📝 The mask model as plain data, so the inspector renders its section and a probe can assert
+            //    it. Components carry their token, category, opacity and params but NOT their GPU atlas.
+            Mask: {
+                Enabled:    L.Mask.Enabled,
+                Fill:       L.Mask.Fill,
+                Invert:     L.Mask.Invert,
+                Opacity:    L.Mask.Opacity,
+                FocusToken: L.Mask.FocusToken,
+                Resolved:   L.Masked,
+                Components:  L.Mask.Components.map((C) => ({
+                    Token:     C.Token,
+                    Category:  C.Category,
+                    Name:      C.Name,
+                    Opacity:   C.Opacity,
+                    Paintable: MASK_COMPONENT_CATEGORY[C.Category]?.Paintable === true,
+                    Painted:   Boolean(C.AtlasView),
+                    Params:    { ...C.Params }
+                }))
+            }
+        }))
+    };
+};
+
+// Give a freshly created layer whatever initial content its kind implies.
+//
+// 🔴 One place decides this, for both the UI and the probe. When the two disagreed — the UI sending a
+//    `Flood` flag the command surface ignored — a material layer arrived with authored values and zero
+//    coverage: correctly invisible to the compositor, and indistinguishable from "adding a layer does
+//    nothing". The kind's own `Flooded` flag is now the single source of that decision.
+function SeedLayerContent(Layer)
+{
+    if (Layer.Generator)
+    {
+        State.Generator.Run(Layer, Layer.Generator, Layer.Params, AtlasExtent);
+        return;
+    }
+
+    // A paint layer is deliberately left empty and unallocated — it waits for a stroke.
+    if (LAYER_KINDS[Layer.Kind]?.Flooded) { Layer.Flood(State.Device); }
+}
+
+// Drive the stack from the harness, so layer behaviour is testable without the inspector UI.
+window.LayerCommand = function (Command, Payload)
+{
+    const Stack = State.Stack;
+    const Argument = Payload ?? {};
+    let Result = false;
+
+    switch (Command)
+    {
+        case "focus":   Result = Stack.Focus_Set(Argument.Token); break;
+
+        case "add": {
+            const Kind = Argument.Kind ?? Argument.Classification ?? "paint";
+
+            const Added = Stack.Add(
+                Argument.Name ?? "NEW_Layer", Kind,
+                Argument.Channels ?? DefaultChannels(Kind, Argument.Preset, Argument.Generator),
+                undefined,
+                { Preset: Argument.Preset ?? null, Generator: Argument.Generator ?? null });
+
+            if (Added) { SeedLayerContent(Added); }
+            Result = Boolean(Added);
+            break;
+        }
+
+        // Re-run a generator layer's procedural pass. Called on creation and whenever a parameter moves.
+        case "generate": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer && Layer.Generator)
+            {
+                if (Argument.Params) { Object.assign(Layer.Params, Argument.Params); }
+                Result = State.Generator.Run(Layer, Layer.Generator, Layer.Params, AtlasExtent);
+                Stack.Touch();
+            }
+            break;
+        }
+
+        // The per-channel Value / Texture / Generator source.
+        case "mode": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Modes[Argument.Channel] = Argument.Mode;
+                // 🔴 Switching a channel to Value on a flooded layer has to RE-FLOOD, not just record the
+                //    mode. The atlas still holds whatever was there before, so without this the panel says
+                //    "Value" while the surface keeps showing the old painted or generated content.
+                if (Argument.Mode === "Value" && LAYER_KINDS[Layer.Kind]?.Flooded) { Layer.Flood(State.Device); }
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        case "remove":  Result = Stack.Remove(Argument.Token); break;
+        case "reorder": Result = Stack.Reorder(Argument.Token, Argument.Direction); break;
+
+        case "rename": {
+            const Layer = Stack.Resolve(Argument.Token);
+            const Name  = String(Argument.Name ?? "").trim();
+            // An empty name is refused rather than accepted: a nameless row is unclickable in the stack.
+            if (Layer && Name) { Layer.Name = Name; Stack.Touch(); Result = true; }
+            break;
+        }
+
+        case "show": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer) { Layer.Shown = Argument.Shown; Stack.Touch(); Result = true; }
+            break;
+        }
+        case "blend": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer) { Layer.Blend = Argument.Blend; Stack.Touch(); Result = true; }
+            break;
+        }
+        case "opacity": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer) { Layer.Opacity = Argument.Opacity; Stack.Touch(); Result = true; }
+            break;
+        }
+        // The layer's identity tag colour. Presentation only — no atlas, no compositor input — but it goes
+        // through the command surface like everything else so the probe can drive it and Touch() bumps the
+        // revision the inspector's rebuild is gated on.
+        case "layerColour": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer && typeof Argument.Colour === "string")
+            {
+                Layer.Colour = Argument.Colour;
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+        case "channel": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                if (Argument.On) { Layer.Enabled.add(Argument.Channel); }
+                else             { Layer.Enabled.delete(Argument.Channel); }
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+        case "value": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Values[Argument.Channel] = Argument.Value;
+
+                // 🔴 A flooded layer's content IS its authored values, so changing one has to re-flood or
+                //    the number in the panel and the colour on the model disagree. A paint layer must NOT
+                //    be re-flooded here — its authored value is only what future dabs deposit, and flooding
+                //    would obliterate every stroke already on it.
+                if (LAYER_KINDS[Layer.Kind]?.Flooded) { Layer.Flood(State.Device); }
+
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // Retarget an existing layer onto a material preset, in place.
+        //
+        // 🔴 This is NOT `add` with extra steps. The point of retargeting is that the layer's identity survives
+        //    — its name, opacity, blend mode, stack position and mask all stay, and only the authored channel
+        //    values change. Adding a layer and deleting the old one instead would drop the mask and move the
+        //    row to the top of the stack, which reads as the browser destroying work rather than restyling it.
+        //
+        // 🔴 The enabled channel SET is replaced, not merged. An emissive panel followed by a plastic must stop
+        //    writing the emissive atlas, and a union would leave the emission authored at its old value with no
+        //    row in the properties pane to reach it — a layer glowing with no visible cause.
+        case "preset": {
+            const Layer  = Stack.Resolve(Argument.Token);
+            const Preset = MATERIAL_PRESETS[Argument.Preset];
+            if (!Layer || !Preset) { break; }
+
+            // 📝 A fill layer is promoted to `material` so the pane and the stack row agree with what it now
+            //    holds. Both kinds are flooded and non-paintable, so nothing about its content path changes.
+            Layer.Kind   = "material";
+            Layer.Preset = Argument.Preset;
+
+            for (const [Key, Value] of Object.entries(Preset.Values))
+            {
+                Layer.Values[Key] = Array.isArray(Value) ? Value.slice() : Value;
+            }
+            Layer.Enabled = new Set(Preset.Channels);
+
+            // 🔴 Re-flooded, and only AFTER the values and the enabled set are both in place. A flood reads
+            //    both, so flooding first writes the previous material's colour into the new channel set.
+            Layer.Flood(State.Device);
+            Stack.Touch();
+            Result = true;
+            break;
+        }
+
+        //---- mask -------------------------------------------------------------------------------------
+        // 🔴 Every mask verb re-evaluates the layer's component stack into its mask atlas and forces a
+        //    re-flatten, because a mask change alters what the layer resolves to WITHOUT bumping Revision.
+        //    Disabling a mask is the one exception: it stops re-evaluating and re-flattens on the revision.
+
+        // Turn the mask on or off. Enabling it seeds the atlas so the compositor has something to bind.
+        case "mask": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Mask.Enabled = Argument.Enabled !== false;
+
+                // 🔴 Enabling a mask SEEDS a focused paint component, and without this the whole mask feature
+                //    is unreachable from the UI. "Create mask" used to leave Components empty and FocusToken
+                //    null, so ResolveMaskPaintTarget returned null and every subsequent dab was routed to the
+                //    layer's CHANNELS instead — the user paints, the model changes colour, the mask stays a
+                //    uniform field, and nothing anywhere says the mask needed a component added and selected
+                //    before it could accept a stroke. A mask you cannot paint into is not a mask yet.
+                // 🔴 Guarded on the list being EMPTY so re-enabling an existing mask does not append a second
+                //    component on every toggle, which would silently stack duplicate paint layers.
+                if (Layer.Mask.Enabled && Layer.Mask.Components.length === 0)
+                {
+                    const Seed = CreateMaskComponent("paint", "Paint");
+                    Layer.Mask.Components.push(Seed);
+                    Layer.Mask.FocusToken = Seed.Token;
+                }
+
+                if (Layer.Mask.Enabled) { ReEvaluateMask(Layer); }
+                else                    { Layer.MaskView = null; RefreshComposite(true); }
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // The base fill ("white" / "black") the component stack is evaluated over.
+        case "maskFill": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Mask.Fill = Argument.Fill === "black" ? "black" : "white";
+                ReEvaluateMask(Layer);
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // Flip the resolved mask — "apply where it is dark" instead of where it is light.
+        case "maskInvert": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Mask.Invert = Argument.Invert === true;
+                // Inversion is read by the compositor from Settings.z, so a re-flatten alone shows it — but
+                // re-evaluating keeps every mask verb on one path and costs one pass.
+                ReEvaluateMask(Layer);
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // How strongly the whole mask applies, [0..100].
+        case "maskOpacity": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Mask.Opacity = Argument.Opacity;
+                // Read by the compositor from Settings.y; re-flatten shows it. Re-evaluate for one path.
+                ReEvaluateMask(Layer);
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // Append a component of a given category. Focus lands on it, so a paint component is paint-ready.
+        case "maskAddComponent": {
+            const Layer = Stack.Resolve(Argument.Token);
+            const Category = MASK_COMPONENT_CATEGORY[Argument.Category] ? Argument.Category : "fill";
+            if (Layer)
+            {
+                const Component = CreateMaskComponent(Category, Argument.Name);
+                Layer.Mask.Components.push(Component);
+                Layer.Mask.FocusToken = Component.Token;
+                ReEvaluateMask(Layer);
+                Stack.Touch();
+                Result = Component.Token;
+            }
+            break;
+        }
+
+        // Drop a component. Its painted atlas is released, and focus falls back to none.
+        case "maskRemoveComponent": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                const Index = Layer.Mask.Components.findIndex((C) => C.Token === Argument.Component);
+                if (Index >= 0)
+                {
+                    const [Dropped] = Layer.Mask.Components.splice(Index, 1);
+                    Dropped.Atlas?.destroy();
+                    Dropped.Atlas     = null;
+                    Dropped.AtlasView = null;
+                    if (Layer.Mask.FocusToken === Argument.Component) { Layer.Mask.FocusToken = null; }
+                    ReEvaluateMask(Layer);
+                    Stack.Touch();
+                    Result = true;
+                }
+            }
+            break;
+        }
+
+        // Which component brush strokes land in. Null routes strokes back to the layer's channels.
+        case "maskFocusComponent": {
+            const Layer = Stack.Resolve(Argument.Token);
+            if (Layer)
+            {
+                Layer.Mask.FocusToken = Argument.Component ?? null;
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // A component's own opacity, [0..100].
+        case "maskComponentOpacity": {
+            const Layer = Stack.Resolve(Argument.Token);
+            const Component = Layer?.Mask.Components.find((C) => C.Token === Argument.Component);
+            if (Component)
+            {
+                Component.Opacity = Argument.Opacity;
+                ReEvaluateMask(Layer);
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+
+        // A fill / generator / levels component's parameters.
+        case "maskComponentParam": {
+            const Layer = Stack.Resolve(Argument.Token);
+            const Component = Layer?.Mask.Components.find((C) => C.Token === Argument.Component);
+            if (Component)
+            {
+                if (Argument.Params) { Object.assign(Component.Params, Argument.Params); }
+                else if (Argument.Key !== undefined) { Component.Params[Argument.Key] = Argument.Value; }
+                ReEvaluateMask(Layer);
+                Stack.Touch();
+                Result = true;
+            }
+            break;
+        }
+    }
+
+    RefreshComposite(false);
+    UpdateReadout();
+
+    // 🔴 The inspector is rebuilt here, at the one choke point every stack mutation passes through. Its own
+    //    Apply() already refreshes after a control the user touched, so this exists for the OTHER callers —
+    //    a probe, a keyboard shortcut, or the stack list changing focus. Without it the panel keeps
+    //    describing whichever layer it last rendered: focus a different layer with the channels view open
+    //    and every channel panel still shows the previous layer's modes and values, so the mode selector
+    //    reads "Texture" for a generator layer and clicking it writes the change to the layer on screen
+    //    rather than the focused one. Guarded because LayerCommand is reachable before the inspector exists.
+    if (State.Inspector) { State.Inspector.Refresh(); }
+
+    return { Result, Revision: Stack.Revision };
+};
+
+// Undo/redo, exposed for the same reason.
+window.PaintUndo = async function ()
+{
+    const Moved = State.Ledger.Undo();
+    if (Moved) { Rebuild(); }
+    await State.Device.queue.onSubmittedWorkDone();
+    return { Moved, ActiveStrokes: State.Ledger.ActiveCount };
+};
+
+window.PaintRedo = async function ()
+{
+    const Moved = State.Ledger.Redo();
+    if (Moved) { Rebuild(); }
+    await State.Device.queue.onSubmittedWorkDone();
+    return { Moved, ActiveStrokes: State.Ledger.ActiveCount };
+};
+
+// The stroke history: one entry per recorded stroke with its metadata, newest first.
+//
+// 📝 Dab-free by construction (StrokeLedger.Entries), so this is cheap enough to call on every redraw of a
+//    history list. window.PaintDescribe below is the full serialization when the dabs are actually wanted.
+window.PaintHistory = function ()
+{
+    if (!State.Ledger) { return { Entries: [], Active: 0, Total: 0 }; }
+
+    return {
+        Entries: State.Ledger.Entries(),
+        Active:  State.Ledger.ActiveCount,
+        Total:   State.Ledger.StrokeCount,
+        Dabs:    State.Ledger.TotalDabCount
+    };
+};
+
+// The whole session including every dab, for a probe assertion or an export.
+window.PaintDescribe = function ()
+{
+    return State.Ledger ? State.Ledger.Describe() : null;
+};
+
+// Move the history cursor to an absolute position, so a history list can jump rather than stepping.
+//
+// 🔴 Implemented as repeated Undo/Redo rather than by assigning Cursor directly. The ledger's own methods
+//    are the only place that bounds-check the cursor, and a direct write of an out-of-range index would
+//    leave ActiveStrokes() slicing past the end (or negative) — which replays a truncated image with no
+//    error anywhere. Clamping here as well would put the same rule in two places.
+//
+// 🔴 PRE-EXISTING LIMITATION, not introduced here: Rebuild() replays into State.Atlas — the pre-layer single
+//    atlas that SnapshotStore captured a base of — and never into Layer.Atlas[...]. So the cursor move is
+//    faithfully recorded and reported, but paint that landed in a LAYER is not rewound by it. Ctrl+Z has the
+//    same gap (it calls the same Rebuild), so this verb is no worse than the shortcut it generalises; making
+//    either one actually undo layer paint needs per-layer snapshots, which is a separate piece of work.
+window.PaintSeek = async function (Position)
+{
+    if (!State.Ledger) { return { Moved: false, ActiveStrokes: 0 }; }
+
+    const Wanted = Math.max(0, Math.min(Number(Position) | 0, State.Ledger.StrokeCount));
+    let   Moved  = false;
+
+    while (State.Ledger.ActiveCount > Wanted && State.Ledger.Undo()) { Moved = true; }
+    while (State.Ledger.ActiveCount < Wanted && State.Ledger.Redo()) { Moved = true; }
+
+    if (Moved) { Rebuild(); }
+    await State.Device.queue.onSubmittedWorkDone();
+    return { Moved, ActiveStrokes: State.Ledger.ActiveCount };
+};
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                        EXPORT
+//------------------------------------------------------------------------------------------------------------------------
+
+// The stroke TREE: the whole document as a resolution-free record that replays into any atlas size.
+//
+// 🔴 This is the primary export, and the reason the record was built in object space. It names no pixel
+//    dimension anywhere, so the same document reconstructs at 512² or 8K — which is what makes the
+//    application resolution-independent in the sense that matters. The flattened PNG below is DERIVED from
+//    this, never the other way round: an image cannot be re-lifted into strokes.
+// 🔴 Carries an explicit `Version` and `Space`. A record whose units are implicit is unreadable the moment
+//    the convention changes, and "object space, raw pressure" is exactly the kind of rule a later reader
+//    would otherwise have to infer from the numbers — and would infer wrongly for a model near the origin.
+window.ExportStrokeTree = function ()
+{
+    if (!State.Ledger) { return null; }
+
+    const Document = State.Ledger.Describe();
+
+    return {
+        Version:   1,
+        Kind:      "PaintingSurface.StrokeTree",
+        // 📝 The authoring extent is recorded as PROVENANCE, not as a requirement. It says what the painter
+        //    was looking at; it does not constrain what a replay may choose.
+        Authored:  { AtlasExtent, Surface: State.Surface?.Name ?? null },
+        Space:     {
+            Position:   "object",
+            Coordinate: "uv",
+            Radius:     "object",
+            Pressure:   "raw"
+        },
+        Layers: State.Stack ? State.Stack.Layers.map((Layer) => ({
+            Token:     Layer.Token,
+            Name:      Layer.Name,
+            Kind:      Layer.Kind,
+            Blend:     Layer.Blend,
+            Opacity:   Layer.Opacity,
+            Shown:     Layer.Shown,
+            // 📝 Preset and Generator are recorded because PaintLayer derives its default channel set and
+            //    authored values from them; a reader that restored Values alone would rebuild a layer whose
+            //    defaults disagreed with its identity.
+            Preset:    Layer.Preset,
+            Generator: Layer.Generator,
+            Enabled:   [...Layer.Enabled],
+            Values:    { ...Layer.Values },
+            Modes:     { ...Layer.Modes },
+            Params:    { ...Layer.Params }
+        })) : [],
+        Strokes: Document.Strokes,
+        Cursor:  Document.Cursor
+    };
+};
+
+// Flatten the painting to ONE image per channel atlas, at an arbitrary extent.
+//
+// 🔴 Replays the tree into a FRESH stack allocated at the requested extent rather than upscaling the live
+//    atlases. That is the whole point: a 4K export re-lays every dab at 4K, so a soft edge gains real
+//    texels instead of being interpolated from 1K ones. It also means the result is NOT a resample of the
+//    on-screen image and will not be pixel-identical to one — dab spacing is `Spacing x Radius` in object
+//    units, so a higher extent spends more texels per dab. That is correct, and worth expecting.
+// 🔴 The live stack, composite and mask are left untouched. Exporting must not disturb what the user is
+//    painting, and reusing State.Stack would both resize their document and destroy their undo base.
+// 🔴 Every allocation here is DESTROYED before returning, in a finally. An 8K export is three 256 MiB
+//    atlases per layer; leaking one set per export button press exhausts the adapter within a few clicks,
+//    and the failure surfaces as an unrelated allocation error much later.
+window.ExportFlattened = async function (Extent)
+{
+    if (!State.Device || !State.Ledger || !State.Stack) { return null; }
+
+    // 📝 Accepts either a label from RESOLUTIONS ("4K") or a raw number, so a caller can pass the token the
+    //    UI shows without translating it.
+    // 🔴 The default is chosen with an `undefined` test, NOT with `??` against Number(Extent). Number(undefined)
+    //    is NaN — which is not nullish, so `Number(Extent) ?? AtlasExtent` never reaches the fallback and a
+    //    no-argument call would be rejected by the validator below with a message about NaN instead of
+    //    quietly exporting at the authoring extent.
+    const Wanted = Extent === undefined || Extent === null
+        ? AtlasExtent
+        : (RESOLUTIONS[String(Extent)] ?? Number(Extent));
+
+    // 🔴 Rejected rather than clamped. A non-power-of-two or absurd extent would allocate, replay, and
+    //    produce a subtly wrong image (mip levels for the preview path assume power-of-two reduction), and
+    //    silently substituting a different size gives the caller a file that is not what they asked for.
+    if (!Number.isInteger(Wanted) || Wanted < 64 || Wanted > 8192 || (Wanted & (Wanted - 1)) !== 0)
+    {
+        return { Fault: `Extent must be a power of two in [64, 8192]; received ${Extent}` };
+    }
+
+    const Started = performance.now();
+    let   Stack   = null;
+    let   Composite = null;
+
+    try
+    {
+        // A stack that mirrors the live one's layer settings, allocated at the export extent.
+        Stack = new LayerStack(State.Device, Wanted);
+
+        // 🔴 Added BOTTOM-first. Add() inserts at index 0 (the top) when no index is given, so walking the
+        //    live stack front-to-back would build the export stack upside down — and because the compositor
+        //    walks the array backward, every blend mode would resolve against the wrong layers underneath.
+        for (const Source of [...State.Stack.Layers].reverse())
+        {
+            // 🔴 `Options` is Add's FIFTH parameter; the fourth is AtIndex. Passing a settings object in the
+            //    fourth slot would have it read as an insertion index (NaN -> clamped to 0) and the preset
+            //    would be dropped silently.
+            const Layer = Stack.Add(Source.Name, Source.Kind, [...Source.Enabled], undefined, {
+                Preset:    Source.Preset,
+                Generator: Source.Generator
+            });
+
+            // 🔴 The layer's IDENTITY is carried over, because ReplayIntoLayers routes every stroke by the
+            //    recorded Target.Token. A fresh stack mints fresh tokens, so without this every stroke
+            //    would find no matching layer, count as orphaned, and the export would come back blank —
+            //    with a healthy-looking "0 strokes laid" tally and no error anywhere.
+            Layer.Token   = Source.Token;
+            Layer.Blend   = Source.Blend;
+            Layer.Opacity = Source.Opacity;
+            Layer.Shown   = Source.Shown;
+
+            // 🔴 Assigned after construction: PaintLayer builds Values from the channel defaults and its
+            //    material preset, and takes no Values override. Copied per key rather than by reference —
+            //    an array value (baseColour, emission) shared with the live layer would let the export
+            //    mutate the document it is exporting.
+            for (const [Key, Value] of Object.entries(Source.Values))
+            {
+                Layer.Values[Key] = Array.isArray(Value) ? Value.slice() : Value;
+            }
+            Layer.Modes = { ...Source.Modes };
+            Layer.Params = { ...Source.Params };
+        }
+
+        const Replay = ReplayIntoLayers(
+            State.Device, State.Pass, Stack, State.Surface, State.Ledger,
+            ResolveAtlasWrite, CHANNEL_ATLASES);
+
+        // Flatten the replayed stack the same way the viewport does.
+        Composite = new LayerComposite(State.Device, Wanted);
+        Composite.Resolve(Stack);
+
+        await State.Device.queue.onSubmittedWorkDone();
+
+        // One PNG per resolved atlas.
+        const Images  = {};
+        const Encoder = State.Device.createCommandEncoder({ label: "ExportFlatten" });
+        const Staged  = [];
+
+        for (const Descriptor of CHANNEL_ATLASES)
+        {
+            const Texture = Composite.Resolved[Descriptor.Key];
+            if (!Texture) { continue; }
+            Staged.push({
+                Key:   Descriptor.Key,
+                Store: EncodeCapture(State.Device, Encoder, Texture, Wanted, Wanted)
+            });
+        }
+
+        State.Device.queue.submit([Encoder.finish()]);
+
+        for (const Entry of Staged)
+        {
+            // 🔴 AtlasFormat, not the canvas format. These are atlas textures, and ResolveCapture swizzles
+            //    on a `bgra` prefix — handing it the presentation format would exchange red and blue in
+            //    every exported file while leaving the image otherwise perfect and plausible.
+            const Capture = await ResolveCapture(Entry.Store, Wanted, Wanted, AtlasFormat);
+            Images[Entry.Key] = {
+                PortableNetworkGraphic: Capture.PortableNetworkGraphic,
+                DistinctColourCount:    Capture.DistinctColourCount
+            };
+        }
+
+        return {
+            Extent:  Wanted,
+            Images,
+            Strokes: Replay,
+            Elapsed: performance.now() - Started,
+            // Surfaced, not swallowed: a caller showing "exported" over a partial image is the failure this
+            // tally exists to prevent.
+            Note: Replay.Orphaned > 0 || Replay.Masked > 0
+                ? `${Replay.Orphaned} stroke(s) skipped (layer gone), ${Replay.Masked} mask stroke(s) not replayed`
+                : null
+        };
+    }
+    catch (Fault)
+    {
+        console.error("ExportFlattened failed", Fault);
+        return { Fault: String(Fault?.message ?? Fault) };
+    }
+    finally
+    {
+        // 🔴 The teardown verb is `Release`, not `Destroy`, and LayerStack has NO release of its own — only
+        //    PaintLayer does, so the stack is freed layer by layer. Calling a `Destroy` that does not exist
+        //    would have been a silent no-op behind an optional guard: every export would leak three atlases
+        //    per layer (768 MiB at 8K on a four-layer document) and nothing would report it.
+        Composite?.Release();
+        for (const Layer of Stack?.Layers ?? []) { Layer.Release(); }
+    }
+};
+
+Initialise()
+    .then(() => { window.ProbeReport.Settled = true; })
+    .catch((Fault) => {
+        window.ProbeReport.Stage   = "threw";
+        window.ProbeReport.Fault   = String(Fault?.stack ?? Fault);
+        window.ProbeReport.Settled = true;
+        ReportFault(String(Fault?.message ?? Fault));
+    });
+</script>
+
+</body>
+</html>

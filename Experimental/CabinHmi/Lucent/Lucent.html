@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+    LUCENT — CABIN HMI PROTOTYPE C (awaiting approval)
+    🧩 Glass-card luxury display for the ControlVehicle: a dark studio with a curved light wall and mirror floor,
+       a deck of tilted blue glass cards that flips per menu, a round icon column, a rising 3D city route,
+       hinged lid outlines for access and an x-ray cabin with reclining seats. 1600 × 900.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucent · Cabin HMI C</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Lucent.css">
+</head>
+<body>
+<div class="DisplayHost Lucent" id="Display">
+    <canvas class="Scene" id="Scene"></canvas>
+    <div class="Shade"></div>
+    <div class="Callouts" id="Callouts"></div>
+
+    <!-- ① Heading -->
+    <header class="Heading">
+        <small>Good evening, Ilan</small>
+        <h1 id="MenuTitle">Studio</h1>
+        <p id="MenuLead">Everything about the car, one glance away.</p>
+    </header>
+    <div class="StateChip"><i></i><b>P</b><span>Ready</span><em>412 km</em></div>
+    <div class="TopRight"><span><svg viewBox="0 0 24 24"><path d="M7 18a5 5 0 1 1 1.2-9.9A6 6 0 0 1 19.5 11 3.5 3.5 0 0 1 18 18Z"/></svg>18°</span><b id="Clock">19:40</b></div>
+
+    <!-- ② Round icon column -->
+    <nav class="IconColumn" id="IconColumn">
+        <button data-menu="Studio" class="On" data-ripple><svg viewBox="0 0 24 24"><path d="M4 16v-3l2.5-5h11L20 13v3Z"/><circle cx="8" cy="16.5" r="1.8"/><circle cx="16" cy="16.5" r="1.8"/></svg><span>Studio</span></button>
+        <button data-menu="Route" data-ripple><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.4-6-10a6 6 0 0 1 12 0c0 4.6-6 10-6 10Z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Route</span></button>
+        <button data-menu="Access" data-ripple><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Access</span></button>
+        <button data-menu="Lighting" data-ripple><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.9.6 1.5 1.6 1.5 2.6V17h4v-.5c0-1 .6-2 1.5-2.6A6 6 0 0 0 12 3Z"/></svg><span>Lighting</span></button>
+        <button data-menu="Seats" data-ripple><svg viewBox="0 0 24 24"><path d="M8 3h3l1 9h5a2 2 0 0 1 2 2v3H8Z"/><path d="M9 21h9"/></svg><span>Seats</span></button>
+    </nav>
+
+    <!-- ③ Card deck -->
+    <section class="Deck" id="Deck">
+
+        <!-- Studio -->
+        <div class="CardSet On" data-set="Studio">
+            <article class="Card" style="--I:0" data-go="Access">
+                <header><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Lock / Unlock<button class="Go" aria-label="Open"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M6 4h6v6" fill="none"/></svg></button></header>
+                <button class="LockPill" data-lock data-ripple><i></i><span class="Locked">Locked</span><span class="Unlocked">Unlocked</span></button>
+                <footer><span><b>4</b> doors</span><span><b>0</b> windows open</span></footer>
+            </article>
+            <article class="Card" style="--I:1">
+                <header><svg viewBox="0 0 24 24"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0Z"/></svg>Temperature<button class="Go" aria-label="Open"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M6 4h6v6" fill="none"/></svg></button></header>
+                <div class="TempRow"><button class="Step" data-temp="-0.5" data-ripple>−</button><div class="TempValue"><b id="CabinTemp">21.5</b><em>°C</em></div><button class="Step" data-temp="0.5" data-ripple>+</button></div>
+                <footer><span>Outside <b>18°</b></span><span>Humidity <b>46%</b></span></footer>
+            </article>
+            <article class="Card" style="--I:2" data-go="Lighting">
+                <header><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16Z"/></svg>Light colour<button class="Go" aria-label="Open"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M6 4h6v6" fill="none"/></svg></button></header>
+                <div class="Swatches" data-swatches></div>
+                <footer><span id="LightName">Lime</span><span>Wall <b id="WallLevelText">80%</b></span></footer>
+            </article>
+            <article class="Card" style="--I:3" data-go="Seats">
+                <header><svg viewBox="0 0 24 24"><path d="M8 3h3l1 9h5a2 2 0 0 1 2 2v3H8Z"/><path d="M9 21h9"/></svg>Seat settings<button class="Go" aria-label="Open"><svg viewBox="0 0 16 16"><path d="M4 12 12 4M6 4h6v6" fill="none"/></svg></button></header>
+                <div class="Memory" data-memory><button data-preset="0" class="On">1</button><button data-preset="1">2</button><button data-preset="2">3</button></div>
+                <footer><span>Recline <b class="ReclineText">18°</b></span><span>Heat <b class="HeatText">Off</b></span></footer>
+            </article>
+        </div>
+
+        <!-- Route -->
+        <div class="CardSet" data-set="Route">
+            <article class="Card" style="--I:0">
+                <header><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Arrival</header>
+                <div class="BigFigure"><b id="EtaText">12</b><em>min</em></div>
+                <footer><span><b id="DistanceText">8.4</b> km</span><span>Arrive <b id="ArriveText">19:52</b></span></footer>
+            </article>
+            <article class="Card" style="--I:1">
+                <header><svg viewBox="0 0 24 24"><path d="M6 20V9h9M11 5l4 4-4 4"/></svg>Next turn</header>
+                <div class="TurnRow"><div class="TurnArrow" id="TurnArrow"><svg viewBox="0 0 48 48"><path d="M16 42V20h16M26 12l8 8-8 8"/></svg></div><div><b id="TurnDistance">320 m</b><small id="TurnStreet">Kestrel Avenue</small></div></div>
+                <footer><span>Lane <b>2 of 3</b></span><span>Traffic <b>light</b></span></footer>
+            </article>
+            <article class="Card Destinations" style="--I:2">
+                <header><svg viewBox="0 0 24 24"><path d="M12 21s-6-5.4-6-10a6 6 0 0 1 12 0c0 4.6-6 10-6 10Z"/></svg>Destination</header>
+                <div class="DestinationList" id="DestinationList">
+                    <button data-route="0" class="On" data-ripple>Home<small>Larch Close</small></button>
+                    <button data-route="1" data-ripple>Harbour<small>Pier 4</small></button>
+                    <button data-route="2" data-ripple>Atelier<small>Foundry Lane</small></button>
+                </div>
+            </article>
+            <article class="Card Action" style="--I:3">
+                <header><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Guidance</header>
+                <button class="Launch" id="GuideButton" data-ripple><span>Start guidance</span></button>
+                <footer><span>Charge at arrival <b>71%</b></span></footer>
+            </article>
+        </div>
+
+        <!-- Access -->
+        <div class="CardSet" data-set="Access">
+            <article class="Card" style="--I:0">
+                <header><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Central lock</header>
+                <button class="LockPill" data-lock data-ripple><i></i><span class="Locked">Locked</span><span class="Unlocked">Unlocked</span></button>
+                <footer><span>Walk-away lock <b>on</b></span></footer>
+            </article>
+            <article class="Card" style="--I:1">
+                <header><svg viewBox="0 0 24 24"><path d="M4 15h16M6 15l2-6h8l2 6"/></svg>Front trunk</header>
+                <button class="Hinge" data-lid="Frunk" data-ripple><i></i><span>Open frunk</span></button>
+                <footer><span>Capacity <b>88 L</b></span></footer>
+            </article>
+            <article class="Card" style="--I:2">
+                <header><svg viewBox="0 0 24 24"><path d="M4 9h16M6 9l2 6h8l2-6"/></svg>Boot</header>
+                <button class="Hinge" data-lid="Boot" data-ripple><i></i><span>Open boot</span></button>
+                <footer><span>Capacity <b>402 L</b></span></footer>
+            </article>
+            <article class="Card" style="--I:3">
+                <header><svg viewBox="0 0 24 24"><path d="M13 3 6 13h5l-1 8 7-10h-5Z"/></svg>Charge port</header>
+                <div class="ChargeRow"><svg viewBox="0 0 80 80"><circle class="Track" cx="40" cy="40" r="32"/><circle class="Arc" id="ChargeArc" cx="40" cy="40" r="32"/></svg><div><b id="ChargeText">78</b><em>%</em></div><button class="MiniToggle" id="PortToggle" data-ripple><i></i></button></div>
+                <footer><span id="PortNote">Port closed</span></footer>
+            </article>
+        </div>
+
+        <!-- Lighting -->
+        <div class="CardSet" data-set="Lighting">
+            <article class="Card" style="--I:0">
+                <header><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16Z"/></svg>Wall colour</header>
+                <div class="Swatches Large" data-swatches></div>
+                <footer><span class="LightNameEcho">Lime</span></footer>
+            </article>
+            <article class="Card" style="--I:1">
+                <header><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/></svg>Intensity</header>
+                <div class="BigFigure"><b id="WallLevelBig">80</b><em>%</em></div>
+                <div class="Slider" id="WallSlider" data-value="0.8"><i class="Fill"></i><i class="Knob"></i></div>
+            </article>
+            <article class="Card" style="--I:2">
+                <header><svg viewBox="0 0 24 24"><path d="M3 12c3-6 6 6 9 0s6 6 9 0"/></svg>Motion</header>
+                <div class="Choice" id="WallMotion"><button data-motion="still">Still</button><button data-motion="wave" class="On">Wave</button><button data-motion="pulse">Pulse</button></div>
+                <footer><span>Synced to <b>cabin ambient</b></span></footer>
+            </article>
+            <article class="Card Action" style="--I:3">
+                <header><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Welcome</header>
+                <button class="Launch" id="WelcomeButton" data-ripple><span>Play welcome</span></button>
+                <footer><span>Lamps, wall and floor ring</span></footer>
+            </article>
+        </div>
+
+        <!-- Seats -->
+        <div class="CardSet" data-set="Seats">
+            <article class="Card" style="--I:0">
+                <header><svg viewBox="0 0 24 24"><path d="M8 3h3l1 9h5a2 2 0 0 1 2 2v3H8Z"/></svg>Driver seat</header>
+                <div class="SeatFigure"><svg viewBox="0 0 120 70"><path class="Cushion" d="M40 52h52a6 6 0 0 1 0 12H40Z"/><g id="BackrestIcon" class="Back"><path d="M40 58 30 14a6 6 0 0 1 11.6-2.6L52 56Z"/></g></svg><b class="ReclineText">18°</b></div>
+                <div class="Slider" id="ReclineSlider" data-value="0.36"><i class="Fill"></i><i class="Knob"></i></div>
+            </article>
+            <article class="Card" style="--I:1">
+                <header><svg viewBox="0 0 24 24"><path d="M4 12c2-3 4 3 6 0s4 3 6 0 4 3 4 3"/></svg>Massage</header>
+                <div class="Choice" id="Massage"><button data-massage="off" class="On">Off</button><button data-massage="wave">Wave</button><button data-massage="knead">Knead</button></div>
+                <footer><span>Lumbar <b>soft</b></span></footer>
+            </article>
+            <article class="Card" style="--I:2">
+                <header><svg viewBox="0 0 24 24"><path d="M8 20c-2-3 2-5 0-8s2-5 0-8M14 20c-2-3 2-5 0-8s2-5 0-8"/></svg>Heat &amp; vent</header>
+                <div class="Climate3">
+                    <button class="Level Heat" id="SeatHeat" data-level="0" data-ripple>Heat<span><i></i><i></i><i></i></span></button>
+                    <button class="Level Vent" id="SeatVent" data-level="0" data-ripple>Vent<span><i></i><i></i><i></i></span></button>
+                </div>
+            </article>
+            <article class="Card" style="--I:3">
+                <header><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Memory</header>
+                <div class="Memory Large" data-memory><button data-preset="0" class="On">1</button><button data-preset="1">2</button><button data-preset="2">3</button></div>
+                <footer><span id="PresetNote">Ilan · daily</span></footer>
+            </article>
+        </div>
+    </section>
+
+    <div class="Toast" id="Toast"></div>
+</div>
+<div class="ProtoTag">Prototype C · Lucent · awaiting approval</div>
+<script type="module" src="./Lucent.js"></script>
+</body>
+</html>

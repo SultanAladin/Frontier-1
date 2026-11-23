@@ -1,0 +1,2695 @@
+<!DOCTYPE html>
+<!--====================================================================================================================================
+                                                TEXTUREPAINTINSPECTOR.HTML
+====================================================================================================================================-->
+<!-- 🧩 PaintLayerStack + material inspector merged into one Tab-summoned surface: [stack | layer properties] ⇄ [identity | channels ⇄ revisions] -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Texture Paint Inspector</title>
+<style>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       TOKENS
+----------------------------------------------------------------------------------------------------------------------*/
+:root{
+  /* surfaces — same palette as SceneDirectoryInspector so both read as one product */
+  --desk:#0a0a0b; --menu:#17171a; --menu-2:#101012; --rail-sel:#232327;
+  --tile:#1d1d21; --tile-hi:#26262b;
+  --hair:rgba(255,255,255,.06); --hair-strong:rgba(255,255,255,.10);
+  --accent:#5b8cff; --ink:#ececf0; --muted:#82828c; --faint:#55555d;
+  --r-menu:18px; --r-tile:12px;
+
+  /* field widgets */
+  --value-black:#0a0a0b; --value-unit:#33333a; --value-focus:#303035;
+  --track-bg:#2f2f33; --track-fill:#8a8a8e; --knob:#f4f4f5;
+  --outline:rgba(255,255,255,.22); --text-value:#f2f2f4; --row-h:38px;
+
+  /* row states */
+  --row-hover:rgba(255,255,255,.045); --row-sel:var(--rail-sel);
+
+  /* 🔴 one hue per LayerClassification — carried from Studio's LAYER_TYPES tags */
+  --hue-material:#8b5cf6; --hue-generator:#10b981;
+  --hue-brushwork:#f97316; --hue-flood:#3b82f6;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                        BASE
+----------------------------------------------------------------------------------------------------------------------*/
+*{ box-sizing:border-box; }
+html,body{ height:100%; margin:0; }
+body{
+  background:var(--desk); color:var(--ink);
+  font:14px/1 "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden; user-select:none;
+}
+button,input{ font-family:inherit; }
+.no-bar{ scrollbar-width:none; -ms-overflow-style:none; }
+.no-bar::-webkit-scrollbar{ width:0; height:0; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       LAYOUT
+----------------------------------------------------------------------------------------------------------------------*/
+.workspace-host{ height:100%; display:flex; flex-direction:column; }
+
+.host-bar{
+  flex:0 0 auto; height:36px; display:flex; align-items:center; gap:12px;
+  padding:0 14px; background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.host-bar .hb-mark{ width:18px; height:18px; color:var(--accent); }
+.host-bar .hb-name{ font-size:12.5px; font-weight:600; letter-spacing:.2px; }
+.host-bar .hb-path{ font-size:11px; color:var(--faint); }
+.host-bar .hb-spacer{ flex:1; }
+.host-bar .hb-hint{
+  font-size:10.5px; color:var(--muted); background:var(--menu);
+  border:1px solid var(--hair); border-radius:999px; padding:4px 10px;
+}
+.host-bar .hb-hint b{ color:var(--ink); font-weight:600; }
+
+.host-body{ flex:1; min-height:0; display:flex; }
+
+/* the paint canvas is the whole host — the menu is summoned over it */
+.viewport{ flex:1; min-width:0; position:relative; background:var(--desk); overflow:hidden; }
+.viewport-weave{
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+  background-size:28px 28px, 28px 28px, 140px 140px, 140px 140px;
+}
+.viewport-vignette{
+  position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(0,0,0,.55) 100%);
+}
+.viewport-note{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  text-align:center; color:var(--faint); font-size:12px; line-height:1.7; pointer-events:none;
+}
+.viewport-note kbd{
+  display:inline-block; background:var(--menu); color:var(--ink);
+  border:1px solid var(--hair-strong); border-bottom-width:2px; border-radius:6px;
+  padding:3px 8px; font:600 11px/1 "Segoe UI", sans-serif; margin:0 2px;
+}
+.viewport-foot{
+  position:absolute; left:0; right:0; bottom:0; height:28px;
+  display:flex; align-items:center; gap:9px; padding:0 13px;
+  background:linear-gradient(transparent, rgba(0,0,0,.5));
+  font-size:10.5px; color:var(--faint); pointer-events:none;
+}
+.viewport-foot .vf-dot{ color:var(--value-unit); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE HEAD
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 both panes share one band so the seam between stack and properties never steps */
+.pane-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  height:53px; padding:0 11px; box-sizing:border-box;
+  background:var(--rail-sel); border-bottom:1px solid var(--hair);
+}
+.pane-head .h-ic{
+  width:26px; height:26px; flex:0 0 auto; color:var(--ink);
+  background:#000; border-radius:7px; display:grid; place-items:center;
+}
+.pane-head .h-ic svg{ width:18px; height:18px; }
+.pane-head .h-txt{ flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; }
+.pane-head .h-txt .h-lbl{
+  display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pane-head .h-txt .fn{
+  display:block; color:var(--faint); font-weight:400; font-size:10px;
+  letter-spacing:.3px; margin-top:3px;
+}
+.pane-head .h-n{
+  flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+  background:var(--menu-2); padding:4px 9px; border-radius:999px;
+}
+.pane-head .h-n.accent{ color:var(--accent); }
+.pane-head .h-acts{ display:flex; align-items:center; gap:3px; flex:0 0 auto; }
+.hdr-btn{
+  width:27px; height:27px; display:grid; place-items:center;
+  background:none; border:0; border-radius:8px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.hdr-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+.hdr-btn:disabled{ opacity:.3; cursor:default; }
+.hdr-btn:disabled:hover{ background:none; color:var(--muted); }
+.hdr-btn svg{ width:15px; height:15px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   SEARCH STRIP
+----------------------------------------------------------------------------------------------------------------------*/
+.search-wrap{ flex:0 0 auto; padding:7px 7px 4px; }
+.search{
+  display:flex; align-items:center; gap:7px; height:30px; padding:0 9px;
+  background:var(--menu-2); border:1px solid var(--hair); border-radius:9px;
+  transition:border-color .12s;
+}
+.search:focus-within{ border-color:var(--outline); }
+.search svg{ width:14px; height:14px; color:var(--faint); flex:0 0 auto; }
+.search input{
+  flex:1; min-width:0; background:none; border:0; outline:none;
+  color:var(--ink); font-size:12px;
+}
+.search input::placeholder{ color:var(--faint); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    STACK ROWS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 ported from Studio layerstack.css: tag + thumbnail + two-line text + opacity pill.
+   Trimmed 52px → 44px because the summoned card is 372px tall, not a full-height dock. */
+.stack-body{
+  flex:1; min-height:0; overflow-y:auto;
+  padding:4px 6px 8px; display:flex; flex-direction:column; gap:2px;
+}
+.stack-row{
+  position:relative; display:flex; align-items:center; gap:7px;
+  height:44px; padding:0 7px 0 5px; border-radius:10px;
+  color:var(--muted); cursor:pointer; border:1px solid transparent;
+  transition:background .12s, border-color .12s, opacity .12s;
+}
+.stack-row:hover{ background:var(--row-hover); }
+.stack-row.active{ background:var(--row-sel); border-color:var(--hair-strong); }
+.stack-row.active::before{
+  content:""; position:absolute; left:-6px; top:50%; transform:translateY(-50%);
+  width:3px; height:18px; border-radius:0 3px 3px 0; background:var(--accent);
+}
+.stack-row.dragging{ opacity:.45; }
+.stack-row.layer-muted .sr-name,
+.stack-row.layer-muted .sr-thumb,
+.stack-row.layer-muted .sr-meta{ opacity:.4; }
+/* the 4px hue tag — colour is the layer's classification, same hue as everywhere else */
+.sr-tag{ width:4px; height:28px; border-radius:999px; flex:0 0 auto; }
+.sr-thumb{
+  width:30px; height:30px; flex:0 0 auto; position:relative; overflow:hidden;
+  border-radius:8px; border:1px solid var(--hair); background:#000;
+  display:grid; place-items:center;
+}
+.sr-thumb svg{ width:15px; height:15px; }
+.sr-thumb-fill{ position:absolute; inset:0; }
+.sr-text{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.sr-name{
+  font-size:12px; font-weight:500; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.sr-name.editing{
+  background:#000; border:1px solid var(--accent); border-radius:5px;
+  padding:1px 4px; outline:none;
+}
+.sr-meta{
+  font-size:9px; text-transform:uppercase; letter-spacing:.7px; color:var(--faint);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* the mask chip: a greyscale gradient reading fill + invert, straight from Studio */
+.sr-mask{
+  width:19px; height:19px; flex:0 0 auto; border-radius:5px;
+  border:1px solid var(--hair); background:#000;
+}
+.sr-opacity{
+  flex:0 0 auto; min-width:37px; text-align:center; padding:3px 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted);
+  background:#000; border:1px solid var(--hair); border-radius:999px;
+  font-variant-numeric:tabular-nums; cursor:ew-resize;
+  transition:border-color .14s, color .14s;
+}
+.sr-opacity:hover{ border-color:var(--outline); color:var(--ink); }
+.sr-visibility{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  opacity:0; color:var(--faint); border-radius:5px;
+  transition:opacity .12s, color .12s, background .12s;
+}
+.stack-row:hover .sr-visibility{ opacity:1; }
+.sr-visibility:hover{ background:var(--tile-hi); color:var(--ink); }
+.sr-visibility svg{ width:14px; height:14px; }
+.stack-row.layer-muted .sr-visibility{ opacity:1; }
+/* drop indicator for drag-reorder */
+.drop-line{
+  height:2px; margin:1px 8px; border-radius:2px; flex:0 0 auto;
+  background:var(--accent); box-shadow:0 0 8px var(--accent); pointer-events:none;
+}
+.empty-state{
+  padding:26px 14px; text-align:center; color:var(--faint);
+  font-size:11.5px; line-height:1.7;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE FOOT
+----------------------------------------------------------------------------------------------------------------------*/
+.pane-foot{
+  flex:0 0 auto; height:29px; display:flex; align-items:center; gap:7px;
+  padding:0 12px; background:var(--menu-2); border-top:1px solid var(--hair);
+  font-size:10.5px; color:var(--muted);
+}
+.slide-pane.detail .pane-foot{ background:var(--menu); }
+.pf-strong{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-dot{ color:var(--value-unit); }
+.pf-spacer{ flex:1; }
+.pf-hue{ width:8px; height:8px; border-radius:2px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   PROPERTY CARDS
+----------------------------------------------------------------------------------------------------------------------*/
+.prop-body{ flex:1; min-height:0; overflow-y:auto; padding:8px 8px 12px; }
+.card{
+  background:var(--menu); border:1px solid var(--hair); border-radius:var(--r-tile);
+  margin-bottom:7px; overflow:hidden; animation:cardRise .22s cubic-bezier(.16,1,.3,1) both;
+}
+.card:nth-child(1){ animation-delay:.03s; }
+.card:nth-child(2){ animation-delay:.06s; }
+.card:nth-child(3){ animation-delay:.09s; }
+.card:nth-child(4){ animation-delay:.12s; }
+.card:nth-child(5){ animation-delay:.15s; }
+@keyframes cardRise{
+  from{ opacity:0; transform:translateY(8px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+.card-head{
+  display:flex; align-items:center; gap:8px; height:31px; padding:0 10px;
+  font-size:10.5px; font-weight:600; letter-spacing:1px; text-transform:uppercase;
+  color:var(--muted); cursor:pointer; background:var(--menu-2);
+  border-bottom:1px solid var(--hair); transition:color .12s;
+}
+.card-head:hover{ color:var(--ink); }
+.card-head .ch-tw{
+  width:10px; height:10px; flex:0 0 auto; color:var(--faint); transition:transform .16s;
+}
+.card-head .ch-tw svg{ width:10px; height:10px; }
+.card.collapsed .card-head .ch-tw{ transform:rotate(-90deg); }
+.card.collapsed .card-head{ border-bottom-color:transparent; }
+.card-head .ch-dot{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
+.card-head .ch-n{ margin-left:auto; font-size:9.5px; color:var(--faint); letter-spacing:0; }
+/* 📝 1fr → 0fr grid row: collapses without measuring height */
+.card-shell{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .2s cubic-bezier(.4,0,.2,1); }
+.card.collapsed .card-shell{ grid-template-rows:0fr; }
+.card-body-inner{ min-height:0; overflow:hidden; }
+.card-body{ padding:7px 10px 9px; display:flex; flex-direction:column; gap:2px; }
+
+.prow{
+  display:grid; grid-template-columns:88px minmax(0,1fr); column-gap:10px;
+  align-items:center; min-height:var(--row-h);
+}
+.plabel{
+  font-size:11.5px; color:var(--muted); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; transition:color .2s;
+}
+.prow.changed .plabel{ color:var(--accent); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   FIELD WIDGETS
+----------------------------------------------------------------------------------------------------------------------*/
+.valuebox{
+  display:flex; align-items:stretch; height:26px; min-width:0;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  overflow:hidden; transition:border-color .12s;
+}
+.valuebox:focus-within{ border-color:var(--outline); background:var(--value-focus); }
+.valuebox .num{ flex:1; min-width:0; display:flex; align-items:center; padding:0 6px; }
+.valuebox input{
+  width:100%; min-width:0; background:none; border:0; outline:none;
+  color:var(--text-value); font-size:11.5px; font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield;
+}
+.valuebox input::-webkit-outer-spin-button,
+.valuebox input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.unitseg{
+  flex:0 0 auto; display:grid; place-items:center; padding:0 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted); background:var(--value-unit);
+  border-left:1px solid var(--hair);
+}
+
+.sliderrow{ display:flex; align-items:center; gap:7px; min-width:0; }
+.sliderrow .valuebox{ flex:0 0 78px; }
+.slider{
+  flex:1; min-width:0; position:relative; height:4px;
+  background:var(--track-bg); border-radius:999px; cursor:pointer;
+}
+.slider .fill{ position:absolute; left:0; top:0; bottom:0; background:var(--track-fill); border-radius:999px; }
+.slider .knob{
+  position:absolute; top:50%; width:12px; height:12px; margin-left:-6px;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+
+.switch{
+  width:38px; height:22px; flex:0 0 auto; position:relative; cursor:pointer;
+  background:var(--track-bg); border-radius:999px; transition:background .16s;
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  background:var(--knob); border-radius:50%; transition:left .16s cubic-bezier(.4,0,.2,1);
+}
+.switch.on .nub{ left:19px; }
+
+.segment{
+  display:flex; height:26px; background:var(--value-black);
+  border:1px solid var(--hair-strong); border-radius:7px; overflow:hidden;
+}
+.seg-opt{
+  flex:1; min-width:0; display:grid; place-items:center; font-size:11px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.seg-opt:hover{ color:var(--ink); }
+.seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+.dropdown{ position:relative; min-width:0; }
+.dd-head{
+  display:flex; align-items:center; height:26px; padding:0 0 0 8px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  cursor:pointer; transition:border-color .12s;
+}
+.dropdown.open .dd-head{ border-color:var(--outline); }
+.dd-head .cur{
+  flex:1; min-width:0; font-size:11.5px; color:var(--text-value);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.dd-head .caret{
+  flex:0 0 auto; width:22px; display:grid; place-items:center; align-self:stretch;
+  color:var(--muted); background:var(--value-unit); border-left:1px solid var(--hair);
+  font-size:10px;
+}
+/* 📝 fixed + JS-placed so the list escapes the scrolling card */
+.dd-list{
+  position:fixed; display:none; z-index:1200; max-height:280px; overflow-y:auto; padding:4px;
+  background:#141416; border:1px solid #2a2a30; border-radius:9px;
+  box-shadow:0 16px 44px rgba(0,0,0,.6);
+}
+.dropdown.open .dd-list{ display:block; }
+.dd-item{
+  display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px;
+  font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.dd-item:hover{ background:#22222a; }
+.dd-item .radio{
+  margin-left:auto; width:10px; height:10px; border-radius:50%;
+  border:1.4px solid var(--value-unit); flex:0 0 auto;
+}
+.dd-item.sel .radio{ border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 2px #141416; }
+
+.colorbar{
+  display:flex; align-items:center; height:26px; padding:0 0 0 5px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  cursor:pointer; transition:border-color .12s;
+}
+.colorbar.open{ border-color:var(--outline); }
+.colorbar .swatchseg{ flex:1; min-width:0; display:flex; align-items:center; gap:7px; }
+.colorbar .circle{
+  width:15px; height:15px; flex:0 0 auto; border-radius:50%;
+  box-shadow:0 0 0 1px var(--hair-strong);
+}
+.colorbar .cname{
+  min-width:0; font-size:10.5px; color:var(--text-value);
+  font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.colorbar .caret{
+  flex:0 0 auto; width:22px; display:grid; place-items:center; align-self:stretch;
+  color:var(--muted); background:var(--value-unit); border-left:1px solid var(--hair); font-size:10px;
+}
+.picker{
+  display:none; margin-top:5px; padding:8px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:9px;
+}
+.picker.open{ display:block; }
+.svbox{ position:relative; height:78px; border-radius:7px; cursor:crosshair; }
+.svknob{
+  position:absolute; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
+  border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.5);
+}
+.barstack{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.cbar{ position:relative; height:9px; border-radius:999px; cursor:pointer; }
+.huebar{ background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+.cknob{
+  position:absolute; top:50%; width:13px; height:13px; margin-left:-6.5px;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.6);
+}
+.hexrow{ display:flex; align-items:center; gap:7px; margin-top:8px; }
+.hexrow input{
+  flex:1; min-width:0; height:24px; padding:0 7px;
+  background:var(--value-focus); border:1px solid var(--hair-strong); border-radius:6px;
+  outline:none; color:var(--text-value); font-size:11px; text-transform:uppercase;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     CAROUSEL
+----------------------------------------------------------------------------------------------------------------------*/
+.prop-carousel{
+  flex:0 0 auto; display:flex; align-items:stretch; height:33px; padding:0 6px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.pc-seg{
+  flex:1 1 50%; width:50%; margin-bottom:-1px;
+  background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-size:12px; font-weight:500; cursor:pointer;
+  transition:color .15s ease, border-color .15s ease;
+}
+.pc-seg:hover{ color:var(--ink); }
+.pc-seg.active{ color:var(--ink); font-weight:600; border-bottom-color:var(--accent); }
+
+.inspect-viewport{ flex:1; min-height:0; overflow:hidden; position:relative; }
+.inspect-track{
+  display:flex; width:100%; height:100%; transform:translateX(0);
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+}
+.inspect-track.show-history{ transform:translateX(-100%); }
+.inspect-pane{
+  flex:0 0 100%; width:100%; min-height:0; height:100%;
+  display:flex; flex-direction:column;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   REVISION RAIL
+----------------------------------------------------------------------------------------------------------------------*/
+.hx-trees{
+  flex:0 0 auto; display:flex; align-items:center; gap:4px;
+  padding:7px 8px; overflow-x:auto; border-bottom:1px solid var(--hair);
+}
+.hx-tree{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto; height:23px; padding:0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  font-size:10.5px; color:var(--muted); cursor:pointer; transition:background .12s, color .12s, border-color .12s;
+}
+.hx-tree:hover{ background:var(--tile-hi); color:var(--ink); }
+.hx-tree.active{ background:rgba(91,140,255,.14); border-color:var(--accent); color:var(--ink); }
+.hx-tree svg{ width:11px; height:11px; flex:0 0 auto; }
+.hx-tree-ct{ font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.hx-tree-x{ color:var(--faint); font-size:11px; line-height:1; }
+.hx-tree-x:hover{ color:#ff6b6b; }
+.hx-tree-add{
+  flex:0 0 auto; width:23px; height:23px; display:grid; place-items:center;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  color:var(--muted); cursor:pointer; font-size:13px; line-height:1;
+}
+.hx-tree-add:hover{ background:var(--tile-hi); color:var(--ink); }
+
+.hx-scroll{ flex:1; min-height:0; overflow-y:auto; padding:6px 8px 10px; }
+.hx-ev{
+  display:flex; gap:8px; padding:3px 5px; border-radius:8px; cursor:pointer;
+  transition:background .12s;
+}
+.hx-ev:hover{ background:var(--row-hover); }
+.hx-ev.at-cursor{ background:var(--row-sel); box-shadow:inset 0 0 0 1px var(--hair-strong); }
+.hx-ev.future{ opacity:.4; }
+.hx-rail{ flex:0 0 22px; display:flex; flex-direction:column; align-items:center; }
+/* 🔴 the rail segment takes the LAYER's hue — colour tracks the layer through the timeline */
+.hx-line{ width:2px; flex:1; min-height:5px; background:var(--value-unit); }
+.hx-line.blank{ background:transparent; }
+.hx-node{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  background:var(--menu-2); border-radius:50%; box-shadow:0 0 0 2px var(--hair-strong);
+}
+.hx-node svg{ width:11px; height:11px; }
+.hx-ev.at-cursor .hx-node{ box-shadow:0 0 0 2px var(--accent); }
+.hx-body{ flex:1; min-width:0; padding:3px 0 6px; }
+.hx-main{ display:flex; align-items:baseline; gap:7px; min-width:0; }
+.hx-evt-title{
+  font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-type{
+  flex:0 0 auto; font-size:9.5px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  padding:2px 6px; border-radius:999px; background:var(--menu); color:var(--muted);
+}
+.hx-type.gen{ color:#c084fc; }
+.hx-type.mat{ color:#7dd3fc; }
+.hx-type.param{ color:#fbbf24; }
+.hx-sub{ font-size:10px; color:var(--faint); margin-top:3px; }
+.hx-time{
+  flex:0 0 auto; margin-left:auto; font-size:10px; color:var(--faint);
+  font-variant-numeric:tabular-nums;
+}
+/* layer events draw a chip carrying the layer hue, like Studio's hx-layerline */
+.hx-layerline{ display:flex; align-items:center; gap:6px; min-width:0; }
+.hx-verb{ font-size:11px; color:var(--muted); flex:0 0 auto; }
+.hx-chip{
+  flex:0 0 auto; max-width:96px; padding:2px 7px; border-radius:999px;
+  font-size:9.5px; font-weight:600; color:#0d0d0f;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-lname{
+  font-size:11px; color:var(--ink); min-width:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-lname.gone{ text-decoration:line-through; color:var(--faint); }
+.hx-empty{ padding:24px 12px; text-align:center; color:var(--faint); font-size:11px; line-height:1.7; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 one menu, two slides, fixed 548×372 — the same translate as SceneDirectoryInspector */
+.summon-menu{
+  position:fixed; z-index:900; display:none;
+  width:548px; height:372px;
+  background:var(--menu); border:1px solid var(--hair-strong); border-radius:var(--r-menu);
+  overflow:hidden; transform-origin:top left;
+  box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+}
+.summon-menu.open{ display:block; animation:pop .14s cubic-bezier(.16,1,.3,1); }
+@keyframes pop{
+  from{ opacity:0; transform:scale(.965) translateY(-5px); }
+  to  { opacity:1; transform:scale(1) translateY(0); }
+}
+
+.menu-view{ height:100%; overflow:hidden; }
+/* 📝 200%-wide track: slide 1 is the stack, slide 2 is channels + revisions */
+.menu-track{
+  display:flex; width:200%; height:100%;
+  transition:transform .34s cubic-bezier(.5,.05,.2,1);
+}
+.menu-track.to-inspect{ transform:translateX(-50%); }
+/* 🔴 the left column is pinned at 214px on BOTH slides so the seam never steps mid-translate */
+.menu-slide{
+  width:50%; height:100%; display:grid;
+  grid-template-columns:214px minmax(0,1fr); min-height:0;
+}
+.slide-pane{ min-width:0; min-height:0; display:flex; flex-direction:column; }
+.slide-pane.rail{ background:var(--menu); border-right:1px solid var(--hair); }
+.slide-pane.detail{ background:var(--menu-2); }
+
+/* compact overrides — the menu is small, so every widget loses a few px */
+.summon-menu .pane-head{ height:46px; padding:0 10px; }
+.summon-menu .pane-head .h-ic{ width:24px; height:24px; border-radius:6px; }
+.summon-menu .pane-head .h-ic svg{ width:17px; height:17px; }
+.summon-menu .pane-head .h-txt{ font-size:12.5px; }
+.summon-menu .prop-carousel{ height:31px; }
+.summon-menu .pc-seg{ font-size:11.5px; }
+.summon-menu .prop-body{ padding:7px 7px 10px; }
+.summon-menu .card{ margin-bottom:6px; }
+.summon-menu .card-body{ padding:6px 9px 8px; }
+.summon-menu .prow{ grid-template-columns:74px minmax(0,1fr); min-height:32px; column-gap:8px; }
+.summon-menu .plabel{ font-size:11px; }
+.summon-menu .valuebox,
+.summon-menu .dd-head,
+.summon-menu .colorbar,
+.summon-menu .segment{ height:24px; }
+.summon-menu .sliderrow .valuebox{ flex:0 0 62px; }
+.summon-menu .hx-scroll{ padding:5px 7px 9px; }
+.summon-menu .pane-foot{ height:26px; padding:0 10px; font-size:10px; }
+
+/* pane-head that acts as the advance / back affordance */
+.pane-head.stepper{ cursor:pointer; }
+.pane-head.stepper:hover{ background:#292930; }
+.pane-head .h-step{
+  flex:0 0 auto; width:22px; height:22px; display:grid; place-items:center;
+  color:var(--muted); border-radius:6px;
+}
+.pane-head.stepper:hover .h-step{ color:var(--ink); background:var(--tile-hi); }
+.pane-head .h-step svg{ width:13px; height:13px; }
+.h-back{
+  flex:0 0 auto; width:20px; height:20px; display:grid; place-items:center; color:var(--muted);
+}
+.h-back svg{ width:14px; height:14px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            SLIDE 1 — LAYER PROPERTIES
+----------------------------------------------------------------------------------------------------------------------*/
+.meta-body{ flex:1; min-height:0; overflow-y:auto; padding:9px 10px 12px; }
+.meta-hero{
+  display:flex; align-items:center; gap:10px; padding:9px 10px; margin-bottom:8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:var(--r-tile);
+}
+.meta-hero .mh-ic{
+  width:34px; height:34px; flex:0 0 auto; position:relative; overflow:hidden;
+  background:#000; border-radius:8px; display:grid; place-items:center;
+}
+.meta-hero .mh-ic svg{ width:22px; height:22px; }
+.meta-hero .mh-fill{ position:absolute; inset:0; }
+.meta-hero .mh-txt{ min-width:0; flex:1; }
+.meta-hero .mh-name{
+  font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.meta-hero .mh-class{ font-size:10.5px; margin-top:4px; }
+.meta-row{
+  display:flex; align-items:center; gap:8px; height:28px;
+  font-size:11.5px; border-bottom:1px solid var(--hair);
+}
+.meta-row:last-child{ border-bottom:0; }
+.meta-row .mr-k{ color:var(--muted); }
+.meta-row .mr-v{
+  margin-left:auto; color:var(--text-value); font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%;
+}
+/* section label reused by PROPERTIES / MASK / ACTIONS inside the metadata pane */
+.meta-sect{
+  font-size:9.5px; letter-spacing:1.1px; color:var(--faint);
+  font-weight:600; text-transform:uppercase; padding:11px 2px 5px;
+  display:flex; align-items:center; gap:7px;
+}
+.meta-sect svg{ width:12px; height:12px; }
+.meta-sect .ms-tail{ margin-left:auto; letter-spacing:0; text-transform:none; }
+.meta-cta{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  height:32px; margin-top:10px; border-radius:9px; cursor:pointer;
+  background:rgba(91,140,255,.13); border:1px solid var(--accent);
+  color:var(--ink); font-size:11.5px; font-weight:600;
+}
+.meta-cta:hover{ background:rgba(91,140,255,.2); }
+.meta-cta svg{ width:13px; height:13px; }
+.meta-cta .cta-kbd{
+  font-size:9.5px; font-weight:400; color:var(--muted);
+  background:var(--menu-2); border-radius:999px; padding:2px 7px;
+}
+
+/* 🔴 the layer actions live INLINE here — the stack carries no right-click menu at all */
+.meta-actions{ margin-top:4px; }
+.act-item{
+  display:flex; align-items:center; gap:9px; height:29px; padding:0 8px;
+  border-radius:8px; font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.act-item:hover{ background:var(--tile-hi); }
+.act-item .ic{ width:15px; height:15px; flex:0 0 auto; display:grid; place-items:center; color:var(--muted); }
+.act-item .ic svg{ width:15px; height:15px; }
+.act-item:hover .ic{ color:var(--ink); }
+.act-item .kbd{ margin-left:auto; font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.act-item.danger{ color:#ff6b6b; }
+.act-item.danger .ic{ color:#ff6b6b; }
+.act-item.danger:hover{ background:rgba(255,107,107,.12); }
+.act-item.armed{ background:var(--tile-hi); }
+.act-item.disabled{ opacity:.35; pointer-events:none; }
+.act-item .fold{
+  margin-left:auto; width:5px; height:5px; transition:transform .16s ease;
+  border-right:1.4px solid var(--muted); border-top:1.4px solid var(--muted); transform:rotate(45deg);
+}
+.act-item.armed .fold{ transform:rotate(135deg); }
+.act-sep{ height:1px; background:var(--hair); margin:6px 8px; }
+/* 📝 the classification choices unfold in place — grid-rows 0fr→1fr, no floating list to place */
+.act-fold{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .2s ease; }
+.act-fold.open{ grid-template-rows:1fr; }
+.act-fold > .af-clip{ overflow:hidden; min-height:0; }
+.af-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:5px 4px 3px 22px; }
+.af-choice{
+  display:flex; align-items:center; gap:7px; height:27px; padding:0 7px;
+  border-radius:7px; font-size:11px; color:var(--ink); cursor:pointer;
+  background:var(--tile); border:1px solid var(--hair);
+}
+.af-choice:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+.af-choice svg{ width:14px; height:14px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    MASK EDITOR
+----------------------------------------------------------------------------------------------------------------------*/
+.msk-empty{
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  width:100%; height:30px; border-radius:999px; cursor:pointer;
+  background:var(--tile); border:1px dashed var(--hair-strong);
+  color:var(--muted); font-size:11px; font-weight:500;
+}
+.msk-empty:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-empty svg{ width:13px; height:13px; }
+.msk-row{ display:flex; align-items:center; gap:9px; margin-bottom:7px; }
+.msk-prev{
+  width:34px; height:34px; flex:0 0 auto; border-radius:8px;
+  border:1px solid var(--hair); overflow:hidden; background:#000; position:relative;
+}
+.msk-grad{ position:absolute; inset:0; }
+.msk-info{ min-width:0; }
+.msk-nm{ font-size:11.5px; color:var(--ink); }
+.msk-meta{ font-size:9.5px; color:var(--faint); margin-top:3px; }
+.msk-toolbar{ display:flex; gap:4px; }
+.msk-tool{
+  flex:1; display:flex; align-items:center; justify-content:center; gap:5px;
+  height:26px; border-radius:999px; cursor:pointer;
+  background:#000; border:1px solid var(--hair); color:var(--muted);
+  font-size:10.5px; font-weight:500; transition:background .13s, border-color .13s, color .13s;
+}
+.msk-tool:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-tool.on{ border-color:var(--accent); color:var(--ink); background:rgba(91,140,255,.13); }
+.msk-tool svg{ width:12px; height:12px; }
+.msk-comps{ display:flex; flex-direction:column; gap:4px; margin-top:7px; }
+.msk-comp{
+  display:flex; align-items:center; gap:8px; padding:6px 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:8px;
+}
+.msk-comp .mc-ico{
+  width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center;
+  background:#000; border:1px solid var(--hair); border-radius:6px; color:var(--muted);
+}
+.msk-comp .mc-ico svg{ width:12px; height:12px; }
+.msk-comp .mc-tx{ min-width:0; flex:1; }
+.msk-comp .mc-nm{
+  display:block; font-size:11px; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.msk-comp .mc-md{
+  display:block; font-size:9px; text-transform:uppercase; letter-spacing:.5px;
+  color:var(--faint); margin-top:2px;
+}
+.msk-comp .mc-x{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  border-radius:50%; color:var(--faint); cursor:pointer; font-size:12px; line-height:1;
+}
+.msk-comp .mc-x:hover{ background:rgba(255,107,107,.14); color:#ff6b6b; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            SLIDE 2 — MATERIAL CHANNELS
+----------------------------------------------------------------------------------------------------------------------*/
+/* the CSS-shaded preview ball, ported from Studio's pbr.css */
+.pbr-preview{
+  background:var(--menu); border:1px solid var(--hair); border-radius:var(--r-tile);
+  margin-bottom:6px; overflow:hidden;
+}
+.pbr-preview-head{
+  display:flex; align-items:center; height:27px; padding:0 10px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair);
+  font-size:9.5px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--muted);
+}
+.pbr-stage{
+  height:96px; display:grid; place-items:center;
+  background:radial-gradient(circle at 50% 120%, #202027, #0c0c0e 70%);
+}
+.pbr-ball{ width:72px; height:72px; border-radius:50%; position:relative; overflow:hidden; }
+.pbr-spec{ position:absolute; background:#fff; border-radius:50%; }
+.pbr-fresnel{
+  position:absolute; inset:0; border-radius:50%;
+  box-shadow:inset 0 0 12px 3px rgba(255,255,255,.55);
+}
+.pbr-ao{
+  position:absolute; inset:0; border-radius:50%;
+  background:radial-gradient(circle at 50% 118%, rgba(0,0,0,.55), transparent 45%);
+}
+
+/* active-channel chips + the add fold */
+.chan-chips{ display:flex; flex-wrap:wrap; gap:4px; }
+.chan-chip{
+  display:flex; align-items:center; gap:5px; height:23px; padding:0 5px 0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  font-size:10.5px; color:var(--ink);
+}
+.chan-chip .cc-x{
+  width:15px; height:15px; display:grid; place-items:center; border-radius:50%;
+  color:var(--faint); cursor:pointer; font-size:11px; line-height:1;
+}
+.chan-chip .cc-x:hover{ background:rgba(255,107,107,.16); color:#ff6b6b; }
+.chan-add{
+  display:flex; align-items:center; gap:5px; height:23px; padding:0 9px;
+  background:none; border:1px dashed var(--hair-strong); border-radius:999px;
+  color:var(--muted); font-size:10.5px; cursor:pointer;
+}
+.chan-add:hover{ border-color:var(--outline); color:var(--ink); }
+.chan-add svg{ width:11px; height:11px; }
+.chan-pool{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:6px 0 2px; }
+.chan-pool-opt{
+  display:flex; align-items:center; gap:6px; height:25px; padding:0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:7px;
+  font-size:10.5px; color:var(--ink); cursor:pointer;
+}
+.chan-pool-opt:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+.chan-pool-empty{ padding:8px 2px; font-size:10.5px; color:var(--faint); }
+
+/* one accordion per enabled channel, with the Val | Map switch in its head */
+.chan-panel{
+  background:var(--menu); border:1px solid var(--hair); border-radius:10px;
+  margin-bottom:5px; overflow:hidden;
+}
+.chan-head{
+  display:flex; align-items:center; gap:8px; height:29px; padding:0 9px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair); cursor:pointer;
+}
+.chan-head .ch-tw{ width:9px; height:9px; flex:0 0 auto; color:var(--faint); transition:transform .16s; }
+.chan-head .ch-tw svg{ width:9px; height:9px; }
+.chan-panel.collapsed .chan-head .ch-tw{ transform:rotate(-90deg); }
+.chan-panel.collapsed .chan-head{ border-bottom-color:transparent; }
+.chan-head .ch-dot{ width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
+.chan-head .ch-title{
+  flex:1; min-width:0; font-size:11px; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.vm-toggle{
+  display:flex; flex:0 0 auto; height:19px; overflow:hidden;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:6px;
+}
+.vm-toggle button{
+  width:31px; background:none; border:0; color:var(--muted);
+  font-size:9.5px; cursor:pointer; transition:background .12s, color .12s;
+}
+.vm-toggle button.active{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+.chan-shell{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .2s cubic-bezier(.4,0,.2,1); }
+.chan-panel.collapsed .chan-shell{ grid-template-rows:0fr; }
+.chan-clip{ min-height:0; overflow:hidden; }
+.chan-body{ padding:6px 9px 8px; }
+
+/* the map selector shown when a channel runs in Map mode */
+.map-sel{
+  display:flex; align-items:center; gap:7px; height:26px; padding:0 4px 0 7px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+}
+.map-sel .ms-swatch{
+  width:14px; height:14px; flex:0 0 auto; border-radius:4px;
+  background:linear-gradient(135deg,#5a6b8c,#2b3244); box-shadow:0 0 0 1px var(--hair);
+}
+.map-sel .ms-name{
+  flex:1; min-width:0; font-size:11px; color:var(--text-value);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.map-sel .ms-name.none{ color:var(--faint); }
+.map-sel .ms-btn{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  background:none; border:0; border-radius:5px; color:var(--muted);
+  cursor:pointer; font-size:12px; line-height:1;
+}
+.map-sel .ms-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+.map-sel .ms-btn.rm:hover{ background:rgba(255,107,107,.16); color:#ff6b6b; }
+
+/* identity rail — slide 2 left column */
+.ident-body{ flex:1; min-height:0; overflow-y:auto; padding:10px 9px 12px; }
+.ident-chip{
+  width:100%; aspect-ratio:1; position:relative; overflow:hidden;
+  border-radius:10px; border:1px solid var(--hair); background:#000;
+  display:grid; place-items:center; margin-bottom:9px;
+}
+.ident-chip .ic-fill{ position:absolute; inset:0; }
+.ident-chip svg{ width:34px; height:34px; }
+.ident-name{
+  font-size:12px; font-weight:600; color:var(--ink); text-align:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ident-class{
+  font-size:9px; letter-spacing:.8px; text-transform:uppercase;
+  text-align:center; margin-top:4px;
+}
+.ident-stat{
+  display:flex; align-items:center; gap:7px; height:24px;
+  font-size:10.5px; color:var(--muted); border-bottom:1px solid var(--hair);
+}
+.ident-stat:last-child{ border-bottom:0; }
+.ident-stat .is-v{
+  margin-left:auto; color:var(--text-value); font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:64%;
+}
+
+/* dimmer so the menu reads as focused without hiding the canvas */
+.summon-veil{ position:fixed; inset:0; z-index:880; display:none; background:rgba(0,0,0,.34); }
+.summon-veil.open{ display:block; animation:veilIn .14s ease both; }
+@keyframes veilIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.flash{ animation:flashRow .5s ease; }
+@keyframes flashRow{
+  0%,100%{ background:transparent; }
+  25%    { background:rgba(91,140,255,.13); }
+}
+</style>
+</head>
+<body>
+
+<div class="workspace-host">
+
+  <!-- host strip -->
+  <div class="host-bar">
+    <span class="hb-mark" id="hostMark"></span>
+    <span class="hb-name">TexturePaintWorkspace</span>
+    <span class="hb-path">Vehicle_Body.wsdoc &nbsp;·&nbsp; 2048 × 2048</span>
+    <span class="hb-spacer"></span>
+    <span class="hb-hint"><b>Tab</b> &nbsp;summon paint inspector</span>
+    <span class="hb-hint"><b>Tab</b> again &nbsp;channels + revisions</span>
+  </div>
+
+  <div class="host-body">
+    <main class="viewport" id="viewport">
+      <div class="viewport-weave"></div>
+      <div class="viewport-vignette"></div>
+      <div class="viewport-note">
+        press <kbd>Tab</kbd> to summon the paint layer stack<br>
+        <kbd>Tab</kbd> again slides through to channels + revisions
+      </div>
+      <div class="viewport-foot">
+        <span>Paint LMB</span><span class="vf-dot">·</span>
+        <span>Erase Shift LMB</span><span class="vf-dot">·</span>
+        <span>Size Wheel</span><span class="vf-dot">·</span>
+        <span>Inspector Tab</span>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!--============================ summoned menu: one card, two slides ============================-->
+<div class="summon-veil" id="summonVeil"></div>
+
+<div class="summon-menu" id="summonMenu">
+  <div class="menu-view">
+    <div class="menu-track" id="menuTrack">
+
+      <!--———————————————— slide 1: layer stack | layer properties + actions ————————————————-->
+      <div class="menu-slide">
+
+        <div class="slide-pane rail">
+          <div class="pane-head">
+            <span class="h-ic" id="stackIcon"></span>
+            <span class="h-txt">
+              <span class="h-lbl">Layers</span>
+              <span class="fn">Vehicle_Body</span>
+            </span>
+            <span class="h-n" id="layerTally">0</span>
+          </div>
+
+          <div class="search-wrap">
+            <label class="search">
+              <span id="searchIcon"></span>
+              <input type="text" id="filterInput" placeholder="Filter…" spellcheck="false">
+            </label>
+          </div>
+
+          <div class="stack-body no-bar" id="stackBody"></div>
+          <div class="pane-foot" id="stackFoot"></div>
+        </div>
+
+        <div class="slide-pane detail">
+          <div class="pane-head stepper" id="advanceHead" title="Channels + Revisions">
+            <span class="h-ic" id="metaIcon"></span>
+            <span class="h-txt">
+              <span class="h-lbl" id="metaName">Nothing selected</span>
+              <span class="fn" id="metaClass">—</span>
+            </span>
+            <span class="h-step" id="advanceStep"></span>
+          </div>
+
+          <div class="meta-body no-bar" id="metaBody"></div>
+          <div class="pane-foot" id="metaFoot"></div>
+        </div>
+      </div>
+
+      <!--———————————————— slide 2: identity | channels ⇄ revisions ————————————————-->
+      <div class="menu-slide">
+
+        <div class="slide-pane rail">
+          <div class="pane-head stepper back" id="returnHead" title="Back to the layer stack">
+            <span class="h-back" id="returnStep"></span>
+            <span class="h-txt">
+              <span class="h-lbl">Back</span>
+              <span class="fn">Layers</span>
+            </span>
+          </div>
+
+          <div class="ident-body no-bar" id="inspectIdentity"></div>
+          <div class="pane-foot" id="inspectFoot"></div>
+        </div>
+
+        <div class="slide-pane detail">
+          <div class="pane-head">
+            <span class="h-ic" id="inspectIcon"></span>
+            <span class="h-txt">
+              <span class="h-lbl" id="inspectName">Nothing selected</span>
+              <span class="fn" id="inspectSub">—</span>
+            </span>
+            <span class="h-acts">
+              <button class="hdr-btn" id="summonUndo" title="Step back"></button>
+              <button class="hdr-btn" id="summonRedo" title="Step forward"></button>
+            </span>
+          </div>
+
+          <div class="prop-carousel" id="summonCarousel">
+            <button class="pc-seg active" data-inspect="properties">Properties</button>
+            <button class="pc-seg" data-inspect="history">History</button>
+          </div>
+
+          <div class="inspect-viewport">
+            <div class="inspect-track" id="inspectTrack">
+              <div class="inspect-pane">
+                <div class="prop-body no-bar" id="summonPropBody"></div>
+              </div>
+              <div class="inspect-pane">
+                <div class="hx-trees no-bar" id="hxTrees"></div>
+                <div class="hx-scroll no-bar" id="hxScroll"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane-foot" id="summonFoot"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    ICON PALETTE
+----------------------------------------------------------------------------------------------------------------------*/
+const C = {
+  ink:"#e8e8f0", dim:"#8a8a99", blue:"#3b82f6", violet:"#8b5cf6",
+  green:"#10b981", orange:"#f97316", glass:"#2a2a33"
+};
+
+/* 🔴 one hue per LayerClassification — colour carries type everywhere it appears */
+const CLASSIFICATION_HUE = {
+  material:C.violet, generator:C.green, brushwork:C.orange, flood:C.blue
+};
+const hueOf = (cls)=>CLASSIFICATION_HUE[cls]||C.dim;
+
+/* darken a hex toward black by 0-1, used for shaded faces */
+function shade(hex, amount){
+  const n=parseInt(hex.slice(1),16);
+  const r=Math.round(((n>>16)&255)*(1-amount));
+  const g=Math.round(((n>>8)&255)*(1-amount));
+  const b=Math.round((n&255)*(1-amount));
+  return "#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+}
+
+const svgWrap = (body,size)=>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                              CLASSIFICATION GLYPHS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 each glyph is a function of the hue, so the same art recolours per classification */
+const GLYPH = {
+  /* Material — a shaded cube, the full PBR surface */
+  material:(h)=>`
+    <path d="M12 3 L20.5 7.5 L12 12 L3.5 7.5 Z" fill="${h}"/>
+    <path d="M3.5 7.5 L12 12 L12 21 L3.5 16.5 Z" fill="${shade(h,.34)}"/>
+    <path d="M20.5 7.5 L12 12 L12 21 L20.5 16.5 Z" fill="${shade(h,.56)}"/>`,
+  /* Generator — a procedural burst */
+  generator:(h)=>`
+    <path d="M12 2.5 L13.7 8.3 L19.5 10 L13.7 11.7 L12 17.5 L10.3 11.7 L4.5 10 L10.3 8.3 Z" fill="${h}"/>
+    <circle cx="18" cy="18" r="2.1" fill="${shade(h,.3)}"/>
+    <circle cx="6.4" cy="17.4" r="1.4" fill="${shade(h,.45)}"/>`,
+  /* Brushwork — hand-painted strokes */
+  brushwork:(h)=>`
+    <path d="M14.6 3.6 L20.4 9.4 L11 18.8 L5.2 13 Z" fill="${h}"/>
+    <path d="M5.2 13 L11 18.8 L8.4 21.4 L3.2 21.4 L2.6 16.2 Z" fill="${shade(h,.4)}"/>
+    <path d="M14.6 3.6 L20.4 9.4 L17.8 12 L12 6.2 Z" fill="${shade(h,.6)}"/>`,
+  /* Flood — a fill poured over the surface */
+  flood:(h)=>`
+    <path d="M11.4 2.8 L20.6 12 L12.3 20.3 L3.1 11.1 Z" fill="${h}"/>
+    <path d="M11.4 2.8 L20.6 12 L12.3 20.3 L11.4 19.4 L11.4 2.8 Z" fill="${shade(h,.42)}"/>
+    <path d="M3.1 11.1 L12.3 20.3 L12.3 14.4 L6.2 14.4 Z" fill="${shade(h,.62)}"/>`,
+};
+const classificationSvg = (cls,size)=>svgWrap(GLYPH[cls]?GLYPH[cls](hueOf(cls)):"",size);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  CHROME GLYPHS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 chrome stays monochrome currentColor — only classification art carries hue */
+const S = 'stroke="currentColor" stroke-width="1.7" fill="none"';
+const UI = {
+  stack:      `<path ${S} d="M12 3 L21 8 L12 13 L3 8 Z"/><path ${S} d="M3 12.5 L12 17.5 L21 12.5"/><path ${S} d="M3 16.5 L12 21.5 L21 16.5"/>`,
+  search:     `<circle ${S} cx="10.5" cy="10.5" r="6.5"/><path ${S} d="M15.5 15.5 L21 21"/>`,
+  chevron:    `<path ${S} d="M8 5 L15 12 L8 19"/>`,
+  chevronDown:`<path ${S} d="M5 8 L12 15 L19 8"/>`,
+  chevronLeft:`<path ${S} d="M15 5 L8 12 L15 19"/>`,
+  plus:       `<path ${S} d="M12 5 V19 M5 12 H19"/>`,
+  rename:     `<path ${S} d="M4 20 h4 L20 8 l-4-4 L4 16 Z"/><path ${S} d="M14.5 5.5 L18.5 9.5"/>`,
+  duplicate:  `<rect ${S} x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path ${S} d="M15.5 4.5 H6.5 A2 2 0 0 0 4.5 6.5 V15.5"/>`,
+  eyeOpen:    `<path ${S} d="M2.5 12 S6 5.5 12 5.5 S21.5 12 21.5 12 S18 18.5 12 18.5 S2.5 12 2.5 12 Z"/><circle ${S} cx="12" cy="12" r="2.7"/>`,
+  eyeOff:     `<path ${S} d="M4 4 L20 20"/><path ${S} d="M9.3 5.9 A9.8 9.8 0 0 1 12 5.5 C18 5.5 21.5 12 21.5 12 a17 17 0 0 1-2.7 3.5"/><path ${S} d="M6.3 8 A16 16 0 0 0 2.5 12 S6 18.5 12 18.5 a9.6 9.6 0 0 0 3-.5"/>`,
+  target:     `<circle ${S} cx="12" cy="12" r="8"/><circle ${S} cx="12" cy="12" r="3"/><path ${S} d="M12 1.5 V5 M12 19 V22.5 M1.5 12 H5 M19 12 H22.5"/>`,
+  mask:       `<path ${S} d="M3.5 7 C3.5 5 5 4 7 4.5 C9.6 5.2 14.4 5.2 17 4.5 C19 4 20.5 5 20.5 7 C20.5 13 17.5 19.5 12 19.5 S3.5 13 3.5 7 Z"/><path ${S} d="M8.4 10.2 c1 -1 2.2 -1 3.1 0"/><path ${S} d="M12.5 10.2 c1 -1 2.2 -1 3.1 0"/>`,
+  arrowUp:    `<path ${S} d="M12 19 V5 M6 11 L12 5 L18 11"/>`,
+  arrowDown:  `<path ${S} d="M12 5 V19 M6 13 L12 19 L18 13"/>`,
+  trash:      `<path ${S} d="M4.5 7 H19.5 M9.5 7 V4.8 h5 V7 M6.5 7 l1 12.5 h9 L17.5 7"/><path ${S} d="M10.3 10.5 v6 M13.7 10.5 v6"/>`,
+  undo:       `<path ${S} d="M4 9 h9.5 a5 5 0 0 1 0 10 H8"/><path ${S} d="M7.5 5 L3.5 9 L7.5 13"/>`,
+  redo:       `<path ${S} d="M20 9 h-9.5 a5 5 0 0 0 0 10 H16"/><path ${S} d="M16.5 5 L20.5 9 L16.5 13"/>`,
+  branch:     `<circle ${S} cx="7" cy="6" r="2.4"/><circle ${S} cx="7" cy="18" r="2.4"/><circle ${S} cx="17" cy="10" r="2.4"/><path ${S} d="M7 8.4 V15.6"/><path ${S} d="M17 12.4 c0 3.4 -3.6 3.2 -7.6 4.2"/>`,
+  flag:       `<path ${S} d="M6 21 V4 h11 l-2 4 2 4 H6"/>`,
+  stroke:     `<path ${S} d="M3.5 17.5 C7 9 11 5.5 15.5 5.5 c3 0 4.5 1.6 4.5 3.6 0 2.4 -2.2 3.6 -4.4 3.6 -1.6 0 -2.6 -0.7 -2.6 -1.7"/>`,
+  eraser:     `<path ${S} d="M8.5 20.5 H20.5"/><path ${S} d="M13.6 4.9 L20 11.3 l-7 7 H8.2 l-3.6 -3.6 Z"/>`,
+  sparkle:    `<path ${S} d="M12 3.5 L13.6 9 L19 10.6 L13.6 12.2 L12 17.7 L10.4 12.2 L5 10.6 L10.4 9 Z"/><path ${S} d="M18 16.5 L18.7 18.6 L20.8 19.3 L18.7 20 L18 22.1 L17.3 20 L15.2 19.3 L17.3 18.6 Z"/>`,
+  sliders:    `<path ${S} d="M4 7 H20 M4 12 H20 M4 17 H20"/><circle ${S} cx="9" cy="7" r="2"/><circle ${S} cx="15" cy="12" r="2"/><circle ${S} cx="8" cy="17" r="2"/>`,
+  cube:       `<path ${S} d="M12 3 L20.5 7.5 V16.5 L12 21 L3.5 16.5 V7.5 Z"/><path ${S} d="M3.5 7.5 L12 12 L20.5 7.5 M12 12 V21"/>`,
+  layers:     `<path ${S} d="M12 3 L21 8 L12 13 L3 8 Z"/><path ${S} d="M3 13.5 L12 18.5 L21 13.5"/>`,
+  circle:     `<circle ${S} cx="12" cy="12" r="7.5"/>`,
+  invert:     `<circle ${S} cx="12" cy="12" r="8"/><path d="M12 4 a8 8 0 0 1 0 16 Z" fill="currentColor"/>`,
+  copy:       `<rect ${S} x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path ${S} d="M15.5 4.5 H6.5 A2 2 0 0 0 4.5 6.5 V15.5"/>`,
+  reset:      `<path ${S} d="M4 12 a8 8 0 1 0 2.6 -5.9"/><path ${S} d="M4 4 V9 H9"/>`,
+  brush:      `<path ${S} d="M15 4 L20 9 L11 18 H6 v-5 Z"/><path ${S} d="M6 18 L3.5 20.5"/>`,
+  bucket:     `<path ${S} d="M11 3 L20 12 L12 20 L3 11 Z"/><path ${S} d="M18 16.5 c1.6 2.2 2.4 3.5 2.4 4.3 a2.4 2.4 0 0 1 -4.8 0 c0 -0.8 0.8 -2.1 2.4 -4.3 Z"/>`,
+  move:       `<path ${S} d="M12 3 V21 M8.5 6.5 L12 3 L15.5 6.5 M8.5 17.5 L12 21 L15.5 17.5"/>`,
+};
+const uiIcon = (name,size=15)=>svgWrap(UI[name]||"",size);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    LAYER STORE
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 ported from Studio's PBR layer model. Renamed to satisfy the naming law:
+      Studio "Material/Generator/Paint/Fill"  →  material / generator / brushwork / flood
+      Studio `ltype`                          →  classification
+      Studio `id`                             →  token                                        */
+const CLASSIFICATION_LABEL = {
+  material:"Material", generator:"Generator", brushwork:"Brushwork", flood:"Flood"
+};
+const CLASSIFICATION_NOTE = {
+  material: "Full PBR surface with every channel.",
+  generator:"Procedural mask-driven wear & grime.",
+  brushwork:"Hand-painted brush strokes.",
+  flood:    "Flat fill across the surface."
+};
+const CLASSIFICATION_ORDER = ["material","generator","brushwork","flood"];
+
+const BLEND_MODES = ["Normal","Multiply","Screen","Overlay","Add","Darken","Linear Dodge"];
+const RESOLUTIONS  = ["512","1K","2K","4K","8K"];
+
+/* channel registry — key → label + how Value mode is edited (colour | scalar | mapOnly) */
+const PBR_CHANNELS = [
+  { key:"baseColour", label:"Base Colour",       edit:"colour", defColour:"#808080" },
+  { key:"metallic",   label:"Metallic",          edit:"scalar", min:0,   max:1,   step:0.01, def:0    },
+  { key:"roughness",  label:"Roughness",         edit:"scalar", min:0,   max:1,   step:0.01, def:0.5  },
+  { key:"specular",   label:"Specular",          edit:"scalar", min:1.0, max:3.0, step:0.01, def:1.5, unit:"IOR" },
+  { key:"clearcoat",  label:"Clearcoat",         edit:"scalar", min:0,   max:1,   step:0.01, def:0    },
+  { key:"normal",     label:"Normal",            edit:"mapOnly" },
+  { key:"height",     label:"Height",            edit:"scalar", min:-1,  max:1,   step:0.01, def:0.5  },
+  { key:"ambientOcc", label:"Ambient Occlusion", edit:"scalar", min:0,   max:1,   step:0.01, def:1    },
+  { key:"emission",   label:"Emission",          edit:"colour", defColour:"#000000" },
+];
+const CHANNEL_BY_KEY = Object.fromEntries(PBR_CHANNELS.map(c=>[c.key,c]));
+
+/* mask components — generators that paint into the greyscale mask */
+const MASK_COMPONENT_KINDS = {
+  Brushwork:{ glyph:"brush",   note:"Hand-painted mask strokes." },
+  Flood:    { glyph:"bucket",  note:"Uniform fill region." },
+  Generator:{ glyph:"sparkle", note:"Procedural (AO / curvature / dirt)." },
+  Levels:   { glyph:"sliders", note:"Remap mask contrast & range." },
+};
+
+let tokenSeq = 0;
+const nextToken = ()=>"L"+(++tokenSeq);
+
+function makeChannel(def, over={}){
+  const mode = def.edit==="mapOnly" ? "map" : "value";
+  const val  = def.edit==="colour" ? def.defColour : (def.edit==="scalar" ? def.def : 0);
+  return Object.assign({ key:def.key, enabled:true, mode, collapsed:false, value:val, map:null }, over);
+}
+/* build the channel table for a layer; `on` lists the initially-enabled keys */
+function makeChannels(on, over={}){
+  const out={};
+  PBR_CHANNELS.forEach(def=>{
+    const c=makeChannel(def, over[def.key]||{});
+    c.enabled=on.includes(def.key);
+    out[def.key]=c;
+  });
+  return out;
+}
+function maskComponent(kind, name){ return { token:nextToken(), kind, name:name||kind }; }
+function makeMask(over={}){
+  return Object.assign({ enabled:false, fill:"white", invert:false, opacity:100, components:[] }, over);
+}
+function makeLayer(name, classification, extra={}){
+  return Object.assign({
+    token:nextToken(), name, classification,
+    shown:true, blend:"Normal", opacity:100, resolution:"2K",
+    channels:makeChannels(["baseColour","metallic","roughness","normal"]),
+    mask:makeMask()
+  }, extra);
+}
+
+/* 💡 the seeded stack is Studio's verbatim — topmost layer first, as it composites */
+let layerStore = [
+  makeLayer("SCR_Scratches","brushwork",{ blend:"Linear Dodge", opacity:60,
+    channels:makeChannels(["metallic","roughness","normal","height"],{
+      metallic:{value:1.0}, roughness:{value:0.4},
+      normal:{map:"T_Scratches_N"}, height:{value:0.3} }),
+    mask:makeMask({ enabled:true, fill:"white", invert:true, opacity:90,
+      components:[maskComponent("Generator","Curvature Edges")] }) }),
+
+  makeLayer("GEN_DirtDust","generator",{ blend:"Multiply", opacity:80,
+    channels:makeChannels(["baseColour","roughness","normal"],{
+      baseColour:{value:"#4a3f35"}, roughness:{value:0.9}, normal:{map:"T_Dirt_Normal"} }),
+    mask:makeMask({ enabled:true, fill:"black",
+      components:[maskComponent("Generator","AO Cavity"), maskComponent("Brushwork","Hand Mask")] }) }),
+
+  makeLayer("MAT_CarPaint","material",{ blend:"Normal", opacity:100,
+    channels:makeChannels(["baseColour","metallic","roughness","specular","clearcoat","normal","ambientOcc"],{
+      baseColour:{value:"#cc0000"}, metallic:{value:0.85}, roughness:{value:0.12},
+      specular:{value:1.5}, clearcoat:{value:1.0}, normal:{map:"T_Paint_Normal"} }) }),
+];
+
+let focusToken   = layerStore[0].token;
+let filterTerm   = "";
+
+const resolveToken = (token)=>layerStore.find(l=>l.token===token)||null;
+const focusLayer   = ()=>resolveToken(focusToken);
+const layerIndex   = (token)=>layerStore.findIndex(l=>l.token===token);
+const enabledCount = (layer)=>PBR_CHANNELS.reduce((n,def)=>n+(layer.channels[def.key].enabled?1:0),0);
+
+/* the layer's base colour if it is painting one in Value mode, else null */
+function baseColourOf(layer){
+  const bc=layer.channels.baseColour;
+  return (bc.enabled && bc.mode==="value") ? bc.value : null;
+}
+/* a greyscale gradient reading the mask's fill + invert, straight from Studio */
+function maskSwatchStyle(mask){
+  const a = mask.fill==="white" ? "#f0f0f0" : "#101010";
+  const b = mask.fill==="white" ? "#9a9a9a" : "#2a2a2a";
+  return mask.invert ? `linear-gradient(135deg,${b},${a})` : `linear-gradient(135deg,${a},${b})`;
+}
+function maskNote(mask){
+  return `${mask.fill==="white"?"White":"Black"} fill${mask.invert?" · inverted":""} · ${mask.components.length} comp`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  REVISION STORE
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 Studio's branching timeline, paint entries only. A branch is an ordered list of
+   entries plus a cursor; recording behind the cursor forks the future into a sibling
+   branch instead of truncating it, so nothing is ever lost. */
+const REVISION_KINDS = {
+  start:     { glyph:"flag",    label:"Start"     },
+  stroke:    { glyph:"stroke",  label:"Stroke"    },
+  erase:     { glyph:"eraser",  label:"Erase"     },
+  generator: { glyph:"sparkle", label:"Generator", tone:"gen"   },
+  material:  { glyph:"cube",    label:"Material",  tone:"mat"   },
+  parameter: { glyph:"sliders", label:"Params",    tone:"param" },
+  /* layer entries draw a hue chip instead of a title */
+  layerAdd:   { glyph:"plus",   layerEntry:true, verb:"Create"    },
+  layerFocus: { glyph:"layers", layerEntry:true, verb:"Switch to" },
+  layerDrop:  { glyph:"trash",  layerEntry:true, verb:"Drop"      },
+  layerMove:  { glyph:"move",   layerEntry:true, verb:"Reorder"   },
+};
+
+let revisionSeq=0, branchSeq=0;
+const stamp = ()=>new Date();
+function makeBranch(name, entries){
+  return {
+    token:"B"+(++branchSeq), name:name||("Branch "+branchSeq),
+    entries:entries||[], cursor:entries?entries.length-1:-1
+  };
+}
+function makeRevision(kind, title, note, layer){
+  const l = layer || focusLayer() || { name:"Canvas", classification:null };
+  return {
+    token:"R"+(++revisionSeq), at:stamp(), kind, title, note,
+    layerName:l.name, layerHue: l.classification?hueOf(l.classification):C.dim
+  };
+}
+const revisionStore = { branches:[], active:0 };
+const activeBranch  = ()=>revisionStore.branches[revisionStore.active];
+
+/* 🔴 recording behind the cursor FORKS — the discarded future survives as a sibling */
+function recordRevision(kind, title, note, layer){
+  const branch = activeBranch();
+  const entry  = makeRevision(kind, title, note, layer);
+  const atTip  = branch.cursor === branch.entries.length-1;
+  if(!atTip){
+    const future = branch.entries.slice(branch.cursor+1);
+    branch.entries = branch.entries.slice(0, branch.cursor+1);
+    revisionStore.branches.push(makeBranch("Branch "+(branchSeq+1), [...branch.entries, ...future]));
+  }
+  branch.entries.push(entry);
+  branch.cursor = branch.entries.length-1;
+  renderRevisions();
+}
+
+function seedRevisions(){
+  const entries=[];
+  const base = layerStore[layerStore.length-1];
+  const mid  = layerStore[1];
+  entries.push(makeRevision("start","Canvas created","2048 × 2048", base));
+  entries.push(makeRevision("layerAdd","",base.name, base));
+  entries.push(makeRevision("stroke","Added stroke","412 points", base));
+  entries.push(makeRevision("material","Added material","Car paint metallic", base));
+  entries.push(makeRevision("layerFocus","",mid.name, mid));
+  entries.push(makeRevision("generator","Generator applied","Dirt & dust mask", mid));
+  entries.push(makeRevision("parameter","Params changed","Opacity 80 %, Multiply", mid));
+  revisionStore.branches = [makeBranch("Main", entries)];
+  revisionStore.active   = 0;
+}
+
+function stepRevision(delta){
+  const branch=activeBranch();
+  const next=branch.cursor+delta;
+  if(next<0 || next>branch.entries.length-1) return;
+  branch.cursor=next;
+  renderRevisions();
+}
+function jumpRevision(index){
+  const branch=activeBranch();
+  branch.cursor=Math.max(0, Math.min(branch.entries.length-1, index));
+  renderRevisions();
+}
+function branchFromCursor(){
+  const branch=activeBranch();
+  const upto=branch.entries.slice(0, branch.cursor+1).map(e=>Object.assign({},e));
+  revisionStore.branches.push(makeBranch("Branch "+(branchSeq+1), upto));
+  revisionStore.active=revisionStore.branches.length-1;
+  renderRevisions();
+}
+function dropBranch(index){
+  if(revisionStore.branches.length<=1) return;   /* always keep one */
+  revisionStore.branches.splice(index,1);
+  if(revisionStore.active>=revisionStore.branches.length) revisionStore.active=revisionStore.branches.length-1;
+  else if(index<revisionStore.active) revisionStore.active--;
+  renderRevisions();
+}
+const clockOf = (d)=>d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   STACK RENDER
+----------------------------------------------------------------------------------------------------------------------*/
+const stackBody   = document.getElementById("stackBody");
+const stackFoot   = document.getElementById("stackFoot");
+const layerTally  = document.getElementById("layerTally");
+
+function renderStack(){
+  stackBody.innerHTML="";
+  const shown = layerStore.filter(l=>!filterTerm || l.name.toLowerCase().includes(filterTerm));
+
+  shown.forEach(layer=>{
+    const row=document.createElement("div");
+    row.className="stack-row"+(layer.token===focusToken?" active":"")+(layer.shown?"":" layer-muted");
+    row.dataset.token=layer.token;
+
+    const hue  = hueOf(layer.classification);
+    const fill = baseColourOf(layer);
+    const thumb = fill
+      ? `<span class="sr-thumb-fill" style="background:${fill}"></span>`
+      : classificationSvg(layer.classification,15);
+    const maskChip = layer.mask.enabled
+      ? `<span class="sr-mask" title="Mask · ${maskNote(layer.mask)}" style="background:${maskSwatchStyle(layer.mask)}"></span>`
+      : "";
+
+    row.innerHTML=
+      `<span class="sr-tag" style="background:${hue}"></span>`+
+      `<span class="sr-thumb">${thumb}</span>`+
+      `<span class="sr-text">`+
+        `<span class="sr-name">${layer.name}</span>`+
+        `<span class="sr-meta">${CLASSIFICATION_LABEL[layer.classification]} · ${layer.blend} · ${enabledCount(layer)} ch</span>`+
+      `</span>`+
+      maskChip+
+      `<span class="sr-opacity" title="Drag to adjust opacity">${layer.opacity}%</span>`+
+      `<span class="sr-visibility" title="${layer.shown?"Hide":"Show"}">${uiIcon(layer.shown?"eyeOpen":"eyeOff")}</span>`;
+
+    row.onclick=(ev)=>{
+      if(rowDidDrag){ rowDidDrag=false; return; }
+      if(ev.target.closest(".sr-visibility")||ev.target.closest(".sr-opacity")) return;
+      focusLayerToken(layer.token);
+    };
+    row.ondblclick=(ev)=>{
+      if(ev.target.closest(".sr-visibility")||ev.target.closest(".sr-opacity")) return;
+      beginRename(layer, row.querySelector(".sr-name"));
+    };
+    /* 🔴 no right-click menu on the stack — right-click only focuses; the actions sit in the right pane */
+    row.oncontextmenu=(ev)=>{
+      ev.preventDefault();
+      if(layer.token!==focusToken) focusLayerToken(layer.token);
+    };
+    row.querySelector(".sr-visibility").onclick=(ev)=>{ ev.stopPropagation(); toggleShown(layer); };
+    bindOpacityDrag(row.querySelector(".sr-opacity"), layer);
+    if(!filterTerm) bindRowDrag(row, layer);      /* reorder only when the list is whole */
+
+    stackBody.appendChild(row);
+  });
+
+  if(!stackBody.children.length){
+    stackBody.innerHTML='<div class="empty-state">No layers match.<br>Clear the filter to see the stack.</div>';
+  }
+  layerTally.textContent = layerStore.length;
+
+  const litter = layerStore.filter(l=>!l.shown).length;
+  stackFoot.innerHTML =
+    `<span class="pf-strong">${layerStore.length}</span> layers`+
+    (litter?`<span class="pf-dot">·</span><span>${litter} hidden</span>`:"")+
+    `<span class="pf-spacer"></span><span>2K</span>`;
+}
+
+/* ─── opacity pill: horizontal drag, like Studio's invisible range overlay ─── */
+function bindOpacityDrag(pill, layer){
+  pill.onpointerdown=(ev)=>{
+    ev.stopPropagation(); ev.preventDefault();
+    const startX=ev.clientX, startValue=layer.opacity;
+    pill.setPointerCapture(ev.pointerId);
+    const move=(m)=>{
+      layer.opacity=Math.max(0, Math.min(100, startValue+Math.round((m.clientX-startX)/2)));
+      pill.textContent=layer.opacity+"%";
+      if(layer.token===focusToken) syncOpacityFields(layer);
+    };
+    const up=()=>{
+      pill.removeEventListener("pointermove",move);
+      pill.removeEventListener("pointerup",up);
+      if(layer.opacity!==startValue) recordRevision("parameter","Opacity changed",layer.opacity+" %",layer);
+    };
+    pill.addEventListener("pointermove",move);
+    pill.addEventListener("pointerup",up);
+  };
+}
+
+/* ─── drag-reorder: press and move vertically to restack ─── */
+let rowDidDrag=false;
+function bindRowDrag(row, layer){
+  row.addEventListener("pointerdown",(ev)=>{
+    if(ev.button!==0) return;
+    if(ev.target.closest(".sr-visibility")||ev.target.closest(".sr-opacity")) return;
+    const startY=ev.clientY, startX=ev.clientX;
+    let dragging=false, marker=null;
+
+    const onMove=(m)=>{
+      if(!dragging){
+        if(Math.abs(m.clientY-startY)<5 && Math.abs(m.clientX-startX)<5) return;
+        dragging=true; rowDidDrag=true;
+        row.setPointerCapture(m.pointerId);
+        row.classList.add("dragging");
+        marker=document.createElement("div"); marker.className="drop-line";
+      }
+      const others=[...stackBody.querySelectorAll(".stack-row")].filter(r=>r!==row);
+      let placed=false;
+      for(const other of others){
+        const box=other.getBoundingClientRect();
+        if(m.clientY < box.top+box.height/2){ stackBody.insertBefore(marker,other); placed=true; break; }
+      }
+      if(!placed) stackBody.appendChild(marker);
+    };
+    const onUp=()=>{
+      row.removeEventListener("pointermove",onMove);
+      row.removeEventListener("pointerup",onUp);
+      if(!dragging) return;
+      row.classList.remove("dragging");
+      /* rebuild the order by walking the DOM; the dragged token lands where the marker sits */
+      const order=[];
+      [...stackBody.children].forEach(node=>{
+        if(node===marker) order.push(layer.token);
+        else if(node.classList.contains("stack-row") && node!==row) order.push(node.dataset.token);
+      });
+      if(!order.includes(layer.token)) order.push(layer.token);
+      marker.remove();
+      layerStore.sort((a,b)=>order.indexOf(a.token)-order.indexOf(b.token));
+      recordRevision("layerMove","",layer.name,layer);
+      renderStack();
+    };
+    row.addEventListener("pointermove",onMove);
+    row.addEventListener("pointerup",onUp);
+  });
+}
+
+function beginRename(layer, label){
+  if(!label) return;
+  const previous=layer.name;
+  label.classList.add("editing");
+  label.contentEditable="true";
+  label.focus();
+  const range=document.createRange(); range.selectNodeContents(label);
+  const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  const commit=()=>{
+    label.contentEditable="false"; label.classList.remove("editing");
+    const next=label.textContent.trim();
+    layer.name = next||previous;
+    if(layer.name!==previous) recordRevision("parameter","Renamed",layer.name,layer);
+    renderStack(); syncInspectors(true);
+  };
+  label.onblur=commit;
+  label.onkeydown=(ev)=>{
+    ev.stopPropagation();
+    if(ev.key==="Enter"){ ev.preventDefault(); label.blur(); }
+    if(ev.key==="Escape"){ label.textContent=previous; label.blur(); }
+  };
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 STORE MUTATIONS
+----------------------------------------------------------------------------------------------------------------------*/
+function focusLayerToken(token){
+  if(token===focusToken) return;
+  focusToken=token;
+  const layer=resolveToken(token);
+  if(layer) recordRevision("layerFocus","",layer.name,layer);
+  collapseAddFold();
+  renderStack();
+  syncInspectors(true);
+}
+
+function toggleShown(layer){
+  layer.shown=!layer.shown;
+  recordRevision("parameter",layer.shown?"Shown":"Hidden",layer.name,layer);
+  renderStack();
+  syncInspectors(true);
+}
+
+function appendLayer(classification){
+  const layer=makeLayer("NEW_"+CLASSIFICATION_LABEL[classification], classification);
+  const at=Math.max(0, layerIndex(focusToken));
+  layerStore.splice(at,0,layer);            /* Studio adds above the focused layer */
+  focusToken=layer.token;
+  recordRevision("layerAdd","",layer.name,layer);
+  renderStack();
+  syncInspectors(true);
+}
+
+function duplicateLayer(layer){
+  const copy=JSON.parse(JSON.stringify(layer));
+  copy.token=nextToken();
+  copy.name=layer.name+"_Copy";
+  copy.mask.components=copy.mask.components.map(c=>Object.assign({},c,{token:nextToken()}));
+  layerStore.splice(layerIndex(layer.token),0,copy);
+  focusToken=copy.token;
+  recordRevision("layerAdd","",copy.name,copy);
+  renderStack();
+  syncInspectors(true);
+}
+
+function dropLayer(layer){
+  const at=layerIndex(layer.token);
+  layerStore.splice(at,1);
+  recordRevision("layerDrop","",layer.name,layer);
+  if(focusToken===layer.token) focusToken = layerStore.length ? layerStore[Math.min(at,layerStore.length-1)].token : null;
+  renderStack();
+  syncInspectors(true);
+}
+
+function moveLayer(layer, delta){
+  const at=layerIndex(layer.token), to=at+delta;
+  if(to<0 || to>layerStore.length-1) return;
+  layerStore.splice(to,0,layerStore.splice(at,1)[0]);
+  recordRevision("layerMove","",layer.name,layer);
+  renderStack();
+  syncInspectors(true);
+}
+
+/* 💡 isolate = show only the focused layer, hide every other one */
+function isolateFocus(){
+  const layer=focusLayer();
+  if(!layer) return;
+  layerStore.forEach(l=>{ l.shown = l.token===layer.token; });
+  recordRevision("parameter","Isolate",layer.name,layer);
+  renderStack();
+  syncInspectors(true);
+}
+/* the counterpart — every layer back on */
+function revealAll(){
+  layerStore.forEach(l=>{ l.shown=true; });
+  recordRevision("parameter","Reveal all",layerStore.length+" layers");
+  renderStack();
+  syncInspectors(true);
+}
+
+function attachMask(layer){
+  layer.mask.enabled=true;
+  recordRevision("parameter","Mask added",layer.name,layer);
+  renderStack();
+  syncInspectors(true);
+}
+function removeMask(layer){
+  layer.mask=makeMask();
+  recordRevision("parameter","Mask removed",layer.name,layer);
+  renderStack();
+  syncInspectors(true);
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  FIELD BUILDERS
+----------------------------------------------------------------------------------------------------------------------*/
+/* every builder returns the field element; the caller wraps it in a labelled row */
+function propRow(label, field){
+  const row=document.createElement("div"); row.className="prow";
+  const tag=document.createElement("div"); tag.className="plabel"; tag.textContent=label;
+  row.appendChild(tag); row.appendChild(field);
+  return row;
+}
+
+const decimalsFor = (step)=>step>=1?0:(step>=0.1?1:2);
+
+function buildSlider(spec){
+  const host=document.createElement("div"); host.className="sliderrow";
+  const box=document.createElement("div"); box.className="valuebox";
+  const num=document.createElement("div"); num.className="num";
+  const input=document.createElement("input"); input.type="text";
+  num.appendChild(input); box.appendChild(num);
+  if(spec.unit){
+    const unit=document.createElement("span"); unit.className="unitseg"; unit.textContent=spec.unit;
+    box.appendChild(unit);
+  }
+  const track=document.createElement("div"); track.className="slider";
+  const fill=document.createElement("div");  fill.className="fill";
+  const knob=document.createElement("div");  knob.className="knob";
+  track.appendChild(fill); track.appendChild(knob);
+  host.appendChild(box); host.appendChild(track);
+
+  const places=decimalsFor(spec.step);
+  let value=spec.value;
+  const paint=()=>{
+    const pct=((value-spec.min)/(spec.max-spec.min))*100;
+    fill.style.width=pct+"%"; knob.style.left=pct+"%";
+    input.value=value.toFixed(places);
+  };
+  const settle=(next, live)=>{
+    const clamped=Math.max(spec.min, Math.min(spec.max, next));
+    const quantised=Math.round(clamped/spec.step)*spec.step;
+    value=Number(quantised.toFixed(places));
+    paint();
+    spec.onInput(value, live);
+  };
+  const fromPointer=(ev)=>{
+    const box2=track.getBoundingClientRect();
+    const ratio=Math.max(0, Math.min(1, (ev.clientX-box2.left)/box2.width));
+    settle(spec.min+ratio*(spec.max-spec.min), true);
+  };
+  track.onpointerdown=(ev)=>{
+    ev.preventDefault(); track.setPointerCapture(ev.pointerId); fromPointer(ev);
+    const move=(m)=>fromPointer(m);
+    const up=()=>{
+      track.removeEventListener("pointermove",move);
+      track.removeEventListener("pointerup",up);
+      spec.onInput(value, false);
+    };
+    track.addEventListener("pointermove",move);
+    track.addEventListener("pointerup",up);
+  };
+  input.onchange=()=>{
+    const parsed=parseFloat(input.value);
+    if(Number.isFinite(parsed)) settle(parsed,false); else paint();
+  };
+  input.onkeydown=(ev)=>{ ev.stopPropagation(); if(ev.key==="Enter") input.blur(); };
+  paint();
+  host.readBack=(next)=>{ value=next; paint(); };
+  return host;
+}
+
+function buildSwitch(on, onFlip){
+  const host=document.createElement("div"); host.className="switch"+(on?" on":"");
+  host.innerHTML='<span class="nub"></span>';
+  host.onclick=()=>{ on=!on; host.classList.toggle("on",on); onFlip(on); };
+  return host;
+}
+
+function buildSegment(options, current, onPick){
+  const host=document.createElement("div"); host.className="segment";
+  options.forEach(opt=>{
+    const seg=document.createElement("div");
+    seg.className="seg-opt"+(opt===current?" sel":"");
+    seg.textContent=opt;
+    seg.onclick=()=>{ if(opt!==current) onPick(opt); };
+    host.appendChild(seg);
+  });
+  return host;
+}
+
+/* 📝 the list is position:fixed and JS-placed, so it escapes the scrolling pane */
+let openDropdown=null;
+function closeDropdowns(){
+  if(!openDropdown) return;
+  openDropdown.classList.remove("open");
+  openDropdown=null;
+}
+function buildDropdown(options, current, onPick){
+  const host=document.createElement("div"); host.className="dropdown";
+  const head=document.createElement("div"); head.className="dd-head";
+  head.innerHTML=`<span class="cur">${current}</span><span class="caret">${uiIcon("chevronDown",10)}</span>`;
+  const list=document.createElement("div"); list.className="dd-list";
+  options.forEach(opt=>{
+    const item=document.createElement("div");
+    item.className="dd-item"+(opt===current?" sel":"");
+    item.innerHTML=`<span>${opt}</span><span class="radio"></span>`;
+    item.onclick=(ev)=>{ ev.stopPropagation(); closeDropdowns(); if(opt!==current) onPick(opt); };
+    list.appendChild(item);
+  });
+  head.onclick=(ev)=>{
+    ev.stopPropagation();
+    const wasOpen=host.classList.contains("open");
+    closeDropdowns();
+    if(wasOpen) return;
+    host.classList.add("open"); openDropdown=host;
+    const box=head.getBoundingClientRect();
+    list.style.left=box.left+"px";
+    list.style.width=Math.max(box.width,128)+"px";
+    /* flip above when the list would run past the bottom edge */
+    const tall=Math.min(280, options.length*29+8);
+    list.style.top=(box.bottom+tall>window.innerHeight ? box.top-tall-3 : box.bottom+3)+"px";
+  };
+  host.appendChild(head); host.appendChild(list);
+  return host;
+}
+
+/* ─── colour field: a bar that opens an inline S/V box + hue rail + hex ─── */
+function hexToHsv(hex){
+  const n=parseInt(hex.slice(1),16);
+  const r=((n>>16)&255)/255, g=((n>>8)&255)/255, b=(n&255)/255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b), d=max-min;
+  let h=0;
+  if(d){
+    if(max===r)      h=((g-b)/d+(g<b?6:0))/6;
+    else if(max===g) h=((b-r)/d+2)/6;
+    else             h=((r-g)/d+4)/6;
+  }
+  return { h:h*360, s:max?d/max:0, v:max };
+}
+function hsvToHex(h,s,v){
+  const f=(n)=>{
+    const k=(n+h/60)%6;
+    const val=v-v*s*Math.max(0, Math.min(k,4-k,1));
+    return Math.round(val*255);
+  };
+  return "#"+[f(5),f(3),f(1)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+function buildColourField(current, onPick){
+  const host=document.createElement("div");
+  const bar=document.createElement("div"); bar.className="colorbar";
+  bar.innerHTML=
+    `<span class="swatchseg"><span class="circle"></span><span class="cname"></span></span>`+
+    `<span class="caret">${uiIcon("chevronDown",10)}</span>`;
+  const picker=document.createElement("div"); picker.className="picker";
+  const sv=document.createElement("div"); sv.className="svbox";
+  const svKnob=document.createElement("div"); svKnob.className="svknob";
+  sv.appendChild(svKnob);
+  const bars=document.createElement("div"); bars.className="barstack";
+  const hue=document.createElement("div"); hue.className="cbar huebar";
+  const hueKnob=document.createElement("div"); hueKnob.className="cknob";
+  hue.appendChild(hueKnob); bars.appendChild(hue);
+  const hexRow=document.createElement("div"); hexRow.className="hexrow";
+  const hexInput=document.createElement("input"); hexInput.spellcheck=false;
+  hexRow.appendChild(hexInput);
+  picker.appendChild(sv); picker.appendChild(bars); picker.appendChild(hexRow);
+  host.appendChild(bar); host.appendChild(picker);
+
+  let hsv=hexToHsv(current);
+  const paint=(live)=>{
+    const hex=hsvToHex(hsv.h,hsv.s,hsv.v);
+    bar.querySelector(".circle").style.background=hex;
+    bar.querySelector(".cname").textContent=hex.toUpperCase();
+    sv.style.background=`linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${hsvToHex(hsv.h,1,1)})`;
+    svKnob.style.left=(hsv.s*100)+"%"; svKnob.style.top=((1-hsv.v)*100)+"%";
+    hueKnob.style.left=(hsv.h/360*100)+"%";
+    if(document.activeElement!==hexInput) hexInput.value=hex.toUpperCase();
+    onPick(hex, live);
+  };
+  const dragSv=(ev)=>{
+    const box=sv.getBoundingClientRect();
+    hsv.s=Math.max(0, Math.min(1,(ev.clientX-box.left)/box.width));
+    hsv.v=Math.max(0, Math.min(1,1-(ev.clientY-box.top)/box.height));
+    paint(true);
+  };
+  const dragHue=(ev)=>{
+    const box=hue.getBoundingClientRect();
+    hsv.h=Math.max(0, Math.min(1,(ev.clientX-box.left)/box.width))*360;
+    paint(true);
+  };
+  const bindDrag=(el, handler)=>{
+    el.onpointerdown=(ev)=>{
+      ev.preventDefault(); ev.stopPropagation();
+      el.setPointerCapture(ev.pointerId); handler(ev);
+      const move=(m)=>handler(m);
+      const up=()=>{ el.removeEventListener("pointermove",move); el.removeEventListener("pointerup",up); paint(false); };
+      el.addEventListener("pointermove",move); el.addEventListener("pointerup",up);
+    };
+  };
+  bindDrag(sv,dragSv); bindDrag(hue,dragHue);
+  hexInput.onchange=()=>{
+    const raw=hexInput.value.trim().replace(/^#/,"");
+    if(/^[0-9a-fA-F]{6}$/.test(raw)){ hsv=hexToHsv("#"+raw); paint(false); }
+    else paint(false);
+  };
+  hexInput.onkeydown=(ev)=>{ ev.stopPropagation(); if(ev.key==="Enter") hexInput.blur(); };
+  bar.onclick=(ev)=>{ ev.stopPropagation(); picker.classList.toggle("open"); bar.classList.toggle("open"); };
+  paint(false);
+  return host;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                          SLIDE 1 — LAYER PROPERTIES PANE
+----------------------------------------------------------------------------------------------------------------------*/
+const metaBody  = document.getElementById("metaBody");
+const metaFoot  = document.getElementById("metaFoot");
+const metaName  = document.getElementById("metaName");
+const metaClass = document.getElementById("metaClass");
+const metaIcon  = document.getElementById("metaIcon");
+
+/* 💡 rebuild only when the identity changes, so dragging a slider doesn't rip the pane
+   out from under the pointer; opacity is pushed through syncOpacityFields instead */
+let paneSignature="";
+let opacityField=null;
+
+function sectionLabel(text, glyph, tail){
+  const el=document.createElement("div"); el.className="meta-sect";
+  el.innerHTML=(glyph?`<span>${uiIcon(glyph,12)}</span>`:"")+`<span>${text}</span>`+
+    (tail?`<span class="ms-tail">${tail}</span>`:"");
+  return el;
+}
+
+function renderMetadata(force){
+  const layer=focusLayer();
+  const signature = layer
+    ? [layer.token,layer.name,layer.classification,layer.blend,layer.resolution,layer.shown,
+       layer.mask.enabled,layer.mask.fill,layer.mask.invert,layer.mask.components.length,
+       enabledCount(layer),addFoldOpen].join("|")
+    : "none";
+  if(!force && signature===paneSignature) return;
+  paneSignature=signature; opacityField=null;
+  metaBody.innerHTML="";
+
+  if(!layer){
+    metaName.textContent="Nothing selected";
+    metaClass.textContent="—";
+    metaIcon.innerHTML=uiIcon("stack",17);
+    metaBody.innerHTML='<div class="empty-state">No layer focused.<br>Pick one in the stack.</div>';
+    metaFoot.innerHTML='<span>—</span>';
+    return;
+  }
+
+  const hue=hueOf(layer.classification);
+  metaName.textContent=layer.name;
+  metaClass.textContent=CLASSIFICATION_LABEL[layer.classification]+" layer";
+  metaIcon.innerHTML=classificationSvg(layer.classification,17);
+
+  /* hero — the thumbnail reads exactly as the stack row's does */
+  const fill=baseColourOf(layer);
+  const hero=document.createElement("div"); hero.className="meta-hero";
+  hero.innerHTML=
+    `<span class="mh-ic">${fill?`<span class="mh-fill" style="background:${fill}"></span>`:classificationSvg(layer.classification,22)}</span>`+
+    `<span class="mh-txt">`+
+      `<span class="mh-name">${layer.name}</span>`+
+      `<span class="mh-class" style="color:${hue}">${CLASSIFICATION_LABEL[layer.classification]}</span>`+
+    `</span>`;
+  metaBody.appendChild(hero);
+
+  /* ── editable layer properties ── */
+  metaBody.appendChild(sectionLabel("Properties","sliders"));
+
+  metaBody.appendChild(propRow("Visible", buildSwitch(layer.shown, ()=>toggleShown(layer))));
+
+  metaBody.appendChild(propRow("Blend", buildDropdown(BLEND_MODES, layer.blend, (pick)=>{
+    layer.blend=pick;
+    recordRevision("parameter","Blend changed",pick,layer);
+    renderStack(); renderMetadata(true);
+  })));
+
+  opacityField=buildSlider({
+    min:0, max:100, step:1, value:layer.opacity, unit:"%",
+    onInput:(v,live)=>{
+      layer.opacity=v;
+      syncOpacityPill(layer);
+      if(!live) recordRevision("parameter","Opacity changed",v+" %",layer);
+    }
+  });
+  metaBody.appendChild(propRow("Opacity", opacityField));
+
+  metaBody.appendChild(propRow("Resolution", buildDropdown(RESOLUTIONS, layer.resolution, (pick)=>{
+    layer.resolution=pick;
+    recordRevision("parameter","Resolution changed",pick,layer);
+    renderMetadata(true);
+  })));
+
+  const chanRow=document.createElement("div"); chanRow.className="meta-row";
+  chanRow.innerHTML=`<span class="mr-k">Channels</span><span class="mr-v">${enabledCount(layer)} / ${PBR_CHANNELS.length} active</span>`;
+  metaBody.appendChild(chanRow);
+
+  /* ── mask ── */
+  metaBody.appendChild(sectionLabel("Mask","mask", layer.mask.enabled?maskNote(layer.mask):""));
+  metaBody.appendChild(buildMaskEditor(layer));
+
+  /* ── the actions, permanently visible ── */
+  metaBody.appendChild(sectionLabel("Actions"));
+  metaBody.appendChild(buildActionList(layer));
+
+  metaBody.appendChild(advanceButton());
+
+  metaFoot.innerHTML=
+    `<span class="pf-hue" style="background:${hue}"></span>`+
+    `<span>${CLASSIFICATION_LABEL[layer.classification]}</span>`+
+    `<span class="pf-dot">·</span><span class="pf-strong">${layer.opacity}%</span>`+
+    `<span class="pf-spacer"></span><span>${layer.resolution}</span>`;
+}
+
+/* keep the stack row's pill and the pane's slider agreeing without a rebuild */
+function syncOpacityPill(layer){
+  const row=stackBody.querySelector(`.stack-row[data-token="${layer.token}"]`);
+  const pill=row&&row.querySelector(".sr-opacity");
+  if(pill) pill.textContent=layer.opacity+"%";
+  const strong=metaFoot.querySelector(".pf-strong");
+  if(strong) strong.textContent=layer.opacity+"%";
+}
+function syncOpacityFields(layer){
+  if(opacityField&&opacityField.readBack) opacityField.readBack(layer.opacity);
+  const strong=metaFoot.querySelector(".pf-strong");
+  if(strong) strong.textContent=layer.opacity+"%";
+}
+
+function advanceButton(){
+  const cta=document.createElement("div"); cta.className="meta-cta";
+  cta.innerHTML=`<span>Channels + History</span>${uiIcon("chevron",13)}<span class="cta-kbd">Tab</span>`;
+  cta.onclick=slideToInspect;
+  return cta;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   MASK EDITOR
+----------------------------------------------------------------------------------------------------------------------*/
+function buildMaskEditor(layer){
+  const mask=layer.mask;
+  const host=document.createElement("div");
+
+  if(!mask.enabled){
+    const cta=document.createElement("div"); cta.className="msk-empty";
+    cta.innerHTML=`${uiIcon("mask",13)}<span>Add mask</span>`;
+    cta.onclick=()=>attachMask(layer);
+    host.appendChild(cta);
+    return host;
+  }
+
+  const summary=document.createElement("div"); summary.className="msk-row";
+  summary.innerHTML=
+    `<span class="msk-prev"><span class="msk-grad" style="background:${maskSwatchStyle(mask)};opacity:${mask.opacity/100}"></span></span>`+
+    `<span class="msk-info"><span class="msk-nm">Layer mask</span><span class="msk-meta">${maskNote(mask)}</span></span>`;
+  host.appendChild(summary);
+
+  const bar=document.createElement("div"); bar.className="msk-toolbar";
+  const tool=(label, glyph, on, onPress)=>{
+    const btn=document.createElement("div"); btn.className="msk-tool"+(on?" on":"");
+    btn.innerHTML=`${uiIcon(glyph,12)}<span>${label}</span>`;
+    btn.onclick=onPress;
+    return btn;
+  };
+  bar.appendChild(tool("Black","circle", mask.fill==="black", ()=>{
+    mask.fill="black"; recordRevision("parameter","Mask fill","Black",layer); renderStack(); renderMetadata(true);
+  }));
+  bar.appendChild(tool("White","circle", mask.fill==="white", ()=>{
+    mask.fill="white"; recordRevision("parameter","Mask fill","White",layer); renderStack(); renderMetadata(true);
+  }));
+  bar.appendChild(tool("Invert","invert", mask.invert, ()=>{
+    mask.invert=!mask.invert; recordRevision("parameter","Mask invert",mask.invert?"on":"off",layer);
+    renderStack(); renderMetadata(true);
+  }));
+  host.appendChild(bar);
+
+  host.appendChild(propRow("Mask opacity", buildSlider({
+    min:0, max:100, step:1, value:mask.opacity, unit:"%",
+    onInput:(v,live)=>{
+      mask.opacity=v;
+      const grad=host.querySelector(".msk-grad");
+      if(grad) grad.style.opacity=v/100;
+      if(!live) recordRevision("parameter","Mask opacity",v+" %",layer);
+    }
+  })));
+
+  if(mask.components.length){
+    const list=document.createElement("div"); list.className="msk-comps";
+    mask.components.forEach(comp=>{
+      const meta=MASK_COMPONENT_KINDS[comp.kind]||{glyph:"circle"};
+      const item=document.createElement("div"); item.className="msk-comp";
+      item.innerHTML=
+        `<span class="mc-ico">${uiIcon(meta.glyph,12)}</span>`+
+        `<span class="mc-tx"><span class="mc-nm">${comp.name}</span><span class="mc-md">${comp.kind}</span></span>`+
+        `<span class="mc-x" title="Remove component">×</span>`;
+      item.querySelector(".mc-x").onclick=(ev)=>{
+        ev.stopPropagation();
+        mask.components=mask.components.filter(c=>c.token!==comp.token);
+        recordRevision("parameter","Mask component removed",comp.name,layer);
+        renderStack(); renderMetadata(true);
+      };
+      list.appendChild(item);
+    });
+    host.appendChild(list);
+  }
+
+  /* component kinds unfold in place, same mechanic as the New-layer fold */
+  const adder=document.createElement("div");
+  adder.className="act-item"+(maskFoldOpen?" armed":"");
+  adder.innerHTML=`<span class="ic">${uiIcon("plus")}</span><span>Add component</span><span class="fold"></span>`;
+  host.appendChild(adder);
+
+  const fold=document.createElement("div"); fold.className="act-fold"+(maskFoldOpen?" open":"");
+  const clip=document.createElement("div"); clip.className="af-clip";
+  const grid=document.createElement("div"); grid.className="af-grid";
+  Object.keys(MASK_COMPONENT_KINDS).forEach(kind=>{
+    const meta=MASK_COMPONENT_KINDS[kind];
+    const choice=document.createElement("div"); choice.className="af-choice"; choice.title=meta.note;
+    choice.innerHTML=`${uiIcon(meta.glyph,14)}<span>${kind}</span>`;
+    choice.onclick=(ev)=>{
+      ev.stopPropagation();
+      maskFoldOpen=false;
+      mask.components.push(maskComponent(kind));
+      recordRevision("parameter","Mask component added",kind,layer);
+      renderStack(); renderMetadata(true);
+    };
+    grid.appendChild(choice);
+  });
+  clip.appendChild(grid); fold.appendChild(clip); host.appendChild(fold);
+
+  adder.onclick=(ev)=>{
+    ev.stopPropagation();
+    maskFoldOpen=!maskFoldOpen;
+    fold.classList.toggle("open",maskFoldOpen);
+    adder.classList.toggle("armed",maskFoldOpen);
+  };
+
+  const drop=document.createElement("div"); drop.className="msk-tool";
+  drop.style.marginTop="6px";
+  drop.innerHTML=`${uiIcon("trash",12)}<span>Remove mask</span>`;
+  drop.onclick=()=>removeMask(layer);
+  host.appendChild(drop);
+
+  return host;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                INLINE ACTION LIST
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 the stack has no context menu — this list IS the menu, and it is always on screen.
+   💡 both folds are module-level so a pane rebuild doesn't slam them shut. */
+let addFoldOpen=false, maskFoldOpen=false;
+function collapseAddFold(){
+  addFoldOpen=false; maskFoldOpen=false;
+  metaBody.querySelectorAll(".act-fold.open").forEach(f=>f.classList.remove("open"));
+  metaBody.querySelectorAll(".act-item.armed").forEach(i=>i.classList.remove("armed"));
+}
+
+/* 📝 one table drives the list — the order here is the order on screen */
+const LAYER_ACTIONS = [
+  { act:"rename",     glyph:"rename",    label:"Rename",      kbd:"F2"     },
+  { act:"duplicate",  glyph:"duplicate", label:"Duplicate",   kbd:"Ctrl D" },
+  { act:"visibility", glyph:"eyeOpen",   label:"Hide",        kbd:"H"      },
+  { act:"isolate",    glyph:"target",    label:"Isolate",     kbd:"I"      },
+  { act:"mask",       glyph:"mask",      label:"Add mask",    kbd:"M"      },
+  { act:"raise",      glyph:"arrowUp",   label:"Move up",     kbd:"↑"      },
+  { act:"lower",      glyph:"arrowDown", label:"Move down",   kbd:"↓"      },
+  { act:"drop",       glyph:"trash",     label:"Delete",      kbd:"Del", danger:true },
+];
+
+function applyLayerAction(act, layer){
+  switch(act){
+    case "rename": {
+      const row=stackBody.querySelector(`.stack-row[data-token="${layer.token}"]`);
+      if(row) beginRename(layer, row.querySelector(".sr-name"));
+      break;
+    }
+    case "duplicate":  duplicateLayer(layer); break;
+    case "visibility": toggleShown(layer); break;
+    case "isolate":    isolateFocus(); break;
+    case "mask":       layer.mask.enabled ? removeMask(layer) : attachMask(layer); break;
+    case "raise":      moveLayer(layer,-1); break;
+    case "lower":      moveLayer(layer, 1); break;
+    case "inspect":    slideToInspect(); break;
+    case "drop":       dropLayer(layer); break;
+  }
+}
+
+function buildActionList(layer){
+  const host=document.createElement("div"); host.className="meta-actions";
+  const at=layerIndex(layer.token);
+
+  /* New layer + its in-place classification fold */
+  const adder=document.createElement("div");
+  adder.className="act-item"+(addFoldOpen?" armed":"");
+  adder.innerHTML=`<span class="ic">${uiIcon("plus")}</span><span>New layer</span><span class="fold"></span>`;
+  host.appendChild(adder);
+
+  const fold=document.createElement("div"); fold.className="act-fold"+(addFoldOpen?" open":"");
+  const clip=document.createElement("div"); clip.className="af-clip";
+  const grid=document.createElement("div"); grid.className="af-grid";
+  CLASSIFICATION_ORDER.forEach(cls=>{
+    const choice=document.createElement("div"); choice.className="af-choice";
+    choice.title=CLASSIFICATION_NOTE[cls];
+    choice.innerHTML=classificationSvg(cls,14)+`<span>${CLASSIFICATION_LABEL[cls]}</span>`;
+    choice.onclick=(ev)=>{ ev.stopPropagation(); addFoldOpen=false; appendLayer(cls); };
+    grid.appendChild(choice);
+  });
+  clip.appendChild(grid); fold.appendChild(clip); host.appendChild(fold);
+
+  adder.onclick=(ev)=>{
+    ev.stopPropagation();
+    addFoldOpen=!addFoldOpen;
+    fold.classList.toggle("open",addFoldOpen);
+    adder.classList.toggle("armed",addFoldOpen);
+  };
+
+  host.appendChild(Object.assign(document.createElement("div"),{className:"act-sep"}));
+
+  LAYER_ACTIONS.forEach(spec=>{
+    const item=document.createElement("div");
+    item.className="act-item"+(spec.danger?" danger":"");
+    let glyph=spec.glyph, label=spec.label;
+    if(spec.act==="visibility"){
+      glyph=layer.shown?"eyeOpen":"eyeOff";
+      label=layer.shown?"Hide":"Show";
+    }
+    if(spec.act==="mask" && layer.mask.enabled) label="Remove mask";
+    /* the end of the stack can't move further that way */
+    if((spec.act==="raise" && at===0) || (spec.act==="lower" && at===layerStore.length-1)){
+      item.classList.add("disabled");
+    }
+    item.innerHTML=
+      `<span class="ic">${uiIcon(glyph)}</span><span>${label}</span>`+
+      (spec.kbd?`<span class="kbd">${spec.kbd}</span>`:"");
+    item.onclick=(ev)=>{ ev.stopPropagation(); applyLayerAction(spec.act, layer); };
+    host.appendChild(item);
+  });
+
+  return host;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                          SLIDE 2 — MATERIAL CHANNELS
+----------------------------------------------------------------------------------------------------------------------*/
+const summonPropBody = document.getElementById("summonPropBody");
+const inspectIdentity= document.getElementById("inspectIdentity");
+const inspectIcon    = document.getElementById("inspectIcon");
+const inspectName    = document.getElementById("inspectName");
+const inspectSub     = document.getElementById("inspectSub");
+const inspectFoot    = document.getElementById("inspectFoot");
+const summonFoot     = document.getElementById("summonFoot");
+
+let previewBall=null;
+let channelSignature="";
+
+/* the identity rail — the layer read at a glance, colour carrying its classification */
+function renderIdentity(){
+  const layer=focusLayer();
+  inspectIdentity.innerHTML="";
+  if(!layer){
+    inspectFoot.innerHTML='<span>—</span>';
+    return;
+  }
+  const hue=hueOf(layer.classification);
+  const fill=baseColourOf(layer);
+
+  const chip=document.createElement("div"); chip.className="ident-chip";
+  chip.innerHTML=fill
+    ? `<span class="ic-fill" style="background:${fill}"></span>`
+    : classificationSvg(layer.classification,34);
+  inspectIdentity.appendChild(chip);
+
+  const name=document.createElement("div"); name.className="ident-name"; name.textContent=layer.name;
+  const cls=document.createElement("div"); cls.className="ident-class";
+  cls.style.color=hue; cls.textContent=CLASSIFICATION_LABEL[layer.classification];
+  inspectIdentity.appendChild(name); inspectIdentity.appendChild(cls);
+
+  const stats=[
+    ["Blend",      layer.blend],
+    ["Opacity",    layer.opacity+" %"],
+    ["Resolution", layer.resolution],
+    ["Channels",   enabledCount(layer)+" / "+PBR_CHANNELS.length],
+    ["Mask",       layer.mask.enabled?(layer.mask.fill==="white"?"White":"Black")+(layer.mask.invert?" · inv":""):"none"],
+    ["Visible",    layer.shown?"yes":"no"],
+  ];
+  const holder=document.createElement("div"); holder.style.marginTop="9px";
+  stats.forEach(([k,v])=>{
+    const row=document.createElement("div"); row.className="ident-stat";
+    row.innerHTML=`<span>${k}</span><span class="is-v">${v}</span>`;
+    holder.appendChild(row);
+  });
+  inspectIdentity.appendChild(holder);
+
+  inspectFoot.innerHTML=
+    `<span class="pf-hue" style="background:${hue}"></span>`+
+    `<span>${CLASSIFICATION_LABEL[layer.classification]}</span>`;
+}
+
+function renderChannels(force){
+  const layer=focusLayer();
+  const signature = layer
+    ? [layer.token,layer.name,
+       PBR_CHANNELS.map(d=>{
+         const c=layer.channels[d.key];
+         return d.key+(c.enabled?"1":"0")+c.mode+(c.collapsed?"c":"o")+(c.map||"");
+       }).join(",")].join("|")
+    : "none";
+  if(!force && signature===channelSignature) return;
+  channelSignature=signature;
+  summonPropBody.innerHTML=""; previewBall=null;
+
+  if(!layer){
+    inspectName.textContent="Nothing selected";
+    inspectSub.textContent="—";
+    inspectIcon.innerHTML=uiIcon("stack",17);
+    summonPropBody.innerHTML='<div class="empty-state">No layer focused.</div>';
+    summonFoot.innerHTML='<span>—</span>';
+    return;
+  }
+
+  inspectName.textContent=layer.name;
+  inspectSub.textContent=CLASSIFICATION_LABEL[layer.classification]+" · "+layer.blend;
+  inspectIcon.innerHTML=classificationSvg(layer.classification,17);
+
+  summonPropBody.appendChild(buildPreviewBall(layer));
+  summonPropBody.appendChild(buildChannelChips(layer));
+  PBR_CHANNELS.forEach(def=>{
+    if(layer.channels[def.key].enabled) summonPropBody.appendChild(buildChannelPanel(layer,def));
+  });
+
+  const branch=activeBranch();
+  summonFoot.innerHTML=
+    `<span class="pf-strong">${enabledCount(layer)}</span> channels`+
+    `<span class="pf-spacer"></span>`+
+    `<span>${branch.cursor+1} / ${branch.entries.length} revisions</span>`;
+}
+
+/* ─── the CSS-shaded preview ball, ported from Studio ─── */
+function buildPreviewBall(layer){
+  const host=document.createElement("div"); host.className="pbr-preview";
+  host.innerHTML=
+    `<div class="pbr-preview-head"><span>Material preview</span></div>`+
+    `<div class="pbr-stage"><div class="pbr-ball"></div></div>`;
+  previewBall=host.querySelector(".pbr-ball");
+  paintPreviewBall(layer);
+  return host;
+}
+function paintPreviewBall(layer){
+  if(!previewBall) return;
+  const ch=layer.channels;
+  const litBase = ch.baseColour.enabled && ch.baseColour.mode==="value";
+  const rough = ch.roughness.enabled ? Number(ch.roughness.value) : 0.5;
+  const metal = ch.metallic.enabled  ? Number(ch.metallic.value)  : 0;
+  previewBall.style.background = litBase ? ch.baseColour.value : "#555";
+  previewBall.style.boxShadow =
+    `inset -8px -8px 20px rgba(0,0,0,${(0.6+rough*0.4).toFixed(2)}),`+
+    `inset 8px 8px 20px rgba(255,255,255,${(0.2+metal*0.6).toFixed(2)}),`+
+    `0 15px 30px -5px rgba(0,0,0,${(0.5+metal*0.5).toFixed(2)})`;
+  previewBall.innerHTML="";
+  if(rough<0.9){
+    const spec=document.createElement("div"); spec.className="pbr-spec";
+    spec.style.cssText=
+      `top:15%;left:20%;width:${(50*(1-rough)+15).toFixed(1)}%;height:${(40*(1-rough)+15).toFixed(1)}%;`+
+      `opacity:${(0.9-rough*0.7).toFixed(2)};filter:blur(${(1+rough*12).toFixed(1)}px);transform:rotate(-30deg);`;
+    previewBall.appendChild(spec);
+  }
+  if(metal>0.1){
+    const fres=document.createElement("div"); fres.className="pbr-fresnel";
+    fres.style.opacity=(metal*0.4).toFixed(2); fres.style.filter="blur(2px)";
+    previewBall.appendChild(fres);
+  }
+  previewBall.appendChild(Object.assign(document.createElement("div"),{className:"pbr-ao"}));
+}
+
+/* ─── active-channel chips, plus an in-place fold of the inactive ones ─── */
+let channelFoldOpen=false;
+function buildChannelChips(layer){
+  const card=document.createElement("div"); card.className="card";
+  const head=document.createElement("div"); head.className="card-head";
+  head.innerHTML=`<span class="ch-tw">${uiIcon("chevronDown",10)}</span><span>Channels</span>`+
+    `<span class="ch-n">${enabledCount(layer)} / ${PBR_CHANNELS.length}</span>`;
+  const shell=document.createElement("div"); shell.className="card-shell";
+  const clip=document.createElement("div"); clip.className="card-body-inner";
+  const body=document.createElement("div"); body.className="card-body";
+
+  const chips=document.createElement("div"); chips.className="chan-chips";
+  PBR_CHANNELS.forEach(def=>{
+    if(!layer.channels[def.key].enabled) return;
+    const chip=document.createElement("div"); chip.className="chan-chip";
+    chip.innerHTML=`<span>${def.label}</span><span class="cc-x" title="Drop channel">×</span>`;
+    chip.querySelector(".cc-x").onclick=(ev)=>{
+      ev.stopPropagation();
+      layer.channels[def.key].enabled=false;
+      recordRevision("material","Channel dropped",def.label,layer);
+      renderStack(); syncInspectors(true);
+    };
+    chips.appendChild(chip);
+  });
+
+  const idle=PBR_CHANNELS.filter(def=>!layer.channels[def.key].enabled);
+  const add=document.createElement("button"); add.className="chan-add";
+  add.innerHTML=`${uiIcon("plus",11)}<span>Add</span>`;
+  chips.appendChild(add);
+  body.appendChild(chips);
+
+  const fold=document.createElement("div"); fold.className="act-fold"+(channelFoldOpen?" open":"");
+  const foldClip=document.createElement("div"); foldClip.className="af-clip";
+  const pool=document.createElement("div"); pool.className="chan-pool";
+  if(idle.length){
+    idle.forEach(def=>{
+      const opt=document.createElement("div"); opt.className="chan-pool-opt";
+      opt.textContent=def.label;
+      opt.onclick=(ev)=>{
+        ev.stopPropagation();
+        channelFoldOpen=false;
+        layer.channels[def.key].enabled=true;
+        recordRevision("material","Channel added",def.label,layer);
+        renderStack(); syncInspectors(true);
+      };
+      pool.appendChild(opt);
+    });
+  } else {
+    const none=document.createElement("div"); none.className="chan-pool-empty";
+    none.textContent="Every channel is already active.";
+    pool.appendChild(none);
+  }
+  foldClip.appendChild(pool); fold.appendChild(foldClip); body.appendChild(fold);
+
+  add.onclick=(ev)=>{
+    ev.stopPropagation();
+    channelFoldOpen=!channelFoldOpen;
+    fold.classList.toggle("open",channelFoldOpen);
+  };
+
+  head.onclick=()=>card.classList.toggle("collapsed");
+  clip.appendChild(body); shell.appendChild(clip);
+  card.appendChild(head); card.appendChild(shell);
+  return card;
+}
+
+/* ─── one accordion per enabled channel, with the Val | Map switch in its head ─── */
+function buildChannelPanel(layer, def){
+  const chan=layer.channels[def.key];
+  const mapOnly=def.edit==="mapOnly";
+  const panel=document.createElement("div");
+  panel.className="chan-panel"+(chan.collapsed?" collapsed":"");
+
+  const head=document.createElement("div"); head.className="chan-head";
+  head.innerHTML=
+    `<span class="ch-tw">${uiIcon("chevronDown",9)}</span>`+
+    `<span class="ch-dot" style="background:${hueOf(layer.classification)}"></span>`+
+    `<span class="ch-title">${def.label}</span>`+
+    (mapOnly
+      ? `<span class="vm-toggle"><button class="active">Map</button></span>`
+      : `<span class="vm-toggle">`+
+          `<button data-mode="value" class="${chan.mode==="value"?"active":""}">Val</button>`+
+          `<button data-mode="map" class="${chan.mode==="map"?"active":""}">Map</button>`+
+        `</span>`);
+
+  const shell=document.createElement("div"); shell.className="chan-shell";
+  const clip=document.createElement("div"); clip.className="chan-clip";
+  const body=document.createElement("div"); body.className="chan-body";
+  buildChannelBody(body, layer, def);
+  clip.appendChild(body); shell.appendChild(clip);
+
+  head.onclick=(ev)=>{
+    if(ev.target.closest(".vm-toggle")) return;
+    chan.collapsed=!chan.collapsed;
+    panel.classList.toggle("collapsed",chan.collapsed);
+  };
+  if(!mapOnly){
+    head.querySelectorAll(".vm-toggle button").forEach(btn=>{
+      btn.onclick=(ev)=>{
+        ev.stopPropagation();
+        chan.mode=btn.dataset.mode;
+        recordRevision("material",def.label+" mode",chan.mode==="map"?"Map":"Value",layer);
+        renderStack(); syncInspectors(true);
+      };
+    });
+  }
+  panel.appendChild(head); panel.appendChild(shell);
+  return panel;
+}
+
+function buildChannelBody(body, layer, def){
+  const chan=layer.channels[def.key];
+
+  if(chan.mode==="map" || def.edit==="mapOnly"){
+    body.appendChild(propRow("Map", buildMapField(layer, def, chan)));
+    return;
+  }
+  if(def.edit==="colour"){
+    body.appendChild(propRow("Colour", buildColourField(chan.value, (hex,live)=>{
+      chan.value=hex;
+      paintPreviewBall(layer);
+      syncThumb(layer);
+      if(!live) recordRevision("material",def.label,hex.toUpperCase(),layer);
+    })));
+    return;
+  }
+  body.appendChild(propRow(def.unit||"Amount", buildSlider({
+    min:def.min, max:def.max, step:def.step, value:Number(chan.value),
+    onInput:(v,live)=>{
+      chan.value=v;
+      paintPreviewBall(layer);
+      if(!live) recordRevision("material",def.label,v.toFixed(decimalsFor(def.step)),layer);
+    }
+  })));
+}
+
+function buildMapField(layer, def, chan){
+  const host=document.createElement("div"); host.className="map-sel";
+  host.innerHTML=
+    `<span class="ms-swatch"></span>`+
+    `<span class="ms-name${chan.map?"":" none"}">${chan.map||"None"}</span>`+
+    `<button class="ms-btn add" title="Assign map">+</button>`+
+    (chan.map?`<button class="ms-btn rm" title="Clear map">×</button>`:"");
+  host.querySelector(".add").onclick=(ev)=>{
+    ev.stopPropagation();
+    chan.map="T_"+def.key.replace(/^./,c=>c.toUpperCase())+"_Map";
+    chan.mode="map";
+    recordRevision("material",def.label+" map",chan.map,layer);
+    renderStack(); syncInspectors(true);
+  };
+  const clear=host.querySelector(".rm");
+  if(clear) clear.onclick=(ev)=>{
+    ev.stopPropagation();
+    chan.map=null;
+    recordRevision("material",def.label+" map","cleared",layer);
+    renderStack(); syncInspectors(true);
+  };
+  return host;
+}
+
+/* the stack thumbnail mirrors base colour, so repaint it without a full rebuild */
+function syncThumb(layer){
+  const row=stackBody.querySelector(`.stack-row[data-token="${layer.token}"]`);
+  const fill=row&&row.querySelector(".sr-thumb-fill");
+  const colour=baseColourOf(layer);
+  if(fill&&colour) fill.style.background=colour;
+  const hero=metaBody.querySelector(".mh-fill");
+  if(hero&&colour) hero.style.background=colour;
+  const chip=inspectIdentity.querySelector(".ic-fill");
+  if(chip&&colour) chip.style.background=colour;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 REVISION RENDER
+----------------------------------------------------------------------------------------------------------------------*/
+const hxTrees  = document.getElementById("hxTrees");
+const hxScroll = document.getElementById("hxScroll");
+
+function renderBranchTabs(){
+  hxTrees.innerHTML="";
+  revisionStore.branches.forEach((branch,index)=>{
+    const tab=document.createElement("div");
+    tab.className="hx-tree"+(index===revisionStore.active?" active":"");
+    tab.innerHTML=
+      `${uiIcon("branch",11)}<span>${branch.name}</span>`+
+      `<span class="hx-tree-ct">${branch.entries.length}</span>`+
+      (revisionStore.branches.length>1?`<span class="hx-tree-x" title="Drop branch">×</span>`:"");
+    tab.onclick=(ev)=>{
+      if(ev.target.closest(".hx-tree-x")){ dropBranch(index); return; }
+      revisionStore.active=index;
+      renderRevisions();
+    };
+    hxTrees.appendChild(tab);
+  });
+  const add=document.createElement("div"); add.className="hx-tree-add";
+  add.title="New branch from here"; add.textContent="+";
+  add.onclick=branchFromCursor;
+  hxTrees.appendChild(add);
+}
+
+function renderRevisions(){
+  renderBranchTabs();
+  hxScroll.innerHTML="";
+  const branch=activeBranch();
+  const entries=branch.entries;
+
+  if(!entries.length){
+    hxScroll.innerHTML='<div class="hx-empty">No revisions yet.<br>Paint, add layers, or change a channel.</div>';
+    return;
+  }
+
+  /* 💡 newest first, so the tip is what you read without scrolling */
+  for(let i=entries.length-1;i>=0;i--){
+    const entry=entries[i];
+    const kind=REVISION_KINDS[entry.kind]||REVISION_KINDS.stroke;
+    const isTip=i===entries.length-1;
+    const isRoot=i===0;
+    const ahead=i>branch.cursor;          /* past the cursor → an undone future */
+    const atCursor=i===branch.cursor;
+
+    const row=document.createElement("div");
+    row.className="hx-ev"+(ahead?" future":"")+(atCursor?" at-cursor":"");
+    row.title="Jump to this point";
+
+    /* rail — the segment above an entry takes the hue of the entry above it */
+    const rail=document.createElement("div"); rail.className="hx-rail";
+    const upper=document.createElement("div");
+    upper.className="hx-line"+(isTip?" blank":"");
+    if(!isTip) upper.style.background=entries[i+1].layerHue;
+    const node=document.createElement("div"); node.className="hx-node";
+    node.innerHTML=uiIcon(kind.glyph,11);
+    node.style.color=entry.layerHue;
+    const lower=document.createElement("div");
+    lower.className="hx-line"+(isRoot?" blank":"");
+    if(!isRoot) lower.style.background=entry.layerHue;
+    rail.appendChild(upper); rail.appendChild(node); rail.appendChild(lower);
+
+    /* body — layer entries draw a hue chip, everything else a title + kind pill */
+    const body=document.createElement("div"); body.className="hx-body";
+    const main=document.createElement("div"); main.className="hx-main";
+    if(kind.layerEntry){
+      main.innerHTML=
+        `<div class="hx-layerline">`+
+          `<span class="hx-verb">${kind.verb}</span>`+
+          `<span class="hx-chip" style="background:${entry.layerHue}">${entry.note||entry.layerName}</span>`+
+        `</div>`;
+    } else {
+      main.innerHTML=
+        `<div style="min-width:0">`+
+          `<div class="hx-evt-title">${entry.title||kind.label}</div>`+
+          (entry.note?`<div class="hx-sub">${entry.note}</div>`:"")+
+        `</div>`+
+        `<span class="hx-type ${kind.tone||""}">${kind.label}</span>`;
+    }
+    const clock=document.createElement("div"); clock.className="hx-time";
+    clock.textContent=clockOf(entry.at);
+    body.appendChild(main); body.appendChild(clock);
+
+    row.appendChild(rail); row.appendChild(body);
+    row.onclick=()=>jumpRevision(i);
+    hxScroll.appendChild(row);
+  }
+
+  const undo=document.getElementById("summonUndo");
+  const redo=document.getElementById("summonRedo");
+  undo.disabled = branch.cursor<=0;
+  redo.disabled = branch.cursor>=entries.length-1;
+
+  if(focusLayer()){
+    summonFoot.innerHTML=
+      `<span class="pf-strong">${enabledCount(focusLayer())}</span> channels`+
+      `<span class="pf-spacer"></span>`+
+      `<span>${branch.cursor+1} / ${entries.length} revisions</span>`;
+  }
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+const summonMenu   = document.getElementById("summonMenu");
+const summonVeil   = document.getElementById("summonVeil");
+const menuTrack    = document.getElementById("menuTrack");
+const inspectTrack = document.getElementById("inspectTrack");
+const viewport     = document.getElementById("viewport");
+
+const MENU_W=548, MENU_H=372, MENU_PAD=14;
+let summonOpen=false;
+
+const onInspectSlide = ()=>menuTrack.classList.contains("to-inspect");
+
+/* keep both panes in step; `force` rebuilds even when the signature is unchanged */
+function syncInspectors(force){
+  renderMetadata(force);
+  renderIdentity();
+  renderChannels(force);
+  renderRevisions();
+}
+
+function summonMenuAt(x,y){
+  const left=Math.min(Math.max(MENU_PAD,x), window.innerWidth -MENU_W-MENU_PAD);
+  const top =Math.min(Math.max(MENU_PAD,y), window.innerHeight-MENU_H-MENU_PAD);
+  summonMenu.style.left=left+"px";
+  summonMenu.style.top =top+"px";
+  summonMenu.classList.add("open");
+  summonVeil.classList.add("open");
+  summonOpen=true;
+  syncInspectors(true);
+}
+function dismissMenu(){
+  summonMenu.classList.remove("open");
+  summonVeil.classList.remove("open");
+  summonOpen=false;
+  closeDropdowns();
+  collapseAddFold();
+  menuTrack.classList.remove("to-inspect");
+}
+function slideToInspect(){
+  closeDropdowns();
+  menuTrack.classList.add("to-inspect");
+  renderChannels(true);
+  renderRevisions();
+}
+function slideToDirectory(){
+  closeDropdowns();
+  menuTrack.classList.remove("to-inspect");
+  renderMetadata(true);
+}
+function switchInspector(which){
+  document.querySelectorAll("#summonCarousel .pc-seg").forEach(seg=>{
+    seg.classList.toggle("active", seg.dataset.inspect===which);
+  });
+  inspectTrack.classList.toggle("show-history", which==="history");
+}
+
+/* Tab cycles: closed → slide 1 → slide 2; Escape unwinds the same path */
+function advanceSummon(){
+  if(!summonOpen){
+    const box=viewport.getBoundingClientRect();
+    summonMenuAt(box.left+Math.round((box.width-MENU_W)/2), box.top+52);
+    return;
+  }
+  if(!onInspectSlide()) slideToInspect();
+  else dismissMenu();
+}
+
+document.getElementById("advanceHead").onclick=(ev)=>{
+  if(ev.target.closest(".hdr-btn")) return;
+  slideToInspect();
+};
+document.getElementById("returnHead").onclick=slideToDirectory;
+document.getElementById("summonUndo").onclick=(ev)=>{ ev.stopPropagation(); stepRevision(-1); };
+document.getElementById("summonRedo").onclick=(ev)=>{ ev.stopPropagation(); stepRevision(1); };
+document.querySelectorAll("#summonCarousel .pc-seg").forEach(seg=>{
+  seg.onclick=()=>switchInspector(seg.dataset.inspect);
+});
+
+document.getElementById("filterInput").oninput=function(){
+  filterTerm=this.value.trim().toLowerCase();
+  renderStack();
+};
+
+/* summon at the pointer on right-click in the canvas */
+viewport.oncontextmenu=(ev)=>{
+  ev.preventDefault();
+  summonMenuAt(ev.clientX, ev.clientY);
+};
+summonVeil.onpointerdown=dismissMenu;
+document.addEventListener("pointerdown",(ev)=>{
+  if(!summonMenu.contains(ev.target)) closeDropdowns();
+},true);
+document.addEventListener("scroll",closeDropdowns,true);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  KEY ASSIGNMENT
+----------------------------------------------------------------------------------------------------------------------*/
+document.addEventListener("keydown",(ev)=>{
+  if(ev.target.isContentEditable || ev.target.tagName==="INPUT") return;
+
+  if(ev.key==="Tab"){ ev.preventDefault(); advanceSummon(); return; }
+
+  if(ev.key==="Escape"){
+    if(openDropdown){ closeDropdowns(); return; }
+    if(addFoldOpen||maskFoldOpen||channelFoldOpen){
+      channelFoldOpen=false; collapseAddFold(); syncInspectors(true); return;
+    }
+    if(summonOpen && onInspectSlide()){ slideToDirectory(); return; }
+    if(summonOpen){ dismissMenu(); return; }
+    return;
+  }
+
+  if(!summonOpen) return;
+  const layer=focusLayer();
+
+  if(ev.key==="ArrowDown"||ev.key==="ArrowUp"){
+    ev.preventDefault();
+    if(ev.altKey && layer){ moveLayer(layer, ev.key==="ArrowDown"?1:-1); return; }
+    if(!layerStore.length) return;
+    const at=Math.max(0, layerIndex(focusToken));
+    const to=Math.max(0, Math.min(layerStore.length-1, at+(ev.key==="ArrowDown"?1:-1)));
+    focusLayerToken(layerStore[to].token);
+    return;
+  }
+  if(ev.key==="ArrowRight" && !onInspectSlide()){ slideToInspect(); return; }
+  if(ev.key==="ArrowLeft"  &&  onInspectSlide()){ slideToDirectory(); return; }
+
+  if(!layer) return;
+  const key=ev.key.toLowerCase();
+  if(ev.ctrlKey && key==="d"){ ev.preventDefault(); duplicateLayer(layer); return; }
+  if(ev.ctrlKey && key==="z"){ ev.preventDefault(); stepRevision(ev.shiftKey?1:-1); return; }
+  if(ev.key==="F2"){ ev.preventDefault(); applyLayerAction("rename",layer); return; }
+  if(ev.key==="Delete"){ dropLayer(layer); return; }
+  if(key==="h"){ toggleShown(layer); return; }
+  if(key==="i"){ isolateFocus(); return; }
+  if(key==="a"){ revealAll(); return; }
+  if(key==="m"){ applyLayerAction("mask",layer); return; }
+});
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   CHROME WIRING
+----------------------------------------------------------------------------------------------------------------------*/
+document.getElementById("hostMark").innerHTML   = uiIcon("brush",18);
+document.getElementById("stackIcon").innerHTML  = uiIcon("stack",17);
+document.getElementById("searchIcon").innerHTML = uiIcon("search",14);
+document.getElementById("advanceStep").innerHTML= uiIcon("chevron",13);
+document.getElementById("returnStep").innerHTML = uiIcon("chevronLeft",14);
+document.getElementById("summonUndo").innerHTML = uiIcon("undo",15);
+document.getElementById("summonRedo").innerHTML = uiIcon("redo",15);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                        BOOT
+----------------------------------------------------------------------------------------------------------------------*/
+seedRevisions();
+renderStack();
+syncInspectors(true);
+switchInspector("properties");
+</script>
+</body>
+</html>

@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Foliage Icon Vocabulary — 3D Vegetation Set</title>
+<style>
+  :root{
+    --bg:#0b0e0b; --panel:#141a14; --panel2:#101510; --border:#222b22;
+    --txt:#e6eae6; --dim:#8a948a; --faint:#5a645a; --head:#fff; --accent:#7bd06b;
+  }
+  html,body{background:var(--bg);color:var(--txt);
+    font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:28px 30px 60px}
+  h1{color:var(--head);font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:.2px}
+  p.sub{color:var(--dim);max-width:760px;margin:0 0 22px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
+  .bar button{background:var(--panel);color:var(--dim);border:1px solid var(--border);
+    border-radius:7px;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s}
+  .bar button:hover{border-color:#3a463a;color:var(--txt)}
+  .bar button.on{border-color:var(--accent);color:#c6f0be;background:#111c10}
+  h2{color:var(--head);font-size:15px;font-weight:600;margin:34px 0 3px;
+     border-left:3px solid var(--accent);padding-left:10px}
+  h2 span{color:var(--faint);font-weight:500;font-size:12px;margin-left:8px}
+  p.catnote{color:var(--dim);margin:0 0 12px;padding-left:13px;font-size:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px}
+  .cell{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+        padding:14px 11px 12px;display:flex;flex-direction:column;align-items:center;gap:9px;
+        cursor:pointer;transition:border-color .15s,transform .15s,background .15s}
+  .cell:hover{border-color:#3a463a;transform:translateY(-2px)}
+  .cell.copied{border-color:#5ad469}
+  .cell > svg{width:76px;height:76px;display:block}
+  .cap{font-size:11px;color:var(--dim);text-align:center;line-height:1.35}
+  .cap b{display:block;color:var(--txt);font-weight:600;font-size:11.5px;margin-bottom:2px}
+  .strip{display:flex;gap:9px;align-items:flex-end;border-top:1px solid var(--border);
+         padding-top:9px;margin-top:2px;width:100%;justify-content:center}
+  .strip svg{display:block}
+  .s16 svg{width:16px;height:16px}
+  .s24 svg{width:24px;height:24px}
+  .s32 svg{width:32px;height:32px}
+  /* light-tile inspection mode — proves the set reads on a pale panel too */
+  body.pale .cell{background:#eef2ec;border-color:#d5ddd0}
+  body.pale .cell:hover{border-color:#bcc7b6}
+  body.pale .cap{color:#5d6858}
+  body.pale .cap b{color:#1b271b}
+  body.pale .strip{border-top-color:#d5ddd0}
+  footer{color:var(--faint);margin-top:44px;font-size:11px;
+         border-top:1px solid var(--border);padding-top:14px}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+    background:#1b2a1d;border:1px solid #33613a;color:#b9ecc2;padding:8px 15px;border-radius:8px;
+    font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<h1>Foliage Icon Vocabulary</h1>
+<p class="sub">A vegetation-scattering icon set drawn on a <code>0 0 160 160</code> canvas with a shared
+3D material system — radial/linear gradient bodies, blur and glow filters, grounding shadows, and
+specular highlights. Every <code>&lt;defs&gt;</code> entry is suffixed with the icon's unique id, so
+any number of icons coexist on one page without collisions. Click a tile to copy its standalone SVG.</p>
+
+<div class="bar">
+  <button id="paleToggle">Pale tile</button>
+  <button id="gridToggle">Alignment grid</button>
+  <span style="color:var(--faint);font-size:12px" id="tally"></span>
+</div>
+
+<div id="root"></div>
+
+<footer>Foliage Icon Vocabulary · 5 categories · shared gradient / filter / grounding material system ·
+self-contained SVG · namespaced defs ids.</footer>
+
+<div id="toast">SVG copied</div>
+
+<script>
+//====================================================================================================================================
+//                                                    3D ICON MATERIAL SYSTEM
+//====================================================================================================================================
+// Shared gradient / filter / grounding helpers used by every icon builder below.
+// Each icon receives a unique `id` string; every local <defs> entry is suffixed with it so IDs never collide.
+
+const LEAF   = ['#e9ffdd','#9be06a','#5ab13a','#2c6f22','#123d10']; // canopy green
+const FROND  = ['#dcf6c8','#86c65a','#4f9a34','#2a5e1e','#123008']; // needle / frond green
+const MOSS   = ['#e6f7cf','#b6d97a','#7fae4a','#4a7a2c','#243c15']; // pale sage
+const BARK   = ['#e8d5b8','#c39a6b','#8f6a44','#5c4128','#2f2013']; // wood brown
+const AUTUMN = ['#ffe9c4','#f5b45a','#e07a2c','#a24a17','#5a2609']; // dried / autumn
+const BLOOM  = ['#ffe1ef','#ff9ec4','#ff5f9e','#c02f68','#5c1330']; // flower pink
+const STONE  = ['#eef0f2','#c2c8cf','#8b939c','#565e68','#2a3038']; // grey rock
+const AMBER  = ['#fff6da','#ffcf66','#ffb347','#c97a1f','#6b4712']; // sun / berry accent
+const CRYST  = ['#e2fffb','#8fe6f0','#4bb8d8','#2a6f9a','#123048']; // crystal / ore
+
+function stops(list){
+  return list.map(([o,c,op]) => `<stop offset="${o}" stop-color="${c}"${op!==undefined?` stop-opacity="${op}"`:''}/>`).join('');
+}
+function radial(defs,id,cList,opts){
+  const o=opts||{}, cx=o.cx??0.35, cy=o.cy??0.28, r=o.r??0.85;
+  defs.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}">${stops(cList)}</radialGradient>`);
+  return `url(#${id})`;
+}
+function linear(defs,id,cList,opts){
+  const o=opts||{}, x1=o.x1??0, y1=o.y1??0, x2=o.x2??1, y2=o.y2??0;
+  defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops(cList)}</linearGradient>`);
+  return `url(#${id})`;
+}
+function mat(defs,id,pal,opts){ return radial(defs,id,[['0%',pal[0]],['48%',pal[1]],['100%',pal[2]]],opts); }
+function matL(defs,id,pal,opts){ return linear(defs,id,[['0%',pal[0]],['55%',pal[1]],['100%',pal[2]]],opts); }
+function blurF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}"/></filter>`); return `url(#${id})`; }
+function glowF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`); return `url(#${id})`; }
+function shadow(defs,id,cx,cy,rx,ry,op){
+  const o=op??0.5;
+  const f=radial(defs,id,[['0%','#000',o],['70%','#000',o*0.35],['100%','#000',0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${f}"/>`;
+}
+function specular(cx,cy,rx,ry,op){ return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" opacity="${op??0.4}"/>`; }
+
+// Ground line + soft contact wash — the shared "planted in soil" cue for every scattered asset.
+function ground(defs,id,cx,rx){
+  const wash=radial(defs,id,[['0%',MOSS[3],0.4],['100%',MOSS[3],0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<ellipse cx="${cx}" cy="132" rx="${rx}" ry="${(rx*0.24).toFixed(1)}" fill="${wash}"/>
+    <line x1="${cx-rx-4}" y1="132" x2="${cx+rx+4}" y2="132" stroke="#6a7a68" stroke-width="1.4" opacity="0.4"/>`;
+}
+// A single leaf blade — reused across canopies and clumps. Angle in degrees about (px,py).
+function blade(px,py,len,wide,ang,fill,op){
+  const r=ang*Math.PI/180, c=Math.cos(r), s=Math.sin(r);
+  const tx=(px+len*s).toFixed(1), ty=(py-len*c).toFixed(1);
+  const bx=(px+wide*c).toFixed(1), by=(py+wide*s).toFixed(1);
+  const b2x=(px-wide*c).toFixed(1), b2y=(py-wide*s).toFixed(1);
+  return `<path d="M${b2x},${b2y} Q${((px+ +tx)/2+wide*c*0.4).toFixed(1)},${((py+ +ty)/2+wide*s*0.4).toFixed(1)} ${tx},${ty} Q${((px+ +tx)/2-wide*c*0.4).toFixed(1)},${((py+ +ty)/2-wide*s*0.4).toFixed(1)} ${bx},${by} Z" fill="${fill}" opacity="${op??1}"/>`;
+}
+// A single grass blade: a filled sliver WIDE at the base (bx px) tapering to a sharp point at the
+// tip, curving by `lean` px. This is a real grass shape — not a fat round-capped stroke.
+// bx=base half-width, lean=horizontal drift of the tip, len=height, curve controls the arc.
+function grassBlade(baseX,baseY,len,bx,lean,fill,op){
+  const tipX=baseX+lean, tipY=baseY-len;
+  const cX=baseX+lean*0.35, cY=baseY-len*0.55;          // control point sets the arc
+  // up the left edge to the point, back down the right edge, closing across the base
+  return `<path d="M${(baseX-bx).toFixed(1)},${baseY} `+
+         `Q${(cX-bx*0.5).toFixed(1)},${cY.toFixed(1)} ${tipX.toFixed(1)},${tipY.toFixed(1)} `+
+         `Q${(cX+bx*0.5).toFixed(1)},${cY.toFixed(1)} ${(baseX+bx).toFixed(1)},${baseY} Z" `+
+         `fill="${fill}"${op!==undefined?` opacity="${op}"`:''}/>`;
+}
+
+//====================================================================================================================================
+//                                                    CATEGORY REGISTRY
+//====================================================================================================================================
+const CATS = [
+  ['Trees',   'Trees',                  'Large woody plants — canopy silhouette on a trunk'],
+  ['Shrub',   'Shrubs & Bushes',        'Mid-height woody masses with no clear single trunk'],
+  ['Ground',  'Ground Vegetation',      'Low cover — grass, flowers, ferns, moss, fungi'],
+  ['General', 'General Foliage',        'Generic building-block glyphs — grass, leaves, twigs, blooms'],
+  ['Rock',    'Rocks & Stones',         'Scatterable inorganic props — boulders, gravel, ore'],
+  ['Utility', 'Scatter & Foliage Tools','Controls for density, wind, and seasonal tint'],
+];
+
+const ICONS = [];
+function add(name, cat, note, build){ ICONS.push({name, cat, note, build}); }
+
+//====================================================================================================================================
+//                                                    TREES
+//====================================================================================================================================
+
+// 📝 The broadleaf reads as three overlapping blobs of canopy so the silhouette is lumpy, not a
+// single ball — that lumpiness is what separates a deciduous tree from the smooth conifer cone.
+add('Broadleaf Tree','Trees','Deciduous canopy — a rounded, lobed crown on a short trunk',(defs,id)=>{
+  const Crown=radial(defs,id+'g1',[['0%',LEAF[0]],['46%',LEAF[1]],['100%',LEAF[3]]],{cx:0.4,cy:0.32,r:0.9});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[1]],['100%',BARK[3]]],{x1:0,y1:0,x2:1,y2:0});
+  return `${ground(defs,id+'gr',80,30)}
+    <rect x="75" y="96" width="10" height="34" rx="3" fill="${Trunk}"/>
+    <path d="M78,110 L70,120 M82,108 L92,116" stroke="${BARK[3]}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="62" cy="72" r="24" fill="${Crown}"/>
+    <circle cx="98" cy="70" r="26" fill="${Crown}"/>
+    <circle cx="80" cy="52" r="27" fill="${Crown}"/>
+    <circle cx="80" cy="78" r="26" fill="${Crown}"/>
+    ${specular(70,44,9,6,0.35)}`;
+});
+
+// 📝 Stacked tapering tiers with drooping edges is the pine signature — the tiers get smaller toward
+// the apex, so no symmetric triangle could be mistaken for it.
+add('Conifer','Trees','Evergreen cone — tiered needled boughs tapering to a point',(defs,id)=>{
+  const Bough=linear(defs,id+'g1',[['0%',FROND[0]],['50%',FROND[1]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[2]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:0});
+  const tier=(cy,half,drop)=>`<path d="M80,${cy-drop} L${80+half},${cy+drop} Q80,${cy+drop-6} ${80-half},${cy+drop} Z" fill="${Bough}"/>`;
+  return `${ground(defs,id+'gr',80,24)}
+    <rect x="76" y="112" width="8" height="20" rx="2" fill="${Trunk}"/>
+    ${tier(112,32,10)}${tier(90,27,10)}${tier(70,22,10)}${tier(52,16,10)}
+    ${specular(74,44,4,7,0.3)}`;
+});
+
+// 📝 A palm frond is a drooping arched SPINE feathered with dozens of thin pinnae (leaflets) down
+// both sides — the feathering is the whole read. The old version was six fat round-capped pipes that
+// looked like a squid, not a palm. Fronds arch UP from the crown then droop, and the tip trails down.
+add('Palm','Trees','A curved ringed trunk crowned with feathered fronds',(defs,id)=>{
+  const Leaf=linear(defs,id+'g1',[['0%',FROND[0]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[1]],['55%',BARK[2]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:0});
+  const cx=80, cy=48;                                  // crown point
+  // one feathered frond: quadratic spine (crown -> mid -> tip) hung with pinnae, drooping tip
+  function frond(dir, spread, rise){
+    const tipX=cx+dir*spread, tipY=cy-rise+ (spread*0.5);   // arch up then droop
+    const mX=cx+dir*spread*0.5, mY=cy-rise;                 // apex of the arch
+    let s=`<path d="M${cx},${cy} Q${mX.toFixed(1)},${mY.toFixed(1)} ${tipX.toFixed(1)},${tipY.toFixed(1)}" fill="none" stroke="${FROND[3]}" stroke-width="1.6" stroke-linecap="round"/>`;
+    for(let t=0.16;t<0.98;t+=0.075){
+      // point on the quadratic spine + its tangent
+      const u=1-t;
+      const px=u*u*cx + 2*u*t*mX + t*t*tipX;
+      const py=u*u*cy + 2*u*t*mY + t*t*tipY;
+      const tanx=2*u*(mX-cx)+2*t*(tipX-mX), tany=2*u*(mY-cy)+2*t*(tipY-mY);
+      const L=Math.hypot(tanx,tany)||1, ux=tanx/L, uy=tany/L;   // unit tangent
+      const pinLen=(1-t)*10+3;                                  // pinnae shrink toward the tip
+      for(const side of [1,-1]){
+        // pinna sweeps back toward the crown (trailing), tapered to a point
+        const ex=px - ux*pinLen*0.5 + (-uy*side)*pinLen;
+        const ey=py - uy*pinLen*0.5 + ( ux*side)*pinLen;
+        const bx=px+(-uy*side)*1.2, by=py+(ux*side)*1.2;
+        const b2x=px-(-uy*side)*1.2, b2y=py-(ux*side)*1.2;
+        s+=`<path d="M${b2x.toFixed(1)},${b2y.toFixed(1)} Q${((px+ex)/2).toFixed(1)},${((py+ey)/2).toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)} Q${((px+ex)/2).toFixed(1)},${((py+ey)/2).toFixed(1)} ${bx.toFixed(1)},${by.toFixed(1)} Z" fill="${Leaf}"/>`;
+      }
+    }
+    return s;
+  }
+  const Fronds=[[-1,46,26],[-1,40,10],[-1,30,-4],[1,30,-4],[1,40,10],[1,46,26]]
+    .map(([d,sp,ri])=>frond(d,sp,ri)).join('');
+  // ringed trunk: bark bands across a curved column
+  const Rings=[122,110,98,86,72,60].map((y,i)=>{const x=78+Math.sin((122-y)/40)*4; return `<path d="M${x-5},${y} q5,2 10,0" stroke="${BARK[4]}" stroke-width="1.6" fill="none" opacity="0.55"/>`;}).join('');
+  return `${ground(defs,id+'gr',82,22)}
+    <path d="M74,130 Q66,92 80,50" fill="none" stroke="${Trunk}" stroke-width="9" stroke-linecap="round"/>
+    ${Rings}
+    ${Fronds}
+    <circle cx="${cx}" cy="${cy}" r="4" fill="${BARK[4]}"/>
+    <circle cx="${cx-3}" cy="${cy+3}" r="2" fill="${AMBER[3]}"/><circle cx="${cx+3}" cy="${cy+4}" r="2" fill="${AMBER[3]}"/>`;
+});
+
+// 📝 A massive low spreading crown on a thick fluted trunk with visible surface roots — the wide
+// aspect and the buttress roots are what make it read "old growth oak", not a generic tree.
+add('Old Growth','Trees','A broad spreading crown on a thick buttressed trunk',(defs,id)=>{
+  const Crown=radial(defs,id+'g1',[['0%',LEAF[0]],['48%',LEAF[2]],['100%',LEAF[4]]],{cx:0.42,cy:0.34,r:0.95});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[1]],['55%',BARK[2]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:0});
+  return `${ground(defs,id+'gr',80,40)}
+    <path d="M66,130 Q60,128 54,131 M94,130 Q100,128 106,131" stroke="${BARK[4]}" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M70,128 Q68,100 74,80 L86,80 Q92,102 90,128 Z" fill="${Trunk}"/>
+    <path d="M75,110 Q72,96 78,84 M85,108 Q88,94 82,84" stroke="${BARK[4]}" stroke-width="1.5" fill="none" opacity="0.6"/>
+    <ellipse cx="62" cy="66" rx="26" ry="22" fill="${Crown}"/>
+    <ellipse cx="100" cy="66" rx="27" ry="22" fill="${Crown}"/>
+    <ellipse cx="80" cy="52" rx="30" ry="24" fill="${Crown}"/>
+    ${specular(66,42,11,7,0.32)}`;
+});
+
+// 📝 A slender white trunk with dark bark scars is unmistakably birch — the light bark inverts the
+// usual dark-trunk convention, so it can never be confused with oak or pine.
+add('Birch','Trees','A slim pale-barked trunk with a light airy crown',(defs,id)=>{
+  const Crown=radial(defs,id+'g1',[['0%',MOSS[0]],['50%',MOSS[1]],['100%',MOSS[3]]],{cx:0.42,cy:0.3,r:0.9});
+  const Trunk=linear(defs,id+'g2',[['0%','#f4f1e8'],['100%','#c9c4b2']],{x1:0,y1:0,x2:1,y2:0});
+  const Scars=[46,64,82,100].map(y=>`<path d="M76,${y} q4,0 8,0" stroke="#3a3730" stroke-width="3" stroke-linecap="round"/>`).join('');
+  return `${ground(defs,id+'gr',80,22)}
+    <rect x="76" y="44" width="8" height="86" rx="3" fill="${Trunk}"/>
+    ${Scars}
+    <ellipse cx="66" cy="52" rx="18" ry="20" fill="${Crown}"/>
+    <ellipse cx="96" cy="50" rx="18" ry="21" fill="${Crown}"/>
+    <ellipse cx="80" cy="38" rx="20" ry="19" fill="${Crown}"/>
+    ${specular(72,32,7,5,0.35)}`;
+});
+
+// ⚠️ Bare tree is the diagnostic snag icon: only branches, no leaf mass. If a canopy blob is added
+// it silently becomes "sparse tree" and stops meaning "dead / winter". Branches are TAPERED curved
+// limbs (thick at the fork, thin at the twig) that recursively split — the old straight-line version
+// read as a stick-man diagram; organic taper + curve is what makes it a real snag.
+add('Bare Tree','Trees','A leafless snag — recursively forking bare limbs',(defs,id)=>{
+  const Wood=linear(defs,id+'g1',[['0%',BARK[1]],['50%',BARK[2]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:1});
+  const twigs=[];
+  // draw a tapered limb as a filled path: wide (w) at (x,y), narrowing to ~1px at the tip; the
+  // limb curves toward `ang`, then recursively spawns 2–3 children with a shrinking width.
+  function limb(x,y,ang,len,w,depth){
+    const r=ang*Math.PI/180, tx=x+Math.sin(r)*len, ty=y-Math.cos(r)*len;
+    const curve=(depth%2?1:-1)*len*0.18;                 // gentle zig so limbs aren't ruler-straight
+    const mx=(x+tx)/2+Math.cos(r)*curve, my=(y+ty)/2+Math.sin(r)*curve;
+    const nx=Math.cos(r), ny=Math.sin(r);                // perpendicular for the width
+    const tw=Math.max(w*0.35,0.8);                       // tip width
+    twigs.push(`<path d="M${(x-nx*w).toFixed(1)},${(y-ny*w).toFixed(1)} `+
+      `Q${(mx-nx*w*0.6).toFixed(1)},${(my-ny*w*0.6).toFixed(1)} ${(tx-nx*tw).toFixed(1)},${(ty-ny*tw).toFixed(1)} `+
+      `L${(tx+nx*tw).toFixed(1)},${(ty+ny*tw).toFixed(1)} `+
+      `Q${(mx+nx*w*0.6).toFixed(1)},${(my+ny*w*0.6).toFixed(1)} ${(x+nx*w).toFixed(1)},${(y+ny*w).toFixed(1)} Z" fill="${Wood}"/>`);
+    if(depth<=0 || len<10) return;
+    const kids = depth>=3?3:2;
+    const spreads = kids===3?[-30,4,32]:[-26,26];
+    for(const ds of spreads){
+      limb(tx,ty,ang+ds,len*0.72,w*0.62,depth-1);
+    }
+  }
+  limb(80,130,0,44,8,4);
+  return `${ground(defs,id+'gr',80,24)}
+    ${twigs.join('')}
+    <path d="M74,120 Q68,116 62,118 M86,124 Q94,120 100,123" stroke="${BARK[4]}" stroke-width="3" stroke-linecap="round" fill="none"/>
+    ${specular(83,108,2,9,0.18)}`;
+});
+
+// 📝 A weeping willow is a broad crown pouring a dense CURTAIN of long fine strands that sweep out
+// then hang almost to the ground, longest at the centre and tapering to points. The old one had a
+// small crown and 7 stiff verticals — too sparse and too straight to read as "weeping". The strands
+// must origin from ALONG the underside of the crown (not one point) and taper, so it reads as a veil.
+add('Willow','Trees','A broad crown pouring a curtain of weeping strands',(defs,id)=>{
+  const Crown=radial(defs,id+'g1',[['0%',MOSS[0]],['48%',MOSS[1]],['100%',MOSS[3]]],{cx:0.4,cy:0.28,r:0.95});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[1]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:0});
+  const Strand=linear(defs,id+'g3',[['0%',MOSS[1]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const cx=80, crownY=52, crownRx=40;
+  // a single weeping strand: springs from the crown underside at originX, arcs outward, then falls
+  // to hang length `len`, tapering from ~1.6px to a point.
+  function strand(originX, originY, len, outward){
+    const tipX=originX+outward, tipY=originY+len;
+    const cX=originX+outward*1.4, cY=originY+len*0.35;    // control: kick out, then drop
+    const w=1.5;
+    return `<path d="M${(originX-w).toFixed(1)},${originY} `+
+      `Q${(cX-w).toFixed(1)},${cY.toFixed(1)} ${tipX.toFixed(1)},${tipY.toFixed(1)} `+
+      `Q${(cX+w).toFixed(1)},${cY.toFixed(1)} ${(originX+w).toFixed(1)},${originY} Z" fill="${Strand}" opacity="0.9"/>`;
+  }
+  let Strands='';
+  // sample the crown underside; strands longest at centre, kicked outward more toward the edges
+  for(let i=-6;i<=6;i++){
+    const fx=i/6;                                         // -1..1 across the crown
+    const originX=cx+fx*crownRx*0.92;
+    const originY=crownY+18-Math.abs(fx)*10;             // follows the domed underside
+    const len=(66-Math.abs(fx)*22)+((i*7)%3)*4;          // centre strands hang lowest
+    const outward=fx*20;                                 // splay out at the sides
+    Strands+=strand(originX,originY,len,outward);
+  }
+  return `${ground(defs,id+'gr',80,36)}
+    <path d="M76,130 Q73,96 78,${crownY+16} L82,${crownY+16} Q87,96 84,130 Z" fill="${Trunk}"/>
+    <ellipse cx="${cx}" cy="${crownY}" rx="${crownRx}" ry="24" fill="${Crown}"/>
+    ${Strands}
+    <ellipse cx="${cx}" cy="${crownY-4}" rx="${crownRx-4}" ry="20" fill="${Crown}"/>
+    ${specular(66,40,12,6,0.32)}`;
+});
+
+// 📝 A tall narrow column with a rounded top — the tight vertical aspect ratio is the cypress /
+// pencil-pine signature, distinct from the wide conifer cone above.
+add('Cypress','Trees','A tall narrow columnar evergreen',(defs,id)=>{
+  const Body=linear(defs,id+'g1',[['0%',FROND[0]],['45%',FROND[2]],['100%',FROND[4]]],{x1:0,y1:0,x2:1,y2:0});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[2]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:0});
+  return `${ground(defs,id+'gr',80,16)}
+    <rect x="77" y="118" width="6" height="14" rx="2" fill="${Trunk}"/>
+    <path d="M80,26 Q98,50 96,96 Q96,120 80,120 Q64,120 64,96 Q62,50 80,26 Z" fill="${Body}"/>
+    <path d="M80,34 Q80,80 80,116" stroke="${FROND[4]}" stroke-width="1.4" opacity="0.4"/>
+    ${specular(73,52,4,14,0.3)}`;
+});
+
+//====================================================================================================================================
+//                                                    SHRUBS & BUSHES
+//====================================================================================================================================
+
+// 📝 A trunkless mound sitting directly on the ground — the absence of any stem is what makes it a
+// bush rather than a small tree; the leaf ticks on the rim keep it from reading as a plain rock.
+add('Round Bush','Shrub','A trunkless leafy mound resting on the ground',(defs,id)=>{
+  const Body=radial(defs,id+'g1',[['0%',LEAF[0]],['48%',LEAF[1]],['100%',LEAF[3]]],{cx:0.4,cy:0.34,r:0.9});
+  const rim=[]; for(let a=200;a<=340;a+=20){const r=a*Math.PI/180; rim.push(`<line x1="${(80+34*Math.cos(r)).toFixed(1)}" y1="${(96+34*Math.sin(r)).toFixed(1)}" x2="${(80+42*Math.cos(r)).toFixed(1)}" y2="${(96+42*Math.sin(r)).toFixed(1)}" stroke="${LEAF[2]}" stroke-width="3" stroke-linecap="round" opacity="0.6"/>`);}
+  return `${ground(defs,id+'gr',80,32)}
+    <path d="M46,100 A34,34 0 0 1 114,100 Z" fill="${Body}"/>
+    <ellipse cx="80" cy="82" rx="26" ry="18" fill="${LEAF[0]}" opacity="0.18"/>
+    ${rim.join('')}
+    ${specular(66,74,10,6,0.3)}`;
+});
+
+// 📝 A clipped rectangular block with a flat top and slight leaf texture — the hard geometric edges
+// are the hedge signal; a natural bush never has straight vertical sides.
+add('Hedge','Shrub','A clipped rectangular block of dense foliage',(defs,id)=>{
+  const Body=linear(defs,id+'g1',[['0%',LEAF[1]],['55%',LEAF[2]],['100%',LEAF[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const dots=[]; for(let x=48;x<=112;x+=11){for(let y=66;y<=112;y+=13){dots.push(`<circle cx="${x+((y/13)%2)*4}" cy="${y}" r="4" fill="${LEAF[3]}" opacity="0.3"/>`);}}
+  return `${ground(defs,id+'gr',80,34)}
+    <rect x="42" y="60" width="76" height="66" rx="8" fill="${Body}"/>
+    <rect x="42" y="60" width="76" height="14" rx="8" fill="${LEAF[0]}" opacity="0.22"/>
+    ${dots.join('')}
+    ${specular(60,68,12,4,0.28)}`;
+});
+
+// 📝 A green mound studded with bright blossoms — the scattered saturated dots against the green are
+// the "flowering" read; they must sit on top of the canopy, not float beside it.
+add('Flowering Shrub','Shrub','A bush in bloom — foliage studded with blossoms',(defs,id)=>{
+  const Body=radial(defs,id+'g1',[['0%',LEAF[0]],['48%',LEAF[1]],['100%',LEAF[3]]],{cx:0.4,cy:0.34,r:0.9});
+  const blooms=[[62,72],[92,66],[76,58],[104,84],[54,92],[86,88],[70,84],[100,70]];
+  const mk=blooms.map(([x,y],i)=>{
+    const pal=i%2?AMBER:BLOOM;
+    return `<circle cx="${x}" cy="${y}" r="4.4" fill="${pal[1]}"/><circle cx="${x}" cy="${y}" r="1.8" fill="${pal[0]}"/>`;
+  }).join('');
+  return `${ground(defs,id+'gr',80,32)}
+    <path d="M46,102 A34,34 0 0 1 114,102 Z" fill="${Body}"/>
+    ${mk}
+    ${specular(64,76,9,5,0.28)}`;
+});
+
+// 📝 Fern is a rosette of pinnate fronds. Each frond is a curved spine hung with real leaflet
+// LOBES (little teardrops that taper toward the tip), not crossing tick-marks — the tapering
+// leaflet run is what reads as "frond" instead of the old ladder-of-lines that looked like a fishbone.
+add('Fern','Ground','A rosette of pinnate fronds with tapering leaflets',(defs,id)=>{
+  const Frond=linear(defs,id+'g1',[['0%',FROND[0]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  let Fronds='';
+  for(const a of [-62,-33,0,33,62]){
+    const r=a*Math.PI/180, ex=80+58*Math.sin(r), ey=124-60*Math.cos(r);
+    const mx=80+24*Math.sin(r), my=124-34*Math.cos(r);
+    // spine
+    Fronds+=`<path d="M80,124 Q${mx.toFixed(1)},${my.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}" fill="none" stroke="${FROND[3]}" stroke-width="1.6" stroke-linecap="round"/>`;
+    // leaflets: paired teardrops down each side, shrinking toward the tip
+    for(let t=0.18;t<0.92;t+=0.13){
+      const sx=80+(58*t)*Math.sin(r), sy=124-(60*t)*Math.cos(r);
+      const grow=(1-t)*9+3;                      // leaflet length tapers with t
+      const nx=Math.cos(r), ny=Math.sin(r);      // perpendicular to spine
+      const dx=Math.sin(r), dy=-Math.cos(r);     // along spine (toward tip)
+      for(const side of [1,-1]){
+        const tipx=sx+nx*grow*side+dx*grow*0.5, tipy=sy+ny*grow*side+dy*grow*0.5;
+        const cbx=sx+nx*grow*0.4*side, cby=sy+ny*grow*0.4*side;
+        Fronds+=`<path d="M${sx.toFixed(1)},${sy.toFixed(1)} Q${(cbx+dx*grow*0.3).toFixed(1)},${(cby+dy*grow*0.3).toFixed(1)} ${tipx.toFixed(1)},${tipy.toFixed(1)} Q${(cbx-dx*grow*0.2).toFixed(1)},${(cby-dy*grow*0.2).toFixed(1)} ${sx.toFixed(1)},${sy.toFixed(1)} Z" fill="${Frond}"/>`;
+      }
+    }
+  }
+  return `${ground(defs,id+'gr',80,28)}${Fronds}<circle cx="80" cy="124" r="4" fill="${FROND[4]}"/>`;
+});
+
+// 📝 A tree fern is a fern crown lifted onto a stout fibrous trunk — the elevated rosette on a
+// column is what separates it from the ground fern above; the fronds arch OUT and droop at the tips.
+add('Tree Fern','Trees','A fern crown raised on a fibrous trunk',(defs,id)=>{
+  const Frond=linear(defs,id+'g1',[['0%',FROND[0]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Trunk=linear(defs,id+'g2',[['0%',BARK[2]],['55%',BARK[3]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:0});
+  const crownY=58;
+  let Fronds='';
+  for(const a of [-84,-54,-24,24,54,84]){
+    const r=a*Math.PI/180;
+    const ex=80+62*Math.sin(r), ey=crownY-46*Math.cos(r)+12;   // droop at the tip
+    const mx=80+34*Math.sin(r), my=crownY-40*Math.cos(r);
+    Fronds+=`<path d="M80,${crownY} Q${mx.toFixed(1)},${my.toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}" fill="none" stroke="${FROND[3]}" stroke-width="1.4" stroke-linecap="round"/>`;
+    for(let t=0.22;t<0.9;t+=0.16){
+      const sx=80+(62*t)*Math.sin(r), sy=crownY-(46*t)*Math.cos(r)+12*t*t;
+      const grow=(1-t)*7+2.5, nx=Math.cos(r), ny=Math.sin(r), dx=Math.sin(r), dy=-Math.cos(r);
+      for(const side of [1,-1]){
+        const tipx=sx+nx*grow*side+dx*grow*0.5, tipy=sy+ny*grow*side+dy*grow*0.5;
+        Fronds+=`<path d="M${sx.toFixed(1)},${sy.toFixed(1)} Q${(sx+nx*grow*0.4*side+dx*grow*0.3).toFixed(1)},${(sy+ny*grow*0.4*side+dy*grow*0.3).toFixed(1)} ${tipx.toFixed(1)},${tipy.toFixed(1)} Q${(sx+nx*grow*0.4*side-dx*grow*0.2).toFixed(1)},${(sy+ny*grow*0.4*side-dy*grow*0.2).toFixed(1)} ${sx.toFixed(1)},${sy.toFixed(1)} Z" fill="${Frond}"/>`;
+      }
+    }
+  }
+  return `${ground(defs,id+'gr',80,24)}
+    <path d="M74,130 Q72,94 78,${crownY+4} L86,${crownY+4} Q90,94 88,130 Z" fill="${Trunk}"/>
+    <path d="M76,120 q4,1 8,0 M75,104 q5,1 10,0 M76,88 q4,1 8,0" stroke="${BARK[4]}" stroke-width="1.4" fill="none" opacity="0.6"/>
+    ${Fronds}
+    <circle cx="80" cy="${crownY}" r="4.5" fill="${BARK[4]}"/>
+    ${specular(84,110,2.4,10,0.2)}`;
+});
+
+// 📝 A leafy mound with red berry clusters — the clustered saturated red dots (not scattered singles)
+// read as fruit, and the AMBER/red split keeps it distinct from the pink flowering shrub.
+add('Berry Bush','Shrub','A low bush hung with clustered ripe berries',(defs,id)=>{
+  const Body=radial(defs,id+'g1',[['0%',LEAF[0]],['48%',LEAF[2]],['100%',LEAF[4]]],{cx:0.4,cy:0.34,r:0.9});
+  const Berry=radial(defs,id+'g2',[['0%','#ff9a6a'],['55%','#e23b2f'],['100%','#8a1410']],{cx:0.35,cy:0.3,r:0.9});
+  const clusters=[[64,86],[96,82],[80,94],[74,74],[104,94]];
+  const mk=clusters.map(([x,y])=>
+    `<circle cx="${x-4}" cy="${y}" r="3.4" fill="${Berry}"/><circle cx="${x+4}" cy="${y-1}" r="3.4" fill="${Berry}"/><circle cx="${x}" cy="${y+5}" r="3.4" fill="${Berry}"/>`).join('');
+  return `${ground(defs,id+'gr',80,32)}
+    <path d="M46,104 A34,34 0 0 1 114,104 Z" fill="${Body}"/>
+    ${mk}
+    ${specular(64,78,9,5,0.26)}`;
+});
+
+//====================================================================================================================================
+//                                                    GROUND VEGETATION
+//====================================================================================================================================
+
+// 📝 A tuft of narrow blades splaying from a common base — blades of varied height and lean read as
+// wild grass; uniform height would read as a manicured lawn swatch instead.
+add('Grass Tuft','Ground','A clump of narrow blades splaying from one base',(defs,id)=>{
+  const Blade=linear(defs,id+'g1',[['0%',MOSS[1]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  let Blades='';
+  // [lean px, length, base half-width] — lean grows with the splay so the fan opens outward
+  const specs=[[-26,44,2.4],[-14,58,2.6],[-4,68,2.8],[6,62,2.6],[18,52,2.4],[-20,50,2.4],[10,66,2.7],[26,42,2.2]];
+  for(const [lean,len,bw] of specs){
+    Blades+=grassBlade(80,126,len,bw,lean,Blade);
+  }
+  return `${ground(defs,id+'gr',80,24)}${Blades}`;
+});
+
+// 📝 A single stem with a distinct radial flower head on top — the ringed petals around a center are
+// the wildflower identity, separating it from the grass tuft's bare blades.
+add('Wildflower','Ground','A slender stem topped by a radial blossom',(defs,id)=>{
+  const Petal=radial(defs,id+'g1',[['0%',BLOOM[0]],['55%',BLOOM[1]],['100%',BLOOM[3]]],{cx:0.4,cy:0.35,r:0.9});
+  const Core=radial(defs,id+'g2',[['0%',AMBER[0]],['100%',AMBER[2]]],{cx:0.4,cy:0.35,r:0.9});
+  let Petals=''; for(let a=0;a<360;a+=45){const r=a*Math.PI/180; Petals+=`<ellipse cx="${(80+11*Math.cos(r)).toFixed(1)}" cy="${(58+11*Math.sin(r)).toFixed(1)}" rx="7" ry="4.4" fill="${Petal}" transform="rotate(${a} ${(80+11*Math.cos(r)).toFixed(1)} ${(58+11*Math.sin(r)).toFixed(1)})"/>`;}
+  return `${ground(defs,id+'gr',80,20)}
+    <path d="M80,126 Q74,92 80,66" fill="none" stroke="${FROND[3]}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M80,98 Q66,92 62,80" fill="none" stroke="${FROND[3]}" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M74,90 Q68,88 64,82 Q72,84 74,90 Z" fill="${FROND[2]}"/>
+    ${Petals}
+    <circle cx="80" cy="58" r="6.5" fill="${Core}"/>
+    ${specular(77,55,2.2,1.6,0.6)}`;
+});
+
+// 📝 A low spread of trefoil (three-lobe) leaves is the clover read — the heart-lobed triple leaf is
+// what distinguishes ground clover from a generic patch of round leaves.
+add('Clover Patch','Ground','A low mat of trefoil clover leaves',(defs,id)=>{
+  const Leaf=radial(defs,id+'g1',[['0%',MOSS[0]],['50%',MOSS[1]],['100%',MOSS[3]]],{cx:0.4,cy:0.35,r:0.9});
+  const trefoil=(cx,cy,s)=>{let g='';for(const a of [-90,30,150]){const r=a*Math.PI/180;const lx=cx+s*Math.cos(r),ly=cy+s*Math.sin(r);g+=`<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="${s*0.9}" fill="${Leaf}"/>`;}return `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy+s*2.2}" stroke="${MOSS[3]}" stroke-width="1.6"/>${g}`;};
+  return `${ground(defs,id+'gr',80,30)}
+    ${trefoil(60,84,9)}${trefoil(98,80,10)}${trefoil(80,96,8)}${trefoil(80,72,9)}
+    ${specular(96,74,3,2,0.3)}`;
+});
+
+// 📝 Tall straight stalks each capped with a dark seed head, rising from a waterline — the cattail
+// spike on a rush is the reed read; without the seed heads it collapses into plain grass.
+add('Reeds','Ground','Tall water rushes topped with seed spikes',(defs,id)=>{
+  const Stalk=linear(defs,id+'g1',[['0%',MOSS[1]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Head=linear(defs,id+'g2',[['0%',BARK[1]],['100%',BARK[4]]],{x1:0,y1:0,x2:0,y2:1});
+  let Reeds='';
+  for(const [x,top] of [[62,46],[80,36],[98,50],[70,58],[92,62]]){
+    Reeds+=`<path d="M${x},124 Q${x-3},${(124+top)/2} ${x},${top+14}" fill="none" stroke="${Stalk}" stroke-width="3" stroke-linecap="round"/>`;
+    Reeds+=`<rect x="${x-3.5}" y="${top}" width="7" height="20" rx="3.5" fill="${Head}"/>`;
+    Reeds+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${top-8}" stroke="${MOSS[2]}" stroke-width="1.6" stroke-linecap="round"/>`;
+  }
+  return `${ground(defs,id+'gr',80,28)}
+    <path d="M40,126 Q80,121 120,126" fill="none" stroke="${CRYST[2]}" stroke-width="1.4" opacity="0.4"/>
+    ${Reeds}`;
+});
+
+// 📝 A low irregular cushion hugging the ground with a bumpy speckled top — no stems, no blades. The
+// flat clinging profile is the moss read; any upright element would break it.
+add('Moss','Ground','A soft low cushion clinging to the surface',(defs,id)=>{
+  const Body=radial(defs,id+'g1',[['0%',MOSS[0]],['50%',MOSS[1]],['100%',MOSS[3]]],{cx:0.42,cy:0.4,r:0.85});
+  const speck=[]; for(let i=0;i<26;i++){const x=44+(i*97%72),y=104+(i*53%18)-((i%3)*3);speck.push(`<circle cx="${x}" cy="${y}" r="${1.4+(i%3)*0.5}" fill="${MOSS[3]}" opacity="0.4"/>`);}
+  return `${ground(defs,id+'gr',80,32)}
+    <path d="M44,120 Q46,100 62,100 Q70,90 84,98 Q98,90 106,102 Q118,102 116,120 Z" fill="${Body}"/>
+    ${speck.join('')}
+    ${specular(66,104,10,4,0.25)}`;
+});
+
+// 📝 Leaves climbing along a running stem is the vine read — the trailing horizontal stem with
+// alternating heart leaves is what separates ivy from a standing plant.
+add('Vine','Ground','A trailing stem of climbing leaves',(defs,id)=>{
+  const Leaf=radial(defs,id+'g1',[['0%',LEAF[0]],['50%',LEAF[1]],['100%',LEAF[3]]],{cx:0.4,cy:0.35,r:0.9});
+  const stemPath='M40,116 Q64,96 80,108 Q100,124 120,96';
+  const pts=[[52,106,-30],[70,101,20],[86,111,-20],[104,110,30],[116,98,-10]];
+  const leaves=pts.map(([x,y,rot])=>
+    `<path d="M${x},${y} C${x-8},${y-10} ${x-2},${y-16} ${x},${y-14} C${x+2},${y-16} ${x+8},${y-10} ${x},${y} Z" fill="${Leaf}" transform="rotate(${rot} ${x} ${y})"/>`).join('');
+  return `${ground(defs,id+'gr',80,32)}
+    <path d="${stemPath}" fill="none" stroke="${FROND[3]}" stroke-width="2.4" stroke-linecap="round"/>
+    ${leaves}
+    ${specular(72,96,4,3,0.3)}`;
+});
+
+// 📝 A domed cap on a swollen stem with visible gills — the cap/stalk proportion and the pale gill
+// ring under the cap are the mushroom read; it must sit low and grounded.
+add('Mushroom','Ground','A capped fungus — a domed cap on a pale stalk',(defs,id)=>{
+  const Cap=radial(defs,id+'g1',[['0%','#ff9a6a'],['50%','#d94f2f'],['100%','#7a1c10']],{cx:0.4,cy:0.28,r:0.9});
+  const Stalk=linear(defs,id+'g2',[['0%','#f4ece0'],['100%','#c9bda8']],{x1:0,y1:0,x2:1,y2:0});
+  const spots=[[70,66,3],[92,64,3.4],[80,58,2.6],[100,72,2.4],[62,74,2.2]];
+  const mk=spots.map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="#fff2e0" opacity="0.9"/>`).join('');
+  return `${ground(defs,id+'gr',80,26)}
+    <path d="M72,84 Q70,120 68,128 L92,128 Q90,120 88,84 Z" fill="${Stalk}"/>
+    <path d="M50,78 A30,26 0 0 1 110,78 Q80,90 50,78 Z" fill="${Cap}"/>
+    <path d="M56,80 Q80,86 104,80" fill="none" stroke="#e8b48a" stroke-width="1.4" opacity="0.6"/>
+    ${mk}
+    ${specular(66,66,7,4,0.3)}`;
+});
+
+//====================================================================================================================================
+//                                                    GENERAL FOLIAGE
+//====================================================================================================================================
+// Generic building-block glyphs — the plain, unadorned versions used where a specific species would
+// be over-specified (scatter brushes, material thumbnails, legend swatches).
+
+// 📝 Plain lush grass — a fan of upright green blades, taller and denser than the wild "Grass Tuft",
+// with no lean or seed heads. The bright saturated LEAF/MOSS split is the "healthy grass" read.
+add('Grass','General','A dense fan of fresh upright blades',(defs,id)=>{
+  const Blade=linear(defs,id+'g1',[['0%',MOSS[0]],['45%',MOSS[1]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Deep =linear(defs,id+'g2',[['0%',MOSS[1]],['100%',FROND[4]]],{x1:0,y1:0,x2:0,y2:1});
+  // Two rows of tapered blades from a spread of roots: a darker back rank, a brighter front rank,
+  // so the fan reads as a tuft with depth rather than a flat bundle of sticks.
+  // [rootX, lean, length, base half-width]
+  const back =[[62,-16,58,2.6],[72,-8,66,2.7],[80,0,72,2.8],[88,8,66,2.7],[98,16,58,2.6]];
+  const front=[[66,-20,52,2.8],[74,-6,64,3.0],[80,2,74,3.1],[86,8,62,3.0],[94,20,50,2.8],[80,-2,80,3.2]];
+  let Blades='';
+  for(const [rx,ln,len,bw] of back)  Blades+=grassBlade(rx,128,len,bw,ln,Deep);
+  for(const [rx,ln,len,bw] of front) Blades+=grassBlade(rx,128,len,bw,ln,Blade);
+  return `${ground(defs,id+'gr',80,28)}${Blades}${specular(76,92,3,12,0.2)}`;
+});
+
+// 📝 Dry grass is the same fan drained to straw — the AUTUMN/BARK palette, a few bent-over broken
+// blades and a couple of shed strands on the ground are what read as "dead / dormant" vs fresh Grass.
+add('Dry Grass','General','Straw-toned dormant blades, some bent and shed',(defs,id)=>{
+  const Blade=linear(defs,id+'g1',[['0%',AUTUMN[0]],['50%',AUTUMN[1]],['100%',BARK[3]]],{x1:0,y1:0,x2:0,y2:1});
+  let Blades='';
+  // Same tapered blades as fresh grass, but with a heavier outward lean so the tips flop over —
+  // the wilted splay plus the straw palette is the "dormant / dead" read.
+  // [rootX, lean, length, base half-width]
+  const specs=[[62,-30,50,2.4],[70,-18,60,2.6],[78,-6,64,2.7],[82,10,66,2.7],[90,24,56,2.5],[98,34,46,2.3],[74,-24,54,2.5],[86,20,58,2.6]];
+  for(const [rx,ln,len,bw] of specs) Blades+=grassBlade(rx,127,len,bw,ln,Blade);
+  // shed strands lying on the soil
+  const shed='<path d="M54,124 Q70,120 88,123" fill="none" stroke="'+BARK[2]+'" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>'+
+             '<path d="M90,126 Q104,122 118,126" fill="none" stroke="'+AUTUMN[3]+'" stroke-width="1.8" stroke-linecap="round" opacity="0.6"/>';
+  return `${ground(defs,id+'gr',82,30)}${shed}${Blades}`;
+});
+
+// 📝 A single leaf, veined — a POINTED ovate blade: acute tip at the top, drawn-out base at the
+// petiole, narrower than tall. The old blade was almost circular (64x76) and read as a coin; a true
+// leaf tapers to a point at both ends around a widest middle, with a herringbone vein tree.
+add('Leaf','General','A single veined pointed leaf on a short stem',(defs,id)=>{
+  const Body=radial(defs,id+'g1',[['0%',LEAF[0]],['48%',LEAF[1]],['100%',LEAF[3]]],{cx:0.4,cy:0.32,r:0.95});
+  const tipY=36, baseY=118, midY=80;                     // apex, petiole join, widest point
+  const halfW=24;                                        // widest half-width (narrower than before)
+  // blade: base -> pointed tip up the right edge, back down the left, widest at midY
+  const Blade=`M80,${baseY} `+
+    `C${80+halfW*0.7},${baseY-14} ${80+halfW},${midY+14} ${80+halfW},${midY} `+
+    `C${80+halfW},${midY-16} ${80+halfW*0.5},${tipY+14} 80,${tipY} `+
+    `C${80-halfW*0.5},${tipY+14} ${80-halfW},${midY-16} ${80-halfW},${midY} `+
+    `C${80-halfW},${midY+14} ${80-halfW*0.7},${baseY-14} 80,${baseY} Z`;
+  // herringbone side veins branching off the midrib toward the tip
+  const veins=[[0.26,32],[0.26,-32],[0.46,38],[0.46,-38],[0.66,34],[0.66,-34]].map(([t,ang])=>{
+    const my=baseY-(baseY-tipY)*t, r=ang*Math.PI/180;
+    const reach=halfW*(1-t*0.45)*0.8;
+    const ex=80+Math.sin(r)*reach, ey=my-Math.cos(r)*reach*0.5;
+    return `<path d="M80,${my.toFixed(1)} Q${((80+ex)/2).toFixed(1)},${(my-4).toFixed(1)} ${ex.toFixed(1)},${ey.toFixed(1)}" fill="none" stroke="${LEAF[4]}" stroke-width="1.1" opacity="0.4"/>`;
+  }).join('');
+  return `${ground(defs,id+'gr',80,20)}
+    <path d="M80,128 Q78,122 80,${baseY}" fill="none" stroke="${BARK[3]}" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="${Blade}" fill="${Body}"/>
+    <path d="M80,${baseY} Q80,${midY} 80,${tipY}" fill="none" stroke="${LEAF[4]}" stroke-width="1.6" opacity="0.5"/>
+    ${veins}
+    ${specular(70,64,7,10,0.3)}`;
+});
+
+// 📝 A bare forked twig — brown branching sticks with a couple of buds, no leaf mass. The buds keep
+// it "live twig / kindling" rather than the larger "Bare Tree" snag; it is the debris-scatter glyph.
+add('Twigs','General','Forked bare sticks with a few buds',(defs,id)=>{
+  const Wood=linear(defs,id+'g1',[['0%',BARK[1]],['55%',BARK[2]],['100%',BARK[4]]],{x1:0,y1:0,x2:1,y2:1});
+  const B=(x1,y1,x2,y2,w)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${Wood}" stroke-width="${w}" stroke-linecap="round"/>`;
+  const bud=(x,y)=>`<circle cx="${x}" cy="${y}" r="3" fill="${MOSS[1]}"/>`;
+  return `${ground(defs,id+'gr',80,30)}
+    ${B(48,118,96,58,5)}
+    ${B(72,86,52,60,3.5)}${B(80,74,104,64,3.5)}${B(88,66,84,46,3)}
+    ${B(60,72,50,64,2.4)}${B(96,68,108,74,2.4)}
+    ${bud(96,58)}${bud(84,46)}${bud(108,64)}
+    ${B(58,124,120,112,4)}
+    ${B(84,118,72,104,2.6)}
+    ${specular(70,88,2,9,0.2)}`;
+});
+
+// 📝 A small posy of several blossoms on stems — multiple radial flower heads of mixed hue bound at
+// the base. Plural + mixed colour is the "flowers" read, distinct from the single-stem Wildflower.
+add('Flowers','General','A gathered posy of mixed blossoms',(defs,id)=>{
+  const P1=radial(defs,id+'g1',[['0%',BLOOM[0]],['55%',BLOOM[1]],['100%',BLOOM[3]]],{cx:0.4,cy:0.35,r:0.9});
+  const P2=radial(defs,id+'g2',[['0%',AMBER[0]],['55%',AMBER[1]],['100%',AMBER[3]]],{cx:0.4,cy:0.35,r:0.9});
+  const P3=radial(defs,id+'g3',[['0%',CRYST[0]],['55%',CRYST[1]],['100%',CRYST[3]]],{cx:0.4,cy:0.35,r:0.9});
+  const Core=radial(defs,id+'g4',[['0%',AMBER[0]],['100%',AMBER[2]]],{cx:0.4,cy:0.35,r:0.9});
+  const flower=(cx,cy,rad,pal)=>{
+    let pet=''; for(let a=0;a<360;a+=60){const r=a*Math.PI/180; pet+=`<ellipse cx="${(cx+rad*Math.cos(r)).toFixed(1)}" cy="${(cy+rad*Math.sin(r)).toFixed(1)}" rx="${rad*0.72}" ry="${rad*0.5}" fill="${pal}" transform="rotate(${a} ${(cx+rad*Math.cos(r)).toFixed(1)} ${(cy+rad*Math.sin(r)).toFixed(1)})"/>`;}
+    return pet+`<circle cx="${cx}" cy="${cy}" r="${rad*0.55}" fill="${Core}"/>`;
+  };
+  const heads=[[60,60,9,P1],[98,56,10,P2],[80,74,8,P3]];
+  const stems=heads.map(([x,y])=>`<path d="M${x},${y} Q80,100 80,126" fill="none" stroke="${FROND[3]}" stroke-width="2.4" stroke-linecap="round"/>`).join('');
+  const blooms=heads.map(([x,y,rad,pal])=>flower(x,y,rad,pal)).join('');
+  return `${ground(defs,id+'gr',80,26)}
+    ${stems}
+    <path d="M66,96 Q56,92 52,84 Q64,86 68,96 Z" fill="${FROND[2]}"/>
+    <path d="M94,98 Q104,94 108,86 Q96,88 92,98 Z" fill="${FROND[2]}"/>
+    ${blooms}
+    ${specular(57,57,2.4,1.8,0.55)}`;
+});
+
+//====================================================================================================================================
+//                                                    ROCKS & STONES
+//====================================================================================================================================
+
+// 📝 A single large faceted mass with a distinct lit top-plane and shaded side — the two-tone facet
+// split is what gives a boulder volume rather than reading as a flat grey blob.
+add('Boulder','Rock','A single large faceted stone',(defs,id)=>{
+  const Top=linear(defs,id+'g1',[['0%',STONE[0]],['100%',STONE[2]]],{x1:0,y1:0,x2:1,y2:1});
+  const Side=linear(defs,id+'g2',[['0%',STONE[2]],['100%',STONE[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${ground(defs,id+'gr',80,34)}
+    <path d="M44,110 L52,74 L92,62 L120,86 L114,116 L60,124 Z" fill="${Side}"/>
+    <path d="M52,74 L92,62 L120,86 L86,90 Z" fill="${Top}"/>
+    <path d="M86,90 L114,116 L60,124 L64,96 Z" fill="${STONE[3]}" opacity="0.5"/>
+    <path d="M52,74 L64,96 L44,110" fill="none" stroke="${STONE[4]}" stroke-width="1" opacity="0.4"/>
+    ${specular(74,72,10,5,0.4)}`;
+});
+
+// 📝 Several stones of different sizes piled and overlapping is the cluster read — the size variation
+// and overlap are what separate a rock cluster from one boulder.
+add('Rock Cluster','Rock','A pile of several overlapping stones',(defs,id)=>{
+  const A=linear(defs,id+'g1',[['0%',STONE[1]],['100%',STONE[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const B=linear(defs,id+'g2',[['0%',STONE[0]],['100%',STONE[2]]],{x1:0,y1:0,x2:1,y2:1});
+  return `${ground(defs,id+'gr',80,34)}
+    <path d="M40,120 L48,98 L74,94 L82,116 Z" fill="${A}"/>
+    <path d="M78,122 L86,104 L112,102 L120,120 Z" fill="${A}"/>
+    <path d="M56,100 L70,74 L98,80 L104,104 L70,110 Z" fill="${B}"/>
+    <path d="M70,74 L98,80 L82,90 L64,86 Z" fill="${STONE[0]}" opacity="0.7"/>
+    ${specular(74,80,8,4,0.4)}`;
+});
+
+// 📝 A scatter of small rounded stones on the ground plane — many small ellipses of varied tone is
+// the gravel read; it must stay low and flat, never stacked into a mass.
+add('Pebbles','Rock','A scatter of small rounded gravel',(defs,id)=>{
+  const shades=[STONE[1],STONE[2],STONE[3],'#a8afb8'];
+  const stones=[[58,112,13,7],[86,116,15,8],[110,110,11,6],[72,104,10,5],[98,102,12,6],[52,100,8,4]];
+  const mk=stones.map(([x,y,rx,ry],i)=>{
+    const f=shades[i%shades.length];
+    return `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}"/><ellipse cx="${x-rx*0.3}" cy="${y-ry*0.3}" rx="${rx*0.4}" ry="${ry*0.35}" fill="#fff" opacity="0.28"/>`;
+  }).join('');
+  return `${ground(defs,id+'gr',82,36)}${mk}`;
+});
+
+// 📝 A stratified vertical face with horizontal bedding lines is the cliff read — the layered strata
+// are the signature; a plain slab without banding reads as a single flat stone.
+add('Cliff Slab','Rock','A stratified rock face with bedding layers',(defs,id)=>{
+  const Face=linear(defs,id+'g1',[['0%',STONE[1]],['100%',STONE[4]]],{x1:0,y1:0,x2:1,y2:1});
+  const Top=linear(defs,id+'g2',[['0%',STONE[0]],['100%',STONE[2]]],{x1:0,y1:0,x2:0,y2:1});
+  const strata=[80,92,104].map(y=>`<path d="M46,${y} Q80,${y-3} 116,${y}" fill="none" stroke="${STONE[4]}" stroke-width="1.4" opacity="0.5"/>`).join('');
+  return `${ground(defs,id+'gr',80,36)}
+    <path d="M44,124 L46,66 L112,58 L116,124 Z" fill="${Face}"/>
+    <path d="M46,66 L112,58 L124,68 L58,76 Z" fill="${Top}"/>
+    ${strata}
+    ${specular(64,72,9,3,0.35)}`;
+});
+
+// 📝 A single low flat flagstone seen at a shallow angle — the thin lit top and dark edge band read
+// as a flat stepping-stone, distinct from the tall boulder.
+add('Flat Stone','Rock','A low flat flagstone lying on the ground',(defs,id)=>{
+  const Top=linear(defs,id+'g1',[['0%',STONE[0]],['100%',STONE[2]]],{x1:0,y1:0,x2:1,y2:1});
+  const Edge=linear(defs,id+'g2',[['0%',STONE[3]],['100%',STONE[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${ground(defs,id+'gr',80,34)}
+    <path d="M44,104 L74,92 L116,98 L100,112 L58,116 Z" fill="${Edge}"/>
+    <path d="M44,100 L74,88 L116,94 L100,106 L58,110 Z" fill="${Top}"/>
+    ${specular(74,94,14,4,0.4)}`;
+});
+
+// 📝 Angular translucent prisms rising from a rock base is the crystal / ore read — the sharp facets
+// and cool CRYST palette separate it from the warm-grey natural stones.
+add('Crystal Ore','Rock','Faceted mineral crystals set in a rock base',(defs,id)=>{
+  const Rock=linear(defs,id+'g1',[['0%',STONE[2]],['100%',STONE[4]]],{x1:0,y1:0,x2:0,y2:1});
+  const Cr=linear(defs,id+'g2',[['0%',CRYST[0]],['50%',CRYST[1]],['100%',CRYST[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Glow=glowF(defs,id+'f1',2.5);
+  const shard=(x,ty,w,h)=>`<path d="M${x-w},${ty+h} L${x-w*0.4},${ty} L${x+w*0.3},${ty+6} L${x+w},${ty+h} Z" fill="${Cr}"/>`;
+  return `${ground(defs,id+'gr',80,32)}
+    <path d="M48,118 L54,100 L104,96 L114,116 Z" fill="${Rock}"/>
+    <g filter="${Glow}">
+      ${shard(70,64,10,40)}${shard(88,54,12,50)}${shard(102,74,8,30)}
+    </g>
+    <path d="M84,60 L84,100" stroke="#ffffff" stroke-width="1" opacity="0.5"/>
+    ${specular(66,72,3,10,0.4)}`;
+});
+
+//====================================================================================================================================
+//                                                    SCATTER & FOLIAGE TOOLS
+//====================================================================================================================================
+
+// 📝 Instances thinning across a gradient field is the density read — the same glyph repeated dense
+// to sparse over a shaded ramp shows "scatter density" without needing a slider chrome.
+add('Scatter Density','Utility','Instance count per unit area across a field',(defs,id)=>{
+  const Field=linear(defs,id+'g1',[['0%',LEAF[2],0.28],['100%',LEAF[2],0.02]],{x1:0,y1:0,x2:1,y2:0});
+  const clump=(x,y,s)=>`<path d="M${x},${y} Q${x-s},${y-s*1.6} ${x},${y-s*2.2} Q${x+s},${y-s*1.6} ${x},${y} Z" fill="${LEAF[1]}"/>`;
+  const cols=[[46,4],[66,3.4],[86,2.8],[104,2.2],[120,1.7]];
+  let inst=''; cols.forEach(([x,s],ci)=>{const rows=5-ci; for(let r=0;r<rows;r++){inst+=clump(x-((r%2)*3), 118-r*11, s);}});
+  return `<rect x="36" y="52" width="92" height="72" rx="8" fill="${Field}"/>
+    <line x1="36" y1="124" x2="128" y2="124" stroke="#6a7a68" stroke-width="1.4" opacity="0.5"/>
+    ${inst}`;
+});
+
+// 📝 A blade bent under motion arcs with trailing lines is the wind / sway read — the lean plus the
+// speed streaks say "animated", separating it from a static grass tuft.
+add('Wind Sway','Utility','Animated bending — foliage responding to wind',(defs,id)=>{
+  const Blade=linear(defs,id+'g1',[['0%',MOSS[1]],['100%',FROND[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const gust=linear(defs,id+'g2',[['0%',CRYST[1],0],['100%',CRYST[1],0.8]],{x1:0,y1:0,x2:1,y2:0});
+  let Blades='';
+  for(const [x,bend] of [[64,20],[78,30],[92,24]]){
+    Blades+=`<path d="M${x},126 Q${x+bend*0.6},90 ${x+bend},58" fill="none" stroke="${Blade}" stroke-width="3.4" stroke-linecap="round"/>`;
+  }
+  const streaks=[70,82,96].map(y=>`<path d="M28,${y} Q56,${y-4} 84,${y}" fill="none" stroke="${gust}" stroke-width="2.4" stroke-linecap="round"/>`).join('');
+  return `${ground(defs,id+'gr',80,26)}${streaks}${Blades}
+    <polygon points="88,60 96,56 92,66" fill="${MOSS[1]}"/>`;
+});
+
+// 📝 One leaf split across a seasonal ramp — green to gold to bare — is the tint / season read; the
+// four-state strip is the whole meaning, so it must stay a single leaf, not four plants.
+add('Season Tint','Utility','Foliage color driven by a seasonal ramp',(defs,id)=>{
+  const Leaf=linear(defs,id+'g1',[['0%',LEAF[1]],['38%',MOSS[1]],['66%',AUTUMN[1]],['100%',AUTUMN[3]]],{x1:0,y1:0,x2:1,y2:0});
+  const ramp=linear(defs,id+'g2',[['0%',LEAF[2]],['40%',MOSS[2]],['70%',AUTUMN[2]],['100%',BARK[3]]],{x1:0,y1:0,x2:1,y2:0});
+  return `${ground(defs,id+'gr',80,26)}
+    <path d="M80,120 Q78,90 80,58 Q104,52 108,74 Q108,100 80,110 Q52,100 52,74 Q56,52 80,58 Z" fill="${Leaf}"/>
+    <path d="M80,58 Q80,90 80,116" stroke="${AUTUMN[4]}" stroke-width="1.6" opacity="0.5"/>
+    <rect x="44" y="126" width="72" height="6" rx="3" fill="${ramp}"/>
+    ${specular(66,70,7,5,0.3)}`;
+});
+
+//====================================================================================================================================
+//                                                    RENDER
+//====================================================================================================================================
+// Each build() pushes its gradients/filters into a fresh `defs` array and returns the body markup.
+// The two are stitched into one standalone <svg> per requested pixel size, with a per-instance id
+// suffix so the 76px tile, the 32/24/16px strip, and the clipboard copy never share gradient ids.
+
+const GRID_OVERLAY =
+  '<g class="alignGrid" stroke="#7bd06b" stroke-width="0.6" opacity="0.22" fill="none">' +
+  '<rect x="24" y="24" width="112" height="112"/>' +
+  '<line x1="80" y1="16" x2="80" y2="144"/><line x1="16" y1="80" x2="144" y2="80"/>' +
+  '<circle cx="80" cy="80" r="56"/></g>';
+
+function BuildIconMarkup(Icon, InstanceId, Overlay){
+  const defs = [];
+  const body = Icon.build(defs, InstanceId);
+  const head = defs.length ? `<defs>${defs.join('')}</defs>` : '';
+  return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">${head}${body}${Overlay||''}</svg>`;
+}
+
+const root  = document.getElementById('root');
+const toast = document.getElementById('toast');
+let InstanceCounter = 0;
+
+CATS.forEach(([Key, Title, Note])=>{
+  const Members = ICONS.filter(Icon => Icon.cat === Key);
+  if (!Members.length) return;
+
+  const Heading = document.createElement('h2');
+  Heading.innerHTML = `${Title}<span>${Members.length} icons</span>`;
+  root.appendChild(Heading);
+
+  const CategoryNote = document.createElement('p');
+  CategoryNote.className = 'catnote';
+  CategoryNote.textContent = Note;
+  root.appendChild(CategoryNote);
+
+  const Grid = document.createElement('div');
+  Grid.className = 'grid';
+
+  Members.forEach(Icon=>{
+    const Stem = 'fo' + (InstanceCounter++);
+    const Cell = document.createElement('div');
+    Cell.className = 'cell';
+    Cell.innerHTML =
+      BuildIconMarkup(Icon, Stem + 'a', GRID_OVERLAY) +
+      `<div class="cap"><b>${Icon.name}</b>${Icon.note}</div>` +
+      `<div class="strip">` +
+        `<span class="s32">${BuildIconMarkup(Icon, Stem + 'b')}</span>` +
+        `<span class="s24">${BuildIconMarkup(Icon, Stem + 'c')}</span>` +
+        `<span class="s16">${BuildIconMarkup(Icon, Stem + 'd')}</span>` +
+      `</div>`;
+
+    Cell.addEventListener('click', ()=>{
+      const Standalone = BuildIconMarkup(Icon, Stem);
+      navigator.clipboard.writeText(Standalone).then(()=>{
+        Cell.classList.add('copied');
+        toast.textContent = Icon.name + ' — SVG copied';
+        toast.classList.add('show');
+        setTimeout(()=>{ Cell.classList.remove('copied'); toast.classList.remove('show'); }, 1100);
+      });
+    });
+
+    Grid.appendChild(Cell);
+  });
+
+  root.appendChild(Grid);
+});
+
+document.getElementById('tally').textContent =
+  ICONS.length + ' icons · ' + CATS.length + ' categories · click a tile to copy its SVG';
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    INSPECTION TOGGLES
+//------------------------------------------------------------------------------------------------------------------------
+
+const PaleToggle = document.getElementById('paleToggle');
+PaleToggle.addEventListener('click', ()=>{
+  document.body.classList.toggle('pale');
+  PaleToggle.classList.toggle('on');
+});
+
+const GridToggle = document.getElementById('gridToggle');
+let GridVisible = false;
+function ApplyGridVisibility(){
+  document.querySelectorAll('.alignGrid').forEach(Node=>{
+    Node.style.display = GridVisible ? '' : 'none';
+  });
+}
+GridToggle.addEventListener('click', ()=>{
+  GridVisible = !GridVisible;
+  GridToggle.classList.toggle('on', GridVisible);
+  ApplyGridVisibility();
+});
+ApplyGridVisibility();
+
+//====================================================================================================================================
+//                                                    EXPORTS
+//====================================================================================================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { ICONS, CATS };
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,2556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Harbor Workshop — Paint</title>
+<style>
+  :root {
+    --bg: #0c0c0d; --panel: #141416; --line: #2a2a2e;
+    --text: #e8e6e3; --muted: #8a8680; --accent: #c4a574;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; overflow: hidden; }
+  #app { display: grid; grid-template-columns: 56px minmax(0,1fr) 280px; height: 100%; min-height: 0; }
+  #view { min-width: 0; overflow: hidden; }
+  #props { width: 280px; max-width: 280px; min-width: 0; }
+  #toolbar {
+    background: var(--panel); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0;
+  }
+  #toolbar button {
+    width: 40px; height: 40px; border: 1px solid transparent; border-radius: 8px;
+    background: transparent; color: var(--text); cursor: pointer; font-size: 16px;
+  }
+  #toolbar button:hover { background: #1c1c20; }
+  #toolbar button.active { border-color: var(--accent); color: var(--accent); background: #1a1814; }
+  #toolbar .sp { flex: 1; }
+  #view { position: relative; }
+  #c { display: block; width: 100%; height: 100%; }
+  #hint {
+    position: absolute; left: 12px; bottom: 12px; color: var(--muted); pointer-events: none;
+    font-size: 11px;
+  }
+  #props {
+    background: var(--panel); border-left: 1px solid var(--line);
+    overflow: auto; padding: 16px;
+  }
+  #props h1 { font-size: 13px; font-weight: 600; margin: 0 0 4px; letter-spacing: .04em; }
+  #props .sub { color: var(--muted); margin-bottom: 16px; font-size: 11px; }
+  .sec { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 16px 0 8px; }
+  label.row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+  label.row span { width: 92px; color: #b8b4ae; flex-shrink: 0; }
+  label.row input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  label.row .v { width: 36px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  input[type=color] { width: 100%; height: 32px; border: 1px solid var(--line); background: #111; border-radius: 6px; padding: 2px; cursor: pointer; }
+  .note { color: var(--muted); font-size: 11px; line-height: 1.45; margin-top: 12px; }
+  button.dip {
+    width: 100%; margin-top: 10px; padding: 8px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: #1c1c20; color: var(--text);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="toolbar">
+    <button type="button" id="tool-paint" class="active" title="Brush">●</button>
+    <button type="button" id="tool-spray" title="Spray can">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="6" y="7" width="7" height="9" rx="1"/>
+        <path d="M8 7V4h3l1.5-2"/>
+        <path d="M12 5h3"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-chalk" title="Dry media">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+        <rect x="4" y="11" width="12" height="3.2" rx="0.8" transform="rotate(-28 10 12.5)"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-sand" title="Sand / scuff">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="3" y="4" width="12" height="10" rx="1"/>
+        <path d="M5 7h8M5 10h8M5 13h5" opacity="0.7"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-pencil" title="Pencil">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M4 14l8.5-8.5 2 2L6 16H4v-2z"/>
+        <path d="M11.5 6.5l2 2"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-marker" title="Marker">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M5 16l7-7 2.2 2.2-7 7H5v-2.2z"/>
+        <path d="M11.2 7.8l1.6-3.2 2.6 1.3-1.5 3"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-splat" title="Splatter">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+        <circle cx="7" cy="10" r="3.2"/>
+        <circle cx="12" cy="7" r="1.4"/>
+        <circle cx="13.5" cy="12" r="1"/>
+        <circle cx="4.2" cy="6.2" r="0.9"/>
+        <circle cx="10" cy="13.5" r="0.7"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-dust" title="Dust / glitter">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+        <circle cx="5" cy="12" r="1.1"/>
+        <circle cx="8.5" cy="9" r="1.6"/>
+        <circle cx="12.5" cy="12.5" r="1.2"/>
+        <circle cx="11" cy="6" r="0.8"/>
+        <circle cx="6.5" cy="6.5" r="0.6"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-smoke" title="Smoke / soot">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M9 15c-2 0-3-1.4-3-3 0-2 2-3 2-5 .2 1.4 1.4 2 2 2s1.6-.4 2-1.5c.2 1.6 2 2.4 2 4.5 0 1.6-1.2 3-3 3z"/>
+        <path d="M8 6c.2-1.4 1-2.5 1.6-3.5"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-stain" title="Stains">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+        <ellipse cx="7" cy="11" rx="3.2" ry="2.2"/>
+        <ellipse cx="12" cy="8" rx="2.2" ry="1.6" opacity="0.7"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-pour" title="Pour / spill">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.3">
+        <path d="M5 3h8l-1.5 5H6.5L5 3z"/>
+        <path d="M9 8v2.5"/>
+        <path d="M7 14c0 1.4 1 2.5 2 2.5s2-1.1 2-2.5"/>
+      </svg>
+    </button>
+    <button type="button" id="tool-orbit" title="Orbit">↻</button>
+    <div class="sp"></div>
+    <button type="button" id="tool-clear" title="Clear paint">✕</button>
+  </aside>
+  <div id="view">
+    <canvas id="c"></canvas>
+    <div id="hint">Click and drag on the sphere. Right-drag orbits. Dip reloads pigment.</div>
+  </div>
+  <aside id="props">
+    <h1 id="props-title">Brush</h1>
+    <div class="sub" id="props-sub">3D tuft · hair tracks · viscosity</div>
+    <div id="brush-panel">
+    <div class="sec">Pigment</div>
+    <input type="color" id="p-color" value="#c45c2a"/>
+    <button type="button" class="dip" id="p-dip">Dip / reload bristles</button>
+    <div class="sec">Medium</div>
+    <div id="media" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip medium" data-medium="acrylic">Acrylic</button>
+      <button type="button" class="dip medium active" data-medium="oil">Oil</button>
+      <button type="button" class="dip medium" data-medium="water">Water</button>
+    </div>
+    <div class="sec">Tuft shape</div>
+    <div id="shapes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip shape active" data-shape="round">Round</button>
+      <button type="button" class="dip shape" data-shape="flat">Flat</button>
+      <button type="button" class="dip shape" data-shape="filbert">Filbert</button>
+      <button type="button" class="dip shape" data-shape="fan">Fan</button>
+    </div>
+    <div class="sec">Tuft</div>
+    <label class="row"><span>Hairs</span><input type="range" id="p-hairs" min="12" max="160" step="1" value="48"/><b class="v" id="v-hairs">72</b></label>
+    <label class="row"><span>Radius</span><input type="range" id="p-radius" min="0.01" max="0.12" step="0.001" value="0.045"/><b class="v" id="v-radius">.045</b></label>
+    <label class="row"><span>Stiffness</span><input type="range" id="p-stiff" min="0.05" max="1" step="0.01" value="0.45"/><b class="v" id="v-stiff">0.45</b></label>
+    <label class="row"><span>Splay</span><input type="range" id="p-splay" min="0.2" max="2.4" step="0.02" value="1.1"/><b class="v" id="v-splay">1.10</b></label>
+    <label class="row"><span>Pressure</span><input type="range" id="p-press" min="0.15" max="1" step="0.01" value="0.55"/><b class="v" id="v-press">0.55</b></label>
+    <div class="sec">Paint body</div>
+    <label class="row"><span>Viscosity</span><input type="range" id="p-visc" min="0.05" max="1" step="0.01" value="0.72"/><b class="v" id="v-visc">0.72</b></label>
+    <label class="row"><span>Load</span><input type="range" id="p-load" min="0.05" max="1" step="0.01" value="0.85"/><b class="v" id="v-load">0.85</b></label>
+    <label class="row"><span>Hair width</span><input type="range" id="p-width" min="0.4" max="3.5" step="0.05" value="1.2"/><b class="v" id="v-width">1.20</b></label>
+    <label class="row"><span>Thickness</span><input type="range" id="p-thick" min="0" max="1" step="0.01" value="0.7"/><b class="v" id="v-thick">0.70</b></label>
+    <label class="row"><span>Drip</span><input type="range" id="p-drip" min="0" max="1" step="0.01" value="0.65"/><b class="v" id="v-drip">0.65</b></label>
+    <p class="note">Brush only. Acrylic paste / oil sag / watercolour runs.</p>
+    </div>
+    <div id="spray-panel" style="display:none">
+    <div class="sec">Paint</div>
+    <input type="color" id="s-color" value="#c45c2a"/>
+    <div class="sec">Nozzle</div>
+    <label class="row"><span>Pressure</span><input type="range" id="p-sprP" min="0.1" max="1" step="0.01" value="0.55"/><b class="v" id="v-sprP">0.55</b></label>
+    <label class="row"><span>Standoff</span><input type="range" id="p-stand" min="0.15" max="1" step="0.01" value="0.4"/><b class="v" id="v-stand">0.40</b></label>
+    <label class="row"><span>Cone</span><input type="range" id="p-cone" min="0.2" max="1.5" step="0.01" value="0.7"/><b class="v" id="v-cone">0.70</b></label>
+    <label class="row"><span>Runs</span><input type="range" id="s-drip" min="0" max="1" step="0.01" value="0.35"/><b class="v" id="v-sDrip">0.35</b></label>
+    <p class="note">Spray only. Cone droplets. Close = dense; far = overspray.</p>
+    </div>
+    <div id="dry-panel" style="display:none">
+    <div class="sec">Stick</div>
+    <div id="dry-kinds" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip dryk active" data-dry="chalk">Chalk</button>
+      <button type="button" class="dip dryk" data-dry="pastel">Pastel</button>
+      <button type="button" class="dip dryk" data-dry="charcoal">Charcoal</button>
+      <button type="button" class="dip dryk" data-dry="conte">Conté</button>
+    </div>
+    <input type="color" id="d-color" value="#e8dcc8"/>
+    <div class="sec">Contact</div>
+    <label class="row"><span>Hardness</span><input type="range" id="d-hard" min="0" max="1" step="0.01" value="0.45"/><b class="v" id="v-dHard">0.45</b></label>
+    <label class="row"><span>Size</span><input type="range" id="d-size" min="0.008" max="0.08" step="0.001" value="0.028"/><b class="v" id="v-dSize">.028</b></label>
+    <label class="row"><span>On side</span><input type="range" id="d-side" min="0" max="1" step="0.01" value="0.15"/><b class="v" id="v-dSide">0.15</b></label>
+    <label class="row"><span>Pressure</span><input type="range" id="d-press" min="0.15" max="1" step="0.01" value="0.5"/><b class="v" id="v-dPress">0.50</b></label>
+    <label class="row"><span>Tooth</span><input type="range" id="d-tooth" min="0.1" max="1" step="0.01" value="0.55"/><b class="v" id="v-dTooth">0.55</b></label>
+    <label class="row"><span>Dust</span><input type="range" id="d-dust" min="0" max="1" step="0.01" value="0.4"/><b class="v" id="v-dDust">0.40</b></label>
+    <p class="note">Dry media: friction on paper tooth. Soft sticks drop more dust. Side of the stick makes a wide ellipse. No wet drips.</p>
+    </div>
+    <div id="sand-panel" style="display:none">
+    <div class="sec">Motion</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip sandm active" data-sand="linear">Linear</button>
+      <button type="button" class="dip sandm" data-sand="circular">Circular</button>
+    </div>
+    <div class="sec">Paper</div>
+    <label class="row"><span>Grit</span><input type="range" id="n-grit" min="40" max="400" step="10" value="120"/><b class="v" id="v-nGrit">120</b></label>
+    <label class="row"><span>Size</span><input type="range" id="n-size" min="0.012" max="0.09" step="0.001" value="0.04"/><b class="v" id="v-nSize">.040</b></label>
+    <label class="row"><span>Pressure</span><input type="range" id="n-press" min="0.15" max="1" step="0.01" value="0.55"/><b class="v" id="v-nPress">0.55</b></label>
+    <p class="note">Abrasive: cuts pigment back to the ground. Fine grit = many short scratches. Coarse = fewer, deeper. Linear follows the stroke; circular swirls.</p>
+    </div>
+    <div id="pencil-panel" style="display:none">
+    <div class="sec">Graphite</div>
+    <label class="row"><span>Grade</span><input type="range" id="e-grade" min="0" max="1" step="0.01" value="0.45"/><b class="v" id="v-eGrade">HB</b></label>
+    <label class="row"><span>Size</span><input type="range" id="e-size" min="0.004" max="0.04" step="0.001" value="0.012"/><b class="v" id="v-eSize">.012</b></label>
+    <label class="row"><span>On side</span><input type="range" id="e-side" min="0" max="1" step="0.01" value="0.08"/><b class="v" id="v-eSide">0.08</b></label>
+    <label class="row"><span>Pressure</span><input type="range" id="e-press" min="0.1" max="1" step="0.01" value="0.45"/><b class="v" id="v-ePress">0.45</b></label>
+    <label class="row"><span>Shine</span><input type="range" id="e-shine" min="0" max="1" step="0.01" value="0.35"/><b class="v" id="v-eShine">0.35</b></label>
+    <p class="note">H = hard, light, thin. B = soft, dark, wide. Point = line; on side = shade. Shine = graphite burnish (lighter streak when you press).</p>
+    </div>
+    <div id="marker-panel" style="display:none">
+    <div class="sec">Ink</div>
+    <input type="color" id="m-color" value="#1a3a8a"/>
+    <div class="sec">Nib</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip mnib active" data-nib="chisel">Chisel</button>
+      <button type="button" class="dip mnib" data-nib="bullet">Bullet</button>
+      <button type="button" class="dip mnib" data-nib="brush">Brush</button>
+    </div>
+    <label class="row"><span>Size</span><input type="range" id="m-size" min="0.008" max="0.07" step="0.001" value="0.028"/><b class="v" id="v-mSize">.028</b></label>
+    <label class="row"><span>Angle</span><input type="range" id="m-ang" min="0" max="1" step="0.01" value="0.25"/><b class="v" id="v-mAng">0.25</b></label>
+    <label class="row"><span>Pressure</span><input type="range" id="m-press" min="0.15" max="1" step="0.01" value="0.55"/><b class="v" id="v-mPress">0.55</b></label>
+    <label class="row"><span>Bleed</span><input type="range" id="m-bleed" min="0" max="1" step="0.01" value="0.4"/><b class="v" id="v-mBleed">0.40</b></label>
+    <label class="row"><span>Load</span><input type="range" id="m-load" min="0.15" max="1" step="0.01" value="0.85"/><b class="v" id="v-mLoad">0.85</b></label>
+    <p class="note">Alcohol dye in felt. Overlaps stack darker. Chisel: thick/thin by angle. Bleed is paper capillary, not a drip. Reservoir dries along the stroke.</p>
+    </div>
+    <div id="splat-panel" style="display:none">
+    <div class="sec">Liquid</div>
+    <input type="color" id="sp-color" value="#7a1018"/>
+    <label class="row"><span>Volume</span><input type="range" id="sp-vol" min="0.15" max="1" step="0.01" value="0.55"/><b class="v" id="v-spVol">0.55</b></label>
+    <label class="row"><span>Body</span><input type="range" id="sp-body" min="0" max="1" step="0.01" value="0.45"/><b class="v" id="v-spBody">0.45</b></label>
+    <label class="row"><span>Force</span><input type="range" id="sp-force" min="0.2" max="1.6" step="0.01" value="0.85"/><b class="v" id="v-spForce">0.85</b></label>
+    <label class="row"><span>Satellites</span><input type="range" id="sp-sat" min="0.1" max="1" step="0.01" value="0.65"/><b class="v" id="v-spSat">0.65</b></label>
+    <p class="note">Drag A → B on the sphere, release to impact. A is the hit; B is throw direction and speed. Short drag = drop from above. Thin body (coke) runs farther; thick (blood/paint) stays in lobes.</p>
+    </div>
+    <div id="dust-panel" style="display:none">
+    <div class="sec">Particle</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip dukind active" data-du="dust">Dust</button>
+      <button type="button" class="dip dukind" data-du="glitter">Glitter</button>
+      <button type="button" class="dip dukind" data-du="rust">Rust</button>
+    </div>
+    <input type="color" id="du-color" value="#c4b089"/>
+    <label class="row"><span>Patch</span><input type="range" id="du-size" min="0.02" max="0.1" step="0.001" value="0.05"/><b class="v" id="v-duSize">.050</b></label>
+    <label class="row"><span>Rate</span><input type="range" id="du-dens" min="0.2" max="1" step="0.01" value="0.75"/><b class="v" id="v-duDens">0.75</b></label>
+    <label class="row"><span>Tack</span><input type="range" id="du-tack" min="0.25" max="1" step="0.01" value="0.85"/><b class="v" id="v-duTack">0.85</b></label>
+    <label class="row"><span>Grain</span><input type="range" id="du-grain" min="0.3" max="2.2" step="0.01" value="1"/><b class="v" id="v-duGrain">1.00</b></label>
+    <p class="note">Stroke lays a glue film. Dust, glitter and rust rain onto that film by themselves — no extra click. Glitter = PET flakes lying on the glue, one face mirrors the light. Rust grows as oxide scabs. Rate is how fast the film loads.</p>
+    </div>
+    <div id="smoke-panel" style="display:none">
+    <div class="sec">Category</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip kkind" data-k="soot">Soot</button>
+      <button type="button" class="dip kkind active" data-k="smoke">Smoke</button>
+    </div>
+    <input type="color" id="k-color" value="#b9c2c8"/>
+    <label class="row"><span>Heat</span><input type="range" id="k-heat" min="0.2" max="1" step="0.01" value="0.65"/><b class="v" id="v-kHeat">0.65</b></label>
+    <label class="row"><span>Spread</span><input type="range" id="k-spread" min="0.15" max="1" step="0.01" value="0.55"/><b class="v" id="v-kSpread">0.55</b></label>
+    <label class="row"><span>Density</span><input type="range" id="k-dens" min="0.15" max="1" step="0.01" value="0.5"/><b class="v" id="v-kDens">0.50</b></label>
+    <label class="row"><span>Flakes</span><input type="range" id="k-flake" min="0" max="1" step="0.01" value="0.35"/><b class="v" id="v-kFlake">0.35</b></label>
+    <label class="row"><span>Waves</span><input type="range" id="k-wave" min="0.15" max="1" step="0.01" value="0.65"/><b class="v" id="v-kWave">0.65</b></label>
+    <p class="note">Soot = carbon stain. Smoke = live fluid on the sphere. It only stains where the cloud has slowed (not at the source). Flakes = how much of that slow smoke sticks. Fast wisps stay airborne.</p>
+    </div>
+    <div id="stain-panel" style="display:none">
+    <div class="sec">Stain</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip okind" data-o="paint">Paint</button>
+      <button type="button" class="dip okind active" data-o="oil">Oil</button>
+    </div>
+    <input type="color" id="o-color" value="#6a5420"/>
+    <label class="row"><span>Pour</span><input type="range" id="o-vol" min="0.15" max="1" step="0.01" value="0.55"/><b class="v" id="v-oVol">0.55</b></label>
+    <label class="row"><span>Tilt</span><input type="range" id="o-tilt" min="-1" max="1" step="0.01" value="0"/><b class="v" id="v-oTilt">0.00</b></label>
+    <p class="note">Film stain on the coat — oil and paint marks. Tilt leans gravity. This is not pouring water.</p>
+    </div>
+    <div id="pour-panel" style="display:none">
+    <div class="sec">Fluid</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+      <button type="button" class="dip qkind active" data-q="water">Water</button>
+      <button type="button" class="dip qkind" data-q="paint">Paint</button>
+      <button type="button" class="dip qkind" data-q="oil">Oil</button>
+    </div>
+    <input type="color" id="q-color" value="#7eb4d4"/>
+    <label class="row"><span>Pour</span><input type="range" id="q-vol" min="0.2" max="1" step="0.01" value="0.6"/><b class="v" id="v-qVol">0.60</b></label>
+    <label class="row"><span>Tilt</span><input type="range" id="q-tilt" min="-1" max="1" step="0.01" value="0"/><b class="v" id="v-qTilt">0.00</b></label>
+    <p class="note">Hold to emit liquid on the sphere. Beads stick to the surface and run downhill (gravity + viscosity). Water is runny; oil crawls and pools at the bottom. This is 3D fluid on the mesh, not a stain stamp.</p>
+    </div>
+  </aside>
+</div>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1c);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 40);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.28));
+const key = new THREE.DirectionalLight(0xfff6ea, 1.4);
+key.position.set(2.2, 2.8, 3.4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xa8c4e8, 0.32);
+fill.position.set(-3, 0.4, -1); scene.add(fill);
+
+const envScene = new THREE.Scene();
+envScene.add(new THREE.Mesh(new THREE.SphereGeometry(8, 16, 12), new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  vertexShader: 'varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader: 'varying vec3 vP; void main(){ float h=normalize(vP).y*0.5+0.5; gl_FragColor=vec4(mix(vec3(0.11),vec3(0.56,0.58,0.62),h),1.0); }'
+})));
+const cubeRT = new THREE.WebGLCubeRenderTarget(64, { type: THREE.HalfFloatType });
+new THREE.CubeCamera(0.1, 20, cubeRT).update(renderer, envScene);
+scene.environment = cubeRT.texture;
+
+const RES = 1024;
+const BASE = '#d4cfc8';
+const R = 0.72;
+const paint = document.createElement('canvas');
+paint.width = paint.height = RES;
+const pctx = paint.getContext('2d');
+pctx.lineCap = 'round';
+pctx.lineJoin = 'round';
+pctx.fillStyle = BASE;
+pctx.fillRect(0, 0, RES, RES);
+
+const height = document.createElement('canvas');
+height.width = height.height = RES;
+const hctx = height.getContext('2d');
+hctx.fillStyle = '#808080';
+hctx.fillRect(0, 0, RES, RES);
+hctx.lineCap = 'round';
+const tack = document.createElement('canvas');
+tack.width = tack.height = RES;
+const tctx = tack.getContext('2d', { willReadFrequently: true });
+tctx.fillStyle = '#000';
+tctx.fillRect(0, 0, RES, RES);
+let tackData = tctx.getImageData(0, 0, RES, RES).data;
+function tackAt(u, v) {
+  let x = ((u % 1) + 1) % 1; let y = Math.max(0, Math.min(0.999, v));
+  const i = ((y * RES) | 0) * RES + ((x * RES) | 0);
+  return tackData[i * 4] / 255;
+}
+function tackFlush() { tackData = tctx.getImageData(0, 0, RES, RES).data; }
+
+const show = document.createElement('canvas');
+show.width = show.height = RES;
+const xctx = show.getContext('2d');
+xctx.drawImage(paint, 0, 0);
+const smokeVis = document.createElement('canvas');
+smokeVis.width = smokeVis.height = RES;
+const svctx = smokeVis.getContext('2d');
+const pourVis = document.createElement('canvas');
+pourVis.width = pourVis.height = RES;
+const pvctx = pourVis.getContext('2d');
+const colorMap = new THREE.CanvasTexture(show);
+colorMap.colorSpace = THREE.SRGBColorSpace;
+const bumpMap = new THREE.CanvasTexture(height);
+
+const mat = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff,
+  roughness: 0.48,
+  metalness: 0,
+  clearcoat: 0.28,
+  clearcoatRoughness: 0.35,
+  map: colorMap,
+  bumpMap,
+  bumpScale: 0.62,
+  roughness: 0.36,
+  envMapIntensity: 0.95
+});
+const sphere = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 64), mat);
+scene.add(sphere);
+
+const MAXH = 160;
+const brushPos = new Float32Array(MAXH * 6);
+const brushGeo = new THREE.BufferGeometry();
+brushGeo.setAttribute('position', new THREE.BufferAttribute(brushPos, 3));
+const brushLines = new THREE.LineSegments(brushGeo, new THREE.LineBasicMaterial({
+  color: 0x2a1810, transparent: true, opacity: 0.85
+}));
+brushLines.frustumCulled = false;
+scene.add(brushLines);
+const sprayRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.04, 0.046, 48),
+  new THREE.MeshBasicMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.55, depthTest: false })
+);
+sprayRing.visible = false;
+sprayRing.renderOrder = 10;
+scene.add(sprayRing);
+const dryPrevPos = new Float32Array(64 * 3);
+const dryPrevGeo = new THREE.BufferGeometry();
+dryPrevGeo.setAttribute('position', new THREE.BufferAttribute(dryPrevPos, 3));
+const dryPrev = new THREE.LineLoop(dryPrevGeo, new THREE.LineBasicMaterial({
+  color: 0x111111, transparent: true, opacity: 0.85, depthTest: false
+}));
+dryPrev.frustumCulled = false;
+dryPrev.renderOrder = 11;
+scene.add(dryPrev);
+function placeDryRing(hit, rx, ry, tanv, bitv, square) {
+  const n = hit.point.clone().normalize();
+  const c = n.clone().multiplyScalar(R + 0.007);
+  const nPts = square ? 4 : 32;
+  for (let i = 0; i < nPts; i++) {
+    let ox, oy;
+    if (square) {
+      const k = i % 4;
+      ox = (k === 1 || k === 2) ? rx : -rx;
+      oy = (k === 2 || k === 3) ? ry : -ry;
+    } else {
+      const a = (i / nPts) * Math.PI * 2;
+      ox = Math.cos(a) * rx;
+      oy = Math.sin(a) * ry;
+    }
+    tmp.copy(c).addScaledVector(tanv, ox).addScaledVector(bitv, oy);
+    tmp.normalize().multiplyScalar(R + 0.007);
+    dryPrevPos[i * 3] = tmp.x;
+    dryPrevPos[i * 3 + 1] = tmp.y;
+    dryPrevPos[i * 3 + 2] = tmp.z;
+  }
+  dryPrevGeo.setDrawRange(0, nPts);
+  dryPrevGeo.attributes.position.needsUpdate = true;
+  dryPrev.visible = true;
+}
+function placeSprayRing(hit) {
+  const n = hit.point.clone().normalize();
+  sprayRing.position.copy(n.clone().multiplyScalar(R + 0.005));
+  sprayRing.lookAt(0, 0, 0);
+  const dist = P.stand;
+  const cone = (0.018 + P.cone * 0.07) * (0.45 + dist * 1.35);
+  const s = Math.max(0.25, cone / 0.043);
+  sprayRing.scale.set(s, s, 1);
+  sprayRing.visible = true;
+}
+
+const P = {
+  color: '#c45c2a', hairs: 48, radius: 0.045, stiff: 0.45, splay: 1.1,
+  press: 0.55, visc: 0.58, load: 0.85, width: 1.2, thick: 0.7, drip: 0.65,
+  shape: 'round', medium: 'oil', alpha: 0.75, bloom: 0.18, sprP: 0.55, stand: 0.4, cone: 0.7, sColor: '#c45c2a', sDrip: 0.35, mNib: 'chisel', mColor: '#1a3a8a', mSize: 0.028, mAng: 0.25, mPress: 0.55, mBleed: 0.4, mLoad: 0.85, mInk: 0.85, spColor: '#7a1018', spVol: 0.55, spBody: 0.45, spForce: 0.85, spSat: 0.65, duCategory: 'dust', duColor: '#c4b089', duSize: 0.05, duDens: 0.75, duTack: 0.85, duGrain: 1, kCategory: 'smoke', kColor: '#b9c2c8', kHeat: 0.65, kSpread: 0.55, kDens: 0.5, kFlake: 0.35, kWave: 0.65, oCategory: 'oil', oColor: '#6a5420', oVol: 0.55, oTilt: 0, qCategory: 'water', qColor: '#7eb4d4', qVol: 0.6, qTilt: 0, sandMode: 'linear', nGrit: 120, nSize: 0.04, nPress: 0.55, eGrade: 0.45, eSize: 0.012, eSide: 0.08, ePress: 0.45, eShine: 0.35, dry: 'chalk', dColor: '#e8dcc8', dHard: 0.45, dSize: 0.028, dSide: 0.15, dPress: 0.5, dTooth: 0.55, dDust: 0.4
+};
+const MEDIA = {
+  acrylic: { visc: 0.86, thick: 0.92, drip: 0.28, bloom: 0.03, alpha: 0.95, bump: 0.72, coat: 0.22, coatR: 0.42 },
+  oil:     { visc: 0.52, thick: 0.68, drip: 0.72, bloom: 0.12, alpha: 0.78, bump: 0.48, coat: 0.72, coatR: 0.1 },
+  water:   { visc: 0.12, thick: 0.1,  drip: 0.95, bloom: 0.28, alpha: 0.42, bump: 0.06, coat: 0.04, coatR: 0.55 }
+};
+const drips = [];
+function applyMedium(id) {
+  P.medium = id;
+  const m = MEDIA[id];
+  P.visc = m.visc; P.thick = m.thick; P.drip = m.drip; P.bloom = m.bloom; P.alpha = m.alpha;
+  mat.bumpScale = m.bump;
+  mat.clearcoat = m.coat;
+  mat.clearcoatRoughness = m.coatR;
+  mat.roughness = id === 'water' ? 0.55 : id === 'oil' ? 0.22 : 0.38;
+  const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input')); };
+  set(document.getElementById('p-visc'), m.visc);
+  set(document.getElementById('p-thick'), m.thick);
+  set(document.getElementById('p-drip'), m.drip);
+}
+const wetTmp = document.createElement('canvas');
+wetTmp.width = wetTmp.height = RES;
+const wtctx = wetTmp.getContext('2d');
+
+function bind(id, key, fmt) {
+  const el = document.getElementById(id);
+  const lab = document.getElementById('v-' + key);
+  const sync = () => {
+    P[key] = parseFloat(el.value);
+    if (lab) lab.textContent = fmt(P[key]);
+  };
+  el.addEventListener('input', () => {
+    sync();
+    if (key === 'hairs') rebuildTuft();
+  });
+  sync();
+}
+document.getElementById('p-color').addEventListener('input', e => {
+  P.color = e.target.value;
+  dip();
+});
+document.getElementById('s-color').addEventListener('input', e => { P.sColor = e.target.value; });
+bind('p-hairs', 'hairs', v => v.toFixed(0));
+bind('p-radius', 'radius', v => v.toFixed(3));
+bind('p-stiff', 'stiff', v => v.toFixed(2));
+bind('p-splay', 'splay', v => v.toFixed(2));
+bind('p-press', 'press', v => v.toFixed(2));
+bind('p-visc', 'visc', v => v.toFixed(2));
+bind('p-load', 'load', v => v.toFixed(2));
+bind('p-width', 'width', v => v.toFixed(2));
+bind('p-thick', 'thick', v => v.toFixed(2));
+bind('p-drip', 'drip', v => v.toFixed(2));
+bind('p-sprP', 'sprP', v => v.toFixed(2));
+bind('p-stand', 'stand', v => v.toFixed(2));
+bind('p-cone', 'cone', v => v.toFixed(2));
+bind('s-drip', 'sDrip', v => v.toFixed(2));
+bind('d-hard', 'dHard', v => v.toFixed(2));
+bind('d-size', 'dSize', v => v.toFixed(3));
+bind('d-side', 'dSide', v => v.toFixed(2));
+bind('d-press', 'dPress', v => v.toFixed(2));
+bind('d-tooth', 'dTooth', v => v.toFixed(2));
+bind('d-dust', 'dDust', v => v.toFixed(2));
+bind('n-grit', 'nGrit', v => v.toFixed(0));
+bind('n-size', 'nSize', v => v.toFixed(3));
+bind('n-press', 'nPress', v => v.toFixed(2));
+bind('e-size', 'eSize', v => v.toFixed(3));
+bind('e-side', 'eSide', v => v.toFixed(2));
+bind('e-press', 'ePress', v => v.toFixed(2));
+bind('e-shine', 'eShine', v => v.toFixed(2));
+bind('m-size', 'mSize', v => v.toFixed(3));
+bind('m-ang', 'mAng', v => v.toFixed(2));
+bind('m-press', 'mPress', v => v.toFixed(2));
+bind('m-bleed', 'mBleed', v => v.toFixed(2));
+bind('m-load', 'mLoad', v => { P.mInk = v; return v.toFixed(2); });
+document.getElementById('m-color').addEventListener('input', e => { P.mColor = e.target.value; P.mInk = P.mLoad; });
+bind('sp-vol', 'spVol', v => v.toFixed(2));
+bind('sp-body', 'spBody', v => v.toFixed(2));
+bind('sp-force', 'spForce', v => v.toFixed(2));
+bind('sp-sat', 'spSat', v => v.toFixed(2));
+document.getElementById('sp-color').addEventListener('input', e => { P.spColor = e.target.value; });
+bind('du-size', 'duSize', v => v.toFixed(3));
+bind('du-dens', 'duDens', v => v.toFixed(2));
+bind('du-tack', 'duTack', v => v.toFixed(2));
+bind('du-grain', 'duGrain', v => v.toFixed(2));
+document.getElementById('du-color').addEventListener('input', e => { P.duColor = e.target.value; });
+bind('k-heat', 'kHeat', v => v.toFixed(2));
+bind('k-spread', 'kSpread', v => v.toFixed(2));
+bind('k-dens', 'kDens', v => v.toFixed(2));
+bind('k-flake', 'kFlake', v => v.toFixed(2));
+document.getElementById('k-color').addEventListener('input', e => { P.kColor = e.target.value; });
+bind('o-vol', 'oVol', v => v.toFixed(2));
+bind('o-tilt', 'oTilt', v => v.toFixed(2));
+bind('q-vol', 'qVol', v => v.toFixed(2));
+bind('q-tilt', 'qTilt', v => v.toFixed(2));
+document.getElementById('q-color').addEventListener('input', e => { P.qColor = e.target.value; if (typeof pourMatSync === 'function') pourMatSync(); });
+document.querySelectorAll('.qkind').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.qkind').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.qCategory = btn.getAttribute('data-q');
+    const defs = { water: '#7eb4d4', paint: '#c45c2a', oil: '#8a6a28' };
+    P.qColor = defs[P.qCategory] || P.qColor;
+    document.getElementById('q-color').value = P.qColor;
+    if (typeof pourMatSync === 'function') pourMatSync();
+  });
+});
+document.getElementById('o-color').addEventListener('input', e => { P.oColor = e.target.value; });
+document.querySelectorAll('.okind').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.okind').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.oCategory = btn.getAttribute('data-o');
+    const defs = { water: '#5a9ec9', paint: '#c45c2a', oil: '#6a5420' };
+    P.oColor = defs[P.oCategory] || P.oColor;
+    document.getElementById('o-color').value = P.oColor;
+  });
+});
+bind('k-wave', 'kWave', v => v.toFixed(2));
+document.querySelectorAll('.kkind').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.kkind').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.kCategory = btn.getAttribute('data-k');
+    if (P.kCategory === 'soot') { P.kColor = '#1c1814'; }
+    else { P.kColor = '#b9c2c8'; }
+    document.getElementById('k-color').value = P.kColor;
+  });
+});
+document.querySelectorAll('.dukind').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dukind').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.duCategory = btn.getAttribute('data-du');
+    const defs = { dust: '#c4b089', glitter: '#d8c48c', rust: '#8a3a14' };
+    P.duColor = defs[P.duCategory] || P.duColor;
+    document.getElementById('du-color').value = P.duColor;
+  });
+});
+document.querySelectorAll('.mnib').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mnib').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.mNib = btn.getAttribute('data-nib');
+  });
+});
+(function () {
+  const el = document.getElementById('e-grade');
+  const lab = document.getElementById('v-eGrade');
+  const names = ['9H','8H','6H','4H','2H','H','F','HB','B','2B','4B','6B','8B'];
+  const sync = () => {
+    P.eGrade = parseFloat(el.value);
+    const i = Math.round(P.eGrade * (names.length - 1));
+    lab.textContent = names[i];
+  };
+  el.addEventListener('input', sync); sync();
+})();
+document.querySelectorAll('.sandm').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sandm').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.sandMode = btn.getAttribute('data-sand');
+  });
+});
+document.getElementById('d-color').addEventListener('input', e => { P.dColor = e.target.value; });
+document.querySelectorAll('.dryk').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dryk').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.dry = btn.getAttribute('data-dry');
+    const defs = {
+      chalk: { dColor: '#e8dcc8', dHard: 0.5, dDust: 0.45, dSide: 0.2 },
+      pastel: { dColor: '#c45c2a', dHard: 0.28, dDust: 0.25, dSide: 0.35 },
+      charcoal: { dColor: '#1a1a1a', dHard: 0.18, dDust: 0.85, dSide: 0.45 },
+      conte: { dColor: '#5c2a1a', dHard: 0.62, dDust: 0.2, dSide: 0.12 }
+    };
+    const d = defs[P.dry];
+    P.dColor = d.dColor; P.dHard = d.dHard; P.dDust = d.dDust; P.dSide = d.dSide;
+    document.getElementById('d-color').value = d.dColor;
+    document.getElementById('d-hard').value = d.dHard;
+    document.getElementById('d-dust').value = d.dDust;
+    document.getElementById('d-side').value = d.dSide;
+    document.getElementById('d-hard').dispatchEvent(new Event('input'));
+    document.getElementById('d-dust').dispatchEvent(new Event('input'));
+    document.getElementById('d-side').dispatchEvent(new Event('input'));
+  });
+});
+document.querySelectorAll('.medium').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.medium').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyMedium(btn.getAttribute('data-medium'));
+  });
+});
+
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+let hairs = [];
+function packTuft(shape, n) {
+  const pts = [];
+  if (shape === 'flat') {
+    const cols = Math.max(4, Math.round(Math.sqrt(n * 3.2)));
+    const rows = Math.max(2, Math.ceil(n / cols));
+    for (let i = 0; i < n; i++) {
+      const c = i % cols, r = (i / cols) | 0;
+      pts.push({
+        ox: (c / Math.max(1, cols - 1)) * 2 - 1,
+        oy: (r / Math.max(1, rows - 1) - 0.5) * 0.28,
+        len: 0.82 + Math.random() * 0.18
+      });
+    }
+  } else if (shape === 'filbert') {
+    const cols = Math.max(4, Math.round(Math.sqrt(n * 2.6)));
+    let i = 0, guard = 0;
+    while (pts.length < n && guard++ < n * 8) {
+      const c = i % cols, r = (i / cols) | 0;
+      i++;
+      const ox = (c / Math.max(1, cols - 1)) * 2 - 1;
+      const oy = r / 6 - 0.35;
+      if (ox * ox + (oy * 3.4) * (oy * 3.4) > 1.05) continue;
+      pts.push({ ox: ox * (1 - Math.abs(ox) * 0.35), oy: oy * 0.9, len: 0.75 + (1 - Math.abs(ox)) * 0.22 });
+    }
+    while (pts.length < n) pts.push({ ox: 0, oy: 0, len: 0.8 });
+  } else if (shape === 'fan') {
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const ang = (t - 0.5) * 1.15;
+      const rad = 0.55 + Math.random() * 0.45;
+      pts.push({ ox: Math.sin(ang) * rad, oy: (Math.cos(ang) - 0.85) * rad * 0.4, len: 0.65 + Math.abs(t - 0.5) * 0.4 });
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const ring = Math.pow((i + 0.5) / n, 0.72);
+      const a = i * 2.399963;
+      pts.push({ ox: Math.cos(a) * ring, oy: Math.sin(a) * ring, len: 0.55 + (1 - ring) * 0.45 });
+    }
+  }
+  return pts;
+}
+function rebuildTuft() {
+  hairs = packTuft(P.shape, Math.min(MAXH, P.hairs | 0)).map(p => ({
+    ox: p.ox, oy: p.oy, len: p.len,
+    ink: P.load, r: 0, g: 0, b: 0,
+    pu: null, pv: null, wx: 0, wy: 0, wz: 0,
+    tip: new THREE.Vector3()
+  }));
+  dip();
+}
+document.querySelectorAll('.shape').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.shape').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    P.shape = btn.getAttribute('data-shape');
+    rebuildTuft();
+  });
+});
+function dip() {
+  const [r, g, b] = hexRgb(P.color);
+  for (const h of hairs) {
+    h.ink = P.load;
+    h.r = r; h.g = g; h.b = b;
+  }
+}
+document.getElementById('p-dip').onclick = dip;
+rebuildTuft();
+
+let tool = 'paint';
+function setTool(name) {
+  tool = name;
+  document.getElementById('tool-paint').classList.toggle('active', name === 'paint');
+  document.getElementById('tool-spray').classList.toggle('active', name === 'spray');
+  const chalkBtn = document.getElementById('tool-chalk');
+  if (chalkBtn) chalkBtn.classList.toggle('active', name === 'dry');
+  const sandBtn = document.getElementById('tool-sand');
+  if (sandBtn) sandBtn.classList.toggle('active', name === 'sand');
+  const penBtn = document.getElementById('tool-pencil');
+  if (penBtn) penBtn.classList.toggle('active', name === 'pencil');
+  document.getElementById('tool-orbit').classList.toggle('active', name === 'orbit');
+  brushLines.visible = name === 'paint';
+  document.getElementById('brush-panel').style.display = (name === 'paint' || name === 'orbit') ? 'block' : 'none';
+  document.getElementById('spray-panel').style.display = name === 'spray' ? 'block' : 'none';
+  const dp = document.getElementById('dry-panel');
+  if (dp) dp.style.display = name === 'dry' ? 'block' : 'none';
+  const sp = document.getElementById('sand-panel');
+  if (sp) sp.style.display = name === 'sand' ? 'block' : 'none';
+  const pp = document.getElementById('pencil-panel');
+  if (pp) pp.style.display = name === 'pencil' ? 'block' : 'none';
+  const mp = document.getElementById('marker-panel');
+  if (mp) mp.style.display = name === 'marker' ? 'block' : 'none';
+  const markBtn = document.getElementById('tool-marker');
+  if (markBtn) markBtn.classList.toggle('active', name === 'marker');
+  const splatBtn = document.getElementById('tool-splat');
+  if (splatBtn) splatBtn.classList.toggle('active', name === 'splat');
+  const spp = document.getElementById('splat-panel');
+  if (spp) spp.style.display = name === 'splat' ? 'block' : 'none';
+  const dustBtn = document.getElementById('tool-dust');
+  if (dustBtn) dustBtn.classList.toggle('active', name === 'dust');
+  const dup = document.getElementById('dust-panel');
+  if (dup) dup.style.display = name === 'dust' ? 'block' : 'none';
+  const smokeBtn = document.getElementById('tool-smoke');
+  if (smokeBtn) smokeBtn.classList.toggle('active', name === 'smoke');
+  const kp = document.getElementById('smoke-panel');
+  if (kp) kp.style.display = name === 'smoke' ? 'block' : 'none';
+  const stainBtn = document.getElementById('tool-stain');
+  if (stainBtn) stainBtn.classList.toggle('active', name === 'stain');
+  const stp = document.getElementById('stain-panel');
+  if (stp) stp.style.display = name === 'stain' ? 'block' : 'none';
+  const pourBtn = document.getElementById('tool-pour');
+  if (pourBtn) pourBtn.classList.toggle('active', name === 'pour');
+  const op = document.getElementById('pour-panel');
+  if (op) op.style.display = name === 'pour' ? 'block' : 'none';
+  const titles = { spray: 'Spray can', dry: 'Dry media', sand: 'Sand / scuff', pencil: 'Pencil', marker: 'Marker', splat: 'Splatter', dust: 'Dust / glitter', smoke: 'Smoke / soot', stain: 'Stains', pour: 'Pour / spill' };
+  const subs = {
+    spray: 'atomised cone · standoff · overspray',
+    dry: 'chalk · pastel · charcoal · conté',
+    sand: 'grit cuts back to the ground',
+    pencil: 'graphite · H–B · point / side',
+    marker: 'felt nib · alcohol dye · bleed',
+    splat: 'impact · throw A→B · satellites',
+    dust: 'glue film · settle · flakes',
+    smoke: 'buoyant plume · carbon film',
+    stain: 'oil / paint film', pour: '3D beads · gravity · pool'
+  };
+  document.getElementById('props-title').textContent = titles[name] || 'Brush';
+  document.getElementById('props-sub').textContent = subs[name] || '3D tuft · hair tracks · viscosity';
+  if (name !== 'spray') sprayRing.visible = false;
+  if (name !== 'dry' && name !== 'sand' && name !== 'pencil' && name !== 'marker' && name !== 'splat' && name !== 'dust' && name !== 'smoke' && name !== 'stain' && name !== 'pour') dryPrev.visible = false;
+}
+document.getElementById('tool-paint').onclick = () => setTool('paint');
+document.getElementById('tool-spray').onclick = () => setTool('spray');
+document.getElementById('tool-chalk').onclick = () => setTool('dry');
+document.getElementById('tool-sand').onclick = () => setTool('sand');
+document.getElementById('tool-pencil').onclick = () => setTool('pencil');
+document.getElementById('tool-marker').onclick = () => setTool('marker');
+document.getElementById('tool-splat').onclick = () => setTool('splat');
+document.getElementById('tool-dust').onclick = () => setTool('dust');
+document.getElementById('tool-smoke').onclick = () => setTool('smoke');
+document.getElementById('tool-stain').onclick = () => setTool('stain');
+document.getElementById('tool-pour').onclick = () => setTool('pour');
+document.getElementById('tool-orbit').onclick = () => setTool('orbit');
+document.getElementById('tool-clear').onclick = () => {
+  pctx.fillStyle = BASE;
+  pctx.fillRect(0, 0, RES, RES);
+  hctx.fillStyle = '#808080';
+  hctx.fillRect(0, 0, RES, RES);
+  colorMap.needsUpdate = true;
+  bumpMap.needsUpdate = true;
+  drips.length = 0;
+  tctx.fillStyle = '#000';
+  tctx.fillRect(0, 0, RES, RES);
+  if (typeof smokeReset === 'function') smokeReset();
+  if (typeof pourReset === 'function') pourReset();
+  if (typeof pourFlowReset === 'function') pourFlowReset();
+  dip();
+};
+
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const nrm = new THREE.Vector3();
+const tan = new THREE.Vector3();
+const bit = new THREE.Vector3();
+const tmp = new THREE.Vector3();
+const up = new THREE.Vector3(0, 1, 0);
+
+function hitFromEvent(e) {
+  const r = canvas.getBoundingClientRect();
+  ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObject(sphere);
+  return hits[0] || null;
+}
+
+function worldToUV(p) {
+  const nx = p.x / R, ny = p.y / R, nz = p.z / R;
+  let u = Math.atan2(nz, -nx) / (Math.PI * 2);
+  if (u < 0) u += 1;
+  const v = Math.acos(Math.max(-1, Math.min(1, ny))) / Math.PI;
+  return { u, v };
+}
+
+
+const SN = 96;
+const SN2 = SN * SN;
+const Fu = new Float32Array(SN2);
+const Fv = new Float32Array(SN2);
+const Fd = new Float32Array(SN2);
+const Fd0 = new Float32Array(SN2);
+const Fu0 = new Float32Array(SN2);
+const Fv0 = new Float32Array(SN2);
+const Fbu = new Float32Array(SN2);
+const Fbv = new Float32Array(SN2);
+const Fpr = new Float32Array(SN2);
+const Fdiv = new Float32Array(SN2);
+const smokeSmall = document.createElement('canvas');
+smokeSmall.width = smokeSmall.height = SN;
+const smctx = smokeSmall.getContext('2d');
+const smImg = smctx.createImageData(SN, SN);
+let smokeAlive = 0;
+function sI(i, j) {
+  i = ((i % SN) + SN) % SN;
+  j = j < 0 ? 0 : j > SN - 1 ? SN - 1 : j;
+  return j * SN + i;
+}
+(function bakeBuo() {
+  const eps = 0.03;
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const u = (i + 0.5) / SN, v = (j + 0.5) / SN;
+      const phi = u * Math.PI * 2, th = v * Math.PI, st = Math.sin(th);
+      let x = -Math.cos(phi) * st, y = Math.cos(th), z = Math.sin(phi) * st;
+      const nd = y;
+      let vx = -x * nd, vy = 1 - y * nd, vz = -z * nd;
+      const gL = Math.hypot(vx, vy, vz) || 1e-6;
+      vx /= gL; vy /= gL; vz /= gL;
+      x += vx * eps; y += vy * eps; z += vz * eps;
+      const L = Math.hypot(x, y, z) || 1;
+      x /= L; y /= L; z /= L;
+      let u2 = Math.atan2(z, -x) / (Math.PI * 2); if (u2 < 0) u2 += 1;
+      const v2 = Math.acos(Math.max(-1, Math.min(1, y))) / Math.PI;
+      let du = u2 - u; if (du > 0.5) du -= 1; if (du < -0.5) du += 1;
+      Fbu[j * SN + i] = du * SN / eps * 0.0022;
+      Fbv[j * SN + i] = (v2 - v) * SN / eps * 0.0022;
+    }
+  }
+})();
+function smokeReset() {
+  Fu.fill(0); Fv.fill(0); Fd.fill(0);
+  svctx.clearRect(0, 0, RES, RES);
+  smokeAlive = 0;
+  xctx.drawImage(paint, 0, 0);
+  colorMap.needsUpdate = true;
+}
+function smokeInject(u, v, amount, rad) {
+  const cx = u * SN, cy = v * SN;
+  const r = Math.max(1.2, rad * SN * 0.55);
+  const r2 = r * r;
+  for (let j = Math.floor(cy - r - 1); j <= cy + r + 1; j++) {
+    for (let i = Math.floor(cx - r - 1); i <= cx + r + 1; i++) {
+      let ii = ((i % SN) + SN) % SN;
+      let jj = j < 0 ? 0 : j > SN - 1 ? SN - 1 : j | 0;
+      const dx = i - cx, dy = j - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2) continue;
+      const w = Math.exp(-d2 / (r2 * 0.35));
+      Fd[jj * SN + ii] += amount * w;
+      Fu[jj * SN + ii] += Fbu[jj * SN + ii] * amount * w * 8;
+      Fv[jj * SN + ii] += Fbv[jj * SN + ii] * amount * w * 8;
+    }
+  }
+  smokeAlive = 240;
+}
+function sAdvect(dst, src, u, v, dt) {
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      let x = i - dt * u[j * SN + i] * SN;
+      let y = j - dt * v[j * SN + i] * SN;
+      x = ((x % SN) + SN) % SN;
+      if (y < 0.5) y = 0.5; if (y > SN - 1.5) y = SN - 1.5;
+      const i0 = x | 0, j0 = y | 0;
+      const i1 = (i0 + 1) % SN, j1 = Math.min(SN - 1, j0 + 1);
+      const fx = x - i0, fy = y - j0;
+      const a = src[j0 * SN + i0], b = src[j0 * SN + i1];
+      const c = src[j1 * SN + i0], d = src[j1 * SN + i1];
+      dst[j * SN + i] = a * (1 - fx) * (1 - fy) + b * fx * (1 - fy) + c * (1 - fx) * fy + d * fx * fy;
+    }
+  }
+}
+function sProject() {
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const im = (i + SN - 1) % SN, ip = (i + 1) % SN;
+      const jm = j === 0 ? 0 : j - 1, jp = j === SN - 1 ? SN - 1 : j + 1;
+      Fdiv[j * SN + i] = -0.5 * (Fu[j * SN + ip] - Fu[j * SN + im] + Fv[jp * SN + i] - Fv[jm * SN + i]) / SN;
+      Fpr[j * SN + i] = 0;
+    }
+  }
+  for (let k = 0; k < 12; k++) {
+    for (let j = 0; j < SN; j++) {
+      for (let i = 0; i < SN; i++) {
+        const im = (i + SN - 1) % SN, ip = (i + 1) % SN;
+        const jm = j === 0 ? 0 : j - 1, jp = j === SN - 1 ? SN - 1 : j + 1;
+        Fpr[j * SN + i] = (Fdiv[j * SN + i] + Fpr[j * SN + im] + Fpr[j * SN + ip] + Fpr[jm * SN + i] + Fpr[jp * SN + i]) * 0.25;
+      }
+    }
+  }
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const im = (i + SN - 1) % SN, ip = (i + 1) % SN;
+      const jm = j === 0 ? 0 : j - 1, jp = j === SN - 1 ? SN - 1 : j + 1;
+      Fu[j * SN + i] -= 0.5 * SN * (Fpr[j * SN + ip] - Fpr[j * SN + im]);
+      Fv[j * SN + i] -= 0.5 * SN * (Fpr[jp * SN + i] - Fpr[jm * SN + i]);
+    }
+  }
+}
+function sVorticity(eps) {
+  for (let j = 1; j < SN - 1; j++) {
+    for (let i = 0; i < SN; i++) {
+      const im = (i + SN - 1) % SN, ip = (i + 1) % SN;
+      const curl = 0.5 * (Fv[j * SN + ip] - Fv[j * SN + im] - (Fu[(j + 1) * SN + i] - Fu[(j - 1) * SN + i]));
+      const nL = Math.abs(0.5 * (Fv[j * SN + ip] - Fv[j * SN + im]));
+      const nR = Math.abs(0.5 * ((Fu[(j + 1) * SN + i]) - Fu[(j - 1) * SN + i]));
+      let nx = Math.abs(0.5 * (Math.abs(0.5 * (Fv[j * SN + ip] - Fv[j * SN + im])) - Math.abs(0.5 * (Fv[j * SN + im] - Fv[j * SN + (i + SN - 2) % SN]))));
+      const cL = Math.abs(0.5 * (Fv[j * SN + ip] - Fv[j * SN + im] - (Fu[(j + 1) * SN + i] - Fu[(j - 1) * SN + i])));
+      const cR = Math.abs(0.5 * (Fv[j * SN + (i + 2) % SN] - Fv[j * SN + i] - (Fu[(j + 1) * SN + ip] - Fu[(j - 1) * SN + ip])));
+      const cD = Math.abs(0.5 * (Fv[(j - 1) * SN + ip] - Fv[(j - 1) * SN + im] - (Fu[j * SN + i] - Fu[Math.max(0, j - 2) * SN + i])));
+      const cU = Math.abs(0.5 * (Fv[(j + 1) * SN + ip] - Fv[(j + 1) * SN + im] - (Fu[Math.min(SN - 1, j + 2) * SN + i] - Fu[j * SN + i])));
+      nx = cR - cL; let ny = cU - cD;
+      const len = Math.hypot(nx, ny) + 1e-6;
+      nx /= len; ny /= len;
+      Fu[j * SN + i] += eps * ny * curl;
+      Fv[j * SN + i] += eps * (-nx) * curl;
+    }
+  }
+}
+const stickSmall = document.createElement('canvas');
+stickSmall.width = stickSmall.height = SN;
+const stctx = stickSmall.getContext('2d');
+const stImg = stctx.createImageData(SN, SN);
+let smokeBakeN = 0;
+function smokeCapture(a) {
+  if (a <= 0) return;
+  pctx.save();
+  pctx.globalAlpha = Math.min(1, a);
+  pctx.drawImage(smokeVis, 0, 0);
+  pctx.restore();
+}
+function smokeStick() {
+  const [cr, cg, cb] = hexRgb(P.kColor || '#b9c2c8');
+  const sr = Math.max(8, (cr * 0.42) | 0), sg = Math.max(8, (cg * 0.4) | 0), sb = Math.max(6, (cb * 0.36) | 0);
+  const data = stImg.data;
+  let any = 0;
+  for (let n = 0; n < SN2; n++) {
+    const d = Fd[n];
+    data[n * 4] = sr; data[n * 4 + 1] = sg; data[n * 4 + 2] = sb; data[n * 4 + 3] = 0;
+    if (d < 0.025) continue;
+    data[n * 4 + 3] = Math.min(70, d * 55);
+    any++;
+  }
+  if (!any) return;
+  stctx.putImageData(stImg, 0, 0);
+  pctx.globalAlpha = 0.22 + (P.kFlake || 0.35) * 0.2;
+  pctx.drawImage(stickSmall, 0, 0, RES, RES);
+  pctx.globalAlpha = 1;
+}
+function smokeBlit() {
+  const [cr, cg, cb] = hexRgb(P.kColor || '#b9c2c8');
+  const data = smImg.data;
+  for (let n = 0; n < SN2; n++) {
+    const d = Fd[n];
+    const a = d < 0.008 ? 0 : Math.min(210, (1 - Math.exp(-d * 1.8)) * 210);
+    data[n * 4] = cr;
+    data[n * 4 + 1] = cg;
+    data[n * 4 + 2] = cb;
+    data[n * 4 + 3] = a;
+  }
+  smctx.putImageData(smImg, 0, 0);
+  svctx.clearRect(0, 0, RES, RES);
+  svctx.imageSmoothingEnabled = true;
+  svctx.drawImage(smokeSmall, 0, 0, RES, RES);
+}
+function fluidStep() {
+  if (smokeAlive <= 0) return;
+  const dt = 0.12;
+  const heat = 0.6 + P.kHeat * 2.2;
+  for (let n = 0; n < SN2; n++) {
+    const d = Fd[n];
+    Fu[n] += Fbu[n] * d * heat;
+    Fv[n] += Fbv[n] * d * heat;
+  }
+  sVorticity(0.12 + P.kWave * 0.55);
+  sProject();
+  Fu0.set(Fu); Fv0.set(Fv);
+  sAdvect(Fu, Fu0, Fu0, Fv0, dt);
+  sAdvect(Fv, Fv0, Fu0, Fv0, dt);
+  sProject();
+  Fd0.set(Fd);
+  sAdvect(Fd, Fd0, Fu, Fv, dt);
+  let maxd = 0;
+  for (let n = 0; n < SN2; n++) {
+    Fd[n] *= 0.997;
+    if (Fd[n] > maxd) maxd = Fd[n];
+    if (Fd[n] < 1e-5) Fd[n] = 0;
+  }
+  smokeBlit();
+  smokeBakeN++;
+  const emitting = (typeof painting !== 'undefined' && painting && tool === 'smoke' && P.kCategory === 'smoke');
+  if (smokeBakeN % 5 === 0) smokeCapture(emitting ? 0.14 : 0.28);
+  if (!emitting) smokeStick();
+  if (maxd < 0.02) {
+    smokeCapture(0.55);
+    smokeStick();
+    Fd.fill(0);
+    smokeAlive = 0;
+    svctx.clearRect(0, 0, RES, RES);
+  } else smokeAlive = 200;
+  mapsDirty = true;
+}
+
+
+
+const Ph = new Float32Array(SN2);
+const Ph2 = new Float32Array(SN2);
+const Ppot = new Float32Array(SN2);
+const pourSmall = document.createElement('canvas');
+pourSmall.width = pourSmall.height = SN;
+const psm = pourSmall.getContext('2d');
+const pImg = psm.createImageData(SN, SN);
+let pourAlive = 0;
+let lastPourHit = null;
+function pourReset() {
+  Ph.fill(0); Ph2.fill(0);
+  pvctx.clearRect(0, 0, RES, RES);
+  pourAlive = 0;
+}
+function pourPot() {
+  const ang = (P.oTilt || 0) * 0.95;
+  const gx = Math.sin(ang), gy = -Math.cos(ang), gz = 0;
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const u = (i + 0.5) / SN, v = (j + 0.5) / SN;
+      const phi = u * Math.PI * 2, th = v * Math.PI, st = Math.sin(th);
+      const x = -Math.cos(phi) * st, y = Math.cos(th), z = Math.sin(phi) * st;
+      Ppot[j * SN + i] = x * gx + y * gy + z * gz;
+    }
+  }
+}
+function pourInject(u, v, amt) {
+  const cx = u * SN, cy = v * SN;
+  const r = 2.4 + P.oVol * 2.2;
+  const r2 = r * r;
+  for (let j = cy - r - 1; j <= cy + r + 1; j++) {
+    for (let i = cx - r - 1; i <= cx + r + 1; i++) {
+      const ii = ((Math.round(i) % SN) + SN) % SN;
+      const jj = j < 0 ? 0 : j > SN - 1 ? SN - 1 : Math.round(j);
+      const d2 = (i - cx) * (i - cx) + (j - cy) * (j - cy);
+      if (d2 > r2) continue;
+      Ph[jj * SN + ii] += amt * Math.exp(-d2 / (r2 * 0.55));
+    }
+  }
+  pourAlive = 800;
+}
+function pourStamp(hit, e) {
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  placeDryRing(hit, 0.035 + P.oVol * 0.04, 0.035 + P.oVol * 0.04, tan, bit, false);
+  lastPourHit = hit;
+  if (!painting) return;
+  const uv = worldToUV(hit.point);
+  const kind = P.oCategory || 'water';
+  const mul = kind === 'water' ? 0.85 : kind === 'oil' ? 1.15 : 1.0;
+  pourInject(uv.u, uv.v, (0.35 + P.oVol * 0.7) * mul);
+}
+function pourBlit() {
+  const [cr, cg, cb] = hexRgb(P.oColor || '#5a9ec9');
+  const kind = P.oCategory || 'water';
+  const data = pImg.data;
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const n = j * SN + i;
+      const h = Ph[n];
+      const o = n * 4;
+      data[o] = cr; data[o + 1] = cg; data[o + 2] = cb; data[o + 3] = 0;
+      if (h < 0.012) continue;
+      const im = j * SN + ((i + SN - 1) % SN);
+      const ip = j * SN + ((i + 1) % SN);
+      const jm = (j > 0 ? j - 1 : j) * SN + i;
+      const jp = (j < SN - 1 ? j + 1 : j) * SN + i;
+      const gx = Ph[ip] - Ph[im], gy = Ph[jp] - Ph[jm];
+      const g = Math.hypot(gx, gy);
+      const body = 1 - Math.exp(-h * 2.8);
+      const rim = Math.max(0, 1 - Math.abs(g - 0.08) * 9) * (h < 0.35 ? 1 : 0.3);
+      let a, r1 = cr, g1 = cg, b1 = cb;
+      if (kind === 'water') {
+        r1 = (cr * 0.35 + 30) | 0; g1 = (cg * 0.45 + 40) | 0; b1 = (cb * 0.55 + 50) | 0;
+        a = Math.min(200, body * 110 + rim * 160);
+        if (rim > 0.35) { r1 = Math.min(255, r1 + 50); g1 = Math.min(255, g1 + 55); b1 = Math.min(255, b1 + 60); }
+      } else if (kind === 'oil') {
+        a = Math.min(230, body * 190 + rim * 40);
+        if (rim > 0.3) { r1 = Math.min(255, cr + 40); g1 = Math.min(255, cg + 30); }
+      } else {
+        a = Math.min(230, body * 200 + rim * 50);
+      }
+      data[o] = r1; data[o + 1] = g1; data[o + 2] = b1; data[o + 3] = a;
+    }
+  }
+  psm.putImageData(pImg, 0, 0);
+  pvctx.clearRect(0, 0, RES, RES);
+  pvctx.imageSmoothingEnabled = true;
+  pvctx.drawImage(pourSmall, 0, 0, RES, RES);
+}
+function pourBake(a) {
+  if (a <= 0) return;
+  pctx.globalAlpha = a;
+  pctx.drawImage(pourVis, 0, 0);
+  pctx.globalAlpha = 1;
+}
+function pourStep() {
+  if (pourAlive <= 0) return;
+  pourPot();
+  const kind = P.oCategory || 'water';
+  const visc = kind === 'water' ? 0.12 : kind === 'oil' ? 0.78 : 0.42;
+  const yld = kind === 'water' ? 0.02 : kind === 'oil' ? 0.07 : 0.04;
+  const spread = kind === 'water' ? 0.085 : kind === 'oil' ? 0.018 : 0.04;
+  const grav = kind === 'water' ? 0.11 : kind === 'oil' ? 0.035 : 0.06;
+  Ph2.set(Ph);
+  let moved = 0, maxh = 0, mass = 0;
+  for (let j = 0; j < SN; j++) {
+    for (let i = 0; i < SN; i++) {
+      const n = j * SN + i;
+      const h = Ph[n];
+      mass += h;
+      if (h > maxh) maxh = h;
+      if (h < 0.008) continue;
+      const neigh = [
+        [j * SN + ((i + 1) % SN), 1],
+        [j * SN + ((i + SN - 1) % SN), 1],
+        [(j < SN - 1 ? j + 1 : j) * SN + i, j < SN - 1 ? 1 : 0],
+        [(j > 0 ? j - 1 : j) * SN + i, j > 0 ? 1 : 0],
+        [(j < SN - 1 ? j + 1 : j) * SN + ((i + 1) % SN), j < SN - 1 ? 0.7 : 0],
+        [(j < SN - 1 ? j + 1 : j) * SN + ((i + SN - 1) % SN), j < SN - 1 ? 0.7 : 0],
+        [(j > 0 ? j - 1 : j) * SN + ((i + 1) % SN), j > 0 ? 0.7 : 0],
+        [(j > 0 ? j - 1 : j) * SN + ((i + SN - 1) % SN), j > 0 ? 0.7 : 0]
+      ];
+      let want = [];
+      let sum = 0;
+      for (let q = 0; q < 8; q++) {
+        const m = neigh[q][0], w = neigh[q][1];
+        if (!w || m === n) continue;
+        const hm = Ph[m];
+        let flux = spread * w * Math.max(0, h - hm) / (1 + visc * 3);
+        const dp = Ppot[n] - Ppot[m];
+        if (dp > 0 && h > yld) flux += grav * w * dp * (h * h);
+        if (flux <= 0) continue;
+        want.push([m, flux]);
+        sum += flux;
+      }
+      const cap = h * 0.28;
+      const s = sum > cap ? cap / sum : 1;
+      for (let q = 0; q < want.length; q++) {
+        const flux = want[q][1] * s;
+        Ph2[n] -= flux;
+        Ph2[want[q][0]] += flux;
+        moved += flux;
+      }
+    }
+  }
+  for (let n = 0; n < SN2; n++) {
+    if (Ph2[n] < 0.002) Ph2[n] = 0;
+    Ph[n] = Ph2[n];
+  }
+  pourBlit();
+  const emitting = painting && tool === 'stain';
+  if (!emitting) {
+    if (kind !== 'water') pourBake(0.03);
+    if (moved < 0.08 && maxh < 0.25) {
+      pourBake(kind === 'water' ? 0.12 : 0.28);
+      pourAlive -= 3;
+      if (pourAlive <= 0 || (moved < 0.01 && maxh < 0.05)) {
+        pourBake(kind === 'water' ? 0.22 : 0.4);
+        Ph.fill(0);
+        pvctx.clearRect(0, 0, RES, RES);
+        pourAlive = 0;
+      }
+    } else pourAlive = 500;
+  } else pourAlive = 800;
+  mapsDirty = true;
+}
+
+
+const QMAX = 380;
+const qGeo = new THREE.SphereGeometry(1, 12, 10);
+const qMat = new THREE.MeshPhysicalMaterial({
+  color: 0x7eb4d4,
+  roughness: 0.06,
+  metalness: 0,
+  transmission: 0.92,
+  thickness: 0.35,
+  ior: 1.33,
+  transparent: true,
+  opacity: 0.95,
+  attenuationColor: 0xa8d0e8,
+  attenuationDistance: 0.25,
+  envMapIntensity: 1.1
+});
+const qMesh = new THREE.InstancedMesh(qGeo, qMat, QMAX);
+qMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+qMesh.frustumCulled = false;
+qMesh.count = 0;
+scene.add(qMesh);
+const qDummy = new THREE.Object3D();
+const drops = [];
+let lastFlowHit = null;
+function pourMatSync() {
+  const [r, g, b] = hexRgb(P.qColor || '#7eb4d4');
+  qMat.color.setRGB(r / 255, g / 255, b / 255);
+  const k = P.qCategory || 'water';
+  if (k === 'water') {
+    qMat.transmission = 0.92; qMat.roughness = 0.05; qMat.opacity = 0.95; qMat.ior = 1.33;
+  } else if (k === 'oil') {
+    qMat.transmission = 0.45; qMat.roughness = 0.22; qMat.opacity = 0.92; qMat.ior = 1.47;
+  } else {
+    qMat.transmission = 0.08; qMat.roughness = 0.35; qMat.opacity = 0.95; qMat.ior = 1.45;
+  }
+  qMat.needsUpdate = true;
+}
+function flowTrail(d, kind) {
+  const uv = worldToUV(d.p);
+  if (d.pu == null) { d.pu = uv.u; d.pv = uv.v; return; }
+  const [cr, cg, cb] = hexRgb(P.qColor || '#7eb4d4');
+  const a = kind === 'water' ? 0.16 : kind === 'oil' ? 0.32 : 0.42;
+  const w = (kind === 'water' ? 2.4 : 3.6) * (0.7 + d.r * 40);
+  pctx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + a + ')';
+  pctx.fillStyle = pctx.strokeStyle;
+  pctx.lineWidth = w;
+  pctx.lineCap = 'round';
+  uvLine(d.pu, d.pv, uv.u, uv.v, (x0, y0, x1, y1) => {
+    pctx.beginPath(); pctx.moveTo(x0, y0); pctx.lineTo(x1, y1); pctx.stroke();
+  });
+  pctx.beginPath();
+  pctx.arc(uv.u * RES, uv.v * RES, w * 0.35, 0, Math.PI * 2);
+  pctx.fill();
+  d.pu = uv.u; d.pv = uv.v;
+  mapsDirty = true;
+}
+function flowPour(hit, e) {
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  placeDryRing(hit, 0.03, 0.03, tan, bit, false);
+  lastFlowHit = hit;
+  if (!painting) return;
+  const nAdd = 2 + (P.qVol * 5) | 0;
+  const kind = P.qCategory || 'water';
+  const rad = kind === 'water' ? 0.011 : kind === 'oil' ? 0.016 : 0.014;
+  for (let i = 0; i < nAdd; i++) {
+    while (drops.length >= QMAX) drops.splice(0, 1);
+    const a = Math.random() * Math.PI * 2;
+    const rr = Math.sqrt(Math.random()) * 0.02 * P.qVol;
+    const p3 = hit.point.clone().addScaledVector(tan, Math.cos(a) * rr).addScaledVector(bit, Math.sin(a) * rr);
+    p3.normalize().multiplyScalar(R + rad * 1.15);
+    drops.push({
+      p: p3,
+      vel: new THREE.Vector3(),
+      m: 0.7 + Math.random() * 0.6,
+      r: rad * (0.75 + Math.random() * 0.5),
+      pu: null, pv: null, age: 0
+    });
+  }
+}
+function flowStep() {
+  const n0 = drops.length;
+  qMesh.count = n0;
+  if (!n0) return;
+  const ang = (P.qTilt || 0) * 0.9;
+  const gx = Math.sin(ang), gy = -Math.cos(ang);
+  const kind = P.qCategory || 'water';
+  const visc = kind === 'water' ? 0.045 : kind === 'oil' ? 0.16 : 0.1;
+  const acc = kind === 'water' ? 0.00135 : kind === 'oil' ? 0.00055 : 0.00085;
+  const sep = kind === 'water' ? 0.00008 : 0.00012;
+  const [cr, cg, cb] = hexRgb(P.qColor || '#7eb4d4');
+  for (let i = 0; i < drops.length; i++) {
+    const d = drops[i];
+    nrm.copy(d.p).normalize();
+    const ndg = nrm.x * gx + nrm.y * gy;
+    d.vel.x += (gx - nrm.x * ndg) * acc * d.m;
+    d.vel.y += (gy - nrm.y * ndg) * acc * d.m;
+    d.vel.z += (0 - nrm.z * ndg) * acc * d.m;
+    const n = drops.length;
+    for (let j = i + 1; j < n; j++) {
+      const e = drops[j];
+      tmp.copy(e.p).sub(d.p);
+      const dist = tmp.length();
+      const minD = d.r + e.r;
+      if (dist < 1e-6 || dist > minD * 2.2) continue;
+      tmp.multiplyScalar(1 / dist);
+      const push = (minD - dist) * sep;
+      if (push > 0) {
+        d.vel.addScaledVector(tmp, -push);
+        e.vel.addScaledVector(tmp, push);
+      } else {
+        const pull = (dist - minD) * sep * 0.15;
+        d.vel.addScaledVector(tmp, pull);
+        e.vel.addScaledVector(tmp, -pull);
+      }
+    }
+    const vn = d.vel.dot(nrm);
+    d.vel.addScaledVector(nrm, -vn);
+    d.vel.multiplyScalar(1 - visc);
+    d.p.add(d.vel);
+    const L = d.p.length() || 1;
+    d.p.multiplyScalar((R + d.r * 1.15) / L);
+    flowTrail(d, kind);
+    const gtan = 1 - Math.abs(ndg);
+    const spd = d.vel.length();
+    if (ndg > 0.72 && spd < 0.0012) d.age = (d.age || 0) + 1;
+    else d.age = 0;
+    if (d.age > 22) {
+      const uv = worldToUV(d.p);
+      const aa = kind === 'water' ? 0.2 : 0.45;
+      pctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + aa + ')';
+      pctx.beginPath();
+      pctx.arc(uv.u * RES, uv.v * RES, 3 + d.r * 90, 0, Math.PI * 2);
+      pctx.fill();
+      drops.splice(i, 1);
+      i--;
+      mapsDirty = true;
+    }
+  }
+  const n = drops.length;
+  qMesh.count = n;
+  for (let i = 0; i < n; i++) {
+    const d = drops[i];
+    qDummy.position.copy(d.p);
+    qDummy.scale.setScalar(d.r);
+    qDummy.updateMatrix();
+    qMesh.setMatrixAt(i, qDummy.matrix);
+  }
+  qMesh.instanceMatrix.needsUpdate = true;
+}
+function pourFlowReset() {
+  drops.length = 0;
+  qMesh.count = 0;
+}
+
+function uvLine(u0, v0, u1, v1, draw) {
+  let du = u1 - u0;
+  if (du > 0.5) du -= 1;
+  if (du < -0.5) du += 1;
+  const dv = v1 - v0;
+  if (Math.hypot(du, dv) > 0.25) return;
+  const x0 = u0 * RES, y0 = v0 * RES;
+  const x1 = (u0 + du) * RES, y1 = (v0 + dv) * RES;
+  draw(x0, y0, x1, y1);
+  if (x0 < 12 || x1 < 12) draw(x0 + RES, y0, x1 + RES, y1);
+  if (x0 > RES - 12 || x1 > RES - 12) draw(x0 - RES, y0, x1 - RES, y1);
+}
+
+function depositHair(h, u, v, press, speed) {
+  pctx.globalAlpha = 1;
+  if (h.pu == null) { h.pu = u; h.pv = v; }
+  const visc = P.visc;
+  const watery = 1 - visc;
+  if (h.ink < 0.02) { h.pu = u; h.pv = v; return; }
+
+  const w = Math.max(1.4, P.width * 2.4 * h.len * (0.7 + press));
+  const a = Math.min(1, P.alpha * (0.55 + h.ink * 0.5));
+  const col = 'rgba(' + (h.r|0) + ',' + (h.g|0) + ',' + (h.b|0) + ',' + a + ')';
+  pctx.strokeStyle = col;
+  pctx.fillStyle = col;
+  pctx.lineWidth = w;
+  uvLine(h.pu, h.pv, u, v, (x0, y0, x1, y1) => {
+    pctx.beginPath();
+    pctx.moveTo(x0, y0);
+    pctx.lineTo(x1, y1);
+    pctx.stroke();
+    pctx.beginPath();
+    pctx.arc(x1, y1, w * 0.4, 0, Math.PI * 2);
+    pctx.fill();
+  });
+
+  const ridge = Math.min(1, P.thick * (0.55 + visc * 0.5) * a);
+  hctx.strokeStyle = 'rgba(255,255,255,' + (0.35 + ridge * 0.55) + ')';
+  hctx.lineWidth = Math.max(1.2, w * 0.85);
+  uvLine(h.pu, h.pv, u, v, (x0, y0, x1, y1) => {
+    hctx.beginPath();
+    hctx.moveTo(x0, y0);
+    hctx.lineTo(x1, y1);
+    hctx.stroke();
+  });
+  if (P.medium !== 'water' && P.thick > 0.25) {
+    hctx.strokeStyle = 'rgba(40,40,40,0.22)';
+    hctx.lineWidth = Math.max(2.2, w * 1.6);
+    uvLine(h.pu, h.pv, u, v, (x0, y0, x1, y1) => {
+      const nx = y1 - y0, ny = x0 - x1;
+      const L = Math.hypot(nx, ny) || 1;
+      const oxg = (nx / L) * w * 0.55;
+      const oyg = (ny / L) * w * 0.55;
+      hctx.beginPath();
+      hctx.moveTo(x0 + oxg, y0 + oyg);
+      hctx.lineTo(x1 + oxg, y1 + oyg);
+      hctx.stroke();
+    });
+  }
+
+  if (watery > 0.35) {
+    pctx.strokeStyle = 'rgba(' + (h.r|0) + ',' + (h.g|0) + ',' + (h.b|0) + ',' + (a * watery * 0.2) + ')';
+    pctx.lineWidth = w * (1.8 + watery * 2);
+    uvLine(h.pu, h.pv, u, v, (x0, y0, x1, y1) => {
+      pctx.beginPath();
+      pctx.moveTo(x0, y0);
+      pctx.lineTo(x1, y1);
+      pctx.stroke();
+    });
+  }
+
+  h.ink *= 1 - (0.01 + (1 - visc) * 0.015) * press * (0.5 + speed);
+  h.pu = u;
+  h.pv = v;
+}
+
+let painting = false, orbiting = false;
+let yaw = 0.15, pitch = 0.12, dist = 2.35;
+let ox = 0, oy = 0, oYaw = 0, oPitch = 0;
+let lastHit = null;
+let lastT = 0;
+let lastSprayHit = null;
+let sprayWet = 0;
+
+
+
+function toothAt(u, v) {
+  const x = Math.floor(u * 900);
+  const y = Math.floor(v * 900);
+  let n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  n = n - Math.floor(n);
+  return n;
+}
+let lastDryHit = null;
+
+let lastSandHit = null, lastPenHit = null;
+function sandStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  pctx.lineCap = 'butt';
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  let moved = 0;
+  if (lastSandHit) {
+    tmp.copy(hit.point).sub(lastSandHit);
+    moved = tmp.length();
+    const along = tmp.dot(tan), across = tmp.dot(bit);
+    if (along * along + across * across > 1e-8) {
+      const mag = Math.hypot(along, across);
+      tan.copy(tan).multiplyScalar(along / mag).addScaledVector(bit, across / mag).normalize();
+      bit.crossVectors(nrm, tan).normalize();
+    }
+  }
+  const press = Math.min(1, (e.pressure > 0 ? e.pressure : 0.7) * P.nPress);
+  const rad = P.nSize * (0.7 + press * 0.5);
+  placeDryRing(hit, rad, rad, tan, bit, false);
+  if (!painting) { lastSandHit = hit.point.clone(); return; }
+  if (!lastSandHit) lastSandHit = hit.point.clone();
+  const from = lastSandHit.clone();
+  lastSandHit.copy(hit.point);
+  const steps = Math.max(1, Math.ceil(Math.max(moved, 0.002) / 0.003));
+  const grit = P.nGrit;
+  const nCut = Math.max(8, (420 / Math.sqrt(grit)) * press * 18);
+  const len = (80 / grit) * 0.02 * (0.6 + press);
+  const circ = P.sandMode === 'circular';
+  function cutAt(pt) {
+    for (let i = 0; i < nCut; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * rad;
+      const ox = Math.cos(a) * r, oy = Math.sin(a) * r;
+      tmp.copy(pt).addScaledVector(tan, ox).addScaledVector(bit, oy);
+      tmp.normalize().multiplyScalar(R);
+      const uv0 = worldToUV(tmp);
+      const ang = circ ? Math.random() * Math.PI * 2 : 0;
+      const dx = circ ? Math.cos(ang) * len : len;
+      const dy = circ ? Math.sin(ang) * len : 0;
+      tmp.addScaledVector(tan, dx).addScaledVector(bit, dy);
+      tmp.normalize().multiplyScalar(R);
+      const uv1 = worldToUV(tmp);
+      pctx.strokeStyle = 'rgba(212,207,200,' + (0.25 + press * 0.45) + ')';
+      pctx.lineWidth = Math.max(0.4, 18 / grit);
+      uvLine(uv0.u, uv0.v, uv1.u, uv1.v, (x0, y0, x1, y1) => {
+        pctx.beginPath(); pctx.moveTo(x0, y0); pctx.lineTo(x1, y1); pctx.stroke();
+      });
+      hctx.strokeStyle = 'rgba(128,128,128,' + (0.12 + press * 0.2) + ')';
+      hctx.lineWidth = Math.max(0.4, 16 / grit);
+      uvLine(uv0.u, uv0.v, uv1.u, uv1.v, (x0, y0, x1, y1) => {
+        hctx.beginPath(); hctx.moveTo(x0, y0); hctx.lineTo(x1, y1); hctx.stroke();
+      });
+    }
+  }
+  for (let s = 1; s <= steps; s++) {
+    tmp.copy(from).lerp(hit.point, s / steps).normalize().multiplyScalar(R);
+    cutAt(tmp);
+  }
+  colorMap.needsUpdate = true;
+  bumpMap.needsUpdate = true;
+  mapsDirty = true;
+}
+function pencilStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  pctx.lineCap = 'butt';
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  let moved = 0;
+  if (lastPenHit) {
+    tmp.copy(hit.point).sub(lastPenHit);
+    moved = tmp.length();
+    const along = tmp.dot(tan), across = tmp.dot(bit);
+    if (along * along + across * across > 1e-8) {
+      const mag = Math.hypot(along, across);
+      tan.copy(tan).multiplyScalar(along / mag).addScaledVector(bit, across / mag).normalize();
+      bit.crossVectors(nrm, tan).normalize();
+    }
+  }
+  const press = Math.min(1, (e.pressure > 0 ? e.pressure : 0.7) * P.ePress);
+  const g = P.eGrade;
+  const soft = g;
+  const rx = P.eSize * (0.45 + press * 0.4) * (0.7 + soft * 0.7);
+  const ry = P.eSize * (0.1 + P.eSide * 2.8) * (0.8 + soft * 0.5);
+  placeDryRing(hit, rx, ry, tan, bit, false);
+  if (!painting) { lastPenHit = hit.point.clone(); return; }
+  if (!lastPenHit) lastPenHit = hit.point.clone();
+  const from = lastPenHit.clone();
+  lastPenHit.copy(hit.point);
+  if (moved < 0.0008 && painting) moved = 0.003;
+  const steps = Math.max(1, Math.ceil(Math.max(moved, 0.002) / 0.0025));
+  const dark = Math.round(28 + (1 - soft) * 90);
+  const nG = 18 + (soft * 28) | 0;
+  function lay(pt) {
+    for (let i = 0; i < nG; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random());
+      const ox = Math.cos(a) * r * rx;
+      const oy = Math.sin(a) * r * ry;
+      if ((ox * ox) / (rx * rx + 1e-8) + (oy * oy) / (ry * ry + 1e-8) > 1) continue;
+      tmp.copy(pt).addScaledVector(tan, ox).addScaledVector(bit, oy);
+      tmp.normalize().multiplyScalar(R);
+      const uv = worldToUV(tmp);
+      const shine = P.eShine * press * (1 - Math.abs(oy) / (ry + 1e-6));
+      const k = Math.round(dark * (1 - shine * 0.45) + shine * 90);
+      const a2 = 0.22 + press * 0.4 * (0.4 + soft);
+      pctx.fillStyle = 'rgba(' + k + ',' + k + ',' + (k + 2) + ',' + Math.min(0.7, a2) + ')';
+      pctx.beginPath();
+      pctx.arc(uv.u * RES, uv.v * RES, 0.35 + press * 0.5 + soft * 0.4, 0, Math.PI * 2);
+      pctx.fill();
+    }
+  }
+  for (let s = 1; s <= steps; s++) {
+    tmp.copy(from).lerp(hit.point, s / steps).normalize().multiplyScalar(R);
+    lay(tmp);
+  }
+  colorMap.needsUpdate = true;
+  mapsDirty = true;
+}
+
+
+
+let lastMarkHit = null;
+function markerStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  pctx.lineCap = 'butt';
+  pctx.lineJoin = 'miter';
+  const [cr, cg, cb] = hexRgb(P.mColor || '#1a3a8a');
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  let moved = 0;
+  if (lastMarkHit) {
+    tmp.copy(hit.point).sub(lastMarkHit);
+    moved = tmp.length();
+    const along = tmp.dot(tan), across = tmp.dot(bit);
+    if (along * along + across * across > 1e-8) {
+      const mag = Math.hypot(along, across);
+      tan.copy(tan).multiplyScalar(along / mag).addScaledVector(bit, across / mag).normalize();
+      bit.crossVectors(nrm, tan).normalize();
+    }
+  }
+  const press = Math.min(1, (e.pressure > 0 ? e.pressure : 0.7) * P.mPress);
+  const nib = P.mNib;
+  const ang = P.mAng * Math.PI * 0.5;
+  let rx, ry, square;
+  if (nib === 'chisel') {
+    rx = P.mSize * (0.22 + press * 0.12);
+    ry = P.mSize * (1.05 + press * 0.35);
+    square = true;
+  } else if (nib === 'brush') {
+    rx = P.mSize * (0.28 + press * 0.45);
+    ry = P.mSize * (0.85 + press * 0.55);
+    square = false;
+  } else {
+    rx = P.mSize * (0.62 + press * 0.22);
+    ry = rx * 0.95;
+    square = false;
+  }
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const t2 = tan.clone().multiplyScalar(ca).addScaledVector(bit, sa);
+  const b2 = nrm.clone().cross(t2).normalize();
+  placeDryRing(hit, rx, ry, t2, b2, square);
+  if (!painting) { lastMarkHit = hit.point.clone(); return; }
+  if (P.mInk == null) P.mInk = P.mLoad;
+  if (!lastMarkHit) lastMarkHit = hit.point.clone();
+  const from = lastMarkHit.clone();
+  lastMarkHit.copy(hit.point);
+  const stepLen = Math.min(rx, ry) * 0.55;
+  const steps = Math.max(1, Math.ceil(Math.max(moved, stepLen * 0.4) / stepLen));
+  const ink = Math.max(0.08, P.mInk);
+  const aCore = Math.min(0.55, 0.22 + press * 0.28) * ink;
+  const bleed = P.mBleed;
+  const nx = Math.max(6, Math.ceil(rx * RES * 0.055));
+  const ny = Math.max(8, Math.ceil(ry * RES * 0.055));
+  function inside(ox, oy) {
+    if (square) return Math.abs(ox) <= rx && Math.abs(oy) <= ry;
+    return (ox * ox) / (rx * rx + 1e-8) + (oy * oy) / (ry * ry + 1e-8) <= 1;
+  }
+  function stampAt(pt) {
+    for (let j = 0; j <= ny; j++) {
+      for (let i = 0; i <= nx; i++) {
+        const ox = (i / nx) * 2 * rx - rx;
+        const oy = (j / ny) * 2 * ry - ry;
+        if (!inside(ox, oy)) continue;
+        tmp.copy(pt).addScaledVector(t2, ox).addScaledVector(b2, oy);
+        tmp.normalize().multiplyScalar(R);
+        const uv = worldToUV(tmp);
+        const th = toothAt(uv.u, uv.v);
+        const edge = square
+          ? Math.max(Math.abs(ox) / rx, Math.abs(oy) / ry)
+          : Math.sqrt((ox * ox) / (rx * rx) + (oy * oy) / (ry * ry));
+        let a = aCore * (0.82 + th * 0.28);
+        if (edge > 0.82) a *= 1 - (edge - 0.82) / 0.22;
+        if (a < 0.02) continue;
+        const px = uv.u * RES, py = uv.v * RES;
+        const rdot = 0.85 + press * 0.35;
+        pctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + a + ')';
+        pctx.beginPath(); pctx.arc(px, py, rdot, 0, Math.PI * 2); pctx.fill();
+        if (bleed > 0.04 && edge > 0.55) {
+          pctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (a * 0.18 * bleed) + ')';
+          pctx.beginPath(); pctx.arc(px, py, rdot * (1.4 + bleed), 0, Math.PI * 2); pctx.fill();
+        }
+      }
+    }
+  }
+  for (let s = 1; s <= steps; s++) {
+    tmp.copy(from).lerp(hit.point, s / steps).normalize().multiplyScalar(R);
+    stampAt(tmp.clone());
+  }
+  P.mInk *= 1 - (0.003 + (1 - P.mLoad) * 0.005) * press;
+  colorMap.needsUpdate = true;
+  mapsDirty = true;
+}
+
+
+let splatA = null, splatB = null;
+function placeSplatAim(a, b) {
+  nrm.copy(a).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  const d = b.clone().sub(a);
+  const ox = d.dot(tan), oy = d.dot(bit);
+  const mag = Math.hypot(ox, oy);
+  const hit = { point: a };
+  if (mag < 1e-4) {
+    placeDryRing(hit, 0.018, 0.018, tan, bit, false);
+    return;
+  }
+  const fx = ox / mag, fy = oy / mag;
+  tSplat.copy(tan).multiplyScalar(fx).addScaledVector(bit, fy).normalize();
+  bSplat.crossVectors(nrm, tSplat).normalize();
+  placeDryRing(hit, 0.012 + mag * 0.35, 0.01, tSplat, bSplat, false);
+}
+const tSplat = new THREE.Vector3();
+const bSplat = new THREE.Vector3();
+function splatDot(u, v, r, col) {
+  pctx.fillStyle = col;
+  const x = u * RES, y = v * RES;
+  pctx.beginPath(); pctx.arc(x, y, r, 0, Math.PI * 2); pctx.fill();
+  if (x < r + 2) { pctx.beginPath(); pctx.arc(x + RES, y, r, 0, Math.PI * 2); pctx.fill(); }
+  if (x > RES - r - 2) { pctx.beginPath(); pctx.arc(x - RES, y, r, 0, Math.PI * 2); pctx.fill(); }
+}
+function splatBurst(a, b) {
+  pctx.globalAlpha = 1;
+  pctx.lineCap = 'round';
+  const [cr, cg, cb] = hexRgb(P.spColor || '#7a1018');
+  nrm.copy(a).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  const d = b.clone().sub(a);
+  let ox = d.dot(tan), oy = d.dot(bit);
+  let mag = Math.hypot(ox, oy);
+  const force = P.spForce * (0.35 + Math.min(1.4, mag / 0.22));
+  let fx = 0, fy = 0;
+  if (mag > 1e-4) { fx = ox / mag; fy = oy / mag; }
+  tSplat.copy(tan).multiplyScalar(fx || 1).addScaledVector(bit, fy).normalize();
+  bSplat.crossVectors(nrm, tSplat).normalize();
+  const vol = P.spVol;
+  const body = P.spBody;
+  const thin = 1 - body;
+  const coreR = (0.018 + vol * 0.055) * (0.85 + force * 0.15);
+  const elong = 1 + force * (0.55 + thin * 0.7);
+  const nCore = 90 + (vol * 80) | 0;
+  for (let i = 0; i < nCore; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rr = Math.pow(Math.random(), 0.55) * coreR;
+    const lobe = 0.7 + toothAt((ang * 3) % 1, vol) * 0.55;
+    const along = Math.cos(ang);
+    const px = Math.cos(ang) * rr * lobe * (along > 0 ? elong : 0.72);
+    const py = Math.sin(ang) * rr * lobe * (0.85 + thin * 0.1);
+    tmp.copy(a).addScaledVector(tSplat, px).addScaledVector(bSplat, py);
+    tmp.normalize().multiplyScalar(R);
+    const uv = worldToUV(tmp);
+    const aInk = 0.35 + vol * 0.4 + body * 0.15;
+    splatDot(uv.u, uv.v, 1.1 + vol * 2.2 + body * 1.2, 'rgba(' + cr + ',' + cg + ',' + cb + ',' + Math.min(0.85, aInk) + ')');
+  }
+  const nSpine = 8 + (force * 14 + thin * 8) | 0;
+  for (let s = 0; s < nSpine; s++) {
+    let ang = Math.random() * Math.PI * 2;
+    if (mag > 0.01 && Math.random() < 0.62) ang = (Math.random() - 0.5) * 1.1;
+    const reach = coreR * (1.2 + Math.random() * (1.4 + force * 2.2 + thin * 1.6));
+    const w0 = 1.4 + vol * 2.4;
+    const steps = 6 + (reach * 80) | 0;
+    let pu = null, pv = null;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const taper = 1 - t;
+      const jitter = (Math.random() - 0.5) * 0.004 * (1 + thin);
+      tmp.copy(a)
+        .addScaledVector(tSplat, Math.cos(ang) * reach * t * (mag > 0.01 && Math.abs(ang) < 0.9 ? elong : 1))
+        .addScaledVector(bSplat, Math.sin(ang) * reach * t + jitter);
+      tmp.normalize().multiplyScalar(R);
+      const uv = worldToUV(tmp);
+      const ww = Math.max(0.4, w0 * taper * taper);
+      const aa = (0.45 + body * 0.25) * (0.4 + taper);
+      splatDot(uv.u, uv.v, ww, 'rgba(' + cr + ',' + cg + ',' + cb + ',' + aa + ')');
+      if (pu != null) {
+        pctx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + aa + ')';
+        pctx.lineWidth = ww * 1.4;
+        uvLine(pu, pv, uv.u, uv.v, (x0, y0, x1, y1) => {
+          pctx.beginPath(); pctx.moveTo(x0, y0); pctx.lineTo(x1, y1); pctx.stroke();
+        });
+      }
+      pu = uv.u; pv = uv.v;
+    }
+    if (thin > 0.35 && Math.random() < 0.45) {
+      const uv = worldToUV(tmp);
+      splatDot(uv.u, uv.v, 0.6 + Math.random() * 1.4, 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.5 + body * 0.2) + ')');
+    }
+  }
+  const nSat = (8 + P.spSat * 40 * force) | 0;
+  for (let i = 0; i < nSat; i++) {
+    let ang = Math.random() * Math.PI * 2;
+    if (mag > 0.01 && Math.random() < 0.7) ang = (Math.random() - 0.5) * (0.9 + thin);
+    const dist = coreR * (1.1 + Math.pow(Math.random(), 0.45) * (2.2 + force * 3.4));
+    tmp.copy(a).addScaledVector(tSplat, Math.cos(ang) * dist * elong * 0.85).addScaledVector(bSplat, Math.sin(ang) * dist);
+    tmp.normalize().multiplyScalar(R);
+    const uv = worldToUV(tmp);
+    const sz = 0.35 + Math.pow(Math.random(), 1.6) * (2.8 + vol * 2);
+    splatDot(uv.u, uv.v, sz, 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.4 + vol * 0.35) + ')');
+    if (sz > 1.2 && Math.random() < 0.5) {
+      const tail = 0.008 + Math.random() * 0.02 * force;
+      const uv0 = worldToUV(tmp.clone().addScaledVector(tSplat, -tail).normalize().multiplyScalar(R));
+      pctx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',0.35)';
+      pctx.lineWidth = Math.max(0.5, sz * 0.35);
+      uvLine(uv0.u, uv0.v, uv.u, uv.v, (x0, y0, x1, y1) => {
+        pctx.beginPath(); pctx.moveTo(x0, y0); pctx.lineTo(x1, y1); pctx.stroke();
+      });
+    }
+  }
+  if (body > 0.35) {
+    hctx.fillStyle = 'rgba(255,255,255,' + (0.12 + body * 0.2) + ')';
+    const uv = worldToUV(a);
+    hctx.beginPath(); hctx.arc(uv.u * RES, uv.v * RES, coreR * RES * 0.55, 0, Math.PI * 2); hctx.fill();
+  }
+  if (thin > 0.55 && drips.length < 110) {
+    const nRun = (2 + thin * vol * 6) | 0;
+    for (let i = 0; i < nRun; i++) {
+      tmp.copy(a).addScaledVector(tSplat, (Math.random() - 0.2) * coreR).addScaledVector(bSplat, (Math.random() - 0.5) * coreR);
+      tmp.normalize().multiplyScalar(R);
+      const uv = worldToUV(tmp);
+      drips.push({
+        x: tmp.x, y: tmp.y, z: tmp.z, r: cr, g: cg, b: cb,
+        mass: 0.3 + vol * 0.5, speed: 0.6 + thin, width: 0.6 + vol,
+        delay: (Math.random() * 4) | 0, age: 0, fromSpray: true, pu: uv.u, pv: uv.v
+      });
+    }
+  }
+  colorMap.needsUpdate = true;
+  bumpMap.needsUpdate = true;
+  mapsDirty = true;
+}
+
+
+
+let lastDustHit = null;
+function worldFromUV(u, v) {
+  const phi = u * Math.PI * 2;
+  const th = v * Math.PI;
+  const st = Math.sin(th);
+  return tmp.set(-Math.cos(phi) * st, Math.cos(th), Math.sin(phi) * st).multiplyScalar(R);
+}
+function glueDisk(pt, rad, press) {
+  nrm.copy(pt).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  const nx = Math.max(10, (rad * RES * 0.09) | 0);
+  const aT = 0.28 + P.duTack * 0.55 * press;
+  tctx.fillStyle = 'rgba(255,255,255,' + aT + ')';
+  pctx.fillStyle = 'rgba(236,232,224,' + (0.07 + P.duTack * 0.1) + ')';
+  for (let j = 0; j <= nx; j++) {
+    for (let i = 0; i <= nx; i++) {
+      const ox = (i / nx) * 2 * rad - rad;
+      const oy = (j / nx) * 2 * rad - rad;
+      if (ox * ox + oy * oy > rad * rad) continue;
+      tmp.copy(pt).addScaledVector(tan, ox).addScaledVector(bit, oy);
+      tmp.normalize().multiplyScalar(R);
+      const uv = worldToUV(tmp);
+      const x = uv.u * RES, y = uv.v * RES;
+      tctx.fillRect(x - 1.1, y - 1.1, 2.4, 2.4);
+      pctx.fillRect(x - 0.9, y - 0.9, 2.0, 2.0);
+    }
+  }
+}
+function eatTack(u, v, amt) {
+  const x = (((u % 1) + 1) % 1) * RES, y = Math.max(0, Math.min(RES - 1, v * RES));
+  tctx.fillStyle = 'rgba(0,0,0,' + amt + ')';
+  tctx.fillRect(x - 1, y - 1, 3, 3);
+}
+function dustGrain(u, v, cr, cg, cb) {
+  const g = P.duGrain;
+  const th = toothAt(u, v);
+  const k = 0.55 + th * 0.7;
+  const a = 0.45 + th * 0.35;
+  pctx.fillStyle = 'rgba(' + ((cr * k)|0) + ',' + ((cg * k * 0.96)|0) + ',' + ((cb * k * 0.88)|0) + ',' + a + ')';
+  const x = u * RES, y = v * RES;
+  const w = (0.45 + Math.random() * 1.15) * g;
+  const h = (0.35 + Math.random() * 0.9) * g;
+  pctx.save();
+  pctx.translate(x, y);
+  pctx.rotate(th * 6.2);
+  pctx.fillRect(-w * 0.5, -h * 0.5, w, h);
+  pctx.restore();
+}
+function rustScab(u, v) {
+  const g = P.duGrain;
+  const th = toothAt(u * 2.1, v * 1.7);
+  const r = (90 + th * 80) | 0, gg = (28 + th * 36) | 0, b = (8 + th * 14) | 0;
+  const x = u * RES, y = v * RES;
+  pctx.fillStyle = 'rgba(' + r + ',' + gg + ',' + b + ',' + (0.5 + th * 0.35) + ')';
+  pctx.beginPath();
+  pctx.ellipse(x, y, (1.6 + th * 2.4) * g, (1.1 + th * 1.6) * g, th * 4, 0, Math.PI * 2);
+  pctx.fill();
+  pctx.fillStyle = 'rgba(42,16,6,' + (0.25 + th * 0.25) + ')';
+  pctx.beginPath();
+  pctx.ellipse(x + 0.4, y + 0.3, 0.7 * g, 0.5 * g, 0, 0, Math.PI * 2);
+  pctx.fill();
+}
+function glitterFlake(pt, u, v) {
+  nrm.copy(pt).normalize();
+  const lx = 0.48, ly = 0.72, lz = 0.50;
+  const ndl = Math.max(0, nrm.x * lx + nrm.y * ly + nrm.z * lz);
+  const faceUp = Math.random() < 0.88;
+  const tilt = Math.random() * 0.35;
+  const spark = faceUp ? Math.pow(Math.max(0, ndl - tilt), 6) : 0;
+  const [cr0, cg0, cb0] = hexRgb(P.duColor);
+  const shade = faceUp ? 0.22 + ndl * 0.55 : 0.06;
+  const cr = Math.min(255, cr0 * shade + spark * 255);
+  const cg = Math.min(255, cg0 * shade + spark * 245);
+  const cb = Math.min(255, cb0 * shade + spark * 210);
+  const g = P.duGrain;
+  const s = (1.6 + Math.random() * 1.8) * g;
+  const ang = Math.random() * Math.PI;
+  const x = u * RES, y = v * RES;
+  pctx.save();
+  pctx.translate(x, y);
+  pctx.rotate(ang);
+  pctx.scale(1, 0.62 + Math.random() * 0.2);
+  pctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3;
+    const px = Math.cos(a) * s, py = Math.sin(a) * s;
+    if (i === 0) pctx.moveTo(px, py); else pctx.lineTo(px, py);
+  }
+  pctx.closePath();
+  pctx.fillStyle = 'rgba(' + (cr|0) + ',' + (cg|0) + ',' + (cb|0) + ',0.92)';
+  pctx.fill();
+  pctx.strokeStyle = 'rgba(40,32,18,0.35)';
+  pctx.lineWidth = 0.35;
+  pctx.stroke();
+  if (spark > 0.18) {
+    pctx.fillStyle = 'rgba(255,253,245,' + Math.min(0.95, spark) + ')';
+    pctx.beginPath(); pctx.arc(0, 0, s * 0.18, 0, Math.PI * 2); pctx.fill();
+  }
+  pctx.restore();
+  hctx.fillStyle = 'rgba(210,210,210,0.2)';
+  hctx.fillRect(x - 1, y - 1, 2, 2);
+}
+function stickParticle(pt) {
+  const uv = worldToUV(pt);
+  const tk = tackAt(uv.u, uv.v);
+  if (tk < 0.12) return false;
+  nrm.copy(pt).normalize();
+  const upness = Math.max(0.15, nrm.y * 0.5 + 0.5);
+  if (Math.random() > tk * upness) return false;
+  const kind = P.duCategory;
+  const [cr, cg, cb] = hexRgb(P.duColor);
+  if (kind === 'glitter') glitterFlake(pt, uv.u, uv.v);
+  else if (kind === 'rust') rustScab(uv.u, uv.v);
+  else {
+    const n = 2 + (P.duDens * 3) | 0;
+    for (let k = 0; k < n; k++) dustGrain(uv.u + (Math.random() - 0.5) * 0.0015, uv.v + (Math.random() - 0.5) * 0.0015, cr, cg, cb);
+  }
+  eatTack(uv.u, uv.v, kind === 'glitter' ? 0.55 : 0.28);
+  return true;
+}
+function packOnPatch(pt, rad, nWant) {
+  nrm.copy(pt).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  let got = 0;
+  for (let i = 0; i < nWant; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * rad;
+    const q = pt.clone().addScaledVector(tan, Math.cos(a) * r).addScaledVector(bit, Math.sin(a) * r);
+    q.normalize().multiplyScalar(R);
+    if (stickParticle(q)) got++;
+  }
+  return got;
+}
+function dustStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  const press = Math.min(1, (e.pressure > 0 ? e.pressure : 0.75));
+  const rad = P.duSize * (0.75 + press * 0.4);
+  placeDryRing(hit, rad, rad, tan, bit, false);
+  if (!painting) { lastDustHit = hit.point.clone(); return; }
+  if (!lastDustHit) lastDustHit = hit.point.clone();
+  const from = lastDustHit.clone();
+  lastDustHit.copy(hit.point);
+  const moved = from.distanceTo(hit.point);
+  const steps = Math.max(1, Math.ceil(Math.max(moved, rad * 0.45) / (rad * 0.45)));
+  const nPack = 80 + (P.duDens * 220) | 0;
+  for (let s = 1; s <= steps; s++) {
+    tmp.copy(from).lerp(hit.point, s / steps).normalize().multiplyScalar(R);
+    const pt = tmp.clone();
+    glueDisk(pt, rad, press);
+    packOnPatch(pt, rad, nPack);
+  }
+  tackFlush();
+  colorMap.needsUpdate = true;
+  bumpMap.needsUpdate = true;
+  mapsDirty = true;
+}
+function autoSettle() {
+  const n = 280 + (P.duDens * 900) | 0;
+  let hits = 0;
+  for (let i = 0; i < n; i++) {
+    const u1 = Math.random() * 2 - 1;
+    const phi = Math.random() * Math.PI * 2;
+    const r2 = Math.sqrt(Math.max(0, 1 - u1 * u1));
+    tmp.set(r2 * Math.cos(phi), u1, r2 * Math.sin(phi)).multiplyScalar(R);
+    if (stickParticle(tmp)) hits++;
+  }
+  if (hits) {
+    if ((autoSettle.n = (autoSettle.n || 0) + 1) % 8 === 0) tackFlush();
+    mapsDirty = true;
+  }
+}
+
+
+
+let lastSmokeHit = null;
+function vnoise(x, y) {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const h = (i, j) => {
+    let n = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  const a = h(x0, y0), b = h(x0 + 1, y0), c = h(x0, y0 + 1), d = h(x0 + 1, y0 + 1);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+function smokeStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  pctx.lineCap = 'round';
+  const kind = P.kCategory || 'smoke';
+  const [cr, cg, cb] = hexRgb(P.kColor || (kind === 'soot' ? '#1c1814' : '#b9c2c8'));
+  const src = hit.point.clone();
+  nrm.copy(src).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  const w0 = 0.012 + P.kSpread * 0.032;
+  placeDryRing(hit, w0 * 1.6, w0 * 2.4, tan, bit, false);
+  if (!painting) { lastSmokeHit = hit; return; }
+  lastSmokeHit = hit;
+  const heat = P.kHeat;
+  const dens = P.kDens;
+  const steps = 20 + (heat * 32) | 0;
+  const ds = 0.011 + heat * 0.01;
+  const pos = src.clone();
+  const time = performance.now() * 0.00035;
+  const hist = [];
+  for (let s = 0; s < steps; s++) {
+    nrm.copy(pos).normalize();
+    const ndot = nrm.y;
+    let vx = -nrm.x * ndot;
+    let vy = 1 - nrm.y * ndot;
+    let vz = -nrm.z * ndot;
+    let gL = Math.hypot(vx, vy, vz) || 1e-6;
+    vx /= gL; vy /= gL; vz /= gL;
+    tan.crossVectors(up, nrm);
+    if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0); else tan.normalize();
+    bit.crossVectors(nrm, tan);
+    const tt = s / steps;
+    pos.x += vx * ds; pos.y += vy * ds; pos.z += vz * ds;
+    const L = Math.hypot(pos.x, pos.y, pos.z) || 1;
+    pos.x = pos.x / L * R; pos.y = pos.y / L * R; pos.z = pos.z / L * R;
+    if (pos.y / R > 0.97) break;
+    hist.push({
+      p: pos.clone(), tan: tan.clone(), bit: bit.clone(),
+      w: w0 * (1 + tt * (1.6 + P.kSpread * 2.4)), t: tt, s: s
+    });
+  }
+  if (kind === 'soot') {
+    for (const h of hist) {
+      const nDrop = 10 + (dens * 22 * (1 - h.t * 0.45)) | 0;
+      const fade = (1 - h.t * 0.55) * dens;
+      for (let i = 0; i < nDrop; i++) {
+        const u1 = Math.max(1e-6, Math.random());
+        const ang = Math.random() * Math.PI * 2;
+        const rad = h.w * Math.sqrt(-2 * Math.log(u1)) * 0.38;
+        tmp.copy(h.p).addScaledVector(h.tan, Math.cos(ang) * rad).addScaledVector(h.bit, Math.sin(ang) * rad);
+        tmp.normalize().multiplyScalar(R);
+        const uv = worldToUV(tmp);
+        const core = Math.exp(-(rad * rad) / (h.w * h.w * 0.22));
+        const a = Math.min(0.22, 0.035 * fade * (0.35 + core));
+        const brown = 1 - core * 0.25;
+        pctx.fillStyle = 'rgba(' + ((cr * brown + 18 * (1 - brown))|0) + ',' + ((cg * brown + 14 * (1 - brown))|0) + ',' + ((cb * brown + 10 * (1 - brown))|0) + ',' + a + ')';
+        pctx.beginPath(); pctx.arc(uv.u * RES, uv.v * RES, 0.55 + (1 - core) * 1.8 + h.t * 1.2, 0, Math.PI * 2); pctx.fill();
+      }
+      if (Math.random() < P.kFlake * 0.18 * fade) {
+        const ang = Math.random() * Math.PI * 2;
+        tmp.copy(h.p).addScaledVector(h.tan, Math.cos(ang) * h.w * Math.random()).addScaledVector(h.bit, Math.sin(ang) * h.w * Math.random());
+        tmp.normalize().multiplyScalar(R);
+        const uv = worldToUV(tmp);
+        pctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (0.28 + dens * 0.25) + ')';
+        pctx.save(); pctx.translate(uv.u * RES, uv.v * RES); pctx.rotate(Math.random() * 6);
+        pctx.fillRect(-0.7, -0.25, 1.8 + Math.random(), 0.5); pctx.restore();
+      }
+    }
+  } else {
+    const uv = worldToUV(src);
+    smokeInject(uv.u, uv.v, 0.35 + dens * 1.1, 0.03 + P.kSpread * 0.07);
+  }
+  colorMap.needsUpdate = true;
+  mapsDirty = true;
+}
+
+function dryStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  pctx.lineCap = 'butt';
+  const [cr0, cg0, cb0] = hexRgb(P.dColor || '#e8dcc8');
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0);
+  else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  let moved = 0;
+  if (lastDryHit) {
+    tmp.copy(hit.point).sub(lastDryHit);
+    moved = tmp.length();
+    const along = tmp.dot(tan), across = tmp.dot(bit);
+    if (along * along + across * across > 1e-8) {
+      const mag = Math.hypot(along, across);
+      tan.copy(tan).multiplyScalar(along / mag).addScaledVector(bit, across / mag).normalize();
+      bit.crossVectors(nrm, tan).normalize();
+    }
+  }
+  const press = Math.min(1, (e.pressure > 0 ? e.pressure : 0.7) * P.dPress);
+  const kind = P.dry;
+  const square = kind === 'pastel' || kind === 'conte';
+  const rx = P.dSize * (0.5 + press * 0.55);
+  const ry = square ? rx * (0.85 + P.dSide * 0.4) : P.dSize * (0.16 + P.dSide * 2.4);
+  placeDryRing(hit, rx, ry, tan, bit, square);
+  if (!painting) {
+    lastDryHit = hit.point.clone();
+    return;
+  }
+  if (!lastDryHit) lastDryHit = hit.point.clone();
+  const from = lastDryHit.clone();
+  lastDryHit.copy(hit.point);
+  const steps = Math.max(1, Math.ceil(Math.max(moved, 0.002) / 0.003));
+  function inside(ox, oy) {
+    if (square) return Math.abs(ox) <= rx && Math.abs(oy) <= ry;
+    return (ox * ox) / (rx * rx + 1e-8) + (oy * oy) / (ry * ry + 1e-8) <= 1;
+  }
+  function scrapeAt(pt) {
+    const nG = square ? 40 : 34;
+    for (let i = 0; i < nG; i++) {
+      let ox, oy;
+      if (square) {
+        ox = (Math.random() * 2 - 1) * rx;
+        oy = (Math.random() * 2 - 1) * ry;
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random());
+        ox = Math.cos(a) * r * rx;
+        oy = Math.sin(a) * r * ry;
+      }
+      if (!inside(ox, oy)) continue;
+      tmp.copy(pt).addScaledVector(tan, ox).addScaledVector(bit, oy);
+      tmp.normalize().multiplyScalar(R);
+      const uv = worldToUV(tmp);
+      const th = toothAt(uv.u, uv.v);
+      if (Math.random() < 0.08 * P.dHard) continue;
+      let cr = cr0, cg = cg0, cb = cb0, a = 0.5;
+      if (kind === 'charcoal') { cr = cg = cb = 18 + th * 22; a = 0.5 + press * 0.3; }
+      else if (kind === 'chalk') a = 0.42 + press * 0.28;
+      else a = 0.52 + press * 0.25;
+      pctx.fillStyle = 'rgba(' + (cr|0) + ',' + (cg|0) + ',' + (cb|0) + ',' + Math.min(0.8, a) + ')';
+      const gsz = square ? (0.7 + press * 0.8) : (0.55 + press * 0.7);
+      pctx.beginPath();
+      pctx.arc(uv.u * RES, uv.v * RES, gsz * (0.6 + Math.random() * 0.7), 0, Math.PI * 2);
+      pctx.fill();
+    }
+  }
+  for (let s = 1; s <= steps; s++) {
+    const tt = s / steps;
+    tmp.copy(from).lerp(hit.point, tt).normalize().multiplyScalar(R);
+    scrapeAt(tmp);
+  }
+  colorMap.needsUpdate = true;
+  mapsDirty = true;
+}
+
+function sprayStamp(hit, e) {
+  pctx.globalAlpha = 1;
+  const [cr, cg, cb] = hexRgb(P.sColor || P.color);
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0);
+  else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  const dist = P.stand;
+  const cone = (0.018 + P.cone * 0.07) * (0.45 + dist * 1.35);
+  const nDrop = Math.max(24, (P.sprP * 220 * (1.2 - dist * 0.4)) | 0);
+  const transfer = Math.max(0.15, 1.05 - dist * 0.7);
+  pctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',1)';
+  for (let i = 0; i < nDrop; i++) {
+    const u1 = Math.max(1e-6, Math.random());
+    const u2 = Math.random() * Math.PI * 2;
+    const gauss = Math.sqrt(-2 * Math.log(u1));
+    const rad = cone * gauss * 0.42;
+    tmp.copy(hit.point).addScaledVector(tan, Math.cos(u2) * rad).addScaledVector(bit, Math.sin(u2) * rad);
+    tmp.normalize().multiplyScalar(R);
+    const uv = worldToUV(tmp);
+    const big = Math.random() * Math.random();
+    const px = 0.7 + big * (2.2 + dist * 3.5);
+    const a = 0.45 * transfer * (0.55 + P.sprP) * (0.35 + (1 - big) * 0.65);
+    pctx.globalAlpha = Math.min(0.85, a);
+    const x = uv.u * RES, y = uv.v * RES;
+    pctx.beginPath();
+    pctx.arc(x, y, px, 0, Math.PI * 2);
+    pctx.fill();
+    if (x < 6) { pctx.beginPath(); pctx.arc(x + RES, y, px, 0, Math.PI * 2); pctx.fill(); }
+    if (x > RES - 6) { pctx.beginPath(); pctx.arc(x - RES, y, px, 0, Math.PI * 2); pctx.fill(); }
+  }
+  pctx.globalAlpha = 1;
+  const nOver = (4 + dist * 14 * (1 - P.sprP * 0.3)) | 0;
+  for (let i = 0; i < nOver; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = cone * (1.1 + Math.random() * 1.4);
+    tmp.copy(hit.point).addScaledVector(tan, Math.cos(ang) * rad).addScaledVector(bit, Math.sin(ang) * rad);
+    tmp.normalize().multiplyScalar(R);
+    const uv = worldToUV(tmp);
+    pctx.globalAlpha = 0.18 + Math.random() * 0.22;
+    pctx.beginPath();
+    pctx.arc(uv.u * RES, uv.v * RES, 0.4 + Math.random() * 1.6, 0, Math.PI * 2);
+    pctx.fill();
+  }
+  pctx.globalAlpha = 1;
+  const flood = P.sprP * (1.35 - dist) * (0.55 + P.sDrip);
+  sprayWet += 0.045 + flood * 0.12;
+  const thresh = 0.22 + (1 - P.sDrip) * 0.55;
+  while (sprayWet > thresh && drips.length < 90) {
+    const ang = Math.random() * Math.PI * 2;
+    const rad = cone * Math.sqrt(Math.random()) * 0.55;
+    tmp.copy(hit.point).addScaledVector(tan, Math.cos(ang) * rad).addScaledVector(bit, Math.sin(ang) * rad);
+    tmp.normalize().multiplyScalar(R);
+    const uv = worldToUV(tmp);
+    drips.push({
+      x: tmp.x, y: tmp.y, z: tmp.z,
+      r: cr, g: cg, b: cb,
+      mass: 0.35 + Math.random() * 0.7 + P.sprP * 0.25,
+      speed: 0.4 + Math.random() * 1.1,
+      width: 0.7 + Math.random() * 1.4,
+      delay: (Math.random() * 8) | 0,
+      age: 0,
+      fromSpray: true,
+      pu: uv.u, pv: uv.v
+    });
+    sprayWet -= 0.18 + Math.random() * 0.12;
+  }
+  colorMap.needsUpdate = true;
+  mapsDirty = true;
+}
+
+function stepBrush(hit, e, dt) {
+  const press = Math.min(1, (e.pressure > 0 ? e.pressure : 0.7) * P.press * 1.15);
+  nrm.copy(hit.point).normalize();
+  tan.crossVectors(up, nrm);
+  if (tan.lengthSq() < 1e-6) tan.set(1, 0, 0);
+  else tan.normalize();
+  bit.crossVectors(nrm, tan);
+  if (lastHit) {
+    tmp.copy(hit.point).sub(lastHit);
+    const along = tmp.dot(tan), across = tmp.dot(bit);
+    if (along * along + across * across > 1e-8) {
+      const mag = Math.hypot(along, across);
+      tan.copy(tan).multiplyScalar(along / mag).addScaledVector(bit, across / mag).normalize();
+      bit.crossVectors(nrm, tan).normalize();
+    }
+  }
+
+  const splay = P.radius * P.splay * (0.35 + press * 1.35);
+  const follow = 0.18 + P.stiff * 0.75;
+  let speed = 0;
+  if (lastHit) speed = hit.point.distanceTo(lastHit) / Math.max(dt, 0.008);
+  const flatten = 1 + press * (P.shape === 'flat' || P.shape === 'filbert' ? 0.35 : 0.85);
+
+  const nShow = hairs.length;
+  for (let i = 0; i < nShow; i++) {
+    const h = hairs[i];
+    const oxb = h.ox * splay * flatten;
+    const oyb = h.oy * splay * (P.shape === 'flat' || P.shape === 'filbert' ? 1.0 : (2.0 - flatten * 0.55));
+    tmp.copy(hit.point).addScaledVector(tan, oxb).addScaledVector(bit, oyb);
+    tmp.normalize().multiplyScalar(R);
+    if (h.wx * h.wx + h.wy * h.wy + h.wz * h.wz < 1e-8) {
+      h.wx = tmp.x; h.wy = tmp.y; h.wz = tmp.z;
+    }
+    h.wx += (tmp.x - h.wx) * follow;
+    h.wy += (tmp.y - h.wy) * follow;
+    h.wz += (tmp.z - h.wz) * follow;
+    h.tip.set(h.wx, h.wy, h.wz);
+    if (h.tip.lengthSq() < 1e-8) h.tip.copy(tmp);
+    else h.tip.normalize().multiplyScalar(R);
+
+    const uv = worldToUV(h.tip);
+    if (painting) depositHair(h, uv.u, uv.v, press, speed);
+    else { h.pu = uv.u; h.pv = uv.v; }
+
+    tmp.copy(hit.point).addScaledVector(nrm, 0.07 + P.radius * 0.4);
+    const i6 = i * 6;
+    brushPos[i6] = tmp.x; brushPos[i6 + 1] = tmp.y; brushPos[i6 + 2] = tmp.z;
+    brushPos[i6 + 3] = h.tip.x; brushPos[i6 + 4] = h.tip.y; brushPos[i6 + 5] = h.tip.z;
+  }
+  brushGeo.setDrawRange(0, nShow * 2);
+  brushGeo.attributes.position.needsUpdate = true;
+  lastHit = hit.point.clone();
+  if (painting) {
+    colorMap.needsUpdate = true;
+    bumpMap.needsUpdate = true;
+    mapsDirty = true;
+    const want =
+      P.medium === 'water' ? Math.ceil(2 + P.drip * 5) :
+      P.medium === 'oil' ? Math.ceil(P.drip * P.load * 3) :
+      Math.ceil(P.drip * P.load * 1.4);
+    let spawned = 0;
+    const tries = nShow;
+    for (let t = 0; t < tries && spawned < want && drips.length < 120; t++) {
+      const h = hairs[(Math.random() * nShow) | 0];
+      if (!h || h.ink < 0.08) continue;
+      const uv = worldToUV(h.tip);
+      drips.push({
+        x: h.tip.x, y: h.tip.y, z: h.tip.z,
+        r: h.r, g: h.g, b: h.b,
+        mass: 0.25 + Math.random() * 0.9,
+        speed: 0.45 + Math.random() * 1.7,
+        wob: Math.random() * 6.28,
+        wobAmp: 0.001 + Math.random() * 0.012,
+        width: 0.4 + Math.random() * 2.0,
+        delay: P.medium === 'water' ? ((Math.random() * 6) | 0) :
+               P.medium === 'oil' ? (4 + ((Math.random() * 16) | 0)) :
+               (10 + ((Math.random() * 28) | 0)),
+        age: 0,
+        pu: uv.u, pv: uv.v
+      });
+      spawned++;
+    }
+  }
+}
+
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  if (e.button === 2 || e.button === 1 || tool === 'orbit' || e.altKey) {
+    orbiting = true;
+    ox = e.clientX; oy = e.clientY; oYaw = yaw; oPitch = pitch;
+  } else if ((tool === 'paint' || tool === 'spray' || tool === 'dry' || tool === 'sand' || tool === 'pencil' || tool === 'marker' || tool === 'splat' || tool === 'dust' || tool === 'smoke' || tool === 'stain' || tool === 'pour') && e.button === 0) {
+    painting = true;
+    for (const h of hairs) h.pu = null;
+    const hit = hitFromEvent(e);
+    if (hit) {
+      if (tool === 'spray') { lastSprayHit = hit; sprayStamp(hit, e); placeSprayRing(hit); }
+      else if (tool === 'dry') { lastDryHit = null; dryStamp(hit, e); }
+      else if (tool === 'sand') { lastSandHit = null; sandStamp(hit, e); }
+      else if (tool === 'pencil') { lastPenHit = null; pencilStamp(hit, e); }
+      else if (tool === 'marker') { lastMarkHit = null; P.mInk = P.mLoad; markerStamp(hit, e); }
+      else if (tool === 'splat') { splatA = hit.point.clone(); splatB = hit.point.clone(); placeSplatAim(splatA, splatB); }
+      else if (tool === 'dust') { lastDustHit = null; dustStamp(hit, e); }
+      else if (tool === 'smoke') { lastSmokeHit = hit; smokeStamp(hit, e); }
+      else if (tool === 'stain') { lastPourHit = hit; pourStamp(hit, e); }
+      else if (tool === 'pour') { lastFlowHit = hit; flowPour(hit, e); }
+      else stepBrush(hit, e, 0.016);
+    }
+  }
+});
+canvas.addEventListener('pointermove', e => {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - lastT) / 1000) || 0.016;
+  lastT = now;
+  if (orbiting) {
+    yaw = oYaw + (e.clientX - ox) * 0.008;
+    pitch = Math.max(-1.15, Math.min(1.15, oPitch + (e.clientY - oy) * 0.008));
+  } else {
+    const hit = hitFromEvent(e);
+    if (hit) {
+      if (tool === 'spray') {
+        lastSprayHit = hit;
+        placeSprayRing(hit);
+        if (painting) sprayStamp(hit, e);
+      } else if (tool === 'dry') {
+        dryStamp(hit, e);
+        if (!painting) lastDryHit = hit.point.clone();
+      } else if (tool === 'sand') {
+        sandStamp(hit, e);
+        if (!painting) lastSandHit = hit.point.clone();
+      } else if (tool === 'pencil') {
+        pencilStamp(hit, e);
+        if (!painting) lastPenHit = hit.point.clone();
+      } else if (tool === 'marker') {
+        markerStamp(hit, e);
+        if (!painting) lastMarkHit = hit.point.clone();
+      } else if (tool === 'splat') {
+        if (painting && splatA) { splatB = hit.point.clone(); placeSplatAim(splatA, splatB); }
+        else { nrm.copy(hit.point).normalize(); tan.crossVectors(up, nrm); if (tan.lengthSq() < 1e-6) tan.set(1,0,0); else tan.normalize(); bit.crossVectors(nrm, tan); placeDryRing(hit, 0.016, 0.016, tan, bit, false); }
+      } else if (tool === 'dust') {
+        dustStamp(hit, e);
+        if (!painting) lastDustHit = hit.point.clone();
+      } else if (tool === 'smoke') {
+        lastSmokeHit = hit;
+        smokeStamp(hit, e);
+      } else if (tool === 'stain') {
+        lastPourHit = hit;
+        pourStamp(hit, e);
+      } else if (tool === 'pour') {
+        lastFlowHit = hit;
+        flowPour(hit, e);
+      } else if (tool === 'paint') stepBrush(hit, e, dt);
+    } else brushGeo.setDrawRange(0, 0);
+  }
+});
+canvas.addEventListener('pointerup', () => {
+  if (tool === 'splat' && painting && splatA && splatB) splatBurst(splatA, splatB);
+  painting = false;
+  orbiting = false;
+  lastHit = null;
+  lastDryHit = null;
+  lastSandHit = null;
+  lastPenHit = null;
+  lastMarkHit = null;
+  splatA = null; splatB = null;
+  lastDustHit = null;
+  lastSmokeHit = null;
+  lastPourHit = null;
+  lastFlowHit = null;
+});
+canvas.addEventListener('pointercancel', () => {
+  painting = false;
+  orbiting = false;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  dist = Math.max(1.15, Math.min(6, dist * (1 + e.deltaY * 0.001)));
+}, { passive: false });
+canvas.addEventListener('pointerleave', () => brushGeo.setDrawRange(0, 0));
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / Math.max(1, r.height);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+function stepDrips() {
+  if (!drips.length) return;
+  const visc = P.visc;
+  const g = 0.012 + (1 - visc) * 0.022 + P.drip * 0.008;
+  for (let i = drips.length - 1; i >= 0; i--) {
+    const d = drips[i];
+    d.age++;
+    if (d.age < d.delay) continue;
+    const yld = d.fromSpray ? (0.10 + (1 - P.sDrip) * 0.38) : (
+      P.medium === 'acrylic' ? 0.55 : P.medium === 'oil' ? 0.28 : 0.08
+    );
+    const nx = d.x / R, ny = d.y / R, nz = d.z / R;
+    const ndotg = -ny;
+    let vx = -nx * ndotg;
+    let vy = -1 - ny * ndotg;
+    let vz = -nz * ndotg;
+    const gTan = Math.hypot(vx, vy, vz) || 1e-6;
+    vx /= gTan; vy /= gTan; vz /= gTan;
+    const drive = d.mass * gTan;
+    if (drive < yld * (0.7 + visc)) {
+      drips.splice(i, 1);
+      continue;
+    }
+    const step = g * d.speed * d.mass * R * Math.max(0, 1 - yld / Math.max(drive, 1e-4));
+    if (step < 0.00025) {
+      drips.splice(i, 1);
+      continue;
+    }
+    d.x += vx * step;
+    d.y += vy * step;
+    d.z += vz * step;
+    const len = Math.hypot(d.x, d.y, d.z) || 1;
+    d.x = d.x / len * R;
+    d.y = d.y / len * R;
+    d.z = d.z / len * R;
+    const uv = worldToUV(d);
+    const life = Math.max(0.08, d.mass);
+    const w = d.width * (P.medium === 'water' ? 1.7 : 1.35) * (0.55 + life);
+    const a = Math.min(0.9, P.alpha * (0.5 + life * 0.5));
+    const col = 'rgba(' + (d.r|0) + ',' + (d.g|0) + ',' + (d.b|0) + ',' + a + ')';
+    pctx.strokeStyle = col;
+    pctx.lineWidth = Math.max(0.8, w);
+    if (d.pu != null) {
+      uvLine(d.pu, d.pv, uv.u, uv.v, (x0, y0, x1, y1) => {
+        pctx.beginPath();
+        pctx.moveTo(x0, y0);
+        pctx.lineTo(x1, y1);
+        pctx.stroke();
+      });
+    }
+    d.pu = uv.u;
+    d.pv = uv.v;
+    d.mass *= 0.972 - visc * 0.012;
+    d.travel = (d.travel || 0) + step;
+    const maxRun = (0.08 + d.mass * 0.35) * R * (d.fromSpray ? (0.9 + P.sDrip * 1.3) : (P.medium === 'water' ? 2.2 : P.medium === 'oil' ? 1.15 : 0.55));
+    if (d.mass < 0.08 || d.travel > maxRun || ny < -0.85) drips.splice(i, 1);
+  }
+  mapsDirty = true;
+}
+function liquidStep() {
+  if (painting) return;
+  const bloom = P.bloom != null ? P.bloom : (1 - P.visc);
+  if (bloom < 0.12) return;
+  const blur = (0.25 + bloom * 1.1).toFixed(2);
+  wtctx.filter = 'blur(' + blur + 'px)';
+  wtctx.drawImage(paint, 0, 0);
+  wtctx.filter = 'none';
+  pctx.globalAlpha = bloom * 0.1;
+  pctx.drawImage(wetTmp, 0, 0);
+  pctx.globalAlpha = 1;
+  mapsDirty = true;
+}
+let mapsDirty = false;
+let liqAcc = 0;
+function frame() {
+  requestAnimationFrame(frame);
+  if (tool === 'spray' && painting && lastSprayHit) sprayStamp(lastSprayHit, { pressure: 0.7 });
+  if (tool === 'smoke' && painting && lastSmokeHit) smokeStamp(lastSmokeHit, { pressure: 0.7 });
+  if (tool === 'stain' && painting && lastPourHit) pourStamp(lastPourHit, { pressure: 0.7 });
+  if (tool === 'pour' && painting && lastFlowHit) flowPour(lastFlowHit, { pressure: 0.7 });
+  fluidStep();
+  pourStep();
+  flowStep();
+  autoSettle();
+  if (!(tool === 'spray' && painting)) sprayWet = Math.max(0, sprayWet * 0.94);
+  if (tool !== 'dry' && tool !== 'sand' && tool !== 'pencil' && tool !== 'marker' && tool !== 'splat' && tool !== 'dust' && tool !== 'smoke' && tool !== 'stain' && tool !== 'pour') dryPrev.visible = false;
+  if (tool !== 'spray') sprayRing.visible = false;
+  stepDrips();
+  liqAcc++;
+  if (liqAcc > 8) { liqAcc = 0; liquidStep(); }
+  if (mapsDirty) {
+    xctx.drawImage(paint, 0, 0);
+    xctx.drawImage(smokeVis, 0, 0);
+    xctx.drawImage(pourVis, 0, 0);
+    colorMap.needsUpdate = true;
+    bumpMap.needsUpdate = true;
+    mapsDirty = false;
+  }
+  camera.position.set(
+    Math.sin(yaw) * Math.cos(pitch) * dist,
+    Math.sin(pitch) * dist,
+    Math.cos(yaw) * Math.cos(pitch) * dist
+  );
+  camera.lookAt(0, 0, 0);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
+</script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a2e42e48cf49e72e',t:'MTc4NzI1ODA4Nw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

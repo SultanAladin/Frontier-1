@@ -1,0 +1,9 @@
+# PolishedCopper — a dummy material declaration, seated so the content browser has a real file to name.
+[material]
+naming    = "Polished Copper"
+archive   = "Metals"
+
+[surface]
+albedo    = [ 0.955, 0.638, 0.538 ]
+metallic  = 1.0
+roughness = 0.08

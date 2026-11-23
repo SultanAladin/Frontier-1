@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SLATE — Layered PBR Painter</title>
+<style>
+:root{
+  --bg:#0a0a0a; --panel:#151515; --card:#171717; --row:#232323; --row2:#1c1c1c;
+  --track:#2a2a2a; --fill:#8d8d8d; --knob:#ffffff; --txt:#f2f2f2; --dim:#9a9a9a; --dim2:#6a6a6a;
+  --acc:#ffffff; --line:#242424; --r:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--txt);overflow:hidden;
+  font:500 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;user-select:none;
+}
+#app{display:grid;grid-template-columns:296px 1fr 336px;height:100%;gap:10px;padding:10px}
+aside{background:var(--panel);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
+#center{position:relative;border-radius:var(--r);overflow:hidden;background:#0d0d0d}
+canvas#gl{display:block;width:100%;height:100%}
+
+/* ---------- generic panel bits ---------- */
+.phead{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 10px}
+.phead h2{font-size:12px;letter-spacing:.16em;color:var(--dim);font-weight:600}
+.scroll{overflow-y:auto;overflow-x:hidden;flex:1;padding:0 12px 16px}
+.scroll::-webkit-scrollbar{width:8px}
+.scroll::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:8px}
+.group{background:var(--card);border-radius:var(--r);padding:12px;margin-bottom:10px}
+.gtitle{font-size:11px;letter-spacing:.14em;color:var(--dim2);padding:4px 8px 10px;text-transform:uppercase}
+.row{display:grid;grid-template-columns:1fr 96px 104px;align-items:center;gap:10px;padding:5px 8px}
+.row .lab{color:var(--dim);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vbox{background:var(--row);border-radius:12px;height:40px;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;gap:4px;cursor:ew-resize}
+.vbox input{background:none;border:none;color:#fff;font:600 16px/1 inherit;text-align:right;width:100%;outline:none;padding:0}
+.vbox .unit{color:var(--dim2);font-size:12px;font-weight:600}
+.slider{position:relative;height:36px;background:var(--track);border-radius:11px;overflow:hidden;cursor:pointer}
+.slider .f{position:absolute;left:0;top:0;bottom:0;background:var(--fill);border-radius:11px 0 0 11px}
+.slider .k{position:absolute;top:5px;width:12px;height:26px;background:var(--knob);border-radius:6px;transform:translateX(-6px);box-shadow:0 2px 8px #0008}
+.rowfull{padding:6px 8px}
+.dots{display:flex;align-items:center;justify-content:flex-end;gap:14px;height:44px;padding-right:6px}
+.dot{width:9px;height:9px;border-radius:50%;background:#3a3a3a;cursor:pointer;transition:.12s}
+.dot:hover{background:#585858}
+.dot.sel{width:auto;height:38px;min-width:56px;border-radius:13px;background:#fff;color:#111;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.seg{display:flex;background:var(--row);border-radius:12px;padding:3px;gap:2px}
+.seg button{flex:1;border:none;background:none;color:var(--dim);height:32px;border-radius:10px;cursor:pointer;font:600 12px inherit}
+.seg button.on{background:#fff;color:#111}
+.swatch{width:40px;height:40px;border-radius:12px;border:1px solid #333;cursor:pointer;padding:0;overflow:hidden}
+.swatch input{opacity:0;width:100%;height:100%;cursor:pointer}
+select.sel{background:var(--row);border:none;color:#fff;height:40px;border-radius:12px;padding:0 10px;font:600 13px inherit;outline:none;width:100%;cursor:pointer}
+.btn{background:var(--row);border:none;color:#ddd;height:36px;border-radius:11px;cursor:pointer;font:600 12px inherit;padding:0 12px;transition:.12s}
+.btn:hover{background:#303030;color:#fff}
+.btn.on{background:#fff;color:#111}
+.btnrow{display:flex;gap:6px;padding:6px 8px;flex-wrap:wrap}
+.icobtn{width:36px;height:36px;border-radius:11px;background:var(--row);border:none;color:#ccc;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center}
+.icobtn:hover{background:#303030;color:#fff}
+
+/* ---------- layer stack ---------- */
+#layers{padding:0 12px 12px}
+.layer{display:grid;grid-template-columns:24px 44px 1fr 40px;gap:9px;align-items:center;
+  background:var(--card);border-radius:16px;padding:8px;margin-bottom:8px;cursor:pointer;border:1.5px solid transparent}
+.layer.sel{border-color:#fff;background:#1e1e1e}
+.layer.dragover{border-color:#7ad}
+.layer .eye{width:24px;height:24px;border-radius:8px;background:#262626;display:flex;align-items:center;justify-content:center;font-size:11px;color:#bbb}
+.layer.hidden{opacity:.42}
+.layer img.chip{width:44px;height:44px;border-radius:11px;display:block;background:#000}
+.layer .meta{overflow:hidden}
+.layer .nm{font-size:13px;color:#eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.layer .sub{font-size:10.5px;color:var(--dim2);letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.layer canvas.mk{width:40px;height:40px;border-radius:10px;background:#000;image-rendering:pixelated;border:1px solid #2c2c2c}
+#dropzone{height:46px;border:1.5px dashed #303030;border-radius:16px;display:flex;align-items:center;justify-content:center;color:var(--dim2);font-size:11.5px;letter-spacing:.08em}
+#dropzone.dragover{border-color:#fff;color:#fff}
+
+/* ---------- viewport overlays ---------- */
+#topbar{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:center;pointer-events:none;flex-wrap:wrap}
+#topbar>*{pointer-events:auto}
+.tb{background:#141414cc;backdrop-filter:blur(14px);border-radius:14px;padding:6px;display:flex;gap:5px;align-items:center;border:1px solid #ffffff10}
+.tb select{background:#232323;color:#eee;border:none;height:30px;border-radius:9px;padding:0 8px;font:600 12px inherit;outline:none}
+.tb .btn{height:30px}
+#hint{position:absolute;bottom:12px;left:12px;background:#141414cc;backdrop-filter:blur(14px);border-radius:14px;padding:9px 14px;color:var(--dim);font-size:11.5px;letter-spacing:.03em;border:1px solid #ffffff10}
+#hint b{color:#fff;font-weight:700}
+#status{position:absolute;bottom:12px;right:12px;background:#141414cc;backdrop-filter:blur(14px);border-radius:12px;padding:8px 12px;color:var(--dim2);font-size:11px;border:1px solid #ffffff10}
+
+/* ---------- floating brush panel ---------- */
+#brush{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);width:400px;background:#131313f2;
+  backdrop-filter:blur(20px);border:1px solid #ffffff14;border-radius:26px;padding:8px;opacity:0;pointer-events:none;transition:.14s;z-index:40;box-shadow:0 30px 80px #000c}
+#brush.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+
+/* ---------- asset browser ---------- */
+#assets{position:fixed;inset:0;background:#000000cc;backdrop-filter:blur(10px);z-index:60;display:none;padding:44px 60px}
+#assets.on{display:flex;flex-direction:column}
+#assets h1{font-size:13px;letter-spacing:.22em;color:var(--dim);margin-bottom:14px;font-weight:600}
+#cats{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px;overflow-y:auto;padding-bottom:40px;align-content:start}
+#grid::-webkit-scrollbar{width:8px}#grid::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:8px}
+.card{background:var(--card);border-radius:20px;padding:10px;cursor:grab;border:1.5px solid transparent;transition:.12s}
+.card:hover{border-color:#ffffff30;transform:translateY(-2px)}
+.card img{width:100%;aspect-ratio:1;border-radius:14px;display:block;background:#000}
+.card .t{font-size:12.5px;margin-top:9px;color:#eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .c{font-size:10px;color:var(--dim2);letter-spacing:.1em;text-transform:uppercase;margin-top:2px}
+.chan{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;padding:4px 8px 8px}
+.chan div{font-size:10.5px;color:#4a4a4a;display:flex;align-items:center;gap:6px}
+.chan div::before{content:"";width:6px;height:6px;border-radius:50%;background:#333}
+.chan div.on{color:#cfcfcf}
+.chan div.on::before{background:#fff}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="left">
+    <div class="phead"><h2>LAYERS</h2>
+      <div style="display:flex;gap:5px">
+        <button class="icobtn" id="bAdd" title="New layer">+</button>
+        <button class="icobtn" id="bDup" title="Duplicate">⧉</button>
+        <button class="icobtn" id="bDel" title="Delete">🗑</button>
+      </div>
+    </div>
+    <div class="scroll"><div id="layers"></div><div id="dropzone">DROP MATERIAL HERE</div></div>
+  </aside>
+
+  <main id="center">
+    <canvas id="gl"></canvas>
+    <div id="topbar">
+      <div class="tb">
+        <select id="meshSel"><option value="sphere">Sphere</option><option value="box">Cube</option>
+        <option value="cyl">Cylinder</option><option value="knot" selected>Torus Knot</option>
+        <option value="torus">Torus</option><option value="plane">Plane</option></select>
+        <select id="resSel"><option value="512">512</option><option value="1024" selected>1024</option><option value="2048">2048</option></select>
+      </div>
+      <div class="tb">
+        <button class="btn on" id="bPaint">✎ Paint Mask</button>
+        <button class="btn" id="bMaskPrev">Mask Preview</button>
+        <button class="btn" id="bBrush">Brush (Q)</button>
+      </div>
+      <div class="tb">
+        <button class="btn" id="bAssets">Assets (Space)</button>
+        <button class="btn" id="bExport">Export Maps</button>
+      </div>
+    </div>
+    <div id="brush"></div>
+    <div id="hint"><b>Q</b> brush · <b>Space</b> assets · <b>B</b> paint · <b>X</b> invert mask · <b>[ ]</b> size · <b>Alt+Drag</b> orbit while painting</div>
+    <div id="status">ready</div>
+  </main>
+
+  <aside id="right">
+    <div class="phead"><h2>PROPERTIES</h2><span id="propName" style="font-size:11px;color:#666"></span></div>
+    <div class="scroll" id="props"></div>
+  </aside>
+</div>
+
+<div id="assets">
+  <h1>MATERIAL LIBRARY — DRAG ONTO A LAYER OR THE VIEWPORT</h1>
+  <div id="cats"></div>
+  <div id="grid"></div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================================
+   1. MATERIAL LIBRARY  — 19 procedural materials, each with its own parameters
+   ============================================================================ */
+const P=(k,v,min,max,u,s)=>({k,v,min,max,u:u||'',s:s===undefined?1:s});
+const PCT=(k,v)=>P(k,v,0,100,'%',0.01);
+const DEG=(k,v,mx)=>P(k,v,0,mx||360,'°',Math.PI/180);
+const NUM=(k,v,min,max)=>P(k,v,min,max,'');
+
+const MATS=[
+{id:'plain',n:'Plain Surface',cat:'Basic',t:0,cols:['#8e8e8e'],colN:['Base Color'],
+ uses:[],p:[PCT('Roughness',45),PCT('Metallic',0),PCT('Bump',8),NUM('Noise Scale',24,1,200),PCT('Ambient Occlusion',30)]},
+
+{id:'brushed_alu',n:'Brushed Aluminium',cat:'Metal',t:1,cols:['#c6cad0'],colN:['Metal Tint'],
+ uses:['aniso'],p:[DEG('Brush Angle',14,180),PCT('Brush Depth',55),NUM('Grain Fineness',3.2,.5,12),
+ PCT('Base Roughness',28),PCT('Anisotropy',85),PCT('Scratches',35),PCT('Scratch Depth',40),PCT('Smudging',25)]},
+
+{id:'chrome',n:'Polished Chrome',cat:'Metal',t:2,cols:['#e6eaf0'],colN:['Metal Tint'],
+ uses:[],p:[PCT('Polish',92),PCT('Micro Scratches',22),PCT('Polish Swirls',30),PCT('Fingerprints',18),
+ PCT('Dust',10),PCT('Surface Waviness',14)]},
+
+{id:'steel_scr',n:'Scratched Steel',cat:'Metal',t:3,cols:['#9aa0a6','#7a4324'],colN:['Steel Tint','Rust Color'],
+ uses:[],p:[NUM('Scratch Density',44,4,140),NUM('Scratch Length',2.6,.4,10),PCT('Scratch Width',30),
+ PCT('Scratch Depth',65),PCT('Rust Amount',22),NUM('Rust Scale',9,1,40),PCT('Base Roughness',42),PCT('Edge Wear',35)]},
+
+{id:'copper',n:'Oxidised Copper',cat:'Metal',t:4,cols:['#b87333','#4fae94'],colN:['Copper Tint','Patina Color'],
+ uses:[],p:[PCT('Patina Coverage',58),NUM('Patina Scale',7,1,30),PCT('Patina Roughness',88),
+ NUM('Pit Density',60,5,220),PCT('Pit Depth',45),PCT('Metal Roughness',32),PCT('Streaking',40)]},
+
+{id:'gold_h',n:'Hammered Gold',cat:'Metal',t:5,cols:['#ffce5c','#6b4b16'],colN:['Gold Tint','Tarnish Color'],
+ uses:[],p:[NUM('Hammer Scale',15,3,60),PCT('Hammer Depth',70),PCT('Facet Sharpness',55),
+ PCT('Tarnish',20),PCT('Roughness',22),PCT('Scratches',18)]},
+
+{id:'iron',n:'Pitted Cast Iron',cat:'Metal',t:6,cols:['#5a5c60','#2b2721'],colN:['Iron Tint','Grime Color'],
+ uses:[],p:[NUM('Pit Density',85,10,300),PCT('Pit Depth',72),PCT('Grime',40),NUM('Grime Scale',6,1,25),
+ PCT('Roughness',68),PCT('Carbon Speckle',45)]},
+
+{id:'car_met',n:'Metallic Car Paint',cat:'Car Paint',t:7,cols:['#8b0d1c','#ffd9b0'],colN:['Base Coat','Flake Color'],
+ uses:['cc','irid','peel'],p:[NUM('Flake Density',420,60,1400),PCT('Flake Size',38),PCT('Flake Sparkle',75),
+ PCT('Flake Spread',55),PCT('Clearcoat',100),PCT('Coat Roughness',5),PCT('Orange Peel',35),
+ NUM('Peel Scale',34,4,140),PCT('Iridescence',30),PCT('Flake Hue Shift',45),PCT('Base Roughness',30),PCT('Coat Swirls',12)]},
+
+{id:'car_pearl',n:'Pearlescent Candy Paint',cat:'Car Paint',t:8,cols:['#2a1b6b','#c9a9ff'],colN:['Pigment','Pearl Color'],
+ uses:['cc','irid','peel'],p:[PCT('Pearl Shift',70),NUM('Pearl Density',260,40,900),PCT('Candy Depth',65),
+ PCT('Clearcoat',100),PCT('Coat Roughness',4),PCT('Orange Peel',28),PCT('Iridescence',85),
+ NUM('Film Thickness (nm)',420,100,900,'',1/900),PCT('Micro Flake',40)]},
+
+{id:'vinyl',n:'Matte Vinyl Wrap',cat:'Car Paint',t:9,cols:['#26282b'],colN:['Wrap Color'],
+ uses:['cc','peel'],p:[PCT('Satin',35),NUM('Texture Scale',180,20,600),PCT('Texture Depth',30),
+ PCT('Clearcoat',45),PCT('Coat Roughness',62),PCT('Dust',12),PCT('Fine Grain',50)]},
+
+{id:'abs',n:'Textured ABS Plastic',cat:'Plastic',t:10,cols:['#3b3f45'],colN:['Plastic Color'],
+ uses:[],p:[NUM('Grain Type',1,0,2),NUM('Grain Scale',110,10,420),PCT('Grain Depth',55),
+ PCT('Roughness',62),PCT('Micro Scratches',20),PCT('Color Variation',18),PCT('Dust',10)]},
+
+{id:'gloss_pl',n:'Glossy Injection Plastic',cat:'Plastic',t:11,cols:['#c9243f'],colN:['Plastic Color'],
+ uses:['cc'],p:[PCT('Gloss',88),PCT('Micro Scratches',30),PCT('Scratch Sharpness',65),
+ PCT('Sink Marks',22),PCT('Mould Flow Lines',18),PCT('Clearcoat',60),PCT('Dust',8)]},
+
+{id:'rubber',n:'Soft-Touch Rubber',cat:'Plastic',t:12,cols:['#1b1c1e','#5c5c5c'],colN:['Rubber Color','Sheen Color'],
+ uses:['sheen'],p:[NUM('Pebble Scale',75,10,300),PCT('Pebble Depth',48),PCT('Roughness',86),
+ PCT('Sheen',40),PCT('Wear Polish',18),PCT('Dust',15)]},
+
+{id:'trans_pl',n:'Translucent Plastic',cat:'Plastic',t:13,cols:['#9fe4d8'],colN:['Tint'],
+ uses:['transm','spec'],p:[PCT('Transmission',85),PCT('Frost',35),NUM('Thickness',0.6,.05,3),
+ PCT('Scratches',18),PCT('Roughness',12),PCT('Specular',80)]},
+
+{id:'canvas',n:'Cotton Canvas',cat:'Cloth',t:14,cols:['#c9b99a','#b3a488','#efe6d6'],colN:['Warp Color','Weft Color','Fuzz Color'],
+ uses:['sheen'],p:[NUM('Weave Scale',150,20,500),NUM('Thread Roundness',.75,.2,2),PCT('Weave Depth',62),
+ PCT('Fuzz',65),PCT('Fuzz Roughness',72),PCT('Fibre Noise',55),PCT('Wear',20),PCT('Slubs',30)]},
+
+{id:'silk',n:'Silk Satin',cat:'Cloth',t:15,cols:['#7d1f3d','#ffc7d8'],colN:['Base Color','Sheen Color'],
+ uses:['sheen','aniso'],p:[PCT('Anisotropy',90),DEG('Fibre Angle',90,180),PCT('Sheen',80),
+ PCT('Sheen Roughness',22),PCT('Weave Subtlety',30),PCT('Wrinkling',35),PCT('Roughness',26)]},
+
+{id:'denim',n:'Denim Twill',cat:'Cloth',t:16,cols:['#2c4a72','#d8d2c4','#9fb3cc'],colN:['Warp (Indigo)','Weft','Fuzz Color'],
+ uses:['sheen'],p:[NUM('Twill Scale',170,30,520),PCT('Weave Depth',70),PCT('Slubs',45),
+ PCT('Fade / Wear',30),PCT('Fuzz',55),PCT('Fibre Noise',60)]},
+
+{id:'carbon',n:'Carbon Fibre Weave',cat:'Cloth',t:17,cols:['#14161a','#5e6672'],colN:['Fibre Color','Sheen Color'],
+ uses:['cc','sheen','aniso'],p:[NUM('Weave Size',26,4,90),PCT('Bundle Contrast',70),PCT('Fibre Striation',65),
+ PCT('Clearcoat',100),PCT('Coat Roughness',7),PCT('Anisotropy',80),PCT('Sheen',25)]},
+
+{id:'leather',n:'Grained Leather',cat:'Organic',t:18,cols:['#5c3623','#a67b58'],colN:['Leather Color','Wax Sheen'],
+ uses:['sheen'],p:[NUM('Cell Scale',70,10,260),PCT('Cell Depth',60),NUM('Pore Density',300,50,900),
+ PCT('Wrinkling',40),PCT('Wax Polish',45),PCT('Roughness',58),PCT('Wear',25)]},
+];
+const MATBY={};MATS.forEach(m=>MATBY[m.id]=m);
+
+/* ============================================================================
+   2. PROCEDURAL GLSL (shared by the baker and the thumbnail renderer)
+   ============================================================================ */
+const GLSL_LIB=`
+#define PI 3.14159265359
+float sat(float x){return clamp(x,0.0,1.0);}
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
+float hash11(float p){p=fract(p*0.1031);p*=p+33.33;p*=p+p;return fract(p);}
+float hash21(vec2 p){vec3 p3=fract(vec3(p.xyx)*0.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+vec2 hash22(vec2 p){vec3 p3=fract(vec3(p.xyx)*vec3(0.1031,0.1030,0.0973));p3+=dot(p3,p3.yzx+33.33);
+  return fract((p3.xx+p3.yz)*p3.zy);}
+float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+  float a=hash21(i),b=hash21(i+vec2(1,0)),c=hash21(i+vec2(0,1)),d=hash21(i+vec2(1,1));
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
+float fbm(vec2 p){float s=0.0,a=0.5;for(int i=0;i<5;i++){s+=a*vnoise(p);p=rot(0.63)*p*2.03;a*=0.5;}return s;}
+float fbm3(vec2 p){float s=0.0,a=0.5;for(int i=0;i<3;i++){s+=a*vnoise(p);p=rot(0.41)*p*2.11;a*=0.5;}return s;}
+float ridged(vec2 p){float s=0.0,a=0.5;for(int i=0;i<4;i++){s+=a*(1.0-abs(vnoise(p)*2.0-1.0));p=rot(0.9)*p*2.07;a*=0.5;}return s;}
+// worley: x=F1, y=cell id, zw=vector to nearest feature point
+vec4 worley(vec2 p){vec2 n=floor(p),f=fract(p);float f1=8.0,id=0.0;vec2 off=vec2(0.0);
+  for(int j=-1;j<=1;j++){for(int i=-1;i<=1;i++){vec2 g=vec2(float(i),float(j));vec2 o=hash22(n+g);
+    vec2 d=g+o-f;float l=length(d);if(l<f1){f1=l;id=hash21(n+g+7.31);off=d;}}}
+  return vec4(f1,id,off);}
+float worleyF2(vec2 p){vec2 n=floor(p),f=fract(p);float f1=8.0,f2=8.0;
+  for(int j=-1;j<=1;j++){for(int i=-1;i<=1;i++){vec2 g=vec2(float(i),float(j));vec2 o=hash22(n+g);
+    float l=length(g+o-f);if(l<f1){f2=f1;f1=l;}else if(l<f2)f2=l;}}
+  return f2-f1;}
+
+// ---- realistic anisotropic scratch generator -------------------------------
+float scratchRow(vec2 p,float seed,float width,float gap){
+  float row=floor(p.y);float fy=fract(p.y)-0.5;
+  float r1=hash21(vec2(row,seed));
+  float wob=(vnoise(vec2(p.x*1.3,row*7.3+seed))-0.5)*0.55;
+  float d=abs(fy+wob);
+  float w=width*(0.18+0.82*r1*r1);
+  float line=1.0-smoothstep(0.0,max(w,0.002),d);
+  float seg=vnoise(vec2(p.x*gap*(0.5+r1*1.5),row*13.7+seed*3.0));
+  line*=smoothstep(0.48,0.80,seg);
+  line*=step(0.42,hash21(vec2(row*1.77,seed*5.1)));
+  // taper the ends of each scratch
+  line*=smoothstep(0.0,0.25,seg);
+  return line*(0.30+0.70*hash21(vec2(row*3.1,seed*7.7)));
+}
+float scratches(vec2 uv,float density,float len,float width,float seed){
+  float s=0.0;
+  for(int i=0;i<4;i++){float fi=float(i);
+    float a=hash11(seed+fi*4.77)*PI;
+    vec2 q=rot(a)*uv;
+    q=vec2(q.x/max(len,0.05),q.y*density*(0.7+fi*0.45));
+    s=max(s,scratchRow(q,seed+fi*9.13,width,0.30));}
+  return sat(s);
+}
+// circular polish / swirl marks
+float swirls(vec2 uv,float sc,float seed){
+  float s=0.0;
+  for(int i=0;i<3;i++){float fi=float(i);
+    vec2 c=hash22(vec2(seed+fi*3.37,1.7));
+    vec2 d=uv-c;float r=length(d);float a=atan(d.y,d.x);
+    float rings=fract(r*sc*(14.0+fi*11.0)+vnoise(vec2(a*3.0,r*8.0))*2.5+hash11(seed+fi));
+    s=max(s,smoothstep(0.93,1.0,rings)*smoothstep(0.85,0.05,r));}
+  return s;
+}
+// plain weave -> x:height  y:1 if warp on top  z:thread coordinate
+vec3 weavePlain(vec2 g,float round_){
+  vec2 c=floor(g),f=fract(g);
+  float chk=mod(c.x+c.y,2.0);
+  float aW=pow(max(sin(f.x*PI),0.0),round_);
+  float aF=pow(max(sin(f.y*PI),0.0),round_);
+  float over=step(chk,0.5);
+  float h=mix(max(aF,aW*0.5),max(aW,aF*0.5),over);
+  return vec3(h,over,mix(f.x,f.y,over));
+}
+// 2/2 twill -> denim & carbon
+vec3 weaveTwill(vec2 g,float round_){
+  vec2 c=floor(g),f=fract(g);
+  float d=mod(c.x-c.y,4.0);
+  float over=step(d,1.5);
+  float aW=pow(max(sin(f.x*PI),0.0),round_);
+  float aF=pow(max(sin(f.y*PI),0.0),round_);
+  float h=mix(max(aF,aW*0.45),max(aW,aF*0.45),over);
+  return vec3(h,over,mix(f.x,f.y,over));
+}
+vec3 lin2srgb(vec3 c){return mix(1.055*pow(max(c,0.0),vec3(1.0/2.4))-0.055,c*12.92,step(c,vec3(0.0031308)));}
+
+struct Surf{
+  vec3 albedo;float opacity;float rough;float metal;float ao;float height;
+  float cc;float ccr;float sheenI;float sheenR;vec2 aniso;float anisoS;
+  float irid;float iridT;float transm;float spec;vec3 sheenC;float peel;
+};
+Surf initSurf(){Surf s;
+  s.albedo=vec3(0.42);s.opacity=1.0;s.rough=0.5;s.metal=0.0;s.ao=1.0;s.height=0.5;
+  s.cc=0.0;s.ccr=0.08;s.sheenI=0.0;s.sheenR=0.35;s.aniso=vec2(1.0,0.0);s.anisoS=0.0;
+  s.irid=0.0;s.iridT=0.35;s.transm=0.0;s.spec=0.5;s.sheenC=vec3(1.0);s.peel=0.5;return s;}
+`;
+
+const GLSL_MATERIAL=`
+uniform float uP[16];
+uniform vec3 uC[3];
+uniform float uSeed;
+
+Surf evalM(int t,vec2 p){
+  Surf s=initSurf();
+
+  if(t==0){                                   /* PLAIN */
+    float n=fbm(p*uP[3]);
+    s.albedo=uC[0]*(0.85+0.3*n);
+    s.rough=sat(uP[0]+(n-0.5)*0.12);
+    s.metal=uP[1];
+    s.height=0.5+(n-0.5)*uP[2];
+    s.ao=1.0-uP[4]*(1.0-n)*0.6;
+  }
+  else if(t==1){                              /* BRUSHED ALUMINIUM */
+    float ang=uP[0];
+    vec2 q=rot(ang)*p;
+    float g=uP[2];
+    float brush=fbm(vec2(q.x*260.0*g,q.y*4.0))*0.65+fbm(vec2(q.x*900.0*g,q.y*11.0))*0.35;
+    float sc=scratches(q,52.0,3.0,0.055,uSeed+3.1)*uP[5];
+    float smudge=fbm(p*5.0+uSeed);
+    s.metal=1.0;
+    s.albedo=uC[0]*(0.88+0.14*brush)*(1.0-sc*0.18);
+    s.rough=sat(uP[3]+(brush-0.5)*0.30*uP[1]+sc*0.30+(smudge-0.5)*0.35*uP[7]);
+    s.height=0.5+(brush-0.5)*0.35*uP[1]-sc*0.55*uP[6];
+    s.aniso=vec2(cos(ang),sin(ang));
+    s.anisoS=uP[4];
+    s.ao=1.0-sc*0.25;
+  }
+  else if(t==2){                              /* POLISHED CHROME */
+    float ms=scratches(p,140.0,5.0,0.030,uSeed+11.0)*uP[1];
+    float sw=swirls(p,26.0,uSeed)*uP[2];
+    vec4 w=worley(p*90.0);
+    float fp=smoothstep(0.55,0.15,w.x)*smoothstep(0.35,0.75,fbm(p*4.0))*uP[3];
+    float dust=smoothstep(0.72,0.95,fbm(p*70.0))*uP[4];
+    float wave=(fbm(p*3.0)-0.5)*uP[5];
+    s.metal=1.0;
+    s.albedo=uC[0]*(1.0-ms*0.10-dust*0.15);
+    s.rough=sat(mix(0.30,0.012,uP[0])+ms*0.22+sw*0.14+fp*0.30+dust*0.35);
+    s.height=0.5-ms*0.05-sw*0.02+wave*0.4+fp*0.02;
+    s.ao=1.0-fp*0.1;
+  }
+  else if(t==3){                              /* SCRATCHED STEEL */
+    float deep=scratches(p,uP[0],uP[1],uP[2]*0.20,uSeed+2.0);
+    float fine=scratches(p,uP[0]*3.2,uP[1]*0.5,0.04,uSeed+21.0)*0.55;
+    float sc=max(deep,fine*0.7);
+    float rustN=fbm(p*uP[5])*0.7+ridged(p*uP[5]*2.7)*0.3;
+    float rust=sat(smoothstep(0.52-uP[4]*0.42,0.72-uP[4]*0.30,rustN));
+    rust=max(rust,sat(deep-0.35)*uP[4]*1.4);           /* rust creeps into scratches */
+    float wear=smoothstep(0.4,0.9,fbm(p*3.0))*uP[7];
+    vec3 steel=uC[0]*(0.92+0.16*fbm(p*40.0))*(1.0+wear*0.25);
+    vec3 rustC=uC[1]*(0.6+0.8*fbm(p*uP[5]*4.0));
+    s.albedo=mix(steel*(1.0-sc*0.10)+vec3(sc*0.10),rustC,rust);
+    s.metal=mix(1.0,0.05,rust);
+    s.rough=sat(mix(uP[6]+sc*0.28-wear*0.18,0.92,rust));
+    s.height=0.5-sc*uP[3]*0.6-rust*0.10+(rustN-0.5)*rust*0.25;
+    s.ao=1.0-sc*0.30-rust*0.15;
+  }
+  else if(t==4){                              /* OXIDISED COPPER */
+    float streak=fbm(vec2(p.x*uP[1]*3.0,p.y*uP[1]*0.35))*uP[6];
+    float pat=fbm(p*uP[1])*0.75+ridged(p*uP[1]*2.3)*0.25+streak*0.35;
+    float m=sat(smoothstep(0.62-uP[0]*0.5,0.80-uP[0]*0.42,pat));
+    vec4 w=worley(p*uP[3]);
+    float pit=smoothstep(0.30,0.02,w.x)*uP[4];
+    vec3 cu=uC[0]*(0.9+0.2*fbm(p*55.0));
+    vec3 pc=uC[1]*(0.7+0.6*fbm(p*uP[1]*3.5));
+    s.albedo=mix(cu,pc,m);
+    s.metal=mix(1.0,0.0,m);
+    s.rough=mix(sat(uP[5]+pit*0.4),uP[2],m);
+    s.height=0.5+m*0.10*(pat-0.4)-pit*0.55+(fbm(p*uP[1]*6.0)-0.5)*m*0.2;
+    s.ao=1.0-pit*0.5-m*0.12;
+  }
+  else if(t==5){                              /* HAMMERED GOLD */
+    vec4 w=worley(p*uP[0]);
+    float dent=pow(sat(1.0-w.x*1.6),mix(1.0,4.0,uP[2]));
+    float facet=1.0-w.x;
+    float tar=sat(smoothstep(0.55,0.85,fbm(p*9.0))*uP[3]*1.6);
+    float sc=scratches(p,90.0,3.0,0.035,uSeed+5.0)*uP[5];
+    s.metal=1.0;
+    s.albedo=mix(uC[0]*(0.9+0.18*facet),uC[1],tar)*(1.0-sc*0.15);
+    s.rough=sat(uP[4]+tar*0.5+sc*0.25-dent*0.05);
+    s.height=0.5-dent*uP[1]*0.85+(fbm(p*uP[0]*5.0)-0.5)*0.06-sc*0.15;
+    s.ao=1.0-dent*0.35;
+  }
+  else if(t==6){                              /* PITTED CAST IRON */
+    vec4 w=worley(p*uP[0]);
+    float pit=smoothstep(0.34,0.0,w.x)*step(0.35,hash11(w.y*13.0));
+    float sp=smoothstep(0.62,0.95,vnoise(p*uP[0]*4.0))*uP[5];
+    float gr=sat(smoothstep(0.45,0.80,fbm(p*uP[3]))*uP[2]*1.8);
+    s.albedo=mix(uC[0]*(0.85+0.3*fbm(p*30.0)),uC[1],gr)*(1.0-pit*0.45)*(1.0-sp*0.25);
+    s.metal=mix(1.0,0.15,gr);
+    s.rough=sat(uP[4]+pit*0.25+gr*0.25+sp*0.2);
+    s.height=0.5-pit*uP[1]*0.9-sp*0.08+(fbm(p*80.0)-0.5)*0.06;
+    s.ao=1.0-pit*0.65-gr*0.15;
+  }
+  else if(t==7){                              /* METALLIC CAR PAINT */
+    vec4 fl=worley(p*uP[0]);
+    float flakeIn=1.0-smoothstep(uP[1]*0.55,uP[1]*0.95,fl.x);
+    vec2 rnd=hash22(vec2(fl.y*37.0,fl.y*91.0))*2.0-1.0;
+    float tilt=dot(-fl.zw,rnd)*uP[3]*3.0;
+    float sparkle=flakeIn*uP[2];
+    float hueRnd=hash11(fl.y*57.0);
+    vec3 flakeC=uC[1]*(0.6+0.9*hueRnd);
+    float peelN=fbm(p*uP[7])*0.7+vnoise(p*uP[7]*2.3)*0.3;
+    float swl=swirls(p,20.0,uSeed+4.0)*uP[11];
+    s.albedo=mix(uC[0],flakeC,sparkle*0.55);
+    s.metal=mix(0.0,0.9,sparkle*0.8);
+    s.rough=sat(mix(uP[10],0.16,sparkle)+swl*0.1);
+    s.height=0.5+tilt*flakeIn*0.5;
+    s.cc=uP[4];
+    s.ccr=sat(uP[5]+swl*0.25);
+    s.peel=0.5+(peelN-0.5)*uP[6];
+    s.irid=uP[8]*flakeIn;
+    s.iridT=sat(0.25+hueRnd*uP[9]);
+    s.ao=1.0;
+    s.spec=0.5;
+  }
+  else if(t==8){                              /* PEARLESCENT CANDY */
+    vec4 fl=worley(p*uP[1]);
+    float pearl=1.0-smoothstep(0.25,0.6,fl.x);
+    vec2 rnd=hash22(vec2(fl.y*23.0,fl.y*71.0))*2.0-1.0;
+    float tilt=dot(-fl.zw,rnd)*2.0;
+    float micro=smoothstep(0.6,1.0,vnoise(p*1400.0))*uP[8];
+    float depth=fbm(p*6.0);
+    vec3 base=uC[0]*(0.7+0.6*depth*uP[2]);
+    float shift=pearl*uP[0];
+    float peelN=fbm(p*38.0);
+    s.albedo=mix(base,uC[1],shift*0.6+micro*0.2);
+    s.metal=0.15+pearl*0.35;
+    s.rough=sat(0.22-pearl*0.10+micro*0.1);
+    s.height=0.5+tilt*pearl*0.35+micro*0.02;
+    s.cc=uP[3];s.ccr=uP[4];
+    s.peel=0.5+(peelN-0.5)*uP[5];
+    s.irid=uP[6];
+    s.iridT=sat(uP[7]*(0.55+0.9*hash11(fl.y*17.0)));
+  }
+  else if(t==9){                              /* MATTE VINYL WRAP */
+    float tex=vnoise(p*uP[1])*0.6+vnoise(p*uP[1]*2.7)*0.4;
+    float grain=vnoise(p*uP[1]*7.0)*uP[6];
+    float dust=smoothstep(0.7,0.95,fbm(p*60.0))*uP[5];
+    s.albedo=uC[0]*(0.9+0.18*tex)*(1.0+dust*0.4);
+    s.metal=0.0;
+    s.rough=sat(mix(0.85,0.42,uP[0])+(tex-0.5)*0.12+dust*0.2);
+    s.height=0.5+(tex-0.5)*uP[2]*0.5+(grain-0.5)*0.06;
+    s.cc=uP[3];s.ccr=uP[4];
+    s.peel=0.5+(tex-0.5)*0.25;
+    s.ao=1.0-dust*0.1;
+  }
+  else if(t==10){                             /* TEXTURED ABS PLASTIC */
+    float gs=uP[1];
+    float grain;
+    vec4 w=worley(p*gs);
+    if(uP[0]<0.5)      grain=vnoise(p*gs*1.6);                          /* fine sand */
+    else if(uP[0]<1.5) grain=1.0-smoothstep(0.0,0.55,w.x);              /* pebble */
+    else               grain=sat(worleyF2(p*gs*0.6)*2.4);               /* leather-ish */
+    float sc=scratches(p,120.0,4.0,0.03,uSeed+8.0)*uP[4];
+    float cv=(fbm(p*7.0)-0.5)*uP[5];
+    float dust=smoothstep(0.75,0.97,fbm(p*55.0))*uP[6];
+    s.albedo=uC[0]*(1.0+cv*0.5)*(0.92+0.14*grain)+vec3(sc*0.06+dust*0.10);
+    s.metal=0.0;
+    s.rough=sat(uP[3]+(grain-0.5)*0.18+sc*0.10+dust*0.2);
+    s.height=0.5+(grain-0.5)*uP[2]*0.8-sc*0.2;
+    s.ao=1.0-(1.0-grain)*uP[2]*0.35;
+    s.spec=0.5;
+  }
+  else if(t==11){                             /* GLOSSY INJECTION PLASTIC */
+    float sc=scratches(p,150.0,6.0,mix(0.055,0.014,uP[2]),uSeed+31.0)*uP[1];
+    float sink=fbm(p*4.0)*uP[3];
+    float flow=vnoise(vec2(p.x*3.0,p.y*90.0))*uP[4];
+    float dust=smoothstep(0.78,0.98,fbm(p*70.0))*uP[6];
+    s.albedo=uC[0]*(1.0-sc*0.10)+vec3(sc*0.05+dust*0.12);
+    s.metal=0.0;
+    s.rough=sat(mix(0.42,0.035,uP[0])+sc*0.35+flow*0.06+dust*0.3);
+    s.height=0.5-sc*0.35+(sink-0.5)*0.35+(flow-0.5)*0.05;
+    s.cc=uP[5];s.ccr=sat(0.03+sc*0.2);
+    s.spec=0.6;
+  }
+  else if(t==12){                             /* SOFT-TOUCH RUBBER */
+    vec4 w=worley(p*uP[0]);
+    float peb=1.0-smoothstep(0.05,0.62,w.x);
+    float micro=vnoise(p*uP[0]*6.0);
+    float wear=smoothstep(0.55,0.95,fbm(p*5.0))*uP[4];
+    float dust=smoothstep(0.72,0.96,fbm(p*64.0))*uP[5];
+    s.albedo=uC[0]*(0.88+0.2*peb)+vec3(dust*0.12);
+    s.metal=0.0;
+    s.rough=sat(uP[2]-wear*0.35+(micro-0.5)*0.1);
+    s.height=0.5+(peb-0.4)*uP[1]*0.7+(micro-0.5)*0.08;
+    s.sheenI=uP[3]*(0.5+0.6*peb);
+    s.sheenC=uC[1];
+    s.sheenR=sat(0.55-wear*0.3);
+    s.ao=1.0-(1.0-peb)*0.25;
+  }
+  else if(t==13){                             /* TRANSLUCENT PLASTIC */
+    float frost=fbm(p*140.0);
+    float sc=scratches(p,110.0,5.0,0.03,uSeed+13.0)*uP[3];
+    s.albedo=uC[0]*(0.95+0.1*frost);
+    s.metal=0.0;
+    s.rough=sat(uP[4]+frost*uP[1]*0.6+sc*0.3);
+    s.height=0.5+(frost-0.5)*uP[1]*0.25-sc*0.25;
+    s.transm=uP[0]*(1.0-frost*uP[1]*0.4);
+    s.spec=uP[5];
+    s.opacity=1.0;
+  }
+  else if(t==14){                             /* COTTON CANVAS */
+    vec2 g=p*uP[0];
+    vec3 w=weavePlain(g,uP[1]);
+    float along=mix(g.y,g.x,w.y);
+    float fibre=vnoise(vec2(along*90.0,mix(g.x,g.y,w.y)*4.0))*uP[5];
+    float slub=vnoise(vec2(along*3.0,mix(g.x,g.y,w.y)*11.0))*uP[7];
+    float fuzz=smoothstep(0.35,0.9,fbm(p*uP[0]*3.0))*uP[3];
+    float wear=smoothstep(0.5,0.95,fbm(p*4.0))*uP[6];
+    vec3 thread=mix(uC[1],uC[0],w.y)*(0.82+0.30*fibre+slub*0.25);
+    s.albedo=mix(thread,uC[2],fuzz*0.35+wear*0.2);
+    s.metal=0.0;
+    s.rough=sat(0.80+fibre*0.15-w.x*0.08);
+    s.height=0.5+(w.x-0.5)*uP[2]*0.9+(fibre-0.5)*0.10+slub*0.06;
+    s.sheenI=uP[3];
+    s.sheenC=uC[2];
+    s.sheenR=uP[4];
+    s.ao=1.0-(1.0-w.x)*0.55;
+    s.spec=0.35;
+  }
+  else if(t==15){                             /* SILK SATIN */
+    float ang=uP[1];
+    vec2 q=rot(ang)*p;
+    vec3 w=weavePlain(q*220.0,1.6);
+    float sheenN=fbm(q*8.0);
+    float wrinkle=fbm(p*3.0)*uP[5];
+    float fibre=vnoise(vec2(q.x*700.0,q.y*6.0));
+    s.albedo=uC[0]*(0.85+0.3*fibre)*(1.0-wrinkle*0.15);
+    s.metal=0.0;
+    s.rough=sat(uP[6]+(fibre-0.5)*0.12);
+    s.height=0.5+(w.x-0.5)*uP[4]*0.25+(wrinkle-0.5)*0.5+(fibre-0.5)*0.03;
+    s.aniso=vec2(cos(ang),sin(ang));
+    s.anisoS=uP[0];
+    s.sheenI=uP[2]*(0.7+0.5*sheenN);
+    s.sheenC=uC[1];
+    s.sheenR=uP[3];
+    s.spec=0.6;
+  }
+  else if(t==16){                             /* DENIM TWILL */
+    vec2 g=p*uP[0];
+    vec3 w=weaveTwill(g,0.9);
+    float along=mix(g.y,g.x,w.y);
+    float fibre=vnoise(vec2(along*70.0,mix(g.x,g.y,w.y)*5.0))*uP[5];
+    float slub=vnoise(vec2(along*2.5,mix(g.x,g.y,w.y)*9.0))*uP[2];
+    float fade=smoothstep(0.42,0.92,fbm(p*3.5))*uP[3];
+    vec3 warp=mix(uC[0],uC[2],fade*0.75);
+    vec3 col=mix(uC[1],warp,w.y);
+    s.albedo=col*(0.80+0.35*fibre+slub*0.3);
+    s.metal=0.0;
+    s.rough=sat(0.86+fibre*0.12);
+    s.height=0.5+(w.x-0.5)*uP[1]*0.9+(fibre-0.5)*0.12+slub*0.05;
+    s.sheenI=uP[4]*0.8;
+    s.sheenC=uC[2];
+    s.sheenR=0.8;
+    s.ao=1.0-(1.0-w.x)*0.6;
+    s.spec=0.3;
+  }
+  else if(t==17){                             /* CARBON FIBRE */
+    vec2 g=p*uP[0];
+    vec3 w=weaveTwill(g,1.1);
+    float along=mix(g.y,g.x,w.y);
+    float across=mix(g.x,g.y,w.y);
+    float stri=sin(across*PI*14.0)*0.5+0.5;
+    stri=mix(1.0,stri,uP[2]);
+    float dir=mix(0.0,PI*0.5,w.y);
+    s.albedo=uC[0]*(0.55+0.75*w.x*mix(1.0,0.75+0.5*stri,0.8))*(1.0-uP[1]*0.25*(1.0-w.y));
+    s.metal=0.25;
+    s.rough=sat(0.30+(1.0-stri)*0.20+(1.0-w.x)*0.15);
+    s.height=0.5+(w.x-0.5)*0.55+(stri-0.5)*0.05;
+    s.aniso=vec2(cos(dir),sin(dir));
+    s.anisoS=uP[5];
+    s.cc=uP[3];s.ccr=uP[4];
+    s.peel=0.5+(w.x-0.5)*0.06;
+    s.sheenI=uP[6];s.sheenC=uC[1];s.sheenR=0.4;
+    s.ao=1.0-(1.0-w.x)*0.4;
+  }
+  else{                                       /* GRAINED LEATHER */
+    vec4 w=worley(p*uP[0]);
+    float cell=smoothstep(0.0,0.35,worleyF2(p*uP[0]));
+    float cell2=smoothstep(0.0,0.30,worleyF2(p*uP[0]*2.6));
+    vec4 po=worley(p*uP[2]);
+    float pore=smoothstep(0.22,0.0,po.x)*step(0.45,hash11(po.y*29.0));
+    float wr=fbm(p*3.0)*uP[3];
+    float wax=smoothstep(0.35,0.9,fbm(p*7.0))*uP[4];
+    float wear=smoothstep(0.55,0.95,fbm(p*2.4))*uP[6];
+    vec3 base=uC[0]*(0.80+0.35*hash11(w.y*11.0));
+    s.albedo=mix(base,uC[1],wax*0.35+wear*0.30)*(1.0-pore*0.35);
+    s.metal=0.0;
+    s.rough=sat(uP[5]-wax*0.30+pore*0.15+(1.0-cell)*0.1);
+    s.height=0.5+(cell*0.7+cell2*0.3-0.5)*uP[1]*0.9-pore*0.35+(wr-0.5)*0.6;
+    s.sheenI=uP[4]*0.6;s.sheenC=uC[1];s.sheenR=0.45;
+    s.ao=1.0-(1.0-cell)*0.45-pore*0.3;
+    s.spec=0.45;
+  }
+  return s;
+}
+vec4 packOut(Surf s,int o){
+  if(o==0) return vec4(lin2srgb(s.albedo),s.opacity);
+  if(o==1) return vec4(s.ao,s.rough,s.metal,s.height);
+  if(o==2) return vec4(s.cc,s.ccr,0.0,s.sheenR);
+  if(o==3) return vec4(normalize(s.aniso)*0.5+0.5,s.anisoS,0.0);
+  if(o==4) return vec4(s.irid,s.iridT,0.0,s.spec);
+  if(o==5) return vec4(lin2srgb(s.sheenC*s.sheenI),s.peel);
+  return vec4(s.transm,s.opacity,0.0,1.0);
+}
+`;
+
+const BAKE_FRAG=GLSL_LIB+GLSL_MATERIAL+`
+uniform sampler2D uPrev,uMask;
+uniform float uOpacity,uScale,uRot;
+uniform vec2 uOff;
+uniform int uOut,uType,uMode,uBlend;
+varying vec2 vUv;
+
+vec3 blendMode(vec3 d,vec3 s,int m){
+  if(m==1) return d*s;
+  if(m==2) return 1.0-(1.0-d)*(1.0-s);
+  if(m==3) return mix(2.0*d*s,1.0-2.0*(1.0-d)*(1.0-s),step(0.5,d));
+  if(m==4) return min(d+s,vec3(1.0));
+  return s;
+}
+float ggx(vec3 N,vec3 V,vec3 L,float a){
+  vec3 H=normalize(V+L);float NdH=max(dot(N,H),0.0);
+  float d=(NdH*NdH*(a*a-1.0)+1.0);
+  return (a*a)/(PI*d*d+1e-5)*max(dot(N,L),0.0);
+}
+void main(){
+  if(uMode==2){ gl_FragColor=packOut(initSurf(),uOut); return; }
+
+  if(uMode==1){                       /* ---- material thumbnail sphere ---- */
+    vec2 q=vUv*2.0-1.0;
+    float r2=dot(q,q);
+    vec3 bg=mix(vec3(0.045),vec3(0.012),sat(length(q)*0.8));
+    bg+=vec3(0.02)*smoothstep(1.6,0.4,length(q-vec2(-0.5,0.6)));
+    if(r2>0.985){gl_FragColor=vec4(lin2srgb(bg),1.0);return;}
+    vec3 n=normalize(vec3(q,sqrt(max(1.0-r2,1e-4))));
+    vec2 muv=(vec2(asin(clamp(n.x,-1.0,1.0)),asin(clamp(n.y,-1.0,1.0)))/PI*1.25+0.5)*uScale;
+    Surf s=evalM(uType,muv);
+    float e=0.0035*uScale;
+    float hx=evalM(uType,muv+vec2(e,0.0)).height-s.height;
+    float hy=evalM(uType,muv+vec2(0.0,e)).height-s.height;
+    vec3 N=normalize(n+vec3(-hx,-hy,0.0)*9.0);
+    vec3 V=vec3(0.0,0.0,1.0);
+    vec3 L1=normalize(vec3(-0.55,0.72,0.55)),L2=normalize(vec3(0.85,0.15,0.5));
+    vec3 F0=mix(vec3(0.045*s.spec*2.0),s.albedo,s.metal);
+    float a=max(s.rough*s.rough,0.0015);
+    vec3 col=s.albedo*(1.0-s.metal)*(max(dot(N,L1),0.0)*0.9+max(dot(N,L2),0.0)*0.30+0.16);
+    col+=F0*(ggx(N,V,L1,a)*2.6+ggx(N,V,L2,a)*1.1);
+    float fr=pow(1.0-max(dot(N,V),0.0),5.0);
+    vec3 env=mix(vec3(0.16,0.17,0.20),vec3(0.62,0.66,0.72),N.y*0.5+0.5);
+    col+=env*mix(F0,vec3(1.0),fr)*(1.0-s.rough*0.82);
+    if(s.cc>0.001){
+      float cga=max(s.ccr*s.ccr,0.0008);
+      col+=s.cc*(ggx(n,V,L1,cga)*2.2+ggx(n,V,L2,cga)*0.9+fr*0.10);
+    }
+    if(s.irid>0.001){
+      float ph=s.iridT*10.0+fr*6.0;
+      col+=s.irid*0.30*fr*(0.5+0.5*cos(vec3(ph,ph+2.1,ph+4.2)));
+    }
+    col+=s.sheenC*s.sheenI*pow(1.0-max(dot(N,V),0.0),3.0)*0.85;
+    col*=s.ao;
+    col=mix(col,bg,smoothstep(0.90,0.985,r2));
+    col*=1.0-0.35*smoothstep(0.4,1.0,r2)*(1.0-smoothstep(0.0,0.6,n.y+0.4));
+    gl_FragColor=vec4(lin2srgb(col),1.0);
+    return;
+  }
+
+  /* ---- bake / composite ---- */
+  vec4 prev=texture2D(uPrev,vUv);
+  float m=texture2D(uMask,vUv).r*uOpacity;
+  vec2 p=rot(uRot)*(vUv-0.5)*uScale+0.5+uOff;
+  Surf s=evalM(uType,p);
+  vec4 cur=packOut(s,uOut);
+  if(uOut==0) cur.rgb=blendMode(prev.rgb,cur.rgb,uBlend);
+  gl_FragColor=mix(prev,cur,m);
+}
+`;
+
+const QUAD_VERT=`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}`;
+
+/* ============================================================================
+   3. RENDERER / SCENE
+   ============================================================================ */
+const canvas=document.getElementById('gl');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.0;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0d0d0d);
+const camera=new THREE.PerspectiveCamera(38,1,.05,200);
+camera.position.set(0,.35,3.1);
+const controls=new OrbitControls(camera,canvas);
+controls.enableDamping=true;controls.dampingFactor=.08;controls.minDistance=.8;controls.maxDistance=12;
+
+/* studio environment (soft boxes + gradient dome) */
+function buildEnv(){
+  const s=new THREE.Scene();
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(60,32,24),new THREE.ShaderMaterial({
+    side:THREE.BackSide,
+    vertexShader:`varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader:`varying vec3 vP;void main(){float t=vP.y*.5+.5;
+      vec3 c=mix(vec3(.035,.037,.042),vec3(.42,.45,.52),pow(t,1.3));
+      c+=vec3(.5)*smoothstep(.986,1.,dot(normalize(vP),normalize(vec3(-.4,.85,.35))));
+      gl_FragColor=vec4(c,1.);}`
+  }));
+  s.add(dome);
+  const box=(w,h,d,x,y,z,i,rx,ry)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshBasicMaterial({color:new THREE.Color(i,i,i)}));m.position.set(x,y,z);
+    m.rotation.set(rx||0,ry||0,0);s.add(m);};
+  box(9,5,.1,-6,4,3,7,0,.8);       // key soft box
+  box(7,7,.1,7,3,-2,2.4,0,-.9);    // fill
+  box(14,.1,14,0,9,0,1.6);         // ceiling bounce
+  box(4,3,.1,0,1,-8,1.2);
+  const pm=new THREE.PMREMGenerator(renderer);pm.compileEquirectangularShader();
+  const t=pm.fromScene(s,0.03).texture;pm.dispose();
+  return t;
+}
+const envTex=buildEnv();
+scene.environment=envTex;
+
+const pbr=new THREE.MeshPhysicalMaterial({
+  color:0xffffff,roughness:.5,metalness:0,envMapIntensity:1.15,
+  iridescenceThicknessRange:[120,860],iridescenceIOR:1.35,
+  clearcoatNormalScale:new THREE.Vector2(1,1),normalScale:new THREE.Vector2(1,1),
+  sheenColor:new THREE.Color(0xffffff),sheenRoughness:.4,
+  specularIntensity:1,thickness:.6,attenuationDistance:2.5,side:THREE.FrontSide
+});
+const maskMat=new THREE.MeshBasicMaterial({color:0xffffff});
+let mesh=null;
+function makeGeo(kind){
+  let g;
+  if(kind==='sphere')g=new THREE.SphereGeometry(1,160,110);
+  else if(kind==='box')g=new THREE.BoxGeometry(1.5,1.5,1.5,60,60,60);
+  else if(kind==='cyl')g=new THREE.CylinderGeometry(.85,.85,1.8,120,60,false);
+  else if(kind==='torus')g=new THREE.TorusGeometry(.95,.42,140,180);
+  else if(kind==='plane')g=new THREE.PlaneGeometry(2.2,2.2,120,120);
+  else g=new THREE.TorusKnotGeometry(.78,.27,320,48);
+  g.computeVertexNormals();
+  try{g.computeTangents();}catch(e){}
+  return g;
+}
+function setMesh(kind){
+  if(mesh){scene.remove(mesh);mesh.geometry.dispose();}
+  mesh=new THREE.Mesh(makeGeo(kind),pbr);
+  scene.add(mesh);
+}
+setMesh('knot');
+
+/* brush cursor ring */
+const ring=new THREE.Mesh(new THREE.RingGeometry(.96,1,64),
+  new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.85,side:THREE.DoubleSide,depthTest:false}));
+ring.renderOrder=999;ring.visible=false;scene.add(ring);
+
+/* ============================================================================
+   4. BAKE PIPELINE
+   ============================================================================ */
+let RES=1024;
+const MASKRES=1024;
+const quadScene=new THREE.Scene();
+const quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const bakeUni={
+  uPrev:{value:null},uMask:{value:null},uOpacity:{value:1},uBlend:{value:0},
+  uOut:{value:0},uType:{value:0},uMode:{value:0},
+  uP:{value:new Array(16).fill(0)},
+  uC:{value:[new THREE.Vector3(1,1,1),new THREE.Vector3(1,1,1),new THREE.Vector3(1,1,1)]},
+  uScale:{value:1},uRot:{value:0},uOff:{value:new THREE.Vector2()},uSeed:{value:1}
+};
+const bakeMat=new THREE.ShaderMaterial({uniforms:bakeUni,vertexShader:QUAD_VERT,fragmentShader:BAKE_FRAG,depthTest:false,depthWrite:false});
+const quad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),bakeMat);
+quadScene.add(quad);
+
+const NORM_FRAG=`
+uniform sampler2D uH;uniform vec2 uTexel;uniform float uStr;varying vec2 vUv;
+void main(){
+  float l=texture2D(uH,vUv-vec2(uTexel.x,0.)).a, r=texture2D(uH,vUv+vec2(uTexel.x,0.)).a;
+  float d=texture2D(uH,vUv-vec2(0.,uTexel.y)).a, u=texture2D(uH,vUv+vec2(0.,uTexel.y)).a;
+  vec3 n=normalize(vec3((l-r)*uStr,(d-u)*uStr,1.0));
+  gl_FragColor=vec4(n*0.5+0.5,1.0);
+}`;
+const normUni={uH:{value:null},uTexel:{value:new THREE.Vector2()},uStr:{value:1}};
+const normMat=new THREE.ShaderMaterial({uniforms:normUni,vertexShader:QUAD_VERT,fragmentShader:NORM_FRAG,depthTest:false,depthWrite:false});
+
+function mkRT(srgb){
+  const rt=new THREE.WebGLRenderTarget(RES,RES,{
+    type:THREE.UnsignedByteType,format:THREE.RGBAFormat,
+    minFilter:THREE.LinearMipmapLinearFilter,magFilter:THREE.LinearFilter,
+    generateMipmaps:true,depthBuffer:false,stencilBuffer:false
+  });
+  rt.texture.colorSpace=srgb?THREE.SRGBColorSpace:THREE.NoColorSpace;
+  rt.texture.anisotropy=8;rt.texture.wrapS=rt.texture.wrapT=THREE.RepeatWrapping;
+  return rt;
+}
+const NT=7;
+let A=[],B=[],normRT=null,ccnRT=null;
+function allocRTs(){
+  [...A,...B].forEach(r=>r&&r.dispose());normRT&&normRT.dispose();ccnRT&&ccnRT.dispose();
+  A=[];B=[];
+  for(let i=0;i<NT;i++){A.push(mkRT(i===0||i===5));B.push(mkRT(i===0||i===5));}
+  normRT=mkRT(false);ccnRT=mkRT(false);
+}
+allocRTs();
+
+const whiteTex=(()=>{const c=document.createElement('canvas');c.width=c.height=4;
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,4,4);
+  const t=new THREE.CanvasTexture(c);return t;})();
+
+function draw(rt,mat){renderer.setRenderTarget(rt);quad.material=mat;renderer.render(quadScene,quadCam);renderer.setRenderTarget(null);}
+
+/* ============================================================================
+   5. LAYER MODEL
+   ============================================================================ */
+let LID=1;
+const layers=[];   // index 0 = bottom
+let sel=null;
+
+function newMask(fill){
+  const c=document.createElement('canvas');c.width=c.height=MASKRES;
+  const x=c.getContext('2d',{willReadFrequently:true});
+  x.fillStyle=fill;x.fillRect(0,0,MASKRES,MASKRES);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.NoColorSpace;
+  t.minFilter=THREE.LinearFilter;t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;
+  return {c,x,t};
+}
+function makeLayer(matId,maskFill){
+  const m=MATBY[matId];
+  return {
+    id:LID++,mat:matId,name:m.n,
+    params:m.p.map(p=>p.v),cols:m.cols.slice(),
+    visible:true,opacity:100,blend:0,
+    scale:100,rot:0,offx:0,offy:0,seed:Math.random()*100,
+    mask:newMask(maskFill||'#fff'),undo:[]
+  };
+}
+function addLayer(matId,fill){
+  const L=makeLayer(matId,fill);
+  const i=sel?layers.indexOf(sel)+1:layers.length;
+  layers.splice(i,0,L);sel=L;renderLayers();renderProps();queueBake();
+  return L;
+}
+
+/* ============================================================================
+   6. BAKING
+   ============================

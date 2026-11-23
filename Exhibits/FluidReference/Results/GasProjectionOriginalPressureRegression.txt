@@ -1,0 +1,24 @@
+Platform: Linux x86_64
+Python: 3.11.2 wgpu: 0.32.0 numpy: 2.3.4
+Reference: SultanAladin/Frontier 6afb6f00b5f25c45f7cda92c7da65b64845768f3
+778170ebf9a1b277dc99b9481697e6734d6863df6cdfd91677ccf59e9cca5959  Experimental/VehicleHmiReference/Shader/PlumeRecords.wgsl
+d56f1e63a73cbb0310b268dd14c96042dbf9c1aa370cd3e05dbdac1cd3e0ce8a  Experimental/VehicleHmiReference/Shader/PlumePressure.wgsl
+f446529d8307856b2a3da0a8f74968cb1bc7801090d9152b728bc7eaeb9d9cd8  Exhibits/FluidReference/Code/PlumePressureValidation.py
+8ee5ac00fd7968e863b05e0f6808057db16a00ad322777e5a05bed51d4f84085  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/libvulkan.so.1
+2f3ceffaaca7d031bc3943f8eacf398a5d9c42c5fe0d15d8840b9acfa630b58e  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/libvk_swiftshader.so
+c9eef28b6b984fec220ef0abfecc40b502d46946706e47bfe97707027cb818bd  /home/user/Frontier/ExternalPackages/VulkanCompute/SwiftShader/vk_swiftshader_icd.json
+Forcing backend: Vulkan (6)
+ADAPTER {'vendor': 'SwiftShader driver', 'architecture': '', 'device': 'SwiftShader Device (Subzero)', 'description': '', 'stackgroup_min_size': 4, 'stackgroup_max_size': 128, 'vendor_id': 6880, 'device_id': 49374, 'adapter_type': 'CPU', 'backend_type': 'Vulkan'}
+BOUNDARY: iterations=1 reset=0 pressure_error=5.96046448e-08 velocity_error=0 after_divergence_error=0
+BOUNDARY hand-computed ground/open/corner/solid probes=6
+SOLID: iterations=64 reset=0 pressure_error=1.78813934e-07 velocity_error=0 after_divergence_error=0
+SOLID interior divergence ratio=0.499900172
+SHIFT: iterations=48 reset=64 pressure_error=2.08616257e-07 velocity_error=0 after_divergence_error=0
+SHIFT interior divergence ratio=0.496516862
+MODE_1: iterations=256 reset=0 pressure_error=1.78813934e-06 velocity_error=1.52587891e-05 after_divergence_error=0
+MODE_1 interior divergence ratio=0.0196405366 pressure_residual_ratio=0.000476715705
+MODE_15: iterations=256 reset=0 pressure_error=4.17232513e-07 velocity_error=0.000244140625 after_divergence_error=0
+MODE_15 interior divergence ratio=0.980990461 pressure_residual_ratio=5.64567891e-05
+SPEED: iterations=1 reset=0 pressure_error=0 velocity_error=0 after_divergence_error=0
+SPEED unoccluded 50 m/s field clamped to 40 m/s
+PASS unchanged demo pressure WGSL compared with independent CPU stencils

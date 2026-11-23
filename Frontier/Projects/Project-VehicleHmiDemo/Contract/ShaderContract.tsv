@@ -1,0 +1,81 @@
+Path	Family	Entrypoints	WorkgroupSizes	Bindings	Groups	Includes	Reachability
+Shader/AtmosphereMedium.wgsl	Atmosphere			1	0		Root
+Shader/AtmosphereMultiple.wgsl	Atmosphere	IntegrateMultiple:compute	8,8	3	0	AtmosphereMedium.wgsl	Root
+Shader/AtmosphereScattering.wgsl	Atmosphere	IntegrateSkyView:compute	8, 8	5	0	SkyProjection.wgsl,NativeTwilight.wgsl,AtmosphereMedium.wgsl	Root
+Shader/AtmosphereTransmittance.wgsl	Atmosphere	IntegrateTransmittance:compute	8,8	1	0	AtmosphereMedium.wgsl	Root
+Shader/CabinOverlay.wgsl	CabinHmi	OverlayVertex:vertex,OverlayFragment:fragment,FlareMaskFragment:fragment		12	0	FrameDescriptor.wgsl,SkyProjection.wgsl,EffectRecords.wgsl,VehicleVisual.wgsl	Root
+Shader/CabinVolume.wgsl	CabinHmi			0			Root
+Shader/CardCapture.wgsl	Cards	CaptureVertex:vertex,CaptureFragment:fragment		3	0	CardProjection.wgsl	Root
+Shader/CardDirect.wgsl	Cards	IntegrateCardDirect:compute	8, 8	8	0	FrameDescriptor.wgsl,DistanceTraversal.wgsl,CardProjection.wgsl,CardIrradiance.wgsl,FireIllumination.wgsl,ClusteredLights.wgsl	Root
+Shader/CardFinal.wgsl	Cards	IntegrateCardFinal:compute	8, 8	9	0	FrameDescriptor.wgsl,CardIrradiance.wgsl	Root
+Shader/CardIrradiance.wgsl	Cards			0			Root
+Shader/CardProjection.wgsl	Cards			0		SceneRecords.wgsl	Root
+Shader/CardRadiosity.wgsl	Cards	IntegrateCardRadiosity:compute	64	4	0	CardSampling.wgsl,CardIrradiance.wgsl,DiscrepancySequence.wgsl	Root
+Shader/CardSampling.wgsl	Cards			7	2	FrameDescriptor.wgsl,DistanceTraversal.wgsl,SkyProjection.wgsl,CardProjection.wgsl,CelestialSky.wgsl	Root
+Shader/CelestialSky.wgsl	Atmosphere			0		NativeTwilight.wgsl,NightStars.wgsl	Root
+Shader/CloudField.wgsl	Clouds			0			Root
+Shader/CloudPresent.wgsl	Clouds			6	0	CloudRecords.wgsl	Root
+Shader/CloudRecords.wgsl	Clouds			0			Root
+Shader/CloudShadowProject.wgsl	Clouds	ProjectCloudShadow:compute	8,8	5	0	FrameDescriptor.wgsl,CloudRecords.wgsl,CloudShadowRecords.wgsl,CloudField.wgsl	Root
+Shader/CloudShadowRecords.wgsl	Clouds			0			Root
+Shader/CloudShadowSample.wgsl	Clouds			0		CloudShadowRecords.wgsl	Root
+Shader/CloudTrace.wgsl	Clouds	DrawClouds:compute	8,8	7	0	FrameDescriptor.wgsl,CloudRecords.wgsl,CloudField.wgsl	Root
+Shader/ClusterDebugFallback.wgsl	Geometry	DebugUnavailable:compute,DebugFailed:compute,DebugNoGeometry:compute	8, 8;8, 8;8, 8	1	0		Root
+Shader/ClusteredLights.wgsl	Illumination			0			Root
+Shader/DirectRadiance.wgsl	Illumination	IntegrateDirectRadiance:compute	8, 8	13	0	FrameDescriptor.wgsl,CelestialSky.wgsl,SurfaceReflectance.wgsl,PackingCodec.wgsl,SkyProjection.wgsl,FireIllumination.wgsl,ClusteredLights.wgsl,RayTraversal.wgsl,CloudShadowSample.wgsl	Root
+Shader/DiscrepancySequence.wgsl	Illumination			0			Root
+Shader/DisplayAntialias.wgsl	Display	IntegrateAntialias:compute	8, 8	5	0	FrameDescriptor.wgsl	Root
+Shader/DisplayExposure.wgsl	Display	IntegrateExposure:compute	256	2	0	FrameDescriptor.wgsl	Root
+Shader/DisplayPresent.wgsl	Display	PresentVertex:vertex,PresentFragment:fragment		5	0	FrameDescriptor.wgsl,DistanceTraversal.wgsl,CloudPresent.wgsl	Root
+Shader/DisplayRecombination.wgsl	Display	ResolveRecombination:compute	8, 8	13	0	FrameDescriptor.wgsl,SurfaceReflectance.wgsl,PackingCodec.wgsl,CabinVolume.wgsl,FogMedium.wgsl	Root
+Shader/DistanceRecords.wgsl	DistanceField			0			Root
+Shader/DistanceTransfer.wgsl	DistanceField	TransferDistance:compute	4, 4, 4	4	0		Root
+Shader/DistanceTraversal.wgsl	DistanceField			7	1	DistanceRecords.wgsl	Root
+Shader/DistanceUnion.wgsl	DistanceField	UniteDistance:compute	64	11	0	SceneRecords.wgsl,DistanceRecords.wgsl	Root
+Shader/EffectRaster.wgsl	Effects	EffectVertex:vertex,EffectFragment:fragment		3	0	FrameDescriptor.wgsl,PackingCodec.wgsl,EffectRecords.wgsl	Root
+Shader/EffectRecords.wgsl	Effects			0			Root
+Shader/FireIllumination.wgsl	Illumination			0		FrameDescriptor.wgsl,DistanceTraversal.wgsl	Root
+Shader/FlareImage.wgsl	Display	IntegrateFlareImage:compute	8,8	1	0	FrameDescriptor.wgsl,LensFlare.wgsl	Root
+Shader/FlareVisibility.wgsl	Display	IntegrateFlareVisibility:compute	1	3	0	FrameDescriptor.wgsl	Root
+Shader/FogMedium.wgsl	Weather			0			Root
+Shader/ForwardRaster.wgsl	Geometry	ForwardVertex:vertex,ForwardFragment:fragment		10	0	FrameDescriptor.wgsl,SurfaceReflectance.wgsl,SkyProjection.wgsl,EffectRecords.wgsl,VehicleVisual.wgsl,CabinVolume.wgsl	Root
+Shader/FragmentDistance.wgsl	DistanceField	ComputeFragmentDistance:compute	64	3	0		Root
+Shader/FrameDescriptor.wgsl	SharedRecords			1	0	SceneRecords.wgsl	Root
+Shader/GeometryClusterCull.wgsl	Geometry	CullGeometryClusters:compute	64	3	0	FrameDescriptor.wgsl	Root
+Shader/HiZDownsample.wgsl	Geometry	DownsampleHiZMip:compute	8, 8	2	0		Root
+Shader/HiZPyramid.wgsl	Geometry	SeedHiZFromDepth:compute	8, 8	2	0		Root
+Shader/InspectionMarch.wgsl	Display	MarchInspection:compute	8, 8	1	0	CardSampling.wgsl,RayTraversal.wgsl	Root
+Shader/LensFlare.wgsl	Display			0			Root
+Shader/LightningRaster.wgsl	Effects	SparkVertex:vertex,SparkFragment:fragment		0		FrameDescriptor.wgsl	Root
+Shader/MaterialResolve.wgsl	SharedRecords	ResolveOpaqueVisibility:compute,ResolveRefractionGather:compute,DebugVisibilityIds:compute,DebugGlassLayers:compute,DebugCopyResolved:compute,DebugHiZView:compute,DebugLodLevels:compute	8, 8;8, 8;8, 8;8, 8;8, 8;8, 8;8, 8	13	0	FrameDescriptor.wgsl	Root
+Shader/NativeTwilight.wgsl	Atmosphere			0			Root
+Shader/NightStars.wgsl	Atmosphere			1	2		Root
+Shader/PackingCodec.wgsl	SharedRecords			0			Root
+Shader/PlumeAdvection.wgsl	Effects	AdvectVelocity:compute,AdvectThermo:compute,ResolveSunTransmittance:compute	4, 4, 4;4, 4, 4;4, 4, 4	8	0	PlumeRecords.wgsl,SceneRecords.wgsl,DistanceTraversal.wgsl	Root
+Shader/PlumeMarch.wgsl	Effects	MarchPlume:compute	8, 8	15	0	FrameDescriptor.wgsl,PlumeRecords.wgsl,SkyProjection.wgsl	Root
+Shader/PlumePressure.wgsl	Effects	ResolveDivergence:compute,RelaxPressure:compute,ProjectVelocity:compute	4, 4, 4;4, 4, 4;4, 4, 4	6	0	PlumeRecords.wgsl	Root
+Shader/PlumeRecords.wgsl	Effects			0			Root
+Shader/PlumeVorticity.wgsl	Effects	ResolveCurl:compute,ConfineVorticity:compute	4, 4, 4;4, 4, 4	4	0	PlumeRecords.wgsl	Root
+Shader/PrecipitationCompute.wgsl	Weather	AdvancePrecipitation:compute	64	10	0	CloudRecords.wgsl,PrecipitationRecords.wgsl,CloudField.wgsl	Root
+Shader/PrecipitationRaster.wgsl	Weather	SnowVertex:vertex,SnowFragment:fragment		1	0	FrameDescriptor.wgsl,PrecipitationRecords.wgsl	Root
+Shader/PrecipitationRecords.wgsl	Weather			0			Root
+Shader/PrecipitationSurface.wgsl	Weather	DepositVertex:vertex,DepositFragment:fragment		2	0	FrameDescriptor.wgsl,PrecipitationRecords.wgsl	Root
+Shader/RayTraversal.wgsl	Illumination			6	3	CardSampling.wgsl,SurfaceReflectance.wgsl,PackingCodec.wgsl,DiscrepancySequence.wgsl,FireIllumination.wgsl,ClusteredLights.wgsl,ReservoirRecords.wgsl	Root
+Shader/ReflectionTraversal.wgsl	Illumination	TraverseReflection:compute	8, 8	4	0	CardSampling.wgsl,SurfaceReflectance.wgsl,PackingCodec.wgsl,DiscrepancySequence.wgsl,RayTraversal.wgsl	Root
+Shader/ReservoirRecords.wgsl	Illumination			0		PackingCodec.wgsl,DistanceRecords.wgsl	Root
+Shader/ReservoirSpatial.wgsl	Illumination	ResampleSpatial:compute	8, 8	4	0	CardSampling.wgsl,ReservoirRecords.wgsl,DiscrepancySequence.wgsl,RayTraversal.wgsl	Root
+Shader/ReservoirTemporal.wgsl	Illumination	ResampleTemporal:compute	8, 8	7	0	CardSampling.wgsl,ReservoirRecords.wgsl,DiscrepancySequence.wgsl,RayTraversal.wgsl	Root
+Shader/SceneRecords.wgsl	SharedRecords			0			Root
+Shader/ShadowRaster.wgsl	Geometry	ShadowVertex:vertex,MaskedShadowVertex:vertex,MaskedShadowFragment:fragment		4	0	SceneRecords.wgsl,EffectRecords.wgsl,VehicleVisual.wgsl	Root
+Shader/SkyProjection.wgsl	Atmosphere			0			Root
+Shader/SnowfallRaster.wgsl	Weather	SnowVertex:vertex,SnowFragment:fragment		0		FrameDescriptor.wgsl	Root
+Shader/SparkRaster.wgsl	Effects	SparkVertex:vertex,SparkFragment:fragment		0		FrameDescriptor.wgsl	Root
+Shader/SurfaceDepositRaster.wgsl	Weather	DepositVertex:vertex,DepositFragment:fragment		0		FrameDescriptor.wgsl	Root
+Shader/SurfaceRaster.wgsl	Geometry	SurfaceVertex:vertex,SurfaceFragment:fragment		5	0	FrameDescriptor.wgsl,PackingCodec.wgsl,EffectRecords.wgsl,VehicleVisual.wgsl	Root
+Shader/SurfaceReflectance.wgsl	SharedRecords			0		SceneRecords.wgsl	Root
+Shader/VarianceTemporal.wgsl	Denoise	IntegrateTemporal:compute	8, 8	9	0	FrameDescriptor.wgsl,PackingCodec.wgsl	Root
+Shader/VarianceUpsample.wgsl	Denoise	ProjectScreenSignal:compute	8, 8	5	0	FrameDescriptor.wgsl,PackingCodec.wgsl	Root
+Shader/VarianceWavelet.wgsl	Denoise	ConvolveWavelet:compute	8, 8	4	0	FrameDescriptor.wgsl,PackingCodec.wgsl	Root
+Shader/VehicleVisual.wgsl	CabinHmi			0			Root
+Shader/VirtualizedGeometryCull.wgsl	Geometry	SelectAndCullPhase1:compute,CullPhase2Disoccluded:compute	64;64	6	0	FrameDescriptor.wgsl	Root
+Shader/VisibilityRaster.wgsl	Geometry	VisibilityVertex:vertex,VisibilityFragment:fragment,VisibilityGlassFragment:fragment,VisibilityGlassBackFragment:fragment		2	0,1	FrameDescriptor.wgsl	Root

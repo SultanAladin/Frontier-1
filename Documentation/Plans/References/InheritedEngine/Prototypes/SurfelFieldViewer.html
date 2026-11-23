@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--============================================================================================================================================
+                                                        SURFEL FIELD VIEWER
+=============================================================================================================================================
+  A self-contained WebGL point-cloud viewer for the L-key surfel dump (surfel-dump.json written by DumpSurfelStateToDisk in
+  SurfelPool.cpp). No CDN, no three.js — one file, raw WebGL, matching the Documentation/Prototypes house style.
+
+  WHAT IT SHOWS
+    - LIVE surfels    : small points, coloured by age (fresh -> hot, old -> cool). The sparse "carpet" the field should be.
+    - SPAWN requests  : larger bright-magenta points, this frame's spawn candidates. The dense "mound" clusters here.
+    - CAMERA gizmo     : a 3-axis crosshair at the dumped cameraEye, so "near the camera" is visually anchored.
+    - FLOOR grid       : the floor plane. The engine world is Z-UP (floor Z=0, up=+Z); dumps are remapped Z-up -> Y-up
+                         on load (see zUpToYUp) so the floor lands flat here and the mound stands vertical, as on device.
+
+  LOAD
+    A browser blocks fetch() of a local file:// path, so load is via the file-picker / drag-drop (drop surfel-dump.json
+    anywhere on the page, or click "Load dump"). An inline sample renders on first open so the page is never blank.
+
+  CAMERA (Unreal-style free-fly)
+    Click the canvas to capture the pointer (pointer-lock). Mouse = look (yaw/pitch). W/A/S/D = move, Q/E = down/up,
+    Shift = boost. Esc releases the pointer. Scroll = adjust base move speed.
+=============================================================================================================================================-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Surfel Field Viewer</title>
+<style>
+  :root {
+    --bg: #0b0d12; --panel: rgba(18,22,30,0.86); --edge: #2a3140; --ink: #cfd6e4; --dim: #7f8aa0;
+    --live: #ffcc55; --spawn: #ff44cc; --accent: #57d0ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 12px/1.5 "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  #gl { position: fixed; inset: 0; display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+    padding: 10px 12px; backdrop-filter: blur(6px); pointer-events: auto; }
+
+  #hud { top: 12px; left: 12px; min-width: 210px; }
+  #hud h1 { margin: 0 0 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  #hud .row { display: flex; justify-content: space-between; gap: 16px; }
+  #hud .row span:first-child { color: var(--dim); }
+  #hud .num { font-variant-numeric: tabular-nums; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+
+  #controls { top: 12px; right: 12px; width: 232px; }
+  #controls h2 { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  #controls label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  #controls input[type=range] { flex: 1; }
+  #controls .val { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+  button, .filebtn { background: #1a2130; color: var(--ink); border: 1px solid var(--edge); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; font: inherit; width: 100%; margin-top: 6px; }
+  button:hover, .filebtn:hover { border-color: var(--accent); color: #fff; }
+  .filebtn { display: block; text-align: center; }
+  #file { display: none; }
+
+  #help { bottom: 12px; left: 12px; color: var(--dim); max-width: 420px; }
+  #help b { color: var(--ink); }
+  #legend { bottom: 12px; right: 12px; }
+  #legend .axis { display: flex; align-items: center; gap: 6px; }
+  #toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: rgba(0,0,0,.75); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 18px;
+    color: #fff; opacity: 0; transition: opacity .25s; pointer-events: none; font-size: 13px; }
+  #toast.show { opacity: 1; }
+  #drop { position: fixed; inset: 0; border: 3px dashed var(--accent); background: rgba(87,208,255,.08);
+    display: none; align-items: center; justify-content: center; font-size: 20px; color: #fff; z-index: 20; }
+  #drop.show { display: flex; }
+</style>
+
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud" class="panel">
+  <h1>Surfel Field</h1>
+  <div class="row"><span>frame</span><span class="num" id="hFrame">—</span></div>
+  <div class="row"><span><span class="swatch" style="background:var(--live)"></span>live</span><span class="num" id="hLive">0</span></div>
+  <div class="row"><span><span class="swatch" style="background:var(--spawn)"></span>spawns</span><span class="num" id="hSpawn">0</span></div>
+  <div class="row"><span>aliveCount</span><span class="num" id="hAlive">—</span></div>
+  <div class="row"><span>cameraEye</span><span class="num" id="hEye">—</span></div>
+  <div class="row"><span>fly cam</span><span class="num" id="hCam">—</span></div>
+</div>
+
+<div id="controls" class="panel">
+  <h2>Display</h2>
+  <label><input type="checkbox" id="showLive" checked> live surfels</label>
+  <label><input type="checkbox" id="showSpawn" checked> spawn requests</label>
+  <label><input type="checkbox" id="showGrid" checked> floor grid (y=0)</label>
+  <label><input type="checkbox" id="showEye" checked> camera gizmo</label>
+  <label>live size <input type="range" id="liveSize" min="1" max="12" step="0.5" value="3"><span class="val" id="liveSizeV">3</span></label>
+  <label>spawn size <input type="range" id="spawnSize" min="2" max="20" step="0.5" value="8"><span class="val" id="spawnSizeV">8</span></label>
+  <label class="filebtn" for="file">Load dump(s) — pick one or many</label>
+  <input type="file" id="file" accept=".json,application/json" multiple>
+  <button id="focusEye">Fly to camera eye</button>
+  <button id="focusSpawns">Frame the spawns</button>
+</div>
+
+<div id="snaps" class="panel" style="top: 300px; right: 12px; width: 232px; display: none;">
+  <h2>Snapshots</h2>
+  <div id="snapList"></div>
+  <button id="clearSnaps">Clear all</button>
+</div>
+
+<div id="help" class="panel">
+  <b>Click</b> canvas to capture mouse · <b>WASD</b> move · <b>Q/E</b> down/up · <b>Shift</b> boost ·
+  <b>scroll</b> speed · <b>Esc</b> release. Drop a <b>surfel-dump.json</b> anywhere to load.
+</div>
+
+<div id="legend" class="panel">
+  <div class="axis"><span class="swatch" style="background:#ff5555"></span>+X (world X)</div>
+  <div class="axis"><span class="swatch" style="background:#55ff77"></span>up = world +Z</div>
+  <div class="axis"><span class="swatch" style="background:#5588ff"></span>depth = world -Y</div>
+</div>
+
+<div id="toast"></div>
+<div id="drop">drop surfel-dump.json to load</div>
+
+<script>
+"use strict";
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       WEBGL SETUP
+//---------------------------------------------------------------------------------------------------------------------------
+const canvas = document.getElementById("gl");
+const gl = canvas.getContext("webgl", { antialias: true, alpha: false, depth: true });
+if (!gl) { document.body.innerHTML = "<p style='color:#fff;padding:20px'>WebGL unavailable in this browser.</p>"; throw new Error("no webgl"); }
+
+function compile(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+// --- point program: position (vec3) + scalar attribute t in [0,1] (age-normalised for live, unused for spawn) -----------
+const POINT_VS = `
+  attribute vec3 aPos;
+  attribute float aT;
+  uniform mat4 uViewProj;
+  uniform float uSize;
+  uniform int  uMode;          // 0 = live (colour by aT), 1 = spawn (flat), 2 = flat line colour
+  uniform vec3 uFlatColour;
+  varying vec3 vColour;
+  // age ramp: fresh (t=0) hot yellow -> old (t=1) cool blue
+  vec3 ageRamp(float t) {
+    vec3 hot  = vec3(1.0, 0.80, 0.33);
+    vec3 mid  = vec3(1.0, 0.35, 0.20);
+    vec3 cool = vec3(0.30, 0.55, 1.0);
+    return t < 0.5 ? mix(hot, mid, t * 2.0) : mix(mid, cool, (t - 0.5) * 2.0);
+  }
+  void main() {
+    gl_Position  = uViewProj * vec4(aPos, 1.0);
+    gl_PointSize = uSize;
+    vColour = (uMode == 0) ? ageRamp(aT) : uFlatColour;
+  }`;
+const POINT_FS = `
+  precision mediump float;
+  varying vec3 vColour;
+  uniform int uRound;          // 1 = draw as soft round disc, 0 = square (also used for lines)
+  void main() {
+    if (uRound == 1) {
+      vec2 d = gl_PointCoord - vec2(0.5);
+      float r = dot(d, d);
+      if (r > 0.25) discard;
+      float a = smoothstep(0.25, 0.10, r);
+      gl_FragColor = vec4(vColour, a);
+    } else {
+      gl_FragColor = vec4(vColour, 1.0);
+    }
+  }`;
+const prog = program(POINT_VS, POINT_FS);
+const loc = {
+  aPos: gl.getAttribLocation(prog, "aPos"),
+  aT:   gl.getAttribLocation(prog, "aT"),
+  uViewProj: gl.getUniformLocation(prog, "uViewProj"),
+  uSize: gl.getUniformLocation(prog, "uSize"),
+  uMode: gl.getUniformLocation(prog, "uMode"),
+  uFlatColour: gl.getUniformLocation(prog, "uFlatColour"),
+  uRound: gl.getUniformLocation(prog, "uRound"),
+};
+
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       MATH (4x4, column-major)
+//---------------------------------------------------------------------------------------------------------------------------
+function mat4Identity() { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
+function mat4Mul(a, b) {
+  const o = new Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    o[c*4+r] = a[0*4+r]*b[c*4+0] + a[1*4+r]*b[c*4+1] + a[2*4+r]*b[c*4+2] + a[3*4+r]*b[c*4+3];
+  }
+  return o;
+}
+function mat4Perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return [ f/aspect,0,0,0,  0,f,0,0,  0,0,(far+near)*nf,-1,  0,0,2*far*near*nf,0 ];
+}
+function mat4LookAt(eye, center, up) {
+  const z = norm(sub(eye, center));
+  const x = norm(cross(up, z));
+  const y = cross(z, x);
+  return [ x[0],y[0],z[0],0,  x[1],y[1],z[1],0,  x[2],y[2],z[2],0,
+           -dot(x,eye), -dot(y,eye), -dot(z,eye), 1 ];
+}
+const sub  = (a,b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const add  = (a,b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+const scale= (a,s) => [a[0]*s, a[1]*s, a[2]*s];
+const dot  = (a,b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const cross= (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const len  = a => Math.hypot(a[0], a[1], a[2]);
+const norm = a => { const l = len(a) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       FREE-FLY CAMERA (Unreal-style)
+//---------------------------------------------------------------------------------------------------------------------------
+const cam = { pos: [4, 3, 8], yaw: -2.4, pitch: -0.25, speed: 6.0, boost: 4.0 };
+const keys = {};
+function camForward() {
+  const cp = Math.cos(cam.pitch);
+  return norm([Math.cos(cam.yaw) * cp, Math.sin(cam.pitch), Math.sin(cam.yaw) * cp]);
+}
+function camRight() { return norm(cross(camForward(), [0,1,0])); }
+
+canvas.addEventListener("click", () => canvas.requestPointerLock());
+document.addEventListener("pointerlockchange", () => {
+  canvas.style.cursor = (document.pointerLockElement === canvas) ? "none" : "crosshair";
+});
+document.addEventListener("mousemove", e => {
+  if (document.pointerLockElement !== canvas) return;
+  const s = 0.0025;
+  cam.yaw   += e.movementX * s;
+  cam.pitch -= e.movementY * s;
+  const lim = Math.PI/2 - 0.01;
+  cam.pitch = Math.max(-lim, Math.min(lim, cam.pitch));
+});
+window.addEventListener("keydown", e => {
+  keys[e.code] = true;
+  if (e.code === "Escape" && document.pointerLockElement === canvas) document.exitPointerLock();
+});
+window.addEventListener("keyup", e => { keys[e.code] = false; });
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  cam.speed = Math.max(0.5, Math.min(200, cam.speed * (e.deltaY < 0 ? 1.15 : 0.87)));
+}, { passive: false });
+
+function updateCamera(dt) {
+  const boost = keys["ShiftLeft"] || keys["ShiftRight"] ? cam.boost : 1.0;
+  const v = cam.speed * boost * dt;
+  const fwd = camForward(), right = camRight();
+  if (keys["KeyW"]) cam.pos = add(cam.pos, scale(fwd, v));
+  if (keys["KeyS"]) cam.pos = sub(cam.pos, scale(fwd, v));
+  if (keys["KeyD"]) cam.pos = add(cam.pos, scale(right, v));
+  if (keys["KeyA"]) cam.pos = sub(cam.pos, scale(right, v));
+  if (keys["KeyE"]) cam.pos = add(cam.pos, [0, v, 0]);
+  if (keys["KeyQ"]) cam.pos = sub(cam.pos, [0, v, 0]);
+}
+
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       DATA + BUFFERS
+//---------------------------------------------------------------------------------------------------------------------------
+// Dump payload: { frame, cameraEye:[x,y,z], capacity, aliveCount, liveCount, spawnCount,
+//                 live:[x,y,z,nx,ny,nz,age, ...], spawns:[x,y,z,nx,ny,nz,frame, ...] }
+//
+// SNAPSHOTS: the viewer holds a LIST of loaded dumps — one per file picked/dropped — each with its own GPU buffers,
+// its own camera gizmo, and a per-snapshot visibility toggle. Loading more files APPENDS (does not clobber), so you can
+// overlay several L-press snapshots and compare where the mound sits frame-to-frame.
+const snapshots = [];   // { name, data, livePos, liveT, liveCount, spawnPos, spawnCount, gizmo, gizmoCount, visible }
+let activeSnap = null;   // the snapshot the HUD + "Fly to eye"/"Frame spawns" act on (last loaded)
+
+// shared static buffers (not per-snapshot)
+const buf = { grid: gl.createBuffer(), gridCount: 0 };
+
+function buildGrid(half, step) {
+  const v = [];
+  for (let i = -half; i <= half; i += step) {
+    v.push(-half, 0, i,  half, 0, i);
+    v.push(i, 0, -half,  i, 0, half);
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf.grid);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  buf.gridCount = v.length / 3;
+}
+
+function gizmoVerts(eye, s) {
+  return new Float32Array([
+    eye[0]-s,eye[1],eye[2], eye[0]+s,eye[1],eye[2],   // X
+    eye[0],eye[1]-s,eye[2], eye[0],eye[1]+s,eye[2],   // Y
+    eye[0],eye[1],eye[2]-s, eye[0],eye[1],eye[2]+s,   // Z
+  ]);
+}
+
+// rebuild the shared floor grid to span EVERY loaded snapshot
+function rescaleGrid() {
+  let ext = 8;
+  for (const s of snapshots) {
+    const d = s.data;
+    for (let i = 0; i < (d.live||[]).length; i += 7) ext = Math.max(ext, Math.abs(d.live[i]), Math.abs(d.live[i+2]));
+    for (let i = 0; i < (d.spawns||[]).length; i += 7) ext = Math.max(ext, Math.abs(d.spawns[i]), Math.abs(d.spawns[i+2]));
+  }
+  ext = Math.min(200, Math.ceil(ext / 5) * 5);
+  buildGrid(ext, Math.max(1, Math.round(ext / 20)));
+}
+
+// The engine world is Z-UP (floor Z=0, up = +Z, verified in the dumps: cameraEye.z≈4.5, spawn slab Z∈[0,2.7]).
+// This viewer's camera math is Y-UP (floor grid on y=0, up=[0,1,0]). Remap every dumped world point Z-up -> Y-up
+// on load: (x, y, z) -> (x, z, -y). Right-handed and orientation-preserving, so the floor slab lands flat on y=0
+// and the "mound" reads as a vertical pile the way it looks on device — NOT tipped onto its side.
+function zUpToYUp(x, y, z) { return [x, z, -y]; }
+
+// APPEND a dump as a new snapshot (does not replace prior loads)
+function loadDump(d, name) {
+  const live = d.live || [];
+  const nLive = Math.floor(live.length / 7);
+  const pos = new Float32Array(nLive * 3);
+  const ts  = new Float32Array(nLive);
+  let maxAge = 1;
+  for (let i = 0; i < nLive; i++) maxAge = Math.max(maxAge, live[i*7 + 6]);
+  for (let i = 0; i < nLive; i++) {
+    const p = zUpToYUp(live[i*7+0], live[i*7+1], live[i*7+2]);
+    pos[i*3+0] = p[0]; pos[i*3+1] = p[1]; pos[i*3+2] = p[2];
+    ts[i] = Math.max(0, Math.min(1, live[i*7+6] / maxAge));
+  }
+  const spawns = d.spawns || [];
+  const nSpawn = Math.floor(spawns.length / 7);
+  const sp = new Float32Array(nSpawn * 3);
+  for (let i = 0; i < nSpawn; i++) {
+    const p = zUpToYUp(spawns[i*7+0], spawns[i*7+1], spawns[i*7+2]);
+    sp[i*3+0] = p[0]; sp[i*3+1] = p[1]; sp[i*3+2] = p[2];
+  }
+  const rawEye = d.cameraEye || [0,0,0];
+  const eye = zUpToYUp(rawEye[0], rawEye[1], rawEye[2]);
+
+  const snap = {
+    name: name || `dump ${snapshots.length}`, data: d, visible: true,
+    livePos: gl.createBuffer(), liveT: gl.createBuffer(), liveCount: nLive,
+    spawnPos: gl.createBuffer(), spawnCount: nSpawn,
+    gizmo: gl.createBuffer(), gizmoCount: 6, eye,
+  };
+  gl.bindBuffer(gl.ARRAY_BUFFER, snap.livePos);  gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, snap.liveT);    gl.bufferData(gl.ARRAY_BUFFER, ts,  gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, snap.spawnPos); gl.bufferData(gl.ARRAY_BUFFER, sp,  gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, snap.gizmo);    gl.bufferData(gl.ARRAY_BUFFER, gizmoVerts(eye, 1.2), gl.STATIC_DRAW);
+
+  snapshots.push(snap);
+  activeSnap = snap;
+  rescaleGrid();
+  rebuildSnapList();
+  updateHud();
+  toast(`loaded ${snap.name}: ${nLive.toLocaleString()} live · ${nSpawn.toLocaleString()} spawns`);
+}
+
+// replace ALL snapshots with one (used by the inline sample so a real load clears it)
+function resetToDump(d, name) { clearSnapshots(); loadDump(d, name); }
+
+function clearSnapshots() {
+  for (const s of snapshots) {
+    gl.deleteBuffer(s.livePos); gl.deleteBuffer(s.liveT); gl.deleteBuffer(s.spawnPos); gl.deleteBuffer(s.gizmo);
+  }
+  snapshots.length = 0; activeSnap = null;
+  rebuildSnapList(); updateHud();
+}
+
+function updateHud() {
+  const d = activeSnap ? activeSnap.data : null;
+  let totLive = 0, totSpawn = 0;
+  for (const s of snapshots) { totLive += s.liveCount; totSpawn += s.spawnCount; }
+  document.getElementById("hFrame").textContent = d ? (d.frame ?? "—") : "—";
+  document.getElementById("hLive").textContent  = totLive.toLocaleString();
+  document.getElementById("hSpawn").textContent = totSpawn.toLocaleString();
+  document.getElementById("hAlive").textContent = d ? (d.aliveCount ?? "—") : "—";
+  document.getElementById("hEye").textContent   = d ? (d.cameraEye||[0,0,0]).map(x => (+x).toFixed(1)).join(", ") : "—";
+}
+
+function rebuildSnapList() {
+  const list = document.getElementById("snapList");
+  const panel = document.getElementById("snaps");
+  panel.style.display = snapshots.length > 1 ? "block" : "none";
+  list.innerHTML = "";
+  snapshots.forEach((s, i) => {
+    const row = document.createElement("label");
+    row.style.cssText = "display:flex;align-items:center;gap:6px;margin:3px 0;cursor:pointer;";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = s.visible;
+    cb.addEventListener("change", () => { s.visible = cb.checked; });
+    const nm = document.createElement("span"); nm.textContent = s.name;
+    nm.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (s === activeSnap ? "color:var(--accent);" : "");
+    nm.addEventListener("click", () => { activeSnap = s; updateHud(); rebuildSnapList(); });
+    row.append(cb, nm);
+    list.append(row);
+  });
+}
+
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       DRAW
+//---------------------------------------------------------------------------------------------------------------------------
+function drawPoints(posBuf, tBuf, count, size, mode, colour, round) {
+  if (!count) return;
+  gl.uniform1f(loc.uSize, size);
+  gl.uniform1i(loc.uMode, mode);
+  gl.uniform1i(loc.uRound, round);
+  if (colour) gl.uniform3fv(loc.uFlatColour, colour);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(loc.aPos);
+  gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
+  if (tBuf) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, tBuf);
+    gl.enableVertexAttribArray(loc.aT);
+    gl.vertexAttribPointer(loc.aT, 1, gl.FLOAT, false, 0, 0);
+  } else {
+    gl.disableVertexAttribArray(loc.aT);
+    gl.vertexAttrib1f(loc.aT, 0.0);
+  }
+  gl.drawArrays(gl.POINTS, 0, count);
+}
+function drawLines(lineBuf, count, colour) {
+  if (!count) return;
+  gl.uniform1i(loc.uMode, 2);
+  gl.uniform1i(loc.uRound, 0);
+  gl.uniform1f(loc.uSize, 1.0);
+  gl.uniform3fv(loc.uFlatColour, colour);
+  gl.disableVertexAttribArray(loc.aT);
+  gl.vertexAttrib1f(loc.aT, 0.0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf);
+  gl.enableVertexAttribArray(loc.aPos);
+  gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.LINES, 0, count);
+}
+
+const ui = {
+  showLive: document.getElementById("showLive"),
+  showSpawn: document.getElementById("showSpawn"),
+  showGrid: document.getElementById("showGrid"),
+  showEye: document.getElementById("showEye"),
+  liveSize: document.getElementById("liveSize"),
+  spawnSize: document.getElementById("spawnSize"),
+};
+ui.liveSize.addEventListener("input", () => document.getElementById("liveSizeV").textContent = ui.liveSize.value);
+ui.spawnSize.addEventListener("input", () => document.getElementById("spawnSizeV").textContent = ui.spawnSize.value);
+
+let last = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now;
+  updateCamera(dt);
+
+  // resize to display size
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  gl.clearColor(0.043, 0.051, 0.070, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  const proj = mat4Perspective(Math.PI/3, canvas.width / Math.max(1, canvas.height), 0.05, 5000);
+  const view = mat4LookAt(cam.pos, add(cam.pos, camForward()), [0,1,0]);
+  const vp = mat4Mul(proj, view);
+
+  gl.useProgram(prog);
+  gl.uniformMatrix4fv(loc.uViewProj, false, new Float32Array(vp));
+
+  if (ui.showGrid.checked) drawLines(buf.grid, buf.gridCount, [0.22, 0.27, 0.36]);
+
+  const liveSize = parseFloat(ui.liveSize.value), spawnSize = parseFloat(ui.spawnSize.value);
+  for (const s of snapshots) {
+    if (!s.visible) continue;
+    if (ui.showLive.checked)  drawPoints(s.livePos, s.liveT, s.liveCount, liveSize, 0, null, 1);
+    if (ui.showSpawn.checked) drawPoints(s.spawnPos, null, s.spawnCount, spawnSize, 1, [1.0, 0.27, 0.80], 1);
+    if (ui.showEye.checked && s.gizmoCount) {
+      // three coloured axis lines drawn one pair at a time
+      gl.uniform1i(loc.uMode, 2); gl.uniform1i(loc.uRound, 0); gl.uniform1f(loc.uSize, 1.0);
+      gl.disableVertexAttribArray(loc.aT); gl.vertexAttrib1f(loc.aT, 0.0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, s.gizmo);
+      gl.enableVertexAttribArray(loc.aPos);
+      gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
+      gl.uniform3fv(loc.uFlatColour, [1.0, 0.33, 0.33]); gl.drawArrays(gl.LINES, 0, 2);
+      gl.uniform3fv(loc.uFlatColour, [0.33, 1.0, 0.47]); gl.drawArrays(gl.LINES, 2, 2);
+      gl.uniform3fv(loc.uFlatColour, [0.33, 0.53, 1.0]); gl.drawArrays(gl.LINES, 4, 2);
+    }
+  }
+
+  document.getElementById("hCam").textContent = cam.pos.map(x => x.toFixed(1)).join(", ");
+  requestAnimationFrame(frame);
+}
+
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       FILE LOAD + UI
+//---------------------------------------------------------------------------------------------------------------------------
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 1800);
+}
+// If any snapshot is still the inline sample, the first real file replaces it; further files append.
+let sampleLoaded = false;
+function readFile(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (sampleLoaded) { clearSnapshots(); sampleLoaded = false; }
+      loadDump(d, file.name);
+    } catch (e) { toast("parse error in " + file.name + ": " + e.message); }
+  };
+  r.readAsText(file);
+}
+function readFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /\.json$/i.test(f.name) || f.type.includes("json"));
+  if (!files.length) { toast("no .json files in selection"); return; }
+  // sort by name so surfel-dump-0000, -0001, … load in press order
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  files.forEach(readFile);
+}
+document.getElementById("file").addEventListener("change", e => { if (e.target.files.length) readFiles(e.target.files); });
+
+const drop = document.getElementById("drop");
+window.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("show"); });
+window.addEventListener("dragleave", e => { if (e.target === document.documentElement) drop.classList.remove("show"); });
+window.addEventListener("drop", e => {
+  e.preventDefault(); drop.classList.remove("show");
+  if (e.dataTransfer.files.length) readFiles(e.dataTransfer.files);
+});
+document.getElementById("clearSnaps").addEventListener("click", () => { clearSnapshots(); sampleLoaded = false; toast("cleared"); });
+
+document.getElementById("focusEye").addEventListener("click", () => {
+  if (!activeSnap) return;
+  const eye = activeSnap.data.cameraEye || [0,0,0];
+  cam.pos = add(eye, [3, 3, 3]);
+  cam.yaw = Math.atan2(eye[2]-cam.pos[2], eye[0]-cam.pos[0]);
+  cam.pitch = -0.4;
+});
+document.getElementById("focusSpawns").addEventListener("click", () => {
+  if (!activeSnap || !activeSnap.spawnCount) { toast("no spawns in active dump"); return; }
+  // centroid of the active snapshot's spawn requests
+  const s = activeSnap.data.spawns; const n = activeSnap.spawnCount;
+  let cx=0, cy=0, cz=0;
+  for (let i = 0; i < n; i++) { cx += s[i*7]; cy += s[i*7+1]; cz += s[i*7+2]; }
+  cx/=n; cy/=n; cz/=n;
+  cam.pos = [cx+6, cy+5, cz+6];
+  cam.yaw = Math.atan2(cz-cam.pos[2], cx-cam.pos[0]);
+  cam.pitch = -0.5;
+});
+
+//---------------------------------------------------------------------------------------------------------------------------
+//                                                       INLINE SAMPLE (so first open isn't blank)
+//---------------------------------------------------------------------------------------------------------------------------
+// A synthetic "mound near the camera" so the layout/controls are visible before a real dump is loaded.
+// Authored in the SAME Z-UP world convention as the real dump (floor Z=0, up=+Z, eye above the floor), so it flows
+// through loadDump's zUpToYUp remap identically — the sample and a device dump look the same in this viewer.
+function sampleDump() {
+  const live = [], spawns = [];
+  const eye = [3, 3, 4.5];   // Z-up: eye at Z=4.5, mirroring the device dump's cameraEye.z
+  // sparse carpet on the floor (Z=0 plane)
+  for (let x = -8; x <= 8; x += 1) for (let y = -8; y <= 8; y += 1) {
+    if ((x + y) % 2) continue;
+    live.push(x + (Math.sin(x*y)*0.1), y, 0.02, 0, 0, 1, Math.floor(Math.abs(x*y) % 480));
+  }
+  // the mound: dense cluster hugging the floor below the camera (Z∈[0,~2.7] like the real spawns)
+  for (let i = 0; i < 900; i++) {
+    const r = Math.pow(Math.random(), 2) * 1.4;
+    const a = Math.random() * Math.PI * 2, b = (Math.random() - 0.5) * Math.PI;
+    const p = [eye[0] + r*Math.cos(a)*Math.cos(b), eye[1] + r*Math.sin(a)*Math.cos(b), Math.abs(r*Math.sin(b))*1.9];
+    live.push(p[0], p[1], p[2], 0, 0, 1, Math.floor(Math.random()*120));
+    if (i % 4 === 0) spawns.push(p[0], p[1], p[2], 0, 0, 1, 0);
+  }
+  return { frame: 0, cameraEye: eye, capacity: 262144, aliveCount: live.length/7,
+           liveCount: live.length/7, spawnCount: spawns.length/7, live, spawns };
+}
+
+loadDump(sampleDump(), "sample (synthetic mound)");
+sampleLoaded = true;
+toast("sample field — drop one or more surfel-dump.json to inspect");
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

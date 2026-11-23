@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/SultanAladin/Frontier.git",
+  "branch": "arena/e9bd7db5-frontier",
+  "inspected_revision": "6afb6f00b5f25c45f7cda92c7da65b64845768f3",
+  "layout": "Project overlay; VehicleHMI demo HTML copied into Reference/ only. Demo JS, CSS, WGSL and assets remain upstream and are ported, not copied.",
+  "rules_and_design_branch": "arena/db2f9953-frontier",
+  "rules_and_design_revision": "676eceb74b01399e71a7664d464a80b243016189",
+  "code_interchange_number": 3,
+  "interface_fingerprint": "0xb6725f24d0869173"
+}

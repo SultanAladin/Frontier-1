@@ -1,0 +1,2299 @@
+<!DOCTYPE html>
+<!--====================================================================================================================================
+                                                  UVPATCHINSPECTOR.HTML
+====================================================================================================================================-->
+<!-- 🧩 UV patch stack + atlas inspector in one Tab-summoned surface: [patches | patch properties] ⇄ [atlas | layout ⇄ revisions] -->
+<!-- 📝 ported from the retired UVeditor prototype. Renamed to satisfy the naming law:
+          UVeditor "island" / "shell"   →  patch  (SKILL-Naming §5 SurfacePatch)
+          UVeditor `weight`             →  footprint
+          UVeditor `HXU` linear history →  branching revisionStore, matching the sibling inspectors
+      Extracted: patch list + properties + history. Dropped: 3D viewport, 2D canvas tools,
+      selection-mode bar, checker/stretch popups, matcap grid, hotkey map.                            -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UV Patch Inspector</title>
+<style>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       TOKENS
+----------------------------------------------------------------------------------------------------------------------*/
+:root{
+  /* surfaces — same palette as SceneDirectoryInspector + TexturePaintInspector so all three read as one product */
+  --desk:#0a0a0b; --menu:#17171a; --menu-2:#101012; --rail-sel:#232327;
+  --tile:#1d1d21; --tile-hi:#26262b;
+  --hair:rgba(255,255,255,.06); --hair-strong:rgba(255,255,255,.10);
+  --accent:#5b8cff; --ink:#ececf0; --muted:#82828c; --faint:#55555d;
+  --r-menu:18px; --r-tile:12px;
+
+  /* field widgets */
+  --value-black:#0a0a0b; --value-unit:#33333a; --value-focus:#303035;
+  --track-bg:#2f2f33; --track-fill:#8a8a8e; --knob:#f4f4f5;
+  --outline:rgba(255,255,255,.22); --text-value:#f2f2f4; --row-h:38px;
+
+  /* row states */
+  --row-hover:rgba(255,255,255,.045); --row-sel:var(--rail-sel);
+
+  /* 🔴 distortion verdicts — the only hue that is a JUDGEMENT, not an identity */
+  --inside:#10b981; --strained:#fbbf24; --torn:#ff6b6b;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                        BASE
+----------------------------------------------------------------------------------------------------------------------*/
+*{ box-sizing:border-box; }
+html,body{ height:100%; margin:0; }
+body{
+  background:var(--desk); color:var(--ink);
+  font:14px/1 "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden; user-select:none;
+}
+button,input{ font-family:inherit; }
+.no-bar{ scrollbar-width:none; -ms-overflow-style:none; }
+.no-bar::-webkit-scrollbar{ width:0; height:0; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       LAYOUT
+----------------------------------------------------------------------------------------------------------------------*/
+.workspace-host{ height:100%; display:flex; flex-direction:column; }
+
+.host-bar{
+  flex:0 0 auto; height:36px; display:flex; align-items:center; gap:12px;
+  padding:0 14px; background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.host-bar .hb-mark{ width:18px; height:18px; color:var(--accent); }
+.host-bar .hb-name{ font-size:12.5px; font-weight:600; letter-spacing:.2px; }
+.host-bar .hb-path{ font-size:11px; color:var(--faint); }
+.host-bar .hb-spacer{ flex:1; }
+.host-bar .hb-hint{
+  font-size:10.5px; color:var(--muted); background:var(--menu);
+  border:1px solid var(--hair); border-radius:999px; padding:4px 10px;
+}
+.host-bar .hb-hint b{ color:var(--ink); font-weight:600; }
+
+.host-body{ flex:1; min-height:0; display:flex; }
+
+/* the UV workspace is the whole host — the menu is summoned over it */
+.viewport{ flex:1; min-width:0; position:relative; background:var(--desk); overflow:hidden; }
+/* 💡 a 0-1 texture square, not the paint prototype's endless weave — this workspace is bounded */
+.viewport-square{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(58vh,58vw); aspect-ratio:1;
+  border:1px solid var(--hair-strong);
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+  background-size:12.5% 12.5%, 12.5% 12.5%;
+}
+.viewport-square::after{
+  content:"0,0"; position:absolute; left:4px; bottom:3px;
+  font-size:9.5px; color:var(--faint); letter-spacing:.5px;
+}
+.viewport-vignette{
+  position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(0,0,0,.55) 100%);
+}
+.viewport-note{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  text-align:center; color:var(--faint); font-size:12px; line-height:1.7; pointer-events:none;
+}
+.viewport-note kbd{
+  display:inline-block; background:var(--menu); color:var(--ink);
+  border:1px solid var(--hair-strong); border-bottom-width:2px; border-radius:6px;
+  padding:3px 8px; font:600 11px/1 "Segoe UI", sans-serif; margin:0 2px;
+}
+.viewport-foot{
+  position:absolute; left:0; right:0; bottom:0; height:28px;
+  display:flex; align-items:center; gap:9px; padding:0 13px;
+  background:linear-gradient(transparent, rgba(0,0,0,.5));
+  font-size:10.5px; color:var(--faint); pointer-events:none;
+}
+.viewport-foot .vf-dot{ color:var(--value-unit); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE HEAD
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 both panes share one band so the seam between stack and properties never steps */
+.pane-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  height:53px; padding:0 11px; box-sizing:border-box;
+  background:var(--rail-sel); border-bottom:1px solid var(--hair);
+}
+.pane-head .h-ic{
+  width:26px; height:26px; flex:0 0 auto; color:var(--ink);
+  background:#000; border-radius:7px; display:grid; place-items:center;
+}
+.pane-head .h-ic svg{ width:18px; height:18px; }
+.pane-head .h-txt{ flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; }
+.pane-head .h-txt .h-lbl{
+  display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pane-head .h-txt .fn{
+  display:block; color:var(--faint); font-weight:400; font-size:10px;
+  letter-spacing:.3px; margin-top:3px;
+}
+.pane-head .h-n{
+  flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+  background:var(--menu-2); padding:4px 9px; border-radius:999px;
+}
+.pane-head .h-n.accent{ color:var(--accent); }
+.pane-head .h-acts{ display:flex; align-items:center; gap:3px; flex:0 0 auto; }
+.hdr-btn{
+  width:27px; height:27px; display:grid; place-items:center;
+  background:none; border:0; border-radius:8px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.hdr-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+.hdr-btn:disabled{ opacity:.3; cursor:default; }
+.hdr-btn:disabled:hover{ background:none; color:var(--muted); }
+.hdr-btn svg{ width:15px; height:15px; }
+
+/* pane-head that acts as the advance / back affordance */
+.pane-head.stepper{ cursor:pointer; }
+.pane-head.stepper:hover{ background:#292930; }
+.pane-head .h-step{
+  flex:0 0 auto; width:22px; height:22px; display:grid; place-items:center;
+  color:var(--muted); border-radius:6px;
+}
+.pane-head.stepper:hover .h-step{ color:var(--ink); background:var(--tile-hi); }
+.pane-head .h-step svg{ width:13px; height:13px; }
+.h-back{
+  flex:0 0 auto; width:20px; height:20px; display:grid; place-items:center; color:var(--muted);
+}
+.h-back svg{ width:14px; height:14px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   PROPERTY ROWS
+----------------------------------------------------------------------------------------------------------------------*/
+.prow{
+  display:grid; grid-template-columns:88px minmax(0,1fr); column-gap:10px;
+  align-items:center; min-height:var(--row-h);
+}
+.plabel{
+  font-size:11.5px; color:var(--muted); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; transition:color .2s;
+}
+.prow.changed .plabel{ color:var(--accent); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   FIELD WIDGETS
+----------------------------------------------------------------------------------------------------------------------*/
+.valuebox{
+  display:flex; align-items:stretch; height:26px; min-width:0;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+  overflow:hidden; transition:border-color .12s;
+}
+.valuebox:focus-within{ border-color:var(--outline); background:var(--value-focus); }
+.valuebox .num{ flex:1; min-width:0; display:flex; align-items:center; padding:0 6px; }
+.valuebox input{
+  width:100%; min-width:0; background:none; border:0; outline:none;
+  color:var(--text-value); font-size:11.5px; font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield;
+}
+.valuebox input::-webkit-outer-spin-button,
+.valuebox input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.unitseg{
+  flex:0 0 auto; display:grid; place-items:center; padding:0 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted); background:var(--value-unit);
+  border-left:1px solid var(--hair);
+}
+/* 🔴 a DERIVED reading, not a field: same size and alignment as an editable value so the property
+   rows still line up, but no box and no border — nothing here invites a click. */
+.pvalue-static{
+  flex:1; min-width:0; display:flex; align-items:center; justify-content:flex-end;
+  padding-right:2px; font-size:11.5px; color:var(--text-value);
+  font-variant-numeric:tabular-nums;
+}
+/* the fold's "nothing to pick" state — the fold still opens, so it must say why it is empty */
+.af-none{ padding:6px 8px; font-size:10.5px; color:var(--faint); }
+
+.sliderrow{ display:flex; align-items:center; gap:7px; min-width:0; }
+.sliderrow .valuebox{ flex:0 0 78px; }
+.slider{
+  flex:1; min-width:0; position:relative; height:4px;
+  background:var(--track-bg); border-radius:999px; cursor:pointer;
+}
+.slider .fill{ position:absolute; left:0; top:0; bottom:0; background:var(--track-fill); border-radius:999px; }
+.slider .knob{
+  position:absolute; top:50%; width:12px; height:12px; margin-left:-6px;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+
+.switch{
+  width:38px; height:22px; flex:0 0 auto; position:relative; cursor:pointer;
+  background:var(--track-bg); border-radius:999px; transition:background .16s;
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  background:var(--knob); border-radius:50%; transition:left .16s cubic-bezier(.4,0,.2,1);
+}
+.switch.on .nub{ left:19px; }
+
+.segment{
+  display:flex; height:26px; background:var(--value-black);
+  border:1px solid var(--hair-strong); border-radius:7px; overflow:hidden;
+}
+.seg-opt{
+  flex:1; min-width:0; display:grid; place-items:center; font-size:11px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.seg-opt:hover{ color:var(--ink); }
+.seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+/* section label reused by PROJECTION / DISTORTION / ACTIONS inside the properties pane */
+.meta-sect{
+  font-size:9.5px; letter-spacing:1.1px; color:var(--faint);
+  font-weight:600; text-transform:uppercase; padding:11px 2px 5px;
+  display:flex; align-items:center; gap:7px;
+}
+.meta-sect svg{ width:12px; height:12px; }
+.meta-sect .ms-tail{ margin-left:auto; letter-spacing:0; text-transform:none; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 ACTIONS AND FOLDS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 the patch actions live INLINE here — the stack carries no right-click menu at all */
+.meta-actions{ margin-top:4px; }
+.act-item{
+  display:flex; align-items:center; gap:9px; height:29px; padding:0 8px;
+  border-radius:8px; font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.act-item:hover{ background:var(--tile-hi); }
+.act-item .ic{ width:15px; height:15px; flex:0 0 auto; display:grid; place-items:center; color:var(--muted); }
+.act-item .ic svg{ width:15px; height:15px; }
+.act-item:hover .ic{ color:var(--ink); }
+.act-item .kbd{ margin-left:auto; font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.act-item.danger{ color:#ff6b6b; }
+.act-item.danger .ic{ color:#ff6b6b; }
+.act-item.danger:hover{ background:rgba(255,107,107,.12); }
+.act-item.armed{ background:var(--tile-hi); }
+.act-item.disabled{ opacity:.35; pointer-events:none; }
+.act-item .fold{
+  margin-left:auto; width:5px; height:5px; transition:transform .16s ease;
+  border-right:1.4px solid var(--muted); border-top:1.4px solid var(--muted); transform:rotate(45deg);
+}
+.act-item.armed .fold{ transform:rotate(135deg); }
+.act-sep{ height:1px; background:var(--hair); margin:6px 8px; }
+/* 📝 the projection choices unfold in place — grid-rows 0fr→1fr, no floating list to place */
+.act-fold{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .2s ease; }
+.act-fold.open{ grid-template-rows:1fr; }
+.act-fold > .af-clip{ overflow:hidden; min-height:0; }
+.af-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:5px 4px 3px 22px; }
+.af-choice{
+  display:flex; align-items:center; gap:7px; height:27px; padding:0 7px;
+  border-radius:7px; font-size:11px; color:var(--ink); cursor:pointer;
+  background:var(--tile); border:1px solid var(--hair);
+}
+.af-choice:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+.af-choice svg{ width:14px; height:14px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    PATCH STACK
+----------------------------------------------------------------------------------------------------------------------*/
+.patch-body{
+  flex:1; min-height:0; overflow-y:auto;
+  padding:4px 6px 8px; display:flex; flex-direction:column; gap:2px;
+}
+.patch-row{
+  position:relative; display:flex; align-items:center; gap:7px;
+  height:44px; padding:0 7px 0 5px; border-radius:10px;
+  color:var(--muted); cursor:pointer; border:1px solid transparent;
+  transition:background .12s, border-color .12s, opacity .12s;
+}
+.patch-row:hover{ background:var(--row-hover); }
+.patch-row.active{ background:var(--row-sel); border-color:var(--hair-strong); }
+.patch-row.active::before{
+  content:""; position:absolute; left:-6px; top:50%; transform:translateY(-50%);
+  width:3px; height:18px; border-radius:0 3px 3px 0; background:var(--accent);
+}
+.patch-row.patch-muted .pr-name,
+.patch-row.patch-muted .pr-tile,
+.patch-row.patch-muted .pr-meta{ opacity:.4; }
+/* the 4px hue tag — a patch's hue is its identity, the same one the atlas and viewport draw it in */
+.pr-tag{ width:4px; height:28px; border-radius:999px; flex:0 0 auto; }
+/* 📝 the tile is the patch's own slice of the 0–1 square, washed in its hue */
+.pr-tile{
+  width:30px; height:30px; flex:0 0 auto; position:relative; overflow:hidden;
+  border-radius:8px; border:1px solid var(--hair); background:#000;
+  display:grid; place-items:center;
+}
+.pr-tile svg{ width:15px; height:15px; }
+.pr-tile-fill{ position:absolute; inset:0; opacity:.5; }
+.pr-text{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.pr-name{
+  font-size:12px; font-weight:500; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pr-meta{
+  font-size:9px; text-transform:uppercase; letter-spacing:.7px; color:var(--faint);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* 🔴 the verdict dot is the only place strain shows in the stack — hue carries the reading,
+   so it must stay legible when the row is muted */
+.pr-verdict{ width:7px; height:7px; border-radius:999px; flex:0 0 auto; }
+.pr-verdict.inside{ background:var(--inside); }
+.pr-verdict.strained{ background:var(--strained); }
+.pr-verdict.torn{ background:var(--torn); box-shadow:0 0 7px var(--torn); }
+.pr-footprint{
+  flex:0 0 auto; min-width:31px; text-align:center; padding:3px 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted);
+  background:#000; border:1px solid var(--hair); border-radius:999px;
+  font-variant-numeric:tabular-nums; cursor:ew-resize;
+  transition:border-color .14s, color .14s;
+}
+.pr-footprint:hover{ border-color:var(--outline); color:var(--ink); }
+.pr-pin{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  opacity:0; color:var(--faint); border-radius:5px;
+  transition:opacity .12s, color .12s, background .12s;
+}
+.patch-row:hover .pr-pin{ opacity:1; }
+.pr-pin:hover{ background:var(--tile-hi); color:var(--ink); }
+.pr-pin svg{ width:14px; height:14px; }
+/* a pinned patch keeps its pin lit — pinning is state, not a hover affordance */
+.patch-row .pr-pin.pinned{ opacity:1; color:var(--accent); }
+/* 🔴 the anchor gets a hairline, NOT a fill — the fill already means "selected", and using one
+   treatment for both would make a 4-patch selection indistinguishable from a 1-patch one. */
+.patch-row.anchor{ border-color:var(--outline); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                              SELECTION PANE  (slide 2's right pane, face 1)
+----------------------------------------------------------------------------------------------------------------------*/
+/* the roster scrolls; the stats below it do not — the readings must stay put while you scroll
+   a long selection, or the numbers you are comparing against slide off the pane. */
+.select-roster{
+  flex:0 0 auto; max-height:47%; overflow-y:auto;
+  padding:4px 6px 6px; display:flex; flex-direction:column; gap:2px;
+  border-bottom:1px solid var(--hair);
+}
+.select-stats{ flex:1; min-height:0; overflow-y:auto; padding:2px 10px 10px; }
+/* the count badge on a bulk action — states how many patches the verb will hit */
+.act-n{
+  margin-left:auto; flex:0 0 auto; min-width:17px; text-align:center;
+  font-size:9.5px; font-weight:600; color:var(--muted);
+  background:var(--value-unit); border-radius:999px; padding:2px 5px;
+  font-variant-numeric:tabular-nums;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                        UDIM TILE ROWS  (slide 1, left column)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 the outliner's top level. A tile row carries only what identifies a TILE — its number, its
+   (u,v) cell, how many patches sit in it and how full it is. Per-patch readings (strain, pin,
+   footprint) deliberately do NOT appear here; they belong to the patch, which lives one slide over. */
+.tile-row{
+  position:relative; display:flex; align-items:center; gap:8px;
+  height:40px; padding:0 8px 0 6px; border-radius:10px;
+  color:var(--muted); cursor:pointer; border:1px solid transparent;
+  transition:background .12s, border-color .12s;
+}
+.tile-row:hover{ background:var(--row-hover); }
+.tile-row.active{ background:var(--row-sel); border-color:var(--hair-strong); }
+.tile-row.active::before{
+  content:""; position:absolute; left:-6px; top:50%; transform:translateY(-50%);
+  width:3px; height:18px; border-radius:0 3px 3px 0; background:var(--accent);
+}
+/* 📝 the (u,v) cell drawn as a 3×3 mini-grid with the tile's own cell lit — a UDIM number is a
+   position, and the number alone does not read as one. */
+.tr-cell{
+  width:26px; height:26px; flex:0 0 auto; border-radius:6px;
+  border:1px solid var(--hair); background:#000; padding:2px;
+  display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:1px;
+}
+.tr-cell i{ border-radius:1px; background:var(--tile-hi); }
+.tr-cell i.lit{ background:var(--accent); }
+.tr-text{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.tr-num{
+  font-size:12.5px; font-weight:600; color:var(--ink);
+  font-variant-numeric:tabular-nums; letter-spacing:.3px;
+}
+.tr-sub{ font-size:9px; text-transform:uppercase; letter-spacing:.7px; color:var(--faint); }
+/* the coverage bar: how full this one square is. Empty tiles read as an unlit track, not a gap. */
+.tr-fill{ width:38px; height:4px; flex:0 0 auto; border-radius:999px; background:var(--tile-hi); overflow:hidden; }
+.tr-fill span{ display:block; height:100%; border-radius:999px; background:var(--accent); }
+.tr-n{
+  flex:0 0 auto; min-width:20px; text-align:center;
+  font-size:10px; font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums;
+}
+/* 🔴 an empty tile stays visible and clickable — it is the slot you move patches INTO,
+   so dimming must not read as disabled. */
+.tile-row.empty .tr-num{ color:var(--muted); }
+.tile-row.empty .tr-n{ color:var(--faint); }
+/* the add-tile affordance sits in the flow at the end of the list, never floating */
+.tile-add{
+  display:flex; align-items:center; gap:7px; height:32px; margin-top:4px;
+  padding:0 8px 0 10px; border-radius:9px; cursor:pointer;
+  border:1px dashed var(--hair-strong); color:var(--faint);
+  font-size:11px; background:none; width:100%;
+  transition:color .12s, border-color .12s, background .12s;
+}
+.tile-add:hover{ color:var(--ink); border-color:var(--outline); background:var(--tile-hi); }
+.tile-add svg{ width:13px; height:13px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE FOOT
+----------------------------------------------------------------------------------------------------------------------*/
+.pane-foot{
+  flex:0 0 auto; height:29px; display:flex; align-items:center; gap:7px;
+  padding:0 12px; background:var(--menu-2); border-top:1px solid var(--hair);
+  font-size:10.5px; color:var(--muted);
+}
+.slide-pane.detail .pane-foot{ background:var(--menu); }
+.pf-strong{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-dot{ color:var(--value-unit); }
+.pf-spacer{ flex:1; }
+.pf-hue{ width:8px; height:8px; border-radius:2px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 one menu, two slides, fixed 548×372 — the same translate as the sibling inspectors */
+.summon-menu{
+  position:fixed; z-index:900; display:none;
+  width:548px; height:372px;
+  background:var(--menu); border:1px solid var(--hair-strong); border-radius:var(--r-menu);
+  overflow:hidden; transform-origin:top left;
+  box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+}
+.summon-menu.open{ display:block; animation:pop .14s cubic-bezier(.16,1,.3,1); }
+@keyframes pop{
+  from{ opacity:0; transform:scale(.965) translateY(-5px); }
+  to  { opacity:1; transform:scale(1) translateY(0); }
+}
+
+.menu-view{ height:100%; overflow:hidden; }
+/* 📝 200%-wide track: slide 1 is the patch stack, slide 2 is atlas + revisions */
+.menu-track{
+  display:flex; width:200%; height:100%;
+  transition:transform .34s cubic-bezier(.5,.05,.2,1);
+}
+.menu-track.to-inspect{ transform:translateX(-50%); }
+/* 🔴 the left column is pinned at 214px on BOTH slides so the seam never steps mid-translate */
+.menu-slide{
+  width:50%; height:100%; display:grid;
+  grid-template-columns:214px minmax(0,1fr); min-height:0;
+}
+.slide-pane{ min-width:0; min-height:0; display:flex; flex-direction:column; }
+.slide-pane.rail{ background:var(--menu); border-right:1px solid var(--hair); }
+.slide-pane.detail{ background:var(--menu-2); }
+
+/* compact overrides — the menu is small, so every widget loses a few px */
+.summon-menu .pane-head{ height:46px; padding:0 10px; }
+.summon-menu .pane-head .h-ic{ width:24px; height:24px; border-radius:6px; }
+.summon-menu .pane-head .h-ic svg{ width:17px; height:17px; }
+.summon-menu .pane-head .h-txt{ font-size:12.5px; }
+.summon-menu .pane-foot{ height:26px; padding:0 10px; font-size:10px; }
+.summon-menu .prow{ grid-template-columns:74px minmax(0,1fr); min-height:32px; column-gap:8px; }
+.summon-menu .plabel{ font-size:11px; }
+.summon-menu .valuebox,
+.summon-menu .segment{ height:24px; }
+.summon-menu .sliderrow .valuebox{ flex:0 0 62px; }
+
+/* dimmer so the menu reads as focused without hiding the workspace */
+.summon-veil{ position:fixed; inset:0; z-index:880; display:none; background:rgba(0,0,0,.34); }
+.summon-veil.open{ display:block; animation:veilIn .14s ease both; }
+@keyframes veilIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.empty-state{
+  padding:26px 14px; text-align:center; color:var(--faint);
+  font-size:11.5px; line-height:1.7;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   ATLAS PREVIEW
+----------------------------------------------------------------------------------------------------------------------*/
+.atlas-body{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:9px 9px 10px; }
+/* 💡 the 0–1 square, drawn at true aspect so the packing can be judged by eye */
+.atlas-square{
+  position:relative; width:100%; aspect-ratio:1;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:8px;
+  overflow:hidden;
+}
+/* the 8×8 texel grid behind the patches, same cadence as the workspace square */
+.atlas-square::before{
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size:12.5% 12.5%, 12.5% 12.5%;
+}
+.atlas-square svg{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+/* 🔴 every patch is drawn in ITS OWN hue — the same hue as its stack row and its footer chip */
+.ap-face{ stroke-width:1.4; vector-effect:non-scaling-stroke; cursor:pointer; }
+.ap-face.dim{ opacity:.16; }
+/* 🔴 the picked patch thickens its own stroke rather than gaining a new colour — the hue is the
+   patch's identity, so overriding it to signal selection would break the one signal that ties
+   the UV view, the roster and the tile list together. */
+.ap-face.picked{ stroke-width:2.6; }
+.ap-face:hover{ stroke-width:2.2; }
+/* the focused patch is outlined, never recoloured — recolouring would break the identity signal */
+.ap-ring{ fill:none; stroke:var(--accent); stroke-width:1.6; vector-effect:non-scaling-stroke; }
+.atlas-cap{
+  display:flex; align-items:center; gap:7px; padding:8px 2px 2px;
+  font-size:10px; color:var(--faint);
+}
+.atlas-cap .ac-hue{ width:8px; height:8px; border-radius:2px; flex:0 0 auto; }
+.atlas-cap .ac-spacer{ flex:1; }
+/* the used/waste readout under the square */
+.atlas-meter{ display:flex; height:5px; border-radius:999px; overflow:hidden; margin:7px 2px 0; }
+.am-used{ background:var(--inside); }
+.am-waste{ background:var(--track-bg); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  PROPERTIES BODY
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 vertical scroll only — a sideways scrollbar here would mean a widget overflowed its column */
+.meta-body{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:2px 10px 10px; }
+
+/* the distortion readout: three bars reading area / angle / overlap against tolerance */
+.dist-grid{ display:flex; flex-direction:column; gap:6px; padding:2px 2px 4px; }
+.dist-row{ display:grid; grid-template-columns:52px minmax(0,1fr) 46px; column-gap:8px; align-items:center; }
+.dist-lbl{ font-size:10px; text-transform:uppercase; letter-spacing:.7px; color:var(--faint); }
+.dist-track{ position:relative; height:4px; background:var(--track-bg); border-radius:999px; overflow:hidden; }
+.dist-fill{ position:absolute; left:0; top:0; bottom:0; border-radius:999px; }
+.dist-fill.inside{ background:var(--inside); }
+.dist-fill.strained{ background:var(--strained); }
+.dist-fill.torn{ background:var(--torn); }
+/* 📝 the tolerance notch marks where "inside" stops — the bar is read against it, not alone */
+.dist-notch{ position:absolute; top:-2px; bottom:-2px; width:1px; background:var(--outline); }
+.dist-num{
+  font-size:10.5px; text-align:right; color:var(--text-value);
+  font-variant-numeric:tabular-nums;
+}
+.dist-verdict{
+  display:flex; align-items:center; gap:6px; padding:6px 2px 0;
+  font-size:10.5px; color:var(--muted);
+}
+.dist-verdict .dv-dot{ width:7px; height:7px; border-radius:999px; flex:0 0 auto; }
+.dist-verdict .dv-dot.inside{ background:var(--inside); }
+.dist-verdict .dv-dot.strained{ background:var(--strained); }
+.dist-verdict .dv-dot.torn{ background:var(--torn); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                    SELECTION ⇄ LAYOUT ⇄ REVISIONS CAROUSEL
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 the three faces of slide 2's right pane. This is a TRACK, not a floater — the pane keeps its
+   size and slides its contents sideways, so nothing ever overlays the UV view. */
+.pack-carousel{
+  flex:0 0 auto; display:flex; align-items:stretch; height:31px; padding:0 6px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.pc-seg{
+  flex:1 1 33.3333%; width:33.3333%; margin-bottom:-1px;
+  background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-size:11.5px; font-weight:500; cursor:pointer;
+  transition:color .15s ease, border-color .15s ease;
+}
+.pc-seg:hover{ color:var(--ink); }
+.pc-seg.active{ color:var(--ink); font-weight:600; border-bottom-color:var(--accent); }
+
+.inspect-view{ flex:1; min-height:0; overflow:hidden; position:relative; }
+/* 🔴 the track is 300% wide holding three 33.33% faces — NOT 100% wide holding three 100% faces.
+   Written the second way the faces overflow their own track, so the pane reports a sideways
+   scroll and the translate resolves against the wrong width. Mirrors `.menu-track` on the shell.
+   The step is 100/3 % of the TRACK, which is exactly one pane. */
+.inspect-track{
+  display:flex; width:300%; height:100%; transform:translateX(0);
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+}
+.inspect-track.to-layout{    transform:translateX(-33.3333%); }
+.inspect-track.to-revisions{ transform:translateX(-66.6667%); }
+/* 🔴 `min-width:0` is load-bearing: without it a flex item refuses to shrink below its content's
+   intrinsic width, so one long patch name widens the face past its third of the track and the
+   whole pane reports a sideways scroll. */
+.inspect-face{
+  flex:0 0 33.3333%; width:33.3333%; min-width:0; max-width:33.3333%;
+  min-height:0; height:100%; overflow:hidden;
+  display:flex; flex-direction:column;
+}
+.pack-body{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:2px 10px 10px; }
+
+/* ---- branch pills ---- */
+.rev-branches{
+  flex:0 0 auto; display:flex; align-items:center; gap:4px;
+  padding:7px 8px; overflow-x:auto; border-bottom:1px solid var(--hair);
+}
+.rev-branch{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto; height:23px; padding:0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  font-size:10.5px; color:var(--muted); cursor:pointer;
+  transition:background .12s, color .12s, border-color .12s;
+}
+.rev-branch:hover{ background:var(--tile-hi); color:var(--ink); }
+.rev-branch.active{ background:rgba(91,140,255,.14); border-color:var(--accent); color:var(--ink); }
+.rev-branch .rb-ct{ font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.rev-branch .rb-shut{ color:var(--faint); font-size:11px; line-height:1; }
+.rev-branch .rb-shut:hover{ color:var(--torn); }
+.rev-fork{
+  flex:0 0 auto; width:23px; height:23px; display:grid; place-items:center;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  color:var(--muted); cursor:pointer; font-size:13px; line-height:1;
+}
+.rev-fork:hover{ background:var(--tile-hi); color:var(--ink); }
+
+/* ---- revision rows on a vertical rail ---- */
+.rev-scroll{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; padding:6px 8px 10px; }
+.rev-row{
+  display:flex; gap:8px; padding:3px 5px; border-radius:8px; cursor:pointer;
+  transition:background .12s;
+}
+.rev-row:hover{ background:var(--row-hover); }
+.rev-row.at-cursor{ background:var(--row-sel); box-shadow:inset 0 0 0 1px var(--hair-strong); }
+/* 🔴 revisions ahead of the cursor are dimmed, NOT removed — they are still reachable by
+   stepping forward, and deleting them is exactly the truncation this store exists to avoid. */
+.rev-row.ahead{ opacity:.4; }
+.rev-rail{ flex:0 0 22px; display:flex; flex-direction:column; align-items:center; }
+.rev-line{ width:2px; flex:1; min-height:5px; background:var(--value-unit); }
+.rev-line.blank{ background:transparent; }
+.rev-node{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  background:var(--menu-2); border-radius:50%; box-shadow:0 0 0 2px var(--hair-strong);
+}
+.rev-row.at-cursor .rev-node{ box-shadow:0 0 0 2px var(--accent); }
+.rev-body{ flex:1; min-width:0; padding:3px 0 6px; }
+.rev-main{ display:flex; align-items:baseline; gap:7px; min-width:0; }
+.rev-title{ font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rev-tag{
+  flex:0 0 auto; font-size:9.5px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  padding:2px 6px; border-radius:999px; background:var(--menu); color:var(--muted);
+}
+.rev-time{
+  flex:0 0 auto; margin-left:auto; font-size:10px; color:var(--faint);
+  font-variant-numeric:tabular-nums;
+}
+/* 📝 the delta line is the point of this pane: what the action actually changed, measured */
+.rev-delta{ font-size:10px; color:var(--faint); margin-top:3px; }
+.rev-delta .rd-was{ color:var(--value-unit); text-decoration:line-through; }
+.rev-delta .rd-now{ color:var(--text-value); }
+</style>
+</head>
+<body>
+
+<!--==================================================================================================================
+                                                    WORKSPACE HOST
+===================================================================================================================-->
+<div class="workspace-host">
+
+  <div class="host-bar">
+    <span class="hb-mark" id="hostMark"></span>
+    <span class="hb-name">UV Patch Inspector</span>
+    <span class="hb-path">Suzanne · unwrapped</span>
+    <span class="hb-spacer"></span>
+    <span class="hb-hint"><b>Tab</b> summon · <b>Tab</b> atlas · <b>Esc</b> dismiss</span>
+  </div>
+
+  <div class="host-body">
+    <div class="viewport" id="viewport">
+      <div class="viewport-square"></div>
+      <div class="viewport-vignette"></div>
+      <div class="viewport-note">
+        UV workspace<br>
+        press <kbd>Tab</kbd> to summon the patch inspector
+      </div>
+      <div class="viewport-foot">
+        <span>0–1 atlas</span><span class="vf-dot">·</span>
+        <span>tile 1001</span><span class="vf-dot">·</span>
+        <span id="hostTally">7 patches</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!--==================================================================================================================
+                                                   SUMMONED MENU
+===================================================================================================================-->
+<div class="summon-veil" id="summonVeil"></div>
+
+<div class="summon-menu" id="summonMenu">
+  <div class="menu-view">
+    <div class="menu-track" id="menuTrack">
+
+      <!-- ═══ SLIDE 1 — patch stack | patch properties ═══ -->
+      <div class="menu-slide">
+        <div class="slide-pane rail">
+          <div class="pane-head">
+            <span class="h-ic" id="stackIcon"></span>
+            <span class="h-txt"><span class="h-lbl">UDIM Tiles</span></span>
+            <span class="h-n" id="patchTally">0</span>
+          </div>
+          <div class="patch-body no-bar" id="patchBody">
+            <div class="empty-state">Tile list lands here.</div>
+          </div>
+          <div class="pane-foot" id="patchFoot"></div>
+        </div>
+        <div class="slide-pane detail">
+          <div class="pane-head stepper" id="advanceHead">
+            <span class="h-ic" id="metaIcon"></span>
+            <span class="h-txt"><span class="h-lbl" id="metaName">—</span><span class="fn" id="metaClass"></span></span>
+            <span class="h-step" id="advanceStep"></span>
+          </div>
+          <div class="meta-body no-bar" id="metaBody">
+            <div class="empty-state">Properties + actions land here.</div>
+          </div>
+          <div class="pane-foot" id="metaFoot"></div>
+        </div>
+      </div>
+
+      <!-- ═══ SLIDE 2 — the tile's UV view | selection ⇄ layout ⇄ revisions ═══ -->
+      <div class="menu-slide">
+        <div class="slide-pane rail">
+          <div class="pane-head stepper back" id="returnHead">
+            <span class="h-step" id="returnStep"></span>
+            <span class="h-txt"><span class="h-lbl" id="uvTileLbl">Tile</span><span class="fn">back to the tiles</span></span>
+          </div>
+          <div class="atlas-body no-bar" id="atlasBody">
+            <div class="empty-state">UV view lands here.</div>
+          </div>
+          <div class="pane-foot" id="atlasFoot"></div>
+        </div>
+        <div class="slide-pane detail">
+          <div class="pane-head">
+            <span class="h-ic" id="inspectIcon"></span>
+            <span class="h-txt"><span class="h-lbl" id="inspectName">—</span><span class="fn" id="inspectSub"></span></span>
+            <span class="h-acts" id="summonActs">
+              <button class="hdr-btn" id="summonUndo" title="Step back"></button>
+              <button class="hdr-btn" id="summonRedo" title="Step forward"></button>
+            </span>
+          </div>
+
+          <!-- 🔴 three faces, one track. Selection is what you PICKED, Layout is how this tile
+               packs, Revisions is what you did — three concerns, never stacked on each other. -->
+          <div class="pack-carousel" id="packCarousel">
+            <button class="pc-seg active" data-face="selection">Selection</button>
+            <button class="pc-seg" data-face="layout">Layout</button>
+            <button class="pc-seg" data-face="revisions">Revisions</button>
+          </div>
+
+          <div class="inspect-view">
+            <div class="inspect-track" id="inspectTrack">
+              <div class="inspect-face">
+                <div class="select-roster no-bar" id="selectHost"></div>
+                <div class="select-stats no-bar" id="selectStats"></div>
+              </div>
+              <div class="inspect-face">
+                <div class="pack-body no-bar" id="packBody"></div>
+              </div>
+              <div class="inspect-face">
+                <div class="rev-branches no-bar" id="revBranches"></div>
+                <div class="rev-scroll no-bar" id="revScroll"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane-foot" id="summonFoot"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   CHROME GLYPHS
+----------------------------------------------------------------------------------------------------------------------*/
+const svgWrap = (body,size)=>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+
+/* 📝 chrome stays monochrome currentColor — only patch art carries hue */
+const S = 'stroke="currentColor" stroke-width="1.7" fill="none"';
+
+const UI = {
+  /* a patch = a cut-open surface region, drawn as an unfolded quad boundary */
+  patch:       `<path ${S} d="M4 8 L11 4 L20 7 L17 17 L8 20 L4 15 Z"/><path ${S} d="M11 4 L10 13 L17 17"/><path ${S} d="M4 15 L10 13"/>`,
+  atlas:       `<rect ${S} x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path ${S} d="M3.5 12 H20.5 M12 3.5 V20.5"/>`,
+  chevron:     `<path ${S} d="M8 5 L15 12 L8 19"/>`,
+  chevronLeft: `<path ${S} d="M16 5 L9 12 L16 19"/>`,
+  /* a pin holds a patch's UVs against the solver — the head, the shaft, the point */
+  pin:         `<path ${S} d="M9 3.5 H15"/><path ${S} d="M12 3.5 V11"/><path ${S} d="M7.5 11 H16.5 L12 20.5 Z" fill="currentColor" stroke="none"/>`,
+  pinOff:      `<path ${S} d="M9 3.5 H15"/><path ${S} d="M12 3.5 V11"/><path ${S} d="M7.5 11 H16.5 L12 20.5 Z"/>`,
+  plus:        `<path ${S} d="M12 5 V19 M5 12 H19"/>`,
+  rename:      `<path ${S} d="M4 20 H9 L19.5 9.5 A2.1 2.1 0 0 0 16.5 6.5 L6 17 Z"/><path ${S} d="M15 8 L18 11"/>`,
+  unwrap:      `<path ${S} d="M5 4 H19 V20 H5 Z"/><path ${S} d="M5 12 H19"/><path ${S} d="M12 4 V20"/>`,
+  target:      `<circle ${S} cx="12" cy="12" r="7"/><circle ${S} cx="12" cy="12" r="2.4"/><path ${S} d="M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22"/>`,
+  mirror:      `<path ${S} d="M12 3 V21"/><path ${S} d="M9 7 L4 12 L9 17 Z"/><path ${S} d="M15 7 L20 12 L15 17 Z"/>`,
+  seam:        `<path ${S} d="M4 12 H7 M10 12 H14 M17 12 H20"/><path ${S} d="M8 6 L8 18"/><path ${S} d="M16 6 L16 18"/>`,
+  relax:       `<path ${S} d="M4 16 C8 8 16 8 20 16"/><path ${S} d="M4 12 H20" stroke-dasharray="2 2.5"/>`,
+  trash:       `<path ${S} d="M5 7 H19"/><path ${S} d="M9 7 V4.5 H15 V7"/><path ${S} d="M6.5 7 L7.5 20 H16.5 L17.5 7"/>`,
+  /* history = a clock, the one glyph that reads as "revisions" without a word */
+  history:     `<circle ${S} cx="12" cy="12" r="8"/><path ${S} d="M12 7.5 V12 L15.5 14.5"/>`,
+  undo:        `<path ${S} d="M4 9 H14.5 A4.5 4.5 0 0 1 14.5 18 H9"/><path ${S} d="M7.5 5.5 L4 9 L7.5 12.5"/>`,
+  redo:        `<path ${S} d="M20 9 H9.5 A4.5 4.5 0 0 0 9.5 18 H15"/><path ${S} d="M16.5 5.5 L20 9 L16.5 12.5"/>`,
+};
+const uiIcon = (name,size=15)=>svgWrap(UI[name]||"",size);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    PATCH STORE
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 ported from the retired patch model — see the rename record in the file banner.
+      UV_PALETTE is carried verbatim so a ported .wsdoc keeps its atlas colours. */
+const UV_PALETTE = ['#ef4444','#eab308','#22c55e','#14b8a6','#3b82f6','#a855f7',
+                    '#ec4899','#f97316','#84cc16','#06b6d4','#d946ef','#fde047'];
+
+/* 🔴 measured from EngineContent/GeometryArchives/ReferenceGeometry/Suzzane.obj by
+   _ClaudeScratch/tmp/suzanne_emit.py — 5 patches found by joining faces through
+   shared vt indices. Do NOT hand-edit: re-run the script instead.
+   `path` is the face soup in a 0..1000 viewBox with v flipped (SVG draws y down).
+   areaStrain is the patch's OWN uneven stretch; densityScale is its texel share. */
+const SUZANNE_PATCHES = [
+  { name:"PRJ_Head", faceCount:318, vertexCount:331, uvCount:355,
+    bounds:[0.0001,0.0094,0.9999,0.49], areaStrain:57.3, angleStrain:9.2, densityScale:0.69,
+    path:"M521 939L517 932L500 935L500 946ZM500 935L483 932L479 939L500 946ZM530 935L523 929L517 932L521 939ZM483 932L477 929L470 935L479 939ZM533 932L526 921L523 929L530 935ZM477 929L474 921L467 932L470 935ZM545 917L529 909L526 921L533 932ZM474 921L471 909L455 917L467 932ZM566 885L538 872L529 909L545 917ZM471 909L462 872L434 885L455 917ZM587 828L627 792L600 762L536 784ZM400 762L373 792L413 828L464 784ZM627 792L651 760L637 739L600 762ZM363 739L349 760L373 792L400 762ZM651 760L690 731L656 716L637 739ZM344 716L310 731L349 760L363 739ZM690 731L685 682L660 687L656 716ZM340 687L315 682L310 731L344 716ZM685 682L671 665L649 678L660 687ZM351 678L329 665L315 682L340 687ZM671 665L637 629L614 647L649 678ZM386 647L363 629L329 665L351 678ZM637 629L602 604L594 629L614 647ZM406 629L398 604L363 629L386 647ZM602 604L581 602L577 627L594 629ZM423 627L419 602L398 604L406 629ZM581 602L532 613L540 646L577 627ZM460 646L468 613L419 602L423 627ZM532 613L500 617L500 660L540 646ZM500 660L500 617L468 613L460 646ZM559 666L579 664L577 627L540 646ZM423 627L421 664L441 666L460 646ZM579 664L592 667L594 629L577 627ZM406 629L408 667L421 664L423 627ZM606 674L614 647L594 629L592 667ZM406 629L386 647L394 674L408 667ZM628 688L649 678L614 647L606 674ZM386 647L351 678L372 688L394 674ZM636 699L660 687L649 678L628 688ZM351 678L340 687L364 699L372 688ZM631 716L656 716L660 687L636 699ZM340 687L344 716L369 716L364 699ZM611 736L637 739L656 716L631 716ZM344 716L363 739L389 736L369 716ZM592 745L600 762L637 739L611 736ZM363 739L400 762L408 745L389 736ZM560 732L536 784L600 762L592 745ZM400 762L464 784L440 732L408 745ZM560 732L551 722L500 748L536 784ZM500 748L449 722L440 732L464 784ZM559 666L540 646L500 660L544 685ZM500 660L460 646L441 666L456 685ZM544 685L500 660L500 704L544 707ZM500 704L500 660L456 685L456 707ZM500 748L551 722L544 707L500 704ZM456 707L449 722L500 748L500 704ZM507 925L500 927L500 935L517 932ZM500 935L500 927L493 925L483 932ZM512 919L507 925L517 932L523 929ZM483 932L493 925L488 919L477 929ZM512 907L512 919L523 929L526 921ZM477 929L488 919L488 907L474 921ZM538 872L514 867L514 903L529 909ZM486 903L486 867L462 872L471 909ZM512 907L526 921L529 909L514 903ZM471 909L474 921L488 907L486 903ZM520 835L500 842L500 866L514 867ZM500 866L500 842L480 835L486 867ZM514 903L514 867L500 866L500 900ZM500 866L486 867L486 903L500 900ZM500 909L512 907L514 903L500 900ZM486 903L488 907L500 909L500 900ZM530 820L522 818L518 828L520 835ZM482 828L478 818L470 820L480 835ZM524 801L519 805L522 818L530 820ZM478 818L481 805L476 801L470 820ZM500 796L508 803L519 805L524 801ZM481 805L492 803L500 796L476 801ZM500 803L500 808L508 803L500 796ZM492 803L500 808L500 803L500 796ZM500 842L520 835L518 828L500 835ZM482 828L480 835L500 842L500 835ZM500 835L518 828L514 823L500 828ZM486 823L482 828L500 835L500 828ZM500 808L500 814L509 808L508 803ZM491 808L500 814L500 808L492 803ZM508 803L509 808L515 809L519 805ZM485 809L491 808L492 803L481 805ZM519 805L515 809L517 818L522 818ZM483 818L485 809L481 805L478 818ZM522 818L517 818L514 823L518 828ZM486 823L483 818L478 818L482 828ZM500 814L517 818L515 809L509 808ZM485 809L483 818L500 814L491 808ZM500 814L500 828L514 823L517 818ZM486 823L500 828L500 814L483 818ZM500 796L524 801L536 784L500 748ZM464 784L476 801L500 796L500 748ZM524 801L530 820L544 827L536 784ZM456 827L470 820L476 801L464 784ZM530 820L520 835L541 845L544 827ZM459 845L480 835L470 820L456 827ZM520 835L514 867L538 872L541 845ZM462 872L486 867L480 835L459 845ZM566 885L579 861L541 845L538 872ZM459 845L421 861L434 885L462 872ZM579 861L583 846L544 827L541 845ZM456 827L417 846L421 861L459 845ZM587 828L536 784L544 827L583 846ZM456 827L464 784L413 828L417 846ZM512 907L500 909L500 910L510 909ZM500 910L500 909L488 907L490 909ZM512 919L512 907L510 909L510 918ZM490 909L488 907L488 919L490 918ZM507 925L512 919L510 918L505 923ZM490 918L488 919L493 925L495 923ZM500 927L507 925L505 923L500 925ZM495 923L493 925L500 927L500 925ZM500 925L505 923L503 919L500 920ZM497 919L495 923L500 925L500 920ZM505 923L510 918L507 917L503 919ZM493 917L490 918L495 923L497 919ZM510 918L510 909L507 913L507 917ZM493 913L490 909L490 918L493 917ZM510 909L500 910L500 914L507 913ZM500 914L500 910L490 909L493 913ZM500 914L500 920L503 919L507 913ZM497 919L500 920L500 914L493 913ZM507 913L503 919L507 917ZM493 917L497 919L493 913ZM544 707L551 722L562 716L559 705ZM438 716L449 722L456 707L441 705ZM544 685L544 707L559 705L563 693ZM441 705L456 707L456 685L437 693ZM559 666L544 685L563 693L570 681ZM437 693L456 685L441 666L430 681ZM551 722L560 732L569 722L562 716ZM431 722L440 732L449 722L438 716ZM560 732L592 745L590 728L569 722ZM410 728L408 745L440 732L431 722ZM592 745L611 736L602 723L590 728ZM398 723L389 736L408 745L410 728ZM611 736L631 716L617 713L602 723ZM383 713L369 716L389 736L398 723ZM631 716L636 699L618 701L617 713ZM382 701L364 699L369 716L383 713ZM636 699L628 688L616 693L618 701ZM384 693L372 688L364 699L382 701ZM628 688L606 674L598 686L616 693ZM402 686L394 674L372 688L384 693ZM606 674L592 667L591 680L598 686ZM409 680L408 667L394 674L402 686ZM592 667L579 664L582 679L591 680ZM418 679L421 664L408 667L409 680ZM579 664L559 666L570 681L582 679ZM430 681L441 666L421 664L418 679ZM582 679L570 681L579 691L584 687ZM421 691L430 681L418 679L416 687ZM591 680L582 679L584 687L590 688ZM416 687L418 679L409 680L410 688ZM598 686L591 680L590 688L596 691ZM410 688L409 680L402 686L404 691ZM616 693L598 686L596 691L606 697ZM404 691L402 686L384 693L394 697ZM618 701L616 693L606 697L608 702ZM394 697L384 693L382 701L392 702ZM617 713L618 701L608 702L607 709ZM392 702L382 701L383 713L393 709ZM602 723L617 713L607 709L598 717ZM393 709L383 713L398 723L402 717ZM590 728L602 723L598 717L590 720ZM402 717L398 723L410 728L410 720ZM569 722L590 728L590 720L576 715ZM410 720L410 728L431 722L424 715ZM562 716L569 722L576 715L573 710ZM424 715L431 722L438 716L427 710ZM570 681L563 693L573 697L579 691ZM427 697L437 693L430 681L421 691ZM563 693L559 705L572 704L573 697ZM428 704L441 705L437 693L427 697ZM559 705L562 716L573 710L572 704ZM427 710L438 716L441 705L428 704ZM500 617L532 613L530 571L500 571ZM470 571L468 613L500 617L500 571ZM532 613L581 602L585 571L530 571ZM415 571L419 602L468 613L470 571ZM581 602L602 604L622 582L585 571ZM378 582L398 604L419 602L415 571ZM602 604L637 629L666 611L622 582ZM334 611L363 629L398 604L378 582ZM637 629L671 665L701 656L666 611ZM299 656L329 665L363 629L334 611ZM671 665L685 682L712 684L701 656ZM288 684L315 682L329 665L299 656ZM685 682L690 731L704 740L712 684ZM296 740L310 731L315 682L288 684ZM690 731L651 760L673 775L704 740ZM327 775L349 760L310 731L296 740ZM651 760L627 792L640 801L673 775ZM360 801L373 792L349 760L327 775ZM604 977L625 971L636 918L599 943ZM364 918L375 971L396 977L401 943ZM547 991L604 977L599 943L556 959ZM401 943L396 977L453 991L444 959ZM500 967L547 991L556 959L527 950ZM444 959L453 991L500 967L473 950ZM521 939L500 946L500 967L527 950ZM500 967L500 946L479 939L473 950ZM530 935L521 939L527 950L537 939ZM473 950L479 939L470 935L463 939ZM533 932L530 935L537 939L558 935ZM463 939L470 935L467 932L442 935ZM545 917L533 932L558 935L588 915ZM442 935L467 932L455 917L412 915ZM558 935L556 959L599 943L588 915ZM401 943L444 959L442 935L412 915ZM558 935L537 939L527 950L556 959ZM473 950L463 939L442 935L444 959ZM607 886L588 915L599 943L636 918ZM401 943L412 915L393 886L364 918ZM566 885L545 917L588 915L607 886ZM412 915L455 917L434 885L393 886ZM579 861L613 866L605 848L583 846ZM395 848L387 866L421 861L417 846ZM566 885L607 886L613 866L579 861ZM387 866L393 886L434 885L421 861ZM587 828L583 846L605 848L601 837ZM395 848L417 846L413 828L399 837ZM587 828L601 837L640 801L627 792ZM360 801L399 837L413 828L373 792ZM922 936L860 882L823 898L861 973ZM177 898L140 882L78 936L139 973ZM861 973L823 898L766 913L775 989ZM234 913L177 898L139 973L225 989ZM775 989L766 913L662 912L647 971ZM338 912L234 913L225 989L353 971ZM647 971L662 912L636 918L625 971ZM364 918L338 912L353 971L375 971ZM607 886L636 918L662 912L613 866ZM338 912L364 918L393 886L387 866ZM704 740L673 775L744 801L766 767ZM256 801L327 775L296 740L234 767ZM988 846L889 822L860 882L922 936ZM140 882L111 822L12 846L78 936ZM900 579L844 653L881 691L959 643ZM119 691L156 653L100 579L41 643ZM959 643L881 691L903 739L1000 746ZM97 739L119 691L41 643L0 746ZM1000 746L903 739L889 822L988 846ZM111 822L97 739L0 746L12 846ZM725 660L712 684L745 695L766 681ZM255 695L288 684L275 660L234 681ZM766 681L745 695L793 720L827 702ZM207 720L255 695L234 681L173 702ZM827 702L793 720L824 745L855 732ZM176 745L207 720L173 702L145 732ZM855 732L824 745L836 775L868 766ZM164 775L176 745L145 732L132 766ZM813 809L851 819L868 766L836 775ZM132 766L149 819L187 809L164 775ZM889 822L903 739L868 766L851 819ZM132 766L97 739L111 822L149 819ZM903 739L881 691L855 732L868 766ZM145 732L119 691L97 739L132 766ZM881 691L844 653L827 702L855 732ZM173 702L156 653L119 691L145 732ZM844 653L772 626L766 681L827 702ZM234 681L228 626L156 653L173 702ZM745 610L725 660L766 681L772 626ZM234 681L275 660L255 610L228 626ZM825 529L772 626L844 653L900 579ZM156 653L228 626L175 529L100 579ZM792 535L742 538L727 567L745 610ZM273 567L258 538L208 535L255 610ZM792 535L745 610L772 626L825 529ZM228 626L255 610L208 535L175 529ZM796 510L792 535L825 529ZM175 529L208 535L204 510ZM712 684L704 740L766 767L745 695ZM234 767L296 740L288 684L255 695ZM766 767L786 772L793 720L745 695ZM207 720L214 772L234 767L255 695ZM786 772L803 797L824 745L793 720ZM176 745L197 797L214 772L207 720ZM813 809L836 775L824 745L803 797ZM176 745L164 775L187 809L197 797ZM662 912L766 913L769 871L691 853ZM231 871L234 913L338 912L309 853ZM744 801L691 853L769 871L780 831ZM231 871L309 853L256 801L220 831ZM673 775L640 801L691 853L744 801ZM309 853L360 801L327 775L256 801ZM640 801L605 848L613 866L691 853ZM387 866L395 848L360 801L309 853ZM613 866L662 912L691 853ZM309 853L338 912L387 866ZM640 801L601 837L605 848ZM395 848L399 837L360 801ZM813 809L804 829L831 860L851 819ZM169 860L196 829L187 809L149 819ZM889 822L851 819L831 860L860 882ZM169 860L149 819L111 822L140 882ZM780 831L769 871L831 860L804 829ZM169 860L231 871L220 831L196 829ZM766 913L823 898L831 860L769 871ZM169 860L177 898L234 913L231 871ZM860 882L831 860L823 898ZM177 898L169 860L140 882ZM744 801L780 831L786 819L770 809ZM214 819L220 831L256 801L230 809ZM766 767L744 801L770 809L786 772ZM230 809L256 801L234 767L214 772ZM786 772L798 804L803 800L803 797ZM197 800L202 804L214 772L197 797ZM786 772L770 809L790 815L798 804ZM210 815L230 809L214 772L202 804ZM770 809L786 819L790 815ZM210 815L214 819L230 809Z" },
+  { name:"PRJ_Ear_L", faceCount:59, vertexCount:63, uvCount:67,
+    bounds:[0.0204,0.5381,0.3586,0.9592], areaStrain:105.8, angleStrain:20.5, densityScale:2.09,
+    path:"M273 108L286 41L176 41L205 115ZM145 153L205 115L176 41L34 103ZM145 216L145 153L34 103L66 243ZM175 256L145 216L66 243L132 281ZM215 287L175 256L132 281L181 318ZM267 313L215 287L181 318L242 359ZM271 280L237 263L215 287L267 313ZM237 263L209 239L175 256L215 287ZM209 239L193 211L145 216L175 256ZM193 211L196 178L145 153L145 216ZM196 178L226 158L205 115L145 153ZM265 155L273 108L205 115L226 158ZM267 313L242 359L342 412L341 326ZM273 108L336 122L350 89L286 41ZM307 286L271 280L267 313L341 326ZM341 326L357 289L321 271L307 286ZM321 271L357 289L327 245L318 253ZM357 289L359 185L323 204L327 245ZM323 204L359 185L336 122L302 169ZM302 169L336 122L273 108L265 155ZM284 196L302 169L265 155L260 184ZM302 216L323 204L302 169L284 196ZM311 235L327 245L323 204L302 216ZM305 244L318 253L327 245L311 235ZM300 257L321 271L318 253L305 244ZM294 267L307 286L321 271L300 257ZM275 259L271 280L307 286L294 267ZM260 184L265 155L226 158L236 182ZM236 182L226 158L196 178L222 191ZM222 191L196 178L193 211L220 209ZM220 209L193 211L209 239L232 228ZM232 228L209 239L237 263L252 245ZM252 245L237 263L271 280L275 259ZM282 244L300 257L305 244L291 230ZM263 230L282 244L291 230L273 215ZM246 217L263 230L273 215L254 203ZM234 207L246 217L254 203L237 196ZM254 203L260 184L236 182L237 196ZM254 203L273 215L284 196L260 184ZM291 230L302 216L284 196L273 215ZM302 216L291 230L305 244L311 235ZM282 244L275 259L294 267L300 257ZM282 244L263 230L252 245L275 259ZM263 230L246 217L232 228L252 245ZM246 217L234 207L220 209L232 228ZM234 207L237 196L222 191L220 209ZM222 191L237 196L236 182ZM176 392L242 359L181 318L137 344ZM137 344L181 318L132 281L106 307ZM106 307L132 281L66 243L82 288ZM82 288L66 243L23 302L74 314ZM74 314L23 302L20 376L83 360ZM83 360L20 376L29 427L102 405ZM176 392L137 344L83 360L102 405ZM106 307L74 314L83 360L137 344ZM106 307L82 288L74 314ZM29 427L33 462L120 442L102 405ZM176 392L102 405L120 442L223 461ZM176 392L223 461L342 412L242 359Z" },
+  { name:"PRJ_Ear_R", faceCount:59, vertexCount:63, uvCount:67,
+    bounds:[0.3916,0.5381,0.7298,0.9592], areaStrain:105.8, angleStrain:20.5, densityScale:2.09,
+    path:"M575 41L465 41L477 108L545 115ZM575 41L545 115L605 153L716 103ZM716 103L605 153L605 216L684 243ZM684 243L605 216L575 256L618 281ZM618 281L575 256L535 287L569 318ZM569 318L535 287L483 313L509 359ZM535 287L513 263L479 280L483 313ZM575 256L541 239L513 263L535 287ZM605 216L558 211L541 239L575 256ZM605 153L554 178L558 211L605 216ZM545 115L525 158L554 178L605 153ZM545 115L477 108L485 155L525 158ZM408 412L509 359L483 313L410 326ZM400 89L414 122L477 108L465 41ZM483 313L479 280L444 286L410 326ZM430 271L393 289L410 326L444 286ZM423 245L393 289L430 271L433 253ZM428 204L392 185L393 289L423 245ZM414 122L392 185L428 204L448 169ZM477 108L414 122L448 169L485 155ZM485 155L448 169L466 196L490 184ZM448 169L428 204L448 216L466 196ZM428 204L423 245L439 235L448 216ZM423 245L433 253L445 244L439 235ZM433 253L430 271L450 257L445 244ZM430 271L444 286L456 267L450 257ZM444 286L479 280L475 259L456 267ZM525 158L485 155L490 184L514 182ZM554 178L525 158L514 182L528 191ZM558 211L554 178L528 191L530 209ZM541 239L558 211L530 209L519 228ZM513 263L541 239L519 228L499 245ZM479 280L513 263L499 245L475 259ZM445 244L450 257L468 244L460 230ZM460 230L468 244L487 230L477 215ZM477 215L487 230L505 217L497 203ZM497 203L505 217L516 207L514 196ZM514 182L490 184L497 203L514 196ZM466 196L477 215L497 203L490 184ZM466 196L448 216L460 230L477 215ZM445 244L460 230L448 216L439 235ZM456 267L475 259L468 244L450 257ZM499 245L487 230L468 244L475 259ZM519 228L505 217L487 230L499 245ZM530 209L516 207L505 217L519 228ZM528 191L514 196L516 207L530 209ZM514 182L514 196L528 191ZM569 318L509 359L574 392L614 344ZM618 281L569 318L614 344L644 307ZM684 243L618 281L644 307L668 288ZM727 302L684 243L668 288L677 314ZM730 376L727 302L677 314L667 360ZM721 427L730 376L667 360L648 405ZM667 360L614 344L574 392L648 405ZM667 360L677 314L644 307L614 344ZM677 314L668 288L644 307ZM630 442L718 462L721 427L648 405ZM630 442L648 405L574 392L527 461ZM408 412L527 461L574 392L509 359Z" },
+  { name:"PRJ_Eye_L", faceCount:32, vertexCount:33, uvCount:33,
+    bounds:[0.7465,0.4922,0.9861,0.7317], areaStrain:44.5, angleStrain:10.4, densityScale:2.11,
+    path:"M843 411L834 388L794 388L815 439ZM815 439L794 388L747 388L782 473ZM794 388L815 337L782 303L747 388ZM834 388L843 365L815 337L794 388ZM843 365L866 355L866 316L815 337ZM815 337L866 316L866 268L782 303ZM866 316L917 337L951 303L866 268ZM866 355L889 365L917 337L866 316ZM889 365L899 388L938 388L917 337ZM917 337L938 388L986 388L951 303ZM938 388L917 439L951 473L986 388ZM899 388L889 411L917 439L938 388ZM889 411L866 421L866 460L917 439ZM917 439L866 460L866 508L951 473ZM866 460L815 439L782 473L866 508ZM866 421L843 411L815 439L866 460ZM843 411L866 421L866 415L848 407ZM866 421L889 411L885 407L866 415ZM889 411L899 388L893 388L885 407ZM899 388L889 365L885 369L893 388ZM889 365L866 355L866 362L885 369ZM866 355L843 365L848 369L866 362ZM843 365L834 388L840 388L848 369ZM834 388L843 411L848 407L840 388ZM866 388L840 388L848 407ZM848 369L840 388L866 388ZM866 388L866 362L848 369ZM866 388L885 369L866 362ZM866 388L893 388L885 369ZM866 388L885 407L893 388ZM866 388L866 415L885 407ZM866 388L848 407L866 415Z" },
+  { name:"PRJ_Eye_R", faceCount:32, vertexCount:33, uvCount:33,
+    bounds:[0.7465,0.7456,0.9861,0.9851], areaStrain:44.5, angleStrain:10.4, densityScale:2.11,
+    path:"M866 63L866 102L889 112L917 84ZM866 15L866 63L917 84L951 50ZM782 50L815 84L866 63L866 15ZM815 84L843 112L866 102L866 63ZM794 135L834 135L843 112L815 84ZM747 135L794 135L815 84L782 50ZM782 219L815 186L794 135L747 135ZM815 186L843 158L834 135L794 135ZM866 207L866 167L843 158L815 186ZM866 254L866 207L815 186L782 219ZM951 219L917 186L866 207L866 254ZM917 186L889 158L866 167L866 207ZM938 135L899 135L889 158L917 186ZM986 135L938 135L917 186L951 219ZM951 50L917 84L938 135L986 135ZM917 84L889 112L899 135L938 135ZM893 135L899 135L889 112L885 116ZM885 153L889 158L899 135L893 135ZM866 161L866 167L889 158L885 153ZM848 153L843 158L866 167L866 161ZM840 135L834 135L843 158L848 153ZM848 116L843 112L834 135L840 135ZM866 108L866 102L843 112L848 116ZM885 116L889 112L866 102L866 108ZM885 116L866 108L866 135ZM866 135L866 108L848 116ZM848 116L840 135L866 135ZM840 135L848 153L866 135ZM848 153L866 161L866 135ZM866 161L885 153L866 135ZM885 153L893 135L866 135ZM893 135L885 116L866 135Z" },
+];
+/* the unwrap fills 0.6891 of the square — the rest is real, measured waste */
+const SUZANNE_COVERAGE = 0.6891;
+
+/* how the patch was cut open — the projection that produced it. Drives the glyph, not a hue. */
+const PROJECTION_ORDER = ["conformal","angleBased","planar","box","cylindrical","spherical"];
+const PROJECTION_LABEL = {
+  conformal:"Conformal", angleBased:"Angle-based", planar:"Planar",
+  box:"Box", cylindrical:"Cylindrical", spherical:"Spherical",
+};
+const PROJECTION_NOTE = {
+  conformal:  "Seam-respecting LSCM — lowest angle error, needs seams",
+  angleBased: "Smart projection — auto-cuts by face angle",
+  planar:     "Single-plane projection along the average normal",
+  box:        "Six-way axis projection, one patch per dominant axis",
+  cylindrical:"Wraps around one axis, seam at the back",
+  spherical:  "Latitude/longitude wrap, poles pinch",
+};
+
+const RESOLUTIONS = ["512","1K","2K","4K","8K"];
+/* 🔴 the margin is authored in TEXELS, so it only means something against a resolution — the two
+   are one setting. Raising the atlas therefore makes a fixed margin cost proportionally less. */
+const RESOLUTION_PX = { "512":512, "1K":1024, "2K":2048, "4K":4096, "8K":8192 };
+const PACK_ORDER  = ["Grid","Shelf","Skyline","Shape"];
+const PACK_NOTE   = {
+  Grid:"Uniform cells — simplest, wastes the most space",
+  Shelf:"Row shelves by height",
+  Skyline:"Bottom-left skyline — the general default",
+  Shape:"Packs the true footprint so concave patches interlock",
+};
+const FOOTPRINT_STEPS = [1,2,4,8,16,32];
+
+let patchSeq=0;
+function makePatch(spec){
+  const index=patchSeq++;
+  return {
+    token:"P"+index,
+    name:spec.name,
+    hue:spec.hue || UV_PALETTE[index % UV_PALETTE.length],
+    projection:spec.projection,
+    faceCount:spec.faceCount,
+    vertexCount:spec.vertexCount,
+    footprint:spec.footprint||1,          /* importance: >1 claims more atlas space */
+    pinned:!!spec.pinned,                 /* frozen in place: a repack never moves it */
+    shown:spec.shown!==false,
+    tile:spec.tile||1001,
+    density:spec.density||512,            /* texels per metre */
+    areaStrain:spec.areaStrain,           /* signed % — how much area the flattening gained/lost */
+    angleStrain:spec.angleStrain,         /* degrees of mean angle deviation */
+    overlap:spec.overlap||0,              /* self-overlapping face count */
+    seamEdges:spec.seamEdges||0,
+    /* 📝 the measured geometry: bbox in the 0–1 square + the face soup as an SVG path.
+       A synthesised patch has neither, so the atlas falls back to its bbox. */
+    bounds:spec.bounds||null,
+    path:spec.path||"",
+  };
+}
+
+/* 🔴 the seed is the REAL unwrap measured off Suzzane.obj — 5 patches, not invented numbers.
+   The mirrored ear/eye twins fall out of the mesh itself, as do the strain readings. */
+const patchStore = SUZANNE_PATCHES.map((src)=>makePatch({
+  name:src.name,
+  /* the head is the big conformal cut; the twins are spherical caps */
+  projection:src.name==="PRJ_Head" ? "conformal" : "spherical",
+  faceCount:src.faceCount,
+  vertexCount:src.vertexCount,
+  /* 📝 the measured texel share becomes the footprint, snapped to the nearest preset —
+     the unwrap already gives the eyes/ears ~2x the head's density. */
+  footprint:FOOTPRINT_STEPS.reduce((best,step)=>
+    Math.abs(step-src.densityScale)<Math.abs(best-src.densityScale)?step:best, FOOTPRINT_STEPS[0]),
+  areaStrain:src.areaStrain,
+  angleStrain:src.angleStrain,
+  /* 🔴 measured by suzanne_overlap.py: this unwrap is clean, so nothing is torn */
+  overlap:0,
+  seamEdges:src.uvCount-src.vertexCount,   /* split uvs are exactly the seam duplicates */
+  density:512,
+  bounds:src.bounds,
+  path:src.path,
+}));
+
+/* 🔴 UDIM is the outliner's top level now: the left column lists TILES, and a patch is only
+   reachable through the tile it sits in. A UDIM number is not free-form — it encodes a grid
+   position as 1001 + u + v*10, so the label and the (u,v) cell are two views of one integer.
+   Deriving them (never storing u/v alongside) keeps a renamed tile from disagreeing with itself. */
+const UDIM_BASE = 1001;
+const udimCell  = (tile)=>({ u:(tile-UDIM_BASE)%10, v:Math.floor((tile-UDIM_BASE)/10) });
+const udimLabel = (tile)=>String(tile);
+
+/* the tiles that exist, in ascending order. A tile with no patches is still a real tile —
+   it is the empty slot you drag into, so it must survive having its last patch moved out. */
+let tileStore = [1001,1002,1011];
+let focusTile = 1001;
+
+const tilePatches   = (tile)=>patchStore.filter(p=>p.tile===tile);
+const tileFaces     = (tile)=>tilePatches(tile).reduce((sum,p)=>sum+p.faceCount,0);
+/* 🔴 coverage is per-TILE: a patch's area over that one tile's square, not over the whole atlas.
+   Summing across tiles would let two tiles read 60% each and imply 120% of one square. */
+/* 🔴 a tile's fill is its OWN ink measured against ONE square — it must not reference how many
+   tiles exist. Scaling by tileStore.length made adding an empty tile inflate every other tile's
+   coverage, so the number moved when nothing about that tile had changed.
+   The measured bboxes are the ink: SUZANNE_COVERAGE of the square held all 5 patches, so a
+   patch's slice of that ink is its share of the total measured area. */
+function tileCoverage(tile){
+  const held=tilePatches(tile).filter(p=>p.path);
+  if(!held.length) return 0;
+  const all=patchStore.filter(p=>p.path).reduce((sum,p)=>sum+patchArea(p),0);
+  const mine=held.reduce((sum,p)=>sum+patchArea(p),0);
+  return all ? Math.min(1, SUZANNE_COVERAGE*(mine/all)) : 0;
+}
+
+/* 📝 the measured unwrap ships as one tile; spread the twins out so the list shows real
+   multi-tile work rather than one row. Ears share a tile — mirrored twins usually do. */
+patchStore.forEach((patch)=>{
+  if(/_Ear_/.test(patch.name))      patch.tile=1002;
+  else if(/_Eye_/.test(patch.name)) patch.tile=1011;
+});
+
+let focusToken = patchStore[0].token;
+/* 🔴 selection is a SET of tokens, not the single `focusToken` — slide 2 lets you pick several
+   patches and read their combined stats. `focusToken` stays as the "last touched" anchor that
+   shift-extends from, so the two must never be collapsed into one another. */
+let selectedTokens = new Set([patchStore[0].token]);
+const selectedPatches = ()=>patchStore.filter(p=>selectedTokens.has(p.token));
+
+const resolveToken  = (token)=>patchStore.find(p=>p.token===token)||null;
+const focusPatch    = ()=>resolveToken(focusToken);
+const patchIndex    = (token)=>patchStore.findIndex(p=>p.token===token);
+const totalFaces    = ()=>patchStore.reduce((sum,p)=>sum+p.faceCount,0);
+const pinnedCount   = ()=>patchStore.filter(p=>p.pinned).length;
+const overlapCount  = ()=>patchStore.filter(p=>p.overlap>0).length;
+
+/* 🔴 atlas share is DERIVED, never stored — a patch's slice of the 0–1 square is its
+   own footprint×area over the sum of all of them, so the shares always total 100 %. */
+const patchArea = (patch)=>patch.faceCount*patch.footprint;
+function atlasShare(patch){
+  const whole=patchStore.reduce((sum,p)=>sum+patchArea(p),0);
+  return whole ? patchArea(patch)/whole : 0;
+}
+/* packing never reaches 100 % — the margin and the skyline gaps are real losses */
+const PACK_EFFICIENCY = { Grid:0.62, Shelf:0.71, Skyline:0.78, Shape:0.86 };
+let packOrder="Skyline", packMarginPx=4;
+/* 🔴 the margin is authored in TEXELS, so it only means something against a resolution — and the
+   resolution that applies is the FOCUSED TILE's, since that is the square being packed. Reading a
+   single global resolution here would price the margin wrong on every other tile. */
+const marginFraction = ()=>packMarginPx/RESOLUTION_PX[tileResolution(focusTile)];
+function atlasUsed(){
+  const raw=PACK_EFFICIENCY[packOrder]||0.7;
+  /* every patch pays the margin on its perimeter — approximate as a linear loss */
+  return Math.max(0, Math.min(1, raw-marginFraction()*patchStore.length*2));
+}
+/* 🔴 the MEASURED coverage of the shipped unwrap — 68.91 %, computed by summing real
+   triangle areas in suzanne_emit.py. `atlasUsed()` above is the what-if for a REPACK;
+   this is what the atlas on disk actually costs, and the two must not be conflated. */
+function atlasMeasured(){
+  const drawn=patchStore.filter(p=>p.shown&&p.path);
+  if(!drawn.length) return 0;
+  /* scale the measured total by the share of patches still shown */
+  const whole=patchStore.filter(p=>p.path).length;
+  return SUZANNE_COVERAGE*(drawn.length/Math.max(1,whole));
+}
+
+/* 🔴 tolerances calibrated against the REAL Suzanne unwrap, not invented. Measured by
+   _ClaudeScratch/tmp/suzanne_spread.py: area spread runs 44 % (eyes) to 106 % (ears) and
+   mean angle deviation 9°–21°, because this is a 500-face model with a crude unwrap.
+   A 10 % / 6° gate would paint ALL FIVE patches amber and the verdict hue would carry
+   no signal at all, so the gate sits where the mesh actually separates. */
+const TOLERANCE_AREA=60, TOLERANCE_ANGLE=15;
+
+/* a patch's verdict on its own flattening — the only place hue means QUALITY not identity */
+function strainVerdict(patch){
+  if(patch.overlap>0)                                                     return "torn";
+  if(Math.abs(patch.areaStrain)>TOLERANCE_AREA||
+     patch.angleStrain>TOLERANCE_ANGLE)                                   return "strained";
+  return "inside";
+}
+const STRAIN_LABEL = { inside:"inside tolerance", strained:"strained", torn:"overlapping" };
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    PATCH STACK
+----------------------------------------------------------------------------------------------------------------------*/
+const patchBody  = document.getElementById("patchBody");
+const patchTally = document.getElementById("patchTally");
+const patchFoot  = document.getElementById("patchFoot");
+
+function focusPatchToken(token){
+  if(token===focusToken) return;
+  focusToken=token;
+  renderStack();
+  renderAtlas();
+}
+
+/* 🔴 the one entry point for selection. `additive` TOGGLES rather than only adding, so the modifier
+   can take a patch back out — an add-only modifier leaves no way to correct a misclick except
+   starting the whole selection over. */
+function selectPatchToken(token, additive){
+  if(additive){
+    if(selectedTokens.has(token) && selectedTokens.size>1) selectedTokens.delete(token);
+    else selectedTokens.add(token);
+  } else {
+    selectedTokens = new Set([token]);
+  }
+  /* the anchor follows the last patch TOUCHED, even when that click removed it — it is
+     "where you are", not "what is picked". */
+  focusToken=token;
+  renderStack();
+  renderAtlas();
+}
+function togglePatchShown(patch){
+  patch.shown=!patch.shown;
+  renderStack();
+  renderAtlas();
+}
+function togglePatchPinned(patch){
+  patch.pinned=!patch.pinned;
+  renderStack();
+}
+
+/* 💡 the tile shows the patch's slice of the square at its true aspect — a wide patch reads wide,
+   so the stack previews the packing before the atlas slide is ever opened. */
+function tileFill(patch){
+  const side=Math.sqrt(atlasShare(patch));
+  return `<span class="pr-tile-fill" style="background:${patch.hue};`+
+         `clip-path:inset(${((1-side)*100/2).toFixed(1)}% 0)"></span>`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                    THE TILE LIST  —  slide 1's left column
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 this replaced the patch stack in the left column. The stack itself did not die — patch
+   selection moved to slide 2's UV view, where you can pick several at once. Keeping both in the
+   left column would have given two competing notions of "what is selected". */
+function renderTileList(){
+  patchBody.innerHTML="";
+
+  tileStore.slice().sort((a,b)=>a-b).forEach(tile=>{
+    const held=tilePatches(tile), cell=udimCell(tile), fill=tileCoverage(tile);
+    const row=document.createElement("div");
+    row.className="tile-row"+(tile===focusTile?" active":"")+(held.length?"":" empty");
+    row.dataset.tile=tile;
+
+    /* the 3×3 cell grid, bottom-left origin like UDIM itself — v counts UP, so row 0 draws last */
+    let grid="";
+    for(let v=2; v>=0; v--)
+      for(let u=0; u<3; u++)
+        grid+=`<i class="${(u===cell.u%3 && v===cell.v%3)?"lit":""}"></i>`;
+
+    row.innerHTML=
+      `<span class="tr-cell">${grid}</span>`+
+      `<span class="tr-text">`+
+        `<span class="tr-num">${udimLabel(tile)}</span>`+
+        `<span class="tr-sub">u${cell.u} v${cell.v}`+
+          (held.length?` · ${tileFaces(tile)}f`:" · empty")+`</span>`+
+      `</span>`+
+      `<span class="tr-fill"><span style="width:${(fill*100).toFixed(1)}%"></span></span>`+
+      `<span class="tr-n">${held.length}</span>`;
+
+    row.onclick=()=>focusTileNumber(tile);
+    /* 🔴 no right-click menu — the tile's actions live permanently in the right pane, same
+       contract as the patch actions. Right-click only moves the focus. */
+    row.oncontextmenu=(ev)=>{ ev.preventDefault(); focusTileNumber(tile); };
+
+    patchBody.appendChild(row);
+  });
+
+  /* add sits in the flow at the end of the list, never floating */
+  const add=document.createElement("button");
+  add.className="tile-add"; add.id="tileAdd";
+  add.innerHTML=uiIcon("plus",13)+"<span>Add tile</span>";
+  add.onclick=()=>addTile();
+  patchBody.appendChild(add);
+
+  patchTally.textContent = tileStore.length;
+
+  const filled=tileStore.filter(t=>tilePatches(t).length).length;
+  patchFoot.innerHTML =
+    `<span class="pf-strong">${tileStore.length}</span> tiles`+
+    `<span class="pf-dot">·</span><span>${filled} used</span>`+
+    `<span class="pf-spacer"></span><span>${patchStore.length} patches</span>`;
+}
+
+/* focusing a tile re-aims BOTH panes: the metadata on the right, and the UV view one slide over.
+   Selection is cleared to the tile's own patches — a selection pointing into a tile you are no
+   longer looking at would let an action land somewhere invisible. */
+function focusTileNumber(tile){
+  focusTile=tile;
+  const held=tilePatches(tile);
+  selectedTokens = new Set(held.length ? [held[0].token] : []);
+  focusToken = held.length ? held[0].token : null;
+  /* 🔴 renderStack is NOT optional here — it draws the roster, which is scoped to `focusTile`.
+     Leaving it out left the roster listing the previous tile's patches while the UV view beside
+     it drew the new tile's, so the pane disagreed with itself about what was selected. */
+  renderTileList(); renderTileMeta(true); renderStack(); renderAtlas();
+}
+
+function addTile(){
+  /* the next free slot in the UDIM grid, so the number always encodes a real cell */
+  let next=UDIM_BASE;
+  while(tileStore.includes(next)) next++;
+  tileStore.push(next);
+  renderTileList(); renderTileMeta(true);
+  recordRevision("footprint","Add tile "+next, tileStore.length-1+" tiles → "+tileStore.length+" tiles");
+}
+
+/* 🚧 the patch rows are mid-move: they used to own slide 1's left column and will land in slide 2's
+   selection pane. Until that pane exists they render nowhere — writing to `patchBody` here would
+   erase the tile list that now owns it. `selectHost` is created by the next piece. */
+function renderStack(){
+  const host=document.getElementById("selectHost");
+  if(!host) return;
+  host.innerHTML="";
+
+  tilePatches(focusTile).forEach(patch=>{
+    const row=document.createElement("div");
+    /* 📝 `active` = in the selection (what actions hit); `anchor` = the last one touched.
+       They are drawn differently because they answer different questions. */
+    row.className="patch-row"+(selectedTokens.has(patch.token)?" active":"")+
+                  (patch.token===focusToken?" anchor":"")+(patch.shown?"":" patch-muted");
+    row.dataset.token=patch.token;
+
+    const verdict=strainVerdict(patch);
+    row.innerHTML=
+      `<span class="pr-tag" style="background:${patch.hue}"></span>`+
+      `<span class="pr-tile">${tileFill(patch)}${uiIcon("patch",15)}</span>`+
+      `<span class="pr-text">`+
+        `<span class="pr-name">${patch.name}</span>`+
+        `<span class="pr-meta">${PROJECTION_LABEL[patch.projection]} · ${patch.faceCount}f`+
+          ` · ${(atlasShare(patch)*100).toFixed(1)}%</span>`+
+      `</span>`+
+      `<span class="pr-verdict ${verdict}" title="${STRAIN_LABEL[verdict]}"></span>`+
+      `<span class="pr-footprint" title="Texel footprint — drag to adjust">×${patch.footprint}</span>`+
+      `<span class="pr-pin${patch.pinned?" pinned":""}" title="${patch.pinned?"Unpin":"Pin"}">`+
+        `${uiIcon(patch.pinned?"pin":"pinOff")}</span>`;
+
+    row.onclick=(ev)=>{
+      if(ev.target.closest(".pr-pin")||ev.target.closest(".pr-footprint")) return;
+      selectPatchToken(patch.token, ev.shiftKey||ev.ctrlKey||ev.metaKey);
+    };
+    /* 🔴 no right-click menu on the roster — right-click only selects; the actions sit below.
+       It must NOT clear a multi-selection either, or right-clicking one of four picked patches
+       would silently drop the other three before you reached the action. */
+    row.oncontextmenu=(ev)=>{
+      ev.preventDefault();
+      if(!selectedTokens.has(patch.token)) selectPatchToken(patch.token, false);
+    };
+    row.querySelector(".pr-pin").onclick=(ev)=>{ ev.stopPropagation(); togglePatchPinned(patch); };
+
+    host.appendChild(row);
+  });
+
+  if(!host.children.length)
+    host.innerHTML='<div class="empty-state">This tile is empty.<br>Move patches into it.</div>';
+  /* 📝 the stats are NOT rendered from here — renderAtlas owns that call. Doing it in both
+     rebuilds the pane twice on every selection change, and the second rebuild would blow away
+     a fold the first one just opened. */
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                    SELECTION STATS  —  slide 2's right pane
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 with several patches picked, a single reading would be a lie — so the bars report the WORST
+   case across the selection, labelled as such, and the roster above says which patches those are.
+   Averaging would hide one torn patch behind four clean ones, which is the opposite of useful. */
+function renderSelectStats(){
+  const host=document.getElementById("selectStats");
+  if(!host) return;
+  const picked=selectedPatches();
+  host.innerHTML="";
+
+  if(!picked.length){
+    host.innerHTML='<div class="empty-state">Select a patch in the UV view.</div>';
+    refreshInspectHead();
+    return;
+  }
+
+  /* one patch picked → its own editable properties come first; several → skip straight to the
+     aggregate, because a single value cannot stand for four different ones. */
+  if(picked.length===1) host.appendChild(buildPatchProperties(picked[0]));
+
+  const worstArea =Math.max(...picked.map(p=>Math.abs(p.areaStrain)));
+  const worstAngle=Math.max(...picked.map(p=>p.angleStrain));
+  const torn      =picked.reduce((s,p)=>s+p.overlap,0);
+  /* the verdict of the WORST patch, so a clean majority cannot vote down a torn one */
+  const verdict=picked.map(strainVerdict)
+    .reduce((worst,v)=>({torn:3,strained:2,inside:1}[v] > {torn:3,strained:2,inside:1}[worst]
+                        ? v : worst), "inside");
+
+  host.appendChild(sectionLabel("Distortion","target",
+    picked.length>1 ? "worst of "+picked.length : STRAIN_LABEL[verdict]));
+  const grid=document.createElement("div"); grid.className="dist-grid";
+  grid.appendChild(distRow("Area",  worstArea,  TOLERANCE_AREA,  TOLERANCE_AREA*2,  "%", verdict));
+  grid.appendChild(distRow("Angle", worstAngle, TOLERANCE_ANGLE, TOLERANCE_ANGLE*2, "°", verdict));
+  grid.appendChild(distRow("Overlap", torn,     0.5,             8,  "f", verdict));
+  host.appendChild(grid);
+
+  const note=document.createElement("div"); note.className="dist-verdict";
+  note.innerHTML=`<span class="dv-dot ${verdict}"></span>`+
+    `<span>${picked.reduce((s,p)=>s+p.faceCount,0)} faces · `+
+    `${(picked.reduce((s,p)=>s+atlasShare(p),0)*100).toFixed(1)}% of atlas</span>`;
+  host.appendChild(note);
+
+  host.appendChild(sectionLabel("Actions","plus"));
+  /* 🔴 with one patch picked the full per-patch action list applies; with several, only the
+     actions that MEAN something in bulk. Offering "Rename" for four patches would either
+     rename one arbitrarily or need a naming scheme neither of us specified. */
+  host.appendChild(picked.length===1 ? buildPatchActions(picked[0])
+                                     : buildBulkActions(picked));
+  refreshInspectHead();
+}
+
+/* the bulk subset: everything here is well-defined applied to N patches at once */
+function buildBulkActions(picked){
+  const host=document.createElement("div"); host.className="meta-actions";
+
+  const relax=document.createElement("div");
+  relax.className="act-item";
+  relax.innerHTML=`<span class="ic">${uiIcon("relax")}</span>`+
+                  `<span>Relax</span><span class="act-n">${picked.length}</span>`;
+  relax.onclick=()=>{
+    const wasArea=Math.max(...picked.map(p=>Math.abs(p.areaStrain)));
+    const wasAngle=Math.max(...picked.map(p=>p.angleStrain));
+    picked.forEach(p=>{ p.areaStrain*=0.5; p.angleStrain*=0.5; });
+    renderStack(); renderAtlas(); renderTileList();
+    recordRevision("relax","Relax "+picked.length+" patches",
+      deltaLine(wasArea.toFixed(1),(wasArea*0.5).toFixed(1),"% area")+" · "+
+      deltaLine(wasAngle.toFixed(1),(wasAngle*0.5).toFixed(1),"°"));
+  };
+  host.appendChild(relax);
+
+  const pin=document.createElement("div");
+  const allPinned=picked.every(p=>p.pinned);
+  pin.className="act-item"+(allPinned?" armed":"");
+  pin.innerHTML=`<span class="ic">${uiIcon(allPinned?"pin":"pinOff")}</span>`+
+                `<span>${allPinned?"Unpin":"Pin"}</span><span class="act-n">${picked.length}</span>`;
+  pin.onclick=()=>{
+    picked.forEach(p=>{ p.pinned=!allPinned; });
+    renderStack();
+    recordRevision("pin",(allPinned?"Unpin ":"Pin ")+picked.length+" patches",
+      deltaLine(picked.filter(p=>!allPinned).length, allPinned?0:picked.length, " pinned"));
+  };
+  host.appendChild(pin);
+
+  host.appendChild(Object.assign(document.createElement("div"),{className:"act-sep"}));
+
+  /* Move to tile… — the same in-place picker the tile pane uses, scoped to the selection */
+  const mover=document.createElement("div");
+  mover.className="act-item"+(bulkMoveFoldOpen?" armed":"");
+  mover.innerHTML=`<span class="ic">${uiIcon("mirror")}</span>`+
+                  `<span>Move to tile…</span><span class="fold"></span>`;
+  host.appendChild(mover);
+
+  const fold=document.createElement("div"); fold.className="act-fold"+(bulkMoveFoldOpen?" open":"");
+  const clip=document.createElement("div"); clip.className="af-clip";
+  const grid=document.createElement("div"); grid.className="af-grid";
+  tileStore.slice().sort((a,b)=>a-b).filter(t=>t!==focusTile).forEach(target=>{
+    const choice=document.createElement("div"); choice.className="af-choice";
+    choice.innerHTML=uiIcon("atlas",14)+`<span>${udimLabel(target)}</span>`;
+    choice.onclick=(ev)=>{
+      ev.stopPropagation();
+      bulkMoveFoldOpen=false;
+      const moved=picked.length, from=focusTile;
+      picked.forEach(p=>{ p.tile=target; });
+      focusTileNumber(from);
+      recordRevision("footprint","Move "+moved+" to tile "+target,
+        deltaLine(from,target,"")+" · "+moved+" patches");
+    };
+    grid.appendChild(choice);
+  });
+  if(!grid.children.length){
+    const none=document.createElement("div"); none.className="af-none";
+    none.textContent="No other tile — add one first.";
+    grid.appendChild(none);
+  }
+  clip.appendChild(grid); fold.appendChild(clip); host.appendChild(fold);
+  mover.onclick=(ev)=>{
+    ev.stopPropagation();
+    bulkMoveFoldOpen=!bulkMoveFoldOpen;
+    fold.classList.toggle("open",bulkMoveFoldOpen);
+    mover.classList.toggle("armed",bulkMoveFoldOpen);
+  };
+
+  const drop=document.createElement("div");
+  drop.className="act-item danger";
+  drop.innerHTML=`<span class="ic">${uiIcon("trash")}</span>`+
+                 `<span>Delete</span><span class="act-n">${picked.length}</span>`;
+  drop.onclick=()=>{
+    const dropped=picked.length, was=patchStore.length;
+    picked.forEach(p=>{ const i=patchIndex(p.token); if(i>=0) patchStore.splice(i,1); });
+    focusTileNumber(focusTile);
+    recordRevision("drop","Delete "+dropped+" patches", deltaLine(was,patchStore.length," patches"));
+  };
+  host.appendChild(drop);
+
+  return host;
+}
+let bulkMoveFoldOpen=false;
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   ATLAS PREVIEW
+----------------------------------------------------------------------------------------------------------------------*/
+const atlasBody = document.getElementById("atlasBody");
+const atlasFoot = document.getElementById("atlasFoot");
+
+/* a patch with no measured path still has a bbox — draw that rather than nothing */
+function patchOutline(patch){
+  if(patch.path) return patch.path;
+  const b=patch.bounds;
+  if(!b) return "";
+  const [u0,v0,u1,v1]=b.map(n=>n*1000);
+  return `M${u0} ${1000-v1}L${u1} ${1000-v1}L${u1} ${1000-v0}L${u0} ${1000-v0}Z`;
+}
+
+function renderAtlas(){
+  atlasBody.innerHTML="";
+
+  const square=document.createElement("div"); square.className="atlas-square";
+  /* 🔴 this is ONE TILE's square, not the whole atlas — the view beside the tile list must show
+     what that tile holds, or clicking a tile would change nothing on screen. */
+  const held=tilePatches(focusTile);
+  /* 🔴 one <svg> for the tile — 500 face loops as five paths, not five hundred nodes */
+  let svg=`<svg viewBox="0 0 1000 1000" preserveAspectRatio="none">`;
+  held.forEach(patch=>{
+    const d=patchOutline(patch);
+    if(!d) return;
+    const dim=patch.shown?"":" dim";
+    const picked=selectedTokens.has(patch.token);
+    /* 📝 selected patches read at full strength and carry the hue as a stroke; unselected ones
+       stay visible but recede, so the pick is legible without hiding the rest of the tile. */
+    svg+=`<path class="ap-face${dim}${picked?" picked":""}" data-token="${patch.token}" `+
+         `d="${d}" fill="${patch.hue}" `+
+         `fill-opacity="${!patch.shown?0.10:(picked?0.46:0.18)}" stroke="${patch.hue}"/>`;
+  });
+  /* the anchor ring is drawn last so it sits over every patch */
+  const focus=focusPatch();
+  if(focus&&focus.bounds&&focus.tile===focusTile){
+    const [u0,v0,u1,v1]=focus.bounds;
+    svg+=`<rect class="ap-ring" x="${u0*1000}" y="${(1-v1)*1000}" `+
+         `width="${(u1-u0)*1000}" height="${(v1-v0)*1000}" rx="4"/>`;
+  }
+  svg+=`</svg>`;
+  square.innerHTML=svg;
+  /* 🔴 clicking a patch IN the UV view is the primary way to select — the roster beside it is a
+     readout of that pick, not the only handle on it. Modifier extends, same as the roster. */
+  square.querySelectorAll(".ap-face").forEach(face=>{
+    face.addEventListener("click",(ev)=>{
+      ev.stopPropagation();
+      selectPatchToken(face.dataset.token, ev.shiftKey||ev.ctrlKey||ev.metaKey);
+    });
+  });
+  /* clicking the empty square clears the selection — the only way back to "nothing picked" */
+  square.addEventListener("click",()=>{
+    selectedTokens.clear(); focusToken=null;
+    renderStack(); renderAtlas();
+  });
+  atlasBody.appendChild(square);
+
+  /* used / waste meter, from the MEASURED coverage of THIS tile */
+  const used=tileCoverage(focusTile);
+  const meter=document.createElement("div"); meter.className="atlas-meter";
+  meter.innerHTML=`<span class="am-used" style="width:${(used*100).toFixed(1)}%"></span>`+
+                  `<span class="am-waste" style="width:${((1-used)*100).toFixed(1)}%"></span>`;
+  atlasBody.appendChild(meter);
+
+  const picked=selectedPatches();
+  const cap=document.createElement("div"); cap.className="atlas-cap";
+  cap.innerHTML=
+    `<span class="ac-hue" style="background:${picked.length===1?picked[0].hue:"transparent"}"></span>`+
+    `<span>${picked.length===1 ? picked[0].name
+             : (picked.length ? picked.length+" selected" : "nothing selected")}</span>`+
+    `<span class="ac-spacer"></span>`+
+    `<span>${(used*100).toFixed(1)}% used</span>`;
+  atlasBody.appendChild(cap);
+
+  const lbl=document.getElementById("uvTileLbl");
+  if(lbl) lbl.textContent="Tile "+udimLabel(focusTile);
+
+  atlasFoot.innerHTML=
+    `<span class="pf-strong">${held.filter(p=>p.shown).length}</span> shown`+
+    `<span class="pf-dot">·</span><span>${((1-used)*100).toFixed(0)}% waste</span>`+
+    `<span class="pf-spacer"></span><span>${packOrder}</span>`;
+
+  renderSelectStats();
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   FIELD WIDGETS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 resolution is per-TILE and sparse: only tiles the user has changed get an entry, everything
+   else reads the default. Storing a value on every tile would make "unset" and "happens to be 1K"
+   indistinguishable, so an added tile could not inherit a later default change. */
+const tileResolutions = {};
+const TILE_RESOLUTION_DEFAULT = "1K";
+const tileResolution = (tile)=>tileResolutions[tile]||TILE_RESOLUTION_DEFAULT;
+
+/* a read-only field — same visual weight as an editable value so the rows align, but no affordance */
+function valueText(text){
+  const span=document.createElement("span");
+  span.className="pvalue-static"; span.textContent=text;
+  return span;
+}
+
+function propRow(label, field){
+  const row=document.createElement("div"); row.className="prow";
+  const tag=document.createElement("div"); tag.className="plabel"; tag.textContent=label;
+  row.appendChild(tag); row.appendChild(field);
+  return row;
+}
+
+const decimalsFor = (step)=>step>=1?0:(step>=0.1?1:2);
+
+function buildSlider(spec){
+  const host=document.createElement("div"); host.className="sliderrow";
+  const box=document.createElement("div"); box.className="valuebox";
+  const num=document.createElement("div"); num.className="num";
+  const input=document.createElement("input"); input.type="text";
+  num.appendChild(input); box.appendChild(num);
+  if(spec.unit){
+    const unit=document.createElement("span"); unit.className="unitseg"; unit.textContent=spec.unit;
+    box.appendChild(unit);
+  }
+  const track=document.createElement("div"); track.className="slider";
+  const fill=document.createElement("div");  fill.className="fill";
+  const knob=document.createElement("div");  knob.className="knob";
+  track.appendChild(fill); track.appendChild(knob);
+  host.appendChild(box); host.appendChild(track);
+
+  const places=decimalsFor(spec.step);
+  let value=spec.value;
+  const paint=()=>{
+    const pct=((value-spec.min)/(spec.max-spec.min))*100;
+    fill.style.width=pct+"%"; knob.style.left=pct+"%";
+    input.value=value.toFixed(places);
+  };
+  const settle=(next, live)=>{
+    const clamped=Math.max(spec.min, Math.min(spec.max, next));
+    const quantised=Math.round(clamped/spec.step)*spec.step;
+    value=Number(quantised.toFixed(places));
+    paint();
+    spec.onInput(value, live);
+  };
+  const fromPointer=(ev)=>{
+    const box2=track.getBoundingClientRect();
+    const ratio=Math.max(0, Math.min(1, (ev.clientX-box2.left)/box2.width));
+    settle(spec.min+ratio*(spec.max-spec.min), true);
+  };
+  track.onpointerdown=(ev)=>{
+    ev.preventDefault(); track.setPointerCapture(ev.pointerId); fromPointer(ev);
+    const move=(m)=>fromPointer(m);
+    const up=()=>{
+      track.removeEventListener("pointermove",move);
+      track.removeEventListener("pointerup",up);
+      spec.onInput(value, false);
+    };
+    track.addEventListener("pointermove",move);
+    track.addEventListener("pointerup",up);
+  };
+  input.onchange=()=>{
+    const parsed=parseFloat(input.value);
+    if(Number.isFinite(parsed)) settle(parsed,false); else paint();
+  };
+  input.onkeydown=(ev)=>{ ev.stopPropagation(); if(ev.key==="Enter") input.blur(); };
+  paint();
+  host.readBack=(next)=>{ value=next; paint(); };
+  return host;
+}
+
+function buildSwitch(on, onFlip){
+  const host=document.createElement("div"); host.className="switch"+(on?" on":"");
+  host.innerHTML='<span class="nub"></span>';
+  host.onclick=()=>{ on=!on; host.classList.toggle("on",on); onFlip(on); };
+  return host;
+}
+
+function buildSegment(options, current, onPick){
+  const host=document.createElement("div"); host.className="segment";
+  options.forEach(opt=>{
+    const seg=document.createElement("div");
+    seg.className="seg-opt"+(opt===current?" sel":"");
+    seg.textContent=opt;
+    seg.onclick=()=>{ if(opt!==current) onPick(opt); };
+    host.appendChild(seg);
+  });
+  return host;
+}
+/* 🔴 no buildDropdown here — a fixed-position list would float, and this stack folds in place */
+
+function sectionLabel(text, glyph, tail){
+  const el=document.createElement("div"); el.className="meta-sect";
+  el.innerHTML=(glyph?uiIcon(glyph,12):"")+`<span>${text}</span>`+
+               (tail?`<span class="ms-tail">${tail}</span>`:"");
+  return el;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 PATCH PROPERTIES
+----------------------------------------------------------------------------------------------------------------------*/
+const metaBody = document.getElementById("metaBody");
+const metaFoot = document.getElementById("metaFoot");
+const metaName = document.getElementById("metaName");
+const metaClass= document.getElementById("metaClass");
+
+/* 📝 module-level so a rebuild cannot slam the fold shut under the pointer */
+let unwrapFoldOpen=false;
+/* 🔴 the pane is rebuilt on focus change only — dragging a slider must NOT rebuild
+   the widget being dragged, so the signature gates the rebuild. */
+let paneSignature="";
+
+/* one bar of the distortion readout — `span` is the reading, `limit` the tolerance notch */
+function distRow(label, reading, limit, ceiling, unit, verdict){
+  const row=document.createElement("div"); row.className="dist-row";
+  const pct=Math.max(0, Math.min(100, (Math.abs(reading)/ceiling)*100));
+  row.innerHTML=
+    `<span class="dist-lbl">${label}</span>`+
+    `<span class="dist-track">`+
+      `<span class="dist-fill ${verdict}" style="width:${pct.toFixed(1)}%"></span>`+
+      `<span class="dist-notch" style="left:${((limit/ceiling)*100).toFixed(1)}%"></span>`+
+    `</span>`+
+    `<span class="dist-num">${reading.toFixed(1)}${unit}</span>`;
+  return row;
+}
+
+const PATCH_ACTIONS = [
+  { act:"rename",   glyph:"rename", label:"Rename",       kbd:"F2"     },
+  { act:"pin",      glyph:"pinOff", label:"Pin",          kbd:"P"      },
+  { act:"mirror",   glyph:"mirror", label:"Mirror",       kbd:"Ctrl M" },
+  { act:"relax",    glyph:"relax",  label:"Relax",        kbd:"R"      },
+  { act:"seam",     glyph:"seam",   label:"Mark seam",    kbd:"E"      },
+  { act:"isolate",  glyph:"target", label:"Isolate",      kbd:"I"      },
+  { act:"drop",     glyph:"trash",  label:"Delete",       kbd:"Del", danger:true },
+];
+
+/* 📝 a revision's delta line reads "was → now" in the unit the action moved, so the history is
+   a log of MEASUREMENTS rather than a list of verbs. */
+const deltaLine = (was,now,unit)=>
+  `<span class="rd-was">${was}${unit}</span> → <span class="rd-now">${now}${unit}</span>`;
+
+function applyPatchAction(act, patch){
+  switch(act){
+    case "pin":     togglePatchPinned(patch);
+                    recordRevision("pin",(patch.pinned?"Pin ":"Unpin ")+patch.name,
+                      pinnedCount()+" of "+patchStore.length+" patches pinned");
+                    break;
+    case "isolate": { const was=patchStore.filter(p=>p.shown).length;
+                      patchStore.forEach(p=>p.shown=(p===patch));
+                      renderStack(); renderAtlas();
+                      recordRevision("shown","Isolate "+patch.name,
+                        deltaLine(was,1," shown"));
+                    } break;
+    case "relax":   { const wasArea=patch.areaStrain, wasAngle=patch.angleStrain;
+                      patch.areaStrain*=0.5; patch.angleStrain*=0.5;
+                      renderStack();
+                      recordRevision("relax","Relax "+patch.name,
+                        deltaLine(wasArea.toFixed(1),patch.areaStrain.toFixed(1),"% area")+
+                        " · "+deltaLine(wasAngle.toFixed(1),patch.angleStrain.toFixed(1),"°"));
+                    } break;
+    case "seam":    { const was=patch.seamEdges;
+                      patch.seamEdges+=4; renderStack();
+                      recordRevision("seam","Mark seam on "+patch.name,
+                        deltaLine(was,patch.seamEdges," edges"));
+                    } break;
+    case "drop":    if(patchStore.length>1){
+                      const at=patchIndex(patch.token), name=patch.name;
+                      patchStore.splice(at,1);
+                      focusToken=patchStore[Math.min(at,patchStore.length-1)].token;
+                      renderStack(); renderAtlas();
+                      /* 🔴 recorded AFTER the splice, so the snapshot is the store without the
+                         patch — stepping forward onto this row must not resurrect it. */
+                      recordRevision("drop","Delete "+name,
+                        deltaLine(patchStore.length+1,patchStore.length," patches"));
+                    }
+                    break;
+    /* rename + mirror are stack-side gestures the later pieces wire up */
+  }
+  renderPackBody();
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                          TILE ACTIONS  (slide 1, right pane)
+----------------------------------------------------------------------------------------------------------------------*/
+/* the tile's own actions. "Move patches to…" unfolds a tile picker IN PLACE (grid-rows 0fr→1fr),
+   the same fold the projection picker uses — this stack has no floating menus anywhere. */
+let moveFoldOpen=false;
+function buildTileActions(tile){
+  const host=document.createElement("div"); host.className="meta-actions";
+  const held=tilePatches(tile);
+
+  const repack=document.createElement("div");
+  repack.className="act-item"+(held.length?"":" disabled");
+  repack.innerHTML=`<span class="ic">${uiIcon("target")}</span><span>Repack this tile</span>`;
+  repack.onclick=()=>{
+    if(!held.length) return;
+    const was=tileCoverage(tile)*100;
+    /* 📝 repacking cannot invent ink — it removes gaps, so the fill can only rise toward
+       the packer's ceiling. Model it as closing the distance to that ceiling. */
+    held.forEach(p=>{ p.footprint=Math.min(32, p.footprint); });
+    const now=Math.min(100, was + (PACK_EFFICIENCY[packOrder]*100 - was)*0.5);
+    renderTileList(); renderTileMeta(true); renderAtlas();
+    recordRevision("footprint","Repack tile "+tile,
+      deltaLine(was.toFixed(1), now.toFixed(1), "% filled"));
+  };
+  host.appendChild(repack);
+
+  /* ---- Move patches to… : an in-place tile picker ---- */
+  const mover=document.createElement("div");
+  mover.className="act-item"+(held.length?"":" disabled")+(moveFoldOpen?" armed":"");
+  mover.innerHTML=`<span class="ic">${uiIcon("mirror")}</span>`+
+                  `<span>Move patches to…</span><span class="fold"></span>`;
+  host.appendChild(mover);
+
+  const fold=document.createElement("div"); fold.className="act-fold"+(moveFoldOpen?" open":"");
+  const clip=document.createElement("div"); clip.className="af-clip";
+  const grid=document.createElement("div"); grid.className="af-grid";
+  /* 🔴 the source tile is excluded — "move to where it already is" is a no-op that would still
+     record a revision, putting an entry in the history that changed nothing. */
+  tileStore.slice().sort((a,b)=>a-b).filter(t=>t!==tile).forEach(target=>{
+    const choice=document.createElement("div"); choice.className="af-choice";
+    choice.innerHTML=uiIcon("atlas",14)+`<span>${udimLabel(target)}</span>`;
+    choice.onclick=(ev)=>{
+      ev.stopPropagation();
+      moveFoldOpen=false;
+      const moved=held.length;
+      held.forEach(p=>{ p.tile=target; });
+      focusTileNumber(tile);
+      renderTileMeta(true);
+      recordRevision("footprint","Move "+moved+" to tile "+target,
+        deltaLine(tile, target, "") + " · " + moved + " patches");
+    };
+    grid.appendChild(choice);
+  });
+  if(!grid.children.length){
+    const none=document.createElement("div"); none.className="af-none";
+    none.textContent="No other tile — add one first.";
+    grid.appendChild(none);
+  }
+  clip.appendChild(grid); fold.appendChild(clip); host.appendChild(fold);
+
+  mover.onclick=(ev)=>{
+    ev.stopPropagation();
+    if(!held.length) return;
+    moveFoldOpen=!moveFoldOpen;
+    fold.classList.toggle("open",moveFoldOpen);
+    mover.classList.toggle("armed",moveFoldOpen);
+  };
+
+  host.appendChild(Object.assign(document.createElement("div"),{className:"act-sep"}));
+
+  const normalise=document.createElement("div");
+  normalise.className="act-item"+(held.length>1?"":" disabled");
+  normalise.innerHTML=`<span class="ic">${uiIcon("relax")}</span><span>Normalise texel density</span>`;
+  normalise.onclick=()=>{
+    if(held.length<2) return;
+    const spread=Math.max(...held.map(p=>p.footprint))-Math.min(...held.map(p=>p.footprint));
+    if(!spread) return;
+    /* every patch in the tile ends at the same footprint — that IS uniform texel density */
+    const mean=FOOTPRINT_STEPS.reduce((best,step)=>{
+      const avg=held.reduce((s,p)=>s+p.footprint,0)/held.length;
+      return Math.abs(step-avg)<Math.abs(best-avg)?step:best; }, FOOTPRINT_STEPS[0]);
+    held.forEach(p=>{ p.footprint=mean; });
+    renderTileList(); renderTileMeta(true); renderAtlas(); renderStack();
+    recordRevision("footprint","Normalise tile "+tile,
+      deltaLine("×"+spread+" spread","×0 spread","")+" · all ×"+mean);
+  };
+  host.appendChild(normalise);
+
+  const clear=document.createElement("div");
+  clear.className="act-item danger"+(held.length?"":" disabled");
+  clear.innerHTML=`<span class="ic">${uiIcon("trash")}</span><span>Clear tile</span>`;
+  clear.onclick=()=>{
+    if(!held.length) return;
+    const dropped=held.length;
+    /* 🔴 clear DELETES the patches rather than orphaning them — a patch with no tile would
+       vanish from every view while still counting in the totals. */
+    held.forEach(p=>{ const i=patchIndex(p.token); if(i>=0) patchStore.splice(i,1); });
+    focusTileNumber(tile);
+    renderTileMeta(true);
+    recordRevision("drop","Clear tile "+tile, deltaLine(dropped,0," patches"));
+  };
+  host.appendChild(clear);
+
+  return host;
+}
+
+function buildPatchActions(patch){
+  const host=document.createElement("div"); host.className="meta-actions";
+
+  /* Unwrap + its in-place projection fold — the only "choose one of six" in this pane */
+  const adder=document.createElement("div");
+  adder.className="act-item"+(unwrapFoldOpen?" armed":"");
+  adder.innerHTML=`<span class="ic">${uiIcon("unwrap")}</span><span>Unwrap</span><span class="fold"></span>`;
+  host.appendChild(adder);
+
+  const fold=document.createElement("div"); fold.className="act-fold"+(unwrapFoldOpen?" open":"");
+  const clip=document.createElement("div"); clip.className="af-clip";
+  const grid=document.createElement("div"); grid.className="af-grid";
+  PROJECTION_ORDER.forEach(proj=>{
+    const choice=document.createElement("div"); choice.className="af-choice";
+    choice.title=PROJECTION_NOTE[proj];
+    choice.innerHTML=uiIcon("unwrap",14)+`<span>${PROJECTION_LABEL[proj]}</span>`;
+    choice.onclick=(ev)=>{
+      ev.stopPropagation();
+      unwrapFoldOpen=false;
+      const was=patch.projection;
+      if(was===proj) return;
+      patch.projection=proj;
+      renderStack();
+      recordRevision("unwrap","Unwrap "+patch.name,
+        deltaLine(PROJECTION_LABEL[was],PROJECTION_LABEL[proj],""));
+    };
+    grid.appendChild(choice);
+  });
+  clip.appendChild(grid); fold.appendChild(clip); host.appendChild(fold);
+
+  adder.onclick=(ev)=>{
+    ev.stopPropagation();
+    unwrapFoldOpen=!unwrapFoldOpen;
+    fold.classList.toggle("open",unwrapFoldOpen);
+    adder.classList.toggle("armed",unwrapFoldOpen);
+  };
+
+  host.appendChild(Object.assign(document.createElement("div"),{className:"act-sep"}));
+
+  PATCH_ACTIONS.forEach(spec=>{
+    const item=document.createElement("div");
+    item.className="act-item"+(spec.danger?" danger":"");
+    let glyph=spec.glyph, label=spec.label;
+    if(spec.act==="pin"){ glyph=patch.pinned?"pin":"pinOff"; label=patch.pinned?"Unpin":"Pin"; }
+    /* the last patch standing cannot be deleted */
+    if(spec.act==="drop" && patchStore.length<2) item.className+=" disabled";
+    item.innerHTML=`<span class="ic">${uiIcon(glyph)}</span><span>${label}</span>`+
+                   `<span class="kbd">${spec.kbd}</span>`;
+    item.onclick=(ev)=>{ ev.stopPropagation(); applyPatchAction(spec.act, patch); };
+    host.appendChild(item);
+  });
+
+  return host;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                              TILE METADATA + TILE ACTIONS  —  slide 1's right pane
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 everything here is a property of the TILE, not of a patch. Resolution and texel density are
+   the tile's, because a UDIM tile is one texture — a per-patch resolution would be meaningless.
+   The actions likewise act on the whole tile's contents. */
+let tileMetaSignature=null;
+function renderTileMeta(force){
+  const tile=focusTile, held=tilePatches(tile), cell=udimCell(tile);
+  const sig=[tile,held.length,tileStore.length,tileResolution(tile),
+             held.map(p=>p.token+p.footprint).join(",")].join("|");
+  if(!force && sig===tileMetaSignature) return;
+  tileMetaSignature=sig;
+
+  metaName.textContent = "Tile "+udimLabel(tile);
+  metaClass.textContent= "u"+cell.u+" v"+cell.v+" · "+held.length+
+                         " patch"+(held.length===1?"":"es");
+  document.getElementById("metaIcon").innerHTML = uiIcon("atlas",17);
+
+  metaBody.innerHTML="";
+  metaBody.appendChild(sectionLabel("Tile","atlas",udimLabel(tile)));
+
+  metaBody.appendChild(propRow("Resolution", buildSegment(RESOLUTIONS, tileResolution(tile),
+    (pick)=>{
+      const was=tileResolution(tile);
+      tileResolutions[tile]=pick;
+      renderTileMeta(true); renderAtlas();
+      recordRevision("footprint","Tile "+tile+" resolution "+pick, deltaLine(was,pick,""));
+    })));
+
+  /* 📝 texel density is DERIVED from the resolution — showing it as an editable number would
+     invite setting the two into disagreement. */
+  metaBody.appendChild(propRow("Texel density",
+    valueText(Math.round(RESOLUTION_PX[tileResolution(tile)]/2)+" px/m")));
+
+  metaBody.appendChild(sectionLabel("Coverage","target",
+    (tileCoverage(tile)*100).toFixed(1)+"% filled"));
+  const grid=document.createElement("div"); grid.className="dist-grid";
+  grid.appendChild(distRow("Filled", tileCoverage(tile)*100, 100, 100, "%", "inside"));
+  grid.appendChild(distRow("Wasted", (1-tileCoverage(tile))*100, 100, 100, "%", "strained"));
+  metaBody.appendChild(grid);
+
+  const note=document.createElement("div"); note.className="dist-verdict";
+  note.innerHTML=`<span class="dv-dot ${held.length?"inside":"strained"}"></span>`+
+    `<span>${held.length?tileFaces(tile)+" faces in this tile":"empty — nothing packed here"}</span>`;
+  metaBody.appendChild(note);
+
+  metaBody.appendChild(sectionLabel("Actions","plus"));
+  metaBody.appendChild(buildTileActions(tile));
+
+  metaFoot.innerHTML=
+    `<span class="pf-strong">${held.length}</span> patches`+
+    `<span class="pf-dot">·</span><span>${(tileCoverage(tile)*100).toFixed(1)}% filled</span>`+
+    `<span class="pf-spacer"></span><span>${tileResolution(tile)}</span>`;
+}
+
+/* 🔴 was the whole of slide 1's right pane; now it is a BLOCK the selection face prepends when
+   exactly one patch is picked. It builds and returns nodes instead of writing to `metaBody`,
+   because `metaBody` belongs to the tile pane — writing there would erase the tile metadata. */
+function buildPatchProperties(patch){
+  const host=document.createElement("div");
+
+  host.appendChild(sectionLabel("Projection","unwrap",PROJECTION_LABEL[patch.projection]));
+
+  host.appendChild(propRow("Footprint", buildSegment(
+    FOOTPRINT_STEPS.map(String), String(patch.footprint),
+    (pick)=>{
+      const wasShare=atlasShare(patch)*100, was=patch.footprint;
+      patch.footprint=Number(pick);
+      renderStack(); renderAtlas(); renderPackBody(); renderTileList();
+      /* footprint is the one property whose effect is on the OTHER patches too — record the
+         share it won, not just the multiplier, or the row reads as a no-op. */
+      recordRevision("footprint",patch.name+" footprint ×"+pick,
+        deltaLine("×"+was,"×"+pick,"")+" · "+
+        deltaLine(wasShare.toFixed(1),(atlasShare(patch)*100).toFixed(1),"% of atlas"));
+    })));
+
+  host.appendChild(propRow("Density", buildSlider({
+    value:patch.density, min:64, max:4096, step:64, unit:"px",
+    onInput:(v)=>{ patch.density=v; } })));
+
+  /* 🔴 the old free-running 1001–1100 slider is gone: a patch can only sit in a tile that
+     EXISTS, and sliding it to 1043 put it in a tile the list had never heard of, where it
+     vanished from every view. Moving now goes through the action's tile picker. */
+  host.appendChild(propRow("Tile", valueText(udimLabel(patch.tile))));
+
+  host.appendChild(propRow("Pinned", buildSwitch(patch.pinned,
+    ()=>togglePatchPinned(patch))));
+
+  host.appendChild(propRow("Shown", buildSwitch(patch.shown,
+    ()=>togglePatchShown(patch))));
+
+  return host;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 REVISION STORE
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 the ONE deliberate divergence from the sibling inspector. There, a revision is a caption —
+   {token, at, category, title, subtitle} with no payload — so stepping back moves a cursor and
+   re-renders a list without reverting anything, and a branch is two captions rather than two
+   documents. Here every action mutates a MEASURABLE (projection, strain, footprint), so a
+   revision carries the before/after of the fields it touched and `restoreTo` genuinely puts the
+   unwrap back. That is what makes branching mean two reachable unwraps instead of two labels. */
+
+const REVISION_TAG = {
+  seed:      { glyph:"atlas",  label:"Seed"   },
+  unwrap:    { glyph:"unwrap", label:"Unwrap" },
+  relax:     { glyph:"relax",  label:"Relax"  },
+  seam:      { glyph:"seam",   label:"Seam"   },
+  footprint: { glyph:"target", label:"Pack"   },
+  mirror:    { glyph:"mirror", label:"Mirror" },
+  pin:       { glyph:"pin",    label:"Pin"    },
+  shown:     { glyph:"target", label:"Show"   },
+  drop:      { glyph:"trash",  label:"Drop"   },
+};
+
+/* 🔴 a snapshot is the WHOLE patch list, not just the fields an action is known to touch.
+   Capturing a field subset cannot restore a DELETED patch — its name, hue and measured path
+   are gone, so `resolveToken` fails and stepping back past a delete silently does nothing.
+   Cloning every patch makes delete undoable and costs ~5 small objects per revision. */
+const clonePatch = (patch)=>Object.assign({},patch);
+
+let revisionSeq=0, branchSeq=0;
+let revisionStore = { branches:[], active:0 };
+
+const stamp = ()=>new Date();
+const clockOf = (at)=>at.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+const clampIndex = (v,lo,hi)=>v<lo?lo:(v>hi?hi:v);
+
+function newBranch(name, revisions){
+  return {
+    token:"br"+(++branchSeq),
+    name:name || ("Branch "+branchSeq),
+    revisions:revisions || [],
+    cursor:revisions ? revisions.length-1 : -1,
+  };
+}
+const activeBranch = ()=>revisionStore.branches[revisionStore.active];
+
+function makeRevision(category, title, delta){
+  return { token:"v"+(++revisionSeq), at:stamp(), category, title, delta,
+           state:patchStore.map(clonePatch), focus:focusToken };
+}
+
+/* 📝 recording while the cursor sits behind the tip FORKS a lateral branch instead of truncating,
+   so the abandoned future stays reachable from its pill. */
+function recordRevision(category, title, delta){
+  const branch=activeBranch();
+  if(!branch) return;
+  const revision=makeRevision(category,title,delta);
+  if(branch.cursor < branch.revisions.length-1){
+    const fork=newBranch("Branch "+(branchSeq+1), branch.revisions.slice(0, branch.cursor+1));
+    fork.revisions.push(revision);
+    fork.cursor=fork.revisions.length-1;
+    revisionStore.branches.push(fork);
+    revisionStore.active=revisionStore.branches.length-1;
+  } else {
+    branch.revisions.push(revision);
+    branch.cursor=branch.revisions.length-1;
+  }
+  renderBranches(); renderRevisions(); refreshInspectHead();
+}
+
+/* 🔴 restore REPLACES the store's contents rather than patching field-by-field, because a
+   snapshot may hold patches the live store no longer has (undoing a delete) or lack ones it does
+   (redoing a delete). `patchStore` is a const binding others hold, so splice in place — never
+   reassign it, or the stack and atlas would keep rendering the old array. */
+function restoreTo(revision){
+  if(!revision) return;
+  patchStore.splice(0, patchStore.length, ...revision.state.map(clonePatch));
+  focusToken = resolveToken(revision.focus) ? revision.focus
+             : (patchStore.length ? patchStore[0].token : null);
+  /* 🔴 the selection must be rebuilt against the RESTORED store, dropping tokens the snapshot
+     does not contain. Left alone it can point at a patch that no longer exists, and the next
+     bulk action would iterate a ghost. */
+  selectedTokens = new Set([...selectedTokens].filter(resolveToken));
+  if(!selectedTokens.size && focusToken) selectedTokens.add(focusToken);
+  /* a snapshot may hold patches in tiles the list has forgotten — re-admit them, or an
+     undone move would restore a patch into a tile that is no longer listed. */
+  patchStore.forEach(p=>{ if(!tileStore.includes(p.tile)) tileStore.push(p.tile); });
+  renderTileList(); renderTileMeta(true); renderStack(); renderAtlas(); renderPackBody();
+}
+
+function jumpToRevision(index){
+  const branch=activeBranch(); if(!branch) return;
+  branch.cursor=clampIndex(index, 0, branch.revisions.length-1);
+  restoreTo(branch.revisions[branch.cursor]);
+  renderRevisions(); refreshInspectHead();
+}
+function stepBack(){
+  const branch=activeBranch();
+  if(branch && branch.cursor>0) jumpToRevision(branch.cursor-1);
+}
+function stepForward(){
+  const branch=activeBranch();
+  if(branch && branch.cursor<branch.revisions.length-1) jumpToRevision(branch.cursor+1);
+}
+
+/* the seed revision is the shipped unwrap as measured off the mesh — the state every branch
+   ultimately descends from, so it can never be stepped behind (hence cursor floors at 0). */
+function seedRevisions(){
+  revisionStore.branches=[newBranch("Trunk",[
+    makeRevision("seed","Suzanne unwrap loaded",
+      SUZANNE_PATCHES.length+" patches · "+(SUZANNE_COVERAGE*100).toFixed(1)+"% coverage"),
+  ])];
+  revisionStore.active=0;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            LAYOUT ⇄ REVISIONS CAROUSEL
+----------------------------------------------------------------------------------------------------------------------*/
+const inspectTrack = document.getElementById("inspectTrack");
+const packBody     = document.getElementById("packBody");
+const revBranches  = document.getElementById("revBranches");
+const revScroll    = document.getElementById("revScroll");
+const summonFoot   = document.getElementById("summonFoot");
+const summonActs   = document.getElementById("summonActs");
+
+/* ---- LAYOUT face: how the FOCUSED TILE packs. Everything here is scoped to that one tile,
+   because packing is a per-square problem — two tiles pack independently. ---- */
+function renderPackBody(){
+  packBody.innerHTML="";
+  packBody.appendChild(sectionLabel("Packing","atlas",PACK_NOTE[packOrder]));
+
+  const order=propRow("Order", buildSegment(PACK_ORDER, packOrder, (pick)=>{
+    packOrder=pick; renderPackBody(); renderAtlas();
+    recordRevision("footprint","Pack order "+pick, PACK_NOTE[pick]);
+  }));
+  packBody.appendChild(order);
+
+  packBody.appendChild(propRow("Margin", buildSlider({
+    value:packMarginPx, min:0, max:32, step:1, unit:"px",
+    onInput:(v)=>{ packMarginPx=v; renderPackBody(); renderAtlas(); },
+  })));
+
+  /* 🔴 resolution is NOT repeated here — it belongs to the tile and is set on slide 1. Two
+     controls for one setting is how they drift apart. Shown as the derived reading instead. */
+  packBody.appendChild(propRow("Resolution", valueText(tileResolution(focusTile))));
+
+  const measured=tileCoverage(focusTile);
+  packBody.appendChild(sectionLabel("Coverage","target",
+    (measured*100).toFixed(1)+"% on disk"));
+
+  /* 🔴 both numbers, side by side and labelled — the measured cost of the unwrap that shipped,
+     and what a repack in this order WOULD reach. Showing only one invites reading it as the other. */
+  const grid=document.createElement("div"); grid.className="dist-grid";
+  grid.appendChild(distRow("Measured", measured*100,    100, 100, "%", "inside"));
+  grid.appendChild(distRow("Repack",   atlasUsed()*100, 100, 100, "%",
+                           atlasUsed()>measured ? "inside" : "strained"));
+  packBody.appendChild(grid);
+
+  const note=document.createElement("div"); note.className="dist-verdict";
+  const gain=(atlasUsed()-measured)*100;
+  note.innerHTML=`<span class="dv-dot ${gain>0?"inside":"strained"}"></span>`+
+    `<span>${gain>0 ? "+"+gain.toFixed(1)+"% to reclaim by repacking" :
+                      gain.toFixed(1)+"% — this order packs worse than what shipped"}</span>`;
+  packBody.appendChild(note);
+}
+
+/* ---- REVISIONS face: branch pills ---- */
+function renderBranches(){
+  revBranches.innerHTML="";
+  revisionStore.branches.forEach((branch,index)=>{
+    const pill=document.createElement("div");
+    pill.className="rev-branch"+(index===revisionStore.active?" active":"");
+    pill.innerHTML=`<span>${branch.name}</span><span class="rb-ct">${branch.revisions.length}</span>`;
+    pill.onclick=()=>{
+      revisionStore.active=index;
+      /* switching branches must MOVE the unwrap to that branch's tip, not just relabel the pane */
+      restoreTo(branch.revisions[branch.cursor]);
+      renderBranches(); renderRevisions(); refreshInspectHead();
+    };
+    /* the trunk is never closable — closing the last branch would leave nothing to record onto */
+    if(revisionStore.branches.length>1){
+      const shut=document.createElement("span"); shut.className="rb-shut"; shut.textContent="×";
+      shut.onclick=(ev)=>{
+        ev.stopPropagation();
+        revisionStore.branches.splice(index,1);
+        revisionStore.active=clampIndex(revisionStore.active,0,revisionStore.branches.length-1);
+        restoreTo(activeBranch().revisions[activeBranch().cursor]);
+        renderBranches(); renderRevisions(); refreshInspectHead();
+      };
+      pill.appendChild(shut);
+    }
+    revBranches.appendChild(pill);
+  });
+  const fork=document.createElement("div");
+  fork.className="rev-fork"; fork.textContent="+"; fork.title="Fork at the cursor";
+  fork.onclick=()=>{
+    const branch=activeBranch(); if(!branch) return;
+    revisionStore.branches.push(newBranch(null, branch.revisions.slice(0, branch.cursor+1)));
+    revisionStore.active=revisionStore.branches.length-1;
+    renderBranches(); renderRevisions(); refreshInspectHead();
+  };
+  revBranches.appendChild(fork);
+}
+
+/* ---- REVISIONS face: the rows ---- */
+function renderRevisions(){
+  const branch=activeBranch();
+  revScroll.innerHTML="";
+  if(!branch || !branch.revisions.length){
+    revScroll.innerHTML='<div class="empty-state">No revisions on this branch.</div>';
+    return;
+  }
+  branch.revisions.forEach((revision,index)=>{
+    const spec=REVISION_TAG[revision.category]||REVISION_TAG.unwrap;
+
+    const row=document.createElement("div");
+    row.className="rev-row"+(index===branch.cursor?" at-cursor":"")
+                           +(index>branch.cursor?" ahead":"");
+
+    const rail=document.createElement("div"); rail.className="rev-rail";
+    const above=document.createElement("div"); above.className="rev-line"+(index===0?" blank":"");
+    const node=document.createElement("div"); node.className="rev-node";
+    node.innerHTML=uiIcon(spec.glyph,12);
+    const below=document.createElement("div");
+    below.className="rev-line"+(index===branch.revisions.length-1?" blank":"");
+    rail.appendChild(above); rail.appendChild(node); rail.appendChild(below);
+
+    const body=document.createElement("div"); body.className="rev-body";
+    const main=document.createElement("div"); main.className="rev-main";
+    main.innerHTML=`<span class="rev-title">${revision.title}</span>`+
+                   `<span class="rev-tag">${spec.label}</span>`+
+                   `<span class="rev-time">${clockOf(revision.at)}</span>`;
+    body.appendChild(main);
+    if(revision.delta){
+      const delta=document.createElement("div"); delta.className="rev-delta";
+      delta.innerHTML=revision.delta;
+      body.appendChild(delta);
+    }
+
+    row.appendChild(rail); row.appendChild(body);
+    row.onclick=()=>jumpToRevision(index);
+    revScroll.appendChild(row);
+  });
+}
+
+/* 🔴 the two classes are mutually exclusive positions on one track, so BOTH must be set every
+   time — toggling only the one that changed leaves e.g. `to-layout` on while `to-revisions`
+   goes on too, and the later rule silently wins. */
+let inspectFace="selection";
+function switchInspectFace(face){
+  inspectFace=face;
+  inspectTrack.classList.toggle("to-layout",    face==="layout");
+  inspectTrack.classList.toggle("to-revisions", face==="revisions");
+  document.querySelectorAll("#packCarousel .pc-seg").forEach(seg=>{
+    seg.classList.toggle("active", seg.dataset.face===face);
+  });
+  /* step back/forward belong to the history only — hide them elsewhere rather than
+     leaving two dead buttons in the head */
+  summonActs.style.display = face==="revisions" ? "flex" : "none";
+  refreshInspectHead();
+}
+document.querySelectorAll("#packCarousel .pc-seg").forEach(seg=>{
+  seg.addEventListener("click",()=>switchInspectFace(seg.dataset.face));
+});
+
+function refreshInspectHead(){
+  const branch=activeBranch();
+  const undo=document.getElementById("summonUndo");
+  const redo=document.getElementById("summonRedo");
+  /* the seed is the floor — there is no state behind it to restore */
+  undo.disabled = !branch || branch.cursor<=0;
+  redo.disabled = !branch || branch.cursor>=branch.revisions.length-1;
+
+  if(inspectFace==="revisions" && branch){
+    document.getElementById("inspectIcon").innerHTML=uiIcon("history");
+    document.getElementById("inspectName").textContent=branch.name;
+    document.getElementById("inspectSub").textContent=
+      (branch.cursor+1)+" of "+branch.revisions.length+" revisions";
+    summonFoot.innerHTML=
+      `<span class="pf-strong">${branch.revisions.length}</span> revisions`+
+      `<span class="pf-dot">·</span><span class="pf-strong">${revisionStore.branches.length}</span> `+
+      `branch${revisionStore.branches.length===1?"":"es"}`+
+      `<span class="pf-spacer"></span><span>Ctrl Z / Y</span>`;
+  } else if(inspectFace==="layout"){
+    document.getElementById("inspectIcon").innerHTML=uiIcon("atlas");
+    document.getElementById("inspectName").textContent="Tile "+udimLabel(focusTile)+" layout";
+    document.getElementById("inspectSub").textContent=packOrder+" · "+tileResolution(focusTile);
+    summonFoot.innerHTML=
+      `<span class="pf-strong">${(tileCoverage(focusTile)*100).toFixed(1)}%</span> filled`+
+      `<span class="pf-dot">·</span><span class="pf-strong">${(atlasUsed()*100).toFixed(1)}%</span> repacked`+
+      `<span class="pf-spacer"></span><span>${packMarginPx}px margin</span>`;
+  } else {
+    /* the SELECTION face — the head counts what is picked, because that is what every
+       action on this face will act on. */
+    const picked=selectedPatches();
+    document.getElementById("inspectIcon").innerHTML=uiIcon("patch");
+    document.getElementById("inspectName").textContent=
+      picked.length===1 ? picked[0].name
+                        : (picked.length ? picked.length+" patches" : "Nothing selected");
+    document.getElementById("inspectSub").textContent=
+      picked.length ? picked.reduce((s,p)=>s+p.faceCount,0)+"f in tile "+udimLabel(focusTile)
+                    : "tile "+udimLabel(focusTile);
+    summonFoot.innerHTML=
+      `<span class="pf-strong">${picked.length}</span> selected`+
+      `<span class="pf-dot">·</span><span>${tilePatches(focusTile).length} in tile</span>`+
+      `<span class="pf-spacer"></span>`+
+      `<span>${picked.reduce((s,p)=>s+p.faceCount,0)}f</span>`;
+  }
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+const summonMenu = document.getElementById("summonMenu");
+const summonVeil = document.getElementById("summonVeil");
+const menuTrack  = document.getElementById("menuTrack");
+const viewport   = document.getElementById("viewport");
+
+const MENU_W=548, MENU_H=372, MENU_PAD=14;
+let summonOpen=false;
+
+const onInspectSlide = ()=>menuTrack.classList.contains("to-inspect");
+
+function summonMenuAt(x,y){
+  const left=Math.min(Math.max(MENU_PAD,x), window.innerWidth -MENU_W-MENU_PAD);
+  const top =Math.min(Math.max(MENU_PAD,y), window.innerHeight-MENU_H-MENU_PAD);
+  summonMenu.style.left=left+"px";
+  summonMenu.style.top =top+"px";
+  summonMenu.classList.add("open");
+  summonVeil.classList.add("open");
+  summonOpen=true;
+}
+function dismissMenu(){
+  summonMenu.classList.remove("open");
+  summonVeil.classList.remove("open");
+  summonOpen=false;
+  menuTrack.classList.remove("to-inspect");
+}
+function slideToInspect(){ menuTrack.classList.add("to-inspect"); }
+function slideToAtlas(){ menuTrack.classList.remove("to-inspect"); }
+
+/* Tab cycles: closed → slide 1 → slide 2; Escape unwinds the same path */
+function advanceSummon(){
+  if(!summonOpen){
+    const box=viewport.getBoundingClientRect();
+    summonMenuAt(box.left+Math.round((box.width-MENU_W)/2), box.top+52);
+    return;
+  }
+  if(!onInspectSlide()) slideToInspect();
+  else dismissMenu();
+}
+
+document.getElementById("advanceHead").onclick=(ev)=>{
+  if(ev.target.closest(".hdr-btn")) return;
+  slideToInspect();
+};
+document.getElementById("returnHead").onclick=slideToAtlas;
+
+viewport.oncontextmenu=(ev)=>{ ev.preventDefault(); summonMenuAt(ev.clientX, ev.clientY); };
+summonVeil.onpointerdown=dismissMenu;
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  KEY ASSIGNMENT
+----------------------------------------------------------------------------------------------------------------------*/
+document.addEventListener("keydown",(ev)=>{
+  if(ev.target.isContentEditable || ev.target.tagName==="INPUT") return;
+  if(ev.key==="Tab"){ ev.preventDefault(); advanceSummon(); return; }
+  if((ev.ctrlKey||ev.metaKey) && ev.key.toLowerCase()==="z"){ ev.preventDefault(); stepBack();    return; }
+  if((ev.ctrlKey||ev.metaKey) && ev.key.toLowerCase()==="y"){ ev.preventDefault(); stepForward(); return; }
+  if(ev.key==="Escape"){
+    /* 🔴 Escape unwinds the carousel BEFORE the slide, one face at a time, back toward Selection —
+       the innermost surface closes first, or the pane being read would vanish out from under a
+       half-finished step. Three faces means TWO steps back to Selection, not one. */
+    if(summonOpen && onInspectSlide() && inspectFace==="revisions"){ switchInspectFace("layout");    return; }
+    if(summonOpen && onInspectSlide() && inspectFace==="layout"   ){ switchInspectFace("selection"); return; }
+    if(summonOpen && onInspectSlide()){ slideToAtlas(); return; }
+    if(summonOpen){ dismissMenu(); return; }
+  }
+});
+
+document.getElementById("summonUndo").addEventListener("click",stepBack);
+document.getElementById("summonRedo").addEventListener("click",stepForward);
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       BOOT
+----------------------------------------------------------------------------------------------------------------------*/
+document.getElementById("hostMark").innerHTML   = uiIcon("patch",18);
+document.getElementById("stackIcon").innerHTML  = uiIcon("atlas",17);
+document.getElementById("metaIcon").innerHTML   = uiIcon("atlas",17);
+document.getElementById("inspectIcon").innerHTML= uiIcon("atlas",17);
+document.getElementById("advanceStep").innerHTML= uiIcon("chevron",13);
+document.getElementById("returnStep").innerHTML = uiIcon("chevronLeft",13);
+document.getElementById("summonUndo").innerHTML = uiIcon("undo",15);
+document.getElementById("summonRedo").innerHTML = uiIcon("redo",15);
+
+/* 🔴 seed the history FIRST: renderTileList's actions call recordRevision, and recording onto an
+   unseeded store silently no-ops (activeBranch() is undefined), so the first action would vanish. */
+seedRevisions();
+renderTileList();
+renderTileMeta(true);
+renderStack();
+renderAtlas();
+renderPackBody();
+renderBranches();
+renderRevisions();
+/* 🔴 selection is the face that opens — it is what the UV view beside it is FOR. Landing on
+   Layout or Revisions would make the pane answer a question nobody asked yet. */
+switchInspectFace("selection");
+document.getElementById("uvTileLbl").textContent = "Tile "+udimLabel(focusTile);
+document.getElementById("hostTally").textContent = patchStore.length+" patches";
+</script>
+</body>
+</html>

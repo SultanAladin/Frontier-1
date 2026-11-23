@@ -1,0 +1,49 @@
+# SlateUI — the interface layer.
+# The only engine unit permitted to reference ImGui, and the only one that compiles it.
+
+[unit]
+name    = "SlateUI"
+product = "StaticLibrary"
+subject = [ "Interface" ]
+
+# 🔴 SlateUI declares no unit requirement, and that is not an omission. Its whole surface reaches Foundation/,
+#    its own Api/, and the vendored interface library — it names no symbol from SlateMath, SlateVulkan,
+#    SlateDocument or SlateCompute, which VerifyPartition.ps1 checks rather than assumes. The four were
+#    declared here when the unit was younger and were carried forward unread; a requirement nothing uses is
+#    a permission nothing needs, and it grants exactly the reach the partition exists to withhold.
+# 📝 The link order is a separate question and stays whole: Application still names every archive, because
+#    the linker resolves against what it has already seen.
+[requires]
+unit = []
+
+# 🔴 `00` §2.2: exactly one copy of ImGui exists and it is compiled here. The vendored sources are listed
+#    as unit sources rather than reached through a prebuilt library, so no second copy can be linked in.
+#    A host that includes `imgui.h` is a defect; InterfaceExchange.h names no ImGui spelling, so it cannot.
+[external]
+include = [ "$VULKAN_SDK/Include", "ExternalPackages/glfw/include", "ExternalPackages/imgui",
+            "ExternalPackages/thorvg/inc" ]
+declare = [ "GLFW_DLL", "IMGUI_DISABLE_OBSOLETE_FUNCTIONS" ]
+
+source = [
+    "ExternalPackages/imgui/imgui.cpp",
+    "ExternalPackages/imgui/imgui_draw.cpp",
+    "ExternalPackages/imgui/imgui_tables.cpp",
+    "ExternalPackages/imgui/imgui_widgets.cpp",
+    "ExternalPackages/imgui/backends/imgui_impl_glfw.cpp",
+    "ExternalPackages/imgui/backends/imgui_impl_vulkan.cpp",
+]
+
+# 📝 imgui_demo.cpp is deliberately absent. It compiles a window nothing in Slate presents, and its only
+#    effect on a shipped build is bytes.
+
+# 📝 🔴 ThorVG is linked rather than compiled here. ImGui is compiled into this unit because `00` §2.2
+#    forbids a second copy existing at all; ThorVG has no such constraint and no second copy can arise
+#    from a static archive. Needed when GlyphDepot is rebuilt.
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+#    statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+#    what an executable must **link** so every reference resolves. They coincide for most units and part
+#    for `SlateUI`, which links four archives and is permitted to include none of them — a static archive
+#    only satisfies references the linker has already seen, so the order is load-bearing.
+unit    = [ "SlateCompute", "SlateVulkan", "SlateDocument", "SlateMath" ]
+library = [ "ExternalPackages/thorvg/lib/thorvg.lib" ]

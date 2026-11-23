@@ -1,0 +1,6 @@
+.vector-boolean-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1px solid var(--border, #34342f); border-radius: 12px; background: var(--panel, #151515); }
+.vector-boolean-actions > strong { display: inline-flex; align-items: center; gap: 7px; margin-right: 5px; font-size: 10px; font-weight: 550; }
+.vector-boolean-actions > button { padding: 6px 10px; min-height: 29px; font-size: 10px; }
+.vector-boolean-actions > small { width: 100%; color: var(--muted, #929287); font-size: 9px; }
+.se-arrange-tools:has(.vector-boolean-actions) { flex-wrap: wrap; height: auto; }
+.se-arrange-tools > .vector-boolean-actions { flex: 1 1 320px; }

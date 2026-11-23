@@ -1,0 +1,115 @@
+/* HALO — DASHBOARD CLUSTER FOR AFTERGLOW
+   🧩 Dusk gradient with a low sun and two dune silhouettes, frosted round glass cards, centred halo dial.
+      Lilac in Cruise, mint in Eco, coral in Sport, hot rose in Race; the sky warms or cools with the mode. */
+
+.Dash.Halo { border-radius: 120px 120px 60px 60px; background: #1a1024;
+             --Ink: #fbf7ff; --InkSoft: rgba(251, 247, 255, 0.78); --InkDim: rgba(251, 247, 255, 0.58);
+             --Accent: #c9b6ff; --AccentRGB: 201, 182, 255; --Surface: rgba(38, 26, 58, 0.38); --Edge: rgba(255, 255, 255, 0.16); --Radius: 30px;
+             --Good: #9ff0d4; --Track: rgba(255, 255, 255, 0.12); --SkyTop: #2a1640; --SkyLow: #b0607e; }
+.Dash.Halo[data-mode="Eco"]   { --Accent: #9ff0d4; --AccentRGB: 159, 240, 212; --SkyTop: #142538; --SkyLow: #4f8f8a; }
+.Dash.Halo[data-mode="Sport"] { --Accent: #ff8f7d; --AccentRGB: 255, 143, 125; --SkyTop: #2c1030; --SkyLow: #d0604e; }
+.Dash.Halo[data-mode="Race"]  { --Accent: #ff3d6e; --AccentRGB: 255, 61, 110; --SkyTop: #1c0716; --SkyLow: #a01840; }
+.Stage:has(.Halo) { --WheelAccent: #ffc9e0; --WheelAccentRGB: 255, 201, 224; }
+
+.Dusk { position: absolute; inset: 0; background: linear-gradient(180deg, var(--SkyTop) 0%, var(--SkyLow) 78%, #3a1838 100%); transition: background 900ms; }
+@property --SkyTop { syntax: '<color>'; inherits: true; initial-value: #2a1640; }
+@property --SkyLow { syntax: '<color>'; inherits: true; initial-value: #b0607e; }
+.Dash.Halo { transition: --SkyTop 1200ms, --SkyLow 1200ms; }
+.Dusk .Sun { position: absolute; left: 50%; top: 470px; width: 520px; height: 520px; margin-left: -260px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 220, 200, 0.55), rgba(255, 160, 170, 0.12) 45%, transparent 70%); }
+.Dusk .Dune { position: absolute; left: -10%; right: -10%; height: 260px; border-radius: 50% 50% 0 0; }
+.Dusk .Dune.A { bottom: -150px; background: linear-gradient(180deg, rgba(60, 22, 58, 0.9), #1a0a1c); transform: rotate(-3deg); }
+.Dusk .Dune.B { bottom: -190px; left: 30%; background: linear-gradient(180deg, rgba(40, 14, 40, 0.95), #12060f); transform: rotate(4deg); }
+
+.Halo .DashTop { position: absolute; left: 110px; right: 110px; top: 34px; display: flex; justify-content: space-between; align-items: baseline; }
+.Halo .TopLeft b { font-size: 46px; font-weight: 300; letter-spacing: -0.01em; margin-right: 16px; }
+.Halo .TopLeft span { font-size: 16px; color: var(--InkSoft); }
+.Halo .TopRight { display: flex; align-items: baseline; gap: 16px; }
+.Halo .TopRight span { font-size: 14px; color: var(--InkDim); }
+.Halo .TopRight .ModeName { font-size: 30px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--Accent); transition: color 600ms; }
+.Halo .Telltales { left: 50%; top: 36px; transform: translateX(-50%); padding: 10px 18px; border-radius: 24px; background: rgba(38, 26, 58, 0.4); backdrop-filter: blur(18px); border: 1px solid var(--Edge); }
+.Halo .ShiftLights { left: 50%; top: 92px; margin-left: -233px; }
+.Halo .Odo { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); font-size: 14px; color: var(--InkDim); letter-spacing: 0.1em; }
+.Halo .Odo b { color: var(--Ink); font-weight: 400; letter-spacing: 0; }
+
+.Halo .Wing { top: 120px; bottom: 56px; width: 460px; grid-template-rows: 1fr auto; row-gap: 16px; }
+.Halo .Wing.Left { left: 120px; } .Halo .Wing.Right { right: 120px; }
+.Halo .Group { grid-row: 1; }
+.Halo .FuelDock { grid-row: 2; }
+.Halo .Panel { backdrop-filter: blur(24px) saturate(1.35); -webkit-backdrop-filter: blur(24px) saturate(1.35); box-shadow: 0 20px 50px rgba(20, 6, 30, 0.35); }
+.Halo .PanelHead { letter-spacing: 0.08em; text-transform: none; font-size: 16px; color: var(--InkSoft); }
+.Halo .FuelTrack { height: 10px; }
+.Halo .Tyre { border-radius: 16px; }
+.Halo .Arrow { width: 64px; height: 64px; padding: 12px; border-radius: 50%; background: rgba(var(--AccentRGB), 0.18); }
+
+.Halo .Core { position: absolute; left: 650px; top: 104px; width: 620px; height: 545px; transition: transform 900ms cubic-bezier(.2,.9,.3,1); }
+.Halo[data-mode="Race"] .Core { transform: scale(1.05) translateY(8px); }
+.Halo .HaloDial .NeedleLine, .Halo .HaloDial .NeedleGlow { stroke: var(--Accent); transition: stroke 600ms; }
+.Halo .HaloDial .MoodDot { fill: var(--Accent); }
+.Halo .HaloDial .MoodLabel { fill: var(--Accent); }
+.Halo .HaloDial .SideArc .Live.Low { stroke: #ffb648; }
+
+/* G compass card (custom panel). */
+.Halo .PanelGCompass { height: 450px; }
+.Halo .PanelGCompass .GCompass { left: 50%; top: 82px; margin-left: -150px; }
+.Halo .PanelGCompass .GLabel.Top, .Halo .PanelGCompass .GLabel.Bottom { left: 50%; }
+.Halo .PanelGCompass .GLabel.Top { top: 58px; } .Halo .PanelGCompass .GLabel.Bottom { top: 346px; }
+.Halo .PanelGCompass .GLabel.Left { left: 54px; top: 224px; } .Halo .PanelGCompass .GLabel.Right { left: auto; right: 34px; top: 224px; }
+.Halo .PanelGCompass .GMax { bottom: 18px; }
+.Halo .GCompass .Trail, .Halo .GCompass .Peak { stroke: var(--Accent); } .Halo .GCompass .Dot { fill: var(--Accent); } .Halo .GCompass .DotHalo { stroke: var(--Accent); }
+
+/* ------------------------------------------------------------------ Halo dial and G compass (moved from the Afterglow HMI) */
+.HaloDial { width: 100%; height: 100%; overflow: visible; }
+.HaloDial .Bezel { fill: rgba(20, 10, 28, 0.32); stroke: rgba(255, 255, 255, 0.05); stroke-width: 1; }
+.HaloDial .BezelArc { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 22; }
+.HaloDial .Face { stroke: rgba(255, 255, 255, 0.08); }
+.HaloDial .Band { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 24; }
+.HaloDial .BandLive { fill: none; stroke: url(#HaloBand); stroke-width: 24; }
+.HaloDial .Inner { fill: none; stroke: #d9cfee; stroke-width: 2.4; opacity: 0.85; }
+.HaloDial .Ticks line { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.2; }
+.HaloDial .Ticks line.Major { stroke: rgba(255, 255, 255, 0.75); stroke-width: 2; }
+.HaloDial .Numbers text { fill: rgba(251, 247, 255, 0.55); font-size: 15px; font-weight: 400; }
+.HaloDial .Cross line { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1.4; }
+.HaloDial .Cross circle { fill: rgba(255, 255, 255, 0.55); }
+.HaloDial .Box path, .HaloDial .Box line { fill: none; stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.6; }
+.HaloDial .MoodDot { fill: #ff6f7d; }
+.HaloDial .MoodLabel { fill: #ff6f7d; font-size: 20px; letter-spacing: 0.14em; font-weight: 600; transition: fill 400ms; }
+.HaloDial .SpeedFigure { fill: #fff; font-size: 104px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.HaloDial .SpeedUnit { fill: rgba(251, 247, 255, 0.8); font-size: 15px; font-weight: 600; letter-spacing: 0.04em; }
+.HaloDial .NeedleLine { stroke: #ff6f7d; stroke-width: 7; stroke-linecap: round; }
+.HaloDial .NeedleGlow { stroke: #ff6f7d; stroke-width: 14; opacity: 0.7; }
+.HaloDial .Selector text { cursor: pointer; }
+.HaloDial .Selector .Now { fill: #fff; font-size: 40px; font-weight: 600; transform-box: fill-box; transform-origin: 50% 50%; }
+.HaloDial .Selector .Now.Pop { animation: HaloPop 460ms cubic-bezier(.2,1.6,.4,1); }
+@keyframes HaloPop { 0% { transform: scale(0.6); opacity: 0.2; } 100% { transform: scale(1); opacity: 1; } }
+.HaloDial .Selector .Side { fill: rgba(251, 247, 255, 0.45); font-size: 16px; font-weight: 600; }
+.HaloDial .SideArc .Track { fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 4; stroke-linecap: round; }
+.HaloDial .SideArc .Live { fill: none; stroke: #ffffff; stroke-width: 7; stroke-linecap: round; }
+.HaloDial .SideArc .Live.Regen { stroke: #9ff0d4; }
+.HaloDial .SideArc text { fill: rgba(251, 247, 255, 0.6); font-size: 18px; }
+.HaloDial .SideArc .Caption { font-size: 11px; letter-spacing: 0.24em; }
+.HaloDial .SideArc .Letter { font-size: 15px; }
+.HaloDial .SideArc .Hook { stroke: #fff; stroke-width: 3; stroke-linecap: round; }
+.HaloDial .PlugGlyph path { fill: none; stroke: rgba(251, 247, 255, 0.75); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.HaloDial .Percent { fill: rgba(251, 247, 255, 0.85); font-size: 14px; }
+.GCompassHead { display: flex; justify-content: space-between; align-items: center; }
+.GCompassHead b { font-size: 30px; font-weight: 400; letter-spacing: 0.02em; }
+.GReset { padding: 7px 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.1); font-size: 12.5px; color: var(--InkSoft); transition: background 200ms, transform 140ms; }
+.GReset:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.2); }
+.GCompass { position: absolute; left: 52px; top: 110px; width: 300px; height: 300px; overflow: visible; }
+.GCompass .Ring { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 1.4; }
+.GCompass .Ring.Inner { stroke: rgba(255, 255, 255, 0.1); }
+.GCompass .Ring.Core { fill: rgba(255, 255, 255, 0.04); stroke: rgba(255, 255, 255, 0.12); }
+.GCompass .Axis { stroke: rgba(255, 255, 255, 0.45); stroke-width: 1.4; }
+.GCompass .Trail { fill: none; stroke: #ff6f7d; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.45; }
+.GCompass .Peak { fill: none; stroke: #ff6f7d; stroke-width: 1.5; }
+.GCompass .Dot { fill: #ff6f7d; }
+.GCompass .DotHalo { fill: none; stroke: #ff6f7d; stroke-width: 2; opacity: 0.6; animation: GBreath 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes GBreath { 50% { transform: scale(1.25); opacity: 0.25; } }
+.GLabel { position: absolute; font-size: 15px; color: var(--InkDim); font-variant-numeric: tabular-nums; }
+.GLabel.Top { left: 202px; top: 96px; transform: translateX(-50%); }
+.GLabel.Bottom { left: 202px; top: 412px; transform: translateX(-50%); }
+.GLabel.Left { left: 32px; top: 252px; transform: translateX(-50%); }
+.GLabel.Right { left: 372px; top: 252px; transform: translateX(-50%); }
+.GMax { position: absolute; left: 0; right: 0; bottom: 40px; display: flex; justify-content: center; align-items: baseline; gap: 12px; }
+.GMax em { font-style: normal; color: #ff6f7d; font-size: 18px; letter-spacing: 0.06em; }
+.GMax b { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hybrid shadow — software raster + edge-band ray trace</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --dim:#8b949e;
+    --line:#30363d; --hot:#f6685e; --cool:#57c7ff; --good:#4cd07d; --warn:#e3b341;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,Segoe UI,sans-serif;display:flex;min-height:100vh}
+  #stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:10px}
+  canvas{border:1px solid var(--line);border-radius:10px;background:#000;max-width:100%}
+  h1{font-size:16px;margin:0}
+  .sub{color:var(--dim);font-size:12px;margin:0;text-align:center}
+  .sub code{font-family:var(--mono);color:var(--cool)}
+  #panel{width:300px;background:var(--panel);border-left:1px solid var(--line);padding:16px;overflow:auto}
+  .grp{margin-bottom:18px}
+  .grp h3{margin:0 0 8px;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  button{font:12.5px inherit;color:var(--ink);background:#1d2530;border:1px solid var(--line);border-radius:7px;padding:6px 10px;cursor:pointer}
+  button.on{background:var(--cool);color:#04121c;border-color:var(--cool);font-weight:600}
+  button:hover{border-color:var(--cool)}
+  label{display:flex;justify-content:space-between;font-size:12px;color:#c9d1d9;margin:9px 0 3px}
+  input[type=range]{width:100%}
+  .stat{font-family:var(--mono);font-size:12px;color:#c9d1d9;display:flex;justify-content:space-between;margin:5px 0}
+  .stat b{color:var(--good)} .stat b.w{color:var(--warn)} .stat b.c{color:var(--cool)}
+  .note{font-size:11px;color:var(--dim);border-left:2px solid var(--line);padding-left:9px;margin-top:6px}
+  code{font-family:var(--mono);color:var(--cool)}
+  #err{color:var(--hot);font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;max-width:640px}
+  ol{margin:6px 0 0 16px;padding:0;font-size:11px;color:var(--dim)} ol li{margin:2px 0}
+</style>
+</head>
+<body>
+  <div id="stage">
+    <h1>Hybrid shadow — software raster + edge-band ray trace</h1>
+    <p class="sub">Sun-view raster map does the bulk (cheap PCF); RT fires only in a 3–4px <b style="color:var(--warn)">inset band</b> at shadow edges</p>
+    <canvas id="cv" width="820" height="560"></canvas>
+    <p class="sub" id="status">building…</p>
+    <p class="sub" id="err"></p>
+  </div>
+
+  <div id="panel">
+    <div class="grp">
+      <h3>Mode</h3>
+      <div class="seg" id="mode">
+        <button data-m="0">All-RT truth</button>
+        <button data-m="1" class="on">Hybrid (raster + band)</button>
+        <button data-m="2">Raster only (PCF)</button>
+      </div>
+      <div class="note">Hybrid = your pipeline: raster shadow map → cheap PCF interior → RT only the inset edge band.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Overlay</h3>
+      <div class="seg" id="ovl">
+        <button data-o="0" class="on">Shaded</button>
+        <button data-o="1">RT band mask</button>
+        <button data-o="2">Diff vs truth</button>
+        <button data-o="3">Sun shadow map</button>
+      </div>
+      <div class="note"><b>Band mask</b>: amber = pixels that ray-trace, dark = raster-only. <b>Diff</b> ×8 vs all-RT.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Parameters</h3>
+      <label>Edge inset (px) <span id="lB">3</span></label>
+      <input type="range" id="B" min="1" max="8" step="1" value="3">
+      <label>RT disc samples N <span id="lN">10</span></label>
+      <input type="range" id="N" min="2" max="24" step="1" value="10">
+      <label>Sun softness <span id="lS">0.05</span></label>
+      <input type="range" id="S" min="0.005" max="0.14" step="0.005" value="0.05">
+      <label>Shadow-map res <span id="lM">1024</span></label>
+      <input type="range" id="M" min="256" max="2048" step="256" value="1024">
+      <label><input type="checkbox" id="orbit" checked> orbit camera</label>
+    </div>
+
+    <div class="grp">
+      <h3>Live cost (this frame)</h3>
+      <div class="stat">RT band pixels <b class="w" id="band">—</b></div>
+      <div class="stat">avg RT rays / shaded px <b id="avg">—</b></div>
+      <div class="stat">rays vs all-RT <b id="save">—</b></div>
+      <div class="note"><b>RT rays only</b> — the sun-view raster + PCF are NOT counted (fixed setup cost, excluded per request). The saving is purely the ray-traced work your hybrid avoids.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Pipeline (exactly your steps)</h3>
+      <ol>
+        <li>Software-raster depth from the SUN into a shadow map (compute, no RT).</li>
+        <li>Camera pass: project each surface point into the map → cheap <b>PCF</b> soft shadow (interior).</li>
+        <li>Detect map <b>depth edges</b>; inset N px → thin penumbra band.</li>
+        <li>Only band pixels fire the accurate <b>RT</b> disc rays.</li>
+      </ol>
+    </div>
+  </div>
+
+<script type="module">
+const err=document.getElementById('err'), statusEl=document.getElementById('status');
+function fail(m){ err.textContent=m; statusEl.textContent=''; throw new Error(m); }
+if(!navigator.gpu) fail("WebGPU not available — use Chrome/Edge 113+.");
+
+/* ---- same procedural Suzanne + BVH as SuzanneBvhShadow ---- */
+function buildMesh(){
+  const boxes=[[0,0,0,0.55,0.5,0.5],[0.62,0.15,0,0.14,0.2,0.16],[-0.62,0.15,0,0.14,0.2,0.16],
+    [0,-0.18,0.42,0.34,0.22,0.22],[0,-0.40,0.30,0.42,0.10,0.14]];
+  let V=[],F=[];
+  function addBox(cx,cy,cz,hx,hy,hz){ const b=V.length/3;
+    const c=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+    for(const s of c) V.push(cx+s[0]*hx,cy+s[1]*hy,cz+s[2]*hz);
+    const q=[[0,1,2,3],[5,4,7,6],[4,0,3,7],[1,5,6,2],[3,2,6,7],[4,5,1,0]];
+    for(const f of q){ F.push(b+f[0],b+f[1],b+f[2]); F.push(b+f[0],b+f[2],b+f[3]); } }
+  for(const bx of boxes) addBox(...bx);
+  function subdivide(){ const nV=V.slice(); const nF=[]; const mid=new Map();
+    function get(a,b){ const k=a<b?a+'_'+b:b+'_'+a; if(mid.has(k)) return mid.get(k);
+      const i=nV.length/3; nV.push((V[a*3]+V[b*3])/2,(V[a*3+1]+V[b*3+1])/2,(V[a*3+2]+V[b*3+2])/2); mid.set(k,i); return i; }
+    for(let i=0;i<F.length;i+=3){ const a=F[i],b=F[i+1],c=F[i+2];
+      const ab=get(a,b),bc=get(b,c),ca=get(c,a); nF.push(a,ab,ca,b,bc,ab,c,ca,bc,ab,bc,ca); }
+    V=nV; F=nF;
+    const nb=Array.from({length:V.length/3},()=>[]);
+    for(let i=0;i<F.length;i+=3){ const t=[F[i],F[i+1],F[i+2]];
+      for(let j=0;j<3;j++){ nb[t[j]].push(t[(j+1)%3]); nb[t[j]].push(t[(j+2)%3]); } }
+    const out=V.slice();
+    for(let v=0;v<V.length/3;v++){ if(!nb[v].length) continue; let x=0,y=0,z=0;
+      for(const n of nb[v]){x+=V[n*3];y+=V[n*3+1];z+=V[n*3+2];} const m=nb[v].length;
+      out[v*3]=V[v*3]*0.35+(x/m)*0.65; out[v*3+1]=V[v*3+1]*0.35+(y/m)*0.65; out[v*3+2]=V[v*3+2]*0.35+(z/m)*0.65; }
+    V=out; }
+  subdivide(); subdivide();
+  return { positions:new Float32Array(V), indices:new Uint32Array(F) };
+}
+function buildBVH(positions,indices){
+  const triCount=indices.length/3; const cent=new Float32Array(triCount*3);
+  const bmin=new Float32Array(triCount*3), bmax=new Float32Array(triCount*3);
+  for(let t=0;t<triCount;t++){ let mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9;
+    for(let k=0;k<3;k++){ const vi=indices[t*3+k]; const x=positions[vi*3],y=positions[vi*3+1],z=positions[vi*3+2];
+      mnx=Math.min(mnx,x);mny=Math.min(mny,y);mnz=Math.min(mnz,z);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);mxz=Math.max(mxz,z); }
+    bmin[t*3]=mnx;bmin[t*3+1]=mny;bmin[t*3+2]=mnz;bmax[t*3]=mxx;bmax[t*3+1]=mxy;bmax[t*3+2]=mxz;
+    cent[t*3]=(mnx+mxx)/2;cent[t*3+1]=(mny+mxy)/2;cent[t*3+2]=(mnz+mxz)/2; }
+  const order=Array.from({length:triCount},(_,i)=>i); const nodes=[];
+  function boundsOf(lo,hi){ let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+    for(let i=lo;i<hi;i++){ const t=order[i]; for(let a=0;a<3;a++){ mn[a]=Math.min(mn[a],bmin[t*3+a]); mx[a]=Math.max(mx[a],bmax[t*3+a]); } } return [mn,mx]; }
+  const LEAF=4;
+  function build(lo,hi){ const idx=nodes.length/8; nodes.push(0,0,0,0,0,0,0,0); const [mn,mx]=boundsOf(lo,hi);
+    if(hi-lo<=LEAF){ nodes[idx*8]=mn[0];nodes[idx*8+1]=mn[1];nodes[idx*8+2]=mn[2];
+      nodes[idx*8+4]=mx[0];nodes[idx*8+5]=mx[1];nodes[idx*8+6]=mx[2]; nodes[idx*8+3]=lo; nodes[idx*8+7]=(hi-lo); return idx; }
+    let ext=[mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]]; let ax=ext[0]>ext[1]?(ext[0]>ext[2]?0:2):(ext[1]>ext[2]?1:2);
+    const seg=order.slice(lo,hi).sort((p,q)=>cent[p*3+ax]-cent[q*3+ax]); for(let i=lo;i<hi;i++) order[i]=seg[i-lo];
+    const midp=(lo+hi)>>1; const L=build(lo,midp); const R=build(midp,hi);
+    nodes[idx*8]=mn[0];nodes[idx*8+1]=mn[1];nodes[idx*8+2]=mn[2];nodes[idx*8+4]=mx[0];nodes[idx*8+5]=mx[1];nodes[idx*8+6]=mx[2];
+    nodes[idx*8+3]=L; nodes[idx*8+7]=-(R+1); return idx; }
+  build(0,triCount);
+  const triV=new Float32Array(triCount*3*4);
+  for(let i=0;i<triCount;i++){ const t=order[i]; for(let k=0;k<3;k++){ const vi=indices[t*3+k];
+    triV[(i*3+k)*4]=positions[vi*3];triV[(i*3+k)*4+1]=positions[vi*3+1];triV[(i*3+k)*4+2]=positions[vi*3+2]; } }
+  return { nodes:new Float32Array(nodes), tris:triV, triCount, nodeCount:nodes.length/8 };
+}
+const mesh=buildMesh(), bvh=buildBVH(mesh.positions,mesh.indices);
+
+/* ---- GPU ---- */
+const canvas=document.getElementById('cv');
+const adapter=await navigator.gpu.requestAdapter(); if(!adapter) fail("No adapter.");
+const device=await adapter.requestDevice();
+device.addEventListener?.('uncapturederror',e=>fail("GPU error: "+e.error.message));
+const ctx=canvas.getContext('webgpu'); const format=navigator.gpu.getPreferredCanvasFormat();
+ctx.configure({device,format,alphaMode:'opaque'}); const W=canvas.width,H=canvas.height;
+statusEl.textContent=`Suzanne ${bvh.triCount.toLocaleString()} tris — sun-view raster + BVH RT`;
+
+const outTex=device.createTexture({size:[W,H],format:'rgba8unorm',usage:GPUTextureUsage.STORAGE_BINDING|GPUTextureUsage.TEXTURE_BINDING});
+function sbuf(a){ const b=device.createBuffer({size:a.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST}); device.queue.writeBuffer(b,0,a); return b; }
+const nodeBuf=sbuf(bvh.nodes), triBuf=sbuf(bvh.tris);
+
+const MAXM=2048;
+// shadow map depth stored as u32 (atomicMin of float bits). Sized to max; we use a sub-square.
+const smBuf=device.createBuffer({size:MAXM*MAXM*4,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});
+
+// uniforms
+const uBuf=device.createBuffer({size:128,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+const statsBuf=device.createBuffer({size:16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
+const readBuf=device.createBuffer({size:16,usage:GPUBufferUsage.MAP_READ|GPUBufferUsage.COPY_DST});
+
+// shared WGSL prelude (mesh trace + sun matrix)
+const prelude=/* wgsl */`
+struct U { res:vec2f, time:f32, mode:u32, samples:u32, softness:f32, inset:f32, smRes:u32,
+           sunV:mat4x4f, overlay:u32, pad0:u32, pad1:u32, pad2:u32, };
+@group(0) @binding(1) var<uniform> u: U;
+@group(0) @binding(2) var<storage,read> nodes: array<f32>;
+@group(0) @binding(3) var<storage,read> tris:  array<f32>;
+@group(0) @binding(5) var<storage,read_write> sm: array<atomic<u32>>;
+const INF=1e30;
+fn nodeMin(i:u32)->vec3f{ return vec3f(nodes[i*8u],nodes[i*8u+1u],nodes[i*8u+2u]); }
+fn nodeMax(i:u32)->vec3f{ return vec3f(nodes[i*8u+4u],nodes[i*8u+5u],nodes[i*8u+6u]); }
+fn nodeLeft(i:u32)->i32{ return i32(nodes[i*8u+3u]); }
+fn nodeCount(i:u32)->i32{ return i32(nodes[i*8u+7u]); }
+fn triV(t:u32,k:u32)->vec3f{ let b=(t*3u+k)*4u; return vec3f(tris[b],tris[b+1u],tris[b+2u]); }
+fn slab(ro:vec3f,inv:vec3f,mn:vec3f,mx:vec3f,tmax:f32)->f32{
+  let t0=(mn-ro)*inv; let t1=(mx-ro)*inv; let a=min(t0,t1); let b=max(t0,t1);
+  let tn=max(max(a.x,a.y),a.z); let tf=min(min(b.x,b.y),b.z);
+  if(tf<max(tn,0.0)||tn>tmax){ return -1.0; } return tn; }
+fn triHit(ro:vec3f,rd:vec3f,t:u32)->f32{
+  let p0=triV(t,0u); let p1=triV(t,1u); let p2=triV(t,2u); let e1=p1-p0; let e2=p2-p0;
+  let pv=cross(rd,e2); let det=dot(e1,pv); if(abs(det)<1e-8){ return -1.0; }
+  let inv=1.0/det; let tv=ro-p0; let uu=dot(tv,pv)*inv; if(uu<0.0||uu>1.0){ return -1.0; }
+  let qv=cross(tv,e1); let vv=dot(rd,qv)*inv; if(vv<0.0||uu+vv>1.0){ return -1.0; }
+  let tt=dot(e2,qv)*inv; if(tt>1e-4){ return tt; } return -1.0; }
+fn traceClosest(ro:vec3f,rd:vec3f,outN:ptr<function,vec3f>)->f32{
+  let inv=1.0/rd; var best=INF; var stack:array<u32,32>; var sp=0u; var cur=0u; var have=false;
+  loop{ let hit=slab(ro,inv,nodeMin(cur),nodeMax(cur),best);
+    if(hit>=0.0){ let cnt=nodeCount(cur);
+      if(cnt>0){ let first=u32(nodeLeft(cur));
+        for(var i=0u;i<u32(cnt);i=i+1u){ let t=triHit(ro,rd,first+i);
+          if(t>0.0&&t<best){ best=t; let p0=triV(first+i,0u); let p1=triV(first+i,1u); let p2=triV(first+i,2u);
+            *outN=normalize(cross(p1-p0,p2-p0)); have=true; } }
+      } else { let L=u32(nodeLeft(cur)); let R=u32(-cnt-1); stack[sp]=R; sp=sp+1u; cur=L; continue; } }
+    if(sp==0u){ break; } sp=sp-1u; cur=stack[sp]; }
+  if(have){ return best; } return -1.0; }
+fn occAny(ro:vec3f,rd:vec3f,tmax:f32)->bool{
+  let inv=1.0/rd; var stack:array<u32,32>; var sp=0u; var cur=0u;
+  loop{ let hit=slab(ro,inv,nodeMin(cur),nodeMax(cur),tmax);
+    if(hit>=0.0){ let cnt=nodeCount(cur);
+      if(cnt>0){ let first=u32(nodeLeft(cur));
+        for(var i=0u;i<u32(cnt);i=i+1u){ let t=triHit(ro,rd,first+i); if(t>1e-3&&t<tmax){ return true; } }
+      } else { let L=u32(nodeLeft(cur)); let R=u32(-cnt-1); stack[sp]=R; sp=sp+1u; cur=L; continue; } }
+    if(sp==0u){ break; } sp=sp-1u; cur=stack[sp]; }
+  return false; }
+`;
+
+/* PASS 1: software-rasterize depth from the sun into sm[] via atomicMin(float bits).
+   One thread per triangle: project 3 verts through sunV, scan its screen bbox, edge-function
+   coverage, write min depth. This is a real software rasteriser — no ray tracing. */
+const rasterWGSL=prelude+/* wgsl */`
+fn f2u(x:f32)->u32{ return bitcast<u32>(x); }  // depths are >=0 so monotonic as uint
+@compute @workgroup_size(64)
+fn clearSM(@builtin(global_invocation_id) gid:vec3u){
+  let n=u.smRes*u.smRes; if(gid.x>=n){ return; } atomicStore(&sm[gid.x], 0x3f800000u); }  // 1.0f
+@compute @workgroup_size(64)
+fn raster(@builtin(global_invocation_id) gid:vec3u){
+  let tri=gid.x; let triN=arrayLength(&tris)/12u; if(tri>=triN){ return; }
+  let R=f32(u.smRes);
+  var s:array<vec3f,3>;
+  for(var k=0u;k<3u;k++){
+    let w=triV(tri,k);
+    let c=u.sunV*vec4f(w,1.0);          // clip
+    let ndc=c.xyz/c.w;
+    s[k]=vec3f((ndc.x*0.5+0.5)*R, (ndc.y*0.5+0.5)*R, ndc.z*0.5+0.5);
+  }
+  let mn=floor(min(min(s[0].xy,s[1].xy),s[2].xy));
+  let mx=ceil (max(max(s[0].xy,s[1].xy),s[2].xy));
+  let area=(s[1].x-s[0].x)*(s[2].y-s[0].y)-(s[1].y-s[0].y)*(s[2].x-s[0].x);
+  if(abs(area)<1e-6){ return; }
+  for(var y=i32(mn.y);y<=i32(mx.y);y=y+1){
+    if(y<0||y>=i32(u.smRes)){ continue; }
+    for(var x=i32(mn.x);x<=i32(mx.x);x=x+1){
+      if(x<0||x>=i32(u.smRes)){ continue; }
+      let p=vec2f(f32(x)+0.5,f32(y)+0.5);
+      let w0=((s[1].x-s[0].x)*(p.y-s[0].y)-(s[1].y-s[0].y)*(p.x-s[0].x))/area;
+      let w1=((s[2].x-s[1].x)*(p.y-s[1].y)-(s[2].y-s[1].y)*(p.x-s[1].x))/area;
+      let w2=1.0-w0-w1;
+      if(w0<0.0||w1<0.0||w2<0.0){ continue; }
+      let depth=w2*s[0].z+w0*s[1].z+w1*s[2].z; // barycentric depth (note index rotation)
+      let idx=u32(y)*u.smRes+u32(x);
+      // depths are clamped to [0,1] so their IEEE bit patterns are monotonic as u32 -> atomicMin works directly.
+      atomicMin(&sm[idx], f2u(clamp(depth,0.0,1.0)));
+    }
+  }
+}
+`;
+
+/* PASS 2: camera shade. raster PCF interior, edge-detect + inset band -> RT. */
+const shadeWGSL=prelude+/* wgsl */`
+@group(0) @binding(0) var outTex: texture_storage_2d<rgba8unorm, write>;
+struct St { band:atomic<u32>, shaded:atomic<u32>, rays:atomic<u32>, pad:atomic<u32>, };
+@group(0) @binding(4) var<storage,read_write> stats: St;
+const SUN=normalize(vec3f(0.5,0.92,0.35));
+fn smDepth(x:i32,y:i32)->f32{ if(x<0||y<0||x>=i32(u.smRes)||y>=i32(u.smRes)){ return 1.0; }
+  return bitcast<f32>(atomicLoad(&sm[u32(y)*u.smRes+u32(x)])); }
+// project world point into sun clip -> map uv + its depth
+fn toSun(w:vec3f)->vec3f{ let c=u.sunV*vec4f(w,1.0); let n=c.xyz/c.w;
+  return vec3f((n.x*0.5+0.5), (n.y*0.5+0.5), n.z*0.5+0.5); }
+fn pcf(w:vec3f)->f32{ // 5x5 percentage-closer, cheap soft
+  let s=toSun(w); let R=f32(u.smRes); let px=s.xy*R; let bias=2.0/R;
+  var sum=0.0; var cnt=0.0;
+  for(var dy=-2;dy<=2;dy++){ for(var dx=-2;dx<=2;dx++){
+    let d=smDepth(i32(px.x)+dx,i32(px.y)+dy);
+    sum=sum+select(1.0,0.0, s.z-bias> d); cnt=cnt+1.0; } }
+  return sum/cnt; }
+// depth-edge test in the sun map at this point: big neighbour depth jump => silhouette nearby
+fn sunEdge(w:vec3f)->bool{ let s=toSun(w); let R=f32(u.smRes); let px=s.xy*R;
+  let c=smDepth(i32(px.x),i32(px.y));
+  let inset=i32(u.inset);
+  var mn=1.0; var mx=0.0;
+  for(var dy=-inset;dy<=inset;dy=dy+1){ for(var dx=-inset;dx<=inset;dx=dx+1){
+    let d=smDepth(i32(px.x)+dx,i32(px.y)+dy); mn=min(mn,d); mx=max(mx,d); } }
+  return (mx-mn)>0.02; } // depth discontinuity within the inset radius
+fn basis(n:vec3f,t:ptr<function,vec3f>,b:ptr<function,vec3f>){ var up=vec3f(0.0,1.0,0.0);
+  if(abs(n.y)>0.95){ up=vec3f(1.0,0.0,0.0); } *t=normalize(cross(up,n)); *b=cross(n,*t); }
+fn hash(p:vec2f)->f32{ return fract(sin(dot(p,vec2f(127.1,311.7)))*43758.5); }
+fn discRT(ro:vec3f,seed:vec2f,rays:ptr<function,u32>)->f32{
+  var tx:vec3f; var ty:vec3f; basis(SUN,&tx,&ty); let N=u.samples; let rot=hash(seed)*6.2831853; var vis=0.0;
+  for(var i=0u;i<N;i=i+1u){ let fr=(f32(i)+0.5)/f32(N); let r=sqrt(fr)*u.softness; let an=f32(i)*2.399963+rot;
+    let dir=normalize(SUN+(cos(an)*tx+sin(an)*ty)*r); *rays=*rays+1u;
+    if(!occAny(ro,dir,20.0)){ vis+=1.0; } } return vis/f32(N); }
+
+@compute @workgroup_size(8,8)
+fn shade(@builtin(global_invocation_id) gid:vec3u){
+  if(gid.x>=u32(u.res.x)||gid.y>=u32(u.res.y)){ return; }
+  let px=vec2f(f32(gid.x),f32(gid.y)); let uv=(px*2.0-u.res)/u.res.y;
+  let ang=u.time; let ro=vec3f(cos(ang)*3.4,1.3,sin(ang)*3.4); let ta=vec3f(0.0,-0.05,0.0);
+  let fw=normalize(ta-ro); let rt=normalize(cross(vec3f(0.0,1.0,0.0),fw)); let up=cross(fw,rt);
+  let rd=normalize(fw*1.7+rt*uv.x-up*uv.y);
+  var n=vec3f(0.0,1.0,0.0);
+  let tMesh=traceClosest(ro,rd,&n);
+  var tFloor=-1.0; if(abs(rd.y)>1e-4){ let tf=(-1.0-ro.y)/rd.y; if(tf>0.0){ tFloor=tf; } }
+  var hitP:vec3f; var hitN:vec3f; var isFloor=false; var valid=false;
+  if(tMesh>0.0&&(tFloor<0.0||tMesh<tFloor)){ hitP=ro+rd*tMesh; hitN=n; valid=true; }
+  else if(tFloor>0.0){ hitP=ro+rd*tFloor; hitN=vec3f(0.0,1.0,0.0); isFloor=true; valid=true; }
+
+  var col=vec3f(0.0); var isBand=false; var rays=0u; var vis=1.0; var visTruth=1.0;
+  if(valid){
+    let ndl=max(dot(hitN,SUN),0.0); let org=hitP+hitN*1e-3*(1.0+length(hitP));
+    // truth for diff
+    if(ndl>0.0){ var rr=0u; visTruth=discRT(org,px,&rr); } else { visTruth=0.0; }
+
+    if(ndl<=0.0){ vis=0.0; }
+    else if(u.mode==0u){ vis=visTruth; rays=u.samples; }        // all-RT
+    else if(u.mode==2u){ vis=pcf(org); }                        // raster PCF only
+    else {                                                       // HYBRID
+      if(sunEdge(org)){ vis=discRT(org,px,&rays); isBand=true; } // inset edge band -> RT
+      else { vis=pcf(org); }                                     // interior -> cheap PCF
+    }
+    let base=select(vec3f(0.62,0.60,0.66),vec3f(0.30,0.32,0.36),isFloor);
+    let amb=vec3f(0.14,0.16,0.22); let sun=vec3f(1.0,0.95,0.88)*1.5;
+    var lit=amb*base+base*sun*ndl*vis; lit=lit/(lit+vec3f(1.0)); col=pow(lit,vec3f(1.0/2.2));
+
+    if(u.overlay==1u){ col=select(vec3f(0.10,0.10,0.13), vec3f(0.95,0.65,0.15), isBand); }
+    else if(u.overlay==2u){ let d=abs(vis-visTruth)*8.0; col=vec3f(d,d*0.3,0.0); }
+    else if(u.overlay==3u){ let s=toSun(org); let d=smDepth(i32(s.x*f32(u.smRes)),i32(s.y*f32(u.smRes))); col=vec3f(d); }
+
+    atomicAdd(&stats.band, select(0u,1u,isBand)); atomicAdd(&stats.shaded,1u); atomicAdd(&stats.rays,rays);
+  } else {
+    let s=0.5+0.5*rd.y; col=mix(vec3f(0.09,0.11,0.15),vec3f(0.04,0.06,0.10),s);
+    if(u.overlay==1u){ col=vec3f(0.05,0.05,0.07); } if(u.overlay==2u){ col=vec3f(0.0); }
+  }
+  textureStore(outTex,vec2i(gid.xy),vec4f(col,1.0));
+}`;
+
+const blit=/* wgsl */`
+@group(0) @binding(0) var tex: texture_2d<f32>;
+struct VO{ @builtin(position) pos:vec4f, @location(0) uv:vec2f, };
+@vertex fn v(@builtin(vertex_index) i:u32)->VO{ var p=array<vec2f,3>(vec2f(-1.0,-3.0),vec2f(-1.0,1.0),vec2f(3.0,1.0));
+  var o:VO; o.pos=vec4f(p[i],0.0,1.0); o.uv=p[i]*vec2f(0.5,-0.5)+0.5; return o; }
+@fragment fn f(in:VO)->@location(0) vec4f{ let d=vec2i(in.uv*vec2f(textureDimensions(tex))); return textureLoad(tex,d,0); }`;
+
+const rasterMod=device.createShaderModule({code:rasterWGSL});
+const shadeMod =device.createShaderModule({code:shadeWGSL});
+
+// One EXPLICIT layout shared by all three compute passes. 'auto' prunes bindings a given
+// entry point doesn't reference (clearSM ignores nodes/tris), which made each pass demand a
+// different bind group — the mismatch we hit. An explicit layout keeps ONE group shape for all.
+const computeBGL=device.createBindGroupLayout({entries:[
+  {binding:0,visibility:GPUShaderStage.COMPUTE,storageTexture:{access:'write-only',format:'rgba8unorm'}},
+  {binding:1,visibility:GPUShaderStage.COMPUTE,buffer:{type:'uniform'}},
+  {binding:2,visibility:GPUShaderStage.COMPUTE,buffer:{type:'read-only-storage'}},
+  {binding:3,visibility:GPUShaderStage.COMPUTE,buffer:{type:'read-only-storage'}},
+  {binding:4,visibility:GPUShaderStage.COMPUTE,buffer:{type:'storage'}},
+  {binding:5,visibility:GPUShaderStage.COMPUTE,buffer:{type:'storage'}},
+]});
+const computeLayout=device.createPipelineLayout({bindGroupLayouts:[computeBGL]});
+const clearPipe =device.createComputePipeline({layout:computeLayout,compute:{module:rasterMod,entryPoint:'clearSM'}});
+const rasterPipe=device.createComputePipeline({layout:computeLayout,compute:{module:rasterMod,entryPoint:'raster'}});
+const shadePipe =device.createComputePipeline({layout:computeLayout,compute:{module:shadeMod, entryPoint:'shade'}});
+const bMod=device.createShaderModule({code:blit});
+const bPipe=device.createRenderPipeline({layout:'auto',vertex:{module:bMod,entryPoint:'v'},fragment:{module:bMod,entryPoint:'f',targets:[{format}]},primitive:{topology:'triangle-list'}});
+
+// ONE bind group with EVERY binding present — reused by all three compute passes. An entry point
+// may ignore some bindings, but the explicit layout guarantees they're all valid to supply.
+const computeBG=device.createBindGroup({layout:computeBGL,entries:[
+  {binding:0,resource:outTex.createView()},
+  {binding:1,resource:{buffer:uBuf}},
+  {binding:2,resource:{buffer:nodeBuf}},
+  {binding:3,resource:{buffer:triBuf}},
+  {binding:4,resource:{buffer:statsBuf}},
+  {binding:5,resource:{buffer:smBuf}},
+]});
+const clearBG=computeBG, rasterBG=computeBG, shadeBG=computeBG;
+const blitBG=device.createBindGroup({layout:bPipe.getBindGroupLayout(0),entries:[{binding:0,resource:outTex.createView()}]});
+
+/* sun view-projection: orthographic, looking from +SUN toward origin */
+function sunMatrix(){
+  const S=[0.5,0.92,0.35]; const L=Math.hypot(...S); const d=[S[0]/L,S[1]/L,S[2]/L];
+  const eye=[d[0]*4,d[1]*4,d[2]*4], ctr=[0,-0.1,0]; let upv=[0,1,0];
+  const f=[ctr[0]-eye[0],ctr[1]-eye[1],ctr[2]-eye[2]]; const fl=Math.hypot(...f); const fw=[f[0]/fl,f[1]/fl,f[2]/fl];
+  let r=[fw[1]*upv[2]-fw[2]*upv[1], fw[2]*upv[0]-fw[0]*upv[2], fw[0]*upv[1]-fw[1]*upv[0]]; const rl=Math.hypot(...r); r=[r[0]/rl,r[1]/rl,r[2]/rl];
+  const u2=[r[1]*fw[2]-r[2]*fw[1], r[2]*fw[0]-r[0]*fw[2], r[0]*fw[1]-r[1]*fw[0]];
+  // view (row-major then we transpose into column-major for WGSL mat4)
+  const tx=-(r[0]*eye[0]+r[1]*eye[1]+r[2]*eye[2]);
+  const ty=-(u2[0]*eye[0]+u2[1]*eye[1]+u2[2]*eye[2]);
+  const tz=-(fw[0]*eye[0]+fw[1]*eye[1]+fw[2]*eye[2]);
+  const o=2.4, n=0.1, fa=10.0; // ortho half-extent, near, far
+  // ortho: x/o, y/o, z map [n,fa]->[0,1]
+  // Compose P*V directly, column-major (WGSL mat4x4f is column-major)
+  const V=[ r[0],u2[0],fw[0],0,  r[1],u2[1],fw[1],0,  r[2],u2[2],fw[2],0,  tx,ty,tz,1 ];
+  const P=[ 1/o,0,0,0,  0,1/o,0,0,  0,0,1/(fa-n),0,  0,0,-n/(fa-n),1 ];
+  // M = P * V (both column-major)
+  const M=new Float32Array(16);
+  for(let c=0;c<4;c++)for(let rr=0;rr<4;rr++){ let s=0; for(let k=0;k<4;k++) s+=P[k*4+rr]*V[c*4+k]; M[c*4+rr]=s; }
+  return M;
+}
+
+/* UI */
+let mode=1,overlay=0,inset=3,samples=10,softness=0.05,smRes=1024,orbit=true,tAcc=0,last=performance.now();
+function seg(id,attr,set){ const box=document.getElementById(id); box.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  box.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); set(+b.dataset[attr]); }); }
+seg('mode','m',v=>mode=v); seg('ovl','o',v=>overlay=v);
+document.getElementById('B').oninput=e=>{inset=+e.target.value;document.getElementById('lB').textContent=inset;};
+document.getElementById('N').oninput=e=>{samples=+e.target.value;document.getElementById('lN').textContent=samples;};
+document.getElementById('S').oninput=e=>{softness=+e.target.value;document.getElementById('lS').textContent=softness.toFixed(3);};
+document.getElementById('M').oninput=e=>{smRes=+e.target.value;document.getElementById('lM').textContent=smRes;};
+document.getElementById('orbit').onchange=e=>orbit=e.target.checked;
+
+const zeros=new Uint32Array(4); let mapping=false;
+function pct(v){ return v>0.005?('−'+(100*v).toFixed(0)+'%'):(v<-0.005?('+'+(-100*v).toFixed(0)+'%'):'baseline'); }
+const triN=bvh.triCount;
+
+function frame(now){
+  const dt=Math.min((now-last)/1000,0.05); last=now; if(orbit) tAcc+=dt*0.35;
+  const M=sunMatrix();
+  const ub=new ArrayBuffer(128); const dv=new DataView(ub);
+  dv.setFloat32(0,W,true); dv.setFloat32(4,H,true); dv.setFloat32(8,tAcc,true); dv.setUint32(12,mode,true);
+  dv.setUint32(16,samples,true); dv.setFloat32(20,softness,true); dv.setFloat32(24,inset,true); dv.setUint32(28,smRes,true);
+  for(let i=0;i<16;i++) dv.setFloat32(32+i*4, M[i], true);   // sunV: mat4 at 32..95
+  dv.setUint32(96,overlay,true);                             // overlay at 96
+  device.queue.writeBuffer(uBuf,0,ub);
+  device.queue.writeBuffer(statsBuf,0,zeros);
+
+  const enc=device.createCommandEncoder();
+  // clear + raster sun map
+  let cp=enc.beginComputePass();
+  cp.setPipeline(clearPipe); cp.setBindGroup(0,clearBG); cp.dispatchWorkgroups(Math.ceil(smRes*smRes/64));
+  cp.setPipeline(rasterPipe); cp.setBindGroup(0,rasterBG); cp.dispatchWorkgroups(Math.ceil(triN/64));
+  cp.setPipeline(shadePipe); cp.setBindGroup(0,shadeBG); cp.dispatchWorkgroups(Math.ceil(W/8),Math.ceil(H/8));
+  cp.end();
+  const rp=enc.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});
+  rp.setPipeline(bPipe); rp.setBindGroup(0,blitBG); rp.draw(3); rp.end();
+  const doRead=!mapping; if(doRead) enc.copyBufferToBuffer(statsBuf,0,readBuf,0,16);
+  device.queue.submit([enc.finish()]);
+
+  if(doRead){ mapping=true; readBuf.mapAsync(GPUMapMode.READ).then(()=>{
+    const s=new Uint32Array(readBuf.getMappedRange().slice(0)); readBuf.unmap(); mapping=false;
+    const [band,shaded,rays]=s;
+    if(shaded>0){ document.getElementById('band').textContent=(100*band/shaded).toFixed(1)+'%';
+      document.getElementById('avg').textContent=(rays/shaded).toFixed(2);
+      const truthRays=shaded*samples; document.getElementById('save').textContent=truthRays>0?pct(1-rays/truthRays):'—'; }
+  }).catch(()=>{mapping=false;}); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

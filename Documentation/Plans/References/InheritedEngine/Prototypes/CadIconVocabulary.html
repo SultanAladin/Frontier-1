@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<!-- ============================================================================================================================
+                                                  CadIconVocabulary.html
+     🧩 The full CAD icon vocabulary authored from scratch: ~120 original glyphs across primitives, sketch geometry, constraints,
+        dimensions, solid features, topology edits, selection, transform, assembly, measurement, display, drafting and history.
+        Two visual registers — spatial operations render as shaded isometric solids with real face lighting, abstract/planar
+        operations render as flat minimal two-tone marks. Every path here is authored in this file; nothing is traced or reused.
+     ============================================================================================================================ -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Frontier · CAD Icon Vocabulary</title>
+<style>
+    :root{
+        --backdrop:#12141a;   --panel:#1a1d24;    --panel-raised:#22262f;
+        --rule:#2f343d;       --ink:#e2e6ee;      --ink-dim:#8d949f;   --ink-faint:#5a606b;
+        --accent:#4d9be6;
+        --register-solid:#c98b3f;
+        --register-planar:#5bb98c;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{
+        background:var(--backdrop); color:var(--ink);
+        font-family:"Segoe UI",system-ui,-apple-system,sans-serif; font-size:13px;
+        padding:26px 30px 80px; -webkit-font-smoothing:antialiased;
+    }
+
+    /* ---------------------------------------------------------------- masthead */
+    h1{font-size:21px;font-weight:600;letter-spacing:-.01em;}
+    .lede{color:var(--ink-dim);max-width:860px;line-height:1.6;margin:6px 0 20px;}
+    .lede b{color:var(--ink);font-weight:600;}
+
+    /* ---------------------------------------------------------------- controls */
+    .controls{
+        display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+        padding:14px 16px;background:var(--panel);border:1px solid var(--rule);border-radius:10px;
+        position:sticky;top:0;z-index:20;
+        box-shadow:0 10px 26px -14px rgba(0,0,0,.9);
+    }
+    .search{
+        background:var(--backdrop);border:1px solid var(--rule);border-radius:7px;
+        padding:8px 12px;color:var(--ink);font:inherit;min-width:210px;outline:none;
+    }
+    .search:focus{border-color:var(--accent);}
+    .search::placeholder{color:var(--ink-faint);}
+    .chip{
+        background:var(--panel-raised);border:1px solid var(--rule);border-radius:20px;
+        padding:7px 14px;color:var(--ink-dim);font:inherit;font-size:12px;cursor:pointer;
+        transition:background .12s,color .12s,border-color .12s;white-space:nowrap;
+    }
+    .chip:hover{background:#2b3040;color:var(--ink);}
+    .chip.on{background:var(--ink);color:#14161b;border-color:var(--ink);font-weight:600;}
+    .spacer{flex:1 1 auto;}
+    .tally{color:var(--ink-faint);font-size:12px;font-variant-numeric:tabular-nums;}
+
+    /* ---------------------------------------------------------------- legend */
+    .legend{display:flex;gap:18px;flex-wrap:wrap;margin:16px 0 4px;color:var(--ink-dim);font-size:12px;}
+    .legend span{display:flex;align-items:center;gap:7px;}
+    .dot{width:9px;height:9px;border-radius:50%;flex:none;}
+    .dot.solid{background:var(--register-solid);}
+    .dot.planar{background:var(--register-planar);}
+
+    /* ---------------------------------------------------------------- tiers */
+    .tier{margin-top:34px;}
+    .tier-name{
+        font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+        color:var(--ink);padding-bottom:8px;border-bottom:1px solid var(--rule);
+        display:flex;align-items:baseline;gap:10px;
+    }
+    .tier-name em{font-style:normal;font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink-faint);font-size:12px;}
+    .plate{
+        display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));
+        gap:12px;margin-top:14px;
+    }
+
+    /* ---------------------------------------------------------------- cells */
+    .cell{
+        background:var(--panel);border:1px solid var(--rule);border-radius:9px;
+        padding:14px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:10px;
+        cursor:pointer;position:relative;
+        transition:transform .1s ease,border-color .1s ease,background .1s ease;
+    }
+    .cell:hover{transform:translateY(-2px);border-color:var(--ink-dim);background:var(--panel-raised);}
+    .cell::after{
+        content:attr(data-register);position:absolute;top:7px;right:8px;
+        width:6px;height:6px;border-radius:50%;
+    }
+    .cell[data-register="solid"]::after{background:var(--register-solid);}
+    .cell[data-register="planar"]::after{background:var(--register-planar);}
+    .cell .art{
+        width:52px;height:52px;background:#0e1015;border:1px solid #262b34;border-radius:9px;
+        display:grid;place-items:center;
+    }
+    .cell .art svg{width:40px;height:40px;display:block;}
+    .cell .name{font-size:11.5px;line-height:1.35;text-align:center;color:var(--ink);word-break:break-word;}
+    .cell .verb{font-size:10px;color:var(--ink-faint);text-align:center;line-height:1.3;}
+
+    /* size preview strip inside each cell */
+    .scales{display:flex;align-items:flex-end;justify-content:center;gap:7px;height:20px;opacity:.62;}
+    .cell:hover .scales{opacity:1;}
+    .scales svg{display:block;}
+    .s16{width:16px;height:16px;} .s24{width:24px;height:24px;}
+    .s32{width:32px;height:32px;} .s48{width:48px;height:48px;}
+
+    /* copy acknowledgement */
+    .copied{
+        position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(14px);
+        background:var(--ink);color:#14161b;font-weight:600;font-size:12.5px;
+        padding:9px 18px;border-radius:20px;opacity:0;pointer-events:none;
+        transition:opacity .18s,transform .18s;z-index:60;
+    }
+    .copied.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    .empty{color:var(--ink-faint);padding:30px 0;font-size:13px;}
+    .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<h1>CAD Icon Vocabulary</h1>
+<p class="lede">
+    The complete glyph set for the drafting and modelling workspaces. <b>Spatial operations</b> — anything that acts on a solid in
+    three dimensions — are drawn as shaded isometric bodies with lit top, side and front faces so the depth reads instantly.
+    <b>Planar and abstract operations</b> — constraints, dimensions, selection, display state — are drawn as flat two-tone marks
+    with no shading, kept simple enough to stay legible at 16 px. Click any glyph to copy its SVG.
+</p>
+
+<div class="controls">
+    <input class="search" id="probe" type="search" placeholder="Search glyphs…" autocomplete="off" />
+    <div id="chips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    <div class="spacer"></div>
+    <div class="tally" id="tally"></div>
+</div>
+
+<div class="legend">
+    <span><i class="dot solid"></i> shaded isometric solid — spatial operation</span>
+    <span><i class="dot planar"></i> flat minimal mark — planar / abstract operation</span>
+    <span>each cell previews the glyph at 16 · 24 · 32 · 48 px</span>
+</div>
+
+<main id="sheet"></main>
+<div class="copied" id="ack">SVG copied</div>
+
+<script>
+/* ================================================================================================================
+   SHADING VOCABULARY
+   Every solid glyph is lit from the upper-left by the same three-face convention, so the whole sheet reads as one
+   coherent set: TOP face is the lightest, the LEFT/front face is mid, the RIGHT/side face is darkest. Each family
+   of materials below supplies those three tones plus an edge ink. Planar glyphs ignore this and use flat ink pairs.
+   ================================================================================================================ */
+
+const MATERIAL = {
+    steel:  { top:'#8fa4bd', side:'#4d5f78', front:'#6a7f9b', edge:'#2b3648', glow:'#c3d4e8' },
+    brass:  { top:'#e0b45f', side:'#8a6520', front:'#bc8f35', edge:'#4d3a10', glow:'#f7dfa6' },
+    copper: { top:'#e09a6a', side:'#8c4f2c', front:'#bd7245', edge:'#4e2716', glow:'#f6c8a6' },
+    slate:  { top:'#7d8794', side:'#3f4854', front:'#5b6572', edge:'#242a33', glow:'#b3bcc8' },
+    jade:   { top:'#6fc79c', side:'#2c7355', front:'#469a74', edge:'#173d2d', glow:'#a9e6c8' },
+    azure:  { top:'#6aaee8', side:'#2a5f96', front:'#4184c4', edge:'#153353', glow:'#a8d3f5' },
+    violet: { top:'#a992e0', side:'#4f3a8c', front:'#7a60b6', edge:'#291d4d', glow:'#cbbaf0' },
+    rust:   { top:'#e08a72', side:'#8c3f2c', front:'#bd6047', edge:'#4d1f14', glow:'#f5bcaa' },
+};
+
+/* Flat ink pairs for planar glyphs — a structural stroke plus one accent that carries the meaning. */
+const INK = {
+    line:'#aab4c2', dim:'#5f6a78', faint:'#3d4550',
+    blue:'#5aa9ea', green:'#5cc79a', amber:'#e0a94e', red:'#e0705e', violet:'#9b83dc', white:'#e8edf5',
+};
+
+let GRADIENT_SERIAL = 0;
+
+/* Build a linear gradient for a face: subtle two-stop so a face still reads as one plane, never as a blob. */
+function faceFill(toneA, toneB, x1, y1, x2, y2)
+{
+    const id = 'g' + (++GRADIENT_SERIAL);
+    const markup = `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">`
+                 + `<stop offset="0" stop-color="${toneA}"/><stop offset="1" stop-color="${toneB}"/></linearGradient>`;
+
+    // 📝 Exposed under BOTH keys on purpose: isoBox/isoPlane concatenate `.def` themselves, while a builder that hands
+    //    the raw result straight to glyph() relies on glyph() harvesting `.defs`. One key alone silently drops the
+    //    gradient from <defs> and the face renders unfilled.
+    return { id, def:markup, defs:markup };
+}
+
+/* ----------------------------------------------------------------------------------------------------------------
+   ISOMETRIC BOX PRIMITIVE
+   Authored on a true 2:1 isometric lattice. Origin is the box's bottom-front corner; W/D are footprint spans along
+   the two ground axes and H is the vertical rise. Returns the three lit faces plus crisp corner ink.
+   ---------------------------------------------------------------------------------------------------------------- */
+function isoBox(cx, cy, W, D, H, mat, opts)
+{
+    const o = opts || {};
+    const dash = o.dash ? ` stroke-dasharray="${o.dash}"` : '';
+    const op   = o.opacity != null ? ` opacity="${o.opacity}"` : '';
+    const kx = 0.866, ky = 0.5;                                  // 30° isometric basis
+
+    const P = (u,v,w) => [ cx + (u - v) * kx * 1, cy + (u + v) * ky - w ];
+    const A = P(0,0,0),  B = P(W,0,0),  C = P(W,D,0),  Dd = P(0,D,0);
+    const E = P(0,0,H),  F = P(W,0,H),  G = P(W,D,H),  Hh = P(0,D,H);
+    const pt = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
+
+    const gTop   = faceFill(mat.top,   mat.front, E[0], E[1] - 2, G[0], G[1] + 2);
+    const gLeft  = faceFill(mat.front, mat.side,  E[0], E[1],     A[0], A[1]);
+    const gRight = faceFill(mat.side,  mat.edge,  F[0], F[1],     C[0], C[1]);
+
+    return {
+        defs: gTop.def + gLeft.def + gRight.def,
+        body:`<g${op}${dash ? '' : ''}>`
+            + `<polygon points="${pt(E)} ${pt(F)} ${pt(G)} ${pt(Hh)}" fill="url(#${gTop.id})"/>`
+            + `<polygon points="${pt(E)} ${pt(F)} ${pt(B)} ${pt(A)}" fill="url(#${gLeft.id})"/>`
+            + `<polygon points="${pt(F)} ${pt(G)} ${pt(C)} ${pt(B)}" fill="url(#${gRight.id})"/>`
+            + `<g fill="none" stroke="${mat.edge}" stroke-width="${o.ink || 1}" stroke-linejoin="round"${dash}>`
+            + `<polygon points="${pt(E)} ${pt(F)} ${pt(G)} ${pt(Hh)}"/>`
+            + `<polygon points="${pt(E)} ${pt(F)} ${pt(B)} ${pt(A)}"/>`
+            + `<polygon points="${pt(F)} ${pt(G)} ${pt(C)} ${pt(B)}"/>`
+            + `</g></g>`,
+        corners:{ A, B, C, D:Dd, E, F, G, H:Hh },
+    };
+}
+
+/* Ghost footprint — the dashed source profile a feature grew out of. Used by extrude/revolve/loft/sweep. */
+function isoGhost(cx, cy, W, D, ink)
+{
+    const kx = 0.866, ky = 0.5;
+    const P = (u,v) => (cx + (u - v) * kx).toFixed(2) + ',' + (cy + (u + v) * ky).toFixed(2);
+    return `<polygon points="${P(0,0)} ${P(W,0)} ${P(W,D)} ${P(0,D)}" fill="none" `
+         + `stroke="${ink || INK.dim}" stroke-width="1.1" stroke-dasharray="2.6 2.2" stroke-linejoin="round"/>`;
+}
+
+/* An isometric ground plane tile — the sketch plane a 2D profile lives on. */
+function isoPlane(cx, cy, W, D, ink, fill)
+{
+    const kx = 0.866, ky = 0.5;
+    const P = (u,v) => (cx + (u - v) * kx).toFixed(2) + ',' + (cy + (u + v) * ky).toFixed(2);
+    const g = faceFill(fill || 'rgba(90,169,234,.30)', 'rgba(90,169,234,.08)', cx, cy - D * ky, cx, cy + D * ky * 2);
+    return { defs:g.def,
+        body:`<polygon points="${P(0,0)} ${P(W,0)} ${P(W,D)} ${P(0,D)}" fill="url(#${g.id})" `
+           + `stroke="${ink || INK.blue}" stroke-width="1.2" stroke-linejoin="round"/>` };
+}
+
+/* Directional motion arrow used across the feature tier — the operation's sweep direction. */
+function motionArrow(x1, y1, x2, y2, tint, width)
+{
+    const w = width || 1.9;
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const head = 4.4, spread = 0.46;
+    const hx = x2 - Math.cos(ang) * 1.2, hy = y2 - Math.sin(ang) * 1.2;
+    const p1 = [ x2, y2 ];
+    const p2 = [ x2 - Math.cos(ang - spread) * head, y2 - Math.sin(ang - spread) * head ];
+    const p3 = [ x2 - Math.cos(ang + spread) * head, y2 - Math.sin(ang + spread) * head ];
+    const f = n => n.toFixed(2);
+    return `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(hx)}" y2="${f(hy)}" stroke="${tint}" stroke-width="${w}" stroke-linecap="round"/>`
+         + `<polygon points="${f(p1[0])},${f(p1[1])} ${f(p2[0])},${f(p2[1])} ${f(p3[0])},${f(p3[1])}" fill="${tint}"/>`;
+}
+
+/* Compose a finished 32-unit-square glyph document out of collected defs + body fragments. */
+function glyph(parts)
+{
+    let defs = '', body = '';
+    for (const p of parts)
+    {
+        if (typeof p === 'string') { body += p; continue; }
+        if (p && p.defs) defs += p.defs;
+        if (p && p.body) body += p.body;
+    }
+    return `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">`
+         + (defs ? `<defs>${defs}</defs>` : '') + body + `</svg>`;
+}
+
+/* Shorthand builders for the planar register. */
+const P = {
+    stroke:(d, tint, w, extra) =>
+        `<path d="${d}" fill="none" stroke="${tint || INK.line}" stroke-width="${w || 1.7}" `
+        + `stroke-linecap="round" stroke-linejoin="round"${extra || ''}/>`,
+    fill:(d, tint, extra) => `<path d="${d}" fill="${tint}"${extra || ''}/>`,
+    dot:(x, y, r, tint) => `<circle cx="${x}" cy="${y}" r="${r || 2}" fill="${tint || INK.blue}"/>`,
+    ring:(x, y, r, tint, w) =>
+        `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${tint || INK.line}" stroke-width="${w || 1.7}"/>`,
+    ghost:(d, tint) =>
+        `<path d="${d}" fill="none" stroke="${tint || INK.faint}" stroke-width="1.3" stroke-dasharray="2.6 2.2" `
+        + `stroke-linecap="round" stroke-linejoin="round"/>`,
+};
+
+/* ================================================================================================================
+   GLYPH CATALOGUE
+   Each tier is a named plate. Every entry: Name (the operation), Verb (the one-line mechanism), Register
+   ('solid' = shaded isometric, 'planar' = flat mark), Art (a zero-arg builder returning a 32×32 SVG document).
+   ================================================================================================================ */
+
+const TIERS = [];
+
+/* ---------------------------------------------------------------------------------------------------- PRIMITIVES */
+TIERS.push({
+    Name:'Primitive Bodies',
+    Note:'seed solids — each shown as a lit isometric body on its ground footprint',
+    Glyphs:[
+    { Name:'Box',        Verb:'axis-aligned block',        Register:'solid', Art:() =>
+        glyph([ isoGhost(16, 25.5, 9, 9), isoBox(16, 25.5, 9, 9, 10, MATERIAL.steel) ]) },
+
+    { Name:'Wedge',      Verb:'block cut on one diagonal', Register:'solid', Art:() => {
+        const g1 = faceFill(MATERIAL.steel.top, MATERIAL.steel.front, 8, 10, 24, 22);
+        const g2 = faceFill(MATERIAL.steel.front, MATERIAL.steel.side, 8, 14, 16, 27);
+        const g3 = faceFill(MATERIAL.steel.side, MATERIAL.steel.edge, 16, 16, 26, 24);
+        return glyph([ isoGhost(16, 25.5, 9, 9), g1, g2, g3,
+            `<polygon points="8.2,20.3 16,24.8 23.8,20.3 16,11.5" fill="url(#${g1.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="8.2,20.3 16,24.8 16,29.3 8.2,24.8" fill="url(#${g2.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,24.8 23.8,20.3 23.8,24.8 16,29.3" fill="url(#${g3.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'Cylinder',   Verb:'circular sweep about an axis', Register:'solid', Art:() => {
+        const barrel = faceFill(MATERIAL.steel.front, MATERIAL.steel.side, 8, 12, 24, 12);
+        const cap    = faceFill(MATERIAL.steel.top, MATERIAL.steel.front, 16, 6, 16, 13);
+        return glyph([ barrel, cap,
+            `<path d="M 8.5,10.5 L 8.5,23 A 7.5,3.6 0 0 0 23.5,23 L 23.5,10.5 Z" fill="url(#${barrel.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="10.5" rx="7.5" ry="3.6" fill="url(#${cap.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+            `<path d="M 11,8.4 A 7.5,3.6 0 0 1 19.5,7.9" fill="none" stroke="${MATERIAL.steel.glow}" stroke-width="1.1" opacity=".65" stroke-linecap="round"/>` ]); } },
+
+    { Name:'Cone',       Verb:'apex-tapered circular body',  Register:'solid', Art:() => {
+        const flank = faceFill(MATERIAL.brass.top, MATERIAL.brass.side, 9, 8, 24, 24);
+        const base  = faceFill(MATERIAL.brass.front, MATERIAL.brass.edge, 16, 20, 16, 28);
+        return glyph([ flank, base,
+            `<ellipse cx="16" cy="24" rx="8" ry="3.8" fill="url(#${base.id})" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            `<path d="M 16,5.5 L 24,24 A 8,3.8 0 0 1 8,24 Z" fill="url(#${flank.id})" stroke="${MATERIAL.brass.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<path d="M 16,6.5 L 11.4,22.4" fill="none" stroke="${MATERIAL.brass.glow}" stroke-width="1.1" opacity=".55" stroke-linecap="round"/>` ]); } },
+
+    { Name:'Sphere',     Verb:'constant-radius shell',       Register:'solid', Art:() => {
+        const id = 'sph' + (++GRADIENT_SERIAL);
+        return glyph([
+            { defs:`<radialGradient id="${id}" cx="0.36" cy="0.31" r="0.78">`
+                + `<stop offset="0" stop-color="${MATERIAL.azure.glow}"/>`
+                + `<stop offset="0.45" stop-color="${MATERIAL.azure.top}"/>`
+                + `<stop offset="0.85" stop-color="${MATERIAL.azure.front}"/>`
+                + `<stop offset="1" stop-color="${MATERIAL.azure.side}"/></radialGradient>` },
+            `<circle cx="16" cy="16" r="10.5" fill="url(#${id})" stroke="${MATERIAL.azure.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="16" rx="10.5" ry="3.6" fill="none" stroke="${MATERIAL.azure.edge}" stroke-width=".9" opacity=".5"/>` ]); } },
+
+    { Name:'Torus',      Verb:'circle swept round a ring',   Register:'solid', Art:() => {
+        const outer = faceFill(MATERIAL.violet.top, MATERIAL.violet.side, 16, 8, 16, 24);
+        return glyph([ outer,
+            `<ellipse cx="16" cy="17" rx="11" ry="6.2" fill="url(#${outer.id})" stroke="${MATERIAL.violet.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="16.2" rx="4.4" ry="2.3" fill="#0e1015" stroke="${MATERIAL.violet.edge}" stroke-width="1"/>`,
+            `<path d="M 7.2,13.4 A 11,6.2 0 0 1 16,10.9" fill="none" stroke="${MATERIAL.violet.glow}" stroke-width="1.2" opacity=".6" stroke-linecap="round"/>` ]); } },
+
+    { Name:'Pyramid',    Verb:'polygon base to single apex', Register:'solid', Art:() => {
+        const lit  = faceFill(MATERIAL.copper.top, MATERIAL.copper.front, 10, 8, 16, 25);
+        const dark = faceFill(MATERIAL.copper.front, MATERIAL.copper.side, 16, 10, 25, 25);
+        return glyph([ isoGhost(16, 25, 9, 9), lit, dark,
+            `<polygon points="16,5.5 7.3,20.2 16,24.7" fill="url(#${lit.id})" stroke="${MATERIAL.copper.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,5.5 24.7,20.2 16,24.7" fill="url(#${dark.id})" stroke="${MATERIAL.copper.edge}" stroke-width="1" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'Prism',      Verb:'polygon extruded straight',   Register:'solid', Art:() => {
+        const top = faceFill(MATERIAL.jade.top, MATERIAL.jade.front, 16, 5, 16, 13);
+        const l   = faceFill(MATERIAL.jade.front, MATERIAL.jade.side, 8, 12, 16, 26);
+        const r   = faceFill(MATERIAL.jade.side, MATERIAL.jade.edge, 16, 12, 24, 26);
+        return glyph([ top, l, r,
+            `<polygon points="16,5.2 24,9.8 16,14.4 8,9.8" fill="url(#${top.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="8,9.8 16,14.4 16,26 8,21.4" fill="url(#${l.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,14.4 24,9.8 24,21.4 16,26" fill="url(#${r.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'Capsule',    Verb:'cylinder with hemispherical caps', Register:'solid', Art:() => {
+        const b = faceFill(MATERIAL.slate.top, MATERIAL.slate.side, 9, 8, 23, 8);
+        return glyph([ b,
+            `<rect x="9.5" y="7" width="13" height="18" rx="6.5" fill="url(#${b.id})" stroke="${MATERIAL.slate.edge}" stroke-width="1"/>`,
+            `<path d="M 12.4,10 A 5,5 0 0 1 17,8.6" fill="none" stroke="${MATERIAL.slate.glow}" stroke-width="1.2" opacity=".6" stroke-linecap="round"/>`,
+            `<ellipse cx="16" cy="18.5" rx="6.5" ry="2.6" fill="none" stroke="${MATERIAL.slate.edge}" stroke-width=".85" opacity=".45"/>` ]); } },
+
+    { Name:'Tube',       Verb:'hollow cylinder with wall thickness', Register:'solid', Art:() => {
+        const wall = faceFill(MATERIAL.steel.front, MATERIAL.steel.side, 8, 12, 24, 12);
+        const rim  = faceFill(MATERIAL.steel.top, MATERIAL.steel.front, 16, 7, 16, 14);
+        return glyph([ wall, rim,
+            `<path d="M 8.5,10.5 L 8.5,22.5 A 7.5,3.5 0 0 0 23.5,22.5 L 23.5,10.5 Z" fill="url(#${wall.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="10.5" rx="7.5" ry="3.5" fill="url(#${rim.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="10.5" rx="3.9" ry="1.8" fill="#0e1015" stroke="${MATERIAL.steel.edge}" stroke-width=".95"/>` ]); } },
+
+    { Name:'Disc',       Verb:'planar circular face',        Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.azure.top, MATERIAL.azure.front, 16, 12, 16, 22);
+        return glyph([ f,
+            `<ellipse cx="16" cy="17.5" rx="10.5" ry="5.4" fill="url(#${f.id})" stroke="${MATERIAL.azure.edge}" stroke-width="1"/>`,
+            `<path d="M 16,20.2 L 26.5,17.5" fill="none" stroke="${MATERIAL.azure.edge}" stroke-width="1.1" opacity=".55"/>`,
+            P.dot(16, 17.5, 1.5, MATERIAL.azure.glow) ]); } },
+
+    { Name:'Plane',      Verb:'bounded flat sheet',          Register:'solid', Art:() =>
+        glyph([ isoPlane(16, 12, 11, 11, INK.blue),
+            `<line x1="16" y1="23" x2="16" y2="27.5" stroke="${INK.dim}" stroke-width="1.3" stroke-dasharray="2.4 2"/>` ]) },
+
+    { Name:'Helix',      Verb:'constant-pitch spiral path',  Register:'solid', Art:() => glyph([
+        P.stroke('M 10,25 A 6,2.6 0 0 0 22,25', INK.violet, 1.9),
+        P.stroke('M 22,25 A 6,2.6 0 0 0 10,20.5', '#6b5aa8', 1.5),
+        P.stroke('M 10,20.5 A 6,2.6 0 0 0 22,20.5', INK.violet, 1.9),
+        P.stroke('M 22,20.5 A 6,2.6 0 0 0 10,16', '#6b5aa8', 1.5),
+        P.stroke('M 10,16 A 6,2.6 0 0 0 22,16', INK.violet, 1.9),
+        P.stroke('M 22,16 A 6,2.6 0 0 0 10,11.5', '#6b5aa8', 1.5),
+        P.stroke('M 10,11.5 A 6,2.6 0 0 0 22,11.5', INK.violet, 1.9),
+        `<line x1="16" y1="6" x2="16" y2="28" stroke="${INK.faint}" stroke-width="1" stroke-dasharray="2.2 2"/>` ]) },
+
+    { Name:'Icosphere',  Verb:'triangulated geodesic shell', Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.jade.top, MATERIAL.jade.side, 8, 8, 24, 25);
+        return glyph([ f,
+            `<polygon points="16,5.5 25.5,11 25.5,21 16,26.5 6.5,21 6.5,11" fill="url(#${f.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<g fill="none" stroke="${MATERIAL.jade.edge}" stroke-width=".9" opacity=".8">`
+            + `<path d="M 16,5.5 L 11,16 L 16,26.5 L 21,16 Z"/><path d="M 6.5,11 L 11,16 L 6.5,21"/>`
+            + `<path d="M 25.5,11 L 21,16 L 25.5,21"/><path d="M 11,16 L 21,16"/></g>` ]); } },
+
+    { Name:'Terrain',    Verb:'displaced height sheet',      Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.jade.top, MATERIAL.jade.side, 6, 10, 26, 24);
+        return glyph([ f,
+            `<path d="M 4,22 L 10,14 L 14,18 L 20,9 L 26,17 L 28,22 Z" fill="url(#${f.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<path d="M 4,22 L 8,25.5 L 28,25.5 L 28,22" fill="${MATERIAL.jade.side}" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'Gear',       Verb:'toothed revolve body',        Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.brass.top, MATERIAL.brass.side, 8, 8, 24, 24);
+        let teeth = '';
+        for (let i = 0; i < 8; i++)
+        {
+            const a = (i / 8) * Math.PI * 2;
+            const x = 16 + Math.cos(a) * 10.6, y = 16 + Math.sin(a) * 10.6;
+            teeth += `<rect x="${(x - 2.1).toFixed(2)}" y="${(y - 2.1).toFixed(2)}" width="4.2" height="4.2" rx="1" `
+                   + `transform="rotate(${(a * 180 / Math.PI).toFixed(1)} ${x.toFixed(2)} ${y.toFixed(2)})" `
+                   + `fill="${MATERIAL.brass.front}" stroke="${MATERIAL.brass.edge}" stroke-width=".8"/>`;
+        }
+        return glyph([ f, teeth,
+            `<circle cx="16" cy="16" r="8.6" fill="url(#${f.id})" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            `<circle cx="16" cy="16" r="3.2" fill="#0e1015" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>` ]); } },
+
+    { Name:'TextBody',   Verb:'glyph outline given thickness', Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.copper.top, MATERIAL.copper.side, 8, 8, 24, 24);
+        return glyph([ f,
+            `<text x="16" y="21.5" text-anchor="middle" font-family="Georgia,serif" font-size="17" font-weight="700" fill="${MATERIAL.copper.side}">A</text>`,
+            `<text x="14.8" y="20.3" text-anchor="middle" font-family="Georgia,serif" font-size="17" font-weight="700" fill="url(#${f.id})" stroke="${MATERIAL.copper.edge}" stroke-width=".7">A</text>` ]); } },
+    ],
+});
+
+/* ------------------------------------------------------------------------------------------------ SKETCH GEOMETRY */
+TIERS.push({
+    Name:'Sketch Geometry',
+    Note:'planar curve construction on the active sketch plane',
+    Glyphs:[
+    { Name:'Line',          Verb:'two-point straight segment', Register:'planar', Art:() => glyph([
+        P.stroke('M 7,25 L 25,8', INK.line), P.dot(7, 25, 2.4, INK.blue), P.dot(25, 8, 2.4, INK.blue) ]) },
+
+    { Name:'Polyline',      Verb:'chained connected segments', Register:'planar', Art:() => glyph([
+        P.stroke('M 6,24 L 12,13 L 20,19 L 26,8', INK.line),
+        P.dot(6, 24, 2.1, INK.blue), P.dot(12, 13, 2.1, INK.blue),
+        P.dot(20, 19, 2.1, INK.blue), P.dot(26, 8, 2.1, INK.blue) ]) },
+
+    { Name:'Rectangle',     Verb:'axis-aligned four-corner loop', Register:'planar', Art:() => glyph([
+        P.stroke('M 6.5,9 L 25.5,9 L 25.5,23 L 6.5,23 Z', INK.line),
+        P.dot(6.5, 9, 2.2, INK.blue), P.dot(25.5, 23, 2.2, INK.blue) ]) },
+
+    { Name:'Circle',        Verb:'centre plus radius',        Register:'planar', Art:() => glyph([
+        P.ring(16, 16, 9, INK.line), P.dot(16, 16, 2.2, INK.blue),
+        P.stroke('M 16,16 L 25,16', INK.blue, 1.3, ' stroke-dasharray="2.4 2"') ]) },
+
+    { Name:'Arc',           Verb:'bounded circular span',     Register:'planar', Art:() => glyph([
+        P.stroke('M 6,23 A 11,11 0 0 1 26,23', INK.line),
+        P.dot(6, 23, 2.2, INK.blue), P.dot(26, 23, 2.2, INK.blue), P.dot(16, 23, 1.7, INK.dim) ]) },
+
+    { Name:'Ellipse',       Verb:'two-radius conic',          Register:'planar', Art:() => glyph([
+        `<ellipse cx="16" cy="16" rx="10.5" ry="6.4" fill="none" stroke="${INK.line}" stroke-width="1.7"/>`,
+        P.stroke('M 5.5,16 L 26.5,16', INK.faint, 1.2), P.stroke('M 16,9.6 L 16,22.4', INK.faint, 1.2),
+        P.dot(16, 16, 2, INK.blue) ]) },
+
+    { Name:'Spline',        Verb:'control-point smooth curve', Register:'planar', Art:() => glyph([
+        P.ghost('M 6,25 L 12,8 L 21,24 L 26,9'),
+        P.stroke('M 6,25 C 10,10 14,10 16,17 C 18,24 22,24 26,9', INK.line),
+        P.dot(6, 25, 2, INK.blue), P.dot(12, 8, 2, INK.green),
+        P.dot(21, 24, 2, INK.green), P.dot(26, 9, 2, INK.blue) ]) },
+
+    { Name:'Bezier',        Verb:'cubic handle-driven curve', Register:'planar', Art:() => glyph([
+        P.stroke('M 7,24 L 11,11', INK.faint, 1.2), P.stroke('M 25,24 L 21,11', INK.faint, 1.2),
+        P.stroke('M 7,24 C 11,11 21,11 25,24', INK.line),
+        P.dot(7, 24, 2.2, INK.blue), P.dot(25, 24, 2.2, INK.blue),
+        P.ring(11, 11, 2, INK.green, 1.5), P.ring(21, 11, 2, INK.green, 1.5) ]) },
+
+    { Name:'Polygon',       Verb:'n-sided inscribed loop',    Register:'planar', Art:() => {
+        let pts = [];
+        for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + i * Math.PI / 3;
+            pts.push((16 + Math.cos(a) * 10).toFixed(2) + ',' + (16 + Math.sin(a) * 10).toFixed(2)); }
+        return glyph([ `<polygon points="${pts.join(' ')}" fill="none" stroke="${INK.line}" stroke-width="1.7" stroke-linejoin="round"/>`,
+            P.ring(16, 16, 10, INK.faint, 1.1), P.dot(16, 16, 2, INK.blue) ]); } },
+
+    { Name:'Slot',          Verb:'two arcs bridged by tangents', Register:'planar', Art:() => glyph([
+        `<rect x="5.5" y="11.5" width="21" height="9" rx="4.5" fill="none" stroke="${INK.line}" stroke-width="1.7"/>`,
+        P.dot(10, 16, 1.9, INK.blue), P.dot(22, 16, 1.9, INK.blue),
+        P.stroke('M 10,16 L 22,16', INK.faint, 1.1, ' stroke-dasharray="2.2 2"') ]) },
+
+    { Name:'Fillet2D',      Verb:'corner replaced by tangent arc', Register:'planar', Art:() => glyph([
+        P.ghost('M 8,8 L 24,8 L 24,10'),
+        P.stroke('M 8,8 L 17,8 A 7,7 0 0 1 24,15 L 24,24', INK.line),
+        P.dot(17, 15, 1.6, INK.green) ]) },
+
+    { Name:'Chamfer2D',     Verb:'corner replaced by straight cut', Register:'planar', Art:() => glyph([
+        P.ghost('M 8,8 L 24,8 L 24,10'),
+        P.stroke('M 8,8 L 17,8 L 24,15 L 24,24', INK.line),
+        P.dot(17, 8, 1.7, INK.green), P.dot(24, 15, 1.7, INK.green) ]) },
+
+    { Name:'Trim',          Verb:'discard curve past intersection', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,20 L 17,20', INK.line), P.ghost('M 17,20 L 27,20', INK.red),
+        P.stroke('M 17,7 L 17,27', INK.faint, 1.3),
+        P.stroke('M 21,13 L 27,7 M 27,13 L 21,7', INK.red, 1.8) ]) },
+
+    { Name:'Extend',        Verb:'lengthen curve to a boundary', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,20 L 16,20', INK.line), P.stroke('M 24,7 L 24,27', INK.faint, 1.3),
+        motionArrow(16, 20, 23, 20, INK.green) ]) },
+
+    { Name:'OffsetCurve',   Verb:'parallel duplicate at distance', Register:'planar', Art:() => glyph([
+        P.stroke('M 6,22 A 12,12 0 0 1 26,22', INK.line),
+        P.stroke('M 9,25 A 8.4,8.4 0 0 1 23,25', INK.green, 1.5, ' stroke-dasharray="3 2.2"'),
+        motionArrow(16, 10.4, 16, 16.8, INK.green, 1.5) ]) },
+
+    { Name:'MirrorCurve',   Verb:'reflect geometry across a line', Register:'planar', Art:() => glyph([
+        P.stroke('M 16,4 L 16,28', INK.amber, 1.4, ' stroke-dasharray="3 2.4"'),
+        P.stroke('M 12,9 L 6,16 L 12,23', INK.line),
+        P.stroke('M 20,9 L 26,16 L 20,23', INK.green, 1.5, ' stroke-dasharray="3 2.2"') ]) },
+
+    { Name:'ProjectEdge',   Verb:'cast body edge onto sketch plane', Register:'planar', Art:() => glyph([
+        P.stroke('M 8,7 L 24,7 L 24,13', INK.dim, 1.5),
+        P.stroke('M 8,7 L 8,13', INK.dim, 1.5),
+        motionArrow(16, 12, 16, 19, INK.blue, 1.5),
+        P.stroke('M 6,24 L 26,24', INK.blue, 1.9),
+        P.dot(6, 24, 1.9, INK.blue), P.dot(26, 24, 1.9, INK.blue) ]) },
+
+    { Name:'ConstructionLine', Verb:'reference-only guide curve', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,26 L 27,6', INK.amber, 1.5, ' stroke-dasharray="4 2.6"'),
+        P.dot(5, 26, 2.1, INK.amber), P.dot(27, 6, 2.1, INK.amber) ]) },
+
+    { Name:'SketchPlane',   Verb:'set the active drawing plane', Register:'solid', Art:() => glyph([
+        isoPlane(16, 13, 11, 11, INK.blue),
+        P.stroke('M 11.5,15.5 L 20.5,15.5', INK.white, 1.5),
+        P.stroke('M 16,11 L 16,20', INK.white, 1.5) ]) },
+    ],
+});
+
+/* ---------------------------------------------------------------------------------------------------- CONSTRAINTS */
+TIERS.push({
+    Name:'Geometric Constraints',
+    Note:'solver relations — deliberately flat so they never compete with the geometry they annotate',
+    Glyphs:[
+    { Name:'Coincident',    Verb:'two points share a location', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,22 L 16,16', INK.dim, 1.5), P.stroke('M 27,22 L 16,16', INK.dim, 1.5),
+        P.ring(16, 16, 5, INK.green, 1.6), P.dot(16, 16, 2.6, INK.green) ]) },
+
+    { Name:'Concentric',    Verb:'shared centre point',        Register:'planar', Art:() => glyph([
+        P.ring(16, 16, 10, INK.dim, 1.5), P.ring(16, 16, 5.6, INK.line, 1.6), P.dot(16, 16, 2.4, INK.green) ]) },
+
+    { Name:'Collinear',     Verb:'segments lie on one line',   Register:'planar', Art:() => glyph([
+        P.stroke('M 4,16 L 13,16', INK.line), P.stroke('M 19,16 L 28,16', INK.line),
+        P.stroke('M 13,16 L 19,16', INK.green, 1.3, ' stroke-dasharray="2 2"'),
+        P.dot(13, 16, 1.9, INK.green), P.dot(19, 16, 1.9, INK.green) ]) },
+
+    { Name:'Parallel',      Verb:'equal direction, no meeting', Register:'planar', Art:() => glyph([
+        P.stroke('M 8,26 L 15,6', INK.line), P.stroke('M 18,26 L 25,6', INK.line),
+        P.stroke('M 10.5,18 L 15.5,18 M 19,18 L 24,18', INK.green, 1.5) ]) },
+
+    { Name:'Perpendicular', Verb:'ninety-degree meeting',      Register:'planar', Art:() => glyph([
+        P.stroke('M 8,6 L 8,25 L 27,25', INK.line),
+        P.stroke('M 8,19 L 14,19 L 14,25', INK.green, 1.5) ]) },
+
+    { Name:'Tangent',       Verb:'curve meets line, no crossing', Register:'planar', Art:() => glyph([
+        P.ring(16, 19, 7.5, INK.line, 1.7), P.stroke('M 4,11.5 L 28,11.5', INK.line),
+        P.dot(16, 11.5, 2.3, INK.green) ]) },
+
+    { Name:'Horizontal',    Verb:'aligned to the plane X axis', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,16 L 27,16', INK.line, 2),
+        P.dot(5, 16, 2.2, INK.blue), P.dot(27, 16, 2.2, INK.blue),
+        `<text x="16" y="26" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="8.5" font-weight="700" fill="${INK.green}">H</text>` ]) },
+
+    { Name:'Vertical',      Verb:'aligned to the plane Y axis', Register:'planar', Art:() => glyph([
+        P.stroke('M 16,5 L 16,27', INK.line, 2),
+        P.dot(16, 5, 2.2, INK.blue), P.dot(16, 27, 2.2, INK.blue),
+        `<text x="25" y="19" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="8.5" font-weight="700" fill="${INK.green}">V</text>` ]) },
+
+    { Name:'EqualLength',   Verb:'matched span or radius',     Register:'planar', Art:() => glyph([
+        P.stroke('M 5,11 L 27,11', INK.line), P.stroke('M 5,22 L 27,22', INK.line),
+        P.stroke('M 14,8 L 14,14 M 18,8 L 18,14', INK.green, 1.4),
+        P.stroke('M 14,19 L 14,25 M 18,19 L 18,25', INK.green, 1.4) ]) },
+
+    { Name:'Symmetric',     Verb:'mirrored about a datum line', Register:'planar', Art:() => glyph([
+        P.stroke('M 16,4 L 16,28', INK.amber, 1.4, ' stroke-dasharray="3 2.4"'),
+        P.dot(7, 12, 2.4, INK.line), P.dot(25, 12, 2.4, INK.line),
+        P.stroke('M 7,20 L 16,20', INK.green, 1.4), P.stroke('M 25,20 L 16,20', INK.green, 1.4),
+        P.stroke('M 7,12 L 7,20 M 25,12 L 25,20', INK.faint, 1.1) ]) },
+
+    { Name:'Midpoint',      Verb:'point pinned to span centre', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,16 L 27,16', INK.line), P.dot(5, 16, 2, INK.dim), P.dot(27, 16, 2, INK.dim),
+        P.dot(16, 16, 3, INK.green),
+        P.stroke('M 16,21 L 16,25', INK.green, 1.3) ]) },
+
+    { Name:'FixAnchor',     Verb:'freeze degrees of freedom',  Register:'planar', Art:() => glyph([
+        P.stroke('M 6,20 L 26,20', INK.line),
+        P.stroke('M 9,25 L 12,20 M 14,25 L 17,20 M 19,25 L 22,20', INK.amber, 1.5),
+        P.dot(16, 20, 2.6, INK.amber) ]) },
+
+    { Name:'ConstraintSolved', Verb:'sketch fully determined',  Register:'planar', Art:() => glyph([
+        P.ring(16, 16, 10.5, INK.green, 1.6),
+        P.stroke('M 10.5,16.5 L 14.5,20.5 L 22,11.5', INK.green, 2.2) ]) },
+
+    { Name:'ConstraintConflict', Verb:'over-constrained solve', Register:'planar', Art:() => glyph([
+        P.ring(16, 16, 10.5, INK.red, 1.6),
+        P.stroke('M 11.5,11.5 L 20.5,20.5 M 20.5,11.5 L 11.5,20.5', INK.red, 2.1) ]) },
+
+    { Name:'DegreesOfFreedom', Verb:'remaining unsolved motion', Register:'planar', Art:() => glyph([
+        P.dot(16, 16, 2.6, INK.amber),
+        motionArrow(16, 16, 27, 16, INK.amber, 1.5), motionArrow(16, 16, 16, 27, INK.amber, 1.5),
+        P.ghost('M 16,16 L 6,7', INK.amber) ]) },
+    ],
+});
+
+/* ----------------------------------------------------------------------------------------------------- DIMENSIONS */
+TIERS.push({
+    Name:'Dimensions & Measurement',
+    Note:'driving dimensions and inspection readouts',
+    Glyphs:[
+    { Name:'LinearDimension',  Verb:'distance between two points', Register:'planar', Art:() => glyph([
+        P.stroke('M 6,8 L 6,24', INK.faint, 1.2), P.stroke('M 26,8 L 26,24', INK.faint, 1.2),
+        P.stroke('M 6,17 L 26,17', INK.blue, 1.6),
+        P.fill('M 6,17 L 11,14.6 L 11,19.4 Z', INK.blue), P.fill('M 26,17 L 21,14.6 L 21,19.4 Z', INK.blue),
+        `<text x="16" y="12" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="7.5" fill="${INK.white}">42</text>` ]) },
+
+    { Name:'AngularDimension', Verb:'included angle of two edges', Register:'planar', Art:() => glyph([
+        P.stroke('M 7,25 L 27,25', INK.line), P.stroke('M 7,25 L 24,9', INK.line),
+        P.stroke('M 18,25 A 11,11 0 0 0 14.8,17.3', INK.blue, 1.6),
+        `<text x="19" y="21" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="7" fill="${INK.white}">45°</text>` ]) },
+
+    { Name:'RadialDimension',  Verb:'radius callout on an arc',    Register:'planar', Art:() => glyph([
+        P.ring(15, 18, 9, INK.line, 1.6), P.dot(15, 18, 1.8, INK.dim),
+        P.stroke('M 15,18 L 26,9', INK.blue, 1.5),
+        P.fill('M 26,9 L 21.6,11 L 23.4,13 Z', INK.blue),
+        `<text x="9" y="10" font-family="Segoe UI,sans-serif" font-size="7.5" fill="${INK.white}">R</text>` ]) },
+
+    { Name:'DiameterDimension', Verb:'through-centre span callout', Register:'planar', Art:() => glyph([
+        P.ring(16, 16, 9.5, INK.line, 1.6),
+        P.stroke('M 9.3,22.7 L 22.7,9.3', INK.blue, 1.6),
+        P.fill('M 9.3,22.7 L 13.4,21.2 L 14.9,19.7 Z', INK.blue),
+        P.fill('M 22.7,9.3 L 18.6,10.8 L 17.1,12.3 Z', INK.blue),
+        `<text x="7.5" y="11" font-family="Segoe UI,sans-serif" font-size="8" fill="${INK.white}">⌀</text>` ]) },
+
+    { Name:'OrdinateDimension', Verb:'chained offsets from a zero', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,26 L 5,6', INK.blue, 1.5),
+        P.stroke('M 5,22 L 15,22 M 5,16 L 21,16 M 5,10 L 27,10', INK.line, 1.4),
+        P.dot(15, 22, 1.7, INK.blue), P.dot(21, 16, 1.7, INK.blue), P.dot(27, 10, 1.7, INK.blue) ]) },
+
+    { Name:'MeasureDistance',  Verb:'inspect a span, non-driving', Register:'planar', Art:() => glyph([
+        P.stroke('M 5,21 L 27,11', INK.blue, 1.6),
+        P.dot(5, 21, 2.4, INK.blue), P.dot(27, 11, 2.4, INK.blue),
+        P.stroke('M 5,25 L 27,25', INK.faint, 1.2),
+        P.stroke('M 5,23 L 5,27 M 27,23 L 27,27', INK.faint, 1.2) ]) },
+
+    { Name:'MeasureArea',      Verb:'planar face area readout',    Register:'planar', Art:() => glyph([
+        P.fill('M 6,9 L 26,9 L 26,23 L 6,23 Z', 'rgba(90,169,234,.18)'),
+        P.stroke('M 6,9 L 26,9 L 26,23 L 6,23 Z', INK.blue, 1.6),
+        `<text x="16" y="19.5" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="9" font-weight="600" fill="${INK.white}">A</text>` ]) },
+
+    { Name:'MeasureVolume',    Verb:'enclosed solid volume readout', Register:'solid', Art:() => glyph([
+        isoBox(16, 24, 8, 8, 9, MATERIAL.azure, { opacity:.85 }),
+        `<text x="16" y="19" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="8" font-weight="700" fill="${INK.white}">V</text>` ]) },
+
+    { Name:'MassProperties',   Verb:'centre of mass and inertia',  Register:'solid', Art:() => glyph([
+        isoBox(16, 25, 8, 8, 8, MATERIAL.slate, { opacity:.6 }),
+        P.ring(16, 17.5, 4.6, INK.amber, 1.6),
+        P.fill('M 16,12.9 A 4.6,4.6 0 0 1 20.6,17.5 L 16,17.5 Z', INK.amber),
+        P.fill('M 16,22.1 A 4.6,4.6 0 0 1 11.4,17.5 L 16,17.5 Z', INK.amber) ]) },
+
+    { Name:'ToleranceBand',    Verb:'permitted deviation window',  Register:'planar', Art:() => glyph([
+        P.stroke('M 5,16 L 27,16', INK.line, 1.9),
+        P.stroke('M 5,10.5 L 27,10.5', INK.green, 1.3, ' stroke-dasharray="3 2.2"'),
+        P.stroke('M 5,21.5 L 27,21.5', INK.green, 1.3, ' stroke-dasharray="3 2.2"'),
+        P.stroke('M 25,10.5 L 25,21.5', INK.green, 1.2),
+        `<text x="9" y="26.5" font-family="Segoe UI,sans-serif" font-size="7" fill="${INK.dim}">±</text>` ]) },
+    ],
+});
+
+/* -------------------------------------------------------------------------------------------------- SOLID FEATURES */
+TIERS.push({
+    Name:'Solid Features',
+    Note:'the operations that turn a profile into material — dashed ghost marks the source profile, arrow the direction',
+    Glyphs:[
+    { Name:'Extrude',      Verb:'profile swept along its normal', Register:'solid', Art:() => glyph([
+        isoGhost(16, 27, 8, 8),
+        isoBox(16, 27, 8, 8, 10, MATERIAL.steel),
+        motionArrow(26, 20, 26, 9, INK.green, 1.9) ]) },
+
+    { Name:'ExtrudeCut',   Verb:'profile swept to remove material', Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 9, MATERIAL.slate, { opacity:.9 });
+        return glyph([ b,
+            `<polygon points="16,12.3 21.2,15.3 16,18.3 10.8,15.3" fill="#0b0d11" stroke="${INK.red}" stroke-width="1.2" stroke-linejoin="round"/>`,
+            motionArrow(16, 5.5, 16, 13.6, INK.red, 1.9) ]); } },
+
+    { Name:'Revolve',      Verb:'profile rotated about an axis',  Register:'solid', Art:() => {
+        const barrel = faceFill(MATERIAL.brass.front, MATERIAL.brass.side, 10, 12, 23, 12);
+        const cap    = faceFill(MATERIAL.brass.top, MATERIAL.brass.front, 16, 7, 16, 14);
+        return glyph([ barrel, cap,
+            `<line x1="5.5" y1="4" x2="5.5" y2="28" stroke="${INK.amber}" stroke-width="1.4" stroke-dasharray="3 2.4"/>`,
+            `<path d="M 10,11 L 10,22 A 6.5,3.1 0 0 0 23,22 L 23,11 Z" fill="url(#${barrel.id})" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16.5" cy="11" rx="6.5" ry="3.1" fill="url(#${cap.id})" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            P.stroke('M 8,9 A 7,7 0 0 1 8,23', INK.green, 1.6),
+            P.fill('M 8,23 L 5.6,18.8 L 10.4,19.4 Z', INK.green) ]); } },
+
+    { Name:'RevolveCut',   Verb:'rotated profile removes material', Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 9, MATERIAL.slate, { opacity:.85 });
+        return glyph([ b,
+            `<ellipse cx="16" cy="15.4" rx="5.2" ry="2.6" fill="#0b0d11" stroke="${INK.red}" stroke-width="1.2"/>`,
+            `<line x1="16" y1="4" x2="16" y2="13" stroke="${INK.amber}" stroke-width="1.3" stroke-dasharray="2.6 2.2"/>`,
+            P.stroke('M 21.5,8 A 6,6 0 0 0 10.5,8', INK.red, 1.5),
+            P.fill('M 10.5,8 L 12.9,4.4 L 8.3,5 Z', INK.red) ]); } },
+
+    { Name:'Loft',         Verb:'blend between ordered profiles', Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.violet.top, MATERIAL.violet.side, 8, 8, 24, 25);
+        return glyph([ f,
+            `<polygon points="11,7 21,7 25.5,24 6.5,24" fill="url(#${f.id})" stroke="${MATERIAL.violet.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            P.stroke('M 11,7 L 21,7', INK.white, 1.6),
+            P.stroke('M 6.5,24 L 25.5,24', INK.white, 1.6),
+            P.stroke('M 8.8,15.5 L 23.2,15.5', INK.violet, 1.3, ' stroke-dasharray="2.6 2.2"') ]); } },
+
+    { Name:'Sweep',        Verb:'profile driven along a path',    Register:'solid', Art:() => {
+        const f = faceFill(MATERIAL.jade.top, MATERIAL.jade.side, 6, 8, 26, 26);
+        return glyph([ f,
+            `<path d="M 6,25 C 6,13 14,10 26,10 L 26,15 C 17,15 11,17 11,25 Z" fill="url(#${f.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            P.stroke('M 6,27.5 C 6,15 15,12.5 27,12.5', INK.amber, 1.3, ' stroke-dasharray="3 2.2"'),
+            `<ellipse cx="26" cy="12.5" rx="1.6" ry="2.6" fill="${MATERIAL.jade.glow}" stroke="${MATERIAL.jade.edge}" stroke-width=".9"/>` ]); } },
+
+    { Name:'Fillet',       Verb:'edge rounded to a radius',       Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 9, MATERIAL.steel, { opacity:.95 });
+        return glyph([ b,
+            P.stroke('M 8.2,12.2 A 6,6 0 0 1 14.6,7.4', INK.green, 2.1),
+            P.ring(16, 15.5, 1.4, INK.green, 1.2) ]); } },
+
+    { Name:'Chamfer',      Verb:'edge cut to a flat bevel',       Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 9, MATERIAL.steel, { opacity:.95 });
+        return glyph([ b,
+            P.stroke('M 8.2,12.6 L 14.4,7.6', INK.green, 2.1),
+            P.dot(8.2, 12.6, 1.5, INK.green), P.dot(14.4, 7.6, 1.5, INK.green) ]); } },
+
+    { Name:'Shell',        Verb:'hollow a solid to wall thickness', Register:'solid', Art:() => {
+        const outer = faceFill(MATERIAL.copper.front, MATERIAL.copper.side, 7, 12, 25, 22);
+        const rim   = faceFill(MATERIAL.copper.top, MATERIAL.copper.front, 16, 7, 16, 15);
+        return glyph([ outer, rim,
+            `<polygon points="16,6 26,11.8 26,21 16,26.8 6,21 6,11.8" fill="url(#${outer.id})" stroke="${MATERIAL.copper.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,6 26,11.8 16,17.6 6,11.8" fill="url(#${rim.id})" stroke="${MATERIAL.copper.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,9.4 22.2,13 16,16.6 9.8,13" fill="#0b0d11" stroke="${INK.green}" stroke-width="1.2" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'Draft',        Verb:'taper a face by an angle',       Register:'solid', Art:() => {
+        const lit  = faceFill(MATERIAL.steel.top, MATERIAL.steel.front, 16, 7, 16, 14);
+        const l    = faceFill(MATERIAL.steel.front, MATERIAL.steel.side, 8, 12, 16, 26);
+        const r    = faceFill(MATERIAL.steel.side, MATERIAL.steel.edge, 16, 12, 24, 26);
+        return glyph([ lit, l, r,
+            isoGhost(16, 25.5, 8.5, 8.5),
+            `<polygon points="16,7.4 22.6,11.2 16,15 9.4,11.2" fill="url(#${lit.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="9.4,11.2 16,15 16,25.4 6.6,20" fill="url(#${l.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,15 22.6,11.2 25.4,20 16,25.4" fill="url(#${r.id})" stroke="${MATERIAL.steel.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            P.stroke('M 22.6,11.2 A 9,9 0 0 1 25.4,20', INK.amber, 1.4) ]); } },
+
+    { Name:'Rib',          Verb:'thin stiffening web from a curve', Register:'solid', Art:() => {
+        const web = faceFill(MATERIAL.jade.top, MATERIAL.jade.side, 10, 8, 22, 24);
+        return glyph([ isoPlane(16, 22.5, 10, 10, INK.dim, 'rgba(120,130,145,.16)'), web,
+            `<polygon points="10.5,19.6 21.5,13.2 21.5,8.6 10.5,15 " fill="url(#${web.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="10.5,19.6 12,20.5 23,14.1 21.5,13.2" fill="${MATERIAL.jade.side}" stroke="${MATERIAL.jade.edge}" stroke-width=".9" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'Hole',         Verb:'axial bore with a depth',        Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 8, MATERIAL.slate, { opacity:.92 });
+        return glyph([ b,
+            `<ellipse cx="16" cy="15" rx="3.6" ry="1.8" fill="#0b0d11" stroke="${INK.blue}" stroke-width="1.2"/>`,
+            `<path d="M 12.4,15 L 12.4,18.4 A 3.6,1.8 0 0 0 19.6,18.4 L 19.6,15" fill="#0b0d11" opacity=".85" stroke="${INK.blue}" stroke-width="1"/>`,
+            motionArrow(16, 4.5, 16, 13, INK.blue, 1.7) ]); } },
+
+    { Name:'CounterBore',  Verb:'stepped seat above a bore',      Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 8, MATERIAL.slate, { opacity:.92 });
+        return glyph([ b,
+            `<ellipse cx="16" cy="14.8" rx="5.2" ry="2.6" fill="#0b0d11" stroke="${INK.blue}" stroke-width="1.2"/>`,
+            `<ellipse cx="16" cy="18" rx="2.7" ry="1.35" fill="#080a0d" stroke="${INK.blue}" stroke-width="1"/>`,
+            P.stroke('M 10.8,14.8 L 10.8,17 M 21.2,14.8 L 21.2,17', INK.blue, 1) ]); } },
+
+    { Name:'Thread',       Verb:'helical cut on a cylindrical face', Register:'solid', Art:() => {
+        const barrel = faceFill(MATERIAL.brass.front, MATERIAL.brass.side, 11, 12, 21, 12);
+        return glyph([ barrel,
+            `<path d="M 11,9 L 11,23 A 5,2.4 0 0 0 21,23 L 21,9 Z" fill="url(#${barrel.id})" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="9" rx="5" ry="2.4" fill="${MATERIAL.brass.top}" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            `<g fill="none" stroke="${MATERIAL.brass.edge}" stroke-width="1.1" opacity=".9">`
+            + `<path d="M 11,12.5 Q 16,15.4 21,12.5"/><path d="M 11,16 Q 16,18.9 21,16"/>`
+            + `<path d="M 11,19.5 Q 16,22.4 21,19.5"/></g>` ]); } },
+
+    { Name:'Emboss',       Verb:'raise a profile off a face',     Register:'solid', Art:() => glyph([
+        isoPlane(16, 20, 11, 11, INK.dim, 'rgba(120,130,145,.16)'),
+        isoBox(16, 20.5, 4.5, 4.5, 4, MATERIAL.copper),
+        motionArrow(25, 17, 25, 10, INK.green, 1.6) ]) },
+
+    { Name:'Engrave',      Verb:'sink a profile into a face',     Register:'solid', Art:() => glyph([
+        isoPlane(16, 18, 11, 11, INK.dim, 'rgba(120,130,145,.20)'),
+        `<polygon points="16,20.2 20,22.5 16,24.8 12,22.5" fill="#0b0d11" stroke="${INK.red}" stroke-width="1.2" stroke-linejoin="round"/>`,
+        motionArrow(25, 10, 25, 17, INK.red, 1.6) ]) },
+
+    { Name:'Thicken',      Verb:'give a surface real wall depth', Register:'solid', Art:() => {
+        const g = faceFill(MATERIAL.azure.top, MATERIAL.azure.side, 8, 10, 24, 22);
+        return glyph([ g,
+            `<polygon points="6,15 16,9.4 26,15 16,20.6" fill="url(#${g.id})" stroke="${MATERIAL.azure.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="6,15 16,20.6 16,24 6,18.4" fill="${MATERIAL.azure.front}" stroke="${MATERIAL.azure.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            `<polygon points="16,20.6 26,15 26,18.4 16,24" fill="${MATERIAL.azure.side}" stroke="${MATERIAL.azure.edge}" stroke-width="1" stroke-linejoin="round"/>`,
+            motionArrow(28.5, 15.5, 28.5, 21, INK.green, 1.4) ]); } },
+
+    { Name:'SurfaceOffset', Verb:'parallel surface at a distance', Register:'solid', Art:() => glyph([
+        P.stroke('M 5,13 C 11,7 21,7 27,13', INK.line, 1.9),
+        P.stroke('M 5,21 C 11,15 21,15 27,21', INK.green, 1.6, ' stroke-dasharray="3.2 2.4"'),
+        motionArrow(16, 11.4, 16, 18, INK.green, 1.5) ]) },
+
+    { Name:'SurfaceTrim',  Verb:'cut a surface with a tool body', Register:'solid', Art:() => glyph([
+        P.stroke('M 5,12 C 11,6 21,6 27,12', INK.line, 1.8),
+        P.ghost('M 5,20 C 11,14 21,14 27,20', INK.red),
+        P.stroke('M 8,26 L 24,6', INK.red, 1.5, ' stroke-dasharray="3 2.2"') ]) },
+
+    { Name:'FeatureTree',  Verb:'ordered history of operations',  Register:'planar', Art:() => glyph([
+        P.stroke('M 8,7 L 8,25', INK.faint, 1.4),
+        P.stroke('M 8,10 L 14,10 M 8,16 L 14,16 M 8,22 L 14,22', INK.faint, 1.3),
+        P.dot(8, 7, 2.2, INK.blue),
+        `<rect x="15" y="7.5" width="11" height="5" rx="1.4" fill="none" stroke="${INK.line}" stroke-width="1.4"/>`,
+        `<rect x="15" y="13.5" width="11" height="5" rx="1.4" fill="none" stroke="${INK.line}" stroke-width="1.4"/>`,
+        `<rect x="15" y="19.5" width="11" height="5" rx="1.4" fill="${INK.green}" opacity=".28" stroke="${INK.green}" stroke-width="1.4"/>` ]) },
+
+    { Name:'RollbackMarker', Verb:'suspend history below a point', Register:'planar', Art:() => glyph([
+        `<rect x="7" y="6.5" width="18" height="4.6" rx="1.3" fill="none" stroke="${INK.dim}" stroke-width="1.3"/>`,
+        P.stroke('M 4,16 L 28,16', INK.amber, 2),
+        P.fill('M 4,16 L 8,13.6 L 8,18.4 Z', INK.amber),
+        `<rect x="7" y="21" width="18" height="4.6" rx="1.3" fill="none" stroke="${INK.faint}" stroke-width="1.3" stroke-dasharray="2.6 2"/>` ]) },
+    ],
+});
+
+/* ---------------------------------------------------------------------------------- BOOLEANS, PATTERNS, TRANSFORMS */
+TIERS.push({
+    Name:'Booleans, Patterns & Transforms',
+    Note:'combining bodies and replicating them through space',
+    Glyphs:[
+    { Name:'BooleanUnion',     Verb:'fuse two bodies into one',   Register:'solid', Art:() => {
+        const g = faceFill(MATERIAL.azure.top, MATERIAL.azure.side, 8, 8, 24, 24);
+        return glyph([ g,
+            `<path d="M 6,10 h11 v5 h9 v12 h-11 v-5 h-9 z" fill="url(#${g.id})" stroke="${MATERIAL.azure.edge}" stroke-width="1.2" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'BooleanSubtract',  Verb:'remove the tool body',       Register:'solid', Art:() => {
+        const g = faceFill(MATERIAL.slate.top, MATERIAL.slate.side, 6, 8, 20, 24);
+        return glyph([ g,
+            `<path d="M 6,10 h11 v5 h-5 v7 h-6 z" fill="url(#${g.id})" stroke="${MATERIAL.slate.edge}" stroke-width="1.2" stroke-linejoin="round"/>`,
+            `<path d="M 12,15 h14 v12 h-14 z" fill="none" stroke="${INK.red}" stroke-width="1.3" stroke-dasharray="3 2.2" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'BooleanIntersect', Verb:'keep only shared material',  Register:'solid', Art:() => {
+        const g = faceFill(MATERIAL.jade.top, MATERIAL.jade.side, 12, 14, 20, 23);
+        return glyph([ g,
+            `<path d="M 6,10 h11 v12 h-11 z" fill="none" stroke="${INK.faint}" stroke-width="1.2" stroke-dasharray="2.6 2"/>`,
+            `<path d="M 12,15 h14 v12 h-14 z" fill="none" stroke="${INK.faint}" stroke-width="1.2" stroke-dasharray="2.6 2"/>`,
+            `<path d="M 12,15 h5 v7 h-5 z" fill="url(#${g.id})" stroke="${MATERIAL.jade.edge}" stroke-width="1.3" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'SplitBody',        Verb:'divide a solid by a plane',  Register:'solid', Art:() => glyph([
+        isoBox(11.5, 24, 6, 6, 7, MATERIAL.steel),
+        isoBox(21.5, 27, 6, 6, 7, MATERIAL.steel, { opacity:.75 }),
+        P.stroke('M 16,3 L 16,29', INK.red, 1.5, ' stroke-dasharray="3 2.4"') ]) },
+
+    { Name:'LinearPattern',    Verb:'repeat along a direction',   Register:'solid', Art:() => glyph([
+        isoBox(8, 24, 4, 4, 5, MATERIAL.azure),
+        isoBox(16, 24, 4, 4, 5, MATERIAL.azure, { opacity:.72 }),
+        isoBox(24, 24, 4, 4, 5, MATERIAL.azure, { opacity:.48 }),
+        motionArrow(6, 29, 27, 29, INK.green, 1.5) ]) },
+
+    { Name:'CircularPattern',  Verb:'repeat about an axis',       Register:'solid', Art:() => {
+        let out = [];
+        for (let i = 0; i < 6; i++)
+        {
+            const a = -Math.PI / 2 + i * Math.PI / 3;
+            out.push(isoBox(16 + Math.cos(a) * 9, 18 + Math.sin(a) * 5.2 + 3, 2.6, 2.6, 3,
+                MATERIAL.violet, { opacity: i === 0 ? 1 : .62, ink:.85 }));
+        }
+        return glyph([ `<ellipse cx="16" cy="18" rx="9" ry="5.2" fill="none" stroke="${INK.amber}" stroke-width="1.2" stroke-dasharray="2.8 2.2"/>`, ...out ]); } },
+
+    { Name:'MirrorBody',       Verb:'reflect a body across a plane', Register:'solid', Art:() => glyph([
+        isoBox(8.5, 24, 5, 5, 6, MATERIAL.steel),
+        isoBox(23.5, 24, 5, 5, 6, MATERIAL.steel, { opacity:.55, dash:'2.6 2' }),
+        P.stroke('M 16,3 L 16,29', INK.amber, 1.5, ' stroke-dasharray="3 2.4"') ]) },
+
+    { Name:'TranslateBody',    Verb:'displace along the axes',    Register:'solid', Art:() => glyph([
+        isoBox(12, 25, 6, 6, 6, MATERIAL.steel, { opacity:.45, dash:'2.6 2' }),
+        isoBox(19, 22, 6, 6, 6, MATERIAL.steel),
+        motionArrow(11, 14, 18, 9.5, INK.green, 1.6) ]) },
+
+    { Name:'RotateBody',       Verb:'spin about a pivot',         Register:'solid', Art:() => glyph([
+        isoBox(17, 26, 6, 6, 6, MATERIAL.steel),
+        P.stroke('M 7,14 A 11,11 0 0 1 25,7', INK.green, 1.8),
+        P.fill('M 25,7 L 20.4,7.4 L 22.6,11 Z', INK.green),
+        P.dot(16, 18, 1.8, INK.amber) ]) },
+
+    { Name:'ScaleBody',        Verb:'uniform or per-axis resize', Register:'solid', Art:() => glyph([
+        isoBox(16, 27, 4.5, 4.5, 4.5, MATERIAL.steel),
+        `<polygon points="16,6.5 26,12.3 16,18.1 6,12.3" fill="none" stroke="${INK.green}" stroke-width="1.2" stroke-dasharray="2.8 2.2" stroke-linejoin="round"/>`,
+        motionArrow(20, 20, 25.5, 15, INK.green, 1.5) ]) },
+
+    { Name:'AlignBody',        Verb:'snap faces into coincidence', Register:'solid', Art:() => glyph([
+        isoBox(9, 24, 5, 5, 6, MATERIAL.steel),
+        isoBox(22, 24, 5, 5, 6, MATERIAL.jade),
+        P.stroke('M 16,6 L 16,28', INK.green, 1.5),
+        motionArrow(20.5, 11, 17, 11, INK.green, 1.4) ]) },
+
+    { Name:'PivotOrigin',      Verb:'relocate the transform origin', Register:'planar', Art:() => glyph([
+        P.stroke('M 16,4 L 16,28', INK.faint, 1.2), P.stroke('M 4,16 L 28,16', INK.faint, 1.2),
+        P.ring(16, 16, 6, INK.amber, 1.6), P.dot(16, 16, 2.4, INK.amber),
+        P.stroke('M 16,10 L 16,22 M 10,16 L 22,16', INK.amber, 1.3) ]) },
+    ],
+});
+
+/* ---------------------------------------------------------------------------------------------------- TOPOLOGY EDIT */
+TIERS.push({
+    Name:'Topology Editing',
+    Note:'direct edits on the polygon complex — vertices, edges, faces and loops',
+    Glyphs:[
+    { Name:'VertexMode',    Verb:'select and edit corner points', Register:'planar', Art:() => glyph([
+        P.stroke('M 8,8 L 24,8 L 24,24 L 8,24 Z', INK.faint, 1.3),
+        P.dot(8, 8, 2.8, INK.blue), P.dot(24, 8, 2.8, INK.blue),
+        P.dot(24, 24, 2.8, INK.blue), P.dot(8, 24, 2.8, INK.blue) ]) },
+
+    { Name:'EdgeMode',      Verb:'select and edit boundary curves', Register:'planar', Art:() => glyph([
+        P.stroke('M 8,8 L 24,8 L 24,24 L 8,24 Z', INK.faint, 1.3),
+        P.stroke('M 8,24 L 8,8', INK.blue, 2.6),
+        P.dot(8, 8, 1.9, INK.blue), P.dot(8, 24, 1.9, INK.blue) ]) },
+
+    { Name:'FaceMode',      Verb:'select and edit polygon faces', Register:'planar', Art:() => glyph([
+        P.fill('M 8,8 L 24,8 L 24,24 L 8,24 Z', 'rgba(90,169,234,.30)'),
+        P.stroke('M 8,8 L 24,8 L 24,24 L 8,24 Z', INK.blue, 1.7) ]) },
+
+    { Name:'LoopSelect',    Verb:'follow a continuous edge ring', Register:'planar', Art:() => glyph([
+        `<g fill="none" stroke="${INK.faint}" stroke-width="1.2">`
+        + `<path d="M 6,10 h20 v12 h-20 z"/><path d="M 12,10 v12"/><path d="M 20,10 v12"/></g>`,
+        P.stroke('M 12,10 L 12,22', INK.blue, 2.6), P.stroke('M 20,10 L 20,22', INK.blue, 2.6) ]) },
+
+    { Name:'RingSelect',    Verb:'follow the perpendicular ring', Register:'planar', Art:() => glyph([
+        `<g fill="none" stroke="${INK.faint}" stroke-width="1.2">`
+        + `<path d="M 6,10 h20 v12 h-20 z"/><path d="M 6,16 h20"/></g>`,
+        P.stroke('M 6,16 L 26,16', INK.blue, 2.6),
+        P.dot(6, 16, 1.8, INK.blue), P.dot(26, 16, 1.8, INK.blue) ]) },
+
+    { Name:'LoopInsert',    Verb:'add an edge ring between two',  Register:'planar', Art:() => glyph([
+        `<g fill="none" stroke="${INK.faint}" stroke-width="1.3"><path d="M 6,9 h20 v14 h-20 z"/></g>`,
+        P.stroke('M 16,9 L 16,23', INK.green, 2.4),
+        motionArrow(10, 26.5, 15, 26.5, INK.green, 1.3), motionArrow(22, 26.5, 17, 26.5, INK.green, 1.3) ]) },
+
+    { Name:'Subdivide',     Verb:'split each face into quads',    Register:'planar', Art:() => glyph([
+        P.stroke('M 6,6 L 26,6 L 26,26 L 6,26 Z', INK.line, 1.6),
+        P.stroke('M 16,6 L 16,26 M 6,16 L 26,16', INK.green, 1.5),
+        P.stroke('M 11,6 L 11,26 M 21,6 L 21,26 M 6,11 L 26,11 M 6,21 L 26,21', INK.green, .9, ' opacity=".55"') ]) },
+
+    { Name:'Collapse',      Verb:'merge an edge to a single point', Register:'planar', Art:() => glyph([
+        P.ghost('M 7,10 L 25,10'),
+        motionArrow(9, 15, 14.5, 15, INK.red, 1.5), motionArrow(23, 15, 17.5, 15, INK.red, 1.5),
+        P.dot(16, 21, 3.2, INK.red) ]) },
+
+    { Name:'Dissolve',      Verb:'remove an edge, fuse the faces', Register:'planar', Art:() => glyph([
+        P.stroke('M 6,9 L 26,9 L 26,23 L 6,23 Z', INK.line, 1.6),
+        P.ghost('M 16,9 L 16,23', INK.red),
+        P.stroke('M 20,26 L 26,26', INK.red, 1.6),
+        P.stroke('M 23,23.5 L 23,28.5', INK.red, 1.6) ]) },
+
+    { Name:'Bridge',        Verb:'span two open boundaries',      Register:'planar', Art:() => glyph([
+        P.ring(9, 16, 4.6, INK.line, 1.6), P.ring(23, 16, 4.6, INK.line, 1.6),
+        P.stroke('M 9,11.4 L 23,11.4 M 9,20.6 L 23,20.6', INK.green, 1.7) ]) },
+
+    { Name:'FillHole',      Verb:'cap an open boundary loop',     Register:'planar', Art:() => glyph([
+        P.fill('M 16,7 A 9,9 0 1 1 9.6,22.4 Z', 'rgba(92,199,154,.26)'),
+        P.stroke('M 16,7 A 9,9 0 1 1 9.6,22.4', INK.line, 1.7),
+        P.stroke('M 9.6,22.4 L 16,7', INK.green, 1.9) ]) },
+
+    { Name:'Inset',         Verb:'shrink a face inside itself',   Register:'planar', Art:() => glyph([
+        P.stroke('M 5,8 L 27,8 L 27,24 L 5,24 Z', INK.line, 1.6),
+        P.stroke('M 10,12 L 22,12 L 22,20 L 10,20 Z', INK.green, 1.5, ' stroke-dasharray="3 2.2"'),
+        motionArrow(7, 26, 11, 22, INK.green, 1.3) ]) },
+
+    { Name:'Bevel',         Verb:'widen an edge into a facet',    Register:'solid', Art:() => {
+        const b = isoBox(16, 26, 9, 9, 8, MATERIAL.copper, { opacity:.95 });
+        return glyph([ b,
+            `<polygon points="8.5,13 12.5,10.7 16,12.7 12,15" fill="${MATERIAL.copper.glow}" stroke="${MATERIAL.copper.edge}" stroke-width=".9" stroke-linejoin="round" opacity=".9"/>` ]); } },
+
+    { Name:'Extract',       Verb:'copy a face out as a surface',  Register:'solid', Art:() => glyph([
+        isoBox(14, 27, 7, 7, 6, MATERIAL.slate, { opacity:.55 }),
+        isoPlane(21, 10, 6, 6, INK.green, 'rgba(92,199,154,.28)'),
+        motionArrow(15, 16, 20, 11.5, INK.green, 1.5) ]) },
+
+    { Name:'Detach',        Verb:'separate a shell from the body', Register:'solid', Art:() => glyph([
+        isoBox(11, 26, 6, 6, 6, MATERIAL.steel),
+        isoBox(23, 21, 5, 5, 5, MATERIAL.steel, { opacity:.7 }),
+        P.stroke('M 17,13 L 20,10', INK.red, 1.5, ' stroke-dasharray="2.4 2"') ]) },
+
+    { Name:'Weld',          Verb:'fuse coincident vertices',      Register:'planar', Art:() => glyph([
+        P.stroke('M 5,22 L 14,16', INK.line, 1.6), P.stroke('M 27,22 L 18,16', INK.line, 1.6),
+        P.dot(14, 16, 2.6, INK.dim), P.dot(18, 16, 2.6, INK.dim),
+        P.ring(16, 16, 6.4, INK.green, 1.5, 1.5),
+        motionArrow(11, 10, 14.4, 13.4, INK.green, 1.2), motionArrow(21, 10, 17.6, 13.4, INK.green, 1.2) ]) },
+
+    { Name:'Triangulate',   Verb:'reduce faces to triangles',     Register:'planar', Art:() => glyph([
+        P.stroke('M 6,7 L 26,7 L 26,25 L 6,25 Z', INK.line, 1.6),
+        P.stroke('M 6,7 L 26,25', INK.green, 1.5),
+        P.stroke('M 6,25 L 26,7', INK.green, 1.1, ' opacity=".5"') ]) },
+
+    { Name:'Quadrangulate', Verb:'merge triangles into quads',    Register:'planar', Art:() => glyph([
+        P.stroke('M 6,7 L 26,7 L 26,25 L 6,25 Z', INK.line, 1.6),
+        P.ghost('M 6,7 L 26,25', INK.red),
+        P.stroke('M 16,7 L 16,25', INK.green, 1.5) ]) },
+
+    { Name:'Remesh',        Verb:'rebuild at a uniform density',  Register:'planar', Art:() => glyph([
+        P.stroke('M 6,6 L 26,6 L 26,26 L 6,26 Z', INK.line, 1.5),
+        `<g fill="none" stroke="${INK.green}" stroke-width="1.1" opacity=".85">`
+        + `<path d="M 12.6,6 L 12.6,26 M 19.3,6 L 19.3,26 M 6,12.6 L 26,12.6 M 6,19.3 L 26,19.3"/></g>` ]) },
+
+    { Name:'Decimate',      Verb:'reduce face count, keep form',  Register:'planar', Art:() => glyph([
+        `<g fill="none" stroke="${INK.faint}" stroke-width="1"><path d="M 5,7 h10 v9 h-10 z M 5,16 h10 v9 h-10 z"/>`
+        + `<path d="M 5,11.5 h10 M 5,20.5 h10"/></g>`,
+        P.stroke('M 18,16 L 24,16', INK.amber, 1.5), P.fill('M 27,16 L 23,13.8 L 23,18.2 Z', INK.amber),
+        `<rect x="17" y="7" width="10" height="4" fill="none" stroke="${INK.line}" stroke-width="0"/>` ]) },
+
+    { Name:'Smooth',        Verb:'relax vertices toward neighbours', Register:'planar', Art:() => glyph([
+        P.ghost('M 5,22 L 10,11 L 15,20 L 20,9 L 27,18', INK.faint),
+        P.stroke('M 5,21 C 11,13 20,13 27,17', INK.green, 1.9) ]) },
+
+    { Name:'NormalFlip',    Verb:'reverse face orientation',      Register:'planar', Art:() => glyph([
+        P.fill('M 6,19 L 26,19 L 26,23 L 6,23 Z', 'rgba(120,130,145,.28)'),
+        P.stroke('M 6,19 L 26,19 L 26,23 L 6,23 Z', INK.dim, 1.3),
+        motionArrow(12, 18, 12, 7, INK.green, 1.7),
+        motionArrow(21, 7, 21, 18, INK.red, 1.7) ]) },
+
+    { Name:'NonManifoldRepair', Verb:'mend invalid connectivity', Register:'planar', Art:() => glyph([
+        P.stroke('M 6,10 L 16,16 L 6,22', INK.line, 1.5),
+        P.stroke('M 26,10 L 16,16 L 26,22', INK.line, 1.5),
+        P.stroke('M 16,4 L 16,16', INK.red, 1.6),
+        P.ring(16, 16, 4.4, INK.red, 1.4, 1.4) ]) },
+    ],
+});
+
+/* -------------------------------------------------------------------------------------------------------- SELECTION */
+TIERS.push({
+    Name:'Selection & Snapping',
+    Note:'picking behaviour and the snap targets the cursor honours',
+    Glyphs:[
+    { Name:'PickSingle',    Verb:'select one item under cursor',  Register:'planar', Art:() => glyph([
+        P.stroke('M 6,8 L 20,8 L 20,20 L 6,20 Z', INK.faint, 1.3),
+        P.fill('M 15,13 L 15,27 L 19,23 L 22,29 L 25,27 L 22,21 L 27,21 Z', INK.white),
+        P.stroke('M 15,13 L 15,27 L 19,23 L 22,29 L 25,27 L 22,21 L 27,21 Z', '#14161b', 1.1) ]) },
+
+    { Name:'PickBox',       Verb:'rectangular region select',     Register:'planar', Art:() => glyph([
+        P.stroke('M 5,7 L 27,7 L 27,25 L 5,25 Z', INK.blue, 1.5, ' stroke-dasharray="3.4 2.4"'),
+        P.dot(11, 13, 2.2, INK.line), P.dot(21, 13, 2.2, INK.line),
+        P.dot(11, 20, 2.2, INK.line), P.dot(21, 20, 2.2, INK.line) ]) },
+
+    { Name:'PickLasso',     Verb:'freehand region select',        Register:'planar', Art:() => glyph([
+        P.stroke('M 8,22 C 3,13 12,4 21,7 C 29,10 27,22 18,24 C 13,25 10,25 8,22', INK.blue, 1.6, ' stroke-dasharray="3.4 2.4"'),
+        P.dot(15, 15, 2.2, INK.line) ]) },
+
+    { Name:'SelectionGrow', Verb:'expand to adjacent items',      Register:'planar', Art:() => glyph([
+        P.fill('M 12,12 L 20,12 L 20,20 L 12,20 Z', 'rgba(90,169,234,.36)'),
+        P.stroke('M 12,12 L 20,12 L 20,20 L 12,20 Z', INK.blue, 1.5),
+        motionArrow(20.5, 16, 27, 16, INK.green, 1.4), motionArrow(11.5, 16, 5, 16, INK.green, 1.4),
+        motionArrow(16, 11.5, 16, 5, INK.green, 1.4), motionArrow(16, 20.5, 16, 27, INK.green, 1.4) ]) },
+
+    { Name:'SelectionShrink', Verb:'contract the selection edge',  Register:'planar', Art:() => glyph([
+        P.stroke('M 5,5 L 27,5 L 27,27 L 5,27 Z', INK.faint, 1.3, ' stroke-dasharray="3 2.2"'),
+        P.fill('M 12,12 L 20,12 L 20,20 L 12,20 Z', 'rgba(90,169,234,.36)'),
+        P.stroke('M 12,12 L 20,12 L 20,20 L 12,20 Z', INK.blue, 1.5),
+        motionArrow(27, 16, 21, 16, INK.amber, 1.3), motionArrow(5, 16, 11, 16, INK.amber, 1.3) ]) },
+
+    { Name:'InvertSelection', Verb:'swap selected and unselected', Register:'planar', Art:() => glyph([
+        P.fill('M 5,7 L 27,7 L 27,25 L 5,25 Z', 'rgba(90,169,234,.26)'),
+        P.stroke('M 5,7 L 27,7 L 27,25 L 5,25 Z', INK.blue, 1.4),
+        P.fill('M 12,12 L 20,12 L 20,20 L 12,20 Z', '#12141a'),
+        P.stroke('M 12,12 L 20,12 L 20,20 L 12,20 Z', INK.dim, 1.3) ]) },
+
+    { Name:'SnapVertex',    Verb:'snap the cursor to a corner',   Register:'planar', Art:() => glyph([
+        P.stroke('M 7,25 L 7,10 L 22,10', INK.faint, 1.4),
+        P.stroke('M 3,10 L 11,10 M 7,6 L 7,14', INK.amber, 1.5),
+        P.dot(7, 10, 2.8, INK.amber) ]) },
+
+    { Name:'SnapMidpoint',  Verb:'snap to the middle of a span',  Register:'planar', Art:() => glyph([
+        P.stroke('M 5,20 L 27,20', INK.faint, 1.5),
+        P.dot(5, 20, 1.8, INK.dim), P.dot(27, 20, 1.8, INK.dim),
+        P.fill('M 16,10 L 20,16 L 12,16 Z', INK.amber), P.dot(16, 20, 2.4, INK.amber) ]) },
+
+    { Name:'SnapCentre',    Verb:'snap to an arc centre',         Register:'planar', Art:() => glyph([
+        P.stroke('M 6,22 A 10,10 0 0 1 26,22', INK.faint, 1.5),
+        P.dot(16, 22, 2.6, INK.amber),
+        P.stroke('M 11,22 L 21,22 M 16,17 L 16,27', INK.amber, 1.3) ]) },
+
+    { Name:'SnapIntersect', Verb:'snap where two curves cross',   Register:'planar', Art:() => glyph([
+        P.stroke('M 5,7 L 27,25', INK.faint, 1.4), P.stroke('M 27,7 L 5,25', INK.faint, 1.4),
+        P.stroke('M 12,12 L 20,20 M 20,12 L 12,20', INK.amber, 1.8) ]) },
+
+    { Name:'SnapGrid',      Verb:'snap to the construction lattice', Register:'planar', Art:() => glyph([
+        `<g fill="none" stroke="${INK.faint}" stroke-width="1"><path d="M 6,6 h20 v20 h-20 z M 12.6,6 v20 M 19.3,6 v20 M 6,12.6 h20 M 6,19.3 h20"/></g>`,
+        P.dot(19.3, 12.6, 3, INK.amber) ]) },
+
+    { Name:'SnapPerpendicular', Verb:'snap at a right angle',      Register:'planar', Art:() => glyph([
+        P.stroke('M 5,24 L 27,24', INK.faint, 1.5), P.stroke('M 18,24 L 18,7', INK.amber, 1.7),
+        P.stroke('M 18,19 L 13,19 L 13,24', INK.amber, 1.3) ]) },
+    ],
+});
+
+/* --------------------------------------------------------------------------------------------------------- ASSEMBLY */
+TIERS.push({
+    Name:'Assembly & Mates',
+    Note:'component instances and the joints that constrain them',
+    Glyphs:[
+    { Name:'ComponentInstance', Verb:'a referenced body placement', Register:'solid', Art:() => glyph([
+        isoBox(16, 25, 8, 8, 8, MATERIAL.azure),
+        P.ring(24.5, 8, 3.6, INK.green, 1.5),
+        P.stroke('M 24.5,5.6 L 24.5,10.4 M 22.1,8 L 26.9,8', INK.green, 1.4) ]) },
+
+    { Name:'SubAssembly',   Verb:'nested group of components',    Register:'solid', Art:() => glyph([
+        isoBox(10, 27, 5, 5, 5, MATERIAL.slate, { opacity:.8 }),
+        isoBox(21, 27, 5, 5, 5, MATERIAL.slate, { opacity:.8 }),
+        isoBox(16, 18, 5, 5, 5, MATERIAL.azure),
+        `<rect x="3" y="3" width="26" height="26" rx="3" fill="none" stroke="${INK.faint}" stroke-width="1.2" stroke-dasharray="3 2.4"/>` ]) },
+
+    { Name:'MateCoincident', Verb:'two faces held flush',         Register:'solid', Art:() => glyph([
+        isoBox(9, 24, 5, 5, 6, MATERIAL.steel),
+        isoBox(22, 24, 5, 5, 6, MATERIAL.brass),
+        P.stroke('M 16,7 L 16,27', INK.green, 1.8) ]) },
+
+    { Name:'MateConcentric', Verb:'shared axis alignment',        Register:'solid', Art:() => glyph([
+        `<ellipse cx="16" cy="19" rx="9" ry="4.4" fill="none" stroke="${MATERIAL.steel.front}" stroke-width="1.6"/>`,
+        `<ellipse cx="16" cy="13" rx="5" ry="2.5" fill="none" stroke="${MATERIAL.brass.top}" stroke-width="1.6"/>`,
+        P.stroke('M 16,4 L 16,26', INK.green, 1.4, ' stroke-dasharray="3 2.2"') ]) },
+
+    { Name:'MateDistance',  Verb:'fixed offset between faces',    Register:'solid', Art:() => glyph([
+        isoBox(7, 24, 4.5, 4.5, 6, MATERIAL.steel),
+        isoBox(24, 24, 4.5, 4.5, 6, MATERIAL.steel),
+        P.stroke('M 13,15 L 20,15', INK.blue, 1.6),
+        P.fill('M 13,15 L 16.4,13.3 L 16.4,16.7 Z', INK.blue),
+        P.fill('M 20,15 L 16.6,13.3 L 16.6,16.7 Z', INK.blue) ]) },
+
+    { Name:'MateAngle',     Verb:'fixed angle between axes',      Register:'solid', Art:() => glyph([
+        P.stroke('M 7,25 L 27,25', MATERIAL.steel.top, 2.2),
+        P.stroke('M 7,25 L 23,10', MATERIAL.brass.top, 2.2),
+        P.stroke('M 17,25 A 10,10 0 0 0 14,17.8', INK.green, 1.5) ]) },
+
+    { Name:'JointRevolute', Verb:'single rotational freedom',     Register:'solid', Art:() => glyph([
+        `<rect x="5" y="14" width="10" height="5" rx="1.4" fill="${MATERIAL.steel.front}" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+        `<rect x="17" y="14" width="10" height="5" rx="1.4" fill="${MATERIAL.brass.front}" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+        P.dot(16, 16.5, 3.2, INK.amber),
+        P.stroke('M 21,9 A 8,8 0 0 0 11,9', INK.green, 1.4), P.fill('M 11,9 L 13.4,5.6 L 8.8,6 Z', INK.green) ]) },
+
+    { Name:'JointPrismatic', Verb:'single sliding freedom',        Register:'solid', Art:() => glyph([
+        `<rect x="4" y="13" width="24" height="7" rx="2" fill="none" stroke="${INK.faint}" stroke-width="1.3"/>`,
+        `<rect x="9" y="14.6" width="9" height="4" rx="1.2" fill="${MATERIAL.brass.front}" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+        motionArrow(20, 16.6, 26.5, 16.6, INK.green, 1.4) ]) },
+
+    { Name:'JointCylindrical', Verb:'rotate plus slide on one axis', Register:'solid', Art:() => glyph([
+        `<rect x="4" y="13.5" width="24" height="6" rx="3" fill="none" stroke="${INK.faint}" stroke-width="1.3"/>`,
+        `<ellipse cx="14" cy="16.5" rx="3" ry="3" fill="${MATERIAL.steel.front}" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+        motionArrow(19, 16.5, 26, 16.5, INK.green, 1.3),
+        P.stroke('M 17,9.5 A 6,6 0 0 0 10,9.5', INK.green, 1.3) ]) },
+
+    { Name:'JointBall',     Verb:'three rotational freedoms',     Register:'solid', Art:() => {
+        const id = 'bl' + (++GRADIENT_SERIAL);
+        return glyph([
+            { defs:`<radialGradient id="${id}" cx="0.36" cy="0.32" r="0.8">`
+                + `<stop offset="0" stop-color="${MATERIAL.steel.glow}"/><stop offset="1" stop-color="${MATERIAL.steel.side}"/></radialGradient>` },
+            `<rect x="13.5" y="18" width="5" height="10" rx="1.4" fill="${MATERIAL.brass.front}" stroke="${MATERIAL.brass.edge}" stroke-width="1"/>`,
+            `<circle cx="16" cy="14" r="7" fill="url(#${id})" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+            `<ellipse cx="16" cy="14" rx="7" ry="2.6" fill="none" stroke="${INK.green}" stroke-width="1.2" opacity=".85"/>`,
+            `<ellipse cx="16" cy="14" rx="2.6" ry="7" fill="none" stroke="${INK.green}" stroke-width="1.2" opacity=".85"/>` ]); } },
+
+    { Name:'JointRigid',    Verb:'all freedoms removed',          Register:'solid', Art:() => glyph([
+        isoBox(11, 24, 5, 5, 5, MATERIAL.steel),
+        isoBox(21, 24, 5, 5, 5, MATERIAL.brass),
+        P.stroke('M 10,28.5 L 24,28.5', INK.amber, 2),
+        P.stroke('M 12,13 L 20,13', INK.amber, 1.6) ]) },
+
+    { Name:'InterferenceCheck', Verb:'find overlapping material', Register:'solid', Art:() => glyph([
+        isoBox(11, 25, 6, 6, 6, MATERIAL.steel, { opacity:.7 }),
+        isoBox(19, 22, 6, 6, 6, MATERIAL.steel, { opacity:.7 }),
+        P.ring(19, 16, 5.4, INK.red, 1.8),
+        P.stroke('M 22.8,12.2 L 15.2,19.8', INK.red, 1.8) ]) },
+
+    { Name:'ExplodedView',  Verb:'displace parts along assembly axes', Register:'solid', Art:() => glyph([
+        isoBox(16, 28, 5, 5, 4, MATERIAL.slate),
+        isoBox(16, 19, 5, 5, 4, MATERIAL.steel, { opacity:.85 }),
+        isoBox(16, 10, 5, 5, 4, MATERIAL.brass, { opacity:.7 }),
+        P.stroke('M 28,5 L 28,27', INK.green, 1.2, ' stroke-dasharray="2.6 2.2"') ]) },
+    ],
+});
+
+/* ------------------------------------------------------------------------------------------------------ VIEW/DISPLAY */
+TIERS.push({
+    Name:'View & Display',
+    Note:'camera framing plus the shading modes the viewport draws in',
+    Glyphs:[
+    { Name:'OrbitCamera',   Verb:'rotate the eye about a target', Register:'solid', Art:() => glyph([
+        isoBox(16, 21, 5, 5, 5, MATERIAL.slate, { opacity:.8 }),
+        `<ellipse cx="16" cy="17" rx="12" ry="5.6" fill="none" stroke="${INK.blue}" stroke-width="1.5"/>`,
+        P.fill('M 27.6,15.4 L 24,12.6 L 23.6,17.6 Z', INK.blue) ]) },
+
+    { Name:'PanCamera',     Verb:'slide the eye in view plane',   Register:'planar', Art:() => glyph([
+        motionArrow(16, 16, 16, 5, INK.blue, 1.7), motionArrow(16, 16, 16, 27, INK.blue, 1.7),
+        motionArrow(16, 16, 5, 16, INK.blue, 1.7), motionArrow(16, 16, 27, 16, INK.blue, 1.7),
+        P.dot(16, 16, 2.2, INK.white) ]) },
+
+    { Name:'ZoomWindow',    Verb:'frame a rectangular region',    Register:'planar', Art:() => glyph([
+        P.ring(14, 14, 8, INK.line, 1.8),
+        P.stroke('M 20,20 L 27,27', INK.line, 2.2),
+        P.stroke('M 10,14 L 18,14 M 14,10 L 14,18', INK.blue, 1.6) ]) },
+
+    { Name:'ZoomFit',       Verb:'frame the whole model',         Register:'planar', Art:() => glyph([
+        P.stroke('M 4,10 L 4,4 L 10,4 M 22,4 L 28,4 L 28,10 M 28,22 L 28,28 L 22,28 M 10,28 L 4,28 L 4,22', INK.line, 1.8),
+        P.fill('M 11,11 L 21,11 L 21,21 L 11,21 Z', 'rgba(90,169,234,.34)'),
+        P.stroke('M 11,11 L 21,11 L 21,21 L 11,21 Z', INK.blue, 1.4) ]) },
+
+    { Name:'ViewFront',     Verb:'orthographic front elevation',  Register:'planar', Art:() => glyph([
+        P.fill('M 8,8 L 24,8 L 24,24 L 8,24 Z', 'rgba(90,169,234,.24)'),
+        P.stroke('M 8,8 L 24,8 L 24,24 L 8,24 Z', INK.blue, 1.7),
+        `<text x="16" y="19.5" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="8" font-weight="700" fill="${INK.white}">F</text>` ]) },
+
+    { Name:'ViewTop',       Verb:'orthographic plan view',        Register:'solid', Art:() => glyph([
+        isoPlane(16, 12, 11, 11, INK.blue),
+        motionArrow(16, 3.5, 16, 9.5, INK.green, 1.6) ]) },
+
+    { Name:'ViewIsometric', Verb:'equal-angle three-axis view',   Register:'solid', Art:() => glyph([
+        isoBox(16, 25, 7, 7, 7, MATERIAL.steel),
+        P.stroke('M 16,18 L 16,29', INK.amber, 1.1, ' opacity=".6"') ]) },
+
+    { Name:'ViewSection',   Verb:'cut the model at a plane',      Register:'solid', Art:() => {
+        const cut = faceFill(INK.red, '#8c2f22', 8, 10, 24, 22);
+        return glyph([ cut,
+            isoBox(11, 26, 6, 6, 7, MATERIAL.slate, { opacity:.55 }),
+            `<polygon points="16,9 26,14.8 26,23 16,28.8" fill="url(#${cut.id})" opacity=".55" stroke="${INK.red}" stroke-width="1.3" stroke-linejoin="round"/>` ]); } },
+
+    { Name:'ShadeSmooth',   Verb:'interpolated vertex normals',   Register:'solid', Art:() => {
+        const id = 'ss' + (++GRADIENT_SERIAL);
+        return glyph([
+            { defs:`<radialGradient id="${id}" cx="0.34" cy="0.3" r="0.82">`
+                + `<stop offset="0" stop-color="${MATERIAL.steel.glow}"/><stop offset="1" stop-color="${MATERIAL.steel.side}"/></radialGradient>` },
+            `<circle cx="16" cy="16" r="10.5" fill="url(#${id})" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>` ]); } },
+
+    { Name:'ShadeFlat',     Verb:'one normal per facet',          Register:'solid', Art:() => glyph([
+        `<polygon points="16,5.5 25.5,11 25.5,21 16,26.5 6.5,21 6.5,11" fill="none" stroke="${MATERIAL.steel.edge}" stroke-width="1"/>`,
+        `<polygon points="16,5.5 25.5,11 16,16" fill="${MATERIAL.steel.glow}"/>`,
+        `<polygon points="25.5,11 25.5,21 16,16" fill="${MATERIAL.steel.top}"/>`,
+        `<polygon points="25.5,21 16,26.5 16,16" fill="${MATERIAL.steel.front}"/>`,
+        `<polygon points="16,26.5 6.5,21 16,16" fill="${MATERIAL.steel.side}"/>`,
+        `<polygon points="6.5,21 6.5,11 16,16" fill="${MATERIAL.steel.edge}"/>`,
+        `<polygon points="6.5,11 16,5.5 16,16" fill="${MATERIAL.steel.front}"/>` ]) },
+
+    { Name:'ShadeWireframe', Verb:'edges only, no surfaces',      Register:'planar', Art:() => glyph([
+        P.stroke('M 16,5 L 26,11 L 26,21 L 16,27 L 6,21 L 6,11 Z', INK.line, 1.4),
+        P.stroke('M 16,5 L 16,16 M 16,16 L 26,21 M 16,16 L 6,21', INK.dim, 1.2),
+        P.stroke('M 6,11 L 16,16 L 26,11', INK.dim, 1.2) ]) },
+
+    { Name:'ShadeXray',      Verb:'translucent depth-through view', Register:'solid', Art:() => glyph([
+        isoBox(16, 25, 8, 8, 8, MATERIAL.azure, { opacity:.34 }),
+        `<polygon points="16,12 21,15 16,18 11,15" fill="none" stroke="${INK.blue}" stroke-width="1.2" stroke-dasharray="2.4 1.8" stroke-linejoin="round"/>` ]) },
+
+    { Name:'EdgeOverlay',    Verb:'draw crease edges over shading', Register:'solid', Art:() => glyph([
+        isoBox(16, 25, 8, 8, 8, MATERIAL.slate, { opacity:.85 }),
+        P.stroke('M 16,11.4 L 22.9,15.4 M 16,11.4 L 9.1,15.4 M 16,11.4 L 16,19.4', INK.blue, 1.5) ]) },
+
+    { Name:'GridVisibility', Verb:'toggle the ground lattice',    Register:'solid', Art:() => glyph([
+        isoPlane(16, 13, 12, 12, INK.dim, 'rgba(120,130,145,.12)'),
+        `<g fill="none" stroke="${INK.blue}" stroke-width="1" opacity=".9">`
+        + `<path d="M 12.5,15.5 L 22.9,21.5 M 19.4,11.6 L 9.1,17.6"/></g>` ]) },
+
+    { Name:'OriginMarker',   Verb:'show the world coordinate frame', Register:'solid', Art:() => glyph([
+        motionArrow(16, 22, 16, 6, INK.green, 1.9),
+        motionArrow(16, 22, 28, 26, INK.red, 1.9),
+        motionArrow(16, 22, 4, 26, INK.blue, 1.9),
+        P.dot(16, 22, 2.2, INK.white) ]) },
+    ],
+});
+
+/* --------------------------------------------------------------------------------------------- DRAFTING & ANNOTATION */
+TIERS.push({
+    Name:'Drafting & Annotation',
+    Note:'the 2D sheet deliverable — views, notes and manufacturing callouts',
+    Glyphs:[
+    { Name:'DrawingSheet',   Verb:'a bordered paper layout',      Register:'planar', Art:() => glyph([
+        `<rect x="5" y="4" width="22" height="24" rx="1.6" fill="rgba(226,230,238,.08)" stroke="${INK.line}" stroke-width="1.5"/>`,
+        `<rect x="8" y="7" width="16" height="14" fill="none" stroke="${INK.faint}" stroke-width="1.1"/>`,
+        `<rect x="16" y="23" width="8" height="3.2" fill="none" stroke="${INK.blue}" stroke-width="1.2"/>` ]) },
+
+    { Name:'ProjectedView',  Verb:'orthographic view of a body',  Register:'planar', Art:() => glyph([
+        `<rect x="4.5" y="5" width="10" height="10" fill="rgba(90,169,234,.22)" stroke="${INK.blue}" stroke-width="1.4"/>`,
+        `<rect x="17.5" y="5" width="10" height="10" fill="none" stroke="${INK.faint}" stroke-width="1.2" stroke-dasharray="2.6 2"/>`,
+        `<rect x="4.5" y="18" width="10" height="9" fill="none" stroke="${INK.faint}" stroke-width="1.2" stroke-dasharray="2.6 2"/>`,
+        P.stroke('M 15.5,10 L 16.5,10 M 9.5,16 L 9.5,17', INK.dim, 1.1) ]) },
+
+    { Name:'SectionView',    Verb:'a cut view with hatching',     Register:'planar', Art:() => glyph([
+        `<rect x="6" y="7" width="20" height="18" fill="none" stroke="${INK.line}" stroke-width="1.5"/>`,
+        `<g stroke="${INK.red}" stroke-width="1.1" opacity=".85">`
+        + `<path d="M 8,23 L 16,9 M 12,25 L 21,9 M 17,25 L 24,12 M 22,25 L 26,18"/></g>` ]) },
+
+    { Name:'DetailView',     Verb:'magnified region callout',     Register:'planar', Art:() => glyph([
+        P.ring(11, 12, 6.4, INK.line, 1.5),
+        P.stroke('M 15.6,16.6 L 20,21', INK.line, 1.8),
+        P.ring(22.5, 23, 5.4, INK.blue, 1.5),
+        `<text x="22.5" y="26" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="7" font-weight="700" fill="${INK.blue}">A</text>` ]) },
+
+    { Name:'CentreMark',     Verb:'axis cross on a circular feature', Register:'planar', Art:() => glyph([
+        P.ring(16, 16, 8.4, INK.faint, 1.3),
+        P.stroke('M 16,4.5 L 16,27.5 M 4.5,16 L 27.5,16', INK.amber, 1.4, ' stroke-dasharray="5.5 2 1.4 2"') ]) },
+
+    { Name:'LeaderNote',     Verb:'text attached by a leader line', Register:'planar', Art:() => glyph([
+        P.stroke('M 6,25 L 14,17 L 26,17', INK.line, 1.6),
+        P.fill('M 6,25 L 10.6,21.4 L 11.4,24.4 Z', INK.line),
+        P.stroke('M 16,11 L 27,11 M 16,7 L 24,7', INK.white, 1.6) ]) },
+
+    { Name:'SurfaceFinish',  Verb:'roughness callout on a face',  Register:'planar', Art:() => glyph([
+        P.stroke('M 6,24 L 26,24', INK.line, 1.5),
+        P.stroke('M 12,24 L 17,13 L 22,24', INK.blue, 1.7),
+        P.stroke('M 17,13 L 26,13', INK.blue, 1.5),
+        `<text x="21" y="21" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="6.5" fill="${INK.white}">Ra</text>` ]) },
+
+    { Name:'WeldSymbol',     Verb:'joint preparation callout',    Register:'planar', Art:() => glyph([
+        P.stroke('M 5,20 L 27,20', INK.line, 1.6),
+        P.stroke('M 12,20 L 16,20', INK.line, 1.6),
+        P.fill('M 14,20 L 20,20 L 17,13 Z', INK.amber),
+        P.stroke('M 5,20 L 9,24', INK.line, 1.5) ]) },
+
+    { Name:'GeometricTolerance', Verb:'datum-referenced control frame', Register:'planar', Art:() => glyph([
+        `<rect x="4" y="11.5" width="24" height="9" fill="none" stroke="${INK.line}" stroke-width="1.4"/>`,
+        P.stroke('M 12,11.5 L 12,20.5 M 21,11.5 L 21,20.5', INK.line, 1.2),
+        P.ring(8, 16, 2.6, INK.blue, 1.4),
+        `<text x="16.5" y="18.6" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="6.5" fill="${INK.white}">.2</text>`,
+        `<text x="24.5" y="18.6" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="6.5" fill="${INK.white}">A</text>` ]) },
+
+    { Name:'DatumTarget',    Verb:'the reference face for tolerances', Register:'planar', Art:() => glyph([
+        P.stroke('M 16,6 L 16,17', INK.line, 1.5),
+        `<rect x="11" y="17" width="10" height="9" fill="none" stroke="${INK.line}" stroke-width="1.4"/>`,
+        `<text x="16" y="24" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="8" font-weight="700" fill="${INK.blue}">A</text>`,
+        P.fill('M 12.5,6 L 19.5,6 L 16,10 Z', INK.line) ]) },
+
+    { Name:'BillOfMaterials', Verb:'tabulated part quantities',   Register:'planar', Art:() => glyph([
+        `<rect x="4.5" y="6" width="23" height="20" rx="1.4" fill="none" stroke="${INK.line}" stroke-width="1.4"/>`,
+        P.stroke('M 4.5,12 L 27.5,12', INK.line, 1.4),
+        P.stroke('M 4.5,19 L 27.5,19', INK.faint, 1.1),
+        P.stroke('M 12,6 L 12,26', INK.faint, 1.1),
+        P.stroke('M 7,9.2 L 9.5,9.2 M 15,9.2 L 24,9.2', INK.blue, 1.3) ]) },
+
+    { Name:'TitleBlock',     Verb:'sheet metadata panel',         Register:'planar', Art:() => glyph([
+        `<rect x="4.5" y="5" width="23" height="22" rx="1.4" fill="none" stroke="${INK.faint}" stroke-width="1.3"/>`,
+        `<rect x="4.5" y="18" width="23" height="9" fill="rgba(90,169,234,.16)" stroke="${INK.blue}" stroke-width="1.4"/>`,
+        P.stroke('M 8,22 L 15,22 M 8,24.5 L 20,24.5', INK.white, 1.3),
+        P.stroke('M 20,18 L 20,27', INK.blue, 1.1) ]) },
+    ],
+});
+
+/* ------------------------------------------------------------------------------------------------- DOCUMENT & HISTORY */
+TIERS.push({
+    Name:'Document & History',
+    Note:'file-level operations and the undo record',
+    Glyphs:[
+    { Name:'DocumentRoot',   Verb:'the open modelling document',  Register:'planar', Art:() => glyph([
+        P.fill('M 7,4 L 19,4 L 25,10 L 25,28 L 7,28 Z', 'rgba(226,230,238,.09)'),
+        P.stroke('M 7,4 L 19,4 L 25,10 L 25,28 L 7,28 Z', INK.line, 1.5),
+        P.stroke('M 19,4 L 19,10 L 25,10', INK.line, 1.4),
+        P.stroke('M 11,16 L 21,16 M 11,20 L 21,20 M 11,24 L 17,24', INK.blue, 1.4) ]) },
+
+    { Name:'ImportGeometry', Verb:'read foreign geometry in',     Register:'planar', Art:() => glyph([
+        P.stroke('M 6,7 L 6,25 L 26,25 L 26,7', INK.line, 1.6),
+        motionArrow(16, 4, 16, 19, INK.green, 2) ]) },
+
+    { Name:'ExportGeometry', Verb:'write geometry out',           Register:'planar', Art:() => glyph([
+        P.stroke('M 6,25 L 6,7 L 26,7 L 26,25', INK.line, 1.6),
+        motionArrow(16, 28, 16, 12, INK.blue, 2) ]) },
+
+    { Name:'SaveDocument',   Verb:'flush the document to disk',   Register:'planar', Art:() => glyph([
+        P.stroke('M 5.5,6.5 L 5.5,25.5 L 26.5,25.5 L 26.5,11 L 22,6.5 Z', INK.line, 1.5),
+        `<rect x="10" y="6.5" width="9" height="6.5" fill="none" stroke="${INK.line}" stroke-width="1.3"/>`,
+        `<rect x="10" y="17" width="12" height="8.5" fill="rgba(90,169,234,.2)" stroke="${INK.blue}" stroke-width="1.3"/>` ]) },
+
+    { Name:'UndoStep',       Verb:'revert the last mutation',     Register:'planar', Art:() => glyph([
+        P.stroke('M 8,17 A 9,9 0 1 1 24,22', INK.line, 2),
+        P.fill('M 8,17 L 13,13.6 L 12.4,19.6 Z', INK.line) ]) },
+
+    { Name:'RedoStep',       Verb:'reapply a reverted mutation',  Register:'planar', Art:() => glyph([
+        P.stroke('M 24,17 A 9,9 0 1 0 8,22', INK.line, 2),
+        P.fill('M 24,17 L 19,13.6 L 19.6,19.6 Z', INK.line) ]) },
+
+    { Name:'RebuildModel',   Verb:'re-evaluate the feature chain', Register:'planar', Art:() => glyph([
+        P.stroke('M 7,13 A 9,9 0 1 1 8.5,21.5', INK.green, 2),
+        P.fill('M 7,13 L 12.4,13.6 L 8.6,17.6 Z', INK.green),
+        P.dot(16, 16, 2.4, INK.green) ]) },
+
+    { Name:'SuppressFeature', Verb:'skip a feature on rebuild',   Register:'planar', Art:() => glyph([
+        `<rect x="5" y="12" width="22" height="8" rx="1.6" fill="none" stroke="${INK.faint}" stroke-width="1.4" stroke-dasharray="3 2.2"/>`,
+        P.stroke('M 9,24 L 23,8', INK.amber, 1.9) ]) },
+
+    { Name:'ConfigurationSet', Verb:'named parameter variant',     Register:'planar', Art:() => glyph([
+        `<rect x="4.5" y="7" width="16" height="12" rx="1.4" fill="none" stroke="${INK.faint}" stroke-width="1.3"/>`,
+        `<rect x="8" y="10.5" width="16" height="12" rx="1.4" fill="none" stroke="${INK.dim}" stroke-width="1.3"/>`,
+        `<rect x="11.5" y="14" width="16" height="12" rx="1.4" fill="rgba(90,169,234,.18)" stroke="${INK.blue}" stroke-width="1.4"/>` ]) },
+
+    { Name:'ParameterTable', Verb:'driving equation variables',   Register:'planar', Art:() => glyph([
+        `<rect x="4.5" y="6.5" width="23" height="19" rx="1.4" fill="none" stroke="${INK.line}" stroke-width="1.4"/>`,
+        P.stroke('M 16,6.5 L 16,25.5', INK.faint, 1.1),
+        P.stroke('M 4.5,13 L 27.5,13 M 4.5,19.3 L 27.5,19.3', INK.faint, 1.1),
+        P.stroke('M 8,10 L 12,10 M 20,10 L 24,10', INK.blue, 1.3),
+        P.stroke('M 8,16.2 L 12,16.2 M 20,16.2 L 24,16.2', INK.dim, 1.3) ]) },
+    ],
+});
+
+/* ================================================================================================================
+   SHEET RENDER + CONTROLS
+   ================================================================================================================ */
+
+const SHEET  = document.getElementById('sheet');
+const CHIPS  = document.getElementById('chips');
+const PROBE  = document.getElementById('probe');
+const TALLY  = document.getElementById('tally');
+const ACK    = document.getElementById('ack');
+
+let ActiveTier = 'all';
+let TotalGlyphs = 0;
+
+/* Build every plate once; filtering only toggles classes so the SVG is never rebuilt. */
+for (const Tier of TIERS)
+{
+    const plate = document.createElement('section');
+    plate.className = 'tier';
+    plate.dataset.tier = Tier.Name;
+
+    const head = document.createElement('div');
+    head.className = 'tier-name';
+    head.innerHTML = `${Tier.Name} <em>${Tier.Glyphs.length} glyphs · ${Tier.Note}</em>`;
+    plate.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'plate';
+
+    for (const G of Tier.Glyphs)
+    {
+        const markup = G.Art();
+        TotalGlyphs++;
+
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.register = G.Register;
+        cell.dataset.probe = (G.Name + ' ' + G.Verb + ' ' + Tier.Name).toLowerCase();
+        cell.title = `${G.Name} — ${G.Verb}\nClick to copy SVG`;
+        cell.innerHTML =
+              `<div class="art">${markup}</div>`
+            + `<div class="name">${G.Name}</div>`
+            + `<div class="verb">${G.Verb}</div>`
+            + `<div class="scales">`
+            +   `<span class="s16">${markup}</span><span class="s24">${markup}</span>`
+            +   `<span class="s32">${markup}</span><span class="s48">${markup}</span>`
+            + `</div>`;
+
+        /* Scale previews must not inherit the 40px art sizing. */
+        cell.querySelectorAll('.scales span > svg').forEach(node =>
+        {
+            node.setAttribute('width', '100%');
+            node.setAttribute('height', '100%');
+            node.style.width = '100%'; node.style.height = '100%';
+        });
+
+        cell.addEventListener('click', () =>
+        {
+            const pretty = markup.replace(/></g, '>\n<');
+            navigator.clipboard.writeText(pretty).then(() =>
+            {
+                ACK.textContent = G.Name + ' SVG copied';
+                ACK.classList.add('show');
+                setTimeout(() => ACK.classList.remove('show'), 1100);
+            }).catch(() =>
+            {
+                ACK.textContent = 'Clipboard blocked — open over http:// to copy';
+                ACK.classList.add('show');
+                setTimeout(() => ACK.classList.remove('show'), 1600);
+            });
+        });
+
+        grid.appendChild(cell);
+    }
+
+    plate.appendChild(grid);
+    SHEET.appendChild(plate);
+}
+
+/* Tier chips. */
+function buildChip(label, key)
+{
+    const b = document.createElement('button');
+    b.className = 'chip' + (key === 'all' ? ' on' : '');
+    b.textContent = label;
+    b.addEventListener('click', () =>
+    {
+        ActiveTier = key;
+        CHIPS.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b));
+        ApplyFilter();
+    });
+    CHIPS.appendChild(b);
+}
+buildChip('All', 'all');
+for (const Tier of TIERS) buildChip(Tier.Name.replace(/ &.*| \(.*/, ''), Tier.Name);
+
+/* One filter path for both the chips and the search probe. */
+function ApplyFilter()
+{
+    const needle = PROBE.value.trim().toLowerCase();
+    let shown = 0;
+
+    SHEET.querySelectorAll('.tier').forEach(plate =>
+    {
+        const tierMatch = (ActiveTier === 'all' || plate.dataset.tier === ActiveTier);
+        let visibleInPlate = 0;
+
+        plate.querySelectorAll('.cell').forEach(cell =>
+        {
+            const hit = tierMatch && (!needle || cell.dataset.probe.includes(needle));
+            cell.classList.toggle('hidden', !hit);
+            if (hit) visibleInPlate++;
+        });
+
+        plate.classList.toggle('hidden', visibleInPlate === 0);
+        shown += visibleInPlate;
+    });
+
+    TALLY.textContent = shown === TotalGlyphs
+        ? `${TotalGlyphs} glyphs`
+        : `${shown} of ${TotalGlyphs} glyphs`;
+}
+
+PROBE.addEventListener('input', ApplyFilter);
+ApplyFilter();
+</script>
+</body>
+</html>

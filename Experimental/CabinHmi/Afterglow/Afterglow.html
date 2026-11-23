@@ -1,0 +1,189 @@
+<!doctype html>
+<!--
+    AFTERGLOW — CABIN HMI PROTOTYPE B (awaiting approval)
+    🧩 Ambient panoramic display for the ControlVehicle: dusk dunes under a planet, a wet mirror floor, flowing
+       particle waves, a big clock, planet widgets, a climate bar, rest ring timer, a music player, the Halo dial cluster and a Lights menu. 1600 × 900.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Afterglow · Cabin HMI B</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Afterglow.css">
+</head>
+<body>
+<div class="DisplayHost Afterglow" id="Display">
+    <canvas class="Scene" id="Scene"></canvas>
+    <div class="Veil" id="Veil"></div>
+
+    <!-- ① Clock and status -->
+    <header class="ClockBlock">
+        <div class="BigClock" id="BigClock"><span id="ClockHours">18</span><i>:</i><span id="ClockMinutes">26</span></div>
+        <div class="ClockDate" id="ClockDate">Monday · 16 November</div>
+    </header>
+    <div class="StatusChips">
+        <div class="Chip"><svg viewBox="0 0 24 24"><path d="M3 18h2v-3H3Zm5 0h2v-6H8Zm5 0h2V9h-2Zm5 0h2V6h-2Z"/></svg></div>
+        <div class="Chip Battery"><div class="Cell"><i id="BatteryFill"></i></div><span><b id="BatteryText">78</b>%</span></div>
+        <div class="Chip Profile"><span>N</span>Noor</div>
+    </div>
+
+    <!-- ② Planet widgets -->
+    <div class="Orbs" id="Orbs">
+        <button class="Orb Rose" data-open="Drive" data-ripple><small>Range</small><b id="OrbRange">457</b><em>km</em></button>
+        <button class="Orb Lilac" data-open="Climate" data-ripple><small>Outside</small><b>21.5</b><em>°C</em></button>
+        <button class="Orb Ember" data-open="Horizon" data-ripple><small>Home</small><b>12</b><em>min</em></button>
+    </div>
+
+    <!-- ③ Mini player -->
+    <div class="MiniPlayer" id="MiniPlayer">
+        <div class="Cover"><i></i></div>
+        <div class="MiniText"><b>Flowing future vibes</b><small>Lumen Arcade</small><div class="MiniBar"><i id="MiniProgress"></i></div></div>
+        <button class="MiniPlay" id="MiniPlay" data-ripple><svg class="PlayGlyph" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><svg class="PauseGlyph" viewBox="0 0 24 24"><path d="M7 5h4v14H7Zm6 0h4v14h-4Z"/></svg></button>
+    </div>
+
+    <!-- ④ Speed readout (Drive) -->
+    <div class="SpeedReadout" id="SpeedReadout"><b id="SpeedText">0</b><span>km/h</span><small id="SpeedNote">Parked · ready</small></div>
+
+    <!-- ⑤ Menu sheet -->
+    <aside class="Sheet" id="Sheet">
+        <!-- Horizon -->
+        <section class="Page On" data-page="Horizon">
+            <h2>Horizon</h2>
+            <p class="Lead">Choose the world outside the glass.</p>
+            <div class="Scenes" id="Scenes">
+                <button class="SceneCard On" data-scene="0" data-ripple><i class="Thumb Dunes"></i><b>Dune dusk</b><small>Rose sky · ringed planet</small></button>
+                <button class="SceneCard" data-scene="1" data-ripple><i class="Thumb Lake"></i><b>Lilac lake</b><small>Still water · pale moon</small></button>
+                <button class="SceneCard" data-scene="2" data-ripple><i class="Thumb Camp"></i><b>Star camp</b><small>Deep night · aurora haze</small></button>
+            </div>
+            <div class="Row"><span>Haze</span><div class="Slider" id="HazeSlider" data-value="0.45"><i class="Fill"></i><i class="Knob"></i></div><b id="HazeText">45</b></div>
+            <div class="Row"><span>Particle waves</span><button class="Toggle On" id="WaveToggle" data-ripple><i></i></button></div>
+        </section>
+
+        <!-- Drive -->
+        <section class="Page" data-page="Drive">
+            <h2>Drive</h2>
+            <p class="Lead">Mood shapes the throttle and the light.</p>
+            <div class="Moods" id="Moods">
+                <button data-mood="0" class="On" data-ripple><i></i>Calm</button>
+                <button data-mood="1" data-ripple><i></i>Flow</button>
+                <button data-mood="2" data-ripple><i></i>Surge</button>
+            </div>
+            <div class="RegenDial">
+                <svg viewBox="0 0 200 110"><path class="Track" d="M20 100a80 80 0 0 1 160 0"/><path class="Arc" id="RegenArc" d="M20 100a80 80 0 0 1 160 0"/></svg>
+                <div class="RegenText"><b id="RegenText">2</b><small>Regen level</small></div>
+                <div class="RegenSteps" id="RegenSteps"><button data-regen="0">0</button><button data-regen="1">1</button><button data-regen="2" class="On">2</button><button data-regen="3">3</button></div>
+            </div>
+            <div class="Facts">
+                <div><small>Efficiency</small><b id="EffText">14.2</b><em>kWh/100</em></div>
+                <div><small>Battery</small><b id="BattText">78</b><em>%</em></div>
+            </div>
+            <button class="Wide Accent" id="GlideButton" data-ripple>Preview glide</button>
+        </section>
+
+        <!-- Lights -->
+        <section class="Page Lights" data-page="Lights" id="LightsPage">
+            <h2>Lights</h2>
+            <p class="Lead">Dusk lamps · each one blooms on the car.</p>
+            <div class="Segment Beams"><i></i>
+                <button data-beam="Off"><span data-glyph="Drl"></span>Off</button><button data-beam="Auto"><span data-glyph="Auto"></span>Auto</button><button data-beam="Parking"><span data-glyph="Parking"></span>Park</button><button data-beam="Low"><span data-glyph="Low"></span>Low</button><button data-beam="High"><span data-glyph="High"></span>High</button>
+            </div>
+            <div class="Reach" id="Reach">
+                <svg viewBox="0 0 344 104">
+                    <path class="Cone Fog" d="M30 52 L118 8 Q134 52 118 96Z"/>
+                    <path class="Cone Low" d="M30 52 L210 26 Q222 58 210 74Z"/>
+                    <path class="Cone High" d="M30 52 L330 30 Q340 52 330 74Z"/>
+                    <circle class="Source" cx="26" cy="52" r="7"/>
+                    <text x="118" y="102" class="Mark">25 m</text><text x="210" y="102" class="Mark">62 m</text><text x="318" y="102" class="Mark">180 m</text>
+                </svg>
+                <div class="ReachNote" id="ReachNote">Low beam</div>
+            </div>
+            <div class="LampRows">
+                <div class="Row"><span data-glyph="FogFront" class="RowGlyph"></span><span>Front fog</span><button class="Toggle" data-lamp="FogFront"><i></i></button></div>
+                <div class="Row"><span data-glyph="FogRear" class="RowGlyph"></span><span>Rear fog</span><button class="Toggle" data-lamp="FogRear"><i></i></button></div>
+                <div class="Row"><span data-glyph="Auto" class="RowGlyph"></span><span>Auto high beam</span><button class="Toggle" data-lamp="AutoHigh"><i></i></button></div>
+                <div class="Row"><span data-glyph="Welcome" class="RowGlyph"></span><span>Welcome glow</span><button class="Toggle" data-lamp="Welcome"><i></i></button></div>
+                <div class="Row"><span data-glyph="Brake" class="RowGlyph"></span><span>Tail ribbon</span><button class="Toggle On" data-lamp="Ribbon"><i></i></button></div>
+            </div>
+            <div class="Signals">
+                <button data-signal="Left" data-ripple><span data-glyph="Left"></span></button>
+                <button data-signal="Hazard" class="HazardKey" data-ripple><span data-glyph="Hazard"></span>Hazard</button>
+                <button data-signal="Right" data-ripple><span data-glyph="Right"></span></button>
+            </div>
+        </section>
+
+        <!-- Climate -->
+        <section class="Page" data-page="Climate">
+            <h2>Climate</h2>
+            <p class="Lead">Watch the air move through the cabin.</p>
+            <div class="FanDial" id="FanDial">
+                <svg viewBox="0 0 220 220"><circle class="Track" cx="110" cy="110" r="92"/><circle class="Arc" id="FanArc" cx="110" cy="110" r="92"/></svg>
+                <div class="FanBlades" id="FanBlades"><svg viewBox="0 0 48 48"><path d="M24 24c0-9 4-15 9-15s5 7-9 15Zm0 0c8 4 12 11 9 15s-9-1-9-15Zm0 0c-8 5-15 4-17 0s5-8 17 0Z"/><circle cx="24" cy="24" r="3"/></svg></div>
+                <div class="FanText"><b id="FanText">3</b><small>Fan</small></div>
+            </div>
+            <div class="Segment" id="AirMode"><i></i><button data-air="face" class="On">Face</button><button data-air="both">Both</button><button data-air="feet">Feet</button></div>
+            <div class="Row"><span>Auto</span><button class="Toggle On" id="AutoToggle" data-ripple><i></i></button></div>
+            <div class="Row"><span>Recirculate</span><button class="Toggle" id="RecircToggle" data-ripple><i></i></button></div>
+        </section>
+
+        <!-- Rest -->
+        <section class="Page" data-page="Rest">
+            <h2>Rest mode</h2>
+            <p class="Lead">Seats recline, glass dims, the sky slows down.</p>
+            <div class="RestRing">
+                <svg viewBox="0 0 240 240"><circle class="Track" cx="120" cy="120" r="104"/><circle class="Arc" id="RestArc" cx="120" cy="120" r="104"/><circle class="Breath" id="RestBreath" cx="120" cy="120" r="70"/></svg>
+                <div class="RestText"><b id="RestText">05:30</b><small id="RestNote">Ready</small></div>
+            </div>
+            <div class="Presets" id="RestPresets"><button data-minutes="5.5" class="On">5:30</button><button data-minutes="15">15</button><button data-minutes="30">30</button></div>
+            <button class="Wide Accent" id="RestButton" data-ripple>Begin rest</button>
+        </section>
+
+        <!-- Media -->
+        <section class="Page" data-page="Media">
+            <h2>Now playing</h2>
+            <div class="BigCover"><i></i><div class="Spectrum" id="Spectrum"></div></div>
+            <div class="Track">
+                <b>Flowing future vibes</b><small>Lumen Arcade · Night Drive</small>
+            </div>
+            <div class="Scrub" id="Scrub"><i class="Fill" id="ScrubFill"></i><i class="Knob" id="ScrubKnob"></i></div>
+            <div class="Times"><span id="TimeNow">1:12</span><span>3:48</span></div>
+            <div class="Transport">
+                <button data-ripple id="PrevTrack"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6Zm3 7 10 7V5Z"/></svg></button>
+                <button class="Main" id="BigPlay" data-ripple><svg class="PlayGlyph" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg><svg class="PauseGlyph" viewBox="0 0 24 24"><path d="M7 5h4v14H7Zm6 0h4v14h-4Z"/></svg></button>
+                <button data-ripple id="NextTrack"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2ZM5 5v14l10-7Z"/></svg></button>
+            </div>
+            <div class="Row"><span>Waves follow music</span><button class="Toggle On" id="SyncToggle" data-ripple><i></i></button></div>
+        </section>
+    </aside>
+
+    <!-- ⑥ Climate bar and dock -->
+    <footer class="ClimateBar">
+        <div class="Zone">
+            <button class="Chevron" data-zone="0" data-step="-0.5" data-ripple>‹</button>
+            <div class="Temp"><b id="TempLeft">22.0</b><em>°</em><small>Driver</small></div>
+            <button class="Chevron" data-zone="0" data-step="0.5" data-ripple>›</button>
+            <button class="SeatHeat" id="SeatLeft" data-level="1" data-ripple><svg viewBox="0 0 24 24"><path d="M7 3v10a3 3 0 0 0 3 3h7M9 20h9"/></svg><span><i></i><i></i><i></i></span></button>
+        </div>
+        <nav class="Dock" id="Dock">
+            <i class="DockPill" id="DockPill"></i>
+            <button data-menu="Horizon" class="On" data-ripple><svg viewBox="0 0 24 24"><circle cx="15" cy="9" r="4"/><path d="M2 19c4-4 7-4 10-2s6 2 10-2"/></svg><span>Horizon</span></button>
+            <button data-menu="Drive" data-ripple><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="m12 13 4-4M8 20h8"/></svg><span>Drive</span></button>
+            <button data-menu="Lights" data-ripple><svg viewBox="0 0 24 24"><path d="M11 6c5 0 8 2.6 8 6s-3 6-8 6Z"/><path d="M3 8.5l5 1.2M3 12l5 1.2M3 15.5l5 1.2"/></svg><span>Lights</span></button>
+            <button data-menu="Climate" data-ripple><svg viewBox="0 0 24 24"><path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/></svg><span>Climate</span></button>
+            <button data-menu="Rest" data-ripple><svg viewBox="0 0 24 24"><path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5Z"/></svg><span>Rest</span></button>
+            <button data-menu="Media" data-ripple><svg viewBox="0 0 24 24"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg><span>Media</span></button>
+        </nav>
+        <div class="Zone Right">
+            <button class="SeatHeat" id="SeatRight" data-level="0" data-ripple><svg viewBox="0 0 24 24"><path d="M17 3v10a3 3 0 0 1-3 3H7M15 20H6"/></svg><span><i></i><i></i><i></i></span></button>
+            <button class="Chevron" data-zone="1" data-step="-0.5" data-ripple>‹</button>
+            <div class="Temp"><b id="TempRight">22.0</b><em>°</em><small>Passenger</small></div>
+            <button class="Chevron" data-zone="1" data-step="0.5" data-ripple>›</button>
+        </div>
+    </footer>
+
+    <div class="Toast" id="Toast"></div>
+</div>
+<div class="ProtoTag">Prototype B · Afterglow · awaiting approval</div>
+<script type="module" src="./Afterglow.js"></script>
+</body>
+</html>

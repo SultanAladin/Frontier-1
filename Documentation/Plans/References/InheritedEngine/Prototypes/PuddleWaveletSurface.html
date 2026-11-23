@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<!--==========================================================================================================================================
+                                                      PUDDLEWAVELETSURFACE.HTML
+==========================================================================================================================================-->
+<!-- 🧩 WebGPU puddle surface after Water Surface Wavelets (Jeschke/Skrivan/Mueller-Fischer/Chentanez/Macklin/Wojtan, TOG 37(4) 2018):
+        a wavelet amplitude field over position x direction x wavenumber, driven by a car wheel rolling through a shallow puddle.
+
+     🔴 The amplitude grid does NOT store water height. It stores AMPLITUDE per direction per wavenumber band. Height is reconstructed
+        per pixel from a precomputed profile integral, so wave detail is INDEPENDENT of grid resolution — a 128^2 grid renders
+        centimetre ripples. Raising the grid buys spatial variation in where waves are, never finer waves.
+
+     💡 Why this method and not an FFT ocean: FFT is cheap but cannot interact with a MOVING obstacle. Finite-difference can interact
+        but costs far more. Wavelets does both in realtime — the wheel only has to write a boundary mask + normal each frame, and
+        reflection becomes a mirror in DIRECTION space rather than a solve. That moving-obstacle case is the whole reason a driveable
+        puddle is tractable at all.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frontier — Puddle Wavelet Surface</title>
+<style>
+    :root
+    {
+        --SurfaceRecess:      #0e1216;
+        --SurfacePanel:       #171d23;
+        --SurfaceRaised:      #1f272f;
+        --BoundaryTone:       #2b343d;
+        --InkPrimary:         #e6edf3;
+        --InkSecondary:       #8b98a5;
+        --InkTertiary:        #5c6874;
+        --AccentWater:        #4aa8d8;
+        --AccentYield:        #d8a24a;
+        --AccentAlert:        #d85a4a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body
+    {
+        background:    var(--SurfaceRecess);
+        color:         var(--InkPrimary);
+        font-family:   "Segoe UI", system-ui, sans-serif;
+        font-size:     13px;
+        display:       flex;
+        height:        100vh;
+        overflow:      hidden;
+    }
+
+    #ViewportColumn { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    #RenderSurface
+    {
+        flex:        1;
+        width:       100%;
+        display:     block;
+        background:  #000;
+        cursor:      crosshair;
+    }
+
+    #ReadoutStrip
+    {
+        display:        flex;
+        gap:            22px;
+        padding:        8px 14px;
+        background:     var(--SurfacePanel);
+        border-top:     1px solid var(--BoundaryTone);
+        font-variant-numeric: tabular-nums;
+        font-size:      12px;
+        color:          var(--InkSecondary);
+        flex-wrap:      wrap;
+    }
+
+    #ReadoutStrip b { color: var(--InkPrimary); font-weight: 600; }
+
+    #ControlColumn
+    {
+        width:          312px;
+        background:     var(--SurfacePanel);
+        border-left:    1px solid var(--BoundaryTone);
+        overflow-y:     auto;
+        padding-bottom: 28px;
+    }
+
+    .PanelTitle
+    {
+        padding:        14px 16px 10px;
+        font-size:      12px;
+        font-weight:    700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color:          var(--InkPrimary);
+        border-bottom:  1px solid var(--BoundaryTone);
+    }
+
+    .PropertyCard
+    {
+        margin:        12px 12px 0;
+        background:    var(--SurfaceRaised);
+        border:        1px solid var(--BoundaryTone);
+        border-radius: 5px;
+        overflow:      hidden;
+    }
+
+    .CardHeading
+    {
+        padding:        7px 11px;
+        font-size:      10.5px;
+        font-weight:    700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color:          var(--InkSecondary);
+        background:     rgba(255,255,255,0.022);
+        border-bottom:  1px solid var(--BoundaryTone);
+    }
+
+    .CardBody { padding: 9px 11px 11px; }
+
+    .SliderRow { margin-bottom: 11px; }
+    .SliderRow:last-child { margin-bottom: 0; }
+
+    .SliderLabel
+    {
+        display:         flex;
+        justify-content: space-between;
+        font-size:       11.5px;
+        color:           var(--InkSecondary);
+        margin-bottom:   5px;
+    }
+
+    .SliderLabel span:last-child { color: var(--AccentWater); font-variant-numeric: tabular-nums; }
+
+    input[type=range]
+    {
+        width:       100%;
+        height:      3px;
+        appearance:  none;
+        background:  var(--BoundaryTone);
+        border-radius: 2px;
+        outline:     none;
+    }
+
+    input[type=range]::-webkit-slider-thumb
+    {
+        appearance:   none;
+        width:        13px;
+        height:       13px;
+        border-radius: 50%;
+        background:   var(--AccentWater);
+        cursor:       pointer;
+        border:       2px solid var(--SurfaceRaised);
+    }
+
+    .ActionButton
+    {
+        width:         100%;
+        padding:       7px;
+        margin-top:    7px;
+        background:    var(--SurfaceRecess);
+        border:        1px solid var(--BoundaryTone);
+        border-radius: 4px;
+        color:         var(--InkPrimary);
+        font-size:     11.5px;
+        font-family:   inherit;
+        cursor:        pointer;
+    }
+
+    .ActionButton:hover { background: #222b34; border-color: var(--AccentWater); }
+    .ActionButton.Engaged { background: rgba(74,168,216,0.17); border-color: var(--AccentWater); color: var(--AccentWater); }
+
+    .ToggleRow
+    {
+        display:         flex;
+        align-items:     center;
+        justify-content: space-between;
+        font-size:       11.5px;
+        color:           var(--InkSecondary);
+        padding:         4px 0;
+        cursor:          pointer;
+    }
+
+    .ToggleRow input { accent-color: var(--AccentWater); cursor: pointer; }
+
+    .NoteBlock
+    {
+        margin:      12px 12px 0;
+        padding:     9px 11px;
+        font-size:   11px;
+        line-height: 1.55;
+        color:       var(--InkTertiary);
+        background:  rgba(74,168,216,0.05);
+        border-left: 2px solid var(--AccentWater);
+        border-radius: 0 4px 4px 0;
+    }
+
+    .NoteBlock b { color: var(--InkSecondary); }
+
+    #FaultBanner
+    {
+        display:     none;
+        margin:      12px;
+        padding:     11px;
+        background:  rgba(216,90,74,0.12);
+        border:      1px solid var(--AccentAlert);
+        border-radius: 4px;
+        color:       #f0b8b0;
+        font-size:   11.5px;
+        line-height: 1.5;
+    }
+</style>
+</head>
+<body>
+
+<div id="ViewportColumn">
+    <canvas id="RenderSurface"></canvas>
+    <div id="ReadoutStrip">
+        <div>Frame <b id="ReadoutFrameCost">—</b></div>
+        <div>Amplitude grid <b id="ReadoutGrid">—</b></div>
+        <div>Directions <b id="ReadoutDirections">—</b></div>
+        <div>Bands <b id="ReadoutBands">—</b></div>
+        <div>Slices <b id="ReadoutSlices">—</b></div>
+        <div>Wheel <b id="ReadoutWheel">—</b></div>
+    </div>
+</div>
+
+<div id="ControlColumn">
+    <div class="PanelTitle">Puddle Wavelet Surface</div>
+    <div id="FaultBanner"></div>
+
+    <div class="PropertyCard">
+        <div class="CardHeading">Wheel Traversal</div>
+        <div class="CardBody">
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Speed</span><span id="LabelWheelSpeed">1.10 m/s</span></div>
+                <input type="range" id="SliderWheelSpeed" min="0" max="4" step="0.05" value="1.1">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Contact radius</span><span id="LabelWheelRadius">0.085 m</span></div>
+                <input type="range" id="SliderWheelRadius" min="0.02" max="0.2" step="0.005" value="0.085">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Displacement depth</span><span id="LabelWheelDepth">1.00</span></div>
+                <input type="range" id="SliderWheelDepth" min="0" max="3" step="0.05" value="1.0">
+            </div>
+            <button class="ActionButton Engaged" id="ButtonRolling">Rolling — pause</button>
+            <button class="ActionButton" id="ButtonRecentre">Return wheel to entry edge</button>
+        </div>
+    </div>
+
+    <div class="PropertyCard">
+        <div class="CardHeading">Wave Field</div>
+        <div class="CardBody">
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Amplitude gain</span><span id="LabelWaveGain">1.00</span></div>
+                <input type="range" id="SliderWaveGain" min="0" max="3" step="0.05" value="1.0">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Dispersion</span><span id="LabelDispersion">1.00</span></div>
+                <input type="range" id="SliderDispersion" min="0" max="2" step="0.05" value="1.0">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Dissipation</span><span id="LabelDissipation">0.30</span></div>
+                <input type="range" id="SliderDissipation" min="0" max="2" step="0.02" value="0.3">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Boundary reflection</span><span id="LabelReflection">0.65</span></div>
+                <input type="range" id="SliderReflection" min="0" max="1" step="0.02" value="0.65">
+            </div>
+        </div>
+    </div>
+
+    <div class="PropertyCard">
+        <div class="CardHeading">Puddle Basin</div>
+        <div class="CardBody">
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Depth at centre</span><span id="LabelBasinDepth">0.055 m</span></div>
+                <input type="range" id="SliderBasinDepth" min="0.01" max="0.14" step="0.005" value="0.055">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Shoreline falloff</span><span id="LabelShoreFalloff">1.60</span></div>
+                <input type="range" id="SliderShoreFalloff" min="0.4" max="4" step="0.05" value="1.6">
+            </div>
+        </div>
+    </div>
+
+    <div class="PropertyCard">
+        <div class="CardHeading">Surface Optics</div>
+        <div class="CardBody">
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Ripple relief</span><span id="LabelRelief">1.00</span></div>
+                <input type="range" id="SliderRelief" min="0" max="3" step="0.05" value="1.0">
+            </div>
+            <div class="SliderRow">
+                <div class="SliderLabel"><span>Water turbidity</span><span id="LabelTurbidity">0.45</span></div>
+                <input type="range" id="SliderTurbidity" min="0" max="1" step="0.02" value="0.45">
+            </div>
+            <label class="ToggleRow">Amplitude field overlay<input type="checkbox" id="ToggleAmplitudeView"></label>
+            <label class="ToggleRow">Wet-road darkening<input type="checkbox" id="ToggleWetRoad" checked></label>
+        </div>
+    </div>
+
+    <div class="NoteBlock">
+        <b>Detail is not grid resolution.</b> The grid carries wave <i>amplitude</i> over position × direction ×
+        wavenumber. Height is rebuilt per pixel from a profile integral, so raising the grid moves waves around
+        without making them finer. Drop dispersion to 0 and every wavelength travels together — the flat FFT
+        look this method exists to escape.
+    </div>
+
+    <div class="NoteBlock">
+        <b>Click the puddle</b> to drop an impulse. Drag to steer the wheel path.
+    </div>
+</div>
+
+<script type="module">
+"use strict";
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    FIELD DIMENSIONS
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 The amplitude field is 4D: position (X,Y) x direction (theta) x wavenumber band (k). It is stored as a flat
+//    storage buffer indexed ((BandIndex * DirectionCount + DirectionIndex) * GridExtent + Y) * GridExtent + X.
+//    DirectionCount must be a power of two so the reflection mirror in theta wraps with a mask.
+const GridExtent      = 192;   // [idx] - amplitude grid is GridExtent^2 cells across the puddle domain
+const DirectionCount  = 16;    // [idx] - direction slices around the circle (periodic dimension)
+const BandCount       = 4;     // [idx] - wavenumber bands (clamped dimension, NOT periodic)
+const ProfileSamples  = 4096;  // [idx] - resolution of the 1D profile integral per band
+const DomainMetres    = 3.2;   // [m]   - physical width of the simulated puddle patch
+
+const SliceCount      = DirectionCount * BandCount;
+const CellCount       = GridExtent * GridExtent * SliceCount;
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    DEVICE ACQUISITION
+//------------------------------------------------------------------------------------------------------------------------
+
+const RenderSurface = document.getElementById("RenderSurface");
+const FaultBanner   = document.getElementById("FaultBanner");
+
+function ReportFault(Message)
+{
+    FaultBanner.style.display = "block";
+    FaultBanner.innerHTML     = Message;
+}
+
+if (!navigator.gpu)
+{
+    ReportFault("<b>WebGPU unavailable.</b> This prototype needs a WebGPU-capable browser " +
+                "(Chrome/Edge 113+, or Firefox with dom.webgpu.enabled).");
+    throw new Error("WebGPU unavailable");
+}
+
+const Adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+if (!Adapter)
+{
+    ReportFault("<b>No GPU adapter.</b> requestAdapter returned null.");
+    throw new Error("no adapter");
+}
+
+const Device        = await Adapter.requestDevice();
+const SurfaceContext = RenderSurface.getContext("webgpu");
+const SurfaceFormat  = navigator.gpu.getPreferredCanvasFormat();
+
+Device.addEventListener("uncapturederror", (Event) =>
+{
+    ReportFault("<b>GPU error.</b> " + Event.error.message);
+});
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    SHARED WGSL PREAMBLE
+//------------------------------------------------------------------------------------------------------------------------
+
+// 🔴 Every WGSL module below concatenates this preamble. It is a plain string, never a nested template literal —
+//    a backtick inside a WGSL comment would terminate the JS template and kill the module. Keep comments backtick-free.
+const WgslPreamble = `
+struct FieldConstants
+{
+    GridExtent        : u32,
+    DirectionCount    : u32,
+    BandCount         : u32,
+    ProfileSamples    : u32,
+    DomainMetres      : f32,
+    IntervalSeconds   : f32,
+    ElapsedSeconds    : f32,
+    WheelCentreX      : f32,
+    WheelCentreY      : f32,
+    WheelPriorX       : f32,
+    WheelPriorY       : f32,
+    WheelRadius       : f32,
+    WheelDepth        : f32,
+    Dispersion        : f32,
+    Dissipation       : f32,
+    Reflection        : f32,
+    AmplitudeGain     : f32,
+    BasinDepth        : f32,
+    ShoreFalloff      : f32,
+    ImpulseX          : f32,
+    ImpulseY          : f32,
+    ImpulseStrength   : f32,
+    RippleRelief      : f32,
+    Turbidity         : f32,
+    AmplitudeOverlay  : f32,
+    WetRoadDarkening  : f32,
+};
+
+@group(0) @binding(0) var<uniform> Constants : FieldConstants;
+
+// 📝 Wavenumber for a band index. Bands are spaced geometrically: each band doubles the wavenumber, so four bands
+//    span a 8x range of wavelengths. Band 0 is the longest wave (the shove the wheel makes), band 3 the finest ripple.
+fn BandWavenumber(BandIndex : u32) -> f32
+{
+    let MinimumWavenumber = 6.2831853 / 0.9;
+    return MinimumWavenumber * pow(2.0, f32(BandIndex));
+}
+
+// 📝 Deep-water dispersion: angular frequency omega = sqrt(g * k). This is what makes long waves outrun short ones.
+//    Group velocity (the speed a wave PACKET travels) is d(omega)/dk = 0.5 * sqrt(g/k) — half the phase speed.
+fn BandAngularFrequency(Wavenumber : f32) -> f32
+{
+    return sqrt(9.81 * Wavenumber);
+}
+
+fn BandGroupVelocity(Wavenumber : f32) -> f32
+{
+    return 0.5 * sqrt(9.81 / max(Wavenumber, 0.0001));
+}
+
+fn DirectionVector(DirectionIndex : u32) -> vec2<f32>
+{
+    let Angle = 6.2831853 * f32(DirectionIndex) / f32(Constants.DirectionCount);
+    return vec2<f32>(cos(Angle), sin(Angle));
+}
+
+// 📝 Flat index into the amplitude buffer. Position is the fastest-varying pair so an advection read of the same
+//    slice stays coalesced across a workgroup.
+fn SliceOffset(DirectionIndex : u32, BandIndex : u32) -> u32
+{
+    return (BandIndex * Constants.DirectionCount + DirectionIndex) * Constants.GridExtent * Constants.GridExtent;
+}
+
+fn CellIndex(Coordinate : vec2<u32>, DirectionIndex : u32, BandIndex : u32) -> u32
+{
+    return SliceOffset(DirectionIndex, BandIndex) + Coordinate.y * Constants.GridExtent + Coordinate.x;
+}
+
+// 📝 The puddle basin: depth falls off from the centre so the wave field has a shoreline to reflect against.
+//    Returns metres of still water; <= 0 means dry road.
+fn BasinDepthAt(PositionMetres : vec2<f32>) -> f32
+{
+    let Centred  = PositionMetres / Constants.DomainMetres - vec2<f32>(0.5, 0.5);
+    // An anisotropic basin reads as a real puddle rather than a dish — wider across the road than along it.
+    let Shaped   = vec2<f32>(Centred.x * 1.0, Centred.y * 1.45);
+    let Distance = length(Shaped) * 2.0;
+    let Falloff  = 1.0 - pow(clamp(Distance, 0.0, 1.0), Constants.ShoreFalloff);
+    // A little lobed noise on the rim so the shoreline is not a perfect ellipse.
+    let Lobes    = 0.055 * sin(atan2(Shaped.y, Shaped.x) * 3.0) + 0.03 * sin(atan2(Shaped.y, Shaped.x) * 5.0);
+    return Constants.BasinDepth * clamp(Falloff + Lobes * Falloff, 0.0, 1.0);
+}
+
+fn WetnessAt(PositionMetres : vec2<f32>) -> f32
+{
+    return clamp(BasinDepthAt(PositionMetres) / max(Constants.BasinDepth, 0.0001), 0.0, 1.0);
+}
+`;
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    PROFILE INTEGRAL
+//------------------------------------------------------------------------------------------------------------------------
+
+// 💡 THE core trick of the method. For each band we integrate the dispersion relation once into a 1D periodic
+//    profile buffer psi(p). At render time a pixel evaluates psi at phase (k * (x . d) - omega * t), so the wave
+//    SHAPE comes from this table rather than from grid samples. Detail therefore costs a texture fetch, not cells.
+const ProfileModule = Device.createShaderModule({
+    label: "PuddleProfileIntegral",
+    code: WgslPreamble + `
+@group(0) @binding(1) var<storage, read_write> ProfileBuffer : array<vec2<f32>>;
+
+// 📝 Each band's profile is one period of a wave train integrated over its wavenumber sub-band. Summing a handful of
+//    neighbouring wavenumbers (not a single sine) is what gives a packet its localised, non-repeating character.
+@compute @workgroup_size(64)
+fn IntegrateProfile(@builtin(global_invocation_id) Invocation : vec3<u32>)
+{
+    let SampleIndex = Invocation.x;
+    if (SampleIndex >= Constants.ProfileSamples * Constants.BandCount) { return; }
+
+    let BandIndex   = SampleIndex / Constants.ProfileSamples;
+    let PhaseIndex  = SampleIndex % Constants.ProfileSamples;
+    let Phase       = 6.2831853 * f32(PhaseIndex) / f32(Constants.ProfileSamples);
+
+    let CentreWavenumber = BandWavenumber(BandIndex);
+
+    // Integrate across the sub-band. Height is the real part, and the imaginary part carries the horizontal
+    // displacement that sharpens crests (the same Gerstner-style shift an FFT ocean applies).
+    var HeightSum      = 0.0;
+    var DisplacementSum = 0.0;
+    let SubSamples     = 24u;
+    for (var SubIndex = 0u; SubIndex < SubSamples; SubIndex = SubIndex + 1u)
+    {
+        let Fraction   = (f32(SubIndex) + 0.5) / f32(SubSamples);
+        // Sub-band spans one octave below the centre wavenumber.
+        let Wavenumber = CentreWavenumber * (0.5 + 0.5 * Fraction);
+        let Ratio      = Wavenumber / CentreWavenumber;
+        // A raised-cosine window over the sub-band keeps the packet compact instead of ringing.
+        let Window     = 0.5 - 0.5 * cos(6.2831853 * Fraction);
+        let LocalPhase = Phase * Ratio;
+        HeightSum       = HeightSum       + Window * cos(LocalPhase);
+        DisplacementSum = DisplacementSum + Window * sin(LocalPhase);
+    }
+
+    let Normalization = 2.0 / f32(SubSamples);
+    ProfileBuffer[SampleIndex] = vec2<f32>(HeightSum * Normalization, DisplacementSum * Normalization);
+}
+`});
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    AMPLITUDE ADVECTION
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 One dispatch per frame advances the whole 4D amplitude field. Each slice advects along ITS OWN direction at ITS OWN
+//    group velocity — that per-slice speed difference IS dispersion. Ping-pong buffers because a gather-advect reads
+//    neighbours that another invocation is writing.
+const AdvectionModule = Device.createShaderModule({
+    label: "PuddleAmplitudeAdvection",
+    code: WgslPreamble + `
+@group(0) @binding(1) var<storage, read>       AmplitudeRead  : array<f32>;
+@group(0) @binding(2) var<storage, read_write> AmplitudeWrite : array<f32>;
+
+// 📝 Bilinear gather from the previous field at the back-traced position. Semi-Lagrangian, so it is unconditionally
+//    stable at any interval — which matters because a browser frame interval is not something we control.
+fn SampleAmplitudeBilinear(SamplePosition : vec2<f32>, DirectionIndex : u32, BandIndex : u32) -> f32
+{
+    let Limit    = f32(Constants.GridExtent) - 1.0;
+    let Clamped  = clamp(SamplePosition, vec2<f32>(0.0, 0.0), vec2<f32>(Limit, Limit));
+    let BaseCell = vec2<u32>(floor(Clamped));
+    let NextCell = min(BaseCell + vec2<u32>(1u, 1u), vec2<u32>(u32(Limit), u32(Limit)));
+    let Fraction = Clamped - floor(Clamped);
+
+    let CornerA = AmplitudeRead[CellIndex(vec2<u32>(BaseCell.x, BaseCell.y), DirectionIndex, BandIndex)];
+    let CornerB = AmplitudeRead[CellIndex(vec2<u32>(NextCell.x, BaseCell.y), DirectionIndex, BandIndex)];
+    let CornerC = AmplitudeRead[CellIndex(vec2<u32>(BaseCell.x, NextCell.y), DirectionIndex, BandIndex)];
+    let CornerD = AmplitudeRead[CellIndex(vec2<u32>(NextCell.x, NextCell.y), DirectionIndex, BandIndex)];
+
+    return mix(mix(CornerA, CornerB, Fraction.x), mix(CornerC, CornerD, Fraction.x), Fraction.y);
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn AdvanceAmplitude(@builtin(global_invocation_id) Invocation : vec3<u32>)
+{
+    let Coordinate = Invocation.xy;
+    if (Coordinate.x >= Constants.GridExtent || Coordinate.y >= Constants.GridExtent) { return; }
+
+    let SliceIndex     = Invocation.z;
+    let DirectionIndex = SliceIndex % Constants.DirectionCount;
+    let BandIndex      = SliceIndex / Constants.DirectionCount;
+
+    let CellSize       = Constants.DomainMetres / f32(Constants.GridExtent);
+    let PositionMetres = (vec2<f32>(Coordinate) + vec2<f32>(0.5, 0.5)) * CellSize;
+
+    let Wavenumber     = BandWavenumber(BandIndex);
+    let GroupVelocity  = BandGroupVelocity(Wavenumber) * Constants.Dispersion;
+    let Heading        = DirectionVector(DirectionIndex);
+
+    // Back-trace one interval along this slice's own heading, in CELLS.
+    let TravelCells    = GroupVelocity * Constants.IntervalSeconds / CellSize;
+    let SourcePosition = vec2<f32>(Coordinate) - Heading * TravelCells;
+
+    var Amplitude = SampleAmplitudeBilinear(SourcePosition, DirectionIndex, BandIndex);
+
+    // ---- Boundary reflection in DIRECTION space -------------------------------------------------------------------
+    // 💡 This is what FFT cannot do. A wave leaving water into dry road is mirrored about the shoreline normal into
+    //    the OPPOSITE direction slice. No solve, just an index mirror — and it works identically for the moving wheel.
+    let LocalDepth = BasinDepthAt(PositionMetres);
+    if (LocalDepth <= 0.0005)
+    {
+        // Dry cell: this slice cannot hold energy here. Hand it to the mirrored slice via the reflection term.
+        let MirrorIndex = (DirectionIndex + Constants.DirectionCount / 2u) % Constants.DirectionCount;
+        let Incoming    = SampleAmplitudeBilinear(SourcePosition, MirrorIndex, BandIndex);
+        Amplitude       = Incoming * Constants.Reflection;
+    }
+    else
+    {
+        // Shoaling: as depth drops the wave slows and steepens, so amplitude rises near the rim.
+        let DepthRatio = clamp(LocalDepth / max(Constants.BasinDepth, 0.0001), 0.05, 1.0);
+        Amplitude      = Amplitude * (1.0 + 0.35 * (1.0 - DepthRatio));
+    }
+
+    // ---- Wheel displacement ---------------------------------------------------------------------------------------
+    // 📝 The contact patch pushes water OUTWARD. Energy enters only the slices whose heading points away from the
+    //    wheel centre, which is what produces a bow wave ahead and a wake behind rather than a symmetric ring.
+    let WheelCentre = vec2<f32>(Constants.WheelCentreX, Constants.WheelCentreY);
+    let ToCell      = PositionMetres - WheelCentre;
+    let Distance    = length(ToCell);
+    if (Distance < Constants.WheelRadius * 2.4 && LocalDepth > 0.0005)
+    {
+        let Outward   = select(vec2<f32>(1.0, 0.0), ToCell / Distance, Distance > 0.0001);
+        let Alignment = max(dot(Outward, Heading), 0.0);
+        // Rim-weighted: the displaced water is thrown from the edge of the contact patch, not its centre.
+        let RimFalloff = exp(-pow((Distance - Constants.WheelRadius) / (Constants.WheelRadius * 0.85), 2.0));
+        // Wheel travel this interval — a faster wheel injects proportionally more energy.
+        let WheelTravel = length(WheelCentre - vec2<f32>(Constants.WheelPriorX, Constants.WheelPriorY));
+        let Injection   = Constants.WheelDepth * RimFalloff * Alignment * (0.35 + WheelTravel * 26.0);
+        // Longer bands take the bulk of the shove; fine ripples get the spray.
+        let BandWeight  = select(0.35, 1.0, BandIndex < 2u);
+        Amplitude       = Amplitude + Injection * BandWeight * Constants.IntervalSeconds * 8.0;
+    }
+
+    // ---- Click impulse --------------------------------------------------------------------------------------------
+    if (Constants.ImpulseStrength > 0.0)
+    {
+        let ImpulseCentre = vec2<f32>(Constants.ImpulseX, Constants.ImpulseY);
+        let ImpulseVector = PositionMetres - ImpulseCentre;
+        let ImpulseRange  = length(ImpulseVector);
+        if (ImpulseRange < 0.3 && LocalDepth > 0.0005)
+        {
+            let Outward   = select(vec2<f32>(1.0, 0.0), ImpulseVector / ImpulseRange, ImpulseRange > 0.0001);
+            let Alignment = max(dot(Outward, Heading), 0.0);
+            let Falloff   = exp(-pow(ImpulseRange / 0.055, 2.0));
+            Amplitude     = Amplitude + Constants.ImpulseStrength * Falloff * Alignment * 0.8;
+        }
+    }
+
+    // ---- Dissipation ----------------------------------------------------------------------------------------------
+    // 📝 Viscous decay scales with k^2, so fine ripples die first and the long swell lingers. That ordering is the
+    //    difference between a puddle settling and a puddle fading uniformly.
+    let DecayRate = Constants.Dissipation * (0.12 + 0.00035 * Wavenumber * Wavenumber);
+    Amplitude     = Amplitude * exp(-DecayRate * Constants.IntervalSeconds);
+
+    AmplitudeWrite[CellIndex(Coordinate, DirectionIndex, BandIndex)] = Amplitude;
+}
+`});
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    SURFACE RASTERIZATION
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 A full-screen pass reconstructs height per pixel from the amplitude field x profile buffer, differentiates it for a
+//    normal, then shades. No vertex grid at all — the water surface is analytic at pixel rate.
+const SurfaceModule = Device.createShaderModule({
+    label: "PuddleSurfaceRasterization",
+    code: WgslPreamble + `
+@group(0) @binding(1) var<storage, read> AmplitudeField : array<f32>;
+@group(0) @binding(2) var<storage, read> ProfileBuffer  : array<vec2<f32>>;
+
+struct SurfaceVertex
+{
+    @builtin(position) Position       : vec4<f32>,
+    @location(0)       ScreenFraction : vec2<f32>,
+};
+
+@vertex
+fn ProjectFullSurface(@builtin(vertex_index) VertexIndex : u32) -> SurfaceVertex
+{
+    var Corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>( 1.0, -1.0), vec2<f32>(-1.0,  1.0),
+        vec2<f32>(-1.0,  1.0), vec2<f32>( 1.0, -1.0), vec2<f32>( 1.0,  1.0));
+
+    let Corner = Corners[VertexIndex];
+    var Output : SurfaceVertex;
+    Output.Position       = vec4<f32>(Corner, 0.0, 1.0);
+    Output.ScreenFraction = vec2<f32>(Corner.x * 0.5 + 0.5, 0.5 - Corner.y * 0.5);
+    return Output;
+}
+
+fn SampleProfile(BandIndex : u32, Phase : f32) -> vec2<f32>
+{
+    let Wrapped = Phase - floor(Phase / 6.2831853) * 6.2831853;
+    let Position = Wrapped / 6.2831853 * f32(Constants.ProfileSamples);
+    let BaseIndex = u32(Position) % Constants.ProfileSamples;
+    let NextIndex = (BaseIndex + 1u) % Constants.ProfileSamples;
+    let Fraction  = Position - floor(Position);
+    let Offset    = BandIndex * Constants.ProfileSamples;
+    return mix(ProfileBuffer[Offset + BaseIndex], ProfileBuffer[Offset + NextIndex], Fraction);
+}
+
+// 📝 Bilinear amplitude read so the reconstruction is smooth between cells — a nearest read makes the grid visible
+//    as blocky ripple boundaries, which would defeat the whole detail-independent-of-grid claim.
+fn ReadAmplitude(PositionMetres : vec2<f32>, DirectionIndex : u32, BandIndex : u32) -> f32
+{
+    let CellSize = Constants.DomainMetres / f32(Constants.GridExtent);
+    let Cell     = PositionMetres / CellSize - vec2<f32>(0.5, 0.5);
+    let Limit    = f32(Constants.GridExtent) - 1.0;
+    let Clamped  = clamp(Cell, vec2<f32>(0.0, 0.0), vec2<f32>(Limit, Limit));
+    let BaseCell = vec2<u32>(floor(Clamped));
+    let NextCell = min(BaseCell + vec2<u32>(1u, 1u), vec2<u32>(u32(Limit), u32(Limit)));
+    let Fraction = Clamped - floor(Clamped);
+
+    let CornerA = AmplitudeField[CellIndex(vec2<u32>(BaseCell.x, BaseCell.y), DirectionIndex, BandIndex)];
+    let CornerB = AmplitudeField[CellIndex(vec2<u32>(NextCell.x, BaseCell.y), DirectionIndex, BandIndex)];
+    let CornerC = AmplitudeField[CellIndex(vec2<u32>(BaseCell.x, NextCell.y), DirectionIndex, BandIndex)];
+    let CornerD = AmplitudeField[CellIndex(vec2<u32>(NextCell.x, NextCell.y), DirectionIndex, BandIndex)];
+
+    return mix(mix(CornerA, CornerB, Fraction.x), mix(CornerC, CornerD, Fraction.x), Fraction.y);
+}
+
+// 🔴 The reconstruction. Height is a double sum over direction x band of amplitude times the band profile evaluated at
+//    the local phase. THIS is where detail comes from — the profile table, not the grid.
+fn ReconstructHeight(PositionMetres : vec2<f32>) -> f32
+{
+    var Height = 0.0;
+    for (var BandIndex = 0u; BandIndex < Constants.BandCount; BandIndex = BandIndex + 1u)
+    {
+        let Wavenumber = BandWavenumber(BandIndex);
+        let Frequency  = BandAngularFrequency(Wavenumber);
+        for (var DirectionIndex = 0u; DirectionIndex < Constants.DirectionCount; DirectionIndex = DirectionIndex + 1u)
+        {
+            let Amplitude = ReadAmplitude(PositionMetres, DirectionIndex, BandIndex);
+            if (abs(Amplitude) < 0.0002) { continue; }
+            let Heading = DirectionVector(DirectionIndex);
+            let Phase   = Wavenumber * dot(PositionMetres, Heading) - Frequency * Constants.ElapsedSeconds;
+            Height      = Height + Amplitude * SampleProfile(BandIndex, Phase).x;
+        }
+    }
+    return Height * 0.02 * Constants.AmplitudeGain;
+}
+
+fn ReconstructNormal(PositionMetres : vec2<f32>) -> vec3<f32>
+{
+    // Central differences over a fixed metric step — independent of grid spacing, again by design.
+    let Step   = 0.0035;
+    let Centre = ReconstructHeight(PositionMetres);
+    let AlongX = ReconstructHeight(PositionMetres + vec2<f32>(Step, 0.0));
+    let AlongY = ReconstructHeight(PositionMetres + vec2<f32>(0.0, Step));
+    let Relief = 26.0 * Constants.RippleRelief;
+    return normalize(vec3<f32>(-(AlongX - Centre) / Step * Relief, -(AlongY - Centre) / Step * Relief, 1.0));
+}
+
+// 📝 Asphalt beneath the water. Procedural so the refraction has something with high-frequency detail to bend.
+fn RoadTone(PositionMetres : vec2<f32>) -> vec3<f32>
+{
+    let Grain     = fract(sin(dot(floor(PositionMetres * 420.0), vec2<f32>(12.9898, 78.233))) * 43758.5453);
+    let Aggregate = fract(sin(dot(floor(PositionMetres * 130.0), vec2<f32>(39.3468, 11.135))) * 24634.6345);
+    var Tone      = vec3<f32>(0.185, 0.181, 0.176) + vec3<f32>(Grain * 0.10 - 0.05);
+    Tone          = Tone + vec3<f32>(Aggregate * 0.055 - 0.027);
+    // Two painted lane edges give the eye a straight reference to judge refraction distortion against.
+    let LaneBand  = abs(fract(PositionMetres.x / Constants.DomainMetres * 1.0 - 0.5) - 0.5);
+    if (LaneBand < 0.022) { Tone = mix(Tone, vec3<f32>(0.62, 0.60, 0.55), 0.72); }
+    return Tone;
+}
+
+fn TyreTone(TreadCoordinate : vec2<f32>) -> vec3<f32>
+{
+    // Tread blocks so wheel rotation is legible.
+    let Blocks = step(0.42, fract(TreadCoordinate.y * 9.0)) * step(0.30, fract(TreadCoordinate.x * 3.0));
+    return mix(vec3<f32>(0.055, 0.055, 0.060), vec3<f32>(0.105, 0.105, 0.112), Blocks);
+}
+
+@fragment
+fn ShadeSurface(Input : SurfaceVertex) -> @location(0) vec4<f32> {
+    let PositionMetres = Input.ScreenFraction * Constants.DomainMetres;
+
+    // ---- Amplitude overlay ----------------------------------------------------------------------------------------
+    if (Constants.AmplitudeOverlay > 0.5)
+    {
+        // Total energy across every slice, plus the per-direction peak, so the direction structure is visible.
+        var Total = 0.0;
+        var Peak  = 0.0;
+        var PeakDirection = 0u;
+        for (var BandIndex = 0u; BandIndex < Constants.BandCount; BandIndex = BandIndex + 1u)
+        {
+            for (var DirectionIndex = 0u; DirectionIndex < Constants.DirectionCount; DirectionIndex = DirectionIndex + 1u)
+            {
+                let Amplitude = abs(ReadAmplitude(PositionMetres, DirectionIndex, BandIndex));
+                Total = Total + Amplitude;
+                if (Amplitude > Peak) { Peak = Amplitude; PeakDirection = DirectionIndex; }
+            }
+        }
+        let Intensity = clamp(Total * 2.2, 0.0, 1.0);
+        let Angle     = 6.2831853 * f32(PeakDirection) / f32(Constants.DirectionCount);
+        // Hue by dominant direction, brightness by total energy.
+        let Tint      = vec3<f32>(0.5 + 0.5 * cos(Angle), 0.5 + 0.5 * cos(Angle + 2.094), 0.5 + 0.5 * cos(Angle + 4.188));
+        let Wetness   = WetnessAt(PositionMetres);
+        var Overlay   = Tint * Intensity;
+        Overlay       = Overlay + vec3<f32>(0.045, 0.05, 0.06) * Wetness;
+        return vec4<f32>(pow(Overlay, vec3<f32>(1.0 / 2.2)), 1.0);
+    }
+
+    let Wetness    = WetnessAt(PositionMetres);
+    let LocalDepth = BasinDepthAt(PositionMetres);
+    let SunHeading = normalize(vec3<f32>(-0.42, -0.52, 0.74));
+
+    // ---- Dry road -------------------------------------------------------------------------------------------------
+    if (Wetness < 0.004)
+    {
+        var Tone = RoadTone(PositionMetres);
+        // A damp margin just outside the waterline — road never transitions dry-to-wet instantly.
+        if (Constants.WetRoadDarkening > 0.5)
+        {
+            let Margin = smoothstep(0.0, 0.09, Wetness);
+            Tone       = Tone * (1.0 - 0.30 * Margin);
+        }
+        return vec4<f32>(pow(Tone, vec3<f32>(1.0 / 2.2)), 1.0);
+    }
+
+    // ---- Water ----------------------------------------------------------------------------------------------------
+    let SurfaceHeight = ReconstructHeight(PositionMetres);
+    let SurfaceNormal = ReconstructNormal(PositionMetres);
+
+    // Refraction: bend the view ray by the surface normal, offset proportional to water depth (Snell, small-angle).
+    let RefractionOffset = SurfaceNormal.xy * LocalDepth * 0.42;
+    let RoadBeneath      = RoadTone(PositionMetres + RefractionOffset);
+
+    // Depth extinction — deeper water carries more of the water tint, less of the road.
+    let WaterTint     = mix(vec3<f32>(0.10, 0.20, 0.24), vec3<f32>(0.055, 0.115, 0.145), Constants.Turbidity);
+    let Extinction    = 1.0 - exp(-LocalDepth * (7.0 + 22.0 * Constants.Turbidity));
+    var Colour        = mix(RoadBeneath * 0.86, WaterTint, Extinction * 0.85);
+
+    // Fresnel sky reflection — the strongest visual cue that this is water and not a painted patch.
+    let ViewHeading   = normalize(vec3<f32>(0.0, -0.40, 0.92));
+    let Incidence     = clamp(dot(SurfaceNormal, ViewHeading), 0.0, 1.0);
+    let Fresnel       = 0.022 + 0.978 * pow(1.0 - Incidence, 5.0);
+    // Overcast-sky gradient, brighter toward the horizon.
+    let Mirrored      = reflect(-ViewHeading, SurfaceNormal);
+    let SkyTone       = mix(vec3<f32>(0.40, 0.46, 0.53), vec3<f32>(0.62, 0.68, 0.74), clamp(Mirrored.z, 0.0, 1.0));
+    Colour            = mix(Colour, SkyTone, Fresnel * 0.90);
+
+    // Specular glint off the ripple crests.
+    let Halfway       = normalize(SunHeading + ViewHeading);
+    let Glint         = pow(clamp(dot(SurfaceNormal, Halfway), 0.0, 1.0), 168.0);
+    Colour            = Colour + vec3<f32>(1.0, 0.985, 0.94) * Glint * 0.72;
+
+    // Crest foam where the surface is both high and steep — the spray the wheel throws.
+    let Steepness     = 1.0 - SurfaceNormal.z;
+    let Foam          = smoothstep(0.30, 0.95, Steepness * 5.5) * smoothstep(0.0006, 0.004, SurfaceHeight);
+    Colour            = mix(Colour, vec3<f32>(0.90, 0.93, 0.95), clamp(Foam, 0.0, 0.80) * 0.55);
+
+    // Shoreline: a thin bright meniscus, and darker damp sand-tone right at the edge.
+    let ShoreBand     = 1.0 - smoothstep(0.0, 0.12, Wetness);
+    Colour            = mix(Colour, Colour * 1.16 + vec3<f32>(0.03), ShoreBand * 0.5);
+
+    // ---- Wheel ----------------------------------------------------------------------------------------------------
+    let WheelCentre  = vec2<f32>(Constants.WheelCentreX, Constants.WheelCentreY);
+    let ToWheel      = PositionMetres - WheelCentre;
+    let WheelRange   = length(ToWheel);
+    if (WheelRange < Constants.WheelRadius)
+    {
+        // Contact patch, seen from above: tread rolling in the travel direction.
+        let Travel      = vec2<f32>(Constants.WheelCentreX - Constants.WheelPriorX,
+                                    Constants.WheelCentreY - Constants.WheelPriorY);
+        let RollDistance = Constants.ElapsedSeconds;
+        let TreadCoord   = vec2<f32>(ToWheel.x / Constants.WheelRadius,
+                                     ToWheel.y / Constants.WheelRadius + RollDistance * 1.4);
+        var Rubber       = TyreTone(TreadCoord);
+        // Round the tyre off with a rim shadow so it does not read as a flat disc.
+        let RimFraction  = WheelRange / Constants.WheelRadius;
+        Rubber           = Rubber * (1.0 - 0.45 * pow(RimFraction, 3.0));
+        Colour           = Rubber;
+    }
+    else
+    {
+        // Contact shadow ring on the water just outside the patch.
+        let ShadowBand = 1.0 - smoothstep(Constants.WheelRadius, Constants.WheelRadius * 2.0, WheelRange);
+        Colour         = Colour * (1.0 - 0.38 * ShadowBand);
+    }
+
+    // Exposure then gamma.
+    Colour = Colour * 1.06;
+    return vec4<f32>(pow(clamp(Colour, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
+}
+`});
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    RESOURCE ALLOCATION
+//------------------------------------------------------------------------------------------------------------------------
+
+const ConstantsFieldCount = 26;
+const ConstantsBuffer = Device.createBuffer({
+    label: "PuddleFieldConstants",
+    size:  Math.ceil((ConstantsFieldCount * 4) / 16) * 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+const ConstantsStaging = new Float32Array(ConstantsBuffer.size / 4);
+
+// ⚠️ Two amplitude buffers, ping-ponged. A gather-advect reads neighbouring cells another invocation writes, so
+//    in-place would sample a half-updated field.
+const AmplitudeBuffers = [0, 1].map((Ordinal) => Device.createBuffer({
+    label: "PuddleAmplitudeField" + Ordinal,
+    size:  CellCount * 4,
+    usage: GPUBufferUsage.STORAGE,
+}));
+
+const ProfileBuffer = Device.createBuffer({
+    label: "PuddleProfileIntegral",
+    size:  ProfileSamples * BandCount * 8,   // vec2<f32> per sample
+    usage: GPUBufferUsage.STORAGE,
+});
+
+const ProfilePipeline = Device.createComputePipeline({
+    label:   "PuddleProfilePipeline",
+    layout:  "auto",
+    compute: { module: ProfileModule, entryPoint: "IntegrateProfile" },
+});
+
+const AdvectionPipeline = Device.createComputePipeline({
+    label:   "PuddleAdvectionPipeline",
+    layout:  "auto",
+    compute: { module: AdvectionModule, entryPoint: "AdvanceAmplitude" },
+});
+
+const SurfacePipeline = Device.createRenderPipeline({
+    label:    "PuddleSurfacePipeline",
+    layout:   "auto",
+    vertex:   { module: SurfaceModule, entryPoint: "ProjectFullSurface" },
+    fragment: { module: SurfaceModule, entryPoint: "ShadeSurface", targets: [{ format: SurfaceFormat }] },
+    primitive:{ topology: "triangle-list" },
+});
+
+const ProfileBinding = Device.createBindGroup({
+    layout:  ProfilePipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: { buffer: ConstantsBuffer } },
+        { binding: 1, resource: { buffer: ProfileBuffer } },
+    ],
+});
+
+// Two advection bindings, one per ping-pong direction.
+const AdvectionBindings = [0, 1].map((Ordinal) => Device.createBindGroup({
+    layout:  AdvectionPipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: { buffer: ConstantsBuffer } },
+        { binding: 1, resource: { buffer: AmplitudeBuffers[Ordinal] } },
+        { binding: 2, resource: { buffer: AmplitudeBuffers[1 - Ordinal] } },
+    ],
+}));
+
+const SurfaceBindings = [0, 1].map((Ordinal) => Device.createBindGroup({
+    layout:  SurfacePipeline.getBindGroupLayout(0),
+    entries: [
+        { binding: 0, resource: { buffer: ConstantsBuffer } },
+        { binding: 1, resource: { buffer: AmplitudeBuffers[Ordinal] } },
+        { binding: 2, resource: { buffer: ProfileBuffer } },
+    ],
+}));
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    CONTROL BINDING
+//------------------------------------------------------------------------------------------------------------------------
+
+const Levers = {
+    WheelSpeed:   1.1,
+    WheelRadius:  0.085,
+    WheelDepth:   1.0,
+    WaveGain:     1.0,
+    Dispersion:   1.0,
+    Dissipation:  0.3,
+    Reflection:   0.65,
+    BasinDepth:   0.055,
+    ShoreFalloff: 1.6,
+    Relief:       1.0,
+    Turbidity:    0.45,
+};
+
+let RollingEnabled     = true;
+let AmplitudeOverlay   = false;
+let WetRoadDarkening   = true;
+
+function BindSlider(SliderId, LabelId, LeverName, Formatter)
+{
+    const Slider = document.getElementById(SliderId);
+    const Label  = document.getElementById(LabelId);
+    const Apply  = () =>
+    {
+        Levers[LeverName] = parseFloat(Slider.value);
+        Label.textContent = Formatter(Levers[LeverName]);
+    };
+    Slider.addEventListener("input", Apply);
+    Apply();
+}
+
+const Metres2 = (Quantity) => Quantity.toFixed(3) + " m";
+const Plain2  = (Quantity) => Quantity.toFixed(2);
+
+BindSlider("SliderWheelSpeed",   "LabelWheelSpeed",   "WheelSpeed",   (Q) => Q.toFixed(2) + " m/s");
+BindSlider("SliderWheelRadius",  "LabelWheelRadius",  "WheelRadius",  Metres2);
+BindSlider("SliderWheelDepth",   "LabelWheelDepth",   "WheelDepth",   Plain2);
+BindSlider("SliderWaveGain",     "LabelWaveGain",     "WaveGain",     Plain2);
+BindSlider("SliderDispersion",   "LabelDispersion",   "Dispersion",   Plain2);
+BindSlider("SliderDissipation",  "LabelDissipation",  "Dissipation",  Plain2);
+BindSlider("SliderReflection",   "LabelReflection",   "Reflection",   Plain2);
+BindSlider("SliderBasinDepth",   "LabelBasinDepth",   "BasinDepth",   Metres2);
+BindSlider("SliderShoreFalloff", "LabelShoreFalloff", "ShoreFalloff", Plain2);
+BindSlider("SliderRelief",       "LabelRelief",       "Relief",       Plain2);
+BindSlider("SliderTurbidity",    "LabelTurbidity",    "Turbidity",    Plain2);
+
+const ButtonRolling = document.getElementById("ButtonRolling");
+ButtonRolling.addEventListener("click", () =>
+{
+    RollingEnabled = !RollingEnabled;
+    ButtonRolling.textContent = RollingEnabled ? "Rolling — pause" : "Paused — resume";
+    ButtonRolling.classList.toggle("Engaged", RollingEnabled);
+});
+
+document.getElementById("ButtonRecentre").addEventListener("click", () =>
+{
+    WheelTrack = 0.0;
+});
+
+document.getElementById("ToggleAmplitudeView").addEventListener("change", (Event) =>
+{
+    AmplitudeOverlay = Event.target.checked;
+});
+
+document.getElementById("ToggleWetRoad").addEventListener("change", (Event) =>
+{
+    WetRoadDarkening = Event.target.checked;
+});
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    WHEEL PATH + POINTER
+//------------------------------------------------------------------------------------------------------------------------
+
+// 📝 The wheel drives along a straight track across the puddle, wrapping at the far edge. Track is measured in
+//    metres travelled so speed changes take effect without a position jump.
+let WheelTrack     = 0.0;
+let WheelLateral   = 0.5;   // [0-1] - fraction across the domain, steerable by drag
+let WheelCentre    = { X: 0.0, Y: 0.0 };
+let WheelPrior     = { X: 0.0, Y: 0.0 };
+
+let ImpulseCentre   = { X: 0.0, Y: 0.0 };
+let ImpulseStrength = 0.0;
+let PointerHeld     = false;
+
+function PointerToMetres(Event)
+{
+    const Bounds = RenderSurface.getBoundingClientRect();
+    return {
+        X: ((Event.clientX - Bounds.left) / Bounds.width)  * DomainMetres,
+        Y: ((Event.clientY - Bounds.top)  / Bounds.height) * DomainMetres,
+    };
+}
+
+RenderSurface.addEventListener("pointerdown", (Event) =>
+{
+    PointerHeld = true;
+    const Point = PointerToMetres(Event);
+    ImpulseCentre   = Point;
+    ImpulseStrength = 1.0;
+    WheelLateral    = Point.X / DomainMetres;
+    RenderSurface.setPointerCapture(Event.pointerId);
+});
+
+RenderSurface.addEventListener("pointermove", (Event) =>
+{
+    if (!PointerHeld) return;
+    const Point   = PointerToMetres(Event);
+    WheelLateral  = Point.X / DomainMetres;
+});
+
+RenderSurface.addEventListener("pointerup", () => { PointerHeld = false; });
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    SURFACE SIZING
+//------------------------------------------------------------------------------------------------------------------------
+
+function ResizeSurface()
+{
+    const Ratio  = Math.min(window.devicePixelRatio || 1, 2);
+    const Width  = Math.max(1, Math.floor(RenderSurface.clientWidth  * Ratio));
+    const Height = Math.max(1, Math.floor(RenderSurface.clientHeight * Ratio));
+    if (RenderSurface.width !== Width || RenderSurface.height !== Height)
+    {
+        RenderSurface.width  = Width;
+        RenderSurface.height = Height;
+    }
+}
+
+SurfaceContext.configure({ device: Device, format: SurfaceFormat, alphaMode: "opaque" });
+window.addEventListener("resize", ResizeSurface);
+ResizeSurface();
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    READOUT
+//------------------------------------------------------------------------------------------------------------------------
+
+const ReadoutFrameCost  = document.getElementById("ReadoutFrameCost");
+const ReadoutGrid       = document.getElementById("ReadoutGrid");
+const ReadoutDirections = document.getElementById("ReadoutDirections");
+const ReadoutBands      = document.getElementById("ReadoutBands");
+const ReadoutSlices     = document.getElementById("ReadoutSlices");
+const ReadoutWheel      = document.getElementById("ReadoutWheel");
+
+ReadoutGrid.textContent       = GridExtent + " x " + GridExtent;
+ReadoutDirections.textContent = String(DirectionCount);
+ReadoutBands.textContent      = String(BandCount);
+ReadoutSlices.textContent     = SliceCount + " (" + (CellCount / 1e6).toFixed(2) + " M cells)";
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    FRAME LOOP
+//------------------------------------------------------------------------------------------------------------------------
+
+let ElapsedSeconds  = 0.0;
+let PriorTimestamp  = performance.now();
+let SmoothedCost    = 0.0;
+let FieldOrdinal    = 0;
+let ProfileResolved = false;
+
+function WriteConstants(IntervalSeconds)
+{
+    // 📝 Mixed u32/f32 uniform block. The first four fields are u32 in WGSL, so they are written through a Uint32Array
+    //    view over the SAME staging memory — a float write of 192 would arrive as the bit pattern 0x43400000.
+    const IntegerView = new Uint32Array(ConstantsStaging.buffer);
+    IntegerView[0] = GridExtent;
+    IntegerView[1] = DirectionCount;
+    IntegerView[2] = BandCount;
+    IntegerView[3] = ProfileSamples;
+
+    let Cursor = 4;
+    ConstantsStaging[Cursor++] = DomainMetres;
+    ConstantsStaging[Cursor++] = IntervalSeconds;
+    ConstantsStaging[Cursor++] = ElapsedSeconds;
+    ConstantsStaging[Cursor++] = WheelCentre.X;
+    ConstantsStaging[Cursor++] = WheelCentre.Y;
+    ConstantsStaging[Cursor++] = WheelPrior.X;
+    ConstantsStaging[Cursor++] = WheelPrior.Y;
+    ConstantsStaging[Cursor++] = Levers.WheelRadius;
+    ConstantsStaging[Cursor++] = Levers.WheelDepth;
+    ConstantsStaging[Cursor++] = Levers.Dispersion;
+    ConstantsStaging[Cursor++] = Levers.Dissipation;
+    ConstantsStaging[Cursor++] = Levers.Reflection;
+    ConstantsStaging[Cursor++] = Levers.WaveGain;
+    ConstantsStaging[Cursor++] = Levers.BasinDepth;
+    ConstantsStaging[Cursor++] = Levers.ShoreFalloff;
+    ConstantsStaging[Cursor++] = ImpulseCentre.X;
+    ConstantsStaging[Cursor++] = ImpulseCentre.Y;
+    ConstantsStaging[Cursor++] = ImpulseStrength;
+    ConstantsStaging[Cursor++] = Levers.Relief;
+    ConstantsStaging[Cursor++] = Levers.Turbidity;
+    ConstantsStaging[Cursor++] = AmplitudeOverlay ? 1.0 : 0.0;
+    ConstantsStaging[Cursor++] = WetRoadDarkening ? 1.0 : 0.0;
+
+    Device.queue.writeBuffer(ConstantsBuffer, 0, ConstantsStaging);
+}
+
+function AdvanceFrame(Timestamp)
+{
+    // Clamp the interval: a backgrounded tab returns a multi-second delta that would teleport the wheel clean across.
+    const IntervalSeconds = Math.min((Timestamp - PriorTimestamp) / 1000, 1 / 30);
+    PriorTimestamp = Timestamp;
+    ElapsedSeconds += IntervalSeconds;
+
+    // ---- Wheel path ---------------------------------------------------------------------------------------------
+    WheelPrior = { X: WheelCentre.X, Y: WheelCentre.Y };
+    if (RollingEnabled)
+    {
+        WheelTrack += Levers.WheelSpeed * IntervalSeconds;
+        // Wrap with a margin so the wheel re-enters from off-domain rather than popping into the middle.
+        const TrackSpan = DomainMetres + 0.9;
+        if (WheelTrack > TrackSpan) WheelTrack -= TrackSpan;
+    }
+    WheelCentre = {
+        X: WheelLateral * DomainMetres,
+        Y: WheelTrack - 0.45,
+    };
+    // On the first frame the prior equals the current, so no spurious travel spike.
+    if (ElapsedSeconds <= IntervalSeconds * 1.5) WheelPrior = { X: WheelCentre.X, Y: WheelCentre.Y };
+
+    WriteConstants(IntervalSeconds);
+
+    const Encoder = Device.createCommandEncoder();
+
+    // ---- Profile integral ---------------------------------------------------------------------------------------
+    // 📝 The profile depends only on the band layout, so it is integrated ONCE rather than per frame. If bands ever
+    //    become runtime-tunable this must move back inside the frame.
+    if (!ProfileResolved)
+    {
+        const ProfileScope = Encoder.beginComputePass({ label: "ProfileIntegral" });
+        ProfileScope.setPipeline(ProfilePipeline);
+        ProfileScope.setBindGroup(0, ProfileBinding);
+        ProfileScope.dispatchWorkgroups(Math.ceil((ProfileSamples * BandCount) / 64));
+        ProfileScope.end();
+        ProfileResolved = true;
+    }
+
+    // ---- Amplitude advection ------------------------------------------------------------------------------------
+    const AdvectionScope = Encoder.beginComputePass({ label: "AmplitudeAdvection" });
+    AdvectionScope.setPipeline(AdvectionPipeline);
+    AdvectionScope.setBindGroup(0, AdvectionBindings[FieldOrdinal]);
+    AdvectionScope.dispatchWorkgroups(Math.ceil(GridExtent / 8), Math.ceil(GridExtent / 8), SliceCount);
+    AdvectionScope.end();
+
+    FieldOrdinal = 1 - FieldOrdinal;
+
+    // ---- Surface ------------------------------------------------------------------------------------------------
+    const SurfaceScope = Encoder.beginRenderPass({
+        colorAttachments: [{
+            view:       SurfaceContext.getCurrentTexture().createView(),
+            clearValue: { r: 0.02, g: 0.025, b: 0.03, a: 1.0 },
+            loadOp:     "clear",
+            storeOp:    "store",
+        }],
+    });
+    SurfaceScope.setPipeline(SurfacePipeline);
+    SurfaceScope.setBindGroup(0, SurfaceBindings[FieldOrdinal]);
+    SurfaceScope.draw(6);
+    SurfaceScope.end();
+
+    Device.queue.submit([Encoder.finish()]);
+
+    // Impulse is a one-frame injection.
+    ImpulseStrength = 0.0;
+
+    // ---- Readout ------------------------------------------------------------------------------------------------
+    const FrameCost = performance.now() - Timestamp;
+    SmoothedCost    = SmoothedCost * 0.9 + FrameCost * 0.1;
+    ReadoutFrameCost.textContent = SmoothedCost.toFixed(2) + " ms CPU";
+    ReadoutWheel.textContent     = WheelCentre.X.toFixed(2) + ", " + WheelCentre.Y.toFixed(2) + " m";
+
+    requestAnimationFrame(AdvanceFrame);
+}
+
+requestAnimationFrame(AdvanceFrame);
+</script>
+</body>
+</html>

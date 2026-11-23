@@ -1,0 +1,112 @@
+/* ACOUSTICS
+   🧩 Layout and look of the vehicle sound bench: tachometer, pedals and paddles, surface chips, cue pads, mix and reel. */
+
+:root { --Ink: #eceef2; --Dim: #8a909c; --Line: rgba(255,255,255,0.08); --Card: #121318; --Red: #ff2b1c; --Amber: #ffb02e; --Cyan: #45e6ff; }
+html, body { overflow: auto; background: radial-gradient(1200px 700px at 30% -10%, #1d1112 0%, #0a0a0c 55%) fixed, #0a0a0c; color: var(--Ink); }
+.Bench { max-width: 1280px; margin: 0 auto; padding: 22px 26px 30px; display: grid; gap: 16px; }
+
+.Masthead { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.Brand { display: grid; gap: 2px; margin-right: auto; }
+.Brand b { font: 500 30px/1 'DM Sans'; letter-spacing: 0.01em; }
+.Brand b::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 10px; border-radius: 2px; background: var(--Red); vertical-align: 4px; box-shadow: 0 0 14px var(--Red); }
+.Brand span { color: var(--Dim); font-size: 13px; }
+.Wake { display: flex; align-items: center; gap: 8px; color: var(--Amber); font-size: 13px; }
+.Wake i { width: 8px; height: 8px; border-radius: 50%; background: var(--Amber); animation: Blink 1.2s infinite; }
+.Wake.Live { color: #7dff9a; } .Wake.Live i { background: #7dff9a; animation: none; }
+@keyframes Blink { 50% { opacity: 0.2; } }
+.Toggles { display: flex; gap: 8px; }
+.Toggle { display: grid; text-align: left; padding: 8px 14px; border-radius: 10px; background: var(--Card); border: 1px solid var(--Line); min-width: 104px; }
+.Toggle small { color: var(--Dim); font-size: 11px; } .Toggle b { font-weight: 500; font-size: 15px; }
+.Toggle:hover { border-color: rgba(255,255,255,0.22); }
+
+.Drive { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; }
+.Gauge { position: relative; background: var(--Card); border: 1px solid var(--Line); border-radius: 18px; aspect-ratio: 1.25; display: grid; place-items: center; overflow: hidden; }
+.Gauge canvas { width: min(92%, 470px); height: auto; aspect-ratio: 1; }
+.Readout { position: absolute; display: grid; justify-items: center; gap: 2px; top: 50%; left: 50%; transform: translate(-50%, -38%); }
+.Readout b { font: 300 92px/0.9 'DM Sans'; }
+.Readout span { font-size: 15px; color: var(--Dim); } .Readout em { font-style: normal; color: var(--Ink); font-size: 26px; font-weight: 500; }
+.Readout small { color: var(--Dim); font-variant-numeric: tabular-nums; }
+.Chips { position: absolute; bottom: 14px; display: flex; gap: 6px; }
+.Chips i { font: 500 10px 'DM Sans'; letter-spacing: 0.1em; font-style: normal; padding: 4px 8px; border-radius: 6px; color: #50545e; border: 1px solid #23252c; }
+.Chips i.On { color: #111; background: var(--Amber); border-color: var(--Amber); }
+.Chips i#ChipLimiter.On { background: var(--Red); border-color: var(--Red); color: #fff; }
+.Chips i#ChipKers.On { background: var(--Cyan); border-color: var(--Cyan); }
+.Chips i#ChipAbs.On { background: var(--Amber); border-color: var(--Amber); color: #111; }
+.Pad.Trigger { touch-action: none; user-select: none; }
+.Pad.Picked { border-color: rgba(255,255,255,0.35); }
+.Pad.Firing { border-color: var(--Red); box-shadow: inset 0 0 0 1px var(--Red), 0 0 18px rgba(255,43,28,0.35); }
+.Pad.Hop.On { border-color: var(--Cyan); box-shadow: inset 0 0 0 1px var(--Cyan); }
+.Pad.Hop.On b { color: var(--Cyan); }
+.Hint { grid-column: 1 / -1; margin: 4px 0 0; color: var(--Dim); font-size: 12px; line-height: 1.5; }
+body[data-car="GtrNismo"] .Brand b::before { background: #c9ced6; box-shadow: 0 0 14px rgba(200,210,230,0.8); }
+
+.Controls { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr auto auto; gap: 12px; }
+.Start { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; justify-content: center; padding: 16px; border-radius: 14px; background: linear-gradient(180deg, #2a0f0d, #1a0908); border: 1px solid #5a1a14; }
+.Start span { color: #ff8f84; font-size: 12px; letter-spacing: 0.2em; } .Start b { font-size: 26px; font-weight: 500; letter-spacing: 0.08em; } .Start small { color: var(--Dim); }
+.Start.Running { background: linear-gradient(180deg, #3a1210, #250b09); border-color: var(--Red); box-shadow: 0 0 24px rgba(255,43,28,0.25); }
+.Pedals { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.Pedal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding: 14px; border-radius: 14px; background: var(--Card); border: 1px solid var(--Line); height: 100%; min-height: 196px; touch-action: none; }
+.Pedal i { display: block; height: 100%; }
+.Pedal span { text-align: left; font-size: 14px; } .Pedal small { color: var(--Dim); text-align: left; }
+.Pedal i { position: relative; border-radius: 8px; background: #0b0c0f; border: 1px solid #22242b; overflow: hidden; }
+.Pedal u { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; background: linear-gradient(0deg, #8c2a20, #ff5a3c); }
+.Pedal.Throttle u { background: linear-gradient(0deg, #1a6d3a, #6dff9c); }
+.Pedal:active, .Pedal.Held { border-color: rgba(255,255,255,0.3); }
+.Paddles { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 0.6fr 1fr; gap: 12px; }
+.Paddles button { display: grid; justify-items: center; padding: 10px; border-radius: 12px; background: var(--Card); border: 1px solid var(--Line); }
+.Paddles b { font-size: 26px; font-weight: 400; line-height: 1; } .Paddles small { color: var(--Dim); font-size: 11px; }
+.Paddles button:active { background: #1c1d24; }
+.Steer, .Kers { display: grid; gap: 6px; padding: 12px 14px; border-radius: 12px; background: var(--Card); border: 1px solid var(--Line); font-size: 13px; }
+.Steer small { color: var(--Dim); font-size: 11px; }
+.SteerBar { position: relative; height: 8px; border-radius: 4px; background: #0b0c0f; }
+.SteerBar::after { content: ''; position: absolute; left: 50%; top: -3px; width: 1px; height: 14px; background: #3a3d46; }
+.SteerBar i { position: absolute; top: -4px; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--Ink); }
+.Kers div { height: 8px; border-radius: 4px; background: #0b0c0f; position: relative; overflow: hidden; }
+.Kers div::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #3a3d46; }
+.Kers i { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; background: var(--Cyan); }
+
+.Panel { background: var(--Card); border: 1px solid var(--Line); border-radius: 16px; padding: 14px 16px 16px; }
+.Panel h2 { margin: 0 0 12px; font: 500 13px 'DM Sans'; letter-spacing: 0.14em; text-transform: uppercase; color: var(--Dim); }
+.Panel h2 small { font-weight: 400; letter-spacing: 0.02em; text-transform: none; margin-left: 8px; color: #5c616c; }
+.Split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+
+.Surfaces { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.Surface { position: relative; height: 82px; border-radius: 12px; overflow: hidden; text-align: left; padding: 10px; display: flex; flex-direction: column; justify-content: flex-end; border: 1px solid var(--Line); background-size: cover; }
+.Surface b { font-weight: 500; font-size: 14px; position: relative; } .Surface small { color: rgba(255,255,255,0.6); font-size: 11px; position: relative; }
+.Surface::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 20%, rgba(0,0,0,0.75)); }
+.Surface.On { outline: 2px solid var(--Ink); outline-offset: -2px; }
+
+.Pads { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.Pad { position: relative; padding: 12px; min-height: 64px; border-radius: 12px; background: #17181e; border: 1px solid var(--Line); text-align: left; display: grid; align-content: space-between; gap: 6px; }
+.Pad b { font-weight: 500; font-size: 13px; } .Pad small { color: var(--Dim); font-size: 11px; }
+.Pad:hover { border-color: rgba(255,255,255,0.22); }
+.Pad.Ring { border-color: var(--Amber); box-shadow: inset 0 0 0 1px var(--Amber); }
+.Pad.Looping { border-color: var(--Cyan); box-shadow: inset 0 0 0 1px var(--Cyan); }
+.Pad.Looping small::after { content: ' · looping'; color: var(--Cyan); }
+
+.Mix { display: grid; gap: 10px; }
+.Mix label { display: grid; grid-template-columns: 80px 1fr 40px; align-items: center; gap: 10px; font-size: 13px; }
+.Mix output { color: var(--Dim); font-variant-numeric: tabular-nums; text-align: right; }
+.Mix input { accent-color: var(--Red); }
+
+.Reel { display: grid; gap: 6px; max-height: 470px; overflow: auto; padding-right: 4px; }
+.Reel div { display: grid; grid-template-columns: 150px 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.Reel audio { width: 100%; height: 32px; }
+.Reel a { color: var(--Dim); font-size: 11px; }
+
+footer { color: #5c616c; font-size: 12px; text-align: center; }
+
+@media (max-width: 980px) { .Drive, .Split { grid-template-columns: 1fr; } .Surfaces { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* Build tag (proves a fresh load), turbo-lag row under the induction pads. */
+.Build { display: block; margin-top: 2px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--Cyan); opacity: 0.7; }
+.LagRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 12px; font-size: 12px; color: var(--Dim); }
+.LagRow label b { color: var(--Ink); font-weight: 600; margin-left: 4px; }
+.LagRow input[type=range] { width: 180px; accent-color: var(--Cyan); }
+.LagRow #SpoolTime { color: var(--Ink); font-variant-numeric: tabular-nums; }
+
+/* Road noise switch and a muted slider row */
+.Mix .RoadSwitch { justify-self: start; }
+.Mix .RoadSwitch[data-on="Off"] b { color: var(--Dim); }
+.Mix label.Muted { opacity: 0.4; }
+.Mix .Hint { margin: 0; }

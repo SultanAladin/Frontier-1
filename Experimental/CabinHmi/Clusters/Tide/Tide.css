@@ -1,0 +1,88 @@
+/* TIDE — DASHBOARD CLUSTER FOR NOCTURNE
+   🧩 Night lake: deep navy sky, a low moon with glitter on the water, horizon rule. No boxes: panels float on a
+      single top rule. Moon-white in Cruise, eco green in Eco, charge blue in Sport, signal red in Race. */
+
+.Dash.Tide { border-radius: 40px; background: #03050b;
+             --Ink: #eef3ff; --InkSoft: rgba(238, 243, 255, 0.74); --InkDim: rgba(238, 243, 255, 0.46);
+             --Accent: #e8f0ff; --AccentRGB: 232, 240, 255; --Surface: transparent; --Edge: rgba(238, 243, 255, 0.14); --Radius: 0;
+             --Good: #3ddc78; --Track: rgba(238, 243, 255, 0.1); }
+.Dash.Tide[data-mode="Eco"]   { --Accent: #3ddc78; --AccentRGB: 61, 220, 120; }
+.Dash.Tide[data-mode="Sport"] { --Accent: #2a8cff; --AccentRGB: 42, 140, 255; }
+.Dash.Tide[data-mode="Race"]  { --Accent: #ff3550; --AccentRGB: 255, 53, 80; }
+.Stage:has(.Tide) { --WheelAccent: #e8f0ff; --WheelAccentRGB: 232, 240, 255; }
+
+.Lake { position: absolute; inset: 0; background: linear-gradient(180deg, #0b1124 0%, #060a16 52%, #04060c 53%, #020308 100%); }
+.Lake::before { content: ''; position: absolute; inset: 0 0 48% 0; background-image: radial-gradient(1px 1px at 12% 20%, #fff, transparent), radial-gradient(1px 1px at 33% 8%, #dfe7ff, transparent), radial-gradient(1px 1px at 71% 15%, #fff, transparent), radial-gradient(1.5px 1.5px at 88% 30%, #cfe0ff, transparent), radial-gradient(1px 1px at 55% 26%, #fff, transparent), radial-gradient(1px 1px at 22% 40%, #b8c8ff, transparent), radial-gradient(1px 1px at 93% 6%, #fff, transparent); opacity: 0.7; }
+.Lake .Moon { position: absolute; left: 1290px; top: 34px; width: 28px; height: 28px; border-radius: 50%; background: #f4f7ff; box-shadow: 0 0 40px 10px rgba(200, 215, 255, 0.35); }
+.Lake .Horizon { position: absolute; left: 0; right: 0; top: 52%; height: 1px; background: linear-gradient(90deg, transparent, rgba(var(--AccentRGB), 0.5), transparent); transition: background 600ms; }
+.Lake .Glitter { position: absolute; left: 1268px; width: 72px; opacity: 0.4; top: 53%; bottom: 0; background: repeating-linear-gradient(180deg, rgba(220, 230, 255, 0.35) 0 2px, transparent 2px 14px); -webkit-mask: linear-gradient(180deg, #000, transparent 70%); mask: linear-gradient(180deg, #000, transparent 70%); animation: Glitter 3s linear infinite; }
+@keyframes Glitter { to { background-position: 0 28px; } }
+
+.Tide .DashTop { position: absolute; left: 70px; right: 70px; top: 30px; display: flex; justify-content: space-between; align-items: baseline; color: var(--InkDim); font-size: 15px; }
+.Tide .TopLeft b { font-size: 34px; font-weight: 200; color: var(--Ink); margin-right: 14px; }
+.Tide .TopRight { display: flex; gap: 10px; align-items: baseline; }
+.Tide .TopRight b { font-size: 26px; font-weight: 200; color: var(--Ink); }
+.Tide .Telltales { left: 50%; top: 22px; transform: translateX(-50%); padding: 8px 16px; border-radius: 20px; background: rgba(10, 16, 32, 0.7); border: 1px solid var(--Edge); }
+.Tide .ShiftLights { left: 50%; top: 78px; margin-left: -155px; gap: 5px; }
+.Tide .ShiftLights i { width: 16px; height: 8px; }
+.Tide .ModeBadge { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); text-align: center; transition: bottom 600ms; }
+.Tide .ModeBadge .ModeName { font-size: 22px; font-weight: 500; letter-spacing: 0.4em; text-transform: uppercase; color: var(--Accent); transition: color 600ms; }
+.Tide .ModeBadge small { display: block; margin-top: 4px; font-size: 13px; color: var(--InkDim); letter-spacing: 0.04em; }
+
+.Tide .Wing { top: 110px; bottom: 50px; width: 400px; grid-template-rows: 1fr auto; row-gap: 16px; }
+.Tide .Wing.Left { left: 70px; } .Tide .Wing.Right { right: 70px; }
+.Tide .Group { grid-row: 1; }
+.Tide .FuelDock { grid-row: 2; }
+.Tide .Panel { border: 0; border-top: 1px solid var(--Edge); padding: 16px 4px 4px; }
+.Tide .Panel::before { content: ''; position: absolute; left: 0; top: -1px; width: 56px; height: 2px; background: var(--Accent); box-shadow: 0 0 10px rgba(var(--AccentRGB), 0.8); transition: background 600ms; }
+.Tide .Wing.Right .Panel::before { left: auto; right: 0; }
+.Tide .Wing.Right .PanelHead { flex-direction: row-reverse; text-align: right; }
+.Tide .Turn b, .Tide .Instant b, .Tide .LapNow, .Tide .Stats b { font-weight: 200; }
+.Tide .Tyre { border-radius: 4px; }
+
+.Tide .Core { position: absolute; left: 516px; top: 100px; width: 888px; height: 568px; transition: transform 900ms cubic-bezier(.2,.9,.3,1); }
+.Tide[data-mode="Race"] .Core { transform: scale(1.04); }
+.Tide .TideGauge .Rail .Live, .Tide .TideGauge .Orbit { transition: stroke 600ms; }
+.Tide[data-mode="Eco"] .TideGauge .Eco path.Lit { filter: drop-shadow(0 0 8px #3ddc78); }
+.Tide[data-mode="Sport"] .TideGauge .Rail .Live { stroke: #2a8cff; }
+.Core.Redline .RedZone { animation: TideRed 0.3s steps(2) infinite; }
+
+/* ------------------------------------------------------------------ Tide gauge (moved from the Nocturne HMI) */
+.TideGauge { width: 100%; height: 100%; overflow: visible; fill: none; stroke: none; }
+.TideGauge text { stroke: none; fill: #eef3ff; font-family: inherit; }
+.TideGauge .Bezel { stroke: #f4f7ff; stroke-width: 3; }
+.TideGauge .Bezel.Glow { stroke: #a9c8ff; stroke-width: 8; opacity: 0.55; }
+.TideGauge .BezelBand { stroke: rgba(140, 170, 220, 0.12); stroke-width: 26; }
+.TideGauge .Eco path { fill: rgba(61, 220, 120, 0.12); transition: fill 300ms; }
+.TideGauge .Eco path.Lit { fill: #3ddc78; }
+.TideGauge .Charge path { fill: rgba(40, 140, 255, 0.12); transition: fill 300ms; }
+.TideGauge .Charge path.Lit { fill: #2a8cff; }
+.TideGauge .EcoTag .Leaf { stroke: #3ddc78; stroke-width: 1.8; fill: none; }
+.TideGauge .EcoTag text { fill: #3ddc78; font-size: 13px; }
+.TideGauge .ChargeTag .Bolt { stroke: #2a8cff; stroke-width: 1.8; fill: none; }
+.TideGauge .ChargeTag text { fill: #2a8cff; font-size: 13px; }
+.TideGauge .RailLine { stroke: #f4f7ff; stroke-width: 3.2; stroke-linecap: round; }
+.TideGauge .RedZone { stroke: rgba(255, 53, 80, 0.55); stroke-width: 4; }
+.TideGauge .Rail .Live { stroke: #ff3550; stroke-width: 3; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(255, 53, 80, 0.8)); }
+.TideGauge .Rail .Ticks line { stroke: #f4f7ff; stroke-width: 2; }
+.TideGauge .Rail .Ticks text { font-size: 19px; font-weight: 300; fill: rgba(238, 243, 255, 0.7); transition: fill 200ms; }
+.TideGauge .Rail .Ticks text.Passed { fill: #ffffff; }
+.TideGauge .RailCaption { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; }
+.TideGauge .RailCaption tspan { font-weight: 400; font-size: 10px; fill: rgba(238, 243, 255, 0.6); }
+.TideGauge .SweepBand { stroke: rgba(200, 210, 230, 0.2); stroke-width: 24; }
+.TideGauge .Orbit { stroke: #ff3550; stroke-width: 1.4; stroke-dasharray: 1.5 5; opacity: 0.8; }
+.TideGauge .SpeedTicks .Tick { stroke: #ff3550; stroke-width: 4; stroke-linecap: round; transition: stroke 200ms, filter 200ms; }
+.TideGauge .SpeedTicks .Tick.Passed { stroke: #ff6a7c; filter: drop-shadow(0 0 4px #ff3550); }
+.TideGauge .SpeedTicks text { font-size: 15px; font-weight: 500; }
+.TideGauge .Dash { stroke: rgba(238, 243, 255, 0.85); stroke-width: 1.6; stroke-dasharray: 1.5 3; }
+.TideGauge .Unit { font-size: 15px; fill: rgba(238, 243, 255, 0.85); }
+.TideGauge .GearSmall { font-size: 15px; fill: #ff6a7c; font-weight: 600; letter-spacing: 0.04em; transform-box: fill-box; transform-origin: center; }
+.TideGauge .GearSmall.Pop { animation: TidePop 420ms cubic-bezier(.2,1.6,.4,1); }
+@keyframes TidePop { 0% { transform: scale(1.8); opacity: 0.3; } 100% { transform: scale(1); opacity: 1; } }
+.TideGauge .SpeedFigure { font-size: 128px; font-weight: 200; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.TideGauge .Selector text { font-size: 22px; fill: rgba(255, 53, 80, 0.75); cursor: pointer; letter-spacing: 0.04em; transition: fill 200ms; }
+.TideGauge .Selector text.On { fill: #ffffff; font-weight: 500; }
+.TideGauge .Pin { stroke: #ff3550; stroke-width: 3.5; stroke-linecap: round; }
+.TideGauge .NeedleLine { stroke: #ffffff; stroke-width: 4; stroke-linecap: round; }
+.TideGauge .NeedleGlow { stroke: #ff3550; stroke-width: 9; opacity: 0.8; }
+@keyframes TideRed { 50% { stroke: #ff3550; } }

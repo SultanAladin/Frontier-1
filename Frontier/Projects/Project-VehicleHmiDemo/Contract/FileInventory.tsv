@@ -1,0 +1,474 @@
+Path	Bytes	Lines	Kind	Family
+Archive/Application.js	5145072	47794	Other	
+Archive/ControlVehicleBody.facet	64736	0	Other	
+Archive/ControlVehicleRim.facet	91016	0	Other	
+Archive/ControlVehicleTyre.facet	230192	0	Other	
+Archive/FacetArchiveCodec.py	7721	127	Other	
+Assets/Celestial/BrightStars.bin	249776	0	Other	
+Assets/Celestial/MoonAtlas.rgba.gz	21640750	48580	Other	
+Assets/Celestial/ember_2k.jpg	518267	0	Other	
+Assets/Celestial/glacier_2k.jpg	731689	0	Other	
+Assets/Celestial/luna_2k.jpg	453084	0	Other	
+Assets/Celestial/shard_2k.jpg	317301	0	Other	
+Assets/Celestial/shroud_2k.jpg	135597	0	Other	
+Assets/Celestial/sulfur_2k.jpg	417234	0	Other	
+Assets/EnvironmentIcons/clouds.svg	2010	1	Other	
+Assets/EnvironmentIcons/fog.svg	2204	1	Other	
+Assets/EnvironmentIcons/folder-environment.svg	728	8	Other	
+Assets/EnvironmentIcons/lens-flare.svg	2727	12	Other	
+Assets/EnvironmentIcons/local-cloud.svg	2224	1	Other	
+Assets/EnvironmentIcons/local-fog.svg	2418	1	Other	
+Assets/EnvironmentIcons/moon.svg	15970	1	Other	
+Assets/EnvironmentIcons/outliner-stars.svg	595	8	Other	
+Assets/EnvironmentIcons/sky-scattering.svg	1400	1	Other	
+Assets/EnvironmentIcons/stars.svg	3684	1	Other	
+Assets/EnvironmentIcons/sun.svg	4368	10	Other	
+CLOUDS_PORT.md	10776	169	Other	
+ENVIRONMENT_PORT.md	33399	228	Other	
+Evidence/GeometryHierarchy/README.md	4027	74	Other	
+Evidence/GeometryHierarchy/glass-sphere-level0-classes.png	29666	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level0-error.png	27245	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level0-meshlets.png	30488	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level2-classes.png	17730	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level2-error.png	17686	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level2-meshlets.png	17890	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level4-classes.png	7977	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level4-error.png	7804	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-level4-meshlets.png	7922	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-levels.gif	33396	0	Other	
+Evidence/GeometryHierarchy/glass-sphere-source.png	29953	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-level0-error.png	45740	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-level0-meshlets.png	55778	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-level3-error.png	23862	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-level3-meshlets.png	24040	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-level6-error.png	10617	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-level6-meshlets.png	10782	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-levels.gif	63531	0	Other	
+Evidence/GeometryHierarchy/heightfield-cliff-source.png	52729	0	Other	
+Evidence/GeometryHierarchy/sphere-level0-error.png	27245	0	Other	
+Evidence/GeometryHierarchy/sphere-level0-meshlets.png	30297	0	Other	
+Evidence/GeometryHierarchy/sphere-level3-error.png	14421	0	Other	
+Evidence/GeometryHierarchy/sphere-level3-meshlets.png	14371	0	Other	
+Evidence/GeometryHierarchy/sphere-level6-error.png	7374	0	Other	
+Evidence/GeometryHierarchy/sphere-level6-meshlets.png	7410	0	Other	
+Evidence/GeometryHierarchy/sphere-levels.gif	43839	0	Other	
+Evidence/GeometryHierarchy/sphere-source.png	29953	0	Other	
+Evidence/GeometryHierarchy/stats.json	6552	320	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level0-error.png	10962	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level0-features.png	15340	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level0-meshlets.png	14363	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level0-uv.png	17226	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level2-error.png	16096	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level2-features.png	17194	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level2-meshlets.png	15812	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level2-uv.png	21179	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level5-error.png	8566	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level5-features.png	8634	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level5-meshlets.png	8517	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-level5-uv.png	13688	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-levels.gif	35940	0	Other	
+Evidence/GeometryHierarchy/uv-creased-vessel-source.png	11915	0	Other	
+Evidence/VisibilityResolve/README.md	1378	26	Other	
+Evidence/VisibilityResolve/glass-sphere-final.png	10005	0	Other	
+Evidence/VisibilityResolve/glass-sphere-resolved.png	9200	0	Other	
+Evidence/VisibilityResolve/glass-sphere-visbuffer.png	4933	0	Other	
+Evidence/VisibilityResolve/stats.json	269	15	Other	
+Evidence/VisibilityResolve/uv-creased-vessel-final.png	4629	0	Other	
+Evidence/VisibilityResolve/uv-creased-vessel-resolved.png	4629	0	Other	
+Evidence/VisibilityResolve/uv-creased-vessel-visbuffer.png	3272	0	Other	
+GEOMETRY_CLUSTERING.md	6580	45	Other	
+GEOMETRY_HIERARCHY.md	12977	160	Other	
+IMPORT.md	736	18	Other	
+PLAN.md	4656	37	Other	
+README.md	40380	514	Other	
+Reference/NativeEnvironment/AtmosphereModel.h	19272	340	Other	
+Reference/NativeEnvironment/AtmosphereSkyInspectorPanel.cpp	19419	189	Other	
+Reference/NativeEnvironment/AtmosphericOptics.h	25911	429	Other	
+Reference/NativeEnvironment/CloudDensityPreview.h	1765	25	Other	
+Reference/NativeEnvironment/CloudShadow.slang	12647	213	Other	
+Reference/NativeEnvironment/CloudsInspectorPanel.cpp	12052	65	Other	
+Reference/NativeEnvironment/FogInspectorPanel.cpp	12651	59	Other	
+Reference/NativeEnvironment/LensFlareInspectorPanel.cpp	18364	215	Other	
+Reference/NativeEnvironment/LensFlareKernel.h	4464	83	Other	
+Reference/NativeEnvironment/MoonConstantRecord.h	19927	326	Other	
+Reference/NativeEnvironment/MoonInspectorPanel.cpp	18823	150	Other	
+Reference/NativeEnvironment/MoonRecords.slang	7152	117	Other	
+Reference/NativeEnvironment/MoonReferenceDraw.h	3208	28	Other	
+Reference/NativeEnvironment/SkyConstantRecord.h	10037	155	Other	
+Reference/NativeEnvironment/SkyRecords.slang	20803	359	Other	
+Reference/NativeEnvironment/SkySpecification.slang	40300	973	Other	
+Reference/NativeEnvironment/StarCatalogueIndex.cpp	6995	159	Other	
+Reference/NativeEnvironment/StarsInspectorPanel.cpp	8864	41	Other	
+Reference/NativeEnvironment/SunInspectorPanel.cpp	22865	303	Other	
+Reference/NativeEnvironment/SunReferenceDraw.h	8144	134	Other	
+Reference/NativeEnvironment/VolumetricMedia.h	39372	668	Other	
+Reference/NativeEnvironment/WeatherMedia.slang	8012	151	Other	
+Reference/NativeEnvironment/environment-graphics.jsx	6468	70	Other	
+Reference/NativeEnvironment/moon-controls.jsx	7309	49	Other	
+SLATE_PORT.md	8577	139	Other	
+Shader/AtmosphereMedium.wgsl	3406	84	Shader	Atmosphere
+Shader/AtmosphereMultiple.wgsl	2254	38	Shader	Atmosphere
+Shader/AtmosphereScattering.wgsl	3646	64	Shader	Atmosphere
+Shader/AtmosphereTransmittance.wgsl	556	13	Shader	Atmosphere
+Shader/CabinOverlay.wgsl	10679	230	Shader	CabinHmi
+Shader/CabinVolume.wgsl	1674	25	Shader	CabinHmi
+Shader/CardCapture.wgsl	2770	64	Shader	Cards
+Shader/CardDirect.wgsl	3933	88	Shader	Cards
+Shader/CardFinal.wgsl	3699	83	Shader	Cards
+Shader/CardIrradiance.wgsl	1554	29	Shader	Cards
+Shader/CardProjection.wgsl	2777	53	Shader	Cards
+Shader/CardRadiosity.wgsl	4839	105	Shader	Cards
+Shader/CardSampling.wgsl	9351	205	Shader	Cards
+Shader/CelestialSky.wgsl	3691	57	Shader	Atmosphere
+Shader/CloudField.wgsl	5117	74	Shader	Clouds
+Shader/CloudPresent.wgsl	5913	76	Shader	Clouds
+Shader/CloudRecords.wgsl	502	5	Shader	Clouds
+Shader/CloudShadowProject.wgsl	1564	31	Shader	Clouds
+Shader/CloudShadowRecords.wgsl	231	6	Shader	Clouds
+Shader/CloudShadowSample.wgsl	1406	23	Shader	Clouds
+Shader/CloudTrace.wgsl	7464	105	Shader	Clouds
+Shader/ClusterDebugFallback.wgsl	2096	32	Shader	Geometry
+Shader/ClusteredLights.wgsl	6548	185	Shader	Illumination
+Shader/DirectRadiance.wgsl	8249	185	Shader	Illumination
+Shader/DiscrepancySequence.wgsl	2433	51	Shader	Illumination
+Shader/DisplayAntialias.wgsl	3504	88	Shader	Display
+Shader/DisplayExposure.wgsl	2567	59	Shader	Display
+Shader/DisplayPresent.wgsl	5531	130	Shader	Display
+Shader/DisplayRecombination.wgsl	8498	153	Shader	Display
+Shader/DistanceRecords.wgsl	3031	62	Shader	DistanceField
+Shader/DistanceTransfer.wgsl	11921	281	Shader	DistanceField
+Shader/DistanceTraversal.wgsl	11985	279	Shader	DistanceField
+Shader/DistanceUnion.wgsl	7716	147	Shader	DistanceField
+Shader/EffectRaster.wgsl	17375	377	Shader	Effects
+Shader/EffectRecords.wgsl	6531	120	Shader	Effects
+Shader/FireIllumination.wgsl	2236	52	Shader	Illumination
+Shader/FlareImage.wgsl	534	11	Shader	Display
+Shader/FlareVisibility.wgsl	1099	23	Shader	Display
+Shader/FogMedium.wgsl	724	11	Shader	Weather
+Shader/ForwardRaster.wgsl	10585	201	Shader	Geometry
+Shader/FragmentDistance.wgsl	4674	115	Shader	DistanceField
+Shader/FrameDescriptor.wgsl	1886	36	Shader	SharedRecords
+Shader/GeometryClusterCull.wgsl	1361	17	Shader	Geometry
+Shader/HiZDownsample.wgsl	1993	37	Shader	Geometry
+Shader/HiZPyramid.wgsl	1295	20	Shader	Geometry
+Shader/InspectionMarch.wgsl	6234	140	Shader	Display
+Shader/LensFlare.wgsl	3494	47	Shader	Display
+Shader/LightningRaster.wgsl	1564	24	Shader	Effects
+Shader/MaterialResolve.wgsl	11908	258	Shader	SharedRecords
+Shader/NativeTwilight.wgsl	1996	22	Shader	Atmosphere
+Shader/NightStars.wgsl	3018	42	Shader	Atmosphere
+Shader/PackingCodec.wgsl	1664	46	Shader	SharedRecords
+Shader/PlumeAdvection.wgsl	14621	278	Shader	Effects
+Shader/PlumeMarch.wgsl	14407	268	Shader	Effects
+Shader/PlumePressure.wgsl	6060	136	Shader	Effects
+Shader/PlumeRecords.wgsl	9828	161	Shader	Effects
+Shader/PlumeVorticity.wgsl	3755	76	Shader	Effects
+Shader/PrecipitationCompute.wgsl	7271	84	Shader	Weather
+Shader/PrecipitationRaster.wgsl	2338	21	Shader	Weather
+Shader/PrecipitationRecords.wgsl	1647	26	Shader	Weather
+Shader/PrecipitationSurface.wgsl	1484	19	Shader	Weather
+Shader/RayTraversal.wgsl	46319	1105	Shader	Illumination
+Shader/ReflectionTraversal.wgsl	3754	76	Shader	Illumination
+Shader/ReservoirRecords.wgsl	4133	106	Shader	Illumination
+Shader/ReservoirSpatial.wgsl	8478	177	Shader	Illumination
+Shader/ReservoirTemporal.wgsl	9959	197	Shader	Illumination
+Shader/SceneRecords.wgsl	11128	226	Shader	SharedRecords
+Shader/ShadowRaster.wgsl	3611	89	Shader	Geometry
+Shader/SkyProjection.wgsl	1281	23	Shader	Atmosphere
+Shader/SnowfallRaster.wgsl	1276	19	Shader	Weather
+Shader/SparkRaster.wgsl	4730	87	Shader	Effects
+Shader/SurfaceDepositRaster.wgsl	798	14	Shader	Weather
+Shader/SurfaceRaster.wgsl	11525	239	Shader	Geometry
+Shader/SurfaceReflectance.wgsl	4644	111	Shader	SharedRecords
+Shader/VarianceTemporal.wgsl	4507	96	Shader	Denoise
+Shader/VarianceUpsample.wgsl	2881	65	Shader	Denoise
+Shader/VarianceWavelet.wgsl	3456	83	Shader	Denoise
+Shader/VehicleVisual.wgsl	6930	172	Shader	CabinHmi
+Shader/VirtualizedGeometryCull.wgsl	9820	217	Shader	Geometry
+Shader/VisibilityRaster.wgsl	4074	91	Shader	Geometry
+Source/AtmosphereColumnInstrument.js	5300	108	Source	
+Source/AtmosphereInspectorDashboard.js	6744	36	Source	
+Source/AtmosphereIntegrator.js	11787	171	Source	
+Source/AtmosphereMediumLight.js	12146	222	Source	
+Source/BoundingStructure.js	8513	193	Source	
+Source/Cabin/AppSpecification.js	4536	83	Source	
+Source/Cabin/ClusterSequence.js	11020	192	Source	
+Source/Cabin/IconDepot.js	6400	47	Source	
+Source/Cabin/ScreenSequence.js	46616	821	Source	
+Source/CabinSequence.js	33955	521	Source	
+Source/CabinStructure.js	13569	258	Source	
+Source/CelestialAtlas.js	1495	22	Source	
+Source/CelestialGizmoRenderer.js	8262	54	Source	
+Source/CelestialInspectorUI.js	4617	102	Source	
+Source/CelestialSolver.js	3076	44	Source	
+Source/ChaseCameraSolver.js	4984	108	Source	
+Source/CloudField.js	4342	31	Source	
+Source/CloudInspectorDashboard.js	12642	57	Source	
+Source/CloudLayerCard.js	3095	32	Source	
+Source/CloudPreviewWorker.js	217	3	Source	
+Source/CloudSequence.js	6668	59	Source	
+Source/CloudSettings.js	4350	24	Source	
+Source/CloudShadow.js	3122	30	Source	
+Source/ClusterDebugOverlay.js	1564	13	Source	
+Source/ClusteredGeometry.js	4703	35	Source	
+Source/ConeSequence.js	9655	206	Source	
+Source/CourseStructure.js	15633	279	Source	
+Source/CsvDownload.js	2263	29	Source	
+Source/DeviceExchange.js	8755	166	Source	
+Source/DiagnosticsInspector.js	10266	66	Source	
+Source/DisplayProjection.js	13866	190	Source	
+Source/DriverInputIntegrator.js	4147	81	Source	
+Source/DrivingCameraMotion.js	1871	30	Source	
+Source/EditorControls.js	16589	452	Source	
+Source/EditorIcons.js	13187	88	Source	
+Source/EditorShell.js	23230	461	Source	
+Source/EditorTransforms.js	7153	51	Source	
+Source/EffectSequence.js	25302	495	Source	
+Source/EnvironmentIconAssets.js	61694	17	Source	
+Source/EnvironmentInspector.js	2587	12	Source	
+Source/EnvironmentPersistence.js	3215	25	Source	
+Source/EnvironmentSettings.js	4736	42	Source	
+Source/FacetCodec.js	2501	49	Source	
+Source/FacetStructure.js	33265	569	Source	
+Source/FogInspectorDashboard.js	11248	94	Source	
+Source/FractureSequence.js	31470	622	Source	
+Source/FractureStructure.js	31625	602	Source	
+Source/GeometryClusters.js	1439	12	Source	
+Source/GeometryHierarchy.js	68496	1313	Source	
+Source/GeometryHierarchyRuntime.js	39231	836	Source	
+Source/HardwareMetrics.js	3194	76	Source	
+Source/HierarchyDebugOverlay.js	24977	458	Source	
+Source/HudLayout.js	599	9	Source	
+Source/HullStructure.js	6278	127	Source	
+Source/IlluminationHost.js	88170	1448	Source	
+Source/InspectorCategories.js	1454	19	Source	
+Source/InspectorPages.js	77048	1075	Source	
+Source/JoltWorld.js	11258	176	Source	
+Source/LevelStructure.js	24846	461	Source	
+Source/LightingSystem.js	19448	438	Source	
+Source/LightningCloudAnchor.js	1845	26	Source	
+Source/LightningSequence.js	2523	28	Source	
+Source/LightningSettings.js	2008	20	Source	
+Source/LightningStorm.js	4955	47	Source	
+Source/LocalCloudPlacement.js	1117	15	Source	
+Source/MaterialSpecification.js	16064	310	Source	
+Source/MoonInspectorInfographics.js	9928	101	Source	
+Source/NativeCloudPanel.js	11733	63	Source	
+Source/NativeEnvironmentControls.js	9938	64	Source	
+Source/NativeEnvironmentPanels.js	5229	38	Source	
+Source/NativeFlarePanel.js	10567	59	Source	
+Source/NativeFlareWorker.js	188	3	Source	
+Source/NativeLensFlareKernel.js	3627	31	Source	
+Source/NativeLightningPanel.js	2782	19	Source	
+Source/NativeLocalFogPanel.js	2911	15	Source	
+Source/NativeMoonPreview.js	4807	37	Source	
+Source/NativeWindPanel.js	11311	66	Source	
+Source/ObservatorySlider.js	773	10	Source	
+Source/OccupantDistanceSpace.js	14374	254	Source	
+Source/OverlayDock.js	7611	184	Source	
+Source/ParticleWorkspace.js	13025	99	Source	
+Source/PlumeSourceProjection.js	15898	259	Source	
+Source/PlumeSpace.js	28878	458	Source	
+Source/PrecipitationReceivers.js	1008	10	Source	
+Source/PrecipitationSequence.js	11907	61	Source	
+Source/PreviewStartup.js	621	9	Source	
+Source/RayTracingSpace.js	47705	1086	Source	
+Source/RecoveryDirector.js	8146	177	Source	
+Source/ResamplingSequence.js	6193	95	Source	
+Source/RigidBodyWorld.js	48237	977	Source	
+Source/SceneDistanceSpace.js	14533	264	Source	
+Source/SessionTelemetry.js	7107	30	Source	
+Source/ShaderInterchange.js	7796	164	Source	
+Source/ShadowProjection.js	10506	173	Source	
+Source/SkyLutPreview.js	4414	66	Source	
+Source/SlateCabinFittings.js	2330	38	Source	
+Source/SlateCabinLayout.js	2160	45	Source	
+Source/SliderControl.js	2441	16	Source	
+Source/SmokeSequence.js	9830	120	Source	
+Source/SnowfallModel.js	4740	43	Source	
+Source/SnowfallSequence.js	2047	9	Source	
+Source/SparkCollision.js	3425	62	Source	
+Source/SparkSequence.js	17871	288	Source	
+Source/SpatialGrid.js	810	11	Source	
+Source/StarCatalogue.js	2577	18	Source	
+Source/StarsInspectorInfographics.js	8513	86	Source	
+Source/StressLayout.js	9673	182	Source	
+Source/StressSequence.js	7733	181	Source	
+Source/SunInspectorDashboard.js	16692	55	Source	
+Source/SurfaceCardDepot.js	21258	385	Source	
+Source/SurfaceDepositGrid.js	4944	45	Source	
+Source/SurfaceDepositMesh.js	2363	23	Source	
+Source/SurfaceDepositSequence.js	5030	27	Source	
+Source/SurfaceProjection.js	10719	152	Source	
+Source/ThirdParty/three/LICENSE	1081	22	Other	
+Source/ThirdParty/three/three.module.js	1272972	53045	Source	
+Source/ThunderAudio.js	2440	28	Source	
+Source/TrainingSequence.js	21321	497	Source	
+Source/TransformGizmo.js	10927	102	Source	
+Source/TransformProjection.js	14507	297	Source	
+Source/TyreCarcassProjection.js	12938	272	Source	
+Source/TyreContinuumElasticity.js	34183	690	Source	
+Source/TyreMarkDepot.js	13223	229	Source	
+Source/TyreSlipSolver.js	6913	132	Source	
+Source/TyreThermalSolver.js	21864	361	Source	
+Source/VarianceIntegrator.js	7616	125	Source	
+Source/VehicleAppearance.js	1912	38	Source	
+Source/VehicleCollisionOverlay.js	2554	17	Source	
+Source/VehicleComponents.js	3178	21	Source	
+Source/VehicleOrbitCamera.js	1090	19	Source	
+Source/VehiclePicking.js	1892	31	Source	
+Source/VehicleSolver.js	67153	1144	Source	
+Source/VehicleSpecification.js	13283	266	Source	
+Source/VehicleSystemsInspector.js	10667	69	Source	
+Source/VehicleVisualState.js	4421	90	Source	
+Source/VirtualizedGeometry.js	40797	607	Source	
+Source/VisibilityResolve.js	14272	269	Source	
+Source/WindSequence.js	1387	17	Source	
+Style/AtmosphereInspector.css	16164	34	Style	
+Style/CelestialInfographics.css	10286	9	Style	
+Style/CloudInspector.css	19300	66	Style	
+Style/FogDashboard.css	2538	11	Style	
+Style/Fonts/OFL.txt	4388	94	Other	
+Style/Fonts/dm-sans-latin-300-normal.woff2	13708	0	Other	
+Style/Fonts/dm-sans-latin-400-normal.woff2	14200	0	Other	
+Style/Fonts/dm-sans-latin-500-normal.woff2	14304	0	Other	
+Style/FrontierEditor.css	34739	1755	Style	
+Style/InspectorCategories.css	489	2	Style	
+Style/LensOptics.css	1834	3	Style	
+Style/MoonCards.css	4031	11	Style	
+Style/NativeEnvironment.css	19514	85	Style	
+Style/SliderControl.css	2457	22	Style	
+Style/SunInspector.css	7744	29	Style	
+Style/VehicleSystems.css	1915	3	Style	
+Style/WindInstruments.css	2455	3	Style	
+Tools/AtmosphereGpuProof.mjs	3855	32	Tools	
+Tools/AtmosphereInspectorBrowserProof.mjs	8010	30	Tools	
+Tools/AtmosphereInspectorDashboard.test.mjs	3604	17	Tools	
+Tools/CabinExposureAndHmiGi.test.mjs	3648	53	Tools	
+Tools/CelestialBrowserProof.mjs	3621	33	Tools	
+Tools/CelestialGizmoBrowserProof.mjs	10212	44	Tools	
+Tools/CelestialHooks.mjs	787	6	Tools	
+Tools/CelestialInfographics.test.mjs	4410	45	Tools	
+Tools/CelestialInfographicsBrowserProof.mjs	11183	53	Tools	
+Tools/CelestialPrecipitationBrowserProof.mjs	7405	28	Tools	
+Tools/CelestialRework.test.mjs	2380	7	Tools	
+Tools/CloudGpuProof.mjs	12274	78	Tools	
+Tools/CloudHooks.mjs	936	16	Tools	
+Tools/CloudInspectorBrowserProof.mjs	4240	22	Tools	
+Tools/CloudInspectorDashboard.test.mjs	1540	10	Tools	
+Tools/CloudLightningBrowserProof.mjs	4511	24	Tools	
+Tools/CloudPerformanceProof.mjs	4616	26	Tools	
+Tools/CloudPresentProbe.mjs	1832	13	Tools	
+Tools/CloudShadowGpuProof.mjs	6090	40	Tools	
+Tools/Clouds.test.mjs	4880	19	Tools	
+Tools/ClusterHooks.mjs	552	6	Tools	
+Tools/ClusteredLighting.test.mjs	5370	131	Tools	
+Tools/CsvDownloadBrowserProof.mjs	4490	34	Tools	
+Tools/DiagnosticsBrowserProof.mjs	6032	36	Tools	
+Tools/DiagnosticsHooks.mjs	646	6	Tools	
+Tools/DrivingCamera.test.mjs	2135	37	Tools	
+Tools/Environment.test.mjs	8782	115	Tools	
+Tools/EnvironmentHooks.mjs	1116	23	Tools	
+Tools/EnvironmentIcons.test.mjs	793	10	Tools	
+Tools/FogGpuProof.mjs	4069	49	Tools	
+Tools/FogInspectorDashboard.test.mjs	2352	12	Tools	
+Tools/FractureBrowserProof.mjs	2408	12	Tools	
+Tools/GeometryClusterGpuProof.mjs	5171	16	Tools	
+Tools/GeometryClusters.test.mjs	1007	5	Tools	
+Tools/GeometryHierarchy.test.mjs	10130	181	Tools	
+Tools/GeometryHierarchyCorpus.mjs	9406	182	Tools	
+Tools/GeometryHierarchyProof.mjs	18352	346	Tools	
+Tools/GeometryHierarchyRuntime.test.mjs	12874	212	Tools	
+Tools/Gizmo.test.mjs	6044	33	Tools	
+Tools/GizmoBrowserProof.mjs	140	3	Tools	
+Tools/HardwareMetrics.test.mjs	835	5	Tools	
+Tools/HeadlessHarness.mjs	11236	193	Tools	
+Tools/HierarchyDebugOverlay.test.mjs	4676	108	Tools	
+Tools/HierarchyDiagnostics.mjs	727	10	Tools	
+Tools/InspectionModes.test.mjs	968	19	Tools	
+Tools/JoltWorld.test.mjs	4057	72	Tools	
+Tools/LensOptics.test.mjs	959	7	Tools	
+Tools/LensOpticsBrowserProof.mjs	4752	26	Tools	
+Tools/Lightning.test.mjs	9656	39	Tools	
+Tools/LightningBrowserProof.mjs	4967	25	Tools	
+Tools/LightningHooks.mjs	729	6	Tools	
+Tools/LightningSpreadBrowserProof.mjs	4912	24	Tools	
+Tools/LocalCloudBrowserProof.mjs	3937	28	Tools	
+Tools/LocalCloudHooks.mjs	2416	10	Tools	
+Tools/LocalWeather.test.mjs	3295	14	Tools	
+Tools/LowPlaneSnowBrowserProof.mjs	132	3	Tools	
+Tools/NativeBrowserProof.mjs	9170	95	Tools	
+Tools/ParticleWorkspace.test.mjs	4121	13	Tools	
+Tools/ParticleWorkspaceBrowserProof.mjs	6686	38	Tools	
+Tools/Precipitation.test.mjs	4348	17	Tools	
+Tools/PrecipitationBrowserProof.mjs	132	3	Tools	
+Tools/PrecipitationHooks.mjs	484	3	Tools	
+Tools/RestirPathTracer.test.mjs	14769	279	Tools	
+Tools/ScreenColour.test.mjs	1366	25	Tools	
+Tools/Serve.py	4791	120	Other	
+Tools/SessionTelemetry.test.mjs	3255	11	Tools	
+Tools/ShaderManifest.test.mjs	2121	42	Tools	
+Tools/SlateIntegrationHooks.mjs	1186	27	Tools	
+Tools/SlatePort.test.mjs	5997	89	Tools	
+Tools/Snowfall.test.mjs	4444	17	Tools	
+Tools/SnowfallBrowserProof.mjs	121	3	Tools	
+Tools/SnowfallHooks.mjs	141	3	Tools	
+Tools/SparkVariation.test.mjs	2538	44	Tools	
+Tools/StarsGpuProof.mjs	4325	15	Tools	
+Tools/SunInspectorBrowserProof.mjs	5941	26	Tools	
+Tools/SunInspectorDashboard.test.mjs	2688	10	Tools	
+Tools/SurfaceDeposit.test.mjs	6649	22	Tools	
+Tools/SurfaceDepositBrowserProof.mjs	130	3	Tools	
+Tools/SurfaceDepositHooks.mjs	150	3	Tools	
+Tools/ThunderBrowserProof.mjs	2031	11	Tools	
+Tools/VehicleAppearance.test.mjs	5530	96	Tools	
+Tools/VehicleComponents.test.mjs	3694	15	Tools	
+Tools/VehicleEffects.test.mjs	7368	126	Tools	
+Tools/VehicleEffectsHooks.mjs	1750	33	Tools	
+Tools/VehicleOrbitCamera.test.mjs	1500	26	Tools	
+Tools/VehicleOrbitHooks.mjs	1014	24	Tools	
+Tools/VehicleStability.mjs	9923	194	Tools	
+Tools/VehicleSystemsBrowserProof.mjs	6947	32	Tools	
+Tools/VisibilityResolve.test.mjs	7343	124	Tools	
+Tools/VisibilityResolveProof.mjs	5432	76	Tools	
+Tools/VolumetricTyrePhysics.test.mjs	6292	139	Tools	
+Tools/WeatherBrowserProof.mjs	4481	39	Tools	
+Tools/WeatherHooks.mjs	868	6	Tools	
+Tools/WeatherRework.test.mjs	2762	11	Tools	
+Tools/WheelHmiRegression.test.mjs	4110	67	Tools	
+Tools/WindInspector.test.mjs	2500	12	Tools	
+Tools/WindInspectorBrowserProof.mjs	6370	26	Tools	
+Tools/package-lock.json	1757	58	Other	
+Tools/package.json	728	18	Other	
+Tools/test_csv_exports.py	2942	70	Other	
+index.html	4008	75	Html	
+node_modules/.package-lock.json	428	15	Other	
+node_modules/jolt-physics/LICENSE	1074	22	Other	
+node_modules/jolt-physics/README.md	8848	172	Other	
+node_modules/jolt-physics/asm/package.json	100	6	Other	
+node_modules/jolt-physics/debug-wasm-compat/package.json	136	6	Other	
+node_modules/jolt-physics/debug-wasm-compat-multithread/package.json	160	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.debug.multithread.wasm-compat.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.debug.multithread.wasm-compat.js	15098062	36315	Other	
+node_modules/jolt-physics/dist/jolt-physics.debug.wasm-compat.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.debug.wasm-compat.js	12099062	35777	Other	
+node_modules/jolt-physics/dist/jolt-physics.js	5460601	1884	Other	
+node_modules/jolt-physics/dist/jolt-physics.multithread.wasm-compat.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.multithread.wasm-compat.js	3831440	1873	Other	
+node_modules/jolt-physics/dist/jolt-physics.multithread.wasm.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.multithread.wasm.js	971304	1875	Other	
+node_modules/jolt-physics/dist/jolt-physics.multithread.wasm.wasm	2482284	26249	Other	
+node_modules/jolt-physics/dist/jolt-physics.wasm-compat.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.wasm-compat.js	3222495	1861	Other	
+node_modules/jolt-physics/dist/jolt-physics.wasm.d.ts	76	6	Other	
+node_modules/jolt-physics/dist/jolt-physics.wasm.js	964712	1863	Other	
+node_modules/jolt-physics/dist/jolt-physics.wasm.wasm	2021569	12011	Other	
+node_modules/jolt-physics/dist/types.d.ts	205839	4480	Other	
+node_modules/jolt-physics/package.json	3016	97	Other	
+node_modules/jolt-physics/wasm/package.json	110	6	Other	
+node_modules/jolt-physics/wasm-compat/package.json	124	6	Other	
+node_modules/jolt-physics/wasm-compat-multithread/package.json	148	6	Other	
+node_modules/jolt-physics/wasm-multithread/package.json	134	6	Other	
+package-lock.json	583	22	Other	
+package.json	263	14	Other	

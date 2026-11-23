@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<!--============================================================================================================================================
+                                                       TEXTUREPAINTLAYERSTACK.HTML
+==============================================================================================================================================-->
+<!-- 🧩 The C++ port target for the paint-layer stack rail, isolated from PaintingSurface.html so the exact slice being ported can be reviewed on
+        its own. Every token, metric and behaviour is lifted VERBATIM from the prototype it is cut from:
+
+          surfaces + hues          Interface/DesignTokens.css        (:root block, unchanged)
+          rail chrome + rows       Interface/LayerInspector.css      (.stack-add-wrap / .search / .stack-body / .stack-row / .sr-*)
+          row anatomy + handlers   Interface/LayerInspector.js       (BuildRow, BindOpacityDrag, RenderStackFoot, OpenAddLayerList)
+          vocabulary               Layers/LayerStack.js              (CLASSIFICATION_*, LAYER_COLOUR_PALETTE, BLEND_MODES, LayerCapacity)
+          kinds                    Layers/LayerKinds.js             (LAYER_KINDS, LAYER_KIND_ORDER)
+
+          expand card + widgets    Interface/LayerInspector.js       (BuildExpand, BuildMaskSection, CollapseExpand, BuildSwitch/Slider/Dropdown)
+          fold timing              Interface/LayerInspector.css      (.stack-expand / .se-* / --fold-ms, PropertyPanelBase FoldRate 0.28/frame)
+
+        🔴 SCOPE: the stack rail — add (4 kinds), focus, inline rename, visibility eye, opacity scrub, reorder drag, delete, filter, 12-cap +
+           tally, PLUS the inline properties card the caret folds open (Visible / Blend / Opacity / Paint / Tag) and its mask editor
+           (Add mask → tone preview + White/Black/Invert + Strength). NO channels, NO material presets.
+
+        🔴 A ROW AND ITS OPEN CARD ARE ONE CARD, not a row above a panel. The row is the card's HEAD: it drops its bottom border, takes the body's
+           fill, and the fold host's -2px top margin cancels the list's 2px gap for that pair only. Every "two stacked boxes" reading is the bug.
+
+        📝 Micro-animation, all of it lifted rather than invented: grid-template-rows 0fr→1fr folds the card (no measured pixel target, because the
+           body's height varies with the mask section); the body fades + lifts 4px WITH the fold; the caret rotates over the SAME --fold-ms so the
+           chevron and the body read as one motion; `.collapsing` un-rotates it in step on the way out; the switch nub slides while its track
+           blends to accent on one shared duration; the slider knob takes a press RING, never a grow.
+
+        📝 Deliberately NOT ported: the row thumbnail is a 30x30 rounded black tile showing the layer's baseColour as a flat swatch (SwatchOf),
+           and only falls back to a classification glyph when the layer paints no base colour. That is why this slice needs NO new icon art. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frontier — Texture Paint Layer Stack</title>
+<style>
+/*----------------------------------------------------------------------------------------------------------------------
+                                            DESIGN TOKENS  (DesignTokens.css :root, verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+:root{
+  --desk:#0a0a0b; --menu:#17171a; --menu-2:#101012; --rail-sel:#232327; --tile:#1d1d21; --tile-hi:#26262b;
+  --hair:rgba(255,255,255,.06); --hair-strong:rgba(255,255,255,.10);
+  --accent:#5b8cff; --ink:#ececf0; --muted:#82828c; --faint:#55555d;
+  --value-black:#0a0a0b; --value-unit:#33333a; --outline:rgba(255,255,255,.22);
+  --row-hover:rgba(255,255,255,.045); --row-sel:var(--rail-sel);
+  --accent-soft:rgba(91,140,255,.14);
+  /* 🔴 AccentPrimary is near-WHITE, NOT the blue --accent: the executable's "on" toggle is a pale track under a white
+     nub, and using the blue here is the single most visible way to get that control wrong. */
+  --knob:#e8e8e8; --knob-text:#101012;
+  /* 🔴 --fold-ms is PropertyPanelBase's FoldRate 0.28/frame converted by settling time: (1-.28)^n < .01 at n≈14, so
+     ≈230ms at 60fps. --ease-ms is the shorter control-state ease every widget shares. */
+  --fold-ms:.23s; --ease-ms:.16s; --ease-out:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--desk); color:var(--ink);
+  font:12px/1 "Segoe UI", system-ui, sans-serif; user-select:none;
+  display:flex; gap:26px; padding:26px; align-items:flex-start;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    THE RAIL CARD
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 340px wide: the width the rail actually ships at inside the summoned inspector card. Reviewed at its real width so
+      clipped names and drifting hit zones are visible rather than hidden by a stretched column. */
+.rail{
+  width:340px; flex:0 0 auto; display:flex; flex-direction:column;
+  background:var(--menu); border:1px solid var(--hair); border-radius:14px; overflow:hidden;
+}
+.rail-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:8px; height:38px; padding:0 12px;
+  background:var(--rail-sel); border-bottom:1px solid var(--hair); font-size:12px; font-weight:600;
+}
+.rail-head .rh-count{ margin-left:auto; color:var(--muted); font-weight:500; font-variant-numeric:tabular-nums; }
+
+/* "+ Add Layer" strip, ABOVE the filter — a full-width affordance so it reads as the primary action. */
+.stack-add-wrap{ flex:0 0 auto; padding:8px 7px 2px; position:relative; }
+.sf-add{
+  display:flex; align-items:center; gap:6px;
+  width:100%; height:30px; justify-content:center; border-radius:9px;
+  font-size:11.5px; background:var(--menu-2); border:1px dashed var(--hair-strong);
+  color:var(--muted); cursor:pointer;
+}
+.sf-add:hover{ background:var(--accent-soft); border-color:var(--accent); border-style:solid; color:var(--ink); }
+/* 🔴 While its kind list is up the button becomes the TOP HALF OF ONE CARD: solid border, matching surface, square
+   BOTTOM corners so the seam with the list vanishes. Without this the rounded button and rounded list read as two
+   separate cards — the reported fault. */
+.sf-add.listopen{
+  background:var(--menu-2); border-style:solid; border-color:var(--hair);
+  border-bottom-color:transparent; border-radius:9px 9px 0 0; color:var(--ink);
+}
+.sf-add.disabled{ opacity:.4; cursor:not-allowed; }
+.sf-add.disabled:hover{ background:var(--menu-2); border-color:var(--hair-strong); border-style:dashed; color:var(--muted); }
+
+.search-wrap{ flex:0 0 auto; padding:7px 7px 4px; }
+.search{
+  display:flex; align-items:center; gap:7px; height:30px; padding:0 9px;
+  background:var(--menu-2); border:1px solid var(--hair); border-radius:9px; transition:border-color .12s;
+}
+.search:focus-within{ border-color:var(--outline); }
+.search svg{ width:14px; height:14px; color:var(--faint); flex:0 0 auto; }
+.search input{ flex:1; min-width:0; background:none; border:0; outline:none; color:var(--ink); font-size:12px; }
+.search input::placeholder{ color:var(--faint); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     STACK ROWS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 NO SCROLLBAR. The rail is a fixed-width column and a gutter — even an 8px one — steals width from the row
+   contents and lands a grey stripe over the card's right border, which is exactly where the "two boxes" read comes
+   from. The wheel still scrolls; only the bar is gone. `scrollbar-width:none` covers Firefox, the pseudo-element
+   covers Chromium, and `-ms-overflow-style` covers the legacy edge case. */
+.stack-body{
+  flex:1; min-height:0; max-height:520px; overflow-y:auto;
+  padding:4px 6px 8px; display:flex; flex-direction:column; gap:2px;
+  scrollbar-width:none; -ms-overflow-style:none;
+  /* 📝 The wheel is intercepted and eased in JS (see BindScrollLag), so the browser's own instant jump must be off. */
+  overscroll-behavior:contain;
+}
+.stack-body::-webkit-scrollbar{ width:0; height:0; }
+
+/* 🔴 The scroll LAG is a transform on an inner sled, not a scrollTop animation: scrollTop is an integer, so easing it
+   frame-by-frame quantises to whole pixels and the motion stutters. The sled carries the fractional remainder as a
+   sub-pixel translate while scrollTop takes the settled whole part, which is what makes the glide read as weight
+   rather than as a series of small jumps.
+   🔴 NO transition on the sled. The easing is driven per-frame from JS, and a CSS transition on top of it would fight
+   the rAF loop — every frame would restart a 100ms interpolation toward a target that had already moved. */
+.stack-sled{ display:flex; flex-direction:column; gap:2px; will-change:transform; }
+.stack-row{
+  position:relative; display:flex; align-items:center; gap:7px;
+  height:44px; padding:0 7px 0 5px;
+  color:var(--muted); cursor:pointer; border:1px solid transparent;
+  transition:background .12s, border-color .12s, opacity .12s;
+}
+.stack-row:hover{ background:var(--row-hover); }
+/* 🔴 The selected row is RECTANGULAR — no border-radius. A rounded selection reads as a chip; the layer stack wants a
+   hard-edged bar. */
+.stack-row.active{ background:var(--row-sel); border-color:var(--hair-strong); }
+/* 🔴 The spine sits ON the card's left edge, NOT out in the gutter. `left:-6px` (the value carried over from the
+   source rail) placed it 6px clear of the border, in the container's own padding — so it read as a loose coloured
+   stripe floating beside the card rather than as the card's lit edge. That is the "disconnected" fault.
+   `left:-1px` covers the 1px border itself, so the accent REPLACES the card's left edge instead of hovering next to
+   it, and the row + expand read as one object with one continuous lit side. */
+.stack-row.active::before{
+  content:""; position:absolute; left:-1px; top:-1px; bottom:-1px; width:3px;
+  background:var(--accent); border-radius:2px 0 0 2px;
+}
+/* 📝 An OPEN focused row owns only the TOP half of the spine, so its own segment must square off at the bottom where
+   the expand's segment continues it — a rounded end mid-card would show a notch at the seam. */
+.stack-row.active.expanded::before,
+.stack-row.active.collapsing::before{ bottom:0; border-radius:2px 0 0 0; }
+.stack-row.dragging{ opacity:.45; }
+.stack-row.dropbefore{ box-shadow:0 -2px 0 0 var(--accent) inset; }
+.stack-row.dropafter{ box-shadow:0 2px 0 0 var(--accent) inset; }
+.stack-row.layer-muted .sr-name,
+.stack-row.layer-muted .sr-thumb,
+.stack-row.layer-muted .sr-meta{ opacity:.4; }
+
+/* the 4px hue tag — the LAYER's identity colour (see LAYER_COLOUR_PALETTE) */
+.sr-tag{ width:4px; height:28px; border-radius:999px; flex:0 0 auto; }
+.sr-thumb{
+  width:30px; height:30px; flex:0 0 auto; position:relative; overflow:hidden;
+  border-radius:8px; border:1px solid var(--hair); background:#000;
+  display:grid; place-items:center;
+}
+.sr-thumb svg{ width:15px; height:15px; }
+.sr-thumb-fill{ position:absolute; inset:0; }
+.sr-text{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.sr-name{ font-size:12px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-name.editing{ background:#000; border:1px solid var(--accent); border-radius:5px; padding:1px 4px; outline:none; }
+.sr-meta{
+  font-size:9px; text-transform:uppercase; letter-spacing:.7px; color:var(--faint);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* the mask chip: the greyscale tone the mask resolves to, reading fill + invert */
+.sr-mask{
+  width:19px; height:19px; flex:0 0 auto; border-radius:5px;
+  border:1px solid var(--hair); background:#000;
+}
+.sr-opacity{
+  flex:0 0 auto; min-width:37px; text-align:center; padding:3px 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted);
+  background:#000; border:1px solid var(--hair); border-radius:999px;
+  font-variant-numeric:tabular-nums; cursor:ew-resize; transition:border-color .14s, color .14s;
+}
+.sr-opacity:hover{ border-color:var(--outline); color:var(--ink); }
+.sr-visibility{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  opacity:0; color:var(--faint); border-radius:5px; transition:opacity .12s, color .12s, background .12s;
+}
+.stack-row:hover .sr-visibility{ opacity:1; }
+.sr-visibility:hover{ background:var(--tile-hi); color:var(--ink); }
+.sr-visibility svg{ width:14px; height:14px; }
+.stack-row.layer-muted .sr-visibility{ opacity:1; }
+.sr-caret{
+  width:18px; height:18px; flex:0 0 auto; display:grid; place-items:center;
+  color:var(--faint); border-radius:5px; cursor:pointer;
+  transition:color .12s, background .12s, transform var(--fold-ms) var(--ease-out);
+}
+.stack-row:hover .sr-caret{ color:var(--muted); }
+.sr-caret:hover{ background:var(--tile-hi); color:var(--ink); }
+.sr-caret svg{ width:12px; height:12px; }
+.stack-row.expanded .sr-caret{ transform:rotate(180deg); color:var(--ink); }
+/* 🔴 During a collapse the row is NOT rebuilt until the fold finishes (CollapseExpand waits on transitionend), so
+   `.expanded` is still on the row and the caret would hold its 180° then snap back a frame after the body had gone.
+   `.collapsing` rides the row for the duration of the fold and un-rotates the caret IN STEP with it. */
+.stack-row.collapsing .sr-caret{ transform:rotate(0deg); color:var(--muted); }
+
+/* 🔴 AN OPEN ROW AND ITS EXPAND ARE ONE CARD. The row is the card's HEAD, so it owns the top/left/right border and
+   drops its bottom edge; .se-body continues the same left/right and closes the bottom. Without this the row kept a
+   full border while the expand drew its own complete box, and the two read as two stacked panels.
+   The head keeps the body's fill even when unfocused, so the card is one continuous surface. */
+.stack-row.expanded,
+.stack-row.collapsing{
+  background:var(--tile); border-color:var(--hair-strong); border-bottom-color:transparent;
+}
+/* 🔴 An open head does NOT lift on hover. The expand is a SIBLING, so no selector on .stack-row can repaint it too —
+   a hover lift here would light the head alone and split the card in tone every time the pointer crossed it. */
+.stack-row.expanded:hover,
+.stack-row.collapsing:hover{ background:var(--tile); }
+.stack-row.expanded.active,
+.stack-row.collapsing.active,
+.stack-row.expanded.active:hover,
+.stack-row.collapsing.active:hover{ background:var(--row-sel); }
+
+.stack-empty{ padding:18px 10px; text-align:center; color:var(--faint); font-size:11px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                       INLINE EXPAND  (LayerInspector.css, verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 The row's settings drop open in the RAIL, directly beneath it. grid-rows 0fr→1fr animates the height with no
+   measured pixel target — the body's natural height is unknown and varies per layer (the mask section appears
+   conditionally), and a `max-height` guess would either clip a tall body or coast through empty space on a short one.
+   This is the CSS equivalent of the C++ measure-then-clip; the grid does the measuring.
+   `--fold-ms` is PropertyPanelBase's FoldRate 0.28/frame converted by settling time, so rail and pane agree.
+   🔴 `margin-top:-2px` cancels .stack-body's 2px flex gap for THIS pair only — between a row and its own expand that
+   gap is a seam straight through the middle of what should be one card. The 3px bottom margin then holds the NEXT
+   layer off the card so it reads as one object with clear air after it. Both live on the fold host, not on .se-body,
+   which is inside the clipped region. */
+.stack-expand{
+  position:relative;
+  display:grid; grid-template-rows:1fr;
+  margin:-2px 0 3px;
+  transition:grid-template-rows var(--fold-ms) var(--ease-out);
+}
+/* 🔴 The lower half of the focus spine, continuing .stack-row.active::before down the card's left edge — same left:-1px
+   and 3px width, so the two segments form ONE unbroken lit edge across the seam. It lives on the fold host and NOT
+   inside .se-clip, so the clip's overflow cannot cut it — and because the host is the element whose height animates,
+   the spine shortens WITH the fold instead of standing at full length over a collapsing body.
+   `bottom:3px` stops it at the border rather than the margin's outer edge, so it does not overshoot into the gap. */
+.stack-expand.active::before{
+  content:""; position:absolute; left:-1px; top:0; bottom:3px; width:3px;
+  background:var(--accent); border-radius:0 0 0 2px;
+}
+.stack-expand.folding{ grid-template-rows:0fr; }
+.stack-expand > .se-clip{ overflow:hidden; min-height:0; }
+/* 🔴 The body fades and lifts slightly WITH the fold, so a half-open expand reads as ARRIVING rather than as a sliver
+   of a finished panel. A transition, not an animation — so it leaves no permanent transform to make this a containing
+   block for the position:fixed lists. */
+.stack-expand > .se-clip > .se-body{
+  opacity:1; transform:translateY(0);
+  transition:opacity var(--fold-ms) var(--ease-out), transform var(--fold-ms) var(--ease-out);
+}
+.stack-expand.folding > .se-clip > .se-body{ opacity:0; transform:translateY(-4px); }
+/* 🔴 NO top margin and NO top border: this is the lower half of the card whose head is .stack-row.expanded, not a
+   panel sitting under a row. */
+.se-body{
+  display:flex; flex-direction:column; gap:6px;
+  padding:7px 8px 9px;
+  background:var(--tile); border:1px solid var(--hair-strong); border-top:none;
+}
+/* 🔴 A FOCUSED card is lit end to end — .stack-row.active fills with --row-sel while .se-body's own fill is --tile;
+   left alone that is a lighter head on a darker body, the two-box read again in tone. The body follows the head. */
+.stack-expand.active > .se-clip > .se-body{ background:var(--row-sel); }
+/* one label + control per line, label fixed so the controls align down the column */
+.se-row{ display:flex; align-items:center; gap:8px; min-height:24px; }
+.se-row > .se-k{
+  flex:0 0 52px; font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint);
+}
+.se-row > .se-v{ flex:1; min-width:0; display:flex; align-items:center; justify-content:flex-end; }
+.se-sect{
+  font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; color:var(--faint);
+  margin-top:3px; padding-top:6px; border-top:1px solid var(--hair);
+}
+.se-body .dropdown{ min-width:0; }
+.se-body .sliderrow{ flex:1; }
+
+/* 📝 There is deliberately no `.se-head` rule: the STACK ROW is the card's header (it opens the card and already carries
+   the name, kind, blend, channel count, opacity and visibility eye). An inner bar restating the same facts read as a
+   second stacked header, so it was removed rather than restyled. */
+
+/*----------------------------------------------------------------------------------------------------------------------
+                    CARD SECTIONS  (BeginPropertyCard / EndPropertyCard, PropertyPanelBase.cpp)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 ControlsGallery groups its controls into COLLAPSIBLE CARDS (BeginPropertyCard per group), not a flat run of rows
+   under static captions. The flat `.se-sect` caption is kept only where a group is a single indivisible block; every
+   multi-control group below is its own folding card so a long body can be reduced to its headers.
+   📝 Each card is CardGap 6px apart, CardRounding is 14px on the real panel but these nest INSIDE a 7px-radius card, so
+      they take 8px — a 14px radius inside a 14px parent leaves a visibly kinked corner.
+   📝 The fold is the same grid-template-rows model as .stack-expand and .msk-fold: no measured pixel target, so a
+      nested fold cannot desync the card that contains it. Three levels now nest on one mechanism. */
+/* 🔴 NO margin-top here. `.se-body` is a flex column with `gap:6px`, which already IS PropertyPanelBase.cpp's CardGap of
+   6px; adding a margin on top of it spaced the sections 12px apart and left 13px of dead field above the first one. The
+   old inner header bar hid this — its negative margins absorbed the slack — so deleting the bar exposed the double gap. */
+.pc{ display:flex; flex-direction:column; }
+.pc-head{
+  display:flex; align-items:center; gap:7px; height:28px; padding:0 8px 0 9px; cursor:pointer;
+  border:1px solid var(--hair); border-radius:8px; background:var(--menu-2);
+  color:var(--muted); font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:.7px;
+  transition:background .12s, border-color .12s, color .12s, border-radius var(--fold-ms) var(--ease-out);
+}
+.pc-head:hover{ background:var(--tile-hi); color:var(--ink); }
+/* 🔴 Joined-edge treatment, third instance: bottom corners square AND bottom border dropped while open. Any other
+   combination reads as two stacked boxes — the same failure the row/expand pair had. */
+.pc.open > .pc-head{
+  border-radius:8px 8px 0 0; border-bottom-color:transparent; color:var(--ink); background:var(--tile-hi);
+}
+/* the chevron, rotating over the SAME --fold-ms as the body it discloses (SectionHeader.cpp drives its angle off the
+   eased fold fraction for exactly this reason — a binary flip desyncs from the reveal) */
+/* 🔴 The title needs its own rule, not just inherited text: without min-width:0 a long section name pushes the count and
+   the chevron out past the header's right edge instead of ellipsising, because they are all flex children. */
+.pc-head .pc-ttl{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pc-head .pc-chev{
+  margin-left:auto; flex:0 0 auto; display:grid; place-items:center; color:var(--faint);
+  transition:transform var(--fold-ms) var(--ease-out), color .12s;
+}
+.pc-head .pc-chev svg{ width:11px; height:11px; }
+.pc.open > .pc-head .pc-chev{ transform:rotate(180deg); color:var(--ink); }
+/* 🔴 A count of what is inside, so a SHUT card still reports its contents rather than being an opaque bar. */
+.pc-head .pc-n{
+  flex:0 0 auto; min-width:14px; text-align:center; padding:0 4px; border-radius:999px;
+  background:var(--tile); border:1px solid var(--hair); color:var(--faint); font-size:9px; letter-spacing:0;
+}
+.pc > .pc-clip{
+  display:grid; grid-template-rows:1fr;
+  transition:grid-template-rows var(--fold-ms) var(--ease-out);
+}
+.pc.shut > .pc-clip{ grid-template-rows:0fr; }
+.pc > .pc-clip > .pc-inner{ overflow:hidden; min-height:0; }
+.pc > .pc-clip > .pc-inner > .pc-pane{
+  display:flex; flex-direction:column; gap:6px;
+  padding:7px 8px 8px;
+  border:1px solid var(--hair); border-top:none; border-radius:0 0 8px 8px; background:var(--menu-2);
+  opacity:1; transform:translateY(0);
+  transition:opacity var(--fold-ms) var(--ease-out), transform var(--fold-ms) var(--ease-out);
+}
+.pc.shut > .pc-clip > .pc-inner > .pc-pane{ opacity:0; transform:translateY(-4px); }
+/* 🔴 A section card's pane is the innermost surface, so the Layermask disclosure nested inside it must NOT repeat the
+   same --menu-2 fill or the two become one flat field with a stray border. It steps up to --tile. */
+.pc-pane .msk-sum{ background:var(--tile); }
+.pc-pane .msk-fold.open > .msk-sum{ background:var(--tile-hi); }
+.pc-pane .msk-fold > .msk-clip > .msk-inner > .msk-pane{ background:var(--tile); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                            SHARED WIDGETS  (ControlsGallery controls, LayerInspector.css verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 BooleanEntry.cpp: the track blends ControlActive → AccentPrimary and the nub slides, both driven by ONE eased
+   phase — so the two transitions MUST share a duration or the colour would arrive before the nub. */
+.switch{
+  width:38px; height:22px; flex:0 0 auto; position:relative; cursor:pointer;
+  background:var(--rail-sel); border-radius:999px;
+  transition:background var(--ease-ms) var(--ease-out);
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  background:var(--knob); border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.35);
+  transition:left var(--ease-ms) var(--ease-out);
+}
+.switch.on .nub{ left:19px; }
+
+/* 🔴 label | valuebox | slider, mirroring ControlsPreview's slider row. The valuebox holds a fixed width so the track
+   starts at the same x down the whole column. */
+.sliderrow{ display:flex; align-items:center; gap:9px; min-width:0; }
+.sliderrow .valuebox{ flex:0 0 62px; display:flex; height:22px; overflow:hidden; border-radius:999px; }
+.valuebox .num{ flex:1; min-width:0; display:grid; place-items:center; background:var(--value-black); }
+.valuebox .num input{
+  width:100%; background:none; border:0; outline:none; text-align:center;
+  color:var(--ink); font:600 10.5px/1 "Segoe UI", system-ui, sans-serif; font-variant-numeric:tabular-nums;
+}
+.unitseg{
+  flex:0 0 22px; display:grid; place-items:center; overflow:hidden;
+  font-size:10px; color:var(--muted); background:var(--value-unit);
+}
+/* 🔴 A THICK capsule rail, not a hairline. ValueSlider.cpp sizes the track `Height * 0.72f` off ResolvePillHeight —
+   at the panel's compact row that is ~19px and fully capsule-rounded. A 4px rail is a completely different control.
+   🔴 `touch-action:none` is load-bearing, not a mobile nicety: without it the browser claims the gesture for panning
+   and STOPS sending pointermove to the captured track partway through a drag — the knob freezing mid-scrub. */
+.slider{
+  flex:1; min-width:0; position:relative; height:19px;
+  background:var(--value-black); border-radius:999px; cursor:pointer;
+  touch-action:none; user-select:none;
+}
+.slider .fill{
+  position:absolute; left:0; top:0; bottom:0; z-index:0;
+  background:var(--accent); border-radius:999px; pointer-events:none;
+}
+/* 🔴 Geometry straight off DrawSliderTrack: `KnobRadius = Size.y * 0.5f + 1.0f` — a circle as tall as the TRACK plus
+   a pixel each side, so on the 19px rail it is 21px across and just overhangs the capsule. A fat white bead nearly
+   filling the rail, NOT a small dot on a thin line, and the SAME diameter whatever the fill is doing.
+   The outline is `AddCircle(..., IM_COL32(0,0,0,90), 1.0f)` — a 1px hairline, NOT a soft drop shadow (which is the
+   one thing an ImDrawList circle cannot draw). */
+.slider .knob{
+  position:absolute; top:50%; width:21px; height:21px; margin-left:-10.5px; z-index:1;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35); pointer-events:none;
+  transition:box-shadow var(--ease-ms) var(--ease-out);
+}
+/* 🔴 A press RING, not a grow. The C++ knob is a FIXED radius — it never scales on grab — so the pressed state may
+   only add the halo that says "captured", never change the geometry the value maps to. */
+.slider:active .knob{ box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 0 4px var(--accent-soft); }
+
+/* 🔴 The head IS a value pill. Dropdown.cpp calls `DrawValuePill(...)` — the very same painter the numeric field
+   uses, with ">" as the unit. So: fully-rounded capsule, black body, one grey cap holding the caret, and NO BORDER. */
+.dropdown{ position:relative; min-width:0; }
+.dd-head{
+  display:flex; align-items:center; height:24px; padding:0; overflow:hidden;
+  background:var(--value-black); border:0; border-radius:999px; cursor:pointer;
+}
+.dd-head .cur{
+  flex:1; min-width:0; padding-left:12px; font-size:11px; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:left;
+}
+.dd-head .caret{ flex:0 0 22px; display:grid; place-items:center; background:var(--value-unit); align-self:stretch; color:var(--muted); }
+.dd-head .caret svg{ width:10px; height:10px; transition:transform var(--ease-ms) var(--ease-out); }
+.dropdown.listopen .dd-head .caret svg{ transform:rotate(180deg); }
+/* 🔴 While its list is up the pill becomes the TOP HALF OF ONE CARD, same treatment as .sf-add.listopen: the joined
+   BOTTOM corners square off and the outer ones keep the capsule's curve, so head + list share one silhouette. The
+   caret cap keeps its own fill, so the pill still reads as a value pill rather than turning into a plain box. */
+.dropdown.listopen .dd-head{ border-radius:12px 12px 0 0; }
+.dropdown.listopen.flipped .dd-head{ border-radius:0 0 12px 12px; }
+
+/* the colour field — a swatch pill that opens a native picker */
+.cfield{
+  display:flex; align-items:center; gap:8px; height:24px; padding:0 3px 0 12px;
+  background:var(--value-black); border-radius:999px; cursor:pointer; min-width:96px;
+}
+.cfield .cf-hex{ flex:1; font-size:10.5px; color:var(--ink); font-variant-numeric:tabular-nums; letter-spacing:.4px; }
+.cfield .cf-chip{ width:18px; height:18px; flex:0 0 auto; border-radius:999px; border:1px solid var(--hair-strong); }
+.cfield input[type=color]{ position:absolute; width:0; height:0; opacity:0; pointer-events:none; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                        MASK SECTION  (LayerInspector.css, verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 The mask is its own DISCLOSURE inside the card, not a flat block pinned to the bottom of it. Named "Layermask" on
+   its summary bar so the thing being folded is stated even while shut — a bare chevron over "Mask" reads as a heading
+   that happens to be clickable rather than as a control with a closed state.
+   It reuses the SAME grid-template-rows fold as .stack-expand (see the note there) so the two nest without a second
+   animation model: the outer card's height animates, and this one's height animates inside it. Because the outer fold
+   is `1fr -> 0fr` with no measured pixel target, a nested fold changing the body's height mid-flight cannot desync it. */
+.msk-fold{ display:flex; flex-direction:column; }
+.msk-sum{
+  display:flex; align-items:center; gap:7px; height:26px; padding:0 7px 0 8px; cursor:pointer;
+  border:1px solid var(--hair); border-radius:7px; background:var(--menu-2);
+  color:var(--muted); transition:background .12s, border-color .12s, color .12s, border-radius var(--fold-ms) var(--ease-out);
+}
+.msk-sum:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-sum svg{ width:12px; height:12px; }
+/* the summary's own chevron, rotating over the SAME --fold-ms as the body it discloses */
+.msk-sum .msk-chev{
+  flex:0 0 auto; margin-left:auto; display:grid; place-items:center; color:var(--faint);
+  transition:transform var(--fold-ms) var(--ease-out), color .12s;
+}
+.msk-sum .msk-chev svg{ width:11px; height:11px; }
+.msk-fold.open > .msk-sum .msk-chev{ transform:rotate(180deg); color:var(--ink); }
+.msk-sum .msk-ttl{ font-size:10.5px; letter-spacing:.2px; }
+/* 🔴 The tone dot on the SHUT bar. With the editor folded away the mask's resolved value would otherwise be invisible,
+   so a closed Layermask would look identical whether it was revealing everything or hiding everything. */
+.msk-sum .msk-dot{
+  width:11px; height:11px; flex:0 0 auto; border-radius:50%; border:1px solid var(--hair-strong);
+}
+/* 🔴 While open the bar is the HEAD of one card with the body below it — the same joined-edge treatment as .dd-head
+   over .dd-list: bottom corners square, bottom border dropped. Any other combination reads as two stacked boxes. */
+.msk-fold.open > .msk-sum{
+  border-radius:7px 7px 0 0; border-bottom-color:transparent; color:var(--ink); background:var(--tile-hi);
+}
+.msk-fold > .msk-clip{
+  display:grid; grid-template-rows:1fr;
+  transition:grid-template-rows var(--fold-ms) var(--ease-out);
+}
+.msk-fold.shut > .msk-clip{ grid-template-rows:0fr; }
+.msk-fold > .msk-clip > .msk-inner{ overflow:hidden; min-height:0; }
+.msk-fold > .msk-clip > .msk-inner > .msk-pane{
+  display:flex; flex-direction:column; gap:6px;
+  padding:7px 7px 8px;
+  border:1px solid var(--hair); border-top:none; border-radius:0 0 7px 7px; background:var(--menu-2);
+  opacity:1; transform:translateY(0);
+  transition:opacity var(--fold-ms) var(--ease-out), transform var(--fold-ms) var(--ease-out);
+}
+.msk-fold.shut > .msk-clip > .msk-inner > .msk-pane{ opacity:0; transform:translateY(-4px); }
+
+/* the left-expand "Add mask" affordance shown when the layer has no mask yet */
+.msk-add{
+  display:flex; align-items:center; justify-content:center; gap:6px; height:26px;
+  border:1px dashed var(--hair-strong); border-radius:7px; background:var(--menu-2);
+  color:var(--muted); font-size:10.5px; cursor:pointer;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.msk-add:hover{ background:var(--accent-soft); border-color:var(--accent); border-style:solid; color:var(--ink); }
+.msk-add svg{ width:13px; height:13px; }
+.msk-row{ display:flex; align-items:center; gap:9px; }
+.msk-prev{
+  width:30px; height:30px; flex:0 0 auto; position:relative; overflow:hidden;
+  border-radius:7px; border:1px solid var(--hair); background:#000;
+}
+.msk-grad{ position:absolute; inset:0; }
+.msk-info{ min-width:0; flex:1; }
+.msk-nm{ font-size:11.5px; color:var(--ink); }
+.msk-meta{ font-size:9.5px; color:var(--faint); margin-top:3px; }
+.mc-x{
+  width:18px; height:18px; flex:0 0 auto; display:grid; place-items:center; border-radius:5px;
+  color:var(--faint); font-size:13px; cursor:pointer; transition:background .12s, color .12s;
+}
+.mc-x:hover{ background:rgba(255,107,107,.14); color:#ff6b6b; }
+.msk-toolbar{ display:flex; gap:4px; }
+.msk-tool{
+  flex:1; height:23px; display:grid; place-items:center; border-radius:6px;
+  border:1px solid var(--hair); background:var(--menu-2); color:var(--muted); font-size:10.5px; cursor:pointer;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.msk-tool:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-tool.on{ border-color:var(--accent); color:var(--ink); background:var(--accent-soft); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                      FOOTER
+----------------------------------------------------------------------------------------------------------------------*/
+.stack-foot{
+  flex:0 0 auto; display:flex; align-items:center; height:30px; padding:0 12px;
+  background:var(--menu-2); border-top:1px solid var(--hair); color:var(--muted); font-size:10.5px;
+}
+.sf-tally{ display:flex; align-items:center; gap:6px; }
+.pf-strong{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-dot{ color:var(--value-unit); }
+.sf-cap{ margin-left:auto; color:var(--accent); font-size:10px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   FLOATING LISTS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 A LIST IS THE LOWER HALF OF ITS HEAD'S CARD — never a detached panel floating below it. Three things have to
+   agree or it reads as two pieces stacked, which was the reported fault:
+     1. the joined edge loses its rounding AND its border (a 1px line across the seam is the clearest "two boxes" tell)
+     2. the list matches the head's fill, so no tonal step crosses the seam
+     3. the OUTER corners keep the head's own radius — a 7px list under a 999px capsule reads as two shapes even with
+        a perfect seam, because the silhouette changes halfway down. `--join-radius` is set per-anchor from JS.
+   The shadow is cast only DOWNWARD and given no top spread, so it cannot darken the seam it is supposed to be
+   invisible across. */
+.dd-list{
+  position:fixed; z-index:60; background:var(--menu-2); border:1px solid var(--hair);
+  padding:4px; max-height:260px; overflow-y:auto;
+  --join-radius:9px;
+  border-radius:0 0 var(--join-radius) var(--join-radius);
+  border-top-color:transparent;
+  box-shadow:0 14px 30px -6px rgba(0,0,0,.6);
+  /* the list has its own quiet scroll, and it must not show a bar either */
+  scrollbar-width:none; -ms-overflow-style:none;
+}
+.dd-list::-webkit-scrollbar{ width:0; height:0; }
+/* Flipped above its head: the join moves to the BOTTOM edge, so the rounding and the missing border move with it. */
+.dd-list.above{
+  border-radius:var(--join-radius) var(--join-radius) 0 0;
+  border-top-color:var(--hair); border-bottom-color:transparent;
+  box-shadow:0 -14px 30px -6px rgba(0,0,0,.6);
+}
+/* 🔴 An UNANCHORED list (the right-click row menu) is a real floating panel — it has no head to join, so it keeps a
+   full border and an even radius on all four corners. Without this the context menu inherited the joined treatment
+   and sat there with one flat edge and a missing border against nothing. */
+.dd-list.detached{
+  border-radius:8px; border-color:var(--hair); border-top-color:var(--hair);
+  box-shadow:0 14px 34px rgba(0,0,0,.55);
+}
+.dd-item{
+  display:flex; align-items:center; gap:8px; height:26px; padding:0 10px;
+  border-radius:5px; color:var(--muted); cursor:pointer; font-size:11px;
+  transition:background .1s, padding-left .1s, color .1s;
+  /* 🔴 The staggered entrance: each row settles in just behind the card, which is what sells the unfold rather than a
+     hard cut. Transform + opacity only — nothing that costs layout, so a 7-item list stays at frame rate. */
+  opacity:0; transform:translateY(-4px);
+  transition:background .1s, padding-left .1s, color .1s,
+             opacity var(--ease-ms) var(--ease-out), transform var(--ease-ms) var(--ease-out);
+}
+.dd-list.open .dd-item{ opacity:1; transform:translateY(0); }
+.dd-list.open .dd-item:nth-child(1){ transition-delay:.015s; }
+.dd-list.open .dd-item:nth-child(2){ transition-delay:.03s; }
+.dd-list.open .dd-item:nth-child(3){ transition-delay:.045s; }
+.dd-list.open .dd-item:nth-child(n+4){ transition-delay:.06s; }
+.dd-item:hover{ background:var(--rail-sel); padding-left:14px; color:var(--ink); }
+.dd-item.sel{ color:var(--ink); }
+.dd-item .radio{
+  width:11px; height:11px; flex:0 0 auto; border-radius:999px; border:1.5px solid var(--value-unit);
+}
+.dd-item.sel .radio{ border-color:var(--accent); background:radial-gradient(circle,var(--accent) 0 45%,transparent 47%); }
+.sf-swatch{ width:11px; height:11px; flex:0 0 auto; border-radius:3px; }
+.dd-sep{ height:1px; margin:4px 6px; background:var(--hair); }
+.dd-item.danger{ color:#e0685f; }
+.dd-item.danger:hover{ background:rgba(224,104,95,.12); color:#f08f88; }
+.dd-item.disabled{ opacity:.35; pointer-events:none; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  READOUT (review aid)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 Not part of the port — it exists so a reviewer can see the state the rail publishes, above all FOCUS, which is the
+      one field a caller MUST read and which deliberately does NOT fall back to the top layer. */
+.readout{ flex:0 0 auto; width:340px; font-size:11px; color:var(--muted); }
+.readout h4{ margin:0 0 8px; font-size:10px; letter-spacing:.8px; text-transform:uppercase; color:var(--faint); font-weight:600; }
+.readout .card{ background:var(--menu); border:1px solid var(--hair); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+.readout .kv{ display:flex; gap:8px; padding:3px 0; }
+.readout .kv b{ color:var(--ink); font-weight:500; margin-left:auto; font-variant-numeric:tabular-nums; }
+.readout .none{ color:#e0685f; }
+.readout ul{ margin:0; padding-left:16px; line-height:1.7; }
+.readout code{ color:var(--ink); background:var(--menu-2); padding:1px 4px; border-radius:3px; font-size:10px; }
+</style>
+</head>
+<body>
+
+<div class="rail" id="Rail">
+  <div class="rail-head">
+    <span>Layers</span>
+    <span class="rh-count" id="HeadCount">2 / 12</span>
+  </div>
+  <div class="stack-add-wrap" id="AddHost"></div>
+  <div class="search-wrap">
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+      </svg>
+      <input id="Filter" type="text" placeholder="Filter layers" spellcheck="false">
+    </label>
+  </div>
+  <!-- 📝 The sled is the element the rows live on. The scroller (.stack-body) takes the whole-pixel scrollTop; the
+          sled carries the fractional remainder as a sub-pixel transform, which is what makes the lag glide. -->
+  <div class="stack-body" id="StackScroll"><div class="stack-sled" id="StackBody"></div></div>
+  <div class="stack-foot" id="StackFoot"></div>
+</div>
+
+<div class="readout">
+  <h4>Published state</h4>
+  <div class="card" id="Readout"></div>
+  <h4>Interactions to check</h4>
+  <div class="card">
+    <ul>
+      <li><b>Add Layer</b> → 4 kinds; button joins its list as one card; disabled at 12</li>
+      <li><b>Click</b> a row focuses it (accent spine, left <code>-6px</code>)</li>
+      <li><b>Double-click</b> the name renames inline (Enter commits, Esc reverts)</li>
+      <li><b>Drag</b> the <code>%</code> pill — 2px per percent, 0–100</li>
+      <li><b>Eye</b> appears on hover; stays lit while hidden</li>
+      <li><b>Caret</b> folds the properties card open — never steals focus; row + card are ONE card</li>
+      <li><b>In the card</b>: Visible switch, Blend pill, Opacity slider, Paint + Tag colour</li>
+      <li><b>Add mask</b> → tone preview, White/Black/Invert, Strength; chip appears in the row</li>
+      <li>Open several cards at once; each folds independently</li>
+      <li><b>Drag a row</b> to reorder; suppressed while filtering</li>
+      <li><b>Right-click</b> a row focuses it + opens raise/lower/delete</li>
+      <li>Bottom layer refuses delete</li>
+    </ul>
+  </div>
+</div>
+
+<script type="module">
+/*----------------------------------------------------------------------------------------------------------------------
+                                        VOCABULARY  (LayerStack.js + LayerKinds.js, verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+const CLASSIFICATION_LABEL = { material:"Material", generator:"Generator", brushwork:"Brushwork", flood:"Flood" };
+const CLASSIFICATION_TINT  = { material:"#5b8cff", generator:"#c98b3a", brushwork:"#4fb286", flood:"#b45fd0" };
+
+// 🔴 The per-layer IDENTITY palette, distinct from CLASSIFICATION_TINT: a classification tint is SHARED by every layer
+//    of that kind, so four material layers drew four identical tags and the marker carried no information at all.
+//    Hues alternate around the wheel so CONSECUTIVE entries contrast in a 4px swatch.
+const LAYER_COLOUR_PALETTE = ["#4fb286","#e0a03c","#7c6cf0","#e0685f","#3fa9d4","#c76fb8",
+                              "#9dbd4f","#d9784a","#5b8cff","#57c07a","#b0763a","#8d8fa8"];
+
+// 🔴 The order here IS the shader's enum; the composite switches on the index. Append only.
+const BLEND_MODES = ["Normal","Multiply","Screen","Overlay","Add","Darken","Linear Dodge"];
+
+const LayerCapacity = 12;
+
+const LAYER_KINDS = {
+  paint:     { Label:"Paint",     Tint:"#f97316", Classification:"brushwork", Flooded:false, Channels:["baseColour"] },
+  fill:      { Label:"Fill",      Tint:"#3b82f6", Classification:"flood",     Flooded:true,  Channels:["baseColour","roughness","metallic"] },
+  material:  { Label:"Material",  Tint:"#8b5cf6", Classification:"material",  Flooded:true,  Channels:["baseColour","roughness","metallic"] },
+  generator: { Label:"Generator", Tint:"#10b981", Classification:"generator", Flooded:false, Channels:["baseColour"] }
+};
+const LAYER_KIND_ORDER = ["paint","fill","material","generator"];
+const KindLabel = (K) => LAYER_KINDS[K]?.Label ?? String(K);
+const KindTint  = (K) => LAYER_KINDS[K]?.Tint  ?? "#888";
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                      GLYPHS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 Only the four the rail actually needs, and every one already exists in the engine's global "g-" tier
+      (g-eye-open, g-eye-closed, g-chevron-down) — so the C++ port adds NO new icon art. */
+const GLYPH = {
+  plus:        '<path d="M12 5v14M5 12h14"/>',
+  eyeOpen:     '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/>',
+  eyeOff:      '<path d="M4 4l16 16"/><path d="M9.6 5.3A10.9 10.9 0 0 1 12 5c6.4 0 10 6 10 6a17 17 0 0 1-3.3 3.9M6.4 7.5A17 17 0 0 0 2 11s3.6 6 10 6a11 11 0 0 0 3-.4"/>',
+  chevronDown: '<path d="M6 9l6 6 6-6"/>',
+  // 📝 g-mask in the engine's global tier: a circle half-occluding a square, the standard "masked" mark.
+  mask:        '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="12" r="4.4" fill="currentColor" stroke="none"/>'
+};
+const Icon = (Key, Size) =>
+  `<svg viewBox="0 0 24 24" width="${Size}" height="${Size}" fill="none" stroke="currentColor" ` +
+  `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${GLYPH[Key]}</svg>`;
+
+const ClassificationSvg = (Classification, Size) =>
+  `<svg viewBox="0 0 24 24" width="${Size}" height="${Size}" fill="none" stroke="${CLASSIFICATION_TINT[Classification]}" ` +
+  `stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>`;
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     THE STORE
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 Ordinal 0 is the TOP of the stack, matching the prototype and every paint tool's presentation, so a compositor
+      walks the store BACKWARD. Storing bottom-first would read better in a compositor and would invert the rail on
+      screen, which is the more visible wrong.
+   🔴 Every action addresses a layer by TOKEN, never by ordinal: a reorder or delete renumbers every ordinal below the
+      change, so an ordinal captured before a mutation names a DIFFERENT layer afterwards. */
+const Stack = { Layers:[], NextToken:1, Issued:0, FocusToken:0 };
+
+const ColourToHex = (T) => "#" + T.map((V) =>
+  Math.max(0,Math.min(255,Math.round((V ?? 0)*255))).toString(16).padStart(2,"0")).join("");
+
+const ResolveLayer   = (Token) => Stack.Layers.find((L) => L.Token === Token) ?? null;
+const ResolveOrdinal = (Token) => Stack.Layers.findIndex((L) => L.Token === Token);
+// 🔴 No fallback to the top layer: an unset focus resolves to null so a caller must REFUSE the stroke.
+const ResolveFocused = () => ResolveLayer(Stack.FocusToken);
+
+const ChannelsOf = (L) => L.Channels ?? [];
+// A layer's base colour as a CSS colour, or null when it paints none. This is the row thumbnail.
+const SwatchOf = (L) => ChannelsOf(L).includes("baseColour") && Array.isArray(L.Values?.baseColour)
+                        ? ColourToHex(L.Values.baseColour) : null;
+// 🔴 Indexed off the ISSUE ordinal, never the store position: a position-derived colour re-shuffles every tag on a
+//    reorder, so the marker the user just learned jumps to another layer — the one thing identity colour must not do.
+// 📝 An authored TagColour overrides the palette pick; until the user sets one the palette answers.
+const LayerHue = (L) => L.TagColour ?? LAYER_COLOUR_PALETTE[L.Issue % LAYER_COLOUR_PALETTE.length];
+
+function IntegrateLayer(Kind, Values)
+{
+  // 🔴 The cap is enforced HERE, in the verb, not at the call site: a rail that only greys its button still creates
+  //    layers through any second caller, and the allocation the cap exists to prevent happens anyway.
+  if (Stack.Layers.length >= LayerCapacity) { return 0; }
+
+  const Spec  = LAYER_KINDS[Kind];
+  const Layer = {
+    Token: Stack.NextToken++, Issue: Stack.Issued++,
+    Name: `NEW_${KindLabel(Kind)}`, Kind, Classification: Spec.Classification,
+    Blend: BLEND_MODES[0], Opacity: 100, Shown: true,
+    Channels: [...Spec.Channels],
+    Values: { baseColour: Values ?? (Spec.Flooded ? [0.5,0.5,0.5] : null) }
+  };
+  // 📝 A new layer lands ABOVE the focused one, which is where a painter expects it. With focus unset it lands on top.
+  const Seat = Stack.FocusToken ? Math.max(0, ResolveOrdinal(Stack.FocusToken)) : 0;
+  Stack.Layers.splice(Seat, 0, Layer);
+  Stack.FocusToken = Layer.Token;
+  return Layer.Token;
+}
+
+function ReclaimLayer(Token)
+{
+  const Ordinal = ResolveOrdinal(Token);
+  if (Ordinal < 0) { return false; }
+  // 🔴 The bottom layer is the substrate every other layer composites over; removing it lets the resolve show through
+  //    to the clear colour, so it is REFUSED rather than allowed to produce a confusing result.
+  if (Stack.Layers.length <= 1) { return false; }
+
+  Stack.Layers.splice(Ordinal, 1);
+  if (Stack.FocusToken === Token)
+  {
+    const Landing = Math.min(Ordinal, Stack.Layers.length - 1);
+    Stack.FocusToken = Landing >= 0 ? Stack.Layers[Landing].Token : 0;
+  }
+  return true;
+}
+
+function RelocateLayer(Token, TargetOrdinal)
+{
+  const Ordinal = ResolveOrdinal(Token);
+  if (Ordinal < 0 || TargetOrdinal < 0 || TargetOrdinal >= Stack.Layers.length || TargetOrdinal === Ordinal) { return false; }
+  const [Lifted] = Stack.Layers.splice(Ordinal, 1);
+  Stack.Layers.splice(TargetOrdinal, 0, Lifted);
+  return true;
+}
+
+// The opening document: a flooded WHITE base plus one empty brushwork layer, focus on the brushwork.
+// 🔴 A clean white surface, not a pre-dressed demo stack. A seeded material stack screenshots better but is the wrong
+//    start for a painting tool: every first stroke lands on somebody else's material. White also keeps the brush colour
+//    honest — paint over grey and every colour reads dark.
+function SeedLayerStack()
+{
+  Stack.Layers = []; Stack.NextToken = 1; Stack.Issued = 0; Stack.FocusToken = 0;
+  const Base = IntegrateLayer("fill", [1,1,1]);
+  ResolveLayer(Base).Name = "Base — White";
+  const Brush = IntegrateLayer("paint", null);
+  ResolveLayer(Brush).Name = "Paint 1";
+  Stack.FocusToken = Brush;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    FLOATING LISTS
+----------------------------------------------------------------------------------------------------------------------*/
+let OpenList = null, OpenAnchor = null;
+
+function CloseLists()
+{
+  if (OpenList) { OpenList.remove(); OpenList = null; }
+  if (OpenAnchor) { OpenAnchor.classList.remove("listopen","flipped"); OpenAnchor = null; }
+}
+addEventListener("pointerdown", (E) => { if (OpenList && !OpenList.contains(E.target)) { CloseLists(); } }, true);
+addEventListener("keydown", (E) => { if (E.key === "Escape") { CloseLists(); } });
+
+// 🔴 Flush to its anchor: width matched EXACTLY and the joined edge pinned with NO gap, so the pair reads as one card.
+//
+// 🔴 The list's OUTER corners take the ANCHOR's own radius, read off the live computed style rather than hardcoded.
+//    A 7px list hanging under a 999px capsule reads as two shapes even with a perfect seam, because the silhouette
+//    changes halfway down — matching the curve is what finally makes the pair one object. A capsule's 999px is clamped
+//    to 12px, since a full capsule radius on the list's bottom edge would bow a multi-row list into a lozenge.
+function PlaceList(List, Anchor, MatchWidth)
+{
+  const Box = Anchor.getBoundingClientRect();
+  if (MatchWidth) { List.style.width = `${Box.width}px`; }
+  List.style.left = `${Box.left}px`;
+
+  const HeadRadius = parseFloat(getComputedStyle(Anchor.querySelector(".dd-head") ?? Anchor).borderTopLeftRadius) || 9;
+  List.style.setProperty("--join-radius", `${Math.min(HeadRadius, 12)}px`);
+
+  document.body.appendChild(List);
+
+  // 🔴 Measured AFTER the append (an unmounted node has no height) but BEFORE `.open` (the stagger starts the rows
+  //    translated, which does not change layout height, so the measurement is honest either way).
+  const Height = List.offsetHeight;
+  const Flip   = Box.bottom + Height > innerHeight - 8;
+  if (Flip)
+  {
+    // 🔴 `Box.top - Height` with NO gap, and the seam is the anchor's TOP edge. A 1px offset here shows the desk
+    //    through the join and undoes the whole one-card treatment.
+    List.style.top = `${Box.top - Height}px`;
+    List.classList.add("above");
+    Anchor.classList.add("flipped");
+  }
+  else { List.style.top = `${Box.bottom}px`; }
+
+  // 🔴 Deferred one frame: the node was appended THIS frame so it has no committed style yet, and adding `.open` in
+  //    the same frame gives the browser no start value to interpolate from — the rows would hard-cut into place
+  //    instead of settling in. Same reason the expand's reveal waits two frames.
+  requestAnimationFrame(() => List.classList.add("open"));
+
+  OpenList = List; OpenAnchor = Anchor;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                      RENDERING
+----------------------------------------------------------------------------------------------------------------------*/
+const Part = {
+  // 📝 Body is the SLED (rows are appended here); Scroll is the clipping scroller that owns scrollTop.
+  Body:   document.getElementById("StackBody"),
+  Scroll: document.getElementById("StackScroll"),
+  Foot:   document.getElementById("StackFoot"),
+  AddHost:document.getElementById("AddHost"),
+  Filter: document.getElementById("Filter"),
+  Head:   document.getElementById("HeadCount"),
+  Readout:document.getElementById("Readout")
+};
+let FilterTerm = "", RowDragged = false, RenameToken = 0;
+
+// 🔴 A SET, not a single token: several rows can be open at once, so every fold operation must be scoped to the token
+//    it belongs to rather than to "the expand in the rail". `SeededExpands` records which ones have already played
+//    their reveal, so a rebuild mid-drag does not replay it.
+const Expanded = new Set(), SeededExpands = new Set();
+
+function Render()
+{
+  Part.Body.innerHTML = "";
+  const Shown = Stack.Layers.filter((L) =>
+    !FilterTerm || L.Name.toLowerCase().includes(FilterTerm));
+
+  // 📝 Drop expand state for tokens the stack no longer has. Nothing else prunes these Sets, so deleting an open
+  //    layer would leave its token in them for the rest of the session. Tokens are never re-issued, so this cannot
+  //    mis-seed a future layer — it is housekeeping that keeps `Expanded` an honest answer to "is this row open".
+  //    The two Layermask Sets are pruned here for the same reason and by the same rule.
+  const Live = new Set(Stack.Layers.map((L) => L.Token));
+  for (const Token of Expanded)         { if (!Live.has(Token)) { Expanded.delete(Token); } }
+  for (const Token of SeededExpands)    { if (!Live.has(Token)) { SeededExpands.delete(Token); } }
+  for (const Token of MaskOpen)         { if (!Live.has(Token)) { MaskOpen.delete(Token); } }
+  for (const Token of SeededMaskFolds)  { if (!Live.has(Token)) { SeededMaskFolds.delete(Token); } }
+  // 🔴 The section Sets are keyed "<Token>/<Title>", NOT by bare token, so the loops above would never match them and a
+  //    deleted layer would leak one entry per section for the rest of the session. Split the key and test the token.
+  //    Tokens are numeric and titles carry no "/", so the first segment is unambiguous.
+  for (const Key of SectionShut)    { if (!Live.has(Number(Key.split("/")[0]))) { SectionShut.delete(Key); } }
+  for (const Key of SeededSections) { if (!Live.has(Number(Key.split("/")[0]))) { SeededSections.delete(Key); } }
+
+  for (const Layer of Shown)
+  {
+    Part.Body.appendChild(BuildRow(Layer));
+
+    // 🔴 A row's settings drop open INLINE, right beneath it, when its caret is open — tracked in `Expanded`,
+    //    independent of focus. Skipped while a filter is active: a filtered stack is a LOOKUP, not an editing
+    //    surface, and an accordion inside it fights the row the user is scanning for.
+    if (Expanded.has(Layer.Token) && !FilterTerm)
+    {
+      const Expand = BuildExpand(Layer);
+
+      // 🔴 The reveal animates only on a NEWLY opened expand — the CSS equivalent of the C++ `Fold->Seeded` guard,
+      //    which snaps the fold to its intent the first frame a card is seen so "a card shown already-open does not
+      //    animate in". Render() runs on every committed value, so without this the expand would replay its whole
+      //    open animation on each tick of a slider drag INSIDE itself.
+      if (!SeededExpands.has(Layer.Token))
+      {
+        SeededExpands.add(Layer.Token);
+        Expand.classList.add("folding");
+        // 🔴 Two frames, not one. The node is appended THIS frame so it has no committed style yet; clearing the
+        //    class in the same frame (or in a single rAF, which can coalesce with the insertion's first style
+        //    resolution) gives the browser no `0fr` start value to interpolate from and the fold HARD-CUTS.
+        requestAnimationFrame(() => requestAnimationFrame(() => Expand.classList.remove("folding")));
+      }
+      Part.Body.appendChild(Expand);
+    }
+  }
+  if (!Shown.length)
+  {
+    const Empty = document.createElement("div");
+    Empty.className = "stack-empty";
+    Empty.textContent = FilterTerm ? "No layer matches the filter." : "No layers.";
+    Part.Body.appendChild(Empty);
+  }
+  RenderFoot();
+  RenderReadout();
+}
+
+function BuildRow(Layer)
+{
+  const Row = document.createElement("div");
+  Row.className = "stack-row" +
+    (Layer.Token === Stack.FocusToken ? " active" : "") +
+    (Layer.Shown ? "" : " layer-muted") +
+    // 📝 `expanded` makes the row the HEAD of the card: it drops its bottom border and takes the body's fill.
+    (Expanded.has(Layer.Token) && !FilterTerm ? " expanded" : "");
+  Row.dataset.token = Layer.Token;
+
+  // 🔴 The rail tag carries the LAYER's colour; the thumbnail carries the KIND. The two markers answer different
+  //    questions: the tag says WHICH layer, the thumb says WHAT KIND.
+  const Swatch = SwatchOf(Layer);
+  const Thumb  = Swatch ? `<span class="sr-thumb-fill" style="background:${Swatch}"></span>`
+                        : ClassificationSvg(Layer.Classification, 15);
+
+  Row.innerHTML =
+    `<span class="sr-tag" style="background:${LayerHue(Layer)}"></span>` +
+    `<span class="sr-thumb">${Thumb}</span>` +
+    `<span class="sr-text">` +
+      `<span class="sr-name"></span>` +
+      `<span class="sr-meta">${CLASSIFICATION_LABEL[Layer.Classification]} · ${Layer.Blend} · ` +
+        `${ChannelsOf(Layer).length} ch</span>` +
+    `</span>` +
+    (Layer.Mask?.Enabled
+      ? `<span class="sr-mask" title="This layer has a mask" style="background:${MaskChipTone(Layer.Mask)}"></span>`
+      : "") +
+    `<span class="sr-opacity" title="Drag to adjust opacity">${Layer.Opacity}%</span>` +
+    `<span class="sr-visibility" title="${Layer.Shown ? "Hide" : "Show"}">` +
+      `${Icon(Layer.Shown ? "eyeOpen" : "eyeOff", 14)}</span>` +
+    `<span class="sr-caret" title="Layer properties">${Icon("chevronDown", 12)}</span>`;
+
+  // 🔴 The name is assigned as TEXT, never interpolated into the markup: a layer name is user-typed, and a name
+  //    containing "<" would otherwise be parsed as markup — at best the name vanishes, at worst the row's own
+  //    handlers are replaced by injected ones.
+  Row.querySelector(".sr-name").textContent = Layer.Name;
+
+  Row.onclick = (Event) => {
+    if (RowDragged) { RowDragged = false; return; }
+    if (Event.target.closest(".sr-visibility") || Event.target.closest(".sr-opacity") ||
+        Event.target.closest(".sr-caret")) { return; }
+    Stack.FocusToken = Layer.Token;
+    Render();
+  };
+  Row.ondblclick = (Event) => {
+    if (Event.target.closest(".sr-visibility") || Event.target.closest(".sr-opacity") ||
+        Event.target.closest(".sr-caret")) { return; }
+    BeginRename(Layer, Row.querySelector(".sr-name"));
+  };
+  // 🔴 Right-click focuses the row and swallows the event so the page's own menu does not fire underneath.
+  Row.oncontextmenu = (Event) => {
+    Event.preventDefault(); Event.stopPropagation();
+    Stack.FocusToken = Layer.Token;
+    Render();
+    OpenRowMenu(Layer, Event.clientX, Event.clientY);
+  };
+  Row.querySelector(".sr-visibility").onclick = (Event) => {
+    Event.stopPropagation();
+    Layer.Shown = !Layer.Shown;
+    Render();
+  };
+  // 🔴 The caret folds the properties card open/shut WITHOUT touching focus, so a row can be adjusted without
+  //    stealing the paint target from the layer currently being stroked.
+  Row.querySelector(".sr-caret").onclick = (Event) => {
+    Event.stopPropagation();
+    if (Expanded.has(Layer.Token)) { CollapseExpand(Layer.Token); }
+    else { Expanded.add(Layer.Token); Render(); }
+  };
+
+  BindOpacityDrag(Row.querySelector(".sr-opacity"), Layer);
+  // 🔴 Reorder is suppressed while filtering: the ordinals on screen are not the ordinals in the store, so a drop
+  //    would land somewhere the user did not aim at. A filtered rail is a LOOKUP surface, not an editing one.
+  if (!FilterTerm) { BindRowDrag(Row, Layer); }
+
+  return Row;
+}
+
+function RenderFoot()
+{
+  const AtCap = Stack.Layers.length >= LayerCapacity;
+
+  Part.AddHost.innerHTML = "";
+  const Add = document.createElement("div");
+  Add.className = "sf-add" + (AtCap ? " disabled" : "");
+  Add.innerHTML = `${Icon("plus", 12)}<span>Add Layer</span>`;
+  Add.title = AtCap ? `Layer cap of ${LayerCapacity} reached` : "Add a layer";
+  if (!AtCap) { Add.onclick = (E) => { E.stopPropagation(); OpenAddLayerList(Add); }; }
+  Part.AddHost.appendChild(Add);
+
+  const Hidden = Stack.Layers.filter((L) => !L.Shown).length;
+  Part.Foot.innerHTML =
+    `<span class="sf-tally"><span class="pf-strong">${Stack.Layers.length}</span> / ${LayerCapacity}` +
+    (Hidden ? `<span class="pf-dot">·</span><span>${Hidden} hidden</span>` : "") + `</span>` +
+    (AtCap ? `<span class="sf-cap">at capacity</span>` : "");
+
+  Part.Head.textContent = `${Stack.Layers.length} / ${LayerCapacity}`;
+}
+
+function RenderReadout()
+{
+  const Focused = ResolveFocused();
+  Part.Readout.innerHTML = Focused
+    ? `<div class="kv">Focus<b>${Focused.Name}</b></div>` +
+      `<div class="kv">Classification<b>${CLASSIFICATION_LABEL[Focused.Classification]}</b></div>` +
+      `<div class="kv">Blend<b>${Focused.Blend} (${BLEND_MODES.indexOf(Focused.Blend)})</b></div>` +
+      `<div class="kv">Opacity<b>${Focused.Opacity}%</b></div>` +
+      `<div class="kv">Visible<b>${Focused.Shown ? "yes" : "no"}</b></div>` +
+      `<div class="kv">Ordinal<b>${ResolveOrdinal(Focused.Token)} of ${Stack.Layers.length}</b></div>` +
+      `<div class="kv">Token · Issue<b>${Focused.Token} · ${Focused.Issue}</b></div>`
+    : `<div class="kv none">Focus: none — a stroke would be refused.</div>`;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    INTERACTIONS
+----------------------------------------------------------------------------------------------------------------------*/
+function BeginRename(Layer, NameSpan)
+{
+  RenameToken = Layer.Token;
+  NameSpan.classList.add("editing");
+  NameSpan.contentEditable = "true";
+  NameSpan.focus();
+  document.getSelection().selectAllChildren(NameSpan);
+
+  const Commit = () => {
+    const Typed = NameSpan.textContent.trim();
+    // 📝 A blur COMMITS as well as Enter: discarding on blur loses a rename the user believes they finished.
+    if (Typed) { Layer.Name = Typed; }
+    RenameToken = 0;
+    Render();
+  };
+  NameSpan.onkeydown = (E) => {
+    if (E.key === "Enter")  { E.preventDefault(); NameSpan.blur(); }
+    if (E.key === "Escape") { E.preventDefault(); NameSpan.textContent = Layer.Name; RenameToken = 0; NameSpan.blur(); }
+  };
+  NameSpan.onblur = () => { if (RenameToken === Layer.Token) { Commit(); } else { Render(); } };
+}
+
+function BindOpacityDrag(Pill, Layer)
+{
+  Pill.onpointerdown = (Event) => {
+    Event.stopPropagation(); Event.preventDefault();
+    const StartX = Event.clientX;
+    // 🔴 The start value is latched ONCE. Re-reading the live value each move compounds every delta into the next
+    //    move's base and the drag accelerates the longer it runs.
+    const Start  = Layer.Opacity;
+    let   Value  = Start;
+    Pill.setPointerCapture(Event.pointerId);
+
+    const Move = (Motion) => {
+      // 2 px per percent, integer 0–100 — the prototype's exact sensitivity.
+      Value = Math.max(0, Math.min(100, Start + Math.round((Motion.clientX - StartX) / 2)));
+      Layer.Opacity = Value;
+      Pill.textContent = `${Value}%`;
+      RenderReadout();
+    };
+    const Up = () => {
+      Pill.removeEventListener("pointermove", Move);
+      Pill.removeEventListener("pointerup", Up);
+      if (Value !== Start) { Render(); }
+    };
+    Pill.addEventListener("pointermove", Move);
+    Pill.addEventListener("pointerup", Up);
+  };
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    SCROLL LAG
+----------------------------------------------------------------------------------------------------------------------*/
+// The rail's wheel scroll EASES toward its target instead of jumping, and the rows trail the scroller very slightly so
+// the column reads as having weight.
+//
+// 🔴 The wheel is intercepted, NOT hooked off the `scroll` event. A `scroll` handler only ever sees positions the
+//    browser has already committed, so the jump has happened by the time it runs — the easing has to own the input.
+// 🔴 The whole-pixel part goes to `scrollTop` and the FRACTION goes to a transform on the sled. scrollTop is an
+//    integer, so easing it alone quantises every frame to a whole pixel and the glide stutters at low speeds — which
+//    is precisely where a lag is most visible. Splitting them keeps the motion sub-pixel smooth.
+// 🔴 The trail is a SECOND, slower follower (`Trail` chases `Current`), not just the fraction. The fraction is only
+//    ever <1px; the visible "the rows are catching up" cue needs a real offset, and it must be clamped or a fast
+//    flick would detach the rows from the scroller by tens of pixels and look broken rather than weighted.
+function BindScrollLag(Scroller, Sled)
+{
+  const Ease = 0.18;        // [0-1] - fraction of the remaining distance consumed per frame
+  const Follow = 0.26;      // [0-1] - the sled's own slower chase, which produces the trail
+  const TrailCap = 9;       // [px]  - hard clamp on how far the rows may lag behind the scroller
+  let Target = 0, Current = 0, Trail = 0, Running = false;
+
+  const Frame = () => {
+    Current += (Target - Current) * Ease;
+    Trail   += (Current - Trail) * Follow;
+
+    // 📝 Snap both when the remaining distance is sub-pixel: an exponential ease never mathematically arrives, so
+    //    without this the loop runs forever at an invisible amplitude and never lets go of the frame callback.
+    if (Math.abs(Target - Current) < 0.15 && Math.abs(Current - Trail) < 0.15)
+    {
+      Current = Trail = Target;
+      Running = false;
+    }
+
+    const Whole = Math.round(Current);
+    Scroller.scrollTop = Whole;
+    // The sled shows the fraction PLUS the clamped trail, so sub-pixel smoothness and the visible lag compose.
+    const Lag = Math.max(-TrailCap, Math.min(TrailCap, Trail - Current));
+    Sled.style.transform = `translateY(${(Current - Whole) + Lag}px)`;
+
+    if (Running) { requestAnimationFrame(Frame); }
+    else { Sled.style.transform = "translateY(0px)"; }
+  };
+
+  Scroller.addEventListener("wheel", (Event) => {
+    const Span = Scroller.scrollHeight - Scroller.clientHeight;
+    if (Span <= 0) { return; }          // nothing to scroll — let the page have the gesture
+
+    // 🔴 Re-latched from the LIVE scrollTop whenever the loop is idle. A rebuild (Render) or a keyboard scroll can
+    //    move the scroller behind our back, and a stale Current would snap the view back to where the last flick
+    //    ended the moment the next one started.
+    if (!Running) { Current = Trail = Scroller.scrollTop; Target = Current; }
+
+    const Next = Math.max(0, Math.min(Span, Target + Event.deltaY));
+    // 📝 Only claim the gesture when we can actually consume it, so at either end the page scrolls normally instead
+    //    of the rail silently swallowing the wheel.
+    if (Next === Target) { return; }
+    Event.preventDefault();
+
+    Target = Next;
+    if (!Running) { Running = true; requestAnimationFrame(Frame); }
+  }, { passive: false });
+}
+
+function BindRowDrag(Row, Layer)
+{
+  Row.draggable = true;
+  Row.ondragstart = (E) => {
+    RowDragged = true;
+    E.dataTransfer.setData("text/plain", String(Layer.Token));
+    E.dataTransfer.effectAllowed = "move";
+    Row.classList.add("dragging");
+  };
+  Row.ondragend = () => {
+    Row.classList.remove("dragging");
+    Part.Body.querySelectorAll(".stack-row").forEach((R) => R.classList.remove("dropbefore","dropafter"));
+  };
+  Row.ondragover = (E) => {
+    E.preventDefault();
+    const Box  = Row.getBoundingClientRect();
+    const Over = E.clientY - Box.top > Box.height * 0.5;
+    Row.classList.toggle("dropafter", Over);
+    Row.classList.toggle("dropbefore", !Over);
+  };
+  Row.ondragleave = () => Row.classList.remove("dropbefore","dropafter");
+  Row.ondrop = (E) => {
+    E.preventDefault();
+    const Dragged = Number(E.dataTransfer.getData("text/plain"));
+    if (!Dragged || Dragged === Layer.Token) { Render(); return; }
+    const Box   = Row.getBoundingClientRect();
+    const After = E.clientY - Box.top > Box.height * 0.5;
+    let   Seat  = ResolveOrdinal(Layer.Token) + (After ? 1 : 0);
+    // Removing the dragged row first shifts every ordinal below it up by one.
+    if (ResolveOrdinal(Dragged) < Seat) { Seat -= 1; }
+    RelocateLayer(Dragged, Seat);
+    Render();
+  };
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                    THE INLINE PROPERTIES CARD  (BuildExpand, verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+// 🔴 The fold-OUT has to animate too, and it can only do so while the node still EXISTS — which a straight
+//    `Expanded.delete` + Render() cannot manage, because the rebuild removes the node in the same frame and only the
+//    open direction was ever animated. So: clear the intent, put `.folding` on the LIVE node, and rebuild on landing.
+//
+// 🔴 The intent is cleared FIRST, so any Render() racing this (a commit landing mid-fold) already agrees the row is
+//    closed and will not rebuild the expand back into place behind the animation.
+// 🔴 `transitionend` is filtered to grid-template-rows: .se-body transitions opacity and transform over the same
+//    duration and its events BUBBLE, so an unfiltered handler would fire three times and rebuild the rail twice more.
+//    The timeout is the backstop for the case the event never arrives at all — a reduced-motion setting can skip the
+//    transition entirely, and without it the expand would sit collapsed-but-present forever.
+function CollapseExpand(Token)
+{
+  Expanded.delete(Token);
+  SeededExpands.delete(Token);
+
+  // 🔴 Scoped to THIS token's expand, not the first one in the rail: several rows can be open at once, and a bare
+  //    `.stack-expand` query would fold whichever came first in the DOM while the clicked row stayed open.
+  const Expand = Part.Body.querySelector(`.stack-expand[data-token="${Token}"]:not(.folding)`);
+  if (!Expand) { Render(); return; }
+
+  // 📝 The owning row un-rotates its caret in step with the fold — see .stack-row.collapsing. The row is not rebuilt
+  //    until the fold lands, so without this the chevron would hold its 180° and snap afterwards.
+  const Owner = Part.Body.querySelector(`.stack-row[data-token="${Token}"]`);
+  if (Owner) { Owner.classList.add("collapsing"); }
+
+  let Landed = false;
+  const Finish = () => { if (Landed) { return; } Landed = true; Render(); };
+  Expand.addEventListener("transitionend", (Event) => {
+    if (Event.target === Expand && Event.propertyName === "grid-template-rows") { Finish(); }
+  });
+  setTimeout(Finish, 400);
+  Expand.classList.add("folding");
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                     SECTION CARDS  (BeginPropertyCard / EndPropertyCard, PropertyPanelBase.cpp)
+----------------------------------------------------------------------------------------------------------------------*/
+/* Which section cards are SHUT, keyed "<Token>/<Title>". Shut rather than open, because the C++ default is an OPEN card
+   (BeginPropertyCard's Expanded bool starts true in ControlsGalleryState) — storing the exception keeps a freshly built
+   card open with an empty set, so a new layer needs no seeding pass.
+   📝 SeededSections is the third instance of the same guard as SeededExpands / SeededMaskFolds: without it every slider
+      tick inside a section replays that section's open animation, because each tick rebuilds the pane. */
+const SectionShut = new Set(), SeededSections = new Set();
+const SectionAt = (Token, Title) => `${Token}/${Title}`;
+
+/* Build a collapsible section card for `Layer` and hand back the PANE for the caller to fill. Mirrors the C++ pairing
+   where BeginPropertyCard opens the group and the caller records controls until EndPropertyCard — here the returned pane
+   is the open group, and the DOM structure closes it.
+   📝 The pane is returned AND the finished card is appended straight into `Parent`, so the caller writes
+      `const P = BuildSection(Body, Layer, "Appearance", 3)` and then fills P — one call, no second parenting step to
+      forget. An earlier shape returned only the pane and left the card unparented, which silently dropped every row. */
+function BuildSection(Parent, Layer, Title, Count)
+{
+  const Key  = SectionAt(Layer.Token, Title);
+  const Shut = SectionShut.has(Key);
+
+  const Card = document.createElement("div");
+  Card.className = "pc" + (Shut ? " shut" : " open");
+  Card.dataset.section = Key;
+
+  const Bar = document.createElement("div");
+  Bar.className = "pc-head";
+  Bar.innerHTML =
+    `<span class="pc-ttl">${Title}</span>` +
+    `<span class="pc-n">${Count}</span>` +
+    `<span class="pc-chev">${Icon("chevronDown", 11)}</span>`;
+  Bar.onclick = () => {
+    if (SectionShut.has(Key)) { SectionShut.delete(Key); SeededSections.delete(Key); Render(); }
+    else { CollapseSection(Key); }
+  };
+  Card.appendChild(Bar);
+
+  const Clip  = document.createElement("div"); Clip.className  = "pc-clip";
+  const Inner = document.createElement("div"); Inner.className = "pc-inner";
+  const Pane  = document.createElement("div"); Pane.className  = "pc-pane";
+  Inner.appendChild(Pane); Clip.appendChild(Inner); Card.appendChild(Clip);
+  Parent.appendChild(Card);
+
+  // 🔴 The two-rAF reveal, same as the outer card and the Layermask: a node appended THIS frame has no committed style,
+  //    so clearing `.shut` in the same frame (or after a single rAF) gives the transition no 0fr start value and the
+  //    fold hard-cuts. Only on a FRESH open — an already-open card must not replay on every rebuild.
+  if (!Shut && !SeededSections.has(Key))
+  {
+    SeededSections.add(Key);
+    requestAnimationFrame(() => requestAnimationFrame(() => Card.classList.remove("shut")));
+    Card.classList.add("shut");
+  }
+  return Pane;
+}
+
+/* Fold a section shut, letting the animation finish before the rebuild drops the pane. Must NOT call Render() up front,
+   for the same reason as CollapseExpand / CollapseMask: rendering first deletes the element that needs to animate out. */
+function CollapseSection(Key)
+{
+  SectionShut.add(Key);
+  SeededSections.delete(Key);
+  const Card = Part.Body.querySelector(`.pc[data-section="${Key}"]:not(.shut)`);
+  if (!Card) { Render(); return; }
+  Card.classList.remove("open");
+  let Landed = false;
+  const Finish = () => { if (Landed) { return; } Landed = true; Render(); };
+  Card.querySelector(".pc-clip").addEventListener("transitionend", (Event) => {
+    if (Event.propertyName === "grid-template-rows") { Finish(); }
+  });
+  setTimeout(Finish, 400);
+  Card.classList.add("shut");
+}
+
+function BuildExpand(Layer)
+{
+  const Host = document.createElement("div");
+  // 📝 `active` mirrors the owning row's focus class so the accent spine runs the FULL height of the card. The expand
+  //    is the row's SIBLING, not its child, so the row's own ::before stops at the head and the lower half must draw
+  //    its own continuing segment.
+  Host.className = "stack-expand" + (Layer.Token === Stack.FocusToken ? " active" : "");
+  // 📝 Stamped so CollapseExpand can fold THIS row's expand rather than the first one in the rail.
+  Host.dataset.token = Layer.Token;
+
+  const Clip = document.createElement("div"); Clip.className = "se-clip";
+  const Body = document.createElement("div"); Body.className = "se-body";
+
+  const Line = (Label, Field) => {
+    const Row = document.createElement("div"); Row.className = "se-row";
+    const Tag = document.createElement("span"); Tag.className = "se-k"; Tag.textContent = Label;
+    const Val = document.createElement("span"); Val.className = "se-v"; Val.appendChild(Field);
+    Row.appendChild(Tag); Row.appendChild(Val);
+    return Row;
+  };
+
+  // ---- section cards -------------------------------------------------------------------------------------
+  // 🔴 There is NO separate header bar inside the body. The STACK ROW above is the card's header — it is the thing the
+  //    user clicks to open the card, it carries the name, the kind + blend + channel line, the opacity pill and the
+  //    visibility eye. A second bar restating "PAINT LAYER · V" directly beneath it duplicated facts already on screen
+  //    one line higher, so the card appeared to have two headers stacked. The body opens straight onto its sections.
+  // 🔴 ControlsGallery's body is a stack of BeginPropertyCard groups, so the rows below are grouped the same way
+  //    instead of running flat. Appearance holds what the compositor reads; Surface holds the authored colours.
+  const Appearance = BuildSection(Body, Layer, "Appearance", 3);
+  Appearance.appendChild(Line("Visible", BuildSwitch(Layer.Shown, (On) => { Layer.Shown = On; Render(); })));
+  Appearance.appendChild(Line("Blend", BuildDropdown(BLEND_MODES, Layer.Blend, (Pick) => { Layer.Blend = Pick; Render(); })));
+  Appearance.appendChild(Line("Opacity", BuildSlider({
+    Min:0, Max:100, Step:1, Value:Layer.Opacity, Unit:"%",
+    OnInput:(Value, Live) => {
+      Layer.Opacity = Value;
+      // 📝 The row's pill is written DIRECTLY while the drag is live, so the readout tracks the knob without a
+      //    rebuild tearing the slider out from under the pointer.
+      const Pill = Part.Body.querySelector(`.stack-row[data-token="${Layer.Token}"] .sr-opacity`);
+      if (Pill) { Pill.textContent = `${Value}%`; }
+      RenderReadout();
+      if (!Live) { Render(); }
+    }
+  })));
+
+  // ---- Surface: the authored colours ---------------------------------------------------------------------
+  // 📝 The count on the shut header is computed, not written: a layer with no baseColour channel carries one row here,
+  //    not two, and a hardcoded 2 would advertise a Paint row the card never builds.
+  const Paintable = ChannelsOf(Layer).includes("baseColour");
+  const Surface   = BuildSection(Body, Layer, "Surface", Paintable ? 2 : 1);
+
+  // 🔴 Only offered where the layer paints baseColour, and it edits the AUTHORED value. A layer with no baseColour
+  //    channel has no colour to author, so the row is OMITTED rather than shown editing a value that reaches no atlas.
+  // 📝 Labelled "Paint", not "Colour": with the identity Tag row directly below, two rows both called "Colour" would
+  //    be indistinguishable — and they do genuinely different things.
+  if (Paintable)
+  {
+    const Current = SwatchOf(Layer) ?? "#808080";
+    Surface.appendChild(Line("Paint", BuildColourField(Current, (Hex, Live) => {
+      Layer.Values.baseColour = HexToColour(Hex);
+      if (!Live) { Render(); }
+      else
+      {
+        const Fill = Part.Body.querySelector(`.stack-row[data-token="${Layer.Token}"] .sr-thumb-fill`);
+        if (Fill) { Fill.style.background = Hex; }
+      }
+    })));
+  }
+
+  // 🔴 Offered on EVERY layer, unlike Paint above: the rail tag is presentation, so it applies to a height-only
+  //    generator with no baseColour channel exactly as much as to a paint layer.
+  // 🔴 Committed only on RELEASE. Every other field scrubs live because the user is watching the surface change, but
+  //    this one's only visible effect is the rail tag — and repainting the rail on each pointermove of a hue drag
+  //    rebuilds the very expand the picker lives inside, tearing it out from under the pointer mid-scrub.
+  Surface.appendChild(Line("Tag", BuildColourField(LayerHue(Layer), (Hex, Live) => {
+    if (Live) { return; }
+    Layer.TagColour = Hex;
+    Render();
+  })));
+
+  // ---- Mask: the Layermask disclosure, inside its own section card ---------------------------------------
+  // 📝 The section reports 1 either way — an absent mask still has the "Add mask" affordance to offer, so a 0 here
+  //    would read as an empty card the user has no reason to open.
+  BuildMaskSection(BuildSection(Body, Layer, "Mask", 1), Layer);
+
+  Clip.appendChild(Body);
+  Host.appendChild(Clip);
+  return Host;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                       MASK SECTION  (BuildMaskSection, verbatim)
+----------------------------------------------------------------------------------------------------------------------*/
+const MaskFillValue = (Mask) => (Mask.Fill === "black" ? 0 : 1);
+// The chip in the row: the greyscale tone the mask resolves to, reading fill + invert.
+function MaskChipTone(Mask)
+{
+  const Base  = MaskFillValue(Mask);
+  const Light = Mask.Invert ? 1 - Base : Base;
+  const Shade = Math.round(Light * 255);
+  return `rgb(${Shade},${Shade},${Shade})`;
+}
+
+/* Which layers currently have their Layermask disclosure open, by token — the same token-keyed shape as `Expanded`, and
+   for the same reason: the mask editor is rebuilt on every Render(), so its open state cannot live on the DOM node.
+   📝 SeededMaskFolds is the nested twin of SeededExpands: without it the disclosure replays its whole open animation on
+      every slider tick INSIDE itself, because each tick rebuilds the pane. */
+const MaskOpen = new Set(), SeededMaskFolds = new Set();
+
+function BuildMaskSection(Body, Layer)
+{
+  const Mask = Layer.Mask;
+
+  // ---- empty state: no mask yet --------------------------------------------------------------------------
+  // 🔴 A layer with no mask gets the bare "Add mask" affordance and NO disclosure: there is nothing to fold, and a
+  //    Layermask bar that opened onto an empty pane would advertise a state the layer does not have.
+  if (!Mask || !Mask.Enabled)
+  {
+    // 📝 No "Mask" caption here any more: this content now lives INSIDE a section card whose header already says Mask,
+    //    and the caption repeated that word directly under itself.
+    const Add = document.createElement("div");
+    Add.className = "msk-add";
+    Add.innerHTML = `${Icon("mask", 13)}<span>Add mask</span>`;
+    Add.onclick = () => {
+      // 📝 A fresh mask is WHITE and un-inverted — fully revealing, so enabling one changes nothing on screen until
+      //    the user paints into it. A black default would make the layer vanish the moment a mask was added.
+      Layer.Mask = { Enabled:true, Fill:"white", Invert:false, Opacity:100 };
+      // 📝 Opened on creation, so adding a mask lands the user straight in its editor rather than on a shut bar they
+      //    have to click a second time. The seed guard is cleared too so that first open ANIMATES.
+      MaskOpen.add(Layer.Token);
+      SeededMaskFolds.delete(Layer.Token);
+      Render();
+    };
+    Body.appendChild(Add);
+    return;
+  }
+
+  // ---- the Layermask disclosure -------------------------------------------------------------------------
+  const Open = MaskOpen.has(Layer.Token);
+  const Fold = document.createElement("div");
+  Fold.className = "msk-fold" + (Open ? " open" : " shut");
+  Fold.dataset.token = Layer.Token;
+
+  // the summary bar: mask glyph, the name, the resolved tone, and the chevron
+  const Sum = document.createElement("div");
+  Sum.className = "msk-sum";
+  Sum.innerHTML =
+    Icon("mask", 12) +
+    `<span class="msk-ttl">Layermask</span>` +
+    `<span class="msk-dot" style="background:${MaskChipTone(Mask)}"></span>` +
+    `<span class="msk-chev">${Icon("chevronDown", 11)}</span>`;
+  Sum.onclick = () => {
+    if (MaskOpen.has(Layer.Token)) { CollapseMask(Layer.Token); }
+    else { MaskOpen.add(Layer.Token); SeededMaskFolds.delete(Layer.Token); Render(); }
+  };
+  Fold.appendChild(Sum);
+
+  const Clip  = document.createElement("div"); Clip.className  = "msk-clip";
+  const Inner = document.createElement("div"); Inner.className = "msk-inner";
+  const Pane  = document.createElement("div"); Pane.className  = "msk-pane";
+
+  // ---- the mask head: tone preview, summary, remove ------------------------------------------------------
+  const HeadRow = document.createElement("div");
+  HeadRow.className = "msk-row";
+  HeadRow.innerHTML =
+    `<span class="msk-prev"><span class="msk-grad" style="background:${MaskChipTone(Mask)}"></span></span>` +
+    `<span class="msk-info">` +
+      `<span class="msk-nm"></span>` +
+      `<span class="msk-meta">${Mask.Fill === "black" ? "Black" : "White"} fill` +
+        `${Mask.Invert ? " · inverted" : ""}</span>` +
+    `</span>` +
+    `<span class="mc-x" title="Delete mask">×</span>`;
+  HeadRow.querySelector(".msk-nm").textContent = "Layer mask";
+  HeadRow.querySelector(".mc-x").onclick = () => {
+    Layer.Mask = null;
+    MaskOpen.delete(Layer.Token);
+    SeededMaskFolds.delete(Layer.Token);
+    Render();
+  };
+  Pane.appendChild(HeadRow);
+
+  // ---- White / Black / Invert toolbar -------------------------------------------------------------------
+  const Bar = document.createElement("div");
+  Bar.className = "msk-toolbar";
+  const Tool = (Label, On, Run) => {
+    const El = document.createElement("div");
+    El.className = "msk-tool" + (On ? " on" : "");
+    El.textContent = Label;
+    El.onclick = Run;
+    return El;
+  };
+  // 📝 White/Black are a CHOICE (one or the other); Invert is an independent flip layered on top of it.
+  Bar.appendChild(Tool("White",  Mask.Fill !== "black",  () => { Mask.Fill = "white"; Render(); }));
+  Bar.appendChild(Tool("Black",  Mask.Fill === "black",  () => { Mask.Fill = "black"; Render(); }));
+  Bar.appendChild(Tool("Invert", Mask.Invert === true,   () => { Mask.Invert = !Mask.Invert; Render(); }));
+  Pane.appendChild(Bar);
+
+  // ---- mask strength ------------------------------------------------------------------------------------
+  const Row = document.createElement("div"); Row.className = "se-row";
+  const Tag = document.createElement("span"); Tag.className = "se-k"; Tag.textContent = "Strength";
+  const Val = document.createElement("span"); Val.className = "se-v";
+  Val.appendChild(BuildSlider({
+    Min:0, Max:100, Step:1, Value:Mask.Opacity ?? 100, Unit:"%",
+    OnInput:(Value, Live) => { Mask.Opacity = Value; RenderReadout(); if (!Live) { Render(); } }
+  }));
+  Row.appendChild(Tag); Row.appendChild(Val);
+  Pane.appendChild(Row);
+
+  Inner.appendChild(Pane);
+  Clip.appendChild(Inner);
+  Fold.appendChild(Clip);
+  Body.appendChild(Fold);
+
+  // 🔴 The two-rAF reveal, same as the outer card: a node appended THIS frame has no committed style, so clearing
+  //    `.shut` in the same frame (or after a single rAF) gives the transition no 0fr start value and the fold hard-cuts.
+  if (Open && !SeededMaskFolds.has(Layer.Token))
+  {
+    SeededMaskFolds.add(Layer.Token);
+    requestAnimationFrame(() => requestAnimationFrame(() => Fold.classList.remove("shut")));
+    Fold.classList.add("shut");
+  }
+}
+
+/* Fold the Layermask shut, letting the animation finish before the rebuild drops the pane — the nested counterpart of
+   CollapseExpand, and it must NOT call Render() up front for the same reason: rendering first would delete the very
+   element that needs to animate out. */
+function CollapseMask(Token)
+{
+  MaskOpen.delete(Token);
+  SeededMaskFolds.delete(Token);
+  const Fold = Part.Body.querySelector(`.msk-fold[data-token="${Token}"]:not(.shut)`);
+  if (!Fold) { Render(); return; }
+  Fold.classList.remove("open");
+  let Landed = false;
+  const Finish = () => { if (Landed) { return; } Landed = true; Render(); };
+  Fold.querySelector(".msk-clip").addEventListener("transitionend", (Event) => {
+    if (Event.propertyName === "grid-template-rows") { Finish(); }
+  });
+  setTimeout(Finish, 400);
+  Fold.classList.add("shut");
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                              SHARED WIDGETS  (the ControlsGallery controls the expand reuses)
+----------------------------------------------------------------------------------------------------------------------*/
+function SectionLabel(Text)
+{
+  const Element = document.createElement("div");
+  Element.className = "se-sect";
+  Element.textContent = Text;
+  return Element;
+}
+
+function BuildSwitch(On, OnFlip)
+{
+  const Host = document.createElement("div");
+  Host.className = "switch" + (On ? " on" : "");
+  Host.innerHTML = '<span class="nub"></span>';
+  // 📝 The class flips FIRST so the nub slides from the press, then the caller is told. Waiting for a rebuild to
+  //    supply the new state would make the toggle jump instead of glide.
+  Host.onclick = () => { On = !On; Host.classList.toggle("on", On); OnFlip(On); };
+  return Host;
+}
+
+// 📝 `OnInput` is called with (Value, Live). Live is true while the pointer is down; the caller writes the value
+//    without rebuilding, and rebuilds once on release.
+function BuildSlider(Spec)
+{
+  const Host  = document.createElement("div"); Host.className  = "sliderrow";
+  const Box   = document.createElement("div"); Box.className   = "valuebox";
+  const Num   = document.createElement("div"); Num.className   = "num";
+  const Input = document.createElement("input"); Input.type = "text"; Input.spellcheck = false;
+  Num.appendChild(Input); Box.appendChild(Num);
+  if (Spec.Unit)
+  {
+    const Unit = document.createElement("span");
+    Unit.className = "unitseg"; Unit.textContent = Spec.Unit;
+    Box.appendChild(Unit);
+  }
+
+  const Track = document.createElement("div"); Track.className = "slider";
+  const Fill  = document.createElement("div"); Fill.className  = "fill";
+  const Knob  = document.createElement("div"); Knob.className  = "knob";
+  Track.appendChild(Fill); Track.appendChild(Knob);
+  Host.appendChild(Box); Host.appendChild(Track);
+
+  let Value = Spec.Value;
+  const Paint = () => {
+    const Percent = ((Value - Spec.Min) / (Spec.Max - Spec.Min)) * 100;
+    Fill.style.width = `${Percent}%`;
+    Knob.style.left  = `${Percent}%`;
+    Input.value = String(Value);
+  };
+
+  // 🔴 Quantised RELATIVE TO Min, not to zero: `round(v / Step) * Step` only lands on the offered values when Min is
+  //    a whole multiple of Step, otherwise the track can never reach its own Max.
+  const Settle = (Next, Live) => {
+    const Clamped = Math.max(Spec.Min, Math.min(Spec.Max, Next));
+    const Steps   = Math.round((Clamped - Spec.Min) / Spec.Step);
+    const Landed  = Math.min(Spec.Max, Spec.Min + Steps * Spec.Step);
+    // 🔴 An unchanged value is NOT pushed through. A 0–100 slider over a ~150px track quantises many pointer
+    //    positions to the same integer, and each redundant write re-resolves the composite — the drag goes sluggish
+    //    and lags the cursor, which reads as jamming. The release below always commits once regardless.
+    if (Landed === Value && Live) { return; }
+    Value = Landed;
+    Paint();
+    Spec.OnInput(Value, Live);
+  };
+  const FromPointer = (Event) => {
+    const Rect  = Track.getBoundingClientRect();
+    const Ratio = Math.max(0, Math.min(1, (Event.clientX - Rect.left) / Rect.width));
+    Settle(Spec.Min + Ratio * (Spec.Max - Spec.Min), true);
+  };
+
+  // 🔴 One drag at a time, keyed on the pointer that opened it. Adding a fresh move/up pair per pointerdown and
+  //    removing them only on `pointerup` leaks listeners on every other exit path (pointercancel, capture lost to a
+  //    rebuild) — and the next press then runs TWO handlers fighting over the same value.
+  let Active = -1;
+  const Move = (Motion) => { if (Motion.pointerId === Active) { FromPointer(Motion); } };
+  const Finish = (Motion) => {
+    if (Motion && Motion.pointerId !== Active) { return; }
+    if (Active === -1) { return; }
+    Active = -1;
+    Track.removeEventListener("pointermove", Move);
+    Track.removeEventListener("pointerup", Finish);
+    Track.removeEventListener("pointercancel", Finish);
+    Track.removeEventListener("lostpointercapture", Finish);
+    Spec.OnInput(Value, false);
+  };
+  Track.onpointerdown = (Event) => {
+    Event.stopPropagation();
+    if (Active !== -1) { return; }
+    Active = Event.pointerId;
+    Track.setPointerCapture(Event.pointerId);
+    Track.addEventListener("pointermove", Move);
+    Track.addEventListener("pointerup", Finish);
+    Track.addEventListener("pointercancel", Finish);
+    Track.addEventListener("lostpointercapture", Finish);
+    FromPointer(Event);
+  };
+
+  // 📝 The numeric field commits on Enter or blur, and is re-painted from the settled value so a typed 999 snaps
+  //    back to the range rather than sitting in the box as a lie.
+  Input.onkeydown = (E) => { if (E.key === "Enter") { E.preventDefault(); Input.blur(); } };
+  Input.onblur = () => {
+    const Typed = Number(Input.value);
+    if (Number.isFinite(Typed)) { Settle(Typed, false); } else { Paint(); }
+  };
+  Input.onpointerdown = (E) => E.stopPropagation();
+
+  Paint();
+  return Host;
+}
+
+function BuildDropdown(Options, Current, OnPick)
+{
+  const Host = document.createElement("div");
+  Host.className = "dropdown";
+  Host.innerHTML =
+    `<div class="dd-head"><span class="cur"></span>` +
+    `<span class="caret">${Icon("chevronDown", 10)}</span></div>`;
+  Host.querySelector(".cur").textContent = Current;
+
+  Host.querySelector(".dd-head").onclick = (Event) => {
+    Event.stopPropagation();
+    const WasOpen = OpenList !== null && OpenAnchor === Host;
+    CloseLists();
+    if (WasOpen) { return; }
+
+    const List = document.createElement("div");
+    List.className = "dd-list";
+    for (const Option of Options)
+    {
+      const Item = document.createElement("div");
+      Item.className = "dd-item" + (Option === Current ? " sel" : "");
+      Item.innerHTML = `<span class="radio"></span><span></span>`;
+      Item.lastChild.textContent = Option;
+      Item.onclick = (E) => { E.stopPropagation(); CloseLists(); OnPick(Option); };
+      List.appendChild(Item);
+    }
+    Host.classList.add("listopen");
+    // 📝 Width-matched to the head so the list reads as the pill's own drawer.
+    PlaceList(List, Host, true);
+  };
+  return Host;
+}
+
+const HexToColour = (Hex) => {
+  const N = parseInt(Hex.slice(1), 16);
+  return [((N >> 16) & 255) / 255, ((N >> 8) & 255) / 255, (N & 255) / 255];
+};
+
+// 🔴 `OnPick(Hex, Live)`: `input` fires continuously while the native picker is open (Live=true) and `change` fires on
+//    commit (Live=false). Callers that only want the settled value discard the live ones — see the Tag row.
+function BuildColourField(Current, OnPick)
+{
+  const Host = document.createElement("label");
+  Host.className = "cfield";
+  Host.style.position = "relative";
+  Host.innerHTML =
+    `<span class="cf-hex"></span><span class="cf-chip"></span>` +
+    `<input type="color" value="${Current}">`;
+  const Hex  = Host.querySelector(".cf-hex");
+  const Chip = Host.querySelector(".cf-chip");
+  const Well = Host.querySelector("input");
+
+  Hex.textContent = Current.toUpperCase();
+  Chip.style.background = Current;
+
+  const Paint = (Value) => { Hex.textContent = Value.toUpperCase(); Chip.style.background = Value; };
+  Well.oninput  = () => { Paint(Well.value); OnPick(Well.value, true); };
+  Well.onchange = () => { Paint(Well.value); OnPick(Well.value, false); };
+  Host.onpointerdown = (E) => E.stopPropagation();
+  return Host;
+}
+
+function OpenAddLayerList(Anchor)
+{
+  // 🔴 "Already open" is a re-click on a list that EXISTS. Testing `OpenList === List` alone is true when BOTH are
+  //    null — i.e. the very first click — so it closed before ever building the list and the picker never appeared.
+  const WasOpen = OpenList !== null && OpenAnchor === Anchor;
+  CloseLists();
+  if (WasOpen) { return; }
+
+  const List = document.createElement("div");
+  // 📝 No special class: .dd-list now carries the joined-card treatment for every anchored list, and PlaceList reads
+  //    the button's own 9px radius off its computed style, so this list matches it without a bespoke rule.
+  List.className = "dd-list";
+  for (const Kind of LAYER_KIND_ORDER)
+  {
+    const Item = document.createElement("div");
+    Item.className = "dd-item";
+    Item.innerHTML = `<span class="sf-swatch" style="background:${KindTint(Kind)}"></span><span>${KindLabel(Kind)}</span>`;
+    Item.onclick = (E) => { E.stopPropagation(); CloseLists(); IntegrateLayer(Kind, null); Render(); };
+    List.appendChild(Item);
+  }
+  Anchor.classList.add("listopen");
+  PlaceList(List, Anchor, true);
+}
+
+function OpenRowMenu(Layer, X, Y)
+{
+  CloseLists();
+  const Ordinal   = ResolveOrdinal(Layer.Token);
+  const Removable = Stack.Layers.length > 1;
+
+  // 📝 `detached`: this menu has no head to join, so it keeps a full border and an even radius all round.
+  const List = document.createElement("div");
+  List.className = "dd-list detached";
+  List.style.minWidth = "150px";
+
+  const Entry = (Label, Enabled, Danger, Act) => {
+    const Item = document.createElement("div");
+    Item.className = "dd-item" + (Enabled ? "" : " disabled") + (Danger ? " danger" : "");
+    Item.textContent = Label;
+    if (Enabled) { Item.onclick = (E) => { E.stopPropagation(); CloseLists(); Act(); Render(); }; }
+    List.appendChild(Item);
+  };
+
+  Entry("Rename", true, false, () => {
+    const Row = Part.Body.querySelector(`.stack-row[data-token="${Layer.Token}"] .sr-name`);
+    if (Row) { BeginRename(Layer, Row); }
+  });
+  Entry("Raise", Ordinal > 0, false, () => RelocateLayer(Layer.Token, Ordinal - 1));
+  Entry("Lower", Ordinal + 1 < Stack.Layers.length, false, () => RelocateLayer(Layer.Token, Ordinal + 1));
+  List.appendChild(Object.assign(document.createElement("div"), { className:"dd-sep" }));
+  // The bottom layer is the substrate; ReclaimLayer refuses it, so the menu SHOWS that refusal rather than offering a no-op.
+  Entry(Removable ? "Delete" : "Delete (bottom layer)", Removable, true, () => ReclaimLayer(Layer.Token));
+
+  document.body.appendChild(List);
+  List.style.left = `${Math.min(X, innerWidth  - List.offsetWidth  - 8)}px`;
+  List.style.top  = `${Math.min(Y, innerHeight - List.offsetHeight - 8)}px`;
+  requestAnimationFrame(() => List.classList.add("open"));
+  OpenList = List;
+}
+
+Part.Filter.oninput = () => { FilterTerm = Part.Filter.value.trim().toLowerCase(); Render(); };
+
+// 📝 Bound ONCE, on the scroller — not per render. The sled is never replaced (Render only refills it), so a single
+//    binding survives every rebuild; re-binding per render would stack a fresh wheel listener on each commit.
+BindScrollLag(Part.Scroll, Part.Body);
+
+SeedLayerStack();
+Render();
+</script>
+</body>
+</html>

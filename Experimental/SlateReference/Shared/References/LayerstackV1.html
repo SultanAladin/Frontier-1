@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Layer Stack — Texture Paint</title>
+<style>
+/* ═════════ TOKENS · OLED NEUTRAL ═════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000;
+  --panel:#050505;
+  --panel-2:#0a0a0a;
+  --row:#0d0d0d;
+  --row-h:#161616;
+  --row-a:#202020;
+  --detail:#080808;
+  --stroke:rgba(255,255,255,.075);
+  --stroke-2:rgba(255,255,255,.18);
+  --tx:#efefef;
+  --tx-2:#9a9a9a;
+  --tx-3:#5e5e5e;
+  --acc:#ffffff;
+  --danger:#ff6b63;
+  --ok:#59d499;
+  --warn:#ffd24a;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.4,0,.2,1);
+  --r:10px;      /* standard round */
+  --r-s:7px;     /* small round  */
+  --pill:999px;  /* full pill    */
+}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--tx);
+  font:13px/1.4 "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  display:grid;place-items:center;padding:20px;
+}
+::selection{background:rgba(255,255,255,.18)}
+
+/* ═════════ PANEL (square, as requested) ═════════ */
+.panel{
+  position:relative;
+  width:var(--w,392px);
+  height:var(--h,min(880px,calc(100vh - 40px)));
+  display:flex;flex-direction:column;
+  background:var(--panel);
+  border:1px solid var(--stroke);
+  box-shadow:0 30px 70px -20px #000;
+  overflow:hidden;
+  transition:width .2s var(--ease);
+}
+body.wide{--w:min(760px,calc(100vw - 40px))}
+body.full{--w:calc(100vw - 24px);--h:calc(100vh - 24px)}
+
+.grip{position:absolute;right:0;top:50%;transform:translateY(-50%);
+  width:8px;height:70px;cursor:ew-resize;z-index:6;border-radius:var(--pill) 0 0 var(--pill);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.10));}
+.grip:hover{background:linear-gradient(90deg,transparent,rgba(255,255,255,.30))}
+
+/* ═════════ HEADER ═════════ */
+.head{display:flex;align-items:center;gap:6px;padding:11px 10px 9px 14px;background:var(--panel-2);
+      border-bottom:1px solid var(--stroke)}
+.head h1{font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--tx-2)}
+.head .spacer{flex:1}
+.count{height:20px;padding:0 9px;display:grid;place-items:center;font:600 10px/1 var(--mono);
+  color:var(--tx-2);background:rgba(255,255,255,.06);border:1px solid var(--stroke);border-radius:var(--pill)}
+.solo{height:20px;padding:0 9px;display:none;place-items:center;font:700 9.5px/1 var(--mono);
+  letter-spacing:.1em;color:#000;background:var(--warn);cursor:pointer;border-radius:var(--pill)}
+body.soloing .solo{display:grid}
+
+/* ═════════ BUTTONS (rounded) ═════════ */
+.ico{width:28px;height:28px;flex:0 0 28px;display:grid;place-items:center;border-radius:var(--r);
+  border:1px solid transparent;background:transparent;color:var(--tx-2);cursor:pointer;
+  transition:background .13s var(--ease),color .13s var(--ease),border-color .13s var(--ease),transform .12s var(--ease)}
+.ico:hover{background:rgba(255,255,255,.08);color:var(--tx);border-color:var(--stroke)}
+.ico:active{transform:scale(.93)}
+.ico.solid{background:rgba(255,255,255,.09);border-color:var(--stroke);color:var(--tx)}
+.ico.on{background:#fff;color:#000;border-color:#fff}
+.ico.danger:hover{background:rgba(255,107,99,.16);color:var(--danger);border-color:rgba(255,107,99,.35)}
+.ico:disabled{opacity:.25;pointer-events:none}
+.ico svg{width:15px;height:15px;stroke-width:1.6;fill:none;stroke:currentColor}
+.ico.sm{width:23px;height:23px;flex-basis:23px;border-radius:var(--r-s)}
+.ico.sm svg{width:12.5px;height:12.5px}
+
+/* ═════════ TOOLS ROW ═════════ */
+.tools{display:flex;align-items:center;gap:5px;padding:8px 10px;border-bottom:1px solid var(--stroke)}
+.search{flex:1;display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:var(--pill);
+  background:#000;border:1px solid var(--stroke);transition:border-color .14s}
+.search:focus-within{border-color:var(--stroke-2)}
+.search svg{width:13px;height:13px;stroke-width:1.7;fill:none;stroke:var(--tx-3);flex:0 0 13px}
+.search input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--tx);font:inherit;font-size:12px}
+.search input::placeholder{color:var(--tx-3)}
+.vsep{width:1px;height:17px;background:var(--stroke);margin:0 3px;flex:0 0 1px}
+
+/* ═════════ STACK ═════════ */
+.stack{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 8px 22px}
+.stack::-webkit-scrollbar{width:10px}
+.stack::-webkit-scrollbar-track{background:#000}
+.stack::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border:3px solid #000;border-radius:var(--pill)}
+.stack::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28)}
+
+/* children container + micro animation */
+.kids{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s var(--ease)}
+.kids.open{grid-template-rows:1fr}
+.kids>.kin{overflow:hidden;min-height:0;position:relative;margin-left:15px;padding-left:12px}
+.kids>.kin::before{content:"";position:absolute;left:0;top:0;bottom:6px;width:1px;background:var(--c,#444);opacity:.32}
+
+/* ── ENTRY (row + card share one colour tag) ── */
+.entry{position:relative;margin:1px 0}
+.tag{position:absolute;left:0;top:0;bottom:0;width:3px;z-index:3;background:var(--c);pointer-events:none;
+  transition:opacity .18s}
+.tag.dot{background:repeating-linear-gradient(180deg,var(--c) 0 3px,transparent 3px 7px);opacity:.85}
+.entry.off .tag{opacity:.3}
+
+/* ── ROW (square) ── */
+.row{position:relative;display:flex;align-items:center;gap:8px;
+  min-height:45px;padding:5px 6px 5px 10px;
+  background:var(--row);border:1px solid transparent;
+  cursor:default;user-select:none;transition:background .11s var(--ease)}
+.row:hover{background:var(--row-h)}
+.row.sel{background:var(--row-a);border-color:var(--stroke-2)}
+.row.hidden-l .thumb,.row.hidden-l .meta,.row.hidden-l .col{opacity:.34;filter:saturate(.15)}
+.row.dim{opacity:.3}
+.row.locked{cursor:not-allowed}
+.row.dragging{opacity:.35}
+.row.drop-before::after,.row.drop-after::after{content:"";position:absolute;left:0;right:0;height:2px;background:#fff;border-radius:var(--pill)}
+.row.drop-before::after{top:-2px}
+.row.drop-after::after{bottom:-2px}
+.row.drop-into{border-color:#fff}
+
+.tw{width:14px;flex:0 0 14px;display:grid;place-items:center;background:none;border:0;
+    color:var(--tx-3);cursor:pointer}
+.tw svg{width:11px;height:11px;stroke-width:2.2;fill:none;stroke:currentColor;transition:transform .22s var(--ease)}
+.tw:hover{color:var(--tx)}
+.tw.closed svg{transform:rotate(-90deg)}
+.tw.void{pointer-events:none;opacity:0}
+
+/* SQUARE previews */
+.thumb{position:relative;width:35px;height:35px;flex:0 0 35px;transition:opacity .14s}
+.thumb .disc{position:absolute;inset:0;overflow:hidden;border-radius:0;box-shadow:0 0 0 1px rgba(255,255,255,.15)}
+.thumb .disc>i{position:absolute;inset:0;display:block}
+.thumb .badge{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;display:grid;place-items:center;
+  background:#000;border:1px solid var(--stroke-2);color:var(--tx-2);border-radius:var(--r-s)}
+.thumb .badge svg{width:9px;height:9px;stroke-width:2;fill:none;stroke:currentColor}
+.thumb.mini{width:27px;height:27px;flex-basis:27px}
+.checker{background:repeating-conic-gradient(#1c1c1c 0 25%,#101010 0 50%) 0 0/9px 9px}
+
+.meta{flex:1;min-width:0}
+.name{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.sel .name{font-weight:650}
+.sub{display:flex;align-items:center;gap:5px;margin-top:2px;font:400 10.5px/1.2 var(--mono);
+  color:var(--tx-3);white-space:nowrap;overflow:hidden}
+.sub b{font-weight:600;color:var(--tx-2)}
+.sub s{width:3px;height:3px;background:currentColor;opacity:.5;flex:0 0 3px;text-decoration:none;border-radius:50%}
+.name input{width:100%;font:inherit;font-weight:600;color:var(--tx);background:#000;
+  border:1px solid #fff;border-radius:var(--r-s);padding:1px 7px;outline:none}
+
+/* wide-mode columns */
+.col{display:none;align-items:center;flex:0 0 auto}
+body.wide .col,body.full .col{display:flex}
+.col-blend{width:118px;font:500 11px/1 var(--mono);color:var(--tx-2);
+  justify-content:flex-start;overflow:hidden;white-space:nowrap}
+.col-op{width:110px;gap:7px}
+.mini{flex:1;height:4px;border-radius:var(--pill);background:rgba(255,255,255,.12);position:relative;overflow:hidden}
+.mini>i{position:absolute;left:0;top:0;bottom:0;background:#fff;border-radius:var(--pill);transition:width .12s linear}
+.opn{width:32px;text-align:right;font:500 10.5px/1 var(--mono);color:var(--tx-2)}
+
+.chips{display:flex;gap:3px;align-items:center;flex:0 0 auto}
+.chip{height:18px;padding:0 7px;display:grid;place-items:center;font:700 9.5px/1 var(--mono);
+  letter-spacing:.04em;background:rgba(255,255,255,.07);color:var(--tx-2);border:1px solid var(--stroke);
+  border-radius:var(--pill)}
+.chip.m{color:#dcdcdc;background:rgba(255,255,255,.12)}
+.chip.fx{color:#ffd9a0;background:rgba(255,180,80,.13);border-color:rgba(255,180,80,.26)}
+.chip.lk{color:#ff9d96;background:rgba(255,107,99,.13);border-color:rgba(255,107,99,.26)}
+.chip.d3{color:#a9d8ff;background:rgba(110,180,255,.14);border-color:rgba(110,180,255,.28)}
+.chip.ok{color:#9ff0c6;background:rgba(89,212,153,.13);border-color:rgba(89,212,153,.28)}
+.chip.no{color:#ffb0ab;background:rgba(255,107,99,.12);border-color:rgba(255,107,99,.26)}
+.chip.x{cursor:pointer;transition:background .12s,color .12s}
+.chip.x:hover{background:rgba(255,107,99,.2);color:var(--danger)}
+.chip.tog{cursor:pointer}
+.chip.tog.on{background:rgba(255,255,255,.9);color:#000;border-color:#fff}
+
+.eye{opacity:.55}.row:hover .eye,.row.sel .eye,.eye.off{opacity:1}
+.eye.off{color:var(--tx-3)}
+.row .more,.row .exp{opacity:0}
+.row:hover .more,.row.sel .more,.row:hover .exp,.row.sel .exp{opacity:1}
+.exp svg{transition:transform .22s var(--ease)}
+.exp.open svg{transform:rotate(180deg)}
+
+/* ── MASK (attached) ── */
+.attach{position:relative;padding-left:26px}
+.attach::before{content:"";position:absolute;left:14px;top:0;height:23px;width:1px;background:var(--stroke-2);opacity:.55}
+.attach::after{content:"";position:absolute;left:14px;top:23px;width:11px;height:1px;background:var(--stroke-2);opacity:.55}
+.row.msk{min-height:37px;background:rgba(255,255,255,.022);border:1px dashed var(--stroke)}
+.row.msk:hover{background:rgba(255,255,255,.05)}
+.row.msk.sel{background:var(--row-a);border-style:solid;border-color:var(--stroke-2)}
+.row.msk .name{font:700 10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--tx-2)}
+
+/* ── CARD (animated) ── */
+.card{display:grid;grid-template-rows:0fr;opacity:0;
+  transition:grid-template-rows .28s var(--ease),opacity .22s var(--ease)}
+.card.open{grid-template-rows:1fr;opacity:1}
+.card>.cin{overflow:hidden;min-height:0}
+.cbody{background:var(--detail);border:1px solid var(--stroke);border-top:0;padding:4px 12px 10px 12px;
+  margin-bottom:2px}
+.row.msk+.card .cbody{border-style:dashed;border-top:0}
+
+/* ── COLLAPSIBLE SECTIONS ── */
+.sec{border-bottom:1px solid rgba(255,255,255,.05)}
+.sec:last-child{border-bottom:0}
+.sech{width:100%;display:flex;align-items:center;gap:7px;padding:8px 4px;background:none;border:0;cursor:pointer;
+  color:var(--tx-3);font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;border-radius:var(--r-s);
+  transition:color .13s,background .13s}
+.sech:hover{color:var(--tx);background:rgba(255,255,255,.03)}
+.sech svg{width:11px;height:11px;stroke-width:2.2;fill:none;stroke:currentColor;transition:transform .22s var(--ease);transform:rotate(-90deg)}
+.sec.open>.sech svg{transform:rotate(0)}
+.sech em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--tx-3);opacity:.8;letter-spacing:.04em;
+  text-transform:none;max-width:52%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.secb{display:grid;grid-template-rows:0fr;transition:grid-template-rows .24s var(--ease)}
+.sec.open>.secb{grid-template-rows:1fr}
+.secb>.sin{overflow:hidden;min-height:0}
+.pad{padding:2px 2px 12px}
+
+/* info grid */
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(136px,1fr));gap:5px 16px}
+.d{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid rgba(255,255,255,.05);padding-bottom:3px}
+.d span{font:600 9.5px/1.6 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--tx-3)}
+.d b{font:500 11px/1.6 var(--mono);color:var(--tx);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* controls */
+.frow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:6px}
+.dbtn{height:26px;padding:0 12px;display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.06);
+  border:1px solid var(--stroke);color:var(--tx-2);font:inherit;font-size:11px;cursor:pointer;border-radius:var(--pill);
+  transition:background .13s,color .13s,border-color .13s,transform .12s}
+.dbtn:hover{background:rgba(255,255,255,.12);color:var(--tx);border-color:var(--stroke-2)}
+.dbtn:active{transform:scale(.96)}
+.dbtn svg{width:12px;height:12px;stroke-width:1.8;fill:none;stroke:currentColor}
+.dbtn.danger:hover{color:var(--danger);border-color:rgba(255,107,99,.4);background:rgba(255,107,99,.14)}
+.dbtn.on{background:#fff;color:#000;border-color:#fff}
+
+select.pill{height:26px;padding:0 26px 0 12px;background:#000 no-repeat right 9px center;color:var(--tx);
+  border:1px solid var(--stroke);border-radius:var(--pill);font:inherit;font-size:11px;outline:none;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--tx-3) 50%),linear-gradient(135deg,var(--tx-3) 50%,transparent 50%);
+  background-size:5px 5px,5px 5px;background-position:right 13px center,right 9px center;background-repeat:no-repeat;
+  transition:border-color .13s,background-color .13s}
+select.pill:hover{border-color:var(--stroke-2);background-color:#0d0d0d}
+select.pill.sm{height:23px;font-size:10.5px;padding:0 24px 0 10px}
+
+/* ═════════ SLIDERS (redesigned) ═════════ */
+input[type=range].rng{-webkit-appearance:none;appearance:none;flex:1;min-width:70px;height:22px;background:transparent;cursor:pointer}
+input[type=range].rng::-webkit-slider-runnable-track{height:6px;border-radius:var(--pill);
+  background:linear-gradient(90deg,#fff 0 var(--p,100%),rgba(255,255,255,.11) var(--p,100%) 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+input[type=range].rng::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;margin-top:-4.5px;
+  border-radius:50%;background:#fff;border:0;
+  box-shadow:0 0 0 3px #050505,0 0 0 4px rgba(255,255,255,.35),0 2px 8px rgba(0,0,0,.8);
+  transition:transform .13s var(--ease),box-shadow .13s var(--ease)}
+input[type=range].rng:hover::-webkit-slider-thumb{transform:scale(1.14);box-shadow:0 0 0 3px #050505,0 0 0 5px rgba(255,255,255,.55),0 2px 10px rgba(0,0,0,.9)}
+input[type=range].rng:active::-webkit-slider-thumb{transform:scale(.96)}
+input[type=range].rng::-moz-range-track{height:6px;border-radius:var(--pill);background:rgba(255,255,255,.11)}
+input[type=range].rng::-moz-range-progress{height:6px;border-radius:var(--pill);background:#fff}
+input[type=range].rng::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 3px #050505,0 0 0 4px rgba(255,255,255,.35)}
+input[type=range].rng:disabled{opacity:.3}
+input[type=range].rng.tiny{height:18px;min-width:56px}
+input[type=range].rng.tiny::-webkit-slider-runnable-track{height:4px}
+input[type=range].rng.tiny::-webkit-slider-thumb{width:11px;height:11px;margin-top:-3.5px;box-shadow:0 0 0 2px #050505,0 0 0 3px rgba(255,255,255,.3)}
+.pv{min-width:46px;text-align:center;font:600 10px/1 var(--mono);color:var(--tx-2);
+  background:rgba(255,255,255,.06);border:1px solid var(--stroke);border-radius:var(--pill);padding:4px 7px}
+
+/* param grids */
+.pgrid{display:grid;grid-template-columns:1fr;gap:3px 18px}
+body.wide .pgrid,body.full .pgrid{grid-template-columns:1fr 1fr}
+.pr{display:grid;grid-template-columns:minmax(74px,33%) 1fr auto;align-items:center;gap:8px;padding:2px 0}
+.pr>label{font:600 9.5px/1.3 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--tx-3);
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ps{display:grid;grid-template-columns:minmax(74px,33%) 1fr;align-items:center;gap:8px;padding:2px 0}
+.ps>label{font:600 9.5px/1.3 var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--tx-3);
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ptog{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+
+/* switch */
+.sw2{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 12px 0 5px;border-radius:var(--pill);
+  background:rgba(255,255,255,.05);border:1px solid var(--stroke);color:var(--tx-2);font:inherit;font-size:11px;
+  cursor:pointer;transition:color .14s,border-color .14s,background .14s}
+.sw2:hover{background:rgba(255,255,255,.09)}
+.sw2 i{width:26px;height:15px;border-radius:var(--pill);background:rgba(255,255,255,.16);position:relative;
+  transition:background .18s var(--ease);flex:0 0 26px}
+.sw2 i::after{content:"";position:absolute;top:2.5px;left:2.5px;width:10px;height:10px;border-radius:50%;
+  background:#7a7a7a;transition:transform .2s var(--ease),background .2s}
+.sw2.on{color:var(--tx);border-color:var(--stroke-2)}
+.sw2.on i{background:rgba(255,255,255,.92)}
+.sw2.on i::after{transform:translateX(11px);background:#000}
+
+/* channel rows */
+.chrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 0;
+  border-bottom:1px solid rgba(255,255,255,.04)}
+.chrow:last-child{border-bottom:0}
+.chrow.dis{opacity:.42}
+.dot{width:18px;height:18px;flex:0 0 18px;border-radius:50%;border:1px solid var(--stroke-2);background:#000;
+  cursor:pointer;display:grid;place-items:center;transition:background .14s,border-color .14s}
+.dot::after{content:"";width:8px;height:8px;border-radius:50%;background:transparent;transition:background .14s}
+.dot.on{border-color:#fff}
+.dot.on::after{background:#fff}
+.chn{flex:1 1 84px;min-width:66px;font:600 10.5px/1 var(--mono);color:var(--tx-2);letter-spacing:.03em;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mrange{flex:1 1 118px;display:flex;align-items:center;gap:7px;min-width:110px}
+
+/* swatches */
+.sw{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.sw i{width:17px;height:17px;border-radius:50%;cursor:pointer;box-shadow:0 0 0 1px rgba(255,255,255,.16);
+  transition:transform .13s var(--ease),box-shadow .13s}
+.sw i:hover{transform:scale(1.14);box-shadow:0 0 0 1px #fff}
+.sw i.on{box-shadow:0 0 0 2px #fff}
+
+.note{margin-top:8px;padding:8px 11px;background:rgba(255,255,255,.03);border-radius:var(--r);
+  border-left:2px solid var(--stroke-2);font-size:11px;color:var(--tx-2);line-height:1.55}
+.note b{color:var(--tx);font-weight:600}
+.empty{padding:52px 20px;text-align:center;color:var(--tx-3);font-size:12px}
+.empty svg{width:24px;height:24px;opacity:.4;margin-bottom:10px;stroke-width:1.4;fill:none;stroke:currentColor}
+
+/* ═════════ FOOTER ═════════ */
+.foot{background:var(--panel-2);border-top:1px solid var(--stroke);padding:8px 10px 10px}
+.crumb{display:flex;align-items:center;gap:6px;font:500 10px/1 var(--mono);color:var(--tx-3);
+  margin-bottom:8px;white-space:nowrap;overflow:hidden}
+.crumb b{color:var(--tx-2);font-weight:600}
+.prop{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.blend{height:27px;padding:0 10px 0 13px;gap:8px;display:inline-flex;align-items:center;border-radius:var(--pill);
+  font:600 11px/1 var(--mono);color:var(--tx);background:rgba(255,255,255,.06);
+  border:1px solid var(--stroke);cursor:pointer;max-width:52%;transition:background .13s,border-color .13s}
+.blend span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.blend:hover{background:rgba(255,255,255,.12);border-color:var(--stroke-2)}
+.blend svg{width:11px;height:11px;stroke-width:2;fill:none;stroke:var(--tx-3);flex:0 0 11px}
+.blend:disabled{opacity:.35;pointer-events:none}
+.op{flex:1;display:flex;align-items:center;gap:8px;min-width:0}
+.bar{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.bar .gap{flex:1}
+
+/* ═════════ POPUP (rounded pill menus) ═════════ */
+.pop{position:fixed;z-index:60;min-width:206px;max-height:78vh;overflow:auto;padding:5px;
+  background:#0b0b0b;border:1px solid var(--stroke-2);border-radius:16px;box-shadow:0 24px 60px -14px #000;
+  opacity:0;transform:translateY(-4px) scale(.985);pointer-events:none;
+  transition:opacity .13s var(--ease),transform .16s var(--ease)}
+.pop.open{opacity:1;transform:none;pointer-events:auto}
+.pop h6{font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--tx-3);
+  padding:9px 10px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pop button{width:100%;display:flex;align-items:center;gap:10px;padding:7px 10px;border:0;background:none;
+  color:var(--tx-2);font:inherit;font-size:12px;text-align:left;cursor:pointer;border-radius:var(--pill);
+  transition:background .12s,color .12s}
+.pop button:hover{background:rgba(255,255,255,.09);color:var(--tx)}
+.pop button.danger:hover{background:rgba(255,107,99,.16);color:var(--danger)}
+.pop button svg{width:14px;height:14px;stroke-width:1.7;flex:0 0 14px;fill:none;stroke:currentColor;opacity:.85}
+.pop button .k{margin-left:auto;font:500 10px/1 var(--mono);color:var(--tx-3)}
+.pop hr{border:0;height:1px;background:var(--stroke);margin:5px 8px}
+.pop .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:2px 10px 9px}
+.pop .swatches i{width:100%;aspect-ratio:1;border-radius:50%;cursor:pointer;box-shadow:0 0 0 1px rgba(255,255,255,.16);
+  transition:transform .13s var(--ease)}
+.pop .swatches i:hover{transform:scale(1.12);box-shadow:0 0 0 1px #fff}
+.pop .swatches i.on{box-shadow:0 0 0 2px #fff}
+
+/* colour wheel */
+.cw{padding:4px 10px 10px;display:grid;gap:10px;justify-items:center}
+.wheel{position:relative;width:158px;height:158px;border-radius:50%;cursor:crosshair;touch-action:none;
+  background:conic-gradient(from 90deg,#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000);
+  box-shadow:0 0 0 1px rgba(255,255,255,.2),0 10px 26px -8px #000}
+.wheel::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.85) 12%,transparent 68%);pointer-events:none}
+.wheel .lum{position:absolute;inset:0;border-radius:50%;pointer-events:none;background:#000;opacity:var(--dark,0)}
+.cwDot{position:absolute;width:15px;height:15px;border-radius:50%;transform:translate(-50%,-50%);
+  box-shadow:0 0 0 2px #fff,0 0 0 3.5px rgba(0,0,0,.7);pointer-events:none;z-index:3}
+.cwRow{display:flex;align-items:center;gap:8px;width:100%}
+.cwPrev{width:28px;height:28px;border-radius:50%;flex:0 0 28px;box-shadow:0 0 0 1px rgba(255,255,255,.25)}
+.hex{flex:1;min-width:0;height:28px;padding:0 12px;border-radius:var(--pill);background:#000;color:var(--tx);
+  border:1px solid var(--stroke);font:600 11px/1 var(--mono);outline:none;text-transform:uppercase}
+.hex:focus{border-color:var(--stroke-2)}
+
+.tip{position:fixed;z-index:80;padding:5px 10px;background:#161616;border:1px solid var(--stroke-2);border-radius:var(--pill);
+  font:500 10.5px/1 var(--mono);color:var(--tx);pointer-events:none;opacity:0;transition:opacity .1s;white-space:nowrap}
+.tip.on{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="panel" id="panel">
+  <div class="grip" id="grip" data-tip="Drag to resize"></div>
+
+  <div class="head">
+    <h1>Layers</h1>
+    <span class="count" id="count">0</span>
+    <span class="solo" id="soloChip" data-tip="Clear solo">SOLO</span>
+    <span class="spacer"></span>
+    <button class="ico" id="btnUndo" data-tip="Undo &nbsp;⌘Z">%undo%</button>
+    <button class="ico" id="btnRedo" data-tip="Redo &nbsp;⇧⌘Z">%redo%</button>
+    <button class="ico" id="btnSize" data-tip="Expand panel">%max%</button>
+    <button class="ico solid" id="btnAdd" data-tip="Add…">%plus%</button>
+  </div>
+
+  <div class="tools">
+    <label class="search">%search%<input id="q" placeholder="Filter layers…" spellcheck="false"></label>
+    <span class="vsep"></span>
+    <button class="ico" id="btnFolder" data-tip="New folder &nbsp;G">%folder%</button>
+    <button class="ico" id="btnMask" data-tip="Toggle mask &nbsp;M">%mask%</button>
+    <button class="ico" id="btnCollapse" data-tip="Collapse / expand all">%collapse%</button>
+  </div>
+
+  <div class="stack" id="stack"></div>
+
+  <div class="foot">
+    <div class="crumb" id="crumb"></div>
+    <div class="prop">
+      <button class="blend" id="btnBlend"><span id="blendTxt">Normal</span>%chev%</button>
+      <div class="op">
+        <input type="range" class="rng" id="opac" min="0" max="100" value="100">
+        <span class="pv" id="opacV">100%</span>
+      </div>
+    </div>
+    <div class="bar">
+      <button class="ico" id="aPaint" data-tip="Paint layer &nbsp;P">%brush%</button>
+      <button class="ico" id="aFill" data-tip="Fill layer &nbsp;F">%drop%</button>
+      <button class="ico" id="aAdj" data-tip="Adjustment &nbsp;A">%adj%</button>
+      <button class="ico" id="aFilter" data-tip="Filter &nbsp;R">%filter%</button>
+      <button class="ico" id="aDecal" data-tip="Decal layer &nbsp;D">%decal%</button>
+      <button class="ico" id="aPat" data-tip="Pattern layer &nbsp;T">%pattern%</button>
+      <span class="vsep"></span>
+      <button class="ico" id="aGroup" data-tip="Group selection">%folder%</button>
+      <button class="ico" id="aDup" data-tip="Duplicate &nbsp;⌘D">%copy%</button>
+      <button class="ico" id="aLock" data-tip="Lock layer &nbsp;L">%lock%</button>
+      <span class="gap"></span>
+      <button class="ico" id="aUp" data-tip="Move up &nbsp;⌘↑">%up%</button>
+      <button class="ico" id="aDown" data-tip="Move down &nbsp;⌘↓">%down%</button>
+      <span class="vsep"></span>
+      <button class="ico danger" id="aDel" data-tip="Delete &nbsp;⌫">%trash%</button>
+    </div>
+  </div>
+</div>
+
+<div class="pop" id="pop"></div>
+<div class="tip" id="tip"></div>
+
+<script>
+/* ═════════════════════ ICONS ═════════════════════ */
+const I={
+plus:'<svg viewBox="0 0 24 24" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+folder:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><path d="M3 6h6l1.6 2H21v11H3z"/></svg>',
+brush:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5 3.8 20.2M14 4.5l5.5 5.5-6.2 6.2a3 3 0 0 1-4.2 0l-1.3-1.3a3 3 0 0 1 0-4.2z"/><path d="M17 2.5 21.5 7"/></svg>',
+drop:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><path d="M12 3l6 7.5V15a6 6 0 0 1-12 0v-4.5z"/></svg>',
+adj:'<svg viewBox="0 0 24 24" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><rect x="13" y="4.5" width="4" height="5" rx="1"/><rect x="7" y="14.5" width="4" height="5" rx="1"/></svg>',
+filter:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><path d="M4 5h16l-6 7v7l-4 2v-9z"/></svg>',
+mask:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17"/><path d="M12 3.5h8.5v17H12z" fill="currentColor" stroke="none"/></svg>',
+invert:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17"/><path d="M3.5 3.5h8.5v17H3.5z" fill="currentColor" stroke="none"/></svg>',
+eye:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
+eyeOff:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5 20 20M9.6 6.2A9.6 9.6 0 0 1 12 5.9c6 0 9.5 6.1 9.5 6.1a17 17 0 0 1-2.7 3.5M6.4 8.3A16.5 16.5 0 0 0 2.5 12S6 18.1 12 18.1a9.7 9.7 0 0 0 3.1-.5"/><path d="M9.5 10.4a3 3 0 0 0 4.2 4.2"/></svg>',
+chev:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>',
+up:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg>',
+down:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M18.5 12.5 12 19l-6.5-6.5"/></svg>',
+copy:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H4v11"/></svg>',
+trash:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></svg>',
+more:'<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5.5" cy="12.5" r="1.6"/><circle cx="12" cy="12.5" r="1.6"/><circle cx="18.5" cy="12.5" r="1.6"/></svg>',
+lock:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>',
+unlock:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.6-1.7"/></svg>',
+rename:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><path d="M4 20h4L18 10l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>',
+stack:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><path d="M12 3 21 8l-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
+search:'<svg viewBox="0 0 24 24" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
+max:'<svg viewBox="0 0 24 24" stroke-linejoin="round" stroke-linecap="round"><path d="M9 4H4v5M15 20h5v-5M20 9V4h-5M4 15v5h5"/></svg>',
+min:'<svg viewBox="0 0 24 24" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9h5V4M20 15h-5v5M15 4v5h5M9 20v-5H4"/></svg>',
+undo:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h11a4.5 4.5 0 0 1 0 9H8"/><path d="M8 4.5 3.5 9 8 13.5"/></svg>',
+redo:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M20 9H9a4.5 4.5 0 0 0 0 9h7"/><path d="M16 4.5 20.5 9 16 13.5"/></svg>',
+collapse:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>',
+fx:'<svg viewBox="0 0 24 24" stroke-linecap="round"><path d="M5 19V8a3 3 0 0 1 3-3h1M4 12h6M13 12l6 7M19 12l-6 7"/></svg>',
+info:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6M12 7.6v.1"/></svg>',
+decal:'<svg viewBox="0 0 24 24" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 4.5h10.5l4.5 4.5v10.5H4.5z"/><path d="M15 4.5V9h4.5"/><circle cx="11" cy="13" r="3"/></svg>',
+pattern:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+gen:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 15.5 8.5M13.5 6.5 17.5 10.5M17 3v3M20.5 6.5h-3M18 19v2M17 20h2"/></svg>',
+chan:'<svg viewBox="0 0 24 24" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="17" r="2"/></svg>',
+height:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l5-9 3.5 5.5L16 11l4 9z"/><path d="M4 5h16"/></svg>',
+wheel:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6L6 18"/></svg>',
+bake:'<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M6.5 15.5a5.5 5.5 0 0 1 11 0z"/><path d="M12 4v3M9 5.5 10.5 8M15 5.5 13.5 8"/></svg>',
+check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+tag:'<svg viewBox="0 0 24 24" stroke-linejoin="round"><path d="M11 3.5H20.5V13L11.5 22 2 12.5z"/><circle cx="16.5" cy="7.5" r="1.6"/></svg>'};
+document.body.innerHTML=document.body.innerHTML.replace(/%(\w+)%/g,(m,k)=>I[k]||m);
+
+/* ═════════════════════ CONSTANTS ═════════════════════ */
+const COLORS=['#e5484d','#f76b15','#ffc53d','#46a758','#12a594','#8ab4d8','#9b8cf0','#e93d82','#8b8d98','#b0e64c'];
+
+const BLENDS=['Normal','Passthrough','Replace','Disable','Multiply','Divide','Inverse Divide','Screen','Overlay',
+ 'Soft Light','Hard Light','Vivid Light','Linear Light','Pin Light','Linear Dodge (Add)','Color Dodge','Linear Burn',
+ 'Color Burn','Subtract','Inverse Subtract','Difference','Exclusion','Signed Addition (AddSub)','Darken (Min)',
+ 'Lighten (Max)','Tint','Saturation','Color','Value'];
+const NBLENDS=['Normal Map Combine','Normal Map Detail','Normal Map Inverse Detail','Normal','Replace','Disable'];
+const HBLENDS=['Linear Dodge (Add)','Signed Addition (AddSub)','Normal','Multiply','Subtract','Darken (Min)',
+ 'Lighten (Max)','Replace','Disable'];
+const CHANNELS=['Base Color','Metallic','Roughness','Normal','Height','Ambient Occlusion','Emissive','Opacity'];
+const blendsFor=c=>c==='Normal'?NBLENDS:(c==='Height'?HBLENDS:BLENDS);
+
+const EFFECTS=['Blur','Blur Slope','Sharpen','Levels','HSL Shift','Warp','Noise','Curvature','Anchor Point',
+ 'Clamp','Contrast / Luminosity','Height to Normal','Normal to Height','Matte Fill'];
+
+const MESHMAPS=['Normal','World Space Normal','Curvature','Ambient Occlusion','Position','Thickness','ID','Height','UV'];
+let BAKE={'Normal':1,'World Space Normal':1,'Curvature':1,'Ambient Occlusion':1,'Position':1,
+          'Thickness':0,'ID':0,'Height':1,'UV':1};
+
+const TEX={
+ rust:'radial-gradient(circle at 30% 25%,#c4632a,transparent 55%),radial-gradient(circle at 72% 68%,#7a3a18,transparent 60%),repeating-conic-gradient(#5d3a26 0 8%,#79462c 0 16%)',
+ metal:'linear-gradient(135deg,#8e97a3,#3c434c 45%,#b9c2cd 60%,#4a525c)',
+ gold:'linear-gradient(150deg,#f4d489,#8a6420 40%,#ffe9ae 58%,#7d5a1c)',
+ wood:'repeating-linear-gradient(96deg,#6b4526 0 3px,#8a5c33 3px 7px,#5a3a20 7px 9px)',
+ paint:'radial-gradient(circle at 35% 30%,#7a7a7a,transparent 60%),radial-gradient(circle at 70% 70%,#3a3a3a,transparent 65%),#232323',
+ grunge:'repeating-conic-gradient(#2b2b2b 0 12%,#4a4a4a 0 25%),radial-gradient(circle at 60% 40%,rgba(255,255,255,.25),transparent 60%)',
+ fabric:'repeating-linear-gradient(45deg,#7a4b5e 0 2px,#a2687e 2px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.25) 0 2px,transparent 2px 4px)',
+ conc:'radial-gradient(circle at 45% 35%,#9a9a94,transparent 60%),repeating-conic-gradient(#6d6d68 0 10%,#83837d 0 20%)',
+ emis:'radial-gradient(circle at 50% 50%,#fff6c9,#ffb61e 35%,#7a4a00 75%)',
+ decal:'linear-gradient(#101010,#101010),radial-gradient(circle at 50% 45%,#ff5c4d 0 30%,transparent 32%),repeating-linear-gradient(45deg,rgba(255,255,255,.12) 0 3px,transparent 3px 6px)',
+ pat:'repeating-conic-gradient(from 30deg,#3d4c5a 0 25%,#7f95a8 0 50%) 0 0/12px 12px',
+ gmask:'radial-gradient(circle at 40% 35%,#fff,transparent 62%),radial-gradient(circle at 70% 72%,#bdbdbd,transparent 55%),#141414',
+ pmask:'linear-gradient(160deg,#fff 0 38%,#2a2a2a 38% 62%,#e6e6e6 62%)',
+ cmask:'radial-gradient(circle at 50% 50%,#fff 0 12%,#555 30%,#0e0e0e 70%)'};
+
+/* ─── parameter helpers ─── */
+const R=(k,l,v,min=0,max=100,u='%')=>({k,l,t:'r',v,min,max,u});
+const T=(k,l,v)=>({k,l,t:'t',v});
+const S=(k,l,v,o)=>({k,l,t:'s',v,o});
+const AXIS=['+X','-X','+Y','-Y','+Z','-Z'];
+const GRUNGE=['None','Grunge Map 002','Grunge Map 005','Grunge Leaky Paint','Grunge Rust Fine','Grunge Scratches Fine','Clouds 2','Cells 4','Perlin Noise'];
+
+/* ═════════════════════ GENERATORS (mesh-map driven) ═════════════════════ */
+const GENS={
+'Curvature':{maps:['Curvature','Normal','Height'],p:[
+  S('mode','Mode','Both',['Concave','Convex','Both']),R('int','Intensity',60),R('bal','Balance',50),
+  R('con','Contrast',50),R('blur','Blur',10),R('range','Range Clamp',100)],tog:[T('inv','Invert',false),T('micro','Micro Details',false)]},
+
+'Ambient Occlusion':{maps:['Ambient Occlusion'],p:[
+  R('int','Intensity',70),R('bal','Balance',50),R('con','Contrast',50),R('blur','Blur',8),
+  R('range','Range Clamp',100)],tog:[T('inv','Invert',false)]},
+
+'Dirt':{maps:['Curvature','Ambient Occlusion','Normal','Height'],p:[
+  R('level','Dirt Level',55),R('con','Global Contrast',50),R('ao','AO Intensity',60),R('cv','Curvature Intensity',35),
+  R('microI','Micro Intensity',40),S('grunge','Grunge Map','Grunge Map 002',GRUNGE),R('gscale','Grunge Scale',100,1,400),
+  R('blur','Blur',6),R('seed','Seed',7,0,999,'')],tog:[T('micro','Micro Details',true),T('inv','Invert',false)]},
+
+'Metal Edge Wear':{maps:['Curvature','Position','Normal','Height'],p:[
+  R('water','Water Level',50),R('edge','Edge Intensity',72),R('con','Global Contrast',50),R('soft','Edge Softness',18),
+  R('grungeA','Grunge Amount',35),S('grunge','Grunge Map','Grunge Map 005',GRUNGE),R('gscale','Grunge Scale',100,1,400),
+  R('microI','Micro Intensity',40),S('cvsrc','Curvature Source','Baked Curvature',['Baked Curvature','From Height','Both']),
+  R('seed','Seed',12,0,999,'')],tog:[T('micro','Micro Details',true),T('inv','Invert',false)]},
+
+'Fiber Glass Edge Wear':{maps:['Curvature','Ambient Occlusion','Normal','Height'],p:[
+  R('fiber','Fiber Density',60),R('width','Fiber Width',30,1,100),R('edge','Edge Intensity',70),
+  R('ao','AO Intensity',40),R('microI','Micro Intensity',35),R('seed','Seed',21,0,999,'')],
+  tog:[T('micro','Micro Details',true),T('inv','Invert',false)]},
+
+'Dripping Rust':{maps:['Curvature','Ambient Occlusion','Position','Normal'],p:[
+  S('axis','Gravity Axis','-Y',AXIS),R('len','Drip Length',60),R('wid','Drip Width',35),R('amt','Rust Amount',50),
+  R('break','Break-up',40),R('edge','Edge Rust',55),R('seed','Seed',3,0,999,'')],
+  tog:[T('micro','Micro Details',false),T('inv','Invert',false)]},
+
+'Mask Editor':{maps:['Curvature','Ambient Occlusion','Position','Thickness','Normal','Height'],p:[
+  R('cv','Curvature',50),R('ao','Ambient Occlusion',50),R('thick','Thickness',40),R('pos','Position Gradient',0),
+  S('axis','Gradient Axis','+Y',AXIS),R('bal','Global Balance',50),R('con','Global Contrast',50),R('blur','Global Blur',8),
+  R('microI','Micro Intensity',40),S('grunge','Grunge Map','Grunge Map 002',GRUNGE),R('gscale','Grunge Scale',100,1,400),
+  R('seed','Seed',5,0,999,'')],tog:[T('micro','Micro Details',true),T('inv','Invert',false),T('clamp','Clamp Output',true)]},
+
+'Mask Builder – Legacy':{maps:['Curvature','Ambient Occlusion','Position','Normal','Height'],p:[
+  R('cv','Curvature',50),R('ao','Ambient Occlusion',45),R('pos','Position Gradient',0),R('scratch','Scratches',25),
+  R('scatter','Scatter Amount',0),S('scatMap','Scatter Map','Cells 4',GRUNGE),R('bal','Global Balance',50),
+  R('con','Global Contrast',50),R('blur','Global Blur',6),R('microI','Micro Intensity',35),R('seed','Seed',9,0,999,'')],
+  tog:[T('micro','Micro Details',true),T('inv','Invert',false)]},
+
+'Position':{maps:['Position'],p:[
+  S('axis','Axis','+Y',AXIS),R('off','Offset',50),R('con','Contrast',50),R('soft','Softness',30),
+  R('noise','Noise Blend',0),S('nmap','Noise Map','None',GRUNGE),R('seed','Seed',1,0,999,'')],
+  tog:[T('inv','Invert',false)]},
+
+'World Space Normals':{maps:['World Space Normal'],p:[
+  S('axis','Direction','+Y',AXIS),R('angle','Cone Angle',45,0,180,'°'),R('fall','Falloff',30),R('con','Contrast',50),
+  R('noise','Noise Blend',0),S('nmap','Noise Map','None',GRUNGE)],tog:[T('inv','Invert',false)]},
+
+'3D Distance':{maps:['Position'],p:[
+  R('rad','Sphere Radius',50),R('soft','Softness',30),R('px','Centre X',0,-100,100,''),R('py','Centre Y',0,-100,100,''),
+  R('pz','Centre Z',0,-100,100,''),R('con','Contrast',50)],tog:[T('inv','Invert',false)]},
+
+'3D Linear Gradient':{maps:['Position'],p:[
+  S('axis','Axis','+Y',AXIS),R('start','Start',20),R('end','End',80),R('con','Contrast',50),
+  R('noise','Noise Blend',0)],tog:[T('inv','Invert',false)]},
+
+'Auto Stitcher':{maps:['Curvature','UV'],p:[
+  S('src','Insertion','Curvature',['Curvature','UV Border','Custom Mask']),R('space','Stitch Spacing',40),
+  R('size','Stitch Size',50),R('off','Path Offset',50),R('angle','Stitch Angle',35,0,180,'°'),
+  R('height','Height Output',60),R('seed','Seed',4,0,999,'')],tog:[T('double','Double Row',false),T('inv','Invert',false)]},
+
+'Grayscale Conversion':{maps:[],p:[
+  S('mode','Channel','Luminance',['Luminance','Red','Green','Blue','Average','Max','Min']),
+  R('con','Contrast',50),R('lvl','Level Shift',50),R('blur','Blur',0)],tog:[T('inv','Invert',false)]},
+
+'Inflate Shrinkwrap':{maps:['Curvature','Normal'],p:[
+  R('inf','Inflate',60),R('wrin','Wrinkle Amount',35),R('scale','Wrinkle Scale',100,1,400),R('soft','Softness',25),
+  R('seed','Seed',8,0,999,'')],tog:[T('hout','Output to Height',true),T('inv','Invert',false)]},
+
+'Light':{maps:['Normal','World Space Normal','Ambient Occlusion'],p:[
+  R('az','Azimuth',45,0,360,'°'),R('el','Elevation',40,0,90,'°'),R('int','Intensity',70),R('fall','Falloff',40),
+  R('shadow','AO Shadowing',30),R('con','Contrast',50)],tog:[T('inv','Invert',false)]},
+
+'Tri-Planar Advanced':{maps:['Position','World Space Normal'],p:[
+  S('src','Grayscale Source','Cells 4',GRUNGE),R('scale','Scale',100,1,400),R('blend','Projection Blend',40),
+  R('con','Contrast',50),R('rot','Rotation',0,0,360,'°'),R('seed','Seed',2,0,999,'')],tog:[T('inv','Invert',false)]},
+
+'UV Border Distance':{maps:['UV'],p:[
+  R('wid','Line Width',20),R('blur','Blur',15),R('con','Contrast',50)],tog:[T('inv','Invert',false)]}
+};
+const GENLIST=Object.keys(GENS);
+
+/* ═════════════════════ MASK SOURCES ═════════════════════ */
+const SRC={
+'Paint':{maps:[],p:[S('brush','Brush','Basic Hard',['Basic Hard','Basic Soft','Dirt 1','Splatter','Marker','Airbrush']),
+  R('flow','Flow',100),R('size','Size',24,1,300,'px'),R('soft','Hardness',80)],tog:[T('sym','Symmetry',false)]},
+'Bitmap':{maps:[],p:[S('img','Bitmap','grunge_leaky_paint',['grunge_leaky_paint','scratches_fine','alpha_splatter','logo_decal','custom…']),
+  S('proj','Projection','UV',['UV','Planar','Tri-Planar','Spherical']),R('scale','Scale',100,1,800),
+  R('rot','Rotation',0,0,360,'°'),R('lvlIn','Levels In',50),R('lvlOut','Levels Out',50)],
+  tog:[T('inv','Invert',false),T('tile','Tiling',true)]},
+'Baked Map':{maps:['Curvature','Ambient Occlusion','Position','Thickness','World Space Normal','ID'],p:[
+  S('map','Baked Map','Curvature',['Curvature','Ambient Occlusion','Position','Thickness','World Space Normal','Normal']),
+  R('lvlIn','Input Level',50),R('lvlOut','Output Level',50),R('con','Contrast',50),R('blur','Blur',0)],
+  tog:[T('inv','Invert',false)]},
+'Polygon Fill':{maps:['UV','ID'],p:[
+  S('mode','Selection Mode','Polygon',['Triangle','Polygon','Mesh','UV Chunk']),
+  S('fill','Fill Value','White',['White','Black','Invert']),R('bleed','UV Bleed',2,0,32,'px')],
+  tog:[T('back','Ignore Backfaces',true)]},
+'Color Selection':{maps:['ID'],p:[
+  S('id','ID Colour','ID_04 · red',['ID_01 · white','ID_02 · green','ID_03 · blue','ID_04 · red','ID_05 · yellow']),
+  R('tol','Tolerance',15),R('blur','Blur',2)],tog:[T('inv','Invert',false)]},
+'Anchor Point':{maps:[],p:[
+  S('anchor','Anchor','Edge Wear · Anchor',['Edge Wear · Anchor','Base Paint · Anchor','Panel Lines · Anchor']),
+  S('read','Read','Mask',['Mask','Base Color','Height','Normal','Roughness']),R('con','Contrast',50),
+  R('lvl','Level Shift',50)],tog:[T('inv','Invert',false),T('norm','Normal Recompute',false)]},
+'Generator':{maps:[],p:[],tog:[]}
+};
+const SRCLIST=Object.keys(SRC);
+
+/* ═════════════════════ DECAL / PATTERN SPECS ═════════════════════ */
+const DECAL={p:[
+ S('proj','Projection','Planar',['Planar','Tri-Planar','UV','Spherical','Screen Space']),
+ R('px','Position X',0,-100,100,''),R('py','Position Y',0,-100,100,''),R('pz','Position Z',0,-100,100,''),
+ R('rx','Rotate X',0,0,360,'°'),R('ry','Rotate Y',0,0,360,'°'),R('rz','Rotate Z',0,0,360,'°'),
+ R('scale','Scale',100,5,600),R('aspect','Aspect',100,25,400),R('fade','Edge Fade',12),
+ R('parx','Parallax Depth',0),R('hgt','Height Amount',35)],
+ tog:[T('snap','Snap to Surface',true),T('wrap','Wrap Edges',false),T('hblend','Height Blending',true),
+      T('depth','Depth Test',true),T('gizmo','Show Gizmo',true)]};
+
+const PATTERN={p:[
+ S('pat','Pattern','Hex Grid',['Hex Grid','Square Grid','Herringbone','Dots','Stripes','Diamond Plate','Rivets','Camo','Woven','Brick','Voronoi']),
+ R('scale','Scale',100,1,800),R('rot','Rotation',0,0,360,'°'),R('tu','Tiling U',4,1,64,''),R('tv','Tiling V',4,1,64,''),
+ R('jitter','Jitter',0),R('warp','Warp',0),R('bevel','Bevel',20),R('gap','Gap',10),R('hgt','Height Amount',45),
+ R('seed','Seed',3,0,999,'')],
+ tog:[T('inv','Invert',false),T('rand','Random Rotation',false),T('hout','Output to Height',true),T('tri','Tri-Planar',false)]};
+
+/* ═════════════════════ MODEL ═════════════════════ */
+let uid=1;const nid=()=>'n'+(uid++);
+const NOW='2026-08-19 14:02';
+const defaults=spec=>{const o={};[...(spec.p||[]),...(spec.tog||[])].forEach(s=>o[s.k]=s.v);return o};
+
+function defCh(){const o={};CHANNELS.forEach(c=>{
+  o[c]={on:!['Emissive','Opacity'].includes(c),
+        blend:c==='Normal'?'Normal Map Combine':(c==='Height'?'Linear Dodge (Add)':'Normal'),op:100}});return o}
+
+const L=o=>Object.assign({id:nid(),type:'paint',name:'Layer',color:COLORS[5],vis:true,lock:false,
+  op:100,blend:'Normal',tex:'paint',mask:null,fx:[],res:'2048',bit:'RGBA 8',mod:NOW,exp:false,
+  secs:{},ch:defCh(),h2n:{on:true,mode:'Normal Map Detail',int:100,tess:false}},o);
+
+const MASK=o=>{
+  const m=Object.assign({vis:true,src:'Paint',gen:'Metal Edge Wear',tex:'pmask',invert:false,den:100,
+    blend:'Multiply',fx:[],exp:false,res:'2048',secs:{},chan:CHANNELS.slice(),p:null},o);
+  if(!m.p)m.p=defaults(m.src==='Generator'?GENS[m.gen]:SRC[m.src]);
+  return m};
+
+const decalP=()=>({p:defaults(DECAL)});
+const patP=()=>({p:defaults(PATTERN)});
+
+let tree=[
+ L({type:'folder',name:'Surface Detail',color:'#9b8cf0',open:true,blend:'Passthrough',kids:[
+   L({type:'adj',name:'Levels',color:'#8b8d98',tex:'grunge',blend:'Overlay',op:64,mod:'2026-08-18 09:31'}),
+   L({type:'decal',name:'Warning Stencil',color:'#e5484d',tex:'decal',blend:'Normal',op:100,decal:decalP(),
+     mask:MASK({src:'Bitmap',tex:'pmask',den:100})}),
+   L({type:'paint',name:'Scratches',color:'#b0e64c',tex:'grunge',blend:'Screen',op:38,fx:['Blur'],
+     mask:MASK({src:'Generator',gen:'Metal Edge Wear',tex:'gmask',fx:['Levels','Blur'],den:88})}),
+   L({type:'fill',name:'Edge Wear',color:'#f76b15',tex:'rust',blend:'Multiply',op:82,
+     mask:MASK({src:'Generator',gen:'Curvature',tex:'cmask',fx:['Levels'],den:100})})]}),
+ L({type:'fill',name:'Emissive Trim',color:'#ffc53d',tex:'emis',mask:MASK({src:'Paint'})}),
+ L({type:'pattern',name:'Hex Panelling',color:'#8ab4d8',tex:'pat',pattern:patP(),op:100,
+   mask:MASK({src:'Generator',gen:'Position',tex:'gmask',den:100})}),
+ L({type:'folder',name:'Base Materials',color:'#12a594',open:true,blend:'Passthrough',kids:[
+   L({type:'fill',name:'Brushed Steel',color:'#8ab4d8',tex:'metal',
+     mask:MASK({src:'Generator',gen:'Mask Editor',tex:'gmask',fx:['Warp']})}),
+   L({type:'fill',name:'Gold Inlay',color:'#e5484d',tex:'gold',fx:['Levels','HSL Shift'],
+     mask:MASK({vis:false,src:'Color Selection',tex:'pmask'})}),
+   L({type:'fill',name:'Oak Panel',color:'#f76b15',tex:'wood',lock:true}),
+   L({type:'fill',name:'Canvas Weave',color:'#e93d82',tex:'fabric',op:90,vis:false})]}),
+ L({type:'fill',name:'Concrete Base',color:'#8b8d98',tex:'conc',res:'4096'})];
+
+let sel=tree[1].id, selMask=false, query='', solo=null, wide=false, full=false;
+
+/* ═════════════════════ HELPERS ═════════════════════ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pct=(v,min,max)=>((+v-min)/(max-min||1))*100;
+function locate(id,list=tree,parent=null){
+  for(let i=0;i<list.length;i++){
+    if(list[i].id===id)return{node:list[i],list,i,parent};
+    if(list[i].kids){const r=locate(id,list[i].kids,list[i]);if(r)return r}
+  }return null;}
+const node=id=>{const r=locate(id);return r&&r.node};
+const within=(p,id)=>!!p.kids&&p.kids.some(k=>k.id===id||within(k,id));
+function ancestors(id,list=tree,acc=[]){
+  for(const n of list){if(n.id===id)return acc;
+    if(n.kids){const r=ancestors(id,n.kids,acc.concat(n));if(r)return r}}return null;}
+const subIds=(n,a=[])=>{a.push(n.id);(n.kids||[]).forEach(k=>subIds(k,a));return a};
+const count=(l=tree)=>l.reduce((n,x)=>n+1+(x.kids?count(x.kids):0),0);
+const maskCount=(l=tree)=>l.reduce((n,x)=>n+(x.mask?1:0)+(x.kids?maskCount(x.kids):0),0);
+const TYPE={paint:['Paint',I.brush],fill:['Fill',I.drop],adj:['Adjust',I.adj],filter:['Filter',I.filter],
+  folder:['Group',I.folder],decal:['Decal',I.decal],pattern:['Pattern',I.pattern]};
+const maskSpec=m=>m.src==='Generator'?GENS[m.gen]:SRC[m.src];
+const maskLabel=m=>m.src==='Generator'?m.gen:m.src;
+const secOpen=(o,k,def)=>o.secs&&o.secs[k]!==undefined?o.secs[k]:def;
+
+/* history */
+let hist=[],fut=[];
+const state=()=>JSON.stringify({tree,sel,selMask});
+function snap(){hist.push(state());if(hist.length>90)hist.shift();fut=[]}
+function restore(s){const o=JSON.parse(s);tree=o.tree;sel=o.sel;selMask=o.selMask;render()}
+function undo(){if(!hist.length)return;fut.push(state());restore(hist.pop())}
+function redo(){if(!fut.length)return;hist.push(state());restore(fut.pop())}
+
+/* ═════════════════════ RENDER ═════════════════════ */
+let flat=[],pendingOpen=new Set();
+function render(){
+  flat=[];
+  const q=query.trim().toLowerCase();
+  const soloSet=solo?new Set([...(ancestors(solo)||[]).map(a=>a.id),...subIds(node(solo)||{id:solo})]):null;
+  document.body.classList.toggle('soloing',!!solo);
+  const html=draw(tree,q,soloSet);
+  $('#stack').innerHTML=html||`<div class="empty">${I.stack}<div>${q?'No layer matches “'+esc(query)+'”':'No layers yet — press + to start.'}</div></div>`;
+  $('#count').textContent=count()+' · '+maskCount()+'m';
+  syncFoot();
+  if(pendingOpen.size){
+    const keys=[...pendingOpen];pendingOpen.clear();
+    requestAnimationFrame(()=>keys.forEach(k=>{
+      const el=$('#stack').querySelector(`[data-akey="${k}"]`);el&&el.classList.add('open')}));
+  }
+}
+function draw(list,q,soloSet){
+  return list.filter(n=>match(n,q)).map(n=>{
+    const isF=n.type==='folder';
+    flat.push({id:n.id,mask:false});
+    let h='<div class="node">';
+    h+=`<div class="entry ${n.vis?'':'off'}" style="--c:${n.color}"><span class="tag"></span>`
+      +rowHTML(n,soloSet)+(n.exp?cardHTML(n):'')+'</div>';
+    if(n.mask){
+      flat.push({id:n.id,mask:true});
+      h+=`<div class="attach"><div class="entry ${n.mask.vis?'':'off'}" style="--c:${n.color}">`
+        +`<span class="tag dot"></span>${maskRow(n)}${n.mask.exp?maskCard(n):''}</div></div>`;
+    }
+    if(isF){
+      const kOpen=(n.open||q);const kKey='k:'+n.id;
+      h+=`<div class="kids ${kOpen&&!pendingOpen.has(kKey)?'open':''}" data-akey="${kKey}" style="--c:${n.color}">
+            <div class="kin">${draw(n.kids||[],q,soloSet)}</div></div>`;
+    }
+    return h+'</div>';
+  }).join('');
+}
+function match(n,q){return !q||n.name.toLowerCase().includes(q)||(n.kids||[]).some(k=>match(k,q))}
+
+function rowSub(n){
+  const isF=n.type==='folder',[tn]=TYPE[n.type];
+  if(isF)return `<b>${(n.kids||[]).length} items</b><s></s>${n.blend}`;
+  if(n.type==='decal')return `<b>Decal</b><s></s>${n.decal.p.proj}<s></s>${n.decal.p.scale}%`;
+  if(n.type==='pattern')return `<b>Pattern</b><s></s>${n.pattern.p.pat}<s></s>${n.pattern.p.tu}×${n.pattern.p.tv}`;
+  return (wide||full)?`<b>${tn}</b><s></s>${n.res}px<s></s>${n.bit}`:`<b>${tn}</b><s></s>${n.blend}<s></s>${n.op}%`;
+}
+function rowHTML(n,soloSet){
+  const isF=n.type==='folder', s=sel===n.id&&!selMask, [tn,ti]=TYPE[n.type];
+  const chOff=CHANNELS.filter(c=>!n.ch[c].on).length;
+  return `<div class="row ${s?'sel':''} ${n.vis?'':'hidden-l'} ${n.lock?'locked':''} ${soloSet&&!soloSet.has(n.id)?'dim':''}"
+    data-id="${n.id}" draggable="${n.lock?'false':'true'}">
+    <button class="tw ${isF?(n.open?'':'closed'):'void'}" data-act="tw">${I.chev}</button>
+    <button class="ico sm eye ${n.vis?'':'off'}" data-act="vis" data-tip="${n.vis?'Hide':'Show'} · Alt = solo">${n.vis?I.eye:I.eyeOff}</button>
+    <div class="thumb">
+      <div class="disc ${isF?'checker':''}">
+        ${isF?`<i style="display:grid;place-items:center;color:${n.color}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h6l1.6 2H21v11H3z"/></svg></i>`
+              :`<i style="background:${TEX[n.tex]||TEX.paint};background-size:cover"></i>`}
+      </div>
+      <span class="badge">${ti}</span>
+    </div>
+    <div class="meta"><div class="name">${esc(n.name)}</div><div class="sub">${rowSub(n)}</div></div>
+    <div class="col col-blend">${isF?'—':esc(n.blend)}</div>
+    <div class="col col-op"><span class="mini"><i style="width:${n.op}%"></i></span><span class="opn">${n.op}%</span></div>
+    <div class="chips">
+      ${n.type==='decal'?'<span class="chip d3">3D</span>':''}
+      ${n.lock?`<span class="chip lk">L</span>`:''}
+      ${n.mask?`<span class="chip m">MASK</span>`:''}
+      ${n.fx.length?`<span class="chip fx">${n.fx.length} FX</span>`:''}
+      ${!isF&&chOff?`<span class="chip">${8-chOff}/8 CH</span>`:''}
+    </div>
+    <button class="ico sm exp ${n.exp?'open':''}" data-act="exp" data-tip="${n.exp?'Hide':'Show'} details">${I.chev}</button>
+    <button class="ico sm more" data-act="more" data-tip="Layer menu">${I.more}</button>
+  </div>`;
+}
+function maskRow(n){
+  const m=n.mask, s=sel===n.id&&selMask, chAll=m.chan.length===CHANNELS.length;
+  return `<div class="row msk ${s?'sel':''} ${m.vis?'':'hidden-l'}" data-id="${n.id}" data-mask="1">
+    <button class="ico sm eye ${m.vis?'':'off'}" data-act="mvis" data-tip="${m.vis?'Disable':'Enable'} mask">${m.vis?I.eye:I.eyeOff}</button>
+    <div class="thumb mini"><div class="disc"><i style="background:${TEX[m.tex]||TEX.pmask};background-size:cover;${m.invert?'filter:invert(1)':''}"></i></div></div>
+    <div class="meta"><div class="name">Mask</div>
+      <div class="sub"><b>${esc(maskLabel(m))}</b><s></s>Gray 8<s></s>${m.den}%${m.invert?'<s></s>INV':''}</div></div>
+    <div class="col col-blend">clips ${esc(n.name).slice(0,14)}</div>
+    <div class="col col-op"><span class="mini"><i style="width:${m.den}%"></i></span><span class="opn">${m.den}%</span></div>
+    <div class="chips">${chAll?'':`<span class="chip">${m.chan.length} CH</span>`}${m.fx.length?`<span class="chip fx">${m.fx.length} FX</span>`:''}</div>
+    <button class="ico sm exp ${m.exp?'open':''}" data-act="mexp" data-tip="Mask details">${I.chev}</button>
+    <button class="ico sm more" data-act="mmore" data-tip="Mask menu">${I.more}</button>
+  </div>`;
+}
+
+/* ── section builder ── */
+function sec(o,key,label,meta,body,def=true){
+  const open=secOpen(o,key,def);
+  return `<div class="sec ${open?'open':''}" data-sec="${key}">
+    <button class="sech" type="button">${I.chev}<span>${label}</span>${meta?`<em>${esc(meta)}</em>`:''}</button>
+    <div class="secb"><div class="sin"><div class="pad">${body}</div></div></div></div>`;
+}
+const fld=(l,v)=>`<div class="d"><span>${l}</span><b>${v}</b></div>`;
+
+/* ── parameter blocks ── */
+function paramsHTML(spec,p,own){
+  const ranges=(spec.p||[]).map(s=>{
+    const v=p[s.k]!==undefined?p[s.k]:s.v;
+    if(s.t==='r')return `<div class="pr"><label>${s.l}</label>
+      <input type="range" class="rng" min="${s.min}" max="${s.max}" value="${v}" data-pk="${s.k}"
+        style="--p:${pct(v,s.min,s.max)}%"><b class="pv" data-pv="${s.k}">${v}${s.u||''}</b></div>`;
+    if(s.t==='s')return `<div class="ps"><label>${s.l}</label>
+      <select class="pill sm" data-ps="${s.k}">${s.o.map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
+    return '';}).join('');
+  const togs=(spec.tog||[]).map(s=>{
+    const v=p[s.k]!==undefined?p[s.k]:s.v;
+    return `<button class="sw2 ${v?'on':''}" data-pt="${s.k}"><i></i><span>${s.l}</span></button>`}).join('');
+  return `<div data-pown="${own}"><div class="pgrid">${ranges}</div>${togs?`<div class="ptog">${togs}</div>`:''}</div>`;
+}
+function mapsHTML(maps){
+  if(!maps.length)return '<span class="chip">no mesh map required</span>';
+  const miss=maps.filter(m=>!BAKE[m]);
+  return maps.map(m=>`<span class="chip ${BAKE[m]?'ok':'no'}">${esc(m)}${BAKE[m]?'':' ✕'}</span>`).join(' ')
+   +(miss.length?` <button class="dbtn" data-dact="bake">${I.bake}Bake ${miss.length} missing</button>`:'');
+}
+function channelsHTML(n){
+  return CHANNELS.map(c=>{const s=n.ch[c];
+    return `<div class="chrow ${s.on?'':'dis'}">
+      <button class="dot ${s.on?'on':''}" data-cha="on" data-ch="${c}" data-tip="${s.on?'Disable':'Enable'} ${c}"></button>
+      <b class="chn">${c}</b>
+      <select class="pill sm" data-cha="blend" data-ch="${c}">${blendsFor(c).map(b=>
+        `<option ${b===s.blend?'selected':''}>${esc(b)}</option>`).join('')}</select>
+      <span class="mrange"><input type="range" class="rng tiny" min="0" max="100" value="${s.op}"
+        data-cha="op" data-ch="${c}" style="--p:${s.op}%"><b class="pv" data-chv="${c}">${s.op}%</b></span>
+    </div>`}).join('');
+}
+
+/* ── layer card ── */
+function cardHTML(n){
+  const isF=n.type==='folder',key='c:'+n.id;
+  const info=`<div class="dgrid">
+      ${fld('Type',TYPE[n.type][0])}${fld('Blend',esc(n.blend))}${fld('Opacity',n.op+'%')}
+      ${fld(isF?'Children':'Resolution',isF?(n.kids||[]).length:n.res+' × '+n.res)}
+      ${fld('Format',isF?'—':n.bit)}${fld('Effects',n.fx.length?esc(n.fx.join(', ')):'none')}
+      ${fld('Mask',n.mask?esc(maskLabel(n.mask))+(n.mask.vis?'':' (off)'):'none')}
+      ${fld('Channels',CHANNELS.filter(c=>n.ch[c].on).length+' / 8 active')}
+      ${fld('Height → Normal',n.h2n.on?esc(n.h2n.mode):'off')}
+      ${fld('Locked',n.lock?'yes':'no')}${fld('Modified',n.mod)}${fld('ID',n.id)}</div>`;
+
+  const props=`<div class="frow">
+      <select class="pill" data-din="blend">${BLENDS.map(b=>`<option ${b===n.blend?'selected':''}>${esc(b)}</option>`).join('')}</select>
+      <input type="range" class="rng" min="0" max="100" value="${n.op}" data-din="op" style="--p:${n.op}%">
+      <b class="pv" data-o="${n.id}">${n.op}%</b></div>
+    <div class="frow">
+      <button class="dbtn ${n.lock?'on':''}" data-dact="lock">${n.lock?I.lock:I.unlock}${n.lock?'Unlock':'Lock'}</button>
+      <button class="dbtn ${n.mask?'on':''}" data-dact="mask">${I.mask}${n.mask?'Remove mask':'Add mask'}</button>
+      <button class="dbtn" data-dact="solo">${I.eye}${solo===n.id?'Clear solo':'Solo'}</button>
+    </div>`;
+
+  const h2n=`<div class="frow">
+      <button class="sw2 ${n.h2n.on?'on':''}" data-h2n="on"><i></i><span>Re-integrate height into normal</span></button></div>
+    <div class="pgrid">
+      <div class="ps"><label>Normal Blend</label>
+        <select class="pill sm" data-h2n="mode">${NBLENDS.map(b=>`<option ${b===n.h2n.mode?'selected':''}>${esc(b)}</option>`).join('')}</select></div>
+      <div class="pr"><label>Intensity</label>
+        <input type="range" class="rng" min="0" max="200" value="${n.h2n.int}" data-h2n="int" style="--p:${pct(n.h2n.int,0,200)}%">
+        <b class="pv" data-h2nv="1">${n.h2n.int}%</b></div>
+    </div>
+    <div class="ptog"><button class="sw2 ${n.h2n.tess?'on':''}" data-h2n="tess"><i></i><span>Feed displacement / tessellation</span></button></div>
+    <div class="note">This layer's <b>Height</b> is converted to a normal contribution and blended with
+      <b>${esc(n.h2n.mode)}</b>, so the normals arriving from the layers below are <b>re-oriented</b> against this
+      layer's surface instead of being overwritten. Layers above receive the recomputed normal, which is why the
+      Height channel blends with <b>${esc(n.ch.Height.blend)}</b> rather than Normal.</div>`;
+
+  const fx=`<div class="frow">${n.fx.map(f=>`<span class="chip fx x" data-dact="fxdel" data-v="${esc(f)}">${esc(f)} ✕</span>`).join('')
+      ||'<span class="chip">none</span>'}
+      <button class="dbtn" data-dact="fxadd">${I.fx}Add effect</button></div>`;
+
+  const colour=`<div class="frow"><span class="sw">${COLORS.map(c=>
+      `<i data-col="${c}" class="${n.color===c?'on':''}" style="background:${c}"></i>`).join('')}
+      <i data-dact="wheel" title="Custom colour" style="background:conic-gradient(from 90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);box-shadow:0 0 0 1px #fff"></i></span>
+      <button class="dbtn" data-dact="wheel">${I.wheel}Custom…</button></div>`;
+
+  let extra='';
+  if(n.type==='decal')extra=sec(n,'place','Placement · 3D Decal',n.decal.p.proj+' · '+n.decal.p.scale+'%',
+    paramsHTML(DECAL,n.decal.p,'decal')
+    +`<div class="note">The decal is a <b>3D placed entity</b>: it keeps its own transform gizmo in the viewport and
+       stays listed here so it can be re-ordered, masked, grouped and channel-filtered like any other layer.
+       Height blending lets it emboss into the surface instead of only painting colour.</div>`,true);
+  if(n.type==='pattern')extra=sec(n,'pat','Pattern Generator',n.pattern.p.pat+' · '+n.pattern.p.tu+'×'+n.pattern.p.tv,
+    paramsHTML(PATTERN,n.pattern.p,'pattern')
+    +`<div class="note">Placeholder parameter set — wire your own pattern generator to these keys
+       (<b>pat, scale, rot, tu, tv, jitter, warp, bevel, gap, seed</b>).</div>`,true);
+
+  return `<div class="card ${pendingOpen.has(key)?'':'open'}" data-akey="${key}" data-id="${n.id}">
+    <div class="cin"><div class="cbody">
+      ${sec(n,'info','Info','',info,false)}
+      ${sec(n,'props','Properties',n.blend+' · '+n.op+'%',props,true)}
+      ${isF?'':sec(n,'chan','Channel Blending',CHANNELS.filter(c=>n.ch[c].on).length+' active',channelsHTML(n),false)}
+      ${isF?'':sec(n,'h2n','Height → Normal',n.h2n.on?n.h2n.mode:'off',h2n,false)}
+      ${extra}
+      ${sec(n,'fx','Effects',n.fx.length?n.fx.length+' active':'none',fx,false)}
+      ${sec(n,'col','Colour Tag','',colour,false)}
+      ${n.mask?`<div class="note">This mask belongs to <b>${esc(n.name)}</b>. It is evaluated after the layer's
+        effects and multiplies this layer's alpha on ${n.mask.chan.length===CHANNELS.length?'<b>all channels</b>':'<b>'+n.mask.chan.length+' selected channels</b>'}
+        only — layers below are untouched.</div>`:''}
+    </div></div></div>`;
+}
+
+/* ── mask card ── */
+function maskCard(n){
+  const m=n.mask,spec=maskSpec(m),key='c:'+n.id+'|m';
+  const info=`<div class="dgrid">
+      ${fld('Attached to',esc(n.name))}${fld('Source',esc(m.src))}
+      ${fld('Generator',m.src==='Generator'?esc(m.gen):'—')}
+      ${fld('Channel','Grayscale 8-bit')}${fld('Density',m.den+'%')}${fld('Mask Blend',esc(m.blend))}
+      ${fld('Inverted',m.invert?'yes':'no')}${fld('Resolution',m.res+' × '+m.res)}
+      ${fld('Effects',m.fx.length?esc(m.fx.join(', ')):'none')}
+      ${fld('Applies to',m.chan.length===CHANNELS.length?'all channels':m.chan.length+' channels')}
+      ${fld('Enabled',m.vis?'yes':'no')}</div>`;
+
+  const source=`<div class="frow">
+      <select class="pill" data-din="msrc">${SRCLIST.map(s=>`<option ${s===m.src?'selected':''}>${esc(s)}</option>`).join('')}</select>
+      ${m.src==='Generator'?`<select class="pill" data-din="mgen">${GENLIST.map(g=>
+        `<option ${g===m.gen?'selected':''}>${esc(g)}</option>`).join('')}</select>`:''}
+    </div>
+    <div class="frow">
+      <input type="range" class="rng" min="0" max="100" value="${m.den}" data-din="den" style="--p:${m.den}%">
+      <b class="pv" data-o="m${n.id}">${m.den}%</b>
+      <select class="pill sm" data-din="mblend">${['Multiply','Replace','Add (Linear Dodge)','Subtract','Min (Darken)','Max (Lighten)'].map(b=>
+        `<option ${b===m.blend?'selected':''}>${esc(b)}</option>`).join('')}</select>
+      <button class="dbtn ${m.invert?'on':''}" data-dact="minv">${I.invert}Invert</button>
+      <button class="dbtn danger" data-dact="mdel">${I.trash}Delete mask</button>
+    </div>`;
+
+  const params=paramsHTML(spec,m.p,'mask')+`<div class="frow" style="margin-top:8px">
+      <button class="dbtn" data-dact="mreset">${I.gen}Reset parameters</button>
+      <button class="dbtn" data-dact="manchor">${I.fx}Expose as anchor point</button></div>`;
+
+  const chan=`<div class="frow">${CHANNELS.map(c=>
+      `<span class="chip tog ${m.chan.includes(c)?'on':''}" data-dact="mchan" data-v="${c}">${c}</span>`).join('')}</div>
+    <div class="note">Channel-aware masking: unticked channels ignore this mask entirely. Useful when a generator
+      should carve <b>Height</b> and <b>Roughness</b> but leave <b>Base Color</b> intact.</div>`;
+
+  const fx=`<div class="frow">${m.fx.map(f=>`<span class="chip fx x" data-dact="mfxdel" data-v="${esc(f)}">${esc(f)} ✕</span>`).join('')
+      ||'<span class="chip">none</span>'}
+      <button class="dbtn" data-dact="mfxadd">${I.fx}Add effect</button>
+      ${m.fx.length?`<button class="dbtn danger" data-dact="mclr">${I.trash}Clear</button>`:''}</div>`;
+
+  return `<div class="card ${pendingOpen.has(key)?'':'open'}" data-akey="${key}" data-id="${n.id}" data-mask="1">
+    <div class="cin"><div class="cbody">
+      ${sec(m,'info','Info','',info,false)}
+      ${sec(m,'src','Source',maskLabel(m),source,true)}
+      ${sec(m,'p',m.src==='Generator'?'Generator Parameters':'Source Parameters',
+            (spec.p||[]).length+' params',params,true)}
+      ${sec(m,'maps','Mesh Map Inputs',spec.maps.length?spec.maps.length+' required':'none',
+            `<div class="frow">${mapsHTML(spec.maps)}</div>
+             <div class="note">Generators read baked mesh maps. Missing maps are shown in red — bake them to make the
+             generator resolve correctly. <b>Thickness</b> drives Mask Editor, <b>Curvature</b> drives edge wear,
+             <b>Position</b> drives gradients and drips.</div>`,false)}
+      ${sec(m,'chan','Applies To Channels',m.chan.length+' / 8',chan,false)}
+      ${sec(m,'fx','Mask Effects',m.fx.length?m.fx.length+' active':'none',fx,false)}
+      <div class="note">Evaluation order for this entry: source → mask effects → invert / density →
+        <b>mask</b> multiplies the layer's alpha per channel → layer opacity → channel blend into the layers below.</div>
+    </div></div></div>`;
+}
+
+function syncFoot(){
+  const n=node(sel), on=!!n, m=on&&selMask?n.mask:null;
+  ['aDup','aDel','aUp','aDown','aGroup','btnMask','aLock'].forEach(k=>$('#'+k).disabled=!on);
+  $('#btnUndo').disabled=!hist.length;$('#btnRedo').disabled=!fut.length;
+  const v=m?m.den:(on?n.op:100);
+  const r=$('#opac');r.value=v;r.style.setProperty('--p',v+'%');$('#opacV').textContent=v+'%';
+  r.disabled=!on;
+  $('#blendTxt').textContent=m?'Mask density':(on?n.blend:'Normal');
+  $('#btnBlend').disabled=!on||!!m;
+  $('#btnMask').classList.toggle('on',on&&!!n.mask);
+  $('#aLock').classList.toggle('on',on&&!!n.lock);
+  const path=on?(ancestors(sel)||[]).map(a=>esc(a.name)).concat(`<b>${esc(n.name)}</b>`+(m?' / <b>Mask</b>':'')).join(' &nbsp;›&nbsp; '):'—';
+  $('#crumb').innerHTML=on?path+` &nbsp;·&nbsp; ${m?'grayscale mask · '+esc(maskLabel(m)):TYPE[n.type][0].toLowerCase()}`:'no selection';
+}
+
+/* ═════════════════════ CARD / FOLDER ANIMATION ═════════════════════ */
+function animClose(key,after){
+  const el=$('#stack').querySelector(`[data-akey="${key}"]`);
+  if(!el)return after();
+  el.classList.remove('open');setTimeout(after,250);
+}
+function toggleCard(n,isMask){
+  const key='c:'+n.id+(isMask?'|m':''),o=isMask?n.mask:n;
+  sel=n.id;selMask=isMask;
+  if(o.exp)animClose(key,()=>{o.exp=false;render()});
+  else{o.exp=true;pendingOpen.add(key);render()}
+}
+function toggleFolder(n){
+  if(n.open)animClose('k:'+n.id,()=>{n.open=false;render()});
+  else{n.open=true;pendingOpen.add('k:'+n.id);render()}
+}
+
+/* ═════════════════════ INTERACTION ═════════════════════ */
+function ownerP(el){
+  const card=el.closest('.card'),n=node(card.dataset.id),own=el.closest('[data-pown]').dataset.pown;
+  return own==='mask'?n.mask.p:(own==='decal'?n.decal.p:n.pattern.p);
+}
+function cardNode(el){const c=el.closest('.card');return{n:node(c.dataset.id),isMask:!!c.dataset.mask}}
+
+$('#stack').addEventListener('click',e=>{
+  /* section headers — animate in place, no re-render */
+  const sh=e.target.closest('.sech');
+  if(sh){const s=sh.parentElement,{n,isMask}=cardNode(sh),o=isMask?n.mask:n;
+    const open=!s.classList.contains('open');s.classList.toggle('open',open);
+    o.secs=o.secs||{};o.secs[s.dataset.sec]=open;return}
+
+  /* param toggles */
+  const pt=e.target.closest('[data-pt]');
+  if(pt){const p=ownerP(pt),k=pt.dataset.pt;p[k]=!p[k];pt.classList.toggle('on',!!p[k]);return}
+
+  /* channel dot */
+  const cd=e.target.closest('[data-cha="on"]');
+  if(cd){const {n}=cardNode(cd),c=cd.dataset.ch;snap();n.ch[c].on=!n.ch[c].on;render();return}
+
+  /* channel toggles on mask */
+  const dact=(e.target.closest('[data-dact]')||{}).dataset;
+  if(dact&&dact.dact)return detailAction(dact,e.target.closest('.card'),e);
+
+  /* h2n switch */
+  const hs=e.target.closest('[data-h2n="on"],[data-h2n="tess"]');
+  if(hs){const {n}=cardNode(hs),k=hs.dataset.h2n;n.h2n[k]=!n.h2n[k];hs.classList.toggle('on',!!n.h2n[k]);return}
+
+  /* colour swatch inside card */
+  const swatch=e.target.closest('[data-col]');
+  if(swatch){const c=e.target.closest('.card');snap();node(c.dataset.id).color=swatch.dataset.col;return render()}
+
+  const r=e.target.closest('.row');if(!r)return;
+  const n=node(r.dataset.id),isM=!!r.dataset.mask;
+  const act=(e.target.closest('[data-act]')||{}).dataset?.act;
+  if(act==='tw')return toggleFolder(n);
+  if(act==='vis'){
+    if(e.altKey){solo=solo===n.id?null:n.id;return render()}
+    snap();n.vis=!n.vis;return render()}
+  if(act==='mvis'){snap();n.mask.vis=!n.mask.vis;return render()}
+  if(act==='exp')return toggleCard(n,false);
+  if(act==='mexp')return toggleCard(n,true);
+  if(act==='more'){const rect=rectOf(e.target.closest('button'));sel=n.id;selMask=false;render();return layerMenu(rect,n)}
+  if(act==='mmore'){const rect=rectOf(e.target.closest('button'));sel=n.id;selMask=true;render();return maskMenu(rect,n)}
+  sel=n.id;selMask=isM;render();
+});
+
+$('#stack').addEventListener('contextmenu',e=>{
+  const r=e.target.closest('.row');if(!r)return;
+  e.preventDefault();
+  const n=node(r.dataset.id),isM=!!r.dataset.mask;
+  sel=n.id;selMask=isM;render();
+  const at={left:e.clientX,right:e.clientX,top:e.clientY,bottom:e.clientY,width:0,height:0};
+  isM?maskMenu(at,n):layerMenu(at,n);
+});
+$('#stack').addEventListener('dblclick',e=>{
+  const r=e.target.closest('.row');if(!r||r.dataset.mask)return;renameRow(r);
+});
+
+/* live inputs */
+$('#stack').addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset.pk){const p=ownerP(t),k=t.dataset.pk,spec=t;
+    p[k]=+t.value;t.style.setProperty('--p',pct(t.value,+t.min,+t.max)+'%');
+    const lbl=t.parentElement.querySelector(`[data-pv="${k}"]`);
+    if(lbl)lbl.textContent=t.value+(lbl.textContent.replace(/[-\d.]/g,'')||'');
+    return}
+  if(t.dataset.cha==='op'){const {n}=cardNode(t),c=t.dataset.ch;n.ch[c].op=+t.value;
+    t.style.setProperty('--p',t.value+'%');
+    const lbl=t.parentElement.querySelector(`[data-chv="${c}"]`);if(lbl)lbl.textContent=t.value+'%';return}
+  if(t.dataset.h2n==='int'){const {n}=cardNode(t);n.h2n.int=+t.value;
+    t.style.setProperty('--p',pct(t.value,0,200)+'%');
+    const lbl=t.parentElement.querySelector('[data-h2nv]');if(lbl)lbl.textContent=t.value+'%';return}
+  const k=t.dataset.din;if(!k)return;
+  const card=t.closest('.card'),n=node(card.dataset.id);
+  if(k==='op'){n.op=+t.value;t.style.setProperty('--p',n.op+'%');
+    card.querySelector(`[data-o="${n.id}"]`).textContent=n.op+'%';paintRow(n);syncFoot()}
+  if(k==='den'){n.mask.den=+t.value;t.style.setProperty('--p',n.mask.den+'%');
+    card.querySelector(`[data-o="m${n.id}"]`).textContent=n.mask.den+'%';syncFoot()}
+});
+$('#stack').addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.ps){const p=ownerP(t);p[t.dataset.ps]=t.value;return}
+  if(t.dataset.cha==='blend'){const {n}=cardNode(t);snap();n.ch[t.dataset.ch].blend=t.value;return render()}
+  if(t.dataset.h2n==='mode'){const {n}=cardNode(t);snap();n.h2n.mode=t.value;return render()}
+  const k=t.dataset.din;if(!k)return;
+  const n=node(t.closest('.card').dataset.id);
+  if(k==='blend'){snap();n.blend=t.value;return render()}
+  if(k==='mblend'){snap();n.mask.blend=t.value;return render()}
+  if(k==='msrc'){snap();n.mask.src=t.value;
+    n.mask.p=defaults(n.mask.src==='Generator'?GENS[n.mask.gen]:SRC[n.mask.src]);
+    n.mask.tex=n.mask.src==='Generator'?'gmask':(n.mask.src==='Color Selection'?'cmask':'pmask');return render()}
+  if(k==='mgen'){snap();n.mask.gen=t.value;n.mask.p=defaults(GENS[t.value]);n.mask.tex='gmask';return render()}
+  if(k==='op'||k==='den')render();
+});
+function paintRow(n){
+  const r=document.querySelector(`.row[data-id="${n.id}"]:not([data-mask])`);if(!r)return;
+  const f=r.querySelector('.col-op .mini>i');if(f)f.style.width=n.op+'%';
+  const t=r.querySelector('.col-op .opn');if(t)t.textContent=n.op+'%';
+}
+function detailAction(ds,card,ev){
+  const n=node(card.dataset.id);
+  const cmds={
+    lock:()=>{snap();n.lock=!n.lock},
+    mask:()=>{snap();n.mask=n.mask?null:MASK({exp:true});selMask=!!n.mask;
+              if(n.mask)pendingOpen.add('c:'+n.id+'|m')},
+    solo:()=>{solo=solo===n.id?null:n.id},
+    fxdel:()=>{snap();n.fx=n.fx.filter(f=>f!==ds.v)},
+    mfxdel:()=>{snap();n.mask.fx=n.mask.fx.filter(f=>f!==ds.v)},
+    mclr:()=>{snap();n.mask.fx=[]},
+    minv:()=>{snap();n.mask.invert=!n.mask.invert},
+    mdel:()=>{snap();n.mask=null;selMask=false},
+    mreset:()=>{snap();n.mask.p=defaults(maskSpec(n.mask))},
+    manchor:()=>{snap();if(!n.mask.fx.includes('Anchor Point'))n.mask.fx.push('Anchor Point')},
+    mchan:()=>{snap();const c=ds.v,a=n.mask.chan;
+      n.mask.chan=a.includes(c)?a.filter(x=>x!==c):CHANNELS.filter(x=>a.includes(x)||x===c)},
+    bake:()=>{snap();MESHMAPS.forEach(m=>BAKE[m]=1)},
+    fxadd:()=>fxMenu(rectOf(ev.target.closest('button')),n,false),
+    mfxadd:()=>fxMenu(rectOf(ev.target.closest('button')),n,true),
+    wheel:()=>colorWheel(rectOf(ev.target.closest('button,i')),n)
+  };
+  if(!cmds[ds.dact])return;
+  cmds[ds.dact]();
+  if(!['fxadd','mfxadd','wheel'].includes(ds.dact))render();
+}
+function renameRow(r){
+  const n=node(r.dataset.id),el=r.querySelector('.name');
+  el.innerHTML=`<input value="${esc(n.name)}">`;
+  const i=el.querySelector('input');i.focus();i.select();
+  let done=false;
+  const commit=ok=>{if(done)return;done=true;
+    if(ok){const v=i.value.trim();if(v&&v!==n.name){snap();n.name=v;n.mod=NOW}}
+    render()};
+  i.addEventListener('blur',()=>commit(true));
+  i.addEventListener('keydown',ev=>{ev.stopPropagation();
+    if(ev.key==='Enter')commit(true);if(ev.key==='Escape')commit(false)});
+}
+$('#q').addEventListener('input',e=>{query=e.target.value;render()});
+$('#soloChip').onclick=()=>{solo=null;render()};
+
+/* ── drag & drop ── */
+let drag=null,dropT=null,dropM=null;
+$('#stack').addEventListener('dragstart',e=>{
+  const r=e.target.closest('.row[draggable="true"]');if(!r||r.dataset.mask)return e.preventDefault();
+  drag=r.dataset.id;r.classList.add('dragging');
+  e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text','');
+});
+$('#stack').addEventListener('dragover',e=>{
+  if(!drag)return;e.preventDefault();
+  document.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(x=>x.classList.remove('drop-before','drop-after','drop-into'));
+  dropT=null;
+  const r=e.target.closest('.row[data-id]');
+  if(!r||r.dataset.mask||r.dataset.id===drag)return;
+  const dn=node(drag);if(within(dn,r.dataset.id))return;
+  const b=r.getBoundingClientRect(),y=(e.clientY-b.top)/b.height,tn=node(r.dataset.id);
+  dropM=(tn.type==='folder'&&y>.32&&y<.68)?'into':(y<.5?'before':'after');
+  dropT=r.dataset.id;r.classList.add('drop-'+dropM);
+});
+$('#stack').addEventListener('drop',e=>{
+  e.preventDefault();if(!drag||!dropT)return cleanup();
+  snap();
+  const s=locate(drag),n=s.node;s.list.splice(s.i,1);
+  const t=locate(dropT);
+  if(dropM==='into'){t.node.kids=t.node.kids||[];t.node.open=true;t.node.kids.unshift(n)}
+  else t.list.splice(t.i+(dropM==='after'?1:0),0,n);
+  sel=n.id;selMask=false;cleanup();render();
+});
+$('#stack').addEventListener('dragend',cleanup);
+function cleanup(){drag=dropT=null;
+  document.querySelectorAll('.dragging,.drop-before,.drop-after,.drop-into')
+    .forEach(x=>x.classList.remove('dragging','drop-before','drop-after','drop-into'))}
+
+/* ── operations ── */
+function add(type,name,tex){
+  snap();
+  const n=L({type,name,tex:tex||'paint',color:COLORS[Math.floor(Math.random()*COLORS.length)],mod:NOW});
+  if(type==='folder'){n.open=true;n.kids=[];n.blend='Passthrough'}
+  if(type==='decal'){n.decal=decalP()}
+  if(type==='pattern'){n.pattern=patP()}
+  const s=locate(sel);
+  if(s)s.list.splice(s.i,0,n);else tree.unshift(n);
+  sel=n.id;selMask=false;render();
+  const el=document.querySelector(`.row[data-id="${n.id}"]`);el&&el.scrollIntoView({block:'nearest'});
+}
+$('#aPaint').onclick=()=>add('paint','Paint Layer','paint');
+$('#aFill').onclick=()=>add('fill','Fill Layer','conc');
+$('#aAdj').onclick=()=>add('adj','Adjustment','grunge');
+$('#aFilter').onclick=()=>add('filter','Filter','metal');
+$('#aDecal').onclick=()=>add('decal','Decal Layer','decal');
+$('#aPat').onclick=()=>add('pattern','Pattern Layer','pat');
+$('#btnFolder').onclick=()=>add('folder','New Folder');
+$('#aDup').onclick=()=>{const s=locate(sel);if(!s)return;snap();
+  const c=JSON.parse(JSON.stringify(s.node));(function re(x){x.id=nid();(x.kids||[]).forEach(re)})(c);
+  c.name=s.node.name+' copy';s.list.splice(s.i,0,c);sel=c.id;selMask=false;render()};
+$('#aDel').onclick=()=>{const s=locate(sel);if(!s)return;snap();
+  if(selMask&&s.node.mask){s.node.mask=null;selMask=false;return render()}
+  s.list.splice(s.i,1);sel=(s.list[s.i]||s.list[s.i-1]||s.parent||{}).id;render()};
+$('#aGroup').onclick=()=>{const s=locate(sel);if(!s)return;snap();
+  const g=L({type:'folder',name:'Group',color:s.node.color,open:true,kids:[s.node],blend:'Passthrough'});
+  s.list.splice(s.i,1,g);sel=g.id;selMask=false;render()};
+$('#aLock').onclick=()=>{const n=node(sel);if(!n)return;snap();n.lock=!n.lock;render()};
+$('#btnMask').onclick=()=>{const n=node(sel);if(!n)return;snap();
+  n.mask=n.mask?null:MASK();selMask=!!n.mask;render()};
+$('#aUp').onclick=()=>shift(-1);$('#aDown').onclick=()=>shift(1);
+function shift(d){
+  const s=locate(sel);if(!s)return;const{list,i,node:n}=s,nb=list[i+d];
+  snap();
+  if(nb&&nb.type==='folder'&&nb.open){list.splice(i,1);nb.kids=nb.kids||[];d<0?nb.kids.push(n):nb.kids.unshift(n)}
+  else if(nb){list.splice(i,1);list.splice(i+d,0,n)}
+  else if(s.parent){const p=locate(s.parent.id);list.splice(i,1);p.list.splice(p.i+(d>0?1:0),0,n)}
+  else{hist.pop();return}
+  render();
+}
+$('#btnUndo').onclick=undo;$('#btnRedo').onclick=redo;
+$('#btnCollapse').onclick=()=>{
+  const any=(l=tree)=>l.some(n=>(n.type==='folder'&&n.open)||(n.kids&&any(n.kids)));
+  const to=!any();
+  (function walk(l){l.forEach(n=>{if(n.type==='folder'){n.open=to;walk(n.kids||[])}n.exp=false;if(n.mask)n.mask.exp=false})})(tree);
+  render();
+};
+$('#btnSize').onclick=()=>{
+  const p=$('#panel');p.style.width='';p.style.height='';
+  if(!wide&&!full){wide=true}else if(wide&&!full){full=true;wide=false}else{full=false;wide=false}
+  document.body.classList.toggle('wide',wide);document.body.classList.toggle('full',full);
+  $('#btnSize').innerHTML=(wide||full)?I.min:I.max;
+  $('#btnSize').dataset.tip=full?'Restore panel':(wide?'Fullscreen':'Expand panel');
+  render();
+};
+$('#grip').addEventListener('pointerdown',e=>{
+  const p=$('#panel'),x0=e.clientX,w0=p.getBoundingClientRect().width;
+  const mv=ev=>{const w=Math.max(330,Math.min(innerWidth-24,w0+(ev.clientX-x0)*2));
+    p.style.width=w+'px';const nw=w>=580;if(nw!==wide&&!full){wide=nw;document.body.classList.toggle('wide',wide);render()}};
+  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};
+  addEventListener('pointermove',mv);addEventListener('pointerup',up);e.preventDefault();
+});
+document.addEventListener('pointerdown',e=>{if(e.target.type==='range')snap()},true);
+$('#opac').oninput=e=>{const n=node(sel);if(!n)return;const v=+e.target.value;
+  if(selMask&&n.mask)n.mask.den=v;else n.op=v;
+  e.target.style.setProperty('--p',v+'%');$('#opacV').textContent=v+'%';
+  if(!selMask)paintRow(n)};
+$('#opac').onchange=()=>render();
+
+/* ═════════════════════ POPUPS ═════════════════════ */
+const pop=$('#pop');
+const rectOf=el=>{const b=el&&el.getBoundingClientRect?el.getBoundingClientRect():null;
+  return b&&(b.width||b.height)?b:{left:innerWidth/2,right:innerWidth/2,top:innerHeight/2,bottom:innerHeight/2,width:0,height:0}};
+function show(anchor,html,align='right'){
+  const at=anchor instanceof Element?rectOf(anchor):anchor;
+  pop.innerHTML=html;
+  pop.style.visibility='hidden';pop.style.left='0px';pop.style.top='0px';
+  pop.classList.add('open');
+  const p=pop.getBoundingClientRect();
+  let x=align==='right'?at.right-p.width:at.left;
+  x=Math.max(8,Math.min(x,innerWidth-p.width-8));
+  let y=at.bottom+6;
+  if(y+p.height>innerHeight-8)y=Math.max(8,at.top-p.height-6);
+  pop.style.left=x+'px';pop.style.top=y+'px';pop.style.visibility='';
+}
+const hide=()=>pop.classList.remove('open');
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#pop'))setTimeout(hide,0)});
+pop.addEventListener('click',e=>{
+  const sw=e.target.closest('[data-col]');
+  if(sw){snap();const n=node(sel);n&&(n.color=sw.dataset.col);hide();return render()}
+  const b=e.target.closest('[data-cmd]');if(!b)return;
+  const c=b.dataset.cmd,v=b.dataset.v,n=node(sel);
+  if(c!=='wheel')hide();
+  if(c==='blend'){snap();n.blend=v;render()}
+  if(c==='add')add(v,b.dataset.n,b.dataset.t);
+  if(c==='mask')$('#btnMask').click();
+  if(c==='del')$('#aDel').click();
+  if(c==='dup')$('#aDup').click();
+  if(c==='grp')$('#aGroup').click();
+  if(c==='lock')$('#aLock').click();
+  if(c==='exp')toggleCard(n,false);
+  if(c==='ren'){const r=document.querySelector(`.row[data-id="${sel}"]:not([data-mask])`);r&&renameRow(r)}
+  if(c==='solo'){solo=solo===sel?null:sel;render()}
+  if(c==='inv'){snap();n.mask.invert=!n.mask.invert;render()}
+  if(c==='msrc'){snap();n.mask.src=v;n.mask.p=defaults(v==='Generator'?GENS[n.mask.gen]:SRC[v]);
+    n.mask.tex=v==='Generator'?'gmask':(v==='Color Selection'?'cmask':'pmask');render()}
+  if(c==='mgen'){snap();n.mask.gen=v;n.mask.src='Generator';n.mask.p=defaults(GENS[v]);n.mask.tex='gmask';render()}
+  if(c==='mexp')toggleCard(n,true);
+  if(c==='mclr'){snap();n.mask.fx=[];render()}
+  if(c==='fx'){snap();(b.dataset.t==='m'?n.mask.fx:n.fx).push(v);render()}
+  if(c==='wheel')colorWheel(rectOf(b),n);
+});
+$('#btnAdd').onclick=e=>show(e.currentTarget,`<h6>Add</h6>
+  <button data-cmd="add" data-v="paint" data-n="Paint Layer" data-t="paint">${I.brush}Paint layer<span class="k">P</span></button>
+  <button data-cmd="add" data-v="fill" data-n="Fill Layer" data-t="conc">${I.drop}Fill layer<span class="k">F</span></button>
+  <button data-cmd="add" data-v="adj" data-n="Adjustment" data-t="grunge">${I.adj}Adjustment<span class="k">A</span></button>
+  <button data-cmd="add" data-v="filter" data-n="Filter" data-t="metal">${I.filter}Filter<span class="k">R</span></button><hr>
+  <button data-cmd="add" data-v="decal" data-n="Decal Layer" data-t="decal">${I.decal}Decal layer · 3D<span class="k">D</span></button>
+  <button data-cmd="add" data-v="pattern" data-n="Pattern Layer" data-t="pat">${I.pattern}Pattern layer<span class="k">T</span></button><hr>
+  <button data-cmd="add" data-v="folder" data-n="New Folder">${I.folder}Group<span class="k">G</span></button>`);
+$('#btnBlend').onclick=e=>{if(!node(sel))return;
+  show(e.currentTarget,'<h6>Blend mode</h6>'+BLENDS.map(b=>
+   `<button data-cmd="blend" data-v="${esc(b)}">${b===node(sel).blend?I.check:'<span style="width:14px"></span>'}${esc(b)}</button>`).join(''),'left')};
+function layerMenu(at,n){show(at,`<h6>${esc(n.name)}</h6>
+  <button data-cmd="ren">${I.rename}Rename<span class="k">F2</span></button>
+  <button data-cmd="exp">${I.info}${n.exp?'Hide':'Show'} details<span class="k">Space</span></button>
+  <button data-cmd="mask">${I.mask}${n.mask?'Remove mask':'Add mask'}<span class="k">M</span></button>
+  <button data-cmd="lock">${n.lock?I.unlock:I.lock}${n.lock?'Unlock':'Lock'}<span class="k">L</span></button>
+  <button data-cmd="solo">${I.eye}${solo===n.id?'Clear solo':'Solo'}<span class="k">S</span></button>
+  <button data-cmd="dup">${I.copy}Duplicate<span class="k">⌘D</span></button>
+  <button data-cmd="grp">${I.folder}Group<span class="k">⌘G</span></button><hr>
+  <h6>Colour tag</h6><div class="swatches">${COLORS.map(c=>
+    `<i data-col="${c}" class="${n.color===c?'on':''}" style="background:${c}"></i>`).join('')}</div>
+  <button data-cmd="wheel">${I.wheel}Custom colour…</button><hr>
+  <button class="danger" data-cmd="del">${I.trash}Delete<span class="k">⌫</span></button>`)}
+function maskMenu(at,n){const m=n.mask;show(at,`<h6>Mask · ${esc(n.name)}</h6>
+  <button data-cmd="mexp">${I.info}${m.exp?'Hide':'Show'} details</button>
+  <button data-cmd="inv">${I.invert}Invert</button><hr>
+  <h6>Source</h6>
+  ${SRCLIST.filter(s=>s!=='Generator').map(s=>`<button data-cmd="msrc" data-v="${esc(s)}">${
+    s===m.src?I.check:'<span style="width:14px"></span>'}${esc(s)}</button>`).join('')}<hr>
+  <h6>Generator</h6>
+  ${GENLIST.map(g=>`<button data-cmd="mgen" data-v="${esc(g)}">${
+    (m.src==='Generator'&&g===m.gen)?I.check:'<span style="width:14px"></span>'}${esc(g)}</button>`).join('')}<hr>
+  <button data-cmd="mclr">${I.fx}Clear mask effects</button>
+  <button class="danger" data-cmd="del">${I.trash}Delete mask</button>`)}
+function fxMenu(at,n,onMask){show(at,'<h6>Add effect</h6>'+EFFECTS.map(f=>
+  `<button data-cmd="fx" data-v="${esc(f)}" data-t="${onMask?'m':'l'}">${I.fx}${esc(f)}</button>`).join(''),'left')}
+
+/* ═════════════════════ COLOUR WHEEL ═════════════════════ */
+function hex2hsl(hex){
+  const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);if(!m)return{h:0,s:0,l:60};
+  let r=parseInt(m[1],16)/255,g=parseInt(m[2],16)/255,b=parseInt(m[3],16)/255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let h=0,s=0;
+  if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);
+    h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4);h*=60}
+  return{h:Math.round(h),s:Math.round(s*100),l:Math.round(l*100)};
+}
+function hsl2hex(h,s,l){
+  s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),
+   f=n=>Math.round(255*(l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)))));
+  return '#'+[f(0),f(8),f(4)].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function colorWheel(at,n){
+  const cur=hex2hsl(n.color);let h=cur.h,s=cur.s,l=cur.l;
+  show(at,`<h6>Custom colour</h6><div class="cw">
+    <div class="wheel" id="cwWheel"><span class="lum" id="cwLum"></span><span class="cwD
+    ot" id="cwDot"></span></div>
+    <div class="cwRow">
+      <label style="font:600 9.5px/1 var(--mono);letter-spacing:.08em;color:var(--tx-3);flex:0 0 30px">LUM</label>
+      <input type="range" class="rng" id="cwL" min="4" max="96" value="${l}" style="--p:${pct(l,4,96)}%">
+    </div>
+    <div class="cwRow">
+      <span class="cwPrev" id="cwPrev"></span>
+      <input class="hex" id="cwHex" value="${n.color}" maxlength="7" spellcheck="false">
+      <button class="dbtn" id="cwOk">${I.check}Apply</button>
+    </div></div>`);
+  const W=$('#cwWheel'),D=$('#cwDot'),P=$('#cwPrev'),H=$('#cwHex'),LU=$('#cwLum'),LS=$('#cwL');
+  const paint=()=>{
+    const hex=hsl2hex(h,s,l),r=(W.clientWidth||158)/2,d=(s/100)*(r-9),a=h*Math.PI/180;
+    D.style.left=(r+Math.cos(a)*d)+'px';D.style.top=(r+Math.sin(a)*d)+'px';
+    D.style.background=hex;P.style.background=hex;
+    LU.style.setProperty('--dark',String(Math.max(0,(50-l)/50*.85)));
+    LS.style.setProperty('--p',pct(l,4,96)+'%');
+    if(document.activeElement!==H)H.value=hex.toUpperCase();
+  };
+  const pick=ev=>{
+    const b=W.getBoundingClientRect(),r=b.width/2,dx=ev.clientX-b.left-r,dy=ev.clientY-b.top-r;
+    h=Math.round((Math.atan2(dy,dx)*180/Math.PI+360)%360);
+    s=Math.round(Math.min(1,Math.hypot(dx,dy)/(r-9))*100);
+    paint();
+  };
+  W.addEventListener('pointerdown',e=>{
+    pick(e);
+    const mv=ev=>pick(ev),up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up)};
+    addEventListener('pointermove',mv);addEventListener('pointerup',up);e.preventDefault();
+  });
+  LS.oninput=e=>{l=+e.target.value;paint()};
+  H.addEventListener('input',e=>{const v=e.target.value.trim();
+    if(/^#?[0-9a-fA-F]{6}$/.test(v)){const o=hex2hsl(v.startsWith('#')?v:'#'+v);h=o.h;s=o.s;l=o.l;paint()}});
+  H.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')$('#cwOk').click()});
+  $('#cwOk').onclick=()=>{snap();n.color=hsl2hex(h,s,l);hide();render()};
+  requestAnimationFrame(paint);
+}
+
+/* ═════════════════════ TOOLTIPS ═════════════════════ */
+const tip=$('#tip');
+document.addEventListener('mouseover',e=>{
+  const t=e.target.closest('[data-tip]');
+  if(!t||t.disabled){tip.classList.remove('on');return}
+  tip.innerHTML=t.dataset.tip;tip.classList.add('on');
+  const b=t.getBoundingClientRect(),p=tip.getBoundingClientRect();
+  tip.style.left=Math.min(innerWidth-p.width-8,Math.max(8,b.left+b.width/2-p.width/2))+'px';
+  tip.style.top=(b.top-p.height-6<8?b.bottom+6:b.top-p.height-6)+'px';
+});
+document.addEventListener('mouseout',()=>tip.classList.remove('on'));
+
+/* ═════════════════════ KEYBOARD ═════════════════════ */
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'){
+    if(e.key==='Escape'&&e.target.id==='q'){e.target.value='';query='';render();e.target.blur()}
+    return;}
+  const k=e.key.toLowerCase(),m=e.metaKey||e.ctrlKey,n=node(sel);
+  if(e.key==='Escape')return hide();
+  if(m&&k==='z'){e.preventDefault();return e.shiftKey?redo():undo()}
+  if(k==='delete'||k==='backspace'){e.preventDefault();$('#aDel').click()}
+  else if(m&&k==='d'){e.preventDefault();$('#aDup').click()}
+  else if(m&&k==='g'){e.preventDefault();$('#aGroup').click()}
+  else if(m)return;
+  else if(k==='p')$('#aPaint').click();
+  else if(k==='f')$('#aFill').click();
+  else if(k==='a')$('#aAdj').click();
+  else if(k==='r')$('#aFilter').click();
+  else if(k==='d')$('#aDecal').click();
+  else if(k==='t')$('#aPat').click();
+  else if(k==='g')$('#btnFolder').click();
+  else if(k==='m')$('#btnMask').click();
+  else if(k==='l')$('#aLock').click();
+  else if(k==='s'&&n){solo=solo===sel?null:sel;render()}
+  else if(k==='/'){e.preventDefault();$('#q').focus()}
+  else if(e.key==='F2'){const r=document.querySelector(`.row[data-id="${sel}"]:not([data-mask])`);r&&renameRow(r)}
+  else if(k==='h'&&n){snap();n.vis=!n.vis;render()}
+  else if(e.key===' '&&n){e.preventDefault();toggleCard(n,selMask&&!!n.mask)}
+  else if((e.key==='ArrowRight'||e.key==='ArrowLeft')&&n&&n.type==='folder'){
+    const want=e.key==='ArrowRight';if(want!==!!n.open)toggleFolder(n)}
+  else if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+    e.preventDefault();const d=e.key==='ArrowDown'?1:-1;
+    if(m)return shift(d);
+    const i=flat.findIndex(f=>f.id===sel&&f.mask===selMask),t=flat[i+d];
+    if(t){sel=t.id;selMask=t.mask;render();
+      const r=document.querySelector(`.row[data-id="${sel}"]${t.mask?'[data-mask]':':not([data-mask])'}`);
+      r&&r.scrollIntoView({block:'nearest'})}
+  }
+});
+
+render();
+</script>
+</body>
+</html>

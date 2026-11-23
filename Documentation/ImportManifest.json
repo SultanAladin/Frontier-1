@@ -1,0 +1,1841 @@
+{
+  "repository": "SultanAladin/Frontier-",
+  "commit": "338293863d7df4e585dec0c4acae45fe9c524ed5",
+  "notes": [
+    "Selective port, not a wholesale import.",
+    "Destination hashes identify reviewed adaptations.",
+    "Interface names/formatting still require the tracked compliance audit.",
+    "Current destination hashes include the Control Centre batch.",
+    "ControlCentrePanel is a UI-only adaptation, not a whole-host import. Font binaries are recovered from FontSources.json.",
+    "Drawer correction: ContentDirectory naming, EngineContent layout, inherited motion and adapted gesture/contour code; no renderer import."
+  ],
+  "files": [
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/ControlKit.cpp",
+      "destination": "Engine/Interface/ControlKit.cpp",
+      "source_sha256": "a55d56c9dd6bb0f45b24321a3813e6f72a6f99d3069ef2370e13f9a4cc3e3919",
+      "destination_sha256": "5737c603911ee3f7442683231e8b5480a870d90cab05d07c39b4fc3ad6c5d320"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/ControlKit.h",
+      "destination": "Engine/Interface/ControlKit.h",
+      "source_sha256": "b0577ea5236fbe49cac6b5b8d3e47ad55da64ef51c489da3e936058968b67f9e",
+      "destination_sha256": "27c52ca92856687e5473b523ecb4716e1420b5cf25de64909dd728b1f60b6252"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/GlyphSpace.cpp",
+      "destination": "Engine/Interface/GlyphSpace.cpp",
+      "source_sha256": "8606e66671183a6571a2ff9ada4a25ff2a27206d0b35a5eb486484e9eaa8b2a5",
+      "destination_sha256": "8606e66671183a6571a2ff9ada4a25ff2a27206d0b35a5eb486484e9eaa8b2a5"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/GlyphSpace.h",
+      "destination": "Engine/Interface/GlyphSpace.h",
+      "source_sha256": "74d59968c0d46b60f06350db6f63a8895727bdcb577e7d10893ce212fc50a2b4",
+      "destination_sha256": "74d59968c0d46b60f06350db6f63a8895727bdcb577e7d10893ce212fc50a2b4"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/IconArt.cpp",
+      "destination": "Engine/Interface/IconArt.cpp",
+      "source_sha256": "6ce7ed0459185d454e495724dac5753fe518b7944ca1e12abc04afd092caf20c",
+      "destination_sha256": "f21e31f5b76fc6b5540e833630a24033936c5ea066262862766a41b8d57b68f5"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/IconArt.h",
+      "destination": "Engine/Interface/IconArt.h",
+      "source_sha256": "fab906ac6274af418e820600d3824b8c97be43125b4edfe5986f8c7d308a6953",
+      "destination_sha256": "fab906ac6274af418e820600d3824b8c97be43125b4edfe5986f8c7d308a6953"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/IconPresentation.cpp",
+      "destination": "Engine/Interface/IconPresentation.cpp",
+      "source_sha256": "0c0cdf1bcd7972bef22a4a5ee3c2f74a214c20a9c858b71624ef6e1876478bef",
+      "destination_sha256": "0c0cdf1bcd7972bef22a4a5ee3c2f74a214c20a9c858b71624ef6e1876478bef"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/IconPresentation.h",
+      "destination": "Engine/Interface/IconPresentation.h",
+      "source_sha256": "fa758f615ecabfc64db194706889d7bc709208272fb4e8efc4a1ff4515e72736",
+      "destination_sha256": "fa758f615ecabfc64db194706889d7bc709208272fb4e8efc4a1ff4515e72736"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/IconSymbols.inc",
+      "destination": "Engine/Interface/IconSymbols.inc",
+      "source_sha256": "c2fb07ebd0d58452cd849edeefd3237f51f6f52a75cfe05173ffdafea7baca63",
+      "destination_sha256": "e22dd17ed9225bc42f70a00995add33190ab6ff0b34a498b4823d6075ab77444"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/PixelSpace.cpp",
+      "destination": "Engine/Interface/PixelSpace.cpp",
+      "source_sha256": "00718a5cbac562fdbd6361ced0a2ae9c8230cd2c91fe605eabaacf7e0c960987",
+      "destination_sha256": "1e3c760f525f8fb3cf5233f85f52bf04ae5d05e8d12f1e89a7c97f1136a9159e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/PixelSpace.h",
+      "destination": "Engine/Interface/PixelSpace.h",
+      "source_sha256": "35e5bd20212a8ab3c85f93a684f84ff852287d0ced6513e403cf5867a7427734",
+      "destination_sha256": "4397da3a124fa462d27409d6119a4ee0d5a7b1b7b637fe6e9ba99a727f9bf517"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/TextEntryState.cpp",
+      "destination": "Engine/Interface/TextEntryState.cpp",
+      "source_sha256": "8d759a8fda125e23cf95eb6bb46bc1facb5d7074283dda3208339429624d49de",
+      "destination_sha256": "8d759a8fda125e23cf95eb6bb46bc1facb5d7074283dda3208339429624d49de"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/ThemeStructure.cpp",
+      "destination": "Engine/Interface/ThemeStructure.cpp",
+      "source_sha256": "2858db5c4e854f0d97889225fdd1f3412c9d7b8676553bc21713abbcf62f18b2",
+      "destination_sha256": "44c9e77e5ce54071102209e6d7fd2103752c7712f31eb6618a4d26743e4038c2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/ThemeStructure.h",
+      "destination": "Engine/Interface/ThemeStructure.h",
+      "source_sha256": "907d189abb3f052f628264142a3652473fad267c1a66b1e59e873a2d5ecf5b7b",
+      "destination_sha256": "ff18b05e7e434b30a14c737daf5d48c99b73f9b63b7fdfcb8f2903411291eddc"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/VectorCodec.cpp",
+      "destination": "Engine/Interface/VectorCodec.cpp",
+      "source_sha256": "923efd0a207b7184a3c9bc7be0cf89653129d091d2bce1261a9296b7a6755a16",
+      "destination_sha256": "377be8eaf09040cea4e7e908ad43ec87061087c3e2131ab82efa080baaf53b42"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/VectorCodec.h",
+      "destination": "Engine/Interface/VectorCodec.h",
+      "source_sha256": "78655f4a9e8fd829a73804be70550297434a872cd405d1bf73d3fb1288e1c387",
+      "destination_sha256": "74fc78b4f1b6d20cb112cfbe598bd5177be1e117ddc300c455be5ca59ea2e315"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/InspectorReferenceDraw.NOTICE",
+      "destination": "Engine/Interface/Lucide.NOTICE",
+      "source_sha256": "394a085d1bd665a912fde74c741ac409d9a2ca59ea639be4f08de36dcf41b67f",
+      "destination_sha256": "394a085d1bd665a912fde74c741ac409d9a2ca59ea639be4f08de36dcf41b67f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/Manifest.json",
+      "destination": "EngineContent/Icons/Manifest.json",
+      "source_sha256": "6132abb1ce47a74460be91177eb697e7c7d575cb6e09b4bff6cb41cd1369b19e",
+      "destination_sha256": "6132abb1ce47a74460be91177eb697e7c7d575cb6e09b4bff6cb41cd1369b19e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/Slate-NOTICE.md",
+      "destination": "EngineContent/Icons/Slate-NOTICE.md",
+      "source_sha256": "1fd31894c5c7374c5d73b71dfe2082f0488079f745e0efe26c65a94570a05c59",
+      "destination_sha256": "1fd31894c5c7374c5d73b71dfe2082f0488079f745e0efe26c65a94570a05c59"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-blend.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-blend.svg",
+      "source_sha256": "b8e3d507ecb6dc821ebf38cbb54ceca81f64b763ad0e3895e216cc518cc5f78f",
+      "destination_sha256": "b8e3d507ecb6dc821ebf38cbb54ceca81f64b763ad0e3895e216cc518cc5f78f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-exr.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-exr.svg",
+      "source_sha256": "3a4918df4603eb4c35e4b57d9cea01edce07a7854512a07e424b6180201a5828",
+      "destination_sha256": "3a4918df4603eb4c35e4b57d9cea01edce07a7854512a07e424b6180201a5828"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-fbx.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-fbx.svg",
+      "source_sha256": "3b1150fb504ceb897be29dc06d50dc0916bbf78a125ed02915e65b72caf4e51c",
+      "destination_sha256": "3b1150fb504ceb897be29dc06d50dc0916bbf78a125ed02915e65b72caf4e51c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-glsl.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-glsl.svg",
+      "source_sha256": "2ffe8568b1a404cfc1c0368422cfc85dd3607633b17b423fed3d409ec26f9df8",
+      "destination_sha256": "2ffe8568b1a404cfc1c0368422cfc85dd3607633b17b423fed3d409ec26f9df8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-gltf.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-gltf.svg",
+      "source_sha256": "c852983d55c3ffe4c6203004e64a47fdb6413c7ede8ebadecfbcfdca97913595",
+      "destination_sha256": "c852983d55c3ffe4c6203004e64a47fdb6413c7ede8ebadecfbcfdca97913595"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-jpg.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-jpg.svg",
+      "source_sha256": "df2e88fe1937ea2ab8accbbf8d4287b7e6959318c09810c60be0dfbebdd642e3",
+      "destination_sha256": "df2e88fe1937ea2ab8accbbf8d4287b7e6959318c09810c60be0dfbebdd642e3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-json.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-json.svg",
+      "source_sha256": "699f164bd9b8347cb101ece3930f60d0610f70ad59ce25e5cdb7e6fc5a93f19a",
+      "destination_sha256": "699f164bd9b8347cb101ece3930f60d0610f70ad59ce25e5cdb7e6fc5a93f19a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-mat.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-mat.svg",
+      "source_sha256": "e55ae3b9e53d4e3e471b499e5b81967502ecfc33b122dbaecc608483b248ec06",
+      "destination_sha256": "e55ae3b9e53d4e3e471b499e5b81967502ecfc33b122dbaecc608483b248ec06"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-mp3.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-mp3.svg",
+      "source_sha256": "bb1d41df18575de6146aa8e05f2c239100e47273e6beadd907392f24502a2abd",
+      "destination_sha256": "bb1d41df18575de6146aa8e05f2c239100e47273e6beadd907392f24502a2abd"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-obj.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-obj.svg",
+      "source_sha256": "1b92c7f03e3714463bf91e72a38ec5ba57b583ab3523847acb657ef9fc43dd66",
+      "destination_sha256": "1b92c7f03e3714463bf91e72a38ec5ba57b583ab3523847acb657ef9fc43dd66"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-ogg.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-ogg.svg",
+      "source_sha256": "be4a5df9f49626d2c6c19b8f8aac7de66c05bc8bc329780466001d40197a4063",
+      "destination_sha256": "be4a5df9f49626d2c6c19b8f8aac7de66c05bc8bc329780466001d40197a4063"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-otf.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-otf.svg",
+      "source_sha256": "6d2f44d261aad410c1ca04bbd3957725dba7a08ec2d151e87b8b8c6fb562da93",
+      "destination_sha256": "6d2f44d261aad410c1ca04bbd3957725dba7a08ec2d151e87b8b8c6fb562da93"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-png.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-png.svg",
+      "source_sha256": "9747c26a8feedac7d58f2396e370bdb462db62bc781e8782f3ede62a8d593b20",
+      "destination_sha256": "9747c26a8feedac7d58f2396e370bdb462db62bc781e8782f3ede62a8d593b20"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-py.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-py.svg",
+      "source_sha256": "cc4744f148fbb02f9d61d446fe2f978a6fb2821d160f2c26ea2e298672c022d8",
+      "destination_sha256": "cc4744f148fbb02f9d61d446fe2f978a6fb2821d160f2c26ea2e298672c022d8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-svg.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-svg.svg",
+      "source_sha256": "c2229ce106212ac5a814a2aafa26e46e53ed99bc55a804e16418ad308268e735",
+      "destination_sha256": "c2229ce106212ac5a814a2aafa26e46e53ed99bc55a804e16418ad308268e735"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-ttf.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-ttf.svg",
+      "source_sha256": "27242471669b97384ac6e529502edaf7c9b0944356786b0bc4e3e62e2ce4a071",
+      "destination_sha256": "27242471669b97384ac6e529502edaf7c9b0944356786b0bc4e3e62e2ce4a071"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-wav.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-wav.svg",
+      "source_sha256": "6f5ec9277b81c583e59fa1c86f6efeb0ade1c6ce5e84e0dbf96b3b45663db4b7",
+      "destination_sha256": "6f5ec9277b81c583e59fa1c86f6efeb0ade1c6ce5e84e0dbf96b3b45663db4b7"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-woff.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-woff.svg",
+      "source_sha256": "0a680342d286d88fce8bb9fa5ddce30e63f5f73609f17e4ce14bbce16727e3fd",
+      "destination_sha256": "0a680342d286d88fce8bb9fa5ddce30e63f5f73609f17e4ce14bbce16727e3fd"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-woff2.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-woff2.svg",
+      "source_sha256": "a2f40775383a5652f1743ab03a3b6a05bfa59055072dbb098ce54cac0defd58a",
+      "destination_sha256": "a2f40775383a5652f1743ab03a3b6a05bfa59055072dbb098ce54cac0defd58a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-file-zip.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-file-zip.svg",
+      "source_sha256": "d0d583c7d2ce1cedc370f5ce149a7599d8d24110d13f115029d642d1880404b2",
+      "destination_sha256": "d0d583c7d2ce1cedc370f5ce149a7599d8d24110d13f115029d642d1880404b2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-animation.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-animation.svg",
+      "source_sha256": "e80215ae388b4e86711fee7311d71c67c5134d480626716ff575732061da22c8",
+      "destination_sha256": "e80215ae388b4e86711fee7311d71c67c5134d480626716ff575732061da22c8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-archives.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-archives.svg",
+      "source_sha256": "b1041be65a77ebbe74d49bb40fe837f035f93eff1b0f45ebed052a721ef32239",
+      "destination_sha256": "b1041be65a77ebbe74d49bb40fe837f035f93eff1b0f45ebed052a721ef32239"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-audio.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-audio.svg",
+      "source_sha256": "3152107d9d5866f1fe9c442cefe4ec73efedcd6258ffa6cc317b2b1f3bd48bef",
+      "destination_sha256": "3152107d9d5866f1fe9c442cefe4ec73efedcd6258ffa6cc317b2b1f3bd48bef"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-fonts.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-fonts.svg",
+      "source_sha256": "ff569b9e933249e1bce82ed1ade6e093f21336347489b8cf5e34026431917db3",
+      "destination_sha256": "ff569b9e933249e1bce82ed1ade6e093f21336347489b8cf5e34026431917db3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-images.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-images.svg",
+      "source_sha256": "a948976d935e27e48b69aabac0af113dcc4b7957fcf1b66c2cbfc3d7655366e4",
+      "destination_sha256": "a948976d935e27e48b69aabac0af113dcc4b7957fcf1b66c2cbfc3d7655366e4"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-materials.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-materials.svg",
+      "source_sha256": "fa85c188813351c4a95d6e8e8acb0abd6974cca138932ffb0c847c7d9d083dab",
+      "destination_sha256": "fa85c188813351c4a95d6e8e8acb0abd6974cca138932ffb0c847c7d9d083dab"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-models.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-models.svg",
+      "source_sha256": "bcf724a03057a4fe036832903354de6e22016cd9e5ebc2c82b94c98c96ba0860",
+      "destination_sha256": "bcf724a03057a4fe036832903354de6e22016cd9e5ebc2c82b94c98c96ba0860"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-scenes.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-scenes.svg",
+      "source_sha256": "079bf327adb7a16ae48c14f65444007adab7880d8af6274b01f2369218b0914c",
+      "destination_sha256": "079bf327adb7a16ae48c14f65444007adab7880d8af6274b01f2369218b0914c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-scripts.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-scripts.svg",
+      "source_sha256": "d1099465c71e6951e5bbce365d6b8f480a82bbad109842ba8c2b2375b6bace25",
+      "destination_sha256": "d1099465c71e6951e5bbce365d6b8f480a82bbad109842ba8c2b2375b6bace25"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-shaders.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-shaders.svg",
+      "source_sha256": "174fcb63e51f2928d164ff1f2ae97f8cc0a91c1c0d8ba56093acc24b2d0eb39a",
+      "destination_sha256": "174fcb63e51f2928d164ff1f2ae97f8cc0a91c1c0d8ba56093acc24b2d0eb39a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-textures.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-textures.svg",
+      "source_sha256": "bef4fa5fd233c397a96490f65d13b5c66b76a530cee837582a113705a8ec8c2c",
+      "destination_sha256": "bef4fa5fd233c397a96490f65d13b5c66b76a530cee837582a113705a8ec8c2c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/asset-folder-video.svg",
+      "destination": "EngineContent/Icons/ThorVG/asset-folder-video.svg",
+      "source_sha256": "f50ec9e6b4c022852e6eb50ad5adde8463843ae42536ec4f7e0184c218c8f995",
+      "destination_sha256": "f50ec9e6b4c022852e6eb50ad5adde8463843ae42536ec4f7e0184c218c8f995"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/clouds.svg",
+      "destination": "EngineContent/Icons/ThorVG/clouds.svg",
+      "source_sha256": "e5b4d16ecaae1f26ee82143d96b267298673ad4f836f73bb4d5ccd3cee08d17e",
+      "destination_sha256": "e5b4d16ecaae1f26ee82143d96b267298673ad4f836f73bb4d5ccd3cee08d17e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/fog.svg",
+      "destination": "EngineContent/Icons/ThorVG/fog.svg",
+      "source_sha256": "93d0ee79268a99e97b7162edd52d4015855d25d07c5868ffdf17b127d7494d85",
+      "destination_sha256": "93d0ee79268a99e97b7162edd52d4015855d25d07c5868ffdf17b127d7494d85"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/folder-materials.svg",
+      "destination": "EngineContent/Icons/ThorVG/folder-materials.svg",
+      "source_sha256": "45d7dd29070e2e3bb713385b81272564fafdf5042cc53698db0696c0df9c5ac2",
+      "destination_sha256": "45d7dd29070e2e3bb713385b81272564fafdf5042cc53698db0696c0df9c5ac2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/folder-scene.svg",
+      "destination": "EngineContent/Icons/ThorVG/folder-scene.svg",
+      "source_sha256": "0b455e58641fcc6606b22f52e2d45db52b3158620b9f3fe87316e04f626acd3e",
+      "destination_sha256": "0b455e58641fcc6606b22f52e2d45db52b3158620b9f3fe87316e04f626acd3e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/folder-world.svg",
+      "destination": "EngineContent/Icons/ThorVG/folder-world.svg",
+      "source_sha256": "a0dce882cbccd63b112ee44383fd0505b9afd300d126e69e0ca2d30ace95061a",
+      "destination_sha256": "a0dce882cbccd63b112ee44383fd0505b9afd300d126e69e0ca2d30ace95061a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/local-cloud.svg",
+      "destination": "EngineContent/Icons/ThorVG/local-cloud.svg",
+      "source_sha256": "1136d2c3d73922b3664887901d24d91893ec9c84c372ea9ba33e18b3d1f54450",
+      "destination_sha256": "1136d2c3d73922b3664887901d24d91893ec9c84c372ea9ba33e18b3d1f54450"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/local-fog.svg",
+      "destination": "EngineContent/Icons/ThorVG/local-fog.svg",
+      "source_sha256": "c77a1d3c3756a23ba93941f649efb79911cbbcc3de7378036df8ef91bdba934e",
+      "destination_sha256": "c77a1d3c3756a23ba93941f649efb79911cbbcc3de7378036df8ef91bdba934e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/manifest.json",
+      "destination": "EngineContent/Icons/ThorVG/manifest.json",
+      "source_sha256": "5101e4f32829bf47a47e882d8039888fb4ec016e883f3864f2af655e1b57dc1b",
+      "destination_sha256": "5101e4f32829bf47a47e882d8039888fb4ec016e883f3864f2af655e1b57dc1b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/moon.svg",
+      "destination": "EngineContent/Icons/ThorVG/moon.svg",
+      "source_sha256": "38233b0e9797957fbe4d4bb764ab345ac20f302bbfcac21dd3b2851b8a561c0c",
+      "destination_sha256": "38233b0e9797957fbe4d4bb764ab345ac20f302bbfcac21dd3b2851b8a561c0c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-animation-curve.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-animation-curve.svg",
+      "source_sha256": "a12901f08e2b951fc86c836fe5beb3298655c36339a0b68088b6a4a9dc67128c",
+      "destination_sha256": "a12901f08e2b951fc86c836fe5beb3298655c36339a0b68088b6a4a9dc67128c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-build.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-build.svg",
+      "source_sha256": "dbf0c8033027707d4892ace56a82a946eb7cff0de1f096ec1aeb626532fbd0ed",
+      "destination_sha256": "dbf0c8033027707d4892ace56a82a946eb7cff0de1f096ec1aeb626532fbd0ed"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-clapboard.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-clapboard.svg",
+      "source_sha256": "bfbb3240fb198111cff6dcadb24cb5ea78ed3c96790c8b4db3c41fc0a1292939",
+      "destination_sha256": "bfbb3240fb198111cff6dcadb24cb5ea78ed3c96790c8b4db3c41fc0a1292939"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-color-picker.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-color-picker.svg",
+      "source_sha256": "d3b173910c03a2414def5ad217299b8c44eb3c501748a5ba97e7102ecf51b121",
+      "destination_sha256": "d3b173910c03a2414def5ad217299b8c44eb3c501748a5ba97e7102ecf51b121"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-document.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-document.svg",
+      "source_sha256": "ee5cf19e2eb02f35572fd4b5b222ef749413a9185e50de6bb70fd6dcc86de15d",
+      "destination_sha256": "ee5cf19e2eb02f35572fd4b5b222ef749413a9185e50de6bb70fd6dcc86de15d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-fabric.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-fabric.svg",
+      "source_sha256": "b779a701e646362c419feb1867c2d3b545054eb10ac1e0f585f20d425de654a3",
+      "destination_sha256": "b779a701e646362c419feb1867c2d3b545054eb10ac1e0f585f20d425de654a3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-film-strip.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-film-strip.svg",
+      "source_sha256": "2c0b2170a8dc0481da61d47e9db8b2a65004f876cd80628e14726842b1bdfd29",
+      "destination_sha256": "2c0b2170a8dc0481da61d47e9db8b2a65004f876cd80628e14726842b1bdfd29"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-image-widget-variant2.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-image-widget-variant2.svg",
+      "source_sha256": "7ed6a6203791fe499f78564d9ed6370bd9225d6fc13caf20cfa77f4000c55897",
+      "destination_sha256": "7ed6a6203791fe499f78564d9ed6370bd9225d6fc13caf20cfa77f4000c55897"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-image-widget-variant3.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-image-widget-variant3.svg",
+      "source_sha256": "9f47083e5518449fcd7c60474d59ca67280410bc953928add350bcb6dd820410",
+      "destination_sha256": "9f47083e5518449fcd7c60474d59ca67280410bc953928add350bcb6dd820410"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-image-widget-variant4.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-image-widget-variant4.svg",
+      "source_sha256": "bb7a4007c5b226e6a76dbb9c937d647ad3e60bc10de7e89f68610b1b2ca24266",
+      "destination_sha256": "bb7a4007c5b226e6a76dbb9c937d647ad3e60bc10de7e89f68610b1b2ca24266"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-image.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-image.svg",
+      "source_sha256": "e941a3b05fa64e6cfa109897a7905352ba2751d8b34caff9fb0aa4f391f2d0a8",
+      "destination_sha256": "e941a3b05fa64e6cfa109897a7905352ba2751d8b34caff9fb0aa4f391f2d0a8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-l-e-d-panel.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-l-e-d-panel.svg",
+      "source_sha256": "4010c26d270fd0c63965b4edfc0a1f6050cbc7e467ba0a26ca3c7168d437d0fe",
+      "destination_sha256": "4010c26d270fd0c63965b4edfc0a1f6050cbc7e467ba0a26ca3c7168d437d0fe"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-lantern.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-lantern.svg",
+      "source_sha256": "ca7a0e62ee0ba74e92d662cb2d3a3e58e633cadcf84b3499264c23c6c4476fa0",
+      "destination_sha256": "ca7a0e62ee0ba74e92d662cb2d3a3e58e633cadcf84b3499264c23c6c4476fa0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-live-broadcast.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-live-broadcast.svg",
+      "source_sha256": "594d47b3e414e25a5f17895fb377e237ecfb015898b1b9453fd779e73f95ce48",
+      "destination_sha256": "594d47b3e414e25a5f17895fb377e237ecfb015898b1b9453fd779e73f95ce48"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-meeting-grid.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-meeting-grid.svg",
+      "source_sha256": "da3bf21186f3ef65fc07a43b3e9fe79ab447d948440608651f123d581ce261e6",
+      "destination_sha256": "da3bf21186f3ef65fc07a43b3e9fe79ab447d948440608651f123d581ce261e6"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-old-gamepad-classic.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-old-gamepad-classic.svg",
+      "source_sha256": "9ea5f10d7f94023b3439c40b4da219e27915c791c5bdcff905d5506dc0091770",
+      "destination_sha256": "9ea5f10d7f94023b3439c40b4da219e27915c791c5bdcff905d5506dc0091770"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-ring-light.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-ring-light.svg",
+      "source_sha256": "481ef4788f5c191e704b293c992f93b234677af80b49427f14de1e95881dab0e",
+      "destination_sha256": "481ef4788f5c191e704b293c992f93b234677af80b49427f14de1e95881dab0e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-scene-hierarchy.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-scene-hierarchy.svg",
+      "source_sha256": "3bb105e33c90f63986c7d9cb95af7e084bb4427446fb0c74ff715fae43686e0a",
+      "destination_sha256": "3bb105e33c90f63986c7d9cb95af7e084bb4427446fb0c74ff715fae43686e0a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-script-node.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-script-node.svg",
+      "source_sha256": "0293bba1ca0f057eb8c69840dee64b7727ace3efa80b5f02b73b06903d264250",
+      "destination_sha256": "0293bba1ca0f057eb8c69840dee64b7727ace3efa80b5f02b73b06903d264250"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-shader-node.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-shader-node.svg",
+      "source_sha256": "2417ea2aec4b04e52ee1e50f018d0ed66fe676c15786e5475aeb332b3172c630",
+      "destination_sha256": "2417ea2aec4b04e52ee1e50f018d0ed66fe676c15786e5475aeb332b3172c630"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-spotlight.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-spotlight.svg",
+      "source_sha256": "7a698609c98c73cd15ab808dfaf98f936e7aacb4fbc8017f98eb5c8e3d043316",
+      "destination_sha256": "7a698609c98c73cd15ab808dfaf98f936e7aacb4fbc8017f98eb5c8e3d043316"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-sprite-sheet.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-sprite-sheet.svg",
+      "source_sha256": "31e3a188991088a30e172f7bd3c64ad23703a46602a6fe30b3241fa64114369f",
+      "destination_sha256": "31e3a188991088a30e172f7bd3c64ad23703a46602a6fe30b3241fa64114369f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-terminal.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-terminal.svg",
+      "source_sha256": "a5d0f34687e64b6e1566423287d4c35022068a8891c2bd3551b6379e3424c2cb",
+      "destination_sha256": "a5d0f34687e64b6e1566423287d4c35022068a8891c2bd3551b6379e3424c2cb"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-tilemap.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-tilemap.svg",
+      "source_sha256": "34ac0f3fe9486df8469394719c17db91d20d7ca86f25c705a8d5395543efd872",
+      "destination_sha256": "34ac0f3fe9486df8469394719c17db91d20d7ca86f25c705a8d5395543efd872"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-timeline.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-timeline.svg",
+      "source_sha256": "e8c7fd8b1fe0a533c966f66da04bff6879617d723360906a230b462e0c4f3b8b",
+      "destination_sha256": "e8c7fd8b1fe0a533c966f66da04bff6879617d723360906a230b462e0c4f3b8b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/slate-video-player.svg",
+      "destination": "EngineContent/Icons/ThorVG/slate-video-player.svg",
+      "source_sha256": "e885515330d7f65e81ffbd9d5da3267fb4e99a78586d97ac7c219f2bda168f54",
+      "destination_sha256": "e885515330d7f65e81ffbd9d5da3267fb4e99a78586d97ac7c219f2bda168f54"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/smoke.svg",
+      "destination": "EngineContent/Icons/ThorVG/smoke.svg",
+      "source_sha256": "389bef42c5d183fcc5f32c3bd200ec6404325beab0f543b478a87708092da5dd",
+      "destination_sha256": "389bef42c5d183fcc5f32c3bd200ec6404325beab0f543b478a87708092da5dd"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/speaker.svg",
+      "destination": "EngineContent/Icons/ThorVG/speaker.svg",
+      "source_sha256": "52434ac5c0d69a1b1548e29da84ec1700a392fab274b7a3d905b207f5433d6e1",
+      "destination_sha256": "52434ac5c0d69a1b1548e29da84ec1700a392fab274b7a3d905b207f5433d6e1"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ThorVG/sun.svg",
+      "destination": "EngineContent/Icons/ThorVG/sun.svg",
+      "source_sha256": "353e95ebda0d0d66010710e0700af52ae0cd5e5a165cdd7a84e0b65c32b29a4c",
+      "destination_sha256": "353e95ebda0d0d66010710e0700af52ae0cd5e5a165cdd7a84e0b65c32b29a4c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/arcade-joystick.svg",
+      "destination": "EngineContent/Icons/arcade-joystick.svg",
+      "source_sha256": "2651a101ff6df19d263f90711e2a0a169726ffc7f987294125e46a3be5a8ec15",
+      "destination_sha256": "2651a101ff6df19d263f90711e2a0a169726ffc7f987294125e46a3be5a8ec15"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-blend.svg",
+      "destination": "EngineContent/Icons/asset-file-blend.svg",
+      "source_sha256": "eb04dd8789c2270be0bd41a86576573790c458d5d5961b64cf7172fd38c86fef",
+      "destination_sha256": "eb04dd8789c2270be0bd41a86576573790c458d5d5961b64cf7172fd38c86fef"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-exr.svg",
+      "destination": "EngineContent/Icons/asset-file-exr.svg",
+      "source_sha256": "542f89f3c27e9180d0fe5b68e5da932343e3233e6a69c3e1081a56d0dcad6e80",
+      "destination_sha256": "542f89f3c27e9180d0fe5b68e5da932343e3233e6a69c3e1081a56d0dcad6e80"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-fbx.svg",
+      "destination": "EngineContent/Icons/asset-file-fbx.svg",
+      "source_sha256": "cdb311073504017d1734f103f7667ee9bf56cf0bdefe7e65addf714a0e9704b0",
+      "destination_sha256": "cdb311073504017d1734f103f7667ee9bf56cf0bdefe7e65addf714a0e9704b0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-glsl.svg",
+      "destination": "EngineContent/Icons/asset-file-glsl.svg",
+      "source_sha256": "34fa9fd9a42446d9ad5f41f3624de64f9dbf257670cd8871a00b28b99aec9977",
+      "destination_sha256": "34fa9fd9a42446d9ad5f41f3624de64f9dbf257670cd8871a00b28b99aec9977"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-gltf.svg",
+      "destination": "EngineContent/Icons/asset-file-gltf.svg",
+      "source_sha256": "692f856de6a7f5d635c1a7f6434344a337b9335d2cbe749d4c78bc743b7f488d",
+      "destination_sha256": "692f856de6a7f5d635c1a7f6434344a337b9335d2cbe749d4c78bc743b7f488d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-jpg.svg",
+      "destination": "EngineContent/Icons/asset-file-jpg.svg",
+      "source_sha256": "a4bdfdd06b492d85773c79a89302d0d15422f411359b325cadfff2c01a121caf",
+      "destination_sha256": "a4bdfdd06b492d85773c79a89302d0d15422f411359b325cadfff2c01a121caf"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-json.svg",
+      "destination": "EngineContent/Icons/asset-file-json.svg",
+      "source_sha256": "be82d6813d2a5e81429f1919258c0c9d030307cd8559ebfd1098c7f6e3043ec4",
+      "destination_sha256": "be82d6813d2a5e81429f1919258c0c9d030307cd8559ebfd1098c7f6e3043ec4"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-mat.svg",
+      "destination": "EngineContent/Icons/asset-file-mat.svg",
+      "source_sha256": "ba1d85d8579b1a02666d86ebb049c2dd7ae2d887a4aa141941a06769c5ba9217",
+      "destination_sha256": "ba1d85d8579b1a02666d86ebb049c2dd7ae2d887a4aa141941a06769c5ba9217"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-mp3.svg",
+      "destination": "EngineContent/Icons/asset-file-mp3.svg",
+      "source_sha256": "8f3f19337e3c4e77c466ec0f1df3225644ab0468d7569a580ad7b29cf97a4ef9",
+      "destination_sha256": "8f3f19337e3c4e77c466ec0f1df3225644ab0468d7569a580ad7b29cf97a4ef9"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-obj.svg",
+      "destination": "EngineContent/Icons/asset-file-obj.svg",
+      "source_sha256": "be7351b8c7bdfe4d5059e71a4645239fa61c495658b155c6fc090366ba40f18d",
+      "destination_sha256": "be7351b8c7bdfe4d5059e71a4645239fa61c495658b155c6fc090366ba40f18d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-ogg.svg",
+      "destination": "EngineContent/Icons/asset-file-ogg.svg",
+      "source_sha256": "1086ed65cedda8ae7cd70418c0bc5b84eec55efb031989c80007663642ce0f25",
+      "destination_sha256": "1086ed65cedda8ae7cd70418c0bc5b84eec55efb031989c80007663642ce0f25"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-otf.svg",
+      "destination": "EngineContent/Icons/asset-file-otf.svg",
+      "source_sha256": "cefc3ea60b7dd6bed81d6ac1d985327cb6e52edaa4108043e33654b8cab046a0",
+      "destination_sha256": "cefc3ea60b7dd6bed81d6ac1d985327cb6e52edaa4108043e33654b8cab046a0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-png.svg",
+      "destination": "EngineContent/Icons/asset-file-png.svg",
+      "source_sha256": "f0076136fe3520a9bab92d695e724ff72dd1f91a866095ea727f481584de8716",
+      "destination_sha256": "f0076136fe3520a9bab92d695e724ff72dd1f91a866095ea727f481584de8716"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-py.svg",
+      "destination": "EngineContent/Icons/asset-file-py.svg",
+      "source_sha256": "fcfe9d9c6d87f6991de8748ca0ca2c2a061b70fec7061aaf60431e213b14e508",
+      "destination_sha256": "fcfe9d9c6d87f6991de8748ca0ca2c2a061b70fec7061aaf60431e213b14e508"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-svg.svg",
+      "destination": "EngineContent/Icons/asset-file-svg.svg",
+      "source_sha256": "ecb2df968cf73468cf0514104fde24c1f952f6931b4cf0497bf5c37363405d48",
+      "destination_sha256": "ecb2df968cf73468cf0514104fde24c1f952f6931b4cf0497bf5c37363405d48"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-ttf.svg",
+      "destination": "EngineContent/Icons/asset-file-ttf.svg",
+      "source_sha256": "eb9b28551736ca17a6b6d7674de489e77c1d59604e6749db015f952695c6eebc",
+      "destination_sha256": "eb9b28551736ca17a6b6d7674de489e77c1d59604e6749db015f952695c6eebc"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-wav.svg",
+      "destination": "EngineContent/Icons/asset-file-wav.svg",
+      "source_sha256": "86c7fb8a9bbae5ee7100768c5abae60774a2daac04f4cd1f2266a1a7b42257f6",
+      "destination_sha256": "86c7fb8a9bbae5ee7100768c5abae60774a2daac04f4cd1f2266a1a7b42257f6"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-woff.svg",
+      "destination": "EngineContent/Icons/asset-file-woff.svg",
+      "source_sha256": "8d1ab959459c25f0c9bbdd591a92f94c72f474eca062d89b1eab8f00cbc5db76",
+      "destination_sha256": "8d1ab959459c25f0c9bbdd591a92f94c72f474eca062d89b1eab8f00cbc5db76"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-woff2.svg",
+      "destination": "EngineContent/Icons/asset-file-woff2.svg",
+      "source_sha256": "9e989b0a458bbe4491ee864e1da691660ceda9def4c387b3c5e9a2b4fd9c2815",
+      "destination_sha256": "9e989b0a458bbe4491ee864e1da691660ceda9def4c387b3c5e9a2b4fd9c2815"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-file-zip.svg",
+      "destination": "EngineContent/Icons/asset-file-zip.svg",
+      "source_sha256": "697188a7c5cfb319e3c21f7a26348e5c5acbdee0b762e3453459b2aa7e241b43",
+      "destination_sha256": "697188a7c5cfb319e3c21f7a26348e5c5acbdee0b762e3453459b2aa7e241b43"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-animation.svg",
+      "destination": "EngineContent/Icons/asset-folder-animation.svg",
+      "source_sha256": "12f0c3b7a0be7d1b63d8c2a08c7104413ae2a3cb397968e3e2a98dd219fc810b",
+      "destination_sha256": "12f0c3b7a0be7d1b63d8c2a08c7104413ae2a3cb397968e3e2a98dd219fc810b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-archives.svg",
+      "destination": "EngineContent/Icons/asset-folder-archives.svg",
+      "source_sha256": "11dbe320b1eef6dc722f5fa98399cc74e1ce531d80e75b27e3ff8d7b4a43b3a9",
+      "destination_sha256": "11dbe320b1eef6dc722f5fa98399cc74e1ce531d80e75b27e3ff8d7b4a43b3a9"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-audio.svg",
+      "destination": "EngineContent/Icons/asset-folder-audio.svg",
+      "source_sha256": "41923cde540f88df0374f5f0491bfe15d7ff41f0841af675e9f4a3e6431a30de",
+      "destination_sha256": "41923cde540f88df0374f5f0491bfe15d7ff41f0841af675e9f4a3e6431a30de"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-fonts.svg",
+      "destination": "EngineContent/Icons/asset-folder-fonts.svg",
+      "source_sha256": "0515688d5b66676da3342350f7c02f9081a4dd83cc1648e1ad6d8a57769b4020",
+      "destination_sha256": "0515688d5b66676da3342350f7c02f9081a4dd83cc1648e1ad6d8a57769b4020"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-images.svg",
+      "destination": "EngineContent/Icons/asset-folder-images.svg",
+      "source_sha256": "36f809c1fa2b7ae91ebd28ccf255795107e615b68c610aaad368e36587bbf909",
+      "destination_sha256": "36f809c1fa2b7ae91ebd28ccf255795107e615b68c610aaad368e36587bbf909"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-materials.svg",
+      "destination": "EngineContent/Icons/asset-folder-materials.svg",
+      "source_sha256": "de020cf1767642ada8062205ad953cf7553adcb920347406a1b095a39d702081",
+      "destination_sha256": "de020cf1767642ada8062205ad953cf7553adcb920347406a1b095a39d702081"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-models.svg",
+      "destination": "EngineContent/Icons/asset-folder-models.svg",
+      "source_sha256": "59bb80c3bdce4ac84bfef211d0423216396b12c71d2041b184c833803db50fe3",
+      "destination_sha256": "59bb80c3bdce4ac84bfef211d0423216396b12c71d2041b184c833803db50fe3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-scenes.svg",
+      "destination": "EngineContent/Icons/asset-folder-scenes.svg",
+      "source_sha256": "209e68c6cc02dfcdc606828eabfee6e2c242433e5a859614e917dd0d72b7b82e",
+      "destination_sha256": "209e68c6cc02dfcdc606828eabfee6e2c242433e5a859614e917dd0d72b7b82e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-scripts.svg",
+      "destination": "EngineContent/Icons/asset-folder-scripts.svg",
+      "source_sha256": "d8e624b4d108890e17b46f0c1e4f668d8f56709ff6b972cc2dc82221b498c7d1",
+      "destination_sha256": "d8e624b4d108890e17b46f0c1e4f668d8f56709ff6b972cc2dc82221b498c7d1"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-shaders.svg",
+      "destination": "EngineContent/Icons/asset-folder-shaders.svg",
+      "source_sha256": "78039577191b55508104755cd0aa3b592068b327e60839d8bfd7e3da8e9c19cc",
+      "destination_sha256": "78039577191b55508104755cd0aa3b592068b327e60839d8bfd7e3da8e9c19cc"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-textures.svg",
+      "destination": "EngineContent/Icons/asset-folder-textures.svg",
+      "source_sha256": "4488eac1a610748aabcd0fa78eab4bcba5ad5e43e35851bfbda561bb89bd17a9",
+      "destination_sha256": "4488eac1a610748aabcd0fa78eab4bcba5ad5e43e35851bfbda561bb89bd17a9"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/asset-folder-video.svg",
+      "destination": "EngineContent/Icons/asset-folder-video.svg",
+      "source_sha256": "7d037273b896ee9549baf27f722dabc81c110e6de948f791124ca7d52a7a82f0",
+      "destination_sha256": "7d037273b896ee9549baf27f722dabc81c110e6de948f791124ca7d52a7a82f0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/camera.svg",
+      "destination": "EngineContent/Icons/camera.svg",
+      "source_sha256": "04b275cffafc53cf69f92c337e4c741cd8b0e06db428770930794447e86d50eb",
+      "destination_sha256": "04b275cffafc53cf69f92c337e4c741cd8b0e06db428770930794447e86d50eb"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/clapperboard.svg",
+      "destination": "EngineContent/Icons/clapperboard.svg",
+      "source_sha256": "f570a413fddfc7e1ca758e3fdd4a1c69154e06f14c7a6f0e4ae037aaf4b4bc3b",
+      "destination_sha256": "f570a413fddfc7e1ca758e3fdd4a1c69154e06f14c7a6f0e4ae037aaf4b4bc3b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/clouds.svg",
+      "destination": "EngineContent/Icons/clouds.svg",
+      "source_sha256": "59b9cb51633a3171d54db77160d483744436f47e3e0d73cb5b4a7a73414c6412",
+      "destination_sha256": "59b9cb51633a3171d54db77160d483744436f47e3e0d73cb5b4a7a73414c6412"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/collection-bracketed-objects.svg",
+      "destination": "EngineContent/Icons/collection-bracketed-objects.svg",
+      "source_sha256": "0511cc3a04649dbff923c34a734302636a7912e964fd5720748d2b613c83fd6e",
+      "destination_sha256": "0511cc3a04649dbff923c34a734302636a7912e964fd5720748d2b613c83fd6e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/collection-linked-nodes.svg",
+      "destination": "EngineContent/Icons/collection-linked-nodes.svg",
+      "source_sha256": "1d313d101d89bb9f11a7eb8ee5620db248b5c4bbfa7821c655819afb84e555f7",
+      "destination_sha256": "1d313d101d89bb9f11a7eb8ee5620db248b5c4bbfa7821c655819afb84e555f7"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/collection-overlapping-tiles.svg",
+      "destination": "EngineContent/Icons/collection-overlapping-tiles.svg",
+      "source_sha256": "b61ae18043822a39672fee2fd9f5c2c403af05f8425d6b93261a81eed68c54c0",
+      "destination_sha256": "b61ae18043822a39672fee2fd9f5c2c403af05f8425d6b93261a81eed68c54c0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/collection-stacked-layers.svg",
+      "destination": "EngineContent/Icons/collection-stacked-layers.svg",
+      "source_sha256": "810f71dc446ea5d7225f511b56f671c5f71606c44cbf74d7f93d540f980a6dd0",
+      "destination_sha256": "810f71dc446ea5d7225f511b56f671c5f71606c44cbf74d7f93d540f980a6dd0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/collection.svg",
+      "destination": "EngineContent/Icons/collection.svg",
+      "source_sha256": "564b1d0636ccfd639822d08067308d4019e71dda4fb2afd9c50eb78cfd643483",
+      "destination_sha256": "564b1d0636ccfd639822d08067308d4019e71dda4fb2afd9c50eb78cfd643483"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/command-key.svg",
+      "destination": "EngineContent/Icons/command-key.svg",
+      "source_sha256": "17e7c9d507719b5bed752b7bc316758cd1b4d2e6d127693bc4fd32f991723087",
+      "destination_sha256": "17e7c9d507719b5bed752b7bc316758cd1b4d2e6d127693bc4fd32f991723087"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/dice.svg",
+      "destination": "EngineContent/Icons/dice.svg",
+      "source_sha256": "b30d48863fefe26d5993c5949ddffd634af7c27a2396a0c822626189b83f042b",
+      "destination_sha256": "b30d48863fefe26d5993c5949ddffd634af7c27a2396a0c822626189b83f042b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/earth.svg",
+      "destination": "EngineContent/Icons/earth.svg",
+      "source_sha256": "41b39082afc23716e6a3e1d06c2f6162ead0a815c30944757b13498f5815d7e2",
+      "destination_sha256": "41b39082afc23716e6a3e1d06c2f6162ead0a815c30944757b13498f5815d7e2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-area-light.svg",
+      "destination": "EngineContent/Icons/editor-area-light.svg",
+      "source_sha256": "17f11dfc8e5eab93bc49c333b0217f0c72b3f0dd5454c11fb53a09b8b75cfdde",
+      "destination_sha256": "17f11dfc8e5eab93bc49c333b0217f0c72b3f0dd5454c11fb53a09b8b75cfdde"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-bake.svg",
+      "destination": "EngineContent/Icons/editor-bake.svg",
+      "source_sha256": "612e52acbdcf51ed622509164c795ac9248c7064f70bc4c9ed7f068a943b8ae5",
+      "destination_sha256": "612e52acbdcf51ed622509164c795ac9248c7064f70bc4c9ed7f068a943b8ae5"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-bone.svg",
+      "destination": "EngineContent/Icons/editor-bone.svg",
+      "source_sha256": "2ccba75c7319295b6d04fb1442e7ae6e61beb52166d4ca478ad7084ab716e310",
+      "destination_sha256": "2ccba75c7319295b6d04fb1442e7ae6e61beb52166d4ca478ad7084ab716e310"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-box-collider.svg",
+      "destination": "EngineContent/Icons/editor-box-collider.svg",
+      "source_sha256": "a9846235d5cfa327b25cdbac068a72848d90ab6e5800bb6d3b71026e58493c14",
+      "destination_sha256": "a9846235d5cfa327b25cdbac068a72848d90ab6e5800bb6d3b71026e58493c14"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-brake-light.svg",
+      "destination": "EngineContent/Icons/editor-brake-light.svg",
+      "source_sha256": "04ec17639bc1535c89f34b336dd0d1dd451c9ed4cec0535c16a73b274298f2fb",
+      "destination_sha256": "04ec17639bc1535c89f34b336dd0d1dd451c9ed4cec0535c16a73b274298f2fb"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-collection.svg",
+      "destination": "EngineContent/Icons/editor-collection.svg",
+      "source_sha256": "19c096cf0257ff54daedf35b33fc6acd078c2816471ea71c99c73c452919fdc2",
+      "destination_sha256": "19c096cf0257ff54daedf35b33fc6acd078c2816471ea71c99c73c452919fdc2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-debug-breakpoint.svg",
+      "destination": "EngineContent/Icons/editor-debug-breakpoint.svg",
+      "source_sha256": "a2d5cbfc8f286b589b6244b6b4e62c683173127b1ba6f9b5b9e6f84be59b8c8c",
+      "destination_sha256": "a2d5cbfc8f286b589b6244b6b4e62c683173127b1ba6f9b5b9e6f84be59b8c8c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-debug-bug.svg",
+      "destination": "EngineContent/Icons/editor-debug-bug.svg",
+      "source_sha256": "72a5ec7a57bcf4b4cdb2dd683e860d75bb1fafcbf2920e46d4bfe955d4730290",
+      "destination_sha256": "72a5ec7a57bcf4b4cdb2dd683e860d75bb1fafcbf2920e46d4bfe955d4730290"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-debug-run.svg",
+      "destination": "EngineContent/Icons/editor-debug-run.svg",
+      "source_sha256": "f84190ae45954947dd9ec24c1b703b595b6df5690db229eab90b68ada4a800be",
+      "destination_sha256": "f84190ae45954947dd9ec24c1b703b595b6df5690db229eab90b68ada4a800be"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-dome-light.svg",
+      "destination": "EngineContent/Icons/editor-dome-light.svg",
+      "source_sha256": "d45fe8e9fec257ffec5f26f9ca70a769119a59e6f49dba60d75bf05320faee5c",
+      "destination_sha256": "d45fe8e9fec257ffec5f26f9ca70a769119a59e6f49dba60d75bf05320faee5c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-grid.svg",
+      "destination": "EngineContent/Icons/editor-grid.svg",
+      "source_sha256": "99e6baf799003b1dcdbc021e58cd3827d72e7b814bd724d362d936b85d64411d",
+      "destination_sha256": "99e6baf799003b1dcdbc021e58cd3827d72e7b814bd724d362d936b85d64411d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-hazard-lights.svg",
+      "destination": "EngineContent/Icons/editor-hazard-lights.svg",
+      "source_sha256": "2714601d0084ee6848a92178052181d431fe6ae6890e24eb98adbbdc0a369085",
+      "destination_sha256": "2714601d0084ee6848a92178052181d431fe6ae6890e24eb98adbbdc0a369085"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-hdri-light.svg",
+      "destination": "EngineContent/Icons/editor-hdri-light.svg",
+      "source_sha256": "5205f31a5e4fe28f670cb3dd3517c9483cffcd3d2270d07529f0e7bead72db85",
+      "destination_sha256": "5205f31a5e4fe28f670cb3dd3517c9483cffcd3d2270d07529f0e7bead72db85"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-hidden.svg",
+      "destination": "EngineContent/Icons/editor-hidden.svg",
+      "source_sha256": "d1b5619a66b87f05ef47ca5222a6ba5312015beb22cc2f15a8e1219b7f05844c",
+      "destination_sha256": "d1b5619a66b87f05ef47ca5222a6ba5312015beb22cc2f15a8e1219b7f05844c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-instance.svg",
+      "destination": "EngineContent/Icons/editor-instance.svg",
+      "source_sha256": "21f893f28affaad68912680e41635662c6c5d0b7fc78e045885cab12a05ead7c",
+      "destination_sha256": "21f893f28affaad68912680e41635662c6c5d0b7fc78e045885cab12a05ead7c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-lock.svg",
+      "destination": "EngineContent/Icons/editor-lock.svg",
+      "source_sha256": "c378ba74f7b49a9dafcd8ce7b8d5660efa8456a2b26a28fc491662158e43a28b",
+      "destination_sha256": "c378ba74f7b49a9dafcd8ce7b8d5660efa8456a2b26a28fc491662158e43a28b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-material.svg",
+      "destination": "EngineContent/Icons/editor-material.svg",
+      "source_sha256": "f329a6001a302aac16ed14eed8a28ccc706bbe783c37ae8c8033c4c0cc7ab2f5",
+      "destination_sha256": "f329a6001a302aac16ed14eed8a28ccc706bbe783c37ae8c8033c4c0cc7ab2f5"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-mesh.svg",
+      "destination": "EngineContent/Icons/editor-mesh.svg",
+      "source_sha256": "63ccaeb5df75fbd4847297b84eaab4615698fa2597d0f319bf3c0f2036c85973",
+      "destination_sha256": "63ccaeb5df75fbd4847297b84eaab4615698fa2597d0f319bf3c0f2036c85973"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-move.svg",
+      "destination": "EngineContent/Icons/editor-move.svg",
+      "source_sha256": "44a9366102b19ffd4e33f4ced87c8bb4d40699761b1da1bd9a073e7bea1098b7",
+      "destination_sha256": "44a9366102b19ffd4e33f4ced87c8bb4d40699761b1da1bd9a073e7bea1098b7"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-particle-emitter.svg",
+      "destination": "EngineContent/Icons/editor-particle-emitter.svg",
+      "source_sha256": "5316ddd8d3c5c65e377e1dd34a2b9a8ba33ca0f4684b67d7d2b1986fa41fb127",
+      "destination_sha256": "5316ddd8d3c5c65e377e1dd34a2b9a8ba33ca0f4684b67d7d2b1986fa41fb127"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-pause.svg",
+      "destination": "EngineContent/Icons/editor-pause.svg",
+      "source_sha256": "f0f42e3620ca31f5c47752c6060caa52801d9c8c3d6f7cbe6dafcc00a02e2e83",
+      "destination_sha256": "f0f42e3620ca31f5c47752c6060caa52801d9c8c3d6f7cbe6dafcc00a02e2e83"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-physics.svg",
+      "destination": "EngineContent/Icons/editor-physics.svg",
+      "source_sha256": "43b60c3b818d42a84c736c19005820455d89e25e746bdb6eea5594e24aaf3d30",
+      "destination_sha256": "43b60c3b818d42a84c736c19005820455d89e25e746bdb6eea5594e24aaf3d30"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-pivot.svg",
+      "destination": "EngineContent/Icons/editor-pivot.svg",
+      "source_sha256": "7a31c017d5c5dcfd477e60c02f058921cc23fb2f14c343f1245d8b4a3c458356",
+      "destination_sha256": "7a31c017d5c5dcfd477e60c02f058921cc23fb2f14c343f1245d8b4a3c458356"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-play-mode.svg",
+      "destination": "EngineContent/Icons/editor-play-mode.svg",
+      "source_sha256": "2ad62086a654a90bc176d51392a59c3757a1245dfcae990624c9d3b2846c52eb",
+      "destination_sha256": "2ad62086a654a90bc176d51392a59c3757a1245dfcae990624c9d3b2846c52eb"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-point-light.svg",
+      "destination": "EngineContent/Icons/editor-point-light.svg",
+      "source_sha256": "e1de167da958fbe7e8c298e7e3d3e98589f92a3e1639c99f54f01868538f84bf",
+      "destination_sha256": "e1de167da958fbe7e8c298e7e3d3e98589f92a3e1639c99f54f01868538f84bf"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-prefab.svg",
+      "destination": "EngineContent/Icons/editor-prefab.svg",
+      "source_sha256": "975af7f097e47307235beb6d2eae3ee14c9dfb4047e0d3f8fefafa3dcbed9669",
+      "destination_sha256": "975af7f097e47307235beb6d2eae3ee14c9dfb4047e0d3f8fefafa3dcbed9669"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-rotate.svg",
+      "destination": "EngineContent/Icons/editor-rotate.svg",
+      "source_sha256": "4eb2f4a044fb4183b74fd2fd705e564868ebdf02836ed86121a20b53817ac880",
+      "destination_sha256": "4eb2f4a044fb4183b74fd2fd705e564868ebdf02836ed86121a20b53817ac880"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-scale.svg",
+      "destination": "EngineContent/Icons/editor-scale.svg",
+      "source_sha256": "831f345d595d700a9054e4c786cf266bbec5a3438acba7d4a9d1da182beb8bff",
+      "destination_sha256": "831f345d595d700a9054e4c786cf266bbec5a3438acba7d4a9d1da182beb8bff"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-select.svg",
+      "destination": "EngineContent/Icons/editor-select.svg",
+      "source_sha256": "a073fca4635c8fe30d5b2b8824c57dd1e01c9b0a2e8d965dc76cef6b28664c74",
+      "destination_sha256": "a073fca4635c8fe30d5b2b8824c57dd1e01c9b0a2e8d965dc76cef6b28664c74"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-simulate.svg",
+      "destination": "EngineContent/Icons/editor-simulate.svg",
+      "source_sha256": "09d1b2aa94178dcdecdcd9230adaf5a8178781fcc8642f0b49ceb5a7a139f1b8",
+      "destination_sha256": "09d1b2aa94178dcdecdcd9230adaf5a8178781fcc8642f0b49ceb5a7a139f1b8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-snap.svg",
+      "destination": "EngineContent/Icons/editor-snap.svg",
+      "source_sha256": "99c4364eb1688dfc11c86bcaad4e78e9821b5e9ae01dea42d9bff15b64c88a9b",
+      "destination_sha256": "99c4364eb1688dfc11c86bcaad4e78e9821b5e9ae01dea42d9bff15b64c88a9b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-sphere-collider.svg",
+      "destination": "EngineContent/Icons/editor-sphere-collider.svg",
+      "source_sha256": "4dc2d488c928178df9b4c90a4cf1f127b74475658ae0b2453dbd561d106d2b0b",
+      "destination_sha256": "4dc2d488c928178df9b4c90a4cf1f127b74475658ae0b2453dbd561d106d2b0b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-spotlight.svg",
+      "destination": "EngineContent/Icons/editor-spotlight.svg",
+      "source_sha256": "db321c87b8c6deb1864d9ffefc37a05cbf2ad02568c9b563784ec2434b7e7014",
+      "destination_sha256": "db321c87b8c6deb1864d9ffefc37a05cbf2ad02568c9b563784ec2434b7e7014"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-stop.svg",
+      "destination": "EngineContent/Icons/editor-stop.svg",
+      "source_sha256": "353a1e279218dbfcb03fba9b4f1b4319548f0420c83d71cb72015787be8b7195",
+      "destination_sha256": "353a1e279218dbfcb03fba9b4f1b4319548f0420c83d71cb72015787be8b7195"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-texture.svg",
+      "destination": "EngineContent/Icons/editor-texture.svg",
+      "source_sha256": "79ace07e263ee9c2cc8cad0b5ffd0c655c69705f28b460cf8dda3b34d91a1d6f",
+      "destination_sha256": "79ace07e263ee9c2cc8cad0b5ffd0c655c69705f28b460cf8dda3b34d91a1d6f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-trigger.svg",
+      "destination": "EngineContent/Icons/editor-trigger.svg",
+      "source_sha256": "76d5ed76cccfa8813bd7187e429d5ca710ab650bc3b0a6d09071f17fb24e1f3d",
+      "destination_sha256": "76d5ed76cccfa8813bd7187e429d5ca710ab650bc3b0a6d09071f17fb24e1f3d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-unlock.svg",
+      "destination": "EngineContent/Icons/editor-unlock.svg",
+      "source_sha256": "7ae8f8c60db7a8821ff441a09c0180f89b25457c89411a01f8f149ff5a000ef4",
+      "destination_sha256": "7ae8f8c60db7a8821ff441a09c0180f89b25457c89411a01f8f149ff5a000ef4"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/editor-visibility.svg",
+      "destination": "EngineContent/Icons/editor-visibility.svg",
+      "source_sha256": "435ca82b0513fe52ba0954678538df78d0e4a271d72c146c2f108048a18fda2d",
+      "destination_sha256": "435ca82b0513fe52ba0954678538df78d0e4a271d72c146c2f108048a18fda2d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/environment-exposure.svg",
+      "destination": "EngineContent/Icons/environment-exposure.svg",
+      "source_sha256": "34bdba1cbddf82f092a6d3a52becd6d729947b4bfd30e8b69f9b61b85f7adf1d",
+      "destination_sha256": "34bdba1cbddf82f092a6d3a52becd6d729947b4bfd30e8b69f9b61b85f7adf1d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/fire.svg",
+      "destination": "EngineContent/Icons/fire.svg",
+      "source_sha256": "b3eeea4613c7d0e2dc1882a976a6a137d7ddf3376a3cbea372d3bce8e11750a6",
+      "destination_sha256": "b3eeea4613c7d0e2dc1882a976a6a137d7ddf3376a3cbea372d3bce8e11750a6"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/fluid-glass.svg",
+      "destination": "EngineContent/Icons/fluid-glass.svg",
+      "source_sha256": "d059912713df8e698ae739195608508ad4181c6b347c2064d9e28c26e3f66c4a",
+      "destination_sha256": "d059912713df8e698ae739195608508ad4181c6b347c2064d9e28c26e3f66c4a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/fluid.svg",
+      "destination": "EngineContent/Icons/fluid.svg",
+      "source_sha256": "24aac61899369dd192be6183883963c7d47bf8fa052cb263e2f4720a016b0df4",
+      "destination_sha256": "24aac61899369dd192be6183883963c7d47bf8fa052cb263e2f4720a016b0df4"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/fog.svg",
+      "destination": "EngineContent/Icons/fog.svg",
+      "source_sha256": "aacb7841c660e317f50522f0d95b3b663fee33eae33c743ce7a0b9354a902d78",
+      "destination_sha256": "aacb7841c660e317f50522f0d95b3b663fee33eae33c743ce7a0b9354a902d78"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/folder-environment.svg",
+      "destination": "EngineContent/Icons/folder-environment.svg",
+      "source_sha256": "c5466bebab157d04c982b388398e09a5323fb266aafb9df083df8d37fd3c9d59",
+      "destination_sha256": "c5466bebab157d04c982b388398e09a5323fb266aafb9df083df8d37fd3c9d59"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/folder-generic.svg",
+      "destination": "EngineContent/Icons/folder-generic.svg",
+      "source_sha256": "aa34317849f2b5b702f15d331eab5ec2a9ac16a1332ba19e687ee8a697a357dd",
+      "destination_sha256": "aa34317849f2b5b702f15d331eab5ec2a9ac16a1332ba19e687ee8a697a357dd"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/folder-materials.svg",
+      "destination": "EngineContent/Icons/folder-materials.svg",
+      "source_sha256": "d54e1446185d42ba46556652cfc4ab355778a1e35ba86a0a62f48a81a1dc3cb6",
+      "destination_sha256": "d54e1446185d42ba46556652cfc4ab355778a1e35ba86a0a62f48a81a1dc3cb6"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/folder-scene.svg",
+      "destination": "EngineContent/Icons/folder-scene.svg",
+      "source_sha256": "af03f1e3c2e1b672311c567630d5ac61a4eab0c8387cb14bd8483e28c0df378a",
+      "destination_sha256": "af03f1e3c2e1b672311c567630d5ac61a4eab0c8387cb14bd8483e28c0df378a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/folder-water.svg",
+      "destination": "EngineContent/Icons/folder-water.svg",
+      "source_sha256": "d7b87372cc4742bfd85cb7f0e189ee76bce67522a99bc7e00fa93a479dd8016f",
+      "destination_sha256": "d7b87372cc4742bfd85cb7f0e189ee76bce67522a99bc7e00fa93a479dd8016f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/folder-world.svg",
+      "destination": "EngineContent/Icons/folder-world.svg",
+      "source_sha256": "102287756f5080782ed58a7fecda029b287ddb981705f87fe54bd8e1e5ed3392",
+      "destination_sha256": "102287756f5080782ed58a7fecda029b287ddb981705f87fe54bd8e1e5ed3392"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/forest.svg",
+      "destination": "EngineContent/Icons/forest.svg",
+      "source_sha256": "2375050a102965aab5b0a85babe96c2cf10a88524a8eecab0395bee88065f463",
+      "destination_sha256": "2375050a102965aab5b0a85babe96c2cf10a88524a8eecab0395bee88065f463"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/game-controller.svg",
+      "destination": "EngineContent/Icons/game-controller.svg",
+      "source_sha256": "48b360616dea20268e7adcb076d5a140096894b7fbd95ad460de8186475135ad",
+      "destination_sha256": "48b360616dea20268e7adcb076d5a140096894b7fbd95ad460de8186475135ad"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/graphics-card-2d.svg",
+      "destination": "EngineContent/Icons/graphics-card-2d.svg",
+      "source_sha256": "52b19c2a925f0c5e1fe2c728377d4801c9801a5685de84d8fa7db1f3d52ab5c7",
+      "destination_sha256": "52b19c2a925f0c5e1fe2c728377d4801c9801a5685de84d8fa7db1f3d52ab5c7"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/hard-drive.svg",
+      "destination": "EngineContent/Icons/hard-drive.svg",
+      "source_sha256": "62a2d21b2fc26dec93196c975df7f64e9df8fe262ea257099711067fa712730a",
+      "destination_sha256": "62a2d21b2fc26dec93196c975df7f64e9df8fe262ea257099711067fa712730a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/home.svg",
+      "destination": "EngineContent/Icons/home.svg",
+      "source_sha256": "5f930a421b9c3d6fd5a1be7ad8cc61d3185eeeed0ea6c7d73aee16f87dabe390",
+      "destination_sha256": "5f930a421b9c3d6fd5a1be7ad8cc61d3185eeeed0ea6c7d73aee16f87dabe390"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/lens-flare.svg",
+      "destination": "EngineContent/Icons/lens-flare.svg",
+      "source_sha256": "0c4f717df2cb6a002a7f0daeef5caf43436dceb51257d2f3663d4920af6e9b17",
+      "destination_sha256": "0c4f717df2cb6a002a7f0daeef5caf43436dceb51257d2f3663d4920af6e9b17"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/light-area-2d.svg",
+      "destination": "EngineContent/Icons/light-area-2d.svg",
+      "source_sha256": "3aa5d861699070071b9bf773273d46fba28b08240fa036676a32c4b53ef15116",
+      "destination_sha256": "3aa5d861699070071b9bf773273d46fba28b08240fa036676a32c4b53ef15116"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/light-incandescent-2d.svg",
+      "destination": "EngineContent/Icons/light-incandescent-2d.svg",
+      "source_sha256": "c62fb0ff0dad1c317b6d0f350c9349cf8f03f08b575481477a80c646b8c8eee3",
+      "destination_sha256": "c62fb0ff0dad1c317b6d0f350c9349cf8f03f08b575481477a80c646b8c8eee3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/light-point-2d.svg",
+      "destination": "EngineContent/Icons/light-point-2d.svg",
+      "source_sha256": "5631ef20f4ae012f5d17f9623fde2545d836ad80a0c8aad479e1d3dd04b6ac51",
+      "destination_sha256": "5631ef20f4ae012f5d17f9623fde2545d836ad80a0c8aad479e1d3dd04b6ac51"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/lightning.svg",
+      "destination": "EngineContent/Icons/lightning.svg",
+      "source_sha256": "999269d21fddebe56aa55a55f6eb9204f5c1e0294c77590e7fc7716f74bc7eb8",
+      "destination_sha256": "999269d21fddebe56aa55a55f6eb9204f5c1e0294c77590e7fc7716f74bc7eb8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/local-cloud.svg",
+      "destination": "EngineContent/Icons/local-cloud.svg",
+      "source_sha256": "23d26bf08b231711078d7c1704800aa56c20cd78172dce27b79ee1b5e0946604",
+      "destination_sha256": "23d26bf08b231711078d7c1704800aa56c20cd78172dce27b79ee1b5e0946604"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/local-fog.svg",
+      "destination": "EngineContent/Icons/local-fog.svg",
+      "source_sha256": "249f200719a9f6d78c2181c72971d941b4e470f5940b54841a104c2bb2546ba3",
+      "destination_sha256": "249f200719a9f6d78c2181c72971d941b4e470f5940b54841a104c2bb2546ba3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/material.svg",
+      "destination": "EngineContent/Icons/material.svg",
+      "source_sha256": "529adaccfea921a520714f6a488eeb1ea4b6b44382cdc5b42c237579439375f8",
+      "destination_sha256": "529adaccfea921a520714f6a488eeb1ea4b6b44382cdc5b42c237579439375f8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/mesh.svg",
+      "destination": "EngineContent/Icons/mesh.svg",
+      "source_sha256": "8d014a1010c289918bce638c8058e9511ebcfdcf2d929ae84eed1f9b159143d4",
+      "destination_sha256": "8d014a1010c289918bce638c8058e9511ebcfdcf2d929ae84eed1f9b159143d4"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/microphone.svg",
+      "destination": "EngineContent/Icons/microphone.svg",
+      "source_sha256": "820fd9c71a641d71f219332d9d85cb085ea7e0732cc3d789c2f64012cde4d36a",
+      "destination_sha256": "820fd9c71a641d71f219332d9d85cb085ea7e0732cc3d789c2f64012cde4d36a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/moon.svg",
+      "destination": "EngineContent/Icons/moon.svg",
+      "source_sha256": "e3272801cd5d98b7edc5ffc02407cb2694593c0fcbaef59938daa648f9980b2f",
+      "destination_sha256": "e3272801cd5d98b7edc5ffc02407cb2694593c0fcbaef59938daa648f9980b2f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/outliner-precipitation.svg",
+      "destination": "EngineContent/Icons/outliner-precipitation.svg",
+      "source_sha256": "16cbd74b2299a42aa33245d0324a18c3727c514ff30febd0f51e4350bca5ebcf",
+      "destination_sha256": "16cbd74b2299a42aa33245d0324a18c3727c514ff30febd0f51e4350bca5ebcf"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/outliner-stars.svg",
+      "destination": "EngineContent/Icons/outliner-stars.svg",
+      "source_sha256": "1872e91208ff4c78cfd11787a3bc2a45eba0771bf082080de0deb15083e166e8",
+      "destination_sha256": "1872e91208ff4c78cfd11787a3bc2a45eba0771bf082080de0deb15083e166e8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/package.svg",
+      "destination": "EngineContent/Icons/package.svg",
+      "source_sha256": "c5c2779cb3ea567677d959780597a2a856da2a388a0b8c901a1adf2c8d34e20c",
+      "destination_sha256": "c5c2779cb3ea567677d959780597a2a856da2a388a0b8c901a1adf2c8d34e20c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/rainbow.svg",
+      "destination": "EngineContent/Icons/rainbow.svg",
+      "source_sha256": "65937b1f01eb12e7933b047b6c2f129c2d5930e46d9398bf338bd8d51c6c7322",
+      "destination_sha256": "65937b1f01eb12e7933b047b6c2f129c2d5930e46d9398bf338bd8d51c6c7322"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/ram-2d.svg",
+      "destination": "EngineContent/Icons/ram-2d.svg",
+      "source_sha256": "e4c1bdf6c322559192a361683c55f75fc930b5a0c887c8ef5a44163ce5cd3872",
+      "destination_sha256": "e4c1bdf6c322559192a361683c55f75fc930b5a0c887c8ef5a44163ce5cd3872"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/retro-terminal.svg",
+      "destination": "EngineContent/Icons/retro-terminal.svg",
+      "source_sha256": "96e32443852e07a0db350560b8521244b28e56843df2c267318da14bbc688166",
+      "destination_sha256": "96e32443852e07a0db350560b8521244b28e56843df2c267318da14bbc688166"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/sky-scattering.svg",
+      "destination": "EngineContent/Icons/sky-scattering.svg",
+      "source_sha256": "a067f10fbb711602ae457405da43b7f9cd2ad43b146d5bef5662b7050ebc48d3",
+      "destination_sha256": "a067f10fbb711602ae457405da43b7f9cd2ad43b146d5bef5662b7050ebc48d3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-animation-curve.svg",
+      "destination": "EngineContent/Icons/slate-animation-curve.svg",
+      "source_sha256": "c8d6934ce1c160a64e2adbc47f60a77fe6e7d26ce1c58138187e99fe5d850419",
+      "destination_sha256": "c8d6934ce1c160a64e2adbc47f60a77fe6e7d26ce1c58138187e99fe5d850419"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-build.svg",
+      "destination": "EngineContent/Icons/slate-build.svg",
+      "source_sha256": "aac92f50e7c2f75309c713f29cd8313fb28f40864d5f82cc4bf5b628624ae3a9",
+      "destination_sha256": "aac92f50e7c2f75309c713f29cd8313fb28f40864d5f82cc4bf5b628624ae3a9"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-clapboard.svg",
+      "destination": "EngineContent/Icons/slate-clapboard.svg",
+      "source_sha256": "d1d8165b0c3be8211dec7980aa6faf6734286f8061c73d32e930cb4ed8900752",
+      "destination_sha256": "d1d8165b0c3be8211dec7980aa6faf6734286f8061c73d32e930cb4ed8900752"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-color-picker.svg",
+      "destination": "EngineContent/Icons/slate-color-picker.svg",
+      "source_sha256": "501e4d00b8d848628906ab25055d4ef627240c2fd5b30eef456c3922e69fc3b5",
+      "destination_sha256": "501e4d00b8d848628906ab25055d4ef627240c2fd5b30eef456c3922e69fc3b5"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-document.svg",
+      "destination": "EngineContent/Icons/slate-document.svg",
+      "source_sha256": "26dc1c296b95d834d98667832e78d923f077db5ea39e8b07fbb2fc7dd5b0c801",
+      "destination_sha256": "26dc1c296b95d834d98667832e78d923f077db5ea39e8b07fbb2fc7dd5b0c801"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-fabric.svg",
+      "destination": "EngineContent/Icons/slate-fabric.svg",
+      "source_sha256": "132d99665dd84afe0d0730150a59471b9564b48b7e6b78b97e5313287537dd97",
+      "destination_sha256": "132d99665dd84afe0d0730150a59471b9564b48b7e6b78b97e5313287537dd97"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-film-strip.svg",
+      "destination": "EngineContent/Icons/slate-film-strip.svg",
+      "source_sha256": "e32a08223b626b3058f9c1133b7b48fa8679ac5fa777df6bec39f48117af5f6c",
+      "destination_sha256": "e32a08223b626b3058f9c1133b7b48fa8679ac5fa777df6bec39f48117af5f6c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-image-widget-variant2.svg",
+      "destination": "EngineContent/Icons/slate-image-widget-variant2.svg",
+      "source_sha256": "8d3194f01bf265832949b9ef58df7a97c746e7eaa8d6a4fd84bc167d7d5d8f54",
+      "destination_sha256": "8d3194f01bf265832949b9ef58df7a97c746e7eaa8d6a4fd84bc167d7d5d8f54"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-image-widget-variant3.svg",
+      "destination": "EngineContent/Icons/slate-image-widget-variant3.svg",
+      "source_sha256": "c684b4298b5b3265662f9ca3c97ac430d85a5a95ae37b095f3be06d8ebf9f425",
+      "destination_sha256": "c684b4298b5b3265662f9ca3c97ac430d85a5a95ae37b095f3be06d8ebf9f425"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-image-widget-variant4.svg",
+      "destination": "EngineContent/Icons/slate-image-widget-variant4.svg",
+      "source_sha256": "81fb686510a49a17317d28a0d6b691d51ba4173548e1f10a8822fe6d3a8a8c4d",
+      "destination_sha256": "81fb686510a49a17317d28a0d6b691d51ba4173548e1f10a8822fe6d3a8a8c4d"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-image.svg",
+      "destination": "EngineContent/Icons/slate-image.svg",
+      "source_sha256": "5199a2068586948ebb6b285c196f6f431ac19f4d3edda9bf2cc313cac297faea",
+      "destination_sha256": "5199a2068586948ebb6b285c196f6f431ac19f4d3edda9bf2cc313cac297faea"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-l-e-d-panel.svg",
+      "destination": "EngineContent/Icons/slate-l-e-d-panel.svg",
+      "source_sha256": "ff123534416bbe08c213cf34b8221037f1eb268663c328eb3dbe7a02877d2557",
+      "destination_sha256": "ff123534416bbe08c213cf34b8221037f1eb268663c328eb3dbe7a02877d2557"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-lantern.svg",
+      "destination": "EngineContent/Icons/slate-lantern.svg",
+      "source_sha256": "5154c835c70445072140e1fd93a4774b90bbda0cb70c50fadbb418ac58422397",
+      "destination_sha256": "5154c835c70445072140e1fd93a4774b90bbda0cb70c50fadbb418ac58422397"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-live-broadcast.svg",
+      "destination": "EngineContent/Icons/slate-live-broadcast.svg",
+      "source_sha256": "bbc2bdc3f64ef57a0812105eedd89f3e51c3a26d697f88d7ceccaf90382f1428",
+      "destination_sha256": "bbc2bdc3f64ef57a0812105eedd89f3e51c3a26d697f88d7ceccaf90382f1428"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-meeting-grid.svg",
+      "destination": "EngineContent/Icons/slate-meeting-grid.svg",
+      "source_sha256": "82960616acacafa330051ae5bc29ad01a4ab28f390b4cd7cf2eded0252b284e6",
+      "destination_sha256": "82960616acacafa330051ae5bc29ad01a4ab28f390b4cd7cf2eded0252b284e6"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-old-gamepad-classic.svg",
+      "destination": "EngineContent/Icons/slate-old-gamepad-classic.svg",
+      "source_sha256": "adf83919432b5022a88fce5fb2a243eff613902c3b46ccc597e56d0871fc2ab5",
+      "destination_sha256": "adf83919432b5022a88fce5fb2a243eff613902c3b46ccc597e56d0871fc2ab5"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-ring-light.svg",
+      "destination": "EngineContent/Icons/slate-ring-light.svg",
+      "source_sha256": "c5f5708941d47b95203932953709285d9c37e706e18e384537571325092acaf0",
+      "destination_sha256": "c5f5708941d47b95203932953709285d9c37e706e18e384537571325092acaf0"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-scene-hierarchy.svg",
+      "destination": "EngineContent/Icons/slate-scene-hierarchy.svg",
+      "source_sha256": "a833b8f34149c305d8c3234304b0e8d567cd5fe1225029f0e20bf1d736258eba",
+      "destination_sha256": "a833b8f34149c305d8c3234304b0e8d567cd5fe1225029f0e20bf1d736258eba"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-script-node.svg",
+      "destination": "EngineContent/Icons/slate-script-node.svg",
+      "source_sha256": "c1c9a8a93dff32555b43f3f79ba56c52b1a590cdb97ab80bc3f3670d6d873f68",
+      "destination_sha256": "c1c9a8a93dff32555b43f3f79ba56c52b1a590cdb97ab80bc3f3670d6d873f68"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-shader-node.svg",
+      "destination": "EngineContent/Icons/slate-shader-node.svg",
+      "source_sha256": "27c8a5b38a0c3cbeefa803266bb5396386cd0987e5c31c665ac27d42e5353e9e",
+      "destination_sha256": "27c8a5b38a0c3cbeefa803266bb5396386cd0987e5c31c665ac27d42e5353e9e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-spotlight.svg",
+      "destination": "EngineContent/Icons/slate-spotlight.svg",
+      "source_sha256": "99179d347933c26372cd60953831aa225fefbab8260fc60484c32fd7dd8622cb",
+      "destination_sha256": "99179d347933c26372cd60953831aa225fefbab8260fc60484c32fd7dd8622cb"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-sprite-sheet.svg",
+      "destination": "EngineContent/Icons/slate-sprite-sheet.svg",
+      "source_sha256": "e8912adec848b5a5a4921552b3f358795341a14880b4bbe133c0f1c642a4cecc",
+      "destination_sha256": "e8912adec848b5a5a4921552b3f358795341a14880b4bbe133c0f1c642a4cecc"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-terminal.svg",
+      "destination": "EngineContent/Icons/slate-terminal.svg",
+      "source_sha256": "b25c135bfea576ba3358d394fe1cc8bc5ee50f0578d66c5db1c11ae1d894e386",
+      "destination_sha256": "b25c135bfea576ba3358d394fe1cc8bc5ee50f0578d66c5db1c11ae1d894e386"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-tilemap.svg",
+      "destination": "EngineContent/Icons/slate-tilemap.svg",
+      "source_sha256": "aaf37d7e88540685931bee9500dcec6863e0dd6d7bb0c4accb43c0e0df24020e",
+      "destination_sha256": "aaf37d7e88540685931bee9500dcec6863e0dd6d7bb0c4accb43c0e0df24020e"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-timeline.svg",
+      "destination": "EngineContent/Icons/slate-timeline.svg",
+      "source_sha256": "a62a6345334d61b5b013f7c7aa96a3df20f214ad26e47913eba30a850ddb0518",
+      "destination_sha256": "a62a6345334d61b5b013f7c7aa96a3df20f214ad26e47913eba30a850ddb0518"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/slate-video-player.svg",
+      "destination": "EngineContent/Icons/slate-video-player.svg",
+      "source_sha256": "7370dacff725bbec176bb513a95a09d20362fe31ca3b3e6b9424779ba16f3701",
+      "destination_sha256": "7370dacff725bbec176bb513a95a09d20362fe31ca3b3e6b9424779ba16f3701"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/smoke.svg",
+      "destination": "EngineContent/Icons/smoke.svg",
+      "source_sha256": "e85bbf4b491300500bd4ff57d893a37f83bd9dfa3ebd41e11271475c73d8d581",
+      "destination_sha256": "e85bbf4b491300500bd4ff57d893a37f83bd9dfa3ebd41e11271475c73d8d581"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/speaker.svg",
+      "destination": "EngineContent/Icons/speaker.svg",
+      "source_sha256": "88c9976f122b3f88d419dc4b3da44154d661839398b837bdd795a124dbc93fb8",
+      "destination_sha256": "88c9976f122b3f88d419dc4b3da44154d661839398b837bdd795a124dbc93fb8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/stars.svg",
+      "destination": "EngineContent/Icons/stars.svg",
+      "source_sha256": "247e8f05a547a41fbf2c97339e2c104220354f44692df71edb24a9cd161197ac",
+      "destination_sha256": "247e8f05a547a41fbf2c97339e2c104220354f44692df71edb24a9cd161197ac"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/sun.svg",
+      "destination": "EngineContent/Icons/sun.svg",
+      "source_sha256": "4784b0b90011b710a1345a8048901404a4cc8a1f15c98e886589f47133f6a1c3",
+      "destination_sha256": "4784b0b90011b710a1345a8048901404a4cc8a1f15c98e886589f47133f6a1c3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/terrain.svg",
+      "destination": "EngineContent/Icons/terrain.svg",
+      "source_sha256": "d84ac696528da7c166710e55d32b9c576efa10f2930b8edae85158f9f9b5e34b",
+      "destination_sha256": "d84ac696528da7c166710e55d32b9c576efa10f2930b8edae85158f9f9b5e34b"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/weather-hail.svg",
+      "destination": "EngineContent/Icons/weather-hail.svg",
+      "source_sha256": "68f7fde98b04b309f3900f5fb6d3ec45c4cec3be91f2038913aa022319bebce2",
+      "destination_sha256": "68f7fde98b04b309f3900f5fb6d3ec45c4cec3be91f2038913aa022319bebce2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/weather-rain.svg",
+      "destination": "EngineContent/Icons/weather-rain.svg",
+      "source_sha256": "f28e17bc17dedf92adc908931400e38d5306a8c4575465f49a578b8b59833c23",
+      "destination_sha256": "f28e17bc17dedf92adc908931400e38d5306a8c4575465f49a578b8b59833c23"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/weather-snow.svg",
+      "destination": "EngineContent/Icons/weather-snow.svg",
+      "source_sha256": "95f74c0132f2d951e0e726ca6b3d88bf1134a6ee505a4bcb66c1f8648cdcfc87",
+      "destination_sha256": "95f74c0132f2d951e0e726ca6b3d88bf1134a6ee505a4bcb66c1f8648cdcfc87"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "EngineContent/Icons/wind.svg",
+      "destination": "EngineContent/Icons/wind.svg",
+      "source_sha256": "8b281a793b21674a43f73cd5d2b4d1346422b0b3138a21310eed608a240dbe86",
+      "destination_sha256": "8b281a793b21674a43f73cd5d2b4d1346422b0b3138a21310eed608a240dbe86"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/Patches/PatchA-TrapezoidalTabs.patch",
+      "destination": "Automation/Patches/PatchA-TrapezoidalTabs.patch",
+      "source_sha256": "222157b8423a1b966a5f4b9d51a6f9aae4c9aa742e838b49e7d2908f7e95e36c",
+      "destination_sha256": "222157b8423a1b966a5f4b9d51a6f9aae4c9aa742e838b49e7d2908f7e95e36c"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/Patches/PatchB-TabOverlapZOrder.patch",
+      "destination": "Automation/Patches/PatchB-TabOverlapZOrder.patch",
+      "source_sha256": "b93322536a748c896198e81bfeef1c13a6dffb3b3ebf10f452141c30cc582716",
+      "destination_sha256": "b93322536a748c896198e81bfeef1c13a6dffb3b3ebf10f452141c30cc582716"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/Patches/PatchC-RoundTabButtons.patch",
+      "destination": "Automation/Patches/PatchC-RoundTabButtons.patch",
+      "source_sha256": "33743d2d56288aa52f6f11d77a60db3402925b32f5471e09ce6efe81ba24b6e7",
+      "destination_sha256": "33743d2d56288aa52f6f11d77a60db3402925b32f5471e09ce6efe81ba24b6e7"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/Patches/PatchD-TabAddButton.patch",
+      "destination": "Automation/Patches/PatchD-TabAddButton.patch",
+      "source_sha256": "963bef0754fd073fa2d05cd13905034310a05e2e2d5aca32c470be12b46ee6f2",
+      "destination_sha256": "963bef0754fd073fa2d05cd13905034310a05e2e2d5aca32c470be12b46ee6f2"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/Patches/PatchE-NoTabScrollButtons.patch",
+      "destination": "Automation/Patches/PatchE-NoTabScrollButtons.patch",
+      "source_sha256": "de51d1832c94d25778307ce376d95a48fd110fec8dbe63adda216355f3ed9a41",
+      "destination_sha256": "de51d1832c94d25778307ce376d95a48fd110fec8dbe63adda216355f3ed9a41"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/Patches/PatchF-TabContentInsets.patch",
+      "destination": "Automation/Patches/PatchF-TabContentInsets.patch",
+      "source_sha256": "458862c1c28d2a3ec55a7e1d4ebc4275500af232f1e750c093f3c24fa0aae9bd",
+      "destination_sha256": "458862c1c28d2a3ec55a7e1d4ebc4275500af232f1e750c093f3c24fa0aae9bd"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/ApplyImGuiPatches.py",
+      "destination": "Automation/ApplyImGuiPatches.py",
+      "source_sha256": "09585a7218c6564dc940863367d2df05ab82451266604a6628a5c14aeeb6dd9d",
+      "destination_sha256": "a2465d95cf67ca982ba6c8f173005a6fa819472b0448aaa34066998c7befd6ee"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/StageThorVG.py",
+      "destination": "Automation/StageThorVG.py",
+      "source_sha256": "9b71a8938b93e756bab6ff89ae3b4252a46f6e045bce892e838db396e3fa2d99",
+      "destination_sha256": "9b71a8938b93e756bab6ff89ae3b4252a46f6e045bce892e838db396e3fa2d99"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Tools/Build/ThorVGSoftware.cmake",
+      "destination": "Automation/ThorVGSoftware.cmake",
+      "source_sha256": "4d280ab44aea9847cb56b8a5b0a44e841581e64ef35d237fb7cced7326393c3f",
+      "destination_sha256": "c74d530ef7458e2a43d232e384a14385e396d8cfbc44678582f29a42f1701a0c"
+    },
+    {
+      "origin": "ImGui 3bae66c735670619baf51391eba7f3d90a25d125",
+      "source": "ExternalPackages/imgui/examples/example_win32_directx11/main.cpp",
+      "destination": "Exhibits/UIFoundation/Code/WindowsUI.cpp",
+      "source_sha256": "2b2b9facb8187d44ce1bcbbd66c2853ab264bf93f7c8e606aecd7b69a4101b64",
+      "destination_sha256": "fa6ecc6c1e84709ea1d169de0665fc0183ca2d53b590655f5a9c3eca1232d498"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/AppearanceInspector.h",
+      "destination": "Engine/Interface/AppearanceInspector.h",
+      "source_sha256": "9016466b48ab218f963b703aa6a2722a7d7f6d6ba8581801142c5c59e12e6e6e",
+      "destination_sha256": "d8c7ae12c17d3f9fbf4d96703b8371bd9b426439bdec99efde25011fcb61217f"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/AppearanceInspector.cpp",
+      "destination": "Engine/Interface/AppearanceInspector.cpp",
+      "source_sha256": "802aecb5f32de25ee15f6a04ad8405dc0c5747c7445f06de88cd885eb6f8ed5d",
+      "destination_sha256": "21e3f6b5962b8e8cd14e8d70367556e3ccbcf667b2adcd83cebeb5176501a9dd"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/FontCodec.h",
+      "destination": "Engine/Interface/FontCodec.h",
+      "source_sha256": "848a4abad6a9e9736939b67da8f8479f47be4b8eb61cd76ff940410069d40833",
+      "destination_sha256": "d7b59ffbb00c3741f290ef1d6dd2b217890849e64aaf6a8ee40734fe8a9115f3"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/FontCodec.cpp",
+      "destination": "Engine/Interface/FontCodec.cpp",
+      "source_sha256": "12d591d1670a57be892e77db01d2575ff1020ddc70e5e6a1fef722894bdb0fa2",
+      "destination_sha256": "a2e807c57dc4a1086729f4a49ff68a7b2d209414859130e139142a8c4caa5d7a"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/TypefaceRegistry.h",
+      "destination": "Engine/Interface/TypefaceRegistry.h",
+      "source_sha256": "09e4bff99c901a0852bde06647f05a9b6fdd3bc641b2de9ca71016dc1ef248dc",
+      "destination_sha256": "fc90db00e79f3beeaf181d0663b6642babd09bd7d7a79c59d3dfcd119c7393dc"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/TypefaceRegistry.cpp",
+      "destination": "Engine/Interface/TypefaceRegistry.cpp",
+      "source_sha256": "28b6b60e6cf8547406ce8080bf1623fad58df880cf27c4c652ad60b70689a228",
+      "destination_sha256": "d824ed2ef12b50396da3d133d9b560e73610e6c78faf5c7046c760db97f6f3c7"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Exhibits/Workbench/IconArt/CpuDraw.h",
+      "destination": "Exhibits/ControlCentre/Code/CpuRasterization.h",
+      "source_sha256": "76afa39eff97692fb9418de8c05d6f7aefb27237de418e51014482b0e899abd2",
+      "destination_sha256": "9cc27dbeff2ae453621ac98f730376b6d12137533c72346c6b17fff4cbec9cfa"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/MotionIntegrator.h",
+      "destination": "Engine/Interface/MotionIntegrator.h",
+      "source_sha256": "c87fef7fb3a4c4a49c05869189c2ce4f1cc7027eec5c6cf3731eeab924032324",
+      "destination_sha256": "2902d2dcf922f1456de6687ff55aba0befe1fe5372a04eddbccaa70cf8a9e2b8"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/MotionIntegrator.cpp",
+      "destination": "Engine/Interface/MotionIntegrator.cpp",
+      "source_sha256": "364e94c8216153c74eebe2b8c63a690af3d014e50927f59371b62d684453fbdc",
+      "destination_sha256": "076eb3506797dd79270f4d4314a0c84ef2c8b907864605293e4844d432e05423"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/ControlCentreHost.h",
+      "destination": "Engine/Interface/NotchMotion.h",
+      "source_sha256": "f01183d8910aa52e5d4e2bc5a43ca72f2af8468bee83942f23e9e12bff613ab6",
+      "destination_sha256": "361df0aa5947d836bd537a7ff636d6c77f59aa2557cf7739793c971f131fae68"
+    },
+    {
+      "origin": "Frontier-",
+      "source": "Engine/DisplayPresentation/ControlCentreHost.cpp",
+      "destination": "Engine/Interface/NotchMotion.cpp",
+      "source_sha256": "5e5f4a8a511c71c5ce9efd0eac5900b2b84dbdf9d4a3280f218e059f8df6af0d",
+      "destination_sha256": "aef408cedf47efcfeaee9ca8640f12dc2f53866dc5481dedbbc9128a3ac0100b"
+    }
+  ]
+}

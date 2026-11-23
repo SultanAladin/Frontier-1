@@ -1,0 +1,67 @@
+Platform: Linux x86_64
+Node: v22.22.3
+Reference: SultanAladin/Frontier 6afb6f00b5f25c45f7cda92c7da65b64845768f3
+All 28 retained full-demo source blobs match their manifest
+48752d58222f3e89781596a760d4c09ae95f8e165c4ff22c19e85ba9d4e59cde  Exhibits/FluidReference/Code/PlumeReferenceValidation.test.mjs
+7e6c2f2aea3175d865c9e92a6e10b8bb78937308b07b8c5e16548bbfdfab14b8  Exhibits/FluidReference/Code/PressureStencilValidation.test.mjs
+TAP version 13
+# Subtest: negative world cells wrap positively and recenter only outside the guard
+ok 1 - negative world cells wrap positively and recenter only outside the guard
+  ---
+  duration_ms: 2.966962
+  type: 'test'
+  ...
+# Subtest: slip onset has an entry delay, release grace and immediate contact-loss reset
+ok 2 - slip onset has an entry delay, release grace and immediate contact-loss reset
+  ---
+  duration_ms: 0.433609
+  type: 'test'
+  ...
+# Subtest: tyre source produces bounded smoke, rearward momentum, fire seats and light
+ok 3 - tyre source produces bounded smoke, rearward momentum, fire seats and light
+  ---
+  duration_ms: 0.943886
+  type: 'test'
+  ...
+# Subtest: transient sources expire and no unbounded records are produced
+ok 4 - transient sources expire and no unbounded records are produced
+  ---
+  duration_ms: 0.317479
+  type: 'test'
+  ...
+# Subtest: adapter maps supported settings and suppresses shredded-tyre smoke
+ok 5 - adapter maps supported settings and suppresses shredded-tyre smoke
+  ---
+  duration_ms: 0.719645
+  type: 'test'
+  ...
+# Subtest: scheduling uploads source records, retires disabled fields and does not execute a GPU
+ok 6 - scheduling uploads source records, retires disabled fields and does not execute a GPU
+  ---
+  duration_ms: 2.228916
+  type: 'test'
+  ...
+# PERIODIC_STENCIL mode=1 ratio=0.009607360 expected=0.009607360
+# PERIODIC_STENCIL mode=15 ratio=0.990392640 expected=0.990392640
+# PERIODIC_CHECKERBOARD velocity_amplitude=1 centred_divergence=0
+# Subtest: nearest-neighbour pressure solve leaves a centred-divergence residual in periodic modes
+ok 7 - nearest-neighbour pressure solve leaves a centred-divergence residual in periodic modes
+  ---
+  duration_ms: 2.462242
+  type: 'test'
+  ...
+# Subtest: centred divergence cannot see an alternating collocated velocity in the periodic interior
+ok 8 - centred divergence cannot see an alternating collocated velocity in the periodic interior
+  ---
+  duration_ms: 1.149472
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 227.291187

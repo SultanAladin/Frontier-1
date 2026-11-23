@@ -1,0 +1,32 @@
+/* PARTICLE EDITOR — additions on top of the reused FrontierEditor.css: the timeline caption over the viewport, palette
+   chips in the inspector and the recipe drop hint. Everything else is the Frontier Editor's own stylesheet. */
+
+#viewport.Dragging { cursor: grabbing; }
+
+#caption-chip
+{
+    position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4; pointer-events: none;
+    padding: 6px 14px; border-radius: 10px; font-size: 12px; color: #cfcfcf; font-variant-numeric: tabular-nums;
+    background: rgba(16, 16, 16, 0.78); border: 1px solid #2c2c2c; backdrop-filter: blur(6px);
+}
+#caption-chip b { color: #f2f2f2; font-weight: 500; }
+
+#event-notice
+{
+    position: absolute; left: 50%; transform: translateX(-50%); z-index: 5; pointer-events: none;
+    padding: 6px 14px; border-radius: 10px; font-size: 12px; background: rgba(16, 16, 16, 0.86); border: 1px solid #5a4a24;
+}
+
+.palette-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0 10px; }
+.palette-chip
+{
+    height: 30px; border-radius: 9px; border: 1px solid #333; position: relative; overflow: hidden;
+    display: flex; align-items: flex-end; padding: 3px 6px; font-size: 9.5px; color: #f0f0f0; text-shadow: 0 1px 3px #000;
+}
+.palette-chip:hover { border-color: #666; }
+.palette-chip.active { border-color: #e8e8e8; box-shadow: 0 0 0 1px #e8e8e8; }
+
+.tone-strip { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 2px 0 10px; border: 1px solid #2c2c2c; }
+.tone-strip span { flex: 1; }
+
+.layer-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }

@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<!--
+==============================================================================================================================================
+                                                            LOGSTREAMPANEL.HTML
+==============================================================================================================================================
+ 🧩 Frontier editor Log Stream panel — HTML design prototype. Converts to C++ 1:1 after owner approval; nothing here is production UI yet.
+
+ Design sources (SultanAladin/Frontier @ arena/db2f9953-frontier, SourceImages/General UI/):
+   13edfbc6…jpg — teal glass telemetry: segmented pill tabs, square icon buttons (active = mint), live chip, timeline scrubber.
+   0bab2767…jpg — traffic console: count filter pills "24 Bus", stat cards (✓ Online 12 / ⚠ Offline 4), thin numerals, sparkline, pill dropdown.
+   14d2fdb2…jpg — black dashboard: dimmed decimal numerals, coral/mint delta badges, outline pills, hairlines.
+
+ Reusable components seeded here (first UI kit, sourced from Texture Workspace pane structure):
+   Panel (head/body/foot) · IconButton · LivePill · StatReadout · Sparkline · FilterChip · PillDropdown (checklist / radio / action menu)
+   · CategoryCreator — user-registered log categories with palette colours (blue/purple/pink/…), seeded: Foliage, Gameplay, Network.
+   SearchField · FollowPill · LogRow · NewEntriesPill · SessionScrubber
+ Class vocabulary intentionally matches the demo's Style/FrontierEditor.css (.icon-button, .live-pill, .small-pill, .search,
+ .segmented, .status-dot, .metric) so the C++ port maps control-for-control.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier · Log Stream — design prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+<style>
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        TOKENS
+   ------------------------------------------------------------------------------------------------------------------------ */
+:root{
+    color-scheme: dark;
+    --page:#04070a;
+    --panel:rgba(11,16,14,.86);
+    --panel-edge:rgba(255,255,255,.08);
+    --surface:#0e1411;
+    --surface-2:#151d18;
+    --surface-3:#1c2620;
+    --line:rgba(255,255,255,.07);
+    --line-soft:rgba(255,255,255,.045);
+    --text:#eef3f0;
+    --muted:#97a29b;
+    --faint:#5f6b64;
+    --mint:#2fe6a7;
+    --mint-ink:#053322;
+    --mint-dim:rgba(47,230,167,.13);
+    --amber:#ffb454;
+    --amber-dim:rgba(255,180,84,.12);
+    --coral:#ff6d6d;
+    --coral-dim:rgba(255,109,109,.12);
+    --red:#ff4747;
+    --blue:#63a8ff;
+    --purple:#b18cff;
+    --pink:#ff7ad9;
+    --radius-panel:22px;
+    --radius-card:16px;
+    --radius-chip:999px;
+    --font:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+    font-family:var(--font);color:var(--text);background:var(--page);
+    background-image:
+        radial-gradient(1100px 620px at 82% -10%, rgba(47,230,167,.075), transparent 60%),
+        radial-gradient(900px 700px at -10% 110%, rgba(23,90,70,.16), transparent 55%),
+        radial-gradient(closest-side at 50% 50%, #070b09, var(--page));
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    padding:28px 20px;min-height:100vh;
+    font-variant-numeric:tabular-nums;
+}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid rgba(47,230,167,.65);outline-offset:2px}
+::selection{background:rgba(47,230,167,.28)}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        PANEL
+   ------------------------------------------------------------------------------------------------------------------------ */
+.log-panel{
+    width:min(1240px,96vw);height:min(830px,92vh);min-height:560px;
+    display:flex;flex-direction:column;
+    background:var(--panel);border:1px solid var(--panel-edge);border-radius:var(--radius-panel);
+    backdrop-filter:blur(18px) saturate(1.15);-webkit-backdrop-filter:blur(18px) saturate(1.15);
+    box-shadow:0 40px 90px rgba(0,0,0,.55), 0 4px 18px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+    overflow:hidden;position:relative;
+}
+.prototype-caption{color:var(--faint);font-size:12px;letter-spacing:.04em;text-align:center}
+.prototype-caption strong{color:var(--muted);font-weight:500}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        HEADER
+   ------------------------------------------------------------------------------------------------------------------------ */
+.pane-head{display:flex;align-items:center;gap:14px;padding:18px 22px 14px}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);
+    display:grid;place-items:center;flex:none}
+.brand-mark svg{width:16px;height:16px}
+.pane-title{font-size:21px;font-weight:500;letter-spacing:-.015em;white-space:nowrap}
+.live-pill{display:inline-flex;align-items:center;gap:8px;padding:6px 13px;border-radius:var(--radius-chip);
+    background:var(--surface-2);border:1px solid var(--line);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--mint);flex:none;
+    box-shadow:0 0 0 0 rgba(47,230,167,.5);animation:pulse 2.2s infinite}
+.status-dot.paused{background:var(--faint);animation:none;box-shadow:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,230,167,.45)}70%{box-shadow:0 0 0 7px rgba(47,230,167,0)}100%{box-shadow:0 0 0 0 rgba(47,230,167,0)}}
+.live-pill .live-word{color:var(--text);font-weight:500}
+.head-clock{color:var(--faint);font-size:13px;letter-spacing:.02em;white-space:nowrap}
+.head-clock .ms{color:#3f4a44}
+.head-spacer{flex:1}
+.head-actions{display:flex;gap:8px;align-items:center}
+.icon-button{width:36px;height:36px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line);
+    display:grid;place-items:center;color:var(--muted);transition:all .15s;flex:none;position:relative}
+.icon-button svg{width:17px;height:17px}
+.icon-button:hover{color:var(--text);border-color:rgba(255,255,255,.16);transform:translateY(-1px)}
+.icon-button.active{background:var(--mint);border-color:var(--mint);color:var(--mint-ink)}
+.icon-button.active:hover{color:var(--mint-ink)}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        SUMMARY STRIP
+   ------------------------------------------------------------------------------------------------------------------------ */
+.summary{display:flex;align-items:stretch;gap:0;margin:2px 22px 0;padding:14px 18px;
+    background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,0)),var(--surface);
+    border:1px solid var(--line-soft);border-radius:var(--radius-card)}
+.metric{display:flex;flex-direction:column;gap:2px;padding-right:26px;margin-right:26px;border-right:1px solid var(--line-soft);min-width:118px}
+.metric:last-of-type{border-right:0}
+.metric .metric-label{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--faint)}
+.metric .metric-label svg{width:13px;height:13px}
+.metric-row{display:flex;align-items:baseline;gap:9px}
+.metric-value{font-size:38px;font-weight:300;letter-spacing:-.03em;line-height:1.05}
+.metric-value .frac{color:var(--faint);font-size:24px}
+.delta-badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:7px;font-size:11.5px;font-weight:500;
+    background:var(--mint-dim);color:var(--mint)}
+.delta-badge.coral{background:var(--coral-dim);color:var(--coral)}
+.delta-badge.amber{background:var(--amber-dim);color:var(--amber)}
+.delta-badge.flat{background:var(--surface-3);color:var(--faint)}
+.summary-spark{flex:1;display:flex;flex-direction:column;gap:4px;min-width:180px}
+.summary-spark .spark-head{display:flex;justify-content:space-between;align-items:baseline}
+.summary-spark .spark-label{font-size:11px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.summary-spark .spark-rate{font-size:13px;color:var(--muted)}
+.summary-spark .spark-rate strong{color:var(--text);font-weight:500}
+#spark{flex:1;width:100%;min-height:38px}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        FILTER ROW
+   ------------------------------------------------------------------------------------------------------------------------ */
+.filter-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:16px 22px 12px}
+.filter-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 15px;border-radius:var(--radius-chip);
+    background:var(--surface-2);border:1px solid transparent;color:var(--muted);font-size:13.5px;transition:all .15s;white-space:nowrap}
+.filter-chip .chip-count{font-weight:500;color:var(--text);letter-spacing:-.01em}
+.filter-chip .chip-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.filter-chip:hover{color:var(--text);background:var(--surface-3)}
+.filter-chip[aria-pressed="true"]{background:#e9f2ed;color:#0b120e}
+.filter-chip[aria-pressed="true"] .chip-count{color:#0b120e}
+.filter-chip[aria-pressed="false"]{opacity:.55}
+.chip-dot.info{background:var(--mint)} .chip-dot.warning{background:var(--amber)}
+.chip-dot.error{background:var(--coral)} .chip-dot.fatal{background:var(--red)}
+.filter-sep{width:1px;height:24px;background:var(--line);margin:0 3px;flex:none}
+
+/* Pill dropdown (trigger + glass menu) */
+.pill-dropdown{position:relative;flex:none}
+.pill-trigger{display:inline-flex;align-items:center;gap:9px;padding:8px 14px;border-radius:var(--radius-chip);
+    background:var(--surface-2);border:1px solid var(--line);font-size:13.5px;color:var(--text);transition:all .15s;white-space:nowrap}
+.pill-trigger svg{width:15px;height:15px;color:var(--muted);flex:none}
+.pill-trigger .chev{width:12px;height:12px;transition:transform .18s}
+.pill-trigger:hover{background:var(--surface-3)}
+.pill-trigger[aria-expanded="true"]{background:var(--surface-3);border-color:rgba(255,255,255,.18)}
+.pill-trigger[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.pill-trigger .trigger-dim{color:var(--faint)}
+.pill-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:248px;z-index:60;
+    background:rgba(16,22,18,.97);border:1px solid rgba(255,255,255,.11);border-radius:16px;padding:7px;
+    box-shadow:0 24px 50px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.05);
+    opacity:0;transform:translateY(-5px) scale(.985);pointer-events:none;transition:all .16s cubic-bezier(.2,.8,.3,1)}
+.pill-menu.open{opacity:1;transform:none;pointer-events:auto}
+.pill-menu.align-right{left:auto;right:0}
+.menu-label{padding:8px 10px 6px;font-size:10.5px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.menu-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:10px;
+    font-size:13.5px;color:var(--muted);transition:background .12s,color .12s}
+.menu-item:hover{background:rgba(255,255,255,.055);color:var(--text)}
+.menu-item .menu-count{margin-left:auto;font-size:12px;color:var(--faint)}
+.menu-item .menu-state{margin-left:auto;font-size:11px;color:var(--faint)}
+.menu-check{width:17px;height:17px;border-radius:6px;border:1px solid rgba(255,255,255,.18);flex:none;display:grid;place-items:center;transition:all .12s}
+.menu-check svg{width:11px;height:11px;color:var(--mint-ink);opacity:0;transform:scale(.5);transition:all .12s}
+.menu-item[aria-checked="true"]{color:var(--text)}
+.menu-item[aria-checked="true"] .menu-check{background:var(--mint);border-color:var(--mint)}
+.menu-item[aria-checked="true"] .menu-check svg{opacity:1;transform:none}
+.menu-radio{width:15px;height:15px;border-radius:50%;border:1px solid rgba(255,255,255,.2);flex:none;display:grid;place-items:center}
+.menu-radio::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--mint);opacity:0;transform:scale(.4);transition:all .12s}
+.menu-item[aria-checked="true"] .menu-radio{border-color:var(--mint)}
+.menu-item[aria-checked="true"] .menu-radio::after{opacity:1;transform:none}
+.menu-item .row-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.menu-sep{height:1px;background:var(--line-soft);margin:6px 4px}
+.menu-quick{display:flex;gap:6px;padding:2px 4px 4px}
+.menu-quick button{flex:1;padding:6px 0;border-radius:8px;background:var(--surface-3);font-size:12px;color:var(--muted);transition:all .12s}
+.menu-quick button:hover{color:var(--text);background:#243129}
+
+/* Search */
+.search{display:flex;align-items:center;gap:8px;padding:0 8px 0 13px;height:37px;border-radius:var(--radius-chip);
+    background:var(--surface-2);border:1px solid var(--line);flex:1;min-width:170px;max-width:330px;transition:border-color .15s}
+.search:focus-within{border-color:rgba(47,230,167,.45)}
+.search svg{width:15px;height:15px;color:var(--faint);flex:none}
+.search input{flex:1;background:none;border:0;color:var(--text);font-family:inherit;font-size:13.5px;min-width:0}
+.search input::placeholder{color:var(--faint)}
+.search input:focus{outline:none}
+.search .match-count{font-size:11.5px;color:var(--faint);white-space:nowrap}
+.search .search-clear{width:24px;height:24px;border-radius:50%;display:none;place-items:center;color:var(--muted);background:var(--surface-3);flex:none}
+.search .search-clear svg{width:11px;height:11px;color:inherit}
+.search.has-text .search-clear{display:grid}
+
+/* Follow pill */
+.enabled-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--radius-chip);
+    border:1px solid var(--line);background:transparent;font-size:13px;color:var(--faint);transition:all .15s;white-space:nowrap;flex:none}
+.enabled-pill .status-dot{animation:none;background:var(--faint);box-shadow:none}
+.enabled-pill[aria-pressed="true"]{color:var(--mint);border-color:rgba(47,230,167,.4);background:var(--mint-dim)}
+.enabled-pill[aria-pressed="true"] .status-dot{background:var(--mint)}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        STREAM
+   ------------------------------------------------------------------------------------------------------------------------ */
+.column-labels{display:grid;grid-template-columns:22px 92px 108px 1fr auto;gap:12px;align-items:center;
+    padding:0 22px 7px 24px;font-size:10.5px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.stream-wrap{flex:1;position:relative;border-top:1px solid var(--line-soft);min-height:0;display:flex;flex-direction:column}
+.stream{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 10px 14px 12px;scrollbar-width:thin;scrollbar-color:#2a362f transparent}
+.stream::-webkit-scrollbar{width:9px}
+.stream::-webkit-scrollbar-thumb{background:#26312a;border-radius:99px;border:2px solid var(--panel)}
+.stream::-webkit-scrollbar-track{background:transparent}
+.log-row{display:grid;grid-template-columns:22px 92px 108px 1fr auto;gap:12px;align-items:center;
+    padding:7px 12px 7px 12px;border-radius:11px;cursor:pointer;position:relative;
+    animation:row-in .22s cubic-bezier(.2,.8,.3,1)}
+@keyframes row-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.log-row + .log-row{border-top:1px solid rgba(255,255,255,.028)}
+.log-row:hover{background:rgba(255,255,255,.032)}
+.log-row.selected{background:rgba(47,230,167,.055)}
+.log-row.selected::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:99px;background:var(--mint)}
+.log-row.sev-error::after,.log-row.sev-fatal::after{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:99px;background:var(--coral)}
+.log-row.sev-fatal{background:rgba(255,71,71,.055)}
+.sev-glyph{display:grid;place-items:center;width:22px}
+.sev-glyph .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);opacity:.85}
+.sev-glyph svg{width:15px;height:15px}
+.row-time{font-size:12.5px;color:var(--muted);letter-spacing:.01em;white-space:nowrap}
+.row-time .ms{color:#45524a}
+.channel-tag{justify-self:start;display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;
+    padding:3px 9px;border-radius:var(--radius-chip);border:1px solid var(--line);color:var(--muted);white-space:nowrap;background:rgba(255,255,255,.02)}
+.channel-tag .cat-dot{width:6px;height:6px;border-radius:50%;background:var(--cat);flex:none}
+.channel-tag.user-cat{color:var(--cat);border-color:color-mix(in srgb,var(--cat) 42%,transparent);background:color-mix(in srgb,var(--cat) 9%,transparent)}
+.menu-item .cat-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.cat-create{padding:9px 10px 7px;display:flex;flex-direction:column;gap:8px}
+.cat-create input{height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);padding:0 10px;font-family:inherit;font-size:13px;width:100%}
+.cat-create input::placeholder{color:var(--faint)}
+.cat-create input:focus{outline:none;border-color:rgba(47,230,167,.45)}
+.swatches{display:flex;gap:7px;align-items:center}
+.swatch{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.14);padding:0;transition:all .12s;flex:none;cursor:pointer}
+.swatch:hover{transform:scale(1.12)}
+.swatch[aria-pressed="true"]{border-color:#fff;transform:scale(1.14)}
+.cat-add{padding:7px 0;border-radius:9px;background:var(--mint-dim);color:var(--mint);font-size:12.5px;font-weight:500;transition:all .12s}
+.cat-add:hover{background:rgba(47,230,167,.22)}
+.row-message{font-size:13.5px;line-height:1.45;color:#dbe4de;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-panel.wrap .row-message{white-space:normal}
+.row-message .unit{color:var(--faint)}
+.row-message mark{background:rgba(47,230,167,.25);color:var(--text);border-radius:3px;padding:0 1px}
+.sev-warning .row-message{color:#f0e2cd} .sev-error .row-message,.sev-fatal .row-message{color:#f3d9d9}
+.row-meta{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.row-source{font-size:11.5px;color:var(--faint)}
+.repeat-badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:var(--radius-chip);background:var(--surface-3);color:var(--muted)}
+.repeat-badge.bump{animation:bump .3s}
+@keyframes bump{35%{transform:scale(1.18);background:var(--mint-dim);color:var(--mint)}}
+.row-detail{grid-column:1/-1;display:none;margin:4px 0 6px 34px;padding:12px 14px;border-radius:12px;
+    background:var(--surface);border:1px solid var(--line-soft)}
+.log-row.selected .row-detail{display:block;animation:row-in .18s}
+.row-detail .detail-text{font-size:13px;line-height:1.55;color:#cfd8d1;white-space:pre-wrap;word-break:break-word}
+.row-detail .detail-meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:11.5px;color:var(--faint)}
+.row-detail .detail-meta strong{color:var(--muted);font-weight:500}
+.row-detail .detail-actions{display:flex;gap:7px;margin-top:11px}
+.small-pill{padding:5px 12px;border-radius:var(--radius-chip);border:1px solid var(--line);font-size:12px;color:var(--muted);transition:all .13s}
+.small-pill:hover{color:var(--text);background:var(--surface-3)}
+.small-pill.live{color:var(--mint);border-color:rgba(47,230,167,.4)}
+.stream-empty{display:none;padding:52px 20px;text-align:center;color:var(--faint);font-size:14px}
+.stream-empty strong{display:block;font-size:17px;font-weight:500;color:var(--muted);margin-bottom:6px}
+.new-pill{position:absolute;left:50%;bottom:16px;transform:translate(-50%,16px);z-index:20;
+    display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:var(--radius-chip);
+    background:var(--mint);color:var(--mint-ink);font-size:13px;font-weight:500;
+    box-shadow:0 10px 26px rgba(47,230,167,.35);opacity:0;pointer-events:none;transition:all .2s cubic-bezier(.2,.8,.3,1)}
+.new-pill.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.new-pill svg{width:13px;height:13px}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        FOOTER
+   ------------------------------------------------------------------------------------------------------------------------ */
+.pane-foot{border-top:1px solid var(--line-soft);padding:11px 22px 14px;display:flex;align-items:center;gap:18px}
+.foot-stat{font-size:12.5px;color:var(--faint);white-space:nowrap}
+.foot-stat strong{color:var(--muted);font-weight:500}
+#scrubber{flex:1;height:26px;min-width:120px}
+.foot-right{display:flex;gap:16px;align-items:center}
+@media (max-width:900px){
+    .summary{flex-wrap:wrap;gap:12px}.metric{border-right:0;margin-right:8px;padding-right:8px}
+    .column-labels{display:none}
+    .log-row{grid-template-columns:22px 84px 1fr auto}
+    .channel-tag{display:none}
+}
+</style>
+</head>
+<body>
+
+<section class="log-panel" id="logPanel" aria-label="Log Stream panel">
+
+    <!-- HEADER -->
+    <header class="pane-head">
+        <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#2fe6a7" stroke-width="2.4" stroke-linecap="round">
+                <path d="M5 5.5v13M10.2 5.5v13M15.4 5.5v8M20.6 5.5v5" opacity=".95"/>
+            </svg>
+        </div>
+        <h1 class="pane-title">Log Stream</h1>
+        <span class="live-pill"><span class="status-dot" id="liveDot"></span><span class="live-word" id="liveWord">Live</span><span>· Session 04</span></span>
+        <span class="head-clock" id="headClock">00:00:00<span class="ms">.000</span></span>
+        <div class="head-spacer"></div>
+        <div class="head-actions">
+            <button class="icon-button" id="btnPause" title="Pause stream (Space)" aria-pressed="false">
+                <svg id="icoPause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+                <svg id="icoPlay" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M8 5.4v13.2c0 .9 1 1.5 1.8 1L20 13a1.15 1.15 0 0 0 0-2L9.8 4.4A1.15 1.15 0 0 0 8 5.4Z"/></svg>
+            </button>
+            <button class="icon-button" id="btnClear" title="Clear stream">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9.5 7V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v2M6.5 7l.8 11.2A2 2 0 0 0 9.3 20h5.4a2 2 0 0 0 2-1.8L17.5 7M10 11v5M14 11v5"/></svg>
+            </button>
+            <button class="icon-button" id="btnExport" title="Export visible entries (.log)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10.5M7.8 10.8 12 15l4.2-4.2M5 19.5h14"/></svg>
+            </button>
+            <button class="icon-button" id="btnPopout" title="Pop out panel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5h10.5V16M18.5 5.5 11 13M19 13.5V18a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18V7A1.5 1.5 0 0 1 6.5 5.5H11"/></svg>
+            </button>
+            <div class="pill-dropdown">
+                <button class="icon-button" id="btnOverflow" title="More actions" aria-haspopup="menu" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>
+                </button>
+                <div class="pill-menu align-right" id="menuOverflow" role="menu">
+                    <div class="menu-label">Stream</div>
+                    <button class="menu-item" id="miCopyAll">Copy visible entries</button>
+                    <button class="menu-item" id="miSave">Save session log…</button>
+                    <div class="menu-sep"></div>
+                    <div class="menu-label">Display</div>
+                    <button class="menu-item" id="miWrap" aria-checked="false"><span class="menu-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg></span>Word wrap</button>
+                    <button class="menu-item" id="miTimeMode">Timestamps<span class="menu-state" id="timeModeState">Wall clock</span></button>
+                    <button class="menu-item" id="miCollapse" aria-checked="true"><span class="menu-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg></span>Collapse repeats</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- SUMMARY STRIP -->
+    <div class="summary">
+        <div class="metric">
+            <span class="metric-label">Entries</span>
+            <div class="metric-row"><span class="metric-value" id="mEntries">0</span><span class="delta-badge" id="mRate">+0/s</span></div>
+        </div>
+        <div class="metric">
+            <span class="metric-label"><svg viewBox="0 0 24 24" fill="#ffb454"><path d="M12 3.6 22 20H2Z"/><rect x="11.1" y="9.5" width="1.8" height="5.4" rx=".9" fill="#141414"/><circle cx="12" cy="17.2" r="1.15" fill="#141414"/></svg>Warnings</span>
+            <div class="metric-row"><span class="metric-value" id="mWarnings">0</span><span class="delta-badge amber flat" id="mWarnDelta">—</span></div>
+        </div>
+        <div class="metric">
+            <span class="metric-label"><svg viewBox="0 0 24 24" fill="#ff6d6d"><path d="M12 3.6 22 20H2Z"/><rect x="11.1" y="9.5" width="1.8" height="5.4" rx=".9" fill="#141414"/><circle cx="12" cy="17.2" r="1.15" fill="#141414"/></svg>Errors</span>
+            <div class="metric-row"><span class="metric-value" id="mErrors">0</span><span class="delta-badge coral flat" id="mErrDelta">—</span></div>
+        </div>
+        <div class="summary-spark">
+            <div class="spark-head"><span class="spark-label">Entries per second</span><span class="spark-rate"><strong id="sparkNow">0</strong> now · <span id="sparkPeak">0</span> peak</span></div>
+            <canvas id="spark" height="44"></canvas>
+        </div>
+    </div>
+
+    <!-- FILTER ROW -->
+    <div class="filter-row">
+        <button class="filter-chip" data-sev="all" aria-pressed="true"><span class="chip-count" id="cAll">0</span>All</button>
+        <button class="filter-chip" data-sev="info" aria-pressed="true"><span class="chip-dot info"></span><span class="chip-count" id="cInfo">0</span>Info</button>
+        <button class="filter-chip" data-sev="warning" aria-pressed="true"><span class="chip-dot warning"></span><span class="chip-count" id="cWarning">0</span>Warnings</button>
+        <button class="filter-chip" data-sev="error" aria-pressed="true"><span class="chip-dot error"></span><span class="chip-count" id="cError">0</span>Errors</button>
+        <button class="filter-chip" data-sev="fatal" aria-pressed="true"><span class="chip-dot fatal"></span><span class="chip-count" id="cFatal">0</span>Fatal</button>
+
+        <span class="filter-sep" aria-hidden="true"></span>
+
+        <div class="pill-dropdown">
+            <button class="pill-trigger" id="ddChannels" aria-haspopup="true" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6.5h16M7 12h10M10 17.5h4"/></svg>
+                <span id="ddChannelsLabel">All channels</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5.5 9.5 6.5 6.5 6.5-6.5"/></svg>
+            </button>
+            <div class="pill-menu" id="menuChannels" role="menu" aria-label="Channels">
+                <div class="menu-label">Engine channels</div>
+                <div id="channelList"></div>
+                <div class="menu-sep"></div>
+                <div class="menu-label">User categories</div>
+                <div id="userChannelList"></div>
+                <div class="cat-create">
+                    <input id="catName" type="text" placeholder="New category name…" maxlength="24" autocomplete="off" spellcheck="false">
+                    <div class="swatches" id="catSwatches" role="group" aria-label="Category colour">
+                        <button class="swatch" data-colour="blue"   style="background:#63a8ff" aria-pressed="false" title="Blue"></button>
+                        <button class="swatch" data-colour="purple" style="background:#b18cff" aria-pressed="true"  title="Purple"></button>
+                        <button class="swatch" data-colour="pink"   style="background:#ff7ad9" aria-pressed="false" title="Pink"></button>
+                        <button class="swatch" data-colour="mint"   style="background:#2fe6a7" aria-pressed="false" title="Mint"></button>
+                        <button class="swatch" data-colour="amber"  style="background:#ffb454" aria-pressed="false" title="Amber"></button>
+                    </div>
+                    <button class="cat-add" id="catAdd">Add category</button>
+                </div>
+                <div class="menu-sep"></div>
+                <div class="menu-quick"><button id="chAll">All</button><button id="chNone">None</button><button id="chInvert">Invert</button></div>
+            </div>
+        </div>
+
+        <div class="pill-dropdown">
+            <button class="pill-trigger" id="ddVerbosity" aria-haspopup="true" aria-expanded="false">
+                <span class="trigger-dim">Verbosity</span><span id="ddVerbosityLabel">Log</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5.5 9.5 6.5 6.5 6.5-6.5"/></svg>
+            </button>
+            <div class="pill-menu" id="menuVerbosity" role="menu" aria-label="Verbosity">
+                <div class="menu-label">Show up to</div>
+                <div id="verbosityList"></div>
+            </div>
+        </div>
+
+        <label class="search" id="searchBox">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <input id="searchInput" type="text" placeholder="Filter text…" autocomplete="off" spellcheck="false">
+            <span class="match-count" id="matchCount"></span>
+            <button class="search-clear" id="searchClear" title="Clear filter" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </label>
+
+        <div class="head-spacer"></div>
+
+        <button class="enabled-pill" id="btnFollow" aria-pressed="true" title="Follow the newest entries">
+            <span class="status-dot"></span>Following
+        </button>
+    </div>
+
+    <!-- STREAM -->
+    <div class="column-labels" aria-hidden="true"><span></span><span>Time</span><span>Channel</span><span>Message</span><span>Source</span></div>
+    <div class="stream-wrap">
+        <div class="stream" id="stream" role="log" aria-live="off" aria-label="Log entries"></div>
+        <div class="stream-empty" id="streamEmpty"><strong>No entries match</strong>Loosen the severity chips, channels or filter text.</div>
+        <button class="new-pill" id="newPill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v13M6.5 12.5 12 18l5.5-5.5"/></svg><span id="newPillText">0 new</span></button>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="pane-foot">
+        <span class="foot-stat"><strong id="footShown">0</strong> shown · <strong id="footTotal">0</strong> total</span>
+        <canvas id="scrubber" height="26" aria-hidden="true"></canvas>
+        <div class="foot-right">
+            <span class="foot-stat">Ring <strong>64k</strong></span>
+            <span class="foot-stat">Dropped <strong id="footDropped">0</strong></span>
+            <span class="foot-stat">Session <strong id="footSession">00:00</strong></span>
+        </div>
+    </footer>
+</section>
+
+<p class="prototype-caption"><strong>Frontier · Log Stream</strong> — HTML design prototype for approval. Simulated entries only; converts to C++ 1:1 once approved.</p>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        STATE
+   ------------------------------------------------------------------------------------------------------------------------ */
+const PALETTE = {blue:"#63a8ff", purple:"#b18cff", pink:"#ff7ad9", mint:"#2fe6a7", amber:"#ffb454"};
+const ENGINE_CHANNELS = ["Render","Illumination","Physics","Vehicle","Tyre","Environment","Geometry","Interface","Content"];
+const categories = new Map();   // name -> {name, colour|null, user} — engine channels neutral; user categories carry a palette colour
+ENGINE_CHANNELS.forEach(n=>categories.set(n,{name:n,colour:null,user:false}));
+const channelNames = ()=>[...categories.keys()];
+const VERBOSITIES = [["fatal","Fatal only"],["error","Error"],["warning","Warning"],["display","Display"],["log","Log"],["verbose","Verbose"]];
+const VERB_RANK = {fatal:0,error:1,warning:2,display:3,log:4,verbose:5};
+const state = {
+    paused:false, follow:true, wrap:false, collapse:true, timeMode:"wall",
+    sevEnabled:new Set(["info","warning","error","fatal"]),
+    chanEnabled:new Set(channelNames()),
+    verbosity:"log", query:"",
+    total:0, shown:0, dropped:0, counts:{all:0,info:0,warning:0,error:0,fatal:0},
+    chanCounts:{}, entries:[], lastByKey:new Map(), newBelow:0,
+    rateBuckets:new Array(72).fill(0), peakRate:0, scrubBuckets:[], warnTimes:[], errTimes:[],
+};
+channelNames().forEach(c=>state.chanCounts[c]=0);
+const T0 = Date.now();
+const MAX_ROWS = 420;
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        MESSAGE POOLS
+   ------------------------------------------------------------------------------------------------------------------------ */
+const R=(a,b,d=0)=> (Math.random()*(b-a)+a).toFixed(d);
+const RI=(a,b)=> Math.floor(Math.random()*(b-a+1))+a;
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const POOL = {
+Render:{src:["Device.cpp","SubmissionOrder.cpp","SurfaceRasterization.slang","Swapchain.cpp"], msgs:[
+ ["info","log",()=>`Pipeline cache hit · SurfaceRasterization (${R(.2,.9,2)} ms)`],
+ ["info","verbose",()=>`Transient target reused · RadianceAccum slot ${RI(0,11)} (lifetime ${RI(2,9)} units)`],
+ ["info","display",()=>`Swapchain steady · ${pick([2560,3840])}×${pick([1440,2160])} · mailbox · 3 images`],
+ ["info","log",()=>`Barrier batch merged · ${RI(4,18)} image transitions into 1 dependency`],
+ ["info","verbose",()=>`Compute queue overlap ${R(1.1,3.4,1)} ms behind graphics head`],
+ ["warning","warning",()=>`Descriptor pool ${RI(78,94)}% full · pool ${RI(2,6)} will grow at next reset`],
+ ["warning","warning",()=>`Present wait ${R(17,26,1)} ms exceeds frame budget 16.6 ms`],
+ ["error","error",()=>`Timeline semaphore wait exceeded 16 ms on compute queue · unit ReservoirSpatialRasterization`]]},
+Illumination:{src:["ReservoirTemporal.slang","ReservoirSpatial.slang","ResamplingSequence.cpp","VarianceWavelet.slang"], msgs:[
+ ["info","log",()=>`Temporal resampling converged · M̄=${R(17,20,1)} of cap 20 · ${R(96,99.8,1)}% reservoirs valid`],
+ ["info","verbose",()=>`Spatial reuse · ${RI(5,9)} neighbours · Jacobian clamped on ${R(.4,2.2,1)}% of candidates`],
+ ["info","log",()=>`Variance estimate below threshold · wavelet level ${RI(2,4)} skipped`],
+ ["info","display",()=>`Direct radiance reservoirs rebuilt · ${RI(28,64)} initial candidates per pixel`],
+ ["warning","warning",()=>`Reservoir confidence low in ${R(2.4,6.5,1)}% of tiles · bias-correction weight raised`],
+ ["warning","warning",()=>`Firefly clamp engaged · luminance ceiling ${RI(18,40)} hit ${RI(40,900)} times`],
+ ["error","error",()=>`NaN in reservoir stream at tile (${RI(0,240)}, ${RI(0,135)}) · reservoir reset for tile`]]},
+Physics:{src:["JoltWorld.cpp","RigidBodyWorld.cpp","PhysicsDivision.cpp"], msgs:[
+ ["info","log",()=>`Jolt world stepped · ${RI(900,1600).toLocaleString()} bodies · ${R(1.6,3.1,2)} ms · 2 substeps`],
+ ["info","verbose",()=>`Broadphase pairs ${RI(300,900).toLocaleString()} · narrowphase contacts ${RI(80,420)}`],
+ ["info","log",()=>`Constraint solver · ${RI(6,10)} velocity iterations · max error ${R(.01,.09,3)} m`],
+ ["warning","warning",()=>`Body ${RI(100,999)} exceeded max linear velocity · clamped ${R(81,88,1)} → 80.0 m/s`],
+ ["warning","warning",()=>`Sleeping body woken by penetrating neighbour · depth ${R(.02,.2,2)} m`],
+ ["error","error",()=>`Non-finite body transform quarantined · body ${RI(100,999)} deactivated`]]},
+Vehicle:{src:["VehicleSolver.cpp","VehicleSpecification.cpp","DriverInput.cpp"], msgs:[
+ ["info","display",()=>`Powertrain · gear ${RI(2,6)} · ${RI(2800,6400).toLocaleString()} rpm · ${RI(140,420)} N·m at wheels`],
+ ["info","log",()=>`Steering rack angle ${R(-28,28,1)}° · Ackermann error ${R(0,.6,2)}°`],
+ ["info","verbose",()=>`Aero load · downforce ${RI(200,2400)} N · drag ${RI(80,900)} N · balance ${R(38,48,1)}% front`],
+ ["info","log",()=>`Suspension travel FL ${R(0,82,0)} mm · damper ${R(.1,1.8,2)} m/s ${pick(["compression","rebound"])}`],
+ ["warning","warning",()=>`Stability control intervened · yaw error ${R(3.2,7.5,1)}° · brake bias shifted rear`],
+ ["error","error",()=>`Wheel ${pick(["FL","FR","RL","RR"])} lost ground contact for ${RI(120,380)} ms at ${RI(70,140)} km/h`]]},
+Tyre:{src:["TyreSlipSolver.cpp","TyreThermalSolver.cpp","TyreContinuumElasticity.cpp"], msgs:[
+ ["info","log",()=>`Slip solver converged · ${RI(3,6)} iterations · κ=${R(.02,.14,2)} α=${R(.5,4.5,1)}°`],
+ ["info","verbose",()=>`Contact patch ${pick(["FL","FR","RL","RR"])} · ${RI(900,4200)} N normal · μ=${R(.9,1.45,2)}`],
+ ["info","display",()=>`Carcass temperature FL ${R(78,112,1)} °C · core ${R(70,98,1)} °C · tread Δ ${R(2,9,1)} °C`],
+ ["info","log",()=>`Relaxation length σ=${R(.28,.5,2)} m · transient force lag ${RI(8,30)} ms`],
+ ["warning","warning",()=>`Tyre ${pick(["FR","RL"])} pressure ${RI(8,16)}% below target · ${RI(178,196)} kPa`],
+ ["warning","warning",()=>`Combined slip saturation · friction ellipse at ${RI(92,99)}% · lateral reserve thin`]]},
+Environment:{src:["AtmosphereIntegrator.cpp","CloudSequence.cpp","FogMedium.slang"], msgs:[
+ ["info","log",()=>`Sky transmittance LUT sampled · sun elevation ${R(-4,62,1)}° · no rebake needed`],
+ ["info","display",()=>`Cloud layer ${RI(1,3)} density field resident · 128³ · coverage ${R(18,64,0)}%`],
+ ["info","verbose",()=>`Fog medium σt=${R(.002,.009,4)} · anisotropy g=${R(.2,.7,2)}`],
+ ["info","log",()=>`Precipitation receivers updated · ${RI(40,300)} surfaces in wetness set`],
+ ["warning","warning",()=>`Cloud shadow projection stale by ${RI(2,6)} frames · reprojection error rising`]]},
+Geometry:{src:["GeometryHierarchy.cpp","VirtualizedGeometry.cpp","GeometryClusterCull.slang"], msgs:[
+ ["info","log",()=>`Cluster cull · ${RI(30,58)}% rejected by HiZ · ${RI(2,9)}% by frustum`],
+ ["info","verbose",()=>`LOD selection · level ${RI(0,6)} for ${RI(200,2400).toLocaleString()} clusters · error ≤ 1.0 px`],
+ ["info","display",()=>`Cluster hierarchy resident · ${RI(12000,24000).toLocaleString()} clusters · 7 levels`],
+ ["warning","warning",()=>`Cluster ${RI(4000,16000).toLocaleString()} screen error ${R(1.1,2.4,1)} px exceeds 1.0 px budget`]]},
+Interface:{src:["EditorShell.cpp","InspectorPages.cpp","SceneDirectoryPanel.cpp"], msgs:[
+ ["info","log",()=>`Inspector page bound · ${pick(["Vehicle Systems","Atmosphere","Clouds","Sun","Fog","Lens Optics"])} (${RI(9,34)} controls)`],
+ ["info","verbose",()=>`Scene directory selection → Vehicle/Body (${RI(4,28)} records in subtree)`],
+ ["info","display",()=>`Outliner registered new record · ${pick(["WheelAssembly FL","CloudLayer 2","PlumeSource 7","Moon"])} `],
+ ["warning","warning",()=>`Panel layout restored with 1 missing dock target · defaulted to right column`]]},
+Content:{src:["ContentDirectory.cpp","FacetCodec.cpp","TextureStream.cpp"], msgs:[
+ ["info","log",()=>`Texture streamed · ${pick(["carbon-fiber-normal","brake-disc-orm","brushed-titanium-albedo"])} 2048² BC${pick([5,7])}`],
+ ["info","display",()=>`Facet archive decoded · ControlVehicleTyre (${R(1.8,4.4,1)} MB · ${RI(3,12)} ms)`],
+ ["info","verbose",()=>`Content watch · 0 changes in EngineContent/MaterialArchives`],
+ ["error","error",()=>`Missing licence file beside font archive · EngineContent/FontArchives/DM Sans`]]},
+Foliage:{src:["FoliageCanopy.cpp","LeafLitter.cpp"], msgs:[
+ ["info","log",()=>`Leaf cluster detached · ${RI(4,40)} leaves · gust ${R(2,9,1)} m/s`],
+ ["info","verbose",()=>`Leaf flutter phase updated · branch ${RI(1,24)} · sway ${R(.4,2.4,1)}°`],
+ ["info","display",()=>`Canopy density · sector (${RI(0,7)}, ${RI(0,7)}) at ${RI(38,96)}%`],
+ ["info","log",()=>`Leaf litter deposited · +${RI(6,64)} instances under Oak_${String(RI(1,18)).padStart(2,"0")}`],
+ ["warning","warning",()=>`Leaf instance budget ${RI(86,97)}% · oldest litter recycled`]]},
+Gameplay:{src:["ProvingGroundsScript.cpp","RaceSession.cpp"], msgs:[
+ ["info","display",()=>`Checkpoint reached · split ${RI(1,6)} · 0${RI(1,3)}:${String(RI(10,59)).padStart(2,"0")}.${RI(100,999)}`],
+ ["info","log",()=>`Driver marker set · best lap sector ${RI(1,3)}`],
+ ["info","verbose",()=>`AI rival state → ${pick(["Follow","Overtake","Defend","Pit"])} · gap ${R(.2,3.4,1)} s`],
+ ["warning","warning",()=>`Track limits exceeded · turn ${RI(2,14)} · lap time invalidated`]]},
+Network:{src:["SessionLink.cpp","PeerTable.cpp"], msgs:[
+ ["info","log",()=>`Peer table · ${RI(2,8)} in session · median RTT ${RI(18,90)} ms`],
+ ["info","display",()=>`Peer joined · session occupancy ${RI(2,8)}/8`],
+ ["info","verbose",()=>`Snapshot ${RI(1000,9999)} acknowledged · ${RI(1,40)} records`],
+ ["warning","warning",()=>`Packet loss ${R(1.5,6,1)}% on peer ${RI(2,8)} · interpolation window widened`],
+ ["error","error",()=>`Peer ${RI(2,8)} timed out after ${RI(4,10)} s · marked unreachable`]]},
+};
+const GENERIC_POOL={src:["UserRecords.cpp"], msgs:[
+ ["info","log",()=>`User record · counter at ${RI(10,900)}`],
+ ["info","verbose",()=>`User record · sample ${R(0,100,1)}`],
+ ["info","display",()=>`User milestone · step ${RI(1,9)} complete`],
+ ["warning","warning",()=>`User record · threshold crossed at ${RI(80,99)}%`]]};
+const BOOT = [
+ ["Render","info","display","Vulkan device ready · 3 queues (graphics 0 · compute 2 · transfer 1) · timeline semaphores on","Device.cpp:212"],
+ ["Render","info","log","Slang modules linked · 80 shaders · 0 errors · 2 warnings (unused bindings)","ShaderInterchange.cpp:96"],
+ ["Illumination","info","display","Reservoir buffers allocated · 2 × 3840×2160 × 32 B · temporal + spatial streams","ResamplingSequence.cpp:141"],
+ ["Physics","info","display","Jolt world created · 6 object layers · 10k body budget · job threads 7","JoltWorld.cpp:58"],
+ ["Vehicle","info","log","Vehicle specification loaded · mass 1,462 kg · wheelbase 2.71 m · 4 wheel assemblies","VehicleSpecification.cpp:203"],
+ ["Tyre","info","log","Tyre continuum discretised · 4 × 1,280 carcass nodes · thermal layers 3","TyreContinuumElasticity.cpp:377"],
+ ["Geometry","info","log","Cluster hierarchy built · 18,204 clusters · 7 levels · 212 MB resident","GeometryHierarchy.cpp:809"],
+ ["Interface","info","display","Editor workspace opened · Proving Grounds · Log Stream docked bottom","EditorShell.cpp:44"],
+];
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        DOM HELPERS
+   ------------------------------------------------------------------------------------------------------------------------ */
+const $=id=>document.getElementById(id);
+const streamEl=$("stream");
+const fmt=n=>n.toLocaleString("en-US");
+function timeParts(t){
+    const d= state.timeMode==="wall" ? new Date(t) : new Date(t-T0);
+    const hh=String(state.timeMode==="wall"?d.getHours():d.getUTCHours()).padStart(2,"0");
+    const mm=String(d.getMinutes()).padStart(2,"0"), ss=String(d.getSeconds()).padStart(2,"0");
+    const ms=String(d.getMilliseconds()).padStart(3,"0");
+    return {main:`${hh}:${mm}:${ss}`, ms:`.${ms}`};
+}
+const ICON_WARN = c=>`<svg viewBox="0 0 24 24" fill="${c}"><path d="M12 3.6 22 20H2Z"/><rect x="11.1" y="9.5" width="1.8" height="5.4" rx=".9" fill="#10130f"/><circle cx="12" cy="17.2" r="1.15" fill="#10130f"/></svg>`;
+function sevGlyph(sev){
+    if(sev==="warning") return ICON_WARN("#ffb454");
+    if(sev==="error"||sev==="fatal") return ICON_WARN("#ff6d6d");
+    return `<span class="dot"></span>`;
+}
+function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function highlight(text){
+    let out=esc(text);
+    if(state.query){
+        const q=state.query.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+        out=out.replace(new RegExp(`(${q})`,"ig"),"<mark>$1</mark>");
+    }
+    return out;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        ENTRY INTAKE
+   ------------------------------------------------------------------------------------------------------------------------ */
+function passes(e){
+    if(!state.sevEnabled.has(e.sev)) return false;
+    if(!state.chanEnabled.has(e.channel)) return false;
+    if(VERB_RANK[e.verb] > VERB_RANK[state.verbosity]) return false;
+    if(state.query && !(e.message+" "+e.channel+" "+e.source).toLowerCase().includes(state.query)) return false;
+    return true;
+}
+function makeRow(e){
+    const row=document.createElement("div");
+    row.className=`log-row sev-${e.sev}`; row.dataset.id=e.id;
+    const tp=timeParts(e.t);
+    const cat=categories.get(e.channel);
+    const tag = cat&&cat.colour
+        ? `<span class="channel-tag user-cat" style="--cat:${cat.colour}"><span class="cat-dot"></span>${esc(e.channel)}</span>`
+        : `<span class="channel-tag">${esc(e.channel)}</span>`;
+    row.innerHTML=`
+      <span class="sev-glyph">${sevGlyph(e.sev)}</span>
+      <span class="row-time">${tp.main}<span class="ms">${tp.ms}</span></span>
+      ${tag}
+      <span class="row-message">${highlight(e.message)}</span>
+      <span class="row-meta">
+        <span class="repeat-badge" ${e.count>1?"":'style="display:none"'}>×${e.count}</span>
+        <span class="row-source">${esc(e.source)}</span>
+      </span>
+      <div class="row-detail">
+        <div class="detail-text"></div>
+        <div class="detail-meta"></div>
+        <div class="detail-actions">
+          <button class="small-pill act-copy">Copy entry</button>
+          <button class="small-pill act-channel">Only this channel</button>
+          <button class="small-pill act-text">Filter to text</button>
+        </div>
+      </div>`;
+    row.querySelector(".act-copy").addEventListener("click",ev=>{ev.stopPropagation();copyText(plainEntry(e));flashPill(ev.currentTarget,"Copied");});
+    row.querySelector(".act-channel").addEventListener("click",ev=>{ev.stopPropagation();state.chanEnabled=new Set([e.channel]);syncChannelMenu();applyFilters();});
+    row.querySelector(".act-text").addEventListener("click",ev=>{ev.stopPropagation();setQuery(e.message.split(" · ")[0]);});
+    row.addEventListener("click",()=>{
+        const was=row.classList.contains("selected");
+        streamEl.querySelectorAll(".log-row.selected").forEach(r=>r.classList.remove("selected"));
+        if(!was){ fillDetail(row,e); row.classList.add("selected"); }
+    });
+    return row;
+}
+function fillDetail(row,e){
+    row.querySelector(".detail-text").textContent=e.message;
+    const f=timeParts(e.firstT), l=timeParts(e.t);
+    row.querySelector(".detail-meta").innerHTML=
+      `<span>Severity <strong>${e.sev}</strong></span><span>Verbosity <strong>${e.verb}</strong></span>`+
+      `<span>First <strong>${f.main}${f.ms}</strong></span><span>Last <strong>${l.main}${l.ms}</strong></span>`+
+      `<span>Occurrences <strong>${e.count}</strong></span><span>Source <strong>${esc(e.source)}</strong></span>`;
+}
+function plainEntry(e){const p=timeParts(e.t);return `[${p.main}${p.ms}] [${e.channel}] [${e.sev}] ${e.message} (${e.source})`;}
+function addEntry(channel,sev,verb,message,source){
+    const now=Date.now();
+    state.total++; state.counts.all++; state.counts[sev]++; state.chanCounts[channel]++;
+    state.rateBuckets[state.rateBuckets.length-1]++;
+    if(sev==="warning") state.warnTimes.push(now);
+    if(sev==="error"||sev==="fatal") state.errTimes.push(now);
+    const key=channel+"|"+message;
+    if(state.collapse && state.lastByKey.has(key)){
+        const prev=state.lastByKey.get(key);
+        if(now-prev.t < 6000 && prev.row && prev.row.isConnected){
+            prev.count++; prev.t=now;
+            const badge=prev.row.querySelector(".repeat-badge");
+            badge.style.display=""; badge.textContent="×"+prev.count;
+            badge.classList.remove("bump"); void badge.offsetWidth; badge.classList.add("bump");
+            refreshCounters(); return;
+        }
+    }
+    const e={id:state.total,t:now,firstT:now,channel,sev,verb,message,source,count:1,row:null};
+    state.entries.push(e); state.lastByKey.set(key,e);
+    if(passes(e)){
+        e.row=makeRow(e); streamEl.appendChild(e.row); state.shown++;
+        while(streamEl.children.length>MAX_ROWS){
+            const first=streamEl.firstElementChild;
+            const victim=state.entries.find(x=>x.row===first);
+            if(victim) victim.row=null;
+            first.remove(); state.dropped++;
+        }
+        if(state.follow) scrollToEnd(false);
+        else { state.newBelow++; syncNewPill(); }
+    }
+    refreshCounters();
+}
+function scrollToEnd(smooth){
+    streamEl.scrollTo({top:streamEl.scrollHeight,behavior:smooth?"smooth":"auto"});
+    state.newBelow=0; syncNewPill();
+}
+function syncNewPill(){
+    $("newPill").classList.toggle("show", !state.follow && state.newBelow>0);
+    $("newPillText").textContent=`${state.newBelow} new`;
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        FILTERING
+   ------------------------------------------------------------------------------------------------------------------------ */
+function applyFilters(){
+    streamEl.innerHTML=""; state.shown=0;
+    for(const e of state.entries.slice(-1400)){
+        if(!passes(e)) { e.row=null; continue; }
+        e.row=makeRow(e); streamEl.appendChild(e.row); state.shown++;
+        if(state.shown>=MAX_ROWS) break;
+    }
+    $("streamEmpty").style.display = state.shown? "none":"block";
+    if(state.follow) scrollToEnd(false);
+    refreshCounters();
+}
+function refreshCounters(){
+    $("cAll").textContent=fmt(state.counts.all);
+    $("cInfo").textContent=fmt(state.counts.info);
+    $("cWarning").textContent=fmt(state.counts.warning);
+    $("cError").textContent=fmt(state.counts.error);
+    $("cFatal").textContent=fmt(state.counts.fatal);
+    $("mEntries").innerHTML=splitNum(state.counts.all);
+    $("mWarnings").innerHTML=splitNum(state.counts.warning+0);
+    $("mErrors").innerHTML=splitNum(state.counts.error+state.counts.fatal);
+    const cutoff=Date.now()-60000;
+    state.warnTimes=state.warnTimes.filter(t=>t>cutoff); state.errTimes=state.errTimes.filter(t=>t>cutoff);
+    setDelta($("mWarnDelta"), state.warnTimes.length, "amber");
+    setDelta($("mErrDelta"), state.errTimes.length, "coral");
+    $("footShown").textContent=fmt(state.shown);
+    $("footTotal").textContent=fmt(state.total);
+    $("footDropped").textContent=fmt(state.dropped);
+    $("matchCount").textContent = state.query? `${fmt(state.shown)} shown` : "";
+    syncChannelCounts();
+}
+function splitNum(n){
+    const s=fmt(n); const i=s.lastIndexOf(",");
+    return i>0 ? `${s.slice(0,i)}<span class="frac">,${s.slice(i+1)}</span>` : s;
+}
+function setDelta(el,n,cls){
+    el.textContent = n? `+${n}/min` : "—";
+    el.className="delta-badge "+(n? cls : cls+" flat");
+}
+
+/* severity chips */
+document.querySelectorAll(".filter-chip").forEach(chip=>{
+    chip.addEventListener("click",()=>{
+        const sev=chip.dataset.sev;
+        if(sev==="all"){
+            state.sevEnabled=new Set(["info","warning","error","fatal"]);
+        } else {
+            state.sevEnabled.has(sev)? state.sevEnabled.delete(sev) : state.sevEnabled.add(sev);
+        }
+        syncChips(); applyFilters();
+    });
+});
+function syncChips(){
+    document.querySelectorAll(".filter-chip").forEach(chip=>{
+        const sev=chip.dataset.sev;
+        chip.setAttribute("aria-pressed", sev==="all" ? String(state.sevEnabled.size===4) : String(state.sevEnabled.has(sev)));
+    });
+}
+
+/* channel dropdown — engine channels + user categories share one registry */
+const channelList=$("channelList"), userChannelList=$("userChannelList");
+function buildChannelItem(cat, host){
+    const b=document.createElement("button");
+    b.className="menu-item"; b.setAttribute("role","menuitemcheckbox");
+    b.setAttribute("aria-checked",String(state.chanEnabled.has(cat.name))); b.dataset.channel=cat.name;
+    const dot = cat.colour? `<span class="cat-dot" style="background:${cat.colour}"></span>` : "";
+    b.innerHTML=`<span class="menu-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5 9.5 17.5 19.5 6.5"/></svg></span>${dot}${esc(cat.name)}<span class="menu-count" data-count>${fmt(state.chanCounts[cat.name]||0)}</span>`;
+    b.addEventListener("click",()=>{
+        state.chanEnabled.has(cat.name)? state.chanEnabled.delete(cat.name) : state.chanEnabled.add(cat.name);
+        syncChannelMenu(); applyFilters();
+    });
+    host.appendChild(b); return b;
+}
+ENGINE_CHANNELS.forEach(n=>buildChannelItem(categories.get(n), channelList));
+/* User-category registration — the C++ twin is RegisterLogCategory(name, colour); any class may then log into it. */
+function registerCategory(name, colourKey){
+    name=(name||"").trim();
+    if(!name || categories.has(name)) return null;
+    const cat={name, colour:PALETTE[colourKey]||PALETTE.purple, user:true};
+    categories.set(name,cat); state.chanCounts[name]=0; state.chanEnabled.add(name);
+    buildChannelItem(cat, userChannelList); syncChannelMenu();
+    return cat;
+}
+registerCategory("Foliage","pink");     // seeded examples of user-created categories
+registerCategory("Gameplay","purple");
+registerCategory("Network","blue");
+let pendingColour="purple";
+$("catSwatches").querySelectorAll(".swatch").forEach(s=>{
+    s.addEventListener("click",()=>{
+        pendingColour=s.dataset.colour;
+        $("catSwatches").querySelectorAll(".swatch").forEach(x=>x.setAttribute("aria-pressed",String(x===s)));
+    });
+});
+function addCategoryFromUi(){
+    const cat=registerCategory($("catName").value, pendingColour);
+    if(!cat){ $("catName").focus(); return; }
+    $("catName").value="";
+    addEntry(cat.name,"info","display","Category registered by user · now receiving records","LogStreamPanel.cpp:132");
+}
+$("catAdd").addEventListener("click",addCategoryFromUi);
+$("catName").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); addCategoryFromUi(); } });
+function syncChannelMenu(){
+    $("menuChannels").querySelectorAll(".menu-item[data-channel]").forEach(b=>b.setAttribute("aria-checked",String(state.chanEnabled.has(b.dataset.channel))));
+    const n=state.chanEnabled.size;
+    $("ddChannelsLabel").textContent = n===categories.size? "All channels" : n===0? "No channels" : n===1? [...state.chanEnabled][0] : `${n} channels`;
+}
+function syncChannelCounts(){
+    $("menuChannels").querySelectorAll(".menu-item[data-channel]").forEach(b=>{
+        b.querySelector("[data-count]").textContent=fmt(state.chanCounts[b.dataset.channel]);
+    });
+}
+$("chAll").addEventListener("click",()=>{state.chanEnabled=new Set(channelNames());syncChannelMenu();applyFilters();});
+$("chNone").addEventListener("click",()=>{state.chanEnabled=new Set();syncChannelMenu();applyFilters();});
+$("chInvert").addEventListener("click",()=>{state.chanEnabled=new Set(channelNames().filter(c=>!state.chanEnabled.has(c)));syncChannelMenu();applyFilters();});
+
+/* verbosity dropdown */
+const verbosityList=$("verbosityList");
+VERBOSITIES.forEach(([key,label])=>{
+    const b=document.createElement("button");
+    b.className="menu-item"; b.setAttribute("role","menuitemradio"); b.dataset.verb=key;
+    b.setAttribute("aria-checked",String(key===state.verbosity));
+    b.innerHTML=`<span class="menu-radio"></span>${label}`;
+    b.addEventListener("click",()=>{
+        state.verbosity=key;
+        verbosityList.querySelectorAll(".menu-item").forEach(x=>x.setAttribute("aria-checked",String(x.dataset.verb===key)));
+        $("ddVerbosityLabel").textContent=label; closeMenus(); applyFilters();
+    });
+    verbosityList.appendChild(b);
+});
+
+/* dropdown open/close */
+const menus=[["ddChannels","menuChannels"],["ddVerbosity","menuVerbosity"],["btnOverflow","menuOverflow"]];
+function closeMenus(){ menus.forEach(([t,m])=>{$(m).classList.remove("open"); $(t).setAttribute("aria-expanded","false");}); }
+menus.forEach(([t,m])=>{
+    $(t).addEventListener("click",ev=>{
+        ev.stopPropagation();
+        const was=$(m).classList.contains("open");
+        closeMenus();
+        if(!was){ $(m).classList.add("open"); $(t).setAttribute("aria-expanded","true"); }
+    });
+    $(m).addEventListener("click",ev=>ev.stopPropagation());
+});
+document.addEventListener("click",closeMenus);
+document.addEventListener("keydown",ev=>{ if(ev.key==="Escape") closeMenus(); });
+
+/* search */
+function setQuery(q){
+    $("searchInput").value=q; state.query=q.trim().toLowerCase();
+    $("searchBox").classList.toggle("has-text",!!q); applyFilters();
+}
+$("searchInput").addEventListener("input",ev=>setQuery(ev.target.value));
+$("searchClear").addEventListener("click",()=>setQuery(""));
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        HEADER / FOOTER ACTIONS
+   ------------------------------------------------------------------------------------------------------------------------ */
+function setPaused(p){
+    state.paused=p;
+    $("icoPause").style.display=p?"none":""; $("icoPlay").style.display=p?"":"none";
+    $("btnPause").classList.toggle("active",p); $("btnPause").setAttribute("aria-pressed",String(p));
+    $("liveDot").classList.toggle("paused",p);
+    $("liveWord").textContent=p?"Paused":"Live";
+}
+$("btnPause").addEventListener("click",()=>setPaused(!state.paused));
+document.addEventListener("keydown",ev=>{
+    if(ev.code==="Space" && document.activeElement.tagName!=="INPUT" && document.activeElement.tagName!=="BUTTON"){
+        ev.preventDefault(); setPaused(!state.paused);
+    }
+});
+$("btnClear").addEventListener("click",()=>{
+    state.entries=[]; state.lastByKey.clear(); state.shown=0;
+    state.counts={all:0,info:0,warning:0,error:0,fatal:0};
+    channelNames().forEach(c=>state.chanCounts[c]=0);
+    state.warnTimes=[]; state.errTimes=[]; state.scrubBuckets=[];
+    streamEl.innerHTML=""; applyFilters();
+    addEntry("Interface","info","display","Stream cleared by user · previous entries retained in session file","LogStreamPanel.cpp:88");
+});
+function copyText(t){
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(t).catch(()=>{});
+}
+function flashPill(el,text){
+    const old=el.textContent; el.textContent=text; el.classList.add("live");
+    setTimeout(()=>{el.textContent=old; el.classList.remove("live");},1100);
+}
+$("btnExport").addEventListener("click",()=>{
+    const text=state.entries.filter(passes).map(plainEntry).join("\n");
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([text],{type:"text/plain"}));
+    a.download="FrontierLogStream.log"; a.click(); URL.revokeObjectURL(a.href);
+});
+$("btnPopout").addEventListener("click",()=>{
+    $("btnPopout").classList.add("active"); setTimeout(()=>$("btnPopout").classList.remove("active"),350);
+});
+$("miCopyAll").addEventListener("click",()=>{copyText(state.entries.filter(passes).map(plainEntry).join("\n")); closeMenus();});
+$("miSave").addEventListener("click",()=>{closeMenus(); $("btnExport").click();});
+$("miWrap").addEventListener("click",()=>{
+    state.wrap=!state.wrap;
+    $("logPanel").classList.toggle("wrap",state.wrap);
+    $("miWrap").setAttribute("aria-checked",String(state.wrap));
+});
+$("miCollapse").addEventListener("click",()=>{
+    state.collapse=!state.collapse;
+    $("miCollapse").setAttribute("aria-checked",String(state.collapse));
+    if(!state.collapse) state.lastByKey.clear();
+});
+$("miTimeMode").addEventListener("click",()=>{
+    state.timeMode = state.timeMode==="wall"? "session":"wall";
+    $("timeModeState").textContent = state.timeMode==="wall"? "Wall clock":"Session";
+    applyFilters();
+});
+function setFollow(f){
+    state.follow=f;
+    $("btnFollow").setAttribute("aria-pressed",String(f));
+    $("btnFollow").lastChild.textContent=f?"Following":"Follow";
+    if(f) scrollToEnd(true); else syncNewPill();
+}
+$("btnFollow").addEventListener("click",()=>setFollow(!state.follow));
+$("newPill").addEventListener("click",()=>setFollow(true));
+streamEl.addEventListener("scroll",()=>{
+    const nearEnd = streamEl.scrollHeight - streamEl.scrollTop - streamEl.clientHeight < 60;
+    if(nearEnd && !state.follow){ state.newBelow=0; syncNewPill(); }
+    if(!nearEnd && state.follow) setFollow(false);
+});
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        SPARKLINE + SCRUBBER
+   ------------------------------------------------------------------------------------------------------------------------ */
+function fitCanvas(cv){
+    const r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+    const w=Math.max(50,Math.round(r.width)), h=Math.max(20,Math.round(r.height||cv.height));
+    if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr; cv.height=h*dpr;}
+    const ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+    return {ctx,w,h};
+}
+function drawSpark(){
+    const {ctx,w,h}=fitCanvas($("spark"));
+    const data=state.rateBuckets, max=Math.max(6,...data)*1.25;
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle="rgba(255,255,255,.13)"; ctx.setLineDash([3,4]); ctx.lineWidth=1;
+    const threshY=h-(h-6)*(.66);
+    ctx.beginPath(); ctx.moveTo(0,threshY); ctx.lineTo(w,threshY); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath();
+    data.forEach((v,i)=>{
+        const x=(i/(data.length-1))*w, y=h-3-((h-9)*(v/max));
+        i? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.strokeStyle="rgba(238,243,240,.85)"; ctx.lineWidth=1.4; ctx.stroke();
+    ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath();
+    ctx.fillStyle="rgba(47,230,167,.07)"; ctx.fill();
+    const last=data[data.length-1];
+    const ly=h-3-((h-9)*(last/max));
+    ctx.beginPath(); ctx.arc(w-2,ly,2.6,0,7); ctx.fillStyle="#2fe6a7"; ctx.fill();
+}
+function drawScrubber(){
+    const {ctx,w,h}=fitCanvas($("scrubber"));
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle="rgba(255,255,255,.1)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,h/2); ctx.lineTo(w,h/2); ctx.stroke();
+    const buckets=state.scrubBuckets, bw=Math.max(2,w/160);
+    buckets.forEach((b,i)=>{
+        const x=w-(buckets.length-i)*bw;
+        if(x<0) return;
+        const hh=4+Math.min(9,b.n);
+        ctx.fillStyle= b.sev===2? "rgba(255,109,109,.9)" : b.sev===1? "rgba(255,180,84,.85)" : "rgba(255,255,255,.22)";
+        ctx.fillRect(x,(h-hh)/2,Math.max(1,bw-1),hh);
+    });
+    ctx.fillStyle="#2fe6a7"; ctx.fillRect(w-2,3,2,h-6);
+}
+
+/* ------------------------------------------------------------------------------------------------------------------------
+                                                        GENERATOR + CLOCKS
+   ------------------------------------------------------------------------------------------------------------------------ */
+function randomEntry(){
+    const channel=pick(channelNames().concat(["Render","Illumination","Physics","Vehicle"]));  // engine-weighted; user categories share the remainder
+    const pool=POOL[channel]||GENERIC_POOL;
+    const [sev,verb,fn]=pick(pool.msgs);
+    const src=pick(pool.src)+":"+RI(24,980);
+    addEntry(channel,sev,verb,fn(),src);
+}
+function schedule(){
+    if(!state.paused){
+        randomEntry();
+        if(Math.random()<.16) randomEntry();                    // small bursts
+        if(Math.random()<.045){ const n=RI(4,9); for(let i=0;i<n;i++) randomEntry(); }
+    }
+    setTimeout(schedule, RI(240,780));
+}
+setInterval(()=>{                                                   // 1 s: clocks, rate, scrubber
+    state.rateBuckets.push(0); state.rateBuckets.shift();
+    const now=Date.now();
+    const cur=state.rateBuckets[state.rateBuckets.length-2]||0;
+    state.peakRate=Math.max(state.peakRate,cur);
+    $("sparkNow").textContent=cur; $("sparkPeak").textContent=state.peakRate;
+    $("mRate").textContent=`+${cur}/s`;
+    const sev = state.errTimes.some(t=>now-t<1000)?2 : state.warnTimes.some(t=>now-t<1000)?1:0;
+    state.scrubBuckets.push({n:cur,sev}); if(state.scrubBuckets.length>300) state.scrubBuckets.shift();
+    drawSpark(); drawScrubber();
+    const el=Math.floor((now-T0)/1000);
+    $("footSession").textContent=`${String(Math.floor(el/60)).padStart(2,"0")}:${String(el%60).padStart(2,"0")}`;
+    refreshCounters();
+},1000);
+setInterval(()=>{                                                   // header clock
+    const p=timeParts(Date.now());
+    $("headClock").innerHTML=`${p.main}<span class="ms">${p.ms}</span>`;
+},47);
+window.addEventListener("resize",()=>{drawSpark();drawScrubber();});
+
+/* boot */
+BOOT.forEach((b,i)=>setTimeout(()=>addEntry(b[0],b[1],b[2],b[3],b[4]), 120+i*130));
+setTimeout(()=>addEntry("Render","warning","warning","Descriptor pool 81% full · pool 3 will grow at next reset","Device.cpp:640"),1500);
+setTimeout(()=>addEntry("Illumination","error","error","NaN in reservoir stream at tile (141, 63) · reservoir reset for tile","ReservoirTemporal.slang:218"),2600);
+setTimeout(()=>addEntry("Foliage","info","display","Leaf cluster detached · 22 leaves · gust 5.8 m/s","FoliageCanopy.cpp:164"),1950);
+setTimeout(()=>addEntry("Gameplay","info","display","Checkpoint reached · split 2 · 01:12.441","RaceSession.cpp:87"),3300);
+setTimeout(schedule,1400);
+syncChips(); syncChannelMenu(); refreshCounters(); drawSpark(); drawScrubber();
+</script>
+</body>
+</html>

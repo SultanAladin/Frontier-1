@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Scene Directory Variants V · Structure-Is-Geometry Family</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#5b8cff;
+    --bg-panel:#0d0d0f;
+    --border:#1c1c20;
+    --border-soft:#161618;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --panel-bg:     #131315;
+    --value-bg:     #232326;
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --rail-bg:      #08080a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  html{ background:#050506; overflow:hidden }
+  body{
+    background:#050506;
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--text); -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; height:100vh; width:100vw; overflow:hidden;
+    user-select:none;
+  }
+  .picker{ flex:0 0 auto; height:44px; display:flex; align-items:center; gap:8px;
+    padding:0 14px; background:var(--rail-bg); border-bottom:1px solid var(--border) }
+  .picker .brand{ font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700;
+    color:var(--text-faint); margin-right:6px }
+  .pk{ display:flex; align-items:center; gap:7px; height:28px; padding:0 12px;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:8px;
+    color:var(--text-dim); font-size:12px; font-family:inherit; cursor:pointer; transition:.13s }
+  .pk:hover{ color:var(--text); border-color:#2e2e38 }
+  .pk.on{ background:color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color:var(--accent); color:var(--text-primary) }
+  .pk .num{ font-weight:700; opacity:.6; font-size:10.5px }
+  .picker .hint{ margin-left:auto; font-size:11px; color:var(--text-faint) }
+  .picker .hint kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:10px; color:var(--text-dim) }
+
+  .stage{ position:relative; flex:1; min-height:0; overflow:hidden; background:#0b0b0d }
+  .grid-floor{ position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size:26px 26px,26px 26px,130px 130px,130px 130px;
+    mask-image:radial-gradient(ellipse 78% 68% at 50% 52%, #000 32%, transparent 100%) }
+  .stage-glow{ position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse 60% 50% at 50% 45%, rgba(91,140,255,.055), transparent 70%) }
+  .vlabel{ position:absolute; left:16px; bottom:14px; z-index:4; pointer-events:none;
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:#33333a; font-weight:700 }
+  .vlabel em{ font-style:normal; color:#27272d; letter-spacing:.4px; text-transform:none;
+    display:block; margin-top:4px; font-weight:400; font-size:11px; max-width:420px; line-height:1.55 }
+  .variant{ display:none } .variant.live{ display:block }
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#1e1e22;border-radius:4px}
+
+  /* ══ the scene ══ */
+  .scene-body{ position:absolute; transform:translate(-50%,-50%); display:grid; place-items:center;
+    cursor:pointer; transition:opacity .25s }
+  .sb-form{ border:1.5px solid rgba(140,150,170,.30); border-radius:5px;
+    background:linear-gradient(150deg, rgba(150,160,185,.10), rgba(120,130,155,.03));
+    transition:.2s }
+  .scene-body:hover .sb-form{ border-color:rgba(140,150,170,.55) }
+  .scene-body.sel .sb-form{ border-color:var(--accent);
+    background:linear-gradient(150deg, rgba(91,140,255,.16), rgba(91,140,255,.03));
+    box-shadow:0 0 30px rgba(91,140,255,.20) }
+  .scene-body.hid{ opacity:.15 }
+  .scene-body.faded{ opacity:.20 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ① ENGRAVED — the name is cut INTO the face of the body. No leader, no margin,
+        no container: the label lives at the body's own centre, scaled to its extent.
+        Enclosure shows as a kerf line along the shared edge of co-grouped bodies.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .en-face{ position:absolute; z-index:14; transform:translate(-50%,-50%); pointer-events:none;
+    text-align:center; line-height:1.15 }
+  .en-face .ef-nm{ font-weight:700; letter-spacing:.2px;
+    color:rgba(232,232,240,.13);
+    text-shadow:0 1px 0 rgba(255,255,255,.055), 0 -1px 0 rgba(0,0,0,.55) }
+  .en-face.sel .ef-nm{ color:rgba(150,185,255,.62);
+    text-shadow:0 0 12px rgba(91,140,255,.45), 0 -1px 0 rgba(0,0,0,.5) }
+  .en-face .ef-sub{ font-size:7.5px; letter-spacing:1.5px; text-transform:uppercase;
+    font-weight:700; color:rgba(232,232,240,.085); margin-top:2px }
+  .en-face.sel .ef-sub{ color:rgba(150,185,255,.34) }
+  .en-kerf{ position:absolute; z-index:9; pointer-events:none; border-radius:2px;
+    border:1px dashed rgba(255,255,255,.055) }
+  .en-kerf.sel{ border-color:rgba(91,140,255,.26) }
+  .en-stamp{ position:absolute; z-index:10; pointer-events:none;
+    font-size:8px; letter-spacing:2.2px; text-transform:uppercase; font-weight:700;
+    color:rgba(255,255,255,.09) }
+  .en-stamp.sel{ color:rgba(91,140,255,.44) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ② SHADOW CAST — every body throws a shadow onto the ground plane, and the
+        DIRECTORY IS THE SHADOWS. Grouped bodies cast into one pooled silhouette
+        that carries the group name. Read the floor, not a panel.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .sc-pool{ position:absolute; z-index:6; pointer-events:auto; cursor:pointer;
+    border-radius:50% / 34%; transition:.2s;
+    background:radial-gradient(ellipse at 50% 40%, rgba(0,0,0,.62), rgba(0,0,0,.18) 68%, transparent);
+    border:1px solid rgba(255,255,255,.045) }
+  .sc-pool:hover{ border-color:rgba(255,255,255,.13) }
+  .sc-pool.sel{ border-color:rgba(91,140,255,.42);
+    background:radial-gradient(ellipse at 50% 40%, rgba(20,40,90,.66), rgba(91,140,255,.10) 68%, transparent) }
+  .sc-plabel{ position:absolute; z-index:8; transform:translate(-50%,-50%); pointer-events:none;
+    font-size:10px; letter-spacing:1.7px; text-transform:uppercase; font-weight:700;
+    color:rgba(180,190,210,.34); white-space:nowrap }
+  .sc-plabel.sel{ color:var(--accent) }
+  .sc-plabel span{ display:block; margin-top:3px; letter-spacing:.6px; text-transform:none;
+    font-weight:400; font-size:9.5px; color:rgba(140,150,170,.30) }
+  .sc-drop{ position:absolute; z-index:7; pointer-events:auto; cursor:pointer;
+    border-radius:50% / 40%; transition:.18s;
+    background:radial-gradient(ellipse at 50% 45%, rgba(0,0,0,.72), transparent 72%) }
+  .sc-drop:hover{ background:radial-gradient(ellipse at 50% 45%, rgba(60,80,130,.66), transparent 72%) }
+  .sc-dname{ position:absolute; z-index:9; transform:translate(-50%,0); pointer-events:none;
+    font-size:9.5px; font-weight:500; color:rgba(160,170,190,.40); white-space:nowrap }
+  .sc-dname.sel{ color:var(--accent); font-weight:600 }
+  .sc-dname.hid{ text-decoration:line-through; opacity:.4 }
+  .sc-stem{ position:absolute; z-index:6; width:1px; pointer-events:none;
+    background:linear-gradient(rgba(255,255,255,0), rgba(255,255,255,.10)) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ③ EXPLODE — drag one slider and the assembly separates along its OWN nesting.
+        At 0 it is the model. At 1 every group has flown apart and each part sits
+        alone with its name. The directory is the disassembly.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .ex-scrub{ position:absolute; z-index:22; left:50%; bottom:18px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:11px; padding:7px 14px;
+    background:rgba(10,10,12,.72); backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--border); border-radius:20px }
+  .ex-scrub .exs-t{ font-size:9px; letter-spacing:1.6px; text-transform:uppercase;
+    font-weight:700; color:var(--text-faint) }
+  .ex-scrub input{ width:186px; accent-color:var(--accent); background:transparent }
+  .ex-scrub .exs-v{ font-size:10.5px; font-weight:700; color:var(--accent);
+    font-variant-numeric:tabular-nums; min-width:30px; text-align:right }
+  .ex-body{ position:absolute; transform:translate(-50%,-50%); display:grid; place-items:center;
+    cursor:pointer; z-index:12 }
+  .ex-body .exb-form{ border:1.5px solid rgba(140,150,170,.32); border-radius:5px;
+    background:linear-gradient(150deg, rgba(150,160,185,.10), rgba(120,130,155,.03)) }
+  .ex-body:hover .exb-form{ border-color:rgba(140,150,170,.6) }
+  .ex-body.sel .exb-form{ border-color:var(--accent);
+    background:linear-gradient(150deg, rgba(91,140,255,.16), rgba(91,140,255,.03));
+    box-shadow:0 0 26px rgba(91,140,255,.22) }
+  .ex-body.hid{ opacity:.16 }
+  .ex-name{ position:absolute; z-index:15; transform:translate(-50%,0); pointer-events:none;
+    font-size:10px; font-weight:500; white-space:nowrap; color:var(--text-dim);
+    transition:opacity .2s }
+  .ex-name.sel{ color:var(--accent); font-weight:600 }
+  .ex-trail{ position:absolute; z-index:8; height:1px; transform-origin:0 50%;
+    pointer-events:none; background:linear-gradient(90deg,
+      rgba(91,140,255,.30), rgba(91,140,255,.04)) }
+  .ex-gtag{ position:absolute; z-index:14; transform:translate(-50%,-50%); pointer-events:none;
+    font-size:9px; letter-spacing:1.8px; text-transform:uppercase; font-weight:700;
+    color:rgba(150,160,185,.34); white-space:nowrap; transition:opacity .2s }
+  .ex-hull{ position:absolute; z-index:7; pointer-events:none; border-radius:12px;
+    border:1px dashed rgba(255,255,255,.07); transition:opacity .2s }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ④ WIREFRAME LABEL — bodies render as measured drafting objects: each carries a
+        dimension-style witness bar under it bearing the name, exactly the width of
+        the body. Enclosure = a bracketing span bar one level below.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .wf-wit{ position:absolute; z-index:13; pointer-events:auto; cursor:pointer;
+    height:14px; display:flex; align-items:flex-start; justify-content:center }
+  .wf-wit .wfw-bar{ position:absolute; left:0; right:0; top:0; height:1px;
+    background:rgba(255,255,255,.20) }
+  .wf-wit .wfw-cap{ position:absolute; top:-3px; width:1px; height:7px;
+    background:rgba(255,255,255,.20) }
+  .wf-wit .wfw-cap.l{ left:0 } .wf-wit .wfw-cap.r{ right:0 }
+  .wf-wit .wfw-nm{ position:absolute; top:3px; white-space:nowrap; font-size:9.5px;
+    font-weight:500; color:var(--text-faint); padding:0 4px; background:#0b0b0d;
+    transition:.14s }
+  .wf-wit:hover .wfw-nm{ color:var(--text) }
+  .wf-wit.sel .wfw-bar,.wf-wit.sel .wfw-cap{ background:var(--accent) }
+  .wf-wit.sel .wfw-nm{ color:var(--accent); font-weight:600 }
+  .wf-wit.hid .wfw-nm{ opacity:.42; text-decoration:line-through }
+  .wf-span{ position:absolute; z-index:12; pointer-events:auto; cursor:pointer; height:16px }
+  .wf-span .wfs-bar{ position:absolute; left:0; right:0; top:8px; height:1px;
+    background:rgba(255,255,255,.11) }
+  .wf-span .wfs-arm{ position:absolute; top:0; width:1px; height:9px;
+    background:rgba(255,255,255,.11) }
+  .wf-span .wfs-arm.l{ left:0 } .wf-span .wfs-arm.r{ right:0 }
+  .wf-span .wfs-nm{ position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    white-space:nowrap; font-size:8.5px; letter-spacing:1.5px; text-transform:uppercase;
+    font-weight:700; color:#3a3a42; padding:0 5px; background:#0b0b0d; transition:.14s }
+  .wf-span:hover .wfs-nm{ color:var(--text-dim) }
+  .wf-span.sel .wfs-bar,.wf-span.sel .wfs-arm{ background:rgba(91,140,255,.55) }
+  .wf-span.sel .wfs-nm{ color:var(--accent) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑤ CONTOUR RINGS — enclosure drawn as topographic contours around the geometry.
+        A body inside two groups sits inside two rings. Names ride the ring itself,
+        following the curve. Pure figure-ground, no rows anywhere.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .cr-svg{ position:absolute; inset:0; z-index:9; pointer-events:none; overflow:visible }
+  .cr-svg .crs-ring{ fill:none; stroke:rgba(255,255,255,.085); stroke-width:1;
+    pointer-events:stroke; cursor:pointer; transition:.18s }
+  .cr-svg .crs-ring:hover{ stroke:rgba(255,255,255,.26) }
+  .cr-svg .crs-ring.sel{ stroke:rgba(91,140,255,.62); stroke-width:1.4 }
+  .cr-svg .crs-fill{ fill:rgba(255,255,255,.011); pointer-events:none }
+  .cr-svg .crs-fill.sel{ fill:rgba(91,140,255,.055) }
+  .cr-svg text{ font-family:'Archivo',sans-serif; font-size:8.5px; font-weight:700;
+    letter-spacing:2.4px; text-transform:uppercase; fill:rgba(255,255,255,.20);
+    pointer-events:none }
+  .cr-svg text.sel{ fill:var(--accent) }
+  .cr-leaf{ position:absolute; z-index:15; transform:translate(-50%,-50%);
+    pointer-events:none; font-size:9px; font-weight:600; white-space:nowrap;
+    color:rgba(200,208,225,.42) }
+  .cr-leaf.sel{ color:var(--accent) }
+  .cr-leaf.hid{ opacity:.34; text-decoration:line-through }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑥ WEIGHT GLOW — no text at rest at all. Each body's OWN rim brightness encodes
+        its depth; groups pulse as one when touched. Hold Alt to bloom every name
+        directly on its body. The directory is a lighting model.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .wg-body{ position:absolute; transform:translate(-50%,-50%); display:grid; place-items:center;
+    cursor:pointer; z-index:12 }
+  .wg-body .wgb-form{ border-radius:5px; transition:.22s;
+    background:linear-gradient(150deg, rgba(150,160,185,.07), rgba(120,130,155,.02)) }
+  .wg-body.co .wgb-form{ border-color:rgba(91,140,255,.55) !important;
+    background:linear-gradient(150deg, rgba(91,140,255,.11), rgba(91,140,255,.02));
+    box-shadow:0 0 22px rgba(91,140,255,.16) }
+  .wg-body.sel .wgb-form{ border-color:var(--accent) !important;
+    background:linear-gradient(150deg, rgba(91,140,255,.20), rgba(91,140,255,.04));
+    box-shadow:0 0 34px rgba(91,140,255,.30) }
+  .wg-body.hid{ opacity:.15 }
+  .wg-nm{ position:absolute; z-index:16; transform:translate(-50%,-50%); pointer-events:none;
+    font-size:9.5px; font-weight:600; white-space:nowrap; color:var(--text-primary);
+    text-shadow:0 1px 4px rgba(0,0,0,.9), 0 0 10px rgba(0,0,0,.8);
+    opacity:0; transition:opacity .16s }
+  .wg-nm.up{ opacity:1 }
+  .wg-nm.sel{ color:var(--accent) }
+  .wg-depth{ position:absolute; z-index:20; right:16px; top:16px; pointer-events:none;
+    display:flex; flex-direction:column; gap:5px; align-items:flex-end }
+  .wg-depth .wgd-r{ display:flex; align-items:center; gap:7px; font-size:8.5px;
+    letter-spacing:1.5px; text-transform:uppercase; font-weight:700; color:#31313a }
+  .wg-depth .wgd-sw{ width:16px; height:3px; border-radius:2px }
+  .wg-hint{ position:absolute; z-index:20; left:50%; bottom:18px; transform:translateX(-50%);
+    pointer-events:none; font-size:10px; color:#3a3a42 }
+  .wg-hint kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:9.5px; color:var(--text-dim) }
+</style>
+</head>
+<body>
+
+<div class="picker">
+  <div class="brand">Scene Directory · V</div>
+  <button class="pk on" data-pick="engraved"><span class="num">1</span> Engraved</button>
+  <button class="pk" data-pick="shadow"><span class="num">2</span> Shadow cast</button>
+  <button class="pk" data-pick="explode"><span class="num">3</span> Explode</button>
+  <button class="pk" data-pick="wireframe"><span class="num">4</span> Witness bars</button>
+  <button class="pk" data-pick="contour"><span class="num">5</span> Contour rings</button>
+  <button class="pk" data-pick="weight"><span class="num">6</span> Weight glow</button>
+  <div class="hint">structure <em style="font-style:normal;color:#4a4a54">is</em> the geometry &nbsp;·&nbsp; <kbd>1</kbd>–<kbd>6</kbd></div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="g-scene"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".55"/></g>
+  <g id="g-folder"><path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h7A1.5 1.5 0 0119 9v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 013 17.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
+  <g id="g-solid"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-cylinder"><ellipse cx="12" cy="6.5" rx="7" ry="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 6.5v11c0 1.66 3.13 3 7 3s7-1.34 7-3v-11" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-sphere"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".65"/></g>
+  <g id="g-cone"><path d="M12 3l7.5 15h-15z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-sketch"><path d="M4 20c3-1 5-3.5 6.5-7S13 6 16 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4" cy="20" r="1.7" fill="currentColor"/><circle cx="16" cy="4" r="1.7" fill="currentColor"/></g>
+  <g id="g-revolve"><path d="M12 3v18" stroke="currentColor" stroke-width="1.4" opacity=".55" stroke-dasharray="2.5 2.5"/><path d="M12 5c4 0 7 3.1 7 7s-3 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9 7l3-2 3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></g>
+  <g id="g-loft"><path d="M4 18h16M7 6h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 18L7 6M20 18L17 6" stroke="currentColor" stroke-width="1.5"/></g>
+  <g id="g-eye"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></g>
+  <g id="g-eye-off"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></g>
+</defs></svg>
+
+<div class="stage" id="stage">
+  <div class="grid-floor"></div>
+  <div class="stage-glow"></div>
+
+  <!-- shared scene, used by ①②④⑤ (③ and ⑥ draw their own bodies) -->
+  <div id="sceneMount" style="position:absolute;inset:0;z-index:10"></div>
+
+  <div class="variant live" id="v-engraved"><div id="engravedMount" style="position:absolute;inset:0"></div></div>
+  <div class="variant" id="v-shadow"><div id="shadowMount" style="position:absolute;inset:0"></div></div>
+  <div class="variant" id="v-explode"><div id="explodeMount" style="position:absolute;inset:0"></div></div>
+  <div class="variant" id="v-wireframe"><div id="wireframeMount" style="position:absolute;inset:0"></div></div>
+  <div class="variant" id="v-contour"><div id="contourMount" style="position:absolute;inset:0"></div></div>
+  <div class="variant" id="v-weight"><div id="weightMount" style="position:absolute;inset:0"></div></div>
+
+  <div class="vlabel" id="vlabel"></div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   DIRECTORY STORE — identical shape to rounds II–IV so every variant ports together.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TokenCounter = 0;
+const IssueToken = () => 'n' + (++TokenCounter);
+
+const DirectoryRoot = [
+  { RecordToken:IssueToken(), Label:'Part', Classification:'scene', ViewportAnchor:[.50,.14], FormExtent:0, SubtreeRegion:[
+
+    { RecordToken:IssueToken(), Label:'BODY_Bracket', Classification:'folder', ViewportAnchor:[.31,.44], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Plate', Classification:'solid',    ViewportAnchor:[.25,.34], FormExtent:76, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Boss',  Classification:'cylinder', ViewportAnchor:[.38,.28], FormExtent:52, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Rib',   Classification:'solid',    ViewportAnchor:[.28,.56], FormExtent:44, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'FIL_Edges', Classification:'revolve',  ViewportAnchor:[.40,.51], FormExtent:38, VisibilityEnabled:false, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'BODY_Housing', Classification:'folder', ViewportAnchor:[.69,.42], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Wall', Classification:'solid',  ViewportAnchor:[.64,.34], FormExtent:80, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Dome', Classification:'sphere', ViewportAnchor:[.76,.29], FormExtent:56, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'LFT_Neck', Classification:'loft',   ViewportAnchor:[.71,.53], FormExtent:46, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'Sketches', Classification:'folder', ViewportAnchor:[.49,.73], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SK_BasePlate', Classification:'sketch', ViewportAnchor:[.43,.74], FormExtent:36, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SK_BoltHoles', Classification:'sketch', ViewportAnchor:[.55,.79], FormExtent:30, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'SOL_Spindle', Classification:'cylinder', ViewportAnchor:[.85,.68], FormExtent:40, VisibilityEnabled:false, SubtreeRegion:[] },
+    { RecordToken:IssueToken(), Label:'CON_Taper',   Classification:'cone',     ViewportAnchor:[.16,.72], FormExtent:44, SubtreeRegion:[] },
+  ]},
+];
+
+function TraverseDirectory(Region, Visit, EnclosureEntry=null, DepthTier=0){
+  for(const Entry of Region){
+    Visit(Entry, EnclosureEntry, DepthTier);
+    if(Entry.SubtreeRegion) TraverseDirectory(Entry.SubtreeRegion, Visit, Entry, DepthTier+1);
+  }
+}
+function ResolveEntry(Token, Region=DirectoryRoot, EnclosureEntry=null){
+  for(const Entry of Region){
+    if(Entry.RecordToken===Token) return { Entry, EnclosureEntry };
+    if(Entry.SubtreeRegion){
+      const Found = ResolveEntry(Token, Entry.SubtreeRegion, Entry);
+      if(Found) return Found;
+    }
+  }
+  return null;
+}
+function ResolveEnclosurePath(Token){
+  const Path = [];
+  (function Descend(Region, Trail){
+    for(const Entry of Region){
+      const Extended = Trail.concat(Entry);
+      if(Entry.RecordToken===Token){ Path.push(...Extended); return true; }
+      if(Entry.SubtreeRegion && Descend(Entry.SubtreeRegion, Extended)) return true;
+    }
+    return false;
+  })(DirectoryRoot, []);
+  return Path;
+}
+function ResolveDepthTier(Token){
+  let Found = 0;
+  TraverseDirectory(DirectoryRoot, (Entry, _Enclosure, DepthTier)=>{
+    if(Entry.RecordToken===Token) Found = DepthTier;
+  });
+  return Found;
+}
+const GroupCondition   = (Entry)=> !!(Entry.SubtreeRegion && Entry.SubtreeRegion.length);
+const VisibleCondition = (Entry)=> Entry.VisibilityEnabled !== false;
+const GlyphMarkup = (Classification, Size=15)=>
+  `<svg width="${Size}" height="${Size}" viewBox="0 0 24 24"><use href="#g-${Classification}"/></svg>`;
+
+function EnumerateRenderableBodies(){
+  const Bodies = [];
+  TraverseDirectory(DirectoryRoot, (Entry)=>{ if(Entry.FormExtent) Bodies.push(Entry); });
+  return Bodies;
+}
+function SubtreeBodies(Entry){
+  const Bodies = [];
+  TraverseDirectory([Entry], (Candidate)=>{ if(Candidate.FormExtent) Bodies.push(Candidate); });
+  return Bodies;
+}
+const StageBounds = ()=> document.getElementById('stage').getBoundingClientRect();
+function AnchorPixels(Entry){
+  const Bounds = StageBounds();
+  return { X:Entry.ViewportAnchor[0]*Bounds.width, Y:Entry.ViewportAnchor[1]*Bounds.height };
+}
+function CentroidPixels(Entry){
+  const Bodies = SubtreeBodies(Entry);
+  const Bounds = StageBounds();
+  if(!Bodies.length) return AnchorPixels(Entry);
+  return {
+    X: Bodies.reduce((Total,Body)=>Total+Body.ViewportAnchor[0],0)/Bodies.length*Bounds.width,
+    Y: Bodies.reduce((Total,Body)=>Total+Body.ViewportAnchor[1],0)/Bodies.length*Bounds.height,
+  };
+}
+/* screen-space bounding box of everything beneath an entry */
+function EnclosureExtent(Entry, Padding=0){
+  const Bodies = SubtreeBodies(Entry);
+  if(!Bodies.length){
+    const Solo = AnchorPixels(Entry);
+    return { X:Solo.X-Padding, Y:Solo.Y-Padding, W:Padding*2, H:Padding*2 };
+  }
+  let MinX=Infinity, MinY=Infinity, MaxX=-Infinity, MaxY=-Infinity;
+  for(const Body of Bodies){
+    const Anchor = AnchorPixels(Body); const Half = Body.FormExtent/2;
+    MinX=Math.min(MinX,Anchor.X-Half); MaxX=Math.max(MaxX,Anchor.X+Half);
+    MinY=Math.min(MinY,Anchor.Y-Half); MaxY=Math.max(MaxY,Anchor.Y+Half);
+  }
+  return { X:MinX-Padding, Y:MinY-Padding, W:(MaxX-MinX)+Padding*2, H:(MaxY-MinY)+Padding*2 };
+}
+
+let SelectedToken = null;
+function ApplySelection(Token){ SelectedToken = Token; RenderScene(); RenderActiveVariant(); }
+function ToggleVisibility(Token){
+  const Resolved = ResolveEntry(Token);
+  if(!Resolved) return;
+  Resolved.Entry.VisibilityEnabled = !VisibleCondition(Resolved.Entry);
+  RenderScene(); RenderActiveVariant();
+}
+
+/* ══ scene render (shared by ①②④⑤) ══ */
+const FormShape = {
+  solid:    (E)=>({ w:E, h:E, r:'5px', tf:'rotate(45deg) skewY(-12deg)' }),
+  cylinder: (E)=>({ w:E*.72, h:E, r:`${E*.36}px / 14px`, tf:'none' }),
+  sphere:   (E)=>({ w:E, h:E, r:'50%', tf:'none' }),
+  cone:     (E)=>({ w:E, h:E, r:'4px', tf:'rotate(45deg)' }),
+  sketch:   (E)=>({ w:E, h:E*.62, r:'3px', tf:'skewX(-16deg)' }),
+  revolve:  (E)=>({ w:E, h:E*.8, r:'40% 40% 12% 12%', tf:'none' }),
+  loft:     (E)=>({ w:E*.8, h:E, r:'30% 30% 8% 8%', tf:'none' }),
+};
+const OwnDrawnScene = new Set(['explode','weight']);
+
+function RenderScene(){
+  const Mount = document.getElementById('sceneMount');
+  Mount.innerHTML = '';
+  Mount.style.display = OwnDrawnScene.has(ActiveVariant) ? 'none' : 'block';
+  if(OwnDrawnScene.has(ActiveVariant)) return;
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Shape = (FormShape[Entry.Classification]||FormShape.solid)(Entry.FormExtent);
+    const Body = document.createElement('div');
+    Body.className = 'scene-body'
+      + (Entry.RecordToken===SelectedToken ? ' sel' : '')
+      + (VisibleCondition(Entry) ? '' : ' hid');
+    Body.style.left = Anchor.X+'px'; Body.style.top = Anchor.Y+'px';
+    Body.innerHTML = `<div class="sb-form" style="width:${Shape.w}px;height:${Shape.h}px;
+      border-radius:${Shape.r};transform:${Shape.tf}"></div>`;
+    Body.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Body);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ① ENGRAVED — the label is cut into the body's own face.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderEngraved(){
+  const Mount = document.getElementById('engravedMount');
+  Mount.innerHTML = '';
+
+  /* kerf: a dashed hull along each group's extent, stamped with the group name */
+  for(const TopEntry of DirectoryRoot[0].SubtreeRegion){
+    if(!GroupCondition(TopEntry)) continue;
+    const Frame = EnclosureExtent(TopEntry, 15);
+    const Selected = TopEntry.RecordToken===SelectedToken;
+
+    const Kerf = document.createElement('div');
+    Kerf.className = 'en-kerf' + (Selected ? ' sel' : '');
+    Kerf.style.left = Frame.X+'px'; Kerf.style.top = Frame.Y+'px';
+    Kerf.style.width = Frame.W+'px'; Kerf.style.height = Frame.H+'px';
+    Mount.appendChild(Kerf);
+
+    const Stamp = document.createElement('div');
+    Stamp.className = 'en-stamp' + (Selected ? ' sel' : '');
+    Stamp.style.left = (Frame.X+3)+'px'; Stamp.style.top = (Frame.Y-12)+'px';
+    Stamp.textContent = TopEntry.Label;
+    Mount.appendChild(Stamp);
+  }
+
+  /* engrave each body's name into its face, sized to the body */
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Selected = Entry.RecordToken===SelectedToken;
+    /* the name must fit the face: scale type to extent, clamp to a legible floor */
+    const TypeSize = Math.max(7, Math.min(13, Entry.FormExtent * 0.155));
+
+    const Face = document.createElement('div');
+    Face.className = 'en-face' + (Selected ? ' sel' : '');
+    Face.style.left = Anchor.X+'px'; Face.style.top = Anchor.Y+'px';
+    Face.style.maxWidth = (Entry.FormExtent*1.15)+'px';
+    /* strip the classification prefix — the shape already says what it is */
+    const ShortLabel = Entry.Label.replace(/^(SOL|FIL|LFT|SK|CON)_/, '');
+    Face.innerHTML =
+      `<div class="ef-nm" style="font-size:${TypeSize}px">${ShortLabel}</div>` +
+      (Entry.FormExtent >= 44 ? `<div class="ef-sub">${Entry.Classification}</div>` : '');
+    Mount.appendChild(Face);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ② SHADOW CAST — the directory lives in the shadows on the ground plane.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const ShadowFall = 58;   /* how far below a body its shadow lands */
+
+function RenderShadowCast(){
+  const Mount = document.getElementById('shadowMount');
+  Mount.innerHTML = '';
+
+  /* one pooled silhouette per group, carrying the group name + count */
+  for(const TopEntry of DirectoryRoot[0].SubtreeRegion){
+    if(!GroupCondition(TopEntry)) continue;
+    const Frame = EnclosureExtent(TopEntry, 16);
+    const Selected = TopEntry.RecordToken===SelectedToken;
+    const Bodies = SubtreeBodies(TopEntry);
+
+    const PoolY = Frame.Y + Frame.H + ShadowFall - 26;
+    const Pool = document.createElement('div');
+    Pool.className = 'sc-pool' + (Selected ? ' sel' : '');
+    Pool.style.left = Frame.X+'px'; Pool.style.top = PoolY+'px';
+    Pool.style.width = Frame.W+'px'; Pool.style.height = '46px';
+    Pool.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(TopEntry.RecordToken); };
+    Mount.appendChild(Pool);
+
+    const Label = document.createElement('div');
+    Label.className = 'sc-plabel' + (Selected ? ' sel' : '');
+    Label.style.left = (Frame.X + Frame.W/2)+'px';
+    Label.style.top  = (PoolY + 23)+'px';
+    Label.innerHTML = `${TopEntry.Label}<span>${Bodies.length} bodies</span>`;
+    Mount.appendChild(Label);
+  }
+
+  /* each body drops its own smaller shadow, named beneath it */
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Selected = Entry.RecordToken===SelectedToken;
+    const Visible  = VisibleCondition(Entry);
+    const DropW = Entry.FormExtent * .82;
+    const DropY = Anchor.Y + Entry.FormExtent/2 + ShadowFall*.42;
+
+    /* a faint stem ties the body down to its own shadow */
+    const Stem = document.createElement('div');
+    Stem.className = 'sc-stem';
+    Stem.style.left = Anchor.X+'px';
+    Stem.style.top  = (Anchor.Y + Entry.FormExtent/2)+'px';
+    Stem.style.height = (ShadowFall*.42)+'px';
+    Mount.appendChild(Stem);
+
+    const Drop = document.createElement('div');
+    Drop.className = 'sc-drop';
+    Drop.style.left = (Anchor.X - DropW/2)+'px'; Drop.style.top = DropY+'px';
+    Drop.style.width = DropW+'px'; Drop.style.height = (DropW*.30)+'px';
+    Drop.style.opacity = Visible ? '1' : '.25';
+    Drop.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Drop);
+
+    const Name = document.createElement('div');
+    Name.className = 'sc-dname' + (Selected ? ' sel' : '') + (Visible ? '' : ' hid');
+    Name.style.left = Anchor.X+'px'; Name.style.top = (DropY + DropW*.30 + 2)+'px';
+    Name.textContent = Entry.Label;
+    Mount.appendChild(Name);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ③ EXPLODE — one scrub separates the assembly along its own nesting.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let ExplodeAmount = 0;
+
+function RenderExplode(){
+  const Mount = document.getElementById('explodeMount');
+  Mount.innerHTML = '';
+  const Bounds = StageBounds();
+  const SceneCentre = { X:Bounds.width/2, Y:Bounds.height*.5 };
+  const GroupPush = 150, BodyPush = 66;
+
+  /* resolve every body's exploded position: groups fly out from the scene centre,
+     then bodies fly out from their own group's centroid. Two-stage, so the
+     disassembly mirrors the nesting exactly. */
+  const Placements = [];
+  for(const TopEntry of DirectoryRoot[0].SubtreeRegion){
+    const GroupHome = GroupCondition(TopEntry) ? CentroidPixels(TopEntry) : AnchorPixels(TopEntry);
+    const GroupAway = Math.atan2(GroupHome.Y - SceneCentre.Y, GroupHome.X - SceneCentre.X);
+    const GroupShift = {
+      X: Math.cos(GroupAway) * GroupPush * ExplodeAmount,
+      Y: Math.sin(GroupAway) * GroupPush * ExplodeAmount,
+    };
+
+    if(!GroupCondition(TopEntry)){
+      const Home = AnchorPixels(TopEntry);
+      Placements.push({ Entry:TopEntry, Home,
+        Spot:{ X:Home.X+GroupShift.X, Y:Home.Y+GroupShift.Y }, Group:null });
+      continue;
+    }
+
+    const Members = SubtreeBodies(TopEntry);
+    const GroupSpot = { X:GroupHome.X+GroupShift.X, Y:GroupHome.Y+GroupShift.Y };
+    for(const Member of Members){
+      const Home = AnchorPixels(Member);
+      const MemberAway = Math.atan2(Home.Y - GroupHome.Y, Home.X - GroupHome.X);
+      Placements.push({ Entry:Member, Home, Group:TopEntry, GroupSpot,
+        Spot:{
+          X: Home.X + GroupShift.X + Math.cos(MemberAway)*BodyPush*ExplodeAmount,
+          Y: Home.Y + GroupShift.Y + Math.sin(MemberAway)*BodyPush*ExplodeAmount,
+        }});
+    }
+
+    /* group hull + tag, both fading up only as the assembly opens */
+    const Frame = EnclosureExtent(TopEntry, 18);
+    const Hull = document.createElement('div');
+    Hull.className = 'ex-hull';
+    Hull.style.left = (Frame.X+GroupShift.X)+'px'; Hull.style.top = (Frame.Y+GroupShift.Y)+'px';
+    Hull.style.width = (Frame.W + BodyPush*ExplodeAmount*1.5)+'px';
+    Hull.style.height = (Frame.H + BodyPush*ExplodeAmount*1.5)+'px';
+    Hull.style.marginLeft = (-BodyPush*ExplodeAmount*.75)+'px';
+    Hull.style.marginTop  = (-BodyPush*ExplodeAmount*.75)+'px';
+    Hull.style.opacity = String(Math.min(1, ExplodeAmount*2.4));
+    Mount.appendChild(Hull);
+
+    const Tag = document.createElement('div');
+    Tag.className = 'ex-gtag';
+    Tag.style.left = GroupSpot.X+'px';
+    Tag.style.top  = (Frame.Y + GroupShift.Y - BodyPush*ExplodeAmount*.75 - 13)+'px';
+    Tag.style.opacity = String(Math.min(1, ExplodeAmount*2.4));
+    Tag.textContent = `${TopEntry.Label} · ${Members.length}`;
+    Mount.appendChild(Tag);
+  }
+
+  for(const Slot of Placements){
+    const Entry = Slot.Entry;
+    const Shape = (FormShape[Entry.Classification]||FormShape.solid)(Entry.FormExtent);
+    const Selected = Entry.RecordToken===SelectedToken;
+
+    /* trail from where the part rests to where it flew */
+    if(ExplodeAmount > .04){
+      const Run = Math.hypot(Slot.Spot.X-Slot.Home.X, Slot.Spot.Y-Slot.Home.Y);
+      const Lay = Math.atan2(Slot.Spot.Y-Slot.Home.Y, Slot.Spot.X-Slot.Home.X);
+      const Trail = document.createElement('div');
+      Trail.className = 'ex-trail';
+      Trail.style.left = Slot.Home.X+'px'; Trail.style.top = Slot.Home.Y+'px';
+      Trail.style.width = Run+'px';
+      Trail.style.transform = `rotate(${Lay}rad)`;
+      Trail.style.opacity = String(Math.min(.85, ExplodeAmount*1.6));
+      Mount.appendChild(Trail);
+    }
+
+    const Body = document.createElement('div');
+    Body.className = 'ex-body' + (Selected ? ' sel' : '')
+      + (VisibleCondition(Entry) ? '' : ' hid');
+    Body.style.left = Slot.Spot.X+'px'; Body.style.top = Slot.Spot.Y+'px';
+    Body.innerHTML = `<div class="exb-form" style="width:${Shape.w}px;height:${Shape.h}px;
+      border-radius:${Shape.r};transform:${Shape.tf}"></div>`;
+    Body.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Body);
+
+    /* names appear only once there is room for them */
+    const Name = document.createElement('div');
+    Name.className = 'ex-name' + (Selected ? ' sel' : '');
+    Name.style.left = Slot.Spot.X+'px';
+    Name.style.top  = (Slot.Spot.Y + Entry.FormExtent/2 + 6)+'px';
+    Name.style.opacity = Selected ? '1' : String(Math.min(1, Math.max(0, ExplodeAmount*2.2 - .25)));
+    Name.textContent = Entry.Label;
+    Mount.appendChild(Name);
+  }
+
+  const Scrub = document.createElement('div');
+  Scrub.className = 'ex-scrub';
+  Scrub.innerHTML = `<div class="exs-t">Separate</div>
+    <input type="range" min="0" max="100" value="${Math.round(ExplodeAmount*100)}" id="exRange">
+    <div class="exs-v">${Math.round(ExplodeAmount*100)}%</div>`;
+  Mount.appendChild(Scrub);
+  document.getElementById('exRange').oninput = (Signal)=>{
+    ExplodeAmount = Number(Signal.target.value)/100;
+    RenderExplode();
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ④ WITNESS BARS — drafting dimension lines that happen to carry names.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderWireframe(){
+  const Mount = document.getElementById('wireframeMount');
+  Mount.innerHTML = '';
+
+  /* per-body witness bar, exactly as wide as the body it measures */
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Shape = (FormShape[Entry.Classification]||FormShape.solid)(Entry.FormExtent);
+    const BarSpan = Math.max(34, Shape.w);
+    const Selected = Entry.RecordToken===SelectedToken;
+
+    const Witness = document.createElement('div');
+    Witness.className = 'wf-wit' + (Selected ? ' sel' : '')
+      + (VisibleCondition(Entry) ? '' : ' hid');
+    Witness.style.left = (Anchor.X - BarSpan/2)+'px';
+    Witness.style.top  = (Anchor.Y + Entry.FormExtent/2 + 9)+'px';
+    Witness.style.width = BarSpan+'px';
+    Witness.innerHTML = `<div class="wfw-bar"></div>
+      <div class="wfw-cap l"></div><div class="wfw-cap r"></div>
+      <div class="wfw-nm">${Entry.Label}</div>`;
+    Witness.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Witness);
+  }
+
+  /* group span bar, bracketing all its bodies one tier below the witness bars */
+  for(const TopEntry of DirectoryRoot[0].SubtreeRegion){
+    if(!GroupCondition(TopEntry)) continue;
+    const Frame = EnclosureExtent(TopEntry, 8);
+    const Selected = TopEntry.RecordToken===SelectedToken;
+    const Bodies = SubtreeBodies(TopEntry);
+
+    /* sit the span below the lowest witness bar in the group */
+    let LowestBase = -Infinity;
+    for(const Body of Bodies){
+      const Anchor = AnchorPixels(Body);
+      LowestBase = Math.max(LowestBase, Anchor.Y + Body.FormExtent/2 + 9 + 14);
+    }
+
+    const Span = document.createElement('div');
+    Span.className = 'wf-span' + (Selected ? ' sel' : '');
+    Span.style.left = Frame.X+'px'; Span.style.top = (LowestBase + 6)+'px';
+    Span.style.width = Frame.W+'px';
+    Span.innerHTML = `<div class="wfs-bar"></div>
+      <div class="wfs-arm l"></div><div class="wfs-arm r"></div>
+      <div class="wfs-nm">${TopEntry.Label} · ${Bodies.length}</div>`;
+    Span.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(TopEntry.RecordToken); };
+    Mount.appendChild(Span);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑤ CONTOUR RINGS — enclosure as topography; names ride the ring.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderContour(){
+  const Mount = document.getElementById('contourMount');
+  Mount.innerHTML = '';
+  const Bounds = StageBounds();
+
+  const Canvas = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  Canvas.setAttribute('class','cr-svg');
+  Canvas.setAttribute('width', Bounds.width);
+  Canvas.setAttribute('height', Bounds.height);
+  const PathIssuer = [];
+
+  /* one rounded ring per group, inset per depth so nesting reads as elevation */
+  TraverseDirectory(DirectoryRoot, (Entry, _Enclosure, DepthTier)=>{
+    if(!GroupCondition(Entry)) return;
+    const Padding = 30 - DepthTier*8;
+    const Frame = EnclosureExtent(Entry, Math.max(12, Padding));
+    const Selected = Entry.RecordToken===SelectedToken;
+    const Radius = Math.min(Frame.W, Frame.H) * .38;
+
+    const Backing = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    Backing.setAttribute('class','crs-fill'+(Selected?' sel':''));
+    Backing.setAttribute('x',Frame.X); Backing.setAttribute('y',Frame.Y);
+    Backing.setAttribute('width',Math.max(0,Frame.W)); Backing.setAttribute('height',Math.max(0,Frame.H));
+    Backing.setAttribute('rx',Radius);
+    Canvas.appendChild(Backing);
+
+    const Ring = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    Ring.setAttribute('class','crs-ring'+(Selected?' sel':''));
+    Ring.setAttribute('x',Frame.X); Ring.setAttribute('y',Frame.Y);
+    Ring.setAttribute('width',Math.max(0,Frame.W)); Ring.setAttribute('height',Math.max(0,Frame.H));
+    Ring.setAttribute('rx',Radius);
+    Ring.style.cursor = 'pointer';
+    Ring.addEventListener('click',(Signal)=>{
+      Signal.stopPropagation(); ApplySelection(Entry.RecordToken);
+    });
+    Canvas.appendChild(Ring);
+
+    /* the name rides the top of the ring, following its curve */
+    const TrackToken = 'crtrack-'+Entry.RecordToken;
+    const Track = document.createElementNS('http://www.w3.org/2000/svg','path');
+    Track.setAttribute('id',TrackToken);
+    Track.setAttribute('fill','none');
+    Track.setAttribute('d',
+      `M ${Frame.X+Radius} ${Frame.Y} L ${Frame.X+Frame.W-Radius} ${Frame.Y}`);
+    PathIssuer.push(Track);
+
+    const Legend = document.createElementNS('http://www.w3.org/2000/svg','text');
+    Legend.setAttribute('class', Selected?'sel':'');
+    Legend.setAttribute('dy','-4');
+    const Ride = document.createElementNS('http://www.w3.org/2000/svg','textPath');
+    Ride.setAttribute('href','#'+TrackToken);
+    Ride.setAttribute('startOffset','14');
+    Ride.textContent = Entry.Label + '  ·  ' + SubtreeBodies(Entry).length;
+    Legend.appendChild(Ride);
+    Canvas.appendChild(Legend);
+  });
+
+  const Defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  for(const Track of PathIssuer) Defs.appendChild(Track);
+  Canvas.insertBefore(Defs, Canvas.firstChild);
+  Mount.appendChild(Canvas);
+
+  /* leaf names sit quietly on their own bodies */
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Selected = Entry.RecordToken===SelectedToken;
+    const Leaf = document.createElement('div');
+    Leaf.className = 'cr-leaf' + (Selected ? ' sel' : '')
+      + (VisibleCondition(Entry) ? '' : ' hid');
+    Leaf.style.left = Anchor.X+'px'; Leaf.style.top = Anchor.Y+'px';
+    Leaf.textContent = Entry.Label.replace(/^(SOL|FIL|LFT|SK|CON)_/, '');
+    Mount.appendChild(Leaf);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑥ WEIGHT GLOW — depth encoded as rim brightness; Alt blooms every name.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let NameBloomOpen = false;
+let CoGroupToken  = null;   /* hovered body's group, to pulse its peers */
+
+const DepthRim = [
+  'rgba(140,150,170,.62)',
+  'rgba(140,150,170,.42)',
+  'rgba(140,150,170,.26)',
+  'rgba(140,150,170,.16)',
+];
+
+function RenderWeight(){
+  const Mount = document.getElementById('weightMount');
+  Mount.innerHTML = '';
+
+  const CoGroupSet = new Set();
+  if(CoGroupToken){
+    const Resolved = ResolveEntry(CoGroupToken);
+    if(Resolved && Resolved.EnclosureEntry)
+      for(const Peer of SubtreeBodies(Resolved.EnclosureEntry))
+        CoGroupSet.add(Peer.RecordToken);
+  }
+
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Shape = (FormShape[Entry.Classification]||FormShape.solid)(Entry.FormExtent);
+    const DepthTier = ResolveDepthTier(Entry.RecordToken);
+    const Rim = DepthRim[Math.min(DepthRim.length-1, DepthTier)];
+    const Selected = Entry.RecordToken===SelectedToken;
+
+    const Body = document.createElement('div');
+    Body.className = 'wg-body' + (Selected ? ' sel' : '')
+      + (CoGroupSet.has(Entry.RecordToken) ? ' co' : '')
+      + (VisibleCondition(Entry) ? '' : ' hid');
+    Body.style.left = Anchor.X+'px'; Body.style.top = Anchor.Y+'px';
+    Body.innerHTML = `<div class="wgb-form" style="width:${Shape.w}px;height:${Shape.h}px;
+      border-radius:${Shape.r};transform:${Shape.tf};
+      border:1.5px solid ${Rim}"></div>`;
+    Body.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Body.onmouseenter = ()=>{ CoGroupToken = Entry.RecordToken; RenderWeight(); };
+    Body.onmouseleave = ()=>{ CoGroupToken = null; RenderWeight(); };
+    Mount.appendChild(Body);
+
+    const Name = document.createElement('div');
+    Name.className = 'wg-nm' + (Selected ? ' sel' : '')
+      + ((NameBloomOpen || Selected || CoGroupSet.has(Entry.RecordToken)) ? ' up' : '');
+    Name.style.left = Anchor.X+'px'; Name.style.top = Anchor.Y+'px';
+    Name.textContent = Entry.Label;
+    Mount.appendChild(Name);
+  }
+
+  /* depth legend — reads the rim scale back to the viewer */
+  const Legend = document.createElement('div');
+  Legend.className = 'wg-depth';
+  const TierNames = ['Part','Group','Body','Feature'];
+  Legend.innerHTML = DepthRim.map((Rim,Tier)=>
+    `<div class="wgd-r">${TierNames[Tier]||('Tier '+Tier)}
+       <div class="wgd-sw" style="background:${Rim}"></div></div>`).join('');
+  Mount.appendChild(Legend);
+
+  const Hint = document.createElement('div');
+  Hint.className = 'wg-hint';
+  Hint.innerHTML = NameBloomOpen
+    ? `release <kbd>Alt</kbd> to clear the names`
+    : `hover a body to light its group &nbsp;·&nbsp; hold <kbd>Alt</kbd> for every name`;
+  Mount.appendChild(Hint);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   VARIANT SWITCHING
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const VariantTable = {
+  engraved:  { Render:RenderEngraved,  Title:'Engraved',
+    Blurb:'The name is cut into the face of the body itself — sized to the form it sits on, so a small feature gets small type. Group membership shows as a kerf line scored around the shared extent. Nothing floats anywhere.' },
+  shadow:    { Render:RenderShadowCast, Title:'Shadow cast',
+    Blurb:'Every body throws a shadow to the ground plane, and the directory IS the shadows. Co-grouped bodies pool into one silhouette bearing the group name. You read the floor, never a panel.' },
+  explode:   { Render:RenderExplode,   Title:'Explode',
+    Blurb:'Drag one scrub and the assembly separates along its own nesting — groups fly out from the centre, then parts fly out from their group. At rest it is the model; opened, it is the directory. Names fade in only as room appears.' },
+  wireframe: { Render:RenderWireframe, Title:'Witness bars',
+    Blurb:'Each body carries a drafting witness bar exactly as wide as itself, bearing its name. Groups bracket their bodies with a span bar one tier below. It reads as a dimensioned drawing, because it is one.' },
+  contour:   { Render:RenderContour,   Title:'Contour rings',
+    Blurb:'Enclosure drawn as topography — a body inside two groups sits inside two rings, inset by depth so nesting reads as elevation. The group name rides the ring itself, following the curve.' },
+  weight:    { Render:RenderWeight,    Title:'Weight glow',
+    Blurb:'No text at rest at all. A body’s own rim brightness encodes its depth; hovering one lights every peer in its group as a set. Hold Alt to bloom every name onto its body. The directory is a lighting model.' },
+};
+let ActiveVariant = 'engraved';
+
+function RenderActiveVariant(){
+  const Chosen = VariantTable[ActiveVariant];
+  if(Chosen) Chosen.Render();
+}
+function ActivateVariant(Pick){
+  if(!VariantTable[Pick]) return;
+  ActiveVariant = Pick;
+  for(const Button of document.querySelectorAll('.pk'))
+    Button.classList.toggle('on', Button.dataset.pick===Pick);
+  for(const Panel of document.querySelectorAll('.variant'))
+    Panel.classList.toggle('live', Panel.id==='v-'+Pick);
+  const Chosen = VariantTable[Pick];
+  document.getElementById('vlabel').innerHTML =
+    `${Chosen.Title}<em>${Chosen.Blurb}</em>`;
+  RenderScene();
+  RenderActiveVariant();
+}
+
+for(const Button of document.querySelectorAll('.pk'))
+  Button.onclick = ()=> ActivateVariant(Button.dataset.pick);
+
+const PickOrder = ['engraved','shadow','explode','wireframe','contour','weight'];
+document.addEventListener('keydown',(Signal)=>{
+  if(Signal.key>='1' && Signal.key<='6'){
+    ActivateVariant(PickOrder[Number(Signal.key)-1]);
+    return;
+  }
+  if(Signal.key==='Alt' && ActiveVariant==='weight' && !NameBloomOpen){
+    NameBloomOpen = true; Signal.preventDefault(); RenderWeight();
+  }
+  if(Signal.key==='Escape'){ ApplySelection(null); }
+});
+document.addEventListener('keyup',(Signal)=>{
+  if(Signal.key==='Alt' && NameBloomOpen){ NameBloomOpen = false; RenderWeight(); }
+});
+/* Alt-tabbing away must not leave the bloom stuck open */
+window.addEventListener('blur',()=>{
+  if(NameBloomOpen){ NameBloomOpen = false; if(ActiveVariant==='weight') RenderWeight(); }
+});
+document.getElementById('stage').onclick = ()=> ApplySelection(null);
+
+let ResizeToken = null;
+window.addEventListener('resize',()=>{
+  clearTimeout(ResizeToken);
+  ResizeToken = setTimeout(()=>{ RenderScene(); RenderActiveVariant(); }, 90);
+});
+
+ActivateVariant('engraved');
+</script>
+</body>
+</html>

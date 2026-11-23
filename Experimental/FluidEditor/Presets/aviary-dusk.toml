@@ -1,0 +1,72 @@
+# Aviary at Dusk — scene preset (Particles). Three depth layers — 3D bird meshes, leaf-blade cutouts and an additive aurora curtain — each on its own spawn volume so the flock never hides the fall.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Scene]
+Order = 42
+Id = "preset-aviary-dusk"
+Name = "Aviary at Dusk"
+Family = "VFX"
+Icon = "bird"
+Boundary = "OpenTop"
+Summary = "Dusk aviary: a murmuration of meshed birds wheels above a grove of drifting autumn leaves while an aurora veil brings up the horizon."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.0, 6.0, 7.0]
+
+[Render]
+Visible = false
+Exposure = 1.35
+Steps = 84
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Particle]]
+  Template = "starling-murmuration"
+  Name = "Murmuration"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.55, 0.0]
+  Radius = 2.2
+  Count = 3584
+
+[[Particle]]
+  Template = "autumn-leaves"
+  Name = "Falling Leaves"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 1.25, 0.0]
+  Radius = 2.9
+  Rate = 55.0
+  Count = 2560
+
+[[Particle]]
+  Template = "aurora-curtain"
+  Name = "Horizon Veil"
+  StartTime = 0.2
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.45, -2.1]
+  Radius = 2.35
+  Brightness = 0.85

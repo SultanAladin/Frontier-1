@@ -1,0 +1,108 @@
+/* RIDGE — DASHBOARD CLUSTER FOR CONTOUR
+   🧩 Black glass with a faint topographic etch, chamfered HUD corners, boxes drawn as brackets (no fill).
+      Amethyst in Cruise and Sport, verdant in Eco, signal red in Race; the tach ribbon follows by hue rotation. */
+
+.Dash.Ridge { background: radial-gradient(70% 60% at 50% 100%, rgba(122, 61, 240, 0.22), transparent 70%), linear-gradient(180deg, #07060b, #030305);
+              clip-path: polygon(48px 0, calc(100% - 48px) 0, 100% 48px, 100% calc(100% - 48px), calc(100% - 48px) 100%, 48px 100%, 0 calc(100% - 48px), 0 48px);
+              --Accent: #a970ff; --AccentRGB: 169, 112, 255; --Good: #42f5a1; --Surface: transparent; --Edge: rgba(169, 112, 255, 0.28); --Radius: 2px; }
+.Dash.Ridge[data-mode="Eco"]   { --Accent: #42f5a1; --AccentRGB: 66, 245, 161; --Edge: rgba(66, 245, 161, 0.28); }
+.Dash.Ridge[data-mode="Sport"] { --Accent: #c49bff; --AccentRGB: 196, 155, 255; }
+.Dash.Ridge[data-mode="Race"]  { --Accent: #ff3b5c; --AccentRGB: 255, 59, 92; --Edge: rgba(255, 59, 92, 0.35); --Good: #ff8fa3; }
+.Stage:has(.Ridge) { --WheelAccent: #a970ff; --WheelAccentRGB: 169, 112, 255; }
+
+.Topo { position: absolute; inset: 0; opacity: 0.22; transition: opacity 600ms;
+        background: repeating-radial-gradient(ellipse 140% 60% at 30% 120%, transparent 0 22px, rgba(169, 112, 255, 0.35) 22px 23px),
+                    repeating-radial-gradient(ellipse 90% 50% at 85% -10%, transparent 0 26px, rgba(66, 245, 161, 0.18) 26px 27px); }
+.Dash.Ridge[data-mode="Race"] .Topo { opacity: 0.08; }
+.Corner { position: absolute; width: 60px; height: 60px; border: 2px solid var(--Accent); opacity: 0.6; transition: border-color 600ms; }
+.Corner.TL { left: 22px; top: 22px; border-right: 0; border-bottom: 0; } .Corner.TR { right: 22px; top: 22px; border-left: 0; border-bottom: 0; }
+.Corner.BL { left: 22px; bottom: 22px; border-right: 0; border-top: 0; } .Corner.BR { right: 22px; bottom: 22px; border-left: 0; border-top: 0; }
+
+.Ridge .DashTop { position: absolute; left: 90px; right: 90px; top: 26px; height: 50px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; font-size: 16px; color: var(--InkDim); letter-spacing: 0.08em; }
+.Ridge .TopLeft { display: flex; gap: 26px; align-items: baseline; }
+.Ridge .TopLeft b { font-size: 30px; font-weight: 300; color: var(--Ink); letter-spacing: 0; }
+.Ridge .TopMid { display: flex; align-items: baseline; gap: 10px; position: relative; }
+.Ridge .TopMid .Bracket { font-size: 34px; font-weight: 300; color: var(--Accent); transition: color 600ms; }
+.Ridge .TopMid .ModeName { font-size: 28px; font-weight: 400; color: var(--Ink); letter-spacing: 0.2em; text-transform: uppercase; padding: 0 6px; }
+.Ridge .TopMid small { position: absolute; top: 46px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 13px; letter-spacing: 0.08em; color: var(--InkDim); }
+.Ridge .TopRight { display: flex; gap: 10px; justify-content: flex-end; align-items: baseline; }
+.Ridge .TopRight b { font-size: 26px; font-weight: 300; color: var(--Ink); letter-spacing: 0; }
+.Ridge .Telltales { left: 50%; top: 106px; transform: translateX(-50%); padding: 8px 16px; border: 1px solid var(--Edge); background: rgba(5, 4, 9, 0.8); }
+.Ridge .ShiftLights { left: 50%; top: 150px; margin-left: -233px; }
+
+.Ridge .Wing { top: 120px; bottom: 50px; width: 330px; grid-template-rows: 1fr auto; row-gap: 18px; transition: transform 700ms cubic-bezier(.2,.9,.3,1); }
+.Ridge .Wing.Left { left: 54px; } .Ridge .Wing.Right { right: 54px; }
+.Ridge .Group { grid-row: 1; }
+.Ridge .FuelDock { grid-row: 2; }
+.Ridge[data-mode="Race"] .Wing.Left { transform: translateX(-10px); } .Ridge[data-mode="Race"] .Wing.Right { transform: translateX(10px); }
+
+/* Bracket boxes: corner ticks instead of a frame. */
+.Ridge .Panel { border: 0; background: linear-gradient(90deg, rgba(var(--AccentRGB), 0.06), transparent 70%); }
+.Ridge .Panel::before, .Ridge .Panel::after { content: ''; position: absolute; width: 18px; height: 18px; border: 2px solid var(--Accent); transition: border-color 600ms; }
+.Ridge .Panel::before { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+.Ridge .Panel::after { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+.Ridge .PanelHead { letter-spacing: 0.2em; }
+.Ridge .Tyre { border-radius: 2px; }
+
+.Ridge .Core { position: absolute; left: 392px; top: 186px; width: 1136px; height: 379px; transition: transform 900ms cubic-bezier(.2,.9,.3,1); transform-origin: 50% 60%; }
+.Ridge[data-mode="Race"] .Core { transform: scale(1.04); }
+.Ridge[data-mode="Eco"] .Core { transform: scale(0.97) translateY(6px); }
+.Core.Hot .LeadGlow { stroke: #ff3b5c; }
+/* Mode tint: the ribbon dots, gradients, bracket glow, rpm box and badge follow --Accent; the red zone stays red. */
+.Ridge .RidgeTach pattern circle { fill: var(--Accent); transition: fill 700ms; }
+.Ridge .RidgeTach linearGradient stop, .Ridge .RidgeTach radialGradient stop { stop-color: var(--Accent); transition: stop-color 700ms; }
+.Ridge .Core:not(.Hot) .RidgeTach .LeadGlow { stroke: var(--Accent); transition: stroke 700ms; }
+.Ridge .RidgeTach .RpmBox:not(.Hot) rect:first-child { fill: rgba(var(--AccentRGB), 0.05); stroke: rgba(var(--AccentRGB), 0.55); }
+.Ridge .RidgeTach .StyleBadge .Hex { fill: rgba(var(--AccentRGB), 0.28); stroke: var(--Accent); }
+.Ridge .RidgeTach .GearGlow { fill: var(--Accent); }
+.Ridge .RidgeTach .Segments rect.Lit { fill: var(--Good); }
+.Core.Limiter .LimiterFlash rect { animation: RidgeLimiter 0.18s steps(2) infinite; }
+
+/* ------------------------------------------------------------------ Ridge tach (moved from the Contour HMI) */
+.RidgeTach { position: relative; width: 100%; height: 100%; overflow: visible; font-family: inherit; }
+.RidgeTach .Edge { fill: none; stroke: url(#RidgeEdge); stroke-width: 2; }
+.RidgeTach .Dividers line { stroke: #0b0812; stroke-width: 5; }
+.RidgeTach .Slots { fill: none; stroke: rgba(233, 237, 240, 0.16); stroke-width: 1.2; }
+.RidgeTach .RedZone { fill: rgba(255, 59, 92, 0.1); }
+.RidgeTach .Fill { fill: url(#RidgeDots); stroke: none; }
+.RidgeTach .LeadLine { fill: none; stroke: #efe4ff; stroke-width: 4; stroke-linejoin: miter; }
+.RidgeTach .LeadGlow { fill: none; stroke: #b98cff; stroke-width: 10; opacity: 0.9; }
+.RidgeTach.Hot .LeadLine, .ClusterDeck.Hot .LeadLine { stroke: #ffd2da; }
+.RidgeTach .Labels text { fill: #8c939a; font-size: 28px; font-weight: 300; transition: fill 200ms; }
+.RidgeTach .Labels text.Passed { fill: #e9edf0; }
+.RidgeTach .Labels text.Red { fill: #ff3b5c; }
+.RidgeTach .RpmBox rect { fill: rgba(169, 112, 255, 0.05); stroke: rgba(169, 112, 255, 0.55); stroke-width: 1.5; transition: fill 200ms, stroke 200ms; }
+.RidgeTach .RpmBox .Hatch { opacity: 0.12; stroke: none; }
+.RidgeTach .RpmBox.Hot rect { fill: rgba(255, 59, 92, 0.18); stroke: #ff3b5c; }
+.RidgeTach .RpmBox.Hot .Hatch { fill: url(#RidgeDots); opacity: 0.25; }
+.RidgeTach .RpmValue { fill: #f2f4f6; font-size: 44px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.RidgeTach .RpmUnit { fill: #f2f4f6; font-size: 24px; font-weight: 300; letter-spacing: 0.06em; }
+.RidgeTach .LimiterFlash rect { fill: #ff3b5c; opacity: 0; pointer-events: none; }
+@keyframes RidgeLimiter { 50% { opacity: 0.55; } }
+.RidgeTach .MeterGlyph { fill: none; stroke: #c2c8ce; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.RidgeTach .MeterValue { fill: #f2f4f6; font-size: 30px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.RidgeTach .Unit { font-size: 20px; fill: #c2c8ce; }
+.RidgeTach .Segments rect { fill: #2b2f36; transition: fill 400ms; }
+.RidgeTach .Segments rect.Lit { fill: #42f5a1; }
+.RidgeTach .Mark.Red { fill: #ff3b5c; }
+.RidgeTach .Mark.Cool { fill: #6a9cff; }
+.RidgeTach .StyleBadge { cursor: pointer; }
+.RidgeTach .StyleBadge .Hex { fill: rgba(169, 112, 255, 0.28); stroke: #c49bff; stroke-width: 2; transition: transform 220ms cubic-bezier(.3,1.6,.5,1); }
+.RidgeTach .StyleBadge:hover .Hex { transform: scale(1.08); }
+.RidgeTach .StyleBadge .Orbit { fill: none; stroke: #6d7379; stroke-width: 1.4; }
+.RidgeTach .StyleLetter { fill: #fff; font-size: 30px; font-weight: 400; }
+.RidgeTach .StyleSide { fill: #9aa1a8; font-size: 18px; font-weight: 300; }
+.RidgeTach .Leader { stroke: #c2c8ce; stroke-width: 2.5; stroke-dasharray: 1.5 4; stroke-linecap: round; }
+.RidgeTach .LeaderEnd { fill: #e9edf0; }
+.RidgeTach .GearFigure { fill: #ffffff; font-size: 200px; font-weight: 300; letter-spacing: -0.02em; }
+.RidgeTach .GearGlow { fill: #a970ff; font-size: 200px; font-weight: 300; filter: url(#RidgeGlow); opacity: 0; }
+.RidgeTach .GearCaption { fill: #6d7379; font-size: 26px; letter-spacing: 0.12em; font-weight: 300; }
+.RidgeTach .GearBlock.Pop .GearFigure { animation: RidgeGearPop 420ms cubic-bezier(.2,1.6,.4,1); transform-box: fill-box; transform-origin: 50% 60%; }
+.RidgeTach .GearBlock.Pop .GearGlow { animation: RidgeGearGlow 620ms ease-out; }
+@keyframes RidgeGearPop { 0% { transform: scale(0.82); } 100% { transform: scale(1); } }
+@keyframes RidgeGearGlow { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+.RidgeTach .SpeedFigure { fill: #d7dbdf; font-size: 150px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.RidgeTach .SpeedUnit { fill: #6d7379; font-size: 24px; letter-spacing: 0.1em; font-weight: 300; }
+.RidgeTach .Trip { fill: #c2c8ce; font-size: 34px; font-weight: 300; }
+.RidgeTach .Selector text { fill: #4b5157; font-size: 32px; font-weight: 300; letter-spacing: 0.1em; cursor: pointer; transition: fill 200ms; }
+.RidgeTach .Selector text.On { fill: #ffffff; font-weight: 600; }

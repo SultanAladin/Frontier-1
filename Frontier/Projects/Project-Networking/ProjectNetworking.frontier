@@ -1,0 +1,8 @@
+[Project]
+ProjectName = "ProjectNetworking"
+ProjectFormatNumber = 1
+ContentLocation = "Content"
+OpeningScene = "Content/Scenes/Networking.gltf"
+CodeImage = "Build/Output/ProjectNetworking.dll"
+CodeInterchangeNumber = 3
+InterfaceFingerprint = 0xb6725f24d0869173

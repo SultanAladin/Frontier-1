@@ -1,0 +1,1890 @@
+<!DOCTYPE html>
+<!--==============================================================================================================================================
+                                                     SURFACEINSPECTORCAROUSEL.HTML
+     Two slides, one card.
+       Slide 1 · Stack (420px)          | Properties  → Layer ⇄ Mask sub-carousel
+       Slide 2 · Preview + Meta + Log   | Deep inspect → Channels ⇄ Mask (swipes with the face)
+     The FACE (layer|mask) is one piece of state. Every tab, spine, swipe track and header reads it.
+==============================================================================================================================================-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frontier — Surface Inspector</title>
+<style>
+/*───────────────────────────────────────────────────────────────────────────────────────────────
+                                        TOKENS
+  One palette. Ink is near-white, the single "on" accent is bright ink, and the MARKER blue means
+  "this is where you are" — never "this is enabled". Keeping those two roles apart is what stops
+  the panel reading as a wall of highlights.
+───────────────────────────────────────────────────────────────────────────────────────────────*/
+:root{
+  --desk:#000; --panel:#0e0e0e; --panel-2:#0b0b0b; --head:#121214;
+  --border:#1c1c1c; --hair:#161616; --hair-strong:#2a2a30;
+  --tile:#141414; --tile-hi:#1a1a1a; --tile-on:#1f1f1f;
+  --value:#000; --value-side:#141414;
+  --ink:#ededed; --muted:#8a8a8a; --faint:#6a6a6a;
+  --accent:#e8e8e8; --on-accent:#101010;
+  --marker:#4a90e2; --marker-soft:rgba(74,144,226,.14);
+  --danger:#e05a5a; --ok:#4fd18b;
+  --track:#141414; --fill:#5a5a5a; --knob:#fff;
+  --row-hover:rgba(255,255,255,.045);
+
+  --card-w:860px; --card-h:740px; --rail-w:420px;
+  --head-h:46px; --foot-h:26px; --pill-h:28px; --side-seg:30px;
+  --r-card:11px; --r-pill:999px;
+  --ease:cubic-bezier(.4,0,.2,1); --pop:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--desk); color:var(--ink);
+  font:12px/1.4 "Segoe UI",system-ui,sans-serif;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+  padding:16px; -webkit-font-smoothing:antialiased; user-select:none;
+}
+button,input{font:inherit;color:inherit}
+.no-bar::-webkit-scrollbar{width:8px}
+.no-bar::-webkit-scrollbar-track{background:transparent}
+.no-bar::-webkit-scrollbar-thumb{background:#232323;border-radius:99px;border:2px solid var(--panel)}
+
+/*───────────────────────────── CARD + OUTER CAROUSEL ─────────────────────────────*/
+.Card{
+  width:var(--card-w); height:var(--card-h); position:relative; overflow:hidden;
+  background:var(--panel); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 24px 60px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.03) inset;
+}
+.Track{display:flex;width:200%;height:100%;transition:transform .38s var(--ease)}
+.Track.OnInspect{transform:translateX(-50%)}
+.Slide{width:50%;height:100%;min-width:0;display:grid;grid-template-columns:var(--rail-w) minmax(0,1fr)}
+.Well{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--panel);overflow:hidden}
+.Well+.Well{border-left:1px solid var(--border);background:var(--panel-2)}
+
+/*───────────────────────────── PANE HEAD / FOOT ─────────────────────────────
+  🔴 The back/forward affordances are FLEX CHILDREN of the 46px band, not overlays.
+  The old build floated a pill on top of the title; at any name longer than ~14
+  characters the two collided. A stepper that owns a column can never do that. */
+.pane-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:9px; height:var(--head-h);
+  padding:0 10px; background:var(--head); border-bottom:1px solid var(--border);
+}
+.pane-head.step{cursor:pointer;transition:background .14s}
+.pane-head.step:hover{background:#17171a}
+.h-ic{
+  width:26px;height:26px;flex:0 0 auto;border-radius:7px;background:#000;
+  border:1px solid var(--border);display:grid;place-items:center;color:var(--muted);
+  transition:color .15s,border-color .15s;
+}
+.pane-head.step:hover .h-ic{color:var(--ink);border-color:var(--hair-strong)}
+.h-ic svg{width:15px;height:15px}
+.h-txt{flex:1;min-width:0}
+.h-lbl{display:block;font-size:12.5px;font-weight:600;letter-spacing:.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h-sub{display:block;font-size:9.5px;color:var(--faint);letter-spacing:.35px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h-n{
+  flex:0 0 auto;font-size:9.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  background:var(--panel-2);border:1px solid var(--border);border-radius:999px;padding:3px 8px;
+}
+.h-acts{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.h-step{
+  flex:0 0 auto;width:24px;height:24px;border-radius:7px;display:grid;place-items:center;
+  color:var(--muted);transition:background .14s,color .14s,transform .18s var(--pop);
+}
+.pane-head.step:hover .h-step{background:var(--tile-hi);color:var(--ink)}
+.pane-head.step:hover .h-step.fwd{transform:translateX(2px)}
+.pane-head.step:hover .h-step.bck{transform:translateX(-2px)}
+.h-step svg{width:13px;height:13px}
+.h-kbd{
+  flex:0 0 auto;font-size:9px;color:var(--faint);background:var(--panel-2);
+  border:1px solid var(--border);border-radius:5px;padding:2px 6px;letter-spacing:.4px;
+}
+.hdr-btn{
+  width:25px;height:25px;display:grid;place-items:center;background:none;border:0;border-radius:7px;
+  color:var(--muted);cursor:pointer;transition:background .13s,color .13s;
+}
+.hdr-btn:hover{background:var(--tile-hi);color:var(--ink)}
+.hdr-btn:disabled{opacity:.28;cursor:default}
+.hdr-btn:disabled:hover{background:none;color:var(--muted)}
+.hdr-btn svg{width:14px;height:14px}
+
+.pane-foot{
+  flex:0 0 auto;height:var(--foot-h);display:flex;align-items:center;gap:7px;padding:0 11px;
+  background:var(--head);border-top:1px solid var(--border);font-size:10px;color:var(--muted);
+}
+.pf-strong{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.pf-dot{color:#2c2c2c}
+.pf-spacer{flex:1}
+.pf-hue{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
+
+.pane-body{flex:1;min-height:0;overflow-y:auto;padding:8px}
+
+/*───────────────────────────── FACE TABS (Layer ⇄ Mask) ─────────────────────────────*/
+.face-tabs{
+  flex:0 0 auto;position:relative;display:flex;height:30px;
+  background:var(--panel-2);border-bottom:1px solid var(--border);
+}
+.ft-seg{
+  flex:1 1 50%;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:11px;font-weight:500;color:var(--muted);cursor:pointer;transition:color .15s;
+}
+.ft-seg:hover{color:var(--ink)}
+.ft-seg.on{color:var(--ink);font-weight:600}
+.ft-seg .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.42;transition:opacity .18s,transform .18s var(--pop)}
+.ft-seg.on .dot{opacity:1;transform:scale(1.25)}
+.ft-thumb{
+  position:absolute;bottom:-1px;left:0;width:50%;height:2px;background:var(--accent);border-radius:2px;
+  transition:transform .3s var(--ease);
+}
+.face-tabs[data-face="mask"] .ft-thumb{transform:translateX(100%)}
+
+/*───────────────────────────── SWIPE VIEW ─────────────────────────────*/
+.swipe-view{flex:1;min-height:0;overflow:hidden}
+.swipe-track{display:flex;width:200%;height:100%;transition:transform .34s var(--ease)}
+.swipe-track.on-mask{transform:translateX(-50%)}
+.swipe-pane{flex:0 0 50%;width:50%;height:100%;min-width:0;overflow-y:auto;padding:8px}
+
+/*───────────────────────────── MICRO-ANIMATIONS ─────────────────────────────*/
+@keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@keyframes unfold{from{opacity:0;transform:scaleY(.86) translateY(-4px);clip-path:inset(0 0 100% 0)}
+                  to  {opacity:1;transform:none;clip-path:inset(0 0 0 0)}}
+@keyframes chipIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 var(--marker-soft)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@keyframes flash{0%,100%{background:transparent}30%{background:var(--marker-soft)}}
+.anim > .rise-me{animation:rise .26s var(--pop) both}
+.anim > .rise-me:nth-child(1){animation-delay:.02s}
+.anim > .rise-me:nth-child(2){animation-delay:.05s}
+.anim > .rise-me:nth-child(3){animation-delay:.08s}
+.anim > .rise-me:nth-child(4){animation-delay:.11s}
+.anim > .rise-me:nth-child(5){animation-delay:.14s}
+.anim > .rise-me:nth-child(6){animation-delay:.17s}
+.anim > .rise-me:nth-child(n+7){animation-delay:.19s}
+
+/*───────────────────────────── GENERIC CARD ─────────────────────────────
+  📝 Every collapsible surface in this file uses the SAME 1fr→0fr grid row.
+  No height measuring, no jump on first paint, and it animates identically
+  whether it holds four rows or forty. */
+.card{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--r-card);
+  margin-bottom:6px;overflow:hidden;transition:border-color .16s,background .16s;
+}
+.card:hover{border-color:#232323}
+.card.sel{border-color:var(--hair-strong);background:#101010}
+.card-head{
+  display:flex;align-items:center;gap:8px;height:30px;padding:0 9px;cursor:pointer;
+  background:var(--head);border-bottom:1px solid var(--border);transition:background .14s;
+}
+.card.folded .card-head{border-bottom-color:transparent}
+.card-head:hover{background:var(--tile)}
+.ch-tw{width:10px;height:10px;flex:0 0 auto;color:var(--faint);display:grid;place-items:center;transition:transform .24s var(--ease),color .14s}
+.card.folded .ch-tw{transform:rotate(-90deg)}
+.card-head:hover .ch-tw{color:var(--ink)}
+.ch-dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;transition:box-shadow .2s}
+.ch-title{flex:1;min-width:0;font-size:11px;font-weight:600;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-tag{
+  flex:0 0 auto;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint);
+  background:var(--panel-2);border-radius:999px;padding:2px 7px;
+}
+.ch-tag.live{color:var(--marker)}
+.card-fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .26s var(--ease)}
+.card.folded .card-fold{grid-template-rows:0fr}
+.card-clip{overflow:hidden;min-height:0}
+.card-body{padding:8px 9px 9px}
+
+.sect{
+  font-size:9px;letter-spacing:1.1px;text-transform:uppercase;color:var(--faint);font-weight:700;
+  padding:9px 2px 5px;display:flex;align-items:center;gap:7px;
+}
+.sect .ln{flex:1;height:1px;background:var(--hair)}
+
+/*───────────────────────────── FIELD ROWS ─────────────────────────────*/
+.prow{display:grid;grid-template-columns:82px minmax(0,1fr);column-gap:10px;align-items:center;min-height:30px;margin-bottom:5px}
+.prow:last-child{margin-bottom:0}
+.prow.wide{grid-template-columns:minmax(0,1fr)}
+.plabel{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s}
+.prow.hot .plabel{color:var(--marker)}
+
+.switch{width:34px;height:19px;position:relative;cursor:pointer;background:var(--tile-on);border-radius:999px;transition:background .18s}
+.switch.on{background:var(--accent)}
+.switch .nub{position:absolute;top:2px;left:2px;width:15px;height:15px;background:var(--knob);border-radius:50%;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);transition:left .2s var(--pop),width .16s}
+.switch:active .nub{width:19px}
+.switch.on .nub{left:17px}
+.switch.on:active .nub{left:13px}
+
+.segrow{display:flex;height:26px;background:var(--tile);border:1px solid var(--border);border-radius:999px;overflow:hidden}
+.seg{flex:1;display:grid;place-items:center;font-size:10.5px;color:var(--muted);cursor:pointer;transition:background .14s,color .14s}
+.seg:hover{background:var(--tile-hi);color:var(--ink)}
+.seg.on{background:var(--accent);color:var(--on-accent);font-weight:600}
+
+.slider{display:flex;align-items:center;gap:10px;height:var(--pill-h)}
+.slider .num{width:78px;flex:0 0 78px;height:var(--pill-h);border-radius:var(--r-pill);overflow:hidden;display:flex}
+.slider .n{
+  flex:1;min-width:0;background:var(--value);color:#fff;display:grid;place-items:center;
+  cursor:ew-resize;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;
+}
+.slider .u{flex:0 0 var(--side-seg);background:var(--value-side);color:var(--muted);display:grid;place-items:center;font-size:10px}
+.slider .track{flex:1;min-width:0;height:20px;border-radius:999px;background:var(--track);position:relative;cursor:ew-resize}
+.slider .track .f{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--fill);transition:background .16s}
+.slider .track:hover .f{background:#6b6b6b}
+.slider .track .h{
+  position:absolute;top:50%;left:0;width:22px;height:22px;border-radius:50%;background:var(--knob);
+  border:1px solid rgba(0,0,0,.4);transform:translate(-50%,-50%);box-shadow:0 2px 5px rgba(0,0,0,.55);
+  transition:transform .12s var(--pop);
+}
+.slider .track:active .h{transform:translate(-50%,-50%) scale(1.14)}
+
+.swatch{display:flex;align-items:center;gap:8px}
+.swatch .sw{width:32px;height:20px;border-radius:6px;border:1px solid var(--border);flex:0 0 auto;cursor:pointer;transition:transform .14s var(--pop)}
+.swatch .sw:hover{transform:scale(1.07)}
+.swatch .hex{font:11px ui-monospace,Consolas,monospace;color:var(--muted)}
+
+/*───────────────────────────── DROPDOWN ─────────────────────────────
+  🔴 Open state is keyed by CALL SITE, not by ordinal. The old build stored a bare
+  index, so the stack's Blend menu and the property pane's Blend menu — same layer,
+  two places — opened as one. Keys are "blend@stack:2" vs "blend@prop". */
+.drop{position:relative;height:var(--pill-h)}
+.drop .face{
+  height:var(--pill-h);border-radius:var(--r-pill);background:var(--value);overflow:hidden;
+  display:flex;align-items:center;cursor:pointer;font-size:11.5px;
+}
+.drop .face .lb{flex:1;min-width:0;padding-left:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drop .face .cap{flex:0 0 var(--side-seg);align-self:stretch;background:var(--value-side);display:grid;place-items:center;color:var(--muted);transition:color .14s}
+.drop .face:hover .cap{color:var(--ink)}
+.drop .face .cap svg{transition:transform .22s var(--ease)}
+.drop.open .face .cap svg{transform:rotate(180deg)}
+.drop .menu{
+  position:absolute;left:0;right:0;top:calc(var(--pill-h) + 5px);z-index:120;padding:5px;
+  background:#141416;border:1px solid var(--hair-strong);border-radius:9px;
+  box-shadow:0 14px 34px rgba(0,0,0,.85);display:flex;flex-direction:column;gap:1px;
+  max-height:210px;overflow-y:auto;transform-origin:top center;animation:unfold .17s var(--pop);
+}
+.drop .menu[hidden]{display:none}
+.opt{
+  position:relative;display:flex;align-items:center;gap:8px;height:26px;padding:0 12px;
+  font-size:11.5px;cursor:pointer;border-radius:6px;transition:padding-left .13s,background .13s;
+}
+.opt:hover{background:var(--tile-on);padding-left:17px}
+.opt::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:0 3px 3px 0;background:var(--marker);opacity:0;transition:opacity .13s}
+.opt:hover::before{opacity:1}
+.opt .lb{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt .note{font-size:9.5px;color:var(--faint)}
+.opt .radio{width:12px;height:12px;flex:0 0 auto;border-radius:50%;border:1.5px solid #2b2b2b;display:grid;place-items:center}
+.opt.on .radio{border-color:var(--marker)}
+.opt.on .radio::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--marker)}
+.menu-group{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);font-weight:700;padding:6px 8px 3px}
+
+/*───────────────────────────── LAYER STACK ─────────────────────────────*/
+.stack-tools{flex:0 0 auto;padding:7px 8px 5px;display:flex;flex-direction:column;gap:5px}
+.add{
+  height:30px;border-radius:9px;background:var(--head);border:1px solid var(--border);color:var(--muted);
+  display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;font-size:12px;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.add:hover{background:var(--tile-hi);border-color:var(--hair-strong);color:var(--ink)}
+.add.open{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:transparent}
+.plus{width:9px;height:9px;position:relative;transition:transform .22s var(--pop)}
+.add.open .plus{transform:rotate(45deg)}
+.plus::before,.plus::after{content:"";position:absolute;background:currentColor}
+.plus::before{left:50%;top:0;width:1.5px;height:100%;transform:translateX(-50%)}
+.plus::after{top:50%;left:0;height:1.5px;width:100%;transform:translateY(-50%)}
+.kind-list{
+  border:1px solid var(--border);border-top:none;border-radius:0 0 9px 9px;background:var(--head);
+  overflow:hidden;transform-origin:top center;animation:unfold .18s var(--pop);
+}
+.kind-list[hidden]{display:none}
+.kind{display:flex;align-items:center;gap:9px;height:29px;padding:0 10px;cursor:pointer;transition:background .13s,padding-left .13s}
+.kind:hover{background:var(--tile-hi);padding-left:14px}
+.kind .sw{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+.kind .lb{font-size:11.5px}
+.kind .sm{margin-left:auto;font-size:10px;color:var(--faint)}
+
+.filter{
+  height:29px;border-radius:9px;background:var(--head);border:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;padding:0 10px 0 9px;transition:border-color .14s;
+}
+.filter:focus-within{border-color:var(--hair-strong)}
+.filter svg{flex:0 0 auto;opacity:.75}
+.filter input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:11.5px}
+.filter input::placeholder{color:rgba(138,138,138,.5)}
+
+.stack{position:relative;padding:2px 0 4px}
+.entry{display:flex;position:relative}
+.entry.lifted{opacity:.32}
+.bubble{width:32px;flex:0 0 auto;padding-top:7px;cursor:grab}
+.bubble .b{
+  width:25px;height:25px;border-radius:50%;display:grid;place-items:center;
+  font-size:10px;font-weight:700;letter-spacing:-.02em;transition:background .25s,color .25s,transform .16s var(--pop);
+}
+.entry:hover .bubble .b{transform:scale(1.06)}
+.spine-col{width:15px;flex:0 0 auto;display:flex;justify-content:center;position:relative}
+.spine-col .ln{position:absolute;width:6px;top:0;bottom:0;transition:background .25s}
+.entry:first-child .spine-col .ln{top:19px;border-radius:4px 4px 0 0}
+.entry:last-child .spine-col .ln{bottom:auto;height:19px;border-radius:0 0 4px 4px}
+.spine-col .knot{position:absolute;top:19px;width:7px;height:7px;border-radius:50%;background:var(--knob);
+  box-shadow:0 0 0 3px var(--panel);transform:translateY(-50%)}
+.card-col{flex:1;min-width:0;padding:0 0 3px 8px}
+
+.lcard{position:relative;border:1px solid transparent;border-radius:var(--r-card);overflow:hidden;transition:background .18s,border-color .18s}
+.lcard.open{border-color:var(--border);background:var(--tile)}
+.lcard.focus{border-color:var(--hair-strong)}
+.lcard.focus::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--marker);border-radius:2px;z-index:3}
+.lrow{height:44px;display:flex;align-items:center;gap:7px;padding:0 8px;cursor:pointer;position:relative;transition:background .14s}
+.lcard:not(.open) .lrow:hover{background:var(--row-hover)}
+.lcard.open .lrow{background:var(--head)}
+.lcard.open.focus .lrow{background:#000}
+.lrow.muted .thumb,.lrow.muted .txt{opacity:.4}
+.thumb{width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:#000;border:1px solid var(--border);position:relative;overflow:hidden}
+.thumb .ink{position:absolute;inset:0;margin:auto;width:15px;height:15px;border-radius:3px;transition:background .2s}
+.thumb .kd{position:absolute;right:3px;top:3px;width:6px;height:6px;border-radius:50%}
+.thumb .mk{position:absolute;left:3px;bottom:3px;width:7px;height:7px;border-radius:2px;border:1px solid rgba(0,0,0,.6)}
+.txt{flex:1;min-width:0}
+.txt b{display:block;font-weight:500;font-size:12.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.txt span{display:block;font-size:10px;color:var(--faint);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.name-edit{
+  width:100%;background:#000;border:1px solid var(--marker);border-radius:5px;padding:2px 5px;
+  outline:none;font-size:12.5px;
+}
+.pill{
+  width:41px;height:19px;flex:0 0 auto;border-radius:999px;background:var(--value);
+  display:grid;place-items:center;font-size:10.5px;color:var(--muted);cursor:ew-resize;
+  font-variant-numeric:tabular-nums;transition:color .14s;
+}
+.pill:hover{color:var(--ink)}
+.eye,.caret{width:20px;height:20px;flex:0 0 auto;border-radius:6px;display:grid;place-items:center;cursor:pointer;color:var(--muted);transition:background .14s,color .14s}
+.caret{width:18px;height:18px}
+.eye:hover,.caret:hover{background:var(--tile-hi);color:var(--ink)}
+.lrow.muted .eye{color:#454547}
+.caret svg{transition:transform .24s var(--ease)}
+.lcard.open .caret svg{transform:rotate(180deg)}
+
+.lfold{display:grid;grid-template-rows:0fr;transition:grid-template-rows .27s var(--ease)}
+.lcard.open .lfold{grid-template-rows:1fr}
+.lclip{overflow:hidden;min-height:0}
+.lbody{padding:7px 8px 8px;border-top:1px solid var(--border)}
+
+/* metadata strip — the numbers you want without opening anything */
+.meta-strip{display:flex;flex-wrap:wrap;gap:4px;padding:0 0 7px}
+.mchip{
+  display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;
+  background:var(--panel-2);border:1px solid var(--border);font-size:9.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;
+}
+.mchip b{color:var(--ink);font-weight:600}
+.mchip .d{width:5px;height:5px;border-radius:50%}
+
+/* the two sub-cards: ONE material, ONE mask — the layer's whole anatomy */
+.sub{
+  position:relative;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);
+  margin-bottom:5px;overflow:hidden;transition:border-color .18s,background .18s;
+}
+.sub:last-child{margin-bottom:0}
+.sub:hover{border-color:#242424}
+.sub.on{border-color:var(--marker);background:#0d1117}
+.sub.on::after{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--marker)}
+.sub-head{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;cursor:pointer;transition:background .14s}
+.sub-head:hover{background:var(--row-hover)}
+.sub-tile{width:20px;height:20px;flex:0 0 auto;border-radius:5px;border:1px solid var(--border);display:grid;place-items:center;color:var(--muted)}
+.sub-tile svg{width:12px;height:12px}
+.sub-txt{flex:1;min-width:0}
+.sub-txt b{display:block;font-size:11px;font-weight:600;letter-spacing:.2px}
+.sub-txt span{display:block;font-size:9px;color:var(--faint);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub-go{
+  width:20px;height:20px;flex:0 0 auto;border-radius:6px;display:grid;place-items:center;color:var(--faint);
+  transition:background .13s,color .13s,transform .18s var(--pop);
+}
+.sub-go:hover{background:var(--tile-hi);color:var(--ink);transform:translateX(2px)}
+.sub-tw{width:10px;height:10px;flex:0 0 auto;color:var(--faint);display:grid;place-items:center;transition:transform .24s var(--ease)}
+.sub.folded .sub-tw{transform:rotate(-90deg)}
+.sub-fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .26s var(--ease)}
+.sub.folded .sub-fold{grid-template-rows:0fr}
+.sub-clip{overflow:hidden;min-height:0}
+.sub-body{padding:2px 9px 9px}
+
+.ghost-cta{
+  display:flex;align-items:center;justify-content:center;gap:7px;height:30px;border-radius:8px;
+  background:transparent;border:1px dashed var(--border);color:var(--muted);font-size:11px;cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
+}
+.ghost-cta:hover{border-color:var(--marker);color:var(--ink);background:var(--marker-soft)}
+
+.drop-line{position:absolute;left:0;right:0;height:2px;background:var(--accent);border-radius:1px;pointer-events:none;z-index:80;box-shadow:0 0 8px rgba(232,232,232,.45)}
+.drop-line::before{content:"";position:absolute;left:-1px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+body.dragging{cursor:grabbing}
+body.dragging .lrow:hover{background:none!important}
+.drag-proxy{
+  position:fixed;z-index:400;pointer-events:none;opacity:.95;border:1px solid var(--hair-strong);
+  border-radius:var(--r-card);background:var(--tile-on);box-shadow:0 18px 38px rgba(0,0,0,.9);overflow:hidden;
+}
+.empty{padding:22px 14px;text-align:center;color:var(--faint);font-size:11px;line-height:1.7}
+
+/*───────────────────────────── CONTEXT MENU ─────────────────────────────*/
+.ctx{
+  position:fixed;z-index:900;display:none;min-width:186px;padding:5px;
+  background:#141416;border:1px solid var(--hair-strong);border-radius:10px;
+  box-shadow:0 18px 46px rgba(0,0,0,.75);
+}
+.ctx.open{display:block;animation:unfold .14s var(--pop)}
+.ctx-item{display:flex;align-items:center;gap:9px;height:28px;padding:0 9px;border-radius:7px;font-size:11.5px;cursor:pointer;transition:background .12s,padding-left .12s}
+.ctx-item:hover{background:var(--tile-on);padding-left:13px}
+.ctx-item .ic{width:15px;height:15px;flex:0 0 auto;display:grid;place-items:center;color:var(--muted)}
+.ctx-item:hover .ic{color:var(--ink)}
+.ctx-item .ic svg{width:14px;height:14px}
+.ctx-item .kbd{margin-left:auto;font-size:9.5px;color:var(--faint)}
+.ctx-item.danger{color:#ff6b6b}
+.ctx-item.danger .ic{color:#ff6b6b}
+.ctx-item.danger:hover{background:rgba(255,107,107,.12)}
+.ctx-sep{height:1px;background:#222;margin:4px 6px}
+.ctx-label{font-size:9px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint);font-weight:700;padding:5px 9px 3px}
+
+/*───────────────────────────── CHIPS ─────────────────────────────*/
+.chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;background:var(--tile);border:1px solid var(--border);
+  border-radius:999px;padding:3px 5px 3px 9px;font-size:11px;animation:chipIn .2s var(--pop) both;
+  transition:border-color .14s,background .14s;
+}
+.chip:hover{border-color:var(--hair-strong);background:var(--tile-hi)}
+.chip .cs{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.chip .cx{
+  width:15px;height:15px;border-radius:50%;border:0;cursor:pointer;background:var(--tile-on);color:var(--muted);
+  display:grid;place-items:center;flex:0 0 auto;transition:background .14s,color .14s,transform .14s var(--pop);
+}
+.chip .cx:hover{background:var(--danger);color:#fff;transform:scale(1.12)}
+.chip.locked{padding-right:10px;opacity:.9}
+.add-wrap{position:relative;display:inline-flex}
+.add-btn{
+  width:25px;height:25px;border-radius:50%;border:1px dashed var(--border);background:transparent;color:var(--muted);
+  display:grid;place-items:center;cursor:pointer;transition:border-color .15s,color .15s,background .15s,transform .2s var(--pop);
+}
+.add-btn:hover{border-color:var(--accent);color:var(--ink);background:rgba(255,255,255,.05);transform:rotate(90deg)}
+.add-btn svg{width:13px;height:13px}
+.add-menu{
+  position:absolute;left:0;top:31px;z-index:200;min-width:214px;max-height:288px;overflow-y:auto;padding:5px;
+  background:#141416;border:1px solid var(--hair-strong);border-radius:9px;box-shadow:0 16px 38px rgba(0,0,0,.8);
+  opacity:0;transform:scale(.95) translateY(-4px);pointer-events:none;transition:opacity .16s,transform .16s var(--pop);
+}
+.add-menu.open{opacity:1;transform:none;pointer-events:auto}
+.afm{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:11.5px;transition:background .12s,padding-left .12s}
+.afm:hover{background:var(--row-hover);padding-left:12px}
+.afm .sw{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.afm .tick{margin-left:auto;color:var(--ok);display:none}
+.afm.on .tick{display:inline}
+.afm.locked{opacity:.45;pointer-events:none}
+.afm-sep{height:1px;background:#212121;margin:4px 0}
+
+/*───────────────────────────── SLOTS (texture / paint / generator) ─────────────────────────────*/
+.slot{display:flex;align-items:center;gap:9px;padding:6px;margin-top:5px;background:var(--tile);border:1px solid var(--border);border-radius:9px;transition:border-color .15s}
+.slot:hover{border-color:var(--hair-strong)}
+.slot-thumb{
+  flex:0 0 38px;height:38px;border-radius:6px;border:1px solid var(--border);display:grid;place-items:center;color:var(--faint);
+  background-image:linear-gradient(45deg,#191919 25%,transparent 25%,transparent 75%,#191919 75%),
+                   linear-gradient(45deg,#191919 25%,transparent 25%,transparent 75%,#191919 75%);
+  background-size:8px 8px;background-position:0 0,4px 4px;background-color:#0a0a0a;
+}
+.slot-thumb svg{width:15px;height:15px}
+.slot-text{flex:1;min-width:0}
+.slot-name{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot-meta{font-size:9.5px;color:var(--faint);margin-top:2px;font-variant-numeric:tabular-nums}
+.slot-acts{display:flex;gap:4px;flex:0 0 auto}
+.iconbtn{
+  width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--head);color:var(--muted);
+  cursor:pointer;display:grid;place-items:center;transition:background .14s,color .14s,border-color .14s;
+}
+.iconbtn svg{width:13px;height:13px}
+.iconbtn:hover{background:var(--tile-hi);color:var(--ink);border-color:var(--hair-strong)}
+.iconbtn.danger:hover{background:rgba(224,90,90,.16);color:var(--danger);border-color:rgba(224,90,90,.4)}
+.iconbtn:disabled{opacity:.28;cursor:default}
+.iconbtn:disabled:hover{background:var(--head);color:var(--muted);border-color:var(--border)}
+.slot-label{font-size:9px;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);font-weight:700;padding:9px 1px 1px}
+
+.prev{display:flex;align-items:center;gap:9px;margin-top:8px;padding-top:7px;border-top:1px solid var(--hair)}
+.prev-tile{
+  flex:0 0 34px;height:34px;border-radius:7px;border:1px solid var(--border);
+  background-image:linear-gradient(45deg,#191919 25%,transparent 25%,transparent 75%,#191919 75%),
+                   linear-gradient(45deg,#191919 25%,transparent 25%,transparent 75%,#191919 75%);
+  background-size:8px 8px;background-position:0 0,4px 4px;background-color:#0a0a0a;
+  transition:background-color .12s;
+}
+.prev-t1{font-size:10.5px;color:var(--muted);font-weight:500}
+.prev-t2{font-size:9.5px;color:var(--faint);margin-top:2px;font-variant-numeric:tabular-nums}
+
+/*───────────────────────────── PREVIEW HERO (slide 2 left) ─────────────────────────────*/
+.hero{
+  border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;background:var(--panel);margin-bottom:6px;
+}
+.hero-art{
+  height:132px;position:relative;display:grid;place-items:center;
+  background-image:linear-gradient(45deg,#151515 25%,transparent 25%,transparent 75%,#151515 75%),
+                   linear-gradient(45deg,#151515 25%,transparent 25%,transparent 75%,#151515 75%);
+  background-size:14px 14px;background-position:0 0,7px 7px;background-color:#080808;
+}
+.hero-swatch{
+  width:88px;height:88px;border-radius:12px;border:1px solid rgba(255,255,255,.08);
+  box-shadow:0 12px 30px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.5) inset;
+  transition:background .25s,transform .3s var(--pop);
+}
+.hero:hover .hero-swatch{transform:scale(1.035)}
+.hero-badge{
+  position:absolute;left:9px;top:9px;display:flex;align-items:center;gap:6px;height:22px;padding:0 9px;
+  border-radius:999px;background:rgba(0,0,0,.62);border:1px solid var(--border);backdrop-filter:blur(6px);
+  font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700;
+}
+.hero-badge .d{width:6px;height:6px;border-radius:50%}
+.hero-foot{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-top:1px solid var(--border);background:var(--head)}
+.hero-foot .nm{flex:1;min-width:0;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-foot .op{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.mrow{display:flex;align-items:center;gap:8px;height:27px;font-size:11px;border-bottom:1px solid var(--hair)}
+.mrow:last-child{border-bottom:0}
+.mrow .k{color:var(--muted)}
+.mrow .v{margin-left:auto;color:var(--ink);font-variant-numeric:tabular-nums;max-width:62%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .v.dim{color:var(--faint)}
+
+/*───────────────────────────── HISTORY TIMELINE ─────────────────────────────*/
+.hx-filter{display:flex;gap:4px;padding:0 0 7px;flex-wrap:wrap}
+.fchip{
+  height:21px;padding:0 9px;border-radius:999px;background:var(--tile);border:1px solid var(--border);
+  color:var(--muted);font-size:10px;display:grid;place-items:center;cursor:pointer;
+  transition:background .14s,color .14s,border-color .14s;
+}
+.fchip:hover{background:var(--tile-hi);color:var(--ink)}
+.fchip.on{background:var(--marker-soft);border-color:var(--marker);color:var(--ink)}
+.hx-ev{display:flex;gap:8px;padding:2px 5px;border-radius:8px;cursor:pointer;transition:background .13s}
+.hx-ev:hover{background:var(--row-hover)}
+.hx-ev.at{background:var(--tile-on);box-shadow:inset 0 0 0 1px var(--hair-strong)}
+.hx-ev.future{opacity:.36}
+.hx-rail{flex:0 0 20px;display:flex;flex-direction:column;align-items:center}
+.hx-line{width:2px;flex:1;min-height:5px;background:#242424}
+.hx-line.blank{background:transparent}
+.hx-node{width:16px;height:16px;flex:0 0 auto;border-radius:50%;background:var(--panel);box-shadow:0 0 0 2px #262626;display:grid;place-items:center;transition:box-shadow .2s}
+.hx-node .d{width:6px;height:6px;border-radius:50%}
+.hx-ev.at .hx-node{box-shadow:0 0 0 2px var(--marker);animation:pulse 1.5s ease-out}
+.hx-body{flex:1;min-width:0;padding:2px 0 6px}
+.hx-main{display:flex;align-items:baseline;gap:7px;min-width:0}
+.hx-title{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hx-kind{flex:0 0 auto;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:999px;background:var(--panel-2)}
+.hx-time{flex:0 0 auto;margin-left:auto;font-size:9.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.hx-sub{font-size:9.5px;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* compact log inside a channel / mask card */
+.log{display:flex;flex-direction:column;gap:1px;margin-top:2px}
+.log-row{display:flex;align-items:center;gap:7px;height:22px;padding:0 4px;border-radius:5px;font-size:10.5px;color:var(--muted);transition:background .12s}
+.log-row:hover{background:var(--row-hover);color:var(--ink)}
+.log-row .d{width:5px;height:5px;border-radius:50%;flex:0 0 auto}
+.log-row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log-row .ts{font-size:9.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.log-none{font-size:10px;color:var(--faint);padding:4px 4px 2px;font-style:italic}
+
+.act-danger{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:30px;margin-top:10px;
+  border-radius:8px;cursor:pointer;font-size:11px;font-weight:600;color:#ff6b6b;background:transparent;
+  border:1px solid rgba(255,107,107,.32);transition:background .15s,color .15s,border-color .15s;
+}
+.act-danger svg{width:13px;height:13px}
+.act-danger:hover{background:#ff6b6b;border-color:#ff6b6b;color:#120404}
+.act-danger.off{pointer-events:none;color:var(--faint);border-color:var(--border)}
+
+/*───────────────────────────── LEGEND ─────────────────────────────*/
+.Legend{width:var(--card-w);display:flex;align-items:center;gap:9px;font-size:10px;color:var(--faint);letter-spacing:.3px}
+.Legend b{color:var(--muted);font-weight:600}
+.Legend .Key{display:inline-grid;place-items:center;height:17px;padding:0 6px;background:var(--tile);border:1px solid var(--border);border-radius:4px;color:var(--ink);font-size:9.5px}
+.Legend .sp{flex:1}
+.Legend .live{color:var(--marker);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="Card">
+  <div class="Track" id="Track">
+
+    <!--═══════════════ SLIDE 1 · stack | properties ═══════════════-->
+    <section class="Slide">
+      <div class="Well">
+        <header class="pane-head" id="StackHead"></header>
+        <div class="stack-tools" id="StackTools"></div>
+        <div class="pane-body no-bar" id="StackBody" style="padding-top:2px"></div>
+        <footer class="pane-foot" id="StackFoot"></footer>
+      </div>
+      <div class="Well">
+        <header class="pane-head step" id="PropHead"></header>
+        <div class="face-tabs" id="PropTabs"></div>
+        <div class="swipe-view"><div class="swipe-track" id="PropSwipe">
+          <div class="swipe-pane no-bar" id="PropLayer"></div>
+          <div class="swipe-pane no-bar" id="PropMask"></div>
+        </div></div>
+        <footer class="pane-foot" id="PropFoot"></footer>
+      </div>
+    </section>
+
+    <!--═══════════════ SLIDE 2 · preview+meta+log | channels ⇄ mask ═══════════════-->
+    <section class="Slide">
+      <div class="Well">
+        <header class="pane-head step" id="BackHead"></header>
+        <div class="pane-body no-bar" id="InspectLeft"></div>
+        <footer class="pane-foot" id="InspectLeftFoot"></footer>
+      </div>
+      <div class="Well">
+        <header class="pane-head" id="InspectHead"></header>
+        <div class="face-tabs" id="InspectTabs"></div>
+        <div class="swipe-view"><div class="swipe-track" id="FaceSwipe">
+          <div class="swipe-pane no-bar" id="ChannelPane"></div>
+          <div class="swipe-pane no-bar" id="MaskPane"></div>
+        </div></div>
+        <footer class="pane-foot" id="InspectFoot"></footer>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div class="ctx" id="Ctx"></div>
+
+<div class="Legend">
+  <span><b>Tab</b> travels</span><span class="Key">Tab</span>
+  <span><b>Right-click</b> a layer</span>
+  <span><b>Ctrl&nbsp;Z / Y</b> history</span>
+  <span class="sp"></span>
+  <span>focused <b id="LegFocus">—</b></span><span>·</span>
+  <span>face <span class="live" id="LegFace">layer</span></span>
+</div>
+
+<script>
+"use strict";
+(function(){
+
+/*═══════════════════════════════════════════════════════════════════════════════════
+  SCHEMA
+  A LAYER owns exactly one material (its channel set) and exactly one mask. Nothing
+  else nests. That single rule is what lets the stack card unfold into precisely two
+  sub-cards, and what lets the FACE be a two-state value rather than a tree path.
+═══════════════════════════════════════════════════════════════════════════════════*/
+const BLEND = ["Normal","Multiply","Screen","Overlay","Add","Darken","Linear Dodge"];
+
+const KINDS = [
+  {Label:"Paint",     Tint:"#f97316", Summary:"Accepts brush strokes"},
+  {Label:"Fill",      Tint:"#3b82f6", Summary:"Uniform authored values"},
+  {Label:"Material",  Tint:"#8b5cf6", Summary:"A PBR preset, flooded"},
+  {Label:"Generator", Tint:"#10b981", Summary:"Procedural over the atlas"}
+];
+
+const CH = {
+  baseColour:      {Group:"Surface",     Hue:"#b87333", Label:"Base Colour",       Edit:"colour",                              Place:"Colour atlas · RGB"},
+  metallic:        {Group:"Surface",     Hue:"#8b5cf6", Label:"Metallic",          Edit:"scalar", Min:0,Max:1,                 Place:"Material atlas · R"},
+  roughness:       {Group:"Surface",     Hue:"#3b82f6", Label:"Roughness",         Edit:"scalar", Min:0,Max:1,                 Place:"Material atlas · G"},
+  height:          {Group:"Surface",     Hue:"#8a8a8a", Label:"Height",            Edit:"scalar", Min:0,Max:1,                 Place:"Material atlas · B"},
+  normal:          {Group:"Surface",     Hue:"#10b981", Label:"Normal",            Edit:"derived",Source:"height",             Place:"No storage · derived"},
+  opacity:         {Group:"Surface",     Hue:"#94a3b8", Label:"Opacity",           Edit:"scalar", Min:0,Max:1,                 Place:"Material atlas · A"},
+  emission:        {Group:"Radiance",    Hue:"#f59e0b", Label:"Emissive",          Edit:"colour",                              Place:"Emissive atlas · RGB"},
+  ambientOcclusion:{Group:"Radiance",    Hue:"#6b7280", Label:"Ambient Occlusion", Edit:"scalar", Min:0,Max:1,                 Place:"Emissive atlas · A"},
+  anisotropy:      {Group:"Reflectance", Hue:"#22d3ee", Label:"Anisotropy",        Edit:"scalar", Min:0,Max:1,                 Place:"Reflect atlas · R"},
+  anisotropyAngle: {Group:"Reflectance", Hue:"#0ea5e9", Label:"Anisotropy Angle",  Edit:"scalar", Min:0,Max:360, Unit:"°",     Place:"Reflect atlas · G"},
+  clearcoat:       {Group:"Reflectance", Hue:"#e2e8f0", Label:"Clearcoat",         Edit:"scalar", Min:0,Max:1,                 Place:"Reflect atlas · B"},
+  refractionIndex: {Group:"Reflectance", Hue:"#a78bfa", Label:"Refraction Index",  Edit:"scalar", Min:1,Max:3,   Unit:"ior",   Place:"Reflect atlas · A"},
+  sheen:           {Group:"Scattering",  Hue:"#f472b6", Label:"Sheen",             Edit:"colour",                              Place:"Scatter atlas · RGB"},
+  subsurface:      {Group:"Scattering",  Hue:"#fb7185", Label:"Subsurface",        Edit:"colour",                              Place:"Sheen atlas · RGB"}
+};
+const CH_ORDER  = Object.keys(CH);
+const CH_GROUPS = ["Surface","Radiance","Reflectance","Scattering"];
+
+const GENS = [
+  {key:"CurvatureEdges",   group:"Mask",       label:"Curvature",         note:"Convex edge wear", params:[
+    {key:"Balance",label:"Balance",def:.5},{key:"Contrast",label:"Contrast",def:.7},{key:"Radius",label:"Radius",def:.25}]},
+  {key:"AmbientOcclusion", group:"Mask",       label:"Ambient Occlusion", note:"Cavity dirt", params:[
+    {key:"Spread",label:"Spread",def:.4},{key:"Contrast",label:"Contrast",def:.6}]},
+  {key:"MetalEdgeWear",    group:"Wear",       label:"Metal Edge Wear",   note:"Curvature + grunge", params:[
+    {key:"Intensity",label:"Intensity",def:.6},{key:"Softness",label:"Softness",def:.3},{key:"Grain",label:"Grain",def:.45}]},
+  {key:"DirtAccumulation", group:"Wear",       label:"Dirt",              note:"Occlusion-driven", params:[
+    {key:"Amount",label:"Amount",def:.5},{key:"Scale",label:"Scale",def:.3}]},
+  {key:"PerlinNoise",      group:"Procedural", label:"Perlin Noise",      note:"Fractal value noise", params:[
+    {key:"Scale",label:"Scale",def:.4},{key:"Octaves",label:"Octaves",def:.5},{key:"Contrast",label:"Contrast",def:.5}]}
+];
+const GEN = k => GENS.find(g=>g.key===k) || GENS[0];
+
+/* history categories — hue doubles as the timeline node colour and the compact-log dot */
+const HKIND = {
+  stroke:   {Label:"Stroke",  Hue:"#f97316"},
+  channel:  {Label:"Channel", Hue:"#3b82f6"},
+  mask:     {Label:"Mask",    Hue:"#8b5cf6"},
+  generator:{Label:"Gen",     Hue:"#10b981"},
+  texture:  {Label:"Texture", Hue:"#f59e0b"},
+  edit:     {Label:"Edit",    Hue:"#94a3b8"},
+  create:   {Label:"Create",  Hue:"#22d3ee"}
+};
+
+/*═══════════════════════════════════ STATE ═══════════════════════════════════*/
+let uid = 0; const nid = p => p + (++uid);
+const T0 = Date.now();
+const ago = m => new Date(T0 - m*60000);
+
+function ev(cat,scope,title,detail,minsAgo){
+  return {Id:nid("h"), At:ago(minsAgo), Category:cat, Scope:scope, Title:title, Detail:detail};
+}
+
+function mkLayer(o){
+  return Object.assign({
+    Id:nid("L"), Name:"Layer", Kind:0, Blend:0, Opacity:100, Shown:true,
+    Open:false, OpenMat:true, OpenMask:true,
+    Tag:"#94a3b8", Paint:"#4c4f53",
+    Channels:["baseColour","roughness","normal"],
+    Modes:{}, Amounts:{}, Colours:{}, Textures:{}, Strokes:{}, Generators:{},
+    Mask:{Enabled:false, Fill:"White", Inverted:false, Strength:100, Source:"Solid", Gen:"PerlinNoise", GenParams:{Scale:.4,Octaves:.5,Contrast:.5}},
+    History:[], Cursor:-1
+  }, o);
+}
+
+const State = {
+  Surface:"Suzanne",
+  Filter:"",
+  Focus:0,                 // index into Layers
+  Face:"layer",            // "layer" | "mask"  — ONE value; every tab/track reads it
+  Slide:1,
+  Menu:null,               // call-site-keyed open menu, e.g. "blend@stack:2"
+  Lifted:-1,
+  Renaming:null,
+  HxFilter:"all",          // all | stroke | channel | mask
+  Folded:new Set(["height","normal","ambientOcclusion","anisotropy","anisotropyAngle","clearcoat","refractionIndex","emission","sheen","subsurface","opacity"]),
+  Layers:[]
+};
+
+State.Layers = [
+  mkLayer({Name:"Edge Wear", Kind:0, Blend:1, Opacity:78, Tag:"#f97316", Paint:"#2e2d2b", Open:true,
+    Channels:["baseColour","metallic","roughness","height","normal","ambientOcclusion","anisotropy","clearcoat"],
+    Modes:{baseColour:"Texture",metallic:"Value",roughness:"Generator",height:"Value",ambientOcclusion:"Generator",anisotropy:"Value",clearcoat:"Value"},
+    Amounts:{metallic:.94,roughness:.38,height:.5,ambientOcclusion:1,anisotropy:.72,clearcoat:.15},
+    Colours:{baseColour:"#b87333"},
+    Textures:{baseColour:{Name:"copper_basecolour.png",W:2048,H:2048,Format:"sRGB 8"}},
+    Strokes:{baseColour:148,height:62},
+    Generators:{roughness:{Key:"MetalEdgeWear",Params:{Intensity:.6,Softness:.3,Grain:.45}},
+                ambientOcclusion:{Key:"AmbientOcclusion",Params:{Spread:.4,Contrast:.6}}},
+    Mask:{Enabled:true,Fill:"Black",Inverted:false,Strength:92,Source:"Generator",Gen:"MetalEdgeWear",GenParams:{Intensity:.6,Softness:.3,Grain:.45}},
+    History:[
+      ev("create","layer","Layer created","Paint layer",96),
+      ev("channel","baseColour","Base Colour → Texture","copper_basecolour.png",84),
+      ev("stroke","baseColour","Painted 96 strokes","Round · 42px",71),
+      ev("mask","mask","Mask created","Black base",58),
+      ev("generator","mask","Mask generator → Metal Edge Wear","Intensity 0.60",57),
+      ev("channel","roughness","Roughness → Generator","Metal Edge Wear",44),
+      ev("stroke","height","Painted 62 strokes","Height · 18px",31),
+      ev("edit","layer","Opacity 78%","was 100%",12)
+    ]}),
+
+  mkLayer({Name:"Cavity Dirt", Kind:3, Blend:1, Opacity:55, Shown:false, Tag:"#10b981", Paint:"#2e2d2b",
+    Channels:["roughness","ambientOcclusion"],
+    Modes:{roughness:"Generator",ambientOcclusion:"Generator"},
+    Amounts:{roughness:.5,ambientOcclusion:.8},
+    Generators:{ambientOcclusion:{Key:"AmbientOcclusion",Params:{Spread:.4,Contrast:.6}},
+                roughness:{Key:"DirtAccumulation",Params:{Amount:.5,Scale:.3}}},
+    History:[
+      ev("create","layer","Layer created","Generator layer",74),
+      ev("generator","ambientOcclusion","AO → Ambient Occlusion","Spread 0.40",70),
+      ev("generator","roughness","Roughness → Dirt","Amount 0.50",63),
+      ev("edit","layer","Hidden","visibility off",21)
+    ]}),
+
+  mkLayer({Name:"Hand Detail", Kind:0, Blend:0, Tag:"#ef4444", Paint:"#ef4444",
+    Channels:["baseColour","roughness","height"],
+    Modes:{baseColour:"Texture",roughness:"Value",height:"Value"},
+    Amounts:{roughness:.4,height:.6}, Colours:{baseColour:"#ef4444"},
+    Textures:{baseColour:{Name:"detail_albedo.png",W:2048,H:2048,Format:"sRGB 8"}},
+    Strokes:{baseColour:62},
+    History:[
+      ev("create","layer","Layer created","Paint layer",52),
+      ev("texture","baseColour","Imported detail_albedo.png","2048 × 2048 · sRGB 8",50),
+      ev("stroke","baseColour","Painted 62 strokes","Round · 12px",38)
+    ]}),
+
+  mkLayer({Name:"Roughness Lift", Kind:1, Blend:4, Opacity:40, Tag:"#3b82f6", Paint:"#2e2d2b",
+    Channels:["roughness"], Modes:{roughness:"Value"}, Amounts:{roughness:.75},
+    History:[ ev("create","layer","Layer created","Fill layer",40),
+              ev("channel","roughness","Roughness 0.75","flooded",39),
+              ev("edit","layer","Blend → Add","was Normal",36) ]}),
+
+  mkLayer({Name:"Brushed Copper", Kind:2, Tag:"#8b5cf6", Paint:"#b87333",
+    Channels:["baseColour","metallic","roughness","height","normal"],
+    Modes:{baseColour:"Value",metallic:"Value",roughness:"Generator",height:"Value"},
+    Amounts:{metallic:.95,roughness:.3,height:.5}, Colours:{baseColour:"#b87333"},
+    Generators:{roughness:{Key:"CurvatureEdges",Params:{Balance:.5,Contrast:.7,Radius:.25}}},
+    Mask:{Enabled:true,Fill:"White",Inverted:true,Strength:100,Source:"Generator",Gen:"CurvatureEdges",GenParams:{Balance:.5,Contrast:.7,Radius:.25}},
+    History:[ ev("create","layer","Layer created","Material preset",30),
+              ev("mask","mask","Mask created","White base",28),
+              ev("mask","mask","Mask inverted","",27),
+              ev("generator","roughness","Roughness → Curvature","Contrast 0.70",22) ]}),
+
+  mkLayer({Name:"Base Steel", Kind:2, Tag:"#94a3b8", Paint:"#4c4f53",
+    Channels:["baseColour","metallic","roughness","height","normal"],
+    Modes:{baseColour:"Value",metallic:"Value",roughness:"Value",height:"Value"},
+    Amounts:{metallic:.9,roughness:.2,height:.5}, Colours:{baseColour:"#4c4f53"},
+    History:[ ev("create","layer","Layer created","Material preset",18),
+              ev("channel","metallic","Metallic 0.90","flooded",17) ]})
+];
+State.Layers.forEach(l => l.Cursor = l.History.length - 1);
+
+/*═══════════════════════════════════ ICONS ═══════════════════════════════════*/
+const S=(d,w=1.7)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const svg=b=>`<svg viewBox="0 0 24 24" fill="none">${b}</svg>`;
+const I = {
+  chevron: `<svg width="9" height="6" viewBox="0 0 9 6"><path d="M1 1.4 4.5 4.6 8 1.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`,
+  search:  `<svg width="13" height="13" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9.2 9.2 12.4 12.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  x:       `<svg width="9" height="9" viewBox="0 0 9 9"><path d="M.8.8 8.2 8.2M8.2.8.8 8.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  next:    svg(S("M9 5l7 7-7 7",2)),
+  prev:    svg(S("M15 5l-7 7 7 7",2)),
+  plus:    svg(S("M12 5v14M5 12h14",2)),
+  trash:   svg(S("M3 6h18")+S("M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6")+S("M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2")),
+  brush:   svg(S("M9 12l9-9a2.8 2.8 0 1 1 4 4l-9 9")+S("M7 15c-1.7 0-3 1.4-3 3 0 1.3-2.5 1.5-2 2 1.1 1.1 2.5 2 4 2 2.2 0 4-1.8 4-4a3 3 0 0 0-3-3z")),
+  image:   svg(`<rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/>`+`<circle cx="9" cy="9" r="1.9" fill="none" stroke="currentColor" stroke-width="1.6"/>`+S("M21 15l-3.1-3.1a2 2 0 0 0-2.8 0L6 21")),
+  reload:  svg(S("M21 12a9 9 0 1 1-9-9c2.5 0 4.9.8 6.7 2.2")+S("M21 3v6h-6")),
+  layers:  svg(S("M12 3l9 5-9 5-9-5z")+S("M3 13l9 5 9-5",1.4)),
+  mask:    svg(`<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/>`+`<path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>`),
+  sliders: svg(S("M4 7h9M17 7h3M4 17h3M11 17h9")+`<circle cx="15" cy="7" r="2.1" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="17" r="2.1" fill="none" stroke="currentColor" stroke-width="1.6"/>`),
+  clock:   svg(S("M12 7v5l3.4 2.1")+`<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/>`),
+  undo:    svg(S("M9 7H5V3")+S("M5 7a8 8 0 1 1 14 5.3")),
+  redo:    svg(S("M15 7h4V3")+S("M19 7A8 8 0 1 0 5 12.3")),
+  eyeOn:   `<svg width="14" height="14" viewBox="0 0 14 14"><path d="M1 7Q7 1.2 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 7Q7 12.8 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="7" cy="7" r="2.3" fill="currentColor"/></svg>`,
+  eyeOff:  `<svg width="14" height="14" viewBox="0 0 14 14"><path d="M1 7Q7 1.2 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 7Q7 12.8 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1.4 10.4 12.6 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  rename:  svg(S("M4 20h4L20 8l-4-4L4 16z")+S("M14 6l4 4",1.4)),
+  copy:    svg(S("M9 9h11v11H9z")+S("M15 5H4v11",1.4)),
+  target:  svg(`<circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/>`+S("M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3")+`<circle cx="12" cy="12" r="2.1" fill="currentColor"/>`),
+  swap:    svg(S("M7 4L3 8l4 4")+S("M3 8h13")+S("M17 20l4-4-4-4")+S("M21 16H8"))
+};
+
+/*═══════════════════════════════════ HELPERS ═══════════════════════════════════*/
+const q  = id => document.getElementById(id);
+const esc = t => String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+const L = () => State.Layers[State.Focus];
+const hhmm = d => d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+const maskTone = m => { const base = m.Fill==="Black"?0:1; const lit = m.Inverted?1-base:base;
+                        const b = Math.round(lit*255); return `rgb(${b},${b},${b})`; };
+const chMode = (l,k) => CH[k].Edit==="derived" ? "Derived" : (l.Modes[k] || "Value");
+const strokeTotal = l => Object.values(l.Strokes).reduce((n,v)=>n+v,0);
+
+/* one history writer for the whole file. Recording behind the cursor drops the
+   redo tail — a linear log is honest here; branching belongs to the document, not a layer. */
+function record(layer, cat, scope, title, detail){
+  if(!layer) return;
+  if(layer.Cursor < layer.History.length-1) layer.History.length = layer.Cursor+1;
+  layer.History.push({Id:nid("h"), At:new Date(), Category:cat, Scope:scope, Title:title, Detail:detail||""});
+  layer.Cursor = layer.History.length-1;
+}
+function eventsFor(layer, scope){
+  if(!layer) return [];
+  return layer.History.map((e,i)=>({e,i})).filter(({e}) => e.Scope===scope);
+}
+
+/*═══════════════════════════════════ WIDGETS ═══════════════════════════════════*/
+function Slider(key, value, min, max, unit, dec){
+  const r = (value-min)/(max-min||1);
+  const txt = (dec?value.toFixed(dec):Math.round(value));
+  return `<div class="slider">
+    <div class="num">
+      <div class="n" data-scrub="${key}" data-min="${min}" data-max="${max}" data-dec="${dec||0}">${txt}</div>
+      <div class="u">${unit}</div>
+    </div>
+    <div class="track" data-scrub="${key}" data-min="${min}" data-max="${max}" data-dec="${dec||0}">
+      <div class="f" style="width:${r*100}%"></div><div class="h" style="left:${r*100}%"></div>
+    </div>
+  </div>`;
+}
+
+/* 🔴 `site` is what fixes the mirrored-dropdown bug: two dropdowns showing the same
+   value are still two controls, and only the one you clicked may open. */
+function Drop(site, options, index, act){
+  const open = State.Menu === site;
+  const items = options.map((o,i)=>
+    `<div class="opt ${i===index?"on":""}" data-act="${act}" data-arg="${i}">
+       <div class="lb">${esc(o)}</div><div class="radio"></div></div>`).join("");
+  return `<div class="drop ${open?"open":""}">
+    <div class="face" data-act="menu" data-arg="${site}">
+      <div class="lb">${esc(options[index])}</div><div class="cap">${I.chevron}</div></div>
+    <div class="menu" ${open?"":"hidden"}>${items}</div></div>`;
+}
+
+function GenDrop(site, current, act){
+  const open = State.Menu === site;
+  const body = ["Mask","Wear","Procedural"].map(g =>
+    `<div class="menu-group">${g}</div>` + GENS.filter(x=>x.group===g).map(x=>
+      `<div class="opt ${x.key===current?"on":""}" data-act="${act}" data-arg="${x.key}">
+         <div class="lb">${x.label}</div><div class="note">${x.note}</div></div>`).join("")).join("");
+  return `<div class="drop ${open?"open":""}">
+    <div class="face" data-act="menu" data-arg="${site}">
+      <div class="lb">${current?GEN(current).label:"Choose generator"}</div><div class="cap">${I.chevron}</div></div>
+    <div class="menu" ${open?"":"hidden"}>${body}</div></div>`;
+}
+
+const Switch = (on,act,arg="") => `<div class="switch ${on?"on":""}" data-act="${act}" data-arg="${arg}"><div class="nub"></div></div>`;
+const Seg = (opts,cur,act) => `<div class="segrow">${opts.map(o=>
+  `<div class="seg ${o===cur?"on":""}" data-act="${act}" data-arg="${o}">${o}</div>`).join("")}</div>`;
+
+function Card(id, dotHue, title, tag, body, folded, tagLive){
+  return `<div class="card rise-me ${folded?"folded":""}">
+    <div class="card-head" data-act="fold" data-arg="${id}">
+      <div class="ch-tw">${I.chevron}</div>
+      ${dotHue?`<div class="ch-dot" style="background:${dotHue}"></div>`:""}
+      <div class="ch-title">${title}</div>
+      ${tag?`<div class="ch-tag ${tagLive?"live":""}">${tag}</div>`:""}
+    </div>
+    <div class="card-fold"><div class="card-clip"><div class="card-body">${body}</div></div></div>
+  </div>`;
+}
+
+/* compact per-scope log — this is the "history in the channels + mask" affordance */
+function MiniLog(layer, scope, limit){
+  const rows = eventsFor(layer, scope).slice(-(limit||4)).reverse();
+  if(!rows.length) return `<div class="log-none">No recorded changes for this slot.</div>`;
+  return `<div class="log">${rows.map(({e,i})=>{
+    const k = HKIND[e.Category] || HKIND.edit;
+    return `<div class="log-row" data-act="hx-jump" data-arg="${i}">
+      <span class="d" style="background:${k.Hue}"></span>
+      <span class="t">${esc(e.Title)}</span>
+      <span class="ts">${hhmm(e.At)}</span></div>`;
+  }).join("")}</div>`;
+}
+
+/*═══════════════════════════════════ FACE / SLIDE ═══════════════════════════════════*/
+function faceTabs(host){
+  host.dataset.face = State.Face;
+  host.innerHTML =
+    `<div class="ft-seg ${State.Face==="layer"?"on":""}" data-act="face" data-arg="layer"><span class="dot"></span>Layer</div>
+     <div class="ft-seg ${State.Face==="mask"?"on":""}" data-act="face" data-arg="mask"><span class="dot"></span>Mask</div>
+     <div class="ft-thumb"></div>`;
+}
+
+function setFace(face, silent){
+  State.Face = face==="mask" ? "mask" : "layer";
+  State.Menu = null;
+  if(!silent) renderAll();
+}
+function setSlide(n){
+  State.Slide = n===2?2:1;
+  q("Track").classList.toggle("OnInspect", State.Slide===2);
+  State.Menu = null; closeCtx();
+  renderAll();
+}
+function focusLayer(i, face){
+  State.Focus = clamp(i, 0, State.Layers.length-1);
+  if(face) State.Face = face;
+  State.Menu = null;
+  renderAll();
+}
+
+/*═══════════════════════════════════ STACK ═══════════════════════════════════*/
+let animStack = true;
+
+function renderStackChrome(){
+  const shown = State.Layers.filter(l=>l.Shown).length;
+  q("StackHead").innerHTML =
+    `<span class="h-ic">${I.layers}</span>
+     <span class="h-txt"><span class="h-lbl">Layer Stack</span>
+       <span class="h-sub">${esc(State.Surface)} · one material + one mask each</span></span>
+     <span class="h-n">${State.Layers.length}</span>`;
+
+  q("StackTools").innerHTML =
+    `<div>
+       <div class="add ${State.Menu==="addlayer"?"open":""}" data-act="menu" data-arg="addlayer">
+         <span class="plus"></span> Add layer</div>
+       <div class="kind-list" ${State.Menu==="addlayer"?"":"hidden"}>
+         ${KINDS.map((k,i)=>`<div class="kind" data-act="add" data-arg="${i}">
+            <span class="sw" style="background:${k.Tint}"></span>
+            <span class="lb">${k.Label}</span><span class="sm">${k.Summary}</span></div>`).join("")}
+       </div>
+     </div>
+     <label class="filter">${I.search}
+       <input id="FilterInput" type="text" placeholder="Filter layers…" value="${esc(State.Filter)}" spellcheck="false"></label>`;
+
+  q("StackFoot").innerHTML =
+    `<span class="pf-hue" style="background:${L()?L().Tag:"#333"}"></span>
+     <span><b class="pf-strong">${shown}</b> shown</span><span class="pf-dot">·</span>
+     <span><b class="pf-strong">${State.Layers.length-shown}</b> hidden</span>
+     <span class="pf-spacer"></span><span>drag to reorder</span>`;
+}
+
+function subMaterial(l, ord){
+  const on = ord===State.Focus && State.Face==="layer";
+  return `<div class="sub ${on?"on":""} ${l.OpenMat?"":"folded"}">
+    <div class="sub-head" data-act="pickface" data-arg="${ord}:layer">
+      <span class="sub-tw" data-act="foldsub" data-arg="${ord}:mat">${I.chevron}</span>
+      <span class="sub-tile" style="background:${l.Paint}"></span>
+      <span class="sub-txt"><b>Material</b><span>${l.Channels.length} channels · ${BLEND[l.Blend]}</span></span>
+      <span class="sub-go" data-act="inspect" data-arg="${ord}:layer" title="Inspect channels">${I.next}</span>
+    </div>
+    <div class="sub-fold"><div class="sub-clip"><div class="sub-body">
+      <div class="prow"><div class="plabel">Blend</div><div>${Drop(`blend@stack:${ord}`, BLEND, l.Blend, "blend")}</div></div>
+      <div class="prow"><div class="plabel">Opacity</div><div>${Slider(`opacity:${ord}`, l.Opacity, 0, 100, "%")}</div></div>
+      <div class="prow"><div class="plabel">Base</div><div class="swatch">
+        <span class="sw" style="background:${l.Paint}"></span><span class="hex">${l.Paint}</span></div></div>
+    </div></div></div>
+  </div>`;
+}
+
+function subMask(l, ord){
+  const on = ord===State.Focus && State.Face==="mask";
+  if(!l.Mask.Enabled){
+    return `<div class="sub ${on?"on":""}">
+      <div class="sub-head" data-act="pickface" data-arg="${ord}:mask">
+        <span class="sub-tw" style="visibility:hidden">${I.chevron}</span>
+        <span class="sub-tile">${I.mask}</span>
+        <span class="sub-txt"><b>Mask</b><span>none — layer applies everywhere</span></span>
+      </div>
+      <div class="sub-fold"><div class="sub-clip"><div class="sub-body">
+        <div class="ghost-cta" data-act="mask-add" data-arg="${ord}"><span class="plus"></span> Add mask</div>
+      </div></div></div>
+    </div>`;
+  }
+  const g = GEN(l.Mask.Gen);
+  return `<div class="sub ${on?"on":""} ${l.OpenMask?"":"folded"}">
+    <div class="sub-head" data-act="pickface" data-arg="${ord}:mask">
+      <span class="sub-tw" data-act="foldsub" data-arg="${ord}:mask">${I.chevron}</span>
+      <span class="sub-tile" style="background:${maskTone(l.Mask)}"></span>
+      <span class="sub-txt"><b>Mask</b><span>${l.Mask.Source==="Generator"?g.label:l.Mask.Fill} · ${Math.round(l.Mask.Strength)}%${l.Mask.Inverted?" · inverted":""}</span></span>
+      <span class="sub-go" data-act="inspect" data-arg="${ord}:mask" title="Inspect mask">${I.next}</span>
+    </div>
+    <div class="sub-fold"><div class="sub-clip"><div class="sub-body">
+      <div class="prow"><div class="plabel">Strength</div><div>${Slider(`mask-strength:${ord}`, l.Mask.Strength, 0, 100, "%")}</div></div>
+      <div class="prow"><div class="plabel">Invert</div><div>${Switch(l.Mask.Inverted,"mask-invert",ord)}</div></div>
+      <div class="ghost-cta" style="margin-top:4px" data-act="mask-drop" data-arg="${ord}">${I.x} Remove mask</div>
+    </div></div></div>
+  </div>`;
+}
+
+function renderStack(){
+  const body = q("StackBody");
+  const term = State.Filter.toLowerCase();
+  const list = State.Layers.map((l,i)=>({l,i})).filter(({l}) => !term || l.Name.toLowerCase().includes(term));
+
+  if(!list.length){
+    body.innerHTML = `<div class="empty">No layer matches <b>${esc(State.Filter)}</b>.</div>`;
+    return;
+  }
+
+  const html = list.map(({l,i})=>{
+    const kind = KINDS[l.Kind];
+    const meta = `${kind.Label} · ${BLEND[l.Blend]} · ${l.Channels.length} ch${l.Mask.Enabled?" · masked":""}`;
+    const focused = i===State.Focus;
+    const strokes = strokeTotal(l);
+
+    const nameCell = State.Renaming===l.Id
+      ? `<input class="name-edit" id="NameEdit" value="${esc(l.Name)}" spellcheck="false">`
+      : `<b>${esc(l.Name)}</b><span>${esc(meta)}</span>`;
+
+    return `<div class="entry ${State.Lifted===i?"lifted":""} rise-me" data-ord="${i}">
+      <div class="bubble"><div class="b" style="background:${l.Shown?l.Tag:"#1b1b1b"};color:${l.Shown?"#fff":"#5c5c5c"}">${String(i).padStart(2,"0")}</div></div>
+      <div class="spine-col"><div class="ln" style="background:${l.Shown?l.Tag:"#1b1b1b"}"></div><div class="knot"></div></div>
+      <div class="card-col">
+        <div class="lcard ${l.Open?"open":""} ${focused?"focus":""}">
+          <div class="lrow ${l.Shown?"":"muted"}" data-ord="${i}">
+            <span class="thumb">
+              <span class="ink" style="background:${l.Paint}"></span>
+              <span class="kd" style="background:${kind.Tint}"></span>
+              ${l.Mask.Enabled?`<span class="mk" style="background:${maskTone(l.Mask)}"></span>`:""}
+            </span>
+            <span class="txt">${nameCell}</span>
+            <span class="pill" data-scrub="opacity:${i}" data-min="0" data-max="100" data-dec="0" data-suffix="%">${Math.round(l.Opacity)}%</span>
+            <span class="eye" data-act="vis" data-arg="${i}">${l.Shown?I.eyeOn:I.eyeOff}</span>
+            <span class="caret" data-act="foldlayer" data-arg="${i}">${I.chevron}</span>
+          </div>
+          <div class="lfold"><div class="lclip"><div class="lbody">
+            <div class="meta-strip">
+              <span class="mchip"><span class="d" style="background:${kind.Tint}"></span>${kind.Label}</span>
+              <span class="mchip">Blend <b>${BLEND[l.Blend]}</b></span>
+              <span class="mchip">Opacity <b>${Math.round(l.Opacity)}%</b></span>
+              <span class="mchip">Channels <b>${l.Channels.length}</b></span>
+              <span class="mchip">Strokes <b>${strokes}</b></span>
+              <span class="mchip">Log <b>${l.History.length}</b></span>
+            </div>
+            ${subMaterial(l,i)}
+            ${subMask(l,i)}
+          </div></div></div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  body.innerHTML = `<div class="stack ${animStack?"anim":""}">${html}</div>`;
+  animStack = false;
+
+  const edit = q("NameEdit");
+  if(edit){
+    edit.focus(); edit.select();
+    const commit = ()=>{
+      const l = State.Layers.find(x=>x.Id===State.Renaming);
+      const next = edit.value.trim();
+      if(l && next && next!==l.Name){ record(l,"edit","layer","Renamed → "+next, l.Name); l.Name = next; }
+      State.Renaming = null; renderAll();
+    };
+    edit.addEventListener("blur", commit);
+    edit.addEventListener("keydown", e=>{
+      e.stopPropagation();
+      if(e.key==="Enter") edit.blur();
+      if(e.key==="Escape"){ State.Renaming=null; renderAll(); }
+    });
+  }
+}
+
+/*═══════════════════════════════════ SLIDE 1 · PROPERTIES ═══════════════════════════════════*/
+function renderProps(){
+  const l = L();
+  faceTabs(q("PropTabs"));
+  q("PropSwipe").classList.toggle("on-mask", State.Face==="mask");
+
+  q("PropHead").innerHTML = l
+    ? `<span class="h-ic">${State.Face==="mask"?I.mask:I.sliders}</span>
+       <span class="h-txt"><span class="h-lbl">${esc(l.Name)}</span>
+         <span class="h-sub">${KINDS[l.Kind].Label.toUpperCase()} · ${State.Face==="mask"?"MASK":"MATERIAL"} PROPERTIES</span></span>
+       <span class="h-kbd">Tab</span>
+       <span class="h-step fwd">${I.next}</span>`
+    : `<span class="h-ic">${I.target}</span><span class="h-txt"><span class="h-lbl">Nothing selected</span></span>`;
+
+  if(!l){
+    q("PropLayer").innerHTML = `<div class="empty">Select a layer in the stack.</div>`;
+    q("PropMask").innerHTML  = "";
+    q("PropFoot").innerHTML  = `<span class="pf-dot">no selection</span>`;
+    return;
+  }
+
+  /*── layer face ──*/
+  const chipSet = new Set(l.Channels);
+  const core = `
+    <div class="prow"><div class="plabel">Visible</div><div>${Switch(l.Shown,"vis",State.Focus)}</div></div>
+    <div class="prow"><div class="plabel">Blend</div><div>${Drop("blend@prop", BLEND, l.Blend, "blend")}</div></div>
+    <div class="prow"><div class="plabel">Opacity</div><div>${Slider(`opacity:${State.Focus}`, l.Opacity, 0, 100, "%")}</div></div>
+    <div class="prow"><div class="plabel">Base colour</div><div class="swatch">
+      <span class="sw" style="background:${l.Paint}"></span><span class="hex">${l.Paint}</span></div></div>`;
+
+  const chans = `<div class="chips">${CH_ORDER.filter(k=>chipSet.has(k)).map(k=>
+      `<span class="chip ${k==="baseColour"?"locked":""}">
+        <span class="cs" style="background:${CH[k].Hue}"></span>${CH[k].Label}
+        ${k==="baseColour"?"":`<button class="cx" data-act="chan-off" data-arg="${k}">${I.x}</button>`}</span>`).join("")}
+    </div>
+    <div class="ghost-cta" style="margin-top:7px" data-act="inspect" data-arg="${State.Focus}:layer">
+      ${I.sliders} Tune channels</div>`;
+
+  const identity = `
+    <div class="mrow"><span class="k">Type</span><span class="v">${KINDS[l.Kind].Label}</span></div>
+    <div class="mrow"><span class="k">Token</span><span class="v dim">${l.Id}</span></div>
+    <div class="mrow"><span class="k">Strokes</span><span class="v">${strokeTotal(l)}</span></div>
+    <div class="mrow"><span class="k">Revisions</span><span class="v">${l.History.length}</span></div>`;
+
+  q("PropLayer").innerHTML =
+    `<div class="anim">
+      ${Card("p-core", l.Tag, "Layer", KINDS[l.Kind].Label, core, false)}
+      ${Card("p-chan", "#3b82f6", "Channels", l.Channels.length+" active", chans, false)}
+      ${Card("p-id", "#6b7280", "Identity", "", identity, false)}
+      ${Card("p-log", "#f97316", "Recent activity", l.History.length+" events", MiniLog(l,"layer",5), false)}
+      <button class="act-danger ${State.Layers.length<=1?"off":""}" data-act="delete">${I.trash} Delete layer</button>
+     </div>`;
+
+  /*── mask face ──*/
+  if(!l.Mask.Enabled){
+    q("PropMask").innerHTML = `<div class="anim">
+      ${Card("m-none", "#8b5cf6", "No mask", "", `
+        <div style="font-size:11px;color:var(--faint);line-height:1.65;padding:2px 1px 8px">
+          This layer applies everywhere. A mask restricts it — pick a source to create one.</div>
+        <div class="ghost-cta" data-act="mask-add" data-arg="${State.Focus}" style="margin-bottom:5px">
+          <span class="plus"></span> Solid mask</div>
+        <div class="ghost-cta" data-act="mask-add-gen" data-arg="${State.Focus}">
+          <span class="plus"></span> Procedural generator</div>`, false)}
+    </div>`;
+  } else {
+    const m = l.Mask;
+    const base = `
+      <div class="prow"><div class="plabel">Base</div><div>${Seg(["White","Black"], m.Fill, "mask-base")}</div></div>
+      <div class="prow"><div class="plabel">Invert</div><div>${Switch(m.Inverted,"mask-invert",State.Focus)}</div></div>
+      <div class="prow"><div class="plabel">Strength</div><div>${Slider(`mask-strength:${State.Focus}`, m.Strength, 0, 100, "%")}</div></div>
+      <div class="prow"><div class="plabel">Source</div><div>${Seg(["Solid","Generator"], m.Source, "mask-source")}</div></div>`;
+    const preview = `
+      <div class="slot" style="margin-top:0">
+        <div class="slot-thumb" data-tile="mask" style="background-image:none;background-color:${maskTone(m)}"></div>
+        <div class="slot-text">
+          <div class="slot-name">${m.Source==="Generator"?GEN(m.Gen).label+" output":m.Fill+" fill"}</div>
+          <div class="slot-meta">${m.Inverted?"Inverted":"Direct"} · ${Math.round(m.Strength)}% strength</div>
+        </div>
+        <div class="slot-acts"><button class="iconbtn danger" data-act="mask-drop" data-arg="${State.Focus}">${I.trash}</button></div>
+      </div>`;
+    q("PropMask").innerHTML = `<div class="anim">
+      ${Card("m-base","#8b5cf6","Mask", m.Source, base, false)}
+      ${Card("m-prev","#94a3b8","Resolved", "", preview, false)}
+      ${Card("m-log","#8b5cf6","Mask history", eventsFor(l,"mask").length+" events", MiniLog(l,"mask",5), false)}
+      <div class="ghost-cta" style="margin-top:8px" data-act="inspect" data-arg="${State.Focus}:mask">
+        ${I.next} Open mask inspector</div>
+    </div>`;
+  }
+
+  q("PropFoot").innerHTML =
+    `<span class="pf-hue" style="background:${l.Tag}"></span>
+     <span>${esc(l.Name)}</span><span class="pf-dot">·</span>
+     <span class="pf-strong">${State.Face==="mask"?"mask":"material"}</span>
+     <span class="pf-spacer"></span><span>${l.Id}</span>`;
+}
+
+/*═══════════════════════════════════ SLIDE 2 · LEFT (preview · meta · log) ═══════════════════════════════════*/
+function renderInspectLeft(){
+  const l = L();
+  q("BackHead").innerHTML =
+    `<span class="h-step bck">${I.prev}</span>
+     <span class="h-txt"><span class="h-lbl">Back</span><span class="h-sub">Stack &amp; properties</span></span>
+     <span class="h-kbd">Tab</span>`;
+
+  const host = q("InspectLeft");
+  if(!l){ host.innerHTML = `<div class="empty">Nothing selected.</div>`; q("InspectLeftFoot").innerHTML=""; return; }
+
+  const isMask = State.Face==="mask";
+  const swatch = isMask ? (l.Mask.Enabled ? maskTone(l.Mask) : "#101010") : l.Paint;
+  const kind   = KINDS[l.Kind];
+
+  const hero = `<div class="hero rise-me">
+    <div class="hero-art">
+      <div class="hero-badge"><span class="d" style="background:${isMask?"#8b5cf6":kind.Tint}"></span>${isMask?"Mask":"Material"}</div>
+      <div class="hero-swatch" data-tile="hero" style="background:${swatch}"></div>
+    </div>
+    <div class="hero-foot">
+      <span class="nm">${esc(l.Name)}</span>
+      <span class="op">${isMask ? (l.Mask.Enabled?Math.round(l.Mask.Strength)+"%":"no mask") : Math.round(l.Opacity)+"%"}</span>
+    </div>
+  </div>`;
+
+  const meta = isMask ? `
+    <div class="mrow"><span class="k">State</span><span class="v">${l.Mask.Enabled?"Active":"None"}</span></div>
+    <div class="mrow"><span class="k">Source</span><span class="v">${l.Mask.Enabled?l.Mask.Source:"—"}</span></div>
+    <div class="mrow"><span class="k">Generator</span><span class="v">${l.Mask.Enabled&&l.Mask.Source==="Generator"?GEN(l.Mask.Gen).label:"—"}</span></div>
+    <div class="mrow"><span class="k">Base</span><span class="v">${l.Mask.Enabled?l.Mask.Fill:"—"}</span></div>
+    <div class="mrow"><span class="k">Inverted</span><span class="v">${l.Mask.Enabled&&l.Mask.Inverted?"yes":"no"}</span></div>
+    <div class="mrow"><span class="k">Strength</span><span class="v">${l.Mask.Enabled?Math.round(l.Mask.Strength)+"%":"—"}</span></div>` : `
+    <div class="mrow"><span class="k">Type</span><span class="v">${kind.Label}</span></div>
+    <div class="mrow"><span class="k">Blend</span><span class="v">${BLEND[l.Blend]}</span></div>
+    <div class="mrow"><span class="k">Opacity</span><span class="v">${Math.round(l.Opacity)}%</span></div>
+    <div class="mrow"><span class="k">Channels</span><span class="v">${l.Channels.length} of ${CH_ORDER.length}</span></div>
+    <div class="mrow"><span class="k">Textures</span><span class="v">${Object.keys(l.Textures).length}</span></div>
+    <div class="mrow"><span class="k">Generators</span><span class="v">${Object.keys(l.Generators).length}</span></div>
+    <div class="mrow"><span class="k">Strokes</span><span class="v">${strokeTotal(l)}</span></div>
+    <div class="mrow"><span class="k">Token</span><span class="v dim">${l.Id}</span></div>`;
+
+  /* the full timeline — filterable, with a cursor you can jump */
+  const filters = [["all","All"],["stroke","Strokes"],["channel","Channels"],["mask","Mask"]];
+  const rows = l.History.map((e,i)=>({e,i})).filter(({e}) =>
+      State.HxFilter==="all" ? true :
+      State.HxFilter==="mask" ? e.Scope==="mask" :
+      State.HxFilter==="stroke" ? e.Category==="stroke" :
+      (e.Scope!=="mask" && e.Scope!=="layer"));
+
+  const timeline = rows.length ? rows.slice().reverse().map(({e,i})=>{
+    const k = HKIND[e.Category] || HKIND.edit;
+    const first = i===0, last = i===l.History.length-1;
+    return `<div class="hx-ev ${i===l.Cursor?"at":""} ${i>l.Cursor?"future":""}" data-act="hx-jump" data-arg="${i}">
+      <div class="hx-rail">
+        <div class="hx-line ${last?"blank":""}"></div>
+        <div class="hx-node"><span class="d" style="background:${k.Hue}"></span></div>
+        <div class="hx-line ${first?"blank":""}"></div>
+      </div>
+      <div class="hx-body">
+        <div class="hx-main">
+          <span class="hx-title">${esc(e.Title)}</span>
+          <span class="hx-kind" style="color:${k.Hue}">${k.Label}</span>
+          <span class="hx-time">${hhmm(e.At)}</span>
+        </div>
+        ${e.Detail?`<div class="hx-sub">${esc(e.Detail)}</div>`:""}
+      </div></div>`;
+  }).join("") : `<div class="log-none">Nothing recorded under this filter.</div>`;
+
+  const logBody =
+    `<div class="hx-filter">${filters.map(([k,lbl])=>
+      `<span class="fchip ${State.HxFilter===k?"on":""}" data-act="hxfilter" data-arg="${k}">${lbl}</span>`).join("")}
+     </div>${timeline}`;
+
+  host.innerHTML = `<div class="anim">
+    ${hero}
+    ${Card("i-meta", isMask?"#8b5cf6":kind.Tint, "Metadata", isMask?"mask":"material", meta, false)}
+    ${Card("i-log", "#f97316", "History", (l.Cursor+1)+" / "+l.History.length, logBody, false)}
+  </div>`;
+
+  const undoOff = l.Cursor<0, redoOff = l.Cursor>=l.History.length-1;
+  q("InspectLeftFoot").innerHTML =
+    `<span>Revision <b class="pf-strong">${l.Cursor+1}</b> of ${l.History.length}</span>
+     <span class="pf-spacer"></span>
+     <button class="hdr-btn" data-act="undo" ${undoOff?"disabled":""} title="Undo (Ctrl Z)">${I.undo}</button>
+     <button class="hdr-btn" data-act="redo" ${redoOff?"disabled":""} title="Redo (Ctrl Y)">${I.redo}</button>`;
+}
+
+/*═══════════════════════════════════ SLIDE 2 · CHANNELS ═══════════════════════════════════*/
+function channelBody(l, key){
+  const slot = CH[key], mode = chMode(l,key);
+
+  if(slot.Edit==="derived"){
+    return `<div style="font-size:10.5px;color:var(--faint);line-height:1.6;padding:1px 1px 6px">
+              Derived from the painted <b style="color:var(--muted)">height</b>. There is no value to author.</div>
+            ${channelPreview(l,key,mode)}`;
+  }
+
+  let body = `<div class="prow"><div class="plabel">Source</div><div>${
+    Seg(["Value","Texture","Generator"], mode, "chan-mode:"+key)}</div></div>`;
+
+  if(mode==="Texture"){
+    const tex = l.Textures[key], strokes = l.Strokes[key]||0, painted = strokes>0;
+    body += `<div class="slot">
+        <div class="slot-thumb" style="${painted?`background-image:none;background-color:${slot.Hue}`:""}">${painted?I.brush:I.image}</div>
+        <div class="slot-text">
+          <div class="slot-name">${painted?"Painted strokes":"No strokes yet"}</div>
+          <div class="slot-meta">${painted?`${strokes} strokes · 2048 × 2048 atlas`:"Atlas allocates on first stroke"}</div>
+        </div>
+        <div class="slot-acts">
+          <button class="iconbtn danger" data-act="erase" data-arg="${key}" ${painted?"":"disabled"}>${I.trash}</button>
+        </div></div>
+      <div class="slot-label">Imported base${tex?"":" — optional"}</div>` +
+      (tex ? `<div class="slot">
+          <div class="slot-thumb">${I.image}</div>
+          <div class="slot-text"><div class="slot-name">${esc(tex.Name)}</div>
+            <div class="slot-meta">${tex.W} × ${tex.H} · ${tex.Format}</div></div>
+          <div class="slot-acts">
+            <button class="iconbtn" data-act="tex-reload" data-arg="${key}">${I.reload}</button>
+            <button class="iconbtn danger" data-act="tex-drop" data-arg="${key}">${I.trash}</button>
+          </div></div>`
+        : `<div class="ghost-cta" style="margin-top:4px" data-act="tex-import" data-arg="${key}">
+             <span class="plus"></span> Import base texture</div>`);
+  }
+  else if(mode==="Generator"){
+    const asg = l.Generators[key];
+    body += `<div class="prow"><div class="plabel">Generator</div><div>${
+      GenDrop(`gen@chan:${key}`, asg?asg.Key:null, "chan-gen:"+key)}</div></div>`;
+    if(asg){
+      const def = GEN(asg.Key);
+      body += `<div class="slot-label" style="display:flex;align-items:center;gap:6px">
+                 <span style="flex:1">${def.note}</span>
+                 <button class="iconbtn danger" data-act="chan-gen-drop" data-arg="${key}">${I.trash}</button></div>`;
+      body += def.params.map(p=>{
+        const v = (asg.Params && asg.Params[p.key]!==undefined) ? asg.Params[p.key] : p.def;
+        return `<div class="prow"><div class="plabel">${p.label}</div><div>${
+          Slider(`chan-gen:${key}:${p.key}`, v*100, 0, 100, "%")}</div></div>`;
+      }).join("");
+    }
+  }
+  else if(slot.Edit==="colour"){
+    const hex = l.Colours[key] || "#808080";
+    body += `<div class="prow"><div class="plabel">Colour</div><div class="swatch">
+      <span class="sw" style="background:${hex}"></span><span class="hex">${hex}</span></div></div>`;
+  }
+  else {
+    const amt = l.Amounts[key]!==undefined ? l.Amounts[key] : (slot.Min||0);
+    const deg = slot.Unit==="°";
+    const ior = slot.Unit==="ior";
+    const val = deg ? amt : (ior ? amt : amt*100);
+    const min = deg?0:(ior?slot.Min:0), max = deg?360:(ior?slot.Max:100);
+    body += `<div class="prow"><div class="plabel">Amount</div><div>${
+      Slider(`chan-amount:${key}`, val, min, max, deg?"°":(ior?"n":"%"), ior?2:0)}</div></div>`;
+  }
+
+  body += `<div class="slot-label">History</div>${MiniLog(l,key,3)}`;
+  return body + channelPreview(l,key,mode);
+}
+
+function channelPreview(l, key, mode){
+  const slot = CH[key];
+  let style = "";
+  if(mode==="Value" && slot.Edit==="colour") style = `background-image:none;background-color:${l.Colours[key]||"#000"}`;
+  else if(mode==="Value" && slot.Edit==="scalar"){
+    const a = l.Amounts[key]!==undefined ? l.Amounts[key] : .5;
+    const n = slot.Unit==="°" ? a/360 : (slot.Unit==="ior" ? (a-1)/2 : a);
+    const b = Math.round(clamp(n,0,1)*255); style = `background-image:none;background-color:rgb(${b},${b},${b})`;
+  }
+  return `<div class="prev">
+    <div class="prev-tile" data-tile="chan:${key}" style="${style}"></div>
+    <div><div class="prev-t1">${mode} preview</div><div class="prev-t2">${slot.Place}</div></div>
+  </div>`;
+}
+
+function renderChannels(){
+  const l = L();
+  const host = q("ChannelPane");
+  if(!l){ host.innerHTML = `<div class="empty">Nothing selected.</div>`; return; }
+
+  const set = new Set(l.Channels);
+  const chips = CH_ORDER.filter(k=>set.has(k)).map(k=>
+    `<span class="chip ${k==="baseColour"?"locked":""}">
+       <span class="cs" style="background:${CH[k].Hue}"></span>${CH[k].Label}
+       ${k==="baseColour"?"":`<button class="cx" data-act="chan-off" data-arg="${k}">${I.x}</button>`}</span>`).join("");
+
+  const menu = CH_GROUPS.map(g=>
+    `<div class="menu-group">${g}</div>` + CH_ORDER.filter(k=>CH[k].Group===g).map(k=>
+      `<div class="afm ${set.has(k)?"on":""} ${k==="baseColour"?"locked":""}" data-act="chan-on" data-arg="${k}">
+         <span class="sw" style="background:${CH[k].Hue}"></span><span>${CH[k].Label}</span>
+         <span class="tick">✓</span></div>`).join("")
+  ).join(`<div class="afm-sep"></div>`);
+
+  const chipCard = `<div class="chips">${chips}
+      <span class="add-wrap">
+        <button class="add-btn" data-act="menu" data-arg="addchan">${I.plus}</button>
+        <div class="add-menu ${State.Menu==="addchan"?"open":""}">${menu}</div>
+      </span></div>`;
+
+  const panels = CH_ORDER.filter(k=>set.has(k)).map(k=>{
+    const mode = chMode(l,k);
+    return Card("ch:"+k, CH[k].Hue, CH[k].Label, mode, channelBody(l,k),
+                State.Folded.has(k), mode==="Generator");
+  }).join("");
+
+  host.innerHTML = `<div class="anim">
+    ${Card("ch-chips","#3b82f6","Active channels", l.Channels.length+" of "+CH_ORDER.length, chipCard, false)}
+    ${panels}
+  </div>`;
+}
+
+/*═══════════════════════════════════ SLIDE 2 · MASK ═══════════════════════════════════*/
+function renderMaskPane(){
+  const l = L();
+  const host = q("MaskPane");
+  if(!l){ host.innerHTML = `<div class="empty">Nothing selected.</div>`; return; }
+
+  if(!l.Mask.Enabled){
+    host.innerHTML = `<div class="anim">${Card("mk-none","#8b5cf6","No mask","", `
+      <div style="font-size:11px;color:var(--faint);line-height:1.65;padding:2px 1px 9px">
+        A layer without a mask applies over the whole surface. Create one to restrict it.</div>
+      <div class="ghost-cta" style="margin-bottom:5px" data-act="mask-add" data-arg="${State.Focus}">
+        <span class="plus"></span> Solid mask · flat black or white</div>
+      <div class="ghost-cta" data-act="mask-add-gen" data-arg="${State.Focus}">
+        <span class="plus"></span> Procedural generator · curvature, AO, noise</div>`, false)}</div>`;
+    return;
+  }
+
+  const m = l.Mask, g = GEN(m.Gen);
+  const base = `
+    <div class="prow"><div class="plabel">Base</div><div>${Seg(["White","Black"], m.Fill, "mask-base")}</div></div>
+    <div class="prow"><div class="plabel">Invert</div><div>${Switch(m.Inverted,"mask-invert",State.Focus)}</div></div>
+    <div class="prow"><div class="plabel">Strength</div><div>${Slider(`mask-strength:${State.Focus}`, m.Strength, 0, 100, "%")}</div></div>
+    <div class="prow"><div class="plabel">Source</div><div>${Seg(["Solid","Generator"], m.Source, "mask-source")}</div></div>`;
+
+  let gen = `<div class="prow"><div class="plabel">Generator</div><div>${GenDrop("gen@mask", m.Gen, "mask-gen")}</div></div>`;
+  gen += g.params.map(p=>{
+    const v = (m.GenParams && m.GenParams[p.key]!==undefined) ? m.GenParams[p.key] : p.def;
+    return `<div class="prow"><div class="plabel">${p.label}</div><div>${Slider(`mask-gen:${p.key}`, v*100, 0, 100, "%")}</div></div>`;
+  }).join("");
+  gen += `<div style="font-size:9.5px;color:var(--faint);padding:6px 1px 0">${g.note}</div>`;
+
+  const resolved = `<div class="slot" style="margin-top:0">
+      <div class="slot-thumb" data-tile="mask" style="background-image:none;background-color:${maskTone(m)}"></div>
+      <div class="slot-text">
+        <div class="slot-name">${m.Source==="Generator"?g.label+" output":m.Fill+" fill"}</div>
+        <div class="slot-meta">${m.Inverted?"Inverted":"Direct"} · ${Math.round(m.Strength)}% · 2048 × 2048 · R8</div>
+      </div>
+      <div class="slot-acts"><button class="iconbtn danger" data-act="mask-drop" data-arg="${State.Focus}">${I.trash}</button></div>
+    </div>`;
+
+  host.innerHTML = `<div class="anim">
+    ${Card("mk-base","#8b5cf6","Base parameters", m.Fill, base, false)}
+    ${m.Source==="Generator" ? Card("mk-gen","#10b981","Generator", g.label, gen, false) : ""}
+    ${Card("mk-res","#94a3b8","Resolved mask","", resolved, false)}
+    ${Card("mk-log","#8b5cf6","Mask history", eventsFor(l,"mask").length+" events", MiniLog(l,"mask",6), false)}
+  </div>`;
+}
+
+function renderInspectChrome(){
+  const l = L();
+  faceTabs(q("InspectTabs"));
+  q("FaceSwipe").classList.toggle("on-mask", State.Face==="mask");
+
+  q("InspectHead").innerHTML = l
+    ? `<span class="h-ic">${State.Face==="mask"?I.mask:I.layers}</span>
+       <span class="h-txt"><span class="h-lbl">${esc(l.Name)} · ${State.Face==="mask"?"Mask":"Channels"}</span>
+         <span class="h-sub">${State.Face==="mask"
+            ? (l.Mask.Enabled?`${l.Mask.Source} · ${Math.round(l.Mask.Strength)}% strength`:"no mask on this layer")
+            : `${l.Channels.length} active · 5 atlases`}</span></span>
+       <span class="h-n">${State.Face==="mask"?(l.Mask.Enabled?"1":"0"):l.Channels.length}</span>`
+    : `<span class="h-ic">${I.target}</span><span class="h-txt"><span class="h-lbl">Nothing selected</span></span>`;
+
+  q("InspectFoot").innerHTML = l
+    ? `<span class="pf-hue" style="background:${State.Face==="mask"?"#8b5cf6":l.Tag}"></span>
+       <span>${State.Face==="mask"?"mask inspector":"channel inspector"}</span>
+       <span class="pf-spacer"></span><span>${l.History.length} revisions</span>`
+    : "";
+}
+
+/*═══════════════════════════════════ RENDER ═══════════════════════════════════*/
+function renderAll(){
+  renderStackChrome(); renderStack();
+  renderProps();
+  renderInspectChrome(); renderInspectLeft(); renderChannels(); renderMaskPane();
+  const l = L();
+  q("LegFocus").textContent = l ? l.Name : "—";
+  q("LegFace").textContent  = State.Face;
+}
+
+/*═══════════════════════════════════ CONTEXT MENU ═══════════════════════════════════*/
+const ctx = q("Ctx");
+let ctxOrd = -1;
+function closeCtx(){ ctx.classList.remove("open"); }
+function openCtx(x, y, ord){
+  ctxOrd = ord;
+  const l = State.Layers[ord];
+  const other = State.Face==="layer" ? "mask" : "layer";
+  ctx.innerHTML =
+    `<div class="ctx-label">${esc(l.Name)}</div>
+     <div class="ctx-item" data-cact="inspect"><span class="ic">${I.sliders}</span>Inspect${State.Face==="mask"?" mask":" channels"}<span class="kbd">Tab</span></div>
+     <div class="ctx-item" data-cact="swap"><span class="ic">${I.swap}</span>Switch to ${other}</div>
+     <div class="ctx-sep"></div>
+     <div class="ctx-item" data-cact="rename"><span class="ic">${I.rename}</span>Rename<span class="kbd">F2</span></div>
+     <div class="ctx-item" data-cact="dupe"><span class="ic">${I.copy}</span>Duplicate<span class="kbd">Ctrl D</span></div>
+     <div class="ctx-item" data-cact="vis"><span class="ic">${l.Shown?I.eyeOff:I.eyeOn}</span>${l.Shown?"Hide":"Show"}<span class="kbd">H</span></div>
+     <div class="ctx-item" data-cact="mask"><span class="ic">${I.mask}</span>${l.Mask.Enabled?"Remove mask":"Add mask"}</div>
+     <div class="ctx-sep"></div>
+     <div class="ctx-item danger" data-cact="del"><span class="ic">${I.trash}</span>Delete<span class="kbd">Del</span></div>`;
+  ctx.classList.add("open");
+  ctx.style.left = "-9999px"; ctx.style.top = "-9999px";
+  const w = ctx.offsetWidth, h = ctx.offsetHeight, pad = 8;
+  ctx.style.left = Math.max(pad, Math.min(x, innerWidth  - w - pad)) + "px";
+  ctx.style.top  = Math.max(pad, Math.min(y, innerHeight - h - pad)) + "px";
+}
+
+document.addEventListener("contextmenu", e=>{
+  const row = e.target.closest(".lrow");
+  if(!row) return;
+  e.preventDefault();
+  const ord = Number(row.dataset.ord);
+  if(ord!==State.Focus){ State.Focus = ord; renderAll(); }
+  openCtx(e.clientX, e.clientY, ord);
+});
+
+ctx.addEventListener("click", e=>{
+  const item = e.target.closest("[data-cact]"); if(!item) return;
+  const l = State.Layers[ctxOrd]; closeCtx(); if(!l) return;
+  switch(item.dataset.cact){
+    case "inspect": focusLayer(ctxOrd, State.Face); setSlide(2); break;
+    case "swap":    setFace(State.Face==="layer"?"mask":"layer"); break;
+    case "rename":  State.Renaming = l.Id; animStack=false; renderAll(); break;
+    case "dupe":    dupe(ctxOrd); break;
+    case "vis":     toggleVis(ctxOrd); break;
+    case "mask":    l.Mask.Enabled ? dropMask(ctxOrd) : addMask(ctxOrd,"Solid"); break;
+    case "del":     del(ctxOrd); break;
+  }
+});
+
+/*═══════════════════════════════════ MUTATIONS ═══════════════════════════════════*/
+function toggleVis(ord){
+  const l = State.Layers[ord]; l.Shown = !l.Shown;
+  record(l,"edit","layer", l.Shown?"Shown":"Hidden", "visibility");
+  renderAll();
+}
+function addMask(ord, source){
+  const l = State.Layers[ord];
+  l.Mask.Enabled = true; l.Mask.Source = source || "Solid"; l.OpenMask = true;
+  record(l,"mask","mask","Mask created", (source==="Generator"?GEN(l.Mask.Gen).label:l.Mask.Fill+" base"));
+  focusLayer(ord,"mask");
+}
+function dropMask(ord){
+  const l = State.Layers[ord]; l.Mask.Enabled = false;
+  record(l,"mask","mask","Mask removed","");
+  focusLayer(ord,"layer");
+}
+function dupe(ord){
+  const src = State.Layers[ord];
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.Id = nid("L"); copy.Name = src.Name + " Copy";
+  copy.History = src.History.map(e=>({...e, At:new Date(e.At)}));
+  record(copy,"create","layer","Duplicated from "+src.Name,"");
+  copy.Cursor = copy.History.length-1;
+  State.Layers.splice(ord, 0, copy);
+  animStack = true; focusLayer(ord,"layer");
+}
+function del(ord){
+  if(State.Layers.length<=1) return;
+  State.Layers.splice(ord,1);
+  animStack = true; focusLayer(Math.max(0,ord-1), "layer");
+}
+function addLayer(kindIdx){
+  const k = KINDS[kindIdx];
+  const l = mkLayer({
+    Name:"New "+k.Label, Kind:kindIdx, Tag:k.Tint, Paint:"#4c4f53", Open:true,
+    Modes:{baseColour:"Value",roughness:"Value"}, Amounts:{roughness:.5}, Colours:{baseColour:"#4c4f53"}
+  });
+  record(l,"create","layer","Layer created", k.Label+" layer");
+  State.Layers.unshift(l);
+  State.Menu = null; animStack = true; focusLayer(0,"layer");
+}
+
+/*═══════════════════════════════════ CLICK ROUTER ═══════════════════════════════════*/
+document.addEventListener("click", e=>{
+  if(!ctx.contains(e.target)) closeCtx();
+
+  const hit = e.target.closest("[data-act]");
+  if(!hit){
+    if(State.Menu){ State.Menu = null; renderAll(); }
+    const row = e.target.closest(".lrow");
+    if(row && !suppressClick) focusLayer(Number(row.dataset.ord), "layer");
+    return;
+  }
+
+  const act = hit.dataset.act, arg = hit.dataset.arg || "";
+  const l = L();
+  e.stopPropagation();
+
+  /* menus: one open at a time, keyed by call site */
+  if(act==="menu"){ State.Menu = State.Menu===arg ? null : arg; renderAll(); return; }
+
+  switch(act){
+    case "face":       setFace(arg); return;
+    case "pickface": { const [o,f] = arg.split(":"); focusLayer(Number(o), f); return; }
+    case "inspect":  { const [o,f] = arg.split(":"); focusLayer(Number(o), f); setSlide(2); return; }
+    case "fold":       State.Folded.has(arg) ? State.Folded.delete(arg) : State.Folded.add(arg); renderAll(); return;
+    case "foldlayer":{ const t = State.Layers[Number(arg)]; t.Open = !t.Open; renderStack(); return; }
+    case "foldsub":  { const [o,w] = arg.split(":"); const t = State.Layers[Number(o)];
+                       if(w==="mat") t.OpenMat = !t.OpenMat; else t.OpenMask = !t.OpenMask;
+                       renderStack(); return; }
+    case "vis":        toggleVis(Number(arg)); return;
+    case "add":        addLayer(Number(arg)); return;
+    case "delete":     del(State.Focus); return;
+
+    case "blend":      { const i = Number(arg); record(l,"edit","layer","Blend → "+BLEND[i], "was "+BLEND[l.Blend]);
+                         l.Blend = i; State.Menu = null; renderAll(); return; }
+
+    case "mask-add":     addMask(Number(arg),"Solid"); return;
+    case "mask-add-gen": addMask(State.Focus,"Generator"); return;
+    case "mask-drop":    dropMask(Number(arg)); return;
+    case "mask-base":    record(l,"mask","mask","Mask base → "+arg,"was "+l.Mask.Fill); l.Mask.Fill = arg; renderAll(); return;
+    case "mask-invert":  l.Mask.Inverted = !l.Mask.Inverted;
+                         record(l,"mask","mask", l.Mask.Inverted?"Mask inverted":"Mask un-inverted",""); renderAll(); return;
+    case "mask-source":  record(l,"mask","mask","Mask source → "+arg,"was "+l.Mask.Source); l.Mask.Source = arg; renderAll(); return;
+    case "mask-gen":   { const g = GEN(arg); const p = {}; g.params.forEach(x=>p[x.key]=x.def);
+                         l.Mask.Gen = arg; l.Mask.GenParams = p; l.Mask.Source = "Generator";
+                         record(l,"generator","mask","Mask generator → "+g.label, g.note);
+                         State.Menu = null; renderAll(); return; }
+
+    case "chan-off":   { if(arg==="baseColour") return;
+                         l.Channels = l.Channels.filter(k=>k!==arg);
+                         record(l,"channel",arg,"Removed "+CH[arg].Label,"channel off"); renderAll(); return; }
+    case "chan-on":    { if(l.Channels.includes(arg)) return;
+                         l.Channels.push(arg);
+                         if(!l.Modes[arg] && CH[arg].Edit!=="derived") l.Modes[arg] = "Value";
+                         record(l,"channel",arg,"Added "+CH[arg].Label, CH[arg].Place);
+                         State.Menu = null; State.Folded.delete(arg); renderAll(); return; }
+    case "erase":      { delete l.Strokes[arg]; record(l,"stroke",arg,"Erased strokes", CH[arg].Label); renderAll(); return; }
+    case "tex-import": { l.Textures[arg] = {Name:arg.toLowerCase()+"_import.png",W:2048,H:2048,Format:"Linear 8"};
+                         record(l,"texture",arg,"Imported "+l.Textures[arg].Name,"2048 × 2048"); renderAll(); return; }
+    case "tex-reload": { const t = l.Textures[arg]; if(t){ t.Name = arg.toLowerCase()+"_replaced.png"; t.Format = "Linear 16";
+                         record(l,"texture",arg,"Re-imported "+t.Name,"Linear 16"); } renderAll(); return; }
+    case "tex-drop":   { const n = l.Textures[arg]?l.Textures[arg].Name:""; delete l.Textures[arg];
+                         record(l,"texture",arg,"Dropped base texture", n); renderAll(); return; }
+    case "chan-gen-drop": { const g = l.Generators[arg]; delete l.Generators[arg];
+                         record(l,"generator",arg,"Removed generator", g?GEN(g.Key).label:""); renderAll(); return; }
+    case "hxfilter":   State.HxFilter = arg; renderInspectLeft(); return;
+    case "hx-jump":  { l.Cursor = clamp(Number(arg), -1, l.History.length-1); renderAll(); return; }
+    case "undo":       if(l.Cursor>=0){ l.Cursor--; renderAll(); } return;
+    case "redo":       if(l.Cursor<l.History.length-1){ l.Cursor++; renderAll(); } return;
+  }
+
+  /* compound actions carry their key in the act string */
+  if(act.startsWith("chan-mode:")){
+    const key = act.slice(10);
+    const was = chMode(l,key);
+    l.Modes[key] = arg;
+    if(arg!==was) record(l,"channel",key, CH[key].Label+" → "+arg, "was "+was);
+    renderAll(); return;
+  }
+  if(act.startsWith("chan-gen:")){
+    const key = act.slice(9), g = GEN(arg), p = {};
+    g.params.forEach(x=>p[x.key]=x.def);
+    l.Generators[key] = {Key:arg, Params:p};
+    l.Modes[key] = "Generator";
+    record(l,"generator",key, CH[key].Label+" → "+g.label, g.note);
+    State.Menu = null; renderAll(); return;
+  }
+});
+
+/*═══════════════════════════════════ SCRUB
+  🔴 Live drags PATCH the widgets they own instead of re-rendering the panel. The old
+  build called a full render per pointermove, which closed menus, dropped the filter
+  caret and re-ran every card's entry animation mid-drag. A full render happens once,
+  on release, together with the history entry. ═══════════════════════════════════*/
+let scrub = null, suppressClick = false;
+
+function scrubRead(verb,a,b){
+  const l = L();
+  if(verb==="opacity")       return State.Layers[Number(a)].Opacity;
+  if(verb==="mask-strength") return State.Layers[Number(a)].Mask.Strength;
+  if(verb==="mask-gen")      return (l.Mask.GenParams[a] ?? .5) * 100;
+  if(verb==="chan-gen")    { const g = l.Generators[a]; return ((g&&g.Params[b]) ?? .5) * 100; }
+  if(verb==="chan-amount"){
+    const s = CH[a], v = l.Amounts[a] ?? (s.Min||0);
+    return (s.Unit==="°"||s.Unit==="ior") ? v : v*100;
+  }
+  return 0;
+}
+function scrubWrite(verb,a,b,v){
+  const l = L();
+  if(verb==="opacity")       State.Layers[Number(a)].Opacity = v;
+  else if(verb==="mask-strength") State.Layers[Number(a)].Mask.Strength = v;
+  else if(verb==="mask-gen") l.Mask.GenParams[a] = v/100;
+  else if(verb==="chan-gen"){ const g = l.Generators[a]; if(g) g.Params[b] = v/100; }
+  else if(verb==="chan-amount"){
+    const s = CH[a];
+    l.Amounts[a] = (s.Unit==="°"||s.Unit==="ior") ? v : v/100;
+  }
+}
+function scrubPatch(key, v, min, max, dec){
+  const sel = `[data-scrub="${CSS.escape(key)}"]`;
+  const r = (v-min)/(max-min||1);
+  document.querySelectorAll(sel).forEach(el=>{
+    if(el.classList.contains("track")){
+      el.querySelector(".f").style.width = r*100+"%";
+      el.querySelector(".h").style.left  = r*100+"%";
+    } else {
+      el.textContent = (dec?v.toFixed(dec):Math.round(v)) + (el.dataset.suffix||"");
+    }
+  });
+  /* dependent art: the preview tiles and the hero swatch read the same number */
+  const [verb,a] = key.split(":");
+  if(verb==="chan-amount" && CH[a] && CH[a].Edit==="scalar"){
+    const t = document.querySelector(`[data-tile="chan:${a}"]`);
+    if(t && chMode(L(),a)==="Value"){
+      const s = CH[a], amt = L().Amounts[a];
+      const n = s.Unit==="°" ? amt/360 : (s.Unit==="ior" ? (amt-1)/2 : amt);
+      const b = Math.round(clamp(n,0,1)*255);
+      t.style.backgroundImage = "none"; t.style.backgroundColor = `rgb(${b},${b},${b})`;
+    }
+  }
+}
+
+document.addEventListener("pointerdown", e=>{
+  const hit = e.target.closest("[data-scrub]");
+  if(!hit) return;
+  e.preventDefault();
+  const key = hit.dataset.scrub;
+  const min = Number(hit.dataset.min), max = Number(hit.dataset.max), dec = Number(hit.dataset.dec||0);
+  const [verb,a,b] = key.split(":");
+  let v = scrubRead(verb,a,b);
+  if(hit.classList.contains("track")){
+    const box = hit.getBoundingClientRect();
+    v = min + clamp((e.clientX-box.left)/box.width,0,1) * (max-min);
+  }
+  scrub = {key,verb,a,b,min,max,dec, x:e.clientX, start:v, speed:(max-min)/380, moved:false};
+  v = clamp(v,min,max); scrubWrite(verb,a,b,v); scrubPatch(key,v,min,max,dec);
+});
+
+window.addEventListener("pointermove", e=>{
+  if(scrub){
+    const v = clamp(scrub.start + (e.clientX-scrub.x)*scrub.speed, scrub.min, scrub.max);
+    scrub.moved = true;
+    scrubWrite(scrub.verb, scrub.a, scrub.b, v);
+    scrubPatch(scrub.key, v, scrub.min, scrub.max, scrub.dec);
+    return;
+  }
+  if(lift) dragMove(e);
+});
+
+window.addEventListener("pointerup", ()=>{
+  if(scrub){
+    const l = L(), s = scrub; scrub = null;
+    if(s.moved){
+      if(s.verb==="opacity")            record(State.Layers[Number(s.a)],"edit","layer","Opacity "+Math.round(State.Layers[Number(s.a)].Opacity)+"%","");
+      else if(s.verb==="mask-strength") record(l,"mask","mask","Mask strength "+Math.round(l.Mask.Strength)+"%","");
+      else if(s.verb==="mask-gen")      record(l,"generator","mask",GEN(l.Mask.Gen).label+" · "+s.a,(l.Mask.GenParams[s.a]).toFixed(2));
+      else if(s.verb==="chan-gen")      record(l,"generator",s.a,CH[s.a].Label+" · "+s.b,(l.Generators[s.a].Params[s.b]).toFixed(2));
+      else if(s.verb==="chan-amount")   record(l,"channel",s.a,CH[s.a].Label+" "+(l.Amounts[s.a]).toFixed(2),"authored value");
+      renderAll();
+    }
+    suppressClick = true; setTimeout(()=>suppressClick=false, 0);
+  }
+  if(lift) dragEnd();
+});
+
+/*═══════════════════════════════════ DRAG TO REORDER ═══════════════════════════════════*/
+let lift = null;
+
+function slotFor(y){
+  const rows = [...document.querySelectorAll(".entry")];
+  for(const r of rows){
+    const box = r.getBoundingClientRect();
+    if(y < box.top + box.height*0.5) return Number(r.dataset.ord);
+  }
+  return State.Layers.length;
+}
+function paintLine(slot){
+  document.querySelector(".drop-line")?.remove();
+  const stack = document.querySelector(".stack"); if(!stack) return;
+  const rows = [...document.querySelectorAll(".entry")]; if(!rows.length) return;
+  const sb = stack.getBoundingClientRect();
+  const y = slot>=rows.length
+    ? rows[rows.length-1].getBoundingClientRect().bottom - sb.top - 1
+    : rows[slot].getBoundingClientRect().top - sb.top - 1;
+  const line = document.createElement("div");
+  line.className = "drop-line"; line.style.top = y+"px";
+  stack.appendChild(line);
+}
+function dragMove(e){
+  if(!lift.live){
+    if(Math.abs(e.clientY - lift.y) < 4) return;
+    lift.live = true; State.Lifted = lift.ord;
+    document.body.classList.add("dragging");
+    const src = document.querySelector(`.entry[data-ord="${lift.ord}"] .lcard`);
+    if(src){
+      const box = src.getBoundingClientRect();
+      lift.proxy = src.cloneNode(true);
+      lift.proxy.className = "drag-proxy";
+      lift.proxy.style.width = box.width+"px";
+      lift.proxy.style.left  = box.left+"px";
+      lift.proxy.querySelector(".lfold")?.remove();
+      document.body.appendChild(lift.proxy);
+      lift.dy = e.clientY - box.top;
+    }
+    renderStack();
+  }
+  if(lift.proxy) lift.proxy.style.top = (e.clientY - lift.dy)+"px";
+  lift.slot = slotFor(e.clientY);
+  paintLine(lift.slot);
+}
+function dragEnd(){
+  if(lift.live){
+    lift.proxy?.remove();
+    document.querySelector(".drop-line")?.remove();
+    document.body.classList.remove("dragging");
+    const from = lift.ord, to = lift.slot ?? from;
+    if(to!==from && to!==from+1){
+      const [m] = State.Layers.splice(from,1);
+      const at = to>from ? to-1 : to;
+      State.Layers.splice(at,0,m);
+      State.Focus = at;
+      record(m,"edit","layer","Reordered to slot "+at,"was "+from);
+    }
+    State.Lifted = -1; suppressClick = true; setTimeout(()=>suppressClick=false,0);
+    animStack = true; renderAll();
+  }
+  lift = null;
+}
+document.addEventListener("pointerdown", e=>{
+  if(e.target.closest("[data-scrub]")) return;
+  if(e.target.closest(".eye,.caret,.drop,.sub,.ghost-cta,[data-act]")) return;
+  const row = e.target.closest(".lrow"); if(!row) return;
+  lift = {ord:Number(row.dataset.ord), y:e.clientY, live:false, proxy:null, slot:null};
+});
+
+/*═══════════════════════════════════ FILTER + KEYS ═══════════════════════════════════*/
+document.addEventListener("input", e=>{
+  if(e.target.id!=="FilterInput") return;
+  State.Filter = e.target.value;
+  renderStack();                    // only the list — the input keeps its caret
+});
+
+window.addEventListener("keydown", e=>{
+  const typing = e.target.tagName==="INPUT";
+  if(e.key==="Tab" && !typing){ e.preventDefault(); setSlide(State.Slide===1?2:1); return; }
+  if(e.key==="Escape"){
+    if(ctx.classList.contains("open")){ closeCtx(); return; }
+    if(State.Menu){ State.Menu=null; renderAll(); return; }
+    if(State.Slide===2){ setSlide(1); return; }
+    return;
+  }
+  if(typing) return;
+
+  const l = L();
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z"){ e.preventDefault(); if(l&&l.Cursor>=0){ l.Cursor--; renderAll(); } return; }
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="y"){ e.preventDefault(); if(l&&l.Cursor<l.History.length-1){ l.Cursor++; renderAll(); } return; }
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="d"){ e.preventDefault(); dupe(State.Focus); return; }
+  if(e.key==="F2" && l){ State.Renaming = l.Id; renderAll(); return; }
+  if(e.key.toLowerCase()==="h" && l){ toggleVis(State.Focus); return; }
+  if(e.key.toLowerCase()==="m"){ setFace(State.Face==="layer"?"mask":"layer"); return; }
+  if(e.key==="Delete"){ del(State.Focus); return; }
+  if(e.key==="ArrowDown"){ e.preventDefault(); focusLayer(State.Focus+1, State.Face); return; }
+  if(e.key==="ArrowUp"){   e.preventDefault(); focusLayer(State.Focus-1, State.Face); return; }
+});
+document.addEventListener("scroll", ()=>{ if(State.Menu){ State.Menu=null; renderAll(); } closeCtx(); }, true);
+
+/*═══════════════════════════════════ BOOT ═══════════════════════════════════*/
+renderAll();
+
+})();
+</script>
+</body>
+</html>

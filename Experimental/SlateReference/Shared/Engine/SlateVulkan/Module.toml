@@ -1,0 +1,27 @@
+# SlateVulkan — device abstraction over the vendor edge.
+# Depends strictly on SlateMath. Peers with SlateDocument and never references it.
+
+[unit]
+name    = "SlateVulkan"
+product = "StaticLibrary"
+subject = [ "Device" ]
+
+# 🔴 SlateDocument is absent from this list and stays absent. Nothing device-side may name an owner, a
+#    revision or a stream heading; the peer partition is enforced by the include path, not by convention.
+[requires]
+unit = [ "SlateMath" ]
+
+# 📝 The loader import library is named rather than the loader itself. WindowExchange reaches GLFW for the
+#    surface conversion alone, which is why the window-system include appears here as well as in SlateMath.
+[external]
+include = [ "$VULKAN_SDK/Include", "ExternalPackages/glfw/include" ]
+declare = [ "GLFW_DLL" ]
+
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+#    statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+#    what an executable must **link** so every reference resolves. They coincide for most units and part
+#    for `SlateUI`, which links four archives and is permitted to include none of them — a static archive
+#    only satisfies references the linker has already seen, so the order is load-bearing.
+unit    = [ "SlateMath" ]
+library = [ "$VULKAN_SDK/Lib/vulkan-1.lib" ]

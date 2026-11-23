@@ -1,0 +1,1571 @@
+/*====================================================================================================================================
+                                                    LAYERINSPECTOR.CSS
+====================================================================================================================================*/
+/* 🧩 Ported verbatim from Documentation/Prototypes/TexturePaintInspector.html so the summoned panel reads identically */
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                       TOKENS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 EVERY token below is transcribed from the REAL controls the ControlsGallery.exe draws — that is,
+   `ResolveDarkPalette()` in Internal/EngineContext/Interface/Theme/ColorPaletteDescriptor.cpp, plus the
+   metrics in ThemeConfiguration.cpp. The comment on each line names the C++ field it mirrors, so a palette
+   edit there can be re-followed here.
+
+   🔴 NOT taken from Documentation/Prototypes/ControlsPreview.html, even though the gallery's own header calls
+   itself a reproduction of that mockup. The mockup's `:root` is a LIGHTER set (--panel-bg #131315,
+   --value-unit #33333a, --accent #4a90e2 used for toggles) and the shipped palette deliberately overrides it
+   with the near-black UVeditor tones — ResolveDarkPalette's own comment records the swap. The executable is
+   what was asked for, so the executable's palette wins wherever the two disagree. The one token the mockup
+   still owns is the blue SELECTION marker, which ResolveDarkPalette imports from it by name. */
+:root{
+  /* surfaces — ColorPaletteDescriptor, in field order */
+  --desk:#000000;            /* DeskBackground    — panel body, so card gaps read as black separators */
+  --menu:#0e0e0e;            /* PanelBackground   — rounded card fill */
+  --menu-2:#0e0e0e;          /* PanelHeader       — the header SHARES the card fill (no darker strip) */
+  --hair:#1c1c1c;            /* PanelBorder */
+  --hair-strong:#1c1c1c;     /* PanelBorder       — one border tone; the palette has no second hairline */
+  --tile:#141414;            /* ControlBackground */
+  --tile-hi:#1a1a1a;         /* ControlHovered */
+  --rail-sel:#1f1f1f;        /* ControlActive */
+  --ink:#ededed;             /* TextPrimary */
+  --muted:#8a8a8a;           /* TextMuted */
+  --faint:#8a8a8a;           /* TextMuted       — the palette has no third text tone */
+  --knob-text:#111111;       /* TextOnAccent / KnobText — ink over a white knob or selected pill */
+
+  /* 🔴 Two DIFFERENT accents, and they are not interchangeable — conflating them is why a ported toggle
+     comes out blue when the executable's is white:
+       --accent   = AccentPrimary   #e8e8e8, near-WHITE. The "on" state of a toggle, an active pill.
+       --selected = SelectionMarker #4a90e2, blue. ONLY the dropdown radio and the hover bar. */
+  --accent:#e8e8e8;          /* AccentPrimary */
+  --accent-soft:rgba(255,255,255,.12);  /* AccentSubtle (alpha 31/255) */
+  --selected:#4a90e2;        /* SelectionMarker */
+
+  /* metrics — ThemeMetrics. CardRounding/CardGap are the literals in PropertyPanelBase.cpp. */
+  --r-menu:18px; --r-tile:14px;   /* .prop-section border-radius:14px */
+  --card-gap:6px;                  /* CardGap */
+
+  /* field widgets — the pill tones */
+  --value-black:#000000;     /* ValueNumberSegment — the editable number cell */
+  --value-unit:#141414;      /* ValueSideSegment   — grey axis / unit cap */
+  --value-focus:#1f1f1f;     /* ControlActive */
+  --track-bg:#141414;        /* SliderTrack */
+  --track-fill:#5a5a5a;      /* SliderFill */
+  --knob:#ffffff;            /* SliderKnob */
+  --outline:rgba(255,255,255,.22);  /* ValueOutline (alpha 56/255) */
+  --text-value:#ffffff;      /* ValueText */
+  --row-h:38px;
+
+  /* 🔴 Timings converted from the C++ eases, not invented. Both are exponential there and cubic-bezier here,
+     so these match the SETTLING time rather than the curve:
+       cards   — PropertyPanelBase FoldRate 0.28/frame; (1-.28)^n < .01 at n≈14, so ≈230ms at 60fps.
+       toggle  — BooleanEntry EaseToward rate 20/s, and the scroll ease is 18/s → ≈55ms time constant,
+                 ~165ms to settle. The nub slide and the track colour share one phase there, so they share
+                 one duration here. */
+  --fold-ms:230ms; --ease-ms:165ms;
+  --ease-out:cubic-bezier(.4,0,.2,1);
+
+  /* row states */
+  --row-hover:var(--tile-hi); --row-sel:var(--rail-sel);
+
+  /* 🔴 one hue per LayerClassification — carried from Studio's LAYER_TYPES tags */
+  --hue-material:#8b5cf6; --hue-generator:#10b981;
+  --hue-brushwork:#f97316; --hue-flood:#3b82f6;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                        BASE
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 The source prototype''s `*`, `html,body` and `.viewport*` rules are DELIBERATELY not carried over.
+   This stylesheet is loaded into a host page that owns its own layout, and a `body{ overflow:hidden }`
+   or a bare `*{ box-sizing:border-box }` from a panel would silently restyle the whole application.
+   Only rules scoped to the inspector''s own classes survive here. */
+/* 🔴 `.dd-list` is listed EXPLICITLY because an open dropdown list is portalled to <body>, which puts it
+   outside `.summon-menu` and therefore outside the descendant selector. Without it the list falls back to
+   content-box, so the exact width PlaceList measured against the trigger gains its 4+4 padding and 1+1
+   border — the list renders 10px wider than the button it is supposed to be flush with, and the one-card
+   join reads as a mismatched pair of boxes. The font declaration below is inherited for the same reason. */
+.summon-menu, .summon-menu *, .summon-veil,
+.dd-list, .dd-list *{ box-sizing:border-box; }
+.dd-list{ font:16px/1 "Segoe UI", system-ui, sans-serif; color:var(--ink); user-select:none; }
+.summon-menu{ font:16px/1 "Segoe UI", system-ui, sans-serif; color:var(--ink); user-select:none; }
+.summon-menu button, .summon-menu input{ font-family:inherit; }
+.no-bar{ scrollbar-width:none; -ms-overflow-style:none; }
+.no-bar::-webkit-scrollbar{ width:0; height:0; }
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE HEAD
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 both panes share one band so the seam between stack and properties never steps */
+.pane-head{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  height:53px; padding:0 11px; box-sizing:border-box;
+  background:var(--rail-sel); border-bottom:1px solid var(--hair);
+}
+.pane-head .h-ic{
+  width:26px; height:26px; flex:0 0 auto; color:var(--ink);
+  background:#000; border-radius:7px; display:grid; place-items:center;
+}
+.pane-head .h-ic svg{ width:18px; height:18px; }
+.pane-head .h-txt{ flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; }
+.pane-head .h-txt .h-lbl{
+  display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pane-head .h-txt .fn{
+  display:block; color:var(--faint); font-weight:400; font-size:10px;
+  letter-spacing:.3px; margin-top:3px;
+}
+.pane-head .h-n{
+  flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+  background:var(--menu-2); padding:4px 9px; border-radius:999px;
+}
+.pane-head .h-n.accent{ color:var(--accent); }
+.pane-head .h-acts{ display:flex; align-items:center; gap:3px; flex:0 0 auto; }
+.hdr-btn{
+  width:27px; height:27px; display:grid; place-items:center;
+  background:none; border:0; border-radius:8px;
+  color:var(--muted); cursor:pointer; transition:background .12s, color .12s;
+}
+.hdr-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+.hdr-btn:disabled{ opacity:.3; cursor:default; }
+.hdr-btn:disabled:hover{ background:none; color:var(--muted); }
+.hdr-btn svg{ width:15px; height:15px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   SEARCH STRIP
+----------------------------------------------------------------------------------------------------------------------*/
+/* "+ Add Layer" strip, ABOVE the filter — a full-width affordance so it reads as the primary action. */
+.stack-add-wrap{ flex:0 0 auto; padding:8px 7px 2px; }
+.stack-add-wrap .sf-add{
+  width:100%; height:30px; justify-content:center; border-radius:9px;
+  font-size:11.5px; background:var(--menu-2); border:1px dashed var(--hair-strong);
+}
+.stack-add-wrap .sf-add:hover{ background:var(--accent-soft); border-color:var(--accent); border-style:solid; }
+/* 🔴 While its kind list is up, the button becomes the TOP HALF OF ONE CARD: solid border, matching list
+   surface, and square BOTTOM corners so the seam with the list vanishes. Without this the rounded button
+   and the rounded list below it read as two separate cards — the reported fault. */
+.stack-add-wrap .sf-add.listopen{
+  background:var(--menu-2); border-style:solid; border-color:var(--hair);
+  border-bottom-color:transparent; border-radius:9px 9px 0 0;
+}
+/* mirror it when the list had to flip above: the joined edge is the top one */
+.stack-add-wrap .sf-add.listopen.flipped{ border-radius:0 0 9px 9px; border-bottom-color:var(--hair); border-top-color:transparent; }
+
+.search-wrap{ flex:0 0 auto; padding:7px 7px 4px; }
+.search{
+  display:flex; align-items:center; gap:7px; height:30px; padding:0 9px;
+  background:var(--menu-2); border:1px solid var(--hair); border-radius:9px;
+  transition:border-color .12s;
+}
+.search:focus-within{ border-color:var(--outline); }
+.search svg{ width:14px; height:14px; color:var(--faint); flex:0 0 auto; }
+.search input{
+  flex:1; min-width:0; background:none; border:0; outline:none;
+  color:var(--ink); font-size:12px;
+}
+.search input::placeholder{ color:var(--faint); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    STACK ROWS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 ported from Studio layerstack.css: tag + thumbnail + two-line text + opacity pill.
+   Trimmed 52px → 44px because the summoned card is 428px tall, not a full-height dock. */
+.stack-body{
+  flex:1; min-height:0; overflow-y:auto;
+  padding:4px 6px 8px; display:flex; flex-direction:column; gap:2px;
+}
+.stack-row{
+  position:relative; display:flex; align-items:center; gap:7px;
+  height:44px; padding:0 7px 0 5px;
+  color:var(--muted); cursor:pointer; border:1px solid transparent;
+  transition:background .12s, border-color .12s, opacity .12s;
+}
+.stack-row:hover{ background:var(--row-hover); }
+/* 🔴 The selected row is RECTANGULAR — no border-radius. A rounded selection reads as a chip; the
+   layer stack wants a hard-edged bar that the inline expand below it hangs off flush. */
+.stack-row.active{ background:var(--row-sel); border-color:var(--hair-strong); }
+
+/* 🔴 AN OPEN ROW AND ITS EXPAND ARE ONE CARD. The row is the card's HEAD, so it owns the top/left/right
+   border and drops its bottom edge; .se-body continues the same left/right and closes the bottom. Without
+   this the row kept a full transparent border while the expand drew its own complete box, and the two read
+   as "[ Paint 1 ]" stacked above a separate "[ VISIBLE … ]" panel — the two-boxes fault.
+   The head keeps the body's fill even when unfocused, so the card is one continuous surface rather than a
+   lit panel hanging off a transparent bar. `.active` still overrides the fill, and its accent spine now runs
+   the whole card because the row is no longer the only lit part of it. */
+.stack-row.expanded,
+.stack-row.collapsing{
+  background:var(--tile); border-color:var(--hair-strong); border-bottom-color:transparent;
+}
+/* 🔴 An open head does NOT lift on hover. The expand is a sibling, so no selector on .stack-row can repaint it
+   too — a hover lift here would light the head alone and split the card in tone every time the pointer crossed
+   it. An open card is already marked out by its fill and border, so it needs no hover cue; the row stays
+   hoverable, it just stops recolouring. */
+.stack-row.expanded:hover,
+.stack-row.collapsing:hover{ background:var(--tile); }
+.stack-row.expanded.active,
+.stack-row.collapsing.active,
+.stack-row.expanded.active:hover,
+.stack-row.collapsing.active:hover{ background:var(--row-sel); }
+.stack-row.active::before{
+  content:""; position:absolute; left:-6px; top:0; bottom:0;
+  width:3px; background:var(--accent);
+}
+.stack-row.dragging{ opacity:.45; }
+.stack-row.layer-muted .sr-name,
+.stack-row.layer-muted .sr-thumb,
+.stack-row.layer-muted .sr-meta{ opacity:.4; }
+/* the 4px hue tag — colour is the layer's classification, same hue as everywhere else */
+.sr-tag{ width:4px; height:28px; border-radius:999px; flex:0 0 auto; }
+.sr-thumb{
+  width:30px; height:30px; flex:0 0 auto; position:relative; overflow:hidden;
+  border-radius:8px; border:1px solid var(--hair); background:#000;
+  display:grid; place-items:center;
+}
+.sr-thumb svg{ width:15px; height:15px; }
+.sr-thumb-fill{ position:absolute; inset:0; }
+.sr-text{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.sr-name{
+  font-size:12px; font-weight:500; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.sr-name.editing{
+  background:#000; border:1px solid var(--accent); border-radius:5px;
+  padding:1px 4px; outline:none;
+}
+.sr-meta{
+  font-size:9px; text-transform:uppercase; letter-spacing:.7px; color:var(--faint);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* the mask chip: a greyscale gradient reading fill + invert, straight from Studio */
+.sr-mask{
+  width:19px; height:19px; flex:0 0 auto; border-radius:5px;
+  border:1px solid var(--hair); background:#000;
+}
+.sr-opacity{
+  flex:0 0 auto; min-width:37px; text-align:center; padding:3px 6px;
+  font-size:9.5px; font-weight:600; color:var(--muted);
+  background:#000; border:1px solid var(--hair); border-radius:999px;
+  font-variant-numeric:tabular-nums; cursor:ew-resize;
+  transition:border-color .14s, color .14s;
+}
+.sr-opacity:hover{ border-color:var(--outline); color:var(--ink); }
+.sr-visibility{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  opacity:0; color:var(--faint); border-radius:5px;
+  transition:opacity .12s, color .12s, background .12s;
+}
+.stack-row:hover .sr-visibility{ opacity:1; }
+.sr-visibility:hover{ background:var(--tile-hi); color:var(--ink); }
+.sr-visibility svg{ width:14px; height:14px; }
+.stack-row.layer-muted .sr-visibility{ opacity:1; }
+
+/* the row's expand caret — rotates to point up when the inline settings are open
+   🔴 The rotation shares --fold-ms with the body reveal, because in the C++ it is literally the same number:
+      PropertyPanelBase hands SectionHeader `Header.FoldFraction = Fold->Fold` and DrawChevron turns that one
+      eased fraction into the angle, so the chevron sweeps exactly in step with the body. At the old .15s the
+      caret finished well before the fold and the pair read as two separate animations. */
+.sr-caret{
+  width:18px; height:18px; flex:0 0 auto; display:grid; place-items:center;
+  color:var(--faint); border-radius:5px; cursor:pointer;
+  transition:color .12s, background .12s, transform var(--fold-ms) var(--ease-out);
+}
+.stack-row:hover .sr-caret{ color:var(--muted); }
+.sr-caret:hover{ background:var(--tile-hi); color:var(--ink); }
+.sr-caret svg{ width:12px; height:12px; }
+.stack-row.expanded .sr-caret{ transform:rotate(180deg); color:var(--ink); }
+/* 🔴 During a collapse the row itself is NOT rebuilt until the fold finishes (CollapseExpand waits on
+   transitionend), so `.expanded` is still on the row and the caret would hold its 180° and then snap back a
+   frame after the body had gone. `.collapsing` is put on the row for the duration of the fold and un-rotates the
+   caret in step with it, which is what keeps the chevron and the body reading as one motion. */
+.stack-row.collapsing .sr-caret{ transform:rotate(0deg); color:var(--muted); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                          INLINE EXPAND (under the active row)
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 The active row's settings drop open in the RAIL, directly beneath it — not in the wide detail pane.
+   grid-rows 0fr→1fr animates the height with no measured pixel target, the same idiom the classification
+   fold uses, so the accordion opens cleanly inside the 214px column without a scrollbar jump.
+
+   🔴 The transition was MISSING. This comment has always claimed "0fr→1fr animates the height", but only the
+      open state (`1fr`) was ever declared and no `transition` was set, so the expand popped into place with no
+      animation at all — the fault the user reported. The closed row is `.folding` (written by RenderStack
+      before the reveal frame); `--fold-ms` is the PropertyPanelBase FoldRate 0.28/frame converted by settling
+      time, the same duration the property cards fold with, so rail and pane agree.
+   🔴 `grid-template-rows` is the only animatable height here: the body's natural height is unknown and varies
+      per layer (the mask section appears conditionally), and `max-height` to a guessed pixel value would
+      either clip a tall body or coast through empty space on a short one. This is the CSS equivalent of the
+      C++ measure-then-clip — the grid does the measuring. */
+/* 🔴 `margin-top:-2px` cancels .stack-body's 2px flex gap for THIS pair only. The gap is what separates one
+   layer from the next and must stay, but between a row and its own expand it is a seam straight through the
+   middle of what should be one card. A negative margin is the surgical fix; `gap:0` on .stack-body plus
+   per-row margins would have re-spaced every unopened row too.
+   The 3px bottom margin then holds the NEXT layer off the card (2px gap + 3px = 5px), so the card reads as one
+   object with clear air after it rather than as a row in a flush list. Both live out here on the fold host
+   instead of on .se-body, which is inside the clipped region. */
+.stack-expand{
+  position:relative;
+  display:grid; grid-template-rows:1fr;
+  margin:-2px 0 3px;
+  transition:grid-template-rows var(--fold-ms) var(--ease-out);
+}
+/* 🔴 The lower half of the focus spine, continuing .stack-row.active::before down the card's left edge at the
+   same left:-6px / 3px width. It lives on the fold host and not inside .se-clip, so it is not cut by the
+   clip's overflow — and because the host is the element whose height animates, the spine shortens WITH the
+   fold instead of standing at full length over a collapsing body.
+   `bottom:3px` stops it at the border, not at the margin's outer edge, so it does not overshoot into the gap. */
+.stack-expand.active::before{
+  content:""; position:absolute; left:-6px; top:0; bottom:3px;
+  width:3px; background:var(--accent);
+}
+.stack-expand.folding{ grid-template-rows:0fr; }
+.stack-expand > .se-clip{ overflow:hidden; min-height:0; }
+/* 🔴 The body fades and lifts slightly WITH the fold, so a half-open expand reads as arriving rather than as a
+   sliver of a finished panel. Kept short and offset-free at the end (translateY 0) so it cannot leave a
+   permanent transform — the `cardRise ... both` trap that made every .card a containing block for the
+   position:fixed dropdown lists. This is a transition, not an animation, so there is no fill mode to hold. */
+.stack-expand > .se-clip > .se-body{
+  opacity:1; transform:translateY(0);
+  transition:opacity var(--fold-ms) var(--ease-out), transform var(--fold-ms) var(--ease-out);
+}
+.stack-expand.folding > .se-clip > .se-body{ opacity:0; transform:translateY(-4px); }
+/* 🔴 NO top margin and NO top border: this is the lower half of the card whose head is .stack-row.expanded,
+   not a panel sitting under a row. The old `margin:1px 0 2px` (on top of .stack-body's 2px gap) is what split
+   the pair into two visibly separate boxes. The bottom margin moved to .stack-expand so it applies to the
+   whole card and does not sit INSIDE the animated fold — a margin here would have been clipped by .se-clip
+   and made the closing fold stop 2px short. */
+.se-body{
+  display:flex; flex-direction:column; gap:6px;
+  padding:7px 8px 9px;
+  background:var(--tile); border:1px solid var(--hair-strong); border-top:none;
+}
+/* 🔴 A FOCUSED card is lit end to end. .stack-row.active fills with --row-sel (#1f1f1f) while .se-body's own
+   fill is --tile (#141414); left alone that is a lighter head sitting on a darker body — the two-box read
+   again, just in tone instead of in border. The body follows the head. */
+.stack-expand.active > .se-clip > .se-body{ background:var(--row-sel); }
+/* one label + control per line, label fixed so the controls align down the column */
+.se-row{ display:flex; align-items:center; gap:8px; min-height:24px; }
+.se-row > .se-k{
+  flex:0 0 52px; font-size:10px; text-transform:uppercase; letter-spacing:.6px; color:var(--faint);
+}
+.se-row > .se-v{ flex:1; min-width:0; display:flex; align-items:center; justify-content:flex-end; }
+/* the expand reuses the shared switch / dropdown / slider / colour widgets, only tightened to the rail */
+.se-body .dropdown{ min-width:0; }
+.se-body .sliderrow{ flex:1; }
+/* 🔴 `.slider` is `flex:1; min-width:0`, so it is the FIRST thing to give when a row runs out of room — and it
+   gives all the way to zero width, which renders as no slider at all rather than as a cramped one. That is the
+   "mask Strength has no slider" fault: the rail is built (BuildMaskSection calls BuildSlider like every other
+   row) but collapses to nothing behind the rigid 92px value pill in the narrow rail. Let the PILL shrink and
+   floor the rail, so the control degrades into a short slider instead of vanishing. */
+/* 🔴 `.summon-menu` is named explicitly, not left to source order: the compact block further down sets
+   `.summon-menu .sliderrow .valuebox{ flex:0 0 82px }` at the SAME (0,3,0) specificity as a bare
+   `.se-body .sliderrow .valuebox`, and it appears LATER in the file — so without the extra class it would win
+   and re-rigidify the pill, leaving the rail collapsed and the fault unfixed in the summoned panel, which is
+   the only place this panel actually runs. */
+.se-body .sliderrow .valuebox,
+.summon-menu .se-body .sliderrow .valuebox{ flex:0 1 74px; min-width:0; }
+.se-body .sliderrow .slider,
+.summon-menu .se-body .sliderrow .slider{ min-width:40px; }
+/* 🔴 The [ Paint | Mask ] chips take the row but are no longer STRETCHED to halve it: .segment is now the
+   flowing, container-less chip row SelectionEntry.cpp actually draws, so its chips size to their text. The
+   old comment here promised "two halves read as one toggle", which was the fused bordered box — that look is
+   gone deliberately. `justify-content:flex-end` keeps the row right-aligned against .se-v like the other
+   field widgets instead of leaving the chips floating mid-row. */
+.se-body .segment{ flex:1; min-width:0; justify-content:flex-end; }
+.se-sect{
+  display:flex; align-items:center; gap:6px; margin-top:2px;
+  font-size:9.5px; text-transform:uppercase; letter-spacing:.8px; color:var(--muted);
+}
+.se-sect::after{ content:""; flex:1; height:1px; background:var(--hair); }
+/* one-line hint under the target segment when the target has no inline settings (Paint scope) */
+.tgt-hint{ font-size:10px; line-height:1.5; color:var(--faint); padding:2px 1px; }
+
+/* drop indicator for drag-reorder */
+.drop-line{
+  height:2px; margin:1px 8px; border-radius:2px; flex:0 0 auto;
+  background:var(--accent); box-shadow:0 0 8px var(--accent); pointer-events:none;
+}
+.empty-state{
+  padding:26px 14px; text-align:center; color:var(--faint);
+  font-size:11.5px; line-height:1.7;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     PANE FOOT
+----------------------------------------------------------------------------------------------------------------------*/
+.pane-foot{
+  flex:0 0 auto; height:29px; display:flex; align-items:center; gap:7px;
+  padding:0 12px; background:var(--menu-2); border-top:1px solid var(--hair);
+  font-size:10.5px; color:var(--muted);
+}
+.slide-pane.detail .pane-foot{ background:var(--menu); }
+.pf-strong{ color:var(--ink); font-variant-numeric:tabular-nums; }
+.pf-dot{ color:var(--value-unit); }
+.pf-spacer{ flex:1; }
+.pf-hue{ width:8px; height:8px; border-radius:2px; flex:0 0 auto; }
+
+/* the stack footer's Add-Layer affordance + its kind list */
+.sf-tally{ display:flex; align-items:center; gap:6px; }
+.sf-add{
+  display:flex; align-items:center; gap:5px; height:20px; padding:0 9px;
+  border-radius:999px; cursor:pointer; font-size:10.5px; font-weight:600; color:var(--ink);
+  background:var(--tile); border:1px solid var(--hair-strong);
+  transition:background .13s, border-color .13s, color .13s;
+}
+.sf-add:hover{ background:var(--accent-soft); border-color:var(--accent); }
+.sf-add svg{ width:12px; height:12px; }
+.sf-add.disabled{ opacity:.35; pointer-events:none; }
+/* A clamped list scrolls, so it needs a visible-but-quiet bar — the card is dark and the default light
+   Windows bar reads as a seam through the middle of it. */
+.dd-list::-webkit-scrollbar{ width:8px; }
+.dd-list::-webkit-scrollbar-track{ background:transparent; }
+.dd-list::-webkit-scrollbar-thumb{ background:#2a2a2a; border-radius:999px; border:2px solid var(--menu-2); }
+.dd-list::-webkit-scrollbar-thumb:hover{ background:#3a3a3a; }
+.dd-list{ scrollbar-width:thin; scrollbar-color:#2a2a2a transparent; }
+
+/* 🔴 The "+ Add Layer" list is the ONE list that still JOINS its trigger, so it overrides the shared popup
+   rounding rather than inheriting it. The base .dd-list is now a detached, uniformly-rounded 7px popup (the
+   executable's dropdown; see .dd-head), which is the right default for a field dropdown but would leave this
+   button and its list reading as two stacked cards. Squaring the shared edge here — and matching the button's
+   9px on the outer corners, since a 2px mismatch is the tell that betrays one card as two — keeps the join the
+   user asked for on the control that still wants it. Its PlaceList call passes Gap 0 to stay flush. */
+.sf-add-list{ border-radius:0 0 9px 9px; border-top-color:transparent; }
+.sf-add-list.above{ border-radius:9px 9px 0 0; border-top-color:var(--hair); border-bottom-color:transparent; }
+.sf-add-list .dd-item{ font-size:11px; }
+.sf-swatch{ width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   PROPERTY CARDS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 BLACK, not the card tone. BeginPropertyPanel pushes ChildBg = DeskBackground precisely so the CardGap
+   between rounded cards shows as a black separator; painting it the card colour merges every card into one
+   block (that function's own comment calls this out). */
+.prop-body{
+  flex:1; min-height:0; overflow-y:auto; padding:var(--card-gap) 8px 12px;
+  background:var(--desk); scroll-behavior:smooth;
+}
+/* 🔴 A BORDERLESS rounded fill — PropertyPanelBase paints one `AddRectFilled(..., CardFill, 14.0f)` with
+   PanelBackground and NO outline, and SectionHeader.cpp's header states "NO frame and NO border ... so headers
+   never read as a stacked, outlined, merged block". The separation between cards comes from the CardGap over
+   the black DeskBackground showing through, which is why .prop-body below is black rather than the card tone.
+
+   🔴 No `cardRise` entrance. The executable animates a card's FOLD only; nothing rises or fades in on build.
+   Keeping it here was also an active bug: `animation: ... both` holds the final keyframe forever, leaving a
+   permanent transform that made every .card a containing block for the position:fixed dropdown lists (and
+   clipped them via overflow:hidden). Removing it is what lets a list inside a card be placed against the
+   viewport at all. */
+.card{
+  background:var(--menu); border:0; border-radius:var(--r-tile);
+  margin-bottom:var(--card-gap); overflow:hidden;
+}
+/* 🔴 Shares the card fill (PanelHeader == PanelBackground in the palette) and has NO bottom rule. The chevron
+   sits on the RIGHT and sweeps -90deg..0 with the SAME eased fraction that reveals the body, per
+   SectionHeader.cpp — so its duration is --fold-ms, not a shorter independent flip. */
+.card-head{
+  display:flex; align-items:center; gap:8px; height:31px; padding:0 10px;
+  font-size:10.5px; font-weight:600; letter-spacing:1px; text-transform:uppercase;
+  color:var(--muted); cursor:pointer; background:var(--menu-2);
+  transition:color .12s;
+}
+.card-head:hover{ color:var(--ink); }
+.card-head .ch-tw{
+  width:10px; height:10px; flex:0 0 auto; color:var(--muted);
+  transition:transform var(--fold-ms) var(--ease-out);
+}
+.card-head .ch-tw svg{ width:10px; height:10px; }
+.card.collapsed .card-head .ch-tw{ transform:rotate(-90deg); }
+.card-head .ch-dot{ width:7px; height:7px; border-radius:50%; flex:0 0 auto; }
+.card-head .ch-n{ margin-left:auto; font-size:9.5px; color:var(--faint); letter-spacing:0; }
+/* 📝 1fr → 0fr grid row: collapses without measuring height. This is the CSS equivalent of the C++
+   measure-then-clip fold (PropertyPanelBase caches the natural body height and clips to BodyH * Fold);
+   the grid row does the measuring for us, so the eased reveal needs only the matching duration. */
+.card-shell{
+  display:grid; grid-template-rows:1fr;
+  transition:grid-template-rows var(--fold-ms) var(--ease-out);
+}
+.card.collapsed .card-shell{ grid-template-rows:0fr; }
+.card-body-inner{ min-height:0; overflow:hidden; }
+.card-body{ padding:7px 10px 9px; display:flex; flex-direction:column; gap:2px; }
+
+.prow{
+  display:grid; grid-template-columns:88px minmax(0,1fr); column-gap:10px;
+  align-items:center; min-height:var(--row-h);
+}
+.plabel{
+  font-size:11.5px; color:var(--muted); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; transition:color .2s;
+}
+.prow.changed .plabel{ color:var(--accent); }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   FIELD WIDGETS
+----------------------------------------------------------------------------------------------------------------------*/
+/* Split value box — a rounded [ number | unit ] pill, matching ControlsPreview.html: a fully-black
+   number segment (right-aligned) and a distinct lighter-grey unit segment, capped as a pill.
+
+   🔴 The two segments must read as TWO segments, exactly as in the reference: a black number cell and a
+      grey unit cell butted together inside one pill. Earlier the compact pill was squeezed to 62px total,
+      which starved the grey unit segment to a sliver and lost the split — so it read as a plain dark box,
+      not the ControlsPreview pill. Widened below, with the unit segment given a real minimum. */
+.valuebox{
+  display:flex; align-items:stretch; height:26px; min-width:0;
+  background:var(--value-black); border-radius:999px;
+  overflow:hidden; transition:box-shadow .12s;
+}
+/* 🔴 Centred, matching the DragFloat parked over this segment (see .valuebox input). The flex-end that was
+   here would have pinned the input's box to the right edge and made its own text-align:center a no-op. */
+.valuebox .num{
+  flex:1; min-width:0; display:flex; align-items:center; justify-content:center; padding:0 8px;
+  background:var(--value-black);
+}
+/* 🔴 A focus ring is the ONE place the pill is allowed an outline. DrawValuePill draws none ("No outline: the
+   pill reads as a flat filled capsule"), but the C++ gets its focus feedback free from the native DragFloat's
+   text cursor, which CSS has no equivalent of — so the ring stands in for it. Inset, so it cannot grow the
+   pill's box and shift the track beside it. */
+.valuebox .num:focus-within{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+/* 🔴 The number is scaled UP: `PushScaledFont(NumericFontScale)` with NumericFontScale 1.15 — the readout is
+   the loudest thing in the row, deliberately larger than the label and the unit. At the panel's 11px base
+   that is ~12.6px. It is also CENTRED, not right-aligned: EditPillNumber parks a DragFloat over the black
+   segment and ImGui centres a drag-widget's text, so a right-aligned number sat against the grey cap instead
+   of in the middle of its own cell. */
+.valuebox input{
+  width:100%; min-width:0; background:none; border:0; outline:none; text-align:center;
+  color:var(--text-value); font-size:12.6px; font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield;
+}
+.valuebox input::-webkit-outer-spin-button,
+.valuebox input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+/* 🔴 A FIXED-width cap, not a text-sized one: `SideSegmentWidth` is 30px and DrawValuePill carves the black
+   number segment out of what the caps leave (`NumberMax.x - SegW`), so the grey cell is exactly 30px whatever
+   glyph it holds. `min-width` + padding let a long unit push it wider, which drifted the number cell's width
+   from row to row and broke the column alignment the fixed cap exists to guarantee.
+   The glyph is TextMuted at SegmentFontScale 0.95 — scaled DOWN, the mirror of the number's 1.15, and NOT
+   bold: DrawSideSegment changes only the size, and the C++ has one font weight. */
+.unitseg{
+  flex:0 0 30px; width:30px; display:grid; place-items:center; overflow:hidden;
+  font-size:10.5px; color:var(--muted); background:var(--value-unit);
+}
+
+/* 🔴 label | valuebox | slider, mirroring ControlsPreview's slider row. The valuebox holds a fixed width so
+   the track starts at the same x down the whole column; the track takes the remaining space. */
+.sliderrow{ display:flex; align-items:center; gap:9px; min-width:0; }
+.sliderrow .valuebox{ flex:0 0 92px; }
+/* 🔴 `touch-action:none` is load-bearing, not a mobile nicety: without it the browser claims the gesture
+   for panning and STOPS sending pointermove to the captured track partway through a drag, which is the
+   knob freezing mid-scrub. `user-select:none` stops a horizontal drag from selecting the label text
+   instead of moving the knob. */
+/* 🔴 A THICK capsule rail, not a hairline — this is the biggest single visual gap against the executable.
+   ValueSlider.cpp:54 sizes the track `Height * 0.72f` off ResolvePillHeight, and PillRowHeight is 30px
+   (ThemeConfiguration.cpp:115), so the real track is ~21.6px tall and fully capsule-rounded. The 4px rail
+   that was here is a completely different control: a web-style hairline with a small bead riding it. At the
+   panel's compact 26px row that ratio gives 26*0.72 ≈ 19px. */
+.slider{
+  flex:1; min-width:0; position:relative; height:19px;
+  background:var(--track-bg); border-radius:999px; cursor:pointer;
+  touch-action:none; user-select:none;
+}
+.slider .fill{
+  position:absolute; left:0; top:0; bottom:0; z-index:0;
+  background:var(--track-fill); border-radius:999px; pointer-events:none;
+}
+/* 📝 pointer-events off: the knob must never swallow a press or become the pointermove target itself —
+   the capture belongs to the track, and the maths reads clientX against the TRACK's box.
+   🔴 Geometry and ring straight off DrawSliderTrack: `KnobRadius = Size.y * 0.5f + 1.0f` — the knob is a
+      circle as tall as the TRACK plus a pixel each side, so on the 19px rail it is 21px across and just
+      overhangs the capsule. It is a fat white bead nearly filling the rail's height, NOT a small dot on a
+      thin line, and it is the same diameter whatever the fill is doing.
+      The outline is `AddCircle(..., IM_COL32(0,0,0,90), 1.0f)` — a 1px hairline at alpha 90/255 ≈ .35, NOT
+      the soft drop shadow that was here. A blurred shadow is the one thing an ImDrawList circle cannot
+      draw, so it was pure invention and it muddied the knob against the black track. */
+.slider .knob{
+  position:absolute; top:50%; width:21px; height:21px; margin-left:-10.5px; z-index:1;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35); pointer-events:none;
+  transition:box-shadow var(--ease-ms) var(--ease-out);
+}
+/* 🔴 A press ring, not a grow. The C++ knob is a FIXED radius — it never scales on grab — so the pressed
+   state may only add the halo that says "captured", never change the geometry the value maps to. */
+.slider:active .knob{ box-shadow:0 0 0 1px rgba(0,0,0,.35), 0 0 0 4px var(--accent-soft); }
+
+/* 🔴 BooleanEntry.cpp: the track blends ControlActive -> AccentPrimary and the nub slides, both driven by ONE
+   eased phase — so the two transitions must share a duration or the colour would arrive before the nub.
+   AccentPrimary is near-WHITE (#e8e8e8), NOT the blue --selected: the executable's "on" toggle is a pale
+   track under a white nub, and using the blue here is the single most visible way to get this control wrong.
+   The nub also carries the 1px black ring AddCircle draws over it. */
+.switch{
+  width:38px; height:22px; flex:0 0 auto; position:relative; cursor:pointer;
+  background:var(--rail-sel); border-radius:999px;
+  transition:background var(--ease-ms) var(--ease-out);
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  background:var(--knob); border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.35);
+  transition:left var(--ease-ms) var(--ease-out);
+}
+.switch.on .nub{ left:19px; }
+
+/* 🔴 SelectionEntry.cpp draws SEPARATE rounded chips that FLOW and WRAP — not one bordered box with flush
+   dividers. There is no container fill and no container border at all: each chip is its own
+   `AddRectFilled(..., Rounding)` with `ChipGap = ControlSpacing + 4` between them, and a chip that would
+   overflow the field width wraps onto a new line (the `PenX + ChipW > FieldWidth` branch). The box that was
+   here fused the chips into a single outlined strip, which reads as a segmented toggle rather than the
+   gallery's chip row. `flex-wrap` + the gap reproduce the wrap; `overflow:hidden` must NOT come back or a
+   wrapped second line would be clipped. */
+.segment{
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+  min-height:26px; background:none; border:0;
+}
+/* 📝 gap = ChipGap = ControlSpacing(6) + 4 = 10px. */
+/* 🔴 Rounding is `FrameRounding + 4` = CornerRounding + 4, and the chip is `PillHeight * 0.9`. Padding is the
+   C++ `ChipPadX` 16px, so chips size to their TEXT and do not stretch — hence no `flex:1`, which would have
+   spread them across the row and defeated the wrap. */
+.seg-opt{
+  flex:0 0 auto; min-width:0; height:23px; padding:0 16px;
+  display:grid; place-items:center; font-size:11px; border-radius:8px;
+  color:var(--muted); background:var(--tile); cursor:pointer;
+  box-shadow:0 0 0 1px transparent;
+  transition:background .12s, color .12s, box-shadow .12s;
+}
+/* 🔴 An unselected chip's hover is a 1px ValueOutline RING (`AddRect` in the `!Selected && IsItemHovered`
+   branch) — the ink does not brighten. Drawn as an inset shadow so it costs no layout and cannot nudge the
+   chips beside it, which a real border on hover would. */
+.seg-opt:hover{ box-shadow:0 0 0 1px var(--outline); }
+.seg-opt.sel{ background:var(--knob); color:var(--knob-text); font-weight:600; }
+/* 📝 A selected chip is already filled white; the ring would only muddy its edge. */
+.seg-opt.sel:hover{ box-shadow:0 0 0 1px transparent; }
+/* An option the layer cannot take — e.g. Generator on a layer with no recipe. Kept VISIBLE rather than
+   removed, so the control does not change width per layer and the channel's full vocabulary stays legible. */
+/* 🔴 The C++ gates the hover ring on `Descriptor.Enabled` (and wraps the whole control in BeginDisabled), so a
+   chip the layer cannot take takes NO hover affordance — the ring must be suppressed too, not just the ink.
+   Without this the disabled chip still lights a ring and invites a click that is refused. */
+.seg-opt.off{ opacity:.34; cursor:not-allowed; }
+.seg-opt.off:hover{ color:var(--muted); box-shadow:0 0 0 1px transparent; }
+
+.dropdown{ position:relative; min-width:0; }
+/* 🔴 The head IS a value pill. Dropdown.cpp:45 calls `DrawValuePill(Theme, Origin, ..., nullptr, ">")` — the
+   very same painter the numeric field uses, with no axis cap and ">" as the unit. So: fully-rounded capsule
+   (PillRounding 999), ValueNumberSegment black body, one grey SideSegmentWidth cap holding the caret, and NO
+   BORDER ("No outline: the pill reads as a flat filled capsule").
+   🔴 The joined-card treatment is GONE by the user's ruling (they chose the executable over the earlier
+      joined design). The C++ list is a detached ImGui popup offset `Height + 6.0f` from the head with its own
+      rounding — it never shares an edge, so nothing here squares a corner or clears a border, and the
+      `.flipped` border-swap that used to mirror the join is deleted rather than left dangling. */
+.dd-head{
+  display:flex; align-items:center; height:26px; padding:0; overflow:hidden;
+  background:var(--value-black); border:0; border-radius:999px;
+  cursor:pointer;
+}
+/* 📝 The rotate is a CSS liberty, kept deliberately: the C++ caret is a static ">" glyph (DrawValuePill's unit
+   text), because an ImDrawList text call cannot rotate. Turning it to point back at the field it opened is the
+   one animation the executable would have had if its painter allowed it, and it costs nothing structurally. */
+.dd-head .caret svg{ transition:transform var(--ease-ms) var(--ease-out); }
+.dropdown.open .dd-head .caret svg{ transform:rotate(180deg); }
+/* 🔴 Left-aligned at 14px — `TextPos(Head.NumberMin.x + 14.0f, ...)`, measured from the black segment's edge,
+   not the pill's. With no axis cap NumberMin IS the pill's left edge, so 14px of padding here is exact. */
+.dd-head .cur{
+  flex:1; min-width:0; padding-left:14px; font-size:11.5px; color:var(--text-value);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* 🔴 The grey cap is a fixed 30px SideSegmentWidth cell, same as .unitseg, and butts SEAMLESSLY against the
+   black body — DrawSideSegment overlays it on the already-painted capsule with no divider, so the 1px
+   border-left that was here drew a seam the executable does not have. Glyph at SegmentFontScale 0.95. */
+.dd-head .caret{
+  flex:0 0 30px; width:30px; display:grid; place-items:center; align-self:stretch;
+  color:var(--muted); background:var(--value-unit); border:0;
+  font-size:10.5px;
+}
+/* 📝 fixed + JS-placed so the list escapes the scrolling card
+   🔴 Hidden with visibility/opacity, NOT `display:none`. A transition out of display:none never runs — the
+      box has no start geometry to interpolate from — so the old display gate is why the list simply
+      appeared with no animation. visibility keeps it un-hittable while closed AND animatable. */
+/* 🔴 No max-height here. PlaceList writes one per open, measured against the room the chosen side actually
+   has — a flat 280px cap taller than the gap clips the list at the viewport edge no matter which side it
+   drops to, which is exactly how "Add component" and "Blend" got cut off. overflow-y:auto then makes a
+   clamped list scroll instead of losing its tail. */
+/* 🔴 Surface tones from Dropdown.cpp's popup: PopupBg is pushed to PanelHeader and WindowPadding to 6px.
+   The literal var(--menu-2) / var(--hair) that were here belonged to the older lighter palette. */
+/* 🔴 A DETACHED popup, uniformly rounded on all four corners. Per the user's ruling this now follows the
+   executable: `SetNextWindowPos(Origin.x, Origin.y + Height + 6.0f)` places an independent ImGui window a
+   clear 6px off the head, so the list shares no edge with anything and squares no corner. The old
+   `border-radius:0 0 7px 7px` + `border-top-color:transparent` existed only to dissolve a seam that no longer
+   exists; kept, they would read as a card with one flat edge floating in space.
+   🔴 The 6px offset is applied by PlaceList (JS), not here — a margin would fall outside the fixed box's own
+   geometry and desync the flip maths, which measures against the rect it writes. */
+.dd-list{
+  position:fixed; z-index:1200; overflow-y:auto; overscroll-behavior:contain; padding:6px;
+  background:var(--menu-2); border:1px solid var(--hair);
+  border-radius:7px;
+  box-shadow:0 16px 44px rgba(0,0,0,.6);
+
+  visibility:hidden; opacity:0; transform:scaleY(.86) translateY(-3px);
+  transform-origin:top center;
+  transition:opacity .13s ease, transform .16s cubic-bezier(.2,.9,.25,1), visibility 0s linear .16s;
+}
+/* 📝 Flipped above: only the grow direction changes now that the corners are uniform. */
+.dd-list.above{
+  transform:scaleY(.86) translateY(3px); transform-origin:bottom center;
+}
+/* 🔴 Keyed on the LIST's own `.open`, never on `.dropdown.open .dd-list`. Every open list is portalled to
+   <body>, so while it is visible it is not a descendant of its .dropdown at all and a descendant selector
+   cannot reach it — the list would stay `visibility:hidden` and the dropdown would look dead. The class is
+   put on the list itself by BuildDropdown / OpenAddLayerList, which is uniform for both kinds of list. */
+.dd-list.open{
+  visibility:visible; opacity:1; transform:scaleY(1) translateY(0);
+  transition:opacity .13s ease, transform .16s cubic-bezier(.2,.9,.25,1), visibility 0s;
+}
+/* 🔴 Item chrome transcribed from Dropdown.cpp's custom-drawn rows, which differ from a generic list in three
+   ways that all read at a glance:
+     • hover fill is ControlActive and SHARP — `AddRectFilled(..., 0.0f)`, rounding zero. No border-radius.
+     • hover adds a 4px full-height bar of SelectionMarker (blue) on the left edge.
+     • hover shifts the label 14px -> 20px, which the 4px bar then sits behind.
+   The blue is --selected here, never --accent: this is the one place the palette keeps the mockup's blue. */
+.dd-item{
+  position:relative; display:flex; align-items:center; gap:8px;
+  padding:6px 8px 6px 14px; border-radius:0;
+  font-size:11.5px; color:var(--ink); cursor:pointer;
+  /* the rows settle in just behind the card, which is what sells the unfold rather than a hard cut */
+  opacity:0; transform:translateY(-3px);
+  transition:opacity .12s ease, transform .14s cubic-bezier(.2,.9,.25,1),
+             background .12s, padding-left .12s var(--ease-out);
+}
+.dd-item::before{
+  content:""; position:absolute; left:0; top:0; bottom:0; width:4px;
+  background:var(--selected); opacity:0; transition:opacity .12s;
+}
+.dd-item:hover::before{ opacity:1; }
+.dd-list.open .dd-item{ opacity:1; transform:translateY(0); }
+/* 📝 A short per-row stagger, capped at four: beyond that the last row lands late enough to feel laggy on
+   a long list like the blend modes, and the whole open must stay under ~200ms. */
+.dd-list.open .dd-item:nth-child(1){ transition-delay:.015s; }
+.dd-list.open .dd-item:nth-child(2){ transition-delay:.03s; }
+.dd-list.open .dd-item:nth-child(3){ transition-delay:.045s; }
+.dd-list.open .dd-item:nth-child(n+4){ transition-delay:.06s; }
+.dd-item:hover{ background:var(--rail-sel); padding-left:20px; }
+/* 🔴 The ring is drawn on EVERY row (Dropdown.cpp draws an unselected ring in PanelBorder and a selected ring
+   in SelectionMarker with a filled centre), so the radio must NOT be hidden when unselected. The selected fill
+   is a concentric dot — AddCircle(r=8) plus AddCircleFilled(r=8-4) — which is an inset ring of background, not
+   a solid disc. */
+.dd-item .radio{
+  margin-left:auto; width:11px; height:11px; border-radius:50%;
+  border:1.5px solid var(--hair); background:none; flex:0 0 auto;
+  transition:border-color .12s, background .12s;
+}
+.dd-item.sel .radio{
+  border-color:var(--selected); background:var(--selected);
+  box-shadow:inset 0 0 0 2px var(--menu-2);
+}
+
+/* 🔴 The colour field is the same pill shape as .dd-head — a black capsule with one grey cap — so it follows
+   the dropdown: borderless, PillRounding 999. There is no ColourEntry in the gallery to transcribe, so the
+   shared pill grammar (DrawValuePill) is the authority; leaving this one bordered and 7px would have made the
+   colour row the odd control out on a panel where every other field is now a capsule. */
+.colorbar{
+  display:flex; align-items:center; height:26px; padding:0 0 0 6px; overflow:hidden;
+  background:var(--value-black); border:0; border-radius:999px;
+  cursor:pointer;
+}
+/* 📝 An open field takes the ValueOutline ring, drawn INSET so it cannot grow the box — the only outline the
+   pill grammar allows, and the same one .valuebox uses for focus. */
+.colorbar.open{ box-shadow:0 0 0 1px var(--outline) inset; }
+.colorbar .swatchseg{ flex:1; min-width:0; display:flex; align-items:center; gap:7px; }
+.colorbar .circle{
+  width:15px; height:15px; flex:0 0 auto; border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35);
+}
+.colorbar .cname{
+  min-width:0; font-size:10.5px; color:var(--text-value);
+  font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.colorbar .caret{
+  flex:0 0 30px; width:30px; display:grid; place-items:center; align-self:stretch;
+  color:var(--muted); background:var(--value-unit); border:0; font-size:10.5px;
+}
+/* 🔴 A popover PANEL, not a field: it takes the popup surface (PopupBg = PanelHeader, 6px WindowPadding) that
+   .dd-list uses, since that is what the executable gives every floating list. It stays inline rather than
+   portalled — unlike .dd-list it is not `position:fixed`, so no ancestor makes it a containing-block casualty. */
+.picker{
+  display:none; margin-top:6px; padding:6px;
+  background:var(--menu-2); border:1px solid var(--hair); border-radius:7px;
+}
+.picker.open{ display:block; }
+/* 🔴 `touch-action:none` on both scrub surfaces, for the same reason .slider carries it: without it the browser
+   claims the gesture for panning and STOPS delivering pointermove partway through the drag, which reads as the
+   knob freezing mid-scrub. `user-select:none` stops a drag from selecting the hex text instead of picking. */
+.svbox{
+  position:relative; height:78px; border-radius:7px; cursor:crosshair;
+  touch-action:none; user-select:none;
+}
+/* 🔴 pointer-events OFF on both knobs — the same rule .slider .knob documents. The scrub reads clientX/clientY
+   against the SURFACE's box, so the knob must never become the pointermove target: drag onto it and the events
+   retarget to a 11px box, making the maths measure against the wrong rect and the pick stall under the cursor.
+   The knobs are pure readouts; the surface underneath owns every press. */
+.svknob{
+  position:absolute; width:11px; height:11px; margin:-5.5px 0 0 -5.5px;
+  border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.5);
+  pointer-events:none;
+}
+.barstack{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.cbar{
+  position:relative; height:9px; border-radius:999px; cursor:pointer;
+  touch-action:none; user-select:none;
+}
+.huebar{ background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+.cknob{
+  position:absolute; top:50%; width:13px; height:13px; margin-left:-6.5px;
+  transform:translateY(-50%); background:var(--knob); border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35); pointer-events:none;
+}
+.hexrow{ display:flex; align-items:center; gap:7px; margin-top:8px; }
+.hexrow input{
+  flex:1; min-width:0; height:24px; padding:0 7px;
+  background:var(--value-focus); border:1px solid var(--hair-strong); border-radius:6px;
+  outline:none; color:var(--text-value); font-size:11px; text-transform:uppercase;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                     CAROUSEL
+----------------------------------------------------------------------------------------------------------------------*/
+.prop-carousel{
+  flex:0 0 auto; display:flex; align-items:stretch; height:33px; padding:0 6px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair);
+}
+.pc-seg{
+  flex:1 1 50%; width:50%; margin-bottom:-1px;
+  background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--muted); font-size:12px; font-weight:500; cursor:pointer;
+  transition:color .15s ease, border-color .15s ease;
+}
+.pc-seg:hover{ color:var(--ink); }
+.pc-seg.active{ color:var(--ink); font-weight:600; border-bottom-color:var(--accent); }
+
+.inspect-viewport{ flex:1; min-height:0; overflow:hidden; position:relative; }
+.inspect-track{
+  display:flex; width:100%; height:100%; transform:translateX(0);
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+}
+.inspect-track.show-history{ transform:translateX(-100%); }
+.inspect-pane{
+  flex:0 0 100%; width:100%; min-height:0; height:100%;
+  display:flex; flex-direction:column;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                   REVISION RAIL
+----------------------------------------------------------------------------------------------------------------------*/
+.hx-trees{
+  flex:0 0 auto; display:flex; align-items:center; gap:4px;
+  padding:7px 8px; overflow-x:auto; border-bottom:1px solid var(--hair);
+}
+.hx-tree{
+  display:flex; align-items:center; gap:6px; flex:0 0 auto; height:23px; padding:0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  font-size:10.5px; color:var(--muted); cursor:pointer; transition:background .12s, color .12s, border-color .12s;
+}
+.hx-tree:hover{ background:var(--tile-hi); color:var(--ink); }
+.hx-tree.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--ink); }
+.hx-tree svg{ width:11px; height:11px; flex:0 0 auto; }
+.hx-tree-ct{ font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.hx-tree-x{ color:var(--faint); font-size:11px; line-height:1; }
+.hx-tree-x:hover{ color:#ff6b6b; }
+.hx-tree-add{
+  flex:0 0 auto; width:23px; height:23px; display:grid; place-items:center;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  color:var(--muted); cursor:pointer; font-size:13px; line-height:1;
+}
+.hx-tree-add:hover{ background:var(--tile-hi); color:var(--ink); }
+
+.hx-scroll{ flex:1; min-height:0; overflow-y:auto; padding:6px 8px 10px; }
+.hx-ev{
+  display:flex; gap:8px; padding:3px 5px; border-radius:8px; cursor:pointer;
+  transition:background .12s;
+}
+.hx-ev:hover{ background:var(--row-hover); }
+.hx-ev.at-cursor{ background:var(--row-sel); box-shadow:inset 0 0 0 1px var(--hair-strong); }
+.hx-ev.future{ opacity:.4; }
+.hx-rail{ flex:0 0 22px; display:flex; flex-direction:column; align-items:center; }
+/* 🔴 the rail segment takes the LAYER's hue — colour tracks the layer through the timeline */
+.hx-line{ width:2px; flex:1; min-height:5px; background:var(--value-unit); }
+.hx-line.blank{ background:transparent; }
+.hx-node{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  background:var(--menu-2); border-radius:50%; box-shadow:0 0 0 2px var(--hair-strong);
+}
+.hx-node svg{ width:11px; height:11px; }
+.hx-ev.at-cursor .hx-node{ box-shadow:0 0 0 2px var(--accent); }
+.hx-body{ flex:1; min-width:0; padding:3px 0 6px; }
+.hx-main{ display:flex; align-items:baseline; gap:7px; min-width:0; }
+.hx-evt-title{
+  font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-type{
+  flex:0 0 auto; font-size:9.5px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  padding:2px 6px; border-radius:999px; background:var(--menu); color:var(--muted);
+}
+.hx-type.gen{ color:#c084fc; }
+.hx-type.mat{ color:#7dd3fc; }
+.hx-type.param{ color:#fbbf24; }
+.hx-sub{ font-size:10px; color:var(--faint); margin-top:3px; }
+.hx-time{
+  flex:0 0 auto; margin-left:auto; font-size:10px; color:var(--faint);
+  font-variant-numeric:tabular-nums;
+}
+/* layer events draw a chip carrying the layer hue, like Studio's hx-layerline */
+.hx-layerline{ display:flex; align-items:center; gap:6px; min-width:0; }
+.hx-verb{ font-size:11px; color:var(--muted); flex:0 0 auto; }
+.hx-chip{
+  flex:0 0 auto; max-width:96px; padding:2px 7px; border-radius:999px;
+  font-size:9.5px; font-weight:600; color:#0d0d0f;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-lname{
+  font-size:11px; color:var(--ink); min-width:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.hx-lname.gone{ text-decoration:line-through; color:var(--faint); }
+.hx-empty{ padding:24px 12px; text-align:center; color:var(--faint); font-size:11px; line-height:1.7; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  SUMMONED MENU
+----------------------------------------------------------------------------------------------------------------------*/
+/* 💡 one menu, two slides, fixed 630×428 (+15% over the original 548×372) — the same translate as
+   SceneDirectoryInspector. Keep these two numbers in lockstep with MenuWidth/MenuHeight in the JS. */
+.summon-menu{
+  position:fixed; z-index:900; display:none;
+  width:630px; height:428px;
+  background:var(--menu); border:1px solid var(--hair-strong); border-radius:var(--r-menu);
+  overflow:hidden; transform-origin:top left;
+  box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+}
+.summon-menu.open{ display:block; animation:pop .14s cubic-bezier(.16,1,.3,1); }
+@keyframes pop{
+  from{ opacity:0; transform:scale(.965) translateY(-5px); }
+  to  { opacity:1; transform:scale(1) translateY(0); }
+}
+
+.menu-view{ height:100%; overflow:hidden; }
+/* 📝 200%-wide track: slide 1 is the stack, slide 2 is channels + revisions */
+.menu-track{
+  display:flex; width:200%; height:100%;
+  transition:transform .34s cubic-bezier(.5,.05,.2,1);
+}
+.menu-track.to-inspect{ transform:translateX(-50%); }
+/* 🔴 the left column is pinned at 214px on BOTH slides so the seam never steps mid-translate */
+.menu-slide{
+  width:50%; height:100%; display:grid;
+  grid-template-columns:246px minmax(0,1fr); min-height:0;
+}
+.slide-pane{ min-width:0; min-height:0; display:flex; flex-direction:column; }
+.slide-pane.rail{ background:var(--menu); border-right:1px solid var(--hair); }
+.slide-pane.detail{ background:var(--menu-2); }
+
+/* compact overrides — the menu is small, so every widget loses a few px */
+.summon-menu .pane-head{ height:46px; padding:0 10px; }
+.summon-menu .pane-head .h-ic{ width:24px; height:24px; border-radius:6px; }
+.summon-menu .pane-head .h-ic svg{ width:17px; height:17px; }
+.summon-menu .pane-head .h-txt{ font-size:12.5px; }
+.summon-menu .prop-carousel{ height:31px; }
+.summon-menu .pc-seg{ font-size:11.5px; }
+.summon-menu .prop-body{ padding:7px 7px 10px; }
+.summon-menu .card{ margin-bottom:6px; }
+.summon-menu .card-body{ padding:6px 9px 8px; }
+.summon-menu .prow{ grid-template-columns:74px minmax(0,1fr); min-height:32px; column-gap:8px; }
+.summon-menu .plabel{ font-size:11px; }
+.summon-menu .valuebox,
+.summon-menu .dd-head,
+.summon-menu .colorbar{ height:24px; }
+/* 🔴 .segment takes a min-height, never a fixed `height`: it WRAPS now, and a hard 24px on the container
+   would crop the second line of chips to nothing the moment a narrow pane forced one. The chips themselves
+   are what shrink — 0.9 of the row, as `ChipH = PillHeight * 0.9`, with the C++ 16px pad eased to 12px so
+   three chips still fit the narrow detail pane. */
+.summon-menu .segment{ min-height:24px; }
+.summon-menu .seg-opt{ height:21px; padding:0 12px; }
+/* 🔴 Kept wide enough for both pill segments to read (a black number cell + a grey unit cell). 62px
+   collapsed the grey segment and lost the ControlsPreview split; 82px keeps both legible in the narrow
+   detail pane without pushing the track off the edge. */
+.summon-menu .sliderrow .valuebox{ flex:0 0 82px; }
+.summon-menu .sliderrow{ gap:8px; }
+/* 🔴 The rail tracks the row height by the SAME 0.72 ratio the C++ uses (ValueSlider.cpp:54), so the compact
+   24px row gets a 17px rail and a 19px knob. Left at the base 19px/21px the knob would stand taller than the
+   24px row it sits in and clip against the row above. */
+.summon-menu .slider{ height:17px; }
+.summon-menu .slider .knob{ width:19px; height:19px; margin-left:-9.5px; }
+.summon-menu .hx-scroll{ padding:5px 7px 9px; }
+.summon-menu .pane-foot{ height:26px; padding:0 10px; font-size:10px; }
+
+/* pane-head that acts as the advance / back affordance */
+.pane-head.stepper{ cursor:pointer; }
+/* 📝 ControlHovered, not the old palette's #292930 — the last literal the bulk repoint missed. */
+.pane-head.stepper:hover{ background:var(--tile-hi); }
+.pane-head .h-step{
+  flex:0 0 auto; width:22px; height:22px; display:grid; place-items:center;
+  color:var(--muted); border-radius:6px;
+}
+.pane-head.stepper:hover .h-step{ color:var(--ink); background:var(--tile-hi); }
+.pane-head .h-step svg{ width:13px; height:13px; }
+.h-back{
+  flex:0 0 auto; width:20px; height:20px; display:grid; place-items:center; color:var(--muted);
+}
+.h-back svg{ width:14px; height:14px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            SLIDE 1 — LAYER PROPERTIES
+----------------------------------------------------------------------------------------------------------------------*/
+.meta-body{ flex:1; min-height:0; overflow-y:auto; padding:9px 10px 12px; }
+/* 📝 `.meta-hero` (+ .mh-ic / .mh-fill / .mh-txt / .mh-name / .mh-class) lived here. It was the icon + name +
+   classification card at the top of this body, which duplicated the pane-head directly above it verbatim.
+   RenderProperties no longer builds it, so the rules are gone too rather than left as dead weight. */
+
+/* the mask paint target — surfaced in the right pane while a paint mask component is focused, so the
+   user sees the mask surface the next stroke lands on. Accent-ringed to read as "live paint target". */
+.mask-paint-preview{
+  display:flex; align-items:center; gap:10px; padding:8px 10px; margin-bottom:8px;
+  background:var(--tile); border:1px solid var(--accent); border-radius:var(--r-tile);
+}
+.mask-paint-preview .mpp-tile{
+  width:34px; height:34px; flex:0 0 auto; border-radius:8px;
+  border:1px solid var(--hair-strong); box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.mask-paint-preview .mpp-txt{ min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+.mask-paint-preview .mpp-lbl{ font-size:9px; font-weight:600; letter-spacing:.4px;
+  text-transform:uppercase; color:var(--accent); }
+.mask-paint-preview .mpp-nm{ font-size:12.5px; font-weight:600; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mask-paint-preview .mpp-sub{ font-size:10px; color:var(--muted); }
+.meta-row{
+  display:flex; align-items:center; gap:8px; height:28px;
+  font-size:11.5px; border-bottom:1px solid var(--hair);
+}
+.meta-row:last-child{ border-bottom:0; }
+.meta-row .mr-k{ color:var(--muted); }
+.meta-row .mr-v{
+  margin-left:auto; color:var(--text-value); font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%;
+}
+/* section label reused by PROPERTIES / MASK / ACTIONS inside the metadata pane */
+.meta-sect{
+  font-size:9.5px; letter-spacing:1.1px; color:var(--faint);
+  font-weight:600; text-transform:uppercase; padding:11px 2px 5px;
+  display:flex; align-items:center; gap:7px;
+}
+.meta-sect svg{ width:12px; height:12px; }
+.meta-sect .ms-tail{ margin-left:auto; letter-spacing:0; text-transform:none; }
+.meta-cta{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  height:32px; margin-top:10px; border-radius:9px; cursor:pointer;
+  background:var(--accent-soft); border:1px solid var(--accent);
+  color:var(--ink); font-size:11.5px; font-weight:600;
+}
+.meta-cta:hover{ background:rgba(255,255,255,.20); }
+.meta-cta svg{ width:13px; height:13px; }
+.meta-cta .cta-kbd{
+  font-size:9.5px; font-weight:400; color:var(--muted);
+  background:var(--menu-2); border-radius:999px; padding:2px 7px;
+}
+
+/* 🔴 the layer actions live INLINE here — the stack carries no right-click menu at all */
+.meta-actions{ margin-top:4px; }
+.act-item{
+  display:flex; align-items:center; gap:9px; height:29px; padding:0 8px;
+  border-radius:8px; font-size:11.5px; color:var(--ink); cursor:pointer;
+}
+.act-item:hover{ background:var(--tile-hi); }
+.act-item .ic{ width:15px; height:15px; flex:0 0 auto; display:grid; place-items:center; color:var(--muted); }
+.act-item .ic svg{ width:15px; height:15px; }
+.act-item:hover .ic{ color:var(--ink); }
+.act-item .kbd{ margin-left:auto; font-size:9.5px; color:var(--faint); font-variant-numeric:tabular-nums; }
+.act-item.danger{ color:#ff6b6b; }
+.act-item.danger .ic{ color:#ff6b6b; }
+.act-item.danger:hover{ background:rgba(255,107,107,.12); }
+.act-item.armed{ background:var(--tile-hi); }
+.act-item.disabled{ opacity:.35; pointer-events:none; }
+.act-item .fold{
+  margin-left:auto; width:5px; height:5px; transition:transform .16s ease;
+  border-right:1.4px solid var(--muted); border-top:1.4px solid var(--muted); transform:rotate(45deg);
+}
+.act-item.armed .fold{ transform:rotate(135deg); }
+.act-sep{ height:1px; background:var(--hair); margin:6px 8px; }
+/* 📝 the classification choices unfold in place — grid-rows 0fr→1fr, no floating list to place */
+.act-fold{ display:grid; grid-template-rows:0fr; transition:grid-template-rows .2s ease; }
+.act-fold.open{ grid-template-rows:1fr; }
+.act-fold > .af-clip{ overflow:hidden; min-height:0; }
+.af-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:5px 4px 3px 22px; }
+.af-choice{
+  display:flex; align-items:center; gap:7px; height:27px; padding:0 7px;
+  border-radius:7px; font-size:11px; color:var(--ink); cursor:pointer;
+  background:var(--tile); border:1px solid var(--hair);
+}
+.af-choice:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+.af-choice svg{ width:14px; height:14px; flex:0 0 auto; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    MASK EDITOR
+----------------------------------------------------------------------------------------------------------------------*/
+.msk-empty{
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  width:100%; height:30px; border-radius:999px; cursor:pointer;
+  background:var(--tile); border:1px dashed var(--hair-strong);
+  color:var(--muted); font-size:11px; font-weight:500;
+}
+.msk-empty:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-empty svg{ width:13px; height:13px; }
+.msk-row{ display:flex; align-items:center; gap:9px; margin-bottom:7px; }
+.msk-prev{
+  width:34px; height:34px; flex:0 0 auto; border-radius:8px;
+  border:1px solid var(--hair); overflow:hidden; background:#000; position:relative;
+}
+.msk-grad{ position:absolute; inset:0; }
+.msk-info{ min-width:0; }
+.msk-nm{ font-size:11.5px; color:var(--ink); }
+.msk-meta{ font-size:9.5px; color:var(--faint); margin-top:3px; }
+.msk-toolbar{ display:flex; gap:4px; }
+.msk-tool{
+  flex:1; display:flex; align-items:center; justify-content:center; gap:5px;
+  height:26px; border-radius:999px; cursor:pointer;
+  background:#000; border:1px solid var(--hair); color:var(--muted);
+  font-size:10.5px; font-weight:500; transition:background .13s, border-color .13s, color .13s;
+}
+.msk-tool:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-tool.on{ border-color:var(--accent); color:var(--ink); background:var(--accent-soft); }
+.msk-tool svg{ width:12px; height:12px; }
+.msk-comps{ display:flex; flex-direction:column; gap:4px; margin-top:7px; }
+/* 🔴 A component row is now a single-SELECT picker, not a settings block — one radio-dot row per component,
+   its settings living in the right pane. The whole row is clickable; the selected one carries the accent. */
+.msk-comp{
+  display:flex; flex-direction:column; padding:6px 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:8px; cursor:pointer;
+  transition:background .12s, border-color .12s;
+}
+.msk-comp:hover{ background:var(--tile-hi); }
+.msk-comp.sel{ border-color:var(--accent); background:var(--accent-soft); }
+.msk-comp .mc-radio{
+  width:12px; height:12px; flex:0 0 auto; border-radius:50%;
+  border:1.4px solid var(--value-unit); box-sizing:border-box; transition:border-color .12s, background .12s;
+}
+.msk-comp.sel .mc-radio{ border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 2px var(--tile); }
+.msk-comp .mc-ico{
+  width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center;
+  background:#000; border:1px solid var(--hair); border-radius:6px; color:var(--muted);
+}
+.msk-comp .mc-ico svg{ width:12px; height:12px; }
+.msk-comp .mc-tx{ min-width:0; flex:1; }
+.msk-comp .mc-nm{
+  display:block; font-size:11px; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.msk-comp .mc-md{
+  display:block; font-size:9px; text-transform:uppercase; letter-spacing:.5px;
+  color:var(--faint); margin-top:2px;
+}
+.msk-comp .mc-x{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  border-radius:50%; color:var(--faint); cursor:pointer; font-size:12px; line-height:1;
+}
+.msk-comp .mc-x:hover{ background:rgba(255,107,107,.14); color:#ff6b6b; }
+
+/* the left-expand "Add mask" affordance shown when the layer has no mask yet */
+.msk-add{
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  height:28px; border-radius:8px; cursor:pointer;
+  font-size:11px; font-weight:600; color:var(--ink);
+  background:var(--menu-2); border:1px dashed var(--hair-strong);
+  transition:background .13s, border-color .13s;
+}
+.msk-add:hover{ background:var(--accent-soft); border-color:var(--accent); border-style:solid; }
+.msk-add svg{ width:13px; height:13px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                    RIGHT-PANE [ LAYER | MASK ] CAROUSEL
+----------------------------------------------------------------------------------------------------------------------*/
+/* 🔴 A two-segment toggle over a two-panel track that slides on translateX — the same idiom .menu-track and
+   .inspect-track use, scoped to the properties pane. Both panels are laid side by side at 50% each inside a
+   200%-wide track, and selecting a segment moves the track by one panel width. */
+.meta-carousel{ display:flex; flex-direction:column; margin-top:2px; }
+
+.mc-toggle{
+  position:relative;
+  display:flex; align-items:stretch; height:30px; flex:0 0 auto; margin-bottom:9px;
+  border-bottom:1px solid var(--hair);
+}
+.mc-seg{
+  flex:1 1 50%; min-width:0; display:grid; place-items:center;
+  cursor:pointer; font-size:12px; font-weight:500; color:var(--muted);
+  transition:color .15s ease;
+}
+.mc-seg:hover{ color:var(--ink); }
+.mc-seg.active{ color:var(--ink); font-weight:600; }
+
+/* the sliding underline: half-width, parked under a segment, translated by the toggle's data-tab. */
+.mc-thumb{
+  position:absolute; left:0; bottom:-1px; width:50%; height:2px;
+  background:var(--accent); border-radius:2px;
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+}
+.mc-toggle[data-tab="mask"] .mc-thumb{ transform:translateX(100%); }
+
+/* the viewport clips the off-screen panel; the track carries both and slides. */
+.mc-view{ overflow:hidden; }
+.mc-track{
+  display:flex; width:200%;
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+}
+.mc-pane{ flex:0 0 50%; width:50%; min-width:0; }
+/* 🔴 The pane is a HARD containment boundary. It is only half the track's width, and the property rows inside
+   it were sized for the full-width pane: .prow's 88px label column plus .sliderrow's rigid `flex:0 0 92px`
+   value pill plus the gaps overflowed the half-width pane, and because .mc-track is width:200% with the panes
+   side by side, that overflow ran straight across into the NEXT pane — the opacity slider appearing in the
+   neighbouring carousel panel. .mc-view's overflow:hidden could not catch it: it clips the track's outer edge,
+   not one pane bleeding into its sibling.
+   Narrower label column + a shrinkable value pill (below) make the row FIT; this clip is the backstop so no
+   future control can bleed sideways again. */
+.mc-pane{ overflow:hidden; }
+/* 🔴 Inside a half-width pane the label column and the value pill both give way. The 88px/92px pair (74/82 under
+   .summon-menu) is a FULL-width-pane budget; in half the width it is guaranteed overflow before the slider rail
+   is even counted.
+   🔴 `.summon-menu` is deliberately included in each selector rather than left to source order. The compact rules
+      at .summon-menu .sliderrow .valuebox are the same (0,2,0) specificity as a bare .mc-pane .sliderrow
+      .valuebox, so which one won would come down to which appeared later in the file — a tie that silently
+      flips the moment either block moves. Naming both classes puts these at (0,3,0) and settles it on merit. */
+.mc-pane .prow,
+.summon-menu .mc-pane .prow{ grid-template-columns:60px minmax(0,1fr); column-gap:7px; }
+.mc-pane .sliderrow,
+.summon-menu .mc-pane .sliderrow{ gap:6px; }
+/* 🔴 `flex:0 1` not `0 0`: the pill must be ALLOWED to shrink. Left rigid it is what pushes the rail to zero. */
+.mc-pane .sliderrow .valuebox,
+.summon-menu .mc-pane .sliderrow .valuebox{ flex:0 1 70px; min-width:0; }
+/* 📝 The rail is `flex:1; min-width:0`, so it is first to collapse and collapses all the way to invisible.
+   Floor it: the control degrades to a short slider instead of disappearing. */
+.mc-pane .sliderrow .slider,
+.summon-menu .mc-pane .sliderrow .slider{ min-width:40px; }
+
+/* 📝 The micro-animation on a Layer<->Mask switch: while the .mc-track transform slides the panes
+   across, the pane that is arriving lifts its content in — a short fade + upward settle layered over
+   the .32s slide. Only ever added to the pane matching the newly-selected tab, and only when the tab
+   actually changed (BuildTargetCarousel gates it), so a plain Refresh rebuild never re-triggers it. */
+.mc-pane.mc-incoming > *{ animation:mcRise .34s cubic-bezier(.4,0,.2,1) both; }
+@keyframes mcRise{
+  from{ opacity:0; transform:translateY(7px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+
+/* the Mask panel's create-mask empty state */
+.mc-empty{
+  display:flex; flex-direction:column; gap:11px; align-items:stretch;
+  padding:14px 6px 6px; text-align:center;
+}
+.mc-empty .mc-empty-note{ font-size:11px; line-height:1.6; color:var(--faint); }
+.mc-create{
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  height:32px; border-radius:9px; cursor:pointer;
+  font-size:12px; font-weight:600; color:var(--ink);
+  background:var(--menu-2); border:1px dashed var(--hair-strong);
+  transition:background .13s, border-color .13s;
+}
+.mc-create:hover{ background:var(--accent-soft); border-color:var(--accent); border-style:solid; }
+.mc-create svg{ width:15px; height:15px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                            SLIDE 2 — MATERIAL CHANNELS
+----------------------------------------------------------------------------------------------------------------------*/
+/* the CSS-shaded preview ball, ported from Studio's pbr.css */
+.pbr-preview{
+  background:var(--menu); border:1px solid var(--hair); border-radius:var(--r-tile);
+  margin-bottom:6px; overflow:hidden;
+}
+.pbr-preview-head{
+  display:flex; align-items:center; height:27px; padding:0 10px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair);
+  font-size:9.5px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--muted);
+}
+.pbr-stage{
+  height:96px; display:grid; place-items:center;
+  background:radial-gradient(circle at 50% 120%, #202027, #0c0c0e 70%);
+}
+.pbr-ball{ width:72px; height:72px; border-radius:50%; position:relative; overflow:hidden; }
+.pbr-spec{ position:absolute; background:#fff; border-radius:50%; }
+.pbr-fresnel{
+  position:absolute; inset:0; border-radius:50%;
+  box-shadow:inset 0 0 12px 3px rgba(255,255,255,.55);
+}
+.pbr-ao{
+  position:absolute; inset:0; border-radius:50%;
+  background:radial-gradient(circle at 50% 118%, rgba(0,0,0,.55), transparent 45%);
+}
+
+/* active-channel chips + the add fold */
+.chan-chips{ display:flex; flex-wrap:wrap; gap:4px; }
+.chan-chip{
+  display:flex; align-items:center; gap:5px; height:23px; padding:0 5px 0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:999px;
+  font-size:10.5px; color:var(--ink);
+}
+.chan-chip .cc-x{
+  width:15px; height:15px; display:grid; place-items:center; border-radius:50%;
+  color:var(--faint); cursor:pointer; font-size:11px; line-height:1;
+}
+.chan-chip .cc-x:hover{ background:rgba(255,107,107,.16); color:#ff6b6b; }
+.chan-add{
+  display:flex; align-items:center; gap:5px; height:23px; padding:0 9px;
+  background:none; border:1px dashed var(--hair-strong); border-radius:999px;
+  color:var(--muted); font-size:10.5px; cursor:pointer;
+}
+.chan-add:hover{ border-color:var(--outline); color:var(--ink); }
+.chan-add svg{ width:11px; height:11px; }
+.chan-pool{ display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:6px 0 2px; }
+.chan-pool-opt{
+  display:flex; align-items:center; gap:6px; height:25px; padding:0 8px;
+  background:var(--tile); border:1px solid var(--hair); border-radius:7px;
+  font-size:10.5px; color:var(--ink); cursor:pointer;
+}
+.chan-pool-opt:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+.chan-pool-empty{ padding:8px 2px; font-size:10.5px; color:var(--faint); }
+
+/* one accordion per enabled channel, with the Val | Map switch in its head */
+.chan-panel{
+  background:var(--menu); border:1px solid var(--hair); border-radius:10px;
+  margin-bottom:5px; overflow:hidden;
+}
+.chan-head{
+  display:flex; align-items:center; gap:8px; height:29px; padding:0 9px;
+  background:var(--menu-2); border-bottom:1px solid var(--hair); cursor:pointer;
+}
+.chan-head .ch-tw{ width:9px; height:9px; flex:0 0 auto; color:var(--faint); transition:transform .16s; }
+.chan-head .ch-tw svg{ width:9px; height:9px; }
+.chan-panel.collapsed .chan-head .ch-tw{ transform:rotate(-90deg); }
+.chan-panel.collapsed .chan-head{ border-bottom-color:transparent; }
+.chan-head .ch-dot{ width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
+.chan-head .ch-title{
+  flex:1; min-width:0; font-size:11px; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.vm-toggle{
+  display:flex; flex:0 0 auto; height:19px; overflow:hidden;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:6px;
+}
+.vm-toggle button{
+  width:31px; background:none; border:0; color:var(--muted);
+  font-size:9.5px; cursor:pointer; transition:background .12s, color .12s;
+}
+.vm-toggle button.active{ background:var(--knob); color:var(--knob-text); font-weight:600; }
+.chan-shell{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .2s cubic-bezier(.4,0,.2,1); }
+.chan-panel.collapsed .chan-shell{ grid-template-rows:0fr; }
+.chan-clip{ min-height:0; overflow:hidden; }
+.chan-body{ padding:6px 9px 8px; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+   MASK DEEP-DIVE — each mask component is a collapsible chan-panel; the head carries a select radio + a
+   category subtitle + a remove ×, and the selected component wears the accent (the paint target).
+----------------------------------------------------------------------------------------------------------------------*/
+.mask-comp-panel.sel{ border-color:var(--accent); }
+.mask-comp-panel.sel .chan-head{ background:var(--accent-soft); }
+.mask-comp-panel .chan-head .mc-radio{
+  width:12px; height:12px; flex:0 0 auto; border-radius:50%;
+  border:1.4px solid var(--value-unit); box-sizing:border-box; transition:border-color .12s, background .12s;
+}
+.mask-comp-panel.sel .chan-head .mc-radio{
+  border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 2px var(--menu-2);
+}
+.mask-comp-panel .chan-head .ch-sub{
+  flex:0 0 auto; font-size:9.5px; color:var(--faint); white-space:nowrap;
+}
+.mask-comp-panel .chan-head .mc-x{
+  flex:0 0 auto; width:16px; height:16px; display:grid; place-items:center; border-radius:5px;
+  color:var(--faint); font-size:13px; cursor:pointer; transition:background .12s, color .12s;
+}
+.mask-comp-panel .chan-head .mc-x:hover{ background:rgba(255,90,90,.16); color:#ff7676; }
+.mask-add-wrap{ margin-top:6px; }
+
+/* the map selector shown when a channel runs in Map mode */
+.map-sel{
+  display:flex; align-items:center; gap:7px; height:26px; padding:0 4px 0 7px;
+  background:var(--value-black); border:1px solid var(--hair-strong); border-radius:7px;
+}
+.map-sel .ms-swatch{
+  width:14px; height:14px; flex:0 0 auto; border-radius:4px;
+  background:linear-gradient(135deg,#5a6b8c,#2b3244); box-shadow:0 0 0 1px var(--hair);
+}
+.map-sel .ms-name{
+  flex:1; min-width:0; font-size:11px; color:var(--text-value);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.map-sel .ms-name.none{ color:var(--faint); }
+.map-sel .ms-btn{
+  width:20px; height:20px; flex:0 0 auto; display:grid; place-items:center;
+  background:none; border:0; border-radius:5px; color:var(--muted);
+  cursor:pointer; font-size:12px; line-height:1;
+}
+.map-sel .ms-btn:hover{ background:var(--tile-hi); color:var(--ink); }
+.map-sel .ms-btn.rm:hover{ background:rgba(255,107,107,.16); color:#ff6b6b; }
+
+/* identity rail — slide 2 left column */
+.ident-body{ flex:1; min-height:0; overflow-y:auto; padding:10px 9px 12px; }
+.ident-chip{
+  width:100%; aspect-ratio:1; position:relative; overflow:hidden;
+  border-radius:10px; border:1px solid var(--hair); background:#000;
+  display:grid; place-items:center; margin-bottom:9px;
+}
+.ident-chip .ic-fill{ position:absolute; inset:0; }
+.ident-chip svg{ width:34px; height:34px; }
+.ident-name{
+  font-size:12px; font-weight:600; color:var(--ink); text-align:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ident-class{
+  font-size:9px; letter-spacing:.8px; text-transform:uppercase;
+  text-align:center; margin-top:4px;
+}
+.ident-stat{
+  display:flex; align-items:center; gap:7px; height:24px;
+  font-size:10.5px; color:var(--muted); border-bottom:1px solid var(--hair);
+}
+.ident-stat:last-child{ border-bottom:0; }
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                        COMBINED (RESOLVED STACK) CARD
+----------------------------------------------------------------------------------------------------------------------*/
+/* The flattened stack at the foot of the identity rail: one tile per stored PBR channel, showing what the
+   surface actually resolves to rather than what the focused layer contributes.
+
+   🔴 `border-top` + margin, not a bordered box: it is the last block in a scrolling column of .ident-stat
+      rows that each carry their own bottom hairline, so a full border here would double up against the last
+      row's line and read as a 2px seam. */
+.composite-card{ margin-top:11px; padding-top:9px; border-top:1px solid var(--hair); }
+.cc-head{ display:flex; align-items:baseline; gap:6px; margin-bottom:7px; }
+.cc-head .cc-t{
+  font-size:9px; letter-spacing:.8px; text-transform:uppercase; color:var(--muted); font-weight:600;
+}
+.cc-head .cc-s{ margin-left:auto; font-size:9px; color:var(--faint); white-space:nowrap; }
+
+/* 🔴 Two columns of `minmax(0,1fr)`, NOT `auto` or a fixed width. The rail is the narrow half of the slide
+      and this grid sits inside its padding, so a fixed tile width would overflow it — and because the
+      overflowing axis is the one the .ident-body scrolls on (vertical), the excess would be clipped
+      silently rather than showing a scrollbar. */
+.cc-grid{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px; }
+.cc-cell{ min-width:0; }
+/* 🔴 Overrides .cp-tile's fixed 128px box, which is sized for the wide detail pane. `aspect-ratio` keeps
+      these square at whatever width the two columns work out to, so the card reflows with the rail instead
+      of at one hard-coded size. `width:auto` is required: .cp-tile sets `flex:0 0 auto; width:128px`, and
+      leaving the width would win over the grid track and overflow the column.
+   🔴 Qualified `.cc-grid .cc-tile` (0,2,0) rather than a bare `.cc-tile` (0,1,0) — NOT for readability. The
+      tile carries BOTH classes, and `.cp-tile{ width:128px }` is defined LATER in this file, so at equal
+      specificity the 128px wins on source order and every combined tile overflows the narrow rail. This has
+      to beat it on specificity, not on position. */
+.cc-grid .cc-tile{
+  width:auto; height:auto; aspect-ratio:1; border-radius:6px;
+}
+.cc-lbl{
+  margin-top:3px; font-size:8.5px; letter-spacing:.4px; text-transform:uppercase;
+  color:var(--faint); text-align:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ident-stat .is-v{
+  margin-left:auto; color:var(--text-value); font-variant-numeric:tabular-nums;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:64%;
+}
+
+/* dimmer so the menu reads as focused without hiding the canvas */
+.summon-veil{ position:fixed; inset:0; z-index:880; display:none; background:rgba(0,0,0,.34); }
+.summon-veil.open{ display:block; animation:veilIn .14s ease both; }
+@keyframes veilIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.flash{ animation:flashRow .5s ease; }
+@keyframes flashRow{
+  0%,100%{ background:transparent; }
+  25%    { background:var(--accent-soft); }
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                  PORT ADDITIONS
+----------------------------------------------------------------------------------------------------------------------*/
+/* 📝 The normal channel is derived from the painted height, so its body carries a note where every other
+   channel carries an editable field. Nothing in the source prototype needed this — there, "normal" was a
+   map slot the user could assign. */
+.chan-note{
+  font-size:10.5px; line-height:1.6; color:var(--faint); padding:2px 1px;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                 CHANNEL PREVIEW
+----------------------------------------------------------------------------------------------------------------------*/
+/* The live thumbnail of what a channel's atlas actually holds, for Texture and Generator sources.
+
+   🔴 image-rendering:pixelated is load-bearing, not a style choice. The tile is a 64² readback shown at
+      double size, and the browser's default smooth upscale blurs a sparse generator (rust flecks,
+      scratches) into an even wash — which reads as "the generator produced nothing" for exactly the
+      recipes whose detail is finest. Nearest-neighbour keeps one atlas texel legible as one block. */
+.chan-preview{ display:flex; align-items:center; gap:9px; padding:4px 1px 2px; }
+.cp-tile{
+  flex:0 0 auto; width:128px; height:128px; border-radius:8px;
+  border:1px solid var(--hair); background:#000 center/cover no-repeat;
+  image-rendering:pixelated;
+}
+/* An enabled channel that has not been painted yet: the transparency checkerboard.
+
+   🔴 ONE conic-gradient, not the two offset 45deg linear gradients of the usual snippet. Two IDENTICAL
+      diagonal gradients offset by half a tile give diagonal STRIPES, not a checker — the classic form needs
+      a 45deg/-45deg pair, and a single conic quartered at 0/25/50/75% is both shorter and unambiguous.
+   🔴 The squares are deliberately DARK (#1b1b1b on #131313). The standard light-grey checker is brighter
+      than any near-black channel value this panel shows (emission defaults to 0,0,0), so a light checker
+      would make an EMPTY tile the most eye-catching thing in the pane.
+   🔴 `background-image` + `background-color` rather than the `background` shorthand: the shorthand would
+      reset .cp-tile's `center/cover no-repeat`, and `background-size` is set here to the checker tile — so
+      the painted state (which assigns background-image alone) must inherit its sizing from the base rule. */
+.cp-clear{
+  background-color:#131313;
+  background-image:
+    conic-gradient(#1b1b1b 25%, transparent 25% 50%, #1b1b1b 50% 75%, transparent 75%);
+  background-size:16px 16px;
+  background-repeat:repeat;
+  border-color:var(--hair-strong);
+}
+/* A derived channel's tile shows its SOURCE field, so it is marked to keep it from being read as the
+   channel itself. A dotted edge says "this is a stand-in", where solid says "this is the content". */
+.cp-derived{ border-style:dotted; border-color:var(--value-unit); }
+/* A Value-mode channel: a flat authored solid, drawn as the value itself. The border stays SOLID (unlike
+   .cp-clear's checker and .cp-derived's dotted stand-in) because this tile shows real content — the channel
+   genuinely is this colour everywhere. `image-rendering` and the background shorthand are both overridden
+   inline by the flat fill.
+   🔴 The inner hairline is inset rather than an outer border: a near-black solid (emission defaults to
+      0,0,0) against the panel would otherwise have no visible edge at all and read as a missing tile. */
+.cp-solid{ box-shadow:inset 0 0 0 1px rgba(255,255,255,.09); }
+.cp-note{ font-size:10px; line-height:1.5; color:var(--faint); }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                   THE MASK PREVIEW
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* The mask's own greyscale content, beside the on-mesh toggle. Reuses .cp-tile for the readback surface so
+   the mask tile and the channel tiles share one set of paint/checker/solid states. */
+.msk-preview{ display:flex; align-items:flex-start; gap:9px; padding:5px 1px 3px; }
+
+/* 🔴 Sized down from .cp-tile's 128px, and it must win on SPECIFICITY, not source order. This rule sits
+      before `.cp-tile{ width:128px; height:128px }` in this file, so a bare `.msk-tile` (0,1,0) would tie
+      and lose to it — the same trap `.cc-grid .cc-tile` documents above. Qualifying with .msk-preview makes
+      it (0,2,0) and it holds wherever it is written.
+   🔴 78px, not the rail's `aspect-ratio:1` treatment: this tile shares a row with a toggle and a reading
+      rather than sitting in a grid track, so a flexible width would let the caption's length decide how big
+      the mask is drawn. A mask is judged by its shape, and the shape has to stay a stable size to compare
+      against the last stroke. */
+.msk-preview .msk-tile{ width:78px; height:78px; border-radius:6px; }
+
+.msk-side{ display:flex; flex-direction:column; gap:6px; min-width:0; flex:1; }
+
+/* The on-mesh toggle. Styled as a pressable pill rather than a switch row: it changes what the VIEWPORT
+   shows, not a property of the layer, so it deliberately does not look like the settings rows around it. */
+.msk-onmesh{
+  display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
+  height:24px; padding:0 9px; border-radius:7px; cursor:pointer;
+  border:1px solid var(--hair-strong); background:var(--tile);
+  font-size:11px; color:var(--muted); user-select:none; white-space:nowrap;
+}
+.msk-onmesh:hover{ background:var(--tile-hi); color:var(--ink); }
+.msk-onmesh svg{ flex:0 0 auto; }
+
+/* 🔴 The ON state is tinted with the same red the shader paints hidden regions with, so the control and the
+      model agree at a glance. An --accent (near-white) active state would leave the user hunting for the
+      connection between a white pill and a red-and-white model. */
+.msk-onmesh.on{
+  border-color:rgba(216,60,60,.62); background:rgba(216,60,60,.16); color:#f0c9c9;
+}
+
+/* the inspector mounts inside the viewport, so its own stacking context has to clear the canvas */
+.layer-inspector{ position:absolute; inset:0; pointer-events:none; z-index:880; }
+.layer-inspector .summon-veil,
+.layer-inspector .summon-menu{ pointer-events:auto; }

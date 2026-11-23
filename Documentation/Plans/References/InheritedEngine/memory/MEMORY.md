@@ -1,0 +1,1 @@
+- [SketchModelViewport work](drafting-viewport-plan.md) — new standalone matcap viewport panel + Header/Footer/Carousel components (avoid "Draft"; distinct from ParametricSketcher)

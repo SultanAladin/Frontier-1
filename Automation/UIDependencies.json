@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "packages": [
+    {
+      "name": "imgui",
+      "repository": "ocornut/imgui",
+      "revision": "3bae66c735670619baf51391eba7f3d90a25d125",
+      "url": "https://codeload.github.com/ocornut/imgui/tar.gz/3bae66c735670619baf51391eba7f3d90a25d125",
+      "sha256": "0b99c7baed551f76058bc6fe83d806dc55c912280e9d2d268879a1c9751cef20",
+      "proof": true,
+      "origin": "existing verified pin",
+      "witness": "imgui.cpp"
+    },
+    {
+      "name": "thorvg",
+      "repository": "thorvg/thorvg",
+      "revision": "6715f99ac106b6d4587f384a78c59fe957cfd2a3",
+      "url": "https://codeload.github.com/thorvg/thorvg/tar.gz/6715f99ac106b6d4587f384a78c59fe957cfd2a3",
+      "sha256": "60f878d34b0c27ab743fb786831baab08efe36b32858d3aa4f314c3511b9fe3a",
+      "proof": true,
+      "origin": "existing verified pin",
+      "witness": "inc/thorvg.h"
+    },
+    {
+      "name": "tomlpp",
+      "repository": "marzer/tomlplusplus",
+      "revision": "1e8829b793b66ad17011732a146b8077d379b011",
+      "url": "https://codeload.github.com/marzer/tomlplusplus/tar.gz/1e8829b793b66ad17011732a146b8077d379b011",
+      "sha256": "8f6131576dbfd77c72d3073ad3969f2bda086961e15937ddb6dc9b4b4238ae01",
+      "proof": true,
+      "origin": "existing verified pin",
+      "witness": "include/toml++/toml.hpp"
+    },
+    {
+      "name": "glfw",
+      "repository": "glfw/glfw",
+      "revision": "a74efa0d5628b74adc0426af4c5710e287fa7c2c",
+      "url": "https://codeload.github.com/glfw/glfw/tar.gz/a74efa0d5628b74adc0426af4c5710e287fa7c2c",
+      "sha256": "7e85e39ade1efdda00734d323a0230b5c938074e9fb2ddbe453bdbb281064d2c",
+      "origin": "GLFW 3.4 release tag",
+      "witness": "include/GLFW/glfw3.h"
+    },
+    {
+      "name": "vulkan-headers",
+      "repository": "KhronosGroup/Vulkan-Headers",
+      "revision": "v1.4.321",
+      "url": "https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.321",
+      "sha256": "7c1874f9186d9e7d5245e279cdccaa77a66ed8f52871b428630aeb771dc7623c",
+      "origin": "Vulkan-Headers v1.4.321; headers only; runtime loader remains system supplied",
+      "witness": "include/vulkan/vulkan.h"
+    },
+    {
+      "name": "stb",
+      "repository": "nothings/stb",
+      "revision": "2c980bb59875b0d32144a71867fbdebb2f77cd20",
+      "url": "https://codeload.github.com/nothings/stb/tar.gz/2c980bb59875b0d32144a71867fbdebb2f77cd20",
+      "sha256": "9a955b1b49a4410088a2e0ee2a9c057c3c907d0c1d75454144cb980aca0ba515",
+      "proof": true,
+      "origin": "PNG/JPEG material texture decoding; stb_image v2.30",
+      "witness": "stb_image.h"
+    }
+  ]
+}

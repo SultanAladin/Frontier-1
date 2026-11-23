@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier — Topology Action Menu</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════════
+     Design tokens — taken verbatim from ControlsPreview.html (Interface /
+     Components / Controls). The menu chrome reuses the panel/value family so
+     this card sits in the same visual set as ValueSlider, Dropdown, ColorEntry.
+     Structure follows EntityContextMenu.html `.ctx` — header, band captions,
+     glyph + label + chip rows, branch card.
+     ═════════════════════════════════════════════════════════════════════════ */
+  :root{
+    --desk-bg:      #2b2b2d;
+    --panel-bg:     #131315;
+    --panel-head:   #1b1b1e;
+    --value-bg:     #232326;
+    --value-black:  #0a0a0b;
+    --value-unit:   #33333a;
+    --value-focus:  #303035;
+    --outline:      rgba(255,255,255,.22);
+    --hair:         rgba(255,255,255,.07);
+    --knob:         #f4f4f5;
+    --dot:          #45454a;
+    --accent:       #4a90e2;
+    --danger:       #d65c54;      /* IM_COL32(214,92,84,255) — TopologyActionMenu.cpp ResolveRowTint */
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --text-faint:   #55555b;
+    --text-value:   #f2f2f4;
+
+    --panel-radius: 20px;
+    --value-radius: 13px;
+    --item-radius:  12px;
+    --row-h:        50px;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--desk-bg); color:var(--text-primary);
+    font:15px/1 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none; cursor:default;
+  }
+  .icon{ width:1em; height:1em; flex:0 0 auto; display:inline-block; vertical-align:-.12em; }
+
+  /* ── backdrop ── */
+  .stage{
+    position:fixed; inset:0;
+    background:radial-gradient(1200px 820px at 50% 42%, #333336 0%, #212123 58%, #161618 100%);
+  }
+  .stage::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size:44px 44px; background-position:center;
+    -webkit-mask-image:radial-gradient(circle at 50% 44%, #000 42%, transparent 84%);
+            mask-image:radial-gradient(circle at 50% 44%, #000 42%, transparent 84%);
+  }
+
+  .banner{
+    position:fixed; top:22px; left:50%; transform:translateX(-50%);
+    color:var(--text-muted); font-size:13px; background:var(--panel-bg);
+    border-radius:999px; padding:9px 18px; z-index:20; text-align:center;
+  }
+  .banner b{ color:var(--text-primary); font-weight:600; }
+
+  /* ═════════════════════════ SELECTION AUTHORING PANEL ═════════════════════════
+     Panel / panel-head / panel-body / row / label / segment / switch / sizebar
+     are the ControlsPreview classes, unchanged. This stands in for the
+     PolygonActionValidation panel: it authors a SelectionProfile, nothing more.
+     ══════════════════════════════════════════════════════════════════════════ */
+  .panel{ background:var(--panel-bg); border-radius:var(--panel-radius); overflow:hidden; }
+  .panel-head{
+    background:var(--panel-head); padding:14px 22px;
+    font-size:15px; font-weight:600;
+    display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+  }
+  .panel-head .fn{ color:var(--text-muted); font-weight:400; font-size:12px; }
+  .panel-body{ padding:16px 22px; display:flex; flex-direction:column; gap:12px; }
+
+  .authoring{
+    position:fixed; top:74px; left:26px; width:420px; z-index:30;
+    max-height:calc(100vh - 100px); overflow-y:auto;
+  }
+  .authoring::-webkit-scrollbar{ width:9px; }
+  .authoring::-webkit-scrollbar-thumb{ background:var(--value-bg); border-radius:9px; }
+
+  .row{ display:grid; grid-template-columns:112px 1fr; align-items:center; column-gap:18px; min-height:38px; }
+  .label{ color:var(--text-muted); letter-spacing:.2px; font-size:13px; }
+  .row.changed .label{ color:var(--accent); }
+
+  /* segmented pills — ControlsPreview .segment / .seg-opt, scaled to this panel */
+  .segment{ display:flex; gap:7px; flex-wrap:wrap; }
+  .seg-opt{
+    padding:0 13px; height:32px; display:flex; align-items:center; border-radius:10px;
+    background:var(--value-bg); color:var(--text-muted); cursor:pointer; font-size:13px;
+  }
+  .seg-opt:hover{ background:var(--value-focus); }
+  .seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+  /* split value pill — ControlsPreview .valuebox { grey | black | grey } */
+  .spinrow{ display:flex; gap:9px; }
+  .valuebox{ height:38px; border-radius:999px; overflow:hidden; display:flex; align-items:stretch; flex:1; min-width:0; }
+  .valuebox .axisseg{
+    background:var(--value-unit); color:var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+    padding:0 10px; font-size:12px; min-width:34px;
+  }
+  .valuebox .num{
+    flex:1; background:var(--value-black); display:flex; align-items:center; justify-content:flex-end;
+    padding:0 10px; cursor:text; min-width:0;
+  }
+  .valuebox .num:focus-within{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+  .valuebox .num input{
+    background:none; border:none; outline:none; color:var(--text-value);
+    font:500 17px/1 inherit; text-align:right; width:100%;
+    font-variant-numeric:tabular-nums; -moz-appearance:textfield;
+  }
+  .valuebox .num input::-webkit-outer-spin-button,
+  .valuebox .num input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .valuebox .stepseg{
+    background:var(--value-unit); color:var(--text-muted); display:flex; align-items:stretch; min-width:52px;
+  }
+  .valuebox .stepseg button{
+    flex:1; background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:15px; padding:0;
+  }
+  .valuebox .stepseg button:hover{ background:var(--value-focus); color:var(--text-primary); }
+
+  /* boolean switch — ControlsPreview .switch */
+  .switchgrid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; }
+  .swline{ display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .swline .cap{ font-size:12.5px; color:var(--text-muted); }
+  .swline.on .cap{ color:var(--text-primary); }
+  .switch{ width:40px; height:23px; border-radius:999px; background:#2f2f33; position:relative; transition:background .15s; flex:0 0 auto; }
+  .switch.on{ background:var(--accent); }
+  .switch .nub{ position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:999px; background:var(--knob); transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .switch.on .nub{ left:19.5px; }
+
+  /* presets — dark pills that state the expected outcome */
+  .presets{ display:flex; flex-direction:column; gap:6px; }
+  .preset{
+    display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:11px;
+    background:var(--value-bg); cursor:pointer; font-size:12.5px;
+  }
+  .preset:hover{ background:var(--value-focus); }
+  .preset .pn{ flex:1; color:var(--text-primary); }
+  .preset .pe{ color:var(--text-muted); font-size:11.5px; }
+  .preset.sel{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+
+  /* tally readout — ControlsPreview .kv inspector family */
+  .kv{ display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid #202024;
+       font:13px/1.5 "Cascadia Code","Consolas",monospace; }
+  .kv:last-child{ border-bottom:none; }
+  .kv .k{ color:var(--text-muted); }
+  .kv .v{ color:var(--text-value); text-align:right; }
+  .kv.flash .v{ color:var(--accent); }
+  .kv .v .ok{ color:#4fd18b; }
+  .kv .v .no{ color:var(--danger); }
+  .hint{ color:var(--text-muted); font-size:11.5px; padding:0 22px 14px; line-height:1.5; }
+
+  /* ═════════════════════════════ TOPOLOGY ACTION MENU ═════════════════════════════
+     The component under review. Metrics mirror TopologyActionMenu.cpp:
+     CardWidthDefault 268 · CardPadding 8 · HeaderHeight 40 · RowHeight 26
+     CaptionHeight 20 · GlyphBoxSide 16 · GlyphGutter 26 · CardRounding 12
+     RowRounding 7 · ChipPadding 5 — scaled ×1.35 here so it reads on a desktop page.
+     ══════════════════════════════════════════════════════════════════════════════ */
+  .ctx{
+    position:fixed; z-index:100; width:362px; display:none;
+    background:var(--panel-bg); border-radius:var(--panel-radius);
+    overflow:hidden; transform-origin:top left;
+    box-shadow:0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .ctx.open{ display:block; animation:pop .13s cubic-bezier(.16,1,.3,1); }
+  @keyframes pop{ from{ opacity:0; transform:scale(.97) translateY(-4px); } to{ opacity:1; transform:none; } }
+
+  /* header — stratum name left, "N selected" right (the C++ header, verbatim) */
+  .ctx-head{
+    background:var(--panel-head); display:flex; align-items:center; gap:11px;
+    padding:12px 16px; border-bottom:1px solid var(--hair);
+  }
+  .ctx-head .h-ic{ width:26px; height:26px; flex:0 0 auto; }
+  .ctx-head .h-ic svg{ width:26px; height:26px; border-radius:6px; }
+  .ctx-head .h-txt{ flex:1; font-size:15px; font-weight:600; letter-spacing:.2px; }
+  .ctx-head .h-txt .fn{ display:block; color:var(--text-muted); font-weight:400; font-size:11px; margin-top:3px; }
+  .ctx-head .h-n{
+    font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums;
+    background:var(--value-bg); padding:4px 9px; border-radius:999px; flex:0 0 auto;
+  }
+
+  .ctx-body{ padding:11px; max-height:68vh; overflow-y:auto; }
+  .ctx-body::-webkit-scrollbar{ width:9px; }
+  .ctx-body::-webkit-scrollbar-thumb{ background:var(--value-bg); border-radius:9px; }
+
+  /* band caption — uppercase, muted, CaptionHeight tall */
+  .grp-cap{
+    padding:10px 10px 5px; font-size:10px; font-weight:700; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--text-faint);
+  }
+
+  /* one operation row — glyph gutter + label + right-pinned chip */
+  .tool{
+    position:relative; display:flex; align-items:center; gap:10px;
+    height:35px; padding:0 9px; border-radius:var(--item-radius);
+    color:var(--text-primary); cursor:pointer;
+    transition:background .1s, color .1s;
+  }
+  .tool:hover{ background:var(--value-bg); }
+  .tool .t-ic{
+    width:26px; height:26px; display:grid; place-items:center; flex:0 0 auto;
+    background:var(--value-black); border-radius:8px; color:var(--text-muted);
+    transition:color .1s, background .1s;
+  }
+  .tool:hover .t-ic{ color:var(--text-primary); }
+  .tool .t-ic .icon{ width:15px; height:15px; }
+  .tool .t-name{ flex:1; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  /* keystroke chip — the ChipPadding pill in the row's right slot */
+  .tool .t-key{
+    font-size:10.5px; color:var(--text-faint); font-variant-numeric:tabular-nums;
+    letter-spacing:.4px; background:var(--value-black); padding:3px 6px; border-radius:6px; flex:0 0 auto;
+  }
+  .tool .t-key:empty{ display:none; }
+
+  /* Emphasised — accent glyph, accent fill on hover (the mockup's `.hot`) */
+  .tool.hot .t-ic{ color:var(--accent); }
+  .tool.hot:hover .t-ic{ background:var(--accent); color:#fff; }
+
+  /* Destructive — danger tint on glyph and label */
+  .tool.warn .t-ic{ color:var(--danger); }
+  .tool.warn:hover{ background:rgba(214,92,84,.12); color:#ff8f8f; }
+  .tool.warn:hover .t-ic{ color:#ff8f8f; }
+
+  /* 🔴 Gated row: greyed, non-activating, and the chip slot carries the SHORTFALL
+     instead of the keystroke — the reason chip is the whole point of the component. */
+  .tool.gated{ cursor:not-allowed; }
+  .tool.gated .t-name{ color:rgba(123,123,130,.75); }
+  .tool.gated .t-ic{ opacity:.38; }
+  .tool.gated:hover{ background:transparent; }
+  .tool.gated .t-key{ color:#c98b86; background:rgba(214,92,84,.13); }
+  .tool.gated.count .t-key{ color:#c9a96b; background:rgba(201,169,107,.13); }
+
+  /* branch disclosure triangle — BranchArrowWidth */
+  .tool.has-sub .t-chev{ color:var(--text-muted); font-size:14px; flex:0 0 auto; margin-left:2px; }
+
+  .sep{ height:1px; background:var(--hair); margin:6px 10px; }
+
+  .empty{ padding:22px 14px; text-align:center; color:var(--text-faint); font-size:12.5px; line-height:1.6; }
+
+  /* ── branch card (OperationBranch) — PanelHeader ground, RowRounding corners ── */
+  .sub{
+    position:fixed; z-index:101; width:212px; display:none;
+    background:var(--panel-head); border-radius:11px; overflow:hidden; padding:8px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.05);
+  }
+  .sub.open{ display:block; animation:pop .12s cubic-bezier(.16,1,.3,1); }
+  /* branch options adopt the Dropdown .dd-item behaviour from ControlsPreview:
+     sharp rectangle on hover, full-height accent bar on the left */
+  .b-item{
+    position:relative; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 12px; font-size:13px; color:var(--text-primary); cursor:pointer; border-radius:8px;
+  }
+  .b-item:hover{ background:var(--value-unit); border-radius:0; padding-left:18px; }
+  .b-item:hover::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--accent); }
+  .b-item .radio{ width:17px; height:17px; border-radius:999px; flex:0 0 auto; position:relative; }
+  .b-item.sel .radio{ border:2px solid var(--accent); }
+  .b-item.sel .radio::after{ content:""; position:absolute; inset:3px; border-radius:999px; background:var(--accent); }
+
+  /* ── activation toast ── */
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+    background:var(--panel-bg); color:var(--text-primary); font-size:13px;
+    padding:9px 17px; border-radius:999px; z-index:120; opacity:0;
+    transition:opacity .18s, transform .18s; pointer-events:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5);
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast b{ color:var(--accent); font-weight:600; }
+</style>
+</head>
+<body>
+
+  <div class="stage"></div>
+  <div class="banner">
+    Right-click the stage to open the <b>Topology Action Menu</b> for the authored selection — gated rows state the true shortfall
+  </div>
+
+  <!-- selection authoring panel (stands in for PolygonActionValidation) -->
+  <div class="authoring">
+    <div class="panel">
+      <div class="panel-head">SelectionProfile <span class="fn">authored gate input</span></div>
+      <div class="panel-body">
+        <div class="row" id="rowStratum">
+          <div class="label">Stratum</div>
+          <div class="segment" id="segStratum"></div>
+        </div>
+        <div class="row" id="rowCounts">
+          <div class="label">Counts</div>
+          <div class="spinrow" id="spinCounts"></div>
+        </div>
+        <div class="row" id="rowCounts2">
+          <div class="label">Boundary</div>
+          <div class="spinrow" id="spinCounts2"></div>
+        </div>
+        <div class="row" id="rowConnect">
+          <div class="label">Connectivity</div>
+          <div class="switchgrid" id="gridConnect"></div>
+        </div>
+      </div>
+      <div class="hint">
+        Each field mirrors one <b>SelectionProfile</b> member; each toggle mirrors one
+        <b>ConnectivityRequirement</b> bit. Flipping one re-filters the menu live.
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">Presets <span class="fn">one gate class each</span></div>
+      <div class="panel-body"><div class="presets" id="presetList"></div></div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">Availability <span class="fn">TallyOperationAvailability</span></div>
+      <div class="panel-body" id="tally"></div>
+      <div class="hint">
+        Every catalogue row lands in exactly one bucket — the invariant is displayed, not asserted,
+        so it can be watched holding while clicking.
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-head">Reveal <span class="fn">RevealGatedEntries</span></div>
+      <div class="panel-body">
+        <div class="row">
+          <div class="label">Gated rows</div>
+          <div class="swline on" id="swReveal"><div class="switch on"><div class="nub"></div></div><span class="cap">shown greyed with reason</span></div>
+        </div>
+      </div>
+      <div class="hint">Off drops count/topology shortfalls too, leaving only rows that can actually run.</div>
+    </div>
+  </div>
+
+  <div class="ctx"   id="ctx"></div>
+  <div class="sub"   id="sub"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ═════════════════════════════════════════════════════════════════════════
+   GLYPH ARTWORK — PolygonGlyphTable
+   The C++ unit draws each glyph as ImDrawList strokes over a unit square, so
+   every glyph here is a 24×24 line path in currentColor at the same weight.
+   Glyphs are SHARED across an operation FAMILY (one BevelChamfer serves
+   vertex/edge/face bevel), exactly as PolygonGlyphIdentity.h documents.
+   ═════════════════════════════════════════════════════════════════════════ */
+const S = (d,w=1.6,o=1)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" opacity="${o}"/>`;
+const D = (d,w=1.4,o=.55)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="2 2.4" opacity="${o}"/>`;
+const F = (d,o=1)=>`<path d="${d}" fill="currentColor" opacity="${o}"/>`;
+const O = (cx,cy,r,w=1.5,o=1)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="${w}" opacity="${o}"/>`;
+const B = (cx,cy,r,o=1)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor" opacity="${o}"/>`;
+
+const GLYPH = {
+  Blank:              ``,
+
+  /* Transform */
+  TranslateArrows:    S("M12 3v18M3 12h18")+S("M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3",1.5),
+  RotateArc:          S("M20 12a8 8 0 1 1-2.3-5.6",1.7)+S("M20 4v4h-4",1.6),
+  ScaleCorner:        S("M5 19V9M5 19h10",1.7)+S("M5 19L19 5",1.5)+S("M19 5h-4M19 5v4",1.6),
+  SlideTrack:         S("M3 12h18",1.6)+S("M8 8l-4 4 4 4M16 8l4 4-4 4",1.5)+B(12,12,2.4),
+  FlattenPlane:       S("M3 18h18",1.7)+B(7,7,1.6,.85)+B(12,5,1.6,.85)+B(17,8,1.6,.85)+D("M7 9v7M12 7v9M17 10v6"),
+  AxisMarker:         S("M12 20V8M12 20l-7-4M12 20l7-4",1.7)+B(12,7,1.7)+B(4,15,1.5,.7)+B(20,15,1.5,.7),
+  CircleFit:          D("M5 5h14v14H5z")+O(12,12,7,1.7),
+  SpanEven:           S("M3 12h18",1.4,.5)+B(4,12,2)+B(9.33,12,2)+B(14.66,12,2)+B(20,12,2),
+  StraightenLine:     D("M3 15l4-6 5 7 4-8 5 4")+S("M3 19h18",1.8),
+
+  /* Extrude / Build */
+  ExtrudeOut:         S("M4 14l8-4 8 4-8 4z",1.6)+S("M12 10V3",1.7)+S("M9 6l3-3 3 3",1.6),
+  ExtrudeSpike:       S("M4 18l8-14 8 14z",1.6)+B(12,4,1.9)+S("M4 18h16",1.4,.55),
+  InsetRing:          S("M4 4h16v16H4z",1.7)+S("M8.5 8.5h7v7h-7z",1.4,.65),
+  OutlineRing:        S("M9 9h6v6H9z",1.7)+D("M4 4h16v16H4z",1.4,.7),
+  BevelChamfer:       S("M4 20V9l5-5h11",1.7)+S("M4 9h5V4",1.3,.5)+S("M9 9L20 20",1.3,.4),
+  BridgeSpan:         S("M4 6v12M20 6v12",1.8)+S("M4 9c5 5 11 5 16 0",1.6)+S("M4 15c5 5 11 5 16 0",1.4,.55),
+  FillPatch:          S("M12 4l8 6-3 9H7l-3-9z",1.7)+S("M7 12h10M9 16h6",1.3,.5),
+  GridPatch:          S("M4 5h16v14H4z",1.7)+S("M9.33 5v14M14.66 5v14M4 9.66h16M4 14.33h16",1.3,.55),
+  ShellThickness:     S("M3 8c4-3 14-3 18 0",1.8)+S("M3 13c4-3 14-3 18 0",1.5,.6)+S("M3 8v5M21 8v5",1.4,.6),
+  SweepPath:          D("M4 19C8 19 8 6 20 6")+S("M4 16v6M1 19h6",1.6)+O(20,6,2.6,1.6),
+
+  /* Cut / Split */
+  LoopInsert:         S("M4 6h16v12H4z",1.5,.7)+S("M4 12h16",1.9)+S("M9.33 6v12M14.66 6v12",1.2,.4),
+  LoopOffset:         S("M4 9h16",1.8)+D("M4 15h16")+S("M12 11v2",1.3,.6),
+  SubdivideQuads:     S("M4 4h16v16H4z",1.7)+S("M12 4v16M4 12h16",1.4,.7),
+  UnSubdivideMerge:   S("M4 4h16v16H4z",1.7)+D("M12 4v16M4 12h16",1.3,.45)+S("M9 9l3 3 3-3M9 15l3-3 3 3",1.5),
+  ConnectPath:        O(6,6,2.2)+O(18,18,2.2)+S("M7.6 7.6l8.8 8.8",1.6),
+  SeamSplit:          S("M12 3v7",1.8)+S("M9 14L6 21M15 14l3 7",1.7)+S("M9 12h6",1.3,.5),
+  RipApart:           B(12,5,2)+S("M9 9L4 20M15 9l5 11",1.7)+D("M10 6.5L6 5M14 6.5L18 5",1.3,.6),
+  PokeCentre:         S("M12 3l9 6-9 12L3 9z",1.6)+S("M3 9h18M12 3v18",1.3,.5)+B(12,11,1.7,.9),
+  BisectPlane:        S("M5 9l7-4 7 4-7 4z",1.6)+S("M5 9v6l7 4 7-4V9",1.4,.6)+S("M2 12h20",1.7),
+  PartitionSolid:     O(9,12,6,1.7)+O(15,12,6,1.5,.6)+S("M12 6.6a6 6 0 0 0 0 10.8",1.5,.9),
+
+  /* Merge / Weld */
+  MergeInward:        S("M5 5l5 5M19 5l-5 5M5 19l5-5M19 19l-5-5",1.6)+B(12,12,2.4),
+  WeldTarget:         B(6,12,2.2)+O(18,12,2.6,1.6)+S("M9 12h6",1.6)+S("M13 9.5l2.5 2.5-2.5 2.5",1.5),
+  CollapseDown:       D("M5 5h14v14H5z",1.3,.5)+S("M8 8l4 4 4-4M8 16l4-4 4 4",1.6)+B(12,12,1.9),
+  CoplanarUnify:      S("M3 9l9-4 9 4-9 4z",1.7)+S("M3 9v6l9 4 9-4V9",1.5,.7)+D("M12 13v6",1.3,.5),
+
+  /* Subdivision */
+  SmoothSurface:      S("M3 16c4 0 5-8 9-8s5 8 9 8",1.7)+D("M3 20h18",1.3,.4),
+  RelaxNeighbour:     B(12,12,2.2)+O(5,7,1.7,1.4,.7)+O(19,7,1.7,1.4,.7)+O(5,17,1.7,1.4,.7)+O(19,17,1.7,1.4,.7)+S("M7 8.5l3 2M17 8.5l-3 2M7 15.5l3-2M17 15.5l-3-2",1.3,.6),
+  SharpenInverse:     S("M3 17l9-10 9 10",1.8)+D("M3 17c4 0 5-7 9-7s5 7 9 7",1.4,.5),
+  DecimateSparse:     S("M4 4h16v16H4z",1.5,.7)+S("M4 12h16M12 4v8",1.4,.8)+D("M12 12v8M4 16h8",1.2,.35),
+  RemeshUniform:      D("M4 4l6 8-4 8",1.3,.45)+S("M4 4h16v16H4z",1.6)+S("M12 4v16M4 12h16",1.4,.8),
+
+  /* Normals / Shading */
+  NormalArrow:        S("M3 16c4-4 14-4 18 0",1.7)+S("M12 14V4",1.8)+S("M9 7l3-3 3 3",1.6),
+  WindingReverse:     S("M3 13c4-4 14-4 18 0",1.7)+S("M9 6l3-3 3 3M12 3v7",1.6)+S("M15 20l-3 3-3-3M12 16v7",1.5,.55),
+  ShadeSmoothCurve:   S("M3 17c3.5 0 4-9 9-9s5.5 9 9 9",1.8)+B(7,13,1.4,.5)+B(12,8.4,1.4,.5)+B(17,13,1.4,.5),
+  ShadeFacet:         S("M3 17l4.5-7 4.5 4 4.5-6L21 17",1.8)+B(7.5,10,1.5,.6)+B(16.5,8,1.5,.6),
+  SharpEdgeMark:      S("M4 18L12 6l8 12",1.8)+S("M12 6V2",1.6)+S("M9 4.5l3-2.5 3 2.5",1.4),
+
+  /* Attributes */
+  CreaseWeight:       S("M3 15h18",1.8)+S("M6 15V9M10 15v-4M14 15v-6M18 15v-3",1.5,.75),
+  UvSeamMark:         D("M4 12h16",1.9,1)+S("M4 8v8M20 8v8",1.5,.7),
+  MaterialSwatch:     S("M4 4h16v16H4z",1.6)+F("M6 6h12v12H6z",.85)+B(9,9,1.2,.4)+B(15,15,1.2,.4),
+
+  /* Topology repair */
+  TriangulateSplit:   S("M4 4h16v16H4z",1.7)+S("M4 4l16 16",1.5,.8),
+  QuadrangulatePair:  S("M4 4h16v16H4z",1.7)+D("M4 4l16 16",1.3,.4)+S("M9 13l3 3 3-3",1.4,.6),
+  PlanarCorrect:      S("M3 14l6-4 6 4 6-4",1.6,.55)+S("M3 18h18",1.9)+D("M9 10v8M15 14v4",1.3,.5),
+  SpinDiagonal:       S("M4 4h16v16H4z",1.6)+S("M6 18L18 6",1.7)+S("M14 4.5a8 8 0 0 1 5 5",1.4,.7)+S("M18.6 6.4l.9 3.4",1.3,.7),
+  HoleSeal:           S("M4 12a8 8 0 0 1 16 0",1.7)+D("M4 12a8 8 0 0 0 16 0")+S("M8 12h8",1.5,.55)+B(12,12,1.5,.5),
+  LooseReclaim:       S("M5 9h14l-1.5 11h-11z",1.6)+S("M3 6h18",1.7)+B(8,4,1.2,.55)+B(13,3,1.2,.55)+B(17,4.5,1.2,.55),
+  NonManifoldRepair:  S("M12 3v18",1.9)+S("M12 8L4 5M12 8l8-3M12 14l-6 4",1.5,.8)+B(12,12,2.2,.9),
+  HullWrap:           S("M12 3l8 6-3 11H7L4 9z",1.7)+B(8,10,1.5,.8)+B(15,9,1.5,.8)+B(12,15,1.5,.8),
+
+  /* Duplicate / Symmetry */
+  DuplicateOffset:    S("M4 4h12v12H4z",1.7)+S("M8 20h12V8",1.6,.7),
+  ShellSeparate:      S("M10 4L4 12l6 8",1.7)+S("M14 4l6 8-6 8",1.7)+D("M12 3v18",1.3,.5),
+  ExtractSurface:     S("M4 15l8-4 8 4-8 4z",1.6,.6)+S("M6 8l6-3 6 3-6 3z",1.8)+S("M12 3V1",1.4,.6),
+  DetachComponent:    S("M11 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4",1.7)+S("M14 12h7M18 9l3 3-3 3",1.6),
+  MirrorAxis:         D("M12 3v18",1.4,.8)+F("M9 7L4 12l5 5z",.9)+F("M15 7l5 5-5 5z",.9),
+  SymmetryBalance:    D("M12 3v18",1.4,.8)+S("M9 7L4 12l5 5z",1.6)+S("M15 7l5 5-5 5z",1.6)+B(12,12,1.5,.6),
+
+  /* Selection conversion */
+  SelectionGrow:      S("M8 8h8v8H8z",1.7)+D("M4 4h16v16H4z",1.3,.6)+S("M6 6l1.6 1.6M18 6l-1.6 1.6M6 18l1.6-1.6M18 18l-1.6-1.6",1.4,.7),
+  SelectionShrink:    D("M8 8h8v8H8z",1.3,.6)+S("M4 4h16v16H4z",1.7)+S("M7.6 7.6L6 6M16.4 7.6L18 6M7.6 16.4L6 18M16.4 16.4L18 18",1.4,.7),
+  LoopHighlight:      O(12,12,8,1.4,.4)+S("M4 12a8 8 0 0 0 16 0",1.9)+S("M4 12a8 8 0 0 1 16 0",1.4,.5),
+  RingHighlight:      S("M4 8c0-2.5 3.6-4 8-4s8 1.5 8 4-3.6 4-8 4-8-1.5-8-4z",1.8)+S("M4 8v8c0 2.5 3.6 4 8 4s8-1.5 8-4V8",1.4,.5),
+  StratumPromote:     B(5,18,2)+S("M8 16l4-4",1.7)+S("M12 12h7v-7z",1.6,.8),
+  LinkedShell:        O(6,7,2.2)+O(18,7,2.2)+O(12,17,2.2)+S("M8 8l8-1M7.5 9.2l3.5 6M16.5 9.2l-3.5 6",1.5,.85),
+  SimilarTrait:       S("M4 5h6v6H4z",1.7)+S("M14 5h6v6h-6z",1.7)+S("M4 15h6v6H4z",1.4,.4)+S("M11 8h2",1.4,.8),
+  BoundaryTrace:      S("M4 8c4-3 12-3 16 0",1.9)+D("M4 8v8c4 3 12 3 16 0V8",1.3,.45)+B(4,8,1.7)+B(20,8,1.7),
+  CheckerSkip:        F("M4 4h6v6H4z",.9)+F("M14 4h6v6h-6z",.22)+F("M4 14h6v6H4z",.22)+F("M14 14h6v6h-6z",.9),
+  ShortestPath:       B(5,18,2.2)+B(19,6,2.2)+S("M6.5 16.5C9 14 9 10 12 10s3-3 5.5-3",1.7),
+  TraitFilter:        S("M3 5h18l-7 8v7l-4-2v-5z",1.7)+B(6,3,1.1,.5)+B(11,2.6,1.1,.5)+B(16,3,1.1,.5),
+
+  /* Removal */
+  RemoveCross:        S("M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13",1.7),
+  DissolveFade:       O(8,8,2.1)+O(15,9,1.5,1.4,.75)+O(11,15,1.1,1.3,.55)+B(17,16,.8,.45),
+  DissolveAngle:      S("M4 19L12 6l8 13",1.8)+S("M8.5 15a7 7 0 0 0 7 0",1.4,.7),
+};
+function glyph(id){ return `<svg class="icon" viewBox="0 0 24 24">${GLYPH[id]||""}</svg>`; }
+
+/* stratum badges — the header artwork, one per TopologyStratum */
+const C = { ink:"#e8e8f0", dim:"#8a8a99", blue:"#5b8cff", sky:"#7ec8ff" };
+const P  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const PF = (d,f)=>`<path d="${d}" fill="${f}" stroke-linejoin="round"/>`;
+const L  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}" stroke-linecap="round"/>`;
+const CI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const CF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+function badgeArt(shapes){
+  return `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">`
+       + `<rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>${shapes.join("")}</svg>`;
+}
+const BADGE = {
+  Vertex:   ()=>badgeArt([L(4,20,20,20,C.dim,1.4),L(4,20,18,6,C.dim,1.4),CI(12,12,3.4,C.blue,1.6),CF(12,12,4.6,C.blue+"33")]),
+  Edge:     ()=>badgeArt([L(4,20,20,4,C.blue,2.4),CF(4,20,2.4,C.sky),CF(20,4,2.4,C.sky)]),
+  Face:     ()=>badgeArt([PF("M4 8L12 4l8 4-8 4z",C.blue+"cc"),P("M4 8L12 4l8 4-8 4z",C.sky,1.4),CF(4,8,1.6,C.ink),CF(20,8,1.6,C.ink),CF(12,12,1.6,C.ink),CF(12,4,1.6,C.ink)]),
+  EdgeLoop: ()=>badgeArt([P("M4 12a8 8 0 0 0 16 0",C.blue,2.2),P("M4 12a8 8 0 0 1 16 0",C.sky,1.6),CF(4,12,2,C.ink),CF(20,12,2,C.ink)]),
+  EdgeRing: ()=>badgeArt([P("M4 8c0-2.2 3.6-4 8-4s8 1.8 8 4-3.6 4-8 4-8-1.8-8-4z",C.blue,2.2),P("M4 8v8c0 2.2 3.6 4 8 4s8-1.8 8-4V8",C.dim,1.4)]),
+  Border:   ()=>badgeArt([P("M4 8c4-3 12-3 16 0",C.blue,2.4),P("M4 8v8c4 3 12 3 16 0V8",C.dim,1.3),CF(4,8,2.2,C.sky),CF(20,8,2.2,C.sky)]),
+  Object:   ()=>badgeArt([PF("M12 3l8 5v8l-8 5-8-5V8z",C.blue+"aa"),P("M12 3l8 5v8l-8 5-8-5V8z",C.sky,1.5),P("M4 8l8 5 8-5M12 13v8",C.ink,1.1)]),
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   SELECTIONPREDICATE — the gate arithmetic, ported 1:1 from
+   SelectionPredicate.cpp. Same three-step widening order (stratum → count →
+   connectivity), same DiagnosticOrder, same shortfall wording.
+   ═════════════════════════════════════════════════════════════════════════ */
+const STRATA = ["Vertex","Edge","Face","EdgeLoop","EdgeRing","Border","Object"];
+const STRATUM_NAME = { Vertex:"Vertex", Edge:"Edge", Face:"Face", EdgeLoop:"Edge Loop",
+                       EdgeRing:"Edge Ring", Border:"Border", Object:"Object" };
+const STRATUM_PLURAL = { Vertex:"vertices", Edge:"edges", Face:"faces", EdgeLoop:"loops",
+                         EdgeRing:"rings", Border:"borders", Object:"objects" };
+
+/* StratumMask unions, as the catalogue's shorthand constants declare them */
+const M = {
+  VertexOnly:["Vertex"], EdgeOnly:["Edge"], FaceOnly:["Face"], LoopOnly:["EdgeLoop"],
+  RingOnly:["EdgeRing"], BorderOnly:["Border"], ObjectOnly:["Object"],
+  EdgeForms: ["Edge","EdgeLoop","EdgeRing","Border"],
+  Components:["Vertex","Edge","Face","EdgeLoop","EdgeRing","Border"],
+  Everything:["Vertex","Edge","Face","EdgeLoop","EdgeRing","Border","Object"],
+  VertexEdge:["Vertex","Edge","EdgeLoop","EdgeRing","Border"],
+  EdgeFace:  ["Edge","EdgeLoop","EdgeRing","Border","Face"],
+  FaceObject:["Face","Object"],
+  EdgeLoops: ["Edge","EdgeLoop","EdgeRing"],
+  LoopBorder:["EdgeLoop","Border"],
+};
+
+/* ConnectivityRequirement — satisfaction rule + shortfall wording, per requirement */
+const REQ = {
+  QuadRingWalkable:     { ok:p=>p.QuadRingCondition,                              text:"requires a quad ring" },
+  ClosedBoundaryLoop:   { ok:p=>p.BoundaryCondition && p.ClosedLoopCondition,      text:"requires an open boundary" },
+  EvenBoundaryParity:   { ok:p=>p.BoundaryEdgeCount>0 && p.BoundaryEdgeCount%2===0,text:"requires an even boundary" },
+  MultipleShell:        { ok:p=>p.ShellCount>=2,                                   text:"requires two shells" },
+  OpenSurface:          { ok:p=>p.OpenSurfaceCondition,                            text:"requires an open surface" },
+  TwoFaceEdge:          { ok:p=>p.TwoFaceEdgeCondition,                            text:"requires a two-face edge" },
+  QuadPairMatched:      { ok:p=>p.QuadPairCondition,                               text:"requires matched quads" },
+  AdjacentTrianglePair: { ok:p=>p.TrianglePairCondition,                           text:"requires adjacent triangles" },
+  NonPlanarFace:        { ok:p=>p.MaximumFaceSideCount>=4,                         text:"requires a four-sided face" },
+  SharedComponent:      { ok:p=>p.SharedComponentCondition,                        text:"requires shared components" },
+  ManifoldCondition:    { ok:p=>p.ManifoldCondition,                               text:"requires manifold edges" },
+  SymmetryAxis:         { ok:p=>p.SymmetryAxisCondition,                           text:"requires a symmetry axis" },
+};
+/* 📝 Diagnostic priority order — the most structural complaint wins, so a caller
+   is never sent chasing boundary parity on a selection with no boundary at all. */
+const DIAGNOSTIC_ORDER = ["QuadRingWalkable","ClosedBoundaryLoop","EvenBoundaryParity","MultipleShell",
+                          "OpenSurface","TwoFaceEdge","QuadPairMatched","AdjacentTrianglePair",
+                          "NonPlanarFace","SharedComponent","ManifoldCondition","SymmetryAxis"];
+
+/* Gate(strata, minimum, exact, requirements) — argument order matches the C++ helper */
+const G = (strata, min=1, exact=0, reqs=[]) => ({ strata, min, exact, reqs });
+
+function evaluatePredicate(gate, profile){
+  // ① Stratum. A mismatch hides the row; no count or connectivity complaint may be raised.
+  if(!gate.strata.includes(profile.ActiveStratum)) return "StratumMismatch";
+
+  // ② Count. ExactCount overrides the minimum, and above 1 it measures REGIONS, not components.
+  if(gate.exact > 0){
+    const measured = gate.exact > 1 ? profile.DistinctRegionCount : profile.SelectedCount;
+    if(measured !== gate.exact) return "CountShortfall";
+  } else if(profile.SelectedCount < gate.min){
+    return "CountShortfall";
+  }
+
+  // ③ Connectivity. Every declared fact must hold; the first missing one decides.
+  for(const name of DIAGNOSTIC_ORDER){
+    if(gate.reqs.includes(name) && !REQ[name].ok(profile)) return "TopologyShortfall";
+  }
+  return "Available";
+}
+
+function describeShortfall(gate, profile, condition){
+  if(condition === "CountShortfall"){
+    const plural = STRATUM_PLURAL[profile.ActiveStratum] || "components";
+    return `needs ${gate.exact > 0 ? gate.exact : gate.min} ${plural}`;
+  }
+  if(condition === "TopologyShortfall"){
+    for(const name of DIAGNOSTIC_ORDER){
+      if(gate.reqs.includes(name) && !REQ[name].ok(profile)) return REQ[name].text;
+    }
+    return "unavailable";
+  }
+  return null;   // Available needs no chip; hidden rows are never drawn
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   OPERATIONCATALOGUE — all 94 rows, transcribed from OperationCatalogue.cpp
+   in table order. The table IS the layout: the menu emits rows verbatim.
+   { label, key, glyph, band, severity, gate, branch }
+   ═════════════════════════════════════════════════════════════════════════ */
+const BAND_CAPTION = {
+  Transform:"TRANSFORM", ExtrudeBuild:"EXTRUDE / BUILD", CutSplit:"CUT / SPLIT",
+  MergeWeld:"MERGE / WELD", Subdivision:"SUBDIVISION", NormalsShading:"NORMALS / SHADING",
+  Attributes:"ATTRIBUTES", TopologyRepair:"TOPOLOGY REPAIR", DuplicateSymmetry:"DUPLICATE / SYMMETRY",
+  SelectionConversion:"SELECTION", Removal:"REMOVAL",
+};
+
+const AlignBranch = "Align To", MirrorBranch = "Mirror Axis", MergeBranch = "Merge Target",
+      MaterialBranch = "Assign Material", TraitBranch = "Similar Trait";
+
+const CATALOGUE = [
+  //------------------------------------------------------------- TRANSFORM -------------------------------------------------------------
+  { label:"Translate",                   key:"G",        glyph:"TranslateArrows",   band:"Transform", sev:"Primary", gate:G(M.Everything) },
+  { label:"Rotate",                      key:"R",        glyph:"RotateArc",         band:"Transform", sev:"Plain",   gate:G(M.Everything) },
+  { label:"Scale",                       key:"S",        glyph:"ScaleCorner",       band:"Transform", sev:"Plain",   gate:G(M.Everything) },
+  { label:"Slide Along Adjacency",       key:"GG",       glyph:"SlideTrack",        band:"Transform", sev:"Plain",   gate:G(M.VertexEdge) },
+  { label:"Flatten To Plane",            key:null,       glyph:"FlattenPlane",      band:"Transform", sev:"Plain",   gate:G(M.Components,3) },
+  { label:"Align To Axis",               key:null,       glyph:"AxisMarker",        band:"Transform", sev:"Plain",   gate:G(M.Components,2),  branch:AlignBranch },
+  { label:"Circularize Loop",            key:null,       glyph:"CircleFit",         band:"Transform", sev:"Plain",   gate:G(M.LoopBorder,3,0,["ClosedBoundaryLoop"]) },
+  { label:"Equalize Edge Span",          key:null,       glyph:"SpanEven",          band:"Transform", sev:"Plain",   gate:G(M.EdgeForms,2) },
+  { label:"Straighten Edge Chain",       key:null,       glyph:"StraightenLine",    band:"Transform", sev:"Plain",   gate:G(M.EdgeForms,3) },
+
+  //---------------------------------------------------------- EXTRUDE / BUILD ----------------------------------------------------------
+  { label:"Extrude Region",              key:"E",        glyph:"ExtrudeOut",        band:"ExtrudeBuild", sev:"Primary", gate:G(M.FaceOnly) },
+  { label:"Extrude Individual",          key:"Alt+E",    glyph:"ExtrudeOut",        band:"ExtrudeBuild", sev:"Plain",   gate:G(M.FaceOnly,2) },
+  { label:"Extrude Vertex Spike",        key:null,       glyph:"ExtrudeSpike",      band:"ExtrudeBuild", sev:"Plain",   gate:G(M.VertexOnly) },
+  { label:"Extrude Edge Wall",           key:null,       glyph:"ExtrudeOut",        band:"ExtrudeBuild", sev:"Plain",   gate:G(M.EdgeForms) },
+  { label:"Inset Faces",                 key:"I",        glyph:"InsetRing",         band:"ExtrudeBuild", sev:"Primary", gate:G(M.FaceOnly) },
+  { label:"Outline Border",              key:null,       glyph:"OutlineRing",       band:"ExtrudeBuild", sev:"Plain",   gate:G(M.BorderOnly,3,0,["ClosedBoundaryLoop"]) },
+  { label:"Bevel Vertex",                key:null,       glyph:"BevelChamfer",      band:"ExtrudeBuild", sev:"Plain",   gate:G(M.VertexOnly,1,0,["ManifoldCondition"]) },
+  { label:"Bevel Edge",                  key:"Ctrl+B",   glyph:"BevelChamfer",      band:"ExtrudeBuild", sev:"Primary", gate:G(M.EdgeForms,1,0,["ManifoldCondition"]) },
+  { label:"Bevel Face",                  key:null,       glyph:"BevelChamfer",      band:"ExtrudeBuild", sev:"Plain",   gate:G(M.FaceOnly,1,0,["ManifoldCondition"]) },
+  { label:"Bridge Span",                 key:null,       glyph:"BridgeSpan",        band:"ExtrudeBuild", sev:"Plain",   gate:G(M.EdgeFace,2,2) },
+  { label:"Fill Boundary",               key:"F",        glyph:"FillPatch",         band:"ExtrudeBuild", sev:"Plain",   gate:G(M.LoopBorder,3,0,["ClosedBoundaryLoop"]) },
+  { label:"Grid Fill Boundary",          key:null,       glyph:"GridPatch",         band:"ExtrudeBuild", sev:"Plain",   gate:G(M.LoopBorder,4,0,["ClosedBoundaryLoop","EvenBoundaryParity"]) },
+  { label:"Solidify",                    key:null,       glyph:"ShellThickness",    band:"ExtrudeBuild", sev:"Plain",   gate:G(M.FaceObject,1,0,["OpenSurface"]) },
+  { label:"Intrude",                     key:null,       glyph:"ShellThickness",    band:"ExtrudeBuild", sev:"Plain",   gate:G(M.FaceOnly) },
+  { label:"Sweep Profile",               key:null,       glyph:"SweepPath",         band:"ExtrudeBuild", sev:"Plain",   gate:G(M.EdgeFace) },
+  { label:"Grow Quad Row",               key:null,       glyph:"GridPatch",         band:"ExtrudeBuild", sev:"Plain",   gate:G(M.BorderOnly,2) },
+
+  //------------------------------------------------------------- CUT / SPLIT -----------------------------------------------------------
+  { label:"Insert Edge Loop",            key:"Ctrl+R",   glyph:"LoopInsert",        band:"CutSplit", sev:"Primary", gate:G(M.RingOnly,1,0,["QuadRingWalkable"]) },
+  { label:"Offset Edge Loop",            key:null,       glyph:"LoopOffset",        band:"CutSplit", sev:"Plain",   gate:G(M.LoopOnly,2,0,["QuadRingWalkable"]) },
+  { label:"Subdivide Selection",         key:null,       glyph:"SubdivideQuads",    band:"CutSplit", sev:"Plain",   gate:G(M.EdgeFace) },
+  { label:"Subdivide Edge Ring",         key:null,       glyph:"SubdivideQuads",    band:"CutSplit", sev:"Plain",   gate:G(M.RingOnly,1,0,["QuadRingWalkable"]) },
+  { label:"Un-Subdivide",                key:null,       glyph:"UnSubdivideMerge",  band:"CutSplit", sev:"Plain",   gate:G(M.FaceObject,4) },
+  { label:"Connect Vertex Path",         key:"J",        glyph:"ConnectPath",       band:"CutSplit", sev:"Plain",   gate:G(M.VertexOnly,2,0,["SharedComponent"]) },
+  { label:"Connect Edge Midpoints",      key:null,       glyph:"ConnectPath",       band:"CutSplit", sev:"Plain",   gate:G(M.EdgeLoops,2) },
+  { label:"Split Edge Seam",             key:"V",        glyph:"SeamSplit",         band:"CutSplit", sev:"Plain",   gate:G(M.EdgeForms,1,0,["TwoFaceEdge"]) },
+  { label:"Rip Vertices",                key:null,       glyph:"RipApart",          band:"CutSplit", sev:"Plain",   gate:G(M.VertexOnly,1,0,["SharedComponent"]) },
+  { label:"Poke Face Centre",            key:null,       glyph:"PokeCentre",        band:"CutSplit", sev:"Plain",   gate:G(M.FaceOnly) },
+  { label:"Bisect Plane",                key:null,       glyph:"BisectPlane",       band:"CutSplit", sev:"Plain",   gate:G(M.FaceObject) },
+  { label:"Partition Boolean",           key:null,       glyph:"PartitionSolid",    band:"CutSplit", sev:"Plain",   gate:G(M.ObjectOnly,1,0,["MultipleShell"]) },
+
+  //------------------------------------------------------------ MERGE / WELD -----------------------------------------------------------
+  { label:"Merge At Centroid",           key:"M",        glyph:"MergeInward",       band:"MergeWeld", sev:"Primary", gate:G(M.Components,2), branch:MergeBranch },
+  { label:"Merge At First",              key:null,       glyph:"MergeInward",       band:"MergeWeld", sev:"Plain",   gate:G(M.VertexOnly,2), branch:MergeBranch },
+  { label:"Merge At Last",               key:null,       glyph:"MergeInward",       band:"MergeWeld", sev:"Plain",   gate:G(M.VertexOnly,2), branch:MergeBranch },
+  { label:"Merge By Proximity",          key:null,       glyph:"MergeInward",       band:"MergeWeld", sev:"Plain",   gate:G(M.VertexEdge,2), branch:MergeBranch },
+  { label:"Target Weld",                 key:null,       glyph:"WeldTarget",        band:"MergeWeld", sev:"Plain",   gate:G(M.VertexEdge,2,2) },
+  { label:"Collapse Selection",          key:"Alt+M",    glyph:"CollapseDown",      band:"MergeWeld", sev:"Plain",   gate:G(M.Components,2) },
+  { label:"Merge Coplanar Faces",        key:null,       glyph:"CoplanarUnify",     band:"MergeWeld", sev:"Plain",   gate:G(M.FaceOnly,2,0,["SharedComponent"]) },
+
+  //------------------------------------------------------------- SUBDIVISION -----------------------------------------------------------
+  { label:"Subdivision Surface Refine",  key:null,       glyph:"SmoothSurface",     band:"Subdivision", sev:"Primary", gate:G(M.FaceObject) },
+  { label:"Smooth Vertices",             key:null,       glyph:"SmoothSurface",     band:"Subdivision", sev:"Plain",   gate:G(M.Components,3) },
+  { label:"Relax To Neighbour Mean",     key:null,       glyph:"RelaxNeighbour",    band:"Subdivision", sev:"Plain",   gate:G(M.Components,3) },
+  { label:"Two-Step Feature Smooth",     key:null,       glyph:"SmoothSurface",     band:"Subdivision", sev:"Plain",   gate:G(M.FaceObject,3) },
+  { label:"Sharpen Inverse Smooth",      key:null,       glyph:"SharpenInverse",    band:"Subdivision", sev:"Plain",   gate:G(M.Components,3) },
+  { label:"Decimate By Quadric Collapse",key:null,       glyph:"DecimateSparse",    band:"Subdivision", sev:"Plain",   gate:G(M.FaceObject,4) },
+  { label:"Remesh Isotropic",            key:null,       glyph:"RemeshUniform",     band:"Subdivision", sev:"Plain",   gate:G(M.FaceObject,4) },
+
+  //---------------------------------------------------------- NORMALS / SHADING --------------------------------------------------------
+  { label:"Reverse Winding",             key:null,       glyph:"WindingReverse",    band:"NormalsShading", sev:"Primary", gate:G(M.FaceObject) },
+  { label:"Recalculate Normals Outward", key:"Shift+N",  glyph:"NormalArrow",       band:"NormalsShading", sev:"Plain",   gate:G(M.FaceObject) },
+  { label:"Unify Winding To Reference",  key:null,       glyph:"NormalArrow",       band:"NormalsShading", sev:"Plain",   gate:G(M.FaceOnly,2) },
+  { label:"Shade Smooth",                key:null,       glyph:"ShadeSmoothCurve",  band:"NormalsShading", sev:"Plain",   gate:G(M.FaceObject) },
+  { label:"Shade Faceted",               key:null,       glyph:"ShadeFacet",        band:"NormalsShading", sev:"Plain",   gate:G(M.FaceObject) },
+  { label:"Mark Sharp Edge",             key:null,       glyph:"SharpEdgeMark",     band:"NormalsShading", sev:"Plain",   gate:G(M.EdgeForms) },
+
+  //------------------------------------------------------------- ATTRIBUTES ------------------------------------------------------------
+  { label:"Assign Edge Crease",          key:null,       glyph:"CreaseWeight",      band:"Attributes", sev:"Plain", gate:G(M.EdgeForms) },
+  { label:"Assign Vertex Crease",        key:null,       glyph:"CreaseWeight",      band:"Attributes", sev:"Plain", gate:G(M.VertexOnly) },
+  { label:"Assign Bevel Weight",         key:null,       glyph:"CreaseWeight",      band:"Attributes", sev:"Plain", gate:G(M.EdgeForms) },
+  { label:"Mark UV Seam",                key:null,       glyph:"UvSeamMark",        band:"Attributes", sev:"Plain", gate:G(M.EdgeForms) },
+  { label:"Assign Surface Material",     key:null,       glyph:"MaterialSwatch",    band:"Attributes", sev:"Plain", gate:G(M.FaceObject), branch:MaterialBranch },
+
+  //---------------------------------------------------------- TOPOLOGY REPAIR ----------------------------------------------------------
+  { label:"Triangulate Faces",           key:"Ctrl+T",   glyph:"TriangulateSplit",  band:"TopologyRepair", sev:"Plain", gate:G(M.FaceObject,1,0,["NonPlanarFace"]) },
+  { label:"Quadrangulate Triangle Pairs",key:"Alt+J",    glyph:"QuadrangulatePair", band:"TopologyRepair", sev:"Plain", gate:G(M.FaceObject,2,0,["AdjacentTrianglePair"]) },
+  { label:"Make Faces Planar",           key:null,       glyph:"PlanarCorrect",     band:"TopologyRepair", sev:"Plain", gate:G(M.FaceOnly,1,0,["NonPlanarFace"]) },
+  { label:"Spin Edge Diagonal",          key:null,       glyph:"SpinDiagonal",      band:"TopologyRepair", sev:"Plain", gate:G(M.EdgeForms,1,0,["TwoFaceEdge"]) },
+  { label:"Spin Quad Flow",              key:null,       glyph:"SpinDiagonal",      band:"TopologyRepair", sev:"Plain", gate:G(M.FaceOnly,2,2,["QuadPairMatched"]) },
+  { label:"Fill Detected Holes",         key:null,       glyph:"HoleSeal",          band:"TopologyRepair", sev:"Plain", gate:G(M.FaceObject,1,0,["OpenSurface"]) },
+  { label:"Reclaim Loose Geometry",      key:null,       glyph:"LooseReclaim",      band:"TopologyRepair", sev:"Plain", gate:G(M.ObjectOnly) },
+  { label:"Repair Non-Manifold Edges",   key:null,       glyph:"NonManifoldRepair", band:"TopologyRepair", sev:"Plain", gate:G(M.ObjectOnly) },
+  { label:"Convex Hull Of Selection",    key:null,       glyph:"HullWrap",          band:"TopologyRepair", sev:"Plain", gate:G(M.Components,4) },
+
+  //-------------------------------------------------------- DUPLICATE / SYMMETRY -------------------------------------------------------
+  { label:"Duplicate Selection",         key:"Shift+D",  glyph:"DuplicateOffset",   band:"DuplicateSymmetry", sev:"Primary", gate:G(M.Everything) },
+  { label:"Separate Shell",              key:"P",        glyph:"ShellSeparate",     band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.FaceObject,1,0,["MultipleShell"]) },
+  { label:"Extract To New Surface",      key:null,       glyph:"ExtractSurface",    band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.FaceOnly) },
+  { label:"Detach Component",            key:null,       glyph:"DetachComponent",   band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.Components,1,0,["SharedComponent"]) },
+  { label:"Break Shared Vertex",         key:null,       glyph:"DetachComponent",   band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.VertexOnly,1,0,["SharedComponent"]) },
+  { label:"Mirror Across Axis",          key:"Ctrl+M",   glyph:"MirrorAxis",        band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.Everything), branch:MirrorBranch },
+  { label:"Symmetrize Across Axis",      key:null,       glyph:"SymmetryBalance",   band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.FaceObject,1,0,["SymmetryAxis"]), branch:MirrorBranch },
+  { label:"Snap To Symmetry Plane",      key:null,       glyph:"SymmetryBalance",   band:"DuplicateSymmetry", sev:"Plain",   gate:G(M.Components,1,0,["SymmetryAxis"]), branch:MirrorBranch },
+
+  //------------------------------------------------------- SELECTION CONVERSION --------------------------------------------------------
+  { label:"Grow",                        key:"Ctrl+Num+", glyph:"SelectionGrow",    band:"SelectionConversion", sev:"Plain",   gate:G(M.Components) },
+  { label:"Shrink",                      key:"Ctrl+Num-", glyph:"SelectionShrink",  band:"SelectionConversion", sev:"Plain",   gate:G(M.Components) },
+  { label:"Select Edge Loop",            key:"Alt+Click", glyph:"LoopHighlight",    band:"SelectionConversion", sev:"Primary", gate:G(M.EdgeForms) },
+  { label:"Select Edge Ring",            key:null,       glyph:"RingHighlight",     band:"SelectionConversion", sev:"Plain",   gate:G(M.EdgeForms) },
+  { label:"Promote Stratum",             key:null,       glyph:"StratumPromote",    band:"SelectionConversion", sev:"Plain",   gate:G(M.Components) },
+  { label:"Select Linked Shell",         key:"Ctrl+L",   glyph:"LinkedShell",       band:"SelectionConversion", sev:"Plain",   gate:G(M.Components) },
+  { label:"Select Similar By Trait",     key:"Shift+G",  glyph:"SimilarTrait",      band:"SelectionConversion", sev:"Plain",   gate:G(M.Components), branch:TraitBranch },
+  { label:"Select Boundary Edges",       key:null,       glyph:"BoundaryTrace",     band:"SelectionConversion", sev:"Plain",   gate:G(M.EdgeFace,1,0,["OpenSurface"]) },
+  { label:"Checker Deselect",            key:null,       glyph:"CheckerSkip",       band:"SelectionConversion", sev:"Plain",   gate:G(M.Components,3) },
+  { label:"Select Shortest Path",        key:null,       glyph:"ShortestPath",      band:"SelectionConversion", sev:"Plain",   gate:G(M.Components,2,2) },
+  { label:"Select By Trait",             key:null,       glyph:"TraitFilter",       band:"SelectionConversion", sev:"Plain",   gate:G(M.Components), branch:TraitBranch },
+
+  //--------------------------------------------------------------- REMOVAL -------------------------------------------------------------
+  { label:"Delete With Dependents",      key:"X",        glyph:"RemoveCross",       band:"Removal", sev:"Severe", gate:G(M.Everything) },
+  { label:"Dissolve Into Neighbours",    key:"Ctrl+X",   glyph:"DissolveFade",      band:"Removal", sev:"Severe", gate:G(M.Components,1,0,["SharedComponent"]) },
+  { label:"Limited Dissolve By Angle",   key:null,       glyph:"DissolveAngle",     band:"Removal", sev:"Severe", gate:G(M.EdgeFace,2,0,["SharedComponent"]) },
+  { label:"Degenerate Dissolve",         key:null,       glyph:"DissolveFade",      band:"Removal", sev:"Severe", gate:G(M.ObjectOnly) },
+];
+
+/* branch payloads — MenuBranchDescriptor. Domain data the caller supplies, so
+   the menu never learns axis or material names. */
+const BRANCHES = {
+  [AlignBranch]:    { options:["X Axis","Y Axis","Z Axis","View Plane"], marked:-1 },
+  [MirrorBranch]:   { options:["X","Y","Z"],                             marked:0  },
+  [MergeBranch]:    { options:["Centroid","First","Last","By Proximity"], marked:0  },
+  [MaterialBranch]: { options:["Default","Brushed Metal","Glass","Emissive"], marked:0 },
+  [TraitBranch]:    { options:["Side Count","Surface Area","Crease Weight","Material"], marked:0 },
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   SELECTIONPROFILE — caller-owned state, mirroring the C++ struct defaults
+   ═════════════════════════════════════════════════════════════════════════ */
+const profile = {
+  ActiveStratum:            "Face",
+  SelectedCount:            5,
+  DistinctRegionCount:      2,
+  BoundaryEdgeCount:        8,
+  ShellCount:               1,
+  MaximumFaceSideCount:     4,
+  QuadRingCondition:        false,
+  ClosedLoopCondition:      false,
+  BoundaryCondition:        false,
+  ManifoldCondition:        true,
+  SharedComponentCondition: true,
+  TwoFaceEdgeCondition:     false,
+  QuadPairCondition:        false,
+  TrianglePairCondition:    false,
+  OpenSurfaceCondition:     false,
+  SymmetryAxisCondition:    false,
+};
+let revealGated = true;
+
+/* ═════════════════════════════════════════════════════════════════════════
+   FILTEROPERATIONCATALOGUE + TALLY
+   ═════════════════════════════════════════════════════════════════════════ */
+function filterCatalogue(){
+  const entries = [];
+  for(const op of CATALOGUE){
+    const condition = evaluatePredicate(op.gate, profile);
+    if(condition === "StratumMismatch") continue;                    // hidden entirely — a wrong-stratum row is noise
+    if(!revealGated && condition !== "Available") continue;
+    entries.push({ op, condition, shortfall:describeShortfall(op.gate, profile, condition) });
+  }
+  return entries;
+}
+
+function tallyAvailability(){
+  let available = 0, gated = 0, hidden = 0;
+  for(const op of CATALOGUE){
+    const condition = evaluatePredicate(op.gate, profile);
+    if(condition === "Available")            ++available;
+    else if(condition === "StratumMismatch") ++hidden;
+    else                                     ++gated;
+  }
+  return { available, gated, hidden };
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   TOPOLOGYACTIONMENU — the card
+   ═════════════════════════════════════════════════════════════════════════ */
+const ctx   = document.getElementById("ctx");
+const sub   = document.getElementById("sub");
+const toast = document.getElementById("toast");
+
+function operationRow(entry, index){
+  const { op, condition, shortfall } = entry;
+  const available = condition === "Available";
+
+  const row = document.createElement("div");
+  row.className = "tool"
+    + (available && op.sev === "Primary" ? " hot"  : "")
+    + (available && op.sev === "Severe"  ? " warn" : "")
+    + (available ? "" : " gated")
+    + (condition === "CountShortfall" ? " count" : "")
+    + (available && op.branch ? " has-sub" : "");
+
+  // The chip slot carries the SHORTFALL on a gated row, the keystroke otherwise.
+  const chip = available ? (op.key || "") : (shortfall || "unavailable");
+  row.innerHTML =
+      `<span class="t-ic">${glyph(op.glyph)}</span>`
+    + `<span class="t-name">${op.label}</span>`
+    + `<span class="t-key">${chip}</span>`
+    + (available && op.branch ? `<span class="t-chev">›</span>` : "");
+
+  if(!available){ row.title = `${condition} — ${shortfall}`; return row; }
+
+  if(op.branch){
+    row.addEventListener("mouseenter", () => openBranch(op.branch, row, op.label));
+    row.addEventListener("click",      () => openBranch(op.branch, row, op.label));
+  } else {
+    row.addEventListener("mouseenter", closeBranch);
+    row.addEventListener("click",      () => activate(op.label));
+  }
+  return row;
+}
+
+function buildMenu(){
+  const entries = filterCatalogue();
+  ctx.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "ctx-head";
+  head.innerHTML =
+      `<span class="h-ic">${BADGE[profile.ActiveStratum]()}</span>`
+    + `<span class="h-txt">${STRATUM_NAME[profile.ActiveStratum]}`
+    + `<span class="fn">${entries.length} of ${CATALOGUE.length} operations</span></span>`
+    + `<span class="h-n">${profile.SelectedCount} selected</span>`;
+  ctx.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "ctx-body";
+
+  if(entries.length === 0){
+    body.innerHTML = `<div class="empty">No operation admits this selection.<br>An empty menu is a caller bug, not something to render.</div>`;
+  } else {
+    let previousBand = null;
+    entries.forEach((entry, index) => {
+      if(entry.op.band !== previousBand){
+        // Removal sits last behind a separator, as the band order intends.
+        if(previousBand !== null && entry.op.band === "Removal"){
+          const s = document.createElement("div"); s.className = "sep"; body.appendChild(s);
+        }
+        const cap = document.createElement("div");
+        cap.className = "grp-cap";
+        cap.textContent = BAND_CAPTION[entry.op.band];
+        body.appendChild(cap);
+        previousBand = entry.op.band;
+      }
+      body.appendChild(operationRow(entry, index));
+    });
+  }
+  ctx.appendChild(body);
+}
+
+/* ── OperationBranch ── */
+function openBranch(caption, anchor, ownerLabel){
+  const payload = BRANCHES[caption];
+  if(!payload) return closeBranch();
+
+  sub.innerHTML = "";
+  const cap = document.createElement("div");
+  cap.className = "grp-cap"; cap.textContent = caption;
+  sub.appendChild(cap);
+
+  payload.options.forEach((option, index) => {
+    const item = document.createElement("div");
+    item.className = "b-item" + (index === payload.marked ? " sel" : "");
+    item.innerHTML = `<span>${option}</span><span class="radio"></span>`;
+    item.addEventListener("click", event => {
+      event.stopPropagation();
+      payload.marked = index;
+      activate(`${ownerLabel} · ${option}`);
+    });
+    sub.appendChild(item);
+  });
+
+  sub.classList.add("open");
+  const rect = anchor.getBoundingClientRect();
+  let x = rect.right + 6, y = rect.top - 8;
+  if(x + sub.offsetWidth  > innerWidth  - 10) x = rect.left - sub.offsetWidth - 6;
+  if(y + sub.offsetHeight > innerHeight - 10) y = innerHeight - sub.offsetHeight - 10;
+  sub.style.left = Math.max(10, x) + "px";
+  sub.style.top  = Math.max(10, y) + "px";
+}
+function closeBranch(){ sub.classList.remove("open"); }
+
+/* ── ResolveMenuPlacement — flip only on the axis that would overflow ── */
+function openAt(x, y){
+  buildMenu();
+  ctx.classList.add("open");
+  const pad = 10, w = ctx.offsetWidth, h = ctx.offsetHeight;
+  if(x + w > innerWidth  - pad) x = innerWidth  - w - pad;
+  if(y + h > innerHeight - pad) y = Math.max(pad, innerHeight - h - pad);
+  ctx.style.left = Math.max(pad, x) + "px";
+  ctx.style.top  = Math.max(pad, y) + "px";
+}
+function closeAll(){ ctx.classList.remove("open"); closeBranch(); }
+function menuOpen(){ return ctx.classList.contains("open"); }
+
+/* ── activation is REPORTED, not acted on ── */
+let toastTimer;
+function activate(label){
+  toast.innerHTML = `<b>${label}</b>`;
+  toast.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("on"), 1400);
+  closeAll();
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   AUTHORING PANEL — writes the SelectionProfile, re-filters live
+   ═════════════════════════════════════════════════════════════════════════ */
+const COUNT_FIELDS = [
+  { key:"SelectedCount",        axis:"N",  min:0 },
+  { key:"DistinctRegionCount",  axis:"R",  min:0 },
+];
+const COUNT_FIELDS2 = [
+  { key:"BoundaryEdgeCount",    axis:"B",  min:0 },
+  { key:"ShellCount",           axis:"S",  min:1 },
+  { key:"MaximumFaceSideCount", axis:"◇",  min:3 },
+];
+const CONNECT_FIELDS = [
+  { key:"QuadRingCondition",        cap:"Quad ring" },
+  { key:"ClosedLoopCondition",      cap:"Closed loop" },
+  { key:"BoundaryCondition",        cap:"Open boundary" },
+  { key:"ManifoldCondition",        cap:"Manifold" },
+  { key:"SharedComponentCondition", cap:"Shared" },
+  { key:"TwoFaceEdgeCondition",     cap:"Two-face edge" },
+  { key:"QuadPairCondition",        cap:"Matched quads" },
+  { key:"TrianglePairCondition",    cap:"Tri pairs" },
+  { key:"OpenSurfaceCondition",     cap:"Open surface" },
+  { key:"SymmetryAxisCondition",    cap:"Symmetry axis" },
+];
+
+/* 📝 Eight presets, each driving ONE gate class to a known outcome and labelled
+   with the expectation — so the interesting behaviour is reachable in one click. */
+const PRESETS = [
+  { name:"2 face regions",        expect:"Bridge Span live",              patch:{ ActiveStratum:"Face", SelectedCount:6, DistinctRegionCount:2, SharedComponentCondition:true, ManifoldCondition:true } },
+  { name:"1 face region",         expect:"→ needs 2 faces",               patch:{ ActiveStratum:"Face", SelectedCount:6, DistinctRegionCount:1, SharedComponentCondition:true, ManifoldCondition:true } },
+  { name:"border, 8 edges (even)",expect:"Grid Fill live",                patch:{ ActiveStratum:"Border", SelectedCount:8, DistinctRegionCount:1, BoundaryEdgeCount:8, BoundaryCondition:true, ClosedLoopCondition:true, OpenSurfaceCondition:true } },
+  { name:"border, 7 edges (odd)", expect:"→ requires an even boundary",   patch:{ ActiveStratum:"Border", SelectedCount:7, DistinctRegionCount:1, BoundaryEdgeCount:7, BoundaryCondition:true, ClosedLoopCondition:true, OpenSurfaceCondition:true } },
+  { name:"edge ring, quad walk",  expect:"Insert Edge Loop live",         patch:{ ActiveStratum:"EdgeRing", SelectedCount:12, DistinctRegionCount:1, QuadRingCondition:true, ManifoldCondition:true, TwoFaceEdgeCondition:true } },
+  { name:"edge ring, tri blocked",expect:"→ requires a quad ring",        patch:{ ActiveStratum:"EdgeRing", SelectedCount:12, DistinctRegionCount:1, QuadRingCondition:false, ManifoldCondition:true, TwoFaceEdgeCondition:true } },
+  { name:"single vertex",         expect:"face rows absent, not greyed",  patch:{ ActiveStratum:"Vertex", SelectedCount:1, DistinctRegionCount:1, SharedComponentCondition:true, ManifoldCondition:true } },
+  { name:"object, 2 shells",      expect:"Separate Shell + Partition live",patch:{ ActiveStratum:"Object", SelectedCount:1, DistinctRegionCount:1, ShellCount:2, ManifoldCondition:true, OpenSurfaceCondition:true } },
+];
+let activePreset = -1;
+
+const segStratum  = document.getElementById("segStratum");
+const spinCounts  = document.getElementById("spinCounts");
+const spinCounts2 = document.getElementById("spinCounts2");
+const gridConnect = document.getElementById("gridConnect");
+const presetList  = document.getElementById("presetList");
+const tallyPanel  = document.getElementById("tally");
+
+function buildStratumSegment(){
+  segStratum.innerHTML = "";
+  STRATA.forEach(stratum => {
+    const pill = document.createElement("div");
+    pill.className = "seg-opt" + (stratum === profile.ActiveStratum ? " sel" : "");
+    pill.textContent = STRATUM_NAME[stratum];
+    pill.addEventListener("click", () => {
+      profile.ActiveStratum = stratum;
+      activePreset = -1;
+      refresh("rowStratum");
+    });
+    segStratum.appendChild(pill);
+  });
+}
+
+function buildSpinners(host, fields){
+  host.innerHTML = "";
+  fields.forEach(field => {
+    const box = document.createElement("div");
+    box.className = "valuebox";
+    box.innerHTML =
+        `<div class="axisseg">${field.axis}</div>`
+      + `<div class="num"><input type="number" value="${profile[field.key]}"></div>`
+      + `<div class="stepseg"><button data-d="-1">‹</button><button data-d="1">›</button></div>`;
+
+    const input = box.querySelector("input");
+    const commit = next => {
+      profile[field.key] = Math.max(field.min, next);
+      input.value = profile[field.key];
+      activePreset = -1;
+      refresh(host.id === "spinCounts" ? "rowCounts" : "rowCounts2");
+    };
+    input.addEventListener("input", () => {
+      const parsed = parseInt(input.value, 10);
+      if(!isNaN(parsed)) commit(parsed);
+    });
+    box.querySelectorAll("button").forEach(button => {
+      button.addEventListener("click", () => commit(profile[field.key] + Number(button.dataset.d)));
+    });
+    host.appendChild(box);
+  });
+}
+
+function buildConnectivity(){
+  gridConnect.innerHTML = "";
+  CONNECT_FIELDS.forEach(field => {
+    const line = document.createElement("div");
+    line.className = "swline" + (profile[field.key] ? " on" : "");
+    line.innerHTML = `<div class="switch${profile[field.key] ? " on" : ""}"><div class="nub"></div></div>`
+                   + `<span class="cap">${field.cap}</span>`;
+    line.addEventListener("click", () => {
+      profile[field.key] = !profile[field.key];
+      activePreset = -1;
+      refresh("rowConnect");
+    });
+    gridConnect.appendChild(line);
+  });
+}
+
+function buildPresets(){
+  presetList.innerHTML = "";
+  PRESETS.forEach((preset, index) => {
+    const pill = document.createElement("div");
+    pill.className = "preset" + (index === activePreset ? " sel" : "");
+    pill.innerHTML = `<span class="pn">${preset.name}</span><span class="pe">${preset.expect}</span>`;
+    pill.addEventListener("click", () => {
+      Object.assign(profile, preset.patch);
+      activePreset = index;
+      refresh();
+      if(!menuOpen()) openAt(innerWidth * 0.52, 110);
+    });
+    presetList.appendChild(pill);
+  });
+}
+
+function buildTally(){
+  const { available, gated, hidden } = tallyAvailability();
+  const total = available + gated + hidden;
+  const balanced = total === CATALOGUE.length;
+  tallyPanel.innerHTML =
+      line("catalogue", CATALOGUE.length)
+    + line("available", available)
+    + line("gated",     gated)
+    + line("hidden",    hidden)
+    + line("invariant", `<span class="${balanced ? "ok" : "no"}">${available} + ${gated} + ${hidden} == ${CATALOGUE.length}</span>`);
+  function line(k, v){ return `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
+}
+
+function refresh(flashRow){
+  buildStratumSegment();
+  buildSpinners(spinCounts,  COUNT_FIELDS);
+  buildSpinners(spinCounts2, COUNT_FIELDS2);
+  buildConnectivity();
+  buildPresets();
+  buildTally();
+  if(menuOpen()){
+    const left = ctx.style.left, top = ctx.style.top;
+    buildMenu();
+    ctx.style.left = left; ctx.style.top = top;
+    closeBranch();
+  }
+  if(flashRow){
+    const row = document.getElementById(flashRow);
+    if(row){ row.classList.add("changed"); setTimeout(() => row.classList.remove("changed"), 250); }
+  }
+}
+
+document.getElementById("swReveal").addEventListener("click", event => {
+  revealGated = !revealGated;
+  const line = event.currentTarget;
+  line.classList.toggle("on", revealGated);
+  line.querySelector(".switch").classList.toggle("on", revealGated);
+  line.querySelector(".cap").textContent = revealGated ? "shown greyed with reason" : "dropped from the card";
+  refresh();
+});
+
+/* ═════════════════════════════════════════════════════════════════════════
+   WIRING
+   ═════════════════════════════════════════════════════════════════════════ */
+addEventListener("contextmenu", event => {
+  event.preventDefault();
+  if(event.target.closest(".authoring")) return;
+  openAt(event.clientX, event.clientY);
+});
+addEventListener("pointerdown", event => {
+  if(!event.target.closest("#ctx") && !event.target.closest("#sub") && !event.target.closest(".authoring")) closeAll();
+});
+addEventListener("keydown", event => { if(event.key === "Escape") closeAll(); });
+addEventListener("resize", closeAll);
+
+refresh();
+openAt(innerWidth * 0.52, 110);
+</script>
+</body>
+</html>

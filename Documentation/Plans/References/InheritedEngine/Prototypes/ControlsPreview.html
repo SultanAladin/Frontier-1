@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier — Interface / Components / Controls</title>
+<style>
+  :root{
+    --desk-bg:      #2b2b2d;
+    --panel-bg:     #131315;
+    --panel-head:   #1b1b1e;
+    --value-bg:     #232326;
+    --value-black:  #0a0a0b;   /* darkest — fully-black middle segment */
+    --value-num:    #131315;   /* dark-black number segment */
+    --value-unit:   #33333a;   /* lighter-grey side segment */
+    --outline:      rgba(255,255,255,.22);   /* light-grey/white hairline outline */
+    --value-focus:  #303035;
+    --track-bg:     #2f2f33;
+    --track-fill:   #8a8a8e;
+    --knob:         #f4f4f5;
+    --dot:          #45454a;
+    --accent:       #4a90e2;
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --text-value:   #f2f2f4;
+
+    --panel-radius: 20px;
+    --value-radius: 13px;
+    --row-h:        50px;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; padding:40px;
+    background:var(--desk-bg);
+    color:var(--text-primary);
+    font:20px/1 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:1200px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:28px; align-items:start; }
+  @media(max-width:960px){ .wrap{ grid-template-columns:1fr; } }
+
+  .col{ display:flex; flex-direction:column; gap:22px; }
+
+  /* ── Panel ── */
+  .panel{ background:var(--panel-bg); border-radius:var(--panel-radius); overflow:hidden; }
+  .panel-head{
+    background:var(--panel-head);
+    padding:14px 26px;
+    font-size:16px; font-weight:600;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .panel-head .fn{ color:var(--text-muted); font-weight:400; font-size:13px; }
+  .panel-body{ padding:20px 26px; display:flex; flex-direction:column; gap:14px; }
+
+  /* ── Shared row ── */
+  .row{ display:grid; grid-template-columns:150px 170px 1fr; align-items:center; column-gap:26px; min-height:var(--row-h); }
+  .row.wide{ grid-template-columns:150px 1fr; }
+  .label{ color:var(--text-muted); letter-spacing:.2px; user-select:none; }
+  .row.changed .label{ color:var(--accent); }
+
+  /* ── Numeric value box (editable) ── */
+  .value{
+    background:var(--value-bg); border-radius:var(--value-radius);
+    height:var(--row-h);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:0 18px; cursor:text;
+    border:1.5px solid var(--outline);
+  }
+  .value:focus-within{ background:var(--value-focus); box-shadow:0 0 0 1.5px var(--accent) inset; }
+  .value input{
+    background:none; border:none; outline:none; color:var(--text-value);
+    font:500 24px/1 inherit; text-align:right; width:100%;
+    font-variant-numeric:tabular-nums; -moz-appearance:textfield;
+  }
+  .value input::-webkit-outer-spin-button, .value input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .value .unit{ color:var(--text-muted); font-size:19px; flex:0 0 auto; }
+
+  /* ── Split value box: [ grey | fully-black | grey ] pill, white hairline outline ── */
+  .valuebox{
+    height:var(--row-h); border-radius:999px; overflow:hidden;
+    display:flex; align-items:stretch;
+  }
+  .valuebox .num{
+    flex:1; background:var(--value-black); display:flex; align-items:center; justify-content:flex-end;
+    padding:0 16px; cursor:text;
+  }
+  .valuebox .num:focus-within{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+  .valuebox .num input{
+    background:none; border:none; outline:none; color:var(--text-value);
+    font:500 24px/1 inherit; text-align:right; width:100%;
+    font-variant-numeric:tabular-nums; -moz-appearance:textfield;
+  }
+  .valuebox .num input::-webkit-outer-spin-button, .valuebox .num input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .valuebox .unitseg{
+    background:var(--value-unit); color:var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+    padding:0 16px; font-size:19px; min-width:52px;
+  }
+  /* leading segment (axis / grey) — mirrors unitseg on the other side */
+  .valuebox .axisseg{
+    background:var(--value-unit); color:var(--text-muted);
+    display:flex; align-items:center; justify-content:center;
+    padding:0 14px; font-size:19px; min-width:40px;
+  }
+
+  /* ── Slider — ported from LayerInspector.css: thin grey track, grey fill, small white knob ── */
+  .slider{ position:relative; height:4px; background:var(--track-bg); border-radius:999px; cursor:pointer; touch-action:none; }
+  .slider .fill{ position:absolute; left:0; top:0; bottom:0; background:var(--track-fill); border-radius:999px; pointer-events:none; }
+  .slider .knob{
+    position:absolute; top:50%; width:12px; height:12px; margin-left:-6px; background:var(--knob);
+    border-radius:50%; transform:translateY(-50%); box-shadow:0 1px 3px rgba(0,0,0,.5); pointer-events:none;
+  }
+
+  /* ── Vector row: three [ X | value | dim ] boxes, grey|black|grey ── */
+  .vec{ display:flex; gap:10px; grid-column:2 / 4; }
+  .vec .valuebox{ flex:1; min-width:0; }
+  .vec .valuebox .num{ padding:0 8px; }
+  .vec .valuebox .axisseg{ min-width:30px; padding:0 8px; font-size:16px; }
+  .vec .valuebox .unitseg{ min-width:30px; padding:0 8px; font-size:16px; }
+  .vec .valuebox .num input{ font-size:20px; }
+
+  /* ── Boolean toggle (switch) — ported from LayerInspector.css ── */
+  .switch{ width:38px; height:22px; border-radius:999px; background:var(--track-bg); position:relative; cursor:pointer; transition:background .16s; }
+  .switch.on{ background:var(--accent); }
+  .switch .nub{ position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:var(--knob); transition:left .16s cubic-bezier(.4,0,.2,1); }
+  .switch.on .nub{ left:19px; }
+
+  /* ── Selection (segmented pills) ── */
+  .segment{ grid-column:2 / 4; display:flex; gap:10px; flex-wrap:wrap; }
+  .seg-opt{ padding:0 20px; height:44px; display:flex; align-items:center; border-radius:13px; background:var(--value-bg); color:var(--text-muted); cursor:pointer; user-select:none; font-size:18px; }
+  .seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+  /* ── Size dots+pill (the reference row) ── */
+  .sizebar{ grid-column:2 / 4; display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+  .sizebar .dot{ width:12px; height:12px; border-radius:999px; background:var(--dot); cursor:pointer; }
+  .sizebar .dot.sel{ width:70px; height:44px; border-radius:14px; background:var(--knob); color:#1b1b1e; display:flex; align-items:center; justify-content:center; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,.45); }
+
+  /* ── ColorEntry — [ ◉ rgba(…) | ▾ ] pill, { fully-black | grey } ── */
+  .colorbar{ grid-column:2 / 4; display:flex; align-items:stretch; height:var(--row-h);
+    border-radius:999px; overflow:hidden; cursor:pointer; }
+  .colorbar .swatchseg{ flex:1; background:var(--value-black); display:flex; align-items:center; gap:14px; padding:0 16px; }
+  .colorbar .circle{ width:30px; height:30px; border-radius:999px; flex:0 0 auto; border:1px solid rgba(255,255,255,.12); box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .colorbar .cname{ color:var(--text-value); font-variant-numeric:tabular-nums; font-size:18px; flex:1; }
+  .colorbar .cname .dim{ color:var(--text-muted); }
+  .colorbar .caret{ background:var(--value-unit); color:var(--text-muted); font-size:14px;
+    display:flex; align-items:center; justify-content:center; min-width:52px; }
+  .colorbar:hover .caret{ background:var(--value-focus); }
+  .colorbar .caret span{ display:inline-block; transition:transform .15s; }
+  .colorbar.open .caret span{ transform:rotate(180deg); }
+
+  /* ── Figma-style picker: SV box + hue slider + alpha ── */
+  .picker{ grid-column:2 / 4; display:none; flex-direction:column; gap:14px; margin-top:10px;
+    background:var(--value-bg); border-radius:16px; padding:16px; }
+  .picker.open{ display:flex; }
+  .svbox{ position:relative; width:100%; height:180px; border-radius:12px; cursor:crosshair; overflow:hidden;
+    background:linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); }
+  .svbox .svknob{ position:absolute; width:20px; height:20px; border-radius:999px; border:3px solid #fff;
+    transform:translate(-50%,-50%); box-shadow:0 0 0 1px rgba(0,0,0,.5), 0 1px 4px rgba(0,0,0,.6); pointer-events:none; }
+  .barstack{ display:flex; flex-direction:column; gap:12px; }
+  .cbar{ position:relative; height:18px; border-radius:999px; cursor:pointer; touch-action:none; }
+  .cbar .cknob{ position:absolute; top:50%; width:22px; height:22px; border-radius:999px; background:#fff;
+    border:2px solid #1b1b1e; transform:translate(-50%,-50%); box-shadow:0 1px 4px rgba(0,0,0,.5); pointer-events:none; }
+  #hueBar{ background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+  #alphaGrid{ background:repeating-conic-gradient(#808080 0 25%,#c0c0c0 0 50%) 0 0/12px 12px; border-radius:999px; position:absolute; inset:0; }
+  #alphaBar{ position:relative; }
+  #alphaFill{ position:absolute; inset:0; border-radius:999px; }
+  .hexrow{ display:flex; align-items:center; gap:10px; }
+  .hexrow input{ background:var(--value-num); border:none; border-radius:10px; color:var(--text-value);
+    font:500 17px/1 "Cascadia Code","Consolas",monospace; padding:10px 12px; width:120px; outline:none; text-transform:uppercase; }
+  .hexrow .arow{ display:flex; gap:8px; margin-left:auto; }
+  .hexrow .arow span{ color:var(--text-muted); font:15px/1 "Cascadia Code","Consolas",monospace; }
+
+  /* ── Dropdown (Combo popup) — ported from LayerInspector.css ── */
+  .dropdown{ grid-column:2 / 4; position:relative; min-width:0; }
+  .dd-head{ height:var(--row-h); border-radius:999px; overflow:hidden;
+    display:flex; align-items:stretch; cursor:pointer; }
+  .dd-head .cur{ flex:1; background:var(--value-black); color:var(--text-value); font-size:18px;
+    display:flex; align-items:center; padding:0 18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dd-head .caret{ background:var(--value-unit); color:var(--text-muted); font-size:14px;
+    display:flex; align-items:center; justify-content:center; min-width:52px; }
+  .dd-head:hover .caret{ background:var(--value-focus); }
+  .dd-head .caret span{ display:inline-block; transition:transform .15s; }
+  .dropdown.open .dd-head .caret span{ transform:rotate(180deg); }
+  /* 📝 fixed + JS-placed so the list escapes the panel, exactly like the inspector's rail list */
+  .dd-list{ position:fixed; display:none; z-index:1200; max-height:280px; overflow-y:auto; padding:4px;
+    background:#141416; border:1px solid #2a2a30; border-radius:9px;
+    box-shadow:0 16px 44px rgba(0,0,0,.6); }
+  .dropdown.open .dd-list{ display:block; }
+  .dd-item{ position:relative; display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px;
+    font-size:15px; color:var(--text-primary); cursor:pointer; }
+  .dd-item:hover{ background:#22222a; }
+  .dd-item .radio{ margin-left:auto; width:10px; height:10px; border-radius:50%;
+    border:1.4px solid var(--value-unit); flex:0 0 auto; }
+  .dd-item.sel .radio{ border-color:var(--accent); background:var(--accent); box-shadow:inset 0 0 0 2px #141416; }
+
+  /* ── Path field ── */
+  .pathfield{ grid-column:2 / 4; display:flex; gap:10px; }
+  .pathfield .value{ flex:1; justify-content:flex-start; }
+  .pathfield .value input{ text-align:left; }
+  .browse{ width:var(--row-h); height:var(--row-h); border-radius:var(--value-radius); background:var(--value-bg); color:var(--text-primary); border:none; cursor:pointer; font-size:22px; }
+  .browse:hover{ background:var(--value-focus); }
+
+  /* ── Content / state inspector ── */
+  .inspector{ position:sticky; top:40px; }
+  .inspector .panel-body{ gap:6px; font:14px/1.5 "Cascadia Code","Consolas",monospace; }
+  .kv{ display:flex; justify-content:space-between; gap:12px; padding:5px 0; border-bottom:1px solid #202024; }
+  .kv .k{ color:var(--text-muted); }
+  .kv .v{ color:var(--text-value); text-align:right; }
+  .kv.flash .v{ color:var(--accent); }
+  .disabled{ opacity:.45; pointer-events:none; }
+  .hint{ color:var(--text-muted); font-size:12px; padding:0 26px 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ══════════════════ CONTROLS ══════════════════ -->
+  <div class="col">
+
+    <!-- ValueSlider -->
+    <div class="panel">
+      <div class="panel-head">ValueSlider <span class="fn">ConstructValueSlider · SliderFloat</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="slider" data-key="Degree" data-min="0" data-max="360" data-fmt="0">
+          <div class="label">Degree</div>
+          <div class="valuebox"><div class="num"><input type="number"></div><div class="unitseg">°</div></div>
+          <div class="slider"><div class="fill"></div><div class="knob"></div></div>
+        </div>
+        <div class="row" data-ctl="slider" data-key="Percent" data-min="0" data-max="100" data-fmt="0">
+          <div class="label">Percent</div>
+          <div class="valuebox"><div class="num"><input type="number"></div><div class="unitseg">%</div></div>
+          <div class="slider"><div class="fill"></div><div class="knob"></div></div>
+        </div>
+        <div class="row" data-ctl="slider" data-key="Pixel" data-min="0" data-max="512" data-fmt="0">
+          <div class="label">Pixel</div>
+          <div class="valuebox"><div class="num"><input type="number"></div><div class="unitseg">px</div></div>
+          <div class="slider"><div class="fill"></div><div class="knob"></div></div>
+        </div>
+      </div>
+      <div class="hint">Drag the track or the number. Value is clamped to [Minimum, Maximum].</div>
+    </div>
+
+    <!-- ScalarEntry -->
+    <div class="panel">
+      <div class="panel-head">ScalarEntry <span class="fn">ConstructScalarEntry · DragFloat</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="scalar" data-key="Intensity" data-step="0.01" data-fmt="3">
+          <div class="label">Intensity</div>
+          <div class="valuebox"><div class="num"><input type="number" step="0.01"></div><div class="unitseg">×</div></div>
+          <div class="slider drag"><div class="fill" style="display:none"></div><div class="knob"></div></div>
+        </div>
+        <div class="row" data-ctl="scalar" data-key="Radius" data-step="0.5" data-fmt="2">
+          <div class="label">Radius</div>
+          <div class="valuebox"><div class="num"><input type="number" step="0.5"></div><div class="unitseg">cm</div></div>
+          <div class="slider drag"><div class="fill" style="display:none"></div><div class="knob"></div></div>
+        </div>
+      </div>
+      <div class="hint">Unbounded drag field — drag the knob left/right (Step per pixel) or type a value.</div>
+    </div>
+
+    <!-- VectorEntry -->
+    <div class="panel">
+      <div class="panel-head">VectorEntry <span class="fn">ConstructVectorEntry · XYZ DragFloat</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="vector" data-key="Position" data-step="0.01" data-fmt="2">
+          <div class="label">Position</div>
+          <div class="vec">
+            <div class="valuebox"><div class="axisseg">X</div><div class="num"><input type="number" step="0.01"></div></div>
+            <div class="valuebox"><div class="axisseg">Y</div><div class="num"><input type="number" step="0.01"></div></div>
+            <div class="valuebox"><div class="axisseg">Z</div><div class="num"><input type="number" step="0.01"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="hint">2–4 contiguous floats sharing one row, evenly split.</div>
+    </div>
+
+    <!-- ColorEntry -->
+    <div class="panel">
+      <div class="panel-head">ColorEntry <span class="fn">ConstructColorEntry · ColorEdit4</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="color" data-key="BaseColor">
+          <div class="label">Base Color</div>
+          <div class="colorbar" id="colorbar">
+            <div class="swatchseg">
+              <div class="circle" id="ccircle"></div>
+              <div class="cname" id="cname"></div>
+            </div>
+            <div class="caret"><span>▾</span></div>
+          </div>
+          <div class="picker" id="picker">
+            <div class="svbox" id="svbox"><div class="svknob" id="svknob"></div></div>
+            <div class="barstack">
+              <div class="cbar" id="hueBar"><div class="cknob" id="hueKnob"></div></div>
+              <div class="cbar" id="alphaBar"><div id="alphaGrid"></div><div id="alphaFill"></div><div class="cknob" id="alphaKnob"></div></div>
+            </div>
+            <div class="hexrow">
+              <input type="text" id="hexIn" maxlength="7">
+              <div class="arow"><span id="rgbReadout"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hint">Circle swatch + RGB readout; the caret opens a Figma-style SV box, hue &amp; alpha sliders, and a hex field.</div>
+    </div>
+
+    <!-- SelectionEntry -->
+    <div class="panel">
+      <div class="panel-head">SelectionEntry <span class="fn">ConstructSelectionEntry · Combo</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="selection" data-key="CastShadow" data-options="Off,Soft (PCSS),Hard (IZB),Combined">
+          <div class="label">Cast Shadow</div>
+          <div class="segment"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Size (dots+pill, the reference row) -->
+    <div class="panel">
+      <div class="panel-head">SelectionEntry <span class="fn">size preset · dots + pill</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="size" data-key="Size" data-options="XS,S,M,L,XL">
+          <div class="label">Size</div>
+          <div class="sizebar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BooleanEntry -->
+    <div class="panel">
+      <div class="panel-head">BooleanEntry <span class="fn">ConstructBooleanEntry · Checkbox</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="boolean" data-key="IndirectGiEnabled">
+          <div class="label">Indirect GI</div>
+          <div class="switch"><div class="nub"></div></div>
+        </div>
+        <div class="row" data-ctl="boolean" data-key="WireframeEnabled">
+          <div class="label">Wireframe</div>
+          <div class="switch"><div class="nub"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PathEntry -->
+    <div class="panel">
+      <div class="panel-head">PathEntry <span class="fn">ConstructPathEntry · InputText + Button</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="path" data-key="MeshSource">
+          <div class="label">Mesh Source</div>
+          <div class="pathfield">
+            <div class="value"><input type="text" value="Content/Scenes/Suzanne.glb"></div>
+            <button class="browse">…</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint">Type a path, or press … (BrowseRequested → caller opens the file dialogue).</div>
+    </div>
+
+    <!-- Dropdown -->
+    <div class="panel">
+      <div class="panel-head">Dropdown <span class="fn">Combo popup</span></div>
+      <div class="panel-body">
+        <div class="row" data-ctl="dropdown" data-key="Shading" data-options="Rendered,Solid,Wireframe,Matcap,Normals">
+          <div class="label">Shading</div>
+          <div class="dropdown">
+            <div class="dd-head"><span class="cur"></span><span class="caret"><span>▾</span></span></div>
+            <div class="dd-list"></div>
+          </div>
+        </div>
+      </div>
+      <div class="hint">Click to open; hover to highlight; click an item to select. Selected item marks a tick.</div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════ CONTENT / STATE ══════════════════ -->
+  <div class="col">
+    <div class="panel inspector">
+      <div class="panel-head">Content <span class="fn">caller-owned state</span></div>
+      <div class="panel-body" id="inspector"></div>
+      <div class="hint">Mirrors each control's edited-in-place value. A row flashes accent the cycle Construct* returns <em>changed</em>.</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────
+//  Caller-owned state — the structs the C++ controls edit in place.
+// ─────────────────────────────────────────────────────────────────────────
+const state = {
+  Degree: 123, Percent: 40, Pixel: 246,
+  Intensity: 1.25, Radius: 64,
+  Position: [0, 1.5, -3.2],
+  BaseColor: [74, 144, 226, 255],
+  CastShadow: 3,          // index -> "Combined"
+  Size: 3,                // index -> "L"
+  IndirectGiEnabled: true,
+  WireframeEnabled: false,
+  MeshSource: "Content/Scenes/Suzanne.glb",
+  Shading: 0,             // index -> "Rendered"
+};
+
+const fmt = (v, n) => Number(v).toFixed(n);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+// ── Inspector ────────────────────────────────────────────────────────────
+const inspector = document.getElementById('inspector');
+const kvEls = {};
+function inspectorLine(key, val){
+  const el = document.createElement('div');
+  el.className = 'kv'; el.dataset.key = key;
+  el.innerHTML = `<span class="k">${key}</span><span class="v"></span>`;
+  inspector.appendChild(el);
+  kvEls[key] = el;
+}
+['Degree','Percent','Pixel','Intensity','Radius','Position','BaseColor','CastShadow','Size','IndirectGiEnabled','WireframeEnabled','MeshSource','Shading'].forEach(inspectorLine);
+
+const shadowOpts  = ['Off','Soft (PCSS)','Hard (IZB)','Combined'];
+const sizeOpts    = ['XS','S','M','L','XL'];
+const shadingOpts = ['Rendered','Solid','Wireframe','Matcap','Normals'];
+function render(key){
+  const el = kvEls[key]; if(!el) return;
+  let v = state[key];
+  if(key==='Position')   v = '['+v.map(x=>fmt(x,2)).join(', ')+']';
+  else if(key==='BaseColor') v = 'rgba('+v.join(', ')+')';
+  else if(key==='CastShadow') v = v+' · '+shadowOpts[v];
+  else if(key==='Size')  v = v+' · '+sizeOpts[v];
+  else if(key==='Shading') v = v+' · '+shadingOpts[v];
+  else if(typeof state[key]==='boolean') v = v ? 'true' : 'false';
+  else if(typeof state[key]==='number') v = fmt(v, Number.isInteger(state[key])?0:2);
+  el.querySelector('.v').textContent = v;
+}
+function flash(key, rowEl){
+  render(key);
+  const el = kvEls[key]; if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'), 250); }
+  if(rowEl){ rowEl.classList.add('changed'); setTimeout(()=>rowEl.classList.remove('changed'), 250); }
+}
+Object.keys(state).forEach(render);
+
+// ── ValueSlider (bounded) ─────────────────────────────────────────────────
+document.querySelectorAll('[data-ctl="slider"]').forEach(row=>{
+  const key=row.dataset.key, min=+row.dataset.min, max=+row.dataset.max, dec=+row.dataset.fmt;
+  const input=row.querySelector('input'), fill=row.querySelector('.fill'),
+        knob=row.querySelector('.knob'), track=row.querySelector('.slider');
+  function paint(){ const t=(state[key]-min)/(max-min); fill.style.width=(t*100)+'%'; knob.style.left=(t*100)+'%'; input.value=fmt(state[key],dec); }
+  function setFromClientX(x){ const r=track.getBoundingClientRect(); const t=clamp((x-r.left)/r.width,0,1); state[key]=clamp(min+t*(max-min),min,max); paint(); flash(key,row); }
+  track.addEventListener('pointerdown',e=>{ track.setPointerCapture(e.pointerId); setFromClientX(e.clientX);
+    const mv=ev=>setFromClientX(ev.clientX); const up=()=>{track.removeEventListener('pointermove',mv);track.removeEventListener('pointerup',up);};
+    track.addEventListener('pointermove',mv); track.addEventListener('pointerup',up); });
+  input.addEventListener('input',()=>{ const v=parseFloat(input.value); if(!isNaN(v)){ state[key]=clamp(v,min,max); const t=(state[key]-min)/(max-min); fill.style.width=(t*100)+'%'; knob.style.left=(t*100)+'%'; flash(key,row);} });
+  paint();
+});
+
+// ── ScalarEntry (unbounded drag) ──────────────────────────────────────────
+document.querySelectorAll('[data-ctl="scalar"]').forEach(row=>{
+  const key=row.dataset.key, step=+row.dataset.step, dec=+row.dataset.fmt;
+  const input=row.querySelector('input'), knob=row.querySelector('.knob'), track=row.querySelector('.slider');
+  function paint(){ input.value=fmt(state[key],dec); knob.style.left='50%'; } // drag-field: knob rests centred
+  track.addEventListener('pointerdown',e=>{ track.setPointerCapture(e.pointerId); let lastX=e.clientX;
+    const mv=ev=>{ const dx=ev.clientX-lastX; lastX=ev.clientX; state[key]+= dx*step; input.value=fmt(state[key],dec); flash(key,row); };
+    const up=()=>{track.removeEventListener('pointermove',mv);track.removeEventListener('pointerup',up);};
+    track.addEventListener('pointermove',mv); track.addEventListener('pointerup',up); });
+  input.addEventListener('input',()=>{ const v=parseFloat(input.value); if(!isNaN(v)){ state[key]=v; flash(key,row);} });
+  paint();
+});
+
+// ── VectorEntry ───────────────────────────────────────────────────────────
+document.querySelectorAll('[data-ctl="vector"]').forEach(row=>{
+  const key=row.dataset.key, dec=+row.dataset.fmt;
+  row.querySelectorAll('input').forEach((inp,i)=>{
+    inp.value=fmt(state[key][i],dec);
+    inp.addEventListener('input',()=>{ const v=parseFloat(inp.value); if(!isNaN(v)){ state[key][i]=v; flash(key,row);} });
+  });
+});
+
+// ── ColorEntry (Figma-style HSV picker) ───────────────────────────────────
+(function(){
+  const row=document.querySelector('[data-ctl="color"]'), key='BaseColor';
+  const bar=document.getElementById('colorbar'), picker=document.getElementById('picker'),
+        circle=document.getElementById('ccircle'), cname=document.getElementById('cname'),
+        svbox=document.getElementById('svbox'), svknob=document.getElementById('svknob'),
+        hueBar=document.getElementById('hueBar'), hueKnob=document.getElementById('hueKnob'),
+        alphaBar=document.getElementById('alphaBar'), alphaKnob=document.getElementById('alphaKnob'),
+        alphaFill=document.getElementById('alphaFill'),
+        hexIn=document.getElementById('hexIn'), rgbReadout=document.getElementById('rgbReadout');
+
+  // internal HSV mirrors state[key] (RGBA 0-255)
+  let hsv = rgbToHsv(...state[key].slice(0,3));
+
+  function rgbToHsv(r,g,b){ r/=255;g/=255;b/=255; const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn; let h=0;
+    if(d){ if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4; h*=60; if(h<0)h+=360; }
+    return {h, s:mx?d/mx:0, v:mx}; }
+  function hsvToRgb(h,s,v){ const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c; let r,g,b;
+    if(h<60)[r,g,b]=[c,x,0]; else if(h<120)[r,g,b]=[x,c,0]; else if(h<180)[r,g,b]=[0,c,x];
+    else if(h<240)[r,g,b]=[0,x,c]; else if(h<300)[r,g,b]=[x,0,c]; else [r,g,b]=[c,0,x];
+    return [Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)]; }
+  const hex2=n=>n.toString(16).padStart(2,'0').toUpperCase();
+
+  function paint(){
+    const [r,g,b] = hsvToRgb(hsv.h,hsv.s,hsv.v);
+    const a = state[key][3];
+    state[key] = [r,g,b,a];
+    const css=`rgba(${r},${g},${b},${a/255})`;
+    circle.style.background=css;
+    cname.innerHTML=`rgba(${r}, ${g}, ${b}, <span class="dim">${(a/255).toFixed(2)}</span>)`;
+    // SV box hue backdrop + knob
+    svbox.style.background=`linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),hsl(${hsv.h},100%,50%)`;
+    svknob.style.left=(hsv.s*100)+'%'; svknob.style.top=((1-hsv.v)*100)+'%';
+    svknob.style.background=css;
+    hueKnob.style.left=(hsv.h/360*100)+'%';
+    alphaFill.style.background=`linear-gradient(90deg,transparent,rgb(${r},${g},${b}))`;
+    alphaKnob.style.left=(a/255*100)+'%';
+    hexIn.value='#'+hex2(r)+hex2(g)+hex2(b);
+    rgbReadout.textContent=`A ${Math.round(a/255*100)}%`;
+  }
+
+  bar.addEventListener('click',()=>{ picker.classList.toggle('open'); bar.classList.toggle('open'); });
+
+  function dragArea(el, onMove){
+    el.addEventListener('pointerdown',e=>{ el.setPointerCapture(e.pointerId); onMove(e);
+      const mv=ev=>onMove(ev); const up=()=>{el.removeEventListener('pointermove',mv);el.removeEventListener('pointerup',up);};
+      el.addEventListener('pointermove',mv); el.addEventListener('pointerup',up); });
+  }
+  dragArea(svbox,e=>{ const r=svbox.getBoundingClientRect();
+    hsv.s=clamp((e.clientX-r.left)/r.width,0,1); hsv.v=clamp(1-(e.clientY-r.top)/r.height,0,1); paint(); flash(key,row); });
+  dragArea(hueBar,e=>{ const r=hueBar.getBoundingClientRect(); hsv.h=clamp((e.clientX-r.left)/r.width,0,1)*360; paint(); flash(key,row); });
+  dragArea(alphaBar,e=>{ const r=alphaBar.getBoundingClientRect(); state[key][3]=Math.round(clamp((e.clientX-r.left)/r.width,0,1)*255); paint(); flash(key,row); });
+  hexIn.addEventListener('input',()=>{ const m=/^#?([0-9a-f]{6})$/i.exec(hexIn.value.trim());
+    if(m){ const n=parseInt(m[1],16); hsv=rgbToHsv((n>>16)&255,(n>>8)&255,n&255); paint(); flash(key,row); } });
+
+  paint();
+})();
+
+// ── SelectionEntry (segmented pills) ──────────────────────────────────────
+document.querySelectorAll('[data-ctl="selection"]').forEach(row=>{
+  const key=row.dataset.key, opts=row.dataset.options.split(','), seg=row.querySelector('.segment');
+  opts.forEach((o,i)=>{ const b=document.createElement('div'); b.className='seg-opt'+(i===state[key]?' sel':''); b.textContent=o;
+    b.addEventListener('click',()=>{ state[key]=i; seg.querySelectorAll('.seg-opt').forEach((e,j)=>e.classList.toggle('sel',j===i)); flash(key,row); });
+    seg.appendChild(b); });
+});
+
+// ── Size (dots + pill) ────────────────────────────────────────────────────
+document.querySelectorAll('[data-ctl="size"]').forEach(row=>{
+  const key=row.dataset.key, opts=row.dataset.options.split(','), bar=row.querySelector('.sizebar');
+  function build(){ bar.innerHTML=''; opts.forEach((o,i)=>{ const d=document.createElement('div');
+    d.className='dot'+(i===state[key]?' sel':''); if(i===state[key]) d.textContent=o;
+    d.addEventListener('click',()=>{ state[key]=i; build(); flash(key,row); }); bar.appendChild(d); }); }
+  build();
+});
+
+// ── BooleanEntry ──────────────────────────────────────────────────────────
+document.querySelectorAll('[data-ctl="boolean"]').forEach(row=>{
+  const key=row.dataset.key, sw=row.querySelector('.switch');
+  sw.classList.toggle('on',state[key]);
+  sw.addEventListener('click',()=>{ state[key]=!state[key]; sw.classList.toggle('on',state[key]); flash(key,row); });
+});
+
+// ── PathEntry ─────────────────────────────────────────────────────────────
+(function(){
+  const row=document.querySelector('[data-ctl="path"]'), key='MeshSource';
+  const input=row.querySelector('input'), browse=row.querySelector('.browse');
+  input.addEventListener('input',()=>{ state[key]=input.value; flash(key,row); });   // TextChanged
+  browse.addEventListener('click',()=>{ const p=prompt('Browse… (BrowseRequested)', state[key]); if(p!=null){ state[key]=p; input.value=p; flash(key,row);} });
+})();
+
+// ── Dropdown (Combo popup) ────────────────────────────────────────────────
+// 📝 The list is position:fixed (ported from the inspector) so it escapes the panel; JS pins it
+//    to the head's screen rect on open, matching its width and hanging 4px below.
+document.querySelectorAll('[data-ctl="dropdown"]').forEach(row=>{
+  const key=row.dataset.key, opts=row.dataset.options.split(',');
+  const dd=row.querySelector('.dropdown'), head=row.querySelector('.dd-head'),
+        cur=row.querySelector('.cur'), list=row.querySelector('.dd-list');
+  function build(){ cur.textContent=opts[state[key]]; list.innerHTML='';
+    opts.forEach((o,i)=>{ const it=document.createElement('div'); it.className='dd-item'+(i===state[key]?' sel':'');
+      it.innerHTML=`<span>${o}</span><span class="radio"></span>`;
+      it.addEventListener('click',ev=>{ ev.stopPropagation(); state[key]=i; dd.classList.remove('open'); build(); flash(key,row); });
+      list.appendChild(it); }); }
+  function place(){ const r=head.getBoundingClientRect();
+    list.style.left=r.left+'px'; list.style.width=r.width+'px'; list.style.top=(r.bottom+4)+'px'; }
+  head.addEventListener('click',ev=>{ ev.stopPropagation();
+    document.querySelectorAll('.dropdown.open').forEach(d=>d!==dd&&d.classList.remove('open'));
+    const opening=!dd.classList.contains('open');
+    if(opening) place();
+    dd.classList.toggle('open'); });
+  build();
+});
+document.addEventListener('click',()=>document.querySelectorAll('.dropdown.open').forEach(d=>d.classList.remove('open')));
+</script>
+</body>
+</html>

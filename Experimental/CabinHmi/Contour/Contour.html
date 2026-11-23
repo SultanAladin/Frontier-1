@@ -1,0 +1,179 @@
+<!doctype html>
+<!--
+    CONTOUR — CABIN HMI PROTOTYPE A (awaiting approval)
+    🧩 Off-road trail display for the ControlVehicle: topographic 3D terrain, drive-mode dial, axle locks,
+       tyre pressures pinned to the wheels, tilt pad, proximity fans, the Ridge tach cluster and a Lights menu. Standalone; 1600 × 900 panel.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contour · Cabin HMI A</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Contour.css">
+</head>
+<body>
+<div class="DisplayHost Contour" id="Display">
+
+    <!-- ① Menu rail -->
+    <nav class="MenuRail" id="MenuRail">
+        <div class="RailMark"><svg viewBox="0 0 32 32"><path d="M4 24 12 10l5 8 4-5 7 11Z"/><path d="M4 28h24"/></svg></div>
+        <button data-menu="Terrain" class="On" data-ripple><svg viewBox="0 0 32 32"><path d="M3 25 12 9l6 10 4-6 7 12Z"/></svg><span>Terrain</span></button>
+        <button data-menu="Tyres" data-ripple><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11"/><circle cx="16" cy="16" r="5"/><path d="M16 5v4M16 23v4M5 16h4M23 16h4"/></svg><span>Tyres</span></button>
+        <button data-menu="Tilt" data-ripple><svg viewBox="0 0 32 32"><path d="M4 22 28 12"/><circle cx="10" cy="22" r="3"/><circle cx="23" cy="16.5" r="3"/><path d="M16 4v6"/></svg><span>Tilt</span></button>
+        <button data-menu="Sensors" data-ripple><svg viewBox="0 0 32 32"><rect x="12" y="9" width="8" height="14" rx="2"/><path d="M8 6a12 12 0 0 0 0 20M24 6a12 12 0 0 1 0 20M5 3a16 16 0 0 0 0 26M27 3a16 16 0 0 1 0 26"/></svg><span>Sensors</span></button>
+        <button data-menu="Lights" data-ripple><svg viewBox="0 0 32 32"><path d="M13 8c7 0 11 3.6 11 8s-4 8-11 8Z"/><path d="M3 11l7 1.6M3 16l7 1.6M3 21l7 1.6"/></svg><span>Lights</span></button>
+        <button data-menu="Vehicle" data-ripple><svg viewBox="0 0 32 32"><path d="M5 20v-4l3-6h16l3 6v4Z"/><circle cx="10" cy="21" r="2.5"/><circle cx="22" cy="21" r="2.5"/></svg><span>Vehicle</span></button>
+    </nav>
+
+    <!-- ② Status band -->
+    <header class="StatusBand">
+        <div class="Driver"><i></i>Driver · Amara</div>
+        <div class="HeadingTape" id="HeadingTape"><div class="TapeTrack" id="TapeTrack"></div><b id="HeadingText">NE 042°</b></div>
+        <div class="StatusRight">
+            <span><small>ALT</small><b id="Altitude">1 147</b> m</span>
+            <span><small>OUT</small><b>18</b>°C</span>
+            <span class="Clock" id="Clock">07:50</span>
+        </div>
+    </header>
+
+    <!-- ③ Viewport -->
+    <section class="Viewport" id="Viewport">
+        <canvas class="Scene" id="Scene"></canvas>
+        <i class="Bracket TL"></i><i class="Bracket TR"></i><i class="Bracket BL"></i><i class="Bracket BR"></i>
+        <div class="ViewportTitle"><span id="ViewportTitle">Terrain Response</span></div>
+        <div class="ViewChrome">
+            <div class="SkinSwitch" id="SkinSwitch"><button data-skin="solid" class="On">Solid</button><button data-skin="xray">X-ray</button><i></i></div>
+        </div>
+        <div class="Callouts" id="Callouts"></div>
+        <div class="TelltaleRow" id="TelltaleRow">
+            <i data-telltale="Left" data-glyph="Left" class="Amber"></i><i data-telltale="Parking" data-glyph="Parking" class="Verdant"></i><i data-telltale="Low" data-glyph="Low" class="Verdant"></i><i data-telltale="High" data-glyph="High" class="Blue"></i><i data-telltale="Auto" data-glyph="Auto" class="Verdant"></i><i data-telltale="FogFront" data-glyph="FogFront" class="Verdant"></i><i data-telltale="FogRear" data-glyph="FogRear" class="Amber"></i><i data-telltale="Hazard" data-glyph="Hazard" class="Red"></i><i data-telltale="Right" data-glyph="Right" class="Amber"></i>
+        </div>
+        <div class="Toast" id="Toast"></div>
+    </section>
+
+    <!-- ④ Menu panels -->
+    <aside class="PanelStack">
+
+        <section class="Panel On" data-panel="Terrain">
+            <h2>Drive mode</h2>
+            <p class="Lead" id="ModeLead">Balanced throttle, open differentials.</p>
+            <div class="ModeDial" id="ModeDial">
+                <svg viewBox="0 0 360 210" id="DialFace"></svg>
+                <div class="DialHub"><b id="ModeName">Trail</b><small id="ModeIndex">01 / 05</small></div>
+            </div>
+            <div class="MeterList" id="ModeMeters"></div>
+            <h3>Axle locks</h3>
+            <div class="LockPair">
+                <button class="LockTile" data-lock="Front" data-ripple><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path class="Shackle" d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Front</span><small>Open</small></button>
+                <button class="LockTile" data-lock="Rear" data-ripple><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path class="Shackle" d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Rear</span><small>Open</small></button>
+            </div>
+            <h3>Ride height</h3>
+            <div class="Segmented Wide" id="RideHeight"><button data-ride="-0.05">Crawl −50</button><button data-ride="0" class="On">Normal</button><button data-ride="0.08">Lift +80</button><i></i></div>
+        </section>
+
+        <section class="Panel" data-panel="Tyres">
+            <h2>Tyre pressure</h2>
+            <p class="Lead">Tap a wheel callout or a row to trim its pressure.</p>
+            <div class="TyreGrid" id="TyreGrid"></div>
+            <div class="Stepper"><button data-step="-0.1" data-ripple>−</button><div><b id="StepValue">2.10</b><small id="StepWheel">Front left · bar</small></div><button data-step="0.1" data-ripple>+</button></div>
+            <div class="ActionRow">
+                <button class="Action" data-air="1.2" data-ripple>Air down · sand</button>
+                <button class="Action Ghost" data-air="2.1" data-ripple>Road pressure</button>
+            </div>
+        </section>
+
+        <section class="Panel" data-panel="Tilt">
+            <h2>Articulation</h2>
+            <p class="Lead">Drag the puck to pose the body on a slope.</p>
+            <div class="TiltPad" id="TiltPad">
+                <svg viewBox="0 0 300 300"><circle cx="150" cy="150" r="140"/><circle cx="150" cy="150" r="93"/><circle cx="150" cy="150" r="46"/><path d="M150 4v292M4 150h292"/></svg>
+                <i class="Puck" id="Puck"></i>
+            </div>
+            <div class="TiltReadout">
+                <div><small>Pitch</small><b><span id="PitchText">0</span>°</b><div class="Warn" id="PitchWarn"></div></div>
+                <div><small>Roll</small><b><span id="RollText">0</span>°</b><div class="Warn" id="RollWarn"></div></div>
+            </div>
+            <div class="ActionRow">
+                <button class="Action" id="TrailReplay" data-ripple>Replay trail</button>
+                <button class="Action Ghost" id="LevelOut" data-ripple>Level out</button>
+            </div>
+        </section>
+
+        <section class="Panel" data-panel="Sensors">
+            <h2>Proximity</h2>
+            <p class="Lead">Fans pulse with the nearest return in each quarter.</p>
+            <div class="QuarterGrid" id="QuarterGrid"></div>
+            <h3>Fans</h3>
+            <div class="Segmented Wide" id="FanMode"><button data-fan="off">Off</button><button data-fan="near" class="On">Near</button><button data-fan="wide">Wide</button><i></i></div>
+        </section>
+
+        <section class="Panel" data-panel="Vehicle">
+            <h2>Vehicle</h2>
+            <p class="Lead">ControlVehicle · trail build · basalt matte.</p>
+            <div class="RangeArc"><svg viewBox="0 0 220 120"><path class="ArcTrack" d="M20 110a90 90 0 0 1 180 0"/><path class="ArcFill" id="RangeFill" d="M20 110a90 90 0 0 1 180 0"/></svg><div><b id="RangeText">486</b><small>km range</small></div></div>
+            <div class="FactRows">
+                <span>Transfer case</span><b id="TransferText">4H · auto</b>
+                <span>Odometer</span><b>12 408 km</b>
+                <span>Mass</span><b>1 300 kg</b>
+                <span>Peak torque</span><b>520 N·m</b>
+            </div>
+            <p class="Moved">Lamps now live in their own <button class="LinkButton" data-goto="Lights">Lights</button> menu.</p>
+        </section>
+
+
+        <section class="Panel" data-panel="Lights" id="LightsPanel">
+            <h2>Lights</h2>
+            <p class="Lead">Trail lamps · tap a lamp, watch it on the truck.</p>
+            <div class="BeamDial">
+                <button data-beam="Off"><span data-glyph="Drl"></span><small>Off</small></button>
+                <button data-beam="Auto"><span data-glyph="Auto"></span><small>Auto</small></button>
+                <button data-beam="Parking"><span data-glyph="Parking"></span><small>Park</small></button>
+                <button data-beam="Low"><span data-glyph="Low"></span><small>Low</small></button>
+                <button data-beam="High"><span data-glyph="High"></span><small>High</small></button>
+            </div>
+            <div class="LampMap" id="LampMap">
+                <svg viewBox="0 0 368 120">
+                    <path class="Hull" d="M58 26h220l42 14v40l-42 14H58l-26-12V38Z"/>
+                    <path class="Hull Cab" d="M140 34h110l20 26-20 26H140l-14-26Z"/>
+                    <g class="Spots">
+                        <circle data-spot="Low" cx="318" cy="42" r="5"/><circle data-spot="Low" cx="318" cy="78" r="5"/>
+                        <circle data-spot="FogFront" cx="322" cy="32" r="3.5"/><circle data-spot="FogFront" cx="322" cy="88" r="3.5"/>
+                        <rect data-spot="RoofBar" x="236" y="38" width="6" height="44" rx="2"/>
+                        <circle data-spot="Tail" cx="34" cy="42" r="5"/><circle data-spot="Tail" cx="34" cy="78" r="5"/>
+                        <circle data-spot="FogRear" cx="30" cy="52" r="3.2"/><circle data-spot="Reverse" cx="30" cy="68" r="3.2"/>
+                        <circle data-spot="Left" cx="300" cy="22" r="3.4"/><circle data-spot="Left" cx="60" cy="22" r="3.4"/>
+                        <circle data-spot="Right" cx="300" cy="98" r="3.4"/><circle data-spot="Right" cx="60" cy="98" r="3.4"/>
+                        <rect data-spot="Underbody" x="80" y="56" width="180" height="8" rx="4"/>
+                    </g>
+                </svg>
+                <div class="MapNote" id="LampNote">Low beam · 62 m reach</div>
+            </div>
+            <div class="LampGrid">
+                <button class="LampTile" data-lamp="FogFront" data-ripple><span data-glyph="FogFront"></span><b>Front fog</b><small>Wide, low cut</small></button>
+                <button class="LampTile" data-lamp="FogRear" data-ripple><span data-glyph="FogRear"></span><b>Rear fog</b><small>High-intensity red</small></button>
+                <button class="LampTile" data-lamp="AutoHigh" data-ripple><span data-glyph="Auto"></span><b>Auto high</b><small>Dips for traffic</small></button>
+                <button class="LampTile" data-lamp="RoofBar" data-ripple><span data-glyph="RoofBar"></span><b>Roof light bar</b><small>8 × LED · 310 m</small></button>
+                <button class="LampTile" data-lamp="Underbody" data-ripple><span data-glyph="Underbody"></span><b>Underbody</b><small>Spotter glow</small></button>
+                <button class="LampTile Hazard" data-signal="Hazard" data-ripple><span data-glyph="Hazard"></span><b>Hazard</b><small>All four corners</small></button>
+            </div>
+            <div class="SignalPair">
+                <button data-signal="Left" data-ripple><span data-glyph="Left"></span>Left</button>
+                <span class="SignalHint">Indicators</span>
+                <button data-signal="Right" data-ripple>Right<span data-glyph="Right"></span></button>
+            </div>
+        </section>
+    </aside>
+
+    <!-- ⑤ Drive strip -->
+    <footer class="DriveStrip">
+        <div class="Speed"><b id="SpeedText">0</b><small>km/h</small></div>
+        <div class="GearRow" id="GearRow"><button data-gear="P" class="On">P</button><button data-gear="R">R</button><button data-gear="N">N</button><button data-gear="D">D</button><button data-gear="M">M</button><i></i></div>
+        <div class="Transfer"><button id="TransferSwitch" class="TransferSwitch"><span class="On">4H</span><span>4L</span><i></i></button></div>
+        <div class="StripNote" id="StripNote">Trail · open diffs · 2.1 bar</div>
+    </footer>
+</div>
+<div class="ProtoTag">Prototype A · Contour · awaiting approval</div>
+<script type="module" src="./Contour.js"></script>
+</body>
+</html>

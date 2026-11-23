@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="component-viewer-title"><title id="component-viewer-title">Component Viewer — custom SVG icon</title><defs>
+<linearGradient id="component-viewer-panel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#3a3a3a"/><stop offset="1" stop-color="#242424"/></linearGradient>
+<linearGradient id="component-viewer-top" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f4f1ea"/><stop offset="1" stop-color="#c9c4ba"/></linearGradient>
+<linearGradient id="component-viewer-left" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#a9b9cf"/><stop offset="1" stop-color="#6f829d"/></linearGradient>
+<linearGradient id="component-viewer-right" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#7f93ae"/><stop offset="1" stop-color="#47566d"/></linearGradient>
+<filter id="component-viewer-shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#000" flood-opacity=".28"/></filter>
+</defs>
+<g filter="url(#component-viewer-shadow)">
+<rect x="22" y="34" width="212" height="172" rx="22" fill="url(#component-viewer-panel)" stroke="#585858"/>
+<rect x="34" y="48" width="44" height="144" rx="10" fill="#1c1c1c" stroke="#ffffff" stroke-opacity=".06"/>
+<rect x="42" y="58" width="28" height="9" rx="4.5" fill="#d9d4ca" opacity=".85"/>
+<rect x="42" y="74" width="28" height="9" rx="4.5" fill="#8b8b8b" opacity=".55"/>
+<rect x="42" y="90" width="28" height="9" rx="4.5" fill="#8b8b8b" opacity=".55"/>
+<rect x="42" y="106" width="28" height="9" rx="4.5" fill="#8b8b8b" opacity=".4"/>
+<rect x="88" y="48" width="134" height="144" rx="12" fill="#161616" stroke="#ffffff" stroke-opacity=".06"/>
+<path d="M98 172h114M110 160l-12 12M210 160l12 12" stroke="#ffffff" stroke-opacity=".08" stroke-width="2" stroke-linecap="round"/>
+<g transform="translate(155 118) scale(1.32) translate(-155 -116)">
+<path d="M155 70 196 92 155 114 114 92Z" fill="url(#component-viewer-top)"/>
+<path d="M114 92 155 114V162L114 140Z" fill="url(#component-viewer-left)"/>
+<path d="M196 92 155 114V162L196 140Z" fill="url(#component-viewer-right)"/>
+<path d="M155 70 196 92 155 114 114 92Z M155 114V162" stroke="#ffffff" stroke-opacity=".45" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="196" cy="140" r="7" fill="#ffd27a"/>
+<circle cx="196" cy="140" r="12" stroke="#ffd27a" stroke-opacity=".45" stroke-width="2"/>
+</g>
+</g>
+</svg>

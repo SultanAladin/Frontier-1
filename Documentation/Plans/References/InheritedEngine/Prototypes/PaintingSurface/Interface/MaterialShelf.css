@@ -1,0 +1,383 @@
+/*====================================================================================================================================
+                                                      MATERIALSHELF.CSS
+====================================================================================================================================*/
+/* 🧩 The bottom notch drawer that holds the material browser — notch, rail, swatch grid, hero card, drag ghost */
+
+/* 🔴 Every colour here is a token variable, never a literal. The donor shelf carried its own palette
+      (--panel-2:#0d0d0d, --accent:#ffffff) and pasting those across would have put a foreign panel tone next
+      to this prototype's on a near-black desk — the drawer would read as a different application docked to
+      the bottom of this one. Only the geometry is ported.
+
+   🔴 The live :root is the one in LayerInspector.css, NOT Interface/DesignTokens.css — that file exists but
+      nothing links it, and its palette DISAGREES (a blue --accent, alpha-white hairlines). This sheet is
+      linked after the inspector's for that reason. Two consequences the inspector's own comment spells out:
+        • --accent is near-WHITE (#e8e8e8). The blue is a separate token, --selected (SelectionMarker), and it
+          is reserved for the dropdown radio and hover bar. A selection RING is an active-state mark, so the
+          grid tile takes --accent; using --selected here would put blue where the app puts white.
+        • --hair and --hair-strong are the SAME tone. Leaning on a contrast between them buys nothing, so
+          emphasis is carried by the tone step (--tile → --tile-hi) instead.
+
+   🔴 The toast is defined in THIS sheet. `.toast` is a DesignTokens class and appears in none of the linked
+      sheets, so reusing the name by itself would have rendered an unstyled, invisible div. */
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     SHELF + NOTCH
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* The shelf spans the viewport but is INERT — pointer-events:none — so a closed drawer does not eat clicks
+   along the bottom edge of the model. Only the notch and the drawer panel opt back in. */
+#MaterialShelf
+{
+    position:       absolute;
+    left:           0;
+    right:          0;
+    bottom:         0;
+    z-index:        30;
+    pointer-events: none;
+    --notch-w:      196px;
+    --notch-h:      34px;
+}
+
+/* The notch itself: a bezier tab that reads as a lip cut out of the drawer's top edge. `preserveAspectRatio
+   none` lets it stretch to the token width without redrawing the path. */
+#MaterialShelf .shelf-notch
+{
+    position:       absolute;
+    left:           50%;
+    bottom:         0;
+    transform:      translateX(-50%);
+    width:          var(--notch-w);
+    height:         var(--notch-h);
+    pointer-events: auto;
+    cursor:         grab;
+    filter:         drop-shadow(0 -2px 8px rgba(0, 0, 0, .65));
+}
+
+#MaterialShelf .shelf-notch.dragging { cursor: grabbing; }
+
+#MaterialShelf .shelf-notch path { fill: var(--menu); stroke: var(--hair); stroke-width: 1; }
+
+#MaterialShelf .shelf-notch:hover path { fill: var(--tile-hi); }
+
+/* The label rides at the notch's own offset rather than inside the SVG, so it never scales with the stretch. */
+#MaterialShelf .shelf-label
+{
+    position:       absolute;
+    left:           50%;
+    transform:      translateX(-50%);
+    width:          var(--notch-w);
+    text-align:     center;
+    font-size:      11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color:          var(--muted);
+    pointer-events: none;
+    line-height:    var(--notch-h);
+    user-select:    none;
+}
+
+#MaterialShelf .shelf-notch:hover + .shelf-label { color: var(--ink); }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                      DRAWER PANEL
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* 🔴 The drawer's HEIGHT is what animates, not a transform. A translate would slide the panel down past the
+      viewport edge and its content would stay laid out at full size behind the model — the grid's scrollbar
+      and any open field would still be hit-testable below the fold. Animating height clips it instead, so a
+      half-open drawer is genuinely half a drawer. */
+#MaterialShelf .shelf-drawer
+{
+    position:       absolute;
+    left:           50%;
+    bottom:         0;
+    transform:      translateX(-50%);
+    width:          min(calc(100vw - 40px), 1180px);
+    height:         0;
+    background:     var(--desk);
+    pointer-events: auto;
+    overflow:       hidden;
+}
+
+#MaterialShelf .shelf-frame
+{
+    margin:        12px 10px;
+    border:        1px solid var(--hair);
+    border-radius: var(--r-menu);
+    background:    var(--menu);
+    display:       flex;
+    gap:           18px;
+    padding:       14px 16px;
+    box-sizing:    border-box;
+    overflow:      hidden;
+    opacity:       0;
+    transition:    opacity 120ms linear;
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     THE FAMILY RAIL
+------------------------------------------------------------------------------------------------------------------------*/
+
+#MaterialShelf .shelf-rail
+{
+    width:          132px;
+    flex:           none;
+    display:        flex;
+    flex-direction: column;
+    gap:            4px;
+    overflow:       auto;
+}
+
+#MaterialShelf .rail-pill
+{
+    height:          28px;
+    padding:         0 10px;
+    border-radius:   8px;
+    display:         flex;
+    align-items:     center;
+    justify-content: space-between;
+    gap:             8px;
+    font-size:       12px;
+    color:           var(--muted);
+    cursor:          pointer;
+    user-select:     none;
+    white-space:     nowrap;
+}
+
+#MaterialShelf .rail-pill:hover { background: var(--tile); color: var(--ink); }
+
+#MaterialShelf .rail-pill.on { background: var(--rail-sel); color: var(--ink); }
+
+/* The per-family count. Dimmed on the selected pill too — it is a tally, not a second label. */
+#MaterialShelf .rail-count { font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                    SEARCH + THE GRID
+------------------------------------------------------------------------------------------------------------------------*/
+
+#MaterialShelf .shelf-mid
+{
+    flex:           1;
+    min-width:      0;
+    display:        flex;
+    flex-direction: column;
+    gap:            10px;
+    overflow:       hidden;
+}
+
+#MaterialShelf .shelf-search
+{
+    height:        28px;
+    flex:          none;
+    border:        1px solid var(--hair);
+    border-radius: 8px;
+    background:    var(--menu-2);
+    color:         var(--ink);
+    font:          inherit;
+    font-size:     12px;
+    padding:       0 10px;
+    outline:       none;
+    box-sizing:    border-box;
+}
+
+#MaterialShelf .shelf-search:focus { border-color: var(--outline); }
+
+#MaterialShelf .shelf-search::placeholder { color: var(--faint); }
+
+#MaterialShelf .shelf-grid
+{
+    display:               grid;
+    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+    gap:                   12px;
+    overflow:              auto;
+    align-content:         start;
+    flex:                  1;
+    min-height:            0;
+}
+
+#MaterialShelf .shelf-tile
+{
+    display:        flex;
+    flex-direction: column;
+    align-items:    center;
+    gap:            5px;
+    cursor:         grab;
+    user-select:    none;
+}
+
+/* The sphere is a circle, so the selection ring is a ring on the canvas rather than a box on the tile. */
+#MaterialShelf .shelf-tile canvas
+{
+    border-radius: 50%;
+    border:        1px solid var(--hair);
+    display:       block;
+    transition:    box-shadow 90ms linear, border-color 90ms linear;
+}
+
+#MaterialShelf .shelf-tile:hover canvas { border-color: var(--hair-strong); }
+
+#MaterialShelf .shelf-tile.sel canvas
+{
+    border-color: var(--accent);
+    box-shadow:   0 0 0 2px var(--accent);
+}
+
+#MaterialShelf .tile-name
+{
+    font-size:   10px;
+    color:       var(--muted);
+    text-align:  center;
+    line-height: 1.25;
+    max-width:   76px;
+    overflow:    hidden;
+    display:     -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+#MaterialShelf .shelf-tile.sel .tile-name { color: var(--ink); }
+
+/* Shown in place of the grid when a search matches nothing, so an empty grid is never mistaken for a
+   still-loading one. */
+#MaterialShelf .grid-empty
+{
+    grid-column: 1 / -1;
+    font-size:   12px;
+    color:       var(--faint);
+    padding:     14px 2px;
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                       THE HERO CARD
+------------------------------------------------------------------------------------------------------------------------*/
+
+#MaterialShelf .shelf-hero
+{
+    width:          224px;
+    flex:           none;
+    border-left:    1px solid var(--hair);
+    padding-left:   16px;
+    display:        flex;
+    flex-direction: column;
+    gap:            10px;
+    overflow:       auto;
+}
+
+#MaterialShelf .hero-swatch { align-self: center; }
+
+#MaterialShelf .hero-swatch canvas
+{
+    border-radius: 50%;
+    border:        1px solid var(--hair);
+    display:       block;
+}
+
+#MaterialShelf .hero-name { font-size: 13px; color: var(--ink); line-height: 1.3; }
+
+#MaterialShelf .hero-family
+{
+    font-size:      10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color:          var(--hue-material);
+}
+
+#MaterialShelf .hero-note { font-size: 11px; color: var(--muted); line-height: 1.45; }
+
+/* The channel tally — which of the five stored channels this preset authors. */
+#MaterialShelf .hero-chan { display: flex; flex-wrap: wrap; gap: 4px; }
+
+#MaterialShelf .chan-chip
+{
+    font-size:     10px;
+    color:         var(--muted);
+    background:    var(--tile);
+    border:        1px solid var(--hair);
+    border-radius: 6px;
+    padding:       2px 6px;
+}
+
+#MaterialShelf .hero-assign
+{
+    height:          30px;
+    flex:            none;
+    border:          1px solid var(--hair-strong);
+    border-radius:   8px;
+    background:      var(--tile);
+    color:           var(--ink);
+    font-size:       12px;
+    display:         flex;
+    align-items:     center;
+    justify-content: center;
+    cursor:          pointer;
+    user-select:     none;
+}
+
+#MaterialShelf .hero-assign:hover { background: var(--tile-hi); border-color: var(--accent); }
+
+#MaterialShelf .hero-hint { font-size: 10px; color: var(--faint); line-height: 1.4; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                    DRAG GHOST + VEIL
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* The ghost follows the pointer during a drag. `pointer-events:none` is load-bearing: under the cursor it
+   would otherwise take every pointermove and the drop target would never see the pointer arrive. */
+#MaterialShelfGhost
+{
+    position:       fixed;
+    z-index:        90;
+    pointer-events: none;
+    opacity:        0;
+    transform:      translate(-50%, -50%);
+    filter:         drop-shadow(0 4px 12px rgba(0, 0, 0, .7));
+}
+
+#MaterialShelfGhost canvas { border-radius: 50%; border: 1px solid var(--hair-strong); display: block; }
+
+/* The accepting-drop ring around the viewport. Inset so it reads as the stage highlighting itself. */
+#MaterialShelfVeil
+{
+    position:       absolute;
+    inset:          6px;
+    z-index:        29;
+    pointer-events: none;
+    border:         1px solid var(--accent);
+    border-radius:  var(--r-tile);
+    opacity:        0;
+    transition:     opacity 110ms linear;
+}
+
+#MaterialShelfVeil.on { opacity: .85; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     THE SHELF TOAST
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* Owned here rather than borrowed. Starts hidden and rises on `.on` so the class can be added a frame later
+   and the transition has a start value to run from. The `bottom` is set inline by the shelf, which raises it
+   clear of an open drawer — so the rise here is opacity and a short lift only, with no vertical offset baked
+   in that the inline value would then have to compensate for. */
+.shelf-toast
+{
+    position:       fixed;
+    left:           50%;
+    bottom:         24px;
+    transform:      translateX(-50%) translateY(10px);
+    background:     var(--menu);
+    border:         1px solid var(--hair);
+    color:          var(--ink);
+    font-size:      12.5px;
+    padding:        9px 16px;
+    border-radius:  999px;
+    z-index:        1200;
+    opacity:        0;
+    transition:     opacity .16s, transform .16s;
+    pointer-events: none;
+    white-space:    nowrap;
+    max-width:      calc(100vw - 40px);
+    overflow:       hidden;
+    text-overflow:  ellipsis;
+}
+
+.shelf-toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }

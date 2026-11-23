@@ -1,0 +1,115 @@
+/* Solid/palette/generator colour source picker. Sits directly beneath the existing ColorField
+   swatch+hex row and never changes its layout; only the two tab buttons and popover are new. */
+.colour-source-field {
+  margin-bottom: 17px;
+}
+.colour-source-field .color-field {
+  margin-bottom: 7px;
+}
+.colour-source-tabs {
+  display: flex;
+  gap: 6px;
+}
+.colour-source-tabs > button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #3d3e3f;
+  background: #1a1b1b;
+  border-radius: 4px;
+  color: #9a9b94;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+}
+.colour-source-tabs > button:hover:not(:disabled) {
+  color: #c6d4b8;
+  border-color: #52534f;
+}
+.colour-source-tabs > button[aria-pressed="true"] {
+  background: #272a24;
+  border-color: #6a7a52;
+  color: #c6d4b8;
+}
+.colour-source-tabs > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.colour-source-palette,
+.colour-source-generate {
+  margin-top: 7px;
+  padding: 8px;
+  border: 1px solid #3d3e3f;
+  border-radius: 5px;
+  background: #171717;
+}
+.colour-source-palette-group + .colour-source-palette-group {
+  margin-top: 8px;
+}
+.colour-source-palette-group > small {
+  display: block;
+  font-size: 8px;
+  color: #797a7c;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+}
+.colour-source-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.colour-source-swatches > button {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid #ffffff1f;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #fff;
+}
+.colour-source-swatches > button[aria-pressed="true"] {
+  outline: 2px solid #c6d4b8;
+  outline-offset: 1px;
+}
+.colour-source-swatches > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.colour-source-generate {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.colour-source-generate > button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #3d3e3f;
+  border-radius: 4px;
+  background: #1a1b1b;
+  color: #c6d4b8;
+  font-size: 9px;
+  cursor: pointer;
+  text-align: left;
+}
+.colour-source-generate > button:hover:not(:disabled) {
+  border-color: #6a7a52;
+}
+.colour-source-generate > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.colour-source-generate-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid #ffffff1f;
+  flex: none;
+}

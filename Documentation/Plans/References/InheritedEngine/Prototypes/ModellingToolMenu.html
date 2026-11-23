@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier — Modelling Tool Menu</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════════
+     Palette — lifted verbatim from SpawnContextMenu.html. Same rail+grid two-pane
+     shape, same near-black ink, same single blue accent. The only colour in the
+     card is the accent tick and the glyph strokes; chrome stays quiet so a grid
+     of 40 tools still reads as scannable rather than as a wall.
+     ═════════════════════════════════════════════════════════════════════════ */
+  :root{
+    --desk:        #0a0a0b;
+    --menu:        #17171a;
+    --menu-2:      #101012;   /* item-grid pane, one notch darker */
+    --rail-sel:    #232327;
+    --tile:        #1d1d21;
+    --tile-hi:     #26262b;
+    --hair:        rgba(255,255,255,.06);
+    --hair-strong: rgba(255,255,255,.10);
+    --accent:      #5b8cff;
+    --ink:         #ececf0;
+    --muted:       #82828c;
+    --faint:       #55555d;
+
+    --r-menu: 18px;
+    --r-tile: 12px;
+
+    /* Value-pill + control tokens, mirrored from ToolOptionsWidget.html so the options
+       pane is the same widget set, not a lookalike rebuilt against this menu's palette. */
+    --value-black:  #0a0a0b;
+    --value-unit:   #33333a;
+    --value-focus:  #303035;
+    --track-bg:     #2f2f33;
+    --track-fill:   #8a8a8e;
+    --knob:         #f4f4f5;
+    --outline:      rgba(255,255,255,.22);
+    --text-value:   #f2f2f4;
+    --row-h:        38px;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--desk); color:var(--ink);
+    font:14px/1 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden; user-select:none; cursor:default;
+  }
+
+  /* viewport backdrop */
+  .viewport{
+    position:fixed; inset:0;
+    background:radial-gradient(1200px 820px at 50% 40%, #17181c 0%, #0d0e10 58%, #08090a 100%);
+  }
+  .viewport::before{
+    content:""; position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size:46px 46px; background-position:center;
+    -webkit-mask-image:radial-gradient(circle at 50% 42%, #000 40%, transparent 82%);
+            mask-image:radial-gradient(circle at 50% 42%, #000 40%, transparent 82%);
+  }
+  .hint{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    color:var(--faint); font-size:14px; text-align:center; line-height:1.9; pointer-events:none;
+  }
+  .hint kbd{
+    background:var(--tile); border:1px solid var(--hair-strong); border-radius:7px;
+    padding:3px 9px; font:inherit; font-size:12px; color:var(--muted);
+  }
+
+  /* stratum switch — sets which selection the menu is authored against */
+  .stratum{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:6px; z-index:80;
+    background:var(--menu); border:1px solid var(--hair-strong); border-radius:999px; padding:6px;
+    box-shadow:0 10px 30px rgba(0,0,0,.55);
+  }
+  .stratum .lbl{
+    font-size:10px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--faint); padding:0 8px 0 10px;
+  }
+  .stratum button{
+    background:none; border:0; color:var(--muted); font:inherit; font-size:12.5px;
+    padding:6px 13px; border-radius:999px; cursor:pointer; transition:background .12s, color .12s;
+  }
+  .stratum button:hover{ color:var(--ink); }
+  .stratum button.on{ background:var(--rail-sel); color:var(--ink); }
+
+  /* ═════════════════════════════════════ TOOL MENU ═════════════════════════════════════ */
+  /* Two panes, exactly as the spawn menu: a slim BAND rail (icon + word + count)
+     and a GRID of tool tiles that swaps as you move down the rail. */
+  .tools{
+    position:fixed; z-index:100; display:none;
+    background:var(--menu); border:1px solid var(--hair-strong);
+    border-radius:var(--r-menu); overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.04) inset;
+    transform-origin:top left;
+  }
+  .tools.open{
+    display:block;
+    /* 🔴 The card is fixed on BOTH axes, and each pane scrolls INSIDE that box.
+       Height: left uncapped, the rail alone is ~600 px and the card reaches the screen
+       edge, which reads as a docked panel rather than a transient menu.
+       Width: the carousel track is 200% of the card, so a shrink-to-fit card would
+       size itself to BOTH slides laid side by side — roughly double the intended
+       width. The width is therefore stated once here, and the track derives from it:
+       rail/probe column 196 px + grid/options column 326 px + the 1 px hairline. */
+    width:523px;
+    height:min(396px, 76vh);
+    animation:pop .14s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes pop{ from{ opacity:0; transform:scale(.97) translateY(-4px); } to{ opacity:1; transform:none; } }
+
+  /* ═════════════════════════════════ CAROUSEL ═════════════════════════════════ */
+  /* Two slides on one track, ported from OutlinerProperties.html's right dock. The card
+     is the viewport; the track is twice its width and translates by exactly half.
+     🔴 The card HEIGHT is fixed (not max-height) rather than left to the content: the
+     options pane is routinely taller than the tile grid, and a card that grows while it
+     is mid-translate reads as broken rather than as one surface moving. Each pane scrolls
+     inside the fixed cap instead. */
+  .tool-view{ height:100%; overflow:hidden; }
+  .tool-track{
+    display:flex; width:200%; height:100%;
+    transition:transform .34s cubic-bezier(.5,.05,.2,1);
+  }
+  .tool-track.to-options{ transform:translateX(-50%); }
+  /* Each slide re-declares the SAME two-pane split the card used to own, so the rail and
+     the metadata column are one width and the grid and options column are another. Panes
+     that resized mid-slide would read as two cards swapping, not one card moving. */
+  /* 🔴 The left column is PINNED, not `auto`. Under `auto` the rail sizes to its widest
+     label and the metadata pane to its widest readout, so the two slides would disagree
+     by a few pixels and the seam would visibly step as the track translates. */
+  .tool-slide{ width:50%; height:100%; display:grid; grid-template-columns:196px minmax(0,1fr); min-height:0; }
+
+  /* Both panes share one shape: a pinned header over a scrolling body. The header must
+     NOT scroll away — it names what the body is showing, which is the one thing a reader
+     needs while mid-scroll. */
+  .rail, .grid-pane{ display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+
+  /* ── pane headers ── */
+  /* 🔴 The TopologyActionMenu header, verbatim: badge tile · two-line text block · pill.
+     Both panes use the SAME rule, so the two headers are pixel-identical in height and
+     land on one continuous band across the card — a 31 px header beside a 52 px one reads
+     as two stacked cards rather than one menu with two panes. Height is fixed rather than
+     left to the content, because the right pane's subtitle is one line and the left's is
+     two, and intrinsic sizing would drift them apart. */
+  .pane-head{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    height:53px; padding:0 13px; box-sizing:border-box;
+    background:var(--rail-sel); border-bottom:1px solid var(--hair);
+  }
+  /* Both header icons sit on the same black tile. The left one is coloured badge art with
+     its own <rect> backing; the right is a monochrome tool glyph, so the tile is supplied
+     here — otherwise the two headers carry visibly different artwork weight. */
+  .pane-head .h-ic{
+    width:24px; height:24px; flex:0 0 auto; color:var(--ink);
+    background:#000; border-radius:6px; display:grid; place-items:center;
+  }
+  .pane-head .h-ic svg{ width:24px; height:24px; border-radius:6px; }
+  .grid-pane .pane-head .h-ic svg{ width:17px; height:17px; }   /* inset, the badge art is full-bleed */
+  .pane-head .h-txt{
+    flex:1; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:.2px; color:var(--ink);
+  }
+  /* the muted second line — "N of M tools", "N selected" — under the title */
+  .pane-head .h-txt .fn{
+    display:block; color:var(--faint); font-weight:400; font-size:10px; letter-spacing:.3px;
+    margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .pane-head .h-n{
+    flex:0 0 auto; font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums;
+    background:var(--menu-2); padding:4px 9px; border-radius:999px;
+  }
+  .pane-head .h-n.accent{ color:var(--accent); }
+
+  /* ── scrolling bodies ── */
+  /* Scrollbar is hidden on both: a 10 px gutter inside a 660 px card is real width spent
+     on chrome, and the clipped last row already signals more. */
+  .rail-body, .grid-body{
+    flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .rail-body::-webkit-scrollbar, .grid-body::-webkit-scrollbar{ width:0; height:0; }
+
+  /* ── left rail ── */
+  .rail{ background:var(--menu); border-right:1px solid var(--hair); }
+  /* The 196 px column width is pinned on `.tool-slide`; it is set by the HEADER, not the
+     rows: badge + "Border" + "8 selected" pill is the widest the left header gets, and a
+     rail narrower than that would wrap the pill. The body just fills the column. */
+  .rail-body{ padding:7px; display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .rail-item{
+    position:relative; display:flex; align-items:center; gap:9px;
+    height:32px; padding:0 9px 0 8px; border-radius:9px;
+    color:var(--muted); font-size:12.5px; cursor:pointer;
+    transition:background .12s, color .12s, opacity .12s;
+  }
+  .rail-item:hover{ color:var(--ink); }
+  .rail-item.active{ background:var(--rail-sel); color:var(--ink); }
+  /* accent tick on the active band */
+  .rail-item.active::before{
+    content:""; position:absolute; left:-7px; top:50%; transform:translateY(-50%);
+    width:3px; height:15px; border-radius:0 3px 3px 0; background:var(--accent);
+  }
+  /* 📝 There is no `.empty` rail row any more. A band with nothing live for the current
+     selection is omitted from the rail entirely rather than dimmed — see the rail build
+     for why the stable-length argument lost to the clutter it created. */
+  .rail-item .r-ic{ width:18px; height:18px; flex:0 0 auto; color:var(--ink); }
+  .rail-item .r-ic svg{ width:18px; height:18px; }
+  .rail-item .r-lbl{ flex:1; }
+  .rail-item .r-n{ font-size:10px; color:var(--faint); font-variant-numeric:tabular-nums; }
+
+  .rail-sep{ height:1px; background:var(--hair); margin:5px 7px; flex:0 0 auto; }
+
+  /* single-shot rail actions: the row itself runs the tool, no grid swap */
+  .rail-item.shot .r-n{ color:var(--faint); }
+
+  /* ── right grid ── */
+  .grid-pane{ background:var(--menu-2); min-width:0; }
+  .grid-body{ padding:9px; }
+  .grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+
+  .tile{
+    position:relative;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    padding:10px 5px 8px; border-radius:9px;
+    background:var(--tile); border:1px solid transparent;
+    cursor:pointer; transition:background .11s, border-color .11s, transform .08s;
+  }
+  .tile:hover{ background:var(--tile-hi); border-color:var(--hair-strong); }
+  .tile:active{ transform:translateY(1px) scale(.98); }
+  .tile.fired{ border-color:var(--accent); }
+  .tile svg{ width:27px; height:27px; color:var(--ink); }
+  .tile .t-lbl{ font-size:10.5px; color:var(--muted); text-align:center; line-height:1.2; }
+  .tile:hover .t-lbl{ color:var(--ink); }
+  /* the accelerator sits in the corner rather than under the label: a second line of
+     text per tile would double the tile height for information read maybe once */
+  .tile .t-key{
+    position:absolute; top:5px; right:6px; font-size:8.5px; color:var(--faint);
+    font-variant-numeric:tabular-nums; letter-spacing:.3px;
+  }
+
+  /* 🔴 A tool whose precondition fails greys but stays PRESENT, and the reason replaces
+     the label on hover. Hiding it would teach the reader the tool does not exist; the
+     shortfall is the one thing they actually need to know. */
+  .tile.gated{ cursor:not-allowed; background:#16161a; }
+  .tile.gated svg{ color:var(--faint); opacity:.5; }
+  .tile.gated .t-lbl{ color:var(--faint); }
+  .tile.gated:hover{ background:#16161a; border-color:var(--hair); }
+  .tile.gated:active{ transform:none; }
+  .tile.gated .t-why{
+    display:none; font-size:9px; color:#c9a227; text-align:center; line-height:1.2;
+  }
+  .tile.gated:hover .t-lbl{ display:none; }
+  .tile.gated:hover .t-why{ display:block; }
+
+  /* the grid swaps content per band with a whisper of motion */
+  .grid.swap{ animation:fade .13s ease; }
+  @keyframes fade{ from{ opacity:0; transform:translateX(4px); } to{ opacity:1; transform:none; } }
+
+  /* Pinned below the scroll, not inside it: a tally that scrolls out of view is a tally
+     nobody reads. */
+  .grid-foot{
+    flex:0 0 auto; display:flex; align-items:center; gap:11px;
+    height:27px; padding:0 13px; border-top:1px solid var(--hair);
+    color:var(--faint); font-size:9.5px; letter-spacing:.3px;
+  }
+  .grid-foot .live{ color:var(--muted); }
+  .grid-foot .live b{ color:var(--accent); font-weight:600; font-variant-numeric:tabular-nums; }
+
+  /* ═════════════════════════ SLIDE 1 — PROBE READOUT (left) ═════════════════════════ */
+  /* Same shape as the rail: pinned header over a scrolling body, sharing the pinned 196 px
+     column on `.tool-slide`, so the column does not jump width when the track slides. */
+  .probe-pane{ background:var(--menu); border-right:1px solid var(--hair); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .probe-body{ flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-width:none; -ms-overflow-style:none; padding:9px; min-width:0; }
+  .probe-body::-webkit-scrollbar{ width:0; height:0; }
+
+  /* The back row lives INSIDE the 53 px header band, not above it — the header line has to
+     stay continuous across both slides or the card looks like it changed shape. */
+  .pane-head.back{ cursor:pointer; gap:8px; }
+  .pane-head.back:hover{ background:#292930; }
+  .pane-head .b-arrow{ width:16px; height:16px; flex:0 0 auto; color:var(--muted); }
+  .pane-head.back:hover .b-arrow{ color:var(--ink); }
+
+  /* read-only measurement rows: label left, value right, units in a dim trailing span */
+  .probe-sec{ margin-bottom:9px; }
+  .probe-sec-head{
+    font-size:9px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--faint); padding:4px 4px 6px;
+  }
+  .probe-row{
+    display:flex; align-items:center; gap:8px; padding:5px 7px; border-radius:7px;
+    font-size:11px; color:var(--muted);
+  }
+  .probe-row:hover{ background:var(--tile); }
+  .probe-row .p-k{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .probe-row .p-v{ color:var(--ink); font-variant-numeric:tabular-nums; letter-spacing:.2px; }
+  .probe-row .p-u{ color:var(--faint); font-size:9.5px; min-width:20px; }
+  /* a measurement outside its valid band reads red — the limit is the point of showing it */
+  .probe-row.breach .p-v{ color:#e0603f; }
+
+  /* vector triple on one line, as OutlinerProperties' vectorRow */
+  .probe-vec{ display:flex; gap:4px; padding:2px 4px 5px; }
+  .probe-vec .axis{
+    flex:1; min-width:0; display:flex; align-items:center; gap:5px;
+    background:var(--value-black); border-radius:7px; padding:5px 7px;
+  }
+  .probe-vec .axis .a-n{ color:var(--faint); font-size:9px; font-weight:700; }
+  .probe-vec .axis .a-v{ color:var(--ink); font-size:10.5px; font-variant-numeric:tabular-nums;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .probe-flag{
+    display:flex; align-items:center; gap:7px; padding:5px 7px; font-size:10.5px; color:var(--muted);
+  }
+  .probe-flag .dot{ width:7px; height:7px; border-radius:999px; flex:0 0 auto; }
+
+  /* ═════════════════════════ SLIDE 1 — TOOL OPTIONS (right) ═════════════════════════ */
+  .options-pane{ background:var(--menu-2); min-width:0; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .options-body{
+    flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    padding:13px; display:flex; flex-direction:column; gap:13px;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .options-body::-webkit-scrollbar{ width:0; height:0; }
+
+  .param{ display:flex; flex-direction:column; gap:7px; }
+  .param-label{ display:flex; align-items:center; justify-content:space-between;
+    color:var(--muted); font-size:11px; letter-spacing:.2px; }
+  .param-label .name{ display:flex; align-items:center; gap:6px; }
+  .param-label .name svg{ width:13px; height:13px; color:var(--faint); }
+
+  /* ── slider: split value pill + track (ToolOptionsWidget.html) ── */
+  .slider-ctl{ display:flex; align-items:center; gap:9px; }
+  .valuebox{ height:var(--row-h); border-radius:999px; overflow:hidden; display:flex; align-items:stretch; flex:0 0 84px; }
+  .valuebox .num{ flex:1; background:var(--value-black); display:flex; align-items:center; justify-content:flex-end; padding:0 9px; cursor:text; }
+  .valuebox .num:focus-within{ box-shadow:0 0 0 1.5px var(--accent) inset; }
+  .valuebox .num input{ background:none; border:none; outline:none; color:var(--text-value);
+    font:500 14px/1 inherit; text-align:right; width:100%; font-variant-numeric:tabular-nums; -moz-appearance:textfield; }
+  .valuebox .num input::-webkit-outer-spin-button,
+  .valuebox .num input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .valuebox .unitseg{ background:var(--value-unit); color:var(--muted);
+    display:flex; align-items:center; justify-content:center; padding:0 9px; font-size:11px; min-width:32px; }
+
+  .slider{ position:relative; flex:1; height:26px; background:#000; border-radius:999px; cursor:pointer;
+    touch-action:none; border:1.5px solid var(--outline); }
+  .slider .fill{ position:absolute; left:0; top:0; bottom:0; background:var(--track-fill); border-radius:999px; pointer-events:none; }
+  .slider .knob{ position:absolute; top:50%; width:21px; height:21px; background:var(--knob);
+    border-radius:999px; transform:translate(-50%,-50%); box-shadow:0 2px 6px rgba(0,0,0,.5); pointer-events:none; }
+  .slider:active .knob{ transform:translate(-50%,-50%) scale(1.08); }
+
+  /* ── segmented pills ── */
+  .segment{ display:flex; gap:6px; flex-wrap:wrap; }
+  .seg-opt{ padding:0 12px; height:32px; display:flex; align-items:center; border-radius:9px;
+    background:var(--tile); color:var(--muted); cursor:pointer; font-size:11.5px; transition:background .11s, color .11s; }
+  .seg-opt:hover{ color:var(--ink); background:var(--tile-hi); }
+  .seg-opt.sel{ background:var(--knob); color:#1b1b1e; font-weight:600; }
+
+  /* ── boolean switch ── */
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; }
+  .toggle-row .name{ display:flex; align-items:center; gap:7px; color:var(--ink); font-size:11.5px; }
+  .toggle-row .name svg{ width:13px; height:13px; color:var(--faint); }
+  .switch{ width:42px; height:24px; border-radius:999px; background:var(--track-bg); position:relative;
+    cursor:pointer; transition:background .15s; flex:0 0 auto; }
+  .switch.on{ background:var(--accent); }
+  .switch .nub{ position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:999px;
+    background:var(--knob); transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .switch.on .nub{ left:21px; }
+
+  /* ── axis constraint: segmented + a negate pill that only lights on a real axis ── */
+  .axis-ctl{ display:flex; gap:6px; align-items:center; }
+  .axis-ctl .segment{ flex:1; }
+  .neg-pill{
+    height:32px; padding:0 10px; display:flex; align-items:center; border-radius:9px;
+    background:var(--tile); color:var(--faint); cursor:pointer; font-size:11.5px;
+    font-variant-numeric:tabular-nums; transition:background .11s, color .11s, opacity .11s;
+  }
+  .neg-pill:hover{ color:var(--ink); }
+  .neg-pill.on{ background:var(--accent); color:#0b0b0d; font-weight:700; }
+  .neg-pill.void{ opacity:.3; cursor:not-allowed; }
+  .neg-pill.void:hover{ color:var(--faint); }
+
+  /* ── snap targets: multi-select chips ── */
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{
+    display:flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:9px;
+    background:var(--tile); border:1px solid transparent; color:var(--muted);
+    cursor:pointer; font-size:11px; transition:background .11s, color .11s, border-color .11s;
+  }
+  .chip svg{ width:12px; height:12px; }
+  .chip:hover{ color:var(--ink); background:var(--tile-hi); }
+  .chip.on{ background:rgba(91,140,255,.14); border-color:var(--accent); color:var(--ink); }
+
+  /* ── swatch row ── */
+  .swatches{ display:flex; gap:6px; }
+  .swatch{ width:22px; height:22px; border-radius:7px; cursor:pointer; border:2px solid transparent;
+    transition:transform .1s, border-color .12s; }
+  .swatch:hover{ transform:scale(1.1); }
+  .swatch.on{ border-color:#fff; }
+
+  /* a tool that takes no parameters still gets a pane that says so, rather than a void */
+  .shot-note{
+    display:flex; flex-direction:column; gap:7px; align-items:center; text-align:center;
+    color:var(--faint); font-size:11px; line-height:1.6; padding:26px 16px;
+  }
+  .shot-note svg{ width:26px; height:26px; color:var(--muted); }
+  .shot-note b{ color:var(--muted); font-weight:600; }
+
+  /* ── options footer: Apply / Cancel ── */
+  .opt-foot{
+    flex:0 0 auto; display:flex; align-items:center; gap:7px;
+    height:44px; padding:0 11px; border-top:1px solid var(--hair);
+  }
+  .opt-foot .spend{ flex:1; color:var(--faint); font-size:9.5px; letter-spacing:.3px; }
+  .opt-foot .spend b{ color:var(--accent); font-weight:600; font-variant-numeric:tabular-nums; }
+  .obtn{
+    height:28px; padding:0 14px; display:flex; align-items:center; border-radius:8px;
+    font-size:11.5px; cursor:pointer; border:1px solid transparent; transition:background .11s, color .11s;
+  }
+  .obtn.ghost{ background:var(--tile); color:var(--muted); }
+  .obtn.ghost:hover{ background:var(--tile-hi); color:var(--ink); }
+  .obtn.go{ background:var(--accent); color:#0b0b0d; font-weight:600; }
+  .obtn.go:hover{ background:#6f9bff; }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(12px);
+    background:var(--menu); border:1px solid var(--hair-strong); color:var(--ink); font-size:13px;
+    padding:9px 17px; border-radius:999px; z-index:120; opacity:0;
+    transition:opacity .18s, transform .18s; pointer-events:none;
+    box-shadow:0 8px 22px rgba(0,0,0,.5);
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(-58px); }
+  .toast b{ color:var(--accent); font-weight:600; }
+</style>
+</head>
+<body>
+
+  <div class="viewport"></div>
+  <div class="hint"><kbd>Right-click</kbd> anywhere for modelling tools<br>pick a tool to slide to its options · <kbd>Esc</kbd> steps back</div>
+
+  <div class="stratum" id="stratum"><span class="lbl">Selection</span></div>
+
+  <div class="tools" id="tools"></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+/* ═════════════════════════════════════════════════════════════════════════
+   GLYPH ARTWORK — ported 1:1 from TopologyActionMenu.html's PolygonGlyphTable.
+   Same S/D/F/O/B stroke builders over a 24×24 box in currentColor, so the C++
+   unit (which draws these as ImDrawList strokes) renders identical art. Glyphs
+   are SHARED across an operation family, exactly as PolygonGlyphIdentity.h says.
+   ═════════════════════════════════════════════════════════════════════════ */
+const S = (d,w=1.6,o=1)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" opacity="${o}"/>`;
+const D = (d,w=1.4,o=.55)=>`<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="2 2.4" opacity="${o}"/>`;
+const F = (d,o=1)=>`<path d="${d}" fill="currentColor" opacity="${o}"/>`;
+const O = (cx,cy,r,w=1.5,o=1)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="${w}" opacity="${o}"/>`;
+const B = (cx,cy,r,o=1)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor" opacity="${o}"/>`;
+
+const GLYPH = {
+  /* Transform */
+  TranslateArrows:    S("M12 3v18M3 12h18")+S("M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3",1.5),
+  RotateArc:          S("M20 12a8 8 0 1 1-2.3-5.6",1.7)+S("M20 4v4h-4",1.6),
+  ScaleCorner:        S("M5 19V9M5 19h10",1.7)+S("M5 19L19 5",1.5)+S("M19 5h-4M19 5v4",1.6),
+  SlideTrack:         S("M3 12h18",1.6)+S("M8 8l-4 4 4 4M16 8l4 4-4 4",1.5)+B(12,12,2.4),
+  FlattenPlane:       S("M3 18h18",1.7)+B(7,7,1.6,.85)+B(12,5,1.6,.85)+B(17,8,1.6,.85)+D("M7 9v7M12 7v9M17 10v6"),
+  AxisMarker:         S("M12 20V8M12 20l-7-4M12 20l7-4",1.7)+B(12,7,1.7)+B(4,15,1.5,.7)+B(20,15,1.5,.7),
+  CircleFit:          D("M5 5h14v14H5z")+O(12,12,7,1.7),
+  SpanEven:           S("M3 12h18",1.4,.5)+B(4,12,2)+B(9.33,12,2)+B(14.66,12,2)+B(20,12,2),
+  StraightenLine:     D("M3 15l4-6 5 7 4-8 5 4")+S("M3 19h18",1.8),
+
+  /* Extrude / Build */
+  ExtrudeOut:         S("M4 14l8-4 8 4-8 4z",1.6)+S("M12 10V3",1.7)+S("M9 6l3-3 3 3",1.6),
+  ExtrudeSpike:       S("M4 18l8-14 8 14z",1.6)+B(12,4,1.9)+S("M4 18h16",1.4,.55),
+  InsetRing:          S("M4 4h16v16H4z",1.7)+S("M8.5 8.5h7v7h-7z",1.4,.65),
+  OutlineRing:        S("M9 9h6v6H9z",1.7)+D("M4 4h16v16H4z",1.4,.7),
+  BevelChamfer:       S("M4 20V9l5-5h11",1.7)+S("M4 9h5V4",1.3,.5)+S("M9 9L20 20",1.3,.4),
+  BridgeSpan:         S("M4 6v12M20 6v12",1.8)+S("M4 9c5 5 11 5 16 0",1.6)+S("M4 15c5 5 11 5 16 0",1.4,.55),
+  FillPatch:          S("M12 4l8 6-3 9H7l-3-9z",1.7)+S("M7 12h10M9 16h6",1.3,.5),
+  GridPatch:          S("M4 5h16v14H4z",1.7)+S("M9.33 5v14M14.66 5v14M4 9.66h16M4 14.33h16",1.3,.55),
+  ShellThickness:     S("M3 8c4-3 14-3 18 0",1.8)+S("M3 13c4-3 14-3 18 0",1.5,.6)+S("M3 8v5M21 8v5",1.4,.6),
+  SweepPath:          D("M4 19C8 19 8 6 20 6")+S("M4 16v6M1 19h6",1.6)+O(20,6,2.6,1.6),
+
+  /* Cut / Split */
+  LoopInsert:         S("M4 6h16v12H4z",1.5,.7)+S("M4 12h16",1.9)+S("M9.33 6v12M14.66 6v12",1.2,.4),
+  LoopOffset:         S("M4 9h16",1.8)+D("M4 15h16")+S("M12 11v2",1.3,.6),
+  SubdivideQuads:     S("M4 4h16v16H4z",1.7)+S("M12 4v16M4 12h16",1.4,.7),
+  UnSubdivideMerge:   S("M4 4h16v16H4z",1.7)+D("M12 4v16M4 12h16",1.3,.45)+S("M9 9l3 3 3-3M9 15l3-3 3 3",1.5),
+  ConnectPath:        O(6,6,2.2)+O(18,18,2.2)+S("M7.6 7.6l8.8 8.8",1.6),
+  SeamSplit:          S("M12 3v7",1.8)+S("M9 14L6 21M15 14l3 7",1.7)+S("M9 12h6",1.3,.5),
+  RipApart:           B(12,5,2)+S("M9 9L4 20M15 9l5 11",1.7)+D("M10 6.5L6 5M14 6.5L18 5",1.3,.6),
+  PokeCentre:         S("M12 3l9 6-9 12L3 9z",1.6)+S("M3 9h18M12 3v18",1.3,.5)+B(12,11,1.7,.9),
+  BisectPlane:        S("M5 9l7-4 7 4-7 4z",1.6)+S("M5 9v6l7 4 7-4V9",1.4,.6)+S("M2 12h20",1.7),
+  PartitionSolid:     O(9,12,6,1.7)+O(15,12,6,1.5,.6)+S("M12 6.6a6 6 0 0 0 0 10.8",1.5,.9),
+
+  /* Merge / Weld */
+  MergeInward:        S("M5 5l5 5M19 5l-5 5M5 19l5-5M19 19l-5-5",1.6)+B(12,12,2.4),
+  WeldTarget:         B(6,12,2.2)+O(18,12,2.6,1.6)+S("M9 12h6",1.6)+S("M13 9.5l2.5 2.5-2.5 2.5",1.5),
+  CollapseDown:       D("M5 5h14v14H5z",1.3,.5)+S("M8 8l4 4 4-4M8 16l4-4 4 4",1.6)+B(12,12,1.9),
+  CoplanarUnify:      S("M3 9l9-4 9 4-9 4z",1.7)+S("M3 9v6l9 4 9-4V9",1.5,.7)+D("M12 13v6",1.3,.5),
+
+  /* Subdivision */
+  SmoothSurface:      S("M3 16c4 0 5-8 9-8s5 8 9 8",1.7)+D("M3 20h18",1.3,.4),
+  RelaxNeighbour:     B(12,12,2.2)+O(5,7,1.7,1.4,.7)+O(19,7,1.7,1.4,.7)+O(5,17,1.7,1.4,.7)+O(19,17,1.7,1.4,.7)+S("M7 8.5l3 2M17 8.5l-3 2M7 15.5l3-2M17 15.5l-3-2",1.3,.6),
+  SharpenInverse:     S("M3 17l9-10 9 10",1.8)+D("M3 17c4 0 5-7 9-7s5 7 9 7",1.4,.5),
+  DecimateSparse:     S("M4 4h16v16H4z",1.5,.7)+S("M4 12h16M12 4v8",1.4,.8)+D("M12 12v8M4 16h8",1.2,.35),
+  RemeshUniform:      D("M4 4l6 8-4 8",1.3,.45)+S("M4 4h16v16H4z",1.6)+S("M12 4v16M4 12h16",1.4,.8),
+
+  /* Normals / Shading */
+  NormalArrow:        S("M3 16c4-4 14-4 18 0",1.7)+S("M12 14V4",1.8)+S("M9 7l3-3 3 3",1.6),
+  WindingReverse:     S("M3 13c4-4 14-4 18 0",1.7)+S("M9 6l3-3 3 3M12 3v7",1.6)+S("M15 20l-3 3-3-3M12 16v7",1.5,.55),
+  ShadeSmoothCurve:   S("M3 17c3.5 0 4-9 9-9s5.5 9 9 9",1.8)+B(7,13,1.4,.5)+B(12,8.4,1.4,.5)+B(17,13,1.4,.5),
+  ShadeFacet:         S("M3 17l4.5-7 4.5 4 4.5-6L21 17",1.8)+B(7.5,10,1.5,.6)+B(16.5,8,1.5,.6),
+  SharpEdgeMark:      S("M4 18L12 6l8 12",1.8)+S("M12 6V2",1.6)+S("M9 4.5l3-2.5 3 2.5",1.4),
+
+  /* Attributes */
+  CreaseWeight:       S("M3 15h18",1.8)+S("M6 15V9M10 15v-4M14 15v-6M18 15v-3",1.5,.75),
+  UvSeamMark:         D("M4 12h16",1.9,1)+S("M4 8v8M20 8v8",1.5,.7),
+  MaterialSwatch:     S("M4 4h16v16H4z",1.6)+F("M6 6h12v12H6z",.85)+B(9,9,1.2,.4)+B(15,15,1.2,.4),
+
+  /* Topology repair */
+  TriangulateSplit:   S("M4 4h16v16H4z",1.7)+S("M4 4l16 16",1.5,.8),
+  QuadrangulatePair:  S("M4 4h16v16H4z",1.7)+D("M4 4l16 16",1.3,.4)+S("M9 13l3 3 3-3",1.4,.6),
+  PlanarCorrect:      S("M3 14l6-4 6 4 6-4",1.6,.55)+S("M3 18h18",1.9)+D("M9 10v8M15 14v4",1.3,.5),
+  SpinDiagonal:       S("M4 4h16v16H4z",1.6)+S("M6 18L18 6",1.7)+S("M14 4.5a8 8 0 0 1 5 5",1.4,.7)+S("M18.6 6.4l.9 3.4",1.3,.7),
+  HoleSeal:           S("M4 12a8 8 0 0 1 16 0",1.7)+D("M4 12a8 8 0 0 0 16 0")+S("M8 12h8",1.5,.55)+B(12,12,1.5,.5),
+  LooseReclaim:       S("M5 9h14l-1.5 11h-11z",1.6)+S("M3 6h18",1.7)+B(8,4,1.2,.55)+B(13,3,1.2,.55)+B(17,4.5,1.2,.55),
+  NonManifoldRepair:  S("M12 3v18",1.9)+S("M12 8L4 5M12 8l8-3M12 14l-6 4",1.5,.8)+B(12,12,2.2,.9),
+  HullWrap:           S("M12 3l8 6-3 11H7L4 9z",1.7)+B(8,10,1.5,.8)+B(15,9,1.5,.8)+B(12,15,1.5,.8),
+
+  /* Duplicate / Symmetry */
+  DuplicateOffset:    S("M4 4h12v12H4z",1.7)+S("M8 20h12V8",1.6,.7),
+  ShellSeparate:      S("M10 4L4 12l6 8",1.7)+S("M14 4l6 8-6 8",1.7)+D("M12 3v18",1.3,.5),
+  ExtractSurface:     S("M4 15l8-4 8 4-8 4z",1.6,.6)+S("M6 8l6-3 6 3-6 3z",1.8)+S("M12 3V1",1.4,.6),
+  DetachComponent:    S("M11 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4",1.7)+S("M14 12h7M18 9l3 3-3 3",1.6),
+  MirrorAxis:         D("M12 3v18",1.4,.8)+F("M9 7L4 12l5 5z",.9)+F("M15 7l5 5-5 5z",.9),
+  SymmetryBalance:    D("M12 3v18",1.4,.8)+S("M9 7L4 12l5 5z",1.6)+S("M15 7l5 5-5 5z",1.6)+B(12,12,1.5,.6),
+
+  /* Selection conversion */
+  SelectionGrow:      S("M8 8h8v8H8z",1.7)+D("M4 4h16v16H4z",1.3,.6)+S("M6 6l1.6 1.6M18 6l-1.6 1.6M6 18l1.6-1.6M18 18l-1.6-1.6",1.4,.7),
+  SelectionShrink:    D("M8 8h8v8H8z",1.3,.6)+S("M4 4h16v16H4z",1.7)+S("M7.6 7.6L6 6M16.4 7.6L18 6M7.6 16.4L6 18M16.4 16.4L18 18",1.4,.7),
+  LoopHighlight:      O(12,12,8,1.4,.4)+S("M4 12a8 8 0 0 0 16 0",1.9)+S("M4 12a8 8 0 0 1 16 0",1.4,.5),
+  RingHighlight:      S("M4 8c0-2.5 3.6-4 8-4s8 1.5 8 4-3.6 4-8 4-8-1.5-8-4z",1.8)+S("M4 8v8c0 2.5 3.6 4 8 4s8-1.5 8-4V8",1.4,.5),
+  StratumPromote:     B(5,18,2)+S("M8 16l4-4",1.7)+S("M12 12h7v-7z",1.6,.8),
+  LinkedShell:        O(6,7,2.2)+O(18,7,2.2)+O(12,17,2.2)+S("M8 8l8-1M7.5 9.2l3.5 6M16.5 9.2l-3.5 6",1.5,.85),
+  SimilarTrait:       S("M4 5h6v6H4z",1.7)+S("M14 5h6v6h-6z",1.7)+S("M4 15h6v6H4z",1.4,.4)+S("M11 8h2",1.4,.8),
+  BoundaryTrace:      S("M4 8c4-3 12-3 16 0",1.9)+D("M4 8v8c4 3 12 3 16 0V8",1.3,.45)+B(4,8,1.7)+B(20,8,1.7),
+  ShortestPath:       B(5,18,2.2)+B(19,6,2.2)+S("M6.5 16.5C9 14 9 10 12 10s3-3 5.5-3",1.7),
+
+  /* Removal */
+  RemoveCross:        S("M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13",1.7),
+  DissolveFade:       O(8,8,2.1)+O(15,9,1.5,1.4,.75)+O(11,15,1.1,1.3,.55)+B(17,16,.8,.45),
+  DissolveAngle:      S("M4 19L12 6l8 13",1.8)+S("M8.5 15a7 7 0 0 0 7 0",1.4,.7),
+
+  /* ── Parameter-row glyphs. Small, single-idea marks: they sit at 13 px beside a label,
+     where the multi-stroke tool art above turns to mush. ── */
+  ParamAxis:          S("M12 21V9M12 21l-7-4M12 21l7-4",1.6)+B(12,7,1.6),
+  ParamDistance:      S("M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4",1.6),
+  ParamAngle:         S("M4 20h16M4 20L18 6",1.6)+S("M11 20a7 7 0 0 0-2-4.4",1.3,.7),
+  ParamWidth:         S("M3 12h18M6 9l-3 3 3 3M18 9l3 3-3 3",1.6),
+  ParamCount:         S("M3 12h18",1.5)+S("M7 9v6M12 9v6M17 9v6",1.6),
+  ParamProfile:       S("M4 20c6 0 6-16 16-16",1.7),
+  ParamSnap:          S("M6 4v7a6 6 0 0 0 12 0V4",1.7)+S("M6 4h4M14 4h4",1.7),
+  ParamClamp:         S("M5 4h14v6H5z",1.6)+S("M9 10v6a3 3 0 0 0 6 0v-6",1.6),
+  ParamThreshold:     S("M3 16h6l3-8 3 12 3-8h3",1.6),
+  ParamTolerance:     S("M3 9h18M3 15h18",1.5,.6)+S("M12 5v14",1.7)+B(12,12,1.9),
+  ParamPivot:         O(12,12,7,1.5,.55)+B(12,12,2.3)+S("M12 2v3M12 19v3M2 12h3M19 12h3",1.4,.8),
+  ParamLink:          S("M9 12h6",1.6)+S("M10 8H8a4 4 0 0 0 0 8h2M14 8h2a4 4 0 0 1 0 8h-2",1.6),
+  ParamMirror:        D("M12 3v18",1.4,.8)+S("M9 7L4 12l5 5z",1.5)+S("M15 7l5 5-5 5z",1.5),
+  ParamSmooth:        S("M3 16c4 0 5-8 9-8s5 8 9 8",1.7),
+  ParamDepth:         S("M4 8l8-4 8 4-8 4z",1.6)+S("M4 8v6l8 4 8-4V8",1.5,.65),
+  ParamRing:          O(12,12,8,1.6)+O(12,12,3.4,1.4,.6),
+  ParamSeed:          B(12,12,2.2)+B(6,7,1.4,.7)+B(18,8,1.4,.7)+B(7,17,1.4,.7)+B(17,16,1.4,.7),
+  ParamMerge:         S("M5 6l6 6-6 6",1.6)+S("M19 6l-6 6 6 6",1.6)+B(12,12,1.6,.8),
+  ParamStratum:       S("M12 3l9 5-9 5-9-5z",1.6)+S("M3 13l9 5 9-5",1.4,.6),
+  ParamMaterial:      S("M4 4h16v16H4z",1.6)+F("M6 6h12v12H6z",.8),
+  ParamHeight:        S("M12 4v16",1.7)+S("M8 8l4-4 4 4M8 16l4 4 4-4",1.5),
+  ParamRadius:        O(12,12,8,1.5,.6)+S("M12 12L19 8",1.7)+B(12,12,1.8),
+  ParamThickness:     S("M4 9h16M4 15h16",1.7)+S("M12 9v6",1.3,.5),
+  ParamTaper:         S("M7 4h10l-3 16h-4z",1.6),
+  ParamTopology:      S("M4 4h16v16H4z",1.5,.7)+S("M4 12h16M12 4v8",1.4,.7)+S("M12 12l8 8",1.3,.5),
+  ParamNormal:        S("M3 18h18",1.5,.7)+S("M12 18V5",1.7)+S("M9 8l3-3 3 3",1.6),
+  ParamClosed:        O(12,12,7.5,1.7)+S("M9.5 12l1.8 1.8 3.2-3.6",1.5),
+  ParamVisible:       S("M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6z",1.6)+B(12,12,2.4),
+  ParamStrength:      S("M13 3L5 14h6l-2 7 8-11h-6z",1.6),
+  ParamUnit:          S("M3 9h18v6H3z",1.6)+S("M8 9v3M13 9v3M18 9v3",1.3,.6),
+
+  /* Primitive solids — each drawn in the same 3/4 view so the band reads as one family.
+     The top face is the full-weight stroke and the receding edges drop to ~.6, which is
+     what separates a solid from the flat Reference art below. */
+  PrimitiveBox:       S("M12 3l8 4.5v9L12 21l-8-4.5v-9z",1.6)+S("M4 7.5l8 4.5 8-4.5",1.4,.6)+S("M12 12v9",1.4,.6),
+  PrimitivePlane:     S("M2 15l10-6 10 6-10 6z",1.7)+S("M7 15l5-3 5 3",1.2,.45),
+  PrimitiveCircle:    S("M12 8c5.5 0 10 1.8 10 4s-4.5 4-10 4-10-1.8-10-4 4.5-4 10-4z",1.7)+B(12,12,1.6,.5),
+  PrimitiveSphere:    O(12,12,8.5,1.7)+S("M3.5 12c0-2.2 3.8-4 8.5-4s8.5 1.8 8.5 4",1.3,.6)+S("M3.5 12c0 2.2 3.8 4 8.5 4s8.5-1.8 8.5-4",1.3,.35),
+  PrimitiveCylinder:  S("M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z",1.6)+S("M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7",1.5,.7),
+  PrimitiveCone:      S("M12 3l7 14H5z",1.7)+S("M5 17c0 1.7 3.1 3 7 3s7-1.3 7-3",1.4,.6),
+  PrimitiveTorus:     O(12,12,8.5,1.7)+S("M4.5 12c0 1.9 3.4 3.4 7.5 3.4s7.5-1.5 7.5-3.4-3.4-3.4-7.5-3.4S4.5 10.1 4.5 12z",1.3,.6),
+  PrimitiveWedge:     S("M4 19V6l16 13z",1.7)+S("M4 19h16",1.4,.6)+S("M4 6l6 3",1.2,.4),
+
+  /* Reference geometry — low-dimension construction aids. Flat, thin, mostly dashed:
+     these are things you build WITH, not things you render, and the art says so. */
+  ReferenceVertex:    B(12,12,3)+D("M12 2v6M12 16v6M2 12h6M16 12h6",1.3,.5),
+  ReferenceEdge:      B(5,19,2.6)+B(19,5,2.6)+S("M6.6 17.4L17.4 6.6",1.7),
+  ReferenceArc:       S("M4 19a15 15 0 0 1 16-13",1.8)+B(4,19,2.2)+B(20,6,2.2),
+  ReferenceBezier:    S("M3 19C3 9 21 19 21 6",1.7)+B(3,19,2.2)+B(21,6,2.2)+D("M3 19l6-3M21 6l-6 4",1.2,.5),
+  ReferenceGrid:      S("M3 3h18v18H3z",1.5,.8)+S("M9 3v18M15 3v18M3 9h18M3 15h18",1.2,.5),
+  ReferenceAxis:      S("M12 21V3",1.6)+S("M12 21L3 16M12 21l9-5",1.5,.7)+B(12,21,1.8),
+
+  PrimitiveCapsule:   S("M7 9a5 5 0 0 1 10 0v6a5 5 0 0 1-10 0z",1.7)+S("M7 12h10",1.2,.4),
+  PrimitiveTube:      S("M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z",1.6)+S("M5 7v10c0 1.7 3.1 3 7 3s7-1.3 7-3V7",1.5,.7)+O(12,7,3,1.3,.55),
+  PrimitivePyramid:   S("M12 3L21 18H3z",1.7)+S("M12 3v15",1.2,.4)+S("M3 18l9 3 9-3",1.4,.6),
+  PrimitivePrism:     S("M12 3l8 5v8l-8 5-8-5V8z",1.6)+S("M12 3v18",1.2,.4)+S("M4 8l8 5 8-5",1.3,.55),
+  PrimitiveIcoSphere: S("M12 3l8 6-3 10H7L4 9z",1.7)+S("M12 3v16M4 9h16M7 19l5-10 5 10",1.2,.45),
+  PrimitiveDisc:      O(12,12,8.5,1.7)+O(12,12,3.2,1.4,.55)+B(12,12,1.4,.8),
+  PrimitiveHelix:     S("M8 4c8 0 8 4 0 4s-8 4 0 4 8 4 0 4",1.7)+S("M16 4v16",1.2,.4),
+  PrimitiveText:      S("M4 6V4h16v2",1.6)+S("M12 4v16",1.7)+S("M8 20h8",1.5),
+  PrimitiveTerrain:   S("M2 18l6-8 4 5 3-4 7 7z",1.7)+S("M2 21h20",1.3,.5),
+  PrimitiveGear:      O(12,12,4,1.6)+S("M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",1.5,.75),
+
+  ReferenceCircleArc: O(12,12,8,1.5,.5)+S("M12 4a8 8 0 0 1 8 8",2)+B(12,12,1.8),
+  ReferencePath:      S("M4 18C4 8 12 18 12 8s8 2 8-4",1.7)+B(4,18,2.2)+B(20,4,2.2),
+  ReferenceSpline:    S("M3 18C7 6 17 22 21 8",1.7)+B(3,18,1.9,.8)+B(9,12,1.6,.55)+B(15,15,1.6,.55)+B(21,8,1.9,.8),
+  ReferencePlaneRef:  D("M2 15l10-6 10 6-10 6z",1.4,.7)+S("M12 9V3",1.6)+S("M9.5 5.5L12 3l2.5 2.5",1.4),
+  ReferenceMeasure:   S("M3 8h18v8H3z",1.6)+S("M7 8v4M11 8v3M15 8v4M19 8v3",1.3,.6),
+  ReferenceCursor:    O(12,12,4.5,1.4,.7)+S("M12 2v5M12 17v5M2 12h5M17 12h5",1.5)+B(12,12,1.6),
+
+  /* Scene-level actions available with nothing picked */
+  SceneImport:        S("M12 3v11",1.7)+S("M8 10l4 4 4-4",1.6)+S("M4 17v3h16v-3",1.5,.7),
+  SceneImagePlane:    S("M3 5h18v14H3z",1.6)+S("M3 16l5-5 4 4 3-3 6 6",1.4,.7)+B(8.5,9.5,1.5,.8),
+  ScenePaste:         S("M8 4h8v3H8z",1.5)+S("M6 6H4v14h16V6h-2",1.6)+D("M8 12h8M8 16h5",1.3,.55),
+  SceneDuplicate:     S("M4 4h12v12H4z",1.4,.55)+S("M8 8h12v12H8z",1.7),
+  SceneLight:         O(12,10,4.5,1.6)+S("M12 14.5V18",1.5)+S("M9.5 20h5",1.6)+S("M12 2v2M4.5 6l1.4 1.4M19.5 6l-1.4 1.4",1.3,.6),
+  SceneCamera:        S("M3 8h11v9H3z",1.6)+S("M14 12l6-3.5v9L14 14z",1.5,.75)+B(6.5,11,1.4,.8),
+  SceneLinkAsset:     S("M9 15l6-6",1.6)+S("M10 6l2-2a4 4 0 0 1 6 6l-2 2",1.5)+S("M14 18l-2 2a4 4 0 0 1-6-6l2-2",1.5),
+  SceneGroup:         D("M3 3h18v18H3z",1.4,.6)+S("M7 7h4v4H7zM13 13h4v4h-4z",1.6),
+  SceneRecall:        S("M4 12a8 8 0 1 0 3-6.2",1.7)+S("M3 4v5h5",1.5)+B(12,12,1.6,.7),
+  SceneUnits:         S("M4 6h16v12H4z",1.6)+S("M8 6v4M12 6v6M16 6v4",1.3,.6)+S("M7 15h10",1.4,.5),
+};
+function glyph(id){ return `<svg viewBox="0 0 24 24" fill="none">${GLYPH[id]||""}</svg>`; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   STRATUM BADGES — the left header's artwork, one per TopologyStratum. Ported 1:1
+   from TopologyActionMenu.html so the two menus show the same selection badge for
+   the same selection. Coloured art on a black tile, unlike the currentColor tool
+   glyphs above: the badge states WHAT IS SELECTED, and colour is what separates
+   that from the monochrome list of things you could do to it.
+   ═════════════════════════════════════════════════════════════════════════ */
+const BC = { ink:"#e8e8f0", dim:"#8a8a99", blue:"#5b8cff", sky:"#7ec8ff" };
+const bP  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const bPF = (d,f)=>`<path d="${d}" fill="${f}" stroke-linejoin="round"/>`;
+const bL  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}" stroke-linecap="round"/>`;
+const bCI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const bCF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+function badgeArt(shapes){
+  return `<svg viewBox="0 0 24 24" fill="none"><rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>${shapes.join("")}</svg>`;
+}
+
+const BADGE = {
+  Vertex: ()=>badgeArt([bL(4,20,20,20,BC.dim,1.4),bL(4,20,18,6,BC.dim,1.4),bCI(12,12,3.4,BC.blue,1.6),bCF(12,12,4.6,BC.blue+"33")]),
+  Edge:   ()=>badgeArt([bL(4,20,20,4,BC.blue,2.4),bCF(4,20,2.4,BC.sky),bCF(20,4,2.4,BC.sky)]),
+  Face:   ()=>badgeArt([bPF("M4 8L12 4l8 4-8 4z",BC.blue+"cc"),bP("M4 8L12 4l8 4-8 4z",BC.sky,1.4),bCF(4,8,1.6,BC.ink),bCF(20,8,1.6,BC.ink),bCF(12,12,1.6,BC.ink),bCF(12,4,1.6,BC.ink)]),
+  Loop:   ()=>badgeArt([bP("M4 12a8 8 0 0 0 16 0",BC.blue,2.2),bP("M4 12a8 8 0 0 1 16 0",BC.sky,1.6),bCF(4,12,2,BC.ink),bCF(20,12,2,BC.ink)]),
+  Border: ()=>badgeArt([bP("M4 8c4-3 12-3 16 0",BC.blue,2.4),bP("M4 8v8c4 3 12 3 16 0V8",BC.dim,1.3),bCF(4,8,2.2,BC.sky),bCF(20,8,2.2,BC.sky)]),
+  Object: ()=>badgeArt([bPF("M12 3l8 5v8l-8 5-8-5V8z",BC.blue+"aa"),bP("M12 3l8 5v8l-8 5-8-5V8z",BC.sky,1.5),bP("M4 8l8 5 8-5M12 13v8",BC.ink,1.1)]),
+  // Nothing picked: a dashed empty cell with the 3D cursor at its centre. Deliberately the
+  // ONLY dim badge in the set — the absence of a selection is what it has to convey, so it
+  // must not read as confidently as the six that describe real topology.
+  None:   ()=>badgeArt([bP("M5 5h14v14H5z",BC.dim,1.3).replace("/>",' stroke-dasharray="2.6 2.4"/>'),bL(12,8.5,12,15.5,BC.sky,1.4),bL(8.5,12,15.5,12,BC.sky,1.4),bCI(12,12,2.2,BC.blue,1.4)]),
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   SELECTION STRATUM — which topology the menu is authored against. Drives every
+   tool's `strata` test, exactly as SelectionProfile.ActiveStratum drives
+   FilterOperationCatalogue in the shipped code.
+   ═════════════════════════════════════════════════════════════════════════ */
+/* `None` leads the list and is the DEFAULT: an empty scene with nothing picked is the
+   condition the menu is most often opened in, and it is the only condition in which
+   creation is the answer. Under it every editing tool goes absent and the three
+   creation bands are all that stay live. */
+const STRATA = ["None","Vertex","Edge","Face","Loop","Border","Object"];
+let stratum = "None";
+
+// How many components the fake selection holds, for the header pill. A stated count is
+// what makes the header a SELECTION PROFILE rather than a title. `None` is 0, and the
+// header renders that as words rather than "0 selected".
+const SELECTED = { None:0, Vertex:4, Edge:6, Face:8, Loop:12, Border:8, Object:1 };
+
+/* ═════════════════════════════════════════════════════════════════════════
+   PROBE READOUT TABLE — what slide 1's left pane measures, per stratum.
+   ⚠️ The numbers are fixed samples. The prototype carries no geometry, so these
+   demonstrate the FIELD SET, the units and the limit colouring, not live
+   measurement. In the shipped unit each row is resolved from the topology probe.
+
+     vec   : three axis cells on one line (position, normal, bounds)
+     row   : label · value · unit
+     flag  : coloured dot + condition text
+     limit : [floor, ceiling] — a value outside it paints red, which is the
+             entire reason a measurement is worth showing next to a tool
+   ═════════════════════════════════════════════════════════════════════════ */
+const PROBE = {
+  /* 🔴 The one readout that measures nothing. With no selection there is no topology to
+     probe, so this pane reports the INSERTION CONTEXT the new primitive will be built
+     into — cursor, working plane, scene tallies — which is the information that actually
+     governs where a Box lands. Reporting an empty measurement table here would be a lie
+     dressed as a readout. */
+  None: {
+    ident:"No selection",
+    sections:[
+      { title:"Insertion", rows:[
+          {vec:"Cursor", axes:[["X","0.000"],["Y","0.000"],["Z","0.000"]], unit:"cm"},
+          {k:"Working plane", v:"XZ", u:"−"},
+          {k:"Grid step", v:"1.000", u:"cm"},
+      ]},
+      { title:"Scene", rows:[
+          {k:"Objects", v:"0", u:"−"},
+          {k:"Vertices", v:"0", u:"−"},
+          {k:"Scene scale", v:"1.000", u:"−", limit:[0.001,1000]},
+      ]},
+      { title:"Condition", rows:[
+          {flag:"Snapping armed", ok:true},
+          {flag:"Scene empty", ok:true},
+      ]},
+    ],
+    aggregate:[
+      {k:"Objects", v:"0", u:"−"},
+      {k:"Vertices", v:"0", u:"−"},
+    ],
+  },
+  Vertex: {
+    ident:"Vertex #2 418",
+    sections:[
+      { title:"Placement", rows:[
+          {vec:"Position", axes:[["X","12.480"],["Y","0.000"],["Z","-4.215"]], unit:"cm"},
+      ]},
+      { title:"Connectivity", rows:[
+          {k:"Valence",         v:"5",      u:"−",  limit:[3,6]},
+          {k:"Incident edges",  v:"5",      u:"−"},
+          {k:"Incident faces",  v:"5",      u:"−"},
+          {k:"Crease weight",   v:"0.00",   u:"−",  limit:[0,1]},
+      ]},
+      { title:"Condition", rows:[
+          {flag:"Interior",   ok:true},
+          {flag:"Manifold",   ok:true},
+      ]},
+    ],
+    aggregate:[
+      {k:"Vertices",       v:"4",       u:"−"},
+      {k:"Span",           v:"38.902",  u:"cm"},
+      {k:"Centroid X",     v:"6.240",   u:"cm"},
+      {k:"Mean valence",   v:"4.75",    u:"−"},
+    ],
+  },
+  Edge: {
+    ident:"Edge #7 043",
+    sections:[
+      { title:"Measure", rows:[
+          {k:"Length",          v:"24.318",  u:"cm"},
+          {k:"Dihedral",        v:"142.7",   u:"°",  limit:[0,180]},
+          {k:"Face count",      v:"2",       u:"−",  limit:[1,2]},
+      ]},
+      { title:"Endpoints", rows:[
+          {vec:"Origin",  axes:[["X","12.480"],["Y","0.000"],["Z","-4.215"]], unit:"cm"},
+          {vec:"Terminus",axes:[["X","31.902"],["Y","0.000"],["Z","10.447"]], unit:"cm"},
+      ]},
+      { title:"Attributes", rows:[
+          {k:"Crease weight",   v:"0.00",  u:"−", limit:[0,1]},
+          {flag:"Seam",         ok:false},
+          {flag:"Sharp",        ok:false},
+      ]},
+    ],
+    aggregate:[
+      {k:"Edges",         v:"6",       u:"−"},
+      {k:"Total length",  v:"148.204", u:"cm"},
+      {k:"Mean length",   v:"24.701",  u:"cm"},
+      {k:"Contiguous",    v:"yes",     u:"−"},
+    ],
+  },
+  Face: {
+    ident:"Face #1 862",
+    sections:[
+      { title:"Measure", rows:[
+          {k:"Area",         v:"412.66",  u:"cm²"},
+          {k:"Perimeter",    v:"84.209",  u:"cm"},
+          {k:"Vertex count", v:"4",       u:"−",  limit:[3,4]},
+          {k:"Planarity Δ",  v:"0.0031",  u:"cm", limit:[0,0.01]},
+      ]},
+      { title:"Orientation", rows:[
+          {vec:"Normal", axes:[["X","0.000"],["Y","1.000"],["Z","0.000"]], unit:"−"},
+          {vec:"Centre", axes:[["X","22.191"],["Y","0.000"],["Z","3.116"]], unit:"cm"},
+      ]},
+      { title:"Condition", rows:[
+          {flag:"Convex",      ok:true},
+          {flag:"Front-facing",ok:true},
+      ]},
+    ],
+    aggregate:[
+      {k:"Faces",        v:"8",        u:"−"},
+      {k:"Total area",   v:"3 218.44", u:"cm²"},
+      {k:"Quads",        v:"8",        u:"−"},
+      {k:"Triangles",    v:"0",        u:"−"},
+      {k:"Coplanar",     v:"no",       u:"−"},
+    ],
+  },
+  Loop: {
+    ident:"Loop #244",
+    sections:[
+      { title:"Measure", rows:[
+          {k:"Edge count",   v:"12",      u:"−"},
+          {k:"Total length", v:"291.874", u:"cm"},
+          {k:"Mean segment", v:"24.323",  u:"cm"},
+          {k:"Planarity Δ",  v:"0.0000",  u:"cm", limit:[0,0.01]},
+      ]},
+      { title:"Extent", rows:[
+          {vec:"Centre", axes:[["X","0.000"],["Y","8.500"],["Z","0.000"]], unit:"cm"},
+          {k:"Radius (fit)", v:"46.418", u:"cm"},
+      ]},
+      { title:"Condition", rows:[
+          {flag:"Closed",     ok:true},
+          {flag:"Quad ring",  ok:true},
+      ]},
+    ],
+    aggregate:[
+      {k:"Loops",        v:"1",       u:"−"},
+      {k:"Edges",        v:"12",      u:"−"},
+      {k:"Total length", v:"291.874", u:"cm"},
+    ],
+  },
+  Border: {
+    ident:"Border #17",
+    sections:[
+      { title:"Measure", rows:[
+          {k:"Edge count",   v:"8",       u:"−"},
+          {k:"Total length", v:"196.552", u:"cm"},
+          {k:"Open span",    v:"62.104",  u:"cm"},
+          {k:"Parity",       v:"even",    u:"−"},
+      ]},
+      { title:"Extent", rows:[
+          {vec:"Centre", axes:[["X","0.000"],["Y","-6.200"],["Z","0.000"]], unit:"cm"},
+      ]},
+      { title:"Condition", rows:[
+          {flag:"Open boundary", ok:true},
+          {flag:"Planar",        ok:false},
+      ]},
+    ],
+    aggregate:[
+      {k:"Borders",      v:"1",       u:"−"},
+      {k:"Edges",        v:"8",       u:"−"},
+      {k:"Total length", v:"196.552", u:"cm"},
+    ],
+  },
+  Object: {
+    ident:"PolygonComplex «Bracket»",
+    sections:[
+      { title:"Census", rows:[
+          {k:"Vertices",  v:"2 486",  u:"−"},
+          {k:"Edges",     v:"4 928",  u:"−"},
+          {k:"Faces",     v:"2 444",  u:"−"},
+          {k:"Triangles", v:"0",      u:"−"},
+      ]},
+      { title:"Measure", rows:[
+          {k:"Volume",       v:"18 402.7", u:"cm³"},
+          {k:"Surface area", v:"6 118.35", u:"cm²"},
+      ]},
+      { title:"Bounds", rows:[
+          {vec:"Minimum", axes:[["X","-48.00"],["Y","-6.20"],["Z","-48.00"]], unit:"cm"},
+          {vec:"Maximum", axes:[["X","48.00"],["Y","32.80"],["Z","48.00"]],   unit:"cm"},
+      ]},
+      { title:"Condition", rows:[
+          {flag:"Manifold",       ok:true},
+          {flag:"Closed",         ok:true},
+          {flag:"Loose geometry", ok:false},
+      ]},
+    ],
+    aggregate:[
+      {k:"Objects", v:"1", u:"−"},
+    ],
+  },
+};
+
+/* ═════════════════════════════════════════════════════════════════════════
+   TOOL MODEL — bands become rail rows, tools become grid tiles.
+     strata : which selections the tool applies to; "*" = every stratum
+     need   : the precondition text shown when the tool is gated for this stratum
+     accel  : keystroke, drawn in the tile corner
+   A tool absent for a stratum is DROPPED from the grid; a tool present but
+   short of a topology precondition is GATED — greyed, with `need` on hover.
+   ═════════════════════════════════════════════════════════════════════════ */
+const BANDS = [
+  /* ── CREATION — live ONLY under the `None` stratum ──────────────────────────────
+     🔴 These three bands and the six editing bands are mutually exclusive by design:
+     creation answers "there is nothing here", editing answers "operate on what is
+     picked". Authoring them `strata:["None"]` means the rail inverts wholesale as the
+     selection appears or clears, so the menu never offers a tool that has no subject.
+     Every primitive shares a common parameter tail — location axis, alignment, snapping
+     — because WHERE a primitive lands is as much a parameter as how big it is. */
+  { key:"primitive", label:"Primitive", glyph:"PrimitiveBox", tools:[
+      {glyph:"PrimitiveBox",      label:"Box",      accel:"⇧A", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Size X",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Size Y",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamDepth",    label:"Size Z",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Segments", min:1, max:64, value:1, unit:"−"},
+          {kind:"segmented", ico:"ParamPivot",    label:"Pivot",    options:["Centre","Base","Corner"], value:0},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"PrimitivePlane",    label:"Plane",    accel:"⇧P", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",    min:0.1, max:500, value:200, unit:"cm"},
+          {kind:"slider",    ico:"ParamDepth",    label:"Depth",    min:0.1, max:500, value:200, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Subdivisions", min:1, max:128, value:1, unit:"−"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Orientation",  options:["XZ","XY","YZ","View"], value:0},
+          {kind:"toggle",    ico:"ParamNormal",   label:"Face upward", value:true},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"PrimitiveCircle",   label:"Circle",   strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Vertices", min:3, max:256, value:32, unit:"−"},
+          {kind:"segmented", ico:"ParamMerge",    label:"Fill",     options:["None","N-gon","Triangle fan"], value:1},
+          {kind:"segmented", ico:"ParamStratum",  label:"Orientation", options:["XZ","XY","YZ","View"], value:0},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"PrimitiveSphere",   label:"Sphere",   strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamRing",     label:"Rings",    min:2, max:256, value:16, unit:"−"},
+          {kind:"slider",    ico:"ParamCount",    label:"Segments", min:3, max:256, value:32, unit:"−"},
+          {kind:"segmented", ico:"ParamTopology", label:"Topology", options:["Quad","Ico","Cube"], value:0},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Shade smooth", value:true},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"PrimitiveCylinder", label:"Cylinder", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",   min:0.1, max:500, value:50, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",   min:0.1, max:500, value:200, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",    min:3, max:256, value:32, unit:"−"},
+          {kind:"segmented", ico:"ParamMerge",    label:"Cap fill", options:["None","N-gon","Triangle fan"], value:1},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Shade smooth", value:true},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitiveCone",     label:"Cone",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Base radius", min:0, max:500, value:50, unit:"cm"},
+          {kind:"slider",    ico:"ParamTaper",    label:"Tip radius",  min:0, max:500, value:0, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",      min:0.1, max:500, value:200, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",       min:3, max:256, value:32, unit:"−"},
+          {kind:"segmented", ico:"ParamMerge",    label:"Base fill",   options:["None","N-gon","Triangle fan"], value:1},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitiveTorus",    label:"Torus",    strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Major radius", min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamThickness",label:"Minor radius", min:0.1, max:250, value:25, unit:"cm"},
+          {kind:"slider",    ico:"ParamRing",     label:"Major segments", min:3, max:256, value:48, unit:"−"},
+          {kind:"slider",    ico:"ParamCount",    label:"Minor segments", min:3, max:256, value:12, unit:"−"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Shade smooth", value:true},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitiveWedge",    label:"Wedge",    strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",    min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamDepth",    label:"Depth",    min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Slope",    min:1, max:89, value:45, unit:"°"},
+          {kind:"segmented", ico:"ParamPivot",    label:"Pivot",    options:["Centre","Base","Corner"], value:1},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"PrimitiveIcoSphere",label:"Icosphere",strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",       min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Subdivisions", min:1, max:8, value:2, unit:"−"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Shade smooth", value:true},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"PrimitiveCapsule",  label:"Capsule",  strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",     min:0.1, max:250, value:50, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Shaft height",min:0, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",      min:3, max:256, value:32, unit:"−"},
+          {kind:"slider",    ico:"ParamRing",     label:"Cap rings",  min:1, max:64, value:8, unit:"−"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Shade smooth", value:true},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitiveTube",     label:"Tube",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Outer radius", min:0.2, max:500, value:60, unit:"cm"},
+          {kind:"slider",    ico:"ParamThickness",label:"Wall",         min:0.1, max:250, value:10, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",       min:0.1, max:500, value:200, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",        min:3, max:256, value:32, unit:"−"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Cap ends",     value:true},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitivePyramid",  label:"Pyramid",  strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Base width", min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",     min:0.1, max:500, value:150, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Base sides", min:3, max:64, value:4, unit:"−"},
+          {kind:"segmented", ico:"ParamPivot",    label:"Pivot",      options:["Centre","Base","Apex"], value:1},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",    on:["Grid"]},
+      ]},
+      {glyph:"PrimitivePrism",    label:"Prism",    strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",   min:0.1, max:500, value:60, unit:"cm"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Height",   min:0.1, max:500, value:180, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",    min:3, max:64, value:6, unit:"−"},
+          {kind:"segmented", ico:"ParamMerge",    label:"Cap fill", options:["None","N-gon","Triangle fan"], value:1},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitiveDisc",     label:"Annulus",  strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Outer radius", min:0.2, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamThickness",label:"Inner radius", min:0, max:499, value:50, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Sides",        min:3, max:256, value:48, unit:"−"},
+          {kind:"slider",    ico:"ParamRing",     label:"Rings",        min:1, max:64, value:1, unit:"−"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Orientation",  options:["XZ","XY","YZ","View"], value:0},
+      ]},
+      {glyph:"PrimitiveHelix",    label:"Helix",    strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",       min:0.1, max:500, value:80, unit:"cm"},
+          {kind:"slider",    ico:"ParamThickness",label:"Wire radius",  min:0.1, max:100, value:8, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Turns",        min:1, max:64, value:4, unit:"−"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Pitch",        min:0.1, max:200, value:40, unit:"cm"},
+          {kind:"slider",    ico:"ParamRing",     label:"Segments/turn",min:3, max:128, value:24, unit:"−"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+      ]},
+      {glyph:"PrimitiveGear",     label:"Gear",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Pitch radius", min:1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Teeth",        min:4, max:256, value:16, unit:"−"},
+          {kind:"slider",    ico:"ParamHeight",   label:"Thickness",    min:0.1, max:200, value:20, unit:"cm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Pressure angle",min:10, max:35, value:20, unit:"°"},
+          {kind:"slider",    ico:"ParamTaper",    label:"Bore",         min:0, max:250, value:20, unit:"cm"},
+      ]},
+      {glyph:"PrimitiveTerrain",  label:"Terrain",  strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Extent",     min:1, max:5000, value:1000, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Resolution", min:2, max:512, value:64, unit:"−"},
+          {kind:"slider",    ico:"ParamStrength", label:"Amplitude",  min:0, max:1000, value:120, unit:"cm"},
+          {kind:"slider",    ico:"ParamSeed",     label:"Seed",       min:0, max:9999, value:1337, unit:"−"},
+          {kind:"segmented", ico:"ParamProfile",  label:"Noise",      options:["Perlin","Simplex","Ridged","Worley"], value:1},
+      ]},
+      {glyph:"PrimitiveText",     label:"Text",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamHeight",   label:"Size",       min:1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamDepth",    label:"Extrude",    min:0, max:200, value:10, unit:"cm"},
+          {kind:"slider",    ico:"ParamThickness",label:"Bevel",      min:0, max:50, value:2, unit:"cm"},
+          {kind:"segmented", ico:"ParamPivot",    label:"Align",      options:["Left","Centre","Right"], value:1},
+          {kind:"segmented", ico:"ParamStratum",  label:"Orientation",options:["XZ","XY","YZ","View"], value:1},
+      ]},
+  ]},
+
+  { key:"reference", label:"Reference", glyph:"ReferenceGrid", tools:[
+      {glyph:"ReferenceVertex",  label:"Vertex",   strata:["None"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Offset X", min:-500, max:500, value:0, unit:"cm"},
+          {kind:"slider",    ico:"ParamDistance", label:"Offset Y", min:-500, max:500, value:0, unit:"cm"},
+          {kind:"slider",    ico:"ParamDistance", label:"Offset Z", min:-500, max:500, value:0, unit:"cm"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"ReferenceEdge",    label:"Edge",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Length",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Segments", min:1, max:128, value:1, unit:"−"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Direction"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid","Angle"]},
+      ]},
+      {glyph:"ReferenceArc",     label:"Arc",      strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Sweep",    min:1, max:360, value:90, unit:"°"},
+          {kind:"slider",    ico:"ParamCount",    label:"Segments", min:2, max:256, value:16, unit:"−"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Orientation", options:["XZ","XY","YZ","View"], value:0},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Angle"]},
+      ]},
+      {glyph:"ReferenceBezier",  label:"Bezier",   strata:["None"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Control points", min:2, max:64, value:4, unit:"−"},
+          {kind:"slider",    ico:"ParamTolerance",label:"Resolution",     min:1, max:64, value:12, unit:"−"},
+          {kind:"segmented", ico:"ParamProfile",  label:"Handle",   options:["Free","Aligned","Vector","Auto"], value:3},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Cyclic",   value:false},
+      ]},
+      {glyph:"ReferenceGrid",    label:"Grid",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Extent",   min:1, max:2000, value:1000, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Divisions",min:1, max:512, value:20, unit:"−"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Plane",    options:["XZ","XY","YZ"], value:0},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Render in viewport only", value:true},
+      ]},
+      {glyph:"ReferenceAxis",    label:"Empty Axis", strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Display",  options:["Plain","Arrows","Sphere","Cube"], value:1},
+          {kind:"slider",    ico:"ParamWidth",    label:"Display size", min:1, max:500, value:100, unit:"cm"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Align to"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"ReferenceCircleArc",label:"Full Circle", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",   min:0.1, max:500, value:100, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Segments", min:3, max:256, value:32, unit:"−"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Orientation", options:["XZ","XY","YZ","View"], value:0},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Cyclic",   value:true},
+      ]},
+      {glyph:"ReferenceSpline",  label:"Spline",   strata:["None"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Control points", min:2, max:128, value:6, unit:"−"},
+          {kind:"slider",    ico:"ParamTolerance",label:"Resolution",     min:1, max:64, value:12, unit:"−"},
+          {kind:"segmented", ico:"ParamProfile",  label:"Interpolation",  options:["Linear","Catmull","B-Spline","NURBS"], value:1},
+          {kind:"slider",    ico:"ParamThickness",label:"Tension",        min:0, max:100, value:50, unit:"%"},
+          {kind:"toggle",    ico:"ParamClosed",   label:"Cyclic",   value:false},
+      ]},
+      {glyph:"ReferencePath",    label:"Path",     strata:["None"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Points",   min:2, max:256, value:8, unit:"−"},
+          {kind:"slider",    ico:"ParamDistance", label:"Step",     min:0.1, max:500, value:50, unit:"cm"},
+          {kind:"segmented", ico:"ParamProfile",  label:"Mode",     options:["Polyline","Smooth"], value:0},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid","Angle"]},
+      ]},
+      {glyph:"ReferencePlaneRef",label:"Construction Plane", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Extent",   min:1, max:2000, value:500, unit:"cm"},
+          {kind:"slider",    ico:"ParamDistance", label:"Offset",   min:-1000, max:1000, value:0, unit:"cm"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Plane",    options:["XZ","XY","YZ","View"], value:0},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Snap target only", value:true},
+      ]},
+      {glyph:"ReferenceMeasure", label:"Measure",  strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Mode",     options:["Distance","Angle","Radius"], value:0},
+          {kind:"segmented", ico:"ParamUnit",     label:"Units",    options:["cm","mm","m","in"], value:0},
+          {kind:"slider",    ico:"ParamTolerance",label:"Precision",min:0, max:6, value:3, unit:"−"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Vertex","Edge"]},
+      ]},
+      {glyph:"ReferenceCursor",  label:"Place Cursor", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Position X", min:-1000, max:1000, value:0, unit:"cm"},
+          {kind:"slider",    ico:"ParamDistance", label:"Position Y", min:-1000, max:1000, value:0, unit:"cm"},
+          {kind:"slider",    ico:"ParamDistance", label:"Position Z", min:-1000, max:1000, value:0, unit:"cm"},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+  ]},
+
+  { key:"scene", label:"Scene", glyph:"SceneImport", tools:[
+      {glyph:"SceneImport",     label:"Import",     strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Format",   options:["OBJ","FBX","glTF","STEP"], value:2},
+          {kind:"slider",    ico:"ParamWidth",    label:"Scale",    min:1, max:1000, value:100, unit:"%"},
+          {kind:"segmented", ico:"ParamAxis",     label:"Up axis",  options:["Y","Z"], value:0},
+          {kind:"toggle",    ico:"ParamNormal",   label:"Import normals",  value:true},
+          {kind:"toggle",    ico:"ParamMaterial", label:"Import materials",value:true},
+      ]},
+      {glyph:"SceneImagePlane", label:"Reference Image", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",    min:1, max:2000, value:400, unit:"cm"},
+          {kind:"slider",    ico:"ParamStrength", label:"Opacity",  min:0, max:100, value:60, unit:"%"},
+          {kind:"segmented", ico:"ParamStratum",  label:"Plane",    options:["XZ","XY","YZ","View"], value:1},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show through geometry", value:false},
+          {kind:"toggle",    ico:"ParamClamp",    label:"Lock in place", value:true},
+      ]},
+      {glyph:"ScenePaste",      label:"Paste",      accel:"⌃V", strata:["None"], params:[
+          {kind:"segmented", ico:"ParamPivot",    label:"Place at", options:["Cursor","Origin","Source"], value:0},
+          {kind:"toggle",    ico:"ParamLink",     label:"Keep source transform", value:false},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",  on:["Grid"]},
+      ]},
+      {glyph:"SceneDuplicate",  label:"Repeat Last", accel:"⇧R", strata:["None"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Count",    min:1, max:128, value:1, unit:"−"},
+          {kind:"slider",    ico:"ParamDistance", label:"Offset",   min:-500, max:500, value:0, unit:"cm"},
+          {kind:"axis",      ico:"ParamAxis",     label:"Offset along"},
+      ]},
+      {glyph:"SceneLight",      label:"Light",      strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Type",      options:["Point","Sun","Spot","Area"], value:0},
+          {kind:"slider",    ico:"ParamStrength", label:"Power",     min:0, max:5000, value:1000, unit:"−"},
+          {kind:"slider",    ico:"ParamRadius",   label:"Radius",    min:0, max:200, value:10, unit:"cm"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Cone angle",min:1, max:180, value:45, unit:"°"},
+          {kind:"swatches",  ico:"ParamMaterial", label:"Colour",    colors:["#fff4e2","#ffffff","#cfe4ff","#ffd9a0","#ff8f6b"], value:0},
+      ]},
+      {glyph:"SceneCamera",     label:"Camera",     strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Projection", options:["Perspective","Orthographic"], value:0},
+          {kind:"slider",    ico:"ParamAngle",    label:"Focal length",min:8, max:300, value:50, unit:"−"},
+          {kind:"slider",    ico:"ParamDistance", label:"Clip start", min:0.1, max:100, value:10, unit:"cm"},
+          {kind:"slider",    ico:"ParamWidth",    label:"Clip end",   min:100, max:10000, value:5000, unit:"cm"},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Align to current view", value:true},
+      ]},
+      {glyph:"SceneLinkAsset",  label:"Link Asset", strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Mode",      options:["Link","Append","Instance"], value:0},
+          {kind:"toggle",    ico:"ParamLink",     label:"Track source changes", value:true},
+          {kind:"toggle",    ico:"ParamClamp",    label:"Lock transform", value:false},
+          {kind:"snap",      ico:"ParamSnap",     label:"Snap to",   on:["Grid"]},
+      ]},
+      {glyph:"SceneGroup",      label:"Empty Group",strata:["None"], params:[
+          {kind:"segmented", ico:"ParamPivot",    label:"Origin at", options:["Cursor","Origin"], value:0},
+          {kind:"toggle",    ico:"ParamVisible",  label:"Show bounds", value:true},
+      ]},
+      {glyph:"SceneRecall",     label:"Recent",     strata:["None"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Source",    options:["Session","Project","Library"], value:0},
+          {kind:"slider",    ico:"ParamCount",    label:"Entries",   min:1, max:50, value:10, unit:"−"},
+      ]},
+      {glyph:"SceneUnits",      label:"Scene Units",strata:["None"], params:[
+          {kind:"segmented", ico:"ParamUnit",     label:"Unit",      options:["mm","cm","m","in"], value:1},
+          {kind:"slider",    ico:"ParamWidth",    label:"Scene scale", min:0.001, max:1000, value:1, unit:"−"},
+          {kind:"slider",    ico:"ParamTolerance",label:"Grid step",   min:0.001, max:100, value:1, unit:"cm"},
+          {kind:"segmented", ico:"ParamAxis",     label:"Up axis",     options:["Y","Z"], value:0},
+      ]},
+  ]},
+
+  { key:"creationSep", sep:true },
+
+  { key:"transform", label:"Transform", glyph:"TranslateArrows", tools:[
+      {glyph:"TranslateArrows", label:"Translate",   accel:"G",  strata:"*", params:[
+          {kind:"axis",    ico:"ParamAxis",      label:"Constrain to"},
+          {kind:"slider",  ico:"ParamDistance",  label:"Distance",  min:-200, max:200, value:0, unit:"cm"},
+          {kind:"snap",    ico:"ParamSnap",      label:"Snap to",   on:["Grid"]},
+          {kind:"slider",  ico:"ParamTolerance", label:"Increment", min:0, max:10, value:1, unit:"cm"},
+      ]},
+      {glyph:"RotateArc",       label:"Rotate",      accel:"R",  strata:"*", params:[
+          {kind:"axis",      ico:"ParamAxis",   label:"Rotate about"},
+          {kind:"slider",    ico:"ParamAngle",  label:"Angle",    min:-180, max:180, value:0, unit:"°"},
+          {kind:"segmented", ico:"ParamPivot",  label:"Pivot",    options:["Median","Cursor","Individual","Bounds"], value:0},
+          {kind:"snap",      ico:"ParamSnap",   label:"Snap to",  on:["Angle"]},
+          {kind:"slider",    ico:"ParamTolerance", label:"Angle step", min:1, max:90, value:15, unit:"°"},
+      ]},
+      {glyph:"ScaleCorner",     label:"Scale",       accel:"S",  strata:"*", params:[
+          {kind:"axis",      ico:"ParamAxis",   label:"Scale along"},
+          {kind:"slider",    ico:"ParamWidth",  label:"Factor",  min:0, max:400, value:100, unit:"%"},
+          {kind:"segmented", ico:"ParamPivot",  label:"Pivot",   options:["Median","Cursor","Individual","Bounds"], value:0},
+          {kind:"toggle",    ico:"ParamLink",   label:"Uniform axes", value:true},
+      ]},
+      {glyph:"SlideTrack",      label:"Slide",       accel:"GG", strata:["Vertex","Edge"], params:[
+          {kind:"slider",  ico:"ParamDistance",  label:"Offset",  min:-100, max:100, value:0, unit:"%"},
+          {kind:"toggle",  ico:"ParamClamp",     label:"Clamp to neighbours", value:true},
+          {kind:"toggle",  ico:"ParamLink",      label:"Preserve surface shape", value:false},
+          {kind:"toggle",  ico:"ParamSmooth",    label:"Correct UVs", value:true},
+      ]},
+      {glyph:"FlattenPlane",    label:"Flatten",                 strata:["Vertex","Edge","Face"], params:[
+          {kind:"segmented", ico:"ParamAxis",      label:"Onto plane", options:["Best fit","Normal","X","Y","Z"], value:0},
+          {kind:"slider",    ico:"ParamWidth",     label:"Strength", min:0, max:100, value:100, unit:"%"},
+          {kind:"slider",    ico:"ParamTolerance", label:"Deviation cap", min:0, max:5, value:0.5, unit:"cm"},
+      ]},
+      {glyph:"AxisMarker",      label:"Align Axis",              strata:["Vertex","Edge","Face","Object"], params:[
+          {kind:"axis",      ico:"ParamAxis",   label:"Align to"},
+          {kind:"segmented", ico:"ParamPivot",  label:"Anchor",  options:["Median","Minimum","Maximum"], value:0},
+          {kind:"toggle",    ico:"ParamLink",   label:"Preserve spacing", value:true},
+      ]},
+      {glyph:"CircleFit",       label:"Circularize",             strata:["Loop","Border"], need:"needs a closed loop", params:[
+          {kind:"slider",  ico:"ParamWidth",   label:"Strength", min:0, max:100, value:100, unit:"%"},
+          {kind:"slider",  ico:"ParamRing",    label:"Radius",   min:1, max:200, value:46.4, unit:"cm"},
+          {kind:"toggle",  ico:"ParamPivot",   label:"Keep centre", value:true},
+          {kind:"toggle",  ico:"ParamSmooth",  label:"Fit to best plane", value:true},
+      ]},
+      {glyph:"SpanEven",        label:"Equalize",                strata:["Edge","Loop"], params:[
+          {kind:"slider",    ico:"ParamWidth",  label:"Strength", min:0, max:100, value:100, unit:"%"},
+          {kind:"segmented", ico:"ParamCount",  label:"Spacing",  options:["Even","Proportional"], value:0},
+          {kind:"toggle",    ico:"ParamClamp",  label:"Pin endpoints", value:true},
+      ]},
+      {glyph:"StraightenLine",  label:"Straighten",              strata:["Edge","Loop"], params:[
+          {kind:"slider",  ico:"ParamWidth",   label:"Strength", min:0, max:100, value:100, unit:"%"},
+          {kind:"toggle",  ico:"ParamClamp",   label:"Pin endpoints", value:true},
+          {kind:"toggle",  ico:"ParamCount",   label:"Distribute evenly", value:false},
+      ]},
+  ]},
+  { key:"build", label:"Extrude", glyph:"ExtrudeOut", tools:[
+      {glyph:"ExtrudeOut",      label:"Extrude",     accel:"E",  strata:["Vertex","Edge","Face","Loop","Border"], params:[
+          {kind:"slider",    ico:"ParamDistance", label:"Distance", min:-100, max:100, value:10, unit:"cm"},
+          {kind:"segmented", ico:"ParamAxis",     label:"Along",    options:["Normal","X","Y","Z","View"], value:0},
+          {kind:"slider",    ico:"ParamCount",    label:"Steps",    min:1, max:24, value:1, unit:"−"},
+          {kind:"toggle",    ico:"ParamLink",     label:"Keep faces together", value:true},
+          {kind:"toggle",    ico:"ParamMirror",   label:"Mirror to both sides", value:false},
+      ]},
+      {glyph:"ExtrudeSpike",    label:"Spike",                   strata:["Face"], params:[
+          {kind:"slider",  ico:"ParamDistance", label:"Height",  min:0, max:100, value:16, unit:"cm"},
+          {kind:"slider",  ico:"ParamWidth",    label:"Base inset", min:0, max:100, value:0, unit:"%"},
+          {kind:"toggle",  ico:"ParamLink",     label:"Per face", value:true},
+      ]},
+      {glyph:"InsetRing",       label:"Inset",       accel:"I",  strata:["Face"], params:[
+          {kind:"slider",  ico:"ParamWidth",    label:"Thickness", min:0, max:50, value:4, unit:"cm"},
+          {kind:"slider",  ico:"ParamDepth",    label:"Depth",     min:-50, max:50, value:0, unit:"cm"},
+          {kind:"toggle",  ico:"ParamLink",     label:"Per face",  value:false},
+          {kind:"toggle",  ico:"ParamClamp",    label:"Clamp overlap", value:true},
+          {kind:"toggle",  ico:"ParamRing",     label:"Keep boundary", value:false},
+      ]},
+      {glyph:"OutlineRing",     label:"Outline",                 strata:["Face"], params:[
+          {kind:"slider",  ico:"ParamWidth",   label:"Thickness", min:0, max:50, value:3, unit:"cm"},
+          {kind:"toggle",  ico:"ParamAxis",    label:"Outset instead", value:false},
+          {kind:"toggle",  ico:"ParamClamp",   label:"Clamp overlap",  value:true},
+      ]},
+      {glyph:"BevelChamfer",    label:"Bevel",       accel:"⌃B", strata:["Vertex","Edge","Face"], params:[
+          {kind:"slider",    ico:"ParamWidth",    label:"Width",    min:0, max:50, value:2.4, unit:"cm"},
+          {kind:"slider",    ico:"ParamCount",    label:"Segments", min:1, max:24, value:4, unit:"−"},
+          {kind:"slider",    ico:"ParamProfile",  label:"Profile",  min:0, max:100, value:50, unit:"%"},
+          {kind:"segmented", ico:"ParamAxis",     label:"Width type", options:["Offset","Width","Depth","Percent"], value:0},
+          {kind:"toggle",    ico:"ParamClamp",    label:"Clamp overlap", value:true},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Harden normals", value:false},
+      ]},
+      {glyph:"BridgeSpan",      label:"Bridge",                  strata:["Edge","Face","Loop","Border"], need:"needs 2 regions", params:[
+          {kind:"slider",  ico:"ParamCount",    label:"Segments", min:1, max:32, value:1, unit:"−"},
+          {kind:"slider",  ico:"ParamProfile",  label:"Profile",  min:-100, max:100, value:0, unit:"%"},
+          {kind:"slider",  ico:"ParamSeed",     label:"Twist",    min:-16, max:16, value:0, unit:"−"},
+          {kind:"toggle",  ico:"ParamMerge",    label:"Merge ends", value:true},
+      ]},
+      {glyph:"FillPatch",       label:"Fill",        accel:"F",  strata:["Vertex","Edge","Border"], params:[
+          {kind:"segmented", ico:"ParamCount",  label:"Pattern", options:["N-gon","Triangle fan","Beauty"], value:2},
+          {kind:"toggle",    ico:"ParamSmooth", label:"Match shading", value:true},
+      ]},
+      {glyph:"GridPatch",       label:"Grid Fill",               strata:["Border"], need:"needs an even boundary", params:[
+          {kind:"slider",  ico:"ParamCount",   label:"Span",   min:1, max:32, value:1, unit:"−"},
+          {kind:"slider",  ico:"ParamSeed",    label:"Offset", min:0, max:32, value:0, unit:"−"},
+          {kind:"toggle",  ico:"ParamSmooth",  label:"Simple blending", value:false},
+      ]},
+      {glyph:"ShellThickness",  label:"Solidify",                strata:["Face","Object"], params:[
+          {kind:"slider",    ico:"ParamDepth",   label:"Thickness", min:0, max:50, value:2, unit:"cm"},
+          {kind:"slider",    ico:"ParamWidth",   label:"Offset",    min:-100, max:100, value:-100, unit:"%"},
+          {kind:"segmented", ico:"ParamAxis",    label:"Direction", options:["Inward","Outward","Both"], value:0},
+          {kind:"toggle",    ico:"ParamRing",    label:"Rim faces", value:true},
+          {kind:"toggle",    ico:"ParamSmooth",  label:"Even thickness", value:true},
+      ]},
+      {glyph:"SweepPath",       label:"Sweep",                   strata:["Edge","Face","Loop"], params:[
+          {kind:"slider",    ico:"ParamCount",    label:"Steps",  min:1, max:64, value:12, unit:"−"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Twist",  min:-360, max:360, value:0, unit:"°"},
+          {kind:"slider",    ico:"ParamWidth",    label:"Taper",  min:0, max:200, value:100, unit:"%"},
+          {kind:"segmented", ico:"ParamProfile",  label:"Orient", options:["Path","Fixed","Normal"], value:0},
+          {kind:"toggle",    ico:"ParamMerge",    label:"Merge at ends", value:false},
+      ]},
+  ]},
+  { key:"cut", label:"Cut", glyph:"LoopInsert", tools:[
+      {glyph:"LoopInsert",      label:"Loop Cut",    accel:"⌃R", strata:["Edge","Face","Loop","Object"], need:"needs a quad ring", params:[
+          {kind:"slider",    ico:"ParamCount",   label:"Cuts",     min:1, max:64, value:1, unit:"−"},
+          {kind:"slider",    ico:"ParamDistance",label:"Position", min:-100, max:100, value:0, unit:"%"},
+          {kind:"segmented", ico:"ParamProfile", label:"Falloff",  options:["Linear","Smooth","Root","Sharp"], value:0},
+          {kind:"slider",    ico:"ParamSmooth",  label:"Smoothness", min:0, max:100, value:0, unit:"%"},
+          {kind:"toggle",    ico:"ParamMirror",  label:"Mirror about centre", value:false},
+      ]},
+      {glyph:"LoopOffset",      label:"Offset Loop",             strata:["Edge","Loop"], need:"needs a quad ring", params:[
+          {kind:"slider",  ico:"ParamDistance", label:"Offset", min:-100, max:100, value:25, unit:"%"},
+          {kind:"toggle",  ico:"ParamMirror",   label:"Both sides",  value:true},
+          {kind:"toggle",  ico:"ParamClamp",    label:"Cap endpoints", value:false},
+      ]},
+      {glyph:"SubdivideQuads",  label:"Subdivide",               strata:["Edge","Face","Loop"], params:[
+          {kind:"slider",  ico:"ParamCount",  label:"Cuts",       min:1, max:32, value:1, unit:"−"},
+          {kind:"slider",  ico:"ParamSmooth", label:"Smoothness", min:0, max:100, value:0, unit:"%"},
+          {kind:"slider",  ico:"ParamSeed",   label:"Fractal",    min:0, max:100, value:0, unit:"%"},
+          {kind:"toggle",  ico:"ParamRing",   label:"Create n-gons", value:true},
+      ]},
+      {glyph:"UnSubdivideMerge",label:"Un-Subdivide",            strata:["Edge","Face"], params:[
+          {kind:"slider",  ico:"ParamCount",  label:"Iterations", min:1, max:8, value:1, unit:"−"},
+      ]},
+      {glyph:"ConnectPath",     label:"Connect",     accel:"J",  strata:["Vertex"], need:"needs 2 vertices", params:[
+          {kind:"slider",  ico:"ParamCount",  label:"Cuts",  min:1, max:32, value:1, unit:"−"},
+          {kind:"toggle",  ico:"ParamSnap",   label:"Snap to midpoint", value:false},
+      ]},
+      {glyph:"SeamSplit",       label:"Split",       accel:"Y",  strata:["Vertex","Edge","Face"], params:[
+          {kind:"toggle",  ico:"ParamMerge",  label:"Split off faces", value:true},
+          {kind:"toggle",  ico:"ParamLink",   label:"Keep originals",  value:false},
+      ]},
+      {glyph:"RipApart",        label:"Rip",         accel:"V",  strata:["Vertex","Edge"], params:[
+          {kind:"slider",  ico:"ParamDistance", label:"Offset", min:0, max:50, value:0, unit:"cm"},
+          {kind:"toggle",  ico:"ParamMerge",    label:"Fill the gap", value:false},
+      ]},
+      {glyph:"PokeCentre",      label:"Poke",                    strata:["Face"], params:[
+          {kind:"slider",    ico:"ParamDepth",   label:"Offset",  min:-50, max:50, value:0, unit:"cm"},
+          {kind:"segmented", ico:"ParamPivot",   label:"Centre",  options:["Median","Weighted","Bounds"], value:0},
+          {kind:"toggle",    ico:"ParamAxis",    label:"Offset along normal", value:true},
+      ]},
+      {glyph:"BisectPlane",     label:"Bisect",                  strata:["Face","Object"], params:[
+          {kind:"axis",   ico:"ParamAxis",      label:"Plane normal"},
+          {kind:"slider", ico:"ParamDistance",  label:"Plane offset", min:-100, max:100, value:0, unit:"cm"},
+          {kind:"toggle", ico:"ParamClamp",     label:"Clear inner", value:false},
+          {kind:"toggle", ico:"ParamRing",      label:"Clear outer", value:false},
+          {kind:"toggle", ico:"ParamMerge",     label:"Fill the cut", value:true},
+      ]},
+      {glyph:"PartitionSolid",  label:"Partition",               strata:["Object"], need:"needs 2 shells", params:[
+          {kind:"segmented", ico:"ParamMerge",     label:"Operation", options:["Difference","Union","Intersect"], value:0},
+          {kind:"slider",    ico:"ParamTolerance", label:"Tolerance", min:0, max:1, value:0.001, unit:"cm"},
+          {kind:"toggle",    ico:"ParamLink",      label:"Keep the cutter", value:false},
+          {kind:"toggle",    ico:"ParamSeed",      label:"Mark intersection seams", value:true},
+      ]},
+  ]},
+  { key:"merge", label:"Merge", glyph:"MergeInward", tools:[
+      {glyph:"MergeInward",     label:"Merge",       accel:"M",  strata:["Vertex","Edge","Face"], need:"needs 2 components", params:[
+          {kind:"segmented", ico:"ParamPivot",     label:"Merge at", options:["Centre","Cursor","First","Last","Collapse"], value:0},
+          {kind:"slider",    ico:"ParamTolerance", label:"Distance", min:0, max:10, value:0.01, unit:"cm"},
+          {kind:"toggle",    ico:"ParamSmooth",    label:"Correct UVs", value:true},
+      ]},
+      {glyph:"WeldTarget",      label:"Weld",                    strata:["Vertex"], need:"needs 2 vertices", params:[
+          {kind:"slider",  ico:"ParamTolerance", label:"Threshold", min:0, max:10, value:0.05, unit:"cm"},
+          {kind:"toggle",  ico:"ParamLink",      label:"Only connected", value:false},
+          {kind:"toggle",  ico:"ParamSmooth",    label:"Correct UVs", value:true},
+      ]},
+      {glyph:"CollapseDown",    label:"Collapse",                strata:["Vertex","Edge","Face","Loop"], params:[
+          {kind:"segmented", ico:"ParamPivot",  label:"Collapse to", options:["Centre","First","Last"], value:0},
+          {kind:"toggle",    ico:"ParamLink",   label:"Per region", value:true},
+      ]},
+      {glyph:"CoplanarUnify",   label:"Unify Planar",            strata:["Face"], need:"needs coplanar faces", params:[
+          {kind:"slider",  ico:"ParamAngle",     label:"Angle limit", min:0, max:90, value:1, unit:"°"},
+          {kind:"slider",  ico:"ParamTolerance", label:"Deviation",   min:0, max:5, value:0.01, unit:"cm"},
+          {kind:"toggle",  ico:"ParamRing",      label:"Keep boundary edges", value:true},
+      ]},
+  ]},
+  { key:"subdiv", label:"Subdivision", glyph:"SmoothSurface", tools:[
+      {glyph:"SmoothSurface",   label:"Smooth",                  strata:["Vertex","Edge","Face","Object"], params:[
+          {kind:"slider",  ico:"ParamWidth",  label:"Strength",   min:0, max:100, value:50, unit:"%"},
+          {kind:"slider",  ico:"ParamCount",  label:"Iterations", min:1, max:32, value:1, unit:"−"},
+          {kind:"axis",    ico:"ParamAxis",   label:"Restrict to"},
+          {kind:"toggle",  ico:"ParamClamp",  label:"Pin boundary", value:true},
+      ]},
+      {glyph:"RelaxNeighbour",  label:"Relax",                   strata:["Vertex","Edge","Face"], params:[
+          {kind:"slider",    ico:"ParamWidth",   label:"Strength",   min:0, max:100, value:50, unit:"%"},
+          {kind:"slider",    ico:"ParamCount",   label:"Iterations", min:1, max:32, value:2, unit:"−"},
+          {kind:"segmented", ico:"ParamProfile", label:"Method",     options:["Laplacian","Cotangent","Uniform"], value:0},
+          {kind:"toggle",    ico:"ParamDepth",   label:"Preserve volume", value:true},
+      ]},
+      {glyph:"SharpenInverse",  label:"Sharpen",                 strata:["Vertex","Edge","Face"], params:[
+          {kind:"slider",  ico:"ParamWidth",  label:"Strength",   min:0, max:100, value:50, unit:"%"},
+          {kind:"slider",  ico:"ParamCount",  label:"Iterations", min:1, max:32, value:1, unit:"−"},
+          {kind:"toggle",  ico:"ParamClamp",  label:"Pin boundary", value:true},
+      ]},
+      {glyph:"DecimateSparse",  label:"Decimate",                strata:["Face","Object"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Method", options:["Collapse","Un-subdivide","Planar"], value:0},
+          {kind:"slider",    ico:"ParamWidth",    label:"Ratio",  min:1, max:100, value:50, unit:"%"},
+          {kind:"slider",    ico:"ParamAngle",    label:"Angle limit", min:0, max:90, value:5, unit:"°"},
+          {kind:"toggle",    ico:"ParamSeed",     label:"Preserve seams", value:true},
+          {kind:"toggle",    ico:"ParamMirror",   label:"Preserve symmetry", value:false},
+      ]},
+      {glyph:"RemeshUniform",   label:"Remesh",                  strata:["Object"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Method",    options:["Voxel","Quad","Sharp","Blocks"], value:0},
+          {kind:"slider",    ico:"ParamTolerance",label:"Voxel size",min:0.1, max:20, value:2, unit:"cm"},
+          {kind:"slider",    ico:"ParamSmooth",   label:"Adaptivity",min:0, max:100, value:0, unit:"%"},
+          {kind:"toggle",    ico:"ParamSmooth",   label:"Smooth shading", value:true},
+          {kind:"toggle",    ico:"ParamSeed",     label:"Preserve volume", value:false},
+      ]},
+  ]},
+  { key:"normal", label:"Normals", glyph:"NormalArrow", tools:[
+      {glyph:"NormalArrow",     label:"Recalculate",             strata:["Face","Object"], params:[
+          {kind:"segmented", ico:"ParamAxis",   label:"Face",  options:["Outside","Inside"], value:0},
+          {kind:"toggle",    ico:"ParamLink",   label:"Keep sharp edges", value:true},
+      ]},
+      {glyph:"WindingReverse",  label:"Flip",                    strata:["Face","Object"], params:[
+          {kind:"toggle",  ico:"ParamSmooth",  label:"Flip custom normals too", value:true},
+      ]},
+      {glyph:"ShadeSmoothCurve",label:"Shade Smooth",            strata:["Face","Object"], params:[
+          {kind:"toggle",  ico:"ParamAngle",  label:"Limit by angle", value:true},
+          {kind:"slider",  ico:"ParamAngle",  label:"Angle",  min:0, max:180, value:30, unit:"°"},
+      ]},
+      {glyph:"ShadeFacet",      label:"Shade Flat",              strata:["Face","Object"], shot:true},
+      {glyph:"SharpEdgeMark",   label:"Mark Sharp",              strata:["Edge","Loop"], params:[
+          {kind:"segmented", ico:"ParamSeed",  label:"Action", options:["Mark","Clear"], value:0},
+          {kind:"toggle",    ico:"ParamAngle", label:"Only above angle", value:false},
+          {kind:"slider",    ico:"ParamAngle", label:"Angle",  min:0, max:180, value:30, unit:"°"},
+      ]},
+  ]},
+  { key:"attr", label:"Attributes", glyph:"MaterialSwatch", tools:[
+      {glyph:"CreaseWeight",    label:"Crease",                  strata:["Edge","Loop"], params:[
+          {kind:"slider",    ico:"ParamWidth",  label:"Weight", min:0, max:100, value:100, unit:"%"},
+          {kind:"segmented", ico:"ParamSeed",   label:"Action", options:["Set","Add","Clear"], value:0},
+      ]},
+      {glyph:"UvSeamMark",      label:"Mark Seam",               strata:["Edge","Loop","Border"], params:[
+          {kind:"segmented", ico:"ParamSeed",  label:"Action", options:["Mark","Clear"], value:0},
+          {kind:"toggle",    ico:"ParamLink",  label:"Unwrap after", value:false},
+      ]},
+      {glyph:"MaterialSwatch",  label:"Material",                strata:["Face","Object"], params:[
+          {kind:"segmented", ico:"ParamMaterial", label:"Slot", options:["1","2","3","4"], value:0},
+          {kind:"swatches",  ico:"ParamMaterial", label:"Preview", colors:["#c8c8cf","#e0603f","#4d9fff","#6bff8f","#c77dff"], value:0},
+          {kind:"toggle",    ico:"ParamLink",     label:"Assign to whole shell", value:false},
+      ]},
+  ]},
+  { key:"repair", label:"Repair", glyph:"NonManifoldRepair", tools:[
+      {glyph:"TriangulateSplit",label:"Triangulate",             strata:["Face","Object"], params:[
+          {kind:"segmented", ico:"ParamProfile", label:"Quads",   options:["Beauty","Fixed","Alternate","Shortest"], value:0},
+          {kind:"segmented", ico:"ParamCount",   label:"N-gons",  options:["Beauty","Clip"], value:0},
+          {kind:"toggle",    ico:"ParamSeed",    label:"Keep normals", value:true},
+      ]},
+      {glyph:"QuadrangulatePair",label:"Quadrangulate",          strata:["Face","Object"], need:"needs adjacent triangles", params:[
+          {kind:"slider",  ico:"ParamAngle",   label:"Max angle", min:0, max:180, value:40, unit:"°"},
+          {kind:"toggle",  ico:"ParamMaterial",label:"Match materials", value:true},
+          {kind:"toggle",  ico:"ParamSeed",    label:"Respect seams",   value:true},
+          {kind:"toggle",  ico:"ParamSmooth",  label:"Compare shading", value:false},
+      ]},
+      {glyph:"PlanarCorrect",   label:"Make Planar",             strata:["Face"], need:"needs 3 faces", params:[
+          {kind:"slider",  ico:"ParamCount",     label:"Iterations", min:1, max:64, value:8, unit:"−"},
+          {kind:"slider",  ico:"ParamWidth",     label:"Factor",     min:0, max:100, value:50, unit:"%"},
+          {kind:"slider",  ico:"ParamTolerance", label:"Deviation cap", min:0, max:1, value:0.01, unit:"cm"},
+      ]},
+      {glyph:"SpinDiagonal",    label:"Spin Edge",               strata:["Edge"], need:"needs a two-face edge", params:[
+          {kind:"segmented", ico:"ParamProfile", label:"Direction", options:["Clockwise","Counter"], value:0},
+          {kind:"slider",    ico:"ParamCount",   label:"Steps",     min:1, max:8, value:1, unit:"−"},
+      ]},
+      {glyph:"HoleSeal",        label:"Seal Hole",               strata:["Border","Object"], need:"needs an open surface", params:[
+          {kind:"slider",    ico:"ParamCount",   label:"Max sides", min:3, max:64, value:16, unit:"−"},
+          {kind:"segmented", ico:"ParamProfile", label:"Fill with", options:["N-gon","Triangles","Grid"], value:1},
+          {kind:"toggle",    ico:"ParamSmooth",  label:"Match shading", value:true},
+      ]},
+      {glyph:"LooseReclaim",    label:"Clear Loose",             strata:["Object"], params:[
+          {kind:"snap",   ico:"ParamMerge",     label:"Remove", targets:["Vertices","Edges","Faces"], on:["Vertices","Edges"]},
+          {kind:"slider", ico:"ParamTolerance", label:"Below area", min:0, max:5, value:0, unit:"cm²"},
+      ]},
+      {glyph:"NonManifoldRepair",label:"Fix Manifold",           strata:["Object"], need:"needs a manifold surface", params:[
+          {kind:"snap",   ico:"ParamMerge",     label:"Repair", targets:["Wire edges","T-junctions","Duplicates","Flipped"], on:["Wire edges","T-junctions","Duplicates"]},
+          {kind:"slider", ico:"ParamTolerance", label:"Merge distance", min:0, max:1, value:0.001, unit:"cm"},
+          {kind:"toggle", ico:"ParamAxis",      label:"Unify winding", value:true},
+      ]},
+      {glyph:"HullWrap",        label:"Convex Hull",             strata:["Vertex","Object"], need:"needs 4 vertices", params:[
+          {kind:"toggle",  ico:"ParamMerge",  label:"Remove interior", value:true},
+          {kind:"toggle",  ico:"ParamRing",   label:"Keep original",   value:false},
+          {kind:"slider",  ico:"ParamAngle",  label:"Face merge angle", min:0, max:180, value:5, unit:"°"},
+      ]},
+  ]},
+  { key:"symmetry", label:"Symmetry", glyph:"MirrorAxis", tools:[
+      {glyph:"DuplicateOffset", label:"Duplicate",   accel:"⇧D", strata:"*", params:[
+          {kind:"axis",   ico:"ParamAxis",     label:"Offset along"},
+          {kind:"slider", ico:"ParamDistance", label:"Distance", min:-200, max:200, value:0, unit:"cm"},
+          {kind:"slider", ico:"ParamCount",    label:"Copies",   min:1, max:64, value:1, unit:"−"},
+          {kind:"toggle", ico:"ParamLink",     label:"Link the copies", value:false},
+      ]},
+      {glyph:"ShellSeparate",   label:"Separate",    accel:"P",  strata:["Face","Object"], need:"needs 2 shells", params:[
+          {kind:"segmented", ico:"ParamMerge",  label:"By", options:["Selection","Loose parts","Material"], value:0},
+          {kind:"toggle",    ico:"ParamPivot",  label:"Keep the origin", value:true},
+      ]},
+      {glyph:"ExtractSurface",  label:"Extract",                 strata:["Face"], params:[
+          {kind:"slider",  ico:"ParamDepth",  label:"Thickness", min:0, max:50, value:0, unit:"cm"},
+          {kind:"toggle",  ico:"ParamRing",   label:"Keep the source", value:true},
+          {kind:"toggle",  ico:"ParamMerge",  label:"Cap the opening", value:false},
+      ]},
+      {glyph:"DetachComponent", label:"Detach",                  strata:["Vertex","Edge","Face"], params:[
+          {kind:"toggle",  ico:"ParamRing",   label:"Keep the source", value:false},
+          {kind:"toggle",  ico:"ParamSeed",   label:"Mark the new border", value:true},
+      ]},
+      {glyph:"MirrorAxis",      label:"Mirror",                  strata:["Face","Object"], need:"needs a symmetry axis", params:[
+          {kind:"axis",      ico:"ParamMirror",    label:"Mirror across"},
+          {kind:"segmented", ico:"ParamPivot",     label:"About", options:["Origin","Cursor","Bounds"], value:0},
+          {kind:"toggle",    ico:"ParamMerge",     label:"Weld on the seam", value:true},
+          {kind:"slider",    ico:"ParamTolerance", label:"Weld distance", min:0, max:5, value:0.01, unit:"cm"},
+          {kind:"toggle",    ico:"ParamClamp",     label:"Clip at the plane", value:true},
+      ]},
+      {glyph:"SymmetryBalance", label:"Symmetrize",              strata:["Vertex","Edge","Face","Object"], need:"needs a symmetry axis", params:[
+          {kind:"segmented", ico:"ParamMirror",    label:"Direction", options:["-X to +X","+X to -X","-Y to +Y","+Y to -Y"], value:0},
+          {kind:"slider",    ico:"ParamTolerance", label:"Threshold", min:0, max:5, value:0.01, unit:"cm"},
+          {kind:"toggle",    ico:"ParamSmooth",    label:"Correct UVs", value:true},
+      ]},
+  ]},
+  { key:"select", label:"Selection", glyph:"SelectionGrow", tools:[
+      {glyph:"SelectionGrow",   label:"Grow",        accel:"⌃+", strata:"*", params:[
+          {kind:"slider",  ico:"ParamCount",  label:"Steps", min:1, max:32, value:1, unit:"−"},
+          {kind:"toggle",  ico:"ParamAxis",   label:"Face step only", value:false},
+      ]},
+      {glyph:"SelectionShrink", label:"Shrink",      accel:"⌃-", strata:"*", params:[
+          {kind:"slider",  ico:"ParamCount",  label:"Steps", min:1, max:32, value:1, unit:"−"},
+          {kind:"toggle",  ico:"ParamAxis",   label:"Face step only", value:false},
+      ]},
+      {glyph:"LoopHighlight",   label:"Loop",        accel:"⌥↑", strata:["Edge","Face"], params:[
+          {kind:"slider",    ico:"ParamCount",  label:"Ring skip", min:1, max:16, value:1, unit:"−"},
+          {kind:"slider",    ico:"ParamSeed",   label:"Offset",    min:0, max:16, value:0, unit:"−"},
+          {kind:"segmented", ico:"ParamMerge",  label:"Mode",      options:["Replace","Extend","Subtract"], value:0},
+      ]},
+      {glyph:"RingHighlight",   label:"Ring",                    strata:["Edge"], need:"needs a quad ring", params:[
+          {kind:"slider",    ico:"ParamCount",  label:"Ring skip", min:1, max:16, value:1, unit:"−"},
+          {kind:"segmented", ico:"ParamMerge",  label:"Mode",      options:["Replace","Extend","Subtract"], value:0},
+      ]},
+      {glyph:"StratumPromote",  label:"Promote",                 strata:["Vertex","Edge","Face"], params:[
+          {kind:"segmented", ico:"ParamStratum", label:"Convert to", options:["Vertex","Edge","Face"], value:2},
+          {kind:"toggle",    ico:"ParamClamp",   label:"Only fully enclosed", value:true},
+      ]},
+      {glyph:"LinkedShell",     label:"Linked",      accel:"L",  strata:"*", params:[
+          {kind:"segmented", ico:"ParamLink",  label:"Delimit by", options:["None","Seam","Sharp","Material","Normal"], value:0},
+      ]},
+      {glyph:"SimilarTrait",    label:"Similar",                 strata:["Vertex","Edge","Face"], params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Compare", options:["Normal","Area","Perimeter","Sides","Material"], value:0},
+          {kind:"slider",    ico:"ParamTolerance",label:"Threshold", min:0, max:100, value:5, unit:"%"},
+          {kind:"segmented", ico:"ParamMerge",    label:"Mode",    options:["Replace","Extend"], value:1},
+      ]},
+      {glyph:"BoundaryTrace",   label:"Boundary",                strata:["Face","Object"], need:"needs an open boundary", params:[
+          {kind:"segmented", ico:"ParamRing",  label:"Trace",  options:["Open border","Region edge"], value:0},
+          {kind:"toggle",    ico:"ParamMerge", label:"Include the seams", value:false},
+      ]},
+      {glyph:"ShortestPath",    label:"Path",                    strata:["Vertex","Edge"], need:"needs 2 components", params:[
+          {kind:"segmented", ico:"ParamProfile",  label:"Cost by", options:["Topology","Length","Angle"], value:0},
+          {kind:"slider",    ico:"ParamSeed",     label:"Skip",    min:0, max:16, value:0, unit:"−"},
+          {kind:"toggle",    ico:"ParamMerge",    label:"Extend the selection", value:false},
+      ]},
+  ]},
+  { sep:true },
+  /* Single-shot rail rows: the row itself runs the tool, no grid and no options slide.
+     Delete carries a stratum picker because "delete a face" and "delete its vertices"
+     are different results from the same keystroke — so it earns an options pane. */
+  { key:"delete",   label:"Delete",     glyph:"RemoveCross",   accel:"X",  shot:true, strata:"*", params:[
+      {kind:"segmented", ico:"ParamStratum", label:"Remove",  options:["Vertices","Edges","Faces","Only faces","Only edges"], value:2},
+  ]},
+  { key:"dissolve", label:"Dissolve",   glyph:"DissolveFade",  accel:"⌃X", shot:true, strata:["Vertex","Edge","Face"], params:[
+      {kind:"toggle",  ico:"ParamRing",   label:"Keep the boundary", value:false},
+      {kind:"toggle",  ico:"ParamSmooth", label:"Correct UVs", value:true},
+      {kind:"toggle",  ico:"ParamMerge",  label:"Dissolve stray vertices", value:true},
+  ]},
+  { key:"limited",  label:"Limited",    glyph:"DissolveAngle",             shot:true, strata:["Face","Object"], params:[
+      {kind:"slider",  ico:"ParamAngle",  label:"Max angle", min:0, max:180, value:5, unit:"°"},
+      {kind:"toggle",  ico:"ParamRing",   label:"All boundaries", value:false},
+      {kind:"snap",    ico:"ParamLink",   label:"Delimit by", targets:["Seam","Sharp","Material","Normal"], on:["Seam","Sharp"]},
+  ]},
+];
+
+/* ── availability: three states, matching the shipped FilterOperationCatalogue ──
+   absent  → stratum does not apply; the tile is not drawn at all
+   gated   → stratum applies, a topology precondition is short; greyed + reason
+   live    → runnable                                                            */
+/* The selection phrase, written once. Four render sites quote the subject a tool will act
+   on, and under `None` every one of them would otherwise read "on 0 nones". With nothing
+   picked the subject is the scene itself, so that is what they say. */
+function subjectPhrase(){
+  if(SELECTED[stratum] === 0) return `into the <b>scene</b>`;
+  return `on <b>${SELECTED[stratum]}</b> ${stratum.toLowerCase()}${SELECTED[stratum] === 1 ? "" : "s"}`;
+}
+
+/* 🔴 `"*"` means EVERY SELECTION, not every stratum. Read literally it would also match
+   `None`, which would put Translate/Rotate/Scale and the Grow/Shrink/Linked group in the
+   grid with nothing picked — offering to transform a selection that does not exist. The
+   `None` stratum is therefore opt-in only: a tool reaches it by naming it. */
+function applies(tool){
+  if(stratum === "None") return tool.strata !== "*" && tool.strata.includes("None");
+  return tool.strata === "*" || tool.strata.includes(stratum);
+}
+function gated(tool){ return applies(tool) && !!tool.need; }
+function visible(band){ return (band.tools||[]).filter(applies); }
+function liveCount(band){ return visible(band).filter(t => !gated(t)).length; }
+
+/* ═════════════════════════════════════ BUILD ═════════════════════════════════════ */
+const tools = document.getElementById("tools");
+
+let rail, railBody, gridPane, gridHead, gridBody, grid, gridFoot, railRows = {};
+let track, probePane, probeHead, probeBody, optionsPane, optionsHead, optionsBody, optionsFoot;
+let activeBand = null;
+let activeTool = null;
+let railScrolling = false, railScrollTimer;
+
+function build(){
+  tools.innerHTML = "";
+
+  // The card is now a viewport over a two-slide track: slide 0 is the rail + tile grid the
+  // menu has always shown, slide 1 is the probe readout + the picked tool's options.
+  const view = document.createElement("div"); view.className = "tool-view";
+  track = document.createElement("div"); track.className = "tool-track";
+  const slideBrowse = document.createElement("div"); slideBrowse.className = "tool-slide";
+  const slideDetail = document.createElement("div"); slideDetail.className = "tool-slide";
+
+  //---------------------------------------------- LEFT PANE ----------------------------------------------
+  rail = document.createElement("div"); rail.className = "rail";
+
+  // The selection profile: badge · stratum name · live tool tally · "N selected" pill.
+  // The rail contents are meaningless without the stratum, so it is stated, not implied.
+  // Both figures are scoped to THIS stratum. Counting against the whole catalogue would
+  // quote a denominator the rail no longer admits exists — "40 of 112" when the rail lists
+  // 40 — so the ratio now reads live-vs-applicable, which is what the gated tiles show.
+  const bandsLive = BANDS.filter(b => b.tools).reduce((n,b) => n + liveCount(b), 0);
+  const toolsLive = BANDS.filter(b => b.tools).reduce((n,b) => n + visible(b).length, 0);
+
+  const railHead = document.createElement("div"); railHead.className = "pane-head";
+  // With nothing picked the pill states the CONDITION, not a count: "0 selected" reads as a
+  // failed tally, "nothing selected" reads as the deliberate state it is. It also drops the
+  // accent, since there is no selection for the accent colour to refer to.
+  const voidPick = SELECTED[stratum] === 0;
+  railHead.innerHTML =
+      `<span class="h-ic">${BADGE[stratum]()}</span>`
+    + `<span class="h-txt">${voidPick ? "No selection" : stratum}`
+    + `<span class="fn">${bandsLive} of ${toolsLive} tools</span></span>`
+    + `<span class="h-n${voidPick ? "" : " accent"}">${voidPick ? "nothing selected" : SELECTED[stratum] + " selected"}</span>`;
+  rail.appendChild(railHead);
+
+  railBody = document.createElement("div"); railBody.className = "rail-body";
+  rail.appendChild(railBody);
+
+  // ⚠️ Hover-to-swap has to be muted while the rail is scrolling. The pointer stays put but
+  //    the rows travel under it, so every row that passes fires mouseenter and the grid
+  //    thrashes through five bands on one wheel throw. Re-armed shortly after the wheel stops.
+  railBody.addEventListener("scroll", () => {
+    railScrolling = true;
+    clearTimeout(railScrollTimer);
+    railScrollTimer = setTimeout(() => { railScrolling = false; }, 130);
+  });
+
+  /* 🔴 The rail lists ONLY what the current selection can actually run. A band with nothing
+     live is dropped, not dimmed: with seven strata the dead rows outnumbered the live ones
+     in the narrow strata, and a row you cannot click is noise wearing the shape of a
+     control. The earlier reasoning — that a fixed rail length keeps the card from reflowing
+     between strata — lost to the clutter it produced.
+
+     Separators only earn their place BETWEEN two surviving bands, so they are resolved
+     after the fact rather than emitted inline: a divider left stranded at the top or
+     bottom of the rail, or doubled where the band between two of them vanished, is the
+     exact artefact that makes a filtered list look broken. */
+  railRows = {};
+  const surviving = BANDS.filter(band =>
+    band.sep || (band.shot ? applies(band) : visible(band).length > 0));
+
+  // Drop separators that no longer divide anything: leading, trailing, or adjacent.
+  const railPlan = surviving.filter((band, Index) => {
+    if(!band.sep) return true;
+    const Before = surviving.slice(0, Index).some(b => !b.sep);
+    const After  = surviving.slice(Index + 1).some(b => !b.sep);
+    const Doubled = Index > 0 && surviving[Index - 1].sep;
+    return Before && After && !Doubled;
+  });
+
+  railPlan.forEach(band => {
+    if(band.sep){ const s=document.createElement("div"); s.className="rail-sep"; railBody.appendChild(s); return; }
+
+    const shot = !!band.shot;
+
+    const row = document.createElement("div");
+    row.className = "rail-item" + (shot ? " shot" : "");
+    row.innerHTML =
+      `<span class="r-ic">${glyph(band.glyph)}</span>`
+    + `<span class="r-lbl">${band.label}</span>`
+    + (shot ? `<span class="r-n">${band.accel||""}</span>`
+            : `<span class="r-n">${visible(band).length}</span>`);
+
+    if(shot){
+      row.addEventListener("mouseenter", () => { if(!railScrolling) setActive(null); });
+      row.addEventListener("click", () => runTool(band, row));
+    } else {
+      row.addEventListener("mouseenter", () => { if(!railScrolling) setActive(band.key); });
+      row.addEventListener("click", () => setActive(band.key));   // click always swaps, scrolling or not
+    }
+    railBody.appendChild(row);
+    railRows[band.key] = row;
+  });
+
+  //---------------------------------------------- RIGHT PANE ----------------------------------------------
+  gridPane = document.createElement("div"); gridPane.className = "grid-pane";
+
+  gridHead = document.createElement("div"); gridHead.className = "pane-head";
+  gridPane.appendChild(gridHead);
+
+  gridBody = document.createElement("div"); gridBody.className = "grid-body";
+  grid     = document.createElement("div"); grid.className = "grid";
+  gridBody.appendChild(grid);
+  gridPane.appendChild(gridBody);
+
+  gridFoot = document.createElement("div"); gridFoot.className = "grid-foot";
+  gridPane.appendChild(gridFoot);
+
+  //------------------------------------------ SLIDE 1 — PROBE ------------------------------------------
+  // 📝 The back row occupies the header band itself rather than sitting above it, so the
+  //    53 px header line is unbroken across both slides while the track is moving.
+  probePane = document.createElement("div"); probePane.className = "probe-pane";
+  probeHead = document.createElement("div"); probeHead.className = "pane-head back";
+  probeHead.addEventListener("click", slideToBrowse);
+  probePane.appendChild(probeHead);
+  probeBody = document.createElement("div"); probeBody.className = "probe-body";
+  probePane.appendChild(probeBody);
+
+  //----------------------------------------- SLIDE 1 — OPTIONS -----------------------------------------
+  optionsPane = document.createElement("div"); optionsPane.className = "options-pane";
+  optionsHead = document.createElement("div"); optionsHead.className = "pane-head";
+  optionsPane.appendChild(optionsHead);
+  optionsBody = document.createElement("div"); optionsBody.className = "options-body";
+  optionsPane.appendChild(optionsBody);
+  optionsFoot = document.createElement("div"); optionsFoot.className = "opt-foot";
+  optionsPane.appendChild(optionsFoot);
+
+  slideBrowse.appendChild(rail);
+  slideBrowse.appendChild(gridPane);
+  slideDetail.appendChild(probePane);
+  slideDetail.appendChild(optionsPane);
+  track.appendChild(slideBrowse);
+  track.appendChild(slideDetail);
+  view.appendChild(track);
+  tools.appendChild(view);
+}
+
+function setActive(key){
+  const band = BANDS.find(b => b.key === key && b.tools);
+  Object.values(railRows).forEach(r => r.classList.remove("active"));
+  if(!band || visible(band).length === 0){ activeBand = null; return; }
+  if(activeBand === key) return;
+  activeBand = key;
+  railRows[key].classList.add("active");
+
+  const shown = visible(band);
+  const live  = shown.filter(t => !gated(t)).length;
+
+  // Same three-part shape as the left header: band glyph · name · live/gated split · pill.
+  gridHead.innerHTML =
+      `<span class="h-ic">${glyph(band.glyph)}</span>`
+    + `<span class="h-txt">${band.label}`
+    + `<span class="fn">${live} of ${shown.length} available`
+    + `${shown.length - live ? ` · ${shown.length - live} gated` : ""}</span></span>`
+    + `<span class="h-n">${shown.length} tools</span>`;
+  grid.innerHTML = "";
+  shown.forEach(tool => {
+    const off  = gated(tool);
+    const tile = document.createElement("div");
+    tile.className = "tile" + (off ? " gated" : "");
+    tile.innerHTML =
+      glyph(tool.glyph)
+    + `<span class="t-lbl">${tool.label}</span>`
+    + (off ? `<span class="t-why">${tool.need}</span>` : "")
+    + (tool.accel ? `<span class="t-key">${tool.accel}</span>` : "");
+    if(!off) tile.addEventListener("click", () => runTool(tool, tile));
+    grid.appendChild(tile);
+  });
+
+  // The header owns the live/gated split now, so the footer carries what the header cannot:
+  // the selection the tally was resolved against, and the dismissal keys.
+  gridFoot.innerHTML =
+      `<span class="live">${subjectPhrase()}</span>`
+    + `<span style="margin-left:auto">pick a tool for its options</span>`;
+
+  // A new band starts at the top. Carried-over scroll would open the grid part-way down
+  // a set the reader has not seen the start of.
+  gridBody.scrollTop = 0;
+
+  grid.classList.remove("swap"); void grid.offsetWidth; grid.classList.add("swap");
+}
+
+/* the first band with anything live for this stratum — never open onto an empty grid */
+function firstPopulated(){
+  const band = BANDS.find(b => b.tools && visible(b).length > 0);
+  return band ? band.key : null;
+}
+
+/* ═════════════════════════════════════ OPEN / CLOSE ═════════════════════════════════════ */
+let originX = 120, originY = 120;
+function openAt(x, y){
+  build();                              // rebuilt per open: the stratum decides the rail
+  setActive(firstPopulated());
+  tools.classList.add("open");
+  const pad = 10, w = tools.offsetWidth, h = tools.offsetHeight;
+  if(x + w > innerWidth  - pad) x = innerWidth  - w - pad;
+  if(y + h > innerHeight - pad) y = Math.max(pad, innerHeight - h - pad);
+  originX = Math.max(pad, x); originY = Math.max(pad, y);
+  tools.style.left = originX + "px"; tools.style.top = originY + "px";
+}
+function close(){ tools.classList.remove("open"); activeBand = null; activeTool = null; }
+
+/* ═════════════════════════════════════ CAROUSEL ═════════════════════════════════════ */
+/* Picking a tool no longer fires it — it slides the card to the tool's own two panes and
+   waits for Apply. The single motion carries BOTH panes, so the rail→probe and grid→options
+   swaps are one gesture rather than two independent ones. */
+const clampRange = (Value, Floor, Ceiling) => Math.min(Ceiling, Math.max(Floor, Value));
+
+function slideToOptions(tool){
+  activeTool = tool;
+  renderProbeReadout();
+  renderToolOptions(tool);
+  track.classList.add("to-options");
+}
+function slideToBrowse(){
+  track.classList.remove("to-options");
+  activeTool = null;
+  // ⚠️ The pane is NOT cleared here. It stays mounted through the .34 s translate; wiping it
+  //    on the way out empties the slide the reader is still watching travel off-screen.
+}
+
+/* ── left pane: the measurement readout for the current selection ── */
+function renderProbeReadout(){
+  const readout = PROBE[stratum];
+  const count   = SELECTED[stratum];
+  const plural  = count === 1 ? "" : "s";
+
+  probeHead.innerHTML =
+      `<span class="b-arrow"><svg viewBox="0 0 24 24" fill="none">`
+    + `<path d="M14 6l-6 6 6 6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
+    + `<span class="h-ic">${BADGE[stratum]()}</span>`
+    + `<span class="h-txt">Back<span class="fn">${count === 0 ? "no selection" : count + " " + stratum.toLowerCase() + plural}</span></span>`;
+
+  // 🔴 One component reads as a measurement; several read as an aggregate. Showing one
+  //    component's numbers while 8 are selected states a figure the tool will not act on.
+  //    Zero takes neither branch: there is no leader to name and nothing to aggregate, so
+  //    the pane reports the insertion context the primitive will be built into instead.
+  if(count === 0){
+    probeBody.innerHTML = readout.sections.map(sectionOf).join("");
+  } else if(count === 1){
+    probeBody.innerHTML =
+        `<div class="probe-sec"><div class="probe-sec-head">Identity</div>`
+      + `<div class="probe-row"><span class="p-k">${readout.ident}</span></div></div>`
+      + readout.sections.map(sectionOf).join("");
+  } else {
+    probeBody.innerHTML =
+        `<div class="probe-sec"><div class="probe-sec-head">Aggregate</div>`
+      + readout.aggregate.map(measureRow).join("") + `</div>`
+      + `<div class="probe-sec"><div class="probe-sec-head">Leader</div>`
+      + `<div class="probe-row"><span class="p-k">${readout.ident}</span></div>`
+      + readout.sections[0].rows.map(measureRow).join("") + `</div>`;
+  }
+}
+function sectionOf(Section){
+  return `<div class="probe-sec"><div class="probe-sec-head">${Section.title}</div>`
+       + Section.rows.map(measureRow).join("") + `</div>`;
+}
+/* One row of the readout. Three shapes: an axis triple, a condition dot, or label/value/unit. */
+function measureRow(Row){
+  if(Row.vec){
+    const Cells = Row.axes.map(([Axis, Reading]) =>
+      `<span class="axis"><span class="a-n">${Axis}</span><span class="a-v">${Reading}</span></span>`).join("");
+    return `<div class="probe-row"><span class="p-k">${Row.vec}</span><span class="p-u">${Row.unit}</span></div>`
+         + `<div class="probe-vec">${Cells}</div>`;
+  }
+  if(Row.flag){
+    return `<div class="probe-flag"><span class="dot" style="background:${Row.ok ? "#4ac26b" : "#55555d"}"></span>`
+         + `<span>${Row.flag}</span></div>`;
+  }
+  // A measurement outside its stated band paints red — the limit is why it is worth showing.
+  const Reading = parseFloat(String(Row.v).replace(/\s/g, ""));
+  const Breach  = Row.limit && !isNaN(Reading) && (Reading < Row.limit[0] || Reading > Row.limit[1]);
+  return `<div class="probe-row${Breach ? " breach" : ""}">`
+       + `<span class="p-k">${Row.k}</span><span class="p-v">${Row.v}</span><span class="p-u">${Row.u}</span></div>`;
+}
+
+/* ── right pane: the picked tool's parameters ── */
+function renderToolOptions(tool){
+  const Parameters = tool.params || [];
+  optionsHead.innerHTML =
+      `<span class="h-ic">${glyph(tool.glyph)}</span>`
+    + `<span class="h-txt">${tool.label}`
+    + `<span class="fn">${Parameters.length ? `${Parameters.length} option${Parameters.length === 1 ? "" : "s"}` : "runs immediately"}</span></span>`
+    + (tool.accel ? `<span class="h-n">${tool.accel}</span>` : "");
+
+  optionsBody.innerHTML = "";
+  if(!Parameters.length){
+    optionsBody.innerHTML =
+        `<div class="shot-note">${glyph(tool.glyph)}`
+      + `<span><b>${tool.label}</b> takes no options.<br>It runs on the current selection.</span></div>`;
+  } else {
+    Parameters.forEach(Parameter => optionsBody.appendChild(buildParameterRow(Parameter)));
+  }
+
+  optionsFoot.innerHTML =
+      `<span class="spend">${subjectPhrase()}</span>`
+    + `<span class="obtn ghost" id="optCancel">Cancel</span>`
+    + `<span class="obtn go" id="optApply">Apply</span>`;
+  optionsFoot.querySelector("#optCancel").addEventListener("click", slideToBrowse);
+  optionsFoot.querySelector("#optApply").addEventListener("click", () => finalizeTool(tool));
+  optionsBody.scrollTop = 0;
+}
+
+/* Widget set ported from ToolOptionsWidget.html; `axis` and `snap` are the two kinds the
+   modelling tools need that the paint-side widget never had. */
+function buildParameterRow(Parameter){
+  const Row = document.createElement("div");
+  Row.className = "param";
+  const Mark = Parameter.ico ? glyph(Parameter.ico) : "";
+
+  if(Parameter.kind === "slider"){
+    Row.innerHTML = `
+      <div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div>
+      <div class="slider-ctl">
+        <div class="valuebox">
+          <div class="num"><input type="number" value="${Parameter.value}"></div>
+          <div class="unitseg">${Parameter.unit || ""}</div>
+        </div>
+        <div class="slider"><div class="fill"></div><div class="knob"></div></div>
+      </div>`;
+    const Field = Row.querySelector("input");
+    const Fill  = Row.querySelector(".fill");
+    const Knob  = Row.querySelector(".knob");
+    const Track = Row.querySelector(".slider");
+    const Paint = Reading => {
+      const Normalized = (Reading - Parameter.min) / (Parameter.max - Parameter.min);
+      Fill.style.width = (Normalized * 100) + "%";
+      Knob.style.left  = (Normalized * 100) + "%";
+    };
+    const ResolveFromPointer = PointerX => {
+      const Bounds     = Track.getBoundingClientRect();
+      const Normalized = clampRange((PointerX - Bounds.left) / Bounds.width, 0, 1);
+      const Reading    = Math.round((Parameter.min + Normalized * (Parameter.max - Parameter.min)) * 1000) / 1000;
+      Field.value = Reading; Paint(Reading);
+    };
+    Track.addEventListener("pointerdown", Event => {
+      Track.setPointerCapture(Event.pointerId);
+      ResolveFromPointer(Event.clientX);
+      const Drag    = Moved => ResolveFromPointer(Moved.clientX);
+      const Release = () => { Track.removeEventListener("pointermove", Drag); Track.removeEventListener("pointerup", Release); };
+      Track.addEventListener("pointermove", Drag);
+      Track.addEventListener("pointerup", Release);
+    });
+    Field.addEventListener("input", () => {
+      const Reading = parseFloat(Field.value);
+      if(!isNaN(Reading)) Paint(clampRange(Reading, Parameter.min, Parameter.max));
+    });
+    Paint(Parameter.value);
+  }
+
+  else if(Parameter.kind === "segmented"){
+    Row.innerHTML = `<div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div><div class="segment"></div>`;
+    const Strip = Row.querySelector(".segment");
+    Parameter.options.forEach((Option, Position) => {
+      const Pill = document.createElement("div");
+      Pill.className = "seg-opt" + (Position === Parameter.value ? " sel" : "");
+      Pill.textContent = Option;
+      Pill.addEventListener("click", () => {
+        Strip.querySelectorAll(".seg-opt").forEach(Other => Other.classList.remove("sel"));
+        Pill.classList.add("sel");
+      });
+      Strip.appendChild(Pill);
+    });
+  }
+
+  else if(Parameter.kind === "toggle"){
+    Row.innerHTML = `
+      <div class="toggle-row">
+        <span class="name">${Mark}${Parameter.label}</span>
+        <div class="switch ${Parameter.value ? "on" : ""}"><div class="nub"></div></div>
+      </div>`;
+    const Switch = Row.querySelector(".switch");
+    Switch.addEventListener("click", () => Switch.classList.toggle("on"));
+  }
+
+  else if(Parameter.kind === "axis"){
+    // 💡 Negate is meaningless on Normal/View, so the pill voids rather than vanishing —
+    //    a control that disappears teaches the reader it was never there.
+    const Axes = ["Free","X","Y","Z","Normal","View"];
+    Row.innerHTML = `
+      <div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div>
+      <div class="axis-ctl"><div class="segment"></div><div class="neg-pill void" title="Negate the axis">−</div></div>`;
+    const Strip  = Row.querySelector(".segment");
+    const Negate = Row.querySelector(".neg-pill");
+    const Negatable = Name => Name === "X" || Name === "Y" || Name === "Z";
+    Axes.forEach((Name, Position) => {
+      const Pill = document.createElement("div");
+      Pill.className = "seg-opt" + (Position === 0 ? " sel" : "");
+      Pill.textContent = Name;
+      Pill.addEventListener("click", () => {
+        Strip.querySelectorAll(".seg-opt").forEach(Other => Other.classList.remove("sel"));
+        Pill.classList.add("sel");
+        Negate.classList.toggle("void", !Negatable(Name));
+        if(!Negatable(Name)) Negate.classList.remove("on");
+      });
+      Strip.appendChild(Pill);
+    });
+    Negate.addEventListener("click", () => {
+      if(Negate.classList.contains("void")) return;
+      Negate.classList.toggle("on");
+    });
+  }
+
+  else if(Parameter.kind === "snap"){
+    const Targets = Parameter.targets || ["Grid","Vertex","Edge","Face","Angle"];
+    Row.innerHTML = `<div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div><div class="chips"></div>`;
+    const Strip = Row.querySelector(".chips");
+    Targets.forEach(Name => {
+      const Chip = document.createElement("div");
+      Chip.className = "chip" + ((Parameter.on || []).includes(Name) ? " on" : "");
+      Chip.textContent = Name;
+      Chip.addEventListener("click", () => Chip.classList.toggle("on"));
+      Strip.appendChild(Chip);
+    });
+  }
+
+  else if(Parameter.kind === "swatches"){
+    Row.innerHTML = `<div class="param-label"><span class="name">${Mark}${Parameter.label}</span></div><div class="swatches"></div>`;
+    const Strip = Row.querySelector(".swatches");
+    /* 📝 A swatch strip with no authored palette falls back to a neutral ramp rather than
+       throwing. Every widget kind here reads optional keys defensively except this one, which
+       dereferenced `colors` directly — Scene › Light › Colour omitted it and took the whole
+       options pane down with a TypeError the moment that tool was opened. */
+    const Palette = Parameter.colors || ["#c8c8cf","#e0603f","#4d9fff","#6bff8f","#c77dff"];
+    Palette.forEach((Tint, Position) => {
+      const Chip = document.createElement("div");
+      Chip.className = "swatch" + (Position === Parameter.value ? " on" : "");
+      Chip.style.background = Tint;
+      Chip.addEventListener("click", () => {
+        Strip.querySelectorAll(".swatch").forEach(Other => Other.classList.remove("on"));
+        Chip.classList.add("on");
+      });
+      Strip.appendChild(Chip);
+    });
+  }
+
+  return Row;
+}
+
+/* ═════════════════════════════════════ RUN ═════════════════════════════════════ */
+/* Tile click opens the options slide; Apply is what actually runs the tool. */
+function runTool(tool, tile){
+  if(tile) tile.classList.add("fired");
+  slideToOptions(tool);
+}
+function finalizeTool(tool){
+  showToast(tool.label);
+  setTimeout(close, 100);
+}
+
+let toastTimer;
+function showToast(name){
+  const t = document.getElementById("toast");
+  t.innerHTML = SELECTED[stratum] === 0
+    ? `<b>${name}</b> added to scene`
+    : `<b>${name}</b> on ${stratum.toLowerCase()} selection`;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 1300);
+}
+
+/* ═════════════════════════════════════ STRATUM SWITCH ═════════════════════════════════════ */
+const stratumBar = document.getElementById("stratum");
+STRATA.forEach(name => {
+  const b = document.createElement("button");
+  b.textContent = name;
+  b.className = (name === stratum) ? "on" : "";
+  b.addEventListener("click", () => {
+    stratum = name;
+    [...stratumBar.querySelectorAll("button")].forEach(x => x.classList.toggle("on", x.textContent === name));
+    if(tools.classList.contains("open")){
+      // Reopen in place rather than patching the live card: the rail length, the tile
+      // set and the head counts all change together, so a rebuild is the honest update.
+      // The rebuild returns a fresh untranslated track, so the card lands back on the
+      // browse slide — the tool that was open was authored against the OLD stratum.
+      activeTool = null;
+      build(); setActive(firstPopulated());
+    }
+  });
+  stratumBar.appendChild(b);
+});
+
+/* ═════════════════════════════════════ WIRING ═════════════════════════════════════ */
+window.addEventListener("contextmenu", e => { e.preventDefault(); openAt(e.clientX, e.clientY); });
+window.addEventListener("pointerdown", e => {
+  if(e.target.closest("#tools") || e.target.closest("#stratum")) return;
+  close();
+});
+// Escape steps back one slide before it closes the card — on the options slide the reader's
+// mental "cancel" is the tool, not the menu.
+window.addEventListener("keydown", e => {
+  if(e.key !== "Escape") return;
+  if(activeTool) slideToBrowse(); else close();
+});
+window.addEventListener("blur", close);
+window.addEventListener("resize", close);
+</script>
+</body>
+</html>

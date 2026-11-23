@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Scene Directory · Lens + Corner Card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#5b8cff;
+    --bg-panel:#0d0d0f;
+    --border:#1c1c20;
+    --border-soft:#161618;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --panel-bg:     #131315;
+    --value-bg:     #232326;
+    --row-hover:    #161618;
+    --row-active:   #242428;
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --rail-bg:      #08080a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  html{ background:#050506; overflow:hidden }
+  body{
+    background:#050506;
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--text); -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; height:100vh; width:100vw; overflow:hidden;
+    user-select:none;
+  }
+
+  /* ══ top bar — only to show the two hotkeys and their live status ══ */
+  .topbar{ flex:0 0 auto; height:38px; display:flex; align-items:center; gap:9px;
+    padding:0 14px; background:var(--rail-bg); border-bottom:1px solid var(--border) }
+  .topbar .brand{ font-size:11px; letter-spacing:1.4px; text-transform:uppercase;
+    font-weight:700; color:var(--text-faint); margin-right:4px }
+  .keycap{ display:flex; align-items:center; gap:8px; height:26px; padding:0 11px;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:7px;
+    color:var(--text-faint); font-size:11.5px; transition:.14s }
+  .keycap.on{ background:color-mix(in srgb, var(--accent) 15%, transparent);
+    border-color:var(--accent); color:var(--text-primary) }
+  .keycap kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 6px; font-family:inherit; font-size:10px; font-weight:700;
+    color:var(--text-dim) }
+  .keycap.on kbd{ background:rgba(91,140,255,.22); border-color:rgba(91,140,255,.4);
+    color:var(--text-primary) }
+  .topbar .sel-read{ margin-left:auto; font-size:11px; color:var(--text-faint);
+    display:flex; align-items:center; gap:7px }
+  .topbar .sel-read b{ color:var(--accent); font-weight:600 }
+
+  /* ══ the viewport ══ */
+  .stage{ position:relative; flex:1; min-height:0; overflow:hidden; background:#0b0b0d }
+  .stage.lens-live{ cursor:none }
+  .grid-floor{ position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size:26px 26px,26px 26px,130px 130px,130px 130px;
+    mask-image:radial-gradient(ellipse 78% 68% at 50% 52%, #000 32%, transparent 100%) }
+  .stage-glow{ position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse 60% 50% at 50% 45%, rgba(91,140,255,.055), transparent 70%) }
+  .idle-hint{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:4;
+    font-size:11px; color:#2e2e34; pointer-events:none; transition:opacity .2s }
+  .idle-hint b{ color:#4a4a52; font-weight:600 }
+  .idle-hint kbd{ background:#151517; border:1px solid #202026; border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:10px; color:#55555e }
+  .idle-hint.gone{ opacity:0 }
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#1e1e22;border-radius:4px}
+
+  /* ══ scene bodies ══ */
+  .scene-body{ position:absolute; transform:translate(-50%,-50%); display:grid; place-items:center;
+    cursor:pointer; transition:opacity .25s }
+  .sb-form{ border:1.5px solid rgba(140,150,170,.30); border-radius:5px;
+    background:linear-gradient(150deg, rgba(150,160,185,.10), rgba(120,130,155,.03));
+    transition:.2s }
+  .scene-body:hover .sb-form{ border-color:rgba(140,150,170,.55) }
+  .scene-body.sel .sb-form{ border-color:var(--accent);
+    background:linear-gradient(150deg, rgba(91,140,255,.16), rgba(91,140,255,.03));
+    box-shadow:0 0 30px rgba(91,140,255,.20) }
+  .scene-body.lit .sb-form{ border-color:rgba(91,140,255,.6) }
+  .scene-body.hid{ opacity:.15 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     LENS — held on [Q]. A circular glass rides the cursor; whatever body it passes
+     over, the glass reveals that body's tier. Zero resting footprint.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .lens{
+    position:absolute; width:186px; height:186px; border-radius:50%; z-index:26;
+    transform:translate(-50%,-50%); pointer-events:none; display:none;
+    background:rgba(13,13,15,.86); backdrop-filter:blur(22px) saturate(150%);
+    -webkit-backdrop-filter:blur(22px) saturate(150%);
+    border:1px solid rgba(91,140,255,.28);
+    box-shadow:0 0 0 1px rgba(0,0,0,.5), 0 20px 50px rgba(0,0,0,.6),
+               inset 0 0 40px rgba(91,140,255,.05); }
+  .lens.up{ display:block; animation:lens-in .13s cubic-bezier(.34,1.25,.5,1) }
+  @keyframes lens-in{ from{ opacity:0; transform:translate(-50%,-50%) scale(.86) }
+                        to{ opacity:1; transform:translate(-50%,-50%) scale(1) } }
+  .lens-inner{ position:absolute; inset:0; border-radius:50%; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:16px; text-align:center; }
+  .lens-ttl{ font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:#3d3d45;
+    font-weight:700; margin-bottom:7px }
+  .lens-nm{ font-size:12.5px; font-weight:600; color:var(--text-primary); margin-bottom:2px }
+  .lens-sub{ font-size:9.5px; letter-spacing:.6px; color:var(--text-faint); margin-bottom:9px;
+    text-transform:uppercase }
+  .lens-kids{ display:flex; flex-direction:column; gap:3px; width:100%; max-width:132px }
+  .lens-kid{ display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--text-dim);
+    padding:2px 6px; border-radius:5px; background:rgba(255,255,255,.028); }
+  .lens-kid.sel{ background:color-mix(in srgb, var(--accent) 20%, transparent);
+    color:var(--text-primary) }
+  .lens-kid .lk-nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .lens-empty{ font-size:10px; color:#33333a; letter-spacing:.4px }
+  .lens-ring{ position:absolute; inset:-5px; border-radius:50%;
+    border:1px solid rgba(91,140,255,.10); pointer-events:none }
+  /* crosshair at the exact cursor point, since the stage hides the pointer */
+  .lens-cross{ position:absolute; left:50%; top:50%; width:9px; height:9px; pointer-events:none;
+    transform:translate(-50%,-50%); opacity:.5 }
+  .lens-cross::before,.lens-cross::after{ content:''; position:absolute; background:var(--accent) }
+  .lens-cross::before{ left:50%; top:0; bottom:0; width:1px; transform:translateX(-50%) }
+  .lens-cross::after{ top:50%; left:0; right:0; height:1px; transform:translateY(-50%) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     CORNER CARD — toggled on [E]. A small free-floating pane you drag anywhere;
+     collapses to a 154px title pill. Owns no dock and no edge.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .card-mount{ position:absolute; right:14px; top:14px; z-index:24; width:220px;
+    background:rgba(19,19,21,.92); backdrop-filter:blur(20px) saturate(140%);
+    -webkit-backdrop-filter:blur(20px) saturate(140%);
+    border:1px solid var(--border); border-radius:12px; box-shadow:0 18px 46px rgba(0,0,0,.55);
+    overflow:hidden; transition:width .2s cubic-bezier(.4,0,.2,1); display:none }
+  .card-mount.up{ display:block; animation:card-in .15s cubic-bezier(.34,1.2,.5,1) }
+  @keyframes card-in{ from{ opacity:0; transform:translateY(-7px) } to{ opacity:1; transform:none } }
+  .card-mount.shut{ width:154px }
+  .cd-head{ display:flex; align-items:center; gap:8px; height:32px; padding:0 8px 0 11px;
+    cursor:grab; border-bottom:1px solid var(--border-soft); }
+  .card-mount.shut .cd-head{ border-bottom-color:transparent }
+  .cd-head:active{ cursor:grabbing }
+  .cd-head .g{ color:var(--text-faint); display:flex; flex:0 0 auto }
+  .cd-head .t{ flex:1; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase;
+    font-weight:700; color:var(--text-faint); white-space:nowrap; }
+  .cd-head .n{ font-size:9.5px; color:#3a3a42; font-weight:700; flex:0 0 auto }
+  .cd-x{ width:19px; height:19px; display:grid; place-items:center; border-radius:5px;
+    color:var(--text-faint); cursor:pointer; flex:0 0 auto; transition:.12s }
+  .cd-x:hover{ background:var(--value-bg); color:var(--text) }
+  .cd-x svg{ transition:transform .2s }
+  .card-mount.shut .cd-x svg{ transform:rotate(-90deg) }
+  .cd-body{ max-height:290px; overflow-y:auto; padding:4px 0 6px }
+  .card-mount.shut .cd-body{ display:none }
+
+  /* compact tree row, shared by the card */
+  .r{ display:flex; align-items:center; gap:6px; height:25px; padding-right:9px;
+    font-size:12.5px; color:var(--text); cursor:pointer; position:relative; white-space:nowrap }
+  .r:hover{ background:var(--row-hover) }
+  .r.sel{ background:var(--row-active) }
+  .r.sel::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+    background:var(--accent) }
+  .r .tw{ width:13px; height:13px; flex:0 0 auto; display:flex; align-items:center;
+    justify-content:center; color:var(--text-faint); transition:transform .14s }
+  .r .tw svg{ width:8px; height:8px }
+  .r .tw.cl{ transform:rotate(-90deg) }
+  .r .tw.leaf{ visibility:hidden }
+  .r .ti{ display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+    color:var(--text-dim) }
+  .r .ti.grp{ color:var(--text-muted) }
+  .r .ti.sel{ color:var(--accent) }
+  .r .nm{ flex:1; overflow:hidden; text-overflow:ellipsis }
+  .r.dim .nm, .r.dim .ti{ opacity:.4 }
+  .r .eye{ opacity:0; color:var(--text-faint); display:flex; padding:1px; border-radius:3px }
+  .r:hover .eye{ opacity:1 }
+  .r .eye:hover{ color:var(--text) }
+  .r.dim .eye{ opacity:1 }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Scene Directory</div>
+  <div class="keycap" id="capLens"><kbd>Q</kbd> Lens <span style="opacity:.6">hold</span></div>
+  <div class="keycap" id="capCard"><kbd>E</kbd> Card <span style="opacity:.6">toggle</span></div>
+  <div class="sel-read" id="selRead">nothing selected</div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="g-scene"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".55"/></g>
+  <g id="g-folder"><path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h7A1.5 1.5 0 0119 9v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 013 17.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
+  <g id="g-solid"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-cylinder"><ellipse cx="12" cy="6.5" rx="7" ry="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 6.5v11c0 1.66 3.13 3 7 3s7-1.34 7-3v-11" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-sphere"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".65"/></g>
+  <g id="g-cone"><path d="M12 3l7.5 15h-15z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-sketch"><path d="M4 20c3-1 5-3.5 6.5-7S13 6 16 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4" cy="20" r="1.7" fill="currentColor"/><circle cx="16" cy="4" r="1.7" fill="currentColor"/></g>
+  <g id="g-revolve"><path d="M12 3v18" stroke="currentColor" stroke-width="1.4" opacity=".55" stroke-dasharray="2.5 2.5"/><path d="M12 5c4 0 7 3.1 7 7s-3 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9 7l3-2 3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></g>
+  <g id="g-loft"><path d="M4 18h16M7 6h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 18L7 6M20 18L17 6" stroke="currentColor" stroke-width="1.5"/></g>
+  <g id="g-eye"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></g>
+  <g id="g-eye-off"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></g>
+  <g id="g-chev"><path d="M2 3.5L5 6.5l3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-grip"><circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/></g>
+</defs></svg>
+
+<div class="stage" id="stage">
+  <div class="grid-floor"></div>
+  <div class="stage-glow"></div>
+
+  <div id="sceneMount" style="position:absolute;inset:0;z-index:10"></div>
+
+  <!-- LENS · held on Q -->
+  <div class="lens" id="lens">
+    <div class="lens-ring"></div>
+    <div class="lens-inner" id="lensInner"></div>
+    <div class="lens-cross"></div>
+  </div>
+
+  <!-- CORNER CARD · toggled on E -->
+  <div class="card-mount" id="cardMount">
+    <div class="cd-head" id="cardHead">
+      <span class="g"><svg width="13" height="13" viewBox="0 0 24 24"><use href="#g-grip"/></svg></span>
+      <span class="t">Directory</span>
+      <span class="n" id="cardCount"></span>
+      <span class="cd-x" id="cardShut" title="Collapse">
+        <svg width="11" height="11" viewBox="0 0 10 10"><use href="#g-chev"/></svg>
+      </span>
+    </div>
+    <div class="cd-body" id="cardTree"></div>
+  </div>
+
+  <div class="idle-hint" id="idleHint">
+    hold <kbd>Q</kbd> <b>lens</b> &nbsp;·&nbsp; press <kbd>E</kbd> <b>card</b>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   DIRECTORY STORE
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TokenCounter = 0;
+const IssueToken = () => 'n' + (++TokenCounter);
+
+const DirectoryRoot = [
+  { RecordToken:IssueToken(), Label:'Part', Classification:'scene', ViewportAnchor:[.50,.14], FormExtent:0, FoldOpen:true, SubtreeRegion:[
+
+    { RecordToken:IssueToken(), Label:'BODY_Bracket', Classification:'folder', ViewportAnchor:[.31,.44], FormExtent:0, FoldOpen:true, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Plate', Classification:'solid',    ViewportAnchor:[.25,.34], FormExtent:76, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Boss',  Classification:'cylinder', ViewportAnchor:[.38,.28], FormExtent:52, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Rib',   Classification:'solid',    ViewportAnchor:[.28,.56], FormExtent:44, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'FIL_Edges', Classification:'revolve',  ViewportAnchor:[.40,.51], FormExtent:38, VisibilityEnabled:false, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'BODY_Housing', Classification:'folder', ViewportAnchor:[.69,.42], FormExtent:0, FoldOpen:true, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Wall', Classification:'solid',  ViewportAnchor:[.64,.34], FormExtent:80, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Dome', Classification:'sphere', ViewportAnchor:[.76,.29], FormExtent:56, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'LFT_Neck', Classification:'loft',   ViewportAnchor:[.71,.53], FormExtent:46, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'Sketches', Classification:'folder', ViewportAnchor:[.49,.73], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SK_BasePlate', Classification:'sketch', ViewportAnchor:[.43,.74], FormExtent:36, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SK_BoltHoles', Classification:'sketch', ViewportAnchor:[.55,.79], FormExtent:30, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'SOL_Spindle', Classification:'cylinder', ViewportAnchor:[.85,.68], FormExtent:40, VisibilityEnabled:false, SubtreeRegion:[] },
+    { RecordToken:IssueToken(), Label:'CON_Taper',   Classification:'cone',     ViewportAnchor:[.16,.72], FormExtent:44, SubtreeRegion:[] },
+  ]},
+];
+
+function TraverseDirectory(Region, Visit, EnclosureEntry=null, DepthTier=0){
+  for(const Entry of Region){
+    Visit(Entry, EnclosureEntry, DepthTier);
+    if(Entry.SubtreeRegion) TraverseDirectory(Entry.SubtreeRegion, Visit, Entry, DepthTier+1);
+  }
+}
+function ResolveEntry(Token, Region=DirectoryRoot, EnclosureEntry=null){
+  for(const Entry of Region){
+    if(Entry.RecordToken===Token) return { Entry, EnclosureEntry };
+    if(Entry.SubtreeRegion){
+      const Found = ResolveEntry(Token, Entry.SubtreeRegion, Entry);
+      if(Found) return Found;
+    }
+  }
+  return null;
+}
+function ResolveEnclosurePath(Token){
+  const Path = [];
+  (function Descend(Region, Trail){
+    for(const Entry of Region){
+      const Extended = Trail.concat(Entry);
+      if(Entry.RecordToken===Token){ Path.push(...Extended); return true; }
+      if(Entry.SubtreeRegion && Descend(Entry.SubtreeRegion, Extended)) return true;
+    }
+    return false;
+  })(DirectoryRoot, []);
+  return Path;
+}
+const GroupCondition   = (Entry)=> !!(Entry.SubtreeRegion && Entry.SubtreeRegion.length);
+const VisibleCondition = (Entry)=> Entry.VisibilityEnabled !== false;
+const GlyphMarkup = (Classification, Size=15)=>
+  `<svg width="${Size}" height="${Size}" viewBox="0 0 24 24"><use href="#g-${Classification}"/></svg>`;
+
+function EnumerateRenderableBodies(){
+  const Bodies = [];
+  TraverseDirectory(DirectoryRoot, (Entry)=>{ if(Entry.FormExtent) Bodies.push(Entry); });
+  return Bodies;
+}
+function DirectoryStatistics(){
+  let Bodies = 0, Groups = 0;
+  TraverseDirectory(DirectoryRoot, (Entry)=>{
+    if(Entry.FormExtent) Bodies++;
+    if(GroupCondition(Entry)) Groups++;
+  });
+  return { Bodies, Groups };
+}
+const StageBounds = ()=> document.getElementById('stage').getBoundingClientRect();
+function AnchorPixels(Entry){
+  const Bounds = StageBounds();
+  return { X:Entry.ViewportAnchor[0]*Bounds.width, Y:Entry.ViewportAnchor[1]*Bounds.height };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   SELECTION — one shared truth, both mechanisms read and write it
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let SelectedToken = null;
+
+function ApplySelection(Token){
+  SelectedToken = Token;
+  RenderScene();
+  RenderCard();
+  RenderLens();
+  RenderSelectionReadout();
+}
+function ToggleVisibility(Token){
+  const Resolved = ResolveEntry(Token);
+  if(!Resolved) return;
+  Resolved.Entry.VisibilityEnabled = !VisibleCondition(Resolved.Entry);
+  RenderScene(); RenderCard(); RenderLens();
+}
+function RenderSelectionReadout(){
+  const Readout = document.getElementById('selRead');
+  if(!SelectedToken){ Readout.textContent = 'nothing selected'; return; }
+  const Path = ResolveEnclosurePath(SelectedToken);
+  if(!Path.length){ Readout.textContent = 'nothing selected'; return; }
+  const Trail = Path.slice(0,-1).map(Step=>Step.Label).join(' / ');
+  const Leaf  = Path[Path.length-1].Label;
+  Readout.innerHTML = (Trail ? Trail+' / ' : '') + `<b>${Leaf}</b>`;
+}
+
+/* ══ scene render ══ */
+const FormShape = {
+  solid:    (E)=>({ w:E, h:E, r:'5px', tf:'rotate(45deg) skewY(-12deg)' }),
+  cylinder: (E)=>({ w:E*.72, h:E, r:`${E*.36}px / 14px`, tf:'none' }),
+  sphere:   (E)=>({ w:E, h:E, r:'50%', tf:'none' }),
+  cone:     (E)=>({ w:E, h:E, r:'4px', tf:'rotate(45deg)' }),
+  sketch:   (E)=>({ w:E, h:E*.62, r:'3px', tf:'skewX(-16deg)' }),
+  revolve:  (E)=>({ w:E, h:E*.8, r:'40% 40% 12% 12%', tf:'none' }),
+  loft:     (E)=>({ w:E*.8, h:E, r:'30% 30% 8% 8%', tf:'none' }),
+};
+
+function RenderScene(){
+  const Mount = document.getElementById('sceneMount');
+  Mount.innerHTML = '';
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Shape = (FormShape[Entry.Classification]||FormShape.solid)(Entry.FormExtent);
+    const Body = document.createElement('div');
+    Body.className = 'scene-body'
+      + (Entry.RecordToken===SelectedToken ? ' sel' : '')
+      + (Entry.RecordToken===LensToken     ? ' lit' : '')
+      + (VisibleCondition(Entry) ? '' : ' hid');
+    Body.style.left = Anchor.X+'px'; Body.style.top = Anchor.Y+'px';
+    Body.innerHTML = `<div class="sb-form" style="width:${Shape.w}px;height:${Shape.h}px;
+      border-radius:${Shape.r};transform:${Shape.tf}"></div>`;
+    Body.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Body);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   LENS · held on [Q]
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const LensBody  = document.getElementById('lens');
+const LensInner = document.getElementById('lensInner');
+const StageHost = document.getElementById('stage');
+let LensToken = null;      /* body currently under the glass */
+let LensOpen  = false;     /* Q held down */
+let PointerAt = { X:0, Y:0, Inside:false };
+
+function RenderLens(){
+  if(!LensOpen) return;
+  const Resolved = LensToken ? ResolveEntry(LensToken) : null;
+  if(!Resolved){
+    const Statistics = DirectoryStatistics();
+    LensInner.innerHTML =
+      `<div class="lens-ttl">Directory</div>
+       <div class="lens-nm">Part</div>
+       <div class="lens-sub">${Statistics.Bodies} bodies</div>
+       <div class="lens-empty">pass over a body</div>`;
+    return;
+  }
+  const { Entry, EnclosureEntry } = Resolved;
+  const Peers = EnclosureEntry ? EnclosureEntry.SubtreeRegion : DirectoryRoot;
+  LensInner.innerHTML =
+    `<div class="lens-ttl">${EnclosureEntry ? EnclosureEntry.Label : 'Directory'}</div>
+     <div class="lens-nm">${Entry.Label}</div>
+     <div class="lens-sub">${Entry.Classification}</div>
+     <div class="lens-kids">${
+       Peers.slice(0,4).map(Peer=>
+         `<div class="lens-kid ${Peer.RecordToken===Entry.RecordToken?'sel':''}">
+            <span class="ti">${GlyphMarkup(Peer.Classification,11)}</span>
+            <span class="lk-nm">${Peer.Label}</span></div>`).join('')
+     }${ Peers.length>4
+        ? `<div class="lens-kid" style="justify-content:center;color:#33333a">+${Peers.length-4} more</div>`
+        : '' }</div>`;
+}
+
+/* which body sits nearest the cursor, within its own extent */
+function ResolveLensToken(){
+  if(!PointerAt.Inside) return null;
+  let Nearest = null, NearestSpan = Infinity;
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Span = Math.hypot(PointerAt.X - Anchor.X, PointerAt.Y - Anchor.Y);
+    if(Span < Entry.FormExtent * .9 && Span < NearestSpan){ Nearest = Entry; NearestSpan = Span; }
+  }
+  return Nearest ? Nearest.RecordToken : null;
+}
+function PlaceLens(){
+  LensBody.style.left = PointerAt.X + 'px';
+  LensBody.style.top  = PointerAt.Y + 'px';
+}
+function SyncLensToken(){
+  const Token = ResolveLensToken();
+  if(Token === LensToken) return;
+  LensToken = Token;
+  RenderLens();
+  RenderScene();   /* keep the lit outline on the read body in step */
+}
+
+function OpenLens(){
+  if(LensOpen) return;
+  LensOpen = true;
+  LensBody.classList.add('up');
+  StageHost.classList.add('lens-live');
+  document.getElementById('capLens').classList.add('on');
+  PlaceLens();
+  LensToken = null;      /* force a fresh resolve on open */
+  SyncLensToken();
+  RenderLens();
+  RetireIdleHint();
+}
+function ShutLens(){
+  if(!LensOpen) return;
+  LensOpen = false;
+  LensBody.classList.remove('up');
+  StageHost.classList.remove('lens-live');
+  document.getElementById('capLens').classList.remove('on');
+  if(LensToken){ LensToken = null; RenderScene(); }
+}
+
+StageHost.addEventListener('mousemove', (Signal)=>{
+  const Bounds = StageBounds();
+  PointerAt = {
+    X: Signal.clientX - Bounds.left,
+    Y: Signal.clientY - Bounds.top,
+    Inside: true,
+  };
+  if(!LensOpen) return;
+  PlaceLens();
+  SyncLensToken();
+});
+StageHost.addEventListener('mouseleave', ()=>{
+  PointerAt.Inside = false;
+  if(LensOpen) SyncLensToken();
+});
+/* clicking while the lens is up selects whatever it is reading */
+StageHost.addEventListener('click', ()=>{
+  if(LensOpen && LensToken){ ApplySelection(LensToken); return; }
+  if(!LensOpen) ApplySelection(null);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   CORNER CARD · toggled on [E]
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const CardMount = document.getElementById('cardMount');
+let CardOpen = false;
+
+function LinearizeOpenDirectory(){
+  const Sequence = [];
+  (function Descend(Region, DepthTier){
+    for(const Entry of Region){
+      Sequence.push({ Entry, DepthTier });
+      if(GroupCondition(Entry) && Entry.FoldOpen) Descend(Entry.SubtreeRegion, DepthTier+1);
+    }
+  })(DirectoryRoot, 0);
+  return Sequence;
+}
+
+function BuildCompactRow(Entry, DepthTier){
+  const Group = GroupCondition(Entry);
+  const Row = document.createElement('div');
+  Row.className = 'r' + (Entry.RecordToken===SelectedToken ? ' sel' : '')
+                      + (VisibleCondition(Entry) ? '' : ' dim');
+  Row.style.paddingLeft = (7 + DepthTier * 12) + 'px';
+  Row.innerHTML =
+    `<span class="tw ${Group ? (Entry.FoldOpen?'':'cl') : 'leaf'}">
+       <svg viewBox="0 0 10 10"><use href="#g-chev"/></svg></span>
+     <span class="ti ${Group?'grp':''} ${Entry.RecordToken===SelectedToken?'sel':''}">
+       ${GlyphMarkup(Entry.Classification, 15)}</span>
+     <span class="nm">${Entry.Label}</span>
+     <span class="eye"><svg width="13" height="13" viewBox="0 0 24 24">
+       <use href="#g-eye${VisibleCondition(Entry)?'':'-off'}"/></svg></span>`;
+  Row.querySelector('.tw').onclick = (Signal)=>{
+    Signal.stopPropagation();
+    if(Group){ Entry.FoldOpen = !Entry.FoldOpen; RenderCard(); }
+  };
+  Row.querySelector('.eye').onclick = (Signal)=>{
+    Signal.stopPropagation(); ToggleVisibility(Entry.RecordToken);
+  };
+  Row.onclick = ()=> ApplySelection(Entry.RecordToken);
+  return Row;
+}
+
+function RenderCard(){
+  if(!CardOpen) return;
+  const Body = document.getElementById('cardTree');
+  Body.innerHTML = '';
+  for(const { Entry, DepthTier } of LinearizeOpenDirectory())
+    Body.appendChild(BuildCompactRow(Entry, DepthTier));
+  document.getElementById('cardCount').textContent = DirectoryStatistics().Bodies;
+}
+
+function ToggleCard(){
+  CardOpen = !CardOpen;
+  CardMount.classList.toggle('up', CardOpen);
+  document.getElementById('capCard').classList.toggle('on', CardOpen);
+  if(CardOpen){ RenderCard(); RetireIdleHint(); }
+}
+
+document.getElementById('cardShut').onclick = (Signal)=>{
+  Signal.stopPropagation(); CardMount.classList.toggle('shut');
+};
+/* drag by the header — the card is free-floating, it owns no dock */
+(function AttachCardDrag(){
+  const Handle = document.getElementById('cardHead');
+  let Dragging = false, GrabX = 0, GrabY = 0, OriginRight = 14, OriginTop = 14;
+  Handle.onmousedown = (Signal)=>{
+    if(Signal.target.closest('.cd-x')) return;
+    Dragging = true; GrabX = Signal.clientX; GrabY = Signal.clientY;
+    OriginRight = parseFloat(CardMount.style.right || 14);
+    OriginTop   = parseFloat(CardMount.style.top   || 14);
+    Signal.preventDefault();
+  };
+  window.addEventListener('mousemove', (Signal)=>{
+    if(!Dragging) return;
+    CardMount.style.right = Math.max(6, OriginRight - (Signal.clientX - GrabX)) + 'px';
+    CardMount.style.top   = Math.max(6, OriginTop  + (Signal.clientY - GrabY)) + 'px';
+  });
+  window.addEventListener('mouseup', ()=>{ Dragging = false; });
+})();
+/* the card is a surface, not the stage — clicks inside must not clear the selection */
+CardMount.addEventListener('click', (Signal)=> Signal.stopPropagation());
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   HOTKEYS — [Q] holds the lens, [E] toggles the card
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RetireIdleHint(){ document.getElementById('idleHint').classList.add('gone'); }
+
+document.addEventListener('keydown', (Signal)=>{
+  if(Signal.repeat) return;                       /* holding Q must not re-open every frame */
+  if(Signal.ctrlKey || Signal.metaKey || Signal.altKey) return;
+  const Pressed = Signal.key.toLowerCase();
+
+  if(Pressed === 'q'){ Signal.preventDefault(); OpenLens();  return; }
+  if(Pressed === 'e'){ Signal.preventDefault(); ToggleCard(); return; }
+  if(Signal.key === 'Escape'){
+    /* one Escape clears whichever surface is up, else clears the selection */
+    if(CardOpen){ ToggleCard(); return; }
+    ApplySelection(null);
+  }
+});
+document.addEventListener('keyup', (Signal)=>{
+  if(Signal.key.toLowerCase() === 'q') ShutLens();
+});
+/* releasing Q while the window is unfocused would strand the lens open */
+window.addEventListener('blur', ShutLens);
+
+let ResizeToken = null;
+window.addEventListener('resize', ()=>{
+  clearTimeout(ResizeToken);
+  ResizeToken = setTimeout(()=>{
+    RenderScene();
+    if(LensOpen) SyncLensToken();
+  }, 90);
+});
+
+RenderScene();
+RenderSelectionReadout();
+</script>
+</body>
+</html>

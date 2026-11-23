@@ -1,0 +1,198 @@
+.editor-colour-picker {
+  border: 1px solid #ffffff0c;
+  background: #202020;
+  padding: 15px;
+  border-radius: 20px;
+  min-width: 0;
+}
+.editor-colour-picker > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  margin-bottom: 14px;
+  color: #bbc3a7;
+}
+.editor-colour-picker > header > small {
+  margin-left: auto;
+  font-size: 7px;
+  color: #7e836d;
+}
+.colour-picker-square {
+  height: 115px;
+  position: relative;
+  border: 1px solid #ffffff15;
+  border-radius: 11px;
+  background:
+    linear-gradient(0deg, #000, transparent),
+    linear-gradient(90deg, #fff, transparent), var(--hue-colour);
+  touch-action: none;
+  cursor: crosshair;
+  overflow: hidden;
+}
+.colour-picker-square[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.colour-picker-square:focus-visible {
+  outline: 2px solid #d3ddaf;
+  outline-offset: 2px;
+}
+.colour-picker-square > i {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid white;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px #0009;
+  pointer-events: none;
+}
+.colour-picker-hue {
+  margin-top: 13px;
+}
+.editor-colour-picker .colour-picker-hue .range-input {
+  background: linear-gradient(90deg, #f44, #ff4, #4f4, #4ff, #44f, #f4f, #f44);
+}
+.colour-picker-hex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #ffffff0a;
+  background: #111;
+  border-radius: 999px;
+  padding: 5px 9px;
+  margin-top: 10px;
+}
+.colour-picker-hex > i {
+  display: block;
+  width: 19px;
+  height: 19px;
+  border: 1px solid #ffffff22;
+  border-radius: 50%;
+  flex: none;
+}
+.colour-picker-hex > input {
+  border: 0 !important;
+  background: transparent !important;
+  color: #d5dcc2;
+  font:
+    10px "DM Sans",
+    sans-serif;
+  min-width: 0;
+  flex: 1;
+  padding: 3px !important;
+  border-radius: 0 !important;
+  letter-spacing: 0.4px;
+}
+.colour-picker-hex > span {
+  font-size: 7px;
+  color: #7c806c;
+}
+.colour-picker-swatches {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 13px;
+}
+.editor-colour-picker .colour-picker-swatches > button {
+  padding: 0;
+  width: 19px;
+  height: 19px;
+  min-height: 19px;
+  border-radius: 50%;
+  border: 1px solid #ffffff30;
+}
+.editor-colour-picker .colour-picker-swatches > button[aria-pressed="true"] {
+  outline: 1px solid #d2dda9;
+  outline-offset: 2px;
+}
+.colour-picker-source-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 13px;
+}
+.colour-picker-source-tabs > button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #ffffff14;
+  background: #171717;
+  border-radius: 999px;
+  color: #9a9b94;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+}
+.colour-picker-source-tabs > button:hover:not(:disabled) {
+  color: #d5dcc2;
+  border-color: #ffffff2a;
+}
+.colour-picker-source-tabs > button[aria-pressed="true"] {
+  background: #2a2f22;
+  border-color: #6a7a52;
+  color: #d5dcc2;
+}
+.colour-picker-source-tabs > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.colour-picker-palette {
+  margin-top: 11px;
+}
+.colour-picker-palette-group + .colour-picker-palette-group {
+  margin-top: 10px;
+}
+.colour-picker-palette-group > small {
+  display: block;
+  font-size: 7px;
+  color: #7c806c;
+  margin-bottom: 5px;
+  letter-spacing: 0.3px;
+}
+.colour-picker-palette .colour-picker-swatches {
+  margin-top: 0;
+}
+.colour-picker-palette .colour-picker-swatches > button {
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+.colour-picker-generate {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 11px;
+}
+.colour-picker-generate > button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid #ffffff14;
+  border-radius: 999px;
+  background: #171717;
+  color: #d5dcc2;
+  font-size: 9px;
+  cursor: pointer;
+  text-align: left;
+}
+.colour-picker-generate > button:hover:not(:disabled) {
+  border-color: #6a7a52;
+}
+.colour-picker-generate > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.colour-picker-generate-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #ffffff22;
+  flex: none;
+}

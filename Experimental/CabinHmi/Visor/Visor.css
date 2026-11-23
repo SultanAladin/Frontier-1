@@ -1,0 +1,25 @@
+/* VISOR — full-window cockpit view with a small key card; the HUD itself is drawn on the 3D windscreen. */
+body { background: #000; color: #e8f0ff; cursor: crosshair; }
+#Scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+.Vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at 50% 45%, rgba(0, 0, 0, 0) 38%, rgba(0, 0, 0, 0.78) 100%); transition: opacity 600ms; }
+.Help { position: fixed; left: 18px; bottom: 18px; display: grid; gap: 5px; padding: 12px 14px; border-radius: 12px; background: rgba(6, 8, 12, 0.62); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); font-size: 12px; color: rgba(232, 240, 255, 0.72); transition: opacity 400ms; }
+.Help b { font-weight: 500; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #3ff0ff; margin-bottom: 2px; }
+.Help kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin-right: 3px; border-radius: 5px; border: 1px solid rgba(255, 255, 255, 0.2); font: 500 11px 'DM Sans', sans-serif; text-align: center; color: #fff; }
+.Bare .Help { opacity: 0; }
+.Loading { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 14px; background: #000; font-size: 13px; letter-spacing: 0.12em; color: rgba(232, 240, 255, 0.6); transition: opacity 700ms; }
+.Loading i { width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(63, 240, 255, 0.2); border-top-color: #3ff0ff; animation: Spin 1s linear infinite; }
+.Loading.Done { opacity: 0; pointer-events: none; }
+@keyframes Spin { to { rotate: 360deg; } }
+
+.Help em { font-style: normal; font-size: 11px; color: rgba(63, 240, 255, 0.7); }
+.Heard .Help em { display: none; }
+
+/* Crash flash: a red edge burst that fades out. */
+.Flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at 50% 50%, rgba(255, 40, 60, 0) 30%, rgba(255, 40, 60, 0.6) 100%); }
+.Flash.Hit { animation: FlashHit 900ms ease-out; }
+@keyframes FlashHit { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Ping wheel: drawn on its own canvas, centred on the cursor by VisorPing. */
+.PingWheel { position: fixed; width: 400px; height: 400px; pointer-events: none; opacity: 0; transform: scale(0.82); transition: opacity 120ms, transform 160ms cubic-bezier(.2, 1.4, .4, 1); z-index: 5; }
+.PingWheel.Shown { opacity: 1; transform: scale(1); }
+.Steering, .Steering canvas { cursor: crosshair; }

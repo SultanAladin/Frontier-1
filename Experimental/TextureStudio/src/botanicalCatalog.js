@@ -1,0 +1,126 @@
+export function botanicalCatalog() {
+  const make = (name, type, recipeId, color, extra = {}) => ({
+    id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    name,
+    type,
+    recipeId,
+    color,
+    colors: [color],
+    category: type === 30 ? "Leather" : "Nature",
+    label: (type === 30 ? "LEATHER" : "NATURE") + " · PROCEDURAL",
+    roughness: 0.48,
+    metalness: 0,
+    coat: 0.12,
+    coatRoughness: 0.22,
+    flakes: 0,
+    grain: 0.65,
+    depth: 0.1,
+    ...extra,
+  });
+  return [
+    make("Crocodile Belly Leather", 30, "crocodile", "#70432b", {
+      secondaryColor: "#865335",
+      tertiaryColor: "#59321f",
+      detailScale: 5.2,
+      roughness: 0.28,
+      coat: 0.32,
+      coatRoughness: 0.17,
+      groutWidth: 0.024,
+      poreDensity: 0.8,
+      grain: 0.8,
+      description:
+        "Continuous tanned hide with soft shared creases, irregular scale sizing and fine grain. No separated tile masks or image maps.",
+    }),
+    make("Rose Petal", 33, "petalSurface", "#b83d65", {
+      secondaryColor: "#edb6bc",
+      tertiaryColor: "#802342",
+      colorGradient: 0.88,
+      spotDensity: 0.06,
+      veinRelief: 0.5,
+      cellRelief: 0.45,
+      cellScale: 160,
+      description:
+        "A whole petal UV surface: basal blush, tip gradient, branching striations and microscopic epidermal relief. No cutout.",
+    }),
+    make("Lily Petal", 33, "petalSurface", "#ead7b8", {
+      secondaryColor: "#b97c34",
+      tertiaryColor: "#742a32",
+      colorGradient: 0.65,
+      spotDensity: 0.82,
+      veinRelief: 0.65,
+      cellRelief: 0.5,
+      cellScale: 140,
+      description:
+        "Warm basal throat, pale tip, basal speckling and silky fine striations. One UV island per petal.",
+    }),
+    make("Apple Skin", 34, "fruitSurface", "#8f2029", {
+      secondaryColor: "#c5ac52",
+      tertiaryColor: "#e3c697",
+      skinMode: 0,
+      detailScale: 72,
+      colorGradient: 0.85,
+      spotDensity: 0.55,
+      roughness: 0.28,
+      coat: 0.3,
+      grain: 0.4,
+      description:
+        "Mottled blush, longitudinal pigment variation, pale lenticels and fine waxed skin. Cylindrical/spherical UV surface.",
+    }),
+    make("Orange Peel", 34, "citrusSurface", "#e67b17", {
+      secondaryColor: "#f1a42c",
+      tertiaryColor: "#b75d16",
+      skinMode: 1,
+      detailScale: 65,
+      roughness: 0.5,
+      grain: 0.85,
+      description:
+        "Dense recessed oil-gland pits and fine peel relief. Skin only, not a modeled orange.",
+    }),
+    make("Strawberry Skin", 34, "berrySurface", "#a91f21", {
+      secondaryColor: "#c9a259",
+      tertiaryColor: "#691719",
+      skinMode: 2,
+      detailScale: 12,
+      roughness: 0.34,
+      coat: 0.22,
+      grain: 0.85,
+      description:
+        "Seeds sitting within recessed pockets in a mottled red skin. Analytic normal relief, not seed geometry.",
+    }),
+    make("Cactus Epidermis", 35, "cactusSurface", "#426d48", {
+      secondaryColor: "#8faaa0",
+      tertiaryColor: "#bbb095",
+      detailScale: 15,
+      plantRibs: 10,
+      colorGradient: 0.35,
+      cellScale: 120,
+      veinRelief: 0.55,
+      cellRelief: 0.5,
+      description:
+        "Waxy epidermis, fine cells and staggered corky areoles aligned along rib columns. Apply to your cactus mesh; no generated spines.",
+    }),
+    make("Blue Glaucous Cactus", 35, "cactusSurface", "#648a85", {
+      secondaryColor: "#b5c3b9",
+      tertiaryColor: "#bca98c",
+      detailScale: 11,
+      plantRibs: 8,
+      colorGradient: 0.8,
+      cellScale: 140,
+      roughness: 0.65,
+      veinRelief: 0.5,
+      description:
+        "Blue-green wax bloom, subtle epidermal cells and dry areoles. Ribs in this shader are relief only.",
+    }),
+    make("Living Plant Stem", 36, "stemSurface", "#53673b", {
+      secondaryColor: "#827051",
+      tertiaryColor: "#b9aa80",
+      detailScale: 28,
+      colorGradient: 0.55,
+      spotDensity: 0.65,
+      cellScale: 150,
+      veinRelief: 0.6,
+      description:
+        "Longitudinal fibers, maturing cork pigment, lenticels and fine epidermis. U wraps the stem; V follows its length.",
+    }),
+  ];
+}

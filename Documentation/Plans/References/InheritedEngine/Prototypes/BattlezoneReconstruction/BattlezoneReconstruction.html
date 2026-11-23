@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<!--====================================================================================================================================
+                                                 BATTLEZONERECONSTRUCTION.HTML
+=====================================================================================================================================-->
+<!-- 🧩 Entry page — canvas pair, control legend and sequence activation for the first-person armoured-combat reconstruction -->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlezone Reconstruction — WebGPU</title>
+    <style>
+        :root
+        {
+            --DisplayTone:   #7cf6b0;
+            --HorizonTone:   #050d0b;
+            --ChromeTone:    #0b1815;
+            --SubduedTone:   #7f9c91;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body
+        {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--HorizonTone);
+            font-family: 'Consolas', 'Courier New', monospace;
+            color: var(--DisplayTone);
+        }
+
+        /* 📝 Both canvases fill the window and stack; the overlay must never intercept the pointer or pointer-lock breaks. */
+        #RenderSurface, #OverlaySurface
+        {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #OverlaySurface { pointer-events: none; }
+
+        #ControlLegend
+        {
+            position: absolute;
+            left: 34px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 18px 22px;
+            background: rgba(6, 20, 17, 0.82);
+            border: 1px solid rgba(124, 246, 176, 0.30);
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.85;
+            letter-spacing: 0.04em;
+            transition: opacity 0.45s ease;
+            z-index: 3;
+        }
+
+        #ControlLegend.Retracted { opacity: 0; pointer-events: none; }
+
+        #ControlLegend h2
+        {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(124, 246, 176, 0.22);
+        }
+
+        #ControlLegend table { border-collapse: collapse; }
+        #ControlLegend td { padding: 1px 0; vertical-align: top; }
+        #ControlLegend td:first-child
+        {
+            color: #d8fff0;
+            font-weight: 700;
+            padding-right: 20px;
+            white-space: nowrap;
+        }
+        #ControlLegend td:last-child { color: var(--SubduedTone); }
+        #ControlLegend .LegendFooter
+        {
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(124, 246, 176, 0.22);
+            color: var(--DisplayTone);
+            font-size: 11px;
+        }
+
+        #FaultNotice
+        {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 40px;
+            background: var(--HorizonTone);
+            text-align: center;
+            z-index: 9;
+        }
+
+        #FaultNotice h1 { font-size: 18px; letter-spacing: 0.14em; color: #ff7b46; }
+        #FaultNotice p  { font-size: 13px; color: var(--SubduedTone); max-width: 620px; line-height: 1.7; }
+        #FaultNotice code
+        {
+            display: block;
+            margin-top: 6px;
+            padding: 10px 14px;
+            background: var(--ChromeTone);
+            border: 1px solid rgba(255, 123, 70, 0.28);
+            border-radius: 3px;
+            color: #ffb99c;
+            font-size: 11px;
+            text-align: left;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="RenderSurface"></canvas>
+    <canvas id="OverlaySurface"></canvas>
+
+    <div id="ControlLegend">
+        <h2>ARMOURED COMBAT — CONTROLS</h2>
+        <table>
+            <tr><td>W / S</td><td>Throttle forward · reverse</td></tr>
+            <tr><td>A / D</td><td>Steer hull left · right</td></tr>
+            <tr><td>Mouse</td><td>Slew turret · elevate barrel</td></tr>
+            <tr><td>I J K L</td><td>Turret slew without pointer lock</td></tr>
+            <tr><td>Click / Space</td><td>Discharge armament</td></tr>
+            <tr><td>1 2 3 / Tab</td><td>Select · cycle armament</td></tr>
+            <tr><td>F</td><td><strong>Possess chassis in sight cone</strong></td></tr>
+            <tr><td>Q / E</td><td>Possess previous · next chassis</td></tr>
+            <tr><td>P</td><td>Suspend · resume</td></tr>
+        </table>
+        <div class="LegendFooter">Click the viewport to lock the pointer and engage.</div>
+    </div>
+
+    <div id="FaultNotice">
+        <h1>WEBGPU UNAVAILABLE</h1>
+        <p>This reconstruction rasterizes through WebGPU and needs a browser exposing <strong>navigator.gpu</strong>
+           over a served origin. Open the page through the bundled launcher rather than from the filesystem —
+           ES modules and the <code>.wgsl</code> fetch are both blocked on <strong>file://</strong>.</p>
+        <code id="FaultDetail"></code>
+    </div>
+
+    <script type="module">
+        import { CombatSequence } from "./CombatSequence.js";
+
+        const RenderSurface  = document.getElementById("RenderSurface");
+        const OverlaySurface = document.getElementById("OverlaySurface");
+        const ControlLegend  = document.getElementById("ControlLegend");
+        const FaultNotice    = document.getElementById("FaultNotice");
+        const FaultDetail    = document.getElementById("FaultDetail");
+
+        // Retract the legend once the operator engages, and restore it when pointer lock is released.
+        document.addEventListener("pointerlockchange", () =>
+        {
+            const EngagedState = document.pointerLockElement === RenderSurface;
+            ControlLegend.classList.toggle("Retracted", EngagedState);
+        });
+
+        try
+        {
+            const Sequence = await new CombatSequence(RenderSurface, OverlaySurface).Initialize();
+            Sequence.Activate();
+        }
+        catch (FaultReason)
+        {
+            FaultNotice.style.display = "flex";
+            ControlLegend.classList.add("Retracted");
+            FaultDetail.textContent   = String(FaultReason && FaultReason.message ? FaultReason.message : FaultReason);
+            console.error(FaultReason);
+        }
+    </script>
+</body>
+</html>

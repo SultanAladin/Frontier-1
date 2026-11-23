@@ -1,0 +1,187 @@
+/* TIER DESCENT — PROTOTYPE 01
+   🧩 Visual tokens and layout for the standalone Tier Descent card. */
+
+@font-face { font-family: 'DM Sans'; font-weight: 300; src: url('../../../Shared/Studio/Fonts/dm-sans-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'DM Sans'; font-weight: 400; src: url('../../../Shared/Studio/Fonts/dm-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'DM Sans'; font-weight: 500; src: url('../../../Shared/Studio/Fonts/dm-sans-latin-500-normal.woff2') format('woff2'); }
+
+:root {
+    --Void:        #08080a;
+    --CardFace:    #131316;
+    --TileFace:    #1a1a1e;
+    --TileRaised:  #222227;
+    --Hairline:    rgba(255, 255, 255, 0.07);
+    --Ink:         #ececee;
+    --InkDim:      #8b8b93;
+    --InkFaint:    #55555d;
+    --Lime:        #d7f36a;
+    --LimeDeep:    #9fbf2c;
+    --Coral:       #ff6a5c;
+    --Mint:        #7df0a0;
+    --Amber:       #f5b14a;
+    --RadiusCard:  28px;
+    --RadiusTile:  20px;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--Void); color: var(--Ink); font: 400 13px/1.35 'DM Sans', system-ui, sans-serif; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+.Backdrop {
+    min-height: 100%;
+    display: grid;
+    place-items: center;
+    gap: 18px;
+    padding: 28px;
+    background:
+        radial-gradient(circle at 50% 40%, rgba(215, 243, 106, 0.05), transparent 55%),
+        radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.2px) 0 0 / 22px 22px,
+        var(--Void);
+}
+
+.ShowcaseCaption { display: flex; align-items: center; gap: 10px; color: var(--InkDim); font-size: 12px; letter-spacing: 0.02em; }
+.ShowcaseCaption b { color: var(--Ink); font-weight: 500; }
+.CaptionDot { width: 8px; height: 8px; border-radius: 50%; background: var(--Amber); box-shadow: 0 0 10px var(--Amber); }
+.CaptionDim { color: var(--InkFaint); }
+.ShowcaseFooter { max-width: 960px; color: var(--InkFaint); font-size: 11px; text-align: center; }
+
+/* ------------------------------------------------------------------ card grid */
+.TierCard {
+    width: min(1180px, 100%);
+    display: grid;
+    grid-template-columns: 300px minmax(360px, 1fr) 320px;
+    grid-template-rows: auto 1fr;
+    gap: 14px;
+    padding: 22px;
+    border-radius: var(--RadiusCard);
+    background: linear-gradient(160deg, #18181c 0%, var(--CardFace) 45%, #0f0f12 100%);
+    border: 1px solid var(--Hairline);
+    box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.CardHeading { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; }
+.CardHeading > div:first-child { min-width: 260px; }
+.CardHeading h1 { margin: 0; font-weight: 300; font-size: 30px; letter-spacing: -0.01em; }
+.CardHeading p { margin: 2px 0 0; color: var(--InkDim); font-size: 12px; }
+
+.PartChips { display: flex; gap: 8px; flex: 1; }
+.PartChips button {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 10px 16px; border-radius: 999px;
+    background: var(--TileFace); border: 1px solid var(--Hairline);
+    transition: background 160ms, color 160ms;
+}
+.PartChips button small { color: var(--InkDim); font-size: 12px; }
+.PartChips button b { font-weight: 400; }
+.PartChips button.On { background: var(--Ink); color: #111; }
+.PartChips button.On small { color: #555; }
+
+.RoundAction { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--Hairline); background: transparent; display: grid; place-items: center; }
+.RoundAction svg { width: 16px; height: 16px; fill: none; stroke: var(--Ink); stroke-width: 1.6; stroke-linecap: round; }
+.RoundAction:hover { background: var(--TileRaised); }
+
+/* ------------------------------------------------------------------ tiles */
+.ReadoutColumn { display: flex; flex-direction: column; gap: 12px; }
+.Tile { border-radius: var(--RadiusTile); background: var(--TileFace); border: 1px solid var(--Hairline); padding: 16px 18px; }
+.TileLabel { color: var(--InkDim); font-size: 12px; }
+.Dim { color: var(--InkDim); font-size: 11.5px; }
+
+.BigReadout { display: flex; align-items: baseline; margin: 6px 0 10px; font-weight: 300; font-size: 64px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.MidReadout { display: flex; align-items: baseline; font-weight: 300; font-size: 34px; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ReadoutFraction { color: var(--InkFaint); }
+.ReadoutUnit { font-size: 0.32em; color: var(--InkDim); margin-left: 4px; letter-spacing: 0; }
+
+.ShedFooter { display: flex; align-items: center; gap: 10px; }
+.TierBadge { padding: 5px 12px; border-radius: 999px; background: var(--Lime); color: #141a00; font-weight: 500; font-size: 12px; }
+
+.CompareTile { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
+.CompareColumn { display: flex; flex-direction: column; gap: 4px; }
+.CompareColumn b { font-weight: 300; font-size: 22px; font-variant-numeric: tabular-nums; }
+.CompareBar { position: relative; height: 0; border-radius: 14px; margin-top: 6px; transition: height 420ms cubic-bezier(.2,.8,.2,1); }
+.CompareBar.Hatched { background: repeating-linear-gradient(135deg, #2a2a30 0 6px, #1f1f24 6px 12px); border-top: 2px solid var(--Ink); }
+.CompareBar.Solid { background: linear-gradient(180deg, var(--Lime), var(--LimeDeep)); display: grid; place-items: center; min-height: 34px; }
+.DeltaPill { padding: 4px 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.14); color: #1d2600; font-weight: 500; font-size: 12px; }
+
+.SeamHeading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.Segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: #111114; border: 1px solid var(--Hairline); }
+.Segmented button { border: 0; background: transparent; padding: 5px 11px; border-radius: 999px; color: var(--InkDim); font-size: 12px; transition: background 160ms, color 160ms; }
+.Segmented button.On { background: var(--Ink); color: #111; }
+.Segmented.Small button { padding: 4px 10px; font-size: 11.5px; }
+
+.FidelityRow { display: flex; gap: 14px; align-items: center; }
+.FidelityRing { width: 84px; height: 84px; transform: rotate(-90deg); flex: none; }
+.RingTrack { fill: none; stroke: #2a2a30; stroke-width: 7; }
+.RingArc { fill: none; stroke: var(--Mint); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 0 999; transition: stroke-dasharray 420ms, stroke 200ms; }
+.FidelityText { display: flex; flex-direction: column; gap: 4px; }
+.StatusChip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; background: #111114; font-size: 11.5px; margin-top: 2px; }
+.StatusChip i { width: 7px; height: 7px; border-radius: 50%; background: var(--Mint); }
+
+/* ------------------------------------------------------------------ preview */
+.PreviewColumn {
+    position: relative;
+    border-radius: var(--RadiusTile);
+    border: 1px solid var(--Hairline);
+    background:
+        radial-gradient(circle at 50% 55%, rgba(215, 243, 106, 0.07), transparent 60%),
+        radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1.2px) 0 0 / 16px 16px,
+        #0d0d10;
+    display: flex; flex-direction: column;
+    min-height: 470px;
+    overflow: hidden;
+}
+.PreviewChrome { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px 0; z-index: 1; }
+.Preview { flex: 1; width: 100%; min-height: 0; cursor: grab; touch-action: none; }
+.Preview:active { cursor: grabbing; }
+.PreviewFooter { display: flex; gap: 18px; padding: 0 16px 14px; color: var(--InkDim); font-size: 11.5px; }
+.PreviewFooter b { color: var(--Ink); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+.Pin { position: absolute; display: flex; align-items: center; gap: 8px; pointer-events: none; transform: translate(-7px, -50%); }
+.Pin i { width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.15), 0 0 16px rgba(255, 255, 255, 0.6); flex: none; }
+.Pin div { display: flex; flex-direction: column; padding: 7px 12px; border-radius: 14px; background: rgba(20, 20, 24, 0.82); backdrop-filter: blur(8px); border: 1px solid var(--Hairline); }
+.Pin b { font-weight: 500; font-size: 12px; }
+.Pin small { color: var(--InkDim); font-size: 11px; }
+
+/* ------------------------------------------------------------------ staircase */
+.StairColumn { display: flex; flex-direction: column; gap: 10px; border-radius: var(--RadiusTile); background: var(--TileFace); border: 1px solid var(--Hairline); padding: 16px 18px; }
+.StairHeading { display: flex; justify-content: space-between; align-items: center; }
+.TextAction { border: 1px solid var(--Hairline); background: transparent; border-radius: 999px; padding: 4px 12px; font-size: 11.5px; color: var(--InkDim); }
+.TextAction.On { color: #141a00; background: var(--Lime); border-color: transparent; }
+
+.StairPlot { position: relative; height: 190px; }
+.Stair { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.Stair .Column { fill: #26262c; transition: fill 160ms; cursor: pointer; }
+.Stair .Column.Eligible { fill: #34343b; }
+.Stair .Column.Elected { fill: var(--Lime); }
+.Stair .Column:hover { fill: #45454d; }
+.Stair .Column.Elected:hover { fill: var(--Lime); }
+.Stair .Trace { fill: none; stroke: var(--Ink); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.Stair .TraceDot { fill: var(--CardFace); stroke: var(--Ink); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.Stair .TraceDot.Over { stroke: var(--Amber); fill: var(--Amber); }
+.Stair .Budget { stroke: var(--InkDim); stroke-dasharray: 5 5; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.Stair .AxisText { fill: var(--InkFaint); font-size: 10px; }
+
+.BudgetHandle { position: absolute; right: -6px; transform: translateY(-50%); cursor: ns-resize; touch-action: none; }
+.BudgetHandle span { display: block; padding: 3px 9px; border-radius: 999px; background: var(--TileRaised); border: 1px solid var(--Hairline); font-size: 10.5px; color: var(--Ink); white-space: nowrap; }
+
+.StairLegend { display: flex; gap: 14px; color: var(--InkDim); font-size: 11px; }
+.StairLegend i { display: inline-block; vertical-align: middle; margin-right: 6px; }
+.LegendBar { width: 8px; height: 10px; border-radius: 3px; background: #3a3a42; }
+.LegendLine { width: 14px; height: 2px; background: var(--Ink); }
+.LegendDash { width: 14px; border-top: 1px dashed var(--InkDim); }
+
+.TierRail { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; overflow: auto; max-height: 190px; }
+.TierRail li { display: grid; grid-template-columns: 52px 1fr 64px 56px; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.TierRail li:hover { background: var(--TileRaised); }
+.TierRail li.Elected { background: var(--Ink); color: #111; }
+.TierRail li.Elected .Dim { color: #555; }
+.TierRail .Meter { height: 4px; border-radius: 4px; background: #2a2a30; overflow: hidden; }
+.TierRail .Meter i { display: block; height: 100%; background: var(--InkDim); border-radius: 4px; }
+.TierRail li.Elected .Meter { background: #cfcfd4; }
+.TierRail li.Elected .Meter i { background: #111; }
+
+@media (max-width: 1100px) {
+    .TierCard { grid-template-columns: 1fr; }
+    .CardHeading { flex-wrap: wrap; }
+}
+
+.Pin[hidden] { display: none; }

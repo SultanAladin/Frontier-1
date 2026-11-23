@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!--
+    RIDGE — DASHBOARD CLUSTER FOR CONTOUR (car A)
+    🧩 The display behind the steering wheel, separate from the Contour centre HMI. Bar-tach core after the
+       Ford-GT reference, amethyst and verdant on black glass, chamfered HUD brackets. Drive modes:
+       Cruise · Eco · Sport · Race, each with its own side panels and tint. Fuel gauge and range always on.
+    🚩 Name proposal awaiting approval.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Ridge · Contour dashboard cluster</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../../Shared/DisplayKit.css">
+    <link rel="stylesheet" href="../ClusterDeck.css">
+    <link rel="stylesheet" href="Ridge.css">
+</head>
+<body>
+<div class="Stage" id="Stage">
+    <div class="Dash Ridge" id="Dash" data-mode="Cruise">
+        <div class="Topo"></div>
+        <header class="DashTop">
+            <div class="TopLeft"><b id="DashClock">06:00</b><span>OUT 18°C</span><span>ALT 1 147 m</span></div>
+            <div class="TopMid"><span class="Bracket">[</span><b class="ModeName" id="ModeName">Cruise</b><span class="Bracket">]</span><small id="ModeLine"></small></div>
+            <div class="TopRight"><span>ODO</span><b id="OdoValue">0</b><span>km</span></div>
+        </header>
+        <div class="Telltales" id="Telltales"></div>
+        <div class="ShiftLights" id="ShiftLights"></div>
+
+        <section class="Wing Left">
+            <div class="Group" data-modes="Cruise"><div data-panel="Trip"></div></div>
+            <div class="Group" data-modes="Eco"><div data-panel="Coach"></div></div>
+            <div class="Group" data-modes="Sport"><div data-panel="Engine"></div></div>
+            <div class="Group" data-modes="Race"><div data-panel="Lap"></div></div>
+            <div class="FuelDock" data-panel="Fuel"></div>
+        </section>
+        <section class="Core" id="Core"></section>
+        <section class="Wing Right">
+            <div class="Group" data-modes="Cruise"><div data-panel="Route"></div><div data-panel="Media"></div></div>
+            <div class="Group" data-modes="Eco"><div data-panel="EcoHistory"></div><div data-panel="Trip"></div></div>
+            <div class="Group" data-modes="Sport"><div data-panel="GForce"></div></div>
+            <div class="Group" data-modes="Race"><div data-panel="Tyres"></div></div>
+        </section>
+        <div class="ModeWash" id="ModeWash"></div>
+        <i class="Corner TL"></i><i class="Corner TR"></i><i class="Corner BL"></i><i class="Corner BR"></i>
+    </div>
+    <nav class="Wheel" id="Wheel"></nav>
+</div>
+<div class="ProtoTag">Dashboard cluster · Ridge (Contour) · awaiting approval</div>
+
+<script type="module">
+    import { Powertrain } from '../../Shared/Powertrain.js';
+    import { MountDeck, ModeOrder } from '../ClusterDeck.js';
+    import { MountRidgeTach } from './RidgeTach.js';
+
+    // Contour: 4.0 petrol off-roader, seven speeds, 80 L tank.
+    const Train = new Powertrain({ Ratios: [4.2, 2.6, 1.8, 1.36, 1.06, 0.86, 0.7], Final: 3.73, Redline: 6800, Limit: 7300, Mass: 2100, PeakTorque: 620, Tank: 80 });
+    Train.Fuel = 0.58;
+    let Deck = null;
+    const Core = MountRidgeTach(document.getElementById('Core'), Train, {
+        Modes: ModeOrder,
+        ModeName: () => (Deck ? Deck.Mode : 'Cruise'),
+        OnBadge: () => Deck.SetMode(ModeOrder[(ModeOrder.indexOf(Deck.Mode) + 1) % ModeOrder.length]),
+    });
+    Deck = MountDeck({ Car: 'Contour', Train, Core, Hmi: '../../Contour/Contour.html', Song: { Title: 'Switchback', Artist: 'Granite Choir', Length: 246 } });
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+[Project]
+ProjectName = "ProjectZero"
+ProjectFormatNumber = 1
+ContentLocation = "Content"
+OpeningScene = ""
+CodeImage = "Build/Output/ProjectZero.dll"
+CodeInterchangeNumber = 3
+InterfaceFingerprint = 0xb6725f24d0869173
+
+# User log categories this project publishes. The host registers them (with colours) when the
+# project opens; project diagnostics whose subject ends in "/<Name>" stream into that category.
+[[LogCategories]]
+Name = "Foliage"
+Colour = "pink"
+
+[[LogCategories]]
+Name = "Gameplay"
+Colour = "purple"
+
+[[LogCategories]]
+Name = "Network"
+Colour = "blue"

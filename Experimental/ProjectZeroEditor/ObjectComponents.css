@@ -1,0 +1,256 @@
+/* Object components: the Overview list of an object's components, and the component inspectors. */
+.pi-components-card .oc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.oc-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  border: 1px solid #ffffff12;
+  background: #0d0d0d;
+  color: #e6e6e6;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.oc-link:hover {
+  background: #1c1c1c;
+  border-color: #ffffff26;
+}
+.oc-link span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.oc-link b {
+  font-weight: 500;
+  font-size: 13px;
+}
+.oc-link small {
+  font-size: 10px;
+  color: #7a7a7a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.oc-link > svg {
+  color: #7a7a7a;
+  flex: none;
+}
+.oc-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.oc-add button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px dashed #ffffff30;
+  background: transparent;
+  color: #cfcfcf;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.oc-add button:hover {
+  background: #1c1c1c;
+}
+.oc-owner {
+  margin: 0 0 14px;
+}
+
+/* Component stack page (Follow-up 46): entries like a modifier stack, each opening its own page. */
+.oc-link.is-off,
+.oc-entry.is-off .oc-open {
+  opacity: 0.5;
+}
+.oc-stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.oc-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 54px;
+  padding: 6px 8px 6px 4px;
+  border-radius: 16px;
+  border: 1px solid #ffffff12;
+  background: #0d0d0d;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.oc-entry:hover {
+  border-color: #ffffff26;
+}
+.oc-entry.is-dragged {
+  opacity: 0.4;
+}
+.oc-grip {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 36px;
+  color: #5c5c5c;
+  fill: currentColor;
+  cursor: grab;
+  flex: none;
+}
+.oc-grip:hover {
+  color: #a0a0a0;
+}
+.oc-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #e6e6e6;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.oc-open:hover {
+  background: #1c1c1c;
+}
+.oc-open span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.oc-open b {
+  font-weight: 500;
+  font-size: 13px;
+}
+.oc-open small {
+  font-size: 10px;
+  color: #7a7a7a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.oc-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.oc-tools > button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #9a9a9a;
+  cursor: pointer;
+}
+.oc-tools > button:hover:not(:disabled) {
+  background: #222;
+  color: #fff;
+}
+.oc-tools > button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.oc-tools > .oc-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  margin-right: 4px;
+  border-radius: 99px;
+  background: #3a3a3a;
+}
+.oc-tools > .oc-toggle > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #cfcfcf;
+  transition: transform 140ms ease;
+}
+.oc-tools > .oc-toggle.on,
+.oc-tools > .oc-toggle.on:hover {
+  background: #34d17a;
+}
+.oc-tools > .oc-toggle.on > span {
+  transform: translateX(14px);
+  background: #fff;
+}
+.oc-empty {
+  margin: 0;
+  font-size: 11px;
+  color: #8a8a8a;
+}
+.oc-footnote {
+  margin: 10px 4px 0;
+}
+.oc-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #7a7a7a;
+}
+.oc-crumbs b {
+  color: #e6e6e6;
+  font-weight: 500;
+}
+.oc-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  border: 1px solid #ffffff1c;
+  background: #141414;
+  color: #cfcfcf;
+  font: inherit;
+  cursor: pointer;
+}
+.oc-back:hover {
+  background: #222;
+}
+.oc-back-arrow {
+  display: inline-grid;
+  transform: scaleX(-1);
+}
+.oc-entry-head {
+  margin-bottom: 12px;
+}
+.oc-entry-head h3 {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.oc-entry-head h3 small {
+  font-size: 10px;
+  color: #7a7a7a;
+}
+.oc-dimmed {
+  opacity: 0.55;
+}

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Original CAD / DCC / OS Icon Set — Foundation Pack v1</title>
+<style>
+  :root{
+    --c-line:#e8e8ea; --c-dim:#8a8a92; --c-accent:#4db3ff;
+    --c-warm:#ffb347; --c-green:#5ad469; --c-red:#ff5c6c;
+    --c-violet:#9d7cff; --c-teal:#3fd8c8;
+  }
+  html,body{background:#0a0a0c;color:#d8d8dc;font:13px/1.4 system-ui,sans-serif;margin:0;padding:24px}
+  h2{font-weight:600;letter-spacing:.5px;margin:34px 0 12px;color:#fff;border-bottom:1px solid #222;padding-bottom:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:14px}
+  .cell{background:#000;border:1px solid #1b1b20;border-radius:10px;padding:12px;
+        display:flex;flex-direction:column;align-items:center;gap:8px}
+  .cell svg{width:56px;height:56px}
+  .lbl{font-size:10px;color:#7d7d86;text-align:center;line-height:1.2}
+  .var{display:flex;gap:6px;margin-top:4px}
+  .var svg{width:26px;height:26px;background:#000;border-radius:6px;padding:3px;border:1px solid #16161a}
+</style>
+</head>
+<body>
+<h1 style="color:#fff;font-weight:700">Original Icon Foundation — v1</h1>
+<p style="color:#8a8a92;max-width:640px">
+All geometry authored from scratch. Grid: 24×24 viewBox. Categories below with
+multiple variations each. Expand the ones you like and I'll build them out to 5+.
+</p>
+
+<!-- ============ OS / FILE SYSTEM ============ -->
+<h2>OS &amp; File System</h2>
+<div class="grid">
+
+  <div class="cell">
+    <!-- Folder v1: flat tab -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M3 6.5h6l2 2h10v10.5a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 19V6.5Z"
+            fill="#3a5a8c" stroke="#4db3ff" stroke-width="1.2"/>
+      <path d="M3 10h18" stroke="#8fd0ff" stroke-width="1" opacity=".6"/>
+    </svg>
+    <div class="lbl">Folder · v1</div>
+    <div class="var">
+      <!-- v2 open folder -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M3 7h6l2 2h9v3H3V7Z" fill="#2f4d78" stroke="#4db3ff" stroke-width="1.1"/>
+        <path d="M3 12h18l-2 7H5l-2-7Z" fill="#3a5a8c" stroke="#8fd0ff" stroke-width="1.1"/>
+      </svg>
+      <!-- v3 folder + star -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M3 6.5h6l2 2h10V19a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 19V6.5Z"
+              fill="#3a5a8c" stroke="#4db3ff" stroke-width="1.1"/>
+        <path d="M12 11l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 15.8 9.6 18l.5-2.6-1.9-1.8 2.6-.4L12 11Z"
+              fill="#ffb347"/>
+      </svg>
+      <!-- v4 folder outline only -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M3 6.5h6l2 2h10V19a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 19V6.5Z"
+              stroke="#4db3ff" stroke-width="1.4"/>
+      </svg>
+      <!-- v5 folder w/ badge -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M3 6.5h6l2 2h10V19a1.5 1.5 0 0 1-1.5 1.5H4.5A1.5 1.5 0 0 1 3 19V6.5Z"
+              fill="#2f4d78" stroke="#4db3ff" stroke-width="1.1"/>
+        <circle cx="17.5" cy="7.5" r="3" fill="#5ad469" stroke="#0a0a0c" stroke-width="1"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Lock v1 -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="5" y="10" width="14" height="10" rx="2" fill="#3f3f4a" stroke="#e8e8ea" stroke-width="1.2"/>
+      <path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="#e8e8ea" stroke-width="1.4"/>
+      <circle cx="12" cy="14.5" r="1.6" fill="#ffb347"/>
+      <path d="M12 15.5v2.2" stroke="#ffb347" stroke-width="1.4"/>
+    </svg>
+    <div class="lbl">Lock · v1</div>
+    <div class="var">
+      <!-- v2 unlocked -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <rect x="5" y="10" width="14" height="10" rx="2" fill="#3f3f4a" stroke="#5ad469" stroke-width="1.2"/>
+        <path d="M8 10V7.5a4 4 0 0 1 7.5-2" stroke="#5ad469" stroke-width="1.4"/>
+        <circle cx="12" cy="14.5" r="1.6" fill="#5ad469"/>
+      </svg>
+      <!-- v3 lock outline -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <rect x="5" y="10" width="14" height="10" rx="2" stroke="#e8e8ea" stroke-width="1.4"/>
+        <path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="#e8e8ea" stroke-width="1.4"/>
+      </svg>
+      <!-- v4 round lock -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="14" r="6" fill="#3f3f4a" stroke="#4db3ff" stroke-width="1.2"/>
+        <path d="M9 12V9.5a3 3 0 0 1 6 0V12" stroke="#4db3ff" stroke-width="1.3"/>
+        <circle cx="12" cy="14" r="1.4" fill="#4db3ff"/>
+      </svg>
+      <!-- v5 lock w/ key -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <rect x="4" y="10" width="11" height="10" rx="2" fill="#3f3f4a" stroke="#e8e8ea" stroke-width="1.1"/>
+        <path d="M7 10V7.5a3.5 3.5 0 0 1 7 0V10" stroke="#e8e8ea" stroke-width="1.2"/>
+        <circle cx="18" cy="7" r="2.4" stroke="#ffb347" stroke-width="1.3"/>
+        <path d="M18 9.2v5l1.5 1" stroke="#ffb347" stroke-width="1.3"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Eye v1 -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+            fill="#1e2a3a" stroke="#4db3ff" stroke-width="1.2"/>
+      <circle cx="12" cy="12" r="3" fill="#4db3ff"/>
+      <circle cx="12" cy="12" r="1.1" fill="#0a0a0c"/>
+    </svg>
+    <div class="lbl">Eye (visible) · v1</div>
+    <div class="var">
+      <!-- v2 eye hidden -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+              stroke="#6a6a72" stroke-width="1.2"/>
+        <path d="M4 5l16 14" stroke="#ff5c6c" stroke-width="1.5"/>
+      </svg>
+      <!-- v3 eye outline -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+              stroke="#e8e8ea" stroke-width="1.3"/>
+        <circle cx="12" cy="12" r="2.6" stroke="#e8e8ea" stroke-width="1.3"/>
+      </svg>
+      <!-- v4 half-lidded -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M2.5 12S6 7 12 7s9.5 5 9.5 5" stroke="#4db3ff" stroke-width="1.4"/>
+        <path d="M8 12.5a4 4 0 0 0 8 0" fill="#4db3ff" opacity=".5"/>
+        <circle cx="12" cy="12" r="2.4" fill="#4db3ff"/>
+      </svg>
+      <!-- v5 dashed hidden -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
+              stroke="#6a6a72" stroke-width="1.2" stroke-dasharray="2 2.5"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Warning v1 -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 4l9 15.5H3L12 4Z" fill="#3a2f10" stroke="#ffb347" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M12 10v4.5" stroke="#ffb347" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="12" cy="17" r="1.1" fill="#ffb347"/>
+    </svg>
+    <div class="lbl">Warning · v1</div>
+    <div class="var">
+      <!-- v2 error circle -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="8.5" fill="#3a1013" stroke="#ff5c6c" stroke-width="1.3"/>
+        <path d="M9 9l6 6M15 9l-6 6" stroke="#ff5c6c" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <!-- v3 info -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="8.5" fill="#102a3a" stroke="#4db3ff" stroke-width="1.3"/>
+        <circle cx="12" cy="8.5" r="1.1" fill="#4db3ff"/>
+        <path d="M12 11.5v5" stroke="#4db3ff" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <!-- v4 success -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="8.5" fill="#0f3016" stroke="#5ad469" stroke-width="1.3"/>
+        <path d="M8 12.2l2.6 2.8L16 9" stroke="#5ad469" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <!-- v5 hex warning -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M8 3.5h8l5 6.5-5 6.5H8l-5-6.5L8 3.5Z" fill="#3a2f10" stroke="#ffb347" stroke-width="1.2"/>
+        <path d="M12 8v4" stroke="#ffb347" stroke-width="1.7" stroke-linecap="round"/>
+        <circle cx="12" cy="15" r="1" fill="#ffb347"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- File formats stack -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"
+            fill="#1c2430" stroke="#8fd0ff" stroke-width="1.1"/>
+      <path d="M14 3v4h4" stroke="#8fd0ff" stroke-width="1.1"/>
+      <text x="11.5" y="17" font-size="5.5" fill="#4db3ff" text-anchor="middle" font-family="monospace">OBJ</text>
+    </svg>
+    <div class="lbl">File type · OBJ</div>
+    <div class="var">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#251c30" stroke="#9d7cff" stroke-width="1.1"/><path d="M14 3v4h4" stroke="#9d7cff" stroke-width="1.1"/><text x="11.5" y="17" font-size="5" fill="#9d7cff" text-anchor="middle" font-family="monospace">FBX</text></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#0f3016" stroke="#5ad469" stroke-width="1.1"/><path d="M14 3v4h4" stroke="#5ad469" stroke-width="1.1"/><text x="11.5" y="17" font-size="5" fill="#5ad469" text-anchor="middle" font-family="monospace">GLB</text></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#3a2f10" stroke="#ffb347" stroke-width="1.1"/><path d="M14 3v4h4" stroke="#ffb347" stroke-width="1.1"/><text x="11.5" y="17" font-size="5" fill="#ffb347" text-anchor="middle" font-family="monospace">STL</text></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#3a1013" stroke="#ff5c6c" stroke-width="1.1"/><path d="M14 3v4h4" stroke="#ff5c6c" stroke-width="1.1"/><text x="11.5" y="17" font-size="5" fill="#ff5c6c" text-anchor="middle" font-family="monospace">USD</text></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" fill="#0f2f2b" stroke="#3fd8c8" stroke-width="1.1"/><path d="M14 3v4h4" stroke="#3fd8c8" stroke-width="1.1"/><text x="11.5" y="17" font-size="4.6" fill="#3fd8c8" text-anchor="middle" font-family="monospace">STEP</text></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SELECTION / PICKERS ============ -->
+<h2>Cursors, Pickers &amp; Arrows</h2>
+<div class="grid">
+  <div class="cell">
+    <!-- Picker cursor -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 4l13 6.5-5.5 1.8-1.8 5.5L6 4Z" fill="#e8e8ea" stroke="#0a0a0c" stroke-width="1"/>
+    </svg>
+    <div class="lbl">Pointer · v1</div>
+    <div class="var">
+      <!-- move 4-arrow -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l2.5 3h-2v5h5V9l3 3-3 3v-2h-5v5h2l-2.5 3-2.5-3h2v-5H4v2l-3-3 3-3v2h5V6h-2L12 3Z" fill="#4db3ff"/></svg>
+      <!-- eyedropper -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M14 4.5a2 2 0 0 1 3 3l-2 2 1 1-1.5 1.5-1-1-6 6H4v-3l6-6-1-1L10.5 5l1 1 2-2Z" fill="#ffb347" stroke="#0a0a0c" stroke-width=".8"/></svg>
+      <!-- box select -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="1.5" stroke="#4db3ff" stroke-width="1.3" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="1.5" fill="#4db3ff"/></svg>
+      <!-- lasso -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 10c0-3 3.5-5 7-5s7 2 7 5-3 5-6 5c-2 0-3 .5-3 2 0 1 1 1.5 2 1.5" stroke="#5ad469" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <!-- crosshair pick -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v5M12 16v5M3 12h5M16 12h5" stroke="#e8e8ea" stroke-width="1.3"/><circle cx="12" cy="12" r="3" stroke="#ff5c6c" stroke-width="1.3"/></svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Directional arrow set -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 4v16M12 4l-4 4M12 4l4 4" stroke="#e8e8ea" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div class="lbl">Arrow · v1</div>
+    <div class="var">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13m0 0l-5-5m5 5l-5 5" stroke="#4db3ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#e8e8ea" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 8a8 8 0 1 1-2 6" stroke="#5ad469" stroke-width="1.5" stroke-linecap="round"/><path d="M6 4v4h4" stroke="#5ad469" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5l14 14M5 19L19 5" stroke="#ffb347" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 20V6m0 0l-4 4m4-4l4 4" stroke="#9d7cff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CAD SKETCH / CONSTRAINTS ============ -->
+<h2>CAD — Sketch, Plane, Constraints</h2>
+<div class="grid">
+  <div class="cell">
+    <!-- Sketch 2D -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="4" width="16" height="16" rx="1.5" fill="#101820" stroke="#4db3ff" stroke-width="1"/>
+      <path d="M7 15l4-6 3 4 3-3" stroke="#ffb347" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="7" cy="15" r="1.3" fill="#5ad469"/><circle cx="11" cy="9" r="1.3" fill="#5ad469"/>
+      <circle cx="14" cy="13" r="1.3" fill="#5ad469"/><circle cx="17" cy="10" r="1.3" fill="#5ad469"/>
+    </svg>
+    <div class="lbl">Sketch 2D · v1</div>
+    <div class="var">
+      <!-- sketch plane -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 8l8-4 10 4-8 4-10-4Z" fill="#1e2a3a" stroke="#4db3ff" stroke-width="1"/><path d="M11 12v7" stroke="#4db3ff" stroke-width="1.2" stroke-dasharray="2 2"/></svg>
+      <!-- reference image -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="1.5" fill="#151b22" stroke="#9d7cff" stroke-width="1.1" stroke-dasharray="3 2"/><circle cx="9" cy="10" r="1.6" fill="#ffb347"/><path d="M5 17l4-4 3 3 3-4 4 5" stroke="#9d7cff" stroke-width="1.1"/></svg>
+      <!-- coincident constraint -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="#5ad469" stroke-width="1.3"/><circle cx="12" cy="12" r="1.4" fill="#5ad469"/></svg>
+      <!-- parallel constraint -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M7 5L4 19M13 5l-3 14" stroke="#3fd8c8" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <!-- dimension -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 8v8M19 8v8M5 12h14" stroke="#ffb347" stroke-width="1.2"/><path d="M5 12l2-1.5v3zM19 12l-2-1.5v3z" fill="#ffb347"/></svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Extrude -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <rect x="4" y="10" width="8" height="8" fill="#1e2a3a" stroke="#4db3ff" stroke-width="1.1"/>
+      <path d="M4 10l4-4h8l-4 4M12 18l4-4V6" stroke="#8fd0ff" stroke-width="1.1"/>
+      <path d="M18 5l2 2-2 2M20 7h-6" stroke="#ffb347" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    <div class="lbl">Extrude · v1</div>
+    <div class="var">
+      <!-- revolve -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4v16" stroke="#ff5c6c" stroke-width="1.2" stroke-dasharray="2 2"/><path d="M12 6c4 0 6 2.5 6 6s-2 6-6 6" stroke="#4db3ff" stroke-width="1.3"/><ellipse cx="12" cy="12" rx="6" ry="2.4" stroke="#8fd0ff" stroke-width="1"/></svg>
+      <!-- loft -->
+      <svg viewBox="0 0 24 24" fill="none"><ellipse cx="8" cy="7" rx="3" ry="1.6" stroke="#5ad469" stroke-width="1.1"/><ellipse cx="16" cy="17" rx="4.5" ry="2.2" stroke="#4db3ff" stroke-width="1.1"/><path d="M5 7l7 10M11 6l9 10" stroke="#9d7cff" stroke-width="1" opacity=".8"/></svg>
+      <!-- sweep -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 18c0-8 6-10 14-12" stroke="#3fd8c8" stroke-width="1.3" stroke-linecap="round"/><rect x="3" y="15" width="5" height="5" rx="1" fill="#1e2a3a" stroke="#4db3ff" stroke-width="1"/></svg>
+      <!-- fillet -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V11a6 6 0 0 1 6-6h8" stroke="#ffb347" stroke-width="1.4" stroke-linecap="round"/><path d="M5 5h4M5 5v4" stroke="#6a6a72" stroke-width="1" stroke-dasharray="2 2"/></svg>
+      <!-- chamfer -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9l4-4h10" stroke="#5ad469" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ POLY MODELING + MODIFIERS ============ -->
+<h2>Poly Modeling &amp; Modifiers</h2>
+<div class="grid">
+  <div class="cell">
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" fill="#141c26" stroke="#4db3ff" stroke-width="1.1"/>
+      <path d="M12 3v18M4 7.5l8 4.5 8-4.5" stroke="#8fd0ff" stroke-width="1"/>
+    </svg>
+    <div class="lbl">Vertex/Edge/Face</div>
+    <div class="var">
+      <!-- vertex -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4l7 4v8l-7 4-7-4V8l7-4Z" stroke="#3a4a5a" stroke-width="1"/><circle cx="5" cy="8" r="1.8" fill="#ffb347"/><circle cx="19" cy="8" r="1.8" fill="#ffb347"/><circle cx="12" cy="4" r="1.8" fill="#ffb347"/></svg>
+      <!-- edge -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4l7 4v8l-7 4-7-4V8l7-4Z" stroke="#3a4a5a" stroke-width="1"/><path d="M5 8l7 4" stroke="#ffb347" stroke-width="2" stroke-linecap="round"/></svg>
+      <!-- face -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4l7 4v8l-7 4-7-4V8l7-4Z" stroke="#3a4a5a" stroke-width="1"/><path d="M5 8l7 4v8l-7-4V8Z" fill="#ffb347" opacity=".6"/></svg>
+      <!-- subdivide -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="5" width="14" height="14" stroke="#4db3ff" stroke-width="1.1"/><path d="M12 5v14M5 12h14" stroke="#5ad469" stroke-width="1"/></svg>
+      <!-- bevel -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M8 5h8l3 3v8l-3 3H8l-3-3V8l3-3Z" stroke="#9d7cff" stroke-width="1.2"/></svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Mirror modifier -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 3v18" stroke="#ff5c6c" stroke-width="1.2" stroke-dasharray="2 2"/>
+      <path d="M10 7L4 12l6 5V7Z" fill="#1e2a3a" stroke="#4db3ff" stroke-width="1.1"/>
+      <path d="M14 7l6 5-6 5V7Z" fill="#251c30" stroke="#9d7cff" stroke-width="1.1"/>
+    </svg>
+    <div class="lbl">Mirror · v1</div>
+    <div class="var">
+      <!-- array -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="9" width="5" height="6" stroke="#4db3ff" stroke-width="1"/><rect x="9.5" y="9" width="5" height="6" stroke="#5ad469" stroke-width="1"/><rect x="16" y="9" width="5" height="6" stroke="#9d7cff" stroke-width="1"/></svg>
+      <!-- solidify -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 6h12v12H6z" stroke="#4db3ff" stroke-width="1.1"/><path d="M9 9h12v12H9z" stroke="#ffb347" stroke-width="1.1"/></svg>
+      <!-- boolean -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="10" cy="12" r="5" stroke="#4db3ff" stroke-width="1.2"/><circle cx="15" cy="12" r="5" stroke="#ff5c6c" stroke-width="1.2"/></svg>
+      <!-- lattice -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v14H5z" stroke="#3fd8c8" stroke-width="1"/><path d="M5 12h14M12 5v14" stroke="#3fd8c8" stroke-width=".8" opacity=".6"/><circle cx="5" cy="5" r="1.3" fill="#3fd8c8"/><circle cx="19" cy="5" r="1.3" fill="#3fd8c8"/><circle cx="5" cy="19" r="1.3" fill="#3fd8c8"/><circle cx="19" cy="19" r="1.3" fill="#3fd8c8"/></svg>
+      <!-- decimate -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4l8 5-3 9H7L4 9l8-5Z" stroke="#ffb347" stroke-width="1"/><path d="M12 4l5 14M4 9l13 0" stroke="#ffb347" stroke-width=".7" opacity=".7"/></svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- Primitives -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" fill="#141c26" stroke="#4db3ff" stroke-width="1.1"/>
+      <path d="M4 7.5l8 4.5 8-4.5M12 12v9" stroke="#8fd0ff" stroke-width="1"/>
+    </svg>
+    <div class="lbl">Primitives</div>
+    <div class="var">
+      <!-- sphere -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="#4db3ff" stroke-width="1.1"/><ellipse cx="12" cy="12" rx="8" ry="3" stroke="#8fd0ff" stroke-width=".9"/><path d="M12 4v16" stroke="#8fd0ff" stroke-width=".9"/></svg>
+      <!-- cylinder -->
+      <svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="6" ry="2.4" stroke="#5ad469" stroke-width="1.1"/><path d="M6 6v12M18 6v12" stroke="#5ad469" stroke-width="1.1"/><path d="M6 18a6 2.4 0 0 0 12 0" stroke="#5ad469" stroke-width="1.1"/></svg>
+      <!-- cone -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4l6 13H6L12 4Z" stroke="#ffb347" stroke-width="1.1"/><ellipse cx="12" cy="17" rx="6" ry="2.2" stroke="#ffb347" stroke-width="1.1"/></svg>
+      <!-- torus -->
+      <svg viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="12" rx="8" ry="4.5" stroke="#9d7cff" stroke-width="1.1"/><ellipse cx="12" cy="11" rx="3.5" ry="1.6" stroke="#9d7cff" stroke-width="1"/></svg>
+      <!-- plane -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 9l8-4 8 4-8 4-8-4Z" stroke="#3fd8c8" stroke-width="1.1"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PAINT / TEXTURE / UV ============ -->
+<h2>Paint, Texture &amp; UV</h2>
+<div class="grid">
+  <div class="cell">
+    <!-- Brush -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M17 4l3 3-8 8-3-3 8-8Z" fill="#9d7cff" stroke="#0a0a0c" stroke-width=".8"/>
+      <path d="M9 12l3 3c0 3-3 4-6 4 1-2 0-4 3-7Z" fill="#ffb347" stroke="#0a0a0c" stroke-width=".8"/>
+    </svg>
+    <div class="lbl">Brush · v1</div>
+    <div class="var">
+      <!-- fill bucket -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 11l6-6 6 6-6 6-6-6Z" fill="#1e2a3a" stroke="#4db3ff" stroke-width="1.1"/><path d="M12 5V3" stroke="#4db3ff" stroke-width="1.2"/><path d="M19 15c1 1.5 1 3-.5 3s-1.5-1.5-.5-3Z" fill="#ffb347"/></svg>
+      <!-- smudge -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M6 16c0-4 3-8 7-8 3 0 5 2 5 5 0 2-2 3-4 3" stroke="#3fd8c8" stroke-width="1.4" stroke-linecap="round"/><circle cx="6" cy="16" r="1.5" fill="#3fd8c8"/></svg>
+      <!-- clone stamp -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="8" y="4" width="8" height="4" rx="1" fill="#9d7cff"/><path d="M9 8h6l-1 5h-4L9 8Z" stroke="#e8e8ea" stroke-width="1"/><path d="M12 13v4H7v3" stroke="#e8e8ea" stroke-width="1.1"/></svg>
+      <!-- gradient -->
+      <svg viewBox="0 0 24 24" fill="none"><defs><linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#4db3ff"/><stop offset="1" stop-color="#ff5c6c"/></linearGradient></defs><rect x="4" y="6" width="16" height="12" rx="2" fill="url(#g1)"/></svg>
+      <!-- mask -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="2" stroke="#e8e8ea" stroke-width="1.1"/><path d="M4 12a8 8 0 0 1 16 0" fill="#e8e8ea" opacity=".35"/></svg>
+    </div>
+  </div>
+
+  <div class="cell">
+    <!-- UV unwrap -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="#4db3ff" stroke-width="1"/>
+      <path d="M20 7.5l3 2-4 4-2-1.5" stroke="#ffb347" stroke-width="1.2" stroke-dasharray="2 1.5"/>
+      <rect x="14" y="14" width="7" height="7" fill="#1e2a3a" stroke="#ffb347" stroke-width="1"/>
+      <path d="M14 17.5h7M17.5 14v7" stroke="#ffb347" stroke-width=".7"/>
+    </svg>
+    <div class="lbl">UV unwrap · v1</div>
+    <div class="var">
+      <!-- uv grid -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="#4db3ff" stroke-width="1"/><path d="M4 9h16M4 14h16M9 4v16M14 4v16" stroke="#4db3ff" stroke-width=".6" opacity=".6"/></svg>
+      <!-- seam -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="#3a4a5a" stroke-width="1"/><path d="M12 3v9l8-4.5" stroke="#ff5c6c" stroke-width="1.6" stroke-dasharray="2 1.5"/></svg>
+      <!-- checker map -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="#5ad469" stroke-width="1"/><path d="M4 4h4v4h4v4h4v4h4" fill="none"/><rect x="4" y="4" width="4" height="4" fill="#5ad469" opacity=".5"/><rect x="12" y="4" width="4" height="4" fill="#5ad469" opacity=".5"/><rect x="8" y="8" width="4" height="4" fill="#5ad469" opacity=".5"/><rect x="16" y="8" width="4" height="4" fill="#5ad469" opacity=".5"/></svg>
+      <!-- pack islands -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="#9d7cff" stroke-width="1"/><rect x="6" y="6" width="5" height="7" fill="#9d7cff" opacity=".5"/><rect x="12" y="6" width="6" height="4" fill="#9d7cff" opacity=".5"/><rect x="12" y="11" width="6" height="7" fill="#9d7cff" opacity=".5"/></svg>
+      <!-- color picker swatch -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="#e8e8ea" stroke-width="1"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="#ffb347"/><path d="M12 4a8 8 0 0 0 0 16Z" fill="#4db3ff"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TERRAIN / EROSION ============ -->
+<h2>Terrain &amp; Erosion (Gaea-style ops)</h2>
+<div class="grid">
+  <div class="cell">
+    <!-- Mountain -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M3 19l6-11 4 6 2-3 6 8H3Z" fill="#2a3540" stroke="#8fd0ff" stroke-width="1"/>
+      <path d="M9 8l2 3.5-2 1.5-1.5-1.5L9 8Z" fill="#e8e8ea"/>
+    </svg>
+    <div class="lbl">Terrain · v1</div>
+    <div class="var">
+      <!-- erosion flow -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 18l7-10 5 6 6-6" stroke="#8fd0ff" stroke-width="1.1"/><path d="M10 8v10M14 14v4M6 13v5" stroke="#3fd8c8" stroke-width="1" stroke-linecap="round"/></svg>
+      <!-- heightmap -->
+      <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="#4db3ff" stroke-width="1"/><path d="M4 16c3-1 5-6 8-6s5 4 8 3" stroke="#ffb347" stroke-width="1"/><path d="M4 12c3-1 5-4 8-4s5 3 8 2" stroke="#5ad469" stroke-width="1"/></svg>
+      <!-- ridge/noise -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 15l3-4 2 3 3-6 3 5 2-3 3 4 2-2" stroke="#9d7cff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <!-- water/sea level -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 17l5-9 4 5 2-2 5 6" stroke="#8fd0ff" stroke-width="1"/><path d="M3 14c2 1 4-1 6 0s4 1 6 0 4-1 6 0" stroke="#4db3ff" stroke-width="1.2"/></svg>
+      <!-- deposit/sediment -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 18h16l-4-6H8l-4 6Z" fill="#3a2f10" stroke="#ffb347" stroke-width="1"/><path d="M8 12l2-4h4l2 4" stroke="#8fd0ff" stroke-width="1"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ GAME ENGINE / AUDIO / MEDIA ============ -->
+<h2>Game Engine — Audio &amp; Media</h2>
+<div class="grid">
+  <div class="cell">
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M4 9h4l5-4v14l-5-4H4V9Z" fill="#1e2a3a" stroke="#5ad469" stroke-width="1.1"/>
+      <path d="M16 9a4 4 0 0 1 0 6M18.5 7a7 7 0 0 1 0 10" stroke="#5ad469" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    <div class="lbl">Audio · v1</div>
+    <div class="var">
+      <!-- mute -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 9h4l5-4v14l-5-4H4V9Z" fill="#1e2a3a" stroke="#ff5c6c" stroke-width="1.1"/><path d="M16 10l4 4M20 10l-4 4" stroke="#ff5c6c" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <!-- waveform -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 12h2M8 8v8M12 5v14M16 8v8M18 10v4M20 12h0" stroke="#3fd8c8" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <!-- music note -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 17V6l9-2v11" stroke="#9d7cff" stroke-width="1.2"/><circle cx="7" cy="17" r="2.2" fill="#9d7cff"/><circle cx="16" cy="15" r="2.2" fill="#9d7cff"/></svg>
+      <!-- play -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="#5ad469" stroke-width="1.1"/><path d="M10 8.5l6 3.5-6 3.5v-7Z" fill="#5ad469"/></svg>
+      <!-- 3d audio source -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="2.4" fill="#ffb347"/><circle cx="12" cy="12" r="5.5" stroke="#ffb347" stroke-width="1" opacity=".7"/><circle cx="12" cy="12" r="8.5" stroke="#ffb347" stroke-width="1" opacity=".4"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HERO OBJECT ============ -->
+<h2>Hero Scene Object (isometric)</h2>
+<div class="grid">
+  <div class="cell" style="grid-column:span 2">
+    <svg viewBox="0 0 48 48" fill="none" style="width:96px;height:96px">
+      <!-- ground pad -->
+      <path d="M6 30L24 20l18 10-18 10L6 30Z" fill="#12181f" stroke="#2a3540" stroke-width="1"/>
+      <!-- house body left wall -->
+      <path d="M12 27l10-5.5v9L12 36v-9Z" fill="#3a5a8c"/>
+      <!-- right wall -->
+      <path d="M22 21.5l12 6.5v9l-12 6v-21.5Z" fill="#2f4d78"/>
+      <!-- roof -->
+      <path d="M12 27l10-9 12 10-12 5-10-6Z" fill="#ff5c6c"/>
+      <path d="M22 18v5" stroke="#0a0a0c" stroke-width=".6" opacity=".4"/>
+      <!-- door -->
+      <path d="M27 30l4 2.2v7l-4-2v-7.2Z" fill="#ffb347"/>
+      <!-- window -->
+      <path d="M15 28.5l3 1.5v3l-3-1.6v-2.9Z" fill="#8fd0ff"/>
+      <!-- little tree -->
+      <path d="M8 33v3" stroke="#7a5a2a" stroke-width="1.4"/>
+      <circle cx="8" cy="31.5" r="2.6" fill="#5ad469"/>
+    </svg>
+    <div class="lbl">Isometric House (scene marker)</div>
+  </div>
+
+  <div class="cell">
+    <!-- car -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M3 15l2-4h11l3 4v3h-2a2 2 0 0 1-4 0H9a2 2 0 0 1-4 0H3v-3Z" fill="#4db3ff" stroke="#8fd0ff" stroke-width="1"/>
+      <path d="M6 11l1.5-2.5h6L16 11" stroke="#8fd0ff" stroke-width="1"/>
+      <circle cx="7" cy="18" r="1.6" fill="#141c26" stroke="#e8e8ea" stroke-width="1"/>
+      <circle cx="16" cy="18" r="1.6" fill="#141c26" stroke="#e8e8ea" stroke-width="1"/>
+    </svg>
+    <div class="lbl">Car</div>
+    <div class="var">
+      <!-- truck -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13h10v5H2z" fill="#5ad469" stroke="#0a0a0c" stroke-width=".8"/><path d="M12 14h5l3 3v1h-8v-4Z" fill="#3fd8c8" stroke="#0a0a0c" stroke-width=".8"/><circle cx="6" cy="19" r="1.4" fill="#141c26" stroke="#e8e8ea" stroke-width="1"/><circle cx="16" cy="19" r="1.4" fill="#141c26" stroke="#e8e8ea" stroke-width="1"/></svg>
+      <!-- plane -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M2 13l20-6-6 12-3-4-4 3-1-3-6-2Z" fill="#9d7cff" stroke="#0a0a0c" stroke-width=".7"/></svg>
+      <!-- boat -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 15h16l-2 4H6l-2-4Z" fill="#ff5c6c" stroke="#0a0a0c" stroke-width=".8"/><path d="M12 4v10M12 4l6 3-6 2" fill="#ffb347" stroke="#ffb347" stroke-width="1"/></svg>
+      <!-- bike -->
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="6" cy="16" r="3.2" stroke="#4db3ff" stroke-width="1.2"/><circle cx="18" cy="16" r="3.2" stroke="#4db3ff" stroke-width="1.2"/><path d="M6 16l4-6h5l-3 6M10 10l4 6M9 7h3" stroke="#e8e8ea" stroke-width="1"/></svg>
+      <!-- rocket -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 3c3 2 4 6 4 9l-4 3-4-3c0-3 1-7 4-9Z" fill="#e8e8ea" stroke="#0a0a0c" stroke-width=".7"/><circle cx="12" cy="9" r="1.6" fill="#4db3ff"/><path d="M8 14l-2 4 3-1M16 14l2 4-3-1M11 15h2l-1 4-1-4Z" fill="#ff5c6c"/></svg>
+    </div>
+  </div>
+</div>
+
+<p style="color:#5a5a62;margin-top:40px;font-size:11px">
+Foundation Pack v1 · all geometry original · 24×24 grid · black canvas.
+Tell me which categories to expand to full 5-variation sets.
+</p>
+</body>
+</html>

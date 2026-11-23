@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Object Icon Set — Primitives / 3D Object / CAD Sketch</title>
+<style>
+  :root{
+    --bg:#0a0a0b;
+    --panel:#131316;
+    --line:#26262b;
+    --txt:#c9c9d1;
+    --dim:#6a6a75;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  header{
+    padding:28px 32px 18px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:linear-gradient(180deg,#0a0a0b,#0a0a0bee);
+    backdrop-filter:blur(6px);z-index:5;
+  }
+  h1{margin:0 0 4px;font-size:20px;font-weight:600;letter-spacing:.5px}
+  header p{margin:0;color:var(--dim);font-size:13px;max-width:760px;line-height:1.5}
+  .cat{padding:30px 32px 8px}
+  .cat h2{
+    font-size:14px;font-weight:600;letter-spacing:2px;text-transform:uppercase;
+    color:#8f8fff;margin:0 0 4px;
+  }
+  .cat .sub{color:var(--dim);font-size:12px;margin:0 0 16px}
+  .grid{
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:14px;padding:0 32px 10px;
+  }
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 10px 10px;display:flex;flex-direction:column;align-items:center;gap:8px;
+    transition:.15s border-color,.15s transform;
+  }
+  .card:hover{border-color:#44445a;transform:translateY(-2px)}
+  .card svg{display:block}
+  .card .name{font-size:11px;color:var(--dim);text-align:center;line-height:1.3}
+  .var-row{display:flex;gap:2px}
+  .var-row .dot{width:5px;height:5px;border-radius:50%;background:#3a3a45}
+  footer{padding:40px 32px;color:var(--dim);font-size:12px;border-top:1px solid var(--line)}
+  .toolbar{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+  .toolbar button{
+    background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    padding:7px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:.15s;
+  }
+  .toolbar button:hover{border-color:#8f8fff;color:#fff}
+  .toolbar button.active{background:#8f8fff22;border-color:#8f8fff;color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>Object Icon Set</h1>
+  <p>Hand-authored SVG icons, all geometry built from primitive coordinates (no traced fonts/glyphs). Domains: Basic Primitives (50+ base icons) · 3D Object (complex isometric solids — no plain cube) · CAD Sketch (constrained sketch entities with dimensions and control points). Each icon ships in 5 variations (outline · filled · duotone · accent · badge). 24×24 grid, black background.</p>
+  <div class="toolbar">
+    <button data-size="48">48px</button>
+    <button data-size="64" class="active">64px</button>
+    <button data-size="96">96px</button>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer>
+  Object Icon Set · original artwork · generated as scalable SVG · click any card to copy its &lt;svg&gt; to the console.
+</footer>
+
+<script>
+/* ============================================================
+   OBJECT ICON SET
+   Each icon is a function(variation) -> array of SVG shape
+   strings. 5 variations per icon. All geometry authored from
+   primitive coordinates (no traced fonts).
+   ------------------------------------------------------------
+   Palette tokens (reused across icons for coherence)
+   ============================================================ */
+const C = {
+  ink:   "#e8e8f0",  // primary stroke on dark
+  dim:   "#8a8a99",  // secondary stroke
+  blue:  "#5b8cff",  // accent 1
+  cyan:  "#37d6d6",  // accent 2
+  green: "#4fd18b",  // accent 3
+  amber: "#ffb24d",  // accent 4
+  red:   "#ff6b6b",  // accent 5
+  violet:"#b98bff",  // accent 6
+  pink:  "#ff7ab8",  // accent 7
+  sky:   "#7ec8ff",
+  earth: "#c99b6a",
+  mud:   "#8a6a45",
+  glass: "#2a2a33"   // fill panel
+};
+
+/* Variation names -> index 0..4 */
+const VARS = ["outline","filled","duo","accent","badge"];
+
+/* Helper builders (pure geometry, no external assets) */
+const S = 24; // internal viewbox unit
+function svg(shapes, size){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24"
+    fill="none" stroke-linecap="round" stroke-linejoin="round"
+    xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="24" height="24" rx="5" fill="#000"/>
+    ${shapes.join("")}</svg>`;
+}
+const P  = (d,s,w=1.6,f="none")=>`<path d="${d}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const PF = (d,f,s="none",w=0)=>`<path d="${d}" fill="${f}" ${s!=="none"?`stroke="${s}" stroke-width="${w}"`:""}/>`;
+const L  = (x1,y1,x2,y2,s,w=1.6)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${s}" stroke-width="${w}"/>`;
+const CI = (cx,cy,r,s,w=1.6,f="none")=>`<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${s}" stroke-width="${w}" fill="${f}"/>`;
+const CF = (cx,cy,r,f)=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${f}"/>`;
+const R  = (x,y,w,h,rx,s,sw=1.6,f="none")=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" stroke="${s}" stroke-width="${sw}" fill="${f}"/>`;
+const RF = (x,y,w,h,rx,f)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${f}"/>`;
+const badge = (col)=>`<circle cx="18.5" cy="5.5" r="3.2" fill="${col}"/><circle cx="18.5" cy="5.5" r="3.2" fill="none" stroke="#000" stroke-width="1"/>`;
+
+/* ============================================================
+   ICON DEFINITIONS
+   Each entry: { name, cat, draw(v) }
+   draw returns array of shape strings for variation index v.
+   Pattern per icon:
+     0 outline  - single ink stroke
+     1 filled   - ink/dim fill silhouette
+     2 duo      - ink + one accent (2 colours)
+     3 accent   - multi-accent 3-5 colours
+     4 badge    - duotone base + coloured status badge
+   ============================================================ */
+const ICONS = [];
+const add = (name,cat,draw)=>ICONS.push({name,cat,draw});
+
+/* ================================================================
+   BASIC PRIMITIVES  (2D geometric primitives + variants)
+   50+ base icons. Simple, ergonomic, uniform 24x24 grid.
+   ================================================================ */
+
+/* ---- Rectilinear ---- */
+add("Square","Primitive",v=>{
+  const d="M6 6h12v12H6z";
+  switch(v){
+    case 0:return[R(6,6,12,12,0,C.ink)];
+    case 1:return[RF(6,6,12,12,0,C.dim)];
+    case 2:return[R(6,6,12,12,0,C.ink,1.6,C.blue+"33"),R(6,6,12,12,0,C.blue,1.6)];
+    case 3:return[RF(6,6,12,12,0,C.blue),PF("M6 6h12L6 18z",C.cyan)];
+    case 4:return[RF(6,6,12,12,0,C.dim),badge(C.green)];
+  }
+});
+add("Rounded Square","Primitive",v=>{
+  switch(v){
+    case 0:return[R(6,6,12,12,3,C.ink)];
+    case 1:return[RF(6,6,12,12,3,C.dim)];
+    case 2:return[R(6,6,12,12,3,C.blue,1.6,C.blue+"33")];
+    case 3:return[RF(6,6,12,12,3,C.blue),R(6,6,12,12,3,C.cyan,1.4)];
+    case 4:return[RF(6,6,12,12,3,C.dim),badge(C.blue)];
+  }
+});
+add("Rectangle","Primitive",v=>{
+  switch(v){
+    case 0:return[R(4,7,16,10,0,C.ink)];
+    case 1:return[RF(4,7,16,10,0,C.dim)];
+    case 2:return[R(4,7,16,10,0,C.blue,1.6,C.blue+"33")];
+    case 3:return[RF(4,7,16,10,0,C.blue),L(4,12,20,12,C.cyan,1.2)];
+    case 4:return[RF(4,7,16,10,0,C.dim),badge(C.amber)];
+  }
+});
+add("Rhombus","Primitive",v=>{
+  const d="M12 4l8 8-8 8-8-8z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M12 4l8 8-8 8z",C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Parallelogram","Primitive",v=>{
+  const d="M8 6h12l-4 12H4z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M8 6h12l-2 6H6z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Trapezoid","Primitive",v=>{
+  const d="M7 6h10l3 12H4z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M7 6h10l1.5 6H5.5z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+
+/* ---- Triangles ---- */
+add("Triangle","Primitive",v=>{
+  const d="M12 4l8 15H4z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M12 4l8 15h-8z",C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Triangle Right","Primitive",v=>{
+  const d="M5 5v14h14z";
+  switch(v){
+    case 0:return[P(d,C.ink),R(5,16,3,3,0,C.dim,1)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M5 12v7h7z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Triangle Inverse","Primitive",v=>{
+  const d="M4 5h16l-8 15z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M4 5h16l-4 7H8z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.red)];
+  }
+});
+
+/* ---- Circular ---- */
+add("Circle","Primitive",v=>{
+  switch(v){
+    case 0:return[CI(12,12,8,C.ink)];
+    case 1:return[CF(12,12,8,C.dim)];
+    case 2:return[CF(12,12,8,C.blue),CI(12,12,8,C.sky,1.4)];
+    case 3:return[CF(12,12,8,C.blue),PF("M12 4a8 8 0 0 1 0 16z",C.violet)];
+    case 4:return[CF(12,12,8,C.dim),badge(C.green)];
+  }
+});
+add("Ring","Primitive",v=>{
+  const donut="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 4.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7z";
+  switch(v){
+    case 0:return[CI(12,12,8,C.ink),CI(12,12,3.5,C.ink)];
+    case 1:return[PF(donut,C.dim)];
+    case 2:return[PF(donut,C.blue)];
+    case 3:return[PF(donut,C.blue),CI(12,12,8,C.cyan,1),CI(12,12,3.5,C.violet,1)];
+    case 4:return[PF(donut,C.dim),badge(C.blue)];
+  }
+});
+add("Semicircle","Primitive",v=>{
+  const d="M4 15a8 8 0 0 1 16 0z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),L(4,15,20,15,C.ink,1.4)];
+    case 3:return[PF(d,C.blue),PF("M4 15a8 8 0 0 1 8-8v8z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+add("Quarter Circle","Primitive",v=>{
+  const d="M5 19V5a14 14 0 0 1 14 14z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF("M5 19V12a7 7 0 0 1 7 7z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Ellipse","Primitive",v=>{
+  const e=(f,s,w)=>`<ellipse cx="12" cy="12" rx="9" ry="5.5" ${f?`fill="${f}"`:'fill="none"'} ${s?`stroke="${s}" stroke-width="${w}"`:''}/>`;
+  switch(v){
+    case 0:return[e(null,C.ink,1.6)];
+    case 1:return[e(C.dim)];
+    case 2:return[e(C.blue),e(null,C.sky,1.4)];
+    case 3:return[e(C.blue),PF("M12 6.5a9 5.5 0 0 1 0 11z",C.violet)];
+    case 4:return[e(C.dim),badge(C.blue)];
+  }
+});
+add("Arc","Primitive",v=>{
+  const d="M4 18a10 10 0 0 1 16 0";
+  switch(v){
+    case 0:return[P(d,C.ink,1.8),CI(4,18,1.4,C.ink,1.2),CI(20,18,1.4,C.ink,1.2)];
+    case 1:return[P(d,C.dim,2.4)];
+    case 2:return[P(d,C.blue,2),CF(4,18,1.5,C.ink),CF(20,18,1.5,C.ink)];
+    case 3:return[P(d,C.blue,2),CF(4,18,1.6,C.green),CF(12,10,1.4,C.amber),CF(20,18,1.6,C.red)];
+    case 4:return[P(d,C.dim,2.4),badge(C.violet)];
+  }
+});
+
+/* ---- Polygons ---- */
+function ngon(cx,cy,r,n,rot=-Math.PI/2){
+  let pts=[];
+  for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;pts.push([+(cx+r*Math.cos(a)).toFixed(2),+(cy+r*Math.sin(a)).toFixed(2)]);}
+  return "M"+pts.map(p=>p.join(" ")).join("L")+"Z";
+}
+add("Pentagon","Primitive",v=>{
+  const d=ngon(12,12.5,8,5);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12.5,4,5),C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Hexagon","Primitive",v=>{
+  const d=ngon(12,12,8,6,0);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12,4,6,0),C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Hexagon Point","Primitive",v=>{
+  const d=ngon(12,12,8,6);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12,4,6),C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+add("Heptagon","Primitive",v=>{
+  const d=ngon(12,12.5,8,7);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12.5,4,7),C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Octagon","Primitive",v=>{
+  const d=ngon(12,12,8,8,Math.PI/8);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12,4,8,Math.PI/8),C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.red)];
+  }
+});
+add("Nonagon","Primitive",v=>{
+  const d=ngon(12,12,8,9);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12,4,9),C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Decagon","Primitive",v=>{
+  const d=ngon(12,12,8,10);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.4)];
+    case 3:return[PF(d,C.blue),PF(ngon(12,12,4,10),C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+
+/* ---- Stars ---- */
+function star(cx,cy,ro,ri,n,rot=-Math.PI/2){
+  let pts=[];
+  for(let i=0;i<n*2;i++){const r=i%2?ri:ro;const a=rot+i*Math.PI/n;pts.push([+(cx+r*Math.cos(a)).toFixed(2),+(cy+r*Math.sin(a)).toFixed(2)]);}
+  return "M"+pts.map(p=>p.join(" ")).join("L")+"Z";
+}
+add("Star 4","Primitive",v=>{
+  const d=star(12,12,9,3,4);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.amber),P(d,C.ink,1.2)];
+    case 3:return[PF(d,C.amber),PF(star(12,12,4.5,1.6,4),C.red)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+add("Star 5","Primitive",v=>{
+  const d=star(12,12,9,3.6,5);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.amber),P(d,C.ink,1.2)];
+    case 3:return[PF(d,C.amber),PF(star(12,12,4.6,1.9,5),C.red)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Star 6","Primitive",v=>{
+  const d=star(12,12,9,4.5,6);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.amber),P(d,C.ink,1.2)];
+    case 3:return[PF(d,C.amber),PF(star(12,12,4.5,2.2,6),C.red)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Burst 8","Primitive",v=>{
+  const d=star(12,12,9,5,8);
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.amber),P(d,C.ink,1.2)];
+    case 3:return[PF(d,C.amber),CF(12,12,3.2,C.red)];
+    case 4:return[PF(d,C.dim),badge(C.violet)];
+  }
+});
+add("Diamond","Primitive",v=>{
+  const d="M12 3l6 5-6 13-6-13z";
+  switch(v){
+    case 0:return[P(d,C.ink),L(6,8,18,8,C.dim,1)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.cyan),P(d,C.ink,1.2)];
+    case 3:return[PF("M12 3l6 5-6 13-6-13z",C.cyan),PF("M6 8h12l-6 4z",C.sky),PF("M6 8l6 4 6-4-6 13z",C.blue)];
+    case 4:return[PF(d,C.dim),badge(C.cyan)];
+  }
+});
+
+/* ---- Rounded / capsule / cross ---- */
+add("Capsule","Primitive",v=>{
+  switch(v){
+    case 0:return[R(4,8,16,8,4,C.ink)];
+    case 1:return[RF(4,8,16,8,4,C.dim)];
+    case 2:return[RF(4,8,16,8,4,C.blue),CF(8,12,2,C.sky)];
+    case 3:return[RF(4,8,16,8,4,C.blue),RF(4,8,8,8,4,C.cyan)];
+    case 4:return[RF(4,8,16,8,4,C.dim),badge(C.green)];
+  }
+});
+add("Pill Vertical","Primitive",v=>{
+  switch(v){
+    case 0:return[R(8,4,8,16,4,C.ink)];
+    case 1:return[RF(8,4,8,16,4,C.dim)];
+    case 2:return[RF(8,4,8,16,4,C.blue),CF(12,8,2,C.sky)];
+    case 3:return[RF(8,4,8,16,4,C.blue),RF(8,4,8,8,4,C.cyan)];
+    case 4:return[RF(8,4,8,16,4,C.dim),badge(C.blue)];
+  }
+});
+add("Cross","Primitive",v=>{
+  const d="M9 4h6v5h5v6h-5v5H9v-5H4V9h5z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.2)];
+    case 3:return[PF(d,C.blue),PF("M9 9h6v6H9z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.red)];
+  }
+});
+add("Plus","Primitive",v=>{
+  switch(v){
+    case 0:return[L(12,5,12,19,C.ink,1.8),L(5,12,19,12,C.ink,1.8)];
+    case 1:return[RF(10.5,5,3,14,1,C.dim),RF(5,10.5,14,3,1,C.dim)];
+    case 2:return[RF(10.5,5,3,14,1,C.blue),RF(5,10.5,14,3,1,C.sky)];
+    case 3:return[RF(10.5,5,3,14,1,C.blue),RF(5,10.5,14,3,1,C.cyan)];
+    case 4:return[RF(10.5,5,3,14,1,C.dim),RF(5,10.5,14,3,1,C.dim),badge(C.green)];
+  }
+});
+add("Chevron","Primitive",v=>{
+  const d="M8 4l8 8-8 8";
+  switch(v){
+    case 0:return[P(d,C.ink,1.8)];
+    case 1:return[P(d,C.dim,2.6)];
+    case 2:return[P(d,C.blue,2.4)];
+    case 3:return[P("M6 4l8 8-8 8",C.blue,2.2),P("M12 4l6 8-6 8",C.cyan,2)];
+    case 4:return[P(d,C.dim,2.4),badge(C.amber)];
+  }
+});
+add("Heart","Primitive",v=>{
+  const d="M12 20S4 14 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 11-8 11z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.red),P(d,C.pink,1.2)];
+    case 3:return[PF(d,C.red),PF("M12 20S4 14 4 9a4 4 0 0 1 8-1v12z",C.pink)];
+    case 4:return[PF(d,C.dim),badge(C.pink)];
+  }
+});
+add("Shield","Primitive",v=>{
+  const d="M12 3l7 3v6c0 5-4 8-7 9-3-1-7-4-7-9V6z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.2)];
+    case 3:return[PF(d,C.blue),PF("M12 3l7 3v6c0 5-4 8-7 9z",C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Teardrop","Primitive",v=>{
+  const d="M12 3c4 5 6 7.5 6 10a6 6 0 0 1-12 0c0-2.5 2-5 6-10z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),CF(10,15,1.6,C.sky)];
+    case 3:return[PF(d,C.blue),PF("M12 3c4 5 6 7.5 6 10a6 6 0 0 1-6 6z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Crescent","Primitive",v=>{
+  // Lune: outer circle (r=8, sweep left) minus inner circle bite (r=6.5, sweep right).
+  // Both arcs share the top/bottom tips at (12,4) and (12,20).
+  const d="M12 4a8 8 0 1 0 0 16 6.5 6.5 0 0 1 0-16z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.2)];
+    case 3:return[PF(d,C.violet),P("M12 4a8 8 0 1 0 0 16",C.pink,1.4)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+add("Blob","Primitive",v=>{
+  const d="M8 5c4-2 9 0 10 4s-1 7-4 9-9 1-11-3S4 7 8 5z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.violet),P(d,C.pink,1.2)];
+    case 3:return[PF(d,C.violet),PF("M8 5c4-2 9 0 10 4s-1 7-4 9z",C.pink)];
+    case 4:return[PF(d,C.dim),badge(C.violet)];
+  }
+});
+
+/* ---- Lines / points ---- */
+add("Point","Primitive",v=>{
+  switch(v){
+    case 0:return[CI(12,12,2.2,C.ink),CF(12,12,.7,C.ink)];
+    case 1:return[CF(12,12,3,C.dim)];
+    case 2:return[CF(12,12,3,C.blue),CF(12,12,1,"#000")];
+    case 3:return[CI(12,12,4,C.cyan,1.2),CF(12,12,2,C.blue)];
+    case 4:return[CF(12,12,3,C.dim),badge(C.green)];
+  }
+});
+add("Line Segment","Primitive",v=>{
+  switch(v){
+    case 0:return[L(5,19,19,5,C.ink,1.8),CI(5,19,1.6,C.ink,1.2),CI(19,5,1.6,C.ink,1.2)];
+    case 1:return[L(5,19,19,5,C.dim,2.4),CF(5,19,1.8,C.dim),CF(19,5,1.8,C.dim)];
+    case 2:return[L(5,19,19,5,C.ink,2),CF(5,19,1.8,C.blue),CF(19,5,1.8,C.blue)];
+    case 3:return[L(5,19,19,5,C.blue,2),CF(5,19,2,C.green),CF(19,5,2,C.red)];
+    case 4:return[L(5,19,19,5,C.dim,2.4),CF(5,19,1.6,C.ink),CF(19,5,1.6,C.ink),badge(C.blue)];
+  }
+});
+add("Ray","Primitive",v=>{
+  switch(v){
+    case 0:return[L(5,19,19,5,C.ink,1.8),CF(5,19,2,C.ink),P("M16 5l3 0 0 3",C.ink,1.4)];
+    case 1:return[L(5,19,19,5,C.dim,2.4),CF(5,19,2.2,C.dim)];
+    case 2:return[L(5,19,19,5,C.ink,2),CF(5,19,2,C.blue)];
+    case 3:return[L(5,19,19,5,C.blue,2),CF(5,19,2.2,C.green),PF("M19 5l-4 1 3 3z",C.red)];
+    case 4:return[L(5,19,19,5,C.dim,2.4),CF(5,19,2,C.ink),badge(C.amber)];
+  }
+});
+add("Polyline","Primitive",v=>{
+  const d="M4 18l5-9 4 5 3-7 4 6";
+  switch(v){
+    case 0:return[P(d,C.ink,1.8),CI(4,18,1.3,C.ink,1),CI(9,9,1.3,C.ink,1),CI(13,14,1.3,C.ink,1),CI(16,7,1.3,C.ink,1),CI(20,13,1.3,C.ink,1)];
+    case 1:return[P(d,C.dim,2.4)];
+    case 2:return[P(d,C.blue,2),CF(4,18,1.5,C.ink),CF(9,9,1.5,C.ink),CF(13,14,1.5,C.ink),CF(16,7,1.5,C.ink),CF(20,13,1.5,C.ink)];
+    case 3:return[P(d,C.blue,2),CF(4,18,1.5,C.green),CF(9,9,1.5,C.cyan),CF(13,14,1.5,C.amber),CF(16,7,1.5,C.violet),CF(20,13,1.5,C.red)];
+    case 4:return[P(d,C.dim,2.4),badge(C.blue)];
+  }
+});
+add("Bezier","Primitive",v=>{
+  const d="M4 18C4 8 20 16 20 6";
+  switch(v){
+    case 0:return[P(d,C.ink,1.8),L(4,18,4,8,C.dim,1),L(20,6,20,16,C.dim,1),CI(4,18,1.4,C.ink,1),CI(20,6,1.4,C.ink,1),RF(2.8,6.8,2.4,2.4,.4,C.dim),RF(18.8,14.8,2.4,2.4,.4,C.dim)];
+    case 1:return[P(d,C.dim,2.6)];
+    case 2:return[P(d,C.blue,2),CF(4,18,1.6,C.ink),CF(20,6,1.6,C.ink)];
+    case 3:return[P(d,C.blue,2),L(4,18,4,8,C.dim,1),L(20,6,20,16,C.dim,1),CF(4,18,1.6,C.green),CF(20,6,1.6,C.red),RF(2.9,7,2.2,2.2,.4,C.cyan),RF(18.9,14.9,2.2,2.2,.4,C.amber)];
+    case 4:return[P(d,C.dim,2.6),badge(C.violet)];
+  }
+});
+add("Spline","Primitive",v=>{
+  const d="M4 16c3-8 6 6 8-1s5 4 8-3";
+  switch(v){
+    case 0:return[P(d,C.ink,1.8),CI(4,16,1.3,C.ink,1),CI(12,15,1.3,C.ink,1),CI(20,12,1.3,C.ink,1)];
+    case 1:return[P(d,C.dim,2.6)];
+    case 2:return[P(d,C.blue,2),CF(4,16,1.5,C.ink),CF(12,15,1.5,C.ink),CF(20,12,1.5,C.ink)];
+    case 3:return[P(d,C.blue,2),CF(4,16,1.6,C.green),CF(12,15,1.4,C.amber),CF(20,12,1.6,C.red)];
+    case 4:return[P(d,C.dim,2.6),badge(C.blue)];
+  }
+});
+add("Angle","Primitive",v=>{
+  // Vertex at (4,20): base ray to (20,20), upper ray up-right to (17,5).
+  // Arc marker of radius 6 sweeps from the base ray up to the upper ray.
+  const rays="M4 20h16M4 20L17 5";
+  const arc="M10 20A6 6 0 0 0 8.35 15.9";     // 6-radius arc, base->upper ray
+  const wedge="M4 20L10 20A6 6 0 0 0 8.35 15.9z";
+  switch(v){
+    case 0:return[P(rays,C.ink,1.8),P(arc,C.dim,1.2)];
+    case 1:return[P(rays,C.dim,2.4),PF(wedge,C.dim)];
+    case 2:return[PF(wedge,C.blue+"66"),P(rays,C.ink,1.8),P(arc,C.blue,1.4)];
+    case 3:return[PF(wedge,C.amber+"55"),L(4,20,20,20,C.green,1.8),L(4,20,17,5,C.blue,1.8),P(arc,C.amber,1.4),CF(4,20,1.4,C.red)];
+    case 4:return[P(rays,C.dim,2.4),P(arc,C.dim,1.2),badge(C.amber)];
+  }
+});
+add("Grid Cells","Primitive",v=>{
+  const g=(f)=>[RF(4,4,7,7,1,f),RF(13,4,7,7,1,f),RF(4,13,7,7,1,f),RF(13,13,7,7,1,f)];
+  switch(v){
+    case 0:return[R(4,4,7,7,1,C.ink),R(13,4,7,7,1,C.ink),R(4,13,7,7,1,C.ink),R(13,13,7,7,1,C.ink)];
+    case 1:return g(C.dim);
+    case 2:return[RF(4,4,7,7,1,C.blue),RF(13,4,7,7,1,C.dim),RF(4,13,7,7,1,C.dim),RF(13,13,7,7,1,C.blue)];
+    case 3:return[RF(4,4,7,7,1,C.blue),RF(13,4,7,7,1,C.cyan),RF(4,13,7,7,1,C.violet),RF(13,13,7,7,1,C.green)];
+    case 4:return[...g(C.dim),badge(C.amber)];
+  }
+});
+add("Concentric","Primitive",v=>{
+  switch(v){
+    case 0:return[CI(12,12,8,C.ink),CI(12,12,5,C.ink),CI(12,12,2,C.ink)];
+    case 1:return[CF(12,12,8,C.dim),CF(12,12,5,"#000"),CF(12,12,2,C.dim)];
+    case 2:return[CI(12,12,8,C.blue),CI(12,12,5,C.sky),CF(12,12,2,C.blue)];
+    case 3:return[CI(12,12,8,C.blue,1.6),CI(12,12,5,C.cyan,1.6),CF(12,12,2,C.violet)];
+    case 4:return[CI(12,12,8,C.dim),CI(12,12,5,C.dim),CF(12,12,2,C.dim),badge(C.blue)];
+  }
+});
+add("Kite","Primitive",v=>{
+  const d="M12 3l6 7-6 11-6-11z";
+  switch(v){
+    case 0:return[P(d,C.ink),L(6,10,18,10,C.dim,1)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.2)];
+    case 3:return[PF("M12 3l6 7-6 11-6-11z",C.blue),PF("M6 10h12l-6 11z",C.violet)];
+    case 4:return[PF(d,C.dim),badge(C.cyan)];
+  }
+});
+add("Arrowhead","Primitive",v=>{
+  const d="M4 7l8 5 8-5-8 13z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.2)];
+    case 3:return[PF("M4 7l8 5 8-5-8 13z",C.blue),PF("M4 7l8 5 8-5-8 3z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.green)];
+  }
+});
+add("Lens","Primitive",v=>{
+  // Vesica / lens = intersection of two circles
+  const d="M12 4a10 10 0 0 1 0 16 10 10 0 0 1 0-16z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.cyan),P(d,C.ink,1.2)];
+    case 3:return[PF("M12 4a10 10 0 0 1 0 16 10 10 0 0 1 0-16z",C.cyan),PF("M12 4a10 10 0 0 1 0 16z",C.blue)];
+    case 4:return[PF(d,C.dim),badge(C.blue)];
+  }
+});
+add("Sector","Primitive",v=>{
+  // Pie sector
+  const d="M12 12L12 4a8 8 0 0 1 6.9 4z";
+  switch(v){
+    case 0:return[CI(12,12,8,C.dim,1),P("M12 12L12 4a8 8 0 0 1 6.9 4z",C.ink,1.6)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[CI(12,12,8,C.dim,1),PF(d,C.blue),P(d,C.ink,1.2)];
+    case 3:return[CI(12,12,8,C.dim,1),PF(d,C.blue),PF("M12 12L15 4.5a8 8 0 0 1 3.9 3.5z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.amber)];
+  }
+});
+add("Annular Sector","Primitive",v=>{
+  const d="M12 4a8 8 0 0 1 8 8h-4a4 4 0 0 0-4-4z";
+  switch(v){
+    case 0:return[P(d,C.ink)];
+    case 1:return[PF(d,C.dim)];
+    case 2:return[PF(d,C.blue),P(d,C.sky,1.2)];
+    case 3:return[PF("M12 4a8 8 0 0 1 8 8h-4a4 4 0 0 0-4-4z",C.blue),PF("M16 4.4a8 8 0 0 1 4 4h-4z",C.cyan)];
+    case 4:return[PF(d,C.dim),badge(C.violet)];
+  }
+});
+
+/* ================================================================
+   3D OBJECT  (complex isometric solids - deliberately not a cube)
+   ================================================================ */
+
+add("Faceted Solid","Object3D",v=>{
+  // Irregular convex solid on the iso projector: a jittered heptagon ground
+  // ring extruded to a slightly-tilted top cap, so every facet is a real quad
+  // sharing edges with its neighbours (silhouette = outer wall boundary).
+  const gr=[[7,-2],[4,-6],[-3,-6.5],[-7,-1],[-5,5],[1,7],[6,4]]; // convex, jittered
+  const pr=prism(gr,7.5);
+  const top=pr.topFace;
+  // silhouette = union outline: bottom front verts + top back verts. Use the
+  // depth-sorted walls; the outer boundary is implicit, so stroke top + walls.
+  const walls=pr.walls;
+  const ridges=walls.map(w=>P(w.path,C.dim,1)).join("");
+  switch(v){
+    case 0:return[...walls.map(w=>P(w.path,C.ink,1.4)),P(top,C.ink,1.6)];
+    case 1:return[...walls.map(w=>PF(w.path,C.dim)),PF(top,C.dim),...walls.map(w=>P(w.path,"#000",.9)),P(top,"#000",1)];
+    case 2:return[...walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(top,C.sky),...walls.map(w=>P(w.path,C.ink,.9)),P(top,C.ink,1)];
+    case 3:return[...walls.map(w=>PF(w.path,wallTone(w,C.blue,C.violet))),PF(top,C.cyan),...walls.map(w=>P(w.path,C.ink,.9)),P(top,C.ink,1)];
+    case 4:return[...walls.map(w=>PF(w.path,C.dim)),PF(top,C.dim),...walls.map(w=>P(w.path,"#000",.9)),badge(C.green)];
+  }
+});
+
+add("Torus Knot","Object3D",v=>{
+  // True (p,q)=(2,3) trefoil, sampled parametrically and split into arc
+  // segments at the three crossings so strands weave over/under.
+  const CX=12, CY=12, R=6.2, r=2.6;
+  const pt=t=>{
+    const x=(R+r*Math.cos(3*t))*Math.cos(2*t);
+    const y=(R+r*Math.cos(3*t))*Math.sin(2*t);
+    return [+(CX+x*0.95).toFixed(2),+(CY+y*0.95).toFixed(2)];
+  };
+  // sample the full closed curve
+  const N=72, S=[]; for(let i=0;i<=N;i++) S.push(pt(i/N*Math.PI));
+  const path=(a,b)=>{let d="M"+S[a][0]+" "+S[a][1];for(let i=a+1;i<=b;i++)d+="L"+S[i][0]+" "+S[i][1];return d;};
+  const full=path(0,N);
+  // three "under" gaps (behind) drawn dim/thin; "over" segments solid on top
+  const g=Math.floor(N/6);
+  const unders=[[g*1-3,g*1+3],[g*3-3,g*3+3],[g*5-3,g*5+3]].map(([a,b])=>path(a,b));
+  switch(v){
+    case 0:return[P(full,C.ink,1.8),...unders.map(u=>P(u,"#0e0e18",3)),...unders.map(u=>P(u,C.dim,1.3))];
+    case 1:return[P(full,C.dim,2.8),...unders.map(u=>P(u,"#0e0e18",4))];
+    case 2:return[P(full,C.blue,2.6),...unders.map(u=>P(u,"#0e0e18",4)),...unders.map(u=>P(u,C.sky,1.6))];
+    case 3:return[P(full,C.blue,2.8),...unders.map(u=>P(u,"#0e0e18",4)),...unders.map(u=>P(u,C.violet,1.8))];
+    case 4:return[P(full,C.dim,2.6),...unders.map(u=>P(u,"#0e0e18",4)),badge(C.violet)];
+  }
+});
+
+add("Lathe Vase","Object3D",v=>{
+  // Surface-of-revolution profile: neck, belly, foot - lathe form
+  const body="M9 4h6c0 2-2 2-2 4s3 3 3 7a4 4 0 0 1-8 0c0-4 3-5 3-7s-2-2-2-4z";
+  const topEll=`<ellipse cx="12" cy="4" rx="3" ry="1" fill="none" stroke="INK" stroke-width="1.4"/>`;
+  switch(v){
+    case 0:return[P(body,C.ink,1.6),topEll.replace("INK",C.ink),`<ellipse cx="12" cy="11" rx="4" ry="1.2" fill="none" stroke="${C.dim}" stroke-width="1"/>`];
+    case 1:return[PF(body,C.dim),topEll.replace("INK","#000")];
+    case 2:return[PF(body,C.blue),PF("M9 4h6c0 2-2 2-2 4s3 3 3 7a4 4 0 0 1-4 4V4z",C.sky),topEll.replace("INK",C.ink)];
+    case 3:return[PF(body,C.blue),PF("M12 4v18",C.cyan,C.cyan,0),`<ellipse cx="12" cy="4" rx="3" ry="1" fill="${C.cyan}"/>`,`<ellipse cx="12" cy="18" rx="4" ry="1.2" fill="${C.violet}66"/>`];
+    case 4:return[PF(body,C.dim),topEll.replace("INK","#000"),badge(C.amber)];
+  }
+});
+
+add("Iso Solid Group","Object3D",v=>{
+  // Two stacked/offset isometric solids sharing an axo grid - composite object
+  const front="M12 8l6 3.5v6L12 21l-6-3.5v-6z";
+  const back="M12 3l6 3.5-6 3.5-6-3.5z";
+  const backL="M6 6.5v4l6 3.5v-4z";
+  const backR="M18 6.5v4l-6 3.5v-4z";
+  switch(v){
+    case 0:return[P("M12 3l6 3.5v4l-6 3.5-6-3.5v-4z",C.dim,1.2),P(front,C.ink,1.6),L(6,11.5,12,15,C.ink,1.2),L(18,11.5,12,15,C.ink,1.2),L(12,15,12,21,C.ink,1.2)];
+    case 1:return[PF(back,C.dim),PF(backL,C.glass),PF(backR,C.glass),PF("M12 8l6 3.5-6 3.5-6-3.5z",C.ink),PF("M6 11.5v6L12 21v-6z",C.dim),PF("M18 11.5v6L12 21v-6z",C.dim)];
+    case 2:return[PF(back,C.sky),PF("M12 8l6 3.5-6 3.5-6-3.5z",C.blue),PF("M6 11.5v6L12 21v-6z",C.dim),PF("M18 11.5v6L12 21v-6z",C.blue)];
+    case 3:return[PF(back,C.cyan),PF("M12 8l6 3.5-6 3.5-6-3.5z",C.sky),PF("M6 11.5v6L12 21v-6z",C.blue),PF("M18 11.5v6L12 21v-6z",C.violet)];
+    case 4:return[PF("M12 8l6 3.5-6 3.5-6-3.5z",C.dim),PF("M6 11.5v6L12 21v-6z","#0000004a"),PF("M18 11.5v6L12 21v-6z",C.dim),badge(C.green)];
+  }
+});
+
+add("Iso Prism","Object3D",v=>{
+  // Hexagonal iso prism - not a cube
+  const top=ngon(12,8,6,6,0);
+  const front="M6 8v6l6 3.5 6-3.5V8";
+  switch(v){
+    case 0:return[P(top,C.ink,1.4),P("M6 8v6l6 3.5 6-3.5V8M12 11.5V18",C.ink,1.4)];
+    case 1:return[PF(top,C.dim),PF("M6 8v6l6 3.5V11.5z",C.glass),PF("M18 8v6l-6 3.5V11.5z",C.dim)];
+    case 2:return[PF(top,C.sky),PF("M6 8v6l6 3.5V11.5z",C.blue),PF("M18 8v6l-6 3.5V11.5z",C.dim)];
+    case 3:return[PF(top,C.cyan),PF("M6 8v6l6 3.5V11.5z",C.blue),PF("M18 8v6l-6 3.5V11.5z",C.violet)];
+    case 4:return[PF(top,C.dim),PF("M6 8v6l6 3.5V11.5z","#0000004a"),PF("M18 8v6l-6 3.5V11.5z",C.dim),badge(C.blue)];
+  }
+});
+
+add("Hero Monument","Object3D",v=>{
+  // Landmark obelisk-monument, hand-plotted 3/4 view. A wide stepped base,
+  // a tall tapering shaft, capped by a pyramidion. Each block shows a lit
+  // front face + a darker receding right face (depth d=(2,-1)). Reads as a
+  // civic monument - clearly different from the gem "Hero Object".
+  // ---- base plinth (two steps) ----
+  const step1F="M5 21v-2h9v2z",  step1R="M14 21v-2l2-1v2z", step1T="M5 19l2-1h9l-2 1z";
+  const step2F="M6 18v-2h7v2z",  step2R="M13 18v-2l2-1v2z", step2T="M6 16l2-1h7l-2 1z";
+  // ---- tapering shaft (front trapezoid, receding right trapezoid) ----
+  const shaftF="M7.6 15L8.4 5h2.2l.8 10z";           // front, narrows upward
+  const shaftR="M10.6 15l.8-10 1.6-.8.6 9.8z";       // right receding face
+  const shaftT="M8.4 5h2.2l1.6-.8-2-.6z";            // small top of shaft
+  // ---- pyramidion (capstone pyramid) ----
+  const capF="M8.4 5L9.6 2l1 3z", capR="M9.6 5l0-3 1.6-.8L11.4 5z", capApex="9.6 2";
+  switch(v){
+    case 0:return[P("M5 21v-2l2-1h9l-2 1v2z",C.ink,1.3),P(step2F,C.ink,1.2),P(step2R,C.ink,1.1),P(step2T,C.dim,1),P(shaftF,C.ink,1.3),P(shaftR,C.ink,1.2),P(shaftT,C.dim,1),P("M8.4 5L9.6 2l1.6 3",C.ink,1.2),P("M9.6 2l1.6-.8",C.dim,1)];
+    case 1:return[PF(step1F,C.dim),PF(step1R,"#5f5f6d"),PF(step2F,C.dim),PF(step2R,"#5f5f6d"),PF(shaftF,C.dim),PF(shaftR,"#5f5f6d"),PF(capF,C.dim),PF(capR,"#5f5f6d")];
+    case 2:return[PF(step1F,C.blue),PF(step1R,"#33518f"),PF(step1T,C.sky),PF(step2F,C.blue),PF(step2R,"#33518f"),PF(step2T,C.sky),PF(shaftF,C.sky),PF(shaftR,C.blue),PF(capF,C.cyan),PF(capR,C.blue)];
+    case 3:return[PF(step1F,C.blue),PF(step1R,C.violet),PF(step1T,C.sky),PF(step2F,C.blue),PF(step2R,C.violet),PF(step2T,C.sky),PF(shaftF,C.sky),PF(shaftR,C.violet),PF(capF,C.cyan),PF(capR,C.blue),CF(9.6,2,1,C.pink)];
+    case 4:return[PF(step1F,C.dim),PF(step1R,"#5f5f6d"),PF(step2F,C.dim),PF(step2R,"#5f5f6d"),PF(shaftF,C.dim),PF(shaftR,"#5f5f6d"),PF(capF,C.dim),PF(capR,"#5f5f6d"),badge(C.violet)];
+  }
+});
+
+add("Iso House","Object3D",v=>{
+  // TRUE isometric house on a 2:1 dimetric grid. Ground axes recede up-left
+  // (-8,-4) and up-right (+8,-4); vertical edges stay vertical. Box body shows
+  // two walls meeting at the vertical front edge; a gable roof caps the top.
+  const pt=p=>p.map(n=>+n.toFixed(2)).join(" ");
+  // ---- box: bottom rhombus A(front) B(left) C(right) + wall height Wh ----
+  const Wh=5.5;
+  const Ab=[12,20], Bb=[4,16], Cb=[20,16];                  // bottom rhombus (front3)
+  const At=[Ab[0],Ab[1]-Wh], Bt=[Bb[0],Bb[1]-Wh], Ct=[Cb[0],Cb[1]-Wh]; // 14.5/10.5/10.5
+  const Dt=[12,Bt[1]-4];                                    // back-top vertex = Bt+rightAxis -> (12,6.5)
+  const wallL=`M${pt(Ab)}L${pt(Bb)}L${pt(Bt)}L${pt(At)}z`;  // left wall (lit)
+  const wallR=`M${pt(Ab)}L${pt(Cb)}L${pt(Ct)}L${pt(At)}z`;  // right wall (dark)
+  // ---- gable roof: ridge parallel to the right axis, over the top rhombus ----
+  const Rh=4;                                               // roof rise
+  const mFR=[(At[0]+Ct[0])/2,(At[1]+Ct[1])/2];             // mid front-right top edge (16,12.5)
+  const mBL=[(Bt[0]+Dt[0])/2,(Bt[1]+Dt[1])/2];            // mid back-left top edge (8,8.5)
+  const Pf=[mFR[0],mFR[1]-Rh];                              // front ridge end (16,8.5)
+  const Pb=[mBL[0],mBL[1]-Rh];                              // back ridge end  (8,4.5)
+  const ridgeLn=`M${pt(Pf)}L${pt(Pb)}`;
+  // roof faces: two rectangular slopes meeting at the ridge + two gable triangles
+  const roofFR=`M${pt(At)}L${pt(Ct)}L${pt(Pf)}z`;           // front gable triangle (front-right end)
+  const roofBL=`M${pt(Bt)}L${pt(Dt)}L${pt(Pb)}z`;          // back gable triangle
+  const roofFront=`M${pt(At)}L${pt(Bt)}L${pt(Pb)}L${pt(Pf)}z`;  // front-left slope (lit)
+  const roofBack =`M${pt(Ct)}L${pt(Dt)}L${pt(Pb)}L${pt(Pf)}z`;  // right slope (dark)
+  // ---- openings on the lit (front-left) wall, sheared along the left axis ----
+  // left wall base point at fraction f: (12-8f, 20-4f); rise vertically by h.
+  const lw=(f,h)=>[+(12-8*f).toFixed(2),+(20-4*f-h).toFixed(2)];
+  const dr0=lw(.28,0), dr1=lw(.28,4.4), dr2=lw(.55,4.4), dr3=lw(.55,0);
+  const door=`M${dr0.join(" ")}L${dr1.join(" ")}L${dr2.join(" ")}L${dr3.join(" ")}z`;
+  const wn0=lw(.66,2.4), wn1=lw(.66,4.2), wn2=lw(.86,4.2), wn3=lw(.86,2.4);
+  const win=`M${wn0.join(" ")}L${wn1.join(" ")}L${wn2.join(" ")}L${wn3.join(" ")}z`;
+  switch(v){
+    case 0:return[P(wallL,C.ink,1.4),P(wallR,C.ink,1.4),P(roofFront,C.ink,1.3),P(roofFR,C.ink,1.3),P(ridgeLn,C.dim,1.1),P(door,C.dim,1.1),P(win,C.dim,1)];
+    case 1:return[PF(roofBack,"#5a5a67"),PF(wallR,"#5f5f6d"),PF(wallL,C.dim),PF(roofFront,"#6d6d7c"),PF(roofFR,"#7a7a88"),P(door,"#000",1)];
+    case 2:return[PF(roofBack,C.red),PF(wallR,C.blue),PF(wallL,C.sky),PF(roofFront,C.pink),PF(roofFR,C.amber),PF(door,C.earth),P(wallL,C.ink,1),P(wallR,C.ink,1),P(ridgeLn,C.ink,1)];
+    case 3:return[PF(roofBack,C.red),PF(wallR,C.blue),PF(wallL,C.sky),PF(roofFront,C.pink),PF(roofFR,C.amber),PF(door,C.earth),PF(win,C.cyan),P(wallL,C.ink,1),P(wallR,C.ink,1),P(ridgeLn,C.ink,1)];
+    case 4:return[PF(roofBack,"#5a5a67"),PF(wallR,"#5f5f6d"),PF(wallL,C.dim),PF(roofFront,"#6d6d7c"),PF(roofFR,"#7a7a88"),PF(door,"#000"),badge(C.amber)];
+  }
+});
+
+add("Hero Object","Object3D",v=>{
+  // Featured "hero object": a floating faceted crystal - a tall hexagonal
+  // bipyramid gem with a bright top facet, resting above a cast shadow.
+  // A single showcase object, distinct from the civic "Hero Monument".
+  const cx=12, top=[12,2.5], waistY=13, botY=21.5;
+  // hexagonal waist projected: 6 verts, front 3 lower, back 3 higher
+  const wr=6.2, wsq=1.9;                    // waist radius, vertical squash
+  const W=[]; for(let i=0;i<6;i++){const a=-Math.PI/2+i*Math.PI/3;W.push([+(cx+wr*Math.cos(a)).toFixed(2),+(waistY+wsq*Math.sin(a)).toFixed(2)]);}
+  const apex=top, culet=[12,botY];
+  // crown facets (apex to each waist edge), pavilion facets (each waist edge to culet)
+  const crown=i=>poly([apex,W[i],W[(i+1)%6]]);
+  const pav=i=>poly([W[i],W[(i+1)%6],culet]);
+  const sil=poly([apex,W[1],W[2],culet,W[4],W[5]]);   // outer silhouette
+  const shadow=`<ellipse cx="12" cy="22" rx="5.5" ry="1.3" fill="#0000006a"/>`;
+  // light: crown lit top-left, pavilion darker; alternate tones for facet read
+  const cT=[C.cyan,C.sky,C.blue,C.blue,C.sky,C.cyan];
+  const pT=[C.blue,C.blue,C.violet,C.violet,C.blue,C.blue];
+  switch(v){
+    case 0:return[P(sil,C.ink,1.6),...[0,1,2,3,4,5].map(i=>P(`M${apex[0]} ${apex[1]}L${W[i][0]} ${W[i][1]}`,C.dim,.9)),...[0,1,2,3,4,5].map(i=>P(`M${W[i][0]} ${W[i][1]}L${culet[0]} ${culet[1]}`,C.dim,.9))];
+    case 1:return[shadow,PF(sil,C.dim),P(sil,"#000",1)];
+    case 2:return[shadow,...[0,1,2,3,4,5].map(i=>PF(crown(i),cT[i])),...[0,1,2,3,4,5].map(i=>PF(pav(i),pT[i])),P(sil,C.ink,1)];
+    case 3:return[shadow,...[0,1,2,3,4,5].map(i=>PF(crown(i),cT[i])),...[0,1,2,3,4,5].map(i=>PF(pav(i),pT[i])),P(sil,C.ink,1),CF(apex[0],apex[1],1,"#ffffffcc")];
+    case 4:return[PF(sil,C.dim),...[0,1,2,3,4,5].map(i=>P(`M${apex[0]} ${apex[1]}L${W[i][0]} ${W[i][1]}`,"#000",.8)),badge(C.pink)];
+  }
+});
+
+/* ================================================================
+   ANALYTICAL SOLIDS  (canonical parametric primitives in 3D)
+   Platonic solids, quadrics, extrusions, revolutions - 25 shapes.
+   Shading convention: TOP facet = light accent, LEFT = mid,
+   RIGHT = dark, giving a consistent iso light from upper-left.
+   ----------------------------------------------------------------
+   ISO PROJECTION HELPERS
+   iso(x,y,z) maps a right-handed model coord to a dimetric screen
+   point. Ground plane = X (right/down) and Y (left/down); Z = up.
+   Prisms/pyramids are built from a regular n-gon on the ground
+   ring, extruded by height H, so every face is a real quad/tri
+   with consistent winding (no inverted normals).
+   ================================================================ */
+const ISO_CX=12, ISO_CY=13;           // screen centre of the ground ring
+function iso(x,y,z){
+  // dimetric: x -> (+.87,+.5), y -> (-.87,+.5), z -> up
+  const sx = ISO_CX + (x - y)*0.87;
+  const sy = ISO_CY + (x + y)*0.50 - z;
+  return [ +sx.toFixed(2), +sy.toFixed(2) ];
+}
+// regular n-gon of radius r on the ground plane (z=0), rot in radians
+function ring(r,n,rot=-Math.PI/2){
+  const p=[];
+  for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;p.push([r*Math.cos(a),r*Math.sin(a)]);}
+  return p;
+}
+const poly = pts => "M"+pts.map(p=>p.join(" ")).join("L")+"Z";
+// project a ground ring to screen at height z
+const ringAt=(gr,z)=>gr.map(([x,y])=>iso(x,y,z));
+// build a prism from ground ring `gr`, height H. Returns face path strings,
+// depth-sorted so back faces draw first. Top face is the z=H ring.
+function prism(gr,H){
+  const bot=ringAt(gr,0), top=ringAt(gr,H), n=gr.length;
+  const topFace=poly(top);
+  // side walls: index by screen-x of the wall midpoint for painter order
+  const walls=[];
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    const mx=(bot[i][0]+bot[j][0])/2, my=(bot[i][1]+bot[j][1])/2;
+    // front-facing = lower half (my greater); depth key = my
+    walls.push({d:my, cx:mx, path:poly([bot[i],bot[j],top[j],top[i]])});
+  }
+  walls.sort((a,b)=>a.d-b.d); // back (small y) first
+  return {topFace, walls, top, bot};
+}
+// shade a wall by whether its midpoint sits left or right of centre
+const wallTone=(w,left,right)=> w.cx<ISO_CX?left:right;
+// build a pyramid from ground ring `gr`, apex height H
+function pyramid(gr,H){
+  const bot=ringAt(gr,0), apex=iso(0,0,H), n=gr.length;
+  const faces=[];
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    const mx=(bot[i][0]+bot[j][0])/2, my=(bot[i][1]+bot[j][1])/2;
+    faces.push({d:my, cx:mx, path:poly([bot[i],bot[j],apex])});
+  }
+  faces.sort((a,b)=>a.d-b.d);
+  return {faces, apex, bot, base:poly(bot)};
+}
+
+/* ---- Platonic / regular polyhedra ---- */
+add("Tetrahedron","Analytical",v=>{
+  const sil="M12 3l8 15H4z";
+  const left="M12 3L4 18l8-4z", right="M12 3l8 15-8-4z", front="M4 18l8-4 8 4z";
+  switch(v){
+    case 0:return[P(sil,C.ink,1.6),P("M12 3v11M12 14l-8 4M12 14l8 4",C.dim,1.1)];
+    case 1:return[PF(sil,C.dim),P("M12 3v11M12 14l-8 4M12 14l8 4","#000",1)];
+    case 2:return[PF(left,C.blue),PF(right,C.sky),PF(front,C.dim)];
+    case 3:return[PF(left,C.blue),PF(right,C.cyan),PF(front,C.violet)];
+    case 4:return[PF(sil,C.dim),P("M12 3v11M12 14l-8 4M12 14l8 4","#000",1),badge(C.green)];
+  }
+});
+add("Octahedron","Analytical",v=>{
+  const sil="M12 3l7 9-7 9-7-9z";
+  const tl="M12 3L5 12l7 2z", tr="M12 3l7 9-7 2z", bl="M5 12l7 2v7z", br="M19 12l-7 2v7z";
+  switch(v){
+    case 0:return[P(sil,C.ink,1.6),P("M5 12h14M12 3v18",C.dim,1.1)];
+    case 1:return[PF(sil,C.dim),P("M5 12h14M12 3v9","#000",1)];
+    case 2:return[PF(tl,C.sky),PF(tr,C.blue),PF(bl,C.dim),PF(br,C.blue)];
+    case 3:return[PF(tl,C.cyan),PF(tr,C.sky),PF(bl,C.blue),PF(br,C.violet)];
+    case 4:return[PF(sil,C.dim),P("M5 12h14M12 3v18","#000",1),badge(C.blue)];
+  }
+});
+add("Dodecahedron","Analytical",v=>{
+  const sil=ngon(12,12,9,10,-Math.PI/2);
+  const pent=ngon(12,11,4.2,5,-Math.PI/2);
+  switch(v){
+    case 0:return[P(sil,C.ink,1.4),P(pent,C.dim,1.1),L(12,6.8,8.9,3.5,C.dim,1),L(12,6.8,15.1,3.5,C.dim,1),L(8,14.5,4,13.5,C.dim,1),L(16,14.5,20,13.5,C.dim,1)];
+    case 1:return[PF(sil,C.dim),P(pent,"#000",1)];
+    case 2:return[PF(sil,C.blue),PF(pent,C.sky),P(sil,C.ink,1)];
+    case 3:return[PF(sil,C.blue),PF(pent,C.cyan),PF("M12 6.8l4.2 3-1.6 5h-5.2l-1.6-5z",C.sky),PF(ngon(12,11,4.2,5,-Math.PI/2),C.violet)];
+    case 4:return[PF(sil,C.dim),P(pent,"#000",1),badge(C.amber)];
+  }
+});
+add("Icosahedron","Analytical",v=>{
+  const sil=ngon(12,12,9,6,0);
+  const inner=ngon(12,12,4.2,3,-Math.PI/2);
+  switch(v){
+    case 0:return[P(sil,C.ink,1.4),P(inner,C.dim,1),L(3,12,8,10,C.dim,.9),L(21,12,16,10,C.dim,.9),L(7.5,17.8,10,16,C.dim,.9),L(16.5,17.8,14,16,C.dim,.9),L(12,3,12,7.8,C.dim,.9)];
+    case 1:return[PF(sil,C.dim),P(inner,"#000",1)];
+    case 2:return[PF(sil,C.blue),PF(inner,C.sky),P(sil,C.ink,1)];
+    case 3:return[PF(sil,C.blue),PF(inner,C.cyan),PF("M12 7.8L8 10l4 2z",C.sky),PF("M12 7.8l4 2.2-4 2z",C.violet)];
+    case 4:return[PF(sil,C.dim),P(inner,"#000",1),badge(C.green)];
+  }
+});
+
+/* ---- Quadric surfaces ---- */
+add("Sphere","Analytical",v=>{
+  switch(v){
+    case 0:return[CI(12,12,8,C.ink),P("M4 12a8 3.5 0 0 0 16 0",C.dim,1.1),P("M12 4a3.5 8 0 0 0 0 16",C.dim,1.1)];
+    case 1:return[CF(12,12,8,C.dim),P("M6 9a10 6 0 0 0 12 0",C.ink,1)];
+    case 2:return[CF(12,12,8,C.blue),PF("M8 6a8 8 0 0 1 4 13 8 8 0 0 0 0-15z",C.sky)];
+    case 3:return[CF(12,12,8,C.blue),PF("M7 7a7 7 0 0 0 8 11 8 8 0 0 1-8-11z",C.cyan+"88"),CF(9,9,1.6,"#ffffff88")];
+    case 4:return[CF(12,12,8,C.dim),CF(9,9,1.4,"#ffffff55"),badge(C.amber)];
+  }
+});
+add("Ellipsoid","Analytical",v=>{
+  const e=(f,s,w)=>`<ellipse cx="12" cy="12" rx="9" ry="6" ${f?`fill="${f}"`:'fill="none"'} ${s?`stroke="${s}" stroke-width="${w}"`:''}/>`;
+  switch(v){
+    case 0:return[e(null,C.ink,1.6),P("M3 12a9 3 0 0 0 18 0",C.dim,1.1)];
+    case 1:return[e(C.dim)];
+    case 2:return[e(C.blue),PF("M6 8a8 6 0 0 1 4 9 6 6 0 0 0 0-11z",C.sky)];
+    case 3:return[e(C.blue),PF("M7 8a7 5 0 0 0 7 8 6 6 0 0 1-7-8z",C.cyan+"88"),CF(9,10,1.4,"#ffffff88")];
+    case 4:return[e(C.dim),badge(C.blue)];
+  }
+});
+add("Hemisphere","Analytical",v=>{
+  const dome="M4 14a8 8 0 0 1 16 0z";
+  switch(v){
+    case 0:return[P(dome,C.ink,1.6),`<ellipse cx="12" cy="14" rx="8" ry="2.4" fill="none" stroke="${C.dim}" stroke-width="1.1"/>`];
+    case 1:return[PF(dome,C.dim),`<ellipse cx="12" cy="14" rx="8" ry="2.4" fill="#000"/>`];
+    case 2:return[PF(dome,C.blue),PF("M4 14a8 8 0 0 1 8-8v8z",C.sky),`<ellipse cx="12" cy="14" rx="8" ry="2.4" fill="none" stroke="${C.ink}" stroke-width="1"/>`];
+    case 3:return[PF(dome,C.blue),PF("M4 14a8 8 0 0 1 8-8v8z",C.cyan),`<ellipse cx="12" cy="14" rx="8" ry="2.4" fill="${C.violet}88"/>`];
+    case 4:return[PF(dome,C.dim),badge(C.green)];
+  }
+});
+add("Cylinder","Analytical",v=>{
+  const body="M6 6h12v12a6 3 0 0 1-12 0z";
+  switch(v){
+    case 0:return[P("M6 6a6 3 0 0 1 12 0v12a6 3 0 0 1-12 0z",C.ink),P("M6 6a6 3 0 0 0 12 0",C.dim,1.1)];
+    case 1:return[PF("M6 6a6 3 0 0 1 12 0v12a6 3 0 0 1-12 0z",C.dim),PF("M6 6a6 3 0 0 0 12 0v-.2H6z",C.ink)];
+    case 2:return[PF(body,C.blue),PF("M6 6a6 3 0 1 1 12 0 6 3 0 0 1-12 0z",C.sky)];
+    case 3:return[PF(body,C.blue),PF("M6 6a6 3 0 1 1 12 0 6 3 0 0 1-12 0z",C.cyan),PF("M6 6v12a6 3 0 0 0 3 2.6V8.5A6 3 0 0 1 6 6z",C.violet+"66")];
+    case 4:return[PF(body,C.dim),PF("M6 6a6 3 0 1 1 12 0 6 3 0 0 1-12 0z",C.ink),badge(C.green)];
+  }
+});
+add("Cone","Analytical",v=>{
+  const body="M12 3l6 15a6 3 0 0 1-12 0z";
+  switch(v){
+    case 0:return[P(body,C.ink),P("M6 18a6 3 0 0 0 12 0",C.dim,1.1)];
+    case 1:return[PF(body,C.dim)];
+    case 2:return[PF(body,C.blue),PF("M6 18a6 3 0 1 0 12 0 6 3 0 0 0-12 0z",C.sky)];
+    case 3:return[PF(body,C.violet),PF("M6 18a6 3 0 1 0 12 0 6 3 0 0 0-12 0z",C.blue),PF("M12 3l3 7.5-6 6.5z",C.cyan+"55")];
+    case 4:return[PF(body,C.dim),badge(C.amber)];
+  }
+});
+add("Torus","Analytical",v=>{
+  // Viewed at a tilt: outer + inner rims are ellipses, tube seen in perspective.
+  const outer=(f,s,w)=>`<ellipse cx="12" cy="12" rx="9" ry="5.6" ${f?`fill="${f}"`:'fill="none"'} ${s?`stroke="${s}" stroke-width="${w}"`:''}/>`;
+  const hole =(f,s,w)=>`<ellipse cx="12" cy="12" rx="3.6" ry="2.1" ${f?`fill="${f}"`:'fill="none"'} ${s?`stroke="${s}" stroke-width="${w}"`:''}/>`;
+  // near lip of the tube (front arc dips lower than the hole)
+  const nearLip="M3 12.5a9 5.6 0 0 0 18 0";
+  const holeLip="M8.4 12a3.6 2.1 0 0 0 7.2 0";
+  switch(v){
+    case 0:return[outer(null,C.ink,1.6),hole(null,C.ink,1.4),P(nearLip,C.dim,1),P(holeLip,C.dim,1)];
+    case 1:return[outer(C.dim),hole("#000")];
+    case 2:return[outer(C.blue),hole("#000"),P(nearLip,C.sky,1.4),P(holeLip,C.sky,1.1)];
+    case 3:return[outer(C.blue),PF("M3 12a9 5.6 0 0 1 18 0 3.6 2.1 0 0 0-7.2 0 9 5.6 0 0 0-3.6 0 3.6 2.1 0 0 0-7.2 0z",C.cyan),hole("#0a1020"),P(nearLip,C.violet,1.2)];
+    case 4:return[outer(C.dim),hole("#000"),badge(C.green)];
+  }
+});
+add("Paraboloid","Analytical",v=>{
+  const body="M5 8a7 3 0 0 1 14 0c0 6-3 11-7 11S5 14 5 8z";
+  switch(v){
+    case 0:return[P(body,C.ink),P("M5 8a7 3 0 0 0 14 0",C.dim,1.1)];
+    case 1:return[PF(body,C.dim),PF("M5 8a7 3 0 0 0 14 0v-.2H5z",C.ink)];
+    case 2:return[PF(body,C.blue),PF("M5 8a7 3 0 1 1 14 0 7 3 0 0 1-14 0z",C.sky)];
+    case 3:return[PF(body,C.blue),PF("M5 8a7 3 0 1 1 14 0 7 3 0 0 1-14 0z",C.cyan),PF("M12 8v11c-3.5 0-6-4-6.8-9.5A7 3 0 0 0 12 8z",C.violet+"55")];
+    case 4:return[PF(body,C.dim),badge(C.blue)];
+  }
+});
+add("Hyperboloid","Analytical",v=>{
+  const body="M6 5a6 2.5 0 0 1 12 0c0 3-4 4-4 7s4 4 4 7a6 2.5 0 0 1-12 0c0-3 4-4 4-7s-4-4-4-7z";
+  switch(v){
+    case 0:return[P(body,C.ink),`<ellipse cx="12" cy="5" rx="6" ry="2.2" fill="none" stroke="${C.dim}" stroke-width="1.1"/>`,`<ellipse cx="12" cy="19" rx="6" ry="2.2" fill="none" stroke="${C.dim}" stroke-width="1.1"/>`];
+    case 1:return[PF(body,C.dim)];
+    case 2:return[PF(body,C.blue),`<ellipse cx="12" cy="5" rx="6" ry="2.2" fill="${C.sky}"/>`];
+    case 3:return[PF(body,C.blue),PF("M12 5c0 3-4 4-4 7s4 4 4 7c-3 0-6-.6-6-2.5 0-3 4-4 4-4.5s-4-1.5-4-4.5C6 5.6 9 5 12 5z",C.cyan+"cc"),P("M8 5.4C7.3 9 7.3 12 8 15.5M16 5.4c.7 3.6.7 6.6 0 10.1",C.sky,.9),`<ellipse cx="12" cy="5" rx="6" ry="2.2" fill="${C.violet}"/>`,`<ellipse cx="12" cy="5" rx="6" ry="2.2" fill="none" stroke="${C.ink}" stroke-width="1"/>`];
+    case 4:return[PF(body,C.dim),badge(C.violet)];
+  }
+});
+
+/* ---- Extrusions / prisms ---- */
+add("Triangular Prism","Analytical",v=>{
+  const pr=prism(ring(7,3,-Math.PI/2),8);
+  const wallsInk=pr.walls.map(w=>P(w.path,C.ink,1.4)).join("");
+  switch(v){
+    case 0:return[wallsInk,P(pr.topFace,C.ink,1.5)];
+    case 1:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),P(pr.topFace,"#000",1)];
+    case 2:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),P(pr.topFace,C.ink,1)];
+    case 3:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.violet))),PF(pr.topFace,C.cyan),P(pr.topFace,C.ink,1)];
+    case 4:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),badge(C.blue)];
+  }
+});
+add("Pentagonal Prism","Analytical",v=>{
+  const pr=prism(ring(6.5,5,-Math.PI/2),7);
+  switch(v){
+    case 0:return[pr.walls.map(w=>P(w.path,C.ink,1.3)).join(""),P(pr.topFace,C.ink,1.5)];
+    case 1:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),P(pr.topFace,"#000",1)];
+    case 2:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),P(pr.topFace,C.ink,1)];
+    case 3:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.violet))),PF(pr.topFace,C.cyan),P(pr.topFace,C.ink,1)];
+    case 4:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),badge(C.green)];
+  }
+});
+add("Hexagonal Prism","Analytical",v=>{
+  const pr=prism(ring(6.8,6,0),7);
+  switch(v){
+    case 0:return[pr.walls.map(w=>P(w.path,C.ink,1.3)).join(""),P(pr.topFace,C.ink,1.5)];
+    case 1:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),P(pr.topFace,"#000",1)];
+    case 2:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),P(pr.topFace,C.ink,1)];
+    case 3:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.violet))),PF(pr.topFace,C.cyan),P(pr.topFace,C.ink,1)];
+    case 4:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),badge(C.blue)];
+  }
+});
+add("Octagonal Prism","Analytical",v=>{
+  const pr=prism(ring(6.6,8,Math.PI/8),6.5);
+  switch(v){
+    case 0:return[pr.walls.map(w=>P(w.path,C.ink,1.2)).join(""),P(pr.topFace,C.ink,1.5)];
+    case 1:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),P(pr.topFace,"#000",1)];
+    case 2:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.dim))),PF(pr.topFace,C.sky),P(pr.topFace,C.ink,1)];
+    case 3:return[...pr.walls.map(w=>PF(w.path,wallTone(w,C.blue,C.violet))),PF(pr.topFace,C.cyan),P(pr.topFace,C.ink,1)];
+    case 4:return[...pr.walls.map(w=>PF(w.path,C.dim)),PF(pr.topFace,C.dim),badge(C.amber)];
+  }
+});
+
+/* ---- Pyramids / frusta ---- */
+add("Square Pyramid","Analytical",v=>{
+  // Built like Triangular Pyramid: explicit silhouette + named faces. Apex top,
+  // square base drawn as a front rhombus (near edge = bright, base = mid).
+  // base corners: left(4,17) front(12,20) right(20,17) back(12,14)
+  const apex="12 3";
+  const sil="M12 3L4 17l8 3 8-3z";       // outline: apex -> left -> front -> right
+  const leftF="M12 3L4 17l8 3z";         // apex, left, front  (lit)
+  const rightF="M12 3l8 14-8 3z";        // apex, right, front (dark)
+  const base="M4 17l8 3 8-3-8-3z";       // rhombus base cap
+  switch(v){
+    case 0:return[P("M12 3L4 17l8 3 8-3zM12 3v17M4 17l8-3 8 3",C.ink,1.4)];
+    case 1:return[PF(sil,C.dim),P("M12 3v17","#000",1)];
+    case 2:return[PF(leftF,C.blue),PF(rightF,C.dim),PF(base,C.sky),P(sil,C.ink,1)];
+    case 3:return[PF(leftF,C.blue),PF(rightF,C.violet),PF(base,C.cyan),P(sil,C.ink,1)];
+    case 4:return[PF(sil,C.dim),P("M12 3v17","#000",1),badge(C.green)];
+  }
+});
+add("Triangular Pyramid","Analytical",v=>{
+  const sil="M12 3l7 14-7 3-7-3z";
+  switch(v){
+    case 0:return[P("M12 3L5 17l7 3 7-3zM12 3v17M5 17l7-2 7 2",C.ink,1.4)];
+    case 1:return[PF(sil,C.dim)];
+    case 2:return[PF("M12 3L5 17l7 2z",C.blue),PF("M12 3l7 14-7 3z",C.dim),PF("M5 17l7 3 7-3-7-2z",C.sky)];
+    case 3:return[PF("M12 3L5 17l7 2z",C.blue),PF("M12 3l7 14-7 3z",C.violet),PF("M5 17l7 3 7-3-7-2z",C.cyan)];
+    case 4:return[PF(sil,C.dim),badge(C.blue)];
+  }
+});
+add("Pentagonal Pyramid","Analytical",v=>{
+  // Built like Triangular Pyramid: explicit silhouette + named front faces.
+  // Apex(12,3); base pentagon shown foreshortened, 3 front verts visible.
+  // base: L(4,15) FL(8,20) FR(16,20) R(20,15) back-mid(12,12.5)
+  const sil="M12 3L4 15l4 5h8l4-5z";                 // apex over front 4 verts
+  const fL ="M12 3L4 15l4 5z";                       // left front face (lit)
+  const fM ="M12 3L8 20h8z";                         // centre front face (mid)
+  const fR ="M12 3l8 12-4 5z";                       // right front face (dark)
+  const base="M4 15l4 5h8l4-5-8-2.5z";               // base cap
+  switch(v){
+    case 0:return[P("M12 3L4 15l4 5h8l4-5zM12 3l-4 17M12 3l4 17M12 3L4 15M12 3l8 12",C.ink,1.3)];
+    case 1:return[PF(sil,C.dim),P("M12 3L8 20M12 3l4 17","#000",1)];
+    case 2:return[PF(fL,C.blue),PF(fM,C.sky),PF(fR,C.dim),PF(base,C.sky),P(sil,C.ink,1)];
+    case 3:return[PF(fL,C.blue),PF(fM,C.cyan),PF(fR,C.violet),PF(base,C.sky),P(sil,C.ink,1)];
+    case 4:return[PF(sil,C.dim),P("M12 3L8 20M12 3l4 17","#000",1),badge(C.amber)];
+  }
+});
+add("Frustum","Analytical",v=>{
+  const sil="M8 5h8l3 12a7 3 0 0 1-14 0z";
+  switch(v){
+    case 0:return[P("M8 5a4 1.6 0 0 0 8 0M8 5l-3 12a7 3 0 0 0 14 0L16 5",C.ink,1.4),P("M8 5a4 1.6 0 0 1 8 0",C.dim,1.1)];
+    case 1:return[PF(sil,C.dim),`<ellipse cx="12" cy="5" rx="4" ry="1.6" fill="#000"/>`];
+    case 2:return[PF(sil,C.blue),PF("M8 5a4 1.6 0 1 1 8 0 4 1.6 0 0 1-8 0z",C.sky)];
+    case 3:return[PF(sil,C.blue),PF("M8 5a4 1.6 0 1 1 8 0 4 1.6 0 0 1-8 0z",C.cyan),PF("M8 5l-3 12a7 3 0 0 0 3.5 2.4V5.6A4 1.6 0 0 1 8 5z",C.violet+"55")];
+    case 4:return[PF(sil,C.dim),badge(C.blue)];
+  }
+});
+add("Conical Frustum","Analytical",v=>{
+  const sil="M9 5h6l4 13a7 3 0 0 1-14 0z";
+  switch(v){
+    case 0:return[P("M9 5a3 1.2 0 0 0 6 0M9 5L5 18a7 3 0 0 0 14 0L15 5",C.ink,1.4),P("M9 5a3 1.2 0 0 1 6 0",C.dim,1.1)];
+    case 1:return[PF(sil,C.dim)];
+    case 2:return[PF(sil,C.blue),PF("M9 5a3 1.2 0 1 1 6 0 3 1.2 0 0 1-6 0z",C.sky)];
+    case 3:return[PF(sil,C.violet),PF("M9 5a3 1.2 0 1 1 6 0 3 1.2 0 0 1-6 0z",C.blue)];
+    case 4:return[PF(sil,C.dim),badge(C.green)];
+  }
+});
+
+/* ---- Other canonical forms ---- */
+add("Capsule 3D","Analytical",v=>{
+  const sil="M6 9a6 3 0 0 1 12 0v6a6 3 0 0 1-12 0z";
+  switch(v){
+    case 0:return[P("M6 9a6 3 0 0 1 12 0v6a6 3 0 0 1-12 0z",C.ink),P("M6 9a6 3 0 0 0 12 0",C.dim,1.1)];
+    case 1:return[PF(sil,C.dim),PF("M6 9a6 3 0 0 0 12 0v-.2H6z",C.ink)];
+    case 2:return[PF(sil,C.blue),PF("M6 9a6 3 0 1 1 12 0 6 3 0 0 1-12 0z",C.sky)];
+    case 3:return[PF(sil,C.blue),PF("M6 9a6 3 0 1 1 12 0 6 3 0 0 1-12 0z",C.cyan),PF("M6 9v6a6 3 0 0 0 3 2.6V9.4A6 3 0 0 1 6 9z",C.violet+"55")];
+    case 4:return[PF(sil,C.dim),PF("M6 9a6 3 0 1 1 12 0 6 3 0 0 1-12 0z",C.ink),badge(C.amber)];
+  }
+});
+add("Plane Quad","Analytical",v=>{
+  // Oriented surface patch in iso: subdivided quad + a short surface-normal
+  // arrow at the centre so it reads as a plane with a facing direction.
+  const E=6.5;
+  const q=[iso(-E,-E,0),iso(E,-E,0),iso(E,E,0),iso(-E,E,0)];
+  const p=poly(q);
+  const grid=col=>[-3.25,0,3.25].flatMap(u=>[
+    L(...iso(u,-E,0),...iso(u,E,0),col,1),
+    L(...iso(-E,u,0),...iso(E,u,0),col,1)
+  ]).join("");
+  const c=iso(0,0,0), tip=iso(0,0,7);                 // normal from centre, +Z up
+  const norm=`M${c[0]} ${c[1]}L${tip[0]} ${tip[1]}`;
+  const nHead=`M${tip[0]} ${tip[1]}l-1.6 .4 .5-1.9 1.6 .4z`;
+  switch(v){
+    case 0:return[grid(C.dim),P(p,C.ink,1.5)];
+    case 1:return[PF(p,C.dim),grid("#0a1020")];
+    case 2:return[PF(p,C.blue+"66"),grid(C.sky),P(p,C.blue,1.6)];
+    case 3:return[PF(p,C.blue+"44"),grid(C.sky),P(p,C.cyan,1.6),P(norm,C.violet,1.6),PF(nHead,C.violet),CF(c[0],c[1],1.3,C.violet)];
+    case 4:return[PF(p,C.dim+"66"),grid("#0a1020"),P(p,C.dim,1.6),badge(C.green)];
+  }
+});
+add("Disc","Analytical",v=>{
+  const e=(f,s,w)=>`<ellipse cx="12" cy="12" rx="9" ry="4" ${f?`fill="${f}"`:'fill="none"'} ${s?`stroke="${s}" stroke-width="${w}"`:''}/>`;
+  switch(v){
+    case 0:return[e(null,C.ink,1.6),e(null,C.dim,.9).replace('cy="12"','cy="13"')];
+    case 1:return[e(C.dim)];
+    case 2:return[e(C.blue),e(null,C.sky,1.2)];
+    case 3:return[e(C.blue),`<ellipse cx="12" cy="12" rx="4.5" ry="2" fill="${C.cyan}"/>`];
+    case 4:return[e(C.dim),badge(C.blue)];
+  }
+});
+add("Helix","Analytical",v=>{
+  // Coil: 3.5 turns. Each turn = a front arc (solid, lower bulge) and a
+  // back arc (dim, upper bulge). rx=6, ry=1.8, pitch = 4px per turn.
+  const RX=6, RY=1.8, CX=12, TOP=5, PITCH=3.6, TURNS=4;
+  const front=[], back=[];
+  for(let i=0;i<TURNS;i++){
+    const y=TOP+i*PITCH;
+    // back arc: left tip -> right tip over the top (upper bulge)
+    back.push(`M${CX-RX} ${y}A${RX} ${RY} 0 0 1 ${CX+RX} ${y+PITCH/2}`);
+    // front arc: right tip -> left tip under the bottom (lower bulge)
+    front.push(`M${CX+RX} ${y+PITCH/2}A${RX} ${RY} 0 0 1 ${CX-RX} ${y+PITCH}`);
+  }
+  const F=front.join(""), B=back.join("");
+  switch(v){
+    case 0:return[P(B,C.dim,1.1),P(F,C.ink,1.8)];
+    case 1:return[P(B,C.dim,1.4),P(F,C.ink,2.4)];
+    case 2:return[P(B,C.sky,1.6),P(F,C.blue,2.2)];
+    case 3:return[P(B,C.violet,1.6),P(F,C.blue,2.4),P(front[0],C.cyan,2)];
+    case 4:return[P(B,C.dim,1.4),P(F,C.dim,2.2),badge(C.violet)];
+  }
+});
+add("Wedge","Analytical",v=>{
+  // Right-triangle cross-section (in the X-Z plane) extruded along Y (depth).
+  // Cross-section verts: A=back-low, B=front-low, C=back-high (the ramp).
+  const A=iso(-5,-5,0), B=iso(5,-5,0), Ct=iso(-5,-5,6.5); // near face (y=-5)
+  const A2=iso(-5,5,0), B2=iso(5,5,0), C2=iso(-5,5,6.5);  // far face (y=5)
+  const near=poly([A,B,Ct]);            // near triangular face (front, lit)
+  const far =poly([A2,B2,C2]);          // far triangular face (back)
+  const ramp=poly([Ct,B,B2,C2]);        // slanted top ramp
+  const bottom=poly([A,B,B2,A2]);       // ground
+  const backWall=poly([A,Ct,C2,A2]);    // vertical back
+  switch(v){
+    case 0:return[P(far,C.dim,1.1),P(bottom,C.ink,1.3),P(backWall,C.ink,1.3),P(ramp,C.ink,1.3),P(near,C.ink,1.5)];
+    case 1:return[PF(far,C.dim),PF(bottom,C.dim),PF(ramp,C.dim),PF(near,C.dim),P(near,"#000",1)];
+    case 2:return[PF(ramp,C.sky),PF(backWall,C.dim),PF(bottom,C.blue),PF(near,C.blue),P(near,C.ink,1)];
+    case 3:return[PF(ramp,C.cyan),PF(backWall,C.violet),PF(bottom,C.blue),PF(near,C.blue),P(near,C.ink,1)];
+    case 4:return[PF(ramp,C.dim),PF(near,C.dim),P(near,"#000",1),badge(C.blue)];
+  }
+});
+
+/* ================================================================
+   FACETED / PROPER 3D OBJECTS  (complex forms - 5 designs)
+   Beyond canonical primitives: crystals, gems, subdivided blobs.
+   ================================================================ */
+
+add("Crystal Cluster","Faceted",v=>{
+  // Three prismatic crystals of differing height sharing a base
+  const a="M8 20V11l2-4 2 4v9z", b="M12 20V8l2.5-5 2.5 5v12z", c="M4 20v-6l2-3 2 3v6z";
+  switch(v){
+    case 0:return[P(a,C.ink,1.4),P(b,C.ink,1.4),P(c,C.ink,1.4),P("M10 7v13M14.5 3v17M6 11v9",C.dim,1)];
+    case 1:return[PF(c,C.dim),PF(a,C.dim),PF(b,C.ink)];
+    case 2:return[PF(c,C.dim),PF("M4 20v-6l2-3v9z",C.blue),PF("M8 20V11l2-4v13z",C.sky),PF("M10 7l2 4v9h-2z",C.blue),PF("M12 20V8l2.5-5v17z",C.sky),PF("M14.5 3l2.5 5v12h-2.5z",C.blue)];
+    case 3:return[PF("M4 20v-6l2-3v9z",C.cyan),PF("M6 11l2 3v6H6z",C.blue),PF("M8 20V11l2-4v13z",C.sky),PF("M10 7l2 4v9h-2z",C.cyan),PF("M12 20V8l2.5-5v17z",C.violet),PF("M14.5 3l2.5 5v12h-2.5z",C.blue)];
+    case 4:return[PF(c,C.dim),PF(a,C.dim),PF(b,C.ink),badge(C.violet)];
+  }
+});
+add("Gemstone","Faceted",v=>{
+  // Brilliant cut. Girdle = hexagon at y=9 (widest). Crown: small octagonal
+  // table at y=5 with 6 bevel facets down to the girdle. Pavilion: 6 facets
+  // converging to a culet at (12,21).
+  // girdle points (left->right around the widest ring)
+  const g=[[4,9],[7.5,6.5],[16.5,6.5],[20,9],[16.5,11.5],[7.5,11.5]];
+  // table (crown top) points
+  const t=[[8.5,5],[15.5,5]];
+  const sil="M4 9L8.5 5H15.5L20 9L12 21z";
+  // crown facets
+  const cf1=`M8.5 5L4 9 7.5 6.5z`, cf2=`M8.5 5L7.5 6.5 12 5.4z`, cf3=`M15.5 5L12 5.4 16.5 6.5z`, cf4=`M15.5 5L16.5 6.5 20 9z`, cfTop=`M8.5 5H15.5L12 5.4z`;
+  // pavilion facets to culet
+  const pL=`M4 9L12 21 8 10z`, pML=`M8 10L12 21 12 9.5z`, pMR=`M16 10L12 21 12 9.5z`, pR=`M20 9L12 21 16 10z`;
+  switch(v){
+    case 0:return[P(sil,C.ink,1.5),P("M8.5 5L4 9M15.5 5L20 9M7.5 6.5L12 5.4 16.5 6.5M4 9L8 10 12 9.5 16 10 20 9M8 10L12 21M16 10L12 21M12 9.5V21",C.dim,.9)];
+    case 1:return[PF(sil,C.dim),P("M4 9H20M12 5V21M8.5 5L4 9M15.5 5L20 9","#000",.9)];
+    case 2:return[PF("M8.5 5H15.5L20 9 12 11 4 9z",C.sky),PF("M4 9L12 21 20 9 12 11z",C.blue),P(sil,C.ink,1)];
+    case 3:return[PF(cfTop,C.sky),PF(cf1,C.blue),PF(cf2,C.cyan),PF(cf3,C.sky),PF(cf4,C.blue),PF(pL,C.violet),PF(pML,C.blue),PF(pMR,C.violet),PF(pR,C.blue),P(sil,C.ink,1)];
+    case 4:return[PF(sil,C.dim),P("M4 9H20M12 5V21","#000",.9),badge(C.cyan)];
+  }
+});
+add("Geodesic Sphere","Faceted",v=>{
+  // Icosphere read: inner pentagon (front cap) + fan of 5 triangles out to a
+  // decagon rim just inside the silhouette. Edges connect rim<->pentagon.
+  const inner=ring(3.2,5,-Math.PI/2).map(([x,y])=>[+(12+x).toFixed(2),+(12+y).toFixed(2)]);
+  const rim=ring(8.4,10,-Math.PI/2).map(([x,y])=>[+(12+x).toFixed(2),+(12+y).toFixed(2)]);
+  const pent="M"+inner.map(p=>p.join(" ")).join("L")+"Z";
+  // spokes: each inner vertex to the rim vertex it points at (even rim idx),
+  // plus the two flanking rim verts to weave the triangle strip.
+  let net="";
+  for(let i=0;i<5;i++){
+    const ip=inner[i];
+    net+=`M${ip[0]} ${ip[1]}L${rim[(2*i)%10][0]} ${rim[(2*i)%10][1]}`;
+    net+=`M${ip[0]} ${ip[1]}L${rim[(2*i+1)%10][0]} ${rim[(2*i+1)%10][1]}`;
+    net+=`M${ip[0]} ${ip[1]}L${rim[(2*i+9)%10][0]} ${rim[(2*i+9)%10][1]}`;
+  }
+  const rimPath="M"+rim.map(p=>p.join(" ")).join("L")+"Z";
+  switch(v){
+    case 0:return[CI(12,12,9,C.ink,1.5),P(rimPath,C.dim,.8),P(net,C.dim,.8),P(pent,C.ink,1)];
+    case 1:return[CF(12,12,9,C.dim),P(rimPath,"#000",.8),P(net,"#000",.8),P(pent,"#000",1)];
+    case 2:return[CF(12,12,9,C.blue),P(net,C.sky,.8),P(pent,C.sky,1.2),CI(12,12,9,C.ink,1.2)];
+    case 3:return[CF(12,12,9,C.blue),PF(pent,C.cyan),P(net,C.sky,.8),P(rimPath,C.violet,.9),CI(12,12,9,C.ink,1)];
+    case 4:return[CF(12,12,9,C.dim),P(net,"#000",.8),P(pent,"#000",1),badge(C.green)];
+  }
+});
+add("Low-Poly Blob","Faceted",v=>{
+  // Faceted lump: closed 8-gon silhouette triangulated from an off-centre
+  // interior vertex so every facet tiles the interior with no gaps/overlaps.
+  const rim=[[8,3.5],[15,4],[20,8],[20.5,14],[17,19.5],[10,20.5],[4,17],[3.5,9]];
+  const c=[11,12];                        // interior hub (slightly left/up = lit side)
+  const sil="M"+rim.map(p=>p.join(" ")).join("L")+"Z";
+  const spokes=rim.map(p=>`M${c[0]} ${c[1]}L${p[0]} ${p[1]}`).join("");
+  // per-facet fills for the exploded/duo look (rim[i]->rim[i+1]->hub)
+  const facet=i=>`M${rim[i][0]} ${rim[i][1]}L${rim[(i+1)%rim.length][0]} ${rim[(i+1)%rim.length][1]}L${c[0]} ${c[1]}z`;
+  const tone=[C.sky,C.blue,C.blue,C.violet,C.violet,C.blue,C.sky,C.sky];
+  switch(v){
+    case 0:return[P(sil,C.ink,1.5),P(spokes,C.dim,.85)];
+    case 1:return[PF(sil,C.dim),P(spokes,"#000",.85)];
+    case 2:return[PF(sil,C.blue),P(spokes,C.sky,.85),P(sil,C.ink,1.2)];
+    case 3:return[...rim.map((_,i)=>PF(facet(i),tone[i])),P(spokes,"#0a1020",.7),P(sil,C.ink,1)];
+    case 4:return[PF(sil,C.dim),P(spokes,"#000",.85),badge(C.violet)];
+  }
+});
+add("Beveled Solid","Faceted",v=>{
+  // Chamfered cube on the iso projector: a box whose 3 visible faces (top,
+  // left, right) each have their 4 corners cut, reading as a rounded solid.
+  const S=6.6, H=7, b=1.7;                // half-extent, height, bevel inset
+  // octagon (corner-cut square) of half-size s in the plane, projected at height z
+  const oct=(s,z)=> [[s-b,-s],[b-s,-s],[-s,b-s],[-s,s-b],[b-s,s],[s-b,s],[s,s-b],[s,b-s]]
+                     .map(([x,y])=>iso(x,y,z));
+  const face=pts=>"M"+pts.map(p=>p.map(n=>n.toFixed(2)).join(" ")).join("L")+"z";
+  const topF=oct(S,H);                                   // top cap
+  // left wall: front-left top edge extruded down (x<0 side)
+  const tl=oct(S,H), bl=oct(S,0);
+  const leftF=[tl[2],tl[3],tl[4],bl[4],bl[3],bl[2]];     // -x face
+  const rightF=[tl[5],tl[6],tl[7],bl[7],bl[6],bl[5]];    // +x / front face
+  const sil=face([bl[2],bl[3],bl[4],bl[5],bl[6],bl[7],tl[7],tl[0],tl[1],tl[2]]);
+  switch(v){
+    case 0:return[P(sil,C.ink,1.5),P(face(topF),C.dim,1),P(face(leftF),C.dim,.9),P(face(rightF),C.dim,.9)];
+    case 1:return[PF(sil,C.dim),P(face(topF),"#000",1)];
+    case 2:return[PF(face(rightF),C.blue),PF(face(leftF),C.blue),PF(face(topF),C.sky),P(sil,C.ink,1)];
+    case 3:return[PF(face(rightF),C.blue),PF(face(leftF),C.violet),PF(face(topF),C.sky),P(face(topF),C.ink,1),P(face(leftF),C.ink,.9),P(face(rightF),C.ink,.9)];
+    case 4:return[PF(face(rightF),C.dim),PF(face(leftF),C.dim),PF(face(topF),C.dim),P(sil,"#000",1),badge(C.blue)];
+  }
+});
+
+/* ================================================================
+   CAD SKETCH  (constrained sketch entities: dims, control points,
+   constraint glyphs - real drafting language)
+   ================================================================ */
+
+add("Constrained Sketch","Sketch",v=>{
+  // Profile with dimension line, radius callout, control points
+  const prof="M6 17V9a3 3 0 0 1 3-3h9";
+  const dim="M6 20h12";
+  switch(v){
+    case 0:return[P(prof,C.ink,1.6),L(6,17,6,20.5,C.dim,.9),L(18,6,18,20.5,C.dim,.9),P(dim,C.ink,1),PF("M6 20l2.4-1.2v2.4zM18 20l-2.4-1.2v2.4z",C.ink),CI(6,17,1.3,C.ink,1),CI(18,6,1.3,C.ink,1)];
+    case 1:return[P("M6 17V9a3 3 0 0 1 3-3h9",C.dim,2.4),CF(6,17,1.6,C.dim),CF(18,6,1.6,C.dim)];
+    case 2:return[P(prof,C.blue,1.8),L(6,17,6,20.5,C.dim,.9),L(18,6,18,20.5,C.dim,.9),P(dim,C.ink,1),PF("M6 20l2.4-1.2v2.4zM18 20l-2.4-1.2v2.4z",C.ink),CF(6,17,1.5,C.green),CF(18,6,1.5,C.green)];
+    case 3:return[P(prof,C.blue,1.8),P("M9 6a3 3 0 0 0-3 3",C.amber,1.4),L(6,17,6,20.5,C.dim,.9),L(18,6,18,20.5,C.dim,.9),P(dim,C.cyan,1),PF("M6 20l2.4-1.2v2.4zM18 20l-2.4-1.2v2.4z",C.cyan),CF(6,17,1.6,C.green),CF(18,6,1.6,C.red),CF(9,6,1.3,C.amber)];
+    case 4:return[P(prof,C.dim,1.8),CF(6,17,1.5,C.ink),CF(18,6,1.5,C.ink),badge(C.violet)];
+  }
+});
+
+add("Sketch Plane","Sketch",v=>{
+  // Datum plane (iso parallelogram) with origin at the near corner and the
+  // U/V axes lying in the plane; a small drawn circle sits on the surface.
+  const O=iso(-6,-6,0), U=iso(6,-6,0), D=iso(6,6,0), Vv=iso(-6,6,0);
+  const q=[O,U,D,Vv].map(p=>p.map(n=>n.toFixed(2)));
+  const plane="M"+q.map(p=>p.join(" ")).join("L")+"Z";
+  const org=iso(-6,-6,0);                                   // near-corner origin
+  const uAx=iso(1,-6,0), vAx=iso(-6,1,0);                   // axis tips in-plane
+  const ent=iso(1,1,0);                                     // drawn entity centre
+  const ax=`M${org[0]} ${org[1]}L${uAx[0]} ${uAx[1]}M${org[0]} ${org[1]}L${vAx[0]} ${vAx[1]}`;
+  switch(v){
+    case 0:return[P(plane,C.ink,1.4),P(ax,C.dim,1),CI(ent[0],ent[1],2.4,C.ink,1.2),CF(org[0],org[1],1,C.ink)];
+    case 1:return[PF(plane,C.dim),CF(ent[0],ent[1],2.2,"#000")];
+    case 2:return[PF(plane,C.blue+"55"),P(plane,C.blue,1.4),P(ax,C.dim,1),CI(ent[0],ent[1],2.4,C.ink,1.4),CF(org[0],org[1],1.1,C.ink)];
+    case 3:return[PF(plane,C.blue+"33"),P(plane,C.blue,1.4),L(org[0],org[1],uAx[0],uAx[1],C.red,1.3),L(org[0],org[1],vAx[0],vAx[1],C.green,1.3),CI(ent[0],ent[1],2.4,C.cyan,1.4),CF(org[0],org[1],1.2,C.amber)];
+    case 4:return[PF(plane,C.dim+"55"),P(plane,C.dim,1.4),badge(C.blue)];
+  }
+});
+
+add("Dimension Linear","Sketch",v=>{
+  switch(v){
+    case 0:return[L(4,14,20,14,C.ink,1.3),L(4,9,4,18,C.ink,1.2),L(20,9,20,18,C.ink,1.2),PF("M4 14l2.6-1.3v2.6zM20 14l-2.6-1.3v2.6z",C.ink)];
+    case 1:return[L(4,14,20,14,C.dim,1.6),L(4,9,4,18,C.dim,1.4),L(20,9,20,18,C.dim,1.4)];
+    case 2:return[L(4,14,20,14,C.blue,1.6),L(4,9,4,18,C.ink,1.2),L(20,9,20,18,C.ink,1.2),PF("M4 14l2.6-1.3v2.6zM20 14l-2.6-1.3v2.6z",C.blue)];
+    case 3:return[L(5,14,19,14,C.blue,1.6),L(4,9,4,19,C.green,1.3),L(20,9,20,19,C.green,1.3),PF("M5 14l2.6-1.3v2.6zM19 14l-2.6-1.3v2.6z",C.amber)];
+    case 4:return[L(4,14,20,14,C.dim,1.6),L(4,9,4,18,C.dim,1.2),L(20,9,20,18,C.dim,1.2),badge(C.blue)];
+  }
+});
+
+add("Dimension Radius","Sketch",v=>{
+  // Centre O, radius line to a point P lying exactly on the arc, arrowhead at P
+  // oriented along the radius, small centre cross.
+  const Ox=12, Oy=15, Rr=10;
+  const ang=-Math.PI/4;                                  // P direction (upper-right)
+  const Px=+(Ox+Rr*Math.cos(ang)).toFixed(2), Py=+(Oy+Rr*Math.sin(ang)).toFixed(2);
+  // arc spanning across the top, both ends on radius Rr from O
+  const A0=[+(Ox-Rr).toFixed(2),Oy], A1=[+(Ox+Rr*Math.cos(-Math.PI/6)).toFixed(2),+(Oy+Rr*Math.sin(-Math.PI/6)).toFixed(2)];
+  const arc=`M${A0[0]} ${A0[1]}A${Rr} ${Rr} 0 0 1 ${A1[0]} ${A1[1]}`;
+  // arrowhead: back off along the radius, splay two barbs
+  const ux=Math.cos(ang), uy=Math.sin(ang), px=-uy, py=ux, hl=2.6, hw=1.3;
+  const bx=Px-ux*hl, by=Py-uy*hl;
+  const head=`M${Px} ${Py}L${(bx+px*hw).toFixed(2)} ${(by+py*hw).toFixed(2)}L${(bx-px*hw).toFixed(2)} ${(by-py*hw).toFixed(2)}z`;
+  const cross=`M${Ox-1.6} ${Oy}h3.2M${Ox} ${Oy-1.6}v3.2`;
+  switch(v){
+    case 0:return[P(arc,C.ink,1.6),L(Ox,Oy,Px,Py,C.dim,1.1),PF(head,C.ink),P(cross,C.ink,1.1)];
+    case 1:return[P(arc,C.dim,2.2),L(Ox,Oy,Px,Py,C.dim,1.4),PF(head,C.dim)];
+    case 2:return[P(arc,C.blue,1.8),L(Ox,Oy,Px,Py,C.ink,1.2),PF(head,C.blue),P(cross,C.blue,1.2)];
+    case 3:return[P(arc,C.blue,1.8),L(Ox,Oy,Px,Py,C.cyan,1.2),PF(head,C.amber),P(cross,C.green,1.3)];
+    case 4:return[P(arc,C.dim,2.2),L(Ox,Oy,Px,Py,C.dim,1.2),PF(head,C.dim),badge(C.amber)];
+  }
+});
+
+add("Dimension Angular","Sketch",v=>{
+  // Shared vertex, two rays; the dimension arc's endpoints sit exactly on each
+  // ray at radius Rr; arrowhead is tangent to the arc at its end.
+  const Vx=5, Vy=19, Rr=9, len=15;
+  const a0=0;                                 // lower ray: along +x (horizontal)
+  const a1=-Math.PI/3;                        // upper ray: 60deg up
+  const ray=(ang)=>[+(Vx+len*Math.cos(ang)).toFixed(2),+(Vy+len*Math.sin(ang)).toFixed(2)];
+  const R0=ray(a0), R1=ray(a1);
+  const arcS=[+(Vx+Rr*Math.cos(a0)).toFixed(2),+(Vy+Rr*Math.sin(a0)).toFixed(2)];
+  const arcE=[+(Vx+Rr*Math.cos(a1)).toFixed(2),+(Vy+Rr*Math.sin(a1)).toFixed(2)];
+  const arc=`M${arcS[0]} ${arcS[1]}A${Rr} ${Rr} 0 0 0 ${arcE[0]} ${arcE[1]}`;
+  const wedge=`M${Vx} ${Vy}L${arcS[0]} ${arcS[1]}A${Rr} ${Rr} 0 0 0 ${arcE[0]} ${arcE[1]}z`;
+  // arrowhead at arcE, tangent = perpendicular to radius (pointing along arc)
+  const tx=Math.sin(a1), ty=-Math.cos(a1), nx=Math.cos(a1), ny=Math.sin(a1), hl=2.6, hw=1.3;
+  const bx=arcE[0]-tx*hl, by=arcE[1]-ty*hl;
+  const head=`M${arcE[0]} ${arcE[1]}L${(bx+nx*hw).toFixed(2)} ${(by+ny*hw).toFixed(2)}L${(bx-nx*hw).toFixed(2)} ${(by-ny*hw).toFixed(2)}z`;
+  switch(v){
+    case 0:return[L(Vx,Vy,R0[0],R0[1],C.ink,1.4),L(Vx,Vy,R1[0],R1[1],C.ink,1.4),P(arc,C.dim,1.2),PF(head,C.ink)];
+    case 1:return[L(Vx,Vy,R0[0],R0[1],C.dim,1.8),L(Vx,Vy,R1[0],R1[1],C.dim,1.8),PF(wedge,C.dim)];
+    case 2:return[PF(wedge,C.blue+"66"),L(Vx,Vy,R0[0],R0[1],C.ink,1.4),L(Vx,Vy,R1[0],R1[1],C.ink,1.4),P(arc,C.blue,1.4),PF(head,C.blue)];
+    case 3:return[PF(wedge,C.amber+"55"),L(Vx,Vy,R0[0],R0[1],C.green,1.4),L(Vx,Vy,R1[0],R1[1],C.blue,1.4),P(arc,C.amber,1.4),PF(head,C.amber)];
+    case 4:return[L(Vx,Vy,R0[0],R0[1],C.dim,1.8),L(Vx,Vy,R1[0],R1[1],C.dim,1.8),P(arc,C.dim,1.2),badge(C.blue)];
+  }
+});
+
+add("Constraint Coincident","Sketch",v=>{
+  switch(v){
+    case 0:return[CI(12,12,6,C.dim,1.1),CI(12,12,2.4,C.ink,1.4),CF(12,12,.9,C.ink)];
+    case 1:return[CF(12,12,3,C.dim),CF(12,12,1,"#000")];
+    case 2:return[CI(12,12,6,C.dim,1.1),CF(12,12,3,C.blue),CF(12,12,1,"#000")];
+    case 3:return[CI(12,12,6,C.cyan,1.1),CF(12,12,3,C.green),CF(12,12,1,"#0a1020")];
+    case 4:return[CF(12,12,3,C.dim),badge(C.green)];
+  }
+});
+
+add("Constraint Parallel","Sketch",v=>{
+  switch(v){
+    case 0:return[L(6,18,12,6,C.ink,1.6),L(12,18,18,6,C.ink,1.6),P("M8.5 13l1-2M14.5 13l1-2",C.dim,1)];
+    case 1:return[L(6,18,12,6,C.dim,2.4),L(12,18,18,6,C.dim,2.4)];
+    case 2:return[L(6,18,12,6,C.blue,2),L(12,18,18,6,C.blue,2)];
+    case 3:return[L(6,18,12,6,C.blue,2),L(12,18,18,6,C.cyan,2),P("M8.5 13l1-2M14.5 13l1-2",C.amber,1.2)];
+    case 4:return[L(6,18,12,6,C.dim,2.2),L(12,18,18,6,C.dim,2.2),badge(C.blue)];
+  }
+});
+
+add("Constraint Perpendicular","Sketch",v=>{
+  switch(v){
+    case 0:return[L(6,18,6,6,C.ink,1.6),L(6,18,18,18,C.ink,1.6),P("M6 15h3v3",C.dim,1)];
+    case 1:return[L(6,18,6,6,C.dim,2.4),L(6,18,18,18,C.dim,2.4)];
+    case 2:return[L(6,18,6,6,C.blue,2),L(6,18,18,18,C.blue,2),P("M6 15h3v3",C.ink,1.2)];
+    case 3:return[L(6,18,6,6,C.green,2),L(6,18,18,18,C.blue,2),PF("M6 15h3v3H6z",C.amber+"55"),P("M6 15h3v3",C.amber,1.2)];
+    case 4:return[L(6,18,6,6,C.dim,2.2),L(6,18,18,18,C.dim,2.2),badge(C.amber)];
+  }
+});
+
+add("Constraint Tangent","Sketch",v=>{
+  switch(v){
+    case 0:return[CI(9,13,5,C.ink,1.5),L(4,8,20,8,C.dim,1.4),CF(9,8,1,C.ink)];
+    case 1:return[CF(9,13,5,C.dim),L(4,8,20,8,C.ink,1.6)];
+    case 2:return[CI(9,13,5,C.blue,1.6),L(4,8,20,8,C.ink,1.4),CF(9,8,1.1,C.blue)];
+    case 3:return[CF(9,13,5,C.blue),L(4,8,20,8,C.cyan,1.6),CF(9,8,1.2,C.amber)];
+    case 4:return[CI(9,13,5,C.dim,1.6),L(4,8,20,8,C.dim,1.4),badge(C.green)];
+  }
+});
+
+add("Sketch Point","Sketch",v=>{
+  switch(v){
+    case 0:return[L(6,12,18,12,C.dim,.9),L(12,6,12,18,C.dim,.9),R(9.5,9.5,5,5,0,C.ink,1.4)];
+    case 1:return[L(4,12,20,12,C.dim,.9),L(12,4,12,20,C.dim,.9),RF(9.5,9.5,5,5,0,C.ink)];
+    case 2:return[L(4,12,20,12,C.dim,.9),L(12,4,12,20,C.dim,.9),RF(9.5,9.5,5,5,0,C.blue)];
+    case 3:return[L(4,12,20,12,C.violet,.9),L(12,4,12,20,C.violet,.9),R(9.5,9.5,5,5,0,C.cyan,1.4,C.blue)];
+    case 4:return[L(4,12,20,12,C.dim,.9),L(12,4,12,20,C.dim,.9),RF(9.5,9.5,5,5,0,C.ink),badge(C.green)];
+  }
+});
+
+/* ================================================================
+   SELECTION MODES  (vertex / edge / face / object selection modes -
+   DCC/CAD component-selection toolbar glyphs). Shared base: an iso
+   cube wireframe; the active component is highlighted.
+   ================================================================ */
+// shared iso cube wireframe used by all selection glyphs
+function selCube(){
+  const g=ring(6,4,Math.PI/4);              // square footprint, corners front/L/R/back
+  const bot=ringAt(g,-1), top=ringAt(g,8);  // shift down 1 so top cap clears the canvas top
+  return {bot,top};
+}
+add("Select Vertex","Selection",v=>{
+  const {bot,top}=selCube();
+  const edges=[
+    poly([top[0],top[1],top[2],top[3]]),                       // top face
+    `M${bot[3][0]} ${bot[3][1]}L${top[3][0]} ${top[3][1]}`,     // front vertical
+    `M${bot[0][0]} ${bot[0][1]}L${top[0][0]} ${top[0][1]}`,     // right vertical
+    `M${bot[2][0]} ${bot[2][1]}L${top[2][0]} ${top[2][1]}`,     // left vertical
+    `M${bot[2][0]} ${bot[2][1]}L${bot[3][0]} ${bot[3][1]}L${bot[0][0]} ${bot[0][1]}` // front-bottom edges
+  ].join("");
+  const verts=[...top,...bot];
+  const dot=(col,r)=>verts.map(p=>CF(p[0],p[1],r,col)).join("");
+  switch(v){
+    case 0:return[P(edges,C.dim,1.2),dot(C.ink,1.5)];
+    case 1:return[P(edges,C.dim,1.2),dot(C.dim,1.7)];
+    case 2:return[P(edges,C.dim,1.2),dot(C.blue,1.7),CF(top[3][0],top[3][1],2.3,C.blue)];
+    case 3:return[P(edges,C.dim,1.2),verts.map(p=>CI(p[0],p[1],1.9,C.cyan,1.2)).join(""),CF(top[3][0],top[3][1],2.3,C.amber)];
+    case 4:return[P(edges,C.dim,1.2),dot(C.ink,1.5),badge(C.blue)];
+  }
+});
+add("Select Edge","Selection",v=>{
+  const {bot,top}=selCube();
+  const allE=[[top[0],top[1]],[top[1],top[2]],[top[2],top[3]],[top[3],top[0]],
+              [bot[2],bot[3]],[bot[3],bot[0]],[top[2],bot[2]],[top[3],bot[3]],[top[0],bot[0]]];
+  const wire=allE.map(([a,b])=>`M${a[0]} ${a[1]}L${b[0]} ${b[1]}`).join("");
+  // highlight the front-bottom-right edge (nearest, most visible)
+  const hi=`M${bot[3][0]} ${bot[3][1]}L${bot[0][0]} ${bot[0][1]}`;
+  const ep=col=>[bot[3],bot[0]].map(p=>CF(p[0],p[1],1.5,col)).join("");
+  switch(v){
+    case 0:return[P(wire,C.dim,1.1),P(hi,C.ink,2.4),ep(C.ink)];
+    case 1:return[P(wire,C.dim,1.1),P(hi,C.dim,2.8)];
+    case 2:return[P(wire,C.dim,1.1),P(hi,C.blue,2.8),ep(C.blue)];
+    case 3:return[P(wire,C.dim,1.1),P(hi,C.cyan,2.8),ep(C.amber)];
+    case 4:return[P(wire,C.dim,1.1),P(hi,C.ink,2.4),ep(C.ink),badge(C.green)];
+  }
+});
+add("Select Face","Selection",v=>{
+  const {bot,top}=selCube();
+  const allE=[[top[0],top[1]],[top[1],top[2]],[top[2],top[3]],[top[3],top[0]],
+              [bot[2],bot[3]],[bot[3],bot[0]],[top[2],bot[2]],[top[3],bot[3]],[top[0],bot[0]]];
+  const wire=allE.map(([a,b])=>`M${a[0]} ${a[1]}L${b[0]} ${b[1]}`).join("");
+  // highlight the top face
+  const face=poly([top[0],top[1],top[2],top[3]]);
+  // small centre marker
+  const c=iso(0,0,9);
+  switch(v){
+    case 0:return[P(wire,C.dim,1.1),PF(face,C.ink+"33"),P(face,C.ink,1.6),CF(c[0],c[1],1.3,C.ink)];
+    case 1:return[P(wire,C.dim,1.1),PF(face,C.dim)];
+    case 2:return[P(wire,C.dim,1.1),PF(face,C.blue+"77"),P(face,C.blue,1.6),CF(c[0],c[1],1.4,C.sky)];
+    case 3:return[P(wire,C.dim,1.1),PF(face,C.cyan+"66"),P(face,C.cyan,1.6),CF(c[0],c[1],1.5,C.amber)];
+    case 4:return[P(wire,C.dim,1.1),PF(face,C.dim),badge(C.amber)];
+  }
+});
+add("Select Object","Selection",v=>{
+  const {bot,top}=selCube();
+  const wallL=poly([bot[2],bot[3],top[3],top[2]]);
+  const wallR=poly([bot[3],bot[0],top[0],top[3]]);
+  const topF=poly([top[0],top[1],top[2],top[3]]);
+  const sil=poly([bot[2],bot[3],bot[0],top[0],top[1],top[2]]);
+  // selection bracket corners around the whole object
+  const br="M3 6h3M3 6v3M21 6h-3M21 6v3M3 18h3M3 18v-3M21 18h-3M21 18v-3";
+  switch(v){
+    case 0:return[P(topF,C.ink,1.3),P(wallL,C.ink,1.3),P(wallR,C.ink,1.3),P(br,C.blue,1.4)];
+    case 1:return[PF(sil,C.dim),P(br,C.dim,1.4)];
+    case 2:return[PF(wallL,C.blue),PF(wallR,C.dim),PF(topF,C.sky),P(sil,C.ink,1),P(br,C.blue,1.5)];
+    case 3:return[PF(wallL,C.blue),PF(wallR,C.violet),PF(topF,C.cyan),P(sil,C.ink,1),P(br,C.amber,1.6)];
+    case 4:return[PF(wallL,C.dim),PF(wallR,C.dim),PF(topF,C.dim),P(br,C.dim,1.4),badge(C.green)];
+  }
+});
+
+/* ============================================================
+   RENDER ENGINE
+   Builds category sections + cards; each card shows one icon
+   in one variation. Click a card to log its SVG to console.
+   ============================================================ */
+const CAT_META = {
+  "Primitive":  {label:"Basic Primitives", sub:"Rectilinear, circular, polygons, stars, lines and points"},
+  "Object3D":   {label:"3D Object", sub:"Complex isometric solids - faceted, knot, lathe, composite (no plain cube)"},
+  "Analytical": {label:"Analytical Solids", sub:"Canonical parametric primitives: Platonic solids, quadrics, prisms, pyramids, frusta"},
+  "Faceted":    {label:"Faceted 3D Objects", sub:"Complex forms beyond primitives: crystals, gems, geodesic + low-poly solids"},
+  "Sketch":     {label:"CAD Sketch", sub:"Constrained sketch entities, dimensions, datums, control points"},
+  "Selection":  {label:"Selection Modes", sub:"Component selection: vertex, edge, face, object - DCC/CAD toolbar glyphs"}
+};
+
+let CURRENT = 64;
+
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  const order = ["Primitive","Object3D","Analytical","Faceted","Sketch","Selection"];
+  order.forEach(cat=>{
+    const meta = CAT_META[cat];
+    const items = ICONS.filter(i=>i.cat===cat);
+    const sec = document.createElement("section");
+    sec.className = "cat";
+    sec.innerHTML = `<h2>${meta.label}</h2><p class="sub">${items.length} icons × 5 variations = ${items.length*5} SVGs — ${meta.sub}</p>`;
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    items.forEach(icon=>{
+      VARS.forEach((vn,vi)=>{
+        const card = document.createElement("div");
+        card.className = "card";
+        const inner = svg(icon.draw(vi), CURRENT);
+        card.innerHTML = `${inner}
+          <div class="var-row">${VARS.map((_,d)=>`<span class="dot" style="${d===vi?`background:#8f8fff`:''}"></span>`).join("")}</div>
+          <div class="name">${icon.name}<br><span style="color:#4a4a55">${vn}</span></div>`;
+        card.title = `${icon.name} · ${vn} (click to copy SVG to console)`;
+        card.addEventListener("click",()=>{
+          console.log(`/* ${icon.name} — ${vn} */\n`+inner);
+        });
+        grid.appendChild(card);
+      });
+    });
+    sec.appendChild(grid);
+    app.appendChild(sec);
+  });
+}
+
+/* size toolbar */
+document.querySelectorAll(".toolbar button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll(".toolbar button").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    CURRENT = +b.dataset.size;
+    render();
+  });
+});
+
+render();
+
+/* Total count report */
+const primCount = ICONS.filter(i=>i.cat==="Primitive").length;
+console.log(`Object Icon Set loaded: ${ICONS.length} base icons × 5 variations = ${ICONS.length*5} SVGs. Basic Primitives: ${primCount}.`);
+</script>
+</body>
+</html>

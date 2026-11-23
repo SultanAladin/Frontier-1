@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — RenderScope Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#5b8cff;
+    --bg:#0a0a0b;
+    --bg-panel:#0d0d0f;
+    --bg-head:#111113;
+    --bg-raise:#131315;
+    --border:#1c1c20;
+    --border-soft:#161618;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+
+    /* semantic: scopes */
+    --substrate:#6b7280;
+    --radiance:#e8a13a;
+    --solid:#4db6e8;
+    --overlay:#8b74e8;
+    --select:#4dd8a0;
+    --bad:#e8564a;
+    --good:#3ecf8e;
+    --warn:#e8b64a;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:'Archivo',system-ui,sans-serif;font-size:15px;line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 32px 120px}
+
+  /* ---------- typography ---------- */
+  h1{font-size:38px;font-weight:700;letter-spacing:-.02em;margin:0 0 10px;line-height:1.15}
+  .sub{color:var(--text-dim);font-size:17px;margin:0 0 8px;max-width:820px}
+  h2{
+    font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--text-faint);margin:72px 0 20px;padding-bottom:10px;
+    border-bottom:1px solid var(--border);
+  }
+  h2 .n{color:var(--accent);margin-right:10px}
+  h3{font-size:18px;font-weight:600;margin:34px 0 12px;letter-spacing:-.01em}
+  p{margin:0 0 14px;max-width:900px}
+  code{
+    font-family:var(--mono);font-size:.88em;background:var(--bg-raise);
+    border:1px solid var(--border);border-radius:5px;padding:1px 5px;color:#c8d4e8;
+  }
+  a{color:var(--accent)}
+  strong{color:#fff;font-weight:600}
+  .dim{color:var(--text-dim)}
+
+  /* ---------- headline callout ---------- */
+  .headline{
+    background:linear-gradient(135deg,#141418,#0f0f12);
+    border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:12px;padding:22px 26px;margin:32px 0 8px;
+  }
+  .headline .lbl{
+    font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);margin-bottom:8px;
+  }
+  .headline p{margin:0;font-size:16px}
+
+  .note{
+    border-radius:10px;padding:16px 20px;margin:22px 0;
+    background:#0e0e11;border:1px solid var(--border);border-left:3px solid var(--warn);
+  }
+  .note.good{border-left-color:var(--good)}
+  .note.bad{border-left-color:var(--bad)}
+  .note p{margin:0}
+  .note p + p{margin-top:10px}
+
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;margin:20px 0;font-size:14px}
+  caption{
+    caption-side:top;text-align:left;font-size:12px;color:var(--text-faint);
+    letter-spacing:.06em;text-transform:uppercase;padding-bottom:10px;font-weight:600;
+  }
+  th{
+    text-align:left;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--text-faint);padding:9px 12px;border-bottom:1px solid var(--border);
+    background:var(--bg-head);
+  }
+  td{padding:10px 12px;border-bottom:1px solid var(--border-soft);vertical-align:top}
+  tbody tr:hover{background:#101013}
+  td.mono,th.mono{font-family:var(--mono);font-size:12.5px}
+  .tag{
+    display:inline-block;font-family:var(--mono);font-size:11px;font-weight:500;
+    padding:2px 7px;border-radius:4px;white-space:nowrap;
+  }
+  .t-sub{background:rgba(107,114,128,.15);color:#9ca3af;border:1px solid rgba(107,114,128,.3)}
+  .t-rad{background:rgba(232,161,58,.13);color:var(--radiance);border:1px solid rgba(232,161,58,.3)}
+  .t-sol{background:rgba(77,182,232,.13);color:var(--solid);border:1px solid rgba(77,182,232,.3)}
+  .t-ovl{background:rgba(139,116,232,.13);color:var(--overlay);border:1px solid rgba(139,116,232,.3)}
+  .t-sel{background:rgba(77,216,160,.13);color:var(--select);border:1px solid rgba(77,216,160,.3)}
+  .yes{color:var(--good);font-weight:600}
+  .no{color:var(--bad);font-weight:600}
+  .na{color:var(--text-faint)}
+
+  /* ---------- figures ---------- */
+  figure{margin:26px 0 30px}
+  figcaption{
+    font-size:12.5px;color:var(--text-faint);margin-top:12px;padding-left:2px;
+    border-left:2px solid var(--border);padding:2px 0 2px 12px;
+  }
+  .svgbox{
+    background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;
+    padding:26px 22px;overflow-x:auto;
+  }
+  svg{display:block;margin:0 auto;max-width:100%;height:auto}
+  svg text{font-family:'Archivo',sans-serif}
+  svg .lbl{font-size:12px;font-weight:600;fill:#e4e4e8}
+  svg .sm{font-size:10.5px;fill:#8a8a92}
+  svg .mn{font-family:'JetBrains Mono',monospace;font-size:10.5px;fill:#9aa4b5}
+  svg .ttl{font-size:11px;font-weight:700;letter-spacing:.1em;fill:#5a5a62}
+
+  /* ---------- comparison cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px;margin:24px 0}
+  .card{
+    background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+  }
+  .card h4{
+    margin:0 0 4px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;
+  }
+  .card .who{font-size:11px;color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px}
+  .card ul{margin:0;padding-left:17px;font-size:13.5px;color:var(--text-dim)}
+  .card li{margin-bottom:6px}
+  .card li b{color:var(--text)}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:0 0 auto}
+
+  /* ---------- verdict strip ---------- */
+  .verdict{
+    display:grid;grid-template-columns:auto 1fr;gap:0 18px;margin:20px 0;
+    background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  }
+  .verdict .k{
+    padding:13px 18px;font-family:var(--mono);font-size:12px;color:var(--text-faint);
+    border-bottom:1px solid var(--border-soft);background:var(--bg-head);white-space:nowrap;
+  }
+  .verdict .v{padding:13px 18px 13px 0;border-bottom:1px solid var(--border-soft);font-size:14px}
+  .verdict > div:nth-last-child(-n+2){border-bottom:none}
+
+  ul.plain{padding-left:19px;max-width:900px}
+  ul.plain li{margin-bottom:9px}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-family:var(--mono);
+    background:var(--bg-raise);border:1px solid var(--border);border-radius:20px;padding:3px 11px;
+    color:var(--text-dim);margin:0 5px 5px 0;
+  }
+  .footnote{margin-top:70px;padding-top:22px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>RenderScope Architecture</h1>
+<p class="sub">Coexisting renderers — PBR, CAD solid, overlay, selection — each a separate static lib a
+build target either links or does not. Why this beats what Frontier has today, and where it agrees and
+disagrees with Blender and Unreal&nbsp;Engine&nbsp;5.</p>
+
+<div class="headline">
+  <div class="lbl">The one-line thesis</div>
+  <p>The current mess is a <strong>build-graph defect</strong>, not a code-style defect. One globbed
+  <code>Graphics.lib</code> with <code>/DFRONTIER_POLYGON_AUTHORING</code> hardcoded at
+  <code>Build.bat:63</code> means every target — including a future game — <em>compiles the authoring
+  renderer in</em>. No amount of <code>#ifdef</code> fixes that. Strip at the <strong>lib
+  boundary</strong>, order scopes in a <strong>fixed list</strong>, and keep <code>#ifdef</code> at
+  <strong>four declaration sites</strong>.</p>
+</div>
+
+<div class="note good">
+  <p><strong>🟢 Verified before designing:</strong> all 71 files in <code>Internal/Graphics</code> were
+  include-scanned. The Radiance group includes <em>nothing</em> from Solid/Overlay/Select, and those
+  three have <em>zero</em> edges between them. Your subsystems were already written to this layering
+  — this plan makes the build system honour a separation the code already respects.</p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">01</span>The defect, drawn</h2>
+
+<p>Today one lib is produced by globbing every <code>.cpp</code> under
+<code>Internal/Graphics</code>, and the authoring define is baked into that lib rather than into the
+targets that want it. A game linking this lib receives CAD, gizmo and selection code it can never use.</p>
+
+<figure>
+<div class="svgbox">
+<svg viewBox="0 0 1000 340" role="img" aria-label="Current architecture: one globbed lib feeding all targets, versus five scoped libs feeding targets selectively">
+  <text class="ttl" x="10" y="16">TODAY — ONE GLOBBED LIB</text>
+  <text class="ttl" x="560" y="16">PROPOSED — FIVE SCOPED LIBS</text>
+  <line x1="500" y1="8" x2="500" y2="330" stroke="#1c1c20" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- ============ LEFT: today ============ -->
+  <!-- source tree -->
+  <rect x="14" y="34" width="150" height="128" rx="8" fill="#0f0f12" stroke="#1c1c20"/>
+  <text class="sm" x="26" y="52">Internal/Graphics/</text>
+  <text class="mn" x="26" y="70">Visibility/  Grid/</text>
+  <text class="mn" x="26" y="86">Clipmap/  Shadow/</text>
+  <text class="mn" x="26" y="102">Render/Surface/</text>
+  <text class="mn" x="26" y="118">Atmosphere/ …</text>
+  <text class="sm" x="26" y="140" fill="#5a5a62">71 files</text>
+  <text class="mn" x="26" y="155" fill="#e8564a">for /R *.cpp</text>
+
+  <!-- arrow -->
+  <path d="M170 98 L206 98" stroke="#e8564a" stroke-width="1.5" marker-end="url(#ar-bad)"/>
+
+  <!-- one lib -->
+  <rect x="210" y="60" width="132" height="76" rx="8" fill="rgba(232,86,74,.09)" stroke="#e8564a" stroke-width="1.5"/>
+  <text class="lbl" x="276" y="86" text-anchor="middle">Graphics.lib</text>
+  <text class="mn" x="276" y="104" text-anchor="middle" fill="#e8564a">POLYGON_AUTHORING</text>
+  <text class="sm" x="276" y="122" text-anchor="middle">baked in</text>
+
+  <!-- targets -->
+  <path d="M348 98 L384 72" stroke="#3a3a42" stroke-width="1.2" marker-end="url(#ar-dim)"/>
+  <path d="M348 98 L384 98" stroke="#3a3a42" stroke-width="1.2" marker-end="url(#ar-dim)"/>
+  <path d="M348 98 L384 124" stroke="#e8564a" stroke-width="1.6" marker-end="url(#ar-bad)"/>
+
+  <rect x="388" y="56" width="96" height="30" rx="6" fill="#131315" stroke="#1c1c20"/>
+  <text class="sm" x="436" y="75" text-anchor="middle">Editor</text>
+  <rect x="388" y="84" width="96" height="30" rx="6" fill="#131315" stroke="#1c1c20"/>
+  <text class="sm" x="436" y="103" text-anchor="middle">Sketcher</text>
+  <rect x="388" y="112" width="96" height="30" rx="6" fill="rgba(232,86,74,.09)" stroke="#e8564a"/>
+  <text class="sm" x="436" y="131" text-anchor="middle" fill="#e8564a">Game</text>
+
+  <text class="sm" x="14" y="196" fill="#e8564a">🔴 Game links CAD + gizmo + selection.</text>
+  <text class="sm" x="14" y="214">Unused code is in the binary, in the</text>
+  <text class="sm" x="14" y="230">link, and in every rebuild. The define</text>
+  <text class="sm" x="14" y="246">lives in the lib, so it cannot vary</text>
+  <text class="sm" x="14" y="262">per target — the toggle does not exist.</text>
+
+  <!-- ============ RIGHT: proposed ============ -->
+  <!-- libs -->
+  <rect x="560" y="40" width="126" height="26" rx="6" fill="rgba(107,114,128,.13)" stroke="#6b7280"/>
+  <text class="mn" x="623" y="57" text-anchor="middle" fill="#9ca3af">Substrate</text>
+  <rect x="560" y="70" width="126" height="26" rx="6" fill="rgba(232,161,58,.11)" stroke="#e8a13a"/>
+  <text class="mn" x="623" y="87" text-anchor="middle" fill="#e8a13a">Radiance</text>
+  <rect x="560" y="100" width="126" height="26" rx="6" fill="rgba(77,182,232,.11)" stroke="#4db6e8"/>
+  <text class="mn" x="623" y="117" text-anchor="middle" fill="#4db6e8">Solid</text>
+  <rect x="560" y="130" width="126" height="26" rx="6" fill="rgba(139,116,232,.11)" stroke="#8b74e8"/>
+  <text class="mn" x="623" y="147" text-anchor="middle" fill="#8b74e8">Overlay</text>
+  <rect x="560" y="160" width="126" height="26" rx="6" fill="rgba(77,216,160,.11)" stroke="#4dd8a0"/>
+  <text class="mn" x="623" y="177" text-anchor="middle" fill="#4dd8a0">Select</text>
+
+  <!-- editor target: all -->
+  <rect x="800" y="36" width="104" height="34" rx="6" fill="#131315" stroke="#1c1c20"/>
+  <text class="sm" x="852" y="51" text-anchor="middle">Editor</text>
+  <text class="mn" x="852" y="64" text-anchor="middle" fill="#5a5a62">all 5</text>
+  <path d="M690 53 L796 53" stroke="#6b7280" stroke-width="1" opacity=".55"/>
+  <path d="M690 83 L790 60" stroke="#e8a13a" stroke-width="1" opacity=".55"/>
+  <path d="M690 113 L790 62" stroke="#4db6e8" stroke-width="1" opacity=".3"/>
+  <path d="M690 143 L790 64" stroke="#8b74e8" stroke-width="1" opacity=".55"/>
+  <path d="M690 173 L790 66" stroke="#4dd8a0" stroke-width="1" opacity=".55"/>
+
+  <!-- sketcher -->
+  <rect x="800" y="98" width="104" height="34" rx="6" fill="#131315" stroke="#1c1c20"/>
+  <text class="sm" x="852" y="113" text-anchor="middle">Sketcher</text>
+  <text class="mn" x="852" y="126" text-anchor="middle" fill="#5a5a62">Sol+Ovl+Sel</text>
+  <path d="M690 113 L796 113" stroke="#4db6e8" stroke-width="1.2" opacity=".7"/>
+  <path d="M690 143 L796 118" stroke="#8b74e8" stroke-width="1" opacity=".55"/>
+
+  <!-- game -->
+  <rect x="800" y="160" width="104" height="34" rx="6" fill="rgba(62,207,142,.08)" stroke="#3ecf8e"/>
+  <text class="sm" x="852" y="175" text-anchor="middle" fill="#3ecf8e">Game</text>
+  <text class="mn" x="852" y="188" text-anchor="middle" fill="#3ecf8e">Sub+Rad</text>
+  <path d="M690 53 L794 172" stroke="#6b7280" stroke-width="1.4"/>
+  <path d="M690 83 L794 176" stroke="#e8a13a" stroke-width="1.4"/>
+
+  <text class="sm" x="560" y="222" fill="#3ecf8e">🟢 Game links 2 libs. CAD/gizmo/select</text>
+  <text class="sm" x="560" y="238">object files are never produced for it,</text>
+  <text class="sm" x="560" y="254">never linked, never in the exe. Enforced</text>
+  <text class="sm" x="560" y="270">by the <tspan font-family="JetBrains Mono">linker</tspan>, not by developer discipline.</text>
+
+  <text class="sm" x="560" y="300" fill="#8a8a92">Each lib carries its own guard define, set</text>
+  <text class="sm" x="560" y="316" fill="#8a8a92">by the target — so the toggle finally exists.</text>
+
+  <defs>
+    <marker id="ar-bad" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 z" fill="#e8564a"/></marker>
+    <marker id="ar-dim" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 z" fill="#3a3a42"/></marker>
+  </defs>
+</svg>
+</div>
+<figcaption>Left: the define lives inside the lib, so it cannot vary per target — which is precisely why
+the toggle you want does not exist today. Right: the define moves to the target, and the lib boundary
+does the stripping.</figcaption>
+</figure>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">02</span>The dependency graph — measured, not assumed</h2>
+
+<p>This is the finding that makes the whole plan cheap. Every <code>#include</code> in the Graphics tree
+was scanned to test whether the proposed split is actually achievable, or whether it would need code
+surgery.</p>
+
+<figure>
+<div class="svgbox">
+<svg viewBox="0 0 900 330" role="img" aria-label="Layered dependency graph showing Substrate at the bottom, Radiance above it, and Solid, Overlay and Select on top with no edges between them">
+  <!-- coordinator -->
+  <rect x="352" y="14" width="196" height="42" rx="8" fill="rgba(232,86,74,.08)" stroke="#e8564a" stroke-dasharray="4 3"/>
+  <text class="lbl" x="450" y="33" text-anchor="middle" fill="#e8564a">COORDINATOR</text>
+  <text class="mn" x="450" y="48" text-anchor="middle" fill="#8a8a92">RenderExtension.{h,cpp}</text>
+  <text class="sm" x="562" y="32" fill="#e8564a">← the only violator</text>
+  <text class="sm" x="562" y="47" fill="#5a5a62">(the file being rewritten)</text>
+
+  <!-- top tier -->
+  <rect x="70" y="106" width="164" height="56" rx="8" fill="rgba(77,182,232,.10)" stroke="#4db6e8"/>
+  <text class="lbl" x="152" y="128" text-anchor="middle" fill="#4db6e8">SOLID</text>
+  <text class="sm" x="152" y="146" text-anchor="middle">CAD B-rep</text>
+
+  <rect x="256" y="106" width="164" height="56" rx="8" fill="rgba(139,116,232,.10)" stroke="#8b74e8"/>
+  <text class="lbl" x="338" y="128" text-anchor="middle" fill="#8b74e8">OVERLAY</text>
+  <text class="sm" x="338" y="146" text-anchor="middle">grid · gizmo · lattice</text>
+
+  <rect x="442" y="106" width="164" height="56" rx="8" fill="rgba(77,216,160,.10)" stroke="#4dd8a0"/>
+  <text class="lbl" x="524" y="128" text-anchor="middle" fill="#4dd8a0">SELECT</text>
+  <text class="sm" x="524" y="146" text-anchor="middle">pick · outline · handles</text>
+
+  <!-- no-edge annotation between top tier -->
+  <path d="M240 134 L250 134" stroke="#3ecf8e" stroke-width="1" stroke-dasharray="2 2"/>
+  <path d="M426 134 L436 134" stroke="#3ecf8e" stroke-width="1" stroke-dasharray="2 2"/>
+  <text class="sm" x="640" y="126" fill="#3ecf8e">🟢 zero edges</text>
+  <text class="sm" x="640" y="141" fill="#5a5a62">between these three —</text>
+  <text class="sm" x="640" y="156" fill="#5a5a62">mutually independent</text>
+
+  <!-- radiance -->
+  <rect x="176" y="200" width="290" height="52" rx="8" fill="rgba(232,161,58,.10)" stroke="#e8a13a"/>
+  <text class="lbl" x="321" y="221" text-anchor="middle" fill="#e8a13a">RADIANCE</text>
+  <text class="sm" x="321" y="238" text-anchor="middle">sky · raster · shade · shadow · HiZ</text>
+  <text class="sm" x="484" y="220" fill="#3ecf8e">🟢 includes NONE</text>
+  <text class="sm" x="484" y="235" fill="#5a5a62">of the three above</text>
+
+  <!-- substrate -->
+  <rect x="176" y="278" width="290" height="44" rx="8" fill="rgba(107,114,128,.13)" stroke="#6b7280"/>
+  <text class="lbl" x="321" y="298" text-anchor="middle" fill="#9ca3af">SUBSTRATE</text>
+  <text class="sm" x="321" y="314" text-anchor="middle">VulkanHost · Diagnostics · Schedule</text>
+
+  <!-- downward edges only -->
+  <path d="M152 162 L152 300 L172 300" stroke="#4db6e8" stroke-width="1.3" fill="none" opacity=".8"/>
+  <path d="M338 162 L338 196" stroke="#8b74e8" stroke-width="1.3" marker-end="url(#a2)"/>
+  <path d="M524 162 L524 226 L470 226" stroke="#4dd8a0" stroke-width="1.3" fill="none" marker-end="url(#a3)"/>
+  <path d="M321 252 L321 274" stroke="#e8a13a" stroke-width="1.3" marker-end="url(#a1)"/>
+  <path d="M450 56 L450 102" stroke="#e8564a" stroke-width="1.1" stroke-dasharray="3 3" marker-end="url(#a4)"/>
+
+  <text class="sm" x="16" y="200" fill="#8a8a92">all edges point</text>
+  <text class="sm" x="16" y="215" fill="#8a8a92">DOWNWARD only</text>
+  <text class="sm" x="16" y="234" fill="#4dd8a0">Select → Radiance:</text>
+  <text class="sm" x="16" y="249" fill="#5a5a62">reads the id buffer</text>
+  <text class="sm" x="16" y="264" fill="#5a5a62">the raster wrote, so</text>
+  <text class="sm" x="16" y="279" fill="#5a5a62">it layers on top —</text>
+  <text class="sm" x="16" y="294" fill="#5a5a62">not a peer.</text>
+
+  <defs>
+    <marker id="a1" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#e8a13a"/></marker>
+    <marker id="a2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8b74e8"/></marker>
+    <marker id="a3" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4dd8a0"/></marker>
+    <marker id="a4" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#e8564a"/></marker>
+  </defs>
+</svg>
+</div>
+<figcaption>Measured result: the partition is dependency-clean. Phase 1 is therefore a build-file change,
+not a code refactor — the expensive risk in this kind of work simply is not present.</figcaption>
+</figure>
+
+<table>
+  <caption>Include-scan results — <span class="dim">71 files, every <code>#include</code> line</span></caption>
+  <thead><tr><th>Check</th><th style="width:130px">Result</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>Radiance → Solid / Overlay / Select</td><td><span class="yes">NONE</span></td><td>PBR is already independent of every editor concern</td></tr>
+    <tr><td>Solid ↔ Overlay ↔ Select</td><td><span class="yes">NONE</span></td><td>The three top scopes never reference each other</td></tr>
+    <tr><td>Anything outside Solid → <code>ParametricSketch*</code></td><td><span class="yes">NONE</span></td><td>CAD is fully encapsulated today</td></tr>
+    <tr><td>Top scopes → Substrate / Radiance</td><td><span class="na">correct direction</span></td><td><code>VulkanHost</code>, <code>VisibilityDepth</code>, <code>VisibilityImage</code></td></tr>
+    <tr><td>Sole upward violator</td><td><span class="no">1 file</span></td><td><code>RenderExtension.h:23–36</code> — the coordinator, which this plan rewrites anyway</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">03</span>Three independent axes — why "all editors at once" stays fast</h2>
+
+<p>The performance question you raised — <em>run every editor in one application and still be
+fast</em> — resolves into keeping three things separate that are usually conflated. A scope that is
+compiled in but not active costs <strong>one null pointer</strong>.</p>
+
+<figure>
+<div class="svgbox">
+<svg viewBox="0 0 900 250" role="img" aria-label="Three axes: compiled-in decided by the linker, instantiated decided on first engagement, active decided per frame">
+  <!-- axis 1 -->
+  <rect x="20" y="30" width="266" height="182" rx="10" fill="#0f0f12" stroke="#1c1c20"/>
+  <text class="ttl" x="38" y="54">① COMPILED-IN</text>
+  <text class="sm" x="38" y="76">decided by: <tspan fill="#d8d8dc">the linker</tspan></text>
+  <text class="sm" x="38" y="92">changes: <tspan fill="#d8d8dc">per build target</tspan></text>
+  <rect x="38" y="106" width="230" height="30" rx="6" fill="rgba(62,207,142,.08)" stroke="#3ecf8e"/>
+  <text class="mn" x="153" y="125" text-anchor="middle" fill="#3ecf8e">lib linked → code exists</text>
+  <rect x="38" y="142" width="230" height="30" rx="6" fill="rgba(232,86,74,.07)" stroke="#e8564a"/>
+  <text class="mn" x="153" y="161" text-anchor="middle" fill="#e8564a">not linked → not on disk</text>
+  <text class="sm" x="38" y="192" fill="#5a5a62">cost when absent: <tspan fill="#3ecf8e">zero bytes</tspan></text>
+
+  <!-- axis 2 -->
+  <rect x="306" y="30" width="266" height="182" rx="10" fill="#0f0f12" stroke="#1c1c20"/>
+  <text class="ttl" x="324" y="54">② INSTANTIATED</text>
+  <text class="sm" x="324" y="76">decided by: <tspan fill="#d8d8dc">first engagement</tspan></text>
+  <text class="sm" x="324" y="92">changes: <tspan fill="#d8d8dc">once per session</tspan></text>
+  <rect x="324" y="106" width="230" height="30" rx="6" fill="rgba(91,140,255,.08)" stroke="#5b8cff"/>
+  <text class="mn" x="439" y="125" text-anchor="middle" fill="#5b8cff">ScopeSlot → pipelines built</text>
+  <rect x="324" y="142" width="230" height="30" rx="6" fill="#131315" stroke="#2a2a30"/>
+  <text class="mn" x="439" y="161" text-anchor="middle" fill="#8a8a92">nullptr → nothing built</text>
+  <text class="sm" x="324" y="192" fill="#5a5a62">cost when absent: <tspan fill="#3ecf8e">8 bytes</tspan></text>
+
+  <!-- axis 3 -->
+  <rect x="592" y="30" width="288" height="182" rx="10" fill="#0f0f12" stroke="#1c1c20"/>
+  <text class="ttl" x="610" y="54">③ ACTIVE THIS FRAME</text>
+  <text class="sm" x="610" y="76">decided by: <tspan fill="#d8d8dc">ScopeEngagementTable</tspan></text>
+  <text class="sm" x="610" y="92">changes: <tspan fill="#d8d8dc">every frame</tspan></text>
+  <rect x="610" y="106" width="252" height="30" rx="6" fill="rgba(232,161,58,.09)" stroke="#e8a13a"/>
+  <text class="mn" x="736" y="125" text-anchor="middle" fill="#e8a13a">engaged → records commands</text>
+  <rect x="610" y="142" width="252" height="30" rx="6" fill="#131315" stroke="#2a2a30"/>
+  <text class="mn" x="736" y="161" text-anchor="middle" fill="#8a8a92">skipped → loop `continue`</text>
+  <text class="sm" x="610" y="192" fill="#5a5a62">cost when absent: <tspan fill="#3ecf8e">one branch</tspan></text>
+
+  <text class="sm" x="20" y="238" fill="#8a8a92">Conflating these is what makes editor code slow in a game build. Keeping them separate is the entire performance argument.</text>
+</svg>
+</div>
+<figcaption>Adopted from Blender's <code>DrawEngine::Pointer</code>, which separates the same three
+concerns with a lazily-instantiating handle.</figcaption>
+</figure>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">04</span>Frame anatomy — colour scopes and ordering</h2>
+
+<p>One shading scope wins the scene target; overlays composite after the tone map so authored colours
+survive; selection reuses the id buffer the raster already wrote, so it costs no extra geometry pass.</p>
+
+<figure>
+<div class="svgbox">
+<svg viewBox="0 0 940 300" role="img" aria-label="Frame timeline showing scene-linear scope, tone map resolve, then display-referred overlay scope">
+  <!-- scene-referred band -->
+  <rect x="20" y="46" width="420" height="106" rx="10" fill="rgba(232,161,58,.06)" stroke="#e8a13a" stroke-dasharray="5 3"/>
+  <text class="ttl" x="34" y="38">SCENE-LINEAR (HDR, unbounded)</text>
+
+  <rect x="36" y="62" width="86" height="34" rx="6" fill="rgba(232,161,58,.13)" stroke="#e8a13a"/>
+  <text class="mn" x="79" y="83" text-anchor="middle" fill="#e8a13a">sky</text>
+  <rect x="128" y="62" width="86" height="34" rx="6" fill="rgba(232,161,58,.13)" stroke="#e8a13a"/>
+  <text class="mn" x="171" y="83" text-anchor="middle" fill="#e8a13a">raster</text>
+  <rect x="220" y="62" width="86" height="34" rx="6" fill="rgba(232,161,58,.13)" stroke="#e8a13a"/>
+  <text class="mn" x="263" y="83" text-anchor="middle" fill="#e8a13a">shade</text>
+
+  <rect x="36" y="106" width="270" height="32" rx="6" fill="rgba(77,182,232,.10)" stroke="#4db6e8" stroke-dasharray="4 3"/>
+  <text class="mn" x="171" y="126" text-anchor="middle" fill="#4db6e8">— OR — Solid (CAD analytic surfaces)</text>
+
+  <text class="sm" x="322" y="84" fill="#8a8a92">mutually</text>
+  <text class="sm" x="322" y="99" fill="#8a8a92">exclusive:</text>
+  <text class="sm" x="322" y="114" fill="#8a8a92">one wins</text>
+  <text class="sm" x="322" y="129" fill="#8a8a92">the target</text>
+
+  <!-- resolve -->
+  <path d="M444 99 L474 99" stroke="#5b8cff" stroke-width="1.6" marker-end="url(#a5)"/>
+  <rect x="478" y="70" width="74" height="58" rx="8" fill="rgba(91,140,255,.12)" stroke="#5b8cff"/>
+  <text class="mn" x="515" y="93" text-anchor="middle" fill="#5b8cff">tone</text>
+  <text class="mn" x="515" y="108" text-anchor="middle" fill="#5b8cff">map</text>
+  <text class="sm" x="515" y="146" text-anchor="middle" fill="#5a5a62">ONCE</text>
+
+  <!-- display-referred band -->
+  <path d="M556 99 L586 99" stroke="#8b74e8" stroke-width="1.6" marker-end="url(#a6)"/>
+  <rect x="590" y="46" width="330" height="106" rx="10" fill="rgba(139,116,232,.06)" stroke="#8b74e8" stroke-dasharray="5 3"/>
+  <text class="ttl" x="604" y="38">DISPLAY-REFERRED (sRGB swapchain)</text>
+
+  <rect x="606" y="62" width="72" height="34" rx="6" fill="rgba(139,116,232,.13)" stroke="#8b74e8"/>
+  <text class="mn" x="642" y="83" text-anchor="middle" fill="#8b74e8">grid</text>
+  <rect x="684" y="62" width="72" height="34" rx="6" fill="rgba(139,116,232,.13)" stroke="#8b74e8"/>
+  <text class="mn" x="720" y="83" text-anchor="middle" fill="#8b74e8">gizmo</text>
+  <rect x="762" y="62" width="72" height="34" rx="6" fill="rgba(139,116,232,.13)" stroke="#8b74e8"/>
+  <text class="mn" x="798" y="83" text-anchor="middle" fill="#8b74e8">curve</text>
+  <rect x="606" y="106" width="150" height="32" rx="6" fill="rgba(77,216,160,.12)" stroke="#4dd8a0"/>
+  <text class="mn" x="681" y="126" text-anchor="middle" fill="#4dd8a0">outline · handles</text>
+  <text class="sm" x="768" y="126" fill="#5a5a62">additive —</text>
+  <text class="sm" x="768" y="140" fill="#5a5a62">always on top</text>
+
+  <!-- id buffer reuse -->
+  <path d="M171 100 C171 190, 640 190, 660 142" stroke="#4dd8a0" stroke-width="1.3" fill="none" stroke-dasharray="4 3" marker-end="url(#a3b)"/>
+  <text class="sm" x="300" y="200" fill="#4dd8a0">the SAME id buffer the raster already wrote — selection costs no extra geometry pass</text>
+
+  <text class="sm" x="20" y="240" fill="#8a8a92">Why the split matters: overlays drawn <tspan font-style="italic">before</tspan> the tone map get their authored colours crushed by it. Blender reached the</text>
+  <text class="sm" x="20" y="256" fill="#8a8a92">same conclusion (scene-linear vs display-linear framebuffers) — and Frontier already documents this split at RenderExtension.h:102.</text>
+
+  <defs>
+    <marker id="a5" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5b8cff"/></marker>
+    <marker id="a6" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8b74e8"/></marker>
+    <marker id="a3b" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4dd8a0"/></marker>
+  </defs>
+</svg>
+</div>
+<figcaption>Two colour scopes, not one. This is already correct in Frontier — the plan preserves it and
+makes the overlay side strippable.</figcaption>
+</figure>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">05</span>Compared: current · Blender · Unreal · RenderScope</h2>
+
+<div class="cards">
+  <div class="card">
+    <h4><span class="dot" style="background:var(--bad)"></span>Frontier today</h4>
+    <div class="who">one lib · one lambda</div>
+    <ul>
+      <li><b>Separation:</b> none — 71 files → 1 lib</li>
+      <li><b>Ordering:</b> a ~400-line recorder lambda</li>
+      <li><b>Stripping:</b> impossible; define baked into the lib</li>
+      <li><b>Spine:</b> <code>RenderSchedule</code> exists but is <b>OFF</b>, 2 of ~12 steps</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4><span class="dot" style="background:var(--good)"></span>Blender</h4>
+    <div class="who">draw manager · 10 engines</div>
+    <ul>
+      <li><b>Separation:</b> engines as named slots in <code>DRWViewData</code></li>
+      <li><b>Ordering:</b> hand-written <code>foreach_engine</code> list — <b>no solver</b></li>
+      <li><b>Stripping:</b> only the debug engine; no runtime build exists</li>
+      <li><b>Lazy:</b> <code>DrawEngine::Pointer</code> — null until used</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4><span class="dot" style="background:var(--good)"></span>Unreal Engine 5</h4>
+    <div class="who">modules · RDG</div>
+    <ul>
+      <li><b>Separation:</b> module <code>"Type"</code> in the descriptor</li>
+      <li><b>Ordering:</b> RDG — full dependency graph</li>
+      <li><b>Stripping:</b> UBT prunes <b>before</b> the compiler runs</li>
+      <li><b>Caveat:</b> <code>WITH_EDITOR</code> alone strips <i>nothing</i> from the build graph</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4><span class="dot" style="background:var(--accent)"></span>RenderScope</h4>
+    <div class="who">5 libs · fixed list</div>
+    <ul>
+      <li><b>Separation:</b> 5 libs, verified dependency-clean</li>
+      <li><b>Ordering:</b> fixed list — Blender's model</li>
+      <li><b>Stripping:</b> lib boundary — Unreal's model</li>
+      <li><b>Guards:</b> 4 declaration sites, never in a function body</li>
+    </ul>
+  </div>
+</div>
+
+<table>
+  <caption>Head-to-head — <span class="dim">🟢 good · 🚩 partial · 🔴 bad</span></caption>
+  <thead><tr>
+    <th style="width:31%">Property</th><th>Today</th><th>Blender</th><th>Unreal 5</th><th>RenderScope</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td>Renderers can coexist</td>
+      <td>🔴 one lambda</td><td>🟢 10 engines</td><td>🟢 yes</td><td>🟢 4 scopes</td>
+    </tr>
+    <tr>
+      <td>Editor code strippable from runtime</td>
+      <td>🔴 impossible</td><td>🔴 n/a — no runtime build</td><td>🟢 module pruning</td><td>🟢 lib boundary</td>
+    </tr>
+    <tr>
+      <td>Cost of an inactive renderer</td>
+      <td>🔴 always compiled + branched</td><td>🟢 one null pointer</td><td>🟢 not linked</td><td>🟢 one null pointer</td>
+    </tr>
+    <tr>
+      <td>Pass ordering machinery</td>
+      <td>🔴 implicit in lambda order</td><td>🟢 fixed list, commented</td><td>🚩 full graph — heavy</td><td>🟢 fixed list</td>
+    </tr>
+    <tr>
+      <td>Selection compiled out of runtime</td>
+      <td>🔴 no</td><td>🔴 no</td><td>🟢 yes (editor module)</td><td>🟢 yes</td>
+    </tr>
+    <tr>
+      <td>Overlay isolated in its own colour scope</td>
+      <td>🟢 already correct</td><td>🟢 separate framebuffer</td><td>🚩 composite pass</td><td>🟢 preserved</td>
+    </tr>
+    <tr>
+      <td><code>#ifdef</code> inside function bodies</td>
+      <td>🔴 scattered</td><td>🟢 none — 4 sites</td><td>🚩 some</td><td>🟢 none — 4 sites</td>
+    </tr>
+    <tr>
+      <td>Complexity carried</td>
+      <td>🚩 low but unusable</td><td>🟢 proportionate</td><td>🔴 very high</td><td>🟢 proportionate</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note good">
+  <p><strong>What makes it superior is not novelty — it is picking the right half of each.</strong>
+  Blender has excellent scope separation but <em>cannot</em> strip anything, because it has no runtime
+  build to strip for. Unreal can strip beautifully but pays for a full dependency-solving render graph
+  Frontier has no use for at four scopes. RenderScope takes Blender's ordering and Unreal's stripping,
+  and skips both of their costs.</p>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">06</span>Why no render graph</h2>
+
+<p>The obvious objection: Unreal has RDG, Frostbite has FrameGraph — why a plain ordered list? Because
+the justification for a solver is a function of scale, and the numbers are not close.</p>
+
+<figure>
+<div class="svgbox">
+<svg viewBox="0 0 880 210" role="img" aria-label="Bar chart comparing pass counts: Frontier 4 scopes versus Battlefield 4 with 54 features and hundreds of passes">
+  <text class="ttl" x="10" y="16">WHEN A DEPENDENCY SOLVER PAYS FOR ITSELF</text>
+
+  <!-- frontier -->
+  <text class="sm" x="10" y="56" fill="#d8d8dc">Frontier</text>
+  <rect x="120" y="42" width="22" height="20" rx="3" fill="#5b8cff"/>
+  <text class="mn" x="152" y="57" fill="#8a8a92">4 scopes  ·  ~12 record steps</text>
+  <rect x="120" y="42" width="640" height="20" rx="3" fill="none" stroke="#1c1c20"/>
+
+  <!-- blender -->
+  <text class="sm" x="10" y="96" fill="#d8d8dc">Blender</text>
+  <rect x="120" y="82" width="56" height="20" rx="3" fill="#3ecf8e"/>
+  <text class="mn" x="186" y="97" fill="#8a8a92">10 engines — ships a hand-ordered list, NO solver</text>
+  <rect x="120" y="82" width="640" height="20" rx="3" fill="none" stroke="#1c1c20"/>
+
+  <!-- bf4 -->
+  <text class="sm" x="10" y="136" fill="#d8d8dc">Battlefield 4</text>
+  <rect x="120" y="122" width="640" height="20" rx="3" fill="#e8564a"/>
+  <text class="mn" x="128" y="137" fill="#fff">54 features · hundreds of passes — the case FrameGraph was built for</text>
+
+  <line x1="176" y1="74" x2="176" y2="160" stroke="#3ecf8e" stroke-width="1" stroke-dasharray="3 3"/>
+  <text class="sm" x="184" y="176" fill="#3ecf8e">↑ the largest DCC in this comparison still uses a fixed list</text>
+  <text class="sm" x="10" y="198" fill="#5a5a62">A solver adds barrier inference, aliasing and reordering. At 12 steps there is nothing to reorder — it is cost without benefit.</text>
+</svg>
+</div>
+<figcaption>Frostbite's FrameGraph was motivated by 54 rendering features across hundreds of passes.
+Blender, at 10 coexisting engines, ships a hand-written ordered list with the comment
+<code>/* IMPORTANT: Order here defines the draw order. */</code> and no solver at all.</figcaption>
+</figure>
+
+<p class="dim">Worth revisiting later, independently: Frostbite's <strong>transient resource
+aliasing</strong> — the one render-graph benefit obtainable without a graph, reported to reclaim &gt;50%
+of resource allocation space.</p>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">07</span>The four guard sites</h2>
+
+<p>Your concern about <code>#ifdef</code> making the code messy is the right concern — and the fix is
+positional. Guards go where things are <em>declared</em>, never where work is <em>done</em>. A stripped
+scope's implementation is not guarded at all; it simply is not compiled.</p>
+
+<figure>
+<div class="svgbox">
+<svg viewBox="0 0 880 250" role="img" aria-label="Four guard sites: build file, declaration, schedule, activation — and clean function bodies">
+  <rect x="20" y="26" width="400" height="34" rx="6" fill="rgba(62,207,142,.08)" stroke="#3ecf8e"/>
+  <text class="mn" x="34" y="47" fill="#3ecf8e">① Build.bat</text>
+  <text class="sm" x="150" y="47">append sources <tspan font-weight="700">AND</tspan> add /DX — together, never apart</text>
+
+  <rect x="20" y="66" width="400" height="34" rx="6" fill="rgba(62,207,142,.08)" stroke="#3ecf8e"/>
+  <text class="mn" x="34" y="87" fill="#3ecf8e">② declaration</text>
+  <text class="mn" x="150" y="87" fill="#8a8a92">SolidScope Solid;</text>
+  <text class="sm" x="300" y="87" fill="#5a5a62">the slot member</text>
+
+  <rect x="20" y="106" width="400" height="34" rx="6" fill="rgba(62,207,142,.08)" stroke="#3ecf8e"/>
+  <text class="mn" x="34" y="127" fill="#3ecf8e">③ schedule</text>
+  <text class="mn" x="150" y="127" fill="#8a8a92">callback(Solid);</text>
+  <text class="sm" x="300" y="127" fill="#5a5a62">the ordered list</text>
+
+  <rect x="20" y="146" width="400" height="34" rx="6" fill="rgba(62,207,142,.08)" stroke="#3ecf8e"/>
+  <text class="mn" x="34" y="167" fill="#3ecf8e">④ activation</text>
+  <text class="mn" x="150" y="167" fill="#8a8a92">EngageScope(Solid,…);</text>
+  <text class="sm" x="300" y="167" fill="#5a5a62">per-frame enable</text>
+
+  <!-- function bodies -->
+  <rect x="452" y="26" width="406" height="154" rx="10" fill="#0f0f12" stroke="#1c1c20"/>
+  <text class="ttl" x="470" y="50">EVERYWHERE ELSE</text>
+  <text class="lbl" x="470" y="80" fill="#3ecf8e">zero #ifdef in function bodies</text>
+  <text class="sm" x="470" y="104">A stripped scope's whole implementation lives in</text>
+  <text class="sm" x="470" y="120">translation units that are never compiled — so there</text>
+  <text class="sm" x="470" y="136">is nothing to guard. Blender guards its debug engine</text>
+  <text class="sm" x="470" y="152">at exactly these four sites and nowhere else.</text>
+
+  <text class="sm" x="20" y="210" fill="#e8b64a">⚠️ Why not <tspan font-family="JetBrains Mono">if constexpr</tspan>? The false branch must still parse and resolve names, so a missing header or absent</text>
+  <text class="sm" x="20" y="226" fill="#e8b64a">type still breaks the build. It cannot remove a subsystem — only choose between two that both already compile.</text>
+</svg>
+</div>
+<figcaption>The template is Blender's <code>WITH_DRAW_DEBUG</code>: one CMake block adds the translation
+units <em>and</em> the define, and the flag then appears at only three further sites.</figcaption>
+</figure>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">08</span>Requirements traceability</h2>
+
+<table>
+  <thead><tr><th style="width:42%">What you asked for</th><th>How the architecture delivers it</th></tr></thead>
+  <tbody>
+    <tr><td>Two renderers, not always both on</td><td>Radiance + Solid are mutually-exclusive shading scopes; <code>ScopeEngagementTable</code> picks one per viewport</td></tr>
+    <tr><td>PBR shared by modelling / paint / bake, same scene &amp; camera</td><td>One <span class="tag t-rad">Radiance</span>; those editors differ only in which overlay/select scopes engage</td></tr>
+    <tr><td>CAD needs a dedicated pass</td><td><span class="tag t-sol">Solid</span> — verified already isolated, zero cross-edges</td></tr>
+    <tr><td>Gizmo / grid / 2D curves / similar</td><td><span class="tag t-ovl">Overlay</span>, own display-referred target after the tone map</td></tr>
+    <tr><td>Use only 1 / 2 / 3 … or all editors</td><td>Per-target <code>Build.bat</code> selects libs; unlinked = absent from the exe</td></tr>
+    <tr><td>Game with no bloat — "as if it doesn't know about CAD"</td><td>Game links Substrate + Radiance only. Enforced by the <strong>linker</strong>, not by discipline</td></tr>
+    <tr><td>Selection for modelling + paint (+ maybe CAD)</td><td><span class="tag t-sel">Select</span>; ID 0 = nothing, per-object <code>{vert,edge,face}</code> subranges</td></tr>
+    <tr><td>Texture paint edits materials on GPU, strokes back to CPU</td><td>Paint = Radiance + Select + Overlay; stroke readback reuses the existing <code>ObjectPickReadback</code> ring idiom</td></tr>
+    <tr><td>All editors in one application, still fast</td><td>Inactive scope = one null pointer — the three axes in §03</td></tr>
+    <tr><td>Code must not look messy</td><td>Guards at 4 declaration sites; none inside function bodies</td></tr>
+  </tbody>
+</table>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">09</span>Phases and the one real risk</h2>
+
+<div class="verdict">
+  <div class="k">Phase 1</div><div class="v">Split into 5 <code>Build.bat</code>; de-hardcode the define at <code>Build.bat:63</code> — <span class="dim">gate: each lib compiles and links alone</span></div>
+  <div class="k">Phase 2</div><div class="v">Lift ~30 key toggles out of the recorder into <code>ScopeEngagementTable</code> — <span class="dim">gate: pixel-identical output</span></div>
+  <div class="k">Phase 3</div><div class="v">Register every scope as a <code>RenderSchedule</code> step; flip <code>EnabledCondition</code> ON — <span class="dim">gate: A/B against the legacy path</span></div>
+  <div class="k">Phase 4</div><div class="v">Delete the ~400-line legacy recorder</div>
+  <div class="k">Phase 5</div><div class="v"><code>GameProfileValidation</code> target: Substrate + Radiance only — <span class="dim">must run in <code>Automation/ValidationRun.ps1</code></span></div>
+</div>
+
+<div class="note bad">
+  <p><strong>🔴 Phase 5 is load-bearing, not an afterthought.</strong> Godot's <code>disable_3d</code>
+  build has been broken more or less continuously from 2015 to 2025 — 114 unresolved externals in the
+  original report, still failing in 4.5. Every single failure was a <em>reverse dependency</em> from
+  debugger, serialization or script-binding glue reaching into the subsystem that was removed. Never
+  the renderer itself.</p>
+  <p>The lesson transfers exactly: <strong>a compile-time toggle that CI does not build will
+  rot.</strong> The stripped configuration has to be a build target from day one, which is why phase 5
+  exists rather than waiting for a real game executable.</p>
+</div>
+
+<p>Phases 1–2 are mechanical moves behind a pixel-identity check. Phase 3 is where it becomes the new
+architecture — and the A/B gate it needs is <em>already built</em> into <code>RenderSchedule</code>.</p>
+
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2><span class="n">10</span>Evidence quality</h2>
+
+<table>
+  <thead><tr><th style="width:55%">Claim</th><th style="width:110px">Basis</th><th>Source</th></tr></thead>
+  <tbody>
+    <tr><td>Include graph is clean; sole violator is the coordinator</td><td><span class="yes">verified</span></td><td>scanned all 71 files</td></tr>
+    <tr><td><code>Build.bat:63</code> hardcodes the authoring define into the shared lib</td><td><span class="yes">verified</span></td><td>read directly</td></tr>
+    <tr><td><code>RenderSchedule</code> exists, default-OFF, 2 steps registered</td><td><span class="yes">verified</span></td><td><code>RenderSchedule.h:43</code>, <code>RenderExtension.cpp:1060,1880</code></td></tr>
+    <tr><td>Blender: fixed list, 4-site guard, separate overlay framebuffer, exclusive selection</td><td><span class="yes">verified</span></td><td><code>draw_view_data.hh</code>, <code>draw_context.cc</code>, <code>select_engine.hh</code>, <code>draw/CMakeLists.txt</code></td></tr>
+    <tr><td>Frostbite scale — 54 features, hundreds of passes</td><td><span class="yes">verified</span></td><td>GDC 2017, O'Donnell</td></tr>
+    <tr><td>Godot <code>disable_3d</code> breakage history</td><td><span class="yes">verified</span></td><td>issues #1701, #89185, #103516, #103315</td></tr>
+    <tr><td>UE editor-primitive internals (<code>AddEditorPrimitivePass</code>, <code>FEditorPrimitiveInputs</code> bodies)</td><td><span style="color:var(--warn);font-weight:600">unverified</span></td><td>🚩 symbol names from secondary sources; Epic's source is auth-gated and was <strong>not</strong> read. Nothing in this plan depends on them</td></tr>
+  </tbody>
+</table>
+
+<div class="footnote">
+  <span class="pill">plan · Documentation/PLAN-RenderScopeArchitecture.md</span>
+  <span class="pill">explainer · Documentation/Prototypes/RenderScopeArchitecture.html</span>
+  <br><br>
+  Diagrams are inline SVG — no external assets, renders offline. Load-bearing evidence is Blender,
+  read directly from source; the single unverified row is marked as such and carries no weight in the
+  design.
+</div>
+
+</div>
+</body>
+</html>

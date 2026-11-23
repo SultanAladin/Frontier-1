@@ -1,0 +1,43 @@
+# SketchToolset — what one sketch tool is: its parameters, its pointer behaviour, and what it commits.
+# A tool knows no panel and no tick.
+
+# 🔴 This unit exists because the tool vocabulary was declared twice. `Application/Api/*` held one copy
+#    and `ParametricSketchHost.cpp` held another — a 22-member enumeration repeated name for name and
+#    ordinal for ordinal, reconciled at the seam by casting one to the other through `std::uint32_t`.
+#    That cast is only correct while both lists stay in the same order, and nothing checked that they did.
+#
+# 📝 The boundary, from `References/UnitAndProductPlan.md` §2.1: if the artist picks it up and puts it
+#    down, it is Toolset. A placement in progress — which shape, which anchors taken so far, how many it
+#    still needs — is exactly that, and it is the same mechanism whether the anchors come from a sketch
+#    plane or a canvas.
+
+[unit]
+name    = "SketchToolset"
+product = "StaticLibrary"
+subject = [ "SketchTool" ]
+
+# 📝 A sketch tool places one shape by taking anchors. `Sketch` alone is unavailable as a subject name —
+#    `SlateShape` already declares it, and Construct.ps1 requires subjects to be globally unique because a
+#    repeated one would have two units' objects overwrite each other in a shared folder.
+#
+# 🔴 The shape and the WAY it is placed are two axes, not one. The retired vocabulary spelled
+#    `CenterRectangle`, `ThreePointRectangle` and `Rectangle` as three tools that all called the same
+#    `DeclareRectangle`; here they are one shape and three `PlacementMethod`s, so they cannot disagree.
+
+# 🔴 SketchToolset names geometry and nothing above it. It requires `SlateShape` for the anchor and snap
+#    types a placement carries, and `SlateUI` for the catalogue enumeration the artist's tool choice
+#    arrives as. It names no panel type, no document, no device and no tick — a tool that knew when it was
+#    recorded would be a tick concern wearing a tool's name.
+[requires]
+unit = [ "SlateShape", "SlateUI", "SlateMath" ]
+
+[external]
+include = [ "$VULKAN_SDK/Include" ]
+declare = []
+
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+#    statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+#    what an executable must **link** so every reference resolves.
+unit    = [ "SlateShape", "SlateUI", "SlateMath" ]
+library = []

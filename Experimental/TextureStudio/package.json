@@ -1,0 +1,49 @@
+{
+  "name": "alloy-material-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "playwright test",
+    "bake:cloth": "node scripts/bake-cloth.mjs",
+    "build:githack": "node scripts/build-githack.mjs",
+    "test:standalone": "npm run build:githack && playwright test --config playwright.standalone.config.js",
+    "verify:published": "node scripts/verify-published.mjs",
+    "test:editor": "playwright test tests/shape-editor tests/pattern-editor.spec.js tests/patterns.spec.js",
+    "test:texture": "playwright test tests/texture-document.spec.js tests/texture-studio.spec.js tests/texture-folders-model.spec.js tests/texture-folders-studio.spec.js tests/texture-history-model.spec.js tests/texture-history-studio.spec.js tests/point-gradient-model.spec.js tests/point-gradient-studio.spec.js",
+    "test:baking": "playwright test tests/baking-geometry.spec.js tests/baking-studio.spec.js tests/mesh-map-library.spec.js",
+    "studio": "npm run build && vite preview --host 0.0.0.0 --port 5173 --strictPort",
+    "test:runtime": "playwright test tests/workspace-runtime.spec.js",
+    "test:layout": "playwright test tests/studio-docks.spec.js",
+    "test:granular": "playwright test tests/granular-materials.spec.js",
+    "test:sdf": "playwright test tests/volume-sdf.spec.js tests/surface-bake-tiles.spec.js",
+    "audit:teapot": "node scripts/audit-teapot-bakes.mjs",
+    "audit:sdf": "node scripts/audit-teapot-sdf.mjs",
+    "test:painting": "playwright test tests/paint-authoring-model.spec.js tests/paint-authoring-studio.spec.js tests/texture-document.spec.js tests/texture-studio.spec.js tests/texture-folders-model.spec.js tests/texture-folders-studio.spec.js tests/texture-history-model.spec.js tests/texture-history-studio.spec.js tests/point-gradient-model.spec.js tests/point-gradient-studio.spec.js",
+    "test:stamps": "playwright test tests/stamp-decal-model.spec.js tests/stamp-decal-studio.spec.js tests/stamp-transform-model.spec.js tests/stamp-transform-studio.spec.js",
+    "test:parts-uv": "playwright test tests/texture-parts-uv-model.spec.js tests/texture-parts-uv-studio.spec.js",
+    "test:heritage": "playwright test tests/heritage-patterns-model.spec.js tests/heritage-patterns-studio.spec.js",
+    "test:masks": "playwright test tests/texture-mask-paint-model.spec.js tests/texture-mask-paint-studio.spec.js",
+    "test:stack": "playwright test tests/texture-stack-evaluation-model.spec.js tests/texture-optical-stack-model.spec.js tests/texture-stack-evaluation-studio.spec.js",
+    "test:digital-paint": "playwright test tests/digital-paint-model.spec.js tests/digital-paint-raster.spec.js tests/digital-paint-studio.spec.js tests/digital-brush-cursor-model.spec.js tests/digital-brush-cursor-raster.spec.js tests/digital-brush-cursor-studio.spec.js tests/render-target-dpi.spec.js tests/screen-paint-model.spec.js tests/screen-paint-raster.spec.js tests/screen-paint-depth-mask.spec.js tests/screen-paint-studio.spec.js"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "fflate": "^0.8.3",
+    "lucide-react": "^0.468.0",
+    "opentype.js": "^1.3.4",
+    "paper": "^0.12.18",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.180.0",
+    "three-mesh-bvh": "^0.9.16",
+    "vite": "^7.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}

@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+    FILAMENT — PARTICLE SHOWROOM (awaiting approval)
+    🧩 The ControlVehicle on a black stage with ten GPU particle looks: light-speed streaks, a dust digital twin that
+       assembles the car, wind-tunnel airflow, Particular-style emitters, a MoGraph clone field, a charging flow, light
+       threads orbiting a glass sphere, particle flowers with bokeh, a vehicle transition and a fibre-optic wave.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filament · particle showroom</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Filament.css">
+</head>
+<body>
+    <canvas id="Scene"></canvas>
+
+    <header class="Title">
+        <b>Filament</b>
+        <h1 id="LookName">Particles</h1>
+        <p id="LookTagline"></p>
+    </header>
+    <div class="Readout" id="Readout"></div>
+
+    <aside class="Panel">
+        <div class="Controls" id="Controls"></div>
+        <div class="Control"><header><span>Palette</span></header><div class="Swatches" id="Palettes"></div></div>
+        <div id="CarRow"></div>
+        <div id="VariantRow"></div>
+        <div class="Buttons">
+            <button id="Orbit" title="Slow camera orbit (O)">Auto orbit</button>
+            <button id="Pause" title="Freeze time (Space)">Pause</button>
+            <button id="Reset" title="Back to this look's defaults">Reset</button>
+        </div>
+    </aside>
+
+    <nav class="Strip" id="Strip"></nav>
+    <div class="ProtoTag">Prototype · drag orbit · wheel zoom · 1–9, 0 looks · Space pause · H hide panels</div>
+
+    <script type="module" src="./Filament.js"></script>
+</body>
+</html>

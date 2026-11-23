@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Origin Icon Set — CAD / 3D / OS / Game Engine</title>
+<style>
+  :root{
+    --bg:#0a0a0c;
+    --panel:#141418;
+    --line:#26262e;
+    --txt:#e8e8ee;
+    --sub:#8a8a97;
+    --accent:#5cc8ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--txt);
+    font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;
+    padding:24px;
+  }
+  h1{font-size:22px;font-weight:600;margin-bottom:4px;}
+  .lead{color:var(--sub);margin-bottom:20px;max-width:760px;}
+  .toolbar{position:sticky;top:0;z-index:20;background:var(--bg);padding:12px 0;
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);margin-bottom:18px;}
+  input[type=search]{background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    padding:8px 12px;border-radius:8px;min-width:240px;}
+  select,button{background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    padding:8px 12px;border-radius:8px;cursor:pointer;}
+  .cat{margin:26px 0 12px;font-size:16px;font-weight:600;color:var(--accent);
+    border-left:3px solid var(--accent);padding-left:10px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px;}
+  .cell{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:10px;text-align:center;transition:.15s;cursor:pointer;position:relative;}
+  .cell:hover{border-color:var(--accent);transform:translateY(-2px);}
+  .cell svg{display:block;margin:0 auto 6px;}
+  .cell .nm{font-size:10px;color:var(--sub);word-break:break-word;line-height:1.25;}
+  .cell .vr{position:absolute;top:6px;right:8px;font-size:9px;color:var(--sub);}
+  .swatch{background:#000;border-radius:8px;padding:8px;margin-bottom:6px;}
+  .count{color:var(--sub);font-size:12px;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--accent);color:#000;padding:10px 18px;border-radius:20px;
+    font-weight:600;opacity:0;transition:.3s;pointer-events:none;}
+  .toast.on{opacity:1;}
+</style>
+</head>
+<body>
+<h1>Origin Icon Set</h1>
+<p class="lead">Original, minimal, ergonomic icon system for CAD / 3D modeling / painting / UV / terrain / OS / game-engine tooling.
+All geometry authored from scratch on a black canvas. Each icon has 5 color variations (2–5 colors per SVG).
+Click any icon to copy its SVG to clipboard.</p>
+
+<div class="toolbar">
+  <input type="search" id="search" placeholder="Search icons… (e.g. loft, erosion, folder, brush)">
+  <select id="filter"><option value="">All categories</option></select>
+  <span class="count" id="count"></span>
+  <button id="dark">Toggle cell bg</button>
+</div>
+
+<div id="app"></div>
+<div class="toast" id="toast">Copied SVG!</div>
+
+<script>
+/* =========================================================================
+   ORIGIN ICON SET  —  generator
+   -------------------------------------------------------------------------
+   Every icon is a function returning an array of SVG path/shape strings that
+   draw on a 24x24 viewBox. Colors are injected per-variation from palettes,
+   so each icon yields 5 distinct colored SVGs (2–5 colors each).
+   No external fonts/artwork referenced — pure hand-authored coordinates.
+   ========================================================================= */
+
+/* ---- 5 palettes (each defines up to 5 roles) ---- */
+const PALETTES = [
+  {name:'ember',   c:['#ff7a45','#ffb37a','#ffd8b0','#c94f1e','#ffffff']},
+  {name:'ocean',   c:['#5cc8ff','#8ad9ff','#c2ecff','#2a7fb8','#ffffff']},
+  {name:'lime',    c:['#a6e22e','#cdee7a','#e8f7c0','#6f9c14','#1a1a1a']},
+  {name:'violet',  c:['#b07aff','#d0aaff','#ecdcff','#7b45c9','#ffffff']},
+  {name:'mono',    c:['#e8e8ee','#b8b8c2','#8a8a97','#ffffff','#5a5a66']},
+];
+
+/* helpers ------------------------------------------------------------------ */
+const S = 24;
+// stroke path
+const p  = (d,col,w=1.7,extra='') => `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+// filled path
+const pf = (d,col,extra='')      => `<path d="${d}" fill="${col}" ${extra}/>`;
+const cir= (cx,cy,r,col,fill=false,w=1.7)=> fill
+    ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`
+    : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${col}" stroke-width="${w}"/>`;
+const rect=(x,y,w,h,col,r=2,fill=false,sw=1.7)=> fill
+    ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${col}"/>`
+    : `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="none" stroke="${col}" stroke-width="${sw}"/>`;
+const line=(x1,y1,x2,y2,col,w=1.7)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${w}" stroke-linecap="round"/>`;
+const poly=(pts,col,fill=false,w=1.7)=> fill
+    ? `<polygon points="${pts}" fill="${col}"/>`
+    : `<polygon points="${pts}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round"/>`;
+
+/* =========================================================================
+   ICON DEFINITIONS
+   Each entry: name, cat, draw(c) -> string[]   (c = palette color array)
+   ========================================================================= */
+const ICONS = [];
+const add = (name,cat,draw)=>ICONS.push({name,cat,draw});
+
+/* ---------- 1. OS / FILE SYSTEM ---------- */
+add('folder','OS',c=>[pf('M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',c[0]),pf('M3 8h18v1H3z',c[3])]);
+add('folder-open','OS',c=>[pf('M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2H3z',c[3]),pf('M3 9h18l-2 8a2 2 0 0 1-2 1H5a2 2 0 0 1-2-2z',c[0])]);
+add('folder-add','OS',c=>[pf('M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',c[0]),line(12,10,12,16,c[4],1.8),line(9,13,15,13,c[4],1.8)]);
+add('file','OS',c=>[pf('M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z',c[0]),pf('M14 3v4h4z',c[3])]);
+add('file-3d','OS',c=>[pf('M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z',c[0]),poly('9,14 12,12 15,14 15,18 12,20 9,18',c[3],true),line(12,12,12,20,c[4],1)]);
+add('lock','OS',c=>[rect(5,11,14,9,c[0],2.5,true),p('M8 11V8a4 4 0 0 1 8 0v3',c[1],1.9),cir(12,15,1.6,c[4],true)]);
+add('lock-open','OS',c=>[rect(5,11,14,9,c[0],2.5,true),p('M8 11V8a4 4 0 0 1 7-2.5',c[1],1.9),cir(12,15,1.6,c[4],true)]);
+add('eye','OS',c=>[p('M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z',c[0],1.9),cir(12,12,3,c[1],true),cir(12,12,1.2,c[3],true)]);
+add('eye-off','OS',c=>[p('M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z',c[0],1.9),cir(12,12,3,c[1],true),line(4,4,20,20,c[3],2)]);
+add('picker','OS',c=>[p('M13 4l7 7-9 9H4v-7z',c[0],1.9),pf('M15 2l7 7-2 2-7-7z',c[1]),line(9,15,15,9,c[3],1.5)]);
+add('picker-arrows','OS',c=>[poly('12,2 15,7 9,7',c[0],true),poly('12,22 15,17 9,17',c[0],true),poly('2,12 7,9 7,15',c[1],true),poly('22,12 17,9 17,15',c[1],true),cir(12,12,1.5,c[3],true)]);
+add('trash','OS',c=>[pf('M6 8h12l-1 12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1z',c[0]),rect(5,5,14,2.4,c[3],1,true),line(10,4,14,4,c[1],2),line(10,11,10,17,c[4],1.3),line(14,11,14,17,c[4],1.3)]);
+add('search','OS',c=>[cir(11,11,6,c[0],false,2),line(15.5,15.5,20,20,c[1],2.2)]);
+add('settings','OS',c=>[pf('M12 2l1.5 3 3.3-.6.6 3.3L20.5 12l-2.1 2.6-.6 3.3-3.3-.6L12 22l-1.5-3-3.3.6-.6-3.3L3.5 12l2.1-2.6.6-3.3 3.3.6z',c[0]),cir(12,12,3,c[3],true)]);
+add('save','OS',c=>[pf('M4 4h13l3 3v13H4z',c[0]),rect(7,4,7,5,c[3],1,true),rect(8,14,8,6,c[1],1,true)]);
+add('download','OS',c=>[line(12,3,12,14,c[0],2),poly('7,10 12,15 17,10',c[1],true),p('M4 18v2h16v-2',c[3],2)]);
+add('upload','OS',c=>[line(12,20,12,9,c[0],2),poly('7,13 12,8 17,13',c[1],true),p('M4 5V3h16v2',c[3],2)]);
+add('grid','OS',c=>[rect(3,3,7,7,c[0],1.5,true),rect(14,3,7,7,c[1],1.5,true),rect(3,14,7,7,c[1],1.5,true),rect(14,14,7,7,c[0],1.5,true)]);
+add('list','OS',c=>[cir(5,6,1.6,c[0],true),cir(5,12,1.6,c[0],true),cir(5,18,1.6,c[0],true),line(9,6,20,6,c[1],2),line(9,12,20,12,c[1],2),line(9,18,20,18,c[1],2)]);
+add('copy','OS',c=>[rect(8,8,12,12,c[0],2,true),rect(4,4,12,12,c[3],2,true),rect(4,4,12,12,c[1],2,false,1.5)]);
+add('link','OS',c=>[p('M9 15l6-6',c[3],2),p('M8 12l-2 2a3 3 0 0 0 4 4l2-2',c[0],2),p('M16 12l2-2a3 3 0 0 0-4-4l-2 2',c[1],2)]);
+add('home','OS',c=>[poly('12,3 21,11 19,11 19,20 5,20 5,11 3,11',c[0],true),rect(10,14,4,6,c[3],1,true)]);
+add('user','OS',c=>[cir(12,8,4,c[0],true),p('M4 20a8 8 0 0 1 16 0',c[1],2)]);
+add('refresh','OS',c=>[p('M20 12a8 8 0 1 1-3-6.2',c[0],2),poly('20,3 20,8 15,8',c[1],true)]);
+add('clock','OS',c=>[cir(12,12,9,c[0],false,2),line(12,12,12,7,c[1],1.8),line(12,12,16,13,c[3],1.8)]);
+add('bell','OS',c=>[pf('M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6z',c[0]),p('M10 20a2 2 0 0 0 4 0',c[3],1.8)]);
+add('star','OS',c=>[poly('12,3 14.6,9 21,9.5 16,14 17.5,20 12,16.5 6.5,20 8,14 3,9.5 9.4,9',c[0],true)]);
+add('cloud','OS',c=>[pf('M7 18a4 4 0 0 1-.5-8 5 5 0 0 1 9.5-1 4 4 0 0 1 1 8z',c[0]),line(9,18,9,21,c[1],1.5),line(13,18,13,21,c[1],1.5)]);
+add('database','OS',c=>[pf('M4 6c0-1.6 3.6-3 8-3s8 1.4 8 3-3.6 3-8 3-8-1.4-8-3z',c[0]),p('M4 6v6c0 1.6 3.6 3 8 3s8-1.4 8-3V6',c[1],1.7),p('M4 12v6c0 1.6 3.6 3 8 3s8-1.4 8-3v-6',c[3],1.7)]);
+
+/* ---------- 2. CAD SKETCH / DRAFTING ---------- */
+add('sketch-line','CAD-Sketch',c=>[line(4,20,20,4,c[0],2),cir(4,20,2,c[1],true),cir(20,4,2,c[1],true)]);
+add('sketch-arc','CAD-Sketch',c=>[p('M4 18a10 10 0 0 1 16 0',c[0],2),cir(4,18,2,c[1],true),cir(20,18,2,c[1],true)]);
+add('sketch-circle','CAD-Sketch',c=>[cir(12,12,8,c[0],false,2),cir(12,12,1.5,c[1],true),line(12,12,20,12,c[3],1,'stroke-dasharray="1 2"')]);
+add('sketch-rect','CAD-Sketch',c=>[rect(5,7,14,10,c[0],1,false,2),cir(5,7,1.8,c[1],true),cir(19,17,1.8,c[1],true)]);
+add('sketch-spline','CAD-Sketch',c=>[p('M4 18C8 4 16 4 20 18',c[0],2),cir(4,18,1.8,c[1],true),cir(20,18,1.8,c[1],true),cir(12,7,1.5,c[3],true)]);
+add('sketch-polyline','CAD-Sketch',c=>[p('M4 18l4-8 5 5 7-9',c[0],2),cir(4,18,1.6,c[1],true),cir(8,10,1.6,c[1],true),cir(13,15,1.6,c[1],true),cir(20,6,1.6,c[3],true)]);
+add('sketch-plane','CAD-Sketch',c=>[poly('4,9 14,4 20,8 10,13',c[0],true),line(10,13,10,20,c[3],1.5),poly('4,9 4,15 10,20 10,13',c[1],true)]);
+add('sketch-2d','CAD-Sketch',c=>[rect(4,4,16,16,c[3],1,false,1.5),line(4,14,20,14,c[1],1.4),line(9,4,9,20,c[1],1.4),cir(9,14,2,c[0],true)]);
+add('constraint','CAD-Sketch',c=>[line(6,4,6,20,c[0],2),line(18,4,18,20,c[0],2),line(6,12,18,12,c[1],1.6,'stroke-dasharray="2 2"'),poly('8,10 6,12 8,14',c[3],true),poly('16,10 18,12 16,14',c[3],true)]);
+add('constraint-parallel','CAD-Sketch',c=>[line(6,20,12,4,c[0],2),line(12,20,18,4,c[1],2)]);
+add('constraint-perp','CAD-Sketch',c=>[line(5,19,19,19,c[0],2),line(9,19,9,5,c[1],2),rect(9,17,2,2,c[3],0,false,1.2)]);
+add('constraint-tangent','CAD-Sketch',c=>[cir(9,13,6,c[0],false,2),line(4,7,20,7,c[1],2)]);
+add('constraint-coincident','CAD-Sketch',c=>[cir(12,12,5,c[0],false,2),cir(12,12,2,c[3],true),cir(12,12,1,c[1],true)]);
+add('dimension','CAD-Sketch',c=>[line(5,12,19,12,c[0],1.8),poly('7,10 5,12 7,14',c[1],true),poly('17,10 19,12 17,14',c[1],true),line(5,7,5,17,c[3],1.4),line(19,7,19,17,c[3],1.4)]);
+add('dimension-angle','CAD-Sketch',c=>[line(5,19,20,19,c[0],2),line(5,19,17,7,c[1],2),p('M11 19a7 7 0 0 0-2-4',c[3],1.5)]);
+add('dimension-radius','CAD-Sketch',c=>[cir(12,12,8,c[3],false,1.4),line(12,12,19,7,c[0],2),poly('17,6 19,7 18,9',c[1],true),cir(12,12,1.4,c[1],true)]);
+add('fillet','CAD-Sketch',c=>[p('M5 20V11a6 6 0 0 1 6-6h9',c[0],2),p('M5 20V13a2 2 0 0 1 2-2h13',c[1],1.4,'stroke-dasharray="2 2"')]);
+add('chamfer','CAD-Sketch',c=>[p('M5 20V11l6-6h9',c[0],2),line(5,11,11,5,c[3],1.5)]);
+add('mirror','CAD-Sketch',c=>[line(12,3,12,21,c[3],1.6,'stroke-dasharray="2 2"'),poly('4,7 9,12 4,17',c[0],true),poly('20,7 15,12 20,17',c[1],true)]);
+add('offset','CAD-Sketch',c=>[rect(6,6,12,12,c[0],1.5,false,2),rect(3,3,18,18,c[1],2,false,1.4,'stroke-dasharray="2 2"')]);
+add('trim','CAD-Sketch',c=>[line(4,20,20,4,c[0],2),line(11,13,15,9,c[3],3.2),cir(14,10,2,c[1],false,1.4)]);
+add('extend','CAD-Sketch',c=>[line(4,16,13,16,c[0],2),line(13,16,20,16,c[1],1.6,'stroke-dasharray="2 2"'),poly('18,14 20,16 18,18',c[3],true)]);
+add('snap-grid','CAD-Sketch',c=>[line(4,8,20,8,c[3],1),line(4,16,20,16,c[3],1),line(8,4,8,20,c[3],1),line(16,4,16,20,c[3],1),cir(8,8,2.2,c[0],true),cir(16,16,2.2,c[1],true)]);
+add('reference-image','CAD-Sketch',c=>[rect(4,5,16,14,c[0],2,false,1.8,'stroke-dasharray="3 2"'),cir(9,10,1.8,c[1],true),poly('6,17 11,12 14,15 17,11 18,17',c[3],true)]);
+add('reference-plane','CAD-Sketch',c=>[poly('4,10 12,6 20,10 12,14',c[0],true,'fill-opacity="0.7"'),poly('4,10 12,6 20,10 12,14',c[3],false,1.4)]);
+
+/* ---------- 3. CAD SOLID / 3D OPS ---------- */
+add('extrude','CAD-3D',c=>[rect(4,10,8,8,c[0],1,false,2),poly('4,10 8,6 16,6 12,10',c[1],true),poly('12,10 16,6 16,14 12,18',c[3],true)]);
+add('revolve','CAD-3D',c=>[line(6,3,6,21,c[3],1.6),p('M6 6c8 0 12 5 12 6s-4 6-12 6',c[0],2),p('M18 12a6 3 0 0 1-6 3',c[1],1.4,'stroke-dasharray="2 2"')]);
+add('loft','CAD-3D',c=>[ellipseTop(7,6,4,2,c[1]),ellipseTop(12,18,7,3,c[0]),line(3,6,5,18,c[3],1.5),line(11,6,19,18,c[3],1.5)]);
+add('sweep','CAD-3D',c=>[p('M4 18C4 10 12 14 12 8s8-2 8 4',c[0],2),cir(4,18,2.5,c[1],false,1.5),cir(20,12,2,c[3],true)]);
+add('sketch-loft','CAD-3D',c=>[cir(7,7,3,c[1],false,1.6),rect(13,13,7,6,c[0],1,false,1.6),line(6,10,14,15,c[3],1.2,'stroke-dasharray="2 2"'),line(10,7,20,13,c[3],1.2,'stroke-dasharray="2 2"')]);
+add('boolean-union','CAD-3D',c=>[cir(9,12,6,c[0],true,0),cir(15,12,6,c[1],true,0),cir(9,12,6,c[3],false,1.4),cir(15,12,6,c[3],false,1.4)]);
+add('boolean-subtract','CAD-3D',c=>[cir(9,12,6,c[0],false,2),cir(15,12,6,c[3],false,1.4,'stroke-dasharray="2 2"')]);
+add('boolean-intersect','CAD-3D',c=>[cir(9,12,6,c[3],false,1.4),cir(15,12,6,c[3],false,1.4),pf('M12 7.2a6 6 0 0 1 0 9.6 6 6 0 0 1 0-9.6z',c[0])]);
+add('shell','CAD-3D',c=>[rect(4,4,16,16,c[0],2,false,2),rect(8,8,8,8,c[3],1.5,false,1.4,'stroke-dasharray="2 2"')]);
+add('taper','CAD-3D',c=>[poly('7,4 17,4 20,20 4,20',c[0],true),line(7,4,4,20,c[3],1.2),line(17,4,20,20,c[3],1.2)]);
+add('pattern-linear','CAD-3D',c=>[rect(3,9,5,6,c[0],1,true),rect(10,9,5,6,c[1],1,true),rect(17,9,5,6,c[1],1,true)]);
+add('pattern-circular','CAD-3D',c=>[cir(12,12,2.4,c[0],true),cir(12,5,1.8,c[1],true),cir(19,12,1.8,c[1],true),cir(12,19,1.8,c[1],true),cir(5,12,1.8,c[1],true),cir(12,12,8,c[3],false,1,'stroke-dasharray="2 2"')]);
+
+/* ---------- 4. POLYGON MODELING ---------- */
+add('vertex','Poly',c=>[cir(12,12,3,c[0],true),cir(12,12,7,c[3],false,1.2,'stroke-dasharray="2 2"')]);
+add('edge','Poly',c=>[line(5,19,19,5,c[0],2.4),cir(5,19,2.2,c[1],true),cir(19,5,2.2,c[1],true)]);
+add('face','Poly',c=>[poly('12,4 20,9 17,19 7,19 4,9',c[0],true,'fill-opacity="0.85"'),poly('12,4 20,9 17,19 7,19 4,9',c[3],false,1.4)]);
+add('extrude-face','Poly',c=>[rect(5,11,8,7,c[0],1,true),poly('5,11 9,7 17,7 13,11',c[1],true),poly('13,11 17,7 17,14 13,18',c[3],true)]);
+add('bevel','Poly',c=>[poly('8,4 16,4 20,8 20,16 16,20 8,20 4,16 4,8',c[0],true,'fill-opacity="0.85"'),poly('8,4 16,4 20,8 20,16 16,20 8,20 4,16 4,8',c[3],false,1.3)]);
+add('inset','Poly',c=>[poly('12,3 21,12 12,21 3,12',c[0],true),poly('12,7 17,12 12,17 7,12',c[3],true)]);
+add('loop-cut','Poly',c=>[rect(4,5,16,14,c[3],1,false,1.4),line(12,5,12,19,c[0],2.2,'stroke-dasharray="3 2"')]);
+add('knife','Poly',c=>[p('M4 4l8 8',c[0],2),poly('4,4 4,9 9,4',c[1],true),line(12,12,20,20,c[3],2)]);
+add('bridge-edge','Poly',c=>[line(5,6,5,18,c[0],2.2),line(19,6,19,18,c[1],2.2),line(5,8,19,8,c[3],1.4,'stroke-dasharray="2 2"'),line(5,16,19,16,c[3],1.4,'stroke-dasharray="2 2"')]);
+add('merge-verts','Poly',c=>[cir(6,6,2.4,c[0],true),cir(18,18,2.4,c[1],true),line(6,6,18,18,c[3],1.4,'stroke-dasharray="2 2"'),poly('11,13 13,11 14,14',c[4],true)]);
+add('subdivide','Poly',c=>[rect(4,4,16,16,c[0],1,false,2),line(12,4,12,20,c[3],1.3),line(4,12,20,12,c[3],1.3),cir(12,12,1.5,c[1],true)]);
+add('smooth','Poly',c=>[p('M4 16C8 8 16 8 20 16',c[0],2.2),p('M4 18C8 12 16 12 20 18',c[1],1.4)]);
+add('bridge','Poly',c=>[cir(7,8,3,c[0],false,1.6),cir(17,16,3,c[1],false,1.6),line(9,9,15,15,c[3],1.4,'stroke-dasharray="2 2"')]);
+add('poke','Poly',c=>[poly('4,7 20,7 20,17 4,17',c[3],false,1.4),line(4,7,12,12,c[0],1.4),line(20,7,12,12,c[0],1.4),line(4,17,12,12,c[0],1.4),line(20,17,12,12,c[0],1.4),cir(12,12,1.6,c[1],true)]);
+add('spin','Poly',c=>[p('M6 12a6 6 0 1 1 2 4',c[0],2),poly('5,15 8,16 8,12',c[1],true),cir(12,12,1.6,c[3],true)]);
+
+/* ---------- 5. MODIFIERS ---------- */
+add('mod-mirror','Modifier',c=>[line(12,3,12,21,c[3],1.4,'stroke-dasharray="2 2"'),poly('4,6 10,12 4,18',c[0],true),poly('20,6 14,12 20,18',c[1],true)]);
+add('mod-array','Modifier',c=>[rect(3,9,4,6,c[0],1,true),rect(9,9,4,6,c[1],1,true),rect(15,9,4,6,c[1],1,true),rect(20,9,2,6,c[3],1,true)]);
+add('mod-subsurf','Modifier',c=>[poly('12,3 21,12 12,21 3,12',c[0],false,1.6),poly('12,7 17,12 12,17 7,12',c[1],false,1.4),cir(12,12,1.4,c[3],true)]);
+add('mod-solidify','Modifier',c=>[poly('4,10 12,6 20,10 12,14',c[0],true),poly('4,14 12,10 20,14 12,18',c[1],true,'fill-opacity="0.6"'),line(4,10,4,14,c[3],1.4),line(20,10,20,14,c[3],1.4)]);
+add('mod-bevel','Modifier',c=>[poly('7,4 17,4 20,7 20,17 17,20 7,20 4,17 4,7',c[0],false,1.8),cir(12,12,1.5,c[1],true)]);
+add('mod-boolean','Modifier',c=>[rect(4,4,11,11,c[0],1,false,2),cir(15,15,5,c[1],false,1.8)]);
+add('mod-lattice','Modifier',c=>[rect(4,4,16,16,c[3],1,false,1.2),line(4,10,20,10,c[0],1.1),line(4,15,20,15,c[0],1.1),line(10,4,10,20,c[0],1.1),line(15,4,15,20,c[0],1.1),cir(10,10,1.5,c[1],true),cir(15,15,1.5,c[1],true)]);
+add('mod-displace','Modifier',c=>[p('M3 15q3-8 6 0t6 0 6 0',c[0],2),line(3,19,21,19,c[3],1.4)]);
+add('mod-remesh','Modifier',c=>[poly('12,4 19,8 19,16 12,20 5,16 5,8',c[3],false,1.4),line(5,8,19,16,c[0],1),line(19,8,5,16,c[0],1),line(12,4,12,20,c[1],1)]);
+add('mod-decimate','Modifier',c=>[poly('12,3 21,9 18,20 6,20 3,9',c[3],false,1.4),poly('12,3 21,9 12,13',c[0],true,'fill-opacity="0.5"'),poly('12,13 18,20 6,20',c[1],true,'fill-opacity="0.5"')]);
+add('mod-skin','Modifier',c=>[line(6,18,12,10,c[3],1.4),line(12,10,18,18,c[3],1.4),line(12,10,12,4,c[3],1.4),cir(6,18,2.4,c[0],true),cir(18,18,2.4,c[1],true),cir(12,4,2.4,c[1],true),cir(12,10,2,c[0],true)]);
+add('mod-wireframe','Modifier',c=>[poly('12,3 21,12 12,21 3,12',c[3],false,2),poly('12,7 16,12 12,17 8,12',c[0],false,1.4)]);
+
+/* ---------- 6. PAINTING ---------- */
+add('brush','Paint',c=>[p('M15 4l5 5-9 9-5 1 1-5z',c[0],2),pf('M6 14l4 4-1 3-4-1z',c[1]),line(15,4,20,9,c[3],1.4)]);
+add('brush-soft','Paint',c=>[cir(12,12,7,c[0],true,0,'fill-opacity="0.35"'),cir(12,12,4,c[1],true,0,'fill-opacity="0.6"'),cir(12,12,2,c[3],true)]);
+add('brush-hard','Paint',c=>[cir(12,12,7,c[0],true),cir(12,12,7,c[3],false,1.4)]);
+add('eraser','Paint',c=>[pf('M4 15l7-7 6 6-7 7H7z',c[0]),pf('M11 8l6-6 4 4-6 6z',c[1]),line(4,20,14,20,c[3],2)]);
+add('bucket','Paint',c=>[pf('M5 11l6-6 8 8-6 6a1 1 0 0 1-1.4 0L5 12.4A1 1 0 0 1 5 11z',c[0]),line(9,3,13,7,c[3],1.8),pf('M20 15c1.5 2 1.5 4 0 4s-1.5-2 0-4z',c[1])]);
+add('smudge','Paint',c=>[p('M4 16c4-10 12 6 16-4',c[0],2.2),cir(4,16,1.6,c[1],true),cir(20,12,1.6,c[3],true)]);
+add('blur-tool','Paint',c=>[cir(12,12,7,c[0],false,1.4),cir(12,12,4.5,c[1],false,1.2),cir(12,12,2,c[3],true)]);
+add('clone-stamp','Paint',c=>[rect(8,3,8,4,c[1],1,true),line(12,7,12,13,c[0],2.2),rect(6,13,12,7,c[0],1.5,true)]);
+add('mask','Paint',c=>[cir(12,12,9,c[3],false,1.6),pf('M12 3a9 9 0 0 1 0 18z',c[0])]);
+add('layer','Paint',c=>[poly('12,3 21,8 12,13 3,8',c[0],true),poly('12,10 21,15 12,20 3,15',c[1],true,'fill-opacity="0.7"')]);
+add('layer-add','Paint',c=>[poly('12,3 21,8 12,13 3,8',c[0],true),line(12,16,12,22,c[3],2),line(9,19,15,19,c[3],2)]);
+add('opacity','Paint',c=>[cir(12,12,8,c[3],false,1.6),pf('M12 4a8 8 0 0 1 0 16z',c[0]),line(6,8,10,4,c[1],1),line(6,12,14,4,c[1],1),line(6,16,18,4,c[1],1)]);
+add('palette','Paint',c=>[pf('M12 3a9 9 0 0 0 0 18c1 0 1.5-1 1.5-2 0-1.5 1.5-2 3-2A4.5 4.5 0 0 0 21 12 9 9 0 0 0 12 3z',c[0]),cir(8,9,1.4,c[1],true),cir(12,7,1.4,c[3],true),cir(16,9,1.4,c[4],true)]);
+add('gradient','Paint',c=>[rect(4,6,16,12,c[0],2,true),rect(4,6,8,12,c[1],0,true,0,'fill-opacity="0.6"'),rect(4,6,4,12,c[3],0,true,0,'fill-opacity="0.4"')]);
+
+/* ---------- 7. UV / TEXTURE ---------- */
+add('uv-unwrap','UV',c=>[poly('12,3 20,9 17,20 7,20 4,9',c[3],false,1.5),line(4,9,20,9,c[0],1.2),line(7,20,12,3,c[0],1.2),line(17,20,12,3,c[0],1.2)]);
+add('uv-grid','UV',c=>[rect(4,4,16,16,c[3],1,false,1.5),line(9,4,9,20,c[0],1),line(14,4,14,20,c[0],1),line(4,9,20,9,c[0],1),line(4,14,20,14,c[0],1),rect(9,9,5,5,c[1],0,true,0,'fill-opacity="0.5"')]);
+add('uv-seam','UV',c=>[rect(4,4,16,16,c[3],1,false,1.4),line(12,4,12,20,c[0],2.2,'stroke-dasharray="3 2"')]);
+add('uv-project','UV',c=>[poly('12,3 4,8 12,13 20,8',c[0],true),line(12,13,12,20,c[3],1.4),rect(8,16,8,4,c[1],1,true)]);
+add('checker','UV',c=>[rect(4,4,16,16,c[3],1,false,1.2),rect(4,4,8,8,c[0],0,true),rect(12,12,8,8,c[0],0,true),rect(12,4,4,4,c[1],0,true),rect(4,12,4,4,c[1],0,true)]);
+add('uv-pin','UV',c=>[rect(4,4,16,16,c[3],1,false,1.4),cir(9,9,1.6,c[0],true),cir(15,15,1.6,c[0],true),cir(15,9,1.6,c[1],true)]);
+add('uv-pack','UV',c=>[rect(4,4,16,16,c[3],1,false,1.4),rect(5,5,6,6,c[0],1,true),rect(13,5,6,4,c[1],1,true),rect(13,11,6,8,c[1],1,true),rect(5,13,6,6,c[0],1,true)]);
+
+/* ---------- 8. TERRAIN / EROSION ---------- */
+add('terrain','Terrain',c=>[poly('3,19 8,10 12,14 16,6 21,19',c[0],true),line(8,10,10,12,c[4],1),line(16,6,18,9,c[4],1)]);
+add('mountain','Terrain',c=>[poly('3,20 9,7 13,13 17,4 21,20',c[0],true),poly('7,10 9,7 11,10',c[4],true),poly('15,7 17,4 19,7',c[4],true)]);
+add('erosion-hydro','Terrain',c=>[poly('3,20 9,8 15,14 21,6',c[3],false,1.6),p('M9,8 8,14 M12,11 11,17 M15,14 14,19',c[0],1.6),p('M6,16 5,20 M18,10 17,15',c[1],1.4)]);
+add('erosion-thermal','Terrain',c=>[poly('4,20 12,6 20,20',c[3],false,1.6),line(12,6,9,20,c[0],1.4),line(12,6,15,20,c[0],1.4),line(10,13,7,20,c[1],1.2),line(14,13,17,20,c[1],1.2)]);
+add('erosion-wind','Terrain',c=>[p('M3 9h11a2.5 2.5 0 1 0-2.5-2.5',c[0],1.8),p('M3 14h15a2.5 2.5 0 1 1-2.5 2.5',c[1],1.8),p('M3 19h8',c[3],1.6)]);
+add('sediment','Terrain',c=>[p('M3 16q4-6 9-3t9-1',c[0],1.6),p('M3 20q4-4 9-2t9-1',c[1],1.6),poly('3,20 3,16 21,12 21,20',c[3],true,'fill-opacity="0.3"')]);
+add('heightmap','Terrain',c=>[rect(4,4,16,16,c[3],1,false,1.4),rect(4,4,16,16,c[0],0,true,0,'fill-opacity="0.15"'),rect(7,7,10,10,c[1],0,true,0,'fill-opacity="0.35"'),rect(10,10,4,4,c[0],0,true)]);
+add('flow-map','Terrain',c=>[p('M4 8q4 3 8 0t8 0',c[0],1.6),p('M4 13q4 3 8 0t8 0',c[1],1.6),p('M4 18q4 3 8 0t8 0',c[3],1.6),poly('18,4 20,7 17,7',c[0],true)]);
+add('noise','Terrain',c=>[cir(6,7,1.2,c[0],true),cir(12,6,1.2,c[1],true),cir(18,8,1.2,c[0],true),cir(8,12,1.2,c[3],true),cir(15,13,1.2,c[0],true),cir(6,17,1.2,c[1],true),cir(12,18,1.2,c[3],true),cir(19,17,1.2,c[0],true)]);
+add('perlin','Terrain',c=>[p('M3 12q3-6 6 0t6 0 6 0',c[0],1.8),p('M3 17q3-5 6 0t6 0 6 0',c[1],1.6),p('M3 7q3-4 6 0t6 0 6 0',c[3],1.4)]);
+add('river','Terrain',c=>[p('M6 3c-2 5 4 6 2 10s2 6 4 8',c[0],2.4),p('M6 3c-2 5 4 6 2 10s2 6 4 8',c[1],1,'stroke-dasharray="1 3"')]);
+add('slope','Terrain',c=>[poly('4,20 20,20 20,6',c[0],true),line(4,20,20,6,c[3],1.6),line(9,20,9,16,c[4],1),line(14,20,14,11,c[4],1)]);
+add('crater','Terrain',c=>[cir(12,13,8,c[0],false,1.8),cir(12,13,4,c[1],false,1.4),ellipseTop(12,13,4,1.4,c[3])]);
+
+/* ---------- 9. GAME ENGINE / FILE FORMATS ---------- */
+add('audio','Engine',c=>[pf('M4 9h4l5-4v14l-5-4H4z',c[0]),p('M16 8a5 5 0 0 1 0 8',c[1],1.8),p('M18 5a9 9 0 0 1 0 14',c[3],1.6)]);
+add('audio-wave','Engine',c=>[line(4,12,4,12,c[0],2),line(7,8,7,16,c[0],2.4),line(10,5,10,19,c[1],2.4),line(13,9,13,15,c[0],2.4),line(16,6,16,18,c[1],2.4),line(19,10,19,14,c[3],2.4)]);
+add('mesh-file','Engine',c=>[pf('M6 3h8l4 4v14H6z',c[0]),poly('9,12 12,10 15,12 15,16 12,18 9,16',c[3],true),line(12,10,12,18,c[1],1)]);
+add('image-file','Engine',c=>[pf('M6 3h8l4 4v14H6z',c[0]),cir(10,11,1.5,c[3],true),poly('8,17 11,13 13,15 16,11 17,17',c[1],true)]);
+add('material','Engine',c=>[cir(12,12,8,c[0],true),cir(9,9,2.5,c[4],true,0,'fill-opacity="0.6"'),cir(12,12,8,c[3],false,1.4)]);
+add('shader','Engine',c=>[poly('12,3 21,8 21,16 12,21 3,16 3,8',c[0],false,1.6),line(12,3,12,21,c[1],1),line(3,8,21,16,c[3],1),line(21,8,3,16,c[3],1)]);
+add('particle','Engine',c=>[cir(12,12,2,c[0],true),cir(5,6,1.4,c[1],true),cir(19,7,1.4,c[1],true),cir(6,18,1.4,c[3],true),cir(18,17,1.4,c[3],true),cir(12,4,1.1,c[4],true),cir(4,13,1.1,c[4],true)]);
+add('light','Engine',c=>[cir(12,10,5,c[0],true),rect(9,15,6,2.4,c[3],1,true),line(12,3,12,1,c[1],1.6),line(19,7,21,5,c[1],1.6),line(5,7,3,5,c[1],1.6)]);
+add('camera','Engine',c=>[rect(3,7,13,11,c[0],2,true),poly('16,10 21,7 21,18 16,15',c[1],true),cir(9,12,2.4,c[3],true)]);
+add('bone','Engine',c=>[cir(6,18,2.6,c[0],false,1.8),cir(18,6,2.6,c[1],false,1.8),line(8,16,16,8,c[3],2)]);
+add('animation','Engine',c=>[cir(4,12,2,c[0],true),cir(20,12,2,c[1],true),cir(12,6,2,c[3],true),p('M6 12q6-6 12 0',c[4],1.4,'stroke-dasharray="2 2"')]);
+add('collider','Engine',c=>[rect(4,4,16,16,c[0],2,false,1.6,'stroke-dasharray="3 2"'),cir(12,12,5,c[1],false,1.4)]);
+add('rigidbody','Engine',c=>[cir(12,12,7,c[0],false,1.8),poly('12,6 12,18',c[3],false,0),line(12,6,12,18,c[3],1.4),line(6,12,18,12,c[3],1.4),cir(12,12,2,c[1],true)]);
+add('prefab','Engine',c=>[poly('12,3 20,7 20,15 12,19 4,15 4,7',c[0],true,'fill-opacity="0.8"'),poly('12,3 20,7 12,11 4,7',c[3],true),line(12,11,12,19,c[1],1)]);
+add('scene','Engine',c=>[rect(3,5,18,14,c[0],2,false,1.6),poly('6,16 10,10 13,13 16,8 18,16',c[1],true),cir(8,9,1.2,c[3],true)]);
+add('script','Engine',c=>[pf('M6 3h9l3 3v15H6z',c[0]),poly('9,10 7,12 9,14',c[3],false,1.4),poly('13,10 15,12 13,14',c[3],false,1.4),line(12,9,11,15,c[1],1.3)]);
+add('nav-mesh','Engine',c=>[poly('4,16 9,8 15,10 20,16',c[0],true,'fill-opacity="0.6"'),line(9,8,4,16,c[3],1),line(9,8,15,10,c[3],1),line(15,10,20,16,c[3],1),line(9,8,20,16,c[1],1)]);
+
+/* ---------- 10. PRIMITIVES ---------- */
+add('prim-cube','Primitive',c=>[poly('12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5',c[3],false,1.6),poly('12,3 20,7.5 12,12 4,7.5',c[0],true),poly('12,12 20,7.5 20,16.5 12,21',c[1],true),poly('12,12 4,7.5 4,16.5 12,21',c[3],true,'fill-opacity="0.55"')]);
+add('prim-sphere','Primitive',c=>[cir(12,12,9,c[0],true),ellipseTop(12,12,9,3.2,c[3]),path_vert_ellipse(12,12,3.2,9,c[3])]);
+add('prim-cylinder','Primitive',c=>[ellipseTop(12,6,6,2.4,c[0]),pf('M6 6v12a6 2.4 0 0 0 12 0V6z',c[1]),ellipseTop(12,6,6,2.4,c[3])]);
+add('prim-cone','Primitive',c=>[poly('12,3 18,18 6,18',c[0],true),ellipseTop(12,18,6,2.2,c[1]),line(6,18,12,3,c[3],1.2)]);
+add('prim-torus','Primitive',c=>[ellipseTop(12,12,9,4,c[0]),ellipseTop(12,12,4.5,1.8,c[3])]);
+add('prim-plane','Primitive',c=>[poly('4,15 10,7 20,9 14,17',c[0],true),poly('4,15 10,7 20,9 14,17',c[3],false,1.4)]);
+add('prim-pyramid','Primitive',c=>[poly('12,3 20,18 4,18',c[0],true),poly('12,3 12,18 4,18',c[1],true,'fill-opacity="0.6"'),line(12,3,12,18,c[3],1)]);
+add('prim-capsule','Primitive',c=>[pf('M8 8a4 4 0 0 1 8 0v8a4 4 0 0 1-8 0z',c[0]),ellipseTop(12,8,4,1.6,c[3]),p('M8 16a4 4 0 0 0 8 0',c[1],1.4)]);
+add('prim-tube','Primitive',c=>[ellipseTop(12,6,6,2.2,c[0]),pf('M6 6v12a6 2.2 0 0 0 12 0V6z',c[1]),ellipseTop(12,6,3,1.1,c[3]),ellipseTop(12,6,6,2.2,c[3])]);
+add('prim-icosphere','Primitive',c=>[poly('12,3 20,9 17,18 7,18 4,9',c[3],false,1.6),line(4,9,20,9,c[0],1),line(7,18,12,3,c[0],1),line(17,18,12,3,c[0],1),line(4,9,17,18,c[1],1),line(20,9,7,18,c[1],1),cir(12,3,1.2,c[4],true)]);
+
+/* ---------- 11. TRANSPORT ---------- */
+add('car','Transport',c=>[pf('M3 15l2-5a2 2 0 0 1 2-1.4h10a2 2 0 0 1 2 1.4l2 5v3H3z',c[0]),pf('M6 9.5h12l1 3H5z',c[1]),cir(7,18,2,c[3],true),cir(17,18,2,c[3],true)]);
+add('truck','Transport',c=>[pf('M2 8h10v9H2z',c[0]),pf('M12 11h5l4 3v3h-9z',c[1]),cir(6,18,2,c[3],true),cir(17,18,2,c[3],true)]);
+add('bus','Transport',c=>[rect(3,5,18,12,c[0],2,true),rect(5,7,5,4,c[3],1,true),rect(11,7,4,4,c[3],1,true),rect(16,7,4,4,c[3],1,true),cir(7,18,1.8,c[1],true),cir(17,18,1.8,c[1],true)]);
+add('bike','Transport',c=>[cir(6,16,4,c[0],false,1.8),cir(18,16,4,c[1],false,1.8),p('M6 16l4-7h5l-3 7',c[3],1.8),line(10,9,13,9,c[4],1.6)]);
+add('plane','Transport',c=>[pf('M12 2l2 8 7 4v2l-7-2v4l2 2v2l-4-2-4 2v-2l2-2v-4l-7 2v-2l7-4z',c[0]),line(12,2,12,20,c[3],0.8)]);
+add('boat','Transport',c=>[pf('M3 15h18l-2 5H5z',c[0]),line(12,4,12,15,c[3],1.6),poly('12,5 19,13 12,13',c[1],true)]);
+add('train','Transport',c=>[rect(5,4,14,13,c[0],3,true),rect(7,7,10,4,c[3],1,true),cir(9,18,1.6,c[1],true),cir(15,18,1.6,c[1],true),line(6,21,10,18,c[4],1.4),line(18,21,14,18,c[4],1.4)]);
+add('rocket','Transport',c=>[pf('M12 2c4 3 5 8 4 14l-4 2-4-2c-1-6 0-11 4-14z',c[0]),cir(12,9,2,c[3],true),poly('8,14 5,19 8,17',c[1],true),poly('16,14 19,19 16,17',c[1],true)]);
+
+/* ---------- 12. SYMBOLS ---------- */
+add('warning','Symbol',c=>[poly('12,3 22,20 2,20',c[0],true),line(12,9,12,15,c[4],2),cir(12,17.5,1.2,c[4],true)]);
+add('error','Symbol',c=>[cir(12,12,9,c[0],true),line(9,9,15,15,c[4],2.2),line(15,9,9,15,c[4],2.2)]);
+add('success','Symbol',c=>[cir(12,12,9,c[0],true),poly('7,12 11,16 17,8',c[4],false,2.4)]);
+add('info','Symbol',c=>[cir(12,12,9,c[0],true),cir(12,8,1.3,c[4],true),rect(11,11,2,7,c[4],1,true)]);
+add('question','Symbol',c=>[cir(12,12,9,c[0],true),p('M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-1 .5-1 1.2-1 2.2',c[4],2),cir(12,17.5,1.2,c[4],true)]);
+add('flag','Symbol',c=>[line(6,3,6,21,c[3],2),pf('M6 4h11l-2 3 2 3H6z',c[0])]);
+add('pin','Symbol',c=>[pf('M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7z',c[0]),cir(12,9,2.6,c[4],true)]);
+add('tag','Symbol',c=>[pf('M4 4h8l8 8-8 8-8-8z',c[0]),cir(8,8,1.6,c[4],true)]);
+add('bookmark','Symbol',c=>[pf('M6 3h12v18l-6-4-6 4z',c[0]),line(9,8,15,8,c[3],1.6)]);
+add('shield','Symbol',c=>[pf('M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z',c[0]),poly('8,12 11,15 16,9',c[4],false,2)]);
+add('key','Symbol',c=>[cir(8,8,4.5,c[0],false,2),line(11,11,20,20,c[1],2),line(17,17,19,15,c[3],1.8),line(19,19,21,17,c[3],1.8),cir(8,8,1.4,c[3],true)]);
+add('power','Symbol',c=>[p('M8 5a8 8 0 1 0 8 0',c[0],2.2),line(12,3,12,11,c[1],2.2)]);
+add('plus','Symbol',c=>[cir(12,12,9,c[0],false,1.8),line(12,8,12,16,c[1],2.2),line(8,12,16,12,c[1],2.2)]);
+add('minus','Symbol',c=>[cir(12,12,9,c[0],false,1.8),line(8,12,16,12,c[1],2.2)]);
+add('cross','Symbol',c=>[line(6,6,18,18,c[0],2.4),line(18,6,6,18,c[1],2.4)]);
+add('check','Symbol',c=>[poly('5,13 10,18 19,6',c[0],false,2.6)]);
+add('menu','Symbol',c=>[line(4,7,20,7,c[0],2.2),line(4,12,20,12,c[1],2.2),line(4,17,20,17,c[3],2.2)]);
+add('filter','Symbol',c=>[poly('3,5 21,5 14,13 14,20 10,18 10,13',c[0],true)]);
+add('sort','Symbol',c=>[line(5,7,15,7,c[0],2),line(5,12,12,12,c[1],2),line(5,17,9,17,c[3],2),poly('18,6 21,10 15,10',c[0],true),line(18,10,18,18,c[0],2)]);
+
+/* ---------- 13. VIEW / NAV ---------- */
+add('orbit','View',c=>[cir(12,12,3,c[0],true),ellipseTop(12,12,9,3.5,c[1]),path_vert_ellipse(12,12,3.5,9,c[3])]);
+add('pan','View',c=>[poly('12,3 15,7 9,7',c[0],true),poly('12,21 15,17 9,17',c[0],true),poly('3,12 7,9 7,15',c[1],true),poly('21,12 17,9 17,15',c[1],true)]);
+add('zoom','View',c=>[cir(11,11,6,c[0],false,2),line(15.5,15.5,20,20,c[1],2.2),line(11,8,11,14,c[3],1.6),line(8,11,14,11,c[3],1.6)]);
+add('view-front','View',c=>[rect(5,5,14,14,c[0],2,false,1.8),rect(9,9,6,6,c[1],1,true)]);
+add('view-persp','View',c=>[poly('12,3 20,7 20,17 12,21 4,17 4,7',c[3],false,1.6),poly('12,3 20,7 12,11 4,7',c[0],true)]);
+add('gizmo-move','View',c=>[line(12,20,12,4,c[0],2),poly('9,7 12,4 15,7',c[0],true),line(4,12,20,12,c[1],2),poly('17,9 20,12 17,15',c[1],true),cir(12,12,2,c[3],true)]);
+add('gizmo-rotate','View',c=>[cir(12,12,8,c[0],false,2),cir(12,12,8,c[3],false,0),poly('18,7 20,4 16,4',c[1],true)]);
+add('gizmo-scale','View',c=>[line(6,18,16,8,c[0],2),rect(15,4,5,5,c[1],1,true),cir(6,18,2,c[3],true)]);
+add('snap','View',c=>[cir(12,12,2.4,c[0],true),line(12,3,12,7,c[1],1.8),line(12,17,12,21,c[1],1.8),line(3,12,7,12,c[1],1.8),line(17,12,21,12,c[1],1.8)]);
+add('measure','View',c=>[rect(3,9,18,6,c[0],1,false,1.8),line(7,9,7,12,c[3],1.4),line(11,9,11,13,c[3],1.4),line(15,9,15,12,c[3],1.4),line(19,9,19,13,c[3],1.4)]);
+
+/* helper shapes needing full ellipse (top ring & vertical) */
+function ellipseTop(cx,cy,rx,ry,col){return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" stroke="${col}" stroke-width="1.4"/>`;}
+function path_vert_ellipse(cx,cy,rx,ry,col){return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" stroke="${col}" stroke-width="1.4"/>`;}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+function buildSVG(icon,palette){
+  const body = icon.draw(palette.c).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">`
+       + `<rect width="24" height="24" fill="#000"/>${body}</svg>`;
+}
+
+const app = document.getElementById('app');
+const filterSel = document.getElementById('filter');
+const cats = [...new Set(ICONS.map(i=>i.cat))];
+cats.forEach(cat=>{
+  const o=document.createElement('option');o.value=cat;o.textContent=cat;filterSel.appendChild(o);
+});
+
+function render(query='',cat=''){
+  app.innerHTML='';
+  let total=0;
+  cats.forEach(cn=>{
+    if(cat && cn!==cat) return;
+    const items = ICONS.filter(i=>i.cat===cn &&
+       (!query || i.name.toLowerCase().includes(query.toLowerCase())));
+    if(!items.length) return;
+    const h=document.createElement('div');h.className='cat';h.textContent=cn;app.appendChild(h);
+    const g=document.createElement('div');g.className='grid';
+    items.forEach(icon=>{
+      PALETTES.forEach((pal,vi)=>{
+        total++;
+        const svg=buildSVG(icon,pal);
+        const cell=document.createElement('div');cell.className='cell';cell.title='Click to copy SVG';
+        cell.innerHTML=`<span class="vr">v${vi+1}</span><div class="swatch">${svg}</div>`
+          +`<div class="nm">${icon.name}<br>${pal.name}</div>`;
+        cell.onclick=()=>copy(svg);
+        g.appendChild(cell);
+      });
+    });
+    app.appendChild(g);
+  });
+  document.getElementById('count').textContent = total+' icons shown';
+}
+
+function copy(svg){
+  navigator.clipboard.writeText(svg).then(()=>{
+    const t=document.getElementById('toast');t.classList.add('on');
+    setTimeout(()=>t.classList.remove('on'),900);
+  });
+}
+
+document.getElementById('search').oninput=e=>render(e.target.value,filterSel.value);
+filterSel.onchange=e=>render(document.getElementById('search').value,e.target.value);
+document.getElementById('dark').onclick=()=>{
+  document.querySelectorAll('.swatch').forEach(s=>{
+    s.style.background = s.style.background==='rgb(20, 20, 24)' ? '#000' : '#141418';
+  });
+};
+
+render();
+</script>
+</body>
+</html>

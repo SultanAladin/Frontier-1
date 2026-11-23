@@ -1,0 +1,35 @@
+.studio-tooltip-card {
+  position: fixed;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(304px, calc(100vw - 24px));
+  padding: 17px 19px;
+  border: 1px solid;
+  border-radius: 18px;
+  box-shadow: 0 12px 40px #0005;
+  font-size: 12px;
+  line-height: 1.55;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+  isolation: isolate;
+}
+.studio-tooltip-card::before {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border: inherit;
+  border-width: 0;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  z-index: -1;
+}
+.studio-tooltip-card[data-placement="bottom"]::before { top: -6px; left: calc(var(--tooltip-pointer) - 6px); border-left-width: 1px; border-top-width: 1px; }
+.studio-tooltip-card[data-placement="top"]::before { bottom: -6px; left: calc(var(--tooltip-pointer) - 6px); border-right-width: 1px; border-bottom-width: 1px; }
+.studio-tooltip-card[data-placement="right"]::before { left: -6px; top: calc(var(--tooltip-pointer) - 6px); border-left-width: 1px; border-bottom-width: 1px; }
+.studio-tooltip-card[data-placement="left"]::before { right: -6px; top: calc(var(--tooltip-pointer) - 6px); border-top-width: 1px; border-right-width: 1px; }
+.studio-tooltip-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; font-weight: 650; font-size: 13px; }
+.studio-tooltip-heading kbd { padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--tooltip-accent) 22%, transparent); border-radius: 6px; color: var(--tooltip-accent); font: inherit; font-size: 10px; }
+.studio-tooltip-card p { margin: 7px 0 0; color: var(--tooltip-muted); white-space: pre-line; }

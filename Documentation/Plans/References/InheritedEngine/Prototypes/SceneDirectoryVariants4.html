@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Scene Directory Variants IV</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#5b8cff;
+    --border:#1c1c20;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --panel-bg:#131315;
+    --value-bg:#232326;
+    --text-primary:#e9e9ec;
+    --rail-bg:#08080a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  html{ background:#050506; overflow:hidden }
+  body{
+    background:#050506;
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--text); -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; height:100vh; width:100vw; overflow:hidden;
+    user-select:none;
+  }
+  .picker{ flex:0 0 auto; height:44px; display:flex; align-items:center; gap:8px;
+    padding:0 14px; background:var(--rail-bg); border-bottom:1px solid var(--border) }
+  .picker .brand{ font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700;
+    color:var(--text-faint); margin-right:6px }
+  .pk{ display:flex; align-items:center; gap:7px; height:28px; padding:0 12px;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:8px;
+    color:var(--text-dim); font-size:12px; font-family:inherit; cursor:pointer; transition:.13s }
+  .pk:hover{ color:var(--text); border-color:#2e2e38 }
+  .pk.on{ background:color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color:var(--accent); color:var(--text-primary) }
+  .pk .num{ font-weight:700; opacity:.6; font-size:10.5px }
+  .picker .hint{ margin-left:auto; font-size:11px; color:var(--text-faint) }
+  .picker .hint kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:10px; color:var(--text-dim) }
+
+  .stage{ position:relative; flex:1; min-height:0; overflow:hidden; background:#0b0b0d }
+  .grid-floor{ position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size:26px 26px,26px 26px,130px 130px,130px 130px;
+    mask-image:radial-gradient(ellipse 78% 68% at 50% 52%, #000 32%, transparent 100%) }
+  .stage-glow{ position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse 60% 50% at 50% 45%, rgba(91,140,255,.055), transparent 70%) }
+  .vlabel{ position:absolute; left:16px; bottom:14px; z-index:4; pointer-events:none;
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:#33333a; font-weight:700 }
+  .vlabel em{ font-style:normal; color:#27272d; letter-spacing:.4px; text-transform:none;
+    display:block; margin-top:4px; font-weight:400; font-size:11px; max-width:400px; line-height:1.55 }
+  .variant{ display:none } .variant.live{ display:block }
+  .ti{ display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:var(--text-dim) }
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#1e1e22;border-radius:4px}
+  .hintline{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:4;
+    font-size:11px; color:#2e2e34; pointer-events:none } .hintline b{ color:#4a4a52; font-weight:600 }
+
+  .scene-body{ position:absolute; transform:translate(-50%,-50%); display:grid; place-items:center;
+    cursor:pointer; transition:opacity .25s }
+  .sb-form{ border:1.5px solid rgba(140,150,170,.30); border-radius:5px;
+    background:linear-gradient(150deg, rgba(150,160,185,.10), rgba(120,130,155,.03)); transition:.2s }
+  .scene-body:hover .sb-form{ border-color:rgba(140,150,170,.55) }
+  .scene-body.sel .sb-form{ border-color:var(--accent);
+    background:linear-gradient(150deg, rgba(91,140,255,.16), rgba(91,140,255,.03));
+    box-shadow:0 0 30px rgba(91,140,255,.20) }
+  .scene-body.hid{ opacity:.15 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ① SONAR — the directory is a time-ordered pulse. A ping sweeps outward from the
+        construction origin; each body announces itself as the wave reaches it, in
+        feature-history order. Reads the model's build sequence, not its nesting.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .sonar-wave{ position:absolute; z-index:9; border-radius:50%; transform:translate(-50%,-50%);
+    border:1px solid rgba(91,140,255,.30); pointer-events:none }
+  .sonar-echo{ position:absolute; z-index:14; transform:translate(-50%,-50%);
+    display:flex; align-items:center; gap:6px; height:20px; padding:0 8px; cursor:pointer;
+    background:rgba(13,13,15,.82); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(91,140,255,.20); border-radius:10px; white-space:nowrap;
+    font-size:10.5px; color:var(--text-dim); transition:color .13s, border-color .13s }
+  .sonar-echo:hover{ color:var(--text); border-color:rgba(91,140,255,.5); z-index:17 }
+  .sonar-echo.sel{ color:var(--accent); border-color:var(--accent);
+    background:color-mix(in srgb, var(--accent) 16%, rgba(13,13,15,.85)) }
+  .sonar-echo.hid{ opacity:.35 }
+  .sonar-echo .se-ord{ font-size:8.5px; font-weight:700; color:#3d3d45; letter-spacing:.5px }
+  .sonar-echo.sel .se-ord{ color:var(--accent); opacity:.7 }
+  .sonar-origin{ position:absolute; z-index:12; width:7px; height:7px; border-radius:50%;
+    transform:translate(-50%,-50%); background:var(--accent); box-shadow:0 0 12px var(--accent) }
+  .sonar-bar{ position:absolute; z-index:18; left:50%; bottom:20px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:11px; height:30px; padding:0 6px 0 13px;
+    background:rgba(13,13,15,.88); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--border); border-radius:15px }
+  .sonar-bar .sb-t{ font-size:9px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700;
+    color:#3d3d45 }
+  .sonar-track{ position:relative; width:190px; height:3px; border-radius:2px; background:#232326;
+    cursor:pointer }
+  .sonar-fill{ position:absolute; left:0; top:0; bottom:0; border-radius:2px; background:var(--accent) }
+  .sonar-knob{ position:absolute; top:50%; width:11px; height:11px; border-radius:50%;
+    transform:translate(-50%,-50%); background:#f4f4f5; box-shadow:0 1px 5px rgba(0,0,0,.6) }
+  .sonar-now{ font-size:10.5px; color:var(--text-primary); font-weight:600; min-width:96px }
+  .sonar-ping{ width:24px; height:24px; display:grid; place-items:center; border-radius:12px;
+    color:var(--text-faint); cursor:pointer; transition:.12s }
+  .sonar-ping:hover{ background:var(--value-bg); color:var(--accent) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ② TYPE BANDS — forget nesting entirely. The directory is bucketed by geometric
+        classification into horizontal strata, each body a cell whose width encodes
+        its screen size. Answers "how much of what" rather than "what contains what".
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .bands{ position:absolute; z-index:16; left:0; right:0; bottom:0;
+    display:flex; flex-direction:column; gap:1px; padding:0 0 0 0;
+    background:linear-gradient(180deg, transparent, rgba(5,5,6,.55) 40%) }
+  .band{ display:flex; align-items:stretch; height:19px; gap:1px; padding:0 10px }
+  .band-key{ display:flex; align-items:center; gap:6px; width:104px; flex:0 0 104px;
+    font-size:9px; letter-spacing:1.3px; text-transform:uppercase; font-weight:700;
+    color:#3a3a42; cursor:pointer; transition:.13s }
+  .band-key:hover{ color:var(--text-dim) }
+  .band.act .band-key{ color:var(--accent) }
+  .band-cells{ display:flex; align-items:stretch; gap:2px; flex:1; min-width:0 }
+  .bcell{ position:relative; min-width:12px; border-radius:3px; cursor:pointer;
+    background:rgba(255,255,255,.055); transition:.13s;
+    display:flex; align-items:center; justify-content:center; overflow:hidden }
+  .bcell:hover{ background:rgba(255,255,255,.14) }
+  .bcell.sel{ background:color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow:0 0 0 1px rgba(91,140,255,.7) }
+  .bcell.hid{ opacity:.3 }
+  .bcell .bc-nm{ font-size:8.5px; letter-spacing:.2px; color:rgba(255,255,255,.55);
+    white-space:nowrap; padding:0 4px; opacity:0; transition:.13s }
+  .bcell:hover .bc-nm, .bcell.sel .bc-nm{ opacity:1; color:#fff }
+  .band-n{ width:26px; flex:0 0 26px; display:flex; align-items:center; justify-content:flex-end;
+    font-size:9px; font-weight:700; color:#2f2f37 }
+  .bands-cap{ display:flex; align-items:center; gap:8px; padding:6px 10px 5px;
+    font-size:9px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:#2c2c33 }
+  .bands-cap .bcap-hl{ color:var(--accent); opacity:.75 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ③ CONSTELLATION — the nesting drawn as an actual node-link diagram in the dead
+        space of the viewport, force-placed away from geometry. A map, not a list.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .con-edge{ position:absolute; z-index:10; height:1px; transform-origin:0 50%; pointer-events:none;
+    background:linear-gradient(90deg, rgba(255,255,255,.10), rgba(255,255,255,.045)) }
+  .con-edge.act{ background:linear-gradient(90deg, rgba(91,140,255,.55), rgba(91,140,255,.18)) }
+  .con-node{ position:absolute; z-index:13; transform:translate(-50%,-50%);
+    display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer }
+  .cn-dot{ width:9px; height:9px; border-radius:50%; background:#2f2f37;
+    border:1px solid #3d3d45; transition:.14s }
+  .con-node:hover .cn-dot{ background:#4a4a52; border-color:#5a5a62 }
+  .con-node.sel .cn-dot{ background:var(--accent); border-color:var(--accent);
+    box-shadow:0 0 10px rgba(91,140,255,.7) }
+  .con-node.grp .cn-dot{ width:12px; height:12px; border-radius:3px; transform:rotate(45deg) }
+  .con-node.hid .cn-dot{ opacity:.3 }
+  .cn-lbl{ font-size:9.5px; letter-spacing:.3px; color:#3d3d45; white-space:nowrap;
+    transition:.14s }
+  .con-node:hover .cn-lbl{ color:var(--text) }
+  .con-node.sel .cn-lbl{ color:var(--accent) }
+  .con-node.grp .cn-lbl{ font-size:9px; letter-spacing:1.2px; text-transform:uppercase;
+    font-weight:700; color:#33333a }
+  .con-node.grp.sel .cn-lbl{ color:var(--accent) }
+  .con-tether{ position:absolute; z-index:9; height:1px; transform-origin:0 50%; pointer-events:none;
+    background:linear-gradient(90deg, rgba(91,140,255,.32), rgba(91,140,255,0)) }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ④ PRESSURE STACK — a single 20px column of proportional slabs on the far edge.
+        Slab height = subtree body count, so the whole model's shape is one glance.
+        Hovering a slab blooms its contents inline; no tree is ever drawn.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .ps-mount{ position:absolute; z-index:17; right:0; top:0; bottom:0; width:21px;
+    display:flex; flex-direction:column; gap:2px; padding:8px 5px;
+    background:rgba(8,8,10,.6); border-left:1px solid var(--border) }
+  .ps-slab{ position:relative; flex:0 0 auto; border-radius:3px; cursor:pointer;
+    background:rgba(255,255,255,.07); transition:.14s; min-height:9px }
+  .ps-slab:hover{ background:rgba(255,255,255,.17) }
+  .ps-slab.act{ background:color-mix(in srgb, var(--accent) 50%, transparent);
+    box-shadow:0 0 0 1px rgba(91,140,255,.6) }
+  .ps-slab.hid{ opacity:.3 }
+  .ps-bloom{ position:absolute; right:26px; top:0; display:none; flex-direction:column; gap:2px;
+    padding:7px; min-width:150px;
+    background:rgba(13,13,15,.94); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border); border-radius:10px; box-shadow:0 14px 38px rgba(0,0,0,.6) }
+  .ps-slab:hover .ps-bloom, .ps-slab.act .ps-bloom{ display:flex }
+  .ps-bhead{ display:flex; align-items:center; gap:7px; padding:1px 5px 6px;
+    border-bottom:1px solid rgba(255,255,255,.06); margin-bottom:3px }
+  .ps-bhead .pb-t{ flex:1; font-size:9.5px; letter-spacing:1.3px; text-transform:uppercase;
+    font-weight:700; color:var(--text-faint); white-space:nowrap }
+  .ps-bhead .pb-n{ font-size:9px; font-weight:700; color:#33333a }
+  .ps-brow{ display:flex; align-items:center; gap:7px; height:21px; padding:0 6px; border-radius:5px;
+    font-size:10.5px; color:var(--text-dim); white-space:nowrap; cursor:pointer; transition:.12s }
+  .ps-brow:hover{ background:rgba(255,255,255,.055); color:var(--text) }
+  .ps-brow.sel{ background:color-mix(in srgb, var(--accent) 20%, transparent); color:var(--text-primary) }
+  .ps-brow.hid{ opacity:.42 }
+  .ps-brow .pr-nm{ flex:1; overflow:hidden; text-overflow:ellipsis }
+  .ps-cap{ position:absolute; right:26px; bottom:8px; font-size:9px; letter-spacing:1.4px;
+    text-transform:uppercase; font-weight:700; color:#2c2c33; writing-mode:vertical-rl;
+    pointer-events:none }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑤ SLICE PLANE — a draggable scan line across the viewport. Only bodies the line
+        intersects are named, in the order it crosses them. The directory is a cross-
+        section query, not a browsable structure.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .sl-line{ position:absolute; z-index:15; left:0; right:0; height:1px;
+    background:linear-gradient(90deg, rgba(91,140,255,0), rgba(91,140,255,.55) 12%,
+      rgba(91,140,255,.55) 88%, rgba(91,140,255,0));
+    cursor:ns-resize }
+  .sl-grab{ position:absolute; left:0; right:0; top:-9px; height:19px; cursor:ns-resize }
+  .sl-hand{ position:absolute; left:12px; top:50%; transform:translateY(-50%);
+    display:flex; align-items:center; gap:6px; height:22px; padding:0 9px;
+    background:rgba(13,13,15,.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(91,140,255,.4); border-radius:11px;
+    font-size:9.5px; letter-spacing:1.2px; text-transform:uppercase; font-weight:700;
+    color:var(--accent); white-space:nowrap; cursor:ns-resize }
+  .sl-hand .slh-n{ color:var(--text-primary); font-weight:700 }
+  .sl-hit{ position:absolute; z-index:14; transform:translate(-50%,-50%);
+    width:11px; height:11px; border-radius:50%; border:1px solid var(--accent);
+    background:rgba(91,140,255,.22); pointer-events:none }
+  .sl-read{ position:absolute; z-index:16; transform:translate(-50%,0);
+    display:flex; align-items:center; gap:6px; height:19px; padding:0 8px; cursor:pointer;
+    background:rgba(13,13,15,.9); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    border:1px solid var(--border); border-radius:5px; white-space:nowrap;
+    font-size:10px; color:var(--text-dim); transition:.13s }
+  .sl-read:hover{ color:var(--text); border-color:#33333c; z-index:18 }
+  .sl-read.sel{ color:var(--accent); border-color:var(--accent);
+    background:color-mix(in srgb, var(--accent) 15%, rgba(13,13,15,.9)) }
+  .sl-read.hid{ opacity:.4 }
+  .sl-read .sr-ord{ font-size:8.5px; font-weight:700; color:#3d3d45 }
+  .sl-read .sr-grp{ font-size:8.5px; letter-spacing:.7px; text-transform:uppercase; color:#33333a;
+    font-weight:700 }
+  .sl-stem{ position:absolute; z-index:13; width:1px; background:rgba(91,140,255,.22);
+    pointer-events:none }
+  .sl-empty{ position:absolute; z-index:16; left:50%; transform:translate(-50%,-50%);
+    font-size:10px; letter-spacing:1.2px; text-transform:uppercase; color:#2c2c33; font-weight:700 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑥ TREEMAP CORNER — one 132px square in a corner: the entire model as nested
+        proportional rectangles. Whole structure, one glance, fixed tiny footprint.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .tm-mount{ position:absolute; z-index:17; left:14px; top:14px; width:132px }
+  .tm-cap{ display:flex; align-items:center; gap:6px; margin-bottom:6px;
+    font-size:9px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700; color:#3a3a42 }
+  .tm-cap .tmc-n{ margin-left:auto; color:#2c2c33 }
+  .tm-box{ position:relative; width:132px; height:132px; border-radius:8px; overflow:hidden;
+    background:rgba(13,13,15,.72); border:1px solid var(--border) }
+  .tm-tile{ position:absolute; cursor:pointer; transition:background .13s, box-shadow .13s;
+    background:rgba(255,255,255,.055); border-radius:2px }
+  .tm-tile:hover{ background:rgba(255,255,255,.16); z-index:3 }
+  .tm-tile.sel{ background:color-mix(in srgb, var(--accent) 55%, transparent);
+    box-shadow:0 0 0 1px rgba(91,140,255,.8); z-index:4 }
+  .tm-tile.hid{ opacity:.3 }
+  .tm-grpline{ position:absolute; pointer-events:none; border:1px solid rgba(255,255,255,.10);
+    border-radius:4px; z-index:2 }
+  .tm-grpline.act{ border-color:rgba(91,140,255,.45) }
+  .tm-glbl{ position:absolute; z-index:5; font-size:7.5px; letter-spacing:.8px; text-transform:uppercase;
+    font-weight:700; color:rgba(255,255,255,.30); pointer-events:none; padding:1px 3px;
+    white-space:nowrap; overflow:hidden }
+  .tm-read{ margin-top:7px; min-height:30px }
+  .tm-rnm{ font-size:11px; color:var(--text-primary); font-weight:600; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis }
+  .tm-rsub{ font-size:9px; letter-spacing:.9px; text-transform:uppercase; color:#3a3a42; margin-top:2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .tm-rnm.idle{ color:#2f2f37; font-weight:400 }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="g-scene"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".55"/></g>
+  <g id="g-folder"><path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h7A1.5 1.5 0 0119 9v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 013 17.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
+  <g id="g-solid"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-cylinder"><ellipse cx="12" cy="6.5" rx="7" ry="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 6.5v11c0 1.66 3.13 3 7 3s7-1.34 7-3v-11" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-sphere"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".65"/></g>
+  <g id="g-cone"><path d="M12 3l7.5 15h-15z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-sketch"><path d="M4 20c3-1 5-3.5 6.5-7S13 6 16 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4" cy="20" r="1.7" fill="currentColor"/><circle cx="16" cy="4" r="1.7" fill="currentColor"/></g>
+  <g id="g-revolve"><path d="M12 3v18" stroke="currentColor" stroke-width="1.4" opacity=".55" stroke-dasharray="2.5 2.5"/><path d="M12 5c4 0 7 3.1 7 7s-3 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9 7l3-2 3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></g>
+  <g id="g-loft"><path d="M4 18h16M7 6h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 18L7 6M20 18L17 6" stroke="currentColor" stroke-width="1.5"/></g>
+  <g id="g-eye"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></g>
+  <g id="g-eye-off"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></g>
+  <g id="g-radar"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".6"/><path d="M12 12l7-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></g>
+  <g id="g-layers"><rect x="3" y="4" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="10" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="16" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-grid"><rect x="3" y="3" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="3" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="13" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="13" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+</defs></svg>
+
+<div class="picker" id="picker"><span class="brand">Directory IV</span></div>
+
+<div class="stage" id="stage">
+  <div class="grid-floor"></div>
+  <div class="stage-glow"></div>
+  <div id="sceneMount"></div>
+  <div class="vlabel" id="vlabel"></div>
+
+  <div class="variant" id="v1">
+    <div id="sonarMount"></div>
+    <div class="sonar-bar">
+      <span class="sb-t">Build</span>
+      <div class="sonar-track" id="sonarTrack">
+        <div class="sonar-fill" id="sonarFill"></div>
+        <div class="sonar-knob" id="sonarKnob"></div>
+      </div>
+      <span class="sonar-now" id="sonarNow"></span>
+      <span class="sonar-ping" id="sonarPing" title="Replay ping">
+        <svg width="15" height="15" viewBox="0 0 24 24"><use href="#g-radar"/></svg></span>
+    </div>
+  </div>
+
+  <div class="variant" id="v2"><div class="bands" id="bandsMount"></div></div>
+
+  <div class="variant" id="v3">
+    <div id="conMount"></div>
+    <div class="hintline">The nesting as a <b>map</b> in dead space — tethers link each leaf to its body</div>
+  </div>
+
+  <div class="variant" id="v4">
+    <div class="ps-mount" id="psMount"></div>
+    <div class="ps-cap">Mass</div>
+  </div>
+
+  <div class="variant" id="v5">
+    <div id="sliceMount"></div>
+    <div class="hintline">Drag the <b>scan line</b> — only what it crosses is named, in crossing order</div>
+  </div>
+
+  <div class="variant" id="v6">
+    <div class="tm-mount">
+      <div class="tm-cap">
+        <svg width="11" height="11" viewBox="0 0 24 24"><use href="#g-grid"/></svg>
+        Model
+        <span class="tmc-n" id="tmCount"></span>
+      </div>
+      <div class="tm-box" id="tmBox"></div>
+      <div class="tm-read" id="tmRead"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   DIRECTORY STORE — carries a build ordinal so history-ordered presentations work.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TokenCounter = 0;
+const IssueToken = () => 'n' + (++TokenCounter);
+
+const DirectoryRoot = [
+  { RecordToken:IssueToken(), Label:'Part', Classification:'scene', ViewportAnchor:[.50,.14], FormExtent:0, SubtreeRegion:[
+
+    { RecordToken:IssueToken(), Label:'BODY_Bracket', Classification:'folder', ViewportAnchor:[.31,.44], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Plate', Classification:'solid',    ViewportAnchor:[.25,.34], FormExtent:76, BuildOrdinal:2, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Boss',  Classification:'cylinder', ViewportAnchor:[.38,.28], FormExtent:52, BuildOrdinal:3, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Rib',   Classification:'solid',    ViewportAnchor:[.28,.56], FormExtent:44, BuildOrdinal:6, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'FIL_Edges', Classification:'revolve',  ViewportAnchor:[.40,.51], FormExtent:38, BuildOrdinal:9, VisibilityEnabled:false, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'BODY_Housing', Classification:'folder', ViewportAnchor:[.69,.42], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SOL_Wall', Classification:'solid',  ViewportAnchor:[.64,.34], FormExtent:80, BuildOrdinal:4, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SOL_Dome', Classification:'sphere', ViewportAnchor:[.76,.29], FormExtent:56, BuildOrdinal:5, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'LFT_Neck', Classification:'loft',   ViewportAnchor:[.71,.53], FormExtent:46, BuildOrdinal:8, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'Sketches', Classification:'folder', ViewportAnchor:[.49,.73], FormExtent:0, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SK_BasePlate', Classification:'sketch', ViewportAnchor:[.43,.74], FormExtent:36, BuildOrdinal:1, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SK_BoltHoles', Classification:'sketch', ViewportAnchor:[.55,.79], FormExtent:30, BuildOrdinal:7, SubtreeRegion:[] },
+    ]},
+
+    { RecordToken:IssueToken(), Label:'SOL_Spindle', Classification:'cylinder', ViewportAnchor:[.85,.68], FormExtent:40, BuildOrdinal:10, VisibilityEnabled:false, SubtreeRegion:[] },
+    { RecordToken:IssueToken(), Label:'CON_Taper',   Classification:'cone',     ViewportAnchor:[.16,.72], FormExtent:44, BuildOrdinal:11, SubtreeRegion:[] },
+  ]},
+];
+
+function TraverseDirectory(Region, Visit, EnclosureEntry=null, DepthTier=0){
+  for(const Entry of Region){
+    Visit(Entry, EnclosureEntry, DepthTier);
+    if(Entry.SubtreeRegion) TraverseDirectory(Entry.SubtreeRegion, Visit, Entry, DepthTier+1);
+  }
+}
+function ResolveEntry(Token, Region=DirectoryRoot, EnclosureEntry=null){
+  for(const Entry of Region){
+    if(Entry.RecordToken===Token) return { Entry, EnclosureEntry };
+    if(Entry.SubtreeRegion){
+      const Found = ResolveEntry(Token, Entry.SubtreeRegion, Entry);
+      if(Found) return Found;
+    }
+  }
+  return null;
+}
+function ResolveEnclosurePath(Token){
+  const Path = [];
+  (function Descend(Region, Trail){
+    for(const Entry of Region){
+      const Extended = Trail.concat(Entry);
+      if(Entry.RecordToken===Token){ Path.push(...Extended); return true; }
+      if(Entry.SubtreeRegion && Descend(Entry.SubtreeRegion, Extended)) return true;
+    }
+    return false;
+  })(DirectoryRoot, []);
+  return Path;
+}
+const GroupCondition   = (Entry)=> !!(Entry.SubtreeRegion && Entry.SubtreeRegion.length);
+const VisibleCondition = (Entry)=> Entry.VisibilityEnabled !== false;
+const GlyphMarkup = (Classification, Size=15)=>
+  `<svg width="${Size}" height="${Size}" viewBox="0 0 24 24"><use href="#g-${Classification}"/></svg>`;
+
+function EnumerateRenderableBodies(){
+  const Bodies = [];
+  TraverseDirectory(DirectoryRoot, (Entry)=>{ if(Entry.FormExtent) Bodies.push(Entry); });
+  return Bodies;
+}
+const StageBounds = ()=> document.getElementById('stage').getBoundingClientRect();
+function AnchorPixels(Entry){
+  const Bounds = StageBounds();
+  return { X:Entry.ViewportAnchor[0]*Bounds.width, Y:Entry.ViewportAnchor[1]*Bounds.height };
+}
+function CentroidPixels(Entry){
+  const Bodies = [];
+  TraverseDirectory([Entry], (Candidate)=>{ if(Candidate.FormExtent) Bodies.push(Candidate); });
+  if(!Bodies.length) return AnchorPixels(Entry);
+  const Bounds = StageBounds();
+  return {
+    X: Bodies.reduce((T,B)=>T+B.ViewportAnchor[0],0)/Bodies.length*Bounds.width,
+    Y: Bodies.reduce((T,B)=>T+B.ViewportAnchor[1],0)/Bodies.length*Bounds.height,
+  };
+}
+function SubtreeBodyCount(Entry){
+  let Count = 0;
+  TraverseDirectory([Entry], (Candidate)=>{ if(Candidate.FormExtent) Count++; });
+  return Count;
+}
+
+let SelectedToken = null;
+function ApplySelection(Token){ SelectedToken = Token; RenderScene(); RenderActiveVariant(); }
+function ToggleVisibility(Token){
+  const Resolved = ResolveEntry(Token);
+  if(!Resolved) return;
+  Resolved.Entry.VisibilityEnabled = !VisibleCondition(Resolved.Entry);
+  RenderScene(); RenderActiveVariant();
+}
+
+const FormShape = {
+  solid:    (E)=>({ w:E, h:E, r:'5px', tf:'rotate(45deg) skewY(-12deg)' }),
+  cylinder: (E)=>({ w:E*.72, h:E, r:`${E*.36}px / 14px`, tf:'none' }),
+  sphere:   (E)=>({ w:E, h:E, r:'50%', tf:'none' }),
+  cone:     (E)=>({ w:E, h:E, r:'4px', tf:'rotate(45deg)' }),
+  sketch:   (E)=>({ w:E, h:E*.62, r:'3px', tf:'skewX(-16deg)' }),
+  revolve:  (E)=>({ w:E, h:E*.8, r:'40% 40% 12% 12%', tf:'none' }),
+  loft:     (E)=>({ w:E*.8, h:E, r:'30% 30% 8% 8%', tf:'none' }),
+};
+function RenderScene(){
+  const Mount = document.getElementById('sceneMount');
+  Mount.innerHTML = '';
+  for(const Entry of EnumerateRenderableBodies()){
+    const Anchor = AnchorPixels(Entry);
+    const Shape = (FormShape[Entry.Classification]||FormShape.solid)(Entry.FormExtent);
+    const Body = document.createElement('div');
+    Body.className = 'scene-body' + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' hid');
+    Body.style.left = Anchor.X+'px'; Body.style.top = Anchor.Y+'px';
+    Body.innerHTML = `<div class="sb-form" style="width:${Shape.w}px;height:${Shape.h}px;
+      border-radius:${Shape.r};transform:${Shape.tf}"></div>`;
+    Body.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Body);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ① SONAR — build-history sweep from the construction origin.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const ConstructionOrigin = [.50, .50];
+let SonarFront = 1.0;   /* 0..1 fraction of the max radius the wave has reached */
+
+function SonarOrdered(){
+  return EnumerateRenderableBodies()
+    .slice()
+    .sort((Left,Right)=> (Left.BuildOrdinal||0) - (Right.BuildOrdinal||0));
+}
+function OriginPixels(){
+  const Bounds = StageBounds();
+  return { X:ConstructionOrigin[0]*Bounds.width, Y:ConstructionOrigin[1]*Bounds.height };
+}
+function RenderSonar(){
+  const Mount = document.getElementById('sonarMount');
+  Mount.innerHTML = '';
+  const Origin = OriginPixels();
+  const Ordered = SonarOrdered();
+  const MaximumOrdinal = Ordered.length ? Ordered[Ordered.length-1].BuildOrdinal : 1;
+  const RevealedThrough = Math.max(1, Math.round(SonarFront * MaximumOrdinal));
+
+  /* the wave: radius grows with the build cursor, not with distance */
+  const Bounds = StageBounds();
+  const MaximumRadius = Math.hypot(Bounds.width, Bounds.height) * .52;
+  const WaveRadius = SonarFront * MaximumRadius;
+  for(const Scale of [1, .74, .48]){
+    const Wave = document.createElement('div');
+    Wave.className = 'sonar-wave';
+    Wave.style.left = Origin.X+'px'; Wave.style.top = Origin.Y+'px';
+    Wave.style.width = (WaveRadius*2*Scale)+'px';
+    Wave.style.height = (WaveRadius*2*Scale*.8)+'px';
+    Wave.style.opacity = String(.10 + Scale*.16);
+    Mount.appendChild(Wave);
+  }
+  const Marker = document.createElement('div');
+  Marker.className = 'sonar-origin';
+  Marker.style.left = Origin.X+'px'; Marker.style.top = Origin.Y+'px';
+  Mount.appendChild(Marker);
+
+  /* echoes: one per body already reached by the build cursor */
+  for(const Entry of Ordered){
+    if((Entry.BuildOrdinal||0) > RevealedThrough) continue;
+    const Anchor = AnchorPixels(Entry);
+    const Echo = document.createElement('div');
+    Echo.className = 'sonar-echo' + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' hid');
+    Echo.style.left = Anchor.X+'px';
+    Echo.style.top  = (Anchor.Y - Entry.FormExtent/2 - 15)+'px';
+    Echo.innerHTML =
+      `<span class="se-ord">${String(Entry.BuildOrdinal).padStart(2,'0')}</span>
+       <span class="ti">${GlyphMarkup(Entry.Classification,11)}</span>${Entry.Label}`;
+    Echo.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Echo);
+  }
+
+  const Reached = Ordered.filter(E=>(E.BuildOrdinal||0)<=RevealedThrough);
+  const Newest = Reached[Reached.length-1];
+  document.getElementById('sonarFill').style.width = (SonarFront*100)+'%';
+  document.getElementById('sonarKnob').style.left  = (SonarFront*100)+'%';
+  document.getElementById('sonarNow').textContent =
+    Newest ? `${Newest.Label}  ·  ${Reached.length}/${Ordered.length}` : '—';
+}
+(function AttachSonarScrub(){
+  const Track = document.getElementById('sonarTrack');
+  let Scrubbing = false;
+  const ApplyFromPointer = (Signal)=>{
+    const Bounds = Track.getBoundingClientRect();
+    SonarFront = Math.min(1, Math.max(0.04, (Signal.clientX-Bounds.left)/Bounds.width));
+    RenderSonar();
+  };
+  Track.onmousedown = (Signal)=>{ Scrubbing = true; ApplyFromPointer(Signal); Signal.preventDefault(); };
+  window.addEventListener('mousemove', (Signal)=>{ if(Scrubbing) ApplyFromPointer(Signal); });
+  window.addEventListener('mouseup', ()=>{ Scrubbing = false; });
+})();
+document.getElementById('sonarPing').onclick = ()=>{
+  SonarFront = 0.04; RenderSonar();
+  const Sweep = setInterval(()=>{
+    SonarFront = Math.min(1, SonarFront + .045);
+    RenderSonar();
+    if(SonarFront >= 1) clearInterval(Sweep);
+  }, 34);
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ② TYPE BANDS — classification strata; cell width ∝ body screen size.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderTypeBands(){
+  const Mount = document.getElementById('bandsMount');
+  const Bodies = EnumerateRenderableBodies();
+
+  /* bucket by classification, largest bucket first */
+  const Buckets = new Map();
+  for(const Entry of Bodies){
+    if(!Buckets.has(Entry.Classification)) Buckets.set(Entry.Classification, []);
+    Buckets.get(Entry.Classification).push(Entry);
+  }
+  const Ordered = [...Buckets.entries()].sort((Left,Right)=> Right[1].length - Left[1].length);
+  const SelectedClassification = SelectedToken
+    ? (ResolveEntry(SelectedToken)||{}).Entry?.Classification : null;
+
+  Mount.innerHTML =
+    `<div class="bands-cap">Directory by form
+       <span class="bcap-hl">${Ordered.length} classes</span>
+       <span style="color:#2c2c33">${Bodies.length} bodies</span></div>`;
+
+  for(const [Classification, Members] of Ordered){
+    const TotalExtent = Members.reduce((Total,Entry)=> Total + Entry.FormExtent, 0);
+    const Band = document.createElement('div');
+    Band.className = 'band' + (Classification===SelectedClassification ? ' act' : '');
+    Band.innerHTML =
+      `<span class="band-key"><span class="ti">${GlyphMarkup(Classification,12)}</span>${Classification}</span>
+       <span class="band-cells"></span>
+       <span class="band-n">${Members.length}</span>`;
+    const Cells = Band.querySelector('.band-cells');
+    for(const Entry of Members){
+      const Cell = document.createElement('span');
+      Cell.className = 'bcell' + (Entry.RecordToken===SelectedToken?' sel':'')
+                     + (VisibleCondition(Entry)?'':' hid');
+      /* width proportional to on-screen mass within its own band */
+      Cell.style.flex = String(Entry.FormExtent / TotalExtent);
+      Cell.title = Entry.Label;
+      Cell.innerHTML = `<span class="bc-nm">${Entry.Label}</span>`;
+      Cell.onclick = ()=> ApplySelection(Entry.RecordToken);
+      Cells.appendChild(Cell);
+    }
+    Mount.appendChild(Band);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ③ CONSTELLATION — nesting as a node-link map placed in the viewport's dead space.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderConstellation(){
+  const Mount = document.getElementById('conMount');
+  Mount.innerHTML = '';
+  const Bounds = StageBounds();
+
+  /* lay the map out in the lower-left dead space: tier = column, order = row */
+  const OriginX = 46, OriginY = Bounds.height * .30;
+  const ColumnPitch = 132, RowPitch = 27;
+
+  const Placement = new Map();
+  let RowCursor = 0;
+  (function Place(Region, DepthTier){
+    for(const Entry of Region){
+      Placement.set(Entry.RecordToken, {
+        X: OriginX + DepthTier*ColumnPitch,
+        Y: OriginY + RowCursor*RowPitch,
+        Entry, DepthTier,
+      });
+      RowCursor++;
+      if(GroupCondition(Entry)) Place(Entry.SubtreeRegion, DepthTier+1);
+    }
+  })(DirectoryRoot[0].SubtreeRegion, 0);
+
+  const SelectedPath = SelectedToken ? ResolveEnclosurePath(SelectedToken) : [];
+  const OnPath = (Token)=> SelectedPath.some(Step=>Step.RecordToken===Token);
+
+  /* edges: enclosure → member */
+  for(const Slot of Placement.values()){
+    if(!GroupCondition(Slot.Entry)) continue;
+    for(const Member of Slot.Entry.SubtreeRegion){
+      const Target = Placement.get(Member.RecordToken);
+      if(!Target) continue;
+      const Edge = document.createElement('div');
+      Edge.className = 'con-edge' + (OnPath(Slot.Entry.RecordToken) && OnPath(Member.RecordToken) ? ' act' : '');
+      Edge.style.left = Slot.X+'px'; Edge.style.top = Slot.Y+'px';
+      Edge.style.width = Math.hypot(Target.X-Slot.X, Target.Y-Slot.Y)+'px';
+      Edge.style.transform = `rotate(${Math.atan2(Target.Y-Slot.Y, Target.X-Slot.X)}rad)`;
+      Mount.appendChild(Edge);
+    }
+  }
+
+  /* tethers: leaf node → its actual geometry, so the map stays bound to the scene */
+  for(const Slot of Placement.values()){
+    if(!Slot.Entry.FormExtent) continue;
+    if(Slot.Entry.RecordToken !== SelectedToken) continue;
+    const Anchor = AnchorPixels(Slot.Entry);
+    const Tether = document.createElement('div');
+    Tether.className = 'con-tether';
+    Tether.style.left = Slot.X+'px'; Tether.style.top = Slot.Y+'px';
+    Tether.style.width = Math.hypot(Anchor.X-Slot.X, Anchor.Y-Slot.Y)+'px';
+    Tether.style.transform = `rotate(${Math.atan2(Anchor.Y-Slot.Y, Anchor.X-Slot.X)}rad)`;
+    Mount.appendChild(Tether);
+  }
+
+  for(const Slot of Placement.values()){
+    const Group = GroupCondition(Slot.Entry);
+    const Node = document.createElement('div');
+    Node.className = 'con-node' + (Group?' grp':'')
+                   + (Slot.Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Slot.Entry)?'':' hid');
+    Node.style.left = Slot.X+'px'; Node.style.top = Slot.Y+'px';
+    Node.innerHTML = `<span class="cn-dot"></span><span class="cn-lbl">${Slot.Entry.Label}</span>`;
+    Node.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Slot.Entry.RecordToken); };
+    Mount.appendChild(Node);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ④ PRESSURE STACK — proportional slabs; slab height ∝ subtree body count.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+function RenderPressureStack(){
+  const Mount = document.getElementById('psMount');
+  Mount.innerHTML = '';
+  const TopTier = DirectoryRoot[0].SubtreeRegion;
+  const TotalMass = TopTier.reduce((Total,Entry)=> Total + Math.max(1, SubtreeBodyCount(Entry)), 0);
+  const SelectedPath = SelectedToken ? ResolveEnclosurePath(SelectedToken) : [];
+
+  for(const Entry of TopTier){
+    const Mass = Math.max(1, SubtreeBodyCount(Entry));
+    const Active = SelectedPath.some(Step=>Step.RecordToken===Entry.RecordToken);
+    const Slab = document.createElement('div');
+    Slab.className = 'ps-slab' + (Active?' act':'') + (VisibleCondition(Entry)?'':' hid');
+    Slab.style.flexGrow = String(Mass);
+    Slab.style.flexBasis = '0';
+    Slab.style.flexShrink = '1';
+    Slab.title = `${Entry.Label} · ${Mass}`;
+
+    const Members = GroupCondition(Entry) ? Entry.SubtreeRegion : [Entry];
+    Slab.innerHTML =
+      `<div class="ps-bloom">
+         <div class="ps-bhead">
+           <span class="ti">${GlyphMarkup(Entry.Classification,13)}</span>
+           <span class="pb-t">${Entry.Label}</span>
+           <span class="pb-n">${Mass}</span>
+         </div>
+         ${Members.map(Member=>
+           `<div class="ps-brow ${Member.RecordToken===SelectedToken?'sel':''} ${VisibleCondition(Member)?'':'hid'}"
+                 data-token="${Member.RecordToken}">
+              <span class="ti">${GlyphMarkup(Member.Classification,12)}</span>
+              <span class="pr-nm">${Member.Label}</span>
+              <span class="ti" data-eye="${Member.RecordToken}">
+                <svg width="11" height="11" viewBox="0 0 24 24">
+                  <use href="#g-eye${VisibleCondition(Member)?'':'-off'}"/></svg></span>
+            </div>`).join('')}
+       </div>`;
+    Slab.querySelectorAll('.ps-brow').forEach(Row=>{
+      Row.onclick = (Signal)=>{
+        Signal.stopPropagation();
+        const EyeTarget = Signal.target.closest('[data-eye]');
+        if(EyeTarget){ ToggleVisibility(EyeTarget.dataset.eye); return; }
+        ApplySelection(Row.dataset.token);
+      };
+    });
+    Slab.onclick = (Signal)=>{
+      if(Signal.target.closest('.ps-bloom')) return;
+      ApplySelection(Entry.RecordToken);
+    };
+    Mount.appendChild(Slab);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑤ SLICE PLANE — a scan line; the directory is whatever it intersects.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let SliceHeight = 0.42;   /* fraction of stage height */
+
+function RenderSlicePlane(){
+  const Mount = document.getElementById('sliceMount');
+  Mount.innerHTML = '';
+  const Bounds = StageBounds();
+  const LineY = SliceHeight * Bounds.height;
+
+  /* which bodies the line passes through, ordered left to right */
+  const Crossed = EnumerateRenderableBodies()
+    .map(Entry=>({ Entry, Anchor:AnchorPixels(Entry) }))
+    .filter(Slot=> Math.abs(Slot.Anchor.Y - LineY) < Slot.Entry.FormExtent/2)
+    .sort((Left,Right)=> Left.Anchor.X - Right.Anchor.X);
+
+  const Line = document.createElement('div');
+  Line.className = 'sl-line';
+  Line.style.top = LineY+'px';
+  Line.innerHTML =
+    `<div class="sl-grab"></div>
+     <div class="sl-hand">Slice <span class="slh-n">${Crossed.length}</span></div>`;
+  Mount.appendChild(Line);
+
+  if(!Crossed.length){
+    const Empty = document.createElement('div');
+    Empty.className = 'sl-empty';
+    Empty.style.top = (LineY - 24)+'px';
+    Empty.textContent = 'no bodies on this plane';
+    Mount.appendChild(Empty);
+  }
+
+  Crossed.forEach((Slot, Index)=>{
+    const { Entry, Anchor } = Slot;
+    const Path = ResolveEnclosurePath(Entry.RecordToken);
+    const GroupLabel = Path.length>1 ? Path[Path.length-2].Label : '';
+
+    const Hit = document.createElement('div');
+    Hit.className = 'sl-hit';
+    Hit.style.left = Anchor.X+'px'; Hit.style.top = LineY+'px';
+    Mount.appendChild(Hit);
+
+    /* alternate readouts above/below so neighbours never overlap */
+    const Above = Index % 2 === 0;
+    const ReadY = Above ? LineY - 34 : LineY + 20;
+    const Stem = document.createElement('div');
+    Stem.className = 'sl-stem';
+    Stem.style.left = (Anchor.X-.5)+'px';
+    Stem.style.top = Above ? (ReadY+19)+'px' : (LineY+1)+'px';
+    Stem.style.height = Math.abs(Above ? (LineY-(ReadY+19)) : (ReadY-LineY-1))+'px';
+    Mount.appendChild(Stem);
+
+    const Read = document.createElement('div');
+    Read.className = 'sl-read' + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' hid');
+    Read.style.left = Anchor.X+'px'; Read.style.top = ReadY+'px';
+    Read.innerHTML =
+      `<span class="sr-ord">${Index+1}</span>
+       <span class="ti">${GlyphMarkup(Entry.Classification,11)}</span>${Entry.Label}
+       ${GroupLabel?`<span class="sr-grp">${GroupLabel}</span>`:''}`;
+    Read.onclick = (Signal)=>{ Signal.stopPropagation(); ApplySelection(Entry.RecordToken); };
+    Mount.appendChild(Read);
+  });
+
+  /* drag plumbing rebound each render, since the line element is recreated */
+  const Grab = Line.querySelector('.sl-grab');
+  const Hand = Line.querySelector('.sl-hand');
+  const BeginDrag = (Signal)=>{
+    Signal.preventDefault(); Signal.stopPropagation();
+    SliceDragging = true;
+  };
+  Grab.onmousedown = BeginDrag; Hand.onmousedown = BeginDrag;
+}
+let SliceDragging = false;
+window.addEventListener('mousemove', (Signal)=>{
+  if(!SliceDragging || ActiveVariant!==4) return;
+  const Bounds = StageBounds();
+  SliceHeight = Math.min(.94, Math.max(.06, (Signal.clientY-Bounds.top)/Bounds.height));
+  RenderSlicePlane();
+});
+window.addEventListener('mouseup', ()=>{ SliceDragging = false; });
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑥ TREEMAP CORNER — whole model as nested proportional rectangles, 132px square.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TreemapHoverToken = null;
+
+/* slice-and-dice: alternate split axis per depth, area ∝ body count */
+function PartitionTreemap(Region, Frame, DepthTier, Collector){
+  const TotalMass = Region.reduce((Total,Entry)=> Total + Math.max(1, SubtreeBodyCount(Entry)), 0);
+  if(!TotalMass) return;
+  const Horizontal = DepthTier % 2 === 0;
+  let Cursor = Horizontal ? Frame.X : Frame.Y;
+  const Span = Horizontal ? Frame.W : Frame.H;
+
+  for(const Entry of Region){
+    const Mass = Math.max(1, SubtreeBodyCount(Entry));
+    const Slice = (Mass / TotalMass) * Span;
+    const Cell = Horizontal
+      ? { X:Cursor, Y:Frame.Y, W:Slice, H:Frame.H }
+      : { X:Frame.X, Y:Cursor, W:Frame.W, H:Slice };
+    Cursor += Slice;
+
+    if(GroupCondition(Entry)){
+      Collector.Groups.push({ Entry, Cell, DepthTier });
+      PartitionTreemap(Entry.SubtreeRegion,
+        { X:Cell.X+2, Y:Cell.Y+2, W:Math.max(0,Cell.W-4), H:Math.max(0,Cell.H-4) },
+        DepthTier+1, Collector);
+    } else {
+      Collector.Leaves.push({ Entry, Cell });
+    }
+  }
+}
+function RenderTreemap(){
+  const Box = document.getElementById('tmBox');
+  const Collector = { Groups:[], Leaves:[] };
+  PartitionTreemap(DirectoryRoot[0].SubtreeRegion, { X:0, Y:0, W:132, H:132 }, 0, Collector);
+
+  const SelectedPath = SelectedToken ? ResolveEnclosurePath(SelectedToken) : [];
+  Box.innerHTML = '';
+
+  for(const { Entry, Cell, DepthTier } of Collector.Groups){
+    const Active = SelectedPath.some(Step=>Step.RecordToken===Entry.RecordToken);
+    const Outline = document.createElement('div');
+    Outline.className = 'tm-grpline' + (Active?' act':'');
+    Outline.style.left = Cell.X+'px'; Outline.style.top = Cell.Y+'px';
+    Outline.style.width = Cell.W+'px'; Outline.style.height = Cell.H+'px';
+    Box.appendChild(Outline);
+    if(DepthTier===0 && Cell.W > 34){
+      const Label = document.createElement('div');
+      Label.className = 'tm-glbl';
+      Label.style.left = (Cell.X+2)+'px'; Label.style.top = (Cell.Y+1)+'px';
+      Label.style.maxWidth = (Cell.W-4)+'px';
+      Label.textContent = Entry.Label.replace(/^BODY_/,'');
+      Box.appendChild(Label);
+    }
+  }
+  for(const { Entry, Cell } of Collector.Leaves){
+    const Tile = document.createElement('div');
+    Tile.className = 'tm-tile' + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' hid');
+    Tile.style.left = (Cell.X+1)+'px'; Tile.style.top = (Cell.Y+1)+'px';
+    Tile.style.width = Math.max(2, Cell.W-2)+'px';
+    Tile.style.height = Math.max(2, Cell.H-2)+'px';
+    Tile.title = Entry.Label;
+    Tile.onmouseenter = ()=>{ TreemapHoverToken = Entry.RecordToken; PaintTreemapReadout(); };
+    Tile.onmouseleave = ()=>{ TreemapHoverToken = null; PaintTreemapReadout(); };
+    Tile.onclick = ()=> ApplySelection(Entry.RecordToken);
+    Box.appendChild(Tile);
+  }
+  document.getElementById('tmCount').textContent = Collector.Leaves.length;
+  PaintTreemapReadout();
+}
+function PaintTreemapReadout(){
+  const Token = TreemapHoverToken || SelectedToken;
+  const Readout = document.getElementById('tmRead');
+  if(!Token){
+    Readout.innerHTML = `<div class="tm-rnm idle">nothing selected</div>
+                         <div class="tm-rsub">hover a tile</div>`;
+    return;
+  }
+  const Resolved = ResolveEntry(Token);
+  if(!Resolved) return;
+  const Path = ResolveEnclosurePath(Token).slice(0,-1).map(Step=>Step.Label).join(' / ');
+  Readout.innerHTML =
+    `<div class="tm-rnm">${Resolved.Entry.Label}</div>
+     <div class="tm-rsub">${Path||'root'} · ${Resolved.Entry.Classification}</div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   HARNESS
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const VariantTable = [
+  { Key:'v1', Name:'Sonar',        Caption:'The directory as build <em>history</em>. A ping sweeps from the construction origin; each body announces itself in feature order. Scrub to roll the model back.', Repaint:RenderSonar },
+  { Key:'v2', Name:'Type bands',   Caption:'Nesting discarded. Bodies bucketed into classification strata, cell width proportional to on-screen mass. Answers "how much of what", not "what holds what".', Repaint:RenderTypeBands },
+  { Key:'v3', Name:'Constellation',Caption:'The nesting drawn as a node-link map in the viewport dead space. Selecting a leaf tethers the map node to its real geometry.',                                    Repaint:RenderConstellation },
+  { Key:'v4', Name:'Pressure stack',Caption:'A 21px column of proportional slabs — slab height is subtree body count, so the model\'s mass distribution reads at a glance. Hover blooms the contents.',      Repaint:RenderPressureStack },
+  { Key:'v5', Name:'Slice plane',  Caption:'A draggable scan line. Only the bodies it intersects get named, in crossing order. The directory is a cross-section query, not a browsable structure.',           Repaint:RenderSlicePlane },
+  { Key:'v6', Name:'Treemap',      Caption:'The entire model as nested proportional rectangles in one 132px square. Whole structure at a glance, fixed footprint regardless of body count.',                  Repaint:RenderTreemap },
+];
+let ActiveVariant = 0;
+function RenderActiveVariant(){ VariantTable[ActiveVariant].Repaint(); }
+
+function ActivateVariant(Index){
+  ActiveVariant = Index;
+  VariantTable.forEach((Variant,Position)=>
+    document.getElementById(Variant.Key).classList.toggle('live', Position===Index));
+  document.querySelectorAll('.pk').forEach((Button,Position)=>
+    Button.classList.toggle('on', Position===Index));
+  const Variant = VariantTable[Index];
+  document.getElementById('vlabel').innerHTML = `${Index+1} — ${Variant.Name}<em>${Variant.Caption}</em>`;
+  TreemapHoverToken = null; SliceDragging = false;
+  RenderScene(); RenderActiveVariant();
+}
+
+const Picker = document.getElementById('picker');
+VariantTable.forEach((Variant,Index)=>{
+  const Button = document.createElement('button');
+  Button.className = 'pk';
+  Button.innerHTML = `<span class="num">${Index+1}</span>${Variant.Name}`;
+  Button.onclick = ()=> ActivateVariant(Index);
+  Picker.appendChild(Button);
+});
+Picker.insertAdjacentHTML('beforeend', `<span class="hint"><kbd>1</kbd>–<kbd>6</kbd> switch</span>`);
+
+window.addEventListener('keydown', (Signal)=>{
+  if(Signal.key>='1' && Signal.key<='6') ActivateVariant(+Signal.key-1);
+  if(Signal.key==='Escape') ApplySelection(null);
+});
+window.addEventListener('resize', ()=>{ RenderScene(); RenderActiveVariant(); });
+document.getElementById('stage').onclick = (Signal)=>{
+  if(Signal.target.id==='stage' || Signal.target.classList.contains('grid-floor')) ApplySelection(null);
+};
+
+ApplySelection(DirectoryRoot[0].SubtreeRegion[0].SubtreeRegion[0].RecordToken);
+ActivateVariant(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+# Vendored dependencies (Vulkan, volk, VMA, glm, imgui, slang, stb, etc.) — not our source.
+ExternalPackages/
+
+# Build outputs and intermediates.
+Build/
+Binaries/
+
+# Sample meshes / textures / assets — tracked separately.
+EngineContent/*
+!EngineContent/Icons/
+!EngineContent/README.md
+!EngineContent/Defaults/
+!EngineContent/MaterialArchives/
+!EngineContent/PatternArchives/
+!EngineContent/EnvironmentArchives/
+!EngineContent/CelestialMaps/
+EngineContent/CelestialMaps/*.ppm
+
+# Agent scratch space.
+_ClaudeScratch/
+
+# Diagnostic logs dropped beside built exes.
+*.log
+
+# Compiled shader blobs (ShaderPlan.ps1 / glslc output) and the make-style include depfiles glslc -MD writes beside them.
+*.spv
+*.spv.d
+
+# OS / editor cruft.
+.DS_Store
+Thumbs.db
+*.swp
+
+# Python tooling intermediates.
+__pycache__/
+*.pyc
+
+# Downloaded open fonts and generated catalogue; recover with Automation/PrepareFonts.py.
+EngineContent/FontArchives/
+
+# Overlay (Frontier/ portable engine) outputs and local state.
+_AgentScratch/
+**/Build/Output/
+**/ThirdParty/
+*.local.*
+.env
+*.obj
+*.pdb
+*.exe
+*.dll
+*.lib
+/google_drive/
+**/Saved/
+
+Delivery/
+
+# npm installs (reinstall with npm install)
+node_modules/

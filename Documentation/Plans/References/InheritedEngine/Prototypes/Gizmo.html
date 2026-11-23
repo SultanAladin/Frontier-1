@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GizmoPRO 3D</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#1e2530; overflow:hidden;
+    font-family:"Segoe UI", Arial, sans-serif; }
+  #title { position:absolute; bottom:5%; width:100%; text-align:center;
+    color:#cfd3d8; font-size:44px; font-weight:700; letter-spacing:1px;
+    text-shadow:0 2px 4px rgba(0,0,0,.6); user-select:none; pointer-events:none; }
+  #readout { position:absolute; top:16px; left:50%; transform:translateX(-50%);
+    padding:6px 14px; border-radius:6px; background:rgba(20,26,34,.85);
+    color:#eef1f4; font-size:15px; font-family:"Consolas","Segoe UI",monospace;
+    letter-spacing:.3px; border:1px solid rgba(255,255,255,.12);
+    user-select:none; pointer-events:none; display:none; }
+  #hint { position:absolute; top:16px; left:16px; color:#8b93a0; font-size:12px;
+    user-select:none; pointer-events:none; line-height:1.5; }
+</style>
+</head>
+<body>
+  <div id="title">GizmoPRO</div>
+  <div id="readout"></div>
+  <div id="hint">drag a handle to transform &middot; hold Ctrl to snap</div>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+  import * as THREE from "three";
+  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+  const COLORS = {
+    x: 0xe01414,  // red   -> +X
+    y: 0x12d40a,  // green -> +Y
+    z: 0x1560e0,  // blue  -> +Z
+    magenta: 0xc81ec8,
+    cyan:    0x1fc7c7,
+    yellow:  0xe0cd12,
+    ring:    0xffffff,
+  };
+
+  // ---- scene ----
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1e2530);
+
+  const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(3.2, 2.4, 3.6);
+
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.set(0,0,0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(4,6,5);
+  scene.add(dir);
+
+  // ---- target the gizmo manipulates: a cube whose transform we edit ----
+  const target = new THREE.Mesh(
+    new THREE.BoxGeometry(1,1,1),
+    new THREE.MeshStandardMaterial({ color:0x9aa4b2, roughness:0.6, metalness:0.05 })
+  );
+  scene.add(target);
+
+  // the gizmo rides on top of the target: same position + rotation, but its
+  // own scale stays 1 so the handles never stretch with the object
+  const gizmo = new THREE.Group();
+  scene.add(gizmo);
+
+  function syncGizmoToTarget() {
+    gizmo.position.copy(target.position);
+    gizmo.quaternion.copy(target.quaternion);
+  }
+
+  function mat(color) {
+    return new THREE.MeshStandardMaterial({ color, roughness:0.45, metalness:0.1 });
+  }
+
+  // basis for each axis: direction unit vector used to orient arrows/handles
+  const AXES = [
+    { name:"x", color:COLORS.x, dir:new THREE.Vector3(1,0,0) },
+    { name:"y", color:COLORS.y, dir:new THREE.Vector3(0,1,0) },
+    { name:"z", color:COLORS.z, dir:new THREE.Vector3(0,0,1) },
+  ];
+
+  const L = 1.0;   // axis length reference
+
+  // orient a mesh's +Y so it points along dir
+  function orientY(mesh, dir) {
+    const q = new THREE.Quaternion();
+    q.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+    mesh.quaternion.copy(q);
+  }
+
+  // the two axes orthogonal to a given axis (used to place its 2D-plane handle),
+  // plus the accent color the image uses for that plane
+  const OTHERS = {
+    x: { u:new THREE.Vector3(0,1,0), v:new THREE.Vector3(0,0,1), plane:COLORS.cyan    },
+    y: { u:new THREE.Vector3(1,0,0), v:new THREE.Vector3(0,0,1), plane:COLORS.magenta },
+    z: { u:new THREE.Vector3(1,0,0), v:new THREE.Vector3(0,1,0), plane:COLORS.yellow  },
+  };
+
+  const TIP = L*0.95;   // distance of each cone tip from the center
+
+  // build a flat curved bar (annular sector) lying in the plane spanned by the
+  // orthonormal basis (u, v): a thin ring band from innerR..outerR sweeping
+  // `sweep` radians, centered on the u->v bisector (angle 45 deg from u toward
+  // v). Built directly in world space so placement is deterministic.
+  function arcBar(u, v, innerR, outerR, sweep, segments) {
+    const center = Math.PI/4;                  // bisector between +u and +v
+    const start = center - sweep/2;
+    const positions = [];
+    const indices = [];
+    const p = new THREE.Vector3();
+    for (let i = 0; i <= segments; i++) {
+      const a = start + (sweep*i)/segments;
+      const c = Math.cos(a), s = Math.sin(a); // direction = u*cos + v*sin
+      p.copy(u).multiplyScalar(innerR*c).addScaledVector(v, innerR*s);
+      positions.push(p.x, p.y, p.z);          // inner rim vertex
+      p.copy(u).multiplyScalar(outerR*c).addScaledVector(v, outerR*s);
+      positions.push(p.x, p.y, p.z);          // outer rim vertex
+    }
+    for (let i = 0; i < segments; i++) {
+      const base = i*2;
+      indices.push(base, base+1, base+2);
+      indices.push(base+1, base+3, base+2);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // every grabbable handle registers here so the raycaster can find it; each
+  // records its transform type + the axis/basis vectors the drag math needs
+  const handles = [];
+  function registerHandle(mesh, info) {
+    mesh.userData = { ...info, baseColor:new THREE.Color(info.color) };
+    handles.push(mesh);
+  }
+
+  for (const ax of AXES) {
+    const m = mat(ax.color);
+
+    // ---- translate arrow: cone tip only (no long axis line) ----
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 24), m.clone());
+    cone.position.copy(ax.dir.clone().multiplyScalar(TIP));
+    orientY(cone, ax.dir);
+    gizmo.add(cone);
+    registerHandle(cone, { type:"translate", axis:ax.name, dir:ax.dir.clone(), color:ax.color });
+
+    // ---- scale handle: a short cylinder just inboard of the cone; its radius
+    //      matches the cone base so the two read as one continuous handle ----
+    const scale = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.14,24), m.clone());
+    scale.position.copy(ax.dir.clone().multiplyScalar(TIP - 0.28));
+    orientY(scale, ax.dir);
+    gizmo.add(scale);
+    registerHandle(scale, { type:"scale", axis:ax.name, dir:ax.dir.clone(), color:ax.color });
+
+    // ---- plane-translate handle: a semi-transparent quad at the cube corner
+    //      where the two other axes' extents meet, framed by two opaque edges
+    //      (the pair meeting at the inner corner nearest the center) ----
+    const other = OTHERS[ax.name];
+    const half = 0.08;
+    // corner sits inboard of the tips so the opaque edges align with the axes
+    const corner = other.u.clone().add(other.v).multiplyScalar(TIP - half);
+
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(half*2, half*2),
+      new THREE.MeshBasicMaterial({
+        color:other.plane, side:THREE.DoubleSide, transparent:true, opacity:0.28,
+      })
+    );
+    fill.position.copy(corner);
+    orientY(fill, ax.dir);   // plane's local +Y -> this axis
+    fill.rotateX(Math.PI/2); // lay the quad into the u-v plane
+    gizmo.add(fill);
+    // the plane handle slides the target within the u-v plane (normal = ax.dir)
+    registerHandle(fill, {
+      type:"plane", axis:ax.name, normal:ax.dir.clone(),
+      u:other.u.clone(), v:other.v.clone(), color:other.plane,
+    });
+
+    // two opaque edges: the corner of the quad at the cube corner (farthest from
+    // the center), and the two sides running from it back along -u and -v
+    const outer = corner.clone().addScaledVector(other.u,  half).addScaledVector(other.v,  half);
+    const backU = outer.clone().addScaledVector(other.u, -half*2);
+    const backV = outer.clone().addScaledVector(other.v, -half*2);
+    const edgeMat = new THREE.LineBasicMaterial({ color:other.plane });
+    const edges = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([ backU, outer, backV ]),
+      edgeMat
+    );
+    gizmo.add(edges);
+
+    // ---- rotation handle: a flat curved bar (thin annular sector, not a round
+    //      tube) lying in the plane of the two OTHER axes, centered on the
+    //      diagonal between their two cones. So the green arc sits between the
+    //      red and blue cones, red between green and blue, blue between red and
+    //      green. Spans ~16 degrees ----
+    const arcRadius = TIP*0.62;
+    const arcSweep = THREE.MathUtils.degToRad(31);   // 16 + 7.5 on each side
+    const arcBand = 0.038;                           // half-width in the radial direction
+    const arc = new THREE.Mesh(
+      arcBar(other.u, other.v, arcRadius - arcBand, arcRadius + arcBand, arcSweep, 24),
+      new THREE.MeshStandardMaterial({
+        color:ax.color, roughness:0.45, metalness:0.1, side:THREE.DoubleSide,
+      })
+    );
+    gizmo.add(arc);
+    // the arc rotates the whole gizmo (and target) about its axis
+    registerHandle(arc, { type:"rotate", axis:ax.name, dir:ax.dir.clone(), color:ax.color });
+  }
+
+  // ---- central white ring: a thin torus that always faces the camera ----
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.16, 0.008, 12, 48),
+    new THREE.MeshBasicMaterial({ color:COLORS.ring })
+  );
+  gizmo.add(ring);
+
+  // -----------------------------------------------------------------------
+  //  INTERACTION: hover highlight + drag to translate / scale / rotate
+  // -----------------------------------------------------------------------
+  const readoutEl = document.getElementById("readout");
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let hovered = null;   // handle currently under the cursor
+  let drag = null;      // active drag state, or null
+
+  // snap steps applied while Ctrl is held
+  const SNAP_MOVE = 0.25;                          // world units
+  const SNAP_SCALE = 0.1;                          // scale factor
+  const SNAP_ANGLE = THREE.MathUtils.degToRad(5);  // 5 degrees
+
+  function setPointer(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    pointer.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  }
+
+  // a handle's world-space axis = its local axis rotated by the target's frame
+  function worldDir(localDir) {
+    return localDir.clone().applyQuaternion(target.quaternion).normalize();
+  }
+
+  // apply a handle's emissive highlight (or clear it)
+  function highlight(mesh, on) {
+    if (!mesh) return;
+    const m = mesh.material;
+    if (on) {
+      if (m.emissive) m.emissive.setHex(0x555555);
+      m.opacity = m.transparent ? 0.55 : m.opacity;
+    } else {
+      if (m.emissive) m.emissive.setHex(0x000000);
+      m.opacity = m.transparent ? 0.28 : m.opacity;
+    }
+    m.needsUpdate = true;
+  }
+
+  // closest point on the target-centered axis line to the pointer ray; returns
+  // the signed distance along `axisDirWorld` from the gizmo origin
+  function axisParamUnderPointer(axisDirWorld) {
+    raycaster.setFromCamera(pointer, camera);
+    const ro = raycaster.ray.origin, rd = raycaster.ray.direction;
+    const po = gizmo.position, pd = axisDirWorld;
+    // solve for the point on the axis line closest to the ray (skew lines)
+    const w0 = new THREE.Vector3().subVectors(po, ro);
+    const a = pd.dot(pd), b = pd.dot(rd), c = rd.dot(rd);
+    const d = pd.dot(w0), e = rd.dot(w0);
+    const denom = a*c - b*b;
+    if (Math.abs(denom) < 1e-6) return 0;
+    return (b*e - c*d) / denom;   // parameter along pd from po
+  }
+
+  // intersect the pointer ray with the plane through the gizmo origin whose
+  // normal is `planeNormalWorld`; returns the world hit point (or null)
+  function planePointUnderPointer(planeNormalWorld) {
+    raycaster.setFromCamera(pointer, camera);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormalWorld, gizmo.position);
+    const hit = new THREE.Vector3();
+    return raycaster.ray.intersectPlane(plane, hit) ? hit : null;
+  }
+
+  // angle (radians) of the pointer around `axisDirWorld`, measured in the plane
+  // perpendicular to that axis relative to a fixed reference direction
+  function angleUnderPointer(axisDirWorld, refWorld) {
+    const hit = planePointUnderPointer(axisDirWorld);
+    if (!hit) return null;
+    const v = new THREE.Vector3().subVectors(hit, gizmo.position);
+    // build an orthonormal basis (refWorld, perp) in the rotation plane
+    const ref = refWorld.clone().projectOnPlane(axisDirWorld).normalize();
+    const perp = new THREE.Vector3().crossVectors(axisDirWorld, ref).normalize();
+    return Math.atan2(v.dot(perp), v.dot(ref));
+  }
+
+  function snap(value, step) { return Math.round(value / step) * step; }
+
+  function showReadout(text) {
+    readoutEl.textContent = text;
+    readoutEl.style.display = "block";
+  }
+  function hideReadout() { readoutEl.style.display = "none"; }
+
+  function beginDrag(handle) {
+    const info = handle.userData;
+    controls.enabled = false;
+    drag = { handle, info };
+
+    if (info.type === "translate") {
+      drag.axisWorld = worldDir(info.dir);
+      drag.startParam = axisParamUnderPointer(drag.axisWorld);
+      drag.startPos = target.position.clone();
+    } else if (info.type === "scale") {
+      drag.axisWorld = worldDir(info.dir);
+      drag.startParam = axisParamUnderPointer(drag.axisWorld);
+      drag.startScale = target.scale.clone();
+    } else if (info.type === "plane") {
+      drag.normalWorld = worldDir(info.normal);
+      drag.startHit = planePointUnderPointer(drag.normalWorld);
+      drag.startPos = target.position.clone();
+    } else if (info.type === "rotate") {
+      drag.axisWorld = worldDir(info.dir);
+      const ref = worldDir(OTHERS[info.axis].u);
+      drag.refWorld = ref;
+      drag.startAngle = angleUnderPointer(drag.axisWorld, ref);
+      drag.startQuat = target.quaternion.clone();
+    }
+  }
+
+  function updateDrag(e) {
+    if (!drag) return;
+    const snapping = e.ctrlKey;
+    const info = drag.info;
+
+    if (info.type === "translate") {
+      let delta = axisParamUnderPointer(drag.axisWorld) - drag.startParam;
+      if (snapping) delta = snap(delta, SNAP_MOVE);
+      target.position.copy(drag.startPos).addScaledVector(drag.axisWorld, delta);
+      showReadout(`${info.axis.toUpperCase()}  move ${delta.toFixed(3)}`);
+    } else if (info.type === "scale") {
+      let delta = axisParamUnderPointer(drag.axisWorld) - drag.startParam;
+      let factor = 1 + delta;                      // 1 unit of drag = +100%
+      if (snapping) factor = Math.max(SNAP_SCALE, snap(factor, SNAP_SCALE));
+      factor = Math.max(0.05, factor);
+      const s = drag.startScale.clone();
+      if (info.axis === "x") s.x *= factor;
+      else if (info.axis === "y") s.y *= factor;
+      else s.z *= factor;
+      target.scale.copy(s);
+      showReadout(`${info.axis.toUpperCase()}  scale ${factor.toFixed(3)}x`);
+    } else if (info.type === "plane") {
+      const hit = planePointUnderPointer(drag.normalWorld);
+      if (hit && drag.startHit) {
+        let move = new THREE.Vector3().subVectors(hit, drag.startHit);
+        if (snapping) {
+          const uw = worldDir(info.u), vw = worldDir(info.v);
+          const du = snap(move.dot(uw), SNAP_MOVE), dv = snap(move.dot(vw), SNAP_MOVE);
+          move = uw.multiplyScalar(du).addScaledVector(vw, dv);
+        }
+        target.position.copy(drag.startPos).add(move);
+        showReadout(`${info.axis.toUpperCase()}-plane  move ` +
+          `${move.length().toFixed(3)}`);
+      }
+    } else if (info.type === "rotate") {
+      const now = angleUnderPointer(drag.axisWorld, drag.refWorld);
+      if (now !== null && drag.startAngle !== null) {
+        let da = now - drag.startAngle;
+        if (snapping) da = snap(da, SNAP_ANGLE);
+        const q = new THREE.Quaternion().setFromAxisAngle(drag.axisWorld, da);
+        target.quaternion.copy(q).multiply(drag.startQuat);
+        showReadout(`${info.axis.toUpperCase()}  rotate ` +
+          `${THREE.MathUtils.radToDeg(da).toFixed(1)}°`);
+      }
+    }
+  }
+
+  function endDrag() {
+    if (!drag) return;
+    drag = null;
+    controls.enabled = true;
+    hideReadout();
+  }
+
+  renderer.domElement.addEventListener("pointermove", (e) => {
+    setPointer(e);
+    if (drag) { updateDrag(e); return; }
+    // hover test
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(handles, false);
+    const next = hits.length ? hits[0].object : null;
+    if (next !== hovered) {
+      highlight(hovered, false);
+      highlight(next, true);
+      hovered = next;
+      renderer.domElement.style.cursor = next ? "pointer" : "default";
+    }
+  });
+
+  renderer.domElement.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    setPointer(e);
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(handles, false);
+    if (hits.length) {
+      e.preventDefault();
+      beginDrag(hits[0].object);
+    }
+  });
+
+  addEventListener("pointerup", endDrag);
+
+  // ---- render loop ----
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    syncGizmoToTarget();
+
+    // billboard the central ring toward the camera
+    ring.quaternion.copy(camera.quaternion);
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  addEventListener("resize", () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  </script>
+</body>
+</html>

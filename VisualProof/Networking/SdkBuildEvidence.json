@@ -1,0 +1,25 @@
+{
+  "compiler": "g++ (Debian 12.2.0-14+deb12u1) 12.2.0",
+  "sdk_runtime_sha256": "05c88b7adb10bfe3dc89d133af7318422838ab6909c06dcd3e74bd2af4ac2309",
+  "interchange_header_sha256": "2999eb7e28a537e93b12476617514e9abb303d15a0f48065ce3ddc76ba204c48",
+  "sources": {
+    "AuthPolicy.h": "cbed2a30a3361dace9867b645fc6508d09414cc8da5699679dfa4265dd525aa4",
+    "EpicExchange.cpp": "8d3134a3f09407e80d410595006f32ccb62d34f971195ad26e2e079746d25734",
+    "EpicExchange.h": "ec09920b79ba1fd885fa07576da2598905908452945a23a994834c27e7645c9a",
+    "LoginHost.cpp": "9c459421630039d70d83c0a1c6cf03709008bea398efada981219794fd711dc9",
+    "LoginSequence.h": "34b384b06b9db0f1211b92723cdd22cbea833218d9b76f93291d3a9524794c3b",
+    "NetworkingInterchange.cpp": "fbe64f0fa059de42021aaf8385b3a91c0029fbcd33f9b1ff3239425ad03234e9",
+    "PlatformDiagnostics.h": "a73dde9c153e990edb9cc5e5d99fff8c1511e2e66921c1b90b1c444f9919d2eb",
+    "WindowHost.cpp": "4be8a4b61a2013c4d935534be857c43df22d5339f38f554b629a693e98574e6c"
+  },
+  "artifacts": {
+    "LoginHost": "27e11b7e4ac0d3400497cb2070083a216f8035ed7ffe56df900fa755010c6a67",
+    "ProjectNetworking.so": "1feb695fef37641e19985c2972b6b7890ca99787b5eb01dc50e5a52256f5d15d"
+  },
+  "authentication": "NOT_ATTEMPTED",
+  "check_sources": {
+    "InterchangeChecks.cpp": "e8814cf04f0580e9d3d254401fc38f459b14f700b70092097def46270d8e6f60",
+    "LoginSequenceChecks.cpp": "92e032e8dc8d84ddb92d99d96db7845fbcaf4bf5926e2814591431e143d85b17",
+    "RunChecks.py": "9ea07a27a25d1ebb414fdecb620da0ced22bc2773c73f60ee0c4cf82f27c9641"
+  }
+}

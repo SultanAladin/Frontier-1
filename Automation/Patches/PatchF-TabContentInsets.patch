@@ -1,0 +1,79 @@
+diff --git a/imgui_widgets.cpp b/imgui_widgets.cpp
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -11183,11 +11183,16 @@
+         return ImVec2(m.Advance, m.Across);
+     }
+ 
+-    ImVec2 size = ImVec2(label_size.x + g.Style.FramePadding.x, label_size.y + g.Style.FramePadding.y * 2.0f);
++    // [FRONTIER PATCH F] Content must clear both the sloped caps and the adjacent
++    // overlapping tab. Charge the same inset during measurement and rendering.
++    const float content_inset = (!is_button && g.Style.TabSlant > 0.0f)
++        ? ImMax(g.Style.FramePadding.x, ImMax(g.Style.TabSlant, g.Style.TabOverlap) + 4.0f * g.Style._MainScale)
++        : g.Style.FramePadding.x;
++    ImVec2 size = ImVec2(label_size.x + content_inset, label_size.y + g.Style.FramePadding.y * 2.0f);
+     if (has_close_button_or_unsaved_marker)
+-        size.x += g.Style.FramePadding.x + (g.Style.ItemInnerSpacing.x + g.FontSize); // We use Y intentionally to fit the close button circle.
++        size.x += content_inset + (g.Style.ItemInnerSpacing.x + g.FontSize);
+     else
+-        size.x += g.Style.FramePadding.x + 1.0f;
++        size.x += content_inset + 1.0f;
+     return ImVec2(ImMin(size.x, TabBarCalcMaxTabWidth()), size.y);
+ }
+ 
+@@ -11331,10 +11336,18 @@
+     //   sheet's 38 px padding a tab shrunk below 76 px inverts this box -- Min.x lands beyond Max.x -- and
+     //   the run is then laid against an inside-out rectangle, which is why a shrinking strip threw the
+     //   glyph clear of its own tab. A disc-sized tab-bar button is the same case at 24 px.
+-    const float frontier_pad_x = ImMin(frame_padding.x, ImMax(0.0f, bb.GetWidth() * 0.5f - 1.0f));
++    // [FRONTIER PATCH F] A genuine slanted tab has a rectangular safe interior.
++    // Buttons keep Patch C's disc layout. Centre runs vertically in the actual tab,
++    // not at a frame-padding offset that can spill below a short dock strip.
++    const bool frontier_slanted = !(flags & ImGuiTabItemFlags_Button) && g.Style.TabSlant > 0.0f;
++    const float frontier_content_inset = frontier_slanted
++        ? ImMax(frame_padding.x, ImMax(g.Style.TabSlant, g.Style.TabOverlap) + 4.0f * g.Style._MainScale)
++        : frame_padding.x;
++    const float frontier_pad_x = ImMin(frontier_content_inset, ImMax(0.0f, bb.GetWidth() * 0.5f - 1.0f));
++    const float frontier_text_y = frontier_slanted ? bb.GetCenter().y - label_size.y * 0.5f : bb.Min.y + frame_padding.y;
+ 
+     // Render text label (with clipping + alpha gradient) + unsaved marker
+-    ImRect text_ellipsis_clip_bb(bb.Min.x + frontier_pad_x, bb.Min.y + frame_padding.y, bb.Max.x - frontier_pad_x, bb.Max.y);
++    ImRect text_ellipsis_clip_bb(bb.Min.x + frontier_pad_x, frontier_text_y, bb.Max.x - frontier_pad_x, bb.Max.y);
+ 
+     // Return clipped state ignoring the close button
+     if (out_text_clipped)
+@@ -11346,7 +11359,7 @@
+     const float button_sz = g.FontSize;
+     // [FRONTIER PATCH C] Seated against the clamped padding for the same reason: a close mark placed by the
+     //   unclamped figure sits outside the tab it belongs to once the strip shrinks.
+-    const ImVec2 button_pos(ImMax(bb.Min.x, bb.Max.x - frontier_pad_x - button_sz), bb.Min.y + frame_padding.y);
++    const ImVec2 button_pos(ImMax(bb.Min.x, bb.Max.x - frontier_pad_x - button_sz), frontier_slanted ? bb.GetCenter().y - button_sz * 0.5f : bb.Min.y + frame_padding.y);
+ 
+     // Close Button & Unsaved Marker
+     // We are relying on a subtle and confusing distinction between 'hovered' and 'g.HoveredId' which happens because we are using ImGuiButtonFlags_AllowOverlapMode + SetItemAllowOverlap()
+@@ -11357,7 +11370,7 @@
+     bool close_button_visible = false;
+     bool is_hovered = g.HoveredId == tab_id || g.HoveredId == close_button_id || g.ActiveId == tab_id || g.ActiveId == close_button_id; // Any interaction account for this too.
+ 
+-    if (close_button_id != 0)
++    if (close_button_id != 0 && (!frontier_slanted || (bb.GetWidth() >= 2.0f * frontier_pad_x + button_sz && bb.GetHeight() >= button_sz)))
+     {
+         if (is_contents_visible)
+             close_button_visible = (g.Style.TabCloseButtonMinWidthSelected < 0.0f) ? true : (is_hovered && bb.GetWidth() >= ImMax(button_sz, g.Style.TabCloseButtonMinWidthSelected));
+@@ -11393,12 +11406,13 @@
+         const bool visible_without_hover = unsaved_marker_visible || (is_contents_visible ? g.Style.TabCloseButtonMinWidthSelected : g.Style.TabCloseButtonMinWidthUnselected) < 0.0f;
+         if (visible_without_hover)
+         {
+-            text_ellipsis_clip_bb.Max.x -= button_sz * 0.90f;
+-            ellipsis_max_x -= button_sz * 0.90f;
++            const float reserved = frontier_slanted ? button_sz + g.Style.ItemInnerSpacing.x : button_sz * 0.90f;
++            text_ellipsis_clip_bb.Max.x = ImMax(text_ellipsis_clip_bb.Min.x, text_ellipsis_clip_bb.Max.x - reserved);
++            ellipsis_max_x = text_ellipsis_clip_bb.Max.x;
+         }
+         else
+         {
+-            text_ellipsis_clip_bb.Max.x -= button_sz * 1.00f;
++            text_ellipsis_clip_bb.Max.x = ImMax(text_ellipsis_clip_bb.Min.x, text_ellipsis_clip_bb.Max.x - button_sz);
+         }
+     }
+     LogSetNextTextDecoration("/", "\\");

@@ -1,0 +1,604 @@
+{
+  "schema": "alloy.mesh-bake.v1",
+  "workflow": "mesh-maps",
+  "engine": "Three.js / CPU MeshBVH",
+  "settings": {
+    "resolution": 512,
+    "channels": [
+      "normal",
+      "world-normal",
+      "object-normal",
+      "bent-normal",
+      "bent-world-normal",
+      "bent-object-normal",
+      "bevel-normal",
+      "occlusion",
+      "occlusion-secondary",
+      "curvature",
+      "convexity",
+      "cavity",
+      "thickness",
+      "height",
+      "vector-displacement",
+      "position",
+      "id",
+      "uv-island",
+      "uv",
+      "wireframe",
+      "coverage",
+      "alpha",
+      "bevel-mask",
+      "dust",
+      "dirt",
+      "edge-wear",
+      "base-color"
+    ],
+    "front": 0.15,
+    "back": 0.15,
+    "padding": 4,
+    "samples": 64,
+    "aoDistance": 0.35,
+    "thicknessRange": 2.5,
+    "curvatureRadius": 0.03,
+    "secondaryAoDistance": 1,
+    "bevelRadius": 0.025,
+    "bevelSamples": 8,
+    "bevelStrength": 1,
+    "maskStrength": 3,
+    "dustAxis": "+Y",
+    "dustFalloff": 2,
+    "wireWidth": 1,
+    "normalY": "+Y",
+    "projection": "ray",
+    "matchByName": false,
+    "nearestFallback": true
+  },
+  "sources": {
+    "low": [
+      {
+        "name": "Utah teapot",
+        "triangles": 4032
+      }
+    ],
+    "high": [
+      {
+        "name": "Utah teapot",
+        "triangles": 36672
+      }
+    ]
+  },
+  "sets": [
+    {
+      "name": "Utah teapot",
+      "resolution": 512,
+      "stats": {
+        "covered": 212048,
+        "hits": 212048,
+        "misses": 0,
+        "nearestFallbacks": 0,
+        "backfacesRejected": 46926,
+        "aoSampling": "cosine-weighted low-discrepancy hemisphere; world-position rotation",
+        "projectionAlgorithm": "nearest normal-attribute-facing cage intersection; bounded oriented nearest fallback",
+        "charts": 32,
+        "degenerate": 0,
+        "estimatedBytes": 123731968
+      },
+      "bounds": {
+        "min": [
+          -2,
+          -1.0499999523162842,
+          -1.3333333730697632
+        ],
+        "max": [
+          2.2893614768981934,
+          1.0499999523162842,
+          1.3333333730697632
+        ]
+      },
+      "chartPalette": [
+        {
+          "id": 1,
+          "rgb": [
+            121,
+            55,
+            158
+          ]
+        },
+        {
+          "id": 2,
+          "rgb": [
+            242,
+            110,
+            60
+          ]
+        },
+        {
+          "id": 3,
+          "rgb": [
+            107,
+            166,
+            218
+          ]
+        },
+        {
+          "id": 4,
+          "rgb": [
+            228,
+            221,
+            120
+          ]
+        },
+        {
+          "id": 5,
+          "rgb": [
+            93,
+            21,
+            23
+          ]
+        },
+        {
+          "id": 6,
+          "rgb": [
+            214,
+            76,
+            181
+          ]
+        },
+        {
+          "id": 7,
+          "rgb": [
+            79,
+            132,
+            83
+          ]
+        },
+        {
+          "id": 8,
+          "rgb": [
+            200,
+            187,
+            241
+          ]
+        },
+        {
+          "id": 9,
+          "rgb": [
+            65,
+            243,
+            143
+          ]
+        },
+        {
+          "id": 10,
+          "rgb": [
+            186,
+            42,
+            46
+          ]
+        },
+        {
+          "id": 11,
+          "rgb": [
+            51,
+            98,
+            204
+          ]
+        },
+        {
+          "id": 12,
+          "rgb": [
+            172,
+            153,
+            106
+          ]
+        },
+        {
+          "id": 13,
+          "rgb": [
+            37,
+            209,
+            8
+          ]
+        },
+        {
+          "id": 14,
+          "rgb": [
+            158,
+            8,
+            167
+          ]
+        },
+        {
+          "id": 15,
+          "rgb": [
+            23,
+            64,
+            69
+          ]
+        },
+        {
+          "id": 16,
+          "rgb": [
+            144,
+            119,
+            227
+          ]
+        },
+        {
+          "id": 17,
+          "rgb": [
+            9,
+            175,
+            129
+          ]
+        },
+        {
+          "id": 18,
+          "rgb": [
+            130,
+            230,
+            31
+          ]
+        },
+        {
+          "id": 19,
+          "rgb": [
+            251,
+            29,
+            190
+          ]
+        },
+        {
+          "id": 20,
+          "rgb": [
+            116,
+            85,
+            92
+          ]
+        },
+        {
+          "id": 21,
+          "rgb": [
+            237,
+            140,
+            250
+          ]
+        },
+        {
+          "id": 22,
+          "rgb": [
+            102,
+            196,
+            152
+          ]
+        },
+        {
+          "id": 23,
+          "rgb": [
+            223,
+            251,
+            54
+          ]
+        },
+        {
+          "id": 24,
+          "rgb": [
+            88,
+            51,
+            213
+          ]
+        },
+        {
+          "id": 25,
+          "rgb": [
+            209,
+            106,
+            115
+          ]
+        },
+        {
+          "id": 26,
+          "rgb": [
+            74,
+            162,
+            17
+          ]
+        },
+        {
+          "id": 27,
+          "rgb": [
+            195,
+            217,
+            175
+          ]
+        },
+        {
+          "id": 28,
+          "rgb": [
+            60,
+            17,
+            78
+          ]
+        },
+        {
+          "id": 29,
+          "rgb": [
+            181,
+            72,
+            236
+          ]
+        },
+        {
+          "id": 30,
+          "rgb": [
+            46,
+            128,
+            138
+          ]
+        },
+        {
+          "id": 31,
+          "rgb": [
+            167,
+            183,
+            40
+          ]
+        },
+        {
+          "id": 32,
+          "rgb": [
+            32,
+            239,
+            198
+          ]
+        }
+      ],
+      "channels": {
+        "normal": {
+          "label": "Tangent normal",
+          "type": "normal",
+          "group": "Normals",
+          "description": "Projected high-surface normal in the low mesh UV tangent frame.",
+          "colorSpace": "linear",
+          "space": "tangent",
+          "swatch": "normal",
+          "normalConvention": "OpenGL +Y"
+        },
+        "world-normal": {
+          "label": "World normal",
+          "type": "vector",
+          "group": "Normals",
+          "description": "Projected high-surface normal in scene/world axes; XYZ is encoded from −1…1 to 0…1.",
+          "colorSpace": "linear",
+          "space": "world",
+          "swatch": "normal-world"
+        },
+        "object-normal": {
+          "label": "Object normal",
+          "type": "vector",
+          "group": "Normals",
+          "description": "Projected normal in the low target's original local axes, undoing its imported world transform.",
+          "colorSpace": "linear",
+          "space": "object",
+          "swatch": "normal-object"
+        },
+        "bent-normal": {
+          "label": "Bent tangent normal",
+          "type": "normal",
+          "group": "Normals",
+          "description": "Average unoccluded hemisphere direction in the low UV tangent frame; uses AO distance and samples.",
+          "colorSpace": "linear",
+          "space": "tangent",
+          "swatch": "normal",
+          "normalConvention": "OpenGL +Y"
+        },
+        "bent-world-normal": {
+          "label": "Bent world normal",
+          "type": "vector",
+          "group": "Normals",
+          "description": "Average unoccluded hemisphere direction in world axes.",
+          "colorSpace": "linear",
+          "space": "world",
+          "swatch": "normal-world"
+        },
+        "bent-object-normal": {
+          "label": "Bent object normal",
+          "type": "vector",
+          "group": "Normals",
+          "description": "Average unoccluded hemisphere direction in the low target's original local axes.",
+          "colorSpace": "linear",
+          "space": "object",
+          "swatch": "normal-object"
+        },
+        "bevel-normal": {
+          "label": "Bevel normal",
+          "type": "normal",
+          "group": "Normals",
+          "description": "Geometry-derived rounded-edge normal approximation in tangent space. Changes shading, not topology.",
+          "colorSpace": "linear",
+          "space": "tangent",
+          "swatch": "normal",
+          "derived": true,
+          "normalConvention": "OpenGL +Y"
+        },
+        "occlusion": {
+          "label": "Ambient occlusion",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "Hemisphere visibility against the high mesh: white exposed, black occluded.",
+          "colorSpace": "linear",
+          "swatch": "ao"
+        },
+        "occlusion-secondary": {
+          "label": "Secondary AO",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "A second hemisphere-visibility bake with its own distance, useful for broader or finer occlusion.",
+          "colorSpace": "linear",
+          "swatch": "ao"
+        },
+        "curvature": {
+          "label": "Curvature",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "Signed local normal variation estimate: 0.5 flat, brighter convex, darker concave.",
+          "colorSpace": "linear",
+          "swatch": "curvature"
+        },
+        "convexity": {
+          "label": "Convexity",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "Positive signed curvature isolated as a bright-edge mask; controlled by curvature radius and mask strength.",
+          "colorSpace": "linear",
+          "swatch": "curvature"
+        },
+        "cavity": {
+          "label": "Cavity / concavity",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "Negative signed curvature isolated as a bright-recess mask, not an alias of ambient occlusion.",
+          "colorSpace": "linear",
+          "swatch": "ao"
+        },
+        "thickness": {
+          "label": "Thickness",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "Inward high-mesh ray distance divided by thickness range: white thicker, black thinner or no inward hit.",
+          "colorSpace": "linear",
+          "swatch": "height"
+        },
+        "height": {
+          "label": "Projection height",
+          "type": "scalar",
+          "group": "Surface",
+          "description": "Signed high-to-low distance along the low normal; 0.5 is zero, encoded using front/back range.",
+          "colorSpace": "linear",
+          "swatch": "height"
+        },
+        "vector-displacement": {
+          "label": "Vector displacement",
+          "type": "vector",
+          "group": "Surface",
+          "description": "Full projected high-minus-low XYZ offset in world axes; 0.5 per channel is zero. Not a multires sculpt solver.",
+          "colorSpace": "linear",
+          "space": "world",
+          "swatch": "normal-object"
+        },
+        "position": {
+          "label": "Position",
+          "type": "vector",
+          "group": "Coordinates & IDs",
+          "description": "Projected high-surface XYZ normalized to the source world bounding box.",
+          "colorSpace": "linear",
+          "swatch": "position"
+        },
+        "id": {
+          "label": "Object ID",
+          "type": "color",
+          "group": "Coordinates & IDs",
+          "description": "24-bit source-object identity, encoded little-endian RGB; not a UV chart or material ID.",
+          "colorSpace": "linear",
+          "swatch": "id"
+        },
+        "uv-island": {
+          "label": "UV island ID",
+          "type": "color",
+          "group": "Coordinates & IDs",
+          "description": "A stable, distinct display color for each connected low UV chart. The manifest records the chart palette.",
+          "colorSpace": "linear",
+          "swatch": "id"
+        },
+        "uv": {
+          "label": "UV coordinates",
+          "type": "vector",
+          "group": "Coordinates & IDs",
+          "description": "Low target UV0 coordinates in R/G, blue = 1. Coordinates, not a UV-island ID.",
+          "colorSpace": "linear",
+          "swatch": "position"
+        },
+        "wireframe": {
+          "label": "UV wireframe",
+          "type": "scalar",
+          "group": "Coordinates & IDs",
+          "description": "Low triangle edges in texture space, using a pixel-width control. Includes internal triangle edges.",
+          "colorSpace": "linear",
+          "swatch": "wireframe"
+        },
+        "coverage": {
+          "label": "UV coverage",
+          "type": "scalar",
+          "group": "Masks",
+          "description": "White on covered low UV texels; transparent/black outside. Independent of high projection hits.",
+          "colorSpace": "linear",
+          "swatch": "coverage"
+        },
+        "alpha": {
+          "label": "Alpha / hit mask",
+          "type": "scalar",
+          "group": "Masks",
+          "description": "White where a high surface was projected, black for holes/misses. Does not transfer material transparency.",
+          "colorSpace": "linear",
+          "swatch": "coverage"
+        },
+        "bevel-mask": {
+          "label": "Bevel mask",
+          "type": "scalar",
+          "group": "Masks",
+          "description": "Angular change caused by rounded-edge normal averaging, isolated as a grayscale mask.",
+          "colorSpace": "linear",
+          "swatch": "curvature",
+          "derived": true
+        },
+        "dust": {
+          "label": "Dust mask",
+          "type": "scalar",
+          "group": "Masks",
+          "description": "Derived upward-facing deposition mask, using world normal, chosen up axis, slope falloff and occlusion. Not a particle simulation.",
+          "colorSpace": "linear",
+          "swatch": "dust",
+          "derived": true
+        },
+        "dirt": {
+          "label": "Dirt mask",
+          "type": "scalar",
+          "group": "Masks",
+          "description": "Derived occlusion plus concavity mask, useful for recesses and grime. No painted dirt texture is invented.",
+          "colorSpace": "linear",
+          "swatch": "ao",
+          "derived": true
+        },
+        "edge-wear": {
+          "label": "Edge wear mask",
+          "type": "scalar",
+          "group": "Masks",
+          "description": "Derived convexity weighted by surface exposure, for exposed-edge masking; not simulated abrasion.",
+          "colorSpace": "linear",
+          "swatch": "curvature",
+          "derived": true
+        },
+        "base-color": {
+          "label": "Vertex color",
+          "type": "color",
+          "group": "Color",
+          "description": "Interpolated high vertex color, converted from linear to sRGB for PNG. White if no vertex color exists; no material texture transfer.",
+          "colorSpace": "sRGB",
+          "swatch": "color"
+        }
+      }
+    }
+  ],
+  "encodings": {
+    "height": "distance = (sample - .5) * 2 * max(front,back)",
+    "thickness": "sample * thicknessRange; distances beyond range saturate white, absent opposite hits stay black",
+    "id": "24-bit little-endian RGB; source ID 1",
+    "uvIslands": "see chartPalette"
+  },
+  "limitations": [
+    "Utah teapot: 8-segment low, 24-segment high; 32 packed Bezier charts.",
+    "RGBA PNGs are 8-bit. IDs and vertex-color outputs may legitimately be constant.",
+    "Tangent normal Z < 0 identifies opposite-facing or strongly folded projections; inspect separately.",
+    "Thickness is inward opposite-surface distance, not guaranteed wall thickness on an open or intersecting model."
+  ]
+}

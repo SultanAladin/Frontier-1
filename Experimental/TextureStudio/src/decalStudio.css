@@ -1,0 +1,262 @@
+.tp-decals-card > h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tp-decals-card > h2 > svg {
+  color: #d9b281;
+}
+.tp-decals-card > h2 > small {
+  margin-left: auto;
+}
+.tp-decals-card > h2 > button {
+  border: 0;
+  background: none;
+  width: 23px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  color: #a5a48c;
+}
+.tp-decals-card .tp-field-row > select {
+  max-width: 155px;
+}
+.tp-decal-preset {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+.tp-decal-preset > img {
+  width: 66px;
+  height: 66px;
+  flex: none;
+  object-fit: contain;
+  background: repeating-conic-gradient(#262622 0% 25%, #20201e 0% 50%) 0 0/12px
+    12px;
+  border: 1px solid #ffffff10;
+  border-radius: 8px;
+}
+.tp-decal-preset > div {
+  min-width: 0;
+}
+.tp-decal-preset strong {
+  font-weight: 500;
+  font-size: 11px;
+  display: block;
+}
+.tp-decal-preset small {
+  display: block;
+  font-size: 8px;
+  color: #8d8d7b;
+  line-height: 1.6;
+  margin: 4px 0;
+}
+.tp-decal-preset button {
+  background: none;
+  border: 0;
+  font-size: 9px;
+  padding: 3px 0;
+  min-height: 20px;
+  color: #d6bb92;
+}
+.tp-decal-placement-buttons,
+.tp-decal-gizmo-modes,
+.tp-decal-bottom-actions {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+.tp-decal-placement-buttons > button {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 10px;
+}
+.tp-decal-placement-buttons > button[aria-pressed="true"],
+.tp-decal-gizmo-modes > button[aria-pressed="true"] {
+  background: #3a3124;
+  border-color: #d9b28166;
+  color: #e0c299;
+}
+.tp-decal-component-list {
+  max-height: 220px;
+  overflow: auto;
+  margin: 12px 0;
+}
+.tp-decal-component {
+  display: flex;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  margin: 3px 0;
+}
+.tp-decal-component.selected {
+  border-color: #d9b28155;
+  background: #302a22;
+}
+.tp-decal-component > button {
+  border: 0;
+  background: none;
+}
+.tp-decal-component > button:first-child {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 7px;
+  gap: 8px;
+}
+.tp-decal-component img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex: none;
+}
+.tp-decal-component span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+}
+.tp-decal-component small {
+  display: block;
+  font-size: 8px;
+  color: #9a967e;
+  margin-top: 4px;
+}
+.tp-decal-component > button:last-child {
+  flex: none;
+  width: 25px;
+  padding: 3px;
+}
+.tp-add-decal {
+  width: 100%;
+  justify-content: flex-start;
+  color: #cbbb96;
+  font-size: 10px;
+  padding: 8px;
+}
+.tp-add-decal > span {
+  margin-left: auto;
+  font-size: 8px;
+  color: #8a896f;
+}
+.tp-decal-properties {
+  border-top: 1px solid #ffffff15;
+  margin-top: 16px;
+  padding-top: 15px;
+}
+.tp-decal-identity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 15px;
+  color: #ddc29a;
+}
+.tp-decal-identity > strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.tp-decal-identity > button {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  padding: 4px;
+}
+.tp-decal-gizmo-modes > button {
+  flex: 1;
+  font-size: 9px;
+}
+.tp-decal-reanchor {
+  width: 100%;
+  margin-bottom: 15px;
+  font-size: 9px;
+}
+.tp-decal-bottom-actions {
+  flex-wrap: wrap;
+}
+.tp-decal-bottom-actions > button {
+  flex: 1;
+  font-size: 9px;
+  padding: 6px;
+}
+.tp-decals-card .stamp-channel-chips > button {
+  font-size: 8px;
+  padding: 5px;
+  min-width: 0;
+}
+.tp-decals-card .stamp-channel-controls {
+  margin-top: 18px;
+}
+.tp-decal-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 3px 6px 3px calc(31px + var(--layer-depth, 0) * 10px);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.tp-decal-tree-row.selected {
+  background: #342c22;
+  border-color: #d9b28155;
+}
+.tp-decal-tree-row > button {
+  border: 0;
+  background: none;
+  padding: 2px;
+  min-height: 23px;
+}
+.tp-decal-tree-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 7px;
+}
+.tp-decal-tree-row img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex: none;
+}
+.tp-decal-tree-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 9px;
+}
+.tp-decal-tree-row small {
+  display: block;
+  font-size: 7px;
+  color: #9a977d;
+  margin-top: 2px;
+}
+.tp-decal-mode-note {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  max-width: calc(100% - 32px);
+  font-size: 9px;
+  line-height: 1.6;
+  color: #d8c399;
+  pointer-events: none;
+  z-index: 6;
+}
+.tp-scene-viewport.tp-decal-placing canvas {
+  cursor: crosshair;
+}
+@media (max-width: 620px) {
+  .tp-decal-mode-note {
+    left: 12px;
+    top: 10px;
+  }
+}
+
+.tp-decals-card .tp-decal-replace {
+  width: 100%;
+  font-size: 9px;
+  padding: 8px;
+  margin-top: 10px;
+  color: #c7b58f;
+}

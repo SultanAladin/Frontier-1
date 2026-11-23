@@ -1,0 +1,32 @@
+# SlateShape — exact shape: geometry, topology, sketch, feature order and reference resolution.
+#
+# 📝 A bounded point set together with the topology that bounds it, held exactly, independent of how it is
+#    displayed or who is editing it. The unit answers "what is this shape?" and nothing else.
+#
+# 🔴 `SlateFeature` folded in here rather than remaining a unit above. Its three groups were mutually
+#    entangled — Feature named Reference and Sketch, Reference named Feature, Sketch named both — so no
+#    cut through them was acyclic, and the boundary they were separated by did not exist in the source.
+#    A constraint solver is exact geometry: it would still be correct in a file with no undo and no panels.
+
+[unit]
+name    = "SlateShape"
+product = "StaticLibrary"
+# 📝 `Sequence` is the feature DAG and its recompute order — an ordered workflow, which is what the role
+#    names. It is NOT spelled `History`, which is a banned structural word.
+# 📝 `Record` holds the workspace record, its naming, its properties and its revisions. It sits here rather
+#    than in `SlateDocument` because `WorkspaceRecordStructure` names `ConstraintSpecification`,
+#    `DimensionSpecification` and `ReferenceSpecification` — moving it up would point that edge backwards.
+subject = [ "Geometry", "Topology", "Operation", "Discrete", "Sketch", "Reference", "Sequence", "Record" ]
+
+[requires]
+unit = [ "SlateMath" ]
+
+# 📝 earcut tessellates a profile into triangles and clipper2 performs the robust planar area operations.
+#    Both are reached only from `Sketch/ProfileArea`, and both arrived with the folded unit.
+[external]
+include = [ "ExternalPackages/earcut/include", "ExternalPackages/clipper2/CPP/Clipper2Lib/include" ]
+declare = []
+
+[link]
+unit    = [ "SlateMath" ]
+library = []

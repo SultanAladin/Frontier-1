@@ -1,0 +1,138 @@
+Path	ComputePipelines	RenderPipelines	ShaderModules	ComputePasses	RenderPasses	Dispatches	Draws	BindGroups	Submits	ReferencedShaders
+Source/AtmosphereColumnInstrument.js	0	0	0	0	0	0	0	0	0	
+Source/AtmosphereInspectorDashboard.js	0	0	0	0	0	0	0	0	0	
+Source/AtmosphereIntegrator.js	0	0	0	2	0	2	0	2	0	AtmosphereMultiple.wgsl,AtmosphereScattering.wgsl,AtmosphereTransmittance.wgsl
+Source/AtmosphereMediumLight.js	0	0	0	0	0	0	0	0	0	
+Source/BoundingStructure.js	0	0	0	0	0	0	0	0	0	
+Source/Cabin/AppSpecification.js	0	0	0	0	0	0	0	0	0	
+Source/Cabin/ClusterSequence.js	0	0	0	0	0	0	0	0	0	
+Source/Cabin/IconDepot.js	0	0	0	0	0	0	0	0	0	
+Source/Cabin/ScreenSequence.js	0	0	0	0	0	0	0	0	0	
+Source/CabinSequence.js	0	0	0	0	5	0	4	4	1	CabinOverlay.wgsl,ForwardRaster.wgsl,s own facets are drawn by ForwardRaster.wgsl
+Source/CabinStructure.js	0	0	0	0	0	0	0	0	0	
+Source/CelestialAtlas.js	0	0	0	0	0	0	0	0	0	
+Source/CelestialGizmoRenderer.js	0	0	0	0	0	0	0	0	0	
+Source/CelestialInspectorUI.js	0	0	0	0	0	0	0	0	0	
+Source/CelestialSolver.js	0	0	0	0	0	0	0	0	0	
+Source/ChaseCameraSolver.js	0	0	0	0	0	0	0	0	0	
+Source/CloudField.js	0	0	0	0	0	0	0	0	0	
+Source/CloudInspectorDashboard.js	0	0	0	0	0	0	0	0	0	
+Source/CloudLayerCard.js	0	0	0	0	0	0	0	0	0	
+Source/CloudPreviewWorker.js	0	0	0	0	0	0	0	0	0	
+Source/CloudSequence.js	0	0	0	1	0	1	0	1	0	CloudTrace.wgsl
+Source/CloudSettings.js	0	0	0	0	0	0	0	0	0	
+Source/CloudShadow.js	0	0	0	1	0	1	0	1	0	CloudShadowProject.wgsl
+Source/ClusterDebugOverlay.js	0	0	0	0	0	0	0	0	0	
+Source/ClusteredGeometry.js	0	0	0	1	0	1	1	1	0	GeometryClusterCull.wgsl
+Source/ConeSequence.js	0	0	0	0	0	0	0	0	0	
+Source/CourseStructure.js	0	0	0	0	0	0	0	0	0	
+Source/CsvDownload.js	0	0	0	0	0	0	0	0	0	
+Source/DeviceExchange.js	0	0	0	0	0	0	0	0	0	
+Source/DiagnosticsInspector.js	0	0	0	0	0	0	0	0	0	
+Source/DisplayProjection.js	0	0	0	6	1	7	1	12	0	DisplayAntialias.wgsl,DisplayExposure.wgsl,DisplayPresent.wgsl,DisplayRecombination.wgsl,FlareImage.wgsl,FlareVisibility.wgsl,InspectionMarch.wgsl
+Source/DriverInputIntegrator.js	0	0	0	0	0	0	0	0	0	
+Source/DrivingCameraMotion.js	0	0	0	0	0	0	0	0	0	
+Source/EditorControls.js	0	0	0	0	0	0	0	0	0	
+Source/EditorIcons.js	0	0	0	0	0	0	0	0	0	
+Source/EditorShell.js	0	0	0	0	0	0	0	0	0	
+Source/EditorTransforms.js	0	0	0	0	0	0	0	0	0	
+Source/EffectSequence.js	0	0	0	0	0	0	1	1	0	EffectRaster.wgsl
+Source/EnvironmentIconAssets.js	0	0	0	0	0	0	0	0	0	
+Source/EnvironmentInspector.js	0	0	0	0	0	0	0	0	0	
+Source/EnvironmentPersistence.js	0	0	0	0	0	0	0	0	0	
+Source/EnvironmentSettings.js	0	0	0	0	0	0	0	0	0	
+Source/FacetCodec.js	0	0	0	0	0	0	0	0	0	
+Source/FacetStructure.js	0	0	0	0	0	0	0	0	0	
+Source/FogInspectorDashboard.js	0	0	0	0	0	0	0	0	0	
+Source/FractureSequence.js	0	0	0	0	0	0	0	0	0	
+Source/FractureStructure.js	0	0	0	0	0	0	0	0	0	
+Source/GeometryClusters.js	0	0	0	0	0	0	0	0	0	
+Source/GeometryHierarchy.js	0	0	0	0	0	0	0	0	0	
+Source/GeometryHierarchyRuntime.js	0	0	0	0	0	0	0	0	0	
+Source/HardwareMetrics.js	0	0	0	0	0	0	0	0	0	
+Source/HierarchyDebugOverlay.js	0	0	0	0	0	0	0	0	0	
+Source/HudLayout.js	0	0	0	0	0	0	0	0	0	
+Source/HullStructure.js	0	0	0	0	0	0	0	0	0	
+Source/IlluminationHost.js	0	0	0	0	0	0	0	0	1	AtmosphereMedium.wgsl,AtmosphereMultiple.wgsl,AtmosphereScattering.wgsl,AtmosphereTransmittance.wgsl,CabinOverlay.wgsl,CabinVolume.wgsl,CardCapture.wgsl,CardDirect.wgsl,CardFinal.wgsl,CardIrradiance.wgsl,CardProjection.wgsl,CardRadiosity.wgsl,CardSampling.wgsl,CelestialSky.wgsl,CloudField.wgsl,CloudPresent.wgsl,CloudRecords.wgsl,CloudShadowProject.wgsl,CloudShadowRecords.wgsl,CloudShadowSample.wgsl,CloudTrace.wgsl,ClusterDebugFallback.wgsl,ClusteredLights.wgsl,DirectRadiance.wgsl,DiscrepancySequence.wgsl,DisplayAntialias.wgsl,DisplayExposure.wgsl,DisplayPresent.wgsl,DisplayRecombination.wgsl,DistanceRecords.wgsl,DistanceTransfer.wgsl,DistanceTraversal.wgsl,DistanceUnion.wgsl,EffectRaster.wgsl,EffectRecords.wgsl,FireIllumination.wgsl,FlareImage.wgsl,FlareVisibility.wgsl,FogMedium.wgsl,ForwardRaster.wgsl,FragmentDistance.wgsl,FrameDescriptor.wgsl,GeometryClusterCull.wgsl,HiZDownsample.wgsl,HiZPyramid.wgsl,InspectionMarch.wgsl,LensFlare.wgsl,LightningRaster.wgsl,MaterialResolve.wgsl,NativeTwilight.wgsl,NightStars.wgsl,PackingCodec.wgsl,PlumeAdvection.wgsl,PlumeMarch.wgsl,PlumePressure.wgsl,PlumeRecords.wgsl,PlumeVorticity.wgsl,PrecipitationCompute.wgsl,PrecipitationRaster.wgsl,PrecipitationRecords.wgsl,PrecipitationSurface.wgsl,RayTraversal.wgsl,ReflectionTraversal.wgsl,ReservoirRecords.wgsl,ReservoirSpatial.wgsl,ReservoirTemporal.wgsl,SceneRecords.wgsl,ShadowRaster.wgsl,SkyProjection.wgsl,SparkRaster.wgsl,SurfaceRaster.wgsl,SurfaceReflectance.wgsl,VarianceTemporal.wgsl,VarianceUpsample.wgsl,VarianceWavelet.wgsl,VehicleVisual.wgsl,VirtualizedGeometryCull.wgsl,VisibilityRaster.wgsl
+Source/InspectorCategories.js	0	0	0	0	0	0	0	0	0	
+Source/InspectorPages.js	0	0	0	0	0	0	0	0	0	
+Source/JoltWorld.js	0	0	0	0	0	0	0	0	0	
+Source/LevelStructure.js	0	0	0	0	0	0	0	0	0	
+Source/LightingSystem.js	0	0	0	0	0	0	0	0	0	
+Source/LightningCloudAnchor.js	0	0	0	0	0	0	0	0	0	
+Source/LightningSequence.js	0	0	0	0	1	0	1	1	0	LightningRaster.wgsl,SparkRaster.wgsl
+Source/LightningSettings.js	0	0	0	0	0	0	0	0	0	
+Source/LightningStorm.js	0	0	0	0	0	0	0	0	0	
+Source/LocalCloudPlacement.js	0	0	0	0	0	0	0	0	0	
+Source/MaterialSpecification.js	0	0	0	0	0	0	0	0	0	
+Source/MoonInspectorInfographics.js	0	0	0	0	0	0	0	0	0	
+Source/NativeCloudPanel.js	0	0	0	0	0	0	0	0	0	
+Source/NativeEnvironmentControls.js	0	0	0	0	0	0	0	0	0	
+Source/NativeEnvironmentPanels.js	0	0	0	0	0	0	0	0	0	
+Source/NativeFlarePanel.js	0	0	0	0	0	0	0	0	0	
+Source/NativeFlareWorker.js	0	0	0	0	0	0	0	0	0	
+Source/NativeLensFlareKernel.js	0	0	0	0	0	0	0	0	0	
+Source/NativeLightningPanel.js	0	0	0	0	0	0	0	0	0	
+Source/NativeLocalFogPanel.js	0	0	0	0	0	0	0	0	0	
+Source/NativeMoonPreview.js	0	0	0	0	0	0	0	0	0	
+Source/NativeWindPanel.js	0	0	0	0	0	0	0	0	0	
+Source/ObservatorySlider.js	0	0	0	0	0	0	0	0	0	
+Source/OccupantDistanceSpace.js	0	0	0	2	0	2	0	2	1	DistanceTransfer.wgsl,FragmentDistance.wgsl
+Source/OverlayDock.js	0	0	0	0	0	0	0	0	0	
+Source/ParticleWorkspace.js	0	0	0	0	0	0	0	0	0	
+Source/PlumeSourceProjection.js	0	0	0	0	0	0	0	0	0	
+Source/PlumeSpace.js	0	0	0	2	0	9	0	10	0	PlumeAdvection.wgsl,PlumeMarch.wgsl,PlumePressure.wgsl,PlumeVorticity.wgsl
+Source/PrecipitationReceivers.js	0	0	0	0	0	0	0	0	0	
+Source/PrecipitationSequence.js	0	0	0	1	2	1	1	3	1	PrecipitationCompute.wgsl,PrecipitationRaster.wgsl,PrecipitationSurface.wgsl
+Source/PreviewStartup.js	0	0	0	0	0	0	0	0	0	
+Source/RayTracingSpace.js	0	0	0	0	0	0	0	0	0	
+Source/RecoveryDirector.js	0	0	0	0	0	0	0	0	0	
+Source/ResamplingSequence.js	0	0	0	2	0	3	0	9	0	ReflectionTraversal.wgsl,ReservoirSpatial.wgsl,ReservoirTemporal.wgsl
+Source/RigidBodyWorld.js	0	0	0	0	0	0	0	0	0	
+Source/SceneDistanceSpace.js	0	0	0	1	0	1	0	1	0	DistanceUnion.wgsl
+Source/SessionTelemetry.js	0	0	0	0	0	0	0	0	0	
+Source/ShaderInterchange.js	1	1	1	0	0	0	0	0	0	
+Source/ShadowProjection.js	0	0	0	0	1	0	1	1	0	ShadowRaster.wgsl
+Source/SkyLutPreview.js	0	0	0	0	0	0	0	0	1	
+Source/SlateCabinFittings.js	0	0	0	0	0	0	0	0	0	
+Source/SlateCabinLayout.js	0	0	0	0	0	0	0	0	0	
+Source/SliderControl.js	0	0	0	0	0	0	0	0	0	
+Source/SmokeSequence.js	0	0	0	0	0	0	0	0	0	
+Source/SnowfallModel.js	0	0	0	0	0	0	0	0	0	
+Source/SnowfallSequence.js	0	0	0	0	1	0	1	1	0	SnowfallRaster.wgsl
+Source/SparkCollision.js	0	0	0	0	0	0	0	0	0	
+Source/SparkSequence.js	0	0	0	0	1	0	1	1	0	SparkRaster.wgsl
+Source/SpatialGrid.js	0	0	0	0	0	0	0	0	0	
+Source/StarCatalogue.js	0	0	0	0	0	0	0	0	0	
+Source/StarsInspectorInfographics.js	0	0	0	0	0	0	0	0	0	
+Source/StressLayout.js	0	0	0	0	0	0	0	0	0	
+Source/StressSequence.js	0	0	0	0	0	0	0	0	0	
+Source/SunInspectorDashboard.js	0	0	0	0	0	0	0	0	0	
+Source/SurfaceCardDepot.js	0	0	0	1	1	3	1	7	1	CardCapture.wgsl,CardDirect.wgsl,CardFinal.wgsl,CardRadiosity.wgsl
+Source/SurfaceDepositGrid.js	0	0	0	0	0	0	0	0	0	
+Source/SurfaceDepositMesh.js	0	0	0	0	0	0	0	0	0	
+Source/SurfaceDepositSequence.js	0	0	0	0	1	0	1	1	0	SurfaceDepositRaster.wgsl
+Source/SurfaceProjection.js	0	0	0	1	1	1	2	5	0	DirectRadiance.wgsl,SurfaceRaster.wgsl
+Source/ThirdParty/three/three.module.js	0	0	0	0	0	0	0	0	0	
+Source/ThunderAudio.js	0	0	0	0	0	0	0	0	0	
+Source/TrainingSequence.js	0	0	0	0	0	0	0	0	0	
+Source/TransformGizmo.js	0	0	0	0	0	0	0	0	0	
+Source/TransformProjection.js	0	0	0	0	0	0	0	0	0	
+Source/TyreCarcassProjection.js	0	0	0	0	0	0	0	0	0	
+Source/TyreContinuumElasticity.js	0	0	0	0	0	0	0	0	0	
+Source/TyreMarkDepot.js	0	0	0	0	0	0	0	0	0	
+Source/TyreSlipSolver.js	0	0	0	0	0	0	0	0	0	
+Source/TyreThermalSolver.js	0	0	0	0	0	0	0	0	0	
+Source/VarianceIntegrator.js	0	0	0	1	0	3	0	3	0	VarianceTemporal.wgsl,VarianceUpsample.wgsl,VarianceWavelet.wgsl
+Source/VehicleAppearance.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleCollisionOverlay.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleComponents.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleOrbitCamera.js	0	0	0	0	0	0	0	0	0	
+Source/VehiclePicking.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleSolver.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleSpecification.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleSystemsInspector.js	0	0	0	0	0	0	0	0	0	
+Source/VehicleVisualState.js	0	0	0	0	0	0	0	0	0	
+Source/VirtualizedGeometry.js	0	0	0	7	2	7	0	10	0	ClusterDebugFallback.wgsl,HiZDownsample.wgsl,HiZPyramid.wgsl,MaterialResolve.wgsl,VirtualizedGeometryCull.wgsl,VisibilityRaster.wgsl
+Source/VisibilityResolve.js	0	0	0	0	0	0	0	0	0	
+Source/WindSequence.js	0	0	0	0	0	0	0	0	0	

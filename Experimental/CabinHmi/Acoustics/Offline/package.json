@@ -1,0 +1,9 @@
+{
+  "name": "acoustics-offline",
+  "private": true,
+  "description": "Offline renderer for the CabinHmi vehicle sound library (MP3 encoding via lamejs).",
+  "type": "module",
+  "dependencies": {
+    "lamejs": "^1.2.1"
+  }
+}

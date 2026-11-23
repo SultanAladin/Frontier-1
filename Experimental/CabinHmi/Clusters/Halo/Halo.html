@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<!--
+    HALO — DASHBOARD CLUSTER FOR AFTERGLOW (car B)
+    🧩 The display behind the steering wheel, separate from the Afterglow centre HMI. Round halo speedometer after
+       the round-speedo reference with its power arc and fuel arc (F … E), the G compass, frosted lilac glass over a
+       dusk gradient. Drive modes: Cruise · Eco · Sport · Race. Fuel arc and fuel card always on.
+    🚩 Name proposal awaiting approval.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Halo · Afterglow dashboard cluster</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../../Shared/DisplayKit.css">
+    <link rel="stylesheet" href="../ClusterDeck.css">
+    <link rel="stylesheet" href="Halo.css">
+</head>
+<body>
+<div class="Stage" id="Stage">
+    <div class="Dash Halo" id="Dash" data-mode="Cruise">
+        <div class="Dusk"><i class="Sun"></i><i class="Dune A"></i><i class="Dune B"></i></div>
+        <header class="DashTop">
+            <div class="TopLeft"><b id="DashClock">06:00</b><span>Thursday · 18°</span></div>
+            <div class="TopRight"><span id="ModeLine"></span><b class="ModeName" id="ModeName">Cruise</b></div>
+        </header>
+        <div class="Telltales" id="Telltales"></div>
+        <div class="ShiftLights" id="ShiftLights"></div>
+
+        <section class="Wing Left">
+            <div class="Group" data-modes="Cruise"><div data-panel="Route"></div></div>
+            <div class="Group" data-modes="Eco"><div data-panel="Coach"></div></div>
+            <div class="Group" data-modes="Sport"><div data-panel="Revs"></div><div data-panel="Engine"></div></div>
+            <div class="Group" data-modes="Race"><div data-panel="Revs"></div><div data-panel="Lap"></div></div>
+            <div class="FuelDock" data-panel="Fuel"></div>
+        </section>
+        <section class="Core" id="Core"></section>
+        <section class="Wing Right">
+            <div class="Group" data-modes="Cruise"><div data-panel="Media"></div><div data-panel="Trip"></div></div>
+            <div class="Group" data-modes="Eco"><div data-panel="EcoHistory"></div><div data-panel="Trip"></div></div>
+            <div class="Group" data-modes="Sport"><div data-panel="GCompass"></div></div>
+            <div class="Group" data-modes="Race"><div data-panel="Tyres"></div><div data-panel="GForce"></div></div>
+        </section>
+        <div class="Odo">ODO <b id="OdoValue">0</b> km</div>
+        <div class="ModeWash" id="ModeWash"></div>
+    </div>
+    <nav class="Wheel" id="Wheel"></nav>
+</div>
+<div class="ProtoTag">Dashboard cluster · Halo (Afterglow) · awaiting approval</div>
+
+<script type="module">
+    import { Powertrain } from '../../Shared/Powertrain.js';
+    import { MountDeck } from '../ClusterDeck.js';
+    import { MountHaloDial, MountGCompass } from './HaloDial.js';
+
+    // Afterglow: 3.0 petrol grand tourer, eight speeds, 70 L tank.
+    const Train = new Powertrain({ Ratios: [4.7, 3.1, 2.1, 1.67, 1.29, 1.0, 0.84, 0.67], Final: 3.15, Redline: 6500, Limit: 7000, Mass: 1850, PeakTorque: 500, Tank: 70, Style: 'Comfort' });
+    Train.Fuel = 0.71;
+    let Deck = null;
+    const Core = MountHaloDial(document.getElementById('Core'), Train, { ModeName: () => (Deck ? Deck.Mode : 'Cruise') });
+    Deck = MountDeck({
+        Car: 'Afterglow', Train, Core, Hmi: '../../Afterglow/Afterglow.html',
+        Song: { Title: 'Dune Static', Artist: 'Rosa Vale', Length: 231 },
+        Custom: { GCompass: (Root) => MountGCompass(Root, Train) },
+    });
+</script>
+</body>
+</html>

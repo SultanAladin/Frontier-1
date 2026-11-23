@@ -1,0 +1,145 @@
+# Tyre Drift Smoke — Fluid Studio scene preset (Studio). A spinning tyre circling the pad: dense white rubber smoke trailing behind, hugging the ground and shearing in the crosswind.
+# Converted from the legacy preset object by script; scene fingerprint 3d9ef3a8ea44ce5e (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 11
+Id = "preset-tyre-drift"
+Name = "Tyre Drift Smoke"
+Family = "Studio"
+Icon = "tyre"
+Summary = "A spinning tyre circling the pad: dense white rubber smoke trailing behind, hugging the ground and shearing in the crosswind."
+Boundary = "OpenAll"
+
+[Grid]
+Resolution = [96, 36, 96]
+Size = [7, 2.6, 7]
+
+[Render]
+Exposure = 1.1
+
+[Debris]
+Visible = true
+Count = 768
+Lifetime = 2.5
+Size = 2
+Drag = 0.6
+Bounce = 0.3
+Glow = 0.05
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.3, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.12, AmbientTemperature = 0.0, Cooling = 0.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.3 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.994, VelocityDissipation = 0.998 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#d2d2d6", Absorption = 3.0, Anisotropy = 0.55, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Rear Tyre"
+  Shape = "Disc"
+  Position = [0, -1.18, 0]
+  Radius = 0.26
+  Density = 2.2
+  Temperature = 0.4
+  Fuel = 0
+  Velocity = [-2.8, 0.7, 0]
+  Jitter = 0.45
+  Orientation = [1, 0, 0]
+  PathKind = "Circle"
+  PathRadius = 1.9
+  PathSpeed = 1.15
+  Debris = 0.05
+  DebrisSpeed = 3.5
+  DebrisKind = "Rubble"
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Crosswind"
+  Position = [0, 0, 0]
+  Strength = 0.45
+  Direction = [0.3, 0, 1]
+  Falloff = "Constant"
+  Frequency = 0.4
+  Secondary = 0.5
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 1, 0]
+  Strength = 1.4
+  Radius = 3.4
+  Falloff = "Plateau"

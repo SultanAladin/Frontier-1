@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lighting Icon Vocabulary — 3D Material Set</title>
+<style>
+  :root{
+    --bg:#0b0b0e; --panel:#141419; --panel2:#101015; --border:#23232b;
+    --txt:#e6e6ea; --dim:#8a8a94; --faint:#5a5a64; --head:#fff; --accent:#ffb347;
+  }
+  html,body{background:var(--bg);color:var(--txt);
+    font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:28px 30px 60px}
+  h1{color:var(--head);font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:.2px}
+  p.sub{color:var(--dim);max-width:760px;margin:0 0 22px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
+  .bar button{background:var(--panel);color:var(--dim);border:1px solid var(--border);
+    border-radius:7px;padding:6px 11px;font:inherit;font-size:12px;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s}
+  .bar button:hover{border-color:#3a3a46;color:var(--txt)}
+  .bar button.on{border-color:var(--accent);color:#ffe3b0;background:#1d1710}
+  h2{color:var(--head);font-size:15px;font-weight:600;margin:34px 0 3px;
+     border-left:3px solid var(--accent);padding-left:10px}
+  h2 span{color:var(--faint);font-weight:500;font-size:12px;margin-left:8px}
+  p.catnote{color:var(--dim);margin:0 0 12px;padding-left:13px;font-size:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:14px}
+  .cell{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+        padding:14px 11px 12px;display:flex;flex-direction:column;align-items:center;gap:9px;
+        cursor:pointer;transition:border-color .15s,transform .15s,background .15s}
+  .cell:hover{border-color:#3a3a46;transform:translateY(-2px)}
+  .cell.copied{border-color:#5ad469}
+  .cell > svg{width:76px;height:76px;display:block}
+  .cap{font-size:11px;color:var(--dim);text-align:center;line-height:1.35}
+  .cap b{display:block;color:var(--txt);font-weight:600;font-size:11.5px;margin-bottom:2px}
+  .strip{display:flex;gap:9px;align-items:flex-end;border-top:1px solid var(--border);
+         padding-top:9px;margin-top:2px;width:100%;justify-content:center}
+  .strip svg{display:block}
+  .s16 svg{width:16px;height:16px}
+  .s24 svg{width:24px;height:24px}
+  .s32 svg{width:32px;height:32px}
+  /* light-tile inspection mode — proves the set reads on a pale panel too */
+  body.pale .cell{background:#eceff4;border-color:#d3d8e0}
+  body.pale .cell:hover{border-color:#b6bdc9}
+  body.pale .cap{color:#5d6470}
+  body.pale .cap b{color:#1b1f27}
+  body.pale .strip{border-top-color:#d3d8e0}
+  footer{color:var(--faint);margin-top:44px;font-size:11px;
+         border-top:1px solid var(--border);padding-top:14px}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+    background:#1b2a1d;border:1px solid #33613a;color:#b9ecc2;padding:8px 15px;border-radius:8px;
+    font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<h1>Lighting Icon Vocabulary</h1>
+<p class="sub">A lighting-authoring icon set drawn on a <code>0 0 160 160</code> canvas with a shared
+3D material system — radial/linear gradient bodies, blur and glow filters, grounding shadows, and
+specular highlights. Every <code>&lt;defs&gt;</code> entry is suffixed with the icon's unique id, so
+any number of icons coexist on one page without collisions. Click a tile to copy its standalone SVG.</p>
+
+<div class="bar">
+  <button id="paleToggle">Pale tile</button>
+  <button id="gridToggle">Alignment grid</button>
+  <span style="color:var(--faint);font-size:12px" id="tally"></span>
+</div>
+
+<div id="root"></div>
+
+<footer>Lighting Icon Vocabulary · 5 categories · shared gradient / filter / grounding material system ·
+self-contained SVG · namespaced defs ids.</footer>
+
+<div id="toast">SVG copied</div>
+
+<script>
+//====================================================================================================================================
+//                                                    3D ICON MATERIAL SYSTEM
+//====================================================================================================================================
+// Shared gradient / filter / grounding helpers used by every icon builder below.
+// Each icon receives a unique `id` string; every local <defs> entry is suffixed with it so IDs never collide.
+
+const GOLD   = ['#fff6da','#ffcf66','#ffb347','#c97a1f','#6b4712'];
+const VIOLET = ['#d8ceff','#9d7cff','#6f4de0','#3a2a78','#1c1440'];
+const TEAL   = ['#e3fffa','#7fe6d8','#3fd8c8','#1f8a7d','#0d3a35'];
+const GREEN  = ['#e3ffe6','#8de89a','#5ad469','#2f8f3e','#163d1c'];
+const BLUE   = ['#e6f4ff','#7fc4ff','#4db3ff','#2a6fa8','#123048'];
+const CHROME = ['#ffffff','#d8ecfa','#8fb6d9','#4c6d8c','#1c2732'];
+
+function stops(list){
+  return list.map(([o,c,op]) => `<stop offset="${o}" stop-color="${c}"${op!==undefined?` stop-opacity="${op}"`:''}/>`).join('');
+}
+function radial(defs,id,cList,opts){
+  const o=opts||{}, cx=o.cx??0.35, cy=o.cy??0.28, r=o.r??0.85;
+  defs.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}">${stops(cList)}</radialGradient>`);
+  return `url(#${id})`;
+}
+function linear(defs,id,cList,opts){
+  const o=opts||{}, x1=o.x1??0, y1=o.y1??0, x2=o.x2??1, y2=o.y2??0;
+  defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops(cList)}</linearGradient>`);
+  return `url(#${id})`;
+}
+function mat(defs,id,pal,opts){ return radial(defs,id,[['0%',pal[0]],['48%',pal[1]],['100%',pal[2]]],opts); }
+function matL(defs,id,pal,opts){ return linear(defs,id,[['0%',pal[0]],['55%',pal[1]],['100%',pal[2]]],opts); }
+function blurF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}"/></filter>`); return `url(#${id})`; }
+function glowF(defs,id,dev){ defs.push(`<filter id="${id}" x="-120%" y="-120%" width="340%" height="340%"><feGaussianBlur stdDeviation="${dev}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`); return `url(#${id})`; }
+function shadow(defs,id,cx,cy,rx,ry,op){
+  const o=op??0.5;
+  const f=radial(defs,id,[['0%','#000',o],['70%','#000',o*0.35],['100%','#000',0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${f}"/>`;
+}
+function specular(cx,cy,rx,ry,op){ return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" opacity="${op??0.4}"/>`; }
+
+//====================================================================================================================================
+//                                                    CATEGORY REGISTRY
+//====================================================================================================================================
+const CATS = [
+  ['Sources',    'Light Sources',               'The fixtures and surfaces that emit light'],
+  ['Shadow',     'Shadow & Occlusion',          'How light is blocked, softened, or contact-darkened'],
+  ['Volumetric', 'Volumetrics & Atmosphere',    'Light interacting with air, fog, and the camera lens'],
+  ['GI',         'Global Illumination & Baking','Indirect bounce light and precomputed lighting data'],
+  ['Utility',    'Controls & Utility',          'Parameters and rig tools for authoring light'],
+];
+
+const ICONS = [];
+function add(name, cat, note, build){ ICONS.push({name, cat, note, build}); }
+
+//====================================================================================================================================
+//                                                    LIGHT SOURCES
+//====================================================================================================================================
+
+// 📝 Point light reads as a dimensionless core inside a falloff sphere — the latitude/meridian pair
+// says "omnidirectional volume", never the spiky solar disc that a ray corona produces.
+add('Point Light','Sources','Omnidirectional — a dimensionless point falling off with distance',(defs,id)=>{
+  const Core=radial(defs,id+'g1',[['0%','#ffffff'],['42%',GOLD[1]],['100%',GOLD[2]]],{cx:0.4,cy:0.34,r:0.85});
+  const Falloff=radial(defs,id+'g2',[['0%',GOLD[1],0.40],['52%',GOLD[2],0.15],['100%',GOLD[2],0]],{cx:0.5,cy:0.5,r:0.5});
+  const Glow=glowF(defs,id+'f1',3.5);
+  return `${shadow(defs,id+'s1',80,136,26,6,0.4)}
+    <circle cx="80" cy="78" r="52" fill="${Falloff}"/>
+    <circle cx="80" cy="78" r="46" fill="none" stroke="${GOLD[2]}" stroke-width="1.2" opacity="0.32"/>
+    <ellipse cx="80" cy="78" rx="46" ry="15" fill="none" stroke="${GOLD[1]}" stroke-width="1.1" opacity="0.28"/>
+    <ellipse cx="80" cy="78" rx="15" ry="46" fill="none" stroke="${GOLD[1]}" stroke-width="1.1" opacity="0.28"/>
+    <circle cx="80" cy="78" r="26" fill="none" stroke="${GOLD[1]}" stroke-width="1" opacity="0.22"/>
+    <g filter="${Glow}"><circle cx="80" cy="78" r="11" fill="${Core}"/></g>
+    ${specular(76,74,3.6,2.4,0.6)}`;
+});
+
+// 📝 Fixture head is a chrome barrel with a warm lens at the mouth; the lens rx matches the cone's
+// top edge (67..93) so the beam leaves the glass rather than a flat grey slab.
+add('Spot Light','Sources','Focused conical beam from a fixed emitter',(defs,id)=>{
+  const Beam=linear(defs,id+'g1',[['0%',GOLD[1],0.9],['100%',GOLD[2],0]],{x1:0,y1:0,x2:0,y2:1});
+  const Barrel=linear(defs,id+'g2',[['0%',CHROME[1]],['42%',CHROME[2]],['100%',CHROME[4]]],{x1:0,y1:0,x2:1,y2:0});
+  const Lens=radial(defs,id+'g3',[['0%','#ffffff'],['38%',GOLD[1]],['100%',GOLD[2]]],{cx:0.42,cy:0.4,r:0.8});
+  const Pool=radial(defs,id+'g4',[['0%',GOLD[1],0.85],['100%',GOLD[2],0]],{cx:0.5,cy:0.5,r:0.55});
+  const Soft=blurF(defs,id+'f1',4);
+  return `<ellipse cx="80" cy="129" rx="30" ry="8" fill="${Pool}" filter="${Soft}"/>
+    <polygon points="67,52 93,52 116,124 44,124" fill="${Beam}"/>
+    <rect x="75" y="20" width="10" height="12" rx="3" fill="${CHROME[3]}"/>
+    <path d="M70,30 H90 A4,4 0 0 1 94,34 L96,50 A3,3 0 0 1 93,53 H67 A3,3 0 0 1 64,50 L66,34 A4,4 0 0 1 70,30 Z" fill="${Barrel}"/>
+    <rect x="68" y="35" width="3.5" height="14" rx="1.75" fill="#ffffff" opacity="0.35"/>
+    <ellipse cx="80" cy="52" rx="13" ry="4.2" fill="${Lens}"/>`;
+});
+
+// 📝 The defining trait is parallelism: four beams of identical length and slope land on one ground
+// line at evenly spaced contact points, so the eye reads "rays from infinity", not "rays from here".
+add('Directional Light','Sources','Parallel rays from an infinitely distant source',(defs,id)=>{
+  const Disc=mat(defs,id+'g1',GOLD,{cx:0.32,cy:0.28,r:0.9});
+  const Glow=glowF(defs,id+'f1',3);
+  let Beams='', Heads='', Contacts='';
+  for(const Landing of [66,84,102,120]){
+    const StartX=(Landing-28.3).toFixed(1), TailX=(Landing-4.2).toFixed(1);
+    Beams   +=`<line x1="${StartX}" y1="89.7" x2="${TailX}" y2="113.8" stroke="${GOLD[2]}" stroke-width="4.5" stroke-linecap="round" opacity="0.85"/>`;
+    Heads   +=`<polygon points="${Landing},118 ${(Landing-3.2).toFixed(1)},109.9 ${(Landing-8.1).toFixed(1)},114.8" fill="${GOLD[1]}"/>`;
+    Contacts+=`<ellipse cx="${Landing}" cy="120" rx="7" ry="2.2" fill="${GOLD[1]}" opacity="0.3"/>`;
+  }
+  return `<line x1="46" y1="120" x2="136" y2="120" stroke="#8a8a92" stroke-width="1.5" opacity="0.45"/>
+    ${Contacts}${Beams}${Heads}
+    <g filter="${Glow}"><circle cx="46" cy="48" r="17" fill="${Disc}"/></g>
+    ${specular(39,40,5.5,3.4,0.5)}`;
+});
+
+// 📝 Rect and Disc are told apart by the SHAPE OF THE POOL they throw, not by the panel alone:
+// this one spills a soft-edged rectangle, the disc below spills a round one.
+add('Rect Area Light','Sources','A flat panel emitter — soft, directional, editorial',(defs,id)=>{
+  const Face=linear(defs,id+'g1',[['0%',GOLD[0]],['45%',GOLD[1]],['100%',GOLD[2]]],{x1:0,y1:0,x2:1,y2:1});
+  const Volume=linear(defs,id+'g2',[['0%',GOLD[1],0.34],['100%',GOLD[2],0.04]],{x1:0,y1:0,x2:0,y2:1});
+  const Pool=linear(defs,id+'g3',[['0%',GOLD[1],0.55],['100%',GOLD[2],0.12]],{x1:0,y1:0,x2:0,y2:1});
+  const Soft=blurF(defs,id+'f1',5);
+  return `<polygon points="40,64 120,64 130,130 30,130" fill="${Volume}" filter="${Soft}"/>
+    <polygon points="50,116 110,116 122,130 38,130" fill="${Pool}" filter="${Soft}"/>
+    <line x1="40" y1="64" x2="30" y2="130" stroke="${GOLD[2]}" stroke-width="1.2" opacity="0.35"/>
+    <line x1="120" y1="64" x2="130" y2="130" stroke="${GOLD[2]}" stroke-width="1.2" opacity="0.35"/>
+    <rect x="74" y="22" width="12" height="13" rx="3" fill="${CHROME[3]}"/>
+    <polygon points="52,34 108,34 120,62 40,62" fill="${Face}" stroke="${GOLD[3]}" stroke-width="1.5" stroke-linejoin="round"/>
+    <line x1="66" y1="34" x2="58" y2="62" stroke="${GOLD[3]}" stroke-width="1" opacity="0.45"/>
+    <line x1="94" y1="34" x2="102" y2="62" stroke="${GOLD[3]}" stroke-width="1" opacity="0.45"/>
+    ${specular(68,44,11,4,0.4)}`;
+});
+
+add('Disc Area Light','Sources','A round panel emitter mounted on a small yoke',(defs,id)=>{
+  const Face=radial(defs,id+'g1',[['0%','#ffffff'],['40%',GOLD[1]],['100%',GOLD[2]]],{cx:0.38,cy:0.32,r:0.85});
+  const Yoke=linear(defs,id+'g2',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:0,y2:1});
+  const Volume=linear(defs,id+'g3',[['0%',GOLD[1],0.30],['100%',GOLD[2],0.03]],{x1:0,y1:0,x2:0,y2:1});
+  const Soft=blurF(defs,id+'f1',6);
+  return `<polygon points="50,62 110,62 124,126 36,126" fill="${Volume}" filter="${Soft}"/>
+    <ellipse cx="80" cy="124" rx="44" ry="12" fill="${GOLD[2]}" opacity="0.2" filter="${Soft}"/>
+    <ellipse cx="80" cy="124" rx="26" ry="7" fill="${GOLD[1]}" opacity="0.42" filter="${Soft}"/>
+    <rect x="74" y="17" width="12" height="13" rx="3" fill="${CHROME[3]}"/>
+    <rect x="56" y="28" width="48" height="6" rx="3" fill="${Yoke}"/>
+    <path d="M60,34 L52,52" stroke="${CHROME[3]}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M100,34 L108,52" stroke="${CHROME[3]}" stroke-width="3.5" stroke-linecap="round"/>
+    <ellipse cx="80" cy="56" rx="32" ry="13" fill="${Face}" stroke="${GOLD[3]}" stroke-width="1.5"/>
+    <ellipse cx="80" cy="56" rx="21" ry="8" fill="none" stroke="${GOLD[3]}" stroke-width="1" opacity="0.4"/>
+    ${specular(68,52,8,3.2,0.45)}`;
+});
+
+// ⚠️ Pins are rects, not lines — a gradient in objectBoundingBox units will not paint a stroke on a
+// zero-width bounding box, so a vertical <line> with fill="url(#…)" vanishes entirely.
+add('LED','Sources','A discrete solid-state lamp — 5 mm dome, reflector cup, long anode leg',(defs,id)=>{
+  const Dome=linear(defs,id+'g1',[['0%',GOLD[0]],['38%',GOLD[1]],['100%',GOLD[3]]],{x1:0,y1:0,x2:1,y2:0});
+  const Lip=linear(defs,id+'g2',[['0%',GOLD[1]],['100%',GOLD[3]]],{x1:0,y1:0,x2:1,y2:0});
+  const Pin=linear(defs,id+'g3',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:1,y2:0});
+  const Halo=blurF(defs,id+'f1',7);
+  const Ticks=[[80,18,80,32],[54,28,62,39],[106,28,98,39]].map(([x1,y1,x2,y2])=>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${GOLD[1]}" stroke-width="3.4" stroke-linecap="round" opacity="0.7"/>`).join('');
+  return `<circle cx="80" cy="68" r="32" fill="${GOLD[2]}" opacity="0.18" filter="${Halo}"/>
+    ${Ticks}
+    <rect x="68.5" y="94" width="5" height="44" rx="2.5" fill="${Pin}"/>
+    <rect x="86.5" y="94" width="5" height="30" rx="2.5" fill="${Pin}"/>
+    <path d="M62,78 A18,18 0 0 1 98,78 V96 H62 Z" fill="${Dome}"/>
+    <rect x="56" y="94" width="48" height="10" rx="5" fill="${Lip}"/>
+    <path d="M72,72 L88,72 L84,88 H76 Z" fill="${GOLD[4]}" opacity="0.5"/>
+    <circle cx="80" cy="82" r="3.4" fill="#fffdf2" opacity="0.95"/>
+    ${specular(69,70,4,8,0.32)}`;
+});
+
+// 📝 Says what a sky light DOES: a lit object under the dome receiving convergent fill from every
+// direction of the hemisphere, rather than a bare dome that could be read as an atmosphere icon.
+add('Sky Light','Sources','Ambient hemisphere — soft fill arriving from every sky direction',(defs,id)=>{
+  const Dome=radial(defs,id+'g1',[['0%','#ffffff'],['40%','#d3e6ff'],['76%','#ffe9c2'],['100%',GOLD[2]]],{cx:0.42,cy:0.1,r:0.95});
+  const Solid=linear(defs,id+'g2',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Halo=blurF(defs,id+'f1',9);
+  let Arrows='';
+  for(const Degrees of [22,62,90,118,158]){
+    const Radians=Degrees*Math.PI/180;
+    const Cosine=Math.cos(Radians), Sine=Math.sin(Radians);
+    // Every arrow is radial about the receiving object at (80,94), so all five converge on it.
+    const At=(Radius)=>[80+Radius*Cosine, 94-Radius*Sine];
+    const [StartX,StartY]=At(28), [TailX,TailY]=At(20), [TipX,TipY]=At(14);
+    const [BaseX,BaseY]=At(20), WingX=-Sine*3.4, WingY=-Cosine*3.4;
+    Arrows+=`<line x1="${StartX.toFixed(1)}" y1="${StartY.toFixed(1)}" x2="${TailX.toFixed(1)}" y2="${TailY.toFixed(1)}" stroke="${GOLD[2]}" stroke-width="2.6" stroke-linecap="round" opacity="0.9"/>`;
+    Arrows+=`<polygon points="${TipX.toFixed(1)},${TipY.toFixed(1)} ${(BaseX+WingX).toFixed(1)},${(BaseY+WingY).toFixed(1)} ${(BaseX-WingX).toFixed(1)},${(BaseY-WingY).toFixed(1)}" fill="${GOLD[1]}"/>`;
+  }
+  return `<ellipse cx="80" cy="98" rx="54" ry="36" fill="${GOLD[1]}" opacity="0.1" filter="${Halo}"/>
+    <path d="M42,105 A38,38 0 0 1 118,105 Z" fill="${Dome}"/>
+    <line x1="28" y1="105" x2="132" y2="105" stroke="#8a8a92" stroke-width="1.5" opacity="0.5"/>
+    ${Arrows}
+    <ellipse cx="80" cy="105" rx="16" ry="4.2" fill="#000" opacity="0.3"/>
+    <circle cx="80" cy="94" r="11" fill="${Solid}"/>
+    ${specular(75,89,3.6,2.4,0.5)}`;
+});
+
+// 📝 An IES file IS a candela plot, so draw one: polar grid below the fixture with a bat-wing lobe
+// (twin side maxima, central notch) — a shape no symmetric falloff could produce.
+add('IES Profile Light','Sources','Emitter shaped by a real-world photometric curve',(defs,id)=>{
+  const Head=linear(defs,id+'g1',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const Lobe=radial(defs,id+'g2',[['0%',GOLD[1],0.5],['100%',GOLD[2],0.06]],{cx:0.5,cy:0.15,r:0.85});
+  const Bulb=mat(defs,id+'g3',GOLD,{cx:0.34,cy:0.3,r:0.9});
+  const Glow=glowF(defs,id+'f1',2.5);
+  const Grid=[24,40,56].map(Radius=>
+    `<path d="M${80-Radius},52 A${Radius},${Radius} 0 0 0 ${80+Radius},52" fill="none" stroke="${GOLD[3]}" stroke-width="1" opacity="0.4"/>`).join('');
+  const Spokes=[30,60,90,120,150].map(Degrees=>{
+    const Radians=Degrees*Math.PI/180;
+    return `<line x1="80" y1="52" x2="${(80+56*Math.cos(Radians)).toFixed(1)}" y2="${(52+56*Math.sin(Radians)).toFixed(1)}" stroke="${GOLD[3]}" stroke-width="1" opacity="0.28"/>`;
+  }).join('');
+  return `${Grid}${Spokes}
+    <path d="M64.5,56 Q46,60 49,83 Q56,101 63,99 Q74,96 80,82 Q86,96 97,99 Q104,101 111,83 Q114,60 95.5,56 Z"
+          fill="${Lobe}" stroke="${GOLD[1]}" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="20" y1="52" x2="140" y2="52" stroke="#8a8a92" stroke-width="1.2" opacity="0.4"/>
+    <rect x="68" y="30" width="24" height="14" rx="4" fill="${Head}"/>
+    <g filter="${Glow}"><circle cx="80" cy="48" r="8" fill="${Bulb}"/></g>`;
+});
+
+// 📝 Shows the wrap itself: a latlong ribbon at the base and the same sky/ground split carried onto
+// a lat–long wireframe sphere, with the captured sun surviving the mapping.
+add('HDRI Environment','Sources','A captured environment map wrapped on a sphere',(defs,id)=>{
+  const Wrap=linear(defs,id+'g1',[['0%','#20386e'],['38%','#7fb0e6'],['52%','#ffe0aa'],['54%','#8a7350'],['100%','#3b3327']],{x1:0,y1:0,x2:0,y2:1});
+  const Ribbon=linear(defs,id+'g2',[['0%','#7fb0e6'],['46%','#ffe0aa'],['52%','#8a7350'],['100%','#4a3f2f']],{x1:0,y1:0,x2:0,y2:1});
+  const Glow=glowF(defs,id+'f1',2.5);
+  const Parallels=[[62,27.5,4],[74,30,6.6],[86,27.5,4]].map(([Cy,Rx,Ry])=>
+    `<ellipse cx="80" cy="${Cy}" rx="${Rx}" ry="${Ry}" fill="none" stroke="#ffffff" stroke-width="0.9" opacity="0.32"/>`).join('');
+  const Meridians=[10,21].map(Rx=>
+    `<ellipse cx="80" cy="74" rx="${Rx}" ry="30" fill="none" stroke="#ffffff" stroke-width="0.9" opacity="0.3"/>`).join('');
+  return `<circle cx="80" cy="74" r="30" fill="${Wrap}"/>
+    ${Parallels}${Meridians}
+    <circle cx="80" cy="74" r="30" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.35"/>
+    <g filter="${Glow}"><circle cx="93" cy="61" r="4.5" fill="#fff8e0"/></g>
+    ${specular(67,62,7,4,0.28)}
+    <line x1="80" y1="106" x2="80" y2="114" stroke="${GOLD[2]}" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.6"/>
+    <path d="M38,120 Q80,111 122,120 L122,136 Q80,127 38,136 Z" fill="${Ribbon}" opacity="0.92"/>
+    <path d="M38,128.2 Q80,119.2 122,128.2" fill="none" stroke="#ffe9c2" stroke-width="0.9" opacity="0.55"/>`;
+});
+
+// 📝 The wireframe quad is what makes this "a mesh that emits" rather than a generic glowing bar —
+// the triangulation stays visible through the glow filter because it is stroked on top of it.
+add('Emissive Surface','Sources','Any mesh whose material itself gives off light',(defs,id)=>{
+  const Face=linear(defs,id+'g1',[['0%',GOLD[0]],['45%',GOLD[1]],['100%',GOLD[2]]],{x1:0,y1:0,x2:1,y2:1});
+  const Wash=radial(defs,id+'g2',[['0%',GOLD[1],0.45],['100%',GOLD[2],0]],{cx:0.5,cy:0.5,r:0.5});
+  const Glow=glowF(defs,id+'f1',4);
+  const Soft=blurF(defs,id+'f2',6);
+  const Ticks=[[46,60,38,50],[92,40,96,28],[122,68,132,60],[74,102,70,114]].map(([x1,y1,x2,y2])=>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${GOLD[1]}" stroke-width="3" stroke-linecap="round" opacity="0.6"/>`).join('');
+  return `<ellipse cx="82" cy="126" rx="46" ry="12" fill="${Wash}" filter="${Soft}"/>
+    ${Ticks}
+    <g filter="${Glow}"><polygon points="40,74 92,52 124,80 70,104" fill="${Face}"/></g>
+    <g fill="none" stroke="${GOLD[0]}" stroke-width="1.1" opacity="0.55">
+      <polygon points="40,74 92,52 124,80 70,104"/>
+      <line x1="40" y1="74" x2="124" y2="80"/>
+      <line x1="92" y1="52" x2="70" y2="104"/>
+    </g>
+    ${specular(72,68,10,5,0.3)}`;
+});
+
+//====================================================================================================================================
+//                                                    SHADOW & OCCLUSION
+//====================================================================================================================================
+
+add('Shadow Casting','Shadow','A hard-edged shadow projected onto the ground',(defs,id)=>{
+  const objMat=linear(defs,id+'g1',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const lg=mat(defs,id+'g2',GOLD,{cx:0.3,cy:0.25,r:0.9});
+  return `<line x1="28" y1="132" x2="140" y2="132" stroke="#8a8a92" stroke-width="1.5" opacity="0.4"/>
+    <ellipse cx="110" cy="132" rx="24" ry="7" fill="#0b0912" opacity="0.85"/>
+    <circle cx="46" cy="38" r="9" fill="${lg}"/>
+    <rect x="102" y="58" width="15" height="46" rx="6" fill="${objMat}"/>`;
+});
+
+add('Soft Shadows','Shadow','Penumbra falloff — a diffused, feathered shadow edge',(defs,id)=>{
+  const objMat=linear(defs,id+'g1',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const lg=mat(defs,id+'g2',GOLD,{cx:0.3,cy:0.25,r:0.9});
+  const soft1=blurF(defs,id+'f1',6);
+  const soft2=blurF(defs,id+'f2',2.5);
+  return `<line x1="28" y1="132" x2="140" y2="132" stroke="#8a8a92" stroke-width="1.5" opacity="0.4"/>
+    <ellipse cx="106" cy="132" rx="30" ry="9" fill="#0b0912" opacity="0.3" filter="${soft1}"/>
+    <ellipse cx="106" cy="132" rx="18" ry="6" fill="#0b0912" opacity="0.5" filter="${soft2}"/>
+    <circle cx="58" cy="40" r="11" fill="${lg}"/>
+    <rect x="98" y="60" width="15" height="44" rx="6" fill="${objMat}"/>`;
+});
+
+add('Ambient Occlusion','Shadow','Contact darkening where nearby surfaces meet',(defs,id)=>{
+  const g=linear(defs,id+'g1',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const ao=radial(defs,id+'g2',[['0%','#000',0.65],['70%','#000',0.25],['100%','#000',0]],{cx:0.5,cy:0.5,r:0.5});
+  return `<line x1="34" y1="112" x2="126" y2="112" stroke="#8a8a92" stroke-width="1.5" opacity="0.4"/>
+    <ellipse cx="80" cy="109" rx="21" ry="7" fill="${ao}"/>
+    <circle cx="80" cy="86" r="24" fill="${g}"/>
+    ${specular(70,76,7,4,0.35)}`;
+});
+
+//====================================================================================================================================
+//                                                    VOLUMETRICS & ATMOSPHERE
+//====================================================================================================================================
+
+add('Volumetric Light','Volumetric','Visible shafts scattering through fog or dust',(defs,id)=>{
+  const cone=linear(defs,id+'g1',[['0%',TEAL[1],0.55],['100%',TEAL[2],0]],{x1:0,y1:0,x2:0,y2:1});
+  const hMat=linear(defs,id+'g2',[['0%','#cdeee8'],['100%','#3a6c66']],{x1:0,y1:0,x2:1,y2:1});
+  const parts=[[72,70,2.2],[92,60,1.8],[100,90,2.6],[65,100,2],[86,111,1.7],[106,106,2.3]];
+  const dots=parts.map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${TEAL[0]}" opacity="0.55"/>`).join('');
+  return `<polygon points="70,50 90,50 114,122 46,122" fill="${cone}"/>
+    <line x1="80" y1="50" x2="60" y2="116" stroke="${TEAL[0]}" stroke-width="1.2" opacity="0.3"/>
+    <line x1="80" y1="50" x2="101" y2="118" stroke="${TEAL[0]}" stroke-width="1.2" opacity="0.3"/>
+    ${dots}
+    <rect x="68" y="36" width="24" height="14" rx="4" fill="${hMat}"/>`;
+});
+
+add('Volumetric Fog','Volumetric','Layered ground haze at low altitude',(defs,id)=>{
+  const band=(y,amp,op)=>`<path d="M26,${y} Q46,${y-amp} 66,${y} Q86,${y+amp} 106,${y} Q126,${y-amp} 134,${y} L134,${y+15} L26,${y+15} Z" fill="${TEAL[2]}" opacity="${op}"/>`;
+  return `${band(66,7,0.18)}${band(90,8,0.32)}${band(114,6,0.5)}`;
+});
+
+add('Sky Atmosphere','Volumetric','Physical sky — scattering gradient with a horizon',(defs,id)=>{
+  const sky=linear(defs,id+'g1',[['0%','#1c2c5e'],['55%','#5a8fd6'],['85%','#ffcf8a'],['100%',GOLD[2]]],{x1:0,y1:0,x2:0,y2:1});
+  const sun=mat(defs,id+'g2',GOLD,{cx:0.35,cy:0.3,r:0.9});
+  const gl=glowF(defs,id+'f1',2);
+  return `<rect x="34" y="34" width="92" height="72" rx="10" fill="${sky}"/>
+    <line x1="34" y1="96" x2="126" y2="96" stroke="#ffe9c2" stroke-width="1" opacity="0.6"/>
+    <g filter="${gl}"><circle cx="80" cy="96" r="14" fill="${sun}"/></g>`;
+});
+
+add('Lens Flare','Volumetric','Ghost artifacts scattered along the optical axis',(defs,id)=>{
+  const gl=glowF(defs,id+'f1',2.5);
+  const src=mat(defs,id+'g1',GOLD,{cx:0.35,cy:0.3,r:0.9});
+  const ghosts=[
+    [68,65,5,TEAL[1],'fill',0.5],
+    [82,79,8,'#ffffff','ring',0.35],
+    [96,92,4,GOLD[1],'fill',0.6],
+    [110,106,9,TEAL[1],'ring',0.3],
+    [122,118,5,'#ffffff','fill',0.4],
+  ];
+  const marks=ghosts.map(([x,y,r,c,type,op])=> type==='ring'
+    ? `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${c}" stroke-width="1.4" opacity="${op}"/>`
+    : `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" opacity="${op}"/>`).join('');
+  return `${marks}
+    <g filter="${gl}">
+      <line x1="30" y1="46" x2="66" y2="46" stroke="#ffffff" stroke-width="1" opacity="0.5"/>
+      <line x1="48" y1="28" x2="48" y2="64" stroke="#ffffff" stroke-width="1" opacity="0.5"/>
+      <circle cx="48" cy="46" r="6" fill="${src}"/>
+    </g>`;
+});
+
+add('Bloom / Exposure','Volumetric','Radial glow from surfaces at or past white',(defs,id)=>{
+  const gl=glowF(defs,id+'f1',5);
+  const core=radial(defs,id+'g1',[['0%','#ffffff'],['100%',GOLD[1]]],{cx:0.4,cy:0.35,r:0.85});
+  return `<circle cx="80" cy="80" r="44" fill="none" stroke="${TEAL[1]}" stroke-width="1.4" opacity="0.16"/>
+    <circle cx="80" cy="80" r="33" fill="none" stroke="${TEAL[0]}" stroke-width="1.6" opacity="0.28"/>
+    <circle cx="80" cy="80" r="23" fill="none" stroke="#ffffff" stroke-width="1.8" opacity="0.4"/>
+    <g filter="${gl}"><circle cx="80" cy="80" r="13" fill="${core}"/></g>`;
+});
+
+//====================================================================================================================================
+//                                                    GLOBAL ILLUMINATION & BAKING
+//====================================================================================================================================
+
+add('Global Illumination','GI','Indirect light bouncing from surface to surface',(defs,id)=>{
+  const floorMat=linear(defs,id+'g1',[['0%','#c9d6c9'],['100%','#5c6d5c']],{x1:0,y1:0,x2:0,y2:1});
+  const wallMat=linear(defs,id+'g2',[['0%','#c9d6c9'],['100%','#5c6d5c']],{x1:0,y1:0,x2:1,y2:0});
+  const bounce=linear(defs,id+'g3',[[ '0%',GOLD[2]],['100%',GREEN[2]]],{x1:0,y1:1,x2:1,y2:0});
+  return `<rect x="32" y="108" width="42" height="10" rx="3" fill="${floorMat}"/>
+    <rect x="112" y="42" width="10" height="68" rx="3" fill="${wallMat}"/>
+    <path d="M58,106 Q68,58 112,70" fill="none" stroke="${bounce}" stroke-width="3" stroke-linecap="round"/>
+    <polygon points="112,70 104,66 106,75" fill="${GREEN[1]}"/>
+    <circle cx="58" cy="106" r="4.5" fill="${GOLD[1]}"/>
+    <circle cx="112" cy="70" r="4.5" fill="${GREEN[1]}"/>`;
+});
+
+add('Reflection Probe','GI','Captures the environment for realtime reflections',(defs,id)=>{
+  const g=linear(defs,id+'g1',[['0%',CHROME[0]],['45%',CHROME[2]],['100%',CHROME[4]]],{x1:0,y1:0,x2:1,y2:1});
+  const baseMat=linear(defs,id+'g2',[['0%',CHROME[2]],['100%',CHROME[4]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',80,132,18,5)}
+    <line x1="80" y1="93" x2="80" y2="112" stroke="${CHROME[3]}" stroke-width="3"/>
+    <ellipse cx="80" cy="114" rx="14" ry="4" fill="${baseMat}"/>
+    <circle cx="80" cy="70" r="23" fill="${g}"/>
+    <ellipse cx="68" cy="58" rx="8" ry="4" fill="#ffffff" opacity="0.7" transform="rotate(-25 68 58)"/>`;
+});
+
+add('Light Probe Volume','GI','A sampled lattice of indirect lighting data',(defs,id)=>{
+  const xs=[58,80,102], ys=[58,80,102];
+  let lines='';
+  for(const y of ys){ lines+=`<line x1="58" y1="${y}" x2="102" y2="${y}" stroke="${GREEN[3]}" stroke-width="1" opacity="0.3"/>`; }
+  for(const x of xs){ lines+=`<line x1="${x}" y1="58" x2="${x}" y2="102" stroke="${GREEN[3]}" stroke-width="1" opacity="0.3"/>`; }
+  let dots='';
+  for(const x of xs){ for(const y of ys){
+    const isCenter = x===80 && y===80;
+    dots+=`<circle cx="${x}" cy="${y}" r="${isCenter?6:4.2}" fill="${isCenter?GREEN[0]:GREEN[1]}"/>`;
+  }}
+  return `${lines}${dots}`;
+});
+
+add('Lightmap Baking','GI','Precomputed static lighting stored in UV space',(defs,id)=>{
+  return `<rect x="54" y="54" width="52" height="52" rx="6" fill="#161f1a" stroke="#2a352d" stroke-width="1"/>
+    <rect x="54" y="54" width="17.3" height="17.3" rx="2" fill="${GREEN[1]}" opacity="0.5"/>
+    <rect x="88.7" y="71.3" width="17.3" height="17.3" rx="2" fill="${GOLD[1]}" opacity="0.35"/>
+    <line x1="71.3" y1="54" x2="71.3" y2="106" stroke="#2a352d" stroke-width="1"/>
+    <line x1="88.7" y1="54" x2="88.7" y2="106" stroke="#2a352d" stroke-width="1"/>
+    <line x1="54" y1="71.3" x2="106" y2="71.3" stroke="#2a352d" stroke-width="1"/>
+    <line x1="54" y1="88.7" x2="106" y2="88.7" stroke="#2a352d" stroke-width="1"/>`;
+});
+
+//====================================================================================================================================
+//                                                    CONTROLS & UTILITY
+//====================================================================================================================================
+
+add('Light Intensity','Utility','Adjustable brightness — the master output level',(defs,id)=>{
+  const g=mat(defs,id+'g1',GOLD,{cx:0.34,cy:0.28,r:0.9});
+  const fill=linear(defs,id+'g2',[['0%',BLUE[1]],['100%',BLUE[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',56,132,16,5)}
+    <circle cx="56" cy="82" r="17" fill="${g}"/>
+    ${specular(49,73,5,3,0.5)}
+    <rect x="96" y="46" width="14" height="68" rx="7" fill="#14161c" stroke="#2a2d36" stroke-width="1"/>
+    <rect x="96" y="70" width="14" height="44" rx="7" fill="${fill}"/>
+    <rect x="93" y="67" width="20" height="4" rx="2" fill="#ffffff" opacity="0.85"/>`;
+});
+
+add('Color Temperature','Utility','Kelvin scale — warm tungsten to cool daylight',(defs,id)=>{
+  const bar=linear(defs,id+'g1',[['0%',GOLD[2]],['50%','#f2f2f2'],['100%',BLUE[2]]],{x1:0,y1:0,x2:1,y2:0});
+  return `<rect x="40" y="74" width="80" height="16" rx="8" fill="${bar}"/>
+    <line x1="52" y1="94" x2="52" y2="100" stroke="#5a5a62" stroke-width="1.5"/>
+    <line x1="72" y1="94" x2="72" y2="100" stroke="#5a5a62" stroke-width="1.5"/>
+    <line x1="92" y1="94" x2="92" y2="100" stroke="#5a5a62" stroke-width="1.5"/>
+    <line x1="108" y1="94" x2="108" y2="100" stroke="#5a5a62" stroke-width="1.5"/>
+    <line x1="88" y1="70" x2="88" y2="94" stroke="#1a1a1e" stroke-width="2"/>
+    <circle cx="88" cy="82" r="8" fill="#ffffff" stroke="#1a1a1e" stroke-width="2"/>`;
+});
+
+add('Falloff Curve','Utility','Intensity decaying smoothly with distance',(defs,id)=>{
+  const curve=linear(defs,id+'g1',[['0%',BLUE[1]],['100%',VIOLET[1]]],{x1:0,y1:0,x2:1,y2:1});
+  const area=linear(defs,id+'g2',[['0%',BLUE[2],0.28],['100%',BLUE[2],0]],{x1:0,y1:0,x2:0,y2:1});
+  return `<line x1="42" y1="40" x2="42" y2="118" stroke="#5a5a62" stroke-width="1.5"/>
+    <line x1="42" y1="118" x2="124" y2="118" stroke="#5a5a62" stroke-width="1.5"/>
+    <path d="M46,48 C60,50 66,66 74,84 C82,100 92,112 122,116 L122,118 L46,118 Z" fill="${area}"/>
+    <path d="M46,48 C60,50 66,66 74,84 C82,100 92,112 122,116" fill="none" stroke="${curve}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="52" cy="52" r="3" fill="${BLUE[0]}"/>
+    <circle cx="80" cy="92" r="3" fill="${BLUE[0]}"/>
+    <circle cx="112" cy="112" r="3" fill="${VIOLET[0]}"/>`;
+});
+
+add('Light Cookie','Utility','A masked texture projected through the beam',(defs,id)=>{
+  const disc=radial(defs,id+'g1',[['0%','#2c2640'],['100%','#131019']],{cx:0.35,cy:0.3,r:0.9});
+  const gl=glowF(defs,id+'f1',2);
+  const holes=[[80,78,3.2],[67,65,2.4],[93,65,2.4],[67,91,2.4],[93,91,2.4]];
+  const holeMk=holes.map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${GOLD[1]}"/>`).join('');
+  return `${shadow(defs,id+'s1',80,132,18,5)}
+    <circle cx="80" cy="78" r="25" fill="${disc}" stroke="#3a3350" stroke-width="1.5"/>
+    <g filter="${gl}">${holeMk}</g>`;
+});
+
+add('Light Channels','Utility','Layered groups controlling which surfaces receive light',(defs,id)=>{
+  const back=linear(defs,id+'g1',[['0%','#3a3d46'],['100%','#22242b']],{x1:0,y1:0,x2:1,y2:1});
+  const mid=linear(defs,id+'g2',[['0%',VIOLET[1]],['100%',VIOLET[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const front=linear(defs,id+'g3',[['0%',BLUE[1]],['100%',BLUE[3]]],{x1:0,y1:0,x2:1,y2:1});
+  const gl=glowF(defs,id+'f1',2);
+  return `<rect x="42" y="96" width="64" height="16" rx="5" fill="${back}"/>
+    <rect x="50" y="84" width="64" height="16" rx="5" fill="${mid}"/>
+    <g filter="${gl}"><rect x="58" y="72" width="64" height="16" rx="5" fill="${front}"/></g>`;
+});
+
+add('Static Mobility','Utility','Baked at build time — cannot move at runtime',(defs,id)=>{
+  const g=mat(defs,id+'g1',GOLD,{cx:0.34,cy:0.28,r:0.9});
+  const lock=linear(defs,id+'g2',[['0%',CHROME[1]],['100%',CHROME[3]]],{x1:0,y1:0,x2:0,y2:1});
+  return `${shadow(defs,id+'s1',82,132,20,5)}
+    <circle cx="66" cy="64" r="17" fill="${g}"/>
+    ${specular(59,56,5,3,0.5)}
+    <path d="M94,86 A8,13 0 0 1 110,86" fill="none" stroke="${CHROME[3]}" stroke-width="4"/>
+    <rect x="88" y="86" width="28" height="22" rx="5" fill="${lock}"/>
+    <circle cx="102" cy="95" r="2.4" fill="#1c2530"/>
+    <rect x="100.5" y="96" width="3" height="6" fill="#1c2530"/>`;
+});
+
+add('Movable Mobility','Utility','Fully dynamic — position and color update live',(defs,id)=>{
+  const g=mat(defs,id+'g1',GOLD,{cx:0.34,cy:0.28,r:0.9});
+  const arc=linear(defs,id+'g2',[['0%',BLUE[1]],['100%',VIOLET[1]]],{x1:0,y1:0,x2:1,y2:1});
+  return `${shadow(defs,id+'s1',68,132,18,5)}
+    <circle cx="68" cy="80" r="17" fill="${g}"/>
+    ${specular(61,72,5,3,0.5)}
+    <path d="M92,58 A34,34 0 0 1 92,102" fill="none" stroke="${arc}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M88,64 A26,26 0 0 1 88,96" fill="none" stroke="${BLUE[1]}" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <polygon points="92,102 84,98 89,108" fill="${VIOLET[1]}"/>`;
+});
+
+add('Range / Culling','Utility','The distance beyond which a light stops contributing',(defs,id)=>{
+  return `<circle cx="80" cy="80" r="38" fill="none" stroke="${BLUE[2]}" stroke-width="2" stroke-dasharray="6 5" opacity="0.85"/>
+    <line x1="80" y1="80" x2="115" y2="80" stroke="${BLUE[0]}" stroke-width="2"/>
+    <line x1="112" y1="74" x2="118" y2="80" stroke="${BLUE[0]}" stroke-width="2" stroke-linecap="round"/>
+    <line x1="112" y1="86" x2="118" y2="80" stroke="${BLUE[0]}" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="80" cy="80" r="5" fill="${BLUE[0]}"/>`;
+});
+
+add('Multi-Light Rig','Utility','Several fixtures ganged along a single truss',(defs,id)=>{
+  const bar=linear(defs,id+'g1',[['0%','#d7dde3'],['100%','#5a6472']],{x1:0,y1:0,x2:0,y2:1});
+  const g=mat(defs,id+'g2',GOLD,{cx:0.34,cy:0.26,r:0.9});
+  const bulbs=[52,80,108].map(x=>`<line x1="${x}" y1="65" x2="${x}" y2="71" stroke="#8a939c" stroke-width="2"/><circle cx="${x}" cy="80" r="11" fill="${g}"/>`).join('');
+  return `${shadow(defs,id+'s1',80,132,46,7,0.35)}
+    <rect x="32" y="58" width="96" height="7" rx="3.5" fill="${bar}"/>
+    ${bulbs}
+    ${specular(46,74,3,2,0.45)}${specular(74,74,3,2,0.45)}${specular(102,74,3,2,0.45)}`;
+});
+
+//====================================================================================================================================
+//                                                    RENDER
+//====================================================================================================================================
+// Each build() pushes its gradients/filters into a fresh `defs` array and returns the body markup.
+// The two are stitched into one standalone <svg> per requested pixel size, with a per-instance id
+// suffix so the 76px tile, the 32/24/16px strip, and the clipboard copy never share gradient ids.
+
+const GRID_OVERLAY =
+  '<g class="alignGrid" stroke="#4db3ff" stroke-width="0.6" opacity="0.22" fill="none">' +
+  '<rect x="24" y="24" width="112" height="112"/>' +
+  '<line x1="80" y1="16" x2="80" y2="144"/><line x1="16" y1="80" x2="144" y2="80"/>' +
+  '<circle cx="80" cy="80" r="56"/></g>';
+
+function BuildIconMarkup(Icon, InstanceId, Overlay){
+  const defs = [];
+  const body = Icon.build(defs, InstanceId);
+  const head = defs.length ? `<defs>${defs.join('')}</defs>` : '';
+  return `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">${head}${body}${Overlay||''}</svg>`;
+}
+
+const root  = document.getElementById('root');
+const toast = document.getElementById('toast');
+let InstanceCounter = 0;
+
+CATS.forEach(([Key, Title, Note])=>{
+  const Members = ICONS.filter(Icon => Icon.cat === Key);
+  if (!Members.length) return;
+
+  const Heading = document.createElement('h2');
+  Heading.innerHTML = `${Title}<span>${Members.length} icons</span>`;
+  root.appendChild(Heading);
+
+  const CategoryNote = document.createElement('p');
+  CategoryNote.className = 'catnote';
+  CategoryNote.textContent = Note;
+  root.appendChild(CategoryNote);
+
+  const Grid = document.createElement('div');
+  Grid.className = 'grid';
+
+  Members.forEach(Icon=>{
+    const Stem = 'li' + (InstanceCounter++);
+    const Cell = document.createElement('div');
+    Cell.className = 'cell';
+    Cell.innerHTML =
+      BuildIconMarkup(Icon, Stem + 'a', GRID_OVERLAY) +
+      `<div class="cap"><b>${Icon.name}</b>${Icon.note}</div>` +
+      `<div class="strip">` +
+        `<span class="s32">${BuildIconMarkup(Icon, Stem + 'b')}</span>` +
+        `<span class="s24">${BuildIconMarkup(Icon, Stem + 'c')}</span>` +
+        `<span class="s16">${BuildIconMarkup(Icon, Stem + 'd')}</span>` +
+      `</div>`;
+
+    Cell.addEventListener('click', ()=>{
+      const Standalone = BuildIconMarkup(Icon, Stem);
+      navigator.clipboard.writeText(Standalone).then(()=>{
+        Cell.classList.add('copied');
+        toast.textContent = Icon.name + ' — SVG copied';
+        toast.classList.add('show');
+        setTimeout(()=>{ Cell.classList.remove('copied'); toast.classList.remove('show'); }, 1100);
+      });
+    });
+
+    Grid.appendChild(Cell);
+  });
+
+  root.appendChild(Grid);
+});
+
+document.getElementById('tally').textContent =
+  ICONS.length + ' icons · ' + CATS.length + ' categories · click a tile to copy its SVG';
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                    INSPECTION TOGGLES
+//------------------------------------------------------------------------------------------------------------------------
+
+const PaleToggle = document.getElementById('paleToggle');
+PaleToggle.addEventListener('click', ()=>{
+  document.body.classList.toggle('pale');
+  PaleToggle.classList.toggle('on');
+});
+
+const GridToggle = document.getElementById('gridToggle');
+let GridVisible = false;
+function ApplyGridVisibility(){
+  document.querySelectorAll('.alignGrid').forEach(Node=>{
+    Node.style.display = GridVisible ? '' : 'none';
+  });
+}
+GridToggle.addEventListener('click', ()=>{
+  GridVisible = !GridVisible;
+  GridToggle.classList.toggle('on', GridVisible);
+  ApplyGridVisibility();
+});
+ApplyGridVisibility();
+
+//====================================================================================================================================
+//                                                    EXPORTS
+//====================================================================================================================================
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { ICONS, CATS };
+}
+</script>
+</body>
+</html>

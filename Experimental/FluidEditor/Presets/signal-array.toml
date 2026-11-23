@@ -1,0 +1,72 @@
+# Signal Array — scene preset (Particles). Tech installation composition — a mesh ridge pour (Crystal Cluster anchors) as the emitter, a radar disc as the receiver and a catenary web as the antenna field.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Scene]
+Order = 46
+Id = "preset-signal-array"
+Name = "Signal Array"
+Family = "VFX"
+Icon = "radar"
+Boundary = "ClosedBox"
+Summary = "A listening installation: a radar scope sweeps below a ridge-lit object pour, with a taut signal web suspended above the array."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [6.5, 6.0, 6.5]
+
+[Render]
+Visible = false
+Exposure = 1.2
+Steps = 74
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Particle]]
+  Template = "object-surface-pour"
+  Name = "Ridge Emitter"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.35, 0.0]
+  Radius = 1.25
+  Count = 6400
+
+[[Particle]]
+  Template = "radar-sweep"
+  Name = "Receiver Scope"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -1.25, 0.0]
+  Radius = 1.6
+  Count = 2048
+
+[[Particle]]
+  Template = "spiderweb-orb"
+  Name = "Antenna Web"
+  StartTime = 0.3
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 1.15, -0.9]
+  Radius = 1.1
+  Count = 3200
+  Brightness = 0.75

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Surfel-carried shadow — in action</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --dim:#8b949e;
+    --line:#30363d; --hot:#f6685e; --cool:#57c7ff; --good:#4cd07d; --warn:#e3b341; --violet:#b392f0;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 system-ui,Segoe UI,sans-serif;padding:22px;max-width:1180px;margin:auto}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 18px;font-size:13.5px}
+  .sub b{color:var(--ink)}
+  code{font-family:var(--mono);color:var(--cool);font-size:12.5px}
+
+  .stage{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .panel h2{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .tag{font:11px var(--mono);padding:2px 7px;border-radius:5px;margin-left:auto}
+  .t-int{background:rgba(246,104,94,.15);color:var(--hot)}
+  .t-shade{background:rgba(227,179,65,.15);color:var(--warn)}
+  canvas{width:100%;display:block;background:#0c0f14;border-radius:7px;border:1px solid var(--line)}
+  .cap{color:var(--dim);font-size:12px;margin-top:6px;min-height:32px}
+
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0;
+            background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  button{background:#1d2530;color:var(--ink);border:1px solid var(--line);border-radius:7px;
+         padding:7px 13px;font:13px system-ui;cursor:pointer}
+  button:hover{border-color:var(--cool)}
+  button.on{background:rgba(87,199,255,.15);border-color:var(--cool);color:var(--cool)}
+  label{display:flex;align-items:center;gap:7px;color:var(--dim);font-size:12.5px}
+  input[type=range]{width:130px}
+  .spacer{flex:1}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
+  .stat .k{color:var(--dim);font-size:11.5px}
+  .stat .v{font:19px var(--mono);margin-top:3px}
+  .v.hot{color:var(--hot)} .v.good{color:var(--good)} .v.cool{color:var(--cool)} .v.warn{color:var(--warn)}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--dim);font-size:12px;margin:10px 0 0}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .sq{width:11px;height:11px;border-radius:2px;display:inline-block}
+
+  .explain{background:rgba(179,146,240,.07);border-left:3px solid var(--violet);
+           padding:12px 16px;border-radius:0 8px 8px 0;margin:18px 0;font-size:13px}
+  .explain b{color:var(--violet)}
+  .explain table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}
+  .explain td{padding:5px 8px;border-bottom:1px solid var(--line)}
+  .explain td:first-child{color:var(--dim);width:180px}
+</style>
+</head>
+<body>
+
+  <h1>Surfel-carried shadow — watch it in action</h1>
+  <p class="sub">Left = <b class="int" style="color:var(--hot)">Integrate</b>: surfels fire sun rays and
+    <b>remember</b> the answer (a running average — that's the temporal cache).
+    Right = <b style="color:var(--warn)">Shade</b>: paints pixels by <b>reading the surfels back</b>, firing
+    <b>no</b> rays. Toggle the old way to compare. A rock (occluder) casts a soft shadow on the floor.</p>
+
+  <div class="controls">
+    <button id="play" class="on">⏸ Pause</button>
+    <button id="step">Step 1 frame</button>
+    <button id="reset">↺ Reset cache</button>
+    <div class="spacer"></div>
+    <label>Sun angle <input id="sun" type="range" min="20" max="80" value="55"></label>
+    <label>Sun width (softness) <input id="soft" type="range" min="1" max="40" value="16"></label>
+    <label><input id="mode" type="checkbox"> Shade the OLD way (rays/pixel)</label>
+  </div>
+
+  <div class="stage">
+
+    <div class="panel">
+      <h2>Integrate — the cache filling up <span class="tag t-int">fires rays</span></h2>
+      <canvas id="cInt" width="520" height="360"></canvas>
+      <div class="cap" id="capInt">Each surfel shoots <b>1 sun ray</b> this frame; a blocked ray darkens its stored
+        visibility, an open one brightens it. The value is a <b>running average</b> over frames → converges to soft.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Shade — the image you see <span class="tag t-shade">reads cache</span></h2>
+      <canvas id="cShade" width="520" height="360"></canvas>
+      <div class="cap" id="capShade">Every floor pixel finds its nearest surfels and reads their stored visibility —
+        <b>a lookup, not a ray</b>. The soft edge comes for free from the averaged cache.</div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--warn)"></i> surfel, lit (vis≈1)</span>
+    <span><i class="dot" style="background:#2a3038"></i> surfel, shadowed (vis≈0)</span>
+    <span><i class="sq" style="background:var(--hot)"></i> live sun ray (blocked)</span>
+    <span><i class="sq" style="background:var(--good)"></i> live sun ray (open)</span>
+    <span><i class="sq" style="background:#4a5260"></i> occluder (rock)</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Frame</div><div class="v cool" id="sFrame">0</div></div>
+    <div class="stat"><div class="k">Rays this frame — Integrate</div><div class="v hot" id="sRayInt">0</div></div>
+    <div class="stat"><div class="k">Rays this frame — Shade</div><div class="v good" id="sRayShade">0</div></div>
+    <div class="stat"><div class="k">Cache convergence</div><div class="v warn" id="sConv">0%</div></div>
+  </div>
+
+  <div class="explain">
+    <b>What you're seeing vs the engine</b>
+    <table>
+      <tr><td>Surfel (the dots)</td><td>a disc of surface that stores averaged lighting — you already have these</td></tr>
+      <tr><td>The stored visibility</td><td>a NEW scalar per surfel: fraction of sun rays that reached the sky</td></tr>
+      <tr><td>Integrate fires 1 sun ray</td><td>it already does (<code>SurfelIntegrate.comp:388</code>) — you just <b>keep the result</b></td></tr>
+      <tr><td>Shade reads it back</td><td>the surfel GI lookup Shade already does (<code>SurfaceShade.frag</code>) carries the shadow too</td></tr>
+      <tr><td>Cost moved</td><td>Shade's <b>N rays/pixel → 0</b>; Integrate unchanged; softness is temporal, free</td></tr>
+    </table>
+    Toggle the checkbox: the OLD way lights up a shadow ray for <i>every floor pixel every frame</i> (the red count
+    explodes). Surfel-carried keeps Shade's ray count at <b>zero</b> — the cache already knows the answer.
+  </div>
+
+<script>
+const cInt=document.getElementById('cInt'), gInt=cInt.getContext('2d');
+const cSh=document.getElementById('cShade'), gSh=cSh.getContext('2d');
+const W=520,H=360, FLOOR=290;
+
+// ---- scene ----
+const rock={x:250,y:150,r:44};                 // occluder
+let sunDeg=55, sunWidthPx=16;
+function sunDir(){ const a=sunDeg*Math.PI/180; return {x:Math.cos(a), y:-Math.sin(a)}; } // points toward sun
+
+// ---- surfels: a strip on the floor + a few on the rock ----
+const surfels=[];
+for(let x=30;x<W-20;x+=13){ surfels.push({x, y:FLOOR, vis:0.5, seen:0}); }         // floor
+for(let a=0;a<Math.PI;a+=0.5){ surfels.push({x:rock.x+Math.cos(a)*rock.r*0.9, y:rock.y+Math.sin(a)*rock.r*0.9, vis:0.5, seen:0}); }
+
+// occlusion test: does a ray from p toward the sun hit the rock?
+function blocked(px,py, jitterPx){
+  const d=sunDir();
+  // jitter the direction across the sun disc for soft shadow
+  const perp={x:-d.y,y:d.x};
+  const j=(Math.sin((px*12.9898+py*78.233+frame*3.7))*43758.5453)%1; // deterministic pseudo-random [0,1)
+  const off=((j+ (frame%7)/7)%1 -0.5)*jitterPx;
+  const ox=px, oy=py;
+  const dx=d.x + perp.x*off/60, dy=d.y + perp.y*off/60;
+  // march
+  for(let t=6;t<420;t+=3){
+    const sx=ox+dx*t, sy=oy+dy*t;
+    if(sy<0) return false;
+    const ddx=sx-rock.x, ddy=sy-rock.y;
+    if(ddx*ddx+ddy*ddy < rock.r*rock.r) return true;
+  }
+  return false;
+}
+
+let frame=0, playing=true, oldWay=false;
+let rayInt=0, rayShade=0;
+
+function reset(){ frame=0; rayInt=0; rayShade=0; for(const s of surfels){s.vis=0.5;s.seen=0;} }
+
+// ---- INTEGRATE: each surfel fires ONE jittered sun ray, folds into running average ----
+function integrate(){
+  rayInt=0;
+  for(const s of surfels){
+    const hit=blocked(s.x, s.y-2, sunWidthPx);
+    rayInt++;
+    const sample=hit?0:1;
+    // running average — the temporal cache. weight decays as 'seen' grows.
+    s.seen++;
+    const w=1/Math.min(s.seen,60);
+    s.vis += (sample - s.vis)*w;
+  }
+}
+
+// nearest-surfel visibility lookup for a floor point (what Shade reads)
+function lookupVis(px){
+  // gather 2 nearest floor surfels, distance-weight
+  let best1=null,best2=null,d1=1e9,d2=1e9;
+  for(const s of surfels){ if(s.y!==FLOOR) continue;
+    const d=Math.abs(s.x-px);
+    if(d<d1){d2=d1;best2=best1;d1=d;best1=s;} else if(d<d2){d2=d;best2=s;} }
+  if(!best1) return 1;
+  if(!best2) return best1.vis;
+  const w1=1/(d1+1), w2=1/(d2+1);
+  return (best1.vis*w1+best2.vis*w2)/(w1+w2);
+}
+
+// ---- draw INTEGRATE panel ----
+function drawInt(){
+  gInt.clearRect(0,0,W,H);
+  // sky gradient
+  const g=gInt.createLinearGradient(0,0,0,FLOOR);
+  g.addColorStop(0,'#12203a'); g.addColorStop(1,'#0c0f14');
+  gInt.fillStyle=g; gInt.fillRect(0,0,W,FLOOR);
+  gInt.fillStyle='#161b22'; gInt.fillRect(0,FLOOR,W,H-FLOOR);
+  // sun
+  const d=sunDir(); gInt.fillStyle='#e3b341';
+  gInt.beginPath(); gInt.arc(30+d.x*260, (FLOOR-40)+d.y*260, 12,0,7); gInt.fill();
+  // rock
+  gInt.fillStyle='#4a5260'; gInt.beginPath(); gInt.arc(rock.x,rock.y,rock.r,0,7); gInt.fill();
+  // live rays for a sample of surfels
+  for(let i=0;i<surfels.length;i+=3){
+    const s=surfels[i]; const hit=blocked(s.x,s.y-2,sunWidthPx);
+    gInt.strokeStyle=hit?'rgba(246,104,94,.55)':'rgba(76,208,125,.35)';
+    gInt.lineWidth=1; gInt.beginPath(); gInt.moveTo(s.x,s.y-2);
+    gInt.lineTo(s.x+d.x*90, s.y-2+d.y*90); gInt.stroke();
+  }
+  // surfels tinted by stored vis
+  for(const s of surfels){
+    const v=s.vis; const c=Math.round(40+v*200);
+    gInt.fillStyle=`rgb(${c},${Math.round(c*0.92)},${Math.round(40+v*120)})`;
+    gInt.beginPath(); gInt.arc(s.x,s.y,4.5,0,7); gInt.fill();
+    gInt.strokeStyle='rgba(0,0,0,.4)'; gInt.stroke();
+  }
+}
+
+// ---- draw SHADE panel ----
+function drawShade(){
+  gSh.clearRect(0,0,W,H);
+  const g=gSh.createLinearGradient(0,0,0,FLOOR);
+  g.addColorStop(0,'#12203a'); g.addColorStop(1,'#0c0f14');
+  gSh.fillStyle=g; gSh.fillRect(0,0,W,FLOOR);
+  const d=sunDir();
+  rayShade=0;
+  // floor: per pixel-column, get visibility -> brightness
+  const step=2;
+  for(let x=0;x<W;x+=step){
+    let vis;
+    if(oldWay){ // OLD: fire N rays per pixel every frame
+      let open=0, N=6;
+      for(let k=0;k<N;k++){ if(!blocked(x,FLOOR-2, sunWidthPx)) open++; rayShade++; }
+      vis=open/N;
+    } else {    // NEW: read the surfel cache — no rays
+      vis=lookupVis(x);
+    }
+    const base=22, lit=Math.round(base+vis*150);
+    gSh.fillStyle=`rgb(${lit},${Math.round(lit*0.95)},${Math.round(base+vis*90)})`;
+    gSh.fillRect(x,FLOOR,step,H-FLOOR);
+  }
+  // rock + sun
+  gSh.fillStyle='#4a5260'; gSh.beginPath(); gSh.arc(rock.x,rock.y,rock.r,0,7); gSh.fill();
+  gSh.fillStyle='#e3b341'; gSh.beginPath(); gSh.arc(30+d.x*260,(FLOOR-40)+d.y*260,12,0,7); gSh.fill();
+  // label the mode on the canvas
+  gSh.fillStyle=oldWay?'#f6685e':'#4cd07d'; gSh.font='12px monospace';
+  gSh.fillText(oldWay?'OLD: rays per pixel':'CACHE: 0 rays', 12, 20);
+}
+
+function convergence(){
+  // how settled the floor cache is: average 'seen' capped at 60
+  let sum=0,n=0; for(const s of surfels){ if(s.y===FLOOR){sum+=Math.min(s.seen,60);n++;} }
+  return n?Math.round(sum/n/60*100):0;
+}
+
+function frameStep(){
+  integrate();
+  frame++;
+  drawInt(); drawShade();
+  document.getElementById('sFrame').textContent=frame;
+  document.getElementById('sRayInt').textContent=rayInt;
+  document.getElementById('sRayShade').textContent=rayShade;
+  document.getElementById('sConv').textContent=convergence()+'%';
+}
+
+// controls
+document.getElementById('play').onclick=e=>{playing=!playing;e.target.textContent=playing?'⏸ Pause':'▶ Play';e.target.classList.toggle('on',playing);};
+document.getElementById('step').onclick=()=>frameStep();
+document.getElementById('reset').onclick=()=>{reset();frameStep();};
+document.getElementById('sun').oninput=e=>{sunDeg=+e.target.value;};
+document.getElementById('soft').oninput=e=>{sunWidthPx=+e.target.value;};
+document.getElementById('mode').onchange=e=>{oldWay=e.target.checked;drawShade();
+  document.getElementById('sRayShade').textContent=rayShade;};
+
+let acc=0,last=0;
+function loop(t){ if(playing){ acc+=t-last; if(acc>90){acc=0;frameStep();} } last=t; requestAnimationFrame(loop); }
+reset(); frameStep(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<!-- ===========================================================================
+     PLACEMENT OPTIONS EXPLAINED
+     ---------------------------------------------------------------------------
+     A decision aid, not a method demo. Frontier's SurfelMicroRaster.comp places
+     a probe AT THE RAW BARYCENTRIC SAMPLE POINT; ProbeSpawnB_MicroRaster.html
+     SNAPS to the cell centre and projects back onto the triangle plane. That one
+     difference is most of the "the HTML looks more uniform" gap.
+
+     Three candidate changes are drawn side by side against the SAME surface and
+     the SAME cell lattice, so the difference on screen is the difference in the
+     rule and nothing else. A curved surface is used because that is where the
+     three diverge — on a flat plane options 1 and 2 look identical.
+
+     Self-contained on purpose: no modules, no fetch, no .obj. Opens on file://
+     with no server, unlike its ProbeSpawn siblings.
+=========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Probe placement — the three options</title>
+<style>
+    :root {
+        --ink:      #1b1d21;
+        --paper:    #f4f2ee;
+        --rule:     #d8d4cc;
+        --muted:    #6c6f76;
+        --probe:    #c2410c;
+        --probe-2:  #0e7490;
+        --surface:  #3f4650;
+        --lattice:  #c9c4ba;
+        --good:     #15803d;
+        --bad:      #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; background: var(--paper); color: var(--ink);
+        font: 14px/1.55 "Segoe UI", system-ui, sans-serif;
+        padding: 28px 32px 60px;
+    }
+    h1 { font-size: 21px; font-weight: 650; margin: 0 0 4px; letter-spacing: -0.2px; }
+    .sub { color: var(--muted); margin-bottom: 22px; max-width: 980px; }
+    code { font: 12.5px/1.5 "Cascadia Mono", Consolas, monospace; background: #e8e5df; padding: 1px 5px; border-radius: 3px; }
+
+    .controls {
+        display: flex; gap: 26px; align-items: center; flex-wrap: wrap;
+        border: 1px solid var(--rule); background: #fbfaf8;
+        padding: 12px 16px; border-radius: 6px; margin-bottom: 24px;
+    }
+    .controls label { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+    .controls input[type=range] { width: 132px; }
+    output { font: 12.5px "Cascadia Mono", Consolas, monospace; color: var(--muted); min-width: 34px; }
+
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+    @media (max-width: 1500px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+    .card {
+        border: 1px solid var(--rule); background: #fbfaf8; border-radius: 6px;
+        overflow: hidden; display: flex; flex-direction: column;
+    }
+    .card.current { border-color: #d9a066; background: #fdfaf5; }
+    .card h2 {
+        font-size: 13.5px; font-weight: 650; margin: 0;
+        padding: 10px 13px 9px; border-bottom: 1px solid var(--rule);
+        display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    }
+    .tag { font: 10.5px "Cascadia Mono", Consolas, monospace; font-weight: 400; color: var(--muted); }
+    .tag.now  { color: var(--probe); }
+    canvas { display: block; width: 100%; height: auto; background: #fff; }
+    .card .body { padding: 11px 13px 13px; font-size: 12.5px; }
+    .card .rule { font: 11.5px/1.5 "Cascadia Mono", Consolas, monospace; color: #444; background: #f0ede7;
+                  border-left: 2px solid var(--rule); padding: 6px 9px; margin: 0 0 9px; white-space: pre; overflow-x: auto; }
+    .metric { display: flex; justify-content: space-between; border-top: 1px dotted var(--rule); padding: 3px 0; }
+    .metric b { font: 12px "Cascadia Mono", Consolas, monospace; font-weight: 600; }
+    .verdict { margin-top: 9px; font-size: 12px; }
+    .verdict.good b { color: var(--good); }
+    .verdict.bad  b { color: var(--bad); }
+
+    .legend { display: flex; gap: 20px; margin: 20px 0 4px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+    .swatch { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; margin-right: 5px; }
+
+    .note { border: 1px solid var(--rule); border-left: 3px solid #d9a066; background: #fdfaf5;
+            padding: 13px 16px; border-radius: 5px; margin-top: 26px; max-width: 1180px; font-size: 13px; }
+    .note h3 { margin: 0 0 7px; font-size: 13px; font-weight: 650; }
+    .note p { margin: 0 0 8px; }
+    .note p:last-child { margin-bottom: 0; }
+    table.cmp { border-collapse: collapse; margin-top: 10px; font-size: 12.5px; width: 100%; }
+    table.cmp th, table.cmp td { border: 1px solid var(--rule); padding: 5px 9px; text-align: left; vertical-align: top; }
+    table.cmp th { background: #f0ede7; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Probe placement — what the three options actually change</h1>
+<div class="sub">
+    All four panels rasterise the <em>same</em> curved surface against the <em>same</em> cell lattice with the
+    <em>same</em> barycentric sampling. The only thing that differs is <strong>where the probe ends up</strong> and
+    <strong>when a cell counts as already covered</strong>. Panel&nbsp;1 is what Frontier ships today.
+</div>
+
+<div class="controls">
+    <label>Cell edge <input type="range" id="cell" min="0.16" max="0.62" step="0.02" value="0.30"><output id="cellOut">0.30</output></label>
+    <label>Curvature <input type="range" id="curve" min="0" max="1.6" step="0.05" value="0.95"><output id="curveOut">0.95</output></label>
+    <label>Tessellation <input type="range" id="tess" min="6" max="54" step="2" value="30"><output id="tessOut">30</output></label>
+    <label><input type="checkbox" id="showLattice" checked> Show cell lattice</label>
+    <label><input type="checkbox" id="showSpacing"> Mark too-close pairs</label>
+    <label><input type="checkbox" id="unevenTess" checked> Uneven tessellation (Suzanne-like)</label>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="legend">
+    <span><span class="swatch" style="background:var(--probe)"></span>probe</span>
+    <span><span class="swatch" style="background:var(--bad)"></span>pair closer than ½ cell (bad spacing)</span>
+    <span><span class="swatch" style="background:var(--lattice)"></span>cell lattice</span>
+    <span><span class="swatch" style="background:var(--surface)"></span>surface</span>
+</div>
+
+<div class="note">
+    <h3>How to read this — and one result that surprised me</h3>
+    <p>
+        Watch <b>min spacing</b>, measured in cells. It is the number that matters, because today's rule bounds probe
+        <em>density</em> (one per cell) but <strong>not</strong> probe <em>spacing</em> — two probes in adjacent cells
+        can both sit against their shared boundary and end up almost touching.
+    </p>
+    <p>
+        <b>Option 1 is the clear winner on spacing, and it is not close.</b> At the default settings the shipping rule's
+        closest pair is <code>0.024</code> of a cell apart; snapping takes that to <code>0.215</code>. Drag
+        <b>Curvature</b> to 0 and snapping reaches <code>1.000</code> — exactly one cell, perfectly lattice-locked,
+        which is the uniformity you saw in the prototype.
+    </p>
+    <p>
+        <b>Option 2 is worse than option 1 on spacing, which I did not expect until I measured it.</b> Adding the
+        normal-cone to the key <em>subdivides</em> each cell into up to 6 independent buckets (4 in this cross-section),
+        so several probes are now allowed to share one cell by design — min spacing falls back to <code>0.039</code>,
+        and on a flat surface two probes can land <code>0.000</code> apart. That is the correct behaviour for a crease
+        (a wall and a floor meeting in one cell genuinely want two probes) but it is not what you asked for, and it
+        partially undoes option 1's gain. Turn on <b>Mark too-close pairs</b> and compare panels 2 and 3 directly.
+    </p>
+    <p>
+        Turn on <b>Uneven tessellation</b> and drag <b>Tessellation</b> up to see the Suzanne case: where triangles are
+        tiny, many fight over one cell and the winner is arbitrary, so panel 1's probes scatter within their cells while
+        panel 2's sit on the lattice regardless of how the mesh is cut.
+    </p>
+</div>
+
+<div class="note">
+    <h3>The trade-off in option 3 I want to flag before you pick</h3>
+    <p>
+        Option&nbsp;3 adds the prototype's <code>CellEdgeAt(distance)</code> power-of-two LOD. <strong>Frontier's grid
+        already does distance LOD</strong> via its surfel cascades (<code>SurfelGridCoordToCascadeFloat</code> →
+        <code>SurfelCascadeFloatToCascade</code>, already read by <code>SampleStepsForTriangle</code>). Adding a second
+        distance term on top would coarsen twice — the far field would thin out roughly quadratically instead of
+        linearly. If you want option&nbsp;3, the honest version is <em>reconciling</em> the two into one LOD, not
+        stacking them, and that is a bigger change than options 1 or 2.
+    </p>
+    <table class="cmp">
+        <tr><th>Option</th><th>Files touched</th><th>Risk</th><th>What it fixes</th></tr>
+        <tr><td><b>1 — snap only</b></td>
+            <td><code>SurfelMicroRaster.comp</code>, ~6 lines in <code>ClaimCell</code></td>
+            <td>Low. Coverage semantics unchanged.</td>
+            <td>Spacing + frame-to-frame stability. Most of the visible uniformity gap.</td></tr>
+        <tr><td><b>2 — snap + cone key</b></td>
+            <td>Same file, plus replaces <code>CellAlreadyCovered</code>'s disc test</td>
+            <td>Medium. Creases change behaviour, and <b>measured spacing is worse than option 1</b> (0.039 vs 0.215 of a cell) because the cone splits each cell into up to 6 buckets that may each hold a probe.</td>
+            <td>Removes the <code>DotNormal&nbsp;&gt;&nbsp;0.5</code> tuning knob — occupancy becomes exact set membership — and keeps creases sharp. Costs some of option 1's uniformity to do it.</td></tr>
+        <tr><td><b>3 — + distance LOD</b></td>
+            <td>Above, plus the cascade/LOD reconciliation</td>
+            <td>High. Double-LOD unless the existing cascade term is removed in the same change.</td>
+            <td>Nothing you have reported as broken. The cascades already cover it.</td></tr>
+    </table>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+//  A 2D cross-section stands in for the 3D surface. Every rule below is the
+//  literal 2D analogue of the 3D one, so the comparison is honest: cells are
+//  squares instead of cubes, the normal cone has 4 buckets instead of 6, and
+//  the plane projection is onto the local tangent line. Nothing else changes.
+// ---------------------------------------------------------------------------
+const CanvasWidth = 470, CanvasHeight = 340;
+const WorldMinX = -2.5, WorldMaxX = 2.5;      // [m]
+const WorldMinY = -1.35, WorldMaxY = 2.25;    // [m]
+
+const Settings = {
+    CellEdge: 0.30, Curvature: 0.95, Tessellation: 30,
+    ShowLattice: true, ShowSpacing: false, UnevenTess: true,
+};
+
+// The surface: a curvature-blended arc. Curvature 0 is a flat line (where
+// options 1 and 2 must agree); higher values bend it so cells cut the surface
+// at varying angles.
+function SurfacePoint(T)                       // T in [0, 1] along the surface
+{
+    const X = WorldMinX + 0.35 + T * (WorldMaxX - WorldMinX - 0.7);
+    const Y = Settings.Curvature * (0.85 - 0.95 * X * X * 0.34) + 0.15;
+    return [X, Y];
+}
+
+// Uneven tessellation concentrates vertices near the middle — the Suzanne case,
+// where a dense feature region packs many small triangles into few cells.
+function VertexParameter(I, Count)
+{
+    const T = I / Count;
+    if (!Settings.UnevenTess) return T;
+    return T + 0.34 * Math.sin(Math.PI * 2 * T) * T * (1 - T) * 3.1;
+}
+
+function BuildSegments()
+{
+    const Count = Settings.Tessellation, Out = [];
+    for (let I = 0; I < Count; ++I)
+    {
+        const A = SurfacePoint(Math.min(1, Math.max(0, VertexParameter(I, Count))));
+        const B = SurfacePoint(Math.min(1, Math.max(0, VertexParameter(I + 1, Count))));
+        const Dx = B[0] - A[0], Dy = B[1] - A[1];
+        const Len = Math.hypot(Dx, Dy);
+        if (Len < 1e-6) continue;
+        Out.push({ A, B, Length: Len, Normal: [-Dy / Len, Dx / Len] });
+    }
+    return Out;
+}
+
+// 4 axis buckets — the 2D form of the prototype's 6-bucket NormalCone.
+function NormalCone(N)
+{
+    return Math.abs(N[0]) >= Math.abs(N[1]) ? (N[0] > 0 ? 0 : 1) : (N[1] > 0 ? 2 : 3);
+}
+
+// --- the four placement rules -------------------------------------------------
+//  Each returns { Probes, Samples, Claims } over the same segment set. The
+//  differences are confined to (a) the occupancy KEY and (b) the stored POSITION.
+function RunPlacement(Mode)
+{
+    const Segments = BuildSegments();
+    const Edge = Settings.CellEdge;
+    const Occupancy = new Map();
+    const Probes = [];
+    let Samples = 0;
+
+    for (const Seg of Segments)
+    {
+        // Same Nyquist-ish step rule the shader uses: at most half a cell.
+        const Steps = Math.max(1, Math.min(64, Math.ceil(Seg.Length / (Edge * 0.5))));
+        for (let I = 0; I <= Steps; ++I)
+        {
+            const U = I / Steps;
+            const P = [Seg.A[0] + (Seg.B[0] - Seg.A[0]) * U,
+                       Seg.A[1] + (Seg.B[1] - Seg.A[1]) * U];
+            Samples++;
+
+            const Cx = Math.floor(P[0] / Edge), Cy = Math.floor(P[1] / Edge);
+
+            // (a) THE KEY. Options 1 and 3 additionally run a fuzzy disc test
+            //     (below) that can admit a second probe in a claimed cell;
+            //     option 2's key is exact set membership and cannot.
+            const Key = (Mode === 'cone' || Mode === 'lod')
+                ? `${Cx},${Cy},${NormalCone(Seg.Normal)}`
+                : `${Cx},${Cy}`;
+
+            if (Occupancy.has(Key))
+            {
+                // The shipped shader's disc test: covered only if inside the
+                // radius AND facing within ~60 degrees. On curvature this lets a
+                // near-duplicate through, which is the extra scatter in panel 1.
+                if (Mode === 'raw')
+                {
+                    const Held = Probes[Occupancy.get(Key)];
+                    const Dot = Held.Normal[0] * Seg.Normal[0] + Held.Normal[1] * Seg.Normal[1];
+                    const Dist = Math.hypot(Held.World[0] - P[0], Held.World[1] - P[1]);
+                    if (Dist < Edge * 0.5 || Dot > 0.5) continue;
+                }
+                else continue;
+            }
+
+            // (b) THE POSITION. 'raw' keeps the sample where it landed; the
+            //     others snap to the cell centre and project back onto the
+            //     segment's own plane so the probe stays ON the surface.
+            let World;
+            if (Mode === 'raw')
+            {
+                World = P;
+            }
+            else
+            {
+                const Centre = [(Cx + 0.5) * Edge, (Cy + 0.5) * Edge];
+                const Offset = (P[0] - Centre[0]) * Seg.Normal[0] + (P[1] - Centre[1]) * Seg.Normal[1];
+                World = [Centre[0] + Seg.Normal[0] * Offset, Centre[1] + Seg.Normal[1] * Offset];
+            }
+
+            Occupancy.set(Key, Probes.length);
+            Probes.push({ World, Normal: Seg.Normal, Cell: [Cx, Cy] });
+        }
+    }
+    return { Probes, Samples, Claims: Occupancy.size };
+}
+
+// --- spacing analysis: the number the snap is supposed to fix ------------------
+function AnalyseSpacing(Probes)
+{
+    const Threshold = Settings.CellEdge * 0.5;
+    let Min = Infinity; const Close = [];
+    for (let I = 0; I < Probes.length; ++I)
+        for (let J = I + 1; J < Probes.length; ++J)
+        {
+            const D = Math.hypot(Probes[I].World[0] - Probes[J].World[0],
+                                 Probes[I].World[1] - Probes[J].World[1]);
+            if (D < Min) Min = D;
+            if (D < Threshold) Close.push([I, J]);
+        }
+    return { Min: Probes.length > 1 ? Min : 0, Close };
+}
+
+// --- drawing ------------------------------------------------------------------
+function ToScreen(P)
+{
+    return [ (P[0] - WorldMinX) / (WorldMaxX - WorldMinX) * CanvasWidth,
+             CanvasHeight - (P[1] - WorldMinY) / (WorldMaxY - WorldMinY) * CanvasHeight ];
+}
+
+function Draw(Canvas, Result, Spacing)
+{
+    const Ctx = Canvas.getContext('2d');
+    Ctx.setTransform(1, 0, 0, 1, 0, 0);
+    Ctx.clearRect(0, 0, CanvasWidth, CanvasHeight);
+
+    if (Settings.ShowLattice)
+    {
+        Ctx.strokeStyle = '#e2ded6'; Ctx.lineWidth = 1;
+        const Edge = Settings.CellEdge;
+        for (let X = Math.ceil(WorldMinX / Edge) * Edge; X < WorldMaxX; X += Edge)
+        {
+            const S = ToScreen([X, 0]); Ctx.beginPath();
+            Ctx.moveTo(S[0], 0); Ctx.lineTo(S[0], CanvasHeight); Ctx.stroke();
+        }
+        for (let Y = Math.ceil(WorldMinY / Edge) * Edge; Y < WorldMaxY; Y += Edge)
+        {
+            const S = ToScreen([0, Y]); Ctx.beginPath();
+            Ctx.moveTo(0, S[1]); Ctx.lineTo(CanvasWidth, S[1]); Ctx.stroke();
+        }
+    }
+
+    // the surface, with tessellation vertices marked so uneven tess is visible
+    const Segments = BuildSegments();
+    Ctx.strokeStyle = '#3f4650'; Ctx.lineWidth = 2.4; Ctx.beginPath();
+    for (let I = 0; I < Segments.length; ++I)
+    {
+        const A = ToScreen(Segments[I].A), B = ToScreen(Segments[I].B);
+        if (I === 0) Ctx.moveTo(A[0], A[1]);
+        Ctx.lineTo(B[0], B[1]);
+    }
+    Ctx.stroke();
+    Ctx.fillStyle = '#9aa1ab';
+    for (const Seg of Segments)
+    {
+        const A = ToScreen(Seg.A);
+        Ctx.beginPath(); Ctx.arc(A[0], A[1], 1.6, 0, 6.284); Ctx.fill();
+    }
+
+    if (Settings.ShowSpacing)
+    {
+        Ctx.strokeStyle = '#b91c1c'; Ctx.lineWidth = 2.2;
+        for (const [I, J] of Spacing.Close)
+        {
+            const A = ToScreen(Result.Probes[I].World), B = ToScreen(Result.Probes[J].World);
+            Ctx.beginPath(); Ctx.moveTo(A[0], A[1]); Ctx.lineTo(B[0], B[1]); Ctx.stroke();
+        }
+    }
+
+    const CloseSet = new Set();
+    for (const [I, J] of Spacing.Close) { CloseSet.add(I); CloseSet.add(J); }
+
+    for (let I = 0; I < Result.Probes.length; ++I)
+    {
+        const S = ToScreen(Result.Probes[I].World);
+        const Bad = Settings.ShowSpacing && CloseSet.has(I);
+        Ctx.fillStyle = Bad ? '#b91c1c' : '#c2410c';
+        Ctx.beginPath(); Ctx.arc(S[0], S[1], 3.5, 0, 6.284); Ctx.fill();
+        Ctx.strokeStyle = 'rgba(255,255,255,0.85)'; Ctx.lineWidth = 1;
+        Ctx.stroke();
+    }
+}
+
+// --- panels -------------------------------------------------------------------
+const Panels = [
+    { Mode: 'raw',  Title: 'Today — raw sample point', Tag: 'SHIPPING NOW', Current: true,
+      Rule: 'Requests[Slot] = SamplePosition;\nkey  = cell\ncover= Mahalanobis disc\n       && DotNormal > 0.5',
+      Blurb: 'The probe stays wherever the barycentric walk happened to land inside the cell. Density is bounded; spacing is not.' },
+    { Mode: 'snap', Title: 'Option 1 — snap to cell centre', Tag: 'RECOMMENDED', Current: false,
+      Rule: 'Cell = (floor(P/E)+0.5)*E;\nSnap = Cell + N*dot(P-Cell,N);\nkey  = cell\ncover= unchanged (disc)',
+      Blurb: 'Probe moves to the cell centre, then projects back onto the triangle plane so it stays on the surface. Spacing becomes a property of the lattice.' },
+    { Mode: 'cone', Title: 'Option 2 — snap + normal-cone key', Tag: 'HTML PARITY', Current: false,
+      Rule: 'Snap  = as option 1\nkey   = cell | NormalCone(N)\ncover = exact set membership\n        (no DotNormal knob)',
+      Blurb: 'Occupancy becomes exact — no radius, no angle threshold. But the cone splits each cell into up to 6 buckets, so several probes may share a cell: spacing is measurably worse than option 1. Right for creases, not for uniformity.' },
+    { Mode: 'lod',  Title: 'Option 3 — + distance LOD', Tag: '⚠ DOUBLE-LOD', Current: false,
+      Rule: 'as option 2, plus\nE = CellEdge * 2^floor(log2(d/6))\n// Frontier cascades ALREADY\n// do this — see the note',
+      Blurb: 'Adds the prototype\'s own distance coarsening on top of Frontier\'s existing cascade LOD. Identical to option 2 here, because this cross-section is all at one distance.' },
+];
+
+function Build()
+{
+    const Grid = document.getElementById('grid');
+    Grid.innerHTML = '';
+    for (const Panel of Panels)
+    {
+        const Card = document.createElement('div');
+        Card.className = 'card' + (Panel.Current ? ' current' : '');
+        Card.innerHTML = `
+            <h2><span>${Panel.Title}</span><span class="tag ${Panel.Current ? 'now' : ''}">${Panel.Tag}</span></h2>
+            <canvas width="${CanvasWidth}" height="${CanvasHeight}"></canvas>
+            <div class="body">
+                <pre class="rule">${Panel.Rule}</pre>
+                <div style="color:var(--muted);margin-bottom:8px">${Panel.Blurb}</div>
+                <div class="metric"><span>probes</span><b data-k="probes">–</b></div>
+                <div class="metric"><span>min spacing / cell</span><b data-k="spacing">–</b></div>
+                <div class="metric"><span>pairs under ½ cell</span><b data-k="close">–</b></div>
+                <div class="verdict" data-k="verdict"></div>
+            </div>`;
+        Grid.appendChild(Card);
+        Panel.Card = Card;
+        Panel.Canvas = Card.querySelector('canvas');
+    }
+}
+
+function Refresh()
+{
+    for (const Panel of Panels)
+    {
+        const Result  = RunPlacement(Panel.Mode);
+        const Spacing = AnalyseSpacing(Result.Probes);
+        Draw(Panel.Canvas, Result, Spacing);
+
+        const Ratio = Spacing.Min / Settings.CellEdge;
+        const Set = (Key, Text) => { Panel.Card.querySelector(`[data-k=${Key}]`).textContent = Text; };
+        Set('probes',  Result.Probes.length);
+        Set('spacing', Ratio.toFixed(3));
+        Set('close',   Spacing.Close.length);
+
+        const Verdict = Panel.Card.querySelector('[data-k=verdict]');
+        const Healthy = Spacing.Close.length === 0;
+        Verdict.className = 'verdict ' + (Healthy ? 'good' : 'bad');
+        Verdict.innerHTML = Healthy
+            ? '<b>Spacing clean.</b> No two probes closer than half a cell.'
+            : `<b>${Spacing.Close.length} crowded pair${Spacing.Close.length === 1 ? '' : 's'}.</b> Closest is ${Ratio.toFixed(3)} of a cell apart.`;
+    }
+}
+
+function Bind(Id, Key, Format)
+{
+    const Input = document.getElementById(Id);
+    const Out   = document.getElementById(Id + 'Out');
+    const Apply = () => {
+        Settings[Key] = Input.type === 'checkbox' ? Input.checked : parseFloat(Input.value);
+        if (Out) Out.textContent = Format ? Format(Settings[Key]) : Settings[Key];
+        Refresh();
+    };
+    Input.addEventListener('input', Apply);
+    Apply();
+}
+
+Build();
+Bind('cell',  'CellEdge',      V => V.toFixed(2));
+Bind('curve', 'Curvature',     V => V.toFixed(2));
+Bind('tess',  'Tessellation',  V => String(V));
+Bind('showLattice', 'ShowLattice');
+Bind('showSpacing', 'ShowSpacing');
+Bind('unevenTess',  'UnevenTess');
+Refresh();
+</script>
+</body>
+</html>

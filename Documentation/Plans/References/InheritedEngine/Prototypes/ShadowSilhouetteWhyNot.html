@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Why shadow rays can't trace only the silhouette</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --dim:#8b949e;
+    --line:#30363d; --hot:#f6685e; --cool:#57c7ff; --good:#4cd07d; --warn:#e3b341;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 system-ui,Segoe UI,sans-serif;padding:28px;max-width:1000px;margin:auto}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card h2{margin:0 0 8px;font-size:15px;display:flex;gap:8px;align-items:center}
+  .tag{font:11px var(--mono);padding:2px 7px;border-radius:5px;margin-left:auto}
+  .t-bad{background:rgba(246,104,94,.15);color:var(--hot)}
+  .t-ok{background:rgba(76,208,125,.15);color:var(--good)}
+  svg{width:100%;height:240px;display:block;background:#0c0f14;border-radius:8px}
+  p{font-size:13.5px;color:#c9d1d9;margin:10px 0 0}
+  code{font-family:var(--mono);color:var(--cool)}
+  .real{grid-column:1/-1;background:rgba(87,199,255,.07);border-left:3px solid var(--cool);
+        padding:14px 16px;border-radius:0 8px 8px 0}
+  .real h2{color:var(--cool)}
+  b.bad{color:var(--hot)} b.good{color:var(--good)}
+</style>
+</head>
+<body>
+  <h1>“Trace only the silhouette, not the whole object”</h1>
+  <p class="sub">Good instinct for <i>rendering an outline</i> — but a shadow ray asks <b>“am I blocked?”</b>, and blocking happens through the solid interior.</p>
+
+  <div class="grid">
+
+    <!-- BROKEN: silhouette only -->
+    <div class="card">
+      <h2>Trace only the outline <span class="tag t-bad">hollow shadow</span></h2>
+      <svg viewBox="0 0 340 240">
+        <!-- sun -->
+        <circle cx="300" cy="28" r="12" fill="#e3b341"/><text x="276" y="20" fill="#e3b341" font-size="11">sun</text>
+        <!-- occluder: only its outline is "traceable" -->
+        <ellipse cx="180" cy="95" rx="46" ry="60" fill="none" stroke="#f6685e" stroke-width="3"/>
+        <text x="150" y="30" fill="#f6685e" font-size="11">only edge traced</text>
+        <!-- floor -->
+        <rect x="20" y="196" width="300" height="8" fill="#222b36"/>
+        <!-- ray through the MIDDLE: reports CLEAR because interior isn't traced -->
+        <path d="M70,200 L292,38" stroke="#4cd07d" stroke-width="2" stroke-dasharray="2 3"/>
+        <text x="60" y="150" fill="#4cd07d" font-size="10">ray thru middle → “clear”</text>
+        <circle cx="70" cy="200" r="4" fill="#57c7ff"/>
+        <!-- result on floor: only a ring of shadow, lit center -->
+        <ellipse cx="120" cy="200" rx="30" ry="6" fill="none" stroke="#3d4653" stroke-width="4"/>
+        <ellipse cx="120" cy="200" rx="30" ry="6" fill="#e3b341" opacity=".25"/>
+        <text x="88" y="228" fill="#f6685e" font-size="11">lit hole in the middle ✗</text>
+      </svg>
+      <p>Rays through the <b class="bad">interior</b> never meet an edge, so they report unblocked. The object casts a hollow ring, not a shadow — light pours through the middle.</p>
+    </div>
+
+    <!-- CORRECT: solid -->
+    <div class="card">
+      <h2>Trace the solid <span class="tag t-ok">filled shadow</span></h2>
+      <svg viewBox="0 0 340 240">
+        <circle cx="300" cy="28" r="12" fill="#e3b341"/><text x="276" y="20" fill="#e3b341" font-size="11">sun</text>
+        <ellipse cx="180" cy="95" rx="46" ry="60" fill="#3d4653" stroke="#4cd07d" stroke-width="2"/>
+        <text x="150" y="30" fill="#4cd07d" font-size="11">whole solid</text>
+        <rect x="20" y="196" width="300" height="8" fill="#222b36"/>
+        <!-- same ray now HITS the solid -->
+        <path d="M70,200 L176,123" stroke="#4cd07d" stroke-width="2"/>
+        <circle cx="176" cy="123" r="5" fill="#4cd07d"/>
+        <text x="60" y="150" fill="#4cd07d" font-size="10">ray hits solid → blocked</text>
+        <circle cx="70" cy="200" r="4" fill="#57c7ff"/>
+        <!-- filled shadow -->
+        <ellipse cx="120" cy="200" rx="30" ry="6" fill="#1a2028"/>
+        <text x="86" y="228" fill="#4cd07d" font-size="11">solid shadow ✓</text>
+      </svg>
+      <p>The occluder blocks because it’s <b class="good">filled</b>. A hand blocks a flashlight by being solid, not by having an outline — the palm casts the shadow, and the palm isn’t on the silhouette.</p>
+    </div>
+
+    <!-- the real, salvageable idea -->
+    <div class="real">
+      <h2>The idea that DOES work: spend rays only at the shadow’s edge</h2>
+      <p style="margin-top:6px">Your instinct — “don’t pay everywhere” — is right; it just applies to the <b>shadow’s</b> edge, not the object’s. The umbra (fully dark) and the lit region both give the same answer from <b>1</b> ray as from 8. Only the <b>penumbra</b> (soft edge) needs the extra taps. So: fire <b>1 cheap any-hit ray</b> per pixel; only where a neighbourhood straddles lit↔shadowed do you fire the remaining N. Exact result, ~8× fewer rays across the flat interior — and it stacks on top of the any-hit early-out.</p>
+    </div>
+
+  </div>
+</body>
+</html>

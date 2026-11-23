@@ -1,0 +1,183 @@
+/* LUCENT — CABIN HMI PROTOTYPE C
+   🧩 Glass-card luxury display: midnight studio, cobalt glass cards tilted back on a shared perspective,
+      a round icon column, medium-weight type with wide-tracked labels. The light colour (--Accent) retints
+      the light wall, the floor and every active control at once. Fixed 1600 × 900. */
+
+.Lucent {
+    --Ink:       #eef4ff;
+    --InkSoft:   rgba(226, 236, 255, 0.74);
+    --InkDim:    rgba(200, 216, 255, 0.5);
+    --Cobalt:    #3d6bff;
+    --Accent:    #c8ff3d;
+    --AccentRGB: 200, 255, 61;
+    --CardEdge:  rgba(150, 190, 255, 0.28);
+    width: 1600px; height: 900px;
+    background: #02050f;
+    color: var(--Ink);
+    font-size: 14px;
+}
+.Lucent [hidden] { display: none !important; }
+.Shade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(60% 40% at 0% 0%, rgba(2, 6, 20, 0.7), transparent 70%), linear-gradient(0deg, rgba(2, 6, 20, 0.85), rgba(2, 6, 20, 0.0) 36%), linear-gradient(180deg, rgba(2, 6, 20, 0.6), transparent 24%); }
+
+/* ------------------------------------------------------------------ heading */
+.Heading { position: absolute; left: 72px; top: 44px; }
+.Heading small { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--InkDim); }
+.Heading h1 { margin: 8px 0 4px; font-weight: 400; font-size: 46px; letter-spacing: -0.01em; transition: opacity 220ms, transform 320ms cubic-bezier(.2,.9,.3,1); }
+.Heading p { margin: 0; color: var(--InkSoft); font-size: 15px; transition: opacity 220ms 60ms, transform 320ms 60ms cubic-bezier(.2,.9,.3,1); }
+.Heading.Swap h1, .Heading.Swap p { opacity: 0; transform: translateY(-10px); }
+
+.StateChip { position: absolute; left: 50%; top: 44px; transform: translateX(-50%); height: 40px; border-radius: 20px; padding: 0 18px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--InkSoft); background: rgba(30, 60, 160, 0.22); border: 1px solid var(--CardEdge); backdrop-filter: blur(16px); }
+.StateChip i { width: 8px; height: 8px; border-radius: 50%; background: var(--Accent); box-shadow: 0 0 10px var(--Accent); animation: Breath 2.4s ease-in-out infinite; }
+.StateChip b { font-weight: 500; color: var(--Ink); }
+.StateChip em { font-style: normal; color: var(--Ink); }
+@keyframes Breath { 50% { opacity: 0.35; } }
+.TopRight { position: absolute; right: 72px; top: 48px; display: flex; align-items: center; gap: 22px; color: var(--InkSoft); }
+.TopRight span { display: flex; align-items: center; gap: 6px; }
+.TopRight svg { width: 22px; height: 22px; fill: none; stroke: var(--InkSoft); stroke-width: 1.6; }
+.TopRight b { font-weight: 400; font-size: 26px; color: var(--Ink); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ icon column */
+.IconColumn { position: absolute; right: 44px; top: 50%; transform: translateY(-58%); display: flex; flex-direction: column; gap: 16px; }
+.IconColumn button { width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; position: relative; overflow: visible; color: var(--InkSoft);
+                     background: radial-gradient(circle at 35% 28%, rgba(120, 160, 255, 0.35), rgba(20, 40, 120, 0.35)); border: 1px solid var(--CardEdge); backdrop-filter: blur(14px);
+                     box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 10px 26px rgba(0, 0, 0, 0.35); transition: transform 240ms cubic-bezier(.3,1.6,.5,1), background 300ms, color 300ms; }
+.IconColumn button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.IconColumn button span { position: absolute; right: 76px; top: 50%; transform: translate(10px, -50%); white-space: nowrap; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0; pointer-events: none; transition: opacity 200ms, transform 300ms cubic-bezier(.2,.9,.3,1); color: var(--Ink); }
+.IconColumn button:hover span, .IconColumn button.On span { opacity: 1; transform: translate(0, -50%); }
+.IconColumn button:hover { transform: scale(1.06); }
+.IconColumn button:active { transform: scale(0.92); }
+.IconColumn button.On { color: #0b1430; background: radial-gradient(circle at 35% 28%, #ffffff, var(--Accent) 70%); border-color: transparent; box-shadow: 0 0 28px rgba(var(--AccentRGB), 0.55); }
+.IconColumn button.On::after { content: ''; position: absolute; inset: -7px; border-radius: 50%; border: 1px dashed rgba(var(--AccentRGB), 0.75); animation: RingTurn 9s linear infinite; }
+@keyframes RingTurn { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------------ deck */
+.Deck { position: absolute; left: 72px; bottom: 34px; width: 1336px; height: 224px; }
+.CardSet { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; pointer-events: none; transform-style: preserve-3d; }
+.CardSet.On { pointer-events: auto; }
+.Card { position: relative; border-radius: 26px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; transform-origin: 50% 100%;
+        background: linear-gradient(160deg, rgba(96, 140, 255, 0.30), rgba(24, 46, 128, 0.34) 55%, rgba(10, 22, 70, 0.42)); border: 1px solid var(--CardEdge); backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 24px 50px rgba(0, 4, 20, 0.55);
+        transform: perspective(900px) rotateX(70deg) translateY(50px); opacity: 0; transition: transform 520ms cubic-bezier(.2,.9,.25,1.05), opacity 300ms, box-shadow 300ms; transition-delay: calc(var(--I) * 45ms); }
+.CardSet.On .Card { transform: perspective(900px) rotateX(14deg); opacity: 1; transition-delay: calc(180ms + var(--I) * 70ms); }
+.CardSet.On .Card:hover { transform: perspective(900px) rotateX(6deg) translateY(-6px); transition-delay: 0ms; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 30px 60px rgba(0, 4, 20, 0.6), 0 0 0 1px rgba(var(--AccentRGB), 0.25); }
+.Card::before { content: ''; position: absolute; top: 0; bottom: 0; width: 60%; left: -80%; background: linear-gradient(100deg, transparent, rgba(255,255,255,0.12), transparent); transform: skewX(-18deg); pointer-events: none; }
+.Card:hover::before { animation: Sheen 900ms ease-out; }
+@keyframes Sheen { to { left: 130%; } }
+.Card header { display: flex; align-items: center; gap: 10px; font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--InkSoft); }
+.Card header svg { width: 20px; height: 20px; fill: none; stroke: var(--Accent); stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.Card .Go { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,0.08); color: var(--Ink); transition: background 200ms, transform 300ms cubic-bezier(.3,1.6,.5,1); cursor: pointer; }
+.Card .Go svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; }
+.Card .Go:hover { background: var(--Accent); color: #0b1430; transform: rotate(45deg); }
+.Card footer { margin-top: auto; display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--InkDim); }
+.Card footer b { font-weight: 500; color: var(--Ink); }
+
+.LockPill { position: relative; height: 62px; border-radius: 31px; background: rgba(4, 10, 40, 0.45); border: 1px solid var(--CardEdge); display: grid; grid-template-columns: 1fr 1fr; align-items: center; font-size: 14px; color: var(--InkSoft); }
+.LockPill i { position: absolute; top: 5px; left: 5px; width: calc(50% - 5px); height: 50px; border-radius: 25px; background: var(--Accent); box-shadow: 0 0 22px rgba(var(--AccentRGB), 0.5); transition: transform 460ms cubic-bezier(.3,1.5,.45,1), background 300ms; }
+.LockPill span { position: relative; z-index: 1; text-align: center; transition: color 300ms; }
+.LockPill .Locked { color: #0b1430; font-weight: 500; }
+.Unlocked-State .LockPill i { transform: translateX(100%); background: #ffffff; box-shadow: 0 0 18px rgba(255,255,255,0.35); }
+.Unlocked-State .LockPill .Locked { color: var(--InkSoft); font-weight: 400; }
+.Unlocked-State .LockPill .Unlocked { color: #0b1430; font-weight: 500; }
+
+.TempRow { display: flex; align-items: center; justify-content: space-between; }
+.Step { width: 46px; height: 46px; border-radius: 50%; font-size: 24px; background: rgba(255,255,255,0.08); border: 1px solid var(--CardEdge); transition: transform 160ms, background 200ms; }
+.Step:hover { background: rgba(var(--AccentRGB), 0.2); }
+.Step:active { transform: scale(0.88); }
+.TempValue b { font-weight: 300; font-size: 54px; line-height: 1; font-variant-numeric: tabular-nums; }
+.TempValue em { font-style: normal; font-size: 18px; color: var(--InkSoft); vertical-align: top; margin-left: 2px; }
+
+.Swatches { display: flex; gap: 12px; align-items: center; height: 54px; }
+.Swatches button { width: 38px; height: 38px; border-radius: 50%; position: relative; transition: transform 300ms cubic-bezier(.3,1.6,.5,1); box-shadow: inset 0 2px 4px rgba(255,255,255,0.5), 0 4px 14px rgba(0,0,0,0.4); }
+.Swatches button::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid transparent; transition: border-color 260ms, inset 260ms; }
+.Swatches button.On { transform: scale(1.12); }
+.Swatches button.On::after { border-color: rgba(255,255,255,0.85); }
+.Swatches.Large { height: 72px; gap: 16px; }
+.Swatches.Large button { width: 46px; height: 46px; }
+
+.Memory { display: flex; gap: 10px; height: 54px; align-items: center; }
+.Memory button { flex: 1; height: 48px; border-radius: 16px; font-size: 18px; background: rgba(255,255,255,0.07); border: 1px solid var(--CardEdge); transition: all 260ms; }
+.Memory button.On { background: var(--Accent); color: #0b1430; font-weight: 500; border-color: transparent; box-shadow: 0 0 18px rgba(var(--AccentRGB), 0.45); }
+.Memory.Large button { height: 64px; font-size: 22px; border-radius: 20px; }
+
+.BigFigure { display: flex; align-items: baseline; gap: 6px; }
+.BigFigure b { font-weight: 300; font-size: 62px; line-height: 1; font-variant-numeric: tabular-nums; }
+.BigFigure em { font-style: normal; color: var(--InkSoft); font-size: 18px; }
+
+.TurnRow { display: flex; align-items: center; gap: 16px; }
+.TurnArrow { width: 72px; height: 72px; border-radius: 22px; display: grid; place-items: center; background: rgba(var(--AccentRGB), 0.16); transition: transform 500ms cubic-bezier(.3,1.5,.5,1); }
+.TurnArrow svg { width: 44px; height: 44px; fill: none; stroke: var(--Accent); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.TurnRow b { display: block; font-weight: 400; font-size: 28px; }
+.TurnRow small { color: var(--InkSoft); font-size: 13px; }
+
+.DestinationList { display: flex; flex-direction: column; gap: 6px; }
+.DestinationList button { height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; font-size: 15px; background: rgba(255,255,255,0.05); border: 1px solid transparent; transition: all 240ms; }
+.DestinationList button small { color: var(--InkDim); font-size: 12px; }
+.DestinationList button.On { border-color: rgba(var(--AccentRGB), 0.7); background: rgba(var(--AccentRGB), 0.12); }
+
+.Launch { height: 70px; border-radius: 22px; font-size: 16px; font-weight: 500; color: #0b1430; background: var(--Accent); box-shadow: 0 10px 30px rgba(var(--AccentRGB), 0.35); position: relative; overflow: hidden; transition: transform 160ms; }
+.Launch:active { transform: scale(0.97); }
+.Launch.Active { background: #ffffff; }
+.Launch.Active::after { content: ''; position: absolute; left: 0; bottom: 0; height: 4px; background: var(--Accent); animation: LaunchBar 2.4s linear infinite; }
+@keyframes LaunchBar { from { width: 0; } to { width: 100%; } }
+
+.Hinge { height: 62px; border-radius: 20px; display: flex; align-items: center; gap: 14px; padding: 0 16px; font-size: 15px; background: rgba(255,255,255,0.06); border: 1px solid var(--CardEdge); transition: background 260ms; }
+.Hinge i { width: 40px; height: 26px; position: relative; flex: none; }
+.Hinge i::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 10px; border-radius: 3px; border: 1.6px solid var(--InkSoft); border-top: 0; }
+.Hinge i::after { content: ''; position: absolute; left: 0; width: 40px; bottom: 10px; height: 2px; border-radius: 1px; background: var(--Accent); transform-origin: 2px 50%; transition: transform 500ms cubic-bezier(.3,1.5,.5,1); }
+.Hinge.Open { background: rgba(var(--AccentRGB), 0.14); border-color: rgba(var(--AccentRGB), 0.6); }
+.Hinge.Open i::after { transform: rotate(-38deg); }
+
+.ChargeRow { display: flex; align-items: center; gap: 12px; }
+.ChargeRow svg { width: 70px; height: 70px; transform: rotate(-90deg); }
+.ChargeRow .Track { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 6; }
+.ChargeRow .Arc { fill: none; stroke: var(--Accent); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 201; stroke-dashoffset: 44; transition: stroke-dashoffset 600ms; }
+.ChargeRow b { font-weight: 300; font-size: 40px; }
+.ChargeRow em { font-style: normal; color: var(--InkSoft); }
+.MiniToggle { margin-left: auto; width: 52px; height: 30px; border-radius: 15px; background: rgba(255,255,255,0.14); position: relative; transition: background 260ms; }
+.MiniToggle i { position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform 320ms cubic-bezier(.3,1.6,.5,1); }
+.MiniToggle.On { background: var(--Accent); }
+.MiniToggle.On i { transform: translateX(22px); }
+
+.Slider { height: 30px; position: relative; cursor: pointer; touch-action: none; }
+.Slider::before { content: ''; position: absolute; left: 0; right: 0; top: 13px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.14); }
+.Slider .Fill { position: absolute; left: 0; top: 13px; height: 4px; border-radius: 2px; background: var(--Accent); box-shadow: 0 0 10px rgba(var(--AccentRGB), 0.6); }
+.Slider .Knob { position: absolute; top: 4px; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.4); transition: transform 200ms; }
+.Slider:active .Knob { transform: scale(1.2); }
+
+.Choice { display: flex; gap: 8px; }
+.Choice button { flex: 1; height: 56px; border-radius: 18px; font-size: 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--CardEdge); color: var(--InkSoft); transition: all 240ms; }
+.Choice button.On { color: #0b1430; background: var(--Accent); border-color: transparent; font-weight: 500; }
+
+.SeatFigure { display: flex; align-items: center; gap: 14px; height: 70px; }
+.SeatFigure svg { width: 120px; height: 70px; }
+.SeatFigure .Cushion { fill: rgba(var(--AccentRGB), 0.25); stroke: var(--Accent); stroke-width: 1.5; }
+.SeatFigure .Back path { fill: rgba(var(--AccentRGB), 0.25); stroke: var(--Accent); stroke-width: 1.5; }
+.SeatFigure .Back { transform-origin: 46px 58px; transform-box: view-box; transition: transform 300ms cubic-bezier(.3,1.4,.5,1); }
+.SeatFigure b { font-weight: 300; font-size: 40px; }
+
+.Climate3 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; height: 118px; }
+.Level { border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px; background: rgba(255,255,255,0.06); border: 1px solid var(--CardEdge); transition: background 260ms; }
+.Level span { display: flex; gap: 4px; }
+.Level span i { width: 16px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.18); transition: background 260ms, box-shadow 260ms; }
+.Heat[data-level="1"] span i:nth-child(1), .Heat[data-level="2"] span i:nth-child(-n+2), .Heat[data-level="3"] span i { background: #ff9a4a; box-shadow: 0 0 8px #ff8a3a; }
+.Vent[data-level="1"] span i:nth-child(1), .Vent[data-level="2"] span i:nth-child(-n+2), .Vent[data-level="3"] span i { background: #6fd0ff; box-shadow: 0 0 8px #4fc0ff; }
+.Heat:not([data-level="0"]) { background: rgba(255, 140, 60, 0.14); }
+.Vent:not([data-level="0"]) { background: rgba(80, 190, 255, 0.14); }
+
+/* ------------------------------------------------------------------ callouts */
+.Callouts { position: absolute; inset: 0; pointer-events: none; }
+.Pin { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; transition: opacity 300ms; }
+.Pin.Hidden { opacity: 0; }
+.Pin .Tag { padding: 7px 12px; border-radius: 14px; font-size: 12px; letter-spacing: 0.08em; white-space: nowrap; background: rgba(10, 24, 80, 0.62); border: 1px solid var(--CardEdge); backdrop-filter: blur(10px); color: var(--InkSoft); transition: background 300ms, color 300ms, border-color 300ms; }
+.Pin .Tag b { color: var(--Ink); font-weight: 500; }
+.Pin .Stem { width: 1px; height: 34px; background: linear-gradient(var(--CardEdge), transparent); }
+.Pin .Dot { width: 10px; height: 10px; border-radius: 50%; background: var(--InkSoft); position: relative; transform: translateY(5px); }
+.Pin.Live .Tag { background: rgba(var(--AccentRGB), 0.9); color: #0b1430; border-color: transparent; }
+.Pin.Live .Tag b { color: #0b1430; }
+.Pin.Live .Dot { background: var(--Accent); }
+.Pin.Live .Dot::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 1.5px solid var(--Accent); animation: PinPulse 1.4s ease-out infinite; }
+@keyframes PinPulse { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+
+.Toast { position: absolute; left: 50%; top: 100px; transform: translate(-50%, -16px); padding: 12px 22px; border-radius: 20px; background: rgba(10, 24, 80, 0.7); backdrop-filter: blur(16px); border: 1px solid var(--CardEdge); font-size: 14px; opacity: 0; transition: opacity 300ms, transform 400ms cubic-bezier(.3,1.4,.5,1); pointer-events: none; }
+.Toast.Show { opacity: 1; transform: translate(-50%, 0); }
+.Toast b { color: var(--Accent); font-weight: 500; }

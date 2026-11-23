@@ -1,0 +1,32 @@
+<!doctype html>
+<!--
+    VISOR — HEAD-UP DISPLAY DRIVING DEMO (awaiting approval)
+    🧩 Game prototype: sit in the ControlVehicle on an endless night pass; hazards, the signal countdown, teammate pings
+       and vehicle warnings appear as light on the windscreen. Separate from the cabin HMIs and dashboard clusters.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor · HUD driving demo</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Visor.css">
+</head>
+<body>
+    <canvas id="Scene"></canvas>
+    <div class="Vignette" id="Vignette"></div>
+    <div class="Flash" id="Flash"></div>
+    <aside class="Help" id="Help">
+        <b>Visor</b>
+        <span><kbd>Mouse</kbd> look around · wheel to zoom</span>
+        <span><kbd>W</kbd><kbd>S</kbd> set speed (auto) · throttle / brake / reverse (manual)</span>
+        <span><kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> brake</span>
+        <span><kbd>Middle mouse</kbd> hold for the ping wheel · tap to ping · <kbd>F</kbd> also works</span>
+        <span><kbd>E</kbd> accept card / overtake · <kbd>Q</kbd> dismiss</span>
+        <span><kbd>C</kbd> autopilot / manual · <kbd>M</kbd> sound · <kbd>H</kbd> hide this</span>
+        <em>Click once to wake the sound</em>
+    </aside>
+    <div class="Loading" id="Loading"><i></i><span>Warming up the engine…</span></div>
+    <script type="module" src="./Visor.js"></script>
+</body>
+</html>

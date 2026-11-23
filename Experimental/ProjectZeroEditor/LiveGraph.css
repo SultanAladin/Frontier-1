@@ -1,0 +1,351 @@
+.environment-live .property-card,
+.environment-live .generic-card {
+  background: #202020 !important;
+  border: 1px solid #ffffff08;
+  border-radius: 25px;
+  box-shadow: 0 10px 26px #00000012;
+}
+.environment-live .property-card > h3 {
+  font-size: 14px;
+  letter-spacing: 0;
+  font-weight: 300;
+  color: #d1d1ce;
+}
+.environment-live .metric {
+  font-weight: 300;
+  letter-spacing: -2px;
+}
+.environment-live .metric-fraction {
+  color: #696b69;
+}
+.environment-live .metric small {
+  color: #92938f;
+}
+.live-plot {
+  margin: 20px 0 12px;
+  min-width: 0;
+}
+.live-plot > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 130px;
+  touch-action: none;
+  cursor: crosshair;
+  overflow: visible;
+}
+.live-plot svg text {
+  font-family: inherit;
+  font-size: 11px;
+  fill: #8e918b;
+}
+.live-plot-value {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.live-plot-value > span:first-child {
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+}
+.live-plot-value small {
+  font-size: 10px;
+  color: #8a8c86;
+}
+.live-plot-value output {
+  display: block;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.environment-live .graph-note,
+.atmosphere-lab-window .graph-note {
+  font-size: 10px;
+  line-height: 1.6;
+  color: #888d87;
+  margin: 10px 0;
+}
+.graph-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: #a7b9a4;
+  margin: 16px 0;
+}
+.graph-metric {
+  font-size: 40px;
+  font-weight: 300;
+  letter-spacing: -1.5px;
+  color: #dadbd4;
+  line-height: 1.1;
+}
+.graph-metric small {
+  font-size: 15px;
+  margin-left: 8px;
+  color: #8f948a;
+}
+.graph-probes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.graph-probes label {
+  min-width: 0;
+  font-size: 10px;
+  color: #9ea394;
+}
+.graph-probes input {
+  width: 100%;
+  min-width: 0;
+  display: block;
+  margin-top: 7px;
+  background: #171918;
+  border: 1px solid #ffffff0d;
+  border-radius: 9px;
+  padding: 9px;
+  color: #d6dbce;
+}
+.live-plot svg:focus-visible {
+  outline: 1px solid #dac6a1;
+  outline-offset: 3px;
+}
+/* Sky colour card shell (SkyDome.jsx). */
+.atmosphere-presets > h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.atmosphere-presets h3 small {
+  font-size: 8px;
+  color: #8a8a8a;
+}
+.atmosphere-presets svg text {
+  font:
+    8px "DM Sans",
+    sans-serif;
+  fill: #7a7a7a;
+}
+.atmosphere-presets svg text.sky-label {
+  fill: #ffffffd0;
+  letter-spacing: 0.8px;
+}
+.atmosphere-space > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.atmosphere-space h3 {
+  margin: 0 !important;
+  font-size: 15px;
+  font-weight: 300;
+}
+.atmosphere-space canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 14/9;
+  image-rendering: auto;
+  border-radius: 16px;
+  touch-action: none;
+  cursor: grab;
+  background: #030507;
+  border: 1px solid #ffffff0b;
+}
+.space-controls {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.space-controls label {
+  font-size: 11px;
+  color: #a6b09e;
+}
+.space-controls output {
+  float: right;
+  color: #d2d6c9;
+}
+.space-controls input {
+  width: 100%;
+  display: block;
+  margin-top: 10px;
+  accent-color: #bac4a8;
+}
+.atmosphere-lab-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2800;
+  background: #000b;
+  backdrop-filter: blur(8px);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.atmosphere-lab-window {
+  background: #141613;
+  border: 1px solid #ffffff18;
+  border-radius: 24px;
+  width: min(1450px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #d7dbd0;
+  font-family: "DM Sans", sans-serif;
+}
+.atmosphere-lab-window > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 28px;
+  border-bottom: 1px solid #ffffff0d;
+}
+.atmosphere-lab-window header small {
+  color: #909d83;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.atmosphere-lab-window h1 {
+  font-weight: 300;
+  font-size: 28px;
+  margin: 5px 0 0;
+}
+.atmosphere-lab-window button {
+  cursor: pointer;
+  background: #282d23;
+  border: 1px solid #ffffff12;
+  color: #d4dec8;
+  border-radius: 9px;
+  padding: 9px 13px;
+  font-family: inherit;
+}
+.atmosphere-lab-body {
+  overflow: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 22px;
+  padding: 24px;
+}
+.atmosphere-lab-body .property-card {
+  background: #20221d;
+  padding: 24px;
+  min-width: 0;
+  border: 1px solid #ffffff08;
+  border-radius: 20px;
+}
+.atmosphere-lab-window p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #959f8b;
+}
+.atmosphere-lab-cards {
+  margin-top: 22px;
+}
+@media (max-width: 850px) {
+  .atmosphere-lab-body {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+  .atmosphere-lab-backdrop {
+    padding: 10px;
+  }
+}
+
+.graph-fraction {
+  color: #737670;
+}
+@media (max-height: 850px) and (min-width: 901px) {
+  .atmosphere-lab-window > header {
+    padding: 14px 24px;
+  }
+  .atmosphere-lab-window .atmosphere-space canvas {
+    max-height: 250px;
+    object-fit: contain;
+  }
+  .atmosphere-lab-window .graph-metric {
+    margin: 12px 0;
+    font-size: 24px;
+  }
+  .atmosphere-lab-window .space-controls {
+    gap: 10px;
+    margin: 12px 0;
+  }
+}
+
+.cloud-bounds-plot {
+  width: 100%;
+  height: auto;
+  touch-action: none;
+}
+.cloud-bounds-plot [role="slider"] {
+  cursor: move;
+}
+.cloud-bounds-plot text {
+  font:
+    14px "DM Sans",
+    sans-serif;
+  fill: #b7c6ce;
+}
+.cloud-bounds-data {
+  font-size: 10px;
+  color: #aab5b8;
+}
+.cloud-bounds-data > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #ffffff0a;
+}
+.cloud-bounds-data output {
+  text-align: right;
+}
+.fog-visibility-heading .graph-metric small {
+  margin-left: 7px;
+}
+.fog-visibility-sample {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 2px;
+  color: #929292;
+  font-size: 9px;
+}
+.fog-visibility-sample strong {
+  color: #d8cbb0;
+  font-weight: 500;
+}
+/* Sky colour: all-sky dome, readings and the sun-height strip (SkyDome.jsx). */
+.atmosphere-presets .sky-dome {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 12px 0 6px;
+  user-select: none;
+  touch-action: none;
+}
+.atmosphere-presets .sky-dome .sky-dome-grab {
+  cursor: crosshair;
+}
+.atmosphere-presets .sky-dome .sky-dome-grab:focus {
+  outline: none;
+}
+.atmosphere-presets svg text.sky-reading-label {
+  font-size: 8.5px;
+  fill: #a7a7a7;
+}
+.atmosphere-presets svg text.sky-reading-rgb {
+  font-size: 8px;
+  fill: #6f6f6f;
+}
+.atmosphere-presets svg text.sky-faint {
+  font-size: 7.5px;
+  fill: #6a6a6a;
+}

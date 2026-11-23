@@ -1,0 +1,396 @@
+/*====================================================================================================================================
+                                                    DESIGNTOKENS.CSS
+====================================================================================================================================*/
+/* 🧩 The shared palette and widget vocabulary both approved prototypes are drawn from             */
+/* 📝 PaintToolMenu.html and TexturePaintInspector.html declare byte-identical surface tokens, so   */
+/*    they are hoisted here once. Divergence between the two would read as two different products.  */
+
+:root
+{
+    /* ---- surfaces ------------------------------------------------------------------------- */
+    --desk:        #0a0a0b;
+    --menu:        #17171a;
+    --menu-2:      #101012;
+    --rail-sel:    #232327;
+    --tile:        #1d1d21;
+    --tile-hi:     #26262b;
+
+    --hair:        rgba(255,255,255,.06);
+    --hair-strong: rgba(255,255,255,.10);
+
+    --accent:      #5b8cff;
+    --ink:         #ececf0;
+    --muted:       #82828c;
+    --faint:       #55555d;
+
+    --r-menu: 18px;
+    --r-tile: 12px;
+
+    /* ---- field widgets -------------------------------------------------------------------- */
+    --value-black: #0a0a0b;
+    --value-unit:  #33333a;
+    --value-focus: #303035;
+    --track-bg:    #2f2f33;
+    --track-fill:  #8a8a8e;
+    --knob:        #f4f4f5;
+    --outline:     rgba(255,255,255,.22);
+    --text-value:  #f2f2f4;
+    --row-h:       32px;
+
+    --row-hover:   rgba(255,255,255,.045);
+    --row-sel:     var(--rail-sel);
+
+    /* ---- nib wells ------------------------------------------------------------------------ */
+    --well:        radial-gradient(circle at 50% 34%, #1c1c20, #0c0c0e 72%);
+    --well-hair:   #262629;
+
+    /* 🔴 One hue per layer classification, carried from the inspector prototype. */
+    --hue-material:  #8b5cf6;
+    --hue-generator: #10b981;
+    --hue-brushwork: #f97316;
+    --hue-flood:     #3b82f6;
+
+    --danger:      #ff6b6b;
+}
+
+/*----------------------------------------------------------------------------------------------------------------------
+                                                    SHARED WIDGETS
+----------------------------------------------------------------------------------------------------------------------*/
+
+.PaintScrollHidden
+{
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.PaintScrollHidden::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ---- pane header ---------------------------------------------------------------------------- */
+
+.pane-head
+{
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 46px;
+    padding: 0 10px;
+    box-sizing: border-box;
+    background: var(--rail-sel);
+    border-bottom: 1px solid var(--hair);
+}
+.pane-head .h-ic
+{
+    width: 24px; height: 24px;
+    flex: 0 0 auto;
+    color: var(--ink);
+    background: #000;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+.pane-head .h-ic svg { width: 17px; height: 17px; }
+/* 📝 The nib variant deliberately overflows its 24px box with a 46px glyph so the well crops to the
+      writing tip — the crop is the icon. */
+.pane-head .h-ic.nib { background: var(--well); border: 1px solid var(--well-hair); }
+.pane-head .h-ic.nib svg { width: 46px; height: 46px; border-radius: 6px; }
+
+.pane-head .h-txt
+{
+    flex: 1; min-width: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pane-head .h-txt .fn
+{
+    display: block;
+    color: var(--faint);
+    font-weight: 400;
+    font-size: 10px;
+    letter-spacing: .3px;
+    margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pane-head .h-n
+{
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    background: var(--menu-2);
+    padding: 4px 9px;
+    border-radius: 999px;
+}
+.pane-head .h-n.accent { color: var(--accent); }
+.pane-head.back { cursor: pointer; gap: 8px; }
+.pane-head.back:hover { background: #292930; }
+.pane-head .b-arrow { width: 16px; height: 16px; flex: 0 0 auto; color: var(--muted); }
+.pane-head.back:hover .b-arrow { color: var(--ink); }
+
+/* ---- pane footer ---------------------------------------------------------------------------- */
+
+.pane-foot
+{
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 26px;
+    padding: 0 10px;
+    background: var(--menu-2);
+    border-top: 1px solid var(--hair);
+    font-size: 10px;
+    color: var(--muted);
+}
+.pf-strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.pf-dot    { color: var(--value-unit); }
+.pf-spacer { flex: 1; }
+
+/* ---- property row --------------------------------------------------------------------------- */
+
+.prow
+{
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: center;
+    min-height: var(--row-h);
+}
+.plabel
+{
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: color .2s;
+}
+.prow.changed .plabel { color: var(--accent); }
+
+/* ---- slider --------------------------------------------------------------------------------- */
+
+.slider-ctl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.valuebox
+{
+    height: 24px;
+    flex: 0 0 62px;
+    display: flex;
+    align-items: stretch;
+    background: var(--value-black);
+    border: 1px solid var(--hair-strong);
+    border-radius: 7px;
+    overflow: hidden;
+    transition: border-color .12s;
+}
+.valuebox:focus-within { border-color: var(--outline); background: var(--value-focus); }
+.valuebox .num
+{
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; justify-content: flex-end;
+    padding: 0 6px;
+    cursor: text;
+}
+.valuebox input
+{
+    width: 100%; min-width: 0;
+    background: none; border: 0; outline: none;
+    color: var(--text-value);
+    font: 500 11.5px/1 inherit;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+    user-select: text;
+}
+.valuebox input::-webkit-outer-spin-button,
+.valuebox input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.valuebox .unitseg
+{
+    flex: 0 0 auto;
+    display: grid; place-items: center;
+    padding: 0 6px;
+    min-width: 24px;
+    font-size: 9.5px; font-weight: 600;
+    color: var(--muted);
+    background: var(--value-unit);
+    border-left: 1px solid var(--hair);
+}
+
+.slider
+{
+    position: relative;
+    flex: 1; min-width: 56px;
+    height: 20px;
+    background: #000;
+    border: 1.5px solid var(--outline);
+    border-radius: 999px;
+    cursor: pointer;
+    touch-action: none;
+    overflow: hidden;
+}
+.slider .fill
+{
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--track-fill);
+    pointer-events: none;
+}
+.slider .knob
+{
+    position: absolute; top: 50%;
+    width: 15px; height: 15px;
+    background: var(--knob);
+    border-radius: 999px;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 6px rgba(0,0,0,.5);
+    pointer-events: none;
+}
+.slider:active .knob { transform: translate(-50%, -50%) scale(1.08); }
+
+/* ---- segmented pills ------------------------------------------------------------------------ */
+
+.segment { display: flex; gap: 5px; flex-wrap: wrap; }
+.seg-opt
+{
+    padding: 0 10px;
+    height: 24px;
+    display: flex; align-items: center;
+    border-radius: 8px;
+    background: var(--tile);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    transition: background .11s, color .11s;
+}
+.seg-opt:hover { color: var(--ink); background: var(--tile-hi); }
+.seg-opt.sel   { background: var(--knob); color: #1b1b1e; font-weight: 600; }
+
+/* ---- dropdown ------------------------------------------------------------------------------- */
+
+.sel { position: relative; }
+.sel select
+{
+    width: 100%;
+    background: #000;
+    border: 1px solid var(--hair-strong);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 6px 28px 6px 12px;
+    font: inherit;
+    font-size: 11.5px;
+    cursor: pointer;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color .14s;
+}
+.sel select:focus { border-color: var(--accent); }
+.sel::after
+{
+    content: "";
+    position: absolute; right: 12px; top: 50%;
+    width: 6px; height: 6px;
+    border-right: 1.5px solid var(--muted);
+    border-bottom: 1.5px solid var(--muted);
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+}
+
+/* ---- switch --------------------------------------------------------------------------------- */
+
+.toggle-row { display: flex; align-items: center; justify-content: space-between; }
+.toggle-row .name
+{
+    display: flex; align-items: center; gap: 7px;
+    color: var(--ink);
+    font-size: 11.5px;
+}
+.toggle-row .name svg { width: 13px; height: 13px; color: var(--faint); flex: 0 0 auto; }
+
+.switch
+{
+    width: 38px; height: 22px;
+    flex: 0 0 auto;
+    position: relative;
+    background: var(--track-bg);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background .15s;
+}
+.switch.on { background: var(--accent); }
+.switch .nub
+{
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    background: var(--knob);
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+    transition: left .15s cubic-bezier(.4,0,.2,1);
+}
+.switch.on .nub { left: 19px; }
+
+/* ---- parameter block ------------------------------------------------------------------------ */
+
+.param { display: flex; flex-direction: column; gap: 6px; }
+.param-label
+{
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: .2px;
+}
+.param-label .name { display: flex; align-items: center; gap: 6px; }
+.param-label .name svg { width: 13px; height: 13px; color: var(--faint); flex: 0 0 auto; }
+
+.group       { display: flex; flex-direction: column; gap: 9px; }
+.group-title
+{
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--faint);
+}
+
+/* ---- buttons -------------------------------------------------------------------------------- */
+
+.obtn
+{
+    height: 26px;
+    padding: 0 13px;
+    display: flex; align-items: center;
+    border-radius: 8px;
+    font-size: 11.5px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background .11s, color .11s;
+    flex: 0 0 auto;
+}
+.obtn.ghost       { background: var(--tile); color: var(--muted); }
+.obtn.ghost:hover { background: var(--tile-hi); color: var(--ink); }
+.obtn.go          { background: var(--accent); color: #0b0b0d; font-weight: 600; }
+.obtn.go:hover    { background: #6f9bff; }
+
+/* ---- toast ---------------------------------------------------------------------------------- */
+
+.toast
+{
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    background: var(--menu);
+    border: 1px solid var(--hair-strong);
+    color: var(--ink);
+    font-size: 13px;
+    padding: 9px 17px;
+    border-radius: 999px;
+    z-index: 1200;
+    opacity: 0;
+    transition: opacity .18s, transform .18s;
+    pointer-events: none;
+    box-shadow: 0 8px 22px rgba(0,0,0,.5);
+}
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(-58px); }
+.toast b  { color: var(--accent); font-weight: 600; }

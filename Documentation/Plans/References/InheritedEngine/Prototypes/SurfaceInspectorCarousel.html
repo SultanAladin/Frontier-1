@@ -1,0 +1,2025 @@
+<!DOCTYPE html>
+<!--==============================================================================================================================================
+                                                        SURFACEINSPECTORCAROUSEL.HTML
+==============================================================================================================================================-->
+<!-- 🧩 Unified Paint-Surface Inspector Carousel
+     Seamlessly combines:
+       1. Slide 1 Left  → LayerStackPanel (Paint Stack with micro-animations & drag-to-reorder)
+       2. Slide 1 Right → LayerPropertyPanel (Layer & Mask sub-carousel properties)
+       3. Slide 2       → ChannelPropertyPanel (Rich PBR Channels: Value | Texture | Generator modes, 14 channels, 5 atlases)
+                          OR MaskPropertyPanel (when Mask focused)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frontier — Surface Inspector Carousel</title>
+<style>
+/*----------------------------------------------------------------------------------------------------------
+                                            THEME & PALETTE TOKENS
+----------------------------------------------------------------------------------------------------------*/
+:root {
+    --desk:            #000000;
+    --panel:           #0e0e0e;
+    --panel-header:    #0e0e0e;
+    --header-dark:      #080808;
+    --border:          #1c1c1c;
+    --hair:            #1c1c1c;
+    --hair-strong:     #2a2a30;
+    --control:         #141414;
+    --control-hover:   #1a1a1a;
+    --control-active:  #1f1f1f;
+    --tile:            #141414;
+    --tile-hi:         #1a1a1a;
+    --tile-active:     #1f1f1f;
+    --accent:          #e8e8e8;
+    --accent-soft:     rgba(255,255,255,.122);
+    --marker:          #4a90e2;
+    --text:            #ededed;
+    --text-dim:        #8a8a8a;
+    --ink:             #ededed;
+    --muted:           #8a8a8a;
+    --faint:           #6a6a6a;
+    --on-accent:       #111111;
+    --track:           #141414;
+    --fill:            #5a5a5a;
+    --knob:            #ffffff;
+    --danger:          #e05a5a;
+    --row-hover:       rgba(255,255,255,.045);
+
+    --value-number:    #000000;
+    --value-side:      #141414;
+    --text-value:      #ffffff;
+    --track-bg:        #141414;
+    --track-fill:      #5a5a5a;
+
+    --row-h:           44px;
+    --row-gap:          2px;
+    --thumb:           30px;
+    --pill-w:          41px;
+    --eye:             20px;
+    --caret:           18px;
+    --spine:            3px;
+    --add-h:           30px;
+    --filter-h:        30px;
+    --head-h:          44px;
+    --foot-h:          26px;
+    --pill-h:          30px;
+    --side-seg:        30px;
+    --label-col:       40%;
+    --field-gap:       12px;
+
+    --card-w:          800px;
+    --card-h:          720px;
+    --rail-w:          420px;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html, body{ height:100%; }
+body{
+    background:var(--desk); color:var(--text);
+    font:12px/1.4 "Segoe UI", system-ui, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+    padding:16px; -webkit-font-smoothing:antialiased; user-select:none;
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                            CARD & CAROUSEL TRACK
+----------------------------------------------------------------------------------------------------------*/
+.InspectorCard{
+    width:var(--card-w); height:var(--card-h);
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    overflow:hidden; position:relative;
+    box-shadow:0 20px 50px rgba(0,0,0,0.85);
+}
+
+.CardTrack{
+    display:flex; width:200%; height:100%;
+    transition:transform .36s cubic-bezier(.4,0,.2,1);
+}
+.CardTrack.OnInspect{ transform:translateX(-50%); }
+
+.CardSlide{
+    width:50%; height:100%; min-width:0; min-height:0;
+    display:grid; overflow:hidden; position:relative;
+}
+.CardSlide.Stacked{ grid-template-columns:var(--rail-w) minmax(0,1fr); }
+.CardSlide.Single { grid-template-columns:minmax(0,1fr); }
+
+.PanelWell{
+    position:relative; min-width:0; min-height:0; overflow:hidden;
+    display:flex; flex-direction:column; background:var(--panel);
+}
+.PanelWell + .PanelWell{ border-left:1px solid var(--border); }
+
+/*----------------------------------------------------------------------------------------------------------
+                                        TRAVEL AFFORDANCES
+----------------------------------------------------------------------------------------------------------*/
+.Travel{
+    position:absolute; top:10px; z-index:60;
+    height:26px; padding:0 12px; border-radius:9999px;
+    background:rgba(20,20,20,.88); border:1px solid var(--border);
+    color:var(--text-dim); font:inherit; font-size:10.5px; font-weight:600; letter-spacing:.4px;
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    transition:background-color .15s, color .15s, border-color .15s, opacity .2s;
+    backdrop-filter:blur(6px);
+}
+.Travel:hover{ background:var(--tile-hi); color:var(--text); border-color:var(--hair-strong); }
+.Travel.Forward{ right:12px; }
+.Travel.Back{ left:12px; }
+.Travel svg{ width:12px; height:12px; }
+
+.CardTrack:not(.OnInspect) .Travel.Back,
+.CardTrack.OnInspect      .Travel.Forward{ opacity:0; pointer-events:none; }
+
+/*----------------------------------------------------------------------------------------------------------
+                                            FOOTER LEGEND
+----------------------------------------------------------------------------------------------------------*/
+.Legend{
+    width:var(--card-w); display:flex; align-items:center; gap:10px;
+    font-size:10.5px; color:var(--faint); letter-spacing:.3px;
+}
+.Legend b{ color:var(--text-dim); font-weight:600; }
+.Legend .Key{
+    display:inline-flex; align-items:center; height:18px; padding:0 6px;
+    background:var(--control); border:1px solid var(--border); border-radius:4px;
+    color:var(--text); font-size:10px; font-variant-numeric:tabular-nums;
+}
+.Legend .Spacer{ flex:1; }
+.Legend .Live{ color:var(--marker); font-weight:600; }
+
+/*----------------------------------------------------------------------------------------------------------
+                                            MICRO-ANIMATIONS
+----------------------------------------------------------------------------------------------------------*/
+@keyframes Unfold{
+    from{ opacity:0; transform:scaleY(.82) translateY(-4px); clip-path:inset(0 0 100% 0); }
+    to  { opacity:1; transform:none;                         clip-path:inset(0 0 0 0);    }
+}
+@keyframes Fold{
+    from{ opacity:1; transform:none;                         clip-path:inset(0 0 0 0);    }
+    to  { opacity:0; transform:scaleY(.82) translateY(-4px); clip-path:inset(0 0 100% 0); }
+}
+@keyframes mcRise{
+    from{ opacity:0; transform:translateY(7px); }
+    to  { opacity:1; transform:translateY(0); }
+}
+@keyframes afm-rise{
+    from{ opacity:0; transform:translateY(-5px); }
+    to  { opacity:1; transform:none; }
+}
+@keyframes chip-in{
+    from{ opacity:0; transform:scale(.82); }
+    to  { opacity:1; transform:scale(1); }
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                            LAYER STACK PANEL (SLIDE 1 LEFT)
+----------------------------------------------------------------------------------------------------------*/
+.rail{ width:100%; height:100%; display:flex; flex-direction:column; overflow:hidden; }
+.rail .pane-head{
+    height:var(--head-h); background:var(--panel-header); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; padding:0 14px 0 12px; flex:0 0 auto;
+}
+.rail .pane-head .t{ flex:1; }
+.rail .pane-head .t b{ display:block; font-weight:500; font-size:13px; line-height:1.15; }
+.rail .pane-head .t span{ display:block; font-size:11px; color:var(--text-dim); line-height:1.25; }
+.rail .pane-head .tally{ font-size:13px; color:var(--text-dim); }
+
+.rail .pane-body{
+    flex:1; min-height:0; overflow-y:auto; padding:6px 7px 8px 7px;
+}
+.rail .pane-body::-webkit-scrollbar{ width:8px; }
+.rail .pane-body::-webkit-scrollbar-track{ background:transparent; }
+.rail .pane-body::-webkit-scrollbar-thumb{ background:#242424; border-radius:99px; border:2px solid var(--panel); }
+
+.add{
+    height:var(--add-h); width:100%; border-radius:9px; background:var(--panel-header);
+    border:1px solid var(--border); color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; font-size:12.5px;
+    transition:background .15s, border-color .15s, color .15s;
+}
+.add:hover{ background:var(--control-hover); border-color:var(--control-active); color:var(--text); }
+.add.open{ border-bottom-left-radius:0; border-bottom-right-radius:0; border-bottom-color:transparent; }
+.add .plus{ width:9px; height:9px; position:relative; }
+.add .plus::before,.add .plus::after{ content:""; position:absolute; background:currentColor; }
+.add .plus::before{ left:50%; top:0; width:1.5px; height:100%; transform:translateX(-50%); }
+.add .plus::after{ top:50%; left:0; height:1.5px; width:100%; transform:translateY(-50%); }
+
+.kind-list{
+    border:1px solid var(--border); border-top:none; border-radius:0 0 9px 9px;
+    background:var(--panel-header); overflow:hidden;
+    transform-origin:top center; animation:Unfold .16s cubic-bezier(.2,.9,.3,1);
+}
+.kind-list[hidden]{ display:none; }
+.kind{ display:flex; align-items:center; gap:10px; height:28px; padding:0 10px; cursor:pointer; }
+.kind:hover{ background:var(--control-hover); }
+.kind .sw{ width:9px; height:9px; border-radius:2px; flex:none; }
+.kind .lb{ font-size:12px; }
+.kind .sm{ margin-left:auto; font-size:11px; color:var(--text-dim); }
+
+.filter{
+    margin-top:5px; height:var(--filter-h); border-radius:9px; background:var(--panel-header);
+    border:1px solid var(--border); display:flex; align-items:center; gap:8px; padding:0 10px 0 8px;
+}
+.filter:focus-within{ border-color:var(--control-active); }
+.filter svg{ flex:none; opacity:.8; }
+.filter input{
+    flex:1; background:none; border:none; outline:none; color:var(--text); font:inherit; font-size:12px;
+}
+.filter input::placeholder{ color:rgba(138,138,138,.55); }
+
+.stack{ margin-top:4px; position:relative; }
+.entry{ display:flex; position:relative; }
+.entry .bubble{ width:34px; flex:none; padding-top:7px; cursor:grab; }
+.entry .bubble .b{
+    width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
+    font-size:11px; font-weight:600; letter-spacing:-.02em;
+    transition:background-color .25s, color .25s;
+}
+
+.entry .track-col{ width:16px; flex:none; display:flex; justify-content:center; position:relative; }
+.entry .track-col .seg-line{ position:absolute; width:7px; top:0; bottom:0; transition:background-color .25s; }
+.entry:first-child .track-col .seg-line{ top:20px; border-radius:4px 4px 0 0; }
+.entry:last-child  .track-col .seg-line{ bottom:auto; height:20px; border-radius:0 0 4px 4px; }
+.entry .track-col .knot{
+    position:absolute; top:20px; width:7px; height:7px; border-radius:50%; background:var(--knob);
+    box-shadow:0 0 0 3px var(--panel); transform:translateY(-50%);
+}
+
+.entry .card-col{ flex:1; min-width:0; padding:0 0 var(--row-gap) 8px; }
+
+.entry.lifted{ opacity:.35; }
+.entry.lifted .card{ border-color:var(--accent-soft); }
+
+.drop-line{
+    position:absolute; left:0; right:0; height:2px; background:var(--accent); border-radius:1px;
+    pointer-events:none; z-index:80; box-shadow:0 0 7px rgba(232,232,232,.5);
+}
+.drop-line::before{
+    content:""; position:absolute; left:-1px; top:-3px; width:8px; height:8px; border-radius:50%;
+    background:var(--accent);
+}
+
+body.dragging{ cursor:grabbing; user-select:none; }
+body.dragging .row:hover{ background:none !important; }
+body.dragging .eye,body.dragging .caret,body.dragging .pill{ pointer-events:none; }
+
+.drag-proxy{
+    position:fixed; z-index:400; pointer-events:none; opacity:.94;
+    border:1px solid var(--accent-soft); border-radius:12px; background:var(--control-active);
+    box-shadow:0 16px 34px rgba(0,0,0,.9); overflow:hidden;
+}
+
+.card{ position:relative; border:1px solid transparent; border-radius:12px; overflow:hidden;
+       transition:background-color .2s, border-color .2s; }
+.card.open{ border-color:var(--border); background:var(--control); }
+.card.open .row{ background:var(--header-dark); }
+.card.open.focus .row{ background:#000000; }
+
+.card.focus::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:var(--spine);
+    background:var(--accent); border-radius:2px; z-index:2;
+}
+
+.row{ height:var(--row-h); display:flex; align-items:center; gap:7px; padding:0 8px 0 8px; cursor:pointer; position:relative; }
+.card:not(.open) .row:hover{ background:var(--control-hover); }
+.card:not(.open).focus{ background:var(--control-active); border-color:var(--border); }
+.row.muted .thumb,.row.muted .txt{ opacity:.42; }
+
+.row .thumb{
+    width:var(--thumb); height:var(--thumb); border-radius:8px; background:#000;
+    border:1px solid var(--border); position:relative; flex:none;
+}
+.row .thumb .ink{ position:absolute; inset:0; margin:auto; width:15px; height:15px; border-radius:3px; }
+.row .thumb .kind{ position:absolute; right:3px; top:3px; width:6px; height:6px; border-radius:50%; }
+
+.row .txt{ flex:1; min-width:0; }
+.row .txt b{ display:block; font-weight:400; font-size:12.5px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.row .txt span{ display:block; font-size:10.5px; color:var(--text-dim); line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.row .pill{
+    width:var(--pill-w); height:18px; border-radius:999px; background:var(--value-number);
+    display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--text-dim);
+    cursor:ew-resize; flex:none; user-select:none; transition:color .15s;
+}
+.row .pill:hover{ color:var(--text); }
+
+.row .eye,.row .caret{
+    width:var(--eye); height:var(--eye); border-radius:6px; display:grid; place-items:center; flex:none; cursor:pointer;
+    color:var(--text-dim); transition:background-color .15s, color .15s;
+}
+.row .caret{ width:var(--caret); height:var(--caret); }
+.row .eye:hover{ background:var(--control-hover); color:var(--text); }
+.row .caret:hover{ background:var(--control-hover); }
+.row .eye svg,.row .caret svg{ display:block; }
+.row.muted .eye{ color:#48484a; }
+.row .caret svg{ transition:transform .25s ease; }
+.card.open .caret{ color:var(--text); }
+.card.open .caret svg{ transform:rotate(180deg); }
+
+.expand{ padding:8px; border-top:1px solid var(--border); }
+body:not(.scrubbing) .expand{ animation:Unfold .2s cubic-bezier(.2,.9,.3,1); }
+
+.ctl{ display:flex; align-items:center; min-height:var(--pill-h); margin-bottom:6px; }
+.ctl > .k{ width:var(--label-col); flex:none; font-size:11.5px; color:var(--text-dim); }
+.ctl > .v{ flex:1; min-width:0; }
+
+.drop{ position:relative; height:var(--pill-h); }
+.drop .face{
+    height:var(--pill-h); border-radius:999px; background:var(--value-number); overflow:hidden;
+    display:flex; align-items:center; cursor:pointer; font-size:11.5px; color:var(--text);
+}
+.drop .face .lb{ flex:1; min-width:0; padding-left:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.drop .face .cap{
+    width:var(--side-seg); flex:none; align-self:stretch; background:var(--value-side);
+    display:grid; place-items:center; color:var(--text-dim);
+}
+.drop .face .cap svg{ transition:transform .2s ease; }
+.drop.open .face .cap svg{ transform:rotate(180deg); }
+.drop .face:hover .cap{ color:var(--text); }
+
+.drop .menu{
+    position:absolute; left:0; right:0; top:calc(var(--pill-h) + 4px); z-index:100; padding:6px;
+    background:var(--panel-header); border:1px solid var(--hair-strong); border-radius:8px;
+    box-shadow:0 10px 26px rgba(0,0,0,.85);
+    display:flex; flex-direction:column; gap:2px;
+    transform-origin:top center; animation:Unfold .16s cubic-bezier(.2,.9,.3,1);
+}
+.drop .menu[hidden]{ display:none; }
+
+.drop .menu .opt{
+    height:calc(var(--pill-h) * .86); position:relative; display:flex; align-items:center;
+    padding:0 14px; font-size:11.5px; color:var(--text); cursor:pointer;
+    transition:padding-left .12s, background-color .12s;
+}
+.drop .menu .opt:hover{ background:var(--control-active); padding-left:20px; }
+.drop .menu .opt::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--marker); opacity:0;
+    transition:opacity .12s;
+}
+.drop .menu .opt:hover::before{ opacity:1; }
+.drop .menu .opt .lb{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.drop .menu .opt .radio{
+    width:14px; height:14px; flex:none; border-radius:50%; border:1.5px solid var(--border);
+    display:grid; place-items:center;
+}
+.drop .menu .opt.on .radio{ border-color:var(--marker); border-width:2px; }
+.drop .menu .opt.on .radio::after{ content:""; width:6px; height:6px; border-radius:50%; background:var(--marker); }
+
+.slider{ display:flex; align-items:center; gap:var(--field-gap); height:var(--pill-h); }
+.slider .num{
+    width:42%; flex:none; height:var(--pill-h); border-radius:999px; overflow:hidden;
+    display:flex; align-items:stretch; font-size:11.5px;
+}
+.slider .num .n{
+    flex:1; min-width:0; background:var(--value-number); color:#fff; display:grid; place-items:center;
+    cursor:ew-resize; user-select:none; font-weight:600;
+}
+.slider .num input{
+    width:100%; border:0; background:transparent; outline:none; text-align:center;
+    color:var(--text-value); font-size:11.5px; font-weight:600; font-variant-numeric:tabular-nums;
+}
+.slider .num .u{
+    width:var(--side-seg); flex:none; background:var(--value-side); color:var(--text-dim);
+    display:grid; place-items:center; font-size:10.5px;
+}
+.slider .track{
+    flex:1; min-width:0; height:calc(var(--pill-h) * .72); border-radius:999px;
+    background:var(--track); position:relative; cursor:ew-resize;
+}
+.slider .track .f{ position:absolute; left:0; top:0; bottom:0; border-radius:999px; background:var(--fill); }
+.slider .track .h{
+    position:absolute; top:50%; left:0;
+    width:calc(var(--pill-h) * .72 + 2px); height:calc(var(--pill-h) * .72 + 2px);
+    border-radius:50%; background:var(--knob); border:1px solid rgba(0,0,0,.35);
+    transform:translate(-50%,-50%); box-sizing:border-box;
+}
+
+.swatch{ display:flex; align-items:center; gap:8px; }
+.swatch .sw{ width:34px; height:18px; border-radius:5px; border:1px solid var(--border); flex:none; }
+.swatch .hex{ font-size:11px; color:var(--text-dim); font-family:ui-monospace, Consolas, monospace; }
+
+.cap{ font-size:10px; letter-spacing:.08em; color:rgba(138,138,138,.75); margin:6px 0 4px; font-weight:600; }
+.mask-head{ display:flex; align-items:center; gap:8px; height:34px; cursor:pointer; padding:0 4px; border-radius:6px; }
+.mask-head:hover{ background:var(--control-hover); }
+.mask-head .tile{ width:28px; height:28px; border-radius:6px; border:1px solid var(--border); flex:none; }
+.mask-head .t{ flex:1; min-width:0; }
+.mask-head .t b{ display:block; font-weight:500; font-size:12px; line-height:1.2; }
+.mask-head .x{ width:18px; height:18px; display:grid; place-items:center; cursor:pointer; color:var(--text-dim); flex:none; }
+.mask-head .x:hover{ color:var(--danger); }
+
+.add-mask{
+    height:26px; border-radius:7px; background:var(--panel-header); border:1px solid var(--border);
+    color:var(--text-dim); display:flex; align-items:center; justify-content:center; gap:7px; cursor:pointer;
+    font-size:11.5px; transition:background .15s, color .15s;
+}
+.add-mask:hover{ background:var(--control-hover); border-color:var(--control-active); color:var(--text); }
+
+.rail .pane-foot{
+    height:var(--foot-h); border-top:1px solid var(--border); flex:0 0 auto;
+    display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--text-dim);
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                            LAYER PROPERTY PANEL (SLIDE 1 RIGHT)
+----------------------------------------------------------------------------------------------------------*/
+.prop-pane{ display:flex; flex-direction:column; height:100%; background:var(--panel); overflow:hidden; }
+.pane-head{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    height:53px; padding:0 12px;
+    background:var(--tile-active); border-bottom:1px solid var(--border);
+}
+.pane-head .h-ic{
+    width:28px; height:28px; flex:0 0 auto; color:var(--text);
+    background:#000; border-radius:7px; display:grid; place-items:center; border:1px solid var(--border);
+}
+.pane-head .h-ic svg{ width:16px; height:16px; }
+.pane-head .h-txt{ flex:1; min-width:0; }
+.pane-head .h-txt .h-lbl{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; font-weight:600; }
+.pane-head .h-txt .fn{ display:block; color:var(--faint); font-weight:400; font-size:10px; letter-spacing:.3px; margin-top:2px; }
+
+.meta-body{ flex:1; min-height:0; overflow-y:auto; padding:9px 10px 12px; }
+.meta-body::-webkit-scrollbar{ width:8px; }
+.meta-body::-webkit-scrollbar-track{ background:transparent; }
+.meta-body::-webkit-scrollbar-thumb{ background:#242424; border-radius:99px; border:2px solid var(--panel); }
+
+.prop-pane .pane-foot{
+    flex:0 0 auto; height:29px; display:flex; align-items:center; gap:7px;
+    padding:0 12px; background:var(--panel-header); border-top:1px solid var(--border);
+    font-size:10.5px; color:var(--muted);
+}
+.pf-strong{ color:var(--text); font-variant-numeric:tabular-nums; font-weight:600; }
+.pf-spacer{ flex:1; }
+
+.meta-carousel{ display:flex; flex-direction:column; margin-top:2px; }
+.mc-toggle{
+    position:relative; display:flex; align-items:stretch; height:30px; flex:0 0 auto;
+    margin-bottom:9px; border-bottom:1px solid var(--border);
+}
+.mc-seg{
+    flex:1 1 50%; min-width:0; display:grid; place-items:center;
+    cursor:pointer; font-size:11.5px; font-weight:500; color:var(--muted);
+    transition:color .15s ease;
+}
+.mc-seg:hover{ color:var(--text); }
+.mc-seg.active{ color:var(--text); font-weight:600; }
+.mc-thumb{
+    position:absolute; left:0; bottom:-1px; width:50%; height:2px;
+    background:var(--accent); border-radius:2px;
+    transition:transform .28s cubic-bezier(.4,0,.2,1);
+}
+.mc-toggle[data-tab="mask"] .mc-thumb{ transform:translateX(100%); }
+
+.mc-view{ overflow:hidden; }
+.mc-track{ display:flex; width:200%; transition:transform .32s cubic-bezier(.4,0,.2,1); }
+.mc-pane{ flex:0 0 50%; width:50%; min-width:0; overflow:hidden; }
+
+.meta-sect{
+    font-size:9.5px; letter-spacing:1.1px; color:var(--faint);
+    font-weight:600; text-transform:uppercase; padding:10px 2px 5px;
+    display:flex; align-items:center; gap:7px;
+}
+.prow{
+    display:grid; grid-template-columns:88px minmax(0,1fr); column-gap:10px;
+    align-items:center; min-height:30px; margin-bottom:4px;
+}
+.plabel{ font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.switch{
+    width:36px; height:20px; flex:0 0 auto; position:relative; cursor:pointer;
+    background:var(--tile-active); border-radius:999px;
+    transition:background .16s ease;
+}
+.switch.on{ background:var(--accent); }
+.switch .nub{
+    position:absolute; top:2px; left:2px; width:16px; height:16px;
+    background:var(--knob); border-radius:50%; box-shadow:0 0 0 1px rgba(0,0,0,.35);
+    transition:left .16s ease;
+}
+.switch.on .nub{ left:18px; }
+
+.valuebox{
+    display:flex; align-items:stretch; height:26px; min-width:0;
+    background:var(--value-number); border-radius:999px; overflow:hidden;
+}
+.valuebox .num{
+    flex:1; min-width:0; display:flex; align-items:center; justify-content:center;
+    padding:0 8px; background:var(--value-number);
+}
+.valuebox input{
+    width:100%; min-width:0; background:none; border:0; outline:none; text-align:center;
+    color:var(--text-value); font-size:12px; font-weight:600; font-variant-numeric:tabular-nums;
+}
+.unitseg{
+    flex:0 0 30px; width:30px; display:grid; place-items:center; overflow:hidden;
+    font-size:10.5px; color:var(--muted); background:var(--value-side);
+}
+
+.mc-empty{
+    display:flex; flex-direction:column; gap:9px; align-items:stretch;
+    padding:12px 2px 6px; text-align:center;
+}
+.mc-empty .mc-empty-note{ font-size:11px; line-height:1.6; color:var(--faint); }
+.mc-sources{ display:flex; flex-direction:column; gap:5px; text-align:left; }
+.mc-source{
+    display:flex; align-items:center; gap:9px; padding:7px 9px; cursor:pointer;
+    background:var(--tile); border:1px solid var(--border); border-radius:8px;
+    transition:background .12s, border-color .12s;
+}
+.mc-source:hover{ background:var(--tile-hi); border-color:var(--accent); }
+.ms-ic{
+    width:22px; height:22px; flex:0 0 auto; display:grid; place-items:center;
+    color:var(--muted); background:#000; border-radius:6px;
+}
+.mc-source:hover .ms-ic{ color:var(--text); }
+.ms-txt{ min-width:0; display:flex; flex-direction:column; gap:2px; }
+.ms-nm{ font-size:11.5px; font-weight:600; color:var(--text); }
+.ms-sum{ font-size:9.5px; line-height:1.4; color:var(--faint); }
+
+.act-danger{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    width:100%; height:30px; margin-top:12px; padding:0 10px;
+    border-radius:8px; cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.2px;
+    color:#ff6b6b; background:transparent; border:1px solid rgba(255,107,107,.34);
+    transition:background .14s, border-color .14s, color .14s;
+}
+.act-danger:hover{ background:#ff6b6b; border-color:#ff6b6b; color:#120404; }
+.act-danger.disabled{ pointer-events:none; color:var(--faint); border-color:var(--border); background:transparent; }
+
+.seg-btn-group{
+    display:flex; height:26px; background:var(--tile); border:1px solid var(--border); border-radius:999px; overflow:hidden;
+}
+.seg-btn{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    font-size:10.5px; cursor:pointer; color:var(--muted); transition:background .15s, color .15s;
+}
+.seg-btn:hover{ background:var(--tile-hi); color:var(--text); }
+.seg-btn.on{ background:var(--accent); color:var(--on-accent); font-weight:600; }
+
+/*----------------------------------------------------------------------------------------------------------
+                                            CHANNEL PROPERTY PANEL (SLIDE 2)
+----------------------------------------------------------------------------------------------------------*/
+.chan-slide{ display:flex; flex-direction:column; height:100%; background:var(--panel); overflow:hidden; }
+.chan-slide .slide-head{
+    display:flex; align-items:center; gap:9px; height:44px; padding:0 12px;
+    background:var(--panel-header); border-bottom:1px solid var(--border); flex:0 0 auto;
+}
+.head-icon{
+    flex:0 0 22px; height:22px; border-radius:6px;
+    background:var(--tile); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--muted);
+}
+.head-text{ min-width:0; flex:1; }
+.head-name{ font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.head-sub{ font-size:10px; color:var(--faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+
+.chan-body-scroll{ flex:1; min-height:0; overflow-y:auto; padding:8px; }
+.chan-body-scroll::-webkit-scrollbar{ width:8px; }
+.chan-body-scroll::-webkit-scrollbar-thumb{ background:#26262c; border-radius:99px; }
+
+.chips-region{ padding:9px 10px; border:1px solid var(--border); border-radius:10px; background:var(--panel-header); margin-bottom:6px; }
+.chips-head{
+    display:flex; align-items:center; gap:7px;
+    font-size:10px; letter-spacing:.9px; text-transform:uppercase;
+    color:var(--faint); font-weight:600; margin-bottom:8px;
+}
+.chips{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.chip{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--tile); border:1px solid var(--border);
+    border-radius:999px; padding:4px 6px 4px 10px;
+    font-size:11.5px; color:var(--text); animation:chip-in .18s cubic-bezier(.34,1.4,.64,1) both;
+}
+.chip .cswatch{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.chip .cx{
+    width:16px; height:16px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--control-active); color:var(--muted);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    transition:background .15s, color .15s;
+}
+.chip .cx:hover{ background:var(--danger); color:#fff; }
+
+.add-wrap{ position:relative; display:inline-flex; }
+.add-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; background:transparent; border:1px dashed var(--border);
+    border-radius:50%; cursor:pointer; color:var(--muted); transition:all .15s;
+}
+.add-btn:hover{ border-color:var(--accent); color:var(--text); background:rgba(255,255,255,.05); }
+
+.add-menu{
+    position:absolute; left:0; top:32px; z-index:120;
+    background:#141416; border:1px solid var(--hair-strong);
+    border-radius:9px; padding:6px; min-width:210px; max-height:280px; overflow-y:auto;
+    box-shadow:0 14px 34px rgba(0,0,0,.75); opacity:0; transform:scale(.94) translateY(-4px); pointer-events:none;
+    transition:opacity .16s, transform .16s;
+}
+.add-menu.open{ opacity:1; transform:none; pointer-events:auto; }
+.afm-head{ font-size:9.5px; color:var(--faint); text-transform:uppercase; letter-spacing:.6px; padding:4px 7px; font-weight:600; }
+.afm-item{
+    display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:6px;
+    cursor:pointer; font-size:11.5px; color:var(--text); transition:background .12s;
+}
+.afm-item:hover{ background:var(--row-hover); }
+.afm-item .swatch{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.afm-item .tick{ margin-left:auto; color:var(--accent); display:none; }
+.afm-item.on .tick{ display:inline-flex; }
+
+.chan-panel{ background:var(--panel); border:1px solid var(--border); border-radius:10px; margin-bottom:5px; overflow:hidden; }
+.chan-head{
+    display:flex; align-items:center; gap:8px; height:29px; padding:0 9px;
+    background:var(--panel-header); border-bottom:1px solid var(--border);
+    cursor:pointer; user-select:none; transition:background .13s;
+}
+.chan-panel.collapsed .chan-head{ border-bottom-color:transparent; }
+.chan-head:hover{ background:var(--tile); }
+.ch-tw{ display:flex; align-items:center; justify-content:center; width:9px; height:9px; color:var(--faint); transition:transform .24s; }
+.chan-panel.collapsed .ch-tw{ transform:rotate(-90deg); }
+.ch-dot{ flex:0 0 6px; width:6px; height:6px; border-radius:50%; }
+.ch-title{ flex:1; font-size:11px; font-weight:500; }
+.ch-src{ font-size:9.5px; letter-spacing:.4px; text-transform:uppercase; color:var(--faint); }
+.chan-shell{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .26s cubic-bezier(.4,0,.2,1); }
+.chan-panel.collapsed .chan-shell{ grid-template-rows:0fr; }
+.chan-clip{ overflow:hidden; min-height:0; }
+.chan-body{ padding:6px 9px 8px; }
+
+/* Rich Channel Slots */
+.segrow{ display:flex; height:26px; background:var(--tile); border:1px solid var(--border); border-radius:999px; overflow:hidden; }
+.seg{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    font-size:10.5px; color:var(--muted); cursor:pointer; user-select:none;
+    transition:background .13s, color .13s;
+}
+.seg:hover{ background:var(--tile-hi); color:var(--text); }
+.seg.on{ background:var(--accent); color:var(--on-accent); font-weight:600; }
+
+.slot{
+    display:flex; align-items:center; gap:9px; padding:6px; margin-top:5px;
+    background:var(--tile); border:1px solid var(--border); border-radius:9px;
+}
+.slot-thumb{
+    flex:0 0 38px; height:38px; border-radius:6px; border:1px solid var(--border);
+    background-image:linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%),
+                     linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%);
+    background-size:8px 8px; background-position:0 0,4px 4px; background-color:#0a0a0a;
+    display:flex; align-items:center; justify-content:center; color:var(--faint);
+}
+.slot-text{ flex:1; min-width:0; }
+.slot-name{ font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500; }
+.slot-meta{ font-size:9.5px; color:var(--faint); margin-top:2px; font-variant-numeric:tabular-nums; }
+.slot-acts{ display:flex; gap:4px; flex-shrink:0; }
+.iconbtn{
+    width:24px; height:24px; border-radius:6px; border:1px solid var(--border);
+    background:var(--panel-header); color:var(--muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .14s, color .14s, border-color .14s;
+}
+.iconbtn svg{ width:13px; height:13px; }
+.iconbtn:hover{ background:var(--tile-hi); color:var(--text); border-color:var(--hair-strong); }
+.iconbtn.danger:hover{ background:rgba(224,90,90,.16); color:var(--danger); border-color:rgba(224,90,90,.4); }
+.iconbtn:disabled{ opacity:.3; cursor:default; }
+
+.slot-label{ font-size:9px; letter-spacing:.7px; text-transform:uppercase; color:var(--faint); font-weight:600; padding:8px 1px 1px; }
+.slot-empty{
+    display:flex; align-items:center; justify-content:center; gap:7px; height:40px; margin-top:4px;
+    background:transparent; border:1px dashed var(--border); border-radius:9px;
+    color:var(--muted); font-size:11px; cursor:pointer; transition:all .15s;
+}
+.slot-empty:hover{ border-color:var(--accent); color:var(--text); background:rgba(255,255,255,.035); }
+
+.chan-prev{ display:flex; align-items:center; gap:8px; margin-top:6px; padding:5px 1px 1px; }
+.prev-tile{
+    flex:0 0 34px; height:34px; border-radius:7px; border:1px solid var(--border);
+    background-image:linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%),
+                     linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%);
+    background-size:8px 8px; background-position:0 0,4px 4px; background-color:#0a0a0a;
+}
+.prev-text{ min-width:0; }
+.prev-line1{ font-size:10.5px; color:var(--muted); font-weight:500; }
+.prev-line2{ font-size:9.5px; color:var(--faint); margin-top:2px; font-variant-numeric:tabular-nums; }
+
+/*----------------------------------------------------------------------------------------------------------
+                                            MASK PROPERTY PANEL (SLIDE 2)
+----------------------------------------------------------------------------------------------------------*/
+.mask-slide{ display:flex; flex-direction:column; height:100%; background:var(--panel); overflow:hidden; }
+.mask-slide .slide-head{
+    display:flex; align-items:center; gap:9px; height:44px; padding:0 12px;
+    background:var(--panel-header); border-bottom:1px solid var(--border); flex:0 0 auto;
+}
+.mask-body-scroll{ flex:1; min-height:0; overflow-y:auto; padding:8px; }
+.mask-body-scroll::-webkit-scrollbar{ width:8px; }
+.mask-body-scroll::-webkit-scrollbar-thumb{ background:#26262c; border-radius:99px; }
+
+.MaskSection{ background:var(--panel); border:1px solid var(--border); border-radius:10px; margin-bottom:5px; overflow:hidden; }
+.MaskSectionHead{
+    display:flex; align-items:center; gap:8px; height:29px; padding:0 9px;
+    background:var(--panel-header); border-bottom:1px solid var(--border);
+    cursor:pointer; user-select:none; transition:background .15s;
+}
+.MaskSectionHead:hover{ background:var(--tile); }
+.MaskChevron{ width:9px; height:9px; color:var(--faint); display:flex; align-items:center; justify-content:center; transition:transform .2s; }
+.MaskSection.Collapsed .MaskChevron{ transform:rotate(-90deg); }
+.MaskDot{ flex-shrink:0; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+.MaskSectionName{ flex:1; font-size:11px; font-weight:500; }
+.MaskFold{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .28s ease-out; }
+.MaskSection.Collapsed .MaskFold{ grid-template-rows:0fr; }
+.MaskFoldClip{ overflow:hidden; min-height:0; }
+.MaskFoldBody{ padding:6px 9px 8px; }
+
+.MaskSlot{
+    display:flex; align-items:center; gap:9px; padding:6px;
+    background:var(--tile); border:1px solid var(--border); border-radius:9px; margin-top:4px;
+}
+.MaskSlotPreview{
+    flex-shrink:0; width:36px; height:36px; border-radius:6px;
+    border:1px solid var(--border); background:#0a0a0a; display:flex; align-items:center; justify-content:center;
+}
+.MaskSlotText{ flex:1; min-width:0; }
+.MaskSlotName{ font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500; }
+.MaskSlotNote{ font-size:9.5px; color:var(--faint); margin-top:2px; }
+
+.MaskCombo{ position:relative; margin-top:4px; }
+.MaskComboHead{
+    display:flex; align-items:center; gap:8px; height:26px; padding:0 8px 0 10px;
+    background:var(--tile); border:1px solid var(--border); border-radius:9999px;
+    cursor:pointer; transition:all .15s;
+}
+.MaskComboHead:hover{ border-color:var(--hair-strong); background:var(--tile-hi); }
+.MaskComboName{ flex:1; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.MaskComboCaret{ width:14px; color:var(--faint); display:flex; align-items:center; justify-content:center; transition:transform .15s; }
+.MaskCombo.Open .MaskComboCaret{ transform:rotate(180deg); }
+
+.MaskMenu{
+    position:absolute; left:0; top:30px; z-index:140; width:100%; min-width:196px;
+    background:#141416; border:1px solid var(--hair-strong); border-radius:9px;
+    padding:6px; box-shadow:0 14px 34px rgba(0,0,0,0.7); max-height:260px; overflow-y:auto;
+}
+.MaskMenuGroup{ font-size:9.5px; color:var(--faint); text-transform:uppercase; letter-spacing:.6px; padding:4px 7px; font-weight:600; }
+.MaskMenuItem{
+    display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px;
+    cursor:pointer; font-size:11.5px; color:var(--text); transition:all .15s;
+}
+.MaskMenuItem:hover{ background:var(--row-hover); padding-left:11px; }
+
+.MaskParams{ margin-top:6px; padding-top:4px; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div class="InspectorCard">
+    <div class="CardTrack" id="CardTrack">
+
+        <!-- ═══ SLIDE 1 — Stack + Properties ═══ -->
+        <div class="CardSlide Stacked">
+            <div class="PanelWell">
+                <div class="rail" id="LayerStackRail"></div>
+            </div>
+            <div class="PanelWell">
+                <div class="prop-pane" id="LayerPropertyPane"></div>
+                <button class="Travel Forward" id="TravelForward" title="Tab">
+                    <span id="ForwardLabel">CHANNELS</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ SLIDE 2 — Channels OR Mask ═══ -->
+        <div class="CardSlide Single">
+            <div class="PanelWell">
+                <div class="chan-slide" id="ChannelSlide"></div>
+                <div class="mask-slide" id="MaskSlide" style="display:none;"></div>
+                <button class="Travel Back" id="TravelBack" title="Tab">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+                    <span>PROPERTIES</span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="Legend">
+    <span><b>Tab</b> travels</span>
+    <span class="Key">Tab</span>
+    <span class="Spacer"></span>
+    <span>focused <b id="LegendLayer">—</b></span>
+    <span>·</span>
+    <span>slide 2 shows <span class="Live" id="LegendFace">channels</span></span>
+</div>
+
+<script>
+"use strict";
+(function(){
+
+/*----------------------------------------------------------------------------------------------------------
+                                            GLOBAL DATA MODEL & SCHEMA
+----------------------------------------------------------------------------------------------------------*/
+const BLEND_MODES = ["Normal","Multiply","Screen","Overlay","Add","Darken","Linear Dodge"];
+const KINDS = [
+    { Label:"Paint",     Tint:"#f97316", Summary:"Accepts brush strokes",      Paintable:true,  Flooded:false },
+    { Label:"Fill",      Tint:"#3b82f6", Summary:"Uniform authored values",    Paintable:false, Flooded:true  },
+    { Label:"Material",  Tint:"#8b5cf6", Summary:"A PBR preset, flooded",      Paintable:false, Flooded:true  },
+    { Label:"Generator", Tint:"#10b981", Summary:"Procedural over the atlas",  Paintable:false, Flooded:true  },
+];
+
+const CHANNEL_SLOTS = {
+    baseColour:       { Group: "Surface",     Hue: "#b87333", Label: "Base Colour",       Edit: "colour",                                    Placement: "Colour atlas · RGB"    },
+    metallic:         { Group: "Surface",     Hue: "#8b5cf6", Label: "Metallic",          Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · R"    },
+    roughness:        { Group: "Surface",     Hue: "#3b82f6", Label: "Roughness",         Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · G"    },
+    height:           { Group: "Surface",     Hue: "#8a8a8a", Label: "Height",            Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · B"    },
+    normal:           { Group: "Surface",     Hue: "#10b981", Label: "Normal",            Edit: "derived", Source: "height",                  Placement: "No storage · derived"  },
+    opacity:          { Group: "Surface",     Hue: "#94a3b8", Label: "Opacity",           Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Material atlas · A"    },
+
+    emission:         { Group: "Radiance",    Hue: "#f59e0b", Label: "Emissive",          Edit: "colour",                                     Placement: "Emissive atlas · RGB"  },
+    ambientOcclusion: { Group: "Radiance",    Hue: "#6b7280", Label: "Ambient Occlusion", Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Emissive atlas · A"    },
+
+    anisotropy:       { Group: "Reflectance", Hue: "#22d3ee", Label: "Anisotropy",        Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Reflect atlas · R"     },
+    anisotropyAngle:  { Group: "Reflectance", Hue: "#0ea5e9", Label: "Anisotropy Angle",  Edit: "scalar",  Min: 0, Max: 360, Step: 1, Unit: "°", Placement: "Reflect atlas · G"  },
+    clearcoat:        { Group: "Reflectance", Hue: "#e2e8f0", Label: "Clearcoat",         Edit: "scalar",  Min: 0, Max: 1,   Step: 0.01,      Placement: "Reflect atlas · B"     },
+    refractionIndex:  { Group: "Reflectance", Hue: "#a78bfa", Label: "Refraction Index",  Edit: "scalar",  Min: 1, Max: 3,   Step: 0.01,      Placement: "Reflect atlas · A"     },
+
+    sheen:            { Group: "Scattering",  Hue: "#f472b6", Label: "Sheen",             Edit: "colour",                                     Placement: "Scatter atlas · RGB"   },
+    subsurface:       { Group: "Scattering",  Hue: "#fb7185", Label: "Subsurface",        Edit: "colour",                                     Placement: "Sheen atlas · RGB"     }
+};
+
+const CHANNEL_ORDER = Object.keys(CHANNEL_SLOTS);
+const CHANNEL_GROUPS = ["Surface", "Radiance", "Reflectance", "Scattering"];
+
+const GENERATORS = [
+    { key:"CurvatureEdges", group:"Mask", label:"Curvature", note:"Convex edge wear", parameters:[
+        { key:"Balance",  label:"Balance",  min:0, max:1, default:0.5 },
+        { key:"Contrast", label:"Contrast", min:0, max:1, default:0.7 },
+        { key:"Radius",   label:"Radius",   min:0, max:1, default:0.25 }
+    ]},
+    { key:"AmbientOcclusion", group:"Mask", label:"Ambient Occlusion", note:"Cavity dirt", parameters:[
+        { key:"Spread",   label:"Spread",   min:0, max:1, default:0.4 },
+        { key:"Contrast", label:"Contrast", min:0, max:1, default:0.6 }
+    ]},
+    { key:"MetalEdgeWear", group:"Wear", label:"Metal Edge Wear", note:"Curvature + grunge", parameters:[
+        { key:"Intensity", label:"Intensity", min:0, max:1, default:0.6 },
+        { key:"Softness",  label:"Softness",  min:0, max:1, default:0.3 },
+        { key:"Grain",     label:"Grain",     min:0, max:1, default:0.45 }
+    ]},
+    { key:"DirtAccumulation", group:"Wear", label:"Dirt", note:"Occlusion-driven", parameters:[
+        { key:"Amount", label:"Amount", min:0, max:1, default:0.5 },
+        { key:"Scale",  label:"Scale",  min:0, max:1, default:0.3 }
+    ]},
+    { key:"PerlinNoise", group:"Procedural", label:"Perlin Noise", note:"Fractal value noise", parameters:[
+        { key:"Scale",    label:"Scale",    min:0, max:1, default:0.4 },
+        { key:"Octaves",  label:"Octaves",  min:0, max:1, default:0.5 },
+        { key:"Contrast", label:"Contrast", min:0, max:1, default:0.5 }
+    ]}
+];
+
+const State = {
+    SurfaceName: "Suzanne",
+    FilterTerm: "",
+    AddListOpen: false,
+    FocusOrdinal: 0,
+    FocusTarget: "layer", // "layer" or "mask"
+    BlendMenuOrdinal: -1,
+    LiftedOrdinal: -1,
+    CurrentSlide: 1,      // 1 or 2
+    PropTab: "layer",     // "layer" or "mask"
+    ChanMenuOpen: false,
+    MaskGenMenuOpen: false,
+    ChanGenPickKey: null, // channel key currently choosing generator
+    CollapsedChannels: new Set(["height", "normal", "ambientOcclusion", "anisotropy", "anisotropyAngle", "clearcoat"]),
+    Layers: [
+        { Name:"Edge Wear",      Kind:0, BlendIndex:1, Opacity:78,  Shown:true,  Expanded:true,
+          Tag:"#f97316", Paint:"#2e2d2b", PaintsBaseColour:true,  ChannelTotal:3, StrokeCount:148,
+          ActiveChannels:["baseColour", "metallic", "roughness", "height", "normal", "ambientOcclusion", "anisotropy", "anisotropyAngle", "clearcoat"],
+          Modes: { baseColour: "Texture", metallic: "Value", roughness: "Generator", height: "Value", opacity: "Value", ambientOcclusion: "Generator", anisotropy: "Value", anisotropyAngle: "Value", clearcoat: "Value" },
+          Amounts: { metallic: 0.94, roughness: 0.38, height: 0.50, opacity: 1.0, ambientOcclusion: 1.0, anisotropy: 0.72, anisotropyAngle: 35, clearcoat: 0.15 },
+          Colours: { baseColour: "#b87333", emission: "#000000", sheen: "#3a3a3a", subsurface: "#d98a72" },
+          Textures: { baseColour: { Name: "copper_basecolour.png", Width: 2048, Height: 2048, Format: "sRGB 8" } },
+          Strokes: { baseColour: 148, height: 62 },
+          Generators: { roughness: { Key: "MetalEdgeWear", Parameters: { Intensity: 0.6, Softness: 0.3, Grain: 0.45 } }, ambientOcclusion: { Key: "AmbientOcclusion", Parameters: { Spread: 0.4, Contrast: 0.6 } } },
+          MaskEnabled:true,  MaskFill:"Black", MaskInverted:false, MaskStrength:92,
+          SourceMode:"Generator", GeneratorKey:"MetalEdgeWear", GeneratorParams:{ Intensity:0.6, Softness:0.3, Grain:0.45 } },
+
+        { Name:"Cavity Dirt",    Kind:3, BlendIndex:1, Opacity:55,  Shown:false, Expanded:false,
+          Tag:"#10b981", Paint:"#2e2d2b", PaintsBaseColour:false, ChannelTotal:2, StrokeCount:0,
+          ActiveChannels:["roughness", "ambientOcclusion"],
+          Modes: { roughness: "Generator", ambientOcclusion: "Generator" },
+          Amounts: { roughness: 0.5, ambientOcclusion: 0.8 },
+          Colours: { baseColour: "#2e2d2b" },
+          Textures: {}, Strokes: {},
+          Generators: { ambientOcclusion: { Key: "AmbientOcclusion", Parameters: { Spread: 0.4, Contrast: 0.6 } } },
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100,
+          SourceMode:"Generator", GeneratorKey:"AmbientOcclusion", GeneratorParams:{ Spread:0.4, Contrast:0.6 } },
+
+        { Name:"Hand Detail",    Kind:0, BlendIndex:0, Opacity:100, Shown:true,  Expanded:false,
+          Tag:"#ef4444", Paint:"#2e2d2b", PaintsBaseColour:true,  ChannelTotal:3, StrokeCount:62,
+          ActiveChannels:["baseColour", "roughness", "height"],
+          Modes: { baseColour: "Texture", roughness: "Value", height: "Value" },
+          Amounts: { roughness: 0.4, height: 0.6 },
+          Colours: { baseColour: "#ef4444" },
+          Textures: { baseColour: { Name: "detail_albedo.png", Width: 2048, Height: 2048, Format: "sRGB 8" } },
+          Strokes: { baseColour: 62 }, Generators: {},
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100,
+          SourceMode:"Texture", GeneratorKey:"PerlinNoise", GeneratorParams:{ Scale:0.4, Octaves:0.5, Contrast:0.5 } },
+
+        { Name:"Roughness Lift", Kind:1, BlendIndex:4, Opacity:40,  Shown:true,  Expanded:false,
+          Tag:"#3b82f6", Paint:"#2e2d2b", PaintsBaseColour:false, ChannelTotal:1, StrokeCount:0,
+          ActiveChannels:["roughness"],
+          Modes: { roughness: "Value" }, Amounts: { roughness: 0.75 }, Colours: {}, Textures: {}, Strokes: {}, Generators: {},
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100,
+          SourceMode:"Generator", GeneratorKey:"PerlinNoise", GeneratorParams:{ Scale:0.4, Octaves:0.5, Contrast:0.5 } },
+
+        { Name:"Brushed Copper", Kind:2, BlendIndex:0, Opacity:100, Shown:true,  Expanded:false,
+          Tag:"#8b5cf6", Paint:"#b87333", PaintsBaseColour:true,  ChannelTotal:5, StrokeCount:0,
+          ActiveChannels:["baseColour", "metallic", "roughness", "height", "normal"],
+          Modes: { baseColour: "Value", metallic: "Value", roughness: "Generator", height: "Value" },
+          Amounts: { metallic: 0.95, roughness: 0.3, height: 0.5 },
+          Colours: { baseColour: "#b87333" }, Textures: {}, Strokes: {},
+          Generators: { roughness: { Key: "CurvatureEdges", Parameters: { Balance: 0.5, Contrast: 0.7, Radius: 0.25 } } },
+          MaskEnabled:true,  MaskFill:"White", MaskInverted:true,  MaskStrength:100,
+          SourceMode:"Generator", GeneratorKey:"CurvatureEdges", GeneratorParams:{ Balance:0.5, Contrast:0.7, Radius:0.25 } },
+
+        { Name:"Base Steel",     Kind:2, BlendIndex:0, Opacity:100, Shown:true,  Expanded:false,
+          Tag:"#94a3b8", Paint:"#4c4f53", PaintsBaseColour:true,  ChannelTotal:5, StrokeCount:0,
+          ActiveChannels:["baseColour", "metallic", "roughness", "height", "normal"],
+          Modes: { baseColour: "Value", metallic: "Value", roughness: "Value", height: "Value" },
+          Amounts: { metallic: 0.9, roughness: 0.2, height: 0.5 },
+          Colours: { baseColour: "#4c4f53" }, Textures: {}, Strokes: {}, Generators: {},
+          MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100,
+          SourceMode:"Generator", GeneratorKey:"MetalEdgeWear", GeneratorParams:{ Intensity:0.6, Softness:0.3, Grain:0.45 } }
+    ]
+};
+
+/*----------------------------------------------------------------------------------------------------------
+                                            SVG ICONS & GLYPHS
+----------------------------------------------------------------------------------------------------------*/
+const Chevron   = () => `<svg width="9" height="6" viewBox="0 0 9 6"><path d="M1 1.4 4.5 4.6 8 1.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const Magnifier = () => `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9.2 9.2 12.4 12.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const CrossMark = () => `<svg width="9" height="9" viewBox="0 0 9 9"><path d="M.8.8 8.2 8.2M8.2.8 .8 8.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const TrashIcon = () => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+const PlusIcon  = () => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>`;
+const BrushIcon = () => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>`;
+const ImageIcon = () => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
+const ReloadIcon= () => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.83 6.72 2.24"/><path d="M21 3v6h-6"/></svg>`;
+
+function EyeMark(Open) {
+    const Body = `<path d="M1 7 Q7 1.2 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="M1 7 Q7 12.8 13 7" fill="none" stroke="currentColor" stroke-width="1.4"/>`;
+    const Inner = Open ? `<circle cx="7" cy="7" r="2.4" fill="currentColor"/>`
+                       : `<path d="M1.4 10.4 12.6 3.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>`;
+    return `<svg width="14" height="14" viewBox="0 0 14 14">${Body}${Inner}</svg>`;
+}
+
+const Escape = (T) => String(T).replace(/[&<>"]/g, (C) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[C]));
+
+function ResolveMaskTone(Record) {
+    const Base  = Record.MaskFill === "Black" ? 0 : 1;
+    const Light = Record.MaskInverted ? 1 - Base : Base;
+    const Byte  = Math.round(Light * 255);
+    return `rgb(${Byte},${Byte},${Byte})`;
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                        NAVIGATION & SELECTION ENGINE
+----------------------------------------------------------------------------------------------------------*/
+function SelectTarget(Ordinal, Target) {
+    State.FocusOrdinal = Math.max(0, Math.min(State.Layers.length - 1, Ordinal));
+    State.FocusTarget = Target === "mask" ? "mask" : "layer";
+    State.PropTab = State.FocusTarget;
+
+    const Record = State.Layers[State.FocusOrdinal];
+    document.getElementById("LegendLayer").textContent = Record ? Record.Name : "—";
+    
+    UpdateNavigationUI();
+    RenderAll();
+}
+
+function UpdateNavigationUI() {
+    const Track = document.getElementById("CardTrack");
+    const ForwardLabel = document.getElementById("ForwardLabel");
+    const LegendFace = document.getElementById("LegendFace");
+    const ChannelSlide = document.getElementById("ChannelSlide");
+    const MaskSlide = document.getElementById("MaskSlide");
+
+    const IsInspect = State.CurrentSlide === 2;
+    Track.classList.toggle("OnInspect", IsInspect);
+
+    const IsMaskTarget = State.FocusTarget === "mask";
+    ForwardLabel.textContent = IsMaskTarget ? "MASK" : "CHANNELS";
+    LegendFace.textContent   = IsMaskTarget ? "the mask" : "channels";
+
+    ChannelSlide.style.display = IsMaskTarget ? "none" : "flex";
+    MaskSlide.style.display    = IsMaskTarget ? "flex" : "none";
+}
+
+function SetSlide(SlideNum) {
+    State.CurrentSlide = SlideNum === 2 ? 2 : 1;
+    UpdateNavigationUI();
+}
+
+document.getElementById("TravelForward").onclick = () => SetSlide(2);
+document.getElementById("TravelBack").onclick    = () => SetSlide(1);
+
+document.addEventListener("keydown", (Event) => {
+    if (Event.key !== "Tab") { return; }
+    Event.preventDefault();
+    SetSlide(State.CurrentSlide === 1 ? 2 : 1);
+});
+
+/*----------------------------------------------------------------------------------------------------------
+                                            SLIDE 1 LEFT: LAYER STACK
+----------------------------------------------------------------------------------------------------------*/
+function BuildDropdown(Options, SelectedIndex, Ordinal, Open) {
+    const Items = Options.map((Label, Index) =>
+        `<div class="opt ${Index === SelectedIndex ? 'on' : ''}" data-act="blend-pick" data-arg="${Ordinal}:${Index}">
+            <div class="lb">${Escape(Label)}</div><div class="radio"></div>
+        </div>`
+    ).join("");
+
+    return `<div class="drop ${Open ? 'open' : ''}">
+        <div class="face" data-act="blend-menu" data-arg="${Ordinal}">
+            <div class="lb">${Escape(Options[SelectedIndex])}</div>
+            <div class="cap">${Chevron()}</div>
+        </div>
+        <div class="menu" ${Open ? "" : "hidden"}>${Items}</div>
+    </div>`;
+}
+
+function BuildSlider(Value, Minimum, Maximum, Unit, Action) {
+    const Ratio = (Value - Minimum) / (Maximum - Minimum);
+    return `<div class="slider">
+        <div class="num">
+            <div class="n" data-scrub="${Action}" data-min="${Minimum}" data-max="${Maximum}"
+                 data-speed="${(Maximum - Minimum) / 400}">${Math.round(Value)}</div>
+            <div class="u">${Unit}</div>
+        </div>
+        <div class="track" data-scrub="${Action}" data-min="${Minimum}" data-max="${Maximum}">
+            <div class="f" style="width:${Ratio * 100}%"></div>
+            <div class="h" style="left:${Ratio * 100}%"></div>
+        </div>
+    </div>`;
+}
+
+function BuildMaskRegionInStack(Record, Ordinal) {
+    if (!Record.MaskEnabled) {
+        return `<div class="cap">MASK</div>
+                <div class="add-mask" data-act="mask-add" data-arg="${Ordinal}"><span class="plus"></span> Add mask</div>`;
+    }
+    return `<div class="cap">MASK</div>
+        <div class="mask-head" data-act="focus" data-arg="${Ordinal}" data-face="mask" title="Edit mask">
+            <div class="tile" style="background:${ResolveMaskTone(Record)}"></div>
+            <div class="t"><b>Layer mask</b></div>
+            <div class="x" data-act="mask-drop" data-arg="${Ordinal}">${CrossMark()}</div>
+        </div>
+        <div class="ctl" style="margin-top:4px;"><div class="k">Strength</div><div class="v">${BuildSlider(Record.MaskStrength, 0, 100, "%", `mask-strength:${Ordinal}`)}</div></div>`;
+}
+
+function RenderLayerStack() {
+    const Rail = document.getElementById("LayerStackRail");
+    const FilterTerm = State.FilterTerm.toLowerCase();
+    const VisibleLayers = State.Layers.filter(R => !FilterTerm || R.Name.toLowerCase().includes(FilterTerm));
+
+    let EntriesHTML = VisibleLayers.map((Record, Index) => {
+        const RealOrdinal = State.Layers.indexOf(Record);
+        const IsFocused = RealOrdinal === State.FocusOrdinal;
+        const Kind = KINDS[Record.Kind];
+        const Meta = `${Kind.Label} · ${BLEND_MODES[Record.BlendIndex]} · ${Record.ActiveChannels.length} ch`;
+        const Ink  = Record.PaintsBaseColour ? `<div class="ink" style="background:${Record.Paint}"></div>` : "";
+        const IsLifted = RealOrdinal === State.LiftedOrdinal;
+
+        const RowHTML = `
+            <div class="row ${Record.Shown ? '' : 'muted'}" data-act="focus" data-arg="${RealOrdinal}" data-face="layer">
+                <div class="thumb">${Ink}<div class="kind" style="background:${Kind.Tint}"></div></div>
+                <div class="txt"><b>${Escape(Record.Name)}</b><span>${Escape(Meta)}</span></div>
+                <div class="pill" data-scrub="opacity:${RealOrdinal}" data-min="0" data-max="100">${Math.round(Record.Opacity)}%</div>
+                <div class="eye"   data-act="visible-toggle" data-arg="${RealOrdinal}">${EyeMark(Record.Shown)}</div>
+                <div class="caret" data-act="fold"           data-arg="${RealOrdinal}">${Chevron()}</div>
+            </div>`;
+
+        const ExpandHTML = Record.Expanded ? `
+            <div class="expand">
+                <div class="ctl"><div class="k">Blend</div><div class="v">${BuildDropdown(BLEND_MODES, Record.BlendIndex, RealOrdinal, State.BlendMenuOrdinal === RealOrdinal)}</div></div>
+                <div class="ctl"><div class="k">Opacity</div><div class="v">${BuildSlider(Record.Opacity, 0, 100, "%", `opacity:${RealOrdinal}`)}</div></div>
+                <div class="ctl"><div class="k">Tag</div><div class="v"><div class="swatch"><div class="sw" style="background:${Record.Tag}"></div><div class="hex">${Record.Tag}</div></div></div></div>
+                ${BuildMaskRegionInStack(Record, RealOrdinal)}
+            </div>` : "";
+
+        return `
+            <div class="entry ${IsLifted ? 'lifted' : ''}" data-ord="${RealOrdinal}">
+                <div class="bubble"><div class="b" style="background:${Record.Shown ? Record.Tag : '#1c1c1c'}; color:${Record.Shown ? '#fff' : '#6a6a6a'}">L${RealOrdinal}</div></div>
+                <div class="track-col"><div class="seg-line" style="background:${Record.Shown ? Record.Tag : '#1c1c1c'}"></div><div class="knot"></div></div>
+                <div class="card-col">
+                    <div class="card ${Record.Expanded ? 'open' : ''} ${IsFocused ? 'focus' : ''}">${RowHTML}${ExpandHTML}</div>
+                </div>
+            </div>`;
+    }).join("");
+
+    Rail.innerHTML = `
+        <div class="pane-head">
+            <div class="t"><b>Layers</b><span>${State.SurfaceName}</span></div>
+            <div class="tally">${State.Layers.length}</div>
+        </div>
+        <div class="pane-body">
+            <div class="add ${State.AddListOpen ? 'open' : ''}" data-act="add-toggle"><span class="plus"></span> Add layer</div>
+            <div class="kind-list" ${State.AddListOpen ? '' : 'hidden'}>
+                ${KINDS.map((K, i) => `<div class="kind" data-act="add-create" data-arg="${i}"><div class="sw" style="background:${K.Tint}"></div><div class="lb">${K.Label}</div><div class="sm">${K.Summary}</div></div>`).join("")}
+            </div>
+            <div class="filter">${Magnifier()}<input type="text" id="FilterInput" placeholder="Filter layers..." value="${Escape(State.FilterTerm)}"></div>
+            <div class="stack">${EntriesHTML}</div>
+        </div>
+        <div class="pane-foot"><span>${State.Layers.filter(r=>r.Shown).length} shown</span><span style="margin-left:auto;">${State.Layers.length} total</span></div>
+    `;
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                            SLIDE 1 RIGHT: LAYER PROPERTIES
+----------------------------------------------------------------------------------------------------------*/
+function RenderLayerProperties() {
+    const Pane = document.getElementById("LayerPropertyPane");
+    const Record = State.Layers[State.FocusOrdinal];
+
+    if (!Record) {
+        Pane.innerHTML = `<div class="pane-head"><div class="h-txt"><b>No Selection</b></div></div><div class="meta-body"><div class="mc-empty-note">Select a layer in the stack</div></div>`;
+        return;
+    }
+
+    const Kind = KINDS[Record.Kind];
+    const ActiveTab = State.PropTab; // "layer" or "mask"
+
+    const LayerPaneHTML = `
+        <div class="meta-sect">PROPERTIES</div>
+        <div class="prow"><div class="plabel">Visible</div><div><div class="switch ${Record.Shown ? 'on' : ''}" data-act="prop-visible"><div class="nub"></div></div></div></div>
+        <div class="prow" style="margin-top:6px;"><div class="plabel">Blend Mode</div><div>${BuildDropdown(BLEND_MODES, Record.BlendIndex, State.FocusOrdinal, State.BlendMenuOrdinal === State.FocusOrdinal)}</div></div>
+        <div class="prow" style="margin-top:6px;"><div class="plabel">Opacity</div><div>${BuildSlider(Record.Opacity, 0, 100, "%", `opacity:${State.FocusOrdinal}`)}</div></div>
+
+        <div class="meta-sect" style="margin-top:10px;">CHANNELS (${Record.ActiveChannels.length})</div>
+        <div class="chiprow" style="padding:4px 0;">
+            ${CHANNEL_ORDER.map(Key => {
+                const Active = Record.ActiveChannels.includes(Key);
+                const Info = CHANNEL_SLOTS[Key];
+                return `<div class="chip ${Active ? 'on' : ''}" data-act="toggle-chan" data-arg="${Key}">${Info.Label}</div>`;
+            }).join("")}
+        </div>
+
+        <div class="meta-sect" style="margin-top:10px;">MATERIAL IDENTITY</div>
+        <div class="prow"><div class="plabel">Type</div><div style="font-weight:600; color:var(--text);">${Kind.Label}</div></div>
+        <div class="prow"><div class="plabel">Base Color</div><div><div class="swatch"><div class="sw" style="background:${Record.Paint}"></div><div class="hex">${Record.Paint}</div></div></div></div>
+
+        <button class="act-danger ${State.Layers.length <= 1 ? 'disabled' : ''}" data-act="delete-layer">
+            <span class="ic">${TrashIcon()}</span> Delete Layer
+        </button>
+    `;
+
+    const MaskPaneHTML = Record.MaskEnabled ? `
+        <div class="meta-sect">BASE MASK</div>
+        <div class="prow">
+            <div class="plabel">Base</div>
+            <div class="seg-btn-group">
+                <div class="seg-btn ${Record.MaskFill === 'White' ? 'on' : ''}" data-act="mask-base" data-arg="White">White</div>
+                <div class="seg-btn ${Record.MaskFill === 'Black' ? 'on' : ''}" data-act="mask-base" data-arg="Black">Black</div>
+            </div>
+        </div>
+        <div class="prow" style="margin-top:6px;">
+            <div class="plabel">Invert</div>
+            <div><div class="switch ${Record.MaskInverted ? 'on' : ''}" data-act="mask-invert"><div class="nub"></div></div></div>
+        </div>
+        <div class="prow" style="margin-top:6px;">
+            <div class="plabel">Strength</div>
+            <div>${BuildSlider(Record.MaskStrength, 0, 100, "%", `mask-strength:${State.FocusOrdinal}`)}</div>
+        </div>
+
+        <div class="meta-sect" style="margin-top:10px;">GENERATOR SOURCE</div>
+        <div class="prow"><div class="plabel">Generator</div><div style="font-weight:600; color:var(--text);">${Record.GeneratorKey}</div></div>
+    ` : `
+        <div class="mc-empty">
+            <div class="mc-empty-note">This layer does not have a mask. Choose a source to create one:</div>
+            <div class="mc-sources">
+                <div class="mc-source" data-act="mask-add-type" data-arg="Solid"><div class="ms-ic">+</div><div class="ms-txt"><div class="ms-nm">Solid Mask</div><div class="ms-sum">Flat black or white mask</div></div></div>
+                <div class="mc-source" data-act="mask-add-type" data-arg="Generator"><div class="ms-ic">+</div><div class="ms-txt"><div class="ms-nm">Procedural Generator</div><div class="ms-sum">Curvature, AO, or Noise</div></div></div>
+            </div>
+        </div>
+    `;
+
+    Pane.innerHTML = `
+        <div class="pane-head">
+            <div class="h-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg></div>
+            <div class="h-txt">
+                <span class="h-lbl">${Escape(Record.Name)}</span>
+                <span class="fn">${Kind.Label.toUpperCase()} LAYER PROPERTIES</span>
+            </div>
+        </div>
+        <div class="meta-body">
+            <div class="meta-carousel">
+                <div class="mc-toggle" data-tab="${ActiveTab}">
+                    <div class="mc-seg ${ActiveTab === 'layer' ? 'active' : ''}" data-act="proptab" data-arg="layer">Layer</div>
+                    <div class="mc-seg ${ActiveTab === 'mask' ? 'active' : ''}" data-act="proptab" data-arg="mask">Mask</div>
+                    <div class="mc-thumb"></div>
+                </div>
+                <div class="mc-view">
+                    <div class="mc-track" style="transform:translateX(${ActiveTab === 'mask' ? '-50%' : '0%'})">
+                        <div class="mc-pane">${LayerPaneHTML}</div>
+                        <div class="mc-pane">${MaskPaneHTML}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="pane-foot">
+            <span>Focused: <b class="pf-strong">${Escape(Record.Name)}</b></span>
+            <span class="pf-spacer"></span>
+            <span>L${State.FocusOrdinal}</span>
+        </div>
+    `;
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                            SLIDE 2: RICH CHANNEL PROPERTY PANEL
+----------------------------------------------------------------------------------------------------------*/
+function RenderChannelProperties() {
+    const Pane = document.getElementById("ChannelSlide");
+    const Record = State.Layers[State.FocusOrdinal];
+
+    if (!Record) {
+        Pane.innerHTML = `<div class="slide-head"><div class="head-text"><div class="head-name">No Layer Selected</div></div></div>`;
+        return;
+    }
+
+    const Count = Record.ActiveChannels.length;
+    const ActiveSet = new Set(Record.ActiveChannels);
+
+    // Active Channel Chips Top Bar
+    const ChipsHTML = CHANNEL_ORDER.filter(Key => ActiveSet.has(Key)).map(Key => {
+        const Slot = CHANNEL_SLOTS[Key];
+        const Locked = (Key === "baseColour");
+        return `<div class="chip ${Locked ? 'locked' : ''}">
+            <div class="cswatch" style="background:${Slot.Hue}"></div>
+            <span>${Slot.Label}</span>
+            <button class="cx" data-act="remove-chan" data-arg="${Key}">${CrossMark()}</button>
+        </div>`;
+    }).join("");
+
+    // Add Channel Rollout Menu (14 Channels grouped into 4 groups)
+    const MenuGroupsHTML = CHANNEL_GROUPS.map(Group => {
+        const Section = CHANNEL_ORDER.filter(Key => CHANNEL_SLOTS[Key].Group === Group).map(Key => {
+            const Active = ActiveSet.has(Key);
+            const Locked = (Key === "baseColour");
+            const Slot = CHANNEL_SLOTS[Key];
+            return `<div class="afm-item ${Active ? 'on' : ''} ${Locked ? 'disabled' : ''}" data-act="toggle-chan" data-arg="${Key}">
+                <div class="swatch" style="background:${Slot.Hue}"></div>
+                <span>${Slot.Label}</span>
+                <span class="tick">✓</span>
+            </div>`;
+        }).join("");
+        return `<div class="afm-head">${Group}</div>${Section}`;
+    }).join('<div class="afm-sep" style="height:1px; background:var(--border); margin:4px 0;"></div>');
+
+    // Per-Channel Accordion Panels
+    const PanelsHTML = CHANNEL_ORDER.filter(Key => ActiveSet.has(Key)).map(Key => {
+        const Slot = CHANNEL_SLOTS[Key];
+        const Folded = State.CollapsedChannels.has(Key);
+        const Mode = Slot.Edit === "derived" ? "Derived" : (Record.Modes[Key] || "Value");
+
+        let BodyHTML = "";
+        if (Slot.Edit === "derived") {
+            BodyHTML = `<div style="font-size:10.5px; color:var(--faint); padding:2px 1px 6px;">Derived from the painted height. No value to author.</div>`;
+        } else {
+            // Source Segmented Picker [ Value | Texture | Generator ]
+            const SourcePickerHTML = `<div class="segrow">
+                ${["Value", "Texture", "Generator"].map(M => `
+                    <div class="seg ${Mode === M ? 'on' : ''}" data-act="set-chan-mode" data-arg="${Key}:${M}">${M}</div>
+                `).join("")}
+            </div>`;
+
+            BodyHTML = `<div class="prow"><div class="plabel">Source</div><div>${SourcePickerHTML}</div></div>`;
+
+            if (Mode === "Texture") {
+                const Texture = Record.Textures[Key];
+                const Strokes = Record.Strokes[Key] || 0;
+                const Painted = Strokes > 0;
+
+                const PaintSlotHTML = `
+                    <div class="slot">
+                        <div class="slot-thumb ${Painted ? 'painted' : ''}" style="background:${Painted ? Slot.Hue : ''}">
+                            ${Painted ? BrushIcon() : ImageIcon()}
+                        </div>
+                        <div class="slot-text">
+                            <div class="slot-name">${Painted ? 'Painted strokes' : 'No strokes yet'}</div>
+                            <div class="slot-meta">${Painted ? `${Strokes} strokes &middot; 2048 &times; 2048 atlas` : 'Atlas allocates on first stroke'}</div>
+                        </div>
+                        <div class="slot-acts">
+                            <button class="iconbtn danger" data-act="erase-strokes" data-arg="${Key}" ${Painted ? '' : 'disabled'}>${TrashIcon()}</button>
+                        </div>
+                    </div>`;
+
+                const BaseSlotHTML = Texture ? `
+                    <div class="slot">
+                        <div class="slot-thumb">${ImageIcon()}</div>
+                        <div class="slot-text">
+                            <div class="slot-name">${Texture.Name}</div>
+                            <div class="slot-meta">${Texture.Width} &times; ${Texture.Height} &middot; ${Texture.Format}</div>
+                        </div>
+                        <div class="slot-acts">
+                            <button class="iconbtn" data-act="reimport-base" data-arg="${Key}">${ReloadIcon()}</button>
+                            <button class="iconbtn danger" data-act="drop-base" data-arg="${Key}">${TrashIcon()}</button>
+                        </div>
+                    </div>` : `
+                    <div class="slot-empty" data-act="import-base" data-arg="${Key}">
+                        <span>+ Import base texture</span>
+                    </div>`;
+
+                BodyHTML += PaintSlotHTML + `<div class="slot-label">Imported base ${Texture ? '' : '&mdash; optional'}</div>` + BaseSlotHTML;
+            }
+            else if (Mode === "Generator") {
+                const Assigned = Record.Generators[Key];
+                const Open = State.ChanGenPickKey === Key;
+
+                const GenRows = GENERATORS.map(G =>
+                    `<div class="afm-item ${Assigned && Assigned.Key === G.key ? 'on' : ''}" data-act="assign-chan-gen" data-arg="${Key}:${G.key}">
+                        <span style="font-weight:600; flex:1;">${G.label}</span>
+                        <span style="font-size:9.5px; color:var(--faint);">${G.note}</span>
+                    </div>`
+                ).join("");
+
+                const PickerHTML = `
+                    <div class="MaskCombo ${Open ? 'Open' : ''}">
+                        <div class="MaskComboHead" data-act="toggle-chan-gen-menu" data-arg="${Key}">
+                            <div class="MaskComboName">${Assigned ? (GENERATORS.find(g=>g.key===Assigned.Key)?.label || Assigned.Key) : "Choose generator"}</div>
+                            <div class="MaskComboCaret">${Chevron()}</div>
+                        </div>
+                        <div class="MaskMenu" ${Open ? '' : 'style="display:none;"'}>${GenRows}</div>
+                    </div>`;
+
+                BodyHTML += `<div class="prow" style="margin-top:6px;"><div class="plabel">Generator</div><div>${PickerHTML}</div></div>`;
+
+                if (Assigned) {
+                    const Def = GENERATORS.find(g=>g.key===Assigned.Key) || GENERATORS[0];
+                    const ParamsHTML = Def.parameters.map(P => {
+                        const Amount = (Assigned.Parameters && Assigned.Parameters[P.key] !== undefined) ? Assigned.Parameters[P.key] : P.default;
+                        return `<div class="prow" style="margin-top:6px;">
+                            <div class="plabel">${P.label}</div>
+                            <div>${BuildSlider(Amount * 100, P.min * 100, P.max * 100, "%", `chan-gen-param:${Key}:${P.key}`)}</div>
+                        </div>`;
+                    }).join("");
+
+                    BodyHTML += `<div class="gen-params">
+                        <div style="display:flex; align-items:center; gap:6px; padding:2px 1px 4px;">
+                            <span style="font-size:9.5px; letter-spacing:.6px; text-transform:uppercase; color:var(--faint); font-weight:600; flex:1">${Def.note}</span>
+                            <button class="iconbtn danger" data-act="drop-chan-gen" data-arg="${Key}">${TrashIcon()}</button>
+                        </div>
+                        ${ParamsHTML}
+                    </div>`;
+                }
+            }
+            else if (Slot.Edit === "colour") {
+                const Hex = Record.Colours[Key] || "#b87333";
+                const ColorHTML = `<div class="swatch"><div class="sw" style="background:${Hex}"></div><div class="hex">${Hex}</div></div>`;
+                BodyHTML += `<div class="prow" style="margin-top:6px;"><div class="plabel">Colour</div><div>${ColorHTML}</div></div>`;
+            }
+            else {
+                const Amount = (Record.Amounts[Key] !== undefined ? Record.Amounts[Key] : (Slot.Min || 0));
+                const Unit = Slot.Unit || "%";
+                const SliderVal = Unit === "°" ? Amount : Amount * 100;
+                const MaxVal = Slot.Max === 360 ? 360 : 100;
+                BodyHTML += `<div class="prow" style="margin-top:6px;"><div class="plabel">Amount</div><div>${BuildSlider(SliderVal, Slot.Min || 0, MaxVal, Unit, `chan-amount:${Key}`)}</div></div>`;
+            }
+        }
+
+        // Live Preview Tile
+        let TileStyle = "";
+        if (Mode === "Value" && Slot.Edit === "colour") {
+            TileStyle = `background-image:none; background-color:${Record.Colours[Key] || "#000"}`;
+        } else if (Mode === "Value" && Slot.Edit === "scalar") {
+            const Amt = Record.Amounts[Key] !== undefined ? Record.Amounts[Key] : 0.5;
+            const Byte = Math.round(Amt * 255);
+            TileStyle = `background-image:none; background-color:rgb(${Byte},${Byte},${Byte})`;
+        }
+
+        const PreviewHTML = `<div class="chan-prev">
+            <div class="prev-tile" style="${TileStyle}"></div>
+            <div class="prev-text">
+                <div class="prev-line1">${Mode} preview</div>
+                <div class="prev-line2">${Slot.Placement}</div>
+            </div>
+        </div>`;
+
+        return `<div class="chan-panel ${Folded ? 'collapsed' : ''}">
+            <div class="chan-head" data-act="fold-chan" data-arg="${Key}">
+                <div class="ch-tw">${Chevron()}</div>
+                <div class="ch-dot" style="background:${Slot.Hue}"></div>
+                <div class="ch-title">${Slot.Label}</div>
+                <div class="ch-src">${Mode}</div>
+            </div>
+            <div class="chan-shell"><div class="chan-clip"><div class="chan-body">${BodyHTML}${PreviewHTML}</div></div></div>
+        </div>`;
+    }).join("");
+
+    Pane.innerHTML = `
+        <div class="slide-head">
+            <div class="head-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+            <div class="head-text">
+                <div class="head-name">${Escape(Record.Name)} &middot; Channels</div>
+                <div class="head-sub">${Count} active channels &middot; 5 atlases</div>
+            </div>
+        </div>
+        <div class="chan-body-scroll">
+            <div class="chips-region">
+                <div class="chips-head">ACTIVE CHANNELS (${Count})</div>
+                <div class="chips">
+                    ${ChipsHTML}
+                    <div class="add-wrap">
+                        <button class="add-btn ${State.ChanMenuOpen ? 'open' : ''}" data-act="toggle-chan-menu">${PlusIcon()}</button>
+                        <div class="add-menu ${State.ChanMenuOpen ? 'open' : ''}">
+                            ${MenuGroupsHTML}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            ${PanelsHTML}
+        </div>
+    `;
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                            SLIDE 2: MASK PROPERTY PANEL
+----------------------------------------------------------------------------------------------------------*/
+function RenderMaskProperties() {
+    const Pane = document.getElementById("MaskSlide");
+    const Record = State.Layers[State.FocusOrdinal];
+
+    if (!Record) {
+        Pane.innerHTML = `<div class="slide-head"><div class="head-text"><div class="head-name">No Layer Selected</div></div></div>`;
+        return;
+    }
+
+    if (!Record.MaskEnabled) {
+        Pane.innerHTML = `
+            <div class="slide-head">
+                <div class="head-text">
+                    <div class="head-name">${Escape(Record.Name)} &middot; Mask</div>
+                    <div class="head-sub">No mask created</div>
+                </div>
+            </div>
+            <div class="mask-body-scroll">
+                <div class="mc-empty">
+                    <div class="mc-empty-note">This layer does not have a mask. Create one below:</div>
+                    <div class="mc-sources" style="margin-top:12px;">
+                        <div class="mc-source" data-act="mask-add-type" data-arg="Solid"><div class="ms-ic">+</div><div class="ms-txt"><div class="ms-nm">Solid Mask</div><div class="ms-sum">Base black or white mask</div></div></div>
+                        <div class="mc-source" data-act="mask-add-type" data-arg="Generator"><div class="ms-ic">+</div><div class="ms-txt"><div class="ms-nm">Procedural Generator</div><div class="ms-sum">Curvature, AO, or Noise</div></div></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const ActiveGen = GENERATORS.find(G => G.key === Record.GeneratorKey) || GENERATORS[2];
+
+    const MenuGroupsHTML = ["Mask", "Wear", "Procedural"].map(Grp => {
+        const Items = GENERATORS.filter(G => G.group === Grp).map(G =>
+            `<div class="MaskMenuItem" data-act="mask-gen-pick" data-arg="${G.key}">
+                <div style="font-weight:600; flex:1;">${G.label}</div>
+                <div style="font-size:9.5px; color:var(--faint);">${G.note}</div>
+            </div>`
+        ).join("");
+        return `<div class="MaskMenuGroup">${Grp}</div>${Items}`;
+    }).join("");
+
+    const ParamsHTML = ActiveGen.parameters.map(P => {
+        const CurVal = (Record.GeneratorParams && Record.GeneratorParams[P.key] !== undefined) ? Record.GeneratorParams[P.key] : P.default;
+        return `<div class="prow" style="margin-top:6px;">
+            <div class="plabel">${P.label}</div>
+            <div>${BuildSlider(CurVal * 100, P.min * 100, P.max * 100, "%", `gen-param:${P.key}`)}</div>
+        </div>`;
+    }).join("");
+
+    Pane.innerHTML = `
+        <div class="slide-head">
+            <div class="head-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20z" fill="currentColor"/></svg></div>
+            <div class="head-text">
+                <div class="head-name">${Escape(Record.Name)} &middot; Layer Mask</div>
+                <div class="head-sub">Mask Inspector</div>
+            </div>
+        </div>
+        <div class="mask-body-scroll">
+            <div class="MaskSection">
+                <div class="MaskSectionHead">
+                    <div class="MaskChevron">${Chevron()}</div>
+                    <div class="MaskDot"></div>
+                    <div class="MaskSectionName">Base Mask Parameters</div>
+                </div>
+                <div class="MaskFold"><div class="MaskFoldClip"><div class="MaskFoldBody">
+                    <div class="prow">
+                        <div class="plabel">Base</div>
+                        <div class="seg-btn-group">
+                            <div class="seg-btn ${Record.MaskFill === 'White' ? 'on' : ''}" data-act="mask-base" data-arg="White">White</div>
+                            <div class="seg-btn ${Record.MaskFill === 'Black' ? 'on' : ''}" data-act="mask-base" data-arg="Black">Black</div>
+                        </div>
+                    </div>
+                    <div class="prow" style="margin-top:6px;">
+                        <div class="plabel">Invert</div>
+                        <div><div class="switch ${Record.MaskInverted ? 'on' : ''}" data-act="mask-invert"><div class="nub"></div></div></div>
+                    </div>
+                    <div class="prow" style="margin-top:6px;">
+                        <div class="plabel">Strength</div>
+                        <div>${BuildSlider(Record.MaskStrength, 0, 100, "%", `mask-strength:${State.FocusOrdinal}`)}</div>
+                    </div>
+                </div></div></div>
+            </div>
+
+            <div class="MaskSection">
+                <div class="MaskSectionHead">
+                    <div class="MaskChevron">${Chevron()}</div>
+                    <div class="MaskDot"></div>
+                    <div class="MaskSectionName">Generator & Source</div>
+                </div>
+                <div class="MaskFold"><div class="MaskFoldClip"><div class="MaskFoldBody">
+                    <div class="MaskCombo ${State.MaskGenMenuOpen ? 'Open' : ''}">
+                        <div class="MaskComboHead" data-act="toggle-gen-menu">
+                            <div class="MaskComboName">${ActiveGen.label}</div>
+                            <div class="MaskComboCaret">${Chevron()}</div>
+                        </div>
+                        <div class="MaskMenu" ${State.MaskGenMenuOpen ? '' : 'style="display:none;"'}>
+                            ${MenuGroupsHTML}
+                        </div>
+                    </div>
+                    <div class="MaskParams">
+                        <div class="cap">GENERATOR PARAMETERS</div>
+                        ${ParamsHTML}
+                    </div>
+                </div></div></div>
+            </div>
+
+            <div class="MaskSlot">
+                <div class="MaskSlotPreview" style="background:${ResolveMaskTone(Record)}"></div>
+                <div class="MaskSlotText">
+                    <div class="MaskSlotName">${ActiveGen.label} Output</div>
+                    <div class="MaskSlotNote">${Record.MaskInverted ? 'Inverted' : 'Direct'} &middot; ${Math.round(Record.MaskStrength)}% Strength</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function RenderAll() {
+    RenderLayerStack();
+    RenderLayerProperties();
+    RenderChannelProperties();
+    RenderMaskProperties();
+}
+
+/*----------------------------------------------------------------------------------------------------------
+                                        GLOBAL EVENT DELEGATION
+----------------------------------------------------------------------------------------------------------*/
+document.addEventListener("click", (Event) => {
+    const Target = Event.target.closest("[data-act]");
+    if (!Target) {
+        if (State.AddListOpen) { State.AddListOpen = false; RenderLayerStack(); }
+        if (State.BlendMenuOrdinal !== -1) { State.BlendMenuOrdinal = -1; RenderAll(); }
+        if (State.ChanMenuOpen) { State.ChanMenuOpen = false; RenderChannelProperties(); }
+        if (State.MaskGenMenuOpen) { State.MaskGenMenuOpen = false; RenderMaskProperties(); }
+        if (State.ChanGenPickKey) { State.ChanGenPickKey = null; RenderChannelProperties(); }
+        return;
+    }
+
+    const Act = Target.dataset.act;
+    const Arg = Target.dataset.arg;
+
+    switch (Act) {
+        case "focus":
+            SelectTarget(Number(Arg), Target.dataset.face || "layer");
+            break;
+
+        case "proptab":
+            SelectTarget(State.FocusOrdinal, Arg);
+            break;
+
+        case "visible-toggle":
+            {
+                const Ord = Number(Arg);
+                State.Layers[Ord].Shown = !State.Layers[Ord].Shown;
+                RenderAll();
+            }
+            break;
+
+        case "fold":
+            {
+                const Ord = Number(Arg);
+                State.Layers[Ord].Expanded = !State.Layers[Ord].Expanded;
+                RenderLayerStack();
+            }
+            break;
+
+        case "add-toggle":
+            State.AddListOpen = !State.AddListOpen;
+            RenderLayerStack();
+            break;
+
+        case "add-create":
+            {
+                const KindIdx = Number(Arg);
+                const NewRecord = {
+                    Name: `New ${KINDS[KindIdx].Label}`,
+                    Kind: KindIdx, BlendIndex:0, Opacity:100, Shown:true, Expanded:false,
+                    Tag: KINDS[KindIdx].Tint, Paint:"#4c4f53", PaintsBaseColour:true, ChannelTotal:3, StrokeCount:0,
+                    ActiveChannels:["baseColour", "roughness", "normal"],
+                    Modes: { baseColour: "Value", roughness: "Value", normal: "Derived" },
+                    Amounts: { roughness: 0.5 }, Colours: { baseColour: "#4c4f53" },
+                    Textures: {}, Strokes: {}, Generators: {},
+                    MaskEnabled:false, MaskFill:"White", MaskInverted:false, MaskStrength:100,
+                    SourceMode:"Generator", GeneratorKey:"PerlinNoise", GeneratorParams:{ Scale:0.4, Octaves:0.5, Contrast:0.5 }
+                };
+                State.Layers.unshift(NewRecord);
+                State.AddListOpen = false;
+                SelectTarget(0, "layer");
+            }
+            break;
+
+        case "blend-menu":
+            {
+                const Ord = Number(Arg);
+                State.BlendMenuOrdinal = State.BlendMenuOrdinal === Ord ? -1 : Ord;
+                RenderAll();
+            }
+            break;
+
+        case "blend-pick":
+            {
+                const [OrdStr, IndexStr] = Arg.split(":");
+                const Ord = Number(OrdStr);
+                const Index = Number(IndexStr);
+                State.Layers[Ord].BlendIndex = Index;
+                State.BlendMenuOrdinal = -1;
+                RenderAll();
+            }
+            break;
+
+        case "prop-visible":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { Rec.Shown = !Rec.Shown; RenderAll(); }
+            }
+            break;
+
+        case "toggle-chan":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec && Arg !== "baseColour") {
+                    const Idx = Rec.ActiveChannels.indexOf(Arg);
+                    if (Idx >= 0) { Rec.ActiveChannels.splice(Idx, 1); }
+                    else { Rec.ActiveChannels.push(Arg); }
+                    Rec.ChannelTotal = Rec.ActiveChannels.length;
+                    RenderAll();
+                }
+            }
+            break;
+
+        case "delete-layer":
+            if (State.Layers.length > 1) {
+                State.Layers.splice(State.FocusOrdinal, 1);
+                SelectTarget(Math.max(0, State.FocusOrdinal - 1), "layer");
+            }
+            break;
+
+        case "mask-base":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { Rec.MaskFill = Arg; RenderAll(); }
+            }
+            break;
+
+        case "mask-invert":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { Rec.MaskInverted = !Rec.MaskInverted; RenderAll(); }
+            }
+            break;
+
+        case "mask-add":
+        case "mask-add-type":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { Rec.MaskEnabled = true; SelectTarget(State.FocusOrdinal, "mask"); }
+            }
+            break;
+
+        case "mask-drop":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { Rec.MaskEnabled = false; SelectTarget(State.FocusOrdinal, "layer"); }
+            }
+            break;
+
+        case "toggle-chan-menu":
+            State.ChanMenuOpen = !State.ChanMenuOpen;
+            RenderChannelProperties();
+            break;
+
+        case "remove-chan":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec && Arg !== "baseColour") {
+                    const Idx = Rec.ActiveChannels.indexOf(Arg);
+                    if (Idx >= 0) { Rec.ActiveChannels.splice(Idx, 1); }
+                    Rec.ChannelTotal = Rec.ActiveChannels.length;
+                    RenderAll();
+                }
+            }
+            break;
+
+        case "fold-chan":
+            {
+                if (State.CollapsedChannels.has(Arg)) { State.CollapsedChannels.delete(Arg); }
+                else { State.CollapsedChannels.add(Arg); }
+                RenderChannelProperties();
+            }
+            break;
+
+        case "set-chan-mode":
+            {
+                const [ChanKey, Mode] = Arg.split(":");
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) {
+                    Rec.Modes[ChanKey] = Mode;
+                    RenderChannelProperties();
+                }
+            }
+            break;
+
+        case "erase-strokes":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { delete Rec.Strokes[Arg]; RenderChannelProperties(); }
+            }
+            break;
+
+        case "import-base":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) {
+                    Rec.Textures[Arg] = { Name: `${Arg.toLowerCase()}_import.png`, Width: 2048, Height: 2048, Format: "Linear 8" };
+                    RenderChannelProperties();
+                }
+            }
+            break;
+
+        case "reimport-base":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec && Rec.Textures[Arg]) {
+                    Rec.Textures[Arg].Name = `${Arg.toLowerCase()}_replaced.png`;
+                    Rec.Textures[Arg].Format = "Linear 16";
+                    RenderChannelProperties();
+                }
+            }
+            break;
+
+        case "drop-base":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { delete Rec.Textures[Arg]; RenderChannelProperties(); }
+            }
+            break;
+
+        case "toggle-chan-gen-menu":
+            State.ChanGenPickKey = State.ChanGenPickKey === Arg ? null : Arg;
+            RenderChannelProperties();
+            break;
+
+        case "assign-chan-gen":
+            {
+                const [ChanKey, GenKey] = Arg.split(":");
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) {
+                    const Def = GENERATORS.find(g => g.key === GenKey) || GENERATORS[0];
+                    const DefParams = {};
+                    Def.parameters.forEach(p => { DefParams[p.key] = p.default; });
+                    Rec.Generators[ChanKey] = { Key: GenKey, Parameters: DefParams };
+                    State.ChanGenPickKey = null;
+                    RenderChannelProperties();
+                }
+            }
+            break;
+
+        case "drop-chan-gen":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) { delete Rec.Generators[Arg]; RenderChannelProperties(); }
+            }
+            break;
+
+        case "toggle-gen-menu":
+            State.MaskGenMenuOpen = !State.MaskGenMenuOpen;
+            RenderMaskProperties();
+            break;
+
+        case "mask-gen-pick":
+            {
+                const Rec = State.Layers[State.FocusOrdinal];
+                if (Rec) {
+                    Rec.GeneratorKey = Arg;
+                    const Chosen = GENERATORS.find(G => G.key === Arg);
+                    if (Chosen) {
+                        const Defs = {};
+                        for (const P of Chosen.parameters) { Defs[P.key] = P.default; }
+                        Rec.GeneratorParams = Defs;
+                    }
+                    State.MaskGenMenuOpen = false;
+                    RenderAll();
+                }
+            }
+            break;
+    }
+});
+
+/*----------------------------------------------------------------------------------------------------------
+                                            SLIDER SCRUB ENGINE
+----------------------------------------------------------------------------------------------------------*/
+let Scrub = null;
+
+document.addEventListener("pointerdown", (Event) => {
+    const Target = Event.target.closest("[data-scrub]");
+    if (!Target) { return; }
+
+    const Action = Target.dataset.scrub;
+    const Minimum = Number(Target.dataset.min);
+    const Maximum = Number(Target.dataset.max);
+    const Speed = Number(Target.dataset.speed) || ((Maximum - Minimum) / 400);
+
+    const Parts = Action.split(":");
+    const Verb = Parts[0];
+    const Arg1 = Parts[1];
+    const Arg2 = Parts[2];
+
+    let InitialValue = 0;
+
+    if (Verb === "opacity") {
+        InitialValue = State.Layers[Number(Arg1)]?.Opacity || 0;
+    } else if (Verb === "mask-strength") {
+        InitialValue = State.Layers[Number(Arg1)]?.MaskStrength || 0;
+    } else if (Verb === "gen-param") {
+        const Rec = State.Layers[State.FocusOrdinal];
+        InitialValue = (Rec && Rec.GeneratorParams ? Rec.GeneratorParams[Arg1] * 100 : 50);
+    } else if (Verb === "chan-amount") {
+        const Rec = State.Layers[State.FocusOrdinal];
+        const Slot = CHANNEL_SLOTS[Arg1];
+        const Amt = Rec.Amounts[Arg1] !== undefined ? Rec.Amounts[Arg1] : 0.5;
+        InitialValue = Slot.Unit === "°" ? Amt : Amt * 100;
+    } else if (Verb === "chan-gen-param") {
+        const Rec = State.Layers[State.FocusOrdinal];
+        const Gen = Rec ? Rec.Generators[Arg1] : null;
+        InitialValue = (Gen && Gen.Parameters && Gen.Parameters[Arg2] !== undefined) ? Gen.Parameters[Arg2] * 100 : 50;
+    }
+
+    if (Target.classList.contains("track")) {
+        const Box = Target.getBoundingClientRect();
+        const Ratio = Math.min(1, Math.max(0, (Event.clientX - Box.left) / Box.width));
+        InitialValue = Minimum + Ratio * (Maximum - Minimum);
+    }
+
+    Scrub = { Verb, Arg1, Arg2, Minimum, Maximum, Speed, StartX: Event.clientX, StartVal: InitialValue };
+    document.body.classList.add("scrubbing");
+
+    ApplyScrub(InitialValue);
+});
+
+function ApplyScrub(Value) {
+    if (!Scrub) { return; }
+    const Clamped = Math.min(Scrub.Maximum, Math.max(Scrub.Minimum, Value));
+
+    if (Scrub.Verb === "opacity") {
+        State.Layers[Number(Scrub.Arg1)].Opacity = Clamped;
+    } else if (Scrub.Verb === "mask-strength") {
+        State.Layers[Number(Scrub.Arg1)].MaskStrength = Clamped;
+    } else if (Scrub.Verb === "gen-param") {
+        const Rec = State.Layers[State.FocusOrdinal];
+        if (Rec && Rec.GeneratorParams) { Rec.GeneratorParams[Scrub.Arg1] = Clamped / 100; }
+    } else if (Scrub.Verb === "chan-amount") {
+        const Rec = State.Layers[State.FocusOrdinal];
+        const Slot = CHANNEL_SLOTS[Scrub.Arg1];
+        if (Rec) { Rec.Amounts[Scrub.Arg1] = Slot.Unit === "°" ? Clamped : Clamped / 100; }
+    } else if (Scrub.Verb === "chan-gen-param") {
+        const Rec = State.Layers[State.FocusOrdinal];
+        const Gen = Rec ? Rec.Generators[Scrub.Arg1] : null;
+        if (Gen && Gen.Parameters) { Gen.Parameters[Scrub.Arg2] = Clamped / 100; }
+    }
+    RenderAll();
+}
+
+window.addEventListener("pointermove", (Event) => {
+    if (Scrub) {
+        const DeltaX = Event.clientX - Scrub.StartX;
+        ApplyScrub(Scrub.StartVal + DeltaX * Scrub.Speed);
+        return;
+    }
+
+    if (Lift) {
+        if (!Lift.Live) {
+            if (Math.abs(Event.clientY - Lift.StartY) < 4) { return; }
+            Lift.Live = true;
+            State.LiftedOrdinal = Lift.Ordinal;
+            document.body.classList.add("dragging");
+
+            const Source = document.querySelector(`.entry[data-ord="${Lift.Ordinal}"] .card`);
+            if (Source) {
+                const Box = Source.getBoundingClientRect();
+                Lift.Proxy = Source.cloneNode(true);
+                Lift.Proxy.className = "drag-proxy";
+                Lift.Proxy.style.width = `${Box.width}px`;
+                Lift.Proxy.style.left  = `${Box.left}px`;
+                Lift.Proxy.querySelector(".expand")?.remove();
+                document.body.appendChild(Lift.Proxy);
+                Lift.GrabDy = Event.clientY - Box.top;
+            }
+            RenderLayerStack();
+        }
+
+        if (Lift.Proxy) { Lift.Proxy.style.top = `${Event.clientY - Lift.GrabDy}px`; }
+        Lift.Slot = ResolveDropSlot(Event.clientY);
+        PaintDropLine(Lift.Slot);
+    }
+});
+
+window.addEventListener("pointerup", () => {
+    if (Scrub) {
+        Scrub = null;
+        document.body.classList.remove("scrubbing");
+    }
+
+    if (Lift) {
+        if (Lift.Live) {
+            Lift.Proxy?.remove();
+            document.querySelector(".drop-line")?.remove();
+            document.body.classList.remove("dragging");
+
+            const From = Lift.Ordinal;
+            const To = Lift.Slot ?? Lift.Ordinal;
+            if (From >= 0 && To >= 0 && To !== From && To !== From + 1) {
+                const [Moved] = State.Layers.splice(From, 1);
+                State.Layers.splice(To > From ? To - 1 : To, 0, Moved);
+                State.FocusOrdinal = To > From ? To - 1 : To;
+            }
+            State.LiftedOrdinal = -1;
+            RenderAll();
+        }
+        Lift = null;
+    }
+});
+
+/*----------------------------------------------------------------------------------------------------------
+                                            DRAG TO REORDER ENGINE
+----------------------------------------------------------------------------------------------------------*/
+let Lift = null;
+
+function ResolveDropSlot(PointerY) {
+    const Entries = [...document.querySelectorAll(".entry")];
+    for (const Entry of Entries) {
+        const Box = Entry.getBoundingClientRect();
+        if (PointerY < Box.top + Box.height * 0.5) { return Number(Entry.dataset.ord); }
+    }
+    return State.Layers.length;
+}
+
+function PaintDropLine(Slot) {
+    document.querySelector(".drop-line")?.remove();
+    const Stack = document.querySelector(".stack");
+    if (!Stack) { return; }
+
+    const Entries = [...document.querySelectorAll(".entry")];
+    const StackBox = Stack.getBoundingClientRect();
+    let OffsetY;
+
+    if (Slot >= Entries.length) {
+        const Last = Entries[Entries.length - 1].getBoundingClientRect();
+        OffsetY = Last.bottom - StackBox.top - 1;
+    } else {
+        OffsetY = Entries[Slot].getBoundingClientRect().top - StackBox.top - 1;
+    }
+
+    const Line = document.createElement("div");
+    Line.className = "drop-line";
+    Line.style.top = `${OffsetY}px`;
+    Stack.appendChild(Line);
+}
+
+document.addEventListener("pointerdown", (Event) => {
+    if (Event.target.closest("[data-scrub]")) { return; }
+    if (Event.target.closest(".eye,.caret,.drop,.mask-head .x,.add-mask")) { return; }
+
+    const Entry = Event.target.closest(".entry");
+    if (!Entry) { return; }
+
+    Lift = { Ordinal: Number(Entry.dataset.ord), StartY: Event.clientY, StartX: Event.clientX, Live: false, Proxy: null };
+});
+
+document.addEventListener("input", (Event) => {
+    if (Event.target.id === "FilterInput") {
+        State.FilterTerm = Event.target.value;
+        RenderLayerStack();
+        const Input = document.getElementById("FilterInput");
+        if (Input) { Input.focus(); Input.setSelectionRange(Input.value.length, Input.value.length); }
+    }
+});
+
+// Initial Render
+SelectTarget(0, "layer");
+
+})();
+</script>
+</body>
+</html>

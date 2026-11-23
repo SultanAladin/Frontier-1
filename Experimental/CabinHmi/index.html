@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+    CABIN HMI LAUNCHER
+    🧩 Entry page for the three cabin HMI prototypes (names awaiting approval).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cabin HMI · prototypes</title>
+<link rel="stylesheet" href="./Shared/DisplayKit.css">
+<style>
+    html, body { overflow: auto; background: #07080b; color: #eef1f6; }
+    main { max-width: 1280px; margin: 0 auto; padding: 56px 40px 64px; }
+    header small { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: #7d8696; }
+    header h1 { margin: 10px 0 6px; font-weight: 300; font-size: 44px; }
+    header p { margin: 0 0 36px; color: #9aa3b2; font-size: 15px; }
+    .Grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    a.Pick { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: 22px; overflow: hidden; background: #10131a; border: 1px solid rgba(255,255,255,0.08); transition: transform 260ms cubic-bezier(.3,1.4,.5,1), border-color 260ms, box-shadow 260ms; }
+    a.Pick:hover { transform: translateY(-6px); border-color: var(--Tone); box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px var(--Tone); }
+    a.Pick img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+    .Body { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 6px; }
+    .Body b { font-weight: 500; font-size: 20px; }
+    .Body b i { font-style: normal; color: var(--Tone); margin-right: 8px; }
+    .Body span { color: #9aa3b2; font-size: 14px; line-height: 1.45; }
+    .Body em { font-style: normal; margin-top: 8px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--Tone); }
+    h2 { margin: 34px 0 16px; font-weight: 400; font-size: 15px; letter-spacing: 0.18em; text-transform: uppercase; color: #7d8696; }
+    footer { margin-top: 36px; color: #6c7484; font-size: 13px; }
+    @media (max-width: 960px) { .Grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+    <header>
+        <small>ControlVehicle · cabin displays</small>
+        <h1>Three HMIs, three dashboards</h1>
+        <p>Centre displays (HMI) and their dashboard clusters. Open a cluster next to its HMI in another tab: the cluster drives the car and the HMI sends its lamps back.</p>
+    </header>
+    <h2>Centre displays</h2>
+    <section class="Grid">
+        <a class="Pick" href="./Contour/Contour.html" style="--Tone:#a970ff">
+            <img src="../../Exhibits/CabinHmi/Images/Contour-1-Terrain.png" alt="Contour">
+            <div class="Body"><b><i>A</i>Contour</b><span>Off-roader in amethyst and verdant. Terrain dial, axle locks, tyre pressures, tilt pad, proximity fans.</span><em>Terrain · Tyres · Tilt · Sensors · Lights · Vehicle</em></div>
+        </a>
+        <a class="Pick" href="./Afterglow/Afterglow.html" style="--Tone:#ffc9a8">
+            <img src="../../Exhibits/CabinHmi/Images/Afterglow-1-Horizon.png" alt="Afterglow">
+            <div class="Body"><b><i>B</i>Afterglow</b><span>Ambient tourer. Dunes and planet, mirror floor, particle waves, rest timer, music.</span><em>Horizon · Drive · Lights · Climate · Rest · Media</em></div>
+        </a>
+        <a class="Pick" href="./Nocturne/Nocturne.html" style="--Tone:#a9c8ff">
+            <img src="../../Exhibits/CabinHmi/Images/Nocturne-3b-DriveSport.png" alt="Nocturne">
+            <div class="Body"><b><i>C</i>Nocturne</b><span>Winged saloon on a night lake. Power-current drive view of the hybrid, aurora charging, 3D seats that slide and recline, 3D cover flow.</span><em>Home · Drive · Lights · Charge · Comfort · Media</em></div>
+        </a>
+    </section>
+    <h2>Dashboard clusters</h2>
+    <section class="Grid">
+        <a class="Pick" href="./Clusters/Ridge/Ridge.html" style="--Tone:#a970ff">
+            <img src="../../Exhibits/CabinHmi/Images/Dash-Ridge-Race.png" alt="Ridge">
+            <div class="Body"><b><i>A</i>Ridge</b><span>For Contour. Bar tach on a rising ridge, big gear, lap timer and tyre heat in Race. Fuel gauge with range.</span><em>Cruise · Eco · Sport · Race</em></div>
+        </a>
+        <a class="Pick" href="./Clusters/Halo/Halo.html" style="--Tone:#ffc9a8">
+            <img src="../../Exhibits/CabinHmi/Images/Dash-Halo-Sport.png" alt="Halo">
+            <div class="Body"><b><i>B</i>Halo</b><span>For Afterglow. Round speedo with power and fuel arcs, G compass in Sport, sky shifts per mode.</span><em>Cruise · Eco · Sport · Race</em></div>
+        </a>
+        <a class="Pick" href="./Clusters/Tide/Tide.html" style="--Tone:#a9c8ff">
+            <img src="../../Exhibits/CabinHmi/Images/Dash-Tide-Race.png" alt="Tide">
+            <div class="Body"><b><i>C</i>Tide</b><span>For Nocturne. RPM and turbo twin arcs, eco and charge bars, shift lights in Race. Fuel panel with range.</span><em>Cruise · Eco · Sport · Race</em></div>
+        </a>
+    </section>
+    <h2>Windscreen HUD demo</h2>
+    <section class="Grid">
+        <a class="Pick" href="./Visor/Visor.html" style="--Tone:#3ff0ff">
+            <img src="../../Exhibits/CabinHmi/Images/Visor-3b-PorcupineBrake.png" alt="Visor">
+            <div class="Body"><b><i>HUD</i>Visor</b><span>Game prototype. Drive the ControlVehicle down a night pass from the driver's seat. Hazards, the signal countdown, teammate pings and car warnings appear on the windscreen.</span><em>Mouse look · W S A D · E accept · Q dismiss</em></div>
+        </a>
+        </section>
+    <h2>Garage lobby</h2>
+    <section class="Grid">
+        <a class="Pick" href="./Lobby/Lobby.html" style="--Tone:#d7ff5a">
+            <img src="../../Exhibits/CabinHmi/Images/Lobby-4-RaceHangar.png" alt="Lobby">
+            <div class="Body"><b><i>CFG</i>Lobby</b><span>Game prototype. The ControlVehicle in nine procedural garages, from a jungle carport to a photo studio and a mechanics workshop. Car configurator with hotspot dots, light colours, underglow, bolt-on parts and a see-through drivetrain cutaway.</span><em>Drag orbit · click a dot · 1–9 sets · H hide</em></div>
+        </a>
+</section>
+    <h2>Particle showroom</h2>
+    <section class="Grid">
+        <a class="Pick" href="./Filament/Filament.html" style="--Tone:#7ff3ff">
+            <img src="../../Exhibits/CabinHmi/Images/Filament-2b-TwinScan.png" alt="Filament">
+            <div class="Body"><b><i>FX</i>Filament</b><span>Particle demo. Ten GPU looks: light-speed streaks, a dust digital twin that builds the car, wind-tunnel airflow, Particular-style emitters, a MoGraph clone field, a charging flow, light threads orbiting a glass sphere, particle flowers with bokeh, a vehicle transition (an electric edge sweeping the car) and a fibre-optic wave. Up to 160k particles with trails, glow, depth of field and eight palettes.</span><em>Drag orbit · 1–9, 0 looks · Space pause · H hide</em></div>
+        </a>
+</section>
+    <h2>Vehicle sound library</h2>
+    <section class="Grid">
+        <a class="Pick" href="./Acoustics/Acoustics.html" style="--Tone:#ff2b1c">
+            <img src="../../Exhibits/CabinHmi/Images/Audio-LaFerrari-Launch.png" alt="Acoustics">
+            <div class="Body"><b><i>SFX</i>Acoustics</b><span>Sound bench. Drive a fully synthesized Ferrari LaFerrari V12 (HY-KERS), Nissan GT-R NISMO twin-turbo V6, supercharged Dodge Challenger SRT Demon V8 (TransBrake launch), Porsche 918 Spyder hybrid V8, Koenigsegg Agera RS twin-turbo V8, three Mustangs (GT, Shelby GT350, Mustang GT3), Ligier JS P320 LMP3 (Nissan V8), Porsche Taycan Turbo S or Storm-style Next-Gen racer live, with 11 swappable turbos and superchargers and real turbo lag (adjustable), over seven road surfaces with tyre squeal, brakes with ABS and suspension; light, cabin and impact cues (explosion, shockwave, EMP, sonic blast, glass, crash); guns (Devotion-style energy LMG with Turbocharger, LMG, SMG, .50 cal HMG, AK-47, M4, minigun, MG 42, pump shotgun, 9 mm pistol, .50 rifle, sniper, turret, cannon), bullets passing and hitting sand, rock, wood and more; electric aircraft; spent shell casings falling on concrete, wood, steel and dirt; factory sounds (conveyor, metal works, creaks), sparks and electronics; a road-noise switch and separate wind level; war sounds (explosions in sand, mortar, grenade, RPG, artillery, helicopter, air-raid siren, tank, shell shock, battlefield); and a 100-file rendered reel. No recordings.</span><em>W S A D · Q E paddles · Enter start · V car · I induction · F fire · R turbo · B TransBrake · M road noise · 1–7 surface</em></div>
+        </a>
+</section>
+    <footer>Keys on a cluster: ↑ throttle · ↓ brake · Q/E paddles · P R N D M · 1–4 modes. Prototype names and menu labels are proposals awaiting approval.</footer>
+</main>
+</body>
+</html>

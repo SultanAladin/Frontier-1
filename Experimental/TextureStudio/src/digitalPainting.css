@@ -1,0 +1,791 @@
+.tp-studio .alloy-digital-menu {
+  width: min(1120px, calc(100vw - 36px));
+  height: min(850px, calc(100dvh - 40px));
+  display: flex;
+  flex-direction: column;
+  background: #20221f;
+  border: 1px solid #555647;
+  border-radius: 20px;
+  box-shadow: 0 24px 110px #000a;
+  color: var(--tp-ink, #e4e0d2);
+  font-size: 11px;
+  overflow: hidden;
+  min-height: 0;
+}
+.tp-studio .alloy-digital-menu button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.tp-studio .alloy-digital-menu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tp-studio .alloy-digital-menu button:focus-visible,
+.tp-studio .alloy-digital-menu input:focus-visible,
+.tp-studio .alloy-digital-menu select:focus-visible,
+.tp-studio .alloy-digital-menu canvas:focus-visible {
+  outline: 2px solid #dfba7f;
+  outline-offset: 3px;
+}
+.tp-studio .digital-menu-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 20px;
+  border-bottom: 1px solid #414239;
+  flex-shrink: 0;
+}
+.tp-studio .digital-menu-heading > svg {
+  color: #dbb47b;
+}
+.tp-studio .digital-menu-heading div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tp-studio .digital-menu-heading strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.tp-studio .digital-menu-heading small {
+  color: #a6a699;
+  font-size: 10px;
+}
+.tp-studio .digital-menu-heading > span {
+  margin-left: auto;
+  padding: 5px 9px;
+  border: 1px solid #494c3d;
+  border-radius: 30px;
+  color: #c8d19c;
+  font-size: 9px;
+}
+.tp-studio .digital-menu-heading > button {
+  padding: 5px;
+  display: flex;
+  background: #30322b;
+  border: 1px solid #484a3e;
+  border-radius: 50%;
+}
+.tp-studio .digital-menu-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 12px 20px 9px;
+  border-bottom: 1px solid #35372e;
+  flex-shrink: 0;
+}
+.tp-studio .digital-tool-circles,
+.tp-studio .digital-preset-circles {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.tp-studio .digital-tool-circles {
+  border-right: 1px solid #46493c;
+  padding-right: 18px;
+}
+.tp-studio .digital-tool-circles button,
+.tp-studio .digital-preset-circles button {
+  border: 0;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 62px;
+  max-width: 90px;
+  padding: 0 2px;
+  font-size: 10px;
+}
+.tp-studio .digital-tool-circles button > i,
+.tp-studio .digital-preset-circles button > i {
+  height: 44px;
+  width: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #515442;
+  background: #2a2d25;
+  border-radius: 50%;
+  color: #b8bba8;
+  font-style: normal;
+  position: relative;
+}
+.tp-studio .digital-tool-circles [aria-pressed="true"] > i,
+.tp-studio .digital-preset-circles [aria-pressed="true"] > i {
+  background: #d5c78c;
+  color: #24271e;
+  border-color: #e2d59b;
+  box-shadow: 0 0 0 3px #d5c78c17;
+}
+.tp-studio .digital-preset-circles button > i > svg {
+  display: none;
+  position: absolute;
+  bottom: 4px;
+  right: 3px;
+}
+.tp-studio .digital-preset-circles [aria-pressed="true"] > i > svg {
+  display: block;
+}
+.tp-studio .digital-tip-icon {
+  display: block;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tp-studio .digital-tip-icon.tip-soft {
+  background: radial-gradient(circle, currentColor, transparent 72%);
+  width: 36px;
+  height: 36px;
+}
+.tp-studio .digital-tip-icon.tip-flat {
+  height: 10px;
+  transform: rotate(-28deg);
+}
+.tp-studio .digital-tip-icon.tip-pixel {
+  border-radius: 1px;
+  height: 20px;
+  width: 20px;
+}
+.tp-studio .digital-tip-icon.tip-grain {
+  background: repeating-conic-gradient(currentColor 0 25%, transparent 0 50%) 0
+    0/5px 5px;
+}
+.tp-studio .digital-stroke-preview {
+  margin: 12px 20px 0;
+  border: 1px solid #4c4e3f;
+  border-radius: 12px;
+  background: #282c24;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.tp-studio .digital-stroke-preview header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.tp-studio .digital-stroke-preview header > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  font-size: 10px;
+}
+.tp-studio .digital-stroke-preview header > small {
+  margin-left: auto;
+  color: #aeb29c;
+  font-size: 9px;
+}
+.tp-studio .digital-stroke-preview header > button {
+  padding: 3px;
+  display: flex;
+  border: 0;
+  background: transparent;
+}
+.tp-studio .digital-stroke-preview canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  background: repeating-conic-gradient(#d7d6cb 0 25%, #e8e6d9 0 50%) 0 0/16px
+    16px;
+  cursor: crosshair;
+}
+.tp-studio .digital-stroke-preview p {
+  padding: 7px 12px;
+  margin: 0;
+  color: #b5b8a7;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.tp-studio .digital-menu-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.tp-studio .digital-brush-column {
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  overscroll-behavior: contain;
+}
+.tp-studio .digital-brush-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.tp-studio .digital-brush-summary small {
+  font-size: 8px;
+  letter-spacing: 1.3px;
+  color: #9ba584;
+}
+.tp-studio .digital-brush-summary h1 {
+  font-size: 17px;
+  font-weight: 500;
+  margin: 3px 0 0;
+}
+.tp-studio .digital-brush-summary > button {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border: 1px solid #4b4e3e;
+  border-radius: 20px;
+  background: #2d3027;
+}
+.tp-studio .digital-brush-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.tp-studio .digital-brush-card {
+  margin: 0 !important;
+  background: #282b24 !important;
+  border-color: #414535 !important;
+  min-width: 0;
+}
+.tp-studio .digital-brush-card > h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+.tp-studio .digital-brush-card > h2 > svg {
+  color: #c5b981;
+  margin-left: 0;
+}
+.tp-studio .digital-brush-card > .tp-shared-controls {
+  padding: 0 12px;
+}
+.tp-studio .digital-brush-card .field-label {
+  font-size: 10px;
+}
+.tp-studio .digital-brush-card .slider-field {
+  margin-bottom: 11px;
+}
+.tp-studio .digital-card-note {
+  color: #9b9f8f;
+  line-height: 1.55;
+  font-size: 9px;
+  padding: 0 12px 10px;
+  margin: 0;
+}
+.tp-studio .digital-select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 13px;
+  position: relative;
+  font-size: 10px;
+}
+.tp-studio .digital-select select {
+  appearance: none;
+  width: 100%;
+  font: inherit;
+  padding: 7px 22px 7px 9px;
+  color: #e0e3d2;
+  background: #32362b;
+  border: 1px solid #4b4e3d;
+  border-radius: 8px;
+}
+.tp-studio .digital-select > svg {
+  position: absolute;
+  right: 8px;
+  bottom: 9px;
+  pointer-events: none;
+}
+.tp-studio .digital-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  padding-bottom: 13px;
+}
+.tp-studio .digital-switch input,
+.tp-studio .digital-channel-target input {
+  accent-color: #d9c68c;
+}
+.tp-studio .digital-fill-scope {
+  padding-bottom: 7px;
+}
+.tp-studio .digital-channel-panel {
+  border-left: 1px solid #414438;
+  padding: 16px 15px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #252820;
+}
+.tp-studio .digital-channel-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  margin: 0 0 10px;
+}
+.tp-studio .digital-channel-panel h2 > small {
+  margin-left: auto;
+  color: #a5ae8e;
+  font-size: 9px;
+  font-weight: 400;
+}
+.tp-studio .digital-channel-panel > p {
+  font-size: 9px;
+  line-height: 1.6;
+  color: #aaaf9a;
+  margin: 0 0 12px;
+}
+.tp-studio .digital-clear-channels {
+  border: 1px solid #4c5140;
+  background: transparent;
+  padding: 6px 9px;
+  border-radius: 20px;
+  font-size: 9px !important;
+  margin-bottom: 10px;
+}
+.tp-studio .digital-channel-group > h3 {
+  font-size: 9px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #a5ad8e;
+  margin: 14px 0 8px;
+}
+.tp-studio .digital-channel-target {
+  border: 1px solid #3e4433;
+  border-radius: 10px;
+  margin-bottom: 5px;
+  background: #292e23;
+  overflow: hidden;
+}
+.tp-studio .digital-channel-target[data-enabled="true"] {
+  border-color: #565e40;
+}
+.tp-studio .digital-channel-target-row {
+  display: flex;
+  align-items: center;
+  padding: 7px 8px;
+  gap: 3px;
+}
+.tp-studio .digital-channel-target-row > label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  font-size: 10px;
+}
+.tp-studio .digital-channel-target-row input {
+  margin: 0;
+  height: 12px;
+  width: 12px;
+  flex-shrink: 0;
+}
+.tp-studio .digital-channel-target-row i {
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tp-studio .digital-channel-target-row > button {
+  border: 0;
+  background: none;
+  display: flex;
+  padding: 3px;
+}
+.tp-studio .digital-channel-value {
+  padding: 8px 10px 6px;
+  border-top: 1px solid #464c39;
+}
+.tp-studio .digital-channel-value p {
+  font-size: 9px;
+  color: #bcc5a6;
+  line-height: 1.55;
+}
+.tp-studio .digital-channel-value .editor-colour-picker {
+  margin: 0;
+}
+.tp-studio .digital-channel-value .colour-picker-square {
+  height: 76px;
+  min-height: 76px;
+}
+.tp-studio .digital-mask-inks {
+  display: flex;
+  gap: 8px;
+  margin: 15px 0;
+}
+.tp-studio .digital-mask-inks button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  border: 1px solid #515741;
+  border-radius: 20px;
+  padding: 8px 12px;
+  background: #303529;
+}
+.tp-studio .digital-mask-inks [aria-pressed="true"] {
+  border-color: #dcc891;
+  background: #414832;
+}
+.tp-studio .digital-mask-inks i {
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  border: 1px solid #7d836a;
+}
+.tp-studio .digital-menu-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid #484d3b;
+  background: #282d23;
+  flex-shrink: 0;
+}
+.tp-studio .digital-menu-footer > span {
+  font-size: 9px;
+  color: #b0b99c;
+  line-height: 1.4;
+  flex: 1;
+  text-align: right;
+}
+.tp-studio .digital-catalogue-link {
+  border: 0;
+  background: transparent;
+  font-size: 9px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 0;
+  color: #a9b195 !important;
+}
+.tp-studio .digital-catalogue-link small {
+  font-size: 8px;
+  color: #828b71;
+}
+.tp-studio .digital-use-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #d6c88f;
+  border: 1px solid #e1d79e;
+  border-radius: 25px;
+  color: #262b1e !important;
+  font-weight: 600 !important;
+  padding: 9px 15px;
+  min-width: 116px;
+}
+.tp-studio .digital-property-tabs {
+  display: none;
+}
+.tp-studio .digital-viewport-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 9px;
+  border-bottom: 1px solid #393e31;
+  flex-shrink: 0;
+  background: #282d24;
+  font-size: 10px;
+}
+.tp-studio .digital-viewport-tools button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #c6cdb7;
+  font: inherit;
+  border: 1px solid #49523a;
+  background: #343d2b;
+  border-radius: 18px;
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tp-studio .digital-viewport-tools button[aria-pressed="true"] {
+  background: #c5bd87;
+  border-color: #dfd5a0;
+  color: #272c1d;
+}
+.tp-studio .digital-viewport-tools button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tp-studio .digital-viewport-tools .digital-brush-settings {
+  margin-left: 3px;
+}
+.tp-studio .tp-scene-viewport.tp-digital-editing .canvas-host {
+  touch-action: none;
+  cursor: crosshair;
+}
+@media (max-width: 1000px) {
+  .tp-studio .digital-brush-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tp-studio .alloy-digital-menu {
+    width: calc(100vw - 28px);
+  }
+  .tp-studio .digital-menu-body {
+    grid-template-columns: minmax(0, 1fr) 278px;
+  }
+  .tp-studio .digital-preset-circles {
+    gap: 5px;
+  }
+  .tp-studio .digital-preset-circles button {
+    font-size: 9px;
+    min-width: 56px;
+  }
+  .tp-studio .digital-menu-toolbar {
+    gap: 10px;
+  }
+}
+@media (max-width: 700px) {
+  .tp-studio .alloy-digital-menu {
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+  .tp-studio .digital-menu-heading {
+    padding: 12px;
+  }
+  .tp-studio .digital-menu-heading > span {
+    display: none;
+  }
+  .tp-studio .digital-menu-heading > button {
+    margin-left: auto;
+  }
+  .tp-studio .digital-menu-toolbar {
+    padding: 10px 12px;
+    display: block;
+  }
+  .tp-studio .digital-tool-circles {
+    border: 0;
+    padding: 0;
+    margin-bottom: 11px;
+    gap: 14px;
+  }
+  .tp-studio .digital-tool-circles button {
+    flex: 1;
+    max-width: none;
+  }
+  .tp-studio .digital-preset-circles {
+    justify-content: space-between;
+    gap: 0;
+  }
+  .tp-studio .digital-preset-circles button {
+    min-width: 0;
+    max-width: 65px;
+    flex: 1;
+    font-size: 8px;
+  }
+  .tp-studio .digital-preset-circles button > i {
+    width: 38px;
+    height: 38px;
+  }
+  .tp-studio .digital-stroke-preview {
+    margin: 0 12px;
+  }
+  .tp-studio .digital-stroke-preview canvas {
+    height: auto;
+  }
+  .tp-studio .digital-stroke-preview header > small {
+    font-size: 8px;
+  }
+  .tp-studio .digital-stroke-preview p {
+    font-size: 8px;
+  }
+  .tp-studio .digital-property-tabs {
+    display: flex;
+    gap: 5px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #414837;
+  }
+  .tp-studio .digital-property-tabs button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid #525b3f;
+    background: #303a26;
+    border-radius: 20px;
+    padding: 7px 10px;
+    flex: 1;
+    font-size: 10px;
+  }
+  .tp-studio .digital-property-tabs [aria-pressed="true"] {
+    background: #c7c294;
+    color: #28311e;
+  }
+  .tp-studio .digital-menu-body {
+    display: block;
+    overflow: hidden;
+  }
+  .tp-studio .digital-brush-column,
+  .tp-studio .digital-channel-panel {
+    height: 100%;
+    box-sizing: border-box;
+    padding: 12px;
+    overflow-y: auto;
+  }
+  .tp-studio .digital-channel-panel {
+    border-left: 0;
+  }
+  .tp-studio
+    .alloy-digital-menu[data-properties-tab="brush"]
+    .digital-channel-panel {
+    display: none;
+  }
+  .tp-studio
+    .alloy-digital-menu[data-properties-tab="channels"]
+    .digital-brush-column {
+    display: none;
+  }
+  .tp-studio .digital-menu-footer {
+    padding: 10px 12px;
+    gap: 9px;
+  }
+  .tp-studio .digital-menu-footer > span {
+    display: none;
+  }
+  .tp-studio .digital-catalogue-link {
+    flex: 1;
+  }
+  .tp-studio .digital-viewport-tools {
+    padding: 5px;
+    gap: 3px;
+    flex-wrap: wrap;
+  }
+  .tp-studio .digital-viewport-tools button {
+    font-size: 9px;
+    padding: 5px 7px;
+  }
+  .tp-studio .digital-viewport-tools > span {
+    width: 100%;
+    margin-left: 3px;
+  }
+  .tp-studio .digital-brush-summary h1 {
+    font-size: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-studio .alloy-digital-menu * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Keep a usable drawing area above the phone's Layers/Inspector/History dock.
+   The viewport is always present; it is not a fourth dock tab. */
+@media (max-width: 700px) {
+  section.tp-studio[data-digital-painting="true"] .tp-layout {
+    grid-template-rows: minmax(440px, 64%) minmax(0, 1fr);
+  }
+  section.tp-studio[data-digital-painting="true"] .tp-mask-brush-options {
+    display: none;
+  }
+  section.tp-studio[data-digital-painting="true"] .tp-paint-state-note {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  /* Legacy mask-selection controls already occupy this phone toolbar. The
+     top-bar brush still opens the digital studio; Use shows its own toolbar. */
+  section.tp-studio[data-digital-painting="false"][data-mask-authoring="mask"]
+    .digital-viewport-tools {
+    display: none;
+  }
+  section.tp-studio[data-digital-painting="true"] .tp-mask-options-toggle {
+    display: none !important;
+  }
+}
+
+/* The textured footprint is rendered in surface/UV space; these screen-space
+   helpers mark the exact input anchor and explain the nominal UV-pixel size. */
+.tp-studio .digital-cursor-anchor,
+.tp-studio .digital-cursor-readout,
+.tp-studio .digital-uv-cursor {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+}
+.tp-studio .digital-cursor-anchor[hidden],
+.tp-studio .digital-cursor-readout[hidden] {
+  display: none;
+}
+.tp-studio .digital-cursor-anchor {
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 1px #111820) drop-shadow(0 0 1px #111820);
+}
+.tp-studio .digital-cursor-anchor::before,
+.tp-studio .digital-cursor-anchor::after {
+  content: "";
+  position: absolute;
+  background: #fff;
+}
+.tp-studio .digital-cursor-anchor::before {
+  width: 7px;
+  height: 1px;
+  top: 3px;
+  left: 0;
+}
+.tp-studio .digital-cursor-anchor::after {
+  width: 1px;
+  height: 7px;
+  top: 0;
+  left: 3px;
+}
+.tp-studio .digital-cursor-readout {
+  margin: 16px 0 0 14px;
+  border: 1px solid #686b7180;
+  border-radius: 6px;
+  background: #1c2027e8;
+  color: #eceef2;
+  padding: 4px 7px;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px #0005;
+}
+.tp-studio .tp-uv-view > .digital-uv-cursor {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.tp-studio .tp-digital-editing .canvas-host.digital-cursor-visible > canvas,
+.tp-studio
+  .tp-digital-editing
+  .tp-uv-view.digital-cursor-visible
+  > .tp-uv-canvas {
+  cursor: none !important;
+}
+@media (max-width: 700px) {
+  .tp-studio .digital-cursor-readout {
+    font-size: 9px;
+    max-width: 65%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Pointer-XY overlay, never a UV mesh or a baked surface pass. */
+.tp-studio .canvas-host > .digital-screen-cursor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+.tp-studio .digital-screen-cursor[hidden] {
+  display: none;
+}

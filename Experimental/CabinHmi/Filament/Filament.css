@@ -1,0 +1,45 @@
+/* FILAMENT — full-window particle stage, settings panel on the right, look strip along the bottom. */
+:root { --Accent: #7ff3ff; --Glass: rgba(8, 10, 14, 0.62); --Edge: rgba(255, 255, 255, 0.08); --Soft: rgba(232, 238, 248, 0.56); }
+body { background: #010203; color: #eef1f6; }
+#Scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; touch-action: none; }
+#Scene.Dragging { cursor: grabbing; }
+body:not(.Ready) .Panel, body:not(.Ready) .Strip { opacity: 0; }
+
+.Title { position: fixed; left: 28px; top: 24px; pointer-events: none; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.6); }
+.Title b { font-weight: 500; font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase; color: var(--Accent); }
+.Title h1 { margin: 4px 0 2px; font-weight: 300; font-size: 34px; letter-spacing: -0.01em; }
+.Title p { margin: 0; max-width: 460px; font-size: 13px; color: var(--Soft); }
+.Readout { position: fixed; left: 28px; top: 132px; padding: 7px 12px; border-radius: 9px; font-size: 13px; color: var(--Soft); background: var(--Glass); border: 1px solid var(--Edge); opacity: 0; transition: opacity 240ms; pointer-events: none; font-variant-numeric: tabular-nums; }
+.Readout.On { opacity: 1; }
+.Readout b { color: #fff; font-weight: 500; }
+
+.Panel { position: fixed; right: 18px; top: 18px; width: 268px; max-height: calc(100vh - 120px); overflow-y: auto; display: grid; gap: 14px; padding: 16px; border-radius: 16px; background: var(--Glass); border: 1px solid var(--Edge); backdrop-filter: blur(14px) saturate(1.2); scrollbar-width: thin; transition: opacity 300ms; }
+.Controls { display: grid; gap: 12px; }
+.Control { display: grid; gap: 6px; }
+.Control > header { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--Soft); }
+.Control > header output { color: #fff; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; height: 18px; margin: 0; background: transparent; accent-color: var(--Accent); }
+.Segments { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
+.Segments button { padding: 6px 2px; border-radius: 8px; font-size: 11.5px; color: var(--Soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 140ms, color 140ms; }
+.Segments button:hover { color: #fff; }
+.Segments button.On { background: rgba(255, 255, 255, 0.13); color: #fff; }
+.Swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.Swatch { height: 26px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12); opacity: 0.75; transition: opacity 140ms, transform 140ms; }
+.Swatch:hover { opacity: 1; }
+.Swatch.On { opacity: 1; outline: 2px solid #fff; outline-offset: 1px; }
+.Buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.Buttons button { padding: 8px 0; border-radius: 9px; font-size: 12px; color: var(--Soft); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--Edge); }
+.Buttons button:hover { color: #fff; }
+.Buttons button.On { color: #001014; background: var(--Accent); }
+
+.Strip { position: fixed; left: calc((100vw - 290px) / 2); bottom: 22px; transform: translateX(-50%); display: flex; gap: 2px; padding: 5px; border-radius: 16px; background: var(--Glass); border: 1px solid var(--Edge); backdrop-filter: blur(14px); transition: opacity 300ms; }
+.Strip .Pick { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-radius: 11px; font-size: 12px; white-space: nowrap; color: var(--Soft); transition: background 160ms, color 160ms; }
+.Strip .Pick i { font-style: normal; font-size: 10px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 6px; background: rgba(255, 255, 255, 0.07); }
+.Strip .Pick b { font-weight: 500; }
+.Strip .Pick:hover { color: #fff; }
+.Strip .Pick.On { color: #fff; background: rgba(255, 255, 255, 0.11); }
+.Strip .Pick.On i { background: var(--Accent); color: #001014; }
+
+body.Bare .Panel, body.Bare .Strip, body.Bare .ProtoTag { opacity: 0; pointer-events: none; }
+@media (max-width: 1400px) { .Strip .Pick b { font-size: 11px; } .Strip .Pick { padding: 8px 7px; } }
+@media (max-width: 900px) { .Panel { width: 220px; } .Strip .Pick b { display: none; } }

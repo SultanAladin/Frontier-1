@@ -1,0 +1,471 @@
+/*====================================================================================================================================
+                                                       TOOLMENU.CSS
+====================================================================================================================================*/
+/* 🧩 The summoned instrument card: rail of six media, one tile each, sliding to a schema-driven property pane */
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                        PALETTE
+------------------------------------------------------------------------------------------------------------------------*/
+
+.ToolMenu
+{
+    --Menu:      #17171a;
+    --MenuSunk:  #101012;
+    --RailPick:  #232327;
+    --Tile:      #1d1d21;
+    --TileHigh:  #26262b;
+    --Accent:    #5b8cff;
+    --Ink:       #ececf0;
+    --Muted:     #82828c;
+    --Faint:     #55555d;
+    --Radius:    18px;
+    --RowHeight: 32px;
+
+    /* 📝 The well is a dish, not a flat disc — the inset shadow is what makes a tile read as a
+          recess holding the instrument rather than a sticker printed on the panel. */
+    --Well: radial-gradient(circle at 50% 34%, #2a2a30, #1a1a1e 70%);
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                       THE CARD
+------------------------------------------------------------------------------------------------------------------------*/
+
+.ToolMenu
+{
+    position:      fixed;
+    z-index:       40;
+    width:         0;
+    height:        0;
+    overflow:      hidden;
+    opacity:       0;
+    pointer-events: none;
+
+    background:    var(--Menu);
+    border:        1px solid #2a2a30;
+    border-radius: var(--Radius);
+    box-shadow:    0 24px 64px rgba(0, 0, 0, 0.62);
+
+    font-family:   "Segoe UI", system-ui, sans-serif;
+    color:         var(--Ink);
+    user-select:   none;
+
+    transition:    width 0.16s ease, height 0.16s ease, opacity 0.12s ease;
+}
+
+.ToolMenu.Open
+{
+    /* 78vh so the card never outgrows a short window; --CardWidth is the two-column width.
+       🔴 content-box: the slides are sized in the same units, so if the 1px borders were folded into
+          this width the slides would overhang by 2px and the next pane would peek along the edge. */
+    box-sizing:     content-box;
+    width:          var(--CardWidth);
+    height:         min(420px, 78vh);
+    opacity:        1;
+    pointer-events: auto;
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                      THE CAROUSEL
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* 📝 Both panes live side by side in a track and the track slides. Swapping the pane's contents
+      instead would lose the sense that the properties sit *behind* the grid.
+
+   🔴 The track is sized by its CONTENT and each slide is pinned to exactly one card width. Percentages
+      here (track 200%, slide 50%) look equivalent and are not: they resolve against a containing block
+      that includes the card's 1px borders, so each slide came out 558px inside a 560px card. The 2px
+      shortfall let the NEXT slide's rail show along the right edge, which reads as the card rendering
+      as [left-half-of-A | B | right-half-of-A]. Keep these as fixed widths tied to --CardWidth. */
+.ToolMenu { --CardWidth: 560px; }
+
+.ToolTrack
+{
+    display:    flex;
+    width:      max-content;
+    height:     100%;
+    transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.ToolMenu.Properties .ToolTrack { transform: translateX(calc(-1 * var(--CardWidth))); }
+
+.ToolSlide
+{
+    display:               grid;
+    /* 🔴 Pinned at 196px, not auto. An auto column resolves to a different width in each pane, so the
+          seam between rail and body visibly steps sideways as the carousel slides. */
+    grid-template-columns: 196px minmax(0, 1fr);
+    width:                 var(--CardWidth);
+    flex:                  0 0 var(--CardWidth);
+    height:                100%;
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                     RAIL AND PANES
+------------------------------------------------------------------------------------------------------------------------*/
+
+.ToolRail
+{
+    background:   var(--MenuSunk);
+    border-right: 1px solid #232327;
+    padding:      10px 8px;
+    overflow-y:   auto;
+    /* Same reason as .PaneScroll: a grid item's auto minimum would defeat the scroll. */
+    min-height:   0;
+}
+
+.ToolBody { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+
+/* 🔴 Fixed height, shared by the grid pane and the property pane. If the two headers differ by even a
+      pixel the title jitters vertically as the carousel slides. */
+.PaneHead
+{
+    height:        53px;
+    flex:          0 0 53px;
+    display:       flex;
+    align-items:   center;
+    gap:           10px;
+    padding:       0 14px;
+    border-bottom: 1px solid #232327;
+}
+
+.PaneTitle    { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+.PaneSubtitle { font-size: 11px; color: var(--Muted); margin-top: 1px; }
+
+.PaneBack
+{
+    width: 24px; height: 24px; flex: 0 0 24px;
+    display: grid; place-items: center;
+    border: none; border-radius: 7px;
+    background: transparent; color: var(--Muted);
+    cursor: pointer;
+}
+.PaneBack:hover { background: var(--TileHigh); color: var(--Ink); }
+
+/* 🔴 min-height:0 is load-bearing, not tidying. A flex item defaults to min-height:auto, which refuses
+      to shrink below its content, so `overflow-y:auto` never engages: the pane grows to its full
+      content height and everything past the card's edge is clipped away by .ToolMenu's overflow and
+      becomes unreachable. Measured before the fix — the colour row sat at y=1076 in a pane ending at
+      y=752, so no amount of scrolling could reach it. */
+.PaneScroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; }
+
+/* Scrollbars are hidden on every scroller: a 12px gutter appearing mid-slide reflows the grid. */
+.ToolRail, .PaneScroll { scrollbar-width: none; }
+.ToolRail::-webkit-scrollbar, .PaneScroll::-webkit-scrollbar { width: 0; height: 0; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                      RAIL ITEMS
+------------------------------------------------------------------------------------------------------------------------*/
+
+.RailItem
+{
+    position:      relative;
+    display:       flex;
+    align-items:   center;
+    gap:           9px;
+    height:        var(--RowHeight);
+    padding:       0 9px;
+    border:        none;
+    border-radius: 8px;
+    background:    transparent;
+    color:         var(--Muted);
+    font:          inherit;
+    font-size:     12px;
+    text-align:    left;
+    width:         100%;
+    cursor:        pointer;
+}
+
+.RailItem:hover { background: #1c1c20; color: var(--Ink); }
+
+.RailItem.Active { background: var(--RailPick); color: var(--Ink); }
+
+/* The accent bar marks the active row without shifting any text. */
+.RailItem.Active::before
+{
+    content:       "";
+    position:      absolute;
+    left:          0;
+    top:           7px;
+    bottom:        7px;
+    width:         2px;
+    border-radius: 0 2px 2px 0;
+    background:    var(--Accent);
+}
+
+.RailDot
+{
+    width: 8px; height: 8px; flex: 0 0 8px;
+    border-radius: 50%;
+    transition: transform 0.14s ease;
+}
+.RailItem.Active .RailDot { transform: scale(1.28); }
+
+.RailTally { margin-left: auto; font-size: 10px; color: var(--Faint); }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                        TILES
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* 📝 Four columns even though a simplified band holds one instrument. The tile keeps the size it has
+      in the full menu, so a band that later grows past one entry needs no layout change. */
+.TileGrid
+{
+    display:               grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap:                   10px;
+}
+
+.Tile
+{
+    display:        flex;
+    flex-direction: column;
+    align-items:    center;
+    gap:            7px;
+    padding:        10px 6px 9px;
+    border:         1px solid transparent;
+    border-radius:  12px;
+    background:     var(--Tile);
+    color:          var(--Muted);
+    font:           inherit;
+    cursor:         pointer;
+}
+
+.Tile:hover        { background: var(--TileHigh); color: var(--Ink); }
+.Tile.Active       { border-color: var(--Accent); color: var(--Ink); }
+
+.Tile .Well
+{
+    width: 46px; height: 46px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--Well);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+.Tile .Well svg { width: 32px; height: 32px; display: block; }
+
+.TileName
+{
+    font-size: 10px;
+    line-height: 1.25;
+    text-align: center;
+    max-width: 88px;
+}
+
+.TileFade { animation: TileRise 0.2s ease both; }
+
+@keyframes TileRise
+{
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                       PREVIEW
+------------------------------------------------------------------------------------------------------------------------*/
+
+/* 🔴 Pale, not dark. Pigment has to be judged against paper — a chalk stroke on a #17171a panel
+      reads as bright paint, which is the opposite of what the instrument does. */
+.PreviewStrip
+{
+    background:    #f4f1ea;
+    border-radius: 10px;
+    overflow:      hidden;
+    margin-bottom: 12px;
+}
+
+.PreviewStand
+{
+    display: grid; place-items: center;
+    height: 62px;
+    background: #f4f1ea;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* The art is drawn tip-right in landscape; standing it upright is a presentation choice only. */
+.PreviewStand svg { transform: rotate(-90deg) scale(1.5); }
+
+.PreviewCanvas { display: block; width: 100%; height: 64px; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                       CONTROLS
+------------------------------------------------------------------------------------------------------------------------*/
+
+.ControlRow    { margin-bottom: 13px; }
+
+.ControlHead
+{
+    display: flex; align-items: center; gap: 7px;
+    margin-bottom: 6px;
+    font-size: 11px; color: var(--Muted);
+}
+.ControlHead svg   { width: 13px; height: 13px; flex: 0 0 13px; }
+.ControlValue      { margin-left: auto; color: var(--Ink); font-variant-numeric: tabular-nums; }
+
+/* 📝 The visible bar is 4px but the hit area is 22px. A 4px pointer target is a miss most of the time. */
+.SliderTrack
+{
+    position: relative;
+    height:   22px;
+    cursor:   pointer;
+    touch-action: none;
+}
+.SliderRail
+{
+    position: absolute; left: 0; right: 0; top: 9px; height: 4px;
+    border-radius: 2px; background: #26262b;
+}
+.SliderFill
+{
+    position: absolute; left: 0; top: 9px; height: 4px;
+    border-radius: 2px; background: var(--Accent);
+}
+.SliderKnob
+{
+    position: absolute; top: 5px;
+    width: 12px; height: 12px; margin-left: -6px;
+    border-radius: 50%;
+    background: var(--Ink);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.Segmented
+{
+    display: flex; gap: 3px;
+    padding: 3px;
+    border-radius: 9px;
+    background: var(--MenuSunk);
+}
+.Segment
+{
+    flex: 1 1 0;
+    padding: 5px 0;
+    border: none; border-radius: 7px;
+    background: transparent; color: var(--Muted);
+    font: inherit; font-size: 11px;
+    cursor: pointer;
+}
+.Segment:hover        { color: var(--Ink); }
+.Segment.Active       { background: var(--RailPick); color: var(--Ink); }
+
+.Select
+{
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #2a2a30; border-radius: 8px;
+    background: var(--MenuSunk); color: var(--Ink);
+    font: inherit; font-size: 11px;
+    cursor: pointer;
+}
+
+.SwitchRow
+{
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--Muted);
+}
+.Switch
+{
+    margin-left: auto;
+    width: 32px; height: 18px; flex: 0 0 32px;
+    padding: 0;
+    border: none; border-radius: 9px;
+    background: #26262b;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.14s ease;
+}
+.Switch.On { background: var(--Accent); }
+.Switch::after
+{
+    content: "";
+    position: absolute; top: 3px; left: 3px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--Ink);
+    transition: transform 0.14s ease;
+}
+.Switch.On::after { transform: translateX(14px); }
+
+/* An inert control still moves and still stores its value — it just drives nothing in the engine yet. */
+.ControlRow.Inert .ControlHead::after
+{
+    content: "not wired";
+    font-size: 9px;
+    color: var(--Faint);
+    letter-spacing: 0.02em;
+}
+.ControlRow.Inert .ControlValue { margin-left: 7px; }
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                                    SWATCHES AND FOOT
+------------------------------------------------------------------------------------------------------------------------*/
+
+.SwatchRow { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.Swatch
+{
+    width: 20px; height: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+}
+.Swatch.Active { box-shadow: 0 0 0 2px var(--Menu), 0 0 0 3px var(--Accent); }
+
+/* 📝 The mask's value ramp. Deliberately a WIDE bar rather than the 4px slider rail used above: the ramp
+      IS the readout — the gradient shows you the value you are about to paint — so it has to be legible
+      as a colour field, not just as a track position. */
+.MaskRamp
+{
+    position: relative;
+    height: 20px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: linear-gradient(to right, #000 0%, #fff 100%);
+    cursor: pointer;
+    touch-action: none;
+}
+
+/* 🔴 Outlined in BOTH tones — a dark ring inside a light one. A single-colour knob vanishes at one end of
+      a black-to-white ramp, which is precisely where the two most-used values sit. */
+.MaskRampKnob
+{
+    position: absolute; top: -2px;
+    width: 10px; height: 22px; margin-left: -5px;
+    border-radius: 3px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #000, 0 1px 4px rgba(0, 0, 0, 0.6);
+    background: transparent;
+    pointer-events: none;
+}
+
+/* Square, so the value chips read as swatches of a scale rather than as pigment dots. */
+.Swatch.MaskChip { border-radius: 5px; }
+
+/* 🔴 The picker spans the whole tile grid. .TileGrid is `repeat(4, 1fr)`, so without this the ramp lands
+      in a single quarter-width cell — a 30px gradient nobody can aim at. Chips scale up to match: on the
+      grid pane this is the primary control, not a footnote under the sliders. */
+.TileGrid > .ControlRow { grid-column: 1 / -1; }
+.TileGrid > .ControlRow .MaskRamp { height: 26px; }
+.TileGrid > .ControlRow .MaskRampKnob { height: 28px; }
+.TileGrid > .ControlRow .Swatch.MaskChip { width: 26px; height: 26px; }
+
+.PaneFoot
+{
+    height: 44px; flex: 0 0 44px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    border-top: 1px solid #232327;
+    font-size: 11px; color: var(--Muted);
+}
+
+.FootAction
+{
+    margin-left: auto;
+    padding: 5px 11px;
+    border: 1px solid #2a2a30; border-radius: 8px;
+    background: var(--RailPick); color: var(--Ink);
+    font: inherit; font-size: 11px;
+    cursor: pointer;
+}
+.FootAction:hover { background: var(--TileHigh); }

@@ -1,0 +1,252 @@
+.tp-mask-authoring {
+  flex: none;
+  border-bottom: 1px solid #37393d;
+  background: #25262a;
+  color: #b7b9bd;
+  padding: 7px 12px;
+  font-size: 10px;
+  min-width: 0;
+}
+.tp-mask-preview-tabs,
+.tp-mask-selection-tools,
+.tp-mask-ink,
+.tp-mask-brush-options {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.tp-mask-preview-tabs {
+  background: #191a1d;
+  border: 1px solid #383a3e;
+  border-radius: 8px;
+  padding: 2px;
+}
+.tp-mask-authoring button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid #44464b;
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: #c8c9ce;
+  background: #303237;
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tp-mask-preview-tabs button {
+  border: 0;
+  background: transparent;
+  min-width: 66px;
+}
+.tp-mask-authoring button[aria-pressed="true"] {
+  color: #edc391;
+  background: #5a4531;
+  border-color: #9b7650;
+}
+.tp-mask-authoring button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tp-mask-authoring button:focus-visible,
+.tp-mask-authoring input:focus-visible {
+  outline: 2px solid #d3ae79;
+  outline-offset: 2px;
+}
+.tp-authoring-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tp-mask-selection-tools {
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+.tp-mask-brush-options {
+  margin-top: 7px;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+}
+.tp-mask-ink button {
+  padding: 3px 6px;
+}
+.tp-mask-ink i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #999;
+}
+.tp-mask-ink i.white {
+  background: white;
+}
+.tp-mask-ink i.black {
+  background: #080808;
+}
+.tp-mask-brush-options label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.tp-mask-brush-options input {
+  width: 58px;
+  accent-color: #c49a62;
+}
+.tp-mask-brush-options output {
+  font-variant-numeric: tabular-nums;
+  min-width: 26px;
+}
+.tp-mask-selection-status,
+.tp-paint-state-note {
+  font-size: 9px;
+  color: #93989f;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.tp-mask-painted-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #c18f55;
+  font-size: 17px;
+}
+.tp-mask-editing canvas {
+  cursor: crosshair !important;
+}
+.tp-mask-preview-tabs {
+  flex: none;
+}
+@media (max-width: 720px) {
+  .tp-mask-authoring {
+    padding: 5px 8px;
+  }
+  .tp-mask-authoring button {
+    padding: 5px 7px;
+  }
+  .tp-mask-selection-tools {
+    gap: 4px;
+  }
+  .tp-mask-brush-options {
+    gap: 5px 8px;
+  }
+  .tp-mask-brush-options input {
+    width: 48px;
+  }
+  .tp-mask-selection-status,
+  .tp-paint-state-note {
+    font-size: 9px;
+  }
+  .tp-authoring-state {
+    max-width: 180px;
+  }
+  .tp-mask-preview-tabs button {
+    min-width: 60px;
+  }
+}
+.tp-mask-record-summary {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  background: #202125;
+  border: 1px solid #424448;
+  border-radius: 9px;
+  font-size: 10px;
+  margin: 8px 0;
+}
+.tp-mask-record-summary small {
+  color: #999da3;
+  line-height: 1.5;
+}
+.tp-mask-record-summary button {
+  border: 1px solid #484a50;
+  border-radius: 7px;
+  background: #303237;
+  color: #ccc;
+  padding: 6px;
+  font-size: 10px;
+}
+/* Preview controls need room in both ordinary and mask modes on phones. */
+@media (max-width: 680px) {
+  .tp-studio[data-mask-authoring="paint"]:has(
+      .tp-scene-viewport[data-view-mode]
+    )
+    .tp-layout {
+    grid-template-rows: minmax(440px, 63%) minmax(0, 1fr);
+  }
+  .tp-studio[data-mask-authoring="mask"]:has(.tp-scene-viewport[data-view-mode])
+    .tp-layout {
+    grid-template-rows: minmax(480px, 68%) minmax(0, 1fr);
+  }
+}
+.tp-mask-options-toggle {
+  display: none !important;
+}
+@media (max-width: 720px) {
+  .tp-mask-options-toggle {
+    display: inline-flex !important;
+  }
+  .tp-mask-brush-options {
+    display: none;
+  }
+  .tp-mask-authoring[data-options-open="true"] .tp-mask-brush-options {
+    display: flex;
+  }
+}
+@media (max-width: 680px) {
+  /* The phone's workspace tabs already label this pane. Reuse that redundant
+     strip's space for the locked system base, without shrinking the canvas. */
+  .tp-studio[data-mask-authoring] .tp-layers-dock .tp-tab-strip {
+    display: none;
+  }
+  .tp-studio[data-mask-authoring] .tp-system-base {
+    flex: none;
+    padding-block: 4px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layers-dock .tp-pane-heading {
+    height: 34px;
+    padding: 3px 12px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layers-dock .tp-pane-heading h1 {
+    font-size: 16px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-stats {
+    padding: 0 12px 4px;
+    gap: 6px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-stats button {
+    height: 26px;
+    min-height: 26px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-stats small {
+    position: static;
+    font-size: 8px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-stats strong {
+    position: static;
+    font-size: 13px;
+    margin-left: auto;
+  }
+  .tp-studio[data-mask-authoring] .tp-status-disc {
+    position: static;
+    width: 16px;
+    height: 16px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-search {
+    padding: 0 12px 4px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-order {
+    padding: 3px 12px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layer-actions {
+    height: 30px;
+    padding: 2px 12px;
+  }
+  .tp-studio[data-mask-authoring] .tp-layers-dock .tp-pane-footer {
+    display: none;
+  }
+}

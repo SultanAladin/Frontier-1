@@ -1,0 +1,87 @@
+diff --git a/imgui.h b/imgui.h
+--- a/imgui.h
++++ b/imgui.h
+@@ -976,5 +976,7 @@ namespace ImGui
+     IMGUI_API bool          BeginTabItem(const char* label, bool* p_open = NULL, ImGuiTabItemFlags flags = 0); // create a Tab. Returns true if the Tab is selected.
+     IMGUI_API void          EndTabItem();                                                       // only call EndTabItem() if BeginTabItem() returns true!
+     IMGUI_API bool          TabItemButton(const char* label, ImGuiTabItemFlags flags = 0);      // create a Tab behaving like a button. return true when clicked. cannot be selected in the tab bar.
++    IMGUI_API void          DockNodeSetAddButton(ImGuiID node_id, bool enabled);                // [FRONTIER PATCH D] submit the addBtn at this dock strip's end
++    IMGUI_API bool          DockNodeConsumeAddRequest(ImGuiID node_id);                         // [FRONTIER PATCH D] true once per addBtn click; clears the latch
+     IMGUI_API void          SetTabItemClosed(const char* tab_or_docked_window_label);           // notify TabBar or Docking system of a closed tab/window ahead (useful to reduce visual flicker on reorderable tab bars). For tab-bar: call after BeginTabBar() and before Tab submissions. Otherwise call with a window name.
+ 
+diff --git a/imgui_internal.h b/imgui_internal.h
+--- a/imgui_internal.h
++++ b/imgui_internal.h
+@@ -2092,7 +2092,10 @@ struct ImGuiDockNode
+     int                     LastFrameFocused;           // Last frame number the node was focused.
+     ImGuiID                 LastFocusedNodeId;          // [Root node only] Which of our child docking node (any ancestor in the hierarchy) was last focused.
+     ImGuiID                 SelectedTabId;              // [Leaf node only] Which of our tab/window is selected.
+     ImGuiID                 WantCloseTabId;             // [Leaf node only] Set when closing a specific tab/window.
++    bool                    FrontierAddButton;             // [FRONTIER PATCH D] Submit the sheet's addBtn at the strip's end
++    bool                    FrontierAddPressed;            // [FRONTIER PATCH D] Latched when the addBtn is clicked; the host consumes it
++    ImRect                  FrontierAddRect;               // [FRONTIER PATCH D] The addBtn's last drawn rect, for the host's seam
+     ImGuiID                 RefViewportId;              // Reference viewport ID from visible window when HostWindow == NULL.
+     ImU8                    AuthorityForPos         :3; // ImGuiDataAuthority
+     ImU8                    AuthorityForSize        :3;
+diff --git a/imgui.cpp b/imgui.cpp
+--- a/imgui.cpp
++++ b/imgui.cpp
+@@ -18882,8 +18882,9 @@ ImGuiDockNode::ImGuiDockNode(ImGuiID id)
+     CountNodeWithWindows = 0;
+     LastFrameAlive = LastFrameActive = LastFrameFocused = -1;
+     LastFocusedNodeId = 0;
+     SelectedTabId = 0;
+     WantCloseTabId = 0;
++    FrontierAddButton = FrontierAddPressed = false;   // [FRONTIER PATCH D]
+     RefViewportId = 0;
+     AuthorityForPos = AuthorityForSize = ImGuiDataAuthority_DockNode;
+     AuthorityForViewport = ImGuiDataAuthority_Auto;
+@@ -19926,8 +19926,18 @@ static void ImGui::DockNodeUpdate(ImGuiDockNode* node)
+         // Update navigation ID on menu layer
+         if (g.NavWindow && g.NavWindow->RootWindow == window && (window->DC.NavLayersActiveMask & (1 << ImGuiNavLayer_Menu)) == 0)
+             host_window->NavLastIds[1] = window->TabId;
+     }
+ 
++    // [FRONTIER PATCH D] The sheet's addBtn, submitted into the dock strip itself so PatchC's sort-last,
++    //   disc, and glyph all apply. Trailing pins it past the last tab whatever the scroll; the press
++    //   latches for the host's poll because a dock strip has no submitting caller to return it to.
++    if (node->FrontierAddButton)
++    {
++        if (TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
++            node->FrontierAddPressed = true;
++        node->FrontierAddRect = g.LastItemData.Rect;
++    }
++
+     // Restore style colors
+     for (int color_n = 0; color_n < ImGuiWindowDockStyleCol_COUNT; color_n++)
+         g.Style.Colors[GWindowDockStyleColors[color_n]] = backup_style_cols[color_n];
+@@ -21028,8 +21028,28 @@ ImGuiDockNode* ImGui::DockBuilderGetNode(ImGuiID node_id)
+ {
+     ImGuiContext& g = *GImGui;
+     return DockContextFindNodeByID(&g, node_id);
+ }
+ 
++
++// [FRONTIER PATCH D] The addBtn's seat and poll. DockBuilderGetNode is safe on a live tree (it returns NULL
++//   for an unknown id), so the host seats the button every tick and a rebuilt column keeps it.
++void ImGui::DockNodeSetAddButton(ImGuiID node_id, bool enabled)
++{
++    if (ImGuiDockNode* node = DockBuilderGetNode(node_id))
++        node->FrontierAddButton = enabled;
++}
++
++bool ImGui::DockNodeConsumeAddRequest(ImGuiID node_id)
++{
++    if (ImGuiDockNode* node = DockBuilderGetNode(node_id))
++    {
++        const bool pressed = node->FrontierAddPressed;
++        node->FrontierAddPressed = false;
++        return pressed;
++    }
++    return false;
++}
++
+ void ImGui::DockBuilderSetNodePos(ImGuiID node_id, ImVec2 pos)
+ {
+     ImGuiContext& g = *GImGui;
+

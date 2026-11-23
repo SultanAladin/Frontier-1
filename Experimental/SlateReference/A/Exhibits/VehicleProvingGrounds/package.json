@@ -1,0 +1,13 @@
+{
+  "name": "vehicle-proving-grounds",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "python3 Tools/Serve.py",
+    "test": "node --test Tools/*.test.mjs"
+  },
+  "dependencies": {
+    "jolt-physics": "1.1.0"
+  }
+}

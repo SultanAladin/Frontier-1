@@ -1,0 +1,88 @@
+# Object Ridge Pour — particle template (Cloners). Curl-noise pour over a real mesh: anchors sit on the Crystal Cluster's crease ridges, then slide along the surface as ribbons. The object origin replaces every primitive shape.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 44
+Id = "object-surface-pour"
+Name = "Object Ridge Pour"
+Category = "Cloners"
+Icon = "cube"
+Tint = "#22d3ee"
+Summary = "Curl-noise pour over a real mesh: anchors sit on the Crystal Cluster's crease ridges, then slide along the surface as ribbons. The object origin replaces every primitive shape."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 11, Position = [0, 0.05, 0], Direction = [0, 1, 0], Radius = 1.4, Fill = 0.0, Count = 8192, Rate = 8.0, Lifetime = 8.0, Linger = 0.6, Speed = 0.0, Spread = 0.0, Radial = 0.0, ShapeDetail = 8.0, SpawnObject = 12, SpawnSampleMode = 2, ObjectYaw = 18.0, BackingSurface = 1 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 5.4, Damping = 2.5, Dissolve = 0.12 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.68, NoiseScale = 1.85, NoiseSpeed = 0.55 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#ecfeff", "#22d3ee", "#6366f1", "#a855f7"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 0.35, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.2, Brightness = 1.25, Flicker = 0.1 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.013, SizeEnd = 0.006, SizeRandom = 0.5 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 13, Glow = 0.5, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 20, TrailInterval = 0.05, TrailWidth = 0.005, TrailTaper = 0.85, TrailFade = 1.0, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 0.6 }

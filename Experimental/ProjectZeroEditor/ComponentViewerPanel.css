@@ -1,0 +1,64 @@
+/* Component Viewer host: the viewer is a full application, so it takes the whole window above the editor. */
+.cv-host {
+  position: fixed;
+  inset: 14px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  border: 1px solid #3a3a3a;
+  background: #121212;
+  box-shadow: 0 30px 70px #000d;
+  overflow: hidden;
+}
+.cv-host-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid #ffffff10;
+  background: #181818;
+  color: #e6e6e6;
+}
+.cv-host-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.cv-host-title b {
+  font-weight: 600;
+}
+.cv-host-title small {
+  font-size: 10px;
+  color: #8a8a8a;
+}
+.cv-host-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.cv-host-actions button {
+  min-height: 28px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid #ffffff18;
+  background: #262626;
+  color: #dcdcdc;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.cv-host-actions button:hover {
+  background: #303030;
+}
+.cv-host-actions .cv-host-close {
+  width: 28px;
+  padding: 0;
+  font-size: 15px;
+}
+.cv-host-view {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #101010;
+}

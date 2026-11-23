@@ -1,0 +1,78 @@
+# Hex Energy Shield — particle template (FX & Shields). Hemispherical hexagonal force-shield canopy with radial impact ripples and shockwave screen refraction.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "193ceeab39c3eb37"
+
+[Template]
+Order = 39
+Id = "energy-hex-shield"
+Name = "Hex Energy Shield"
+Category = "FX & Shields"
+Icon = "shield"
+Tint = "#38bdf8"
+Summary = "Hemispherical hexagonal force-shield canopy with radial impact ripples and shockwave screen refraction."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 10, Position = [0, -0.35, 0], Direction = [0, 1, 0], Radius = 1.45, Fill = 0.0, Count = 4096, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 24.0, Damping = 7.0, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 1, EffectorStrength = 1.2, EffectorFrequency = 2.4, EffectorSpeed = 2.4, EffectorPush = 0.06, EffectorScaleBoost = 0.55, EffectorColourShift = 0.7 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 218
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { DistortionMode = 2, DistortionStrength = 0.28, DistortionRadius = 0.36, DistortionHorizon = 0.0, DistortionChromatic = 0.25 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#0284c7", "#38bdf8", "#bae6fd", "#ffffff"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 0.18, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.25, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 9.5, SizeEnd = 9.5, SizeRandom = 0.05 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 7, Glow = 0.8, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

@@ -1,0 +1,2847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workspace · Floating Windows</title>
+
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@300,400,500,600,700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#000000;
+  --win:#0b0b0b;
+  --win-2:#0d0d0d;
+  --win-bd:#1c1c1c;
+  --win-bd-focus:#3a3a3a;
+  --strip:#121212;
+  --tab:#0b0b0b;
+  --tab-active:#1e1e1e;
+  --chip:#161616;
+  --chip-hover:#222222;
+  --chip-bd:#262626;
+  --text:#ededed;
+  --text-dim:#8a8a8a;
+  --text-faint:#555555;
+  --accent:#ffffff;
+  --snap:rgba(255,255,255,.09);
+  --snap-bd:rgba(255,255,255,.5);
+  --danger:#ef4444;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --radius:15px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg)}
+body{
+  font-family:'General Sans','Segoe UI',Roboto,system-ui,Arial,sans-serif;
+  font-size:13px;color:var(--text);user-select:none;
+  height:100vh;overflow:hidden;
+}
+.lico{width:15px;height:15px;stroke-width:2;display:inline-flex;flex-shrink:0}
+svg.lucide{display:block}
+::-webkit-scrollbar{width:0;height:0}
+
+#desk{
+  position:fixed;inset:0;overflow:hidden;
+  background:var(--bg);
+}
+#desk::before{
+  content:"";position:absolute;inset:-2px;
+  background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:34px 34px;
+}
+.desk-hint{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;color:var(--text-faint);pointer-events:none;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  transition:opacity .4s var(--ease);
+}
+.desk-hint .ring{
+  width:64px;height:64px;border-radius:50%;border:1px dashed #2a2a2a;
+  display:flex;align-items:center;justify-content:center;color:#3a3a3a;
+}
+.desk-hint .ring .lico{width:26px;height:26px;stroke-width:1.5}
+.desk-hint b{color:var(--text-dim);font-weight:600;font-size:14px;letter-spacing:.3px}
+.desk-hint span{font-size:11.5px;line-height:1.6;max-width:240px}
+kbd{font-family:inherit;font-size:10px;background:var(--chip);border:1px solid var(--chip-bd);
+  border-radius:5px;padding:1px 6px;color:var(--text-dim)}
+
+/* ══════════════════════════════════════════════ WINDOW ══════════════════════════════════════════════ */
+.window{
+  position:absolute;display:flex;flex-direction:column;
+  background:var(--win);border:1px solid var(--win-bd);
+  border-radius:var(--radius);overflow:hidden;
+  box-shadow:0 20px 50px rgba(0,0,0,.55);
+  animation:winIn .24s var(--ease);
+  min-width:240px;min-height:120px;
+}
+@keyframes winIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+.window.focus{border-color:var(--win-bd-focus);box-shadow:0 0 0 1px var(--win-bd-focus),0 26px 70px rgba(0,0,0,.7)}
+.window.snapping{transition:left .16s var(--ease),top .16s var(--ease),width .16s var(--ease),height .16s var(--ease)}
+.window.shaded{height:auto!important;min-height:0}
+.window.shaded .win-body{display:none}
+.window.pinned{border-color:var(--accent)}
+.window.pinned .tabstrip{box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+
+.tabstrip{
+  flex-shrink:0;height:40px;display:flex;align-items:center;
+  gap:4px;padding:0 6px;background:var(--strip);
+  border-bottom:1px solid var(--win-bd);cursor:grab;
+}
+.tabstrip.grab{cursor:grabbing}
+.tabs{display:flex;align-items:center;gap:3px;flex:1;min-width:0;overflow:hidden}
+.tab{
+  display:flex;align-items:center;gap:8px;height:28px;
+  padding:0 6px 0 7px;border-radius:999px;cursor:pointer;
+  background:transparent;color:var(--text-dim);max-width:170px;
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.tab:hover{background:var(--tab);color:var(--text)}
+.tab.active{background:var(--tab-active);color:var(--text)}
+.tab .tico{
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--chip);color:var(--text-dim);
+}
+.tab.active .tico{background:var(--accent);color:#000}
+.tab .tico .lico{width:12px;height:12px}
+.tab .tnm{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab .tx{
+  width:18px;height:18px;border-radius:50%;border:0;background:transparent;
+  color:var(--text-faint);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;opacity:0;transition:opacity .14s,background .14s,color .14s;
+}
+.tab:hover .tx{opacity:1}
+.tab .tx:hover{background:rgba(239,68,68,.18);color:var(--danger)}
+.tab .tx .lico{width:11px;height:11px}
+.tab.dragging{opacity:.35}
+
+.tab-add{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  background:transparent;border:0;color:var(--text-faint);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s;
+}
+.tab-add:hover{background:var(--chip);color:var(--text)}
+.tab-add .lico{width:14px;height:14px}
+
+.win-ctl{display:flex;align-items:center;gap:2px;flex-shrink:0;padding-left:4px}
+.wbtn{
+  width:26px;height:26px;border-radius:50%;background:transparent;border:0;
+  color:var(--text-faint);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s;
+}
+.wbtn:hover{background:var(--chip);color:var(--text)}
+.wbtn.close:hover{background:rgba(239,68,68,.18);color:var(--danger)}
+.wbtn .lico{width:13px;height:13px}
+
+.win-body{
+  flex:1;min-height:0;position:relative;overflow:hidden;
+  background:radial-gradient(120% 120% at 50% 0%,rgba(255,255,255,.02),transparent 58%),var(--win-2);
+  display:flex;align-items:center;justify-content:center;
+}
+.win-body::before{
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.024) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.024) 1px,transparent 1px);
+  background-size:28px 28px;
+  -webkit-mask-image:radial-gradient(120% 120% at 50% 50%,#000,transparent 76%);
+          mask-image:radial-gradient(120% 120% at 50% 50%,#000,transparent 76%);
+}
+.ghost{display:flex;flex-direction:column;align-items:center;gap:13px;z-index:1;text-align:center;padding:18px}
+.ghost .bigico{
+  width:68px;height:68px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--chip);border:1px solid var(--chip-bd);color:var(--text);
+}
+.ghost .bigico .lico{width:28px;height:28px;stroke-width:1.6}
+.ghost .nm{font-size:15px;font-weight:600;letter-spacing:.2px}
+.ghost .ds{font-size:11px;color:var(--text-faint);max-width:220px;line-height:1.5}
+
+.rh{position:absolute;z-index:6}
+.rh.n{top:-3px;left:8px;right:8px;height:7px;cursor:ns-resize}
+.rh.s{bottom:-3px;left:8px;right:8px;height:7px;cursor:ns-resize}
+.rh.w{left:-3px;top:8px;bottom:8px;width:7px;cursor:ew-resize}
+.rh.e{right:-3px;top:8px;bottom:8px;width:7px;cursor:ew-resize}
+.rh.ne{top:-4px;right:-4px;width:14px;height:14px;cursor:nesw-resize}
+.rh.nw{top:-4px;left:-4px;width:14px;height:14px;cursor:nwse-resize}
+.rh.se{bottom:-4px;right:-4px;width:14px;height:14px;cursor:nwse-resize}
+.rh.sw{bottom:-4px;left:-4px;width:14px;height:14px;cursor:nesw-resize}
+
+#snap{
+  position:fixed;z-index:9998;border-radius:var(--radius);
+  background:var(--snap);border:1.5px solid var(--snap-bd);
+  display:none;pointer-events:none;
+  box-shadow:inset 0 0 60px rgba(255,255,255,.06);
+  transition:all .12s var(--ease);
+}
+.tabstrip.drop-target{box-shadow:inset 0 0 0 1.5px var(--snap-bd)}
+
+#tabghost{
+  position:fixed;z-index:9999;pointer-events:none;display:none;
+  align-items:center;gap:8px;height:28px;padding:0 12px 0 7px;border-radius:999px;
+  background:#1e1e1e;border:1px solid var(--win-bd-focus);
+  box-shadow:0 12px 30px rgba(0,0,0,.6);color:var(--text);
+}
+#tabghost .tico{width:20px;height:20px;border-radius:50%;background:var(--accent);color:#000;
+  display:flex;align-items:center;justify-content:center}
+#tabghost .tico .lico{width:12px;height:12px}
+#tabghost .tnm{font-size:12px;font-weight:600}
+
+/* ══════════════════════════════════════════════ PICKER ══════════════════════════════════════════════ */
+#picker{
+  position:fixed;z-index:10000;width:300px;
+  background:#0c0c0c;border:1px solid var(--win-bd-focus);border-radius:16px;
+  padding:8px;box-shadow:0 30px 80px rgba(0,0,0,.8);display:none;
+  animation:winIn .16s var(--ease);
+}
+#picker.open{display:block}
+#picker .ph{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);
+  padding:6px 10px 8px;display:flex;align-items:center;gap:7px}
+#picker .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.pk{
+  display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:11px;cursor:pointer;
+  color:var(--text-dim);transition:background .14s,color .14s;
+}
+.pk:hover{background:var(--chip);color:var(--text)}
+.pk .pico{width:26px;height:26px;border-radius:50%;background:var(--chip);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.pk:hover .pico{background:var(--accent);color:#000}
+.pk .pico .lico{width:13px;height:13px}
+.pk .pnm{font-size:12px;font-weight:500}
+
+#fab{
+  position:fixed;right:22px;bottom:22px;z-index:9000;
+  width:52px;height:52px;border-radius:50%;
+  background:var(--accent);color:#000;border:0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 14px 36px rgba(0,0,0,.6);
+  transition:transform .18s var(--ease);
+}
+#fab:hover{transform:scale(1.06)}
+#fab:active{transform:scale(.96)}
+#fab .lico{width:22px;height:22px;stroke-width:2.4}
+
+/* ══════════════════════════════════════════════ SWITCHER ══════════════════════════════════════════════ */
+#switcher{
+  position:fixed;inset:0;z-index:10001;display:none;
+  align-items:center;justify-content:center;
+  background:rgba(0,0,0,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+#switcher.open{display:flex;animation:winIn .12s var(--ease)}
+.sw-wrap{
+  display:flex;flex-direction:column;gap:14px;align-items:center;
+  padding:22px;border-radius:22px;
+  background:#0c0c0c;border:1px solid var(--win-bd-focus);
+  box-shadow:0 40px 100px rgba(0,0,0,.8);max-width:80vw;
+}
+.sw-head{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-faint);
+  display:flex;align-items:center;gap:8px}
+.sw-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;max-width:760px}
+.sw-card{
+  width:150px;height:104px;border-radius:14px;cursor:pointer;
+  background:var(--win-2);border:1px solid var(--win-bd);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;
+  padding:10px;transition:border-color .12s var(--ease),background .12s var(--ease);position:relative;
+}
+.sw-card .sw-ico{
+  width:42px;height:42px;border-radius:50%;background:var(--chip);
+  display:flex;align-items:center;justify-content:center;color:var(--text);
+}
+.sw-card .sw-ico .lico{width:20px;height:20px;stroke-width:1.7}
+.sw-card .sw-nm{font-size:12px;font-weight:600;color:var(--text-dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.sw-card .sw-cnt{position:absolute;top:8px;right:10px;font-size:10px;color:var(--text-faint)}
+.sw-card.sel{border-color:var(--snap-bd);background:#161616}
+.sw-card.sel .sw-ico{background:var(--accent);color:#000}
+.sw-card.sel .sw-nm{color:var(--text)}
+.sw-foot{font-size:11px;color:var(--text-faint);display:flex;align-items:center;gap:6px}
+
+.tab.sel{box-shadow:inset 0 0 0 1.5px var(--snap-bd)}
+.tab.sel .tnm{color:var(--text)}
+.wbtn.split{color:var(--text)}
+.wbtn.split:hover{background:rgba(255,255,255,.12);color:#fff}
+
+/* ══════════════════════════════════════════════ SPLIT PANES ══════════════════════════════════════════════ */
+/* a window's body becomes a recursive tree of resizable panes; each leaf shows one workspace */
+.win-body.split{align-items:stretch;justify-content:stretch;padding:6px}
+.win-body.split::before{display:none}
+.split{flex:1 1 auto;display:flex;min-width:0;min-height:0}
+.split.row{flex-direction:row}
+.split.col{flex-direction:column}
+.split-pane{display:flex;min-width:0;min-height:0;transition:flex-basis .09s var(--ease)}
+.split-pane.collapsing{opacity:.4}
+.split-pane.collapsing .pane{border-color:var(--danger)}
+
+/* divider: a thin hit-strip with a centred hairline that brightens on hover */
+.split-div{flex:0 0 6px;position:relative;z-index:2}
+.split-div::after{content:"";position:absolute;background:var(--win-bd);border-radius:2px;transition:background .14s}
+.split-div.v{cursor:col-resize}
+.split-div.v::after{left:2px;right:2px;top:8px;bottom:8px}
+.split-div.h{cursor:row-resize}
+.split-div.h::after{top:2px;bottom:2px;left:8px;right:8px}
+.split-div:hover::after{background:var(--win-bd-focus)}
+
+.pane{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;
+  background:var(--win-2);border:1px solid var(--win-bd);border-radius:10px;overflow:hidden}
+.pane.focus{border-color:var(--win-bd-focus);box-shadow:0 0 0 1px var(--win-bd-focus)}
+.pane-head{flex-shrink:0;height:30px;display:flex;align-items:center;gap:4px;padding:0 4px;
+  background:var(--strip);border-bottom:1px solid var(--win-bd)}
+.pane-tabs{display:flex;align-items:center;gap:2px;flex:1;min-width:0;overflow:hidden}
+.pane-tab{display:flex;align-items:center;gap:6px;height:22px;padding:0 4px 0 6px;border-radius:999px;
+  cursor:pointer;background:transparent;color:var(--text-dim);max-width:150px;
+  transition:background .14s,color .14s}
+.pane-tab:hover{background:var(--tab);color:var(--text)}
+.pane-tab.active{background:var(--tab-active);color:var(--text)}
+.pane-ico{width:16px;height:16px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;background:var(--chip);color:var(--text-dim)}
+.pane-tab.active .pane-ico{background:var(--accent);color:#000}
+.pane-ico .lico{width:10px;height:10px}
+.pane-nm{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pane-tx{width:15px;height:15px;border-radius:50%;border:0;background:transparent;color:var(--text-faint);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:0;
+  transition:opacity .14s,background .14s,color .14s}
+.pane-tab:hover .pane-tx{opacity:1}
+.pane-tx:hover{background:rgba(239,68,68,.18);color:var(--danger)}
+.pane-tx .lico{width:9px;height:9px}
+.pane-add{width:20px;height:20px;border-radius:50%;flex-shrink:0;background:transparent;border:0;
+  color:var(--text-faint);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .14s,color .14s}
+.pane-add:hover{background:var(--chip);color:var(--text)}
+.pane-add .lico{width:12px;height:12px}
+.pane-ctl{display:flex;align-items:center;gap:1px;flex-shrink:0}
+.pane-btn{width:22px;height:22px;border-radius:6px;background:0;border:0;color:var(--text-faint);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .14s,color .14s}
+.pane-btn:hover{background:var(--chip);color:var(--text)}
+.pane-btn.close:hover{background:rgba(239,68,68,.18);color:var(--danger)}
+.pane-btn .lico{width:12px;height:12px}
+.pane-body{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;align-items:center;
+  justify-content:center;
+  background:radial-gradient(120% 120% at 50% 0%,rgba(255,255,255,.02),transparent 58%),var(--win-2)}
+
+/* drop indicator painted over the pane being targeted while dragging a tab in.
+   the lit rectangle shows the slice the dropped workspace will occupy. */
+.pane-drop{position:absolute;inset:0;z-index:5;pointer-events:none;display:none;border-radius:8px;
+  background:var(--snap);border:1.5px solid var(--snap-bd);box-shadow:inset 0 0 40px rgba(255,255,255,.06);
+  transition:left .1s var(--ease),top .1s var(--ease),right .1s var(--ease),bottom .1s var(--ease)}
+.pane-drop.show{display:block}
+
+/* ══════════════════════════════════════════════ PILL MODE ══════════════════════════════════════════════ */
+.window.pill{
+  min-width:0;min-height:0;height:auto!important;width:auto!important;
+  border-radius:999px;overflow:visible;
+  box-shadow:0 16px 40px rgba(0,0,0,.6);
+}
+.window.pill .win-body,.window.pill .rh{display:none!important}
+.window.pill .tabstrip{
+  height:38px;border-bottom:0;background:var(--strip);
+  border-radius:999px;padding:0 5px 0 7px;gap:4px;
+}
+.window.pill .tabs{overflow:visible;flex:0 1 auto}
+.window.pill .tab{height:26px;max-width:130px}
+.window.pill .tab .tx{display:none}
+.window.pill .pill-div{
+  width:1px;height:20px;background:var(--chip-bd);flex-shrink:0;margin:0 3px;
+}
+.pill-div{display:none}
+.window.pill .pill-div{display:block}
+
+/* ══════════════════════════════════════════════
+   TOP NOTCH  (Android-style solid black drop-down)
+══════════════════════════════════════════════ */
+/* CHANGED: scrim now becomes a solid black page (no fade behind) */
+#notchScrim{
+  position:fixed;inset:0;z-index:9500;background:#000;
+  opacity:0;pointer-events:none;
+}
+#tray{
+  position:fixed;left:0;right:0;top:0;z-index:9501;
+  background:#000;                 /* CHANGED: solid black sheet, full width */
+  transform:translateY(-100%);will-change:transform;
+  overflow:hidden;
+}
+/* CHANGED: panel now fills the black sheet edge-to-edge, no rounded floating card,
+   sits at the TOP of the sheet (Android style), no internal scroll needed */
+#tray .tray-inner{
+  position:absolute;left:0;right:0;top:0;
+  width:100%;
+  padding:20px 18px 26px;
+  background:#000;
+  display:flex;flex-direction:column;gap:14px;align-items:stretch;
+}
+#tray .tray-bar{display:flex;align-items:center;justify-content:space-between;width:100%;
+  max-width:980px;margin:0 auto}
+#tray .tray-head{
+  font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim);
+  display:flex;align-items:center;gap:9px;
+}
+.tray-gear{
+  width:38px;height:38px;border-radius:50%;background:var(--chip);border:1px solid var(--chip-bd);
+  color:var(--text-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s,border-color .15s,transform .25s var(--ease);
+}
+.tray-gear:hover{background:var(--chip-hover);color:var(--text);border-color:var(--win-bd-focus);transform:rotate(45deg)}
+.tray-gear .lico{width:17px;height:17px}
+
+/* NEW: two-column control-centre body — widgets left | divider | notifications right */
+#tray .cc-body{
+  width:100%;max-width:980px;margin:0 auto;
+  display:grid;grid-template-columns:minmax(0,1.1fr) 1px minmax(0,1fr);
+  gap:20px;align-items:start;
+}
+#tray .cc-left{display:flex;flex-direction:column;gap:14px;min-width:0}
+#tray .cc-div{width:1px;align-self:stretch;background:var(--win-bd);border-radius:1px}
+#tray .cc-right{display:flex;flex-direction:column;gap:10px;min-width:0}
+
+/* QS grid — Android circular tiles */
+#tray .qs-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 6px;width:100%}
+.qs{
+  display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;
+  color:var(--text-dim);transition:color .16s;
+}
+.qs .qsico{width:52px;height:52px;border-radius:50%;background:var(--chip);border:1px solid var(--chip-bd);
+  color:var(--text);display:flex;align-items:center;justify-content:center;
+  transition:background .16s var(--ease),color .16s,border-color .16s}
+.qs:hover .qsico{border-color:var(--win-bd-focus)}
+.qs.on .qsico{background:var(--accent);color:#000;border-color:var(--accent)}
+.qs .qsico .lico{width:22px;height:22px}
+.qs .qstx{display:flex;flex-direction:column;align-items:center;gap:0;min-width:0;width:100%}
+.qs .qsnm{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:100%;text-align:center;color:var(--text)}
+.qs .qsst{font-size:9.5px;color:var(--text-faint);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%;text-align:center}
+.qs.on .qsnm{color:var(--text)}
+
+/* brightness-style sliders */
+#tray .qs-sliders{display:flex;flex-direction:column;gap:12px;width:100%;margin-top:2px}
+.qsl{display:flex;align-items:center;gap:12px}
+.qsl .lico{width:16px;height:16px;color:var(--text-dim);flex-shrink:0}
+.qsl-track{
+  flex:1;height:38px;border-radius:19px;background:var(--chip);border:1px solid var(--chip-bd);
+  position:relative;overflow:hidden;cursor:pointer;
+}
+.qsl-fill{position:absolute;inset:0;width:50%;background:rgba(255,255,255,.16);border-radius:19px;pointer-events:none}
+.qsl-val{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-dim);pointer-events:none}
+
+/* right-column notifications header */
+.cc-right .ts-lbl{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-faint)}
+.tray-sec{display:flex;align-items:center;justify-content:space-between;width:100%}
+.tray-sec .ts-act{background:0;border:0;font:inherit;font-size:11px;font-weight:600;color:#7aa2ff;
+  cursor:pointer;padding:2px 4px;border-radius:6px}
+.tray-sec .ts-act:hover{background:var(--chip)}
+
+/* notifications feed */
+.notif-list{display:flex;flex-direction:column;gap:8px;width:100%;
+  max-height:42vh;overflow-y:auto}    /* notif stream may scroll, control centre itself doesn't */
+.notif{display:flex;align-items:flex-start;gap:11px;background:var(--chip);border:1px solid var(--chip-bd);
+  border-radius:14px;padding:11px 11px 11px 13px;position:relative;overflow:hidden}
+.notif::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#7aa2ff}
+.notif.ok::before{background:#22c55e}
+.notif.warn::before{background:#f59e0b}
+.notif .nico{width:30px;height:30px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;background:#0c0c0c;color:var(--text)}
+.notif.ok .nico{color:#22c55e}
+.notif.warn .nico{color:#f59e0b}
+.notif .nico .lico{width:16px;height:16px}
+.notif .ntx{flex:1;min-width:0;line-height:1.3}
+.notif .ntx b{font-size:13px;font-weight:600;display:block}
+.notif .ntx span{font-size:11px;color:var(--text-dim);display:block;margin-top:1px}
+.notif .nx{width:24px;height:24px;border-radius:7px;background:0;border:0;color:var(--text-faint);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .14s,color .14s}
+.notif .nx:hover{background:var(--chip-hover);color:var(--text)}
+.notif .nx .lico{width:13px;height:13px}
+.notif-empty{font-size:12px;color:var(--text-faint);text-align:center;padding:24px 14px;
+  background:var(--chip);border:1px solid var(--chip-bd);border-radius:14px}
+
+/* ── resource / general slider tile (used in Settings now) ── */
+.res-tile{background:var(--chip);border:1px solid var(--chip-bd);border-radius:14px;padding:12px 14px;width:100%}
+.res-head{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;margin-bottom:9px}
+.res-head .rl{display:flex;align-items:center;gap:8px;font-weight:600}
+.res-head .rl .lico{width:15px;height:15px;color:var(--text-dim)}
+.res-head .rv{color:var(--text-dim);font-weight:500;font-variant-numeric:tabular-nums}
+.res-range{-webkit-appearance:none;appearance:none;width:100%;height:22px;border-radius:11px;outline:none;cursor:pointer;
+  background:linear-gradient(90deg,var(--accent) var(--v,50%),rgba(255,255,255,.1) var(--v,50%))}
+.res-range::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer}
+.res-range::-moz-range-thumb{width:20px;height:20px;border:0;border-radius:50%;background:#fff;cursor:pointer}
+
+/* ── select row (Language / Measurement Units) ── */
+.sel-row{display:flex;align-items:center;gap:11px;background:var(--chip);border:1px solid var(--chip-bd);
+  border-radius:14px;padding:11px 13px;width:100%}
+.sel-row .sico{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;background:#0c0c0c;color:var(--text)}
+.sel-row .sico .lico{width:16px;height:16px}
+.sel-row .smeta{flex:1;line-height:1.2;min-width:0}
+.sel-row .smeta b{font-size:13px;font-weight:600}
+.sel-row .smeta span{display:block;font-size:11px;color:var(--text-dim)}
+.sel-row select{background:#000;color:var(--text);border:1px solid var(--chip-bd);border-radius:9px;
+  padding:7px 9px;font:inherit;font-size:12px;cursor:pointer;outline:none;max-width:150px}
+
+/* ── info row (Local Cache / Engine Compute readouts in Performance) ── */
+.info-row{display:flex;align-items:center;gap:11px;background:var(--chip);border:1px solid var(--chip-bd);
+  border-radius:14px;padding:12px 14px;width:100%}
+.info-row .sico{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;background:#0c0c0c;color:var(--text)}
+.info-row .sico .lico{width:16px;height:16px}
+.info-row .smeta{flex:1;line-height:1.2;min-width:0}
+.info-row .smeta b{font-size:13px;font-weight:600}
+.info-row .smeta span{display:block;font-size:11px;color:var(--text-dim)}
+.info-row .ival{font-size:12px;color:var(--text-dim);font-weight:600}
+.info-row .ibtn{background:0;border:1px solid var(--chip-bd);border-radius:9px;padding:7px 11px;
+  font:inherit;font-size:11.5px;font-weight:600;color:var(--text-dim);cursor:pointer;transition:.14s}
+.info-row .ibtn:hover{border-color:var(--text-dim);color:var(--text)}
+
+/* ── project library — multi-location ── */
+.lib{background:var(--chip);border:1px solid var(--chip-bd);border-radius:14px;padding:12px 14px;width:100%}
+.lib-top{display:flex;align-items:center;gap:11px}
+.lib-top .sico{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;background:#0c0c0c;color:var(--text)}
+.lib-top .sico .lico{width:16px;height:16px}
+.lib-top .smeta{flex:1;line-height:1.2}
+.lib-top .smeta b{font-size:13px;font-weight:600}
+.lib-top .smeta span{display:block;font-size:11px;color:var(--text-dim)}
+.lib-locs{display:flex;flex-direction:column;gap:6px;margin-top:11px}
+.loc{display:flex;align-items:center;gap:9px;background:#000;border:1px solid var(--chip-bd);
+  border-radius:11px;padding:8px 9px}
+.loc.sel{border-color:var(--snap-bd);box-shadow:inset 0 0 0 1px var(--snap-bd)}
+.loc .lck{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--text-faint);flex-shrink:0;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;color:transparent;transition:.14s}
+.loc.sel .lck{background:var(--accent);border-color:var(--accent);color:#000}
+.loc.sel .lck .lico{width:11px;height:11px}
+.loc .lfold{width:15px;height:15px;color:var(--text-dim);flex-shrink:0}
+.loc .lpath{flex:1;min-width:0;font-size:12px;font-variant-numeric:tabular-nums;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.loc .lpath .lname{font-size:10.5px;color:var(--text-faint);display:block;margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc .ltag{font-size:9.5px;font-weight:700;letter-spacing:.04em;border-radius:6px;padding:2px 6px;flex-shrink:0;
+  cursor:pointer;background:0}
+.loc .ltag.def{color:#22c55e;border:1px solid rgba(34,197,94,.4)}
+.loc .ltag.pin{color:var(--text-faint);border:1px solid var(--chip-bd)}
+.loc .ltag.pin:hover{color:var(--text);border-color:var(--text-dim)}
+.loc .lx{width:22px;height:22px;border-radius:6px;background:0;border:0;color:var(--text-faint);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.loc .lx:hover{background:var(--chip-hover);color:var(--text)}
+.loc .lx .lico{width:12px;height:12px}
+.lib-bar{display:flex;gap:8px;margin-top:9px}
+.lib-add{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:0;
+  border:1px dashed var(--chip-bd);border-radius:11px;padding:9px;color:var(--text-dim);
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:.14s}
+.lib-add:hover{border-color:var(--snap-bd);color:var(--text)}
+.lib-add .lico{width:14px;height:14px}
+.lib-open{display:none;align-items:center;justify-content:center;gap:7px;background:var(--accent);color:#000;
+  border:0;border-radius:11px;padding:9px 14px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.lib-open.show{display:flex}
+.lib-open .lico{width:14px;height:14px}
+
+/* the grip silhouette that hangs from the top edge */
+#notch{
+  position:fixed;top:0;z-index:9502;
+  width:200px;height:36px;cursor:grab;
+  display:flex;align-items:flex-start;justify-content:center;
+  will-change:transform;
+}
+#notch.grab{cursor:grabbing}
+#notch svg{position:absolute;inset:0;width:100%;height:100%;display:block;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
+#notch .notch-pill{
+  position:relative;z-index:1;display:flex;align-items:center;gap:8px;
+  height:24px;padding:0 4px;margin-top:5px;color:var(--text);pointer-events:none;
+}
+#notch .notch-pill .nt{font-size:11.5px;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+#notch .notch-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0}
+#notch .notch-shelf{
+  position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+  width:40px;height:3px;border-radius:1.5px;background:rgba(255,255,255,.5);z-index:1;pointer-events:none;
+}
+
+/* ══════════════════════════════════════════════ SETTINGS OVERLAY ══════════════════════════════════════════════ */
+#settings{
+  position:fixed;inset:0;z-index:10002;display:none;
+  background:#0a0a0a;color:var(--text);
+  flex-direction:column;align-items:center;
+  opacity:0;transition:opacity .22s var(--ease);
+}
+#settings.open{display:flex;opacity:1}
+.set-wrap{width:100%;max-width:920px;padding:0 24px;display:flex;flex-direction:column;height:100%}
+.set-topbar{padding:24px 0 14px;flex-shrink:0}
+.set-back{
+  display:flex;align-items:center;gap:6px;cursor:pointer;
+  color:var(--text-dim);background:0;border:0;font:inherit;padding:6px 4px;
+  transition:color .14s;
+}
+.set-back:hover{color:var(--text)}
+.set-back .lico{width:15px;height:15px}
+.set-body{flex:1;min-height:0;overflow:hidden;position:relative}
+
+.set-pages{display:flex;height:100%;transition:transform .34s var(--ease)}
+.set-page{
+  width:100%;flex-shrink:0;height:100%;overflow-y:auto;padding-bottom:40px;
+  display:flex;flex-direction:column;align-items:center;
+}
+
+.set-pagehead{width:100%;max-width:640px;text-align:center;margin-bottom:22px}
+.set-pagehead .ph-title{font-size:20px;font-weight:600;letter-spacing:.2px}
+.set-pagehead .ph-sub{font-size:12.5px;color:var(--text-dim);margin-top:3px}
+
+.set-list{
+  width:100%;max-width:560px;background:#101010;border:1px solid var(--win-bd);
+  border-radius:18px;overflow:hidden;
+}
+.set-row{
+  display:flex;align-items:center;gap:14px;padding:17px 20px;cursor:pointer;
+  background:transparent;border-top:1px solid var(--win-bd);
+  transition:background .15s;
+}
+.set-row:first-child{border-top:0}
+.set-row:hover{background:#161616}
+.set-row .srico{
+  width:38px;height:38px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:#1d2740;color:#7aa2ff;
+}
+.set-row .srico .lico{width:18px;height:18px}
+.set-row .srnm{font-size:13.5px;font-weight:600;flex:1}
+.set-row .srval{font-size:12px;color:var(--text-dim)}
+.set-row .srchev{color:var(--text-faint);display:flex}
+.set-row .srchev .lico{width:16px;height:16px}
+
+/* generic settings section block (Performance page etc.) */
+.set-block{width:100%;max-width:560px;display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.set-block .sb-lbl{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-faint);
+  padding:0 4px 2px}
+
+/* ── Appearance sub-page ── */
+.ap-shell{width:100%;max-width:860px;display:flex;flex-direction:column}
+.ap-header{margin-bottom:22px}
+.ap-header .ap-htitle{
+  font-size:28px;font-weight:700;letter-spacing:.2px;
+  background:linear-gradient(90deg,#ffffff,#b8c4ff 70%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.ap-header .ap-hsub{font-size:13px;color:var(--text-dim);margin-top:2px}
+.ap-tabs{display:flex;gap:26px;margin-top:16px}
+.ap-tab{
+  position:relative;padding:8px 0 12px;cursor:pointer;
+  font-size:13.5px;font-weight:600;color:var(--text-faint);
+  transition:color .18s;
+}
+.ap-tab:hover{color:var(--text-dim)}
+.ap-tab.active{color:var(--text)}
+.ap-tab::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:1px;
+  background:var(--accent);transform:scaleX(0);transform-origin:center;
+  transition:transform .22s var(--ease);
+}
+.ap-tab.active::after{transform:scaleX(1)}
+.ap-viewport{overflow:hidden;position:relative}
+.ap-track{display:flex;width:300%;transition:transform .34s var(--ease)}
+.ap-panel{width:33.3333%;flex-shrink:0;padding:2px 4px;display:flex;flex-direction:column;gap:18px}
+
+.ap-sec{background:#121212;border:1px solid var(--win-bd);border-radius:14px;padding:16px 16px 18px}
+.ap-sec .ap-sectitle{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);margin-bottom:4px}
+.ap-sec .ap-secsub{font-size:11.5px;color:var(--text-dim);margin-bottom:14px}
+
+.mc{display:flex;align-items:center;gap:10px}
+.mc-arrow{
+  width:30px;height:30px;border-radius:50%;flex-shrink:0;cursor:pointer;
+  background:var(--chip);border:1px solid var(--chip-bd);color:var(--text-dim);
+  display:flex;align-items:center;justify-content:center;transition:background .14s,color .14s;
+}
+.mc-arrow:hover{background:var(--chip-hover);color:var(--text)}
+.mc-arrow .lico{width:15px;height:15px}
+.mc-win{flex:1;overflow:hidden}
+.mc-strip{display:flex;transition:transform .3s var(--ease)}
+.mc-card{
+  flex-shrink:0;border-radius:14px;border:1px solid var(--chip-bd);background:rgba(255,255,255,.025);
+  padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;
+  transition:border-color .16s,background .16s;
+}
+.mc-card.active{border-color:var(--accent);background:rgba(255,255,255,.06)}
+.mc-card .mc-aa{font-size:30px;line-height:1;font-weight:600;color:#fff}
+.mc-card .mc-nm{font-size:13px;font-weight:600;margin-top:10px}
+.mc-card .mc-sub{font-size:11px;color:var(--text-faint)}
+
+.ap-role{padding:12px 0;border-top:1px solid var(--win-bd)}
+.ap-role:first-of-type{border-top:0}
+.ap-role .rl-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ap-role .rl-nm{font-size:12px;font-weight:600}
+.ap-role .rl-sz{font-size:11px;color:var(--text-dim)}
+.ap-preview{font-size:15px;color:#ebebee;background:rgba(255,255,255,.03);border-radius:8px;padding:8px 12px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.ap-slider{display:flex;align-items:center;gap:12px}
+.ap-slider .sl-lbl{font-size:12px;color:var(--text-dim);min-width:64px}
+.sl-track{flex:1;height:6px;border-radius:3px;background:#222;position:relative;cursor:pointer}
+.sl-fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--accent)}
+.sl-thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:4px;background:#fff;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.ap-slider .sl-val{font-size:11px;color:var(--text);min-width:42px;text-align:right}
+
+.pill-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pillb{
+  padding:6px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+  background:rgba(255,255,255,.05);color:var(--text-dim);border:1px solid transparent;
+  transition:background .14s,color .14s;
+}
+.pillb:hover{color:var(--text)}
+.pillb.active{background:#fff;color:#111}
+.aa-pill{
+  padding:6px 18px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid var(--text-faint);color:var(--text-faint);background:0;
+  transition:color .14s,border-color .14s;
+}
+.aa-pill:hover{color:var(--text);border-color:var(--text-dim)}
+.aa-pill.active{color:#fff;border-color:#fff}
+
+.palette-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:18px;margin-top:6px}
+.pal-tile{cursor:pointer;display:flex;flex-direction:column;gap:8px}
+.pal-tp{position:relative;height:124px;border-radius:14px;overflow:hidden;transition:box-shadow .16s}
+.pal-tile.active .pal-tp{box-shadow:0 0 0 2px var(--accent);outline:none}
+.pal-nm{font-size:12px;color:var(--text-dim);text-align:center}
+.pal-tile.active .pal-nm{color:var(--text)}
+
+.swatch-row{display:flex;gap:12px;margin-top:8px}
+.sw-dot{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .14s;box-shadow:0 0 0 2px #0a0a0a inset}
+.sw-dot.active{outline:2px solid currentColor;outline-offset:2px}
+
+.ap-toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+.ap-toggle .tg-nm{font-size:12.5px;color:var(--text)}
+.tg-sw{width:42px;height:24px;border-radius:12px;background:#2a2a2a;position:relative;cursor:pointer;transition:background .18s var(--ease);flex-shrink:0}
+.tg-sw.on{background:var(--accent)}
+.tg-knob{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .18s var(--ease)}
+.tg-sw.on .tg-knob{left:21px;background:#000}
+
+[data-tip]{position:relative}
+[data-tip]:hover::after{
+  content:attr(data-tip);position:absolute;bottom:-28px;left:50%;transform:translateX(-50%);
+  background:#1c1c1c;border:1px solid var(--win-bd-focus);color:var(--text);
+  font-size:10.5px;white-space:nowrap;padding:4px 9px;border-radius:7px;z-index:80;pointer-events:none;
+}
+
+/* ══════════════════════════════════════════════
+   BOTTOM DOCK  (small edge drawer — Asset Browser)
+   Relocatable to any edge; opens only ~a third of the
+   screen (never full). Carries an embedded asset browser.
+══════════════════════════════════════════════ */
+#dock{
+  position:fixed;z-index:9400;background:#070708;
+  border:1px solid var(--win-bd);overflow:hidden;
+  display:flex;flex-direction:column;will-change:transform;
+}
+#dock.edge-bottom{left:0;right:0;bottom:0;border-width:1px 0 0 0;border-radius:18px 18px 0 0;box-shadow:0 -18px 50px rgba(0,0,0,.6)}
+#dock.edge-top{left:0;right:0;top:0;border-width:0 0 1px 0;border-radius:0 0 18px 18px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
+#dock.edge-left{left:0;top:0;bottom:0;border-width:0 1px 0 0;border-radius:0 18px 18px 0;box-shadow:18px 0 50px rgba(0,0,0,.6)}
+#dock.edge-right{right:0;top:0;bottom:0;border-width:0 0 0 1px;border-radius:18px 0 0 18px;box-shadow:-18px 0 50px rgba(0,0,0,.6)}
+
+#dock iframe{flex:1;width:100%;border:0;background:#000;display:block}
+
+/* ── trapezoidal grip — a notch that hangs off any screen edge ──
+   Drag it along the perimeter (slides on its edge, transfers around corners);
+   tap toggles the drawer; wheel cycles the asset category. The trapezoid's
+   wide base always sits on the screen edge (per-edge clip-path); the icon +
+   orientation arrow are the only chrome. */
+#dockGrip{
+  position:fixed;z-index:9401;cursor:grab;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  background:#000;color:var(--text);
+  box-shadow:0 8px 22px rgba(0,0,0,.6);
+  transition:filter .18s var(--ease);
+}
+#dockGrip::before{ /* hairline + faint sheen inside the trapezoid */
+  content:"";position:absolute;inset:0;clip-path:inherit;pointer-events:none;
+  box-shadow:inset 0 0 0 1px #161616;
+}
+#dockGrip.grab{cursor:grabbing;filter:brightness(1.18)}
+#dockGrip .isl-ico{width:22px;height:22px;border-radius:50%;flex-shrink:0;z-index:1;
+  display:flex;align-items:center;justify-content:center;background:#161616;color:var(--text);
+  transition:background .22s var(--ease),color .22s var(--ease)}
+#dockGrip:hover .isl-ico{background:var(--accent);color:#000}
+#dockGrip .isl-ico .lico{width:13px;height:13px}
+#dockGrip .isl-arrow{display:flex;color:var(--text-dim);z-index:1}
+#dockGrip .isl-arrow .lico{width:15px;height:15px}
+#dockGrip.flip .isl-ico{animation:islFlip .3s var(--ease)}
+@keyframes islFlip{0%{transform:scale(.8)}55%{transform:scale(1.18)}100%{transform:scale(1)}}
+/* horizontal edges: wide base on the edge, narrowing inward */
+#dockGrip.edge-bottom,#dockGrip.edge-top{width:106px;height:34px;flex-direction:row}
+#dockGrip.edge-bottom{clip-path:polygon(15% 0,85% 0,100% 100%,0 100%)}
+#dockGrip.edge-top{clip-path:polygon(0 0,100% 0,85% 100%,15% 100%)}
+/* vertical edges: stack icon over arrow, base on the side */
+#dockGrip.edge-left,#dockGrip.edge-right{width:34px;height:106px;flex-direction:column}
+#dockGrip.edge-left{clip-path:polygon(0 0,100% 15%,100% 85%,0 100%)}
+#dockGrip.edge-right{clip-path:polygon(0 15%,100% 0,100% 100%,0 85%)}
+/* settings cog tucked into the grip (appears on hover) */
+#dockGrip .isl-set{width:18px;height:18px;border-radius:50%;border:0;background:transparent;
+  color:var(--text-faint);cursor:pointer;z-index:1;display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .16s,color .16s}
+#dockGrip:hover .isl-set{opacity:1}
+#dockGrip .isl-set:hover{color:var(--text)}
+#dockGrip .isl-set .lico{width:12px;height:12px}
+
+/* dock-position menu */
+#dockMenu{
+  position:fixed;z-index:9403;left:50%;bottom:60px;transform:translateX(-50%) translateY(8px);
+  background:#0c0c0c;border:1px solid var(--win-bd-focus);border-radius:13px;padding:6px;
+  box-shadow:0 22px 60px rgba(0,0,0,.8);display:none;opacity:0;transition:opacity .14s var(--ease),transform .14s var(--ease);
+}
+#dockMenu.open{display:block;opacity:1;transform:translateX(-50%) translateY(0)}
+#dockMenu .dm-h{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint);padding:5px 10px 7px}
+#dockMenu button{display:flex;align-items:center;gap:10px;width:100%;min-width:150px;border:0;background:transparent;
+  color:var(--text-dim);font:inherit;font-size:12.5px;font-weight:500;padding:9px 11px;border-radius:9px;cursor:pointer;
+  transition:background .13s,color .13s}
+#dockMenu button:hover{background:var(--chip);color:var(--text)}
+#dockMenu button.active{background:var(--chip);color:var(--text)}
+#dockMenu button.active .lico{color:var(--accent)}
+#dockMenu button .lico{width:15px;height:15px;color:var(--text-faint)}
+
+/* asset dropped onto the canvas — behaves like a desktop chip (sits under windows) */
+.asset-card{
+  position:absolute;z-index:3;width:150px;border-radius:12px;overflow:hidden;
+  background:var(--win);border:1px solid var(--win-bd);cursor:grab;
+  box-shadow:0 12px 30px rgba(0,0,0,.5);animation:winIn .2s var(--ease);
+}
+.asset-card.grab{cursor:grabbing}
+.asset-card .ac-thumb{height:96px;background:#0d0d0d;background-size:cover;background-position:center;
+  display:flex;align-items:center;justify-content:center;color:var(--text-dim);position:relative}
+.asset-card .ac-thumb .lico{width:30px;height:30px}
+.asset-card .ac-ext{position:absolute;bottom:7px;left:8px;font-size:9px;font-weight:700;letter-spacing:.06em;
+  color:#fff;background:rgba(0,0,0,.55);padding:2px 7px;border-radius:6px}
+.asset-card .ac-nm{font-size:11.5px;font-weight:600;padding:8px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.asset-card .ac-x{position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;border:0;
+  background:rgba(0,0,0,.5);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .14s}
+.asset-card:hover .ac-x{opacity:1}
+.asset-card .ac-x .lico{width:11px;height:11px}
+
+/* drop hint that follows the cursor while dragging an asset over the canvas */
+#dropHint{
+  position:fixed;z-index:9999;width:150px;height:96px;border-radius:12px;display:none;
+  border:1.5px dashed var(--snap-bd);background:var(--snap);pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<div id="desk">
+  <div class="desk-hint" id="deskHint">
+    <div class="ring"><i data-lucide="layout-dashboard" class="lico"></i></div>
+    <b>Empty workspace</b>
+    <span>Double-click anywhere to open a window · or press the <kbd>+</kbd></span>
+  </div>
+</div>
+
+<div id="snap"></div>
+<div id="tabghost"><span class="tico"></span><span class="tnm"></span></div>
+
+<!-- top notch (Android-style solid drop-down) -->
+<div id="notchScrim"></div>
+<div id="tray">
+  <div class="tray-inner">
+    <div class="tray-bar">
+      <div class="tray-head"><i data-lucide="layout-grid" class="lico"></i> Control Centre</div>
+      <button class="tray-gear" id="trayGear" data-tip="Settings"><i data-lucide="settings" class="lico"></i></button>
+    </div>
+
+    <!-- NEW two-column body: widgets | divider | notifications -->
+    <div class="cc-body">
+      <div class="cc-left">
+        <div class="qs-grid" id="qsGrid"></div>
+        <div class="qs-sliders" id="qsSliders"></div>
+      </div>
+      <div class="cc-div"></div>
+      <div class="cc-right">
+        <div class="tray-sec">
+          <span class="ts-lbl">Notifications</span>
+          <button class="ts-act" id="notifClear">Clear all</button>
+        </div>
+        <div class="notif-list" id="notifList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="notch">
+  <svg viewBox="0 0 200 36" preserveAspectRatio="none">
+    <path fill="#000" d="M100 0 L0 0 C20 0 20 36 40 36 L160 36 C180 36 180 0 200 0 Z"></path>
+  </svg>
+  <div class="notch-pill">
+    <span class="nt" id="notchTitle">Untitled Workspace</span>
+    <span class="notch-dot"></span>
+  </div>
+  <div class="notch-shelf"></div>
+</div>
+
+<!-- edge dock (small drawer — embeds the Asset Browser; edge chosen in dock settings) -->
+<div id="dock" class="edge-left">
+  <iframe id="dockFrame" src="AssetBrowser.html" title="Asset Browser"></iframe>
+</div>
+<!-- trapezoidal grip: tap toggles · drag perpendicular opens/closes · wheel cycles category -->
+<div id="dockGrip" class="edge-left" data-tip="Assets">
+  <span class="isl-ico"><i data-lucide="folder-open" class="lico"></i></span>
+  <span class="isl-arrow"><i data-lucide="chevron-right" class="lico"></i></span>
+  <button class="isl-set" id="dockSettings" data-tip="Dock position"><i data-lucide="settings-2" class="lico"></i></button>
+</div>
+<div id="dockMenu">
+  <div class="dm-h">Dock position</div>
+  <button data-edge="left"><i data-lucide="panel-left" class="lico"></i> Left</button>
+  <button data-edge="right"><i data-lucide="panel-right" class="lico"></i> Right</button>
+  <button data-edge="top"><i data-lucide="panel-top" class="lico"></i> Top</button>
+  <button data-edge="bottom"><i data-lucide="panel-bottom" class="lico"></i> Bottom</button>
+</div>
+<div id="dropHint"></div>
+
+<!-- workspace picker -->
+<div id="picker">
+  <div class="ph"><i data-lucide="layout-grid" class="lico"></i> Open workspace</div>
+  <div class="grid" id="pickerGrid"></div>
+</div>
+
+<button id="fab" data-tip="New window"><i data-lucide="plus" class="lico"></i></button>
+
+<!-- window switcher (Ctrl+Tab) -->
+<div id="switcher">
+  <div class="sw-wrap">
+    <div class="sw-head"><i data-lucide="layers" class="lico"></i> Switch window</div>
+    <div class="sw-row" id="swRow"></div>
+    <div class="sw-foot"><kbd>Ctrl</kbd>+<kbd>Tab</kbd> cycle · <kbd>Shift</kbd> reverse · release to open</div>
+  </div>
+</div>
+
+<!-- application settings -->
+<div id="settings">
+  <div class="set-wrap">
+    <div class="set-topbar">
+      <button class="set-back" id="setBack"><i data-lucide="chevron-left" class="lico"></i> <span>Back</span></button>
+    </div>
+    <div class="set-body"><div class="set-pages" id="setPages"></div></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+/* ════════════════════════════════════════════════════════════════ WORKSPACE CATALOG ════════════════════════════════════════════════════════════════ */
+const WORKSPACES = {
+  viewport : { name:'Viewport',       icon:'box',         desc:'Realtime 3D scene preview.' },
+  model    : { name:'Modelling',      icon:'pen-tool',    desc:'Topology-preserving mesh editing.' },
+  sculpt   : { name:'Sculpt',         icon:'gem',         desc:'Dynamic high-density sculpting.' },
+  uv       : { name:'UV Editor',      icon:'grid-2x2',    desc:'Unwrap and pack UV islands.' },
+  paint    : { name:'Texture Paint',  icon:'brush',       desc:'Paint directly onto 3D surfaces.' },
+  nodes    : { name:'Node Editor',    icon:'share-2',     desc:'Shader & material graph.' },
+  bake     : { name:'Baking',         icon:'flame',       desc:'Bake maps between meshes.' },
+  render   : { name:'Render',         icon:'image',       desc:'Final-frame path-traced output.' },
+  cad      : { name:'CAD Surfaces',   icon:'ruler',       desc:'Exact B-rep NURBS modeling.' },
+  outliner : { name:'Outliner',       icon:'list-tree',   desc:'Scene hierarchy & selection.' },
+  data     : { name:'Data Visualizer',icon:'bar-chart-3', desc:'Inspect geometry & buffers.' },
+};
+
+/* ════════════════════════════════════════════════════════════════ STATE ════════════════════════════════════════════════════════════════ */
+let uid = 1; const nid = p => p+(uid++);
+let windows = [];
+let zTop = 10;
+let focusWin = null;
+
+const desk = document.getElementById('desk');
+const deskHint = document.getElementById('deskHint');
+const snapEl = document.getElementById('snap');
+
+function deskRect(){ return desk.getBoundingClientRect(); }
+
+function spawnWindow(ws, x, y){
+  const r = deskRect();
+  const w = 460, h = 320;
+  x = (x==null)? r.left + 80 + (windows.length*26)%200 : x;
+  y = (y==null)? r.top  + 70 + (windows.length*26)%160 : y;
+  x = Math.max(r.left+8, Math.min(x, r.right-w-8));
+  y = Math.max(r.top+8,  Math.min(y, r.bottom-h-8));
+  const win = {
+    id:nid('w'), x, y, w, h, z:++zTop,
+    tabs:[{id:nid('t'), ws}], active:null, shaded:false, max:false,
+    pinned:false, pill:false, prev:null, sel:[], layout:null, focusPane:null
+  };
+  win.active = win.tabs[0].id;
+  windows.push(win);
+  focusWin = win.id;
+  render();
+  return win;
+}
+
+/* ════════════════════════════════════════════════════════════════ RENDER ════════════════════════════════════════════════════════════════ */
+function render(){
+  desk.querySelectorAll('.window').forEach(n=>n.remove());
+  deskHint.style.opacity = windows.length ? 0 : 1;
+
+  windows.forEach(win=>{
+    const el = document.createElement('div');
+    el.className = 'window'+(win.id===focusWin?' focus':'')+(win.shaded?' shaded':'')
+                 +(win.pinned?' pinned':'')+(win.pill?' pill':'');
+    el.dataset.id = win.id;
+    el.style.left = (win.x-deskRect().left)+'px';
+    el.style.top  = (win.y-deskRect().top)+'px';
+    el.style.width = (win.shaded||win.pill)? 'auto' : win.w+'px';
+    el.style.height = (win.shaded||win.pill)? 'auto' : win.h+'px';
+    el.style.zIndex = (win.pinned? 8000 : 0) + win.z;
+    el.addEventListener('mousedown',()=>raise(win.id));
+
+    const strip = document.createElement('div'); strip.className='tabstrip';
+    const tabs = document.createElement('div'); tabs.className='tabs';
+    const focusedWs = win.layout ? leafActiveWs(findLeaf(win.layout, win.focusPane)||firstLeaf(win.layout)) : null;
+    win.tabs.forEach(t=>{
+      const w = WORKSPACES[t.ws];
+      const tb = document.createElement('div');
+      const tabActive = win.layout ? t.ws===focusedWs : t.id===win.active;
+      tb.className='tab'+(tabActive?' active':'')+(win.sel.includes(t.id)?' sel':'');
+      tb.dataset.tid=t.id;
+      tb.innerHTML = `<span class="tico"><i data-lucide="${w.icon}" class="lico"></i></span>
+                      <span class="tnm">${w.name}</span>
+                      <button class="tx" title="Close tab"><i data-lucide="x" class="lico"></i></button>`;
+      tb.addEventListener('mousedown',e=>onTabDown(e,win,t));
+      tb.querySelector('.tx').addEventListener('click',e=>{e.stopPropagation();closeTab(win,t.id);});
+      tabs.appendChild(tb);
+    });
+    const add = document.createElement('button'); add.className='tab-add'; add.dataset.tip='Add workspace';
+    add.innerHTML='<i data-lucide="plus" class="lico"></i>';
+    add.addEventListener('mousedown',e=>e.stopPropagation());
+    add.addEventListener('click',e=>{e.stopPropagation();openPicker(e.clientX,e.clientY,ws=>addTab(win,ws));});
+    tabs.appendChild(add);
+
+    const pdiv = document.createElement('div'); pdiv.className='pill-div';
+
+    const ctl = document.createElement('div'); ctl.className='win-ctl';
+    if(win.sel.length>=2 && !win.layout){
+      ctl.appendChild(wbtn('columns-2',`Split ${win.sel.length} tabs into panes`,'split',()=>enterSplit(win, win.sel.map(id=>win.tabs.find(t=>t.id===id).ws))));
+    }
+    if(!win.pill){
+      ctl.appendChild(wbtn(win.layout?'square':'layout-panel-left', win.layout?'Single view':'Split view','split',()=>toggleSplit(win)));
+    }
+    ctl.append(
+      wbtn(win.pinned?'pin-off':'pin', win.pinned?'Unpin':'Pin','',()=>togglePin(win)),
+      wbtn(win.pill?'maximize-2':'circle-dot', win.pill?'Expand':'Collapse to pill','',()=>togglePill(win)),
+    );
+    if(!win.pill){
+      ctl.append(
+        wbtn(win.shaded?'chevron-down':'minus', win.shaded?'Expand':'Shade','',()=>toggleShade(win)),
+        wbtn(win.max?'minimize-2':'maximize-2', win.max?'Restore':'Maximize','',()=>toggleMax(win)),
+      );
+    }
+    ctl.appendChild(wbtn('x','Close window','close',()=>closeWindow(win.id)));
+
+    strip.append(tabs, pdiv, ctl);
+    strip.addEventListener('mousedown',e=>{ if(e.target===strip||e.target===tabs) onWinDown(e,win); });
+    strip.addEventListener('dblclick',e=>{ if(e.target===strip||e.target===tabs) toggleShade(win); });
+
+    const body = document.createElement('div'); body.className='win-body';
+    if(win.layout && !win.shaded && !win.pill){
+      body.classList.add('split');
+      body.appendChild(renderLayout(win, win.layout));
+    }else{
+      const act = win.tabs.find(t=>t.id===win.active) || win.tabs[0];
+      const ws = WORKSPACES[act.ws];
+      body.innerHTML = `<div class="ghost">
+          <div class="bigico"><i data-lucide="${ws.icon}" class="lico"></i></div>
+          <div class="nm">${ws.name}</div>
+          <div class="ds">${ws.desc}</div>
+        </div>`;
+    }
+
+    el.append(strip, body);
+
+    if(!win.shaded && !win.max && !win.pill){
+      ['n','s','w','e','ne','nw','se','sw'].forEach(dir=>{
+        const h=document.createElement('div'); h.className='rh '+dir;
+        h.addEventListener('mousedown',e=>onResize(e,win,dir));
+        el.appendChild(h);
+      });
+    }
+    desk.appendChild(el);
+  });
+  if(window.lucide) lucide.createIcons();
+}
+function wbtn(icon,tip,cls,fn){
+  const b=document.createElement('button'); b.className='wbtn'+(cls?' '+cls:'');
+  b.dataset.tip=tip; b.innerHTML=`<i data-lucide="${icon}" class="lico"></i>`;
+  b.addEventListener('mousedown',e=>e.stopPropagation());
+  b.addEventListener('click',e=>{e.stopPropagation();fn();});
+  return b;
+}
+function winEl(id){ return desk.querySelector(`.window[data-id="${id}"]`); }
+
+/* ════════════════════════════════════════════════════════════════ FOCUS ════════════════════════════════════════════════════════════════ */
+function raise(id){
+  const win = windows.find(w=>w.id===id); if(!win) return;
+  win.z = ++zTop;
+  focusWin = id;
+  const el = winEl(id); if(el){ el.style.zIndex = (win.pinned?8000:0)+win.z; }
+  desk.querySelectorAll('.window').forEach(n=>n.classList.toggle('focus', n.dataset.id===id));
+}
+
+/* ════════════════════════════════════════════════════════════════ TABS ════════════════════════════════════════════════════════════════ */
+function addTab(win, ws){
+  const t={id:nid('t'), ws};
+  win.tabs.push(t); win.active=t.id;
+  if(win.shaded) win.shaded=false;
+  raise(win.id); render();
+}
+function closeTab(win, tid){
+  const i=win.tabs.findIndex(t=>t.id===tid); if(i<0) return;
+  win.tabs.splice(i,1);
+  win.sel=win.sel.filter(s=>s!==tid);
+  if(!win.tabs.length){ closeWindow(win.id); return; }
+  if(win.active===tid) win.active = win.tabs[Math.max(0,i-1)].id;
+  render();
+}
+function activateTab(win, tid){ win.active=tid; raise(win.id); render(); }
+
+/* ════════════════════════════════════════════════════════════════ WINDOW CONTROLS ════════════════════════════════════════════════════════════════ */
+function closeWindow(id){
+  windows = windows.filter(w=>w.id!==id);
+  if(focusWin===id) focusWin = windows.length? windows[windows.length-1].id : null;
+  render();
+}
+function toggleShade(win){ win.shaded=!win.shaded; render(); }
+function toggleMax(win){
+  const r=deskRect();
+  if(!win.max){
+    win.prev={x:win.x,y:win.y,w:win.w,h:win.h};
+    win.max=true; win.shaded=false;
+    win.x=r.left+8; win.y=r.top+8; win.w=r.width-16; win.h=r.height-16;
+  }else{
+    win.max=false;
+    if(win.prev){ Object.assign(win,win.prev); }
+  }
+  raise(win.id); render();
+}
+function togglePin(win){ win.pinned=!win.pinned; raise(win.id); render(); }
+function togglePill(win){
+  if(!win.pill){
+    win.prevPill={max:win.max};
+    win.pill=true; win.shaded=false; win.max=false;
+  }else{
+    win.pill=false;
+  }
+  raise(win.id); render();
+}
+/* ════════════════════════════════════════════════════════════════ SPLIT PANES ════════════════════════════════════════════════════════════════
+   A window's body can hold a recursive binary layout tree. Nodes are either:
+     leaf  : { id, leaf:true, tabs:[{id,ws}], active }   — a pane that is its OWN tab group
+     split : { id, dir:'row'|'col', ratio, a, b }        — two children sharing the space
+   `win.layout` is the root node (null = ordinary tabbed window). `win.focusPane` is the
+   id of the focused leaf. The window's top tab-strip stays a LAUNCHER: clicking a tab there
+   opens that workspace as a new tab in the focused pane. Dragging a pane tab onto another
+   pane's body adds it as a tab there; onto an edge splits; onto empty desk it tears out as a
+   floating pill window. */
+function mkLeaf(ws){ const t={id:nid('t'), ws}; return { id:nid('p'), leaf:true, tabs:[t], active:t.id }; }
+function mkSplit(dir, a, b){ return { id:nid('s'), dir, ratio:0.5, a, b }; }
+function leafActiveTab(leaf){ return leaf.tabs.find(t=>t.id===leaf.active) || leaf.tabs[0]; }
+function leafActiveWs(leaf){ const t=leafActiveTab(leaf); return t? t.ws : null; }
+
+function firstLeaf(node){ return node.leaf? node : firstLeaf(node.a); }
+function findLeaf(node, id){
+  if(!node) return null;
+  if(node.leaf) return node.id===id? node : null;
+  return findLeaf(node.a, id) || findLeaf(node.b, id);
+}
+function countLeaves(node){ return node.leaf? 1 : countLeaves(node.a)+countLeaves(node.b); }
+function findParent(node, childId, parent){
+  if(node.leaf) return null;
+  if(node.a.id===childId || node.b.id===childId) return node;
+  return findParent(node.a, childId, node) || findParent(node.b, childId, node);
+}
+
+/* build an N-pane layout from a list of workspaces, alternating split direction by depth */
+function layoutFromList(list, depth){
+  depth=depth||0;
+  if(list.length===1) return mkLeaf(list[0]);
+  const mid=Math.ceil(list.length/2);
+  const dir=depth%2===0?'row':'col';
+  return mkSplit(dir, layoutFromList(list.slice(0,mid),depth+1), layoutFromList(list.slice(mid),depth+1));
+}
+
+function enterSplit(win, wsList){
+  win.layout = layoutFromList(wsList.slice());
+  win.focusPane = firstLeaf(win.layout).id;
+  win.shaded=false; win.sel=[];
+  raise(win.id); render();
+}
+function toggleSplit(win){
+  if(win.layout){ exitSplit(win); return; }
+  const act = win.tabs.find(t=>t.id===win.active) || win.tabs[0];
+  enterSplit(win, [act.ws, act.ws]);   // start as the active workspace beside itself
+}
+function exitSplit(win){
+  // keep the focused pane's active workspace as the active launcher tab on the way out
+  const leaf = findLeaf(win.layout, win.focusPane) || firstLeaf(win.layout);
+  const match = leaf && win.tabs.find(t=>t.ws===leafActiveWs(leaf));
+  win.layout=null; win.focusPane=null;
+  if(match) win.active=match.id;
+  raise(win.id); render();
+}
+
+/* add workspace `ws` as a new tab in a pane (or focus it if already present) */
+function addTabToPane(leaf, ws){
+  const existing=leaf.tabs.find(t=>t.ws===ws);
+  if(existing){ leaf.active=existing.id; return existing; }
+  const t={id:nid('t'), ws}; leaf.tabs.push(t); leaf.active=t.id; return t;
+}
+function loadIntoFocusedPane(win, ws){
+  const leaf = findLeaf(win.layout, win.focusPane) || firstLeaf(win.layout);
+  addTabToPane(leaf, ws);
+  raise(win.id); render();
+}
+function splitPane(win, leafId, dir){
+  const leaf = findLeaf(win.layout, leafId); if(!leaf) return;
+  // child A keeps this pane's existing tab group; child B is a fresh pane of the active ws
+  const keep = { id:nid('p'), leaf:true, tabs:leaf.tabs, active:leaf.active };
+  const fresh = mkLeaf(leafActiveWs(leaf));
+  leaf.leaf=false; leaf.dir=dir; leaf.ratio=0.5;
+  leaf.a=keep; leaf.b=fresh; delete leaf.tabs; delete leaf.active;
+  win.focusPane=fresh.id;
+  raise(win.id); render();
+}
+function closePane(win, leafId){
+  if(countLeaves(win.layout)<=1){ exitSplit(win); return; }
+  const parent = findParent(win.layout, leafId, null);
+  if(!parent) return;
+  collapseSplit(win, parent, parent.a.id===leafId? 'b' : 'a');
+}
+/* replace split `node` with one of its children in place (keep='a'|'b'); the other
+   child's whole subtree is discarded. used by close-pane and collapse-on-shrink. */
+function collapseSplit(win, node, keep){
+  const survivor = keep==='a'? node.a : node.b;
+  Object.keys(node).forEach(k=>{ if(k!=='id') delete node[k]; });
+  Object.assign(node, survivor); node.id = survivor.id;
+  if(win.layout.leaf){ exitSplit(win); return; }   // only one pane left → leave split mode
+  if(!findLeaf(win.layout, win.focusPane)) win.focusPane=firstLeaf(win.layout).id;
+  raise(win.id); render();
+}
+
+/* close one tab within a pane; emptying the pane collapses it away */
+function closePaneTab(win, leaf, tid){
+  const i=leaf.tabs.findIndex(t=>t.id===tid); if(i<0) return;
+  leaf.tabs.splice(i,1);
+  if(!leaf.tabs.length){ closePane(win, leaf.id); return; }
+  if(leaf.active===tid) leaf.active=leaf.tabs[Math.max(0,i-1)].id;
+  raise(win.id); render();
+}
+/* remove a tab from a pane and pop it out as a standalone floating PILL window */
+function tearPaneTabToPill(win, leaf, tid, x, y){
+  const i=leaf.tabs.findIndex(t=>t.id===tid); if(i<0) return;
+  const [t]=leaf.tabs.splice(i,1);
+  if(leaf.tabs.length){ if(leaf.active===tid) leaf.active=leaf.tabs[Math.max(0,i-1)].id; }
+  else { closePane(win, leaf.id); }   // pane emptied → collapse it
+  const r=deskRect();
+  const nw={ id:nid('w'), x:Math.max(r.left+8,x), y:Math.max(r.top+8,y), w:420, h:300, z:++zTop,
+             tabs:[{id:nid('t'),ws:t.ws}], active:null, shaded:false, max:false,
+             pinned:false, pill:true, prev:null, sel:[], layout:null, focusPane:null };
+  nw.active=nw.tabs[0].id;
+  windows.push(nw); focusWin=nw.id;
+  render();
+}
+
+/* drag a pane's tab — pill ghost; dock into another pane body (new tab) / edge (split) /
+   desk (tear out as a pill window). Click without drag just activates the tab. */
+function onPaneTabDown(e, win, leaf, tab){
+  e.stopPropagation();
+  win.focusPane=leaf.id; raise(win.id);
+  const sx=e.clientX, sy=e.clientY;
+  let dragging=false;
+  const w=WORKSPACES[tab.ws];
+  const move=(ev)=>{
+    if(!dragging){
+      if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<5) return;
+      dragging=true;
+      tabghost.querySelector('.tico').innerHTML=`<i data-lucide="${w.icon}" class="lico"></i>`;
+      tabghost.querySelector('.tnm').textContent=w.name;
+      tabghost.style.display='flex';
+      if(window.lucide) lucide.createIcons();
+    }
+    tabghost.style.left=(ev.clientX+12)+'px';
+    tabghost.style.top =(ev.clientY-14)+'px';
+    clearPaneDrop();
+    desk.querySelectorAll('.tabstrip.drop-target').forEach(s=>s.classList.remove('drop-target'));
+    const strip=stripUnder(ev.clientX,ev.clientY);
+    if(strip){ strip.classList.add('drop-target'); return; }
+    const paneEl=paneUnder(ev.clientX,ev.clientY);
+    if(paneEl){ const {rect}=paneDropZone(paneEl,ev.clientX,ev.clientY); paintPaneDrop(paneEl,rect); }
+  };
+  const up=(ev)=>{
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('mouseup',up);
+    tabghost.style.display='none'; clearPaneDrop();
+    desk.querySelectorAll('.tabstrip.drop-target').forEach(s=>s.classList.remove('drop-target'));
+    if(!dragging){ leaf.active=tab.id; render(); return; }
+    // dropped on a launcher tabstrip → add to that window's launcher tabs
+    const strip=stripUnder(ev.clientX,ev.clientY);
+    if(strip){
+      const targetId=strip.closest('.window').dataset.id;
+      const targetWin=windows.find(x=>x.id===targetId);
+      if(targetWin){ const nt={id:nid('t'),ws:tab.ws}; targetWin.tabs.push(nt); targetWin.active=nt.id; }
+      closePaneTab(win, leaf, tab.id);
+      raise(targetId); render(); return;
+    }
+    // dropped on a pane → dock there (center=new tab, edge=split)
+    const paneEl=paneUnder(ev.clientX,ev.clientY);
+    if(paneEl){
+      const targetWin=windows.find(x=>x.id===paneEl.closest('.window').dataset.id);
+      const targetLeafId=paneEl.dataset.pane;
+      const {zone}=paneDropZone(paneEl,ev.clientX,ev.clientY);
+      // dropping a tab back onto its own pane center is a no-op
+      if(!(targetLeafId===leaf.id && zone==='center')){
+        // remove from source first (collapsing source pane mutates the tree, so resolve target after)
+        const sameWin=targetWin===win;
+        closePaneTab(win, leaf, tab.id);
+        const tgt=sameWin? win : targetWin;
+        if(findLeaf(tgt.layout, targetLeafId)) dropWorkspaceIntoPane(tgt, targetLeafId, tab.ws, zone);
+        else loadIntoFocusedPane(tgt, tab.ws);   // target pane vanished in the collapse → focused pane
+      }
+      render(); return;
+    }
+    // dropped on empty desk → pop out as a floating pill window
+    tearPaneTabToPill(win, leaf, tab.id, ev.clientX-60, ev.clientY-16);
+  };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+
+/* recursive DOM build for a layout node */
+function renderLayout(win, node){
+  if(node.leaf) return renderPane(win, node);
+  const box=document.createElement('div');
+  box.className='split '+(node.dir==='row'?'row':'col');
+  const a=renderLayout(win, node.a);
+  const b=renderLayout(win, node.b);
+  a.classList.add('split-pane'); b.classList.add('split-pane');
+  const pct=(node.ratio*100).toFixed(2);
+  if(node.dir==='row'){ a.style.flex='0 0 calc('+pct+'% - 3px)'; b.style.flex='1 1 0'; }
+  else                { a.style.flex='0 0 calc('+pct+'% - 3px)'; b.style.flex='1 1 0'; }
+  const div=document.createElement('div');
+  div.className='split-div '+(node.dir==='row'?'v':'h');
+  div.addEventListener('mousedown',e=>onDividerDown(e, win, node, box));
+  box.append(a, div, b);
+  return box;
+}
+function renderPane(win, leaf){
+  const el=document.createElement('div');
+  el.className='pane'+(leaf.id===win.focusPane?' focus':'');
+  el.dataset.pane=leaf.id;
+  el.addEventListener('mousedown',()=>{ if(win.focusPane!==leaf.id){ win.focusPane=leaf.id; raise(win.id);
+    desk.querySelectorAll(`.window[data-id="${win.id}"] .pane`).forEach(p=>p.classList.toggle('focus',p===el)); } });
+
+  // ── pane tab strip ──
+  const head=document.createElement('div'); head.className='pane-head';
+  const tabs=document.createElement('div'); tabs.className='pane-tabs';
+  leaf.tabs.forEach(t=>{
+    const w=WORKSPACES[t.ws];
+    const tb=document.createElement('div');
+    tb.className='pane-tab'+(t.id===leaf.active?' active':'');
+    tb.innerHTML=`<span class="pane-ico"><i data-lucide="${w.icon}" class="lico"></i></span>
+      <span class="pane-nm">${w.name}</span>
+      <button class="pane-tx" title="Close"><i data-lucide="x" class="lico"></i></button>`;
+    tb.addEventListener('mousedown',e=>onPaneTabDown(e, win, leaf, t));
+    tb.querySelector('.pane-tx').addEventListener('mousedown',e=>e.stopPropagation());
+    tb.querySelector('.pane-tx').addEventListener('click',e=>{ e.stopPropagation(); closePaneTab(win, leaf, t.id); });
+    tabs.appendChild(tb);
+  });
+  const add=document.createElement('button'); add.className='pane-add'; add.dataset.tip='Add workspace';
+  add.innerHTML='<i data-lucide="plus" class="lico"></i>';
+  add.addEventListener('mousedown',e=>e.stopPropagation());
+  add.addEventListener('click',e=>{ e.stopPropagation(); win.focusPane=leaf.id;
+    openPicker(e.clientX,e.clientY,w=>{ addTabToPane(leaf,w); render(); }); });
+  tabs.appendChild(add);
+
+  const ctl=document.createElement('div'); ctl.className='pane-ctl';
+  ctl.append(
+    paneBtn('panel-right','Split right',()=>splitPane(win, leaf.id, 'row')),
+    paneBtn('panel-bottom','Split down',()=>splitPane(win, leaf.id, 'col')),
+    paneBtn('x','Close pane','close',()=>closePane(win, leaf.id)),
+  );
+  head.append(tabs, ctl);
+
+  const body=document.createElement('div'); body.className='pane-body';
+  const aws=WORKSPACES[leafActiveWs(leaf)];
+  body.innerHTML=`<div class="ghost">
+      <div class="bigico"><i data-lucide="${aws.icon}" class="lico"></i></div>
+      <div class="nm">${aws.name}</div>
+      <div class="ds">${aws.desc}</div>
+    </div>
+    <div class="pane-drop"></div>`;
+  el.append(head, body);
+  return el;
+}
+function paneBtn(icon, tip, a, b){
+  const fn = b||a; const cls = b? a : '';
+  const btn=document.createElement('button'); btn.className='pane-btn'+(cls?' '+cls:'');
+  btn.dataset.tip=tip; btn.innerHTML=`<i data-lucide="${icon}" class="lico"></i>`;
+  btn.addEventListener('mousedown',e=>e.stopPropagation());
+  btn.addEventListener('click',e=>{ e.stopPropagation(); fn(); });
+  return btn;
+}
+
+/* drag a divider to repartition its split node. shrinking a child past COLLAPSE_PX
+   (in screen pixels) closes that child and its subtree, the sibling reclaiming the space. */
+const COLLAPSE_PX=90;
+function onDividerDown(e, win, node, box){
+  e.preventDefault(); e.stopPropagation();
+  raise(win.id);
+  const horiz=node.dir==='row';
+  const a=box.children[0], b=box.children[2];
+  let collapse=null;   // 'a' | 'b' | null — which child to drop on release
+  const move=(ev)=>{
+    const r=box.getBoundingClientRect();
+    const span = horiz? r.width : r.height;
+    const pos  = horiz ? (ev.clientX-r.left) : (ev.clientY-r.top);   // px along the axis
+    // past the collapse threshold at either end → arm a collapse and preview it
+    if(pos < COLLAPSE_PX){ collapse='a'; previewCollapse(a,b,'a'); return; }
+    if(span-pos < COLLAPSE_PX){ collapse='b'; previewCollapse(a,b,'b'); return; }
+    collapse=null;
+    a.classList.remove('collapsing'); b.classList.remove('collapsing');
+    node.ratio=Math.max(0.12, Math.min(0.88, pos/span));
+    const pct=(node.ratio*100).toFixed(2);
+    a.style.flex='0 0 calc('+pct+'% - 3px)'; b.style.flex='1 1 0';
+  };
+  const up=()=>{
+    document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up);
+    if(collapse){ collapseSplit(win, node, collapse==='a'? 'b' : 'a'); }
+  };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+function previewCollapse(a,b,doomed){
+  const dead = doomed==='a'? a : b, live = doomed==='a'? b : a;
+  dead.style.flex='0 0 0'; live.style.flex='1 1 0';
+  dead.classList.add('collapsing'); live.classList.remove('collapsing');
+}
+
+/* ════════════════════════════════════════════════════════════════ WINDOW DRAG ════════════════════════════════════════════════════════════════ */
+let snapTarget=null;
+function onWinDown(e, win){
+  raise(win.id);
+  const el=winEl(win.id);
+  const startX=e.clientX, startY=e.clientY;
+  const ox=win.x, oy=win.y;
+  let moved=false;
+  el.querySelector('.tabstrip').classList.add('grab');
+  const move=(ev)=>{
+    const dx=ev.clientX-startX, dy=ev.clientY-startY;
+    if(!moved && Math.abs(dx)+Math.abs(dy)<3) return;
+    moved=true;
+    if(win.max){
+      win.max=false;
+      if(win.prev){ win.w=win.prev.w; win.h=win.prev.h; }
+      el.style.width=win.w+'px'; el.style.height=win.h+'px';
+    }
+    win.x=ox+dx; win.y=oy+dy;
+    el.style.left=(win.x-deskRect().left)+'px';
+    el.style.top =(win.y-deskRect().top)+'px';
+    detectSnap(ev.clientX, ev.clientY);
+  };
+  const up=()=>{
+    el.querySelector('.tabstrip').classList.remove('grab');
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('mouseup',up);
+    if(snapTarget){ applySnap(win, snapTarget); }
+    snapEl.style.display='none'; snapTarget=null;
+    clampToDesk(win); render();
+  };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+function detectSnap(cx, cy){
+  const r=deskRect(); const M=34;
+  const nearL=cx-r.left<M, nearR=r.right-cx<M, nearT=cy-r.top<M, nearB=r.bottom-cy<M;
+  let z=null;
+  if(nearT && nearL) z={x:0,y:0,w:.5,h:.5};
+  else if(nearT && nearR) z={x:.5,y:0,w:.5,h:.5};
+  else if(nearB && nearL) z={x:0,y:.5,w:.5,h:.5};
+  else if(nearB && nearR) z={x:.5,y:.5,w:.5,h:.5};
+  else if(nearL) z={x:0,y:0,w:.5,h:1};
+  else if(nearR) z={x:.5,y:0,w:.5,h:1};
+  else if(nearT) z={x:0,y:0,w:1,h:1};
+  else if(nearB) z={x:0,y:.5,w:1,h:.5};
+  snapTarget=z;
+  if(z){
+    const pad=8;
+    snapEl.style.display='block';
+    snapEl.style.left =(r.left + z.x*r.width + pad)+'px';
+    snapEl.style.top  =(r.top  + z.y*r.height + pad)+'px';
+    snapEl.style.width =(z.w*r.width - pad*2)+'px';
+    snapEl.style.height=(z.h*r.height - pad*2)+'px';
+  }else{ snapEl.style.display='none'; }
+}
+function applySnap(win, z){
+  const r=deskRect(); const pad=8;
+  win.max = (z.w===1&&z.h===1);
+  if(win.max && !win.prev) win.prev={x:win.x,y:win.y,w:win.w,h:win.h};
+  win.x=r.left + z.x*r.width + pad;
+  win.y=r.top  + z.y*r.height + pad;
+  win.w=z.w*r.width - pad*2;
+  win.h=z.h*r.height - pad*2;
+  win.shaded=false;
+  const el=winEl(win.id); if(el) el.classList.add('snapping');
+}
+function clampToDesk(win){
+  const r=deskRect();
+  win.x=Math.max(r.left-win.w+120, Math.min(win.x, r.right-120));
+  win.y=Math.max(r.top, Math.min(win.y, r.bottom-44));
+}
+
+/* ════════════════════════════════════════════════════════════════ RESIZE ════════════════════════════════════════════════════════════════ */
+function onResize(e, win, dir){
+  e.stopPropagation(); e.preventDefault();
+  raise(win.id);
+  const el=winEl(win.id);
+  const sx=e.clientX, sy=e.clientY;
+  const o={x:win.x,y:win.y,w:win.w,h:win.h};
+  const MINW=240, MINH=120;
+  const move=(ev)=>{
+    const dx=ev.clientX-sx, dy=ev.clientY-sy;
+    let {x,y,w,h}=o;
+    if(dir.includes('e')) w=Math.max(MINW,o.w+dx);
+    if(dir.includes('s')) h=Math.max(MINH,o.h+dy);
+    if(dir.includes('w')){ w=Math.max(MINW,o.w-dx); x=o.x+(o.w-w); }
+    if(dir.includes('n')){ h=Math.max(MINH,o.h-dy); y=o.y+(o.h-h); }
+    Object.assign(win,{x,y,w,h});
+    el.style.left=(x-deskRect().left)+'px'; el.style.top=(y-deskRect().top)+'px';
+    el.style.width=w+'px'; el.style.height=h+'px';
+  };
+  const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+
+/* ════════════════════════════════════════════════════════════════ TAB DRAG ════════════════════════════════════════════════════════════════ */
+const tabghost=document.getElementById('tabghost');
+function onTabDown(e, win, tab){
+  e.stopPropagation();
+  raise(win.id);
+  if(e.ctrlKey || e.metaKey){
+    const i=win.sel.indexOf(tab.id);
+    if(i<0) win.sel.push(tab.id); else win.sel.splice(i,1);
+    render(); return;
+  }
+  const sx=e.clientX, sy=e.clientY;
+  let dragging=false;
+  const w=WORKSPACES[tab.ws];
+  const move=(ev)=>{
+    if(!dragging){
+      if(Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<5) return;
+      dragging=true;
+      tabghost.querySelector('.tico').innerHTML=`<i data-lucide="${w.icon}" class="lico"></i>`;
+      tabghost.querySelector('.tnm').textContent=w.name;
+      tabghost.style.display='flex';
+      if(window.lucide) lucide.createIcons();
+      const el=winEl(win.id)?.querySelector(`.tab[data-tid="${tab.id}"]`);
+      if(el) el.classList.add('dragging');
+    }
+    tabghost.style.left=(ev.clientX+12)+'px';
+    tabghost.style.top =(ev.clientY-14)+'px';
+    desk.querySelectorAll('.tabstrip.drop-target').forEach(s=>s.classList.remove('drop-target'));
+    clearPaneDrop();
+    // a tabstrip takes priority (move tab between windows); else preview a pane drop
+    const strip=stripUnder(ev.clientX,ev.clientY);
+    if(strip){ strip.classList.add('drop-target'); return; }
+    const paneEl=paneUnder(ev.clientX,ev.clientY);
+    if(paneEl){ const {rect}=paneDropZone(paneEl,ev.clientX,ev.clientY); paintPaneDrop(paneEl,rect); }
+  };
+  const up=(ev)=>{
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('mouseup',up);
+    tabghost.style.display='none';
+    desk.querySelectorAll('.tabstrip.drop-target').forEach(s=>s.classList.remove('drop-target'));
+    clearPaneDrop();
+    if(!dragging){
+      win.sel=[];
+      if(win.layout){ loadIntoFocusedPane(win, tab.ws); return; }
+      activateTab(win, tab.id); return;
+    }
+    const strip=stripUnder(ev.clientX,ev.clientY);
+    if(strip){
+      const targetId=strip.closest('.window').dataset.id;
+      if(targetId!==win.id){ moveTab(win, tab.id, targetId); return; }
+      else { render(); return; }
+    }
+    // dropped onto a split pane → place the workspace there (split or replace)
+    const paneEl=paneUnder(ev.clientX,ev.clientY);
+    if(paneEl){
+      const targetWin=windows.find(w=>w.id===paneEl.closest('.window').dataset.id);
+      const {zone}=paneDropZone(paneEl,ev.clientX,ev.clientY);
+      dropWorkspaceIntoPane(targetWin, paneEl.dataset.pane, tab.ws, zone);
+      return;
+    }
+    tearOff(win, tab.id, ev.clientX-60, ev.clientY-20);
+  };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+function stripUnder(x,y){
+  const els=document.elementsFromPoint(x,y);
+  for(const el of els){
+    const s=el.classList?.contains('tabstrip')?el:el.closest?.('.tabstrip');
+    if(s) return s;
+  }
+  return null;
+}
+/* the split pane (DOM element) under the cursor, if any */
+function paneUnder(x,y){
+  const els=document.elementsFromPoint(x,y);
+  for(const el of els){
+    const p=el.closest?.('.pane'); if(p) return p;
+  }
+  return null;
+}
+/* which drop zone within a pane the cursor is in, and the rect to light up.
+   edges (outer 30%) → split that side; center → replace the workspace. */
+function paneDropZone(paneEl, x, y){
+  const r=paneEl.getBoundingClientRect();
+  const fx=(x-r.left)/r.width, fy=(y-r.top)/r.height;
+  const m=0.3;
+  let zone='center';
+  const edge=Math.min(fx,1-fx,fy,1-fy);
+  if(edge<m){
+    if(edge===fx) zone='left'; else if(edge===1-fx) zone='right';
+    else if(edge===fy) zone='top'; else zone='bottom';
+  }
+  const rect = zone==='left'  ?{left:0,top:0,right:'50%',bottom:0}
+             : zone==='right' ?{left:'50%',top:0,right:0,bottom:0}
+             : zone==='top'   ?{left:0,top:0,right:0,bottom:'50%'}
+             : zone==='bottom'?{left:0,top:'50%',right:0,bottom:0}
+             :                 {left:0,top:0,right:0,bottom:0};
+  return {zone, rect};
+}
+function paintPaneDrop(paneEl, rect){
+  clearPaneDrop();
+  const d=paneEl.querySelector('.pane-drop'); if(!d) return;
+  d.style.left  = typeof rect.left==='number'? rect.left+'px':rect.left;
+  d.style.top   = typeof rect.top==='number'? rect.top+'px':rect.top;
+  d.style.right = typeof rect.right==='number'? rect.right+'px':rect.right;
+  d.style.bottom= typeof rect.bottom==='number'? rect.bottom+'px':rect.bottom;
+  d.classList.add('show');
+}
+function clearPaneDrop(){ desk.querySelectorAll('.pane-drop.show').forEach(d=>d.classList.remove('show')); }
+/* drop workspace `ws` onto pane `leafId` of `win` in the given zone.
+   center → add as a tab in that pane; edge → split, new pane carrying `ws`. */
+function dropWorkspaceIntoPane(win, leafId, ws, zone){
+  const leaf = findLeaf(win.layout, leafId); if(!leaf) return;
+  if(zone==='center'){ addTabToPane(leaf, ws); win.focusPane=leaf.id; raise(win.id); render(); return; }
+  const dir = (zone==='left'||zone==='right')? 'row':'col';
+  const before = (zone==='left'||zone==='top');
+  const keep = { id:nid('p'), leaf:true, tabs:leaf.tabs, active:leaf.active };
+  const incoming = mkLeaf(ws);
+  leaf.leaf=false; leaf.dir=dir; leaf.ratio=0.5;
+  leaf.a = before? incoming : keep;
+  leaf.b = before? keep : incoming;
+  delete leaf.tabs; delete leaf.active;
+  win.focusPane=incoming.id;
+  raise(win.id); render();
+}
+function moveTab(fromWin, tid, toWinId){
+  const toWin=windows.find(w=>w.id===toWinId);
+  const i=fromWin.tabs.findIndex(t=>t.id===tid);
+  const [t]=fromWin.tabs.splice(i,1);
+  fromWin.sel=fromWin.sel.filter(s=>s!==tid);
+  toWin.tabs.push(t); toWin.active=t.id;
+  if(!fromWin.tabs.length) windows=windows.filter(w=>w.id!==fromWin.id);
+  else if(fromWin.active===tid) fromWin.active=fromWin.tabs[Math.max(0,i-1)].id;
+  raise(toWinId); render();
+}
+function tearOff(fromWin, tid, x, y){
+  if(fromWin.tabs.length===1){
+    fromWin.x=x; fromWin.y=y; clampToDesk(fromWin); render(); return;
+  }
+  const i=fromWin.tabs.findIndex(t=>t.id===tid);
+  const [t]=fromWin.tabs.splice(i,1);
+  fromWin.sel=fromWin.sel.filter(s=>s!==tid);
+  if(fromWin.active===tid) fromWin.active=fromWin.tabs[Math.max(0,i-1)].id;
+  const r=deskRect();
+  const nw={ id:nid('w'), x:Math.max(r.left+8,x), y:Math.max(r.top+8,y),
+             w:Math.max(360,fromWin.w*0.8), h:Math.max(240,fromWin.h*0.85),
+             z:++zTop, tabs:[t], active:t.id, shaded:false, max:false,
+             pinned:false, pill:false, prev:null, sel:[], layout:null, focusPane:null };
+  windows.push(nw); focusWin=nw.id;
+  clampToDesk(nw); render();
+}
+
+/* ════════════════════════════════════════════════════════════════ PICKER ════════════════════════════════════════════════════════════════ */
+const picker=document.getElementById('picker');
+const pickerGrid=document.getElementById('pickerGrid');
+let pickerCb=null;
+function buildPicker(){
+  pickerGrid.innerHTML='';
+  Object.entries(WORKSPACES).forEach(([k,w])=>{
+    const d=document.createElement('div'); d.className='pk';
+    d.innerHTML=`<span class="pico"><i data-lucide="${w.icon}" class="lico"></i></span><span class="pnm">${w.name}</span>`;
+    d.addEventListener('click',()=>{ const cb=pickerCb; closePicker(); cb&&cb(k); });
+    pickerGrid.appendChild(d);
+  });
+  const make=document.createElement('div'); make.className='pk pk-new';
+  make.style.gridColumn='1 / -1';
+  make.innerHTML=`<span class="pico"><i data-lucide="plus" class="lico"></i></span><span class="pnm">New workspace…</span>`;
+  make.addEventListener('click',()=>{
+    const cb=pickerCb; closePicker();
+    const name=prompt('New workspace name:');
+    if(!name) return;
+    const key=createWorkspace(name);
+    cb&&cb(key);
+  });
+  pickerGrid.appendChild(make);
+}
+function createWorkspace(name){
+  const key='ws'+(uid++);
+  WORKSPACES[key]={ name:name.trim()||'Workspace', icon:'layout-dashboard', desc:'Custom workspace.' };
+  return key;
+}
+function openPicker(x,y,cb){
+  pickerCb=cb;
+  picker.classList.add('open');
+  const pw=300, ph=picker.offsetHeight||320;
+  const vw=innerWidth, vh=innerHeight;
+  picker.style.left=Math.min(x, vw-pw-12)+'px';
+  picker.style.top =Math.min(y, vh-ph-12)+'px';
+  if(window.lucide) lucide.createIcons();
+}
+function closePicker(){ picker.classList.remove('open'); pickerCb=null; }
+
+/* ════════════════════════════════════════════════════════════════ WIRING ════════════════════════════════════════════════════════════════ */
+desk.addEventListener('dblclick',e=>{
+  if(e.target===desk || e.target.id==='desk' || e.target.closest('.desk-hint')){
+    openPicker(e.clientX, e.clientY, ws=>spawnWindow(ws, e.clientX-60, e.clientY-20));
+  }
+});
+document.getElementById('fab').addEventListener('click',e=>{
+  const r=document.getElementById('fab').getBoundingClientRect();
+  openPicker(r.left-260, r.top-330, ws=>spawnWindow(ws));
+});
+document.addEventListener('mousedown',e=>{ if(!picker.contains(e.target) && !e.target.closest('#fab') && !e.target.closest('.tab-add')) closePicker(); });
+
+/* ════════════════════════════════════════════════════════════════ SWITCHER ════════════════════════════════════════════════════════════════ */
+const switcher=document.getElementById('switcher');
+const swRow=document.getElementById('swRow');
+let swOpen=false, swList=[], swIndex=0;
+function mruOrder(){ return [...windows].sort((a,b)=>b.z-a.z); }
+function openSwitcher(reverse){
+  swList=mruOrder();
+  if(!swList.length) return;
+  swOpen=true;
+  swIndex = swList.length>1 ? (reverse? swList.length-1 : 1) : 0;
+  buildSwitcher();
+  switcher.classList.add('open');
+}
+function buildSwitcher(){
+  swRow.innerHTML='';
+  swList.forEach((win,i)=>{
+    const act=win.tabs.find(t=>t.id===win.active)||win.tabs[0];
+    const w=WORKSPACES[act.ws];
+    const c=document.createElement('div');
+    c.className='sw-card'+(i===swIndex?' sel':'');
+    c.innerHTML=`<span class="sw-ico"><i data-lucide="${w.icon}" class="lico"></i></span>
+                 <span class="sw-nm">${w.name}</span>
+                 ${win.tabs.length>1?`<span class="sw-cnt">+${win.tabs.length-1}</span>`:''}`;
+    c.addEventListener('mouseenter',()=>{ swIndex=i; markSwitcher(); });
+    c.addEventListener('click',()=>{ commitSwitcher(); });
+    swRow.appendChild(c);
+  });
+  if(window.lucide) lucide.createIcons();
+}
+function markSwitcher(){ [...swRow.children].forEach((c,i)=>c.classList.toggle('sel',i===swIndex)); }
+function stepSwitcher(reverse){
+  if(!swList.length) return;
+  swIndex=(swIndex+(reverse?-1:1)+swList.length)%swList.length;
+  markSwitcher();
+}
+function commitSwitcher(){ if(swList[swIndex]) raise(swList[swIndex].id); closeSwitcher(); }
+function closeSwitcher(){ swOpen=false; switcher.classList.remove('open'); }
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey && e.key==='Tab'){
+    e.preventDefault();
+    if(!swOpen) openSwitcher(e.shiftKey);
+    else stepSwitcher(e.shiftKey);
+    return;
+  }
+  if(swOpen){
+    if(e.key==='Escape'){ closeSwitcher(); }
+    if(e.key==='ArrowRight') stepSwitcher(false);
+    if(e.key==='ArrowLeft')  stepSwitcher(true);
+    if(e.key==='Enter')      commitSwitcher();
+    return;
+  }
+  const win=windows.find(w=>w.id===focusWin); if(!win) return;
+  if(e.key==='f'){ toggleMax(win); }
+  if(e.key==='m'){ toggleShade(win); }
+  if(e.key==='w'){ closeWindow(win.id); }
+});
+document.addEventListener('keyup',e=>{
+  if(swOpen && (e.key==='Control' || !e.ctrlKey)) commitSwitcher();
+});
+switcher.addEventListener('mousedown',e=>{ if(e.target===switcher) closeSwitcher(); });
+addEventListener('resize',()=>{ windows.forEach(w=>{ if(w.max){ const r=deskRect(); w.x=r.left+8;w.y=r.top+8;w.w=r.width-16;w.h=r.height-16; } }); render(); });
+
+/* ════════════════════════════════════════════════════════════════
+   TOP NOTCH — Android-style solid black drop-down
+   Pull the grip down → a solid black page descends; release commits
+   via a damped spring. The scrim becomes fully black (no fade).
+════════════════════════════════════════════════════════════════ */
+const notchEl   = document.getElementById('notch');
+const trayEl    = document.getElementById('tray');
+const scrimEl   = document.getElementById('notchScrim');
+const qsGrid    = document.getElementById('qsGrid');
+const qsSliders = document.getElementById('qsSliders');
+const trayGear  = document.getElementById('trayGear');
+const notchTitle= document.getElementById('notchTitle');
+
+const NOTCH_W=200, NOTCH_H=36;
+const SPRING_STIFF=320, SPRING_DAMP=34;
+const COMMIT_PX=120, FLICK_VEL=1000;
+
+const Notch={
+  offset:0, max:()=>innerHeight, drift:0, vel:0, dragVel:0,
+  startOffset:0, open:false, pivot:null,
+};
+
+function paintNotch(){
+  const maxOff=Notch.max();
+  const frac=Math.max(0,Math.min(1, Notch.offset/Math.max(maxOff,1)));
+  const maxDrift=Math.max(0,(innerWidth-NOTCH_W)/2);
+  const driftX=Math.max(-maxDrift,Math.min(maxDrift,Notch.drift));
+  const gx=(innerWidth-NOTCH_W)/2 + driftX;
+  notchEl.style.left=gx+'px';
+  notchEl.style.transform=`translateY(${Notch.offset}px)`;
+  trayEl.style.height=maxOff+'px';
+  trayEl.style.transform=`translateY(${Notch.offset-maxOff}px)`;
+  // Android-style: the solid-black sheet (trayEl) slides down on its own; the scrim
+  // only DIMS whatever sits below the sheet, scaling with how far it's pulled — it
+  // never snaps to full black, so the desk stays visible behind the descending page.
+  scrimEl.style.opacity = (frac*0.55).toFixed(3);
+  scrimEl.style.pointerEvents=Notch.offset>0.5?'auto':'none';
+}
+
+let notchRAF=null, lastT=null;
+function notchTick(t){
+  if(lastT==null) lastT=t;
+  const dt=Math.max(1e-4,Math.min(0.05,(t-lastT)/1000)); lastT=t;
+  if(Notch.pivot===null){
+    const target=Notch.open?Notch.max():0;
+    const force=-SPRING_STIFF*(Notch.offset-target)-SPRING_DAMP*Notch.vel;
+    Notch.vel+=force*dt;
+    Notch.offset+=Notch.vel*dt;
+    Notch.offset=Math.max(0,Math.min(Notch.max(),Notch.offset));
+    if(Math.abs(Notch.drift)>0.1) Notch.drift*=(1-Math.min(1,dt*8));
+    paintNotch();
+    const settled=Math.abs(Notch.offset-target)<0.4 && Math.abs(Notch.vel)<0.4;
+    if(settled){ Notch.offset=target; Notch.vel=0; paintNotch(); notchRAF=null; lastT=null; return; }
+  }
+  notchRAF=requestAnimationFrame(notchTick);
+}
+function kickNotch(){ if(notchRAF==null){ lastT=null; notchRAF=requestAnimationFrame(notchTick); } }
+
+function notchDown(e){
+  e.preventDefault();
+  const onGrip=e.target.closest('#notch');
+  const onTray=e.target.closest('#tray') && Notch.offset>50;
+  if(!onGrip && !onTray) return;
+  Notch.pivot=onGrip?'grip':'tray';
+  Notch.startOffset=Notch.offset;
+  Notch.dragVel=0; Notch.vel=0;
+  notchEl.classList.add('grab');
+  let lastY=e.clientY, lastX=e.clientX, lastMs=performance.now();
+  const move=(ev)=>{
+    const now=performance.now();
+    const dy=ev.clientY-lastY, dx=ev.clientX-lastX;
+    const dms=Math.max(1,now-lastMs);
+    Notch.offset=Math.max(0,Math.min(Notch.max(),Notch.offset+dy));
+    if(Notch.pivot==='grip') Notch.drift+=dx;
+    const inst=dy/(dms/1000);
+    Notch.dragVel=Notch.dragVel*0.65+inst*0.35;
+    lastY=ev.clientY; lastX=ev.clientX; lastMs=now;
+    paintNotch();
+  };
+  const up=()=>{
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('mouseup',up);
+    notchEl.classList.remove('grab');
+    const dist=Notch.offset-Notch.startOffset;
+    let open=Notch.open;
+    if(Notch.dragVel>FLICK_VEL) open=true;
+    else if(Notch.dragVel<-FLICK_VEL) open=false;
+    else if(dist>COMMIT_PX) open=true;
+    else if(dist<-COMMIT_PX) open=false;
+    Notch.open=open; Notch.pivot=null; Notch.dragVel=0;
+    kickNotch();
+  };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+notchEl.addEventListener('mousedown',notchDown);
+trayEl.addEventListener('mousedown',e=>{ if(Notch.offset>50) notchDown(e); });
+scrimEl.addEventListener('mousedown',()=>{ Notch.open=false; kickNotch(); });
+
+/* ── quick-settings model (Android-style toggles + sliders) ── */
+const QuickToggles=[
+  { key:'notifications', name:'Notifications', icon:'bell',       on:true,  onSt:'On', offSt:'Off' },
+  { key:'autosave',      name:'Auto-save',     icon:'save',       on:true,  onSt:'Every 5 min', offSt:'Off' },
+  { key:'perf',          name:'Performance',   icon:'gauge',      on:false, onSt:'Reduced motion', offSt:'Full effects' },
+];
+const QuickSliders=[
+  { key:'volume', icon:'volume-2', val:60 },
+];
+
+/* ── notifications feed ── */
+let Notifications=[
+  { id:nid('n'), kind:'ok',   icon:'check-circle-2', title:'Baking complete',   body:'Normal map · 2048² · just now' },
+  { id:nid('n'), kind:'warn', icon:'alert-triangle', title:'VRAM high usage',   body:'9.4 / 10 GB · consider lowering the budget' },
+  { id:nid('n'), kind:'info', icon:'cloud-upload',   title:'Cloud sync finished',body:'14 assets uploaded · 3 min ago' },
+  { id:nid('n'), kind:'info', icon:'download',       title:'Asset imported',     body:'oak_trunk.fbx · 18.2 MB' },
+];
+
+/* ── Performance & Resources (NOW LIVES IN SETTINGS) ── */
+const PERF_MODES=['Power Saver','Balanced','Max Performance'];
+const ResourceSliders=[
+  { key:'vram',  icon:'cpu',   label:'VRAM Budget',      min:20, max:100, val:70, fmt:v=>v+'%' },
+  { key:'perf',  icon:'gauge', label:'Performance Mode', min:0,  max:2,   val:1,  fmt:v=>PERF_MODES[v] },
+];
+// Local Cache + Engine Compute now belong to the Performance page
+let LocalCacheSize=4.2; // GB
+const PerfInfo={ engineCompute:'GPU Accelerated' };
+
+/* ── General settings (Interface Scale moved to APPEARANCE; lang/units stay here) ── */
+const GeneralSelects=[
+  { key:'lang',  icon:'languages', name:'Language',          sub:'Application-wide',     opts:['English','Deutsch','日本語','Español','Français'] },
+  { key:'units', icon:'ruler',     name:'Measurement Units', sub:'Default for all files',opts:['Metric (m)','Imperial (ft)','Generic'] },
+];
+// Notifications-related settings (replaces old "Interface Sounds" row)
+const NotifToggles=[
+  { key:'banner',  name:'Banner alerts',   on:true },
+  { key:'sound',   name:'Notification sound', on:false },
+  { key:'badge',   name:'Show badges',     on:true },
+];
+
+/* ── project library — multiple locations ── */
+let LibraryLocations=[
+  { id:nid('L'), path:'~/RenderStudio/Projects', note:'Primary workspace · 24 projects', def:true,  sel:false },
+  { id:nid('L'), path:'D:/Studio/ClientWork',    note:'External drive · 11 projects',     def:false, sel:false },
+  { id:nid('L'), path:'//nas/shared/Archive',    note:'Network share · 38 projects',      def:false, sel:false },
+];
+const LIB_SAMPLES=[
+  ['E:/Renders/Personal','Local drive'],['~/Dropbox/Studio','Synced folder'],
+  ['//nas/team/WIP','Network share'],['F:/Backup/Projects','Backup drive'],
+  ['G:/Footage/Scans','Capture drive'],
+];
+
+/* ── build the control-centre tray (toggles + slider + notifications) ── */
+function buildTray(){
+  qsGrid.innerHTML='';
+  QuickToggles.forEach(t=>{
+    const c=document.createElement('div'); c.className='qs'+(t.on?' on':'');
+    c.innerHTML=`<span class="qsico"><i data-lucide="${t.icon}" class="lico"></i></span>
+      <span class="qstx"><span class="qsnm">${t.name}</span>
+      <span class="qsst">${t.on?t.onSt:t.offSt}</span></span>`;
+    c.addEventListener('click',()=>{
+      t.on=!t.on;
+      buildTray();
+    });
+    qsGrid.appendChild(c);
+  });
+  qsSliders.innerHTML='';
+  QuickSliders.forEach(s=>{
+    const row=document.createElement('div'); row.className='qsl';
+    row.innerHTML=`<i data-lucide="${s.icon}" class="lico"></i>
+      <div class="qsl-track"><div class="qsl-fill" style="width:${s.val}%"></div>
+      <span class="qsl-val">${s.val}%</span></div>`;
+    const track=row.querySelector('.qsl-track');
+    const fill=row.querySelector('.qsl-fill');
+    const valEl=row.querySelector('.qsl-val');
+    const setFromX=(clientX)=>{
+      const r=track.getBoundingClientRect();
+      s.val=Math.round(Math.max(0,Math.min(100,(clientX-r.left)/r.width*100)));
+      fill.style.width=s.val+'%'; valEl.textContent=s.val+'%';
+    };
+    track.addEventListener('mousedown',e=>{
+      e.stopPropagation(); setFromX(e.clientX);
+      const mv=ev=>setFromX(ev.clientX);
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+      document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+    });
+    qsSliders.appendChild(row);
+  });
+  buildNotifications();
+  if(window.lucide) lucide.createIcons();
+}
+
+function buildNotifications(){
+  const box=document.getElementById('notifList');
+  box.innerHTML='';
+  if(!Notifications.length){
+    box.innerHTML='<div class="notif-empty">No new notifications</div>'; return;
+  }
+  Notifications.forEach(n=>{
+    const el=document.createElement('div'); el.className='notif '+n.kind;
+    el.innerHTML=`<span class="nico"><i data-lucide="${n.icon}" class="lico"></i></span>
+      <span class="ntx"><b>${n.title}</b><span>${n.body}</span></span>
+      <button class="nx" data-tip="Dismiss"><i data-lucide="x" class="lico"></i></button>`;
+    el.querySelector('.nx').addEventListener('click',()=>{
+      Notifications=Notifications.filter(x=>x.id!==n.id); buildNotifications();
+      if(window.lucide) lucide.createIcons();
+    });
+    box.appendChild(el);
+  });
+}
+
+/* shared range-slider tile */
+function rangeTile(s){
+  const tile=document.createElement('div'); tile.className='res-tile';
+  tile.innerHTML=`<div class="res-head">
+      <span class="rl"><i data-lucide="${s.icon}" class="lico"></i>${s.label}</span>
+      <span class="rv"></span></div>
+    <input type="range" class="res-range" min="${s.min}" max="${s.max}" value="${s.val}">`;
+  const range=tile.querySelector('.res-range'), val=tile.querySelector('.rv');
+  const paint=()=>{
+    const v=+range.value;
+    range.style.setProperty('--v',((v-s.min)/(s.max-s.min)*100)+'%');
+    val.textContent=s.fmt(v); s.val=v;
+  };
+  range.addEventListener('input',paint); paint();
+  return tile;
+}
+
+document.getElementById('notifClear').addEventListener('click',e=>{
+  e.stopPropagation(); Notifications=[]; buildNotifications();
+});
+trayGear.addEventListener('click',e=>{ e.stopPropagation(); Notch.open=false; kickNotch(); openSettings(); });
+function syncNotchTitle(){
+  const win=windows.find(w=>w.id===focusWin);
+  if(win){ const t=win.tabs.find(x=>x.id===win.active)||win.tabs[0]; notchTitle.textContent=WORKSPACES[t.ws].name; }
+  else notchTitle.textContent='Untitled Workspace';
+}
+const _renderBase=render;
+render=function(){ _renderBase(); syncNotchTitle(); };
+addEventListener('resize',paintNotch);
+
+/* ════════════════════════════════════════════════════════════════ SETTINGS ════════════════════════════════════════════════════════════════ */
+const settingsEl=document.getElementById('settings');
+const setPages=document.getElementById('setPages');
+const setBack=document.getElementById('setBack');
+
+let setStack=[];
+function openSettings(){
+  setStack=[]; setPages.innerHTML=''; setPages.style.transition='none';
+  pushSettings(buildSettingsRoot, true);
+  requestAnimationFrame(()=>{ setPages.style.transition=''; });
+  settingsEl.classList.add('open');
+}
+function closeSettings(){ settingsEl.classList.remove('open'); }
+function pushSettings(builder, instant){
+  const page=document.createElement('div'); page.className='set-page';
+  builder(page);
+  setPages.appendChild(page);
+  setStack.push(builder);
+  setPages.style.width=(setStack.length*100)+'%';
+  page.style.flexBasis=(100/setStack.length)+'%';
+  [...setPages.children].forEach(p=>p.style.flexBasis=(100/setStack.length)+'%');
+  slidePages();
+  syncBackLabel();
+  if(window.lucide) lucide.createIcons();
+}
+function popSettings(){
+  if(setStack.length<=1){ closeSettings(); return; }
+  setStack.pop();
+  slidePages();
+  syncBackLabel();
+  const last=setPages.lastChild;
+  setTimeout(()=>{ if(last && last.parentNode===setPages){
+    setPages.removeChild(last);
+    setPages.style.width=(setStack.length*100)+'%';
+    [...setPages.children].forEach(p=>p.style.flexBasis=(100/setStack.length)+'%');
+  } },340);
+}
+function slidePages(){
+  const idx=setStack.length-1;
+  setPages.style.transform=`translateX(-${idx*(100/setStack.length)}%)`;
+}
+function syncBackLabel(){ setBack.querySelector('span').textContent=setStack.length>1?'Back':'Close'; }
+setBack.addEventListener('click',()=>{ if(setStack.length>1) popSettings(); else closeSettings(); });
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape' && settingsEl.classList.contains('open')){
+    if(setStack.length>1) popSettings(); else closeSettings();
+  }
+},true);
+
+// ── settings root ──
+const SETTINGS_ROWS=[
+  { key:'appearance',  name:'Appearance',           icon:'palette', val:'', open:buildAppearancePage },
+  { key:'performance', name:'Performance & Resources', icon:'gauge',
+    val:()=>PerfInfo.engineCompute, open:buildPerformancePage },
+  { key:'library',     name:'Project Library', icon:'folder-cog',
+    val:()=>LibraryLocations.length+' locations', open:buildProjectLibraryPage },
+  { key:'sync',        name:'Workspace Sync',  icon:'cloud',  val:'Connected' },
+  { key:'general',     name:'General',         icon:'sliders-horizontal',
+    val:'Language & Units', open:buildGeneralPage },
+  { key:'notif',       name:'Notifications',   icon:'bell', val:'', open:buildNotifSettingsPage },
+];
+function buildSettingsRoot(page){
+  const head=document.createElement('div'); head.className='set-pagehead';
+  head.innerHTML=`<div class="ph-title">Settings</div><div class="ph-sub">Application preferences</div>`;
+  page.appendChild(head);
+  const list=document.createElement('div'); list.className='set-list';
+  SETTINGS_ROWS.forEach(r=>{
+    const row=document.createElement('div'); row.className='set-row';
+    const val=typeof r.val==='function'?r.val():(r.val||'');
+    row.innerHTML=`<span class="srico"><i data-lucide="${r.icon}" class="lico"></i></span>
+      <span class="srnm">${r.name}</span>
+      <span class="srval">${val}</span>
+      ${r.open?'<span class="srchev"><i data-lucide="chevron-right" class="lico"></i></span>':''}`;
+    if(r.open) row.addEventListener('click',()=>pushSettings(r.open));
+    list.appendChild(row);
+  });
+  page.appendChild(list);
+}
+
+/* ── Performance & Resources page (sliders + Local Cache + Engine Compute) ── */
+function buildPerformancePage(page){
+  const head=document.createElement('div'); head.className='set-pagehead';
+  head.innerHTML=`<div class="ph-title">Performance &amp; Resources</div>
+    <div class="ph-sub">Compute budget, caching and engine acceleration</div>`;
+  page.appendChild(head);
+
+  // resource sliders
+  const b1=document.createElement('div'); b1.className='set-block';
+  b1.innerHTML=`<div class="sb-lbl">Resources</div>`;
+  ResourceSliders.forEach(s=>b1.appendChild(rangeTile(s)));
+  page.appendChild(b1);
+
+  // engine compute + local cache info rows
+  const b2=document.createElement('div'); b2.className='set-block';
+  b2.innerHTML=`<div class="sb-lbl">Engine</div>`;
+
+  const compute=document.createElement('div'); compute.className='info-row';
+  compute.innerHTML=`<span class="sico"><i data-lucide="cpu" class="lico"></i></span>
+    <span class="smeta"><b>Engine Compute</b><span>Acceleration backend</span></span>
+    <select style="background:#000;color:var(--text);border:1px solid var(--chip-bd);border-radius:9px;padding:7px 9px;font:inherit;font-size:12px;cursor:pointer;outline:none">
+      <option ${PerfInfo.engineCompute==='GPU Accelerated'?'selected':''}>GPU Accelerated</option>
+      <option ${PerfInfo.engineCompute==='CPU Only'?'selected':''}>CPU Only</option>
+      <option ${PerfInfo.engineCompute==='Hybrid'?'selected':''}>Hybrid</option>
+    </select>`;
+  compute.querySelector('select').addEventListener('change',e=>{ PerfInfo.engineCompute=e.target.value; });
+  b2.appendChild(compute);
+
+  const cache=document.createElement('div'); cache.className='info-row';
+  const cacheVal=()=>LocalCacheSize.toFixed(1)+' GB';
+  cache.innerHTML=`<span class="sico"><i data-lucide="hard-drive" class="lico"></i></span>
+    <span class="smeta"><b>Local Cache</b><span>Cached textures, bakes &amp; previews</span></span>
+    <span class="ival">${cacheVal()}</span>
+    <button class="ibtn">Clear</button>`;
+  cache.querySelector('.ibtn').addEventListener('click',()=>{
+    LocalCacheSize=0; cache.querySelector('.ival').textContent=cacheVal();
+  });
+  b2.appendChild(cache);
+
+  page.appendChild(b2);
+}
+
+/* ── General page (Language + Units; Interface Scale moved out to Appearance) ── */
+function buildGeneralPage(page){
+  const head=document.createElement('div'); head.className='set-pagehead';
+  head.innerHTML=`<div class="ph-title">General</div>
+    <div class="ph-sub">Language and measurement preferences</div>`;
+  page.appendChild(head);
+  const block=document.createElement('div'); block.className='set-block';
+  GeneralSelects.forEach(s=>{
+    const row=document.createElement('div'); row.className='sel-row';
+    const opts=s.opts.map(o=>`<option ${s.val===o?'selected':''}>${o}</option>`).join('');
+    row.innerHTML=`<span class="sico"><i data-lucide="${s.icon}" class="lico"></i></span>
+      <span class="smeta"><b>${s.name}</b><span>${s.sub}</span></span>
+      <select>${opts}</select>`;
+    row.querySelector('select').addEventListener('change',e=>{ s.val=e.target.value; });
+    block.appendChild(row);
+  });
+  page.appendChild(block);
+}
+
+/* ── Notifications settings page (replaces old "Interface Sounds") ── */
+function buildNotifSettingsPage(page){
+  const head=document.createElement('div'); head.className='set-pagehead';
+  head.innerHTML=`<div class="ph-title">Notifications</div>
+    <div class="ph-sub">How alerts appear and behave</div>`;
+  page.appendChild(head);
+  const block=document.createElement('div'); block.className='set-block';
+  NotifToggles.forEach(t=>{
+    const row=document.createElement('div'); row.className='info-row';
+    row.innerHTML=`<span class="sico"><i data-lucide="bell" class="lico"></i></span>
+      <span class="smeta"><b>${t.name}</b></span>`;
+    const sw=document.createElement('div'); sw.className='tg-sw'+(t.on?' on':'');
+    sw.innerHTML='<div class="tg-knob"></div>';
+    sw.addEventListener('click',()=>{ t.on=!t.on; sw.classList.toggle('on',t.on); });
+    row.appendChild(sw);
+    block.appendChild(row);
+  });
+  page.appendChild(block);
+}
+
+/* ── Project Library settings page ── */
+function buildProjectLibraryPage(page){
+  const head=document.createElement('div'); head.className='set-pagehead';
+  head.innerHTML=`<div class="ph-title">Project Library</div>
+    <div class="ph-sub">Folders scanned for projects · select one or more to open</div>`;
+  page.appendChild(head);
+  const wrap=document.createElement('div');
+  wrap.style.cssText='width:100%;max-width:560px';
+  wrap.appendChild(buildLibrary());
+  page.appendChild(wrap);
+}
+function buildLibrary(){
+  const lib=document.createElement('div'); lib.className='lib';
+  const selCount=LibraryLocations.filter(l=>l.sel).length;
+  lib.innerHTML=`<div class="lib-top">
+      <span class="sico"><i data-lucide="folder-cog" class="lico"></i></span>
+      <span class="smeta"><b>Project Library</b>
+        <span>${LibraryLocations.length} locations · scanned for projects</span></span>
+    </div>
+    <div class="lib-locs"></div>
+    <div class="lib-bar">
+      <button class="lib-add"><i data-lucide="folder-plus" class="lico"></i>Add location</button>
+      <button class="lib-open${selCount?' show':''}"><i data-lucide="folder-open" class="lico"></i>Open ${selCount||''}</button>
+    </div>`;
+  const locs=lib.querySelector('.lib-locs');
+  LibraryLocations.forEach(l=>{
+    const row=document.createElement('div'); row.className='loc'+(l.sel?' sel':'');
+    const tag=l.def
+      ? `<button class="ltag def" data-tip="Default library">DEFAULT</button>`
+      : `<button class="ltag pin" data-tip="Set as default">PIN</button>`;
+    row.innerHTML=`<span class="lck"><i data-lucide="check" class="lico"></i></span>
+      <i data-lucide="folder" class="lico lfold"></i>
+      <span class="lpath">${l.path}<span class="lname">${l.note}</span></span>
+      ${tag}
+      <button class="lx" data-tip="Remove"><i data-lucide="x" class="lico"></i></button>`;
+    row.querySelector('.lck').addEventListener('click',e=>{ e.stopPropagation(); l.sel=!l.sel; refreshLibrary(); });
+    row.querySelector('.lpath').addEventListener('click',()=>{ l.sel=!l.sel; refreshLibrary(); });
+    if(!l.def) row.querySelector('.ltag').addEventListener('click',e=>{ e.stopPropagation();
+      LibraryLocations.forEach(x=>x.def=false); l.def=true; refreshLibrary(); });
+    row.querySelector('.lx').addEventListener('click',e=>{ e.stopPropagation();
+      const wasDef=l.def;
+      LibraryLocations=LibraryLocations.filter(x=>x.id!==l.id);
+      if(wasDef && LibraryLocations.length) LibraryLocations[0].def=true;
+      refreshLibrary(); });
+    locs.appendChild(row);
+  });
+  lib.querySelector('.lib-add').addEventListener('click',()=>{
+    const pick=LIB_SAMPLES[LibraryLocations.length % LIB_SAMPLES.length];
+    const projects=6+LibraryLocations.length*5;
+    LibraryLocations.push({ id:nid('L'), path:pick[0],
+      note:pick[1]+' · '+projects+' projects', def:LibraryLocations.length===0, sel:false });
+    refreshLibrary();
+  });
+  lib.querySelector('.lib-open').addEventListener('click',()=>{
+    const sel=LibraryLocations.filter(l=>l.sel).map(l=>l.path);
+    if(sel.length) alert('Opening '+sel.length+' location'+(sel.length>1?'s':'')+':\n'+sel.join('\n'));
+  });
+  return lib;
+}
+function refreshLibrary(){
+  const old=document.querySelector('.lib');
+  if(old){ old.replaceWith(buildLibrary()); }
+  if(window.lucide) lucide.createIcons();
+}
+
+/* ── Appearance editing state ── */
+const FONT_FAMILIES=[
+  {nm:'General Sans', sub:'The quick brown fox', css:"'General Sans',sans-serif", weights:['Light','Regular','Medium','Semibold','Bold']},
+  {nm:'Inter',        sub:'The quick brown fox', css:'Inter,sans-serif',          weights:['Regular','Medium','Semibold','Bold']},
+  {nm:'Georgia',      sub:'The quick brown fox', css:'Georgia,serif',             weights:['Regular','Bold']},
+  {nm:'Courier',      sub:'The quick brown fox', css:"'Courier New',monospace",   weights:['Regular','Bold']},
+  {nm:'System UI',    sub:'The quick brown fox', css:'system-ui,sans-serif',      weights:['Regular','Medium','Bold']},
+];
+const SCALE_ROLES=[
+  {nm:'Title',     sample:'Display Title',      size:28},
+  {nm:'Header',    sample:'Section Header',     size:22},
+  {nm:'Subheader', sample:'Card Subheader',     size:18},
+  {nm:'Body',      sample:'The quick brown fox jumps over the lazy dog.', size:14},
+  {nm:'Label',     sample:'Form Label',         size:13},
+  {nm:'Caption',   sample:'Small caption text', size:11},
+];
+const PALETTES=[
+  {nm:'OLED',    bg:'rgb(0,0,0)',       side:'rgb(10,10,10)',    panel:'rgb(20,20,20)',   stroke:null,                 line:'255,255,255'},
+  {nm:'Dark',    bg:'rgb(24,24,26)',    side:'rgb(34,34,36)',    panel:'rgb(44,44,46)',   stroke:null,                 line:'255,255,255'},
+  {nm:'Light',   bg:'rgb(229,229,229)', side:'rgb(244,244,245)', panel:'rgb(255,255,255)',stroke:'rgba(0,0,0,.047)',   line:'0,0,0'},
+  {nm:'Sepia',   bg:'rgb(220,168,91)',  side:'rgb(230,198,151)', panel:'rgb(241,218,176)',stroke:null,                 line:'130,86,25'},
+  {nm:'Dracula', bg:'rgb(40,42,54)',    side:'rgb(68,71,90)',    panel:'rgb(98,114,164)', stroke:null,                 line:'248,248,242'},
+  {nm:'Nord',    bg:'rgb(46,52,64)',    side:'rgb(59,66,82)',    panel:'rgb(76,86,106)',  stroke:null,                 line:'236,239,244'},
+  {nm:'GitHub',  bg:'rgb(13,17,23)',    side:'rgb(22,27,34)',    panel:'rgb(33,38,45)',   stroke:null,                 line:'201,209,217'},
+];
+const ACCENTS=['#ffffff','#7aa2ff','#22c55e','#ef4444','#f59e0b','#a855f7','#ec4899','#06b6d4'];
+const ICON_FAMILIES=[
+  {nm:'Lucide',  glyphs:['settings','x','search','folder','save','trash-2','palette','user']},
+  {nm:'Feather', glyphs:['settings','x','search','folder','save','trash','droplet','user']},
+];
+const AA_LEVELS=['1x','2x','4x','8x'];
+
+const Appearance={
+  tab:0, family:0,
+  roleWeight:SCALE_ROLES.map(()=>1),
+  roleSize:SCALE_ROLES.map(r=>r.size),
+  antialias:true, ligatures:false,
+  palette:0, accent:1, radius:15,
+  icon:0, aa:2, safeArea:8,
+  uiScale:100,   // NEW: Interface Scale lives in Appearance now
+};
+
+function applyAppearance(){
+  const root=document.documentElement.style;
+  root.setProperty('--accent', ACCENTS[Appearance.accent]);
+  root.setProperty('--radius', Appearance.radius+'px');
+  document.body.style.fontFamily=FONT_FAMILIES[Appearance.family].css;
+}
+
+function sliderRow(label, value, min, max, unit, onChange){
+  const row=document.createElement('div'); row.className='ap-slider';
+  row.innerHTML=`<span class="sl-lbl">${label}</span>
+    <div class="sl-track"><div class="sl-fill"></div><div class="sl-thumb"></div></div>
+    <span class="sl-val"></span>`;
+  const track=row.querySelector('.sl-track'),fill=row.querySelector('.sl-fill'),
+        thumb=row.querySelector('.sl-thumb'),val=row.querySelector('.sl-val');
+  const paint=v=>{ const f=(v-min)/(max-min); fill.style.width=(f*100)+'%';
+    thumb.style.left=(f*100)+'%'; val.textContent=Math.round(v)+unit; };
+  paint(value);
+  const setFromX=cx=>{ const r=track.getBoundingClientRect();
+    let v=min+(cx-r.left)/r.width*(max-min); v=Math.max(min,Math.min(max,v));
+    paint(v); onChange(v); };
+  track.addEventListener('mousedown',e=>{ setFromX(e.clientX);
+    const mv=ev=>setFromX(ev.clientX);
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up); });
+  return row;
+}
+function section(title, sub){
+  const s=document.createElement('div'); s.className='ap-sec';
+  s.innerHTML=`<div class="ap-sectitle">${title}</div>`+(sub?`<div class="ap-secsub">${sub}</div>`:'');
+  return s;
+}
+function toggleRow(label, on, onChange){
+  const r=document.createElement('div'); r.className='ap-toggle';
+  r.innerHTML=`<span class="tg-nm">${label}</span><div class="tg-sw${on?' on':''}"><div class="tg-knob"></div></div>`;
+  r.querySelector('.tg-sw').addEventListener('click',function(){
+    const nv=!this.classList.contains('on'); this.classList.toggle('on',nv); onChange(nv);
+  });
+  return r;
+}
+
+const AP_TAB_LABELS=['Fonts','Theme','Display'];
+function buildAppearancePage(page){
+  const shell=document.createElement('div'); shell.className='ap-shell';
+  const header=document.createElement('div'); header.className='ap-header';
+  header.innerHTML=`<div class="ap-htitle">Display Settings</div>
+    <div class="ap-hsub">Appearance &amp; typography</div>`;
+  const tabs=document.createElement('div'); tabs.className='ap-tabs';
+  AP_TAB_LABELS.forEach((nm,i)=>{
+    const t=document.createElement('div'); t.className='ap-tab'+(i===Appearance.tab?' active':'');
+    t.textContent=nm;
+    t.addEventListener('click',()=>{ Appearance.tab=i; slide(); markTabs(); });
+    tabs.appendChild(t);
+  });
+  header.appendChild(tabs);
+  shell.appendChild(header);
+  function markTabs(){ [...tabs.children].forEach((c,i)=>c.classList.toggle('active',i===Appearance.tab)); }
+
+  const vp=document.createElement('div'); vp.className='ap-viewport';
+  const track=document.createElement('div'); track.className='ap-track';
+  track.appendChild(panelFonts());
+  track.appendChild(panelTheme());
+  track.appendChild(panelDisplay());
+  vp.appendChild(track); shell.appendChild(vp);
+  function slide(){ track.style.transform=`translateX(-${Appearance.tab*33.3333}%)`; }
+  slide();
+  page.appendChild(shell);
+}
+
+function panelFonts(){
+  const p=document.createElement('div'); p.className='ap-panel';
+  const typo=section('Typography','Typeface, type scale, and font weights');
+  typo.appendChild(familyCarousel());
+  p.appendChild(typo);
+
+  const scale=section('Type scale — Desktop','');
+  SCALE_ROLES.forEach((role,ri)=>{
+    const r=document.createElement('div'); r.className='ap-role';
+    const top=document.createElement('div'); top.className='rl-top';
+    top.innerHTML=`<span class="rl-nm">${role.nm}</span><span class="rl-sz">${Math.round(Appearance.roleSize[ri])}px</span>`;
+    r.appendChild(top);
+    r.appendChild(sliderRow('Size',Appearance.roleSize[ri],8,72,'px',v=>{
+      Appearance.roleSize[ri]=v; top.querySelector('.rl-sz').textContent=Math.round(v)+'px';
+      prev.style.fontSize=v+'px';
+    }));
+    const fam=FONT_FAMILIES[Appearance.family];
+    const pills=document.createElement('div'); pills.className='pill-row';
+    fam.weights.forEach((wn,wi)=>{
+      const b=document.createElement('div'); b.className='pillb'+(wi===Appearance.roleWeight[ri]?' active':'');
+      b.textContent=wn;
+      b.addEventListener('click',()=>{ Appearance.roleWeight[ri]=wi;
+        [...pills.children].forEach((c,ci)=>c.classList.toggle('active',ci===wi)); });
+      pills.appendChild(b);
+    });
+    r.appendChild(pills);
+    const prev=document.createElement('div'); prev.className='ap-preview';
+    prev.textContent=role.sample; prev.style.fontSize=Appearance.roleSize[ri]+'px';
+    prev.style.fontFamily=fam.css;
+    r.appendChild(prev);
+    scale.appendChild(r);
+  });
+  p.appendChild(scale);
+
+  const render=section('Font rendering','');
+  render.appendChild(toggleRow('Antialiasing',Appearance.antialias,v=>Appearance.antialias=v));
+  render.appendChild(toggleRow('Ligatures',Appearance.ligatures,v=>Appearance.ligatures=v));
+  p.appendChild(render);
+  return p;
+}
+
+function familyCarousel(){
+  const mc=document.createElement('div'); mc.className='mc';
+  const win=document.createElement('div'); win.className='mc-win';
+  const strip=document.createElement('div'); strip.className='mc-strip';
+  const CARD_W=168, GAP=14;
+  FONT_FAMILIES.forEach((f,i)=>{
+    const c=document.createElement('div'); c.className='mc-card'+(i===Appearance.family?' active':'');
+    c.style.width=CARD_W+'px'; c.style.height='140px'; c.style.marginRight=GAP+'px';
+    c.innerHTML=`<div class="mc-aa" style="font-family:${f.css}">Aa</div>
+      <div><div class="mc-nm" style="font-family:${f.css}">${f.nm}</div>
+      <div class="mc-sub">${f.sub}</div></div>`;
+    c.addEventListener('click',()=>{ Appearance.family=i; refresh(); });
+    strip.appendChild(c);
+  });
+  win.appendChild(strip);
+  const left=arrowBtn('chevron-left',()=>{ Appearance.family=Math.max(0,Appearance.family-1); refresh(); });
+  const right=arrowBtn('chevron-right',()=>{ Appearance.family=Math.min(FONT_FAMILIES.length-1,Appearance.family+1); refresh(); });
+  mc.append(left,win,right);
+  function refresh(){
+    [...strip.children].forEach((c,ci)=>c.classList.toggle('active',ci===Appearance.family));
+    const off=Math.max(0,Appearance.family*(CARD_W+GAP)-GAP);
+    strip.style.transform=`translateX(-${off}px)`;
+    applyAppearance();
+  }
+  requestAnimationFrame(refresh);
+  return mc;
+}
+function arrowBtn(icon,fn){
+  const b=document.createElement('button'); b.className='mc-arrow';
+  b.innerHTML=`<i data-lucide="${icon}" class="lico"></i>`;
+  b.addEventListener('click',e=>{e.stopPropagation();fn();if(window.lucide)lucide.createIcons();});
+  return b;
+}
+
+function paintThemePreview(canvas, pal){
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.clientWidth||168, H=canvas.clientHeight||124;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  const g=canvas.getContext('2d'); g.scale(dpr,dpr);
+  const ribbon=(a)=>`rgba(${pal.line},${a})`;
+  const Round=10, Outer=6, Pad=6, RH=3, RS=3.5;
+  const Traffic=Math.max(2,RH*1.15), RibRound=RH*0.5;
+  const rr=(x,y,w,h,r)=>{ r=Math.min(r,w/2,h/2); g.beginPath();
+    g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r);
+    g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); };
+  g.fillStyle=pal.bg; rr(0,0,W,H,Round); g.fill();
+  const pminX=Outer, pminY=Outer, pmaxX=W-Outer, pmaxY=H-Outer;
+  const panelW=pmaxX-pminX, sideW=panelW*0.30;
+  g.fillStyle=pal.side; rr(pminX,pminY,sideW,pmaxY-pminY,Round); g.fill();
+  const bodyX=pminX+sideW;
+  g.fillStyle=pal.panel; rr(bodyX,pminY,pmaxX-bodyX,pmaxY-pminY,Round); g.fill();
+  if(pal.stroke){ g.strokeStyle=pal.stroke; g.lineWidth=1; rr(bodyX,pminY,pmaxX-bodyX,pmaxY-pminY,Round); g.stroke(); }
+  const sInnerL=pminX+Pad, sRibW=(sideW)-Pad*2;
+  g.fillStyle=ribbon(0.39);
+  for(let d=0;d<3;d++){ g.beginPath();
+    g.arc(sInnerL+Traffic*0.5+d*(Traffic+2), pminY+Pad+Traffic*0.5, Traffic*0.5,0,7); g.fill(); }
+  let sc=pminY+Pad+Traffic+RS*1.5;
+  const row=(x,y,w,a)=>{ g.fillStyle=ribbon(a); rr(x,y,w,RH,RibRound); g.fill(); };
+  row(sInnerL,sc,sRibW,0.20);       sc+=RH+RS;
+  row(sInnerL,sc,sRibW*0.66,0.20);  sc+=RH+RS;
+  row(sInnerL,sc,sRibW*0.50,0.20);
+  const av=Traffic*1.6, avx=sInnerL+av*0.5, avy=pmaxY-Pad-av*0.5;
+  g.fillStyle=ribbon(0.39); g.beginPath(); g.arc(avx,avy,av*0.5,0,7); g.fill();
+  row(avx+av*0.7, avy-RH*0.5, sRibW*0.35, 0.20);
+  const pInnerL=bodyX+Pad, pInnerR=pmaxX-Pad, pRibW=pInnerR-pInnerL;
+  let pc=pminY+Pad;
+  row(pInnerL,pc,pRibW*0.25,0.29); pc+=RH+RS;
+  row(pInnerL,pc,pRibW*0.33,0.20); pc+=RH+RS;
+  const tile=Math.min((pRibW-RS*2)/3, pmaxY-pc-Pad-RH-RS);
+  if(tile>0){
+    g.fillStyle=ribbon(0.10);
+    for(let t=0;t<3;t++){ rr(pInnerL+t*(tile+RS),pc,tile,tile,Round*0.5); g.fill(); }
+    pc+=tile+RS;
+  }
+  row(pInnerL, pmaxY-Pad-RH, pRibW*0.20, 0.20);
+}
+
+function panelTheme(){
+  const p=document.createElement('div'); p.className='ap-panel';
+  const color=section('Color scheme','Choose the overall interface darkness');
+  const grid=document.createElement('div'); grid.className='palette-grid';
+  PALETTES.forEach((pal,i)=>{
+    const tile=document.createElement('div'); tile.className='pal-tile'+(i===Appearance.palette?' active':'');
+    const tp=document.createElement('div'); tp.className='pal-tp';
+    const cv=document.createElement('canvas'); cv.style.width='100%'; cv.style.height='100%';
+    cv.style.display='block'; tp.appendChild(cv);
+    const nm=document.createElement('div'); nm.className='pal-nm'; nm.textContent=pal.nm;
+    tile.append(tp,nm);
+    tile.addEventListener('click',()=>{ Appearance.palette=i;
+      [...grid.children].forEach((c,ci)=>c.classList.toggle('active',ci===i)); });
+    grid.appendChild(tile);
+    requestAnimationFrame(()=>paintThemePreview(cv, pal));
+  });
+  color.appendChild(grid);
+  const accLbl=document.createElement('div'); accLbl.className='ap-secsub';
+  accLbl.style.marginTop='16px'; accLbl.textContent='Main interactive elements';
+  color.appendChild(accLbl);
+  const swrow=document.createElement('div'); swrow.className='swatch-row';
+  ACCENTS.forEach((a,i)=>{
+    const d=document.createElement('div'); d.className='sw-dot'+(i===Appearance.accent?' active':'');
+    d.style.background=a; d.style.color=a;
+    d.addEventListener('click',()=>{ Appearance.accent=i;
+      [...swrow.children].forEach((c,ci)=>c.classList.toggle('active',ci===i)); applyAppearance(); });
+    swrow.appendChild(d);
+  });
+  color.appendChild(swrow);
+  p.appendChild(color);
+  const shape=section('Interface shapes','Adjust the roundness of UI elements');
+  shape.appendChild(sliderRow('Radius',Appearance.radius,0,28,'px',v=>{ Appearance.radius=v; applyAppearance(); }));
+  p.appendChild(shape);
+  return p;
+}
+
+function panelDisplay(){
+  const p=document.createElement('div'); p.className='ap-panel';
+
+  // NEW: Interface Scale section (moved here from old General/tray)
+  const scaleSec=section('Interface scale','Overall size of UI elements');
+  const top=document.createElement('div'); top.className='rl-top';
+  top.innerHTML=`<span class="rl-nm">Scale</span><span class="rl-sz">${Appearance.uiScale}%</span>`;
+  scaleSec.appendChild(top);
+  scaleSec.appendChild(sliderRow('Size',Appearance.uiScale,75,150,'%',v=>{
+    Appearance.uiScale=Math.round(v); top.querySelector('.rl-sz').textContent=Appearance.uiScale+'%';
+  }));
+  p.appendChild(scaleSec);
+
+  const iconSec=section('Icon family','Glyph set used across the interface');
+  const mc=document.createElement('div'); mc.className='mc';
+  const win=document.createElement('div'); win.className='mc-win';
+  const strip=document.createElement('div'); strip.className='mc-strip';
+  ICON_FAMILIES.forEach((f,i)=>{
+    const c=document.createElement('div'); c.className='mc-card'+(i===Appearance.icon?' active':'');
+    c.style.width='100%'; c.style.flexShrink='0'; c.style.height='auto';
+    const row=f.glyphs.map(g=>`<i data-lucide="${g}" class="lico" style="width:22px;height:22px"></i>`).join('');
+    c.innerHTML=`<div class="mc-nm">${f.nm}</div>
+      <div style="display:flex;gap:14px;margin-top:12px;color:#ddd">${row}</div>`;
+    strip.appendChild(c);
+  });
+  win.appendChild(strip);
+  function slideIcon(){ strip.style.transform=`translateX(-${Appearance.icon*100}%)`;
+    [...strip.children].forEach((c,ci)=>c.classList.toggle('active',ci===Appearance.icon)); }
+  const l=arrowBtn('chevron-left',()=>{ Appearance.icon=(Appearance.icon-1+ICON_FAMILIES.length)%ICON_FAMILIES.length; slideIcon(); });
+  const r=arrowBtn('chevron-right',()=>{ Appearance.icon=(Appearance.icon+1)%ICON_FAMILIES.length; slideIcon(); });
+  mc.append(l,win,r); iconSec.appendChild(mc);
+  requestAnimationFrame(slideIcon);
+  p.appendChild(iconSec);
+
+  const aaSec=section('Anti-aliasing','Render target multisample level');
+  const aaRow=document.createElement('div'); aaRow.className='pill-row';
+  AA_LEVELS.forEach((lvl,i)=>{
+    const b=document.createElement('div'); b.className='aa-pill'+(i===Appearance.aa?' active':'');
+    b.textContent=lvl;
+    b.addEventListener('click',()=>{ Appearance.aa=i;
+      [...aaRow.children].forEach((c,ci)=>c.classList.toggle('active',ci===i)); });
+    aaRow.appendChild(b);
+  });
+  aaSec.appendChild(aaRow); p.appendChild(aaSec);
+
+  const safe=section('Safe area padding','Inset reserved around UI content');
+  safe.appendChild(sliderRow('Padding',Appearance.safeArea,0,48,'px',v=>Appearance.safeArea=v));
+  p.appendChild(safe);
+  return p;
+}
+
+applyAppearance();
+
+/* ════════════════════════════════════════════════════════════════
+   EDGE DOCK — small relocatable drawer carrying the Asset Browser
+   A trapezoidal grip hangs off a screen edge. Tap it to toggle; drag
+   it along the perimeter to relocate (it transfers around corners, and
+   near a corner the drawer straddles both edges as an L). Wheel over
+   the grip cycles the asset category. Opens to ~a third (never full).
+   Drag assets out of the embedded browser onto the canvas.
+════════════════════════════════════════════════════════════════ */
+const dockEl   = document.getElementById('dock');
+const dockGrip = document.getElementById('dockGrip');
+const dropHint = document.getElementById('dropHint');
+const OPEN_FRAC_H=0.34, OPEN_FRAC_W=0.30;   // reveal ≈ a third (H) / a quarter-plus (W)
+
+/* asset-browser categories the island cycles through */
+const DOCK_CATS=[
+  { key:'general',  name:'Assets',    icon:'folder-open' },
+  { key:'paint',    name:'Paint',     icon:'brush' },
+  { key:'material', name:'Materials', icon:'layers' },
+  { key:'model',    name:'Models',    icon:'box' },
+  { key:'texture',  name:'Textures',  icon:'image' },
+  { key:'hdri',     name:'HDRI',      icon:'sun' },
+  { key:'brush',    name:'Brushes',   icon:'pen-tool' },
+];
+const GRIP_HALF=53;   // half the grip's along-edge length
+const dockSettings = document.getElementById('dockSettings');
+const dockMenu     = document.getElementById('dockMenu');
+const Dock={ edge:'left', open:false, offset:0, vel:0, pivot:null, startOffset:0, dragVel:0, cat:0 };
+
+function dockHoriz(){ return Dock.edge==='top'||Dock.edge==='bottom'; }
+function dockFull(){ return dockHoriz()
+  ? Math.max(220, Math.round(innerHeight*OPEN_FRAC_H))
+  : Math.max(300, Math.round(innerWidth*OPEN_FRAC_W)); }
+const ARROW={ bottom:['chevron-up','chevron-down'], top:['chevron-down','chevron-up'],
+              left:['chevron-right','chevron-left'], right:['chevron-left','chevron-right'] };
+
+function paintDock(){
+  const full=dockFull();
+  Dock.offset=Math.max(0,Math.min(full,Dock.offset));
+  const off=Dock.offset, e=Dock.edge, horiz=dockHoriz();
+  // drawer spans its whole edge, translated off-screen by (full-off)
+  dockEl.style.clipPath='';
+  dockEl.style.top=dockEl.style.bottom=dockEl.style.left=dockEl.style.right='';
+  dockEl.className='edge-'+e;
+  dockEl.style.width  = horiz? '' : full+'px';
+  dockEl.style.height = horiz? full+'px' : '';
+  dockEl.style.transform =
+      e==='bottom'?`translateY(${full-off}px)`
+    : e==='top'   ?`translateY(${-(full-off)}px)`
+    : e==='left'  ?`translateX(${-(full-off)}px)`
+    :              `translateX(${full-off}px)`;
+  // grip sits centred on its edge, riding the drawer's inner lip
+  dockGrip.className='edge-'+e;
+  dockGrip.style.left=dockGrip.style.right=dockGrip.style.top=dockGrip.style.bottom='';
+  if(horiz){
+    dockGrip.style.left=((innerWidth-GRIP_HALF*2)/2)+'px';
+    dockGrip.style[e==='bottom'?'bottom':'top']=off+'px';
+  }else{
+    dockGrip.style.top=((innerHeight-GRIP_HALF*2)/2)+'px';
+    dockGrip.style[e==='left'?'left':'right']=off+'px';
+  }
+  dockGrip.querySelector('.isl-arrow').innerHTML=`<i data-lucide="${ARROW[e][Dock.open?1:0]}" class="lico"></i>`;
+  if(window.lucide) lucide.createIcons();
+}
+function setDockEdge(edge){
+  if(edge===Dock.edge) return;
+  Dock.edge=edge;
+  Dock.offset=Dock.open?dockFull():0;
+  paintDock();
+}
+
+function paintIsland(flip){
+  const cat=DOCK_CATS[Dock.cat];
+  const ico=dockGrip.querySelector('.isl-ico');
+  ico.innerHTML=`<i data-lucide="${cat.icon}" class="lico"></i>`;
+  dockGrip.setAttribute('data-tip',cat.name);
+  if(window.lucide) lucide.createIcons();
+  if(flip){ dockGrip.classList.remove('flip'); void dockGrip.offsetWidth; dockGrip.classList.add('flip'); }
+  // tell the embedded browser which category to show
+  const frame=document.getElementById('dockFrame');
+  try{ frame.contentWindow.postMessage({type:'asset-category',category:cat.key},'*'); }catch(_){}
+}
+function cycleCat(dir){
+  Dock.cat=(Dock.cat+dir+DOCK_CATS.length)%DOCK_CATS.length;
+  paintIsland(true);
+}
+
+let dockRAF=null, dockLastT=null;
+function dockTick(t){
+  if(dockLastT==null) dockLastT=t;
+  const dt=Math.max(1e-4,Math.min(0.05,(t-dockLastT)/1000)); dockLastT=t;
+  if(Dock.pivot===null){
+    const target=Dock.open?dockFull():0;
+    const force=-SPRING_STIFF*(Dock.offset-target)-SPRING_DAMP*Dock.vel;
+    Dock.vel+=force*dt; Dock.offset+=Dock.vel*dt;
+    paintDock();
+    if(Math.abs(Dock.offset-target)<0.4 && Math.abs(Dock.vel)<0.4){
+      Dock.offset=target; Dock.vel=0; paintDock(); dockRAF=null; dockLastT=null; return;
+    }
+  }
+  dockRAF=requestAnimationFrame(dockTick);
+}
+function kickDock(){ if(dockRAF==null){ dockLastT=null; dockRAF=requestAnimationFrame(dockTick); } }
+
+// perpendicular distance of the cursor from the drawer's edge → reveal amount
+function offsetForEdge(edge,x,y){
+  if(edge==='bottom') return innerHeight-y;
+  if(edge==='top')    return y;
+  if(edge==='left')   return x;
+  return innerWidth-x;                       // right
+}
+
+function dockGripDown(e){
+  e.preventDefault();
+  Dock.pivot='grip'; Dock.dragVel=0; Dock.vel=0;
+  dockGrip.classList.add('grab');
+  const sx=e.clientX, sy=e.clientY;
+  let moved=false, lastOff=Dock.offset, lastMs=performance.now();
+  const move=(ev)=>{
+    if(!moved && Math.abs(ev.clientX-sx)+Math.abs(ev.clientY-sy)<4) return;
+    moved=true;
+    // drag perpendicular to the fixed edge pulls the drawer out / pushes it back
+    const off=Math.max(0,Math.min(dockFull(), offsetForEdge(Dock.edge,ev.clientX,ev.clientY)));
+    const now=performance.now(), dms=Math.max(1,now-lastMs);
+    Dock.dragVel=Dock.dragVel*0.6 + ((off-lastOff)/(dms/1000))*0.4;
+    Dock.offset=off; lastOff=off; lastMs=now;
+    paintDock();
+  };
+  const up=()=>{
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('mouseup',up);
+    dockGrip.classList.remove('grab');
+    if(!moved){ Dock.open=!Dock.open; }                 // tap toggles
+    else{
+      if(Dock.dragVel>FLICK_VEL) Dock.open=true;
+      else if(Dock.dragVel<-FLICK_VEL) Dock.open=false;
+      else Dock.open = Dock.offset > dockFull()*0.4;
+    }
+    Dock.pivot=null; Dock.dragVel=0; kickDock();
+  };
+  document.addEventListener('mousemove',move);
+  document.addEventListener('mouseup',up);
+}
+dockGrip.addEventListener('mousedown',dockGripDown);
+// hover + wheel cycles the asset category
+dockGrip.addEventListener('wheel',e=>{ e.preventDefault(); cycleCat(e.deltaY>0?1:-1); },{passive:false});
+// settings popup — choose which edge the dock lives on
+dockSettings.addEventListener('click',e=>{ e.stopPropagation(); toggleDockMenu(); });
+dockMenu.querySelectorAll('[data-edge]').forEach(b=>{
+  b.addEventListener('click',()=>{ setDockEdge(b.dataset.edge); closeDockMenu(); });
+});
+document.addEventListener('mousedown',e=>{
+  if(dockMenu.classList.contains('open') && !dockMenu.contains(e.target) && e.target!==dockSettings && !dockSettings.contains(e.target)) closeDockMenu();
+});
+function toggleDockMenu(){
+  if(dockMenu.classList.contains('open')){ closeDockMenu(); return; }
+  // anchor the menu just inward of the settings cog, clamped to the viewport
+  const r=dockSettings.getBoundingClientRect();
+  dockMenu.style.transform='none';
+  dockMenu.classList.add('open');
+  const mw=dockMenu.offsetWidth, mh=dockMenu.offsetHeight, gap=10;
+  let mx=r.left+r.width/2-mw/2, my;
+  if(Dock.edge==='bottom'){ my=r.top-mh-gap; }
+  else if(Dock.edge==='top'){ my=r.bottom+gap; }
+  else if(Dock.edge==='left'){ mx=r.right+gap; my=r.top+r.height/2-mh/2; }
+  else { mx=r.left-mw-gap; my=r.top+r.height/2-mh/2; }
+  mx=Math.max(8,Math.min(mx,innerWidth-mw-8));
+  my=Math.max(8,Math.min(my,innerHeight-mh-8));
+  dockMenu.style.left=mx+'px'; dockMenu.style.bottom='auto'; dockMenu.style.top=my+'px';
+  markDockMenu();
+}
+function closeDockMenu(){ dockMenu.classList.remove('open'); }
+function markDockMenu(){ dockMenu.querySelectorAll('[data-edge]').forEach(b=>b.classList.toggle('active',b.dataset.edge===Dock.edge)); }
+addEventListener('resize',()=>{ Dock.offset=Dock.open?dockFull():0; paintDock(); });
+
+/* ── asset drag-and-drop from the embedded browser onto the canvas ── */
+let lastDragAsset=null;
+window.addEventListener('message',ev=>{
+  const m=ev.data;
+  if(m && m.type==='asset-drag-start') lastDragAsset=m.asset;
+  if(m && m.type==='asset-drag-end')   setTimeout(()=>{ dropHint.style.display='none'; },60);
+});
+function overDock(t){ return t && t.closest && t.closest('#dock'); }
+function dragHasFiles(e){ return e.dataTransfer && [...e.dataTransfer.types].includes('Files'); }
+function humanBytes(b){
+  if(!b) return '0 KB'; const u=['B','KB','MB','GB']; let i=0,n=b;
+  while(n>=1024&&i<u.length-1){n/=1024;i++;}
+  return (n<10&&i>0?n.toFixed(1):Math.round(n))+' '+u[i];
+}
+function assetFromFile(file){
+  const name=file.name, dot=name.lastIndexOf('.');
+  const ext=dot>0?name.slice(dot+1).toUpperCase():'';
+  const img=/^(PNG|JPG|JPEG|GIF|WEBP|BMP|SVG|AVIF)$/.test(ext)?URL.createObjectURL(file):'';
+  return {id:'osfile'+Date.now()+Math.round(Math.random()*1e3),name,ext,cls:'file',img,size:humanBytes(file.size)};
+}
+document.addEventListener('dragover',e=>{
+  if(overDock(e.target)) return;
+  if(!lastDragAsset && !dragHasFiles(e)) return;
+  e.preventDefault();
+  if(e.dataTransfer) e.dataTransfer.dropEffect='copy';
+  dropHint.style.display='block';
+  dropHint.style.left=(e.clientX-75)+'px';
+  dropHint.style.top =(e.clientY-48)+'px';
+});
+document.addEventListener('drop',e=>{
+  if(overDock(e.target)) return;
+  // OS files dragged straight from Explorer onto the canvas
+  if(dragHasFiles(e)){
+    e.preventDefault();
+    dropHint.style.display='none'; lastDragAsset=null;
+    [...e.dataTransfer.files].slice(0,40).forEach((f,i)=>
+      spawnAsset(assetFromFile(f), e.clientX+i*18, e.clientY+i*18));
+    return;
+  }
+  let data=null;
+  try{
+    const raw=(e.dataTransfer && (e.dataTransfer.getData('application/x-frontier-asset')||e.dataTransfer.getData('text/plain')))||'';
+    if(raw) data=JSON.parse(raw);
+  }catch(_){}
+  if(!data) data=lastDragAsset;
+  dropHint.style.display='none'; lastDragAsset=null;
+  if(!data) return;
+  e.preventDefault();
+  spawnAsset(data, e.clientX, e.clientY);
+});
+
+const EXT_ICON={PNG:'image',JPG:'image',MP4:'film',PDF:'file-text',XLSX:'sheet',DOCX:'file-text',
+  TXT:'file-lock-2',ZIP:'file-archive',FIG:'figma'};
+let assets=[];
+function spawnAsset(a, clientX, clientY){
+  const r=deskRect();
+  const x=Math.max(r.left+4, Math.min(clientX-75, r.right-154));
+  const y=Math.max(r.top+4,  Math.min(clientY-48, r.bottom-130));
+  const card=document.createElement('div'); card.className='asset-card';
+  card.style.left=(x-r.left)+'px'; card.style.top=(y-r.top)+'px';
+  const ext=(a.ext||'').toUpperCase();
+  const thumb=a.img
+    ? `<div class="ac-thumb" style="background-image:url('${a.img}')"></div>`
+    : `<div class="ac-thumb"><i data-lucide="${EXT_ICON[ext]||(a.cls==='folder'?'folder':'file')}" class="lico"></i></div>`;
+  card.innerHTML=`${thumb.replace('</div>', (ext?`<span class="ac-ext">${ext}</span>`:'')+'</div>')}
+    <button class="ac-x" title="Remove"><i data-lucide="x" class="lico"></i></button>
+    <div class="ac-nm">${a.name||'Asset'}</div>`;
+  card.querySelector('.ac-x').addEventListener('mousedown',ev=>ev.stopPropagation());
+  card.querySelector('.ac-x').addEventListener('click',ev=>{ ev.stopPropagation(); card.remove(); });
+  card.addEventListener('mousedown',ev=>onAssetDown(ev,card));
+  desk.appendChild(card);
+  assets.push(card);
+  if(window.lucide) lucide.createIcons();
+}
+function onAssetDown(e,card){
+  if(e.button!==0) return;
+  e.preventDefault();
+  const sx=e.clientX, sy=e.clientY;
+  const ox=parseFloat(card.style.left), oy=parseFloat(card.style.top);
+  card.classList.add('grab');
+  const move=ev=>{
+    const r=deskRect();
+    let nx=ox+(ev.clientX-sx), ny=oy+(ev.clientY-sy);
+    nx=Math.max(0,Math.min(nx, r.width-card.offsetWidth));
+    ny=Math.max(0,Math.min(ny, r.height-card.offsetHeight));
+    card.style.left=nx+'px'; card.style.top=ny+'px';
+  };
+  const up=()=>{ card.classList.remove('grab');
+    document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); };
+  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+}
+
+/* ── BOOT ── */
+buildPicker();
+buildTray();
+paintNotch();
+paintDock();
+paintIsland(false);
+// re-assert category once the embedded browser has loaded
+document.getElementById('dockFrame').addEventListener('load',()=>paintIsland(false));
+(function boot(){
+  const r=deskRect();
+  // window A boots already split — Modelling beside UV Editor — to show the feature
+  const a={ id:nid('w'), x:r.left+70, y:r.top+70, w:680, h:420, z:++zTop,
+            tabs:[{id:nid('t'),ws:'model'},{id:nid('t'),ws:'uv'},{id:nid('t'),ws:'viewport'}], active:null,
+            shaded:false, max:false, pinned:false, pill:false, prev:null, sel:[], layout:null, focusPane:null };
+  a.active=a.tabs[0].id;
+  enterSplit(a, ['model','uv']);
+  const b={ id:nid('w'), x:r.left+800, y:r.top+170, w:420, h:300, z:++zTop,
+            tabs:[{id:nid('t'),ws:'paint'},{id:nid('t'),ws:'bake'}], active:null,
+            shaded:false, max:false, pinned:false, pill:false, prev:null, sel:[], layout:null, focusPane:null };
+  b.active=b.tabs[0].id;
+  windows.push(a,b); focusWin=a.id;
+  render();
+})();
+</script>
+</body>
+</html>

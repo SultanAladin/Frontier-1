@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Why Integrate + Shade are the two slow passes</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --dim:#8b949e;
+    --line:#30363d; --hot:#f6685e; --cool:#57c7ff; --good:#4cd07d; --warn:#e3b341; --violet:#b392f0;
+    --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 system-ui,Segoe UI,sans-serif;padding:28px;max-width:1080px;margin:auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 26px;font-size:14px}
+  .sub b{color:var(--ink)}
+  h2{font-size:16px;margin:30px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+  code{font-family:var(--mono);color:var(--cool);font-size:13px}
+  b.hot{color:var(--hot)} b.good{color:var(--good)} b.warn{color:var(--warn)} b.violet{color:var(--violet)}
+
+  /* frame timeline */
+  .timeline{display:flex;align-items:stretch;gap:3px;height:64px;margin:6px 0 4px;font:12px var(--mono)}
+  .seg{display:flex;align-items:center;justify-content:center;border-radius:5px;color:#0c0f14;font-weight:600;
+       text-align:center;padding:0 4px;overflow:hidden;white-space:nowrap}
+  .seg small{display:block;font-weight:400;opacity:.75}
+  .s-noise{background:#3d4653;color:#c9d1d9;flex:0 0 46px}
+  .s-int{background:var(--hot);flex:0 0 300px}
+  .s-shade{background:var(--warn);flex:1}
+  .axis{display:flex;justify-content:space-between;color:var(--dim);font:11px var(--mono);margin-top:2px}
+
+  /* two column what-is */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .pass{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .pass header{padding:12px 16px;font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+  .pass.int header{background:rgba(246,104,94,.14);color:var(--hot);border-bottom:1px solid var(--line)}
+  .pass.shade header{background:rgba(227,179,65,.14);color:var(--warn);border-bottom:1px solid var(--line)}
+  .pass .body{padding:14px 16px;font-size:13.5px;color:#c9d1d9}
+  .pass .body p{margin:0 0 10px}
+  .who{font:12px var(--mono);color:var(--dim);margin:2px 0 12px}
+  ul.steps{margin:8px 0 0;padding-left:0;list-style:none}
+  ul.steps li{padding:5px 0 5px 22px;position:relative;border-top:1px dashed var(--line);font-size:13px}
+  ul.steps li:before{content:"▸";position:absolute;left:4px;color:var(--dim)}
+  ul.steps li b{color:var(--ink)}
+  .ray{color:var(--hot);font-weight:600}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:12px}
+  td.n{font-family:var(--mono);color:var(--cool);text-align:right;white-space:nowrap}
+
+  .why{background:rgba(87,199,255,.07);border-left:3px solid var(--cool);padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .why b{color:var(--cool)}
+  .note{color:var(--dim);font-size:12.5px;margin-top:4px}
+  .pill{font:11px var(--mono);padding:2px 7px;border-radius:5px}
+  .p-exact{background:rgba(76,208,125,.15);color:var(--good)}
+</style>
+</head>
+<body>
+
+  <h1>The two slow passes — what they are & why they dominate</h1>
+  <p class="sub">Rendering one frame runs a chain of GPU passes. Two of them eat almost all the time:
+    <b class="hot">Integrate</b> and <b class="warn">Shade</b>. The others (slot, spawn, age) are rounding error.
+    Here is <b>what each one actually does</b>, in plain terms.</p>
+
+  <!-- ============ THE FRAME, TO SCALE ============ -->
+  <h2>1 · One frame, drawn to scale (measured GPU ms)</h2>
+  <div class="card">
+    <div class="timeline">
+      <div class="seg s-noise">slot·spawn·age<small>~noise</small></div>
+      <div class="seg s-int">INTEGRATE<small>~8.2 ms</small></div>
+      <div class="seg s-shade">SHADE<small>~7–11 ms</small></div>
+    </div>
+    <div class="axis"><span>0 ms</span><span>frame end (~16–19 ms)</span></div>
+    <p class="note">The width of each block IS its cost. The two coloured blocks are ~95% of the frame.
+      Make either one cheaper and the whole frame gets faster; touching the grey blocks does nothing.</p>
+  </div>
+
+  <!-- ============ WHAT EACH PASS IS ============ -->
+  <h2>2 · What each pass is, in one sentence</h2>
+  <div class="cols">
+
+    <div class="pass int">
+      <header>🔴 INTEGRATE — “gather light for every surfel”</header>
+      <div class="body">
+        <div class="who"><code>SurfelIntegrate.comp</code> · 1 GPU lane per <b>surfel</b></div>
+        <p>A <b>surfel</b> is a little disc of surface stuck to the world that <i>remembers how much
+           light lands on it</i>. Integrate is the pass that <b>updates that memory</b>. For every surfel,
+           it shoots a fistful of rays into the scene to ask “what light is coming at me from all directions?”,
+           averages the answers, and blends the result into the surfel’s stored value.</p>
+        <p class="note">This is the cost of computing the <b>global illumination</b> (bounced light) itself.</p>
+        <ul class="steps">
+          <li>Fire <b>~8–32 <span class="ray">rays</span></b> into the hemisphere (SLG-guided)</li>
+          <li>Each ray <b><span class="ray">traces the BVH</span></b> to find what it hit</li>
+          <li>At each hit: albedo × sun light — and a <b><span class="ray">sun-shadow ray</span></b></li>
+          <li>Plus a <b>one-bounce gather</b> reading neighbour surfels</li>
+          <li>Fold the frame’s estimate into stored moments (temporal average)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pass shade">
+      <header>🟡 SHADE — “colour every pixel on screen”</header>
+      <div class="body">
+        <div class="who"><code>SurfaceShade.frag</code> · 1 GPU lane per <b>screen pixel</b></div>
+        <p>Shade is the pass that <b>paints the final image you see</b>. For every pixel, it figures out
+           which surface is there, looks up the nearby surfels’ stored light (the GI from Integrate),
+           adds the direct sun, and writes the colour. This is where the sun’s <b>hard shadows</b> get traced.</p>
+        <p class="note">This is the cost of <b>displaying</b> the lighting, not computing the bounce.</p>
+        <ul class="steps">
+          <li>Decode which surface & material this pixel is (visibility buffer)</li>
+          <li>Look up surfel GI around the point</li>
+          <li>Add direct sun — fire <b>N <span class="ray">sun-shadow rays</span></b> across the sun disc</li>
+          <li>Combine, tonemap, write the pixel</li>
+        </ul>
+        <p class="note" style="margin-top:10px">“view-varying” = its cost changes with the camera — more visible
+           shadowed surface ⇒ more shadow rays ⇒ 7 ms one frame, 11 ms the next.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ WHY THEY'RE SLOW ============ -->
+  <h2>3 · Why THESE two, and not the others</h2>
+  <div class="card">
+    <table>
+      <tr><th>Pass</th><th>Runs once per…</th><th>Rays it fires</th><th class="n">Cost</th></tr>
+      <tr><td>slot / spawn / age</td><td>surfel (bookkeeping only)</td><td>none — just sorts & counters</td><td class="n">~noise</td></tr>
+      <tr><td><b class="hot">Integrate</b></td><td><b>surfel</b> (tens of thousands)</td><td><b class="hot">8–32 bounce + 1 sun each</b></td><td class="n">8.2 ms</td></tr>
+      <tr><td><b class="warn">Shade</b></td><td><b>pixel</b> (millions)</td><td><b class="warn">N sun-shadow each</b></td><td class="n">7–11 ms</td></tr>
+    </table>
+    <p class="note" style="margin-top:12px">The pattern: <b>the slow passes are the ones that trace rays.</b>
+      Ray tracing walks a tree of the whole scene per ray — that’s hundreds of steps. Slot/spawn/age only
+      shuffle numbers, so they’re free by comparison. <b class="hot">Integrate</b> is slow because there are
+      many surfels × many rays. <b class="warn">Shade</b> is slow because there are <i>millions</i> of pixels,
+      each firing sun rays.</p>
+  </div>
+
+  <!-- ============ THE CONNECTION TO THE SHADOW PLAN ============ -->
+  <h2>4 · Why the shadow plan attacks this problem</h2>
+  <div class="why">
+    <p style="margin:0 0 8px"><b>Both hot passes fire sun-shadow rays.</b> Integrate fires one per bounce hit;
+      Shade fires N per pixel. So the <b>any-hit + adaptive-penumbra</b> work isn’t a side quest — it directly
+      shrinks <i>both</i> red and amber blocks at once. <span class="pill p-exact">exact · no quality loss</span></p>
+    <table>
+      <tr><th>Shadow lever</th><th>Helps Integrate?</th><th>Helps Shade?</th></tr>
+      <tr><td>Any-hit early-out (stop at 1st blocker)</td><td><b class="good">yes</b> — the sun ray per hit</td><td><b class="good">yes</b> — all N rays</td></tr>
+      <tr><td>Adaptive penumbra (1 ray in flat areas)</td><td>— (already 1 ray)</td><td><b class="good">yes</b> — N→1 in flat areas</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <p style="margin:0"><b class="violet">But shadows aren’t the whole story.</b> Integrate’s biggest cost is the
+      <b>8–32 bounce rays</b> and the moment-folding — the shadow ray is just one line inside that loop. So the
+      shadow plan is <b>step one</b>; the deeper Integrate win is fewer / cheaper bounce rays (temporal reuse,
+      ray reduction) — that’s the part still fully open.</p>
+  </div>
+
+  <p class="note" style="margin-top:24px">TL;DR — <b class="hot">Integrate</b> = compute the bounced light (per surfel, many rays).
+    <b class="warn">Shade</b> = paint it to the screen (per pixel, sun-shadow rays). Both are ray-bound, which is
+    why they’re slow and why shadow-ray optimisation hits both. Bounce-ray reduction in Integrate is the next frontier.</p>
+
+</body>
+</html>

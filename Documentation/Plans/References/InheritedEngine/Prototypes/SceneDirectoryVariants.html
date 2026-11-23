@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontier — Scene Directory Variants</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --accent:#5b8cff;
+    --bg:#0a0a0b;
+    --bg-panel:#0d0d0f;
+    --bg-header:#111113;
+    --border:#1c1c20;
+    --border-soft:#161618;
+    --text:#d8d8dc;
+    --text-dim:#8a8a92;
+    --text-faint:#5a5a62;
+    --row-hover:#161618;
+    --row-active:#242428;
+    --search-bg:#141416;
+    --indent:18px;
+
+    --panel-bg:     #131315;
+    --panel-head:   #1b1b1e;
+    --value-bg:     #232326;
+    --value-focus:  #303035;
+    --text-primary: #e9e9ec;
+    --text-muted:   #7b7b82;
+    --prop-radius:  14px;
+    --value-radius: 11px;
+
+    --rail-bg:      #08080a;
+    --topbar-h:     34px;
+    --footer-h:     30px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  html{ background:#050506; overflow:hidden; }
+  body{
+    background:#050506;
+    font-family:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column;
+    height:100vh; width:100vw; overflow:hidden;
+    user-select:none;
+  }
+
+  /* ══════════════════ VARIANT PICKER (harness chrome, not part of any design) ══════════════════ */
+  .picker{
+    flex:0 0 auto; height:44px; display:flex; align-items:center; gap:8px;
+    padding:0 14px; background:var(--rail-bg); border-bottom:1px solid var(--border);
+  }
+  .picker .brand{ font-size:11px; letter-spacing:1.4px; text-transform:uppercase; font-weight:700;
+    color:var(--text-faint); margin-right:6px; }
+  .pk{
+    display:flex; align-items:center; gap:7px; height:28px; padding:0 12px;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:8px;
+    color:var(--text-dim); font-size:12px; font-family:inherit; cursor:pointer; transition:.13s;
+  }
+  .pk:hover{ color:var(--text); border-color:#2e2e38; }
+  .pk.on{ background:color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color:var(--accent); color:var(--text-primary); }
+  .pk .num{ font-weight:700; opacity:.6; font-size:10.5px; }
+  .picker .hint{ margin-left:auto; font-size:11px; color:var(--text-faint); letter-spacing:.3px; }
+  .picker .hint kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:10px; color:var(--text-dim); }
+
+  /* ══════════════════ STAGE: the viewport every variant floats over ══════════════════ */
+  .stage{ position:relative; flex:1; min-height:0; overflow:hidden; background:#0b0b0d; }
+  .grid-floor{ position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+      linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size:26px 26px, 26px 26px, 130px 130px, 130px 130px;
+    mask-image:radial-gradient(ellipse 78% 68% at 50% 52%, #000 32%, transparent 100%);
+  }
+  .stage-glow{ position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse 60% 50% at 50% 45%, rgba(91,140,255,.055), transparent 70%); }
+  .vp-note{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    text-align:center; pointer-events:none; }
+  .vp-note .vn-big{ font-size:12px; letter-spacing:2.6px; text-transform:uppercase;
+    color:#2b2b31; font-weight:700; }
+  .vp-note .vn-sub{ font-size:11px; color:#24242a; margin-top:7px; letter-spacing:.5px; }
+  /* a fake selected body so selection feedback is visible in the viewport */
+  .ghost-body{ position:absolute; left:50%; top:50%; width:120px; height:120px;
+    transform:translate(-50%,-50%) rotate(45deg) skewY(-12deg);
+    border:1.5px solid rgba(91,140,255,.5); border-radius:6px;
+    background:linear-gradient(150deg, rgba(91,140,255,.10), rgba(91,140,255,.02));
+    box-shadow:0 0 40px rgba(91,140,255,.12); transition:.35s cubic-bezier(.4,0,.2,1); opacity:0; }
+  .ghost-body.lit{ opacity:1; }
+  .ghost-tag{ position:absolute; left:50%; top:calc(50% + 92px); transform:translateX(-50%);
+    font-size:11px; letter-spacing:.6px; color:var(--accent); opacity:0; transition:.25s; }
+  .ghost-tag.lit{ opacity:.85; }
+
+  .variant{ display:none; }
+  .variant.live{ display:block; }
+  /* the label each variant stamps in the corner of the stage */
+  .vlabel{ position:absolute; left:16px; bottom:14px; z-index:5; pointer-events:none;
+    font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:#33333a; font-weight:700; }
+  .vlabel em{ font-style:normal; color:#27272d; letter-spacing:.4px; text-transform:none;
+    display:block; margin-top:4px; font-weight:400; font-size:11px; max-width:340px; line-height:1.5; }
+
+  /* shared: type-icon glyph box */
+  .ti{ width:16px; height:16px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+    color:var(--text-dim); }
+  .ti.grp{ color:#6c6c76; }
+  .ti.sel{ color:var(--accent); }
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#1e1e22;border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:#2a2a30}
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ① SPINE — 30px icon rail welded to the viewport edge, expands as an overlay.
+        Idle cost: 30px. The tree never displaces the viewport; it floats over it.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .spine-mount{ position:absolute; left:0; top:0; bottom:0; z-index:20; display:flex; }
+  .spine{
+    width:30px; flex:0 0 30px; background:var(--rail-bg);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 0;
+  }
+  .sp-cap{ width:16px; height:16px; margin-bottom:6px; color:var(--text-faint); }
+  .sp-dot{
+    width:22px; height:22px; border-radius:6px; display:grid; place-items:center;
+    color:var(--text-faint); cursor:pointer; transition:.12s; position:relative;
+  }
+  .sp-dot:hover{ background:var(--tool-hover,#17171c); color:var(--text); }
+  .sp-dot.sel{ color:var(--accent); }
+  .sp-dot.sel::before{ content:''; position:absolute; left:-4px; top:4px; bottom:4px; width:2px;
+    background:var(--accent); border-radius:1px; }
+  /* depth is encoded as a horizontal inset on the dot, so the rail still reads as a tree */
+  .sp-dot[data-d="1"]{ margin-left:5px }
+  .sp-dot[data-d="2"]{ margin-left:10px }
+  .sp-sep{ width:12px; height:1px; background:var(--border); margin:5px 0; }
+  .sp-count{ margin-top:auto; font-size:9px; color:#33333a; font-weight:700;
+    writing-mode:vertical-rl; letter-spacing:1px; }
+
+  .spine-sheet{
+    width:0; overflow:hidden; background:rgba(13,13,15,.93);
+    backdrop-filter:blur(18px) saturate(140%); -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border-right:1px solid var(--border); transition:width .22s cubic-bezier(.4,0,.2,1);
+    display:flex; flex-direction:column;
+  }
+  .spine-mount:hover .spine-sheet, .spine-mount.pinned .spine-sheet{ width:236px; }
+  .ss-head{ flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:11px 12px 9px;
+    border-bottom:1px solid var(--border-soft); }
+  .ss-head .t{ font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700;
+    color:var(--text-faint); flex:1; white-space:nowrap; }
+  .ss-pin{ width:20px; height:20px; display:grid; place-items:center; border-radius:5px;
+    color:var(--text-faint); cursor:pointer; transition:.12s; }
+  .ss-pin:hover{ background:var(--value-bg); color:var(--text); }
+  .spine-mount.pinned .ss-pin{ color:var(--accent); }
+  .ss-body{ flex:1; overflow-y:auto; padding:5px 0 8px; }
+  .ss-foot{ flex:0 0 auto; height:26px; display:flex; align-items:center; padding:0 12px;
+    border-top:1px solid var(--border-soft); font-size:10px; color:#3a3a42; letter-spacing:.5px;
+    white-space:nowrap; }
+
+  /* generic compact tree row, reused by ①③⑤ */
+  .r{ display:flex; align-items:center; gap:6px; height:25px; padding-right:9px;
+    font-size:12.5px; cursor:pointer; position:relative; white-space:nowrap; color:var(--text); }
+  .r:hover{ background:var(--row-hover) }
+  .r.sel{ background:var(--row-active) }
+  .r.sel::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--accent) }
+  .r .tw{ width:13px; height:13px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+    color:var(--text-faint); transition:transform .13s; }
+  .r .tw svg{ width:8px; height:8px }
+  .r .tw.cl{ transform:rotate(-90deg) }
+  .r .tw.leaf{ visibility:hidden }
+  .r .nm{ flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .r.dim .nm, .r.dim .ti{ opacity:.4 }
+  .r .eye{ opacity:0; color:var(--text-faint); display:flex; padding:1px; border-radius:3px; }
+  .r:hover .eye{ opacity:1 }
+  .r .eye:hover{ color:var(--text) }
+  .r.dim .eye{ opacity:1 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ② TRAVERSE BAR — the tree flattened to a single 32px band: enclosure path on the
+        left, siblings of the current tier as chips on the right. Zero vertical tree.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .traverse{
+    position:absolute; left:0; right:0; top:0; z-index:20; height:34px;
+    display:flex; align-items:center; gap:0; padding:0 10px;
+    background:rgba(17,17,19,.92); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--border);
+  }
+  .tv-ic{ width:16px; height:16px; color:var(--text-faint); margin-right:9px; flex:0 0 auto; }
+  .tv-path{ display:flex; align-items:center; gap:1px; flex:0 0 auto; }
+  .tv-crumb{ display:flex; align-items:center; gap:5px; height:22px; padding:0 8px; border-radius:6px;
+    font-size:12px; color:var(--text-dim); cursor:pointer; transition:.12s; white-space:nowrap; }
+  .tv-crumb:hover{ background:var(--value-bg); color:var(--text) }
+  .tv-crumb.tip{ color:var(--text-primary); font-weight:600;
+    background:color-mix(in srgb, var(--accent) 14%, transparent); }
+  .tv-sl{ color:#2f2f36; font-size:11px; flex:0 0 auto; }
+  .tv-div{ width:1px; height:16px; background:var(--border); margin:0 11px; flex:0 0 auto; }
+  .tv-sibs{ display:flex; align-items:center; gap:5px; flex:1; min-width:0; overflow-x:auto;
+    scrollbar-width:none; }
+  .tv-sibs::-webkit-scrollbar{ display:none }
+  .tv-chip{ display:flex; align-items:center; gap:6px; height:23px; padding:0 9px 0 7px; flex:0 0 auto;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:7px;
+    font-size:11.5px; color:var(--text-dim); cursor:pointer; transition:.12s; white-space:nowrap; }
+  .tv-chip:hover{ border-color:#2e2e38; color:var(--text) }
+  .tv-chip.sel{ background:color-mix(in srgb, var(--accent) 18%, transparent);
+    border-color:var(--accent); color:var(--text-primary); }
+  .tv-chip.grp{ padding-right:5px }
+  .tv-chip .into{ color:var(--text-faint); display:flex; margin-left:1px }
+  .tv-chip.dim{ opacity:.42 }
+  .tv-tail{ display:flex; align-items:center; gap:8px; flex:0 0 auto; margin-left:10px;
+    font-size:10.5px; color:#3a3a42; letter-spacing:.4px; }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ③ RADIAL DIAL — summoned at the cursor (right-click the stage). Enclosure at the
+        centre, its contents on the ring. Zero resting footprint.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .dial-veil{ position:absolute; inset:0; z-index:30; display:none; }
+  .dial-veil.up{ display:block }
+  .dial{ position:absolute; width:0; height:0; }
+  .dial-core{
+    position:absolute; left:-46px; top:-46px; width:92px; height:92px; border-radius:50%;
+    background:rgba(19,19,21,.95); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border); box-shadow:0 16px 44px rgba(0,0,0,.66);
+    display:grid; place-items:center; text-align:center; cursor:pointer; transition:.13s;
+  }
+  .dial-core:hover{ border-color:#2e2e38 }
+  .dial-core .dc-ic{ color:var(--text-faint); margin-bottom:3px }
+  .dial-core .dc-nm{ font-size:10.5px; font-weight:600; color:var(--text-primary); max-width:74px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dial-core .dc-up{ font-size:8.5px; letter-spacing:1px; text-transform:uppercase; color:#3d3d45;
+    margin-top:2px; }
+  .dial-spoke{
+    position:absolute; display:flex; align-items:center; gap:7px; height:28px; padding:0 11px;
+    background:rgba(19,19,21,.95); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--border); border-radius:14px; box-shadow:0 10px 26px rgba(0,0,0,.5);
+    font-size:12px; color:var(--text-dim); cursor:pointer; white-space:nowrap;
+    transform:translate(-50%,-50%) scale(.6); opacity:0;
+    transition:transform .2s cubic-bezier(.34,1.4,.5,1), opacity .16s, background .12s, border-color .12s;
+  }
+  .dial-veil.up .dial-spoke{ transform:translate(-50%,-50%) scale(1); opacity:1 }
+  .dial-spoke:hover{ background:#22222a; color:var(--text); border-color:#33333c }
+  .dial-spoke.sel{ background:color-mix(in srgb, var(--accent) 22%, #131315);
+    border-color:var(--accent); color:var(--text-primary); }
+  .dial-spoke .kb{ font-size:9px; color:#3d3d45; font-weight:700 }
+  .dial-spoke .into{ color:var(--text-faint); display:flex }
+  .dial-hint{ position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
+    font-size:11px; color:#2e2e34; letter-spacing:.5px; }
+  .dial-hint b{ color:#4a4a52; font-weight:600 }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ④ JUMP PALETTE — ⌘K-style. No tree at rest; type to filter the linearized
+        directory, arrows to walk it, Enter to select. Zero resting footprint.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .jump-veil{ position:absolute; inset:0; z-index:30; display:none;
+    background:rgba(5,5,6,.55); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+  .jump-veil.up{ display:block }
+  .jump{
+    position:absolute; left:50%; top:78px; transform:translateX(-50%);
+    width:520px; max-width:calc(100% - 40px);
+    background:rgba(19,19,21,.96); backdrop-filter:blur(24px) saturate(140%);
+    -webkit-backdrop-filter:blur(24px) saturate(140%);
+    border:1px solid #2a2a30; border-radius:14px; box-shadow:0 26px 70px rgba(0,0,0,.7);
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .jm-in{ display:flex; align-items:center; gap:11px; padding:14px 16px;
+    border-bottom:1px solid var(--border-soft); }
+  .jm-in svg{ color:var(--text-faint); flex:0 0 auto }
+  .jm-in input{ flex:1; background:none; border:none; outline:none; color:var(--text);
+    font-size:14.5px; font-family:inherit; }
+  .jm-in input::placeholder{ color:#3d3d45 }
+  .jm-in .esc{ font-size:9.5px; letter-spacing:.8px; color:#3d3d45; background:var(--value-bg);
+    border:1px solid var(--border); border-radius:5px; padding:2px 6px; font-weight:600; }
+  .jm-list{ max-height:326px; overflow-y:auto; padding:6px }
+  .jm-sec{ font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:#3a3a42;
+    font-weight:700; padding:9px 10px 5px; }
+  .jm-row{ display:flex; align-items:center; gap:10px; height:34px; padding:0 10px; border-radius:8px;
+    cursor:pointer; font-size:13px; }
+  .jm-row.cur{ background:color-mix(in srgb, var(--accent) 16%, transparent) }
+  .jm-row.cur .jm-nm{ color:var(--text-primary) }
+  .jm-nm{ flex:0 0 auto; color:var(--text) }
+  .jm-nm mark{ background:none; color:var(--accent); font-weight:700 }
+  .jm-path{ flex:1; min-width:0; font-size:11px; color:#3d3d45; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  .jm-tag{ flex:0 0 auto; font-size:9.5px; letter-spacing:.7px; text-transform:uppercase;
+    color:var(--text-faint); background:var(--value-bg); border-radius:5px; padding:2px 6px; }
+  .jm-empty{ padding:26px 16px; text-align:center; color:#3a3a42; font-size:12px }
+  .jm-foot{ display:flex; align-items:center; gap:14px; padding:8px 14px;
+    border-top:1px solid var(--border-soft); font-size:10px; color:#3a3a42; letter-spacing:.4px; }
+  .jm-foot kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:9.5px; color:var(--text-faint); margin-right:4px; }
+  /* the resting trigger: one small pill, bottom-centre */
+  .jump-trig{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:20;
+    display:flex; align-items:center; gap:8px; height:28px; padding:0 12px;
+    background:rgba(19,19,21,.9); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--border); border-radius:14px; cursor:pointer; transition:.13s;
+    font-size:11.5px; color:var(--text-faint); }
+  .jump-trig:hover{ border-color:#2e2e38; color:var(--text-dim) }
+  .jump-trig kbd{ background:var(--value-bg); border:1px solid var(--border); border-radius:4px;
+    padding:1px 5px; font-family:inherit; font-size:9.5px; }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑤ CORNER CARD — a small draggable pane in the viewport's top-right corner.
+        Collapses to a 150px title pill. Never touches the left/right edges.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .card-mount{ position:absolute; right:14px; top:14px; z-index:20; width:220px;
+    background:rgba(19,19,21,.92); backdrop-filter:blur(20px) saturate(140%);
+    -webkit-backdrop-filter:blur(20px) saturate(140%);
+    border:1px solid var(--border); border-radius:12px; box-shadow:0 18px 46px rgba(0,0,0,.55);
+    overflow:hidden; transition:width .2s cubic-bezier(.4,0,.2,1); }
+  .card-mount.shut{ width:154px }
+  .cd-head{ display:flex; align-items:center; gap:8px; height:32px; padding:0 8px 0 11px;
+    cursor:grab; border-bottom:1px solid var(--border-soft); }
+  .card-mount.shut .cd-head{ border-bottom-color:transparent }
+  .cd-head:active{ cursor:grabbing }
+  .cd-head .g{ color:var(--text-faint); display:flex; flex:0 0 auto }
+  .cd-head .t{ flex:1; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase;
+    font-weight:700; color:var(--text-faint); white-space:nowrap; }
+  .cd-head .n{ font-size:9.5px; color:#3a3a42; font-weight:700; flex:0 0 auto }
+  .cd-x{ width:19px; height:19px; display:grid; place-items:center; border-radius:5px;
+    color:var(--text-faint); cursor:pointer; flex:0 0 auto; transition:.12s }
+  .cd-x:hover{ background:var(--value-bg); color:var(--text) }
+  .cd-x svg{ transition:transform .2s }
+  .card-mount.shut .cd-x svg{ transform:rotate(-90deg) }
+  .cd-body{ max-height:290px; overflow-y:auto; padding:4px 0 6px }
+  .card-mount.shut .cd-body{ display:none }
+
+  /* ═══════════════════════════════════════════════════════════════════════════════
+     ⑥ DEPTH COLUMNS — only the tiers you have drilled into exist, each a narrow
+        180px column, anchored to the bottom edge. Depth-1 view = one column.
+     ═══════════════════════════════════════════════════════════════════════════════ */
+  .cols-mount{ position:absolute; left:14px; bottom:14px; z-index:20; display:flex;
+    align-items:flex-end; gap:8px; }
+  .col{
+    width:178px; background:rgba(19,19,21,.92);
+    backdrop-filter:blur(20px) saturate(140%); -webkit-backdrop-filter:blur(20px) saturate(140%);
+    border:1px solid var(--border); border-radius:11px; box-shadow:0 16px 40px rgba(0,0,0,.5);
+    overflow:hidden; display:flex; flex-direction:column;
+    animation:colin .19s cubic-bezier(.34,1.3,.5,1);
+  }
+  @keyframes colin{ from{ opacity:0; transform:translateX(-14px) } to{ opacity:1; transform:none } }
+  .col-head{ flex:0 0 auto; display:flex; align-items:center; gap:7px; height:29px;
+    padding:0 10px; border-bottom:1px solid var(--border-soft); }
+  .col-head .t{ flex:1; font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase;
+    font-weight:700; color:var(--text-faint); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; }
+  .col-head .n{ font-size:9.5px; color:#33333a; font-weight:700 }
+  .col-body{ max-height:250px; overflow-y:auto; padding:4px 0 5px }
+  .cr{ display:flex; align-items:center; gap:7px; height:26px; padding:0 9px 0 10px;
+    font-size:12.5px; color:var(--text); cursor:pointer; position:relative; white-space:nowrap; }
+  .cr:hover{ background:var(--row-hover) }
+  .cr.sel{ background:var(--row-active) }
+  .cr.sel::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+    background:var(--accent) }
+  .cr.open{ background:color-mix(in srgb, var(--accent) 11%, transparent) }
+  .cr .nm{ flex:1; overflow:hidden; text-overflow:ellipsis }
+  .cr .into{ color:var(--text-faint); display:flex; flex:0 0 auto }
+  .cr.dim .nm, .cr.dim .ti{ opacity:.4 }
+</style>
+</head>
+<body>
+
+<!-- ══ shared glyph sprite: one <use> per node classification ══ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="g-scene"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".55"/></g>
+  <g id="g-folder"><path d="M3 6.5A1.5 1.5 0 014.5 5h4l2 2.5h7A1.5 1.5 0 0119 9v8.5a1.5 1.5 0 01-1.5 1.5h-13A1.5 1.5 0 013 17.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></g>
+  <g id="g-solid"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-cylinder"><ellipse cx="12" cy="6.5" rx="7" ry="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 6.5v11c0 1.66 3.13 3 7 3s7-1.34 7-3v-11" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-sphere"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><ellipse cx="12" cy="12" rx="8.5" ry="3.4" fill="none" stroke="currentColor" stroke-width="1.3" opacity=".65"/></g>
+  <g id="g-cone"><path d="M12 3l7.5 15h-15z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><ellipse cx="12" cy="18" rx="7.5" ry="2.8" fill="none" stroke="currentColor" stroke-width="1.4" opacity=".7"/></g>
+  <g id="g-sketch"><path d="M4 20c3-1 5-3.5 6.5-7S13 6 16 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="4" cy="20" r="1.7" fill="currentColor"/><circle cx="16" cy="4" r="1.7" fill="currentColor"/></g>
+  <g id="g-revolve"><path d="M12 3v18" stroke="currentColor" stroke-width="1.4" opacity=".55" stroke-dasharray="2.5 2.5"/><path d="M12 5c4 0 7 3.1 7 7s-3 7-7 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M9 7l3-2 3 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></g>
+  <g id="g-loft"><path d="M4 18h16M7 6h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M4 18L7 6M20 18L17 6" stroke="currentColor" stroke-width="1.5"/></g>
+  <g id="g-eye"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></g>
+  <g id="g-eye-off"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></g>
+  <g id="g-chev"><path d="M1 3l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-right"><path d="M3.5 1.5l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="g-layers"><rect x="3" y="4" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="10" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="16" width="18" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></g>
+  <g id="g-search"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></g>
+  <g id="g-pin"><path d="M12 3v9M12 12l-4 4v2h8v-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 18v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></g>
+  <g id="g-grip"><circle cx="9" cy="7" r="1.4" fill="currentColor"/><circle cx="15" cy="7" r="1.4" fill="currentColor"/><circle cx="9" cy="12" r="1.4" fill="currentColor"/><circle cx="15" cy="12" r="1.4" fill="currentColor"/><circle cx="9" cy="17" r="1.4" fill="currentColor"/><circle cx="15" cy="17" r="1.4" fill="currentColor"/></g>
+  <g id="g-up"><path d="M12 20V6M6 12l6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></g>
+</defs></svg>
+
+<!-- ══════════════ harness: variant picker ══════════════ -->
+<div class="picker" id="picker">
+  <span class="brand">Scene Directory</span>
+</div>
+
+<!-- ══════════════ the stage ══════════════ -->
+<div class="stage" id="stage">
+  <div class="grid-floor"></div>
+  <div class="stage-glow"></div>
+  <div class="ghost-body" id="ghostBody"></div>
+  <div class="ghost-tag" id="ghostTag"></div>
+  <div class="vp-note">
+    <div class="vn-big">Viewport</div>
+    <div class="vn-sub">the outliner must never eat this space</div>
+  </div>
+  <div class="vlabel" id="vlabel"></div>
+
+  <!-- ① SPINE -->
+  <div class="variant" id="v1">
+    <div class="spine-mount" id="spineMount">
+      <div class="spine" id="spine"></div>
+      <div class="spine-sheet">
+        <div class="ss-head">
+          <span class="t">Directory</span>
+          <span class="ss-pin" id="spinePin" title="Pin open">
+            <svg width="13" height="13" viewBox="0 0 24 24"><use href="#g-pin"/></svg>
+          </span>
+        </div>
+        <div class="ss-body" id="spineTree"></div>
+        <div class="ss-foot" id="spineFoot"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② TRAVERSE BAR -->
+  <div class="variant" id="v2">
+    <div class="traverse">
+      <span class="tv-ic"><svg width="16" height="16" viewBox="0 0 24 24"><use href="#g-layers"/></svg></span>
+      <div class="tv-path" id="tvPath"></div>
+      <div class="tv-div"></div>
+      <div class="tv-sibs" id="tvSibs"></div>
+      <div class="tv-tail" id="tvTail"></div>
+    </div>
+  </div>
+
+  <!-- ③ RADIAL DIAL -->
+  <div class="variant" id="v3">
+    <div class="dial-hint">Right-click anywhere &nbsp;·&nbsp; <b>centre</b> steps out &nbsp;·&nbsp; <b>ring</b> steps in</div>
+    <div class="dial-veil" id="dialVeil">
+      <div class="dial" id="dial"></div>
+    </div>
+  </div>
+
+  <!-- ④ JUMP PALETTE -->
+  <div class="variant" id="v4">
+    <div class="jump-trig" id="jumpTrig">
+      <svg width="13" height="13" viewBox="0 0 24 24"><use href="#g-search"/></svg>
+      Jump to body <kbd>Ctrl K</kbd>
+    </div>
+    <div class="jump-veil" id="jumpVeil">
+      <div class="jump" id="jump">
+        <div class="jm-in">
+          <svg width="17" height="17" viewBox="0 0 24 24"><use href="#g-search"/></svg>
+          <input type="text" id="jumpInput" placeholder="Jump to body, sketch or group…" autocomplete="off" spellcheck="false">
+          <span class="esc">ESC</span>
+        </div>
+        <div class="jm-list" id="jumpList"></div>
+        <div class="jm-foot">
+          <span><kbd>↑↓</kbd>walk</span><span><kbd>↵</kbd>select</span>
+          <span><kbd>H</kbd>toggle visibility</span><span><kbd>esc</kbd>dismiss</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤ CORNER CARD -->
+  <div class="variant" id="v5">
+    <div class="card-mount" id="cardMount">
+      <div class="cd-head" id="cardHead">
+        <span class="g"><svg width="13" height="13" viewBox="0 0 24 24"><use href="#g-grip"/></svg></span>
+        <span class="t">Directory</span>
+        <span class="n" id="cardCount"></span>
+        <span class="cd-x" id="cardShut" title="Collapse">
+          <svg width="11" height="11" viewBox="0 0 10 10"><use href="#g-chev"/></svg>
+        </span>
+      </div>
+      <div class="cd-body" id="cardTree"></div>
+    </div>
+  </div>
+
+  <!-- ⑥ DEPTH COLUMNS -->
+  <div class="variant" id="v6">
+    <div class="cols-mount" id="colsMount"></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   SHARED DIRECTORY STORE — one tree, six presentations. Same shape as the outliner
+   in CadModellingInterface.html so a port carries straight across.
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TokenCounter = 0;
+const IssueToken = () => 'n' + (++TokenCounter);
+
+const DirectoryRoot = [
+  { RecordToken:IssueToken(), Label:'Part', Classification:'scene', FoldOpen:true, SubtreeRegion:[
+    { RecordToken:IssueToken(), Label:'Sketches', Classification:'folder', FoldOpen:true, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'SK_BasePlate', Classification:'sketch', SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SK_BoltHoles', Classification:'sketch', SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'SK_RibProfile', Classification:'sketch', SubtreeRegion:[] },
+    ]},
+    { RecordToken:IssueToken(), Label:'Bodies', Classification:'folder', FoldOpen:true, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'BODY_Bracket', Classification:'folder', FoldOpen:true, SubtreeRegion:[
+        { RecordToken:IssueToken(), Label:'SOL_Plate', Classification:'solid', SubtreeRegion:[] },
+        { RecordToken:IssueToken(), Label:'SOL_Boss', Classification:'cylinder', SubtreeRegion:[] },
+        { RecordToken:IssueToken(), Label:'SOL_Rib', Classification:'solid', SubtreeRegion:[] },
+        { RecordToken:IssueToken(), Label:'FIL_Edges', Classification:'revolve', SubtreeRegion:[] },
+      ]},
+      { RecordToken:IssueToken(), Label:'BODY_Housing', Classification:'folder', FoldOpen:false, SubtreeRegion:[
+        { RecordToken:IssueToken(), Label:'SOL_Wall', Classification:'solid', SubtreeRegion:[] },
+        { RecordToken:IssueToken(), Label:'SOL_Dome', Classification:'sphere', SubtreeRegion:[] },
+        { RecordToken:IssueToken(), Label:'LFT_Neck', Classification:'loft', SubtreeRegion:[] },
+      ]},
+      { RecordToken:IssueToken(), Label:'SOL_Spindle', Classification:'cylinder', VisibilityEnabled:false, SubtreeRegion:[] },
+    ]},
+    { RecordToken:IssueToken(), Label:'Construction', Classification:'folder', FoldOpen:false, SubtreeRegion:[
+      { RecordToken:IssueToken(), Label:'PLN_Datum', Classification:'sketch', SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'AX_Revolve', Classification:'revolve', VisibilityEnabled:false, SubtreeRegion:[] },
+      { RecordToken:IssueToken(), Label:'CON_Taper', Classification:'cone', SubtreeRegion:[] },
+    ]},
+  ]},
+];
+
+/* ── traversal + resolution ───────────────────────────────────────────────────── */
+function TraverseDirectory(Region, Visit, EnclosureEntry=null, DepthTier=0){
+  for(const Entry of Region){
+    Visit(Entry, EnclosureEntry, DepthTier);
+    if(Entry.SubtreeRegion) TraverseDirectory(Entry.SubtreeRegion, Visit, Entry, DepthTier+1);
+  }
+}
+function ResolveEntry(Token, Region=DirectoryRoot, EnclosureEntry=null){
+  for(const Entry of Region){
+    if(Entry.RecordToken===Token) return { Entry, EnclosureEntry };
+    if(Entry.SubtreeRegion){
+      const Found = ResolveEntry(Token, Entry.SubtreeRegion, Entry);
+      if(Found) return Found;
+    }
+  }
+  return null;
+}
+function ResolveEnclosurePath(Token){
+  const Path = [];
+  (function Descend(Region, Trail){
+    for(const Entry of Region){
+      const Extended = Trail.concat(Entry);
+      if(Entry.RecordToken===Token){ Path.push(...Extended); return true; }
+      if(Entry.SubtreeRegion && Descend(Entry.SubtreeRegion, Extended)) return true;
+    }
+    return false;
+  })(DirectoryRoot, []);
+  return Path;
+}
+const GroupCondition = (Entry) => !!(Entry.SubtreeRegion && Entry.SubtreeRegion.length);
+const VisibleCondition = (Entry) => Entry.VisibilityEnabled !== false;
+
+function DirectoryStatistics(){
+  let Groups=0, Bodies=0, Concealed=0;
+  TraverseDirectory(DirectoryRoot, (Entry)=>{
+    if(GroupCondition(Entry)) Groups++; else Bodies++;
+    if(!VisibleCondition(Entry)) Concealed++;
+  });
+  return { Groups, Bodies, Concealed };
+}
+
+/* ── shared selection ─────────────────────────────────────────────────────────── */
+let SelectedToken = null;
+const GlyphMarkup = (Classification, Size=15) =>
+  `<svg width="${Size}" height="${Size}" viewBox="0 0 24 24"><use href="#g-${Classification}"/></svg>`;
+
+function ApplySelection(Token){
+  SelectedToken = Token;
+  const Resolved = Token ? ResolveEntry(Token) : null;
+  const Ghost = document.getElementById('ghostBody');
+  const Tag   = document.getElementById('ghostTag');
+  if(Resolved && !GroupCondition(Resolved.Entry)){
+    Ghost.classList.add('lit'); Tag.classList.add('lit');
+    Tag.textContent = Resolved.Entry.Label;
+  } else if(Resolved){
+    Ghost.classList.add('lit'); Tag.classList.add('lit');
+    Tag.textContent = Resolved.Entry.Label + '  ·  ' + Resolved.Entry.SubtreeRegion.length + ' inside';
+  } else {
+    Ghost.classList.remove('lit'); Tag.classList.remove('lit');
+  }
+  RenderActiveVariant();
+}
+function ToggleVisibility(Token){
+  const Resolved = ResolveEntry(Token);
+  if(!Resolved) return;
+  Resolved.Entry.VisibilityEnabled = !VisibleCondition(Resolved.Entry);
+  RenderActiveVariant();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ① SPINE
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const SpineMount = document.getElementById('spineMount');
+document.getElementById('spinePin').onclick = (Signal)=>{
+  Signal.stopPropagation(); SpineMount.classList.toggle('pinned');
+};
+
+function RenderSpine(){
+  /* the rail: one dot per entry in the flattened open directory, depth as inset */
+  const Rail = document.getElementById('spine');
+  const Sheet = document.getElementById('spineTree');
+  const Linear = LinearizeOpenDirectory();
+  Rail.innerHTML =
+    `<span class="sp-cap"><svg width="16" height="16" viewBox="0 0 24 24"><use href="#g-layers"/></svg></span>`;
+  Sheet.innerHTML = '';
+
+  for(const { Entry, DepthTier } of Linear){
+    const Dot = document.createElement('div');
+    Dot.className = 'sp-dot' + (Entry.RecordToken===SelectedToken ? ' sel' : '');
+    Dot.dataset.d = Math.min(DepthTier, 2);
+    Dot.style.opacity = VisibleCondition(Entry) ? '' : '.35';
+    Dot.title = Entry.Label;
+    Dot.innerHTML = GlyphMarkup(Entry.Classification, 13);
+    Dot.onclick = ()=> ApplySelection(Entry.RecordToken);
+    Rail.appendChild(Dot);
+
+    Sheet.appendChild(BuildCompactRow(Entry, DepthTier, RenderSpine));
+  }
+  const Statistics = DirectoryStatistics();
+  Rail.insertAdjacentHTML('beforeend',
+    `<span class="sp-count">${Statistics.Bodies}</span>`);
+  document.getElementById('spineFoot').innerHTML =
+    `${Statistics.Groups} groups · ${Statistics.Bodies} bodies` +
+    (Statistics.Concealed ? ` · ${Statistics.Concealed} hidden` : '');
+}
+
+/* the flattened list of everything currently unfolded */
+function LinearizeOpenDirectory(){
+  const Sequence = [];
+  (function Descend(Region, DepthTier){
+    for(const Entry of Region){
+      Sequence.push({ Entry, DepthTier });
+      if(GroupCondition(Entry) && Entry.FoldOpen) Descend(Entry.SubtreeRegion, DepthTier+1);
+    }
+  })(DirectoryRoot, 0);
+  return Sequence;
+}
+
+/* one compact row, shared by ① and ⑤ */
+function BuildCompactRow(Entry, DepthTier, Repaint){
+  const Group = GroupCondition(Entry);
+  const Row = document.createElement('div');
+  Row.className = 'r' + (Entry.RecordToken===SelectedToken ? ' sel' : '')
+                      + (VisibleCondition(Entry) ? '' : ' dim');
+  Row.style.paddingLeft = (7 + DepthTier * 12) + 'px';
+  Row.innerHTML =
+    `<span class="tw ${Group ? (Entry.FoldOpen?'':'cl') : 'leaf'}">
+       <svg viewBox="0 0 10 10"><use href="#g-chev"/></svg></span>
+     <span class="ti ${Group?'grp':''} ${Entry.RecordToken===SelectedToken?'sel':''}">
+       ${GlyphMarkup(Entry.Classification, 15)}</span>
+     <span class="nm">${Entry.Label}</span>
+     <span class="eye"><svg width="13" height="13" viewBox="0 0 24 24">
+       <use href="#g-eye${VisibleCondition(Entry)?'':'-off'}"/></svg></span>`;
+  Row.querySelector('.tw').onclick = (Signal)=>{
+    Signal.stopPropagation();
+    if(Group){ Entry.FoldOpen = !Entry.FoldOpen; Repaint(); }
+  };
+  Row.querySelector('.eye').onclick = (Signal)=>{
+    Signal.stopPropagation(); ToggleVisibility(Entry.RecordToken);
+  };
+  Row.onclick = ()=> ApplySelection(Entry.RecordToken);
+  return Row;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ② TRAVERSE BAR
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let TraverseFocusToken = DirectoryRoot[0].SubtreeRegion[1].RecordToken;  /* Bodies */
+
+function RenderTraverse(){
+  const Focus = ResolveEntry(TraverseFocusToken);
+  const Path  = ResolveEnclosurePath(TraverseFocusToken);
+  const PathBand = document.getElementById('tvPath');
+  const SibBand  = document.getElementById('tvSibs');
+  PathBand.innerHTML = ''; SibBand.innerHTML = '';
+
+  Path.forEach((Entry, Index)=>{
+    if(Index) PathBand.insertAdjacentHTML('beforeend', `<span class="tv-sl">/</span>`);
+    const Crumb = document.createElement('span');
+    Crumb.className = 'tv-crumb' + (Index===Path.length-1 ? ' tip' : '');
+    Crumb.innerHTML = `<span class="ti grp">${GlyphMarkup(Entry.Classification,14)}</span>${Entry.Label}`;
+    Crumb.onclick = ()=>{ TraverseFocusToken = Entry.RecordToken; ApplySelection(Entry.RecordToken); };
+    PathBand.appendChild(Crumb);
+  });
+
+  const Contents = Focus ? Focus.Entry.SubtreeRegion : DirectoryRoot;
+  for(const Entry of Contents){
+    const Group = GroupCondition(Entry);
+    const Chip = document.createElement('span');
+    Chip.className = 'tv-chip' + (Group?' grp':'')
+                   + (Entry.RecordToken===SelectedToken?' sel':'')
+                   + (VisibleCondition(Entry)?'':' dim');
+    Chip.innerHTML = `<span class="ti">${GlyphMarkup(Entry.Classification,14)}</span>${Entry.Label}`
+      + (Group ? `<span class="into"><svg width="9" height="9" viewBox="0 0 11 11"><use href="#g-right"/></svg></span>` : '');
+    Chip.onclick = ()=>{
+      ApplySelection(Entry.RecordToken);
+      if(Group) TraverseFocusToken = Entry.RecordToken;
+    };
+    SibBand.appendChild(Chip);
+  }
+  const Statistics = DirectoryStatistics();
+  document.getElementById('tvTail').textContent =
+    `${Contents.length} here · ${Statistics.Bodies} total`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ③ RADIAL DIAL
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const DialVeil = document.getElementById('dialVeil');
+const DialBody = document.getElementById('dial');
+let DialFocusToken = DirectoryRoot[0].SubtreeRegion[1].RecordToken;
+
+function SummonDial(ScreenX, ScreenY){
+  DialBody.style.left = ScreenX + 'px';
+  DialBody.style.top  = ScreenY + 'px';
+  DialVeil.classList.add('up');
+  RenderDial();
+}
+function DismissDial(){ DialVeil.classList.remove('up'); }
+
+function RenderDial(){
+  const Focus = ResolveEntry(DialFocusToken);
+  const Contents = Focus ? Focus.Entry.SubtreeRegion : DirectoryRoot;
+  const Enclosure = Focus ? Focus.EnclosureEntry : null;
+  DialBody.innerHTML = '';
+
+  /* centre = current enclosure; clicking it steps out one tier */
+  const Core = document.createElement('div');
+  Core.className = 'dial-core';
+  Core.innerHTML =
+    `<div>
+       <div class="dc-ic">${GlyphMarkup(Focus ? Focus.Entry.Classification : 'scene', 21)}</div>
+       <div class="dc-nm">${Focus ? Focus.Entry.Label : 'Part'}</div>
+       <div class="dc-up">${Enclosure ? 'step out' : 'root'}</div>
+     </div>`;
+  Core.onclick = (Signal)=>{
+    Signal.stopPropagation();
+    if(Enclosure){ DialFocusToken = Enclosure.RecordToken; RenderDial(); }
+    else if(Focus){ ApplySelection(Focus.Entry.RecordToken); DismissDial(); }
+  };
+  DialBody.appendChild(Core);
+
+  /* ring = contents, laid out on a circle sized to the population */
+  const Population = Contents.length;
+  const RingRadius = 118 + Math.max(0, Population-5) * 7;
+  const SweepStart = -Math.PI/2;
+  Contents.forEach((Entry, Index)=>{
+    const Angle = SweepStart + (Index / Population) * Math.PI * 2;
+    const Group = GroupCondition(Entry);
+    const Spoke = document.createElement('div');
+    Spoke.className = 'dial-spoke' + (Entry.RecordToken===SelectedToken?' sel':'');
+    Spoke.style.left = (Math.cos(Angle) * RingRadius) + 'px';
+    Spoke.style.top  = (Math.sin(Angle) * RingRadius * 0.82) + 'px';
+    Spoke.style.transitionDelay = (Index * 14) + 'ms';
+    Spoke.style.opacity = VisibleCondition(Entry) ? '' : '.45';
+    Spoke.innerHTML =
+      `<span class="ti">${GlyphMarkup(Entry.Classification,15)}</span>${Entry.Label}` +
+      (Group ? `<span class="into"><svg width="9" height="9" viewBox="0 0 11 11"><use href="#g-right"/></svg></span>`
+             : `<span class="kb">${Index+1}</span>`);
+    Spoke.onclick = (Signal)=>{
+      Signal.stopPropagation();
+      ApplySelection(Entry.RecordToken);
+      if(Group){ DialFocusToken = Entry.RecordToken; RenderDial(); }
+      else DismissDial();
+    };
+    DialBody.appendChild(Spoke);
+  });
+}
+DialVeil.onclick = DismissDial;
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ④ JUMP PALETTE
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const JumpVeil  = document.getElementById('jumpVeil');
+const JumpInput = document.getElementById('jumpInput');
+const JumpList  = document.getElementById('jumpList');
+let JumpCursor = 0, JumpMatches = [];
+
+function SummonJump(){
+  JumpVeil.classList.add('up');
+  JumpInput.value = ''; JumpCursor = 0;
+  RenderJump(); JumpInput.focus();
+}
+function DismissJump(){ JumpVeil.classList.remove('up'); JumpInput.blur(); }
+document.getElementById('jumpTrig').onclick = SummonJump;
+JumpVeil.onclick = (Signal)=>{ if(Signal.target===JumpVeil) DismissJump(); };
+
+/* subsequence match — "slp" hits SOL_Plate */
+function SubsequenceScore(Label, Query){
+  if(!Query) return { Score:0, Marks:[] };
+  const Lowered = Label.toLowerCase(); let Cursor = 0; const Marks = [];
+  for(const Character of Query.toLowerCase()){
+    const Found = Lowered.indexOf(Character, Cursor);
+    if(Found < 0) return null;
+    Marks.push(Found); Cursor = Found + 1;
+  }
+  return { Score: Marks[0] * 2 + (Marks[Marks.length-1] - Marks[0]), Marks };
+}
+function HighlightLabel(Label, Marks){
+  if(!Marks.length) return Label;
+  let Out = '', Previous = 0;
+  for(const Position of Marks){
+    Out += Label.slice(Previous, Position) + '<mark>' + Label[Position] + '</mark>';
+    Previous = Position + 1;
+  }
+  return Out + Label.slice(Previous);
+}
+
+function RenderJump(){
+  const Query = JumpInput.value.trim();
+  const Candidates = [];
+  TraverseDirectory(DirectoryRoot, (Entry)=>{
+    const Match = SubsequenceScore(Entry.Label, Query);
+    if(Query && !Match) return;
+    Candidates.push({ Entry, Score: Match ? Match.Score : 0, Marks: Match ? Match.Marks : [] });
+  });
+  Candidates.sort((Left,Right)=> Left.Score - Right.Score);
+  JumpMatches = Candidates;
+  if(JumpCursor >= Candidates.length) JumpCursor = Math.max(0, Candidates.length-1);
+
+  if(!Candidates.length){
+    JumpList.innerHTML = `<div class="jm-empty">Nothing in the directory matches “${Query}”.</div>`;
+    return;
+  }
+  JumpList.innerHTML = `<div class="jm-sec">${Query ? Candidates.length+' matches' : 'Whole directory'}</div>`;
+  Candidates.forEach((Candidate, Index)=>{
+    const { Entry, Marks } = Candidate;
+    const Trail = ResolveEnclosurePath(Entry.RecordToken).slice(0,-1).map(Step=>Step.Label).join(' / ');
+    const Row = document.createElement('div');
+    Row.className = 'jm-row' + (Index===JumpCursor ? ' cur' : '');
+    Row.innerHTML =
+      `<span class="ti ${GroupCondition(Entry)?'grp':''}">${GlyphMarkup(Entry.Classification,16)}</span>
+       <span class="jm-nm">${HighlightLabel(Entry.Label, Marks)}</span>
+       <span class="jm-path">${Trail}</span>
+       <span class="jm-tag">${VisibleCondition(Entry) ? Entry.Classification : 'hidden'}</span>`;
+    Row.onmousemove = ()=>{ if(JumpCursor!==Index){ JumpCursor=Index; RenderJump(); } };
+    Row.onclick = ()=>{ ApplySelection(Entry.RecordToken); DismissJump(); };
+    JumpList.appendChild(Row);
+  });
+  const Current = JumpList.querySelector('.jm-row.cur');
+  if(Current) Current.scrollIntoView({ block:'nearest' });
+}
+JumpInput.oninput = ()=>{ JumpCursor = 0; RenderJump(); };
+JumpInput.onkeydown = (Signal)=>{
+  if(Signal.key==='ArrowDown'){ Signal.preventDefault(); JumpCursor = Math.min(JumpCursor+1, JumpMatches.length-1); RenderJump(); }
+  else if(Signal.key==='ArrowUp'){ Signal.preventDefault(); JumpCursor = Math.max(JumpCursor-1, 0); RenderJump(); }
+  else if(Signal.key==='Enter'){
+    const Chosen = JumpMatches[JumpCursor];
+    if(Chosen){ ApplySelection(Chosen.Entry.RecordToken); DismissJump(); }
+  }
+  else if(Signal.key==='Escape'){ DismissJump(); }
+  else if(Signal.key.toLowerCase()==='h' && Signal.ctrlKey){
+    Signal.preventDefault();
+    const Chosen = JumpMatches[JumpCursor];
+    if(Chosen){ ToggleVisibility(Chosen.Entry.RecordToken); RenderJump(); }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑤ CORNER CARD
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const CardMount = document.getElementById('cardMount');
+document.getElementById('cardShut').onclick = (Signal)=>{
+  Signal.stopPropagation(); CardMount.classList.toggle('shut');
+};
+/* drag by the header — the card is free-floating, it owns no dock */
+(function AttachCardDrag(){
+  const Handle = document.getElementById('cardHead');
+  let Dragging = false, GrabX = 0, GrabY = 0, OriginRight = 14, OriginTop = 14;
+  Handle.onmousedown = (Signal)=>{
+    if(Signal.target.closest('.cd-x')) return;
+    Dragging = true; GrabX = Signal.clientX; GrabY = Signal.clientY;
+    OriginRight = parseFloat(CardMount.style.right || 14);
+    OriginTop   = parseFloat(CardMount.style.top   || 14);
+    Signal.preventDefault();
+  };
+  window.addEventListener('mousemove', (Signal)=>{
+    if(!Dragging) return;
+    CardMount.style.right = Math.max(6, OriginRight - (Signal.clientX - GrabX)) + 'px';
+    CardMount.style.top   = Math.max(6, OriginTop  + (Signal.clientY - GrabY)) + 'px';
+  });
+  window.addEventListener('mouseup', ()=>{ Dragging = false; });
+})();
+
+function RenderCard(){
+  const Body = document.getElementById('cardTree');
+  Body.innerHTML = '';
+  for(const { Entry, DepthTier } of LinearizeOpenDirectory())
+    Body.appendChild(BuildCompactRow(Entry, DepthTier, RenderCard));
+  const Statistics = DirectoryStatistics();
+  document.getElementById('cardCount').textContent = Statistics.Bodies;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   ⑥ DEPTH COLUMNS
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+let ColumnTrail = [ DirectoryRoot[0].RecordToken, DirectoryRoot[0].SubtreeRegion[1].RecordToken ];
+
+function RenderColumns(){
+  const Mount = document.getElementById('colsMount');
+  Mount.innerHTML = '';
+
+  /* tier 0 is the root region; each drilled token appends one more column */
+  const Tiers = [{ Label:'Directory', Contents:DirectoryRoot }];
+  for(const Token of ColumnTrail){
+    const Resolved = ResolveEntry(Token);
+    if(Resolved && GroupCondition(Resolved.Entry))
+      Tiers.push({ Label:Resolved.Entry.Label, Contents:Resolved.Entry.SubtreeRegion });
+  }
+
+  Tiers.forEach((Tier, TierIndex)=>{
+    const Column = document.createElement('div');
+    Column.className = 'col';
+    Column.innerHTML =
+      `<div class="col-head"><span class="t">${Tier.Label}</span>
+         <span class="n">${Tier.Contents.length}</span></div>
+       <div class="col-body"></div>`;
+    const Body = Column.querySelector('.col-body');
+
+    for(const Entry of Tier.Contents){
+      const Group = GroupCondition(Entry);
+      const OpenedHere = ColumnTrail[TierIndex] === Entry.RecordToken;
+      const Row = document.createElement('div');
+      Row.className = 'cr' + (Entry.RecordToken===SelectedToken?' sel':'')
+                    + (OpenedHere?' open':'') + (VisibleCondition(Entry)?'':' dim');
+      Row.innerHTML =
+        `<span class="ti ${Group?'grp':''}">${GlyphMarkup(Entry.Classification,15)}</span>
+         <span class="nm">${Entry.Label}</span>` +
+        (Group ? `<span class="into"><svg width="9" height="9" viewBox="0 0 11 11"><use href="#g-right"/></svg></span>` : '');
+      Row.onclick = ()=>{
+        /* drilling truncates the trail at this tier, so columns never pile up */
+        ColumnTrail = ColumnTrail.slice(0, TierIndex);
+        if(Group) ColumnTrail.push(Entry.RecordToken);
+        ApplySelection(Entry.RecordToken);
+      };
+      Body.appendChild(Row);
+    }
+    Mount.appendChild(Column);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════════
+   VARIANT HARNESS
+   ═══════════════════════════════════════════════════════════════════════════════════ */
+const VariantTable = [
+  { Key:'v1', Name:'Spine',        Caption:'30px icon rail on the edge — hover expands a tree overlay <em>over</em> the viewport, never displacing it. Pin to keep it open.',        Repaint:RenderSpine },
+  { Key:'v2', Name:'Traverse bar', Caption:'The whole tree collapsed into one 34px band: enclosure path on the left, contents of the current tier as chips. No vertical dock at all.', Repaint:RenderTraverse },
+  { Key:'v3', Name:'Radial dial',  Caption:'Zero resting footprint — right-click the viewport to summon it at the cursor. Centre steps out a tier, ring steps in.',                    Repaint:RenderDial },
+  { Key:'v4', Name:'Jump palette', Caption:'Zero resting footprint. Ctrl-K, then fuzzy-type a name — "slp" reaches SOL_Plate. Arrows walk, Enter selects.',                            Repaint:RenderJump },
+  { Key:'v5', Name:'Corner card',  Caption:'A small free-floating pane you drag anywhere; collapses to a 154px title pill. Owns no dock and no edge.',                                 Repaint:RenderCard },
+  { Key:'v6', Name:'Depth columns',Caption:'Only the tiers you drilled into exist — each a 178px column pinned to the bottom edge. Backing out removes columns.',                      Repaint:RenderColumns },
+];
+let ActiveVariant = 0;
+
+function RenderActiveVariant(){ VariantTable[ActiveVariant].Repaint(); }
+
+function ActivateVariant(Index){
+  ActiveVariant = Index;
+  VariantTable.forEach((Variant, Position)=>{
+    document.getElementById(Variant.Key).classList.toggle('live', Position===Index);
+  });
+  document.querySelectorAll('.pk').forEach((Button, Position)=>
+    Button.classList.toggle('on', Position===Index));
+  const Variant = VariantTable[Index];
+  document.getElementById('vlabel').innerHTML =
+    `${Index+1} — ${Variant.Name}<em>${Variant.Caption}</em>`;
+  DismissDial(); DismissJump();
+  RenderActiveVariant();
+}
+
+const Picker = document.getElementById('picker');
+VariantTable.forEach((Variant, Index)=>{
+  const Button = document.createElement('button');
+  Button.className = 'pk';
+  Button.innerHTML = `<span class="num">${Index+1}</span>${Variant.Name}`;
+  Button.onclick = ()=> ActivateVariant(Index);
+  Picker.appendChild(Button);
+});
+Picker.insertAdjacentHTML('beforeend',
+  `<span class="hint"><kbd>1</kbd>–<kbd>6</kbd> switch · variant-specific triggers shown on the stage</span>`);
+
+/* stage-level triggers */
+document.getElementById('stage').addEventListener('contextmenu', (Signal)=>{
+  if(ActiveVariant!==2) return;
+  Signal.preventDefault();
+  const Bounds = document.getElementById('stage').getBoundingClientRect();
+  SummonDial(Signal.clientX - Bounds.left, Signal.clientY - Bounds.top);
+});
+window.addEventListener('keydown', (Signal)=>{
+  if(Signal.target===JumpInput) return;
+  if(Signal.key>='1' && Signal.key<='6'){ ActivateVariant(+Signal.key - 1); return; }
+  if((Signal.ctrlKey||Signal.metaKey) && Signal.key.toLowerCase()==='k'){
+    Signal.preventDefault(); ActivateVariant(3); SummonJump();
+  }
+  if(Signal.key==='Escape'){ DismissDial(); DismissJump(); }
+});
+
+ApplySelection(ResolveEnclosurePath(DirectoryRoot[0].RecordToken).length
+  ? DirectoryRoot[0].SubtreeRegion[1].SubtreeRegion[0].SubtreeRegion[0].RecordToken : null);
+ActivateVariant(0);
+</script>
+</body>
+</html>

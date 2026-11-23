@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Game Engine Editor — Icon Library</title>
+<style>
+  :root{
+    --bg:#0d0d10; --panel:#15151a; --border:#24242c;
+    --txt:#e6e6ea; --dim:#8a8a94; --head:#fff;
+  }
+  html,body{background:var(--bg);color:var(--txt);
+    font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;margin:0;padding:28px}
+  h1{color:var(--head);font-size:22px;font-weight:700;margin:0 0 4px}
+  p.sub{color:var(--dim);max-width:720px;margin:0 0 24px}
+  h2{color:var(--head);font-size:15px;font-weight:600;margin:30px 0 12px;
+     border-left:3px solid #4db3ff;padding-left:10px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .cell{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+        padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:9px;
+        transition:border-color .15s, transform .15s}
+  .cell:hover{border-color:#3a3a46;transform:translateY(-2px)}
+  .cell svg{width:52px;height:52px;display:block}
+  .cap{font-size:11px;color:var(--dim);text-align:center;line-height:1.3}
+  .cap b{display:block;color:var(--txt);font-weight:600;font-size:11.5px;margin-bottom:1px}
+  footer{color:#55555e;margin-top:40px;font-size:11px;border-top:1px solid var(--border);padding-top:14px}
+  /* small-size preview strip */
+  .strip{display:flex;gap:6px;margin-top:6px}
+  .strip svg{width:18px;height:18px}
+</style>
+</head>
+<body>
+<h1>Game Engine Editor — Icon Library</h1>
+<p class="sub">A comprehensive outliner / content-browser icon set. Every entity type ships with
+<b>3 genuinely distinct variants</b> — different silhouettes and construction, not recolors.
+Colorful, minimal, ergonomic, with soft depth (gradients + subtle shadow) so they read at 16px and scale cleanly. Each icon lives in a single <code>&lt;svg&gt;</code> and uses namespaced gradient IDs so nothing collides when you paste them into your engine's UI.</p>
+
+<div id="root"></div>
+
+<footer>Game Engine Editor Icon Pack · 3 distinct variants per entity · colorful 2D w/ depth · self-contained SVG · procedural grid.</footer>
+
+<script>
+/* ============================================================================
+   ICON LIBRARY
+   Each icon is a function(id) -> inner SVG markup, drawn in a 0 0 24 24 viewBox.
+   `id` makes all <defs> ids unique so multiple icons coexist on one page.
+   Helper `g()` builds a linear gradient; `rg()` a radial one.
+   ============================================================================ */
+
+function g(id, stops, x1=0,y1=0,x2=0,y2=1){
+  const s = stops.map(([o,c])=>`<stop offset="${o}" stop-color="${c}"/>`).join('');
+  return `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${s}</linearGradient>`;
+}
+function rg(id, stops, cx=.5,cy=.4,r=.7){
+  const s = stops.map(([o,c])=>`<stop offset="${o}" stop-color="${c}"/>`).join('');
+  return `<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}">${s}</radialGradient>`;
+}
+
+/* ---- palette tokens ---------------------------------------------------- */
+const P = {
+  blue:['#6fc3ff','#2b7fe0'], blueD:['#4aa6f0','#1b5fb8'],
+  cyan:['#6ff0e0','#18b8a6'], teal:['#4fe0c8','#0f9e8c'],
+  green:['#9be86b','#3fae35'], greenD:['#7ad469','#2e8f3f'],
+  amber:['#ffd36b','#f5992b'], orange:['#ffb057','#f2711c'],
+  red:['#ff8a8a','#e23b4b'], rose:['#ff9ac0','#e0407f'],
+  violet:['#c3a8ff','#7c4dff'], purple:['#b884ff','#8433e0'],
+  gray:['#c8ccd6','#7c8494'], slate:['#9aa4b6','#5a6478'],
+  yellow:['#ffe27a','#f5c518'], pink:['#ffa3d1','#f062a6'],
+  lime:['#d4f56b','#8fc31f'], sky:['#8fd8ff','#4aa6ff'],
+  ink:['#3a4152','#1c2130'],
+};
+
+/* ======================= CAMERAS ======================= */
+const CAMERAS = {
+  'Perspective Cam': (id)=>`
+    <defs>${g(id+'a',P.blue)}${g(id+'b',P.blueD,0,0,1,1)}</defs>
+    <path d="M3 7.5 L13.5 6 A1.6 1.6 0 0 1 15 7.6 V15.4 A1.6 1.6 0 0 1 13.5 17 L3 15.5 A1.5 1.5 0 0 1 1.7 14 V9 A1.5 1.5 0 0 1 3 7.5 Z" fill="url(#${id}a)"/>
+    <path d="M15 9.3 L21 6.6 A.9 .9 0 0 1 22.3 7.4 V15.6 A.9 .9 0 0 1 21 16.4 L15 13.7 Z" fill="url(#${id}b)"/>
+    <circle cx="8" cy="11.5" r="3" fill="#0d1b2e" opacity=".55"/>
+    <circle cx="8" cy="11.5" r="1.5" fill="#8fd8ff"/>
+    <circle cx="4.5" cy="8.6" r=".9" fill="#ffe27a"/>`,
+
+  'Orthographic Cam': (id)=>`
+    <defs>${g(id+'a',P.teal)}${g(id+'b',P.cyan,0,0,1,0)}</defs>
+    <rect x="3" y="5" width="12" height="14" rx="1.6" fill="url(#${id}a)"/>
+    <rect x="3" y="5" width="12" height="4.5" fill="#ffffff" opacity=".14"/>
+    <path d="M15 8.5 L21.4 5.2 A.7 .7 0 0 1 22.4 5.8 V18.2 A.7 .7 0 0 1 21.4 18.8 L15 15.5 Z" fill="url(#${id}b)"/>
+    <rect x="5.4" y="8" width="7.2" height="8" rx="1" fill="#0d2b2a" opacity=".5"/>
+    <path d="M7 12 h4 M9 10 v4" stroke="#c9fff8" stroke-width="1.1" stroke-linecap="round"/>`,
+
+  'Cine / Film Cam': (id)=>`
+    <defs>${g(id+'a',P.violet)}${g(id+'b',P.purple,0,0,1,1)}</defs>
+    <rect x="2.5" y="8" width="12.5" height="10" rx="1.8" fill="url(#${id}a)"/>
+    <circle cx="6.5" cy="5.5" r="2.8" fill="none" stroke="url(#${id}b)" stroke-width="1.6"/>
+    <circle cx="11.5" cy="5.5" r="2.8" fill="none" stroke="url(#${id}b)" stroke-width="1.6"/>
+    <circle cx="6.5" cy="5.5" r="1" fill="#e6d4ff"/><circle cx="11.5" cy="5.5" r="1" fill="#e6d4ff"/>
+    <path d="M15 11 L21.5 8 A.7 .7 0 0 1 22.5 8.6 V17.4 A.7 .7 0 0 1 21.5 18 L15 15 Z" fill="url(#${id}b)"/>
+    <circle cx="8.7" cy="13" r="2.3" fill="#1a0f30" opacity=".55"/>
+    <circle cx="8.7" cy="13" r="1" fill="#d8c0ff"/>`,
+};
+
+/* ======================= LIGHTS ======================= */
+const LIGHTS = {
+  'Point Light': (id)=>`
+    <defs>${rg(id+'a',[['0','#fff7cf'],['.5','#ffd85e'],['1','#f59b1c']])}</defs>
+    <g stroke="#ffcf5e" stroke-width="1.6" stroke-linecap="round">
+      <path d="M12 1.5 v3M12 22.5v-3M1.5 12h3M22.5 12h-3M4.5 4.5l2 2M19.5 4.5l-2 2M4.5 19.5l2-2M19.5 19.5l-2-2"/>
+    </g>
+    <circle cx="12" cy="12" r="5.6" fill="url(#${id}a)"/>
+    <circle cx="10.3" cy="10.3" r="1.6" fill="#fffdf2" opacity=".8"/>`,
+
+  'Directional Light': (id)=>`
+    <defs>${g(id+'a',P.amber,0,0,1,1)}</defs>
+    <circle cx="7" cy="7" r="4.6" fill="url(#${id}a)"/>
+    <circle cx="5.6" cy="5.6" r="1.3" fill="#fffdf0" opacity=".85"/>
+    <g stroke="#f5b942" stroke-width="1.7" stroke-linecap="round">
+      <path d="M13.5 13.5 L21 21"/><path d="M16 12 L22 18"/><path d="M12 16 L18 22"/>
+    </g>
+    <path d="M21 21 l-4.4 .4 l.4 -4.4 Z" fill="#f5992b"/>`,
+
+  'Spot Light': (id)=>`
+    <defs>${g(id+'a',P.yellow)}${g(id+'b',[['0','#fff7cf'],['1','rgba(255,215,94,0)']],0,0,0,1)}</defs>
+    <rect x="8.5" y="1.8" width="7" height="4.4" rx="1.4" fill="url(#${id}a)"/>
+    <ellipse cx="12" cy="6.2" rx="3.5" ry="1.2" fill="#fff3b0"/>
+    <path d="M8.5 6.2 L3.5 21 A.6 .6 0 0 0 4.1 21.8 H19.9 A.6 .6 0 0 0 20.5 21 L15.5 6.2 Z" fill="url(#${id}b)"/>
+    <ellipse cx="12" cy="21" rx="8" ry="1.6" fill="#ffe27a" opacity=".55"/>`,
+};
+
+/* ======================= AUDIO (emitters) ======================= */
+const AUDIO = {
+  'Ambient Audio': (id)=>`
+    <defs>${g(id+'a',P.green,0,0,1,1)}</defs>
+    <path d="M3 9 H6.5 L11 5 A.8 .8 0 0 1 12.3 5.6 V18.4 A.8 .8 0 0 1 11 19 L6.5 15 H3 A1 1 0 0 1 2 14 V10 A1 1 0 0 1 3 9 Z" fill="url(#${id}a)"/>
+    <g fill="none" stroke="#a8f078" stroke-width="1.6" stroke-linecap="round">
+      <path d="M15 8.5 a5 5 0 0 1 0 7"/><path d="M17.5 6 a8.5 8.5 0 0 1 0 12"/>
+      <path d="M20 3.5 a12 12 0 0 1 0 17"/>
+    </g>`,
+
+  'Sound Cue / 3D': (id)=>`
+    <defs>${rg(id+'a',[['0','#8ff0e6'],['.6','#2fd0c0'],['1','#0f9e8c']])}</defs>
+    <circle cx="12" cy="12" r="5.5" fill="url(#${id}a)"/>
+    <path d="M9.5 9.5 h1.4 l1.8 -1.6 v8.2 l-1.8 -1.6 h-1.4 A.8 .8 0 0 1 8.7 13.7 v-3.4 A.8 .8 0 0 1 9.5 9.5 Z" fill="#083b38"/>
+    <g fill="none" stroke="#4fe0c8" stroke-width="1.3" opacity=".8">
+      <circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="11" opacity=".45"/>
+    </g>`,
+
+  'Reverb Zone': (id)=>`
+    <defs>${g(id+'a',P.lime,0,0,1,1)}</defs>
+    <rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="url(#${id}a)" stroke-width="1.7" stroke-dasharray="3.2 2.4"/>
+    <g fill="none" stroke="#c8f04a" stroke-width="1.5" stroke-linecap="round">
+      <path d="M8 12 a4 4 0 0 1 8 0"/><path d="M6 12 a6 6 0 0 1 12 0" opacity=".55"/>
+    </g>
+    <circle cx="12" cy="12" r="1.6" fill="#8fc31f"/>`,
+};
+
+/* ======================= AUDIO FILES (content browser) ======================= */
+const AUDIO_FILES = {
+  'WAV File': (id)=>`
+    <defs>${g(id+'a',P.blue)}</defs>
+    <path d="M6 2 h8 l5 5 v13 a2 2 0 0 1 -2 2 H6 a2 2 0 0 1 -2 -2 V4 a2 2 0 0 1 2 -2 Z" fill="url(#${id}a)"/>
+    <path d="M14 2 v5 h5 Z" fill="#ffffff" opacity=".3"/>
+    <g stroke="#fff" stroke-width="1.5" stroke-linecap="round" opacity=".95">
+      <path d="M8 14 v-2M10 15 v-4M12 16.5 v-7M14 15 v-4M16 14 v-2"/>
+    </g>`,
+
+  'MP3 File': (id)=>`
+    <defs>${g(id+'a',P.rose)}</defs>
+    <path d="M6 2 h8 l5 5 v13 a2 2 0 0 1 -2 2 H6 a2 2 0 0 1 -2 -2 V4 a2 2 0 0 1 2 -2 Z" fill="url(#${id}a)"/>
+    <path d="M14 2 v5 h5 Z" fill="#ffffff" opacity=".3"/>
+    <circle cx="10" cy="16" r="2" fill="#fff"/>
+    <path d="M12 16 V9 l4 -1 v6" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="14" cy="15" r="2" fill="#fff"/>`,
+
+  'OGG File': (id)=>`
+    <defs>${g(id+'a',P.violet)}</defs>
+    <path d="M6 2 h8 l5 5 v13 a2 2 0 0 1 -2 2 H6 a2 2 0 0 1 -2 -2 V4 a2 2 0 0 1 2 -2 Z" fill="url(#${id}a)"/>
+    <path d="M14 2 v5 h5 Z" fill="#ffffff" opacity=".3"/>
+    <circle cx="11.5" cy="15" r="4.4" fill="none" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="11.5" cy="15" r="1.4" fill="#fff"/>`,
+};
+
+/* ======================= FOLDERS ======================= */
+const FOLDERS = {
+  'Audio Folder': (id)=>`
+    <defs>${g(id+'a',P.amber)}${g(id+'b',P.orange,0,0,1,1)}</defs>
+    <path d="M2.5 6 A1.5 1.5 0 0 1 4 4.5 H9 l2 2 H20 A1.5 1.5 0 0 1 21.5 8 V9 H2.5 Z" fill="url(#${id}b)"/>
+    <path d="M2.5 8.5 H21.5 A1 1 0 0 1 22.5 9.6 L21 19 A1.6 1.6 0 0 1 19.4 20.4 H4.6 A1.6 1.6 0 0 1 3 19 L1.5 9.6 A1 1 0 0 1 2.5 8.5 Z" fill="url(#${id}a)"/>
+    <path d="M11 17 v-4 l4 -1 v4" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="10" cy="17" r="1.3" fill="#fff"/><circle cx="14.4" cy="16" r="1.3" fill="#fff"/>`,
+
+  'Open Folder': (id)=>`
+    <defs>${g(id+'a',P.sky)}${g(id+'b',P.blueD,0,0,1,1)}</defs>
+    <path d="M2.5 6 A1.5 1.5 0 0 1 4 4.5 H9 l2 2 H20 A1.5 1.5 0 0 1 21.5 8 V18 A1.5 1.5 0 0 1 20 19.5 H4 A1.5 1.5 0 0 1 2.5 18 Z" fill="url(#${id}b)"/>
+    <path d="M5 10 H22.5 A1 1 0 0 1 23.4 11.4 L21.5 18.4 A1.6 1.6 0 0 1 20 19.5 H2.5 A1 1 0 0 1 1.6 18 L3.6 11.2 A1.4 1.4 0 0 1 5 10 Z" fill="url(#${id}a)"/>`,
+
+  'Favorite Folder': (id)=>`
+    <defs>${g(id+'a',P.rose)}${g(id+'b',P.pink,0,0,1,1)}</defs>
+    <path d="M2.5 6 A1.5 1.5 0 0 1 4 4.5 H9 l2 2 H20 A1.5 1.5 0 0 1 21.5 8 V9 H2.5 Z" fill="url(#${id}b)"/>
+    <path d="M2.5 8.5 H21.5 A1.5 1.5 0 0 1 23 10 V18.5 A1.6 1.6 0 0 1 21.4 20.1 H2.6 A1.6 1.6 0 0 1 1 18.5 V10 A1.5 1.5 0 0 1 2.5 8.5 Z" fill="url(#${id}a)"/>
+    <path d="M12 11 l1.3 2.7 3 .4 -2.1 2.1 .5 3 -2.7 -1.4 -2.7 1.4 .5 -3 -2.1 -2.1 3 -.4 Z" fill="#fff"/>`,
+};
+
+/* ======================= MESHES / GEOMETRY ======================= */
+const MESHES = {
+  'Static Mesh': (id)=>`
+    <defs>${g(id+'a',P.slate)}${g(id+'b',P.gray,0,0,1,1)}</defs>
+    <path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z" fill="url(#${id}b)"/>
+    <path d="M12 2 L21 7 L12 12 L3 7 Z" fill="url(#${id}a)"/>
+    <path d="M12 12 V22 L21 17 V7 Z" fill="#000" opacity=".18"/>
+    <path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z M12 2 V12 M3 7 L12 12 L21 7" fill="none" stroke="#e6eaf2" stroke-width=".9" opacity=".55"/>`,
+
+  'Skeletal Mesh': (id)=>`
+    <defs>${g(id+'a',P.orange)}</defs>
+    <circle cx="12" cy="4.5" r="2.4" fill="url(#${id}a)"/>
+    <path d="M12 6.8 V13" stroke="#f2711c" stroke-width="2" stroke-linecap="round"/>
+    <path d="M12 8.5 L6.5 11 M12 8.5 L17.5 11" stroke="#ffb057" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M12 13 L8 20 M12 13 L16 20" stroke="#f2711c" stroke-width="1.9" stroke-linecap="round"/>
+    <g fill="#ffd36b">
+      <circle cx="6.5" cy="11" r="1.5"/><circle cx="17.5" cy="11" r="1.5"/>
+      <circle cx="8" cy="20" r="1.5"/><circle cx="16" cy="20" r="1.5"/><circle cx="12" cy="13" r="1.7"/>
+    </g>`,
+
+  'Procedural Mesh': (id)=>`
+    <defs>${g(id+'a',P.teal)}</defs>
+    <g fill="none" stroke="url(#${id}a)" stroke-width="1.4" stroke-linejoin="round">
+      <path d="M4 8 L12 4 L20 8 L12 12 Z"/>
+      <path d="M4 8 L4 16 L12 20 L12 12"/>
+      <path d="M20 8 L20 16 L12 20"/>
+      <path d="M4 8 L12 12 L20 8 M12 12 L12 20"/>
+    </g>
+    <g fill="#8ff0e6"><circle cx="4" cy="8" r="1.4"/><circle cx="20" cy="8" r="1.4"/>
+      <circle cx="12" cy="4" r="1.4"/><circle cx="12" cy="20" r="1.4"/></g>`,
+};
+
+/* ======================= ACTORS / OBJECTS ======================= */
+const ACTORS = {
+  'Empty Actor': (id)=>`
+    <defs>${g(id+'a',P.slate)}</defs>
+    <g stroke="url(#${id}a)" stroke-width="1.8" stroke-linecap="round" fill="none">
+      <path d="M12 3 V21 M3 12 H21 M12 12 L18 6"/>
+    </g>
+    <circle cx="12" cy="12" r="2.4" fill="#5a6478"/>
+    <circle cx="12" cy="12" r=".9" fill="#c8ccd6"/>`,
+
+  'Blueprint Actor': (id)=>`
+    <defs>${g(id+'a',P.blue,0,0,1,1)}</defs>
+    <rect x="3" y="3" width="18" height="18" rx="3.5" fill="url(#${id}a)"/>
+    <rect x="3" y="3" width="18" height="7" rx="3.5" fill="#fff" opacity=".12"/>
+    <g fill="#fff">
+      <circle cx="8" cy="8.5" r="1.5"/><circle cx="8" cy="15.5" r="1.5"/><circle cx="16" cy="12" r="1.5"/>
+    </g>
+    <path d="M8 8.5 C13 8.5 11 12 16 12 M8 15.5 C13 15.5 11 12 16 12" fill="none" stroke="#fff" stroke-width="1.3"/>`,
+
+  'Trigger Volume': (id)=>`
+    <defs>${g(id+'a',P.rose)}</defs>
+    <path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z" fill="none" stroke="url(#${id}a)" stroke-width="1.6" stroke-dasharray="2.6 2"/>
+    <path d="M13 8 L8.5 13 H11.5 L10.5 17 L15.5 11.5 H12.5 Z" fill="#ff6fa8"/>`,
+};
+
+/* ======================= PARTICLES / FX ======================= */
+const FX = {
+  'Particle System': (id)=>`
+    <defs>${rg(id+'a',[['0','#fff0a0'],['.5','#ff9a3d'],['1','#f2531c']])}</defs>
+    <path d="M12 21 C7 18 6 13 9 9 C10 12 12 11 12 8 C15 10 18 13 15 18 C14.5 15 13 15 12 21 Z" fill="url(#${id}a)"/>
+    <g fill="#ffd36b"><circle cx="6" cy="7" r="1.2"/><circle cx="18" cy="6" r="1"/>
+      <circle cx="19" cy="12" r="1.3"/><circle cx="5" cy="14" r="1"/><circle cx="12" cy="3.5" r="1.1"/></g>`,
+
+  'Niagara VFX': (id)=>`
+    <defs>${g(id+'a',P.cyan)}${g(id+'b',P.violet,0,0,1,1)}</defs>
+    <path d="M4 20 C4 12 10 10 12 4 C14 10 20 12 20 20" fill="none" stroke="url(#${id}b)" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M8 20 C8 15 11 13 12 9 C13 13 16 15 16 20" fill="none" stroke="url(#${id}a)" stroke-width="1.6" stroke-linecap="round"/>
+    <g fill="#c9fff8"><circle cx="12" cy="4" r="1.6"/><circle cx="6" cy="9" r="1.1"/><circle cx="18" cy="9" r="1.1"/></g>`,
+
+  'Decal': (id)=>`
+    <defs>${g(id+'a',P.purple,0,0,1,1)}</defs>
+    <ellipse cx="12" cy="14" rx="9" ry="5" fill="url(#${id}a)"/>
+    <ellipse cx="12" cy="14" rx="9" ry="5" fill="none" stroke="#d8c0ff" stroke-width="1" stroke-dasharray="2 2"/>
+    <path d="M12 4 V11" stroke="#b884ff" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M9.5 8.5 L12 11 L14.5 8.5" fill="none" stroke="#b884ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+};
+
+/* ======================= MATERIALS / TEXTURES ======================= */
+const MATERIALS = {
+  'Material': (id)=>`
+    <defs>${rg(id+'a',[['0','#c3a8ff'],['.6','#8433e0'],['1','#5a1fa8']])}</defs>
+    <circle cx="12" cy="12" r="9" fill="url(#${id}a)"/>
+    <ellipse cx="9" cy="8.5" rx="3.2" ry="2" fill="#fff" opacity=".35" transform="rotate(-25 9 8.5)"/>`,
+
+  'Texture 2D': (id)=>`
+    <defs>${g(id+'a',P.green)}${g(id+'b',P.amber,0,0,1,1)}</defs>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" fill="url(#${id}a)"/>
+    <circle cx="8" cy="9" r="2" fill="#ffe27a"/>
+    <path d="M3 17 L9 12 L13 15 L17 11 L21 15 V17.5 A2.5 2.5 0 0 1 18.5 20 H5.5 A2.5 2.5 0 0 1 3 17.5 Z" fill="url(#${id}b)"/>`,
+
+  'Material Instance': (id)=>`
+    <defs>${rg(id+'a',[['0','#8fd8ff'],['.6','#4aa6ff'],['1','#1b5fb8']])}</defs>
+    <circle cx="9.5" cy="10" r="6.5" fill="url(#${id}a)"/>
+    <circle cx="14.5" cy="14" r="6.5" fill="url(#${id}a)" opacity=".55"/>
+    <ellipse cx="7.5" cy="7.5" rx="2.2" ry="1.4" fill="#fff" opacity=".4" transform="rotate(-25 7.5 7.5)"/>`,
+};
+
+/* ======================= ANIMATION ======================= */
+const ANIM = {
+  'Animation Clip': (id)=>`
+    <defs>${g(id+'a',P.pink)}</defs>
+    <rect x="2.5" y="4" width="19" height="16" rx="2.5" fill="url(#${id}a)"/>
+    <g fill="#fff" opacity=".9">
+      <rect x="4.5" y="5.5" width="2" height="13" rx=".6"/>
+      <rect x="17.5" y="5.5" width="2" height="13" rx=".6"/>
+    </g>
+    <path d="M10 8.5 L15 12 L10 15.5 Z" fill="#fff"/>`,
+
+  'Blend Space': (id)=>`
+    <defs>${g(id+'a',P.teal,0,0,1,1)}</defs>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="2" fill="none" stroke="url(#${id}a)" stroke-width="1.5"/>
+    <path d="M3.5 12 H20.5 M12 3.5 V20.5" stroke="#4fe0c8" stroke-width=".8" opacity=".5"/>
+    <circle cx="8" cy="15" r="1.6" fill="#8ff0e6"/><circle cx="16" cy="8" r="1.6" fill="#8ff0e6"/>
+    <circle cx="13" cy="14" r="2.2" fill="#18b8a6"/>
+    <path d="M8 15 L13 14 L16 8" fill="none" stroke="#8ff0e6" stroke-width="1" stroke-dasharray="1.5 1.5"/>`,
+
+  'State Machine': (id)=>`
+    <defs>${g(id+'a',P.violet)}</defs>
+    <g fill="url(#${id}a)">
+      <circle cx="6" cy="7" r="3.2"/><circle cx="18" cy="7" r="3.2"/><circle cx="12" cy="18" r="3.2"/>
+    </g>
+    <g fill="none" stroke="#c3a8ff" stroke-width="1.4" stroke-linecap="round">
+      <path d="M9 7.5 H15"/><path d="M16.5 9.8 L13.5 15.5"/><path d="M7.5 9.8 L10.5 15.5"/>
+    </g>
+    <g fill="#c3a8ff"><path d="M14.6 6.6 l1.4 .9 -1.4 .9Z"/></g>`,
+};
+
+/* ======================= UI / MISC ENTITIES ======================= */
+const MISC = {
+  'Widget / UI': (id)=>`
+    <defs>${g(id+'a',P.sky)}</defs>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" fill="url(#${id}a)"/>
+    <rect x="3" y="4" width="18" height="4.5" rx="2.5" fill="#fff" opacity=".18"/>
+    <rect x="5.5" y="11" width="7" height="6.5" rx="1.2" fill="#fff" opacity=".85"/>
+    <rect x="14" y="11" width="4.5" height="2.5" rx="1" fill="#fff" opacity=".6"/>
+    <rect x="14" y="15" width="4.5" height="2.5" rx="1" fill="#fff" opacity=".6"/>`,
+
+  'Landscape / Terrain': (id)=>`
+    <defs>${g(id+'a',P.green)}${g(id+'b',P.greenD,0,0,1,1)}</defs>
+    <path d="M2 19 L8 9 L12 14 L16 7 L22 19 Z" fill="url(#${id}b)"/>
+    <path d="M2 19 L8 9 L11 13 L2 19 M16 7 L22 19 L14 19 Z" fill="url(#${id}a)"/>
+    <path d="M8 9 L9.5 11 L6.5 11 Z" fill="#fff" opacity=".7"/>
+    <path d="M16 7 L17.5 10 L14.5 10 Z" fill="#fff" opacity=".7"/>`,
+
+  'Nav Mesh': (id)=>`
+    <defs>${g(id+'a',P.green,0,0,1,1)}</defs>
+    <path d="M4 6 L11 4 L14 9 L20 8 L21 15 L15 20 L8 19 L3 13 Z" fill="url(#${id}a)" opacity=".4"/>
+    <path d="M4 6 L11 4 L14 9 L20 8 L21 15 L15 20 L8 19 L3 13 Z M11 4 L8 19 M14 9 L15 20 M14 9 L3 13 M14 9 L21 15" fill="none" stroke="#9be86b" stroke-width="1"/>`,
+};
+
+/* ============================================================================
+   RENDER
+   ============================================================================ */
+const SECTIONS = [
+  ['Cameras', CAMERAS],
+  ['Lights', LIGHTS],
+  ['Audio Emitters', AUDIO],
+  ['Audio Files', AUDIO_FILES],
+  ['Folders', FOLDERS],
+  ['Meshes / Geometry', MESHES],
+  ['Actors / Objects', ACTORS],
+  ['Particles / FX', FX],
+  ['Materials / Textures', MATERIALS],
+  ['Animation', ANIM],
+  ['UI / World', MISC],
+];
+
+const root = document.getElementById('root');
+let uid = 0;
+SECTIONS.forEach(([title, set])=>{
+  const h = document.createElement('h2'); h.textContent = title; root.appendChild(h);
+  const grid = document.createElement('div'); grid.className = 'grid';
+  Object.entries(set).forEach(([name, fn])=>{
+    const id = 'ic'+(uid++);
+    const cell = document.createElement('div'); cell.className='cell';
+    const big = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${fn(id)}</svg>`;
+    const small = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">${fn(id+'s')}</svg>`;
+    cell.innerHTML = big +
+      `<div class="cap"><b>${name}</b>16px preview →</div>`+
+      `<div class="strip">${small}</div>`;
+    grid.appendChild(cell);
+  });
+  root.appendChild(grid);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+# Dust Tornado / Debris Vortex — Fluid Studio scene preset (Pyro). A cold ground-up vortex with no fuel at all: heavy dust held in a tall swirling column by strong vorticity and almost no buoyancy.
+# Converted from the legacy preset object by script; scene fingerprint f82d4333797ce2b7 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 29
+Id = "pyro-dust-tornado"
+Name = "Dust Tornado / Debris Vortex"
+Family = "Pyro"
+Icon = "dust"
+Summary = "A cold ground-up vortex with no fuel at all: heavy dust held in a tall swirling column by strong vorticity and almost no buoyancy."
+Boundary = "OpenTop"
+
+[Grid]
+Resolution = [59, 96, 59]
+Size = [4.4, 7.2, 4.4]
+
+[Debris]
+Visible = true
+Count = 1400
+Lifetime = 6
+Size = 1.32
+Drag = 1.2
+Bounce = 0.2
+Glow = 0.1
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.38, ForceResponse = 1.0, PressureIterations = 30, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.325, AmbientTemperature = 0.0, Cooling = 2.88 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 0.2, Expansion = 0.0 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.35 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.9992, VelocityDissipation = 0.9995 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#ae9d81", Absorption = 3.3, Anisotropy = 0.1, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 0.55, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#b3120a", FireFlame = "#ff6a00", FireCore = "#ffd27a", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Dust Source"
+  Shape = "Disc"
+  Position = [0, -3.31, 0]
+  Radius = 0.51
+  Density = 1.9
+  Temperature = 0.48
+  Fuel = 0
+  Velocity = [0, 0.83, 0]
+  Jitter = 0.4
+
+[[Force]]
+  Type = "VortexColumn"
+  Name = "Swirl"
+  Position = [0, 0, 0]
+  Strength = 3.42
+  Radius = 1.32
+  Falloff = "Gaussian"
+  Frequency = 0.6
+  Secondary = 0.4
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Breeze"
+  Position = [0, 0, 0]
+  Strength = 0.12
+  Direction = [1, 0, 0]
+  Falloff = "Constant"
+  Frequency = 0.3
+  Secondary = 0.4
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Turbulence"
+  Position = [0, -1.08, 0]
+  Strength = 0.36
+  Radius = 2.2
+  Falloff = "Gaussian"
+  Frequency = 1.68
+  Secondary = 0.8
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 3.02, 0]
+  Strength = 1.2
+  Radius = 2.64
+  Falloff = "Plateau"

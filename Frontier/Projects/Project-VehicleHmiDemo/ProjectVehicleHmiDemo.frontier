@@ -1,0 +1,8 @@
+[Project]
+ProjectName = "ProjectVehicleHmiDemo"
+ProjectFormatNumber = 1
+ContentLocation = "Content"
+OpeningScene = "Content/Scenes/ProvingGrounds.gltf"
+CodeImage = "Build/Output/ProjectVehicleHmiDemo.dll"
+CodeInterchangeNumber = 3
+InterfaceFingerprint = 0xb6725f24d0869173

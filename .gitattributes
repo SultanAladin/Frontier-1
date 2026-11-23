@@ -1,0 +1,5 @@
+# Preserve source/SVG fingerprints and applicable unified diffs on Windows checkouts.
+* text=auto eol=lf
+
+# Unified-diff context lines deliberately contain their leading space, even on empty source lines.
+Automation/Patches/*.patch text eol=lf whitespace=-blank-at-eol,-blank-at-eof

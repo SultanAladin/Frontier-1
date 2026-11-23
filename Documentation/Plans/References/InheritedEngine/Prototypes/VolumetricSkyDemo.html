@@ -1,0 +1,2398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Volumetric Sky — Hillaire Atmosphere</title>
+<style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #05070c;
+                 font: 12px/1.35 'Segoe UI', system-ui, sans-serif; color: #cfd6e2; }
+    #gpu { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+
+    #panel { position: fixed; top: 0; left: 0; bottom: 0; width: 278px; overflow-y: auto;
+             background: rgba(9, 12, 19, 0.9); backdrop-filter: blur(9px);
+             border-right: 1px solid #1d2533; padding: 10px 12px 24px; z-index: 10; }
+    #panel h1 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+                color: #6ec1e4; margin: 4px 0 12px; font-weight: 600; }
+
+    .group { border: 1px solid #1d2533; border-radius: 5px; margin-bottom: 8px; background: #0b0f17; }
+    .group h2 { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8fa3bd;
+                margin: 0; padding: 7px 9px; cursor: pointer; user-select: none; font-weight: 600; }
+    .group h2::before { content: '▾ '; color: #4a5a72; }
+    .group.folded h2::before { content: '▸ '; }
+    .group .body { padding: 2px 9px 9px; }
+    .group.folded .body { display: none; }
+
+    .row { display: flex; align-items: center; justify-content: space-between;
+           margin-bottom: 6px; gap: 8px; }
+    .row label { flex: 0 0 96px; color: #93a1b5; font-size: 11px; }
+    .row input[type=range] { flex: 1; min-width: 0; height: 3px; accent-color: #4a90c4; }
+    .row .val { width: 54px; text-align: right; font-variant-numeric: tabular-nums;
+                color: #6ec1e4; font-size: 11px; }
+    .row.note { display: block; color: #6a7688; font-size: 10px; line-height: 1.45;
+                margin: -1px 0 8px; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+    .chips button { flex: 1 1 auto; background: #121826; border: 1px solid #232d3e; color: #93a1b5;
+                    border-radius: 4px; padding: 4px 6px; font-size: 10.5px; cursor: pointer; }
+    .chips button:hover { border-color: #33455e; color: #cfd6e2; }
+    .chips button.active { background: #17324a; border-color: #2f6288; color: #9fd4f2; }
+
+    #hud { position: fixed; top: 8px; right: 10px; z-index: 10; padding: 5px 10px;
+           background: rgba(9, 12, 19, 0.82); border: 1px solid #1d2533; border-radius: 4px;
+           font-variant-numeric: tabular-nums; color: #7fb4d8; font-size: 11px; }
+    #fault { position: fixed; inset: 12% 12% auto 12%; z-index: 20; display: none; padding: 14px 16px;
+             background: #1a0e12; border: 1px solid #5e2733; border-radius: 6px; color: #f0b8c2;
+             font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; white-space: pre-wrap;
+             max-height: 70vh; overflow: auto; }
+</style>
+</head>
+<body>
+
+<!-- tabindex makes the surface focusable so flight keys can be scoped away from
+     the panel sliders; outline is suppressed so no focus ring lands on the render. -->
+<canvas id="gpu" tabindex="0"></canvas>
+<div id="hud">booting…</div>
+<div id="fault"></div>
+
+<div id="panel">
+    <h1>Volumetric Sky</h1>
+
+    <div class="group">
+        <h2>Scene</h2>
+        <div class="body">
+            <div class="chips" id="ScenePresets">
+                <button data-scene="dawn">Dawn</button>
+                <button data-scene="noon" class="active">Noon</button>
+                <button data-scene="golden">Golden</button>
+                <button data-scene="dusk">Dusk</button>
+            </div>
+            <div class="row"><label>Sun elevation</label><input id="SunElevation" type="range" min="-0.25" max="1.57" step="0.005" value="0.62"><span class="val"></span></div>
+            <div class="row"><label>Sun azimuth</label><input id="SunAzimuth" type="range" min="-3.15" max="3.15" step="0.01" value="0.70"><span class="val"></span></div>
+            <div class="row note">Elevation is the angle above the horizon. 0 = sunrise, 1.57 = overhead.</div>
+        </div>
+    </div>
+
+    <div class="group">
+        <h2>Exposure</h2>
+        <div class="body">
+            <div class="row"><label>EV compensation</label><input id="ExposureBias" type="range" min="-4" max="4" step="0.05" value="0"><span class="val"></span></div>
+            <div class="row note">🔴 Photographic stops, not a raw multiply. 0 EV is calibrated so a
+            clear noon sky sits mid-frame without clipping. ±1 EV halves/doubles.</div>
+        </div>
+    </div>
+
+    <div class="group">
+        <h2>Camera</h2>
+        <div class="body">
+            <div class="row"><label>Altitude m</label><input id="StationAltitude" type="range" min="1" max="12000" step="1" value="2"><span class="val"></span></div>
+            <div class="row"><label>Field of view</label><input id="ViewAperture" type="range" min="0.35" max="2.0" step="0.01" value="1.15"><span class="val"></span></div>
+            <div class="row"><label>Fly speed</label><span class="val" id="FlySpeedReadout">—</span></div>
+            <div class="row note">Hold <b>right mouse</b> to look, then WASD to fly · Q/E (or C/Space)
+            down/up · Shift boost · wheel = speed.
+            Altitude is metres, so 12000 puts you well above the deck.</div>
+        </div>
+    </div>
+
+    <div class="group">
+        <h2>Atmosphere</h2>
+        <div class="body">
+            <div class="row"><label>Sun disc</label><input id="SunDiscEnabled" type="checkbox" checked></div>
+            <div class="row"><label>Multi-scatter</label><input id="MultiScatterEnabled" type="checkbox" checked></div>
+            <div class="row"><label>Ground plane</label><input id="GroundEnabled" type="checkbox" checked></div>
+            <div class="row"><label>Ground albedo</label><input id="GroundAlbedo" type="range" min="0" max="0.6" step="0.005" value="0.1"><span class="val"></span></div>
+            <div class="row"><label>Checker floor</label><input id="FloorEnabled" type="checkbox" checked></div>
+            <div class="row"><label>Floor tiles/km</label><input id="FloorTileScale" type="range" min="0.1" max="8" step="0.1" value="1"><span class="val"></span></div>
+        </div>
+    </div>
+
+    <div class="group">
+        <h2>Clouds</h2>
+        <div class="body">
+            <div class="chips" id="CloudPresets">
+                <button data-cloud="stratus">Stratus</button>
+                <button data-cloud="cumulus" class="active">Cumulus</button>
+                <button data-cloud="towering">Towering</button>
+                <button data-cloud="overcast">Overcast</button>
+            </div>
+            <div class="row"><label>Enabled</label><input id="CloudsEnabled" type="checkbox" checked></div>
+            <div class="row"><label>Coverage</label><input id="CloudCoverage" type="range" min="0" max="1" step="0.01" value="0.45"><span class="val"></span></div>
+            <div class="row"><label>Type dial</label><input id="CloudTypeDial" type="range" min="0" max="1" step="0.01" value="0.5"><span class="val"></span></div>
+            <div class="row"><label>Storm bias</label><input id="CloudStormBias" type="range" min="0" max="1" step="0.01" value="0"><span class="val"></span></div>
+            <div class="row"><label>Cirrus</label><input id="CloudCirrusAmount" type="range" min="0" max="1" step="0.01" value="0"><span class="val"></span></div>
+            <div class="row"><label>Base km</label><input id="CloudLayerBase" type="range" min="0.4" max="6" step="0.05" value="1.5"><span class="val"></span></div>
+            <div class="row"><label>Thickness km</label><input id="CloudLayerThickness" type="range" min="0.3" max="5" step="0.05" value="2.0"><span class="val"></span></div>
+            <div class="row"><label>Density</label><input id="CloudDensityScale" type="range" min="0.1" max="4" step="0.05" value="1.4"><span class="val"></span></div>
+            <div class="row"><label>Detail erosion</label><input id="CloudDetailStrength" type="range" min="0" max="1" step="0.01" value="0.35"><span class="val"></span></div>
+            <div class="row"><label>Powder</label><input id="CloudPowderStrength" type="range" min="0" max="1" step="0.01" value="0.6"><span class="val"></span></div>
+            <div class="row"><label>Wind</label><input id="CloudWindSpeed" type="range" min="0" max="0.2" step="0.002" value="0.02"><span class="val"></span></div>
+            <div class="row"><label>March steps</label><input id="CloudMarchSteps" type="range" min="16" max="192" step="8" value="64"><span class="val"></span></div>
+            <div class="row"><label>Light steps</label><input id="CloudLightSteps" type="range" min="1" max="6" step="1" value="6"><span class="val"></span></div>
+            <div class="row"><label>Cone spread</label><input id="CloudConeSpread" type="range" min="0" max="1" step="0.01" value="0.35"><span class="val"></span></div>
+            <div class="row"><label>Forward lobe g0</label><input id="CloudAnisotropy" type="range" min="0" max="0.95" step="0.01" value="0.8"><span class="val"></span></div>
+            <div class="row"><label>Back lobe g1</label><input id="CloudBackLobe" type="range" min="-0.95" max="0" step="0.01" value="-0.5"><span class="val"></span></div>
+            <div class="row"><label>Albedo</label><input id="CloudAlbedo" type="range" min="0.5" max="1" step="0.005" value="0.95"><span class="val"></span></div>
+            <div class="row"><label>Extinction /km</label><input id="CloudExtinctionRate" type="range" min="1" max="40" step="0.5" value="12"><span class="val"></span></div>
+            <div class="row"><label>Sun gain</label><input id="CloudSolarGain" type="range" min="0" max="0.3" step="0.002" value="0.06"><span class="val"></span></div>
+            <div class="row"><label>Ambient gain</label><input id="CloudAmbientGain" type="range" min="0" max="1.5" step="0.01" value="0.35"><span class="val"></span></div>
+            <div class="row note">Coverage <b>shrinks</b> clouds rather than fading them — that is the
+            remap, not a multiply. Fly to ~1.5–3.5 km to enter the deck. Sun/ambient gain are
+            <b>exposure headroom</b>, not physics — the sun colour and sky colour reaching a
+            cloud both come from the atmosphere LUTs now, so clouds redden at dusk on their own.</div>
+        </div>
+    </div>
+
+    <div class="group">
+        <h2>Resolve</h2>
+        <div class="body">
+            <div class="chips" id="ResolveModes">
+                <button data-resolve="0" class="active">Composite</button>
+                <button data-resolve="1">Sky-view</button>
+                <button data-resolve="2">Transmittance</button>
+                <button data-resolve="3">Multi-scatter</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+'use strict';
+
+//============================================================================
+//  Fault reporting — anything thrown before the first frame must be visible on
+//  the page, not only in a console the user may not have open.
+//============================================================================
+const FaultPanel = document.getElementById('fault');
+
+function AnnounceFault(Label, Detail)
+{
+    FaultPanel.style.display = 'block';
+    FaultPanel.textContent = `${Label}\n\n${Detail}`;
+    console.error(Label, Detail);
+}
+
+window.addEventListener('error', E => AnnounceFault('Uncaught', E.message));
+window.addEventListener('unhandledrejection', E => AnnounceFault('Unhandled rejection',
+    (E.reason && E.reason.message) || String(E.reason)));
+
+//============================================================================
+//  Atmosphere constants — sebh/UnrealEngineSkyAtmosphere, units of kilometres.
+//  These are physical measurements, not tuning dials; nothing here is a taste
+//  parameter and changing one changes what planet this is.
+//============================================================================
+const AtmosphereConstantSource = /* wgsl */`
+const Pi                  : f32 = 3.14159265359;
+
+const BottomRadius        : f32 = 6360.0;
+const TopRadius           : f32 = 6460.0;
+
+const RayleighScattering  : vec3f = vec3f(0.005802, 0.013558, 0.033100);
+const RayleighScaleHeight : f32   = 8.0;
+
+const MieScattering       : f32 = 0.003996;
+const MieExtinction       : f32 = 0.004440;
+const MieScaleHeight      : f32 = 1.2;
+const MiePhaseTerm        : f32 = 0.8;
+
+// Bruneton's ozone tent: centred at 25 km, half-width 15 km, so the layer runs
+// 10-40 km. Both numbers are needed — the half-width is NOT the centre.
+const OzoneExtinction     : vec3f = vec3f(0.000650, 0.001881, 0.000085);
+const OzoneLayerCentre    : f32 = 25.0;
+const OzoneLayerWidth     : f32 = 15.0;
+
+const SunAngularRadius    : f32 = 0.004675;
+
+// 🔴 Solar illuminance enters the chain EXACTLY ONCE, here, at the point where
+//    radiance is produced. The previous build multiplied SolarIntensity into the
+//    LUT bake and then multiplied Exposure again at the tonemap — an effective
+//    x140 into an ACES curve that saturates near 1.0, which is why every pixel
+//    clipped to white. Radiance stays physical all the way to ResolveTonemap;
+//    only that one function converts to display.
+const SolarIlluminance    : vec3f = vec3f(1.0, 0.949, 0.937);
+`;
+
+//============================================================================
+//  Shared medium + LUT sampling. Used by every bake and by the composite.
+//============================================================================
+const MediumSampleSource = /* wgsl */`
+struct MediumSample
+{
+    Scattering : vec3f,
+    Extinction : vec3f
+};
+
+// Density of each constituent at a given altitude above sea level, in km.
+fn EvaluateMedium(Altitude : f32) -> MediumSample
+{
+    let RayleighDensity = exp(-max(Altitude, 0.0) / RayleighScaleHeight);
+    let MieDensity      = exp(-max(Altitude, 0.0) / MieScaleHeight);
+
+    // ① Ozone is a TENT centred near 25 km, not an exponential — it is what
+    //    reddens the horizon at sunset and keeps the zenith blue.
+    // 🔴 The tent is centred at OzoneLayerCentre with HALF-WIDTH OzoneLayerWidth,
+    //    i.e. it spans 10–40 km (Bruneton). Writing the centre as the width made
+    //    it span 0–50 km with the peak at 25: ozone was placed down at ground
+    //    level where it does not exist, thickening the horizon extinction.
+    let OzoneDensity = max(0.0,
+        1.0 - abs(Altitude - OzoneLayerCentre) / max(OzoneLayerWidth, 1e-4));
+
+    var Sample : MediumSample;
+    Sample.Scattering = RayleighScattering * RayleighDensity
+                      + vec3f(MieScattering) * MieDensity;
+    Sample.Extinction = RayleighScattering * RayleighDensity
+                      + vec3f(MieExtinction) * MieDensity
+                      + OzoneExtinction * OzoneDensity;
+    return Sample;
+}
+
+// ② Distance from a point at Radius to the top of the atmosphere along a ray
+//    whose cosine to local up is CosineUp. Positive root of the sphere quadratic.
+fn TraceAtmosphereExit(Radius : f32, CosineUp : f32) -> f32
+{
+    let Discriminant = Radius * Radius * (CosineUp * CosineUp - 1.0)
+                     + TopRadius * TopRadius;
+    return max(0.0, -Radius * CosineUp + sqrt(max(Discriminant, 0.0)));
+}
+
+// Distance to the planet surface, or -1 when the ray misses it.
+fn TraceGroundContact(Radius : f32, CosineUp : f32) -> f32
+{
+    let Discriminant = Radius * Radius * (CosineUp * CosineUp - 1.0)
+                     + BottomRadius * BottomRadius;
+    if (Discriminant < 0.0 || CosineUp >= 0.0) { return -1.0; }
+    return max(0.0, -Radius * CosineUp - sqrt(Discriminant));
+}
+
+// Phase functions live in the shared preamble because BOTH the sky-view bake and
+// the cloud march need them.
+// 🔴 Cornette-Shanks and Henyey-Greenstein are NOT the same expression at a
+//    different g — CS carries an extra (1 + cos^2) numerator and normalises by
+//    3/(8*Pi*(2+g^2)) where HG uses 1/(4*Pi). At g=0.8 and backscatter they
+//    differ by roughly 1.8x. The aerosol Mie term wants CS; the cloud dual-lobe
+//    wants HG (the plan specifies HG, and Schneider chose it over CS for cost).
+//    They are kept as two separate functions so neither silently borrows the
+//    other's normalisation.
+fn EvaluateRayleighPhase(CosineAngle : f32) -> f32
+{
+    return 3.0 / (16.0 * Pi) * (1.0 + CosineAngle * CosineAngle);
+}
+
+// Cornette-Shanks — atmospheric aerosol scattering.
+fn EvaluateMiePhase(CosineAngle : f32, Anisotropy : f32) -> f32
+{
+    let Squared = Anisotropy * Anisotropy;
+    let Scale   = 3.0 / (8.0 * Pi) * (1.0 - Squared) / (2.0 + Squared);
+    let Body    = (1.0 + CosineAngle * CosineAngle)
+                / pow(max(1.0 + Squared - 2.0 * Anisotropy * CosineAngle, 1e-4), 1.5);
+    return Scale * Body;
+}
+
+// Henyey-Greenstein — the cloud phase, per PLAN-VolumetricClouds.
+fn EvaluatePhaseHenyeyGreenstein(CosineAngle : f32, Anisotropy : f32) -> f32
+{
+    let Squared = Anisotropy * Anisotropy;
+    return (1.0 - Squared)
+         / (4.0 * Pi * pow(max(1.0 + Squared - 2.0 * Anisotropy * CosineAngle, 1e-4), 1.5));
+}
+
+// ③ 🔴 Transmittance LUT parameterisation, Bruneton-style. This mapping MUST be
+//    identical in the bake and in every lookup — a mismatch here is the classic
+//    hard seam along the horizon, and it looks like a shader bug elsewhere.
+fn EncodeTransmittanceUv(Radius : f32, CosineUp : f32) -> vec2f
+{
+    let GroundToTop  = sqrt(max(TopRadius * TopRadius - BottomRadius * BottomRadius, 0.0));
+    let ToHorizon    = sqrt(max(Radius * Radius - BottomRadius * BottomRadius, 0.0));
+    let ExitDistance = TraceAtmosphereExit(Radius, CosineUp);
+
+    // 🔴 The near end of the exit-distance range is the STRAIGHT-UP ray,
+    //    TopRadius - Radius. The old expression took the near root of the
+    //    top-shell quadratic, which for any point inside the atmosphere is
+    //    behind the observer and clamps to 0 — while DecodeTransmittanceUv
+    //    already used (TopRadius - Radius) as its floor. Encode and decode
+    //    therefore disagreed by up to 0.074 in u, biasing every lookup toward
+    //    the grazing end and over-attenuating the sun near the zenith.
+    let NearExit = TopRadius - Radius;
+    let FarExit  = GroundToTop + ToHorizon;
+    let Span     = max(FarExit - NearExit, 1e-6);
+
+    return vec2f(clamp((ExitDistance - NearExit) / Span, 0.0, 1.0),
+                 clamp(ToHorizon / max(GroundToTop, 1e-6), 0.0, 1.0));
+}
+
+fn DecodeTransmittanceUv(Uv : vec2f) -> vec2f
+{
+    let GroundToTop = sqrt(max(TopRadius * TopRadius - BottomRadius * BottomRadius, 0.0));
+    let ToHorizon   = GroundToTop * Uv.y;
+    let Radius      = sqrt(max(ToHorizon * ToHorizon + BottomRadius * BottomRadius, 0.0));
+
+    // Exit distance spans from straight-up (TopRadius - Radius) to the grazing
+    // horizon ray, and Uv.x is the fraction between them.
+    let MinExit = TopRadius - Radius;
+    let MaxExit = GroundToTop + ToHorizon;
+    let Exit    = MinExit + Uv.x * (MaxExit - MinExit);
+
+    // Invert the exit distance back to a cosine.
+    var CosineUp = 0.0;
+    if (Exit > 0.0)
+    {
+        CosineUp = (TopRadius * TopRadius - Radius * Radius - Exit * Exit)
+                 / (2.0 * Radius * Exit);
+    }
+    return vec2f(Radius, clamp(CosineUp, -1.0, 1.0));
+}
+`;
+
+//============================================================================
+//  Boot bake — transmittance LUT, 256x64 rgba16float.
+//============================================================================
+// ⚠️ No Profile binding here. This bake depends only on physical constants, and
+//    `layout: 'auto'` derives the layout from bindings the shader STATICALLY
+//    references — a declared-but-unused uniform is silently dropped, and then
+//    supplying an entry for it makes the bind group invalid. That failure shows
+//    up later as an anonymous "invalid due to a previous error" on the encoder,
+//    which points nowhere near the real cause.
+const TransmittanceIntegrationSource = /* wgsl */`
+@group(0) @binding(0) var TransmittanceTarget : texture_storage_2d<rgba16float, write>;
+
+// Optical depth from a point out to the top of the atmosphere.
+fn IntegrateOpticalDepth(Radius : f32, CosineUp : f32) -> vec3f
+{
+    let Exit = TraceAtmosphereExit(Radius, CosineUp);
+    let Steps = 40;
+    let StepLength = Exit / f32(Steps);
+
+    var Depth = vec3f(0.0);
+    for (var Index = 0; Index < Steps; Index = Index + 1)
+    {
+        // Midpoint rule — the endpoint rule biases the first sample toward the
+        // dense ground layer and darkens the whole LUT.
+        let Travel = (f32(Index) + 0.5) * StepLength;
+        let SampleRadius = sqrt(max(Travel * Travel
+                         + 2.0 * Radius * CosineUp * Travel + Radius * Radius, 1e-6));
+        Depth = Depth + EvaluateMedium(SampleRadius - BottomRadius).Extinction * StepLength;
+    }
+    return Depth;
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn IntegrateTransmittance(@builtin(global_invocation_id) Ordinal : vec3u)
+{
+    let Extent = textureDimensions(TransmittanceTarget);
+    if (Ordinal.x >= Extent.x || Ordinal.y >= Extent.y) { return; }
+
+    // Half-texel centring — without it the LUT edges alias into the horizon.
+    let Uv = (vec2f(Ordinal.xy) + vec2f(0.5)) / vec2f(Extent);
+    let Decoded = DecodeTransmittanceUv(Uv);
+
+    let Transmittance = exp(-IntegrateOpticalDepth(Decoded.x, Decoded.y));
+    textureStore(TransmittanceTarget, Ordinal.xy, vec4f(Transmittance, 1.0));
+}
+`;
+
+//============================================================================
+//  Boot bake — isotropic multi-scatter LUT, 32x32.
+//  This is what keeps the sky from going black in shadow and gives the horizon
+//  its milky lift; without it a Rayleigh-only sky reads as flat cyan.
+//============================================================================
+// ⚠️ Also Profile-free, for the same reason as the transmittance bake — the
+//    multi-scatter LUT is a function of the atmosphere alone, not of the sun.
+const MultiScatterIntegrationSource = /* wgsl */`
+@group(0) @binding(0) var MultiScatterTarget : texture_storage_2d<rgba16float, write>;
+@group(0) @binding(1) var TransmittanceField : texture_2d<f32>;
+@group(0) @binding(2) var ClampSampler       : sampler;
+
+fn SampleTransmittance(Radius : f32, CosineUp : f32) -> vec3f
+{
+    let Uv = EncodeTransmittanceUv(Radius, CosineUp);
+    return textureSampleLevel(TransmittanceField, ClampSampler, Uv, 0.0).rgb;
+}
+
+// 📝 Hillaire's second-order estimate: march a small sphere of directions, and
+//    treat the result as an infinite scattering series via the 1/(1-f) closure.
+//    64 directions is his published count and is cheap at 32x32.
+@compute @workgroup_size(8, 8, 1)
+fn IntegrateMultiScatter(@builtin(global_invocation_id) Ordinal : vec3u)
+{
+    let Extent = textureDimensions(MultiScatterTarget);
+    if (Ordinal.x >= Extent.x || Ordinal.y >= Extent.y) { return; }
+
+    let Uv = (vec2f(Ordinal.xy) + vec2f(0.5)) / vec2f(Extent);
+    let SolarCosine = Uv.x * 2.0 - 1.0;
+    let Radius = mix(BottomRadius + 0.001, TopRadius, Uv.y);
+
+    let SolarBearing = vec3f(0.0, SolarCosine, sqrt(clamp(1.0 - SolarCosine * SolarCosine, 0.0, 1.0)));
+    let Origin = vec3f(0.0, Radius, 0.0);
+
+    var Gathered   = vec3f(0.0);
+    var Multiplier = vec3f(0.0);
+
+    let DirectionCount = 64;
+    let Steps = 20;
+
+    for (var Index = 0; Index < DirectionCount; Index = Index + 1)
+    {
+        // Fibonacci sphere — uniform without the pole clustering of a lat/long grid.
+        let Fraction = (f32(Index) + 0.5) / f32(DirectionCount);
+        let CosineTheta = 1.0 - 2.0 * Fraction;
+        let SineTheta   = sqrt(clamp(1.0 - CosineTheta * CosineTheta, 0.0, 1.0));
+        let Phi = f32(Index) * 2.399963229728653;
+        let Bearing = vec3f(SineTheta * cos(Phi), CosineTheta, SineTheta * sin(Phi));
+
+        let GroundHit = TraceGroundContact(Radius, Bearing.y);
+        let Exit = select(TraceAtmosphereExit(Radius, Bearing.y), GroundHit, GroundHit > 0.0);
+        let StepLength = Exit / f32(Steps);
+
+        var Transmittance = vec3f(1.0);
+        var Luminance     = vec3f(0.0);
+        var Scatter       = vec3f(0.0);
+
+        for (var Step = 0; Step < Steps; Step = Step + 1)
+        {
+            let Travel = (f32(Step) + 0.5) * StepLength;
+            let Probe  = Origin + Bearing * Travel;
+            let ProbeRadius = max(length(Probe), BottomRadius + 1e-4);
+            let Medium = EvaluateMedium(ProbeRadius - BottomRadius);
+
+            let StepTransmittance = exp(-Medium.Extinction * StepLength);
+            let ProbeUp = Probe / ProbeRadius;
+            let ProbeSolarCosine = dot(ProbeUp, SolarBearing);
+
+            // Isotropic phase (1/4pi) is the defining simplification of this LUT.
+            let SolarTransmittance = SampleTransmittance(ProbeRadius, ProbeSolarCosine);
+            let InScatter = Medium.Scattering * (1.0 / (4.0 * Pi));
+
+            // Integrated analytically so the step count changes accuracy, not exposure.
+            let Integrated = (InScatter - InScatter * StepTransmittance)
+                           / max(Medium.Extinction, vec3f(1e-6));
+
+            Scatter   = Scatter   + Transmittance * Integrated;
+            Luminance = Luminance + Transmittance * Integrated * SolarTransmittance;
+            Transmittance = Transmittance * StepTransmittance;
+        }
+
+        Gathered   = Gathered   + Luminance;
+        Multiplier = Multiplier + Scatter;
+    }
+
+    Gathered   = Gathered   / f32(DirectionCount);
+    Multiplier = Multiplier / f32(DirectionCount);
+
+    // ② Closed-form infinite series: each bounce re-illuminates the last.
+    let Series = vec3f(1.0) / max(vec3f(1.0) - Multiplier, vec3f(1e-4));
+    textureStore(MultiScatterTarget, Ordinal.xy, vec4f(Gathered * Series, 1.0));
+}
+`;
+
+//============================================================================
+//  Per-sequence bake — sky-view LUT, 192x108.
+//============================================================================
+const SkyViewIntegrationSource = /* wgsl */`
+@group(0) @binding(0) var<uniform> Profile : SkyProfile;
+@group(0) @binding(1) var SkyViewTarget     : texture_storage_2d<rgba16float, write>;
+@group(0) @binding(2) var TransmittanceField : texture_2d<f32>;
+@group(0) @binding(3) var MultiScatterField  : texture_2d<f32>;
+@group(0) @binding(4) var ClampSampler       : sampler;
+
+fn SampleTransmittance(Radius : f32, CosineUp : f32) -> vec3f
+{
+    return textureSampleLevel(TransmittanceField, ClampSampler,
+                              EncodeTransmittanceUv(Radius, CosineUp), 0.0).rgb;
+}
+
+fn SampleMultiScatter(Radius : f32, CosineUp : f32) -> vec3f
+{
+    let Uv = vec2f(CosineUp * 0.5 + 0.5,
+                   clamp((Radius - BottomRadius) / (TopRadius - BottomRadius), 0.0, 1.0));
+    return textureSampleLevel(MultiScatterField, ClampSampler, Uv, 0.0).rgb;
+}
+
+// 🔴 Non-linear latitude mapping. Hillaire dedicates half the vertical texels to
+//    the 20 degrees around the horizon, because that is where the gradient is
+//    steepest. A linear mapping here produces visible banding at sunset even at
+//    full LUT resolution — this encode/decode pair must mirror the composite's.
+fn DecodeSkyViewBearing(Uv : vec2f, ViewHeight : f32) -> vec3f
+{
+    let Azimuth = (Uv.x * 2.0 - 1.0) * Pi;
+
+    let HorizonCosine = sqrt(max(ViewHeight * ViewHeight - BottomRadius * BottomRadius, 0.0))
+                      / max(ViewHeight, 1e-4);
+    let HorizonAngle  = acos(clamp(HorizonCosine, -1.0, 1.0)) - 0.5 * Pi;
+
+    var Elevation : f32;
+    let Centred = Uv.y * 2.0 - 1.0;
+    if (Centred < 0.0)
+    {
+        let Fraction = 1.0 - (1.0 + Centred) * (1.0 + Centred);
+        Elevation = mix(HorizonAngle, -0.5 * Pi, Fraction);
+    }
+    else
+    {
+        let Fraction = 1.0 - (1.0 - Centred) * (1.0 - Centred);
+        Elevation = mix(HorizonAngle, 0.5 * Pi, Fraction);
+    }
+
+    let CosineElevation = cos(Elevation);
+    return vec3f(CosineElevation * sin(Azimuth), sin(Elevation), CosineElevation * cos(Azimuth));
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn IntegrateSkyView(@builtin(global_invocation_id) Ordinal : vec3u)
+{
+    let Extent = textureDimensions(SkyViewTarget);
+    if (Ordinal.x >= Extent.x || Ordinal.y >= Extent.y) { return; }
+
+    let Uv = (vec2f(Ordinal.xy) + vec2f(0.5)) / vec2f(Extent);
+
+    // The LUT is built for the camera's current altitude only — it is re-baked
+    // whenever the station moves vertically or the sun turns.
+    let ViewHeight = BottomRadius + clamp(Profile.StationAltitude, 0.0005, TopRadius - BottomRadius - 1.0);
+    let Bearing    = DecodeSkyViewBearing(Uv, ViewHeight);
+    let Origin     = vec3f(0.0, ViewHeight, 0.0);
+
+    let SolarBearing = normalize(Profile.SolarBearing);
+    let CosineAngle  = dot(Bearing, SolarBearing);
+
+    let RayleighPhase = EvaluateRayleighPhase(CosineAngle);
+    let MiePhase      = EvaluateMiePhase(CosineAngle, MiePhaseTerm);
+
+    let GroundHit = TraceGroundContact(ViewHeight, Bearing.y);
+    var Exit = TraceAtmosphereExit(ViewHeight, Bearing.y);
+    if (GroundHit > 0.0) { Exit = GroundHit; }
+
+    let Steps = 32;
+    let StepLength = Exit / f32(Steps);
+
+    var Transmittance = vec3f(1.0);
+    var Luminance     = vec3f(0.0);
+
+    for (var Step = 0; Step < Steps; Step = Step + 1)
+    {
+        let Travel = (f32(Step) + 0.5) * StepLength;
+        let Probe  = Origin + Bearing * Travel;
+        let ProbeRadius = max(length(Probe), BottomRadius + 1e-4);
+        let Altitude    = ProbeRadius - BottomRadius;
+        let ProbeUp     = Probe / ProbeRadius;
+        let ProbeSolarCosine = dot(ProbeUp, SolarBearing);
+
+        let Medium = EvaluateMedium(Altitude);
+        let SolarTransmittance = SampleTransmittance(ProbeRadius, ProbeSolarCosine);
+
+        // ① Rayleigh and Mie carry different phase functions, so they must be
+        //    phased separately — a shared phase flattens the sun's halo.
+        let RayleighDensity = exp(-Altitude / RayleighScaleHeight);
+        let MieDensity      = exp(-Altitude / MieScaleHeight);
+        let PhasedScatter   = RayleighScattering * RayleighDensity * RayleighPhase
+                            + vec3f(MieScattering) * MieDensity * MiePhase;
+
+        var InScatter = PhasedScatter * SolarTransmittance;
+
+        if (Profile.MultiScatterEnabled > 0.5)
+        {
+            InScatter = InScatter
+                      + SampleMultiScatter(ProbeRadius, ProbeSolarCosine) * Medium.Scattering;
+        }
+
+        let StepTransmittance = exp(-Medium.Extinction * StepLength);
+        let Integrated = (InScatter - InScatter * StepTransmittance)
+                       / max(Medium.Extinction, vec3f(1e-6));
+
+        Luminance     = Luminance + Transmittance * Integrated;
+        Transmittance = Transmittance * StepTransmittance;
+    }
+
+    // ② Ground bounce, if the ray struck the planet.
+    if (GroundHit > 0.0 && Profile.GroundEnabled > 0.5)
+    {
+        let Contact = Origin + Bearing * GroundHit;
+        let ContactUp = normalize(Contact);
+        let Incidence = max(dot(ContactUp, SolarBearing), 0.0);
+        Luminance = Luminance + Transmittance * Profile.GroundAlbedo * Incidence
+                  * SampleTransmittance(length(Contact), Incidence) / Pi;
+    }
+
+    // 🔴 SolarIlluminance folds in HERE and nowhere else downstream.
+    textureStore(SkyViewTarget, Ordinal.xy, vec4f(Luminance * SolarIlluminance, 1.0));
+}
+`;
+
+//============================================================================
+//  Composite — one fullscreen triangle, the single point where radiance becomes
+//  pixels.
+//============================================================================
+//============================================================================
+//  Cloud noise bakes
+//============================================================================
+// Value-noise + Worley building blocks. Both TILE on their lattice period, which
+// is what lets the march wrap world position modulo the tile without a seam.
+const NoiseCommonSource = /* wgsl */`
+fn HashCell(Cell : vec3f) -> f32
+{
+    let Wrapped = fract(Cell * vec3f(0.1031, 0.1030, 0.0973));
+    let Shifted = Wrapped + vec3f(dot(Wrapped, Wrapped.yzx + vec3f(33.33)));
+    return fract((Shifted.x + Shifted.y) * Shifted.z);
+}
+
+fn HashCellVector(Cell : vec3f) -> vec3f
+{
+    return vec3f(HashCell(Cell), HashCell(Cell + vec3f(17.1)), HashCell(Cell + vec3f(41.7)));
+}
+
+// Gradient-free value noise with a smoothstep kernel, tiled at Period.
+fn ValueNoiseTiled(Position : vec3f, Period : f32) -> f32
+{
+    let Base     = floor(Position);
+    let Fraction = Position - Base;
+    let Weight   = Fraction * Fraction * (vec3f(3.0) - 2.0 * Fraction);
+
+    var Total = 0.0;
+    for (var Corner = 0u; Corner < 8u; Corner = Corner + 1u)
+    {
+        let Offset = vec3f(f32(Corner & 1u), f32((Corner >> 1u) & 1u), f32((Corner >> 2u) & 1u));
+        let Cell   = (Base + Offset) % vec3f(Period);
+        let Blend  = mix(vec3f(1.0) - Weight, Weight, Offset);
+        Total = Total + HashCell(Cell) * Blend.x * Blend.y * Blend.z;
+    }
+    return Total;
+}
+
+// Worley (cellular) noise, INVERTED so that 1 = cell centre. Tiled at Period.
+fn WorleyTiled(Position : vec3f, Period : f32) -> f32
+{
+    let Base = floor(Position);
+    var Nearest = 1.0e9;
+    for (var Z = -1; Z <= 1; Z = Z + 1)
+    {
+        for (var Y = -1; Y <= 1; Y = Y + 1)
+        {
+            for (var X = -1; X <= 1; X = X + 1)
+            {
+                let Neighbour = Base + vec3f(f32(X), f32(Y), f32(Z));
+                let Wrapped   = (Neighbour % vec3f(Period) + vec3f(Period)) % vec3f(Period);
+                let Site      = Neighbour + HashCellVector(Wrapped);
+                let Delta     = Site - Position;
+                Nearest = min(Nearest, dot(Delta, Delta));
+            }
+        }
+    }
+    return 1.0 - clamp(sqrt(Nearest), 0.0, 1.0);
+}
+
+fn WorleyOctaves(Position : vec3f, Period : f32) -> f32
+{
+    let First  = WorleyTiled(Position * 1.0, Period * 1.0);
+    let Second = WorleyTiled(Position * 2.0, Period * 2.0);
+    let Third  = WorleyTiled(Position * 4.0, Period * 4.0);
+    return First * 0.625 + Second * 0.25 + Third * 0.125;
+}
+
+fn ValueOctaves(Position : vec3f, Period : f32) -> f32
+{
+    let First  = ValueNoiseTiled(Position * 1.0, Period * 1.0);
+    let Second = ValueNoiseTiled(Position * 2.0, Period * 2.0);
+    let Third  = ValueNoiseTiled(Position * 4.0, Period * 4.0);
+    let Fourth = ValueNoiseTiled(Position * 8.0, Period * 8.0);
+    return First * 0.5 + Second * 0.25 + Third * 0.15 + Fourth * 0.10;
+}
+
+// 🔴 Remap is the correction the plan flags as the most-cited bug in this
+//    technique. Coverage and the altitude gradient must REMAP the base shape,
+//    not multiply it — multiplying makes clouds fade uniformly, remapping makes
+//    them erode from the edges inward, which is what real coverage looks like.
+//    The denominator collapses as Coverage approaches 0, hence the guard.
+fn Remap(Value : f32, LowIn : f32, HighIn : f32, LowOut : f32, HighOut : f32) -> f32
+{
+    let Span = max(HighIn - LowIn, 1e-4);
+    return LowOut + (clamp(Value, LowIn, HighIn) - LowIn) * (HighOut - LowOut) / Span;
+}
+`;
+
+// Perlin-Worley base shape, 128^3. r = Perlin-Worley, gba = Worley octaves at
+// rising frequency, exactly the GPU Pro 7 channel assignment.
+const BaseShapeInscriptionSource = /* wgsl */`
+@group(0) @binding(0) var BaseShapeTarget : texture_storage_3d<rgba8unorm, write>;
+
+@compute @workgroup_size(4, 4, 4)
+fn InscribeBaseShape(@builtin(global_invocation_id) Ordinal : vec3u)
+{
+    let Extent = textureDimensions(BaseShapeTarget);
+    if (Ordinal.x >= Extent.x || Ordinal.y >= Extent.y || Ordinal.z >= Extent.z) { return; }
+
+    let Uvw = (vec3f(Ordinal) + vec3f(0.5)) / vec3f(Extent);
+
+    // Perlin-Worley: dilate the value noise by the inverted Worley so the result
+    // keeps billowy cores instead of the wispy look of value noise alone.
+    let Period      = 4.0;
+    let ValueField  = ValueOctaves(Uvw * Period, Period);
+    let WorleyField = WorleyOctaves(Uvw * Period, Period);
+    let PerlinWorley = Remap(ValueField, WorleyField - 1.0, 1.0, 0.0, 1.0);
+
+    let LowFrequency  = WorleyOctaves(Uvw * Period * 2.0,  Period * 2.0);
+    let MidFrequency  = WorleyOctaves(Uvw * Period * 4.0,  Period * 4.0);
+    let HighFrequency = WorleyOctaves(Uvw * Period * 8.0,  Period * 8.0);
+
+    textureStore(BaseShapeTarget, vec3i(Ordinal),
+                 vec4f(PerlinWorley, LowFrequency, MidFrequency, HighFrequency));
+}
+`;
+
+// Detail erosion, 32^3. Three Worley octaves that carve the cauliflower edge.
+const DetailErosionInscriptionSource = /* wgsl */`
+@group(0) @binding(0) var DetailErosionTarget : texture_storage_3d<rgba8unorm, write>;
+
+@compute @workgroup_size(4, 4, 4)
+fn InscribeDetailErosion(@builtin(global_invocation_id) Ordinal : vec3u)
+{
+    let Extent = textureDimensions(DetailErosionTarget);
+    if (Ordinal.x >= Extent.x || Ordinal.y >= Extent.y || Ordinal.z >= Extent.z) { return; }
+
+    let Uvw    = (vec3f(Ordinal) + vec3f(0.5)) / vec3f(Extent);
+    let Period = 4.0;
+
+    let First  = WorleyOctaves(Uvw * Period * 1.0, Period * 1.0);
+    let Second = WorleyOctaves(Uvw * Period * 2.0, Period * 2.0);
+    let Third  = WorleyOctaves(Uvw * Period * 4.0, Period * 4.0);
+
+    textureStore(DetailErosionTarget, vec3i(Ordinal), vec4f(First, Second, Third, 1.0));
+}
+`;
+
+// Weather profile, 512^2. Per the plan: r = coverage, g = PRECIPITATION,
+// b = cloud type. This is what makes clouds vary across the sky.
+// 🔴 Two defects fixed here. (1) g was baked as a "HeightScale" that nothing
+//    ever sampled — a dead channel, and precipitation (which the plan requires
+//    to darken bases and drive the thunderhead look) was simply absent.
+//    (2) g and b were both derived from the SAME TypeField, so they were
+//    perfectly correlated: every tall cloud was also the same type everywhere.
+//    Three independent offsets now decorrelate the three channels.
+const WeatherProfileInscriptionSource = /* wgsl */`
+@group(0) @binding(0) var WeatherProfileTarget : texture_storage_2d<rgba8unorm, write>;
+
+@compute @workgroup_size(8, 8, 1)
+fn InscribeWeatherProfile(@builtin(global_invocation_id) Ordinal : vec3u)
+{
+    let Extent = textureDimensions(WeatherProfileTarget);
+    if (Ordinal.x >= Extent.x || Ordinal.y >= Extent.y) { return; }
+
+    let Uv     = (vec2f(Ordinal.xy) + vec2f(0.5)) / vec2f(Extent);
+    let Sample = vec3f(Uv.x, 0.5, Uv.y);
+    let Period = 4.0;
+
+    // Three decorrelated fields. Different offsets AND different frequencies —
+    // a shared frequency with only an offset still produces visibly parallel
+    // structure between the channels.
+    let CoverageField = ValueOctaves(Sample * Period, Period);
+    let TypeField     = ValueOctaves(Sample * Period * 2.0 + vec3f(11.3), Period * 2.0);
+    let StormField    = ValueOctaves(Sample * Period * 3.0 + vec3f(57.9, 23.1, 84.7),
+                                     Period * 3.0);
+
+    // Widen the coverage histogram: raw FBM clusters hard around 0.5 and leaves
+    // the coverage slider with almost no visible travel.
+    let Coverage = clamp(Remap(CoverageField, 0.25, 0.75, 0.0, 1.0), 0.0, 1.0);
+
+    // Precipitation is sparse — storms are rare and local, so the field is
+    // pushed hard toward 0 and only the top of the histogram survives.
+    let Precipitation = clamp(Remap(StormField, 0.55, 0.85, 0.0, 1.0), 0.0, 1.0);
+
+    let CloudType = clamp(Remap(TypeField, 0.3, 0.8, 0.0, 1.0), 0.0, 1.0);
+
+    textureStore(WeatherProfileTarget, vec2i(Ordinal.xy),
+                 vec4f(Coverage, Precipitation, CloudType, 1.0));
+}
+`;
+
+//============================================================================
+//  Cloud march
+//============================================================================
+// Sampled inside StackComposite. The density assembly follows GPU Pro 7 ch.4
+// with the Remap correction; the lighting follows Frostbite 2016.
+// 🔴 Bindings + the two LUT addressing helpers live in their own block because
+//    the cloud march now READS the sky: it samples the transmittance LUT for sun
+//    colour and the sky-view LUT for ambient. WGSL is declaration-before-use and
+//    the composite module is a string concatenation, so this block MUST be
+//    concatenated ahead of CloudMarchSource. Moving it below silently breaks the
+//    module with a pile of "unresolved identifier" errors at pipeline creation.
+const CompositeBindingSource = /* wgsl */`
+@group(0) @binding(0) var<uniform> Profile : SkyProfile;
+@group(0) @binding(1) var SkyViewField       : texture_2d<f32>;
+@group(0) @binding(2) var TransmittanceField : texture_2d<f32>;
+@group(0) @binding(3) var MultiScatterField  : texture_2d<f32>;
+@group(0) @binding(4) var ClampSampler       : sampler;
+// Cloud fields need a REPEAT sampler: the march addresses them with fract()
+// tiling over world space, and clamp-to-edge would smear the last texel across
+// the whole sky beyond the first tile.
+@group(0) @binding(5) var BaseShapeField     : texture_3d<f32>;
+@group(0) @binding(6) var DetailErosionField : texture_3d<f32>;
+@group(0) @binding(7) var WeatherProfileField : texture_2d<f32>;
+@group(0) @binding(8) var RepeatSampler      : sampler;
+
+fn SampleTransmittance(Radius : f32, CosineUp : f32) -> vec3f
+{
+    return textureSampleLevel(TransmittanceField, ClampSampler,
+                              EncodeTransmittanceUv(Radius, CosineUp), 0.0).rgb;
+}
+
+// Integral of the unit square wave — the antiderivative used to box-filter the
+// checker floor analytically instead of point-sampling it into moire.
+fn TriangleWave(Position : vec2f) -> vec2f
+{
+    let Half = 0.5 * Position;
+    return 2.0 * abs(Half - floor(Half) - vec2f(0.5));
+}
+
+// 🔴 Mirrors DecodeSkyViewBearing exactly. If these two drift apart the sky
+//    shears along the horizon — and it reads as a camera bug, not a LUT bug.
+fn EncodeSkyViewUv(Bearing : vec3f, ViewHeight : f32) -> vec2f
+{
+    let Azimuth = atan2(Bearing.x, Bearing.z);
+
+    let HorizonCosine = sqrt(max(ViewHeight * ViewHeight - BottomRadius * BottomRadius, 0.0))
+                      / max(ViewHeight, 1e-4);
+    let HorizonAngle  = acos(clamp(HorizonCosine, -1.0, 1.0)) - 0.5 * Pi;
+    let Elevation     = asin(clamp(Bearing.y, -1.0, 1.0));
+
+    var Vertical : f32;
+    if (Elevation < HorizonAngle)
+    {
+        // 🔴 The below-horizon span runs from HorizonAngle DOWN to -Pi/2, so it
+        //    is (HorizonAngle + Pi/2) — a positive number. Writing it as
+        //    (-Pi/2 - HorizonAngle) yields ~-1.546, and max(negative, 1e-5)
+        //    clamped it to 1e-5, which drove Fraction to 0 for every downward
+        //    ray. The entire lower half of the LUT collapsed onto uy = 0.5:
+        //    the ground half of the sky sampled one row of texels.
+        let Span = max(HorizonAngle + 0.5 * Pi, 1e-5);
+        let Fraction = clamp((HorizonAngle - Elevation) / Span, 0.0, 1.0);
+        Vertical = -(1.0 - sqrt(max(1.0 - Fraction, 0.0)));
+    }
+    else
+    {
+        let Span = max(0.5 * Pi - HorizonAngle, 1e-5);
+        let Fraction = clamp((Elevation - HorizonAngle) / Span, 0.0, 1.0);
+        Vertical = 1.0 - sqrt(max(1.0 - Fraction, 0.0));
+    }
+
+    return vec2f(Azimuth / (2.0 * Pi) + 0.5, Vertical * 0.5 + 0.5);
+}
+`;
+
+const CloudMarchSource = /* wgsl */`
+fn CloudLayerTop() -> f32
+{
+    return Profile.CloudLayerBase + Profile.CloudLayerThickness;
+}
+
+// Ray/sphere for the two shells bounding the cloud slab. Returns the near and
+// far distance along Bearing, or a degenerate span when the ray misses.
+fn IntersectShell(Origin : vec3f, Bearing : vec3f, Radius : f32) -> vec2f
+{
+    let Middle    = dot(Origin, Bearing);
+    let Discrim   = Middle * Middle - (dot(Origin, Origin) - Radius * Radius);
+    if (Discrim < 0.0) { return vec2f(-1.0, -1.0); }
+    let Root = sqrt(Discrim);
+    return vec2f(-Middle - Root, -Middle + Root);
+}
+
+// 🔴 The altitude gradient per cloud type. Stratus sits low and flat,
+//    stratocumulus is a lumpy layer, cumulus billows through the middle.
+//    Returned as the gradient VALUE at this height fraction, which then REMAPS
+//    the base shape. Per the plan these three LOW profiles blend continuously
+//    (MixAltitudeGradients); cumulonimbus is a separate OVERRIDE because it
+//    needs the full vertical column plus an anvil, which no blend of the three
+//    can produce.
+fn MixAltitudeGradients(HeightFraction : f32, TypeDial : f32) -> f32
+{
+    // Each profile is a soft trapezoid: rise, plateau, fall.
+    let Stratus = smoothstep(0.0, 0.10, HeightFraction)
+                * (1.0 - smoothstep(0.18, 0.32, HeightFraction));
+    let Stratocumulus = smoothstep(0.0, 0.14, HeightFraction)
+                      * (1.0 - smoothstep(0.32, 0.55, HeightFraction));
+    let Cumulus = smoothstep(0.02, 0.22, HeightFraction)
+                * (1.0 - smoothstep(0.60, 0.95, HeightFraction));
+
+    // TypeDial 0 -> stratus, 0.5 -> stratocumulus, 1 -> cumulus.
+    let LowerBlend = mix(Stratus, Stratocumulus, clamp(TypeDial * 2.0, 0.0, 1.0));
+    return mix(LowerBlend, Cumulus, clamp(TypeDial * 2.0 - 1.0, 0.0, 1.0));
+}
+
+// Cumulonimbus: full-column trunk that FLARES into an anvil near the tropopause
+// and is capped hard at the top. The anvil is the read that distinguishes a
+// thunderhead from a merely tall cumulus.
+fn CumulonimbusGradientProfile(HeightFraction : f32) -> f32
+{
+    let Trunk = smoothstep(0.0, 0.06, HeightFraction)
+              * (1.0 - smoothstep(0.92, 1.0, HeightFraction));
+    // Anvil: a broad lobe in the upper fifth that widens the effective density.
+    let Anvil = smoothstep(0.70, 0.86, HeightFraction)
+              * (1.0 - smoothstep(0.94, 1.0, HeightFraction));
+    return clamp(Trunk + Anvil * 0.45, 0.0, 1.0);
+}
+
+// Cirrus: a thin, detail-heavy sheet riding the very top of the slab.
+fn CirrusGradientProfile(HeightFraction : f32) -> f32
+{
+    return smoothstep(0.78, 0.88, HeightFraction)
+         * (1.0 - smoothstep(0.94, 1.0, HeightFraction));
+}
+
+fn EvaluateAltitudeGradient(HeightFraction : f32, TypeDial : f32,
+                            Precipitation : f32) -> f32
+{
+    let Low = MixAltitudeGradients(HeightFraction, TypeDial);
+
+    // Precipitation drives the thunderhead override. It ramps in rather than
+    // switching, so a storm cell grows out of the cumulus field around it
+    // instead of appearing as a hard-edged patch of different cloud.
+    let Storm = smoothstep(0.35, 0.75, Precipitation);
+    let Shaped = mix(Low, CumulonimbusGradientProfile(HeightFraction), Storm);
+
+    // 🔴 Cirrus is a SEPARATE high band, not a blend endpoint — no mixture of
+    //    stratus/stratocumulus/cumulus puts cloud at 0.8 height fraction. Added
+    //    (weakly) so a thin sheet can coexist with the deck below it, and faded
+    //    out under storms because an anvil already occupies that altitude.
+    let Cirrus = CirrusGradientProfile(HeightFraction)
+               * Profile.CloudCirrusAmount * (1.0 - Storm);
+    return clamp(Shaped + Cirrus, 0.0, 1.0);
+}
+
+// 🔴 ANTI-TILING. The visible repetition had three separate causes, and fixing
+//    only one leaves the pattern plainly readable:
+//
+//    ① HARMONIC PERIODS. The three addressings used 0.035 / 0.42 / 3.2 — the
+//      base shape repeated every 2.381 km and the weather every 28.57 km, a
+//      ratio of exactly 12.0. Whenever the tile periods share a small-integer
+//      ratio the composite pattern repeats at the SHORTEST common multiple, so
+//      the eye sees one motif over and over. The scales below are mutually
+//      irrational-ish (no small-integer ratio), so the composite period is
+//      enormous even though each texture still tiles.
+//
+//    ② NO DOMAIN WARP. Even at coprime periods, a texture sampled on a straight
+//      lattice shows its lattice. Warping the sample position by a low-frequency
+//      field bends the grid, which is what destroys the perceived grid without
+//      needing a bigger texture. This doubles as the plan's CurlMotionField role
+//      (an advecting swirl) at no extra texture cost.
+//
+//    ③ SINGLE-OCTAVE LOOKUP. One fetch per field means one period. Sampling the
+//      base shape at TWO decorrelated scales and blending breaks the remaining
+//      self-similarity — the classic cheap fix for obvious 3D-noise repeats.
+//
+//    Also: fract() on unbounded world coordinates loses precision far from the
+//    origin (a float32 mantissa at 1000 km leaves ~0.06 m of resolution), which
+//    reads as the noise going blocky in the distance. Wrapping the position
+//    BEFORE scaling keeps the argument small.
+fn WarpCloudDomain(Position : vec3f) -> vec3f
+{
+    // Low-frequency, large-amplitude swirl. Cheap 2-tap: two offset samples of
+    // the weather field's smooth coverage channel drive an x/z displacement.
+    let WarpUv = Position.xz * 0.0091 + vec2f(0.37, 0.71);
+    let WarpA  = textureSampleLevel(WeatherProfileField, RepeatSampler,
+                                    fract(WarpUv), 0.0).r;
+    let WarpB  = textureSampleLevel(WeatherProfileField, RepeatSampler,
+                                    fract(WarpUv * 1.73 + vec2f(0.53, 0.19)), 0.0).b;
+
+    // Centred to +-0.5 then scaled to kilometres of displacement. 1.7 km is
+    // comparable to a cumulus cell, which is the scale that hides the lattice.
+    return Position + vec3f(WarpA - 0.5, 0.0, WarpB - 0.5) * 3.4;
+}
+
+// Density at a world point, in kilometres, Y-up, relative to planet centre.
+fn EvaluateCloudDensity(Position : vec3f, DetailEnabled : bool) -> f32
+{
+    let Altitude       = length(Position) - BottomRadius;
+    let HeightFraction = (Altitude - Profile.CloudLayerBase)
+                       / max(Profile.CloudLayerThickness, 1e-4);
+    if (HeightFraction < 0.0 || HeightFraction > 1.0) { return 0.0; }
+
+    // Wind shifts the sample rather than the geometry, so the slab stays put.
+    // Height-sheared: upper layers run faster than lower ones, which is both
+    // physically right and another decorrelator between altitude slices.
+    let Shear = 1.0 + HeightFraction * 0.6;
+    let Drift = vec3f(Profile.SequenceTime * Profile.CloudWindSpeed * Shear, 0.0,
+                      Profile.SequenceTime * Profile.CloudWindSpeed * 0.35 * Shear);
+
+    // 🔴 Wrap into a bounded domain BEFORE scaling — see note ④ above. 4096 km
+    //    is far larger than any composite period below, so this is invisible.
+    let Bounded = vec3f(Position.x - 4096.0 * floor(Position.x / 4096.0),
+                        Position.y,
+                        Position.z - 4096.0 * floor(Position.z / 4096.0));
+    let Shifted = WarpCloudDomain(Bounded + Drift);
+
+    // 🔴 Weather scale is load-bearing for whether clouds are VISIBLE from the
+    //    ground. At 0.0009 one tile spanned ~1100 km, so every ray from a ground
+    //    camera sampled essentially ONE texel and the whole sky was decided by a
+    //    single coverage value — clouds occupied ~2% of frame and read as absent.
+    //    0.0313 puts a tile at ~32 km, the real scale of a cumulus field, and is
+    //    chosen coprime to the shape/detail scales rather than 12x the shape.
+    let WeatherUv = fract(Shifted.xz * 0.0313 + vec2f(0.5));
+    let Weather   = textureSampleLevel(WeatherProfileField, RepeatSampler, WeatherUv, 0.0);
+
+    // Coverage combines the painted weather field with the global slider.
+    let Coverage = clamp(Weather.r * Profile.CloudCoverage * 2.0, 0.0, 1.0);
+    if (Coverage <= 0.001) { return 0.0; }
+
+    // Precipitation drives the cumulonimbus override. The bias lifts the whole
+    // field so a preset can make the sky stormy without repainting the weather
+    // map; at 0 only the map's own storm cells fire.
+    let Precipitation = clamp(Weather.g + Profile.CloudStormBias, 0.0, 1.0);
+    let TypeDial = clamp(Profile.CloudTypeDial + (Weather.b - 0.5) * 0.35, 0.0, 1.0);
+
+    // 🔴 Two decorrelated base-shape lookups. 0.3877 and 0.6131 km^-1 give
+    //    periods of 2.579 km and 1.631 km — ratio 1.581, deliberately not a
+    //    simple fraction, so the two lattices never align.
+    let ShapePrimary = textureSampleLevel(BaseShapeField, RepeatSampler,
+                                          fract(Shifted * 0.3877), 0.0);
+    let ShapeSecond  = textureSampleLevel(BaseShapeField, RepeatSampler,
+                                          fract(Shifted * 0.6131 + vec3f(0.41, 0.13, 0.77)),
+                                          0.0);
+    // Weighted so the primary still governs cloud silhouette; the secondary is
+    // a perturbation, not an equal partner (50/50 would mush both to grey).
+    let Shape = mix(ShapePrimary, ShapeSecond, 0.35);
+
+    // Fold the three Worley octaves into the Perlin-Worley core (GPU Pro 7).
+    let WorleyFbm = Shape.g * 0.625 + Shape.b * 0.25 + Shape.a * 0.125;
+    var BaseShape = Remap(Shape.r, WorleyFbm - 1.0, 1.0, 0.0, 1.0);
+
+    // 🔴 Altitude gradient via REMAP, not multiply. Multiplying dims the whole
+    //    column; remapping erodes the top and bottom so the cloud keeps a solid
+    //    core and gains a soft boundary.
+    let Gradient = EvaluateAltitudeGradient(HeightFraction, TypeDial, Precipitation);
+    BaseShape = Remap(BaseShape, 1.0 - Gradient, 1.0, 0.0, 1.0);
+
+    // 🔴 Coverage via REMAP, then scale. This is what makes clouds SHRINK as
+    //    coverage falls instead of merely fading out.
+    var Covered = Remap(BaseShape, 1.0 - Coverage, 1.0, 0.0, 1.0);
+    Covered = Covered * Coverage;
+
+    // Precipitation thickens the cell — a storm core is denser than the fair-
+    // weather cloud around it, which is what makes its base read as dark.
+    Covered = Covered * (1.0 + Precipitation * 0.85);
+
+    if (!DetailEnabled || Covered <= 0.0) { return max(Covered, 0.0) * Profile.CloudDensityScale; }
+
+    // Detail erosion carves the boundary; strongest at the edges of the cloud.
+    // Detail must tile much faster than the base shape or it erodes at the same
+    // frequency and just dims the cloud instead of carving its edge. 2.9137 is
+    // 7.516x the primary shape rate — again not an integer multiple.
+    let DetailUvw = fract(Shifted * 2.9137);
+    let Detail    = textureSampleLevel(DetailErosionField, RepeatSampler, DetailUvw, 0.0);
+    let DetailFbm = Detail.r * 0.625 + Detail.g * 0.25 + Detail.b * 0.125;
+
+    // Erode with wispy shapes at the base and billows at the top.
+    let Wisp = mix(1.0 - DetailFbm, DetailFbm, clamp(HeightFraction * 4.0, 0.0, 1.0));
+    let Eroded = Remap(Covered, Wisp * Profile.CloudDetailStrength, 1.0, 0.0, 1.0);
+
+    return max(Eroded, 0.0) * Profile.CloudDensityScale;
+}
+
+// Dual-lobe Henyey-Greenstein: a forward lobe for the silver lining and a
+// backward lobe so clouds do not go flat when the sun is behind the camera.
+// 🔴 Two corrections here. (1) This is HG, not Cornette-Shanks — the plan
+//    specifies HG and the two differ by ~1.8x at g=0.8. (2) The back lobe is an
+//    INDEPENDENT g1 (Frostbite: -0.5), not -0.5 * the forward dial. Coupling
+//    them meant turning the forward lobe down to 0 also killed the back lobe,
+//    collapsing the whole phase to isotropic instead of merely widening it.
+fn EvaluateCloudPhase(CosineAngle : f32) -> f32
+{
+    let Forward  = EvaluatePhaseHenyeyGreenstein(CosineAngle, Profile.CloudAnisotropy);
+    let Backward = EvaluatePhaseHenyeyGreenstein(CosineAngle, Profile.CloudBackLobe);
+    return mix(Forward, Backward, 0.5);
+}
+
+// Ambient sky radiance arriving at a cloud sample. Read from the sky-view LUT
+// at the zenith row, which is the closest cheap stand-in for the full hemisphere
+// integral and keeps the cloud on the SAME radiometric scale as the sky behind
+// it — the whole point of the fix.
+fn SampleSkyAmbient(SampleRadius : f32) -> vec3f
+{
+    let Zenith = EncodeSkyViewUv(vec3f(0.0, 1.0, 0.0), SampleRadius);
+    return textureSampleLevel(SkyViewField, ClampSampler, Zenith, 0.0).rgb;
+}
+
+// 🔴 Transmittance toward the sun, marched as a CONE rather than a line. The
+//    taps splay off-axis by a growing radius so neighbouring pixels sample
+//    different density — a straight line gives every pixel in a column the same
+//    shadow and produces the hard banded terminator on cloud undersides.
+//    Tap layout follows Schneider: N-1 near taps in the cone, one long final tap
+//    to catch shadowing from distant cloud the near cone cannot reach.
+const ConeOffsetTable = array<vec3f, 6>(
+    vec3f( 0.19,  0.31, -0.24),
+    vec3f(-0.35,  0.14,  0.28),
+    vec3f( 0.27, -0.22,  0.36),
+    vec3f(-0.18, -0.33, -0.29),
+    vec3f( 0.41,  0.26,  0.11),
+    vec3f(-0.24,  0.38, -0.15));
+
+fn IntegrateSunTransmittance(Position : vec3f, SolarBearing : vec3f) -> f32
+{
+    let Taps = i32(clamp(Profile.CloudLightSteps, 1.0, 6.0));
+
+    // 🔴 Step length is keyed to the SLANT PATH out of the slab, not to the
+    //    Thickness slider. The old form walked Thickness/Taps*0.5 with x1.5
+    //    growth, so the ray overshot or fell short depending on sun elevation
+    //    and the self-shadow strength changed when you moved an unrelated dial.
+    let Altitude   = length(Position) - BottomRadius;
+    let Remaining  = max(CloudLayerTop() - Altitude, 0.05);
+    let SlantScale = 1.0 / max(abs(SolarBearing.y), 0.25);
+    let ConeSpan   = min(Remaining * SlantScale, Profile.CloudLayerThickness * 2.0);
+
+    // Build an orthonormal frame so the cone offsets are perpendicular to the ray.
+    let Helper  = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0),
+                         abs(SolarBearing.y) > 0.95);
+    let SideAxis = normalize(cross(SolarBearing, Helper));
+    let UpAxis   = cross(SideAxis, SolarBearing);
+
+    var Optical = 0.0;
+    for (var Tap = 0; Tap < Taps; Tap = Tap + 1)
+    {
+        let Fraction = (f32(Tap) + 0.5) / f32(Taps);
+        // Quadratic spacing: dense near the sample where occlusion matters most.
+        let Travelled = ConeSpan * Fraction * Fraction;
+        let Step      = ConeSpan * (2.0 * Fraction) / f32(Taps);
+
+        let Offset = ConeOffsetTable[Tap] * Profile.CloudConeSpread * Travelled;
+        let Sample = Position + SolarBearing * Travelled
+                   + SideAxis * Offset.x + UpAxis * Offset.y;
+
+        // Detail is skipped along the light ray: it costs a second 3D fetch per
+        // tap and is invisible through an exponential.
+        Optical = Optical + EvaluateCloudDensity(Sample, false) * Step;
+    }
+
+    // One long tap far up the ray for distant-cloud shadowing.
+    let FarTravel = ConeSpan * 3.0;
+    Optical = Optical
+            + EvaluateCloudDensity(Position + SolarBearing * FarTravel, false) * ConeSpan;
+
+    return exp(-Optical);
+}
+
+// 🔴 Powder term (Schneider). CosineAngle = dot(Bearing, SolarBearing) is +1
+//    when looking TOWARD the sun, i.e. backlit cloud. The previous weight
+//    (-Cos+1)*0.5 was therefore 0 exactly when backlit and 1 when front-lit —
+//    the term was switched off in the only configuration it exists to serve.
+//    Correct weight peaks at backlit and falls off toward front-lit.
+fn EvaluatePowder(Density : f32, CosineAngle : f32) -> f32
+{
+    let Powder = 1.0 - exp(-Density * 8.0);
+    return mix(1.0, Powder, clamp((CosineAngle + 1.0) * 0.5, 0.0, 1.0));
+}
+
+// Returns rgb = premultiplied in-scattered radiance, a = transmittance.
+// 🔴 Does NOT apply aerial perspective internally — camera-to-cloud attenuation
+//    is owned by exactly one stage, per the composite seam rule. It DOES report
+//    MeanDepth so that stage has a distance to work with.
+struct CloudYield
+{
+    Scattered     : vec3f,
+    Transmittance : f32,
+    MeanDepth     : f32
+};
+
+fn MarchClouds(Origin : vec3f, Bearing : vec3f, SolarBearing : vec3f,
+               Limit : f32, Dither : f32) -> CloudYield
+{
+    let InnerShell = IntersectShell(Origin, Bearing, BottomRadius + Profile.CloudLayerBase);
+    let OuterShell = IntersectShell(Origin, Bearing, BottomRadius + CloudLayerTop());
+
+    let Altitude = length(Origin) - BottomRadius;
+
+    // Pick the span through the slab for the three camera positions: below it,
+    // inside it, and above it. Getting this wrong is what makes clouds vanish
+    // when you fly into the deck.
+    var Near = 0.0;
+    var Far  = 0.0;
+    if (Altitude < Profile.CloudLayerBase)
+    {
+        if (InnerShell.y <= 0.0) { return CloudYield(vec3f(0.0), 1.0, 0.0); }
+        Near = InnerShell.y;
+        Far  = select(OuterShell.y, Near, OuterShell.y <= 0.0);
+    }
+    else if (Altitude > CloudLayerTop())
+    {
+        if (OuterShell.y <= 0.0) { return CloudYield(vec3f(0.0), 1.0, 0.0); }
+        Near = max(OuterShell.x, 0.0);
+        Far  = select(InnerShell.x, OuterShell.y, InnerShell.x <= 0.0);
+    }
+    else
+    {
+        // Inside the slab: start at the camera and end at whichever shell the
+        // ray reaches first.
+        Near = 0.0;
+        Far  = OuterShell.y;
+        if (InnerShell.x > 0.0) { Far = min(Far, InnerShell.x); }
+    }
+
+    Far = min(Far, Limit);
+    if (Far <= Near) { return CloudYield(vec3f(0.0), 1.0, 0.0); }
+
+    let Span  = Far - Near;
+    let Steps = i32(clamp(Profile.CloudMarchSteps, 16.0, 192.0));
+    var Step  = Span / f32(Steps);
+
+    let CosineAngle = dot(Bearing, SolarBearing);
+    let Phase       = EvaluateCloudPhase(CosineAngle);
+
+    var Transmittance = 1.0;
+    var Scattered     = vec3f(0.0);
+    var DepthMoment   = 0.0;
+    var DepthWeight   = 0.0;
+    // Dither the first sample to break the banding a fixed start produces.
+    var Travelled     = Near + Step * Dither;
+
+    for (var Index = 0; Index < Steps; Index = Index + 1)
+    {
+        if (Transmittance < 0.01 || Travelled > Far) { break; }
+
+        let Sample  = Origin + Bearing * Travelled;
+        let Density = EvaluateCloudDensity(Sample, true);
+
+        if (Density > 0.001)
+        {
+            let SunTransmittance = IntegrateSunTransmittance(Sample, SolarBearing);
+            let Powder = mix(1.0, EvaluatePowder(Density, CosineAngle),
+                             Profile.CloudPowderStrength);
+
+            // 🔴 Density is a dimensionless 0..1 occupancy; sigma_t is an
+            //    extinction coefficient in reciprocal kilometres. Using the
+            //    former directly as the latter made optical depth depend on the
+            //    unit the march happens to step in, and pinned the deepest
+            //    possible cloud at exp(-1*Step) — far too translucent. The rate
+            //    converts one to the other; scattering is sigma_t * albedo.
+            let Extinction = Density * Profile.CloudExtinctionRate;
+            let Scattering = Extinction * Profile.CloudAlbedo;
+            let StepTransmittance = exp(-Extinction * Step);
+
+            // 🔴 Sun radiance at THIS sample, attenuated by the atmosphere
+            //    between the sample and the top of the atmosphere. This is the
+            //    seam that was missing: the march previously used a constant
+            //    SolarIlluminance * 8.0, so clouds stayed noon-white at dusk and
+            //    ignored the sun entirely. Sampling the transmittance LUT at the
+            //    sample's own radius/solar-cosine is what makes a cloud redden
+            //    at sunset and darken as the sun sets, in step with the sky.
+            let SampleRadius = max(length(Sample), BottomRadius + 1e-4);
+            let SampleUp     = Sample / SampleRadius;
+            let SunRadiance  = SolarIlluminance
+                             * SampleTransmittance(SampleRadius, dot(SampleUp, SolarBearing))
+                             * Profile.CloudSolarGain;
+
+            // 🔴 Ambient: the sky itself lights the cloud. Without this the
+            //    undersides integrate to black, which is what makes a cloud read
+            //    as a hole punched in the sky rather than a lit solid. Sampled
+            //    from the sky-view LUT looking straight up at the sample, so it
+            //    carries the true sky colour — blue at noon, orange at dusk.
+            let Ambient = SampleSkyAmbient(SampleRadius) * Profile.CloudAmbientGain;
+
+            // Direct is phased and self-shadowed; ambient is isotropic (phase
+            // 1/4pi) and only attenuated by the cloud's own depth, so it fills
+            // the undersides. Both are scaled by the SCATTERING coefficient —
+            // the energy-conserving integral then divides by extinction, so the
+            // ratio that survives is the albedo, exactly as it should be.
+            let Source   = Scattering
+                         * (SunRadiance * SunTransmittance * Phase * Powder
+                            + Ambient * (1.0 / (4.0 * Pi)));
+            let Integral = (Source - Source * StepTransmittance) / max(Extinction, 1e-5);
+
+            let Contribution = Integral * Transmittance;
+            Scattered     = Scattered + Contribution;
+            Transmittance = Transmittance * StepTransmittance;
+
+            // 🔴 Track the luminance-weighted mean depth of in-scatter. This is
+            //    what P7 (aerial perspective) needs: a single representative
+            //    distance at which "the cloud" sits along this ray. Without it
+            //    the composite has no distance to attenuate over and clouds at
+            //    900 km render as crisply as clouds at 3 km — the horizon
+            //    "cardboard cutout" read.
+            let Weight = dot(Contribution, vec3f(0.2126, 0.7152, 0.0722));
+            DepthMoment = DepthMoment + Weight * Travelled;
+            DepthWeight = DepthWeight + Weight;
+        }
+
+        Travelled = Travelled + Step;
+    }
+
+    let MeanDepth = select(Near, DepthMoment / DepthWeight, DepthWeight > 1e-9);
+    return CloudYield(Scattered, clamp(Transmittance, 0.0, 1.0), MeanDepth);
+}
+`;
+
+const StackCompositeSource = /* wgsl */`
+struct QuadYield
+{
+    @builtin(position) Position : vec4f,
+    @location(0)       Screen   : vec2f
+};
+
+@vertex
+fn ProjectFullscreen(@builtin(vertex_index) Index : u32) -> QuadYield
+{
+    // Oversized triangle: no diagonal seam, one primitive.
+    var Corners = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+    var Yield : QuadYield;
+    Yield.Position = vec4f(Corners[Index], 0.0, 1.0);
+    Yield.Screen   = Corners[Index];
+    return Yield;
+}
+
+fn EvaluateSolarDisc(Bearing : vec3f, SolarBearing : vec3f, ViewHeight : f32) -> vec3f
+{
+    if (Profile.SunDiscEnabled < 0.5) { return vec3f(0.0); }
+
+    let CosineAngle = dot(Bearing, SolarBearing);
+    let Angle = acos(clamp(CosineAngle, -1.0, 1.0));
+    if (Angle > SunAngularRadius * 1.6) { return vec3f(0.0); }
+
+    // Soft limb over the outer fifth of the disc so it does not alias.
+    let Edge = 1.0 - smoothstep(SunAngularRadius * 0.82, SunAngularRadius * 1.35, Angle);
+
+    // ⚠️ Occluded by the planet: below the horizon the disc must vanish, or the
+    //    sun shines through the ground at dusk.
+    if (TraceGroundContact(ViewHeight, Bearing.y) > 0.0) { return vec3f(0.0); }
+
+    let Attenuation = SampleTransmittance(ViewHeight, Bearing.y);
+
+    // Solar radiance = illuminance / solid angle of the disc.
+    let SolidAngle = 2.0 * Pi * (1.0 - cos(SunAngularRadius));
+    return SolarIlluminance * Attenuation * Edge / max(SolidAngle, 1e-6);
+}
+
+// 🔴 Transmittance along a FINITE segment, from the eye out to Distance. The
+//    LUT only stores eye-to-space, so the segment is the RATIO of the two
+//    endpoints' lookups: T(a->space) / T(b->space) = T(a->b). Clamped to 1
+//    because the ratio can exceed it slightly through LUT interpolation error,
+//    and a transmittance above 1 amplifies rather than attenuates.
+fn EvaluateSegmentTransmittance(ViewHeight : f32, Bearing : vec3f,
+                                Distance : f32) -> vec3f
+{
+    if (Distance <= 0.0) { return vec3f(1.0); }
+
+    let NearT = SampleTransmittance(ViewHeight, Bearing.y);
+
+    // Far endpoint, in planet-centred coordinates.
+    let FarPoint  = vec3f(0.0, ViewHeight, 0.0) + Bearing * Distance;
+    let FarRadius = clamp(length(FarPoint), BottomRadius + 1e-4, TopRadius);
+    let FarCosine = dot(normalize(FarPoint), Bearing);
+    let FarT      = SampleTransmittance(FarRadius, FarCosine);
+
+    return clamp(NearT / max(FarT, vec3f(1e-5)), vec3f(0.0), vec3f(1.0));
+}
+
+// 🔴 Checker floor. A procedural ground plane at sea level, shaded with the same
+//    sun and sky the atmosphere produces — a checker lit by a hardcoded grey
+//    would be the same radiometric disconnect the clouds just had.
+//
+//    Anti-aliasing matters more than usual here: a checker viewed at a grazing
+//    angle aliases into moire within a few hundred metres, and toward the
+//    horizon the tiles fall below a pixel. The screen-space derivative of the
+//    tile coordinate gives the filter width, and the checker is faded to its
+//    mean (0.5) as that width approaches a full tile — which is exactly what a
+//    correctly-filtered checker does at distance.
+fn ShadeCheckerFloor(Bearing : vec3f, SolarBearing : vec3f,
+                     ViewHeight : f32, Distance : f32) -> vec3f
+{
+    // Contact point, offset by the station so flying moves you over the floor.
+    let Contact = vec3f(0.0, ViewHeight, 0.0) + Bearing * Distance;
+    let Plane   = vec2f(Contact.x + Profile.StationEast,
+                        Contact.z + Profile.StationNorth) * Profile.FloorTileScale;
+
+    // Analytic filter width: how much the tile coordinate moves per pixel.
+    // 🔴 Clamped, because this runs for sky pixels too (see the call site) and a
+    //    quad straddling the horizon mixes real distances with the clamped 0.0,
+    //    making the raw derivative enormous. Unclamped that reads as a grey
+    //    fringe along the skyline. 2.0 tiles per pixel is already fully averaged,
+    //    so anything past it is indistinguishable from the 0.5 mean.
+    let Width = min(fwidth(Plane), vec2f(2.0)) + vec2f(1e-6);
+
+    // Box-filtered checker (the integral of the square wave over the footprint)
+    // rather than a point sample, so it converges to 0.5 instead of aliasing.
+    let Integrated = (TriangleWave(Plane + 0.5 * Width) - TriangleWave(Plane - 0.5 * Width))
+                   / Width;
+    let Checker = 0.5 - 0.5 * Integrated.x * Integrated.y;
+
+    // Two greys rather than black/white: a pure black tile has no light to show
+    // sky colour on, and pure white clips before the sky does.
+    let Albedo = mix(vec3f(0.06), vec3f(0.32), Checker);
+
+    // Direct sun, Lambertian, attenuated by the atmosphere down to the ground.
+    let SurfaceRadius = max(length(Contact), BottomRadius + 1e-4);
+    let SurfaceUp     = Contact / SurfaceRadius;
+    let SunCosine     = max(dot(SurfaceUp, SolarBearing), 0.0);
+    let SunLight      = SolarIlluminance
+                      * SampleTransmittance(SurfaceRadius, dot(SurfaceUp, SolarBearing))
+                      * SunCosine;
+
+    // Sky ambient on the ground: the hemisphere above it, stood in for by the
+    // zenith sky-view sample, same as the clouds use.
+    let SkyLight = textureSampleLevel(SkyViewField, ClampSampler,
+                                      EncodeSkyViewUv(SurfaceUp, SurfaceRadius), 0.0).rgb;
+
+    let Reflected = Albedo * (SunLight + SkyLight) * (1.0 / Pi);
+
+    // 🔴 Aerial perspective on the floor too, or the far ground stays saturated
+    //    while the sky above it hazes out — the horizon then shows a hard line
+    //    where the two disagree.
+    let Attenuation = EvaluateSegmentTransmittance(ViewHeight, Bearing, Distance);
+    let SkyAhead    = textureSampleLevel(SkyViewField, ClampSampler,
+                                         EncodeSkyViewUv(Bearing, ViewHeight), 0.0).rgb;
+
+    return Reflected * Attenuation + SkyAhead * (1.0 - Attenuation);
+}
+
+// 🔴 The ONLY radiance-to-display conversion. Exposure is photographic: a scale
+//    derived from the calibration constant and an EV offset in stops. Nothing
+//    upstream is allowed to pre-multiply brightness into the radiance.
+fn ResolveTonemap(Radiance : vec3f) -> vec3f
+{
+    let Exposed = Radiance * Profile.ExposureScale;
+
+    // ACES filmic approximation (Narkowicz). Rolls the highlights instead of
+    // clipping them, which is what keeps the solar disc from becoming a white
+    // square with a hard edge.
+    let Shaped = (Exposed * (2.51 * Exposed + vec3f(0.03)))
+               / (Exposed * (2.43 * Exposed + vec3f(0.59)) + vec3f(0.14));
+
+    return pow(clamp(Shaped, vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2));
+}
+
+@fragment
+fn ResolveStack(Stream : QuadYield) -> @location(0) vec4f
+{
+    // Screen is taken straight through: Stream.Screen is +Y up in clip space and
+    // Profile.ViewUpward is now a true +Y-up basis vector, so the two already
+    // agree. (This used to negate Y to cancel a reversed cross product in
+    // ResolveCameraBasis — two wrongs that looked upright.)
+    let Screen = Stream.Screen;
+
+    let ViewHeight = BottomRadius
+                   + clamp(Profile.StationAltitude, 0.0005, TopRadius - BottomRadius - 1.0);
+
+    // Diagnostic resolves — raw LUT inspection.
+    if (Profile.ResolveMode > 1.5 && Profile.ResolveMode < 2.5)
+    {
+        let Uv = Screen * vec2f(0.5, -0.5) + vec2f(0.5);
+        return vec4f(textureSampleLevel(TransmittanceField, ClampSampler, Uv, 0.0).rgb, 1.0);
+    }
+    if (Profile.ResolveMode > 2.5)
+    {
+        let Uv = Screen * vec2f(0.5, -0.5) + vec2f(0.5);
+        return vec4f(ResolveTonemap(
+            textureSampleLevel(MultiScatterField, ClampSampler, Uv, 0.0).rgb * 20.0), 1.0);
+    }
+    if (Profile.ResolveMode > 0.5)
+    {
+        let Uv = Screen * vec2f(0.5, -0.5) + vec2f(0.5);
+        return vec4f(ResolveTonemap(
+            textureSampleLevel(SkyViewField, ClampSampler, Uv, 0.0).rgb), 1.0);
+    }
+
+    // ① Build the view ray in the camera basis.
+    let Bearing = normalize(Profile.ViewForward
+                + Profile.ViewRightward * (Screen.x * Profile.ViewAspect * Profile.ViewTangent)
+                + Profile.ViewUpward    * (Screen.y * Profile.ViewTangent));
+
+    let SolarBearing = normalize(Profile.SolarBearing);
+
+    // ② Sky radiance from the LUT, plus the solar disc. The disc folds in BEFORE
+    //    the cloud multiply so that clouds occlude it.
+    var Radiance = textureSampleLevel(SkyViewField, ClampSampler,
+                                      EncodeSkyViewUv(Bearing, ViewHeight), 0.0).rgb;
+    Radiance = Radiance + EvaluateSolarDisc(Bearing, SolarBearing, ViewHeight);
+
+    // ③ Checker floor. Drawn BEFORE clouds so cloud shadow and cloud occlusion
+    //    both land on it. It replaces the sky radiance entirely where hit —
+    //    the ground is opaque.
+    // 🔴 Evaluated UNCONDITIONALLY and selected afterwards, not called inside the
+    //    hit branch. ShadeCheckerFloor uses fwidth for its box filter, and a
+    //    derivative is only defined in uniform control flow: whether a ray hits
+    //    the ground varies per pixel, so calling it under `if (GroundHit > 0)` is
+    //    a WGSL validation error ("must only be called from uniform control
+    //    flow"). Sky pixels compute a floor colour that is then discarded.
+    let GroundHit = TraceGroundContact(ViewHeight, Bearing.y);
+    let FloorRadiance = ShadeCheckerFloor(Bearing, SolarBearing, ViewHeight,
+                                          max(GroundHit, 0.0));
+    if (Profile.FloorEnabled > 0.5 && Profile.GroundEnabled > 0.5 && GroundHit > 0.0)
+    {
+        Radiance = FloorRadiance;
+    }
+
+    // ④ Clouds composite over the sky. Origin is the station in planet-centred
+    //    coordinates: the camera's horizontal offset matters because the weather
+    //    field is addressed in world space, so flying moves you under new cloud.
+    if (Profile.CloudsEnabled > 0.5)
+    {
+        let Origin = vec3f(Profile.StationEast, ViewHeight, Profile.StationNorth);
+
+        // Ground clips the march when looking down, so clouds never draw beneath
+        // the horizon line.
+        var Limit = 1000.0;
+        if (GroundHit > 0.0 && Profile.GroundEnabled > 0.5) { Limit = GroundHit; }
+
+        // Interleaved-gradient dither on the first step kills slice banding.
+        let Pixel  = Stream.Position.xy;
+        let Dither = fract(52.9829189 * fract(0.06711056 * Pixel.x + 0.00583715 * Pixel.y));
+
+        let Cloud = MarchClouds(Origin, Bearing, SolarBearing, Limit, Dither);
+
+        // 🔴 AERIAL PERSPECTIVE (plan P7). The cloud's in-scatter is emitted at
+        //    MeanDepth, not at the eye, so the atmosphere between eye and cloud
+        //    must attenuate it AND add its own in-scatter in front. Without this
+        //    a cloud 400 km out arrives at full contrast and reads as a cardboard
+        //    cutout pasted on the horizon. Derived from the transmittance LUT as
+        //    a ratio: T(eye->top) / T(cloud->top) is the eye->cloud segment.
+        let AerialTransmittance = EvaluateSegmentTransmittance(
+            ViewHeight, Bearing, Cloud.MeanDepth);
+
+        // The haze filling that segment is the sky radiance the cloud displaces,
+        // weighted by how much of the path it occupies.
+        let SkyBehind = textureSampleLevel(SkyViewField, ClampSampler,
+                                           EncodeSkyViewUv(Bearing, ViewHeight), 0.0).rgb;
+        let Haze = SkyBehind * (1.0 - AerialTransmittance);
+
+        let CloudRadiance = Cloud.Scattered * AerialTransmittance
+                          + Haze * (1.0 - Cloud.Transmittance);
+
+        // Back-to-front: whatever is behind (sky or floor) is attenuated by
+        // cloud transmittance, then the cloud's own in-scatter is added.
+        Radiance = Radiance * Cloud.Transmittance + CloudRadiance;
+    }
+
+    return vec4f(ResolveTonemap(Radiance), 1.0);
+}
+`;
+
+//============================================================================
+//  Host
+//============================================================================
+const Canvas = document.getElementById('gpu');
+const Readout = document.getElementById('hud');
+
+// 🔴 Must match struct SkyProfile field-for-field. vec3f occupies 3 floats and
+//    aligns to a 16-byte row, so each is followed by exactly one f32 partner.
+const ProfileFloatCount = 48;
+const ProfileScratch    = new Float32Array(ProfileFloatCount);
+
+const ProfileStructSource = /* wgsl */`
+struct SkyProfile
+{
+    SolarBearing        : vec3f,
+    StationAltitude     : f32,
+
+    ViewForward         : vec3f,
+    ViewTangent         : f32,
+
+    ViewRightward       : vec3f,
+    ViewAspect          : f32,
+
+    ViewUpward          : vec3f,
+    ExposureScale       : f32,
+
+    GroundAlbedo        : vec3f,
+    SunDiscEnabled      : f32,
+
+    MultiScatterEnabled : f32,
+    GroundEnabled       : f32,
+    ResolveMode         : f32,
+    SequenceTime        : f32,
+
+    StationEast         : f32,
+    StationNorth        : f32,
+    CloudsEnabled       : f32,
+    CloudCoverage       : f32,
+
+    CloudLayerBase      : f32,     // km above sea level
+    CloudLayerThickness : f32,     // km
+    CloudDensityScale   : f32,
+    CloudMarchSteps     : f32,
+
+    CloudLightSteps     : f32,
+    CloudWindSpeed      : f32,
+    CloudDetailStrength : f32,
+    CloudPowderStrength : f32,
+
+    CloudAnisotropy     : f32,
+    CloudTypeDial       : f32,
+    CloudSolarGain      : f32,     // multiplier on LUT-sampled sun radiance
+    CloudAmbientGain    : f32,     // multiplier on sky-view ambient
+
+    CloudConeSpread     : f32,     // self-shadow cone half-angle, fraction
+    CloudBackLobe       : f32,     // independent g1 for the dual-lobe HG
+    CloudAlbedo         : f32,     // single-scatter albedo (water droplets ~1)
+    CloudExtinctionRate : f32,     // density -> sigma_t, per km
+
+    FloorEnabled        : f32,
+    FloorTileScale      : f32,     // checker tiles per km
+    CloudStormBias      : f32,     // lifts weather precipitation -> thunderheads
+    CloudCirrusAmount   : f32      // strength of the separate high cirrus band
+};
+`;
+
+const Tunables =
+{
+    SunElevation: 0.62, SunAzimuth: 0.70,
+    ExposureBias: 0.0,
+    StationAltitude: 2.0,          // metres in the UI, converted to km on pack
+    ViewAperture: 1.15,
+    GroundAlbedo: 0.1,
+    SunDiscEnabled: 1, MultiScatterEnabled: 1, GroundEnabled: 1,
+    ResolveMode: 0,
+
+    // Clouds. Layer base/thickness are kilometres above sea level — a real
+    // cumulus deck sits around 1.5 km with roughly 2 km of vertical development,
+    // which is what makes "fly up into it" a reachable altitude.
+    CloudsEnabled: 1,
+    CloudCoverage: 0.45,
+    CloudLayerBase: 1.5,
+    CloudLayerThickness: 2.0,
+    CloudDensityScale: 1.4,
+    CloudMarchSteps: 64,
+    CloudLightSteps: 6,
+    CloudWindSpeed: 0.02,
+    CloudDetailStrength: 0.35,
+    CloudPowderStrength: 0.6,
+    CloudAnisotropy: 0.8,
+    CloudTypeDial: 0.5,
+
+    // Lighting gains. Both are artistic multipliers on physically-sourced terms
+    // (transmittance LUT for sun, sky-view LUT for ambient) — 1.0 means "take
+    // the atmosphere's answer as-is".
+    // ⚠️ A sunlit cloud is legitimately ~20x brighter than the clear sky beside
+    //    it (sigma_s/sigma_t * HG-forward vs the atmosphere's thin scattering),
+    //    and ExposureCalibration is tuned against the SKY. So 1.0 will clip the
+    //    lit faces white through ACES. 0.06 is not a fudge for missing physics —
+    //    the previous *8.0 WAS that — it is the exposure headroom the single
+    //    shared tonemap cannot give clouds and sky separately. Raise it and the
+    //    tops blow out; that is the tonemapper, not the march.
+    CloudSolarGain: 0.06,
+    CloudAmbientGain: 0.35,
+    CloudConeSpread: 0.35,
+    CloudBackLobe: -0.5,           // Frostbite g1, independent of the forward dial
+    CloudAlbedo: 0.95,             // water droplets scatter almost losslessly
+    CloudExtinctionRate: 12.0,     // per km, at density 1
+    CloudStormBias: 0.0,           // 0 = only the weather map's own storm cells
+    CloudCirrusAmount: 0.0,        // off by default; a separate high band
+
+    FloorEnabled: 1,
+    FloorTileScale: 1.0
+};
+
+// Cloud presets drive the continuous type dial plus coverage/thickness rather
+// than switching a mode — every value stays hand-tunable afterwards.
+// 🔴 The dial now runs stratus (0) -> stratocumulus (0.5) -> cumulus (1), and
+//    CUMULONIMBUS is a separate override driven by the weather map's
+//    precipitation channel — it cannot be reached by blending the three low
+//    profiles, which is why "towering" raises StormBias rather than the dial.
+const CloudPresetTable =
+{
+    stratus:  { CloudTypeDial: 0.0,  CloudCoverage: 0.62, CloudLayerBase: 0.8,
+                CloudLayerThickness: 0.8, CloudDensityScale: 1.1,
+                CloudDetailStrength: 0.22, CloudStormBias: 0.0 },
+    cumulus:  { CloudTypeDial: 1.0,  CloudCoverage: 0.45, CloudLayerBase: 1.5,
+                CloudLayerThickness: 2.0, CloudDensityScale: 1.4,
+                CloudDetailStrength: 0.35, CloudStormBias: 0.0 },
+    towering: { CloudTypeDial: 1.0,  CloudCoverage: 0.52, CloudLayerBase: 1.2,
+                CloudLayerThickness: 4.2, CloudDensityScale: 1.7,
+                CloudDetailStrength: 0.42, CloudStormBias: 0.55 },
+    overcast: { CloudTypeDial: 0.35, CloudCoverage: 0.88, CloudLayerBase: 1.0,
+                CloudLayerThickness: 1.6, CloudDensityScale: 1.9,
+                CloudDetailStrength: 0.28, CloudStormBias: 0.15 }
+};
+
+const ScenePresetTable =
+{
+    dawn:   { SunElevation: 0.045, SunAzimuth: -1.90, ExposureBias:  0.4 },
+    noon:   { SunElevation: 1.15,  SunAzimuth:  0.70, ExposureBias:  0.0 },
+    golden: { SunElevation: 0.115, SunAzimuth: -1.45, ExposureBias:  0.3 },
+    dusk:   { SunElevation: -0.03, SunAzimuth: -2.60, ExposureBias:  1.2 }
+};
+
+//------------------------------------------------------------------- camera
+// 🔴 Station is the camera position in KILOMETRES, Y-up, matching the shader's
+//    world. Altitude is surfaced in metres in the UI because 2 m and 12 km are
+//    both useful and a km slider cannot resolve standing height.
+const Station = { East: 0.0, Altitude: 0.002, North: 0.0 };
+
+// Pitch starts positive so the load view is looking UP at the sky, per the
+// requested framing, with the horizon still in the lower third.
+const Orbit = { Yaw: 0.0, Pitch: 0.42, Aperture: 1.15 };
+
+const KeysHeld   = new Set();
+const FlyProfile = { Speed: 0.12, Sprint: 8.0, Damping: 10.0 };
+const Drift      = { East: 0.0, Altitude: 0.0, North: 0.0 };
+
+// Mouselook state. Looking is true only while the right button is held, which is
+// also the gate on WASD flight — the Unreal editor rule.
+let Looking = false;
+const LookProfile = { Sensitivity: 0.0042, InvertPitch: false };
+
+const FlightCodes = new Set(
+[
+    'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyC',
+    'ShiftLeft', 'ShiftRight', 'Space'
+]);
+
+function ResolveCameraBasis()
+{
+    const CosPitch = Math.cos(Orbit.Pitch);
+    const Forward =
+    [
+        Math.sin(Orbit.Yaw) * CosPitch,
+        Math.sin(Orbit.Pitch),
+        Math.cos(Orbit.Yaw) * CosPitch
+    ];
+    // Rightward is horizontal by construction, so the horizon never rolls.
+    const Rightward = [Math.cos(Orbit.Yaw), 0.0, -Math.sin(Orbit.Yaw)];
+    // 🔴 Upward = Forward x Rightward, NOT Rightward x Forward. The reversed order
+    //    yields -Y at yaw 0 pitch 0 — a camera basis whose "up" points at the
+    //    ground. That flip was previously cancelled by negating Screen.y in the
+    //    composite, so the image looked upright while the basis stayed wrong and
+    //    every vertical term downstream inherited the sign error.
+    const Upward =
+    [
+        Forward[1] * Rightward[2] - Forward[2] * Rightward[1],
+        Forward[2] * Rightward[0] - Forward[0] * Rightward[2],
+        Forward[0] * Rightward[1] - Forward[1] * Rightward[0]
+    ];
+    return { Forward, Rightward, Upward };
+}
+
+function ResolveSolarBearing()
+{
+    // ⚠️ Y is elevation. This is the Y-up convention the whole shader assumes;
+    //    feeding a Z-up vector here silently puts the sun on the horizon.
+    const CosElevation = Math.cos(Tunables.SunElevation);
+    return [
+        Math.sin(Tunables.SunAzimuth) * CosElevation,
+        Math.sin(Tunables.SunElevation),
+        Math.cos(Tunables.SunAzimuth) * CosElevation
+    ];
+}
+
+// 🔴 Exposure calibration. Sky radiance from the LUT chain peaks around 0.02-0.08
+//    for a clear day, so a scale near 40 lands mid-frame in the ACES curve. This
+//    constant is the ONE place brightness is set; the EV slider offsets it in
+//    photographic stops rather than replacing it.
+const ExposureCalibration = 40.0;
+
+function ResolveExposureScale()
+{
+    return ExposureCalibration * Math.pow(2.0, Tunables.ExposureBias);
+}
+
+let Device        = null;
+let Surface       = null;
+let SurfaceFormat = 'bgra8unorm';
+let ProfileBuffer = null;
+let ClampSampler  = null;
+let RepeatSampler = null;
+
+const Fields    = {};
+const Pipelines = {};
+const BindGroups = {};
+
+function ConstructField(Name, Extent, Format, Dimension)
+{
+    if (Fields[Name] && Fields[Name].Texture) { Fields[Name].Texture.destroy(); }
+    const Texture = Device.createTexture(
+    {
+        label: Name,
+        size: Dimension === '3d'
+            ? { width: Extent[0], height: Extent[1], depthOrArrayLayers: Extent[2] }
+            : { width: Extent[0], height: Extent[1] },
+        dimension: Dimension === '3d' ? '3d' : '2d',
+        format: Format,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING
+             | GPUTextureUsage.COPY_DST
+    });
+    Fields[Name] = { Texture, Extent, Format, View: Texture.createView() };
+    return Fields[Name];
+}
+
+function TranscribeProfile(SequenceTime)
+{
+    const Basis = ResolveCameraBasis();
+    const Solar = ResolveSolarBearing();
+    let Cursor = 0;
+
+    const Put  = Scalar => { ProfileScratch[Cursor++] = Scalar; };
+    const Put3 = Triple => { Put(Triple[0]); Put(Triple[1]); Put(Triple[2]); };
+
+    Put3(Solar);                Put(Station.Altitude);
+    Put3(Basis.Forward);        Put(Math.tan(Orbit.Aperture * 0.5));
+    Put3(Basis.Rightward);      Put(Canvas.width / Math.max(Canvas.height, 1));
+    Put3(Basis.Upward);         Put(ResolveExposureScale());
+    Put3([Tunables.GroundAlbedo, Tunables.GroundAlbedo, Tunables.GroundAlbedo]);
+    Put(Tunables.SunDiscEnabled);
+
+    Put(Tunables.MultiScatterEnabled);
+    Put(Tunables.GroundEnabled);
+    Put(Tunables.ResolveMode);
+    Put(SequenceTime);
+
+    Put(Station.East);
+    Put(Station.North);
+    Put(Tunables.CloudsEnabled);
+    Put(Tunables.CloudCoverage);
+
+    Put(Tunables.CloudLayerBase);
+    Put(Tunables.CloudLayerThickness);
+    Put(Tunables.CloudDensityScale);
+    Put(Tunables.CloudMarchSteps);
+
+    Put(Tunables.CloudLightSteps);
+    Put(Tunables.CloudWindSpeed);
+    Put(Tunables.CloudDetailStrength);
+    Put(Tunables.CloudPowderStrength);
+
+    Put(Tunables.CloudAnisotropy);
+    Put(Tunables.CloudTypeDial);
+    Put(Tunables.CloudSolarGain);
+    Put(Tunables.CloudAmbientGain);
+
+    Put(Tunables.CloudConeSpread);
+    Put(Tunables.CloudBackLobe);
+    Put(Tunables.CloudAlbedo);
+    Put(Tunables.CloudExtinctionRate);
+
+    Put(Tunables.FloorEnabled);
+    Put(Tunables.FloorTileScale);
+    Put(Tunables.CloudStormBias);
+    Put(Tunables.CloudCirrusAmount);
+
+    if (Cursor !== ProfileFloatCount)
+    {
+        throw new Error(`SkyProfile packing wrote ${Cursor}, expected ${ProfileFloatCount}`);
+    }
+    Device.queue.writeBuffer(ProfileBuffer, 0, ProfileScratch);
+}
+
+// 🔴 AuditDerivedLayout exists because `layout: 'auto'` silently DROPS any
+//    binding the shader does not statically reference. Supplying an entry for a
+//    dropped binding invalidates the bind group, and the only symptom is an
+//    anonymous "invalid due to a previous error" on a later submit — with no
+//    mention of which binding or which shader. This turns that into a named
+//    throw at construction time.
+function AuditDerivedLayout(Label, Source, Bindings)
+{
+    const Declared = new Map();
+    const Pattern = /@group\(0\)\s*@binding\((\d+)\)\s+var(?:<[^>]*>)?\s+(\w+)/g;
+    let Match;
+    while ((Match = Pattern.exec(Source)) !== null)
+    {
+        Declared.set(Number(Match[1]), Match[2]);
+    }
+
+    for (const [Slot, Name] of Declared)
+    {
+        // Count references beyond the declaration itself.
+        const Uses = (Source.match(new RegExp(`\\b${Name}\\b`, 'g')) || []).length;
+        if (Uses <= 1)
+        {
+            throw new Error(
+                `${Label}: binding ${Slot} '${Name}' is declared but never referenced. ` +
+                `layout:'auto' will drop it and the bind group entry becomes invalid. ` +
+                `Remove the declaration or use it.`);
+        }
+    }
+
+    for (const Entry of Bindings)
+    {
+        if (!Declared.has(Entry.binding))
+        {
+            throw new Error(`${Label}: bind group supplies binding ${Entry.binding}, ` +
+                            `which the shader does not declare.`);
+        }
+    }
+}
+
+function ConstructComputeUnit(Label, Source, Entry, Bindings)
+{
+    AuditDerivedLayout(Label, Source, Bindings);
+
+    const Module = Device.createShaderModule({ label: Label, code: Source });
+    Pipelines[Label] = Device.createComputePipeline(
+    {
+        label: Label,
+        layout: 'auto',
+        compute: { module: Module, entryPoint: Entry }
+    });
+    BindGroups[Label] = Device.createBindGroup(
+    {
+        label: Label,
+        layout: Pipelines[Label].getBindGroupLayout(0),
+        entries: Bindings
+    });
+}
+
+function RecordCompute(Encoder, Label, Extent, Workgroup)
+{
+    const Scope = Encoder.beginComputePass({ label: Label });
+    Scope.setPipeline(Pipelines[Label]);
+    Scope.setBindGroup(0, BindGroups[Label]);
+    Scope.dispatchWorkgroups(
+        Math.ceil(Extent[0] / Workgroup[0]),
+        Math.ceil(Extent[1] / Workgroup[1]),
+        Math.ceil((Extent[2] || 1) / (Workgroup[2] || 1)));
+    Scope.end();
+}
+
+//------------------------------------------------------------------- controls
+function RefreshControlReadout(Element)
+{
+    const Readout = Element.parentElement.querySelector('.val');
+    if (!Readout) { return; }
+    const Value = Number(Element.value);
+    Readout.textContent = Math.abs(Value) >= 100 ? Value.toFixed(0)
+                        : Math.abs(Value) >= 10  ? Value.toFixed(1)
+                        : Value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function AnnounceFlySpeed()
+{
+    const Element = document.getElementById('FlySpeedReadout');
+    if (!Element) { return; }
+    const Metres = FlyProfile.Speed * 1000.0;
+    Element.textContent = Metres >= 1000
+        ? (Metres / 1000).toFixed(1) + ' km/s'
+        : Metres.toFixed(0) + ' m/s';
+}
+
+function SynchroniseControls()
+{
+    for (const Name in Tunables)
+    {
+        const Element = document.getElementById(Name);
+        if (!Element) { continue; }
+        if (Element.type === 'checkbox') { Element.checked = Tunables[Name] > 0.5; }
+        else { Element.value = Tunables[Name]; RefreshControlReadout(Element); }
+    }
+    // ⚠️ Altitude is metres in the UI, kilometres in the world. Tunables is the
+    //    authority only when a preset or slider set it — flight writes back into
+    //    Tunables.StationAltitude each frame, so this stays consistent instead of
+    //    teleporting the camera when an unrelated preset is clicked.
+    Station.Altitude = Tunables.StationAltitude / 1000.0;
+    Orbit.Aperture   = Tunables.ViewAperture;
+}
+
+function RegisterControls()
+{
+    for (const Name in Tunables)
+    {
+        const Element = document.getElementById(Name);
+        if (!Element) { continue; }
+
+        if (Element.type === 'checkbox')
+        {
+            Element.checked = Tunables[Name] > 0.5;
+            Element.addEventListener('change', () =>
+            {
+                Tunables[Name] = Element.checked ? 1 : 0;
+                MarkSkyViewStale();
+            });
+            continue;
+        }
+
+        Element.value = Tunables[Name];
+        RefreshControlReadout(Element);
+        Element.addEventListener('input', () =>
+        {
+            Tunables[Name] = Number(Element.value);
+            RefreshControlReadout(Element);
+
+            if (Name === 'StationAltitude')
+            {
+                Station.Altitude = Tunables.StationAltitude / 1000.0;
+                Drift.Altitude = 0.0;
+            }
+            if (Name === 'ViewAperture') { Orbit.Aperture = Tunables.ViewAperture; }
+
+            // 🔴 The sky-view LUT is baked for one sun angle and one altitude.
+            //    Anything touching either must invalidate it or the sky freezes
+            //    while the slider visibly moves — which reads as a dead control.
+            if (Name === 'SunElevation' || Name === 'SunAzimuth'
+             || Name === 'StationAltitude' || Name === 'GroundAlbedo')
+            {
+                MarkSkyViewStale();
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-scene]').forEach(Button =>
+    {
+        Button.addEventListener('click', () =>
+        {
+            const Preset = ScenePresetTable[Button.dataset.scene];
+            if (!Preset) { return; }
+            Object.assign(Tunables, Preset);
+            SynchroniseControls();
+            MarkSkyViewStale();
+            document.querySelectorAll('[data-scene]').forEach(Other =>
+                Other.classList.toggle('active', Other === Button));
+        });
+    });
+
+    document.querySelectorAll('[data-cloud]').forEach(Button =>
+    {
+        Button.addEventListener('click', () =>
+        {
+            const Preset = CloudPresetTable[Button.dataset.cloud];
+            if (!Preset) { return; }
+            Object.assign(Tunables, Preset);
+            SynchroniseControls();
+            document.querySelectorAll('[data-cloud]').forEach(Other =>
+                Other.classList.toggle('active', Other === Button));
+        });
+    });
+
+    document.querySelectorAll('[data-resolve]').forEach(Button =>
+    {
+        Button.addEventListener('click', () =>
+        {
+            Tunables.ResolveMode = Number(Button.dataset.resolve);
+            document.querySelectorAll('[data-resolve]').forEach(Other =>
+                Other.classList.toggle('active', Other === Button));
+        });
+    });
+
+    document.querySelectorAll('#panel .group h2').forEach(Heading =>
+    {
+        Heading.addEventListener('click', () =>
+            Heading.parentElement.classList.toggle('folded'));
+    });
+
+    AnnounceFlySpeed();
+}
+
+//------------------------------------------------------------------- flight
+function RegisterFlightControl()
+{
+    let LastX = 0, LastY = 0;
+
+    // 🔴 Unreal editor convention: RIGHT mouse held = mouselook, and WASD flies
+    //    only while it is held. Left drag is left free for future picking rather
+    //    than being a second, redundant look control.
+    Canvas.addEventListener('pointerdown', Event =>
+    {
+        if (Event.button !== 2) { return; }
+        Looking = true; LastX = Event.clientX; LastY = Event.clientY;
+        Canvas.setPointerCapture(Event.pointerId);
+        Canvas.focus();
+        Event.preventDefault();
+    });
+    const EndLook = Event =>
+    {
+        if (!Looking) { return; }
+        Looking = false;
+        KeysHeld.clear();                 // releasing look must not latch a held key
+        try { Canvas.releasePointerCapture(Event.pointerId); } catch (Ignored) {}
+    };
+    Canvas.addEventListener('pointerup', EndLook);
+    Canvas.addEventListener('pointercancel', EndLook);
+    Canvas.addEventListener('lostpointercapture', EndLook);
+    Canvas.addEventListener('pointermove', Event =>
+    {
+        if (!Looking) { return; }
+        // 🔴 Yaw INCREASES when the pointer moves right. Increasing yaw swings
+        //    Forward toward +X, which is Rightward — so a '-=' here turns the
+        //    camera left when the mouse goes right. That was the inverted look.
+        Orbit.Yaw += (Event.clientX - LastX) * LookProfile.Sensitivity;
+        // ⚠️ Clamp short of the poles so Forward never aligns with world up and
+        //    the Rightward cross product cannot degenerate.
+        const PitchStep = (Event.clientY - LastY) * LookProfile.Sensitivity
+                        * (LookProfile.InvertPitch ? 1.0 : -1.0);
+        Orbit.Pitch = Math.max(-1.50, Math.min(1.50, Orbit.Pitch + PitchStep));
+        LastX = Event.clientX; LastY = Event.clientY;
+    });
+    Canvas.addEventListener('contextmenu', Event => Event.preventDefault());
+
+    Canvas.addEventListener('wheel', Event =>
+    {
+        Event.preventDefault();
+        const Scale = Event.deltaY < 0 ? 1.18 : 1.0 / 1.18;
+        FlyProfile.Speed = Math.max(0.002, Math.min(20.0, FlyProfile.Speed * Scale));
+        AnnounceFlySpeed();
+    }, { passive: false });
+
+    // Keys bind on window: the canvas only receives them once focused, and a
+    // missed keydown reads as broken movement.
+    window.addEventListener('keydown', Event =>
+    {
+        const Focused = document.activeElement;
+        if (Focused && Focused !== document.body && Focused.tagName !== 'CANVAS') { return; }
+        if (FlightCodes.has(Event.code)) { Event.preventDefault(); }
+        KeysHeld.add(Event.code);
+    });
+    window.addEventListener('keyup', Event => KeysHeld.delete(Event.code));
+    window.addEventListener('blur', () => KeysHeld.clear());
+}
+
+function IntegrateFlight(Delta)
+{
+    const Basis = ResolveCameraBasis();
+
+    let Along = 0.0, Across = 0.0, Vertical = 0.0;
+    // 🔴 WASD only flies while the right button is held — Unreal's rule. Without
+    //    this gate, typing in a slider field or just resting on W drifts the
+    //    camera with no pointer interaction at all.
+    if (Looking)
+    {
+        if (KeysHeld.has('KeyW')) { Along    += 1.0; }
+        if (KeysHeld.has('KeyS')) { Along    -= 1.0; }
+        if (KeysHeld.has('KeyD')) { Across   += 1.0; }
+        if (KeysHeld.has('KeyA')) { Across   -= 1.0; }
+        // E/Q are Unreal's world up/down; Space/C are the common aliases.
+        if (KeysHeld.has('KeyE') || KeysHeld.has('Space')) { Vertical += 1.0; }
+        if (KeysHeld.has('KeyQ') || KeysHeld.has('KeyC'))  { Vertical -= 1.0; }
+    }
+
+    const Sprinting = KeysHeld.has('ShiftLeft') || KeysHeld.has('ShiftRight');
+    const Rate = FlyProfile.Speed * (Sprinting ? FlyProfile.Sprint : 1.0);
+
+    // Normalise or diagonals travel sqrt(2) faster than the axes.
+    const Magnitude = Math.hypot(Along, Across, Vertical);
+    let TargetEast = 0.0, TargetAltitude = 0.0, TargetNorth = 0.0;
+    if (Magnitude > 0.0)
+    {
+        const Unit = 1.0 / Magnitude;
+        TargetEast     = (Basis.Forward[0] * Along + Basis.Rightward[0] * Across) * Unit * Rate;
+        TargetAltitude = (Basis.Forward[1] * Along + Vertical) * Unit * Rate;
+        TargetNorth    = (Basis.Forward[2] * Along + Basis.Rightward[2] * Across) * Unit * Rate;
+    }
+
+    // Framerate-independent approach to the target velocity.
+    const Blend = 1.0 - Math.exp(-FlyProfile.Damping * Delta);
+    Drift.East     += (TargetEast     - Drift.East)     * Blend;
+    Drift.Altitude += (TargetAltitude - Drift.Altitude) * Blend;
+    Drift.North    += (TargetNorth    - Drift.North)    * Blend;
+
+    if (Math.hypot(Drift.East, Drift.Altitude, Drift.North) < 1e-7) { return; }
+
+    const PriorAltitude = Station.Altitude;
+    Station.East     += Drift.East * Delta;
+    Station.North    += Drift.North * Delta;
+    Station.Altitude += Drift.Altitude * Delta;
+
+    // Floor at 1 m: below the surface the slab and horizon math invert.
+    Station.Altitude = Math.max(0.001, Math.min(12.0, Station.Altitude));
+
+    // 🔴 The sky-view LUT is altitude-dependent, so climbing must re-bake it.
+    //    A metre of drift does not matter; a hundred does.
+    if (Math.abs(Station.Altitude - PriorAltitude) > 0.02) { MarkSkyViewStale(); }
+
+    Tunables.StationAltitude = Station.Altitude * 1000.0;
+    const Slider = document.getElementById('StationAltitude');
+    if (Slider && document.activeElement !== Slider)
+    {
+        Slider.value = Tunables.StationAltitude;
+        RefreshControlReadout(Slider);
+    }
+}
+
+//------------------------------------------------------------------- sequence
+let SkyViewStale = true;
+function MarkSkyViewStale() { SkyViewStale = true; }
+
+let PreviousStamp = 0;
+let SmoothedCost  = 0;
+
+function IntegrateSequence(Stamp)
+{
+    const Delta = Math.min((Stamp - PreviousStamp) / 1000.0 || 0.016, 0.05);
+    PreviousStamp = Stamp;
+
+    IntegrateFlight(Delta);
+    TranscribeProfile(Stamp / 1000.0);
+
+    const Encoder = Device.createCommandEncoder({ label: 'Sequence' });
+
+    // Sky-view is dirty-gated: it only re-bakes when the sun or the station moves.
+    if (SkyViewStale)
+    {
+        RecordCompute(Encoder, 'SkyViewIntegration', Fields.SkyView.Extent, [8, 8, 1]);
+        SkyViewStale = false;
+    }
+
+    const Scope = Encoder.beginRenderPass(
+    {
+        label: 'StackComposite',
+        colorAttachments:
+        [{
+            view: Surface.getCurrentTexture().createView(),
+            clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            loadOp: 'clear',
+            storeOp: 'store'
+        }]
+    });
+    Scope.setPipeline(Pipelines.StackComposite);
+    Scope.setBindGroup(0, BindGroups.StackComposite);
+    Scope.draw(3);
+    Scope.end();
+
+    Device.queue.submit([Encoder.finish()]);
+
+    SmoothedCost = SmoothedCost * 0.9 + Delta * 1000.0 * 0.1;
+    Readout.textContent =
+        `${(1000 / Math.max(SmoothedCost, 0.01)).toFixed(0)} fps · ${SmoothedCost.toFixed(1)} ms`
+      + ` · alt ${(Station.Altitude * 1000).toFixed(0)} m`
+      + ` · sun ${(Tunables.SunElevation * 57.2958).toFixed(1)}°`;
+
+    requestAnimationFrame(IntegrateSequence);
+}
+
+function ReconfigureSurface()
+{
+    const Ratio  = Math.min(window.devicePixelRatio || 1, 2);
+    const Width  = Math.max(8, Math.floor(Canvas.clientWidth  * Ratio));
+    const Height = Math.max(8, Math.floor(Canvas.clientHeight * Ratio));
+    if (Canvas.width === Width && Canvas.height === Height) { return; }
+    Canvas.width = Width;
+    Canvas.height = Height;
+}
+
+//------------------------------------------------------------------- boot
+async function InitializeSky()
+{
+    if (!navigator.gpu) { throw new Error('WebGPU unavailable. Chrome 113+ required.'); }
+
+    const Adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!Adapter) { throw new Error('No WebGPU adapter.'); }
+    Device = await Adapter.requestDevice();
+    Device.addEventListener('uncapturederror', E => AnnounceFault('WebGPU', E.error.message));
+
+    Surface = Canvas.getContext('webgpu');
+    SurfaceFormat = navigator.gpu.getPreferredCanvasFormat();
+    ReconfigureSurface();
+    Surface.configure({ device: Device, format: SurfaceFormat, alphaMode: 'opaque' });
+
+    ProfileBuffer = Device.createBuffer(
+    {
+        label: 'SkyProfile',
+        size: ProfileFloatCount * 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    });
+    ClampSampler = Device.createSampler(
+        { magFilter: 'linear', minFilter: 'linear',
+          addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
+
+    // 🔴 Cloud fields tile in world space, so their sampler must REPEAT. Reusing
+    //    ClampSampler here smears the edge texel across the sky past the first
+    //    tile — it reads as a giant smooth gradient, not as a wrong sampler.
+    RepeatSampler = Device.createSampler(
+        { magFilter: 'linear', minFilter: 'linear',
+          addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat' });
+
+    ConstructField('Transmittance', [256, 64],  'rgba16float', '2d');
+    ConstructField('MultiScatter',  [32, 32],   'rgba16float', '2d');
+    ConstructField('SkyView',       [192, 108], 'rgba16float', '2d');
+
+    ConstructField('BaseShape',      [128, 128, 128], 'rgba8unorm', '3d');
+    ConstructField('DetailErosion',  [32, 32, 32],    'rgba8unorm', '3d');
+    ConstructField('WeatherProfile', [512, 512],      'rgba8unorm', '2d');
+
+    const Preamble = ProfileStructSource + AtmosphereConstantSource + MediumSampleSource;
+    const NoisePreamble = NoiseCommonSource;
+
+    ConstructComputeUnit('BaseShapeInscription',
+        NoisePreamble + BaseShapeInscriptionSource, 'InscribeBaseShape',
+        [
+            { binding: 0, resource: Fields.BaseShape.View }
+        ]);
+
+    ConstructComputeUnit('DetailErosionInscription',
+        NoisePreamble + DetailErosionInscriptionSource, 'InscribeDetailErosion',
+        [
+            { binding: 0, resource: Fields.DetailErosion.View }
+        ]);
+
+    ConstructComputeUnit('WeatherProfileInscription',
+        NoisePreamble + WeatherProfileInscriptionSource, 'InscribeWeatherProfile',
+        [
+            { binding: 0, resource: Fields.WeatherProfile.View }
+        ]);
+
+    ConstructComputeUnit('TransmittanceIntegration',
+        Preamble + TransmittanceIntegrationSource, 'IntegrateTransmittance',
+        [
+            { binding: 0, resource: Fields.Transmittance.View }
+        ]);
+
+    ConstructComputeUnit('MultiScatterIntegration',
+        Preamble + MultiScatterIntegrationSource, 'IntegrateMultiScatter',
+        [
+            { binding: 0, resource: Fields.MultiScatter.View },
+            { binding: 1, resource: Fields.Transmittance.View },
+            { binding: 2, resource: ClampSampler }
+        ]);
+
+    ConstructComputeUnit('SkyViewIntegration',
+        Preamble + SkyViewIntegrationSource, 'IntegrateSkyView',
+        [
+            { binding: 0, resource: { buffer: ProfileBuffer } },
+            { binding: 1, resource: Fields.SkyView.View },
+            { binding: 2, resource: Fields.Transmittance.View },
+            { binding: 3, resource: Fields.MultiScatter.View },
+            { binding: 4, resource: ClampSampler }
+        ]);
+
+    const CompositeBindings =
+    [
+        { binding: 0, resource: { buffer: ProfileBuffer } },
+        { binding: 1, resource: Fields.SkyView.View },
+        { binding: 2, resource: Fields.Transmittance.View },
+        { binding: 3, resource: Fields.MultiScatter.View },
+        { binding: 4, resource: ClampSampler },
+        { binding: 5, resource: Fields.BaseShape.View },
+        { binding: 6, resource: Fields.DetailErosion.View },
+        { binding: 7, resource: Fields.WeatherProfile.View },
+        { binding: 8, resource: RepeatSampler }
+    ];
+    // Audit against the FULL composite source: the cloud march is where the new
+    // bindings are actually referenced, so auditing the composite alone would
+    // wrongly report every cloud field as unused and throw.
+    // 🔴 Order is load-bearing (WGSL declares before use): bindings + LUT
+    //    addressing → noise helpers → cloud march (reads the LUTs) → composite.
+    const CompositeSource = CompositeBindingSource + NoiseCommonSource
+                          + CloudMarchSource + StackCompositeSource;
+    AuditDerivedLayout('StackComposite', CompositeSource, CompositeBindings);
+
+    const CompositeModule = Device.createShaderModule(
+        { label: 'StackComposite', code: Preamble + CompositeSource });
+    Pipelines.StackComposite = Device.createRenderPipeline(
+    {
+        label: 'StackComposite',
+        layout: 'auto',
+        vertex:   { module: CompositeModule, entryPoint: 'ProjectFullscreen' },
+        fragment: { module: CompositeModule, entryPoint: 'ResolveStack',
+                    targets: [{ format: SurfaceFormat }] },
+        primitive: { topology: 'triangle-list' }
+    });
+    BindGroups.StackComposite = Device.createBindGroup(
+    {
+        label: 'StackComposite',
+        layout: Pipelines.StackComposite.getBindGroupLayout(0),
+        entries: CompositeBindings
+    });
+
+    // Boot bakes: transmittance feeds multi-scatter, so they are ordered and
+    // submitted together before the first frame reads either.
+    SynchroniseControls();
+    TranscribeProfile(0.0);
+
+    const BootEncoder = Device.createCommandEncoder({ label: 'BootBake' });
+    RecordCompute(BootEncoder, 'TransmittanceIntegration', [256, 64], [8, 8, 1]);
+    RecordCompute(BootEncoder, 'MultiScatterIntegration',  [32, 32],  [8, 8, 1]);
+    RecordCompute(BootEncoder, 'SkyViewIntegration',       [192, 108], [8, 8, 1]);
+    RecordCompute(BootEncoder, 'BaseShapeInscription',     [128, 128, 128], [4, 4, 4]);
+    RecordCompute(BootEncoder, 'DetailErosionInscription', [32, 32, 32],    [4, 4, 4]);
+    RecordCompute(BootEncoder, 'WeatherProfileInscription',[512, 512],      [8, 8, 1]);
+    Device.queue.submit([BootEncoder.finish()]);
+    await Device.queue.onSubmittedWorkDone();
+
+    RegisterControls();
+    RegisterFlightControl();
+    window.addEventListener('resize', ReconfigureSurface);
+
+    requestAnimationFrame(IntegrateSequence);
+}
+
+InitializeSky().catch(Error => AnnounceFault('Boot failed', Error.stack || Error.message));
+</script>
+</body>
+</html>

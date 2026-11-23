@@ -1,0 +1,159 @@
+<!doctype html>
+<!--
+    ACOUSTICS — VEHICLE SOUND BENCH (awaiting approval)
+    🧩 Drive a fully synthesized Ferrari LaFerrari (V12 + HY-KERS) or Nissan GT-R NISMO (twin-turbo V6) live with the
+       keyboard (or the electric Porsche Taycan Turbo S and a Jackson Storm-style Next-Gen racer), swap in ten turbo
+       and supercharger types, fly three electric aircraft, switch the road surface and the microphone, hit kerbs and potholes, fire light, cabin and impact cues
+       (explosion, shockwave, EMP, sonic blast, glass, crash), and play the pre-rendered reel. No recordings anywhere:
+       every sound is built sample by sample in PulseTrainEngine, TractionIntegrator, ContactPatch, ChassisVoices,
+       ForcedInduction, ElectricDrive, ElectricAviation, CabinFoley, ImpactFoley and Ballistics (weapons with a hold-to-fire trigger, bullets passing by and hitting things).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acoustics · vehicle sound bench</title>
+<link rel="stylesheet" href="../Shared/DisplayKit.css">
+<link rel="stylesheet" href="./Acoustics.css?v=22">
+</head>
+<body>
+<main class="Bench">
+    <header class="Masthead">
+        <div class="Brand">
+            <b id="BrandName">LaFerrari</b>
+            <span id="BrandSpec">F140FE 6.3 L V12 · HY-KERS · 7-speed DCT · 100% synthesized</span>
+            <small class="Build" id="Build">build 22 · Agera RS (cross-plane), drift squeal per surface, ricochet, whizz</small>
+        </div>
+        <div class="Wake" id="Wake"><i></i><span>Click anywhere to wake the sound</span></div>
+        <div class="Toggles">
+            <button class="Toggle" id="CarPick" data-on="LaFerrari"><small>Car · V</small><b>LaFerrari</b></button>
+            <button class="Toggle" id="Pickup" data-on="Chase"><small>Mic</small><b>Chase</b></button>
+            <button class="Toggle" id="Shifting" data-on="Auto"><small>Gearbox</small><b>Auto</b></button>
+            <button class="Toggle" id="Traction" data-on="On"><small>Traction control</small><b>On</b></button>
+        </div>
+    </header>
+
+    <section class="Drive">
+        <div class="Gauge">
+            <canvas id="Tach" width="640" height="640"></canvas>
+            <div class="Readout">
+                <b id="Gear">N</b>
+                <span><em id="Speed">0</em> km/h</span>
+                <small id="Rpm">0 rpm</small>
+            </div>
+            <div class="Chips">
+                <i id="ChipLimiter">LIMITER</i><i id="ChipShift">SHIFT</i><i id="ChipSpin">WHEELSPIN</i><i id="ChipKers">KERS</i><i id="ChipAbs">ABS</i>
+            </div>
+        </div>
+
+        <div class="Controls">
+            <button class="Start" id="Start"><span>ENGINE</span><b>START</b><small>Enter</small></button>
+            <div class="Pedals">
+                <button class="Pedal" id="PedalBrake" data-hold="Brake"><span>Brake</span><i><u></u></i><small>S / ↓</small></button>
+                <button class="Pedal Throttle" id="PedalThrottle" data-hold="Throttle"><span>Throttle</span><i><u></u></i><small>W / ↑</small></button>
+            </div>
+            <div class="Paddles">
+                <button id="PaddleDown"><b>−</b><small>Q</small></button>
+                <button id="Neutral"><b>N</b><small>N</small></button>
+                <button id="PaddleUp"><b>+</b><small>E</small></button>
+            </div>
+            <div class="Steer">
+                <span>Steering</span>
+                <div class="SteerBar"><i id="SteerKnob"></i></div>
+                <small>A / D steer · Space handbrake</small>
+            </div>
+            <div class="Kers"><span id="KersLabel">HY-KERS</span><div><i id="KersBar"></i></div></div>
+        </div>
+    </section>
+
+    <section class="Panel">
+        <h2>Road surface <small>1 – 7</small></h2>
+        <div class="Surfaces" id="Surfaces"></div>
+    </section>
+
+    <section class="Split">
+        <div class="Panel">
+            <h2>Lights</h2>
+            <div class="Pads" id="PadsLights"></div>
+        </div>
+        <div class="Panel">
+            <h2>Cabin</h2>
+            <div class="Pads" id="PadsCabin"></div>
+        </div>
+    </section>
+
+    <section class="Split">
+        <div class="Panel">
+            <h2>Chassis <small>brakes and suspension follow the drive; hit the road</small></h2>
+            <div class="Pads" id="PadsChassis"></div>
+        </div>
+        <div class="Panel">
+            <h2>Impacts <small>explosion · energy · glass · crash</small></h2>
+            <div class="Pads" id="PadsImpacts"></div>
+        </div>
+    </section>
+
+    <section class="Split">
+        <div class="Panel">
+            <h2>Forced induction <small>swap onto any combustion car · I cycles · works while driving</small></h2>
+            <div class="Pads" id="PadsInduction"></div>
+            <div class="LagRow">
+                <label for="LagScale">Turbo lag <b id="LagShown">×1.0</b></label>
+                <input type="range" id="LagScale" min="0" max="3" step="0.1" value="1">
+                <span id="SpoolTime">stab the throttle from low rpm to time the lag</span>
+            </div>
+        </div>
+        <div class="Panel">
+            <h2>Electric <small>drive the EVs · fly the aircraft</small></h2>
+            <div class="Pads" id="PadsElectric"></div>
+        </div>
+    </section>
+
+    <section class="Split">
+        <div class="Panel">
+            <h2>Weapons <small>hold to fire · F fires the picked one · R Turbocharger · 13 guns</small></h2>
+            <div class="Pads" id="PadsWeapons"></div>
+        </div>
+        <div class="Panel">
+            <h2>Bullets <small>passing by · ricochets · hitting things</small></h2>
+            <div class="Pads" id="PadsBullets"></div>
+        </div>
+    </section>
+
+    <section class="Panel">
+        <h2>Shells <small>spent casings falling · concrete, wood, steel, dirt · pistol to 120 mm · every gun above drops its brass too</small></h2>
+        <div class="Pads" id="PadsShells"></div>
+    </section>
+
+    <section class="Panel">
+        <h2>War <small>explosions in sand · mortar · grenade · RPG · artillery · helicopter · air-raid siren · tank · shell shock · battlefield</small></h2>
+        <div class="Pads" id="PadsWar"></div>
+    </section>
+
+    <section class="Split">
+        <div class="Panel">
+            <h2>Factory <small>conveyor and floor loop (tap to toggle) · metal work · creaks</small></h2>
+            <div class="Pads" id="PadsFactory"></div>
+        </div>
+        <div class="Panel">
+            <h2>Sparks and electronics <small>sparks · arcs · shorts · hum · relays · servos</small></h2>
+            <div class="Pads" id="PadsSparks"></div>
+        </div>
+    </section>
+
+    <section class="Split">
+        <div class="Panel">
+            <h2>Mix</h2>
+            <div class="Mix" id="Mix"></div>
+        </div>
+        <div class="Panel">
+            <h2>Rendered reel <small>offline renders, same code</small></h2>
+            <div class="Reel" id="Reel"></div>
+        </div>
+    </section>
+
+    <footer>W throttle · S brake · A D steer · Q E paddles · Space handbrake · Enter start / stop · V car (LaFerrari, GT-R, Demon, 918, Agera RS, Mustang GT, GT350, Mustang GT3, Ligier JS P320, Taycan, Next-Gen) · I induction · K kerb · P pothole · F fire · R Turbocharger · C mic · G gearbox · T traction · M road noise on/off · 1–7 surface. Names and labels are proposals awaiting approval.</footer>
+</main>
+<script type="module" src="./Acoustics.js?v=22"></script>
+</body>
+</html>

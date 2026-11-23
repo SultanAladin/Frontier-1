@@ -1,0 +1,58 @@
+# Application — the host executables.
+# ConsoleHost compiles with main() and runs headless.
+
+[unit]
+name    = "Application"
+product = "Executable"
+subject = [ "ConsoleHost", "EditorHost", "InterfaceValidationHost" ]
+
+# 📝 A PRODUCT is one subject compiled with one feature macro. `Application/Api/HostFeature.h` reads that
+#    macro and nothing else, so what a product contains is declared here and derived nowhere.
+#
+# 🔴 A subject named here is built ONCE PER PRODUCT, into its own object folder, and never with the bare
+#    subject rule. A subject absent from this table is built once with no product macro — that is what
+#    `ConsoleHost` and `InterfaceValidationHost` want, since neither presents a workspace.
+#
+# 🔴 The macro is the whole of the separation. `HostFeature.h` refuses to compile without one, so a
+#    subject that reaches for a feature it was not built with fails at the compile rather than at the
+#    first frame — which is what a featureless build did silently until this table existed.
+#
+# 📝 The three products below are the migration's endpoint, not its starting position. `EditorHost` is
+#    the surviving source; `PaintHost` and `ParametricSketchHost` are retired once their behaviour has
+#    been lifted into units. Until then they stay above as plain subjects, unproducted and unchanged.
+[product]
+TextureAuthoring    = { subject = "EditorHost", define = "SLATE_TEXTURE_AUTHORING" }
+ParametricAuthoring = { subject = "EditorHost", define = "SLATE_PARAMETRIC_AUTHORING" }
+SlateAuthoring      = { subject = "EditorHost", define = "SLATE_COMBINED_AUTHORING" }
+
+# 📝 The host links every unit, so it is the one target where the whole DAG is realised at once. The link
+#    order below is the reverse of the dependency order, which is what the linker resolves against.
+[requires]
+unit = [ "SlateWorkspace", "SketchToolset", "TextureToolset", "SlateRuntime", "SlateWorld", "SlateUI", "SlateCompute", "SlateVulkan", "SlateDocument", "SlateShape", "SlateMath" ]
+
+[external]
+include = [ "$VULKAN_SDK/Include", "ExternalPackages/glfw/include" ]
+declare = []
+
+# 📝 🔴 glfw3.dll is copied beside the executable rather than being found on PATH. glfw3dll.lib is an
+#    import library; without the dynamic library beside the host, the process fails to start rather than
+#    reporting anything a reader could act on.
+# 📝 gdi32.lib carries the display-density read `04` §2 performs. It is the one platform import library
+#    named here that the operating system does not supply by default.
+[link]
+# 🔴 `unit` here is the ARCHIVE order handed to the linker, most-dependent first, and it is a different
+#    statement from `[requires].unit` above. That one says what this unit may **include**; this one says
+#    what an executable must **link** so every reference resolves. They coincide for most units and part
+#    for `SlateUI`, which links four archives and is permitted to include none of them — a static archive
+#    only satisfies references the linker has already seen, so the order is load-bearing.
+unit    = [ "SlateWorkspace", "SketchToolset", "TextureToolset", "SlateRuntime", "SlateWorld", "SlateUI", "SlateCompute", "SlateVulkan", "SlateDocument", "SlateShape", "SlateMath" ]
+library = [ "$VULKAN_SDK/Lib/vulkan-1.lib", "ExternalPackages/glfw/lib-vc2022/glfw3dll.lib", "gdi32.lib" ]
+# 📝 `carry` names files that must sit beside the executable for it to run. glfw3dll.lib above is an import
+#    library, so the DLL itself is a run-time dependency the linker never copies; the appearance file is
+#    read by every host at startup and written back when the artist changes a colour.
+# 🔴 A carried file that is absent is reported and skipped, not fatal. glfw3.dll arrives with the vendored
+#    package rather than the repository, so a checkout without it must still construct and link.
+# 🔴 A carried entry that names a FOLDER is placed whole, leaf name preserved. EngineContent is named
+#    that way — the shipped fonts, graphics and materials the content browser reads — because listing
+#    its files one at a time here would make this manifest a second copy of the folder listing.
+carry   = [ "ExternalPackages/glfw/lib-vc2022/glfw3.dll", "Configuration/SlateAppearance.toml", "EngineContent" ]
