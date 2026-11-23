@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier · Geometry Compiler</title>
+<link rel="stylesheet" href="./Studio.css">
+</head>
+<body>
+<div id="Studio" class="workspace">
+
+  <section class="dock left" aria-label="Outliner">
+    <div class="tab-strip"><div class="document-tab active">Outliner</div></div>
+    <div class="outliner-heading"><h1>Outliner</h1><small id="OutlinerSummary">—</small></div>
+    <div class="stats">
+      <div class="stat-tile"><span class="status-disc" data-icon="check" data-icon-size="13" data-icon-mono></span><small>Visible</small><strong id="StatDrawn">0</strong></div>
+      <div class="stat-tile"><span class="muted-disc" data-icon="cull" data-icon-size="13"></span><small>Culled</small><strong id="StatCulled">0</strong></div>
+    </div>
+    <div class="outliner-scroll">
+      <div class="collection"><span data-icon="folder"></span><div><b>Source</b><small>Pick a source or import your own</small></div></div>
+      <div id="SourceRows"></div>
+      <label class="entity import" tabindex="0" title="Wavefront OBJ: positions and faces are read, vertices are welded by position">
+        <span class="entity-icon" data-icon="upload"></span><div><b>Import OBJ…</b><small>Positions + faces · welded on load</small></div>
+        <input id="ObjInput" type="file" accept=".obj" hidden>
+      </label>
+      <div class="collection"><span data-icon="layers"></span><div><b>Hierarchy</b><small id="HierarchySummary">—</small></div></div>
+      <div id="LevelRows"></div>
+    </div>
+    <div class="dock-footer"><span><i>BUILD</i><b id="FootBuild">—</b></span><span><i>GPU</i><b id="FootGpu">—</b></span><span><i>SUBMIT</i><b id="FootSubmit">—</b></span></div>
+  </section>
+
+  <section class="dock centre" aria-label="Viewport">
+    <div class="tab-strip"><div class="document-tab active">Viewport</div></div>
+    <header class="viewport-heading">
+      <span data-icon="cluster" class="scene-icon"></span>
+      <div class="scene-title"><b id="SceneTitle">Scene</b><small id="SceneNote">—</small></div>
+      <span id="SceneState" class="state-tag">LIVE</span>
+      <div class="spacer"></div>
+      <div id="ViewModes" class="segmented" role="radiogroup" aria-label="View mode"></div>
+    </header>
+    <div class="viewport-tools">
+      <button id="ToolWire" class="tool" title="Wireframe overlay (Z)"><span data-icon="wire"></span>Wire</button>
+      <button id="ToolBounds" class="tool" title="Bounds of the picked cluster (B)"><span data-icon="bounds"></span>Bounds</button>
+      <button id="ToolGrid" class="tool" title="Ground grid (G)"><span data-icon="grid"></span>Grid</button>
+      <span class="divider"></span>
+      <button id="ToolIcon" class="tool" title="Icon camera: square box for thumbnails (I)"><span data-icon="camera"></span>Icon</button>
+      <button id="ToolSdf" class="tool" title="Open Sparse 8×8×8 SDF Preview &amp; Baker Workspace (V)"><span data-icon="sdfVolume"></span>SDF</button>
+      <button id="ToolFreeze" class="tool" title="Freeze LOD + culling at the current camera, then fly around to inspect it (L)"><span data-icon="lock"></span>Freeze LOD</button>
+      <div class="spacer"></div>
+      <button id="ToolFit" class="tool round" title="Fit everything (F)" aria-label="Fit everything"><span data-icon="fit"></span></button>
+      <button id="ToolHelp" class="tool round" title="Controls" aria-label="Controls"><span data-icon="help"></span></button>
+    </div>
+    <div class="canvas-well" id="CanvasWell">
+      <canvas id="Viewport" tabindex="0" aria-label="3D viewport"></canvas>
+      <div id="CaptureBox" class="capture-box" hidden>
+        <span id="CaptureLabel" class="capture-label">ICON</span>
+        <button id="CaptureShoot" class="capture-shoot primary">Capture</button>
+      </div>
+      <div id="Readout" class="readout"></div>
+      <div id="Legend" class="legend"></div>
+      <div id="BuildOverlay" class="build-overlay"><div><b id="BuildLabel">Building…</b><div class="progress"><i id="BuildBar"></i></div><small id="BuildNote"></small></div></div>
+      <div id="Drawer" class="drawer">
+        <header><b>Hierarchy</b><small>Triangles per LOD level — dim: stored, bright: constructed this instant</small></header>
+        <canvas id="LevelChart"></canvas>
+        <header><b>Redraw time</b><small id="TimeNote">—</small></header>
+        <canvas id="TimeChart"></canvas>
+      </div>
+    </div>
+    <footer class="strip"><span id="StripText">WEBGL2 PREVIEW</span></footer>
+    <button id="DrawerHandle" class="drawer-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 36 L22 0 L178 0 L200 36 Z"/></svg><span>Hierarchy</span></button>
+  </section>
+
+  <section class="dock right" aria-label="Inspector">
+    <div class="tab-strip"><div class="document-tab active">Inspector</div></div>
+    <div class="inspector-scroll">
+      <div class="crumbs">Inspector / Geometry Compiler</div>
+      <h1 id="GeometryTitle">—</h1>
+      <div class="subtitle" id="GeometryNote">—</div>
+
+      <div class="hero">
+        <div class="hero-bar"><i id="HeroFill"></i></div>
+        <div class="hero-text"><b id="HeroPercent">—</b><small>of source triangles constructed</small></div>
+      </div>
+      <div class="metrics">
+        <div><b id="MetricTriangles">—</b><small>TRIANGLES</small></div>
+        <div><b id="MetricSource">—</b><small>SOURCE × INSTANCES</small></div>
+        <div><b id="MetricClusters">—</b><small>CLUSTERS</small></div>
+        <div><b id="MetricTime">—</b><small>REDRAW</small></div>
+      </div>
+
+      <h4>LOD SELECTION</h4>
+      <div class="panel">
+        <div class="field" data-slider="threshold"></div>
+        <div class="field"><label for="ForcedLevel">Level</label><select id="ForcedLevel"></select></div>
+        <div class="tiles">
+          <button class="tile" id="TileFrustum" title="Skip clusters and whole DAG branches outside the view"><span data-icon="frustum"></span><b>Frustum cull</b><small></small></button>
+          <button class="tile" id="TileCone" title="Skip clusters whose normal cone faces away from the camera (C)"><span data-icon="cone"></span><b>Cone cull</b><small></small></button>
+        </div>
+      </div>
+
+      <h4>PICKED CLUSTER</h4>
+      <div class="panel" id="PickedPanel"></div>
+
+      <h4>INSTANCES</h4>
+      <div class="panel">
+        <div class="field" data-slider="side"></div>
+        <div class="field" data-slider="spacing"></div>
+      </div>
+
+      <h4>DISPLAY</h4>
+      <div class="panel">
+        <div class="tiles">
+          <button class="tile" id="TileFlat" title="Face normals instead of source vertex normals"><span data-icon="flat"></span><b>Flat shading</b><small></small></button>
+          <button class="tile" id="TileBackTriangles" title="GPU back-face triangle culling"><span data-icon="cull"></span><b>Back faces</b><small></small></button>
+        </div>
+      </div>
+
+      <h4>ICON</h4>
+      <div class="panel">
+        <div class="icon-preview">
+          <img id="IconImage" alt="Captured icon preview" hidden>
+          <span id="IconEmpty" class="icon-empty">No icon yet. Turn on the icon camera (I), frame the object inside the square, then capture (P).</span>
+        </div>
+        <div class="icon-meta" id="IconMeta">—</div>
+        <div class="tiles">
+          <button class="tile" id="IconCameraTile" aria-pressed="false" title="Square camera box over the viewport (I)"><span data-icon="camera"></span><b>Icon camera</b><small id="IconCameraState">OFF</small></button>
+          <button class="tile" id="IconResetAngle" title="Back to the default three-quarter angle, fitted to the box"><span data-icon="fit"></span><b>Default angle</b><small>FIT BOX</small></button>
+        </div>
+        <div class="field"><label for="IconSize">Output size</label><select id="IconSize"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1024 px</option></select></div>
+        <div class="field"><span>Look</span><div class="segmented" role="radiogroup" aria-label="Look"><button data-look="shaded" class="active" role="radio">Shaded</button><button data-look="live" role="radio">Live view</button></div></div>
+        <div class="icon-actions">
+          <button id="IconCapture" class="primary"><span data-icon="camera"></span>Capture</button>
+          <button id="IconSaveButton">Save as icon</button>
+        </div>
+        <div class="icon-actions">
+          <button id="IconDownload"><span data-icon="export"></span>Download PNG</button>
+          <button id="IconCopy"><span data-icon="copy"></span>Copy PNG</button>
+        </div>
+        <div id="IconLibrary" class="icon-library"></div>
+        <p>The square box is the exact crop of the saved PNG, with a transparent background. Saved icons stay in this browser and replace the Outliner thumbnail for their source.</p>
+      </div>
+
+      <h4>UV LAYOUT</h4>
+      <div class="panel">
+        <canvas id="UvPreview" class="uv-preview" aria-label="Static UV layout preview"></canvas>
+        <div class="rows">
+          <span>Islands · seams</span><b id="UvCharts">—</b>
+          <span>Texel scale</span><b id="UvScale">—</b>
+        </div>
+        <button id="OpenCompiler" class="primary"><span data-icon="uv"></span>Open UV Workspace</button>
+        <p>Planar island unwrap, computed in this browser. Tiny islands merge into a neighbour with a close plane. Amber lines are seams where islands meet.</p>
+      </div>
+
+      <h4>SDF VOLUME</h4>
+      <div class="panel">
+        <canvas id="SdfInspectorPreview" class="sdf-preview" aria-label="Live SDF cross-section slice preview"></canvas>
+        <div class="sdf-insp-bar">
+          <div class="segmented" role="group" aria-label="SDF slice axis">
+            <button type="button" data-sdf-insp-axis="0" class="active" aria-pressed="true">Z</button>
+            <button type="button" data-sdf-insp-axis="1" aria-pressed="false">Y</button>
+            <button type="button" data-sdf-insp-axis="2" aria-pressed="false">X</button>
+          </div>
+          <div class="segmented" role="group" aria-label="SDF mip level">
+            <button type="button" data-sdf-insp-mip="0" class="active" aria-pressed="true">Mip0</button>
+            <button type="button" data-sdf-insp-mip="1" aria-pressed="false">Mip1</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="SdfInspectorSlider">Slice depth</label>
+          <output id="SdfInspectorDepthOut">Z 50%</output>
+          <input id="SdfInspectorSlider" type="range" min="0.02" max="0.98" step="0.005" value="0.5">
+        </div>
+        <div class="rows">
+          <span>Grid · Mip1</span><b id="SdfInspectorGrid">—</b>
+          <span>Sparse bricks</span><b id="SdfInspectorBricks">—</b>
+          <span>Footprint</span><b id="SdfInspectorMem">—</b>
+        </div>
+        <button id="OpenSdfWorkspace" class="primary"><span data-icon="sdfVolume"></span>Open SDF Workspace</button>
+        <p>Live sparse 8×8×8 narrow-band signed distance slice. Scrub the slider to inspect interior walls, or open the SDF Workspace for WebGPU 3D raymarching, cutaway, brick DDA and baking up to 128³.</p>
+      </div>
+
+      <h4>GEOMETRY</h4>
+      <div class="panel">
+        <p>Scale, centre, mirror, rotate and flip the hero's source geometry. Nothing rebuilds until Apply.</p>
+        <button id="OpenGeometryEditor" class="primary"><span data-icon="scale"></span>Open Geometry Editor</button>
+      </div>
+
+      <h4>BUILD</h4>
+      <div class="panel">
+        <div class="field"><label for="TriangleBudget">Source triangles</label><select id="TriangleBudget"></select></div>
+        <div class="field" data-slider="clusterTriangles"></div>
+        <div class="field" data-slider="groupClusters"></div>
+        <div class="field" data-slider="simplifyRatio"></div>
+        <button id="Rebuild" class="primary"><span data-icon="rebuild"></span>Rebuild hierarchy</button>
+        <p id="BuildReport"></p>
+      </div>
+      <p class="honest">Runs entirely in your browser: the cluster DAG and sparse 8×8×8 SDF bake in Web Workers, cluster selection runs on the CPU each frame, WebGL2 rasterises the clusters, and WebGPU raymarches the sparse SDF volume.</p>
+    </div>
+  </section>
+
+  <div id="Notch" class="notch-shell">
+    <div class="shade">
+      <div class="control-sheet">
+        <header><b>Frontier · Geometry Compiler</b><button id="NotchClose" class="tool round" aria-label="Close"><span data-icon="close"></span></button></header>
+        <div class="keys">
+          <div><kbd>Drag</kbd><span>Orbit</span></div>
+          <div><kbd>Right-drag</kbd> / <kbd>Shift+drag</kbd><span>Pan</span></div>
+          <div><kbd>Wheel</kbd> / pinch<span>Zoom</span></div>
+          <div><kbd>W A S D</kbd> <kbd>Q E</kbd><span>Fly (hold Shift = faster)</span></div>
+          <div><kbd>Click</kbd><span>Pick a cluster → Inspector</span></div>
+          <div><kbd>Double-click</kbd><span>Orbit around the picked point</span></div>
+          <div><kbd>1</kbd>–<kbd>6</kbd><span>View modes</span></div>
+          <div><kbd>[</kbd> <kbd>]</kbd><span>Pixel error − / +</span></div>
+          <div><kbd>L</kbd><span>Freeze LOD + culling</span></div>
+          <div><kbd>Z</kbd> <kbd>B</kbd> <kbd>G</kbd> <kbd>C</kbd><span>Wire · Bounds · Grid · Cone cull</span></div>
+          <div><kbd>F</kbd><span>Fit everything</span></div>
+          <div><kbd>I</kbd><span>Icon camera · <kbd>P</kbd> capture</span></div>
+          <div><kbd>U</kbd><span>UV Workspace</span></div>
+          <div><kbd>V</kbd><span>SDF Preview &amp; Baker Workspace</span></div>
+          <div><kbd>Esc</kbd><span>Clear picked cluster / close workspace</span></div>
+        </div>
+        <p>How to read it: switch to <b>LOD level</b> and zoom — clusters swap to coarser levels as their projected error drops under the pixel threshold. Scrub the Inspector's <b>SDF VOLUME</b> slice slider or press <b>V</b> to open the full 3D WebGPU Sparse SDF Preview &amp; Baker.</p>
+      </div>
+    </div>
+    <button id="NotchHandle" class="notch-handle" aria-expanded="false"><svg viewBox="0 0 200 36" preserveAspectRatio="none"><path d="M0 0 L22 36 L178 36 L200 0 Z"/></svg><span>Frontier · Geometry Compiler</span></button>
+  </div>
+</div>
+
+<!-- UV WORKSPACE -->
+<div id="UvWorkspace" class="uv-workspace" role="dialog" aria-modal="true" aria-label="UV Workspace" hidden>
+  <header class="uv-workspace-head">
+    <span data-icon="uv" class="scene-icon"></span>
+    <div class="uv-workspace-title"><b>UV Workspace</b><small id="CompilerSource">—</small></div>
+    <div class="spacer"></div>
+    <small class="uv-workspace-keys">Click / Shift / Ctrl select · R rotate · M mirror · A all · P pack · K checker · S seams · Esc</small>
+    <button id="CompilerClose" class="tool round" aria-label="Close UV Workspace"><span data-icon="close"></span></button>
+  </header>
+  <div class="uv-workspace-body">
+    <aside class="uv-workspace-charts">
+      <div class="collection"><span data-icon="island"></span><div><b>Islands</b><small>Fit = share of the true area the projection keeps</small></div></div>
+      <div id="ChartRows" class="chart-rows"></div>
+    </aside>
+    <section class="uv-workspace-main">
+      <div class="viewport-tools">
+        <button id="CompilerRotate" class="tool"><span data-icon="rotate90"></span>Rotate 90°</button>
+        <button id="CompilerMirror" class="tool"><span data-icon="mirror"></span>Mirror</button>
+        <span class="divider"></span>
+        <button id="CompilerPack" class="tool"><span data-icon="pack"></span>Pack all</button>
+        <button id="CompilerReset" class="tool"><span data-icon="reset"></span>Reset</button>
+        <span class="spacer"></span>
+        <button id="CompilerChecker" class="tool active" aria-pressed="true"><span data-icon="checker"></span>Checker</button>
+        <button id="CompilerSeams" class="tool active" aria-pressed="true"><span data-icon="seams"></span>Seams</button>
+        <button id="CompilerFillToggle" class="tool active" aria-pressed="true">Fill</button>
+      </div>
+      <div class="uv-stage"><canvas id="UvCanvas" tabindex="0" aria-label="UV editor"></canvas></div>
+      <p class="uv-workspace-hint">Drag selected islands to move them as a group. Click empty space to clear the selection. Every island shares one texel density, so packing never stretches an island.</p>
+    </section>
+    <aside class="uv-workspace-side">
+      <h4>LAYOUT</h4>
+      <div class="panel">
+        <div class="rows">
+          <span>Islands · seams · borders</span><b id="CompilerCount">—</b>
+          <span>Texel scale</span><b id="CompilerScale">—</b>
+          <span>UV filled</span><b id="CompilerFill">—</b>
+        </div>
+      </div>
+      <h4>SELECTED ISLAND</h4>
+      <div class="panel" id="ChartDetail"></div>
+      <h4>EXPORT</h4>
+      <div class="panel">
+        <button id="CompilerExportObj" class="primary"><span data-icon="export"></span>Export OBJ with UVs</button>
+        <button id="CompilerExportSvg"><span data-icon="export"></span>Export UV layout SVG</button>
+        <p>The OBJ keeps welded vertices and writes one texture coordinate per triangle corner, so seams survive a round trip through Import OBJ.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- SDF PREVIEW + BAKER WORKSPACE -->
+<div id="SdfWorkspace" class="sdf-workspace" role="dialog" aria-modal="true" aria-label="SDF Preview and Baker Workspace" hidden>
+  <header class="sdf-workspace-head">
+    <span data-icon="sdfVolume" class="scene-icon"></span>
+    <div class="sdf-workspace-title"><b>SDF Preview &amp; Baker</b><small id="SdfWsSource">—</small></div>
+    <span id="SdfWsEngineTag" class="state-tag">WEBGPU</span>
+    <div class="spacer"></div>
+    <small class="sdf-workspace-keys">Drag orbit · Wheel zoom / scrub · 1–5 view modes · Space sweep · F fit · Esc close</small>
+    <button id="SdfWsClose" class="tool round" aria-label="Close SDF Workspace"><span data-icon="close"></span></button>
+  </header>
+  <div class="sdf-workspace-body">
+    <aside class="sdf-workspace-left">
+      <h4>PREVIEW MODE</h4>
+      <div class="panel sdf-mode-list">
+        <button type="button" class="tool active" data-sdf-mode="0" aria-pressed="true"><span data-icon="sdfVolume"></span>3D Iso-Surface + AO</button>
+        <button type="button" class="tool" data-sdf-mode="1" aria-pressed="false"><span data-icon="sdfCutaway"></span>3D Cutaway Plane</button>
+        <button type="button" class="tool" data-sdf-mode="2" aria-pressed="false"><span data-icon="heatmap"></span>3D Raymarch Step Heat</button>
+        <button type="button" class="tool" data-sdf-mode="3" aria-pressed="false"><span data-icon="sdfBricks"></span>3D Sparse 8×8×8 Bricks</button>
+        <button type="button" class="tool" data-sdf-mode="slice2d" aria-pressed="false"><span data-icon="sdfSlice"></span>2D Slice Cross-Section</button>
+      </div>
+
+      <h4>CROSS-SECTION NAVIGATOR</h4>
+      <div class="panel">
+        <canvas id="SdfWsMiniSlice" class="sdf-preview" aria-label="Mini 2D SDF cross-section"></canvas>
+        <p>Amber contour = zero iso-surface · Teal = negative interior · Dark = exterior · Grid = 8×8×8 macro-bricks.</p>
+      </div>
+
+      <h4>VOLUME DIAGNOSTICS</h4>
+      <div class="panel">
+        <div class="rows" id="SdfWsStats"><span>Status</span><b>—</b></div>
+      </div>
+    </aside>
+
+    <section class="sdf-workspace-main">
+      <div class="sdf-stage-well" id="SdfStageWell">
+        <canvas id="SdfWebGpuCanvas" class="sdf-canvas-layer" aria-label="WebGPU 3D Sparse SDF Raymarch"></canvas>
+        <canvas id="SdfOverlayCanvas" class="sdf-canvas-layer" aria-label="SDF Overlay"></canvas>
+        <div class="sdf-hud-top">
+          <span class="sdf-pill accent" id="SdfWsPillMode">Sparse 8×8×8 SDF</span>
+          <span class="sdf-pill" id="SdfWsPillBricks">—</span>
+        </div>
+        <div id="SdfBakeOverlay" class="build-overlay">
+          <div><b id="SdfBakeLabel">Baking SDF…</b><div class="progress"><i id="SdfBakeBar"></i></div><small id="SdfBakeNote"></small></div>
+        </div>
+        <div class="sdf-hud-bottom">
+          <div id="SdfHudSliceGroup" class="sdf-hud-row" hidden>
+            <div class="segmented" role="group" aria-label="Cutaway axis">
+              <button type="button" data-sdf-axis="0" class="active">Z</button>
+              <button type="button" data-sdf-axis="1">Y</button>
+              <button type="button" data-sdf-axis="2">X</button>
+            </div>
+            <input id="SdfHudSliceSlider" type="range" min="0.02" max="0.98" step="0.005" value="0.5">
+            <output id="SdfHudSliceOut">Z 50%</output>
+            <button type="button" id="SdfHudFlip" class="tool">Flip</button>
+            <button type="button" id="SdfHudSweep" class="tool">Auto sweep</button>
+          </div>
+          <div id="SdfHudIsoGroup" class="sdf-hud-row">
+            <div class="segmented" role="group" aria-label="Mip level">
+              <button type="button" data-sdf-mip="0" class="active">Mip0 + 1</button>
+              <button type="button" data-sdf-mip="1">Mip1</button>
+            </div>
+            <label class="sdf-hud-label">Iso</label>
+            <input id="SdfHudIsoSlider" type="range" min="-40" max="40" step="1" value="0">
+            <output id="SdfHudIsoOut">+0 mm</output>
+            <button type="button" id="SdfHudFit" class="tool"><span data-icon="fit"></span>Fit</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="sdf-workspace-side">
+      <h4>BAKER SETTINGS</h4>
+      <div class="panel">
+        <div class="field"><span>Voxel grid</span></div>
+        <div class="sdf-dim-pills" role="group" aria-label="SDF resolution">
+          <button type="button" class="tool" data-sdf-dim="16">16³</button>
+          <button type="button" class="tool" data-sdf-dim="32">32³</button>
+          <button type="button" class="tool active" data-sdf-dim="64">64³</button>
+          <button type="button" class="tool" data-sdf-dim="96">96³</button>
+          <button type="button" class="tool" data-sdf-dim="128">128³</button>
+        </div>
+        <div class="field">
+          <label for="SdfWsPadSlider">Bounds padding</label>
+          <output id="SdfWsPadOut">16 %</output>
+          <input id="SdfWsPadSlider" type="range" min="0.06" max="0.35" step="0.01" value="0.16">
+        </div>
+        <div class="field">
+          <label for="SdfWsBandSlider">Narrow band</label>
+          <output id="SdfWsBandOut">4.0× voxel</output>
+          <input id="SdfWsBandSlider" type="range" min="2.5" max="6.0" step="0.25" value="4.0">
+        </div>
+        <div class="field">
+          <label for="SdfWsVramSlider">VRAM budget (eviction test)</label>
+          <output id="SdfWsVramOut">8.0 MB</output>
+          <input id="SdfWsVramSlider" type="range" min="32" max="8192" step="32" value="8192">
+          <small>Lower below Mip0 + Mip1 size to test live Mip0 eviction into conservative Mip1 fallback.</small>
+        </div>
+        <button id="SdfWsBakeBtn" class="primary"><span data-icon="rebuild"></span>Bake SDF Volume</button>
+      </div>
+
+      <h4>SLICE &amp; ISO PREVIEW</h4>
+      <div class="panel">
+        <div class="sdf-insp-bar">
+          <div class="segmented" role="group" aria-label="Slice axis">
+            <button type="button" data-sdf-axis="0" class="active">Z</button>
+            <button type="button" data-sdf-axis="1">Y</button>
+            <button type="button" data-sdf-axis="2">X</button>
+          </div>
+          <div class="segmented" role="group" aria-label="Mip level">
+            <button type="button" data-sdf-mip="0" class="active">Mip0</button>
+            <button type="button" data-sdf-mip="1">Mip1</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="SdfWsSliceSlider">Slice depth</label>
+          <output id="SdfWsSliceOut">Z 50%</output>
+          <input id="SdfWsSliceSlider" type="range" min="0.02" max="0.98" step="0.005" value="0.5">
+        </div>
+        <div class="field">
+          <label for="SdfWsIsoSlider">Iso-surface offset</label>
+          <output id="SdfWsIsoOut">+0 mm</output>
+          <input id="SdfWsIsoSlider" type="range" min="-40" max="40" step="1" value="0">
+        </div>
+        <div class="icon-actions">
+          <button type="button" id="SdfWsFlip" class="tool">Flip cutaway</button>
+          <button type="button" id="SdfWsSweep" class="tool">Auto sweep</button>
+        </div>
+      </div>
+
+      <h4>EXPORT</h4>
+      <div class="panel">
+        <button id="SdfWsExportFvol" class="primary"><span data-icon="export"></span>Export .fvol Sparse Volume</button>
+        <button id="SdfWsExportPng"><span data-icon="export"></span>Export 512px Slice PNG</button>
+        <p>Exports the Frontier sparse 8×8×8 narrow-band volume descriptor (brick indirection + conservative Mip1) or a 512×512 PNG of the current cross-section.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- GEOMETRY EDITOR -->
+<div id="GeometryEditor" class="geo-editor" role="dialog" aria-modal="true" aria-label="Geometry Editor" hidden>
+  <header class="geo-editor-head">
+    <span data-icon="scale" class="scene-icon"></span>
+    <div class="geo-editor-title"><b>Geometry Editor</b><small id="GeoSource">—</small></div>
+    <div class="spacer"></div>
+    <small class="geo-editor-keys">Drag the preview to orbit · Enter apply · Esc close</small>
+    <button id="GeoEditorClose" class="tool round" aria-label="Close Geometry Editor"><span data-icon="close"></span></button>
+  </header>
+  <div class="geo-editor-body">
+    <aside class="geo-editor-import">
+      <h4>IMPORT</h4>
+      <div class="panel">
+        <p>Import accepts these formats. Use Import OBJ in the Outliner to load Wavefront OBJ files directly.</p>
+        <div class="geo-formats"><span>OBJ</span><span>glTF</span><span>GLB</span><span>STL</span><span>PLY</span><span>FBX</span></div>
+        <button id="GeoImport" class="tool" disabled><span data-icon="upload"></span>Import model…</button>
+      </div>
+    </aside>
+    <section class="geo-editor-main">
+      <canvas id="GeoPreview" aria-label="Transformed geometry preview"></canvas>
+      <p id="GeoPreviewNote" class="geo-editor-hint"></p>
+    </section>
+    <aside class="geo-editor-side">
+      <h4>SCALE</h4>
+      <div class="panel">
+        <label class="geo-check"><input type="checkbox" id="GeoUniform" checked> Uniform</label>
+        <div class="geo-row3">
+          <input type="number" id="GeoScaleX" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale X">
+          <input type="number" id="GeoScaleY" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Y">
+          <input type="number" id="GeoScaleZ" class="geo-number" step="0.05" min="0.001" value="1" aria-label="Scale Z">
+        </div>
+      </div>
+      <h4>CENTRE</h4>
+      <div class="panel">
+        <div class="segmented" role="group" aria-label="Centre">
+          <button data-centre="none" class="active" aria-pressed="true">Keep</button>
+          <button data-centre="origin" aria-pressed="false">Origin</button>
+          <button data-centre="floor" aria-pressed="false">Floor</button>
+        </div>
+        <p>Origin centres the bounds on zero. Floor centres X and Z and puts the lowest point on y = 0.</p>
+      </div>
+      <h4>MIRROR</h4>
+      <div class="panel">
+        <div class="geo-row3">
+          <button id="GeoMirrorX" class="tool" aria-pressed="false">X</button>
+          <button id="GeoMirrorY" class="tool" aria-pressed="false">Y</button>
+          <button id="GeoMirrorZ" class="tool" aria-pressed="false">Z</button>
+        </div>
+      </div>
+      <h4>ROTATE</h4>
+      <div class="panel">
+        <div class="geo-row3">
+          <input type="number" id="GeoRotX" class="geo-number" step="15" value="0" aria-label="Rotate X degrees">
+          <input type="number" id="GeoRotY" class="geo-number" step="15" value="0" aria-label="Rotate Y degrees">
+          <input type="number" id="GeoRotZ" class="geo-number" step="15" value="0" aria-label="Rotate Z degrees">
+        </div>
+        <p>Degrees, applied X then Y then Z.</p>
+      </div>
+      <h4>NORMALS</h4>
+      <div class="panel">
+        <button id="GeoFlip" class="tool" aria-pressed="false"><span data-icon="flip"></span>Flip normals</button>
+        <p>Reverses triangle winding. Mirroring already reverses it, so flipping again restores it.</p>
+      </div>
+      <h4>RESULT</h4>
+      <div class="panel"><div class="rows" id="GeoStats"></div></div>
+      <div class="panel geo-actions">
+        <button id="GeoApply" class="primary">Rebuild hero</button>
+        <button id="GeoReset" class="tool"><span data-icon="reset"></span>Reset</button>
+        <button id="GeoCancel" class="tool">Cancel</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div id="Toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module" src="./Studio.js"></script>
+</body>
+</html>
