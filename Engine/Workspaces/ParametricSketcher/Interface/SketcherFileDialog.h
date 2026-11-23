@@ -19,5 +19,8 @@
 // (Linux / headless builds type the path instead).
 [[nodiscard]] std::string BrowseSketcherPicture();
 
+// Native Open dialog for SolidArc Import (.blend, .step, .stp, .toml); empty when cancelled or unavailable.
+[[nodiscard]] std::string BrowseSketcherImportFile();
+
 // True where BrowseSketcherPicture shows a dialog (Windows).
 [[nodiscard]] bool SketcherFileDialogAvailableCondition() noexcept;

@@ -13041,16 +13041,54 @@ void ExportBodies(SketcherWorkspaceStatus& State, const std::string& Path)
                             Figures.c_str(), Export.Bytes, Export.Milliseconds));
 }
 
-// Import… dispatches by extension: .step / .stp → bodies, .toml → VehicleCurves.
+// 💡 Import… with a .blend file: native ZSTD/GZIP/raw SDNA reader + modifier stack evaluation (Mirror, Subsurf with
+//    semi-sharp creases, Solidify, Shrinkwrap, Mask, Array, Bevel, Skin, AutoSmooth) uploaded directly to GPU VRAM for
+//    high-poly vehicle retopology and precision curve tracing.
+void ImportBlend(SketcherWorkspaceStatus& State, const std::string& Path)
+{
+    SketcherExchangeSession& Session = State.Exchange;
+    SketcherBlendImportOptions Options;
+    const SketcherBlendImportReport Report = ImportSketcherBlend(State.Document, Path, Options);
+    Session.ImportPath         = Path;
+    Session.ImportRefusal      = Report.Refusal;
+    Session.ImportSolids       = Report.Refusal.empty() ? int(Report.SourceObjects) : 0;
+    Session.ImportFaces        = Report.Refusal.empty() ? int(Report.OutputTriangles) : 0;
+    Session.ImportRepairs      = Report.Refusal.empty() ? int(Report.EvaluatedModifiers) : 0;
+    Session.ImportMilliseconds = Report.ElapsedMs;
+    if (!Report.Refusal.empty())
+    {
+        Announce(State, "Refused: " + Report.Refusal);
+        return;
+    }
+    ++Session.Imports;
+    if (!State.Document.ReferenceSurfaces.empty())
+    {
+        const SketcherReferenceSurface& Added = State.Document.ReferenceSurfaces.back();
+        State.FocusedReference = Added.Name;
+        State.FocusedImage.clear();
+        const std::array<double, 3> Low  = Added.MinBound;
+        const std::array<double, 3> High = Added.MaxBound;
+        FitOrbitCamera(State.Camera, Low, High);
+        State.Camera.SceneRadius = std::max(State.Camera.SceneRadius,
+            0.5 * std::hypot(High[0] - Low[0], High[1] - Low[1], High[2] - Low[2]));
+    }
+    RefreshSketcherScene(State, true);
+    Announce(State, Compose("Imported %s (Blender %s) · %u parts · %u GPU tris · %u modifiers · %.0f ms · Alt/Shift+S traces curves on surface",
+                            Path.c_str(), Report.BlenderVersion.c_str(), Report.SourceObjects, Report.OutputTriangles,
+                            Report.EvaluatedModifiers, Report.ElapsedMs));
+}
+
+// Import… dispatches by extension: .step / .stp → bodies, .blend → GPU reference vehicle, .toml → VehicleCurves.
 void ImportFile(SketcherWorkspaceStatus& State, const std::string& Path)
 {
     const SketcherExchangeFormat Format = SketcherExchangeFormatOf(Path);
     if (Format == SketcherExchangeFormat::Step) ImportStep(State, Path);
+    else if (Format == SketcherExchangeFormat::Blend) ImportBlend(State, Path);
     else if (Format == SketcherExchangeFormat::Toml) ImportCurves(State, Path);
     else
     {
         State.Exchange.ImportPath    = Path;
-        State.Exchange.ImportRefusal = "Import: " + Path + " is neither .step / .stp nor a VehicleCurves .toml";
+        State.Exchange.ImportRefusal = "Import: " + Path + " is not a supported .blend, .step / .stp, or .toml file";
         Announce(State, "Refused: " + State.Exchange.ImportRefusal);
     }
 }
@@ -13614,15 +13652,24 @@ void DrawPathPopups(SketcherWorkspaceStatus& State)
         if (ImGui::BeginPopupModal(Title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
             const size_t ExportCount = SketcherExportBodies(State.Document).size();
-            const std::string Prompt = ImportCondition ? std::string("Import a STEP (.step / .stp), reference image (.ImageSpace / .png / .jpg), or curves (.toml)")
+            const std::string Prompt = ImportCondition ? std::string("Import a Blender vehicle (.blend), STEP (.step / .stp), reference image (.ImageSpace / .png / .jpg), or curves (.toml)")
                                      : ExportCondition ? Compose("Export %d %s body(ies) in millimetres: .step / .stp (STEP AP214, exact B-rep) or .stl (binary facets)", int(ExportCount),
                                                                  State.Document.Selection.Bodies.empty() ? "shown" : "selected")
-                                     : OpenCondition   ? std::string("Open a .solidarc document (a .step / .stp file is imported into this one)")
+                                     : OpenCondition   ? std::string("Open a .solidarc document (a .step / .stp or .blend file is imported into this one)")
                                                        : std::string("Save the document as .solidarc (.step / .stp / .stl exports the bodies instead)");
             ImGui::TextUnformatted(Prompt.c_str());
             ImGui::SetNextItemWidth(420);
             const bool Entered = ImGui::InputText("##Path", State.PathText.data(), State.PathText.size(), ImGuiInputTextFlags_EnterReturnsTrue);
             RegisterWidget(State, "PathField");
+            if (ImportCondition && SketcherFileDialogAvailableCondition())
+            {
+                ImGui::SameLine();
+                if (PressButton(State, "Browse…###PathBrowse", ImVec2(92, 0)))
+                {
+                    const std::string Chosen = BrowseSketcherImportFile();
+                    if (!Chosen.empty()) std::snprintf(State.PathText.data(), State.PathText.size(), "%s", Chosen.c_str());
+                }
+            }
             if (PressButton(State, ImportCondition ? "Import###PathImport" : ExportCondition ? "Export###PathExport" : OpenCondition ? "Open###PathOpen" : "Save###PathSave", ImVec2(120, 0)) || Entered)
             {
                 const std::string Path = State.PathText.data();
@@ -13630,6 +13677,7 @@ void DrawPathPopups(SketcherWorkspaceStatus& State)
                 if (ImportCondition) (void)IntakeSketcherDroppedFile(State, Path);
                 else if (ExportCondition) ExportBodies(State, Path);
                 else if (OpenCondition && Format == SketcherExchangeFormat::Step) ImportStep(State, Path);
+                else if (OpenCondition && Format == SketcherExchangeFormat::Blend) ImportBlend(State, Path);
                 else if (OpenCondition) OpenDocument(State, Path, true);
                 else if (Format == SketcherExchangeFormat::Step || Format == SketcherExchangeFormat::Stl) ExportBodies(State, Path);
                 else SaveDocument(State, Path);
@@ -13656,6 +13704,21 @@ void DrawPathPopups(SketcherWorkspaceStatus& State)
             Announce(State, "Example: Bracket specimen");
         }
         RegisterWidget(State, "ExampleBracket");
+        ImGui::Separator();
+        ImGui::TextDisabled("Blender Vehicle References (GPU Retopology)");
+        static const struct { const char* Label; const char* RelPath; const char* WidgetId; } VehicleBlends[] = {
+            { "Egoist (.blend) · 47 parts, Mirror + Subdiv + Solidify + Shrinkwrap###ExampleEgoist",         "Content/Geometry/Vehicles/Blends/Egoist.blend",      "ExampleEgoist" },
+            { "Liger (.blend) · 20 parts, Mirror + Subdiv L3 + Creases + Bevel###ExampleLiger",              "Content/Geometry/Vehicles/Blends/Liger.blend",       "ExampleLiger" },
+            { "Quicksilver (.blend) · 47 parts, Mirror + Subdiv L3 + Shrinkwrap###ExampleQuicksilver",       "Content/Geometry/Vehicles/Blends/Quicksilver.blend", "ExampleQuicksilver" },
+        };
+        for (const auto& Vehicle : VehicleBlends)
+        {
+            if (ImGui::Selectable(Vehicle.Label))
+            {
+                ImportBlend(State, Vehicle.RelPath);
+            }
+            RegisterWidget(State, Vehicle.WidgetId);
+        }
         ImGui::EndPopup();
     }
 }
@@ -14427,6 +14490,10 @@ void DrawOutliner(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size, 
         {
             State.FocusedImage = Fig.Key;
         }
+        else if (Fig.Source == SketcherFigureSource::Reference)
+        {
+            State.FocusedReference = Fig.Key;
+        }
     };
     switch (Intent.Verb)
     {
@@ -14437,6 +14504,14 @@ void DrawOutliner(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size, 
             State.Outliner.AnchorKey = Intent.Figure.Key;
             Announce(State, State.FocusedImage.empty() ? Intent.Figure.Name + " let go"
                                                        : Intent.Figure.Name + " · Inspector › Image planes: opacity, line art / photo, mirror, crop, width, turn, centre");
+            break;
+        }
+        if (Intent.Figure.Source == SketcherFigureSource::Reference && !Intent.ShiftCondition && !Intent.CtrlCondition)
+        {
+            State.FocusedReference = State.FocusedReference == Intent.Figure.Key ? std::string{} : Intent.Figure.Key;
+            State.Outliner.AnchorKey = Intent.Figure.Key;
+            Announce(State, State.FocusedReference.empty() ? Intent.Figure.Name + " let go"
+                                                           : Intent.Figure.Name + " · Inspector › Blender references: opacity, crease overlay, scale, part toggles · Shift+S traces curves on surface");
             break;
         }
         if (Intent.Figure.LockedCondition)
@@ -14552,15 +14627,40 @@ void DrawOutliner(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size, 
             State.Outliner.AnchorKey = Intent.Figure.Key;
             break;
         case SketcherFigureSource::Image:
+        case SketcherFigureSource::Reference:
             break;                                                                           // Handled above
         }
         break;
     case SketcherOutlinerVerb::ToggleVisibility:
         if (Intent.Figure.Source == SketcherFigureSource::Image) ToggleImageFigure(State, Intent.Figure.Key, false);
+        else if (Intent.Figure.Source == SketcherFigureSource::Reference)
+        {
+            for (SketcherReferenceSurface& Ref : State.Document.ReferenceSurfaces)
+            {
+                if (Ref.Name == Intent.Figure.Key)
+                {
+                    Ref.VisibleCondition = !Ref.VisibleCondition;
+                    Announce(State, Ref.Name + (Ref.VisibleCondition ? " shown" : " hidden"));
+                    break;
+                }
+            }
+        }
         else ToggleFigureVisibility(State, Intent.Figure);
         break;
     case SketcherOutlinerVerb::ToggleLock:
         if (Intent.Figure.Source == SketcherFigureSource::Image) ToggleImageFigure(State, Intent.Figure.Key, true);
+        else if (Intent.Figure.Source == SketcherFigureSource::Reference)
+        {
+            for (SketcherReferenceSurface& Ref : State.Document.ReferenceSurfaces)
+            {
+                if (Ref.Name == Intent.Figure.Key)
+                {
+                    Ref.LockedCondition = !Ref.LockedCondition;
+                    Announce(State, Ref.Name + (Ref.LockedCondition ? " locked" : " unlocked"));
+                    break;
+                }
+            }
+        }
         else ToggleFigureLock(State, Intent.Figure);
         break;
     case SketcherOutlinerVerb::Construct:
@@ -18459,6 +18559,103 @@ void TurnImagePlane(SketcherImagePlane& Plane, double Angle)
     Plane.Turn   = std::remainder(Plane.Turn + Angle, 2.0 * std::numbers::pi);
 }
 
+// 📝 GPU-resident Blender reference surfaces (high-poly vehicles for CAD retopology): opacity (ghost ↔ solid),
+//    GPU crease line overlay, scale controls, per-part visibility toggles, and removal.
+void ConstructReferenceInspectorPanel(SketcherWorkspaceStatus& State)
+{
+    std::vector<SketcherReferenceSurface>& Surfaces = State.Document.ReferenceSurfaces;
+    if (Surfaces.empty()) return;
+    BeginCard("Blender references");
+    size_t Removal = Surfaces.size();
+    const bool FocusFound = std::any_of(Surfaces.begin(), Surfaces.end(),
+        [&](const SketcherReferenceSurface& Ref) { return Ref.Name == State.FocusedReference; });
+    if (!FocusFound) State.FocusedReference.clear();
+
+    for (size_t Index = 0; Index < Surfaces.size(); ++Index)
+    {
+        SketcherReferenceSurface& Ref = Surfaces[Index];
+        ImGui::PushID(int(Index));
+        const std::string VisLabel = "###RefVisible" + std::to_string(Index);
+        (void)SketcherAuthoringToggle(State, VisLabel.c_str(), &Ref.VisibleCondition);
+        ImGui::SameLine();
+        const bool Focused = Ref.Name == State.FocusedReference;
+        const std::string NameLabel = Ref.Name + (Ref.LockedCondition ? "  (locked)" : "") + "###RefName" + std::to_string(Index);
+        if (ToggleButton(State, NameLabel.c_str(), Focused, ImVec2(ImGui::GetContentRegionAvail().x - 80.0f, 0.0f)))
+            State.FocusedReference = Focused ? std::string{} : Ref.Name;
+        ImGui::SameLine();
+        const std::string RemoveLabel = "Remove###RefRemove" + std::to_string(Index);
+        if (PressButton(State, RemoveLabel.c_str(), ImVec2(0, 0), !Ref.LockedCondition)) Removal = Index;
+
+        if (!Ref.SummaryNote.empty()) ImGui::TextDisabled("%s", Ref.SummaryNote.c_str());
+
+        if (Focused)
+        {
+            ImGui::SetNextItemWidth(RowSpan().x);
+            (void)SketcherAuthoringSlider(State, "Opacity###RefOpacity", &Ref.Opacity, 0.12f, 1.0f);
+            if (ToggleButton(State, Ref.WireframeCondition ? "Creases ON###RefCrease" : "Creases OFF###RefCrease", Ref.WireframeCondition, RowSpan(2)))
+                Ref.WireframeCondition = !Ref.WireframeCondition;
+            ImGui::SameLine();
+            if (PressButton(State, "Frame###RefFrame", RowSpan(2)))
+            {
+                FitOrbitCamera(State.Camera, Ref.MinBound, Ref.MaxBound);
+                State.Camera.SceneRadius = std::max(State.Camera.SceneRadius,
+                    0.5 * std::hypot(Ref.MaxBound[0] - Ref.MinBound[0], Ref.MaxBound[1] - Ref.MinBound[1], Ref.MaxBound[2] - Ref.MinBound[2]));
+            }
+
+            if (PressButton(State, "×0.01###RefScaleDown", RowSpan(3), !Ref.LockedCondition))
+            {
+                RescaleReferenceSurface(Ref, 0.01);
+                ++State.Document.ReferenceRevision;
+                FitOrbitCamera(State.Camera, Ref.MinBound, Ref.MaxBound);
+                RefreshSketcherScene(State, true);
+            }
+            ImGui::SameLine();
+            if (PressButton(State, "Fit 5m###RefScaleFit", RowSpan(3), !Ref.LockedCondition))
+            {
+                const double Span = std::max({ Ref.MaxBound[0] - Ref.MinBound[0], Ref.MaxBound[1] - Ref.MinBound[1], Ref.MaxBound[2] - Ref.MinBound[2], 1.0e-6 });
+                RescaleReferenceSurface(Ref, 5.0 / Span);
+                ++State.Document.ReferenceRevision;
+                FitOrbitCamera(State.Camera, Ref.MinBound, Ref.MaxBound);
+                RefreshSketcherScene(State, true);
+            }
+            ImGui::SameLine();
+            if (PressButton(State, "×10###RefScaleUp", RowSpan(3), !Ref.LockedCondition))
+            {
+                RescaleReferenceSurface(Ref, 10.0);
+                ++State.Document.ReferenceRevision;
+                FitOrbitCamera(State.Camera, Ref.MinBound, Ref.MaxBound);
+                RefreshSketcherScene(State, true);
+            }
+
+            ImGui::TextDisabled("Parts (%d) · Alt/Shift+S traces curves on GPU surface", int(Ref.Parts.size()));
+            if (ImGui::BeginChild("##RefPartsList", ImVec2(0.0f, std::min(160.0f, 24.0f * float(Ref.Parts.size()) + 8.0f)), true))
+            {
+                for (size_t PartIdx = 0; PartIdx < Ref.Parts.size(); ++PartIdx)
+                {
+                    SketcherReferencePart& Part = Ref.Parts[PartIdx];
+                    ImGui::PushID(int(PartIdx));
+                    ImGui::Checkbox(Part.Name.c_str(), &Part.VisibleCondition);
+                    if (ImGui::IsItemHovered() && !Part.ModifierSummary.empty())
+                        ImGui::SetTooltip("%s · %u tris", Part.ModifierSummary.c_str(), Part.CornerCount / 3u);
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndChild();
+        }
+        ImGui::PopID();
+    }
+    if (Removal < Surfaces.size())
+    {
+        const std::string RemovedName = Surfaces[Removal].Name;
+        Surfaces.erase(Surfaces.begin() + ptrdiff_t(Removal));
+        if (State.FocusedReference == RemovedName) State.FocusedReference.clear();
+        ++State.Document.ReferenceRevision;
+        RefreshSketcherScene(State, true);
+        Announce(State, "Removed reference surface " + RemovedName);
+    }
+    EndCard();
+}
+
 // 📝 Blueprint image planes (from a curves file's [[ImagePlanes]], the document or Construct › Image plane), also listed in
 //    the Outliner (eye, lock, pick). Every plane has a row; the picked one (Outliner, or its name here) opens its
 //    properties: opacity (1 − transparency), line art / photograph, mirror, crop margins, width, turn and centre. Edits
@@ -19788,6 +19985,7 @@ void DrawInspector(SketcherWorkspaceStatus& State, ImVec2 Position, ImVec2 Size,
         DrawConstraintCard(State);
         DrawBodyCard(State);
         DrawAppearanceCard(State);
+        ConstructReferenceInspectorPanel(State);
         DrawImagePlaneCard(State);
         if (!State.Drawing.ActiveCondition)
         {
@@ -21543,6 +21741,26 @@ void RefreshSketcherScene(SketcherWorkspaceStatus& State, bool DirtyCondition)
     if (State.ReadyScene && State.ReadyScene->Revision == State.Document.Revision && !State.ZebraEnabled) State.Scene = std::move(*State.ReadyScene);
     else State.Scene = BuildSketcherScene(State.Document, 1.5e-3, State.ZebraEnabled);
     State.ReadyScene.reset();
+    bool HasRefBounds = false;
+    for (const SketcherReferenceSurface& Ref : State.Document.ReferenceSurfaces)
+    {
+        if (!Ref.VisibleCondition || Ref.TriangleCount() == 0u) continue;
+        if (!HasRefBounds && State.Scene.Corners.empty() && State.Scene.Segments.empty())
+        {
+            State.Scene.BoundsLow  = Ref.MinBound;
+            State.Scene.BoundsHigh = Ref.MaxBound;
+            HasRefBounds = true;
+        }
+        else
+        {
+            for (int Axis = 0; Axis < 3; ++Axis)
+            {
+                State.Scene.BoundsLow[Axis]  = std::min(State.Scene.BoundsLow[Axis], Ref.MinBound[Axis]);
+                State.Scene.BoundsHigh[Axis] = std::max(State.Scene.BoundsHigh[Axis], Ref.MaxBound[Axis]);
+            }
+            HasRefBounds = true;
+        }
+    }
     State.Camera.SceneRadius = std::max(1.0, 0.5 * std::hypot(State.Scene.BoundsHigh[0] - State.Scene.BoundsLow[0], State.Scene.BoundsHigh[1] - State.Scene.BoundsLow[1],
                                                               State.Scene.BoundsHigh[2] - State.Scene.BoundsLow[2]));
     State.HoverIdentity = 0;

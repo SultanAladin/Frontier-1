@@ -10,6 +10,7 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherBlendDecoder.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
 
 #include <string>
@@ -28,6 +29,7 @@ enum class SketcherExchangeFormat : uint8_t
     Step    = 1,                                                                             // .step / .stp — ISO 10303-21, AP214
     Stl     = 2,                                                                             // .stl — binary STL
     Toml    = 3,                                                                             // .toml — VehicleCurves (import) / document
+    Blend   = 4,                                                                             // .blend — Blender high-poly vehicle reference
 };
 
 // 📝 One export: which bodies went out, how big the file is and what the writer reported.
@@ -83,5 +85,12 @@ struct SketcherStepReading
 // Reads a STEP file in the document's unit (metres) and returns one canonical single-body STEP text per solid.
 // Surface models (sheets) are refused: 🚧 the writer takes solids only.
 [[nodiscard]] SketcherStepReading ReadSketcherStepFile(const std::string& Path);
+
+// Imports a Blender (.blend) file into Document.ReferenceSurfaces with modifier stacks evaluated for GPU display
+// and BVH-accelerated precision curve tracing.
+[[nodiscard]] SketcherBlendImportReport ImportSketcherBlend(
+    SketcherDocument&                 Document,
+    const std::string&                Path,
+    const SketcherBlendImportOptions& Options = {});
 
 } // namespace Frontier::Workspaces::Sketcher

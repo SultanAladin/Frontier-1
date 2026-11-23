@@ -59,6 +59,7 @@ SketcherExchangeFormat SketcherExchangeFormatOf(const std::string& Path)
     if (Extension == ".step" || Extension == ".stp") return SketcherExchangeFormat::Step;
     if (Extension == ".stl") return SketcherExchangeFormat::Stl;
     if (Extension == ".toml") return SketcherExchangeFormat::Toml;
+    if (Extension == ".blend") return SketcherExchangeFormat::Blend;
     return SketcherExchangeFormat::Unknown;
 }
 
@@ -69,6 +70,7 @@ const char* SketcherExchangeFormatLabel(SketcherExchangeFormat Format) noexcept
     case SketcherExchangeFormat::Step:    return "STEP";
     case SketcherExchangeFormat::Stl:     return "STL";
     case SketcherExchangeFormat::Toml:    return "TOML";
+    case SketcherExchangeFormat::Blend:   return "BLEND";
     case SketcherExchangeFormat::Unknown: break;
     }
     return "unknown";
@@ -172,6 +174,29 @@ SketcherStepReading ReadSketcherStepFile(const std::string& Path)
     }
     Reading.Milliseconds = ElapsedMilliseconds(Start);
     return Reading;
+}
+
+SketcherBlendImportReport ImportSketcherBlend(
+    SketcherDocument&                 Document,
+    const std::string&                Path,
+    const SketcherBlendImportOptions& Options)
+{
+    SketcherBlendImportReport Report = DecodeSketcherBlendFile(Path, Options);
+    if (!Report.Refusal.empty()) return Report;
+
+    // Ensure unique display name among existing ReferenceSurfaces
+    std::string BaseName = Report.Surface.Name.empty() ? FileStem(Path) : Report.Surface.Name;
+    std::string Unique   = BaseName;
+    int Suffix           = 2;
+    while (std::any_of(Document.ReferenceSurfaces.begin(), Document.ReferenceSurfaces.end(),
+                       [&](const SketcherReferenceSurface& Existing) { return Existing.Name == Unique; }))
+    {
+        Unique = BaseName + "." + std::to_string(Suffix++);
+    }
+    Report.Surface.Name = Unique;
+    Document.ReferenceSurfaces.push_back(Report.Surface);
+    ++Document.ReferenceRevision;
+    return Report;
 }
 
 } // namespace Frontier::Workspaces::Sketcher

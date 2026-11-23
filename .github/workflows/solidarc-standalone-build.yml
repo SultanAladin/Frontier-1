@@ -75,14 +75,14 @@ jobs:
           cmake --build Build/SolidArc --config Release --parallel 4 --target `
             FrontierSketcher FrontierEngineRuntimeDll FrontierWorkspaceUiDll `
             SketcherKernelValidation SketcherDocumentValidation `
-            SketcherViewportValidation SketcherWorkspaceValidation
+            SketcherViewportValidation SketcherWorkspaceValidation SketcherBlendImportValidation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Run SolidArc validation suite
         shell: pwsh
         run: |
           ctest --test-dir Build/SolidArc -C Release --output-on-failure `
-            -R '^(SketcherKernelValidation|SketcherDocumentValidation|SketcherViewportValidation|SketcherWorkspaceValidation)$'
+            -R '^(SketcherKernelValidation|SketcherDocumentValidation|SketcherViewportValidation|SketcherWorkspaceValidation|SketcherBlendImportValidation)$'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Assemble standalone SolidArc package
@@ -104,6 +104,8 @@ jobs:
             "$Payload/CompiledShaders/WorldViewportRadiometricCompute.comp.spv",
             "$Payload/CompiledShaders/SketcherGizmo.vert.spv",
             "$Payload/CompiledShaders/SketcherSurface.frag.spv",
+            "$Payload/CompiledShaders/SketcherReferenceSurface.frag.spv",
+            "$Payload/CompiledShaders/SketcherReferenceCrease.frag.spv",
             "$Payload/EngineContent/FontsArchives/FontRepository.FontSpace",
             "$Payload/EngineContent/Icons/Sketcher"
           )

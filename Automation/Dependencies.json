@@ -80,6 +80,16 @@
       "verified": true,
       "purpose": "Deterministic cross-platform rigid body physics, constraints, broadphase, and fracture collision runtime",
       "witness": "Jolt/Jolt.h"
+    },
+    {
+      "name": "zstd",
+      "repository": "facebook/zstd",
+      "revision": "v1.5.7",
+      "url": "https://codeload.github.com/facebook/zstd/tar.gz/refs/tags/v1.5.7",
+      "sha256": "37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3",
+      "verified": true,
+      "purpose": "Cross-platform Zstandard decompression for SolidArc Blender (.blend) reference vehicle import",
+      "witness": "lib/zstd.h"
     }
   ]
 }

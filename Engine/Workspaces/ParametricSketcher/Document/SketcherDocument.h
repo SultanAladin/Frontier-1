@@ -11,6 +11,7 @@
 
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherImagePlane.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.h"
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherReferenceSurface.h"
 #include "Engine/GeometrySpace/Parametric/Drawing/DrawingSheet.h"
 #include "Engine/GeometrySpace/Parametric/Feature/FeatureTree.h"
 #include "Engine/GeometrySpace/Parametric/Local/FaceOperations.h"
@@ -381,9 +382,11 @@ struct SketcherDocument
     SketcherSelection                          Selection    = {};                            // [-] - Current selection (names)
     std::vector<SketcherHistoryEntry>          UndoEntries  = {};                            // [-] - Most recent last
     std::vector<SketcherHistoryEntry>          RedoEntries  = {};                            // [-] - Most recent last
-    uint64_t                                   Revision     = 0;                             // [-] - Bumped by every regeneration (scene cache key)
-    std::vector<SketcherImagePlane>            ImagePlanes  = {};                            // [-] - Blueprint references (saved, not in the history)
-    SketcherAppearance                         Appearance   = {};                            // [-] - Body / face matcaps (saved, undoable)
+    uint64_t                                   Revision          = 0;                        // [-] - Bumped by every regeneration (scene cache key)
+    std::vector<SketcherImagePlane>            ImagePlanes       = {};                       // [-] - Blueprint references (saved, not in the history)
+    std::vector<SketcherReferenceSurface>      ReferenceSurfaces = {};                       // [-] - GPU-resident high-poly Blender reference surfaces
+    uint64_t                                   ReferenceRevision = 0;                        // [-] - Bumped when ReferenceSurfaces geometry changes
+    SketcherAppearance                         Appearance        = {};                       // [-] - Body / face matcaps (saved, undoable)
     SketcherDrawingSheetSettings               DrawingSheet = {};                            // [-] - Alt+D sheet settings (saved, not in the history)
     std::vector<SketcherDimension>             Dimensions   = {};                            // [-] - Persistent 3D CAD dimension annotations (saved, undoable)
     GeometrySpace::Parametric::RegenerationCache                Replay       = {};                            // [-] - Step checkpoints of the last replay (incremental regeneration)

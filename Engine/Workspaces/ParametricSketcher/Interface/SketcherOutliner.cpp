@@ -38,6 +38,7 @@ constexpr uint32_t AmberInk      = 0xe5b369;                                    
 constexpr uint32_t CyanInk       = 0x84bdc2;                                                 // --cyan (curves)
 constexpr uint32_t BlueInk       = 0x7ba9d9;                                                 // --blue (surfaces)
 constexpr uint32_t VioletInk     = 0xb8a3e0;                                                 // Image planes (reference pictures)
+constexpr uint32_t EmeraldInk    = 0x6fd6b8;                                                 // GPU Blender reference surfaces
 constexpr uint32_t ActiveInk     = 0x33ff73;                                                 // .scene-row.active-selection
 constexpr uint32_t SelectedInk   = 0x4099ff;                                                 // .scene-row.selected:not(.active-selection)
 constexpr uint32_t HoverFill     = 0x292929;                                                 // button:hover
@@ -57,16 +58,17 @@ ColorQuad CategoryInk(SketcherFigureCategory Category)
 {
     switch (Category)
     {
-    case SketcherFigureCategory::Curve:   return Ink(CyanInk);                               // .colour-0
-    case SketcherFigureCategory::Surface: return Ink(BlueInk);                               // .colour-1
-    case SketcherFigureCategory::Image:   return Ink(VioletInk);
-    default:                              return Ink(AmberInk);                              // .colour-2
+    case SketcherFigureCategory::Curve:     return Ink(CyanInk);                             // .colour-0
+    case SketcherFigureCategory::Surface:   return Ink(BlueInk);                             // .colour-1
+    case SketcherFigureCategory::Image:     return Ink(VioletInk);
+    case SketcherFigureCategory::Reference: return Ink(EmeraldInk);
+    default:                                return Ink(AmberInk);                            // .colour-2
     }
 }
 
 const char* CategoryTag(SketcherFigureCategory Category)
 {
-    static const char* const Tags[] = { "CURVE", "SURFACE", "BODY", "IMAGE" };
+    static const char* const Tags[] = { "CURVE", "SURFACE", "BODY", "IMAGE", "REF" };
     return Tags[static_cast<int>(Category)];
 }
 
@@ -217,6 +219,21 @@ std::vector<SketcherFigure> CollectSketcherFigures(const SketcherWorkspaceStatus
         Figure.Rank              = Figure.SelectedCondition ? 0 : -1;
         Figures.push_back(std::move(Figure));
     }
+    // GPU-resident Blender reference surfaces (high-poly vehicle retopology guides)
+    for (const SketcherReferenceSurface& Reference : Document.ReferenceSurfaces)
+    {
+        SketcherFigure Figure;
+        Figure.Key               = Reference.Name;
+        Figure.Name              = Reference.Name;
+        Figure.Category          = SketcherFigureCategory::Reference;
+        Figure.Source            = SketcherFigureSource::Reference;
+        Figure.Icon              = IconSymbol::SketcherSurface;
+        Figure.HiddenCondition   = !Reference.VisibleCondition;
+        Figure.LockedCondition   = Reference.LockedCondition;
+        Figure.SelectedCondition = State.FocusedReference == Reference.Name;
+        Figure.Rank              = Figure.SelectedCondition ? 0 : -1;
+        Figures.push_back(std::move(Figure));
+    }
     return Figures;
 }
 
@@ -318,11 +335,12 @@ SketcherOutlinerIntent ConstructSketcherOutliner(SketcherWorkspaceStatus& State,
     // .filter-chips — margin 10 12 11, gap 5; chip 10 px, padding 5 9, radius 14, #ffffff0d border; active #262626 / #ddd.
     Y += 10.0f;
     const float ChipHeight = 10.0f * SketcherStyleTokens::FontScale + 10.0f + 2.0f;
-    const struct { const char* Label; int Filter; } Chips[] = { { "All", -1 }, { "Bodies", 2 }, { "Sketches", 0 }, { "Surfaces", 1 }, { "Images", 3 } };
+    const struct { const char* Label; int Filter; } Chips[] = { { "All", -1 }, { "Bodies", 2 }, { "Sketches", 0 }, { "Surfaces", 1 }, { "Images", 3 }, { "Refs", 4 } };
     Cursor = Left + 12.0f;
     for (const auto& Chip : Chips)
     {
         if (Chip.Filter == 3 && State.Document.ImagePlanes.empty()) continue;                // Only when the document has pictures
+        if (Chip.Filter == 4 && State.Document.ReferenceSurfaces.empty()) continue;          // Only when the document has Blender references
         const float       ChipWidth = Sheet.Measure(Chip.Label, 10.0f) + 18.0f + 2.0f;
         const PlaneExtent Extent    = Spanning(Cursor, Y, ChipWidth, ChipHeight);
         const SketcherPress Press   = PressSketcherRegion(State.Widgets, std::string("Filter") + Chip.Label, Extent);

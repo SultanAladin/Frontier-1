@@ -30,10 +30,11 @@ struct SketcherWorkspaceStatus;
 // 📝 HTML figure classification: 0 curve, 1 surface, 2 body (WorkspacePanel.js ["CURVE", "SURFACE", "BODY"]).
 enum class SketcherFigureCategory : uint8_t
 {
-    Curve   = 0,                                                                             // A sketch or a space curve
-    Surface = 1,                                                                             // An open sheet body (a lofted panel)
-    Body    = 2,                                                                             // A closed solid body
-    Image   = 3,                                                                             // A reference image plane (outside the history)
+    Curve     = 0,                                                                           // A sketch or a space curve
+    Surface   = 1,                                                                           // An open sheet body (a lofted panel)
+    Body      = 2,                                                                           // A closed solid body
+    Image     = 3,                                                                           // A reference image plane (outside the history)
+    Reference = 4,                                                                           // A GPU-resident Blender reference vehicle surface
 };
 
 // Where a figure lives in the document.
@@ -43,6 +44,7 @@ enum class SketcherFigureSource : uint8_t
     Sketch     = 1,                                                                          // Sketch step no feature consumed
     SpaceCurve = 2,                                                                          // SpaceCurve step (imported, fitted)
     Image      = 3,                                                                          // Document image plane (key = its name)
+    Reference  = 4,                                                                          // GPU-resident Blender reference surface (key = its name)
 };
 
 enum class SketcherOutlinerVerb : uint8_t
