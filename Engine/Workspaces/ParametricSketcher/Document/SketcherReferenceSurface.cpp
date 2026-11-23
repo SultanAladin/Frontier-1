@@ -9,10 +9,14 @@
 
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherReferenceSurface.h"
 
+#include <zstd.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
+#include <unordered_map>
 
 namespace Frontier::Workspaces::Sketcher
 {
@@ -546,6 +550,310 @@ void RescaleReferenceSurface(SketcherReferenceSurface& Surface, double RelativeF
         }
     }
     Surface.ScaleFactor *= RelativeFactor;
+}
+
+std::string EncodeSketcherRadix64(const uint8_t* Bytes, size_t Count)
+{
+    static constexpr char Alphabet[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (!Bytes || Count == 0u) return {};
+    std::string Out;
+    Out.reserve(((Count + 2u) / 3u) * 4u);
+    size_t Pos = 0u;
+    while (Pos + 3u <= Count)
+    {
+        const uint32_t Word = (uint32_t(Bytes[Pos]) << 16u) | (uint32_t(Bytes[Pos + 1u]) << 8u) | uint32_t(Bytes[Pos + 2u]);
+        Out.push_back(Alphabet[(Word >> 18u) & 63u]);
+        Out.push_back(Alphabet[(Word >> 12u) & 63u]);
+        Out.push_back(Alphabet[(Word >>  6u) & 63u]);
+        Out.push_back(Alphabet[Word & 63u]);
+        Pos += 3u;
+    }
+    const size_t Rem = Count - Pos;
+    if (Rem == 1u)
+    {
+        const uint32_t Word = uint32_t(Bytes[Pos]) << 16u;
+        Out.push_back(Alphabet[(Word >> 18u) & 63u]);
+        Out.push_back(Alphabet[(Word >> 12u) & 63u]);
+        Out.push_back('=');
+        Out.push_back('=');
+    }
+    else if (Rem == 2u)
+    {
+        const uint32_t Word = (uint32_t(Bytes[Pos]) << 16u) | (uint32_t(Bytes[Pos + 1u]) << 8u);
+        Out.push_back(Alphabet[(Word >> 18u) & 63u]);
+        Out.push_back(Alphabet[(Word >> 12u) & 63u]);
+        Out.push_back(Alphabet[(Word >>  6u) & 63u]);
+        Out.push_back('=');
+    }
+    return Out;
+}
+
+std::vector<uint8_t> DecodeSketcherRadix64(std::string_view Text, bool* OkCondition)
+{
+    auto ValueOf = [](unsigned char Ch) noexcept -> int
+    {
+        if (Ch >= 'A' && Ch <= 'Z') return int(Ch - 'A');
+        if (Ch >= 'a' && Ch <= 'z') return int(Ch - 'a') + 26;
+        if (Ch >= '0' && Ch <= '9') return int(Ch - '0') + 52;
+        if (Ch == '+') return 62;
+        if (Ch == '/') return 63;
+        return -1;
+    };
+
+    std::vector<uint8_t> Out;
+    Out.reserve((Text.size() / 4u) * 3u);
+    uint32_t Accum = 0u;
+    int Bits = 0;
+    for (unsigned char Ch : Text)
+    {
+        if (Ch == ' ' || Ch == '\t' || Ch == '\r' || Ch == '\n') continue;
+        if (Ch == '=') break;
+        const int Digit = ValueOf(Ch);
+        if (Digit < 0)
+        {
+            if (OkCondition) *OkCondition = false;
+            return {};
+        }
+        Accum = (Accum << 6u) | uint32_t(Digit);
+        Bits += 6;
+        if (Bits >= 8)
+        {
+            Bits -= 8;
+            Out.push_back(static_cast<uint8_t>((Accum >> Bits) & 0xFFu));
+        }
+    }
+    if (OkCondition) *OkCondition = true;
+    return Out;
+}
+
+namespace
+{
+
+struct PackedReferenceVertex
+{
+    float    Px         = 0.0f;
+    float    Py         = 0.0f;
+    float    Pz         = 0.0f;
+    int16_t  Nx         = 0;
+    int16_t  Ny         = 0;
+    int16_t  Nz         = 32767;
+    uint16_t CreaseBits = 0u;
+    uint32_t PartIndex  = 0u;
+
+    bool operator==(const PackedReferenceVertex& Other) const noexcept
+    {
+        return std::memcmp(this, &Other, sizeof(PackedReferenceVertex)) == 0;
+    }
+};
+static_assert(sizeof(PackedReferenceVertex) == 24u, "PackedReferenceVertex must stay 24 bytes");
+
+struct PackedReferenceVertexHash
+{
+    size_t operator()(const PackedReferenceVertex& V) const noexcept
+    {
+        uint64_t Words[3] = {};
+        std::memcpy(Words, &V, sizeof(Words));
+        uint64_t H = 14695981039346656037ull;
+        for (uint64_t W : Words) { H ^= W; H *= 1099511628211ull; }
+        return static_cast<size_t>(H);
+    }
+};
+
+[[nodiscard]] int16_t QuantizeUnitNormal(float Component) noexcept
+{
+    const float Clamped = std::clamp(Component, -1.0f, 1.0f);
+    return static_cast<int16_t>(std::lround(Clamped * 32767.0f));
+}
+
+[[nodiscard]] uint32_t ZigZagEncode(int32_t SignedDelta) noexcept
+{
+    return (static_cast<uint32_t>(SignedDelta) << 1u) ^ static_cast<uint32_t>(SignedDelta >> 31);
+}
+
+[[nodiscard]] int32_t ZigZagDecode(uint32_t EncodedDelta) noexcept
+{
+    return static_cast<int32_t>((EncodedDelta >> 1u) ^ (~(EncodedDelta & 1u) + 1u));
+}
+
+} // namespace
+
+std::string EncodeReferenceGeometryBlob(const SketcherReferenceGeometry& Geometry)
+{
+    const uint32_t CornerCount  = static_cast<uint32_t>(Geometry.Corners.size());
+    const uint32_t SegmentCount = static_cast<uint32_t>(Geometry.CreaseSegments.size());
+    if (CornerCount == 0u) return {};
+
+    // Deduplicate identical (position, quantized normal, part, crease) corners to shrink payload ~4x before ZSTD
+    std::vector<PackedReferenceVertex> UniqueVerts;
+    UniqueVerts.reserve(CornerCount / 3u + 64u);
+    std::unordered_map<PackedReferenceVertex, uint32_t, PackedReferenceVertexHash> Lookup;
+    Lookup.reserve(CornerCount / 3u + 64u);
+
+    std::vector<uint32_t> DeltaIndices(CornerCount, 0u);
+    int32_t PreviousIndex = 0;
+    for (uint32_t I = 0u; I < CornerCount; ++I)
+    {
+        const SketcherReferenceCorner& C = Geometry.Corners[I];
+        PackedReferenceVertex Key;
+        Key.Px         = C.Position[0];
+        Key.Py         = C.Position[1];
+        Key.Pz         = C.Position[2];
+        Key.Nx         = QuantizeUnitNormal(C.Normal[0]);
+        Key.Ny         = QuantizeUnitNormal(C.Normal[1]);
+        Key.Nz         = QuantizeUnitNormal(C.Normal[2]);
+        Key.CreaseBits = static_cast<uint16_t>(C.CreaseBits & 0xFFFFu);
+        Key.PartIndex  = C.PartIndex;
+
+        auto Found = Lookup.find(Key);
+        uint32_t VertIdx = 0u;
+        if (Found == Lookup.end())
+        {
+            VertIdx = static_cast<uint32_t>(UniqueVerts.size());
+            Lookup.emplace(Key, VertIdx);
+            UniqueVerts.push_back(Key);
+        }
+        else
+        {
+            VertIdx = Found->second;
+        }
+        const int32_t SignedIdx = static_cast<int32_t>(VertIdx);
+        DeltaIndices[I] = ZigZagEncode(SignedIdx - PreviousIndex);
+        PreviousIndex   = SignedIdx;
+    }
+
+    const uint32_t UniqueCount = static_cast<uint32_t>(UniqueVerts.size());
+    const size_t RawBytes = 20u
+        + size_t(UniqueCount) * sizeof(PackedReferenceVertex)
+        + size_t(CornerCount) * sizeof(uint32_t)
+        + size_t(SegmentCount) * sizeof(SketcherReferenceSegment);
+
+    std::vector<uint8_t> Raw(RawBytes, 0u);
+    uint8_t* Cursor = Raw.data();
+    std::memcpy(Cursor, "FREF", 4u); Cursor += 4u;
+    const uint32_t Header[4] = { 1u, UniqueCount, CornerCount, SegmentCount };
+    std::memcpy(Cursor, Header, sizeof(Header)); Cursor += sizeof(Header);
+    if (!UniqueVerts.empty())
+    {
+        std::memcpy(Cursor, UniqueVerts.data(), UniqueVerts.size() * sizeof(PackedReferenceVertex));
+        Cursor += UniqueVerts.size() * sizeof(PackedReferenceVertex);
+    }
+    if (!DeltaIndices.empty())
+    {
+        std::memcpy(Cursor, DeltaIndices.data(), DeltaIndices.size() * sizeof(uint32_t));
+        Cursor += DeltaIndices.size() * sizeof(uint32_t);
+    }
+    if (!Geometry.CreaseSegments.empty())
+    {
+        std::memcpy(Cursor, Geometry.CreaseSegments.data(), Geometry.CreaseSegments.size() * sizeof(SketcherReferenceSegment));
+    }
+
+    const size_t Bound = ZSTD_compressBound(Raw.size());
+    std::vector<uint8_t> Compressed(Bound);
+    const size_t CompSize = ZSTD_compress(Compressed.data(), Compressed.size(), Raw.data(), Raw.size(), 6);
+    if (ZSTD_isError(CompSize)) return {};
+    Compressed.resize(CompSize);
+    return EncodeSketcherRadix64(Compressed.data(), Compressed.size());
+}
+
+std::shared_ptr<SketcherReferenceGeometry> DecodeReferenceGeometryBlob(std::string_view Encoded, std::string& Refusal)
+{
+    if (Encoded.empty())
+    {
+        Refusal = "Empty embedded reference geometry";
+        return nullptr;
+    }
+
+    bool B64Ok = false;
+    const std::vector<uint8_t> Compressed = DecodeSketcherRadix64(Encoded, &B64Ok);
+    if (!B64Ok || Compressed.empty())
+    {
+        Refusal = "Malformed Radix-64 embedded reference geometry";
+        return nullptr;
+    }
+
+    const unsigned long long RawSize = ZSTD_getFrameContentSize(Compressed.data(), Compressed.size());
+    if (RawSize == ZSTD_CONTENTSIZE_ERROR || RawSize == ZSTD_CONTENTSIZE_UNKNOWN || RawSize < 20ull || RawSize > (512ull << 20u))
+    {
+        Refusal = "Invalid ZSTD embedded reference frame size";
+        return nullptr;
+    }
+
+    std::vector<uint8_t> Raw(static_cast<size_t>(RawSize));
+    const size_t Decomp = ZSTD_decompress(Raw.data(), Raw.size(), Compressed.data(), Compressed.size());
+    if (ZSTD_isError(Decomp) || Decomp != Raw.size())
+    {
+        Refusal = std::string("ZSTD embedded reference decompress failed: ") + ZSTD_getErrorName(Decomp);
+        return nullptr;
+    }
+
+    if (std::memcmp(Raw.data(), "FREF", 4u) != 0)
+    {
+        Refusal = "Unrecognized embedded reference magic header";
+        return nullptr;
+    }
+
+    uint32_t Header[4] = {};
+    std::memcpy(Header, Raw.data() + 4u, sizeof(Header));
+    const uint32_t Version      = Header[0];
+    const uint32_t UniqueCount  = Header[1];
+    const uint32_t CornerCount  = Header[2];
+    const uint32_t SegmentCount = Header[3];
+    if (Version != 1u || UniqueCount == 0u || CornerCount == 0u)
+    {
+        Refusal = "Unsupported embedded reference payload version or empty corners";
+        return nullptr;
+    }
+
+    const size_t Expected = 20u
+        + size_t(UniqueCount) * sizeof(PackedReferenceVertex)
+        + size_t(CornerCount) * sizeof(uint32_t)
+        + size_t(SegmentCount) * sizeof(SketcherReferenceSegment);
+    if (Raw.size() != Expected)
+    {
+        Refusal = "Truncated embedded reference payload";
+        return nullptr;
+    }
+
+    const uint8_t* Cursor = Raw.data() + 20u;
+    std::vector<PackedReferenceVertex> UniqueVerts(UniqueCount);
+    std::memcpy(UniqueVerts.data(), Cursor, UniqueVerts.size() * sizeof(PackedReferenceVertex));
+    Cursor += UniqueVerts.size() * sizeof(PackedReferenceVertex);
+
+    std::vector<uint32_t> DeltaIndices(CornerCount);
+    std::memcpy(DeltaIndices.data(), Cursor, DeltaIndices.size() * sizeof(uint32_t));
+    Cursor += DeltaIndices.size() * sizeof(uint32_t);
+
+    auto Geometry = std::make_shared<SketcherReferenceGeometry>();
+    Geometry->Corners.resize(CornerCount);
+    int32_t RunningIndex = 0;
+    for (uint32_t I = 0u; I < CornerCount; ++I)
+    {
+        RunningIndex += ZigZagDecode(DeltaIndices[I]);
+        if (RunningIndex < 0 || static_cast<uint32_t>(RunningIndex) >= UniqueCount)
+        {
+            Refusal = "Corrupt vertex index in embedded reference payload";
+            return nullptr;
+        }
+        const PackedReferenceVertex& V = UniqueVerts[static_cast<uint32_t>(RunningIndex)];
+        SketcherReferenceCorner& Out = Geometry->Corners[I];
+        Out.Position[0] = V.Px;
+        Out.Position[1] = V.Py;
+        Out.Position[2] = V.Pz;
+        Out.Normal[0]   = float(V.Nx) / 32767.0f;
+        Out.Normal[1]   = float(V.Ny) / 32767.0f;
+        Out.Normal[2]   = float(V.Nz) / 32767.0f;
+        Out.PartIndex   = V.PartIndex;
+        Out.CreaseBits  = V.CreaseBits;
+    }
+
+    if (SegmentCount > 0u)
+    {
+        Geometry->CreaseSegments.resize(SegmentCount);
+        std::memcpy(Geometry->CreaseSegments.data(), Cursor, size_t(SegmentCount) * sizeof(SketcherReferenceSegment));
+    }
+
+    Geometry->Bvh = BuildReferenceSurfaceBvh(Geometry->Corners);
+    return Geometry;
 }
 
 } // namespace Frontier::Workspaces::Sketcher

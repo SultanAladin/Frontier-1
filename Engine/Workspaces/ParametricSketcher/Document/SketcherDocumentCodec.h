@@ -26,11 +26,13 @@ struct SketcherDocumentFile
     std::string                        Title    = {};                                        // [-] - Document caption
     GeometrySpace::Parametric::FeatureTree              Tree     = {};                                        // [-] - Steps + parameters (signatures re-captured on load)
     std::map<std::string, std::string> Captions = {};                                        // [-] - Step label → caption
-    std::vector<SketcherImagePlane>    ImagePlanes = {};                                     // [-] - Blueprint references
-    SketcherAppearance                 Appearance  = {};                                     // [-] - Body / face matcaps
-    SketcherDrawingSheetSettings       DrawingSheet = {};                                    // [-] - Alt+D sheet settings
-    std::vector<SketcherDimension>     Dimensions   = {};                                    // [-] - Persistent 3D CAD dimension annotations
-    std::string                        Refusal  = {};                                        // [-] - Parse failure (empty: fine)
+    std::vector<SketcherImagePlane>       ImagePlanes       = {};                            // [-] - Blueprint references
+    std::vector<SketcherReferenceSurface> ReferenceSurfaces = {};                            // [-] - Embedded compiled reference surfaces
+    std::vector<uint8_t>                  PreviewPngBytes   = {};                            // [-] - Embedded studio preview PNG
+    SketcherAppearance                    Appearance        = {};                            // [-] - Body / face matcaps
+    SketcherDrawingSheetSettings          DrawingSheet      = {};                            // [-] - Alt+D sheet settings
+    std::vector<SketcherDimension>        Dimensions        = {};                            // [-] - Persistent 3D CAD dimension annotations
+    std::string                           Refusal           = {};                            // [-] - Parse failure (empty: fine)
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -44,5 +46,12 @@ struct SketcherDocumentFile
 // File helpers: false / Refusal on an I/O or parse failure.
 bool                               SaveSketcherDocument(const SketcherDocument& Document, const std::string& Path);
 [[nodiscard]] SketcherDocumentFile LoadSketcherDocumentFile(const std::string& Path);
+
+// Lightweight header reader for Project Browser thumbnails & captions (never decompresses reference geometry).
+[[nodiscard]] bool LoadSketcherPreviewHeader(
+    const std::string&    Path,
+    std::string&          OutTitle,
+    std::string&          OutDescription,
+    std::vector<uint8_t>& OutPreviewPng);
 
 } // namespace Frontier::Workspaces::Sketcher

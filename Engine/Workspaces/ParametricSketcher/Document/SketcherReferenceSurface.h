@@ -177,4 +177,14 @@ struct SketcherReferenceSurface
 // Rescale all vertices, crease segments, bounds, and rebuild BVH by RelativeFactor (used by Scale controls).
 void RescaleReferenceSurface(SketcherReferenceSurface& Surface, double RelativeFactor);
 
+// Deterministic Radix-64 (RFC 4648) helpers shared by embedded geometry and preview PNG serialization inside .solidarc files.
+[[nodiscard]] std::string          EncodeSketcherRadix64(const uint8_t* Bytes, size_t Count);
+[[nodiscard]] std::vector<uint8_t> DecodeSketcherRadix64(std::string_view Text, bool* OkCondition = nullptr);
+
+// Compact self-contained ZSTD + Radix-64 compiled reference geometry encoder/decoder for .solidarc files.
+[[nodiscard]] std::string EncodeReferenceGeometryBlob(const SketcherReferenceGeometry& Geometry);
+[[nodiscard]] std::shared_ptr<SketcherReferenceGeometry> DecodeReferenceGeometryBlob(
+    std::string_view Encoded,
+    std::string&     Refusal);
+
 } // namespace Frontier::Workspaces::Sketcher

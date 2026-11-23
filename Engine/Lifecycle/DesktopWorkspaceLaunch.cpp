@@ -1159,12 +1159,17 @@ int LaunchDesktopWorkspace(
                 }
                 else if (Directive.TargetWorkspace == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
                 {
+                    const bool AlreadyInitialized = SketcherHostReady;
                     if (!Directive.SelectedFilePath.empty())
                     {
                         InitialOptions.StartupImportPath = Directive.SelectedFilePath;
                     }
                     if (EnsureSketcherHostReady())
                     {
+                        if (AlreadyInitialized && !Directive.SelectedFilePath.empty() && SketcherHostPtr)
+                        {
+                            (void)SketcherHostPtr->OpenDocumentPath(Directive.SelectedFilePath.string());
+                        }
                         CurrentSurface = ActiveHostSurface::SketcherWorkspaceSurface;
                     }
                 }

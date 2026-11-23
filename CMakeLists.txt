@@ -174,12 +174,25 @@ add_library(FrontierZstdDecompress STATIC
     "${ZSTD_ROOT}/lib/common/threading.c"
     "${ZSTD_ROOT}/lib/common/xxhash.c"
     "${ZSTD_ROOT}/lib/common/zstd_common.c"
+    "${ZSTD_ROOT}/lib/compress/fse_compress.c"
+    "${ZSTD_ROOT}/lib/compress/hist.c"
+    "${ZSTD_ROOT}/lib/compress/huf_compress.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_compress.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_compress_literals.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_compress_sequences.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_compress_superblock.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_double_fast.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_fast.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_lazy.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_ldm.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_opt.c"
+    "${ZSTD_ROOT}/lib/compress/zstd_preSplit.c"
     "${ZSTD_ROOT}/lib/decompress/huf_decompress.c"
     "${ZSTD_ROOT}/lib/decompress/zstd_ddict.c"
     "${ZSTD_ROOT}/lib/decompress/zstd_decompress.c"
     "${ZSTD_ROOT}/lib/decompress/zstd_decompress_block.c"
 )
-target_include_directories(FrontierZstdDecompress PUBLIC "${ZSTD_ROOT}/lib" "${ZSTD_ROOT}/lib/common")
+target_include_directories(FrontierZstdDecompress PUBLIC "${ZSTD_ROOT}/lib" "${ZSTD_ROOT}/lib/common" "${ZSTD_ROOT}/lib/compress")
 target_compile_definitions(FrontierZstdDecompress PRIVATE ZSTD_DISABLE_ASM=1)
 set_target_properties(FrontierZstdDecompress PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
