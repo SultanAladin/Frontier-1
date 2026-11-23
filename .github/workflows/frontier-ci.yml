@@ -75,7 +75,7 @@ jobs:
           run_step retry python3 Automation/PrepareFonts.py
           run_step retry python3 Automation/PrepareShaderToolchain.py
 
-      - name: Build standalone workspace applications across profiles
+      - name: Build Frontier and SolidArc across profiles
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: 4
         run: |
@@ -84,8 +84,7 @@ jobs:
             -DFRONTIER_PROFILE=Editor \
             -DBUILD_TESTING=OFF
           cmake --build Build/CI/Editor --parallel 4 --target \
-            Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp \
-            FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher \
+            Frontier FrontierSketcher \
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll
           cmake -S . -B Build/CI/Shipping -G Ninja \
             -DFRONTIER_PROFILE=Shipping \
@@ -93,13 +92,12 @@ jobs:
           cmake --build Build/CI/Shipping --parallel 4 --target \
             FrontierEngine FrontierEngineRuntimeDll
 
-      - name: Assemble portable Linux x64 standalone workspaces package
+      - name: Assemble portable Linux x64 Frontier and SolidArc package
         run: |
           payload="${RUNNER_TEMP}/Frontier-Workspaces-Linux-x64"
           mkdir -p "$payload/CompiledShaders" "$payload/EngineContent" "$payload/Binaries/Win64"
-          for app in Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher; do
-            cp "Build/CI/Editor/${app}" "$payload/"
-          done
+          cp "Build/CI/Editor/Frontier" "$payload/Frontier"
+          cp "Build/CI/Editor/FrontierSketcher" "$payload/SolidArc"
           cp -r Build/CI/Editor/Binaries/Win64/* "$payload/Binaries/Win64/"
           cp -r Build/CI/Editor/CompiledShaders/* "$payload/CompiledShaders/"
           cp -r EngineContent/* "$payload/EngineContent/"

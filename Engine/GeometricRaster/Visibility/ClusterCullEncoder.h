@@ -21,22 +21,40 @@ namespace Frontier::GeometricRaster
 {
 
 //------------------------------------------------------------------------------------------------------------------------
+//                                                       CONSTANTS
+//------------------------------------------------------------------------------------------------------------------------
+
+inline constexpr uint32_t DistanceShapeBakedVolume   = 0u;      // [-]   - Sampled from 3D LocalSignedDistanceVolume grid
+inline constexpr uint32_t DistanceShapeBox           = 1u;      // [-]   - Exact analytical oriented box primitive
+inline constexpr uint32_t DistanceShapeSphere        = 2u;      // [-]   - Exact analytical sphere primitive
+inline constexpr uint32_t DistanceShapeCylinder      = 3u;      // [-]   - Exact analytical vertical cylinder primitive
+inline constexpr uint32_t DistanceShapeCone          = 4u;      // [-]   - Exact analytical cone primitive
+inline constexpr uint32_t DistanceShapeTorus         = 5u;      // [-]   - Exact analytical torus primitive
+inline constexpr uint32_t DistanceShapeExcluded      = 6u;      // [-]   - Thin foliage/scatter excluded from GDF baking
+
+inline constexpr uint32_t InstanceMaterialSlotMask   = 0xFFFFu; // [mask] - Packed 16-bit CompactMaterialRegister slot mask
+inline constexpr uint32_t InstanceActiveBitShift     = 16u;     // [idx]  - Bit shift marking active GDF instance entry
+inline constexpr uint32_t InstanceGroundSlabBitShift = 17u;     // [idx]  - Bit shift marking analytic ground-plane slab
+inline constexpr float    UnsetAnalyticGroundPlaneZ  = -1.0e9f; // [m]    - Inactive datum when no ground slab exists
+inline constexpr float    ValidAnalyticGroundFloorZ  = -1.0e8f; // [m]    - Lower validity threshold for ground datum Z
+
+//------------------------------------------------------------------------------------------------------------------------
 //                                                       STRUCTURES
 //------------------------------------------------------------------------------------------------------------------------
 
 struct RigidClusterInstance
 {
-    const SpatialAcceleration::ClusterPyramid*           PyramidAsset        = nullptr; // [-]   - Pre-built 128-triangle cluster LOD pyramid
-    Mathematics::Axis3D                                  WorldTranslation    {};        // [m]   - Active world position
-    Mathematics::Axis3D                                  PreviousTranslation {};        // [m]   - Prior world position (for motion vectors)
-    float                                                UniformScale        = 1.0f;    // [-]   - Uniform rigid world scale
-    uint16_t                                             MaterialSlot        = 0u;      // [idx] - CompactMaterialRegister slot
-    bool                                                 TransparentGlass    = false;   // [-]   - Routed to 2-layer glass depth-peel rasterization
-    float                                                RotationZDegrees    = 0.0f;    // [deg] - Rigid Z-up yaw rotation
-    Mathematics::Axis3D                                  NonUniformScale     { 1.0f, 1.0f, 1.0f }; // [-] - Full 3-axis rigid scale
-    Mathematics::Axis3D                                  LocalHalfExtents    { 0.5f, 0.5f, 0.5f }; // [m] - Unscaled local half-extents / shape radii
-    uint32_t                                             AnalyticalShapeCode = 0u;      // [id]  - 0=SignedVolume, 1=Box, 2=Sphere, 3=Cylinder, 4=Cone, 5=Torus
-    const DistanceFieldSpace::LocalSignedDistanceVolume* LocalSdfVolume      = nullptr; // [-]   - Optional per-asset signed local SDF volume
+    const SpatialAcceleration::ClusterPyramid*           PyramidAsset        = nullptr;                  // [-]   - Pre-built 128-triangle cluster LOD pyramid
+    Mathematics::Axis3D                                  WorldTranslation    {};                         // [m]   - Active world position
+    Mathematics::Axis3D                                  PreviousTranslation {};                         // [m]   - Prior world position (for motion vectors)
+    float                                                UniformScale        = 1.0f;                     // [-]   - Uniform rigid world scale
+    uint16_t                                             MaterialSlot        = 0u;                       // [idx] - CompactMaterialRegister slot
+    bool                                                 TransparentGlass    = false;                    // [-]   - Routed to 2-layer glass depth-peel rasterization
+    float                                                RotationZDegrees    = 0.0f;                     // [deg] - Rigid Z-up yaw rotation
+    Mathematics::Axis3D                                  NonUniformScale     { 1.0f, 1.0f, 1.0f };       // [-]   - Full 3-axis rigid scale
+    Mathematics::Axis3D                                  LocalHalfExtents    { 0.5f, 0.5f, 0.5f };       // [m]   - Unscaled local half-extents / shape radii
+    uint32_t                                             AnalyticalShapeCode = DistanceShapeBakedVolume; // [-]   - DistanceShape* volume or analytical primitive tag
+    const DistanceFieldSpace::LocalSignedDistanceVolume* LocalSdfVolume      = nullptr;                  // [-]   - Optional per-asset local distance volume
 };
 
 struct VisibleClusterCommand

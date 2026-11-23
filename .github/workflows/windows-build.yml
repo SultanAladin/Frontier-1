@@ -68,12 +68,11 @@ jobs:
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-      - name: Build Windows x64 applications
+      - name: Build Windows x64 Frontier and SolidArc applications
         shell: pwsh
         run: |
           $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
-            Frontier FrontierEditor FrontierUV FrontierBaking FrontierPattern FrontierStamp `
-            FrontierMaterial FrontierTexturePaint FrontierFracture FrontierSketcher `
+            Frontier FrontierSketcher `
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll 2>&1
           $Result = $LASTEXITCODE
           $Output | ForEach-Object { Write-Output "$_" }
@@ -90,38 +89,17 @@ jobs:
         run: |
           $Payload = Join-Path $env:RUNNER_TEMP 'Frontier-Workspaces-Windows-x64'
           New-Item -ItemType Directory -Force "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
-          $Apps = @(
-            'Frontier.exe',
-            'FrontierEditor.exe',
-            'FrontierUV.exe',
-            'FrontierBaking.exe',
-            'FrontierPattern.exe',
-            'FrontierStamp.exe',
-            'FrontierMaterial.exe',
-            'FrontierTexturePaint.exe',
-            'FrontierFracture.exe',
-            'FrontierSketcher.exe'
-          )
-          foreach ($App in $Apps) {
-            Copy-Item "Build/Windows/Release/$App" "$Payload/"
-          }
+          Copy-Item 'Build/Windows/Release/Frontier.exe' "$Payload/Frontier.exe"
+          Copy-Item 'Build/Windows/Release/FrontierSketcher.exe' "$Payload/SolidArc.exe"
           Copy-Item 'Build/Windows/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
           Copy-Item 'Build/Windows/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
           Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
           @'
-          Frontier Standalone Workspaces Suite for Windows x64
+          Frontier & SolidArc for Windows x64
 
-          Each workspace is compiled as its own independent executable (plus integrated Component Editor in Frontier.exe):
-            - Frontier.exe            : Project Browser & Component Editor launcher
-            - FrontierEditor.exe      : 3D World Editor
-            - FrontierUV.exe          : UV Unwrap & UDIM Packing Studio
-            - FrontierBaking.exe      : GPU Surface Texture & 3D Volume SDF Baking Studio
-            - FrontierPattern.exe     : Seamless Vector & PBR Pattern Studio
-            - FrontierStamp.exe       : Alpha Cutout Decal Stamp Studio
-            - FrontierMaterial.exe    : Dynamic OpenPBR Material Studio
-            - FrontierTexturePaint.exe: Layered 3D Texture Paint Studio
-            - FrontierFracture.exe    : 6-Solver Fracture & JoltPhysics Simulation Studio
-            - FrontierSketcher.exe    : Parametric B-Rep CAD & Sketching Studio
+          Executables included:
+            - Frontier.exe : Project Browser, 3D World Editor & Integrated Workspaces
+            - SolidArc.exe : Standalone Parametric B-Rep CAD & Sketching Studio
 
           Keep CompiledShaders, EngineContent, and Binaries/Win64 beside the executables.
           A Windows Vulkan 1.2+ graphics driver is required.

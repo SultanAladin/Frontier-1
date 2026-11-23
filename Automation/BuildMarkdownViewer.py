@@ -1732,8 +1732,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   let noteSaveTimer = null;
   let noteDirty = false;
 
-  // Pre-open Plan docs in center tabs (starting on DataDrivenSpaceContentFormattingPlan.md when present)
-  const preferredPlan = 'Documentation/Plans/DataDrivenSpaceContentFormattingPlan.md';
+  // Allow a document to be selected by link while retaining the usual default.
+  const requestedPlan = new URLSearchParams(window.location.search).get('doc');
+  const preferredPlan = requestedPlan && docByPath.has(requestedPlan)
+    ? requestedPlan
+    : 'Documentation/Plans/DataDrivenSpaceContentFormattingPlan.md';
   if (docByPath.has(preferredPlan)) {
     openTabs.push(preferredPlan);
   }

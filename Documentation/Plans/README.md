@@ -8,6 +8,8 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
+| [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
 | [ViewportTelemetrySpikeRemediationReport.md](ViewportTelemetrySpikeRemediationReport.md) | **🟢 Completion Report (`2026-11-22`)**: `FrontierTiming.log` (`40,080` ticks on `GTX 1650 SUPER`) spike & ray-budget audit, dedicated `HighEndBvhComputeEntry` (`2..3` rays/pixel), persistent `VkPipelineCache`, `2048x2048` font atlas, and zero-stall gizmo/UI hover pacing |
 | [DataDrivenSpaceContentFormattingPlan.md](DataDrivenSpaceContentFormattingPlan.md) | **🟢 Active Review Plan (`2026-11-21`)**: Zero-abbreviation `*Space` vs. `.InstanceSpace` decision table, `Content/` folder structure, domain codecs, and `FrontierDefaultContentGenerator` C++ tool |
 | [WorldRenderingRedoReport.md](WorldRenderingRedoReport.md) | **🟢 Completion Report (`2026-11-20`)**: Quantitative & visual verification across Phase 0 (`757b5c6`), Order 1 Direct PBR (`4294a70`), Order 2 Real-Time GI (`18b3329`), and Order 3 Unified Deterministic Path Tracer (`GameRealtime` & `SceneFinalRender`) |
@@ -37,7 +39,6 @@
 | [FractureWorkspaceImplementationPlan.md](FractureWorkspaceImplementationPlan.md) | `FractureWorkspace` |
 | [ParametricSketcherIntegrationPlan.md](ParametricSketcherIntegrationPlan.md) · [ParametricSketcherOverhaulPlan.md](ParametricSketcherOverhaulPlan.md) | `SketcherWorkspace` (`ParametricSketcher`) |
 | [ComponentEditorArchitecturePlan.md](ComponentEditorArchitecturePlan.md) | `ComponentEditor` |
-| [ProjectZeroComponentLinkingPlan.md](ProjectZeroComponentLinkingPlan.md) | **🟢 Active Plan (`2026-11-23`)**: Project Zero UI (`eosclient0001-rgb/Frontier` F61–F65) linking to `Engine/Components/`, `Engine/Editor/Inspectors/`, `ComponentEditor`, and `.slang` overlays |
 
 ---
 

@@ -312,6 +312,69 @@ struct QuantizedCornerTriangleEntry
     return MaxRadius;
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+//                                        UDF CLIPMAP & BILATERAL DENOISE CONSTANTS
+//------------------------------------------------------------------------------------------------------------------------
+
+constexpr float    FallbackLocalHalfExtentMeters = 0.40f;                  // [m]     - Default half-extent when pyramid empty
+constexpr float    MinimumValidScaleFloor        = 1.0e-4f;                // [-]     - Minimum positive world scale threshold
+constexpr float    DatumChangeToleranceMeters    = 1.0e-4f;                // [m]     - Minimum ground datum shift triggering sync
+constexpr float    AutoPyramidMinSpanMeters      = 0.08f;                  // [m]     - Minimum axis span for on-demand UDF bake
+constexpr float    AutoPyramidTargetCells        = 40.0f;                  // [count] - Target longest-axis cell count per pyramid
+constexpr float    AutoPyramidMinPitchMeters     = 0.035f;                 // [m]     - Finest voxel pitch for on-demand pyramid UDF
+constexpr uint32_t AutoPyramidAlignmentQuantum   = 4u;                     // [count] - Brick alignment multiple for pyramid UDF
+constexpr uint32_t AutoPyramidMinAxisCells       = 12u;                    // [count] - Minimum axis cells for on-demand pyramid UDF
+constexpr uint32_t AutoPyramidMaxAxisCells       = 44u;                    // [count] - Maximum axis cells for on-demand pyramid UDF
+constexpr float    AutoPyramidMarginFraction     = 0.08f;                  // [-]     - Exterior AABB padding fraction of max span
+constexpr float    AutoPyramidMinMarginMeters    = 0.06f;                  // [m]     - Minimum exterior AABB padding around pyramid
+constexpr float    AutoPyramidMaxMarginMeters    = 0.28f;                  // [m]     - Maximum exterior AABB padding around pyramid
+constexpr float    MinimumGroundDeckSpanMeters   = 16.0f;                  // [m]     - Minimum XY span classifying analytic ground slab
+constexpr float    MaximumGroundDeckHeightMeters = 1.30f;                  // [m]     - Maximum Z thickness classifying ground slab
+constexpr float    MaximumGroundDeckTiltDegrees  = 0.5f;                   // [deg]   - Maximum yaw tolerance for horizontal ground slab
+constexpr uint32_t PackedResolutionMask16        = 0xFFFFu;                // [mask]  - 16-bit mask packing XYZ grid resolutions
+constexpr uint32_t PackedUpperWordShift16        = 16u;                    // [idx]   - Upper 16-bit shift inside 32-bit word
+constexpr uint32_t PackedUpperWordShift32        = 32u;                    // [idx]   - Upper 32-bit shift inside 64-bit signature
+constexpr uint32_t DebugChannelShadedLit         = 0u;                     // [id]    - Full shaded radiometric viewport output
+constexpr uint32_t DebugChannelSunShadow         = 8u;                     // [id]    - Direct solar shadow diagnostic view
+constexpr uint32_t DebugChannelFilteredAo        = 9u;                     // [id]    - Bilaterally denoised UDF ambient occlusion
+constexpr uint32_t DebugChannelSpecular          = 11u;                    // [id]    - Specular indirect lighting diagnostic view
+constexpr uint32_t DebugChannelDistanceHeat      = 12u;                    // [id]    - UDF distance heatmap diagnostic view
+constexpr uint32_t DebugChannelRawUdfAo          = 15u;                    // [id]    - Unfiltered 12-ray UDF ambient occlusion
+constexpr uint32_t DebugChannelCascadeTint       = 16u;                    // [id]    - UDF cascade residency diagnostic view
+constexpr uint32_t EnableFinalToneStackBit       = 1u << 0u;               // [mask]  - Final step tone-stack & display output bit
+constexpr uint32_t EnableSpatialAoDenoiseBit     = 1u << 1u;               // [mask]  - Joint-bilateral UDF AO spatial filter bit
+constexpr uint32_t EnableSpatialSunDenoiseBit    = 1u << 2u;               // [mask]  - Joint-bilateral solar shadow filter bit
+constexpr uint32_t PenumbraMultiStepThreshold    = 4u;                     // [id]    - Penumbra preset ordinal enabling 3-step sun blur
+constexpr uint32_t BilateralDenoiseStepCount     = 3u;                     // [count] - À-trous bilateral spatial filter step count
+constexpr std::array<uint32_t, BilateralDenoiseStepCount> BilateralDenoiseStrides {{
+    1u, 2u, 4u
+}};
+
+[[nodiscard]] bool ComputePyramidLocalBounds(
+    const SpatialAcceleration::ClusterPyramid* PyramidAsset,
+    Mathematics::Axis3D&                       OutMinimum,
+    Mathematics::Axis3D&                       OutMaximum) noexcept
+{
+    if (PyramidAsset == nullptr || PyramidAsset->Positions.empty())
+    {
+        OutMinimum = { -FallbackLocalHalfExtentMeters, -FallbackLocalHalfExtentMeters, -FallbackLocalHalfExtentMeters };
+        OutMaximum = {  FallbackLocalHalfExtentMeters,  FallbackLocalHalfExtentMeters,  FallbackLocalHalfExtentMeters };
+        return false;
+    }
+    OutMinimum = PyramidAsset->Positions.front();
+    OutMaximum = PyramidAsset->Positions.front();
+    for (const Mathematics::Axis3D& Position : PyramidAsset->Positions)
+    {
+        OutMinimum.X = std::min(OutMinimum.X, Position.X);
+        OutMinimum.Y = std::min(OutMinimum.Y, Position.Y);
+        OutMinimum.Z = std::min(OutMinimum.Z, Position.Z);
+        OutMaximum.X = std::max(OutMaximum.X, Position.X);
+        OutMaximum.Y = std::max(OutMaximum.Y, Position.Y);
+        OutMaximum.Z = std::max(OutMaximum.Z, Position.Z);
+    }
+    return true;
+}
+
 } // namespace
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -673,6 +736,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
     }
     AssetClusterTreeCache.clear();
+    PreparedPyramidVolumes.clear();
     ResidentClusterInstances.clear();
     TopBranchGateRules.clear();
     FinestClusterMaskWords.clear();
@@ -709,6 +773,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     PendingFineGeometryReset        = true;
     PendingCoarseGeometryReset      = true;
     DistanceFieldStats              = {};
+    ActiveAnalyticGroundPlaneZ      = UnsetAnalyticGroundPlaneZ;
     CachedLocalSdfOffsets.clear();
     MaskSliceOffsetBytes            = 256ull;
     CachedNaniteCutSignature        = 0u;
@@ -1444,6 +1509,107 @@ VulkanWorldRenderSequence::AcquireAssetClusterHierarchy(
     }
     AssetClusterTreeCache.push_back(std::move(Built));
     return AssetClusterTreeCache.back();
+}
+
+const DistanceFieldSpace::LocalSignedDistanceVolume*
+VulkanWorldRenderSequence::AcquirePyramidDistanceVolume(
+    const SpatialAcceleration::ClusterPyramid* PyramidAsset)
+{
+    if (PyramidAsset == nullptr || PyramidAsset->Triangles.empty() || PyramidAsset->Positions.empty())
+    {
+        return nullptr;
+    }
+
+    for (const PreparedPyramidDistanceVolume& ExistingEntry : PreparedPyramidVolumes)
+    {
+        if (ExistingEntry.PyramidAsset == PyramidAsset &&
+            ExistingEntry.SourceTriangleCount == PyramidAsset->Triangles.size())
+        {
+            return !ExistingEntry.Volume.DistanceSamples.empty()
+                ? &ExistingEntry.Volume
+                : nullptr;
+        }
+    }
+
+    std::vector<SpatialAcceleration::RayTrianglePrimitive> LocalPrimitives;
+    LocalPrimitives.reserve(PyramidAsset->Triangles.size());
+    for (const auto& SourceTriangle : PyramidAsset->Triangles)
+    {
+        if (SourceTriangle.VertexIndex0 >= PyramidAsset->Positions.size() ||
+            SourceTriangle.VertexIndex1 >= PyramidAsset->Positions.size() ||
+            SourceTriangle.VertexIndex2 >= PyramidAsset->Positions.size())
+        {
+            continue;
+        }
+        const Mathematics::Axis3D Corner0 = PyramidAsset->Positions[SourceTriangle.VertexIndex0];
+        const Mathematics::Axis3D Corner1 = PyramidAsset->Positions[SourceTriangle.VertexIndex1];
+        const Mathematics::Axis3D Corner2 = PyramidAsset->Positions[SourceTriangle.VertexIndex2];
+        SpatialAcceleration::RayTrianglePrimitive Primitive {};
+        Primitive.Corner0          = Corner0;
+        Primitive.Edge01           = Corner1 - Corner0;
+        Primitive.Edge02           = Corner2 - Corner0;
+        Primitive.SourceFaceIndex  = static_cast<uint32_t>(LocalPrimitives.size());
+        Primitive.PrimitiveOrdinal = static_cast<uint32_t>(LocalPrimitives.size());
+        Primitive.MaterialOrdinal  = SourceTriangle.MaterialOrdinal;
+        Primitive.OpaqueMask       = 1u;
+        LocalPrimitives.push_back(Primitive);
+    }
+
+    // 💡 std::deque owns LocalSignedDistanceVolume by value while keeping addresses stable across subsequent insertions
+    PreparedPyramidDistanceVolume PreparedEntry {};
+    PreparedEntry.PyramidAsset        = PyramidAsset;
+    PreparedEntry.SourceTriangleCount = PyramidAsset->Triangles.size();
+
+    if (!LocalPrimitives.empty())
+    {
+        Mathematics::Axis3D BoundsMinimum {};
+        Mathematics::Axis3D BoundsMaximum {};
+        (void)ComputePyramidLocalBounds(PyramidAsset, BoundsMinimum, BoundsMaximum);
+        const float SpanX             = std::max(AutoPyramidMinSpanMeters, BoundsMaximum.X - BoundsMinimum.X);
+        const float SpanY             = std::max(AutoPyramidMinSpanMeters, BoundsMaximum.Y - BoundsMinimum.Y);
+        const float SpanZ             = std::max(AutoPyramidMinSpanMeters, BoundsMaximum.Z - BoundsMinimum.Z);
+        const float MaximumSpanMeters = std::max({ SpanX, SpanY, SpanZ });
+        const float VoxelPitchMeters  = std::max(
+            AutoPyramidMinPitchMeters,
+            MaximumSpanMeters / AutoPyramidTargetCells);
+
+        const auto ResolveAxisResolution = [VoxelPitchMeters](float SpanMeters) noexcept -> uint32_t
+        {
+            const uint32_t UnalignedCells = static_cast<uint32_t>(std::lround(SpanMeters / VoxelPitchMeters));
+            const uint32_t AlignedCells   =
+                ((UnalignedCells + (AutoPyramidAlignmentQuantum - 1u)) / AutoPyramidAlignmentQuantum) *
+                AutoPyramidAlignmentQuantum;
+            return std::clamp(AlignedCells, AutoPyramidMinAxisCells, AutoPyramidMaxAxisCells);
+        };
+
+        const float MarginMeters = std::clamp(
+            MaximumSpanMeters * AutoPyramidMarginFraction,
+            AutoPyramidMinMarginMeters,
+            AutoPyramidMaxMarginMeters);
+        (void)PreparedEntry.Volume.BakeFromTrianglesAspect(
+            LocalPrimitives,
+            ResolveAxisResolution(SpanX),
+            ResolveAxisResolution(SpanY),
+            ResolveAxisResolution(SpanZ),
+            MarginMeters);
+    }
+
+    for (PreparedPyramidDistanceVolume& ExistingEntry : PreparedPyramidVolumes)
+    {
+        if (ExistingEntry.PyramidAsset == PyramidAsset)
+        {
+            ExistingEntry = std::move(PreparedEntry);
+            return !ExistingEntry.Volume.DistanceSamples.empty()
+                ? &ExistingEntry.Volume
+                : nullptr;
+        }
+    }
+
+    PreparedPyramidVolumes.push_back(std::move(PreparedEntry));
+    const PreparedPyramidDistanceVolume& StoredEntry = PreparedPyramidVolumes.back();
+    return !StoredEntry.Volume.DistanceSamples.empty()
+        ? &StoredEntry.Volume
+        : nullptr;
 }
 
 void VulkanWorldRenderSequence::PropagateTopBranchGateBits(
@@ -2408,29 +2574,67 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
         AssetSig = (AssetSig ^ Val) * 1099511628211ull;
     };
 
-    for (const RigidClusterInstance& Inst : Scene.ClusterInstances)
+    auto ResolveInstanceVolume = [&](const RigidClusterInstance& Instance) -> const DistanceFieldSpace::LocalSignedDistanceVolume*
     {
-        if (Inst.LocalSdfVolume == nullptr || Inst.LocalSdfVolume->DistanceSamples.empty())
+        if (Instance.TransparentGlass ||
+            Instance.UniformScale <= MinimumValidScaleFloor ||
+            Instance.AnalyticalShapeCode == DistanceShapeExcluded)
+        {
+            return nullptr;
+        }
+        if (Instance.LocalSdfVolume != nullptr && !Instance.LocalSdfVolume->DistanceSamples.empty())
+        {
+            return Instance.LocalSdfVolume;
+        }
+        if (Instance.AnalyticalShapeCode == DistanceShapeBakedVolume &&
+            Instance.PyramidAsset != nullptr &&
+            !Instance.PyramidAsset->Triangles.empty() &&
+            !Instance.PyramidAsset->Positions.empty())
+        {
+            const float UniformScale = std::max(MinimumValidScaleFloor, Instance.UniformScale);
+            const float ScaleX       = (Instance.NonUniformScale.X > MinimumValidScaleFloor) ? Instance.NonUniformScale.X : UniformScale;
+            const float ScaleY       = (Instance.NonUniformScale.Y > MinimumValidScaleFloor) ? Instance.NonUniformScale.Y : UniformScale;
+            const float ScaleZ       = (Instance.NonUniformScale.Z > MinimumValidScaleFloor) ? Instance.NonUniformScale.Z : UniformScale;
+            Mathematics::Axis3D BoundsMinimum {};
+            Mathematics::Axis3D BoundsMaximum {};
+            (void)ComputePyramidLocalBounds(Instance.PyramidAsset, BoundsMinimum, BoundsMaximum);
+            const bool WideGroundDeck =
+                (std::fabs(Instance.RotationZDegrees) < MaximumGroundDeckTiltDegrees) &&
+                ((BoundsMaximum.X - BoundsMinimum.X) * ScaleX >= MinimumGroundDeckSpanMeters) &&
+                ((BoundsMaximum.Y - BoundsMinimum.Y) * ScaleY >= MinimumGroundDeckSpanMeters) &&
+                ((BoundsMaximum.Z - BoundsMinimum.Z) * ScaleZ <= MaximumGroundDeckHeightMeters);
+            if (!WideGroundDeck)
+            {
+                return AcquirePyramidDistanceVolume(Instance.PyramidAsset);
+            }
+        }
+        return nullptr;
+    };
+
+    for (const RigidClusterInstance& Instance : Scene.ClusterInstances)
+    {
+        const auto* ResolvedVolume = ResolveInstanceVolume(Instance);
+        if (ResolvedVolume == nullptr || ResolvedVolume->DistanceSamples.empty())
         {
             continue;
         }
-        bool Known = false;
-        for (const auto* Existing : UniqueVolumes)
+        bool VolumeAlreadyQueued = false;
+        for (const auto* ExistingVolume : UniqueVolumes)
         {
-            if (Existing == Inst.LocalSdfVolume)
+            if (ExistingVolume == ResolvedVolume)
             {
-                Known = true;
+                VolumeAlreadyQueued = true;
                 break;
             }
         }
-        if (!Known)
+        if (!VolumeAlreadyQueued)
         {
-            UniqueVolumes.push_back(Inst.LocalSdfVolume);
-            MixAssetSig(reinterpret_cast<uintptr_t>(Inst.LocalSdfVolume));
-            MixAssetSig(static_cast<uint64_t>(Inst.LocalSdfVolume->DistanceSamples.size()));
-            MixAssetSig((static_cast<uint64_t>(Inst.LocalSdfVolume->ResolutionX) << 32u) |
-                        (static_cast<uint64_t>(Inst.LocalSdfVolume->ResolutionY) << 16u) |
-                         static_cast<uint64_t>(Inst.LocalSdfVolume->ResolutionZ));
+            UniqueVolumes.push_back(ResolvedVolume);
+            MixAssetSig(reinterpret_cast<uintptr_t>(ResolvedVolume));
+            MixAssetSig(static_cast<uint64_t>(ResolvedVolume->DistanceSamples.size()));
+            MixAssetSig((static_cast<uint64_t>(ResolvedVolume->ResolutionX) << PackedUpperWordShift32) |
+                        (static_cast<uint64_t>(ResolvedVolume->ResolutionY) << PackedUpperWordShift16) |
+                         static_cast<uint64_t>(ResolvedVolume->ResolutionZ));
         }
     }
 
@@ -2464,45 +2668,49 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
         ResourcesChanged = true;
     }
 
-    // 2. Upload compact per-instance dynamic rigid/scale transform array (< 0.02 ms even during gizmo drag)
+    // ② Upload compact per-instance dynamic rigid/scale transform array (< 0.02 ms even during gizmo drag)
     std::vector<GpuDynamicLocalSdfInstance144> GpuInstances;
     GpuInstances.reserve(std::max<std::size_t>(1u, Scene.ClusterInstances.size()));
+    float NextAnalyticGroundZ = UnsetAnalyticGroundPlaneZ;
 
     for (const RigidClusterInstance& Inst : Scene.ClusterInstances)
     {
-        if (Inst.TransparentGlass || Inst.UniformScale <= 1.0e-4f)
+        if (Inst.TransparentGlass ||
+            Inst.UniformScale <= MinimumValidScaleFloor ||
+            Inst.AnalyticalShapeCode == DistanceShapeExcluded)
         {
             continue;
         }
-        const bool SignedVolumePresent = (Inst.LocalSdfVolume != nullptr && !Inst.LocalSdfVolume->DistanceSamples.empty());
-        const uint32_t ShapeCode = SignedVolumePresent
-            ? 0u
-            : ((Inst.AnalyticalShapeCode > 0u) ? Inst.AnalyticalShapeCode : 1u);
+        const auto*    ResolvedVolume = ResolveInstanceVolume(Inst);
+        const bool     VolumePresent  = (ResolvedVolume != nullptr && !ResolvedVolume->DistanceSamples.empty());
+        const uint32_t ShapeCode      = VolumePresent
+            ? DistanceShapeBakedVolume
+            : ((Inst.AnalyticalShapeCode > DistanceShapeBakedVolume) ? Inst.AnalyticalShapeCode : DistanceShapeBox);
 
         uint32_t VoxelOffset = 0u;
-        if (SignedVolumePresent)
+        if (VolumePresent)
         {
-            for (const auto& Pair : CachedLocalSdfOffsets)
+            for (const auto& OffsetPair : CachedLocalSdfOffsets)
             {
-                if (Pair.first == Inst.LocalSdfVolume)
+                if (OffsetPair.first == ResolvedVolume)
                 {
-                    VoxelOffset = Pair.second;
+                    VoxelOffset = OffsetPair.second;
                     break;
                 }
             }
         }
 
-        const float ScaleU = std::max(1.0e-4f, Inst.UniformScale);
-        const float ScaleX = (Inst.NonUniformScale.X > 1.0e-4f) ? Inst.NonUniformScale.X : ScaleU;
-        const float ScaleY = (Inst.NonUniformScale.Y > 1.0e-4f) ? Inst.NonUniformScale.Y : ScaleU;
-        const float ScaleZ = (Inst.NonUniformScale.Z > 1.0e-4f) ? Inst.NonUniformScale.Z : ScaleU;
+        const float ScaleU        = std::max(MinimumValidScaleFloor, Inst.UniformScale);
+        const float ScaleX        = (Inst.NonUniformScale.X > MinimumValidScaleFloor) ? Inst.NonUniformScale.X : ScaleU;
+        const float ScaleY        = (Inst.NonUniformScale.Y > MinimumValidScaleFloor) ? Inst.NonUniformScale.Y : ScaleU;
+        const float ScaleZ        = (Inst.NonUniformScale.Z > MinimumValidScaleFloor) ? Inst.NonUniformScale.Z : ScaleU;
         const float MinWorldScale = std::min({ ScaleX, ScaleY, ScaleZ });
-        const float InvScaleX = 1.0f / ScaleX;
-        const float InvScaleY = 1.0f / ScaleY;
-        const float InvScaleZ = 1.0f / ScaleZ;
-        const float YawRad = Inst.RotationZDegrees * Constants::DegToRadFloat;
-        const float CosZ   = std::cos(YawRad);
-        const float SinZ   = std::sin(YawRad);
+        const float InvScaleX     = 1.0f / ScaleX;
+        const float InvScaleY     = 1.0f / ScaleY;
+        const float InvScaleZ     = 1.0f / ScaleZ;
+        const float YawRad        = Inst.RotationZDegrees * Constants::DegToRadFloat;
+        const float CosZ          = std::cos(YawRad);
+        const float SinZ          = std::sin(YawRad);
         const Mathematics::Axis3D T = Inst.WorldTranslation;
 
         // World = T + Rz * diag(ScaleX, ScaleY, ScaleZ) * Local
@@ -2531,49 +2739,86 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
         Dst.LocalToWorldNormRow1[0] =  SinZ * InvScaleX;
         Dst.LocalToWorldNormRow1[1] =  CosZ * InvScaleY;
         Dst.LocalToWorldNormRow1[2] =  0.0f;
-        Dst.LocalToWorldNormRow1[3] =  SignedVolumePresent ? Inst.LocalSdfVolume->VoxelSpacing.Z : 0.0f;
+        Dst.LocalToWorldNormRow1[3] =  VolumePresent ? ResolvedVolume->VoxelSpacing.Z : 0.0f;
 
         Dst.LocalToWorldNormRow2[0] =  0.0f;
         Dst.LocalToWorldNormRow2[1] =  0.0f;
         Dst.LocalToWorldNormRow2[2] =  InvScaleZ;
         Dst.LocalToWorldNormRow2[3] =  0.0f;
 
-        if (SignedVolumePresent)
+        bool AnalyticGroundSlab = false;
+        if (VolumePresent)
         {
-            const auto& Vol = *Inst.LocalSdfVolume;
-            Dst.LocalMinPad[0] = Vol.LocalMin.X;
-            Dst.LocalMinPad[1] = Vol.LocalMin.Y;
-            Dst.LocalMinPad[2] = Vol.LocalMin.Z;
-            Dst.LocalMinPad[3] = Vol.VoxelSpacing.X;
-            Dst.LocalMaxPad[0] = Vol.LocalMax.X;
-            Dst.LocalMaxPad[1] = Vol.LocalMax.Y;
-            Dst.LocalMaxPad[2] = Vol.LocalMax.Z;
-            Dst.LocalMaxPad[3] = Vol.VoxelSpacing.Y;
-            Dst.ResolutionOffset[0] = (Vol.ResolutionX & 0xFFFFu) | ((Vol.ResolutionY & 0xFFFFu) << 16u);
-            Dst.ResolutionOffset[1] = (Vol.ResolutionZ & 0xFFFFu); // ShapeCode = 0 (SignedVolume)
+            const auto& Volume = *ResolvedVolume;
+            Dst.LocalMinPad[0]      = Volume.LocalMin.X;
+            Dst.LocalMinPad[1]      = Volume.LocalMin.Y;
+            Dst.LocalMinPad[2]      = Volume.LocalMin.Z;
+            Dst.LocalMinPad[3]      = Volume.VoxelSpacing.X;
+            Dst.LocalMaxPad[0]      = Volume.LocalMax.X;
+            Dst.LocalMaxPad[1]      = Volume.LocalMax.Y;
+            Dst.LocalMaxPad[2]      = Volume.LocalMax.Z;
+            Dst.LocalMaxPad[3]      = Volume.VoxelSpacing.Y;
+            Dst.ResolutionOffset[0] =
+                (Volume.ResolutionX & PackedResolutionMask16) |
+                ((Volume.ResolutionY & PackedResolutionMask16) << PackedUpperWordShift16);
+            Dst.ResolutionOffset[1] = (Volume.ResolutionZ & PackedResolutionMask16);
         }
         else
         {
-            Mathematics::Axis3D HalfExt = Inst.LocalHalfExtents;
-            if (HalfExt.X <= 1.0e-4f || HalfExt.Y <= 1.0e-4f || HalfExt.Z <= 1.0e-4f)
+            Mathematics::Axis3D BoxMin {};
+            Mathematics::Axis3D BoxMax {};
+            if (Inst.AnalyticalShapeCode > DistanceShapeBakedVolume &&
+                Inst.LocalHalfExtents.X > MinimumValidScaleFloor &&
+                Inst.LocalHalfExtents.Y > MinimumValidScaleFloor &&
+                Inst.LocalHalfExtents.Z > MinimumValidScaleFloor)
             {
-                const float PyrHalf = ComputePyramidLocalHalfExtent(Inst.PyramidAsset);
-                HalfExt = { PyrHalf, PyrHalf, PyrHalf };
+                BoxMin = { -Inst.LocalHalfExtents.X, -Inst.LocalHalfExtents.Y, -Inst.LocalHalfExtents.Z };
+                BoxMax = Inst.LocalHalfExtents;
             }
-            Dst.LocalMinPad[0] = -HalfExt.X;
-            Dst.LocalMinPad[1] = -HalfExt.Y;
-            Dst.LocalMinPad[2] = -HalfExt.Z;
-            Dst.LocalMinPad[3] =  0.0f;
-            Dst.LocalMaxPad[0] =  HalfExt.X;
-            Dst.LocalMaxPad[1] =  HalfExt.Y;
-            Dst.LocalMaxPad[2] =  HalfExt.Z;
-            Dst.LocalMaxPad[3] =  0.0f;
+            else if (!ComputePyramidLocalBounds(Inst.PyramidAsset, BoxMin, BoxMax))
+            {
+                BoxMin = { -FallbackLocalHalfExtentMeters, -FallbackLocalHalfExtentMeters, -FallbackLocalHalfExtentMeters };
+                BoxMax = {  FallbackLocalHalfExtentMeters,  FallbackLocalHalfExtentMeters,  FallbackLocalHalfExtentMeters };
+            }
+            Dst.LocalMinPad[0]      = BoxMin.X;
+            Dst.LocalMinPad[1]      = BoxMin.Y;
+            Dst.LocalMinPad[2]      = BoxMin.Z;
+            Dst.LocalMinPad[3]      = 0.0f;
+            Dst.LocalMaxPad[0]      = BoxMax.X;
+            Dst.LocalMaxPad[1]      = BoxMax.Y;
+            Dst.LocalMaxPad[2]      = BoxMax.Z;
+            Dst.LocalMaxPad[3]      = 0.0f;
             Dst.ResolutionOffset[0] = 0u;
-            Dst.ResolutionOffset[1] = (ShapeCode & 0xFFFFu) << 16u;
+            Dst.ResolutionOffset[1] = (ShapeCode & PackedResolutionMask16) << PackedUpperWordShift16;
+
+            // 💡 Separate horizontal ground slabs from non-ground clipmap voxels so open floors have zero self-darkening
+            AnalyticGroundSlab =
+                (ShapeCode == DistanceShapeBox) &&
+                (std::fabs(Inst.RotationZDegrees) < MaximumGroundDeckTiltDegrees) &&
+                ((BoxMax.X - BoxMin.X) * ScaleX >= MinimumGroundDeckSpanMeters) &&
+                ((BoxMax.Y - BoxMin.Y) * ScaleY >= MinimumGroundDeckSpanMeters) &&
+                ((BoxMax.Z - BoxMin.Z) * ScaleZ <= MaximumGroundDeckHeightMeters);
+            if (AnalyticGroundSlab)
+            {
+                const float SlabTopZ = T.Z + BoxMax.Z * ScaleZ;
+                if (NextAnalyticGroundZ < ValidAnalyticGroundFloorZ || SlabTopZ > NextAnalyticGroundZ)
+                {
+                    NextAnalyticGroundZ = SlabTopZ;
+                }
+            }
         }
         Dst.ResolutionOffset[2] = VoxelOffset;
-        Dst.ResolutionOffset[3] = static_cast<uint32_t>(Inst.MaterialSlot) | (1u << 16u);
+        Dst.ResolutionOffset[3] =
+            (static_cast<uint32_t>(Inst.MaterialSlot) & InstanceMaterialSlotMask) |
+            (1u << InstanceActiveBitShift) |
+            (AnalyticGroundSlab ? (1u << InstanceGroundSlabBitShift) : 0u);
         GpuInstances.push_back(Dst);
+    }
+
+    if (std::fabs(NextAnalyticGroundZ - ActiveAnalyticGroundPlaneZ) > DatumChangeToleranceMeters)
+    {
+        ActiveAnalyticGroundPlaneZ = NextAnalyticGroundZ;
+        ResourcesChanged           = true;
     }
 
     uint64_t DynSig = 14695981039346656037ull;
@@ -3073,6 +3318,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
     Uniforms.SunCascadeForwardPad[1] = CachedSunCascade.LightForwardAxis.Y;
     Uniforms.SunCascadeForwardPad[2] = CachedSunCascade.LightForwardAxis.Z;
 
+    std::memcpy(&CachedFineToroidalMinCell[3], &ActiveAnalyticGroundPlaneZ, sizeof(float));
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceFineToroidalCell, CachedFineToroidalMinCell, sizeof(CachedFineToroidalMinCell));
@@ -4328,7 +4574,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         {
             PrecomputeMask |= (kPrecomputeFineShadow | kPrecomputeCoarseShadow | kPrecomputeRadiosity | kPrecomputeRadiosityFull | kPrecomputeSecondBounce);
         }
-        const bool UsesGdfDebug = (Config.DebugChannel >= 12u && Config.DebugChannel <= 16u);
+        const bool UsesGdfDebug =
+            (Config.DebugChannel == DebugChannelFilteredAo) ||
+            (Config.DebugChannel >= DebugChannelDistanceHeat && Config.DebugChannel <= DebugChannelCascadeTint);
         const bool UsesUnshadedDebug =
             (Config.DebugChannel != 0u) && !UsesGdfDebug &&
             !(Config.DebugChannel >= 8u && Config.DebugChannel <= 11u);
@@ -4938,6 +5186,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         LastRadiosityLightingSignature = LightingSig;
     }
 
+    std::memcpy(&CachedFineToroidalMinCell[3], &ActiveAnalyticGroundPlaneZ, sizeof(float));
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceFineToroidalCell, CachedFineToroidalMinCell, sizeof(CachedFineToroidalMinCell));
@@ -4952,8 +5201,8 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         (static_cast<uint32_t>(std::clamp(Config.XeGtaoStrength, 0.0f, 2.0f) * 127.5f) << 8u) |
         ((UploadedLocalSdfInstanceCount & 0xFFFFu) << 16u);
 
-    uint8_t* UniformBase = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
-    std::memcpy(UniformBase, &Uniforms, sizeof(Uniforms));
+    uint8_t* UniformBytes = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
+    std::memcpy(UniformBytes, &Uniforms, sizeof(Uniforms));
 
     const auto UniformDoneClock = std::chrono::steady_clock::now();
     const float CpuUniformMs = static_cast<float>(
@@ -4995,7 +5244,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     WriteStamp(1u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     EnsureBufferCapacity(ActiveClusterMaskBuffer, MaskSliceOffsetBytes * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    auto MakePassSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 32u>
+    auto ConstructStepSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 32u>
     {
         const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
         const auto& OutShadow = SwapPingPong ? PingShadowAoBuffer : PongShadowAoBuffer;
@@ -5061,12 +5310,12 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     const uint32_t GroupsX      = (WidthPx  + 7u) / 8u;
     const uint32_t GroupsY      = (HeightPx + 7u) / 8u;
     const uint32_t EngIdx       = static_cast<uint32_t>(Config.Engine);
-    const auto     Pass0Slots   = MakePassSlots(0ull, false);
+    const auto     InitialSlots = ConstructStepSlots(0ull, false);
 
     WriteStamp(2u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     if (AtmoActive && Scene.Atmosphere.Clouds.CloudsEnabled && Config.DebugChannel == 0u)
     {
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, CloudLayerProgramHandle, Pass0Slots, CloudGroupsX, CloudGroupsY, 1u))
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, CloudLayerProgramHandle, InitialSlots, CloudGroupsX, CloudGroupsY, 1u))
         {
             BoundDevice->FreeCommandBuffer(Cmd);
             return false;
@@ -5110,14 +5359,14 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         // index in a spare uniform slot (running-mean accumulation in the shader does the rest).
         for (uint32_t BatchIdx = 0u; BatchIdx < ProgressiveBatchSpp; ++BatchIdx)
         {
-            auto SampleSlots = Pass0Slots;
+            auto SampleSlots = InitialSlots;
             if (BatchIdx > 0u)
             {
                 const uint64_t SampleUniOffs = static_cast<uint64_t>(BatchIdx) * UniformStrideBytes;
                 WorldViewportUniformBlockStd140 SampleUni = Uniforms;
                 SampleUni.EngineShadowReflPad[3] = EffectiveTickOrSample + BatchIdx;
-                std::memcpy(UniformBase + SampleUniOffs, &SampleUni, sizeof(SampleUni));
-                SampleSlots = MakePassSlots(SampleUniOffs, false);
+                std::memcpy(UniformBytes + SampleUniOffs, &SampleUni, sizeof(SampleUni));
+                SampleSlots = ConstructStepSlots(SampleUniOffs, false);
             }
             if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ViewportPathTraceProgramHandle, SampleSlots, GroupsX, GroupsY, 1u))
             {
@@ -5140,7 +5389,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             (EngIdx == 3u && HighEndBvhProgramHandle != UINT32_MAX)
                 ? HighEndBvhProgramHandle
                 : RadiometricProgramHandle;
-        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, PrimaryProgramHandle, Pass0Slots, GroupsX, GroupsY, 1u))
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, PrimaryProgramHandle, InitialSlots, GroupsX, GroupsY, 1u))
         {
             BoundDevice->FreeCommandBuffer(Cmd);
             return false;
@@ -5148,36 +5397,48 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         InsertComputeSyncBarrier();
         WriteStamp(5u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+        const uint32_t DirectPbrOrdinal  = static_cast<uint32_t>(WorldRenderEngine::OpenPbrDirect);
+        const uint32_t LowEndGtxOrdinal  = static_cast<uint32_t>(WorldRenderEngine::RealTimeGiGtxLowEnd);
+        const uint32_t HighEndBvhOrdinal = static_cast<uint32_t>(WorldRenderEngine::RealTimeGiHighEnd);
         const bool ShadingDebug =
-            (Config.DebugChannel == 0u || (Config.DebugChannel >= 8u && Config.DebugChannel <= 11u) ||
-             Config.DebugChannel == 15u);
-        const bool MultiPassSpatialDenoise =
+            (Config.DebugChannel == DebugChannelShadedLit) ||
+            (Config.DebugChannel >= DebugChannelSunShadow && Config.DebugChannel <= DebugChannelSpecular) ||
+            (Config.DebugChannel == DebugChannelRawUdfAo);
+        const bool MultiStepBilateralDenoise =
             ShadingDebug &&
-            ((EngIdx == 3u) || ((EngIdx == 1u || EngIdx == 2u) && PenumbraOrdinal >= 4u));
-        const bool SinglePassShadowFilter =
-            ShadingDebug &&
-            !MultiPassSpatialDenoise &&
-            (EngIdx == 1u || EngIdx == 2u);
+            (Config.DebugChannel != DebugChannelRawUdfAo) &&
+            ((EngIdx >= DirectPbrOrdinal && EngIdx <= HighEndBvhOrdinal) ||
+             Config.DebugChannel == DebugChannelFilteredAo);
+        const bool MultiStepSunFilter =
+            (EngIdx == HighEndBvhOrdinal) ||
+            ((EngIdx == DirectPbrOrdinal || EngIdx == LowEndGtxOrdinal) &&
+             PenumbraOrdinal >= PenumbraMultiStepThreshold);
+        const bool FirstStepSunFilter =
+            MultiStepSunFilter ||
+            (EngIdx == DirectPbrOrdinal || EngIdx == LowEndGtxOrdinal);
 
         WriteStamp(6u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        if (MultiPassSpatialDenoise)
+        if (MultiStepBilateralDenoise)
         {
-            constexpr std::array<uint32_t, 3u> Strides {{ 1u, 2u, 4u }};
-            for (uint32_t Pass = 0u; Pass < 3u; ++Pass)
+            for (uint32_t StepIndex = 0u; StepIndex < BilateralDenoiseStepCount; ++StepIndex)
             {
-                const uint64_t UniOffs = static_cast<uint64_t>(Pass + 1u) * UniformStrideBytes;
-                WorldViewportUniformBlockStd140 PassUni = Uniforms;
-                PassUni.DenoiseStepParams[0] = Strides[Pass];
-                PassUni.DenoiseStepParams[1] = 2u | ((Pass + 1u == 3u) ? 1u : 0u);
-                std::memcpy(UniformBase + UniOffs, &PassUni, sizeof(PassUni));
+                const uint64_t UniformOffset = static_cast<uint64_t>(StepIndex + 1u) * UniformStrideBytes;
+                WorldViewportUniformBlockStd140 StepUniforms = Uniforms;
+                const bool FilterSunThisStep = (StepIndex == 0u) ? FirstStepSunFilter : MultiStepSunFilter;
+                StepUniforms.DenoiseStepParams[0] = BilateralDenoiseStrides[StepIndex];
+                StepUniforms.DenoiseStepParams[1] =
+                    ((StepIndex + 1u == BilateralDenoiseStepCount) ? EnableFinalToneStackBit : 0u) |
+                    EnableSpatialAoDenoiseBit |
+                    (FilterSunThisStep ? EnableSpatialSunDenoiseBit : 0u);
+                std::memcpy(UniformBytes + UniformOffset, &StepUniforms, sizeof(StepUniforms));
 
-                const auto PassSlots = MakePassSlots(UniOffs, (Pass & 1u) != 0u);
-                if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, PassSlots, GroupsX, GroupsY, 1u))
+                const auto StepSlots = ConstructStepSlots(UniformOffset, (StepIndex & 1u) != 0u);
+                if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, StepSlots, GroupsX, GroupsY, 1u))
                 {
                     BoundDevice->FreeCommandBuffer(Cmd);
                     return false;
                 }
-                if (Pass + 1u < 3u)
+                if (StepIndex + 1u < BilateralDenoiseStepCount)
                 {
                     InsertComputeSyncBarrier();
                 }
@@ -5185,14 +5446,14 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         }
         else
         {
-            const uint64_t UniOffs = UniformStrideBytes;
-            WorldViewportUniformBlockStd140 PassUni = Uniforms;
-            PassUni.DenoiseStepParams[0] = 1u;
-            PassUni.DenoiseStepParams[1] = SinglePassShadowFilter ? 3u : 1u;
-            std::memcpy(UniformBase + UniOffs, &PassUni, sizeof(PassUni));
+            const uint64_t UniformOffset = UniformStrideBytes;
+            WorldViewportUniformBlockStd140 StepUniforms = Uniforms;
+            StepUniforms.DenoiseStepParams[0] = BilateralDenoiseStrides[0u];
+            StepUniforms.DenoiseStepParams[1] = EnableFinalToneStackBit;
+            std::memcpy(UniformBytes + UniformOffset, &StepUniforms, sizeof(StepUniforms));
 
-            const auto PassSlots = MakePassSlots(UniOffs, false);
-            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, PassSlots, GroupsX, GroupsY, 1u))
+            const auto StepSlots = ConstructStepSlots(UniformOffset, false);
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, StepSlots, GroupsX, GroupsY, 1u))
             {
                 BoundDevice->FreeCommandBuffer(Cmd);
                 return false;

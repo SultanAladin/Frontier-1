@@ -163,6 +163,13 @@ struct ValidationChecklist
 int main()
 {
     const std::filesystem::path RepoRoot(FRONTIER_REPO_ROOT_DIR);
+    std::error_code             DirectoryError {};
+    std::filesystem::current_path(RepoRoot, DirectoryError);
+    if (DirectoryError)
+    {
+        std::fprintf(stderr, "Unable to enter repository root: %s\n", DirectoryError.message().c_str());
+        return 1;
+    }
     const std::filesystem::path ShaderDir(FRONTIER_COMPILED_SHADER_DIR);
     const std::filesystem::path OutDir = RepoRoot / "Exhibits" / "Images" / "DynamicClipmapNanite";
     std::filesystem::create_directories(OutDir);
@@ -316,36 +323,101 @@ int main()
     }
     (void)SynchronizeShowcaseGallerySceneLive(Outliner, SceneBundle, NeedsCpuRebuild, true);
 
-    // -----------------------------------------------------------------------------------------------------------------
-    // VALIDATION 2: Tight Contact-Bounded SDF Ambient Occlusion (matching 3/4 camera angle)
-    // -----------------------------------------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------------------------------------------------
+    // VALIDATION 2: Tight Contact-Bounded UDF Clipmap Ambient Occlusion (3/4 Camera Angle)
+    //------------------------------------------------------------------------------------------------------------------------
+    constexpr uint32_t DebugChannelLit         = 0u;     // [id]    - Full shaded radiometric viewport output
+    constexpr uint32_t DebugChannelFilteredAo  = 9u;     // [id]    - Bilaterally denoised UDF ambient occlusion
+    constexpr uint32_t DebugChannelRawUdfAo    = 15u;    // [id]    - Unfiltered 12-ray UDF ambient occlusion
+    constexpr uint32_t RgbaChannelCount        = 4u;     // [count] - Bytes per RGBA8 pixel
+    constexpr double   LaplacianCenterWeight   = 4.0;    // [-]     - 5-point discrete Laplacian center weight
+    constexpr float    OpenFloorMinU           = 0.12f;  // [0-1]   - Open foreground floor ROI left UV
+    constexpr float    OpenFloorMinV           = 0.78f;  // [0-1]   - Open foreground floor ROI top UV
+    constexpr float    OpenFloorMaxU           = 0.45f;  // [0-1]   - Open foreground floor ROI right UV
+    constexpr float    OpenFloorMaxV           = 0.94f;  // [0-1]   - Open foreground floor ROI bottom UV
+    constexpr float    TyreCreviceMinU         = 0.25f;  // [0-1]   - Tyre contact crease ROI left UV
+    constexpr float    TyreCreviceMinV         = 0.55f;  // [0-1]   - Tyre contact crease ROI top UV
+    constexpr float    TyreCreviceMaxU         = 0.75f;  // [0-1]   - Tyre contact crease ROI right UV
+    constexpr float    TyreCreviceMaxV         = 0.85f;  // [0-1]   - Tyre contact crease ROI bottom UV
+    constexpr float    CreviceSmoothnessMinU   = 0.36f;  // [0-1]   - Bilateral smoothness window left UV
+    constexpr float    CreviceSmoothnessMinV   = 0.54f;  // [0-1]   - Bilateral smoothness window top UV
+    constexpr float    CreviceSmoothnessMaxU   = 0.72f;  // [0-1]   - Bilateral smoothness window right UV
+    constexpr float    CreviceSmoothnessMaxV   = 0.84f;  // [0-1]   - Bilateral smoothness window bottom UV
+    constexpr double   MinimumOpenFloorLuma    = 246.0;  // [0-255] - Minimum unoccluded open floor brightness
+    constexpr double   MinimumContactDropLuma  = 45.0;   // [0-255] - Minimum darkening drop inside tyre contact crease
+    constexpr double   MaxFilteredLaplacian    = 6.0;    // [0-255] - Maximum filtered Laplacian noise ceiling
+    constexpr double   LaplacianJitterMargin   = 0.05;   // [0-255] - Tolerance when comparing filtered vs raw Laplacian
+
     PerspectiveCameraBasis AoHeroCam = SceneBundle.EditorCamera;
-    AoHeroCam.CameraOrigin    = { 4.35f, -4.10f, 1.52f };
-    AoHeroCam.TargetPoint     = { 0.00f,  0.00f, 0.48f };
-    AoHeroCam.ViewportWidthPx = ViewW;
-    AoHeroCam.ViewportHeightPx= ViewH;
+    AoHeroCam.CameraOrigin     = { 4.35f, -4.10f, 1.52f };
+    AoHeroCam.TargetPoint      = { 0.00f,  0.00f, 0.48f };
+    AoHeroCam.ViewportWidthPx  = ViewW;
+    AoHeroCam.ViewportHeightPx = ViewH;
 
-    auto [SdfAoFilteredOk, SdfAoFilteredRgba] = RenderViewport(AoHeroCam, 9u,  WorldRenderEngine::RealTimeGiGtxLowEnd);
-    auto [SdfAoRawOk,      SdfAoRawRgba]      = RenderViewport(AoHeroCam, 15u, WorldRenderEngine::RealTimeGiGtxLowEnd);
-    auto [BvhAoRefOk,      BvhAoRefRgba]      = RenderViewport(AoHeroCam, 9u,  WorldRenderEngine::RealTimeGiHighEnd);
-    auto [LitGtxOk,        LitGtxRgba]        = RenderViewport(AoHeroCam, 0u,  WorldRenderEngine::RealTimeGiGtxLowEnd);
+    auto [SdfAoFilteredOk, SdfAoFilteredRgba] = RenderViewport(AoHeroCam, DebugChannelFilteredAo, WorldRenderEngine::RealTimeGiGtxLowEnd);
+    auto [SdfAoRawOk,      SdfAoRawRgba]      = RenderViewport(AoHeroCam, DebugChannelRawUdfAo,   WorldRenderEngine::RealTimeGiGtxLowEnd);
+    auto [BvhAoRefOk,      BvhAoRefRgba]      = RenderViewport(AoHeroCam, DebugChannelFilteredAo, WorldRenderEngine::RealTimeGiHighEnd);
+    auto [LitGtxOk,        LitGtxRgba]        = RenderViewport(AoHeroCam, DebugChannelLit,        WorldRenderEngine::RealTimeGiGtxLowEnd);
 
-    // Measure foreground floor ~1.0–1.6 m in front of bumper/tyres (lower-left / lower-center open floor)
-    // vs deep tyre-to-ground contact crease directly under the tyres.
-    const double OpenFloorLuma     = MeasureRegionMeanLuma(SdfAoFilteredRgba, ViewW, ViewH, 0.12f, 0.78f, 0.45f, 0.94f);
-    const double ContactCreviceLuma= MeasureRegionMinimumLuma(SdfAoFilteredRgba, ViewW, ViewH, 0.25f, 0.55f, 0.75f, 0.85f);
+    auto MeasureRegionLaplacian = [&](
+        const std::vector<uint8_t>& Rgba,
+        float                       MinimumU,
+        float                       MinimumV,
+        float                       MaximumU,
+        float                       MaximumV) -> double
+    {
+        const uint32_t StartX = std::max(1u, static_cast<uint32_t>(MinimumU * static_cast<float>(ViewW)));
+        const uint32_t StartY = std::max(1u, static_cast<uint32_t>(MinimumV * static_cast<float>(ViewH)));
+        const uint32_t EndX   = std::min(ViewW - 1u, static_cast<uint32_t>(MaximumU * static_cast<float>(ViewW)));
+        const uint32_t EndY   = std::min(ViewH - 1u, static_cast<uint32_t>(MaximumV * static_cast<float>(ViewH)));
+        double   LaplacianSum = 0.0;
+        uint32_t SampleCount  = 0u;
+        for (uint32_t PixelY = StartY; PixelY < EndY; ++PixelY)
+        {
+            for (uint32_t PixelX = StartX; PixelX < EndX; ++PixelX)
+            {
+                const auto ReadRedChannel = [&](uint32_t SampleX, uint32_t SampleY) noexcept -> double
+                {
+                    return static_cast<double>(Rgba[(static_cast<std::size_t>(SampleY) * ViewW + SampleX) * RgbaChannelCount]);
+                };
+                const double Laplacian = std::fabs(
+                    LaplacianCenterWeight * ReadRedChannel(PixelX, PixelY) -
+                    ReadRedChannel(PixelX - 1u, PixelY) -
+                    ReadRedChannel(PixelX + 1u, PixelY) -
+                    ReadRedChannel(PixelX, PixelY - 1u) -
+                    ReadRedChannel(PixelX, PixelY + 1u));
+                LaplacianSum += Laplacian;
+                ++SampleCount;
+            }
+        }
+        return (SampleCount > 0u) ? (LaplacianSum / static_cast<double>(SampleCount)) : 0.0;
+    };
+
+    const double OpenFloorLuma      = MeasureRegionMeanLuma(SdfAoFilteredRgba, ViewW, ViewH, OpenFloorMinU, OpenFloorMinV, OpenFloorMaxU, OpenFloorMaxV);
+    const double RawOpenFloorLuma   = MeasureRegionMeanLuma(SdfAoRawRgba,      ViewW, ViewH, OpenFloorMinU, OpenFloorMinV, OpenFloorMaxU, OpenFloorMaxV);
+    const double ContactCreviceLuma = MeasureRegionMinimumLuma(SdfAoFilteredRgba, ViewW, ViewH, TyreCreviceMinU, TyreCreviceMinV, TyreCreviceMaxU, TyreCreviceMaxV);
+    const double RawCreviceLuma     = MeasureRegionMinimumLuma(SdfAoRawRgba,      ViewW, ViewH, TyreCreviceMinU, TyreCreviceMinV, TyreCreviceMaxU, TyreCreviceMaxV);
+    const double FilteredCreviceLap = MeasureRegionLaplacian(SdfAoFilteredRgba, CreviceSmoothnessMinU, CreviceSmoothnessMinV, CreviceSmoothnessMaxU, CreviceSmoothnessMaxV);
+    const double RawCreviceLap      = MeasureRegionLaplacian(SdfAoRawRgba,      CreviceSmoothnessMinU, CreviceSmoothnessMinV, CreviceSmoothnessMaxU, CreviceSmoothnessMaxV);
     std::printf(
-        "[DynamicClipmapNaniteViewportValidation] SDF AO Luma [0..255]: OpenFloor(1.2m out)=%.2f vs TyreContactCreaseMin=%.2f\n",
+        "[DynamicClipmapNaniteViewportValidation] SDF AO Luma [0..255]: OpenFloor(Filt=%.2f, Raw=%.2f) vs TyreContactMin(Filt=%.2f, Raw=%.2f) | CreviceLap(Raw=%.2f -> Filt=%.2f)\n",
         OpenFloorLuma,
-        ContactCreviceLuma);
+        RawOpenFloorLuma,
+        ContactCreviceLuma,
+        RawCreviceLuma,
+        RawCreviceLap,
+        FilteredCreviceLap);
 
-    Checklist.Verify(SdfAoFilteredOk && SdfAoRawOk && BvhAoRefOk && LitGtxOk, "Rendered SDF AO (Debug 9, 15), BVH4 AO ref + Lit GTX GI");
+    Checklist.Verify(SdfAoFilteredOk && SdfAoRawOk && BvhAoRefOk && LitGtxOk, "Rendered UDF AO (Debug 9, 15), BVH4 AO ref + Lit GTX GI");
     Checklist.Verify(
-        OpenFloorLuma > 246.0,
+        OpenFloorLuma > MinimumOpenFloorLuma && RawOpenFloorLuma > MinimumOpenFloorLuma,
         "Open floor 1.0+ m outside vehicle footprint stays clean white (>246/255, 2-meter grey AO skirt eliminated)");
     Checklist.Verify(
-        ContactCreviceLuma < OpenFloorLuma - 45.0,
-        "Tyre contact patch + undercarriage retain strong grounded SDF contact ambient occlusion");
+        ContactCreviceLuma < OpenFloorLuma - MinimumContactDropLuma && RawCreviceLuma < RawOpenFloorLuma - MinimumContactDropLuma,
+        "Tyre contact patch + undercarriage retain strong grounded UDF contact ambient occlusion");
+    Checklist.Verify(
+        FilteredCreviceLap <= RawCreviceLap + LaplacianJitterMargin && FilteredCreviceLap < MaxFilteredLaplacian,
+        "3-step bilateral denoiser smooths IGN-rotated UDF hemisphere AO without haloing");
 
     // -----------------------------------------------------------------------------------------------------------------
     // VALIDATION 3: Nanite Distance-Driven LOD + Outliner Hidden-Instance Resilience
@@ -555,6 +627,7 @@ int main()
     Checklist.Verify(WriteSingleViewportPng(OutDir / "03_SdfCascade_CameraPannedRight.png", ViewW, ViewH, CascadeCameraPannedRgba),  "Saved 03_SdfCascade_CameraPannedRight.png");
     Checklist.Verify(WriteSingleViewportPng(OutDir / "04_SdfDistanceField_Left.png",        ViewW, ViewH, SdfDistLeftRgba),          "Saved 04_SdfDistanceField_Left.png");
     Checklist.Verify(WriteSingleViewportPng(OutDir / "05_SdfDistanceField_MovedRight.png",  ViewW, ViewH, SdfDistRightRgba),         "Saved 05_SdfDistanceField_MovedRight.png");
+    Checklist.Verify(WriteSingleViewportPng(OutDir / "06a_UdfAmbientOcclusion_Raw.png",     ViewW, ViewH, SdfAoRawRgba),             "Saved 06a_UdfAmbientOcclusion_Raw.png");
     Checklist.Verify(WriteSingleViewportPng(OutDir / "06_SdfAmbientOcclusion_Fixed.png",    ViewW, ViewH, SdfAoFilteredRgba),        "Saved 06_SdfAmbientOcclusion_Fixed.png");
     Checklist.Verify(WriteSingleViewportPng(OutDir / "07_BvhAmbientOcclusion_Reference.png",ViewW, ViewH, BvhAoRefRgba),             "Saved 07_BvhAmbientOcclusion_Reference.png");
     Checklist.Verify(WriteSingleViewportPng(OutDir / "08_LitGtxSdfGi_Fixed.png",            ViewW, ViewH, LitGtxRgba),               "Saved 08_LitGtxSdfGi_Fixed.png");
@@ -576,14 +649,14 @@ int main()
     BgList->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(static_cast<float>(SheetW), static_cast<float>(SheetH)), IM_COL32(11, 14, 20, 255));
 
     char LabelRow0Col0[128]{}, LabelRow0Col1[128]{}, LabelRow0Col2[128]{};
-    std::snprintf(LabelRow0Col0, sizeof(LabelRow0Col0), "1A // SDF CASCADE: CAR AT X=-4.2m (FineCenter X=%.2fm)", SdfStatsLeft.FineCascadeCenterWorld[0]);
-    std::snprintf(LabelRow0Col1, sizeof(LabelRow0Col1), "1B // SDF CASCADE: CAR MOVED X=+4.2m (FineCenter X=%.2fm, 0 Rebuilds)", SdfStatsRightFixedCam.FineCascadeCenterWorld[0]);
-    std::snprintf(LabelRow0Col2, sizeof(LabelRow0Col2), "1C // SDF CASCADE: CAMERA PANNED X=+5.2m (FineCenter X=%.2fm)", SdfStatsCameraPanned.FineCascadeCenterWorld[0]);
+    std::snprintf(LabelRow0Col0, sizeof(LabelRow0Col0), "1A // UDF CASCADE: CAR AT X=-4.2m (FineCenter X=%.2fm)", SdfStatsLeft.FineCascadeCenterWorld[0]);
+    std::snprintf(LabelRow0Col1, sizeof(LabelRow0Col1), "1B // UDF CASCADE: CAR MOVED X=+4.2m (FineCenter X=%.2fm, 0 Rebuilds)", SdfStatsRightFixedCam.FineCascadeCenterWorld[0]);
+    std::snprintf(LabelRow0Col2, sizeof(LabelRow0Col2), "1C // UDF CASCADE: CAMERA PANNED X=+5.2m (FineCenter X=%.2fm)", SdfStatsCameraPanned.FineCascadeCenterWorld[0]);
 
     char LabelRow1Col0[128]{}, LabelRow1Col1[128]{}, LabelRow1Col2[128]{};
-    std::snprintf(LabelRow1Col0, sizeof(LabelRow1Col0), "2A // SDF AO FIXED (Floor=%.0f/255 clean white, Contact=%.0f/255)", OpenFloorLuma, ContactCreviceLuma);
+    std::snprintf(LabelRow1Col0, sizeof(LabelRow1Col0), "2A // UDF CLIPMAP AO (Floor=%.0f/255 clean white, Contact=%.0f/255)", OpenFloorLuma, ContactCreviceLuma);
     std::snprintf(LabelRow1Col1, sizeof(LabelRow1Col1), "2B // RAYTRACED BVH4 AO REFERENCE (0.85m Reach Parity)");
-    std::snprintf(LabelRow1Col2, sizeof(LabelRow1Col2), "2C // GTX SDF GI LIT VIEWPORT (Clean Contact Grounding)");
+    std::snprintf(LabelRow1Col2, sizeof(LabelRow1Col2), "2C // GTX UDF CLIPMAP GI LIT VIEWPORT (Clean Contact Grounding)");
 
     char LabelRow2Col0[128]{}, LabelRow2Col1[128]{}, LabelRow2Col2[128]{};
     std::snprintf(LabelRow2Col0, sizeof(LabelRow2Col0), "3A // NANITE @ 5.8m: %u tris (%u clusters, HiddenAsset Safe)", NaniteStatsAtDist[0].ActiveTriangleCount, NaniteStatsAtDist[0].ActiveClusterCount);
@@ -621,10 +694,74 @@ int main()
         const uint32_t Row = Idx / 3u;
         SummarySheet.BlitRgbaRegion(20u + Col * 656u, 44u + Row * 444u, ViewW, ViewH, PanelImages[Idx]->data());
     }
+
+    // Dedicated 2x2 UDF Clipmap AO Visual Proof Board (1328 x 904)
+    constexpr uint32_t ProofSheetWidthPx  = 1328u; // [px] - Proof sheet layout
+    constexpr uint32_t ProofSheetHeightPx = 904u; // [px] - Proof sheet layout
+    constexpr uint32_t ProofGridColumns   = 2u; // [count] - Proof sheet layout
+    constexpr uint32_t ProofTileCount     = 4u; // [count] - Proof sheet layout
+    constexpr uint32_t ProofColumnStepPx  = 656u; // [px] - Proof sheet layout
+    constexpr uint32_t ProofRowStepPx     = 444u; // [px] - Proof sheet layout
+    constexpr uint32_t ProofTileInsetXPx  = 20u; // [px] - Proof sheet layout
+    constexpr uint32_t ProofTileInsetYPx  = 44u; // [px] - Proof sheet layout
+    constexpr float    ProofMarginPx      = 16.0f; // [px] - Proof sheet layout
+    constexpr float    ProofCardWidthPx   = 648.0f; // [px] - Proof sheet layout
+    constexpr float    ProofCardHeightPx  = 434.0f; // [px] - Proof sheet layout
+    constexpr float    ProofCardRadiusPx  = 6.0f; // [px] - Proof sheet layout
+    constexpr float    ProofTitleInsetXPx = 10.0f; // [px] - Proof sheet layout
+    constexpr float    ProofTitleInsetYPx = 8.0f; // [px] - Proof sheet layout
+
+    Io.DisplaySize = ImVec2(static_cast<float>(ProofSheetWidthPx), static_cast<float>(ProofSheetHeightPx));
+    ImGui::NewFrame();
+    ImDrawList* ProofDrawList = ImGui::GetBackgroundDrawList();
+    ProofDrawList->AddRectFilled(
+        ImVec2(0.0f, 0.0f),
+        ImVec2(static_cast<float>(ProofSheetWidthPx), static_cast<float>(ProofSheetHeightPx)),
+        IM_COL32(11, 14, 20, 255));
+
+    char ProofLabel0[128]{}, ProofLabel1[128]{}, ProofLabel2[128]{}, ProofLabel3[128]{};
+    std::snprintf(ProofLabel0, sizeof(ProofLabel0), "01 // UDF CLIPMAP AO RAW · DEBUG 15 (12-Ray IGN Hemisphere, Floor=%.1f/255, Contact=%.0f/255)", RawOpenFloorLuma, RawCreviceLuma);
+    std::snprintf(ProofLabel1, sizeof(ProofLabel1), "02 // UDF CLIPMAP AO FILTERED · DEBUG 09 (3-Step Bilateral, Floor=%.1f/255, Contact=%.0f/255)", OpenFloorLuma, ContactCreviceLuma);
+    std::snprintf(ProofLabel2, sizeof(ProofLabel2), "03 // RAYTRACED BVH4 AO REFERENCE (0.85m Cosine Hemisphere Ground Truth)");
+    std::snprintf(ProofLabel3, sizeof(ProofLabel3), "04 // GTX UDF CLIPMAP GI LIT VIEWPORT (Unsigned Surface Distance + Analytic Ground Z)");
+
+    const std::array<const char*, ProofTileCount> ProofLabels {{
+        ProofLabel0, ProofLabel1, ProofLabel2, ProofLabel3,
+    }};
+    for (uint32_t TileIndex = 0u; TileIndex < ProofTileCount; ++TileIndex)
+    {
+        const uint32_t Col = TileIndex % ProofGridColumns;
+        const uint32_t Row = TileIndex / ProofGridColumns;
+        const float    X0  = ProofMarginPx + static_cast<float>(Col * ProofColumnStepPx);
+        const float    Y0  = ProofMarginPx + static_cast<float>(Row * ProofRowStepPx);
+        ProofDrawList->AddRectFilled(ImVec2(X0, Y0), ImVec2(X0 + ProofCardWidthPx, Y0 + ProofCardHeightPx), IM_COL32(20, 25, 35, 255), ProofCardRadiusPx);
+        ProofDrawList->AddText(ImVec2(X0 + ProofTitleInsetXPx, Y0 + ProofTitleInsetYPx), IM_COL32(110, 220, 255, 255), ProofLabels[TileIndex]);
+    }
+    ImGui::Render();
+
+    Exhibits::SoftwareRasterCanvas ProofSheet(ProofSheetWidthPx, ProofSheetHeightPx, { 11u, 14u, 20u, 255u });
+    ProofSheet.RasterizeImGuiBatches(ImGui::GetDrawData());
+
+    const std::array<const std::vector<uint8_t>*, ProofTileCount> ProofImages {{
+        &SdfAoRawRgba, &SdfAoFilteredRgba, &BvhAoRefRgba, &LitGtxRgba,
+    }};
+    for (uint32_t TileIndex = 0u; TileIndex < ProofTileCount; ++TileIndex)
+    {
+        const uint32_t Col = TileIndex % ProofGridColumns;
+        const uint32_t Row = TileIndex / ProofGridColumns;
+        ProofSheet.BlitRgbaRegion(
+            ProofTileInsetXPx + Col * ProofColumnStepPx,
+            ProofTileInsetYPx + Row * ProofRowStepPx,
+            ViewW,
+            ViewH,
+            ProofImages[TileIndex]->data());
+    }
     ImGui::DestroyContext();
 
     const std::filesystem::path SummarySheetPath = OutDir / "00_DynamicClipmapAoNaniteComparison.png";
+    const std::filesystem::path ProofSheetPath   = OutDir / "11_UdfClipmapAmbientOcclusionProof.png";
     Checklist.Verify(SummarySheet.WritePngFile(SummarySheetPath), "Exported 00_DynamicClipmapAoNaniteComparison.png");
+    Checklist.Verify(ProofSheet.WritePngFile(ProofSheetPath),     "Exported 11_UdfClipmapAmbientOcclusionProof.png");
 
     GpuSeq.TeardownSequence();
     VkDevice.TeardownInterchange();
