@@ -140,10 +140,20 @@ function createMockGl()
         getActiveUniform: (program, index) => { const [name, info] = programs.get(program).uniformList[index]; return { name: info.array ? `${name}[0]` : name, type: info.type }; },
         getUniformLocation: (program, name) => (programs.get(program).uniforms.has(name.replace(/\[0\]$/, '')) ? { program: programs.get(program), name } : null),
         useProgram: (program) => { currentProgram = programs.get(program); calls.programsUsed.push(currentProgram); },
-        createTexture: () => ({}), bindTexture: () => {}, texParameteri: () => {}, texStorage2D: () => {}, activeTexture: () => {},
-        createFramebuffer: () => ({}), bindFramebuffer: () => {}, framebufferTexture2D: () => {}, checkFramebufferStatus: () => constants.FRAMEBUFFER_COMPLETE,
-        deleteFramebuffer: () => {}, deleteTexture: () => {},
-        createVertexArray: () => ({}), bindVertexArray: () => {}, createBuffer: () => ({}), bindBuffer: () => {}, bufferData: () => {}, enableVertexAttribArray: () => {}, vertexAttribPointer: () => {},
+        createTexture: () => ({ __webglType: 'WebGLTexture' }),
+        bindTexture: (_target, tex) => { if (tex !== null && (!tex || tex.__webglType !== 'WebGLTexture')) throw new TypeError("Failed to execute 'bindTexture' on 'WebGL2RenderingContext': parameter 2 is not of type 'WebGLTexture'."); },
+        texParameteri: () => {}, texStorage2D: () => {}, activeTexture: () => {},
+        createFramebuffer: () => ({ __webglType: 'WebGLFramebuffer' }),
+        bindFramebuffer: (_target, fb) => { if (fb !== null && (!fb || fb.__webglType !== 'WebGLFramebuffer')) throw new TypeError("Failed to execute 'bindFramebuffer' on 'WebGL2RenderingContext': parameter 2 is not of type 'WebGLFramebuffer'."); },
+        framebufferTexture2D: (_t, _a, _tt, tex) => { if (tex !== null && (!tex || tex.__webglType !== 'WebGLTexture')) throw new TypeError("Failed to execute 'framebufferTexture2D' on 'WebGL2RenderingContext': parameter 4 is not of type 'WebGLTexture'."); },
+        checkFramebufferStatus: () => constants.FRAMEBUFFER_COMPLETE,
+        deleteFramebuffer: (fb) => { if (fb !== null && (!fb || fb.__webglType !== 'WebGLFramebuffer')) throw new TypeError("Failed to execute 'deleteFramebuffer': parameter 1 is not of type 'WebGLFramebuffer'."); },
+        deleteTexture: (tex) => { if (tex !== null && (!tex || tex.__webglType !== 'WebGLTexture')) throw new TypeError("Failed to execute 'deleteTexture': parameter 1 is not of type 'WebGLTexture'."); },
+        createVertexArray: () => ({ __webglType: 'WebGLVertexArrayObject' }),
+        bindVertexArray: (vao) => { if (vao !== null && (!vao || vao.__webglType !== 'WebGLVertexArrayObject')) throw new TypeError("Failed to execute 'bindVertexArray': parameter 1 is not of type 'WebGLVertexArrayObject'."); },
+        createBuffer: () => ({ __webglType: 'WebGLBuffer' }),
+        bindBuffer: (_target, buf) => { if (buf !== null && (!buf || buf.__webglType !== 'WebGLBuffer')) throw new TypeError("Failed to execute 'bindBuffer': parameter 2 is not of type 'WebGLBuffer'."); },
+        bufferData: () => {}, enableVertexAttribArray: () => {}, vertexAttribPointer: () => {},
         viewport: () => {}, clearColor: () => {}, clear: () => {}, disable: () => {}, enable: () => {}, depthMask: () => {}, blendFunc: () => {}, blitFramebuffer: () => {},
         scissor: () => {}, pixelStorei: () => {}, texSubImage2D: () => { calls.uploads = (calls.uploads || 0) + 1; }, readPixels: (x, y, w, h, format, type, buffer) => { calls.readbacks = (calls.readbacks || 0) + 1; buffer.fill(0); if (calls.occupancyHook) calls.occupancyHook(buffer); },
         drawArrays: () => { calls.draws += 1; },
@@ -1201,6 +1211,33 @@ console.log('\n[13] 3D Object visual carriers, object-surface spawn & custom mes
         return p && p.Document && Array.isArray(p.Document.Force) && p.Document.Force.length >= 2 && Array.isArray(p.Document.Particle) && p.Document.Particle.length >= 2;
     });
     check(allPresetsHaveForcesAndClouds, `All ${flagshipPresets.length} showcase & ported Particle Studio presets combine >=2 coordinated forces with multi-cloud staging`);
+
+    // Strict WebGL2 handle sweep: load and render EVERY preset (50) and EVERY particle template (61) through real frame() + dispose() calls.
+    let presetFramesOk = 0;
+    let tSweep = 8000;
+    for (const p of ScenePresets)
+    {
+        app.loadPreset(p.Id);
+        tSweep += 40;
+        app.frame(tSweep);
+        presetFramesOk += 1;
+    }
+    check(presetFramesOk === ScenePresets.length && appGl.__calls.uniformErrors.length === 0,
+        `All ${presetFramesOk} scene presets load and render cleanly under strict WebGL2 handle validation (0 uniform mismatches)`);
+
+    app.loadPreset('preset-blank');
+    let templateFramesOk = 0;
+    for (const tmpl of Catalog.ParticleTemplates)
+    {
+        if (app.scene.Particles.length === 0) app.addParticles(tmpl.Id);
+        else app.replaceParticleTemplate(app.scene.Particles[0].Id, tmpl.Id);
+        tSweep += 40;
+        app.frame(tSweep);
+        templateFramesOk += 1;
+    }
+    app.particles.destroy();
+    check(templateFramesOk === Catalog.ParticleTemplates.length && appGl.__calls.uniformErrors.length === 0,
+        `All ${templateFramesOk} particle templates step, render and dispose cleanly under strict WebGL2 handle validation`);
 }
 
 console.log(Failures === 0 ? '\n🟢 Fluid Studio validation passed' : `\n🔴 Fluid Studio validation failed (${Failures})`);

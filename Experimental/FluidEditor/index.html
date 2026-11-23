@@ -88,8 +88,16 @@
             {
                 console.error('Fluid Studio failure:', error);
                 document.getElementById('pz-error').classList.add('visible');
-                document.getElementById('pz-error-text').innerHTML = 'The GPU solver needs WebGL2 with float render targets (EXT_color_buffer_float). ' +
-                    'Enable hardware acceleration or try a current Chromium / Firefox build.<code>' + String(error.message || error) + '</code>';
+                const message = String(error && error.message ? error.message : error);
+                const needsWebGl = /WebGL2|EXT_color_buffer_float|float render targets/i.test(message);
+                const prefix = needsWebGl
+                    ? 'The GPU solver needs WebGL2 with float render targets (EXT_color_buffer_float). Enable hardware acceleration or try a current Chromium / Firefox build.'
+                    : 'The Fluid Studio viewport encountered a WebGL runtime error.';
+                const code = document.createElement('code');
+                code.textContent = message;
+                const el = document.getElementById('pz-error-text');
+                el.textContent = prefix;
+                el.appendChild(code);
                 refs.statusText.textContent = 'HTML preview · viewport unavailable';
             },
         });

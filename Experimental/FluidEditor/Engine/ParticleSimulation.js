@@ -148,8 +148,10 @@ export class ParticleSimulation
         if (!entry)
         {
             const packed = PackObjectTexels(mesh);
+            const dataTexture = this.context.createDataTexture(packed.Width, packed.Height, packed.Data);
             entry = {
-                texture: this.context.createDataTexture(packed.Width, packed.Height, packed.Data),
+                dataTexture,
+                texture: dataTexture.texture,
                 width: packed.Width,
                 triangleCount: packed.TriangleCount,
                 vertexCount: packed.VertexCount,
@@ -564,7 +566,7 @@ export class ParticleSimulation
     {
         for (const record of this.records.values()) this.destroyRecord(record);
         this.records.clear();
-        for (const entry of this.meshTextures.values()) this.context.destroyDataTexture(entry.texture);
+        for (const entry of this.meshTextures.values()) this.context.destroyDataTexture(entry.dataTexture);
         this.meshTextures.clear();
         this.context.destroyDataTexture(this.emptyAnchors);
     }
