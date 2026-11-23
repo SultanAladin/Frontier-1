@@ -186,3 +186,17 @@ Right-Click → "Delete" (or Del key)
 | **Native C++ Visual Proof (`Exhibits/Images/EnvironmentConstruct/`)** | 🟢 PASS | `01-NativeConstructAll.png`, `02-NativeConstructStep2Moon.png`, `03-NativeOutlinerSingleSheet.png`, `04-NativeOutlinerFolderSheet.png`, `05-NativeOutlinerEmptySheet.png`, `06-WorldSkyAtmosphereSunClouds.png`, `07-WorldSkyEmptyRemoved.png` |
 | **Naming & Vocabulary Audit** | 🟢 PASS | Zero `Kind`/`KIND`, zero banned identifiers, `WorldEnvironmentRegistry` gated inside `FRONTIER_PROFILE STREQUAL "Editor"` |
 
+---
+
+## 8. Dedicated Environment Inspectors (Follow-Up Batch — Complete)
+
+🟢 **All 5 Environment Inspectors + 3-Pane Validation Exhibits Built, Wired Live & Verified**
+
+| Component | Summary | Evidence / Binding |
+| :--- | :--- | :--- |
+| **`Engine/Editor/WorldEnvironmentInspector.{h,cpp}`** | Editor-only dedicated Inspectors for **Atmosphere** (5 pages), **Sun** (4 pages), **Clouds** (5 pages), **Moon** (3 pages, 6 slots), and **Stars** (3 pages), reusing `ScalarSlider`, `WorkspaceAppearance`, and `InspectorPanel::ConfigureFullOverrideCallback` | Gated under `FRONTIER_PROFILE STREQUAL "Editor"` in `CMakeLists.txt`; zero fake controls; every tile, slider, and preset chip binds directly to `WorldAtmosphereConfiguration` |
+| **`Engine/Lifecycle/EditorLifecycle.{h,cpp}`** | Wired `WorldEnvironmentInspector::RenderIfEnvironment` into `Panes->Inspector.ConfigureFullOverrideCallback(...)` with `EnvironmentInspectorMutated` dirty latch triggering immediate CPU/GPU sky, solar ephemeris, and cloud LUT sync | Selecting `Environment` folder or non-environment entries cleanly falls through (`return false`) to built-in `InspectorPanel` Folder / Standard Inspectors |
+| **3-Pane Visual Exhibits (`Exhibits/Images/EnvironmentConstruct/`)** | Upgraded `EnvironmentConstructValidation.cpp` to dock `Outliner` \| `Viewport` \| `Inspector` at `1440×900` and capture live exhibits + assert interactive Quick Control mutation & page switching | `08-InspectorAtmosphere.png`, `09-InspectorSun.png`, `10-InspectorClouds.png`, `11-InspectorMoon.png`, `12-InspectorStars.png`, `13-InspectorEnvironmentFolder.png`, `14-InspectorAtmosphereScattering.png` (+ HTML references `Exhibits/Images/ExperimentalEditorUi/10..14.png`) |
+| **Audit & Tests** | `Frontier`, `WorkspacePanesValidation`, and `EnvironmentConstructValidation` built with zero warnings and passed 100%; `ZERO_BANNED_WORDS_FOUND` & `ZERO_KIND_FOUND` | All 14 native exhibits visually verified side-by-side against HTML reference |
+
+
