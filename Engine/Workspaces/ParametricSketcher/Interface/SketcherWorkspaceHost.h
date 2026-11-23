@@ -46,6 +46,7 @@ public:
 
     void BeginFrame(double DeltaSeconds);
     void EndFrame(double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = true);
+    bool OpenDocumentPath(const std::string& DocumentPath, std::string* OutDiagnostic = nullptr);
     bool IntakeExternalFileDrop(const std::string& FilePath, std::string* OutDiagnostic = nullptr);
 
     [[nodiscard]] Sketcher::SketcherWorkspaceStatus&       AccessState() noexcept        { return State; }

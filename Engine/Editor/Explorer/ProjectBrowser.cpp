@@ -15,8 +15,24 @@
 #include "Engine/Configuration/ProjectSpaceRepository.h"
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
 
 #include <imgui.h>
+
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_STDIO
+#define STBI_ONLY_PNG
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#endif
+#include <stb_image.h>
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <algorithm>
 #include <array>
@@ -348,8 +364,58 @@ void ProjectBrowser::EnsurePreviewRendererReady()
     }
 }
 
+[[nodiscard]] bool MatchesSolidArcSketchSuffix(const std::string& ExtLower) noexcept
+{
+    return ExtLower == ".solidarc" || ExtLower == ".sketch" || ExtLower == ".sketcher";
+}
+
+[[nodiscard]] bool LoadSolidArcPreviewRgba(
+    const std::filesystem::path& FilePath,
+    std::vector<uint8_t>&        OutRgba,
+    uint32_t&                    OutWidth,
+    uint32_t&                    OutHeight)
+{
+    std::string Title, Description;
+    std::vector<uint8_t> PngBytes;
+    if (!Workspaces::Sketcher::LoadSketcherPreviewHeader(FilePath.string(), Title, Description, PngBytes) || PngBytes.empty())
+    {
+        return false;
+    }
+    int W = 0, H = 0, Channels = 0;
+    stbi_uc* Pixels = stbi_load_from_memory(PngBytes.data(), static_cast<int>(PngBytes.size()), &W, &H, &Channels, 4);
+    if (!Pixels || W <= 0 || H <= 0)
+    {
+        if (Pixels) stbi_image_free(Pixels);
+        return false;
+    }
+    OutWidth  = static_cast<uint32_t>(W);
+    OutHeight = static_cast<uint32_t>(H);
+    OutRgba.assign(Pixels, Pixels + static_cast<size_t>(W) * static_cast<size_t>(H) * 4u);
+    stbi_image_free(Pixels);
+    return true;
+}
+
 void ProjectBrowser::RenderThumbnailForEntry(BrowserCollectionEntry& Entry, uint32_t ViewOrdinal)
 {
+    if (Entry.Category == BrowserEntryCategory::Cad && !Entry.FilePath.empty())
+    {
+        const std::string ExtLower = LowercaseString(Entry.FilePath.extension().string());
+        std::vector<uint8_t> EmbeddedRgba {};
+        uint32_t EmbeddedW = 0u, EmbeddedH = 0u;
+        if (MatchesSolidArcSketchSuffix(ExtLower) && LoadSolidArcPreviewRgba(Entry.FilePath, EmbeddedRgba, EmbeddedW, EmbeddedH))
+        {
+            Entry.ThumbnailRgba = std::move(EmbeddedRgba);
+            Entry.ThumbnailW    = EmbeddedW;
+            Entry.ThumbnailH    = EmbeddedH;
+            if (Entry.ThumbnailTex == nullptr)
+            {
+                Entry.ThumbnailTex = std::make_unique<ImTextureData>();
+            }
+            UploadRgbaToTextureData(*Entry.ThumbnailTex, Entry.ThumbnailRgba.data(), Entry.ThumbnailW, Entry.ThumbnailH);
+            return;
+        }
+    }
+
     EnsurePreviewRendererReady();
 
     GeometricRaster::PerspectiveCameraBasis Cam = PreviewSceneBundle->EditorCamera;
@@ -422,6 +488,38 @@ void ProjectBrowser::RefreshReaderPreviewTexture()
     {
         return;
     }
+    const auto& ActiveCadEntry = Collection[static_cast<std::size_t>(ActiveEntryIndex)];
+    if (ActiveCadEntry.Category == BrowserEntryCategory::Cad && !ActiveCadEntry.FilePath.empty())
+    {
+        const std::string ExtLower = LowercaseString(ActiveCadEntry.FilePath.extension().string());
+        std::vector<uint8_t> EmbeddedRgba {};
+        uint32_t EmbeddedW = 0u, EmbeddedH = 0u;
+        if (MatchesSolidArcSketchSuffix(ExtLower) && LoadSolidArcPreviewRgba(ActiveCadEntry.FilePath, EmbeddedRgba, EmbeddedW, EmbeddedH))
+        {
+            ReaderPreviewRgba = std::move(EmbeddedRgba);
+            ReaderPreviewW    = EmbeddedW;
+            ReaderPreviewH    = EmbeddedH;
+            if (ReaderPreviewTex == nullptr)
+            {
+                ReaderPreviewTex = std::make_unique<ImTextureData>();
+            }
+            UploadRgbaToTextureData(*ReaderPreviewTex, ReaderPreviewRgba.data(), ReaderPreviewW, ReaderPreviewH);
+            if (ReaderViewThumbs.size() < ActiveCadEntry.ViewTitles.size())
+            {
+                ReaderViewThumbs.resize(ActiveCadEntry.ViewTitles.size());
+            }
+            for (std::size_t VIdx = 0u; VIdx < ActiveCadEntry.ViewTitles.size(); ++VIdx)
+            {
+                if (ReaderViewThumbs[VIdx] == nullptr)
+                {
+                    ReaderViewThumbs[VIdx] = std::make_unique<ImTextureData>();
+                }
+                UploadRgbaToTextureData(*ReaderViewThumbs[VIdx], ReaderPreviewRgba.data(), ReaderPreviewW, ReaderPreviewH);
+            }
+            return;
+        }
+    }
+
     EnsurePreviewRendererReady();
 
     GeometricRaster::PerspectiveCameraBasis Cam = PreviewSceneBundle->EditorCamera;
@@ -634,6 +732,39 @@ void ProjectBrowser::InitializeDefaultCollection(
         true,
         0u);
 
+    // Built-in compiled SolidArc vehicle reference sketches (open strictly in SolidArc)
+    const std::filesystem::path VehiclesDir = FrontierRootDir / "Content" / "SolidArc" / "Vehicles";
+    std::error_code VehEc {};
+    if (std::filesystem::exists(VehiclesDir, VehEc))
+    {
+        const std::array<const char*, 3> VehicleOrder = {{ "Egoist", "Liger", "Quicksilver" }};
+        uint32_t PresetIdx = 1u;
+        for (const char* Name : VehicleOrder)
+        {
+            const std::filesystem::path SketchFile = VehiclesDir / (std::string(Name) + ".solidarc");
+            if (!std::filesystem::exists(SketchFile, VehEc)) continue;
+            std::string HeaderTitle, HeaderDesc;
+            std::vector<uint8_t> UnusedPng;
+            (void)Workspaces::Sketcher::LoadSketcherPreviewHeader(SketchFile.string(), HeaderTitle, HeaderDesc, UnusedPng);
+            AddSample(
+                "solidarc_" + LowercaseString(Name),
+                HeaderTitle.empty() ? std::string(Name) : HeaderTitle,
+                ".solidarc",
+                BrowserEntryCategory::Cad,
+                "SolidArc Vehicle Sketch \u00B7 Opens in SolidArc",
+                HeaderDesc.empty()
+                    ? ("Compiled SolidArc vehicle sketch (" + SketchFile.filename().string() + "). Opens in SolidArc for Class-A NURBS surfacing.")
+                    : HeaderDesc,
+                "Compiled",
+                SketchFile,
+                { "Studio 3/4", "Reference Buck", "Retopology" },
+                { "Compiled Blender 5.2 vehicle · Embedded BVH & creases" },
+                { { "SolidArc", "S", "Pre-compiled reference vehicle — select Open with SolidArc to inspect Zebra curvature and trace NURBS panels.", "Compiled" } },
+                true,
+                PresetIdx++);
+        }
+    }
+
     std::error_code Ec {};
     if (std::filesystem::exists(DefaultProjectsDir, Ec))
     {
@@ -725,7 +856,7 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
 
     const std::string ExtLower = LowercaseString(DiskPath.extension().string());
     BrowserEntryCategory Cat   = BrowserEntryCategory::Project;
-    if (ExtLower == ".solidarc" || ExtLower == ".step" || ExtLower == ".stp" || ExtLower == ".iges" || ExtLower == ".igs")
+    if (MatchesSolidArcSketchSuffix(ExtLower) || ExtLower == ".step" || ExtLower == ".stp" || ExtLower == ".iges" || ExtLower == ".igs")
     {
         Cat = BrowserEntryCategory::Cad;
     }
@@ -735,6 +866,7 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
     }
 
     std::string Title = DiskPath.stem().string();
+    std::string EmbeddedDesc {};
     if (ExtLower == ".projectspace")
     {
         ProjectSpaceDocument LoadedDoc {};
@@ -744,6 +876,15 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
             Title = LoadedDoc.ProjectTitle;
         }
     }
+    else if (MatchesSolidArcSketchSuffix(ExtLower))
+    {
+        std::string HeaderTitle;
+        std::vector<uint8_t> UnusedPng;
+        if (Workspaces::Sketcher::LoadSketcherPreviewHeader(DiskPath.string(), HeaderTitle, EmbeddedDesc, UnusedPng) && !HeaderTitle.empty())
+        {
+            Title = HeaderTitle;
+        }
+    }
 
     BrowserCollectionEntry Entry {};
     Entry.Identifier      = "disk_" + std::to_string(Collection.size() + 1u);
@@ -751,11 +892,13 @@ bool ProjectBrowser::RegisterDiskPathInCollection(const std::filesystem::path& D
     Entry.Suffix       = DiskPath.extension().empty() ? ".projectspace" : DiskPath.extension().string();
     Entry.Category        = Cat;
     Entry.SummaryCaption  = (Cat == BrowserEntryCategory::Cad)
-                                ? "Local Parametric CAD · Sketcher & Frontier"
+                                ? "SolidArc Parametric Sketch · Opens in SolidArc"
                                 : (Cat == BrowserEntryCategory::Geometry)
                                       ? "Local Geometry · UVWorkspace & Frontier"
                                       : "Local C++20 Frontier Project · 3 Targets";
-    Entry.Description     = "Mounted from local filesystem (" + DiskPath.generic_string() + ").";
+    Entry.Description     = !EmbeddedDesc.empty()
+                                ? EmbeddedDesc
+                                : ("Mounted from local filesystem (" + DiskPath.generic_string() + ").");
     Entry.LastOpenedText  = "Just now";
     Entry.FilePath        = DiskPath;
     Entry.ViewTitles      = (Cat == BrowserEntryCategory::Cad)
@@ -789,7 +932,7 @@ uint32_t ProjectBrowser::ScanFolderForEntries(const std::filesystem::path& Folde
     auto InspectFile = [&](const std::filesystem::path& Candidate)
     {
         const std::string Ext = LowercaseString(Candidate.extension().string());
-        if (Ext == ".projectspace" || Ext == ".obj" || Ext == ".uvspace" || Ext == ".geometryspace")
+        if (Ext == ".projectspace" || MatchesSolidArcSketchSuffix(Ext) || Ext == ".obj" || Ext == ".uvspace" || Ext == ".geometryspace")
         {
             if (RegisterDiskPathInCollection(Candidate, false))
             {
@@ -1339,16 +1482,17 @@ void ProjectBrowser::RenderLibraryMode(
         }
 
         Surface.Text({ RightX + 24.0f, HeaderH + 36.0f }, 12.0f, P.Ink, "Select a file to preview it.");
-        Surface.Text({ RightX + 24.0f, HeaderH + 60.0f }, 10.5f, P.Muted, "Click any project or geometry tile to");
-        Surface.Text({ RightX + 24.0f, HeaderH + 76.0f }, 10.5f, P.Muted, "inspect levels, notes, and revisions, or");
-        Surface.Text({ RightX + 24.0f, HeaderH + 92.0f }, 10.5f, P.Muted, "launch directly into Frontier.");
+        Surface.Text({ RightX + 24.0f, HeaderH + 60.0f }, 10.5f, P.Muted, "Click any project or SolidArc sketch");
+        Surface.Text({ RightX + 24.0f, HeaderH + 76.0f }, 10.5f, P.Muted, "tile to inspect previews & notes, or");
+        Surface.Text({ RightX + 24.0f, HeaderH + 92.0f }, 10.5f, P.Muted, "launch into Frontier or SolidArc.");
 
-        // Project Browser offers Frontier only; standalone workspace apps keep their own entry points.
+        // Project Browser routes .projectspace to Frontier and .solidarc/.sketch strictly to SolidArc.
         Surface.Text({ RightX + 24.0f, HeaderH + 134.0f }, 9.0f, P.Faint, "OPEN IN");
         float CapY = HeaderH + 156.0f;
         for (const auto& Cap : CapabilityRegister.QueryAllCapabilities())
         {
-            if (Cap.Target != Workspaces::HostWorkspaceTarget::FrontierWorld)
+            if (Cap.Target != Workspaces::HostWorkspaceTarget::FrontierWorld &&
+                Cap.Target != Workspaces::HostWorkspaceTarget::SketcherWorkspace)
             {
                 continue;
             }
@@ -1356,7 +1500,10 @@ void ProjectBrowser::RenderLibraryMode(
             Surface.FillRectangle(CapBox, P.Control, 7.0f);
             Surface.StrokeRectangle(CapBox, P.Line, 7.0f, 1.0f);
             Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 9.0f }, 11.0f, P.Ink, Cap.ActionTitle.c_str());
-            Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 27.0f }, 9.0f, P.Muted, "World + Outliner + Clouds");
+            const char* Subtitle = (Cap.Target == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
+                                       ? ".solidarc / .sketch · Parametric CAD"
+                                       : ".projectspace · World + Outliner";
+            Surface.Text({ CapBox.X + 12.0f, CapBox.Y + 27.0f }, 9.0f, P.Muted, Subtitle);
             CapY += 56.0f;
         }
     }
@@ -1457,11 +1604,12 @@ void ProjectBrowser::RenderReaderMode(
     const std::string FullName = Entry.Title + Entry.Suffix;
     Surface.Text({ MainX + 62.0f, 24.0f }, 12.5f, P.Ink, FullName.c_str());
 
-    // Project Browser launches projects in Frontier only (standalone workspace apps keep their own entry points)
+    // Project Browser routes .projectspace to Frontier and .solidarc/.sketch strictly to SolidArc
     std::vector<Workspaces::WorkspaceCapabilityEntry> PermittedCaps {};
     for (const auto& Cap : CapabilityRegister.QueryPermittedForPath(Entry.FilePath))
     {
-        if (Cap.Target == Workspaces::HostWorkspaceTarget::FrontierWorld)
+        if (Cap.Target == Workspaces::HostWorkspaceTarget::FrontierWorld ||
+            Cap.Target == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
         {
             PermittedCaps.push_back(Cap);
         }
@@ -1477,7 +1625,8 @@ void ProjectBrowser::RenderReaderMode(
              Cap.Target == Workspaces::HostWorkspaceTarget::StampWorkspace ||
              Cap.Target == Workspaces::HostWorkspaceTarget::BakingWorkspace)
                 ? 172.0f
-                : ((Cap.Target == Workspaces::HostWorkspaceTarget::UVWorkspace) ? 156.0f : 138.0f);
+                : ((Cap.Target == Workspaces::HostWorkspaceTarget::UVWorkspace ||
+                    Cap.Target == Workspaces::HostWorkspaceTarget::SketcherWorkspace) ? 156.0f : 138.0f);
         ActionRightX -= BtnW;
         const Rectangle2D LaunchRect { ActionRightX, 16.0f, BtnW, 32.0f };
 
@@ -1528,7 +1677,8 @@ void ProjectBrowser::RenderReaderMode(
 
     const char* ViewName = (ActiveViewIndex < Entry.ViewTitles.size()) ? Entry.ViewTitles[ActiveViewIndex].c_str() : Entry.Title.c_str();
     Surface.Text({ PreviewX, EyebrowY + 16.0f }, 20.0f, P.Ink, ViewName);
-    Surface.TextRightAligned({ PreviewX, EyebrowY + 20.0f, PreviewW, 18.0f }, 10.0f, P.Muted, "Tier 1 GTX Calibrated Preview");
+    Surface.TextRightAligned({ PreviewX, EyebrowY + 20.0f, PreviewW, 18.0f }, 10.0f, P.Muted,
+        (Entry.Category == BrowserEntryCategory::Cad) ? "SolidArc Embedded Preview" : "Tier 1 GTX Calibrated Preview");
 
     const float CanvasTopY = EyebrowY + 50.0f;
     const float MaxCanvasH = std::max(210.0f, LogicalBounds.Height - CanvasTopY - 118.0f);
@@ -1908,7 +2058,7 @@ void ProjectBrowser::RenderDiskPathModal(
     Y += 18.0f;
     Surface.Text({ X, Y }, 18.0f, P.Ink, "Open file or folder from disk");
     Y += 32.0f;
-    Surface.Text({ X, Y }, 10.0f, P.Muted, "Enter path to a .projectspace, .obj, .UVSpace, or project directory:");
+    Surface.Text({ X, Y }, 10.0f, P.Muted, "Enter path to a .projectspace, .solidarc, .sketch, .obj, .UVSpace, or folder:");
     Y += 18.0f;
     (void)TextInputField::Construct(Surface, { X, Y, W, 32.0f }, DiskPathInput, Pointer, 11.5f);
     Y += 50.0f;

@@ -8,23 +8,37 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#if FRONTIER_PROFILE_EDITOR
+#include "Engine/Editor/Explorer/ProjectBrowser.h"
+#endif
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
+#include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherExchange.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherScene.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherOrbitCamera.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherRasterization.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherSnapping.h"
 #include "Engine/Workspaces/ParametricSketcher/Viewport/SketcherSurfaceTracing.h"
+#include "Engine/Workspaces/WorkspaceCapabilityRegister.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 #include <stb_image_write.h>
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -63,6 +77,50 @@ void WriteRgbaPng(const std::filesystem::path& OutPath, const uint32_t* Pixels, 
 {
     std::filesystem::create_directories(OutPath.parent_path());
     stbi_write_png(OutPath.string().c_str(), int(Width), int(Height), 4, Pixels, int(Width * 4u));
+}
+
+std::vector<uint8_t> EncodeDownsampledPreviewPng(const uint32_t* SrcPixels, uint32_t SrcW, uint32_t SrcH, uint32_t DstW, uint32_t DstH)
+{
+    if (!SrcPixels || SrcW == 0u || SrcH == 0u || DstW == 0u || DstH == 0u) return {};
+    std::vector<uint8_t> Down(size_t(DstW) * DstH * 4u, 255u);
+    for (uint32_t Y = 0u; Y < DstH; ++Y)
+    {
+        const uint32_t Y0 = (Y * SrcH) / DstH;
+        const uint32_t Y1 = std::max(Y0 + 1u, ((Y + 1u) * SrcH) / DstH);
+        for (uint32_t X = 0u; X < DstW; ++X)
+        {
+            const uint32_t X0 = (X * SrcW) / DstW;
+            const uint32_t X1 = std::max(X0 + 1u, ((X + 1u) * SrcW) / DstW);
+            uint32_t R = 0u, G = 0u, B = 0u, A = 0u, Samples = 0u;
+            for (uint32_t Sy = Y0; Sy < Y1; ++Sy)
+            {
+                for (uint32_t Sx = X0; Sx < X1; ++Sx)
+                {
+                    const uint32_t Px = SrcPixels[size_t(Sy) * SrcW + Sx];
+                    R += (Px >>  0u) & 0xFFu;
+                    G += (Px >>  8u) & 0xFFu;
+                    B += (Px >> 16u) & 0xFFu;
+                    A += (Px >> 24u) & 0xFFu;
+                    ++Samples;
+                }
+            }
+            const size_t OutIdx = (size_t(Y) * DstW + X) * 4u;
+            Down[OutIdx + 0u] = static_cast<uint8_t>(R / Samples);
+            Down[OutIdx + 1u] = static_cast<uint8_t>(G / Samples);
+            Down[OutIdx + 2u] = static_cast<uint8_t>(B / Samples);
+            Down[OutIdx + 3u] = static_cast<uint8_t>(A / Samples);
+        }
+    }
+
+    std::vector<uint8_t> PngBytes;
+    auto WriteFn = [](void* UserPtr, void* Bytes, int Size)
+    {
+        auto* Dest = static_cast<std::vector<uint8_t>*>(UserPtr);
+        const auto* Src = static_cast<const uint8_t*>(Bytes);
+        Dest->insert(Dest->end(), Src, Src + Size);
+    };
+    stbi_write_png_to_func(WriteFn, &PngBytes, int(DstW), int(DstH), 4, Down.data(), int(DstW * 4u));
+    return PngBytes;
 }
 
 uint32_t CountNonBackgroundPixels(const uint32_t* Pixels, uint32_t Width, uint32_t Height)
@@ -125,12 +183,19 @@ OrbitCamera BuildHeroCamera(const std::array<double, 3>& Low, const std::array<d
 
 } // namespace
 
-int main()
+int main(int Argc, char** Argv)
 {
+    bool ForceEmitSolidArc = false;
+    for (int I = 1; I < Argc; ++I)
+    {
+        if (std::strcmp(Argv[I], "--emit-solidarc") == 0) ForceEmitSolidArc = true;
+    }
+
     ValidationTally Tally;
     const std::filesystem::path RepoRoot(FRONTIER_REPO_ROOT_DIR);
     const std::filesystem::path ShaderDir(FRONTIER_COMPILED_SHADER_DIR);
-    const std::filesystem::path ImageDir = RepoRoot / "Exhibits" / "Images";
+    const std::filesystem::path ImageDir    = RepoRoot / "Exhibits" / "Images";
+    const std::filesystem::path VehiclesDir = RepoRoot / "Content" / "SolidArc" / "Vehicles";
 
     // 1. Exchange format registration checks
     Tally.Check(SketcherExchangeFormatOf("Egoist.blend") == SketcherExchangeFormat::Blend, "Exchange format recognizes .blend");
@@ -221,6 +286,9 @@ int main()
                     Case.Name, Covered, RenderMs, StudioPng.filename().string().c_str());
                 Tally.Check(Rendered && Covered > 45000u, RenderMsg);
 
+                // Embed a compact 480x270 studio preview PNG inside the compiled .solidarc sketch
+                Doc.PreviewPngBytes = EncodeDownsampledPreviewPng(Raster.ReadbackColour(), RenderWidth, RenderHeight, 480u, 270u);
+
                 if (std::string(Case.Name) == "Egoist")
                 {
                     // Render Zebra Class-A curvature check on Egoist
@@ -233,6 +301,45 @@ int main()
                     Tally.Check(ZebraOk && ZebraCovered > 45000u, "Egoist GPU Zebra Class-A curvature render");
                 }
             }
+
+            // Emit compiled self-contained .solidarc vehicle file when requested or missing, then validate round-trip load
+            const std::filesystem::path SolidArcPath = VehiclesDir / (std::string(Case.Name) + ".solidarc");
+            Doc.Tree.Description = std::string(Case.Name) + " · Compiled Blender " + Report.BlenderVersion + " vehicle ("
+                + std::to_string(Report.SourceObjects) + " parts · "
+                + std::to_string(Report.OutputTriangles) + " tris · "
+                + std::to_string(Report.EvaluatedModifiers) + " modifiers)";
+            if (ForceEmitSolidArc || !std::filesystem::exists(SolidArcPath))
+            {
+                const bool Saved = SaveSketcherDocument(Doc, SolidArcPath.string());
+                const uintmax_t FileBytes = Saved && std::filesystem::exists(SolidArcPath) ? std::filesystem::file_size(SolidArcPath) : 0u;
+                char SaveMsg[200];
+                std::snprintf(SaveMsg, sizeof(SaveMsg), "%s compiled & embedded -> %s (%.2f MB)",
+                    Case.Name, SolidArcPath.filename().string().c_str(), double(FileBytes) / (1024.0 * 1024.0));
+                Tally.Check(Saved && FileBytes > 1024u, SaveMsg);
+            }
+
+            // Validate fast preview header read + full compiled .solidarc reload
+            std::string HeaderTitle, HeaderDesc;
+            std::vector<uint8_t> HeaderPng;
+            const bool HeaderOk = LoadSketcherPreviewHeader(SolidArcPath.string(), HeaderTitle, HeaderDesc, HeaderPng);
+            Tally.Check(HeaderOk && HeaderTitle == Case.Name && !HeaderPng.empty(),
+                std::string(Case.Name) + ".solidarc fast preview header & embedded PNG verified");
+
+            const auto ReloadStart = std::chrono::steady_clock::now();
+            const SketcherDocumentFile Reloaded = LoadSketcherDocumentFile(SolidArcPath.string());
+            const double ReloadMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - ReloadStart).count();
+            const bool ReloadMatches = Reloaded.Refusal.empty()
+                && Reloaded.ReferenceSurfaces.size() == 1u
+                && Reloaded.ReferenceSurfaces.front().Parts.size() == Surf.Parts.size()
+                && Reloaded.ReferenceSurfaces.front().TriangleCount() == Surf.TriangleCount()
+                && Reloaded.ReferenceSurfaces.front().SegmentCount() == Surf.SegmentCount();
+            char ReloadMsg[220];
+            std::snprintf(ReloadMsg, sizeof(ReloadMsg), "%s.solidarc round-trip load (%u parts · %u tris · %.0f ms)",
+                Case.Name,
+                Reloaded.ReferenceSurfaces.empty() ? 0u : static_cast<uint32_t>(Reloaded.ReferenceSurfaces.front().Parts.size()),
+                Reloaded.ReferenceSurfaces.empty() ? 0u : Reloaded.ReferenceSurfaces.front().TriangleCount(),
+                ReloadMs);
+            Tally.Check(ReloadMatches, std::string(ReloadMsg) + (Reloaded.Refusal.empty() ? "" : (" -> " + Reloaded.Refusal)));
 
             if (std::string(Case.Name) == "Egoist")
             {
@@ -329,6 +436,39 @@ int main()
             const bool RetopoOk = RenderVehicleView(Device, Raster, EgoistDoc, FinalScene, TopTraceCam, RetopoStyle, RetopoPng, RetopoCovered, RetopoMs);
             Tally.Check(RetopoOk && RetopoCovered > 45000u, "GPU render of Ghost Egoist + Traced NURBS Curves + Rebuilt CAD Panel");
         }
+    }
+
+    // 5. Validate Project Browser capability routing (.solidarc & .sketch open ONLY in SolidArc, never Frontier World)
+    {
+        Workspaces::WorkspaceCapabilityRegister Caps;
+        for (const char* SamplePath : { "Content/SolidArc/Vehicles/Egoist.solidarc", "ConceptVehicle.sketch", "Panel.sketcher" })
+        {
+            const auto Permitted = Caps.QueryPermittedForPath(SamplePath);
+            const bool OnlySolidArc = (Permitted.size() == 1u)
+                && (Permitted.front().Target == Workspaces::HostWorkspaceTarget::SketcherWorkspace);
+            Tally.Check(OnlySolidArc, std::string("Capability routing opens ") + SamplePath + " strictly in SolidArc (never Frontier World)");
+        }
+
+#if FRONTIER_PROFILE_EDITOR
+        // Verify Project Browser auto-discovers all 3 compiled .solidarc vehicles with embedded previews
+        Editor::Explorer::ProjectBrowser Browser;
+        Browser.InitializeDefaultCollection(RepoRoot / "Build" / "Linux" / "ValidationProjects", RepoRoot, RepoRoot / "Build" / "Linux" / "Binaries" / "Win64");
+        int FoundVehicles = 0;
+        int VehiclesWithThumbs = 0;
+        for (const auto& Entry : Browser.QueryCollection())
+        {
+            if (Entry.Category == Editor::Explorer::BrowserEntryCategory::Cad && Entry.Suffix == ".solidarc")
+            {
+                ++FoundVehicles;
+                if (Entry.ThumbnailW == 480u && Entry.ThumbnailH == 270u && !Entry.ThumbnailRgba.empty())
+                {
+                    ++VehiclesWithThumbs;
+                }
+            }
+        }
+        Tally.Check(FoundVehicles >= 3, "Project Browser auto-discovers all 3 compiled .solidarc vehicles");
+        Tally.Check(VehiclesWithThumbs >= 3, "Project Browser decodes embedded 480x270 studio thumbnails for all 3 vehicles");
+#endif
     }
 
     if (HasGpu) Raster.Destroy();

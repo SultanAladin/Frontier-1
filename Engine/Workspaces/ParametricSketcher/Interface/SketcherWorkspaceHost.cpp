@@ -46,19 +46,7 @@ bool SketcherWorkspaceHost::Initialize(
 
     if (!InitialDocumentPath.empty() && std::filesystem::exists(InitialDocumentPath))
     {
-        const Sketcher::SketcherDocumentFile File = Sketcher::LoadSketcherDocumentFile(InitialDocumentPath);
-        if (File.Refusal.empty())
-        {
-            State.Document.Title        = File.Title;
-            State.Document.ImagePlanes  = File.ImagePlanes;
-            State.Document.Appearance   = File.Appearance;
-            State.Document.DrawingSheet = File.DrawingSheet;
-            State.Document.Dimensions   = File.Dimensions;
-            (void)Sketcher::ReplaceSketcherTree(State.Document, File.Tree, File.Captions, {});
-            State.DocumentPath = InitialDocumentPath;
-            Sketcher::RefreshSketcherScene(State, false);
-            Sketcher::ConfigureSketcherStartupViews(State);
-        }
+        (void)OpenDocumentPath(InitialDocumentPath, OutDiagnostic);
     }
 
     if (Device != nullptr)
@@ -194,6 +182,63 @@ void SketcherWorkspaceHost::EndFrame(double DeltaSeconds, bool DrawFloatingOverl
     const auto Panes = Sketcher::ComposeSketcherRasterPanes(State, Width, Height);
     State.Style.Gizmo = Panes.empty() ? GizmoGeometry{} : Panes.front().Style.Gizmo;
     Sketcher::ConcludeSketcherFrame(State);
+}
+
+bool SketcherWorkspaceHost::OpenDocumentPath(const std::string& DocumentPath, std::string* OutDiagnostic)
+{
+    if (DocumentPath.empty() || !std::filesystem::exists(DocumentPath))
+    {
+        if (OutDiagnostic != nullptr) *OutDiagnostic = "Document path does not exist: " + DocumentPath;
+        return false;
+    }
+
+    std::string Ext = std::filesystem::path(DocumentPath).extension().string();
+    for (char& Ch : Ext) Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+
+    if (Ext == ".solidarc" || Ext == ".sketch" || Ext == ".sketcher")
+    {
+        const Sketcher::SketcherDocumentFile File = Sketcher::LoadSketcherDocumentFile(DocumentPath);
+        if (!File.Refusal.empty())
+        {
+            if (OutDiagnostic != nullptr) *OutDiagnostic = File.Refusal;
+            return false;
+        }
+        State.Document.Title             = File.Title;
+        State.Document.ImagePlanes       = File.ImagePlanes;
+        State.Document.ReferenceSurfaces = File.ReferenceSurfaces;
+        ++State.Document.ReferenceRevision;
+        State.Document.PreviewPngBytes   = File.PreviewPngBytes;
+        State.Document.Appearance        = File.Appearance;
+        State.Document.DrawingSheet      = File.DrawingSheet;
+        State.Document.Dimensions        = File.Dimensions;
+        (void)Sketcher::ReplaceSketcherTree(State.Document, File.Tree, File.Captions, {});
+        State.DocumentPath = DocumentPath;
+        State.FocusedReference = State.Document.ReferenceSurfaces.empty() ? std::string{} : State.Document.ReferenceSurfaces.front().Name;
+        Sketcher::RefreshSketcherScene(State, false);
+        if (!State.Scene.Faces.empty())
+        {
+            Sketcher::ConfigureSketcherStartupViews(State);
+        }
+        else if (!State.Document.ReferenceSurfaces.empty())
+        {
+            std::array<double, 3> Low  {  1.0e30,  1.0e30,  1.0e30 };
+            std::array<double, 3> High { -1.0e30, -1.0e30, -1.0e30 };
+            bool AnyRef = false;
+            for (const Sketcher::SketcherReferenceSurface& Surf : State.Document.ReferenceSurfaces)
+            {
+                if (!Surf.Geometry || Surf.Geometry->Corners.empty()) continue;
+                for (int A = 0; A < 3; ++A) { Low[A] = std::min(Low[A], Surf.MinBound[A]); High[A] = std::max(High[A], Surf.MaxBound[A]); }
+                AnyRef = true;
+            }
+            if (AnyRef) Frontier::FitOrbitCamera(State.Camera, Low, High);
+        }
+        if (RasterReady) RenderViewportTarget();
+        return true;
+    }
+
+    const bool Dropped = Sketcher::IntakeSketcherDroppedFile(State, DocumentPath, OutDiagnostic);
+    if (Dropped && RasterReady) RenderViewportTarget();
+    return Dropped;
 }
 
 bool SketcherWorkspaceHost::IntakeExternalFileDrop(const std::string& FilePath, std::string* OutDiagnostic)

@@ -742,6 +742,56 @@ std::string EncodeSketcherDocument(const SketcherDocument& Document)
         }
         Root.insert("Dimensions", std::move(Dimensions));
     }
+    if (!Document.PreviewPngBytes.empty())
+    {
+        Root.insert("PreviewPng", EncodeSketcherRadix64(Document.PreviewPngBytes.data(), Document.PreviewPngBytes.size()));
+    }
+    if (!Document.ReferenceSurfaces.empty())
+    {
+        toml::array Surfaces;
+        for (const SketcherReferenceSurface& Surf : Document.ReferenceSurfaces)
+        {
+            toml::table SurfaceEntry{
+                { "Name", Surf.Name },
+                { "SourcePath", Surf.SourcePath },
+                { "SummaryNote", Surf.SummaryNote },
+                { "ScaleFactor", Surf.ScaleFactor },
+                { "Opacity", double(Surf.Opacity) },
+                { "MatcapLayer", static_cast<int64_t>(Surf.MatcapLayer) },
+                { "Visible", Surf.VisibleCondition },
+                { "Wireframe", Surf.WireframeCondition },
+                { "Locked", Surf.LockedCondition },
+                { "MinBound", toml::array{ Surf.MinBound[0], Surf.MinBound[1], Surf.MinBound[2] } },
+                { "MaxBound", toml::array{ Surf.MaxBound[0], Surf.MaxBound[1], Surf.MaxBound[2] } },
+            };
+            if (Surf.Geometry)
+            {
+                const std::string Blob = EncodeReferenceGeometryBlob(*Surf.Geometry);
+                if (!Blob.empty()) SurfaceEntry.insert("GeometryBlob", Blob);
+            }
+            toml::array PartRows;
+            for (const SketcherReferencePart& Part : Surf.Parts)
+            {
+                PartRows.push_back(toml::table{
+                    { "Name", Part.Name },
+                    { "Collection", Part.Collection },
+                    { "ModifierSummary", Part.ModifierSummary },
+                    { "FirstCorner", static_cast<int64_t>(Part.FirstCorner) },
+                    { "CornerCount", static_cast<int64_t>(Part.CornerCount) },
+                    { "FirstSegment", static_cast<int64_t>(Part.FirstSegment) },
+                    { "SegmentCount", static_cast<int64_t>(Part.SegmentCount) },
+                    { "SurfaceColour", toml::array{ double(Part.SurfaceColour[0]), double(Part.SurfaceColour[1]), double(Part.SurfaceColour[2]) } },
+                    { "MinBound", toml::array{ Part.MinBound[0], Part.MinBound[1], Part.MinBound[2] } },
+                    { "MaxBound", toml::array{ Part.MaxBound[0], Part.MaxBound[1], Part.MaxBound[2] } },
+                    { "Visible", Part.VisibleCondition },
+                    { "Locked", Part.LockedCondition },
+                });
+            }
+            SurfaceEntry.insert("Parts", std::move(PartRows));
+            Surfaces.push_back(std::move(SurfaceEntry));
+        }
+        Root.insert("ReferenceSurfaces", std::move(Surfaces));
+    }
     if (!DefaultAppearanceCondition(Document.Appearance)) Root.insert("Appearance", EncodeAppearance(Document.Appearance));
     if (!DefaultSketcherDrawingSheetCondition(Document.DrawingSheet)) Root.insert("DrawingSheet", EncodeDrawingSheet(Document.DrawingSheet));
     std::ostringstream Stream;
@@ -1009,6 +1059,77 @@ SketcherDocumentFile DecodeSketcherDocument(const std::string& Text)
             File.Dimensions.push_back(std::move(Dim));
         }
     }
+    if (const std::string PreviewB64 = Root["PreviewPng"].value_or(std::string{}); !PreviewB64.empty())
+    {
+        bool PreviewOk = false;
+        std::vector<uint8_t> Decoded = DecodeSketcherRadix64(PreviewB64, &PreviewOk);
+        if (PreviewOk && !Decoded.empty()) File.PreviewPngBytes = std::move(Decoded);
+    }
+    if (const toml::array* RefSurfaces = Root["ReferenceSurfaces"].as_array())
+    {
+        auto ReadArray3 = [](const toml::node_view<const toml::node>& ArrView, std::array<double, 3> Fallback) -> std::array<double, 3>
+        {
+            if (const toml::array* Arr = ArrView.as_array(); Arr && Arr->size() >= 3u)
+            {
+                return { (*Arr)[0].value_or(Fallback[0]), (*Arr)[1].value_or(Fallback[1]), (*Arr)[2].value_or(Fallback[2]) };
+            }
+            return Fallback;
+        };
+
+        for (const toml::node& Entry : *RefSurfaces)
+        {
+            const toml::node_view<const toml::node> View{ Entry };
+            SketcherReferenceSurface Surf;
+            Surf.Name               = View["Name"].value_or(std::string{ "Reference" });
+            Surf.SourcePath         = View["SourcePath"].value_or(std::string{});
+            Surf.SummaryNote        = View["SummaryNote"].value_or(std::string{});
+            Surf.ScaleFactor        = View["ScaleFactor"].value_or(1.0);
+            Surf.Opacity            = static_cast<float>(std::clamp(View["Opacity"].value_or(0.88), 0.05, 1.0));
+            Surf.MatcapLayer        = static_cast<uint32_t>(std::max<int64_t>(0, View["MatcapLayer"].value_or(int64_t{ 0 })));
+            Surf.VisibleCondition   = View["Visible"].value_or(true);
+            Surf.WireframeCondition = View["Wireframe"].value_or(true);
+            Surf.LockedCondition    = View["Locked"].value_or(false);
+            Surf.MinBound           = ReadArray3(View["MinBound"], { 0.0, 0.0, 0.0 });
+            Surf.MaxBound           = ReadArray3(View["MaxBound"], { 0.0, 0.0, 0.0 });
+
+            const std::string Blob = View["GeometryBlob"].value_or(std::string{});
+            if (!Blob.empty())
+            {
+                std::string BlobRefusal;
+                Surf.Geometry = DecodeReferenceGeometryBlob(Blob, BlobRefusal);
+                if (!Surf.Geometry)
+                {
+                    File.Refusal = "ReferenceSurface '" + Surf.Name + "': " + BlobRefusal;
+                    return File;
+                }
+            }
+
+            if (const toml::array* PartArr = View["Parts"].as_array())
+            {
+                Surf.Parts.reserve(PartArr->size());
+                for (const toml::node& PEntry : *PartArr)
+                {
+                    const toml::node_view<const toml::node> PView{ PEntry };
+                    SketcherReferencePart Part;
+                    Part.Name             = PView["Name"].value_or(std::string{});
+                    Part.Collection       = PView["Collection"].value_or(std::string{ "Scene" });
+                    Part.ModifierSummary  = PView["ModifierSummary"].value_or(std::string{});
+                    Part.FirstCorner      = static_cast<uint32_t>(std::max<int64_t>(0, PView["FirstCorner"].value_or(int64_t{ 0 })));
+                    Part.CornerCount      = static_cast<uint32_t>(std::max<int64_t>(0, PView["CornerCount"].value_or(int64_t{ 0 })));
+                    Part.FirstSegment     = static_cast<uint32_t>(std::max<int64_t>(0, PView["FirstSegment"].value_or(int64_t{ 0 })));
+                    Part.SegmentCount     = static_cast<uint32_t>(std::max<int64_t>(0, PView["SegmentCount"].value_or(int64_t{ 0 })));
+                    const auto Col        = ReadArray3(PView["SurfaceColour"], { 0.68, 0.72, 0.76 });
+                    Part.SurfaceColour    = { float(Col[0]), float(Col[1]), float(Col[2]) };
+                    Part.MinBound         = ReadArray3(PView["MinBound"], { 0.0, 0.0, 0.0 });
+                    Part.MaxBound         = ReadArray3(PView["MaxBound"], { 0.0, 0.0, 0.0 });
+                    Part.VisibleCondition = PView["Visible"].value_or(true);
+                    Part.LockedCondition  = PView["Locked"].value_or(false);
+                    Surf.Parts.push_back(std::move(Part));
+                }
+            }
+            File.ReferenceSurfaces.push_back(std::move(Surf));
+        }
+    }
     return File;
 }
 
@@ -1041,6 +1162,53 @@ SketcherDocumentFile LoadSketcherDocumentFile(const std::string& Path)
     for (SketcherImagePlane& Plane : File.ImagePlanes) Plane.Path = ResolveSketcherImagePath(Plane.Path, Path);
     for (SketcherCustomMatcap& Custom : File.Appearance.CustomMatcaps) Custom.Path = ResolveSketcherImagePath(Custom.Path, Path);
     return File;
+}
+
+bool LoadSketcherPreviewHeader(
+    const std::string&    Path,
+    std::string&          OutTitle,
+    std::string&          OutDescription,
+    std::vector<uint8_t>& OutPreviewPng)
+{
+    OutTitle.clear();
+    OutDescription.clear();
+    OutPreviewPng.clear();
+
+    std::ifstream Stream(GeometrySpace::Parametric::ResolveUtf8Path(Path), std::ios::binary);
+    if (!Stream) return false;
+
+    // Read only top-level key/value lines before the first [[...]] table section (fast < 0.3 ms even for multi-MB embedded vehicles)
+    std::string HeaderText;
+    HeaderText.reserve(65536u);
+    std::string Line;
+    size_t BytesRead = 0u;
+    constexpr size_t MaxHeaderBytes = 512u * 1024u;
+    while (BytesRead < MaxHeaderBytes && std::getline(Stream, Line))
+    {
+        if (!Line.empty() && Line[0] == '[') break;
+        HeaderText.append(Line);
+        HeaderText.push_back('\n');
+        BytesRead += Line.size() + 1u;
+    }
+
+    try
+    {
+        const toml::table Root = toml::parse(HeaderText);
+        OutTitle       = Root["Title"].value_or(std::string{});
+        OutDescription = Root["Description"].value_or(std::string{});
+        const std::string PreviewB64 = Root["PreviewPng"].value_or(std::string{});
+        if (!PreviewB64.empty())
+        {
+            bool Ok = false;
+            std::vector<uint8_t> Decoded = DecodeSketcherRadix64(PreviewB64, &Ok);
+            if (Ok && !Decoded.empty()) OutPreviewPng = std::move(Decoded);
+        }
+        return !OutTitle.empty() || !OutDescription.empty() || !OutPreviewPng.empty();
+    }
+    catch (const toml::parse_error&)
+    {
+        return false;
+    }
 }
 
 } // namespace Frontier::Workspaces::Sketcher

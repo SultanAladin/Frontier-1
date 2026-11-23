@@ -350,8 +350,28 @@ void AdoptDocument(SketcherWorkspaceStatus& State, SketcherDocument Document, bo
     State.Outliner.AnchorKey = {};
     State.Document           = std::move(Document);
     State.FocusedStep        = {};
+    State.FocusedReference   = State.Document.ReferenceSurfaces.empty() ? std::string{} : State.Document.ReferenceSurfaces.front().Name;
     RefreshSketcherScene(State, false);
-    if (FitCondition && !State.Scene.Faces.empty()) FitSketcherCamera(State.Camera, State.Scene);
+    if (FitCondition)
+    {
+        if (!State.Scene.Faces.empty())
+        {
+            FitSketcherCamera(State.Camera, State.Scene);
+        }
+        else if (!State.Document.ReferenceSurfaces.empty())
+        {
+            std::array<double, 3> Low  {  1.0e30,  1.0e30,  1.0e30 };
+            std::array<double, 3> High { -1.0e30, -1.0e30, -1.0e30 };
+            bool AnyRef = false;
+            for (const SketcherReferenceSurface& Surf : State.Document.ReferenceSurfaces)
+            {
+                if (!Surf.Geometry || Surf.Geometry->Corners.empty()) continue;
+                for (int A = 0; A < 3; ++A) { Low[A] = std::min(Low[A], Surf.MinBound[A]); High[A] = std::max(High[A], Surf.MaxBound[A]); }
+                AnyRef = true;
+            }
+            if (AnyRef) Frontier::FitOrbitCamera(State.Camera, Low, High);
+        }
+    }
 }
 
 bool OpenDocument(SketcherWorkspaceStatus& State, const std::string& Path, bool AdoptPathCondition)
@@ -363,16 +383,29 @@ bool OpenDocument(SketcherWorkspaceStatus& State, const std::string& Path, bool 
         return false;
     }
     SketcherDocument Document = CreateSketcherDocument(File.Title);
-    Document.Tree     = File.Tree;
-    Document.Captions = File.Captions;
-    Document.ImagePlanes = File.ImagePlanes;
-    Document.Appearance  = File.Appearance;
-    Document.DrawingSheet = File.DrawingSheet;
-    Document.Dimensions   = File.Dimensions;
+    Document.Tree              = File.Tree;
+    Document.Captions          = File.Captions;
+    Document.ImagePlanes       = File.ImagePlanes;
+    Document.ReferenceSurfaces = File.ReferenceSurfaces;
+    Document.ReferenceRevision = Document.ReferenceSurfaces.empty() ? 0u : 1u;
+    Document.PreviewPngBytes   = File.PreviewPngBytes;
+    Document.Appearance        = File.Appearance;
+    Document.DrawingSheet      = File.DrawingSheet;
+    Document.Dimensions        = File.Dimensions;
     RegenerateSketcherDocument(Document, true);
     AdoptDocument(State, std::move(Document), true);
     if (AdoptPathCondition) State.DocumentPath = Path;
-    Announce(State, Compose("Opened %s · %d steps", Path.c_str(), int(State.Document.Tree.Steps.size())));
+    if (!State.Document.ReferenceSurfaces.empty())
+    {
+        Announce(State, Compose("Opened %s · %d steps · %zu reference%s",
+            Path.c_str(), int(State.Document.Tree.Steps.size()),
+            State.Document.ReferenceSurfaces.size(),
+            State.Document.ReferenceSurfaces.size() == 1u ? "" : "s"));
+    }
+    else
+    {
+        Announce(State, Compose("Opened %s · %d steps", Path.c_str(), int(State.Document.Tree.Steps.size())));
+    }
     return true;
 }
 
@@ -21647,7 +21680,7 @@ bool IntakeSketcherDroppedFile(SketcherWorkspaceStatus& State, const std::string
         if (OutDiagnostic != nullptr) *OutDiagnostic = State.Status;
         return Added;
     }
-    if (Ext == ".solidarc")
+    if (Ext == ".solidarc" || Ext == ".sketch" || Ext == ".sketcher")
     {
         OpenDocument(State, FilePath, true);
         if (OutDiagnostic != nullptr) *OutDiagnostic = State.Status;

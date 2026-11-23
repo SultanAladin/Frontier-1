@@ -80,9 +80,9 @@ WorkspaceCapabilityRegister::WorkspaceCapabilityRegister()
     });
     RegisteredEntries.push_back({
         HostWorkspaceTarget::SketcherWorkspace,
-        "Sketcher",
-        "Open with Sketcher",
-        "Parametric Sketcher · Exact NURBS / B-rep CAD, constraints, Vulkan matcaps & ISO 2D drawing sheets",
+        "SolidArc",
+        "Open with SolidArc",
+        "SolidArc CAD · Exact NURBS / B-rep CAD, constraints, Vulkan matcaps, .blend vehicles & ISO 2D drawing sheets",
         true,
     });
     RegisteredEntries.push_back({
@@ -111,15 +111,21 @@ std::vector<WorkspaceCapabilityEntry> WorkspaceCapabilityRegister::QueryPermitte
     const std::string Ext = LowercaseAscii(FilePath.extension().string());
     std::vector<WorkspaceCapabilityEntry> Permitted {};
 
-    if (Ext == ".solidarc" || Ext == ".step" || Ext == ".stp" || Ext == ".iges" || Ext == ".igs")
+    if (Ext == ".solidarc" || Ext == ".sketch" || Ext == ".sketcher")
     {
+        // SolidArc sketch documents open strictly in SolidArc (never in Frontier World)
         if (const auto* Sk = FindByTarget(HostWorkspaceTarget::SketcherWorkspace))
         {
             Permitted.push_back(*Sk);
         }
-        if (const auto* World = FindByTarget(HostWorkspaceTarget::FrontierWorld))
+        return Permitted;
+    }
+
+    if (Ext == ".step" || Ext == ".stp" || Ext == ".iges" || Ext == ".igs")
+    {
+        if (const auto* Sk = FindByTarget(HostWorkspaceTarget::SketcherWorkspace))
         {
-            Permitted.push_back(*World);
+            Permitted.push_back(*Sk);
         }
         return Permitted;
     }

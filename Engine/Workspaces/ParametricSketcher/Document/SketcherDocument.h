@@ -386,6 +386,7 @@ struct SketcherDocument
     std::vector<SketcherImagePlane>            ImagePlanes       = {};                       // [-] - Blueprint references (saved, not in the history)
     std::vector<SketcherReferenceSurface>      ReferenceSurfaces = {};                       // [-] - GPU-resident high-poly Blender reference surfaces
     uint64_t                                   ReferenceRevision = 0;                        // [-] - Bumped when ReferenceSurfaces geometry changes
+    std::vector<uint8_t>                       PreviewPngBytes   = {};                       // [-] - Optional embedded PNG thumbnail for Project Browser
     SketcherAppearance                         Appearance        = {};                       // [-] - Body / face matcaps (saved, undoable)
     SketcherDrawingSheetSettings               DrawingSheet = {};                            // [-] - Alt+D sheet settings (saved, not in the history)
     std::vector<SketcherDimension>             Dimensions   = {};                            // [-] - Persistent 3D CAD dimension annotations (saved, undoable)
