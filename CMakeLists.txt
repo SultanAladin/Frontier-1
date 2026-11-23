@@ -858,8 +858,11 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Workspaces/Texturing/TexturePaintSession.cpp
     Engine/Input/InputExchange.cpp
     Engine/Input/InputExtension.cpp
+    Engine/Lifecycle/ProjectExecutionPolicy.cpp
     Engine/Lifecycle/RuntimeLifecycle.cpp
     Engine/Lifecycle/ProjectExecutionRunner.cpp
+    Engine/SimulationSpace/Policies/GameplayRulePolicy.cpp
+    Engine/SimulationSpace/Policies/DeterministicDrivingPolicy.cpp
     Engine/Workspaces/WorkspaceCapabilityRegister.cpp
     Engine/Windowing/PlatformWindowStub.cpp
     Engine/Threading/Tasks/TaskScheduler.cpp
@@ -1186,6 +1189,21 @@ if(BUILD_TESTING)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(SketcherWorkspaceValidation           Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
     endif()
+endif()
+
+add_subdirectory(Projects)
+
+if(BUILD_TESTING)
+    add_executable(ProjectLifecyclePolicyValidation Exhibits/ProjectLifecyclePolicyValidation.cpp)
+    target_include_directories(ProjectLifecyclePolicyValidation PRIVATE "${CMAKE_SOURCE_DIR}/ExternalPackages/stb")
+    target_compile_definitions(ProjectLifecyclePolicyValidation PRIVATE "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\"")
+    target_link_libraries(ProjectLifecyclePolicyValidation PRIVATE UntitledRuntimeLibrary)
+    add_test(NAME ProjectLifecyclePolicyValidation COMMAND ProjectLifecyclePolicyValidation)
+
+    add_test(
+        NAME UntitledExecutableSmoke
+        COMMAND Untitled --headless --ticks=12 --verify-policy
+    )
 
     if(NOT ANDROID AND FRONTIER_PROFILE STREQUAL "Editor")
         add_test(

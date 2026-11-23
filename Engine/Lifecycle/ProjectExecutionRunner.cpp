@@ -10,6 +10,7 @@
 #include "Engine/Lifecycle/ProjectExecutionRunner.h"
 
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
+#include "Engine/Lifecycle/RuntimeLifecycle.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -46,37 +47,66 @@ int FrontierRunShippingProjectLoop(const FrontierProjectLaunchDescriptor* Descri
         return 2;
     }
 
-    // Shipping runtime executes strictly against FrontierEngine (TieredWorldRenderSequence + simulation tick) with zero Editor/UI code
-    Frontier::GeometricRaster::WorldSceneSpecification   ShippingScene {};
-    Frontier::GeometricRaster::TieredWorldRenderSequence WorldRenderer {};
-    Frontier::GeometricRaster::PerspectiveCameraBasis    ShippingCam   {};
-    ShippingCam.ViewportWidthPx  = std::clamp(Descriptor->InitialWidthPx / 4u, 160u, 640u);
-    ShippingCam.ViewportHeightPx = std::clamp(Descriptor->InitialHeightPx / 4u, 90u, 360u);
-    WorldRenderer.PrepareWorldScene(ShippingScene);
+    // Shipping runtime executes strictly through RuntimeLifecycle (zero Editor/ImGui code)
+    Frontier::Lifecycle::ProjectExecutionPolicy Policy{};
+    Policy.ProjectTitle = (Descriptor->ProjectTitle != nullptr && Descriptor->ProjectTitle[0] != '\0')
+                              ? std::string(Descriptor->ProjectTitle)
+                              : std::string("FrontierRuntime");
+    Policy.WindowWidthPixels    = std::max(160u, Descriptor->InitialWidthPx);
+    Policy.WindowHeightPixels   = std::max(90u, Descriptor->InitialHeightPx);
+    Policy.PreferHeadlessWindow = (Descriptor->BoundedTickCount > 0u);
+    Policy.EnabledDomains       = Frontier::Lifecycle::RuntimeDomainMask::WorldRender;
+
+    Frontier::Lifecycle::RuntimeLifecycle Loop{};
+    if (!Loop.InitializeWithPolicy(Policy))
+    {
+        return 3;
+    }
+
+    struct ShippingLoopBridge
+    {
+        const FrontierProjectLaunchDescriptor*               LaunchDescriptor = nullptr;
+        Frontier::GeometricRaster::WorldSceneSpecification   ShippingScene    {};
+        Frontier::GeometricRaster::TieredWorldRenderSequence WorldRenderer    {};
+        Frontier::GeometricRaster::PerspectiveCameraBasis    ShippingCamera   {};
+        bool                                                 RenderSucceeded  = true;
+    };
+
+    ShippingLoopBridge Bridge{};
+    Bridge.LaunchDescriptor               = Descriptor;
+    Bridge.ShippingCamera.ViewportWidthPx  = std::clamp(Descriptor->InitialWidthPx / 4u, 160u, 640u);
+    Bridge.ShippingCamera.ViewportHeightPx = std::clamp(Descriptor->InitialHeightPx / 4u, 90u, 360u);
+    Bridge.WorldRenderer.PrepareWorldScene(Bridge.ShippingScene);
 
     const uint32_t TotalTicks = Descriptor->BoundedTickCount > 0u ? Descriptor->BoundedTickCount : 4u;
     constexpr double FixedDt  = 1.0 / 60.0;
 
-    for (uint32_t TickIdx = 0u; TickIdx < TotalTicks; ++TickIdx)
+    auto FixedStepBridge = [](double FixedDeltaSeconds, uint64_t FixedStepOrdinal, void* Payload)
     {
-        if (Descriptor->NotifySimulationStep != nullptr)
+        auto* ActiveBridge = static_cast<ShippingLoopBridge*>(Payload);
+        if (ActiveBridge->LaunchDescriptor->NotifySimulationStep != nullptr)
         {
-            Descriptor->NotifySimulationStep(FixedDt, Descriptor->UserPayload);
+            ActiveBridge->LaunchDescriptor->NotifySimulationStep(
+                FixedDeltaSeconds,
+                ActiveBridge->LaunchDescriptor->UserPayload);
         }
-        if (TickIdx == 0u)
+        if (FixedStepOrdinal == 1ull)
         {
-            const auto Frame = WorldRenderer.RenderWorldFrame(
+            const auto RenderOutput = ActiveBridge->WorldRenderer.RenderWorldFrame(
                 Frontier::GeometricRaster::WorldRenderTier::Tier2RtxDeterministic,
-                ShippingCam,
-                ShippingCam,
-                ShippingScene);
-            if (Frame.DisplayRgba8.empty())
+                ActiveBridge->ShippingCamera,
+                ActiveBridge->ShippingCamera,
+                ActiveBridge->ShippingScene);
+            if (RenderOutput.DisplayRgba8.empty())
             {
-                return 3;
+                ActiveBridge->RenderSucceeded = false;
             }
         }
-    }
-    return 0;
+    };
+
+    (void)Loop.ExecuteBoundedFixedLoop(TotalTicks, FixedDt, FixedStepBridge, nullptr, &Bridge);
+    Loop.Finalize();
+    return Bridge.RenderSucceeded ? 0 : 3;
 }
 
 #else

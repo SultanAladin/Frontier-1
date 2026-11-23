@@ -1,0 +1,15 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Untitled.ProjectWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.ProjectIndex'
+DocumentTitle = 'Untitled'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-000000000800'
+
+[ProjectIndex]
+ContentSearchRoots = [ 'Content', '../../EngineContent' ]
+ProjectIdentifier = '0193b5c0-7a1e-7000-8000-000000000800'
+ProjectName = 'Untitled'
+RegisteredWorlds = [ 'Content/Worlds/MainWorld.WorldSpace' ]
+StartupWorldPath = 'Content/Worlds/MainWorld.WorldSpace'

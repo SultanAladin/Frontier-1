@@ -1,0 +1,52 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Untitled.WorldWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.WorldSpace'
+DocumentTitle = 'MainWorld'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-000000000804'
+
+[Atmosphere]
+AtmosphereTitle = 'ClearSkyDaylight'
+AtmosphericTurbidity = 2.0
+CelestialStarfieldEnabled = false
+CloudCoverageFraction = 0.05
+GroundAlbedoReflectance = 0.22
+MieAnisotropyG = 0.78
+MieScaleHeightMeters = 1200.0
+OzoneAbsorptionWeight = 1.0
+RayleighScaleHeightMeters = 8000.0
+SolarAngularDiameterDeg = 0.533
+SolarAzimuthDegrees = 135.0
+SolarDiskEnabled = true
+SolarElevationDegrees = 42.0
+SolarIlluminanceLux = 105000.0
+ZenithTintLinearRgb = [ 0.16, 0.36, 0.82 ]
+
+[StartupCamera]
+ApertureBladeCount = 9
+ApertureFStop = 4.0
+BladeCurvature = 0.35
+BokehCatsEyeFactor = 0.18
+BokehSphericalAberration = 0.12
+CameraPositionMeters = [ 6.5, -6.5, 2.6 ]
+CameraTargetMeters = [ 0.0, 0.0, 0.2 ]
+ChromaticDispersionRms = 0.0008
+FocalLengthMillimeters = 50.0
+FocusBreathingRatio = 0.015
+FocusDistanceMeters = 6.5
+OpticalVignettingStrength = 0.22
+OpticsTitle = 'UntitledPrimaryCamera'
+RadialDistortionK = [ -0.012, 0.002, 0.0 ]
+SensorHeightMillimeters = 24.0
+SensorIsoSensitivity = 100.0
+SensorWidthMillimeters = 36.0
+ShutterAngleDegrees = 180.0
+ShutterSpeedSeconds = 0.008
+TangentialDistortionP = [ 0.0, 0.0 ]
+
+[WorldSpace]
+DefaultUpAxis = '+Z'
+MetersPerUnit = 1.0
+WorldTitle = 'MainWorld'

@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [ProjectLifecyclePolicyPlan.md](ProjectLifecyclePolicyPlan.md) | **🟢 Active Plan (`2026-11-23`)**: `Projects/` root, reference lean project `Projects/Untitled/` (`UntitledLifecycle`), tight zero-Editor `RuntimeLifecycle` fixed-step loop, `ProjectExecutionPolicy`, `GameplayRulePolicy`, and `DeterministicDrivingPolicy` |
 | [SerializationArchitecturePlan.md](SerializationArchitecturePlan.md) | **🟢 Active Plan (`2026-11-23`)**: `*Space` Stratification Rule, 5–6 alternatives across all 15 general-purpose categories, embedded multi-pillar `.Instance`/`.WorldSpace`/`.ParticleSpace` containers, `Engine/Serialization/` layout, persistent `DependencyOrder` & hardcoded showcase removal |
 | [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
 | [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
