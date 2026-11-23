@@ -63,8 +63,8 @@ int main()
         AllCaps[4].ActionTitle != "Open with Baking Studio" ||
         AllCaps[5].Identifier != "FractureWorkspace" ||
         AllCaps[5].ActionTitle != "Open with FractureWorkspace" ||
-        AllCaps[6].Identifier != "Sketcher" ||
-        AllCaps[6].ActionTitle != "Open with Sketcher" ||
+        AllCaps[6].Identifier != "SolidArc" ||
+        AllCaps[6].ActionTitle != "Open with SolidArc" ||
         AllCaps[7].Identifier != "MaterialWorkspace" ||
         AllCaps[7].ActionTitle != "Open with Material Studio" ||
         AllCaps[8].Identifier != "ComponentEditor" ||
@@ -335,6 +335,28 @@ int main()
         Browser.Render({ 0.0f, 0.0f, 1600.0f, 920.0f }, 1.0 / 60.0, 1.0f);
         ImGui::Render();
 
+        Workspaces::HostWorkspaceTarget LastLaunchTarget = Workspaces::HostWorkspaceTarget::UVWorkspace;
+        uint32_t LaunchCalls = 0u;
+        Browser.AssignLaunchWorkspaceCallback([&](const Editor::Explorer::BrowserWorkspaceLaunchDirective& Dir)
+        {
+            LastLaunchTarget = Dir.TargetWorkspace;
+            ++LaunchCalls;
+        });
+
+        auto ClickPrimaryLaunch = [&]()
+        {
+            Io.MousePos = ImVec2(1220.0f, 32.0f);
+            Io.MouseDown[0] = true;
+            ImGui::NewFrame();
+            Io.MouseClicked[0] = true;
+            Browser.Render({ 0.0f, 0.0f, 1600.0f, 920.0f }, 1.0 / 60.0, 1.0f);
+            ImGui::Render();
+            Io.MouseDown[0] = false;
+            ImGui::NewFrame();
+            Browser.Render({ 0.0f, 0.0f, 1600.0f, 920.0f }, 1.0 / 60.0, 1.0f);
+            ImGui::Render();
+        };
+
         Browser.ActivateEntryByIndex(0);
         if (!Browser.QueryReaderActive())
         {
@@ -342,10 +364,37 @@ int main()
             ImGui::DestroyContext(Ctx);
             return 1;
         }
+        ClickPrimaryLaunch();
+        if (LaunchCalls != 1u || LastLaunchTarget != Workspaces::HostWorkspaceTarget::FrontierWorld)
+        {
+            std::fprintf(stderr, "[FAIL] ProjectBrowser .projectspace launch did not route strictly to FrontierWorld.\n");
+            Browser.ReleaseGpuTextures();
+            ImGui::DestroyContext(Ctx);
+            return 1;
+        }
 
-        ImGui::NewFrame();
-        Browser.Render({ 0.0f, 0.0f, 1600.0f, 920.0f }, 1.0 / 60.0, 1.0f);
-        ImGui::Render();
+        // Verify .solidarc entries in Frontier ProjectBrowser route strictly to SketcherWorkspace (SolidArc)
+        int32_t SolidArcIdx = -1;
+        for (std::size_t Idx = 0u; Idx < Browser.QueryCollection().size(); ++Idx)
+        {
+            if (Browser.QueryCollection()[Idx].Suffix == ".solidarc")
+            {
+                SolidArcIdx = static_cast<int32_t>(Idx);
+                break;
+            }
+        }
+        if (SolidArcIdx >= 0)
+        {
+            Browser.ActivateEntryByIndex(SolidArcIdx);
+            ClickPrimaryLaunch();
+            if (LaunchCalls != 2u || LastLaunchTarget != Workspaces::HostWorkspaceTarget::SketcherWorkspace)
+            {
+                std::fprintf(stderr, "[FAIL] ProjectBrowser .solidarc launch did not route strictly to SketcherWorkspace.\n");
+                Browser.ReleaseGpuTextures();
+                ImGui::DestroyContext(Ctx);
+                return 1;
+            }
+        }
 
         Browser.ReleaseGpuTextures();
         ImGui::DestroyContext(Ctx);

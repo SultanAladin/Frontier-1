@@ -10,6 +10,8 @@
 //                                                    INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/Appearance/ThemeRepository.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -65,6 +67,9 @@ bool NavigateSketcherProjectBrowser(SketcherWorkspaceStatus& Workspace, const st
 
 // Switches the CAD preview style for cards and the interactive 3D reader.
 void ConfigureSketcherBrowserPreviewStyle(SketcherWorkspaceStatus& Workspace, SketcherCadPreviewStyle Style);
+
+// Switches the Frontier ProjectBrowser theme preset (Oled / Dark / Light).
+void ConfigureSketcherBrowserThemePreset(SketcherWorkspaceStatus& Workspace, ThemePreset Preset);
 
 // Selects a visible entry by path (for interactive or scripted inspection).
 bool SelectSketcherBrowserEntry(SketcherWorkspaceStatus& Workspace, const std::filesystem::path& EntryPath);

@@ -10,6 +10,7 @@
 
 #include "Engine/Workspaces/ParametricSketcher/Interface/SketcherProjectBrowser.h"
 
+#include "Engine/Components/Appearance/ThemeRepository.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocument.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherMatcap.h"
@@ -942,6 +943,7 @@ struct SketcherProjectBrowserSession
 
     BrowserCollectionView              ActiveCollection   = BrowserCollectionView::Folder;
     SketcherCadPreviewStyle            PreviewStyle       = SketcherCadPreviewStyle::MatcapOverlay;
+    ThemePreset                        ActiveTheme        = ThemePreset::Oled;
     int                                SelectedIndex      = -1;
     bool                               LeftCollapsed      = false;
     bool                               RightCollapsed     = false;
@@ -1390,6 +1392,12 @@ void ConfigureSketcherBrowserPreviewStyle(SketcherWorkspaceStatus& Workspace, Sk
     for (BrowserDiskEntry& E : Session.Entries) E.PreviewReady = false;
 }
 
+void ConfigureSketcherBrowserThemePreset(SketcherWorkspaceStatus& Workspace, ThemePreset Preset)
+{
+    SketcherProjectBrowserSession& Session = EnsureBrowserSession(Workspace);
+    Session.ActiveTheme = Preset;
+}
+
 bool SelectSketcherBrowserEntry(SketcherWorkspaceStatus& Workspace, const std::filesystem::path& EntryPath)
 {
     if (!Workspace.ProjectBrowser) return false;
@@ -1495,6 +1503,104 @@ bool RenderSolidArcCadPreviewRgba(
 //                                           IN-APP PROJECT BROWSER UI OVERLAY
 //------------------------------------------------------------------------------------------------------------------------
 
+namespace
+{
+
+struct FrontierBrowserPalette
+{
+    ColorQuad MainBg       = {};
+    ColorQuad PanelBg      = {};
+    ColorQuad TileBg       = {};
+    ColorQuad NestedBg     = {};
+    ColorQuad Line         = {};
+    ColorQuad Ink          = {};
+    ColorQuad Muted        = {};
+    ColorQuad Faint        = {};
+    ColorQuad Control      = {};
+    ColorQuad Selected     = {};
+    ColorQuad Accent       = {};
+    ColorQuad DotCad       = {};
+    ColorQuad PrimaryFill  = {};
+    ColorQuad PrimaryHover = {};
+    ColorQuad PrimaryInk   = {};
+    ImVec4    InputBg      = {};
+    ImVec4    InputInk     = {};
+};
+
+[[nodiscard]] ColorQuad QuadRgba(uint8_t R, uint8_t G, uint8_t B, uint8_t A) noexcept
+{
+    return { float(R) / 255.0f, float(G) / 255.0f, float(B) / 255.0f, float(A) / 255.0f };
+}
+
+[[nodiscard]] FrontierBrowserPalette QueryFrontierBrowserPalette(ThemePreset Preset) noexcept
+{
+    FrontierBrowserPalette P {};
+    P.DotCad = QuadRgba(158u, 175u, 194u, 255u);
+    switch (Preset)
+    {
+    case ThemePreset::Light:
+        P.MainBg       = QuadRgba(241u, 245u, 249u, 255u);
+        P.PanelBg      = QuadRgba(255u, 255u, 255u, 255u);
+        P.TileBg       = QuadRgba(248u, 250u, 252u, 255u);
+        P.NestedBg     = QuadRgba(226u, 232u, 240u, 255u);
+        P.Line         = QuadRgba(15u,  23u,  42u,  26u );
+        P.Ink          = QuadRgba(15u,  23u,  42u,  255u);
+        P.Muted        = QuadRgba(100u, 116u, 139u, 255u);
+        P.Faint        = QuadRgba(137u, 149u, 166u, 255u);
+        P.Control      = QuadRgba(15u,  23u,  42u,  12u );
+        P.Selected     = QuadRgba(15u,  23u,  42u,  22u );
+        P.Accent       = QuadRgba(77u,  111u, 101u, 255u);
+        P.PrimaryFill  = QuadRgba(15u,  23u,  42u,  255u);
+        P.PrimaryHover = QuadRgba(30u,  41u,  59u,  255u);
+        P.PrimaryInk   = QuadRgba(255u, 255u, 255u, 255u);
+        P.InputBg      = ImVec4(0.94f, 0.96f, 0.98f, 1.0f);
+        P.InputInk     = ImVec4(0.06f, 0.09f, 0.16f, 1.0f);
+        break;
+
+    case ThemePreset::Dark:
+        P.MainBg       = QuadRgba(17u,  17u,  17u,  255u);
+        P.PanelBg      = QuadRgba(26u,  26u,  26u,  255u);
+        P.TileBg       = QuadRgba(34u,  34u,  37u,  255u);
+        P.NestedBg     = QuadRgba(44u,  44u,  48u,  255u);
+        P.Line         = QuadRgba(255u, 255u, 255u, 22u );
+        P.Ink          = QuadRgba(255u, 255u, 255u, 232u);
+        P.Muted        = QuadRgba(255u, 255u, 255u, 132u);
+        P.Faint        = QuadRgba(255u, 255u, 255u, 76u );
+        P.Control      = QuadRgba(255u, 255u, 255u, 14u );
+        P.Selected     = QuadRgba(255u, 255u, 255u, 28u );
+        P.Accent       = QuadRgba(183u, 198u, 189u, 255u);
+        P.PrimaryFill  = QuadRgba(242u, 244u, 242u, 255u);
+        P.PrimaryHover = QuadRgba(255u, 255u, 255u, 255u);
+        P.PrimaryInk   = QuadRgba(12u,  12u,  13u,  255u);
+        P.InputBg      = ImVec4(0.11f, 0.11f, 0.12f, 1.0f);
+        P.InputInk     = ImVec4(0.92f, 0.92f, 0.93f, 1.0f);
+        break;
+
+    case ThemePreset::Oled:
+    default:
+        P.MainBg       = QuadRgba(0u,   0u,   0u,   255u);
+        P.PanelBg      = QuadRgba(10u,  10u,  10u,  255u);
+        P.TileBg       = QuadRgba(20u,  20u,  21u,  255u);
+        P.NestedBg     = QuadRgba(28u,  28u,  30u,  255u);
+        P.Line         = QuadRgba(255u, 255u, 255u, 20u );
+        P.Ink          = QuadRgba(255u, 255u, 255u, 242u);
+        P.Muted        = QuadRgba(255u, 255u, 255u, 118u);
+        P.Faint        = QuadRgba(255u, 255u, 255u, 70u );
+        P.Control      = QuadRgba(255u, 255u, 255u, 13u );
+        P.Selected     = QuadRgba(255u, 255u, 255u, 24u );
+        P.Accent       = QuadRgba(183u, 198u, 189u, 255u);
+        P.PrimaryFill  = QuadRgba(242u, 244u, 242u, 255u);
+        P.PrimaryHover = QuadRgba(255u, 255u, 255u, 255u);
+        P.PrimaryInk   = QuadRgba(8u,   8u,   9u,   255u);
+        P.InputBg      = ImVec4(0.06f, 0.06f, 0.07f, 1.0f);
+        P.InputInk     = ImVec4(0.94f, 0.94f, 0.95f, 1.0f);
+        break;
+    }
+    return P;
+}
+
+} // namespace
+
 void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
 {
     if (!Workspace.ProjectBrowserOpen) return;
@@ -1504,16 +1610,25 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         OpenSketcherProjectBrowser(Workspace);
     }
 
+    const FrontierBrowserPalette P = QueryFrontierBrowserPalette(Session.ActiveTheme);
     const ImGuiIO& Io = ImGui::GetIO();
     const float FullW = std::max(640.0f, Io.DisplaySize.x);
     const float FullH = std::max(420.0f, Io.DisplaySize.y);
 
-    // Subtle dark backdrop covering entire SolidArc workspace
+    // Edge-to-edge surface matching Frontier ProjectBrowser (OLED / Dark / Light theme tokens)
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(FullW, FullH), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.045f, 0.048f, 0.055f, 0.985f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(P.MainBg.Red, P.MainBg.Green, P.MainBg.Blue, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(P.Ink.Red, P.Ink.Green, P.Ink.Blue, P.Ink.Alpha));
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(P.Muted.Red, P.Muted.Green, P.Muted.Blue, std::max(0.65f, P.Muted.Alpha)));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(P.Line.Red, P.Line.Green, P.Line.Blue, P.Line.Alpha));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ImVec4(P.Line.Red, P.Line.Green, P.Line.Blue, std::max(0.45f, P.Line.Alpha)));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(P.Muted.Red, P.Muted.Green, P.Muted.Blue, std::max(0.55f, P.Muted.Alpha)));
+    ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, ImVec4(P.Ink.Red, P.Ink.Green, P.Ink.Blue, 0.65f));
 
     constexpr ImGuiWindowFlags OverlayWindowMode =
         ImGuiWindowFlags_NoDecoration |
@@ -1527,7 +1642,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     if (!ImGui::Begin("##SolidArcProjectBrowserOverlay", nullptr, OverlayWindowMode))
     {
         ImGui::End();
-        ImGui::PopStyleColor();
+        ImGui::PopStyleColor(9);
         ImGui::PopStyleVar(2);
         return;
     }
@@ -1539,7 +1654,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         {
             Workspace.ProjectBrowserOpen = false;
             ImGui::End();
-            ImGui::PopStyleColor();
+            ImGui::PopStyleColor(9);
             ImGui::PopStyleVar(2);
             return;
         }
@@ -1566,7 +1681,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         }
     }
 
-    // Budgeted thumbnail generation (up to 4 cards per frame so UI stays responsive on huge directories)
+    // Budgeted thumbnail generation (up to 4 tiles per frame so UI stays responsive on huge directories)
     uint32_t ThumbnailsRenderedThisFrame = 0u;
     for (BrowserDiskEntry& Entry : Session.Entries)
     {
@@ -1577,69 +1692,51 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         }
     }
 
-    // 3-Column aligned layout (inspired by Experimental/ProjectBrowser + SolidArc OLED studio aesthetic)
-    const float Margin     = 14.0f;
-    const float Gap        = 10.0f;
-    const float HeaderH    = 58.0f;
-    const float LeftW      = Session.LeftCollapsed ? 48.0f : std::clamp(FullW * 0.16f, 206.0f, 240.0f);
-    const float RightW     = Session.RightCollapsed ? 48.0f : std::clamp(FullW * 0.24f, 304.0f, 360.0f);
-    const float CenterW    = std::max(320.0f, FullW - Margin * 2.0f - LeftW - RightW - Gap * 2.0f);
-    const float PanelY     = Margin;
-    const float PanelH     = FullH - Margin * 2.0f;
-    const float LeftX      = Margin;
-    const float CenterX    = LeftX + LeftW + Gap;
-    const float RightX     = CenterX + CenterW + Gap;
+    // Frontier ProjectBrowser flush 3-column aligned geometry: 204px left, flexible center, 302px right, 64px aligned header
+    const float HeaderH = 64.0f;
+    const float LeftW   = Session.LeftCollapsed ? 44.0f : 204.0f;
+    const float RightW  = Session.RightCollapsed ? 44.0f : 302.0f;
+    const float CenterW = std::max(320.0f, FullW - LeftW - RightW);
+    const float LeftX   = 0.0f;
+    const float CenterX = LeftW;
+    const float RightX  = CenterX + CenterW;
 
     SketcherSheet Sheet {};
     (void)Sheet.Begin();
 
-    const ColorQuad PanelFill    = SketcherInk(0x131519);
-    const ColorQuad CardFill     = SketcherInk(0x191c22);
-    const ColorQuad CardHover    = SketcherInk(0x21252d);
-    const ColorQuad CardSelected = SketcherInk(0x1d2635);
-    const ColorQuad BorderSubtle = SketcherWash(0x14);
-    const ColorQuad AccentBlue   = SketcherInk(0x4c8bf5);
-    const ColorQuad AccentBorder = { 0.30f, 0.55f, 0.96f, 0.85f };
-    const ColorQuad TextPrimary  = SketcherInk(0xf0f2f6);
-    const ColorQuad TextMuted    = SketcherInk(0x8e95a3);
-    const ColorQuad TextFaint    = SketcherInk(0x636a78);
+    // Flush Frontier panels & aligned 64 px top headers with 1 px hairlines
+    Sheet.Box(Spanning(LeftX,   0.0f, LeftW,   FullH),   P.PanelBg, 0.0f);
+    Sheet.Box(Spanning(CenterX, 0.0f, CenterW, FullH),   P.MainBg,  0.0f);
+    Sheet.Box(Spanning(CenterX, 0.0f, CenterW, HeaderH), P.PanelBg, 0.0f);
+    Sheet.Box(Spanning(RightX,  0.0f, RightW,  FullH),   P.PanelBg, 0.0f);
 
-    // Draw the 3 aligned panel frames
-    Sheet.Box(Spanning(LeftX,   PanelY, LeftW,   PanelH), PanelFill, 18.0f, BorderSubtle);
-    Sheet.Box(Spanning(CenterX, PanelY, CenterW, PanelH), PanelFill, 18.0f, BorderSubtle);
-    Sheet.Box(Spanning(RightX,  PanelY, RightW,  PanelH), PanelFill, 18.0f, BorderSubtle);
+    Sheet.Line(LeftW,  0.0f, LeftW,  FullH, P.Line, 1.0f);
+    Sheet.Line(RightX, 0.0f, RightX, FullH, P.Line, 1.0f);
+    Sheet.Line(0.0f, HeaderH, FullW, HeaderH, P.Line, 1.0f);
 
-    // Aligned 58 px headers across all 3 columns
-    Sheet.Line(LeftX + 1.0f,   PanelY + HeaderH, LeftX + LeftW - 1.0f,     PanelY + HeaderH, BorderSubtle, 1.0f);
-    Sheet.Line(CenterX + 1.0f, PanelY + HeaderH, CenterX + CenterW - 1.0f, PanelY + HeaderH, BorderSubtle, 1.0f);
-    Sheet.Line(RightX + 1.0f,  PanelY + HeaderH, RightX + RightW - 1.0f,   PanelY + HeaderH, BorderSubtle, 1.0f);
-
-    // Helper for crisp rounded pill buttons via SketcherSheet
+    // Frontier CapsuleButton-styled pill helper using active theme tokens
     auto SheetPill = [&](const char* Key, float X, float Y, float W, float H, const char* Label,
-                         bool Active, bool Primary, bool Enabled = true, IconSymbol Glyph = IconSymbol::Count) -> bool
+                         bool Active, bool Primary, bool Enabled = true, IconSymbol Icon = IconSymbol::Count) -> bool
     {
         const PlaneExtent Box = Spanning(X, Y, W, H);
         const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, Key, Box, Enabled);
         const float Opacity = Enabled ? 1.0f : 0.35f;
-        const ColorQuad Fill = Primary ? (Press.HoveredCondition ? SketcherInk(0x5b96f8) : AccentBlue)
-                             : Active  ? SketcherInk(0x283244)
-                             : Press.HoveredCondition ? SketcherInk(0x262a33)
-                                                      : SketcherInk(0x1d2027);
-        const ColorQuad Border = Primary ? AccentBorder : Active ? AccentBorder : SketcherWash(0x12);
-        const ColorQuad Ink    = Primary ? SketcherInk(0xffffff)
-                               : Active  ? SketcherInk(0xf2f6ff)
-                               : Press.HoveredCondition ? SketcherInk(0xffffff) : SketcherInk(0xc8ceda);
+        const ColorQuad Fill = Primary ? (Press.HoveredCondition ? P.PrimaryHover : P.PrimaryFill)
+                             : Active  ? P.Selected
+                             : Press.HoveredCondition ? P.Selected : P.Control;
+        const ColorQuad Border = Primary ? P.PrimaryFill : (Active ? P.Faint : P.Line);
+        const ColorQuad Ink    = Primary ? P.PrimaryInk : (Active || Press.HoveredCondition ? P.Ink : P.Muted);
         Sheet.Box(Box, ControlKit::Faded(Fill, Opacity), H * 0.5f, ControlKit::Faded(Border, Opacity));
         const float CentreY = Y + H * 0.5f;
-        const bool HasGlyph = (Glyph != IconSymbol::Count);
+        const bool HasIcon  = (Icon != IconSymbol::Count);
         const float LabelW  = (Label && *Label) ? Sheet.Measure(Label, 10.5f, SketcherWeight::Regular) : 0.0f;
-        const float GlyphSz = 13.0f;
-        const float TotalW  = (HasGlyph ? GlyphSz : 0.0f) + ((HasGlyph && LabelW > 0.0f) ? 6.0f : 0.0f) + LabelW;
-        float CurX = X + std::max(8.0f, (W - TotalW) * 0.5f);
-        if (HasGlyph)
+        const float IconSz  = 13.0f;
+        const float TotalW  = (HasIcon ? IconSz : 0.0f) + ((HasIcon && LabelW > 0.0f) ? 6.0f : 0.0f) + LabelW;
+        float CurX = X + std::max(7.0f, (W - TotalW) * 0.5f);
+        if (HasIcon)
         {
-            Sheet.Icon(Glyph, CurX, CentreY - GlyphSz * 0.5f, GlyphSz, ControlKit::Faded(Ink, Opacity));
-            CurX += GlyphSz + 6.0f;
+            Sheet.Icon(Icon, CurX, CentreY - IconSz * 0.5f, IconSz, ControlKit::Faded(Ink, Opacity));
+            CurX += IconSz + 6.0f;
         }
         if (Label && *Label)
         {
@@ -1650,15 +1747,15 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     };
 
     // =================================================================================================================
-    // 1. LEFT COLUMN: PLACES, PC DRIVES & COLLECTIONS
+    // 1. LEFT COLUMN (204 px / 44 px collapsed): PLACES, PC DRIVES & COLLECTIONS
     // =================================================================================================================
-    const float HeaderMidY = PanelY + HeaderH * 0.5f;
+    const float HeaderMidY = HeaderH * 0.5f;
     if (!Session.LeftCollapsed)
     {
-        Sheet.Icon(IconSymbol::SketcherBody, LeftX + 16.0f, HeaderMidY - 8.5f, 17.0f, AccentBlue);
-        Sheet.TextClipped(LeftX + 40.0f, HeaderMidY, LeftW - 76.0f, 13.0f, TextPrimary, "SolidArc", SketcherWeight::Regular);
+        Sheet.Icon(IconSymbol::SketcherBody, LeftX + 16.0f, HeaderMidY - 8.0f, 16.0f, P.Accent);
+        Sheet.TextClipped(LeftX + 38.0f, HeaderMidY, LeftW - 76.0f, 13.0f, P.Ink, "SolidArc", SketcherWeight::Regular);
     }
-    if (SheetPill("BrowserCollapseLeft", LeftX + LeftW - 36.0f, HeaderMidY - 13.0f, 26.0f, 26.0f,
+    if (SheetPill("BrowserCollapseLeft", LeftX + LeftW - 35.0f, HeaderMidY - 13.0f, 26.0f, 26.0f,
                   Session.LeftCollapsed ? ">" : "<", false, false))
     {
         Session.LeftCollapsed = !Session.LeftCollapsed;
@@ -1666,8 +1763,8 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
 
     if (!Session.LeftCollapsed)
     {
-        ImGui::SetCursorScreenPos(ImVec2(LeftX + 10.0f, PanelY + HeaderH + 10.0f));
-        if (ImGui::BeginChild("##SolidArcBrowserLeftRail", ImVec2(LeftW - 20.0f, PanelH - HeaderH - 64.0f), ImGuiChildFlags_None))
+        ImGui::SetCursorScreenPos(ImVec2(LeftX + 10.0f, HeaderH + 12.0f));
+        if (ImGui::BeginChild("##SolidArcBrowserLeftRail", ImVec2(LeftW - 20.0f, FullH - HeaderH - 64.0f), ImGuiChildFlags_None))
         {
             SketcherSheet Rail {};
             (void)Rail.Begin();
@@ -1676,30 +1773,29 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
             auto DrawSectionCaption = [&](const char* Caption)
             {
                 const ImVec2 Cur = ImGui::GetCursorScreenPos();
-                Rail.TextClipped(Cur.x + 8.0f, Cur.y + 10.0f, RowW - 12.0f, 9.0f, TextFaint, Caption, SketcherWeight::Light);
+                Rail.TextClipped(Cur.x + 10.0f, Cur.y + 10.0f, RowW - 14.0f, 8.8f, P.Faint, Caption, SketcherWeight::Light);
                 ImGui::Dummy(ImVec2(RowW, 20.0f));
             };
 
-            auto DrawRailRow = [&](const char* Key, const char* Label, IconSymbol Glyph, bool Selected) -> bool
+            auto DrawRailRow = [&](const char* Key, const char* Label, IconSymbol Icon, bool Selected) -> bool
             {
                 const ImVec2 Cur = ImGui::GetCursorScreenPos();
                 const PlaneExtent Box = Spanning(Cur.x, Cur.y, RowW, 30.0f);
                 const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, Key, Box);
                 if (Selected || Press.HoveredCondition)
                 {
-                    Rail.Box(Box, Selected ? SketcherInk(0x232d40) : SketcherInk(0x1c2028), 8.0f,
-                             Selected ? AccentBorder : SketcherInk(0, 0.0f));
+                    Rail.Box(Box, Selected ? P.Selected : P.Control, 6.0f);
                 }
-                const ColorQuad Ink = Selected ? SketcherInk(0xffffff) : Press.HoveredCondition ? TextPrimary : SketcherInk(0xb9c0ce);
-                Rail.Icon(Glyph, Cur.x + 10.0f, Cur.y + 8.0f, 14.0f, Selected ? AccentBlue : Ink);
-                Rail.TextClipped(Cur.x + 31.0f, Cur.y + 15.0f, RowW - 38.0f, 11.0f, Ink, Label,
+                const ColorQuad Ink = Selected ? P.Ink : (Press.HoveredCondition ? P.Ink : P.Muted);
+                Rail.Icon(Icon, Cur.x + 10.0f, Cur.y + 8.0f, 13.5f, Selected ? P.Accent : Ink);
+                Rail.TextClipped(Cur.x + 30.0f, Cur.y + 15.0f, RowW - 36.0f, 11.0f, Ink, Label,
                                  Selected ? SketcherWeight::Regular : SketcherWeight::Light);
                 ImGui::Dummy(ImVec2(RowW, 32.0f));
                 return Press.ClickedCondition;
             };
 
             DrawSectionCaption("COLLECTION");
-            if (DrawRailRow("RailRecent", "Recent .solidarc", IconSymbol::SketcherInspect, Session.ActiveCollection == BrowserCollectionView::Recent))
+            if (DrawRailRow("RailRecent", "Recent", IconSymbol::SketcherInspect, Session.ActiveCollection == BrowserCollectionView::Recent))
             {
                 Session.ActiveCollection = BrowserCollectionView::Recent;
                 RebuildVisibleEntries(Session);
@@ -1710,7 +1806,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                 RebuildVisibleEntries(Session);
             }
 
-            ImGui::Dummy(ImVec2(RowW, 6.0f));
+            ImGui::Dummy(ImVec2(RowW, 8.0f));
             DrawSectionCaption("PLACES");
             int PlaceIdx = 0;
             for (const BrowserPlaceShortcut& Place : Session.Places)
@@ -1726,8 +1822,8 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                 }
             }
 
-            ImGui::Dummy(ImVec2(RowW, 6.0f));
-            DrawSectionCaption("THIS PC · DRIVES");
+            ImGui::Dummy(ImVec2(RowW, 8.0f));
+            DrawSectionCaption("THIS PC");
             int DriveIdx = 0;
             for (const BrowserPlaceShortcut& Drive : Session.Places)
             {
@@ -1744,9 +1840,10 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         }
         ImGui::EndChild();
 
-        // Bottom quick action: + New Blank Sketch
-        if (SheetPill("BrowserNewBlank", LeftX + 12.0f, PanelY + PanelH - 44.0f, LeftW - 24.0f, 32.0f,
-                      "New Blank Sketch", false, false, true, IconSymbol::SketcherPlus))
+        // Bottom quick action matching Frontier secondary capsule
+        Sheet.Line(LeftX, FullH - 52.0f, LeftX + LeftW, FullH - 52.0f, P.Line, 1.0f);
+        if (SheetPill("BrowserNewBlank", LeftX + 12.0f, FullH - 42.0f, LeftW - 24.0f, 32.0f,
+                      "New Sketch", false, false, true, IconSymbol::SketcherPlus))
         {
             Workspace.Document = CreateSketcherDocument("Untitled");
             Workspace.DocumentPath.clear();
@@ -1760,9 +1857,9 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     }
 
     // =================================================================================================================
-    // 2. CENTER HEADER: BACK / FORWARD / UP / REFRESH + INTERACTIVE BREADCRUMB / PATH BAR + PREVIEW STYLE PILLS
+    // 2. CENTER HEADER (64 px): BACK / FWD / UP + BREADCRUMB PATH + OLED/DARK/LIGHT + CAD PREVIEW MODE
     // =================================================================================================================
-    float NavX = CenterX + 14.0f;
+    float NavX = CenterX + 16.0f;
     const float NavBtnY = HeaderMidY - 14.0f;
 
     if (SheetPill("BrowserBack", NavX, NavBtnY, 28.0f, 28.0f, "<", false, false, !Session.BackHistory.empty()))
@@ -1791,11 +1888,11 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     }
     NavX += 36.0f;
 
-    // Right side of center header: Preview Style segmented pill (`MatCap + B&W` | `B&W CAD` | `MatCap`)
-    const float ModeSegW = std::min(258.0f, std::max(180.0f, CenterW * 0.34f));
-    const float ModeSegX = CenterX + CenterW - ModeSegW - 14.0f;
-    const PlaneExtent ModeTrack = Spanning(ModeSegX, HeaderMidY - 14.0f, ModeSegW, 28.0f);
-    Sheet.Box(ModeTrack, SketcherInk(0x0d0f13), 14.0f, BorderSubtle);
+    // Right side of center header: CAD Preview Style segmented control (`MatCap+B&W | B&W CAD | MatCap`)
+    const float ModeSegW = std::min(240.0f, std::max(176.0f, CenterW * 0.28f));
+    const float ModeSegX = CenterX + CenterW - ModeSegW - 16.0f;
+    const PlaneExtent ModeTrack = Spanning(ModeSegX, HeaderMidY - 15.0f, ModeSegW, 30.0f);
+    Sheet.Box(ModeTrack, P.Control, 15.0f, P.Line);
 
     static const struct { const char* Label; const char* Key; SketcherCadPreviewStyle Style; } ModeButtons[3] = {
         { "MatCap+B&W", "ModeMatcapOverlay", SketcherCadPreviewStyle::MatcapOverlay },
@@ -1806,13 +1903,13 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     for (int M = 0; M < 3; ++M)
     {
         const bool Active = (Session.PreviewStyle == ModeButtons[M].Style);
-        const PlaneExtent Pill = Spanning(ModeSegX + 2.0f + float(M) * SegEachW, HeaderMidY - 12.0f, SegEachW, 24.0f);
+        const PlaneExtent Pill = Spanning(ModeSegX + 2.0f + float(M) * SegEachW, HeaderMidY - 13.0f, SegEachW, 26.0f);
         const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, ModeButtons[M].Key, Pill);
         if (Active || Press.HoveredCondition)
         {
-            Sheet.Box(Pill, Active ? AccentBlue : SketcherInk(0x222630), 12.0f);
+            Sheet.Box(Pill, Active ? P.PrimaryFill : P.Selected, 13.0f);
         }
-        DrawCenteredText(Sheet, Pill, 9.5f, Active ? SketcherInk(0xffffff) : SketcherInk(0xaeb6c5),
+        DrawCenteredText(Sheet, Pill, 9.5f, Active ? P.PrimaryInk : P.Muted,
                          ModeButtons[M].Label, Active ? SketcherWeight::Regular : SketcherWeight::Light);
         if (Press.ClickedCondition)
         {
@@ -1820,22 +1917,56 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         }
     }
 
+    // Frontier OLED / Dark / Light theme segmented pill (when space permits, matching ProjectBrowser.cpp!)
+    float PathRightLimit = ModeSegX - 10.0f;
+    if (CenterW >= 780.0f)
+    {
+        const float ThemeSegW = 148.0f;
+        const float ThemeSegX = ModeSegX - ThemeSegW - 10.0f;
+        const PlaneExtent ThemeTrack = Spanning(ThemeSegX, HeaderMidY - 15.0f, ThemeSegW, 30.0f);
+        Sheet.Box(ThemeTrack, P.Control, 15.0f, P.Line);
+        static const struct { const char* Label; const char* Key; ThemePreset Preset; } ThemeBtns[3] = {
+            { "OLED",  "BrowserThemeOled",  ThemePreset::Oled  },
+            { "Dark",  "BrowserThemeDark",  ThemePreset::Dark  },
+            { "Light", "BrowserThemeLight", ThemePreset::Light },
+        };
+        const float ThemeEachW = (ThemeSegW - 4.0f) / 3.0f;
+        for (int T = 0; T < 3; ++T)
+        {
+            const bool Active = (Session.ActiveTheme == ThemeBtns[T].Preset);
+            const PlaneExtent Pill = Spanning(ThemeSegX + 2.0f + float(T) * ThemeEachW, HeaderMidY - 13.0f, ThemeEachW, 26.0f);
+            const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, ThemeBtns[T].Key, Pill);
+            if (Active || Press.HoveredCondition)
+            {
+                Sheet.Box(Pill, Active ? P.Selected : P.Control, 13.0f, Active ? P.Line : SketcherInk(0, 0.0f));
+            }
+            DrawCenteredText(Sheet, Pill, 9.5f, Active ? P.Ink : P.Muted,
+                             ThemeBtns[T].Label, Active ? SketcherWeight::Regular : SketcherWeight::Light);
+            if (Press.ClickedCondition)
+            {
+                Session.ActiveTheme = ThemeBtns[T].Preset;
+            }
+        }
+        PathRightLimit = ThemeSegX - 10.0f;
+    }
+
     // Middle of center header: Interactive Breadcrumb / Direct PC Path bar
-    const float PathBarW = std::max(120.0f, ModeSegX - NavX - 12.0f);
+    const float PathBarW = std::max(110.0f, PathRightLimit - NavX);
     const PlaneExtent PathBox = Spanning(NavX, HeaderMidY - 15.0f, PathBarW, 30.0f);
-    Sheet.Box(PathBox, SketcherInk(0x0e1015), 10.0f, BorderSubtle);
+    Sheet.Box(PathBox, P.Control, 15.0f, P.Line);
 
     if (Session.EditingPathBar)
     {
         const SketcherTypefaces& Tf = QuerySketcherTypefaces();
         if (Tf.Regular) ImGui::PushFont(static_cast<ImFont*>(Tf.Regular), 13.0f);
-        ImGui::SetCursorScreenPos(ImVec2(NavX + 8.0f, HeaderMidY - 10.5f));
-        ImGui::SetNextItemWidth(std::max(60.0f, PathBarW - 62.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 3.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.09f, 0.12f, 1.0f));
+        ImGui::SetCursorScreenPos(ImVec2(NavX + 10.0f, HeaderMidY - 10.5f));
+        ImGui::SetNextItemWidth(std::max(60.0f, PathBarW - 64.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 3.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, P.InputBg);
+        ImGui::PushStyleColor(ImGuiCol_Text, P.InputInk);
         const bool Submitted = ImGui::InputText("##BrowserPathEdit", Session.PathEditBuffer.data(), Session.PathEditBuffer.size(),
                                                 ImGuiInputTextFlags_EnterReturnsTrue);
-        ImGui::PopStyleColor();
+        ImGui::PopStyleColor(2);
         ImGui::PopStyleVar();
         if (Tf.Regular) ImGui::PopFont();
         if (Submitted)
@@ -1849,7 +1980,6 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     }
     else
     {
-        // Build clickable breadcrumb segments from Session.CurrentDirectory
         std::vector<std::pair<std::string, std::filesystem::path>> Crumbs {};
         std::filesystem::path Acc {};
         for (const auto& Part : Session.CurrentDirectory)
@@ -1859,9 +1989,8 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
             if (Label == "/" || Label == "\\") Label = "Root";
             Crumbs.push_back({ Label, Acc });
         }
-        // Keep trailing segments that fit inside PathBarW - 44 px
-        const float EditBtnW = 36.0f;
-        const float AvailCrumbW = std::max(60.0f, PathBarW - EditBtnW - 14.0f);
+        const float EditBtnW    = 38.0f;
+        const float AvailCrumbW = std::max(56.0f, PathBarW - EditBtnW - 18.0f);
         size_t FirstCrumb = 0u;
         while (FirstCrumb + 1u < Crumbs.size())
         {
@@ -1872,25 +2001,25 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
             ++FirstCrumb;
         }
 
-        float CrumbX = NavX + 8.0f;
+        float CrumbX = NavX + 10.0f;
         for (size_t K = FirstCrumb; K < Crumbs.size(); ++K)
         {
             if (K > FirstCrumb)
             {
-                Sheet.Text(CrumbX, HeaderMidY, 10.0f, TextFaint, "/", SketcherWeight::Light);
+                Sheet.Text(CrumbX, HeaderMidY, 10.0f, P.Faint, "/", SketcherWeight::Light);
                 CrumbX += 10.0f;
             }
             const bool Last = (K + 1u == Crumbs.size());
-            const float SegW = std::min(140.0f, Sheet.Measure(Crumbs[K].first.c_str(), 10.5f, SketcherWeight::Regular) + 14.0f);
-            if (CrumbX + SegW > NavX + PathBarW - EditBtnW - 6.0f) break;
+            const float SegW = std::min(130.0f, Sheet.Measure(Crumbs[K].first.c_str(), 10.5f, SketcherWeight::Regular) + 14.0f);
+            if (CrumbX + SegW > NavX + PathBarW - EditBtnW - 8.0f) break;
             const PlaneExtent SegBox = Spanning(CrumbX, HeaderMidY - 11.0f, SegW, 22.0f);
             char Key[48]{};
             std::snprintf(Key, sizeof(Key), "Crumb%zu", K);
             const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, Key, SegBox);
             if (Press.HoveredCondition)
-                Sheet.Box(SegBox, SketcherInk(0x232833), 6.0f);
+                Sheet.Box(SegBox, P.Selected, 8.0f);
             Sheet.TextClipped(CrumbX + 6.0f, HeaderMidY, SegW - 10.0f, 10.5f,
-                              Last ? TextPrimary : (Press.HoveredCondition ? TextPrimary : TextMuted),
+                              Last ? P.Ink : (Press.HoveredCondition ? P.Ink : P.Muted),
                               Crumbs[K].first.c_str(), Last ? SketcherWeight::Regular : SketcherWeight::Light);
             if (Press.ClickedCondition && !Last)
             {
@@ -1907,19 +2036,19 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     }
 
     // =================================================================================================================
-    // 3. CENTER SUB-BAR & CARD GRID (ONLY FOLDERS + .SOLIDARC FILES!)
+    // 3. CENTER BODY (FRONTIER PROJECTBROWSER PROPORTIONS & 2-COL TILE GRID)
     // =================================================================================================================
-    const float SubBarY = PanelY + HeaderH + 12.0f;
-    const float InnerX  = CenterX + 18.0f;
-    const float InnerW  = CenterW - 36.0f;
+    const float PadX    = std::clamp(CenterW * 0.04f, 22.0f, 40.0f);
+    const float InnerX  = CenterX + PadX;
+    const float InnerW  = CenterW - PadX * 2.0f;
+    const float SubBarY = HeaderH + 24.0f;
 
-    const std::string FolderHeading = Session.ActiveCollection == BrowserCollectionView::Recent  ? "Recent .solidarc"
-                                    : Session.ActiveCollection == BrowserCollectionView::Starred ? "Starred .solidarc"
+    const std::string FolderHeading = Session.ActiveCollection == BrowserCollectionView::Recent  ? "Recently opened"
+                                    : Session.ActiveCollection == BrowserCollectionView::Starred ? "Starred files"
                                     : Session.CurrentDirectory.filename().empty()
                                         ? Session.CurrentDirectory.generic_string()
                                         : Session.CurrentDirectory.filename().string();
 
-    // Filter visible indices by search query
     const std::string SearchLower = LowercaseAscii(Session.SearchBuffer.data());
     std::vector<int> Filtered {};
     uint32_t CountSolidArcs = 0u;
@@ -1934,44 +2063,49 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
         else ++CountSolidArcs;
     }
 
-    // Left of sub-bar: Folder title + counts
-    const float TitleMaxW = std::max(100.0f, InnerW - 356.0f);
-    Sheet.TextClipped(InnerX, SubBarY + 13.0f, TitleMaxW, 15.5f, TextPrimary, FolderHeading.c_str(), SketcherWeight::Regular);
-    char CountLine[96]{};
-    std::snprintf(CountLine, sizeof(CountLine), "%u .solidarc  ·  %u %s",
-                  CountSolidArcs, CountFolders, CountFolders == 1u ? "folder" : "folders");
-    Sheet.TextClipped(InnerX, SubBarY + 32.0f, TitleMaxW, 10.0f, TextMuted, CountLine, SketcherWeight::Light);
-
-    // Right of sub-bar: Search + Only .solidarc toggle + Sort
-    const float SortW   = 82.0f;
+    // Frontier heading row: Section title + subtle file count + Search + Show Folders + Sort
+    const float SortW   = 92.0f;
     const float FilterW = 94.0f;
-    const float SearchW = std::clamp(InnerW - TitleMaxW - SortW - FilterW - 22.0f, 120.0f, 190.0f);
+    const float SearchW = std::clamp(InnerW * 0.24f, 130.0f, 186.0f);
     const float SortX   = InnerX + InnerW - SortW;
-    const float FilterX = SortX - FilterW - 6.0f;
+    const float FilterX = SortX - FilterW - 8.0f;
     const float SearchX = FilterX - SearchW - 8.0f;
+
+    const float HeadingMaxW = std::max(80.0f, SearchX - InnerX - 12.0f);
+    const float HeadingTextW = std::min(HeadingMaxW, Sheet.Measure(FolderHeading.c_str(), 17.0f, SketcherWeight::Regular));
+    Sheet.TextClipped(InnerX, SubBarY + 14.0f, HeadingMaxW, 17.0f, P.Ink, FolderHeading.c_str(), SketcherWeight::Regular);
+    char CountLine[96]{};
+    std::snprintf(CountLine, sizeof(CountLine), "%u .solidarc · %u %s",
+                  CountSolidArcs, CountFolders, CountFolders == 1u ? "folder" : "folders");
+    if (HeadingTextW + 90.0f < HeadingMaxW)
+    {
+        Sheet.TextClipped(InnerX + HeadingTextW + 14.0f, SubBarY + 16.0f, HeadingMaxW - HeadingTextW - 14.0f,
+                          10.5f, P.Muted, CountLine, SketcherWeight::Light);
+    }
 
     {
         const SketcherTypefaces& Tf = QuerySketcherTypefaces();
         if (Tf.Regular) ImGui::PushFont(static_cast<ImFont*>(Tf.Regular), 13.0f);
-        ImGui::SetCursorScreenPos(ImVec2(SearchX, SubBarY + 3.0f));
+        ImGui::SetCursorScreenPos(ImVec2(SearchX, SubBarY));
         ImGui::SetNextItemWidth(SearchW);
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 13.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 5.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.09f, 0.12f, 1.0f));
-        ImGui::InputTextWithHint("##BrowserSearch", "Search .solidarc...", Session.SearchBuffer.data(), Session.SearchBuffer.size());
-        ImGui::PopStyleColor();
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 15.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(11.0f, 6.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, P.InputBg);
+        ImGui::PushStyleColor(ImGuiCol_Text, P.InputInk);
+        ImGui::InputTextWithHint("##BrowserSearch", "Search files...", Session.SearchBuffer.data(), Session.SearchBuffer.size());
+        ImGui::PopStyleColor(2);
         ImGui::PopStyleVar(2);
         if (Tf.Regular) ImGui::PopFont();
     }
 
-    if (SheetPill("BrowserOnlyFiles", FilterX, SubBarY + 3.0f, FilterW, 26.0f,
-                  Session.OnlySolidArcFiles ? "Only .solidarc" : "Show Folders", Session.OnlySolidArcFiles, false))
+    if (SheetPill("BrowserOnlyFiles", FilterX, SubBarY, FilterW, 30.0f,
+                  Session.OnlySolidArcFiles ? "Only .solidarc" : "Show folders", Session.OnlySolidArcFiles, false))
     {
         Session.OnlySolidArcFiles = !Session.OnlySolidArcFiles;
         RebuildVisibleEntries(Session);
     }
 
-    if (SheetPill("BrowserSortToggle", SortX, SubBarY + 3.0f, SortW, 26.0f,
+    if (SheetPill("BrowserSortToggle", SortX, SubBarY, SortW, 30.0f,
                   Session.SortByModified ? "Modified" : "Name A-Z", false, false))
     {
         Session.SortByModified = !Session.SortByModified;
@@ -1980,39 +2114,39 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
 
     if (!Session.StatusNote.empty())
     {
-        Sheet.TextClipped(InnerX, SubBarY + 46.0f, InnerW, 10.0f, SketcherInk(0xf2a75c), Session.StatusNote.c_str(), SketcherWeight::Regular);
+        Sheet.TextClipped(InnerX, SubBarY + 42.0f, InnerW, 10.0f, P.Accent, Session.StatusNote.c_str(), SketcherWeight::Regular);
     }
 
-    // Scrollable card grid
-    const float GridTopY = SubBarY + (Session.StatusNote.empty() ? 48.0f : 60.0f);
-    const float GridH    = std::max(120.0f, PanelY + PanelH - GridTopY - 12.0f);
+    // Scrollable Frontier 2-column tile grid (matching ProjectBrowser.cpp .cards spacing & chrome!)
+    const float GridTopY = SubBarY + (Session.StatusNote.empty() ? 50.0f : 62.0f);
+    const float GridH    = std::max(120.0f, FullH - GridTopY - 12.0f);
     ImGui::SetCursorScreenPos(ImVec2(InnerX, GridTopY));
     if (ImGui::BeginChild("##SolidArcBrowserCardGrid", ImVec2(InnerW, GridH), ImGuiChildFlags_None))
     {
         SketcherSheet Grid {};
         (void)Grid.Begin();
         const float AvailGridW = std::max(200.0f, ImGui::GetContentRegionAvail().x - 6.0f);
-        const int   Cols       = AvailGridW >= 780.0f ? 3 : (AvailGridW >= 430.0f ? 2 : 1);
-        const float CardGap    = 14.0f;
-        const float CardW      = std::floor((AvailGridW - CardGap * float(Cols - 1)) / float(Cols));
-        const float PreviewH   = std::floor(CardW * 0.60f);
-        const float CardH      = PreviewH + 62.0f;
+        const int   Cols       = AvailGridW >= 1120.0f ? 3 : (AvailGridW >= 500.0f ? 2 : 1);
+        const float TileGap    = 22.0f;
+        const float TileW      = std::floor((AvailGridW - TileGap * float(Cols - 1)) / float(Cols));
+        const float PreviewH   = std::floor(TileW / 1.65f);
+        const float TileH      = PreviewH + 86.0f;
 
         if (Filtered.empty())
         {
             const ImVec2 EmptyPos = ImGui::GetCursorScreenPos();
-            const PlaneExtent EmptyBox = Spanning(EmptyPos.x, EmptyPos.y + 24.0f, AvailGridW, 124.0f);
-            Grid.Box(EmptyBox, SketcherInk(0x161920), 14.0f, BorderSubtle);
-            DrawCenteredText(Grid, Spanning(EmptyBox.MinimumX, EmptyBox.MinimumY + 26.0f, AvailGridW, 24.0f),
-                             14.0f, TextPrimary, "No .solidarc files or folders here", SketcherWeight::Regular);
-            DrawCenteredText(Grid, Spanning(EmptyBox.MinimumX, EmptyBox.MinimumY + 54.0f, AvailGridW, 20.0f),
-                             10.5f, TextMuted, "Browse Places or Drives on the left, or navigate up to another folder.", SketcherWeight::Light);
-            ImGui::Dummy(ImVec2(AvailGridW, 160.0f));
+            const PlaneExtent EmptyBox = Spanning(EmptyPos.x, EmptyPos.y + 24.0f, AvailGridW, 128.0f);
+            Grid.Box(EmptyBox, P.PanelBg, 12.0f, P.Line);
+            DrawCenteredText(Grid, Spanning(EmptyBox.MinimumX, EmptyBox.MinimumY + 28.0f, AvailGridW, 24.0f),
+                             15.0f, P.Ink, "No matching .solidarc files", SketcherWeight::Regular);
+            DrawCenteredText(Grid, Spanning(EmptyBox.MinimumX, EmptyBox.MinimumY + 58.0f, AvailGridW, 20.0f),
+                             11.0f, P.Muted, "Browse Places or This PC on the left, or navigate to another folder.", SketcherWeight::Light);
+            ImGui::Dummy(ImVec2(AvailGridW, 168.0f));
         }
         else
         {
             const ImVec2 Origin = ImGui::GetCursorScreenPos();
-            int VisualSlot = 0;
+            int VisualSlot     = 0;
             int PendingOpenIdx = -1;
             int PendingStarIdx = -1;
 
@@ -2021,92 +2155,100 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                 BrowserDiskEntry& Entry = Session.Entries[EntryIdx];
                 const int Col = VisualSlot % Cols;
                 const int Row = VisualSlot / Cols;
-                const float Cx = Origin.x + float(Col) * (CardW + CardGap);
-                const float Cy = Origin.y + float(Row) * (CardH + CardGap);
-                const PlaneExtent CardBox = Spanning(Cx, Cy, CardW, CardH);
+                const float Cx = Origin.x + float(Col) * (TileW + TileGap);
+                const float Cy = Origin.y + float(Row) * (TileH + TileGap);
+                const PlaneExtent TileBox = Spanning(Cx, Cy, TileW, TileH);
                 const bool Selected = (Session.SelectedIndex == EntryIdx);
 
                 char CardKey[64]{};
                 std::snprintf(CardKey, sizeof(CardKey), "BrowserCard%d", EntryIdx);
-                const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, CardKey, CardBox);
+                const SketcherPress Press = PressSketcherRegion(Workspace.Widgets, CardKey, TileBox);
 
-                const ColorQuad Fill = Selected ? CardSelected : (Press.HoveredCondition ? CardHover : CardFill);
-                const ColorQuad Rim  = Selected ? AccentBorder : (Press.HoveredCondition ? SketcherWash(0x28) : BorderSubtle);
-                Grid.Box(CardBox, Fill, 14.0f, Rim);
+                const ColorQuad Rim = Selected ? P.Accent : (Press.HoveredCondition ? P.Faint : P.Line);
+                Grid.Box(TileBox, P.PanelBg, 12.0f, Rim);
 
-                // Preview viewport area inside the card
-                const float Pad = 7.0f;
-                const PlaneExtent ThumbBox = Spanning(Cx + Pad, Cy + Pad, CardW - Pad * 2.0f, PreviewH - Pad);
-                Grid.Box(ThumbBox, SketcherInk(0x0b0c10), 10.0f, SketcherWash(0x0e));
+                // Preview frame inside tile (matching ProjectBrowser.cpp ImgRect)
+                const PlaneExtent ImgBox = Spanning(Cx + 1.0f, Cy + 1.0f, TileW - 2.0f, PreviewH);
+                Grid.Box(ImgBox, P.TileBg, 11.0f);
 
                 if (!Entry.PrimaryPreviewPath.empty() && Entry.PreviewTex != nullptr && Entry.PreviewTex->Pixels != nullptr)
                 {
                     ImDrawList* Dl = ImGui::GetWindowDrawList();
                     Dl->AddImageRounded(
                         Entry.PreviewTex->GetTexRef(),
-                        ImVec2(ThumbBox.MinimumX + 1.0f, ThumbBox.MinimumY + 1.0f),
-                        ImVec2(ThumbBox.MaximumX - 1.0f, ThumbBox.MaximumY - 1.0f),
+                        ImVec2(ImgBox.MinimumX, ImgBox.MinimumY),
+                        ImVec2(ImgBox.MaximumX, ImgBox.MaximumY),
                         ImVec2(0.0f, 0.0f),
                         ImVec2(1.0f, 1.0f),
                         IM_COL32(255, 255, 255, 255),
-                        9.0f);
+                        10.0f);
                 }
                 else if (Entry.FolderCondition)
                 {
-                    // Plain navigable PC folder visual
-                    const float MidX = 0.5f * (ThumbBox.MinimumX + ThumbBox.MaximumX);
-                    const float MidY = 0.5f * (ThumbBox.MinimumY + ThumbBox.MaximumY);
+                    const float MidX = 0.5f * (ImgBox.MinimumX + ImgBox.MaximumX);
+                    const float MidY = 0.5f * (ImgBox.MinimumY + ImgBox.MaximumY);
                     Grid.Icon(IconSymbol::SketcherFolder, MidX - 18.0f, MidY - 22.0f, 36.0f,
-                              Press.HoveredCondition ? TextPrimary : SketcherInk(0x6e7788));
-                    DrawCenteredText(Grid, Spanning(ThumbBox.MinimumX + 8.0f, MidY + 18.0f, ThumbBox.Width() - 16.0f, 16.0f),
-                                     9.5f, TextFaint, "Double-click to open folder", SketcherWeight::Light);
+                              Press.HoveredCondition ? P.Ink : P.Muted);
+                    DrawCenteredText(Grid, Spanning(ImgBox.MinimumX + 8.0f, MidY + 18.0f, ImgBox.Width() - 16.0f, 16.0f),
+                                     9.5f, P.Faint, "Double-click to open folder", SketcherWeight::Light);
                 }
                 else
                 {
-                    DrawCenteredText(Grid, ThumbBox, 10.0f, TextFaint, "Rendering CAD preview...", SketcherWeight::Light);
+                    DrawCenteredText(Grid, ImgBox, 10.0f, P.Faint, "Rendering CAD preview...", SketcherWeight::Light);
                 }
 
-                // Top-left badge pill (`.solidarc` OR `PROJECT FOLDER · N .solidarc`)
-                const char* BadgeLabel = !Entry.FolderCondition ? "SOLIDARC"
-                                       : (Entry.SolidArcCount > 0u ? "PROJECT FOLDER" : "FOLDER");
-                const float BadgeW = Grid.Measure(BadgeLabel, 8.5f, SketcherWeight::Regular, 0.4f) + 16.0f;
-                const PlaneExtent BadgeBox = Spanning(ThumbBox.MinimumX + 8.0f, ThumbBox.MinimumY + 8.0f, BadgeW, 20.0f);
-                const ColorQuad BadgeFill = Entry.FolderCondition && Entry.SolidArcCount > 0u
-                                          ? ColorQuad{ 0.14f, 0.30f, 0.56f, 0.88f }
-                                          : ColorQuad{ 0.06f, 0.07f, 0.09f, 0.84f };
-                Grid.Box(BadgeBox, BadgeFill, 10.0f, SketcherWash(0x20));
-                DrawCenteredText(Grid, BadgeBox, 8.5f, SketcherInk(0xe6ecf8), BadgeLabel, SketcherWeight::Regular, 0.4f);
+                // Subtle bottom-left Frontier tag inside preview (LOCAL FILE / PROJECT FOLDER)
+                const char* TagLabel = !Entry.FolderCondition ? "SOLIDARC"
+                                     : (Entry.SolidArcCount > 0u ? "PROJECT FOLDER" : "FOLDER");
+                const float TagW = Grid.Measure(TagLabel, 8.5f, SketcherWeight::Regular) + 14.0f;
+                const PlaneExtent TagBox = Spanning(ImgBox.MinimumX + 10.0f, ImgBox.MaximumY - 25.0f, TagW, 18.0f);
+                Grid.Box(TagBox, QuadRgba(0u, 0u, 0u, 175u), 5.0f, QuadRgba(255u, 255u, 255u, 28u));
+                DrawCenteredText(Grid, TagBox, 8.5f, QuadRgba(235u, 240u, 235u, 235u), TagLabel, SketcherWeight::Regular);
 
-                // Top-right badge: Star button on .solidarc files, or `.solidarc` count on project folders
+                // Top-right star / CAD count badge matching Frontier ProjectBrowser
                 if (!Entry.FolderCondition)
                 {
                     const bool Starred = Session.StarredPaths.contains(Entry.FullPath.generic_string());
-                    const PlaneExtent StarBox = Spanning(ThumbBox.MaximumX - 28.0f, ThumbBox.MinimumY + 8.0f, 22.0f, 22.0f);
+                    const PlaneExtent StarBox = Spanning(ImgBox.MaximumX - 34.0f, ImgBox.MinimumY + 10.0f, 24.0f, 24.0f);
                     char StarKey[48]{};
                     std::snprintf(StarKey, sizeof(StarKey), "BrowserStar%d", EntryIdx);
                     const SketcherPress StarPress = PressSketcherRegion(Workspace.Widgets, StarKey, StarBox);
-                    Grid.Box(StarBox, Starred ? ColorQuad{ 0.25f, 0.20f, 0.08f, 0.90f } : ColorQuad{ 0.06f, 0.07f, 0.09f, 0.78f },
-                             11.0f, SketcherWash(0x1e));
-                    DrawCenteredText(Grid, StarBox, 11.0f, Starred ? SketcherInk(0xf5c451) : TextMuted, "*", SketcherWeight::Regular);
+                    Grid.Box(StarBox, QuadRgba(0u, 0u, 0u, 155u), 7.0f, QuadRgba(255u, 255u, 255u, 36u));
+                    DrawCenteredText(Grid, StarBox, 11.5f,
+                                     Starred ? QuadRgba(227u, 217u, 181u, 255u) : QuadRgba(255u, 255u, 255u, 175u),
+                                     "*", SketcherWeight::Regular);
                     if (StarPress.ClickedCondition) PendingStarIdx = EntryIdx;
                 }
                 else if (Entry.SolidArcCount > 0u)
                 {
                     char CountBadge[24]{};
-                    std::snprintf(CountBadge, sizeof(CountBadge), "%u CAD", Entry.SolidArcCount);
+                    std::snprintf(CountBadge, sizeof(CountBadge), "%u .solidarc", Entry.SolidArcCount);
                     const float Cw = Grid.Measure(CountBadge, 8.5f, SketcherWeight::Regular) + 14.0f;
-                    const PlaneExtent CBox = Spanning(ThumbBox.MaximumX - Cw - 8.0f, ThumbBox.MinimumY + 8.0f, Cw, 20.0f);
-                    Grid.Box(CBox, { 0.07f, 0.08f, 0.11f, 0.85f }, 10.0f, SketcherWash(0x20));
-                    DrawCenteredText(Grid, CBox, 8.5f, SketcherInk(0x9bc0ff), CountBadge, SketcherWeight::Regular);
+                    const PlaneExtent CBox = Spanning(ImgBox.MaximumX - Cw - 10.0f, ImgBox.MinimumY + 10.0f, Cw, 20.0f);
+                    Grid.Box(CBox, QuadRgba(0u, 0u, 0u, 170u), 6.0f, QuadRgba(255u, 255u, 255u, 36u));
+                    DrawCenteredText(Grid, CBox, 8.5f, P.Accent, CountBadge, SketcherWeight::Regular);
                 }
 
-                // Footer metadata inside card (clipped cleanly, zero overflow)
-                const float MetaY = ThumbBox.MaximumY + 14.0f;
-                Grid.Icon(Entry.FolderCondition ? IconSymbol::SketcherFolder : IconSymbol::SketcherFile,
-                          Cx + 12.0f, MetaY - 7.0f, 14.0f,
-                          Entry.FolderCondition ? (Entry.SolidArcCount > 0u ? AccentBlue : TextMuted) : SketcherInk(0xd5dce8));
-                Grid.TextClipped(Cx + 31.0f, MetaY, CardW - 44.0f, 12.0f, TextPrimary, Entry.DisplayName.c_str(), SketcherWeight::Regular);
-                Grid.TextClipped(Cx + 12.0f, MetaY + 20.0f, CardW - 24.0f, 9.8f, TextMuted, Entry.StatsCaption.c_str(), SketcherWeight::Light);
+                // Tile text block matching ProjectBrowser.cpp (Title + .solidarc suffix, summary, hairline + DotCad + date)
+                const float TextY = Cy + PreviewH + 18.0f;
+                const float NameMaxW = TileW - (Entry.FolderCondition ? 30.0f : 86.0f);
+                const float NameAdv  = Grid.TextClipped(Cx + 15.0f, TextY, NameMaxW, 13.0f, P.Ink, Entry.DisplayName.c_str(), SketcherWeight::Regular);
+                if (!Entry.FolderCondition)
+                {
+                    Grid.TextClipped(Cx + 15.0f + NameAdv + 6.0f, TextY + 1.0f, 64.0f, 9.5f, P.Faint, ".solidarc", SketcherWeight::Light);
+                }
+                Grid.TextClipped(Cx + 15.0f, TextY + 20.0f, TileW - 30.0f, 10.0f, P.Muted, Entry.StatsCaption.c_str(), SketcherWeight::Light);
+
+                const float MetaLineY = Cy + TileH - 28.0f;
+                Grid.Line(Cx + 15.0f, MetaLineY, Cx + TileW - 15.0f, MetaLineY, P.Line, 1.0f);
+                Grid.Box(Spanning(Cx + 15.0f, MetaLineY + 11.0f, 5.5f, 5.5f), P.DotCad, 2.0f);
+                Grid.TextClipped(Cx + 26.0f, MetaLineY + 14.0f, TileW * 0.45f, 9.5f, P.Faint,
+                                 Entry.FolderCondition ? (Entry.SolidArcCount > 0u ? "Project Folder" : "Folder") : "CAD",
+                                 SketcherWeight::Light);
+                if (!Entry.ModifiedText.empty())
+                {
+                    Grid.TextRight(Cx + TileW - 15.0f, MetaLineY + 14.0f, 9.5f, P.Faint, Entry.ModifiedText.c_str(), SketcherWeight::Light);
+                }
 
                 if (Press.ClickedCondition)
                 {
@@ -2122,7 +2264,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
             }
 
             const int TotalRows = (VisualSlot + Cols - 1) / Cols;
-            ImGui::Dummy(ImVec2(AvailGridW, float(TotalRows) * (CardH + CardGap) + 8.0f));
+            ImGui::Dummy(ImVec2(AvailGridW, float(TotalRows) * (TileH + TileGap) + 8.0f));
 
             if (PendingStarIdx >= 0 && PendingStarIdx < int(Session.Entries.size()))
             {
@@ -2145,13 +2287,13 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
     ImGui::EndChild();
 
     // =================================================================================================================
-    // 4. RIGHT COLUMN: INTERACTIVE 3D CAD READER & INSPECTOR
+    // 4. RIGHT COLUMN (302 px / 44 px collapsed): INTERACTIVE 3D CAD READER & INSPECTOR
     // =================================================================================================================
     if (!Session.RightCollapsed)
     {
-        Sheet.TextClipped(RightX + 16.0f, HeaderMidY, RightW - 96.0f, 13.0f, TextPrimary, "CAD Preview", SketcherWeight::Regular);
+        Sheet.TextClipped(RightX + 18.0f, HeaderMidY, RightW - 96.0f, 13.0f, P.Ink, "CAD Preview", SketcherWeight::Regular);
     }
-    if (SheetPill("BrowserCollapseRight", RightX + RightW - (Session.RightCollapsed ? 38.0f : 76.0f), HeaderMidY - 13.0f, 26.0f, 26.0f,
+    if (SheetPill("BrowserCollapseRight", RightX + RightW - (Session.RightCollapsed ? 35.0f : 74.0f), HeaderMidY - 13.0f, 26.0f, 26.0f,
                   Session.RightCollapsed ? "<" : ">", false, false))
     {
         Session.RightCollapsed = !Session.RightCollapsed;
@@ -2170,19 +2312,18 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
 
     if (!Session.RightCollapsed)
     {
-        const float InspX = RightX + 14.0f;
-        const float InspW = RightW - 28.0f;
-        float InspY = PanelY + HeaderH + 14.0f;
+        const float InspX = RightX + 18.0f;
+        const float InspW = RightW - 36.0f;
+        float InspY = HeaderH + 16.0f;
 
         if (Session.SelectedIndex >= 0 && Session.SelectedIndex < int(Session.Entries.size()))
         {
             const BrowserDiskEntry& Sel = Session.Entries[Session.SelectedIndex];
             const bool HasPreviewTarget = !Sel.PrimaryPreviewPath.empty();
 
-            // Interactive 3D CAD Preview Canvas
             const float ReaderH = std::floor(InspW * 0.64f);
             const PlaneExtent ReaderBox = Spanning(InspX, InspY, InspW, ReaderH);
-            Sheet.Box(ReaderBox, SketcherInk(0x0a0b0e), 12.0f, BorderSubtle);
+            Sheet.Box(ReaderBox, P.TileBg, 10.0f, P.Line);
 
             if (HasPreviewTarget)
             {
@@ -2197,10 +2338,9 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                         ImVec2(0.0f, 0.0f),
                         ImVec2(1.0f, 1.0f),
                         IM_COL32(255, 255, 255, 255),
-                        11.0f);
+                        9.0f);
                 }
 
-                // Drag to orbit, scroll to zoom, double-click to reset
                 const SketcherPress OrbitPress = PressSketcherRegion(Workspace.Widgets, "BrowserReaderOrbit", ReaderBox);
                 if (OrbitPress.HeldCondition && (std::fabs(Io.MouseDelta.x) > 0.01f || std::fabs(Io.MouseDelta.y) > 0.01f))
                 {
@@ -2221,21 +2361,19 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                     Session.ReaderDirty = true;
                 }
 
-                // Subtle bottom-left orbit hint inside reader
                 Sheet.TextClipped(ReaderBox.MinimumX + 10.0f, ReaderBox.MaximumY - 13.0f, InspW - 20.0f, 9.0f,
-                                  SketcherInk(0x9ca5b6), "Drag to orbit · Scroll to zoom", SketcherWeight::Light);
+                                  QuadRgba(200u, 206u, 214u, 200u), "Drag to orbit · Scroll to zoom", SketcherWeight::Light);
             }
             else
             {
                 const float MidX = 0.5f * (ReaderBox.MinimumX + ReaderBox.MaximumX);
                 const float MidY = 0.5f * (ReaderBox.MinimumY + ReaderBox.MaximumY);
-                Sheet.Icon(IconSymbol::SketcherFolder, MidX - 20.0f, MidY - 24.0f, 40.0f, TextMuted);
-                DrawCenteredText(Sheet, Spanning(InspX, MidY + 20.0f, InspW, 18.0f), 10.5f, TextFaint,
+                Sheet.Icon(IconSymbol::SketcherFolder, MidX - 20.0f, MidY - 24.0f, 40.0f, P.Muted);
+                DrawCenteredText(Sheet, Spanning(InspX, MidY + 20.0f, InspW, 18.0f), 10.5f, P.Faint,
                                  "Folder contains no .solidarc files", SketcherWeight::Light);
             }
             InspY += ReaderH + 10.0f;
 
-            // Camera Preset + Drafting Controls (when preview exists)
             if (HasPreviewTarget)
             {
                 static const struct { const char* Label; const char* Key; float Yaw; float Pitch; } Views[4] = {
@@ -2274,25 +2412,24 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                 InspY += 34.0f;
             }
 
-            // Title & Description
-            Sheet.TextClipped(InspX, InspY + 10.0f, InspW, 15.0f, TextPrimary, Sel.DisplayName.c_str(), SketcherWeight::Regular);
+            Sheet.TextClipped(InspX, InspY + 10.0f, InspW, 15.0f, P.Ink, Sel.DisplayName.c_str(), SketcherWeight::Regular);
             InspY += 24.0f;
 
             const std::string SubType = Sel.FolderCondition
                 ? (Sel.SolidArcCount > 0u ? "SolidArc Project Folder" : "Local Directory")
-                : "SolidArc CAD Document (.solidarc)";
-            Sheet.TextClipped(InspX, InspY + 6.0f, InspW, 10.0f, AccentBlue, SubType.c_str(), SketcherWeight::Regular);
-            InspY += 20.0f;
+                : "SolidArc CAD (.solidarc)";
+            Sheet.TextClipped(InspX, InspY + 6.0f, InspW, 10.0f, P.Accent, SubType.c_str(), SketcherWeight::Regular);
+            InspY += 22.0f;
 
-            // Scrollable metadata / nested project files list
-            const float ActionReserve = 56.0f;
-            const float MetaAvailH = std::max(60.0f, PanelY + PanelH - InspY - ActionReserve);
+            const float ActionReserve = 62.0f;
+            const float MetaAvailH = std::max(60.0f, FullH - InspY - ActionReserve);
             ImGui::SetCursorScreenPos(ImVec2(InspX, InspY));
             if (ImGui::BeginChild("##SolidArcBrowserInspectorMeta", ImVec2(InspW, MetaAvailH), ImGuiChildFlags_None))
             {
                 const SketcherTypefaces& Tf = QuerySketcherTypefaces();
-                if (Tf.Light) ImGui::PushFont(static_cast<ImFont*>(Tf.Light), 13.5f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.72f, 0.76f, 0.83f, 1.0f));
+                if (Tf.Light) ImGui::PushFont(static_cast<ImFont*>(Tf.Light), 13.0f);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(P.Muted.Red, P.Muted.Green, P.Muted.Blue, std::max(0.75f, P.Muted.Alpha)));
+                ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(P.Faint.Red, P.Faint.Green, P.Faint.Blue, std::max(0.55f, P.Faint.Alpha)));
 
                 if (HasPreviewTarget)
                 {
@@ -2320,7 +2457,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                     ImGui::Text("Modified: %s", Sel.ModifiedText.c_str());
                 }
                 ImGui::Spacing();
-                ImGui::TextDisabled("Location");
+                ImGui::TextDisabled("LOCATION");
                 ImGui::TextWrapped("%s", Sel.FullPath.generic_string().c_str());
 
                 if (Sel.FolderCondition && !Sel.NestedFiles.empty())
@@ -2328,7 +2465,7 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                     ImGui::Spacing();
                     ImGui::Separator();
                     ImGui::Spacing();
-                    ImGui::TextDisabled("SolidArc files in folder");
+                    ImGui::TextDisabled("SOLIDARC FILES");
                     std::filesystem::path DirectOpenPath {};
                     for (size_t K = 0u; K < Sel.NestedFiles.size(); ++K)
                     {
@@ -2348,29 +2485,29 @@ void DrawSketcherProjectBrowserOverlay(SketcherWorkspaceStatus& Workspace)
                     }
                 }
 
-                ImGui::PopStyleColor();
+                ImGui::PopStyleColor(2);
                 if (Tf.Light) ImGui::PopFont();
             }
             ImGui::EndChild();
 
-            // Bottom primary CTA button
-            const char* ActionLabel = Sel.FolderCondition ? "Open Folder" : "Open in SolidArc";
-            if (SheetPill("BrowserOpenAction", InspX, PanelY + PanelH - 46.0f, InspW, 34.0f, ActionLabel, false, true))
+            Sheet.Line(RightX, FullH - 56.0f, RightX + RightW, FullH - 56.0f, P.Line, 1.0f);
+            const char* ActionLabel = Sel.FolderCondition ? "Open Folder" : "Open with SolidArc";
+            if (SheetPill("BrowserOpenAction", InspX, FullH - 44.0f, InspW, 34.0f, ActionLabel, false, true))
             {
                 (void)ActivateSketcherBrowserSelection(Workspace);
             }
         }
         else
         {
-            DrawCenteredText(Sheet, Spanning(InspX, InspY + 80.0f, InspW, 24.0f), 12.5f, TextMuted,
+            DrawCenteredText(Sheet, Spanning(InspX, InspY + 80.0f, InspW, 24.0f), 12.5f, P.Muted,
                              "Select a .solidarc file", SketcherWeight::Regular);
-            DrawCenteredText(Sheet, Spanning(InspX, InspY + 106.0f, InspW, 20.0f), 10.0f, TextFaint,
+            DrawCenteredText(Sheet, Spanning(InspX, InspY + 106.0f, InspW, 20.0f), 10.0f, P.Faint,
                              "Inspect MatCap & B&W CAD previews here", SketcherWeight::Light);
         }
     }
 
     ImGui::End();
-    ImGui::PopStyleColor();
+    ImGui::PopStyleColor(9);
     ImGui::PopStyleVar(2);
 }
 

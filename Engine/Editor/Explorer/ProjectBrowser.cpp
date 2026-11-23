@@ -16,6 +16,7 @@
 #include "Engine/GeometricRaster/GlobalIllumination/VulkanWorldRenderSequence.h"
 #include "Engine/GeometricRaster/VulkanInterchange.h"
 #include "Engine/Workspaces/ParametricSketcher/Document/SketcherDocumentCodec.h"
+#include "Engine/Workspaces/ParametricSketcher/Interface/SketcherProjectBrowser.h"
 
 #include <imgui.h>
 
@@ -402,17 +403,38 @@ void ProjectBrowser::RenderThumbnailForEntry(BrowserCollectionEntry& Entry, uint
         const std::string ExtLower = LowercaseString(Entry.FilePath.extension().string());
         std::vector<uint8_t> EmbeddedRgba {};
         uint32_t EmbeddedW = 0u, EmbeddedH = 0u;
-        if (MatchesSolidArcSketchSuffix(ExtLower) && LoadSolidArcPreviewRgba(Entry.FilePath, EmbeddedRgba, EmbeddedW, EmbeddedH))
+        if (MatchesSolidArcSketchSuffix(ExtLower))
         {
-            Entry.ThumbnailRgba = std::move(EmbeddedRgba);
-            Entry.ThumbnailW    = EmbeddedW;
-            Entry.ThumbnailH    = EmbeddedH;
-            if (Entry.ThumbnailTex == nullptr)
+            const bool GotPreview =
+                LoadSolidArcPreviewRgba(Entry.FilePath, EmbeddedRgba, EmbeddedW, EmbeddedH) ||
+                ([&]()
+                {
+                    EmbeddedW = 360u;
+                    EmbeddedH = 220u;
+                    return Workspaces::Sketcher::RenderSolidArcCadPreviewRgba(
+                        Entry.FilePath,
+                        Workspaces::Sketcher::SketcherCadPreviewStyle::MatcapOverlay,
+                        EmbeddedW,
+                        EmbeddedH,
+                        true,
+                        false,
+                        -0.68f,
+                        0.42f,
+                        1.0f,
+                        EmbeddedRgba);
+                })();
+            if (GotPreview)
             {
-                Entry.ThumbnailTex = std::make_unique<ImTextureData>();
+                Entry.ThumbnailRgba = std::move(EmbeddedRgba);
+                Entry.ThumbnailW    = EmbeddedW;
+                Entry.ThumbnailH    = EmbeddedH;
+                if (Entry.ThumbnailTex == nullptr)
+                {
+                    Entry.ThumbnailTex = std::make_unique<ImTextureData>();
+                }
+                UploadRgbaToTextureData(*Entry.ThumbnailTex, Entry.ThumbnailRgba.data(), Entry.ThumbnailW, Entry.ThumbnailH);
+                return;
             }
-            UploadRgbaToTextureData(*Entry.ThumbnailTex, Entry.ThumbnailRgba.data(), Entry.ThumbnailW, Entry.ThumbnailH);
-            return;
         }
     }
 
@@ -494,29 +516,45 @@ void ProjectBrowser::RefreshReaderPreviewTexture()
         const std::string ExtLower = LowercaseString(ActiveCadEntry.FilePath.extension().string());
         std::vector<uint8_t> EmbeddedRgba {};
         uint32_t EmbeddedW = 0u, EmbeddedH = 0u;
-        if (MatchesSolidArcSketchSuffix(ExtLower) && LoadSolidArcPreviewRgba(ActiveCadEntry.FilePath, EmbeddedRgba, EmbeddedW, EmbeddedH))
+        if (MatchesSolidArcSketchSuffix(ExtLower))
         {
-            ReaderPreviewRgba = std::move(EmbeddedRgba);
-            ReaderPreviewW    = EmbeddedW;
-            ReaderPreviewH    = EmbeddedH;
-            if (ReaderPreviewTex == nullptr)
+            const uint32_t ViewMode = ActiveViewIndex % 4u;
+            const auto Style = (ViewMode == 1u || ViewMode == 3u)
+                ? Workspaces::Sketcher::SketcherCadPreviewStyle::DraftingBw
+                : Workspaces::Sketcher::SketcherCadPreviewStyle::MatcapOverlay;
+            const bool Ortho = (ViewMode != 0u);
+            const float Yaw   = (ViewMode == 2u) ? 1.57f : -0.68f;
+            const float Pitch = (ViewMode == 3u) ? 1.40f : ((ViewMode == 2u) ? 0.05f : 0.42f);
+            EmbeddedW = 520u;
+            EmbeddedH = 324u;
+            const bool Rendered =
+                Workspaces::Sketcher::RenderSolidArcCadPreviewRgba(
+                    ActiveCadEntry.FilePath, Style, EmbeddedW, EmbeddedH, true, Ortho, Yaw, Pitch, 1.0f, EmbeddedRgba) ||
+                LoadSolidArcPreviewRgba(ActiveCadEntry.FilePath, EmbeddedRgba, EmbeddedW, EmbeddedH);
+            if (Rendered)
             {
-                ReaderPreviewTex = std::make_unique<ImTextureData>();
-            }
-            UploadRgbaToTextureData(*ReaderPreviewTex, ReaderPreviewRgba.data(), ReaderPreviewW, ReaderPreviewH);
-            if (ReaderViewThumbs.size() < ActiveCadEntry.ViewTitles.size())
-            {
-                ReaderViewThumbs.resize(ActiveCadEntry.ViewTitles.size());
-            }
-            for (std::size_t VIdx = 0u; VIdx < ActiveCadEntry.ViewTitles.size(); ++VIdx)
-            {
-                if (ReaderViewThumbs[VIdx] == nullptr)
+                ReaderPreviewRgba = std::move(EmbeddedRgba);
+                ReaderPreviewW    = EmbeddedW;
+                ReaderPreviewH    = EmbeddedH;
+                if (ReaderPreviewTex == nullptr)
                 {
-                    ReaderViewThumbs[VIdx] = std::make_unique<ImTextureData>();
+                    ReaderPreviewTex = std::make_unique<ImTextureData>();
                 }
-                UploadRgbaToTextureData(*ReaderViewThumbs[VIdx], ReaderPreviewRgba.data(), ReaderPreviewW, ReaderPreviewH);
+                UploadRgbaToTextureData(*ReaderPreviewTex, ReaderPreviewRgba.data(), ReaderPreviewW, ReaderPreviewH);
+                if (ReaderViewThumbs.size() < ActiveCadEntry.ViewTitles.size())
+                {
+                    ReaderViewThumbs.resize(ActiveCadEntry.ViewTitles.size());
+                }
+                for (std::size_t VIdx = 0u; VIdx < ActiveCadEntry.ViewTitles.size(); ++VIdx)
+                {
+                    if (ReaderViewThumbs[VIdx] == nullptr)
+                    {
+                        ReaderViewThumbs[VIdx] = std::make_unique<ImTextureData>();
+                    }
+                    UploadRgbaToTextureData(*ReaderViewThumbs[VIdx], ReaderPreviewRgba.data(), ReaderPreviewW, ReaderPreviewH);
+                }
+                return;
             }
-            return;
         }
     }
 
@@ -1604,15 +1642,19 @@ void ProjectBrowser::RenderReaderMode(
     const std::string FullName = Entry.Title + Entry.Suffix;
     Surface.Text({ MainX + 62.0f, 24.0f }, 12.5f, P.Ink, FullName.c_str());
 
-    // Project Browser routes .projectspace to Frontier and .solidarc/.sketch strictly to SolidArc
+    // Strict routing: .solidarc / .sketch / .sketcher / CAD exchange files open strictly via SolidArc;
+    // all other files open strictly via Frontier.
+    const std::string EntryExtLower = LowercaseString(Entry.FilePath.extension().string());
+    const bool RouteToSolidArc = MatchesSolidArcSketchSuffix(EntryExtLower)
+                              || EntryExtLower == ".step" || EntryExtLower == ".stp"
+                              || EntryExtLower == ".iges" || EntryExtLower == ".igs";
+    const Workspaces::HostWorkspaceTarget RequiredTarget = RouteToSolidArc
+        ? Workspaces::HostWorkspaceTarget::SketcherWorkspace
+        : Workspaces::HostWorkspaceTarget::FrontierWorld;
     std::vector<Workspaces::WorkspaceCapabilityEntry> PermittedCaps {};
-    for (const auto& Cap : CapabilityRegister.QueryPermittedForPath(Entry.FilePath))
+    if (const auto* Cap = CapabilityRegister.FindByTarget(RequiredTarget))
     {
-        if (Cap.Target == Workspaces::HostWorkspaceTarget::FrontierWorld ||
-            Cap.Target == Workspaces::HostWorkspaceTarget::SketcherWorkspace)
-        {
-            PermittedCaps.push_back(Cap);
-        }
+        PermittedCaps.push_back(*Cap);
     }
     float ActionRightX = MainX + MainW - 16.0f;
 
