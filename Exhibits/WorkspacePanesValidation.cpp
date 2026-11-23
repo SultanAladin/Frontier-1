@@ -15,6 +15,7 @@
 #include "Engine/Components/Panes/InspectorPanel.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
+#include "Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.h"
 #include "Exhibits/SoftwareCanvasRasterizer.h"
 
 #include <imgui.h>
@@ -621,6 +622,107 @@ bool GenerateWorkspacePaneExhibits(const std::filesystem::path& OutputDirectory)
         Viewport.ConfigureProjectionDropdownOpen(true);
 
         if (!CaptureExhibitSnapshot("Outliner", Outliner, Viewport, Inspector, "06-HeaderSettingsAndScrolledTree.png"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+    }
+
+    // Exhibit 07 & 08: World Outliner Icons + Construct Domain Rails + Permanent Editor Camera Lock + Bidirectional World Sync
+    {
+        Frontier::GeometricRaster::ShowcaseWorldSceneBundle SceneBundle{};
+        Frontier::GeometricRaster::BuildVehicleClearSkyDefaultScene(SceneBundle, 640u, 336u);
+
+        OutlinerPanel  Outliner{};
+        ViewportPanel  Viewport{};
+        InspectorPanel Inspector{};
+        Viewport.AttachOutliner(&Outliner);
+        Inspector.AttachOutliner(&Outliner);
+
+        Frontier::GeometricRaster::RegisterShowcaseGalleryInOutliner(Outliner, SceneBundle, false);
+        if (!VerifyAssertion(SceneBundle.EditorCameraToken.Valid(), "Showcase registration produces valid EditorCameraToken") ||
+            !VerifyAssertion(SceneBundle.WorldFolderToken.Valid(), "Clear sky registration creates single World folder") ||
+            !VerifyAssertion(SceneBundle.AtmosphereToken.Valid() && SceneBundle.SunEmitterToken.Valid(), "Clear sky registers Atmosphere and Sun"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+
+        // Permanent Editor Camera cannot be deleted or duplicated
+        if (!VerifyAssertion(!Outliner.DeleteSlot(SceneBundle.EditorCameraToken), "Permanent Editor Camera blocks DeleteSlot") ||
+            !VerifyAssertion(!Outliner.DuplicateSlot(SceneBundle.EditorCameraToken).Valid(), "Permanent Editor Camera blocks DuplicateSlot"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+
+        // Construct Volumetric Clouds (2), Moon (3), Stars (4), and Box Specimen (5)
+        const OutlinerSlotToken CloudsSlot = Outliner.ConstructFromTemplate(2u);
+        const OutlinerSlotToken MoonSlot   = Outliner.ConstructFromTemplate(3u);
+        const OutlinerSlotToken StarsSlot  = Outliner.ConstructFromTemplate(4u);
+        const OutlinerSlotToken BoxSlot    = Outliner.ConstructFromTemplate(5u);
+
+        uint32_t WorldFolderCount = 0u;
+        for (const OutlinerRecordEntry& Rec : Outliner.QueryEntries())
+        {
+            if (Rec.Category == ConstructSlotCategory::Folder && Rec.Title == "World")
+            {
+                ++WorldFolderCount;
+            }
+        }
+        if (!VerifyAssertion(WorldFolderCount == 1u, "Constructing World entries reuses single default World folder") ||
+            !VerifyAssertion(Outliner.FindEntry(CloudsSlot)->EnclosingToken == SceneBundle.WorldFolderToken, "Volumetric Clouds nested under World") ||
+            !VerifyAssertion(Outliner.FindEntry(MoonSlot)->EnclosingToken == SceneBundle.WorldFolderToken, "Moon nested under World") ||
+            !VerifyAssertion(Outliner.FindEntry(StarsSlot)->EnclosingToken == SceneBundle.WorldFolderToken, "Stars nested under World"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+
+        bool AccelRebuild = false;
+        (void)Frontier::GeometricRaster::SynchronizeShowcaseGallerySceneLive(Outliner, SceneBundle, AccelRebuild);
+        if (!VerifyAssertion(SceneBundle.Scene.Atmosphere.Clouds.CloudsEnabled, "Constructing Clouds enables Atmosphere.Clouds") ||
+            !VerifyAssertion(SceneBundle.Scene.Atmosphere.Moons[0].Visible, "Constructing Moon enables Atmosphere.Moons[0]") ||
+            !VerifyAssertion(SceneBundle.Scene.Atmosphere.Stars.StarfieldEnabled, "Constructing Stars enables Atmosphere.Stars") ||
+            !VerifyAssertion(SceneBundle.Objects.size() == 3u && SceneBundle.Scene.ClusterInstances.size() == 3u, "Box Specimen spawned into Bundle and ClusterInstances"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+
+        Outliner.SelectSingle(SceneBundle.SunEmitterToken);
+        Viewport.ConfigureConstructSheetOpen(true);
+        if (!CaptureExhibitSnapshot("Outliner", Outliner, Viewport, Inspector, "07-WorldConstructOutlinerIcons.png"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+
+        Viewport.ConfigureConstructSheetOpen(false);
+        Outliner.SelectSingle(SceneBundle.EditorCameraToken);
+        Outliner.OpenDirectiveSheetForSlot(SceneBundle.EditorCameraToken, Point2D{ 92.0f, 290.0f });
+        if (!CaptureExhibitSnapshot("Outliner", Outliner, Viewport, Inspector, "08-WorldRowDirectivePermanentLock.png"))
+        {
+            ImGui::DestroyContext(GuiSession);
+            return false;
+        }
+        Outliner.CloseOverlays();
+
+        // Deleting World items & geometry cleanly unregisters them from SceneBundle
+        (void)Outliner.DeleteSlot(CloudsSlot);
+        (void)Outliner.DeleteSlot(MoonSlot);
+        (void)Outliner.DeleteSlot(StarsSlot);
+        (void)Outliner.DeleteSlot(SceneBundle.SunEmitterToken);
+        (void)Outliner.DeleteSlot(SceneBundle.AtmosphereToken);
+        (void)Outliner.DeleteSlot(BoxSlot);
+
+        (void)Frontier::GeometricRaster::SynchronizeShowcaseGallerySceneLive(Outliner, SceneBundle, AccelRebuild);
+        if (!VerifyAssertion(!SceneBundle.Scene.Atmosphere.Clouds.CloudsEnabled, "Deleting Clouds disables Atmosphere.Clouds") ||
+            !VerifyAssertion(!SceneBundle.Scene.Atmosphere.Moons[0].Visible, "Deleting Moon disables Atmosphere.Moons[0]") ||
+            !VerifyAssertion(!SceneBundle.Scene.Atmosphere.Stars.StarfieldEnabled, "Deleting Stars disables Atmosphere.Stars") ||
+            !VerifyAssertion(!SceneBundle.Scene.Atmosphere.Solar.SolarEnabled && SceneBundle.Scene.Sun.SolarIrradiance.R == 0.0f, "Deleting Sun disables solar emitter and irradiance") ||
+            !VerifyAssertion(!SceneBundle.Scene.Atmosphere.Medium.AtmosphereEnabled, "Deleting Atmosphere disables sky medium") ||
+            !VerifyAssertion(SceneBundle.Objects.size() == 2u && SceneBundle.Scene.ClusterInstances.size() == 2u, "Deleting Box Specimen compacts Objects and ClusterInstances"))
         {
             ImGui::DestroyContext(GuiSession);
             return false;

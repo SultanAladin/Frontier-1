@@ -100,6 +100,7 @@ struct ShowcaseWorldSceneBundle
     OutlinerSlotToken                                      WorldFolderToken     {}; // [id] - "World" collection folder token
     OutlinerSlotToken                                      LightingFolderToken  {}; // [id] - "Lighting" collection folder token
     OutlinerSlotToken                                      EditorCameraToken     {}; // [id] - "Editor Camera" entry token
+    OutlinerSlotToken                                      AtmosphereToken       {}; // [id] - "Atmosphere" physical sky medium token
     OutlinerSlotToken                                      SunEmitterToken       {}; // [id] - "Sun" directional emitter token
     OutlinerSlotToken                                      MoonBodyToken         {}; // [id] - "Moon" multi-instance lunar disc token
     OutlinerSlotToken                                      StarfieldToken        {}; // [id] - "Stars" procedural starfield token

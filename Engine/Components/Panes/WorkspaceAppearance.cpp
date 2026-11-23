@@ -988,11 +988,11 @@ void ConstructSlotCategoryIcon(
         {
             // Workspace editor-point-light: #F0AD22 filled core + #FFCD38 stroke & 8 rays
             const Point2D   Center{ ProjectX(128.0f), ProjectY(128.0f) };
-            const float     CoreR  = (32.0f / 256.0f) * Extent;
+            const float     InnerSphereRadius  = (32.0f / 256.0f) * Extent;
             const float     Stroke = std::max(1.3f, (7.0f / 256.0f) * Extent);
             const ColorRgba RayInk = ScaleAlpha({ 255, 205, 56, 255 }, Opacity);
-            Surface.FillCircle(Center, CoreR, ScaleAlpha({ 240, 173, 34, 255 }, Opacity));
-            Surface.StrokeCircle(Center, CoreR, RayInk, Stroke);
+            Surface.FillCircle(Center, InnerSphereRadius, ScaleAlpha({ 240, 173, 34, 255 }, Opacity));
+            Surface.StrokeCircle(Center, InnerSphereRadius, RayInk, Stroke);
 
             const float InnerRay = (63.0f / 256.0f) * Extent;
             const float OuterRay = (81.0f / 256.0f) * Extent;
@@ -1012,6 +1012,143 @@ void ConstructSlotCategoryIcon(
 
         case ConstructSlotCategory::OpticsCamera:
             ConstructCameraIcon(Surface, TopLeft, Extent, Opacity);
+            break;
+    }
+}
+
+void ConstructSlotIcon(
+    PixelSpace&              Surface,
+    ConstructSlotCategory    Category,
+    AtmosphereSlotVariant AtmosphereVariant,
+    Point2D                  TopLeft,
+    float                    Extent,
+    ColorRgba                FolderTint,
+    float                    Opacity) noexcept
+{
+    if (Extent <= 2.0f || Opacity <= 0.0f)
+    {
+        return;
+    }
+
+    if (AtmosphereVariant == AtmosphereSlotVariant::None || Category == ConstructSlotCategory::Folder)
+    {
+        ConstructSlotCategoryIcon(Surface, Category, TopLeft, Extent, FolderTint, Opacity);
+        return;
+    }
+
+    const Point2D Center{ TopLeft.X + Extent * 0.5f, TopLeft.Y + Extent * 0.5f };
+
+    switch (AtmosphereVariant)
+    {
+        case AtmosphereSlotVariant::Atmosphere:
+        {
+            const float OuterR = Extent * 0.42f;
+            const float LimbR  = Extent * 0.31f;
+            const float InnerSphereRadius  = Extent * 0.255f;
+            Surface.FillCircle(Center, OuterR, ScaleAlpha({ 92, 123, 185, 85 }, Opacity));
+            Surface.FillCircle(Center, LimbR, ScaleAlpha({ 146, 212, 236, 225 }, Opacity));
+            Surface.FillCircle(Center, InnerSphereRadius, ScaleAlpha({ 34, 62, 86, 255 }, Opacity));
+            Surface.FillCircle(
+                { Center.X - InnerSphereRadius * 0.28f, Center.Y - InnerSphereRadius * 0.28f },
+                InnerSphereRadius * 0.56f,
+                ScaleAlpha({ 79, 127, 152, 175 }, Opacity));
+            Surface.StrokeCircle(Center, LimbR, ScaleAlpha({ 184, 232, 248, 220 }, Opacity), std::max(1.1f, Extent * 0.055f));
+            break;
+        }
+
+        case AtmosphereSlotVariant::Sun:
+        {
+            const Point2D DiscCenter{ Center.X, Center.Y + Extent * 0.01f };
+            Surface.FillCircle(DiscCenter, Extent * 0.47f, ScaleAlpha({ 243, 88, 12, 72 }, Opacity));
+            Surface.FillCircle(DiscCenter, Extent * 0.39f, ScaleAlpha({ 255, 168, 46, 130 }, Opacity));
+            Surface.FillCircle(DiscCenter, Extent * 0.305f, ScaleAlpha({ 245, 118, 16, 255 }, Opacity));
+            Surface.FillCircle(
+                { DiscCenter.X - Extent * 0.04f, DiscCenter.Y - Extent * 0.04f },
+                Extent * 0.24f,
+                ScaleAlpha({ 255, 198, 62, 255 }, Opacity));
+            Surface.FillCircle(
+                { DiscCenter.X - Extent * 0.08f, DiscCenter.Y - Extent * 0.08f },
+                Extent * 0.135f,
+                ScaleAlpha({ 255, 244, 166, 235 }, Opacity));
+            break;
+        }
+
+        case AtmosphereSlotVariant::VolumetricClouds:
+        {
+            const auto PX = [&](float X) noexcept -> float { return TopLeft.X + (X / 256.0f) * Extent; };
+            const auto PY = [&](float Y) noexcept -> float { return TopLeft.Y + (Y / 256.0f) * Extent; };
+            const float RScale = Extent / 256.0f;
+
+            // Shadowed cloud base
+            Surface.FillRectangle(
+                { PX(44.0f), PY(126.0f), 168.0f * RScale, 54.0f * RScale },
+                ScaleAlpha({ 102, 120, 146, 255 }, Opacity),
+                27.0f * RScale);
+            Surface.FillCircle({ PX(78.0f), PY(142.0f) }, 36.0f * RScale, ScaleAlpha({ 136, 152, 174, 255 }, Opacity));
+            Surface.FillCircle({ PX(178.0f), PY(144.0f) }, 35.0f * RScale, ScaleAlpha({ 124, 142, 166, 255 }, Opacity));
+
+            // Sunlit upper cumulus lobes
+            Surface.FillCircle({ PX(82.0f), PY(122.0f) }, 33.0f * RScale, ScaleAlpha({ 206, 217, 227, 255 }, Opacity));
+            Surface.FillCircle({ PX(168.0f), PY(126.0f) }, 31.0f * RScale, ScaleAlpha({ 198, 210, 222, 255 }, Opacity));
+            Surface.FillCircle({ PX(128.0f), PY(106.0f) }, 42.0f * RScale, ScaleAlpha({ 238, 243, 247, 255 }, Opacity));
+            Surface.FillCircle({ PX(116.0f), PY(136.0f) }, 35.0f * RScale, ScaleAlpha({ 220, 229, 237, 255 }, Opacity));
+            break;
+        }
+
+        case AtmosphereSlotVariant::Moon:
+        {
+            const float MoonR = Extent * 0.315f;
+            Surface.FillCircle(Center, MoonR * 1.08f, ScaleAlpha({ 187, 212, 250, 32 }, Opacity));
+            Surface.FillCircle(Center, MoonR, ScaleAlpha({ 104, 114, 122, 255 }, Opacity));
+            Surface.FillCircle(
+                { Center.X - MoonR * 0.18f, Center.Y - MoonR * 0.16f },
+                MoonR * 0.78f,
+                ScaleAlpha({ 192, 198, 196, 240 }, Opacity));
+            Surface.FillCircle(
+                { Center.X - MoonR * 0.28f, Center.Y - MoonR * 0.28f },
+                MoonR * 0.44f,
+                ScaleAlpha({ 234, 237, 231, 210 }, Opacity));
+            // Subtle lunar maria accents
+            Surface.FillCircle(
+                { Center.X + MoonR * 0.20f, Center.Y - MoonR * 0.10f },
+                MoonR * 0.22f,
+                ScaleAlpha({ 78, 90, 102, 145 }, Opacity));
+            Surface.FillCircle(
+                { Center.X - MoonR * 0.12f, Center.Y + MoonR * 0.24f },
+                MoonR * 0.19f,
+                ScaleAlpha({ 78, 90, 102, 130 }, Opacity));
+            Surface.StrokeCircle(Center, MoonR, ScaleAlpha({ 213, 224, 234, 72 }, Opacity), 1.0f);
+            break;
+        }
+
+        case AtmosphereSlotVariant::Stars:
+        {
+            const auto ConstructSparkle = [&](float NormX, float NormY, float NormR, ColorRgba Color)
+            {
+                const float CX = TopLeft.X + (NormX / 24.0f) * Extent;
+                const float CY = TopLeft.Y + (NormY / 24.0f) * Extent;
+                const float R  = (NormR / 24.0f) * Extent;
+                const float Inner = R * 0.29f;
+                const std::array<Point2D, 8> Poly = {{
+                    { CX,         CY - R     },
+                    { CX + Inner, CY - Inner },
+                    { CX + R,     CY         },
+                    { CX + Inner, CY + Inner },
+                    { CX,         CY + R     },
+                    { CX - Inner, CY + Inner },
+                    { CX - R,     CY         },
+                    { CX - Inner, CY - Inner },
+                }};
+                Surface.FillPolygon(Poly, ScaleAlpha(Color, Opacity));
+            };
+            ConstructSparkle(9.0f, 13.0f, 8.5f, { 209, 194, 239, 255 });
+            ConstructSparkle(19.0f, 6.0f, 5.0f, { 242, 236, 255, 255 });
+            ConstructSparkle(20.0f, 20.0f, 4.0f, { 169, 152, 213, 255 });
+            break;
+        }
+
+        case AtmosphereSlotVariant::None:
+            ConstructSlotCategoryIcon(Surface, Category, TopLeft, Extent, FolderTint, Opacity);
             break;
     }
 }

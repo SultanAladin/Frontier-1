@@ -30,6 +30,7 @@ struct DropdownDirectiveEntry
     bool        Destructive    = false;                 // [-] - Red-tinted destructive directive styling
     bool        DividerAbove   = false;                 // [-] - Construct horizontal rule above this row
     bool        SectionCaption = false;                 // [-] - Non-interactive uppercase group header row
+    bool        Disabled       = false;                 // [-] - Greyed-out non-interactive row
 };
 
 namespace DropdownSelector

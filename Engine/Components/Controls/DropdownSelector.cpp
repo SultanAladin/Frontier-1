@@ -242,7 +242,7 @@ ControlContact ConstructDirectiveSheet(
             SheetBounds.Width - 2.0f * ControlMetrics::DropdownPaddingX,
             34.0f,
         };
-        const bool Hover = ControlAppearance::QueryPointerOver(Row, Pointer);
+        const bool Hover = !Entry.Disabled && ControlAppearance::QueryPointerOver(Row, Pointer);
         if (Hover)
         {
             Contact.Hovered = true;
@@ -259,7 +259,7 @@ ControlContact ConstructDirectiveSheet(
             }
         }
 
-        if (Entry.Selected)
+        if (Entry.Selected && !Entry.Disabled)
         {
             Surface.FillRectangle(Row, Colors.Raised.Faded(Opacity).ToRgba8(), ControlMetrics::DropdownRowRadius);
         }
@@ -268,34 +268,44 @@ ControlContact ConstructDirectiveSheet(
             Surface.FillRectangle(Row, Colors.Inset.Faded(Opacity).ToRgba8(), ControlMetrics::DropdownRowRadius);
         }
 
+        const ColorQuad DisabledInk{ 0.42f, 0.42f, 0.42f, 1.0f };
         float PadX = 12.0f;
         if (Entry.LeadingTint.Alpha > 0u)
         {
-            Surface.FillCircle({ Row.X + PadX + 4.0f, Row.Y + Row.Height * 0.5f }, 3.8f, Entry.LeadingTint.ScaledAlpha(Opacity));
+            const ColorRgba TintColor = Entry.Disabled
+                                            ? ColorRgba{ 107u, 107u, 107u, 255u }
+                                            : Entry.LeadingTint;
+            Surface.FillCircle({ Row.X + PadX + 4.0f, Row.Y + Row.Height * 0.5f }, 3.8f, TintColor.ScaledAlpha(Opacity));
             PadX += 16.0f;
         }
         else if (Entry.LeadingIcon != ControlIcon::Count)
         {
+            const ColorQuad IconTone = Entry.Disabled
+                                           ? DisabledInk
+                                           : (Entry.Destructive ? Colors.Danger : (Hover || Entry.Selected ? Colors.Text : Colors.TextDim));
             ControlAppearance::ConstructIcon(
                 Surface,
                 Row.X + PadX,
                 Row.Y + (Row.Height - 14.0f) * 0.5f,
                 14.0f,
-                (Entry.Destructive ? Colors.Danger : (Hover || Entry.Selected ? Colors.Text : Colors.TextDim)).Faded(Opacity),
+                IconTone.Faded(Opacity),
                 Entry.LeadingIcon,
                 1.7f);
             PadX += 20.0f;
         }
 
-        const ColorQuad LabelTone = Entry.Destructive
-                                        ? Colors.Danger
-                                        : ((Entry.Selected || Hover) ? Colors.Text : Colors.Text.Faded(0.76f));
+        const ColorQuad LabelTone = Entry.Disabled
+                                        ? DisabledInk
+                                        : (Entry.Destructive
+                                               ? Colors.Danger
+                                               : ((Entry.Selected || Hover) ? Colors.Text : Colors.Text.Faded(0.76f)));
         ControlAppearance::TextLeading(Surface, Row, PadX, LabelTone.Faded(Opacity), Entry.Label, 12.5f);
 
         if (Entry.ShortcutHint != nullptr && Entry.ShortcutHint[0] != '\0')
         {
             const Rectangle2D HintBounds{ Row.X, Row.Y, Row.Width - 12.0f, Row.Height };
-            Surface.TextRightAligned(HintBounds, 10.5f, Colors.TextFaint.Faded(Opacity).ToRgba8(), Entry.ShortcutHint);
+            const ColorQuad   HintTone = Entry.Disabled ? DisabledInk.Faded(0.75f) : Colors.TextFaint;
+            Surface.TextRightAligned(HintBounds, 10.5f, HintTone.Faded(Opacity).ToRgba8(), Entry.ShortcutHint);
         }
         else if (Entry.Selected)
         {

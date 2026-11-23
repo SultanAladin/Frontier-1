@@ -852,8 +852,8 @@ void ViewportPanel::RenderDiagnosticsPanel(
 
 Rectangle2D ViewportPanel::QueryConstructDialogBounds(Rectangle2D Bounds) const noexcept
 {
-    const float DialogW = std::min(532.0f, std::max(300.0f, Bounds.Width - 36.0f));
-    const float DialogH = std::min(346.0f, std::max(240.0f, Bounds.Height - 70.0f));
+    const float DialogW = std::min(640.0f, std::max(300.0f, Bounds.Width - 36.0f));
+    const float DialogH = std::min(438.0f, std::max(240.0f, Bounds.Height - 70.0f));
     return { Bounds.Center().X - DialogW * 0.5f, Bounds.Y + 94.0f, DialogW, DialogH };
 }
 
@@ -865,6 +865,8 @@ void ViewportPanel::RenderConstructDialog(
     const Rectangle2D Dialog = QueryConstructDialogBounds(Bounds);
 
     const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    WorkspaceAppearance::ForwardInputToTextBuffer(ConstructSearchEditor, Input, 1.0 / 60.0);
+
     Overlay.FillRectangle(Dialog, ColorRgba{ 23, 23, 23, 254 }, 14.0f);
     Overlay.StrokeRectangle(Dialog, ColorRgba{ 58, 58, 58, 255 }, 14.0f, 1.0f);
 
@@ -909,19 +911,49 @@ void ViewportPanel::RenderConstructDialog(
     Overlay.StrokeLine({ Dialog.X, Dialog.Y + 48.0f }, { Dialog.Right(), Dialog.Y + 48.0f }, WorkspaceSurfaceColors::HairlineLight, 1.0f);
 
     {
-        // Generic minimal layout preserved 1:1 for WorkspacePanesValidation
-        const float RailW = 128.0f;
+        bool DomainRepositoryPresent = false;
+        if (AttachedOutliner != nullptr)
+        {
+            const auto Templates = AttachedOutliner->QueryConstructTemplates();
+            for (const auto& Preset : Templates)
+            {
+                if (Preset.AtmosphereVariant != AtmosphereSlotVariant::None)
+                {
+                    DomainRepositoryPresent = true;
+                    break;
+                }
+            }
+        }
+
+        const float RailW = 132.0f;
         Overlay.StrokeLine({ Dialog.X + RailW, Dialog.Y + 48.0f }, { Dialog.X + RailW, Dialog.Bottom() }, WorkspaceSurfaceColors::HairlineLight, 1.0f);
 
-        const std::array<std::pair<const char*, ConstructCategoryRail>, 3> Rails = {{
+        struct RailOption
+        {
+            const char*           Label;
+            ConstructCategoryRail Category;
+        };
+        const std::array<RailOption, 7> DomainRails = {{
             { "All",          ConstructCategoryRail::All          },
-            { "Items",        ConstructCategoryRail::ScenePrimitives },
+            { "Environment",  ConstructCategoryRail::Environment  },
+            { "Weather",      ConstructCategoryRail::Weather      },
+            { "Geometry",     ConstructCategoryRail::Geometry     },
+            { "Lighting",     ConstructCategoryRail::Lighting     },
+            { "Cameras",      ConstructCategoryRail::Cameras      },
             { "Organization", ConstructCategoryRail::Organization },
         }};
-        for (std::size_t Idx = 0u; Idx < Rails.size(); ++Idx)
+        const std::array<RailOption, 3> GenericRails = {{
+            { "All",          ConstructCategoryRail::All             },
+            { "Items",        ConstructCategoryRail::ScenePrimitives },
+            { "Organization", ConstructCategoryRail::Organization    },
+        }};
+
+        const std::size_t RailCount = DomainRepositoryPresent ? DomainRails.size() : GenericRails.size();
+        const RailOption* RailPtr   = DomainRepositoryPresent ? DomainRails.data() : GenericRails.data();
+        for (std::size_t Idx = 0u; Idx < RailCount; ++Idx)
         {
             const Rectangle2D RailRow{ Dialog.X + 10.0f, Dialog.Y + 60.0f + static_cast<float>(Idx) * 32.0f, RailW - 20.0f, 28.0f };
-            const bool        Active = (ConstructRail == Rails[Idx].second);
+            const bool        Active = (ConstructRail == RailPtr[Idx].Category);
             if (Active || RailRow.Contains(Cursor))
             {
                 Overlay.FillRectangle(RailRow, Active ? ColorRgba{ 44, 44, 44, 255 } : ColorRgba{ 33, 33, 33, 255 }, 8.0f);
@@ -932,28 +964,108 @@ void ViewportPanel::RenderConstructDialog(
                 { RailRow.X + 10.0f, RailRow.Y + 7.5f },
                 11.0f,
                 Active ? WorkspaceSurfaceColors::PrimaryInk : ColorRgba{ 158, 158, 158, 255 },
-                Rails[Idx].first);
+                RailPtr[Idx].Label);
             if (RailRow.Contains(Cursor) && Input.PrimaryPointer.Pressed)
             {
-                ConstructRail = Rails[Idx].second;
+                ConstructRail       = RailPtr[Idx].Category;
+                ConstructGridScrollY = 0.0f;
             }
         }
 
-        const float    GridX    = Dialog.X + RailW + 14.0f;
-        const float    GridW    = std::max(96.0f, Dialog.Right() - 14.0f - GridX);
+        // Search bar in right pane
+        const float GridX = Dialog.X + RailW + 14.0f;
+        const float GridW = std::max(96.0f, Dialog.Right() - 14.0f - GridX);
+        const Rectangle2D SearchBox{ GridX, Dialog.Y + 58.0f, GridW, 28.0f };
+        const bool        SearchHover = SearchBox.Contains(Cursor);
+        Overlay.FillRectangle(SearchBox, ColorRgba{ 17, 17, 19, 255 }, 8.0f);
+        Overlay.StrokeRectangle(
+            SearchBox,
+            ConstructSearchEditor.Active ? WorkspaceSurfaceColors::SelectionAmber : (SearchHover ? ColorRgba{ 72, 72, 78, 255 } : ColorRgba{ 44, 44, 48, 255 }),
+            8.0f,
+            1.0f);
+        VectorIconRepository::ConstructControl(
+            Overlay,
+            ControlIcon::SearchGlass,
+            VectorIconPlacement{ SearchBox.X + 9.0f, SearchBox.Y + 8.0f, 12.0f, ColorRgba{ 130, 130, 136, 255 }, 1.7f });
+        if (ConstructSearchEditor.Length > 0u)
+        {
+            WorkspaceAppearance::ConstructTruncatedText(
+                Overlay,
+                FontWeightClass::Regular,
+                { SearchBox.X + 27.0f, SearchBox.Y + 7.5f },
+                SearchBox.Width - 36.0f,
+                11.0f,
+                WorkspaceSurfaceColors::PrimaryInk,
+                std::string_view(ConstructSearchEditor.Text, ConstructSearchEditor.Length));
+        }
+        else
+        {
+            WorkspaceAppearance::ConstructTruncatedText(
+                Overlay,
+                FontWeightClass::Regular,
+                { SearchBox.X + 27.0f, SearchBox.Y + 7.5f },
+                SearchBox.Width - 36.0f,
+                11.0f,
+                ColorRgba{ 104, 104, 110, 255 },
+                "Search entities...");
+        }
+        if (Input.PrimaryPointer.Pressed)
+        {
+            ConstructSearchEditor.Active = SearchHover;
+            if (SearchHover)
+            {
+                ConstructSearchEditor.Caret           = ConstructSearchEditor.Length;
+                ConstructSearchEditor.SelectionAnchor = ConstructSearchEditor.Caret;
+            }
+        }
+
+        const float GridTopY = SearchBox.Bottom() + 10.0f;
+        const Rectangle2D GridViewport{ GridX, GridTopY, GridW, std::max(48.0f, Dialog.Bottom() - 10.0f - GridTopY) };
+
         const float    CellGap  = 10.0f;
         const uint32_t Columns  = std::max(1u, static_cast<uint32_t>((GridW + CellGap) / (108.0f + CellGap)));
         const float    TileSide = std::floor((GridW - static_cast<float>(Columns - 1u) * CellGap) / static_cast<float>(Columns));
 
         struct ConstructEntryView
         {
-            std::string_view      Label;
-            std::string_view      Caption;
-            ConstructSlotCategory Category;
-            int32_t               TemplateIndex;
+            std::string_view         Label;
+            std::string_view         Caption;
+            ConstructSlotCategory    Category;
+            AtmosphereSlotVariant AtmosphereVariant;
+            int32_t                  TemplateIndex;
         };
         std::vector<ConstructEntryView> Choices{};
 
+        auto MatchesRail = [&](const OutlinerConstructTemplate& Preset) noexcept -> bool
+        {
+            switch (ConstructRail)
+            {
+                case ConstructCategoryRail::All:
+                case ConstructCategoryRail::ScenePrimitives:
+                    return true;
+                case ConstructCategoryRail::Organization:
+                    return false;
+                case ConstructCategoryRail::Environment:
+                    return Preset.AtmosphereVariant == AtmosphereSlotVariant::Atmosphere ||
+                           Preset.AtmosphereVariant == AtmosphereSlotVariant::Sun ||
+                           Preset.AtmosphereVariant == AtmosphereSlotVariant::Moon ||
+                           Preset.AtmosphereVariant == AtmosphereSlotVariant::Stars;
+                case ConstructCategoryRail::Weather:
+                    return Preset.AtmosphereVariant == AtmosphereSlotVariant::VolumetricClouds;
+                case ConstructCategoryRail::Geometry:
+                    return Preset.AtmosphereVariant == AtmosphereSlotVariant::None &&
+                           Preset.Category == ConstructSlotCategory::GeometryVolume;
+                case ConstructCategoryRail::Lighting:
+                    return Preset.AtmosphereVariant == AtmosphereSlotVariant::None &&
+                           Preset.Category == ConstructSlotCategory::PointLuminaire;
+                case ConstructCategoryRail::Cameras:
+                    return Preset.AtmosphereVariant == AtmosphereSlotVariant::None &&
+                           Preset.Category == ConstructSlotCategory::OpticsCamera;
+            }
+            return true;
+        };
+
+        const std::string_view Query(ConstructSearchEditor.Text, ConstructSearchEditor.Length);
         if (ConstructRail != ConstructCategoryRail::Organization)
         {
             if (AttachedOutliner != nullptr)
@@ -961,45 +1073,69 @@ void ViewportPanel::RenderConstructDialog(
                 const auto Templates = AttachedOutliner->QueryConstructTemplates();
                 for (std::size_t Idx = 0u; Idx < Templates.size(); ++Idx)
                 {
-                    if (CaseInsensitiveMatch(Templates[Idx].DropdownLabel, std::string_view(ConstructSearchEditor.Text, ConstructSearchEditor.Length)))
+                    if (!MatchesRail(Templates[Idx]))
                     {
-                        Choices.push_back({ Templates[Idx].DropdownLabel, Templates[Idx].CategoryTitle, Templates[Idx].Category, static_cast<int32_t>(Idx) });
+                        continue;
+                    }
+                    if (CaseInsensitiveMatch(Templates[Idx].DropdownLabel, Query) ||
+                        CaseInsensitiveMatch(Templates[Idx].CategoryTitle, Query) ||
+                        CaseInsensitiveMatch(Templates[Idx].DefaultTitle, Query))
+                    {
+                        Choices.push_back({
+                            Templates[Idx].DropdownLabel,
+                            Templates[Idx].CategoryTitle,
+                            Templates[Idx].Category,
+                            Templates[Idx].AtmosphereVariant,
+                            static_cast<int32_t>(Idx),
+                        });
                     }
                 }
             }
-            else
+            else if (ConstructRail == ConstructCategoryRail::All || ConstructRail == ConstructCategoryRail::ScenePrimitives)
             {
-                Choices.push_back({ "Add Item 1", "Type 1", ConstructSlotCategory::GeometryVolume, 0 });
-                Choices.push_back({ "Add Item 2", "Type 2", ConstructSlotCategory::LayerGroup, 1 });
-                Choices.push_back({ "Add Item 3", "Type 3", ConstructSlotCategory::PointLuminaire, 2 });
-                Choices.push_back({ "Add Item 4", "Type 4", ConstructSlotCategory::OpticsCamera, 3 });
+                Choices.push_back({ "Add Item 1", "Type 1", ConstructSlotCategory::GeometryVolume, AtmosphereSlotVariant::None, 0 });
+                Choices.push_back({ "Add Item 2", "Type 2", ConstructSlotCategory::LayerGroup,     AtmosphereSlotVariant::None, 1 });
+                Choices.push_back({ "Add Item 3", "Type 3", ConstructSlotCategory::PointLuminaire, AtmosphereSlotVariant::None, 2 });
+                Choices.push_back({ "Add Item 4", "Type 4", ConstructSlotCategory::OpticsCamera,   AtmosphereSlotVariant::None, 3 });
             }
         }
-        if (ConstructRail != ConstructCategoryRail::ScenePrimitives)
+        if ((ConstructRail == ConstructCategoryRail::All || ConstructRail == ConstructCategoryRail::Organization) &&
+            (Query.empty() || CaseInsensitiveMatch("Folder", Query) || CaseInsensitiveMatch("Collection", Query)))
         {
-            Choices.push_back({ "+ Add Folder", "Collection", ConstructSlotCategory::Folder, -1 });
+            Choices.push_back({ "+ Add Folder", "Collection", ConstructSlotCategory::Folder, AtmosphereSlotVariant::None, -1 });
         }
 
+        const uint32_t TotalRows = (static_cast<uint32_t>(Choices.size()) + Columns - 1u) / Columns;
+        const float    ContentH  = static_cast<float>(TotalRows) * (TileSide + CellGap);
+        const float    MaxScroll = std::max(0.0f, ContentH - GridViewport.Height);
+        if (GridViewport.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 1.0e-4f)
+        {
+            ConstructGridScrollY -= Input.WheelDeltaY * 32.0f;
+        }
+        ConstructGridScrollY = std::clamp(ConstructGridScrollY, 0.0f, MaxScroll);
+
+        Overlay.PushClip(GridViewport);
         for (std::size_t Idx = 0u; Idx < Choices.size(); ++Idx)
         {
             const uint32_t Col   = static_cast<uint32_t>(Idx) % Columns;
             const uint32_t Row   = static_cast<uint32_t>(Idx) / Columns;
             const float    CellX = GridX + static_cast<float>(Col) * (TileSide + CellGap);
-            const float    CellY = Dialog.Y + 60.0f + static_cast<float>(Row) * (TileSide + CellGap);
-            if (CellY + TileSide > Dialog.Bottom() - 8.0f)
-            {
-                break;
-            }
+            const float    CellY = GridTopY + static_cast<float>(Row) * (TileSide + CellGap) - ConstructGridScrollY;
             const Rectangle2D Cell{ CellX, CellY, TileSide, TileSide };
-            const bool        Hovered = Cell.Contains(Cursor);
+            if (Cell.Bottom() < GridViewport.Y || Cell.Y > GridViewport.Bottom())
+            {
+                continue;
+            }
+            const bool Hovered = GridViewport.Contains(Cursor) && Cell.Contains(Cursor);
 
             Overlay.FillRectangle(Cell, Hovered ? ColorRgba{ 43, 43, 43, 255 } : ColorRgba{ 32, 32, 32, 255 }, 12.0f);
             Overlay.StrokeRectangle(Cell, Hovered ? WorkspaceSurfaceColors::SelectionAmber : ColorRgba{ 58, 58, 58, 255 }, 12.0f, 1.0f);
 
             const float IconSide = std::clamp(TileSide * 0.38f, 28.0f, 46.0f);
-            WorkspaceAppearance::ConstructSlotCategoryIcon(
+            WorkspaceAppearance::ConstructSlotIcon(
                 Overlay,
                 Choices[Idx].Category,
+                Choices[Idx].AtmosphereVariant,
                 { Cell.Center().X - IconSide * 0.5f, Cell.Y + TileSide * 0.16f },
                 IconSide);
 
@@ -1044,6 +1180,8 @@ void ViewportPanel::RenderConstructDialog(
                 ConstructSheetOpen = false;
             }
         }
+        WorkspaceAppearance::ConstructVerticalScrollIndicator(Overlay, GridViewport, ContentH, ConstructGridScrollY, Cursor);
+        Overlay.PopClip();
 
         Overlay.PopClip();
         return;

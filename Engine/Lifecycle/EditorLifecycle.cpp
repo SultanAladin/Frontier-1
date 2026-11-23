@@ -166,15 +166,20 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
         std::vector<OutlinerConstructTemplate> Templates;
-        Templates.reserve(8u);
-        Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire   });
-        Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera     });
-        Templates.push_back({ "Generate Apocalyptic City Level", "Apocalyptic City Level", "WorldGenerator", "Procedural Ruined Warzone Racing Level", ConstructSlotCategory::LayerGroup });
+        Templates.reserve(13u);
+        Templates.push_back({ "Atmosphere",            "Atmosphere",        "Environment", "Physical Sky Scattering",  ConstructSlotCategory::LayerGroup,     AtmosphereSlotVariant::Atmosphere       });
+        Templates.push_back({ "Sun",                   "Sun",               "Environment", "Solar Ephemeris Light",    ConstructSlotCategory::LayerGroup,     AtmosphereSlotVariant::Sun              });
+        Templates.push_back({ "Volumetric Clouds",     "Volumetric Clouds", "Weather",     "Global 3D Cloud Deck",     ConstructSlotCategory::LayerGroup,     AtmosphereSlotVariant::VolumetricClouds });
+        Templates.push_back({ "Moon",                  "Moon",              "Environment", "Lunar Disc System",        ConstructSlotCategory::LayerGroup,     AtmosphereSlotVariant::Moon             });
+        Templates.push_back({ "Stars",                 "Stars",             "Environment", "Nocturnal Starfield",      ConstructSlotCategory::LayerGroup,     AtmosphereSlotVariant::Stars            });
+        Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume, AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume, AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume, AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume, AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume, AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire, AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera,   AtmosphereSlotVariant::None   });
+        Templates.push_back({ "Generate Apocalyptic City Level", "Apocalyptic City Level", "WorldGenerator", "Procedural Ruined Warzone Racing Level", ConstructSlotCategory::LayerGroup, AtmosphereSlotVariant::None });
         Panes->Outliner.ConfigureConstructTemplates(std::move(Templates));
 
         Panes->Viewport.ConfigureOpenContentBrowserCallback(
@@ -365,20 +370,25 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
         GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
     }
     {
-        const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
-        auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
-        Atmo.Medium.AtmosphereEnabled  = DisplayCfg.AtmosphereSkyEnabled;
-        Atmo.Clouds.CloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
-        Atmo.Clouds.CloudFraction      = DisplayCfg.CloudFraction;
-        Atmo.Clouds.CloudShadow.ShadowEnabled      = DisplayCfg.CloudShadowsEnabled;
-        Atmo.Clouds.WindSpeedMetersPerSecond       = DisplayCfg.CloudWindSpeedMps;
-        Atmo.Clouds.FollowWindEnabled              = (DisplayCfg.CloudWindSpeedMps > 0.01f);
-        Atmo.Wind.SpeedMetersPerSecond             = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
-        Atmo.Stars.StarfieldEnabled    = DisplayCfg.CelestialStarsEnabled;
-        Atmo.Solar.SolarEnabled        = DisplayCfg.CelestialStarsEnabled;
-        Atmo.Moons[0].Visible          = false;
-        Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
-        Atmo.Solar.LocalHours          = DisplayCfg.SolarTimeOfDayHours;
+        auto&       DisplayCfg = Panes->Viewport.AccessDisplaySettings();
+        const auto& Atmo       = ShowcaseBundle->Scene.Atmosphere;
+        DisplayCfg.AtmosphereSkyEnabled    = Atmo.Medium.AtmosphereEnabled;
+        DisplayCfg.VolumetricCloudsEnabled = Atmo.Clouds.CloudsEnabled;
+        DisplayCfg.CloudFraction           = Atmo.Clouds.CloudFraction;
+        DisplayCfg.CloudShadowsEnabled     = Atmo.Clouds.CloudShadow.ShadowEnabled;
+        DisplayCfg.CloudWindSpeedMps       = Atmo.Clouds.WindSpeedMetersPerSecond;
+        DisplayCfg.CelestialStarsEnabled   = Atmo.Stars.StarfieldEnabled || Atmo.Moons[0].Visible;
+        DisplayCfg.DayCyclePlaying         = Atmo.Solar.CycleAnimationEnabled;
+        DisplayCfg.SolarTimeOfDayHours     = Atmo.Solar.LocalHours;
+
+        LastAtmosphereSky       = DisplayCfg.AtmosphereSkyEnabled;
+        LastCloudsEnabled       = DisplayCfg.VolumetricCloudsEnabled;
+        LastCloudShadowsEnabled = DisplayCfg.CloudShadowsEnabled;
+        LastCelestialsEnabled   = DisplayCfg.CelestialStarsEnabled;
+        LastSolarTimeHours      = DisplayCfg.SolarTimeOfDayHours;
+        LastCloudFraction       = DisplayCfg.CloudFraction;
+        LastCloudWindSpeedMps   = DisplayCfg.CloudWindSpeedMps;
+
         if (Atmo.Medium.AtmosphereEnabled)
         {
             ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
@@ -445,6 +455,14 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
                     {
                         PopulateApocalypticCitySession();
                         RefreshShowcaseViewportRaster();
+                        return;
+                    }
+                    if (Tpl.AtmosphereVariant != AtmosphereSlotVariant::None ||
+                        Tpl.Category == ConstructSlotCategory::PointLuminaire ||
+                        Tpl.Category == ConstructSlotCategory::OpticsCamera)
+                    {
+                        (void)ActivePanes->Outliner.ConstructFromTemplate(static_cast<uint32_t>(TemplateIndex));
+                        SynchronizeShowcaseRendererAfterEdit(true);
                         return;
                     }
                     const std::string_view Title = Tpl.DefaultTitle.empty() ? std::string_view(Tpl.DropdownLabel) : std::string_view(Tpl.DefaultTitle);
@@ -625,6 +643,7 @@ void EditorLifecycle::SynchronizeShowcaseGizmoAnchor() noexcept
     const OutlinerRecordEntry* Entry    = PrimarySlot.Valid() ? Panes->Outliner.FindEntry(PrimarySlot) : nullptr;
     if (Entry == nullptr ||
         Entry->Category == ConstructSlotCategory::Folder ||
+        Entry->AtmosphereVariant != AtmosphereSlotVariant::None ||
         Entry->Token == ShowcaseBundle->EditorCameraToken ||
         Entry->Token == ShowcaseBundle->SunEmitterToken ||
         Entry->Locked)
@@ -658,6 +677,7 @@ void EditorLifecycle::FrameShowcaseCameraSelection() noexcept
     const OutlinerRecordEntry* Entry   = Primary.Valid() ? Panes->Outliner.FindEntry(Primary) : nullptr;
     if (Entry != nullptr &&
         Entry->Category != ConstructSlotCategory::Folder &&
+        Entry->AtmosphereVariant == AtmosphereSlotVariant::None &&
         Entry->Token != ShowcaseBundle->EditorCameraToken &&
         Entry->Token != ShowcaseBundle->SunEmitterToken)
     {
@@ -2571,11 +2591,47 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
 
             bool       NeedsPrep = false;
             const bool UseGpuDynamicSync = GpuReady;
+            const bool PrevAtmoEnabled   = ShowcaseBundle->Scene.Atmosphere.Medium.AtmosphereEnabled;
+            const bool PrevSolarEnabled  = ShowcaseBundle->Scene.Atmosphere.Solar.SolarEnabled;
+            const bool PrevCloudsEnabled = ShowcaseBundle->Scene.Atmosphere.Clouds.CloudsEnabled;
+            const bool PrevCloudShadow   = ShowcaseBundle->Scene.Atmosphere.Clouds.CloudShadow.ShadowEnabled;
+            const bool PrevMoonVisible   = ShowcaseBundle->Scene.Atmosphere.Moons[0].Visible;
+            const bool PrevStarsEnabled  = ShowcaseBundle->Scene.Atmosphere.Stars.StarfieldEnabled;
+
             const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(
                 Panes->Outliner,
                 *ShowcaseBundle,
                 NeedsPrep,
                 UseGpuDynamicSync) || ApocalypticSimMutated;
+
+            const auto& LiveAtmo = ShowcaseBundle->Scene.Atmosphere;
+            const bool OutlinerAtmoChanged =
+                (LiveAtmo.Medium.AtmosphereEnabled != PrevAtmoEnabled) ||
+                (LiveAtmo.Solar.SolarEnabled != PrevSolarEnabled) ||
+                (LiveAtmo.Clouds.CloudsEnabled != PrevCloudsEnabled) ||
+                (LiveAtmo.Clouds.CloudShadow.ShadowEnabled != PrevCloudShadow) ||
+                (LiveAtmo.Moons[0].Visible != PrevMoonVisible) ||
+                (LiveAtmo.Stars.StarfieldEnabled != PrevStarsEnabled);
+            if (OutlinerAtmoChanged)
+            {
+                DisplayCfg.AtmosphereSkyEnabled    = LiveAtmo.Medium.AtmosphereEnabled;
+                DisplayCfg.VolumetricCloudsEnabled = LiveAtmo.Clouds.CloudsEnabled;
+                DisplayCfg.CloudShadowsEnabled     = LiveAtmo.Clouds.CloudShadow.ShadowEnabled;
+                DisplayCfg.CelestialStarsEnabled   = LiveAtmo.Stars.StarfieldEnabled || LiveAtmo.Moons[0].Visible;
+                LastAtmosphereSky       = DisplayCfg.AtmosphereSkyEnabled;
+                LastCloudsEnabled       = DisplayCfg.VolumetricCloudsEnabled;
+                LastCloudShadowsEnabled = DisplayCfg.CloudShadowsEnabled;
+                LastCelestialsEnabled   = DisplayCfg.CelestialStarsEnabled;
+                if (ShowcaseRenderer != nullptr)
+                {
+                    ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+                }
+                NeedsPrep = true;
+            }
+            if (SceneMutated && GpuReady && !NeedsPrep)
+            {
+                NeedsPrep = true;
+            }
             if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
             {
                 if (!GpuReady)

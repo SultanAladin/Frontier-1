@@ -82,38 +82,41 @@ struct OutlinerSlotToken
 
 struct OutlinerConstructTemplate
 {
-    std::string          DropdownLabel {};                                           // [-] - Construct sheet label (e.g. "Add Item 1")
-    std::string          DefaultTitle  {};                                           // [-] - Initial name assigned to created entry
-    std::string          CategoryTitle {};                                           // [-] - Inspector breadcrumb category label
-    std::string           DefaultDetail {};                                         // [-] - Secondary row summary caption
-    ConstructSlotCategory Category      = ConstructSlotCategory::GeometryVolume;    // [-] - Visual icon and filter category
+    std::string              DropdownLabel {};                                           // [-] - Construct sheet label (e.g. "Add Item 1")
+    std::string              DefaultTitle  {};                                           // [-] - Initial name assigned to created entry
+    std::string              CategoryTitle {};                                           // [-] - Inspector breadcrumb category label
+    std::string              DefaultDetail {};                                           // [-] - Secondary row summary caption
+    ConstructSlotCategory    Category      = ConstructSlotCategory::GeometryVolume;      // [-] - Visual icon and filter category
+    AtmosphereSlotVariant AtmosphereVariant     = AtmosphereSlotVariant::None;           // [-] - Optional celestial/atmosphere entity specialization
 };
 
 struct OutlinerRecordEntry
 {
-    OutlinerSlotToken    Token             {};                                         // [id] - Unique slot token
-    OutlinerSlotToken    EnclosingToken    {};                                         // [id] - Enclosing slot token (0 = root)
-    ConstructSlotCategory Category          = ConstructSlotCategory::GeometryVolume; // [-]  - Slot visual category
-    std::string          Title             {};                                         // [-]  - Display name in tree and inspector
-    std::string          CategoryLabel     {};                                         // [-]  - Inspector domain category label
-    std::string          Subtitle          {};                                         // [-]  - Secondary caption below title
-    std::string          AuthorNotes       {};                                         // [-]  - Optional notes edited in Inspector
-    ColorRgba            FolderTint        = WorkspaceSurfaceColors::ShowcaseSage;   // [-]  - Showcase folder accent color
-    float                PositionX         = 0.0f;                                     // [m]   - Local X translation
-    float                PositionY         = 0.0f;                                     // [m]   - Local Y translation
-    float                PositionZ         = 0.0f;                                     // [m]   - Local Z translation
-    float                RotationX         = 0.0f;                                     // [deg] - Local X Euler rotation
-    float                RotationY         = 0.0f;                                     // [deg] - Local Y Euler rotation
-    float                RotationZ         = 0.0f;                                     // [deg] - Local Z Euler rotation
-    float                ScaleX            = 1.0f;                                     // [-]   - Local X scale factor
-    float                ScaleY            = 1.0f;                                     // [-]   - Local Y scale factor
-    float                ScaleZ            = 1.0f;                                     // [-]   - Local Z scale factor
-    bool                 VisibilityEnabled = true;                                     // [-]  - Direct visibility switch
-    bool                 Expanded          = true;                                     // [-]  - Disclosure branch open indicator
-    bool                 Locked            = false;                                    // [-]  - Transform edit lock switch
-    bool                 DynamicMotion     = false;                                    // [-]  - Dynamic simulation switch
-    bool                 CastShadows       = true;                                     // [-]  - Shadow caster capability switch
-    std::string          MotionTagText     {};                                         // [-]  - Optional compact motion indicator
+    OutlinerSlotToken        Token             {};                                         // [id] - Unique slot token
+    OutlinerSlotToken        EnclosingToken    {};                                         // [id] - Enclosing slot token (0 = root)
+    ConstructSlotCategory    Category          = ConstructSlotCategory::GeometryVolume;    // [-]  - Slot visual category
+    std::string              Title             {};                                         // [-]  - Display name in tree and inspector
+    std::string              CategoryLabel     {};                                         // [-]  - Inspector domain category label
+    std::string              Subtitle          {};                                         // [-]  - Secondary caption below title
+    std::string              AuthorNotes       {};                                         // [-]  - Optional notes edited in Inspector
+    ColorRgba                FolderTint        = WorkspaceSurfaceColors::ShowcaseSage;     // [-]  - Showcase folder accent color
+    float                    PositionX         = 0.0f;                                     // [m]   - Local X translation
+    float                    PositionY         = 0.0f;                                     // [m]   - Local Y translation
+    float                    PositionZ         = 0.0f;                                     // [m]   - Local Z translation
+    float                    RotationX         = 0.0f;                                     // [deg] - Local X Euler rotation
+    float                    RotationY         = 0.0f;                                     // [deg] - Local Y Euler rotation
+    float                    RotationZ         = 0.0f;                                     // [deg] - Local Z Euler rotation
+    float                    ScaleX            = 1.0f;                                     // [-]   - Local X scale factor
+    float                    ScaleY            = 1.0f;                                     // [-]   - Local Y scale factor
+    float                    ScaleZ            = 1.0f;                                     // [-]   - Local Z scale factor
+    bool                     VisibilityEnabled = true;                                     // [-]  - Direct visibility switch
+    bool                     Expanded          = true;                                     // [-]  - Disclosure branch open indicator
+    bool                     Locked            = false;                                    // [-]  - Transform edit lock switch
+    bool                     DynamicMotion     = false;                                    // [-]  - Dynamic simulation switch
+    bool                     CastShadows       = true;                                     // [-]  - Shadow caster capability switch
+    std::string              MotionTagText     {};                                         // [-]  - Optional compact motion indicator
+    AtmosphereSlotVariant AtmosphereVariant         = AtmosphereSlotVariant::None;           // [-]  - Optional celestial/atmosphere entity specialization
+    bool                     Permanent         = false;                                    // [-]  - Protects built-in entry (e.g. Editor Camera) from deletion/duplication
 };
 
 struct OutlinerVisibleRow
@@ -156,9 +159,13 @@ public:
 
     OutlinerSlotToken ConstructFromTemplate(uint32_t TemplateIndex, OutlinerSlotToken ExplicitEnclosure = {});
     OutlinerSlotToken ConstructFolder(std::string_view FolderTitle = "Folder", OutlinerSlotToken ExplicitEnclosure = {});
+    OutlinerSlotToken EnsureDefaultWorldFolder();
     bool              DeleteSlot(OutlinerSlotToken Token) noexcept;
     uint32_t          DeleteSelection() noexcept;
     OutlinerSlotToken DuplicateSlot(OutlinerSlotToken Token);
+    uint32_t          DuplicateSelection();
+    uint32_t          IsolateSelection() noexcept;
+    uint32_t          SelectNestedSlots();
     OutlinerSlotToken GroupSelectionIntoFolder(std::string_view FolderTitle = "Folder");
     void              ClearAll() noexcept;
 

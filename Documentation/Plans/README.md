@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [WorldOutlinerConstructParityReport.md](WorldOutlinerConstructParityReport.md) | **🟢 Completion Report (`2026-11-23`)**: World Outliner (`AtmosphereVariant`, single `"World"` folder, `Permanent` lock, HTML-matched right-click directive sheet, keyboard shortcuts), Construct modal filtering/icons, bidirectional `ShowcaseGalleryScene` sync & compaction, and visual/Vulkan validations |
 | [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
 | [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
 | [ViewportTelemetrySpikeRemediationReport.md](ViewportTelemetrySpikeRemediationReport.md) | **🟢 Completion Report (`2026-11-22`)**: `FrontierTiming.log` (`40,080` ticks on `GTX 1650 SUPER`) spike & ray-budget audit, dedicated `HighEndBvhComputeEntry` (`2..3` rays/pixel), persistent `VkPipelineCache`, `2048x2048` font atlas, and zero-stall gizmo/UI hover pacing |

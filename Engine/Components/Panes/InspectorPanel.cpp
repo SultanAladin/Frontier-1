@@ -988,7 +988,7 @@ float InspectorPanel::RenderFolderInspector(
                     Surface.FillRectangle({ RowRect.X - 4.0f, RowRect.Y + 2.0f, RowRect.Width + 8.0f, RowRect.Height - 4.0f }, ColorRgba{ 42, 44, 40, 255 }, 6.0f);
                 }
 
-                WorkspaceAppearance::ConstructSlotCategoryIcon(Surface, SubEntry->Category, { RowRect.X + 2.0f, RowRect.Y + 8.0f }, 18.0f, SubEntry->FolderTint, 1.0f);
+                WorkspaceAppearance::ConstructSlotIcon(Surface, SubEntry->Category, SubEntry->AtmosphereVariant, { RowRect.X + 2.0f, RowRect.Y + 8.0f }, 18.0f, SubEntry->FolderTint, 1.0f);
                 WorkspaceAppearance::ConstructTruncatedText(
                     Surface,
                     FontWeightClass::Regular,
@@ -1706,7 +1706,7 @@ void InspectorPanel::Render(
         {
             if (const OutlinerRecordEntry* SubEntry = AttachedOutliner->FindEntry(Selected[Idx]))
             {
-                WorkspaceAppearance::ConstructSlotCategoryIcon(Surface, SubEntry->Category, { BatchSection.X + 16.0f, RowY + 2.0f }, 18.0f, SubEntry->FolderTint, 1.0f);
+                WorkspaceAppearance::ConstructSlotIcon(Surface, SubEntry->Category, SubEntry->AtmosphereVariant, { BatchSection.X + 16.0f, RowY + 2.0f }, 18.0f, SubEntry->FolderTint, 1.0f);
                 WorkspaceAppearance::ConstructTruncatedText(
                     Surface,
                     FontWeightClass::Regular,

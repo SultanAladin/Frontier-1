@@ -134,6 +134,39 @@ std::string OutlinerPanel::GenerateUniqueTitle(std::string_view StemTitle) const
     return Candidate;
 }
 
+OutlinerSlotToken OutlinerPanel::EnsureDefaultWorldFolder()
+{
+    for (const auto& Entry : Entries)
+    {
+        if (Entry.Category == ConstructSlotCategory::Folder && Entry.Title == "World")
+        {
+            return Entry.Token;
+        }
+    }
+
+    const std::vector<OutlinerSlotToken> SavedSelection = SelectedTokens;
+    const OutlinerSlotToken              SavedAnchor    = SelectionAnchor;
+
+    OutlinerRecordEntry Created{};
+    Created.Token             = OutlinerSlotToken{ NextTokenCounter++ };
+    Created.EnclosingToken    = {};
+    Created.Category          = ConstructSlotCategory::Folder;
+    Created.Title             = "World";
+    Created.CategoryLabel     = "Environment";
+    Created.Subtitle          = "Environment";
+    Created.AuthorNotes       = "World environment, sky, sun, clouds, moon, and stars.";
+    Created.FolderTint        = WorkspaceSurfaceColors::ShowcaseWarmGold;
+    Created.VisibilityEnabled = true;
+    Created.Expanded          = true;
+
+    Entries.push_back(std::move(Created));
+    const OutlinerSlotToken Issued = Entries.back().Token;
+
+    SelectedTokens  = SavedSelection;
+    SelectionAnchor = SavedAnchor;
+    return Issued;
+}
+
 OutlinerSlotToken OutlinerPanel::ConstructFromTemplate(uint32_t TemplateIndex, OutlinerSlotToken ExplicitEnclosure)
 {
     if (ConstructTemplates.empty())
@@ -145,8 +178,11 @@ OutlinerSlotToken OutlinerPanel::ConstructFromTemplate(uint32_t TemplateIndex, O
     OutlinerSlotToken TargetEnclosure = ExplicitEnclosure;
     if (!TargetEnclosure.Valid())
     {
-        const OutlinerSlotToken Primary = QueryPrimarySelection();
-        if (const OutlinerRecordEntry* Selected = FindEntry(Primary))
+        if (Preset.AtmosphereVariant != AtmosphereSlotVariant::None)
+        {
+            TargetEnclosure = EnsureDefaultWorldFolder();
+        }
+        else if (const OutlinerRecordEntry* Selected = FindEntry(QueryPrimarySelection()))
         {
             if (Selected->Category == ConstructSlotCategory::Folder)
             {
@@ -163,11 +199,16 @@ OutlinerSlotToken OutlinerPanel::ConstructFromTemplate(uint32_t TemplateIndex, O
     Created.Token             = OutlinerSlotToken{ NextTokenCounter++ };
     Created.EnclosingToken    = (FindEntry(TargetEnclosure) != nullptr) ? TargetEnclosure : OutlinerSlotToken{};
     Created.Category          = Preset.Category;
+    Created.AtmosphereVariant         = Preset.AtmosphereVariant;
     Created.Title             = GenerateUniqueTitle(Preset.DefaultTitle);
     Created.CategoryLabel     = Preset.CategoryTitle;
     Created.Subtitle          = Preset.DefaultDetail;
     Created.VisibilityEnabled = true;
     Created.Expanded          = true;
+    if (Preset.AtmosphereVariant == AtmosphereSlotVariant::Sun)
+    {
+        Created.FolderTint = WorkspaceSurfaceColors::SelectionAmber;
+    }
 
     if (OutlinerRecordEntry* EnclosureEntry = AccessEntry(Created.EnclosingToken))
     {
@@ -212,7 +253,8 @@ OutlinerSlotToken OutlinerPanel::ConstructFolder(std::string_view FolderTitle, O
 
 bool OutlinerPanel::DeleteSlot(OutlinerSlotToken Token) noexcept
 {
-    if (!Token.Valid() || FindEntry(Token) == nullptr)
+    const OutlinerRecordEntry* Target = FindEntry(Token);
+    if (!Token.Valid() || Target == nullptr || Target->Permanent)
     {
         return false;
     }
@@ -223,7 +265,7 @@ bool OutlinerPanel::DeleteSlot(OutlinerSlotToken Token) noexcept
         const OutlinerSlotToken Current = Condemned[Cursor];
         for (const auto& Entry : Entries)
         {
-            if (Entry.EnclosingToken == Current)
+            if (Entry.EnclosingToken == Current && !Entry.Permanent)
             {
                 Condemned.push_back(Entry.Token);
             }
@@ -270,7 +312,7 @@ uint32_t OutlinerPanel::DeleteSelection() noexcept
 OutlinerSlotToken OutlinerPanel::DuplicateSlot(OutlinerSlotToken Token)
 {
     const OutlinerRecordEntry* Source = FindEntry(Token);
-    if (Source == nullptr)
+    if (Source == nullptr || Source->Permanent)
     {
         return {};
     }
@@ -283,6 +325,101 @@ OutlinerSlotToken OutlinerPanel::DuplicateSlot(OutlinerSlotToken Token)
     const OutlinerSlotToken Issued = Entries.back().Token;
     SelectSingle(Issued);
     return Issued;
+}
+
+uint32_t OutlinerPanel::DuplicateSelection()
+{
+    const std::vector<OutlinerSlotToken> Snapshot = SelectedTokens;
+    std::vector<OutlinerSlotToken>       CreatedTokens{};
+    for (const OutlinerSlotToken Token : Snapshot)
+    {
+        const OutlinerRecordEntry* Source = FindEntry(Token);
+        if (Source == nullptr || Source->Permanent)
+        {
+            continue;
+        }
+        OutlinerRecordEntry Copy = *Source;
+        Copy.Token               = OutlinerSlotToken{ NextTokenCounter++ };
+        Copy.Title               = GenerateUniqueTitle(Source->Title);
+        Entries.push_back(std::move(Copy));
+        CreatedTokens.push_back(Entries.back().Token);
+    }
+
+    if (!CreatedTokens.empty())
+    {
+        SelectedTokens  = CreatedTokens;
+        SelectionAnchor = CreatedTokens.front();
+    }
+    return static_cast<uint32_t>(CreatedTokens.size());
+}
+
+uint32_t OutlinerPanel::IsolateSelection() noexcept
+{
+    if (SelectedTokens.empty())
+    {
+        return 0u;
+    }
+
+    auto TokenChosen = [&](OutlinerSlotToken Candidate) noexcept
+    {
+        return std::find(SelectedTokens.begin(), SelectedTokens.end(), Candidate) != SelectedTokens.end();
+    };
+
+    uint32_t ChangedCount = 0u;
+    for (auto& Entry : Entries)
+    {
+        if (Entry.Permanent)
+        {
+            continue;
+        }
+
+        bool KeepVisible = TokenChosen(Entry.Token);
+        if (!KeepVisible)
+        {
+            for (const OutlinerSlotToken SelectedTok : SelectedTokens)
+            {
+                if (ContainsNestedSlot(SelectedTok, Entry.Token) || ContainsNestedSlot(Entry.Token, SelectedTok))
+                {
+                    KeepVisible = true;
+                    break;
+                }
+            }
+        }
+
+        if (Entry.Category == ConstructSlotCategory::Folder && KeepVisible && !Entry.VisibilityEnabled)
+        {
+            Entry.VisibilityEnabled = true;
+            ++ChangedCount;
+        }
+        else if (Entry.Category != ConstructSlotCategory::Folder && Entry.VisibilityEnabled != KeepVisible)
+        {
+            Entry.VisibilityEnabled = KeepVisible;
+            ++ChangedCount;
+        }
+    }
+    return ChangedCount;
+}
+
+uint32_t OutlinerPanel::SelectNestedSlots()
+{
+    const std::vector<OutlinerSlotToken> Snapshot = SelectedTokens;
+    uint32_t                             Added    = 0u;
+    for (const OutlinerSlotToken RootTok : Snapshot)
+    {
+        if (OutlinerRecordEntry* RootEntry = AccessEntry(RootTok))
+        {
+            RootEntry->Expanded = true;
+        }
+        for (const auto& Entry : Entries)
+        {
+            if (ContainsNestedSlot(RootTok, Entry.Token) && !QuerySlotSelected(Entry.Token))
+            {
+                SelectedTokens.push_back(Entry.Token);
+                ++Added;
+            }
+        }
+    }
+    return Added;
 }
 
 OutlinerSlotToken OutlinerPanel::GroupSelectionIntoFolder(std::string_view FolderTitle)
@@ -882,6 +1019,22 @@ void OutlinerPanel::Render(
         DragActive = false;
     }
 
+    if (!SearchEditor.Active && !OverlayOpenBefore && !SelectedTokens.empty())
+    {
+        if (Input.DeletePressed)
+        {
+            DeleteSelection();
+        }
+        else if (Input.ShortcutDuplicate)
+        {
+            DuplicateSelection();
+        }
+        else if (Input.ShortcutGroup)
+        {
+            GroupSelectionIntoFolder("Collection");
+        }
+    }
+
     const ColorRgba DockFill = WorkspaceAppearance::QueryDockedPaneBackground();
     Surface.PushClip(Bounds);
     Surface.FillRectangle(Bounds, DockFill);
@@ -1355,11 +1508,12 @@ void OutlinerPanel::Render(
                 }
             }
 
-            // 24px Showcase folder or category icon
+            // 24px Showcase folder or category/world icon
             const Point2D IconOrigin{ DisclosureRect.Right() + 4.0f, RowRect.Y + 7.5f };
-            WorkspaceAppearance::ConstructSlotCategoryIcon(
+            WorkspaceAppearance::ConstructSlotIcon(
                 Surface,
                 Entry->Category,
+                Entry->AtmosphereVariant,
                 IconOrigin,
                 24.0f,
                 Entry->FolderTint,
@@ -1686,28 +1840,201 @@ void OutlinerPanel::Render(
     {
         OutlinerRecordEntry* TargetEntry   = AccessEntry(DirectiveTargetToken);
         const bool           TargetPresent = (TargetEntry != nullptr);
-        const bool           Nested        = TargetPresent && TargetEntry->EnclosingToken.Valid();
 
-        std::vector<DropdownDirectiveEntry> DirectiveRows{};
+        enum class DirectiveCommand : uint8_t
+        {
+            None = 0,
+            ShowAll,
+            HideAll,
+            Isolate,
+            SelectNested,
+            GroupCollection,
+            Duplicate,
+            CopyTitles,
+            DeleteChosen,
+            ConstructPreset0,
+            ConstructFolder,
+        };
+
+        std::vector<OutlinerSlotToken> ChosenTokens{};
         if (TargetPresent)
         {
-            DirectiveRows.push_back({ "Inspect", "Enter", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ TargetEntry->VisibilityEnabled ? "Hide" : "Show", "H", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ "Duplicate", "Ctrl+D", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ "Group in Folder", "Ctrl+G", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            if (Nested)
+            if (SelectedTokens.size() > 1u && QuerySlotSelected(TargetEntry->Token))
             {
-                DirectiveRows.push_back({ "Move to Root", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
+                ChosenTokens = SelectedTokens;
             }
-            DirectiveRows.push_back({ "Delete", "Del", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, true, true, false });
+            else
+            {
+                ChosenTokens.push_back(TargetEntry->Token);
+            }
+        }
+
+        const std::size_t ChosenCount = ChosenTokens.size();
+        const bool        MultiChosen = ChosenCount > 1u;
+
+        bool AnyHidden         = false;
+        bool AnyHideable       = false;
+        bool AnyDeletable      = false;
+        bool AnyDuplicable     = false;
+        bool AnyNestedEntries  = false;
+        bool AnyGeometryVolume = false;
+
+        for (const OutlinerSlotToken Tok : ChosenTokens)
+        {
+            if (const OutlinerRecordEntry* Rec = FindEntry(Tok))
+            {
+                if (!Rec->VisibilityEnabled)
+                {
+                    AnyHidden = true;
+                }
+                if (Rec->VisibilityEnabled && !Rec->Permanent)
+                {
+                    AnyHideable = true;
+                }
+                if (!Rec->Permanent)
+                {
+                    AnyDeletable  = true;
+                    AnyDuplicable = true;
+                }
+                if (CountDirectNested(Tok) > 0u)
+                {
+                    AnyNestedEntries = true;
+                }
+                if (Rec->Category == ConstructSlotCategory::GeometryVolume)
+                {
+                    AnyGeometryVolume = true;
+                }
+            }
+        }
+
+        char HeaderCaption[96]{};
+        char DuplicateLabel[64]{};
+        char DeleteLabel[64]{};
+
+        std::vector<DropdownDirectiveEntry> DirectiveRows{};
+        std::vector<DirectiveCommand>       RowCommands{};
+        auto PushRow = [&](const char*      Label,
+                           const char*      Shortcut,
+                           DirectiveCommand Command,
+                           bool             Destructive,
+                           bool             DividerAbove,
+                           bool             SectionCaption,
+                           bool             Disabled)
+        {
+            DropdownDirectiveEntry Row{};
+            Row.Label          = Label;
+            Row.ShortcutHint   = Shortcut;
+            Row.Destructive    = Destructive;
+            Row.DividerAbove   = DividerAbove;
+            Row.SectionCaption = SectionCaption;
+            Row.Disabled       = Disabled;
+            DirectiveRows.push_back(Row);
+            RowCommands.push_back(Command);
+        };
+
+        if (TargetPresent)
+        {
+            if (MultiChosen)
+            {
+                std::snprintf(HeaderCaption, sizeof(HeaderCaption), "%zu selected", ChosenCount);
+            }
+            else
+            {
+                std::snprintf(HeaderCaption, sizeof(HeaderCaption), "%s", TargetEntry->Title.c_str());
+            }
+            PushRow(HeaderCaption, "", DirectiveCommand::None, false, false, true, false);
+
+            if (!MultiChosen)
+            {
+                PushRow("Rename", "F2", DirectiveCommand::None, false, false, false, true);
+            }
+            if (AnyHidden)
+            {
+                PushRow("Show", "", DirectiveCommand::ShowAll, false, false, false, false);
+            }
+            if (AnyHideable)
+            {
+                PushRow("Hide", "", DirectiveCommand::HideAll, false, false, false, false);
+            }
+            PushRow("Isolate", "", DirectiveCommand::Isolate, false, false, false, false);
+
+            if (AnyGeometryVolume || (!MultiChosen && !TargetEntry->Permanent && TargetEntry->Category != ConstructSlotCategory::Folder))
+            {
+                PushRow("Focus in viewport", "", DirectiveCommand::None, false, false, false, true);
+            }
+            if (!MultiChosen)
+            {
+                PushRow("Inspect in workspace", "", DirectiveCommand::None, false, false, false, true);
+            }
+            if (!MultiChosen && TargetEntry->Category == ConstructSlotCategory::GeometryVolume)
+            {
+                PushRow("Enable fracture", "", DirectiveCommand::None, false, false, false, true);
+            }
+
+            bool DividerPlacedAfterInspect = false;
+            if (AnyNestedEntries)
+            {
+                PushRow("Select children", "", DirectiveCommand::SelectNested, false, true, false, false);
+                DividerPlacedAfterInspect = true;
+            }
+            if (AnyDeletable)
+            {
+                PushRow(
+                    MultiChosen ? "Group into collection" : "Move into new collection",
+                    "",
+                    DirectiveCommand::GroupCollection,
+                    false,
+                    !DividerPlacedAfterInspect,
+                    false,
+                    false);
+                DividerPlacedAfterInspect = true;
+            }
+
+            if (MultiChosen)
+            {
+                std::snprintf(DuplicateLabel, sizeof(DuplicateLabel), "Duplicate %zu", ChosenCount);
+            }
+            else
+            {
+                std::snprintf(DuplicateLabel, sizeof(DuplicateLabel), "Duplicate");
+            }
+            PushRow(
+                DuplicateLabel,
+                "Ctrl+D",
+                AnyDuplicable ? DirectiveCommand::Duplicate : DirectiveCommand::None,
+                false,
+                !DividerPlacedAfterInspect,
+                false,
+                !AnyDuplicable);
+
+            PushRow(MultiChosen ? "Copy names" : "Copy name", "", DirectiveCommand::CopyTitles, false, false, false, false);
+            PushRow("Undo delete", "Ctrl+Z", DirectiveCommand::None, false, false, false, true);
+
+            if (MultiChosen)
+            {
+                std::snprintf(DeleteLabel, sizeof(DeleteLabel), "Delete %zu", ChosenCount);
+            }
+            else
+            {
+                std::snprintf(DeleteLabel, sizeof(DeleteLabel), "Delete");
+            }
+            PushRow(
+                DeleteLabel,
+                "Del",
+                AnyDeletable ? DirectiveCommand::DeleteChosen : DirectiveCommand::None,
+                true,
+                true,
+                false,
+                !AnyDeletable);
         }
         else
         {
-            DirectiveRows.push_back({ "Add Item 1", "", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
-            DirectiveRows.push_back({ "+ Add Folder", "Ctrl+G", { 0u, 0u, 0u, 0u }, ControlIcon::Count, false, false, false, false });
+            const char* Preset0Label = ConstructTemplates.empty() ? "Add Entry" : ConstructTemplates.front().DropdownLabel.c_str();
+            PushRow(Preset0Label, "", DirectiveCommand::ConstructPreset0, false, false, false, false);
+            PushRow("+ Add Folder", "Ctrl+G", DirectiveCommand::ConstructFolder, false, false, false, false);
         }
 
-        const float       SheetW   = 222.0f;
+        const float       SheetW   = 236.0f;
         const Rectangle2D RawSheet = DropdownSelector::QueryDirectiveSheetBounds(DirectiveSheetAnchor, SheetW, DirectiveRows);
         const Rectangle2D Sheet{
             std::clamp(RawSheet.X, Bounds.X + 8.0f, std::max(Bounds.X + 8.0f, Bounds.Right() - RawSheet.Width - 8.0f)),
@@ -1717,49 +2044,90 @@ void OutlinerPanel::Render(
         };
 
         int32_t ChosenRow = -1;
-        if (DropdownSelector::ConstructDirectiveSheet(ActiveOverlay, Sheet, DirectiveRows, Input.PrimaryPointer, ChosenRow).Clicked && ChosenRow >= 0)
+        if (DropdownSelector::ConstructDirectiveSheet(ActiveOverlay, Sheet, DirectiveRows, Input.PrimaryPointer, ChosenRow).Clicked &&
+            ChosenRow >= 0 && ChosenRow < static_cast<int32_t>(RowCommands.size()))
         {
-            if (TargetPresent)
+            switch (RowCommands[static_cast<std::size_t>(ChosenRow)])
             {
-                if (ChosenRow == 0)
-                {
-                    SelectSingle(TargetEntry->Token);
-                }
-                else if (ChosenRow == 1)
-                {
-                    TargetEntry->VisibilityEnabled = !TargetEntry->VisibilityEnabled;
-                }
-                else if (ChosenRow == 2)
-                {
-                    DuplicateSlot(TargetEntry->Token);
-                }
-                else if (ChosenRow == 3)
-                {
-                    GroupSelectionIntoFolder("Folder");
-                }
-                else if (Nested && ChosenRow == 4)
-                {
-                    AttachToEnclosure(TargetEntry->Token, OutlinerSlotToken{});
-                }
-                else
-                {
-                    if (SelectedTokens.size() > 1u && QuerySlotSelected(TargetEntry->Token))
+                case DirectiveCommand::ShowAll:
+                    for (const OutlinerSlotToken Tok : ChosenTokens)
+                    {
+                        if (OutlinerRecordEntry* Rec = AccessEntry(Tok))
+                        {
+                            Rec->VisibilityEnabled = true;
+                        }
+                    }
+                    break;
+                case DirectiveCommand::HideAll:
+                    for (const OutlinerSlotToken Tok : ChosenTokens)
+                    {
+                        if (OutlinerRecordEntry* Rec = AccessEntry(Tok))
+                        {
+                            if (!Rec->Permanent)
+                            {
+                                Rec->VisibilityEnabled = false;
+                            }
+                        }
+                    }
+                    break;
+                case DirectiveCommand::Isolate:
+                    IsolateSelection();
+                    break;
+                case DirectiveCommand::SelectNested:
+                    SelectNestedSlots();
+                    break;
+                case DirectiveCommand::GroupCollection:
+                    GroupSelectionIntoFolder("Collection");
+                    break;
+                case DirectiveCommand::Duplicate:
+                    if (MultiChosen)
+                    {
+                        DuplicateSelection();
+                    }
+                    else if (TargetPresent)
+                    {
+                        DuplicateSlot(TargetEntry->Token);
+                    }
+                    break;
+                case DirectiveCommand::CopyTitles:
+                    if (ImGui::GetCurrentContext() != nullptr)
+                    {
+                        std::string Combined{};
+                        for (const OutlinerSlotToken Tok : ChosenTokens)
+                        {
+                            if (const OutlinerRecordEntry* Rec = FindEntry(Tok))
+                            {
+                                if (!Combined.empty())
+                                {
+                                    Combined.push_back('\n');
+                                }
+                                Combined.append(Rec->Title);
+                            }
+                        }
+                        if (!Combined.empty())
+                        {
+                            ImGui::SetClipboardText(Combined.c_str());
+                        }
+                    }
+                    break;
+                case DirectiveCommand::DeleteChosen:
+                    if (MultiChosen || (TargetPresent && QuerySlotSelected(TargetEntry->Token)))
                     {
                         DeleteSelection();
                     }
-                    else
+                    else if (TargetPresent)
                     {
                         DeleteSlot(TargetEntry->Token);
                     }
-                }
-            }
-            else if (ChosenRow == 0)
-            {
-                ConstructFromTemplate(0u);
-            }
-            else if (ChosenRow == 1)
-            {
-                ConstructFolder("Folder");
+                    break;
+                case DirectiveCommand::ConstructPreset0:
+                    ConstructFromTemplate(0u);
+                    break;
+                case DirectiveCommand::ConstructFolder:
+                    ConstructFolder("Folder");
+                    break;
+                case DirectiveCommand::None:
+                    break;
             }
             DirectiveSheetOpen = false;
         }
@@ -1838,7 +2206,9 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
             (Rec.Locked ? 4ull : 0ull) |
             (Rec.DynamicMotion ? 8ull : 0ull) |
             (Rec.CastShadows ? 16ull : 0ull) |
-            (static_cast<uint64_t>(Rec.Category) << 5u);
+            (Rec.Permanent ? 32ull : 0ull) |
+            (static_cast<uint64_t>(Rec.Category) << 6u) |
+            (static_cast<uint64_t>(Rec.AtmosphereVariant) << 10u);
         Sig = RetainedCanvasCache::MixHash(Sig, Bits);
         Sig = MixString(Sig, Rec.Title);
         Sig = MixString(Sig, Rec.Subtitle);
@@ -1866,6 +2236,7 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
         std::fabs(Input.WheelDeltaY) > 1.0e-4f ||
         Input.DeletePressed ||
         Input.ShortcutDuplicate ||
+        Input.ShortcutGroup ||
         Input.ShortcutAll;
 
     if (RetainedCanvas.QueryReusable(Sig, ScreenBounds, PhysicalMouse, ForceRebuild) &&

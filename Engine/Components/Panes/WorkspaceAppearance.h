@@ -36,6 +36,16 @@ enum class ConstructSlotCategory : uint8_t
     OpticsCamera   = 4, // [-] - Generic constructible slot category 4 (Camera icon)
 };
 
+enum class AtmosphereSlotVariant : uint8_t
+{
+    None             = 0, // [-] - Generic/geometry/light/camera slot
+    Atmosphere       = 1, // [-] - Physical Rayleigh/Mie/Ozone sky medium
+    Sun              = 2, // [-] - Directional solar emitter & ephemeris disc
+    VolumetricClouds = 3, // [-] - Planetary volumetric cloud deck
+    Moon             = 4, // [-] - Six-slot lunar disc system
+    Stars            = 5, // [-] - Nocturnal procedural starfield
+};
+
 enum class VisualTokenShape : uint8_t
 {
     Circle        = 0, // [-] - Circular filled/stroked color token
@@ -271,6 +281,15 @@ void ConstructSlotCategoryIcon(
     float                 Extent,
     ColorRgba             FolderTint = WorkspaceSurfaceColors::SageCollection,
     float                 Opacity    = 1.0f) noexcept;
+
+void ConstructSlotIcon(
+    PixelSpace&              Surface,
+    ConstructSlotCategory    Category,
+    AtmosphereSlotVariant AtmosphereVariant,
+    Point2D                  TopLeft,
+    float                    Extent,
+    ColorRgba                FolderTint = WorkspaceSurfaceColors::SageCollection,
+    float                    Opacity    = 1.0f) noexcept;
 
 void ConstructCameraIcon(
     PixelSpace& Surface,

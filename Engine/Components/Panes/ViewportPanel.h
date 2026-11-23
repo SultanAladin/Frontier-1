@@ -51,6 +51,11 @@ enum class ConstructCategoryRail : uint8_t
     All             = 0, // [-] - All constructable templates and folders
     ScenePrimitives = 1, // [-] - Generic constructable entries (generic construct slots)
     Organization    = 2, // [-] - Organizational folders
+    Environment     = 3, // [-] - Atmosphere, Sun, Moon, Stars
+    Weather         = 4, // [-] - Volumetric Clouds
+    Geometry        = 5, // [-] - 3D meshes and primitive solids
+    Lighting        = 6, // [-] - Area and point luminaires
+    Cameras         = 7, // [-] - Scene optics cameras
 };
 
 //------------------------------------------------------------------------------------------------------------------------
