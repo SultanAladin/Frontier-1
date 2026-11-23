@@ -347,6 +347,7 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
 
     const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool LoadedWorldFileAuthoritative = (!ApocalypticCitySessionActive && !BlankPlaneSkySessionActive);
     if (ApocalypticCitySessionActive)
     {
         GeometricRaster::BuildApocalypticCityRacingScene(*ShowcaseBundle, ApocalypticCitySim, RenderWidthPx, RenderHeightPx);
@@ -365,20 +366,37 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
         GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
     }
     {
-        const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
         auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
-        Atmo.Medium.AtmosphereEnabled  = DisplayCfg.AtmosphereSkyEnabled;
-        Atmo.Clouds.CloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
-        Atmo.Clouds.CloudFraction      = DisplayCfg.CloudFraction;
-        Atmo.Clouds.CloudShadow.ShadowEnabled      = DisplayCfg.CloudShadowsEnabled;
-        Atmo.Clouds.WindSpeedMetersPerSecond       = DisplayCfg.CloudWindSpeedMps;
-        Atmo.Clouds.FollowWindEnabled              = (DisplayCfg.CloudWindSpeedMps > 0.01f);
-        Atmo.Wind.SpeedMetersPerSecond             = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
-        Atmo.Stars.StarfieldEnabled    = DisplayCfg.CelestialStarsEnabled;
-        Atmo.Solar.SolarEnabled        = DisplayCfg.CelestialStarsEnabled;
-        Atmo.Moons[0].Visible          = false;
-        Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
-        Atmo.Solar.LocalHours          = DisplayCfg.SolarTimeOfDayHours;
+        if (LoadedWorldFileAuthoritative)
+        {
+            // Synchronize viewport display settings FROM the loaded .WorldSpace atmosphere instead of overwriting it
+            auto& MutDisplay = Panes->Viewport.AccessDisplaySettings();
+            MutDisplay.AtmosphereSkyEnabled    = Atmo.Medium.AtmosphereEnabled;
+            MutDisplay.VolumetricCloudsEnabled = Atmo.Clouds.CloudsEnabled;
+            MutDisplay.CloudFraction           = Atmo.Clouds.CloudFraction;
+            MutDisplay.CloudShadowsEnabled     = Atmo.Clouds.CloudShadow.ShadowEnabled;
+            MutDisplay.CloudWindSpeedMps       = Atmo.Clouds.WindSpeedMetersPerSecond;
+            MutDisplay.CelestialStarsEnabled   = Atmo.Stars.StarfieldEnabled;
+            MutDisplay.DayCyclePlaying         = Atmo.Solar.CycleAnimationEnabled;
+            MutDisplay.SolarTimeOfDayHours     = Atmo.Solar.LocalHours;
+        }
+        else
+        {
+            const auto& DisplaySettings = Panes->Viewport.QueryDisplaySettings();
+            Atmo.Medium.AtmosphereEnabled        = DisplaySettings.AtmosphereSkyEnabled;
+            Atmo.Clouds.CloudsEnabled            = DisplaySettings.VolumetricCloudsEnabled;
+            Atmo.Clouds.CloudFraction            = DisplaySettings.CloudFraction;
+            Atmo.Clouds.CloudShadow.ShadowEnabled = DisplaySettings.CloudShadowsEnabled;
+            Atmo.Clouds.WindSpeedMetersPerSecond = DisplaySettings.CloudWindSpeedMps;
+            Atmo.Clouds.FollowWindEnabled        = (DisplaySettings.CloudWindSpeedMps > 0.01f);
+            Atmo.Wind.SpeedMetersPerSecond       = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplaySettings.CloudWindSpeedMps);
+            Atmo.Stars.StarfieldEnabled          = DisplaySettings.CelestialStarsEnabled;
+            // Solar visibility is independent of night celestial starfield visibility
+            Atmo.Solar.SolarEnabled              = DisplaySettings.AtmosphereSkyEnabled;
+            Atmo.Moons[0].Visible                = false;
+            Atmo.Solar.CycleAnimationEnabled     = DisplaySettings.DayCyclePlaying;
+            Atmo.Solar.LocalHours                = DisplaySettings.SolarTimeOfDayHours;
+        }
         if (Atmo.Medium.AtmosphereEnabled)
         {
             ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);

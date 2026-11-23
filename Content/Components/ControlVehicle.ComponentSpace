@@ -1,4 +1,4 @@
-# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase Manifest)
+# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase TOML Header)
 [['.ComponentHierarchy'.Instances]]
 Category = 0
 HiddenInPlay = false
@@ -290,4 +290,4 @@ ContainerExtension = '.ComponentSpace'
 DocumentTitle = 'ControlVehicle'
 SchemaVersion = 1
 # === FRONTIER_BINARY_BOUNDARY ===
-                                                        
+                                                     

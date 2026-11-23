@@ -9,6 +9,8 @@
 
 #include "Engine/Configuration/EngineConfiguration.h"
 
+#include "Engine/Serialization/Configuration/BootConfigurationLoader.h"
+
 #include <algorithm>
 #include <thread>
 
@@ -87,6 +89,14 @@ void EngineConfiguration::ConfigureFromCommandLine(std::span<const std::string_v
             Modified.LaunchMode       = HostLaunchMode::StandaloneWorkspace;
             Modified.ActiveWorkspace  = WorkspaceCategory::Vector;
             Modified.ApplicationTitle = "Frontier Vector";
+        }
+        else if (Argument.starts_with("--world="))
+        {
+            const std::string_view PathSlice = Argument.substr(8u);
+            if (!PathSlice.empty())
+            {
+                Modified.StartupWorldPath = std::string(PathSlice);
+            }
         }
         else if (Argument == "--standalone-baking" || Argument == "--standalone=baking" || Argument == "--workspace=baking" || Argument == "--baking")
         {
@@ -235,6 +245,43 @@ WorkspaceCategory EngineConfiguration::QueryWorkspaceCategory() const noexcept
 Mathematics::WorldCoordinateBasis EngineConfiguration::QueryWorldBasis() const noexcept
 {
     return Descriptor.WorldBasis;
+}
+
+bool EngineConfiguration::ConfigureFromBootFiles(
+    const std::filesystem::path& RepositoryRoot,
+    std::string&                 OutDiagnostic)
+{
+    Serialization::ResolvedBootConfiguration BootResolved{};
+    if (!Serialization::BootConfigurationLoader::EnsureDefaultConfigurationFiles(RepositoryRoot, OutDiagnostic))
+    {
+        return false;
+    }
+    if (!Serialization::BootConfigurationLoader::LoadFromRepositoryRoot(RepositoryRoot, BootResolved, OutDiagnostic))
+    {
+        return false;
+    }
+
+    EngineConfigurationDescriptor Updated = Descriptor;
+    if (!BootResolved.RuntimeConfiguration.ApplicationTitle.empty())
+    {
+        Updated.ApplicationTitle = BootResolved.RuntimeConfiguration.ApplicationTitle;
+    }
+    if (BootResolved.RuntimeConfiguration.WindowWidthPixels > 0u)
+    {
+        Updated.PrimaryWindowWidthPx = BootResolved.RuntimeConfiguration.WindowWidthPixels;
+    }
+    if (BootResolved.RuntimeConfiguration.WindowHeightPixels > 0u)
+    {
+        Updated.PrimaryWindowHeightPx = BootResolved.RuntimeConfiguration.WindowHeightPixels;
+    }
+    if (BootResolved.PlatformSettings.WorkerThreadCap > 0u)
+    {
+        Updated.RequestedChannelLanes = BootResolved.PlatformSettings.WorkerThreadCap;
+    }
+    Updated.StartupWorldPath = BootResolved.ResolvedWorldPath.string();
+    Configure(std::move(Updated));
+    OutDiagnostic.clear();
+    return true;
 }
 
 uint32_t EngineConfiguration::QueryResolvedChannelLanes() const noexcept

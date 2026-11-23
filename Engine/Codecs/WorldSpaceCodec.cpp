@@ -61,14 +61,14 @@ SpaceContainerPayload WorldSpaceEncoder::BuildPayload(
     Payload.DocumentTitle      = Model.DocumentTitle.empty() ? "VehicleClearSkyDefault" : Model.DocumentTitle;
     Payload.AuthoringWorkspace = "Frontier.WorldWorkspace";
 
-    toml::table HierarchyTbl{};
-    HierarchyTbl.insert_or_assign("SolarPhotometryPath", Model.SolarPhotometryPath);
-    HierarchyTbl.insert_or_assign("EnvironmentVolumetricPath", Model.EnvironmentVolumetricPath);
-    HierarchyTbl.insert_or_assign("RenderSettingsPath", Model.RenderSettingsPath);
-    HierarchyTbl.insert_or_assign("GeometryPlacementCount", static_cast<int64_t>(Model.GeometryPlacements.size()));
-    HierarchyTbl.insert_or_assign("AreaLuminaireCount", static_cast<int64_t>(Model.AreaLuminairePlacements.size()));
-    HierarchyTbl.insert_or_assign("MeasuredLuminaireCount", static_cast<int64_t>(Model.MeasuredLuminairePlacements.size()));
-    Payload.DomainManifest.insert_or_assign(".WorldHierarchy", std::move(HierarchyTbl));
+    toml::table ReferencesSection{};
+    ReferencesSection.insert_or_assign("SolarPhotometryPath", Model.SolarPhotometryPath);
+    ReferencesSection.insert_or_assign("EnvironmentVolumetricPath", Model.EnvironmentVolumetricPath);
+    ReferencesSection.insert_or_assign("RenderSettingsPath", Model.RenderSettingsPath);
+    ReferencesSection.insert_or_assign("GeometryPlacementCount", static_cast<int64_t>(Model.GeometryPlacements.size()));
+    ReferencesSection.insert_or_assign("AreaLuminaireCount", static_cast<int64_t>(Model.AreaLuminairePlacements.size()));
+    ReferencesSection.insert_or_assign("MeasuredLuminaireCount", static_cast<int64_t>(Model.MeasuredLuminairePlacements.size()));
+    Payload.DomainManifest.insert_or_assign(".WorldReferences", std::move(ReferencesSection));
 
     toml::table CameraTbl{};
     CameraTbl.insert_or_assign("CameraOrigin", PackWorldVec3(Model.EditorCamera.CameraOrigin.X, Model.EditorCamera.CameraOrigin.Y, Model.EditorCamera.CameraOrigin.Z));
@@ -221,11 +221,16 @@ bool WorldSpaceDecoder::ExtractModel(
     OutModel               = WorldSpaceDocumentModel{};
     OutModel.DocumentTitle = Payload.DocumentTitle;
 
-    if (const auto* HierarchyTbl = Payload.DomainManifest[".WorldHierarchy"].as_table())
+    const auto* ReferencesSection = Payload.DomainManifest[".WorldReferences"].as_table();
+    if (ReferencesSection == nullptr)
     {
-        OutModel.SolarPhotometryPath       = (*HierarchyTbl)["SolarPhotometryPath"].value_or(std::string{});
-        OutModel.EnvironmentVolumetricPath = (*HierarchyTbl)["EnvironmentVolumetricPath"].value_or(std::string{});
-        OutModel.RenderSettingsPath        = (*HierarchyTbl)["RenderSettingsPath"].value_or(std::string{});
+        ReferencesSection = Payload.DomainManifest[".WorldHierarchy"].as_table();
+    }
+    if (ReferencesSection != nullptr)
+    {
+        OutModel.SolarPhotometryPath       = (*ReferencesSection)["SolarPhotometryPath"].value_or(std::string{});
+        OutModel.EnvironmentVolumetricPath = (*ReferencesSection)["EnvironmentVolumetricPath"].value_or(std::string{});
+        OutModel.RenderSettingsPath        = (*ReferencesSection)["RenderSettingsPath"].value_or(std::string{});
     }
 
     if (const auto* CameraTbl = Payload.DomainManifest[".EditorCamera"].as_table())

@@ -13,6 +13,7 @@
 #include "Engine/Mathematics/CoordinateSpace.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <span>
 #include <string>
 #include <string_view>
@@ -62,6 +63,7 @@ struct EngineConfigurationDescriptor
     HostLaunchMode    LaunchMode            = HostLaunchMode::FeatureSet;    // [-]     - FeatureSet vs Standalone
     WorkspaceCategory ActiveWorkspace       = WorkspaceCategory::SceneWorld; // [-]     - Initial or standalone workspace category
     std::string       ApplicationTitle      { "Frontier" };                  // [-]     - Window & dock title
+    std::string       StartupWorldPath      { "Content/Worlds/VehicleClearSkyDefault.WorldSpace" }; // [-] - Boot .WorldSpace path
     uint32_t          PrimaryWindowWidthPx  = 1600u;                         // [px]    - Initial window width
     uint32_t          PrimaryWindowHeightPx = 980u;                          // [px]    - Initial window height
     uint32_t                          RequestedChannelLanes = 0u;                            // [count] - 0 = derive from hardware threads
@@ -79,6 +81,9 @@ public:
 
     void Configure(EngineConfigurationDescriptor NewDescriptor) noexcept;
     void ConfigureFromCommandLine(std::span<const std::string_view> Arguments) noexcept;
+    [[nodiscard]] bool ConfigureFromBootFiles(
+        const std::filesystem::path& RepositoryRoot,
+        std::string&                 OutDiagnostic);
 
     [[nodiscard]] static EngineConfigurationDescriptor ConstructFeatureSetDefault() noexcept;
     [[nodiscard]] static EngineConfigurationDescriptor ConstructStandaloneUVDefault() noexcept;
