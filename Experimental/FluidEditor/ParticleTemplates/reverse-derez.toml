@@ -1,0 +1,60 @@
+# Reverse Derez Assemble — particle template (Transitions). Scattered digital fragments pulled and locked into a solid voxel shell behind a sweeping assembly front.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "193ceeab39c3eb37"
+
+[Template]
+Order = 29
+Id = "reverse-derez"
+Name = "Reverse Derez Assemble"
+Category = "Transitions"
+Icon = "derez"
+Tint = "#38bdf8"
+Summary = "Scattered digital fragments pulled and locked into a solid voxel shell behind a sweeping assembly front."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 8, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 1.05, Fill = 0.0, Count = 6144, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 213
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { DerezMode = 2, DerezMix = 1.0, DerezProgress = 0.0, DerezAutoSpeed = 0.22, DerezEdgeWidth = 0.16, DerezEdgeGlow = 2.6, DerezEdgeColour = "#7dd3fc", DerezShatter = 1.8 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#e0f2fe", "#38bdf8", "#1d4ed8"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.8, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.2, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 7.0, SizeEnd = 5.5, SizeRandom = 0.1 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 5, Glow = 0.75, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

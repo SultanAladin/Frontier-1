@@ -1,0 +1,95 @@
+# Charging Bay — scene preset (VFX). Adapted from Particle Studio: pulsing emerald energy flows down a conduit into an orbital core alongside a reactive MoGraph cube matrix representing charging battery cells.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Scene]
+Order = 49
+Id = "preset-charging-bay"
+Name = "Charging Bay"
+Family = "VFX"
+Icon = "electric"
+Boundary = "ClosedBox"
+Summary = "EV charging bay: emerald energy pulses down the conduit into a reactive MoGraph battery cell matrix with magnetic attraction."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.0, 5.5, 6.5]
+
+[Render]
+Visible = false
+Exposure = 1.3
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.0, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "PointAttractor"
+  Name = "Battery Port"
+  Position = [0.65, -0.1, 0.0]
+  Strength = 2.1
+  Radius = 2.8
+  Falloff = "SmoothStep"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.4
+  Secondary = 0.0
+
+[[Force]]
+  Type = "Orbit"
+  Name = "Induction Ring"
+  Position = [0.65, -0.1, 0.0]
+  Strength = 1.3
+  Radius = 2.4
+  Falloff = "Gaussian"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.5
+  Secondary = 0.0
+
+[[Particle]]
+  Template = "ev-charging-conduit"
+  Name = "Charge Conduit"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.65, -0.25, 0.0]
+  Radius = 0.85
+  Count = 2048
+
+[[Particle]]
+  Template = "effector-cube-matrix"
+  Name = "Cell Matrix"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.75, -0.1, 0.0]
+  Radius = 1.25
+  Count = 1728
+  Palette = ["#064e3b", "#10b981", "#34d399", "#ecfdf5"]
+
+[[Particle]]
+  Template = "radar-sweep"
+  Name = "Bay Pad"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.2, -1.35, 0.0]
+  Radius = 2.0
+  Count = 1536
+  Brightness = 0.75

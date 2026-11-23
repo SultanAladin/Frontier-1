@@ -1,0 +1,2082 @@
+{
+ "Format": "frontier-particle-template-conversion",
+ "Date": "2026-11-23",
+ "Method": "Each of the 26 legacy template objects in ParticleCatalog.js was built with createParticleSystem(id) before the change; its node (without Id) was hashed with specificationHash (FNV-1a 64 over canonical JSON). After the change, ParticleTemplates/<id>.toml must build a node with the same hash (FluidValidation.mjs §8). The GPU capture (ParticleMetrics) runs each template alone in Smoke Plume at 20 cells for 1 s and 2.5 s: live particles, mean position, mean speed, pixels the particles change and their mean colour.",
+ "Templates": {
+  "field-streamlines": {
+   "File": "ParticleTemplates/field-streamlines.toml",
+   "Legacy": "11326540e237b1e7"
+  },
+  "meteor-shower": {
+   "File": "ParticleTemplates/meteor-shower.toml",
+   "Legacy": "e627220270dbbb2a"
+  },
+  "light-strands": {
+   "File": "ParticleTemplates/light-strands.toml",
+   "Legacy": "3e064b0d6140e8e1"
+  },
+  "silk-ribbons": {
+   "File": "ParticleTemplates/silk-ribbons.toml",
+   "Legacy": "e6348652c249f479"
+  },
+  "neon-filaments": {
+   "File": "ParticleTemplates/neon-filaments.toml",
+   "Legacy": "a8fb54e1551eb546"
+  },
+  "stardust": {
+   "File": "ParticleTemplates/stardust.toml",
+   "Legacy": "e4f111829aabdf91"
+  },
+  "nebula": {
+   "File": "ParticleTemplates/nebula.toml",
+   "Legacy": "1a094a1b45148550"
+  },
+  "dissolving-sphere": {
+   "File": "ParticleTemplates/dissolving-sphere.toml",
+   "Legacy": "7ceb6bbb1228043c"
+  },
+  "bioluminescent": {
+   "File": "ParticleTemplates/bioluminescent.toml",
+   "Legacy": "49579a5ed6cb6e0c"
+  },
+  "fireworks": {
+   "File": "ParticleTemplates/fireworks.toml",
+   "Legacy": "087b55b4cd88bc11"
+  },
+  "pulse-ring": {
+   "File": "ParticleTemplates/pulse-ring.toml",
+   "Legacy": "e1c9c40ff8a425cc"
+  },
+  "electric-sparks": {
+   "File": "ParticleTemplates/electric-sparks.toml",
+   "Legacy": "bf667fcb6c0f12c3"
+  },
+  "sparks": {
+   "File": "ParticleTemplates/sparks.toml",
+   "Legacy": "76150b98151aec46"
+  },
+  "confetti": {
+   "File": "ParticleTemplates/confetti.toml",
+   "Legacy": "808137ab0511bc66"
+  },
+  "fireflies": {
+   "File": "ParticleTemplates/fireflies.toml",
+   "Legacy": "378cfc01837b9c9f"
+  },
+  "fountain": {
+   "File": "ParticleTemplates/fountain.toml",
+   "Legacy": "0abec8200b8c7a5a"
+  },
+  "galaxy-disc": {
+   "File": "ParticleTemplates/galaxy-disc.toml",
+   "Legacy": "dd5d486101b629f9"
+  },
+  "grid-cloner": {
+   "File": "ParticleTemplates/grid-cloner.toml",
+   "Legacy": "d45a7f7e193b0a3b"
+  },
+  "ring-cloner": {
+   "File": "ParticleTemplates/ring-cloner.toml",
+   "Legacy": "b58fadf6f3d17fed"
+  },
+  "sphere-swarm": {
+   "File": "ParticleTemplates/sphere-swarm.toml",
+   "Legacy": "2c2d21fbc5679114"
+  },
+  "line-cloner": {
+   "File": "ParticleTemplates/line-cloner.toml",
+   "Legacy": "deaadcfd9e9a75d3"
+  },
+  "bubbles": {
+   "File": "ParticleTemplates/bubbles.toml",
+   "Legacy": "2fbe0862210e6b26"
+  },
+  "mist-spray": {
+   "File": "ParticleTemplates/mist-spray.toml",
+   "Legacy": "5f53329879d8ed90"
+  },
+  "snowfall": {
+   "File": "ParticleTemplates/snowfall.toml",
+   "Legacy": "f2f06c652e1474b9"
+  },
+  "ground-dust": {
+   "File": "ParticleTemplates/ground-dust.toml",
+   "Legacy": "864acbe9fa0504c9"
+  },
+  "rain": {
+   "File": "ParticleTemplates/rain.toml",
+   "Legacy": "9ffc8ee8054306c7"
+  }
+ },
+ "Capture": {
+  "Harness": "ParticleMetrics.cjs (headless Chromium, SwiftShader WebGL2): template alone in Smoke Plume, MaxCells 20, fixed steps to 1 s and 2.5 s; GPU readback of particle positions/velocities; frame rendered with and without the system, pixels that change (> 6 levels) and their mean colour.",
+  "Before": [
+   {
+    "Id": "field-streamlines",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1260,
+      "Mean": [
+       -0.0046,
+       -2.8881,
+       0.0514
+      ],
+      "Speed": 0.2749,
+      "Lit": 2345,
+      "Colour": [
+       73.08,
+       186.5,
+       215.63
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "meteor-shower",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 17,
+      "Mean": [
+       -0.1708,
+       2.3039,
+       -0.1169
+      ],
+      "Speed": 8.9141,
+      "Lit": 376,
+      "Colour": [
+       157.88,
+       159.69,
+       165.66
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 12,
+      "Mean": [
+       -0.4391,
+       -0.3493,
+       0.4282
+      ],
+      "Speed": 7.9511,
+      "Lit": 6089,
+      "Colour": [
+       166.13,
+       168.74,
+       173.99
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "light-strands",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "silk-ribbons",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "neon-filaments",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "stardust",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 9917,
+      "Mean": [
+       0.0539,
+       -2.9339,
+       -0.0021
+      ],
+      "Speed": 2.1839,
+      "Lit": 5901,
+      "Colour": [
+       107.08,
+       110.78,
+       119.73
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 8377,
+      "Mean": [
+       0.0396,
+       -2.6459,
+       -0.0403
+      ],
+      "Speed": 1.956,
+      "Lit": 5098,
+      "Colour": [
+       108.92,
+       112.52,
+       120.78
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "nebula",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 13142,
+      "Mean": [
+       -0.3081,
+       -3.4518,
+       0.6124
+      ],
+      "Speed": 2.8401,
+      "Lit": 3239,
+      "Colour": [
+       110.55,
+       117.08,
+       126.19
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 10300,
+      "Mean": [
+       -0.0437,
+       -3.0997,
+       0.4485
+      ],
+      "Speed": 2.3748,
+      "Lit": 2360,
+      "Colour": [
+       123.46,
+       128.43,
+       135.61
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "dissolving-sphere",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 16384,
+      "Mean": [
+       0.0314,
+       0.1135,
+       -0.0868
+      ],
+      "Speed": 0.3577,
+      "Lit": 4072,
+      "Colour": [
+       135.18,
+       129.43,
+       130.2
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 16384,
+      "Mean": [
+       0.0661,
+       0.1486,
+       -0.0981
+      ],
+      "Speed": 0.4182,
+      "Lit": 4054,
+      "Colour": [
+       135.93,
+       131.28,
+       132.64
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "bioluminescent",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 11453,
+      "Mean": [
+       0.1318,
+       -2.7691,
+       -0.0589
+      ],
+      "Speed": 1.6954,
+      "Lit": 3416,
+      "Colour": [
+       119.97,
+       124.56,
+       133
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 8024,
+      "Mean": [
+       0.2248,
+       -2.6065,
+       -0.2234
+      ],
+      "Speed": 1.4566,
+      "Lit": 4548,
+      "Colour": [
+       115.35,
+       120.4,
+       128.19
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "fireworks",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2160,
+      "Mean": [
+       0.0081,
+       -2.8958,
+       -0.0107
+      ],
+      "Speed": 3.7333,
+      "Lit": 9116,
+      "Colour": [
+       242.8,
+       244.75,
+       240.77
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 183,
+      "Mean": [
+       -0.0333,
+       -1.4641,
+       -0.0953
+      ],
+      "Speed": 2.0616,
+      "Lit": 11644,
+      "Colour": [
+       165.19,
+       169.77,
+       169.75
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "pulse-ring",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2729,
+      "Mean": [
+       0.0329,
+       -2.9451,
+       0.02
+      ],
+      "Speed": 1.7204,
+      "Lit": 1153,
+      "Colour": [
+       177.39,
+       182.72,
+       189.24
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1876,
+      "Mean": [
+       -0.0536,
+       -2.9456,
+       -0.0088
+      ],
+      "Speed": 1.7186,
+      "Lit": 896,
+      "Colour": [
+       171.93,
+       176.88,
+       183.02
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "electric-sparks",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 1539,
+      "Mean": [
+       0.016,
+       -2.9684,
+       0.0123
+      ],
+      "Speed": 5.1947,
+      "Lit": 395,
+      "Colour": [
+       225.34,
+       226.68,
+       229.14
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1781,
+      "Mean": [
+       -0.0215,
+       -2.9756,
+       0.0287
+      ],
+      "Speed": 4.038,
+      "Lit": 987,
+      "Colour": [
+       231.07,
+       231.78,
+       233.87
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "sparks",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2481,
+      "Mean": [
+       -0.0377,
+       -2.8401,
+       0.0156
+      ],
+      "Speed": 1.8188,
+      "Lit": 3765,
+      "Colour": [
+       232.86,
+       205.35,
+       163.1
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3264,
+      "Mean": [
+       0.0458,
+       -2.6007,
+       0.0197
+      ],
+      "Speed": 2.4124,
+      "Lit": 4252,
+      "Colour": [
+       238.92,
+       231.06,
+       216.26
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "confetti",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 3092,
+      "Mean": [
+       0.6122,
+       -0.6165,
+       0.0518
+      ],
+      "Speed": 1.8586,
+      "Lit": 6356,
+      "Colour": [
+       181,
+       192.88,
+       162.12
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3163,
+      "Mean": [
+       0.419,
+       -1.8712,
+       -0.0018
+      ],
+      "Speed": 2.4576,
+      "Lit": 9530,
+      "Colour": [
+       178.77,
+       189.74,
+       162.55
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "fireflies",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 797,
+      "Mean": [
+       -0.0028,
+       -2.8114,
+       0.0502
+      ],
+      "Speed": 1.1773,
+      "Lit": 2632,
+      "Colour": [
+       225.28,
+       227.39,
+       221
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 815,
+      "Mean": [
+       -0.0009,
+       -2.5961,
+       0.0171
+      ],
+      "Speed": 1.225,
+      "Lit": 3712,
+      "Colour": [
+       214.66,
+       218.51,
+       204.89
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "fountain",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 8192,
+      "Mean": [
+       -0.0023,
+       -1.608,
+       0.1235
+      ],
+      "Speed": 3.3032,
+      "Lit": 3067,
+      "Colour": [
+       155.09,
+       234.31,
+       248.15
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 8170,
+      "Mean": [
+       0.0412,
+       -3.4829,
+       0.2063
+      ],
+      "Speed": 0.0725,
+      "Lit": 3022,
+      "Colour": [
+       45.59,
+       131.94,
+       191.42
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "galaxy-disc",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 16384,
+      "Mean": [
+       0.0157,
+       0.0323,
+       -0.0146
+      ],
+      "Speed": 0.2198,
+      "Lit": 2534,
+      "Colour": [
+       119.43,
+       123.65,
+       135.41
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 16384,
+      "Mean": [
+       0.0195,
+       0.0613,
+       -0.0233
+      ],
+      "Speed": 0.2245,
+      "Lit": 2359,
+      "Colour": [
+       116.85,
+       121.74,
+       136
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "grid-cloner",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 4096,
+      "Mean": [
+       0,
+       0.0106,
+       0
+      ],
+      "Speed": 0.0598,
+      "Lit": 7703,
+      "Colour": [
+       146.53,
+       149.75,
+       248.11
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 4096,
+      "Mean": [
+       0,
+       0.0128,
+       0
+      ],
+      "Speed": 0.0101,
+      "Lit": 7703,
+      "Colour": [
+       145.98,
+       150.74,
+       247.67
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "ring-cloner",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 512,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 1061,
+      "Colour": [
+       64.8,
+       210.77,
+       103.27
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 512,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 1061,
+      "Colour": [
+       64.83,
+       211.17,
+       103.6
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "sphere-swarm",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2048,
+      "Mean": [
+       -0.0396,
+       0,
+       -0.0153
+      ],
+      "Speed": 0.6294,
+      "Lit": 4067,
+      "Colour": [
+       248.02,
+       237.67,
+       233.41
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 2048,
+      "Mean": [
+       0.02,
+       0.0202,
+       -0.0074
+      ],
+      "Speed": 0.8366,
+      "Lit": 4578,
+      "Colour": [
+       244.5,
+       231.36,
+       234.97
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "line-cloner",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 256,
+      "Mean": [
+       0,
+       0.0447,
+       0
+      ],
+      "Speed": 0.0127,
+      "Lit": 795,
+      "Colour": [
+       86.81,
+       194.94,
+       238.85
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 256,
+      "Mean": [
+       0,
+       0.0393,
+       0
+      ],
+      "Speed": 0.0015,
+      "Lit": 795,
+      "Colour": [
+       85.41,
+       196.89,
+       239.97
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "bubbles",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 806,
+      "Mean": [
+       0.0036,
+       -2.6943,
+       0.0082
+      ],
+      "Speed": 0.8703,
+      "Lit": 516,
+      "Colour": [
+       192.79,
+       195.36,
+       199.61
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1004,
+      "Mean": [
+       0.0238,
+       -2.0082,
+       -0.013
+      ],
+      "Speed": 0.9888,
+      "Lit": 918,
+      "Colour": [
+       171.54,
+       185.34,
+       189.45
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "mist-spray",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 16384,
+      "Mean": [
+       1.0974,
+       -2.7325,
+       -0.3854
+      ],
+      "Speed": 0.6746,
+      "Lit": 291,
+      "Colour": [
+       231.43,
+       232.66,
+       234.79
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 16141,
+      "Mean": [
+       0.9888,
+       -3.1859,
+       -0.5939
+      ],
+      "Speed": 0.4097,
+      "Lit": 656,
+      "Colour": [
+       228,
+       230.22,
+       233.28
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "snowfall",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2448,
+      "Mean": [
+       -0.0103,
+       2.3173,
+       0.0036
+      ],
+      "Speed": 0.5655,
+      "Lit": 6673,
+      "Colour": [
+       200.4,
+       201.36,
+       204.04
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3151,
+      "Mean": [
+       0.0113,
+       2.2201,
+       -0.0533
+      ],
+      "Speed": 0.5998,
+      "Lit": 7490,
+      "Colour": [
+       212.79,
+       213.92,
+       216.4
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "ground-dust",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 3799,
+      "Mean": [
+       -0.0207,
+       -3.0065,
+       -0.0005
+      ],
+      "Speed": 0.3918,
+      "Lit": 3122,
+      "Colour": [
+       161.54,
+       143.6,
+       112.61
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3985,
+      "Mean": [
+       0.0383,
+       -3.0791,
+       -0.0146
+      ],
+      "Speed": 0.4204,
+      "Lit": 2985,
+      "Colour": [
+       162.37,
+       144.44,
+       113.51
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "rain",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 6215,
+      "Mean": [
+       0.0011,
+       -1.6424,
+       -0.0019
+      ],
+      "Speed": 4.1728,
+      "Lit": 9687,
+      "Colour": [
+       163.12,
+       199.35,
+       218.52
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3454,
+      "Mean": [
+       0.0265,
+       -2.8629,
+       0.0374
+      ],
+      "Speed": 1.5774,
+      "Lit": 4388,
+      "Colour": [
+       144.07,
+       182.54,
+       208.49
+      ]
+     }
+    ]
+   }
+  ],
+  "After": [
+   {
+    "Id": "field-streamlines",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1260,
+      "Mean": [
+       -0.0046,
+       -2.8881,
+       0.0514
+      ],
+      "Speed": 0.2749,
+      "Lit": 2345,
+      "Colour": [
+       73.08,
+       186.5,
+       215.63
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "meteor-shower",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 17,
+      "Mean": [
+       -0.1708,
+       2.3039,
+       -0.1169
+      ],
+      "Speed": 8.9141,
+      "Lit": 376,
+      "Colour": [
+       157.88,
+       159.69,
+       165.66
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 12,
+      "Mean": [
+       -0.4391,
+       -0.3493,
+       0.4282
+      ],
+      "Speed": 7.9511,
+      "Lit": 6089,
+      "Colour": [
+       166.13,
+       168.74,
+       173.99
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "light-strands",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "silk-ribbons",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "neon-filaments",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 0,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 0,
+      "Colour": [
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "stardust",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 9917,
+      "Mean": [
+       0.0539,
+       -2.9339,
+       -0.0021
+      ],
+      "Speed": 2.1839,
+      "Lit": 5901,
+      "Colour": [
+       107.08,
+       110.78,
+       119.73
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 8377,
+      "Mean": [
+       0.0396,
+       -2.6459,
+       -0.0403
+      ],
+      "Speed": 1.956,
+      "Lit": 5098,
+      "Colour": [
+       108.92,
+       112.52,
+       120.78
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "nebula",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 13142,
+      "Mean": [
+       -0.3081,
+       -3.4518,
+       0.6124
+      ],
+      "Speed": 2.8401,
+      "Lit": 3239,
+      "Colour": [
+       110.55,
+       117.08,
+       126.19
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 10300,
+      "Mean": [
+       -0.0437,
+       -3.0997,
+       0.4485
+      ],
+      "Speed": 2.3748,
+      "Lit": 2360,
+      "Colour": [
+       123.46,
+       128.43,
+       135.61
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "dissolving-sphere",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 16384,
+      "Mean": [
+       0.0314,
+       0.1135,
+       -0.0868
+      ],
+      "Speed": 0.3577,
+      "Lit": 4072,
+      "Colour": [
+       135.18,
+       129.43,
+       130.2
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 16384,
+      "Mean": [
+       0.0661,
+       0.1486,
+       -0.0981
+      ],
+      "Speed": 0.4182,
+      "Lit": 4054,
+      "Colour": [
+       135.93,
+       131.28,
+       132.64
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "bioluminescent",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 11453,
+      "Mean": [
+       0.1318,
+       -2.7691,
+       -0.0589
+      ],
+      "Speed": 1.6954,
+      "Lit": 3416,
+      "Colour": [
+       119.97,
+       124.56,
+       133
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 8024,
+      "Mean": [
+       0.2248,
+       -2.6065,
+       -0.2234
+      ],
+      "Speed": 1.4566,
+      "Lit": 4548,
+      "Colour": [
+       115.35,
+       120.4,
+       128.19
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "fireworks",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2160,
+      "Mean": [
+       0.0081,
+       -2.8958,
+       -0.0107
+      ],
+      "Speed": 3.7333,
+      "Lit": 9116,
+      "Colour": [
+       242.8,
+       244.75,
+       240.77
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 183,
+      "Mean": [
+       -0.0333,
+       -1.4641,
+       -0.0953
+      ],
+      "Speed": 2.0616,
+      "Lit": 11644,
+      "Colour": [
+       165.19,
+       169.77,
+       169.75
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "pulse-ring",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2729,
+      "Mean": [
+       0.0329,
+       -2.9451,
+       0.02
+      ],
+      "Speed": 1.7204,
+      "Lit": 1153,
+      "Colour": [
+       177.39,
+       182.72,
+       189.24
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1876,
+      "Mean": [
+       -0.0536,
+       -2.9456,
+       -0.0088
+      ],
+      "Speed": 1.7186,
+      "Lit": 896,
+      "Colour": [
+       171.93,
+       176.88,
+       183.02
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "electric-sparks",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 1539,
+      "Mean": [
+       0.016,
+       -2.9684,
+       0.0123
+      ],
+      "Speed": 5.1947,
+      "Lit": 395,
+      "Colour": [
+       225.34,
+       226.68,
+       229.14
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1781,
+      "Mean": [
+       -0.0215,
+       -2.9756,
+       0.0287
+      ],
+      "Speed": 4.038,
+      "Lit": 987,
+      "Colour": [
+       231.07,
+       231.78,
+       233.87
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "sparks",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2481,
+      "Mean": [
+       -0.0377,
+       -2.8401,
+       0.0156
+      ],
+      "Speed": 1.8188,
+      "Lit": 3765,
+      "Colour": [
+       232.86,
+       205.35,
+       163.1
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3264,
+      "Mean": [
+       0.0458,
+       -2.6007,
+       0.0197
+      ],
+      "Speed": 2.4124,
+      "Lit": 4252,
+      "Colour": [
+       238.92,
+       231.06,
+       216.26
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "confetti",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 3092,
+      "Mean": [
+       0.6122,
+       -0.6165,
+       0.0518
+      ],
+      "Speed": 1.8586,
+      "Lit": 6356,
+      "Colour": [
+       181,
+       192.88,
+       162.12
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3163,
+      "Mean": [
+       0.419,
+       -1.8712,
+       -0.0018
+      ],
+      "Speed": 2.4576,
+      "Lit": 9530,
+      "Colour": [
+       178.77,
+       189.74,
+       162.55
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "fireflies",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 797,
+      "Mean": [
+       -0.0028,
+       -2.8114,
+       0.0502
+      ],
+      "Speed": 1.1773,
+      "Lit": 2632,
+      "Colour": [
+       225.28,
+       227.39,
+       221
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 815,
+      "Mean": [
+       -0.0009,
+       -2.5961,
+       0.0171
+      ],
+      "Speed": 1.225,
+      "Lit": 3712,
+      "Colour": [
+       214.66,
+       218.51,
+       204.89
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "fountain",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 8192,
+      "Mean": [
+       -0.0023,
+       -1.608,
+       0.1235
+      ],
+      "Speed": 3.3032,
+      "Lit": 3067,
+      "Colour": [
+       155.09,
+       234.31,
+       248.15
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 8170,
+      "Mean": [
+       0.0412,
+       -3.4829,
+       0.2063
+      ],
+      "Speed": 0.0725,
+      "Lit": 3022,
+      "Colour": [
+       45.59,
+       131.94,
+       191.42
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "galaxy-disc",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 16384,
+      "Mean": [
+       0.0157,
+       0.0323,
+       -0.0146
+      ],
+      "Speed": 0.2198,
+      "Lit": 2534,
+      "Colour": [
+       119.43,
+       123.65,
+       135.41
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 16384,
+      "Mean": [
+       0.0195,
+       0.0613,
+       -0.0233
+      ],
+      "Speed": 0.2245,
+      "Lit": 2359,
+      "Colour": [
+       116.85,
+       121.74,
+       136
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "grid-cloner",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 4096,
+      "Mean": [
+       0,
+       0.0106,
+       0
+      ],
+      "Speed": 0.0598,
+      "Lit": 7703,
+      "Colour": [
+       146.53,
+       149.75,
+       248.11
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 4096,
+      "Mean": [
+       0,
+       0.0128,
+       0
+      ],
+      "Speed": 0.0101,
+      "Lit": 7703,
+      "Colour": [
+       145.98,
+       150.74,
+       247.67
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "ring-cloner",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 512,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 1061,
+      "Colour": [
+       64.8,
+       210.77,
+       103.27
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 512,
+      "Mean": [
+       0,
+       0,
+       0
+      ],
+      "Speed": 0,
+      "Lit": 1061,
+      "Colour": [
+       64.83,
+       211.17,
+       103.6
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "sphere-swarm",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2048,
+      "Mean": [
+       -0.0396,
+       0,
+       -0.0153
+      ],
+      "Speed": 0.6294,
+      "Lit": 4067,
+      "Colour": [
+       248.02,
+       237.67,
+       233.41
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 2048,
+      "Mean": [
+       0.02,
+       0.0202,
+       -0.0074
+      ],
+      "Speed": 0.8366,
+      "Lit": 4578,
+      "Colour": [
+       244.5,
+       231.36,
+       234.97
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "line-cloner",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 256,
+      "Mean": [
+       0,
+       0.0447,
+       0
+      ],
+      "Speed": 0.0127,
+      "Lit": 795,
+      "Colour": [
+       86.81,
+       194.94,
+       238.85
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 256,
+      "Mean": [
+       0,
+       0.0393,
+       0
+      ],
+      "Speed": 0.0015,
+      "Lit": 795,
+      "Colour": [
+       85.41,
+       196.89,
+       239.97
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "bubbles",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 806,
+      "Mean": [
+       0.0036,
+       -2.6943,
+       0.0082
+      ],
+      "Speed": 0.8703,
+      "Lit": 516,
+      "Colour": [
+       192.79,
+       195.36,
+       199.61
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 1004,
+      "Mean": [
+       0.0238,
+       -2.0082,
+       -0.013
+      ],
+      "Speed": 0.9888,
+      "Lit": 918,
+      "Colour": [
+       171.54,
+       185.34,
+       189.45
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "mist-spray",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 16384,
+      "Mean": [
+       1.0974,
+       -2.7325,
+       -0.3854
+      ],
+      "Speed": 0.6746,
+      "Lit": 291,
+      "Colour": [
+       231.43,
+       232.66,
+       234.79
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 16141,
+      "Mean": [
+       0.9888,
+       -3.1859,
+       -0.5939
+      ],
+      "Speed": 0.4097,
+      "Lit": 656,
+      "Colour": [
+       228,
+       230.22,
+       233.28
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "snowfall",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 2448,
+      "Mean": [
+       -0.0103,
+       2.3173,
+       0.0036
+      ],
+      "Speed": 0.5655,
+      "Lit": 6673,
+      "Colour": [
+       200.4,
+       201.36,
+       204.04
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3151,
+      "Mean": [
+       0.0113,
+       2.2201,
+       -0.0533
+      ],
+      "Speed": 0.5998,
+      "Lit": 7490,
+      "Colour": [
+       212.79,
+       213.92,
+       216.4
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "ground-dust",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 3799,
+      "Mean": [
+       -0.0207,
+       -3.0065,
+       -0.0005
+      ],
+      "Speed": 0.3918,
+      "Lit": 3122,
+      "Colour": [
+       161.54,
+       143.6,
+       112.61
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3985,
+      "Mean": [
+       0.0383,
+       -3.0791,
+       -0.0146
+      ],
+      "Speed": 0.4204,
+      "Lit": 2985,
+      "Colour": [
+       162.37,
+       144.44,
+       113.51
+      ]
+     }
+    ]
+   },
+   {
+    "Id": "rain",
+    "Marks": [
+     {
+      "T": 1,
+      "Live": 6215,
+      "Mean": [
+       0.0011,
+       -1.6424,
+       -0.0019
+      ],
+      "Speed": 4.1728,
+      "Lit": 9687,
+      "Colour": [
+       163.12,
+       199.35,
+       218.52
+      ]
+     },
+     {
+      "T": 2.5,
+      "Live": 3454,
+      "Mean": [
+       0.0265,
+       -2.8629,
+       0.0374
+      ],
+      "Speed": 1.5774,
+      "Lit": 4388,
+      "Colour": [
+       144.07,
+       182.54,
+       208.49
+      ]
+     }
+    ]
+   }
+  ],
+  "EmptyCloud": {
+   "Id": "empty-cloud",
+   "Marks": [
+    {
+     "T": 1,
+     "Live": 2016,
+     "Mean": [
+      0.0261,
+      -1.7693,
+      0.0049
+     ],
+     "Speed": 1.9965,
+     "Lit": 3328,
+     "Colour": [
+      227.62,
+      228.25,
+      229.85
+     ]
+    },
+    {
+     "T": 2.5,
+     "Live": 1510,
+     "Mean": [
+      0.0246,
+      -1.2313,
+      0.0161
+     ],
+     "Speed": 1.967,
+     "Lit": 2080,
+     "Colour": [
+      199.69,
+      200.69,
+      203.26
+     ]
+    }
+   ]
+  },
+  "Identical": true,
+  "Screenshots": "26 before/after pairs differ only in the frame-rate readout (e.g. 16 fps vs 15 fps); fireworks pair kept in Exhibits/FluidEditor/Images/ParticleTemplates/."
+ },
+ "Note": "Re-recorded when the Spawn (3D object surface, web/cloth/flora/shell shapes) and Sprite & Object (3D carrier) parameters joined the schema; the guard now compares against this revision."
+}

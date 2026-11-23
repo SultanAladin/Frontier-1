@@ -1,0 +1,224 @@
+{
+ "Format": "frontier-fluid-preset-conversion",
+ "Date": "2026-11-23",
+ "Method": "Legacy preset objects (ForceGeneratorCatalog StudioScenePresets + PyroScenePresets translatePyroPreset, commit b05c37f) were built into scenes, converted to Presets/*.toml by script, rebuilt from the documents, and compared field for field (sceneFingerprint: FNV-1a 64 over every simulated and rendered field, runtime ids normalised). All 36 matched; the legacy objects were then removed from the runtime.",
+ "FluidMetrics": {
+  "Note": "Live SwiftShader run, MaxCells 40, mean speed v / 95th percentile / mean vorticity at 1 s and 3 s. Before = legacy objects, After = documents.",
+  "Before": {
+   "preset-campfire": "24x40x24  t1: v1.83 p95 4.33 ω9.9 | t3: v2.21 p95 6.08 ω13.8",
+   "preset-smoke-plume": "23x40x23  t1: v1.12 p95 1.34 ω6.4 | t3: v1.66 p95 1.94 ω5.3",
+   "preset-tornado": "23x40x23  t1: v4.81 p95 6.64 ω14.5 | t3: v2.90 p95 5.81 ω9.4",
+   "preset-wind-tunnel": "40x20x20  t1: v2.92 p95 3.87 ω4.9 | t3: v3.16 p95 3.90 ω4.5"
+  },
+  "After": {
+   "preset-campfire": "24x40x24  t1: v1.83 p95 4.33 ω9.9 | t3: v2.21 p95 6.08 ω13.8",
+   "preset-smoke-plume": "23x40x23  t1: v1.12 p95 1.34 ω6.4 | t3: v1.66 p95 1.94 ω5.3",
+   "preset-tornado": "23x40x23  t1: v4.81 p95 6.64 ω14.5 | t3: v2.90 p95 5.81 ω9.4",
+   "preset-wind-tunnel": "40x20x20  t1: v2.92 p95 3.87 ω4.9 | t3: v3.16 p95 3.90 ω4.5"
+  },
+  "Identical": true
+ },
+ "Presets": {
+  "preset-blank": {
+   "File": "Presets/undefined",
+   "Legacy": "a5dabb0bd41eccea"
+  },
+  "preset-campfire": {
+   "File": "Presets/undefined",
+   "Legacy": "6c77b9a44d29ef16"
+  },
+  "preset-smoke-plume": {
+   "File": "Presets/undefined",
+   "Legacy": "806fd013bca068ed"
+  },
+  "preset-explosion": {
+   "File": "Presets/undefined",
+   "Legacy": "121977ddc325b10d"
+  },
+  "preset-demolition": {
+   "File": "Presets/undefined",
+   "Legacy": "2d8ccb5369c28c01"
+  },
+  "preset-tornado": {
+   "File": "Presets/undefined",
+   "Legacy": "c538defa57c90969"
+  },
+  "preset-infinite-drift": {
+   "File": "Presets/undefined",
+   "Legacy": "e042738824a1752a"
+  },
+  "preset-infinite-plume": {
+   "File": "Presets/undefined",
+   "Legacy": "5d35f6a499c2776a"
+  },
+  "preset-tile-crossing": {
+   "File": "Presets/undefined",
+   "Legacy": "1fbc0b118d922055"
+  },
+  "preset-drift-run": {
+   "File": "Presets/undefined",
+   "Legacy": "067dab4d9d78ee8c"
+  },
+  "preset-tyre-drift": {
+   "File": "Presets/undefined",
+   "Legacy": "13af63a4eabd328a"
+  },
+  "preset-mograph-grid": {
+   "File": "Presets/undefined",
+   "Legacy": "4c762346bd7b3485"
+  },
+  "preset-stardust": {
+   "File": "Presets/undefined",
+   "Legacy": "2aa24fffe2889b58"
+  },
+  "preset-light-strands": {
+   "File": "Presets/undefined",
+   "Legacy": "4d0f37e36e8dda76"
+  },
+  "preset-form": {
+   "File": "Presets/undefined",
+   "Legacy": "a842bb3952c612a4"
+  },
+  "preset-celebration": {
+   "File": "Presets/undefined",
+   "Legacy": "ed30fb42a63c9922"
+  },
+  "preset-wind-tunnel": {
+   "File": "Presets/undefined",
+   "Legacy": "76da9b50938e4288"
+  },
+  "preset-smoke-ring": {
+   "File": "Presets/undefined",
+   "Legacy": "1546acbd0d9735b7"
+  },
+  "pyro-ue5-pyro-default": {
+   "File": "Presets/undefined",
+   "Legacy": "75e6b5c00a01f101"
+  },
+  "pyro-shrapnel-airburst": {
+   "File": "Presets/undefined",
+   "Legacy": "a8dcaca5f477efe5"
+  },
+  "pyro-megaton-open-bounds": {
+   "File": "Presets/undefined",
+   "Legacy": "d790a79efbc675e2"
+  },
+  "pyro-low-gpu-performance": {
+   "File": "Presets/undefined",
+   "Legacy": "2973fd4102fe57ee"
+  },
+  "pyro-tactical-ordnance": {
+   "File": "Presets/undefined",
+   "Legacy": "78df87b9bafe6052"
+  },
+  "pyro-oil-well-inferno": {
+   "File": "Presets/undefined",
+   "Legacy": "ff8340f762c28858"
+  },
+  "pyro-obstacle-deflection": {
+   "File": "Presets/undefined",
+   "Legacy": "18689be2dd4bffcf"
+  },
+  "pyro-wildfire-tornado": {
+   "File": "Presets/undefined",
+   "Legacy": "66a35ef66fb985dc"
+  },
+  "pyro-ashfall-motes": {
+   "File": "Presets/undefined",
+   "Legacy": "7fec90a35ad44306"
+  },
+  "pyro-voxelized-stylized": {
+   "File": "Presets/undefined",
+   "Legacy": "691323a5da3a3702"
+  },
+  "pyro-dust-tornado": {
+   "File": "Presets/undefined",
+   "Legacy": "ffd852f0d831b141"
+  },
+  "pyro-tyre-burnout": {
+   "File": "Presets/undefined",
+   "Legacy": "eb8da782df8b74ea"
+  },
+  "pyro-ledge-sandfall": {
+   "File": "Presets/undefined",
+   "Legacy": "662e9c9440391a6e"
+  },
+  "pyro-settling-dust": {
+   "File": "Presets/undefined",
+   "Legacy": "1b5e7718137cf267"
+  },
+  "pyro-small-gust": {
+   "File": "Presets/undefined",
+   "Legacy": "75ca0c49d37318ec"
+  },
+  "pyro-brick-fracture-dust": {
+   "File": "Presets/undefined",
+   "Legacy": "d4e011030cb97bef"
+  },
+  "pyro-lantern-flame": {
+   "File": "Presets/undefined",
+   "Legacy": "9d4a69692ae0842a"
+  },
+  "pyro-camp-fire": {
+   "File": "Presets/undefined",
+   "Legacy": "22d3eef480da3a1a"
+  },
+  "preset-derez-chamber": {
+   "File": "Presets/undefined",
+   "Legacy": "c1d444ab00791afd"
+  },
+  "preset-mocap-stage": {
+   "File": "Presets/undefined",
+   "Legacy": "560381c67b392831"
+  },
+  "preset-singularity-lens": {
+   "File": "Presets/undefined",
+   "Legacy": "46fd70509df77805"
+  },
+  "preset-inferno-shimmer": {
+   "File": "Presets/undefined",
+   "Legacy": "ef685fe39da8bc7d"
+  },
+  "preset-obsidian-gallery": {
+   "File": "Presets/undefined",
+   "Legacy": "eca2ab10896d3732"
+  },
+  "preset-aviary-dusk": {
+   "File": "Presets/undefined",
+   "Legacy": "2786aff29ded50d3"
+  },
+  "preset-coral-reef": {
+   "File": "Presets/undefined",
+   "Legacy": "da0f93db53b5b871"
+  },
+  "preset-mint-vault": {
+   "File": "Presets/undefined",
+   "Legacy": "5baf160d40c09584"
+  },
+  "preset-sakura-courtyard": {
+   "File": "Presets/undefined",
+   "Legacy": "c53515bd4a598653"
+  },
+  "preset-signal-array": {
+   "File": "Presets/undefined",
+   "Legacy": "c55599cc078cb7fd"
+  },
+  "preset-launch-reveal": {
+   "File": "Presets/undefined",
+   "Legacy": "136d0ca636a95775"
+  },
+  "preset-aero-study": {
+   "File": "Presets/undefined",
+   "Legacy": "16a1aba0454d5e30"
+  },
+  "preset-charging-bay": {
+   "File": "Presets/undefined",
+   "Legacy": "f33f853113de1806"
+  },
+  "preset-orbit-garden": {
+   "File": "Presets/undefined",
+   "Legacy": "0a2285753dc6b928"
+  }
+ },
+ "Note": "Re-recorded with the 3D object carrier + object-surface spawn parameters (presets that carry particle nodes move; gas-only presets do not)."
+}

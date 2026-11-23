@@ -1,0 +1,69 @@
+# Effector Voxel Matrix — particle template (Mocap & MoGraph). 3D voxel cloner lattice driven by dual orbiting MoGraph SDF effectors modulating cube scale, push and colour.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "193ceeab39c3eb37"
+
+[Template]
+Order = 35
+Id = "effector-cube-matrix"
+Name = "Effector Voxel Matrix"
+Category = "Mocap & MoGraph"
+Icon = "effector"
+Tint = "#34d399"
+Summary = "3D voxel cloner lattice driven by dual orbiting MoGraph SDF effectors modulating cube scale, push and colour."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 6, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 1.35, Fill = 1.0, Count = 4096, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 18.0, Damping = 5.5, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 2, EffectorStrength = 1.25, EffectorFrequency = 1.5, EffectorSpeed = 1.5, EffectorPush = 0.35, EffectorScaleBoost = 1.5, EffectorColourShift = 0.85 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#1e293b", "#10b981", "#6ee7b7", "#fef08a"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 0.8, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.2, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 4.8, SizeEnd = 4.8, SizeRandom = 0.08 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 5, Glow = 0.45, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

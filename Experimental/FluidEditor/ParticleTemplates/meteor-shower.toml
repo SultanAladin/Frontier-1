@@ -1,0 +1,79 @@
+# Meteor Shower — particle template (Trails). Fast diagonal streaks from the top of the domain with white-hot heads and orange tails that linger after impact.
+# Converted from the legacy template object by script; node fingerprint 5a18cc1cdee1f3d7 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 2
+Id = "meteor-shower"
+Name = "Meteor Shower"
+Category = "Trails"
+Icon = "meteor"
+Tint = "#fdba74"
+Summary = "Fast diagonal streaks from the top of the domain with white-hot heads and orange tails that linger after impact."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 2, Position = [0, 0, 0], Direction = [-0.6, -1, 0.2], Radius = 2.5, Fill = 0.0, Count = 256, Rate = 1.2, Lifetime = 1.6, Linger = 1.8, Speed = 9.0, Spread = 0.03, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 2.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#ffffff", "#fde68a", "#fb923c"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.8, Flicker = 0.2 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.03, SizeEnd = 0.02, SizeRandom = 0.4 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 1.0, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 32, TrailInterval = 0.025, TrailWidth = 0.02, TrailTaper = 0.95, TrailFade = 0.8, TrailSubdivisions = 1, TrailColour = 1, TrailRatio = 1.0 }

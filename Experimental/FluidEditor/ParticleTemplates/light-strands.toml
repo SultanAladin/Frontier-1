@@ -1,0 +1,88 @@
+# Light Strands — particle template (Trails). Aerodynamic streamlines: long thin blue ribbons riding the wind with sparkling heads.
+# Converted from the legacy template object by script; node fingerprint 35c7add29de7a772 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 3
+Id = "light-strands"
+Name = "Light Strands"
+Category = "Trails"
+Icon = "strands"
+Tint = "#7dd3fc"
+Summary = "Aerodynamic streamlines: long thin blue ribbons riding the wind with sparkling heads."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 3, Position = [0, 0, 0], Direction = [1, 0, 0], Radius = 1.4, Fill = 0.0, Count = 1024, Rate = 0.6, Lifetime = 24.0, Linger = 4.0, Speed = 1.1, Spread = 0.06, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.1 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.25, NoiseScale = 0.45, NoiseSpeed = 0.06 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#ffffff", "#bfe9ff", "#60a5fa", "#312e81"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.3, Brightness = 1.3, Flicker = 0.4 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.03, SizeEnd = 0.02, SizeRandom = 0.5 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.8, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 96, TrailInterval = 0.1, TrailWidth = 0.012, TrailTaper = 0.7, TrailFade = 0.6, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 1.0 }

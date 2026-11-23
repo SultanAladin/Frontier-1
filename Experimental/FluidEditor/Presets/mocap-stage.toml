@@ -1,0 +1,189 @@
+# Mocap Kinetic Performer — scene preset (Particles). Articulated 15-joint motion-capture sprinter shedding neon spline ribbons alongside a groove voxel clone.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "193ceeab39c3eb37"
+
+[Scene]
+Order = 38
+Id = "preset-mocap-stage"
+Name = "Mocap Kinetic Performer"
+Family = "VFX"
+Icon = "mocap"
+Boundary = "OpenTop"
+Summary = "Articulated 15-joint motion-capture sprinter shedding neon spline ribbons alongside a groove voxel clone."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [6, 6, 6]
+
+[Render]
+Visible = false
+Exposure = 1.15
+Steps = 80
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Particle]]
+  Template = "mocap-sprint-ribbons"
+  Name = "Mocap Sprint Ribbons"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 9, Position = [-1.05, 0.1, 0], Direction = [0, 1, 0], Radius = 1.25, Fill = 0.35, Count = 4096, Rate = 14.0, Lifetime = 1.1, Linger = 1.4, Speed = 0.25, Spread = 0.35, Radial = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 214
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { MocapClip = 1, MocapAmplitude = 1.0, MocapSpeed = 1.15, MocapScale = 1.05, MocapTrailKick = 1.6 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 1.8 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 0.5, NoiseScale = 1.6, NoiseSpeed = 0.8 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 1, Palette = ["#e0f2fe", "#38bdf8", "#818cf8", "#f472b6"], RampSource = 0, Ramp = 0, MaxSpeed = 4.5, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.3, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 4.5, SizeEnd = 1.5, SizeRandom = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 0, Glow = 0.9, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 212
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Trail = 1, TrailLength = 18, TrailInterval = 0.03, TrailWidth = 2.4, TrailTaper = 0.7, TrailFade = 0.85, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 0.35 }
+
+[[Particle]]
+  Template = "mocap-dancer-cloner"
+  Name = "Mocap Groove Performer"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 1, Shape = 9, Position = [1.05, 0.1, 0], Direction = [0, 1, 0], Radius = 1.3, Fill = 0.25, Count = 6144, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 202
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Spring = 22.0, Damping = 6.5, Dissolve = 0.02 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 214
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { MocapClip = 2, MocapAmplitude = 1.0, MocapSpeed = 1.05, MocapScale = 1.05, MocapTrailKick = 1.1 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 215
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { EffectorMode = 1, EffectorStrength = 0.75, EffectorFrequency = 2.2, EffectorSpeed = 2.0, EffectorPush = 0.04, EffectorScaleBoost = 0.65, EffectorColourShift = 0.6 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 3, Palette = ["#38bdf8", "#a855f7", "#f472b6", "#fde047"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.25, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 5.5, SizeEnd = 5.5, SizeRandom = 0.12 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 5, Glow = 0.65, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

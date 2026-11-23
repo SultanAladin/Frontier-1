@@ -1,0 +1,69 @@
+# MoGraph Torus Hex — particle template (Mocap & MoGraph). Hexagonal tile torus formation rippled by a noise-warped MoGraph sine effector.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "193ceeab39c3eb37"
+
+[Template]
+Order = 36
+Id = "effector-torus-hex"
+Name = "MoGraph Torus Hex"
+Category = "Mocap & MoGraph"
+Icon = "effector"
+Tint = "#60a5fa"
+Summary = "Hexagonal tile torus formation rippled by a noise-warped MoGraph sine effector."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 7, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 1.3, Fill = 0.35, Count = 6144, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 16.0, Damping = 5.0, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 3, EffectorStrength = 1.15, EffectorFrequency = 1.9, EffectorSpeed = 1.8, EffectorPush = 0.22, EffectorScaleBoost = 1.1, EffectorColourShift = 0.75 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 6, Palette = ["#1d4ed8", "#38bdf8", "#a78bfa", "#f472b6"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.35, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.2, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 6.2, SizeEnd = 6.2, SizeRandom = 0.1 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 7, Glow = 0.6, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

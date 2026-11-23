@@ -1,0 +1,148 @@
+# Raging Oil Well Inferno — Fluid Studio scene preset (Pyro). High-velocity pressurized fuel blowout generating a roaring flame column and dense carbonaceous black smoke.
+# Converted from the legacy preset object by script; scene fingerprint abf710fd13ab5ab4 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 24
+Id = "pyro-oil-well-inferno"
+Name = "Raging Oil Well Inferno"
+Family = "Pyro"
+Icon = "flame"
+Summary = "High-velocity pressurized fuel blowout generating a roaring flame column and dense carbonaceous black smoke."
+Boundary = "OpenTop"
+
+[Grid]
+Resolution = [51, 64, 51]
+Size = [3.8, 4.8, 3.8]
+
+[Debris]
+Visible = true
+Count = 1100
+Lifetime = 2.5
+Size = 2.2
+Drag = 2.2
+Bounce = 0.2
+Glow = 1.5
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.28, ForceResponse = 1.0, PressureIterations = 30, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 1.8, AmbientTemperature = 0.0, Cooling = 1.03 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.6, Expansion = 0.51 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.26 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.9963, VelocityDissipation = 0.9988 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#222222", Absorption = 5.28, Anisotropy = 0.38, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 6.6, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#b3120a", FireFlame = "#ff6a00", FireCore = "#ffd27a", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Fire Source"
+  Shape = "Disc"
+  Position = [0, -2.06, 0]
+  Radius = 0.54
+  Density = 0.96
+  Temperature = 6.72
+  Fuel = 1.98
+  Velocity = [0, 1.73, 0]
+  Jitter = 0.4
+  Debris = 0.12
+  DebrisSpeed = 1.4
+  DebrisKind = "Ember"
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Breeze"
+  Position = [0, 0, 0]
+  Strength = 0.65
+  Direction = [1, 0, 0]
+  Falloff = "Constant"
+  Frequency = 0.3
+  Secondary = 0.4
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Turbulence"
+  Position = [0, -0.72, 0]
+  Strength = 0.59
+  Radius = 1.9
+  Falloff = "Gaussian"
+  Frequency = 2.66
+  Secondary = 0.8
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 2.02, 0]
+  Strength = 1.2
+  Radius = 2.28
+  Falloff = "Plateau"

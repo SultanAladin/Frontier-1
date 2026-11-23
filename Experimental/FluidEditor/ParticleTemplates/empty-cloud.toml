@@ -1,0 +1,34 @@
+# Empty Cloud — particle template (Emitters). The "+ New particle cloud" starting point from the plan (§4): Spawn + Sprite, nothing else.
+# Written by hand from the specification defaults; not a legacy template.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 27
+Id = "empty-cloud"
+Name = "Empty Cloud"
+Category = "Emitters"
+Icon = "sparks"
+Tint = "#a1a1aa"
+Summary = "Spawn and Sprite layers only. Start a new particle system here and build it with + Add layer."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 0, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 0.5, Fill = 0.0, Count = 2048, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 1, Glow = 0.0, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

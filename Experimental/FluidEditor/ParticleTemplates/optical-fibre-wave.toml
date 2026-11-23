@@ -1,0 +1,87 @@
+# Optical Fibre Wave — particle template (Trails). Ported from Particle Studio (Fibre wave): a twisting sheet of optical-fibre ribbons carrying travelling light pulses and a sparkling leading edge.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 61
+Id = "optical-fibre-wave"
+Name = "Optical Fibre Wave"
+Category = "Trails"
+Icon = "filaments"
+Tint = "#c084fc"
+Summary = "Ported from Particle Studio (Fibre wave): a twisting optical-fibre sheet swept by travelling wave pulses and a sparkling crest."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 13, Position = [0.0, 0.15, 0.0], Direction = [0, 1, 0], Radius = 1.95, Fill = 0.52, Count = 3072, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0, ShapeDetail = 7.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 5.4, Damping = 2.2, Dissolve = 0.04 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 3, EffectorStrength = 1.25, EffectorFrequency = 2.8, EffectorSpeed = 2.4, EffectorPush = 0.55, EffectorScaleBoost = 0.55, EffectorColourShift = 0.65 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.16, NoiseScale = 1.4, NoiseSpeed = 0.7 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 6, Palette = ["#1e1b4b", "#38bdf8", "#c084fc", "#fef08a"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 0.9, CycleSpeed = 0.85, HueJitter = 0.04, BrightnessJitter = 0.25, Brightness = 1.5, Flicker = 0.18 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.02, SizeEnd = 0.008, SizeRandom = 0.38 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 3, Glow = 0.55, Blend = 1, Style = 0, FocusDistance = 5.8, Aperture = 0.32, CarrierMode = 0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 24, TrailInterval = 0.03, TrailWidth = 0.008, TrailTaper = 0.75, TrailFade = 1.25, TrailSubdivisions = 2, TrailRatio = 0.4, TrailColour = 1 }

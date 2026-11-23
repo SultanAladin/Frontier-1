@@ -1,0 +1,166 @@
+# Tyre Burnout — Fluid Studio scene preset (Pyro). Hot rubber smoke off a spinning tyre: the ring collider sits in the grid, the source is flat on the floor, and the cloud is dragged sideways instead of climbing.
+# Converted from the legacy preset object by script; scene fingerprint 29f0de2d56e28cd8 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 30
+Id = "pyro-tyre-burnout"
+Name = "Tyre Burnout"
+Family = "Pyro"
+Icon = "tyre"
+Summary = "Hot rubber smoke off a spinning tyre: the ring collider sits in the grid, the source is flat on the floor, and the cloud is dragged sideways instead of climbing."
+Boundary = "OpenAll"
+
+[Grid]
+Resolution = [96, 63, 96]
+Size = [5.2, 3.4, 5.2]
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 30, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.575, AmbientTemperature = 0.0, Cooling = 2.34 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 0.4, Expansion = 0.06 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.19 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.9988, VelocityDissipation = 0.9992 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#303030", Absorption = 5.94, Anisotropy = 0.38, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 0.88, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#b3120a", FireFlame = "#ff6a00", FireCore = "#ffd27a", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Fire Source"
+  Shape = "Disc"
+  Position = [0, -1.58, 0]
+  Radius = 0.88
+  Density = 2.79
+  Temperature = 1.44
+  Fuel = 0.11
+  Velocity = [0, 0.45, 0]
+  Jitter = 0.4
+
+[[Force]]
+  Type = "VortexColumn"
+  Name = "Swirl"
+  Position = [0, 0, 0]
+  Strength = 1.44
+  Radius = 1.56
+  Falloff = "Gaussian"
+  Frequency = 0.6
+  Secondary = 0.4
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Breeze"
+  Position = [0, 0, 0]
+  Strength = 1.2
+  Direction = [0.96, 0, -0.29]
+  Falloff = "Constant"
+  Frequency = 0.3
+  Secondary = 0.4
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Turbulence"
+  Position = [0, -0.51, 0]
+  Strength = 0.48
+  Radius = 2.6
+  Falloff = "Gaussian"
+  Frequency = 2.94
+  Secondary = 0.8
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 1.43, 0]
+  Strength = 1.2
+  Radius = 3.12
+  Falloff = "Plateau"
+
+[[Collider]]
+  Name = "Tyre 1"
+  Position = [0.44, -0.82, 0]
+  Radius = 0.2
+
+[[Collider]]
+  Name = "Tyre 2"
+  Position = [0, -0.82, 0.44]
+  Radius = 0.2
+
+[[Collider]]
+  Name = "Tyre 3"
+  Position = [-0.44, -0.82, 0]
+  Radius = 0.2
+
+[[Collider]]
+  Name = "Tyre 4"
+  Position = [0, -0.82, -0.44]
+  Radius = 0.2

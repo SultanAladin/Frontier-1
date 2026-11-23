@@ -1,6 +1,6 @@
 # 🧩 `Experimental/` — Reference Studios & Preserved SDF / GI Redo Baseline
 
-> **TL;DR**: `Experimental/` holds browser HTML/JS/WebGPU reference editor UIs and domain studios that serve as the exact 1:1 visual and algorithmic specification for C++20 + `.slang` conversions (`CLAUDE.md` §2.1), alongside **`RemovedSdfGi/`** and **`SdfLightingDemoCpp/`** preserving the SDF shadow, SDF GI, emissive-GI, and deterministic path-tracer work queued for clean ground-up redo. *(Prior `FluidEditor`, `ParticleEditor`, and `ForceFieldEditor` trees were retired with their simplified C++ counterparts in `daed305` pending un-simplified re-architecture.)*
+> **TL;DR**: `Experimental/` holds browser HTML/JS/WebGPU reference editor UIs and domain studios that serve as the exact 1:1 visual and algorithmic specification for C++20 + `.slang` conversions (`CLAUDE.md` §2.1), alongside **`RemovedSdfGi/`** and **`SdfLightingDemoCpp/`** preserving the SDF shadow, SDF GI, emissive-GI, and deterministic path-tracer work queued for clean ground-up redo.
 
 ---
 
@@ -8,6 +8,7 @@
 
 | Directory | Prototype Scope | Native C++20 / `.slang` Target |
 | :--- | :--- | :--- |
+| **`FluidEditor/`** | **Fluid Remastered** — WebGL2 gaseous fluid, force-field, and GPU particle studio: 61 particle templates (including all ported Particle Studio automotive, conduit, orbital, and optical-fibre looks), 19 built-in 3D objects + independent Spawn/Carrier custom `.obj`/`.stl`/`.json`/`.facet` mesh import, backing surfaces, and 50 curated TOML presets. | `Engine/SimulationSpace/` + `Engine/Workspaces/` *(Pending C++20 port)* |
 | **`ProjectZeroEditor/`** | Primary Project-Zero HTML/JS UI specification uniting trapezoidal dock tabs, top Notch, Outliner tree, Construct drawer, and Light/Fog/Wind/Material inspectors. | `Engine/Components/` + `Engine/Lifecycle/EditorLifecycle.*` |
 | **`FrontierWorldMirror/`** | Bidirectional 1:1 HTML mirror of the C++20 World Editor rendering the Cornell-Studio Gallery with interactive `EditorCamera` + Outliner/Inspector sync. | `Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.{h,cpp}` + `TieredWorldRenderSequence.{h,cpp}` |
 | **`ProjectBrowser/`** | Reference HTML launcher for `.ProjectSpace` filtering, sorting, revision display, and workspace launch. | `Engine/Editor/Explorer/ProjectBrowser.{h,cpp}` |
@@ -52,6 +53,7 @@
 python3 Experimental/Serve.py 8080
 
 # Run standalone Node ESM validation suites for active staged studios
+node Experimental/FluidEditor/FluidValidation.mjs
 node Experimental/FractureEditor/FractureValidation.mjs
 node Experimental/PhotometricEditor/PhotometricValidation.mjs
 node Experimental/VehicleLab/AssetInspectorValidation.mjs

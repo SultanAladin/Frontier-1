@@ -1,0 +1,87 @@
+# EV Charging Conduit — particle template (FX & Shields). Ported from Particle Studio (Charging): rhythmic emerald-cyan energy pulses stream down the charging conduit into the vehicle battery cells.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 58
+Id = "ev-charging-conduit"
+Name = "EV Charging Conduit"
+Category = "FX & Shields"
+Icon = "electric"
+Tint = "#34d399"
+Summary = "Ported from Particle Studio (Charging): glowing energy packets pulse along a conduit into the battery bay with hex-cell discharge."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 5, Position = [-1.45, -0.35, 0.0], Direction = [1, 0.18, 0], Radius = 0.95, Fill = 0.0, Count = 2048, Rate = 260.0, Lifetime = 1.45, Linger = 0.2, Speed = 3.2, Spread = 0.05, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.25 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.3 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 215
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { EffectorMode = 3, EffectorStrength = 0.9, EffectorFrequency = 4.6, EffectorSpeed = 3.2, EffectorPush = 0.14, EffectorScaleBoost = 0.7, EffectorColourShift = 0.35 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 6, Palette = ["#064e3b", "#10b981", "#34d399", "#ecfdf5"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 1.4, HueJitter = 0.03, BrightnessJitter = 0.18, Brightness = 1.6, Flicker = 0.16 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.032, SizeEnd = 0.012, SizeRandom = 0.32 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 7, Glow = 0.55, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 22, TrailInterval = 0.025, TrailWidth = 0.01, TrailTaper = 0.75, TrailFade = 1.3, TrailSubdivisions = 2, TrailRatio = 0.45, TrailColour = 1 }
