@@ -170,6 +170,33 @@ void SketcherWorkspaceHost::BeginFrame(double DeltaSeconds)
     Sketcher::BeginSketcherHostedFrame(State);
 }
 
+void SketcherWorkspaceHost::RenderFullscreenViewport(float WidthPx, float HeightPx)
+{
+    const float FullW = std::max(120.0f, WidthPx);
+    const float FullH = std::max(120.0f, HeightPx);
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(FullW, FullH), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    constexpr ImGuiWindowFlags FullscreenFlags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoDocking;
+    if (ImGui::Begin("##SolidArcFullscreenViewport", nullptr, FullscreenFlags))
+    {
+        RenderViewportTarget();
+        const ImTextureRef TexRef =
+            (ViewportTexture.Pixels != nullptr) ? ViewportTexture.GetTexRef() : ImTextureRef();
+        Sketcher::DrawSketcherViewportPanel(State, TexRef);
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(3);
+}
+
 void SketcherWorkspaceHost::EndFrame(double DeltaSeconds, bool DrawFloatingOverlays, bool HostedOverlayMode)
 {
     Sketcher::EndSketcherHostedFrame(State, std::max(1.0e-4, DeltaSeconds), DrawFloatingOverlays, HostedOverlayMode);

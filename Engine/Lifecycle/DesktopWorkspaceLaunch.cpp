@@ -1730,7 +1730,14 @@ int LaunchDesktopWorkspace(
                 WorkspaceAppearance::AppendOverlayPointerShield(StandaloneControlCentre.QueryTabPhysicalBounds());
             }
             SketcherHostPtr->BeginFrame(Dt);
-            SketcherDockPtr->PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            if (SketcherHostPtr->QueryViewportMaximized())
+            {
+                SketcherHostPtr->RenderFullscreenViewport(FullBounds.Width, FullBounds.Height);
+            }
+            else
+            {
+                SketcherDockPtr->PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+            }
             SketcherHostPtr->EndFrame(Dt, true, true);
             WorkspaceAppearance::ClearOverlayPointerShield();
             SketcherBrowserPtr->Render(FullBounds, Dt, HostUiScale);

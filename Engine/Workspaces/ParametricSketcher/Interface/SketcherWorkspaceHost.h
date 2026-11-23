@@ -45,10 +45,12 @@ public:
     void RegisterDockPanes(Components::HeadlessWorkspaceDockContainer& DockContainer);
 
     void BeginFrame(double DeltaSeconds);
+    void RenderFullscreenViewport(float WidthPx, float HeightPx);
     void EndFrame(double DeltaSeconds, bool DrawFloatingOverlays = true, bool HostedOverlayMode = true);
     bool OpenDocumentPath(const std::string& DocumentPath, std::string* OutDiagnostic = nullptr);
     bool IntakeExternalFileDrop(const std::string& FilePath, std::string* OutDiagnostic = nullptr);
 
+    [[nodiscard]] bool QueryViewportMaximized() const noexcept { return State.ViewportMaximizedEnabled; }
     [[nodiscard]] Sketcher::SketcherWorkspaceStatus&       AccessState() noexcept        { return State; }
     [[nodiscard]] const Sketcher::SketcherWorkspaceStatus& InspectState() const noexcept { return State; }
     [[nodiscard]] uint32_t QueryRegisteredTabCount() const noexcept { return RegisteredTabCount; }

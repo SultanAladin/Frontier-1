@@ -206,14 +206,23 @@ public:
     bool Toggle(const char* Caption, bool& Enabled)
     {
         const ImVec2 Pos = ImGui::GetCursorScreenPos();
-        const float Avail = std::max(ImGui::GetContentRegionAvail().x, 120.0f);
-        const bool Changed = ImGui::InvisibleButton(Caption, ImVec2(Avail, 28.0f * Scale));
+        const char* Hash = std::strstr(Caption, "##");
+        const char* LabelEnd = Hash ? Hash : (Caption + std::strlen(Caption));
+        const bool HasLabel = LabelEnd > Caption;
+        const float TrackW = 34.0f * Scale;
+        const float TrackH = 18.0f * Scale;
+        const float RowH = 26.0f * Scale;
+        const float AvailX = std::max(TrackW, ImGui::GetContentRegionAvail().x);
+        const float ButtonW = HasLabel ? AvailX : TrackW;
+
+        const bool Changed = ImGui::InvisibleButton(Caption, ImVec2(ButtonW, RowH));
         if (Changed)
         {
             Enabled = !Enabled;
         }
         const ImVec2 RMin = ImGui::GetItemRectMin();
         const ImVec2 RMax = ImGui::GetItemRectMax();
+        const bool Hovered = ImGui::IsItemHovered();
         if (RegisterExtent)
         {
             RegisterExtent(Caption, PlaneExtent{ RMin.x, RMin.y, RMax.x, RMax.y });
@@ -221,16 +230,26 @@ public:
         ImDrawList* Draw = ImGui::GetWindowDrawList();
         if (Draw != nullptr)
         {
-            const float TrackW = 34.0f * Scale;
-            const float TrackH = 18.0f * Scale;
-            const float TrackY = Pos.y + 5.0f * Scale;
-            const ImU32 TrackCol = Enabled ? IM_COL32(64, 153, 255, 255) : IM_COL32(55, 58, 66, 255);
+            const float TrackY = Pos.y + 0.5f * (RowH - TrackH);
+            const ImU32 TrackCol = Enabled
+                ? (Hovered ? IM_COL32(84, 168, 255, 255) : IM_COL32(64, 153, 255, 255))
+                : (Hovered ? IM_COL32(72, 76, 86, 255) : IM_COL32(55, 58, 66, 255));
             Draw->AddRectFilled(ImVec2(Pos.x, TrackY), ImVec2(Pos.x + TrackW, TrackY + TrackH), TrackCol, TrackH * 0.5f);
             const float KnobX = Enabled ? (Pos.x + TrackW - TrackH * 0.5f) : (Pos.x + TrackH * 0.5f);
             Draw->AddCircleFilled(ImVec2(KnobX, TrackY + TrackH * 0.5f), TrackH * 0.38f, IM_COL32(245, 246, 250, 255));
-            const char* Hash = std::strstr(Caption, "##");
-            const char* LabelEnd = Hash ? Hash : (Caption + std::strlen(Caption));
-            Draw->AddText(ImVec2(Pos.x + TrackW + 10.0f * Scale, Pos.y + 6.0f * Scale), ImGui::GetColorU32(ImGuiCol_Text), Caption, LabelEnd);
+            if (HasLabel)
+            {
+                const float TextX = Pos.x + TrackW + 10.0f * Scale;
+                const float TextMaxX = Pos.x + ButtonW;
+                if (TextMaxX > TextX + 4.0f)
+                {
+                    const float FontH = ImGui::GetFontSize();
+                    const float TextY = Pos.y + 0.5f * (RowH - FontH);
+                    Draw->PushClipRect(ImVec2(TextX, Pos.y), ImVec2(TextMaxX, Pos.y + RowH), true);
+                    Draw->AddText(ImVec2(TextX, TextY), ImGui::GetColorU32(ImGuiCol_Text), Caption, LabelEnd);
+                    Draw->PopClipRect();
+                }
+            }
         }
         return Changed;
     }
@@ -238,10 +257,60 @@ public:
     bool Slider(const char* Caption, float& Quantity, float Minimum, float Maximum)
     {
         ImGui::PushID(Caption);
-        ImGui::SetNextItemWidth(-1.0f);
-        const bool Changed = ImGui::SliderFloat("##Value", &Quantity, Minimum, Maximum, "%.3g");
+        const float AvailW = std::max(80.0f, ImGui::GetContentRegionAvail().x);
+        const char* Hash = std::strstr(Caption, "##");
+        const char* LabelEnd = Hash ? Hash : (Caption + std::strlen(Caption));
+        const bool HasLabel = LabelEnd > Caption;
+
+        char ValueBuf[32];
+        std::snprintf(ValueBuf, sizeof(ValueBuf), "%.2f", Quantity);
+
+        if (HasLabel)
+        {
+            const ImVec2 HeaderPos = ImGui::GetCursorScreenPos();
+            const float FontH = ImGui::GetFontSize();
+            const float ValueW = ImGui::CalcTextSize(ValueBuf).x;
+            const float HeaderH = FontH + 2.0f * Scale;
+            ImDrawList* Draw = ImGui::GetWindowDrawList();
+            if (Draw != nullptr)
+            {
+                const float LabelMaxX = std::max(HeaderPos.x + 16.0f, HeaderPos.x + AvailW - ValueW - 8.0f);
+                Draw->PushClipRect(ImVec2(HeaderPos.x, HeaderPos.y), ImVec2(LabelMaxX, HeaderPos.y + HeaderH), true);
+                Draw->AddText(HeaderPos, ImGui::GetColorU32(ImGuiCol_Text), Caption, LabelEnd);
+                Draw->PopClipRect();
+                Draw->AddText(ImVec2(HeaderPos.x + AvailW - ValueW, HeaderPos.y), IM_COL32(180, 186, 198, 255), ValueBuf);
+            }
+            ImGui::Dummy(ImVec2(AvailW, HeaderH));
+        }
+
+        const ImVec2 TrackPos = ImGui::GetCursorScreenPos();
+        const float SliderH = 22.0f * Scale;
+        ImGui::SetNextItemWidth(AvailW);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, std::max(2.0f, 0.5f * (SliderH - ImGui::GetFontSize()))));
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, 12.0f * Scale);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(28, 30, 36, 255));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(36, 39, 47, 255));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32(42, 46, 56, 255));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrab, IM_COL32(82, 166, 255, 255));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, IM_COL32(120, 190, 255, 255));
+        const bool Changed = ImGui::SliderFloat("##Value", &Quantity, Minimum, Maximum, HasLabel ? "" : "%.2f");
+        ImGui::PopStyleColor(5);
+        ImGui::PopStyleVar(2);
+
         const ImVec2 RMin = ImGui::GetItemRectMin();
         const ImVec2 RMax = ImGui::GetItemRectMax();
+        if (ImDrawList* Draw = ImGui::GetWindowDrawList(); Draw != nullptr && Maximum > Minimum)
+        {
+            const float T = std::clamp((Quantity - Minimum) / (Maximum - Minimum), 0.0f, 1.0f);
+            const float FillW = std::max(0.0f, (RMax.x - RMin.x - 4.0f) * T);
+            if (FillW > 2.0f)
+            {
+                const float MidY = 0.5f * (RMin.y + RMax.y);
+                Draw->AddRectFilled(ImVec2(RMin.x + 2.0f, MidY - 2.0f), ImVec2(RMin.x + 2.0f + FillW, MidY + 2.0f),
+                                    IM_COL32(64, 153, 255, 190), 2.0f);
+            }
+        }
+        (void)TrackPos;
         if (RegisterExtent)
         {
             RegisterExtent(Caption, PlaneExtent{ RMin.x, RMin.y, RMax.x, RMax.y });
