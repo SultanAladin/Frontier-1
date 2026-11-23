@@ -338,7 +338,9 @@ constexpr uint32_t DebugChannelShadedLit         = 0u;                     // [i
 constexpr uint32_t DebugChannelSunShadow         = 8u;                     // [id]    - Direct solar shadow diagnostic view
 constexpr uint32_t DebugChannelFilteredAo        = 9u;                     // [id]    - Bilaterally denoised UDF ambient occlusion
 constexpr uint32_t DebugChannelSpecular          = 11u;                    // [id]    - Specular indirect lighting diagnostic view
+constexpr uint32_t DebugChannelDistanceHeat      = 12u;                    // [id]    - UDF distance heatmap diagnostic view
 constexpr uint32_t DebugChannelRawUdfAo          = 15u;                    // [id]    - Unfiltered 12-ray UDF ambient occlusion
+constexpr uint32_t DebugChannelCascadeTint       = 16u;                    // [id]    - UDF cascade residency diagnostic view
 constexpr uint32_t EnableFinalToneStackBit       = 1u << 0u;               // [mask]  - Final step tone-stack & display output bit
 constexpr uint32_t EnableSpatialAoDenoiseBit     = 1u << 1u;               // [mask]  - Joint-bilateral UDF AO spatial filter bit
 constexpr uint32_t EnableSpatialSunDenoiseBit    = 1u << 2u;               // [mask]  - Joint-bilateral solar shadow filter bit
@@ -4572,7 +4574,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         {
             PrecomputeMask |= (kPrecomputeFineShadow | kPrecomputeCoarseShadow | kPrecomputeRadiosity | kPrecomputeRadiosityFull | kPrecomputeSecondBounce);
         }
-        const bool UsesGdfDebug = (Config.DebugChannel >= 12u && Config.DebugChannel <= 16u);
+        const bool UsesGdfDebug =
+            (Config.DebugChannel == DebugChannelFilteredAo) ||
+            (Config.DebugChannel >= DebugChannelDistanceHeat && Config.DebugChannel <= DebugChannelCascadeTint);
         const bool UsesUnshadedDebug =
             (Config.DebugChannel != 0u) && !UsesGdfDebug &&
             !(Config.DebugChannel >= 8u && Config.DebugChannel <= 11u);

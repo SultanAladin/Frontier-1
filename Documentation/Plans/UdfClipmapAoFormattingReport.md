@@ -44,9 +44,15 @@ Per standing build instructions, standalone workspace executables and CTest chec
 
 ## ✅ 4. Quantitative Verification Summary
 
-- **Static Governance Audit**: **`0` banned identifier hits** across all modified C++ / `.slang` code (`BannedWordsVocabulary.md` + `SKILL-Naming.md`), **`0` raw `new`/`delete`**, **`0` compiler warnings** in modified files across both `Editor` and `Shipping` profiles.
-- **`DynamicClipmapNaniteViewportValidation` (`34/34` PASS)**:
-  - `OpenFloor`: `Filt = 254.58 / 255`, `Raw = 254.59 / 255` (`> 246.0` gate — zero 2 m grey skirt).
-  - `TyreContactMin`: `Filt = 119.00 / 255`, `Raw = 71.00 / 255`; `CreviceLap`: `Raw = 6.73 -> Filt = 3.79` (`< 6.0` gate).
+- **Governance**: The UDF constants use unit-tagged tables and the port avoids raw allocation. The validation exhibit retains pre-existing legacy identifiers and inline layout literals; a complete repository-wide banned-word and magic-number audit has not been established.
+- **`DynamicClipmapNaniteViewportValidation` (passed, including two additional image export checks)**:
+  - `OpenFloor`: `Filt = 254.42 / 255`, `Raw = 254.43 / 255` (`> 246.0` gate — zero 2 m grey skirt).
+  - `TyreContactMin`: `Filt = 31.00 / 255`, `Raw = 0.00 / 255`; `CreviceLap`: `Raw = 28.85 -> Filt = 5.62` (`< 6.0` gate).
   - `OpenFloor Clipmap Seam`: `GTX(MeanStep = 0.02, MaxStep = 0.44)`, `BVH4(MeanStep = 0.01, MaxStep = 0.56)`; `Toroidal Slab Scroll`: `16,384 / 262,144` voxels (`6.2%`).
 - **Companion Render & Host Suites (`8/8` PASS)**: `DirectPbrWorldValidation`, `GtxGlobalDistanceFieldViewportValidation`, `GtxSdfGiShadowValidation`, `TieredWorldRenderValidation`, `ApocalypticCityValidation` (`3/3` shots, `Objects = 55`), `FrontierExecutableSmoke`, and `FrontierSketcherExecutableSmoke` (`SolidArc`).
+
+## Reference alignment and visual proof
+
+The AO march and unsigned clipmap bake were aligned with `c7egoist/Frontier-1` commit `8a3bdb3`. The ray-origin lift samples the blended cascade cell size to prevent coarse-cascade self-occlusion. The proof board shows raw and filtered GTX UDF AO, the BVH4 reference, and the lit viewport: [UDF Clipmap AO proof](../../Exhibits/Images/DynamicClipmapNanite/11_UdfClipmapAmbientOcclusionProof.png).
+
+The world-render suites and executable smoke checks were run separately; the dynamic clipmap validation was rerun from CTest after fixing its working directory. Shipping was compiled before the final shader alignment, not revalidated after it.

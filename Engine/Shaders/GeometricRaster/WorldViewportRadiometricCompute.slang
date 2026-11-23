@@ -898,8 +898,8 @@ float SampleGlobalDistanceCascade(uint CascadeIdx, float3 WorldPos, out bool Out
 //------------------------------------------------------------------------------------------------------------------------
 
 static const float UdfTruncationVoxelMultiple     = 8.0;        // [count] - Truncation ceiling in local voxel multiples
-static const float CascadeBorderInnerMargin       = 0.02;       // [-]     - Outer normalized margin where cascade fades out
-static const float CascadeBorderOuterMargin       = 0.12;       // [-]     - Inner normalized margin where cascade reaches 1
+static const float CascadeBorderInnerMargin       = 0.0;        // [-]     - Outer normalized margin where cascade fades out
+static const float CascadeBorderOuterMargin       = 0.10;       // [-]     - Inner normalized margin where cascade reaches 1
 static const float FineCascadeFullWeightThreshold = 0.999;      // [-]     - Weight threshold skipping coarse cascade blend
 static const float FineCascadeMinHalfSpanMeters   = 0.1;        // [m]     - Safety floor on fine clipmap half-extent
 static const float CoarseCascadeMinHalfSpanMeters = 0.5;        // [m]     - Safety floor on coarse clipmap half-extent
@@ -911,24 +911,24 @@ static const float IgnSpatialScaleX               = 0.06711056; // [-]     - Jim
 static const float IgnSpatialScaleY               = 0.00583715; // [-]     - Jimenez interleaved gradient noise Y frequency
 static const float IgnOuterMultiplier             = 52.9829189; // [-]     - Jimenez interleaved gradient noise outer scale
 static const uint  UdfAoRayCount                  = 12u;        // [count] - Cosine-hemisphere UDF sphere-trace rays/pixel
-static const uint  UdfAoMaxMarchSteps             = 10u;        // [count] - Maximum sphere-tracing steps along each AO ray
+static const uint  UdfAoMaxMarchSteps             = 24u;        // [count] - Maximum sphere-tracing steps along each AO ray
 static const float UdfAoTraceRadiusMeters         = 0.85;       // [m]     - Physical ambient occlusion reach in world space
-static const float UdfAoSurfaceBiasMeters         = 0.028;      // [m]     - Minimum normal lift preventing receiver self-hit
-static const float UdfAoCellLiftScale             = 0.28;       // [-]     - Origin normal lift in fine clipmap voxel units
+static const float UdfAoSurfaceBiasMeters         = 0.025;      // [m]     - Minimum normal lift preventing receiver self-hit
+static const float UdfAoCellLiftScale             = 0.65;       // [-]     - Origin normal lift in fine clipmap voxel units
 static const float UdfAoGeomLiftBlend             = 0.55;       // [-]     - Geometric normal weight in ray origin lift axis
 static const float UdfAoShadingLiftBlend          = 0.45;       // [-]     - Shading normal weight in ray origin lift axis
 static const float UdfAoMinGeomCosine             = 0.04;       // [-]     - Grazing clamp lifting rays above triangle plane
+static const float UdfAoGroundRaySlopeFloor       = 1.0e-4;     // [-]     - Downward Z slope threshold for exact floor hit
+static const float UdfAoDirectHitOcclusion        = 1.0;        // [-]     - Full ray occlusion assigned on direct UDF hit
 static const float UdfAoInitialPreviousDist       = 1.0e5;      // [m]     - Uninitialized previous-step distance floor
 static const float UdfAoHitCellScale              = 0.18;       // [-]     - Direct surface hit threshold in local voxels
-static const float UdfAoHitQuadraticWeight        = 0.90;       // [-]     - Quadratic falloff share on direct UDF hit
-static const float UdfAoHitLinearWeight           = 0.10;       // [-]     - Linear falloff share on direct UDF hit
 static const float UdfAoMinApproachCellScale      = 0.10;       // [-]     - Step denominator floor for approach gradient
-static const float UdfAoNearCellScale             = 0.42;       // [-]     - Near-surface cone floor in local voxel units
-static const float UdfAoNearConeExpansion         = 1.12;       // [-]     - Cone aperture growth per meter of march travel
-static const float UdfAoProximityStrength         = 0.85;       // [-]     - Soft proximity occlusion gain on approaching rays
-static const float UdfAoMinStepCellScale          = 0.22;       // [-]     - Minimum march advance in local voxel multiples
-static const float UdfAoUnderRelaxation           = 0.72;       // [-]     - Under-relaxed UDF step factor guarding voxel seams
-static const float UdfAoMaxStepMeters             = 0.45;       // [m]     - Upper clamp on single UDF sphere-trace advance
+static const float UdfAoNearCellScale             = 0.45;       // [-]     - Near-surface cone floor in local voxel units
+static const float UdfAoNearConeExpansion         = 1.15;       // [-]     - Cone aperture growth per meter of march travel
+static const float UdfAoProximityStrength         = 0.82;       // [-]     - Soft proximity occlusion gain on approaching rays
+static const float UdfAoUnderRelaxation           = 0.75;       // [-]     - Under-relaxed UDF step factor guarding voxel seams
+static const float UdfAoMaxStepMeters             = 0.48;       // [m]     - Upper clamp on single UDF sphere-trace advance
+static const float UdfAoMinimumStepFloor          = 1.0e-5;     // [m]     - Step termination floor avoiding thin-wall skips
 static const uint  DenoiseFinalToneStackBit       = 1u;         // [mask]  - Final step tone-stack & display output bit
 static const uint  DenoiseSpatialAoBit            = 2u;         // [mask]  - Joint-bilateral UDF AO spatial filter bit
 static const uint  DenoiseSpatialSunBit           = 4u;         // [mask]  - Joint-bilateral solar shadow spatial filter bit
@@ -1104,12 +1104,12 @@ float EvaluateGlobalDistanceAmbientOcclusion(
         return 1.0;
     }
 
-    float OriginCellMeters = QueryFineGdfVoxelSize();
+    float  OriginCellMeters = QueryFineGdfVoxelSize();
     (void)SampleGlobalDistanceWorld(SurfacePosition, OriginCellMeters);
-
-    float3 LiftDirection = normalize(GeometricNormal * UdfAoGeomLiftBlend + ShadingNormal * UdfAoShadingLiftBlend);
-    float  OriginLift    = max(UdfAoSurfaceBiasMeters, OriginCellMeters * UdfAoCellLiftScale);
-    float3 RayOrigin     = SurfacePosition + LiftDirection * OriginLift;
+    float  GroundPlaneZ     = QueryGlobalDistanceAnalyticGroundZ();
+    float3 LiftDirection    = normalize(GeometricNormal * UdfAoGeomLiftBlend + ShadingNormal * UdfAoShadingLiftBlend);
+    float  OriginLift       = max(UdfAoSurfaceBiasMeters, OriginCellMeters * UdfAoCellLiftScale);
+    float3 RayOrigin        = SurfacePosition + LiftDirection * OriginLift;
 
     float2 IgnSample     = (float2(PixelCoordinates) + 0.5) * float2(IgnSpatialScaleX, IgnSpatialScaleY);
     float  IgnTurn       = frac(IgnOuterMultiplier * frac(IgnSample.x + IgnSample.y));
@@ -1136,52 +1136,67 @@ float EvaluateGlobalDistanceAmbientOcclusion(
             RayDir = normalize(RayDir + GeometricNormal * (UdfAoMinGeomCosine - GeometricCosine));
         }
 
-        float TravelMeters     = 0.0;
-        float RayOcclusion     = 0.0;
-        float PreviousDistance = UdfAoInitialPreviousDist;
-        float PreviousStep     = 0.0;
-        bool  PreviousValid    = false;
-
-        [loop]
-        for (uint StepIndex = 0u; StepIndex < UdfAoMaxMarchSteps; ++StepIndex)
+        float RayOcclusion = 0.0;
+        if (GroundPlaneZ > ValidAnalyticGroundFloorZ &&
+            SurfacePosition.z > GroundPlaneZ + MinimumBoxHalfExtentMeters &&
+            RayDir.z < -UdfAoGroundRaySlopeFloor)
         {
-            if (TravelMeters >= UdfAoTraceRadiusMeters)
+            float GroundHitMeters = (GroundPlaneZ - SurfacePosition.z) / RayDir.z;
+            if (GroundHitMeters > 0.0 && GroundHitMeters < UdfAoTraceRadiusMeters)
             {
-                break;
+                RayOcclusion = UdfAoDirectHitOcclusion;
             }
+        }
 
-            float3 SamplePosition  = RayOrigin + RayDir * TravelMeters;
-            float  LocalCellMeters = OriginCellMeters;
-            float  FieldDistance   = SampleGlobalDistanceWorld(SamplePosition, LocalCellMeters);
-            float  HitThreshold    = max(MinimumBoxHalfExtentMeters, LocalCellMeters * UdfAoHitCellScale);
-            if (StepIndex > 0u && FieldDistance < HitThreshold)
+        if (RayOcclusion < UdfAoDirectHitOcclusion)
+        {
+            float TravelMeters     = 0.0;
+            float PreviousDistance = UdfAoInitialPreviousDist;
+            float PreviousStep     = 0.0;
+            bool  PreviousValid    = false;
+
+            [loop]
+            for (uint StepIndex = 0u; StepIndex < UdfAoMaxMarchSteps; ++StepIndex)
             {
-                float HitFalloff = saturate(1.0 - TravelMeters / UdfAoTraceRadiusMeters);
+                if (TravelMeters >= UdfAoTraceRadiusMeters)
+                {
+                    break;
+                }
+
+                float3 SamplePosition  = RayOrigin + RayDir * TravelMeters;
+                float  LocalCellMeters = OriginCellMeters;
+                float  FieldDistance   = SampleGlobalDistanceWorld(SamplePosition, LocalCellMeters);
+                float  HitThreshold    = max(MinimumBoxHalfExtentMeters, LocalCellMeters * UdfAoHitCellScale);
+                if (FieldDistance < HitThreshold)
+                {
+                    RayOcclusion = UdfAoDirectHitOcclusion;
+                    break;
+                }
+
+                // ① Gate proximity occlusion on positive approach rate so parallel open ground planes contribute zero darkening
+                float ApproachRate = PreviousValid
+                    ? saturate((PreviousDistance - FieldDistance) / max(PreviousStep, LocalCellMeters * UdfAoMinApproachCellScale))
+                    : 0.0;
+                float NearRatio    = saturate(
+                    FieldDistance / max(LocalCellMeters * UdfAoNearCellScale, TravelMeters * UdfAoNearConeExpansion));
+                float DistanceFade = saturate(1.0 - TravelMeters / UdfAoTraceRadiusMeters);
                 RayOcclusion = max(
                     RayOcclusion,
-                    HitFalloff * HitFalloff * UdfAoHitQuadraticWeight + HitFalloff * UdfAoHitLinearWeight);
-                break;
+                    (1.0 - NearRatio) * ApproachRate * DistanceFade * UdfAoProximityStrength);
+
+                // ② Advance with under-relaxed unsigned distance without a fixed minimum step that could jump thin blockers
+                float StepLength = min(
+                    FieldDistance * UdfAoUnderRelaxation,
+                    min(UdfAoMaxStepMeters, UdfAoTraceRadiusMeters - TravelMeters));
+                if (StepLength <= UdfAoMinimumStepFloor)
+                {
+                    break;
+                }
+                PreviousDistance = FieldDistance;
+                PreviousStep     = StepLength;
+                PreviousValid    = true;
+                TravelMeters    += StepLength;
             }
-
-            // ① Gate proximity occlusion on positive approach rate so parallel open ground planes contribute zero darkening
-            float ApproachRate = PreviousValid
-                ? saturate((PreviousDistance - FieldDistance) / max(PreviousStep, LocalCellMeters * UdfAoMinApproachCellScale))
-                : 0.0;
-            float NearRatio    = saturate(
-                FieldDistance / max(LocalCellMeters * UdfAoNearCellScale, TravelMeters * UdfAoNearConeExpansion));
-            float DistanceFade = saturate(1.0 - TravelMeters / UdfAoTraceRadiusMeters);
-            RayOcclusion = max(
-                RayOcclusion,
-                (1.0 - NearRatio) * ApproachRate * DistanceFade * UdfAoProximityStrength);
-
-            // ② Advance with under-relaxed unsigned distance clamped against local cell floor and trace reach
-            float StepLength = max(
-                max(HitThreshold, LocalCellMeters * UdfAoMinStepCellScale),
-                min(FieldDistance * UdfAoUnderRelaxation, min(UdfAoMaxStepMeters, UdfAoTraceRadiusMeters - TravelMeters)));
-            PreviousDistance = FieldDistance;
-            PreviousStep     = StepLength;
-            PreviousValid    = true;
-            TravelMeters    += StepLength;
         }
         OcclusionSum += RayOcclusion;
     }
@@ -4331,10 +4346,10 @@ void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             float WorldD = LocalD * MinWorldScale;
             float AbsD   = abs(WorldD);
 
-            // 💡 Keep horizontal ground slabs out of non-ground UDF voxels while still populating fine radiosity surface metadata
+            // 💡 Keep horizontal ground slabs out of non-ground UDF voxels while storing unsigned surface distance on all shapes
             if (!AnalyticGroundSlab)
             {
-                BestVolumeDist = min(BestVolumeDist, max(0.0, WorldD));
+                BestVolumeDist = min(BestVolumeDist, AbsD);
             }
 
             if (!FoundSurface || AbsD < BestAbsDist)
