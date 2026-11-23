@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [WorldAuthoringAssetDagPlan.md](WorldAuthoringAssetDagPlan.md) | Proposed data-driven world authoring, approved asset formats, environment construction/removal and persistent dependency DAG |
 | [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
 | [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
 | [ViewportTelemetrySpikeRemediationReport.md](ViewportTelemetrySpikeRemediationReport.md) | **🟢 Completion Report (`2026-11-22`)**: `FrontierTiming.log` (`40,080` ticks on `GTX 1650 SUPER`) spike & ray-budget audit, dedicated `HighEndBvhComputeEntry` (`2..3` rays/pixel), persistent `VkPipelineCache`, `2048x2048` font atlas, and zero-stall gizmo/UI hover pacing |
