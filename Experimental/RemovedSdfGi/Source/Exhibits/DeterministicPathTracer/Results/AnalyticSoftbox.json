@@ -1,0 +1,105 @@
+{
+  "Summary": {
+    "Width": 160,
+    "Height": 120,
+    "Samples": 1024,
+    "RelativeRmsAtFinal": 0.0003387096603392421,
+    "MeanRelativeError": 0.00024201390640846246,
+    "MeanSignedRelativeError": 0.00003333526806111256,
+    "MaximumRelativeError": 0.0010313745744639593,
+    "PixelsCompared": 17827.666666666668
+  },
+  "WorstPixel": {
+    "Column": 63,
+    "Row": 62,
+    "Rendered": 0.2054913192987442,
+    "Reference": 0.2057034766344238
+  },
+  "Light": {
+    "Centre": [
+      0.4000000059604645,
+      5.800000190734863,
+      0.6000000238418579
+    ],
+    "EdgeU": [
+      5.599999904632568,
+      0,
+      0
+    ],
+    "EdgeV": [
+      0,
+      0,
+      2.5999999046325684
+    ],
+    "Radiance": 4
+  },
+  "Camera": {
+    "Yaw": 0.5,
+    "Pitch": 1.1,
+    "Distance": 10,
+    "Target": [
+      0.4,
+      0,
+      0.6
+    ],
+    "FieldOfView": 60
+  },
+  "Curve": [
+    {
+      "Samples": 1,
+      "Seconds": 0.1201999999997206,
+      "RelativeRms": 0.23652070439674588
+    },
+    {
+      "Samples": 2,
+      "Seconds": 0.23539999999990688,
+      "RelativeRms": 0.03651240794180336
+    },
+    {
+      "Samples": 4,
+      "Seconds": 0.4508999999999069,
+      "RelativeRms": 0.05732609027655266
+    },
+    {
+      "Samples": 8,
+      "Seconds": 0.8196999999997207,
+      "RelativeRms": 0.013247339314801054
+    },
+    {
+      "Samples": 16,
+      "Seconds": 1.4528999999999068,
+      "RelativeRms": 0.010515436980661663
+    },
+    {
+      "Samples": 32,
+      "Seconds": 2.6556999999997206,
+      "RelativeRms": 0.0035640438492876496
+    },
+    {
+      "Samples": 64,
+      "Seconds": 5.3335999999996275,
+      "RelativeRms": 0.0018037428604754464
+    },
+    {
+      "Samples": 128,
+      "Seconds": 10.588799999999814,
+      "RelativeRms": 0.0011431724802559013
+    },
+    {
+      "Samples": 256,
+      "Seconds": 21.6525,
+      "RelativeRms": 0.0007146181291202102
+    },
+    {
+      "Samples": 512,
+      "Seconds": 42.5225,
+      "RelativeRms": 0.0004630779093970576
+    },
+    {
+      "Samples": 1024,
+      "Seconds": 84.90220000000019,
+      "RelativeRms": 0.0003387096603392421
+    }
+  ],
+  "Note": "Lambert 50 % floor under one 5.6 x 2.6 m softbox (radiance 4), no other geometry or environment. Reference: closed-form polygon irradiance, box-filtered per pixel."
+}

@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier · Studio Icon Set</title>
+<style>
+@font-face { font-family: "DM Sans"; font-weight: 300; src: url("./Fonts/dm-sans-latin-300-normal.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "DM Sans"; font-weight: 400; src: url("./Fonts/dm-sans-latin-400-normal.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "DM Sans"; font-weight: 500; src: url("./Fonts/dm-sans-latin-500-normal.woff2") format("woff2"); font-display: swap; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: #090909; color: #f0f0f0; font: 300 13px/1.5 "DM Sans", system-ui, sans-serif; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 2px; overflow: hidden; }
+body.light-stage .tile, body.light-stage .preview { --stage: #ececec; --ink: #161616; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid #ffffff0d; background: #222; border-radius: 16px; min-height: 30px; padding: 5px 13px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+button:hover { background: #2e2e2e; }
+button:focus-visible, input:focus-visible { outline: 1px solid #adb2c4; outline-offset: 2px; }
+h1, h2, h4 { font-weight: 300; margin: 0; }
+h4 { font-size: 10px; color: #888; letter-spacing: 1.4px; margin: 22px 0 10px; }
+small { font-size: 10px; color: #888; font-weight: 400; }
+b { font-weight: 400; }
+::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { border-radius: 9px; background: #242424; }
+
+main { background: #121212; overflow-y: auto; padding: 0 26px 60px; min-width: 0; }
+.top { position: sticky; top: 0; z-index: 3; background: #121212f2; padding: 22px 0 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; border-bottom: 1px solid #1e1e1e; }
+.top h1 { font-size: 22px; letter-spacing: 0.6px; margin-right: 6px; }
+.top .count { color: #5c5c5c; font-size: 10px; margin-right: auto; }
+.search { height: 34px; border-radius: 17px; background: #000; border: 1px solid #ffffff12; padding: 0 14px; width: 190px; outline: none; }
+.segmented { display: flex; background: #1c1c1c; border-radius: 18px; padding: 3px; gap: 2px; }
+.segmented button { border: 0; background: transparent; min-height: 26px; padding: 3px 11px; font-size: 11px; color: #9a9a9a; }
+.segmented button.active { background: #e8e8e8; color: #111; font-weight: 400; }
+.weight { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #b5b5b5; }
+input[type="range"] { appearance: none; -webkit-appearance: none; width: 96px; height: 22px; border-radius: 30px; margin: 0; cursor: ew-resize; background: linear-gradient(90deg, #454545 0 var(--fill, 50%), #242424 var(--fill, 50%) 100%); }
+input[type="range"]::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #e0e0e0; }
+input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #e0e0e0; }
+
+.family { margin-top: 30px; }
+.family header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.family header i { width: 9px; height: 9px; border-radius: 50%; align-self: center; }
+.family header h2 { font-size: 15px; }
+.family header span { margin-left: auto; color: #5c5c5c; font-size: 10px; }
+.sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.tile { --stage: #191919; --ink: #e8e8e8; flex-direction: column; gap: 9px; height: 96px; padding: 10px 6px 8px; border-radius: 16px; background: var(--stage); border: 1px solid #262626; color: var(--ink); }
+.tile:hover { background: var(--stage); border-color: #4a4a4a; }
+.tile.active { border-color: #ffb238; }
+.tile .art { height: 36px; display: flex; align-items: center; justify-content: center; }
+.tile span { font-size: 10px; color: #8d8d8d; line-height: 1.2; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.studio-art { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; }
+.family[data-family="studio"] .tile { height: 112px; }
+.family[data-family="studio"] .tile .art { height: 48px; }
+.empty { color: #666; padding: 40px 0; text-align: center; display: none; }
+
+.context { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
+.mock { background: #171717; border: 1px solid #262626; border-radius: 16px; padding: 12px; }
+.mock small { display: block; margin-bottom: 10px; letter-spacing: 1.2px; font-size: 8px; }
+.bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.bar .chip { width: 32px; height: 32px; border-radius: 50%; background: #1f1f1f; display: flex; align-items: center; justify-content: center; color: #b5b5b5; }
+.bar .chip.on { background: #e8e8e8; color: #111; }
+.bar .rule { width: 1px; height: 18px; background: #2c2c2c; margin: 0 3px; }
+
+aside { background: #121212; overflow-y: auto; padding: 22px 22px 40px; }
+.crumbs { font-size: 9px; color: #777; margin-bottom: 18px; }
+aside h1 { font-size: 23px; }
+.sub { font-size: 10px; margin: 6px 0 14px; }
+.preview { --stage: #171717; --ink: #f0f0f0; height: 208px; border-radius: 18px; border: 1px solid #2a2a2a; background-color: var(--stage); color: var(--ink); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.preview .cells { position: absolute; width: 168px; height: 168px; background-image: linear-gradient(#80808026 1px, transparent 1px), linear-gradient(90deg, #80808026 1px, transparent 1px); background-size: 7px 7px; border: 1px solid #80808040; }
+.preview .cells::after { content: ""; position: absolute; inset: 14px; border: 1px dashed #ffb23866; }
+.preview svg { position: relative; }
+.sizes { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 8px; background: #171717; border: 1px solid #262626; border-radius: 14px; padding: 12px 16px 8px; }
+.sizes div { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.actions .primary { background: #e8e8e8; color: #111; font-weight: 400; }
+.actions .primary:hover { background: #fff; }
+.actions .wide { grid-column: 1 / -1; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.tags span { font-size: 10px; background: #1c1c1c; border-radius: 10px; padding: 2px 9px; color: #a5a5a5; }
+.rules { font-size: 11px; color: #9a9a9a; line-height: 1.6; margin: 0; padding-left: 16px; }
+.rules b { color: #e2e2e2; }
+code { font: 400 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; display: block; background: #0c0c0c; border: 1px solid #222; border-radius: 10px; padding: 10px; color: #a9c7e8; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow: auto; }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); background: #e8e8e8; color: #111; border-radius: 16px; padding: 7px 16px; font-size: 12px; font-weight: 400; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 9; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 860px) { body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 46%; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Studio Icon Set</h1><span class="count" id="Count"></span>
+    <input id="Search" class="search" type="search" placeholder="Search icons" aria-label="Search icons">
+    <div class="segmented" id="Sizes" role="radiogroup" aria-label="Icon size"></div>
+    <label class="weight">Stroke <input id="Weight" type="range" min="1" max="2" step="0.05" value="1.5"><b id="WeightValue">1.50</b></label>
+    <div class="segmented" id="Style" role="radiogroup" aria-label="Colour style"><button data-style="duo" class="active">Two-tone</button><button data-style="mono">Mono</button><button data-style="colour">Colour</button></div>
+    <div class="segmented" id="Stage" role="radiogroup" aria-label="Background"><button data-stage="dark" class="active">Dark</button><button data-stage="light">Light</button></div>
+  </div>
+  <section class="family" id="ContextSection">
+    <header><i style="background:#e8e8e8"></i><h2>In context</h2><small>The icons at 16 px in tool ribbons, as they will actually be used</small></header>
+    <div class="context" id="Context"></div>
+  </section>
+  <div id="Families"></div>
+  <div class="empty" id="Empty">No icon matches that search.</div>
+</main>
+<aside>
+  <div class="crumbs">Inspector / Icon</div>
+  <h1 id="Name">—</h1>
+  <div class="sub" id="Id"></div>
+  <div class="preview"><div class="cells"></div><div id="Large"></div></div>
+  <div class="sizes" id="Ladder"></div>
+  <div class="actions">
+    <button class="primary" id="Copy">Copy SVG</button><button id="Download">Download SVG</button>
+    <button class="wide" id="Sprite">Download whole set as one SVG sprite</button>
+  </div>
+  <h4>KEYWORDS</h4><div class="tags" id="Tags"></div>
+  <h4>MARKUP</h4><code id="Markup"></code>
+  <h4>DESIGN RULES</h4>
+  <ul class="rules">
+    <li><b>24 × 24 grid</b>, 2 px safe margin (dashed box in the preview).</li>
+    <li><b>1.5 px strokes</b>, round caps and joins, no fills except small dots and tinted areas.</li>
+    <li><b>Two layers:</b> neutral shape + one family colour on the part that carries the meaning. Mono mode drops the colour and still reads.</li>
+    <li><b>One colour per studio:</b> amber basics, blue UV, orange particles, green forces, violet launchers.</li>
+    <li>Flat only: no glow, gradients or shadows.</li>
+  </ul>
+</aside>
+<div class="toast" id="Toast"></div>
+<script type="module">
+import { FAMILIES, ICONS } from './IconDefinitions.js';
+
+const $ = (id) => document.getElementById(id);
+const state = { size: 24, weight: 1.5, style: 'duo', selected: ICONS[0].id, query: '' };
+const familyOf = (icon) => FAMILIES.find((f) => f.id === icon.family);
+
+// Builds standalone SVG markup. `ink` = neutral layer colour, `accent` = family layer colour.
+// Colour: the base layer takes a contrasting second hue per family and the meaning layer keeps the family colour,
+// so each icon is two colours. Tiles keep the plain background in every style.
+const MULTI_INK = { studio: '#ffd166', general: '#5ac8fa', uv: '#ff8fab', particle: '#6bd6ff', force: '#ffd166' };
+function markup(icon, { size = 24, weight = state.weight, ink = 'currentColor', accent = null, standalone = false } = {}) {
+  const family = familyOf(icon);
+  const tone = accent || (state.style === 'mono' ? ink : family.colour);
+  if (!accent && state.style === 'colour') ink = MULTI_INK[icon.family];
+  const head = `<svg${standalone ? ' xmlns="http://www.w3.org/2000/svg"' : ''} width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${weight}" stroke-linecap="round" stroke-linejoin="round">`;
+  const main = icon.main ? `<g color="${ink}">${icon.main}</g>` : '';
+  const second = icon.accent ? `<g color="${tone}">${icon.accent}</g>` : '';
+  return head + main + second + '</svg>';
+}
+
+function art(icon, size) {
+  if (icon.family !== 'studio') return markup(icon, { size });
+  const colour = familyOf(icon).colour;
+  // Launcher icons sit on a tinted rounded square; each studio keeps its own hue.
+  const hue = STUDIO_HUES[icon.id] || colour;
+  const scale = size / 24;
+  return `<span class="studio-art" style="width:${44 * scale}px;height:${44 * scale}px;border-radius:${13 * scale}px;background:${hue}26;color:#f0f0f0">${markup(icon, { size: Math.round(26 * scale), accent: state.style === 'duo' ? hue : null })}</span>`;
+}
+const STUDIO_HUES = { 'studio-uv-editor': '#4d9bff', 'studio-particle-editor': '#ff8a4c', 'studio-forcefield-editor': '#46d267', 'studio-cluster-lod': '#29c7c2', 'studio-fluid-editor': '#59a6ff', 'studio-fracture-editor': '#f04d3d', 'studio-texture-studio': '#f7cc40', 'studio-material-editor': '#b58cff', 'studio-light-editor': '#ffb238' };
+
+function renderFamilies() {
+  const host = $('Families');
+  host.innerHTML = '';
+  const words = state.query.toLowerCase().split(/\s+/).filter(Boolean);
+  let shown = 0;
+  for (const family of FAMILIES) {
+    const icons = ICONS.filter((icon) => icon.family === family.id && words.every((w) => (icon.name + ' ' + icon.tags + ' ' + icon.id).toLowerCase().includes(w)));
+    if (!icons.length) continue;
+    shown += icons.length;
+    const section = document.createElement('section');
+    section.className = 'family';
+    section.dataset.family = family.id;
+    section.innerHTML = `<header><i style="background:${family.colour}"></i><h2>${family.label}</h2><small>${family.note}</small><span>${icons.length}</span></header><div class="sheet"></div>`;
+    const sheet = section.querySelector('.sheet');
+    for (const icon of icons) {
+      const tile = document.createElement('button');
+      tile.className = 'tile' + (icon.id === state.selected ? ' active' : '');
+      tile.title = `${icon.name} — click to inspect, double-click to copy`;
+      tile.innerHTML = `<div class="art">${art(icon, state.size)}</div><span>${icon.name}</span>`;
+      tile.addEventListener('click', () => { state.selected = icon.id; renderFamilies(); renderInspector(); });
+      tile.addEventListener('dblclick', () => copy(icon));
+      sheet.append(tile);
+    }
+    host.append(section);
+  }
+  $('Empty').style.display = shown ? 'none' : 'block';
+  $('ContextSection').style.display = words.length ? 'none' : '';
+  $('Count').textContent = `${shown} of ${ICONS.length} icons · ${FAMILIES.length} families`;
+}
+
+function exported(icon) { return markup(icon, { standalone: true, ink: 'currentColor' }); }
+function renderInspector() {
+  const icon = ICONS.find((i) => i.id === state.selected) || ICONS[0];
+  $('Name').textContent = icon.name;
+  $('Id').innerHTML = `<span style="color:${familyOf(icon).colour}">${familyOf(icon).label}</span> · ${icon.id}`;
+  $('Large').innerHTML = markup(icon, { size: 168 });
+  $('Ladder').innerHTML = [16, 20, 24, 32, 48].map((s) => `<div>${markup(icon, { size: s })}<small>${s}</small></div>`).join('');
+  $('Tags').innerHTML = icon.tags.split(' ').map((t) => `<span>${t}</span>`).join('');
+  $('Markup').textContent = exported(icon);
+}
+
+function toast(text) {
+  const node = $('Toast');
+  node.textContent = text;
+  node.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => node.classList.remove('show'), 1500);
+}
+async function copy(icon) {
+  try { await navigator.clipboard.writeText(exported(icon)); toast(`Copied ${icon.name}`); }
+  catch { toast('Clipboard blocked — use Download SVG'); }
+}
+function download(name, text) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+}
+$('Copy').addEventListener('click', () => copy(ICONS.find((i) => i.id === state.selected)));
+$('Download').addEventListener('click', () => { const icon = ICONS.find((i) => i.id === state.selected); download(icon.id + '.svg', exported(icon)); });
+$('Sprite').addEventListener('click', () => {
+  const symbols = ICONS.map((icon) => {
+    const tone = state.style === 'mono' ? 'currentColor' : familyOf(icon).colour;
+    const ink = state.style === 'colour' ? MULTI_INK[icon.family] : 'currentColor';
+    return `<symbol id="${icon.id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${state.weight}" stroke-linecap="round" stroke-linejoin="round"><g color="${ink}">${icon.main}</g>${icon.accent ? `<g color="${tone}">${icon.accent}</g>` : ''}</symbol>`;
+  }).join('\n');
+  download('frontier-studio-icons.svg', `<svg xmlns="http://www.w3.org/2000/svg" style="display:none">\n${symbols}\n</svg>\n`);
+  toast('Sprite saved — use <svg><use href="…#uv-unwrap"/></svg>');
+});
+
+// --- Controls
+for (const size of [16, 20, 24, 32]) {
+  const button = document.createElement('button');
+  button.textContent = size;
+  button.classList.toggle('active', size === state.size);
+  button.addEventListener('click', () => { state.size = size; [...$('Sizes').children].forEach((b) => b.classList.toggle('active', b === button)); renderFamilies(); });
+  $('Sizes').append(button);
+}
+const weight = $('Weight');
+const refreshWeight = () => { weight.style.setProperty('--fill', (state.weight - 1) * 100 + '%'); $('WeightValue').textContent = state.weight.toFixed(2); };
+weight.addEventListener('input', () => { state.weight = +weight.value; refreshWeight(); renderAll(); });
+$('Style').addEventListener('click', (event) => {
+  const button = event.target.closest('button'); if (!button) return;
+  state.style = button.dataset.style;
+  [...$('Style').children].forEach((b) => b.classList.toggle('active', b === button));
+  renderAll();
+});
+$('Stage').addEventListener('click', (event) => {
+  const button = event.target.closest('button'); if (!button) return;
+  document.body.classList.toggle('light-stage', button.dataset.stage === 'light');
+  [...$('Stage').children].forEach((b) => b.classList.toggle('active', b === button));
+});
+$('Search').addEventListener('input', (event) => { state.query = event.target.value; renderFamilies(); });
+
+// --- In-context ribbons
+const RIBBONS = [
+  ['UV EDITOR', ['general-select', 'general-move', 'general-rotate', 'general-scale', '|', 'uv-unwrap', 'uv-seam-mark', 'uv-cut', 'uv-stitch', 'uv-pin', 'uv-relax', 'uv-pack', '|', 'uv-checker', 'uv-distortion'], 'uv-unwrap'],
+  ['PARTICLE EDITOR', ['particle-restart', 'particle-play', 'particle-pause', 'particle-loop', '|', 'particle-emit-cone', 'particle-burst', 'particle-rate', 'particle-lifetime', 'particle-velocity', 'particle-size-over-life', 'particle-colour-over-life', 'particle-collision', 'particle-trail'], 'particle-play'],
+  ['FORCE FIELD EDITOR', ['general-select', 'general-gizmo', '|', 'force-wind', 'force-attract', 'force-repel', 'force-vortex', 'force-turbulence', 'force-drag', 'force-gravity', '|', 'force-falloff', 'force-streamlines', 'force-vector-grid', 'force-heatmap'], 'force-vortex'],
+];
+function renderContext() {
+  $('Context').innerHTML = RIBBONS.map(([title, ids, active]) => `<div class="mock"><small>${title}</small><div class="bar">${ids.map((id) => {
+    if (id === '|') return '<span class="rule"></span>';
+    const icon = ICONS.find((i) => i.id === id);
+    const on = id === active;
+    return `<span class="chip${on ? ' on' : ''}" title="${icon.name}">${markup(icon, { size: 16, accent: on ? 'currentColor' : null })}</span>`;
+  }).join('')}</div></div>`).join('');
+}
+
+function renderAll() { renderContext(); renderFamilies(); renderInspector(); }
+refreshWeight();
+renderAll();
+window.StudioIconSet = { state, ICONS, renderAll };
+</script>
+</body>
+</html>
