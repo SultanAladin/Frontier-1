@@ -19,6 +19,12 @@ struct SketcherControlTrace
 [[nodiscard]] SketcherControlTrace MakeSketcherControlTrace(const std::vector<GeometrySpace::Parametric::Vector3>& Controls,
     SketcherDrawingCategory Kind, GeometrySpace::Parametric::SketchSplineForm Form, bool Closed);
 
+// Conforms a Line or Curve stroke onto Document.ReferenceSurfaces via BVH closest-point projection while keeping exact
+// clicked endpoints (falls back to MakeSketcherControlTrace when no reference surface lies beneath the stroke).
+[[nodiscard]] SketcherControlTrace ConstructReferenceConformingTrace(const SketcherDocument& Document,
+    const std::vector<GeometrySpace::Parametric::Vector3>& Controls, SketcherDrawingCategory Kind,
+    GeometrySpace::Parametric::SketchSplineForm Form, bool Closed);
+
 struct SketcherSurfaceTrace
 {
     std::vector<GeometrySpace::Parametric::Vector3> Samples;

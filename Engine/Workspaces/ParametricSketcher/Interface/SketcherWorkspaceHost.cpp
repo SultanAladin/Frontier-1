@@ -231,6 +231,7 @@ bool SketcherWorkspaceHost::OpenDocumentPath(const std::string& DocumentPath, st
                 AnyRef = true;
             }
             if (AnyRef) Frontier::FitOrbitCamera(State.Camera, Low, High);
+            if (State.Document.Tree.Steps.empty()) State.SurfaceTraceEnabled = true;
         }
         if (RasterReady) RenderViewportTarget();
         return true;

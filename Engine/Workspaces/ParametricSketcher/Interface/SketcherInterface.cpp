@@ -370,6 +370,7 @@ void AdoptDocument(SketcherWorkspaceStatus& State, SketcherDocument Document, bo
                 AnyRef = true;
             }
             if (AnyRef) Frontier::FitOrbitCamera(State.Camera, Low, High);
+            if (State.Document.Tree.Steps.empty()) State.SurfaceTraceEnabled = true;
         }
     }
 }
@@ -1609,7 +1610,7 @@ bool IntersectSketchPlane(const OrbitCameraBasis& Frame, ImVec2 Local, const Ort
     if (Drawing.Kind == SketcherDrawingCategory::Curve) Caption += std::string(" · ") + SketchSplineFormLabel(Drawing.Form);
     if (Drawing.Kind == SketcherDrawingCategory::Rectangle) Caption += Drawing.CentreCondition ? " · centre" : " · corner";
     if (Drawing.Kind == SketcherDrawingCategory::Circle) Caption += Drawing.CentreCondition ? " · centre" : " · two-point";
-    if (Drawing.SurfaceCondition) Caption += " · SURFACE POINTS → no added controls";
+    if (Drawing.SurfaceCondition) Caption += " · SURFACE TRACE";
     else if (Drawing.FacePlaneCondition) Caption += Drawing.FaceName.empty() ? std::string(" · level with the snap") : " · on face " + Drawing.FaceName;
     return Caption;
 }
@@ -1638,7 +1639,10 @@ void OpenDrawingSession(SketcherWorkspaceStatus& State, SketcherDrawingCategory 
     State.Drawing.Form            = SurfaceTrace ? SketchSplineForm::Nurbs : Form;
     if (State.Drawing.SurfaceCondition)
     {
-        Announce(State, "SURFACE TRACE · click on the model · Ctrl: authored curve / model edge (12 px) · Enter: finish · Esc: cancel · only clicked controls are saved; spans are NOT surface-projected");
+        const bool ConformActive = State.SurfaceConformEnabled && !State.Document.ReferenceSurfaces.empty();
+        Announce(State, ConformActive
+            ? "SURFACE TRACE · click on the model · spans conform to reference mesh & auto-cut crossings · Ctrl: authored curve / edge · Enter: finish · Esc: cancel"
+            : "SURFACE TRACE · click on the model · Ctrl: authored curve / model edge (12 px) · Enter: finish · Esc: cancel · clicked controls only");
         return;
     }
     static const char* Hints[] = { "click points · click the first point closes · Enter / right-click finishes open · Ctrl+Z drops a point",
@@ -1664,7 +1668,7 @@ void CancelDrawingSession(SketcherWorkspaceStatus& State)
 // when PointerCondition; empty when every point lies on the plane (a planar sketch).
 [[nodiscard]] std::vector<Vector3> LiftedDrawingPoints(const SketcherDrawingSession& Drawing, bool PointerCondition)
 {
-    if ((Drawing.Kind != SketcherDrawingCategory::Curve && !Drawing.SurfaceCondition) || Drawing.SolidCondition) return {};
+    if ((Drawing.Kind != SketcherDrawingCategory::Curve && Drawing.Kind != SketcherDrawingCategory::Line && !Drawing.SurfaceCondition) || Drawing.SolidCondition) return {};
     const bool Pointer = PointerCondition && DrawingPointerLive(Drawing);
     bool       Any     = Pointer && Drawing.PointerLifted.has_value();
     for (size_t Index = 0; Index < Drawing.Lifted.size() && Index < Drawing.Points.size(); ++Index) Any = Any || Drawing.Lifted[Index].has_value();
@@ -1701,12 +1705,15 @@ void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
     const bool RepeatSegment = Drawing.SegmentCondition;
     const SketchSplineForm RepeatForm = Drawing.Form;
     const int RepeatSides = Drawing.Sides;
-    if (Drawing.SurfaceCondition || (State.DrawingAutoSplit && Drawing.Kind==SketcherDrawingCategory::Curve &&
-        (Drawing.Form==SketchSplineForm::Nurbs || Drawing.Form==SketchSplineForm::Bezier)))
+    if (Drawing.SurfaceCondition || (State.DrawingAutoSplit && !KnifeCondition &&
+        (Drawing.Kind == SketcherDrawingCategory::Curve || Drawing.Kind == SketcherDrawingCategory::Line)))
     {
         auto Controls=LiftedDrawingPoints(Drawing,false);
         if(Controls.empty()) for(auto P:Drawing.Points) Controls.push_back(PlacePlanePoint(DrawingPlane(Drawing),P));
-        const auto Trace = MakeSketcherControlTrace(Controls, Drawing.Kind, Drawing.Form, ClosedCondition);
+        const bool ConformToReference = Drawing.SurfaceCondition && State.SurfaceConformEnabled && !State.Document.ReferenceSurfaces.empty();
+        const auto Trace = ConformToReference
+            ? ConstructReferenceConformingTrace(State.Document, Controls, Drawing.Kind, Drawing.Form, ClosedCondition)
+            : MakeSketcherControlTrace(Controls, Drawing.Kind, Drawing.Form, ClosedCondition);
         if (!Trace.Refusal.empty()) { Drawing.Refusal = Legible(Trace.Refusal); Announce(State, Drawing.Refusal); return; }
         const SketcherCommandOutcome Outcome = Trace.Arc ? DrawSketcherSketch(State.Document, *Trace.Arc) : DrawSketcherProjectedCurve(State.Document, Trace.Curve, ClosedCondition, State.DrawingAutoSplit, State.DrawingIntersectionTolerance, State.DrawingAutoSurface);
         if (Outcome.AcceptedCondition)
@@ -1717,7 +1724,9 @@ void FinishDrawingSession(SketcherWorkspaceStatus& State, bool ClosedCondition)
         Conclude(State, Outcome);
         if (Outcome.AcceptedCondition)
         {
-            Announce(State, Compose("Surface-point trace · %zu placed controls · no automatic points or surface fitting", Drawing.Points.size()));
+            Announce(State, ConformToReference
+                ? Compose("Surface-conformed trace · %zu clicked controls · auto-split crossings active", Drawing.Points.size())
+                : Compose("Surface-point trace · %zu placed controls · auto-split crossings active", Drawing.Points.size()));
             RearmSketchTool(State, RepeatKind, RepeatCentre, RepeatSegment, RepeatForm, RepeatSides);
         }
         return;
@@ -2049,7 +2058,7 @@ void PlaceDrawingPointer(SketcherWorkspaceStatus& State, const OrbitCameraBasis&
             if(Drawing.Kind==SketcherDrawingCategory::Arc && Drawing.Points.empty())Drawing.Elevation=Dot(Hit.Position,SketcherSketchPlane(Drawing.GridPlane).ZAxis);
             const auto ActivePlane=DrawingPlane(Drawing);auto Delta=Hit.Position-ActivePlane.Origin;
             Point={Dot(Delta,ActivePlane.XAxis),Dot(Delta,ActivePlane.YAxis)};
-            if(Drawing.Kind==SketcherDrawingCategory::Curve || Drawing.SurfaceCondition)Drawing.PointerLifted=Hit.Position;
+            if(Drawing.Kind==SketcherDrawingCategory::Curve || Drawing.SurfaceCondition || (State.DrawingAutoSplit && Drawing.Kind==SketcherDrawingCategory::Line))Drawing.PointerLifted=Hit.Position;
             else {Hit.Position=PlacePlanePoint(ActivePlane,Point);if(std::abs(Dot(Delta,ActivePlane.ZAxis))>1e-6)Hit.Source+=" (projected to drawing plane)";}
             Picker.Current=Hit;return;
         }
@@ -13104,9 +13113,10 @@ void ImportBlend(SketcherWorkspaceStatus& State, const std::string& Path)
         FitOrbitCamera(State.Camera, Low, High);
         State.Camera.SceneRadius = std::max(State.Camera.SceneRadius,
             0.5 * std::hypot(High[0] - Low[0], High[1] - Low[1], High[2] - Low[2]));
+        if (State.Document.Tree.Steps.empty()) State.SurfaceTraceEnabled = true;
     }
     RefreshSketcherScene(State, true);
-    Announce(State, Compose("Imported %s (Blender %s) · %u parts · %u GPU tris · %u modifiers · %.0f ms · Alt/Shift+S traces curves on surface",
+    Announce(State, Compose("Imported %s (Blender %s) · %u parts · %u GPU tris · %u modifiers · %.0f ms · Surface Trace ready",
                             Path.c_str(), Report.BlenderVersion.c_str(), Report.SourceObjects, Report.OutputTriangles,
                             Report.EvaluatedModifiers, Report.ElapsedMs));
 }
@@ -18945,6 +18955,10 @@ void DrawDrawingOptions(SketcherWorkspaceStatus& State)
             if(Surface && D.Form!=SketchSplineForm::Bezier)D.Form=SketchSplineForm::Nurbs;
         }
         ImGui::EndDisabled();
+        if (D.SurfaceCondition && !State.Document.ReferenceSurfaces.empty())
+        {
+            SketcherAuthoringToggle(State, "Conform spans to surface###ToolSurfaceConform", &State.SurfaceConformEnabled);
+        }
         SketcherAuthoringToggle(State, "Snap to curves###ToolCurveSnap",&State.DrawingCurveSnap);
         ImGui::BeginDisabled(Arc);SketcherAuthoringToggle(State, "Auto-split 3D crossings###ToolAutoSplit",&State.DrawingAutoSplit);ImGui::EndDisabled();
         ImGui::BeginDisabled(Arc);SketcherAuthoringToggle(State, "Auto-surface closed loops###ToolAutoSurface",&State.DrawingAutoSurface);ImGui::EndDisabled();
