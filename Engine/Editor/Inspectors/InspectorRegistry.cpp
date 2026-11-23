@@ -35,14 +35,20 @@ enum class ResolvedInspectorTarget : uint8_t
     Rainbow          = 13u,
     Camera           = 14u,
     LensFlare        = 15u,
-    MotionBlur       = 16u,
-    Light              = 17u,
-    EnvironmentLight   = 18u,
-    PostProcess        = 19u,
-    AnalyticPrimitive  = 20u,
-    NativeGeometry     = 21u,
-    ImportedGeometry   = 22u,
-    ProceduralGeometry = 23u,
+    MotionBlur         = 16u,
+    PointLight         = 17u,
+    SpotLight          = 18u,
+    IesLight           = 19u,
+    AreaLight          = 20u,
+    TubeLight          = 21u,
+    LedLight         = 22u,
+    LedStrip           = 23u,
+    EnvironmentLight   = 24u,
+    PostProcess        = 25u,
+    AnalyticPrimitive  = 26u,
+    NativeGeometry     = 27u,
+    ImportedGeometry   = 28u,
+    ProceduralGeometry = 29u,
 };
 
 [[nodiscard]] bool ContainsCaseFold(std::string_view Haystack, std::string_view Needle) noexcept
@@ -60,6 +66,37 @@ enum class ResolvedInspectorTarget : uint8_t
         if (Match) return true;
     }
     return false;
+}
+
+[[nodiscard]] ResolvedInspectorTarget ClassifyLuminaireEntry(const OutlinerRecordEntry& Entry) noexcept
+{
+    const std::string_view Tag = Entry.DomainTag;
+    if (Tag == "light:spot"      || Tag == "spotlight") return ResolvedInspectorTarget::SpotLight;
+    if (Tag == "light:ies"       || Tag == "ieslight")  return ResolvedInspectorTarget::IesLight;
+    if (Tag == "light:area"      || Tag == "arealight") return ResolvedInspectorTarget::AreaLight;
+    if (Tag == "light:tube"      || Tag == "tubelight") return ResolvedInspectorTarget::TubeLight;
+    if (Tag == "light:led-strip" || Tag == "ledstrip")  return ResolvedInspectorTarget::LedStrip;
+    if (Tag == "light:led"       || Tag == "ledlight")  return ResolvedInspectorTarget::LedLight;
+    if (Tag == "light:point"     || Tag == "pointlight")return ResolvedInspectorTarget::PointLight;
+
+    // Smart automatic classification for any arbitrary Outliner luminaire entry
+    const std::string Combined = Entry.Title + " " + Entry.Subtitle + " " + Entry.DomainTag;
+    if (ContainsCaseFold(Combined, "strip") || ContainsCaseFold(Combined, "ribbon") || ContainsCaseFold(Combined, "tape"))
+        return ResolvedInspectorTarget::LedStrip;
+    if (ContainsCaseFold(Combined, "led") || ContainsCaseFold(Combined, "diode") || ContainsCaseFold(Combined, "cob"))
+        return ResolvedInspectorTarget::LedLight;
+    if (ContainsCaseFold(Combined, "ies") || ContainsCaseFold(Combined, "photometric") ||
+        ContainsCaseFold(Combined, "downlight") || ContainsCaseFold(Combined, "low beam") ||
+        ContainsCaseFold(Combined, "high beam") || ContainsCaseFold(Combined, "headlamp"))
+        return ResolvedInspectorTarget::IesLight;
+    if (ContainsCaseFold(Combined, "area") || ContainsCaseFold(Combined, "softbox") ||
+        ContainsCaseFold(Combined, "quad") || ContainsCaseFold(Combined, "rect"))
+        return ResolvedInspectorTarget::AreaLight;
+    if (ContainsCaseFold(Combined, "tube") || ContainsCaseFold(Combined, "linear") || ContainsCaseFold(Combined, "fluorescent"))
+        return ResolvedInspectorTarget::TubeLight;
+    if (ContainsCaseFold(Combined, "spot"))
+        return ResolvedInspectorTarget::SpotLight;
+    return ResolvedInspectorTarget::PointLight;
 }
 
 [[nodiscard]] ResolvedInspectorTarget ClassifyGeometryEntry(const OutlinerRecordEntry& Entry) noexcept
@@ -124,11 +161,12 @@ enum class ResolvedInspectorTarget : uint8_t
     if (Tag == "env:motion-blur")       return ResolvedInspectorTarget::MotionBlur;
     if (Tag == "env:environment-light") return ResolvedInspectorTarget::EnvironmentLight;
     if (Tag == "env:post-process")      return ResolvedInspectorTarget::PostProcess;
+    if (Tag.rfind("light:", 0u) == 0u)  return ClassifyLuminaireEntry(Entry);
 
     switch (Entry.Category)
     {
         case ConstructSlotCategory::OpticsCamera:   return ResolvedInspectorTarget::Camera;
-        case ConstructSlotCategory::PointLuminaire: return ResolvedInspectorTarget::Light;
+        case ConstructSlotCategory::PointLuminaire: return ClassifyLuminaireEntry(Entry);
         default:                                    return ClassifyGeometryEntry(Entry);
     }
 }
@@ -154,7 +192,13 @@ enum class ResolvedInspectorTarget : uint8_t
         case ResolvedInspectorTarget::Camera:             return CameraInspector::QuerySubtitle();
         case ResolvedInspectorTarget::LensFlare:          return LensFlareInspector::QuerySubtitle();
         case ResolvedInspectorTarget::MotionBlur:         return MotionBlurInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Light:              return LightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::PointLight:         return PointLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::SpotLight:          return SpotLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::IesLight:           return IesLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::AreaLight:          return AreaLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::TubeLight:          return TubeLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::LedLight:         return LedLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::LedStrip:           return LedStripInspector::QuerySubtitle();
         case ResolvedInspectorTarget::EnvironmentLight:   return EnvironmentLightInspector::QuerySubtitle();
         case ResolvedInspectorTarget::PostProcess:        return PostProcessInspector::QuerySubtitle();
         case ResolvedInspectorTarget::AnalyticPrimitive:  return AnalyticPrimitiveInspector::QuerySubtitle();
@@ -289,8 +333,26 @@ bool InspectorRegistry::ConstructActiveInspector(
         case ResolvedInspectorTarget::MotionBlur:
             CursorY = MotionBlur.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessMotionBlur(Entry->Token), Input, LocalMutated, PageSwitched);
             break;
-        case ResolvedInspectorTarget::Light:
-            CursorY = Light.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessLight(Entry->Token, Scene), Input, LocalMutated, PageSwitched);
+        case ResolvedInspectorTarget::PointLight:
+            CursorY = PointLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessPointLight(Entry->Token, Scene), Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::SpotLight:
+            CursorY = SpotLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessSpotLight(Entry->Token, Scene), Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::IesLight:
+            CursorY = IesLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessIesLight(Entry->Token, *Entry), Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::AreaLight:
+            CursorY = AreaLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessAreaLight(Entry->Token, Scene), Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::TubeLight:
+            CursorY = TubeLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessTubeLight(Entry->Token), Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::LedLight:
+            CursorY = LedLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessLedLight(Entry->Token), Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::LedStrip:
+            CursorY = LedStrip.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessLedStrip(Entry->Token), Input, LocalMutated, PageSwitched);
             break;
         case ResolvedInspectorTarget::EnvironmentLight:
             CursorY = EnvironmentLight.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessEnvironmentLight(Entry->Token, Scene), DisplaySettings, Input, LocalMutated, PageSwitched);

@@ -1238,6 +1238,54 @@ bool ConstructSectionActionButton(
     return Hov && Input.PrimaryPointer.Pressed;
 }
 
+Mathematics::LinearRGB ComputeKelvinRgb(float Kelvin) noexcept
+{
+    const float Heat = std::clamp(Kelvin, 1000.0f, 40000.0f) * 0.01f;
+    float R = 255.0f, G = 255.0f, B = 255.0f;
+    if (Heat > 66.0f)
+    {
+        R = 329.6987f * std::pow(Heat - 60.0f, -0.1332f);
+        G = 288.1222f * std::pow(Heat - 60.0f, -0.0755f);
+    }
+    else
+    {
+        G = 99.4708f * std::log(std::max(1.0f, Heat)) - 161.1196f;
+        B = (Heat <= 19.0f) ? 0.0f : (138.5177f * std::log(std::max(1.0f, Heat - 10.0f)) - 305.0448f);
+    }
+    return {
+        std::clamp(R / 255.0f, 0.0f, 1.0f),
+        std::clamp(G / 255.0f, 0.0f, 1.0f),
+        std::clamp(B / 255.0f, 0.0f, 1.0f),
+    };
+}
+
+float ConstructLuminaireShadowsSection(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    OutlinerRecordEntry&    Entry,
+    bool                    SupportsShadowCasting,
+    const char*             HelperToggleLabel,
+    bool&                   InOutHelperVisible,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept
+{
+    const float PadX  = InspectorMetrics::SectionPadX;
+    const float BodyW = InnerWidth - PadX * 2.0f;
+    const float H     = SupportsShadowCasting ? 204.0f : 164.0f;
+    const Rectangle2D S { LeftX, TopY, InnerWidth, H };
+    ConstructSectionSurface(Surface, S, "Scene participation");
+    float Y = TopY + InspectorMetrics::SectionPadTop + 28.0f;
+    if (SupportsShadowCasting)
+    {
+        Y = ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Cast shadows", Entry.CastShadows, Input, OutMutated);
+    }
+    Y = ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, HelperToggleLabel, InOutHelperVisible, Input, OutMutated);
+    (void)ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Lock luminaire", Entry.Locked, Input, OutMutated);
+    return S.Bottom() + InspectorMetrics::SectionGap;
+}
+
 void ConstructInspectorFooter(
     PixelSpace& Surface,
     Rectangle2D FooterBounds,

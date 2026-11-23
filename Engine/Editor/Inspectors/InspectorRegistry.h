@@ -13,6 +13,7 @@
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Editor/Inspectors/AnalyticPrimitiveInspector.h"
+#include "Engine/Editor/Inspectors/AreaLightInspector.h"
 #include "Engine/Editor/Inspectors/AtmosphereInspector.h"
 #include "Engine/Editor/Inspectors/AtmosphericFogInspector.h"
 #include "Engine/Editor/Inspectors/CameraInspector.h"
@@ -21,21 +22,26 @@
 #include "Engine/Editor/Inspectors/FolderInspector.h"
 #include "Engine/Editor/Inspectors/GodRaysInspector.h"
 #include "Engine/Editor/Inspectors/HeightFogInspector.h"
+#include "Engine/Editor/Inspectors/IesLightInspector.h"
 #include "Engine/Editor/Inspectors/ImportedGeometryInspector.h"
 #include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
+#include "Engine/Editor/Inspectors/LedLightInspector.h"
+#include "Engine/Editor/Inspectors/LedStripInspector.h"
 #include "Engine/Editor/Inspectors/LensFlareInspector.h"
-#include "Engine/Editor/Inspectors/LightInspector.h"
 #include "Engine/Editor/Inspectors/LocalCloudInspector.h"
 #include "Engine/Editor/Inspectors/LocalFogInspector.h"
 #include "Engine/Editor/Inspectors/LunarInspector.h"
 #include "Engine/Editor/Inspectors/MotionBlurInspector.h"
 #include "Engine/Editor/Inspectors/NativeGeometryInspector.h"
+#include "Engine/Editor/Inspectors/PointLightInspector.h"
 #include "Engine/Editor/Inspectors/PostProcessInspector.h"
 #include "Engine/Editor/Inspectors/PrecipitationInspector.h"
 #include "Engine/Editor/Inspectors/ProceduralGeometryInspector.h"
 #include "Engine/Editor/Inspectors/RainbowInspector.h"
 #include "Engine/Editor/Inspectors/SolarInspector.h"
+#include "Engine/Editor/Inspectors/SpotLightInspector.h"
 #include "Engine/Editor/Inspectors/StarfieldInspector.h"
+#include "Engine/Editor/Inspectors/TubeLightInspector.h"
 #include "Engine/Editor/Inspectors/WindInspector.h"
 #include "Engine/Editor/WorldEnvironmentRegistry.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
@@ -80,9 +86,15 @@ public:
     [[nodiscard]] RainbowInspector&          QueryRainbow() noexcept { return Rainbow; }
     [[nodiscard]] CameraInspector&           QueryCamera() noexcept { return Camera; }
     [[nodiscard]] LensFlareInspector&        QueryLensFlare() noexcept { return LensFlare; }
-    [[nodiscard]] MotionBlurInspector&       QueryMotionBlur() noexcept { return MotionBlur; }
-    [[nodiscard]] LightInspector&            QueryLight() noexcept { return Light; }
-    [[nodiscard]] EnvironmentLightInspector& QueryEnvironmentLight() noexcept { return EnvironmentLight; }
+    [[nodiscard]] MotionBlurInspector&         QueryMotionBlur() noexcept { return MotionBlur; }
+    [[nodiscard]] PointLightInspector&         QueryPointLight() noexcept { return PointLight; }
+    [[nodiscard]] SpotLightInspector&          QuerySpotLight() noexcept { return SpotLight; }
+    [[nodiscard]] IesLightInspector&           QueryIesLight() noexcept { return IesLight; }
+    [[nodiscard]] AreaLightInspector&          QueryAreaLight() noexcept { return AreaLight; }
+    [[nodiscard]] TubeLightInspector&          QueryTubeLight() noexcept { return TubeLight; }
+    [[nodiscard]] LedLightInspector&         QueryLedLight() noexcept { return LedLight; }
+    [[nodiscard]] LedStripInspector&           QueryLedStrip() noexcept { return LedStrip; }
+    [[nodiscard]] EnvironmentLightInspector&   QueryEnvironmentLight() noexcept { return EnvironmentLight; }
     [[nodiscard]] PostProcessInspector&        QueryPostProcess() noexcept { return PostProcess; }
     [[nodiscard]] AnalyticPrimitiveInspector&  QueryAnalyticPrimitive() noexcept { return AnalyticPrimitive; }
     [[nodiscard]] NativeGeometryInspector&     QueryNativeGeometry() noexcept { return NativeGeometry; }
@@ -109,7 +121,13 @@ private:
     CameraInspector             Camera             {};
     LensFlareInspector          LensFlare          {};
     MotionBlurInspector         MotionBlur         {};
-    LightInspector              Light              {};
+    PointLightInspector         PointLight         {};
+    SpotLightInspector          SpotLight          {};
+    IesLightInspector           IesLight           {};
+    AreaLightInspector          AreaLight          {};
+    TubeLightInspector          TubeLight          {};
+    LedLightInspector         LedLight         {};
+    LedStripInspector           LedStrip           {};
     EnvironmentLightInspector   EnvironmentLight   {};
     PostProcessInspector        PostProcess        {};
     AnalyticPrimitiveInspector  AnalyticPrimitive  {};

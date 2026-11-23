@@ -967,7 +967,13 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Inspectors/CameraInspector.cpp
         Engine/Editor/Inspectors/LensFlareInspector.cpp
         Engine/Editor/Inspectors/MotionBlurInspector.cpp
-        Engine/Editor/Inspectors/LightInspector.cpp
+        Engine/Editor/Inspectors/PointLightInspector.cpp
+        Engine/Editor/Inspectors/SpotLightInspector.cpp
+        Engine/Editor/Inspectors/IesLightInspector.cpp
+        Engine/Editor/Inspectors/AreaLightInspector.cpp
+        Engine/Editor/Inspectors/TubeLightInspector.cpp
+        Engine/Editor/Inspectors/LedLightInspector.cpp
+        Engine/Editor/Inspectors/LedStripInspector.cpp
         Engine/Editor/Inspectors/EnvironmentLightInspector.cpp
         Engine/Editor/Inspectors/PostProcessInspector.cpp
         Engine/Editor/Inspectors/AnalyticPrimitiveInspector.cpp

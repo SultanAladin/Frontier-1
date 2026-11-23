@@ -59,14 +59,20 @@
 | 14 | `CameraInspector.{h,cpp}` | `Overview`, `Lens`, `Body`, `Motion blur`, `Lens flare` | Retained optical glass lens preview | Yes |
 | 15 | `LensFlareInspector.{h,cpp}` | `Overview`, `Optics` | Optical glare & ghost response preview | Yes |
 | 16 | `MotionBlurInspector.{h,cpp}` | `Overview`, `Shutter` | Shutter angle exposure profile | Yes |
-| 17 | `LightInspector.{h,cpp}` | `Overview`, `Intensity`, `Beam`, `Shadows` | Retained photometric beam-cone preview | Yes |
-| 18 | `EnvironmentLightInspector.{h,cpp}` | `Overview`, `Indirect` | Retained hemisphere irradiance preview | Yes |
-| 19 | `PostProcessInspector.{h,cpp}` | `Overview`, `Tone`, `Colour` | Tone-curve response plot | Yes |
-| 20 | `AnalyticPrimitiveInspector.{h,cpp}` | `Overview`, `Shape`, `Transform`, `Material`, `Physics` | Category 1 Geometry: retained analytic raycast preview (Sphere/Box/Cylinder/Cone/Torus/Capsule/Plane) | Yes |
-| 21 | `NativeGeometryInspector.{h,cpp}` | `Overview`, `Geometry`, `Transform`, `Material`, `Physics` | Category 2 Geometry: retained native `.GeometrySpace` preview + Cluster-LOD / Local SDF KPIs (universal fallback) | Yes |
-| 22 | `ImportedGeometryInspector.{h,cpp}` | `Overview`, `Import`, `Transform`, `Material`, `Physics` | Category 3 Geometry: retained exchange preview + glTF/FBX/OBJ/USD/STEP/STL import pipeline & re-import | Yes |
-| 23 | `ProceduralGeometryInspector.{h,cpp}` | `Overview`, `Generator`, `Transform`, `Material`, `Physics` | Category 4 Geometry: retained procedural preview + Sweep/Terrain/Boolean/Spline/Voronoi generator & rebuild | Yes |
-| 24 | `FolderInspector.{h,cpp}` | `Overview`, `Contents` | Generic container summary for any Outliner folder | Yes |
+| 17 | `PointLightInspector.{h,cpp}` | `Overview`, `Output`, `Attenuation`, `Placement`, `Shadows` | Retained radial falloff rings + 12 rays + 1–10 m inverse-power curve | Yes |
+| 18 | `SpotLightInspector.{h,cpp}` | `Overview`, `Output`, `Beam`, `Placement`, `Shadows` | Retained beam envelope cone + dashed inner penumbra + depth bars | Yes |
+| 19 | `IesLightInspector.{h,cpp}` | `Overview`, `Output`, `Distribution`, `Placement`, `Shadows` | Retained C0 solid / C90 dashed polar candela study + 8 LM-63 presets | Yes |
+| 20 | `AreaLightInspector.{h,cpp}` | `Overview`, `Output`, `Aperture`, `Placement`, `Shadows` | Retained orthographic Rectangle/Disk diffuser elevation (syncs to Heitz LTC quads) | Yes |
+| 21 | `TubeLightInspector.{h,cpp}` | `Overview`, `Output`, `Emitter`, `Placement`, `Shadows` | Retained linear cylindrical radiance bar + end-caps + downward rays | Yes |
+| 22 | `LedLightInspector.{h,cpp}` | `Overview`, `Driver`, `Optic`, `Placement`, `Shadows` | Retained PCB star-board + 4x4 glowing COB die array + optic arc | Yes |
+| 23 | `LedStripInspector.{h,cpp}` | `Overview`, `Output`, `Layout`, `Placement`, `Shadows` | Retained extruded channel + discrete SMD packages or opal diffuser + electrical budget | Yes |
+| 24 | `EnvironmentLightInspector.{h,cpp}` | `Overview`, `Source`, `Response` | Retained sky-dome lit sphere + top-down bright-patch compass + 5 sky/HDRI presets | Yes |
+| 25 | `PostProcessInspector.{h,cpp}` | `Overview`, `Tone`, `Colour` | Tone-curve response plot | Yes |
+| 26 | `AnalyticPrimitiveInspector.{h,cpp}` | `Overview`, `Shape`, `Transform`, `Material`, `Physics` | Category 1 Geometry: retained analytic raycast preview (Sphere/Box/Cylinder/Cone/Torus/Capsule/Plane) | Yes |
+| 27 | `NativeGeometryInspector.{h,cpp}` | `Overview`, `Geometry`, `Transform`, `Material`, `Physics` | Category 2 Geometry: retained native `.GeometrySpace` preview + Cluster-LOD / Local SDF KPIs (universal fallback) | Yes |
+| 28 | `ImportedGeometryInspector.{h,cpp}` | `Overview`, `Import`, `Transform`, `Material`, `Physics` | Category 3 Geometry: retained exchange preview + glTF/FBX/OBJ/USD/STEP/STL import pipeline & re-import | Yes |
+| 29 | `ProceduralGeometryInspector.{h,cpp}` | `Overview`, `Generator`, `Transform`, `Material`, `Physics` | Category 4 Geometry: retained procedural preview + Sweep/Terrain/Boolean/Spline/Voronoi generator & rebuild | Yes |
+| 30 | `FolderInspector.{h,cpp}` | `Overview`, `Contents` | Generic container summary for any Outliner folder | Yes |
 
 ---
 

@@ -386,6 +386,22 @@ struct GeometrySurfaceBinding
     const PaneInputReading& Input,
     bool                    Accent = false) noexcept;
 
+// Blackbody colour temperature tint [0..1] (Tanner Helland / ProjectZeroEditor parity)
+[[nodiscard]] Mathematics::LinearRGB ComputeKelvinRgb(float Kelvin) noexcept;
+
+// Shared Shadows & Scene Participation section for standalone luminaire inspectors
+[[nodiscard]] float ConstructLuminaireShadowsSection(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    OutlinerRecordEntry&    Entry,
+    bool                    SupportsShadowCasting,
+    const char*             HelperToggleLabel,
+    bool&                   InOutHelperVisible,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept;
+
 // Bottom 28px inspector footer bar
 void ConstructInspectorFooter(
     PixelSpace& Surface,

@@ -185,8 +185,15 @@ int main()
     const OutlinerSlotToken CameraTok     = AppendEntry(Outliner, "Main Camera",      "Optics Camera",   "optics:camera",         ConstructSlotCategory::OpticsCamera,   {});
     const OutlinerSlotToken LensFlareTok  = AppendEntry(Outliner, "Anamorphic Flare", "Lens Flare",      "env:lens-flare",        ConstructSlotCategory::LayerGroup,     {});
     const OutlinerSlotToken MotionBlurTok = AppendEntry(Outliner, "Motion Shutter",   "Motion Blur",     "env:motion-blur",       ConstructSlotCategory::LayerGroup,     {});
-    const OutlinerSlotToken LightTok      = AppendEntry(Outliner, "Key Light",        "Point Light",     "lighting:light",        ConstructSlotCategory::PointLuminaire, PropsFolder);
-    const OutlinerSlotToken EnvLightTok   = AppendEntry(Outliner, "Sky IBL",          "Environment IBL", "env:environment-light", ConstructSlotCategory::LayerGroup,     SkyRigFolder);
+    // All 8 Lighting Inspectors: Point, Spot, IES Photometric, Area/Softbox, Tube, LED Emitter, LED Strip + Environment IBL
+    const OutlinerSlotToken PointLightTok = AppendEntry(Outliner, "Rim Point",        "Point Light",      "light:point",          ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken SpotLightTok  = AppendEntry(Outliner, "Key Spot",         "Spot Light",       "light:spot",           ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken IesLightTok   = AppendEntry(Outliner, "ECE Low Beam",     "IES Photometric",  "light:ies",            ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken AreaLightTok  = AppendEntry(Outliner, "Studio Softbox",   "Area Light",       "light:area",           ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken TubeLightTok  = AppendEntry(Outliner, "Studio Tube",      "Tube Light",       "light:tube",           ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken LedLightTok    = AppendEntry(Outliner, "COB LED Emitter",  "LED Emitter",      "light:led",            ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken LedStripTok   = AppendEntry(Outliner, "Cove LED Strip",   "LED Strip",        "light:led-strip",      ConstructSlotCategory::PointLuminaire, PropsFolder);
+    const OutlinerSlotToken EnvLightTok   = AppendEntry(Outliner, "Sky IBL",          "Environment IBL",  "env:environment-light",ConstructSlotCategory::LayerGroup,     SkyRigFolder);
     const OutlinerSlotToken PostFxTok     = AppendEntry(Outliner, "Filmic Grade",       "Post Process",        "env:post-process",    ConstructSlotCategory::LayerGroup,     {});
     // All 4 Geometry Categories: (1) Analytical Primitive, (2) Native Engine Geometry, (3) Imported Geometry, (4) Procedural Geometry
     const OutlinerSlotToken AnalyticTok   = AppendEntry(Outliner, "Titanium Torus",     "Torus Primitive",     "geom:primitive",      ConstructSlotCategory::GeometryVolume, PropsFolder);
@@ -251,7 +258,13 @@ int main()
     (void)Reg.AccessCamera(CameraTok, Bundle.Scene);
     (void)Reg.AccessLensFlare(LensFlareTok, Bundle.Scene);
     (void)Reg.AccessMotionBlur(MotionBlurTok);
-    (void)Reg.AccessLight(LightTok, Bundle.Scene);
+    (void)Reg.AccessPointLight(PointLightTok, Bundle.Scene);
+    (void)Reg.AccessSpotLight(SpotLightTok, Bundle.Scene);
+    (void)Reg.AccessIesLight(IesLightTok, *Outliner.FindEntry(IesLightTok));
+    (void)Reg.AccessAreaLight(AreaLightTok, Bundle.Scene);
+    (void)Reg.AccessTubeLight(TubeLightTok);
+    (void)Reg.AccessLedLight(LedLightTok);
+    (void)Reg.AccessLedStrip(LedStripTok);
     (void)Reg.AccessEnvironmentLight(EnvLightTok, Bundle.Scene);
     (void)Reg.AccessPostProcess(PostFxTok);
     (void)Reg.AccessAnalyticPrimitive(AnalyticTok,   *Outliner.FindEntry(AnalyticTok),   Bundle.Scene);
@@ -281,6 +294,9 @@ int main()
         Bundle.Scene.Atmosphere.Fog.HeightFog.Enabled &&
         std::fabs(Bundle.Scene.Atmosphere.Fog.HeightFog.Density - 0.05f) < 0.002f,
         "Multi-instance 2 Height Fogs combine cleanly (0.03 + 0.02 = 0.05)");
+    AllOk &= VerifyRequirement(
+        Bundle.Scene.PointLights.size() >= 4u && Bundle.Scene.AreaLights.size() >= 3u,
+        "All 7 active luminaire instances sync live into WorldSceneSpecification (PointLights & Heitz LTC AreaLights)");
 
     // 3. Render 340x825 visual snapshots for key standalone inspectors + Baking LUT pages
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AtmoTok, OutDir / "01-Atmosphere-Overview.png"), "01-Atmosphere-Overview.png");
@@ -322,8 +338,42 @@ int main()
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, WindOneTok, OutDir / "08-Wind-Overview.png"), "08-Wind-Overview.png");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, HeightFog1Tok, OutDir / "09-HeightFog-Overview.png"), "09-HeightFog-Overview.png");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, CameraTok, OutDir / "10-Camera-Overview.png"), "10-Camera-Overview.png");
-    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LightTok, OutDir / "11-Light-Overview.png"), "11-Light-Overview.png");
+
+    // All 8 Lighting Inspectors visual exhibits + retained preview upload-count proofs
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PointLightTok, OutDir / "11-PointLight-Overview.png"), "11-PointLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PointLightTok, OutDir / "11-PointLight-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QueryPointLight().QueryPreviewUploads() == 1u, "Point Light radial falloff preview stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SpotLightTok, OutDir / "20-SpotLight-Overview.png"), "20-SpotLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SpotLightTok, OutDir / "20-SpotLight-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QuerySpotLight().QueryPreviewUploads() == 1u, "Spot Light beam envelope preview stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, IesLightTok, OutDir / "21-IesLight-Overview.png"), "21-IesLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, IesLightTok, OutDir / "21-IesLight-Overview.png");
+    AllOk &= VerifyRequirement(
+        Inspectors.QueryIesLight().QueryPreviewUploads() == 1u &&
+        Reg.AccessIesLight(IesLightTok, *Outliner.FindEntry(IesLightTok)).ProfilePresetIndex == 3u,
+        "IES Light auto-detects ECE Low Beam polar lobe & stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AreaLightTok, OutDir / "22-AreaLight-Overview.png"), "22-AreaLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AreaLightTok, OutDir / "22-AreaLight-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QueryAreaLight().QueryPreviewUploads() == 1u, "Area/Softbox Light aperture preview stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, TubeLightTok, OutDir / "23-TubeLight-Overview.png"), "23-TubeLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, TubeLightTok, OutDir / "23-TubeLight-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QueryTubeLight().QueryPreviewUploads() == 1u, "Tube Light linear radiance preview stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedLightTok, OutDir / "24-LedLight-Overview.png"), "24-LedLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedLightTok, OutDir / "24-LedLight-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QueryLedLight().QueryPreviewUploads() == 1u, "LED Emitter COB die-array preview stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedStripTok, OutDir / "25-LedStrip-Overview.png"), "25-LedStrip-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LedStripTok, OutDir / "25-LedStrip-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QueryLedStrip().QueryPreviewUploads() == 1u, "LED Strip ribbon preview stays at 1 retained upload");
+
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, EnvLightTok, OutDir / "12-EnvironmentLight-Overview.png"), "12-EnvironmentLight-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, EnvLightTok, OutDir / "12-EnvironmentLight-Overview.png");
+    AllOk &= VerifyRequirement(Inspectors.QueryEnvironmentLight().QueryPreviewUploads() == 1u, "Environment Light dome & compass preview stays at 1 retained upload");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PostFxTok, OutDir / "13-PostProcess-Overview.png"), "13-PostProcess-Overview.png");
 
     // All 4 Geometry Categories visual exhibits + retained preview upload-count proofs
@@ -362,7 +412,7 @@ int main()
         AllOk &= RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, Tok, OutDir / "99-AuxCheck.png");
     }
     std::filesystem::remove(OutDir / "99-AuxCheck.png", DirEc);
-    AllOk &= VerifyRequirement(true, "All 24 standalone inspectors (including all 4 Geometry categories + fallback) exercised cleanly");
+    AllOk &= VerifyRequirement(true, "All 30 standalone inspectors (including all 8 Lighting & 4 Geometry categories) exercised cleanly");
 
     TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiSession);
