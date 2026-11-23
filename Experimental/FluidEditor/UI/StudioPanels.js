@@ -1840,6 +1840,19 @@ export function mountStudioUI({ app, refs })
                 actions.appendChild(open);
                 controls.push(actions);
             }
+            else if (parameter.Type === 'Token')
+            {
+                const row = element('div', 'control-row');
+                row.appendChild(element('label', '', parameter.Label));
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'text-input';
+                input.maxLength = 24;
+                input.value = String(amounts[parameter.Name] ?? '');
+                input.addEventListener('change', () => write(input.value.trim() || '2026'));
+                row.appendChild(input);
+                controls.push(row);
+            }
         }
 
         if (selected.Category === SpawnCategoryCode || selected.Category === CarrierCategoryCode)
@@ -2194,12 +2207,17 @@ export function mountStudioUI({ app, refs })
         {
             case 'Fill': return (parameters.Mode === 1 && parameters.Shape === 1) || [11, 12, 13, 14, 15].includes(parameters.Shape);
             case 'ShapeDetail': return [12, 13, 14, 15].includes(parameters.Shape);
+            case 'FireworkPattern': return parameters.Shape === 15;
+            case 'FireworkText': return parameters.Shape === 15 && (parameters.FireworkPattern === 1 || parameters.FireworkPattern === 9);
             case 'SpawnObject': case 'SpawnSampleMode': case 'ObjectYaw': return parameters.Shape === 11;
             case 'BackingSurface': return parameters.Shape === 11 || parameters.BackingSurface > 0;
             case 'Sprite': case 'Style': return parameters.CarrierMode !== 1;
             case 'CarrierObject': case 'ObjectSpin': case 'ObjectTilt': case 'ObjectRoughness': case 'ObjectMetallic': case 'ObjectGlow':
                 return parameters.CarrierMode === 1;
             case 'CustomObjectId': case 'CarrierCustomObjectId': return false;
+            case 'StrandVariant': return [3, 4, 9].includes(parameters.StrandMode);
+            case 'StrandCount': case 'StrandDetail': case 'StrandSag': case 'StrandThickness': case 'StrandSway': case 'StrandSpan': case 'StrandGlow':
+                return parameters.StrandMode > 0;
             case 'Rate': case 'Lifetime': case 'Linger': case 'Speed': case 'Spread': case 'Radial': return emit;
             case 'RampSource': return scalar;
             case 'Ramp': return scalar && parameters.RampSource === 1;

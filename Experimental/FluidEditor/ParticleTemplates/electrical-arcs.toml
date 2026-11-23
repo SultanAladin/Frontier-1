@@ -1,0 +1,78 @@
+# Electrical Arcs — particle template (FX & Shields). Real GPU jagged plasma bolts & corona sparks: switch StrandMode / StrandVariant between Tesla Sphere Lightning, Static Shock Arcs, Plasma Cage & Arc Collector, and Lightning Web & Storm Grid.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Template]
+Order = 69
+Id = "electrical-arcs"
+Name = "Electrical Arcs"
+Category = "FX & Shields"
+Icon = "electric"
+Tint = "#38bdf8"
+Summary = "High-voltage GPU plasma bolts: switch StrandMode & StrandVariant between Tesla Sphere Lightning, Static Shock Arcs, Plasma Cage, and Storm Web."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 1, Position = [0, 0.25, 0], Direction = [0, 1, 0], Radius = 1.55, Fill = 0.0, Count = 512, Rate = 18.0, Lifetime = 0.45, Linger = 0.1, Speed = 2.6, Spread = 1.0, Radial = 0.6 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 2.4 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 1.2, NoiseScale = 2.4, NoiseSpeed = 2.2 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#ffffff", "#7dd3fc", "#3b82f6", "#a855f7"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.35, Brightness = 1.85, Flicker = 0.85 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.018, SizeEnd = 0.004, SizeRandom = 0.5 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 1.15, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 219
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { StrandMode = 9, StrandVariant = 0, StrandCount = 12, StrandDetail = 18, StrandSag = 0.25, StrandThickness = 0.048, StrandSway = 0.45, StrandSpan = 2.1, StrandGlow = 1.35 }

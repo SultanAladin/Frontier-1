@@ -10,8 +10,9 @@
 
 import * as ParticleShaders from './ParticleShaders.js';
 import { FullscreenVertex, sparse } from './FluidShaders.js';
-import { ParticleShapes, ParticleModes, ParticleColourModes, ParticleBlendModes, ParticleRenderStyles, ParticleRampSources, ParticleSprites, ParticleSizeModes, ParticleTrailModes, ParticleTrailColours, ParticleDerezModes, ParticleMocapClips, ParticleEffectorModes, ParticleCarrierModes, ParticleBackingSurfaces, MaximumPaletteStops, particleTextureSide, effectiveTrailLength, HaltedParticleSystems } from './ParticleCatalog.js';
+import { ParticleShapes, ParticleModes, ParticleColourModes, ParticleBlendModes, ParticleRenderStyles, ParticleRampSources, ParticleSprites, ParticleSizeModes, ParticleTrailModes, ParticleTrailColours, ParticleDerezModes, ParticleMocapClips, ParticleEffectorModes, ParticleEffectorAxes, ParticleCarrierModes, ParticleBackingSurfaces, ParticleStrandModes, ParticleStrandVariants, MaximumPaletteStops, particleTextureSide, effectiveTrailLength, HaltedParticleSystems } from './ParticleCatalog.js';
 import { ResolveObjectMesh, SampleObjectAnchors, PackAnchorTexels, PackObjectTexels, ObjectAnchorSignature } from './ObjectMeshCatalog.js';
+import { SampleFireworkAnchors } from './FireworkPatterns.js';
 import { ColourRamps } from './ForceGeneratorCatalog.js';
 import { nodeWeight } from './KeyTracks.js';
 
@@ -47,6 +48,7 @@ export class ParticleSimulation
             trailUpdate: context.createProgram('TrailUpdate' + suffix, FullscreenVertex, t(ParticleShaders.TrailUpdateFragment)),
             trails: context.createProgram('Trails' + suffix, t(ParticleShaders.TrailVertex), ParticleShaders.ParticleFragment),
             object: context.createProgram('ParticleObject' + suffix, t(ParticleShaders.ObjectRenderVertex), ParticleShaders.ObjectFragment),
+            strand: context.createProgram('ParticleStrand' + suffix, t(ParticleShaders.StrandVertex), ParticleShaders.StrandFragment),
         };
     }
 
@@ -123,15 +125,20 @@ export class ParticleSimulation
      */
     refreshAnchors(record, node)
     {
-        const wanted = node.Shape === 'ObjectSurface' ? ObjectAnchorSignature(node) : '';
+        const isFireworkPattern = node.Shape === 'FireworkBurst' && node.FireworkPattern && node.FireworkPattern !== 'ClassicBouquet';
+        const shellIndex = node.FireworkPattern === 'GrandFinale' ? Math.floor((this.solver.time || 0) / 3.5) : 0;
+        const wanted = node.Shape === 'ObjectSurface'
+            ? ObjectAnchorSignature(node)
+            : (isFireworkPattern ? `fw|${node.FireworkPattern}|${node.FireworkText || '2026'}|${node.Count}|${shellIndex}` : '');
         if (record.anchorSignature === wanted) return;
         record.anchorSignature = wanted;
         if (record.anchors) { this.context.destroyDataTexture(record.anchors); record.anchors = null; }
         record.anchorCount = 0;
         record.anchorWidth = 1;
         if (!wanted) return;
-        const mesh = ResolveObjectMesh(node.SpawnObject, node.CustomObjectId);
-        const sampled = SampleObjectAnchors(mesh, node.Count, node.SpawnSampleMode, node.ObjectYaw);
+        const sampled = isFireworkPattern
+            ? SampleFireworkAnchors(node.FireworkPattern, node.FireworkText, node.Count, shellIndex)
+            : SampleObjectAnchors(ResolveObjectMesh(node.SpawnObject, node.CustomObjectId), node.Count, node.SpawnSampleMode, node.ObjectYaw);
         const packed = PackAnchorTexels(sampled);
         record.anchors = this.context.createDataTexture(packed.Width, packed.Height, packed.Data);
         record.anchorWidth = packed.Width;
@@ -234,6 +241,7 @@ export class ParticleSimulation
         gl.uniform1f(uniforms.uEffectorPush, node.EffectorPush ?? 0);
         gl.uniform1f(uniforms.uEffectorScaleBoost, node.EffectorScaleBoost ?? 0);
         gl.uniform1f(uniforms.uEffectorColourShift, node.EffectorColourShift ?? 0);
+        gl.uniform1i(uniforms.uEffectorAxis, Math.max(0, ParticleEffectorAxes.indexOf(node.EffectorAxis)));
         gl.uniform1i(uniforms.uDerezMode, Math.max(0, ParticleDerezModes.indexOf(node.DerezMode)));
         gl.uniform1f(uniforms.uDerezMix, node.DerezMix ?? 0);
         gl.uniform1f(uniforms.uDerezProgress, node.DerezProgress ?? 0);
@@ -436,6 +444,69 @@ export class ParticleSimulation
         }
     }
 
+    /** Fluid-coupled GPU strands, catenary cables, hanging vines, flexing flora, spiderwebs and electrical arcs (Layer 219). */
+    renderStrands(node, matrices, camera, pixelRatio)
+    {
+        const mode = ParticleStrandModes.indexOf(node.StrandMode);
+        if (mode <= 0) return;
+        const gl = this.gl, context = this.context, solver = this.solver;
+        const uniforms = context.use(this.programs.strand);
+        context.textureUnit = 0;
+        context.bindTexture('uVelocity', solver.fields.velocity.read.texture);
+        solver.applyVolumeUniforms(uniforms);
+        solver.applyForceUniforms(uniforms);
+
+        const palette = node.Palette && node.Palette.length ? node.Palette.slice(0, MaximumPaletteStops) : ['#ffffff'];
+        this.paletteScratch.fill(0);
+        palette.forEach((hex, index) => this.paletteScratch.set(hexToRgb(hex), index * 3));
+        gl.uniform3fv(uniforms.uPalette, this.paletteScratch);
+        gl.uniform1i(uniforms.uPaletteCount, palette.length);
+
+        const axis = normalise(node.Direction);
+        const viewport = camera ? [camera.viewport[0] * pixelRatio, camera.viewport[1] * pixelRatio] : [1280, 720];
+        const fovY = camera ? camera.fovY : 0.733;
+        const focalPixels = viewport[1] / (2 * Math.tan(fovY / 2));
+        const cameraPosition = camera ? camera.position : [0, 0, 10];
+        const cameraForward = camera ? camera.forward : [0, 0, -1];
+        gl.uniformMatrix4fv(uniforms.uViewProjection, false, matrices.viewProjection);
+        gl.uniform2f(uniforms.uViewport, Math.max(1, viewport[0]), Math.max(1, viewport[1]));
+        gl.uniform3f(uniforms.uCameraPosition, cameraPosition[0], cameraPosition[1], cameraPosition[2]);
+        gl.uniform3f(uniforms.uCameraForward, cameraForward[0], cameraForward[1], cameraForward[2]);
+        gl.uniform1f(uniforms.uFocalPixels, focalPixels);
+        gl.uniform3f(uniforms.uOrigin, node.Position[0], node.Position[1], node.Position[2]);
+        gl.uniform3f(uniforms.uAxis, axis[0], axis[1], axis[2]);
+        gl.uniform1f(uniforms.uRadius, Math.max(0.1, node.Radius));
+        gl.uniform1f(uniforms.uTime, solver.time);
+
+        const baseCount = Math.max(6, Math.min(192, Math.round(node.StrandCount ?? 36)));
+        const detail = Math.max(4, Math.min(28, Math.round(node.StrandDetail ?? 14)));
+        let totalStrands = baseCount;
+        if (mode === 1) totalStrands = Math.min(640, 12 + Math.min(baseCount, 36) + Math.min(baseCount, 36) * Math.min(detail, 20));
+        else if (mode === 2) totalStrands = Math.min(480, baseCount * 2);
+        else if (mode === 5 || mode === 8) totalStrands = Math.min(320, baseCount * 2);
+        const segments = mode >= 9 ? Math.max(14, Math.min(24, detail)) : 14;
+
+        gl.uniform1i(uniforms.uStrandMode, mode);
+        gl.uniform1i(uniforms.uStrandVariant, Math.max(0, ParticleStrandVariants.indexOf(node.StrandVariant)));
+        gl.uniform1i(uniforms.uStrandCount, baseCount);
+        gl.uniform1i(uniforms.uStrandTotal, totalStrands);
+        gl.uniform1i(uniforms.uStrandSegments, segments);
+        gl.uniform1i(uniforms.uStrandDetail, detail);
+        gl.uniform1f(uniforms.uStrandSag, node.StrandSag ?? 0.32);
+        gl.uniform1f(uniforms.uStrandThickness, Math.max(0.004, node.StrandThickness ?? 0.032));
+        gl.uniform1f(uniforms.uStrandSway, node.StrandSway ?? 0.85);
+        gl.uniform1f(uniforms.uStrandSpan, Math.max(0.3, node.StrandSpan ?? 1.8));
+        gl.uniform1f(uniforms.uStrandGlow, node.StrandGlow ?? 0.65);
+        gl.uniform1f(uniforms.uBrightness, node.Brightness ?? 1.0);
+        gl.uniform1f(uniforms.uEnvelope, nodeWeight(node, solver.time));
+
+        const additiveStrand = mode >= 9 || ParticleBlendModes.indexOf(node.Blend) === 1;
+        gl.blendFunc(gl.SRC_ALPHA, additiveStrand ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
+        gl.bindVertexArray(this.emptyVao);
+        gl.drawArrays(gl.TRIANGLES, 0, totalStrands * segments * 6);
+        gl.bindVertexArray(null);
+    }
+
     /** Backing surface behind a 3D origin or carrier: obsidian gloss, brushed chrome or the ghost wireframe. */
     renderBacking(node, record, matrices, camera, pixelRatio)
     {
@@ -468,6 +539,7 @@ export class ParticleSimulation
         gl.uniform1f(uniforms.uTrailFade, node.TrailFade);
         gl.uniform1i(uniforms.uTrailColour, Math.max(0, ParticleTrailColours.indexOf(node.TrailColour)));
         gl.uniform1i(uniforms.uSprite, 4);
+        gl.uniform1i(uniforms.uStyle, 0);
         const count = Math.min(node.Count, record.side * record.side);
         const trailed = Math.ceil(count / stride);
         const vertices = trailed * record.trailLength * node.TrailSubdivisions * 6;
@@ -511,6 +583,7 @@ export class ParticleSimulation
             const additive = ParticleBlendModes.indexOf(node.Blend) === 1;
             gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
             this.renderBacking(node, record, matrices, camera, pixelRatio);
+            if (ParticleStrandModes.indexOf(node.StrandMode) > 0) this.renderStrands(node, matrices, camera, pixelRatio);
             const trailMode = ParticleTrailModes.indexOf(node.Trail);
             if (record.trails && trailMode > 0) this.renderTrails(node, record, matrices, camera, pixelRatio);
             // The visual carrier is a billboard sprite or a shaded 3D mesh — the Sprite layer decides.
@@ -537,6 +610,7 @@ export class ParticleSimulation
             gl.uniform1f(uniforms.uFocusDistance, node.FocusDistance);
             gl.uniform1f(uniforms.uAperture, node.Aperture);
             gl.uniform1i(uniforms.uSprite, Math.max(0, ParticleSprites.indexOf(node.Sprite)));
+            gl.uniform1i(uniforms.uStyle, Math.max(0, ParticleRenderStyles.indexOf(node.Style)));
             const count = Math.min(node.Count, record.side * record.side);
             gl.bindVertexArray(this.emptyVao);
             gl.uniform1f(uniforms.uHaloScale, 1);

@@ -489,7 +489,7 @@ console.log('\n[8] Particle layer stacks + templates as documents');
     const { parseToml, writeToml } = await import('./Engine/TomlSubset.js');
     const { specificationHash } = await import('./Engine/LayerSpecificationValidation.js');
     check(fs.readFileSync(PresetGenerator.ParticleTemplateLibraryOutput, 'utf8') === PresetGenerator.generateParticleTemplateLibrary(), `Engine/ParticleTemplateLibrary.js is up to date with ParticleTemplates/*.toml · library ${Catalog.ParticleTemplateLibraryHash}`);
-    check(Stack.ParticleLayerSpecifications.length === 18 && Stack.ParticleLayerSpecifications.every((layer) => layer.Parameter.every((parameter) => parameter.Target === 'Particles')), `${Stack.ParticleLayerSpecifications.length} particle layer categories (201–218), all writing the particle node`);
+    check(Stack.ParticleLayerSpecifications.length === 19 && Stack.ParticleLayerSpecifications.every((layer) => layer.Parameter.every((parameter) => parameter.Target === 'Particles')), `${Stack.ParticleLayerSpecifications.length} particle layer categories (201–219), all writing the particle node`);
     const owned = new Set(Stack.ParticleLayerSpecifications.flatMap((layer) => layer.Parameter.map((parameter) => parameter.Name)));
     const flatOnly = Object.keys(createParticleSystem('sparks')).filter((key) => !owned.has(key));
     check(flatOnly.join(',') === 'Id,Kind,Template,Name,Enabled,Visible,StartTime,Duration,Fade,Repeat,Tracks,Stack', `Every GPU field of a particle node is owned by a layer; only identity and timing stay flat (${flatOnly.join(', ')})`);

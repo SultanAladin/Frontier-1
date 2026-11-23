@@ -65,23 +65,23 @@
   },
   "preset-mograph-grid": {
    "File": "Presets/undefined",
-   "Legacy": "4c762346bd7b3485"
+   "Legacy": "44753ae7f3bc5fa5"
   },
   "preset-stardust": {
    "File": "Presets/undefined",
-   "Legacy": "2aa24fffe2889b58"
+   "Legacy": "c092ddf24430f938"
   },
   "preset-light-strands": {
    "File": "Presets/undefined",
-   "Legacy": "4d0f37e36e8dda76"
+   "Legacy": "c3575d85d7df2f76"
   },
   "preset-form": {
    "File": "Presets/undefined",
-   "Legacy": "a842bb3952c612a4"
+   "Legacy": "cc2c8b8899d526f6"
   },
   "preset-celebration": {
    "File": "Presets/undefined",
-   "Legacy": "ed30fb42a63c9922"
+   "Legacy": "28d751143ffb6312"
   },
   "preset-wind-tunnel": {
    "File": "Presets/undefined",
@@ -165,15 +165,15 @@
   },
   "preset-derez-chamber": {
    "File": "Presets/undefined",
-   "Legacy": "c1d444ab00791afd"
+   "Legacy": "ef1aac20c9098a82"
   },
   "preset-mocap-stage": {
    "File": "Presets/undefined",
-   "Legacy": "560381c67b392831"
+   "Legacy": "c918c5f6423cdf39"
   },
   "preset-singularity-lens": {
    "File": "Presets/undefined",
-   "Legacy": "46fd70509df77805"
+   "Legacy": "c0dd5abb58d2565c"
   },
   "preset-inferno-shimmer": {
    "File": "Presets/undefined",
@@ -181,43 +181,59 @@
   },
   "preset-obsidian-gallery": {
    "File": "Presets/undefined",
-   "Legacy": "eca2ab10896d3732"
+   "Legacy": "ec81069aa5d2d8f9"
   },
   "preset-aviary-dusk": {
    "File": "Presets/undefined",
-   "Legacy": "2786aff29ded50d3"
+   "Legacy": "1449425caee68156"
   },
   "preset-coral-reef": {
    "File": "Presets/undefined",
-   "Legacy": "da0f93db53b5b871"
+   "Legacy": "50fef59315f4e5e6"
   },
   "preset-mint-vault": {
    "File": "Presets/undefined",
-   "Legacy": "5baf160d40c09584"
+   "Legacy": "7c65580dcc5848f7"
   },
   "preset-sakura-courtyard": {
    "File": "Presets/undefined",
-   "Legacy": "c53515bd4a598653"
+   "Legacy": "29841c929b20009c"
   },
   "preset-signal-array": {
    "File": "Presets/undefined",
-   "Legacy": "c55599cc078cb7fd"
+   "Legacy": "c5c3a8cf63734a09"
   },
   "preset-launch-reveal": {
    "File": "Presets/undefined",
-   "Legacy": "136d0ca636a95775"
+   "Legacy": "e3b79f122d448439"
   },
   "preset-aero-study": {
    "File": "Presets/undefined",
-   "Legacy": "16a1aba0454d5e30"
+   "Legacy": "a94c850ef5d2edea"
   },
   "preset-charging-bay": {
    "File": "Presets/undefined",
-   "Legacy": "f33f853113de1806"
+   "Legacy": "aaf999abf0a230c5"
   },
   "preset-orbit-garden": {
    "File": "Presets/undefined",
-   "Legacy": "0a2285753dc6b928"
+   "Legacy": "17e9723bbc1d5e1d"
+  },
+  "preset-botanical-strands": {
+   "File": "Presets/undefined",
+   "Legacy": "d6ef65669e12313d"
+  },
+  "preset-abyssal-reef": {
+   "File": "Presets/undefined",
+   "Legacy": "fb4b90079ad81b04"
+  },
+  "preset-tesla-arena": {
+   "File": "Presets/undefined",
+   "Legacy": "80930bf8e793ac22"
+  },
+  "preset-new-year-sky": {
+   "File": "Presets/undefined",
+   "Legacy": "a3af046a6920fa6d"
   }
  },
  "Note": "Re-recorded with the 3D object carrier + object-surface spawn parameters (presets that carry particle nodes move; gas-only presets do not)."

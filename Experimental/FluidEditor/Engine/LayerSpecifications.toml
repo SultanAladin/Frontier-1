@@ -806,6 +806,29 @@ Summary = "Where and how particles are born: shape (including any 3D object or c
   Keyable = false
   Target = "Particles"
 
+  [[Layer.Parameter]]
+  Code = 20
+  Name = "FireworkPattern"
+  Label = "Firework pattern"
+  Type = "Choice"
+  Default = 0
+  Neutral = 0
+  Unit = ""
+  Keyable = false
+  Target = "Particles"
+  Options = [ { Code = 0, Token = "ClassicBouquet", Label = "Classic bouquet (multi-shell)" }, { Code = 1, Token = "SkyText", Label = "Sky text (custom message)" }, { Code = 2, Token = "Heart", Label = "Glowing heart" }, { Code = 3, Token = "Star", Label = "5-point star" }, { Code = 4, Token = "Smiley", Label = "Hanabi smiley" }, { Code = 5, Token = "Saturn", Label = "Saturn planet" }, { Code = 6, Token = "Crown", Label = "Royal crown" }, { Code = 7, Token = "Butterfly", Label = "Butterfly" }, { Code = 8, Token = "Spiral", Label = "Spiral galaxy" }, { Code = 9, Token = "GrandFinale", Label = "New Year's grand finale" } ]
+
+  [[Layer.Parameter]]
+  Code = 21
+  Name = "FireworkText"
+  Label = "Sky text message"
+  Type = "Token"
+  Default = "2026"
+  Neutral = "2026"
+  Unit = ""
+  Keyable = false
+  Target = "Particles"
+
 [[Layer]]
 Code = 202
 Token = "home-spring"
@@ -1881,6 +1904,18 @@ Summary = "Spatial effector field modulating clone displacement, sprite scale an
   Keyable = true
   Target = "Particles"
 
+  [[Layer.Parameter]]
+  Code = 8
+  Name = "EffectorAxis"
+  Label = "Displacement axis"
+  Type = "Choice"
+  Default = 0
+  Neutral = 0
+  Unit = ""
+  Keyable = true
+  Target = "Particles"
+  Options = [ { Code = 0, Token = "Radial", Label = "Radial outward" }, { Code = 1, Token = "HeightY", Label = "Height up / down (Y)" }, { Code = 2, Token = "SurfaceNormal", Label = "Object surface normal" } ]
+
 [[Layer]]
 Code = 216
 Token = "flock-swarm"
@@ -2104,3 +2139,136 @@ Summary = "Relativistic Einstein lensing with optional event horizon and photon 
   Unit = ""
   Keyable = true
   Target = "Particles"
+
+[[Layer]]
+Code = 219
+Token = "strands-arcs"
+Name = "Strands, Webs & Arcs"
+Stack = "ParticleCloud"
+Phase = "Shade"
+Required = false
+Capacity = 1
+Summary = "Fluid-coupled GPU strands, catenary cables, hanging vines, flexing flora (reeds, ferns, kelp, anemones), spiderwebs and high-voltage electrical arcs."
+
+  [[Layer.Parameter]]
+  Code = 1
+  Name = "StrandMode"
+  Label = "System kind"
+  Type = "Choice"
+  Default = 1
+  Neutral = 0
+  Unit = ""
+  Keyable = false
+  Target = "Particles"
+  Options = [ { Code = 0, Token = "Off", Label = "Off" }, { Code = 1, Token = "OrbWeaveWeb", Label = "Orb-weave spiderweb" }, { Code = 2, Token = "MessyCobweb", Label = "Messy attic cobweb" }, { Code = 3, Token = "CablesChains", Label = "Swinging cables & chains" }, { Code = 4, Token = "HangingVines", Label = "Hanging vines & ropes" }, { Code = 5, Token = "TallReeds", Label = "Tall lakeside reeds" }, { Code = 6, Token = "WoodlandFern", Label = "Lush woodland fern" }, { Code = 7, Token = "GiantKelp", Label = "Underwater giant kelp" }, { Code = 8, Token = "SeaAnemone", Label = "Sea anemone colony" }, { Code = 9, Token = "TeslaArcs", Label = "Tesla & static shock arcs" }, { Code = 10, Token = "PlasmaCage", Label = "Plasma cage & arc collector" }, { Code = 11, Token = "StormWeb", Label = "Lightning web & storm grid" } ]
+
+  [[Layer.Parameter]]
+  Code = 2
+  Name = "StrandVariant"
+  Label = "Style variant"
+  Type = "Choice"
+  Default = 0
+  Neutral = 0
+  Unit = ""
+  Keyable = false
+  Target = "Particles"
+  Options = [ { Code = 0, Token = "Primary", Label = "Primary (Cable / Rope / Tesla)" }, { Code = 1, Token = "Secondary", Label = "Secondary (Chain / Leafy Vine / Static)" } ]
+
+  [[Layer.Parameter]]
+  Code = 3
+  Name = "StrandCount"
+  Label = "Strand / spoke / bolt count"
+  Type = "Int32"
+  Minimum = 6
+  Maximum = 192
+  Default = 36
+  Neutral = 36
+  Step = 2
+  Unit = ""
+  Keyable = false
+  Target = "Particles"
+
+  [[Layer.Parameter]]
+  Code = 4
+  Name = "StrandDetail"
+  Label = "Rings / segments / jitter"
+  Type = "Int32"
+  Minimum = 4
+  Maximum = 28
+  Default = 14
+  Neutral = 14
+  Step = 1
+  Unit = ""
+  Keyable = false
+  Target = "Particles"
+
+  [[Layer.Parameter]]
+  Code = 5
+  Name = "StrandSag"
+  Label = "Sag / arch / arc bow"
+  Type = "Float32"
+  Minimum = 0.0
+  Maximum = 1.5
+  Default = 0.32
+  Neutral = 0.0
+  Step = 0.02
+  Unit = ""
+  Keyable = true
+  Target = "Particles"
+
+  [[Layer.Parameter]]
+  Code = 6
+  Name = "StrandThickness"
+  Label = "Strand thickness"
+  Type = "Float32"
+  Minimum = 0.005
+  Maximum = 0.25
+  Default = 0.032
+  Neutral = 0.032
+  Step = 0.002
+  Unit = "m"
+  Keyable = true
+  Target = "Particles"
+
+  [[Layer.Parameter]]
+  Code = 7
+  Name = "StrandSway"
+  Label = "Wind & fluid sway"
+  Type = "Float32"
+  Minimum = 0.0
+  Maximum = 3.0
+  Default = 0.85
+  Neutral = 0.0
+  Step = 0.05
+  Unit = "×"
+  Keyable = true
+  Target = "Particles"
+
+  [[Layer.Parameter]]
+  Code = 8
+  Name = "StrandSpan"
+  Label = "Span / height / reach"
+  Type = "Float32"
+  Minimum = 0.3
+  Maximum = 4.5
+  Default = 1.8
+  Neutral = 1.8
+  Step = 0.05
+  Unit = "m"
+  Keyable = true
+  Target = "Particles"
+
+  [[Layer.Parameter]]
+  Code = 9
+  Name = "StrandGlow"
+  Label = "Dew / bioluminescence / corona"
+  Type = "Float32"
+  Minimum = 0.0
+  Maximum = 2.0
+  Default = 0.65
+  Neutral = 0.0
+  Step = 0.05
+  Unit = ""
+  Keyable = true
+  Target = "Particles"
+

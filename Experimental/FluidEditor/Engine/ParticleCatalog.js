@@ -56,7 +56,11 @@ export const ParticleSizeModes = Object.freeze(['World', 'Pixels']);
 export const ParticleDerezModes = Object.freeze(['Off', 'Derez', 'ReverseDerez', 'MeltDissolve', 'ButterflyMorph', 'CellGlitch']);
 export const ParticleMocapClips = Object.freeze(['Off', 'Sprint', 'Dance', 'Martial', 'Levitate']);
 export const ParticleEffectorModes = Object.freeze(['Off', 'Ripple', 'Orbiters', 'PlaneWave', 'NoiseField']);
+export const ParticleEffectorAxes = Object.freeze(['Radial', 'HeightY', 'SurfaceNormal']);
 export const ParticleDistortionModes = Object.freeze(['Off', 'GravitationalLens', 'ShockwaveRipple', 'HeatBubble']);
+export const ParticleFireworkPatterns = Object.freeze(['ClassicBouquet', 'SkyText', 'Heart', 'Star', 'Smiley', 'Saturn', 'Crown', 'Butterfly', 'Spiral', 'GrandFinale']);
+export const ParticleStrandModes = Object.freeze(['Off', 'OrbWeaveWeb', 'MessyCobweb', 'CablesChains', 'HangingVines', 'TallReeds', 'WoodlandFern', 'GiantKelp', 'SeaAnemone', 'TeslaArcs', 'PlasmaCage', 'StormWeb']);
+export const ParticleStrandVariants = Object.freeze(['Primary', 'Secondary']);
 /** Trail rendering. Off = sprites only. Ribbon = spline ribbons behind each particle. Only = ribbons without head sprites. */
 export const ParticleTrailModes = Object.freeze(['Off', 'Ribbon', 'Only']);
 export const ParticleTrailColours = Object.freeze(['Particle', 'Along']);
@@ -150,6 +154,8 @@ function createFlatParticleSystem(templateId, overrides = {})
         ObjectYaw: base.ObjectYaw ?? 0,             // degrees, baked into the sampled anchors
         BackingSurface: base.BackingSurface || 'Hidden',
         CustomObjectId: base.CustomObjectId || '',
+        FireworkPattern: base.FireworkPattern || 'ClassicBouquet',
+        FireworkText: base.FireworkText ?? '2026',
         Position: [...(base.Position || [0, 0, 0])],
         Direction: [...(base.Direction || [0, 1, 0])],
         Radius: base.Radius ?? 0.5,
@@ -230,6 +236,7 @@ function createFlatParticleSystem(templateId, overrides = {})
         EffectorPush: base.EffectorPush ?? 0,
         EffectorScaleBoost: base.EffectorScaleBoost ?? 0,
         EffectorColourShift: base.EffectorColourShift ?? 0,
+        EffectorAxis: base.EffectorAxis || 'Radial',
         SwarmStrength: base.SwarmStrength ?? 0,
         SwarmCohesion: base.SwarmCohesion ?? 0,
         SwarmOrbit: base.SwarmOrbit ?? 0,
@@ -244,6 +251,15 @@ function createFlatParticleSystem(templateId, overrides = {})
         DistortionRadius: base.DistortionRadius ?? 0.28,
         DistortionHorizon: base.DistortionHorizon ?? 0,
         DistortionChromatic: base.DistortionChromatic ?? 0,
+        StrandMode: base.StrandMode || 'Off',
+        StrandVariant: base.StrandVariant || 'Primary',
+        StrandCount: base.StrandCount ?? 36,
+        StrandDetail: base.StrandDetail ?? 14,
+        StrandSag: base.StrandSag ?? 0,
+        StrandThickness: base.StrandThickness ?? 0.032,
+        StrandSway: base.StrandSway ?? 0,
+        StrandSpan: base.StrandSpan ?? 1.8,
+        StrandGlow: base.StrandGlow ?? 0,
         StartTime: base.StartTime ?? 0,
         Duration: base.Duration ?? 0,
         Fade: base.Fade ?? 0.15,

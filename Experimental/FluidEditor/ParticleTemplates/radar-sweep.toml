@@ -13,7 +13,7 @@ Name = "Radar Sweep"
 Category = "FX & Shields"
 Icon = "radar"
 Tint = "#4ade80"
-Summary = "A tactical scope: a flat cloner disc renders the swept radar arc cutout with a hot leading edge, while orbiters drag the beam around the range rings."
+Summary = "Dual tactical radar sweep with pinged target blips (Style = Point) and acoustic sonar pulse rings with bearing crosshairs (Style = Streak)."
 
 [[Layer]]
   Token = "layer-1"

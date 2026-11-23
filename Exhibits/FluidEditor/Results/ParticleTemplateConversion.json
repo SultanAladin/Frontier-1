@@ -5,107 +5,107 @@
  "Templates": {
   "field-streamlines": {
    "File": "ParticleTemplates/field-streamlines.toml",
-   "Legacy": "11326540e237b1e7"
+   "Legacy": "9dd83a3c0feafff0"
   },
   "meteor-shower": {
    "File": "ParticleTemplates/meteor-shower.toml",
-   "Legacy": "e627220270dbbb2a"
+   "Legacy": "192ed46cc8bdd49d"
   },
   "light-strands": {
    "File": "ParticleTemplates/light-strands.toml",
-   "Legacy": "3e064b0d6140e8e1"
+   "Legacy": "27118bad454489ba"
   },
   "silk-ribbons": {
    "File": "ParticleTemplates/silk-ribbons.toml",
-   "Legacy": "e6348652c249f479"
+   "Legacy": "c0c6928f8c7e7324"
   },
   "neon-filaments": {
    "File": "ParticleTemplates/neon-filaments.toml",
-   "Legacy": "a8fb54e1551eb546"
+   "Legacy": "8b027d3a85c14f9d"
   },
   "stardust": {
    "File": "ParticleTemplates/stardust.toml",
-   "Legacy": "e4f111829aabdf91"
+   "Legacy": "598621c90d2cf648"
   },
   "nebula": {
    "File": "ParticleTemplates/nebula.toml",
-   "Legacy": "1a094a1b45148550"
+   "Legacy": "b9d61ba364709ba9"
   },
   "dissolving-sphere": {
    "File": "ParticleTemplates/dissolving-sphere.toml",
-   "Legacy": "7ceb6bbb1228043c"
+   "Legacy": "82aa1d0301b08fdd"
   },
   "bioluminescent": {
    "File": "ParticleTemplates/bioluminescent.toml",
-   "Legacy": "49579a5ed6cb6e0c"
+   "Legacy": "c155a35dd309372f"
   },
   "fireworks": {
    "File": "ParticleTemplates/fireworks.toml",
-   "Legacy": "087b55b4cd88bc11"
+   "Legacy": "126fd0ad79aad587"
   },
   "pulse-ring": {
    "File": "ParticleTemplates/pulse-ring.toml",
-   "Legacy": "e1c9c40ff8a425cc"
+   "Legacy": "55cf11f5e0108ff3"
   },
   "electric-sparks": {
    "File": "ParticleTemplates/electric-sparks.toml",
-   "Legacy": "bf667fcb6c0f12c3"
+   "Legacy": "1abc94ebbaade7ca"
   },
   "sparks": {
    "File": "ParticleTemplates/sparks.toml",
-   "Legacy": "76150b98151aec46"
+   "Legacy": "3fb8e9c70a2fe4f7"
   },
   "confetti": {
    "File": "ParticleTemplates/confetti.toml",
-   "Legacy": "808137ab0511bc66"
+   "Legacy": "5c8d60c72ebd353d"
   },
   "fireflies": {
    "File": "ParticleTemplates/fireflies.toml",
-   "Legacy": "378cfc01837b9c9f"
+   "Legacy": "d17a9dbf5ea8516a"
   },
   "fountain": {
    "File": "ParticleTemplates/fountain.toml",
-   "Legacy": "0abec8200b8c7a5a"
+   "Legacy": "70eb394eacbc6f3d"
   },
   "galaxy-disc": {
    "File": "ParticleTemplates/galaxy-disc.toml",
-   "Legacy": "dd5d486101b629f9"
+   "Legacy": "d1490ef910943be0"
   },
   "grid-cloner": {
    "File": "ParticleTemplates/grid-cloner.toml",
-   "Legacy": "d45a7f7e193b0a3b"
+   "Legacy": "088b4ea04b5c86cc"
   },
   "ring-cloner": {
    "File": "ParticleTemplates/ring-cloner.toml",
-   "Legacy": "b58fadf6f3d17fed"
+   "Legacy": "7eb0a532b5c602cc"
   },
   "sphere-swarm": {
    "File": "ParticleTemplates/sphere-swarm.toml",
-   "Legacy": "2c2d21fbc5679114"
+   "Legacy": "b11974d459c5515b"
   },
   "line-cloner": {
    "File": "ParticleTemplates/line-cloner.toml",
-   "Legacy": "deaadcfd9e9a75d3"
+   "Legacy": "f87150f084fc08dc"
   },
   "bubbles": {
    "File": "ParticleTemplates/bubbles.toml",
-   "Legacy": "2fbe0862210e6b26"
+   "Legacy": "1b28fec9fb67c201"
   },
   "mist-spray": {
    "File": "ParticleTemplates/mist-spray.toml",
-   "Legacy": "5f53329879d8ed90"
+   "Legacy": "101a087674ad6b3d"
   },
   "snowfall": {
    "File": "ParticleTemplates/snowfall.toml",
-   "Legacy": "f2f06c652e1474b9"
+   "Legacy": "0f6c0468afd8ac5c"
   },
   "ground-dust": {
    "File": "ParticleTemplates/ground-dust.toml",
-   "Legacy": "864acbe9fa0504c9"
+   "Legacy": "8e774d3ca156def6"
   },
   "rain": {
    "File": "ParticleTemplates/rain.toml",
-   "Legacy": "9ffc8ee8054306c7"
+   "Legacy": "3d29494344f02afa"
   }
  },
  "Capture": {

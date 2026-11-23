@@ -32,6 +32,7 @@ uniform float uEffectorSpeed;
 uniform float uEffectorPush;
 uniform float uEffectorScaleBoost;
 uniform float uEffectorColourShift;
+uniform int   uEffectorAxis;     // 0 Radial, 1 HeightY (up/down), 2 Object surface normal
 
 uniform int   uDerezMode;        // 0 Off, 1 Derez, 2 ReverseDerez, 3 MeltDissolve, 4 ButterflyMorph, 5 CellGlitch
 uniform float uDerezMix;
@@ -404,15 +405,25 @@ vec3 ShapePointAtTime(int index, vec3 rnd, bool lattice, float time, out vec3 sh
     }
     else if (uShape == 15)
     {
-        // Firework Burst: a lobed shell — chrysanthemum petals, palm fronds or a ringed sphere depending on Shape Detail.
-        float detail = uShapeDetail > 0.5 ? uShapeDetail : 6.0;
-        float lobes = max(2.0, floor(detail));
-        float y = lattice ? 1.0 - (i + 0.5) / count * 2.0 : rnd.x * 2.0 - 1.0;
-        float r = sqrt(max(0.0, 1.0 - y * y));
-        float a = lattice ? 2.39996323 * i : rnd.y * 6.2831853;
-        float lobe = 0.78 + 0.22 * abs(cos(a * lobes * 0.5));
-        float shell = mix(lobe, pow(max(rnd.z, 1e-4), 1.0 / 3.0), clamp(uFill, 0.0, 1.0));
-        basePos = uOrigin + (t * (cos(a) * r) + uAxis * y + b * (sin(a) * r)) * uRadius * shell;
+        // Firework Burst: when a SkyText / Shape pattern is baked in uAnchors, launch into that exact 3D pattern;
+        // otherwise fall back to a lobed chrysanthemum / willow shell.
+        if (uAnchorCount > 0)
+        {
+            vec3 fwTint;
+            vec3 target = ObjectAnchorPosition(index, fwTint);
+            basePos = uOrigin + (t * target.x + uAxis * target.y + b * target.z) * uRadius;
+        }
+        else
+        {
+            float detail = uShapeDetail > 0.5 ? uShapeDetail : 6.0;
+            float lobes = max(2.0, floor(detail));
+            float y = lattice ? 1.0 - (i + 0.5) / count * 2.0 : rnd.x * 2.0 - 1.0;
+            float r = sqrt(max(0.0, 1.0 - y * y));
+            float a = lattice ? 2.39996323 * i : rnd.y * 6.2831853;
+            float lobe = 0.78 + 0.22 * abs(cos(a * lobes * 0.5));
+            float shell = mix(lobe, pow(max(rnd.z, 1e-4), 1.0 / 3.0), clamp(uFill, 0.0, 1.0));
+            basePos = uOrigin + (t * (cos(a) * r) + uAxis * y + b * (sin(a) * r)) * uRadius * shell;
+        }
     }
 
     // Optional Mocap performer modulation even when spawned on a non-figure shape: warps cloud around animated skeleton!
@@ -567,8 +578,25 @@ void main()
     if (uEffectorMode > 0 && uEffectorStrength > 0.0001 && abs(uEffectorPush) > 0.0001)
     {
         float effW = EvaluateEffector(restHome, uTime);
-        vec3 outDir = restHome - uOrigin;
-        outDir = length(outDir) > 1e-4 ? normalize(outDir) : uAxis;
+        vec3 outDir;
+        if (uEffectorAxis == 1)
+        {
+            outDir = vec3(0.0, 1.0, 0.0);
+        }
+        else if (uEffectorAxis == 2 && uAnchorCount > 0)
+        {
+            vec3 aNorm;
+            ObjectAnchorPosition(index, aNorm);
+            vec3 tA, bA;
+            ShapeBasis(tA, bA);
+            vec3 worldNorm = tA * aNorm.x + uAxis * aNorm.y + bA * aNorm.z;
+            outDir = length(worldNorm) > 1e-4 ? normalize(worldNorm) : uAxis;
+        }
+        else
+        {
+            outDir = restHome - uOrigin;
+            outDir = length(outDir) > 1e-4 ? normalize(outDir) : uAxis;
+        }
         home += outDir * (effW * uEffectorPush);
     }
 
@@ -789,6 +817,13 @@ vec3 ParticleShade(int particle, vec4 current, vec4 velocity, out float life, ou
     else if (uColourMode == 5) { colour = PaletteSwatch(fract(velocity.w * 7.31 + 0.137)); t = life; }
     else if (uColourMode == 6) { t = fract(uTime * uCycleSpeed + velocity.w * 0.35 + float(particle) / float(max(uCount, 1)) * 0.5); colour = PaletteGradient(abs(t * 2.0 - 1.0)); }
     else { t = life; colour = PaletteGradient(life); }
+
+    if (uShape == 15 && uAnchorCount > 0)
+    {
+        vec3 fwTint;
+        ObjectAnchorPosition(particle, fwTint);
+        colour = mix(colour, fwTint * (1.15 - 0.35 * life), 0.78);
+    }
 
     if (uEffectorColourShift > 0.001 && gEffectorWeight > 0.001)
     {
@@ -1059,6 +1094,7 @@ in vec4 vExtra;
 uniform int uSprite;   // 0 glow, 1 disc, 2 bokeh, 3 star, 4 square, 5 cube3d, 6 butterfly, 7 hextile, 8 hologlyph,
                        // 9 snowcrystal, 10 raindrop, 11 leafblade, 12 blossompetal, 13 crystalshard2d, 14 shockring,
                        // 15 radararc, 16 auroracurtain, 17 coindisc
+uniform int uStyle;    // 0 Point (Radar sweep + blips), 1 Streak (Acoustic sonar pulse ping)
 out vec4 fragColour;
 void main()
 {
@@ -1227,20 +1263,39 @@ void main()
         }
         else if (uSprite == 15)
         {
-            // 15: Radar arc — swept sector with a hot leading edge and fading range rings.
+            // 15: Dual Tactical Radar (uStyle == 0) / Acoustic Sonar Pulse Ping (uStyle == 1).
             vec2 uv = q * 2.0;
             float r = length(uv);
             if (r > 1.0) discard;
             float a = atan(uv.y, uv.x);
-            float sweep = vExtra.z * 6.2831853;
-            float wrapped = mod(a - sweep + 12.5663706, 6.2831853);
-            float wake = smoothstep(0.0, 1.9, wrapped) * step(wrapped, 2.6);
-            float leading = exp(-pow(wrapped / 0.14, 2.0));
-            float rings = 0.20 * smoothstep(0.35, 0.5, abs(fract(r * 3.0) - 0.5));
-            float mask = max(leading, wake * 0.42) + rings * step(0.2, r);
-            if (mask < 0.01) discard;
-            rgb = mix(rgb, vec3(0.55, 1.0, 0.85), leading * 0.55);
-            alpha *= clamp(mask, 0.0, 1.0) * (1.0 - smoothstep(0.92, 1.0, r));
+            if (uStyle == 1)
+            {
+                // Acoustic sonar: expanding concentric cyan-emerald pulse rings + bearing crosshairs & rim notches.
+                float pulse = fract(r * 3.0 - vExtra.z * 2.4);
+                float wave = exp(-pow((pulse - 0.14) / 0.10, 2.0));
+                float cross = (1.0 - smoothstep(0.015, 0.04, abs(uv.x))) * 0.25 + (1.0 - smoothstep(0.015, 0.04, abs(uv.y))) * 0.25;
+                float rimNotch = step(0.84, r) * step(0.86, abs(cos(a * 12.0))) * 0.55;
+                float mask = max(wave * (1.0 - r * 0.35), max(cross * step(0.12, r), rimNotch));
+                if (mask < 0.012) discard;
+                rgb = mix(rgb, vec3(0.45, 1.0, 0.90), wave * 0.65);
+                alpha *= clamp(mask, 0.0, 1.0) * (1.0 - smoothstep(0.92, 1.0, r));
+            }
+            else
+            {
+                // Tactical radar: rotating luminous sweep wedge + concentric range rings + pinged target blips.
+                float sweep = vExtra.z * 6.2831853;
+                float wrapped = mod(a - sweep + 12.5663706, 6.2831853);
+                float wake = smoothstep(0.0, 1.9, wrapped) * step(wrapped, 2.6);
+                float leading = exp(-pow(wrapped / 0.14, 2.0));
+                float rings = 0.22 * smoothstep(0.38, 0.5, abs(fract(r * 3.0) - 0.5));
+                float blipA = exp(-dot(uv - vec2(0.42, 0.36), uv - vec2(0.42, 0.36)) * 180.0);
+                float blipB = exp(-dot(uv - vec2(-0.52, -0.22), uv - vec2(-0.52, -0.22)) * 180.0);
+                float blips = (blipA + blipB) * (0.45 + 0.55 * wake);
+                float mask = max(max(leading, wake * 0.42), blips) + rings * step(0.18, r);
+                if (mask < 0.01) discard;
+                rgb = mix(rgb, vec3(0.65, 1.0, 0.85), max(leading * 0.55, blips * 0.85));
+                alpha *= clamp(mask, 0.0, 1.0) * (1.0 - smoothstep(0.92, 1.0, r));
+            }
         }
         else if (uSprite == 16)
         {
@@ -1489,3 +1544,530 @@ void main()
     fragColour = vec4(rgb, alpha);
 }
 `;
+
+//------------------------------------------------------------------------------------------------------------------------
+//                      FLUID-COUPLED STRANDS, WEBS, FLORA & ELECTRICAL ARCS (Layer 219 — gl_VertexID ribbons)
+//------------------------------------------------------------------------------------------------------------------------
+
+export const StrandVertex = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D;
+${VolumeChunk}
+${NoiseChunk}
+${ForceFieldChunk}
+uniform sampler2D uVelocity;
+uniform mat4  uViewProjection;
+uniform vec2  uViewport;
+uniform vec3  uCameraPosition;
+uniform vec3  uCameraForward;
+uniform float uFocalPixels;
+uniform vec3  uOrigin;
+uniform vec3  uAxis;
+uniform float uRadius;
+uniform float uTime;
+uniform vec3  uPalette[6];
+uniform int   uPaletteCount;
+uniform int   uStrandMode;       // 1 OrbWeave, 2 Cobweb, 3 CablesChains, 4 HangingVines, 5 TallReeds, 6 WoodlandFern, 7 GiantKelp, 8 SeaAnemone, 9 TeslaArcs, 10 PlasmaCage, 11 StormWeb
+uniform int   uStrandVariant;    // 0 Primary, 1 Secondary
+uniform int   uStrandCount;      // base strands/spokes/bolts
+uniform int   uStrandTotal;      // total rendered strands
+uniform int   uStrandSegments;   // curve subdivisions per strand
+uniform int   uStrandDetail;     // rings / jitter density
+uniform float uStrandSag;
+uniform float uStrandThickness;
+uniform float uStrandSway;
+uniform float uStrandSpan;
+uniform float uStrandGlow;
+uniform float uBrightness;
+uniform float uEnvelope;
+out vec3  vColour;
+out vec4  vStrand;               // x = along (0..1), y = across (-1..1), z = styleTag, w = seed
+out float vAlpha;
+
+vec3 StrandPalette(float t)
+{
+    int n = max(uPaletteCount, 1);
+    if (n == 1) return uPalette[0];
+    float scaled = clamp(t, 0.0, 1.0) * float(n - 1);
+    int i0 = int(floor(scaled));
+    int i1 = min(i0 + 1, n - 1);
+    return mix(uPalette[i0], uPalette[i1], fract(scaled));
+}
+
+float StrandHash(float n, float salt)
+{
+    return fract(sin(n * 127.1 + salt * 311.7) * 43758.5453123);
+}
+
+void StrandBasis(out vec3 rAxis, out vec3 uVec, out vec3 fAxis)
+{
+    uVec = length(uAxis) > 1e-4 ? normalize(uAxis) : vec3(0.0, 1.0, 0.0);
+    vec3 ref = abs(uVec.y) < 0.92 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    rAxis = normalize(cross(ref, uVec));
+    fAxis = cross(uVec, rAxis);
+}
+
+vec2 OrbAnchor(int idx, float R)
+{
+    float a = float(idx % 6) * 1.04719755 + 0.28 + (StrandHash(float(idx), 2.0) - 0.5) * 0.14;
+    float rr = R * (0.94 + 0.14 * StrandHash(float(idx), 3.0));
+    return vec2(cos(a) * rr, sin(a) * rr);
+}
+
+vec3 FluidWindAt(vec3 p)
+{
+    vec3 f = EvaluateForceField(p, vec3(0.0)) * 0.20;
+    vec3 g = SampleVolume(uVelocity, CellFromWorld(p)).xyz * 0.32;
+    vec3 breeze = CurlNoise(p * 0.65 + vec3(uTime * 0.45, 0.0, -uTime * 0.3)) * 0.22;
+    return (f + g + breeze) * uStrandSway;
+}
+
+void EvalStrandEndpoints(int slot, vec3 rAxis, vec3 uVec, vec3 fAxis, out vec3 pA, out vec3 pB, out float sag, out float widthScale, out float pinB, out float styleTag, out float colT, out float vis)
+{
+    float sd = float(slot) * 37.0 + 13.0;
+    float R = max(0.45, uRadius);
+    float span = max(0.35, uStrandSpan);
+    pA = uOrigin; pB = uOrigin + uVec * 0.5;
+    sag = uStrandSag; widthScale = 1.0; pinB = 0.0; styleTag = 0.0; colT = StrandHash(sd, 9.0); vis = 1.0;
+
+    if (uStrandMode == 1)
+    {
+        // 1: Orb-Weave Spiderweb (6 frame + 6 guy lines + spokes + Archimedean capture spiral)
+        int spokes = clamp(uStrandCount, 8, 36);
+        int rings = clamp(uStrandDetail, 6, 24);
+        vec3 hub = uOrigin - uVec * (0.04 * R);
+        pinB = 1.0; styleTag = 1.0;
+        if (slot < 6)
+        {
+            vec2 la = OrbAnchor(slot, R); vec2 lb = OrbAnchor((slot + 1) % 6, R);
+            pA = uOrigin + rAxis * la.x + uVec * la.y; pB = uOrigin + rAxis * lb.x + uVec * lb.y;
+            sag = uStrandSag * 0.22; widthScale = 0.65; colT = 0.15;
+        }
+        else if (slot < 12)
+        {
+            vec2 la = OrbAnchor(slot - 6, R);
+            pA = uOrigin + rAxis * la.x + uVec * la.y; pB = uOrigin + rAxis * (la.x * 1.24) + uVec * (la.y * 1.24);
+            sag = uStrandSag * 0.08; widthScale = 0.58; colT = 0.1;
+        }
+        else if (slot < 12 + spokes)
+        {
+            int si = slot - 12;
+            float th = (float(si) / float(spokes)) * 6.2831853 + (StrandHash(float(si), 1.0) - 0.5) * 0.03;
+            pA = hub; pB = uOrigin + (rAxis * cos(th) + uVec * sin(th)) * (R * 0.95);
+            sag = uStrandSag * 0.12; widthScale = 0.52; colT = 0.3;
+        }
+        else
+        {
+            int spIdx = slot - 12 - spokes;
+            int totalSpiral = spokes * rings;
+            if (spIdx >= totalSpiral) { vis = 0.0; return; }
+            int s0 = spIdx % spokes;
+            int s1 = (spIdx + 1) % spokes;
+            float f0 = float(spIdx) / float(max(totalSpiral, 1));
+            float f1 = float(spIdx + 1) / float(max(totalSpiral, 1));
+            float r0 = mix(0.14, 0.92, pow(f0, 0.92)) * R;
+            float r1 = mix(0.14, 0.92, pow(f1, 0.92)) * R;
+            float th0 = (float(s0) / float(spokes)) * 6.2831853 + (StrandHash(float(s0), 1.0) - 0.5) * 0.03;
+            float th1 = (float(s1) / float(spokes)) * 6.2831853 + (StrandHash(float(s1), 1.0) - 0.5) * 0.03;
+            pA = hub + (rAxis * cos(th0) + uVec * sin(th0)) * r0;
+            pB = hub + (rAxis * cos(th1) + uVec * sin(th1)) * r1;
+            sag = uStrandSag * (0.14 + 0.32 * f0) * clamp(length(pB - pA) / max(0.3, R * 0.35), 0.3, 1.2);
+            widthScale = 0.42; colT = mix(0.45, 0.95, f0); styleTag = 1.5;
+        }
+    }
+    else if (uStrandMode == 2)
+    {
+        // 2: Messy Attic Cobweb (3D corner anchor chords + crisscrossed lacy tangle + dangling wisps)
+        int nChords = max(12, uStrandTotal / 3);
+        int nTangle = nChords + max(12, (uStrandTotal * 4) / 10);
+        styleTag = 2.0;
+        if (slot < nChords)
+        {
+            int pocket = slot % 3;
+            float ph = float(pocket) * 2.0943951;
+            vec3 dirA = vec3(cos(ph), 0.35 + 0.65 * StrandHash(sd, 1.0), sin(ph));
+            vec3 dirB = vec3(cos(ph + 1.35 + 0.5 * StrandHash(sd, 2.0)), -0.35 + 1.15 * StrandHash(sd, 3.0), sin(ph + 1.35));
+            pA = uOrigin + dirA * (R * mix(0.55, 1.15, StrandHash(sd, 4.0)));
+            pB = uOrigin + dirB * (R * mix(0.55, 1.15, StrandHash(sd, 5.0)));
+            sag = uStrandSag * (0.45 + 0.65 * StrandHash(sd, 6.0));
+            pinB = 1.0; widthScale = 0.50; colT = 0.25;
+        }
+        else if (slot < nTangle)
+        {
+            float a0 = StrandHash(sd, 1.0) * 6.2831853;
+            float a1 = a0 + mix(0.35, 1.45, StrandHash(sd, 2.0));
+            float r0 = R * mix(0.20, 0.95, StrandHash(sd, 3.0));
+            float r1 = R * mix(0.20, 0.95, StrandHash(sd, 4.0));
+            pA = uOrigin + vec3(cos(a0) * r0, (StrandHash(sd, 5.0) - 0.35) * span * 0.8, sin(a0) * r0);
+            pB = uOrigin + vec3(cos(a1) * r1, (StrandHash(sd, 6.0) - 0.35) * span * 0.8, sin(a1) * r1);
+            sag = uStrandSag * (0.35 + 0.75 * StrandHash(sd, 7.0));
+            pinB = 1.0; widthScale = 0.38; colT = 0.58;
+        }
+        else
+        {
+            float a0 = StrandHash(sd, 1.0) * 6.2831853;
+            float r0 = R * mix(0.18, 0.85, StrandHash(sd, 2.0));
+            pA = uOrigin + vec3(cos(a0) * r0, (StrandHash(sd, 3.0) - 0.1) * span * 0.7, sin(a0) * r0);
+            float dLen = span * mix(0.32, 0.82, StrandHash(sd, 4.0));
+            pB = pA + vec3((StrandHash(sd, 5.0) - 0.5) * 0.22, -dLen, (StrandHash(sd, 6.0) - 0.5) * 0.22);
+            sag = 0.04; pinB = 0.0; widthScale = 0.34; colT = 0.85;
+        }
+    }
+    else if (uStrandMode == 3)
+    {
+        // 3: Swinging Cables & Heavy Industrial Chains (tiered dual-pinned catenary spans)
+        int tier = slot % 3;
+        float lane = float(slot / 3) / max(1.0, float(max(uStrandTotal / 3, 1) - 1));
+        float yTier = span * (0.38 + 0.26 * float(tier)) - span * 0.25;
+        float zOff = mix(-R, R, lane) + (StrandHash(sd, 1.0) - 0.5) * 0.22;
+        float xJit = (StrandHash(sd, 2.0) - 0.5) * 0.18;
+        pA = uOrigin + vec3(-span * 0.95 + xJit, yTier, zOff);
+        pB = uOrigin + vec3( span * 0.95 - xJit, yTier + (StrandHash(sd, 3.0) - 0.5) * 0.22, zOff + (StrandHash(sd, 4.0) - 0.5) * 0.18);
+        sag = uStrandSag * (0.72 + 0.65 * StrandHash(sd, 5.0));
+        pinB = 1.0; widthScale = uStrandVariant == 1 ? 1.55 : 1.0;
+        styleTag = uStrandVariant == 1 ? 3.5 : 3.0; colT = float(tier) * 0.42;
+    }
+    else if (uStrandMode == 4)
+    {
+        // 4: Hanging Vines & Braided Overhead Ropes (single-pinned canopy curtains)
+        float uX = StrandHash(sd, 1.0) * 2.0 - 1.0;
+        float uZ = StrandHash(sd, 2.0) * 2.0 - 1.0;
+        float yTop = uOrigin.y + span * (0.55 + 0.22 * StrandHash(sd, 3.0));
+        float vLen = span * mix(0.62, 1.25, StrandHash(sd, 4.0));
+        pA = vec3(uOrigin.x + uX * R, yTop, uOrigin.z + uZ * R);
+        pB = pA + vec3((StrandHash(sd, 5.0) - 0.5) * 0.30, -vLen, (StrandHash(sd, 6.0) - 0.5) * 0.30);
+        sag = 0.05; pinB = 0.0;
+        widthScale = uStrandVariant == 1 ? 2.15 : 1.05;
+        styleTag = uStrandVariant == 1 ? 4.5 : 4.0;
+        colT = StrandHash(sd, 7.0);
+    }
+    else if (uStrandMode == 5)
+    {
+        // 5: Tall Lakeside Reeds with brown velvet cattail spikes
+        int clump = slot % 6;
+        float cSd = float(clump) * 23.0 + 7.0;
+        float cx = (StrandHash(cSd, 1.0) * 2.0 - 1.0) * R * 0.72;
+        float cz = (StrandHash(cSd, 2.0) * 2.0 - 1.0) * R * 0.72;
+        float ang = StrandHash(sd, 1.0) * 6.2831853;
+        float rOff = sqrt(StrandHash(sd, 2.0)) * R * 0.38;
+        float hReed = span * mix(0.72, 1.22, StrandHash(sd, 3.0));
+        float archOut = (0.24 + 0.26 * StrandHash(sd, 4.0)) * hReed;
+        pA = vec3(uOrigin.x + cx + cos(ang) * rOff, uOrigin.y - span * 0.45, uOrigin.z + cz + sin(ang) * rOff);
+        pB = pA + vec3(cos(ang) * archOut, hReed, sin(ang) * archOut);
+        sag = -max(0.08, uStrandSag * 0.42) * hReed;
+        pinB = 0.0; widthScale = (slot % 3 == 0) ? 1.55 : 0.95;
+        styleTag = (slot % 3 == 0) ? 5.5 : 5.0; colT = StrandHash(sd, 5.0);
+    }
+    else if (uStrandMode == 6)
+    {
+        // 6: Lush Woodland Broad Fern (tiered arched compound pinnate fronds)
+        int tier = slot % 3;
+        float tierFrac = float(tier) / 2.0;
+        float az = float(slot) * 2.3999632 + (StrandHash(sd, 1.0) - 0.5) * 0.16;
+        float fLen = max(0.65, R * 1.15) * mix(0.54, 1.08, tierFrac) * mix(0.88, 1.14, StrandHash(sd, 2.0));
+        float tipY = span * mix(0.88, 0.32, tierFrac) * mix(0.88, 1.14, StrandHash(sd, 3.0));
+        pA = vec3(uOrigin.x + cos(az) * 0.08, uOrigin.y - span * 0.38, uOrigin.z + sin(az) * 0.08);
+        pB = pA + vec3(cos(az) * fLen, tipY, sin(az) * fLen);
+        sag = -max(0.18, uStrandSag) * mix(0.72, 1.22, tierFrac);
+        pinB = 0.0; widthScale = mix(3.2, 4.8, tierFrac);
+        styleTag = 6.0; colT = tierFrac;
+    }
+    else if (uStrandMode == 7)
+    {
+        // 7: Underwater Giant Kelp Forest (buoyant stipes with ruffled side blades & gas bladders)
+        float gx = (StrandHash(sd, 1.0) * 2.0 - 1.0) * R;
+        float gz = (StrandHash(sd, 2.0) * 2.0 - 1.0) * R;
+        float kelpH = span * mix(0.68, 1.25, StrandHash(sd, 3.0));
+        float leanX = (StrandHash(sd, 4.0) - 0.5) * 0.35;
+        float leanZ = (StrandHash(sd, 5.0) - 0.5) * 0.35;
+        pA = vec3(uOrigin.x + gx, uOrigin.y - span * 0.52, uOrigin.z + gz);
+        pB = pA + vec3(leanX, kelpH, leanZ);
+        sag = -uStrandSag * 0.18;
+        pinB = 0.0; widthScale = 2.65;
+        styleTag = 7.0; colT = 0.2 + 0.65 * StrandHash(sd, 6.0);
+    }
+    else if (uStrandMode == 8)
+    {
+        // 8: Bioluminescent Sea Anemone Tentacle Clusters on coral mounds
+        int cluster = slot % 3;
+        float cPhi = float(cluster) * 2.0943951 + 0.4;
+        float cRad = cluster == 0 ? 0.0 : 0.55 * R;
+        vec3 mound = vec3(uOrigin.x + cos(cPhi) * cRad, uOrigin.y - span * 0.35, uOrigin.z + sin(cPhi) * cRad);
+        float ringR = mix(0.05, (cluster == 0 ? 0.38 : 0.28) * R, sqrt(StrandHash(sd, 1.0)));
+        float az = float(slot) * 2.3999632 + StrandHash(sd, 2.0) * 0.38;
+        float tLen = span * mix(0.55, 1.05, StrandHash(sd, 3.0));
+        float flare = ringR * 1.45 + 0.42 * tLen;
+        pA = mound + vec3(cos(az) * ringR, 0.06 + (0.28 - min(ringR, 0.25)) * 0.45, sin(az) * ringR);
+        pB = mound + vec3(cos(az) * flare, tLen, sin(az) * flare);
+        sag = -max(0.14, uStrandSag * 0.62);
+        pinB = 0.0; widthScale = 1.65;
+        styleTag = 8.0; colT = 0.55 + 0.45 * StrandHash(sd, 4.0);
+    }
+    else if (uStrandMode == 9)
+    {
+        // 9: Tesla Sphere Lightning (Variant 0) & Static Shock Corona Arcs (Variant 1)
+        float halfSpan = span * 0.85;
+        vec3 poleA = uOrigin - rAxis * halfSpan;
+        vec3 poleB = uOrigin + rAxis * halfSpan;
+        float spread = uStrandVariant == 1 ? 0.42 : 0.26;
+        vec3 offA = vec3(StrandHash(sd, 1.0) - 0.5, StrandHash(sd, 2.0) - 0.5, StrandHash(sd, 3.0) - 0.5) * spread;
+        vec3 offB = vec3(StrandHash(sd, 4.0) - 0.5, StrandHash(sd, 5.0) - 0.5, StrandHash(sd, 6.0) - 0.5) * spread;
+        pA = poleA + offA; pB = poleB + offB;
+        // Forked stepped leaders branch off main bolt for slots > 2
+        if (slot > 2 && uStrandVariant == 0)
+        {
+            float bf = mix(0.22, 0.78, StrandHash(sd, 7.0));
+            pA = mix(poleA, poleB, bf);
+            pB = pA + normalize(vec3(StrandHash(sd, 8.0) - 0.5, StrandHash(sd, 9.0) - 0.35, StrandHash(sd, 10.0) - 0.5)) * (span * mix(0.28, 0.65, StrandHash(sd, 11.0)));
+        }
+        sag = -uStrandSag * (0.25 + 0.55 * (StrandHash(sd, 12.0) - 0.5));
+        pinB = 1.0; widthScale = slot < 2 ? 1.45 : (uStrandVariant == 1 ? 0.72 : 0.65);
+        styleTag = 9.0; colT = uStrandVariant == 1 ? 0.78 : 0.22;
+    }
+    else if (uStrandMode == 10)
+    {
+        // 10: Plasma Cage & Arc Collector (central orb discharging to perimeter conductor ring)
+        float tick = floor(uTime * 10.0);
+        float a = float(slot) / float(max(uStrandTotal, 1)) * 6.2831853 + StrandHash(float(slot) + tick, 1.0) * 0.45;
+        float ringY = (StrandHash(float(slot) + tick, 2.0) - 0.5) * span * 0.75;
+        pA = uOrigin + vec3(cos(a) * 0.14, sin(a * 2.0) * 0.08, sin(a) * 0.14);
+        pB = uOrigin + vec3(cos(a) * R, ringY, sin(a) * R);
+        sag = -uStrandSag * 0.25;
+        pinB = 1.0; widthScale = 1.05;
+        styleTag = 9.0; colT = fract(float(slot) * 0.17);
+    }
+    else if (uStrandMode == 11)
+    {
+        // 11: Dynamic Lightning Web & Storm Grid (floating 3D storm-node matrix connected by zigzag arcs)
+        int nNodes = max(8, uStrandDetail);
+        float tick = floor(uTime * 8.0);
+        int aIdx = slot % nNodes;
+        int bIdx = (aIdx + 1 + int(StrandHash(float(slot) + tick * 0.5, 1.0) * float(max(nNodes / 2, 1)))) % nNodes;
+        float sa = float(aIdx) * 19.0 + 3.0;
+        float sb = float(bIdx) * 19.0 + 3.0;
+        pA = uOrigin + vec3(StrandHash(sa, 1.0) - 0.5, StrandHash(sa, 2.0) - 0.5, StrandHash(sa, 3.0) - 0.5) * (2.0 * R);
+        pB = uOrigin + vec3(StrandHash(sb, 1.0) - 0.5, StrandHash(sb, 2.0) - 0.5, StrandHash(sb, 3.0) - 0.5) * (2.0 * R);
+        sag = 0.0; pinB = 1.0; widthScale = 0.92;
+        styleTag = 9.0; colT = fract(float(aIdx) * 0.23);
+    }
+}
+
+vec3 EvalStrandPoint(int slot, vec3 pA, vec3 pB, float sag, float pinB, float u, float styleTag)
+{
+    vec3 p = mix(pA, pB, u);
+    float archWeight = pinB > 0.5 ? (4.0 * u * (1.0 - u)) : (u * u);
+    // Gravity sag (positive) or botanical upward arch (negative sag lifts the middle)
+    if (pinB > 0.5) p.y -= sag * archWeight;
+    else p.y -= sag * 4.0 * u * (1.0 - u) * 0.65;
+
+    float swayMask = pinB > 0.5 ? (4.0 * u * (1.0 - u)) : pow(u, 1.35);
+    vec3 wind = FluidWindAt(p);
+    // Species-specific harmonic breeze / water current
+    float phase = float(slot) * 1.37 + u * 2.8;
+    float waveSpeed = (uStrandMode == 7 || uStrandMode == 8) ? 1.35 : 2.25;
+    vec3 harmonic = vec3(sin(uTime * waveSpeed + phase), cos(uTime * waveSpeed * 0.7 + phase) * 0.28, cos(uTime * waveSpeed * 0.9 + phase * 1.2)) * (0.14 * uStrandSway);
+    p += (wind + harmonic) * swayMask;
+
+    // High-voltage jagged stepped-leader lightning displacement for electrical arcs (modes 9..11)
+    if (styleTag > 8.5)
+    {
+        float rate = uStrandVariant == 1 ? 26.0 : 15.0;
+        float tick = floor(uTime * rate);
+        float jitterAmp = (0.12 + 0.015 * float(uStrandDetail)) * max(0.35, uStrandSpan * 0.45);
+        float env = sin(u * 3.14159265);
+        vec3 jA = vec3(
+            StrandHash(float(slot) * 31.0 + floor(u * 12.0) + tick * 7.0, 1.0) - 0.5,
+            StrandHash(float(slot) * 31.0 + floor(u * 12.0) + tick * 7.0, 2.0) - 0.5,
+            StrandHash(float(slot) * 31.0 + floor(u * 12.0) + tick * 7.0, 3.0) - 0.5
+        );
+        vec3 jB = vec3(
+            StrandHash(float(slot) * 53.0 + floor(u * 24.0) + tick * 13.0, 4.0) - 0.5,
+            StrandHash(float(slot) * 53.0 + floor(u * 24.0) + tick * 13.0, 5.0) - 0.5,
+            StrandHash(float(slot) * 53.0 + floor(u * 24.0) + tick * 13.0, 6.0) - 0.5
+        );
+        p += (jA * 0.72 + jB * 0.28) * (jitterAmp * env);
+    }
+    return p;
+}
+
+void main()
+{
+    int segs = max(uStrandSegments, 4);
+    int vertsPerStrand = segs * 6;
+    int slot = gl_VertexID / vertsPerStrand;
+    int local = gl_VertexID - slot * vertsPerStrand;
+    int seg = local / 6;
+    int corner = local - seg * 6;
+
+    vec3 rAxis, uVec, fAxis;
+    StrandBasis(rAxis, uVec, fAxis);
+    vec3 pA, pB;
+    float sag, widthScale, pinB, styleTag, colT, vis;
+    EvalStrandEndpoints(slot, rAxis, uVec, fAxis, pA, pB, sag, widthScale, pinB, styleTag, colT, vis);
+    if (vis < 0.5 || slot >= uStrandTotal)
+    {
+        vAlpha = 0.0; vColour = vec3(0.0); vStrand = vec4(0.0);
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+        return;
+    }
+
+    float u0 = float(seg) / float(segs);
+    float u1 = float(seg + 1) / float(segs);
+    bool isEnd = (corner == 2 || corner == 4 || corner == 5);
+    float side = (corner == 0 || corner == 3 || corner == 5) ? -1.0 : 1.0;
+    float along = isEnd ? u1 : u0;
+
+    vec3 a = EvalStrandPoint(slot, pA, pB, sag, pinB, u0, styleTag);
+    vec3 b = EvalStrandPoint(slot, pA, pB, sag, pinB, u1, styleTag);
+    vec3 world = isEnd ? b : a;
+
+    vec4 clipA = uViewProjection * vec4(a, 1.0);
+    vec4 clipB = uViewProjection * vec4(b, 1.0);
+    vec4 clip = isEnd ? clipB : clipA;
+    vec2 ndcA = clipA.xy / max(clipA.w, 1e-4);
+    vec2 ndcB = clipB.xy / max(clipB.w, 1e-4);
+    vec2 sDir = (ndcB - ndcA) * uViewport;
+    float sLen = length(sDir);
+    vec2 normal = sLen > 1e-4 ? vec2(-sDir.y, sDir.x) / sLen : vec2(0.0, 1.0);
+
+    float depth = dot(world - uCameraPosition, uCameraForward);
+    float taper = (uStrandMode == 5 || uStrandMode == 8) ? mix(1.0, 0.22, along)
+        : (uStrandMode == 6 ? sin(pow(clamp(along, 0.02, 0.99), 0.72) * 3.14159265)
+        : (uStrandMode == 7 ? (0.45 + 0.55 * sin(along * 3.14159265)) : 1.0));
+    float widthMetres = max(0.003, uStrandThickness * widthScale * max(taper, 0.14));
+    float widthPixels = max(widthMetres * uFocalPixels / max(depth, 0.08), styleTag < 2.5 ? 1.15 : 1.5);
+    clip.xy += normal * side * widthPixels * 0.5 / uViewport * 2.0 * clip.w;
+
+    vec3 colour = StrandPalette(clamp(mix(colT, along, styleTag > 4.5 ? 0.55 : 0.25), 0.0, 1.0)) * uBrightness;
+    vColour = colour;
+    vStrand = vec4(along, side, styleTag, StrandHash(float(slot), 11.0));
+    vAlpha = depth > 0.05 ? uEnvelope : 0.0;
+    gl_Position = clip;
+}
+`;
+
+export const StrandFragment = `#version 300 es
+precision highp float; precision highp int;
+in vec3  vColour;
+in vec4  vStrand;                // x = along, y = across, z = styleTag, w = seed
+in float vAlpha;
+uniform float uStrandGlow;
+uniform float uTime;
+out vec4 fragColour;
+void main()
+{
+    if (vAlpha <= 0.002) discard;
+    float u = vStrand.x;
+    float across = vStrand.y;
+    float aAbs = abs(across);
+    float tag = vStrand.z;
+    float seed = vStrand.w;
+    vec3 rgb = vColour;
+    float alpha = vAlpha;
+
+    if (tag < 2.5)
+    {
+        // Spiderweb / Cobweb: gossamer silk filament + twinkling morning dewdrop beads
+        float core = exp(-aAbs * aAbs * 4.5);
+        float dew = tag > 1.25 ? exp(-pow(fract(u * 5.0 + seed) - 0.5, 2.0) * 90.0) * uStrandGlow : 0.0;
+        rgb = mix(rgb * 0.85, vec3(0.96, 0.99, 1.0), clamp(core * 0.45 + dew, 0.0, 1.0));
+        alpha *= clamp(core * 0.72 + dew * 0.95, 0.0, 1.0);
+    }
+    else if (tag < 3.8)
+    {
+        // Cables (3.0) & Heavy Industrial Chains (3.5)
+        float cyl = sqrt(max(0.0, 1.0 - aAbs * aAbs));
+        if (tag > 3.25)
+        {
+            float link = abs(sin(u * 48.0));
+            float hole = smoothstep(0.28, 0.45, aAbs) + smoothstep(0.70, 0.92, link);
+            if (hole < 0.38) discard;
+            rgb = rgb * (0.45 + 0.75 * cyl * link) + vec3(0.35 * pow(cyl, 6.0) * (0.5 + uStrandGlow));
+        }
+        else
+        {
+            float braid = 0.85 + 0.15 * sin(u * 80.0 + across * 8.0);
+            rgb = rgb * (0.42 + 0.68 * cyl) * braid + vec3(0.28 * pow(cyl, 8.0));
+        }
+        alpha *= smoothstep(1.0, 0.78, aAbs);
+    }
+    else if (tag < 4.8)
+    {
+        // Braided Ropes (4.0) & Leafy Jungle Vines (4.5)
+        if (tag > 4.25)
+        {
+            float stem = 1.0 - smoothstep(0.14, 0.24, aAbs);
+            float leafPhase = fract(u * 14.0 + seed * 3.0) - 0.5;
+            float sideAlt = sin(floor(u * 14.0 + seed * 3.0) * 3.14159 + 1.57) > 0.0 ? 1.0 : -1.0;
+            vec2 lp = vec2((across * sideAlt - 0.48) / 0.48, leafPhase / 0.34);
+            float leaf = 1.0 - smoothstep(0.75, 1.0, length(lp));
+            float mask = max(stem, leaf);
+            if (mask < 0.05) discard;
+            rgb = mix(rgb * 0.52, rgb * (0.95 + 0.35 * (1.0 - abs(leafPhase))), leaf);
+            alpha *= mask;
+        }
+        else
+        {
+            float cyl = sqrt(max(0.0, 1.0 - aAbs * aAbs));
+            float twist = 0.80 + 0.20 * sin(u * 65.0 + across * 5.0);
+            rgb *= (0.48 + 0.60 * cyl) * twist;
+            alpha *= smoothstep(1.0, 0.78, aAbs);
+        }
+    }
+    else if (tag < 5.8)
+    {
+        // Tall Lakeside Reeds (5.0) + velvet brown cattail spike near tip (5.5)
+        float isCattail = (tag > 5.25 && u > 0.70 && u < 0.91) ? 1.0 : 0.0;
+        float halfW = isCattail > 0.5 ? 0.92 : 0.38;
+        if (aAbs > halfW) discard;
+        float cyl = sqrt(max(0.0, 1.0 - pow(aAbs / halfW, 2.0)));
+        vec3 velvet = vec3(0.30, 0.14, 0.06) * (0.65 + 0.55 * cyl);
+        rgb = mix(rgb * (0.55 + 0.55 * cyl), velvet, isCattail);
+        alpha *= smoothstep(halfW, halfW * 0.75, aAbs);
+    }
+    else if (tag < 6.5)
+    {
+        // Lush Woodland Fern: feathered pinnate compound leaflets + glowing central rachis vein
+        float vein = 1.0 - smoothstep(0.04, 0.11, aAbs);
+        float leaflet = sin(u * 46.0 + aAbs * 6.0);
+        float tipEnv = sin(clamp(u, 0.0, 1.0) * 3.14159265);
+        float bladeEdge = (0.35 + 0.65 * smoothstep(-0.35, 0.55, leaflet)) * max(tipEnv, 0.12);
+        float mask = max(vein, 1.0 - smoothstep(bladeEdge - 0.08, bladeEdge + 0.04, aAbs));
+        if (mask < 0.06) discard;
+        rgb = mix(rgb * (0.72 + 0.35 * (1.0 - aAbs)), rgb * 1.45 + vec3(0.18, 0.24, 0.08) * uStrandGlow, vein);
+        alpha *= mask;
+    }
+    else if (tag < 7.5)
+    {
+        // Underwater Giant Kelp: stipe + ruffled side blades + glowing golden gas bladders
+        float stipe = 1.0 - smoothstep(0.10, 0.19, aAbs);
+        float ruffle = 0.58 + 0.38 * sin(u * 26.0 + seed * 12.0 + uTime * 1.4) * sin(u * 3.14159);
+        float blade = 1.0 - smoothstep(ruffle - 0.10, ruffle + 0.04, aAbs);
+        float bladder = exp(-pow(fract(u * 9.0 + seed) - 0.5, 2.0) * 70.0) * (1.0 - smoothstep(0.12, 0.30, aAbs));
+        float mask = max(stipe, blade * 0.85);
+        if (mask < 0.06) discard;
+        rgb = mix(rgb * (0.65 + 0.35 * (1.0 - aAbs)), vec3(0.95, 0.78, 0.28) * (1.0 + uStrandGlow * 0.4), clamp(bladder, 0.0, 1.0));
+        alpha *= mask * 0.92;
+    }
+    else if (tag < 8.5)
+    {
+        // Bioluminescent Sea Anemone Tentacles: translucent cylindrical stalk + glowing neon tip
+        float cyl = sqrt(max(0.0, 1.0 - aAbs * aAbs));
+        float tipGlow = smoothstep(0.62, 0.98, u) * (0.65 + uStrandGlow);
+        rgb = rgb * (0.48 + 0.58 * cyl) + mix(rgb, vec3(0.75, 0.96, 1.0), 0.55) * tipGlow;
+        alpha *= smoothstep(1.0, 0.72, aAbs) * (0.75 + 0.25 * tipGlow);
+    }
+    else
+    {
+        // Electrical Arcs (Tesla Sphere, Static Shock, Plasma Cage, Storm Web): white-hot plasma core + vibrant corona
+        float core = exp(-aAbs * aAbs * 14.0);
+        float corona = exp(-aAbs * aAbs * 2.4) * (0.55 + uStrandGlow * 0.55);
+        float flicker = 0.82 + 0.18 * sin(uTime * 42.0 + seed * 31.0 + u * 12.0);
+        rgb = (rgb * corona + vec3(1.0, 0.98, 1.0) * core * 1.65) * flicker;
+        alpha *= clamp(core + corona * 0.65, 0.0, 1.0);
+    }
+
+    if (alpha <= 0.005) discard;
+    fragColour = vec4(rgb, alpha);
+}
+`;
+

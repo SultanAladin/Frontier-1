@@ -13,7 +13,7 @@ Name = "Obsidian Hand Halftone"
 Category = "FX & Shields"
 Icon = "hand"
 Tint = "#94a3b8"
-Summary = "A sculpted hand dissolved into a halftone shell: densest dots sit on the knuckle creases while a Noise Field ripples the whole sculpture under a ghost wireframe plinth."
+Summary = "Obsidian 3D object wrapped in surface-normal halftone circles or tiles. Swap SpawnObject to Sphere for Halftone Effector Sphere, or any built-in/custom mesh."
 
 [[Layer]]
   Token = "layer-1"
@@ -40,7 +40,7 @@ Summary = "A sculpted hand dissolved into a halftone shell: densest dots sit on 
   Solo = false
   Weight = 1.0
   Blend = 0
-  Parameters = { EffectorMode = 4, EffectorStrength = 0.55, EffectorFrequency = 2.6, EffectorSpeed = 1.1, EffectorPush = 0.18, EffectorScaleBoost = 0.35, EffectorColourShift = 0.4 }
+  Parameters = { EffectorMode = 4, EffectorStrength = 0.65, EffectorFrequency = 2.6, EffectorSpeed = 1.15, EffectorPush = 0.16, EffectorScaleBoost = 0.45, EffectorColourShift = 0.45, EffectorAxis = 2 }
 
 [[Layer]]
   Token = "layer-4"

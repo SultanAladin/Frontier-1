@@ -12,7 +12,7 @@ Name = "Hex Energy Shield"
 Category = "FX & Shields"
 Icon = "shield"
 Tint = "#38bdf8"
-Summary = "Hemispherical hexagonal force-shield canopy with radial impact ripples and shockwave screen refraction."
+Summary = "Parameterized energy barrier with radial impact ripples & screen refraction. Switch SpawnObject (Sphere, HexPrism, Cube, CrystalShard) & Sprite (HexTile, CrystalShard2D) for Hex Shield or Multi-Shape Prism Barrier."
 
 [[Layer]]
   Token = "layer-1"
@@ -21,7 +21,7 @@ Summary = "Hemispherical hexagonal force-shield canopy with radial impact ripple
   Solo = false
   Weight = 1.0
   Blend = 0
-  Parameters = { Mode = 1, Shape = 10, Position = [0, -0.35, 0], Direction = [0, 1, 0], Radius = 1.45, Fill = 0.0, Count = 4096, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+  Parameters = { Mode = 1, Shape = 11, Position = [0, 0.0, 0], Direction = [0, 1, 0], Radius = 1.45, Fill = 0.0, Count = 4096, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0, SpawnObject = 1, SpawnSampleMode = 0, ObjectYaw = 0.0, BackingSurface = 3 }
 
 [[Layer]]
   Token = "layer-2"

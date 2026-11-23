@@ -13,13 +13,13 @@ Name = "Fireworks"
 Category = "Emitters"
 Icon = "fireworks"
 Tint = "#fb7185"
-Summary = "Keyed shell burst every 2.5 s: a radial sphere of streaking embers that arc down and fade — timing keys + radial launch."
+Summary = "Multi-stage Hanabi & New Year's Sky-Text Fireworks: switch FireworkPattern between ClassicBouquet, SkyText ('2026'), Heart, Star, Saturn, Crown, Butterfly, Spiral or GrandFinale."
 
 [Timing]
-StartTime = 0.5
-Duration = 0.08
-Fade = 0.02
-Repeat = 2.5
+StartTime = 0.25
+Duration = 0.14
+Fade = 0.04
+Repeat = 3.5
 
 [[Layer]]
   Token = "layer-1"
@@ -28,7 +28,7 @@ Repeat = 2.5
   Solo = false
   Weight = 1.0
   Blend = 0
-  Parameters = { Mode = 0, Shape = 0, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 0.05, Fill = 0.0, Count = 4096, Rate = 400.0, Lifetime = 2.8, Linger = 1.5, Speed = 7.0, Spread = 0.15, Radial = 1.0 }
+  Parameters = { Mode = 0, Shape = 15, Position = [0, 0.35, 0], Direction = [0, 1, 0], Radius = 1.55, Fill = 0.0, Count = 4096, Rate = 400.0, Lifetime = 3.1, Linger = 1.6, Speed = 2.6, Spread = 0.06, Radial = 1.0, ShapeDetail = 8.0, FireworkPattern = 9, FireworkText = "2026" }
 
 [[Layer]]
   Token = "layer-2"

@@ -8,7 +8,7 @@
 
 | Directory | Prototype Scope | Native C++20 / `.slang` Target |
 | :--- | :--- | :--- |
-| **`FluidEditor/`** | **Fluid Remastered** — WebGL2 gaseous fluid, force-field, and GPU particle studio: 61 particle templates (including all ported Particle Studio automotive, conduit, orbital, and optical-fibre looks), 19 built-in 3D objects + independent Spawn/Carrier custom `.obj`/`.stl`/`.json`/`.facet` mesh import, backing surfaces, and 50 curated TOML presets. | `Engine/SimulationSpace/` + `Engine/Workspaces/` *(Pending C++20 port)* |
+| **`FluidEditor/`** | **Fluid Remastered** — WebGL2 gaseous fluid, force-field, and GPU particle studio: 71 parameterized particle templates (including fluid-coupled GPU strands/webs/flora/electrical arcs, Sky-Text &amp; Shape fireworks, and MoGraph effectors), 19 built-in 3D objects + independent Spawn/Carrier custom `.obj`/`.stl`/`.json`/`.facet` mesh import, backing surfaces, and 54 curated TOML presets. | `Engine/SimulationSpace/` + `Engine/Workspaces/` *(Pending C++20 port)* |
 | **`ProjectZeroEditor/`** | Primary Project-Zero HTML/JS UI specification uniting trapezoidal dock tabs, top Notch, Outliner tree, Construct drawer, and Light/Fog/Wind/Material inspectors. | `Engine/Components/` + `Engine/Lifecycle/EditorLifecycle.*` |
 | **`FrontierWorldMirror/`** | Bidirectional 1:1 HTML mirror of the C++20 World Editor rendering the Cornell-Studio Gallery with interactive `EditorCamera` + Outliner/Inspector sync. | `Engine/GeometricRaster/GlobalIllumination/ShowcaseGalleryScene.{h,cpp}` + `TieredWorldRenderSequence.{h,cpp}` |
 | **`ProjectBrowser/`** | Reference HTML launcher for `.ProjectSpace` filtering, sorting, revision display, and workspace launch. | `Engine/Editor/Explorer/ProjectBrowser.{h,cpp}` |

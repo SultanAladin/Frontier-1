@@ -1,0 +1,96 @@
+# Projectile & Plasma Tracers — particle template (Trails). High-velocity ballistic tracer rounds and glowing projectile trails; raise Gravity and TrailLength for arcing plasma mortar wakes.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Template]
+Order = 68
+Id = "projectile-tracers"
+Name = "Projectile & Plasma Tracers"
+Category = "Trails"
+Icon = "meteor"
+Tint = "#fbbf24"
+Summary = "High-velocity bullet & plasma tracers with glowing wakes; raise Gravity and TrailLength for arcing glowing projectile trails."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 0, Position = [-2.2, -0.35, 0], Direction = [1, 0.24, 0], Radius = 0.18, Fill = 0.0, Count = 1024, Rate = 14.0, Lifetime = 1.45, Linger = 0.75, Speed = 9.5, Spread = 0.08, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 1.85 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.18 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 0.45 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.48 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#ffffff", "#fef08a", "#fb923c", "#38bdf8"], RampSource = 0, MaxSpeed = 12.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.2, Brightness = 1.85, Flicker = 0.25 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.028, SizeEnd = 0.008, SizeRandom = 0.25 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 1.1, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 18, TrailInterval = 0.035, TrailWidth = 0.016, TrailTaper = 0.92, TrailFade = 1.1, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 1.0 }

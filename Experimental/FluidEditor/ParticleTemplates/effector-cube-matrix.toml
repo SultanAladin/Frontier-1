@@ -12,7 +12,7 @@ Name = "Effector Voxel Matrix"
 Category = "Mocap & MoGraph"
 Icon = "effector"
 Tint = "#34d399"
-Summary = "3D voxel cloner lattice driven by dual orbiting MoGraph SDF effectors modulating cube scale, push and colour."
+Summary = "3D MoGraph cube matrix driven by Height Up/Down (Y) effectors modulating elevation, scale and palette; switch EffectorAxis or CarrierMode for 3D shaded cubes."
 
 [[Layer]]
   Token = "layer-1"
@@ -39,7 +39,7 @@ Summary = "3D voxel cloner lattice driven by dual orbiting MoGraph SDF effectors
   Solo = false
   Weight = 1.0
   Blend = 0
-  Parameters = { EffectorMode = 2, EffectorStrength = 1.25, EffectorFrequency = 1.5, EffectorSpeed = 1.5, EffectorPush = 0.35, EffectorScaleBoost = 1.5, EffectorColourShift = 0.85 }
+  Parameters = { EffectorMode = 2, EffectorStrength = 1.25, EffectorFrequency = 1.5, EffectorSpeed = 1.5, EffectorPush = 0.35, EffectorScaleBoost = 1.4, EffectorColourShift = 0.85, EffectorAxis = 1 }
 
 [[Layer]]
   Token = "layer-4"
