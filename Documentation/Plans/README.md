@@ -8,6 +8,7 @@
 
 | Plan Document | Domain |
 | :--- | :--- |
+| [EnvironmentConstructDirectivePlan.md](EnvironmentConstructDirectivePlan.md) | **🚩 Ready for Review (`2026-11-23`)**: Rendered HTML reference (`2fd4c62`, 9 PNG captures + DOM tokens), audited C++/`.slang` defects, decision tables, and 1:1 native blueprint for constructing/removing Sun, Clouds, Moon, Stars & Atmosphere under one `Environment` folder + HTML-matched Outliner right-click directive sheet |
 | [WorldAuthoringAssetDagPlan.md](WorldAuthoringAssetDagPlan.md) | Proposed data-driven world authoring, approved asset formats, environment construction/removal and persistent dependency DAG |
 | [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
 | [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
