@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                           GEOMETRYINSPECTOR.H
+                                                       IMPORTEDGEOMETRYINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance Geometry/Primitive/Vehicle Inspector (Overview with retained PBR preview, Transform, Material, Physics — no Workspaces)
+// 🧩 Standalone multi-instance ImportedGeometryInspector (Category 3 Geometry: Imported glTF/FBX/OBJ/USD/STEP/STL exchange pipeline)
 
 #pragma once
 
@@ -11,31 +11,31 @@
 namespace Frontier
 {
 
-class GeometryInspector
+class ImportedGeometryInspector
 {
 public:
-    GeometryInspector() noexcept = default;
+    ImportedGeometryInspector() noexcept = default;
 
-    [[nodiscard]] static const char* QuerySubtitle(const OutlinerRecordEntry& Entry) noexcept
+    [[nodiscard]] static const char* QuerySubtitle() noexcept
     {
-        return Entry.Subtitle.empty() ? "Geometry  ·  transform  ·  OpenPBR" : Entry.Subtitle.c_str();
+        return "Imported geometry  ·  exchange pipeline";
     }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
-        OutlinerRecordEntry& Entry, GeometrySpecimenData& Instance,
+        OutlinerRecordEntry& Entry, ImportedGeometryData& Instance,
         GeometricRaster::WorldSceneSpecification& Scene,
         const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched);
 
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
-    [[nodiscard]] uint32_t QueryPreviewUploads() const noexcept { return SpecimenPreview.QueryUploadCount(); }
+    [[nodiscard]] uint32_t QueryPreviewUploads() const noexcept { return ExchangePreview.QueryUploadCount(); }
 
 private:
-    void UpdateSpecimenSurface(const OutlinerRecordEntry& Entry, const GeometrySpecimenData& Instance);
+    void UpdateExchangeSurface(const ImportedGeometryData& Instance);
 
     uint32_t                ActivePage      = 0u;
     uint32_t                ActiveDragId    = 0u;
-    InspectorPreviewSurface SpecimenPreview {};
+    InspectorPreviewSurface ExchangePreview {};
 };
 
 } // namespace Frontier

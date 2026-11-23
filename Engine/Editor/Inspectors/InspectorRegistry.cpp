@@ -36,11 +36,71 @@ enum class ResolvedInspectorTarget : uint8_t
     Camera           = 14u,
     LensFlare        = 15u,
     MotionBlur       = 16u,
-    Light            = 17u,
-    EnvironmentLight = 18u,
-    PostProcess      = 19u,
-    Geometry         = 20u,
+    Light              = 17u,
+    EnvironmentLight   = 18u,
+    PostProcess        = 19u,
+    AnalyticPrimitive  = 20u,
+    NativeGeometry     = 21u,
+    ImportedGeometry   = 22u,
+    ProceduralGeometry = 23u,
 };
+
+[[nodiscard]] bool ContainsCaseFold(std::string_view Haystack, std::string_view Needle) noexcept
+{
+    if (Needle.empty() || Haystack.size() < Needle.size()) return false;
+    for (std::size_t I = 0u; I + Needle.size() <= Haystack.size(); ++I)
+    {
+        bool Match = true;
+        for (std::size_t J = 0u; J < Needle.size(); ++J)
+        {
+            const unsigned char A = static_cast<unsigned char>(Haystack[I + J]);
+            const unsigned char B = static_cast<unsigned char>(Needle[J]);
+            if (std::tolower(A) != std::tolower(B)) { Match = false; break; }
+        }
+        if (Match) return true;
+    }
+    return false;
+}
+
+[[nodiscard]] ResolvedInspectorTarget ClassifyGeometryEntry(const OutlinerRecordEntry& Entry) noexcept
+{
+    const std::string_view Tag = Entry.DomainTag;
+    if (Tag.rfind("geom:primitive", 0u) == 0u || Tag.rfind("geometry:primitive", 0u) == 0u || Tag.rfind("prim:", 0u) == 0u)
+        return ResolvedInspectorTarget::AnalyticPrimitive;
+    if (Tag.rfind("geom:imported", 0u) == 0u || Tag.rfind("import:", 0u) == 0u)
+        return ResolvedInspectorTarget::ImportedGeometry;
+    if (Tag.rfind("geom:procedural", 0u) == 0u || Tag.rfind("proc:", 0u) == 0u || Tag.rfind("parametric:", 0u) == 0u)
+        return ResolvedInspectorTarget::ProceduralGeometry;
+    if (Tag.rfind("geom:native", 0u) == 0u || Tag.rfind("native:", 0u) == 0u)
+        return ResolvedInspectorTarget::NativeGeometry;
+
+    // Smart automatic classification for any arbitrary Outliner geometry entry
+    const std::string Combined = Entry.Title + " " + Entry.Subtitle + " " + Entry.DomainTag;
+    if (ContainsCaseFold(Combined, ".gltf") || ContainsCaseFold(Combined, ".glb") ||
+        ContainsCaseFold(Combined, ".fbx")  || ContainsCaseFold(Combined, ".obj") ||
+        ContainsCaseFold(Combined, ".usd")  || ContainsCaseFold(Combined, ".step") ||
+        ContainsCaseFold(Combined, ".stp")  || ContainsCaseFold(Combined, ".stl") ||
+        ContainsCaseFold(Combined, "imported"))
+    {
+        return ResolvedInspectorTarget::ImportedGeometry;
+    }
+    if (ContainsCaseFold(Combined, "procedural") || ContainsCaseFold(Combined, "parametric") ||
+        ContainsCaseFold(Combined, "terrain")    || ContainsCaseFold(Combined, "voronoi") ||
+        ContainsCaseFold(Combined, "sweep")      || ContainsCaseFold(Combined, "fracture"))
+    {
+        return ResolvedInspectorTarget::ProceduralGeometry;
+    }
+    if (ContainsCaseFold(Combined, "sphere") || ContainsCaseFold(Combined, "box") ||
+        ContainsCaseFold(Combined, "cube")   || ContainsCaseFold(Combined, "cylinder") ||
+        ContainsCaseFold(Combined, "cone")   || ContainsCaseFold(Combined, "torus") ||
+        ContainsCaseFold(Combined, "capsule")|| ContainsCaseFold(Combined, "plane") ||
+        ContainsCaseFold(Combined, "primitive"))
+    {
+        return ResolvedInspectorTarget::AnalyticPrimitive;
+    }
+    // Universal fallback for all native engine geometry / assemblies / vehicles
+    return ResolvedInspectorTarget::NativeGeometry;
+}
 
 [[nodiscard]] ResolvedInspectorTarget ResolveTarget(const OutlinerRecordEntry& Entry) noexcept
 {
@@ -69,35 +129,38 @@ enum class ResolvedInspectorTarget : uint8_t
     {
         case ConstructSlotCategory::OpticsCamera:   return ResolvedInspectorTarget::Camera;
         case ConstructSlotCategory::PointLuminaire: return ResolvedInspectorTarget::Light;
-        default:                                    return ResolvedInspectorTarget::Geometry;
+        default:                                    return ClassifyGeometryEntry(Entry);
     }
 }
 
-[[nodiscard]] const char* ResolveSubtitle(ResolvedInspectorTarget Target, const OutlinerRecordEntry& Entry) noexcept
+[[nodiscard]] const char* ResolveSubtitle(ResolvedInspectorTarget Target, const OutlinerRecordEntry& /*Entry*/) noexcept
 {
     switch (Target)
     {
-        case ResolvedInspectorTarget::Folder:           return FolderInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Atmosphere:       return AtmosphereInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Solar:            return SolarInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Cloud:            return CloudInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::LocalCloud:       return LocalCloudInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Lunar:            return LunarInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Starfield:        return StarfieldInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Wind:             return WindInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::HeightFog:        return HeightFogInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::AtmosphericFog:   return AtmosphericFogInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::LocalFog:         return LocalFogInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::GodRays:          return GodRaysInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Precipitation:    return PrecipitationInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Rainbow:          return RainbowInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Camera:           return CameraInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::LensFlare:        return LensFlareInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::MotionBlur:       return MotionBlurInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::Light:            return LightInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::EnvironmentLight: return EnvironmentLightInspector::QuerySubtitle();
-        case ResolvedInspectorTarget::PostProcess:      return PostProcessInspector::QuerySubtitle();
-        default:                                        return GeometryInspector::QuerySubtitle(Entry);
+        case ResolvedInspectorTarget::Folder:             return FolderInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Atmosphere:         return AtmosphereInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Solar:              return SolarInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Cloud:              return CloudInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::LocalCloud:         return LocalCloudInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Lunar:              return LunarInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Starfield:          return StarfieldInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Wind:               return WindInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::HeightFog:          return HeightFogInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::AtmosphericFog:     return AtmosphericFogInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::LocalFog:           return LocalFogInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::GodRays:            return GodRaysInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Precipitation:      return PrecipitationInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Rainbow:            return RainbowInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Camera:             return CameraInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::LensFlare:          return LensFlareInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::MotionBlur:         return MotionBlurInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Light:              return LightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::EnvironmentLight:   return EnvironmentLightInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::PostProcess:        return PostProcessInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::AnalyticPrimitive:  return AnalyticPrimitiveInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::ImportedGeometry:   return ImportedGeometryInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::ProceduralGeometry: return ProceduralGeometryInspector::QuerySubtitle();
+        default:                                          return NativeGeometryInspector::QuerySubtitle();
     }
 }
 
@@ -235,8 +298,17 @@ bool InspectorRegistry::ConstructActiveInspector(
         case ResolvedInspectorTarget::PostProcess:
             CursorY = PostProcess.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessPostProcess(Entry->Token), DisplaySettings, Input, LocalMutated, PageSwitched);
             break;
-        case ResolvedInspectorTarget::Geometry:
-            CursorY = Geometry.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessGeometrySpecimen(Entry->Token, Scene), Scene, Input, LocalMutated, PageSwitched);
+        case ResolvedInspectorTarget::AnalyticPrimitive:
+            CursorY = AnalyticPrimitive.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessAnalyticPrimitive(Entry->Token, *Entry, Scene), Scene, Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::NativeGeometry:
+            CursorY = NativeGeometry.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessNativeGeometry(Entry->Token, *Entry, Scene), Scene, Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::ImportedGeometry:
+            CursorY = ImportedGeometry.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessImportedGeometry(Entry->Token, *Entry, Scene), Scene, Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::ProceduralGeometry:
+            CursorY = ProceduralGeometry.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessProceduralGeometry(Entry->Token, *Entry, Scene), Scene, Input, LocalMutated, PageSwitched);
             break;
     }
 
@@ -271,7 +343,10 @@ bool InspectorRegistry::ConstructActiveInspector(
     if (ResetRequested)
     {
         Instances.EraseEntry(Entry->Token);
-        if (Target == ResolvedInspectorTarget::Geometry)
+        if (Target == ResolvedInspectorTarget::AnalyticPrimitive ||
+            Target == ResolvedInspectorTarget::NativeGeometry    ||
+            Target == ResolvedInspectorTarget::ImportedGeometry  ||
+            Target == ResolvedInspectorTarget::ProceduralGeometry)
         {
             Entry->PositionX = Entry->PositionY = Entry->PositionZ = 0.0f;
             Entry->RotationX = Entry->RotationY = Entry->RotationZ = 0.0f;

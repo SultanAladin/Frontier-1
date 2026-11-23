@@ -12,15 +12,16 @@
 #include "Engine/Components/Panes/InspectorPanel.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
+#include "Engine/Editor/Inspectors/AnalyticPrimitiveInspector.h"
 #include "Engine/Editor/Inspectors/AtmosphereInspector.h"
 #include "Engine/Editor/Inspectors/AtmosphericFogInspector.h"
 #include "Engine/Editor/Inspectors/CameraInspector.h"
 #include "Engine/Editor/Inspectors/CloudInspector.h"
 #include "Engine/Editor/Inspectors/EnvironmentLightInspector.h"
 #include "Engine/Editor/Inspectors/FolderInspector.h"
-#include "Engine/Editor/Inspectors/GeometryInspector.h"
 #include "Engine/Editor/Inspectors/GodRaysInspector.h"
 #include "Engine/Editor/Inspectors/HeightFogInspector.h"
+#include "Engine/Editor/Inspectors/ImportedGeometryInspector.h"
 #include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
 #include "Engine/Editor/Inspectors/LensFlareInspector.h"
 #include "Engine/Editor/Inspectors/LightInspector.h"
@@ -28,8 +29,10 @@
 #include "Engine/Editor/Inspectors/LocalFogInspector.h"
 #include "Engine/Editor/Inspectors/LunarInspector.h"
 #include "Engine/Editor/Inspectors/MotionBlurInspector.h"
+#include "Engine/Editor/Inspectors/NativeGeometryInspector.h"
 #include "Engine/Editor/Inspectors/PostProcessInspector.h"
 #include "Engine/Editor/Inspectors/PrecipitationInspector.h"
+#include "Engine/Editor/Inspectors/ProceduralGeometryInspector.h"
 #include "Engine/Editor/Inspectors/RainbowInspector.h"
 #include "Engine/Editor/Inspectors/SolarInspector.h"
 #include "Engine/Editor/Inspectors/StarfieldInspector.h"
@@ -80,34 +83,40 @@ public:
     [[nodiscard]] MotionBlurInspector&       QueryMotionBlur() noexcept { return MotionBlur; }
     [[nodiscard]] LightInspector&            QueryLight() noexcept { return Light; }
     [[nodiscard]] EnvironmentLightInspector& QueryEnvironmentLight() noexcept { return EnvironmentLight; }
-    [[nodiscard]] PostProcessInspector&      QueryPostProcess() noexcept { return PostProcess; }
-    [[nodiscard]] GeometryInspector&         QueryGeometry() noexcept { return Geometry; }
-    [[nodiscard]] InspectorInstanceRegister& AccessInstances() noexcept { return Instances; }
-    [[nodiscard]] FolderInspector&           QueryFolder() noexcept { return Folder; }
+    [[nodiscard]] PostProcessInspector&        QueryPostProcess() noexcept { return PostProcess; }
+    [[nodiscard]] AnalyticPrimitiveInspector&  QueryAnalyticPrimitive() noexcept { return AnalyticPrimitive; }
+    [[nodiscard]] NativeGeometryInspector&     QueryNativeGeometry() noexcept { return NativeGeometry; }
+    [[nodiscard]] ImportedGeometryInspector&   QueryImportedGeometry() noexcept { return ImportedGeometry; }
+    [[nodiscard]] ProceduralGeometryInspector& QueryProceduralGeometry() noexcept { return ProceduralGeometry; }
+    [[nodiscard]] InspectorInstanceRegister&   AccessInstances() noexcept { return Instances; }
+    [[nodiscard]] FolderInspector&             QueryFolder() noexcept { return Folder; }
 
 private:
-    InspectorInstanceRegister Instances        {};
-    AtmosphereInspector       Atmosphere       {};
-    SolarInspector            Solar            {};
-    CloudInspector            Cloud            {};
-    LocalCloudInspector       LocalCloud       {};
-    LunarInspector            Lunar            {};
-    StarfieldInspector        Starfield        {};
-    WindInspector             Wind             {};
-    HeightFogInspector        HeightFog        {};
-    AtmosphericFogInspector   AtmosphericFog   {};
-    LocalFogInspector         LocalFog         {};
-    GodRaysInspector          GodRays          {};
-    PrecipitationInspector    Precipitation    {};
-    RainbowInspector          Rainbow          {};
-    CameraInspector           Camera           {};
-    LensFlareInspector        LensFlare        {};
-    MotionBlurInspector       MotionBlur       {};
-    LightInspector            Light            {};
-    EnvironmentLightInspector EnvironmentLight {};
-    PostProcessInspector      PostProcess      {};
-    GeometryInspector         Geometry         {};
-    FolderInspector           Folder           {};
+    InspectorInstanceRegister   Instances          {};
+    AtmosphereInspector         Atmosphere         {};
+    SolarInspector              Solar              {};
+    CloudInspector              Cloud              {};
+    LocalCloudInspector         LocalCloud         {};
+    LunarInspector              Lunar              {};
+    StarfieldInspector          Starfield          {};
+    WindInspector               Wind               {};
+    HeightFogInspector          HeightFog          {};
+    AtmosphericFogInspector     AtmosphericFog     {};
+    LocalFogInspector           LocalFog           {};
+    GodRaysInspector            GodRays            {};
+    PrecipitationInspector      Precipitation      {};
+    RainbowInspector            Rainbow            {};
+    CameraInspector             Camera             {};
+    LensFlareInspector          LensFlare          {};
+    MotionBlurInspector         MotionBlur         {};
+    LightInspector              Light              {};
+    EnvironmentLightInspector   EnvironmentLight   {};
+    PostProcessInspector        PostProcess        {};
+    AnalyticPrimitiveInspector  AnalyticPrimitive  {};
+    NativeGeometryInspector     NativeGeometry     {};
+    ImportedGeometryInspector   ImportedGeometry   {};
+    ProceduralGeometryInspector ProceduralGeometry {};
+    FolderInspector             Folder             {};
 
     uint32_t LastEntryId   = 0u;
     float    ScrollOffsetY = 0.0f;

@@ -45,7 +45,10 @@ void InspectorInstanceRegister::Clear() noexcept
     Lights.clear();
     EnvironmentLights.clear();
     PostProcesses.clear();
-    Specimens.clear();
+    AnalyticPrimitives.clear();
+    NativeGeometries.clear();
+    ImportedGeometries.clear();
+    ProceduralGeometries.clear();
 }
 
 void InspectorInstanceRegister::EraseEntry(OutlinerSlotToken Token) noexcept
@@ -70,7 +73,10 @@ void InspectorInstanceRegister::EraseEntry(OutlinerSlotToken Token) noexcept
     Lights.erase(Key);
     EnvironmentLights.erase(Key);
     PostProcesses.erase(Key);
-    Specimens.erase(Key);
+    AnalyticPrimitives.erase(Key);
+    NativeGeometries.erase(Key);
+    ImportedGeometries.erase(Key);
+    ProceduralGeometries.erase(Key);
 }
 
 AtmosphereInstanceData& InspectorInstanceRegister::AccessAtmosphere(
@@ -224,16 +230,111 @@ PostProcessInstanceData& InspectorInstanceRegister::AccessPostProcess(OutlinerSl
     return PostProcesses[Token.Identifier];
 }
 
-GeometrySpecimenData& InspectorInstanceRegister::AccessGeometrySpecimen(
-    OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
+namespace
 {
-    auto [It, Inserted] = Specimens.try_emplace(Token.Identifier);
-    if (Inserted && Scene.MaterialRegister.QuerySlotCount() > 0u)
+[[nodiscard]] bool ContainsLower(std::string_view Haystack, std::string_view Needle) noexcept
+{
+    if (Needle.empty() || Haystack.size() < Needle.size()) return false;
+    for (std::size_t I = 0u; I + Needle.size() <= Haystack.size(); ++I)
     {
-        const auto& Authored = Scene.MaterialRegister.InspectAuthoredMaterial(0u);
-        It->second.AlbedoTint = Authored.Diffuse.BaseColor;
-        It->second.Roughness  = Authored.Specular.Roughness;
-        It->second.Metallic   = Authored.Specular.Metalness;
+        bool Match = true;
+        for (std::size_t J = 0u; J < Needle.size(); ++J)
+        {
+            const unsigned char A = static_cast<unsigned char>(Haystack[I + J]);
+            const unsigned char B = static_cast<unsigned char>(Needle[J]);
+            if (std::tolower(A) != std::tolower(B)) { Match = false; break; }
+        }
+        if (Match) return true;
+    }
+    return false;
+}
+
+void SeedSurfaceFromScene(GeometrySurfaceBinding& Binding, const GeometricRaster::WorldSceneSpecification& Scene) noexcept
+{
+    if (Scene.MaterialRegister.QuerySlotCount() > 0u)
+    {
+        const uint16_t Slot = std::min<uint16_t>(Binding.MaterialSlotOrdinal, static_cast<uint16_t>(Scene.MaterialRegister.QuerySlotCount() - 1u));
+        const auto& Authored = Scene.MaterialRegister.InspectAuthoredMaterial(Slot);
+        Binding.AlbedoTint = Authored.Diffuse.BaseColor;
+        Binding.Roughness  = Authored.Specular.Roughness;
+        Binding.Metallic   = Authored.Specular.Metalness;
+    }
+}
+} // namespace
+
+AnalyticPrimitiveData& InspectorInstanceRegister::AccessAnalyticPrimitive(
+    OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = AnalyticPrimitives.try_emplace(Token.Identifier);
+    if (Inserted)
+    {
+        SeedSurfaceFromScene(It->second.Surface, Scene);
+        const std::string Combined = Entry.DomainTag + " " + Entry.Title + " " + Entry.Subtitle;
+        if (ContainsLower(Combined, "box") || ContainsLower(Combined, "cube"))          It->second.FormIndex = 1u;
+        else if (ContainsLower(Combined, "cylinder"))                                    It->second.FormIndex = 2u;
+        else if (ContainsLower(Combined, "cone"))                                        It->second.FormIndex = 3u;
+        else if (ContainsLower(Combined, "torus"))                                       It->second.FormIndex = 4u;
+        else if (ContainsLower(Combined, "capsule"))                                     It->second.FormIndex = 5u;
+        else if (ContainsLower(Combined, "plane") || ContainsLower(Combined, "ground")) It->second.FormIndex = 6u;
+        else                                                                             It->second.FormIndex = 0u;
+    }
+    return It->second;
+}
+
+NativeGeometryData& InspectorInstanceRegister::AccessNativeGeometry(
+    OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = NativeGeometries.try_emplace(Token.Identifier);
+    if (Inserted)
+    {
+        SeedSurfaceFromScene(It->second.Surface, Scene);
+        if (!Entry.Title.empty())
+        {
+            It->second.PackageReference = "EngineContent/Geometry/" + Entry.Title + ".GeometrySpace";
+        }
+        if (!Scene.ClusterInstances.empty())
+        {
+            It->second.ClusterCount = std::max<uint32_t>(16u, static_cast<uint32_t>(Scene.ClusterInstances.size()) * 24u);
+        }
+    }
+    return It->second;
+}
+
+ImportedGeometryData& InspectorInstanceRegister::AccessImportedGeometry(
+    OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = ImportedGeometries.try_emplace(Token.Identifier);
+    if (Inserted)
+    {
+        SeedSurfaceFromScene(It->second.Surface, Scene);
+        const auto WithExt = [&](std::string_view Ext) -> std::string
+        {
+            return ContainsLower(Entry.Title, Ext) ? ("Imports/" + Entry.Title) : ("Imports/" + Entry.Title + std::string(Ext));
+        };
+        const std::string Combined = Entry.DomainTag + " " + Entry.Title + " " + Entry.Subtitle;
+        if (ContainsLower(Combined, "fbx"))                                          { It->second.ExchangeFormatIndex = 1u; It->second.SourcePath = WithExt(".fbx"); }
+        else if (ContainsLower(Combined, "obj"))                                     { It->second.ExchangeFormatIndex = 2u; It->second.SourcePath = WithExt(".obj"); }
+        else if (ContainsLower(Combined, "usd"))                                     { It->second.ExchangeFormatIndex = 3u; It->second.SourcePath = WithExt(".usdc"); }
+        else if (ContainsLower(Combined, "step") || ContainsLower(Combined, ".stp")) { It->second.ExchangeFormatIndex = 4u; It->second.SourcePath = WithExt(".step"); It->second.SourceUnitIndex = 0u; }
+        else if (ContainsLower(Combined, "stl"))                                     { It->second.ExchangeFormatIndex = 5u; It->second.SourcePath = WithExt(".stl"); It->second.SourceUnitIndex = 0u; }
+        else                                                                         { It->second.ExchangeFormatIndex = 0u; It->second.SourcePath = WithExt(".gltf"); }
+    }
+    return It->second;
+}
+
+ProceduralGeometryData& InspectorInstanceRegister::AccessProceduralGeometry(
+    OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene)
+{
+    auto [It, Inserted] = ProceduralGeometries.try_emplace(Token.Identifier);
+    if (Inserted)
+    {
+        SeedSurfaceFromScene(It->second.Surface, Scene);
+        const std::string Combined = Entry.DomainTag + " " + Entry.Title + " " + Entry.Subtitle;
+        if (ContainsLower(Combined, "terrain") || ContainsLower(Combined, "height")) It->second.GeneratorIndex = 1u;
+        else if (ContainsLower(Combined, "boolean") || ContainsLower(Combined, "csg")) It->second.GeneratorIndex = 2u;
+        else if (ContainsLower(Combined, "spline") || ContainsLower(Combined, "loft")) It->second.GeneratorIndex = 3u;
+        else if (ContainsLower(Combined, "fracture") || ContainsLower(Combined, "voronoi")) It->second.GeneratorIndex = 4u;
+        else It->second.GeneratorIndex = 0u;
     }
     return It->second;
 }

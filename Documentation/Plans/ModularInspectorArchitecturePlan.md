@@ -62,8 +62,11 @@
 | 17 | `LightInspector.{h,cpp}` | `Overview`, `Intensity`, `Beam`, `Shadows` | Retained photometric beam-cone preview | Yes |
 | 18 | `EnvironmentLightInspector.{h,cpp}` | `Overview`, `Indirect` | Retained hemisphere irradiance preview | Yes |
 | 19 | `PostProcessInspector.{h,cpp}` | `Overview`, `Tone`, `Colour` | Tone-curve response plot | Yes |
-| 20 | `GeometryInspector.{h,cpp}` | `Overview`, `Transform`, `Material`, `Physics` | Retained PBR specimen preview (re-renders only on change; no heavy Workspaces) | Yes |
-| 21 | `FolderInspector.{h,cpp}` | `Overview`, `Contents` | Generic container summary for any Outliner folder | Yes |
+| 20 | `AnalyticPrimitiveInspector.{h,cpp}` | `Overview`, `Shape`, `Transform`, `Material`, `Physics` | Category 1 Geometry: retained analytic raycast preview (Sphere/Box/Cylinder/Cone/Torus/Capsule/Plane) | Yes |
+| 21 | `NativeGeometryInspector.{h,cpp}` | `Overview`, `Geometry`, `Transform`, `Material`, `Physics` | Category 2 Geometry: retained native `.GeometrySpace` preview + Cluster-LOD / Local SDF KPIs (universal fallback) | Yes |
+| 22 | `ImportedGeometryInspector.{h,cpp}` | `Overview`, `Import`, `Transform`, `Material`, `Physics` | Category 3 Geometry: retained exchange preview + glTF/FBX/OBJ/USD/STEP/STL import pipeline & re-import | Yes |
+| 23 | `ProceduralGeometryInspector.{h,cpp}` | `Overview`, `Generator`, `Transform`, `Material`, `Physics` | Category 4 Geometry: retained procedural preview + Sweep/Terrain/Boolean/Spline/Voronoi generator & rebuild | Yes |
+| 24 | `FolderInspector.{h,cpp}` | `Overview`, `Contents` | Generic container summary for any Outliner folder | Yes |
 
 ---
 

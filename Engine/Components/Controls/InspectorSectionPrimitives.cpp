@@ -1107,6 +1107,137 @@ float ConstructNotesSection(
     return Section.Bottom() + InspectorMetrics::SectionGap;
 }
 
+float ConstructTransformSections(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    OutlinerRecordEntry&    Entry,
+    uint32_t                ControlOriginId,
+    uint32_t&               InOutActiveDragId,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept
+{
+    const float PadX  = InspectorMetrics::SectionPadX;
+    const float BodyW = InnerWidth - PadX * 2.0f;
+    float CursorY     = TopY;
+    {
+        const Rectangle2D S { LeftX, CursorY, InnerWidth, 250.0f };
+        ConstructSectionSurface(Surface, S, "Position");
+        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
+        Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 1u, "X", "m", "%.2f", -500.0f, 500.0f, Entry.PositionX, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 2u, "Y", "m", "%.2f", -500.0f, 500.0f, Entry.PositionY, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        (void)ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 3u, "Z", "m", "%.2f", -500.0f, 500.0f, Entry.PositionZ, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+    }
+    {
+        const Rectangle2D S { LeftX, CursorY, InnerWidth, 250.0f };
+        ConstructSectionSurface(Surface, S, "Rotation");
+        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
+        Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 4u, "Pitch", "deg", "%.1f", -180.0f, 180.0f, Entry.RotationX, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 5u, "Roll",  "deg", "%.1f", -180.0f, 180.0f, Entry.RotationY, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        (void)ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 6u, "Yaw",   "deg", "%.1f", -180.0f, 180.0f, Entry.RotationZ, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+    }
+    {
+        const Rectangle2D S { LeftX, CursorY, InnerWidth, 250.0f };
+        ConstructSectionSurface(Surface, S, "Scale");
+        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
+        Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 7u, "Scale X", "x", "%.2f", 0.05f, 50.0f, Entry.ScaleX, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 8u, "Scale Y", "x", "%.2f", 0.05f, 50.0f, Entry.ScaleY, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        (void)ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 9u, "Scale Z", "x", "%.2f", 0.05f, 50.0f, Entry.ScaleZ, InOutActiveDragId, Input, OutMutated, Entry.Locked);
+        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+    }
+    return CursorY;
+}
+
+float ConstructMaterialSection(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    GeometrySurfaceBinding& Binding,
+    uint32_t                ControlOriginId,
+    uint32_t&               InOutActiveDragId,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept
+{
+    const float PadX  = InspectorMetrics::SectionPadX;
+    const float BodyW = InnerWidth - PadX * 2.0f;
+    char SlotTxt[24]{};
+    std::snprintf(SlotTxt, sizeof(SlotTxt), "Slot %u", static_cast<unsigned>(Binding.MaterialSlotOrdinal));
+    const Rectangle2D S { LeftX, TopY, InnerWidth, 344.0f };
+    ConstructSectionSurface(Surface, S, "OpenPBR surface material", SlotTxt);
+    float Y = TopY + InspectorMetrics::SectionPadTop + 28.0f;
+    Y = ConstructColourFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 1u,  "Albedo tint", Binding.AlbedoTint, InOutActiveDragId, Input, OutMutated);
+    Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 10u, "Roughness",   "",  "%.2f", 0.04f, 1.0f, Binding.Roughness, InOutActiveDragId, Input, OutMutated);
+    Y = ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 11u, "Metallic",    "",  "%.2f", 0.0f,  1.0f, Binding.Metallic,  InOutActiveDragId, Input, OutMutated);
+    (void)ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, ControlOriginId + 12u, "Self glow", "x", "%.2f", 0.0f,  4.0f, Binding.SelfGlow,  InOutActiveDragId, Input, OutMutated);
+    return S.Bottom() + InspectorMetrics::SectionGap;
+}
+
+float ConstructPhysicsSection(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    OutlinerRecordEntry&    Entry,
+    const char*             CollisionSummary,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept
+{
+    const float PadX  = InspectorMetrics::SectionPadX;
+    const float BodyW = InnerWidth - PadX * 2.0f;
+    const Rectangle2D S { LeftX, TopY, InnerWidth, 256.0f };
+    ConstructSectionSurface(Surface, S, "Physics & visibility", CollisionSummary);
+    float Y = TopY + InspectorMetrics::SectionPadTop + 28.0f;
+    Y = ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Visible in viewport", Entry.VisibilityEnabled, Input, OutMutated);
+    Y = ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Cast shadows",        Entry.CastShadows,       Input, OutMutated);
+    Y = ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Dynamic motion",      Entry.DynamicMotion,     Input, OutMutated);
+    (void)ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Lock transform",    Entry.Locked,            Input, OutMutated);
+    return S.Bottom() + InspectorMetrics::SectionGap;
+}
+
+float ConstructMetadataRow(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    const char* Label,
+    const char* ReadingText) noexcept
+{
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX, TopY }, 11.0f, InspectorMetrics::MutedInk, Label);
+    const float RW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 11.0f, ReadingText);
+    const float MaxW = std::max(40.0f, InnerWidth - 96.0f);
+    const float TextX = LeftX + InnerWidth - std::min(RW, MaxW);
+    WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Medium, { TextX, TopY }, MaxW, 11.0f, ColorRgba{ 220u, 222u, 228u, 255u }, ReadingText);
+    return TopY + 24.0f;
+}
+
+bool ConstructSectionActionButton(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    const char*             Label,
+    const PaneInputReading& Input,
+    bool                    Accent) noexcept
+{
+    const Rectangle2D Btn { LeftX, TopY, InnerWidth, 30.0f };
+    const Point2D     Cur { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    const bool        Hov = Btn.Contains(Cur);
+    const ColorRgba   Bg  = Accent
+        ? (Hov ? ColorRgba{ 42u, 62u, 88u, 255u } : ColorRgba{ 32u, 46u, 64u, 255u })
+        : (Hov ? ColorRgba{ 48u, 48u, 54u, 255u } : ColorRgba{ 34u, 34u, 38u, 255u });
+    const ColorRgba   Bdr = Accent ? ColorRgba{ 138u, 184u, 240u, 72u } : ColorRgba{ 255u, 255u, 255u, 20u };
+    const ColorRgba   Ink = Accent ? ColorRgba{ 196u, 224u, 255u, 255u } : InspectorMetrics::HeadingInk;
+    Surface.FillRectangle(Btn, Bg, 12.0f);
+    Surface.StrokeRectangle(Btn, Bdr, 12.0f, 1.0f);
+    const float LW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 11.5f, Label);
+    WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Btn.Center().X - LW * 0.5f, Btn.Y + 8.0f }, 11.5f, Ink, Label);
+    return Hov && Input.PrimaryPointer.Pressed;
+}
+
 void ConstructInspectorFooter(
     PixelSpace& Surface,
     Rectangle2D FooterBounds,

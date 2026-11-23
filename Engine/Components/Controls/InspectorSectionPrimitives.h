@@ -322,6 +322,70 @@ void ConstructCurvePlot(
     float        InnerWidth,
     std::string& NotesText) noexcept;
 
+// Shared OpenPBR surface binding edited by all 4 geometry inspector categories
+struct GeometrySurfaceBinding
+{
+    Mathematics::LinearRGB AlbedoTint          { 0.78f, 0.76f, 0.72f }; // [lin] - OpenPBR diffuse reflectance
+    float                  Roughness           = 0.36f;                 // [0-1] - Isotropic GGX micro-roughness
+    float                  Metallic            = 0.10f;                 // [0-1] - Conductor fraction
+    float                  SelfGlow            = 0.0f;                  // [x]   - Self-illuminance gain
+    uint16_t               MaterialSlotOrdinal = 0u;                    // [idx] - Bound CompactMaterialRegister slot
+};
+
+// Shared Position / Rotation / Scale sections (used by all 4 geometry categories)
+[[nodiscard]] float ConstructTransformSections(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    OutlinerRecordEntry&    Entry,
+    uint32_t                ControlOriginId,
+    uint32_t&               InOutActiveDragId,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept;
+
+// Shared OpenPBR surface material section (used by all 4 geometry categories)
+[[nodiscard]] float ConstructMaterialSection(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    GeometrySurfaceBinding& Binding,
+    uint32_t                ControlOriginId,
+    uint32_t&               InOutActiveDragId,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept;
+
+// Shared Physics & visibility section (used by all 4 geometry categories)
+[[nodiscard]] float ConstructPhysicsSection(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    OutlinerRecordEntry&    Entry,
+    const char*             CollisionSummary,
+    const PaneInputReading& Input,
+    bool&                   OutMutated) noexcept;
+
+// Compact labelled key-value metadata row inside a section
+[[nodiscard]] float ConstructMetadataRow(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    const char* Label,
+    const char* ReadingText) noexcept;
+
+// Full-width interactive pill action button inside a section
+[[nodiscard]] bool ConstructSectionActionButton(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    const char*             Label,
+    const PaneInputReading& Input,
+    bool                    Accent = false) noexcept;
+
 // Bottom 28px inspector footer bar
 void ConstructInspectorFooter(
     PixelSpace& Surface,
@@ -330,5 +394,7 @@ void ConstructInspectorFooter(
     const char* RightCaption) noexcept;
 
 } // namespace InspectorPrimitives
+
+using InspectorPrimitives::GeometrySurfaceBinding;
 
 } // namespace Frontier

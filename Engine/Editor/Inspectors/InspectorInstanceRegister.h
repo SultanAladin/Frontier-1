@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/Controls/InspectorSectionPrimitives.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 #include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
@@ -151,12 +152,63 @@ struct PostProcessInstanceData
     float ChromaticShift   = 0.0f;
 };
 
-struct GeometrySpecimenData
+// Category 1: Analytical Primitive (Sphere, Box, Cylinder, Cone, Torus, Capsule, Plane)
+struct AnalyticPrimitiveData
 {
-    Mathematics::LinearRGB AlbedoTint  { 0.78f, 0.76f, 0.72f };
-    float                  Roughness   = 0.36f;
-    float                  Metallic    = 0.10f;
-    float                  SelfGlow    = 0.0f;
+    GeometrySurfaceBinding Surface          {};
+    uint32_t               FormIndex        = 0u;     // [idx] - 0=Sphere, 1=Box, 2=Cylinder, 3=Cone, 4=Torus, 5=Capsule, 6=Plane
+    float                  RadiusMeters     = 0.50f;  // [m]   - Primary radius / half-extent
+    float                  HeightMeters     = 1.00f;  // [m]   - Vertical span (Box/Cylinder/Cone/Capsule)
+    float                  MinorRadiusMeters= 0.18f;  // [m]   - Tube radius (Torus) or bevel cap
+    uint32_t               RadialSegments   = 32u;    // [cnt] - Analytic tessellation rings
+    float                  BevelMillimeters = 2.0f;   // [mm]  - Edge fillet bevel
+    bool                   Watertight       = true;   // [-]   - Closed watertight solid sewing
+};
+
+// Category 2: Native Engine Geometry (.GeometrySpace / ClusterPyramid / LocalSDF / OpenPBR)
+struct NativeGeometryData
+{
+    GeometrySurfaceBinding Surface            {};
+    std::string            PackageReference   { "EngineContent/Geometry/ShowcaseSpecimen.GeometrySpace" };
+    uint32_t               TriangleCount      = 12480u;
+    uint32_t               ClusterCount       = 98u;
+    uint32_t               LodTierCount       = 3u;
+    float                  LodPixelError      = 1.25f;  // [px]  - Per-instance cluster LOD cut budget
+    float                  CreaseAngleDegrees = 49.0f;  // [deg] - Smooth normal crease threshold
+    bool                   LocalSdfEnabled    = true;   // [-]   - Participates in local SDF occlusion/collision
+    bool                   DoubleSided        = false;  // [-]   - Disable backface culling
+};
+
+// Category 3: Imported Geometry (STEP, STL, glTF, FBX, OBJ, USD exchange pipeline)
+struct ImportedGeometryData
+{
+    GeometrySurfaceBinding Surface             {};
+    std::string            SourcePath          { "Imports/ChassisAssembly.gltf" };
+    uint32_t               ExchangeFormatIndex = 0u;     // [idx] - 0=glTF, 1=FBX, 2=OBJ, 3=USD, 4=STEP, 5=STL
+    uint32_t               SourceUnitIndex     = 2u;     // [idx] - 0=mm, 1=cm, 2=m, 3=in
+    uint32_t               UpAxisIndex         = 0u;     // [idx] - 0=Z-Up, 1=Y-Up
+    float                  ImportScaleFactor   = 1.00f;  // [x]   - Multiplier applied on import
+    float                  CreaseAngleDegrees  = 45.0f;  // [deg] - Imported normal split angle
+    uint32_t               TriangleCount       = 48200u;
+    uint32_t               UvChannelCount      = 2u;
+    bool                   BuildClusterPyramid = true;
+    bool                   BuildLocalSdf       = true;
+    bool                   RecomputeNormals    = false;
+    uint32_t               ImportRevision      = 1u;
+};
+
+// Category 4: Procedural Geometry (Parametric Sweep, Terrain Field, Boolean Solid, Spline Surface, Voronoi Partition)
+struct ProceduralGeometryData
+{
+    GeometrySurfaceBinding Surface            {};
+    uint32_t               GeneratorIndex     = 0u;     // [idx] - 0=Parametric Sweep, 1=Terrain Field, 2=Boolean Solid, 3=Spline Surface, 4=Voronoi Partition
+    uint32_t               RandomSeed         = 42u;    // [id]  - Deterministic procedural seed
+    uint32_t               SubdivisionLevel   = 4u;     // [lvl] - Generator tessellation level [1..8]
+    float                  ChordToleranceMm   = 0.50f;  // [mm]  - Parametric curve/surface chord tolerance
+    float                  FeatureScaleMeters = 2.40f;  // [m]   - Primary spatial wavelength / profile width
+    float                  AmplitudeMeters    = 0.85f;  // [m]   - Extrusion depth / elevation relief
+    bool                   AutoRebuild        = true;   // [-]   - Regenerate automatically on parameter change
+    uint32_t               BuildRevision      = 1u;     // [rev] - Incremented on every procedural rebuild
 };
 
 class InspectorInstanceRegister
@@ -187,7 +239,10 @@ public:
     LightInstanceData&            AccessLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     EnvironmentLightInstanceData& AccessEnvironmentLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     PostProcessInstanceData&      AccessPostProcess(OutlinerSlotToken Token);
-    GeometrySpecimenData&         AccessGeometrySpecimen(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
+    AnalyticPrimitiveData&        AccessAnalyticPrimitive(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene);
+    NativeGeometryData&           AccessNativeGeometry(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene);
+    ImportedGeometryData&         AccessImportedGeometry(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene);
+    ProceduralGeometryData&       AccessProceduralGeometry(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry, const GeometricRaster::WorldSceneSpecification& Scene);
 
     // Combines ALL visible Outliner instances across ALL folders into WorldSceneSpecification & ViewportDisplaySettings
     void CombineIntoScene(
@@ -220,7 +275,10 @@ private:
     std::unordered_map<uint64_t, LightInstanceData>            Lights            {};
     std::unordered_map<uint64_t, EnvironmentLightInstanceData> EnvironmentLights {};
     std::unordered_map<uint64_t, PostProcessInstanceData>      PostProcesses     {};
-    std::unordered_map<uint64_t, GeometrySpecimenData>         Specimens         {};
+    std::unordered_map<uint64_t, AnalyticPrimitiveData>        AnalyticPrimitives{};
+    std::unordered_map<uint64_t, NativeGeometryData>           NativeGeometries  {};
+    std::unordered_map<uint64_t, ImportedGeometryData>         ImportedGeometries{};
+    std::unordered_map<uint64_t, ProceduralGeometryData>       ProceduralGeometries{};
 };
 
 } // namespace Frontier

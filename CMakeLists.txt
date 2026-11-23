@@ -970,7 +970,10 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Inspectors/LightInspector.cpp
         Engine/Editor/Inspectors/EnvironmentLightInspector.cpp
         Engine/Editor/Inspectors/PostProcessInspector.cpp
-        Engine/Editor/Inspectors/GeometryInspector.cpp
+        Engine/Editor/Inspectors/AnalyticPrimitiveInspector.cpp
+        Engine/Editor/Inspectors/NativeGeometryInspector.cpp
+        Engine/Editor/Inspectors/ImportedGeometryInspector.cpp
+        Engine/Editor/Inspectors/ProceduralGeometryInspector.cpp
         Engine/Editor/Inspectors/FolderInspector.cpp
         Engine/Editor/Inspectors/InspectorRegistry.cpp
         Engine/Lifecycle/EditorLifecycle.cpp

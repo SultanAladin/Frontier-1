@@ -187,8 +187,13 @@ int main()
     const OutlinerSlotToken MotionBlurTok = AppendEntry(Outliner, "Motion Shutter",   "Motion Blur",     "env:motion-blur",       ConstructSlotCategory::LayerGroup,     {});
     const OutlinerSlotToken LightTok      = AppendEntry(Outliner, "Key Light",        "Point Light",     "lighting:light",        ConstructSlotCategory::PointLuminaire, PropsFolder);
     const OutlinerSlotToken EnvLightTok   = AppendEntry(Outliner, "Sky IBL",          "Environment IBL", "env:environment-light", ConstructSlotCategory::LayerGroup,     SkyRigFolder);
-    const OutlinerSlotToken PostFxTok     = AppendEntry(Outliner, "Filmic Grade",     "Post Process",    "env:post-process",      ConstructSlotCategory::LayerGroup,     {});
-    const OutlinerSlotToken GeometryTok   = AppendEntry(Outliner, "Titanium Sphere",  "Geometry",        "geometry:primitive",    ConstructSlotCategory::GeometryVolume, PropsFolder);
+    const OutlinerSlotToken PostFxTok     = AppendEntry(Outliner, "Filmic Grade",       "Post Process",        "env:post-process",    ConstructSlotCategory::LayerGroup,     {});
+    // All 4 Geometry Categories: (1) Analytical Primitive, (2) Native Engine Geometry, (3) Imported Geometry, (4) Procedural Geometry
+    const OutlinerSlotToken AnalyticTok   = AppendEntry(Outliner, "Titanium Torus",     "Torus Primitive",     "geom:primitive",      ConstructSlotCategory::GeometryVolume, PropsFolder);
+    const OutlinerSlotToken NativeTok     = AppendEntry(Outliner, "Aero Coupe GT",      "Native Assembly",     "geom:native",         ConstructSlotCategory::GeometryVolume, PropsFolder);
+    const OutlinerSlotToken ImportedTok   = AppendEntry(Outliner, "ChassisBracket.step","CAD Import",          "geom:imported",       ConstructSlotCategory::GeometryVolume, PropsFolder);
+    const OutlinerSlotToken ProceduralTok = AppendEntry(Outliner, "Alpine Ridge",       "Terrain Generator",   "geom:procedural",     ConstructSlotCategory::GeometryVolume, PropsFolder);
+    const OutlinerSlotToken UntaggedTok   = AppendEntry(Outliner, "Showcase Vehicle",   "Vehicle",             "",                    ConstructSlotCategory::GeometryVolume, PropsFolder);
 
     // 1. Dynamic breadcrumb proof (no hardcoded "ENVIRONMENT")
     bool AllOk = true;
@@ -249,7 +254,10 @@ int main()
     (void)Reg.AccessLight(LightTok, Bundle.Scene);
     (void)Reg.AccessEnvironmentLight(EnvLightTok, Bundle.Scene);
     (void)Reg.AccessPostProcess(PostFxTok);
-    (void)Reg.AccessGeometrySpecimen(GeometryTok, Bundle.Scene);
+    (void)Reg.AccessAnalyticPrimitive(AnalyticTok,   *Outliner.FindEntry(AnalyticTok),   Bundle.Scene);
+    (void)Reg.AccessNativeGeometry(NativeTok,        *Outliner.FindEntry(NativeTok),     Bundle.Scene);
+    (void)Reg.AccessImportedGeometry(ImportedTok,    *Outliner.FindEntry(ImportedTok),   Bundle.Scene);
+    (void)Reg.AccessProceduralGeometry(ProceduralTok,*Outliner.FindEntry(ProceduralTok), Bundle.Scene);
 
     Reg.CombineIntoScene(Outliner, Bundle.Scene, &DisplaySettings);
 
@@ -317,20 +325,44 @@ int main()
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, LightTok, OutDir / "11-Light-Overview.png"), "11-Light-Overview.png");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, EnvLightTok, OutDir / "12-EnvironmentLight-Overview.png"), "12-EnvironmentLight-Overview.png");
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, PostFxTok, OutDir / "13-PostProcess-Overview.png"), "13-PostProcess-Overview.png");
-    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, GeometryTok, OutDir / "14-Geometry-Overview.png"), "14-Geometry-Overview.png");
-    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, GeometryTok, OutDir / "14-Geometry-Overview.png");
+
+    // All 4 Geometry Categories visual exhibits + retained preview upload-count proofs
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AnalyticTok, OutDir / "14-AnalyticPrimitive-Overview.png"), "14-AnalyticPrimitive-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, AnalyticTok, OutDir / "14-AnalyticPrimitive-Overview.png");
     AllOk &= VerifyRequirement(
-        Inspectors.QueryGeometry().QueryPreviewUploads() == 1u,
-        "Retained Geometry specimen preview stays at 1 upload across static frames");
+        Inspectors.QueryAnalyticPrimitive().QueryPreviewUploads() == 1u &&
+        Reg.AccessAnalyticPrimitive(AnalyticTok, *Outliner.FindEntry(AnalyticTok), Bundle.Scene).FormIndex == 4u,
+        "Category 1 Analytical Primitive auto-detects Torus & stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, NativeTok, OutDir / "17-NativeGeometry-Overview.png"), "17-NativeGeometry-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, NativeTok, OutDir / "17-NativeGeometry-Overview.png");
+    AllOk &= VerifyRequirement(
+        Inspectors.QueryNativeGeometry().QueryPreviewUploads() == 1u,
+        "Category 2 Native Engine Geometry stays at 1 retained upload across static frames");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, ImportedTok, OutDir / "18-ImportedGeometry-Overview.png"), "18-ImportedGeometry-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, ImportedTok, OutDir / "18-ImportedGeometry-Overview.png");
+    AllOk &= VerifyRequirement(
+        Inspectors.QueryImportedGeometry().QueryPreviewUploads() == 1u &&
+        Reg.AccessImportedGeometry(ImportedTok, *Outliner.FindEntry(ImportedTok), Bundle.Scene).ExchangeFormatIndex == 4u,
+        "Category 3 Imported Geometry auto-detects STEP format & stays at 1 retained upload");
+
+    AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, ProceduralTok, OutDir / "19-ProceduralGeometry-Overview.png"), "19-ProceduralGeometry-Overview.png");
+    (void)RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, ProceduralTok, OutDir / "19-ProceduralGeometry-Overview.png");
+    AllOk &= VerifyRequirement(
+        Inspectors.QueryProceduralGeometry().QueryPreviewUploads() == 1u &&
+        Reg.AccessProceduralGeometry(ProceduralTok, *Outliner.FindEntry(ProceduralTok), Bundle.Scene).GeneratorIndex == 1u,
+        "Category 4 Procedural Geometry auto-detects Terrain Field & stays at 1 retained upload");
+
     AllOk &= VerifyRequirement(RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, SkyRigFolder, OutDir / "15-Folder-Overview.png"), "15-Folder-Overview.png");
 
-    // 4. Exercise remaining 7 inspectors (LocalCloud, AerialFog, LocalFog, GodRays, Precipitation, Rainbow, LensFlare, MotionBlur) cleanly
-    for (OutlinerSlotToken Tok : { LocalCloudTok, AerialFogTok, LocalFogTok, GodRaysTok, PrecipTok, RainbowTok, LensFlareTok, MotionBlurTok })
+    // 4. Exercise remaining inspectors + untagged universal fallback geometry entry cleanly
+    for (OutlinerSlotToken Tok : { LocalCloudTok, AerialFogTok, LocalFogTok, GodRaysTok, PrecipTok, RainbowTok, LensFlareTok, MotionBlurTok, UntaggedTok })
     {
         AllOk &= RenderInspectorSnapshot(Inspectors, Outliner, Bundle.Scene, DisplaySettings, Tok, OutDir / "99-AuxCheck.png");
     }
     std::filesystem::remove(OutDir / "99-AuxCheck.png", DirEc);
-    AllOk &= VerifyRequirement(true, "All 21 standalone inspectors exercised cleanly without crash");
+    AllOk &= VerifyRequirement(true, "All 24 standalone inspectors (including all 4 Geometry categories + fallback) exercised cleanly");
 
     TypographyRepository::AssignCurrent(nullptr);
     ImGui::DestroyContext(GuiSession);
