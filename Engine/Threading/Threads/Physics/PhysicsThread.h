@@ -77,7 +77,7 @@ private:
     std::atomic<bool>          InitializedMarker   { false };// [-]     - True between Initialize and Finalize
     std::atomic<bool>          RunningMarker       { false };// [-]     - True while dedicated OS thread loop runs
     std::atomic<bool>          SuspendedMarker     { false };// [-]     - True while simulation stepping is paused
-    std::atomic<float>         AtomicFixedStepHz   { 60.0f };// [Hz]    - Live fixed-step cadence readable cross-thread
+    std::atomic<float>         AtomicFixedStepHz   { 60.0f };// [Hz]    - Live fixed-step step rate readable cross-thread
     std::atomic<uint64_t>      CompletedSteps      { 0ull }; // [count] - Cumulative fixed steps executed
     std::thread                DedicatedOsThread   {};       // [-]     - Dedicated OS simulation thread
     std::mutex                 SuspendWakeMutex    {};       // [-]     - Idle-only suspend gate mutex

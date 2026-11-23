@@ -315,7 +315,7 @@ bool ValidatePhysicsConstraintDynamics()
 
     const ConstraintReading HingeReading  = Physics.InspectConstraintReading(HingeTok);
     const ConstraintReading SpringReading = Physics.InspectConstraintReading(SpringTok);
-    const RigidBodySnapshot RotorSnap     = Physics.InspectBodySnapshot(Rotor);
+    const RigidBodyReading RotorSnap     = Physics.InspectBodyReading(Rotor);
     if (!Require(HingeReading.Intact && std::abs(HingeReading.CurrentCoordinate - 0.40f) < 0.05f,
                  "Motorized Hinge reaches 0.40 rad steering target"))
     {

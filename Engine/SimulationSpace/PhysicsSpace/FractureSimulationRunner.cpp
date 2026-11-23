@@ -277,7 +277,7 @@ void FractureSimulationRunner::RefreshSnapshots() noexcept
     for (auto& State : BodyStates)
     {
         if (!State.Token.Valid()) continue;
-        const auto Snap      = Physics.InspectBodySnapshot(State.Token);
+        const auto Snap      = Physics.InspectBodyReading(State.Token);
         State.PositionMeters  = Snap.PositionMeters;
         State.Orientation     = Snap.Orientation;
         State.LinearVelocity  = Snap.LinearVelocity;

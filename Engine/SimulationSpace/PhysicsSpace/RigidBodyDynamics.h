@@ -100,7 +100,7 @@ struct RigidBodyDescriptor
     RigidShapeDescriptor       Shape                {};    // [-]     - Collider shape & surface parameters
 };
 
-struct RigidBodySnapshot
+struct RigidBodyReading
 {
     RigidBodyToken             Token                {};                   // [id]    - Body token
     uint32_t                   InstanceTag          = 0u;                 // [id]    - Caller-owned instance or fragment index

@@ -85,6 +85,7 @@ Related governance documents: [FolderStructure.md](FolderStructure.md) · [Codin
 - `reclamation`
 - `reservoir`
 - `script` / `scripting` *(use `Behavior`, `Logic`, `Directive`, `ExecutionRule`, or `Automation`)*
+- `snapshot` *(avoid Unreal/external-engine vocabulary — use `PublishedReading`, `ReadingBank`, `ReadingLease`, or concrete `*ListReading`)*
 - `stage`
 - `store`
 - `strata` / `stratum` *(use `SurfaceLayer`, `FinishLayer`, `CoatingLayer`, or `MaterialLayerStack`)*
@@ -147,6 +148,7 @@ When replacing or avoiding a banned concept, name the **concrete layout, index l
 | `Provenance` | `SourceTrace`, `BuildOrigin`, `OriginStamp`, or `InputSignature` |
 | `Recipe` | `Specification`, `Definition`, `BuildDescriptor`, `RuleSet`, or `Procedure` |
 | `Script` / `Scripting` | `Behavior`, `Logic`, `Directive`, `ExecutionRule`, or `Automation` |
+| `Snapshot` | `PublishedReading`, `ReadingBank`, `ReadingLease`, or domain-specific `*Reading` (`ConstraintListReading`) |
 | `Studio` | `Workspace`, `Workbench`, or `Authoring` (`WorkspaceLayout`, never `StudioLayout`) |
 | `Tree` | `Network`, `ContainmentIndex`, `Partition`, or `Pyramid` (`FractureNetwork`, never `FractureTree`) |
 
@@ -214,6 +216,7 @@ Use the following distinct visual nouns according to their exact structural role
 - **2026-11-23 (User Ruling)**: Hard-banned `Manifest`, `Config` (must always write `Configuration`), `Bridge`, `Artifact`, `Asset`, `Cache`, `Domain`, and `Digest` everywhere, and re-affirmed `System` / `Subsystem` hard-banned everywhere.
 - **2026-11-23 (User Ruling — Follow-Up)**: Hard-banned `DAG`, `Provenance`, `Recipe`, `Tree` (use `Network`, e.g. `FractureNetwork`), `Studio` (`WorkspaceLayout`, never `StudioLayout`), `Peer`, and `Script` / `Scripting` everywhere. Also locked the `*Space` suffix rule: `*Space` applies exclusively to top-level foundational pillars that have nothing higher above them (e.g. `GeometrySpace`, `ParticleSpace`, `PhysicsSpace`, `AudioSpace`, `PixelSpace`, `MaterialSpace`, `TextureSpace`, `ImageSpace`, `VectorSpace`, `FontSpace`, `ColourSpace`, `VolumetricSpace`, `WorldSpace`), while specialized sub-formats (e.g. `CameraOptics`, `Atmosphere`, `FractureNetwork`) do not end in `Space`.
 - **2026-11-23 (User Ruling — Container & Entrypoint Naming)**: Hard-banned `Hybrid` for container/codec naming (use `DocumentContainerCodec` / `TomlWithBinarySection`) and hard-banned generic `Main.cpp` / `main.cpp` entrypoint filenames across the engine and all projects (use `<ProjectName>Launch.cpp` or `<TargetName>Launch.cpp`, matching `FrontierEditorLaunch.cpp`, `FrontierHostLaunch.cpp`, `UntitledLaunch.cpp`).
+- **2026-11-23 (User Ruling — External-Engine Vocabulary)**: Hard-banned `snapshot` everywhere (filenames, identifiers, comments, plans) — Frontier is not Unreal and does not borrow Unreal replication/socket vocabulary. Use `PublishedReading`, `ReadingBank`, `ReadingLease`, or concrete `*Reading` (`ConstraintListReading`).
 
 ---
 
@@ -237,7 +240,7 @@ Use this combined index to audit identifiers, filenames, directory names, and co
 - **O**: `Object`, `Observer` *(restricted — §3.1)*, `occupant`, `Odyssey`, `Oracle`, `Orion`, `Orphan`
 - **P**: `palette`, `Parent`, `Pass` / `pass`, `peer`, `pill`, `pipeline`, `pool`, `popover`, `popup` / `popups`, `predicate`, `probe`, `Processor`, `proof`, `provenance`, `Provider`
 - **R**: `recipe`, `reclamation`, `Record` *(bare & `RecordStore` barred — §3.1)*, `Representation`, `reservoir`, `Role`
-- **S**: `script` / `scripting`, `Sentinel`, `Service`, `shell`, `Sibling`, `stage`, `state`, `store`, `strata` / `stratum`, `studio`, `Stuff`, `submission`, `Subsystem`, `system` *(avoid: `slice`, `substrate`)*
+- **S**: `script` / `scripting`, `Sentinel`, `Service`, `shell`, `Sibling`, `snapshot`, `stage`, `state`, `store`, `strata` / `stratum`, `studio`, `Stuff`, `submission`, `Subsystem`, `system` *(avoid: `slice`, `substrate`)*
 - **T**: `table`, `Thing`, `Titan`, `Topology` / `topology`, `Traversal` *(exempt only at `SelectionTraversal` — §3.1)*, `tree`, `Trial` / `Trials`, `Tween`
 - **U**: `Utility`
 - **V**: `vacancy`, `value`, `Vanguard`, `Vortex`

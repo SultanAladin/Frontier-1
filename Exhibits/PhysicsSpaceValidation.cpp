@@ -206,7 +206,7 @@ int main()
     for (int Step = 0; Step < 90; ++Step)
     {
         Sequence.Tick(1.0 / 60.0);
-        const RigidBodySnapshot Snap = Physics.InspectBodySnapshot(SphereToken);
+        const RigidBodyReading Snap = Physics.InspectBodyReading(SphereToken);
         SphereTrail.push_back(Snap.PositionMeters);
         for (const ContactImpulseReading& Contact : Physics.InspectRecentContacts())
         {
@@ -214,9 +214,9 @@ int main()
         }
     }
 
-    const RigidBodySnapshot SphereAfterDrop = Physics.InspectBodySnapshot(SphereToken);
-    const RigidBodySnapshot CapsuleAfterDrop = Physics.InspectBodySnapshot(CapsuleToken);
-    const RigidBodySnapshot HullAfterDrop = Physics.InspectBodySnapshot(HullToken);
+    const RigidBodyReading SphereAfterDrop = Physics.InspectBodyReading(SphereToken);
+    const RigidBodyReading CapsuleAfterDrop = Physics.InspectBodyReading(CapsuleToken);
+    const RigidBodyReading HullAfterDrop = Physics.InspectBodyReading(HullToken);
     FRONTIER_REQUIRE(SphereAfterDrop.PositionMeters.Z < 1.2f && SphereAfterDrop.PositionMeters.Z > 0.2f);
     FRONTIER_REQUIRE(CapsuleAfterDrop.PositionMeters.Z < 1.5f && CapsuleAfterDrop.PositionMeters.Z > 0.3f);
     FRONTIER_REQUIRE(HullAfterDrop.PositionMeters.Z < 1.5f && HullAfterDrop.PositionMeters.Z > 0.05f);
@@ -275,7 +275,7 @@ int main()
     for (int I = 0; I < 10; ++I) Sequence.Tick(1.0 / 60.0);
     const ConstraintReading AfterHit = Physics.InspectConstraintReading(BondToken);
     FRONTIER_REQUIRE(AfterHit.Resident && !AfterHit.Intact);
-    FRONTIER_REQUIRE(Physics.InspectBodySnapshot(BondedToken).PositionMeters.Z < 2.8f);
+    FRONTIER_REQUIRE(Physics.InspectBodyReading(BondedToken).PositionMeters.Z < 2.8f);
 
     // 5. Aerodynamic force & torque actuation verification
     RigidBodyDescriptor WindBodyDesc {};
@@ -293,9 +293,9 @@ int main()
         Physics.ApplyForce(WindToken, { 112.0f, 0.0f, 30.0f });
         Physics.ApplyTorque(WindToken, { 0.0f, 0.0f, 15.0f });
         Sequence.Tick(1.0 / 60.0);
-        WindBodyTrail.push_back(Physics.InspectBodySnapshot(WindToken).PositionMeters);
+        WindBodyTrail.push_back(Physics.InspectBodyReading(WindToken).PositionMeters);
     }
-    const RigidBodySnapshot WindSnap = Physics.InspectBodySnapshot(WindToken);
+    const RigidBodyReading WindSnap = Physics.InspectBodyReading(WindToken);
     FRONTIER_REQUIRE(WindSnap.PositionMeters.X > -3.0f);
     FRONTIER_REQUIRE(WindSnap.LinearVelocity.X > 3.0f);
     FRONTIER_REQUIRE(std::abs(WindSnap.AngularVelocity.Z) > 0.2f);
@@ -383,7 +383,7 @@ int main()
     // Verify angled OBB shield deflected probe upward (+Z) & backward (-X), and dynamic sphere gained +X momentum!
     FRONTIER_REQUIRE(Probes[0].Vel[0] < 0.0f);
     FRONTIER_REQUIRE(std::abs(Probes[0].Vel[2]) > 2.0f);
-    const RigidBodySnapshot TargetAfterImpact = Physics.InspectBodySnapshot(TargetToken);
+    const RigidBodyReading TargetAfterImpact = Physics.InspectBodyReading(TargetToken);
     FRONTIER_REQUIRE(TargetAfterImpact.LinearVelocity.X > 0.5f);
     FRONTIER_REQUIRE(TargetAfterImpact.PositionMeters.X > 10.52f);
 
@@ -440,8 +440,8 @@ int main()
     {
         auto [Ax, Az] = MapWorldXZ(3.5f, 3.0f);
         auto [Bx, Bz] = MapWorldXZ(
-            Physics.InspectBodySnapshot(BondedToken).PositionMeters.X,
-            Physics.InspectBodySnapshot(BondedToken).PositionMeters.Z);
+            Physics.InspectBodyReading(BondedToken).PositionMeters.X,
+            Physics.InspectBodyReading(BondedToken).PositionMeters.Z);
         Canvas.FillDisc(Ax, Az, 9.0f, 180, 195, 215);
         Canvas.FillDisc(Bx, Bz, 10.0f, 255, 86, 106);
         Canvas.PlotSegment(Ax, Az, Bx, Bz, 255, 86, 106, 1.5f);

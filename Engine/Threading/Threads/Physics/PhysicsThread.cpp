@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                              PHYSICSTHREAD.CPP
 ============================================================================================================================================*/
-// 🧩 Dedicated fixed-step PhysicsThread implementation: deterministic simulation cadence, suspend gating, and watchdog heartbeats
+// 🧩 Dedicated fixed-step PhysicsThread implementation: deterministic simulation step rate, suspend gating, and watchdog heartbeats
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES

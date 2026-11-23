@@ -74,7 +74,7 @@ public:
     [[nodiscard]] RigidBodyToken    IssueRigidBody(const RigidBodyDescriptor& Descriptor) noexcept;
     bool                            ReclaimRigidBody(RigidBodyToken Token) noexcept;
     [[nodiscard]] bool              AuthenticateBodyToken(RigidBodyToken Token) const noexcept;
-    [[nodiscard]] RigidBodySnapshot InspectBodySnapshot(RigidBodyToken Token) const noexcept;
+    [[nodiscard]] RigidBodyReading InspectBodyReading(RigidBodyToken Token) const noexcept;
 
     void ApplyForce(RigidBodyToken Token, const Mathematics::Axis3D& ForceNewtons) noexcept;
     void ApplyTorque(RigidBodyToken Token, const Mathematics::Axis3D& TorqueNm) noexcept;
@@ -93,8 +93,8 @@ public:
         const RigidOrientationQuaternion& Orientation) noexcept;
 
     // Constraints & breakable strain bonds
-    using ConstraintSnapshotLease    = Threading::SnapshotReadLease<ConstraintListSnapshot>;
-    using ConstraintSnapshotExchange = Threading::PublishedSnapshotExchange<ConstraintListSnapshot>;
+    using ConstraintReadingLease    = Threading::ReadingLease<ConstraintListReading>;
+    using ConstraintReadingExchange = Threading::PublishedReadingExchange<ConstraintListReading>;
 
     [[nodiscard]] ConstraintToken   IssueConstraint(const ConstraintDescriptor& Descriptor) noexcept;
     bool                            ReclaimConstraint(ConstraintToken Token) noexcept;
@@ -102,10 +102,10 @@ public:
     bool                            AssignConstraintMotorTarget(ConstraintToken Token, float TargetCoordinateOrVelocity) noexcept;
     [[nodiscard]] ConstraintReading InspectConstraintReading(ConstraintToken Token) const noexcept;
 
-    // Wait-free cross-thread constraint snapshot reads & lock-free directive intake (safe across PhysicsThread, GameThread, RenderThread, EditorThread)
-    [[nodiscard]] ConstraintSnapshotLease           AcquireConstraintSnapshot() const noexcept;
+    // Wait-free cross-thread constraint reading reads & lock-free directive intake (safe across PhysicsThread, GameThread, RenderThread, EditorThread)
+    [[nodiscard]] ConstraintReadingLease           AcquireConstraintReading() const noexcept;
     [[nodiscard]] bool                              SubmitConstraintDirective(const ConstraintDirective& Directive) noexcept;
-    [[nodiscard]] const ConstraintSnapshotExchange& InspectConstraintSnapshotExchange() const noexcept;
+    [[nodiscard]] const ConstraintReadingExchange& InspectConstraintReadingExchange() const noexcept;
     [[nodiscard]] uint64_t                          QueryPublishedConstraintGeneration() const noexcept;
     [[nodiscard]] uint32_t                          QueryLiveConstraintCount() const noexcept;
 

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                   CROSSTHREADCONSTRAINTVALIDATION.CPP
 ============================================================================================================================================*/
-// 🧩 Validation of generic PublishedSnapshotExchange, ThreadBoundaryExchange, PhysicsThread, and all 8 thread-safe Jolt constraint kinds
+// 🧩 Validation of generic PublishedReadingExchange, ThreadBoundaryExchange, PhysicsThread, and all 8 thread-safe Jolt constraint kinds
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -11,7 +11,7 @@
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.h"
 #include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
-#include "Engine/Threading/Sync/PublishedSnapshotExchange.h"
+#include "Engine/Threading/Sync/PublishedReadingExchange.h"
 #include "Engine/Threading/Sync/ThreadBoundaryExchange.h"
 #include "Engine/Threading/Sync/ThreadProgressionTracker.h"
 #include "Engine/Threading/Threads/Physics/PhysicsThread.h"
@@ -44,10 +44,10 @@ bool Require(bool Condition, const char* Label)
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                    VALIDATION 1: GENERIC CROSS-THREAD SNAPSHOT EXCHANGE
+//                                    VALIDATION 1: GENERIC CROSS-THREAD READING EXCHANGE
 //------------------------------------------------------------------------------------------------------------------------
 
-struct TelemetryProbeSnapshot
+struct TelemetryProbeReading
 {
     uint64_t              SequenceTag = 0ull; // [count] - Published generation fingerprint
     uint64_t              Checksum    = 0ull; // [hash]  - Exact sum of SampleSeries proving zero torn reads
@@ -62,7 +62,7 @@ struct TelemetryProbeDirective
 
 bool ValidateGenericCrossThreadExchange()
 {
-    ThreadBoundaryExchange<TelemetryProbeSnapshot, TelemetryProbeDirective, 8u> Boundary(2048u);
+    ThreadBoundaryExchange<TelemetryProbeReading, TelemetryProbeDirective, 8u> Boundary(2048u);
 
     constexpr uint32_t ProducerStepCount = 1500u;
     constexpr uint32_t ReaderThreadCount = 4u;
@@ -78,7 +78,7 @@ bool ValidateGenericCrossThreadExchange()
     // Hold a pinned historical lease across many producer generations to validate ABA-free slot protection
     auto PinnedInitialLease = Boundary.AcquireReadLease();
     if (!Require(PinnedInitialLease.Valid() && PinnedInitialLease.InspectHeader().GenerationSequence == 0ull,
-                 "Generic PublishedSnapshotExchange provides valid seed lease at generation 0"))
+                 "Generic PublishedReadingExchange provides valid seed lease at generation 0"))
     {
         return false;
     }
@@ -105,14 +105,14 @@ bool ValidateGenericCrossThreadExchange()
                 }
 
                 const auto Lease = Boundary.AcquireReadLease();
-                const SnapshotEpochHeader Header = Lease.InspectHeader();
+                const ReadingEpochHeader Header = Lease.InspectHeader();
                 if (Header.GenerationSequence < PreviousGen)
                 {
                     MonotonicFailures.fetch_add(1ull, std::memory_order_relaxed);
                 }
                 PreviousGen = Header.GenerationSequence;
 
-                const TelemetryProbeSnapshot& Snap = Lease.InspectPayload();
+                const TelemetryProbeReading& Snap = Lease.InspectPayload();
                 if (Snap.SequenceTag != Header.GenerationSequence)
                 {
                     TornReadFailures.fetch_add(1ull, std::memory_order_relaxed);
@@ -140,8 +140,8 @@ bool ValidateGenericCrossThreadExchange()
             DrainedCount.fetch_add(1ull, std::memory_order_relaxed);
         });
 
-        const bool Published = Boundary.PublishSnapshotInPlace(
-            [Step](TelemetryProbeSnapshot& Writable) noexcept
+        const bool Published = Boundary.PublishReadingInPlace(
+            [Step](TelemetryProbeReading& Writable) noexcept
             {
                 Writable.SequenceTag = Step;
                 const std::size_t Count = 16u + (Step % 48u);
@@ -162,7 +162,7 @@ bool ValidateGenericCrossThreadExchange()
         {
             ProducerFinished.store(true, std::memory_order_release);
             for (auto& Thread : ReaderThreads) Thread.join();
-            return Require(false, "Generic PublishedSnapshotExchange published all producer steps without starvation");
+            return Require(false, "Generic PublishedReadingExchange published all producer steps without starvation");
         }
     }
 
@@ -194,16 +194,16 @@ bool ValidateGenericCrossThreadExchange()
         }
     }
 
-    const bool OkTorn      = Require(TornReadFailures.load() == 0ull, "Generic PublishedSnapshotExchange zero torn reads across 4 concurrent reader threads");
-    const bool OkMono      = Require(MonotonicFailures.load() == 0ull, "Generic PublishedSnapshotExchange strict monotonic generation per reader");
-    const bool OkPinned    = Require(PinnedUntouched, "Pinned historical SnapshotReadLease remained immune to 1500 producer wraps");
+    const bool OkTorn      = Require(TornReadFailures.load() == 0ull, "Generic PublishedReadingExchange zero torn reads across 4 concurrent reader threads");
+    const bool OkMono      = Require(MonotonicFailures.load() == 0ull, "Generic PublishedReadingExchange strict monotonic generation per reader");
+    const bool OkPinned    = Require(PinnedUntouched, "Pinned historical ReadingLease remained immune to 1500 producer wraps");
     const bool OkDirective = Require(
         DrainedCount.load() == static_cast<uint64_t>(ReaderThreadCount) * DirectivesPerReader
         && DrainedChecksum.load() == ExpectedChecksum,
         "Generic ThreadBoundaryExchange delivered 800/800 cross-thread directives with exact checksum");
     const bool OkCount     = Require(
         Boundary.QueryPublishedGeneration() == ProducerStepCount && TotalReadsCompleted.load() >= ReaderThreadCount * 50ull,
-        "Generic PublishedSnapshotExchange completed high-throughput concurrent read stress");
+        "Generic PublishedReadingExchange completed high-throughput concurrent read stress");
 
     return OkTorn && OkMono && OkPinned && OkDirective && OkCount;
 }
@@ -413,10 +413,10 @@ bool ValidateEightConstraintSuite()
 
     // Verify Tether starts slack before falling
     {
-        const auto InitialLease = Physics.AcquireConstraintSnapshot();
+        const auto InitialLease = Physics.AcquireConstraintReading();
         const ConstraintReading* TetherStart = InitialLease->ResolveConstraint(TetherTok);
         if (!Require(TetherStart != nullptr && !TetherStart->TautEngaged && TetherStart->CurrentCoordinate < 0.40f,
-                     "Tether starts slack (< 0.40 m) in published initial snapshot"))
+                     "Tether starts slack (< 0.40 m) in published initial reading"))
         {
             return false;
         }
@@ -429,7 +429,7 @@ bool ValidateEightConstraintSuite()
     for (int Step = 0; Step < 180; ++Step)
     {
         Physics.Tick(1.0 / 60.0);
-        const auto Lease = Physics.AcquireConstraintSnapshot();
+        const auto Lease = Physics.AcquireConstraintReading();
         if (const ConstraintReading* H = Lease->ResolveConstraint(HingeTok))
         {
             HingeMinSeen = std::min(HingeMinSeen, H->CurrentCoordinate);
@@ -444,7 +444,7 @@ bool ValidateEightConstraintSuite()
         }
     }
 
-    const auto SnapLease = Physics.AcquireConstraintSnapshot();
+    const auto SnapLease = Physics.AcquireConstraintReading();
     const ConstraintReading* FixedR  = SnapLease->ResolveByComponentTag(101ull);
     const ConstraintReading* SliderR = SnapLease->ResolveConstraint(SliderTok);
     const ConstraintReading* BallR   = SnapLease->ResolveConstraint(BallTok);
@@ -455,7 +455,7 @@ bool ValidateEightConstraintSuite()
     const ConstraintReading* RejectR = SnapLease->ResolveConstraint(RejectTok);
 
     bool AllOk = true;
-    AllOk &= Require(SnapLease->QueryConstraintCount() == 9u, "ConstraintListSnapshot exposes complete contiguous list of 9 constraints");
+    AllOk &= Require(SnapLease->QueryConstraintCount() == 9u, "ConstraintListReading exposes complete contiguous list of 9 constraints");
     AllOk &= Require(FixedR != nullptr && FixedR->Intact && FixedR->CurrentCoordinate < 0.05f, "Fixed constraint holds weld and resolves via ComponentInstanceTag");
     AllOk &= Require((HingeMaxSeen - HingeMinSeen) > 0.55f, "Hinge Sweep mode oscillates across configured angular limits");
     AllOk &= Require(SliderR != nullptr && SliderR->Intact && std::abs(SliderR->CurrentCoordinate - 0.25f) < 0.04f, "Motorized Slider tracks 0.25 m target");
@@ -486,7 +486,7 @@ bool ValidateEightConstraintSuite()
     for (int Step = 0; Step < 5; ++Step)
     {
         Physics.Tick(1.0 / 60.0);
-        const auto PostSnap = Physics.AcquireConstraintSnapshot();
+        const auto PostSnap = Physics.AcquireConstraintReading();
         for (const ConstraintTransitionEvent& Ev : PostSnap->InspectStepEvents())
         {
             if (Ev.Token == DockTok && Ev.Transition == ConstraintTransitionCategory::DockConnected)
@@ -592,7 +592,7 @@ bool ValidateLivePhysicsThreadMultiReaders()
     std::atomic<uint64_t> RenderThreadReads { 0ull };
     std::atomic<uint64_t> EditorThreadReads { 0ull };
 
-    auto ValidateSnapshotBody = [&](const ConstraintListSnapshot& Snap)
+    auto ValidateReadingBody = [&](const ConstraintListReading& Snap)
     {
         if (Snap.QueryConstraintCount() != RigTokens.size())
         {
@@ -612,21 +612,21 @@ bool ValidateLivePhysicsThreadMultiReaders()
         }
     };
 
-    // GameThread: reads constraint snapshot list AND submits live Hinge steering directives
+    // GameThread: reads constraint reading list AND submits live Hinge steering directives
     std::thread GameThread([&]()
     {
         uint64_t LastGen = 0ull;
         uint32_t Iteration = 0u;
         while (!StopReaders.load(std::memory_order_acquire))
         {
-            const auto Lease = Physics.AcquireConstraintSnapshot();
+            const auto Lease = Physics.AcquireConstraintReading();
             const uint64_t Gen = Lease.InspectHeader().GenerationSequence;
             if (Gen < LastGen)
             {
                 ReaderErrors.fetch_add(1ull, std::memory_order_relaxed);
             }
             LastGen = Gen;
-            ValidateSnapshotBody(*Lease);
+            ValidateReadingBody(*Lease);
 
             ConstraintDirective SteerDir {};
             SteerDir.Category      = ConstraintDirectiveCategory::AssignMotorTarget;
@@ -644,8 +644,8 @@ bool ValidateLivePhysicsThreadMultiReaders()
     {
         while (!StopReaders.load(std::memory_order_acquire))
         {
-            const auto Lease = Physics.AcquireConstraintSnapshot();
-            ValidateSnapshotBody(*Lease);
+            const auto Lease = Physics.AcquireConstraintReading();
+            ValidateReadingBody(*Lease);
             RenderThreadReads.fetch_add(1ull, std::memory_order_relaxed);
         }
     });
@@ -655,7 +655,7 @@ bool ValidateLivePhysicsThreadMultiReaders()
     {
         while (!StopReaders.load(std::memory_order_acquire))
         {
-            const auto Lease = Physics.AcquireConstraintSnapshot();
+            const auto Lease = Physics.AcquireConstraintReading();
             for (std::size_t I = 0u; I < RigTokens.size(); ++I)
             {
                 const ConstraintReading* ByToken = Lease->ResolveConstraint(RigTokens[I]);
@@ -704,7 +704,7 @@ bool ValidateLivePhysicsThreadMultiReaders()
     const bool OkErrors  = Require(ReaderErrors.load() == 0ull, "Zero data races, torn reads, or invalid poses across Game/Render/Editor threads");
     const bool OkReaders = Require(
         GameThreadReads.load() > 100ull && RenderThreadReads.load() > 100ull && EditorThreadReads.load() > 100ull,
-        "All 3 concurrent reader threads sustained wait-free snapshot reads during live Jolt simulation");
+        "All 3 concurrent reader threads sustained wait-free reading reads during live Jolt simulation");
 
     return OkSteps && OkErrors && OkReaders;
 }

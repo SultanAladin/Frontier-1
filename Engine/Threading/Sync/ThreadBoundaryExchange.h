@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                         THREADBOUNDARYEXCHANGE.H
 ============================================================================================================================================*/
-// 🧩 Generic bidirectional cross-thread boundary pairing wait-free multi-reader snapshot publication with lock-free directive intake
+// 🧩 Generic bidirectional cross-thread boundary pairing wait-free multi-reader reading publication with lock-free directive intake
 
 #pragma once
 
@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Threading/Sync/AtomicQueue.h"
-#include "Engine/Threading/Sync/PublishedSnapshotExchange.h"
+#include "Engine/Threading/Sync/PublishedReadingExchange.h"
 
 #include <atomic>
 #include <concepts>
@@ -45,9 +45,9 @@ inline constexpr std::size_t DefaultBoundaryDirectiveCapacity = 1024u; // [count
 //------------------------------------------------------------------------------------------------------------------------
 
 template <
-    PublishableSnapshot SnapshotType,
+    PublishableReading ReadingType,
     BoundaryDirective   DirectiveType,
-    uint32_t            BankSlotCount = DefaultSnapshotBankSlots>
+    uint32_t            BankSlotCount = DefaultReadingBankSlots>
 class ThreadBoundaryExchange
 {
 public:
@@ -66,15 +66,15 @@ public:
         ReceiverType&& Receiver,
         std::size_t    MaximumCount = DefaultBoundaryDirectiveCapacity) noexcept;
 
-    // Authoritative owner-thread snapshot publication API
-    void InitializeSnapshotSeed(
-        const SnapshotType& InitialSnapshot,
+    // Authoritative owner-thread reading publication API
+    void InitializeReadingSeed(
+        const ReadingType& InitialReading,
         double              SimulationSeconds = 0.0,
         uint64_t            StepOrdinal       = 0ull) noexcept
-        requires std::assignable_from<SnapshotType&, const SnapshotType&>;
+        requires std::assignable_from<ReadingType&, const ReadingType&>;
 
-    [[nodiscard]] SnapshotType* TryAcquireWritableSlot(uint32_t& OutSlotIndex) noexcept;
-    [[nodiscard]] SnapshotType* AcquireWritableSlot(
+    [[nodiscard]] ReadingType* TryAcquireWritableSlot(uint32_t& OutSlotIndex) noexcept;
+    [[nodiscard]] ReadingType* AcquireWritableSlot(
         uint32_t& OutSlotIndex,
         uint32_t  MaximumSpinYields = 1024u) noexcept;
 
@@ -83,27 +83,27 @@ public:
         double   SimulationSeconds = 0.0,
         uint64_t StepOrdinal       = 0ull) noexcept;
 
-    template <SnapshotWriteProcedure<SnapshotType> ProcedureType>
-    [[nodiscard]] bool PublishSnapshotInPlace(
+    template <ReadingWriteProcedure<ReadingType> ProcedureType>
+    [[nodiscard]] bool PublishReadingInPlace(
         ProcedureType&& WriterProcedure,
         double          SimulationSeconds = 0.0,
         uint64_t        StepOrdinal       = 0ull) noexcept;
 
-    [[nodiscard]] bool PublishSnapshotCopy(
-        const SnapshotType& SourceSnapshot,
+    [[nodiscard]] bool PublishReadingCopy(
+        const ReadingType& SourceReading,
         double              SimulationSeconds = 0.0,
         uint64_t            StepOrdinal       = 0ull) noexcept
-        requires std::assignable_from<SnapshotType&, const SnapshotType&>;
+        requires std::assignable_from<ReadingType&, const ReadingType&>;
 
     // Wait-free multi-reader inspection API (callable concurrently from any engine thread)
-    [[nodiscard]] SnapshotReadLease<SnapshotType, BankSlotCount> AcquireReadLease() const noexcept;
+    [[nodiscard]] ReadingLease<ReadingType, BankSlotCount> AcquireReadLease() const noexcept;
 
-    template <SnapshotReadConsumer<SnapshotType> ConsumerType>
-    [[nodiscard]] SnapshotEpochHeader InspectConsistentSnapshot(ConsumerType&& Consumer) const noexcept;
+    template <ReadingConsumer<ReadingType> ConsumerType>
+    [[nodiscard]] ReadingEpochHeader InspectConsistentReading(ConsumerType&& Consumer) const noexcept;
 
-    [[nodiscard]] const PublishedSnapshotExchange<SnapshotType, BankSlotCount>& AccessSnapshotExchange() const noexcept;
+    [[nodiscard]] const PublishedReadingExchange<ReadingType, BankSlotCount>& AccessReadingExchange() const noexcept;
     [[nodiscard]] uint64_t            QueryPublishedGeneration() const noexcept;
-    [[nodiscard]] SnapshotEpochHeader QueryLatestHeader() const noexcept;
+    [[nodiscard]] ReadingEpochHeader QueryLatestHeader() const noexcept;
     [[nodiscard]] std::size_t         QueryPendingDirectiveDepth() const noexcept;
     [[nodiscard]] std::size_t         QueryDirectiveCapacity() const noexcept;
     [[nodiscard]] uint64_t            QueryEnqueuedDirectiveCount() const noexcept;
@@ -111,7 +111,7 @@ public:
     [[nodiscard]] uint64_t            QueryDroppedDirectiveCount() const noexcept;
 
 private:
-    PublishedSnapshotExchange<SnapshotType, BankSlotCount> OutboundSnapshots       {};      // [-]     - Wait-free multi-reader snapshot bank
+    PublishedReadingExchange<ReadingType, BankSlotCount> OutboundReadings       {};      // [-]     - Wait-free multi-reader reading bank
     AtomicQueue<DirectiveType>                             InboundDirectives       ;        // [-]     - Lock-free MPMC directive intake ring
     alignas(64) std::atomic<uint64_t>                      EnqueuedDirectiveCount  { 0ull };// [count] - Directives accepted into intake ring
     alignas(64) std::atomic<uint64_t>                      DrainedDirectiveCount   { 0ull };// [count] - Directives consumed by owner thread
@@ -122,15 +122,15 @@ private:
 //                                              TEMPLATE IMPLEMENTATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::ThreadBoundaryExchange(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::ThreadBoundaryExchange(
     std::size_t RequestedDirectiveCapacity)
     : InboundDirectives(RequestedDirectiveCapacity)
 {
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-bool ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::EnqueueDirective(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+bool ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::EnqueueDirective(
     DirectiveType IncomingDirective) noexcept
 {
     if (InboundDirectives.TryEnqueue(std::move(IncomingDirective)))
@@ -142,9 +142,9 @@ bool ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::Enqueue
     return false;
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
 template <DirectiveIntakeReceiver<DirectiveType> ReceiverType>
-std::size_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::DrainDirectives(
+std::size_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::DrainDirectives(
     ReceiverType&& Receiver,
     std::size_t    MaximumCount) noexcept
 {
@@ -162,123 +162,123 @@ std::size_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::
     return Consumed;
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-void ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::InitializeSnapshotSeed(
-    const SnapshotType& InitialSnapshot,
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+void ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::InitializeReadingSeed(
+    const ReadingType& InitialReading,
     double              SimulationSeconds,
     uint64_t            StepOrdinal) noexcept
-    requires std::assignable_from<SnapshotType&, const SnapshotType&>
+    requires std::assignable_from<ReadingType&, const ReadingType&>
 {
-    OutboundSnapshots.InitializeSeed(InitialSnapshot, SimulationSeconds, StepOrdinal);
+    OutboundReadings.InitializeSeed(InitialReading, SimulationSeconds, StepOrdinal);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-SnapshotType* ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::TryAcquireWritableSlot(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+ReadingType* ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::TryAcquireWritableSlot(
     uint32_t& OutSlotIndex) noexcept
 {
-    return OutboundSnapshots.TryAcquireWritableSlot(OutSlotIndex);
+    return OutboundReadings.TryAcquireWritableSlot(OutSlotIndex);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-SnapshotType* ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::AcquireWritableSlot(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+ReadingType* ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::AcquireWritableSlot(
     uint32_t& OutSlotIndex,
     uint32_t  MaximumSpinYields) noexcept
 {
-    return OutboundSnapshots.AcquireWritableSlot(OutSlotIndex, MaximumSpinYields);
+    return OutboundReadings.AcquireWritableSlot(OutSlotIndex, MaximumSpinYields);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-void ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::PublishWritableSlot(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+void ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::PublishWritableSlot(
     uint32_t SlotIndex,
     double   SimulationSeconds,
     uint64_t StepOrdinal) noexcept
 {
-    OutboundSnapshots.PublishWritableSlot(SlotIndex, SimulationSeconds, StepOrdinal);
+    OutboundReadings.PublishWritableSlot(SlotIndex, SimulationSeconds, StepOrdinal);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-template <SnapshotWriteProcedure<SnapshotType> ProcedureType>
-bool ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::PublishSnapshotInPlace(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+template <ReadingWriteProcedure<ReadingType> ProcedureType>
+bool ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::PublishReadingInPlace(
     ProcedureType&& WriterProcedure,
     double          SimulationSeconds,
     uint64_t        StepOrdinal) noexcept
 {
-    return OutboundSnapshots.PublishInPlace(
+    return OutboundReadings.PublishInPlace(
         std::forward<ProcedureType>(WriterProcedure),
         SimulationSeconds,
         StepOrdinal);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-bool ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::PublishSnapshotCopy(
-    const SnapshotType& SourceSnapshot,
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+bool ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::PublishReadingCopy(
+    const ReadingType& SourceReading,
     double              SimulationSeconds,
     uint64_t            StepOrdinal) noexcept
-    requires std::assignable_from<SnapshotType&, const SnapshotType&>
+    requires std::assignable_from<ReadingType&, const ReadingType&>
 {
-    return OutboundSnapshots.PublishCopy(SourceSnapshot, SimulationSeconds, StepOrdinal);
+    return OutboundReadings.PublishCopy(SourceReading, SimulationSeconds, StepOrdinal);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-SnapshotReadLease<SnapshotType, BankSlotCount>
-ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::AcquireReadLease() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+ReadingLease<ReadingType, BankSlotCount>
+ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::AcquireReadLease() const noexcept
 {
-    return OutboundSnapshots.AcquireReadLease();
+    return OutboundReadings.AcquireReadLease();
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-template <SnapshotReadConsumer<SnapshotType> ConsumerType>
-SnapshotEpochHeader ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::InspectConsistentSnapshot(
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+template <ReadingConsumer<ReadingType> ConsumerType>
+ReadingEpochHeader ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::InspectConsistentReading(
     ConsumerType&& Consumer) const noexcept
 {
-    return OutboundSnapshots.InspectConsistentSnapshot(std::forward<ConsumerType>(Consumer));
+    return OutboundReadings.InspectConsistentReading(std::forward<ConsumerType>(Consumer));
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-const PublishedSnapshotExchange<SnapshotType, BankSlotCount>&
-ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::AccessSnapshotExchange() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+const PublishedReadingExchange<ReadingType, BankSlotCount>&
+ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::AccessReadingExchange() const noexcept
 {
-    return OutboundSnapshots;
+    return OutboundReadings;
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-uint64_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryPublishedGeneration() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+uint64_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryPublishedGeneration() const noexcept
 {
-    return OutboundSnapshots.QueryPublishedGeneration();
+    return OutboundReadings.QueryPublishedGeneration();
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-SnapshotEpochHeader ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryLatestHeader() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+ReadingEpochHeader ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryLatestHeader() const noexcept
 {
-    return OutboundSnapshots.QueryLatestHeader();
+    return OutboundReadings.QueryLatestHeader();
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-std::size_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryPendingDirectiveDepth() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+std::size_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryPendingDirectiveDepth() const noexcept
 {
     return InboundDirectives.ApproximateDepth();
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-std::size_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryDirectiveCapacity() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+std::size_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryDirectiveCapacity() const noexcept
 {
     return InboundDirectives.Capacity();
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-uint64_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryEnqueuedDirectiveCount() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+uint64_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryEnqueuedDirectiveCount() const noexcept
 {
     return EnqueuedDirectiveCount.load(std::memory_order_relaxed);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-uint64_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryDrainedDirectiveCount() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+uint64_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryDrainedDirectiveCount() const noexcept
 {
     return DrainedDirectiveCount.load(std::memory_order_relaxed);
 }
 
-template <PublishableSnapshot SnapshotType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
-uint64_t ThreadBoundaryExchange<SnapshotType, DirectiveType, BankSlotCount>::QueryDroppedDirectiveCount() const noexcept
+template <PublishableReading ReadingType, BoundaryDirective DirectiveType, uint32_t BankSlotCount>
+uint64_t ThreadBoundaryExchange<ReadingType, DirectiveType, BankSlotCount>::QueryDroppedDirectiveCount() const noexcept
 {
     return DroppedDirectiveCount.load(std::memory_order_relaxed);
 }

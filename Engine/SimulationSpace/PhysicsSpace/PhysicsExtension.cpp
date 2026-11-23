@@ -310,8 +310,8 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
     std::vector<ConstraintSlotEntry> ConstraintSlots      {};
     std::vector<uint32_t>            RecycledConstraintSlots {};
 
-    // 💡 Generic wait-free multi-reader snapshot bank + lock-free directive queue for cross-thread constraint access
-    Threading::ThreadBoundaryExchange<ConstraintListSnapshot, ConstraintDirective> ConstraintBoundary { 1024u };
+    // 💡 Generic wait-free multi-reader reading bank + lock-free directive queue for cross-thread constraint access
+    Threading::ThreadBoundaryExchange<ConstraintListReading, ConstraintDirective> ConstraintBoundary { 1024u };
     std::vector<ConstraintTransitionEvent>                                         PendingStepEvents  {};
 
     CollisionDetection               ContactJournal       {};
@@ -1079,15 +1079,15 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
         }
     }
 
-    void PublishConstraintSnapshot() noexcept
+    void PublishConstraintReading() noexcept
     {
-        (void)ConstraintBoundary.PublishSnapshotInPlace(
-            [this](ConstraintListSnapshot& Destination) noexcept
+        (void)ConstraintBoundary.PublishReadingInPlace(
+            [this](ConstraintListReading& Destination) noexcept
             {
                 Destination.ClearForRewrite();
                 Destination.CompletedStepOrdinal = CompletedSteps;
                 Destination.SimulatedSeconds     = SimulatedSeconds;
-                Destination.SlotToDenseIndex.assign(ConstraintSlots.size(), ConstraintListSnapshot::InvalidDenseIndex);
+                Destination.SlotToDenseIndex.assign(ConstraintSlots.size(), ConstraintListReading::InvalidDenseIndex);
 
                 for (uint32_t ZeroIdx = 0u; ZeroIdx < ConstraintSlots.size(); ++ZeroIdx)
                 {
@@ -1294,7 +1294,7 @@ bool PhysicsExtension::Initialize() noexcept
     Runtime->PendingStepEvents.clear();
     Runtime->Initialized        = true;
     Runtime->Suspended          = false;
-    Runtime->PublishConstraintSnapshot();
+    Runtime->PublishConstraintReading();
     return true;
 }
 
@@ -1348,10 +1348,10 @@ void PhysicsExtension::Tick(double Δt) noexcept
         ++Substeps;
     }
 
-    // ② Publish an immutable generation-stamped constraint snapshot for wait-free multi-thread reads
+    // ② Publish an immutable generation-stamped constraint reading for wait-free multi-thread reads
     if (Substeps > 0u || DrainedDirectives > 0u)
     {
-        Runtime->PublishConstraintSnapshot();
+        Runtime->PublishConstraintReading();
     }
 }
 
@@ -1389,7 +1389,7 @@ void PhysicsExtension::Finalize() noexcept
     Runtime->ConstraintSlots.clear();
     Runtime->RecycledConstraintSlots.clear();
     Runtime->PendingStepEvents.clear();
-    Runtime->PublishConstraintSnapshot();
+    Runtime->PublishConstraintReading();
 
     if (Runtime->JoltWorld)
     {
@@ -1741,9 +1741,9 @@ bool PhysicsExtension::AuthenticateBodyToken(RigidBodyToken Token) const noexcep
     return Entry.Occupied && Entry.Generation == Token.Generation && !Entry.JoltId.IsInvalid();
 }
 
-RigidBodySnapshot PhysicsExtension::InspectBodySnapshot(RigidBodyToken Token) const noexcept
+RigidBodyReading PhysicsExtension::InspectBodyReading(RigidBodyToken Token) const noexcept
 {
-    RigidBodySnapshot Snap {};
+    RigidBodyReading Snap {};
     if (!AuthenticateBodyToken(Token))
     {
         return Snap;
@@ -2147,7 +2147,7 @@ ConstraintToken PhysicsExtension::IssueConstraint(const ConstraintDescriptor& De
     CSlot.Intact                = InitialIntact;
 
     Runtime->RefreshConstraintPoseTelemetry(CSlot);
-    Runtime->PublishConstraintSnapshot();
+    Runtime->PublishConstraintReading();
 
     return { ZeroIdx + 1u, CSlot.Generation };
 }
@@ -2173,7 +2173,7 @@ bool PhysicsExtension::ReclaimConstraint(ConstraintToken Token) noexcept
     CSlot.Intact         = false;
     CSlot.Generation     = (CSlot.Generation + 1u == 0u) ? 1u : (CSlot.Generation + 1u);
     Runtime->RecycledConstraintSlots.push_back(ZeroIdx);
-    Runtime->PublishConstraintSnapshot();
+    Runtime->PublishConstraintReading();
     return true;
 }
 
@@ -2205,7 +2205,7 @@ bool PhysicsExtension::BreakConstraint(ConstraintToken Token) noexcept
         CSlot.AppliedForceN,
         Runtime->SimulatedSeconds
     });
-    Runtime->PublishConstraintSnapshot();
+    Runtime->PublishConstraintReading();
     return true;
 }
 
@@ -2229,7 +2229,7 @@ bool PhysicsExtension::AssignConstraintMotorTarget(ConstraintToken Token, float 
         case ConstraintCategory::Spring:
         case ConstraintCategory::SwingTwist:
             Runtime->ApplyMotorTargetToSlot(CSlot, TargetCoordinateOrVelocity);
-            Runtime->PublishConstraintSnapshot();
+            Runtime->PublishConstraintReading();
             return true;
         default:
             return false;
@@ -2243,8 +2243,8 @@ ConstraintReading PhysicsExtension::InspectConstraintReading(ConstraintToken Tok
     {
         return Reading;
     }
-    // 📝 Wait-free read through PublishedSnapshotExchange: safe from GameThread, RenderThread, EditorThread, or PhysicsThread
-    const ConstraintSnapshotLease Lease = Runtime->ConstraintBoundary.AcquireReadLease();
+    // 📝 Wait-free read through PublishedReadingExchange: safe from GameThread, RenderThread, EditorThread, or PhysicsThread
+    const ConstraintReadingLease Lease = Runtime->ConstraintBoundary.AcquireReadLease();
     if (const ConstraintReading* Resolved = Lease->ResolveConstraint(Token))
     {
         Reading = *Resolved;
@@ -2252,7 +2252,7 @@ ConstraintReading PhysicsExtension::InspectConstraintReading(ConstraintToken Tok
     return Reading;
 }
 
-PhysicsExtension::ConstraintSnapshotLease PhysicsExtension::AcquireConstraintSnapshot() const noexcept
+PhysicsExtension::ConstraintReadingLease PhysicsExtension::AcquireConstraintReading() const noexcept
 {
     return Runtime->ConstraintBoundary.AcquireReadLease();
 }
@@ -2266,9 +2266,9 @@ bool PhysicsExtension::SubmitConstraintDirective(const ConstraintDirective& Dire
     return Runtime->ConstraintBoundary.EnqueueDirective(Directive);
 }
 
-const PhysicsExtension::ConstraintSnapshotExchange& PhysicsExtension::InspectConstraintSnapshotExchange() const noexcept
+const PhysicsExtension::ConstraintReadingExchange& PhysicsExtension::InspectConstraintReadingExchange() const noexcept
 {
-    return Runtime->ConstraintBoundary.AccessSnapshotExchange();
+    return Runtime->ConstraintBoundary.AccessReadingExchange();
 }
 
 uint64_t PhysicsExtension::QueryPublishedConstraintGeneration() const noexcept
@@ -2282,7 +2282,7 @@ uint32_t PhysicsExtension::QueryLiveConstraintCount() const noexcept
     {
         return 0u;
     }
-    const ConstraintSnapshotLease Lease = Runtime->ConstraintBoundary.AcquireReadLease();
+    const ConstraintReadingLease Lease = Runtime->ConstraintBoundary.AcquireReadLease();
     return Lease->QueryConstraintCount();
 }
 

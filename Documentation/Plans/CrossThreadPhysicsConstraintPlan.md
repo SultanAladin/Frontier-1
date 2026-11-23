@@ -1,6 +1,6 @@
-# 🧩 Cross-Thread Snapshot Publication & Physics Constraints Report
+# 🧩 Cross-Thread Reading Publication & Physics Constraints Report
 
-> **TL;DR:** Replaced Unreal-style GameThread sockets with first-class JoltPhysics v5.6.0 constraints (all 8 `ProjectZeroEditor` categories plus `Distance`/`BreakableBond`), backed by a generic, modular, wait-free multi-reader `PublishedSnapshotExchange<T>` + `ThreadBoundaryExchange<S, D>` primitive and dedicated `PhysicsThread`. Verified with **0 torn reads**, **0 ThreadSanitizer races**, and **100% pass** across `CrossThreadConstraintValidation`, `ComponentClassPhysicsValidation`, and `PhysicsSpaceValidation`.
+> **TL;DR:** Replaced GameThread attachment sockets with first-class JoltPhysics v5.6.0 constraints (all 8 `ProjectZeroEditor` categories plus `Distance`/`BreakableBond`), backed by a generic, modular, wait-free multi-reader `PublishedReadingExchange<T>` + `ThreadBoundaryExchange<S, D>` primitive and dedicated `PhysicsThread`. Verified with **0 torn reads**, **0 ThreadSanitizer races**, and **100% pass** across `CrossThreadConstraintValidation`, `ComponentClassPhysicsValidation`, and `PhysicsSpaceValidation`.
 
 ---
 
@@ -10,12 +10,12 @@
 
 | Rank | Strategy | Multi-Reader Safety | Variable-Size Lists (`std::vector`) | Reader Latency | Lock Contention | Quality |
 | :---: | :--- | :---: | :---: | :---: | :---: | :---: |
-| 🏆 🥇 | **`PublishedSnapshotExchange<T, N>` (Split-Reference Multi-Slot Bank)** | 🔴 | 🔴 | ✔️ *(1 atomic RMW)* | ✔️ *(Wait-free)* | ⭐⭐⭐⭐⭐ |
-| 🥈 | `std::shared_mutex` + Snapshot Copy | 🔴 | 🔴 | 🚩 | 🚩 *(Writer blocks)* | ⭐⭐⭐ |
+| 🏆 🥇 | **`PublishedReadingExchange<T, N>` (Split-Reference Multi-Slot Bank)** | 🔴 | 🔴 | ✔️ *(1 atomic RMW)* | ✔️ *(Wait-free)* | ⭐⭐⭐⭐⭐ |
+| 🥈 | `std::shared_mutex` + Reading Copy | 🔴 | 🔴 | 🚩 | 🚩 *(Writer blocks)* | ⭐⭐⭐ |
 | 🥉 | Uncounted Triple Buffer | ✔️ *(Races with ≥2 readers)* | ✔️ | ✔️ | ✔️ | ⭐⭐ |
 | — | Seqlock | 🚩 *(Retries under load)* | ✔️ *(UB on non-POD)* | 🚩 | ✔️ | ⭐ |
 
-💡 **Selected Mechanism:** `PublishedSnapshotExchange<SnapshotType, BankSlotCount = 8u>` packs `(SlotIndex | PendingReaders | Epoch)` into one 64-bit atomic word. Readers acquire a wait-free RAII `SnapshotReadLease` via single `fetch_add(PendingReaderUnit, acq_rel)` and release via `ActiveReaderBalance.fetch_sub(1, release)`. Writers recycle free slots with preserved `std::vector` heap capacity — **zero locks, zero tearing, zero ABA, zero steady-state allocations**.
+💡 **Selected Mechanism:** `PublishedReadingExchange<ReadingType, BankSlotCount = 8u>` packs `(SlotIndex | PendingReaders | Epoch)` into one 64-bit atomic word. Readers acquire a wait-free RAII `ReadingLease` via single `fetch_add(PendingReaderUnit, acq_rel)` and release via `ActiveReaderBalance.fetch_sub(1, release)`. Writers recycle free slots with preserved `std::vector` heap capacity — **zero locks, zero tearing, zero ABA, zero steady-state allocations**.
 
 ---
 
@@ -24,22 +24,22 @@
 ```text
 GameThread / RenderThread / EditorThread / ExecutionChannels
   │                                                      ▲
-  │ SubmitConstraintDirective(ConstraintDirective)       │ AcquireConstraintSnapshot() -> SnapshotReadLease
+  │ SubmitConstraintDirective(ConstraintDirective)       │ AcquireConstraintReading() -> ReadingLease
   │ [Lock-free MPMC AtomicQueue]                         │ [Wait-free 1x atomic RMW, zero locks, zero alloc]
   ▼                                                      │
 +----------------------------------------------------------------------------------+
-| ThreadBoundaryExchange<ConstraintListSnapshot, ConstraintDirective, 8u>          |
+| ThreadBoundaryExchange<ConstraintListReading, ConstraintDirective, 8u>          |
 |  • InboundDirectives : AtomicQueue<ConstraintDirective>                          |
-|  • OutboundSnapshots : PublishedSnapshotExchange<ConstraintListSnapshot, 8u>     |
+|  • OutboundReadings : PublishedReadingExchange<ConstraintListReading, 8u>     |
 +----------------------------------------------------------------------------------+
-  │ DrainDirectives() [Step start]                       ▲ PublishSnapshotInPlace() [Step end]
+  │ DrainDirectives() [Step start]                       ▲ PublishReadingInPlace() [Step end]
   ▼                                                      │
 PhysicsThread -> PhysicsExtension::Tick(Δt)
   ① Drain cross-thread ConstraintDirectives
   ② StepConstraintDrivers() [Sweep, Spin FixedRpm/LinearSpeed/Freewheel, Dock PullTest/Snap/Key]
   ③ JPH::PhysicsSystem::Update() [Deterministic JoltPhysics v5.6.0]
   ④ EvaluateConstraintRuptures() & RefreshConstraintPoseTelemetry() [World poses + telemetry]
-  ⑤ PublishConstraintSnapshot() -> Contiguous Constraints[] + O(1) SlotToDenseIndex + StepEvents[]
+  ⑤ PublishConstraintReading() -> Contiguous Constraints[] + O(1) SlotToDenseIndex + StepEvents[]
 ```
 
 ---
@@ -48,18 +48,18 @@ PhysicsThread -> PhysicsExtension::Tick(Δt)
 
 | Layer | File | Responsibility |
 | :--- | :--- | :--- |
-| **Generic Sync** | `Engine/Threading/Sync/PublishedSnapshotExchange.h` | C++20 `concept`-constrained (`PublishableSnapshot`, `SnapshotWriteProcedure`, `SnapshotReadConsumer`) wait-free multi-reader snapshot bank & RAII `SnapshotReadLease` |
-| **Generic Boundary** | `Engine/Threading/Sync/ThreadBoundaryExchange.h` | Generic bidirectional boundary pairing `PublishedSnapshotExchange` with `AtomicQueue` (`BoundaryDirective`, `DirectiveIntakeReceiver`) |
+| **Generic Sync** | `Engine/Threading/Sync/PublishedReadingExchange.h` | C++20 `concept`-constrained (`PublishableReading`, `ReadingWriteProcedure`, `ReadingConsumer`) wait-free multi-reader reading bank & RAII `ReadingLease` |
+| **Generic Boundary** | `Engine/Threading/Sync/ThreadBoundaryExchange.h` | Generic bidirectional boundary pairing `PublishedReadingExchange` with `AtomicQueue` (`BoundaryDirective`, `DirectiveIntakeReceiver`) |
 | **Physics Thread** | `Engine/Threading/Threads/Physics/PhysicsThread.{h,cpp}` | Dedicated fixed-step OS thread with suspend/resume gating, spiral-of-death clamp, and `ThreadProgressionTracker` heartbeats |
-| **Constraints Core** | `Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.{h,cpp}` | All 8 `ProjectZeroEditor` constraint kinds, `ConstraintListSnapshot`, `ConstraintDirective`, `ConstraintTransitionEvent`, Dock key matching, sweep/spin kinematics, and `ComponentClass` conversion |
-| **Physics Runtime** | `Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.{h,cpp}` | JoltPhysics v5.6.0 integration of `ThreadBoundaryExchange`, live world attachment poses (replacing Unreal sockets), SwingTwist decomposition, Tether slack/taut, Dock snap/key/rupture lifecycle |
+| **Constraints Core** | `Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.{h,cpp}` | All 8 `ProjectZeroEditor` constraint kinds, `ConstraintListReading`, `ConstraintDirective`, `ConstraintTransitionEvent`, Dock key matching, sweep/spin kinematics, and `ComponentClass` conversion |
+| **Physics Runtime** | `Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.{h,cpp}` | JoltPhysics v5.6.0 integration of `ThreadBoundaryExchange`, live world attachment poses (replacing GameThread attachment anchors), SwingTwist decomposition, Tether slack/taut, Dock snap/key/rupture lifecycle |
 | **Validation** | `Exhibits/CrossThreadConstraintValidation.cpp` | 3-stage validation covering generic multi-thread stress, all 8 constraint kinds, and live `PhysicsThread` + 3 concurrent reader threads |
 
 ---
 
 ## 4. `ProjectZeroEditor` Constraint Parity Matrix
 
-| # | `ProjectZeroEditor` Kind | Frontier `ConstraintCategory` | Live Physics & Snapshot Features | Status |
+| # | `ProjectZeroEditor` Kind | Frontier `ConstraintCategory` | Live Physics & Reading Features | Status |
 | :---: | :--- | :--- | :--- | :---: |
 | 1 | `Fixed` | `ConstraintCategory::Fixed` | 6-DOF weld, breakable strain ratio, solved world attachment pose | 🟢 |
 | 2 | `Hinge` | `ConstraintCategory::Hinge` | Angular limits, `Hold`/`Steer`/`Sweep`/`MotorPosition`, live angle & RPM | 🟢 |

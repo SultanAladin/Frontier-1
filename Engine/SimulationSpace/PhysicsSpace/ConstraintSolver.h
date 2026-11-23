@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                             CONSTRAINTSOLVER.H
 ============================================================================================================================================*/
-// 🧩 Two-body joint & breakable strain-bond constraint descriptors, thread-safe snapshot list, directives, and ProjectZero-parity math
+// 🧩 Two-body joint & breakable strain-bond constraint descriptors, thread-safe reading list, directives, and ProjectZero-parity math
 
 #pragma once
 
@@ -147,7 +147,7 @@ struct ConstraintDescriptor
     uint64_t                ComponentInstanceTag  = 0ull;                           // [id]          - Optional stable linkage to ComponentClass instance
 };
 
-// 💡 Immutable per-constraint snapshot replacing legacy GameThread sockets with physics-solved world attachment poses
+// 💡 Immutable per-constraint reading replacing legacy GameThread sockets with physics-solved world attachment poses
 struct ConstraintReading
 {
     ConstraintToken            Token                 {};                                 // [id]    - Generation-checked constraint token
@@ -197,15 +197,15 @@ struct ConstraintDirective
 };
 
 // 💡 Contiguous immutable constraint list published atomically each PhysicsThread tick for wait-free multi-thread reads
-struct ConstraintListSnapshot
+struct ConstraintListReading
 {
     static constexpr uint32_t InvalidDenseIndex = 0xFFFFFFFFu; // [idx] - Sentinel for unoccupied or recycled slot
 
     std::vector<ConstraintReading>         Constraints           {};   // [-]     - Contiguous list of all resident constraints
     std::vector<uint32_t>                  SlotToDenseIndex      {};   // [idx]   - Direct SlotIndex -> Constraints index lookup
     std::vector<ConstraintTransitionEvent> StepEvents            {};   // [-]     - Transitions emitted during latest published step
-    uint64_t                               CompletedStepOrdinal  = 0ull; // [count] - Simulation step ordinal corresponding to snapshot
-    double                                 SimulatedSeconds      = 0.0;  // [s]     - Simulation clock corresponding to snapshot
+    uint64_t                               CompletedStepOrdinal  = 0ull; // [count] - Simulation step ordinal corresponding to reading
+    double                                 SimulatedSeconds      = 0.0;  // [s]     - Simulation clock corresponding to reading
     uint32_t                               IntactConstraintCount = 0u;   // [count] - Resident constraints currently intact
     uint32_t                               BrokenConstraintCount = 0u;   // [count] - Resident constraints currently severed/released
 

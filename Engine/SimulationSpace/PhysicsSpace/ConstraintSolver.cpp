@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            CONSTRAINTSOLVER.CPP
 ============================================================================================================================================*/
-// 🧩 Constraint strain rupture, Dock key verification, sweep/spin kinematics, ComponentClass conversion, and snapshot list lookup
+// 🧩 Constraint strain rupture, Dock key verification, sweep/spin kinematics, ComponentClass conversion, and reading list lookup
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
@@ -48,10 +48,10 @@ namespace
 } // namespace
 
 //------------------------------------------------------------------------------------------------------------------------
-//                                            CONSTRAINT LIST SNAPSHOT OPERATIONS
+//                                            CONSTRAINT LIST READING OPERATIONS
 //------------------------------------------------------------------------------------------------------------------------
 
-void ConstraintListSnapshot::ClearForRewrite() noexcept
+void ConstraintListReading::ClearForRewrite() noexcept
 {
     // 💡 Preserves heap capacity on recycled bank slots so PhysicsThread publication incurs zero steady-state allocations
     Constraints.clear();
@@ -63,17 +63,17 @@ void ConstraintListSnapshot::ClearForRewrite() noexcept
     BrokenConstraintCount = 0u;
 }
 
-std::span<const ConstraintReading> ConstraintListSnapshot::InspectConstraints() const noexcept
+std::span<const ConstraintReading> ConstraintListReading::InspectConstraints() const noexcept
 {
     return Constraints;
 }
 
-std::span<const ConstraintTransitionEvent> ConstraintListSnapshot::InspectStepEvents() const noexcept
+std::span<const ConstraintTransitionEvent> ConstraintListReading::InspectStepEvents() const noexcept
 {
     return StepEvents;
 }
 
-const ConstraintReading* ConstraintListSnapshot::ResolveConstraint(ConstraintToken Token) const noexcept
+const ConstraintReading* ConstraintListReading::ResolveConstraint(ConstraintToken Token) const noexcept
 {
     if (!Token.Valid())
     {
@@ -97,7 +97,7 @@ const ConstraintReading* ConstraintListSnapshot::ResolveConstraint(ConstraintTok
     return &Candidate;
 }
 
-const ConstraintReading* ConstraintListSnapshot::ResolveByComponentTag(uint64_t ComponentInstanceTag) const noexcept
+const ConstraintReading* ConstraintListReading::ResolveByComponentTag(uint64_t ComponentInstanceTag) const noexcept
 {
     if (ComponentInstanceTag == 0ull)
     {
@@ -113,7 +113,7 @@ const ConstraintReading* ConstraintListSnapshot::ResolveByComponentTag(uint64_t 
     return nullptr;
 }
 
-uint32_t ConstraintListSnapshot::QueryConstraintCount() const noexcept
+uint32_t ConstraintListReading::QueryConstraintCount() const noexcept
 {
     return static_cast<uint32_t>(Constraints.size());
 }

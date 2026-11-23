@@ -9,7 +9,7 @@
 | File | Purpose |
 | :--- | :--- |
 | `PhysicsThread.h` | Dedicated fixed-step `PhysicsThread` configuration and lifecycle interface |
-| `PhysicsThread.cpp` | Fixed-step cadence pacing, spiral-of-death clamp, suspend gating, and watchdog heartbeats |
+| `PhysicsThread.cpp` | Fixed-step step rate pacing, spiral-of-death clamp, suspend gating, and watchdog heartbeats |
 
 ## Namespaces & Primary Types
 
