@@ -1,0 +1,129 @@
+{
+  "Summary": {
+    "DeviceHostComparisons": 147456,
+    "Mismatches": 0,
+    "MinimumNetExponent": 14,
+    "PairsExamined": 66,
+    "WorstCrossPairCorrelation": 0.043815747184969236
+  },
+  "FirstMismatch": null,
+  "NetExponents": [
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14
+  ],
+  "CrossPairs": [
+    {
+      "Pairs": [
+        0,
+        2
+      ],
+      "WorstDeviation": 0.625,
+      "Correlation": -0.043815747184969236
+    },
+    {
+      "Pairs": [
+        2,
+        3
+      ],
+      "WorstDeviation": 0.6875,
+      "Correlation": -0.019035942453925956
+    },
+    {
+      "Pairs": [
+        2,
+        6
+      ],
+      "WorstDeviation": 0.75,
+      "Correlation": -0.03476599304710318
+    },
+    {
+      "Pairs": [
+        3,
+        4
+      ],
+      "WorstDeviation": 0.6875,
+      "Correlation": -0.014133306772453412
+    },
+    {
+      "Pairs": [
+        5,
+        9
+      ],
+      "WorstDeviation": 0.5625,
+      "Correlation": -0.01963456563827025
+    },
+    {
+      "Pairs": [
+        10,
+        11
+      ],
+      "WorstDeviation": 0.5,
+      "Correlation": -0.00395028658638489
+    }
+  ],
+  "Note": "Net exponent m means every prefix of 2^1..2^m points is a (0,k,2)-net (one point per elementary box). Examined up to 14."
+}

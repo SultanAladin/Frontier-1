@@ -1,0 +1,190 @@
+{
+  "Summary": {
+    "Width": 160,
+    "Height": 90,
+    "ReferenceSamples": 256,
+    "SecondsPerSample": {
+      "SharedTraced": 0.4555999999999767,
+      "PixelTraced": 0.4887249999999767,
+      "SharedRaster": 0.4599187500000699
+    },
+    "RelativeRmsAt1": {
+      "SharedTraced": 0.34665995268976235,
+      "PixelTraced": 0.363833902242493
+    },
+    "RelativeRmsAt16": {
+      "SharedTraced": 0.035858657177122416,
+      "PixelTraced": 0.03833127667627642
+    },
+    "RasterAgreement": {
+      "DifferingPixels": 28,
+      "Pixels": 14400,
+      "RelativeRmsRasterVsTraced": 0.00011846700145214995
+    },
+    "AfterOrbit": {
+      "RestartRmsAt1": 0.3577041487825002,
+      "ReprojectedRmsAt1": 0.2634421745120942,
+      "AcceptedFraction": 0.4000694444444444,
+      "ReprojectionSeconds": 0.0245
+    }
+  },
+  "Modes": {
+    "SharedTraced": {
+      "Curve": [
+        {
+          "Samples": 1,
+          "Seconds": 0.431,
+          "RelativeRms": 0.34665995268976235
+        },
+        {
+          "Samples": 2,
+          "Seconds": 0.8955,
+          "RelativeRms": 0.1586293446474501
+        },
+        {
+          "Samples": 4,
+          "Seconds": 1.8179000000003724,
+          "RelativeRms": 0.0823533863906484
+        },
+        {
+          "Samples": 8,
+          "Seconds": 3.6094000000003725,
+          "RelativeRms": 0.0555921585887316
+        },
+        {
+          "Samples": 16,
+          "Seconds": 7.289599999999627,
+          "RelativeRms": 0.035858657177122416
+        }
+      ],
+      "SecondsPerSample": 0.4555999999999767,
+      "Digest": "b12c0517"
+    },
+    "PixelTraced": {
+      "Curve": [
+        {
+          "Samples": 1,
+          "Seconds": 0.5539000000003725,
+          "RelativeRms": 0.363833902242493
+        },
+        {
+          "Samples": 2,
+          "Seconds": 1.0244000000003726,
+          "RelativeRms": 0.16119153419939042
+        },
+        {
+          "Samples": 4,
+          "Seconds": 1.9764000000003725,
+          "RelativeRms": 0.08276011900406317
+        },
+        {
+          "Samples": 8,
+          "Seconds": 3.8637999999988826,
+          "RelativeRms": 0.06014391772906149
+        },
+        {
+          "Samples": 16,
+          "Seconds": 7.819599999999627,
+          "RelativeRms": 0.03833127667627642
+        }
+      ],
+      "SecondsPerSample": 0.4887249999999767,
+      "Digest": "762d9b16"
+    },
+    "SharedRaster": {
+      "Curve": [
+        {
+          "Samples": 1,
+          "Seconds": 0.432,
+          "RelativeRms": 0.3466600494910584
+        },
+        {
+          "Samples": 2,
+          "Seconds": 0.9437000000011175,
+          "RelativeRms": 0.15863012362509032
+        },
+        {
+          "Samples": 4,
+          "Seconds": 1.8597000000011177,
+          "RelativeRms": 0.08235405724179805
+        },
+        {
+          "Samples": 8,
+          "Seconds": 3.758,
+          "RelativeRms": 0.05558511517046707
+        },
+        {
+          "Samples": 16,
+          "Seconds": 7.358700000001118,
+          "RelativeRms": 0.03586151680659677
+        }
+      ],
+      "SecondsPerSample": 0.4599187500000699,
+      "Digest": "016d3087"
+    }
+  },
+  "Orbit": {
+    "Step": 0.05,
+    "PriorSamples": 32,
+    "Restart": [
+      {
+        "Samples": 1,
+        "Seconds": 0.3981999999992549,
+        "RelativeRms": 0.3577041487825002
+      },
+      {
+        "Samples": 2,
+        "Seconds": 0.851199999999255,
+        "RelativeRms": 0.15705041588614144
+      },
+      {
+        "Samples": 4,
+        "Seconds": 1.611699999999255,
+        "RelativeRms": 0.08030359598098484
+      },
+      {
+        "Samples": 8,
+        "Seconds": 3.228199999999255,
+        "RelativeRms": 0.05437394396302768
+      },
+      {
+        "Samples": 16,
+        "Seconds": 6.495699999999255,
+        "RelativeRms": 0.03021125860587869
+      }
+    ],
+    "Reprojected": {
+      "Curve": [
+        {
+          "Samples": 1,
+          "Seconds": 0.49,
+          "RelativeRms": 0.2634421745120942
+        },
+        {
+          "Samples": 2,
+          "Seconds": 0.979,
+          "RelativeRms": 0.15688096965656093
+        },
+        {
+          "Samples": 4,
+          "Seconds": 1.932,
+          "RelativeRms": 0.0953600111816908
+        },
+        {
+          "Samples": 8,
+          "Seconds": 3.645,
+          "RelativeRms": 0.06833497972298697
+        },
+        {
+          "Samples": 16,
+          "Seconds": 7.074,
+          "RelativeRms": 0.0426993251377451
+        }
+      ],
+      "ReprojectionSeconds": 0.0245,
+      "AcceptedFraction": 0.4000694444444444,
+      "RelativeRmsBeforeFirstSample": 0.4664367256494839
+    }
+  },
+  "Note": "Hero view. Pattern/visibility curves against shared-traced at 256 spp; orbit curves against 256 spp at the moved view. Seconds include checkpoint readbacks."
+}
