@@ -1,0 +1,15 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.Configuration'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.PlatformSettings'
+DocumentTitle = 'PlatformDefault'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003fc'
+
+[PlatformSettings]
+PreferDedicatedTransfer = true
+PreferredGraphicsApi = 'Vulkan-1.3'
+PreferredPresentMode = 'Mailbox'
+TargetPlatformName = 'Linux-x86_64'
+WorkerThreadCap = 0

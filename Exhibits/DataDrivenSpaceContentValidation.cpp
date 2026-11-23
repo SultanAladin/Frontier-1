@@ -13,6 +13,7 @@
 #include "Engine/Codecs/UVCodec.h"
 #include "Engine/Codecs/VolumetricSpaceCodec.h"
 #include "Engine/Codecs/WorldSpaceCodec.h"
+#include "Engine/Serialization/Container/SuffixRegistry.h"
 #include "Engine/Tools/DefaultContentGenerator.h"
 
 #if defined(FRONTIER_PROFILE_EDITOR)
@@ -176,7 +177,7 @@ int main()
         return 1;
     }
 
-    // Assert every file under Content/ uses an explicit *Space suffix (zero .toml, .ies, .face, .InSpace)
+    // Assert every file under Content/ uses a registered canonical Frontier format suffix (Tier A *Space or Tier B sub-format; zero .toml, .ies, .face, .InSpace)
     for (const auto& DirEntry : std::filesystem::recursive_directory_iterator(RepoRoot / "Content"))
     {
         if (!DirEntry.is_regular_file())
@@ -184,7 +185,13 @@ int main()
             continue;
         }
         const std::string Ext = DirEntry.path().extension().string();
-        if (!Require(Ext.ends_with("Space"), "Explicit *Space suffix inside Content/", DirEntry.path().generic_string()))
+        Serialization::FormatSuffixCategory ResolvedCategory{};
+        std::string                         CanonicalExt{};
+        std::string                         SuffixDiag{};
+        const bool RegisteredFormat = Serialization::ResolveSuffixCaseInsensitive(Ext, ResolvedCategory, CanonicalExt, SuffixDiag);
+        if (!Require(RegisteredFormat && Ext != ".toml" && Ext != ".ies" && Ext != ".face" && Ext != ".InSpace",
+                     "Canonical registered Frontier format suffix inside Content/",
+                     DirEntry.path().generic_string()))
         {
             return 1;
         }

@@ -67,7 +67,7 @@ struct SubFormatMappingEntry
     std::string_view LowercaseTag;
 };
 
-constexpr std::array<SubFormatMappingEntry, 50u> SubFormatRegistry = {{
+constexpr std::array<SubFormatMappingEntry, 51u> SubFormatRegistry = {{
     { ".DocumentHeader",            ".documentheader"            },
     { ".SectionDirectory",          ".sectiondirectory"          },
     { ".Revision",                  ".revision"                  },
@@ -114,6 +114,7 @@ constexpr std::array<SubFormatMappingEntry, 50u> SubFormatRegistry = {{
     { ".ShadowCascades",            ".shadowcascades"            },
     { ".ToneTransform",             ".tonetransform"             },
     { ".WorldHierarchy",            ".worldhierarchy"            },
+    { ".WorldReferences",           ".worldreferences"           },
     { ".WorldPlacement",            ".worldplacement"            },
     { ".EditorCamera",              ".editorcamera"              },
     { ".SurfaceParameterization",   ".surfaceparameterization"   },
@@ -371,7 +372,7 @@ bool SpaceContainerEncoder::EncodeToBytes(
     }
 
     std::ostringstream ManifestStream;
-    ManifestStream << "# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase Manifest)\n";
+    ManifestStream << "# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase TOML Header)\n";
     ManifestStream << RootManifest;
     ManifestStream << BinaryBoundaryMarker;
     const std::string Tier1Text = ManifestStream.str();

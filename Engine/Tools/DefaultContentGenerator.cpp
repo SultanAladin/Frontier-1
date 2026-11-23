@@ -24,6 +24,7 @@
 #include "Engine/Codecs/VolumetricSpaceCodec.h"
 #include "Engine/Codecs/WorldSpaceCodec.h"
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/Serialization/Container/DocumentContainerCodec.h"
 
 #include <algorithm>
 #include <array>
@@ -1148,16 +1149,34 @@ bool DefaultContentGenerator::VerifyRepositoryContent(
             continue;
         }
         Codecs::SpaceContainerPayload Decoded{};
-        if (!Codecs::SpaceContainerDecoder::DecodeFromFile(DirEntry.path(), Decoded, OutDiagnostic))
+        std::string                   LegacyDiag{};
+        if (Codecs::SpaceContainerDecoder::DecodeFromFile(DirEntry.path(), Decoded, LegacyDiag))
         {
-            return false;
+            if ((Decoded.Tier2StartOffset % 64u) != 0u)
+            {
+                OutDiagnostic = "Tier2StartOffset is not 64-byte aligned in " + DirEntry.path().generic_string();
+                return false;
+            }
+            ++OutVerifiedCount;
+            continue;
         }
-        if ((Decoded.Tier2StartOffset % 64u) != 0u)
+
+        // Validate canonical 63-format Sectioned Document containers (Engine/Serialization/)
+        Serialization::DocumentContainer DocumentDecoded{};
+        std::string                            DocumentDiag{};
+        if (Serialization::DocumentContainerDecoder::DecodeFromFile(DirEntry.path(), DocumentDecoded, DocumentDiag))
         {
-            OutDiagnostic = "Tier2StartOffset is not 64-byte aligned in " + DirEntry.path().generic_string();
-            return false;
+            if (!DocumentDecoded.BinarySections.empty() && (DocumentDecoded.Tier2StartOffset % 64u) != 0u)
+            {
+                OutDiagnostic = "DocumentContainer Tier2StartOffset is not 64-byte aligned in " + DirEntry.path().generic_string();
+                return false;
+            }
+            ++OutVerifiedCount;
+            continue;
         }
-        ++OutVerifiedCount;
+
+        OutDiagnostic = LegacyDiag + " | DocumentContainer: " + DocumentDiag + " (" + DirEntry.path().generic_string() + ")";
+        return false;
     }
 
     if (OutVerifiedCount == 0u)

@@ -1,0 +1,51 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.InterfaceWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.InterfaceSpace'
+DocumentTitle = 'HudOverlay'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-000000000020'
+
+[EmbeddedSections.HudIconSheet]
+IconCount = 32
+LogicalScaleDpi = 96.0
+
+[EmbeddedSections.HudThemeSwatches]
+AccentHex = '#4F8CFF'
+SurfaceHex = '#181B22'
+
+[EmbeddedSections.ReticleVectorContours]
+ContourCount = 12
+StrokeWidthPixels = 1.5
+
+[EmbeddedSections.StatComparisonTooltip]
+DelayMilliseconds = 180.0
+MaxWidthPixels = 320.0
+
+[['.EmbeddedPillar']]
+EmbeddedFormat = 'TomlSection'
+PillarSuffix = '.PixelSpace'
+SectionIdentifier = 'HudIconSheet'
+
+[['.EmbeddedPillar']]
+EmbeddedFormat = 'TomlSection'
+PillarSuffix = '.VectorSpace'
+SectionIdentifier = 'ReticleVectorContours'
+
+[['.EmbeddedPillar']]
+EmbeddedFormat = 'TomlSection'
+PillarSuffix = '.ColourSpace'
+SectionIdentifier = 'HudThemeSwatches'
+
+[['.EmbeddedPillar']]
+EmbeddedFormat = 'TomlSection'
+PillarSuffix = '.Tooltip'
+SectionIdentifier = 'StatComparisonTooltip'
+
+[['.ExternalLink']]
+ExpectedSha256 = '5ad40720a4ce2b0f9e0052a957fbef9373bcee37c47a37665ac139968657ccc4'
+LinkSlot = 'PrimaryTypeface'
+RelativePath = 'EngineContent/FontsArchives/FontRepository.FontSpace'
+StableIdentifier = '0193b5c0-7a1e-7000-8000-000000000099'
+TargetSuffix = '.FontSpace'

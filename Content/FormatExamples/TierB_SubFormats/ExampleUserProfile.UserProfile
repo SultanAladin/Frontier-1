@@ -1,0 +1,17 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.FormatWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.UserProfile'
+DocumentTitle = 'ExampleUserProfile'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003ff'
+
+[FormatExample]
+CanonicalSuffix = '.UserProfile'
+EditorOnly = false
+ExampleSeed = 862
+FoundationalPillar = false
+SupportsEmbedding = false
+Units = 'SI-Meters-Seconds-Radians'
+UsesTier2Binary = false

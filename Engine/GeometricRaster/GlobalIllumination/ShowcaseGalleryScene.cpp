@@ -12,6 +12,7 @@
 #include "Engine/Codecs/VolumetricSpaceCodec.h"
 #include "Engine/Codecs/WorldSpaceCodec.h"
 #include "Engine/GeometrySpace/Primitives/AnalyticPrimitives.h"
+#include "Engine/Serialization/Configuration/BootConfigurationLoader.h"
 #include "Engine/Tools/DefaultContentGenerator.h"
 
 #include <algorithm>
@@ -1012,12 +1013,28 @@ void BuildVehicleClearSkyDefaultScene(
     {
         (void)Tools::DefaultContentGenerator::EnsureDefaultContentAvailable(RepoRoot, SpaceDiag);
     }
-    const std::filesystem::path DefaultWorldSpace = RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace";
-    if (std::filesystem::exists(DefaultWorldSpace) &&
-        LoadWorldSceneFromSpaceFile(DefaultWorldSpace, RepoRoot, OutBundle, ViewportWidthPx, ViewportHeightPx, SpaceDiag))
+
+    // Resolve startup .WorldSpace through TOML boot configuration chain (EngineSettings -> RuntimeConfiguration -> ProjectIndex)
+    std::filesystem::path StartupWorldSpacePath = RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace";
+    Serialization::ResolvedBootConfiguration BootResolved{};
+    std::string BootDiag{};
+    if (Serialization::BootConfigurationLoader::EnsureDefaultConfigurationFiles(RepoRoot, BootDiag) &&
+        Serialization::BootConfigurationLoader::LoadFromRepositoryRoot(RepoRoot, BootResolved, BootDiag) &&
+        !BootResolved.ResolvedWorldPath.empty())
+    {
+        StartupWorldSpacePath = BootResolved.ResolvedWorldPath;
+    }
+
+    if (std::filesystem::exists(StartupWorldSpacePath) &&
+        LoadWorldSceneFromSpaceFile(StartupWorldSpacePath, RepoRoot, OutBundle, ViewportWidthPx, ViewportHeightPx, SpaceDiag))
     {
         return;
     }
+    std::fprintf(
+        stderr,
+        "[Frontier::Serialization] Warning: Startup .WorldSpace load failed (%s): %s\n",
+        StartupWorldSpacePath.string().c_str(),
+        SpaceDiag.empty() ? "file missing" : SpaceDiag.c_str());
 
     // Slot 0: Neutral studio ground plane (architectural concrete / dry asphalt)
     MaterialSpace::SurfaceMaterial GroundMat {};
