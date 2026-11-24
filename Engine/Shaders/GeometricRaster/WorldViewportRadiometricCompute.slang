@@ -1433,7 +1433,7 @@ float ComputeRadiosityVolumeFade(float3 WorldPos)
     }
     float3 Rel    = abs(WorldPos - CenterSpan.xyz) / CenterSpan.w;
     float  MaxRel = max(Rel.x, max(Rel.y, Rel.z));
-    return smoothstep(0.95, 0.60, MaxRel);
+    return smoothstep(0.98, 0.80, MaxRel);
 }
 
 float3 TraceSingleRadiosityCone(
@@ -1443,17 +1443,56 @@ float3 TraceSingleRadiosityCone(
     float3 ConeDir,
     float  TanHalfAngle,
     uint   MaxSteps,
-    float  SkyFallbackScale)
+    float  SkyFallbackScale,
+    bool   GlossyReflection)
 {
-    float  OriginFade = ComputeRadiosityVolumeFade(Origin);
-    if (OriginFade <= 1.0e-3)
+    float4 CenterSpan = WorldUniforms.GlobalDistanceFineCenterSpan;
+    float  HalfSpan   = CenterSpan.w;
+    if (HalfSpan <= 0.05)
     {
         return EvaluateSkyDome(ConeDir) * SkyFallbackScale;
     }
 
-    float  Vox0     = QueryFineGdfVoxelSize();
-    float  MaxTrace = max(1.2, WorldUniforms.GlobalDistanceFineCenterSpan.w * 2.15);
-    float  T        = Vox0 * 1.10;
+    float OriginFade = GlossyReflection ? 1.0 : ComputeRadiosityVolumeFade(Origin);
+    if (!GlossyReflection && OriginFade <= 1.0e-3)
+    {
+        return EvaluateSkyDome(ConeDir) * SkyFallbackScale;
+    }
+
+    float Vox0     = QueryFineGdfVoxelSize();
+    float MaxTrace = max(1.2, HalfSpan * (GlossyReflection ? 3.25 : 2.15));
+    float T        = Vox0 * 1.10;
+
+    if (GlossyReflection)
+    {
+        // Allow foreground receivers just outside Cascade 0 to trace cleanly into the volume
+        // without clipmap-edge fade-in/out, while early-outing rays that miss Cascade 0.
+        float3 BoxMin  = CenterSpan.xyz - float3(HalfSpan * 0.985);
+        float3 BoxMax  = CenterSpan.xyz + float3(HalfSpan * 0.985);
+        float3 SafeDir = float3(
+            (abs(ConeDir.x) > 1.0e-5) ? ConeDir.x : ((ConeDir.x >= 0.0) ? 1.0e-5 : -1.0e-5),
+            (abs(ConeDir.y) > 1.0e-5) ? ConeDir.y : ((ConeDir.y >= 0.0) ? 1.0e-5 : -1.0e-5),
+            (abs(ConeDir.z) > 1.0e-5) ? ConeDir.z : ((ConeDir.z >= 0.0) ? 1.0e-5 : -1.0e-5));
+        float3 InvDir = 1.0 / SafeDir;
+        float3 T0     = (BoxMin - StartP) * InvDir;
+        float3 T1     = (BoxMax - StartP) * InvDir;
+        float3 TSmall = min(T0, T1);
+        float3 TLarge = max(T0, T1);
+        float  TEnter = max(TSmall.x, max(TSmall.y, TSmall.z));
+        float  TExit  = min(TLarge.x, min(TLarge.y, TLarge.z));
+        if (TExit <= T || TEnter >= min(MaxTrace, TExit))
+        {
+            return EvaluateSkyDome(ConeDir) * SkyFallbackScale;
+        }
+        T        = max(T, TEnter + Vox0 * 0.25);
+        MaxTrace = min(MaxTrace, TExit);
+    }
+
+    float GroundZ          = QueryGlobalDistanceAnalyticGroundZ();
+    bool  IsGroundReceiver = (GroundZ > ValidAnalyticGroundFloorZ) &&
+                             (abs(Origin.z - GroundZ) < Vox0 * 0.90) &&
+                             (GeomN.z > 0.85);
+
     float3 AccumRad = float3(0.0);
     float  AccumOcc = 0.0;
 
@@ -1476,15 +1515,28 @@ float3 TraceSingleRadiosityCone(
             break;
         }
 
-        bool  InSdf          = false;
-        float SdfD           = SampleGlobalDistanceCascade(0u, SampleP, InSdf);
-        float MipVox         = Vox0 * exp2(float(MipIdx));
-        float PlaneClearance = dot(SampleP - Origin, GeomN);
-        // Reject coplanar receiver self-bleed from 2x2x2 mip dilation on flat ground/walls,
-        // while preserving full bounce whenever a non-receiver surface is closer than the plane.
-        float HeightClear     = smoothstep(MipVox * 0.78, MipVox * 1.70, PlaneClearance);
-        float OtherGeomWeight = InSdf ? smoothstep(Vox0 * 0.35, Vox0 * 1.15, PlaneClearance - SdfD) : 0.0;
-        float Weight          = OriginFade * SampleFade * max(HeightClear, OtherGeomWeight);
+        bool  InSdf           = false;
+        float SdfD            = SampleGlobalDistanceCascade(0u, SampleP, InSdf);
+        float MipVox          = Vox0 * exp2(float(MipIdx));
+        float ConeRadius      = 0.5 * Diameter;
+        float PlaneClearance  = dot(SampleP - Origin, GeomN);
+        // Reject coplanar receiver self-bleed from 2x2x2 mip dilation on flat ground/walls;
+        // only bypass HeightClear when a non-ground SDF surface genuinely intersects the cone sample.
+        float HeightClear     = smoothstep(MipVox * 0.85, MipVox * 1.75, PlaneClearance);
+        float SdfProximity    = InSdf ? smoothstep(ConeRadius + Vox0 * 0.85, ConeRadius + Vox0 * 0.10, SdfD) : 0.0;
+        float CloserThanPlane = InSdf ? smoothstep(Vox0 * 0.30, Vox0 * 0.95, PlaneClearance - SdfD) : 0.0;
+        float AboveReceiver   = smoothstep(Vox0 * 0.55, Vox0 * 1.15, PlaneClearance);
+        float OtherGeomWeight = SdfProximity * CloserThanPlane * AboveReceiver;
+        float SelfRejection   = max(HeightClear, OtherGeomWeight);
+
+        if (GlossyReflection && IsGroundReceiver)
+        {
+            float GroundSlabHeight = SampleP.z - GroundZ;
+            float AboveFloorMip    = smoothstep(MipVox * 1.15, MipVox * 2.15, GroundSlabHeight);
+            SelfRejection          = max(AboveFloorMip, SdfProximity * AboveReceiver);
+        }
+
+        float Weight = OriginFade * SampleFade * SelfRejection;
 
         float Trans = 1.0 - AccumOcc;
         AccumRad   += Trans * (VoxPrem.rgb * Weight);
@@ -1538,7 +1590,7 @@ float3 EvaluateGdfVoxelConeGi(float3 Pos, float3 N, float3 GeomN, float3 TAxis, 
         else if (ConeIdx == 2u) { ConeDir = normalize(N * CosTilt - TAxis * SinTilt); ConeWt = 0.18; Steps = 4u; }
         else if (ConeIdx == 3u) { ConeDir = normalize(N * CosTilt + BAxis * SinTilt); ConeWt = 0.18; Steps = 4u; }
         else if (ConeIdx == 4u) { ConeDir = normalize(N * CosTilt - BAxis * SinTilt); ConeWt = 0.18; Steps = 4u; }
-        GiIrr += ConeWt * TraceSingleRadiosityCone(Pos, GeomN, StartP, ConeDir, 0.577, Steps, 0.34);
+        GiIrr += ConeWt * TraceSingleRadiosityCone(Pos, GeomN, StartP, ConeDir, 0.577, Steps, 0.34, false);
     }
     return max(float3(0.0), GiIrr);
 }
@@ -1552,7 +1604,7 @@ float3 EvaluateGdfGlossyCone(float3 Pos, float3 GeomN, float3 ReflDir, float Rou
     float  Vox0    = QueryFineGdfVoxelSize();
     float3 StartP  = Pos + GeomN * (Vox0 * 0.90);
     float  ConeTan = clamp(Roughness * Roughness * 0.85 + 0.045, 0.045, 0.65);
-    return TraceSingleRadiosityCone(Pos, GeomN, StartP, ReflDir, ConeTan, 6u, 1.0);
+    return TraceSingleRadiosityCone(Pos, GeomN, StartP, ReflDir, ConeTan, 6u, 1.0, true);
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -3967,7 +4019,7 @@ void HalfResIndirectEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     bool  GdfReady = IsGlobalDistanceFieldReady();
     float DiffAo   = GdfReady
-        ? EvaluateGlobalDistanceAmbientOcclusion(PosMask.xyz, SurfN, SurfN, BasisT, BasisB, uint2(FullX, FullY))
+        ? EvaluateGlobalDistanceAmbientOcclusion(PosMask.xyz, SurfN, SurfN, BasisT, BasisB, DispatchThreadID.xy)
         : 1.0;
 
     uint   EngineMode   = WorldUniforms.EngineShadowReflPad.x;
@@ -4118,12 +4170,8 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         uint   HalfW      = (Width + 1u) >> 1u;
         uint   HalfH      = (Height + 1u) >> 1u;
-        uint   HX0        = min(DispatchThreadID.x >> 1u, HalfW - 1u);
-        uint   HY0        = min(DispatchThreadID.y >> 1u, HalfH - 1u);
-        uint   HX1        = min(HX0 + 1u, HalfW - 1u);
-        uint   HY1        = min(HY0 + 1u, HalfH - 1u);
-        float  FracX      = ((DispatchThreadID.x & 1u) != 0u) ? 0.5 : 0.0;
-        float  FracY      = ((DispatchThreadID.y & 1u) != 0u) ? 0.5 : 0.0;
+        int    BaseHX     = min(int((DispatchThreadID.x + 1u) >> 1u), int(HalfW) - 1);
+        int    BaseHY     = min(int((DispatchThreadID.y + 1u) >> 1u), int(HalfH) - 1);
         float3 CenterN    = normalize(CenterNorm.xyz);
         float  CamDist    = max(0.25, length(CenterPos.xyz - WorldUniforms.CameraOriginTanX.xyz));
         float  InvWorldAo = 1.0 / max(DenoiseAoWorldFloorSq, DenoiseAoWorldDistScale * CamDist);
@@ -4132,16 +4180,18 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float  SumAo    = 0.0;
         float  SumW     = 0.0;
 
-        for (uint DY = 0u; DY < 2u; ++DY)
+        // 3x3 centered joint-bilateral filter on half-res indirect samples: eliminates 2x2
+        // stochastic UDF AO stipple under vehicles/wheels while preserving crisp plane/normal edges.
+        for (int DY = -1; DY <= 1; ++DY)
         {
-            uint  HY    = (DY == 0u) ? HY0 : HY1;
-            float WY    = (DY == 0u) ? (1.0 - FracY * 0.85) : (0.15 + FracY * 0.85);
+            uint  HY    = uint(clamp(BaseHY + DY, 0, int(HalfH) - 1));
             uint  FullY = min(HY * 2u, Height - 1u);
-            for (uint DX = 0u; DX < 2u; ++DX)
+            float DeltaY = (float(FullY) - float(DispatchThreadID.y)) * 0.5;
+            for (int DX = -1; DX <= 1; ++DX)
             {
-                uint  HX    = (DX == 0u) ? HX0 : HX1;
-                float WX    = (DX == 0u) ? (1.0 - FracX * 0.85) : (0.15 + FracX * 0.85);
+                uint  HX    = uint(clamp(BaseHX + DX, 0, int(HalfW) - 1));
                 uint  FullX = min(HX * 2u, Width - 1u);
+                float DeltaX = (float(FullX) - float(DispatchThreadID.x)) * 0.5;
                 uint  SIdx  = FullY * Width + FullX;
                 float4 SPos = GBufPosMask[SIdx];
                 if (SPos.w <= 0.0) continue;
@@ -4149,13 +4199,14 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                 float3 SNrm      = normalize(GBufNormAo[SIdx].xyz);
                 float3 WorldDiff = SPos.xyz - CenterPos.xyz;
                 float  PlaneDist = abs(dot(CenterN, WorldDiff));
+                float  WSpatial  = exp(-(DeltaX * DeltaX + DeltaY * DeltaY) * 0.55);
                 float  WPlane    = exp(-PlaneDist * 45.0);
                 float  WDist     = exp(-dot(WorldDiff, WorldDiff) * InvWorldAo);
                 float  NCos      = saturate(dot(CenterN, SNrm));
                 float  NCos2     = NCos * NCos;
                 float  NCos4     = NCos2 * NCos2;
                 float  WNrm      = NCos4 * NCos4;
-                float  W         = WX * WY * WPlane * WDist * WNrm;
+                float  W         = WSpatial * WPlane * WDist * WNrm;
 
                 float4 SamplePack = PongIndirectIrradiance[HY * HalfW + HX];
                 SumIndir += SamplePack.xyz * W;
@@ -4172,7 +4223,9 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         }
         else
         {
-            float4 FallbackPack = PongIndirectIrradiance[HY0 * HalfW + HX0];
+            uint   FallbackHX   = uint(clamp(BaseHX, 0, int(HalfW) - 1));
+            uint   FallbackHY   = uint(clamp(BaseHY, 0, int(HalfH) - 1));
+            float4 FallbackPack = PongIndirectIrradiance[FallbackHY * HalfW + FallbackHX];
             OutIndirIrrad       = FallbackPack.xyz;
             OutDiffAo           = FallbackPack.w;
         }
@@ -4198,7 +4251,6 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float  NdotV      = max(1.0e-3, dot(SurfN, VDir));
         float4 SpecPack   = AccumulationHdrBuffer[PixelIdx];
         float  SpecRough  = clamp(SpecPack.w, 0.025, 1.0);
-        float  SpecAo     = saturate(pow(NdotV + OutDiffAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + OutDiffAo);
         float3 SkyFill    = EvaluateSkyDome(SurfN);
         uint   EngineMode = WorldUniforms.EngineShadowReflPad.x;
         float  SkyFillGain = (EngineMode >= 2u && IsGlobalDistanceFieldReady()) ? 0.08 : 0.22;
@@ -4208,8 +4260,12 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             float GtaoAo  = EvaluateGroundTruthAmbientOcclusion(DispatchThreadID.xy, CenterPos.xyz, SurfN);
             EffectiveAo   = min(EffectiveAo, GtaoAo);
-            SpecAo        = saturate(pow(NdotV + EffectiveAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + EffectiveAo);
         }
+        // Reflections already traced against GDF glossy cones / BVH4 scene geometry should only
+        // apply subtle contact grounding rather than double-darkening via full static-IBL SpecAo.
+        float RawSpecAo  = saturate(pow(NdotV + EffectiveAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + EffectiveAo);
+        bool  TracedSpec = (EngineMode >= 2u && IsGlobalDistanceFieldReady()) || (SpecRough < 0.18);
+        float SpecAo     = TracedSpec ? lerp(1.0, RawSpecAo, 0.35) : RawSpecAo;
         FinalHdr = DirectBase.xyz
                  + AlbedoPack.xyz * OutIndirIrrad * (0.45 + 0.55 * EffectiveAo)
                  + SpecPack.xyz * SpecAo
@@ -4242,12 +4298,15 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     else if (CenterPos.w > 0.0 && DebugMode == 11u)
     {
-        float3 CamOrigin = WorldUniforms.CameraOriginTanX.xyz;
-        float3 VDir      = normalize(CamOrigin - CenterPos.xyz);
-        float  NdotV     = max(1.0e-3, dot(normalize(CenterNorm.xyz), VDir));
-        float4 SpecPack  = AccumulationHdrBuffer[PixelIdx];
-        float  SpecRough = clamp(SpecPack.w, 0.025, 1.0);
-        float  SpecAo    = saturate(pow(NdotV + OutDiffAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + OutDiffAo);
+        float3 CamOrigin  = WorldUniforms.CameraOriginTanX.xyz;
+        float3 VDir       = normalize(CamOrigin - CenterPos.xyz);
+        float  NdotV      = max(1.0e-3, dot(normalize(CenterNorm.xyz), VDir));
+        float4 SpecPack   = AccumulationHdrBuffer[PixelIdx];
+        float  SpecRough  = clamp(SpecPack.w, 0.025, 1.0);
+        uint   EngineMode = WorldUniforms.EngineShadowReflPad.x;
+        float  RawSpecAo  = saturate(pow(NdotV + OutDiffAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + OutDiffAo);
+        bool   TracedSpec = (EngineMode >= 2u && IsGlobalDistanceFieldReady()) || (SpecRough < 0.18);
+        float  SpecAo     = TracedSpec ? lerp(1.0, RawSpecAo, 0.35) : RawSpecAo;
         FinalHdr = ApplyAcesFilmicGpu(SpecPack.xyz * SpecAo);
     }
 
@@ -4841,7 +4900,7 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     if (BakePhase == 0u)
     {
-        // Phase 0: Direct Sun + Area Quad LTC + .ies Photometric + Material Blackbody Emission -> Mip 0
+        // Phase 0: Direct Sun + Area Quad LTC + .ies Photometric + Sky Hemisphere Fill + Material Blackbody Emission -> Mip 0
         float3 OutgoingRad = Mat.EmissiveRadiancePad.xyz;
         float3 SunDir      = WorldUniforms.SunDirConeTan.xyz;
         float3 SunIrr      = WorldUniforms.SolarIrradiancePad.xyz;
@@ -4851,6 +4910,16 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             float CloudTr = EvaluateSolarCloudTransmittanceGpu(SurfPos, SunDir);
             OutgoingRad += DiffAlbedo * (InvPiConst * max(0.0, dot(SurfN, SunDir)) * SunVis * CloudTr) * SunIrr;
         }
+
+        // Subtle sky-hemisphere ambient + glossy metallic sky bounce so shadowed surfaces and
+        // downward-facing/metallic geometry never bake as pitch-black (0, 0, 0, 1) voids in glossy cones.
+        float  Metalness    = saturate(Mat.SpecParams.y);
+        float  SpecRough    = clamp(Mat.SpecParams.x, 0.025, 1.0);
+        float  UpHemisphere = saturate(SurfN.z * 0.5 + 0.5);
+        float3 SkySampleDir = normalize(float3(SurfN.x, SurfN.y, max(0.15, SurfN.z)));
+        float3 SkyAmbient   = EvaluateSkyDome(SkySampleDir);
+        float3 SpecTint     = lerp(float3(0.04), Mat.DiffuseAlbedoRoughness.xyz, Metalness) * (1.0 - SpecRough * 0.65);
+        OutgoingRad += (DiffAlbedo * (0.05 + 0.13 * UpHemisphere) + SpecTint * (0.08 + 0.20 * UpHemisphere)) * SkyAmbient;
 
         uint   LightCnt = min(4u, WorldUniforms.LightGlassMaterialDebug.x);
         float3 SafePos  = SurfPos + SurfN * 0.015;
@@ -4894,7 +4963,7 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         {
             float3 TangentDir = (ConeIdx == 0u) ? TAxis : ((ConeIdx == 1u) ? -TAxis : ((ConeIdx == 2u) ? BAxis : -BAxis));
             float3 ConeDir    = normalize(SurfN * 0.7071 + TangentDir * 0.7071);
-            Bounce1Irr += 0.25 * TraceSingleRadiosityCone(SurfPos, SurfN, StartP, ConeDir, 0.72, 4u, 0.34);
+            Bounce1Irr += 0.25 * TraceSingleRadiosityCone(SurfPos, SurfN, StartP, ConeDir, 0.72, 4u, 0.34, false);
         }
 
         float3 BaseRad  = (PrevPrem.a > 1.0e-4) ? (PrevPrem.rgb / PrevPrem.a) : float3(0.0);
