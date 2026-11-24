@@ -51,6 +51,7 @@ export function PreloadStudioVehicleAsset() {
 
 const VertexShaderSource = `#version 300 es
 precision highp float;
+precision highp int;
 
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
@@ -123,6 +124,7 @@ void main() {
 
 const FragmentShaderSource = `#version 300 es
 precision highp float;
+precision highp int;
 
 in vec3 vWorldPos;
 in vec3 vLocalPos;
@@ -900,6 +902,7 @@ void main() {
 
 const GizmoVertexSource = `#version 300 es
 precision highp float;
+precision highp int;
 layout(location = 0) in vec3 aPos;
 uniform mat4 uViewProj;
 uniform float uPointSize;
@@ -919,6 +922,7 @@ void main() {
 
 const GizmoFragmentSource = `#version 300 es
 precision highp float;
+precision highp int;
 uniform vec4 uColor;
 uniform float uPointSize;
 uniform int uSmokeMode;

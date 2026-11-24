@@ -62,6 +62,7 @@ for (const [, ShaderName, RawBody] of EngineSrc.matchAll(/const (VertexShaderSou
   const Calls = new Set([...Body.matchAll(/\b([A-Za-z_]\w*)\s*\(/g)].map((M) => M[1]));
   const Missing = [...Calls].filter((C) => !Defs.has(C) && !GlslBuiltins.has(C));
   assert.deepEqual(Missing, [], ShaderName + " has zero undefined GLSL function calls");
+  assert.ok(Body.includes("precision highp float;") && Body.includes("precision highp int;"), ShaderName + " declares matching highp float & int precisions");
 }
 const GeoPath = path.join(Root, "EngineContent/Geometry/ControlledIntegrator.GeometrySpace");
 const RawBytes = fs.readFileSync(GeoPath);
