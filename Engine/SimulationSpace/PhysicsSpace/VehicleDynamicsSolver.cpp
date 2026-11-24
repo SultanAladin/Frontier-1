@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 
 namespace Frontier::SimulationSpace::PhysicsSpace
 {
@@ -24,6 +25,28 @@ namespace
 //------------------------------------------------------------------------------------------------------------------------
 //                                                 INTERNAL MATH HELPERS
 //------------------------------------------------------------------------------------------------------------------------
+
+[[nodiscard]] inline RigidOrientationQuaternion MultiplyQuat(
+    const RigidOrientationQuaternion& A,
+    const RigidOrientationQuaternion& B) noexcept
+{
+    return {
+        A.W * B.X + A.X * B.W + A.Y * B.Z - A.Z * B.Y,
+        A.W * B.Y - A.X * B.Z + A.Y * B.W + A.Z * B.X,
+        A.W * B.Z + A.X * B.Y - A.Y * B.X + A.Z * B.W,
+        A.W * B.W - A.X * B.X - A.Y * B.Y - A.Z * B.Z,
+    };
+}
+
+[[nodiscard]] inline RigidOrientationQuaternion FromAxisAngleQuat(
+    const Mathematics::Axis3D& UnitAxis,
+    float                      AngleRad) noexcept
+{
+    const float Half = 0.5f * AngleRad;
+    const float S    = std::sin(Half);
+    const float C    = std::cos(Half);
+    return { UnitAxis.X * S, UnitAxis.Y * S, UnitAxis.Z * S, C };
+}
 
 [[nodiscard]] inline Mathematics::Axis3D RotateByQuaternion(
     const RigidOrientationQuaternion& Q,
@@ -714,7 +737,8 @@ bool VehiclePhysicsRig::Initialize(
     PhysicsExtension&                 Physics,
     const VehicleRigSpecification&    InitialSpecification,
     const Mathematics::Axis3D&        SpawnPositionMeters,
-    const RigidOrientationQuaternion& SpawnOrientation) noexcept
+    const RigidOrientationQuaternion& SpawnOrientation,
+    const BakedColliderGeometry*      OptionalChassisCollider) noexcept
 {
     if (!Physics.QueryInitialized())
     {
@@ -771,6 +795,13 @@ bool VehiclePhysicsRig::Initialize(
     CompletedSteps      = 0ull;
     SimulatedSeconds    = 0.0;
 
+    PrevLoggedGear       = ActiveGear;
+    PrevLoggedBov        = false;
+    PrevLoggedFuelWarn   = FuelWarning;
+    PrevLoggedFuelStarved= FuelStarved;
+    PrevLoggedWingAttach = Specification.Aerodynamics.RearWingAttached;
+    PrevLoggedScBypass   = false;
+
     for (uint32_t I = 0u; I < MaxVehicleWheelCorners; ++I)
     {
         Wheels[I] = InternalWheelRuntime{};
@@ -778,13 +809,38 @@ bool VehiclePhysicsRig::Initialize(
         Wheels[I].HubLocalMeters  = Specification.Corners[I].LocalMountMeters;
     }
 
-    // Spawn Jolt rigid body representing the sprung chassis hull
+    // Spawn Jolt rigid body representing the sprung chassis hull (optional baked CompoundHull/ConvexHull or analytical Box)
     RigidBodyDescriptor ChassisDesc {};
-    ChassisDesc.Shape.ShapeCategory    = CollisionShapeCategory::Box;
-    ChassisDesc.Shape.HalfExtentsMeters= { Specification.ChassisHalfExtentsM.X, Specification.ChassisHalfExtentsM.Y, Specification.ChassisHalfExtentsM.Z };
+    const char* HullModeLabel = "Box";
+    if (OptionalChassisCollider != nullptr
+        && OptionalChassisCollider->ShapeCategory == CollisionShapeCategory::CompoundHull
+        && OptionalChassisCollider->ConvexVertices.size() >= 4u
+        && !OptionalChassisCollider->CompoundHullVertexCounts.empty())
+    {
+        ChassisDesc.Shape.ShapeCategory            = CollisionShapeCategory::CompoundHull;
+        ChassisDesc.Shape.ConvexVertices           = OptionalChassisCollider->ConvexVertices;
+        ChassisDesc.Shape.CompoundHullVertexCounts = OptionalChassisCollider->CompoundHullVertexCounts;
+        ChassisDesc.Shape.ConvexRadiusMeters       = 0.015f;
+        HullModeLabel                              = "CompoundHull";
+    }
+    else if (OptionalChassisCollider != nullptr
+        && OptionalChassisCollider->ShapeCategory == CollisionShapeCategory::ConvexHull
+        && OptionalChassisCollider->ConvexVertices.size() >= 4u)
+    {
+        ChassisDesc.Shape.ShapeCategory      = CollisionShapeCategory::ConvexHull;
+        ChassisDesc.Shape.ConvexVertices     = OptionalChassisCollider->ConvexVertices;
+        ChassisDesc.Shape.ConvexRadiusMeters = 0.015f;
+        HullModeLabel                        = "ConvexHull";
+    }
+    else
+    {
+        ChassisDesc.Shape.ShapeCategory     = CollisionShapeCategory::Box;
+        ChassisDesc.Shape.HalfExtentsMeters = { Specification.ChassisHalfExtentsM.X, Specification.ChassisHalfExtentsM.Y, Specification.ChassisHalfExtentsM.Z };
+    }
     ChassisDesc.Shape.Friction         = 0.45f;
     ChassisDesc.Shape.Restitution      = 0.05f;
     ChassisDesc.MotionCategory         = RigidMotionCategory::Dynamic;
+    ChassisDesc.PhysicsMaterialId      = Specification.ChassisMaterialId;
     ChassisDesc.ExplicitMassKg         = LiveTotalMassKg;
     ChassisDesc.LinearDamping          = 0.01f;
     ChassisDesc.AngularDamping         = 0.08f;
@@ -804,6 +860,23 @@ bool VehiclePhysicsRig::Initialize(
 
     const RigidBodyReading SeedBody = Physics.InspectBodyReading(ChassisBody);
     PublishReading(SeedBody, 0.0f);
+
+    if (Specification.EnableDebugLogging)
+    {
+        const char* ContactLabel =
+            (Specification.WheelContactMode == WheelContactQueryMode::SingleRay)        ? "SingleRay" :
+            (Specification.WheelContactMode == WheelContactQueryMode::MultiRayArc)      ? "MultiRayArc(5)" :
+                                                                                          "CylinderShapeCast";
+        PhysicsDebugLog::AccessSharedJournal().AppendFormatted(
+            0.0,
+            PhysicsLogDomain::Vehicle,
+            PhysicsLogSeverity::Event,
+            "Vehicle init: mass=%.1fkg hull=%s contact=%s fuel=%.1fL",
+            LiveTotalMassKg,
+            HullModeLabel,
+            ContactLabel,
+            FuelLiters);
+    }
     return true;
 }
 
@@ -952,25 +1025,156 @@ void VehiclePhysicsRig::SolveSuspensionKinematics(
         };
         const Mathematics::Axis3D StrutTopWorld = AddAxis(Body.PositionMeters, RotateByQuaternion(Body.Orientation, StrutTopLocal));
 
-        RayCastQuery Ray {};
-        Ray.OriginMeters      = StrutTopWorld;
-        Ray.DirectionUnit     = DownDir;
-        Ray.MaxDistanceMeters = FullDroopReach;
-        Ray.ChannelMask       = 0xFFFFFFFFu;
-
-        const RayCastHitReading Hit = Physics.ExecuteRayCastIgnoringBody(Ray, ChassisBody);
         W.PrevCompressionM = W.CompressionM;
 
-        if (!Hit.HitDetected)
+        bool                HasContact     = false;
+        float               RawCompression = 0.0f;
+        float               GroundDistM    = FullDroopReach;
+        uint16_t            HitMatId       = 0u;
+        uint8_t             HitCount       = 0u;
+        Mathematics::Axis3D ContactPoint   { 0.0f, 0.0f, 0.0f };
+        Mathematics::Axis3D ContactNormal  = AxisUp;
+
+        if (Specification.WheelContactMode == WheelContactQueryMode::SingleRay)
         {
-            W.InContact        = false;
-            W.CompressionM     = 0.0f;
-            W.CompressionVelMps= 0.0f;
-            W.SpringForceN     = 0.0f;
-            W.DamperForceN     = 0.0f;
-            W.AntiRollForceN   = 0.0f;
-            W.VerticalLoadN    = 0.0f;
-            W.HubLocalMeters   = {
+            RayCastQuery Ray {};
+            Ray.OriginMeters      = StrutTopWorld;
+            Ray.DirectionUnit     = DownDir;
+            Ray.MaxDistanceMeters = FullDroopReach;
+            Ray.ChannelMask       = 0xFFFFFFFFu;
+
+            const RayCastHitReading Hit = Physics.ExecuteRayCastIgnoringBody(Ray, ChassisBody);
+            if (Hit.HitDetected)
+            {
+                HasContact     = true;
+                HitCount       = 1u;
+                GroundDistM    = Hit.DistanceMeters;
+                RawCompression = FullDroopReach - Hit.DistanceMeters;
+                ContactPoint   = Hit.WorldPoint;
+                ContactNormal  = Mathematics::NormalizeAxis(Hit.SurfaceNormal, AxisUp);
+                HitMatId       = Hit.HitMaterialId;
+            }
+        }
+        else if (Specification.WheelContactMode == WheelContactQueryMode::MultiRayArc)
+        {
+            // 5-ray circumferential lower tire arc (-28, -14, 0, +14, +28 deg) along steered forward plane.
+            // Leading rays climb curbs ahead of the axle, eliminating single-ray step discontinuities while
+            // staying strictly faster than 3D convex cylinder sweeping.
+            static constexpr float ArcSin[5] = { -0.46947156f, -0.24192190f, 0.0f, 0.24192190f, 0.46947156f };
+            static constexpr float ArcCos[5] = {  0.88294759f,  0.97029573f, 1.0f, 0.97029573f, 0.88294759f };
+
+            const float Cs = VehicleFastMath::FastCos(W.SteerAngleRad);
+            const float Sn = VehicleFastMath::FastSin(W.SteerAngleRad);
+            const Mathematics::Axis3D SteeredFwd = AddAxis(ScaleAxis(AxisForward, Cs), ScaleAxis(AxisRight, Sn));
+
+            float               BestComp   = -1.0e6f;
+            float               BestDist   = FullDroopReach;
+            Mathematics::Axis3D BestPoint  { 0.0f, 0.0f, 0.0f };
+            uint16_t            BestMatId  = 0u;
+            float               RayComp[5] { -1.0e6f, -1.0e6f, -1.0e6f, -1.0e6f, -1.0e6f };
+            Mathematics::Axis3D RayNrm[5]  {};
+            bool                RayHit[5]  { false, false, false, false, false };
+
+            const float TireR = TireSpec.OuterRadiusMeters;
+            for (int K = 0; K < 5; ++K)
+            {
+                const float OffsetX  = TireR * ArcSin[K];
+                const float RayReach = SuspSpec.RestLengthMeters + StaticSagM + TireR * ArcCos[K];
+
+                RayCastQuery Ray {};
+                Ray.OriginMeters      = AddAxis(StrutTopWorld, ScaleAxis(SteeredFwd, OffsetX));
+                Ray.DirectionUnit     = DownDir;
+                Ray.MaxDistanceMeters = RayReach;
+                Ray.ChannelMask       = 0xFFFFFFFFu;
+
+                const RayCastHitReading Hit = Physics.ExecuteRayCastIgnoringBody(Ray, ChassisBody);
+                if (!Hit.HitDetected)
+                {
+                    continue;
+                }
+                ++HitCount;
+                RayHit[K]  = true;
+                RayComp[K] = RayReach - Hit.DistanceMeters;
+                RayNrm[K]  = Mathematics::NormalizeAxis(Hit.SurfaceNormal, AxisUp);
+
+                if (RayComp[K] > BestComp)
+                {
+                    BestComp  = RayComp[K];
+                    BestDist  = Hit.DistanceMeters + TireR * (1.0f - ArcCos[K]);
+                    BestPoint = Hit.WorldPoint;
+                    BestMatId = Hit.HitMaterialId;
+                }
+            }
+
+            if (HitCount > 0u)
+            {
+                HasContact     = true;
+                RawCompression = BestComp;
+                GroundDistM    = BestDist;
+                ContactPoint   = BestPoint;
+                HitMatId       = BestMatId;
+
+                // Blend normals of rays within 1.5 cm of peak compression for smooth curb climb transition
+                Mathematics::Axis3D BlendedNrm { 0.0f, 0.0f, 0.0f };
+                for (int K = 0; K < 5; ++K)
+                {
+                    if (RayHit[K] && (BestComp - RayComp[K]) <= 0.015f)
+                    {
+                        const float Weight = 1.0f / (1.0f + 40.0f * std::max(0.0f, BestComp - RayComp[K]));
+                        BlendedNrm = AddAxis(BlendedNrm, ScaleAxis(RayNrm[K], Weight));
+                    }
+                }
+                ContactNormal = Mathematics::NormalizeAxis(BlendedNrm, AxisUp);
+            }
+        }
+        else // WheelContactQueryMode::CylinderShapeCast
+        {
+            // Native Jolt 3D wheel cylinder sweep: Jolt CylinderShape axis is local +Y; rotate +90 deg around
+            // local +X so cylinder axis aligns with axle (+Z), then apply steering yaw around +Y, then chassis quat.
+            const RigidOrientationQuaternion AlignAxleQ = FromAxisAngleQuat({ 1.0f, 0.0f, 0.0f }, 1.57079632679f);
+            const RigidOrientationQuaternion SteerQ     = FromAxisAngleQuat({ 0.0f, 1.0f, 0.0f }, W.SteerAngleRad);
+            const RigidOrientationQuaternion WheelWorldQ = MultiplyQuat(Body.Orientation, MultiplyQuat(SteerQ, AlignAxleQ));
+
+            const Mathematics::Axis3D SweepStartLocal {
+                CornerSpec.LocalMountMeters.X,
+                CornerSpec.LocalMountMeters.Y + SuspSpec.MaxBumpMeters,
+                CornerSpec.LocalMountMeters.Z,
+            };
+            const Mathematics::Axis3D SweepStartWorld = AddAxis(Body.PositionMeters, RotateByQuaternion(Body.Orientation, SweepStartLocal));
+
+            ShapeCastQuery Query {};
+            Query.ShapeCategory      = CollisionShapeCategory::Cylinder;
+            Query.StartMeters        = SweepStartWorld;
+            Query.Orientation        = WheelWorldQ;
+            Query.DisplacementMeters = ScaleAxis(DownDir, TotalStrokeM);
+            Query.RadiusMeters       = TireSpec.OuterRadiusMeters;
+            Query.HalfHeightMeters   = std::max(0.04f, 0.5f * TireSpec.WidthMeters);
+            Query.ChannelMask        = 0xFFFFFFFFu;
+
+            const ShapeCastHitReading Hit = Physics.ExecuteShapeCastIgnoringBody(Query, ChassisBody);
+            if (Hit.HitDetected)
+            {
+                HasContact     = true;
+                HitCount       = 1u;
+                RawCompression = TotalStrokeM * (1.0f - Hit.Fraction);
+                GroundDistM    = FullDroopReach - RawCompression;
+                ContactPoint   = Hit.WorldPoint;
+                ContactNormal  = Mathematics::NormalizeAxis(Hit.SurfaceNormal, AxisUp);
+                HitMatId       = Hit.HitMaterialId;
+            }
+        }
+
+        if (!HasContact)
+        {
+            W.InContact          = false;
+            W.ContactRayHits     = 0u;
+            W.CompressionM       = 0.0f;
+            W.CompressionVelMps  = 0.0f;
+            W.SpringForceN       = 0.0f;
+            W.DamperForceN       = 0.0f;
+            W.AntiRollForceN     = 0.0f;
+            W.VerticalLoadN      = 0.0f;
+            W.HubLocalMeters     = {
                 CornerSpec.LocalMountMeters.X,
                 CornerSpec.LocalMountMeters.Y - StaticSagM,
                 CornerSpec.LocalMountMeters.Z,
@@ -979,10 +1183,29 @@ void VehiclePhysicsRig::SolveSuspensionKinematics(
         }
 
         W.InContact          = true;
-        W.ContactPointWorldM = Hit.WorldPoint;
-        W.ContactNormalWorld = Mathematics::NormalizeAxis(Hit.SurfaceNormal, AxisUp);
+        W.ContactRayHits     = HitCount;
+        W.ContactPointWorldM = ContactPoint;
+        W.ContactNormalWorld = ContactNormal;
+        W.SurfaceMaterialId  = HitMatId;
 
-        const float RawCompression = FullDroopReach - Hit.DistanceMeters;
+        const PhysicsMaterialSpecification SurfaceMat = Physics.InspectPhysicsMaterial(HitMatId);
+        W.SurfaceGripScale    = std::clamp(SurfaceMat.TireGripScale, 0.12f, 2.0f);
+        W.SurfaceRollingScale = std::clamp(SurfaceMat.RollingResistScale, 0.5f, 6.0f);
+
+        if (Specification.EnableDebugLogging && I == 0u && W.PrevSurfaceMatId != HitMatId && CompletedSteps > 2ull)
+        {
+            PhysicsDebugLog::AccessSharedJournal().AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Surface,
+                PhysicsLogSeverity::Event,
+                "Surface transition: FL mat=%u (%s) grip=%.2fx roll=%.2fx",
+                static_cast<unsigned>(HitMatId),
+                SurfaceMat.Label,
+                W.SurfaceGripScale,
+                W.SurfaceRollingScale);
+        }
+        W.PrevSurfaceMatId = HitMatId;
+
         W.CompressionM = std::clamp(RawCompression, 0.0f, TotalStrokeM);
 
         // Compute contact-point chassis vertical velocity for low-noise damper velocity
@@ -996,7 +1219,7 @@ void VehiclePhysicsRig::SolveSuspensionKinematics(
         // True underbody floor clearance above ground at this corner
         const float CornerFloorHeight = std::max(
             0.005f,
-            (Hit.DistanceMeters - SuspSpec.RestLengthMeters) - Specification.Aerodynamics.FloorOffsetMeters);
+            (GroundDistM - SuspSpec.RestLengthMeters) - Specification.Aerodynamics.FloorOffsetMeters);
         MinFloorClearance = std::min(MinFloorClearance, CornerFloorHeight);
 
         // Visual wheel hub local offset
@@ -2155,7 +2378,7 @@ void VehiclePhysicsRig::SolveTireTraction(
         }
         const float WornMm       = std::max(0.0f, TireSpec.InitialTreadDepthMm - W.TreadDepthMm);
         const float WearGripMult = std::max(0.70f, 1.0f - WornMm * TireSpec.GripLossPerMmWear);
-        const float GripScale    = ThermalGripScale * WearGripMult;
+        const float GripScale    = ThermalGripScale * WearGripMult * W.SurfaceGripScale;
 
         // 2. Contact-patch ground velocity in steered wheel basis (projected onto contact surface plane)
         const float Cs = VehicleFastMath::FastCos(W.SteerAngleRad);
@@ -2323,8 +2546,10 @@ void VehiclePhysicsRig::SolveTireTraction(
         W.FxTransientN = LerpScalar(W.FxTransientN, FxSteady, BlendLong);
         W.FyTransientN = LerpScalar(W.FyTransientN, FySteady, BlendLat);
 
-        // Rolling resistance opposing wheel ground travel
-        const float RollingResistN = W.VerticalLoadN * (TireSpec.RollingResistBase + TireSpec.RollingResistSpeedFactor * std::fabs(VxBase));
+        // Rolling resistance opposing wheel ground travel (scaled by PhysicsMaterial)
+        const float RollingResistN = W.VerticalLoadN
+            * (TireSpec.RollingResistBase + TireSpec.RollingResistSpeedFactor * std::fabs(VxBase))
+            * W.SurfaceRollingScale;
         const float RollSign       = (VxBase > 0.05f) ? -1.0f : ((VxBase < -0.05f) ? 1.0f : 0.0f);
 
         W.AppliedFxN  = ClampFinite(W.FxTransientN + RollSign * RollingResistN, -35000.0f, 35000.0f);
@@ -2537,6 +2762,7 @@ void VehiclePhysicsRig::PublishReading(
 
             Out.FrontArchitecture        = Specification.Corners[0u].Suspension.Architecture;
             Out.RearArchitecture         = Specification.Corners[2u].Suspension.Architecture;
+            Out.WheelContactMode         = Specification.WheelContactMode;
             Out.AbsIntervening           = AbsIntervening;
             Out.TcsIntervening           = TcsIntervening;
             Out.EscIntervening           = EscIntervening;
@@ -2569,6 +2795,9 @@ void VehiclePhysicsRig::PublishReading(
                 R.CarcassTempKelvin      = W.CarcassTempK;
                 R.TreadDepthMm           = W.TreadDepthMm;
                 R.FrictionRegime         = W.FrictionRegime;
+                R.SurfaceMaterialId      = W.SurfaceMaterialId;
+                R.SurfaceGripScale       = W.SurfaceGripScale;
+                R.ContactRayHits         = W.ContactRayHits;
                 R.ContactPointWorldM     = W.ContactPointWorldM;
                 R.WheelHubLocalMeters    = W.HubLocalMeters;
             }
@@ -2579,6 +2808,86 @@ void VehiclePhysicsRig::PublishReading(
         },
         SimulatedSeconds,
         CompletedSteps);
+
+    // Emit crisp edge-triggered PhysicsDebugLog events (zero per-step spam)
+    if (Specification.EnableDebugLogging && CompletedSteps > 0ull)
+    {
+        auto& Journal = PhysicsDebugLog::AccessSharedJournal();
+
+        if (ActiveGear != PrevLoggedGear)
+        {
+            Journal.AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Vehicle,
+                PhysicsLogSeverity::Event,
+                "Transmission shift G%d -> G%d @ %.0f RPM (%.1f km/h)",
+                PrevLoggedGear,
+                ActiveGear,
+                EngineRpm,
+                ForwardSpeedMps * 3.6f);
+            PrevLoggedGear = ActiveGear;
+        }
+
+        const bool BovActive = (BovPos > 0.35f);
+        if (BovActive && !PrevLoggedBov)
+        {
+            Journal.AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Vehicle,
+                PhysicsLogSeverity::Trace,
+                "Turbo BOV vented (boost=%.2f bar, shaft=%.0f RPM)",
+                TurboBoostBar,
+                TurboShaftRpm);
+        }
+        PrevLoggedBov = BovActive;
+
+        const bool ScBypassed = (Specification.ForcedInduction == ForcedInductionCategory::Twincharged) && (SuperchargerBypass > 0.80f);
+        if (ScBypassed && !PrevLoggedScBypass)
+        {
+            Journal.AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Vehicle,
+                PhysicsLogSeverity::Event,
+                "Twincharged handoff: SC bypassed -> Turbo primary @ %.0f RPM (boost=%.2f bar)",
+                EngineRpm,
+                CombinedBoostBar);
+        }
+        PrevLoggedScBypass = ScBypassed;
+
+        if (Specification.Aerodynamics.RearWingAttached != PrevLoggedWingAttach)
+        {
+            Journal.AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Constraint,
+                PhysicsLogSeverity::Warning,
+                "Aero dock RearWing %s (DF=%.0f N)",
+                Specification.Aerodynamics.RearWingAttached ? "RE-LATCHED" : "DETACHED",
+                AeroDownforceN);
+            PrevLoggedWingAttach = Specification.Aerodynamics.RearWingAttached;
+        }
+
+        if (FuelWarning && !PrevLoggedFuelWarn)
+        {
+            Journal.AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Vehicle,
+                PhysicsLogSeverity::Warning,
+                "Fuel warning: %.2f L remaining",
+                FuelLiters);
+        }
+        PrevLoggedFuelWarn = FuelWarning;
+
+        if (FuelStarved && !PrevLoggedFuelStarved)
+        {
+            Journal.AppendFormatted(
+                SimulatedSeconds,
+                PhysicsLogDomain::Vehicle,
+                PhysicsLogSeverity::Warning,
+                "Fuel starved: engine cut @ %.1f km/h",
+                ForwardSpeedMps * 3.6f);
+        }
+        PrevLoggedFuelStarved = FuelStarved;
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------------------

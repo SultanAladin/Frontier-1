@@ -23,6 +23,7 @@
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/EstimateCollisionResponse.h>
 #include <Jolt/Physics/Collision/ObjectLayer.h>
@@ -30,6 +31,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -209,6 +211,50 @@ private:
     uint32_t AllowedMask = 0xFFFFFFFFu;
 };
 
+class IgnoreBodyAndSensorsFilter final : public JPH::BodyFilter
+{
+public:
+    explicit IgnoreBodyAndSensorsFilter(JPH::BodyID Ignored = JPH::BodyID(), bool SkipSensors = true) noexcept
+        : IgnoredId(Ignored)
+        , IgnoreSensors(SkipSensors)
+    {
+    }
+
+    bool ShouldCollide(const JPH::BodyID& InBodyID) const override
+    {
+        return IgnoredId.IsInvalid() || InBodyID != IgnoredId;
+    }
+
+    bool ShouldCollideLocked(const JPH::Body& InBody) const override
+    {
+        if (!IgnoredId.IsInvalid() && InBody.GetID() == IgnoredId)
+        {
+            return false;
+        }
+        if (IgnoreSensors && InBody.IsSensor())
+        {
+            return false;
+        }
+        return true;
+    }
+
+private:
+    JPH::BodyID IgnoredId     {};
+    bool        IgnoreSensors = true;
+};
+
+struct ActiveTriggerPairEntry
+{
+    uint64_t            PairKey          = 0ull;
+    RigidBodyToken      SensorBody       {};
+    RigidBodyToken      OtherBody        {};
+    uint32_t            SensorTag        = 0u;
+    uint32_t            OtherTag         = 0u;
+    Mathematics::Axis3D ContactPoint     { 0.0f, 0.0f, 0.0f };
+    bool                SeenThisStep     = false;
+    bool                PreviouslyActive = false;
+};
+
 struct BodySlotEntry
 {
     JPH::BodyID          JoltId            {};
@@ -314,6 +360,11 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
     // 💡 Generic wait-free multi-reader reading bank + lock-free directive queue for cross-thread constraint access
     Threading::ThreadBoundaryExchange<ConstraintListReading, ConstraintDirective> ConstraintBoundary { 1024u };
     std::vector<ConstraintTransitionEvent>                                         PendingStepEvents  {};
+
+    // 💡 O(1) surface PhysicsMaterial register & wait-free sensor trigger overlap publisher
+    PhysicsMaterialRegister                                     MaterialRegister       {};
+    Threading::PublishedReadingExchange<TriggerOverlapListReading> TriggerOverlapExchange {};
+    std::vector<ActiveTriggerPairEntry>                         ActiveTriggerPairs     {};
 
     CollisionDetection               ContactJournal       {};
     std::mutex                       ContactMutex         {};
@@ -1162,12 +1213,136 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
         return { SlotIndex, Generation };
     }
 
+    void RecordSensorOverlap(
+        const JPH::Body&            Body1,
+        const JPH::Body&            Body2,
+        const JPH::ContactManifold& Manifold) noexcept
+    {
+        const bool B1Sensor = Body1.IsSensor();
+        const bool B2Sensor = Body2.IsSensor();
+        if (!B1Sensor && !B2Sensor)
+        {
+            return;
+        }
+
+        const JPH::Body& SensorJolt = B1Sensor ? Body1 : Body2;
+        const JPH::Body& OtherJolt  = B1Sensor ? Body2 : Body1;
+        const RigidBodyToken SensorTok = ResolveBodyTokenFromTag(SensorJolt.GetUserData());
+        const RigidBodyToken OtherTok  = ResolveBodyTokenFromTag(OtherJolt.GetUserData());
+        if (!SensorTok.Valid() || !OtherTok.Valid())
+        {
+            return;
+        }
+
+        const uint64_t PairKey = (static_cast<uint64_t>(SensorTok.SlotIndex) << 32u) | static_cast<uint64_t>(OtherTok.SlotIndex);
+        const JPH::RVec3 PointR = Manifold.mBaseOffset + Manifold.GetWorldSpaceContactPointOn1(0u);
+        const Mathematics::Axis3D Pt = FromJoltRVec3(PointR);
+
+        std::lock_guard<std::mutex> Lock(ContactMutex);
+        for (ActiveTriggerPairEntry& Pair : ActiveTriggerPairs)
+        {
+            if (Pair.PairKey == PairKey)
+            {
+                Pair.SeenThisStep = true;
+                Pair.ContactPoint = Pt;
+                return;
+            }
+        }
+
+        ActiveTriggerPairEntry Created {};
+        Created.PairKey          = PairKey;
+        Created.SensorBody       = SensorTok;
+        Created.OtherBody        = OtherTok;
+        Created.SensorTag        = BodySlots[SensorTok.SlotIndex - 1u].Descriptor.InstanceTag;
+        Created.OtherTag         = BodySlots[OtherTok.SlotIndex - 1u].Descriptor.InstanceTag;
+        Created.ContactPoint     = Pt;
+        Created.SeenThisStep     = true;
+        Created.PreviouslyActive = false;
+        ActiveTriggerPairs.push_back(Created);
+    }
+
+    void PublishTriggerOverlapReading() noexcept
+    {
+        TriggerOverlapListReading Published {};
+        Published.CompletedSteps = CompletedSteps;
+        Published.Generation     = TriggerOverlapExchange.QueryPublishedGeneration() + 1ull;
+
+        std::lock_guard<std::mutex> Lock(ContactMutex);
+        std::size_t WriteIdx = 0u;
+        for (std::size_t I = 0u; I < ActiveTriggerPairs.size(); ++I)
+        {
+            ActiveTriggerPairEntry& Pair = ActiveTriggerPairs[I];
+            TriggerOverlapPhase Phase    = TriggerOverlapPhase::Staying;
+            bool KeepPair                = true;
+
+            if (Pair.SeenThisStep && !Pair.PreviouslyActive)
+            {
+                Phase                 = TriggerOverlapPhase::Entered;
+                Pair.PreviouslyActive = true;
+                ++Published.EnteredCount;
+                PhysicsDebugLog::AccessSharedJournal().AppendFormatted(
+                    SimulatedSeconds,
+                    PhysicsLogDomain::Trigger,
+                    PhysicsLogSeverity::Event,
+                    "Trigger ENTER sensor(slot=%u tag=%u) <- body(slot=%u tag=%u)",
+                    Pair.SensorBody.SlotIndex, Pair.SensorTag, Pair.OtherBody.SlotIndex, Pair.OtherTag);
+            }
+            else if (Pair.SeenThisStep && Pair.PreviouslyActive)
+            {
+                Phase = TriggerOverlapPhase::Staying;
+            }
+            else
+            {
+                Phase    = TriggerOverlapPhase::Exited;
+                KeepPair = false;
+                ++Published.ExitedCount;
+                PhysicsDebugLog::AccessSharedJournal().AppendFormatted(
+                    SimulatedSeconds,
+                    PhysicsLogDomain::Trigger,
+                    PhysicsLogSeverity::Event,
+                    "Trigger EXIT  sensor(slot=%u tag=%u) <- body(slot=%u tag=%u)",
+                    Pair.SensorBody.SlotIndex, Pair.SensorTag, Pair.OtherBody.SlotIndex, Pair.OtherTag);
+            }
+
+            if (Published.OverlapCount < MaxPublishedTriggerOverlaps)
+            {
+                TriggerOverlapReading& Out = Published.Overlaps[Published.OverlapCount++];
+                Out.SensorBody             = Pair.SensorBody;
+                Out.OtherBody              = Pair.OtherBody;
+                Out.SensorInstanceTag      = Pair.SensorTag;
+                Out.OtherInstanceTag       = Pair.OtherTag;
+                Out.Phase                  = Phase;
+                Out.ContactPoint           = Pair.ContactPoint;
+                Out.StepIndex              = CompletedSteps;
+            }
+
+            Pair.SeenThisStep = false;
+            if (KeepPair)
+            {
+                if (WriteIdx != I)
+                {
+                    ActiveTriggerPairs[WriteIdx] = Pair;
+                }
+                ++WriteIdx;
+            }
+        }
+        ActiveTriggerPairs.resize(WriteIdx);
+
+        (void)TriggerOverlapExchange.PublishCopy(Published, SimulatedSeconds, CompletedSteps);
+    }
+
     void OnContactAdded(
         const JPH::Body&            Body1,
         const JPH::Body&            Body2,
         const JPH::ContactManifold& Manifold,
         JPH::ContactSettings&       Settings) override
     {
+        if (Body1.IsSensor() || Body2.IsSensor())
+        {
+            RecordSensorOverlap(Body1, Body2, Manifold);
+            return;
+        }
+
         JPH::CollisionEstimationResult Estimation {};
         JPH::EstimateCollisionResponse(
             Body1,
@@ -1217,6 +1392,18 @@ struct PhysicsExtension::JoltSimulationRuntime final : public JPH::ContactListen
             BodySlots[Reading.BodyB.SlotIndex - 1u].PeakImpulseNs = std::max(
                 BodySlots[Reading.BodyB.SlotIndex - 1u].PeakImpulseNs,
                 MaxNormalImpulse);
+        }
+    }
+
+    void OnContactPersisted(
+        const JPH::Body&            Body1,
+        const JPH::Body&            Body2,
+        const JPH::ContactManifold& Manifold,
+        JPH::ContactSettings&       /*Settings*/) override
+    {
+        if (Body1.IsSensor() || Body2.IsSensor())
+        {
+            RecordSensorOverlap(Body1, Body2, Manifold);
         }
     }
 };
@@ -1349,10 +1536,11 @@ void PhysicsExtension::Tick(double Δt) noexcept
         ++Substeps;
     }
 
-    // ② Publish an immutable generation-stamped constraint reading for wait-free multi-thread reads
+    // ② Publish an immutable generation-stamped constraint & trigger overlap reading for wait-free multi-thread reads
     if (Substeps > 0u || DrainedDirectives > 0u)
     {
         Runtime->PublishConstraintReading();
+        Runtime->PublishTriggerOverlapReading();
     }
 }
 
@@ -1627,6 +1815,21 @@ RigidBodyToken PhysicsExtension::IssueRigidBody(const RigidBodyDescriptor& Descr
             ShapeRef = MeshRes.Get();
             break;
         }
+        case CollisionShapeCategory::Cylinder:
+        {
+            const float Radius  = std::max(Descriptor.Shape.RadiusMeters, 1.0e-3f);
+            const float HalfH   = std::max(Descriptor.Shape.HalfHeightMeters, 1.0e-3f);
+            const float ConvexR = std::min(std::max(Descriptor.Shape.ConvexRadiusMeters, 0.002f), std::min(Radius, HalfH) * 0.45f);
+            JPH::CylinderShapeSettings CylCfg(HalfH, Radius, ConvexR);
+            CylCfg.SetDensity(std::max(Descriptor.Shape.DensityKgPerM3, 1.0f));
+            auto CylRes = CylCfg.Create();
+            if (CylRes.HasError()) return {};
+            ShapeRef       = CylRes.Get();
+            ProxyRadius    = Radius;
+            ProxyExtents.Y = HalfH;
+            ProxyCode      = 2u;
+            break;
+        }
     }
 
     if (!ShapeRef)
@@ -1656,16 +1859,33 @@ RigidBodyToken PhysicsExtension::IssueRigidBody(const RigidBodyDescriptor& Descr
         JoltMotion,
         ChannelLayer);
 
+    const PhysicsMaterialSpecification& SurfMat = Runtime->MaterialRegister.InspectMaterial(Descriptor.PhysicsMaterialId);
+    const float EffectiveFriction    = (Descriptor.PhysicsMaterialId != 0u) ? SurfMat.DynamicFriction : Descriptor.Shape.Friction;
+    const float EffectiveRestitution = (Descriptor.PhysicsMaterialId != 0u) ? SurfMat.Restitution     : Descriptor.Shape.Restitution;
+
     BodyCfg.mLinearVelocity       = ToJoltVec3(Descriptor.LinearVelocity);
     BodyCfg.mAngularVelocity      = ToJoltVec3(Descriptor.AngularVelocity);
-    BodyCfg.mFriction             = std::clamp(Descriptor.Shape.Friction, Constants::MinimumFrictionLimit, Constants::MaximumFrictionLimit);
-    BodyCfg.mRestitution          = std::clamp(Descriptor.Shape.Restitution, 0.0f, Constants::MaximumRestitutionLimit);
+    BodyCfg.mFriction             = std::clamp(EffectiveFriction, Constants::MinimumFrictionLimit, Constants::MaximumFrictionLimit);
+    BodyCfg.mRestitution          = std::clamp(EffectiveRestitution, 0.0f, Constants::MaximumRestitutionLimit);
     BodyCfg.mLinearDamping        = std::max(Descriptor.LinearDamping, 0.0f);
     BodyCfg.mAngularDamping       = std::max(Descriptor.AngularDamping, 0.0f);
     BodyCfg.mGravityFactor        = Descriptor.GravityFactor;
     BodyCfg.mAllowSleeping        = Descriptor.AllowSleep;
     BodyCfg.mMotionQuality        = Descriptor.ContinuousMotion ? JPH::EMotionQuality::LinearCast : JPH::EMotionQuality::Discrete;
-    BodyCfg.mIsSensor             = (ChannelLayer == static_cast<JPH::ObjectLayer>(CollisionLayerChannel::SensorTrigger));
+    BodyCfg.mIsSensor             = Descriptor.IsTriggerSensor
+                                 || (ChannelLayer == static_cast<JPH::ObjectLayer>(CollisionLayerChannel::SensorTrigger));
+
+    if (Descriptor.FreezeAxisMask != 0u)
+    {
+        JPH::EAllowedDOFs Dofs = JPH::EAllowedDOFs::None;
+        if ((Descriptor.FreezeAxisMask & (1u << 0u)) == 0u) Dofs |= JPH::EAllowedDOFs::TranslationX;
+        if ((Descriptor.FreezeAxisMask & (1u << 1u)) == 0u) Dofs |= JPH::EAllowedDOFs::TranslationY;
+        if ((Descriptor.FreezeAxisMask & (1u << 2u)) == 0u) Dofs |= JPH::EAllowedDOFs::TranslationZ;
+        if ((Descriptor.FreezeAxisMask & (1u << 3u)) == 0u) Dofs |= JPH::EAllowedDOFs::RotationX;
+        if ((Descriptor.FreezeAxisMask & (1u << 4u)) == 0u) Dofs |= JPH::EAllowedDOFs::RotationY;
+        if ((Descriptor.FreezeAxisMask & (1u << 5u)) == 0u) Dofs |= JPH::EAllowedDOFs::RotationZ;
+        BodyCfg.mAllowedDOFs = Dofs;
+    }
 
     const float MassKg = RigidBodyDynamics::ResolveEffectiveMassKg(Descriptor);
     if (Descriptor.MotionCategory == RigidMotionCategory::Dynamic && Descriptor.ExplicitMassKg > 0.0f)
@@ -2348,16 +2568,11 @@ RayCastHitReading PhysicsExtension::ExecuteRayCastIgnoringBody(
     JPH::RayCastResult Hit {};
     const ChannelMaskLayerFilter     LayerFilter(Query.ChannelMask);
     const JPH::BroadPhaseLayerFilter BroadFilter;
-    bool HitFound = false;
-    if (AuthenticateBodyToken(IgnoredBody))
-    {
-        const JPH::IgnoreSingleBodyFilter BodyFilter(Runtime->BodySlots[IgnoredBody.SlotIndex - 1u].JoltId);
-        HitFound = Runtime->JoltWorld->GetNarrowPhaseQuery().CastRay(Ray, Hit, BroadFilter, LayerFilter, BodyFilter);
-    }
-    else
-    {
-        HitFound = Runtime->JoltWorld->GetNarrowPhaseQuery().CastRay(Ray, Hit, BroadFilter, LayerFilter);
-    }
+    const JPH::BodyID IgnoredId = AuthenticateBodyToken(IgnoredBody)
+        ? Runtime->BodySlots[IgnoredBody.SlotIndex - 1u].JoltId
+        : JPH::BodyID();
+    const IgnoreBodyAndSensorsFilter BodyFilter(IgnoredId, true);
+    const bool HitFound = Runtime->JoltWorld->GetNarrowPhaseQuery().CastRay(Ray, Hit, BroadFilter, LayerFilter, BodyFilter);
     if (!HitFound)
     {
         return Reading;
@@ -2374,11 +2589,227 @@ RayCastHitReading PhysicsExtension::ExecuteRayCastIgnoringBody(
 
     Reading.HitDetected    = true;
     Reading.HitBody        = Runtime->ResolveBodyTokenFromTag(HitBody.GetUserData());
+    Reading.HitMaterialId  = QueryBodyMaterialId(Reading.HitBody);
     Reading.Fraction       = Hit.mFraction;
     Reading.DistanceMeters = Hit.mFraction * Dist;
     Reading.WorldPoint     = FromJoltRVec3(ImpactR);
     Reading.SurfaceNormal  = FromJoltVec3(Normal);
     return Reading;
+}
+
+uint16_t PhysicsExtension::RegisterPhysicsMaterial(const PhysicsMaterialSpecification& Spec) noexcept
+{
+    if (!Runtime)
+    {
+        return DefaultAsphaltMaterialId;
+    }
+    return Runtime->MaterialRegister.RegisterMaterial(Spec);
+}
+
+const PhysicsMaterialSpecification& PhysicsExtension::InspectPhysicsMaterial(uint16_t MaterialId) const noexcept
+{
+    static const PhysicsMaterialSpecification Fallback =
+        PhysicsMaterialSpecification::ConstructPreset(SurfaceMaterialCategory::Asphalt);
+    if (!Runtime)
+    {
+        return Fallback;
+    }
+    return Runtime->MaterialRegister.InspectMaterial(MaterialId);
+}
+
+uint16_t PhysicsExtension::QueryBodyMaterialId(RigidBodyToken Token) const noexcept
+{
+    if (!Runtime || !AuthenticateBodyToken(Token))
+    {
+        return DefaultAsphaltMaterialId;
+    }
+    return Runtime->BodySlots[Token.SlotIndex - 1u].Descriptor.PhysicsMaterialId;
+}
+
+PhysicsExtension::TriggerOverlapReadingLease PhysicsExtension::AcquireTriggerOverlapReading() const noexcept
+{
+    return Runtime->TriggerOverlapExchange.AcquireReadLease();
+}
+
+uint64_t PhysicsExtension::QueryPublishedTriggerGeneration() const noexcept
+{
+    return Runtime ? Runtime->TriggerOverlapExchange.QueryPublishedGeneration() : 0ull;
+}
+
+ShapeCastHitReading PhysicsExtension::ExecuteShapeCast(const ShapeCastQuery& Query) const noexcept
+{
+    return ExecuteShapeCastIgnoringBody(Query, RigidBodyToken{});
+}
+
+ShapeCastHitReading PhysicsExtension::ExecuteShapeCastIgnoringBody(
+    const ShapeCastQuery& Query,
+    RigidBodyToken        IgnoredBody) const noexcept
+{
+    ShapeCastHitReading Reading {};
+    if (!Runtime || !Runtime->Initialized || !Runtime->JoltWorld)
+    {
+        return Reading;
+    }
+
+    JPH::ShapeRefC CastShape {};
+    switch (Query.ShapeCategory)
+    {
+        case CollisionShapeCategory::Sphere:
+        {
+            const JPH::SphereShapeSettings S(std::max(Query.RadiusMeters, 0.01f));
+            auto Res = S.Create();
+            if (!Res.HasError()) CastShape = Res.Get();
+            break;
+        }
+        case CollisionShapeCategory::Box:
+        {
+            const JPH::Vec3 H(
+                std::max(Query.HalfExtentsMeters.X, 0.01f),
+                std::max(Query.HalfExtentsMeters.Y, 0.01f),
+                std::max(Query.HalfExtentsMeters.Z, 0.01f));
+            const float Cvx = std::min({ H.GetX(), H.GetY(), H.GetZ() }) * 0.15f;
+            const JPH::BoxShapeSettings S(H, Cvx);
+            auto Res = S.Create();
+            if (!Res.HasError()) CastShape = Res.Get();
+            break;
+        }
+        case CollisionShapeCategory::Capsule:
+        {
+            const JPH::CapsuleShapeSettings S(std::max(Query.HalfHeightMeters, 0.01f), std::max(Query.RadiusMeters, 0.01f));
+            auto Res = S.Create();
+            if (!Res.HasError()) CastShape = Res.Get();
+            break;
+        }
+        case CollisionShapeCategory::Cylinder:
+        default:
+        {
+            const float R   = std::max(Query.RadiusMeters, 0.02f);
+            const float HH  = std::max(Query.HalfHeightMeters, 0.02f);
+            const float Cvx = std::min(R, HH) * 0.20f;
+            const JPH::CylinderShapeSettings S(HH, R, Cvx);
+            auto Res = S.Create();
+            if (!Res.HasError()) CastShape = Res.Get();
+            break;
+        }
+    }
+    if (!CastShape)
+    {
+        return Reading;
+    }
+
+    const JPH::RMat44 StartTransform = JPH::RMat44::sRotationTranslation(
+        ToJoltQuat(Query.Orientation),
+        ToJoltRVec3(Query.StartMeters));
+    const JPH::RShapeCast ShapeCast = JPH::RShapeCast::sFromWorldTransform(
+        CastShape.GetPtr(),
+        JPH::Vec3::sReplicate(1.0f),
+        StartTransform,
+        ToJoltVec3(Query.DisplacementMeters));
+
+    JPH::ShapeCastSettings CastSettings {};
+    CastSettings.mBackFaceModeTriangles = JPH::EBackFaceMode::IgnoreBackFaces;
+    CastSettings.mReturnDeepestPoint    = true;
+
+    JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector> Collector;
+    const JPH::BroadPhaseLayerFilter BroadFilter;
+    const ChannelMaskLayerFilter     LayerFilter(Query.ChannelMask);
+    const JPH::BodyID IgnoredId = AuthenticateBodyToken(IgnoredBody)
+        ? Runtime->BodySlots[IgnoredBody.SlotIndex - 1u].JoltId
+        : JPH::BodyID();
+    const IgnoreBodyAndSensorsFilter BodyFilter(IgnoredId, true);
+
+    Runtime->JoltWorld->GetNarrowPhaseQuery().CastShape(
+        ShapeCast,
+        CastSettings,
+        JPH::RVec3::sZero(),
+        Collector,
+        BroadFilter,
+        LayerFilter,
+        BodyFilter);
+
+    if (!Collector.HadHit())
+    {
+        return Reading;
+    }
+
+    const JPH::ShapeCastResult& Hit = Collector.mHit;
+    const JPH::BodyLockRead BodyLock(Runtime->JoltWorld->GetBodyLockInterface(), Hit.mBodyID2);
+    if (!BodyLock.Succeeded())
+    {
+        return Reading;
+    }
+
+    const JPH::Body& HitBody = BodyLock.GetBody();
+    const JPH::Vec3  Normal  = (-Hit.mPenetrationAxis).NormalizedOr(JPH::Vec3::sAxisY());
+
+    Reading.HitDetected       = true;
+    Reading.HitBody           = Runtime->ResolveBodyTokenFromTag(HitBody.GetUserData());
+    Reading.HitMaterialId     = QueryBodyMaterialId(Reading.HitBody);
+    Reading.Fraction          = std::clamp(Hit.mFraction, 0.0f, 1.0f);
+    Reading.PenetrationDepthM = std::max(0.0f, Hit.mPenetrationDepth);
+    Reading.WorldPoint        = FromJoltVec3(Hit.mContactPointOn2);
+    Reading.SurfaceNormal     = FromJoltVec3(Normal);
+    return Reading;
+}
+
+void PhysicsExtension::QueryBoxOverlaps(const BoxOverlapQuery& Query, std::vector<RigidBodyToken>& OutBodies) const
+{
+    OutBodies.clear();
+    if (!Runtime || !Runtime->Initialized || !Runtime->JoltWorld)
+    {
+        return;
+    }
+
+    class BoxOverlapCollector final : public JPH::CollideShapeCollector
+    {
+    public:
+        BoxOverlapCollector(const JoltSimulationRuntime& InRuntime, std::vector<RigidBodyToken>& InOut)
+            : SimRuntime(InRuntime)
+            , OutTokens(InOut)
+        {
+        }
+
+        void AddHit(const JPH::CollideShapeResult& Result) override
+        {
+            const JPH::BodyLockRead Lock(SimRuntime.JoltWorld->GetBodyLockInterface(), Result.mBodyID2);
+            if (!Lock.Succeeded())
+            {
+                return;
+            }
+            const RigidBodyToken Token = SimRuntime.ResolveBodyTokenFromTag(Lock.GetBody().GetUserData());
+            if (Token.Valid())
+            {
+                OutTokens.push_back(Token);
+            }
+        }
+
+    private:
+        const JoltSimulationRuntime& SimRuntime;
+        std::vector<RigidBodyToken>& OutTokens;
+    };
+
+    const JPH::Vec3 Half(
+        std::max(Query.HalfExtentsMeters.X, 1.0e-3f),
+        std::max(Query.HalfExtentsMeters.Y, 1.0e-3f),
+        std::max(Query.HalfExtentsMeters.Z, 1.0e-3f));
+    const JPH::BoxShape Box(Half);
+    const JPH::RMat44 Transform = JPH::RMat44::sRotationTranslation(
+        ToJoltQuat(Query.Orientation),
+        ToJoltRVec3(Query.CenterMeters));
+    JPH::CollideShapeSettings Settings {};
+    BoxOverlapCollector Collector(*Runtime, OutBodies);
+    const JPH::BroadPhaseLayerFilter BroadFilter;
+    const ChannelMaskLayerFilter     LayerFilter(Query.ChannelMask);
+
+    Runtime->JoltWorld->GetNarrowPhaseQuery().CollideShape(
+        &Box,
+        JPH::Vec3::sReplicate(1.0f),
+        Transform,
+        Settings,
+        JPH::RVec3::sZero(),
+        Collector,
+        BroadFilter,
+        LayerFilter);
 }
 
 void PhysicsExtension::QuerySphereOverlaps(const SphereOverlapQuery& Query, std::vector<RigidBodyToken>& OutBodies) const

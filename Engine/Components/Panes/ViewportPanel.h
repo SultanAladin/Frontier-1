@@ -44,6 +44,8 @@ enum class DiagnosticsTabCategory : uint8_t
     Scene    = 1, // [-] - Constructed/visible slot breakdown
     Render   = 2, // [-] - Quality, raytracing & render scale telemetry
     Profiler = 3, // [-] - Detailed per-stage GPU + CPU millisecond breakdown
+    Physics  = 4, // [-] - Jolt physics step timing, triggers & PhysicsDebugLog feed
+    Vehicle  = 5, // [-] - Live VehiclePhysicsRig telemetry (speed, RPM, boost, surface, tire temp)
 };
 
 enum class ConstructCategoryRail : uint8_t
@@ -197,10 +199,21 @@ public:
     void ConfigureRasterCallback(ViewportPaneRasterCallback Callback);
     void ConfigureInteractionCallback(ViewportPaneInteractionCallback Callback);
     void ConfigureViewportTimingBreakdown(const ViewportTimingBreakdown& Breakdown) noexcept;
+    void ConfigurePhysicsTelemetry(const PhysicsTelemetryReading& Reading);
+    void ConfigureDiagnosticsCategory(DiagnosticsTabCategory Category) noexcept { DiagnosticsCategory = Category; }
+    [[nodiscard]] DiagnosticsTabCategory         QueryDiagnosticsCategory() const noexcept { return DiagnosticsCategory; }
+    [[nodiscard]] const PhysicsTelemetryReading& QueryLastPhysicsTelemetry() const noexcept { return LastPhysicsTelemetry; }
     void ConfigureProbeReadoutText(std::string_view ReadoutText);
     void ConfigureSceneTitle(std::string_view Title);
     void ConfigureExecutionMode(ViewportExecutionMode Mode, bool Paused = false) noexcept;
     void TogglePlayPause() noexcept;
+    void RequestSimulationStep() noexcept { StepRequested = true; }
+    [[nodiscard]] bool ConsumeSimulationStepRequest() noexcept
+    {
+        const bool pending = StepRequested;
+        StepRequested = false;
+        return pending;
+    }
     void ConfigureSplitViewport(bool SplitEnabled) noexcept;
     void ConfigureDiagnosticsVisible(bool Visible) noexcept;
     void AdvanceDebugChannelCycle() noexcept { DisplaySettings.DebugChannelIndex = (DisplaySettings.DebugChannelIndex + 1u) % 23u; }
@@ -272,6 +285,7 @@ private:
     std::string                SceneTitle              = "Scene";                                 // [-]   - Viewport identity heading
     ViewportExecutionMode      ExecutionMode           = ViewportExecutionMode::Edit;             // [-]   - Active Edit/Simulate/Play mode
     bool                       PlayPaused              = false;                                   // [-]   - Play session paused indicator
+    bool                       StepRequested           = false;                                   // [-]   - One-shot single-tick step trigger from toolbar
     bool                       SplitViewportEnabled    = false;                                   // [-]   - Dual side-by-side viewport toggle
     bool                       DiagnosticsVisible      = false;                                   // [-]   - Diagnostics overlay active
     bool                       RenderSettingsSheetOpen       = false;                                   // [-]   - Dedicated Render Settings panel open
@@ -303,6 +317,9 @@ private:
     float                      HistoryPendingSeconds   = 0.0f;                                    // [s]   - Elapsed time inside the pending sample bucket
     uint32_t                   HistoryPendingFrames    = 0u;                                      // [cnt] - Frames inside the pending sample bucket
     ViewportTimingBreakdown       LastViewportTiming     {};                                        // [ms]  - Latest per-stage GPU/CPU telemetry
+    PhysicsTelemetryReading       LastPhysicsTelemetry   {};                                        // [-]   - Latest Jolt Physics & Vehicle F3 telemetry
+    std::array<float, 120>        PhysicsStepHistoryMs   {};                                        // [ms]  - Rolling physics step compute sparkline
+    uint32_t                      PhysicsHistoryCursor   = 0u;                                      // [idx] - Rolling physics sparkline cursor
     ConstructCategoryRail      ConstructRail           = ConstructCategoryRail::All;              // [-]   - Active Construct category rail
     ConstructModalStage        ConstructStage          = ConstructModalStage::Entities;           // [-]   - Step 01 Entities vs Step 02 Properties
     float                      ConstructGridScrollY    = 0.0f;                                    // [px]  - Construct tile grid scroll offset

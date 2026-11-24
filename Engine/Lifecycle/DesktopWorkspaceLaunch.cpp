@@ -767,6 +767,7 @@ int LaunchDesktopWorkspace(
 
     auto EnsureEditorLifecycleReady = [&](const std::filesystem::path& ProjectSpaceFile, std::string_view ProjectTitle, bool BlankPlaneSkyScene = false) -> bool
     {
+        const bool JustInitialized = !EditorStackReady;
         if (!EditorStackReady)
         {
             if (!EditorLoopPtr)
@@ -802,9 +803,13 @@ int LaunchDesktopWorkspace(
             (void)EditorBrowserPanel.ActivateCategory(ContentCategory::Colours);
             EditorStackReady = true;
         }
-        if (BlankPlaneSkyScene && EditorStackReady)
+        if (!JustInitialized && BlankPlaneSkyScene && EditorStackReady)
         {
             EditorLoopPtr->PopulateBlankPlaneSkySession();
+        }
+        else if (!JustInitialized && !ProjectSpaceFile.empty() && EditorStackReady)
+        {
+            EditorLoopPtr->OpenProjectSpaceSession(ProjectSpaceFile);
         }
         if (!ProjectTitle.empty())
         {

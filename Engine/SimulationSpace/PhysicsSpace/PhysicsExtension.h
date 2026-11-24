@@ -14,6 +14,8 @@
 #include "Engine/SimulationSpace/PhysicsSpace/BroadphaseSolver.h"
 #include "Engine/SimulationSpace/PhysicsSpace/CollisionDetection.h"
 #include "Engine/SimulationSpace/PhysicsSpace/ConstraintSolver.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsDebugLog.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsMaterial.h"
 #include "Engine/SimulationSpace/PhysicsSpace/RigidBodyDynamics.h"
 #include "Engine/Threading/Sync/ThreadBoundaryExchange.h"
 
@@ -114,12 +116,29 @@ public:
     [[nodiscard]] uint64_t                          QueryPublishedConstraintGeneration() const noexcept;
     [[nodiscard]] uint32_t                          QueryLiveConstraintCount() const noexcept;
 
+    // PhysicsMaterial registry (O(1) lookup on PhysicsThread)
+    [[nodiscard]] uint16_t                            RegisterPhysicsMaterial(const PhysicsMaterialSpecification& Spec) noexcept;
+    [[nodiscard]] const PhysicsMaterialSpecification& InspectPhysicsMaterial(uint16_t MaterialId) const noexcept;
+    [[nodiscard]] uint16_t                            QueryBodyMaterialId(RigidBodyToken Token) const noexcept;
+
+    // Wait-free cross-thread trigger overlap reading (Enter / Stay / Exit for IsTriggerSensor bodies)
+    using TriggerOverlapReadingLease    = Threading::ReadingLease<TriggerOverlapListReading>;
+    using TriggerOverlapReadingExchange = Threading::PublishedReadingExchange<TriggerOverlapListReading>;
+
+    [[nodiscard]] TriggerOverlapReadingLease AcquireTriggerOverlapReading() const noexcept;
+    [[nodiscard]] uint64_t                   QueryPublishedTriggerGeneration() const noexcept;
+
     // Queries, collider proxy export & contact telemetry
-    [[nodiscard]] RayCastHitReading ExecuteRayCast(const RayCastQuery& Query) const noexcept;
-    [[nodiscard]] RayCastHitReading ExecuteRayCastIgnoringBody(
+    [[nodiscard]] RayCastHitReading   ExecuteRayCast(const RayCastQuery& Query) const noexcept;
+    [[nodiscard]] RayCastHitReading   ExecuteRayCastIgnoringBody(
         const RayCastQuery& Query,
         RigidBodyToken      IgnoredBody) const noexcept;
+    [[nodiscard]] ShapeCastHitReading ExecuteShapeCast(const ShapeCastQuery& Query) const noexcept;
+    [[nodiscard]] ShapeCastHitReading ExecuteShapeCastIgnoringBody(
+        const ShapeCastQuery& Query,
+        RigidBodyToken        IgnoredBody) const noexcept;
     void QuerySphereOverlaps(const SphereOverlapQuery& Query, std::vector<RigidBodyToken>& OutBodies) const;
+    void QueryBoxOverlaps(const BoxOverlapQuery& Query, std::vector<RigidBodyToken>& OutBodies) const;
     void ExportRigidColliderProxies(
         std::vector<RigidColliderProxy>& OutProxies,
         uint32_t                         ChannelMask = 0xFFFFFFFFu) const;

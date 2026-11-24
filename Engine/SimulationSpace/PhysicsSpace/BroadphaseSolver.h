@@ -12,6 +12,7 @@
 #include "Engine/Mathematics/AxisCoordinates.h"
 #include "Engine/SimulationSpace/PhysicsSpace/RigidBodyDynamics.h"
 
+#include <array>
 #include <cstdint>
 #include <span>
 
@@ -48,10 +49,34 @@ struct RayCastHitReading
 {
     bool                HitDetected    = false;                // [-]   - True if ray hit a body
     RigidBodyToken      HitBody        {};                     // [id]  - Token of hit rigid body
+    uint16_t            HitMaterialId  = 0u;                   // [id]  - PhysicsMaterial identifier of hit body
     float               Fraction       = 1.0f;                 // [0-1] - Normalized hit distance along ray
     float               DistanceMeters = 0.0f;                 // [m]   - Hit distance from ray origin
     Mathematics::Axis3D WorldPoint     { 0.0f, 0.0f, 0.0f };   // [m]   - World-space impact position
     Mathematics::Axis3D SurfaceNormal  { 0.0f, 0.0f, 1.0f };   // [-]   - World-space outward surface normal
+};
+
+struct ShapeCastQuery
+{
+    CollisionShapeCategory     ShapeCategory     = CollisionShapeCategory::Cylinder; // [-]    - Sphere, Box, Capsule, or Cylinder
+    Mathematics::Axis3D        StartMeters       { 0.0f, 0.0f, 0.0f };               // [m]    - Sweep start center in world space
+    RigidOrientationQuaternion Orientation       {};                                 // [-]    - World orientation of swept shape
+    Mathematics::Axis3D        DisplacementMeters{ 0.0f, -1.0f, 0.0f };              // [m]    - Sweep displacement vector (end - start)
+    Mathematics::Scalar3D      HalfExtentsMeters { 0.25f, 0.25f, 0.25f };            // [m]    - Half-extents when ShapeCategory == Box
+    float                      RadiusMeters      = 0.35f;                            // [m]    - Radius for Sphere / Capsule / Cylinder
+    float                      HalfHeightMeters  = 0.15f;                            // [m]    - Half-height for Capsule / Cylinder
+    uint32_t                   ChannelMask       = 0xFFFFFFFFu;                      // [mask] - Bitmask of CollisionLayerChannel ordinals
+};
+
+struct ShapeCastHitReading
+{
+    bool                HitDetected       = false;              // [-]   - True if sweep intersected a body
+    RigidBodyToken      HitBody           {};                   // [id]  - Token of hit rigid body
+    uint16_t            HitMaterialId     = 0u;                 // [id]  - PhysicsMaterial identifier of hit body
+    float               Fraction          = 1.0f;               // [0-1] - Normalized sweep fraction along DisplacementMeters
+    float               PenetrationDepthM = 0.0f;               // [m]   - Initial penetration depth when starting overlapped
+    Mathematics::Axis3D WorldPoint        { 0.0f, 0.0f, 0.0f }; // [m]   - World-space contact point on target body
+    Mathematics::Axis3D SurfaceNormal     { 0.0f, 1.0f, 0.0f }; // [-]   - Outward surface normal on target body
 };
 
 struct SphereOverlapQuery
@@ -59,6 +84,44 @@ struct SphereOverlapQuery
     Mathematics::Axis3D CenterMeters  { 0.0f, 0.0f, 0.0f }; // [m]    - Overlap sphere world center
     float               RadiusMeters  = 1.0f;               // [m]    - Overlap sphere radius
     uint32_t            ChannelMask   = 0xFFFFFFFFu;        // [mask] - Bitmask of CollisionLayerChannel ordinals
+};
+
+struct BoxOverlapQuery
+{
+    Mathematics::Axis3D        CenterMeters      { 0.0f, 0.0f, 0.0f }; // [m]    - Overlap box world center
+    Mathematics::Scalar3D      HalfExtentsMeters { 0.5f, 0.5f, 0.5f }; // [m]    - Overlap box half-extents
+    RigidOrientationQuaternion Orientation       {};                   // [-]    - Overlap box orientation
+    uint32_t                   ChannelMask       = 0xFFFFFFFFu;        // [mask] - Bitmask of CollisionLayerChannel ordinals
+};
+
+inline constexpr uint32_t MaxPublishedTriggerOverlaps = 64u; // [cnt] - Fixed wait-free trigger overlap buffer capacity
+
+enum class TriggerOverlapPhase : uint8_t
+{
+    Entered = 0u, // [-] - First step where OtherBody overlapped SensorBody
+    Staying = 1u, // [-] - Persisting overlap across consecutive physics steps
+    Exited  = 2u, // [-] - First step after OtherBody separated from SensorBody
+};
+
+struct TriggerOverlapReading
+{
+    RigidBodyToken      SensorBody        {};                   // [id]  - Trigger sensor body token
+    RigidBodyToken      OtherBody         {};                   // [id]  - Overlapping solid body token
+    uint32_t            SensorInstanceTag = 0u;                 // [id]  - Caller tag on sensor body
+    uint32_t            OtherInstanceTag  = 0u;                 // [id]  - Caller tag on overlapping body
+    TriggerOverlapPhase Phase             = TriggerOverlapPhase::Entered; // [-] - Enter / Stay / Exit phase
+    Mathematics::Axis3D ContactPoint      { 0.0f, 0.0f, 0.0f }; // [m]   - Representative overlap contact point
+    uint64_t            StepIndex         = 0ull;               // [idx] - Physics step when observed
+};
+
+struct TriggerOverlapListReading
+{
+    uint64_t                                                     Generation     = 0ull; // [cnt] - Publication generation
+    uint64_t                                                     CompletedSteps = 0ull; // [cnt] - Physics step index
+    uint32_t                                                     OverlapCount   = 0u;   // [cnt] - Valid entries in Overlaps[0..OverlapCount)
+    uint32_t                                                     EnteredCount   = 0u;   // [cnt] - Entered events on this step
+    uint32_t                                                     ExitedCount    = 0u;   // [cnt] - Exited events on this step
+    std::array<TriggerOverlapReading, MaxPublishedTriggerOverlaps> Overlaps     {};     // [-]   - Wait-free readable trigger events
 };
 
 /// Compact 80-byte GPU/CPU collider proxy exported from Jolt rigid bodies.

@@ -17,6 +17,7 @@
 #include "Engine/GeometricRaster/ComponentEditor/ComponentViewportRenderer.h"
 #include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
 #include "Engine/SimulationSpace/PhysicsSpace/VehicleDynamicsSolver.h"
+#include "Engine/SimulationSpace/ComponentSimulationPreviewDriver.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -114,6 +115,12 @@ public:
     void ResetMotionKinematics() noexcept;
     void Tick(double DeltaSeconds) noexcept;
 
+#if FRONTIER_FLUID_HAS_VULKAN
+    [[nodiscard]] bool AttachVulkanInterchange(
+        GeometricRaster::VulkanInterchange* Interchange,
+        const std::filesystem::path&        CompiledShaderDirectory = "CompiledShaders") noexcept;
+#endif
+
     [[nodiscard]] uint64_t ComputeRenderSignature() const noexcept;
 
     // Workspace state
@@ -144,6 +151,7 @@ public:
     float                                                                BrakeInput        = 0.0f;
     float                                                                SteerInput        = 0.0f;
     SimulationSpace::PhysicsSpace::VehicleSimulationTelemetry            VehicleTelemetry  {};
+    SimulationSpace::ComponentSimulationPreviewDriver                    SimulationPreview {};
     std::unordered_map<uint32_t, float>                                  SpringVelocities  {};
     std::unordered_map<uint32_t, float>                                  KickImpulses      {};
 

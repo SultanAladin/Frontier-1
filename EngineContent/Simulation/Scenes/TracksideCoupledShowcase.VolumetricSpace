@@ -1,0 +1,75 @@
+# Frontier Unified Multi-Domain Simulation Scene (.VolumetricSpace)
+
+[Scene]
+Title = "TracksideCoupledShowcase"
+SchemaVersion = 1
+FixedStepHz = 60.0
+CameraWorldPosition = [4.0999999, 2.3499999, 4.94999981]
+
+[Fluid]
+GridCells = [16, 16, 16]
+CellSizeMeters = 0.219999999
+CentreMeters = [-1.95000005, 1.75, -1.54999995]
+Buoyancy = 2.0999999
+Combustion = 1.25
+PressureIterations = 12
+
+[Vehicle]
+EnableCoupling = true
+VertexAtlasPath = "EngineContent/Simulation/Deformables/SportTireFem.VertexAtlas"
+
+[[Force]]
+Identifier = "TrackCrosswind"
+ModelCode = 0
+Position = [0.0, 0.0, 0.0]
+Direction = [1.0, 0.150000006, 0.25]
+Strength = 4.80000019
+RadiusMeters = 12.0
+FalloffCode = 3
+
+[[Force]]
+Identifier = "CampfireVortex"
+ModelCode = 3
+Position = [-1.95000005, 1.0, -1.54999995]
+Direction = [0.0, 1.0, 0.0]
+Strength = 2.5999999
+RadiusMeters = 3.5
+FalloffCode = 0
+
+[[FluidSource]]
+Identifier = "TracksideCampfire"
+Position = [-1.95000005, 0.419999987, -1.54999995]
+RadiusMeters = 0.419999987
+VelocityMps = [0.25, 2.4000001, 0.100000001]
+Density = 1.64999998
+Temperature = 2.8499999
+Fuel = 1.20000005
+
+[[ParticleCloud]]
+Identifier = "CampfireEmbers"
+Position = [-1.95000005, 0.479999989, -1.54999995]
+RadiusMeters = 0.360000014
+ParticleCount = 256
+ReleaseRate = 12.0
+SpeedMps = 1.60000002
+LifetimeSec = 2.4000001
+GravityY = 0.150000006
+GasInfluence = 0.899999976
+FieldInfluence = 0.850000024
+
+[[SoftBody]]
+Label = "TrackBanner"
+SoftBodyPath = "EngineContent/Simulation/Deformables/WovenCloth.SoftBody"
+WorldOrigin = [0.300000012, 1.77999997, -2.04999995]
+
+[[SoftBody]]
+Label = "TrackFerns"
+SoftBodyPath = "EngineContent/Simulation/Deformables/BotanicalFerns.SoftBody"
+WorldOrigin = [2.3499999, 1.77999997, -1.35000002]
+
+[[RigidCollider]]
+BodySlotIndex = 42
+CenterMeters = [0.300000012, 2.04999995, -1.95000005]
+RadiusMeters = 0.419999987
+DynamicReply = true
+

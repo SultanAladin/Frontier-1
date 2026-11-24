@@ -80,11 +80,13 @@ bool ComputeDispatchEncoder::InitializeEncoder(VulkanInterchange* BoundDevice, u
 
     DeviceInterchange = BoundDevice;
     MaxDispatchesPerAllocator = std::clamp(MaxDispatchesPerAllocator, 1u, 4096u);
-    const std::array<VkDescriptorPoolSize, 4u> AllocatorCapacities {{
+    const std::array<VkDescriptorPoolSize, 6u> AllocatorCapacities {{
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         MaxDispatchesPerAllocator * 2u },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MaxDispatchesPerAllocator * 36u },
         { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          MaxDispatchesPerAllocator * 8u },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 8u },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          MaxDispatchesPerAllocator * 12u },
+        { VK_DESCRIPTOR_TYPE_SAMPLER,                MaxDispatchesPerAllocator * 4u },
     }};
 
     VkDescriptorPoolCreateInfo AllocatorSpec {};
@@ -371,11 +373,13 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
         {
             return false;
         }
-        const std::array<VkDescriptorPoolSize, 4u> AllocatorSizes {{
+        const std::array<VkDescriptorPoolSize, 6u> AllocatorSizes {{
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         MaxDispatchesPerAllocator * 2u },
             { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MaxDispatchesPerAllocator * 36u },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          MaxDispatchesPerAllocator * 8u },
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 8u },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          MaxDispatchesPerAllocator * 12u },
+            { VK_DESCRIPTOR_TYPE_SAMPLER,                MaxDispatchesPerAllocator * 4u },
         }};
         VkDescriptorPoolCreateInfo AllocatorSpecNew {};
         AllocatorSpecNew.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -409,7 +413,8 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
 
         if (Slots[Idx].SlotCategory == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
             Slots[Idx].SlotCategory == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
-            Slots[Idx].SlotCategory == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+            Slots[Idx].SlotCategory == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE ||
+            Slots[Idx].SlotCategory == VK_DESCRIPTOR_TYPE_SAMPLER)
         {
             ImgInfos[Idx].sampler     = Slots[Idx].SamplerHandle;
             ImgInfos[Idx].imageView   = Slots[Idx].ImageViewHandle;

@@ -8,8 +8,11 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
+#include "Engine/Components/Panes/ViewportPanel.h"
 #include "Engine/Constants/MathConstants.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsDebugLog.h"
 #include "Engine/SimulationSpace/PhysicsSpace/PhysicsExtension.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsMaterial.h"
 #include "Engine/SimulationSpace/PhysicsSpace/VehicleDynamicsSolver.h"
 #include "Engine/Threading/Sync/ThreadProgressionTracker.h"
 #include "Engine/Threading/Threads/Physics/PhysicsThread.h"
@@ -72,8 +75,9 @@ void StepCouple(PhysicsExtension& Physics, VehiclePhysicsRig& Rig, double FixedD
     Physics.Tick(FixedDt);
 }
 
-bool ValidateControlVehicleFullSuite(const ComponentClassDefinition& ControlVehicleDef)
+bool ValidateControlVehicleFullSuite(const ControlVehicleBuildResult& Built)
 {
+    const ComponentClassDefinition& ControlVehicleDef = Built.ClassDefinition;
     constexpr double FixedDt = 1.0 / 120.0;
     constexpr float  SpawnY  = 0.41715f; // Exact ControlVehicle GroundOffset (0.50855 - 0.0914)
 
@@ -252,19 +256,19 @@ bool ValidateControlVehicleFullSuite(const ComponentClassDefinition& ControlVehi
             OutBypassHigh   = 0.0f;
             bool CapturedLow = false;
 
-            for (uint32_t Step = 0u; Step < 420u; ++Step)
+            for (uint32_t Step = 0u; Step < 480u; ++Step)
             {
                 StepCouple(Physics, Rig, FixedDt);
                 const auto R = Rig.AcquireVehicleReading();
+                OutDragNm = std::max(OutDragNm, R->SuperchargerParasiticNm);
                 if (!CapturedLow && R->EngineRpm >= 2200.0f)
                 {
                     OutLowRpmBoost = R->CombinedBoostBar;
                     CapturedLow    = true;
                 }
-                if (R->EngineRpm >= 5600.0f)
+                if (R->EngineRpm >= 4600.0f)
                 {
                     OutHighRpmBoost = std::max(OutHighRpmBoost, R->CombinedBoostBar);
-                    OutDragNm       = std::max(OutDragNm, R->SuperchargerParasiticNm);
                     OutBypassHigh   = std::max(OutBypassHigh, R->SuperchargerBypassPos);
                 }
             }
@@ -667,6 +671,367 @@ bool ValidateControlVehicleFullSuite(const ComponentClassDefinition& ControlVehi
         Physics.Finalize();
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    // 9. COMPOUNDHULL / TRIANGLEMESH BAKING (.GeometrySpace) + RIGIDBODY COMPONENT + PHYSICSMATERIAL (ASPHALT VS ICE)
+    //------------------------------------------------------------------------------------------------------------------
+    {
+        // 9a. Verify ControlVehicle carries authored ChassisRigidBody component
+        const auto Summary = ControlVehicleDef.Storage.ComputeSummaryMetrics();
+        if (!CheckCondition(Summary.RigidBodyCount == 1u && Summary.CollisionCount == 1u,
+                "ControlVehicle carries authored ChassisRigidBody (RigidBodyCount=1) alongside FrontBumperTrigger")) return false;
+
+        // 9b. Bake CompoundHull from ControlledIntegrator.GeometrySpace body network & static TriangleMesh road
+        const BakedColliderGeometry BakedChassis =
+            RigidBodyDynamics::BakeCompoundHullFromPolygonNetwork(Built.GeometryRepository[0u].Asset.Network, 4u);
+
+        GeometrySpace::PolygonNetwork RoadMesh {};
+        RoadMesh.NetworkTitle = "SyntheticTrackDeck";
+        const uint32_t V0 = RoadMesh.AppendVertex({ -40.0f, 0.0f, -20.0f });
+        const uint32_t V1 = RoadMesh.AppendVertex({ 260.0f, 0.0f, -20.0f });
+        const uint32_t V2 = RoadMesh.AppendVertex({ 260.0f, 0.0f,  20.0f });
+        const uint32_t V3 = RoadMesh.AppendVertex({ -40.0f, 0.0f,  20.0f });
+        const std::array<Mathematics::UVAxes, 3u> RoadUvs {{ { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f } }};
+        const GeometrySpace::FaceShadingAssignment RoadShade {};
+        (void)RoadMesh.AppendFace(std::array<uint32_t, 3u>{ V0, V2, V1 }, RoadUvs, RoadShade, 1u, 1u);
+        (void)RoadMesh.AppendFace(std::array<uint32_t, 3u>{ V0, V3, V2 }, RoadUvs, RoadShade, 1u, 1u);
+
+        const BakedColliderGeometry BakedRoad = RigidBodyDynamics::BakeTriangleMeshFromPolygonNetwork(RoadMesh);
+
+        std::printf("[INFO] Collider Baking: CompoundHull(hulls=%zu, verts=%zu), TriangleMesh(tris=%zu)\n",
+            BakedChassis.CompoundHullVertexCounts.size(),
+            BakedChassis.ConvexVertices.size(),
+            BakedRoad.MeshTriangles.size() / 3u);
+
+        if (!CheckCondition(!BakedChassis.CompoundHullVertexCounts.empty() && BakedChassis.ConvexVertices.size() >= 16u
+                && BakedRoad.MeshTriangles.size() == 6u,
+                "Baked CompoundHull from ControlledIntegrator.GeometrySpace and static TriangleMesh road deck")) return false;
+
+        // 9c. Spawn CompoundHull vehicle over TriangleMesh road (Asphalt vs Ice PhysicsMaterial comparison)
+        auto RunSurfaceLaunch = [&](uint16_t SurfaceMatId, float& OutFinalKph, float& OutReportedGrip) -> bool
+        {
+            PhysicsSimulationParameters Params {};
+            Params.GravityMps2 = { 0.0f, -9.80665f, 0.0f };
+            Params.FixedStepHz = 120.0f;
+            PhysicsExtension Physics(Params);
+            if (!Physics.Initialize()) return false;
+
+            RigidBodyDescriptor RoadDesc {};
+            RoadDesc.Shape.ShapeCategory = CollisionShapeCategory::TriangleMesh;
+            RoadDesc.Shape.MeshTriangles = BakedRoad.MeshTriangles;
+            RoadDesc.MotionCategory      = RigidMotionCategory::Static;
+            RoadDesc.PhysicsMaterialId   = SurfaceMatId;
+            RoadDesc.CollisionChannel    = 0u;
+            if (!Physics.IssueRigidBody(RoadDesc).Valid()) return false;
+
+            VehicleRigSpecification Spec = VehiclePhysicsRig::ConstructSpecificationFromControlVehicle(ControlVehicleDef);
+            Spec.WheelContactMode        = WheelContactQueryMode::MultiRayArc;
+            VehiclePhysicsRig Rig {};
+            if (!Rig.Initialize(Physics, Spec, { 0.0f, SpawnY, 0.0f }, {}, &BakedChassis)) return false;
+
+            VehicleControlDirective WOT {};
+            WOT.Category           = VehicleDirectiveCategory::DriverInput;
+            WOT.ThrottleNormalized = 1.0f;
+            (void)Rig.SubmitControlDirective(WOT);
+
+            for (uint32_t Step = 0u; Step < 300u; ++Step) StepCouple(Physics, Rig, FixedDt);
+            const auto R = Rig.AcquireVehicleReading();
+            OutFinalKph     = R->SpeedKph;
+            OutReportedGrip = R->Corners[0u].SurfaceGripScale;
+
+            Rig.Finalize(Physics);
+            Physics.Finalize();
+            return true;
+        };
+
+        float AsphaltKph = 0.0f, AsphaltGrip = 0.0f;
+        float IceKph     = 0.0f, IceGrip     = 0.0f;
+        if (!RunSurfaceLaunch(static_cast<uint16_t>(SurfaceMaterialCategory::Asphalt), AsphaltKph, AsphaltGrip)) return false;
+        if (!RunSurfaceLaunch(static_cast<uint16_t>(SurfaceMaterialCategory::Ice),     IceKph,     IceGrip))     return false;
+
+        std::printf("[INFO] PhysicsMaterial Launch (CompoundHull on TriangleMesh): Asphalt=%.1f km/h (grip=%.2fx) vs Ice=%.1f km/h (grip=%.2fx)\n",
+            AsphaltKph, AsphaltGrip, IceKph, IceGrip);
+
+        if (!CheckCondition(AsphaltKph > IceKph * 1.45f && AsphaltGrip > 0.95f && IceGrip < 0.30f,
+                "Live PhysicsMaterial scales Pacejka tire traction (Asphalt 1.00x vs Ice 0.22x) on CompoundHull + TriangleMesh")) return false;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // 10. HEAD-TO-HEAD WHEEL CONTACT BENCHMARK: SingleRay vs MultiRayArc (5-ray) vs CylinderShapeCast (3D Sweep)
+    //------------------------------------------------------------------------------------------------------------------
+    {
+        struct ContactBenchmarkMetrics
+        {
+            double   AvgStepUs      = 0.0;
+            float    PeakSuspVelMps = 0.0f;
+            float    PeakLoadN      = 0.0f;
+            float    ExitSpeedKph   = 0.0f;
+            uint32_t CurbHits       = 0u;
+            bool     Valid          = false;
+        };
+
+        auto RunCurbBenchmark = [&](WheelContactQueryMode Mode) -> ContactBenchmarkMetrics
+        {
+            ContactBenchmarkMetrics Out {};
+            PhysicsSimulationParameters Params {};
+            Params.GravityMps2 = { 0.0f, -9.80665f, 0.0f };
+            Params.FixedStepHz = 120.0f;
+            PhysicsExtension Physics(Params);
+            if (!Physics.Initialize()) return Out;
+            (void)SpawnFlatTrack(Physics);
+
+            // Sharp 5.5 cm track curb strip spanning X = [14.0, 22.0] m, Y = [0.0, 0.055] m
+            RigidBodyDescriptor CurbDesc {};
+            CurbDesc.Shape.ShapeCategory     = CollisionShapeCategory::Box;
+            CurbDesc.Shape.HalfExtentsMeters = { 4.0f, 0.0275f, 12.0f };
+            CurbDesc.MotionCategory          = RigidMotionCategory::Static;
+            CurbDesc.PositionMeters          = { 18.0f, 0.0275f, 0.0f };
+            CurbDesc.PhysicsMaterialId       = static_cast<uint16_t>(SurfaceMaterialCategory::Curb);
+            CurbDesc.CollisionChannel        = 0u;
+            (void)Physics.IssueRigidBody(CurbDesc);
+
+            VehicleRigSpecification Spec = VehiclePhysicsRig::ConstructSpecificationFromControlVehicle(ControlVehicleDef);
+            Spec.WheelContactMode        = Mode;
+            Spec.EnableDebugLogging      = (Mode == WheelContactQueryMode::MultiRayArc);
+            VehiclePhysicsRig Rig {};
+            if (!Rig.Initialize(Physics, Spec, { 0.0f, SpawnY, 0.0f })) return Out;
+
+            VehicleControlDirective Drive {};
+            Drive.Category           = VehicleDirectiveCategory::DriverInput;
+            Drive.ThrottleNormalized = 0.75f;
+            (void)Rig.SubmitControlDirective(Drive);
+
+            double SumStepUs = 0.0;
+            for (uint32_t Step = 0u; Step < 360u; ++Step)
+            {
+                const auto T0 = std::chrono::steady_clock::now();
+                StepCouple(Physics, Rig, FixedDt);
+                const auto T1 = std::chrono::steady_clock::now();
+                SumStepUs += std::chrono::duration<double, std::micro>(T1 - T0).count();
+
+                const auto R = Rig.AcquireVehicleReading();
+                if (!std::isfinite(R->SpeedKph) || !std::isfinite(R->WorldPositionMeters.Y))
+                {
+                    Rig.Finalize(Physics);
+                    Physics.Finalize();
+                    return Out;
+                }
+                // Measure front-axle curb strike impulse window (X in [10.5, 21.0] m)
+                if (R->WorldPositionMeters.X >= 10.5f && R->WorldPositionMeters.X <= 21.0f)
+                {
+                    const float FrontVel = std::max(
+                        std::fabs(R->Corners[0u].SuspensionVelocityMps),
+                        std::fabs(R->Corners[1u].SuspensionVelocityMps));
+                    const float FrontLoad = std::max(
+                        R->Corners[0u].VerticalLoadNewtons,
+                        R->Corners[1u].VerticalLoadNewtons);
+                    Out.PeakSuspVelMps = std::max(Out.PeakSuspVelMps, FrontVel);
+                    Out.PeakLoadN      = std::max(Out.PeakLoadN, FrontLoad);
+                    if (R->Corners[0u].SurfaceMaterialId == static_cast<uint16_t>(SurfaceMaterialCategory::Curb))
+                    {
+                        ++Out.CurbHits;
+                    }
+                }
+            }
+
+            const auto FinalR = Rig.AcquireVehicleReading();
+            Out.AvgStepUs    = SumStepUs / 360.0;
+            Out.ExitSpeedKph = FinalR->SpeedKph;
+            Out.Valid        = (Out.CurbHits > 10u) && (Out.ExitSpeedKph > 40.0f);
+
+            Rig.Finalize(Physics);
+            Physics.Finalize();
+            return Out;
+        };
+
+        const auto Single = RunCurbBenchmark(WheelContactQueryMode::SingleRay);
+        const auto Arc    = RunCurbBenchmark(WheelContactQueryMode::MultiRayArc);
+        const auto Cyl    = RunCurbBenchmark(WheelContactQueryMode::CylinderShapeCast);
+
+        std::printf("[INFO] Wheel Contact Curb Benchmark (5.5 cm sharp step):\n");
+        std::printf("       SingleRay         : %.1f us/step | PeakSuspVel=%.2f m/s | PeakLoad=%.0f N | Exit=%.1f km/h\n",
+            Single.AvgStepUs, Single.PeakSuspVelMps, Single.PeakLoadN, Single.ExitSpeedKph);
+        std::printf("       MultiRayArc (5)   : %.1f us/step | PeakSuspVel=%.2f m/s | PeakLoad=%.0f N | Exit=%.1f km/h\n",
+            Arc.AvgStepUs, Arc.PeakSuspVelMps, Arc.PeakLoadN, Arc.ExitSpeedKph);
+        std::printf("       CylinderShapeCast : %.1f us/step | PeakSuspVel=%.2f m/s | PeakLoad=%.0f N | Exit=%.1f km/h\n",
+            Cyl.AvgStepUs, Cyl.PeakSuspVelMps, Cyl.PeakLoadN, Cyl.ExitSpeedKph);
+
+        if (!CheckCondition(Single.Valid && Arc.Valid && Cyl.Valid,
+                "All 3 wheel contact modes (SingleRay, MultiRayArc, CylinderShapeCast) traverse 5.5 cm curb stably")) return false;
+        if (!CheckCondition(Arc.PeakSuspVelMps < Single.PeakSuspVelMps && Cyl.PeakSuspVelMps < Single.PeakSuspVelMps,
+                "MultiRayArc & CylinderShapeCast smooth out single-ray vertical curb impulse spike")) return false;
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // 11. WAIT-FREE TRIGGER OVERLAPS + BOX/SPHERE OVERLAPS + PHYSICSDEBUGLOG + F3 VIEWPORTPANEL TELEMETRY
+    //------------------------------------------------------------------------------------------------------------------
+    {
+        auto& Journal = PhysicsDebugLog::AccessSharedJournal();
+        Journal.Clear();
+
+        PhysicsSimulationParameters Params {};
+        Params.GravityMps2 = { 0.0f, -9.80665f, 0.0f };
+        Params.FixedStepHz = 120.0f;
+        PhysicsExtension Physics(Params);
+        if (!Physics.Initialize()) return false;
+        (void)SpawnFlatTrack(Physics);
+
+        // Static checkpoint trigger gate across track at X = [10, 14] m (sensor: zero collision impulse!)
+        RigidBodyDescriptor GateDesc {};
+        GateDesc.Shape.ShapeCategory     = CollisionShapeCategory::Box;
+        GateDesc.Shape.HalfExtentsMeters = { 2.0f, 2.5f, 8.0f };
+        GateDesc.MotionCategory          = RigidMotionCategory::Static;
+        GateDesc.PositionMeters          = { 12.0f, 1.5f, 0.0f };
+        GateDesc.IsTriggerSensor         = true;
+        GateDesc.CollisionChannel        = 4u;
+        const RigidBodyToken GateToken   = Physics.IssueRigidBody(GateDesc);
+        if (!GateToken.Valid()) return false;
+
+        VehicleRigSpecification Spec = VehiclePhysicsRig::ConstructSpecificationFromControlVehicle(ControlVehicleDef);
+        Spec.EnableDebugLogging      = true;
+        VehiclePhysicsRig Rig {};
+        if (!Rig.Initialize(Physics, Spec, { 0.0f, SpawnY, 0.0f })) return false;
+
+        VehicleControlDirective WOT {};
+        WOT.Category           = VehicleDirectiveCategory::DriverInput;
+        WOT.ThrottleNormalized = 1.0f;
+        (void)Rig.SubmitControlDirective(WOT);
+
+        bool SawEntered = false, SawStaying = false, SawExited = false;
+        bool BoxOverlapFound = false, SphereOverlapFound = false;
+
+        for (uint32_t Step = 0u; Step < 480u; ++Step)
+        {
+            StepCouple(Physics, Rig, FixedDt);
+
+            const auto TrigLease = Physics.AcquireTriggerOverlapReading();
+            if (TrigLease.Valid())
+            {
+                const auto& List = *TrigLease;
+                for (uint32_t K = 0u; K < List.OverlapCount; ++K)
+                {
+                    if (List.Overlaps[K].SensorBody == GateToken)
+                    {
+                        if (List.Overlaps[K].Phase == TriggerOverlapPhase::Entered) SawEntered = true;
+                        if (List.Overlaps[K].Phase == TriggerOverlapPhase::Staying) SawStaying = true;
+                        if (List.Overlaps[K].Phase == TriggerOverlapPhase::Exited)  SawExited  = true;
+                    }
+                }
+            }
+
+            const auto VehR = Rig.AcquireVehicleReading();
+            if (!BoxOverlapFound && VehR->WorldPositionMeters.X >= 11.0f && VehR->WorldPositionMeters.X <= 13.0f)
+            {
+                BoxOverlapQuery BQ {};
+                BQ.CenterMeters      = { 12.0f, 1.0f, 0.0f };
+                BQ.HalfExtentsMeters = { 2.5f, 2.0f, 4.0f };
+                std::vector<RigidBodyToken> BoxHits {};
+                Physics.QueryBoxOverlaps(BQ, BoxHits);
+                for (const auto& Tok : BoxHits)
+                {
+                    if (Tok == Rig.QueryChassisBodyToken()) BoxOverlapFound = true;
+                }
+
+                SphereOverlapQuery SQ {};
+                SQ.CenterMeters = { 12.0f, 1.0f, 0.0f };
+                SQ.RadiusMeters = 3.0f;
+                std::vector<RigidBodyToken> SphHits {};
+                Physics.QuerySphereOverlaps(SQ, SphHits);
+                for (const auto& Tok : SphHits)
+                {
+                    if (Tok == Rig.QueryChassisBodyToken()) SphereOverlapFound = true;
+                }
+            }
+        }
+
+        const auto FinalVeh = Rig.AcquireVehicleReading();
+        const bool DroveCleanlyThroughGate = FinalVeh->WorldPositionMeters.X > 25.0f && FinalVeh->SpeedKph > 80.0f;
+        const uint64_t TotalLogCount       = Journal.QueryTotalEmittedCount();
+        const auto RecentLogs              = Journal.CopyRecentEntries(8u);
+
+        // Hook live telemetry + PhysicsDebugLog into Editor F3 ViewportPanel & render both Physics and Vehicle tabs
+        PhysicsTelemetryReading Tel {};
+        Tel.PhysicsActive         = true;
+        Tel.ActiveBodies          = Physics.QueryLiveBodyCount();
+        Tel.ActiveConstraints     = Physics.QueryLiveConstraintCount();
+        Tel.ActiveTriggerOverlaps = Physics.AcquireTriggerOverlapReading()->OverlapCount;
+        Tel.StepComputeMs         = FinalVeh->StepComputeMicroseconds * 0.001f;
+        Tel.FixedStepHz           = 120.0f;
+        Tel.CompletedSteps        = FinalVeh->CompletedSteps;
+        Tel.DebugLogSequence      = TotalLogCount;
+        for (const auto& E : RecentLogs)
+        {
+            Tel.RecentLogLines.push_back(PhysicsDebugLog::FormatEntryLine(E));
+        }
+        if (!Tel.RecentLogLines.empty()) Tel.LatestLogSummary = Tel.RecentLogLines.back();
+        Tel.VehicleActive         = true;
+        Tel.SpeedKmh              = FinalVeh->SpeedKph;
+        Tel.EngineRpm             = FinalVeh->EngineRpm;
+        Tel.BoostBar              = FinalVeh->CombinedBoostBar;
+        Tel.ActiveGear            = FinalVeh->ActiveGear;
+        Tel.DownforceNewtons      = FinalVeh->AeroDownforceNewtons;
+        Tel.FuelLiters            = FinalVeh->FuelLiters;
+        Tel.FuelCapacityLiters    = Spec.FuelDelivery.TankCapacityLiters;
+        Tel.AvgTreadTempC         = FinalVeh->Corners[0u].TreadTempKelvin - 273.15f;
+        Tel.AvgSurfaceGrip        = FinalVeh->Corners[0u].SurfaceGripScale;
+        Tel.WheelsInContact       = 4u;
+        Tel.WheelContactModeLabel = "MultiRayArc";
+        Tel.ActiveSurfaceLabel    = Physics.InspectPhysicsMaterial(FinalVeh->Corners[0u].SurfaceMaterialId).Label;
+
+        ImGuiContext* HeadlessCtx = ImGui::CreateContext();
+        ImGuiIO& Io               = ImGui::GetIO();
+        Io.DisplaySize            = ImVec2(1280.0f, 720.0f);
+        unsigned char* AtlasPx    = nullptr;
+        int AtlasW = 0, AtlasH = 0;
+        Io.Fonts->GetTexDataAsRGBA32(&AtlasPx, &AtlasW, &AtlasH);
+        ImGui::NewFrame();
+
+        ImDrawList* DrawList = ImGui::GetBackgroundDrawList();
+        PixelSpace Surface(DrawList, Point2D{ 0.0f, 0.0f }, 1.0f, ImGui::GetFont());
+
+        ViewportPanel VP {};
+        VP.ConfigureDiagnosticsVisible(true);
+        VP.ConfigurePhysicsTelemetry(Tel);
+        PaneInputReading EmptyInput {};
+
+        const int VtxBefore = DrawList->VtxBuffer.Size;
+        VP.ConfigureDiagnosticsCategory(DiagnosticsTabCategory::Physics);
+        VP.Render(Surface, Rectangle2D{ 0.0f, 0.0f, 1280.0f, 720.0f }, EmptyInput, 1.0 / 60.0);
+        const int PhysicsTabVtx = DrawList->VtxBuffer.Size - VtxBefore;
+
+        const int VtxBeforeVeh = DrawList->VtxBuffer.Size;
+        VP.ConfigureDiagnosticsCategory(DiagnosticsTabCategory::Vehicle);
+        VP.Render(Surface, Rectangle2D{ 0.0f, 0.0f, 1280.0f, 720.0f }, EmptyInput, 1.0 / 60.0);
+        const int VehicleTabVtx = DrawList->VtxBuffer.Size - VtxBeforeVeh;
+
+        ImGui::EndFrame();
+        ImGui::DestroyContext(HeadlessCtx);
+
+        std::printf("[INFO] Trigger Gate & F3 Telemetry: Enter=%d Stay=%d Exit=%d | BoxOverlap=%d SphereOverlap=%d | Logs=%llu | F3Vtx(Phys=%d, Veh=%d)\n",
+            SawEntered ? 1 : 0,
+            SawStaying ? 1 : 0,
+            SawExited ? 1 : 0,
+            BoxOverlapFound ? 1 : 0,
+            SphereOverlapFound ? 1 : 0,
+            static_cast<unsigned long long>(TotalLogCount),
+            PhysicsTabVtx,
+            VehicleTabVtx);
+        if (!Tel.LatestLogSummary.empty())
+        {
+            std::printf("[INFO] Latest PhysicsDebugLog: %s\n", Tel.LatestLogSummary.c_str());
+        }
+
+        if (!CheckCondition(DroveCleanlyThroughGate && SawEntered && SawStaying && SawExited,
+                "Wait-free TriggerOverlapListReading reports Entered -> Staying -> Exited with zero collision impulse")) return false;
+        if (!CheckCondition(BoxOverlapFound && SphereOverlapFound,
+                "QueryBoxOverlaps and QuerySphereOverlaps detect ControlVehicle inside trigger gate")) return false;
+        if (!CheckCondition(TotalLogCount >= 4ull && PhysicsTabVtx > 200 && VehicleTabVtx > 200
+                && VP.QueryLastPhysicsTelemetry().VehicleActive && VP.QueryLastPhysicsTelemetry().SpeedKmh > 80.0f,
+                "PhysicsDebugLog journal & F3 ViewportPanel Physics/Vehicle telemetry tabs render live")) return false;
+
+        Rig.Finalize(Physics);
+        Physics.Finalize();
+    }
+
     return true;
 }
 
@@ -676,17 +1041,33 @@ int main()
 {
     std::printf("=== ControlVehiclePhysicsValidation ===\n");
 
-    const std::filesystem::path ModelsDir = std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Experimental" / "Shared" / "Models";
+    const std::filesystem::path IntegratorPath =
+        std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "EngineContent" / "Geometry" / "ControlledIntegrator.GeometrySpace";
     ControlVehicleBuildResult Built {};
     std::string Diagnostic {};
-    if (!CheckCondition(ControlVehicleClassBuilder::ConstructControlVehicle(ModelsDir, Built, Diagnostic),
-            "ControlVehicleClassBuilder::ConstructControlVehicle loaded FCT1 hull, tyres & constraints"))
+    if (!CheckCondition(ControlVehicleClassBuilder::ConstructFromControlledIntegrator(IntegratorPath, Built, Diagnostic),
+            "ControlVehicleClassBuilder::ConstructFromControlledIntegrator loaded ControlledIntegrator.GeometrySpace"))
     {
         std::fprintf(stderr, "Diagnostic: %s\n", Diagnostic.c_str());
         return 1;
     }
 
-    if (!ValidateControlVehicleFullSuite(Built.ClassDefinition))
+    const bool PureGeometrySpace = Built.DecodedSourceFaces == 25068u
+                                && Built.GeometryRepository.size() == 4u
+                                && Built.GeometryRepository[0u].SourceFormat == "GeometrySpace"
+                                && Built.GeometryRepository[1u].SourceFormat == "GeometrySpace"
+                                && Built.GeometryRepository[2u].SourceFormat == "GeometrySpace";
+    std::printf("[INFO] ControlledIntegrator.GeometrySpace: SourceFaces=%u, BodyFaces=%zu, TyreFaces=%zu, RimFaces=%zu\n",
+        Built.DecodedSourceFaces,
+        Built.GeometryRepository[0u].Asset.Network.Faces.size(),
+        Built.GeometryRepository[1u].Asset.Network.Faces.size(),
+        Built.GeometryRepository[2u].Asset.Network.Faces.size());
+    if (!CheckCondition(PureGeometrySpace, "ControlVehicle uses pure .GeometrySpace container (25,068 faces, zero .facet)"))
+    {
+        return 1;
+    }
+
+    if (!ValidateControlVehicleFullSuite(Built))
     {
         return 1;
     }

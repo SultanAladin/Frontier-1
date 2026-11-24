@@ -1,0 +1,138 @@
+# Infinite Grid · Drift — Fluid Studio scene preset (Studio). No box at all: a car slaloms away for ever and 2 m tiles allocate themselves wherever the smoke goes — every wire cube is a live tile, amber ones hold the emitter, and they free themselves once the smoke has gone.
+# Converted from the legacy preset object by script; scene fingerprint bc687897e1aabcfe (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 7
+Id = "preset-infinite-drift"
+Name = "Infinite Grid · Drift"
+Family = "Studio"
+Icon = "infinite"
+Summary = "No box at all: a car slaloms away for ever and 2 m tiles allocate themselves wherever the smoke goes — every wire cube is a live tile, amber ones hold the emitter, and they free themselves once the smoke has gone."
+Boundary = "OpenAll"
+
+[Grid]
+Resolution = [24, 24, 24]
+Size = [4, 4, 4]
+MaxCells = 24
+Grid = "Infinite"
+TileSize = 2
+TileResolution = 24
+TilePool = 56
+
+[Render]
+Exposure = 1.1
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.3, ForceResponse = 1.0, PressureIterations = 18, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.12, AmbientTemperature = 0.0, Cooling = 0.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.3 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.994, VelocityDissipation = 0.998 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#d2d2d6", Absorption = 3.0, Anisotropy = 0.55, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Rear Tyre"
+  Shape = "Disc"
+  Position = [0, 0.22, 0]
+  Radius = 0.24
+  Density = 2.4
+  Temperature = 0.4
+  Fuel = 0
+  Velocity = [-2.6, 0.6, 0]
+  Jitter = 0.45
+  Orientation = [1, 0, 0]
+  PathKind = "Slalom"
+  PathRadius = 1.6
+  PathSpeed = 2.4
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Crosswind"
+  Position = [0, 0, 0]
+  Strength = 0.3
+  Direction = [0, 0, 1]
+  Falloff = "Constant"
+  Frequency = 0.4
+  Secondary = 0.5
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 1.9, 0]
+  Strength = 1.4
+  Radius = 40
+  Falloff = "Plateau"

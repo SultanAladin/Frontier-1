@@ -17,6 +17,8 @@
 #include "Engine/ComponentClass/ComponentClassDefinition.h"
 #include "Engine/ComponentClass/ComponentClassValidator.h"
 #include "Engine/ComponentClass/ComponentWorldPlacement.h"
+#include "Engine/SimulationSpace/EditorSimulationAdapter.h"
+#include "Engine/SimulationSpace/WorldSimulationSession.h"
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
 #include "Engine/Components/Appearance/TypographyRepository.h"
 #include "Engine/Components/Camera/CameraLagComponent.h"
@@ -119,6 +121,10 @@ public:
     void               PopulateShowcaseGallerySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
     void               PopulateBlankPlaneSkySession(uint32_t RenderWidthPx = 640u, uint32_t RenderHeightPx = 384u);
     void               PopulateApocalypticCitySession(uint32_t RenderWidthPx = 1280u, uint32_t RenderHeightPx = 720u);
+    void               OpenProjectSpaceSession(
+        const std::filesystem::path& ProjectSpaceFile,
+        uint32_t                     RenderWidthPx  = 640u,
+        uint32_t                     RenderHeightPx = 384u);
     void               RefreshShowcaseViewportRaster();
     void               FrameShowcaseCameraSelection() noexcept;
 
@@ -134,6 +140,17 @@ public:
     [[nodiscard]] Editor::WorldInstanceEditorBridge&                     AccessInstanceEditorBridge() noexcept { return InstanceEditorBridge; }
     [[nodiscard]] World::WorldSceneSyncBridge&                           AccessSceneSyncBridge() noexcept { return SceneSyncBridge; }
     [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
+    [[nodiscard]] bool BeginWorldSimulationPlay(std::string* OutError = nullptr);
+    [[nodiscard]] bool BeginWorldSimulationFromSceneFile(const std::filesystem::path& ScenePath, std::string* OutError = nullptr);
+    [[nodiscard]] bool PauseWorldSimulationPlay() noexcept { return WorldSimulation.Pause(); }
+    [[nodiscard]] bool ResumeWorldSimulationPlay() noexcept { return WorldSimulation.Resume(); }
+    [[nodiscard]] bool StepWorldSimulationTick(double FixedDeltaSeconds = 1.0 / 60.0) noexcept
+    {
+        return WorldSimulation.StepSingleTick(
+            FixedDeltaSeconds, { DesiredCameraOrigin.X, DesiredCameraOrigin.Y, DesiredCameraOrigin.Z });
+    }
+    void               StopWorldSimulationPlay() noexcept { WorldSimulation.Stop(); }
+    [[nodiscard]] const SimulationSpace::WorldSimulationSession& InspectWorldSimulation() const noexcept { return WorldSimulation; }
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
     [[nodiscard]] WorldEnvironmentRegistry&                  AccessEnvironmentRegistry() noexcept { return EnvironmentRegistry; }
@@ -294,6 +311,8 @@ private:
     std::vector<ComponentClass::ComponentClassDefinition> ComponentDefinitions {}; // [-] - Loaded .ComponentSpace definitions
     ComponentClass::ComponentWorldPlacementRegister     WorldPlacements     {};   // [-]  - Placed ComponentClass instances
     std::vector<OutlinerPlacementLink>                  PlacementLinks      {};   // [-]  - Outliner slot <-> ComponentWorldPlacement map
+    SimulationSpace::WorldSimulationSession             WorldSimulation     {};   // [-]  - Live 5-domain Play-in-Editor simulation session
+    SimulationSpace::EditorSimulationAdapter            SimulationAdapter   {};   // [-]  - Isolated Vulkan sim attachment, toolbar sync & overlay pass
     Components::WorkspaceDockPaneToken         OutlinerPaneToken      {};     // [idx]   - Registered left Outliner/LayerStack pane
     Components::WorkspaceDockPaneToken         ViewportPaneToken      {};     // [idx]   - Registered central Viewport pane
     Components::WorkspaceDockPaneToken         InspectorPaneToken     {};     // [idx]   - Registered right Inspector pane

@@ -60,6 +60,11 @@ void ComponentInstanceStorage::ResetWithSpatialOrigin(std::string_view OriginTit
     Arrows.clear();
     Vehicles.clear();
     Rotations.clear();
+    RigidBodies.clear();
+    SoftBodies.clear();
+    ForceFields.clear();
+    FluidRegions.clear();
+    ParticleClouds.clear();
 
     SlotEntry OriginSlot {};
     OriginSlot.Occupied                 = true;
@@ -123,6 +128,21 @@ uint32_t ComponentInstanceStorage::AllocateTypedSlot(ComponentCategory Category)
         case ComponentCategory::RotationalMotion:
             Rotations.emplace_back();
             return static_cast<uint32_t>(Rotations.size() - 1u);
+        case ComponentCategory::RigidBodyInstance:
+            RigidBodies.emplace_back();
+            return static_cast<uint32_t>(RigidBodies.size() - 1u);
+        case ComponentCategory::SoftBodyInstance:
+            SoftBodies.emplace_back();
+            return static_cast<uint32_t>(SoftBodies.size() - 1u);
+        case ComponentCategory::ForceFieldInstance:
+            ForceFields.emplace_back();
+            return static_cast<uint32_t>(ForceFields.size() - 1u);
+        case ComponentCategory::FluidRegionInstance:
+            FluidRegions.emplace_back();
+            return static_cast<uint32_t>(FluidRegions.size() - 1u);
+        case ComponentCategory::ParticleCloudInstance:
+            ParticleClouds.emplace_back();
+            return static_cast<uint32_t>(ParticleClouds.size() - 1u);
     }
     return 0u;
 }
@@ -448,6 +468,21 @@ ComponentInstanceToken ComponentInstanceStorage::DuplicateInstance(ComponentInst
         case ComponentCategory::RotationalMotion:
             Rotations[CopyHeader->CategorySlotIndex] = Rotations[SourceHeader.CategorySlotIndex];
             break;
+        case ComponentCategory::RigidBodyInstance:
+            RigidBodies[CopyHeader->CategorySlotIndex] = RigidBodies[SourceHeader.CategorySlotIndex];
+            break;
+        case ComponentCategory::SoftBodyInstance:
+            SoftBodies[CopyHeader->CategorySlotIndex] = SoftBodies[SourceHeader.CategorySlotIndex];
+            break;
+        case ComponentCategory::ForceFieldInstance:
+            ForceFields[CopyHeader->CategorySlotIndex] = ForceFields[SourceHeader.CategorySlotIndex];
+            break;
+        case ComponentCategory::FluidRegionInstance:
+            FluidRegions[CopyHeader->CategorySlotIndex] = FluidRegions[SourceHeader.CategorySlotIndex];
+            break;
+        case ComponentCategory::ParticleCloudInstance:
+            ParticleClouds[CopyHeader->CategorySlotIndex] = ParticleClouds[SourceHeader.CategorySlotIndex];
+            break;
         case ComponentCategory::SpatialOrigin:
         case ComponentCategory::TransformPivot:
             break;
@@ -538,6 +573,11 @@ FRONTIER_DEFINE_CATEGORY_ACCESSORS(Collision, CollisionVolume, Collisions, Colli
 FRONTIER_DEFINE_CATEGORY_ACCESSORS(Arrow, DirectionArrow, Arrows, DirectionArrowSettings)
 FRONTIER_DEFINE_CATEGORY_ACCESSORS(Vehicle, VehicleDynamics, Vehicles, VehicleDynamicsSettings)
 FRONTIER_DEFINE_CATEGORY_ACCESSORS(Rotation, RotationalMotion, Rotations, RotationalMotionSettings)
+FRONTIER_DEFINE_CATEGORY_ACCESSORS(RigidBody, RigidBodyInstance, RigidBodies, RigidBodyComponentSettings)
+FRONTIER_DEFINE_CATEGORY_ACCESSORS(SoftBody, SoftBodyInstance, SoftBodies, SoftBodyComponentSettings)
+FRONTIER_DEFINE_CATEGORY_ACCESSORS(ForceField, ForceFieldInstance, ForceFields, ForceFieldComponentSettings)
+FRONTIER_DEFINE_CATEGORY_ACCESSORS(FluidRegion, FluidRegionInstance, FluidRegions, FluidRegionComponentSettings)
+FRONTIER_DEFINE_CATEGORY_ACCESSORS(ParticleCloud, ParticleCloudInstance, ParticleClouds, ParticleCloudComponentSettings)
 
 #undef FRONTIER_DEFINE_CATEGORY_ACCESSORS
 
@@ -612,6 +652,11 @@ ClassSummaryMetrics ComponentInstanceStorage::ComputeSummaryMetrics() const noex
             case ComponentCategory::ConstraintInstance: ++Metrics.ConstraintCount; break;
             case ComponentCategory::LightInstance:      ++Metrics.LightCount;      break;
             case ComponentCategory::CollisionVolume:    ++Metrics.CollisionCount;  break;
+            case ComponentCategory::RigidBodyInstance:     ++Metrics.RigidBodyCount;     break;
+            case ComponentCategory::SoftBodyInstance:      ++Metrics.SoftBodyCount;      break;
+            case ComponentCategory::ForceFieldInstance:    ++Metrics.ForceFieldCount;    break;
+            case ComponentCategory::FluidRegionInstance:   ++Metrics.FluidRegionCount;   break;
+            case ComponentCategory::ParticleCloudInstance: ++Metrics.ParticleCloudCount; break;
             case ComponentCategory::VehicleDynamics:
             case ComponentCategory::RotationalMotion:   ++Metrics.BehaviourCount;  break;
             default: break;

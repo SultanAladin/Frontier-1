@@ -1,0 +1,82 @@
+# Launch Reveal — scene preset (VFX). Flagship automotive reveal adapted from Particle Studio: an electric lime transition sweeps across the obsidian SportsCar while Sport-mode light-speed streaks rush past under directional slipstream wind.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Scene]
+Order = 47
+Id = "preset-launch-reveal"
+Name = "Launch Reveal"
+Family = "VFX"
+Icon = "track"
+Boundary = "OpenAll"
+Summary = "Automotive launch reveal: an electric lime sweep crosses the obsidian SportsCar while Sport-mode speed lines rush past in the slipstream."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.5, 5.0, 6.0]
+
+[Render]
+Visible = false
+Exposure = 1.25
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Slipstream"
+  Position = [0.0, 0.0, 0.0]
+  Strength = 2.6
+  Radius = 4.5
+  Falloff = "Constant"
+  Direction = [-1.0, 0.05, 0.0]
+  Frequency = 0.35
+  Secondary = 0.0
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Wake Shimmer"
+  Position = [-1.4, -0.1, 0.0]
+  Strength = 0.65
+  Radius = 2.6
+  Falloff = "Gaussian"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.9
+  Secondary = 0.15
+
+[[Particle]]
+  Template = "vehicle-transition"
+  Name = "SportsCar Sweep"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -0.18, 0.0]
+  Radius = 1.95
+  Count = 4096
+
+[[Particle]]
+  Template = "light-speed-streaks"
+  Name = "Sport Speed Lines"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [2.6, 0.05, 0.0]
+  Radius = 1.75
+  Count = 2048

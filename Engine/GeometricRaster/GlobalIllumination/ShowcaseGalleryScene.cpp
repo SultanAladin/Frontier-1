@@ -1384,9 +1384,11 @@ void RegisterShowcaseGalleryInOutliner(
     if (OutlinerRecordEntry* Folder = TargetOutliner.AccessEntry(InOutBundle.ShowcaseFolderToken))
     {
         Folder->FolderTint  = WorkspaceSurfaceColors::ShowcaseSage;
-        Folder->Subtitle    = (InOutBundle.Objects.size() == 1u)
-            ? "Blank Scene · Ground Plane & Clear Sky"
-            : "Default Scene · Vehicle & Ground Plane";
+        Folder->Subtitle    = InOutBundle.Objects.empty()
+            ? "Blank Scene · Sun & Clear Sky"
+            : (InOutBundle.Objects.size() == 1u)
+                ? "Blank Scene · Ground Plane & Clear Sky"
+                : "Default Scene · Vehicle & Ground Plane";
         Folder->AuthorNotes = "Scene geometry collection.";
         Folder->Expanded    = true;
     }

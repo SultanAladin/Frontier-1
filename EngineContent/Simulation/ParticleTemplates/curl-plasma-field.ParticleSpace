@@ -1,0 +1,87 @@
+# Curl Wave & Plasma Field — particle template (Trails). Dense 3D curl-noise wave fur & plasma streams: switch Spawn Shape between Box (Curl Wave Field) and Sphere (Spherical Curl Plasma).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Template]
+Order = 66
+Id = "curl-plasma-field"
+Name = "Curl Wave & Plasma Field"
+Category = "Trails"
+Icon = "filaments"
+Tint = "#38bdf8"
+Summary = "Dense 3D curl-noise wave fur & plasma ribbons: switch Spawn Shape between Box (Curl Wave Field) and Sphere (Spherical Curl Plasma)."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 2, Position = [0, 0.0, 0], Direction = [0, 1, 0], Radius = 1.75, Fill = 0.0, Count = 2560, Rate = 12.0, Lifetime = 3.2, Linger = 1.4, Speed = 0.45, Spread = 0.2, Radial = 0.15 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 1.35 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 2.65, NoiseScale = 1.15, NoiseSpeed = 0.65 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 0.8 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#1e1b4b", "#3b82f6", "#22d3ee", "#f0abfc", "#ffffff"], RampSource = 0, MaxSpeed = 4.2, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.25, Brightness = 1.45, Flicker = 0.12 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.012, SizeEnd = 0.004, SizeRandom = 0.4 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.72, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 2, TrailLength = 24, TrailInterval = 0.055, TrailWidth = 0.012, TrailTaper = 0.85, TrailFade = 0.9, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 1.0 }

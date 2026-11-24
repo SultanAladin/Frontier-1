@@ -1,0 +1,145 @@
+# Explosion — Fluid Studio scene preset (Studio). Single keyed detonation — 0.35 s fireball, short roll-up turbulence, then a free-rising mushroom that never reaches the roof.
+# Converted from the legacy preset object by script; scene fingerprint 8e1de228ee9e9c3d (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 4
+Id = "preset-explosion"
+Name = "Explosion"
+Family = "Studio"
+Icon = "burst"
+Summary = "Single keyed detonation — 0.35 s fireball, short roll-up turbulence, then a free-rising mushroom that never reaches the roof."
+
+[Grid]
+Resolution = [60, 80, 60]
+Size = [6, 8, 6]
+
+[Render]
+Exposure = 1
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 7.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 0.8, AmbientTemperature = 0.0, Cooling = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.8, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.5 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.992, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#3f3d3c", Absorption = 4.5, Anisotropy = 0.45, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 6.0, FireThreshold = 1.0, FireSoftness = 4.0, FireOpacity = 2.0, FireEmber = "#b3120a", FireFlame = "#ff6a00", FireCore = "#ffd27a", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Detonation Core"
+  Shape = "Sphere"
+  Position = [0, -3, 0]
+  Radius = 0.6
+  Density = 1.2
+  Temperature = 6.5
+  Fuel = 1.4
+  Velocity = [0, 0, 0]
+  Jitter = 0.8
+  StartTime = 0.2
+  Duration = 0.35
+  Fade = 0.08
+
+[[Force]]
+  Type = "RadialBurst"
+  Position = [0, -3, 0]
+  Strength = 42
+  Radius = 2.2
+  Frequency = 6
+  Secondary = 0.12
+  Tertiary = 0.2
+  StartTime = 0.2
+  Duration = 0.5
+  Fade = 0.05
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Roll-up Turbulence"
+  Position = [0, -1.5, 0]
+  Strength = 2.2
+  Radius = 2.6
+  Frequency = 1.2
+  Secondary = 0.8
+  StartTime = 0.3
+  Duration = 2.4
+  Fade = 0.5
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 3, 0]
+  Strength = 1.6
+  Radius = 2.6
+  Falloff = "Plateau"

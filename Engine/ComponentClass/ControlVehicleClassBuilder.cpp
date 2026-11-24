@@ -1,24 +1,36 @@
 /*============================================================================================================================================
                                                       CONTROLVEHICLECLASSBUILDER.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of ControlVehicle FCT1 ingestion, RearWing synthesis, 4-corner Spring/Hinge wheels, Dock, Tether & VehicleDynamics
+// 🧩 Implementation of ControlVehicle .GeometrySpace ingestion (ControlledIntegrator.GeometrySpace), RearWing synthesis & constraints
 
 //------------------------------------------------------------------------------------------------------------------------
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/ComponentClass/ControlVehicleClassBuilder.h"
+#include "Engine/Codecs/GeometryCodec.h"
 #include "Engine/Constants/MathConstants.h"
 #include "Engine/Interchange/IndexedTriangleStreamInterchange.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
+#include <unordered_map>
 
 namespace Frontier::ComponentClass
 {
 
 namespace
 {
+
+struct ExtractedWheelHub
+{
+    Mathematics::Axis3D CenterMeters { 0.0f, 0.50855f, 0.0f }; // [m] - Hub center in Y-up ground space
+    float               MinY         = 0.0f;                   // [m] - Lowest tyre point
+    float               MaxY         = 1.0171f;                // [m] - Highest tyre point
+    uint32_t            RimFaceCount = 0u;                     // [cnt] - Matched rim triangle count
+};
 
 void AppendTiltedWingBox(
     GeometrySpace::PolygonNetwork& Network,
@@ -81,6 +93,108 @@ void AppendTiltedWingBox(
     }
 }
 
+void CopyFaceIntoSubMesh(
+    const GeometrySpace::PolygonNetwork&    Source,
+    uint32_t                                FaceIndex,
+    Mathematics::Axis3D                     OriginShiftMeters,
+    std::unordered_map<uint32_t, uint32_t>& VertexRemap,
+    GeometrySpace::PolygonNetwork&          Target)
+{
+    const GeometrySpace::Face& F = Source.Faces[FaceIndex];
+    if (F.CornerCount < 3u || F.BoundaryLoopEdgeIndex == GeometrySpace::InvalidNetworkIndex)
+    {
+        return;
+    }
+
+    std::vector<uint32_t> LoopIndices {};
+    std::vector<Mathematics::UVAxes> LoopUVs {};
+    LoopIndices.reserve(F.CornerCount);
+    LoopUVs.reserve(F.CornerCount);
+
+    uint32_t EdgeCursor = F.BoundaryLoopEdgeIndex;
+    for (uint16_t Step = 0u; Step < F.CornerCount; ++Step)
+    {
+        const GeometrySpace::DirectedEdge& Edge = Source.Edges[EdgeCursor];
+        const uint32_t SrcVert                  = Edge.OriginVertexIndex;
+        auto Found                              = VertexRemap.find(SrcVert);
+        uint32_t DstVert                        = 0u;
+        if (Found == VertexRemap.end())
+        {
+            const Mathematics::Axis3D P = Source.Vertices[SrcVert].Axes;
+            DstVert = Target.AppendVertex({
+                P.X - OriginShiftMeters.X,
+                P.Y - OriginShiftMeters.Y,
+                P.Z - OriginShiftMeters.Z,
+            });
+            VertexRemap.emplace(SrcVert, DstVert);
+        }
+        else
+        {
+            DstVert = Found->second;
+        }
+        LoopIndices.push_back(DstVert);
+        LoopUVs.push_back(Edge.ParameterUV);
+        EdgeCursor = Edge.NextEdgeIndex;
+    }
+
+    (void)Target.AppendFace(LoopIndices, LoopUVs, F.Shading, F.PriorityLayerOrdinal, F.PartGroupOrdinal);
+}
+
+[[nodiscard]] Mathematics::Axis3D ComputeFaceCentroid(const GeometrySpace::PolygonNetwork& Source, uint32_t FaceIndex)
+{
+    const GeometrySpace::Face& F = Source.Faces[FaceIndex];
+    if (F.CornerCount == 0u || F.BoundaryLoopEdgeIndex == GeometrySpace::InvalidNetworkIndex)
+    {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+
+    Mathematics::Axis3D Sum { 0.0f, 0.0f, 0.0f };
+    uint32_t EdgeCursor = F.BoundaryLoopEdgeIndex;
+    for (uint16_t Step = 0u; Step < F.CornerCount; ++Step)
+    {
+        const Mathematics::Axis3D P = Source.Vertices[Source.Edges[EdgeCursor].OriginVertexIndex].Axes;
+        Sum.X += P.X;
+        Sum.Y += P.Y;
+        Sum.Z += P.Z;
+        EdgeCursor = Source.Edges[EdgeCursor].NextEdgeIndex;
+    }
+    const float Inv = 1.0f / static_cast<float>(F.CornerCount);
+    return { Sum.X * Inv, Sum.Y * Inv, Sum.Z * Inv };
+}
+
+[[nodiscard]] std::filesystem::path ResolveControlledIntegratorPath(const std::filesystem::path& HintPath)
+{
+    std::error_code FsErr {};
+    if (std::filesystem::is_regular_file(HintPath, FsErr) && HintPath.extension() == ".GeometrySpace")
+    {
+        return HintPath;
+    }
+
+    // Walk upward from HintPath to locate EngineContent/Geometry/ControlledIntegrator.GeometrySpace
+    std::filesystem::path Walk = std::filesystem::is_directory(HintPath, FsErr) ? HintPath : HintPath.parent_path();
+    for (uint32_t Depth = 0u; Depth < 6u && !Walk.empty(); ++Depth)
+    {
+        const std::filesystem::path Direct = Walk / "EngineContent" / "Geometry" / "ControlledIntegrator.GeometrySpace";
+        if (std::filesystem::is_regular_file(Direct, FsErr))
+        {
+            return Direct;
+        }
+        const std::filesystem::path Sibling = Walk / "ControlledIntegrator.GeometrySpace";
+        if (std::filesystem::is_regular_file(Sibling, FsErr))
+        {
+            return Sibling;
+        }
+        const std::filesystem::path Parent = Walk.parent_path();
+        if (Parent == Walk)
+        {
+            break;
+        }
+        Walk = Parent;
+    }
+
+    return std::filesystem::path("EngineContent/Geometry/ControlledIntegrator.GeometrySpace");
+}
+
 } // namespace
 
 GeometrySpace::ConstructedSampleAsset ControlVehicleClassBuilder::ConstructProceduralRearWing()
@@ -123,43 +237,177 @@ GeometrySpace::ConstructedSampleAsset ControlVehicleClassBuilder::ConstructProce
     return Out;
 }
 
-bool ControlVehicleClassBuilder::ConstructControlVehicle(
-    const std::filesystem::path& ModelsDirectory,
+bool ControlVehicleClassBuilder::ConstructFromControlledIntegrator(
+    const std::filesystem::path& ControlledIntegratorPath,
     ControlVehicleBuildResult&   OutResult,
     std::string&                 OutDiagnostic)
 {
     OutDiagnostic.clear();
     OutResult = ControlVehicleBuildResult{};
 
-    struct PartSpec
+    Codecs::GeometrySpaceDocument SourceDoc {};
+    if (!Codecs::GeometryDecoder::DecodeFromFile(ControlledIntegratorPath, SourceDoc, OutDiagnostic))
     {
-        const char* Identifier;
-        const char* Title;
-        const char* FileName;
-    };
+        return false;
+    }
 
-    constexpr std::array<PartSpec, 3u> FileParts {{
-        { "ControlVehicleBody", "ControlVehicle Body", "ControlVehicleBody.facet" },
-        { "ControlVehicleTyre", "ControlVehicle Tyre", "ControlVehicleTyre.facet" },
-        { "ControlVehicleRim",  "ControlVehicle Rim",  "ControlVehicleRim.facet"  },
+    const GeometrySpace::PolygonNetwork& SourceNet = SourceDoc.Network;
+    if (SourceNet.Faces.empty() || SourceNet.Vertices.empty())
+    {
+        OutDiagnostic = "ControlledIntegrator.GeometrySpace decoded with empty PolygonNetwork.";
+        return false;
+    }
+    OutResult.DecodedSourceFaces = static_cast<uint32_t>(SourceNet.Faces.size());
+
+    // 1. Extract exact 4-corner wheel hub coordinates from RimAlloy (PartGroupOrdinal == 6) in Y-up meters
+    //    Corner indices: 0 = FL (+X, -Z), 1 = FR (+X, +Z), 2 = RL (-X, -Z), 3 = RR (-X, +Z)
+    struct BoxBounds
+    {
+        Mathematics::Axis3D Min { 1.0e9f, 1.0e9f, 1.0e9f };
+        Mathematics::Axis3D Max { -1.0e9f, -1.0e9f, -1.0e9f };
+        uint32_t            Count = 0u;
+    };
+    std::array<BoxBounds, 4u> RimQuadrants {};
+    for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(SourceNet.Faces.size()); ++FIdx)
+    {
+        const GeometrySpace::Face& F = SourceNet.Faces[FIdx];
+        if (F.PartGroupOrdinal != 6u || F.CornerCount < 3u)
+        {
+            continue;
+        }
+        const Mathematics::Axis3D C = ComputeFaceCentroid(SourceNet, FIdx);
+        const uint32_t Q            = (C.X >= 0.0f ? 0u : 2u) + (C.Z < 0.0f ? 0u : 1u);
+        BoxBounds& B                = RimQuadrants[Q];
+        ++B.Count;
+
+        uint32_t EdgeCursor = F.BoundaryLoopEdgeIndex;
+        for (uint16_t Step = 0u; Step < F.CornerCount; ++Step)
+        {
+            const Mathematics::Axis3D P = SourceNet.Vertices[SourceNet.Edges[EdgeCursor].OriginVertexIndex].Axes;
+            B.Min.X = std::min(B.Min.X, P.X); B.Max.X = std::max(B.Max.X, P.X);
+            B.Min.Y = std::min(B.Min.Y, P.Y); B.Max.Y = std::max(B.Max.Y, P.Y);
+            B.Min.Z = std::min(B.Min.Z, P.Z); B.Max.Z = std::max(B.Max.Z, P.Z);
+            EdgeCursor = SourceNet.Edges[EdgeCursor].NextEdgeIndex;
+        }
+    }
+
+    constexpr std::array<Mathematics::Axis3D, 4u> FallbackHubs {{
+        {  1.7274f, 0.50855f, -1.0475f },
+        {  1.7274f, 0.50855f,  1.0475f },
+        { -1.6686f, 0.50855f, -1.0475f },
+        { -1.6686f, 0.50855f,  1.0475f },
     }};
 
-    for (const PartSpec& Spec : FileParts)
+    std::array<ExtractedWheelHub, 4u> Hubs {};
+    for (uint32_t Q = 0u; Q < 4u; ++Q)
     {
-        CompiledGeometryRepositoryEntry Entry {};
-        Entry.AssetIdentifier = Spec.Identifier;
-        Entry.DisplayTitle    = Spec.Title;
-        Entry.SourceFormat    = "FCT1";
-        if (!Interchange::IndexedTriangleStreamInterchange::ImportFct1File(
-                ModelsDirectory / Spec.FileName,
-                true,
-                Entry.Asset,
-                OutDiagnostic))
+        Hubs[Q].RimFaceCount = RimQuadrants[Q].Count;
+        if (RimQuadrants[Q].Count > 0u)
         {
-            return false;
+            Hubs[Q].CenterMeters = {
+                0.5f * (RimQuadrants[Q].Min.X + RimQuadrants[Q].Max.X),
+                0.5f * (RimQuadrants[Q].Min.Y + RimQuadrants[Q].Max.Y),
+                0.5f * (RimQuadrants[Q].Min.Z + RimQuadrants[Q].Max.Z),
+            };
         }
-        OutResult.GeometryRepository.push_back(std::move(Entry));
+        else
+        {
+            Hubs[Q].CenterMeters = FallbackHubs[Q];
+        }
+        Hubs[Q].MinY = 1.0e9f;
+        Hubs[Q].MaxY = -1.0e9f;
     }
+
+    // 2. Partition decoded ControlledIntegrator.GeometrySpace into Body, canonical FL Tyre, and canonical FL Rim
+    //    GroundOffset matches chassis reference height (TyreRadius - 0.0914 m axle offset above body frame)
+    constexpr float NominalAxleOffsetAboveBody = 0.0914f;
+    const float ExtractedTyreRadius            = std::clamp(Hubs[0u].CenterMeters.Y, 0.30f, 0.70f);
+    const float GroundOffset                   = ExtractedTyreRadius - NominalAxleOffsetAboveBody;
+
+    CompiledGeometryRepositoryEntry BodyEntry {};
+    BodyEntry.AssetIdentifier           = "ControlVehicleBody";
+    BodyEntry.DisplayTitle              = "ControlledIntegrator Body";
+    BodyEntry.SourceFormat              = "GeometrySpace";
+    BodyEntry.Asset.Network.NetworkTitle = "ControlVehicleBody";
+    BodyEntry.Asset.UDIMTiles           = SourceDoc.UDIMTiles;
+
+    CompiledGeometryRepositoryEntry TyreEntry {};
+    TyreEntry.AssetIdentifier           = "ControlVehicleTyre";
+    TyreEntry.DisplayTitle              = "ControlledIntegrator Tyre";
+    TyreEntry.SourceFormat              = "GeometrySpace";
+    TyreEntry.Asset.Network.NetworkTitle = "ControlVehicleTyre";
+    TyreEntry.Asset.UDIMTiles           = SourceDoc.UDIMTiles;
+
+    CompiledGeometryRepositoryEntry RimEntry {};
+    RimEntry.AssetIdentifier            = "ControlVehicleRim";
+    RimEntry.DisplayTitle               = "ControlledIntegrator Rim";
+    RimEntry.SourceFormat               = "GeometrySpace";
+    RimEntry.Asset.Network.NetworkTitle = "ControlVehicleRim";
+    RimEntry.Asset.UDIMTiles            = SourceDoc.UDIMTiles;
+
+    std::unordered_map<uint32_t, uint32_t> BodyVertRemap {};
+    std::unordered_map<uint32_t, uint32_t> TyreVertRemap {};
+    std::unordered_map<uint32_t, uint32_t> RimVertRemap {};
+
+    for (uint32_t FIdx = 0u; FIdx < static_cast<uint32_t>(SourceNet.Faces.size()); ++FIdx)
+    {
+        const GeometrySpace::Face& F = SourceNet.Faces[FIdx];
+        const Mathematics::Axis3D C  = ComputeFaceCentroid(SourceNet, FIdx);
+
+        // Identify whether face belongs to one of the 4 wheel wells (TyreRubber=5, RimAlloy=6)
+        int32_t MatchedWheel = -1;
+        if (F.PartGroupOrdinal == 5u || F.PartGroupOrdinal == 6u)
+        {
+            for (uint32_t Q = 0u; Q < 4u; ++Q)
+            {
+                const Mathematics::Axis3D& H = Hubs[Q].CenterMeters;
+                if (std::fabs(C.X - H.X) < 0.56f && std::fabs(C.Y - H.Y) < 0.56f && std::fabs(C.Z - H.Z) < 0.28f)
+                {
+                    MatchedWheel = static_cast<int32_t>(Q);
+                    break;
+                }
+            }
+        }
+
+        if (MatchedWheel >= 0)
+        {
+            if (F.PartGroupOrdinal == 5u)
+            {
+                Hubs[MatchedWheel].MinY = std::min(Hubs[MatchedWheel].MinY, C.Y);
+                Hubs[MatchedWheel].MaxY = std::max(Hubs[MatchedWheel].MaxY, C.Y);
+            }
+            // Extract canonical FL wheel (Q == 0) into reusable Tyre and Rim repository assets
+            if (MatchedWheel == 0)
+            {
+                if (F.PartGroupOrdinal == 5u)
+                {
+                    CopyFaceIntoSubMesh(SourceNet, FIdx, Hubs[0u].CenterMeters, TyreVertRemap, TyreEntry.Asset.Network);
+                }
+                else
+                {
+                    CopyFaceIntoSubMesh(SourceNet, FIdx, Hubs[0u].CenterMeters, RimVertRemap, RimEntry.Asset.Network);
+                }
+            }
+        }
+        else
+        {
+            CopyFaceIntoSubMesh(SourceNet, FIdx, { 0.0f, GroundOffset, 0.0f }, BodyVertRemap, BodyEntry.Asset.Network);
+        }
+    }
+
+    auto FinalizeSubAsset = [](GeometrySpace::ConstructedSampleAsset& Asset)
+    {
+        Asset.Network.LinkOppositeEdges(false);
+        Asset.Network.RecomputeNormals();
+        Asset.Layers.SynchronizePartitions(Asset.Network, GeometrySpace::GeometryInstanceToken{ 0u, 1u });
+    };
+    FinalizeSubAsset(BodyEntry.Asset);
+    FinalizeSubAsset(TyreEntry.Asset);
+    FinalizeSubAsset(RimEntry.Asset);
+
+    OutResult.GeometryRepository.push_back(std::move(BodyEntry));
+    OutResult.GeometryRepository.push_back(std::move(TyreEntry));
+    OutResult.GeometryRepository.push_back(std::move(RimEntry));
 
     {
         CompiledGeometryRepositoryEntry WingEntry {};
@@ -170,15 +418,14 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         OutResult.GeometryRepository.push_back(std::move(WingEntry));
     }
 
+    // 3. Assemble ComponentClass hierarchy using wheel hubs & tyre radius measured from ControlledIntegrator.GeometrySpace
     ComponentClassDefinition& Def = OutResult.ClassDefinition;
-    Def.Title     = "ControlVehicle";
-    Def.ClassArchetype = ComponentClassArchetype::Driveable;
+    Def.Title                     = "ControlVehicle";
+    Def.ClassArchetype            = ComponentClassArchetype::Driveable;
     Def.Storage.ResetWithSpatialOrigin("Origin");
 
     const ComponentInstanceToken Origin = Def.Storage.QueryOriginToken();
 
-    // Ground offset = TyreRadius (0.50855 m) - AxleZ (0.0914 m) = 0.41715 m
-    constexpr float GroundOffset = 0.50855f - 0.0914f;
     const ComponentInstanceToken Body = Def.Storage.AppendInstance(
         ComponentCategory::GeometryInstance,
         "Body",
@@ -191,33 +438,21 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         G->CollisionProfile = GeometryCollisionProfile::BlockAll;
     }
 
-    struct AxleSpec
-    {
-        const char* Suffix;
-        float       AuthoredX;
-        float       AuthoredY;
-        float       AuthoredZ;
-        bool        Steerable;
-    };
-
-    constexpr std::array<AxleSpec, 4u> Axles {{
-        { "FL",  1.7274f,  1.0475f, 0.0914f, true  },
-        { "FR",  1.7274f, -1.0475f, 0.0914f, true  },
-        { "RL", -1.6686f,  1.0475f, 0.0914f, false },
-        { "RR", -1.6686f, -1.0475f, 0.0914f, false },
-    }};
-
+    constexpr std::array<const char*, 4u> CornerSuffixes {{ "FL", "FR", "RL", "RR" }};
     std::vector<ComponentInstanceToken> WheelTokens {};
     WheelTokens.reserve(4u);
 
-    for (const AxleSpec& Axle : Axles)
+    for (uint32_t Q = 0u; Q < 4u; ++Q)
     {
-        const std::string SpringName = std::string("Suspension") + Axle.Suffix;
+        const bool Steerable         = (Q < 2u);
+        const Mathematics::Axis3D& H = Hubs[Q].CenterMeters;
+        const std::string SpringName = std::string("Suspension") + CornerSuffixes[Q];
+
         const ComponentInstanceToken Spring = Def.Storage.AppendInstance(
             ComponentCategory::ConstraintInstance,
             SpringName,
             Body,
-            ComponentTransform{ { Axle.AuthoredX, Axle.AuthoredZ, -Axle.AuthoredY }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
+            ComponentTransform{ { H.X, H.Y - GroundOffset, H.Z }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
         if (ConstraintComponentSettings* C = Def.Storage.ResolveConstraint(Spring))
         {
             C->Form                = PhysicsConstraintCategory::Spring;
@@ -230,9 +465,9 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         }
 
         ComponentInstanceToken WheelMount = Spring;
-        if (Axle.Steerable)
+        if (Steerable)
         {
-            const std::string SteerName = std::string("Steer") + Axle.Suffix;
+            const std::string SteerName = std::string("Steer") + CornerSuffixes[Q];
             WheelMount = Def.Storage.AppendInstance(
                 ComponentCategory::ConstraintInstance,
                 SteerName,
@@ -249,12 +484,12 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
             }
         }
 
-        const std::string TyreName = std::string("Wheel") + Axle.Suffix;
+        const std::string TyreName = std::string("Wheel") + CornerSuffixes[Q];
         const ComponentInstanceToken Tyre = Def.Storage.AppendInstance(
             ComponentCategory::GeometryInstance,
             TyreName,
             WheelMount,
-            ComponentTransform{ { 0.0f, 0.0f, 0.0f }, { 0.0f, (Axle.AuthoredY < 0.0f) ? 180.0f : 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
+            ComponentTransform{ { 0.0f, 0.0f, 0.0f }, { 0.0f, (H.Z > 0.0f) ? 180.0f : 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } });
         if (GeometryComponentSettings* G = Def.Storage.ResolveGeometry(Tyre))
         {
             G->AssetIdentifier  = "ControlVehicleTyre";
@@ -370,6 +605,24 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
         Col->TriggerOverlapOnly = true;
     }
 
+    // Chassis Jolt RigidBody component (paired with baked CompoundHull from ControlledIntegrator.GeometrySpace)
+    const ComponentInstanceToken ChassisBodyComp = Def.Storage.AppendInstance(
+        ComponentCategory::RigidBodyInstance,
+        "ChassisRigidBody",
+        Body,
+        ComponentTransform{});
+    if (RigidBodyComponentSettings* Rb = Def.Storage.ResolveRigidBody(ChassisBodyComp))
+    {
+        Rb->MotionKind        = RigidBodyMotionKind::Dynamic;
+        Rb->ExplicitMassKg    = 1300.0f;
+        Rb->LinearDamping     = 0.01f;
+        Rb->AngularDamping    = 0.08f;
+        Rb->CollisionChannel  = 2u;
+        Rb->CollideWithMask   = 0xFFFFFFFFu;
+        Rb->PhysicsMaterialId = 0u;
+        Rb->AllowSleep        = false;
+    }
+
     // VehicleDynamics behaviour
     const ComponentInstanceToken Vehicle = Def.Storage.AppendInstance(
         ComponentCategory::VehicleDynamics,
@@ -378,7 +631,7 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
     if (VehicleDynamicsSettings* V = Def.Storage.ResolveVehicle(Vehicle))
     {
         V->ChassisMassKg     = 1300.0f;
-        V->WheelRadiusMeters = 0.50855f;
+        V->WheelRadiusMeters = ExtractedTyreRadius;
         V->IdleRpm           = 700.0f;
         V->RedlineRpm        = 7200.0f;
         V->DragCoefficient   = 0.34f;
@@ -399,6 +652,15 @@ bool ControlVehicleClassBuilder::ConstructControlVehicle(
 
     Def.FinalizeCompiledRevision();
     return true;
+}
+
+bool ControlVehicleClassBuilder::ConstructControlVehicle(
+    const std::filesystem::path& SourcePathOrDirectory,
+    ControlVehicleBuildResult&   OutResult,
+    std::string&                 OutDiagnostic)
+{
+    const std::filesystem::path GeometrySpacePath = ResolveControlledIntegratorPath(SourcePathOrDirectory);
+    return ConstructFromControlledIntegrator(GeometrySpacePath, OutResult, OutDiagnostic);
 }
 
 } // namespace Frontier::ComponentClass

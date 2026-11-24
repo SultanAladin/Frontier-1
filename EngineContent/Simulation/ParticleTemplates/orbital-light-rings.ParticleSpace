@@ -1,0 +1,87 @@
+# Orbital Light Rings — particle template (Trails). Ported from Particle Studio (Orbits): luminous concentric light-thread rings orbiting an obsidian core sphere with fast inner spin and bokeh glow.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 59
+Id = "orbital-light-rings"
+Name = "Orbital Light Rings"
+Category = "Trails"
+Icon = "ring"
+Tint = "#a78bfa"
+Summary = "Ported from Particle Studio (Orbits): evenly spaced concentric rings of light threads orbiting a glossy obsidian sphere with bokeh."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 11, Position = [0.0, 0.1, 0.0], Direction = [0.18, 0.96, 0.22], Radius = 0.82, Fill = 0.65, Count = 2048, Rate = 220.0, Lifetime = 4.2, Linger = 0.45, Speed = 0.35, Spread = 0.15, Radial = 0.25, SpawnObject = 1, SpawnSampleMode = 0, BackingSurface = 1 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.45 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 216
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SwarmStrength = 1.4, SwarmCohesion = 1.35, SwarmOrbit = 3.2, SwarmWingRate = 6.0 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.25 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#312e81", "#818cf8", "#e0e7ff", "#f5d0fe"], RampSource = 0, MaxSpeed = 4.5, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.05, BrightnessJitter = 0.2, Brightness = 1.55, Flicker = 0.08 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.018, SizeEnd = 0.006, SizeRandom = 0.4 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 2, Glow = 0.52, Blend = 1, Style = 0, FocusDistance = 5.6, Aperture = 0.38, CarrierMode = 0 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 36, TrailInterval = 0.025, TrailWidth = 0.009, TrailTaper = 0.72, TrailFade = 1.15, TrailSubdivisions = 3, TrailRatio = 0.55, TrailColour = 1 }

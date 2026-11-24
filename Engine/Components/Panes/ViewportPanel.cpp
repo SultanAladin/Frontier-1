@@ -333,6 +333,17 @@ void ViewportPanel::ConfigureViewportTimingBreakdown(const ViewportTimingBreakdo
     LastViewportTiming = Breakdown;
 }
 
+void ViewportPanel::ConfigurePhysicsTelemetry(const PhysicsTelemetryReading& Reading)
+{
+    LastPhysicsTelemetry = Reading;
+    if (!DiagnosticsPaused)
+    {
+        PhysicsStepHistoryMs[PhysicsHistoryCursor % PhysicsStepHistoryMs.size()] =
+            std::clamp(Reading.StepComputeMs, 0.0f, 33.3f);
+        PhysicsHistoryCursor = (PhysicsHistoryCursor + 1u) % static_cast<uint32_t>(PhysicsStepHistoryMs.size());
+    }
+}
+
 void ViewportPanel::ConfigureProbeReadoutText(std::string_view ReadoutText)
 {
     ProbeReadoutText.assign(ReadoutText.begin(), ReadoutText.end());
@@ -765,7 +776,96 @@ void ViewportPanel::RenderDiagnosticsPanel(
         "Log: FrontierTiming.log  |  Scene sync: %.2f ms",
         LastViewportTiming.SceneSyncGpuMs);
 
-    const std::array<DiagnosticsMetricChannel, 4> Channels = {{
+    // Physics & Vehicle F3 telemetry formatting
+    const auto& Phys = LastPhysicsTelemetry;
+    char PhysWhole[16]{};
+    char PhysFrac[16]{};
+    const int PhysWholeInt = static_cast<int>(Phys.StepComputeMs);
+    const int PhysHundred  = std::clamp(static_cast<int>(std::round((Phys.StepComputeMs - static_cast<float>(PhysWholeInt)) * 100.0f)), 0, 99);
+    std::snprintf(PhysWhole, sizeof(PhysWhole), "%d", PhysWholeInt);
+    std::snprintf(PhysFrac, sizeof(PhysFrac), ".%02d", PhysHundred);
+
+    char PhysUnit[32]{};
+    std::snprintf(PhysUnit, sizeof(PhysUnit), "ms  (@ %.0f Hz)", Phys.FixedStepHz);
+    char PhysSub[80]{};
+    std::snprintf(
+        PhysSub,
+        sizeof(PhysSub),
+        "Jolt: %u bodies  |  %u constraints  |  %u triggers",
+        Phys.ActiveBodies,
+        Phys.ActiveConstraints,
+        Phys.ActiveTriggerOverlaps);
+
+    std::vector<float> OrderedPhysSamples(PhysicsStepHistoryMs.size());
+    for (std::size_t Step = 0u; Step < OrderedPhysSamples.size(); ++Step)
+    {
+        const std::size_t Back = OrderedPhysSamples.size() - 1u - Step;
+        OrderedPhysSamples[Step] = PhysicsStepHistoryMs[(PhysicsHistoryCursor + PhysicsStepHistoryMs.size() - 1u - (Back % PhysicsStepHistoryMs.size())) % PhysicsStepHistoryMs.size()];
+    }
+
+    char PhysBodiesBuf[40]{};
+    std::snprintf(PhysBodiesBuf, sizeof(PhysBodiesBuf), "%u / %u", Phys.ActiveBodies, Phys.ActiveConstraints);
+    char PhysStepsBuf[40]{};
+    std::snprintf(PhysStepsBuf, sizeof(PhysStepsBuf), "%llu  (%llu logs)", static_cast<unsigned long long>(Phys.CompletedSteps), static_cast<unsigned long long>(Phys.DebugLogSequence));
+
+    std::vector<DiagnosticsStatRow> PhysRows {
+        { "Bodies / Constraints", PhysBodiesBuf },
+        { "Trigger Overlaps",     FormatCount(Phys.ActiveTriggerOverlaps) },
+        { "Materials",            FormatCount(Phys.RegisteredMaterials) },
+        { "Sim Steps / Logs",     PhysStepsBuf },
+    };
+    const std::size_t MaxLogRows = std::min<std::size_t>(Phys.RecentLogLines.size(), 3u);
+    for (std::size_t L = 0u; L < MaxLogRows; ++L)
+    {
+        char TagBuf[16]{};
+        std::snprintf(TagBuf, sizeof(TagBuf), "Log #%zu", L + 1u);
+        PhysRows.push_back({ TagBuf, Phys.RecentLogLines[Phys.RecentLogLines.size() - 1u - L] });
+    }
+
+    char VehWhole[16]{};
+    char VehFrac[16]{};
+    const int VehWholeInt = static_cast<int>(Phys.SpeedKmh);
+    const int VehTenths   = std::clamp(static_cast<int>(std::round((Phys.SpeedKmh - static_cast<float>(VehWholeInt)) * 10.0f)), 0, 9);
+    std::snprintf(VehWhole, sizeof(VehWhole), "%d", VehWholeInt);
+    std::snprintf(VehFrac, sizeof(VehFrac), ".%d", VehTenths);
+
+    char VehSub[80]{};
+    std::snprintf(
+        VehSub,
+        sizeof(VehSub),
+        "G%d  |  %.0f RPM  |  %+.2f bar  |  %u/4 wheels",
+        Phys.ActiveGear,
+        Phys.EngineRpm,
+        Phys.BoostBar,
+        Phys.WheelsInContact);
+    char VehDebug[96]{};
+    std::snprintf(
+        VehDebug,
+        sizeof(VehDebug),
+        "Contact: %s  |  Surface: %s (%.2fx)",
+        Phys.WheelContactModeLabel.c_str(),
+        Phys.ActiveSurfaceLabel.c_str(),
+        Phys.AvgSurfaceGrip);
+    char VehEngBuf[48]{};
+    std::snprintf(VehEngBuf, sizeof(VehEngBuf), "%.0f RPM  (%+.2f bar)", Phys.EngineRpm, Phys.BoostBar);
+    char VehSurfBuf[48]{};
+    std::snprintf(VehSurfBuf, sizeof(VehSurfBuf), "%s  (%.2fx)", Phys.ActiveSurfaceLabel.c_str(), Phys.AvgSurfaceGrip);
+    char VehDfBuf[32]{};
+    std::snprintf(VehDfBuf, sizeof(VehDfBuf), "%.0f N", Phys.DownforceNewtons);
+    char VehFuelBuf[36]{};
+    std::snprintf(VehFuelBuf, sizeof(VehFuelBuf), "%.1f / %.0f L", Phys.FuelLiters, Phys.FuelCapacityLiters);
+    char VehTempBuf[28]{};
+    std::snprintf(VehTempBuf, sizeof(VehTempBuf), "%.1f C", Phys.AvgTreadTempC);
+    char VehAssistBuf[32]{};
+    std::snprintf(
+        VehAssistBuf,
+        sizeof(VehAssistBuf),
+        "%s / %s / %s",
+        Phys.AbsActive ? "ABS" : "--",
+        Phys.TcsActive ? "TCS" : "--",
+        Phys.EscActive ? "ESC" : "--");
+
+    const std::array<DiagnosticsMetricChannel, 6> Channels = {{
         DiagnosticsMetricChannel{
             "Frame time",
             "Timing",
@@ -858,6 +958,48 @@ void ViewportPanel::RenderDiagnosticsPanel(
                 { "Present / Swap", FormatMs(LastViewportTiming.SwapchainPresentMs) },
             }
         },
+        DiagnosticsMetricChannel{
+            "Jolt physics",
+            "Physics",
+            PhysWhole,
+            PhysFrac,
+            PhysUnit,
+            PhysSub,
+            Phys.LatestLogSummary.empty() ? "PhysicsDebugLog: idle" : Phys.LatestLogSummary,
+            OrderedPhysSamples,
+            0.0f,
+            8.33f,
+            2.0f,
+            true,
+            true,
+            ColorRgba{ 118, 196, 232, 240 },
+            std::move(PhysRows)
+        },
+        DiagnosticsMetricChannel{
+            "Vehicle dynamics",
+            "Vehicle",
+            VehWhole,
+            VehFrac,
+            "km/h",
+            VehSub,
+            VehDebug,
+            {},
+            0.0f,
+            1.0f,
+            0.0f,
+            false,
+            false,
+            ColorRgba{ 238, 178, 96, 240 },
+            {
+                { "Engine / Boost", VehEngBuf },
+                { "Contact Mode",   Phys.WheelContactModeLabel },
+                { "Surface / Grip", VehSurfBuf },
+                { "Aero Downforce", VehDfBuf },
+                { "Fuel Remaining", VehFuelBuf },
+                { "Tire Tread",     VehTempBuf },
+                { "Assists",        VehAssistBuf },
+            }
+        },
     }};
 
     DiagnosticsSession.Visible            = DiagnosticsVisible;
@@ -870,8 +1012,8 @@ void ViewportPanel::RenderDiagnosticsPanel(
     Spec.FooterSampleLabel       = "Live per-tick";
     Spec.AllowDragResize         = false;
     Spec.ShowViewSpanControls    = true;
-    Spec.DefaultWidthPx          = 324.0f;
-    Spec.DefaultHeightPx         = 432.0f;
+    Spec.DefaultWidthPx          = 388.0f;
+    Spec.DefaultHeightPx         = 468.0f;
     Spec.Channels                = Channels;
 
     ControlPointer Pointer {};
@@ -2487,6 +2629,45 @@ void ViewportPanel::Render(
         else if (StripResult.PhaseChanged)
         {
             ConfigureExecutionMode(static_cast<ViewportExecutionMode>(StripResult.SelectedPhase), false);
+        }
+
+        // Play/Pause/Step/Stop toolbar controls next to the execution strip while Play or Simulate is active
+        if (ExecutionMode != ViewportExecutionMode::Edit)
+        {
+            float RightEdgeX = StripBounds.X - 8.0f;
+            const Rectangle2D StopBtn{ RightEdgeX - 54.0f, StripBounds.Y, 54.0f, StripBounds.Height };
+            const bool StopHover = !OverlayOpenBefore && StopBtn.Contains(Cursor);
+            Surface.FillRectangle(
+                StopBtn,
+                StopHover ? ColorRgba{ 165, 52, 48, 235 } : ColorRgba{ 46, 30, 32, 225 },
+                StripBounds.Height * 0.5f);
+            Surface.StrokeRectangle(StopBtn, ColorRgba{ 235, 110, 100, 110 }, StripBounds.Height * 0.5f, 1.0f);
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Medium, { StopBtn.X + 13.0f, StopBtn.Y + 7.5f }, 11.5f,
+                ColorRgba{ 245, 228, 225, 255 }, "Stop");
+            if (StopHover && Input.PrimaryPointer.Pressed)
+            {
+                ConfigureExecutionMode(ViewportExecutionMode::Edit, false);
+            }
+
+            if (PlayPaused)
+            {
+                RightEdgeX = StopBtn.X - 6.0f;
+                const Rectangle2D StepBtn{ RightEdgeX - 54.0f, StripBounds.Y, 54.0f, StripBounds.Height };
+                const bool StepHover = !OverlayOpenBefore && StepBtn.Contains(Cursor);
+                Surface.FillRectangle(
+                    StepBtn,
+                    StepHover ? ColorRgba{ 58, 92, 138, 235 } : ColorRgba{ 30, 38, 52, 225 },
+                    StripBounds.Height * 0.5f);
+                Surface.StrokeRectangle(StepBtn, ColorRgba{ 130, 185, 245, 115 }, StripBounds.Height * 0.5f, 1.0f);
+                WorkspaceAppearance::ConstructWeightedText(
+                    Surface, FontWeightClass::Medium, { StepBtn.X + 13.0f, StepBtn.Y + 7.5f }, 11.5f,
+                    ColorRgba{ 225, 238, 255, 255 }, "Step");
+                if (StepHover && Input.PrimaryPointer.Pressed)
+                {
+                    RequestSimulationStep();
+                }
+            }
         }
     }
 

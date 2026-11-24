@@ -25,7 +25,7 @@ struct SuffixAliasEntry
     FormatSuffixCategory TargetCategory; // [-] - Canonical Frontier format ordinal
 };
 
-constexpr std::array<FormatSuffixDescriptor, 63u> RegisteredDescriptors = {{
+constexpr std::array<FormatSuffixDescriptor, 65u> RegisteredDescriptors = {{
     // Tier A — Foundational Top-Level Pillars (*Space ONLY)
     { FormatSuffixCategory::WorldSpace,           FormatPillarGroup::World,         ".WorldSpace",           1u, true,  false, true  },
     { FormatSuffixCategory::GeometrySpace,        FormatPillarGroup::Visual,        ".GeometrySpace",        1u, true,  false, true  },
@@ -97,6 +97,8 @@ constexpr std::array<FormatSuffixDescriptor, 63u> RegisteredDescriptors = {{
     { FormatSuffixCategory::Curve,                FormatPillarGroup::Logic,         ".Curve",                1u, false, false, true  },
     { FormatSuffixCategory::Timeline,             FormatPillarGroup::Logic,         ".Timeline",             1u, false, false, true  },
     { FormatSuffixCategory::Tooltip,              FormatPillarGroup::Interface,     ".Tooltip",              1u, false, false, true  },
+    { FormatSuffixCategory::SoftBody,             FormatPillarGroup::Simulation,    ".SoftBody",             1u, false, false, true  },
+    { FormatSuffixCategory::VertexAtlas,          FormatPillarGroup::Visual,        ".VertexAtlas",          1u, false, false, true  },
 }};
 
 // 📝 Backward-compatible case-insensitive migration aliases for legacy Content/ files and older drafts

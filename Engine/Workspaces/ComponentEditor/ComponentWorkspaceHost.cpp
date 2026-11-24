@@ -23,6 +23,9 @@ void ComponentWorkspaceHost::AttachVulkanDevice(
 {
     Session.VulkanReady = Renderer.InitializeVulkan(TargetDevice, CompiledShaderDirectory);
     Session.AttachRenderer(&Renderer);
+#if FRONTIER_FLUID_HAS_VULKAN
+    (void)Session.AttachVulkanInterchange(&TargetDevice, CompiledShaderDirectory);
+#endif
     Session.InitializeDefaultWorkspace(RepositoryRoot);
 }
 

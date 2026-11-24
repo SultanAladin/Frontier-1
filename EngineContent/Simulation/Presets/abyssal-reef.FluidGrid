@@ -1,0 +1,106 @@
+# Abyssal Kelp & Anemone — scene preset (Nature). Underwater marine reef powered by fluid currents: buoyant giant kelp stipes with golden gas bladders, bioluminescent sea anemone tentacles and rising dive bubbles.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Scene]
+Order = 52
+Id = "preset-abyssal-reef"
+Name = "Abyssal Kelp & Anemone"
+Family = "VFX"
+Icon = "bubbles"
+Boundary = "OpenTop"
+Summary = "Buoyant giant kelp stipes, bioluminescent sea anemone colonies and rising bubbles swaying in underwater currents."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.2, 5.8, 6.8]
+
+[Render]
+Visible = false
+Exposure = 1.25
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.0, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "FlowStream"
+  Name = "Ocean Current"
+  Position = [0.0, 0.0, 0.0]
+  Strength = 1.95
+  Radius = 4.6
+  Falloff = "Constant"
+  Direction = [0.92, 0.18, 0.35]
+  Frequency = 0.35
+  Secondary = 0.0
+
+[[Force]]
+  Type = "VortexColumn"
+  Name = "Reef Eddy"
+  Position = [0.2, 0.0, 0.0]
+  Strength = 0.9
+  Radius = 3.2
+  Falloff = "Gaussian"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.35
+  Secondary = 0.0
+
+[[Particle]]
+  Template = "interactive-flora"
+  Name = "Giant Kelp Forest"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.1, -0.35, -0.2]
+  Radius = 1.75
+  Count = 384
+  StrandMode = "GiantKelp"
+  StrandCount = 30
+  StrandThickness = 0.048
+  StrandSpan = 2.6
+  StrandSway = 1.35
+  Palette = ["#064e3b", "#047857", "#10b981", "#6ee7b7"]
+
+[[Particle]]
+  Template = "interactive-flora"
+  Name = "Bioluminescent Anemone"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [1.05, -0.75, 0.4]
+  Radius = 1.25
+  Count = 384
+  StrandMode = "SeaAnemone"
+  StrandCount = 46
+  StrandThickness = 0.036
+  StrandSpan = 1.35
+  StrandSway = 1.25
+  StrandGlow = 1.4
+  Palette = ["#4c1d95", "#a855f7", "#ec4899", "#38bdf8"]
+
+[[Particle]]
+  Template = "bubbles"
+  Name = "Reef Bubbles"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -1.2, 0.0]
+  Radius = 1.8
+  Count = 768

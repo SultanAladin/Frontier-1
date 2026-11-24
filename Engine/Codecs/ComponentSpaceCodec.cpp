@@ -187,7 +187,16 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
                     Entry.insert_or_assign("HalfExtentsMeters", EncodeScalar3(Col->HalfExtentsMeters));
                     Entry.insert_or_assign("RadiusMeters", static_cast<double>(Col->RadiusMeters));
                     Entry.insert_or_assign("HalfHeightMeters", static_cast<double>(Col->HalfHeightMeters));
+                    Entry.insert_or_assign("ConvexMarginMeters", static_cast<double>(Col->ConvexMarginMeters));
+                    Entry.insert_or_assign("CollisionChannel", static_cast<int64_t>(Col->CollisionChannel));
+                    Entry.insert_or_assign("CollideWithMask", static_cast<int64_t>(Col->CollideWithMask));
+                    Entry.insert_or_assign("PhysicsMaterialId", static_cast<int64_t>(Col->PhysicsMaterialId));
+                    Entry.insert_or_assign("MaxCompoundHulls", static_cast<int64_t>(Col->MaxCompoundHulls));
                     Entry.insert_or_assign("TriggerOverlapOnly", Col->TriggerOverlapOnly);
+                    if (!Col->SourceGeometryIdentifier.empty())
+                    {
+                        Entry.insert_or_assign("SourceGeometryIdentifier", Col->SourceGeometryIdentifier);
+                    }
                 }
                 break;
             case ComponentClass::ComponentCategory::DirectionArrow:
@@ -243,6 +252,65 @@ SpaceContainerPayload ComponentSpaceEncoder::ConstructPayload(
                     {
                         Entry.insert_or_assign("TargetTitle", TH->Title);
                     }
+                }
+                break;
+            case ComponentClass::ComponentCategory::RigidBodyInstance:
+                if (const auto* RB = Storage.InspectRigidBody(H.Token))
+                {
+                    Entry.insert_or_assign("MotionKind", static_cast<int64_t>(RB->MotionKind));
+                    Entry.insert_or_assign("ExplicitMassKg", static_cast<double>(RB->ExplicitMassKg));
+                    Entry.insert_or_assign("DensityKgPerM3", static_cast<double>(RB->DensityKgPerM3));
+                    Entry.insert_or_assign("CenterOfMassOffsetM", EncodeVec3(RB->CenterOfMassOffsetM));
+                    Entry.insert_or_assign("LinearDamping", static_cast<double>(RB->LinearDamping));
+                    Entry.insert_or_assign("AngularDamping", static_cast<double>(RB->AngularDamping));
+                    Entry.insert_or_assign("GravityFactor", static_cast<double>(RB->GravityFactor));
+                    Entry.insert_or_assign("CollisionChannel", static_cast<int64_t>(RB->CollisionChannel));
+                    Entry.insert_or_assign("CollideWithMask", static_cast<int64_t>(RB->CollideWithMask));
+                    Entry.insert_or_assign("PhysicsMaterialId", static_cast<int64_t>(RB->PhysicsMaterialId));
+                    Entry.insert_or_assign("FreezeAxisMask", static_cast<int64_t>(RB->FreezeAxisMask));
+                    Entry.insert_or_assign("AllowSleep", RB->AllowSleep);
+                    Entry.insert_or_assign("ContinuousMotion", RB->ContinuousMotion);
+                }
+                break;
+            case ComponentClass::ComponentCategory::SoftBodyInstance:
+                if (const auto* SB = Storage.InspectSoftBody(H.Token))
+                {
+                    Entry.insert_or_assign("SoftBodyAssetPath", SB->SoftBodyAssetPath);
+                    Entry.insert_or_assign("VertexAtlasPath", SB->VertexAtlasPath);
+                    Entry.insert_or_assign("SleepDistanceMeters", static_cast<double>(SB->SleepDistanceMeters));
+                }
+                break;
+            case ComponentClass::ComponentCategory::ForceFieldInstance:
+                if (const auto* FF = Storage.InspectForceField(H.Token))
+                {
+                    Entry.insert_or_assign("ModelCode", static_cast<int64_t>(FF->ModelCode));
+                    Entry.insert_or_assign("Direction", EncodeVec3(FF->Direction));
+                    Entry.insert_or_assign("Strength", static_cast<double>(FF->Strength));
+                    Entry.insert_or_assign("RadiusMeters", static_cast<double>(FF->RadiusMeters));
+                    Entry.insert_or_assign("FalloffCode", static_cast<int64_t>(FF->FalloffCode));
+                }
+                break;
+            case ComponentClass::ComponentCategory::FluidRegionInstance:
+                if (const auto* FL = Storage.InspectFluidRegion(H.Token))
+                {
+                    Entry.insert_or_assign("RadiusMeters", static_cast<double>(FL->RadiusMeters));
+                    Entry.insert_or_assign("VelocityMps", EncodeVec3(FL->VelocityMps));
+                    Entry.insert_or_assign("Density", static_cast<double>(FL->Density));
+                    Entry.insert_or_assign("Temperature", static_cast<double>(FL->Temperature));
+                    Entry.insert_or_assign("Fuel", static_cast<double>(FL->Fuel));
+                }
+                break;
+            case ComponentClass::ComponentCategory::ParticleCloudInstance:
+                if (const auto* PC = Storage.InspectParticleCloud(H.Token))
+                {
+                    Entry.insert_or_assign("RadiusMeters", static_cast<double>(PC->RadiusMeters));
+                    Entry.insert_or_assign("ParticleCount", static_cast<int64_t>(PC->ParticleCount));
+                    Entry.insert_or_assign("ReleaseRate", static_cast<double>(PC->ReleaseRate));
+                    Entry.insert_or_assign("SpeedMps", static_cast<double>(PC->SpeedMps));
+                    Entry.insert_or_assign("LifetimeSec", static_cast<double>(PC->LifetimeSec));
+                    Entry.insert_or_assign("GravityY", static_cast<double>(PC->GravityY));
+                    Entry.insert_or_assign("GasInfluence", static_cast<double>(PC->GasInfluence));
+                    Entry.insert_or_assign("FieldInfluence", static_cast<double>(PC->FieldInfluence));
                 }
                 break;
             case ComponentClass::ComponentCategory::SpatialOrigin:
@@ -450,11 +518,17 @@ bool ComponentSpaceDecoder::ExtractDefinition(
             case ComponentClass::ComponentCategory::CollisionVolume:
                 if (auto* Col = OutDefinition.Storage.ResolveCollision(Token))
                 {
-                    Col->Form               = static_cast<ComponentClass::CollisionVolumeCategory>((*Entry)["CollisionKind"].value_or<int64_t>(0));
-                    Col->HalfExtentsMeters  = DecodeScalar3((*Entry)["HalfExtentsMeters"].as_array(), { 0.5f, 0.5f, 0.5f });
-                    Col->RadiusMeters       = static_cast<float>((*Entry)["RadiusMeters"].value_or(0.35));
-                    Col->HalfHeightMeters   = static_cast<float>((*Entry)["HalfHeightMeters"].value_or(0.45));
-                    Col->TriggerOverlapOnly = (*Entry)["TriggerOverlapOnly"].value_or(false);
+                    Col->Form                     = static_cast<ComponentClass::CollisionVolumeCategory>((*Entry)["CollisionKind"].value_or<int64_t>(0));
+                    Col->HalfExtentsMeters        = DecodeScalar3((*Entry)["HalfExtentsMeters"].as_array(), { 0.5f, 0.5f, 0.5f });
+                    Col->RadiusMeters             = static_cast<float>((*Entry)["RadiusMeters"].value_or(0.35));
+                    Col->HalfHeightMeters         = static_cast<float>((*Entry)["HalfHeightMeters"].value_or(0.45));
+                    Col->ConvexMarginMeters       = static_cast<float>((*Entry)["ConvexMarginMeters"].value_or(0.015));
+                    Col->CollisionChannel         = static_cast<uint16_t>((*Entry)["CollisionChannel"].value_or<int64_t>(1));
+                    Col->CollideWithMask          = static_cast<uint32_t>((*Entry)["CollideWithMask"].value_or<int64_t>(0xFFFFFFFFll));
+                    Col->PhysicsMaterialId        = static_cast<uint16_t>((*Entry)["PhysicsMaterialId"].value_or<int64_t>(0));
+                    Col->MaxCompoundHulls         = static_cast<uint32_t>((*Entry)["MaxCompoundHulls"].value_or<int64_t>(4));
+                    Col->TriggerOverlapOnly       = (*Entry)["TriggerOverlapOnly"].value_or(false);
+                    Col->SourceGeometryIdentifier = (*Entry)["SourceGeometryIdentifier"].value_or(std::string());
                 }
                 break;
             case ComponentClass::ComponentCategory::DirectionArrow:
@@ -519,6 +593,65 @@ bool ComponentSpaceDecoder::ExtractDefinition(
                     {
                         PendingRotationTargets.emplace_back(Token, *TargetTitle);
                     }
+                }
+                break;
+            case ComponentClass::ComponentCategory::RigidBodyInstance:
+                if (auto* RB = OutDefinition.Storage.ResolveRigidBody(Token))
+                {
+                    RB->MotionKind          = static_cast<ComponentClass::RigidBodyMotionKind>((*Entry)["MotionKind"].value_or<int64_t>(2));
+                    RB->ExplicitMassKg      = static_cast<float>((*Entry)["ExplicitMassKg"].value_or(0.0));
+                    RB->DensityKgPerM3      = static_cast<float>((*Entry)["DensityKgPerM3"].value_or(2350.0));
+                    RB->CenterOfMassOffsetM = DecodeVec3((*Entry)["CenterOfMassOffsetM"].as_array(), { 0.0f, 0.0f, 0.0f });
+                    RB->LinearDamping       = static_cast<float>((*Entry)["LinearDamping"].value_or(0.02));
+                    RB->AngularDamping      = static_cast<float>((*Entry)["AngularDamping"].value_or(0.05));
+                    RB->GravityFactor       = static_cast<float>((*Entry)["GravityFactor"].value_or(1.0));
+                    RB->CollisionChannel    = static_cast<uint16_t>((*Entry)["CollisionChannel"].value_or<int64_t>(1));
+                    RB->CollideWithMask     = static_cast<uint32_t>((*Entry)["CollideWithMask"].value_or<int64_t>(0xFFFFFFFFll));
+                    RB->PhysicsMaterialId   = static_cast<uint16_t>((*Entry)["PhysicsMaterialId"].value_or<int64_t>(0));
+                    RB->FreezeAxisMask      = static_cast<uint8_t>((*Entry)["FreezeAxisMask"].value_or<int64_t>(0));
+                    RB->AllowSleep          = (*Entry)["AllowSleep"].value_or(true);
+                    RB->ContinuousMotion    = (*Entry)["ContinuousMotion"].value_or(false);
+                }
+                break;
+            case ComponentClass::ComponentCategory::SoftBodyInstance:
+                if (auto* SB = OutDefinition.Storage.ResolveSoftBody(Token))
+                {
+                    SB->SoftBodyAssetPath   = (*Entry)["SoftBodyAssetPath"].value_or(std::string("EngineContent/Simulation/Deformables/WovenCloth.SoftBody"));
+                    SB->VertexAtlasPath     = (*Entry)["VertexAtlasPath"].value_or(std::string());
+                    SB->SleepDistanceMeters = static_cast<float>((*Entry)["SleepDistanceMeters"].value_or(60.0));
+                }
+                break;
+            case ComponentClass::ComponentCategory::ForceFieldInstance:
+                if (auto* FF = OutDefinition.Storage.ResolveForceField(Token))
+                {
+                    FF->ModelCode    = static_cast<uint8_t>((*Entry)["ModelCode"].value_or<int64_t>(0));
+                    FF->Direction    = DecodeVec3((*Entry)["Direction"].as_array(), { 1.0f, 0.0f, 0.0f });
+                    FF->Strength     = static_cast<float>((*Entry)["Strength"].value_or(4.0));
+                    FF->RadiusMeters = static_cast<float>((*Entry)["RadiusMeters"].value_or(8.0));
+                    FF->FalloffCode  = static_cast<uint8_t>((*Entry)["FalloffCode"].value_or<int64_t>(3));
+                }
+                break;
+            case ComponentClass::ComponentCategory::FluidRegionInstance:
+                if (auto* FL = OutDefinition.Storage.ResolveFluidRegion(Token))
+                {
+                    FL->RadiusMeters = static_cast<float>((*Entry)["RadiusMeters"].value_or(0.42));
+                    FL->VelocityMps  = DecodeVec3((*Entry)["VelocityMps"].as_array(), { 0.0f, 2.2f, 0.0f });
+                    FL->Density      = static_cast<float>((*Entry)["Density"].value_or(1.5));
+                    FL->Temperature  = static_cast<float>((*Entry)["Temperature"].value_or(2.6));
+                    FL->Fuel         = static_cast<float>((*Entry)["Fuel"].value_or(1.1));
+                }
+                break;
+            case ComponentClass::ComponentCategory::ParticleCloudInstance:
+                if (auto* PC = OutDefinition.Storage.ResolveParticleCloud(Token))
+                {
+                    PC->RadiusMeters   = static_cast<float>((*Entry)["RadiusMeters"].value_or(0.36));
+                    PC->ParticleCount  = static_cast<uint32_t>((*Entry)["ParticleCount"].value_or<int64_t>(256));
+                    PC->ReleaseRate    = static_cast<float>((*Entry)["ReleaseRate"].value_or(12.0));
+                    PC->SpeedMps       = static_cast<float>((*Entry)["SpeedMps"].value_or(1.5));
+                    PC->LifetimeSec    = static_cast<float>((*Entry)["LifetimeSec"].value_or(2.4));
+                    PC->GravityY       = static_cast<float>((*Entry)["GravityY"].value_or(0.15));
+                    PC->GasInfluence   = static_cast<float>((*Entry)["GasInfluence"].value_or(0.85));
+                    PC->FieldInfluence = static_cast<float>((*Entry)["FieldInfluence"].value_or(0.85));
                 }
                 break;
             case ComponentClass::ComponentCategory::SpatialOrigin:

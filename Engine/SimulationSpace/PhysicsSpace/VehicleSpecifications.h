@@ -124,6 +124,13 @@ enum class TirePresetCategory : uint8_t
     OffroadRallyDirt    = 3u,
 };
 
+enum class WheelContactQueryMode : uint8_t
+{
+    SingleRay         = 0u, // Single vertical raycast from suspension hardpoint (fastest baseline)
+    MultiRayArc       = 1u, // 5-ray circumferential lower tire arc (-28..+28 deg): smooth curb climb & ~2-3x faster than 3D sweep
+    CylinderShapeCast = 2u, // Full Jolt 3D CylinderShape sweep via NarrowPhaseQuery::CastShape
+};
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    INLINE FAST MATH
 //------------------------------------------------------------------------------------------------------------------------
@@ -634,6 +641,9 @@ struct VehicleRigSpecification
 
     DrivetrainLayoutCategory                     DrivetrainLayout     = DrivetrainLayoutCategory::AllWheelDrive;
     ForcedInductionCategory                      ForcedInduction      = ForcedInductionCategory::Turbocharged;
+    WheelContactQueryMode                        WheelContactMode     = WheelContactQueryMode::MultiRayArc; // [-] - Default 5-ray tire arc
+    uint16_t                                     ChassisMaterialId    = 0u;                                 // [id] - PhysicsMaterial for hull contacts
+    bool                                         EnableDebugLogging   = true;                               // [-] - Emit structured events to PhysicsDebugLog
 
     EngineSpecification                          Engine               {};
     EngineOilSpecification                       EngineOil            {};

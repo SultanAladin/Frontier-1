@@ -112,6 +112,9 @@ struct WheelCornerReading
     float                  CarcassTempKelvin      = StandardAmbientKelvin; // [K]
     float                  TreadDepthMm           = 5.5f;   // [mm]
     FrictionRegimeCategory FrictionRegime         = FrictionRegimeCategory::Kinetic;
+    uint16_t               SurfaceMaterialId      = 0u;     // [id]    - Hit PhysicsMaterial identifier
+    float                  SurfaceGripScale       = 1.0f;   // [-]     - Active tire grip multiplier from PhysicsMaterial
+    uint8_t                ContactRayHits         = 0u;     // [cnt]   - Active ray/sweep hits contributing to contact
     Mathematics::Axis3D    ContactPointWorldM     { 0.0f, 0.0f, 0.0f }; // [m]
     Mathematics::Axis3D    WheelHubLocalMeters    { 0.0f, 0.0f, 0.0f }; // [m] - Visual wheel center offset in chassis frame
 };
@@ -193,6 +196,7 @@ struct VehicleReading
     // Driver assists & suspension architecture
     SuspensionArchitectureCategory FrontArchitecture   = SuspensionArchitectureCategory::DoubleWishbone;
     SuspensionArchitectureCategory RearArchitecture    = SuspensionArchitectureCategory::MultiLink;
+    WheelContactQueryMode          WheelContactMode    = WheelContactQueryMode::MultiRayArc;
     bool                           AbsIntervening      = false;
     bool                           TcsIntervening      = false;
     bool                           EscIntervening      = false;
@@ -253,7 +257,8 @@ public:
         PhysicsExtension&                 Physics,
         const VehicleRigSpecification&    InitialSpecification,
         const Mathematics::Axis3D&        SpawnPositionMeters,
-        const RigidOrientationQuaternion& SpawnOrientation = {}) noexcept;
+        const RigidOrientationQuaternion& SpawnOrientation        = {},
+        const BakedColliderGeometry*      OptionalChassisCollider = nullptr) noexcept;
 
     void StepOnPhysicsThread(PhysicsExtension& Physics, double FixedDeltaSeconds) noexcept;
     void Finalize(PhysicsExtension& Physics) noexcept;
@@ -297,6 +302,11 @@ private:
         float                  TreadDepthMm        = 5.5f;
         bool                   InContact           = false;
         FrictionRegimeCategory FrictionRegime      = FrictionRegimeCategory::Kinetic;
+        uint16_t               SurfaceMaterialId   = 0u;
+        uint16_t               PrevSurfaceMatId    = 0u;
+        float                  SurfaceGripScale    = 1.0f;
+        float                  SurfaceRollingScale = 1.0f;
+        uint8_t                ContactRayHits      = 0u;
         Mathematics::Axis3D    ContactPointWorldM  { 0.0f, 0.0f, 0.0f };
         Mathematics::Axis3D    ContactNormalWorld  { 0.0f, 1.0f, 0.0f };
         Mathematics::Axis3D    HubLocalMeters      { 0.0f, 0.0f, 0.0f };
@@ -476,6 +486,14 @@ private:
     // Step accounting
     uint64_t                CompletedSteps       = 0ull;
     double                  SimulatedSeconds     = 0.0;
+
+    // Debug log edge-transition trackers (zero-spam structured event logging)
+    int32_t                 PrevLoggedGear       = 1;
+    bool                    PrevLoggedBov        = false;
+    bool                    PrevLoggedFuelWarn   = false;
+    bool                    PrevLoggedFuelStarved= false;
+    bool                    PrevLoggedWingAttach = true;
+    bool                    PrevLoggedScBypass   = false;
 
     // Generic wait-free cross-thread reading bank + lock-free directive queue
     Threading::ThreadBoundaryExchange<VehicleReading, VehicleControlDirective, 8u> BoundaryExchange;

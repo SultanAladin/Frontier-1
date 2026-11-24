@@ -416,6 +416,79 @@ void ComponentDetailsPanel::Render(
         }
     }
 
+    // E2. SIMULATION sections (SoftBody, ForceField, FluidRegion, ParticleCloud)
+    auto EmitSimSlider = [&](uint32_t Sid, const char* Label, const char* Unit, float& Val, float Lo, float Hi, const char* Fmt)
+    {
+        WorkspaceAppearance::ConstructWeightedText(
+            Surface, FontWeightClass::Medium, { Bounds.X + PadX, CY }, 10.0f, WorkspaceSurfaceColors::SecondaryInk, Label);
+        char NumBuf[24] {};
+        std::snprintf(NumBuf, sizeof(NumBuf), Fmt, Val);
+        float NextVal = Val;
+        const auto C = ScalarSlider::ConstructWithReadout(
+            Surface, { Bounds.X + PadX, CY + 15.0f, InnerW, 22.0f },
+            NumBuf, Unit, Lo, Hi, Val, DraggingSlider == Sid, Ptr, NextVal);
+        if (C.Dragging)
+        {
+            DraggingSlider = Sid;
+            Val = NextVal;
+            Session.MarkActiveDirty();
+        }
+        else if (DraggingSlider == Sid && !Ptr.Down)
+        {
+            DraggingSlider = 0u;
+        }
+        CY += 42.0f;
+    };
+
+    if (SelHdr->Category == ComponentClass::ComponentCategory::SoftBodyInstance && MatchesDetailsFilter("SOFT BODY", Filter))
+    {
+        ConstructSectionHeader("SOFT BODY");
+        if (auto* Sb = Doc->ClassDefinition.Storage.ResolveSoftBody(Doc->SelectedToken))
+        {
+            WorkspaceAppearance::ConstructWeightedText(
+                Surface, FontWeightClass::Regular, { Bounds.X + PadX, CY }, 9.5f, WorkspaceSurfaceColors::MutedInk,
+                Sb->SoftBodyAssetPath.empty() ? "(no .SoftBody asset)" : Sb->SoftBodyAssetPath.c_str());
+            CY += 20.0f;
+            EmitSimSlider(9u, "Sleep distance", "m", Sb->SleepDistanceMeters, 5.0f, 200.0f, "%.0f");
+        }
+    }
+
+    if (SelHdr->Category == ComponentClass::ComponentCategory::ForceFieldInstance && MatchesDetailsFilter("FORCE FIELD", Filter))
+    {
+        ConstructSectionHeader("FORCE FIELD");
+        if (auto* Ff = Doc->ClassDefinition.Storage.ResolveForceField(Doc->SelectedToken))
+        {
+            EmitSimSlider(10u, "Strength", "m/s2", Ff->Strength, 0.0f, 30.0f, "%.1f");
+            EmitSimSlider(11u, "Influence radius", "m", Ff->RadiusMeters, 0.5f, 50.0f, "%.1f");
+        }
+    }
+
+    if (SelHdr->Category == ComponentClass::ComponentCategory::FluidRegionInstance && MatchesDetailsFilter("FLUID REGION", Filter))
+    {
+        ConstructSectionHeader("FLUID REGION");
+        if (auto* Fl = Doc->ClassDefinition.Storage.ResolveFluidRegion(Doc->SelectedToken))
+        {
+            EmitSimSlider(12u, "Source radius", "m", Fl->RadiusMeters, 0.1f, 5.0f, "%.2f");
+            EmitSimSlider(13u, "Density", "", Fl->Density, 0.0f, 5.0f, "%.2f");
+            EmitSimSlider(14u, "Temperature", "", Fl->Temperature, 0.0f, 8.0f, "%.2f");
+            EmitSimSlider(15u, "Fuel", "", Fl->Fuel, 0.0f, 5.0f, "%.2f");
+        }
+    }
+
+    if (SelHdr->Category == ComponentClass::ComponentCategory::ParticleCloudInstance && MatchesDetailsFilter("PARTICLE CLOUD", Filter))
+    {
+        ConstructSectionHeader("PARTICLE CLOUD");
+        if (auto* Pc = Doc->ClassDefinition.Storage.ResolveParticleCloud(Doc->SelectedToken))
+        {
+            EmitSimSlider(16u, "Emitter radius", "m", Pc->RadiusMeters, 0.05f, 5.0f, "%.2f");
+            EmitSimSlider(17u, "Release rate", "1/s", Pc->ReleaseRate, 0.0f, 120.0f, "%.1f");
+            EmitSimSlider(18u, "Initial speed", "m/s", Pc->SpeedMps, 0.0f, 20.0f, "%.2f");
+            EmitSimSlider(19u, "Lifetime", "s", Pc->LifetimeSec, 0.2f, 12.0f, "%.2f");
+            EmitSimSlider(20u, "Gas influence", "", Pc->GasInfluence, 0.0f, 1.0f, "%.2f");
+            EmitSimSlider(21u, "Field influence", "", Pc->FieldInfluence, 0.0f, 1.0f, "%.2f");
+        }
+    }
+
     // F. RENDERING toggle
     if (SelHdr->Category != ComponentClass::ComponentCategory::VehicleDynamics &&
         SelHdr->Category != ComponentClass::ComponentCategory::RotationalMotion &&

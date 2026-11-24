@@ -12,6 +12,7 @@
 #include "Engine/Components/Controls/CapsuleButton.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Editor/Inspectors/InspectorGpuBaker.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsDebugLog.h"
 
 #include <imgui.h>
 
@@ -293,6 +294,10 @@ bool EditorLifecycle::AttachVulkanGizmoOverlay(
         }
     }
 
+#if FRONTIER_SIM_OVERLAY_HAS_VULKAN
+    (void)SimulationAdapter.AttachVulkanDevice(WorldSimulation, BoundDevice, CompiledShaderDirectory);
+#endif
+
     WorldTransformGizmo.ConfigureDimensionMode(Editor::GizmoDimensionMode::Spatial3D);
     WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
     if (ShowcaseBundle != nullptr)
@@ -342,6 +347,22 @@ void EditorLifecycle::PopulateApocalypticCitySession(uint32_t RenderWidthPx, uin
     PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
 }
 
+void EditorLifecycle::OpenProjectSpaceSession(
+    const std::filesystem::path& ProjectSpaceFile,
+    uint32_t                     RenderWidthPx,
+    uint32_t                     RenderHeightPx)
+{
+    StartupConfig.ProjectSpacePath = ProjectSpaceFile;
+    if (!ProjectSpaceFile.empty())
+    {
+        (void)ControlCentre.AttachProjectSpace(ProjectSpaceFile);
+    }
+    BlankPlaneSkySessionActive   = false;
+    ApocalypticCitySessionActive = false;
+    ApocalypticCitySim           = {};
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
 void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
 {
     WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
@@ -375,7 +396,46 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     }
     else
     {
-        GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+        bool LoadedProjectWorld = false;
+        if (!StartupConfig.ProjectSpacePath.empty())
+        {
+            const std::filesystem::path ProjectWorldPath =
+                StartupConfig.ProjectSpacePath.parent_path() / "Content" / "Worlds" / "MainWorld.WorldSpace";
+            std::error_code ExistEc {};
+            if (std::filesystem::exists(ProjectWorldPath, ExistEc))
+            {
+                std::filesystem::path RepoRoot = std::filesystem::current_path();
+                for (int Depth = 0; Depth < 6; ++Depth)
+                {
+                    if (std::filesystem::exists(
+                            RepoRoot / "Content" / "Environment" / "Skies" / "ClearSkyDaylight.VolumetricSpace",
+                            ExistEc) ||
+                        std::filesystem::exists(
+                            RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace",
+                            ExistEc))
+                    {
+                        break;
+                    }
+                    if (!RepoRoot.has_parent_path())
+                    {
+                        break;
+                    }
+                    RepoRoot = RepoRoot.parent_path();
+                }
+                std::string LoadDiag {};
+                LoadedProjectWorld = GeometricRaster::LoadWorldSceneFromSpaceFile(
+                    ProjectWorldPath,
+                    RepoRoot,
+                    *ShowcaseBundle,
+                    RenderWidthPx,
+                    RenderHeightPx,
+                    LoadDiag);
+            }
+        }
+        if (!LoadedProjectWorld)
+        {
+            GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+        }
     }
     {
         auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
@@ -2247,8 +2307,24 @@ void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
             PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, LastTargetHeightPx) - 1u));
         }
 
+        VkImageView ComposedWorldView = LastWorldImageView;
+#if FRONTIER_SIM_OVERLAY_HAS_VULKAN
+        {
+            const auto& Cam = ShowcaseBundle->EditorCamera;
+            SimulationSpace::SimulationOverlayCamera SimCam {};
+            SimCam.EyeMeters       = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
+            SimCam.TargetMeters    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
+            SimCam.UpAxis          = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
+            SimCam.VerticalFovRad  = Cam.VerticalFovRadians;
+            SimCam.NearPlaneMeters = Cam.NearClipMeters;
+            SimCam.FarPlaneMeters  = Cam.FarClipMeters;
+            ComposedWorldView = SimulationAdapter.CompositeOverWorldImage(
+                WorldSimulation, LastWorldImageView, LastTargetWidthPx, LastTargetHeightPx, SimCam);
+        }
+#endif
+
         GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
-        CompReq.WorldSourceView      = LastWorldImageView;
+        CompReq.WorldSourceView      = ComposedWorldView;
         CompReq.TargetWidthPx        = LastTargetWidthPx;
         CompReq.TargetHeightPx       = LastTargetHeightPx;
         CompReq.Camera               = ShowcaseBundle->EditorCamera;
@@ -2499,8 +2575,24 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
                 PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, TargetH) - 1u));
             }
 
+            VkImageView ComposedWorldView = WorldView;
+#if FRONTIER_SIM_OVERLAY_HAS_VULKAN
+            {
+                const auto& Cam = ShowcaseBundle->EditorCamera;
+                SimulationSpace::SimulationOverlayCamera SimCam {};
+                SimCam.EyeMeters       = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
+                SimCam.TargetMeters    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
+                SimCam.UpAxis          = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
+                SimCam.VerticalFovRad  = Cam.VerticalFovRadians;
+                SimCam.NearPlaneMeters = Cam.NearClipMeters;
+                SimCam.FarPlaneMeters  = Cam.FarClipMeters;
+                ComposedWorldView = SimulationAdapter.CompositeOverWorldImage(
+                    WorldSimulation, WorldView, TargetW, TargetH, SimCam);
+            }
+#endif
+
             GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
-            CompReq.WorldSourceView      = WorldView;
+            CompReq.WorldSourceView      = ComposedWorldView;
             CompReq.TargetWidthPx        = TargetW;
             CompReq.TargetHeightPx       = TargetH;
             CompReq.Camera               = ShowcaseBundle->EditorCamera;
@@ -2701,6 +2793,22 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
     CurrentStepSeconds    = SafeStep;
 
     Workspaces.Tick(SafeStep);
+    bool WorldSimStepped = false;
+    {
+        SimulationSpace::EditorSimulationToolbarState TbState {};
+        TbState.DeltaSeconds      = SafeStep;
+        TbState.CameraWorldMeters = { DesiredCameraOrigin.X, DesiredCameraOrigin.Y, DesiredCameraOrigin.Z };
+        if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+        {
+            TbState.PlayOrSimulateActive = (ActivePanes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit);
+            TbState.Paused               = ActivePanes->Viewport.QueryPlayPaused();
+            TbState.StepRequested        = ActivePanes->Viewport.ConsumeSimulationStepRequest();
+        }
+        WorldSimStepped = SimulationAdapter.SynchronizeToolbarControls(
+            WorldSimulation,
+            TbState,
+            [this]() { return BeginWorldSimulationPlay(); });
+    }
     if (ShowcaseBundle != nullptr)
     {
         if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
@@ -3162,7 +3270,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const bool DiagnosticsLiveActive =
                 Panes->Viewport.QueryDiagnosticsVisible() && !Panes->Viewport.QueryDiagnosticsPaused();
             const bool SelectionOutlineChanged = (CurrentSel != LastOutlinedSlot);
-            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || SelectionOutlineChanged || ProgressiveOrder3Active || DiagnosticsLiveActive)
+            if (InteractionWorldRefresh || SceneMutated || WorldSimStepped || DisplayChanged || SelectionOutlineChanged || ProgressiveOrder3Active || DiagnosticsLiveActive)
             {
                 FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
                 RefreshShowcaseViewportRaster();
@@ -3282,6 +3390,27 @@ void EditorLifecycle::RecordFramePresentationTiming(
         LatestViewportTiming.InspectorCaptureCount  = Panes->Inspector.QueryRetainedCaptureCount();
         LatestViewportTiming.InspectorReplayCount   = Panes->Inspector.QueryRetainedReplayCount();
         Panes->Viewport.ConfigureViewportTimingBreakdown(LatestViewportTiming);
+
+        // Keep F3 Physics & Vehicle diagnostics synced with the thread-safe PhysicsDebugLog journal
+        auto& PhysJournal = SimulationSpace::PhysicsSpace::PhysicsDebugLog::AccessSharedJournal();
+        const uint64_t SeqNow = PhysJournal.QueryTotalEmittedCount();
+        PhysicsTelemetryReading PhysTel = Panes->Viewport.QueryLastPhysicsTelemetry();
+        if (SeqNow != PhysTel.DebugLogSequence)
+        {
+            PhysTel.DebugLogSequence = SeqNow;
+            const auto RecentLogs = PhysJournal.CopyRecentEntries(4u);
+            PhysTel.RecentLogLines.clear();
+            for (const auto& Entry : RecentLogs)
+            {
+                PhysTel.RecentLogLines.push_back(SimulationSpace::PhysicsSpace::PhysicsDebugLog::FormatEntryLine(Entry));
+            }
+            if (!PhysTel.RecentLogLines.empty())
+            {
+                PhysTel.LatestLogSummary = PhysTel.RecentLogLines.back();
+            }
+            Panes->Viewport.ConfigurePhysicsTelemetry(PhysTel);
+        }
+
         RefreshOutlinerFooterTelemetry();
         const auto& Disp = Panes->Viewport.QueryDisplaySettings();
         const uint64_t DispRev =
@@ -3558,6 +3687,8 @@ void EditorLifecycle::Finalize() noexcept
             ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
         }
     }
+    SimulationAdapter.Teardown();
+    WorldSimulation.Stop();
     EditorSequence.Finalize();
     InspectorGpuBaker::DetachImGuiPresenter();
     if (StartupConfig.ImGuiPresenter != nullptr)
@@ -3588,6 +3719,20 @@ void EditorLifecycle::Finalize() noexcept
     InspectorPaneToken   = {};
     Initialized          = false;
     TerminationRequested = false;
+}
+
+bool EditorLifecycle::BeginWorldSimulationPlay(std::string* OutError)
+{
+    return WorldSimulation.BeginPlayFromWorldPlacements(
+        ComponentDefinitions,
+        WorldPlacements,
+        ActiveProjectTitle.empty() ? "FrontierWorldPlay" : ActiveProjectTitle,
+        OutError);
+}
+
+bool EditorLifecycle::BeginWorldSimulationFromSceneFile(const std::filesystem::path& ScenePath, std::string* OutError)
+{
+    return WorldSimulation.BeginPlayFromSceneFile(ScenePath, OutError);
 }
 
 EditorLifecycleReading EditorLifecycle::InspectReading() const noexcept

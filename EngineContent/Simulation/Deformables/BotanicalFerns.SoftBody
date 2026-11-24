@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Botanical Ferns"
+PresetId = "BotanicalFerns"
+PresetKind = "BotanicalFerns"
+SolverCategory = "XpbdStrand"
+Description = "Botanical deformable preset (botanical)"
+
+[Solver]
+Substeps = 5
+GravityY = -6.19999981
+Damping = 0.99000001
+UnderwaterEnabled = false
+
+[Material]
+StretchStiffness = 2000.0
+BendStiffness = 0.649999976
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 0.0
+
+[Environment]
+WindStrength = 2.5999999
+Turbulence = 1.39999998
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 30.0
+AxleLoad = 1.35000002
+SpinRadPerSec = 3.0

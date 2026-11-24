@@ -110,7 +110,11 @@ enum class FormatSuffixCategory : uint16_t
     TimerProfile         = 59u, // [-] - Reusable countdowns, cooldowns & time-dilation presets
     Curve                = 60u, // [-] - 1D/2D easing & response curves shared across UI/motion/audio
     Timeline             = 61u, // [-] - Multi-track keyframe sequencer (motion, cameras, audio, captions)
-    Tooltip              = 62u  // [-] - Hover description layouts, stat comparisons & status indicators
+    Tooltip              = 62u, // [-] - Hover description layouts, stat comparisons & status indicators
+
+    // Deformable Continuum & Baked Vertex Motion Sub-Formats
+    SoftBody             = 63u, // [-] - Unified XPBD + 3D Stable Neo-Hookean FEM deformable preset & rest cage
+    VertexAtlas          = 64u  // [-] - Baked 256-column tiled RGBA32F Vertex Motion Atlas (VAT) + axle poses
 };
 
 //------------------------------------------------------------------------------------------------------------------------

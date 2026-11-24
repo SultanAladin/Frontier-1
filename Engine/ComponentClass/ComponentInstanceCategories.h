@@ -34,8 +34,13 @@ enum class ComponentCategory : uint8_t
     CameraInstance     = 5u,  // [-] - Perspective lens & frustum preview with Look-Through pilot mode
     CollisionVolume    = 6u,  // [-] - Box, Sphere, or Capsule Jolt collision / overlap proxy
     DirectionArrow     = 7u,  // [-] - Shaded +X orientation arrow visual
-    VehicleDynamics    = 8u,  // [-] - Non-transform powertrain, torque curve, aero & wheel constraint driver
-    RotationalMotion   = 9u,  // [-] - Non-transform continuous angular velocity driver
+    VehicleDynamics       = 8u,  // [-] - Non-transform powertrain, torque curve, aero & wheel constraint driver
+    RotationalMotion      = 9u,  // [-] - Non-transform continuous angular velocity driver
+    RigidBodyInstance     = 10u, // [-] - JoltPhysics rigid body dynamics, mass, damping, axis locks & PhysicsMaterial
+    SoftBodyInstance      = 11u, // [-] - XPBD / Neo-Hookean FEM deformable body referencing .SoftBody & optional .VertexAtlas
+    ForceFieldInstance    = 12u, // [-] - Analytical force field (Wind, Radial, Vortex, Turbulence, Drag)
+    FluidRegionInstance   = 13u, // [-] - 3D Eulerian / Sparse fluid volume release source (smoke, fire, fuel)
+    ParticleCloudInstance = 14u, // [-] - GPU/CPU particle cloud emitter coupled to ForceFields & Fluid velocity
 };
 
 enum class PhysicsConstraintCategory : uint8_t
@@ -75,9 +80,20 @@ enum class LightSourceCategory : uint8_t
 
 enum class CollisionVolumeCategory : uint8_t
 {
-    Box     = 0u, // [-] - Axis-aligned half-extents box
-    Sphere  = 1u, // [-] - Uniform radius sphere
-    Capsule = 2u, // [-] - Axis-aligned radius + half-height capsule
+    Box          = 0u, // [-] - Axis-aligned half-extents box
+    Sphere       = 1u, // [-] - Uniform radius sphere
+    Capsule      = 2u, // [-] - Axis-aligned radius + half-height capsule
+    Cylinder     = 3u, // [-] - Axis-aligned radius + half-height cylinder
+    ConvexHull   = 4u, // [-] - Baked convex polyhedron from .GeometrySpace mesh
+    CompoundHull = 5u, // [-] - Multi-hull compound collider baked from .GeometrySpace mesh
+    TriangleMesh = 6u, // [-] - Exact static triangle mesh collider (Static motion only)
+};
+
+enum class RigidBodyMotionKind : uint8_t
+{
+    Static    = 0u, // [-] - Immovable world rigid body
+    Kinematic = 1u, // [-] - Scripted kinematic body
+    Dynamic   = 2u, // [-] - Fully simulated Jolt dynamic body
 };
 
 enum class GeometryCollisionProfile : uint8_t
@@ -169,11 +185,34 @@ struct CameraComponentSettings
 
 struct CollisionVolumeSettings
 {
-    CollisionVolumeCategory   Form               = CollisionVolumeCategory::Box; // [-] - Box, Sphere, or Capsule shape
-    Mathematics::Scalar3D HalfExtentsMeters  { 0.95f, 0.24f, 0.28f };    // [m] - Box half-extents
-    float                 RadiusMeters       = 0.35f;                    // [m] - Sphere / Capsule radius
-    float                 HalfHeightMeters   = 0.45f;                    // [m] - Capsule cylindrical half-height
-    bool                  TriggerOverlapOnly = false;                    // [-] - Overlap sensor without solid impulse
+    CollisionVolumeCategory Form                     = CollisionVolumeCategory::Box; // [-]  - Box, Sphere, Capsule, Cylinder, ConvexHull, CompoundHull, TriangleMesh
+    Mathematics::Scalar3D   HalfExtentsMeters        { 0.95f, 0.24f, 0.28f };        // [m]  - Box half-extents
+    float                   RadiusMeters             = 0.35f;                        // [m]  - Sphere / Capsule / Cylinder radius
+    float                   HalfHeightMeters         = 0.45f;                        // [m]  - Capsule / Cylinder half-height
+    float                   ConvexMarginMeters       = 0.015f;                       // [m]  - Convex hull bevel margin
+    uint16_t                CollisionChannel         = 1u;                           // [id] - Broadphase layer channel
+    uint32_t                CollideWithMask          = 0xFFFFFFFFu;                  // [mask]- Bitmask of channels this collider interacts with
+    uint16_t                PhysicsMaterialId        = 0u;                           // [id] - Registered PhysicsMaterial slot (0 = Asphalt)
+    uint32_t                MaxCompoundHulls         = 4u;                           // [cnt]- Max sub-hulls when baking CompoundHull from .GeometrySpace
+    bool                    TriggerOverlapOnly       = false;                        // [-]  - Overlap sensor publishing TriggerOverlapReading without impulse
+    std::string             SourceGeometryIdentifier {};                             // [-]  - Optional .GeometrySpace asset key for ConvexHull/CompoundHull/TriangleMesh
+};
+
+struct RigidBodyComponentSettings
+{
+    RigidBodyMotionKind   MotionKind           = RigidBodyMotionKind::Dynamic; // [-]      - Static, Kinematic, or Dynamic Jolt body
+    float                 ExplicitMassKg       = 0.0f;                         // [kg]     - >0 overrides density * volume
+    float                 DensityKgPerM3       = 2350.0f;                      // [kg/m^3] - Material bulk density when ExplicitMassKg == 0
+    Mathematics::Axis3D   CenterOfMassOffsetM  { 0.0f, 0.0f, 0.0f };           // [m]      - Local center-of-mass shift
+    float                 LinearDamping        = 0.02f;                        // [1/s]    - Linear drag damping
+    float                 AngularDamping       = 0.05f;                        // [1/s]    - Angular drag damping
+    float                 GravityFactor        = 1.0f;                         // [-]      - Gravity multiplier
+    uint16_t              CollisionChannel     = 1u;                           // [id]     - Primary broadphase layer channel
+    uint32_t              CollideWithMask      = 0xFFFFFFFFu;                  // [mask]   - Layer interaction mask
+    uint16_t              PhysicsMaterialId    = 0u;                           // [id]     - Registered PhysicsMaterial identifier
+    uint8_t               FreezeAxisMask       = 0u;                           // [mask]   - Bits 0..2 freeze X/Y/Z; bits 3..5 freeze RotX/RotY/RotZ
+    bool                  AllowSleep           = true;                         // [-]      - Permits Jolt island sleep at rest
+    bool                  ContinuousMotion     = false;                        // [-]      - Linear-cast CCD for fast projectiles/vehicles
 };
 
 struct DirectionArrowSettings
@@ -210,6 +249,43 @@ struct RotationalMotionSettings
     ComponentInstanceToken TargetInstance       {};      // [-]     - Target scene instance (invalid = SpatialOrigin)
 };
 
+struct SoftBodyComponentSettings
+{
+    std::string SoftBodyAssetPath   { "EngineContent/Simulation/Deformables/WovenCloth.SoftBody" }; // [-] - .SoftBody asset path
+    std::string VertexAtlasPath     {};                                                             // [-] - Optional .VertexAtlas path
+    float       SleepDistanceMeters = 60.0f;                                                        // [m] - World LOD/sleep distance
+};
+
+struct ForceFieldComponentSettings
+{
+    uint8_t               ModelCode    = 0u;                   // [-]   - ForceModelOrdinal code (0=DirectionalWind, 3=RotationalColumn)
+    Mathematics::Axis3D   Direction    { 1.0f, 0.0f, 0.0f };   // [1]   - Primary force axis
+    float                 Strength     = 4.0f;                 // [m/s2]- Force intensity
+    float                 RadiusMeters = 8.0f;                 // [m]   - Influence radius
+    uint8_t               FalloffCode  = 3u;                   // [-]   - ForceFalloffOrdinal code (0=SmoothStep, 3=Constant)
+};
+
+struct FluidRegionComponentSettings
+{
+    float               RadiusMeters = 0.42f;                  // [m]   - Spherical release radius
+    Mathematics::Axis3D VelocityMps  { 0.0f, 2.2f, 0.0f };     // [m/s] - Injected fluid velocity
+    float               Density      = 1.50f;                  // [-]   - Injected smoke density
+    float               Temperature  = 2.60f;                  // [-]   - Injected thermal buoyancy
+    float               Fuel         = 1.10f;                  // [-]   - Injected combustion fuel
+};
+
+struct ParticleCloudComponentSettings
+{
+    float    RadiusMeters   = 0.36f;                           // [m]   - Emitter sphere radius
+    uint32_t ParticleCount  = 256u;                            // [cnt] - Maximum particle budget
+    float    ReleaseRate    = 12.0f;                           // [1/s] - Spawn rate per second
+    float    SpeedMps       = 1.50f;                           // [m/s] - Initial ejection speed
+    float    LifetimeSec    = 2.40f;                           // [s]   - Particle lifetime
+    float    GravityY       = 0.15f;                           // [m/s2]- Vertical buoyancy/gravity acceleration
+    float    GasInfluence   = 0.85f;                           // [0-1] - Fluid velocity advection coupling weight
+    float    FieldInfluence = 0.85f;                           // [0-1] - ForceField acceleration coupling weight
+};
+
 struct ComponentInstanceHeader
 {
     ComponentInstanceToken Token              {};                              // [id]   - Generation-checked instance identity
@@ -243,8 +319,13 @@ struct ComponentInstanceHeader
         case ComponentCategory::CameraInstance:     return "Camera";
         case ComponentCategory::CollisionVolume:    return "Collision Volume";
         case ComponentCategory::DirectionArrow:     return "Direction Arrow";
-        case ComponentCategory::VehicleDynamics:    return "Vehicle Dynamics";
-        case ComponentCategory::RotationalMotion:   return "Rotational Motion";
+        case ComponentCategory::VehicleDynamics:       return "Vehicle Dynamics";
+        case ComponentCategory::RotationalMotion:      return "Rotational Motion";
+        case ComponentCategory::RigidBodyInstance:     return "Rigid Body";
+        case ComponentCategory::SoftBodyInstance:      return "Soft Body";
+        case ComponentCategory::ForceFieldInstance:    return "Force Field";
+        case ComponentCategory::FluidRegionInstance:   return "Fluid Region";
+        case ComponentCategory::ParticleCloudInstance: return "Particle Cloud";
     }
     return "Component";
 }

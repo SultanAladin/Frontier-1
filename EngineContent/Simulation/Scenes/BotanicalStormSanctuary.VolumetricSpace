@@ -1,0 +1,79 @@
+# Frontier Unified Multi-Domain Simulation Scene (.VolumetricSpace)
+
+[Scene]
+Title = "BotanicalStormSanctuary"
+SchemaVersion = 1
+FixedStepHz = 60.0
+CameraWorldPosition = [3.6, 2.5, 5.2]
+
+[Fluid]
+GridCells = [16, 16, 16]
+CellSizeMeters = 0.25
+CentreMeters = [0.0, 1.9, 0.0]
+Buoyancy = 1.1
+Combustion = 0.0
+PressureIterations = 12
+
+[Vehicle]
+EnableCoupling = false
+VertexAtlasPath = ""
+
+[[Force]]
+Identifier = "StormCyclone"
+ModelCode = 3
+Position = [0.0, 1.5, 0.0]
+Direction = [0.0, 1.0, 0.0]
+Strength = 4.2
+RadiusMeters = 7.5
+FalloffCode = 0
+
+[[Force]]
+Identifier = "MonsoonGust"
+ModelCode = 0
+Position = [0.0, 2.0, 0.0]
+Direction = [0.9, -0.15, 0.35]
+Strength = 5.4
+RadiusMeters = 15.0
+FalloffCode = 3
+
+[[FluidSource]]
+Identifier = "CanopyMist"
+Position = [-1.4, 2.4, -0.8]
+RadiusMeters = 0.55
+VelocityMps = [1.4, -0.3, 0.4]
+Density = 1.5
+Temperature = 0.2
+Fuel = 0.0
+
+[[ParticleCloud]]
+Identifier = "StormRaindrops"
+Position = [0.0, 3.2, 0.0]
+RadiusMeters = 1.8
+ParticleCount = 256
+ReleaseRate = 24.0
+SpeedMps = 3.8
+LifetimeSec = 1.9
+GravityY = -6.2
+GasInfluence = 0.85
+FieldInfluence = 0.95
+
+[[SoftBody]]
+Label = "SanctuaryFerns"
+SoftBodyPath = "EngineContent/Simulation/Deformables/BotanicalFerns.SoftBody"
+WorldOrigin = [-0.6, 1.0, -0.6]
+
+[[SoftBody]]
+Label = "CanopyVines"
+SoftBodyPath = "EngineContent/Simulation/Deformables/HangingVines.SoftBody"
+WorldOrigin = [0.8, 2.6, -0.4]
+
+[[SoftBody]]
+Label = "MarshReedsCluster"
+SoftBodyPath = "EngineContent/Simulation/Deformables/MarshReeds.SoftBody"
+WorldOrigin = [1.4, 0.8, 0.7]
+
+[[RigidCollider]]
+BodySlotIndex = 303
+CenterMeters = [0.2, 1.2, 0.1]
+RadiusMeters = 0.42
+DynamicReply = false

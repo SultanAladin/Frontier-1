@@ -1,0 +1,115 @@
+# Botanical Strands & Webs — scene preset (Nature). Fluid-coupled strand showcase: leafy hanging jungle vines, lush woodland fern fronds, tall lakeside cattail reeds and a dew-beaded orb-weave spiderweb swaying together in a breeze.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Scene]
+Order = 51
+Id = "preset-botanical-strands"
+Name = "Botanical Strands & Webs"
+Family = "VFX"
+Icon = "leaf"
+Boundary = "OpenAll"
+Summary = "Leafy hanging vines, woodland fern fronds, lakeside cattail reeds and a dew-beaded orb-weave spiderweb swaying in live wind fields."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.5, 5.5, 6.5]
+
+[Render]
+Visible = false
+Exposure = 1.2
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.0, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Canopy Breeze"
+  Position = [0.0, 0.2, 0.0]
+  Strength = 1.85
+  Radius = 4.6
+  Falloff = "Constant"
+  Direction = [1.0, 0.08, 0.25]
+  Frequency = 0.45
+  Secondary = 0.0
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Gust Eddies"
+  Position = [0.0, 0.0, 0.0]
+  Strength = 0.95
+  Radius = 3.8
+  Falloff = "SmoothStep"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.85
+  Secondary = 0.2
+
+[[Particle]]
+  Template = "interactive-flora"
+  Name = "Woodland Fern"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.1, -0.5, 0.2]
+  Radius = 1.45
+  Count = 384
+
+[[Particle]]
+  Template = "interactive-flora"
+  Name = "Lakeside Reeds"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [1.55, -0.45, -0.35]
+  Radius = 1.35
+  Count = 384
+  StrandMode = "TallReeds"
+  StrandCount = 34
+  StrandThickness = 0.028
+  StrandSpan = 2.2
+  Palette = ["#14532d", "#3f6212", "#65a30d", "#a3e635"]
+
+[[Particle]]
+  Template = "hanging-strands"
+  Name = "Hanging Jungle Vines"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.9, -0.65]
+  Radius = 1.95
+  Count = 256
+  StrandMode = "HangingVines"
+  StrandVariant = "Secondary"
+  StrandCount = 28
+  StrandThickness = 0.042
+  StrandSpan = 2.0
+  Palette = ["#14532d", "#15803d", "#4ade80", "#86efac"]
+
+[[Particle]]
+  Template = "spiderweb-orb"
+  Name = "Orb-Weave Web"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.15, 0.45, 0.9]
+  Radius = 1.35
+  Count = 512

@@ -32,7 +32,12 @@ struct ClassSummaryMetrics
     uint32_t ConstraintCount    = 0u; // [cnt] - Live ConstraintInstance count
     uint32_t LightCount         = 0u; // [cnt] - Live LightInstance count
     uint32_t CollisionCount     = 0u; // [cnt] - Live CollisionVolume count
+    uint32_t RigidBodyCount     = 0u; // [cnt] - Live RigidBodyInstance count
     uint32_t BehaviourCount     = 0u; // [cnt] - Live VehicleDynamics + RotationalMotion count
+    uint32_t SoftBodyCount      = 0u; // [cnt] - Live SoftBodyInstance count
+    uint32_t ForceFieldCount    = 0u; // [cnt] - Live ForceFieldInstance count
+    uint32_t FluidRegionCount   = 0u; // [cnt] - Live FluidRegionInstance count
+    uint32_t ParticleCloudCount = 0u; // [cnt] - Live ParticleCloudInstance count
 };
 
 class ComponentInstanceStorage
@@ -77,6 +82,16 @@ public:
     [[nodiscard]] const VehicleDynamicsSettings*    InspectVehicle(ComponentInstanceToken Token) const noexcept;
     [[nodiscard]] RotationalMotionSettings*         ResolveRotation(ComponentInstanceToken Token) noexcept;
     [[nodiscard]] const RotationalMotionSettings*   InspectRotation(ComponentInstanceToken Token) const noexcept;
+    [[nodiscard]] RigidBodyComponentSettings*       ResolveRigidBody(ComponentInstanceToken Token) noexcept;
+    [[nodiscard]] const RigidBodyComponentSettings* InspectRigidBody(ComponentInstanceToken Token) const noexcept;
+    [[nodiscard]] SoftBodyComponentSettings*        ResolveSoftBody(ComponentInstanceToken Token) noexcept;
+    [[nodiscard]] const SoftBodyComponentSettings*  InspectSoftBody(ComponentInstanceToken Token) const noexcept;
+    [[nodiscard]] ForceFieldComponentSettings*      ResolveForceField(ComponentInstanceToken Token) noexcept;
+    [[nodiscard]] const ForceFieldComponentSettings* InspectForceField(ComponentInstanceToken Token) const noexcept;
+    [[nodiscard]] FluidRegionComponentSettings*     ResolveFluidRegion(ComponentInstanceToken Token) noexcept;
+    [[nodiscard]] const FluidRegionComponentSettings* InspectFluidRegion(ComponentInstanceToken Token) const noexcept;
+    [[nodiscard]] ParticleCloudComponentSettings*   ResolveParticleCloud(ComponentInstanceToken Token) noexcept;
+    [[nodiscard]] const ParticleCloudComponentSettings* InspectParticleCloud(ComponentInstanceToken Token) const noexcept;
 
     void WalkSpatialNesting(const std::function<void(const ComponentInstanceHeader&)>& Visitor) const;
     void CollectBehaviourTokens(std::vector<ComponentInstanceToken>& OutTokens) const;
@@ -107,7 +122,12 @@ private:
     std::vector<CollisionVolumeSettings>     Collisions   {};
     std::vector<DirectionArrowSettings>      Arrows       {};
     std::vector<VehicleDynamicsSettings>     Vehicles     {};
-    std::vector<RotationalMotionSettings>    Rotations    {};
+    std::vector<RotationalMotionSettings>      Rotations      {};
+    std::vector<RigidBodyComponentSettings>    RigidBodies    {};
+    std::vector<SoftBodyComponentSettings>     SoftBodies     {};
+    std::vector<ForceFieldComponentSettings>   ForceFields    {};
+    std::vector<FluidRegionComponentSettings>  FluidRegions   {};
+    std::vector<ParticleCloudComponentSettings> ParticleClouds {};
 
     [[nodiscard]] uint32_t    AllocateTypedSlot(ComponentCategory Category);
     [[nodiscard]] std::string ConstructUniqueTitle(std::string_view Desired) const;

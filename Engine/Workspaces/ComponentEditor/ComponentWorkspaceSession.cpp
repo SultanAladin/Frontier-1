@@ -73,6 +73,15 @@ void ComponentWorkspaceSession::AttachRenderer(
     }
 }
 
+#if FRONTIER_FLUID_HAS_VULKAN
+bool ComponentWorkspaceSession::AttachVulkanInterchange(
+    GeometricRaster::VulkanInterchange* Interchange,
+    const std::filesystem::path&        CompiledShaderDirectory) noexcept
+{
+    return SimulationPreview.AttachVulkanInterchange(Interchange, CompiledShaderDirectory);
+}
+#endif
+
 ComponentClassDocument* ComponentWorkspaceSession::AccessActiveDocument() noexcept
 {
     if (Documents.empty() || ActiveDocIndex >= Documents.size())
@@ -386,8 +395,21 @@ void ComponentWorkspaceSession::FocusSelectedOrClass()
 void ComponentWorkspaceSession::ToggleSimulation() noexcept
 {
     SimulationActive = !SimulationActive;
-    if (!SimulationActive)
+    if (SimulationActive)
     {
+        if (const auto* Doc = InspectActiveDocument();
+            Doc != nullptr && SimulationSpace::ComponentSimulationPreviewDriver::QueryHasSimulationComponents(Doc->ClassDefinition))
+        {
+            std::string previewErr;
+            if (!SimulationPreview.StartPreview(Doc->ClassDefinition, &previewErr))
+            {
+                StatusNote = previewErr;
+            }
+        }
+    }
+    else
+    {
+        SimulationPreview.StopAndResetPreview();
         ResetMotionKinematics();
     }
     ++RenderMutator;
@@ -410,9 +432,14 @@ void ComponentWorkspaceSession::ResetMotionKinematics() noexcept
     SteerInput       = 0.0f;
     SpringVelocities.clear();
     KickImpulses.clear();
+    SimulationPreview.StopAndResetPreview();
     if (auto* Doc = AccessActiveDocument())
     {
         SyncEditPoseFromClass(*Doc);
+        if (SimulationActive && SimulationSpace::ComponentSimulationPreviewDriver::QueryHasSimulationComponents(Doc->ClassDefinition))
+        {
+            (void)SimulationPreview.StartPreview(Doc->ClassDefinition);
+        }
     }
     ++RenderMutator;
 }
@@ -526,6 +553,16 @@ void ComponentWorkspaceSession::StepLiveSimulation(double DeltaSeconds) noexcept
             }
         }
     });
+
+    if (SimulationPreview.QueryStatus() == SimulationSpace::PreviewRunStatus::Running)
+    {
+        const std::array<float, 3> camPos {
+            Doc->Camera.FocusPointMeters.X + Doc->Camera.DistanceMeters * std::cos(Doc->Camera.PitchRadians) * std::sin(Doc->Camera.YawRadians),
+            Doc->Camera.FocusPointMeters.Y + Doc->Camera.DistanceMeters * std::sin(Doc->Camera.PitchRadians),
+            Doc->Camera.FocusPointMeters.Z + Doc->Camera.DistanceMeters * std::cos(Doc->Camera.PitchRadians) * std::cos(Doc->Camera.YawRadians)
+        };
+        SimulationPreview.StepPreview(DeltaSeconds, camPos);
+    }
 
     ++RenderMutator;
 }

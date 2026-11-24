@@ -65,6 +65,39 @@ struct ViewportTimingBreakdown
     float GpuHostSubmitWaitMs       = 0.0f;  // [ms] - CPU uniform pack, cmd encode, timeline wait & memcpy
 };
 
+struct PhysicsTelemetryReading
+{
+    bool                     PhysicsActive         = false;        // [-]   - True when Jolt PhysicsExtension is active
+    uint32_t                 ActiveBodies          = 0u;           // [cnt] - Active Jolt rigid bodies
+    uint32_t                 ActiveConstraints     = 0u;           // [cnt] - Active Jolt constraints
+    uint32_t                 ActiveTriggerOverlaps = 0u;           // [cnt] - Active sensor trigger overlaps
+    uint32_t                 RegisteredMaterials   = 8u;           // [cnt] - Registered PhysicsMaterial presets
+    float                    StepComputeMs         = 0.0f;         // [ms]  - Fixed-step Jolt + Vehicle solver compute time
+    float                    FixedStepHz           = 120.0f;       // [Hz]  - Fixed-step simulation frequency
+    uint64_t                 CompletedSteps        = 0ull;         // [cnt] - Completed physics steps
+    uint64_t                 DebugLogSequence      = 0ull;         // [seq] - Total PhysicsDebugLog events recorded
+    std::string              LatestLogSummary      {};             // [-]   - Most recent PhysicsDebugLog line
+    std::vector<std::string> RecentLogLines        {};             // [-]   - Latest PhysicsDebugLog entries (up to 4 shown in F3)
+
+    // Optional live Vehicle telemetry (populated when a VehiclePhysicsRig is active)
+    bool                     VehicleActive         = false;        // [-]   - True when VehiclePhysicsRig telemetry is populated
+    float                    SpeedKmh              = 0.0f;         // [km/h]- Vehicle ground speed
+    float                    EngineRpm             = 0.0f;         // [RPM] - Crankshaft speed
+    float                    BoostBar              = 0.0f;         // [bar] - Combined turbo/supercharger boost
+    int32_t                  ActiveGear            = 1;            // [idx] - Active transmission gear
+    float                    DownforceNewtons      = 0.0f;         // [N]   - Total aerodynamic downforce
+    float                    FuelLiters            = 0.0f;         // [L]   - Remaining fuel volume
+    float                    FuelCapacityLiters    = 58.0f;        // [L]   - Tank capacity
+    float                    AvgTreadTempC         = 20.0f;        // [C]   - Mean tire tread temperature
+    float                    AvgSurfaceGrip        = 1.0f;         // [x]   - Mean PhysicsMaterial tire grip multiplier
+    uint32_t                 WheelsInContact       = 0u;           // [cnt] - Wheels currently touching ground (0..4)
+    std::string              WheelContactModeLabel { "MultiRayArc" }; // [-] - SingleRay / MultiRayArc / CylinderShapeCast
+    std::string              ActiveSurfaceLabel    { "Asphalt" };  // [-]   - Active surface PhysicsMaterial label
+    bool                     AbsActive             = false;        // [-]   - ABS intervening
+    bool                     TcsActive             = false;        // [-]   - TCS intervening
+    bool                     EscActive             = false;        // [-]   - ESC intervening
+};
+
 [[nodiscard]] inline const char* QueryEngineShortLabel(uint32_t EngineMode) noexcept
 {
     switch (EngineMode)

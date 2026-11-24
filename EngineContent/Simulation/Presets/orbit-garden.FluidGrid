@@ -1,0 +1,94 @@
+# Orbit Garden — scene preset (VFX). Adapted from Particle Studio: concentric glowing light-thread rings orbit a glossy obsidian sphere above a glittering bokeh flora meadow and a twisting optical-fibre wave.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Scene]
+Order = 50
+Id = "preset-orbit-garden"
+Name = "Orbit Garden"
+Family = "VFX"
+Icon = "ring"
+Boundary = "OpenTop"
+Summary = "Orbital sanctuary: light-thread rings spin around an obsidian sphere above a glittering bokeh flora meadow and optical-fibre wave."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.0, 6.0, 7.0]
+
+[Render]
+Visible = false
+Exposure = 1.3
+Steps = 76
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.0, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "Orbit"
+  Name = "Orbital Current"
+  Position = [0.0, 0.35, 0.0]
+  Strength = 2.35
+  Radius = 3.2
+  Falloff = "Plateau"
+  Direction = [0.18, 0.96, 0.22]
+  Frequency = 0.45
+  Secondary = 0.0
+
+[[Force]]
+  Type = "VortexColumn"
+  Name = "Canopy Swirl"
+  Position = [0.0, -0.35, 0.0]
+  Strength = 0.85
+  Radius = 3.6
+  Falloff = "SmoothStep"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.3
+  Secondary = 0.0
+
+[[Particle]]
+  Template = "orbital-light-rings"
+  Name = "Orbital Sphere"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.35, 0.0]
+  Radius = 0.92
+  Count = 2048
+
+[[Particle]]
+  Template = "optical-fibre-wave"
+  Name = "Fibre Wave"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.25, -1.55]
+  Radius = 1.9
+  Count = 2560
+
+[[Particle]]
+  Template = "flora-meadow"
+  Name = "Bokeh Flora"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -1.25, 0.0]
+  Radius = 2.1
+  Count = 4096
+  ShapeDetail = 36.0

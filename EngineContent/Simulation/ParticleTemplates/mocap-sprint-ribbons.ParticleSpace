@@ -1,0 +1,87 @@
+# Mocap Sprint Ribbons — particle template (Mocap & MoGraph). Articulated 15-joint motion-capture sprinter shedding kinetic spline ribbons from pumping limbs.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "193ceeab39c3eb37"
+
+[Template]
+Order = 33
+Id = "mocap-sprint-ribbons"
+Name = "Mocap Sprint Ribbons"
+Category = "Mocap & MoGraph"
+Icon = "mocap"
+Tint = "#38bdf8"
+Summary = "Articulated 15-joint motion-capture sprinter shedding kinetic spline ribbons from pumping limbs."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 9, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 1.25, Fill = 0.35, Count = 4096, Rate = 14.0, Lifetime = 1.1, Linger = 1.4, Speed = 0.25, Spread = 0.35, Radial = 0.2 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 214
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { MocapClip = 1, MocapAmplitude = 1.0, MocapSpeed = 1.15, MocapScale = 1.05, MocapTrailKick = 1.6 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 1.8 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.5, NoiseScale = 1.6, NoiseSpeed = 0.8 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#e0f2fe", "#38bdf8", "#818cf8", "#f472b6"], RampSource = 0, Ramp = 0, MaxSpeed = 4.5, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.3, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 1, SizeStart = 4.5, SizeEnd = 1.5, SizeRandom = 0.2 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.9, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 18, TrailInterval = 0.03, TrailWidth = 2.4, TrailTaper = 0.7, TrailFade = 0.85, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 0.35 }

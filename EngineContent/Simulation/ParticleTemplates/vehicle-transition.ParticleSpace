@@ -1,0 +1,87 @@
+# Vehicle Transition — particle template (Derez & Dissolve). Ported from Particle Studio (Vehicle transition): an electric lime edge sweeps across the glossy obsidian SportsCar, turning graphite coat into glowing dust.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 60
+Id = "vehicle-transition"
+Name = "Vehicle Transition"
+Category = "Transitions"
+Icon = "derez"
+Tint = "#a3e635"
+Summary = "Ported from Particle Studio (Vehicle transition): an electric lime sweep peels across the obsidian SportsCar, transforming graphite into bright dust."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 11, Position = [0.0, -0.15, 0.0], Direction = [0, 1, 0], Radius = 1.85, Fill = 0.03, Count = 4096, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0, SpawnObject = 7, SpawnSampleMode = 0, ObjectYaw = -22.0, BackingSurface = 1 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 8.0, Damping = 3.4, Dissolve = 0.0 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.2, NoiseScale = 2.0, NoiseSpeed = 0.6 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 213
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { DerezMode = 1, DerezMix = 1.0, DerezProgress = 0.45, DerezAutoSpeed = 0.2, DerezEdgeWidth = 0.14, DerezEdgeGlow = 3.2, DerezEdgeColour = "#b8f53d", DerezShatter = 0.72 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 2, Palette = ["#1f2937", "#4b5563", "#a3e635", "#f7fee7"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 0.75, CycleSpeed = 0.5, HueJitter = 0.02, BrightnessJitter = 0.18, Brightness = 1.45, Flicker = 0.1 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.024, SizeEnd = 0.008, SizeRandom = 0.42 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.48, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }

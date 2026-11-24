@@ -1,0 +1,233 @@
+# Mograph Field — Fluid Studio scene preset (Studio). No smoke — a spring-held grid cloner and a ring cloner displaced by an orbit, a vortex and a repulsor you can drag through them.
+# Converted from the legacy preset object by script; scene fingerprint 7758f84ee22aa115 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 12
+Id = "preset-mograph-grid"
+Name = "Mograph Field"
+Family = "Studio"
+Icon = "gridcloner"
+Summary = "No smoke — a spring-held grid cloner and a ring cloner displaced by an orbit, a vortex and a repulsor you can drag through them."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [5, 5, 5]
+
+[Render]
+Visible = false
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 8, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.99, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#8e8f94", Absorption = 3.2, Anisotropy = 0.45, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Force]]
+  Type = "PointRepulsor"
+  Name = "Push Probe"
+  Position = [0.8, 0.4, 0.3]
+  Strength = 28
+  Radius = 1.5
+  Falloff = "SmoothStep"
+  Secondary = 0.2
+
+[[Force]]
+  Type = "RadialBurst"
+  Name = "Heartbeat"
+  Position = [0, 0, 0]
+  Strength = 30
+  Radius = 2.6
+  Falloff = "Cosine"
+  Frequency = 2.4
+  Secondary = 0.12
+
+[[Force]]
+  Type = "VortexColumn"
+  Name = "Twist"
+  Position = [0, -2.2, 0]
+  Strength = 6
+  Radius = 2.4
+  Falloff = "Plateau"
+  Frequency = 0.2
+  Secondary = 0
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Position = [0, 0, 0]
+  Strength = 2.2
+  Radius = 3
+  Frequency = 0.9
+  Secondary = 0.5
+
+
+[[Particle]]
+  Template = "grid-cloner"
+  Name = "Grid Cloner"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 1, Shape = 6, Position = [0, 0, 0], Direction = [0, 1, 0], Radius = 1.7, Fill = 0.0, Count = 4096, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 202
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Spring = 5.0, Damping = 2.5, Dissolve = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 2, Palette = ["#8b7cf6", "#38bdf8", "#34c759", "#ffb454", "#f472b6"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 0.8, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 5.0, SizeEnd = 5.0, SizeRandom = 0.3 }
+
+[[Particle]]
+  Template = "ring-cloner"
+  Name = "Ring Cloner"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 1, Shape = 4, Position = [0, -2.2, 0], Direction = [0, 1, 0], Radius = 2.1, Fill = 0.0, Count = 720, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 202
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Spring = 9.0, Damping = 4.0, Dissolve = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 2, Palette = ["#34c759", "#fef08a", "#ffb454", "#ff5f7e"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 0.6, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.0, Brightness = 1.0, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 1, SizeStart = 6.0, SizeEnd = 6.0, SizeRandom = 0.3 }
