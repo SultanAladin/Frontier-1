@@ -3364,4 +3364,36 @@ img {
   color: #8f9bb0;
   text-transform: capitalize;
 }
+.studio-child-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.studio-quick-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.studio-quick-btn {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #dbe2ef;
+  font: 500 11.5px/1 var(--font, "DM Sans", sans-serif);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.studio-quick-btn:hover {
+  border-color: rgba(122, 179, 255, 0.45);
+  background: rgba(122, 179, 255, 0.14);
+  color: #ffffff;
+}
+.studio-quick-btn.on {
+  border-color: rgba(76, 199, 120, 0.48);
+  background: rgba(76, 199, 120, 0.16);
+  color: #8ce7ad;
+}
 

@@ -838,36 +838,49 @@ export class StudioRenderEngine {
       }
 
       if (Row.Panel === "light" && Val.Enabled !== false) {
-        const BaseRgb = KelvinToRgb(Val.Kelvin ?? 5600);
-        const Tint = Val.TintHex ? HexToLinearRgb(Val.TintHex) : [1, 1, 1];
+        const RefProps = Val.ReferenceInspector?.Properties || {};
+        const BaseRgb = KelvinToRgb(RefProps.temperature ?? Val.Kelvin ?? 5600);
+        const TintHex = RefProps.color || Val.TintHex || "#ffffff";
+        const Tint = HexToLinearRgb(TintHex);
         const Color = [
           BaseRgb[0] * (0.45 + 0.55 * Tint[0]),
           BaseRgb[1] * (0.45 + 0.55 * Tint[1]),
           BaseRgb[2] * (0.45 + 0.55 * Tint[2]),
         ];
 
-        const IsArea = Val.LightKind === "Area" || Val.LightType === 2 || Row.Icon === "editor-area-light";
-        if (IsArea && AreaLights.length < 6) {
-          // Inherit width/height from parent procedural light fixture if mounted on one!
-          const ParentVal = Row.Parent ? Values[Row.Parent] || {} : {};
-          const Lw = Number(Val.Width ?? ParentVal.ApertureWidth ?? 2.0);
-          const Lh = Number(Val.Height ?? ParentVal.ApertureHeight ?? 1.2);
-          const Aim = Val.AimTarget || [0, 0.7, -0.15];
-          let Dx = Aim[0] - Xf.Position[0];
-          let Dy = Aim[1] - Xf.Position[1];
-          let Dz = Aim[2] - Xf.Position[2];
-          const Dl = Math.hypot(Dx, Dy, Dz) || 1;
-          Dx /= Dl; Dy /= Dl; Dz /= Dl;
+        const IsArea =
+          Row.ReferenceType === "arealight" ||
+          Val.LightKind === "Area" ||
+          Val.LightType === 2 ||
+          Row.Icon === "editor-area-light";
+        const ParentVal = Row.Parent ? Values[Row.Parent] || {} : {};
+        const IsOverheadSoftbox = ParentVal.FixtureStyle === "Overhead Softbox";
 
-          const RefUp = Math.abs(Dy) > 0.92 ? [0, 0, -1] : [0, 1, 0];
-          let Rx = RefUp[1] * Dz - RefUp[2] * Dy;
-          let Ry = RefUp[2] * Dx - RefUp[0] * Dz;
-          let Rz = RefUp[0] * Dy - RefUp[1] * Dx;
-          const Rl = Math.hypot(Rx, Ry, Rz) || 1;
-          Rx /= Rl; Ry /= Rl; Rz /= Rl;
-          const Ux = Dy * Rz - Dz * Ry;
-          const Uy = Dz * Rx - Dx * Rz;
-          const Uz = Dx * Ry - Dy * Rx;
+        if (IsArea && AreaLights.length < 6) {
+          const Lw = Number(RefProps.width ?? Val.Width ?? ParentVal.ApertureWidth ?? 2.0);
+          const Lh = Number(RefProps.height ?? Val.Height ?? ParentVal.ApertureHeight ?? 1.2);
+          const Lumens = RefProps.lumens !== undefined ? Number(RefProps.lumens) : Number(Val.Intensity ?? 4.5) * 1000;
+          const Intensity = Math.max(0, Lumens / 1000);
+
+          let Dx, Dy, Dz, Rx, Ry, Rz, Ux, Uy, Uz;
+          if (IsOverheadSoftbox) {
+            Dx = 0; Dy = -1; Dz = 0;
+            const C = Math.cos(Xf.YawRad), S = Math.sin(Xf.YawRad);
+            Rx = C; Ry = 0; Rz = -S;
+            Ux = S; Uy = 0; Uz = C;
+          } else {
+            // Lock light emission strictly to parent procedural fixture's world forward axis!
+            [Dx, Dy, Dz] = Xf.Forward;
+            const RefUp = Math.abs(Dy) > 0.92 ? [0, 0, -1] : [0, 1, 0];
+            Rx = RefUp[1] * Dz - RefUp[2] * Dy;
+            Ry = RefUp[2] * Dx - RefUp[0] * Dz;
+            Rz = RefUp[0] * Dy - RefUp[1] * Dx;
+            const Rl = Math.hypot(Rx, Ry, Rz) || 1;
+            Rx /= Rl; Ry /= Rl; Rz /= Rl;
+            Ux = Dy * Rz - Dz * Ry;
+            Uy = Dz * Rx - Dx * Rz;
+            Uz = Dx * Ry - Dy * Rx;
+          }
 
           AreaLights.push({
             Center: Xf.Position,
@@ -876,24 +889,31 @@ export class StudioRenderEngine {
             Right: [Rx, Ry, Rz],
             Up: [Ux, Uy, Uz],
             Normal: [Dx, Dy, Dz],
-            Intensity: Number(Val.Intensity ?? 4.5),
+            Intensity,
             Color,
           });
         } else if (IesLights.length < 6) {
-          const Aim = Val.AimTarget || [0, 0.75, -0.15];
-          let Dx = Aim[0] - Xf.Position[0];
-          let Dy = Aim[1] - Xf.Position[1];
-          let Dz = Aim[2] - Xf.Position[2];
-          const Dl = Math.hypot(Dx, Dy, Dz) || 1;
-          Dx /= Dl; Dy /= Dl; Dz /= Dl;
-
-          const BeamDeg = Number(Val.BeamDeg ?? 46);
-          const ProfileIdx = Math.max(0, IesProfiles.indexOf(Val.IesProfile || "Barn-Door Fresnel"));
+          // Lock IES beam direction strictly to parent procedural fixture's world forward axis!
+          const [Dx, Dy, Dz] = Xf.Forward;
+          const BeamDeg = Number(RefProps.cone ?? Val.BeamDeg ?? 46);
+          const Lumens = RefProps.lumens !== undefined ? Number(RefProps.lumens) : Number(Val.Intensity ?? 16) * 250;
+          const Mult = Number(RefProps.multiplier ?? 1.0);
+          const Intensity = Math.max(0, (Lumens / 250) * Mult);
+          const ProfileLookup = {
+            "ECE Low Beam": 0,
+            "SAE Low Beam": 0,
+            "High Beam": 1,
+            "Fog Lamp": 2,
+            "Parking Lamp": 3,
+          };
+          const ProfileIdx = Val.IesProfile
+            ? Math.max(0, IesProfiles.indexOf(Val.IesProfile))
+            : (ProfileLookup[RefProps.profile] ?? 0);
           IesLights.push({
             Pos: Xf.Position,
             Dir: [Dx, Dy, Dz],
             CosHalf: Math.cos((BeamDeg * 0.5 * Math.PI) / 180),
-            Intensity: Number(Val.Intensity ?? 16.0),
+            Intensity,
             Color,
             ProfileIdx,
             Softness: Number(Val.Softness ?? 0.35),
@@ -1070,11 +1090,19 @@ export class StudioRenderEngine {
           const ChildLight = Rows.find((R) => R.Parent === Row.Id && R.Panel === "light");
           if (ChildLight) {
             const Lv = Values[ChildLight.Id] || {};
+            const RefProps = Lv.ReferenceInspector?.Properties || {};
             if (Hidden[ChildLight.Id] || Lv.Enabled === false) {
               EmissiveStrength = 0.08;
             } else {
-              EmissiveTint = KelvinToRgb(Lv.Kelvin ?? 5600);
-              EmissiveStrength = Math.min(4.8, 1.4 + Number(Lv.Intensity ?? 4.0) * 0.22);
+              const Kel = KelvinToRgb(RefProps.temperature ?? Lv.Kelvin ?? 5600);
+              const Hex = HexToLinearRgb(RefProps.color || Lv.TintHex || "#ffffff");
+              EmissiveTint = [
+                Kel[0] * (0.45 + 0.55 * Hex[0]),
+                Kel[1] * (0.45 + 0.55 * Hex[1]),
+                Kel[2] * (0.45 + 0.55 * Hex[2]),
+              ];
+              const Lumens = RefProps.lumens !== undefined ? Number(RefProps.lumens) : Number(Lv.Intensity ?? 4.0) * 1000;
+              EmissiveStrength = Lumens <= 1 ? 0.08 : Math.min(4.8, 1.3 + (Lumens / 1000) * 0.32);
             }
           }
         }

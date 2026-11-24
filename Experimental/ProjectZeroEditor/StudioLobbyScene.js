@@ -1,6 +1,8 @@
 // Automotive Studio Lobby level definition, nested Outliner hierarchy,
-// procedural studio component defaults, Car Configurator presets, and
-// hierarchical parent-to-child transform resolution.
+// analytical rig aiming toward Hero Coupe, native Project-Zero Light/Camera
+// property initialization, Car Configurator presets, and hierarchical transforms.
+
+export const HeroCarAimTarget = [0.0, 0.88, -0.15];
 
 export const StudioLevels = [
   {
@@ -105,15 +107,32 @@ export const ConfiguratorPresets = [
 
 export const OpeningRevealDurationSec = 3.8;
 
-// Evaluate the cinematic opening camera reveal (t in [0, 1]) from a low foreground
-// silhouette close-up sweeping up and around to the Hero 3/4 cyclorama framing.
+// Compute exact YawDeg & downward PitchDeg so local +Z (lens / light mouth) aims dead-on at TargetPos.
+// Matches ModelTransformMat where local +Z maps to world [+sin(Yaw), 0, +cos(Yaw)],
+// and positive PitchDeg tilts downward along Fwd = [0, -sin(Pitch), cos(Pitch)].
+export function ComputeAimAngles(FromPos, TargetPos = HeroCarAimTarget) {
+  const Dx = TargetPos[0] - FromPos[0];
+  const Dy = TargetPos[1] - FromPos[1];
+  const Dz = TargetPos[2] - FromPos[2];
+  const Horiz = Math.hypot(Dx, Dz) || 1e-5;
+  const YawDeg = Math.round(((Math.atan2(Dx, Dz) * 180) / Math.PI) * 10) / 10;
+  const PitchDeg = Math.round(((Math.atan2(-Dy, Horiz) * 180) / Math.PI) * 10) / 10;
+  return { YawDeg, PitchDeg };
+}
+
+// World-space unit forward direction for a rig oriented by (YawRad, PitchRad)
+export function ComputeForwardVector(YawRad, PitchRad = 0) {
+  const Cp = Math.cos(PitchRad);
+  const Sp = Math.sin(PitchRad);
+  return [Cp * Math.sin(YawRad), -Sp, Cp * Math.cos(YawRad)];
+}
+
 export function EvaluateOpeningReveal(Progress) {
   const Clamped = Math.max(0, Math.min(1, Progress));
   const Smooth =
     Clamped < 0.5
       ? 4 * Clamped * Clamped * Clamped
       : 1 - Math.pow(-2 * Clamped + 2, 3) / 2;
-  const EaseOut = 1 - Math.pow(1 - Clamped, 3);
 
   const P0 = [-5.8, 0.92, 6.95];
   const P1 = [-1.4, 1.12, 7.65];
@@ -132,7 +151,7 @@ export function EvaluateOpeningReveal(Progress) {
   const T0 = [-0.65, 0.62, 0.25];
   const T1 = ConfiguratorPresets[0].Target;
   const Target = [0, 1, 2].map(
-    (Axis) => T0[Axis] + (T1[Axis] - T0[Axis]) * EaseOut,
+    (Axis) => T0[Axis] + (T1[Axis] - T0[Axis]) * Smooth,
   );
 
   const FovDeg = 46 + (ConfiguratorPresets[0].FovDeg - 46) * Smooth;
@@ -147,6 +166,14 @@ export function ComputeTripodMountHeight(Params = {}) {
   return StandHeight + ColumnLift + (HasCasters ? 0.08 : 0) + (HasFloorMat ? 0.032 : 0);
 }
 
+// Compute exact initial aim angles from each tripod's mount head to Hero Coupe
+const AimKey = ComputeAimAngles([-3.45, 2.28, 1.55], HeroCarAimTarget);
+const AimUmbrella = ComputeAimAngles([3.25, 2.12, 1.85], HeroCarAimTarget);
+const AimRim = ComputeAimAngles([-4.15, 2.52, -2.55], HeroCarAimTarget);
+const AimAccent = ComputeAimAngles([4.35, 2.32, -2.3], HeroCarAimTarget);
+const AimCamA = ComputeAimAngles([-2.85, 1.78, 4.18], HeroCarAimTarget);
+const AimCamB = ComputeAimAngles([2.15, 1.6, 4.02], HeroCarAimTarget);
+
 export const StudioLobbyRows = [
   // Vehicles collection (3 vehicles in level)
   ["studio-vehicles", "Vehicles", "group", "folder-scene", null, "Studio vehicle lineup · 3 vehicles"],
@@ -154,15 +181,15 @@ export const StudioLobbyRows = [
     "vehicle-hero",
     "Hero Coupe · Cyclorama",
     "studio-vehicle",
-    "editor-cube",
+    "studio-vehicle",
     "studio-vehicles",
-    "ControlledIntegrator · Center stage hero vehicle",
+    "ControlledIntegrator · Center hero vehicle under overhead softbox",
   ],
   [
     "vehicle-gt3",
     "Alpine GT · Left Bay",
     "studio-vehicle",
-    "editor-cube",
+    "studio-vehicle",
     "studio-vehicles",
     "ControlledIntegrator · Stage-left wing showcase",
   ],
@@ -170,7 +197,7 @@ export const StudioLobbyRows = [
     "vehicle-tourer",
     "Liquid Tourer · Right Bay",
     "studio-vehicle",
-    "editor-cube",
+    "studio-vehicle",
     "studio-vehicles",
     "ControlledIntegrator · Stage-right wing showcase",
   ],
@@ -181,7 +208,7 @@ export const StudioLobbyRows = [
     "studio-cyclorama",
     "Cyclorama Infinity Cove",
     "studio-procedural",
-    "editor-cylinder",
+    "studio-cyclorama",
     "studio-architecture",
     "Procedural studio.cyclorama · seamless matte cove",
   ],
@@ -189,7 +216,7 @@ export const StudioLobbyRows = [
     "studio-floor",
     "Glossy Tiled Studio Floor",
     "studio-procedural",
-    "editor-cube",
+    "studio-floor-grid",
     "studio-architecture",
     "Procedural studio.tiled_floor · dark reflective slate tiles",
   ],
@@ -197,18 +224,18 @@ export const StudioLobbyRows = [
     "studio-ceiling",
     "Ribbed Ceiling & Truss",
     "studio-procedural",
-    "editor-cube",
+    "studio-ceiling-truss",
     "studio-architecture",
     "Procedural studio.ceiling_truss · overhead grid & steel ribs",
   ],
 
-  // Lighting rigs collection (Fixture/Stand parents -> Area/IES Light children)
-  ["studio-lighting", "Lighting Rigs", "group", "folder-generic", null, "Hierarchical procedural stands, modifiers & lights"],
+  // Lighting rigs collection (Fixture/Stand parents -> Native Area/IES Light children)
+  ["studio-lighting", "Lighting Rigs", "group", "folder-generic", null, "Hierarchical procedural stands, modifiers & native lights"],
   [
     "rig-softbox-fixture",
     "Overhead Softbox Bank",
     "studio-procedural",
-    "editor-area-light",
+    "studio-softbox",
     "studio-lighting",
     "Procedural studio.light_fixture · suspended silk overhead softbox",
   ],
@@ -218,13 +245,15 @@ export const StudioLobbyRows = [
     "light",
     "editor-area-light",
     "rig-softbox-fixture",
-    "Area light · 6.2 × 3.8 m rectangular diffuser bank",
+    "Rect Area Light · 6.4 × 3.7 m suspended silk diffuser",
+    "arealight",
+    "Softbox",
   ],
   [
     "rig-key-tripod",
     "Key Fresnel Tripod",
     "studio-procedural",
-    "editor-cone",
+    "studio-tripod",
     "studio-lighting",
     "Shared procedural studio.tripod · wheeled studio light stand",
   ],
@@ -232,7 +261,7 @@ export const StudioLobbyRows = [
     "rig-key-fixture",
     "Barn-Door Fresnel Fixture",
     "studio-procedural",
-    "editor-spot-light",
+    "studio-fresnel",
     "rig-key-tripod",
     "Procedural studio.light_fixture · articulated 4-leaf barn doors",
   ],
@@ -240,15 +269,17 @@ export const StudioLobbyRows = [
     "light-key-ies",
     "Key Fresnel IES Light",
     "light",
-    "editor-spot-light",
+    "editor-dome-light",
     "rig-key-fixture",
-    "Photometric IES light · Barn-Door Fresnel lobe",
+    "IES Photometric · Barn-Door Fresnel lobe aimed at Hero Coupe",
+    "ieslight",
+    "IES Downlight",
   ],
   [
     "rig-umbrella-tripod",
     "Umbrella Fill Tripod",
     "studio-procedural",
-    "editor-cone",
+    "studio-tripod",
     "studio-lighting",
     "Shared procedural studio.tripod · silver umbrella stand",
   ],
@@ -256,7 +287,7 @@ export const StudioLobbyRows = [
     "rig-umbrella-fixture",
     "Parabolic Umbrella Modifier",
     "studio-procedural",
-    "editor-sphere",
+    "studio-umbrella",
     "rig-umbrella-tripod",
     "Procedural studio.light_fixture · 16-rib silver bounce umbrella",
   ],
@@ -266,13 +297,15 @@ export const StudioLobbyRows = [
     "light",
     "editor-area-light",
     "rig-umbrella-fixture",
-    "Area light · soft silver parabolic bounce fill",
+    "Rect Area Light · soft silver parabolic bounce fill",
+    "arealight",
+    "Softbox",
   ],
   [
     "rig-rim-tripod",
     "Back-Left Rim Tripod",
     "studio-procedural",
-    "editor-cone",
+    "studio-tripod",
     "studio-lighting",
     "Shared procedural studio.tripod · wheeled rim stand",
   ],
@@ -280,7 +313,7 @@ export const StudioLobbyRows = [
     "rig-rim-fixture",
     "Rim LED Panel Fixture",
     "studio-procedural",
-    "editor-area-light",
+    "studio-led-panel",
     "rig-rim-tripod",
     "Procedural studio.light_fixture · cool edge-separation LED",
   ],
@@ -290,13 +323,15 @@ export const StudioLobbyRows = [
     "light",
     "editor-area-light",
     "rig-rim-fixture",
-    "Area light · cool 6300 K contour rim separation",
+    "Rect Area Light · cool 6300 K contour rim separation",
+    "arealight",
+    "Softbox",
   ],
   [
     "rig-accent-tripod",
     "Back-Right Accent Tripod",
     "studio-procedural",
-    "editor-cone",
+    "studio-tripod",
     "studio-lighting",
     "Shared procedural studio.tripod · wheeled accent strobe stand",
   ],
@@ -304,7 +339,7 @@ export const StudioLobbyRows = [
     "rig-accent-fixture",
     "Octa Softbox Strobe",
     "studio-procedural",
-    "editor-spot-light",
+    "studio-octa",
     "rig-accent-tripod",
     "Procedural studio.light_fixture · 8-sided studio octa modifier",
   ],
@@ -312,12 +347,14 @@ export const StudioLobbyRows = [
     "light-accent-ies",
     "Accent Strobe IES Light",
     "light",
-    "editor-spot-light",
+    "editor-dome-light",
     "rig-accent-fixture",
-    "Photometric IES light · focused cyclorama rim strobe",
+    "IES Photometric · focused cyclorama rim strobe",
+    "ieslight",
+    "IES Downlight",
   ],
 
-  // Camera rigs collection (Tripod -> Camera Body -> Render Camera)
+  // Camera rigs collection (Tripod -> Camera Body -> Native Project-Zero Camera)
   ["cameras", "Camera Rigs", "group", "camera", null, "Editor camera & mounted studio cinema camera rigs"],
   [
     "camera",
@@ -331,7 +368,7 @@ export const StudioLobbyRows = [
     "rig-cam-a-tripod",
     "Cinema Tripod A",
     "studio-procedural",
-    "editor-cone",
+    "studio-tripod",
     "cameras",
     "Shared procedural studio.tripod · heavy matte tripod + floor mat",
   ],
@@ -339,7 +376,7 @@ export const StudioLobbyRows = [
     "rig-cam-a-body",
     "Cinema Camera A",
     "studio-procedural",
-    "camera",
+    "studio-cinema-camera",
     "rig-cam-a-tripod",
     "Procedural studio.cinema_camera · twin-magazine cine camera",
   ],
@@ -355,7 +392,7 @@ export const StudioLobbyRows = [
     "rig-cam-b-tripod",
     "Cinema Tripod B",
     "studio-procedural",
-    "editor-cone",
+    "studio-tripod",
     "cameras",
     "Shared procedural studio.tripod · foreground tether camera tripod",
   ],
@@ -363,7 +400,7 @@ export const StudioLobbyRows = [
     "rig-cam-b-body",
     "Medium Format Camera B",
     "studio-procedural",
-    "camera",
+    "studio-cinema-camera",
     "rig-cam-b-tripod",
     "Procedural studio.cinema_camera · medium format studio camera",
   ],
@@ -390,7 +427,7 @@ export const StudioLobbyRows = [
     "prop-workstation",
     "Tether Workstation & Desk",
     "studio-procedural",
-    "editor-cube",
+    "studio-workstation",
     "studio-props",
     "Procedural studio.workstation · hairpin desk, laptop & flight cases",
   ],
@@ -398,7 +435,7 @@ export const StudioLobbyRows = [
     "prop-grip-cases",
     "Grip Cases & Floor Mats",
     "studio-procedural",
-    "editor-cube",
+    "studio-workstation",
     "studio-props",
     "Procedural studio.workstation · stage-left Pelican cases & cables",
   ],
@@ -413,19 +450,22 @@ export const StudioLobbyRows = [
     "world",
     "Interior darkroom exposure, bounce fill & floor reflection strength",
   ],
-].map(([Id, Name, Panel, Icon, Parent, Description]) => ({
+].map(([Id, Name, Panel, Icon, Parent, Description, ReferenceType, ReferencePreset]) => ({
   Id,
   Name,
   Panel,
   Icon,
   Parent,
   Description,
+  ...(ReferenceType ? { ReferenceType } : {}),
+  ...(ReferencePreset ? { ReferencePreset } : {}),
 }));
 
 export const StudioLobbyInitialValues = {
   // Vehicles (3 vehicles in the level)
   "vehicle-hero": {
     Position: [0.0, 0.0, -0.15],
+    Rotation: [0, -16, 0],
     YawDeg: -16,
     Scale: 0.76,
     PaintHex: "#111319",
@@ -434,10 +474,10 @@ export const StudioLobbyInitialValues = {
     Clearcoat: 1.0,
     RimHex: "#1b1d22",
     CaliperHex: "#b81d24",
-    ShowWheelGlow: false,
   },
   "vehicle-gt3": {
     Position: [-6.6, 0.0, -1.8],
+    Rotation: [0, -32, 0],
     YawDeg: -32,
     Scale: 0.74,
     PaintHex: "#eceff3",
@@ -449,6 +489,7 @@ export const StudioLobbyInitialValues = {
   },
   "vehicle-tourer": {
     Position: [6.7, 0.0, -1.8],
+    Rotation: [0, -148, 0],
     YawDeg: -148,
     Scale: 0.74,
     PaintHex: "#9ca5b4",
@@ -463,6 +504,7 @@ export const StudioLobbyInitialValues = {
   "studio-cyclorama": {
     ProceduralKind: "studio.cyclorama",
     Position: [0, 0, -0.3],
+    Rotation: [0, 0, 0],
     YawDeg: 0,
     CoveWidth: 11.4,
     FloorDepth: 8.2,
@@ -475,6 +517,7 @@ export const StudioLobbyInitialValues = {
   "studio-floor": {
     ProceduralKind: "studio.tiled_floor",
     Position: [0, 0, 0],
+    Rotation: [0, 0, 0],
     YawDeg: 0,
     FloorWidth: 34,
     FloorDepth: 28,
@@ -485,6 +528,7 @@ export const StudioLobbyInitialValues = {
   "studio-ceiling": {
     ProceduralKind: "studio.ceiling_truss",
     Position: [0, 0, -0.5],
+    Rotation: [0, 0, 0],
     YawDeg: 0,
     SpanWidth: 26,
     SpanDepth: 20,
@@ -493,10 +537,11 @@ export const StudioLobbyInitialValues = {
     TrussGrid: true,
   },
 
-  // Overhead Softbox Bank -> Child Area Light
+  // Overhead Softbox Bank -> Native Rect Area Light
   "rig-softbox-fixture": {
     ProceduralKind: "studio.light_fixture",
     Position: [0.0, 3.62, -0.25],
+    Rotation: [0, 0, 0],
     YawDeg: 0,
     FixtureStyle: "Overhead Softbox",
     ApertureWidth: 6.4,
@@ -516,21 +561,36 @@ export const StudioLobbyInitialValues = {
     Width: 6.4,
     Height: 3.7,
     LocalOffset: [0, -0.15, 0],
-    AimTarget: [0, 0.4, -0.2],
     Enabled: true,
+    ReferenceInspector: {
+      Properties: {
+        pos: [0.0, 3.47, -0.25],
+        target: [0.0, 0.4, -0.25],
+        width: 6.4,
+        height: 3.7,
+        lumens: 6800,
+        spread: 125,
+        color: "#f4f7ff",
+        temperature: 5600,
+        twoSided: false,
+        shadows: true,
+        showShape: true,
+      },
+    },
   },
 
-  // Key Fresnel Tripod -> Fixture -> IES Light
+  // Key Fresnel Tripod -> Barn-Door Fresnel -> Native IES Light (Aimed DEAD-ON at Hero Coupe!)
   "rig-key-tripod": {
     ProceduralKind: "studio.tripod",
     Position: [-3.45, 0.0, 1.55],
-    YawDeg: 38,
+    Rotation: [0, AimKey.YawDeg, 0],
+    YawDeg: AimKey.YawDeg,
     StandHeight: 1.58,
     ColumnLift: 0.34,
     LegSpreadDeg: 27,
     TubeRadius: 0.017,
     LegSegments: 3,
-    HeadTiltDeg: -14,
+    HeadTiltDeg: AimKey.PitchDeg,
     Spreader: true,
     Casters: true,
     FloorMat: false,
@@ -538,13 +598,14 @@ export const StudioLobbyInitialValues = {
   "rig-key-fixture": {
     ProceduralKind: "studio.light_fixture",
     Position: [0, 0, 0],
+    Rotation: [AimKey.PitchDeg, 0, 0],
     YawDeg: 0,
     FixtureStyle: "Barn-Door Fresnel",
     ApertureWidth: 0.48,
     ApertureHeight: 0.48,
     HousingDepth: 0.42,
     BarnDoorFlare: 34,
-    YokeTiltDeg: -14,
+    YokeTiltDeg: AimKey.PitchDeg,
     UmbrellaRibs: 12,
     SuspensionDrop: 0,
   },
@@ -557,22 +618,38 @@ export const StudioLobbyInitialValues = {
     TintHex: "#fff5e8",
     BeamDeg: 46,
     Softness: 0.35,
-    LocalOffset: [0, 0.14, 0.2],
-    AimTarget: [-0.25, 0.85, -0.15],
+    LocalOffset: [0, 0.28, 0.2],
     Enabled: true,
+    ReferenceInspector: {
+      Properties: {
+        pos: [-3.45, 2.28, 1.55],
+        target: [...HeroCarAimTarget],
+        profile: "ECE Low Beam",
+        lumens: 4500,
+        multiplier: 1.4,
+        range: 24,
+        cone: 46,
+        cutoff: -1.0,
+        color: "#fff5e8",
+        temperature: 5400,
+        shadows: true,
+        showDistribution: true,
+      },
+    },
   },
 
-  // Parabolic Umbrella Tripod -> Modifier -> Area Light
+  // Parabolic Umbrella Tripod -> Modifier -> Native Rect Area Light (Aimed DEAD-ON at Hero Coupe!)
   "rig-umbrella-tripod": {
     ProceduralKind: "studio.tripod",
     Position: [3.25, 0.0, 1.85],
-    YawDeg: -48,
+    Rotation: [0, AimUmbrella.YawDeg, 0],
+    YawDeg: AimUmbrella.YawDeg,
     StandHeight: 1.56,
     ColumnLift: 0.32,
     LegSpreadDeg: 28,
     TubeRadius: 0.016,
     LegSegments: 3,
-    HeadTiltDeg: -10,
+    HeadTiltDeg: AimUmbrella.PitchDeg,
     Spreader: true,
     Casters: false,
     FloorMat: false,
@@ -580,13 +657,14 @@ export const StudioLobbyInitialValues = {
   "rig-umbrella-fixture": {
     ProceduralKind: "studio.light_fixture",
     Position: [0, 0, 0],
+    Rotation: [AimUmbrella.PitchDeg, 0, 0],
     YawDeg: 0,
     FixtureStyle: "Parabolic Umbrella",
     ApertureWidth: 1.48,
     ApertureHeight: 1.48,
     HousingDepth: 0.48,
     BarnDoorFlare: 25,
-    YokeTiltDeg: -10,
+    YokeTiltDeg: AimUmbrella.PitchDeg,
     UmbrellaRibs: 16,
     SuspensionDrop: 0,
   },
@@ -598,22 +676,37 @@ export const StudioLobbyInitialValues = {
     TintHex: "#edf3ff",
     Width: 1.55,
     Height: 1.55,
-    LocalOffset: [0, 0.06, -0.15],
-    AimTarget: [0.35, 0.85, -0.15],
+    LocalOffset: [0, 0.24, 0.14],
     Enabled: true,
+    ReferenceInspector: {
+      Properties: {
+        pos: [3.25, 2.12, 1.85],
+        target: [...HeroCarAimTarget],
+        width: 1.55,
+        height: 1.55,
+        lumens: 3600,
+        spread: 135,
+        color: "#edf3ff",
+        temperature: 5800,
+        twoSided: false,
+        shadows: false,
+        showShape: true,
+      },
+    },
   },
 
-  // Back-Left Rim Tripod -> LED Panel -> Area Light
+  // Back-Left Rim Tripod -> LED Panel -> Native Rect Area Light (Aimed DEAD-ON at Hero Coupe!)
   "rig-rim-tripod": {
     ProceduralKind: "studio.tripod",
     Position: [-4.15, 0.0, -2.55],
-    YawDeg: 132,
+    Rotation: [0, AimRim.YawDeg, 0],
+    YawDeg: AimRim.YawDeg,
     StandHeight: 1.72,
     ColumnLift: 0.38,
     LegSpreadDeg: 26,
     TubeRadius: 0.017,
     LegSegments: 3,
-    HeadTiltDeg: -18,
+    HeadTiltDeg: AimRim.PitchDeg,
     Spreader: true,
     Casters: true,
     FloorMat: false,
@@ -621,13 +714,14 @@ export const StudioLobbyInitialValues = {
   "rig-rim-fixture": {
     ProceduralKind: "studio.light_fixture",
     Position: [0, 0, 0],
+    Rotation: [AimRim.PitchDeg, 0, 0],
     YawDeg: 0,
     FixtureStyle: "Studio LED Panel",
     ApertureWidth: 1.15,
     ApertureHeight: 0.68,
     HousingDepth: 0.14,
     BarnDoorFlare: 24,
-    YokeTiltDeg: -18,
+    YokeTiltDeg: AimRim.PitchDeg,
     UmbrellaRibs: 12,
     SuspensionDrop: 0,
   },
@@ -639,22 +733,37 @@ export const StudioLobbyInitialValues = {
     TintHex: "#e1ecff",
     Width: 1.15,
     Height: 0.68,
-    LocalOffset: [0, 0.1, 0.12],
-    AimTarget: [-0.3, 0.9, -0.25],
+    LocalOffset: [0, 0.34, 0.14],
     Enabled: true,
+    ReferenceInspector: {
+      Properties: {
+        pos: [-4.15, 2.52, -2.55],
+        target: [...HeroCarAimTarget],
+        width: 1.15,
+        height: 0.68,
+        lumens: 3900,
+        spread: 110,
+        color: "#e1ecff",
+        temperature: 6300,
+        twoSided: false,
+        shadows: false,
+        showShape: true,
+      },
+    },
   },
 
-  // Back-Right Accent Tripod -> Octa Strobe -> IES Light
+  // Back-Right Accent Tripod -> Octa Strobe -> Native IES Light (Aimed DEAD-ON at Hero Coupe!)
   "rig-accent-tripod": {
     ProceduralKind: "studio.tripod",
     Position: [4.35, 0.0, -2.3],
-    YawDeg: -136,
+    Rotation: [0, AimAccent.YawDeg, 0],
+    YawDeg: AimAccent.YawDeg,
     StandHeight: 1.66,
     ColumnLift: 0.36,
     LegSpreadDeg: 26,
     TubeRadius: 0.016,
     LegSegments: 3,
-    HeadTiltDeg: -16,
+    HeadTiltDeg: AimAccent.PitchDeg,
     Spreader: true,
     Casters: true,
     FloorMat: false,
@@ -662,13 +771,14 @@ export const StudioLobbyInitialValues = {
   "rig-accent-fixture": {
     ProceduralKind: "studio.light_fixture",
     Position: [0, 0, 0],
+    Rotation: [AimAccent.PitchDeg, 0, 0],
     YawDeg: 0,
     FixtureStyle: "Octa Softbox",
     ApertureWidth: 0.96,
     ApertureHeight: 0.96,
     HousingDepth: 0.42,
     BarnDoorFlare: 25,
-    YokeTiltDeg: -16,
+    YokeTiltDeg: AimAccent.PitchDeg,
     UmbrellaRibs: 8,
     SuspensionDrop: 0,
   },
@@ -681,22 +791,38 @@ export const StudioLobbyInitialValues = {
     TintHex: "#f7f9ff",
     BeamDeg: 42,
     Softness: 0.42,
-    LocalOffset: [0, 0.12, 0.22],
-    AimTarget: [0.35, 0.8, -0.15],
+    LocalOffset: [0, 0.22, 0.22],
     Enabled: true,
+    ReferenceInspector: {
+      Properties: {
+        pos: [4.35, 2.32, -2.3],
+        target: [...HeroCarAimTarget],
+        profile: "High Beam",
+        lumens: 3600,
+        multiplier: 1.3,
+        range: 22,
+        cone: 42,
+        cutoff: 0,
+        color: "#f7f9ff",
+        temperature: 5600,
+        shadows: false,
+        showDistribution: true,
+      },
+    },
   },
 
-  // Cinema Tripod A -> Cinema Camera A -> Car Configurator Camera
+  // Cinema Tripod A -> Cinema Camera A -> Native Car Configurator Camera (Aimed DEAD-ON at Hero Coupe!)
   "rig-cam-a-tripod": {
     ProceduralKind: "studio.tripod",
     Position: [-2.85, 0.0, 4.18],
-    YawDeg: 29,
+    Rotation: [0, AimCamA.YawDeg, 0],
+    YawDeg: AimCamA.YawDeg,
     StandHeight: 1.38,
     ColumnLift: 0.2,
     LegSpreadDeg: 24,
     TubeRadius: 0.02,
     LegSegments: 3,
-    HeadTiltDeg: -4,
+    HeadTiltDeg: AimCamA.PitchDeg,
     Spreader: true,
     Casters: false,
     FloorMat: true,
@@ -704,7 +830,9 @@ export const StudioLobbyInitialValues = {
   "rig-cam-a-body": {
     ProceduralKind: "studio.cinema_camera",
     Position: [0, 0, 0],
+    Rotation: [AimCamA.PitchDeg, 0, 0],
     YawDeg: 0,
+    PitchDeg: AimCamA.PitchDeg,
     CameraStyle: "Cinema Matte Box",
     LensLength: 0.34,
     ReelRadius: 0.13,
@@ -712,24 +840,27 @@ export const StudioLobbyInitialValues = {
     TopHandle: true,
   },
   "cam-configurator": {
-    FocalLengthMm: 38,
-    ApertureFStop: 2.8,
+    "Focal Length": 36,
+    Aperture: 2.8,
+    "Sensor Width": 36,
+    "Subject Distance": 6.4,
     OrbitSpeedDegPerSec: 7.5,
     ShowroomOrbit: true,
     PresetIndex: 0,
   },
 
-  // Cinema Tripod B -> Medium Format Camera B -> Profile 65mm Camera
+  // Cinema Tripod B -> Medium Format Camera B -> Native Profile 65mm Camera (Aimed DEAD-ON at Hero Coupe!)
   "rig-cam-b-tripod": {
     ProceduralKind: "studio.tripod",
     Position: [2.15, 0.0, 4.02],
-    YawDeg: -24,
+    Rotation: [0, AimCamB.YawDeg, 0],
+    YawDeg: AimCamB.YawDeg,
     StandHeight: 1.24,
     ColumnLift: 0.18,
     LegSpreadDeg: 25,
     TubeRadius: 0.018,
     LegSegments: 3,
-    HeadTiltDeg: -3,
+    HeadTiltDeg: AimCamB.PitchDeg,
     Spreader: true,
     Casters: false,
     FloorMat: true,
@@ -737,7 +868,9 @@ export const StudioLobbyInitialValues = {
   "rig-cam-b-body": {
     ProceduralKind: "studio.cinema_camera",
     Position: [0, 0, 0],
+    Rotation: [AimCamB.PitchDeg, 0, 0],
     YawDeg: 0,
+    PitchDeg: AimCamB.PitchDeg,
     CameraStyle: "Medium Format Tether",
     LensLength: 0.24,
     ReelRadius: 0.08,
@@ -745,14 +878,17 @@ export const StudioLobbyInitialValues = {
     TopHandle: true,
   },
   "cam-profile": {
-    FocalLengthMm: 65,
-    ApertureFStop: 4.0,
+    "Focal Length": 65,
+    Aperture: 4.0,
+    "Sensor Width": 36,
+    "Subject Distance": 7.8,
   },
 
   // Studio Props & Crew
   "prop-workstation": {
     ProceduralKind: "studio.workstation",
     Position: [4.75, 0.0, 3.65],
+    Rotation: [0, -26, 0],
     YawDeg: -26,
     DeskWidth: 1.48,
     DeskDepth: 0.72,
@@ -764,6 +900,7 @@ export const StudioLobbyInitialValues = {
   "prop-grip-cases": {
     ProceduralKind: "studio.workstation",
     Position: [-4.85, 0.0, 3.25],
+    Rotation: [0, 18, 0],
     YawDeg: 18,
     DeskWidth: 1.0,
     DeskDepth: 0.55,
@@ -814,7 +951,7 @@ export function HexToLinearRgb(Hex) {
   return Srgb.map((C) => Math.pow(C, 2.2));
 }
 
-// Compute effective world transform { Position, YawRad, PitchRad } for every row
+// Compute effective world transform { Position, YawRad, PitchRad, Forward, Visible } for every row
 // respecting parent tripod mount heights and hierarchical parenting.
 export function ResolveStudioHierarchy(Rows, Values, Hidden) {
   const ById = {};
@@ -834,19 +971,37 @@ export function ResolveStudioHierarchy(Rows, Values, Hidden) {
     return VisibleCache[Id];
   }
 
+  function ReadYawDeg(Val) {
+    if (Array.isArray(Val.Rotation) && Number.isFinite(Val.Rotation[1])) {
+      return Number(Val.Rotation[1]);
+    }
+    return Number(Val.YawDeg) || 0;
+  }
+
+  function ReadPitchDeg(Val) {
+    if (Val.YokeTiltDeg !== undefined) return Number(Val.YokeTiltDeg) || 0;
+    if (Val.PitchDeg !== undefined) return Number(Val.PitchDeg) || 0;
+    if (Val.HeadTiltDeg !== undefined) return Number(Val.HeadTiltDeg) || 0;
+    if (Array.isArray(Val.Rotation) && Number.isFinite(Val.Rotation[0])) {
+      return Number(Val.Rotation[0]);
+    }
+    return 0;
+  }
+
   function Resolve(Id) {
     if (Id in Cache) return Cache[Id];
     const Row = ById[Id];
     const Val = Values[Id] || {};
     const LocalPos = Val.Position || Val.LocalOffset || [0, 0, 0];
-    const LocalYaw = ((Number(Val.YawDeg) || 0) * Math.PI) / 180;
-    const LocalPitch = ((Number(Val.YokeTiltDeg ?? Val.HeadTiltDeg) || 0) * Math.PI) / 180;
+    const LocalYaw = (ReadYawDeg(Val) * Math.PI) / 180;
+    const LocalPitch = (ReadPitchDeg(Val) * Math.PI) / 180;
 
     if (!Row || !Row.Parent || !ById[Row.Parent] || ById[Row.Parent].Panel === "group") {
       Cache[Id] = {
         Position: [LocalPos[0], LocalPos[1], LocalPos[2]],
         YawRad: LocalYaw,
         PitchRad: LocalPitch,
+        Forward: ComputeForwardVector(LocalYaw, LocalPitch),
         Visible: IsVisible(Id),
       };
       return Cache[Id];
@@ -862,8 +1017,18 @@ export function ResolveStudioHierarchy(Rows, Values, Hidden) {
 
     const CosY = Math.cos(ParentXf.YawRad);
     const SinY = Math.sin(ParentXf.YawRad);
+    // Matches ModelTransformMat: worldX = x*cos + z*sin, worldZ = -x*sin + z*cos
     const Rx = LocalPos[0] * CosY + LocalPos[2] * SinY;
     const Rz = -LocalPos[0] * SinY + LocalPos[2] * CosY;
+
+    const WorldYaw = ParentXf.YawRad + LocalYaw;
+    // Fixture or camera inherits parent tripod head tilt unless overridden by its own YokeTiltDeg/PitchDeg
+    let WorldPitch = LocalPitch;
+    if (Row.Panel === "light" || Row.Panel === "camera") {
+      WorldPitch = ParentXf.PitchRad;
+    } else if (ParentRow.Panel === "studio-procedural" && Val.YokeTiltDeg === undefined && Val.PitchDeg === undefined) {
+      WorldPitch = ParentXf.PitchRad;
+    }
 
     Cache[Id] = {
       Position: [
@@ -871,8 +1036,9 @@ export function ResolveStudioHierarchy(Rows, Values, Hidden) {
         ParentXf.Position[1] + MountY + LocalPos[1],
         ParentXf.Position[2] + Rz,
       ],
-      YawRad: ParentXf.YawRad + LocalYaw,
-      PitchRad: ParentRow.Panel === "studio-procedural" ? ParentXf.PitchRad + LocalPitch : LocalPitch,
+      YawRad: WorldYaw,
+      PitchRad: WorldPitch,
+      Forward: ComputeForwardVector(WorldYaw, WorldPitch),
       Visible: IsVisible(Id),
     };
     return Cache[Id];

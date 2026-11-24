@@ -1,85 +1,173 @@
+// Studio Inspector extensions reusing Project-Zero's existing native UI components
+// (inspector-heading, generic-card, Control sliders/switches/selects/colours, TransformPanel).
+
 import React from "react";
+import { Control, Icon } from "./Inspectors.jsx";
+import TransformPanel from "./TransformPanel.jsx";
 import {
   VehiclePaintPresets,
   RimFinishPresets,
   FixtureStyles,
   CinemaCameraStyles,
   IesProfiles,
+  ConfiguratorPresets,
   ComputeTripodMountHeight,
+  ComputeAimAngles,
+  HeroCarAimTarget,
 } from "./StudioLobbyScene.js";
 
-function SliderRow({ Label, Value, Min, Max, Step = 0.01, Unit = "", OnChange }) {
-  const Num = Number(Value ?? Min);
+function NativeSlider(Label, Value, Min, Max, Unit, Decimals, OnChange) {
   return (
-    <label className="studio-prop-row">
-      <div className="studio-prop-label">
-        <span>{Label}</span>
-        <strong>
-          {Number.isFinite(Num) ? Num.toFixed(Step >= 1 ? 0 : Step >= 0.1 ? 1 : 2) : "0"}
-          {Unit}
-        </strong>
-      </div>
-      <input
-        type="range"
-        min={Min}
-        max={Max}
-        step={Step}
-        value={Num}
-        onChange={(E) => OnChange(parseFloat(E.target.value))}
-      />
-    </label>
+    <Control
+      Field={{
+        Label,
+        Control: "Slider",
+        Minimum: Min,
+        Maximum: Max,
+        Unit: Unit || "",
+        Decimals: Decimals ?? 2,
+        Default: Value,
+      }}
+      Value={Value}
+      Change={OnChange}
+    />
   );
 }
 
-function ToggleRow({ Label, Checked, OnChange }) {
+function NativeSwitch(Label, Checked, OnChange) {
   return (
-    <label className="studio-prop-toggle">
-      <span>{Label}</span>
-      <input
-        type="checkbox"
-        checked={Boolean(Checked)}
-        onChange={(E) => OnChange(E.target.checked)}
-      />
-    </label>
+    <Control
+      Field={{ Label, Control: "Switch", Default: Boolean(Checked) }}
+      Value={Boolean(Checked)}
+      Change={OnChange}
+    />
   );
 }
 
-function TransformSection({ Values, Change }) {
-  const Pos = Values.Position || [0, 0, 0];
-  const SetAxis = (Axis, Val) => {
-    const Next = [...Pos];
-    Next[Axis] = Val;
-    Change("Position", Next);
+function NativeSelect(Label, Options, CurrentValue, OnChange) {
+  const Idx = Math.max(0, Options.indexOf(CurrentValue));
+  return (
+    <Control
+      Field={{ Label, Control: "Select", Options, Default: 0 }}
+      Value={Idx}
+      Change={(NextIdx) => OnChange(Options[NextIdx] || Options[0])}
+    />
+  );
+}
+
+function NativeColour(Label, Hex, OnChange) {
+  return (
+    <Control
+      Field={{ Label, Control: "Colour", Default: Hex || "#ffffff" }}
+      Value={Hex || "#ffffff"}
+      Change={OnChange}
+    />
+  );
+}
+
+function NativeReadout(Label, Text) {
+  return (
+    <Control
+      Field={{ Label, Control: "Readout", Default: Text }}
+      Value={Text}
+      Change={() => {}}
+    />
+  );
+}
+
+// Wrap Project-Zero's native TransformPanel so editing Rotation[1] updates YawDeg
+// and Rotation[0] updates YokeTiltDeg / HeadTiltDeg / PitchDeg cleanly.
+function StudioTransformCard({ Values, Change, ShowScale = false }) {
+  const Yaw = Number(Values.Rotation?.[1] ?? Values.YawDeg ?? 0);
+  const Pitch = Number(
+    Values.YokeTiltDeg ?? Values.PitchDeg ?? Values.HeadTiltDeg ?? Values.Rotation?.[0] ?? 0,
+  );
+  const UniformScale = Number(Values.Scale ?? 1);
+  const Normalized = {
+    ...Values,
+    Position: Array.isArray(Values.Position) ? Values.Position : [0, 0, 0],
+    Rotation: [Pitch, Yaw, Number(Values.Rotation?.[2] ?? 0)],
+    Scale: [UniformScale, UniformScale, UniformScale],
   };
+
+  const HandleChange = (Key, Val) => {
+    if (Key === "Position") {
+      Change("Position", Val);
+      return;
+    }
+    if (Key === "Rotation") {
+      Change("Rotation", Val);
+      Change("YawDeg", Val[1]);
+      if (Values.ProceduralKind === "studio.light_fixture") Change("YokeTiltDeg", Val[0]);
+      else if (Values.ProceduralKind === "studio.cinema_camera") Change("PitchDeg", Val[0]);
+      else if (Values.ProceduralKind === "studio.tripod") Change("HeadTiltDeg", Val[0]);
+      return;
+    }
+    if (Key === "Scale") {
+      Change("Scale", Math.max(0.25, Math.min(2.0, Number(Val[0]) || 1)));
+    }
+  };
+
+  const TransformRows = ShowScale
+    ? [
+        ["Position", "m", [0, 0, 0], -50, 50, 0.05],
+        ["Rotation", "deg", [0, 0, 0], -360, 360, 1],
+        ["Scale", "×", [0.76, 0.76, 0.76], 0.3, 2.0, 0.01],
+      ]
+    : [
+        ["Position", "m", [0, 0, 0], -50, 50, 0.05],
+        ["Rotation", "deg", [0, 0, 0], -360, 360, 1],
+      ];
+
   return (
-    <section className="studio-inspector-section">
-      <header>Transform</header>
-      <SliderRow Label="Position X" Value={Pos[0]} Min={-12} Max={12} Step={0.05} Unit=" m" OnChange={(V) => SetAxis(0, V)} />
-      <SliderRow Label="Position Y" Value={Pos[1]} Min={0} Max={6} Step={0.05} Unit=" m" OnChange={(V) => SetAxis(1, V)} />
-      <SliderRow Label="Position Z" Value={Pos[2]} Min={-10} Max={10} Step={0.05} Unit=" m" OnChange={(V) => SetAxis(2, V)} />
-      <SliderRow Label="Yaw Rotation" Value={Values.YawDeg ?? 0} Min={-180} Max={180} Step={1} Unit="°" OnChange={(V) => Change("YawDeg", V)} />
-    </section>
+    <TransformPanel
+      Values={Normalized}
+      Change={HandleChange}
+      Rows={TransformRows}
+      Space="WORLD / STUDIO"
+    />
   );
 }
 
-export function StudioVehicleInspector({ Subject, Values, Change, OnFocus }) {
+// Reuses Project-Zero native heading, TransformPanel, and Control cards for Studio Vehicles
+export function StudioVehicleInspector({
+  Subject,
+  Values,
+  Change,
+  Hidden,
+  ToggleHidden,
+  OnFocus,
+}) {
   return (
-    <div className="studio-inspector">
-      <div className="studio-inspector-banner vehicle">
-        <div>
-          <span className="studio-eyebrow">CONTROLLED INTEGRATOR · 25,068 TRIS</span>
-          <h3>{Subject.Name}</h3>
-          <p>{Subject.Description}</p>
-        </div>
-        {OnFocus && (
-          <button type="button" className="studio-focus-btn" onClick={OnFocus}>
-            Focus
-          </button>
-        )}
-      </div>
+    <>
+      <header className="inspector-heading">
+        <div className="breadcrumbs">Inspector / Studio Vehicles</div>
+        <h1>{Subject.Name}</h1>
+        <p className="eyebrow">{Subject.Description}</p>
+      </header>
 
-      <section className="studio-inspector-section">
-        <header>Automotive Paint & Clearcoat</header>
+      <StudioTransformCard Values={Values} Change={Change} ShowScale />
+
+      <section className="generic-card entity-capabilities" data-card="Quick controls">
+        <h4>QUICK CONTROLS</h4>
+        <div className="studio-quick-bar">
+          <button
+            type="button"
+            className={"studio-quick-btn" + (!Hidden ? " on" : "")}
+            onClick={ToggleHidden}
+          >
+            {Hidden ? "Show Vehicle" : "Visible"}
+          </button>
+          {OnFocus && (
+            <button type="button" className="studio-quick-btn" onClick={OnFocus}>
+              Focus Camera
+            </button>
+          )}
+        </div>
+      </section>
+
+      <details open className="generic-card">
+        <summary>Automotive Paint & Clearcoat</summary>
         <div className="studio-swatch-row">
           {VehiclePaintPresets.map((Preset) => (
             <button
@@ -96,21 +184,15 @@ export function StudioVehicleInspector({ Subject, Values, Change, OnFocus }) {
               }}
             />
           ))}
-          <input
-            type="color"
-            aria-label="Custom vehicle paint colour"
-            className="studio-color-input"
-            value={Values.PaintHex || "#111319"}
-            onChange={(E) => Change("PaintHex", E.target.value)}
-          />
         </div>
-        <SliderRow Label="Metallic Flake" Value={Values.Metallic ?? 0.84} Min={0} Max={1} Step={0.01} OnChange={(V) => Change("Metallic", V)} />
-        <SliderRow Label="Base Roughness" Value={Values.Roughness ?? 0.14} Min={0.04} Max={0.65} Step={0.01} OnChange={(V) => Change("Roughness", V)} />
-        <SliderRow Label="Clearcoat Gloss" Value={Values.Clearcoat ?? 1.0} Min={0} Max={1} Step={0.01} OnChange={(V) => Change("Clearcoat", V)} />
-      </section>
+        {NativeColour("Base Paint", Values.PaintHex || "#111319", (V) => Change("PaintHex", V))}
+        {NativeSlider("Metallic Flake", Values.Metallic ?? 0.84, 0, 1, "", 2, (V) => Change("Metallic", V))}
+        {NativeSlider("Base Roughness", Values.Roughness ?? 0.14, 0.04, 0.65, "", 2, (V) => Change("Roughness", V))}
+        {NativeSlider("Clearcoat Gloss", Values.Clearcoat ?? 1.0, 0, 1, "", 2, (V) => Change("Clearcoat", V))}
+      </details>
 
-      <section className="studio-inspector-section">
-        <header>Forged Alloy Wheels</header>
+      <details open className="generic-card">
+        <summary>Forged Alloy Wheels</summary>
         <div className="studio-swatch-row">
           {RimFinishPresets.map((Rim) => (
             <button
@@ -123,182 +205,193 @@ export function StudioVehicleInspector({ Subject, Values, Change, OnFocus }) {
             />
           ))}
         </div>
-        <SliderRow Label="Vehicle Scale" Value={Values.Scale ?? 0.76} Min={0.5} Max={1.15} Step={0.01} Unit="×" OnChange={(V) => Change("Scale", V)} />
-      </section>
-
-      <TransformSection Values={Values} Change={Change} />
-    </div>
+        {NativeColour("Rim Finish", Values.RimHex || "#1b1d22", (V) => Change("RimHex", V))}
+      </details>
+    </>
   );
 }
 
-export function StudioProceduralInspector({ Subject, Rows, AllValues, Values, Change, Select, OnFocus }) {
+// Reuses Project-Zero native heading, TransformPanel, and Control cards for Procedural Studio Rigs
+export function StudioProceduralInspector({
+  Subject,
+  Rows,
+  AllValues,
+  Values,
+  Change,
+  Hidden,
+  ToggleHidden,
+  Select,
+  OnFocus,
+  OnAimAtHero,
+}) {
   const Kind = Values.ProceduralKind || "studio.tripod";
   const SharedCount = Rows.filter(
     (R) => R.Panel === "studio-procedural" && AllValues[R.Id]?.ProceduralKind === Kind,
   ).length;
   const Children = Rows.filter((R) => R.Parent === Subject.Id);
+  const CanAim =
+    Kind === "studio.tripod" ||
+    Kind === "studio.cinema_camera" ||
+    (Kind === "studio.light_fixture" && Values.FixtureStyle !== "Overhead Softbox");
 
   return (
-    <div className="studio-inspector">
-      <div className="studio-inspector-banner procedural">
-        <div>
-          <span className="studio-eyebrow">
-            PROCEDURAL COMPONENT · {Kind.toUpperCase()}
-            {SharedCount > 1 ? ` · ${SharedCount} SHARED INSTANCES` : ""}
-          </span>
-          <h3>{Subject.Name}</h3>
-          <p>{Subject.Description}</p>
+    <>
+      <header className="inspector-heading">
+        <div className="breadcrumbs">
+          Inspector / Procedural · {Kind}
+          {SharedCount > 1 ? ` · ${SharedCount} SHARED INSTANCES` : ""}
         </div>
-        {OnFocus && Kind !== "studio.ambient" && (
-          <button type="button" className="studio-focus-btn" onClick={OnFocus}>
-            Focus
-          </button>
-        )}
-      </div>
+        <h1>{Subject.Name}</h1>
+        <p className="eyebrow">{Subject.Description}</p>
+      </header>
+
+      {Kind !== "studio.ambient" && <StudioTransformCard Values={Values} Change={Change} />}
+
+      {Kind !== "studio.ambient" && (
+        <section className="generic-card entity-capabilities" data-card="Quick controls">
+          <h4>QUICK CONTROLS</h4>
+          <div className="studio-quick-bar">
+            <button
+              type="button"
+              className={"studio-quick-btn" + (!Hidden ? " on" : "")}
+              onClick={ToggleHidden}
+            >
+              {Hidden ? "Show Rig" : "Visible"}
+            </button>
+            {OnFocus && (
+              <button type="button" className="studio-quick-btn" onClick={OnFocus}>
+                Focus Camera
+              </button>
+            )}
+            {CanAim && OnAimAtHero && (
+              <button
+                type="button"
+                className="studio-quick-btn"
+                title="Compute exact Yaw & Pitch toward Hero Coupe"
+                onClick={() => OnAimAtHero(Subject.Id)}
+              >
+                Aim at Hero Car
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       {Kind === "studio.tripod" && (
-        <section className="studio-inspector-section">
-          <header>
-            Tripod Geometry · Mount Height {ComputeTripodMountHeight(Values).toFixed(2)} m
-          </header>
-          <SliderRow Label="Stand Height" Value={Values.StandHeight ?? 1.55} Min={0.5} Max={3.0} Step={0.02} Unit=" m" OnChange={(V) => Change("StandHeight", V)} />
-          <SliderRow Label="Center Column Lift" Value={Values.ColumnLift ?? 0.28} Min={0} Max={0.85} Step={0.02} Unit=" m" OnChange={(V) => Change("ColumnLift", V)} />
-          <SliderRow Label="Leg Spread Angle" Value={Values.LegSpreadDeg ?? 26} Min={14} Max={46} Step={1} Unit="°" OnChange={(V) => Change("LegSpreadDeg", V)} />
-          <SliderRow Label="Tube Radius" Value={Values.TubeRadius ?? 0.018} Min={0.01} Max={0.032} Step={0.001} Unit=" m" OnChange={(V) => Change("TubeRadius", V)} />
-          <SliderRow Label="Telescoping LegSegments" Value={Values.LegSegments ?? 3} Min={2} Max={4} Step={1} OnChange={(V) => Change("LegSegments", V)} />
-          <SliderRow Label="Head Pitch Tilt" Value={Values.HeadTiltDeg ?? 0} Min={-45} Max={45} Step={1} Unit="°" OnChange={(V) => Change("HeadTiltDeg", V)} />
-          <ToggleRow Label="Mid-Level Spreader" Checked={Values.Spreader !== false} OnChange={(V) => Change("Spreader", V)} />
-          <ToggleRow Label="Rolling Studio Casters" Checked={Boolean(Values.Casters)} OnChange={(V) => Change("Casters", V)} />
-          <ToggleRow Label="Matte Rubber Floor Mat" Checked={Boolean(Values.FloorMat)} OnChange={(V) => Change("FloorMat", V)} />
-        </section>
+        <details open className="generic-card">
+          <summary>Tripod Rig Geometry</summary>
+          {NativeReadout("Mount Height", ComputeTripodMountHeight(Values).toFixed(2) + " m")}
+          {NativeReadout("Shared Instances", String(SharedCount) + " rigs in scene")}
+          {NativeSlider("Stand Height", Values.StandHeight ?? 1.55, 0.5, 3.0, "m", 2, (V) => Change("StandHeight", V))}
+          {NativeSlider("Center Column Lift", Values.ColumnLift ?? 0.28, 0, 0.85, "m", 2, (V) => Change("ColumnLift", V))}
+          {NativeSlider("Leg Spread", Values.LegSpreadDeg ?? 26, 14, 46, "°", 0, (V) => Change("LegSpreadDeg", V))}
+          {NativeSlider("Tube Radius", Values.TubeRadius ?? 0.018, 0.01, 0.032, "m", 3, (V) => Change("TubeRadius", V))}
+          {NativeSlider("Leg Segments", Values.LegSegments ?? 3, 2, 4, "", 0, (V) => Change("LegSegments", Math.round(V)))}
+          {NativeSlider("Head Pitch Tilt", Values.HeadTiltDeg ?? 0, -45, 45, "°", 1, (V) => {
+            Change("HeadTiltDeg", V);
+            Change("Rotation", [V, Number(Values.Rotation?.[1] ?? Values.YawDeg ?? 0), 0]);
+          })}
+          {NativeSwitch("Mid-Level Spreader", Values.Spreader !== false, (V) => Change("Spreader", V))}
+          {NativeSwitch("Rolling Studio Casters", Boolean(Values.Casters), (V) => Change("Casters", V))}
+          {NativeSwitch("Matte Rubber Floor Mat", Boolean(Values.FloorMat), (V) => Change("FloorMat", V))}
+        </details>
       )}
 
       {Kind === "studio.light_fixture" && (
-        <section className="studio-inspector-section">
-          <header>Light Modifier Geometry</header>
-          <label className="studio-prop-select">
-            <span>Fixture Style</span>
-            <select
-              value={Values.FixtureStyle || "Overhead Softbox"}
-              onChange={(E) => Change("FixtureStyle", E.target.value)}
-            >
-              {FixtureStyles.map((Style) => (
-                <option key={Style} value={Style}>{Style}</option>
-              ))}
-            </select>
-          </label>
-          <SliderRow Label="Aperture Width" Value={Values.ApertureWidth ?? 1.5} Min={0.25} Max={9.0} Step={0.05} Unit=" m" OnChange={(V) => Change("ApertureWidth", V)} />
-          <SliderRow Label="Aperture Height" Value={Values.ApertureHeight ?? 1.2} Min={0.25} Max={6.0} Step={0.05} Unit=" m" OnChange={(V) => Change("ApertureHeight", V)} />
-          <SliderRow Label="Housing Depth" Value={Values.HousingDepth ?? 0.3} Min={0.08} Max={1.1} Step={0.02} Unit=" m" OnChange={(V) => Change("HousingDepth", V)} />
-          <SliderRow Label="Yoke Pitch Tilt" Value={Values.YokeTiltDeg ?? 0} Min={-60} Max={45} Step={1} Unit="°" OnChange={(V) => Change("YokeTiltDeg", V)} />
-          {Values.FixtureStyle === "Barn-Door Fresnel" && (
-            <SliderRow Label="Barn-Door Flare" Value={Values.BarnDoorFlare ?? 34} Min={8} Max={75} Step={1} Unit="°" OnChange={(V) => Change("BarnDoorFlare", V)} />
-          )}
-          {Values.FixtureStyle === "Parabolic Umbrella" && (
-            <SliderRow Label="Umbrella Ribs" Value={Values.UmbrellaRibs ?? 16} Min={8} Max={20} Step={2} OnChange={(V) => Change("UmbrellaRibs", V)} />
-          )}
-          {Values.FixtureStyle === "Overhead Softbox" && (
-            <SliderRow Label="Ceiling Rigging Drop" Value={Values.SuspensionDrop ?? 2.3} Min={0} Max={4.0} Step={0.05} Unit=" m" OnChange={(V) => Change("SuspensionDrop", V)} />
-          )}
-        </section>
+        <details open className="generic-card">
+          <summary>Light Modifier Geometry</summary>
+          {NativeSelect("Fixture Style", FixtureStyles, Values.FixtureStyle || "Overhead Softbox", (V) => Change("FixtureStyle", V))}
+          {NativeSlider("Aperture Width", Values.ApertureWidth ?? 1.5, 0.25, 9.0, "m", 2, (V) => Change("ApertureWidth", V))}
+          {NativeSlider("Aperture Height", Values.ApertureHeight ?? 1.2, 0.25, 6.0, "m", 2, (V) => Change("ApertureHeight", V))}
+          {NativeSlider("Housing Depth", Values.HousingDepth ?? 0.3, 0.08, 1.1, "m", 2, (V) => Change("HousingDepth", V))}
+          {NativeSlider("Yoke Pitch Tilt", Values.YokeTiltDeg ?? 0, -45, 55, "°", 1, (V) => {
+            Change("YokeTiltDeg", V);
+            Change("Rotation", [V, Number(Values.Rotation?.[1] ?? Values.YawDeg ?? 0), 0]);
+          })}
+          {Values.FixtureStyle === "Barn-Door Fresnel" &&
+            NativeSlider("Barn-Door Flare", Values.BarnDoorFlare ?? 34, 8, 75, "°", 0, (V) => Change("BarnDoorFlare", V))}
+          {Values.FixtureStyle === "Parabolic Umbrella" &&
+            NativeSlider("Umbrella Ribs", Values.UmbrellaRibs ?? 16, 8, 20, "", 0, (V) => Change("UmbrellaRibs", Math.round(V / 2) * 2))}
+          {Values.FixtureStyle === "Overhead Softbox" &&
+            NativeSlider("Ceiling Rigging Drop", Values.SuspensionDrop ?? 2.3, 0, 4.0, "m", 2, (V) => Change("SuspensionDrop", V))}
+        </details>
       )}
 
       {Kind === "studio.cinema_camera" && (
-        <section className="studio-inspector-section">
-          <header>Cinema Camera Rig</header>
-          <label className="studio-prop-select">
-            <span>Camera Body Style</span>
-            <select
-              value={Values.CameraStyle || "Cinema Matte Box"}
-              onChange={(E) => Change("CameraStyle", E.target.value)}
-            >
-              {CinemaCameraStyles.map((Style) => (
-                <option key={Style} value={Style}>{Style}</option>
-              ))}
-            </select>
-          </label>
-          <SliderRow Label="Lens Barrel Length" Value={Values.LensLength ?? 0.32} Min={0.12} Max={0.55} Step={0.01} Unit=" m" OnChange={(V) => Change("LensLength", V)} />
-          <SliderRow Label="Film Magazine Radius" Value={Values.ReelRadius ?? 0.13} Min={0.05} Max={0.22} Step={0.01} Unit=" m" OnChange={(V) => Change("ReelRadius", V)} />
-          <ToggleRow Label="Cinema Matte Box" Checked={Values.MatteBox !== false} OnChange={(V) => Change("MatteBox", V)} />
-          <ToggleRow Label="Top Carry Handle" Checked={Values.TopHandle !== false} OnChange={(V) => Change("TopHandle", V)} />
-        </section>
+        <details open className="generic-card">
+          <summary>Cinema Camera Rig</summary>
+          {NativeSelect("Camera Body Style", CinemaCameraStyles, Values.CameraStyle || "Cinema Matte Box", (V) => Change("CameraStyle", V))}
+          {NativeSlider("Lens Barrel Length", Values.LensLength ?? 0.32, 0.12, 0.55, "m", 2, (V) => Change("LensLength", V))}
+          {NativeSlider("Film Magazine Radius", Values.ReelRadius ?? 0.13, 0.05, 0.22, "m", 2, (V) => Change("ReelRadius", V))}
+          {NativeSlider("Camera Pitch Tilt", Values.PitchDeg ?? 0, -35, 35, "°", 1, (V) => {
+            Change("PitchDeg", V);
+            Change("Rotation", [V, Number(Values.Rotation?.[1] ?? Values.YawDeg ?? 0), 0]);
+          })}
+          {NativeSwitch("Cinema Matte Box", Values.MatteBox !== false, (V) => Change("MatteBox", V))}
+          {NativeSwitch("Top Carry Handle", Values.TopHandle !== false, (V) => Change("TopHandle", V))}
+        </details>
       )}
 
       {Kind === "studio.cyclorama" && (
-        <section className="studio-inspector-section">
-          <header>Cyclorama Infinity Cove</header>
-          <SliderRow Label="Stage Width" Value={Values.CoveWidth ?? 11.4} Min={6.5} Max={18.0} Step={0.2} Unit=" m" OnChange={(V) => Change("CoveWidth", V)} />
-          <SliderRow Label="Floor Depth" Value={Values.FloorDepth ?? 8.2} Min={5.0} Max={14.0} Step={0.2} Unit=" m" OnChange={(V) => Change("FloorDepth", V)} />
-          <SliderRow Label="Wall Height" Value={Values.WallHeight ?? 5.6} Min={3.2} Max={8.0} Step={0.1} Unit=" m" OnChange={(V) => Change("WallHeight", V)} />
-          <SliderRow Label="Cove Curve Radius" Value={Values.CoveRadius ?? 1.85} Min={0.6} Max={3.4} Step={0.05} Unit=" m" OnChange={(V) => Change("CoveRadius", V)} />
-          <SliderRow Label="Plaster Micro-Grain" Value={Values.PlasterGrain ?? 0.38} Min={0} Max={1} Step={0.02} OnChange={(V) => Change("PlasterGrain", V)} />
-          <ToggleRow Label="Swept Side Cove Wings" Checked={Values.SideWings !== false} OnChange={(V) => Change("SideWings", V)} />
-          <label className="studio-prop-select">
-            <span>Cove Surface Albedo</span>
-            <input
-              type="color"
-              className="studio-color-input"
-              value={Values.SurfaceTint || "#bfc5ce"}
-              onChange={(E) => Change("SurfaceTint", E.target.value)}
-            />
-          </label>
-        </section>
+        <details open className="generic-card">
+          <summary>Cyclorama Infinity Cove</summary>
+          {NativeSlider("Cove Width", Values.CoveWidth ?? 11.4, 6.5, 18.0, "m", 1, (V) => Change("CoveWidth", V))}
+          {NativeSlider("Floor Depth", Values.FloorDepth ?? 8.2, 5.0, 14.0, "m", 1, (V) => Change("FloorDepth", V))}
+          {NativeSlider("Wall Height", Values.WallHeight ?? 5.6, 3.2, 8.0, "m", 1, (V) => Change("WallHeight", V))}
+          {NativeSlider("Cove Curve Radius", Values.CoveRadius ?? 1.85, 0.6, 3.4, "m", 2, (V) => Change("CoveRadius", V))}
+          {NativeSlider("Plaster Micro-Grain", Values.PlasterGrain ?? 0.38, 0, 1, "", 2, (V) => Change("PlasterGrain", V))}
+          {NativeSwitch("Swept Side Cove Wings", Values.SideWings !== false, (V) => Change("SideWings", V))}
+          {NativeColour("Cove Albedo", Values.SurfaceTint || "#bfc5ce", (V) => Change("SurfaceTint", V))}
+        </details>
       )}
 
       {Kind === "studio.tiled_floor" && (
-        <section className="studio-inspector-section">
-          <header>Glossy Tiled Studio Floor</header>
-          <SliderRow Label="Tile Pitch" Value={Values.TileSize ?? 1.2} Min={0.5} Max={2.4} Step={0.05} Unit=" m" OnChange={(V) => Change("TileSize", V)} />
-          <SliderRow Label="Slate Reflection Gloss" Value={Values.FloorGloss ?? 0.68} Min={0.05} Max={1.0} Step={0.02} OnChange={(V) => Change("FloorGloss", V)} />
-          <label className="studio-prop-select">
-            <span>Slate Tile Tint</span>
-            <input
-              type="color"
-              className="studio-color-input"
-              value={Values.SurfaceTint || "#1c2027"}
-              onChange={(E) => Change("SurfaceTint", E.target.value)}
-            />
-          </label>
-        </section>
+        <details open className="generic-card">
+          <summary>Glossy Tiled Studio Floor</summary>
+          {NativeSlider("Tile Pitch", Values.TileSize ?? 1.2, 0.5, 2.4, "m", 2, (V) => Change("TileSize", V))}
+          {NativeSlider("Slate Reflection Gloss", Values.FloorGloss ?? 0.68, 0.05, 1.0, "", 2, (V) => Change("FloorGloss", V))}
+          {NativeColour("Slate Tile Tint", Values.SurfaceTint || "#1c2027", (V) => Change("SurfaceTint", V))}
+        </details>
       )}
 
       {Kind === "studio.ceiling_truss" && (
-        <section className="studio-inspector-section">
-          <header>Ribbed Ceiling & Rigging Truss</header>
-          <SliderRow Label="Ceiling Height" Value={Values.CeilingHeight ?? 5.95} Min={4.5} Max={8.5} Step={0.05} Unit=" m" OnChange={(V) => Change("CeilingHeight", V)} />
-          <SliderRow Label="Roof Rib Count" Value={Values.RibCount ?? 12} Min={4} Max={22} Step={1} OnChange={(V) => Change("RibCount", V)} />
-          <ToggleRow Label="Structural Box Truss Grid" Checked={Values.TrussGrid !== false} OnChange={(V) => Change("TrussGrid", V)} />
-        </section>
+        <details open className="generic-card">
+          <summary>Ribbed Ceiling & Rigging Truss</summary>
+          {NativeSlider("Ceiling Height", Values.CeilingHeight ?? 5.95, 4.5, 8.5, "m", 2, (V) => Change("CeilingHeight", V))}
+          {NativeSlider("Roof Rib Count", Values.RibCount ?? 12, 4, 22, "", 0, (V) => Change("RibCount", Math.round(V)))}
+          {NativeSwitch("Structural Box Truss Grid", Values.TrussGrid !== false, (V) => Change("TrussGrid", V))}
+        </details>
       )}
 
       {Kind === "studio.workstation" && (
-        <section className="studio-inspector-section">
-          <header>Studio Crew Props</header>
-          <ToggleRow Label="Hairpin Tether Desk" Checked={Values.HasDesk !== false} OnChange={(V) => Change("HasDesk", V)} />
+        <details open className="generic-card">
+          <summary>Studio Crew Props</summary>
+          {NativeSwitch("Hairpin Tether Desk", Values.HasDesk !== false, (V) => Change("HasDesk", V))}
           {Values.HasDesk !== false && (
             <>
-              <SliderRow Label="Desk Width" Value={Values.DeskWidth ?? 1.48} Min={0.8} Max={2.4} Step={0.05} Unit=" m" OnChange={(V) => Change("DeskWidth", V)} />
-              <SliderRow Label="Desk Height" Value={Values.DeskHeight ?? 0.78} Min={0.6} Max={1.1} Step={0.02} Unit=" m" OnChange={(V) => Change("DeskHeight", V)} />
+              {NativeSlider("Desk Width", Values.DeskWidth ?? 1.48, 0.8, 2.4, "m", 2, (V) => Change("DeskWidth", V))}
+              {NativeSlider("Desk Height", Values.DeskHeight ?? 0.78, 0.6, 1.1, "m", 2, (V) => Change("DeskHeight", V))}
             </>
           )}
-          <ToggleRow Label="Pelican Flight Cases" Checked={Values.FlightCases !== false} OnChange={(V) => Change("FlightCases", V)} />
-          <ToggleRow Label="Coiled Floor Power Cables" Checked={Values.CoiledCables !== false} OnChange={(V) => Change("CoiledCables", V)} />
-        </section>
+          {NativeSwitch("Pelican Flight Cases", Values.FlightCases !== false, (V) => Change("FlightCases", V))}
+          {NativeSwitch("Coiled Floor Power Cables", Values.CoiledCables !== false, (V) => Change("CoiledCables", V))}
+        </details>
       )}
 
       {Kind === "studio.ambient" && (
-        <section className="studio-inspector-section">
-          <header>Photographic Darkroom Exposure</header>
-          <SliderRow Label="ACES Exposure" Value={Values.Exposure ?? 1.16} Min={0.4} Max={2.4} Step={0.02} Unit=" EV" OnChange={(V) => Change("Exposure", V)} />
-          <SliderRow Label="Studio Bounce Fill" Value={Values.AmbientFill ?? 0.14} Min={0.02} Max={0.45} Step={0.01} OnChange={(V) => Change("AmbientFill", V)} />
-          <SliderRow Label="Contact Shadow Depth" Value={Values.ShadowDepth ?? 0.74} Min={0.0} Max={1.0} Step={0.02} OnChange={(V) => Change("ShadowDepth", V)} />
-          <ToggleRow Label="Show Edit-Mode Light Rig Gizmos" Checked={Boolean(Values.ShowLightGizmos)} OnChange={(V) => Change("ShowLightGizmos", V)} />
-        </section>
+        <details open className="generic-card">
+          <summary>Photographic Darkroom Exposure</summary>
+          {NativeSlider("ACES Exposure", Values.Exposure ?? 1.16, 0.4, 2.4, "EV", 2, (V) => Change("Exposure", V))}
+          {NativeSlider("Studio Bounce Fill", Values.AmbientFill ?? 0.14, 0.02, 0.45, "", 2, (V) => Change("AmbientFill", V))}
+          {NativeSlider("Contact Shadow Depth", Values.ShadowDepth ?? 0.74, 0, 1, "", 2, (V) => Change("ShadowDepth", V))}
+          {NativeSlider("Cinema Lens Vignette", Values.Vignette ?? 0.28, 0, 1, "", 2, (V) => Change("Vignette", V))}
+          {NativeSwitch("Show Edit-Mode Light Rig Gizmos", Boolean(Values.ShowLightGizmos), (V) => Change("ShowLightGizmos", V))}
+        </details>
       )}
 
       {Children.length > 0 && (
-        <section className="studio-inspector-section">
-          <header>Mounted Child Entities ({Children.length})</header>
+        <details open className="generic-card">
+          <summary>Mounted Child Entities ({Children.length})</summary>
           <div className="studio-child-list">
             {Children.map((Child) => (
               <button
@@ -307,53 +400,85 @@ export function StudioProceduralInspector({ Subject, Rows, AllValues, Values, Ch
                 className="studio-child-link"
                 onClick={() => Select && Select(Child.Id)}
               >
-                <span>{Child.Name}</span>
-                <small>{Child.Panel}</small>
+                <span className="studio-child-title">
+                  <Icon Name={Child.Icon} Size={18} />
+                  <span>{Child.Name}</span>
+                </span>
+                <small>{Child.ReferenceType || Child.Panel}</small>
               </button>
             ))}
           </div>
-        </section>
+        </details>
       )}
-
-      {Kind !== "studio.ambient" && <TransformSection Values={Values} Change={Change} />}
-    </div>
+    </>
   );
 }
 
-export function StudioLightInspectorBlock({ Subject, Values, Change }) {
-  const IsIes = Values.LightKind === "IES" || Values.LightType === 1 || Subject.Icon === "editor-spot-light";
+// Add-on native card appended below Project-Zero's EXISTING Camera Inspector cards
+export function StudioCameraExtensionCard({
+  Subject,
+  Values,
+  Change,
+  ActivePreset,
+  SelectPreset,
+  ReplayIntro,
+}) {
+  if (Subject.Id !== "cam-configurator") return null;
   return (
-    <div className="studio-inspector studio-light-override">
-      <section className="studio-inspector-section">
-        <header>
-          Live WebGL2 Studio {IsIes ? "Photometric IES Light" : "Rectangular Area Light"}
-        </header>
-        <ToggleRow Label="Light Enabled" Checked={Values.Enabled !== false} OnChange={(V) => Change("Enabled", V)} />
-        <SliderRow Label="Luminous Intensity" Value={Values.Intensity ?? (IsIes ? 16 : 5)} Min={0} Max={IsIes ? 45 : 16} Step={0.2} OnChange={(V) => Change("Intensity", V)} />
-        <SliderRow Label="Color Temperature" Value={Values.Kelvin ?? 5600} Min={2400} Max={9500} Step={100} Unit=" K" OnChange={(V) => Change("Kelvin", V)} />
-        {IsIes ? (
-          <>
-            <label className="studio-prop-select">
-              <span>Photometric IES Profile</span>
-              <select
-                value={Values.IesProfile || "Barn-Door Fresnel"}
-                onChange={(E) => Change("IesProfile", E.target.value)}
-              >
-                {IesProfiles.map((Prof) => (
-                  <option key={Prof} value={Prof}>{Prof}</option>
-                ))}
-              </select>
-            </label>
-            <SliderRow Label="Beam Cone Angle" Value={Values.BeamDeg ?? 46} Min={15} Max={95} Step={1} Unit="°" OnChange={(V) => Change("BeamDeg", V)} />
-            <SliderRow Label="Beam Edge Softness" Value={Values.Softness ?? 0.35} Min={0.05} Max={0.95} Step={0.02} OnChange={(V) => Change("Softness", V)} />
-          </>
-        ) : (
-          <>
-            <SliderRow Label="Emitter Width" Value={Values.Width ?? 2.0} Min={0.3} Max={9.0} Step={0.05} Unit=" m" OnChange={(V) => Change("Width", V)} />
-            <SliderRow Label="Emitter Height" Value={Values.Height ?? 1.5} Min={0.3} Max={6.0} Step={0.05} Unit=" m" OnChange={(V) => Change("Height", V)} />
-          </>
-        )}
-      </section>
-    </div>
+    <details open className="generic-card">
+      <summary>Car Configurator Studio Rig</summary>
+      {NativeSwitch("Showroom Orbit (Play Mode)", Values.ShowroomOrbit !== false, (V) => Change("ShowroomOrbit", V))}
+      {NativeSlider("Orbit Speed", Values.OrbitSpeedDegPerSec ?? 7.5, 0, 30, "°/s", 1, (V) => Change("OrbitSpeedDegPerSec", V))}
+      <div className="studio-quick-bar">
+        {ConfiguratorPresets.map((Preset, Index) => (
+          <button
+            key={Preset.Id}
+            type="button"
+            className={"studio-quick-btn" + (ActivePreset === Index ? " on" : "")}
+            onClick={() => SelectPreset && SelectPreset(Index)}
+          >
+            {Preset.Key} · {Preset.Label}
+          </button>
+        ))}
+        <button type="button" className="studio-quick-btn" onClick={ReplayIntro}>
+          ↺ Replay 3.8 s Intro
+        </button>
+      </div>
+    </details>
   );
 }
+
+// Add-on native card appended below Project-Zero's EXISTING Light Inspector cards
+export function StudioLightExtensionCard({ Subject, Rows, Values, Change, Select }) {
+  const ParentRow = Subject.Parent ? Rows.find((R) => R.Id === Subject.Parent) : null;
+  const IsIes = Subject.ReferenceType === "ieslight" || Values.LightKind === "IES";
+  return (
+    <details open className="generic-card">
+      <summary>Studio Rig Coupling</summary>
+      {NativeReadout("Direction Source", ParentRow ? "Locked to " + ParentRow.Name : "Local transform")}
+      {IsIes && (
+        <>
+          {NativeSelect("Studio Polar Lobe", IesProfiles, Values.IesProfile || "Barn-Door Fresnel", (V) => Change("IesProfile", V))}
+          {NativeSlider("Beam Edge Softness", Values.Softness ?? 0.35, 0.05, 0.95, "", 2, (V) => Change("Softness", V))}
+        </>
+      )}
+      {ParentRow && (
+        <div className="studio-child-list">
+          <button
+            type="button"
+            className="studio-child-link"
+            onClick={() => Select && Select(ParentRow.Id)}
+          >
+            <span className="studio-child-title">
+              <Icon Name={ParentRow.Icon} Size={18} />
+              <span>Select Parent · {ParentRow.Name}</span>
+            </span>
+            <small>Fixture</small>
+          </button>
+        </div>
+      )}
+    </details>
+  );
+}
+
+export { ComputeAimAngles, HeroCarAimTarget };

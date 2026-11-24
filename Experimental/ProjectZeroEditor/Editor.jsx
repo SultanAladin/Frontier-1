@@ -51,7 +51,8 @@ import StudioViewport from "./StudioViewport.jsx";
 import {
   StudioVehicleInspector,
   StudioProceduralInspector,
-  StudioLightInspectorBlock,
+  StudioCameraExtensionCard,
+  StudioLightExtensionCard,
 } from "./StudioInspectorPanel.jsx";
 import {
   StudioLevels,
@@ -59,6 +60,9 @@ import {
   StudioLobbyInitialValues,
   ConfiguratorPresets,
   ComputeTripodMountHeight,
+  ComputeAimAngles,
+  HeroCarAimTarget,
+  ResolveStudioHierarchy,
 } from "./StudioLobbyScene.js";
 import "./Editor.css";
 const InitialRows = [
@@ -216,7 +220,7 @@ const DebugViews = [
   "Patch Tiles",
   "Tiles + Wireframe",
 ];
-const StorageKey = "Frontier.ProjectZeroStudioLobby.v1";
+const StorageKey = "Frontier.ProjectZeroStudioLobby.v2";
 function Restore() {
   try {
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
@@ -857,6 +861,26 @@ function App() {
             Notes: Record.Notes,
           },
         };
+        // Sync native Rect Area Light width/height back to parent procedural fixture in Studio Lobby
+        const EditedRow = Rows.find((Row) => Row.Id === Record.Id);
+        if (
+          EditedRow?.Panel === "light" &&
+          EditedRow.Parent &&
+          Next[EditedRow.Parent]?.ProceduralKind === "studio.light_fixture"
+        ) {
+          if (Number.isFinite(Record.Properties?.width)) {
+            Next[EditedRow.Parent] = {
+              ...Next[EditedRow.Parent],
+              ApertureWidth: Record.Properties.width,
+            };
+          }
+          if (Number.isFinite(Record.Properties?.height)) {
+            Next[EditedRow.Parent] = {
+              ...Next[EditedRow.Parent],
+              ApertureHeight: Record.Properties.height,
+            };
+          }
+        }
       }
       return Next;
     });
@@ -932,21 +956,74 @@ function App() {
           [Key]: Key === "Fracture" ? { ...Value, EditedAt: Date.now() } : Value,
         },
       };
-      // Sync fixture aperture changes to its child studio Area Light automatically
+      // Sync fixture aperture changes to its child studio Area Light (and native ReferencePanel props)
       if (Key === "ApertureWidth" || Key === "ApertureHeight") {
         const ChildLight = Rows.find(
           (Row) => Row.Parent === Selected && Row.Panel === "light",
         );
         if (ChildLight) {
           const LightKey = Key === "ApertureWidth" ? "Width" : "Height";
+          const RefKey = Key === "ApertureWidth" ? "width" : "height";
+          const PrevChild = Next[ChildLight.Id] || {};
           Next[ChildLight.Id] = {
-            ...Next[ChildLight.Id],
+            ...PrevChild,
             [LightKey]: Value,
+            ReferenceInspector: PrevChild.ReferenceInspector
+              ? {
+                  ...PrevChild.ReferenceInspector,
+                  Properties: {
+                    ...PrevChild.ReferenceInspector.Properties,
+                    [RefKey]: Value,
+                  },
+                }
+              : PrevChild.ReferenceInspector,
           };
         }
       }
       return Next;
     });
+  const AimRigAtHero = (TargetId) => {
+    const HeroPos = Values["vehicle-hero"]?.Position || [0, 0, -0.15];
+    const AimTarget = [HeroPos[0], HeroPos[1] + HeroCarAimTarget[1], HeroPos[2]];
+    const Hierarchy = ResolveStudioHierarchy(Rows, Values, Hidden);
+    const TargetRow = Rows.find((R) => R.Id === TargetId);
+    const TripodId =
+      Values[TargetId]?.ProceduralKind === "studio.tripod"
+        ? TargetId
+        : TargetRow?.Parent && Values[TargetRow.Parent]?.ProceduralKind === "studio.tripod"
+          ? TargetRow.Parent
+          : TargetId;
+    const ChildRow = Rows.find((R) => R.Parent === TripodId && R.Panel === "studio-procedural");
+    const FromPos = Hierarchy[ChildRow?.Id || TripodId]?.Position || Values[TripodId]?.Position || [0, 1.8, 0];
+    const MountOffsetY = ChildRow ? 0.22 : ComputeTripodMountHeight(Values[TripodId]) + 0.22;
+    const EffectiveFrom = ChildRow
+      ? [FromPos[0], FromPos[1] + 0.22, FromPos[2]]
+      : [FromPos[0], FromPos[1] + MountOffsetY, FromPos[2]];
+    const { YawDeg, PitchDeg } = ComputeAimAngles(EffectiveFrom, AimTarget);
+
+    AssignValues((Previous) => {
+      const Next = { ...Previous };
+      Next[TripodId] = {
+        ...Next[TripodId],
+        YawDeg,
+        HeadTiltDeg: PitchDeg,
+        Rotation: [PitchDeg, YawDeg, 0],
+      };
+      if (ChildRow) {
+        const ChildVal = Next[ChildRow.Id] || {};
+        Next[ChildRow.Id] = {
+          ...ChildVal,
+          YawDeg: 0,
+          Rotation: [PitchDeg, 0, 0],
+          ...(ChildVal.ProceduralKind === "studio.light_fixture"
+            ? { YokeTiltDeg: PitchDeg }
+            : { PitchDeg }),
+        };
+      }
+      return Next;
+    });
+    Toast("Aimed rig directly at Hero Coupe (" + YawDeg + "° yaw, " + PitchDeg + "° pitch)");
+  };
   useEffect(() => {
     document
       .querySelector(".outliner-row.selected")
@@ -2064,6 +2141,8 @@ function App() {
               Subject={Subject}
               Values={Values[Selected] || {}}
               Change={Change}
+              Hidden={Hidden[Selected]}
+              ToggleHidden={() => ToggleHidden(Selected)}
               OnFocus={() => SetFocusNonce((N) => N + 1)}
             />
           ) : Subject.Panel === "studio-procedural" ? (
@@ -2073,67 +2152,90 @@ function App() {
               AllValues={Values}
               Values={Values[Selected] || {}}
               Change={Change}
+              Hidden={Hidden[Selected]}
+              ToggleHidden={() => ToggleHidden(Selected)}
               Select={SelectRow}
               OnFocus={() => SetFocusNonce((N) => N + 1)}
+              OnAimAtHero={AimRigAtHero}
             />
           ) : (
             <>
-              {Subject.Panel === "light" && LevelId === "studio-lobby" && (
-                <StudioLightInspectorBlock
+              <Inspector
+                Subject={Subject}
+                Values={Values[Selected] || {}}
+                Change={Change}
+                Hidden={Hidden[Selected]}
+                ToggleHidden={() => ToggleHidden(Selected)}
+                OpenShader={() => OpenShader(Selected)}
+                OpenFracture={() => {
+                  try {
+                    OpenFracture(Subject, Values[Selected] || {});
+                  } catch {
+                    Toast(
+                      "Browser storage is unavailable; cannot open the object fracture editor.",
+                    );
+                  }
+                }}
+                OpenWind={() => {
+                  WindOpener.current = document.activeElement;
+                  EditWind(Selected);
+                }}
+                OpenWindField={(Id) => {
+                  WindOpener.current = document.activeElement;
+                  EditWind(Id);
+                }}
+                WindFields={WindFields}
+                AllValues={Values}
+                AllHidden={Hidden}
+                ReferenceDetailCards={
+                  Subject.Panel === "light" && !Subject.ReferenceOnly
+                    ? ReferenceCards("details")
+                    : null
+                }
+                CloudCoverageCards={
+                  ["clouds", "local-cloud"].includes(Subject.Panel)
+                    ? ReferenceCards("coverage")
+                    : null
+                }
+                ReferenceCards={
+                  ["sun", "wind", "clouds", "local-cloud", "light"].includes(
+                    Subject.Panel,
+                  )
+                    ? ReferenceCards(
+                        Subject.Panel === "light" && !Subject.ReferenceOnly
+                          ? "summary"
+                          : undefined,
+                      )
+                    : null
+                }
+              />
+              {Subject.Panel === "camera" && LevelId === "studio-lobby" && (
+                <StudioCameraExtensionCard
                   Subject={Subject}
                   Values={Values[Selected] || {}}
                   Change={Change}
+                  ActivePreset={ActivePreset}
+                  SelectPreset={(Idx) => {
+                    SetActivePreset(Idx);
+                    Toast("Camera preset · " + ConfiguratorPresets[Idx].Label);
+                  }}
+                  ReplayIntro={() => {
+                    SetRunMode("PLAY");
+                    SetPaused(false);
+                    SetActivePreset(null);
+                    SetIntroNonce((N) => N + 1);
+                  }}
                 />
               )}
-              <Inspector
-              Subject={Subject}
-              Values={Values[Selected] || {}}
-              Change={Change}
-              Hidden={Hidden[Selected]}
-              ToggleHidden={() => ToggleHidden(Selected)}
-              OpenShader={() => OpenShader(Selected)}
-              OpenFracture={() => {
-                try {
-                  OpenFracture(Subject, Values[Selected] || {});
-                } catch {
-                  Toast(
-                    "Browser storage is unavailable; cannot open the object fracture editor.",
-                  );
-                }
-              }}
-              OpenWind={() => {
-                WindOpener.current = document.activeElement;
-                EditWind(Selected);
-              }}
-              OpenWindField={(Id) => {
-                WindOpener.current = document.activeElement;
-                EditWind(Id);
-              }}
-              WindFields={WindFields}
-              AllValues={Values}
-              AllHidden={Hidden}
-              ReferenceDetailCards={
-                Subject.Panel === "light" && !Subject.ReferenceOnly
-                  ? ReferenceCards("details")
-                  : null
-              }
-              CloudCoverageCards={
-                ["clouds", "local-cloud"].includes(Subject.Panel)
-                  ? ReferenceCards("coverage")
-                  : null
-              }
-              ReferenceCards={
-                ["sun", "wind", "clouds", "local-cloud", "light"].includes(
-                  Subject.Panel,
-                )
-                  ? ReferenceCards(
-                      Subject.Panel === "light" && !Subject.ReferenceOnly
-                        ? "summary"
-                        : undefined,
-                    )
-                  : null
-              }
-            />
+              {Subject.Panel === "light" && LevelId === "studio-lobby" && (
+                <StudioLightExtensionCard
+                  Subject={Subject}
+                  Rows={Rows}
+                  Values={Values[Selected] || {}}
+                  Change={Change}
+                  Select={SelectRow}
+                />
+              )}
             </>
           )}
           {![

@@ -11,6 +11,7 @@ import {
   EvaluateOpeningReveal,
   ComputeTripodMountHeight,
   ResolveStudioHierarchy,
+  HeroCarAimTarget,
   FixtureStyles,
   CinemaCameraStyles,
 } from "./StudioLobbyScene.js";
@@ -90,7 +91,36 @@ assert.ok(
   Math.abs(ComputeTripodMountHeight(RaisedValues["rig-key-tripod"]) - ComputeTripodMountHeight(StudioLobbyInitialValues["rig-key-tripod"]) - 0.5) < 1e-5,
   "ComputeTripodMountHeight matches delta",
 );
-console.log("PASS [3/6] 3 vehicles, 6 shared tripods, and parent->child->grandchild mount propagation verified");
+// 3b. Verify EVERY tripod-mounted camera & light rig aims DEAD-ON at Hero Coupe (dot > 0.99)!
+const AimedIds = [
+  "rig-key-fixture",
+  "light-key-ies",
+  "rig-umbrella-fixture",
+  "light-umbrella-area",
+  "rig-rim-fixture",
+  "light-rim-area",
+  "rig-accent-fixture",
+  "light-accent-ies",
+  "rig-cam-a-body",
+  "cam-configurator",
+  "rig-cam-b-body",
+  "cam-profile",
+];
+for (const Id of AimedIds) {
+  const Xf = HierBase[Id];
+  assert.ok(Xf && Xf.Forward, Id + " resolved with Forward vector");
+  const From = [Xf.Position[0], Xf.Position[1] + 0.16, Xf.Position[2]];
+  const ToX = HeroCarAimTarget[0] - From[0];
+  const ToY = HeroCarAimTarget[1] - From[1];
+  const ToZ = HeroCarAimTarget[2] - From[2];
+  const Len = Math.hypot(ToX, ToY, ToZ) || 1;
+  const Dot = (Xf.Forward[0] * ToX + Xf.Forward[1] * ToY + Xf.Forward[2] * ToZ) / Len;
+  assert.ok(
+    Dot > 0.99,
+    `${Id} must face Hero Coupe (dot=${Dot.toFixed(4)}, fwd=${Xf.Forward.map((V) => V.toFixed(2))})`,
+  );
+}
+console.log("PASS [3/6] 3 vehicles, 6 shared tripods, mount propagation & 12/12 camera/light aim directions verified (dot > 0.99)");
 
 // 4. Verify Opening Reveal curve & 6 Configurator Presets
 assert.equal(ConfiguratorPresets.length, 6, "6 Car Configurator Camera presets");
@@ -192,7 +222,11 @@ assert.ok(TreeText.includes("Liquid Tourer"), "Outliner lists Liquid Tourer");
 assert.ok(TreeText.includes("Key Fresnel Tripod"), "Outliner lists Key Fresnel Tripod");
 assert.ok(TreeText.includes("Overhead Softbox Bank"), "Outliner lists Overhead Softbox Bank");
 
-// Click Key Fresnel Tripod -> verify StudioProceduralInspector renders shared instances count
+// Confirm custom studio vector icons rendered in Outliner
+const StudioIcons = Doc.querySelectorAll(".studio-vector-icon");
+assert.ok(StudioIcons.length >= 12, "Custom studio SVG icons rendered in Outliner (" + StudioIcons.length + ")");
+
+// Click Key Fresnel Tripod -> verify reused native TransformPanel + shared instances + Aim at Hero Car
 const TripodItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
   El.textContent.includes("Key Fresnel Tripod"),
 );
@@ -202,6 +236,49 @@ await new Promise((Resolve) => setTimeout(Resolve, 60));
 const InspectorText = Doc.querySelector(".inspector-scroll")?.textContent || "";
 assert.ok(InspectorText.includes("6 SHARED INSTANCES"), "Procedural inspector reports 6 shared tripod instances");
 assert.ok(InspectorText.includes("Mount Height"), "Procedural inspector shows live tripod mount height");
+assert.ok(Doc.querySelector(".inspector-scroll .transform-card"), "Procedural inspector reuses native TransformPanel");
+assert.ok(InspectorText.includes("Aim at Hero Car"), "Procedural inspector includes Aim at Hero Car action");
+
+// Click Car Configurator Camera -> verify reused native Camera cards + Studio add-on card
+const CamItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
+  El.textContent.includes("Car Configurator Camera"),
+);
+assert.ok(CamItem, "Found Car Configurator Camera row");
+CamItem.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+const CamText = Doc.querySelector(".inspector-scroll")?.textContent || "";
+assert.ok(CamText.includes("Lens + field of view"), "Reuses native Camera Lens card");
+assert.ok(CamText.includes("Aperture study"), "Reuses native Camera Aperture card");
+assert.ok(CamText.includes("Subject plane + sharpness"), "Reuses native Camera DepthOfField card");
+assert.ok(CamText.includes("Car Configurator Studio Rig"), "Appends Studio Camera add-on card");
+
+// Click Key Fresnel IES Light -> verify reused native ReferencePanel (ieslight) + Studio coupling card
+const IesItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
+  El.textContent.includes("Key Fresnel IES Light"),
+);
+assert.ok(IesItem, "Found Key Fresnel IES Light row");
+IesItem.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.ok(
+  Doc.querySelector('.inspector-scroll [data-reference-kind="ieslight"]'),
+  "Key Fresnel IES Light reuses native ieslight ReferencePanel",
+);
+assert.ok(
+  (Doc.querySelector(".inspector-scroll")?.textContent || "").includes("Studio Rig Coupling"),
+  "IES Light includes Studio Rig Coupling add-on card",
+);
+
+// Click Overhead Softbox Area Light -> verify reused native ReferencePanel (arealight)
+const AreaItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
+  El.textContent.includes("Overhead Softbox Area Light"),
+);
+assert.ok(AreaItem, "Found Overhead Softbox Area Light row");
+AreaItem.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.ok(
+  Doc.querySelector('.inspector-scroll [data-reference-kind="arealight"]'),
+  "Overhead Softbox Area Light reuses native arealight ReferencePanel",
+);
 
 // Verify Pause button works in Play mode
 const PauseBtn = Doc.querySelector('[aria-label="Pause Play"]');

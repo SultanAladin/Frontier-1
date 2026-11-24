@@ -574,45 +574,59 @@ function ConstructCinemaCamera(Params) {
   const ReelR = Number(Params.ReelRadius ?? 0.13);
   const HasMatte = Params.MatteBox !== false;
   const HasHandle = Params.TopHandle !== false;
+  const Tilt = ((Number(Params.PitchDeg ?? 0)) * Math.PI) / 180;
+  const CosT = Math.cos(Tilt);
+  const SinT = Math.sin(Tilt);
+  const PivotY = 0.12;
+
+  // Pitch local point around tripod head pivot (positive Tilt aims lens +Z downward)
+  const AimPt = (X, Y, Z) => {
+    const Dy = Y - PivotY;
+    return [
+      X,
+      PivotY + Dy * CosT - Z * SinT,
+      Dy * SinT + Z * CosT,
+    ];
+  };
 
   // Base dovetail riser sitting directly on tripod mount plate
-  B.AddBox([0, 0.03, 0], [0.08, 0.024, 0.12], SurfaceMaterialCode.DarkMetal);
+  B.AddBox(AimPt(0, 0.03, 0), [0.08, 0.024, 0.12], SurfaceMaterialCode.DarkMetal, Tilt, 0, 0);
 
   if (Style === "Cinema Matte Box") {
     // Classic twin-magazine motion-picture camera silhouette (Ref Image 1!)
-    B.AddBox([0, 0.17, -0.02], [0.11, 0.115, 0.18], SurfaceMaterialCode.DarkMetal);
+    B.AddBox(AimPt(0, 0.17, -0.02), [0.11, 0.115, 0.18], SurfaceMaterialCode.DarkMetal, Tilt, 0, 0);
     // Twin film magazine reels mounted angled above body
     for (const [Rz, Ry] of [[-0.12, 0.36], [0.1, 0.35]]) {
-      B.AddTube([-0.055, Ry, Rz], [0.055, Ry, Rz], ReelR, ReelR, 20, SurfaceMaterialCode.DarkMetal);
-      B.AddTube([-0.062, Ry, Rz], [0.062, Ry, Rz], ReelR * 0.34, ReelR * 0.34, 14, SurfaceMaterialCode.ChromeMetal);
+      B.AddTube(AimPt(-0.055, Ry, Rz), AimPt(0.055, Ry, Rz), ReelR, ReelR, 20, SurfaceMaterialCode.DarkMetal);
+      B.AddTube(AimPt(-0.062, Ry, Rz), AimPt(0.062, Ry, Rz), ReelR * 0.34, ReelR * 0.34, 14, SurfaceMaterialCode.ChromeMetal);
     }
     // Side follow-focus wheel + viewfinder
-    B.AddTube([-0.115, 0.16, 0.04], [-0.155, 0.16, 0.04], 0.045, 0.045, 14, SurfaceMaterialCode.RubberMat);
-    B.AddTube([-0.07, 0.21, -0.18], [-0.09, 0.22, -0.32], 0.026, 0.036, 12, SurfaceMaterialCode.RubberMat);
+    B.AddTube(AimPt(-0.115, 0.16, 0.04), AimPt(-0.155, 0.16, 0.04), 0.045, 0.045, 14, SurfaceMaterialCode.RubberMat);
+    B.AddTube(AimPt(-0.07, 0.21, -0.18), AimPt(-0.09, 0.22, -0.32), 0.026, 0.036, 12, SurfaceMaterialCode.RubberMat);
   } else if (Style === "Medium Format Tether") {
-    B.AddBox([0, 0.15, -0.01], [0.095, 0.095, 0.11], SurfaceMaterialCode.DarkMetal);
-    B.AddBox([0, 0.26, -0.04], [0.065, 0.035, 0.075], SurfaceMaterialCode.DarkMetal);
-    B.AddBox([0, 0.15, -0.125], [0.065, 0.045, 0.008], SurfaceMaterialCode.TetherScreen);
+    B.AddBox(AimPt(0, 0.15, -0.01), [0.095, 0.095, 0.11], SurfaceMaterialCode.DarkMetal, Tilt, 0, 0);
+    B.AddBox(AimPt(0, 0.26, -0.04), [0.065, 0.035, 0.075], SurfaceMaterialCode.DarkMetal, Tilt, 0, 0);
+    B.AddBox(AimPt(0, 0.15, -0.125), [0.065, 0.045, 0.008], SurfaceMaterialCode.TetherScreen, Tilt, 0, 0);
   } else {
-    B.AddBox([0, 0.12, 0], [0.075, 0.065, 0.055], SurfaceMaterialCode.DarkMetal);
+    B.AddBox(AimPt(0, 0.12, 0), [0.075, 0.065, 0.055], SurfaceMaterialCode.DarkMetal, Tilt, 0, 0);
   }
 
   // Cinema prime lens barrel + focus gear rings + front glass optic
   const LensStartZ = 0.14;
   const LensEndZ = LensStartZ + LensLen;
-  B.AddTube([0, 0.16, LensStartZ], [0, 0.16, LensEndZ], 0.058, 0.064, 18, SurfaceMaterialCode.DarkMetal);
-  B.AddTube([0, 0.16, LensStartZ + LensLen * 0.35], [0, 0.16, LensStartZ + LensLen * 0.52], 0.069, 0.069, 18, SurfaceMaterialCode.RubberMat);
-  B.AddTube([0, 0.16, LensEndZ - 0.012], [0, 0.16, LensEndZ + 0.008], 0.052, 0.052, 16, SurfaceMaterialCode.CarGlass);
+  B.AddTube(AimPt(0, 0.16, LensStartZ), AimPt(0, 0.16, LensEndZ), 0.058, 0.064, 18, SurfaceMaterialCode.DarkMetal);
+  B.AddTube(AimPt(0, 0.16, LensStartZ + LensLen * 0.35), AimPt(0, 0.16, LensStartZ + LensLen * 0.52), 0.069, 0.069, 18, SurfaceMaterialCode.RubberMat);
+  B.AddTube(AimPt(0, 0.16, LensEndZ - 0.012), AimPt(0, 0.16, LensEndZ + 0.008), 0.052, 0.052, 16, SurfaceMaterialCode.CarGlass);
 
   // Flared cinema matte box & French flag
   if (HasMatte) {
     const Mz = LensEndZ + 0.045;
-    B.AddBox([0, 0.16, Mz], [0.13, 0.095, 0.045], SurfaceMaterialCode.DarkMetal);
-    B.AddBox([0, 0.265, Mz + 0.055], [0.135, 0.006, 0.065], SurfaceMaterialCode.DarkMetal, -0.35, 0, 0);
+    B.AddBox(AimPt(0, 0.16, Mz), [0.13, 0.095, 0.045], SurfaceMaterialCode.DarkMetal, Tilt, 0, 0);
+    B.AddBox(AimPt(0, 0.265, Mz + 0.055), [0.135, 0.006, 0.065], SurfaceMaterialCode.DarkMetal, Tilt - 0.35, 0, 0);
   }
 
   if (HasHandle) {
-    B.AddTube([0, 0.29, -0.09], [0, 0.29, 0.1], 0.014, 0.014, 10, SurfaceMaterialCode.DarkMetal);
+    B.AddTube(AimPt(0, 0.29, -0.09), AimPt(0, 0.29, 0.1), 0.014, 0.014, 10, SurfaceMaterialCode.DarkMetal);
   }
 
   return B.Finish();

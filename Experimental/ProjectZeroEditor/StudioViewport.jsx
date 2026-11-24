@@ -157,6 +157,14 @@ export default function StudioViewport({
       const ConfigCam = CurValues["cam-configurator"] || {};
       const OrbitDegSec = Number(ConfigCam.OrbitSpeedDegPerSec ?? 7.5);
       const ShowroomOrbit = ConfigCam.ShowroomOrbit !== false;
+      // Live optical FOV from Project-Zero's native Camera Inspector Focal Length & Sensor Width!
+      const NativeFocal = Number(ConfigCam["Focal Length"] ?? 36);
+      const NativeSensor = Number(ConfigCam["Sensor Width"] ?? 36);
+      const NativeVertFov =
+        (2 * Math.atan(NativeSensor / (16 / 9) / (2 * Math.max(10, NativeFocal))) * 180) / Math.PI;
+      if (View === 1 && (Cam.ManualControl || (!Cam.PresetGlide && Cam.IntroElapsed >= OpeningRevealDurationSec))) {
+        Cam.FovDeg = Lerp(Cam.FovDeg, NativeVertFov, 1 - Math.exp(-Dt * 10));
+      }
 
       let Phase = CurMode === "PLAY" ? (IsPaused ? "Paused" : "Showroom Orbit") : "Free Orbit";
 

@@ -157,6 +157,111 @@ export function Glyph({ Name, Size = 18 }) {
     </svg>
   );
 }
+function StudioVectorIcon({ Name, Size = 24 }) {
+  const Accent = {
+    "studio-vehicle": "#7ab8ff",
+    "studio-tripod": "#a7b4c8",
+    "studio-softbox": "#f7dc7a",
+    "studio-fresnel": "#f7c46c",
+    "studio-umbrella": "#d8e3f5",
+    "studio-led-panel": "#9cd6ff",
+    "studio-octa": "#f5d47a",
+    "studio-cinema-camera": "#82c8ff",
+    "studio-cyclorama": "#b9c4d6",
+    "studio-floor-grid": "#8c9bb0",
+    "studio-ceiling-truss": "#97a3b5",
+    "studio-workstation": "#a3c6b1",
+  }[Name];
+  if (!Accent) return null;
+  return (
+    <span
+      className="native-icon studio-vector-icon"
+      data-native-icon={Name}
+      style={{ color: Accent, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <svg
+        width={Size}
+        height={Size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {Name === "studio-vehicle" ? (
+          <>
+            <path d="M2.5 14.5h19v-1.8c0-.9-.5-1.6-1.4-1.9l-3.4-1-2.5-2.6c-.7-.7-1.7-1.1-2.7-1.1H7.9c-.9 0-1.8.4-2.4 1.1L3.7 9.6c-.7.4-1.2 1.2-1.2 2.1Z" />
+            <circle cx="6.8" cy="15.5" r="2.1" fill="#171717" />
+            <circle cx="17.2" cy="15.5" r="2.1" fill="#171717" />
+            <path d="M6.8 9.7h8.2" opacity="0.65" />
+          </>
+        ) : Name === "studio-tripod" ? (
+          <>
+            <rect x="9" y="3.5" width="6" height="2.6" rx="1" />
+            <path d="M12 6.1v11.4M12 9.5 5.2 20.5M12 9.5l6.8 11M8.2 15.6h7.6" />
+          </>
+        ) : Name === "studio-softbox" ? (
+          <>
+            <path d="M6 3v3.2M18 3v3.2" opacity="0.7" />
+            <path d="M3.2 6.2h17.6l-1.8 4.6H5Z" fill="currentColor" fillOpacity="0.16" />
+            <path d="M7.5 14.2v3M12 14.2v4.3M16.5 14.2v3" opacity="0.75" />
+          </>
+        ) : Name === "studio-fresnel" ? (
+          <>
+            <rect x="4" y="8" width="9" height="8" rx="1.6" />
+            <path d="m13 8.4 5.5-2.6v12.4L13 15.6" fill="currentColor" fillOpacity="0.14" />
+            <path d="M8.5 16v4.5M6 20.5h5" opacity="0.75" />
+          </>
+        ) : Name === "studio-umbrella" ? (
+          <>
+            <path d="M4.5 12.5a7.5 7.5 0 0 1 13.8-4.1" fill="currentColor" fillOpacity="0.16" />
+            <path d="m11.4 8.4 6.2 10.6M4.5 12.5l13.8-4.1" />
+            <path d="M8.2 11.4 11.4 8.4M14.7 9.5 11.4 8.4" opacity="0.65" />
+          </>
+        ) : Name === "studio-led-panel" ? (
+          <>
+            <rect x="4.5" y="5" width="15" height="10" rx="1.6" fill="currentColor" fillOpacity="0.14" />
+            <path d="M8.5 8.5h7M8.5 11.5h7M7 15v2.8h10V15M12 17.8V21" />
+          </>
+        ) : Name === "studio-octa" ? (
+          <>
+            <polygon points="8.5,4 15.5,4 20,8.5 20,15.5 15.5,20 8.5,20 4,15.5 4,8.5" fill="currentColor" fillOpacity="0.14" />
+            <circle cx="12" cy="12" r="2.6" />
+          </>
+        ) : Name === "studio-cinema-camera" ? (
+          <>
+            <circle cx="8" cy="6.4" r="2.6" />
+            <circle cx="13.8" cy="6.4" r="2.6" />
+            <rect x="4.2" y="9.2" width="11.6" height="7.6" rx="1.5" />
+            <path d="m15.8 11 4.4-1.8v7.6L15.8 15M8.5 16.8 6.5 21M12 16.8l2 4.2" />
+          </>
+        ) : Name === "studio-cyclorama" ? (
+          <>
+            <path d="M4.5 4.5v8.2a6.8 6.8 0 0 0 6.8 6.8h8.2" />
+            <path d="M8.5 4.5v6.4a4.6 4.6 0 0 0 4.6 4.6h6.4" opacity="0.55" />
+          </>
+        ) : Name === "studio-floor-grid" ? (
+          <>
+            <path d="m3 18.5 4.2-11h9.6L21 18.5Z" />
+            <path d="M5.4 12.6h13.2M9.6 7.5 8 18.5M14.4 7.5 16 18.5" opacity="0.7" />
+          </>
+        ) : Name === "studio-ceiling-truss" ? (
+          <>
+            <path d="M2.5 7.5h19M2.5 14.5h19M4.5 7.5l4 7 4-7 4 7 3-7" />
+          </>
+        ) : (
+          <>
+            <path d="M3.5 11.5h17M6 11.5l-1.5 8M18 11.5l1.5 8" />
+            <path d="M8.5 11.5V6.5h7v5" fill="currentColor" fillOpacity="0.14" />
+            <rect x="11" y="14.5" width="5.5" height="4" rx="0.8" opacity="0.8" />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
 export function Icon({ Name, Size = 24 }) {
   if (Name === "outliner-precipitation")
     return (
@@ -168,6 +273,8 @@ export function Icon({ Name, Size = 24 }) {
         <ActionIcon Name="rain" Size={Size} />
       </span>
     );
+  const CustomStudio = StudioVectorIcon({ Name, Size });
+  if (CustomStudio) return CustomStudio;
   const Source = window.NativeAssets?.Icons[Name];
   return Source ? (
     <img
