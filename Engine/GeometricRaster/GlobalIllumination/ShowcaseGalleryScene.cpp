@@ -2603,6 +2603,10 @@ OutlinerSlotToken PickShowcaseGalleryEntryAtUv(
         {
             continue;
         }
+        if (Obj.StableIdentifier == "ground-plane")
+        {
+            continue; // Backdrop ground deck remains selectable in Outliner; clicking open floor/sky in viewport deselects cleanly
+        }
         if (Obj.ClusterInstanceIndex >= Bundle.Scene.ClusterInstances.size())
         {
             continue;

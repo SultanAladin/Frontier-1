@@ -94,6 +94,9 @@ struct WorldRenderConfiguration
     float                                 NanitePixelError       = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
     int32_t                               NaniteForcedLodLevel   = -1;    // [lvl]  - -1 = automatic cut, >= 0 = force exact pyramid level
     bool                                  NaniteWireframeOverlay = false; // [-]    - Analytical triangle edge wireframe overlay across active view
+    uint32_t                              SelectedClusterInstanceIndex = UINT32_MAX;          // [idx] - Highlighted ClusterInstances[] index (UINT32_MAX => none)
+    Mathematics::Scalar3D                 SelectionOutlineColor        { 1.00f, 0.58f, 0.08f }; // [rgb] - Linear/sRGB-calibrated selection silhouette color
+    float                                 SelectionOutlineWidthPx      = 2.0f;                // [px]  - Silhouette outline thickness in pixels [1..3]
 };
 
 struct WorldSceneSpecification

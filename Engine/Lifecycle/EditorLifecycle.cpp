@@ -1184,13 +1184,35 @@ void EditorLifecycle::ProcessShowcaseViewportInteraction(
                     *ShowcaseBundle,
                     NormU,
                     NormV);
-                if (Picked.Valid() && Picked != Panes->Outliner.QueryPrimarySelection())
+                if (Picked.Valid())
                 {
-                    Panes->Outliner.SelectSingle(Picked);
+                    if (Picked != Panes->Outliner.QueryPrimarySelection())
+                    {
+                        Panes->Outliner.SelectSingle(Picked);
+                        SynchronizeShowcaseGizmoAnchor();
+                        PendingInteractionWorldRefresh = true;
+                        GizmoOverlayOnly               = true;
+                    }
+                }
+                else if (Panes->Outliner.QueryPrimarySelection().Valid() || LastGizmoSlot.Valid())
+                {
+                    Panes->Outliner.ClearSelection();
                     SynchronizeShowcaseGizmoAnchor();
-                    GizmoOverlayOnly = true;
+                    PendingInteractionWorldRefresh = true;
+                    GizmoOverlayOnly               = true;
                 }
             }
+        }
+    }
+
+    if (!Io.WantTextInput && !WorldTransformGizmo.QueryDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+    {
+        if (Panes->Outliner.QueryPrimarySelection().Valid() || LastGizmoSlot.Valid())
+        {
+            Panes->Outliner.ClearSelection();
+            SynchronizeShowcaseGizmoAnchor();
+            PendingInteractionWorldRefresh = true;
+            GizmoOverlayOnly               = true;
         }
     }
 
@@ -2367,8 +2389,29 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.NaniteForcedLodLevel   = DisplayCfg.ClusterForcedLodLevel;
     RenderConfig.NaniteWireframeOverlay = DisplayCfg.ClusterWireframeOverlay;
     RenderConfig.QualityTier            = QTier;
-    RenderConfig.ReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
-    RenderConfig.RaytracingEnabled  = DisplayCfg.RaytracingEnabled;
+    RenderConfig.ReflectionsEnabled     = DisplayCfg.ReflectionsEnabled;
+    RenderConfig.RaytracingEnabled      = DisplayCfg.RaytracingEnabled;
+    RenderConfig.SelectedClusterInstanceIndex = UINT32_MAX;
+    RenderConfig.SelectionOutlineColor        = { 1.00f, 0.58f, 0.08f };
+    RenderConfig.SelectionOutlineWidthPx      = 2.0f;
+    {
+        const OutlinerSlotToken PrimarySel = Panes->Outliner.QueryPrimarySelection();
+        LastOutlinedSlot                   = PrimarySel;
+        if (PrimarySel.Valid())
+        {
+            for (const auto& Obj : ShowcaseBundle->Objects)
+            {
+                if (Obj.SlotToken == PrimarySel && Obj.StableIdentifier != "ground-plane")
+                {
+                    if (Obj.ClusterInstanceIndex < ShowcaseBundle->Scene.ClusterInstances.size())
+                    {
+                        RenderConfig.SelectedClusterInstanceIndex = Obj.ClusterInstanceIndex;
+                    }
+                    break;
+                }
+            }
+        }
+    }
 
     std::vector<uint8_t> CleanWorldRgba {};
     uint32_t             OutWidthPx     = TraceW;
@@ -3061,7 +3104,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                  GpuWorldRenderer->QueryProgressiveSampleCount() < DisplayCfg.PathTraceTargetSpp);
             const bool DiagnosticsLiveActive =
                 Panes->Viewport.QueryDiagnosticsVisible() && !Panes->Viewport.QueryDiagnosticsPaused();
-            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || ProgressiveOrder3Active || DiagnosticsLiveActive)
+            const bool SelectionOutlineChanged = (CurrentSel != LastOutlinedSlot);
+            if (InteractionWorldRefresh || SceneMutated || DisplayChanged || SelectionOutlineChanged || ProgressiveOrder3Active || DiagnosticsLiveActive)
             {
                 FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
                 RefreshShowcaseViewportRaster();
@@ -3315,6 +3359,62 @@ void EditorLifecycle::PresentPrimaryEditorImGui(double Δt)
                                     : 60.0f;
         ContentBrowserDrawer.Render(Bounds, SafeStep, UiScale);
         ControlCentre.Render(Bounds, SafeStep, RefreshHz);
+
+        // Live GPU ImGui readout badge for active Transform / Rotate / Scale gizmo drags (~0.002 ms GPU)
+        if (WorldTransformGizmo.QueryDragging() && !WorldTransformGizmo.QueryActiveHudReadout().empty())
+        {
+            if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+            {
+                const Rectangle2D CanvasBounds = ActivePanes->Viewport.QueryLastCanvasPaneBounds();
+                if (CanvasBounds.Width >= 64.0f && CanvasBounds.Height >= 64.0f)
+                {
+                    PixelSpace HudOverlay(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, UiScale);
+                    const Point2D MouseLogical = HudOverlay.QueryMousePosition();
+                    const std::string& Label   = WorldTransformGizmo.QueryActiveHudReadout();
+                    const float FontSz         = 12.0f;
+                    const float TextW          = std::max(56.0f, HudOverlay.MeasureTextWidth(FontSz, Label.c_str()));
+                    const float PillW          = TextW + 22.0f;
+                    const float PillH          = 24.0f;
+                    const float ClampMinX      = CanvasBounds.X + 8.0f;
+                    const float ClampMaxX      = std::max(ClampMinX, CanvasBounds.Right() - PillW - 8.0f);
+                    const float ClampMinY      = CanvasBounds.Y + 8.0f;
+                    const float ClampMaxY      = std::max(ClampMinY, CanvasBounds.Bottom() - PillH - 8.0f);
+                    const float PillX          = std::clamp(MouseLogical.X + 18.0f, ClampMinX, ClampMaxX);
+                    const float PillY          = std::clamp(MouseLogical.Y - PillH - 12.0f, ClampMinY, ClampMaxY);
+                    const Rectangle2D PillRect { PillX, PillY, PillW, PillH };
+
+                    ColorRgba AccentColor { 255u, 255u, 255u, 255u };
+                    const auto ActiveH = WorldTransformGizmo.QueryActiveHandle();
+                    if (ActiveH == Editor::GizmoHandleOrdinal::TranslateX ||
+                        ActiveH == Editor::GizmoHandleOrdinal::ScaleX ||
+                        ActiveH == Editor::GizmoHandleOrdinal::RotateX)
+                    {
+                        AccentColor = { 224u, 20u, 20u, 255u };
+                    }
+                    else if (ActiveH == Editor::GizmoHandleOrdinal::TranslateY ||
+                             ActiveH == Editor::GizmoHandleOrdinal::ScaleY ||
+                             ActiveH == Editor::GizmoHandleOrdinal::RotateY)
+                    {
+                        AccentColor = { 18u, 212u, 10u, 255u };
+                    }
+                    else if (ActiveH == Editor::GizmoHandleOrdinal::TranslateZ ||
+                             ActiveH == Editor::GizmoHandleOrdinal::ScaleZ ||
+                             ActiveH == Editor::GizmoHandleOrdinal::RotateZ)
+                    {
+                        AccentColor = { 21u, 96u, 224u, 255u };
+                    }
+
+                    HudOverlay.FillRectangle(PillRect, ColorRgba{ 16u, 20u, 26u, 236u }, 6.0f);
+                    HudOverlay.StrokeRectangle(PillRect, AccentColor, 6.0f, 1.5f);
+                    HudOverlay.FillRectangle(Rectangle2D{ PillX + 4.0f, PillY + 5.0f, 3.0f, PillH - 10.0f }, AccentColor, 1.5f);
+                    HudOverlay.Text(
+                        Point2D{ PillX + 13.0f, PillY + 5.0f },
+                        FontSz,
+                        ColorRgba{ 242u, 246u, 252u, 255u },
+                        Label.c_str());
+                }
+            }
+        }
 
         if (ReturnToBrowserCallback && !ControlCentre.QueryOpen())
         {

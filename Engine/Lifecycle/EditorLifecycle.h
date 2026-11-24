@@ -259,6 +259,7 @@ private:
     Editor::TransformGizmo                                           WorldTransformGizmo  {}; // [-] - 13-handle 3D Slate GizmoPRO manipulator
     Mathematics::SpatialTransform                                    GizmoActiveTransform {}; // [-] - Working SpatialTransform during active drag
     OutlinerSlotToken                                                LastGizmoSlot        {}; // [id]- Slot currently anchored by WorldTransformGizmo
+    OutlinerSlotToken                                                LastOutlinedSlot     {}; // [id]- Slot currently highlighted by GPU silhouette outline
     Point2D                                                          LastPointerPosition  {}; // [px]- Previous frame viewport pointer coordinate
     float                                                            CameraFlySpeedScalar = 1.0f; // [x] - Unreal RMB+Wheel dynamic fly-speed multiplier
     Components::CameraLagComponent                                   EditorCameraLag    {};     // [-] - Reusable lag trailing the desired editor camera pose

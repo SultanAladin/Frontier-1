@@ -110,7 +110,8 @@ void AppendCylinderHandle(
     float                        Height,
     Mathematics::Scalar3D        Color,
     GizmoHandleOrdinal           Handle,
-    float                        ShadingWeight = 1.0f)
+    float                        ShadingWeight = 1.0f,
+    float                        Alpha         = 1.0f)
 {
     constexpr uint32_t Segments = 24u;
     Mathematics::Axis3D U {}, V {};
@@ -132,11 +133,84 @@ void AppendCylinderHandle(
         const Mathematics::Axis3D P01 = TopCenter + R0 * Radius;
         const Mathematics::Axis3D SideNormal = Mathematics::NormalizeAxis(R0 + R1);
 
-        AppendTriangle(OutStream, P00, P10, P11, SideNormal, Color, 1.0f, ShadingWeight, Handle);
-        AppendTriangle(OutStream, P00, P11, P01, SideNormal, Color, 1.0f, ShadingWeight, Handle);
-        AppendTriangle(OutStream, TopCenter, P01, P11, AxisDir, Color, 1.0f, ShadingWeight, Handle);
-        AppendTriangle(OutStream, BotCenter, P10, P00, AxisDir * -1.0f, Color, 1.0f, ShadingWeight, Handle);
+        AppendTriangle(OutStream, P00, P10, P11, SideNormal, Color, Alpha, ShadingWeight, Handle);
+        AppendTriangle(OutStream, P00, P11, P01, SideNormal, Color, Alpha, ShadingWeight, Handle);
+        AppendTriangle(OutStream, TopCenter, P01, P11, AxisDir, Color, Alpha, ShadingWeight, Handle);
+        AppendTriangle(OutStream, BotCenter, P10, P00, AxisDir * -1.0f, Color, Alpha, ShadingWeight, Handle);
     }
+}
+
+void AppendActiveRotationCircleAndSweep(
+    std::vector<GizmoGPUVertex>& OutStream,
+    Mathematics::Axis3D          Pivot,
+    Mathematics::Axis3D          AxisU,
+    Mathematics::Axis3D          AxisV,
+    float                        RingRadius,
+    float                        InnerWedgeRadius,
+    float                        HalfBand,
+    float                        StartAngleRad,
+    float                        DeltaAngleDeg,
+    Mathematics::Scalar3D        Color,
+    GizmoHandleOrdinal           Handle)
+{
+    constexpr uint32_t CircleSegs = 64u;
+    const float InnerRingR = std::max(0.01f, RingRadius - HalfBand);
+    const float OuterRingR = RingRadius + HalfBand;
+    const Mathematics::Axis3D Normal = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(AxisU, AxisV));
+
+    // Full 360-degree crisp guide circle around the active rotation axis
+    for (uint32_t Seg = 0u; Seg < CircleSegs; ++Seg)
+    {
+        const float A0 = (static_cast<float>(Seg) / static_cast<float>(CircleSegs)) * Constants::TauFloat;
+        const float A1 = (static_cast<float>(Seg + 1u) / static_cast<float>(CircleSegs)) * Constants::TauFloat;
+        const Mathematics::Axis3D Dir0 = AxisU * std::cos(A0) + AxisV * std::sin(A0);
+        const Mathematics::Axis3D Dir1 = AxisU * std::cos(A1) + AxisV * std::sin(A1);
+        const Mathematics::Axis3D I0   = Pivot + Dir0 * InnerRingR;
+        const Mathematics::Axis3D O0   = Pivot + Dir0 * OuterRingR;
+        const Mathematics::Axis3D O1   = Pivot + Dir1 * OuterRingR;
+        const Mathematics::Axis3D I1   = Pivot + Dir1 * InnerRingR;
+
+        AppendTriangle(OutStream, I0, O0, O1, Normal, Color, 1.0f, 0.0f, Handle);
+        AppendTriangle(OutStream, I0, O1, I1, Normal, Color, 1.0f, 0.0f, Handle);
+        AppendTriangle(OutStream, I0, O1, O0, Normal * -1.0f, Color, 1.0f, 0.0f, Handle);
+        AppendTriangle(OutStream, I0, I1, O1, Normal * -1.0f, Color, 1.0f, 0.0f, Handle);
+    }
+
+    // Translucent swept angular sector + radial start/current spokes showing exact rotated arc
+    const float DeltaRad = DeltaAngleDeg * Constants::DegToRadFloat;
+    const float AbsRad   = std::fabs(DeltaRad);
+    if (AbsRad > 0.005f)
+    {
+        const uint32_t SweepSegs = std::clamp(static_cast<uint32_t>(std::ceil(AbsRad / (5.0f * Constants::DegToRadFloat))), 2u, 64u);
+        for (uint32_t Seg = 0u; Seg < SweepSegs; ++Seg)
+        {
+            const float T0 = static_cast<float>(Seg) / static_cast<float>(SweepSegs);
+            const float T1 = static_cast<float>(Seg + 1u) / static_cast<float>(SweepSegs);
+            const float A0 = StartAngleRad + DeltaRad * T0;
+            const float A1 = StartAngleRad + DeltaRad * T1;
+            const Mathematics::Axis3D Dir0 = AxisU * std::cos(A0) + AxisV * std::sin(A0);
+            const Mathematics::Axis3D Dir1 = AxisU * std::cos(A1) + AxisV * std::sin(A1);
+            const Mathematics::Axis3D I0   = Pivot + Dir0 * InnerWedgeRadius;
+            const Mathematics::Axis3D O0   = Pivot + Dir0 * InnerRingR;
+            const Mathematics::Axis3D O1   = Pivot + Dir1 * InnerRingR;
+            const Mathematics::Axis3D I1   = Pivot + Dir1 * InnerWedgeRadius;
+
+            AppendTriangle(OutStream, I0, O0, O1, Normal, Color, 0.30f, 0.0f, Handle);
+            AppendTriangle(OutStream, I0, O1, I1, Normal, Color, 0.30f, 0.0f, Handle);
+            AppendTriangle(OutStream, I0, O1, O0, Normal * -1.0f, Color, 0.30f, 0.0f, Handle);
+            AppendTriangle(OutStream, I0, I1, O1, Normal * -1.0f, Color, 0.30f, 0.0f, Handle);
+        }
+    }
+
+    auto AppendSpoke = [&](float AngleRad, Mathematics::Scalar3D SpokeColor)
+    {
+        const Mathematics::Axis3D Dir = AxisU * std::cos(AngleRad) + AxisV * std::sin(AngleRad);
+        const float SpokeLen = std::max(0.01f, InnerRingR - InnerWedgeRadius);
+        const float SpokeMid = 0.5f * (InnerWedgeRadius + InnerRingR);
+        AppendCylinderHandle(OutStream, Pivot + Dir * SpokeMid, Dir, HalfBand * 0.55f, SpokeLen, SpokeColor, Handle, 0.0f, 1.0f);
+    };
+    AppendSpoke(StartAngleRad, ColorCenterRing);
+    AppendSpoke(StartAngleRad + DeltaRad, Color);
 }
 
 void AppendPlaneQuadHandle(
@@ -318,24 +392,32 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
     const Mathematics::Axis3D UnitY { -SinYaw, CosYaw, 0.0f };
     const Mathematics::Axis3D UnitZ {  0.0f,   0.0f,   1.0f };
 
-    // Pure white axis stems radiating from the center ring (0.165 * L) and terminating cleanly at the scale cylinder
-    // collar (CylDist - 0.06 * L) so stems never penetrate or cross through the scale cylinder.
-    const float StemRadius     = 0.0110f * L;
-    const float InnerStart     = 0.165f * L;
-    const float InnerFinish    = EmitScale ? (CylDist - 0.06f * L) : (TipDist - 0.09f * L);
-    const float InnerLen       = std::max(0.02f * L, InnerFinish - InnerStart);
-    const float InnerMid       = 0.5f * (InnerStart + InnerFinish);
-    const float OuterStart     = CylDist + 0.06f * L;
-    const float OuterFinish    = TipDist - 0.09f * L;
-    const float OuterLen       = std::max(0.02f * L, OuterFinish - OuterStart);
-    const float OuterMid       = 0.5f * (OuterStart + OuterFinish);
+    const Mathematics::Axis3D RightN = DimensionMode == GizmoDimensionMode::Planar2D
+        ? UnitX
+        : Mathematics::NormalizeAxis(CameraRight, UnitX);
+    const Mathematics::Axis3D UpN = DimensionMode == GizmoDimensionMode::Planar2D
+        ? UnitY
+        : Mathematics::NormalizeAxis(CameraUp, UnitY);
 
-    auto AppendWhiteAxisStems = [&](Mathematics::Axis3D AxisDir, GizmoHandleOrdinal StemOrdinal)
+    // Pure white axis stem: o----- [scale gizmo]  <space>  [cone transform gizmo>
+    // Starts strictly at the billboarded white center ring's outer rim (never entering the circle)
+    // and terminates cleanly before the scale cylinder collar (or cone base when TranslateOnly),
+    // leaving a crisp gap between the scale cylinder and translate cone with zero penetration.
+    const float StemRadius    = 0.0105f * L;
+    const float RingOuterRim  = 0.168f * L;
+    const float StemFinish    = EmitScale ? (CylDist - 0.062f * L) : (TipDist - 0.092f * L);
+
+    auto AppendWhiteAxisStem = [&](Mathematics::Axis3D AxisDir, GizmoHandleOrdinal StemOrdinal)
     {
-        AppendCylinderHandle(Stream, PivotPosition + AxisDir * InnerMid, AxisDir, StemRadius, InnerLen, ColorCenterRing, StemOrdinal, 0.0f);
-        if (EmitTranslate && EmitScale && OuterFinish > OuterStart + 0.005f * L)
+        const float ProjX      = Mathematics::EvaluateDot(AxisDir, RightN);
+        const float ProjY      = Mathematics::EvaluateDot(AxisDir, UpN);
+        const float ScreenProj = std::sqrt(ProjX * ProjX + ProjY * ProjY);
+        const float RimStart   = (ScreenProj > 0.20f) ? (RingOuterRim / ScreenProj) : StemFinish;
+        if (StemFinish > RimStart + 0.015f * L)
         {
-            AppendCylinderHandle(Stream, PivotPosition + AxisDir * OuterMid, AxisDir, StemRadius, OuterLen, ColorCenterRing, StemOrdinal, 0.0f);
+            const float StemLen = StemFinish - RimStart;
+            const float StemMid = 0.5f * (RimStart + StemFinish);
+            AppendCylinderHandle(Stream, PivotPosition + AxisDir * StemMid, AxisDir, StemRadius, StemLen, ColorCenterRing, StemOrdinal, 0.0f);
         }
     };
 
@@ -343,8 +425,8 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
     {
         const GizmoHandleOrdinal StemXOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateX : GizmoHandleOrdinal::ScaleX;
         const GizmoHandleOrdinal StemYOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateY : GizmoHandleOrdinal::ScaleY;
-        AppendWhiteAxisStems(UnitX, StemXOrd);
-        AppendWhiteAxisStems(UnitY, StemYOrd);
+        AppendWhiteAxisStem(UnitX, StemXOrd);
+        AppendWhiteAxisStem(UnitY, StemYOrd);
     }
 
     // +X / +U and +Y / +V Translate Cones & Inboard Scale Cylinders (shared by 3D & 2D)
@@ -369,7 +451,7 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
         if (EmitTranslate || EmitScale)
         {
             const GizmoHandleOrdinal StemZOrd = EmitTranslate ? GizmoHandleOrdinal::TranslateZ : GizmoHandleOrdinal::ScaleZ;
-            AppendWhiteAxisStems(UnitZ, StemZOrd);
+            AppendWhiteAxisStem(UnitZ, StemZOrd);
         }
         if (EmitTranslate)
         {
@@ -388,12 +470,44 @@ std::vector<GizmoGPUVertex> TransformGizmo::BuildTriangleStream(
         }
     }
 
-    const Mathematics::Axis3D RightN = DimensionMode == GizmoDimensionMode::Planar2D
-        ? UnitX
-        : Mathematics::NormalizeAxis(CameraRight, UnitX);
-    const Mathematics::Axis3D UpN = DimensionMode == GizmoDimensionMode::Planar2D
-        ? UnitY
-        : Mathematics::NormalizeAxis(CameraUp, UnitY);
+    // Active drag visual guides:
+    //  - Rotation: full 360-degree circle around the rotating axis + translucent swept angle wedge + start/current spokes
+    //  - Single-axis Translate / Scale: extended axis travel line + start-origin anchor tick
+    if (ActiveDragHandle == GizmoHandleOrdinal::RotateX ||
+        ActiveDragHandle == GizmoHandleOrdinal::RotateY ||
+        ActiveDragHandle == GizmoHandleOrdinal::RotateZ)
+    {
+        const Mathematics::Scalar3D RotColor =
+            (ActiveDragHandle == GizmoHandleOrdinal::RotateX) ? ColorAxisX
+            : ((ActiveDragHandle == GizmoHandleOrdinal::RotateY) ? ColorAxisY : ColorAxisZ);
+        AppendActiveRotationCircleAndSweep(
+            Stream,
+            DragStartPivotPosition,
+            DragAxisPrimary,
+            DragAxisSecondary,
+            TipDist * 0.62f,
+            0.175f * L,
+            0.015f * L,
+            DragInitialAngleRad,
+            DragCurrentAngleDeltaDeg,
+            RotColor,
+            ActiveDragHandle);
+    }
+    else if (ActiveDragHandle == GizmoHandleOrdinal::TranslateX ||
+             ActiveDragHandle == GizmoHandleOrdinal::TranslateY ||
+             ActiveDragHandle == GizmoHandleOrdinal::TranslateZ ||
+             ActiveDragHandle == GizmoHandleOrdinal::ScaleX ||
+             ActiveDragHandle == GizmoHandleOrdinal::ScaleY ||
+             ActiveDragHandle == GizmoHandleOrdinal::ScaleZ)
+    {
+        const Mathematics::Scalar3D GuideColor =
+            (ActiveDragHandle == GizmoHandleOrdinal::TranslateX || ActiveDragHandle == GizmoHandleOrdinal::ScaleX) ? ColorAxisX
+            : ((ActiveDragHandle == GizmoHandleOrdinal::TranslateY || ActiveDragHandle == GizmoHandleOrdinal::ScaleY) ? ColorAxisY : ColorAxisZ);
+        const float GuideLength = 32.0f * L;
+        AppendCylinderHandle(Stream, DragStartPivotPosition, DragAxisPrimary, 0.0060f * L, GuideLength, GuideColor, ActiveDragHandle, 0.0f, 0.60f);
+        AppendCylinderHandle(Stream, DragStartPivotPosition, DragAxisPrimary, 0.026f * L, 0.014f * L, ColorCenterRing, ActiveDragHandle, 0.0f, 1.0f);
+    }
+
     AppendBillboardTorusRing(Stream, PivotPosition, RightN, UpN, 0.16f * L, 0.008f * L);
 
     return Stream;
@@ -633,9 +747,12 @@ bool TransformGizmo::BeginDragInteraction(
         return false;
     }
 
-    ActiveDragHandle        = PickedHandle;
-    DragStartTransform      = BaselineTransform;
-    DragStartPivotPosition  = PivotPosition;
+    ActiveDragHandle         = PickedHandle;
+    DragStartTransform       = BaselineTransform;
+    DragStartPivotPosition   = PivotPosition;
+    DragCurrentAngleDeltaDeg = 0.0f;
+    DragCurrentLinearDelta   = 0.0f;
+    DragActiveHudReadout.clear();
 
     const float YawRad = (DimensionMode == GizmoDimensionMode::Spatial3D)
         ? (AnchorYawDegrees * Constants::DegToRadFloat)
@@ -652,18 +769,25 @@ bool TransformGizmo::BeginDragInteraction(
         case GizmoHandleOrdinal::ScaleX:
             DragAxisPrimary      = LocalX;
             DragInitialAxisParam = EvaluateAxisRayParameter(PivotPosition, DragAxisPrimary, InitialRay);
+            DragActiveHudReadout = (PickedHandle == GizmoHandleOrdinal::ScaleX)
+                ? (DimensionMode == GizmoDimensionMode::Planar2D ? "U  scale x1.00" : "X  scale x1.00")
+                : (DimensionMode == GizmoDimensionMode::Planar2D ? "U  +0.00 uv" : "X  +0.00 m");
             return true;
 
         case GizmoHandleOrdinal::TranslateY:
         case GizmoHandleOrdinal::ScaleY:
             DragAxisPrimary      = LocalY;
             DragInitialAxisParam = EvaluateAxisRayParameter(PivotPosition, DragAxisPrimary, InitialRay);
+            DragActiveHudReadout = (PickedHandle == GizmoHandleOrdinal::ScaleY)
+                ? (DimensionMode == GizmoDimensionMode::Planar2D ? "V  scale x1.00" : "Y  scale x1.00")
+                : (DimensionMode == GizmoDimensionMode::Planar2D ? "V  +0.00 uv" : "Y  +0.00 m");
             return true;
 
         case GizmoHandleOrdinal::TranslateZ:
         case GizmoHandleOrdinal::ScaleZ:
             DragAxisPrimary      = LocalZ;
             DragInitialAxisParam = EvaluateAxisRayParameter(PivotPosition, DragAxisPrimary, InitialRay);
+            DragActiveHudReadout = (PickedHandle == GizmoHandleOrdinal::ScaleZ) ? "Z  scale x1.00" : "Z  +0.00 m";
             return true;
 
         case GizmoHandleOrdinal::PlaneYZ:
@@ -708,6 +832,13 @@ bool TransformGizmo::BeginDragInteraction(
     DragInitialAngleRad = std::atan2(
         Mathematics::EvaluateDot(LocalVec, DragAxisSecondary),
         Mathematics::EvaluateDot(LocalVec, DragAxisPrimary));
+    if (PickedHandle == GizmoHandleOrdinal::RotateX)      { DragActiveHudReadout = "X  +0.0 deg"; }
+    else if (PickedHandle == GizmoHandleOrdinal::RotateY) { DragActiveHudReadout = "Y  +0.0 deg"; }
+    else if (PickedHandle == GizmoHandleOrdinal::RotateZ) { DragActiveHudReadout = DimensionMode == GizmoDimensionMode::Planar2D ? "UV  +0.0 deg" : "Z  +0.0 deg"; }
+    else if (PickedHandle == GizmoHandleOrdinal::PlaneYZ) { DragActiveHudReadout = "YZ  (+0.00, +0.00) m"; }
+    else if (PickedHandle == GizmoHandleOrdinal::PlaneXZ) { DragActiveHudReadout = "XZ  (+0.00, +0.00) m"; }
+    else if (PickedHandle == GizmoHandleOrdinal::PlaneXY) { DragActiveHudReadout = "XY  (+0.00, +0.00) m"; }
+    else if (PickedHandle == GizmoHandleOrdinal::CenterRing) { DragActiveHudReadout = "Free  (+0.00, +0.00) m"; }
     return true;
 }
 
@@ -743,14 +874,17 @@ GizmoInteractionDelta TransformGizmo::EvaluateDragInteraction(
         InOutTransform.Position = DragStartTransform.Position + Out.TranslationDelta;
         PivotPosition           = InOutTransform.Position;
         Out.TransformChanged    = true;
+        DragCurrentLinearDelta  = RawDelta;
 
         const char AxisChar = ActiveDragHandle == GizmoHandleOrdinal::TranslateX
             ? (DimensionMode == GizmoDimensionMode::Planar2D ? 'U' : 'X')
             : (ActiveDragHandle == GizmoHandleOrdinal::TranslateY
                 ? (DimensionMode == GizmoDimensionMode::Planar2D ? 'V' : 'Y')
                 : 'Z');
-        std::snprintf(Buffer, sizeof(Buffer), "%c move %+.2f", AxisChar, RawDelta);
-        Out.HudReadout = Buffer;
+        const char* UnitSuffix = (DimensionMode == GizmoDimensionMode::Planar2D) ? " uv" : " m";
+        std::snprintf(Buffer, sizeof(Buffer), "%c  %+.2f%s", AxisChar, RawDelta, UnitSuffix);
+        Out.HudReadout       = Buffer;
+        DragActiveHudReadout = Out.HudReadout;
         return Out;
     }
 
@@ -778,9 +912,11 @@ GizmoInteractionDelta TransformGizmo::EvaluateDragInteraction(
             DragStartTransform.Scale.Z * Mult.Z,
         };
         // Note: WorldRadius intentionally stays constant per Slate GizmoPRO rule!
-        Out.TransformChanged = true;
-        std::snprintf(Buffer, sizeof(Buffer), "%s scale x%.2f", AxisTag, Factor);
-        Out.HudReadout = Buffer;
+        Out.TransformChanged   = true;
+        DragCurrentLinearDelta = Factor;
+        std::snprintf(Buffer, sizeof(Buffer), "%s  scale x%.2f", AxisTag, Factor);
+        Out.HudReadout       = Buffer;
+        DragActiveHudReadout = Out.HudReadout;
         return Out;
     }
 
@@ -807,12 +943,16 @@ GizmoInteractionDelta TransformGizmo::EvaluateDragInteraction(
         InOutTransform.Position = DragStartTransform.Position + Offset;
         PivotPosition           = InOutTransform.Position;
         Out.TransformChanged    = true;
+        DragCurrentLinearDelta  = std::sqrt(Mathematics::EvaluateDot(Offset, Offset));
 
-        const char* PlaneTag = ActiveDragHandle == GizmoHandleOrdinal::PlaneYZ ? "X-plane"
-            : (ActiveDragHandle == GizmoHandleOrdinal::PlaneXZ ? "Y-plane"
-            : (ActiveDragHandle == GizmoHandleOrdinal::CenterRing ? "Screen" : "Z-plane"));
-        std::snprintf(Buffer, sizeof(Buffer), "%s move (%.2f, %.2f)", PlaneTag, Offset.X, Offset.Y);
-        Out.HudReadout = Buffer;
+        const char* PlaneTag = ActiveDragHandle == GizmoHandleOrdinal::PlaneYZ ? "YZ"
+            : (ActiveDragHandle == GizmoHandleOrdinal::PlaneXZ ? "XZ"
+            : (ActiveDragHandle == GizmoHandleOrdinal::CenterRing ? "Free" : "XY"));
+        const float PlaneDistU = Mathematics::EvaluateDot(Offset, DragAxisPrimary);
+        const float PlaneDistV = Mathematics::EvaluateDot(Offset, DragAxisSecondary);
+        std::snprintf(Buffer, sizeof(Buffer), "%s  (%+.2f, %+.2f) m", PlaneTag, PlaneDistU, PlaneDistV);
+        Out.HudReadout       = Buffer;
+        DragActiveHudReadout = Out.HudReadout;
         return Out;
     }
 
@@ -850,15 +990,20 @@ GizmoInteractionDelta TransformGizmo::EvaluateDragInteraction(
         RotTag = DimensionMode == GizmoDimensionMode::Planar2D ? "UV" : "Z";
     }
 
-    Out.TransformChanged = true;
-    std::snprintf(Buffer, sizeof(Buffer), "%s rotate %+.1f deg", RotTag, DeltaDeg);
-    Out.HudReadout = Buffer;
+    Out.TransformChanged     = true;
+    DragCurrentAngleDeltaDeg = DeltaDeg;
+    std::snprintf(Buffer, sizeof(Buffer), "%s  %+.1f deg", RotTag, DeltaDeg);
+    Out.HudReadout       = Buffer;
+    DragActiveHudReadout = Out.HudReadout;
     return Out;
 }
 
 void TransformGizmo::EndDragInteraction() noexcept
 {
-    ActiveDragHandle = GizmoHandleOrdinal::None;
+    ActiveDragHandle         = GizmoHandleOrdinal::None;
+    DragCurrentAngleDeltaDeg = 0.0f;
+    DragCurrentLinearDelta   = 0.0f;
+    DragActiveHudReadout.clear();
 }
 
 } // namespace Frontier::Editor

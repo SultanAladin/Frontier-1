@@ -199,9 +199,11 @@ struct WorldViewportUniformBlockStd140
     int32_t                      GlobalDistanceFineToroidalCell[4]   {};
     int32_t                      GlobalDistanceCoarseToroidalCell[4] {};
     uint32_t                     GlobalDistanceSlabBounds[4]         {};
+    uint32_t                     SelectionOutlineSpan[4]             {}; // x=FirstClusterOrd, y=ClusterCount, z/w=Reserved
+    float                        SelectionOutlineColorWidth[4]       {}; // xyz=LinearOutlineRGB, w=WidthPx
 };
 
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 3008u, "WorldViewportUniformBlockStd140 must equal 3008 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3040u, "WorldViewportUniformBlockStd140 must equal 3040 bytes.");
 
 struct GpuShadedTriangle96
 {
@@ -6764,6 +6766,27 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         (Config.XeGtaoEnabled ? 1u : 0u) |
         (static_cast<uint32_t>(std::clamp(Config.XeGtaoStrength, 0.0f, 2.0f) * 127.5f) << 8u) |
         ((UploadedLocalSdfInstanceCount & 0xFFFFu) << 16u);
+
+    Uniforms.SelectionOutlineSpan[0]       = 0u;
+    Uniforms.SelectionOutlineSpan[1]       = 0u;
+    Uniforms.SelectionOutlineSpan[2]       = 0u;
+    Uniforms.SelectionOutlineSpan[3]       = 0u;
+    Uniforms.SelectionOutlineColorWidth[0] = std::pow(std::clamp(Config.SelectionOutlineColor.X, 0.0f, 1.0f), 2.2f);
+    Uniforms.SelectionOutlineColorWidth[1] = std::pow(std::clamp(Config.SelectionOutlineColor.Y, 0.0f, 1.0f), 2.2f);
+    Uniforms.SelectionOutlineColorWidth[2] = std::pow(std::clamp(Config.SelectionOutlineColor.Z, 0.0f, 1.0f), 2.2f);
+    Uniforms.SelectionOutlineColorWidth[3] = std::clamp(Config.SelectionOutlineWidthPx, 1.0f, 3.0f);
+    if (Config.SelectedClusterInstanceIndex != UINT32_MAX)
+    {
+        for (const ResidentClusterInstanceSpan& Span : ResidentClusterInstances)
+        {
+            if (Span.InstanceIndex == Config.SelectedClusterInstanceIndex && Span.ClusterCount > 0u)
+            {
+                Uniforms.SelectionOutlineSpan[0] = Span.FirstGlobalClusterOrdinal;
+                Uniforms.SelectionOutlineSpan[1] = Span.ClusterCount;
+                break;
+            }
+        }
+    }
 
     const uint32_t EngIdxPre             = static_cast<uint32_t>(Config.Engine);
     const uint32_t DirectPbrOrdinalPre   = static_cast<uint32_t>(WorldRenderEngine::OpenPbrDirect);

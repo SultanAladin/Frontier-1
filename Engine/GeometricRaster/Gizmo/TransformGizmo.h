@@ -127,6 +127,11 @@ public:
     [[nodiscard]] GizmoHandleOrdinal  QueryActiveHandle() const noexcept  { return ActiveDragHandle; }
     [[nodiscard]] bool                QueryDragging() const noexcept      { return ActiveDragHandle != GizmoHandleOrdinal::None; }
     [[nodiscard]] Mathematics::Axis3D QueryPivotOrigin() const noexcept   { return PivotPosition; }
+    [[nodiscard]] Mathematics::Axis3D QueryDragStartPivot() const noexcept { return DragStartPivotPosition; }
+    [[nodiscard]] Mathematics::Axis3D QueryDragAxisPrimary() const noexcept { return DragAxisPrimary; }
+    [[nodiscard]] float               QueryActiveRotationDeltaDegrees() const noexcept { return DragCurrentAngleDeltaDeg; }
+    [[nodiscard]] float               QueryActiveLinearDelta() const noexcept          { return DragCurrentLinearDelta; }
+    [[nodiscard]] const std::string&  QueryActiveHudReadout() const noexcept           { return DragActiveHudReadout; }
     [[nodiscard]] float               QueryWorldRadius() const noexcept   { return WorldRadius; }
     [[nodiscard]] float               QueryAnchorYawDegrees() const noexcept { return AnchorYawDegrees; }
 
@@ -142,21 +147,24 @@ public:
         Mathematics::Axis3D& OutIntersection) noexcept;
 
 private:
-    GizmoDimensionMode            DimensionMode       = GizmoDimensionMode::Spatial3D;
-    GizmoHandleFilter             HandleFilter        = GizmoHandleFilter::Universal;
-    Mathematics::Axis3D           PivotPosition       { 0.0f, 0.0f, 0.0f };
-    float                         WorldRadius         = 1.0f;
-    float                         AnchorYawDegrees    = 0.0f;
-    GizmoHandleOrdinal            HoveredHandle       = GizmoHandleOrdinal::None;
-    GizmoHandleOrdinal            ActiveDragHandle    = GizmoHandleOrdinal::None;
-    Mathematics::SpatialTransform DragStartTransform  {};
-    Mathematics::Axis3D           DragStartPivotPosition {};
-    Mathematics::Axis3D           DragAxisPrimary     { 1.0f, 0.0f, 0.0f };
-    Mathematics::Axis3D           DragAxisSecondary   { 0.0f, 1.0f, 0.0f };
-    Mathematics::Axis3D           DragPlaneNormal     { 0.0f, 0.0f, 1.0f };
-    Mathematics::Axis3D           DragInitialPlaneHit {};
-    float                         DragInitialAxisParam = 0.0f;
-    float                         DragInitialAngleRad  = 0.0f;
+    GizmoDimensionMode            DimensionMode            = GizmoDimensionMode::Spatial3D;
+    GizmoHandleFilter             HandleFilter             = GizmoHandleFilter::Universal;
+    Mathematics::Axis3D           PivotPosition            { 0.0f, 0.0f, 0.0f };
+    float                         WorldRadius              = 1.0f;
+    float                         AnchorYawDegrees         = 0.0f;
+    GizmoHandleOrdinal            HoveredHandle            = GizmoHandleOrdinal::None;
+    GizmoHandleOrdinal            ActiveDragHandle         = GizmoHandleOrdinal::None;
+    Mathematics::SpatialTransform DragStartTransform       {};
+    Mathematics::Axis3D           DragStartPivotPosition   {};
+    Mathematics::Axis3D           DragAxisPrimary          { 1.0f, 0.0f, 0.0f };
+    Mathematics::Axis3D           DragAxisSecondary        { 0.0f, 1.0f, 0.0f };
+    Mathematics::Axis3D           DragPlaneNormal          { 0.0f, 0.0f, 1.0f };
+    Mathematics::Axis3D           DragInitialPlaneHit      {};
+    float                         DragInitialAxisParam     = 0.0f;
+    float                         DragInitialAngleRad      = 0.0f;
+    float                         DragCurrentAngleDeltaDeg = 0.0f;
+    float                         DragCurrentLinearDelta   = 0.0f;
+    std::string                   DragActiveHudReadout     {};
 };
 
 } // namespace Frontier::Editor

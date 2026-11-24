@@ -58,6 +58,8 @@ struct WorldViewportUniformBlock
     int4                        GlobalDistanceFineToroidalCell;   // xyz = FineMinCellWorld,   w = Reserved
     int4                        GlobalDistanceCoarseToroidalCell; // xyz = CoarseMinCellWorld, w = Reserved
     uint4                       GlobalDistanceSlabBounds;         // xyz = (SlabMin | (SlabMax << 16)), w = SlabActiveFlag
+    uint4                       SelectionOutlineSpan;             // x = FirstClusterOrd, y = ClusterCount, z/w = Reserved
+    float4                      SelectionOutlineColorWidth;       // xyz = LinearOutlineRGB, w = WidthPx
 };
 
 struct GpuWideTreeEntry128
@@ -1529,10 +1531,13 @@ float3 TraceSingleRadiosityCone(
         float OtherGeomWeight = SdfProximity * CloserThanPlane * AboveReceiver;
         float SelfRejection   = max(HeightClear, OtherGeomWeight);
 
-        if (GlossyReflection && IsGroundReceiver)
+        if (IsGroundReceiver)
         {
+            // A flat upward-facing ground plane cannot illuminate or reflect itself:
+            // inside the ground slab's dilated mip layer, strictly gate radiosity hits
+            // by actual non-ground SDF intersection so open ground has ZERO Cascade-0 square seam.
             float GroundSlabHeight = SampleP.z - GroundZ;
-            float AboveFloorMip    = smoothstep(MipVox * 1.15, MipVox * 2.15, GroundSlabHeight);
+            float AboveFloorMip    = smoothstep(MipVox * 1.65, MipVox * 2.65, GroundSlabHeight);
             SelfRejection          = max(AboveFloorMip, SdfProximity * AboveReceiver);
         }
 
@@ -1553,24 +1558,36 @@ float3 TraceSingleRadiosityCone(
     return AccumRad;
 }
 
+float3 EvaluateHemisphereSkyGi(float3 N, float3 TAxis, float3 BAxis)
+{
+    const float CosTilt = 0.6427876; // cos(50 deg)
+    const float SinTilt = 0.7660444; // sin(50 deg)
+    float3 SkyIrr = EvaluateSkyDome(N) * 0.28;
+    SkyIrr += EvaluateSkyDome(normalize(N * CosTilt + TAxis * SinTilt)) * 0.18;
+    SkyIrr += EvaluateSkyDome(normalize(N * CosTilt - TAxis * SinTilt)) * 0.18;
+    SkyIrr += EvaluateSkyDome(normalize(N * CosTilt + BAxis * SinTilt)) * 0.18;
+    SkyIrr += EvaluateSkyDome(normalize(N * CosTilt - BAxis * SinTilt)) * 0.18;
+    return max(float3(0.0), SkyIrr * 0.34);
+}
+
 float3 EvaluateGdfVoxelConeGi(float3 Pos, float3 N, float3 GeomN, float3 TAxis, float3 BAxis)
 {
     if (!IsGlobalDistanceFieldReady())
     {
-        return EvaluateSkyDome(N) * 0.25;
+        return EvaluateHemisphereSkyGi(N, TAxis, BAxis);
     }
 
     float OriginFade = ComputeRadiosityVolumeFade(Pos);
     if (OriginFade <= 1.0e-3)
     {
-        return EvaluateSkyDome(N) * 0.34;
+        return EvaluateHemisphereSkyGi(N, TAxis, BAxis);
     }
 
     bool  InFineGdf = false;
     float FineDist  = SampleGlobalDistanceCascade(0u, Pos, InFineGdf);
     if (InFineGdf && FineDist >= WorldUniforms.GlobalDistanceFineCenterSpan.w * 0.90)
     {
-        return EvaluateSkyDome(N) * 0.34;
+        return EvaluateHemisphereSkyGi(N, TAxis, BAxis);
     }
 
     float  Vox0   = QueryFineGdfVoxelSize();
@@ -3330,7 +3347,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             }
         }
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
-        GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 1.0);
+        GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 0.0);
         GBufDirectBase[PixelIdx]         = float4(DbgHdr, HitDistForClouds);
         GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
         GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3386,7 +3403,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             ? ApplyAcesFilmicGpu(ReflRgb * Fresnel + WorldUniforms.SolarIrradiancePad.xyz * SpecGl)
             : (lerp(RefrRgb, ReflRgb, Fresnel) + WorldUniforms.SolarIrradiancePad.xyz * SpecGl);
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
-        GBufNormAo[PixelIdx]             = float4(HitNrm, 1.0);
+        GBufNormAo[PixelIdx]             = float4(HitNrm, 0.0);
         GBufDirectBase[PixelIdx]         = float4(GlassHdr, HitDistForClouds);
         GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
         GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3399,7 +3416,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         // Defer sky/cloud/celestial background shading to DenoiseCompositeEntry so ComputeEntry stays VGPR-lean!
         GBufPosMask[PixelIdx]            = float4(RayDir, -1.0);
-        GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 1.0);
+        GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 0.0);
         GBufDirectBase[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForClouds);
         GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
         GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3407,6 +3424,10 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         PingIndirectIrradiance[PixelIdx] = float4(0.0, 0.0, 0.0, 0.0);
         return;
     }
+
+    uint  SelFirst = WorldUniforms.SelectionOutlineSpan.x;
+    uint  SelCount = WorldUniforms.SelectionOutlineSpan.y;
+    float SelMask  = (SelCount > 0u && PrimaryHit.ClusterOrdinal >= SelFirst && PrimaryHit.ClusterOrdinal < SelFirst + SelCount) ? 1.0 : 0.0;
 
     if (EngineMode == 0u && DebugMode == 0u)
     {
@@ -3416,7 +3437,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             MatCapHdr *= (1.0 - 0.72 * EvaluateAnalyticalWireframeAlpha(PrimaryHit, RayDir, PrimaryHit.EdgeDistMeters));
         }
         GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
-        GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, 1.0);
+        GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, SelMask);
         GBufDirectBase[PixelIdx]         = float4(MatCapHdr, HitDistForClouds);
         GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
         GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3459,7 +3480,7 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     AccumulationHdrBuffer[PixelIdx]  = float4(SpecReflHdr, SpecRough);
     GBufPosMask[PixelIdx]            = float4(PrimaryHit.Position, 1.0 + SpecRough);
-    GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, DiffAo);
+    GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, SelMask);
     GBufDirectBase[PixelIdx]         = float4(DirectBaseHdr, HitDistForClouds);
     GBufSunContrib[PixelIdx]         = float4(UnoccludedSunHdr, HitDistForFog);
     GBufAlbedo[PixelIdx]             = float4(DiffuseAlbedoMatte, SpecAo);
@@ -3629,7 +3650,7 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                     }
                 }
                 GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
-                GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 1.0);
+                GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 0.0);
                 GBufDirectBase[PixelIdx]         = float4(DbgHdr, HitDistForClouds);
                 GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
                 GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3678,7 +3699,7 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                     ? ApplyAcesFilmicGpu(ReflEnv * FresnelG + WorldUniforms.SolarIrradiancePad.xyz * SpecGl)
                     : (lerp(RefrRgb, ReflEnv, FresnelG) + WorldUniforms.SolarIrradiancePad.xyz * SpecGl);
                 GBufPosMask[PixelIdx]            = float4(0.0, 0.0, 0.0, 0.0);
-                GBufNormAo[PixelIdx]             = float4(HitNrm, 1.0);
+                GBufNormAo[PixelIdx]             = float4(HitNrm, 0.0);
                 GBufDirectBase[PixelIdx]         = float4(GlassHdr, HitDistForClouds);
                 GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
                 GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3690,7 +3711,7 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             if (!PrimaryHit.Hit)
             {
                 GBufPosMask[PixelIdx]            = float4(RayDir, -1.0);
-                GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 1.0);
+                GBufNormAo[PixelIdx]             = float4(0.0, 0.0, 1.0, 0.0);
                 GBufDirectBase[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForClouds);
                 GBufSunContrib[PixelIdx]         = float4(0.0, 0.0, 0.0, HitDistForFog);
                 GBufAlbedo[PixelIdx]             = float4(0.0, 0.0, 0.0, 1.0);
@@ -3850,7 +3871,11 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         SpecReflHdr        *= WireKeep;
     }
 
-    GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, DiffAo);
+    uint  HighSelFirst = WorldUniforms.SelectionOutlineSpan.x;
+    uint  HighSelCount = WorldUniforms.SelectionOutlineSpan.y;
+    float HighSelMask  = (HighSelCount > 0u && PrimaryHit.ClusterOrdinal >= HighSelFirst && PrimaryHit.ClusterOrdinal < HighSelFirst + HighSelCount) ? 1.0 : 0.0;
+
+    GBufNormAo[PixelIdx]             = float4(PrimaryHit.ShadingNormal, HighSelMask);
     GBufDirectBase[PixelIdx]         = float4(DirectSurfaceHdr, HitDistForClouds);
     GBufSunContrib[PixelIdx]         = float4(UnoccludedSunHdr, HitDistForFog);
     GBufAlbedo[PixelIdx]             = float4(DiffuseAlbedoMatte, SpecAo);
@@ -4365,6 +4390,41 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
 
     float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyAcesFilmicGpu(FinalHdr);
+
+    // Zero-overhead GPU silhouette selection outline (0.000 ms when inactive; works in Editor & Game)
+    if (WorldUniforms.SelectionOutlineSpan.y > 0u && DebugMode == 0u)
+    {
+        if (CenterNorm.w < 0.5)
+        {
+            int   RadiusPx = clamp(int(WorldUniforms.SelectionOutlineColorWidth.w + 0.5), 1, 3);
+            float MinDist2 = 1.0e6;
+            int2  BasePx   = int2(DispatchThreadID.xy);
+            for (int OY = -RadiusPx; OY <= RadiusPx; ++OY)
+            {
+                int NY = clamp(BasePx.y + OY, 0, int(Height) - 1);
+                for (int OX = -RadiusPx; OX <= RadiusPx; ++OX)
+                {
+                    if (OX == 0 && OY == 0) continue;
+                    float D2 = float(OX * OX + OY * OY);
+                    if (D2 > float(RadiusPx * RadiusPx) + 0.5) continue;
+                    int NX = clamp(BasePx.x + OX, 0, int(Width) - 1);
+                    if (GBufNormAo[uint(NY) * Width + uint(NX)].w > 0.5)
+                    {
+                        MinDist2 = min(MinDist2, D2);
+                    }
+                }
+            }
+            if (MinDist2 < 1.0e5)
+            {
+                float  DistPx       = sqrt(MinDist2);
+                float  MaxR         = max(1.0, WorldUniforms.SelectionOutlineColorWidth.w);
+                float  OutlineAlpha = saturate(1.0 - max(0.0, DistPx - (MaxR - 0.65)) / 0.85);
+                float3 OutlineCol   = WorldUniforms.SelectionOutlineColorWidth.xyz;
+                DisplayLinear       = lerp(DisplayLinear, OutlineCol, OutlineAlpha * 0.94);
+            }
+        }
+    }
+
     OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(DisplayLinear, DispatchThreadID.xy);
 }
 

@@ -1191,6 +1191,15 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
         Key = MixBits(Key, static_cast<uint64_t>(Request.Gizmo3D->QueryHoveredHandle()));
         Key = MixBits(Key, static_cast<uint64_t>(Request.Gizmo3D->QueryActiveHandle()));
         Key = MixBits(Key, Request.Gizmo3D->QueryDragging() ? 1ull : 0ull);
+        if (Request.Gizmo3D->QueryDragging())
+        {
+            const auto StartPivot = Request.Gizmo3D->QueryDragStartPivot();
+            Key = MixBits(Key, FloatBits(StartPivot.X));
+            Key = MixBits(Key, FloatBits(StartPivot.Y));
+            Key = MixBits(Key, FloatBits(StartPivot.Z));
+            Key = MixBits(Key, FloatBits(Request.Gizmo3D->QueryActiveRotationDeltaDegrees()));
+            Key = MixBits(Key, FloatBits(Request.Gizmo3D->QueryActiveLinearDelta()));
+        }
         if (Key == 0ull)
         {
             Key = 1ull;
