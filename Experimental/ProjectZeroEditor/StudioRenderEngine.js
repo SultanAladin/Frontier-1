@@ -692,6 +692,9 @@ export class StudioRenderEngine {
     this.GizmoVao = this.Gl.createVertexArray();
     this.GizmoVbo = this.Gl.createBuffer();
     this.LastPickables = [];
+    this.ActiveGizmoState = null;
+    this.ThumbCache = new Map();
+    this.InitThumbnailTarget();
     this.LastStats = {
       DrawCalls: 0,
       Triangles: 0,
@@ -790,7 +793,217 @@ export class StudioRenderEngine {
     }
   }
 
-  RenderScene({ Rows, Values, Hidden, Selected, Camera, LevelId, EditMode }) {
+  InitThumbnailTarget() {
+    const Gl = this.Gl;
+    this.ThumbSize = 72;
+    this.ThumbFbo = Gl.createFramebuffer();
+    this.ThumbTex = Gl.createTexture();
+    this.ThumbDepth = Gl.createRenderbuffer();
+    Gl.bindTexture(Gl.TEXTURE_2D, this.ThumbTex);
+    Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, this.ThumbSize, this.ThumbSize, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+
+    Gl.bindRenderbuffer(Gl.RENDERBUFFER, this.ThumbDepth);
+    Gl.renderbufferStorage(Gl.RENDERBUFFER, Gl.DEPTH_COMPONENT16, this.ThumbSize, this.ThumbSize);
+
+    Gl.bindFramebuffer(Gl.FRAMEBUFFER, this.ThumbFbo);
+    Gl.framebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, this.ThumbTex, 0);
+    Gl.framebufferRenderbuffer(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.RENDERBUFFER, this.ThumbDepth);
+    Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
+    Gl.bindTexture(Gl.TEXTURE_2D, null);
+    Gl.bindRenderbuffer(Gl.RENDERBUFFER, null);
+  }
+
+  // Render an actual 72x72 WebGL2 screenshot of a 3D geometry object for the Outliner
+  CaptureEntityThumbnail(Row, Val = {}, AllValues = {}) {
+    if (!Row) return null;
+    let Gpu = null;
+    let Sig = "";
+    let Paint = {
+      Albedo: [0.18, 0.2, 0.24],
+      Metallic: 0.5,
+      Roughness: 0.35,
+      Clearcoat: 0.2,
+      RimAlbedo: [0.5, 0.52, 0.56],
+      EmissiveTint: [0.97, 0.985, 1.0],
+      EmissiveStrength: 2.6,
+    };
+
+    if (Row.Panel === "studio-vehicle") {
+      if (!this.VehicleGpu) return null;
+      Gpu = this.VehicleGpu;
+      Sig = `veh:${Val.PaintHex || "#111319"}:${Val.RimHex || "#1b1d22"}:${Val.Metallic ?? 0.84}`;
+      Paint = {
+        Albedo: HexToLinearRgb(Val.PaintHex || "#111319"),
+        Metallic: Number(Val.Metallic ?? 0.84),
+        Roughness: Number(Val.Roughness ?? 0.14),
+        Clearcoat: Number(Val.Clearcoat ?? 1.0),
+        RimAlbedo: HexToLinearRgb(Val.RimHex || "#1b1d22"),
+        EmissiveTint: [1, 1, 1],
+        EmissiveStrength: 1.5,
+      };
+    } else if (Row.Panel === "studio-procedural" && Val.ProceduralKind && Val.ProceduralKind !== "studio.ambient") {
+      Gpu = this.GetCachedProcedural(Val.ProceduralKind, Val);
+      Sig = `proc:${ProceduralSignature(Val.ProceduralKind, Val)}:${Val.SurfaceTint || ""}`;
+    } else if (Row.Panel === "geometry") {
+      const PrimKind = (Row.Icon || "").replace("editor-", "") || "cube";
+      Gpu = this.GetCachedPrimitive(PrimKind);
+      const FillHex = Val.Material?.Channels?.colour?.Fill || "#4a6fa5";
+      Sig = `prim:${PrimKind}:${FillHex}`;
+      Paint = {
+        ...Paint,
+        Albedo: HexToLinearRgb(FillHex),
+        Metallic: 0.35,
+        Roughness: 0.26,
+        Clearcoat: 0.6,
+      };
+    } else {
+      return null;
+    }
+
+    const Cached = this.ThumbCache.get(Sig);
+    if (Cached) return Cached;
+    if (!Gpu || !Gpu.Bounds || typeof document === "undefined") return null;
+
+    const Gl = this.Gl;
+    const S = this.ThumbSize;
+    const Min = Gpu.Bounds.Min;
+    const Max = Gpu.Bounds.Max;
+    const Cx = (Min[0] + Max[0]) * 0.5;
+    const Cy = (Min[1] + Max[1]) * 0.5;
+    const Cz = (Min[2] + Max[2]) * 0.5;
+    const Rx = (Max[0] - Min[0]) * 0.5;
+    const Ry = (Max[1] - Min[1]) * 0.5;
+    const Rz = (Max[2] - Min[2]) * 0.5;
+    const Radius = Math.max(0.2, Math.hypot(Rx, Ry, Rz));
+
+    // Tailored 3/4 framing per object family so vehicles, overhead softboxes & flat floors read unmistakably
+    let Az = 0.68, El = 0.42, DistMult = 2.15;
+    if (Row.Panel === "studio-vehicle") {
+      Az = 0.72; El = 0.26; DistMult = 1.92;
+    } else if (Val.ProceduralKind === "studio.tiled_floor") {
+      Az = 0.65; El = 0.78; DistMult = 1.45;
+    } else if (Val.ProceduralKind === "studio.light_fixture" && Val.FixtureStyle === "Overhead Softbox") {
+      Az = 0.62; El = -0.22; DistMult = 2.05;
+    } else if (Val.ProceduralKind === "studio.cyclorama") {
+      Az = 0.52; El = 0.34; DistMult = 1.95;
+    }
+
+    const Dist = Radius * DistMult;
+    const Eye = [
+      Cx + Math.sin(Az) * Math.cos(El) * Dist,
+      Cy + Math.sin(El) * Dist,
+      Cz + Math.cos(Az) * Math.cos(El) * Dist,
+    ];
+    const Target = [Cx, Cy, Cz];
+    const Proj = PerspectiveMat((38 * Math.PI) / 180, 1.0, Math.max(0.02, Dist * 0.05), Dist * 10 + 20);
+    const View = LookAtMat(Eye, Target);
+    const ViewProj = MulMat4(Proj, View);
+
+    Gl.bindFramebuffer(Gl.FRAMEBUFFER, this.ThumbFbo);
+    Gl.viewport(0, 0, S, S);
+    Gl.enable(Gl.DEPTH_TEST);
+    Gl.depthFunc(Gl.LEQUAL);
+    Gl.disable(Gl.CULL_FACE);
+    Gl.clearColor(0.095, 0.106, 0.13, 1.0);
+    Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
+
+    Gl.useProgram(this.Program);
+    Gl.uniformMatrix4fv(this.Loc.uViewProj, false, ViewProj);
+    Gl.uniform3fv(this.Loc.uCameraPos, Eye);
+    Gl.uniform2f(this.Loc.uViewportSize, S, S);
+    Gl.uniform1f(this.Loc.uExposure, 1.45);
+    Gl.uniform1f(this.Loc.uAmbientFill, 0.34);
+    Gl.uniform1f(this.Loc.uShadowDepth, 0.0);
+    Gl.uniform1f(this.Loc.uVignette, 0.15);
+    Gl.uniform1f(this.Loc.uTileSize, Number(Val.TileSize ?? 1.2));
+    Gl.uniform1f(this.Loc.uFloorGloss, Number(Val.FloorGloss ?? 0.72));
+    Gl.uniform1f(this.Loc.uPlasterGrain, 0.3);
+    Gl.uniform3fv(this.Loc.uCycloramaTint, HexToLinearRgb(Val.SurfaceTint || "#bfc5ce"));
+    Gl.uniform3fv(this.Loc.uFloorTint, HexToLinearRgb(Val.SurfaceTint || "#262c36"));
+    Gl.uniform1i(this.Loc.uShadowCount, 0);
+    Gl.uniform1i(this.Loc.uIesCount, 0);
+
+    // Dual studio thumbnail lights (overhead softbox key + cool rim) so dark materials silhouette crisply
+    Gl.uniform1i(this.Loc.uAreaCount, 2);
+    const ACenter = new Float32Array(24), ARight = new Float32Array(24);
+    const AUp = new Float32Array(24), AColor = new Float32Array(24), ANorm = new Float32Array(24);
+    ACenter.set([Cx + Radius * 0.4, Cy + Radius * 1.9, Cz + Radius * 0.9, Radius * 1.3], 0);
+    ARight.set([1, 0, 0, Radius * 1.1], 0);
+    AUp.set([0, 0, 1, 7.5], 0);
+    AColor.set([1.0, 0.99, 0.98, 1], 0);
+    ANorm.set([0, -0.92, -0.38, 0], 0);
+
+    ACenter.set([Cx - Radius * 1.8, Cy + Radius * 0.8, Cz - Radius * 1.2, Radius * 0.9], 4);
+    ARight.set([0, 0, 1, Radius * 0.8], 4);
+    AUp.set([0, 1, 0, 5.5], 4);
+    AColor.set([0.78, 0.88, 1.0, 1], 4);
+    ANorm.set([0.82, -0.25, 0.52, 0], 4);
+
+    Gl.uniform4fv(this.Loc.uAreaCenter, ACenter);
+    Gl.uniform4fv(this.Loc.uAreaRight, ARight);
+    Gl.uniform4fv(this.Loc.uAreaUp, AUp);
+    Gl.uniform4fv(this.Loc.uAreaColor, AColor);
+    Gl.uniform4fv(this.Loc.uAreaNormal, ANorm);
+
+    Gl.uniformMatrix4fv(this.Loc.uModel, false, ModelTransformMat([0, 0, 0], 0, 1));
+    Gl.uniformMatrix3fv(this.Loc.uNormalMat, false, NormalMat3FromYaw(0));
+    Gl.uniform1i(this.Loc.uSelectedFlag, 0);
+    Gl.uniform3fv(this.Loc.uPaintAlbedo, Paint.Albedo);
+    Gl.uniform1f(this.Loc.uPaintMetallic, Paint.Metallic);
+    Gl.uniform1f(this.Loc.uPaintRoughness, Paint.Roughness);
+    Gl.uniform1f(this.Loc.uPaintClearcoat, Paint.Clearcoat);
+    Gl.uniform3fv(this.Loc.uRimAlbedo, Paint.RimAlbedo);
+    Gl.uniform3fv(this.Loc.uEmissiveTint, Paint.EmissiveTint);
+    Gl.uniform1f(this.Loc.uEmissiveStrength, Paint.EmissiveStrength);
+
+    Gl.bindVertexArray(Gpu.Vao);
+    Gl.drawArrays(Gl.TRIANGLES, 0, Gpu.VertexCount);
+    Gl.bindVertexArray(null);
+
+    const Pixels = new Uint8Array(S * S * 4);
+    Gl.readPixels(0, 0, S, S, Gl.RGBA, Gl.UNSIGNED_BYTE, Pixels);
+    Gl.bindFramebuffer(Gl.FRAMEBUFFER, null);
+
+    try {
+      const OutCanvas = document.createElement("canvas");
+      OutCanvas.width = S;
+      OutCanvas.height = S;
+      const Ctx = OutCanvas.getContext("2d");
+      if (!Ctx) return null;
+      const Img = Ctx.createImageData(S, S);
+      // Flip WebGL bottom-up scanlines to top-down 2D canvas
+      for (let Y = 0; Y < S; Y++) {
+        const SrcRow = (S - 1 - Y) * S * 4;
+        const DstRow = Y * S * 4;
+        Img.data.set(Pixels.subarray(SrcRow, SrcRow + S * 4), DstRow);
+      }
+      Ctx.putImageData(Img, 0, 0);
+      const Url = OutCanvas.toDataURL("image/png");
+      this.ThumbCache.set(Sig, Url);
+      return Url;
+    } catch {
+      return null;
+    }
+  }
+
+  CaptureAllEntityThumbnails(Rows, Values) {
+    const Result = {};
+    for (const Row of Rows) {
+      if (
+        Row.Panel === "studio-vehicle" ||
+        Row.Panel === "geometry" ||
+        (Row.Panel === "studio-procedural" && Values[Row.Id]?.ProceduralKind !== "studio.ambient")
+      ) {
+        const Url = this.CaptureEntityThumbnail(Row, Values[Row.Id] || {}, Values);
+        if (Url) Result[Row.Id] = Url;
+      }
+    }
+    return Result;
+  }
+
+  RenderScene({ Rows, Values, Hidden, Selected, Camera, LevelId, EditMode, GizmoMode = "translate", HoveredAxis = null }) {
     const Gl = this.Gl;
     const W = this.Canvas.width;
     const H = this.Canvas.height;
@@ -1143,11 +1356,232 @@ export class StudioRenderEngine {
       this.RenderLightGizmos(ViewProj, AreaLights, IesLights);
     }
 
+    // Interactive 3D Transform Gizmo (Translate W / Rotate E) on selected vehicle or movable rig
+    this.ActiveGizmoState = null;
+    if (EditMode && GizmoMode !== "off" && Selected && Hierarchy[Selected]?.Visible) {
+      const SelRow = Rows.find((R) => R.Id === Selected);
+      const SelVal = Values[Selected] || {};
+      const Movable =
+        SelRow &&
+        (SelRow.Panel === "studio-vehicle" ||
+          SelRow.Panel === "geometry" ||
+          (SelRow.Panel === "studio-procedural" &&
+            SelVal.ProceduralKind &&
+            !["studio.cyclorama", "studio.tiled_floor", "studio.ceiling_truss", "studio.ambient"].includes(
+              SelVal.ProceduralKind,
+            ) &&
+            (!SelRow.Parent || Rows.find((P) => P.Id === SelRow.Parent)?.Panel === "group")));
+      if (Movable) {
+        const Origin = [
+          Hierarchy[Selected].Position[0],
+          Hierarchy[Selected].Position[1] + (SelRow.Panel === "studio-vehicle" ? 0.62 : 0.48),
+          Hierarchy[Selected].Position[2],
+        ];
+        const Dist = Math.hypot(
+          Camera.Eye[0] - Origin[0],
+          Camera.Eye[1] - Origin[1],
+          Camera.Eye[2] - Origin[2],
+        );
+        const Size = Math.max(0.75, Math.min(2.6, Dist * 0.165));
+        this.ActiveGizmoState = {
+          Id: Selected,
+          Origin,
+          Size,
+          Mode: GizmoMode,
+          ViewProj,
+          YawRad: Hierarchy[Selected].YawRad,
+        };
+        this.RenderTransformGizmo(ViewProj, Origin, Size, GizmoMode, HoveredAxis);
+      }
+    }
+
     Gl.bindVertexArray(null);
     this.LastPickables = Pickables;
     this.LastStats.DrawCalls = DrawCalls;
     this.LastStats.Triangles = Triangles;
     this.LastStats.CachedSurfaces = this.SurfaceCache.size + (this.VehicleGpu ? 1 : 0);
+  }
+
+  RenderTransformGizmo(ViewProj, Origin, Size, Mode, HoveredAxis) {
+    const Gl = this.Gl;
+    Gl.clear(Gl.DEPTH_BUFFER_BIT);
+    Gl.useProgram(this.GizmoProgram);
+    Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.bindVertexArray(this.GizmoVao);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
+    Gl.enableVertexAttribArray(0);
+
+    const DrawSegments = (Verts, Color, Prim = Gl.LINES) => {
+      Gl.uniform4fv(this.GizmoLoc.uColor, Color);
+      Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(Verts), Gl.DYNAMIC_DRAW);
+      Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+      Gl.drawArrays(Prim, 0, Verts.length / 3);
+    };
+
+    const [Ox, Oy, Oz] = Origin;
+
+    if (Mode === "translate") {
+      // Three primary axes (Red X, Green Y, Blue Z) with crisp 3D arrowhead cones
+      const Axes = [
+        { Key: "x", Dir: [1, 0, 0], U: [0, 1, 0], V: [0, 0, 1], Col: [1.0, 0.28, 0.32, 1.0] },
+        { Key: "y", Dir: [0, 1, 0], U: [1, 0, 0], V: [0, 0, 1], Col: [0.3, 0.94, 0.46, 1.0] },
+        { Key: "z", Dir: [0, 0, 1], U: [1, 0, 0], V: [0, 1, 0], Col: [0.32, 0.62, 1.0, 1.0] },
+      ];
+      for (const A of Axes) {
+        const Hot = HoveredAxis === A.Key;
+        const Col = Hot ? [1.0, 0.96, 0.52, 1.0] : A.Col;
+        const Tip = [Ox + A.Dir[0] * Size, Oy + A.Dir[1] * Size, Oz + A.Dir[2] * Size];
+        const Base = [Ox + A.Dir[0] * Size * 0.78, Oy + A.Dir[1] * Size * 0.78, Oz + A.Dir[2] * Size * 0.78];
+        // Thickened shaft using parallel micro-lines + line
+        const Shaft = [Ox, Oy, Oz, ...Tip];
+        for (const Off of [-0.014, 0.014]) {
+          Shaft.push(
+            Ox + A.U[0] * Off * Size, Oy + A.U[1] * Off * Size, Oz + A.U[2] * Off * Size,
+            Base[0] + A.U[0] * Off * Size, Base[1] + A.U[1] * Off * Size, Base[2] + A.U[2] * Off * Size,
+            Ox + A.V[0] * Off * Size, Oy + A.V[1] * Off * Size, Oz + A.V[2] * Off * Size,
+            Base[0] + A.V[0] * Off * Size, Base[1] + A.V[1] * Off * Size, Base[2] + A.V[2] * Off * Size,
+          );
+        }
+        DrawSegments(Shaft, Col, Gl.LINES);
+
+        // Solid 10-sided arrowhead cone
+        const Cone = [];
+        const ConeR = Size * (Hot ? 0.11 : 0.088);
+        const Sides = 10;
+        for (let S = 0; S < Sides; S++) {
+          const Th0 = (S / Sides) * Math.PI * 2;
+          const Th1 = ((S + 1) / Sides) * Math.PI * 2;
+          const P0 = [
+            Base[0] + (A.U[0] * Math.cos(Th0) + A.V[0] * Math.sin(Th0)) * ConeR,
+            Base[1] + (A.U[1] * Math.cos(Th0) + A.V[1] * Math.sin(Th0)) * ConeR,
+            Base[2] + (A.U[2] * Math.cos(Th0) + A.V[2] * Math.sin(Th0)) * ConeR,
+          ];
+          const P1 = [
+            Base[0] + (A.U[0] * Math.cos(Th1) + A.V[0] * Math.sin(Th1)) * ConeR,
+            Base[1] + (A.U[1] * Math.cos(Th1) + A.V[1] * Math.sin(Th1)) * ConeR,
+            Base[2] + (A.U[2] * Math.cos(Th1) + A.V[2] * Math.sin(Th1)) * ConeR,
+          ];
+          Cone.push(...Tip, ...P0, ...P1);
+        }
+        DrawSegments(Cone, Col, Gl.TRIANGLES);
+      }
+
+      // Ground-plane XZ drag square (Amber/Gold)
+      const S0 = Size * 0.24, S1 = Size * 0.56;
+      const XzHot = HoveredAxis === "xz";
+      const XzCol = XzHot ? [1.0, 0.95, 0.45, 1.0] : [0.96, 0.78, 0.26, 0.95];
+      const Q0 = [Ox + S0, Oy, Oz + S0];
+      const Q1 = [Ox + S1, Oy, Oz + S0];
+      const Q2 = [Ox + S1, Oy, Oz + S1];
+      const Q3 = [Ox + S0, Oy, Oz + S1];
+      DrawSegments([...Q0, ...Q1, ...Q1, ...Q2, ...Q2, ...Q3, ...Q3, ...Q0], XzCol, Gl.LINES);
+      DrawSegments([...Q0, ...Q1, ...Q2, ...Q0, ...Q2, ...Q3], XzHot ? [1, 0.92, 0.4, 0.55] : [0.96, 0.78, 0.26, 0.28], Gl.TRIANGLES);
+    } else if (Mode === "rotate") {
+      // Crisp 48-segment Yaw rotation ring around Y axis
+      const RingR = Size * 1.15;
+      const Hot = HoveredAxis === "ry";
+      const Col = Hot ? [1.0, 0.96, 0.5, 1.0] : [0.34, 0.94, 0.54, 1.0];
+      const Segs = 48;
+      const Ring = [];
+      for (let S = 0; S < Segs; S++) {
+        const A0 = (S / Segs) * Math.PI * 2;
+        const A1 = ((S + 1) / Segs) * Math.PI * 2;
+        for (const ROff of [-0.018, 0, 0.018]) {
+          const R = RingR + ROff * Size;
+          Ring.push(
+            Ox + Math.sin(A0) * R, Oy, Oz + Math.cos(A0) * R,
+            Ox + Math.sin(A1) * R, Oy, Oz + Math.cos(A1) * R,
+          );
+        }
+      }
+      DrawSegments(Ring, Col, Gl.LINES);
+    }
+  }
+
+  ProjectWorldToNdc(Pt, ViewProj) {
+    const X = Pt[0], Y = Pt[1], Z = Pt[2];
+    const Cx = ViewProj[0] * X + ViewProj[4] * Y + ViewProj[8] * Z + ViewProj[12];
+    const Cy = ViewProj[1] * X + ViewProj[5] * Y + ViewProj[9] * Z + ViewProj[13];
+    const Cw = ViewProj[3] * X + ViewProj[7] * Y + ViewProj[11] * Z + ViewProj[15];
+    if (Math.abs(Cw) < 1e-5) return null;
+    return [Cx / Cw, Cy / Cw];
+  }
+
+  HitTestGizmo(NdcX, NdcY) {
+    const G = this.ActiveGizmoState;
+    if (!G) return null;
+    const { Origin, Size, Mode, ViewProj } = G;
+    const [Ox, Oy, Oz] = Origin;
+
+    const DistPointToSeg = (Px, Py, A, B) => {
+      const Vx = B[0] - A[0], Vy = B[1] - A[1];
+      const L2 = Vx * Vx + Vy * Vy;
+      const T = L2 > 1e-6 ? Math.max(0, Math.min(1, ((Px - A[0]) * Vx + (Py - A[1]) * Vy) / L2)) : 0;
+      return Math.hypot(Px - (A[0] + Vx * T), Py - (A[1] + Vy * T));
+    };
+
+    if (Mode === "translate") {
+      // Check XZ ground-plane handle first
+      const CenterXz = this.ProjectWorldToNdc([Ox + Size * 0.4, Oy, Oz + Size * 0.4], ViewProj);
+      if (CenterXz && Math.hypot(NdcX - CenterXz[0], NdcY - CenterXz[1]) < 0.075) {
+        return "xz";
+      }
+      const O2 = this.ProjectWorldToNdc(Origin, ViewProj);
+      if (!O2) return null;
+      let BestAxis = null;
+      let BestDist = 0.065;
+      for (const [Key, End] of [
+        ["x", [Ox + Size, Oy, Oz]],
+        ["y", [Ox, Oy + Size, Oz]],
+        ["z", [Ox, Oy, Oz + Size]],
+      ]) {
+        const E2 = this.ProjectWorldToNdc(End, ViewProj);
+        if (!E2) continue;
+        const D = DistPointToSeg(NdcX, NdcY, O2, E2);
+        if (D < BestDist) {
+          BestDist = D;
+          BestAxis = Key;
+        }
+      }
+      return BestAxis;
+    }
+
+    if (Mode === "rotate") {
+      const RingR = Size * 1.15;
+      let BestDist = 0.08;
+      const Segs = 36;
+      for (let S = 0; S < Segs; S++) {
+        const A0 = (S / Segs) * Math.PI * 2;
+        const A1 = ((S + 1) / Segs) * Math.PI * 2;
+        const P0 = this.ProjectWorldToNdc([Ox + Math.sin(A0) * RingR, Oy, Oz + Math.cos(A0) * RingR], ViewProj);
+        const P1 = this.ProjectWorldToNdc([Ox + Math.sin(A1) * RingR, Oy, Oz + Math.cos(A1) * RingR], ViewProj);
+        if (!P0 || !P1) continue;
+        const D = DistPointToSeg(NdcX, NdcY, P0, P1);
+        if (D < BestDist) BestDist = D;
+      }
+      return BestDist < 0.08 ? "ry" : null;
+    }
+    return null;
+  }
+
+  ComputeWorldRay(NdcX, NdcY) {
+    if (!this.LastCamera) return null;
+    const { Eye, Target, FovDeg, Aspect } = this.LastCamera;
+    let Fx = Target[0] - Eye[0], Fy = Target[1] - Eye[1], Fz = Target[2] - Eye[2];
+    const Fl = Math.hypot(Fx, Fy, Fz) || 1;
+    Fx /= Fl; Fy /= Fl; Fz /= Fl;
+    let Rx = -Fz, Ry = 0, Rz = Fx;
+    const Rl = Math.hypot(Rx, Ry, Rz) || 1;
+    Rx /= Rl; Rz /= Rl;
+    const Ux = Ry * Fz - Rz * Fy;
+    const Uy = Rz * Fx - Rx * Fz;
+    const Uz = Rx * Fy - Ry * Fx;
+    const TanHalf = Math.tan(((FovDeg * Math.PI) / 180) * 0.5);
+    let Dx = Fx + Rx * NdcX * TanHalf * Aspect + Ux * NdcY * TanHalf;
+    let Dy = Fy + Ry * NdcX * TanHalf * Aspect + Uy * NdcY * TanHalf;
+    let Dz = Fz + Rz * NdcX * TanHalf * Aspect + Uz * NdcY * TanHalf;
+    const Dl = Math.hypot(Dx, Dy, Dz) || 1;
+    return { Origin: [...Eye], Dir: [Dx / Dl, Dy / Dl, Dz / Dl] };
   }
 
   RenderLightGizmos(ViewProj, AreaLights, IesLights) {
@@ -1269,6 +1703,9 @@ export class StudioRenderEngine {
     }
     Gl.deleteVertexArray(this.GizmoVao);
     Gl.deleteBuffer(this.GizmoVbo);
+    if (this.ThumbFbo) Gl.deleteFramebuffer(this.ThumbFbo);
+    if (this.ThumbTex) Gl.deleteTexture(this.ThumbTex);
+    if (this.ThumbDepth) Gl.deleteRenderbuffer(this.ThumbDepth);
     Gl.deleteProgram(this.Program);
     Gl.deleteProgram(this.GizmoProgram);
   }

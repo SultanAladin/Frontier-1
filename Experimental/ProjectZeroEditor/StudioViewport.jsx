@@ -30,6 +30,49 @@ function EyeFromSpherical(Target, Radius, Azimuth, Elevation) {
   ];
 }
 
+function IntersectHorizontalPlane(Ray, PlaneY) {
+  if (!Ray || Math.abs(Ray.Dir[1]) < 1e-5) return null;
+  const T = (PlaneY - Ray.Origin[1]) / Ray.Dir[1];
+  if (T <= 0.05 || T > 120) return null;
+  return [
+    Ray.Origin[0] + Ray.Dir[0] * T,
+    PlaneY,
+    Ray.Origin[2] + Ray.Dir[2] * T,
+  ];
+}
+
+// Closest parameter t along axis line (Origin + Axis * t) to camera ray
+function ClosestAxisParam(Ray, AxisOrigin, AxisDir) {
+  if (!Ray) return 0;
+  const Wx = Ray.Origin[0] - AxisOrigin[0];
+  const Wy = Ray.Origin[1] - AxisOrigin[1];
+  const Wz = Ray.Origin[2] - AxisOrigin[2];
+  const A = Ray.Dir[0] * Ray.Dir[0] + Ray.Dir[1] * Ray.Dir[1] + Ray.Dir[2] * Ray.Dir[2];
+  const B = Ray.Dir[0] * AxisDir[0] + Ray.Dir[1] * AxisDir[1] + Ray.Dir[2] * AxisDir[2];
+  const C = AxisDir[0] * AxisDir[0] + AxisDir[1] * AxisDir[1] + AxisDir[2] * AxisDir[2];
+  const D = Ray.Dir[0] * Wx + Ray.Dir[1] * Wy + Ray.Dir[2] * Wz;
+  const E = AxisDir[0] * Wx + AxisDir[1] * Wy + AxisDir[2] * Wz;
+  const Denom = A * C - B * B;
+  if (Math.abs(Denom) < 1e-6) return 0;
+  return (A * E - B * D) / Denom;
+}
+
+function ClampCameraInsideLobby(Eye, Values, LevelId) {
+  if (LevelId !== "studio-lobby") return Eye;
+  const Cyc = Values["studio-cyclorama"] || {};
+  const Ceil = Values["studio-ceiling"] || {};
+  const HalfW = Math.max(6.5, Number(Cyc.CoveWidth ?? 18.0) * 0.5 - 0.85);
+  const CycZ = Number(Cyc.Position?.[2] ?? -0.8);
+  const FloorD = Number(Cyc.FloorDepth ?? 13.5);
+  const BackZ = CycZ - FloorD * 0.58 + 1.15;
+  const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
+  return [
+    Math.max(-HalfW, Math.min(HalfW, Eye[0])),
+    Math.max(0.32, Math.min(MaxY, Eye[1])),
+    Math.max(BackZ, Math.min(14.5, Eye[2])),
+  ];
+}
+
 export default function StudioViewport({
   Rows,
   Values,
@@ -46,12 +89,18 @@ export default function StudioViewport({
   IntroNonce,
   ReplayIntro,
   FocusNonce,
+  GizmoMode = "translate",
+  SetGizmoMode,
+  OnTransformEntity,
+  OnThumbnails,
   OnTelemetry,
   View = 1,
 }) {
   const HostRef = useRef(null);
   const CanvasRef = useRef(null);
   const EngineRef = useRef(null);
+  const HoveredAxisRef = useRef(null);
+  const [HoveredAxis, SetHoveredAxis] = useState(null);
   const [ErrorMsg, SetErrorMsg] = useState("");
   const [HudState, SetHudState] = useState({
     Fps: 60,
@@ -60,8 +109,8 @@ export default function StudioViewport({
   });
 
   // Live mutable refs so the requestAnimationFrame loop never recreates WebGL2
-  const PropsRef = useRef({ Rows, Values, Hidden, Selected, RunMode, Paused, LevelId });
-  PropsRef.current = { Rows, Values, Hidden, Selected, RunMode, Paused, LevelId };
+  const PropsRef = useRef({ Rows, Values, Hidden, Selected, RunMode, Paused, LevelId, GizmoMode, OnTransformEntity, OnThumbnails });
+  PropsRef.current = { Rows, Values, Hidden, Selected, RunMode, Paused, LevelId, GizmoMode, OnTransformEntity, OnThumbnails };
 
   const CamRef = useRef({
     Eye: [...(View === 2 ? ConfiguratorPresets[4].Eye : ConfiguratorPresets[0].Eye)],
@@ -152,7 +201,7 @@ export default function StudioViewport({
         FpsStamp = Now;
       }
 
-      const { Rows: CurRows, Values: CurValues, Hidden: CurHidden, Selected: CurSelected, RunMode: CurMode, Paused: IsPaused, LevelId: CurLevel } = PropsRef.current;
+      const { Rows: CurRows, Values: CurValues, Hidden: CurHidden, Selected: CurSelected, RunMode: CurMode, Paused: IsPaused, LevelId: CurLevel, GizmoMode: CurGizmo, OnThumbnails: PushThumbs } = PropsRef.current;
       const Cam = CamRef.current;
       const ConfigCam = CurValues["cam-configurator"] || {};
       const OrbitDegSec = Number(ConfigCam.OrbitSpeedDegPerSec ?? 7.5);
@@ -218,6 +267,9 @@ export default function StudioViewport({
         if (Dist < 0.025) Cam.PresetGlide = false;
       }
 
+      // Prevent camera from ever clipping through cyclorama walls or ceiling
+      Cam.Eye = ClampCameraInsideLobby(Cam.Eye, CurValues, CurLevel);
+
       Engine.RenderScene({
         Rows: CurRows,
         Values: CurValues,
@@ -226,9 +278,15 @@ export default function StudioViewport({
         Camera: Cam,
         LevelId: CurLevel,
         EditMode: CurMode !== "PLAY",
+        GizmoMode: CurGizmo,
+        HoveredAxis: HoveredAxisRef.current,
       });
 
       if (TickSamples === 0) {
+        if (View === 1 && PushThumbs) {
+          const Captured = Engine.CaptureAllEntityThumbnails(CurRows, CurValues);
+          if (Object.keys(Captured).length > 0) PushThumbs(Captured);
+        }
         const Progress = Math.min(1, Cam.IntroElapsed / OpeningRevealDurationSec);
         SetHudState({ Fps: CurrentFps, Phase, IntroProgress: Progress });
         if (View === 1 && OnTelemetry) {
@@ -258,13 +316,58 @@ export default function StudioViewport({
     };
   }, [View]);
 
-  // Pointer Orbit / Pan / Dolly / Click-to-Select ray picking
+  // Pointer Orbit / Pan / Dolly / 3D Gizmo Drag / Click-to-Select ray picking
   const DragRef = useRef(null);
+
+  const PointerNdc = (Event) => {
+    const Rect = CanvasRef.current.getBoundingClientRect();
+    return [
+      ((Event.clientX - Rect.left) / Math.max(1, Rect.width)) * 2 - 1,
+      1 - ((Event.clientY - Rect.top) / Math.max(1, Rect.height)) * 2,
+    ];
+  };
 
   const OnPointerDown = (Event) => {
     if (Event.button !== 0 && Event.button !== 2) return;
     Event.currentTarget.setPointerCapture(Event.pointerId);
+
+    // Check 3D Transform Gizmo hit first in Edit/Sim mode on left click
+    if (Event.button === 0 && EngineRef.current && CanvasRef.current) {
+      const [NdcX, NdcY] = PointerNdc(Event);
+      const Axis = EngineRef.current.HitTestGizmo(NdcX, NdcY);
+      const GState = EngineRef.current.ActiveGizmoState;
+      if (Axis && GState) {
+        const Ray = EngineRef.current.ComputeWorldRay(NdcX, NdcY);
+        const CurVal = PropsRef.current.Values[GState.Id] || {};
+        const StartPos = Array.isArray(CurVal.Position) ? [...CurVal.Position] : [0, 0, 0];
+        const StartYaw = Number(CurVal.Rotation?.[1] ?? CurVal.YawDeg ?? 0);
+        let StartParam = 0;
+        let StartPlaneHit = null;
+        if (Axis === "xz" || Axis === "ry") {
+          StartPlaneHit = IntersectHorizontalPlane(Ray, GState.Origin[1]);
+        } else {
+          const AxisVec = Axis === "x" ? [1, 0, 0] : Axis === "y" ? [0, 1, 0] : [0, 0, 1];
+          StartParam = ClosestAxisParam(Ray, GState.Origin, AxisVec);
+        }
+        DragRef.current = {
+          Kind: "gizmo",
+          Axis,
+          EntityId: GState.Id,
+          GizmoOrigin: [...GState.Origin],
+          StartPos,
+          StartYaw,
+          StartParam,
+          StartPlaneHit,
+          StartX: Event.clientX,
+          StartY: Event.clientY,
+          Moved: true,
+        };
+        return;
+      }
+    }
+
     DragRef.current = {
+      Kind: "camera",
       Button: Event.button,
       Shift: Event.shiftKey,
       StartX: Event.clientX,
@@ -277,7 +380,57 @@ export default function StudioViewport({
 
   const OnPointerMove = (Event) => {
     const Drag = DragRef.current;
-    if (!Drag) return;
+    if (!Drag) {
+      // Live gizmo axis hover highlight
+      if (EngineRef.current && CanvasRef.current && PropsRef.current.RunMode !== "PLAY") {
+        const [NdcX, NdcY] = PointerNdc(Event);
+        const Hit = EngineRef.current.HitTestGizmo(NdcX, NdcY);
+        if (Hit !== HoveredAxisRef.current) {
+          HoveredAxisRef.current = Hit;
+          SetHoveredAxis(Hit);
+        }
+      }
+      return;
+    }
+
+    if (Drag.Kind === "gizmo" && EngineRef.current && CanvasRef.current) {
+      const [NdcX, NdcY] = PointerNdc(Event);
+      const Ray = EngineRef.current.ComputeWorldRay(NdcX, NdcY);
+      const OnXf = PropsRef.current.OnTransformEntity;
+      if (!Ray || !OnXf) return;
+
+      if (Drag.Axis === "xz" && Drag.StartPlaneHit) {
+        const Hit = IntersectHorizontalPlane(Ray, Drag.GizmoOrigin[1]);
+        if (Hit) {
+          const NextPos = [
+            +(Drag.StartPos[0] + (Hit[0] - Drag.StartPlaneHit[0])).toFixed(3),
+            Drag.StartPos[1],
+            +(Drag.StartPos[2] + (Hit[2] - Drag.StartPlaneHit[2])).toFixed(3),
+          ];
+          OnXf(Drag.EntityId, { Position: NextPos });
+        }
+      } else if (Drag.Axis === "ry" && Drag.StartPlaneHit) {
+        const Hit = IntersectHorizontalPlane(Ray, Drag.GizmoOrigin[1]);
+        if (Hit) {
+          const A0 = Math.atan2(Drag.StartPlaneHit[0] - Drag.GizmoOrigin[0], Drag.StartPlaneHit[2] - Drag.GizmoOrigin[2]);
+          const A1 = Math.atan2(Hit[0] - Drag.GizmoOrigin[0], Hit[2] - Drag.GizmoOrigin[2]);
+          const DeltaDeg = ((A1 - A0) * 180) / Math.PI;
+          const NextYaw = +(Drag.StartYaw + DeltaDeg).toFixed(1);
+          OnXf(Drag.EntityId, { YawDeg: NextYaw });
+        }
+      } else {
+        const AxisVec = Drag.Axis === "x" ? [1, 0, 0] : Drag.Axis === "y" ? [0, 1, 0] : [0, 0, 1];
+        const NextParam = ClosestAxisParam(Ray, Drag.GizmoOrigin, AxisVec);
+        const Delta = NextParam - Drag.StartParam;
+        const NextPos = [...Drag.StartPos];
+        if (Drag.Axis === "x") NextPos[0] = +(Drag.StartPos[0] + Delta).toFixed(3);
+        if (Drag.Axis === "y") NextPos[1] = +Math.max(0, Drag.StartPos[1] + Delta).toFixed(3);
+        if (Drag.Axis === "z") NextPos[2] = +(Drag.StartPos[2] + Delta).toFixed(3);
+        OnXf(Drag.EntityId, { Position: NextPos });
+      }
+      return;
+    }
+
     const Dx = Event.clientX - Drag.LastX;
     const Dy = Event.clientY - Drag.LastY;
     Drag.LastX = Event.clientX;
@@ -293,34 +446,31 @@ export default function StudioViewport({
     Cam.IntroElapsed = OpeningRevealDurationSec;
 
     if (Drag.Button === 2 || Drag.Shift) {
-      // Pan camera parallel to view plane
       const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
       const Scale = Sph.Radius * 0.0014;
       const RightX = Math.cos(Sph.Azimuth);
       const RightZ = -Math.sin(Sph.Azimuth);
       Cam.Target[0] -= RightX * Dx * Scale;
       Cam.Target[2] -= RightZ * Dx * Scale;
-      Cam.Target[1] = Math.max(0.15, Math.min(4.5, Cam.Target[1] + Dy * Scale));
+      Cam.Target[1] = Math.max(0.15, Math.min(4.8, Cam.Target[1] + Dy * Scale));
       Cam.Eye[0] -= RightX * Dx * Scale;
       Cam.Eye[2] -= RightZ * Dx * Scale;
-      Cam.Eye[1] = Math.max(0.25, Math.min(5.7, Cam.Eye[1] + Dy * Scale));
+      Cam.Eye[1] = Math.max(0.32, Math.min(6.4, Cam.Eye[1] + Dy * Scale));
     } else {
-      // Smooth studio turntable orbit
       const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
       const NextAz = Sph.Azimuth - Dx * 0.0062;
-      const NextEl = Math.max(0.03, Math.min(1.25, Sph.Elevation + Dy * 0.0052));
+      const NextEl = Math.max(0.03, Math.min(1.22, Sph.Elevation + Dy * 0.0052));
       Cam.Eye = EyeFromSpherical(Cam.Target, Sph.Radius, NextAz, NextEl);
     }
+    Cam.Eye = ClampCameraInsideLobby(Cam.Eye, PropsRef.current.Values, PropsRef.current.LevelId);
   };
 
   const OnPointerUp = (Event) => {
     const Drag = DragRef.current;
     DragRef.current = null;
-    if (!Drag) return;
+    if (!Drag || Drag.Kind === "gizmo") return;
     if (!Drag.Moved && Drag.Button === 0 && EngineRef.current && CanvasRef.current) {
-      const Rect = CanvasRef.current.getBoundingClientRect();
-      const NdcX = ((Event.clientX - Rect.left) / Rect.width) * 2 - 1;
-      const NdcY = 1 - ((Event.clientY - Rect.top) / Rect.height) * 2;
+      const [NdcX, NdcY] = PointerNdc(Event);
       const HitId = EngineRef.current.PickAtNormalizedCoords(NdcX, NdcY);
       if (HitId && Select) {
         Select(HitId);
@@ -336,8 +486,12 @@ export default function StudioViewport({
     Cam.IntroElapsed = OpeningRevealDurationSec;
     const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
     const Factor = Math.exp(Event.deltaY * 0.0011);
-    const NextR = Math.max(1.8, Math.min(22.0, Sph.Radius * Factor));
-    Cam.Eye = EyeFromSpherical(Cam.Target, NextR, Sph.Azimuth, Sph.Elevation);
+    const NextR = Math.max(1.8, Math.min(15.5, Sph.Radius * Factor));
+    Cam.Eye = ClampCameraInsideLobby(
+      EyeFromSpherical(Cam.Target, NextR, Sph.Azimuth, Sph.Elevation),
+      PropsRef.current.Values,
+      PropsRef.current.LevelId,
+    );
   };
 
   if (ErrorMsg) {
@@ -359,6 +513,7 @@ export default function StudioViewport({
       <canvas
         ref={CanvasRef}
         className="studio-viewport-canvas"
+        style={HoveredAxis ? { cursor: "move" } : undefined}
         onPointerDown={OnPointerDown}
         onPointerMove={OnPointerMove}
         onPointerUp={OnPointerUp}
@@ -373,6 +528,26 @@ export default function StudioViewport({
               <b>{RunMode === "PLAY" ? "PLAY · CONFIGURATOR" : RunMode + " · STUDIO"}</b>
               <span>{HudState.Phase}</span>
             </span>
+            {RunMode !== "PLAY" && SetGizmoMode && (
+              <div className="studio-gizmo-pill" role="group" aria-label="Transform Gizmo">
+                {[
+                  ["translate", "Move", "W"],
+                  ["rotate", "Rotate", "E"],
+                  ["off", "Off", "Q"],
+                ].map(([ModeKey, Label, Key]) => (
+                  <button
+                    key={ModeKey}
+                    type="button"
+                    className={GizmoMode === ModeKey ? "active" : ""}
+                    title={`${Label} gizmo (${Key})`}
+                    onClick={() => SetGizmoMode(ModeKey)}
+                  >
+                    <span>{Label}</span>
+                    <kbd>{Key}</kbd>
+                  </button>
+                ))}
+              </div>
+            )}
             <span className="studio-hud-chip subtle">
               <b>{HudState.Fps} FPS</b>
               <span>WebGL2 PBR · 0 shader recompiles</span>

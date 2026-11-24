@@ -457,20 +457,20 @@ function ConstructCeilingTruss(Params) {
     B.AddBox([0, H, Z], [W * 0.48, 0.09, 0.07], SurfaceMaterialCode.CeilingRib);
   }
 
-  // Steel lighting truss beams overhead
+  // Steel lighting truss beams & power conduit busbars overhead
   if (Params.TrussGrid !== false) {
-    for (const Tx of [-4.2, 0, 4.2]) {
+    for (const Tx of [-5.6, -2.8, 0, 2.8, 5.6]) {
       B.AddBox([Tx, H - 0.18, 0], [0.06, 0.06, D * 0.45], SurfaceMaterialCode.DarkMetal);
       B.AddBox([Tx, H - 0.44, 0], [0.05, 0.05, D * 0.45], SurfaceMaterialCode.DarkMetal);
-      const Bays = 10;
+      const Bays = 12;
       for (let J = 0; J < Bays; J++) {
         const Z0 = -D * 0.42 + (J / Bays) * D * 0.84;
         const Z1 = -D * 0.42 + ((J + 1) / Bays) * D * 0.84;
-        B.AddTube([Tx, H - 0.18, Z0], [Tx, H - 0.44, Z1], 0.022, 0.022, 6, SurfaceMaterialCode.DarkMetal, false);
-        B.AddTube([Tx, H - 0.44, Z0], [Tx, H - 0.18, Z1], 0.022, 0.022, 6, SurfaceMaterialCode.DarkMetal, false);
+        B.AddTube([Tx, H - 0.18, Z0], [Tx, H - 0.44, Z1], 0.02, 0.02, 6, SurfaceMaterialCode.DarkMetal, false);
+        B.AddTube([Tx, H - 0.44, Z0], [Tx, H - 0.18, Z1], 0.02, 0.02, 6, SurfaceMaterialCode.DarkMetal, false);
       }
     }
-    for (const Tz of [-3.4, 0, 3.4]) {
+    for (const Tz of [-4.6, -1.5, 1.5, 4.6]) {
       B.AddBox([0, H - 0.3, Tz], [W * 0.44, 0.055, 0.055], SurfaceMaterialCode.DarkMetal);
     }
   }
@@ -563,6 +563,26 @@ function ConstructTripod(Params) {
   B.AddBox([0, ColTopY + 0.035, 0], [0.068, 0.038, 0.068], SurfaceMaterialCode.DarkMetal, HeadTilt, 0, 0);
   B.AddTube([0.05, ColTopY + 0.03, -0.02], [0.07, ColTopY - 0.09, -0.28], 0.008, 0.011, 8, SurfaceMaterialCode.DarkMetal);
 
+  // Studio power / tether cable dropping cleanly along the rear of the mast and snaking across floor
+  if (Params.PowerCable !== false) {
+    const CablePts = [
+      [0.035, ColTopY - 0.02, -0.04],
+      [0.08, ColTopY * 0.72, -0.14],
+      [0.05, ColTopY * 0.36, -0.12],
+      [0.09, 0.06, -0.28],
+      [0.24, 0.014, -0.58],
+      [0.12, 0.014, -0.95],
+      [-0.22, 0.014, -1.28],
+    ];
+    for (let I = 0; I < CablePts.length - 1; I++) {
+      B.AddTube(CablePts[I], CablePts[I + 1], 0.01, 0.01, 6, SurfaceMaterialCode.RubberMat, false);
+    }
+    // Small inline ballast power brick resting on the floor behind wheeled stands
+    if (HasCasters) {
+      B.AddBox([0.24, 0.055, -0.58], [0.11, 0.055, 0.075], SurfaceMaterialCode.PelicanCase, 0, 0.3, 0);
+    }
+  }
+
   return B.Finish();
 }
 
@@ -650,8 +670,10 @@ function ConstructLightFixture(Params) {
     B.AddBox([0, 0, -(Hh + Rim * 0.5)], [Hw + Rim, Hd, Rim * 0.5], SurfaceMaterialCode.DarkMetal);
     B.AddBox([Hw + Rim * 0.5, 0, 0], [Rim * 0.5, Hd, Hh], SurfaceMaterialCode.DarkMetal);
     B.AddBox([-(Hw + Rim * 0.5), 0, 0], [Rim * 0.5, Hd, Hh], SurfaceMaterialCode.DarkMetal);
-    // Upper ballast housing bar
+    // Upper ballast power distribution box & DMX junction manifold
     B.AddBox([0, Hd + 0.075, 0], [Hw * 0.65, 0.055, Hh * 0.22], SurfaceMaterialCode.DarkMetal);
+    B.AddBox([Hw * 0.34, Hd + 0.11, -Hh * 0.12], [0.22, 0.08, 0.16], SurfaceMaterialCode.PelicanCase);
+    B.AddBox([-Hw * 0.34, Hd + 0.11, -Hh * 0.12], [0.18, 0.07, 0.14], SurfaceMaterialCode.PelicanCase);
 
     // Pure white glowing silk diffuser plane on the underside (-Y normal)
     const DiffY = -Hd + 0.018;
@@ -659,16 +681,65 @@ function ConstructLightFixture(Params) {
     B.PushTri([-Hw, DiffY, -Hh], [Hw, DiffY, -Hh], [Hw, DiffY, Hh], Dn, Dn, Dn, SurfaceMaterialCode.EmissiveDiffuser, 0, 1, 1);
     B.PushTri([-Hw, DiffY, -Hh], [Hw, DiffY, Hh], [-Hw, DiffY, Hh], Dn, Dn, Dn, SurfaceMaterialCode.EmissiveDiffuser, 0, 1, 0);
 
-    // Angled twin steel suspension rigging cables up to the ceiling truss (Ref Image 1!)
-    const Drop = Number(Params.SuspensionDrop ?? 2.3);
+    // Strictly perpendicular straight vertical steel suspension hoist cables (ZERO angle!)
+    // plus machined eye-bolts, ceiling truss shackles & vertical power/DMX umbilical cables.
+    const Drop = Number(Params.SuspensionDrop ?? 2.88);
     if (Drop > 0.1) {
-      for (const Sx of [-1, 1]) {
-        for (const Sz of [-1, 1]) {
-          const Bx = Sx * (Hw * 0.78);
-          const Bz = Sz * (Hh * 0.74);
-          B.AddTube([Bx, Hd, Bz], [Bx + Sx * 0.35, Hd + Drop, Bz + Sz * 0.18], 0.016, 0.016, 8, SurfaceMaterialCode.DarkMetal);
-          B.AddTube([Bx * 0.76, Hd, Bz], [Bx * 0.76 + Sx * 0.2, Hd + Drop, Bz], 0.012, 0.012, 8, SurfaceMaterialCode.DarkMetal);
+      const AnchorXs = [-Hw * 0.84, 0, Hw * 0.84];
+      const AnchorZs = [-Hh * 0.78, Hh * 0.78];
+      for (const Bx of AnchorXs) {
+        for (const Bz of AnchorZs) {
+          // Bottom shackle collar bolted onto softbox roof
+          B.AddTube([Bx, Hd, Bz], [Bx, Hd + 0.09, Bz], 0.026, 0.02, 8, SurfaceMaterialCode.ChromeMetal);
+          // Plumb straight vertical steel aircraft wire (strictly perpendicular!)
+          B.AddTube([Bx, Hd + 0.08, Bz], [Bx, Hd + Drop, Bz], 0.012, 0.012, 8, SurfaceMaterialCode.DarkMetal);
+          // Top turnbuckle / truss clamp bracket at ceiling
+          B.AddBox([Bx, Hd + Drop - 0.05, Bz], [0.055, 0.055, 0.055], SurfaceMaterialCode.DarkMetal);
         }
+      }
+
+      // Twin insulated black power & DMX feeder wires dropping straight down with a natural coiled slack loop
+      const UmbilicalX = Hw * 0.34;
+      const UmbilicalZ = -Hh * 0.12;
+      const CoilSteps = 22;
+      let PrevPt = [UmbilicalX, Hd + Drop, UmbilicalZ];
+      for (let S = 1; S <= CoilSteps; S++) {
+        const T = S / CoilSteps;
+        const Y = Hd + Drop * (1 - T) + 0.14 * T;
+        const SpiralR = 0.045 * Math.sin(T * Math.PI);
+        const Ang = T * Math.PI * 10;
+        const NextPt = [
+          UmbilicalX + Math.cos(Ang) * SpiralR,
+          Y,
+          UmbilicalZ + Math.sin(Ang) * SpiralR,
+        ];
+        B.AddTube(PrevPt, NextPt, 0.013, 0.013, 6, SurfaceMaterialCode.RubberMat, false);
+        PrevPt = NextPt;
+      }
+
+      // Secondary straight vertical DMX signal cable on left ballast bank
+      const DmxX = -Hw * 0.34;
+      const DmxZ = -Hh * 0.12;
+      B.AddTube([DmxX, Hd + 0.14, DmxZ], [DmxX, Hd + Drop, DmxZ], 0.011, 0.011, 6, SurfaceMaterialCode.RubberMat);
+
+      // Rooftop wiring harness linking central ballast boxes to outer lamp modules
+      for (const Sx of [-1, 1]) {
+        B.AddTube(
+          [Sx * Hw * 0.34, Hd + 0.09, -Hh * 0.12],
+          [Sx * Hw * 0.78, Hd + 0.05, -Hh * 0.12],
+          0.012,
+          0.012,
+          6,
+          SurfaceMaterialCode.RubberMat,
+        );
+        B.AddTube(
+          [Sx * Hw * 0.34, Hd + 0.09, -Hh * 0.12],
+          [Sx * Hw * 0.34, Hd + 0.05, Hh * 0.65],
+          0.012,
+          0.012,
+          6,
+          SurfaceMaterialCode.RubberMat,
+        );
       }
     }
     return B.Finish();

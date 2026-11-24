@@ -220,7 +220,7 @@ const DebugViews = [
   "Patch Tiles",
   "Tiles + Wireframe",
 ];
-const StorageKey = "Frontier.ProjectZeroStudioLobby.v2";
+const StorageKey = "Frontier.ProjectZeroStudioLobby.v3";
 function Restore() {
   try {
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
@@ -467,6 +467,8 @@ function App() {
   const [ActivePreset, SetActivePreset] = useState(null);
   const [IntroNonce, SetIntroNonce] = useState(0);
   const [FocusNonce, SetFocusNonce] = useState(0);
+  const [GizmoMode, SetGizmoMode] = useState("translate");
+  const [ObjectThumbnails, SetObjectThumbnails] = useState({});
   const [Use2DAnalytical, SetUse2DAnalytical] = useState(false);
   const [LevelSwitchMs, SetLevelSwitchMs] = useState(0);
   const [StudioTelemetry, SetStudioTelemetry] = useState({
@@ -1128,6 +1130,19 @@ function App() {
       if (Event.key.toLowerCase() === "f" && !Event.ctrlKey && !Event.metaKey) {
         SetFocusNonce((N) => N + 1);
       }
+      if (Event.key.toLowerCase() === "w" && !Event.ctrlKey && !Event.metaKey) {
+        SetGizmoMode("translate");
+        if (RunMode === "PLAY") SetRunMode("EDIT");
+        Toast("Move gizmo (W) · drag red/green/blue axes or amber ground square");
+      }
+      if (Event.key.toLowerCase() === "e" && !Event.ctrlKey && !Event.metaKey) {
+        SetGizmoMode("rotate");
+        if (RunMode === "PLAY") SetRunMode("EDIT");
+        Toast("Rotate gizmo (E) · drag green yaw ring to rotate vehicle/rig");
+      }
+      if (Event.key.toLowerCase() === "q" && !Event.ctrlKey && !Event.metaKey) {
+        SetGizmoMode("off");
+      }
     };
     window.addEventListener("keydown", Key);
     return () => window.removeEventListener("keydown", Key);
@@ -1617,7 +1632,18 @@ function App() {
             >
               <Glyph Name="chevron" Size={12} />
             </button>
-            <Icon Name={Row.Icon} Size={24} />
+            {ObjectThumbnails[Row.Id] ? (
+              <img
+                className="outliner-geometry-thumb"
+                src={ObjectThumbnails[Row.Id]}
+                width={26}
+                height={26}
+                alt={Row.Name + " preview"}
+                data-geometry-thumb={Row.Id}
+              />
+            ) : (
+              <Icon Name={Row.Icon} Size={24} />
+            )}
             {Rename === Row.Id && !IsEditorCamera(Row) ? (
               <input
                 autoFocus
@@ -2006,6 +2032,47 @@ function App() {
                 SetIntroNonce((N) => N + 1);
               }}
               FocusNonce={FocusNonce}
+              GizmoMode={GizmoMode}
+              SetGizmoMode={(Mode) => {
+                SetGizmoMode(Mode);
+                if (Mode !== "off" && RunMode === "PLAY") SetRunMode("EDIT");
+              }}
+              OnTransformEntity={(EntityId, Patch) => {
+                AssignValues((Previous) => {
+                  const Cur = Previous[EntityId] || {};
+                  const NextYaw =
+                    Patch.YawDeg !== undefined
+                      ? Patch.YawDeg
+                      : Number(Cur.Rotation?.[1] ?? Cur.YawDeg ?? 0);
+                  const NextRot = [
+                    Number(Cur.Rotation?.[0] ?? 0),
+                    NextYaw,
+                    Number(Cur.Rotation?.[2] ?? 0),
+                  ];
+                  return {
+                    ...Previous,
+                    [EntityId]: {
+                      ...Cur,
+                      ...(Patch.Position ? { Position: Patch.Position } : {}),
+                      ...(Patch.YawDeg !== undefined
+                        ? { YawDeg: NextYaw, Rotation: NextRot }
+                        : {}),
+                    },
+                  };
+                });
+              }}
+              OnThumbnails={(Captured) => {
+                SetObjectThumbnails((Previous) => {
+                  let Changed = false;
+                  for (const [Key, Url] of Object.entries(Captured)) {
+                    if (Previous[Key] !== Url) {
+                      Changed = true;
+                      break;
+                    }
+                  }
+                  return Changed ? { ...Previous, ...Captured } : Previous;
+                });
+              }}
               OnTelemetry={SetStudioTelemetry}
               View={1}
             />

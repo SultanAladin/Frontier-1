@@ -69,7 +69,15 @@ for (const Style of CinemaCameraStyles) {
 for (const Prim of ["cube", "sphere", "cylinder", "torus", "cone"]) {
   AssertValidSurface("primitive(" + Prim + ")", ConstructShowcasePrimitive(Prim));
 }
-console.log("PASS [2/6] All 7 procedural studio component families & 5 showcase primitives verified");
+// 2b. Verify wider lobby dimensions + straight vertical overhead softbox rigging & power/tether cables
+assert.ok(StudioLobbyInitialValues["studio-cyclorama"].CoveWidth >= 18.0, "Wider cyclorama prevents camera clipping");
+assert.ok(StudioLobbyInitialValues["studio-cyclorama"].FloorDepth >= 13.0, "Deeper studio floor prevents clipping");
+assert.ok(StudioLobbyInitialValues["studio-ceiling"].CeilingHeight >= 7.0, "Higher studio ceiling prevents clipping");
+const SoftboxSurface = ConstructProceduralSurface("studio.light_fixture", StudioLobbyInitialValues["rig-softbox-fixture"]);
+assert.ok(SoftboxSurface.TriangleCount > 500, "Overhead softbox includes vertical cables + coiled umbilical + roof wiring (" + SoftboxSurface.TriangleCount + " tris)");
+const TripodSurface = ConstructProceduralSurface("studio.tripod", StudioLobbyInitialValues["rig-key-tripod"]);
+assert.ok(TripodSurface.TriangleCount > 450, "Studio tripod includes power/tether cabling & ballast (" + TripodSurface.TriangleCount + " tris)");
+console.log("PASS [2/6] All 7 procedural studio component families, wider lobby & vertical cables/wires verified");
 
 // 3. Verify 3 vehicles + 6 shared studio.tripod instances + hierarchical mount propagation
 const VehicleRows = StudioLobbyRows.filter((R) => R.Panel === "studio-vehicle");
@@ -162,7 +170,19 @@ function CreateMockWebGL2() {
         if (Prop === "getShaderParameter") return () => true;
         if (Prop === "getProgramParameter") return () => true;
         if (Prop === "getUniformLocation") return () => ({});
-        if (Prop === "createVertexArray" || Prop === "createBuffer") return () => ({});
+        if (Prop === "createVertexArray" || Prop === "createBuffer" || Prop === "createFramebuffer" || Prop === "createTexture" || Prop === "createRenderbuffer") return () => ({});
+        if (Prop === "FRAMEBUFFER") return 36160;
+        if (Prop === "TEXTURE_2D") return 3553;
+        if (Prop === "RENDERBUFFER") return 36161;
+        if (Prop === "RGBA") return 6408;
+        if (Prop === "UNSIGNED_BYTE") return 5121;
+        if (Prop === "DEPTH_COMPONENT16") return 33189;
+        if (Prop === "COLOR_ATTACHMENT0") return 36064;
+        if (Prop === "DEPTH_ATTACHMENT") return 36096;
+        if (Prop === "TEXTURE_MIN_FILTER") return 10241;
+        if (Prop === "TEXTURE_MAG_FILTER") return 10240;
+        if (Prop === "LINEAR") return 9729;
+        if (Prop === "readPixels") return (_x, _y, _w, _h, _f, _t, buf) => { buf.fill(180); };
         if (Prop === "drawArrays") return () => { CompileSpy.Draws++; };
         return () => {};
       },
@@ -198,8 +218,15 @@ const Dom = new JSDOM(Html, {
     const OrigGetContext = Win.HTMLCanvasElement.prototype.getContext;
     Win.HTMLCanvasElement.prototype.getContext = function (Type, ...Args) {
       if (Type === "webgl2") return CreateMockWebGL2();
+      if (Type === "2d") {
+        return {
+          createImageData: (W, H) => ({ data: new Uint8ClampedArray(W * H * 4) }),
+          putImageData: () => {},
+        };
+      }
       return OrigGetContext ? OrigGetContext.call(this, Type, ...Args) : null;
     };
+    Win.HTMLCanvasElement.prototype.toDataURL = () => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
     Win.addEventListener("error", (Ev) => PageErrors.push(Ev.message || String(Ev.error)));
     Win.addEventListener("unhandledrejection", (Ev) => PageErrors.push(String(Ev.reason)));
   },
@@ -222,9 +249,12 @@ assert.ok(TreeText.includes("Liquid Tourer"), "Outliner lists Liquid Tourer");
 assert.ok(TreeText.includes("Key Fresnel Tripod"), "Outliner lists Key Fresnel Tripod");
 assert.ok(TreeText.includes("Overhead Softbox Bank"), "Outliner lists Overhead Softbox Bank");
 
-// Confirm custom studio vector icons rendered in Outliner
-const StudioIcons = Doc.querySelectorAll(".studio-vector-icon");
-assert.ok(StudioIcons.length >= 12, "Custom studio SVG icons rendered in Outliner (" + StudioIcons.length + ")");
+// Wait briefly for thumbnail capture tick (400ms interval) and verify real 3D geometry thumbnails in Outliner!
+await new Promise((Resolve) => setTimeout(Resolve, 460));
+const GeoThumbs = Doc.querySelectorAll("[data-geometry-thumb]");
+assert.ok(GeoThumbs.length >= 15, "Outliner renders real WebGL2 3D geometry screenshots (" + GeoThumbs.length + " thumbnails)");
+assert.ok(Doc.querySelector('[data-geometry-thumb="vehicle-hero"]'), "Hero Coupe shows actual 3D geometry screenshot in Outliner");
+assert.ok(Doc.querySelector('[data-geometry-thumb="rig-softbox-fixture"]'), "Overhead Softbox shows actual 3D geometry screenshot in Outliner");
 
 // Click Key Fresnel Tripod -> verify reused native TransformPanel + shared instances + Aim at Hero Car
 const TripodItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
@@ -286,6 +316,13 @@ assert.ok(PauseBtn, "Pause button visible in default Play mode");
 PauseBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 40));
 assert.ok(Doc.querySelector('[aria-label="Resume Play"]'), "Clicking Pause toggles to Resume");
+
+// Switch to Edit mode and verify Move (W) / Rotate (E) Transform Gizmo controls appear
+const EditBtn = Doc.querySelector('[aria-label="Edit mode"]');
+assert.ok(EditBtn, "Edit mode button present");
+EditBtn.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.ok(Doc.querySelector('.studio-gizmo-pill'), "3D Transform Gizmo pill (Move W / Rotate E) visible in Edit mode");
 
 // Switch level Studio Lobby -> Showcase -> Studio Lobby and assert ZERO extra shader compilations!
 const LevelSelect = Doc.querySelector(".studio-level-select");
