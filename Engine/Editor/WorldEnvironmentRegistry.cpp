@@ -135,38 +135,55 @@ void WorldEnvironmentRegistry::AdoptInitialSceneState(
     CachedFallbackSky   = Scene.SkyRadiance;
     FallbackSkyCaptured = true;
 
+    const auto AdoptExistingByTag = [&](WorldEnvironmentCategory Category, uint32_t MoonSlot = 0u) -> bool
+    {
+        const char* ExpectedTag = QueryDomainTag(Category);
+        for (const OutlinerRecordEntry& Entry : Outliner.QueryEntries())
+        {
+            if (Entry.DomainTag == ExpectedTag)
+            {
+                RegisteredSlots.push_back({ Entry.Token, Category, MoonSlot, Entry.Title, Entry.VisibilityEnabled });
+                return true;
+            }
+        }
+        return false;
+    };
+
     const auto& Atmo = Scene.Atmosphere;
-    if (Atmo.Medium.AtmosphereEnabled)
+    if (!AdoptExistingByTag(WorldEnvironmentCategory::Atmosphere) && Atmo.Medium.AtmosphereEnabled)
     {
         RegisterCategory(WorldEnvironmentCategory::Atmosphere, "Atmosphere", Outliner, Scene, DisplaySettings);
     }
-    if (Atmo.Solar.SolarEnabled)
+    if (!AdoptExistingByTag(WorldEnvironmentCategory::Sun) && Atmo.Solar.SolarEnabled)
     {
         RegisterCategory(WorldEnvironmentCategory::Sun, "Sun", Outliner, Scene, DisplaySettings);
     }
-    if (Atmo.Clouds.CloudsEnabled)
+    if (!AdoptExistingByTag(WorldEnvironmentCategory::Clouds) && Atmo.Clouds.CloudsEnabled)
     {
         RegisterCategory(WorldEnvironmentCategory::Clouds, "Clouds", Outliner, Scene, DisplaySettings);
     }
-    for (uint32_t SlotIdx = 0u; SlotIdx < MaximumMoonCount; ++SlotIdx)
+    if (!AdoptExistingByTag(WorldEnvironmentCategory::Moon, 0u))
     {
-        if (Atmo.Moons[SlotIdx].Visible)
+        for (uint32_t SlotIdx = 0u; SlotIdx < MaximumMoonCount; ++SlotIdx)
         {
-            const std::string MoonTitle = (SlotIdx == 0u) ? "Moon" : ("Moon " + std::to_string(SlotIdx + 1u));
-            const OutlinerSlotToken FolderToken = EnsureEnvironmentFolder(Outliner);
-            OutlinerRecordEntry Record{};
-            Record.Title              = MoonTitle;
-            Record.Subtitle           = QueryCategorySubtitle(WorldEnvironmentCategory::Moon);
-            Record.Category           = QueryFallbackSlotCategory(WorldEnvironmentCategory::Moon);
-            Record.EnclosingToken     = FolderToken;
-            Record.VisibilityEnabled  = true;
-            Record.Expanded           = true;
-            Record.DomainTag          = QueryDomainTag(WorldEnvironmentCategory::Moon);
-            const OutlinerSlotToken Issued = Outliner.ConstructDirectEntry(std::move(Record));
-            RegisteredSlots.push_back({ Issued, WorldEnvironmentCategory::Moon, SlotIdx, MoonTitle, true });
+            if (Atmo.Moons[SlotIdx].Visible)
+            {
+                const std::string MoonTitle = (SlotIdx == 0u) ? "Moon" : ("Moon " + std::to_string(SlotIdx + 1u));
+                const OutlinerSlotToken FolderToken = EnsureEnvironmentFolder(Outliner);
+                OutlinerRecordEntry Record{};
+                Record.Title              = MoonTitle;
+                Record.Subtitle           = QueryCategorySubtitle(WorldEnvironmentCategory::Moon);
+                Record.Category           = QueryFallbackSlotCategory(WorldEnvironmentCategory::Moon);
+                Record.EnclosingToken     = FolderToken;
+                Record.VisibilityEnabled  = true;
+                Record.Expanded           = true;
+                Record.DomainTag          = QueryDomainTag(WorldEnvironmentCategory::Moon);
+                const OutlinerSlotToken Issued = Outliner.ConstructDirectEntry(std::move(Record));
+                RegisteredSlots.push_back({ Issued, WorldEnvironmentCategory::Moon, SlotIdx, MoonTitle, true });
+            }
         }
     }
-    if (Atmo.Stars.StarfieldEnabled)
+    if (!AdoptExistingByTag(WorldEnvironmentCategory::Stars) && Atmo.Stars.StarfieldEnabled)
     {
         RegisterCategory(WorldEnvironmentCategory::Stars, "Stars", Outliner, Scene, DisplaySettings);
     }
@@ -317,11 +334,108 @@ OutlinerSlotToken WorldEnvironmentRegistry::RegisterFromRegistryKey(
     ViewportDisplaySettings*                  DisplaySettings)
 {
     WorldEnvironmentCategory Resolved{};
-    if (!ResolveCategoryFromRegistryKey(RegistryKey, Resolved))
+    if (ResolveCategoryFromRegistryKey(RegistryKey, Resolved))
+    {
+        return RegisterCategory(Resolved, CustomTitle, Outliner, Scene, DisplaySettings);
+    }
+
+    struct DirectInspectorEntrySpec
+    {
+        std::string_view      Key;
+        const char*           DomainTag;
+        const char*           DefaultTitle;
+        const char*           CategoryLabel;
+        const char*           Subtitle;
+        ConstructSlotCategory SlotCategory;
+        const char*           FolderName;
+    };
+
+    static constexpr std::array<DirectInspectorEntrySpec, 25u> DirectSpecs = {{
+        { "env:local-cloud",       "env:local-cloud",       "Local Cloud",        "World / Local Cloud",       "Bounded 3D cloud box",       ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:wind",              "env:wind",              "Wind",               "World / Wind",              "Global advection field",     ConstructSlotCategory::LayerGroup,     "World"    },
+        { "weather:wind",          "env:wind",              "Wind",               "World / Wind",              "Global advection field",     ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:height-fog",        "env:height-fog",        "Height Fog",         "World / Height Fog",        "Exponential vertical fog",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "weather:fog",           "env:height-fog",        "Height Fog",         "World / Height Fog",        "Exponential vertical fog",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:aerial-fog",        "env:aerial-fog",        "Atmospheric Fog",    "World / Aerial Fog",        "Aerial perspective fog",     ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:local-fog",         "env:local-fog",         "Local Fog",          "World / Local Fog",         "Bounded volumetric fog",     ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:precipitation",     "env:precipitation",     "Precipitation",      "World / Precipitation",     "Rain & snow simulation",     ConstructSlotCategory::LayerGroup,     "World"    },
+        { "weather:precipitation", "env:precipitation",     "Precipitation",      "World / Precipitation",     "Rain & snow simulation",     ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:god-rays",          "env:god-rays",          "God Rays",           "World / God Rays",          "Crepuscular light shafts",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "weather:god-rays",      "env:god-rays",          "God Rays",           "World / God Rays",          "Crepuscular light shafts",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:rainbow",           "env:rainbow",           "Rainbow",            "World / Rainbow",           "Spectral atmospheric arc",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "weather:rainbow",       "env:rainbow",           "Rainbow",            "World / Rainbow",           "Spectral atmospheric arc",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:lens-flare",        "env:lens-flare",        "Lens Flare",         "World / Lens Flare",        "Optical streaks & ghosts",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:environment-light", "env:environment-light", "Environment Light",  "Lighting / Sky Dome IBL",   "Hemisphere sky irradiance",  ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "env:post-process",      "env:post-process",      "Post Process",       "Cameras / Post Process",    "Tone map & color grade",     ConstructSlotCategory::LayerGroup,     "Cameras"  },
+        { "env:motion-blur",       "env:motion-blur",       "Motion Blur",        "Cameras / Motion Blur",     "Shutter velocity blur",      ConstructSlotCategory::LayerGroup,     "Cameras"  },
+        { "env:camera-settings",   "env:camera-settings",   "Camera Settings",    "Cameras / Render Engine",   "Renderer GI, AO & shadows",  ConstructSlotCategory::OpticsCamera,   "Cameras"  },
+        { "camera:perspective",    "camera:perspective",    "Camera",             "Cameras / Optics",          "Perspective optical camera", ConstructSlotCategory::OpticsCamera,   "Cameras"  },
+        { "geom:primitive",        "geom:primitive",        "Primitive",          "Geometry / Analytic",       "Analytic surface primitive", ConstructSlotCategory::GeometryVolume, "Showcase" },
+        { "geometry:cube",         "geom:primitive",        "Cube",               "Geometry / Analytic",       "Analytic box primitive",     ConstructSlotCategory::GeometryVolume, "Showcase" },
+        { "geom:native",           "geom:native",           "Native Mesh",        "Geometry / Native",         "Native triangle mesh",       ConstructSlotCategory::GeometryVolume, "Showcase" },
+        { "geom:procedural",       "geom:procedural",       "Procedural Mesh",    "Geometry / Procedural",     "Parametric procedural mesh", ConstructSlotCategory::GeometryVolume, "Showcase" },
+        { "geom:imported",         "geom:imported",         "Imported Asset",     "Geometry / Imported",       "External USD / glTF mesh",   ConstructSlotCategory::GeometryVolume, "Showcase" },
+        { "light:point",           "light:point",           "Point Light",        "Lighting / Point",          "Omnidirectional luminaire",  ConstructSlotCategory::PointLuminaire, "Lighting" },
+    }};
+
+    static constexpr std::array<DirectInspectorEntrySpec, 7u> ExtraLightSpecs = {{
+        { "lighting:point",   "light:point",     "Point Light",  "Lighting / Point",     "Omnidirectional luminaire", ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "light:spot",       "light:spot",      "Spot Light",   "Lighting / Spot",      "Focused cone spotlight",    ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "light:area",       "light:area",      "Area Light",   "Lighting / Area",      "LTC polygonal quad light",  ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "light:ies",        "light:ies",       "IES Light",    "Lighting / IES",       "Photometric IES profile",   ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "light:tube",       "light:tube",      "Tube Light",   "Lighting / Tube",      "Linear glowing studio tube",ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "light:led",        "light:led",       "LED Light",    "Lighting / LED Panel", "LED emitter fixture",       ConstructSlotCategory::PointLuminaire, "Lighting" },
+        { "light:led-strip",  "light:led-strip", "LED Strip",    "Lighting / LED Strip", "Flexible LED light strip",  ConstructSlotCategory::PointLuminaire, "Lighting" },
+    }};
+
+    const DirectInspectorEntrySpec* Matched = nullptr;
+    for (const auto& Spec : DirectSpecs)
+    {
+        if (Spec.Key == RegistryKey) { Matched = &Spec; break; }
+    }
+    if (Matched == nullptr)
+    {
+        for (const auto& Spec : ExtraLightSpecs)
+        {
+            if (Spec.Key == RegistryKey) { Matched = &Spec; break; }
+        }
+    }
+    if (Matched == nullptr)
     {
         return {};
     }
-    return RegisterCategory(Resolved, CustomTitle, Outliner, Scene, DisplaySettings);
+
+    OutlinerSlotToken ParentFolder{};
+    for (const OutlinerRecordEntry& Entry : Outliner.QueryEntries())
+    {
+        if (Entry.Category == ConstructSlotCategory::Folder &&
+            (Entry.Title == Matched->FolderName ||
+             (std::string_view(Matched->FolderName) == "World" && Entry.DomainTag == "env:folder")))
+        {
+            ParentFolder = Entry.Token;
+            break;
+        }
+    }
+    if (!ParentFolder.Valid())
+    {
+        ParentFolder = (std::string_view(Matched->FolderName) == "World")
+            ? EnsureEnvironmentFolder(Outliner)
+            : Outliner.ConstructFolder(Matched->FolderName);
+    }
+
+    OutlinerRecordEntry Record{};
+    Record.Title             = CustomTitle.empty() ? std::string(Matched->DefaultTitle) : std::string(CustomTitle);
+    Record.CategoryLabel     = Matched->CategoryLabel;
+    Record.Subtitle          = Matched->Subtitle;
+    Record.Category          = Matched->SlotCategory;
+    Record.EnclosingToken    = ParentFolder;
+    Record.DomainTag         = Matched->DomainTag;
+    Record.VisibilityEnabled = true;
+    Record.Expanded          = true;
+
+    const OutlinerSlotToken Issued = Outliner.ConstructDirectEntry(std::move(Record));
+    Outliner.SelectSingle(Issued);
+    return Issued;
 }
 
 OutlinerSlotToken WorldEnvironmentRegistry::DuplicateSlot(
@@ -804,7 +918,37 @@ std::vector<ConstructRegistryEntry> WorldEnvironmentRegistry::BuildConstructRegi
         HasStars ? "Stars are already in the scene" : "",
     });
 
-    // 2. Weather rail (HTML 04-ConstructModalWeather.png: Clouds active, others greyed out)
+    Entries.push_back({
+        "env:lens-flare",
+        "Lens Flare",
+        "Lens Flare",
+        "Environment",
+        "Optical anamorphic streaks, diffraction starburst, and chromatic ghosts.",
+        "Environment",
+        ConstructCategoryRail::Environment,
+        EnvironmentSymbolCategory::LensFlare,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:post-process",
+        "Post Process",
+        "Post Process",
+        "Environment",
+        "Filmic tone mapping, exposure, bloom, and colour grading stack.",
+        "Cameras",
+        ConstructCategoryRail::Environment,
+        EnvironmentSymbolCategory::PostProcess,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    // 2. Weather rail
     Entries.push_back({
         "env:clouds",
         "Clouds",
@@ -821,126 +965,351 @@ std::vector<ConstructRegistryEntry> WorldEnvironmentRegistry::BuildConstructRegi
     });
 
     Entries.push_back({
-        "weather:wind",
+        "env:local-cloud",
+        "Local Cloud",
+        "Local Cloud",
+        "Weather",
+        "Spatially bounded volumetric cloud box with local billow shaping.",
+        "Environment",
+        ConstructCategoryRail::Weather,
+        EnvironmentSymbolCategory::LocalCloud,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:wind",
         "Wind",
         "Wind",
         "Weather",
-        "Global advection wind vector field.",
+        "Global advection wind vector field and gust turbulence.",
         "Environment",
         ConstructCategoryRail::Weather,
         EnvironmentSymbolCategory::Wind,
         ConstructSlotCategory::LayerGroup,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
     Entries.push_back({
-        "weather:fog",
-        "Fog",
-        "Fog",
+        "env:height-fog",
+        "Height Fog",
+        "Height Fog",
         "Weather",
-        "Height-attenuated atmospheric aerial fog.",
+        "Exponential vertical height fog with horizon scattering.",
         "Environment",
         ConstructCategoryRail::Weather,
         EnvironmentSymbolCategory::Fog,
         ConstructSlotCategory::LayerGroup,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
     Entries.push_back({
-        "weather:precipitation",
+        "env:aerial-fog",
+        "Atmospheric Fog",
+        "Atmospheric Fog",
+        "Weather",
+        "Aerial perspective distance scattering and horizon spectrum.",
+        "Environment",
+        ConstructCategoryRail::Weather,
+        EnvironmentSymbolCategory::AtmosphericFog,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:local-fog",
+        "Local Fog",
+        "Local Fog",
+        "Weather",
+        "Bounded volumetric fog shape with edge feathering.",
+        "Environment",
+        ConstructCategoryRail::Weather,
+        EnvironmentSymbolCategory::LocalFog,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:precipitation",
         "Precipitation",
         "Precipitation",
         "Weather",
-        "Rain and snow weather emitter.",
+        "Rain, snow, and hail world-space weather simulation.",
         "Environment",
         ConstructCategoryRail::Weather,
         EnvironmentSymbolCategory::Precipitation,
         ConstructSlotCategory::LayerGroup,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
     Entries.push_back({
-        "weather:god-rays",
+        "env:god-rays",
         "God Rays",
         "God Rays",
         "Weather",
-        "Crepuscular volumetric light shafts.",
+        "Crepuscular volumetric light shafts through atmospheric media.",
         "Environment",
         ConstructCategoryRail::Weather,
         EnvironmentSymbolCategory::GodRays,
         ConstructSlotCategory::LayerGroup,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
     Entries.push_back({
-        "weather:rainbow",
+        "env:rainbow",
         "Rainbow",
         "Rainbow",
         "Weather",
-        "Optical spectral atmospheric rainbow arc.",
+        "Optical spectral atmospheric rainbow arc and supernumerary bands.",
         "Environment",
         ConstructCategoryRail::Weather,
         EnvironmentSymbolCategory::Rainbow,
         ConstructSlotCategory::LayerGroup,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
-    // 3. Cameras rail (greyed out pending Cameras batch)
+    // 3. Cameras rail
     Entries.push_back({
         "camera:perspective",
         "Perspective Camera",
         "Camera",
         "Cameras",
-        "Physical thin-lens perspective camera.",
+        "Physical thin-lens perspective camera with sensor and aperture.",
         "Cameras",
         ConstructCategoryRail::Cameras,
-        EnvironmentSymbolCategory::None,
+        EnvironmentSymbolCategory::Camera,
         ConstructSlotCategory::OpticsCamera,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
-    // 4. Geometry rail (greyed out pending Geometry batch)
     Entries.push_back({
-        "geometry:cube",
-        "Cube",
-        "Cube",
+        "env:camera-settings",
+        "Camera Settings",
+        "Camera Settings",
+        "Cameras",
+        "Render engine GI, ambient occlusion, shadows, and output pipeline.",
+        "Cameras",
+        ConstructCategoryRail::Cameras,
+        EnvironmentSymbolCategory::CameraSettings,
+        ConstructSlotCategory::OpticsCamera,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:motion-blur",
+        "Motion Blur",
+        "Motion Blur",
+        "Cameras",
+        "Camera and per-object shutter angle velocity motion blur.",
+        "Cameras",
+        ConstructCategoryRail::Cameras,
+        EnvironmentSymbolCategory::MotionBlur,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    // 4. Geometry rail
+    Entries.push_back({
+        "geom:primitive",
+        "Primitive",
+        "Primitive",
         "Geometry",
-        "Unit box primitive mesh.",
+        "Analytic geometric primitive mesh (box, sphere, cylinder, torus).",
         "Geometry",
         ConstructCategoryRail::Geometry,
-        EnvironmentSymbolCategory::None,
+        EnvironmentSymbolCategory::Primitive,
         ConstructSlotCategory::GeometryVolume,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
     });
 
-    // 5. Lighting rail (greyed out pending Lighting batch)
     Entries.push_back({
-        "lighting:point",
+        "geom:procedural",
+        "Procedural Mesh",
+        "Procedural Mesh",
+        "Geometry",
+        "Parametric procedural geometry generator.",
+        "Geometry",
+        ConstructCategoryRail::Geometry,
+        EnvironmentSymbolCategory::ProceduralMesh,
+        ConstructSlotCategory::GeometryVolume,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "geom:native",
+        "Native Mesh",
+        "Native Mesh",
+        "Geometry",
+        "Native engine cluster-LOD mesh asset.",
+        "Geometry",
+        ConstructCategoryRail::Geometry,
+        EnvironmentSymbolCategory::NativeMesh,
+        ConstructSlotCategory::GeometryVolume,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "geom:imported",
+        "Imported Asset",
+        "Imported Asset",
+        "Geometry",
+        "Imported USD / glTF / FBX scene geometry asset.",
+        "Geometry",
+        ConstructCategoryRail::Geometry,
+        EnvironmentSymbolCategory::ImportedAsset,
+        ConstructSlotCategory::GeometryVolume,
+        false,
+        "",
+        "",
+    });
+
+    // 5. Lighting rail
+    Entries.push_back({
+        "light:point",
         "Point Light",
         "Point Light",
         "Lighting",
         "Omnidirectional photometric point luminaire.",
         "Lighting",
         ConstructCategoryRail::Lighting,
-        EnvironmentSymbolCategory::None,
+        EnvironmentSymbolCategory::PointLight,
         ConstructSlotCategory::PointLuminaire,
-        true,
-        "Soon",
-        "Not yet implemented",
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "light:spot",
+        "Spot Light",
+        "Spot Light",
+        "Lighting",
+        "Focused cone spotlight with soft inner/outer beam penumbra.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::SpotLight,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "light:area",
+        "Area Light",
+        "Area Light",
+        "Lighting",
+        "Analytic LTC rectangular / disc studio softbox luminaire.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::AreaLight,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "light:ies",
+        "IES Light",
+        "IES Light",
+        "Lighting",
+        "Measured photometric IES intensity distribution luminaire.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::IesLight,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "light:tube",
+        "Tube Light",
+        "Tube Light",
+        "Lighting",
+        "Linear studio tube emitter with capsule falloff.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::TubeLight,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "light:led",
+        "LED Light",
+        "LED Light",
+        "Lighting",
+        "Directional LED diode matrix fixture.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::LedLight,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "light:led-strip",
+        "LED Strip",
+        "LED Strip",
+        "Lighting",
+        "Flexible architectural LED ribbon strip.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::LedStrip,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:environment-light",
+        "Environment Light",
+        "Environment Light",
+        "Lighting",
+        "Sky hemisphere IBL irradiance dome.",
+        "Lighting",
+        ConstructCategoryRail::Lighting,
+        EnvironmentSymbolCategory::EnvironmentLight,
+        ConstructSlotCategory::PointLuminaire,
+        false,
+        "",
+        "",
     });
 
     // 6. Vehicle rail (greyed out pending Vehicle batch)

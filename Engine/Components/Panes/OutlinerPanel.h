@@ -86,8 +86,9 @@ struct OutlinerConstructTemplate
     std::string          DropdownLabel {};                                           // [-] - Construct sheet label (e.g. "Add Item 1")
     std::string          DefaultTitle  {};                                           // [-] - Initial name assigned to created entry
     std::string          CategoryTitle {};                                           // [-] - Inspector breadcrumb category label
-    std::string           DefaultDetail {};                                         // [-] - Secondary row summary caption
-    ConstructSlotCategory Category      = ConstructSlotCategory::GeometryVolume;    // [-] - Visual icon and filter category
+    std::string          DefaultDetail {};                                           // [-] - Secondary row summary caption
+    ConstructSlotCategory Category      = ConstructSlotCategory::GeometryVolume;     // [-] - Visual icon and filter category
+    std::string          DomainTag     {};                                           // [-] - Optional inspector & icon domain tag (e.g. "env:sun", "light:area")
 };
 
 struct OutlinerRecordEntry
@@ -291,6 +292,8 @@ private:
     std::function<bool()>                                      QueryUndoAvailableCallback {};             // [-]   - Optional Undo availability probe
     std::function<void(std::string_view)>                      ClipboardCopyCallback      {};             // [-]   - Optional clipboard writer
     std::function<void(std::string_view)>                      DirectConstructCallback    {};             // [-]   - Optional empty-area quick construct handler
+    double                                                     LastRealtimeCanvasLatchSec = -1.0;           // [s]   - Last ImGui time RealtimeText invalidated retained canvas
+    std::string                                                LatchedRealtimeCanvasText  {};             // [-]   - 2 Hz latched FPS text for retained-canvas signature
 };
 
 //------------------------------------------------------------------------------------------------------------------------

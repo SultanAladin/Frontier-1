@@ -261,16 +261,50 @@ void ImGuiOverlayRasterization::TeardownUpstreamImGuiBackend() noexcept
 
 void ImGuiOverlayRasterization::ReleaseExternalImages() noexcept
 {
-    if (UpstreamImGuiBackendReady && !ExternalImages.empty() && BoundDevice != nullptr && BoundDevice->Ready())
+    if (UpstreamImGuiBackendReady && BoundDevice != nullptr && BoundDevice->Ready())
     {
-        vkDeviceWaitIdle(BoundDevice->AccessDevice());
-        for (auto& [Key, Entry] : ExternalImages)
+        bool AnyToFree = !ExternalImages.empty();
+        for (const auto& Vec : DeferredExternalDescriptors) AnyToFree |= !Vec.empty();
+        for (const auto& Vec : DeferredTextureRetirements)  AnyToFree |= !Vec.empty();
+        if (AnyToFree)
         {
-            (void)Key;
-            if (Entry.Descriptor != VK_NULL_HANDLE)
+            vkDeviceWaitIdle(BoundDevice->AccessDevice());
+            for (auto& [Key, Entry] : ExternalImages)
             {
-                ImGui_ImplVulkan_RemoveTexture(Entry.Descriptor);
-                Entry.Descriptor = VK_NULL_HANDLE;
+                (void)Key;
+                if (Entry.Descriptor != VK_NULL_HANDLE)
+                {
+                    ImGui_ImplVulkan_RemoveTexture(Entry.Descriptor);
+                    Entry.Descriptor = VK_NULL_HANDLE;
+                }
+            }
+            for (auto& Vec : DeferredExternalDescriptors)
+            {
+                for (VkDescriptorSet Desc : Vec)
+                {
+                    if (Desc != VK_NULL_HANDLE)
+                    {
+                        ImGui_ImplVulkan_RemoveTexture(Desc);
+                    }
+                }
+                Vec.clear();
+            }
+            for (auto& Vec : DeferredTextureRetirements)
+            {
+                for (const RetiredImGuiTextureHandle& Retired : Vec)
+                {
+                    if (Retired.BackendUserData != nullptr)
+                    {
+                        ImTextureData Shell {};
+                        Shell.BackendUserData = Retired.BackendUserData;
+                        Shell.TexID           = static_cast<ImTextureID>(Retired.NativeTexId);
+                        Shell.Status          = ImTextureStatus_WantDestroy;
+                        Shell.UnusedFrames    = 64;
+                        ImGui_ImplVulkan_UpdateTexture(&Shell);
+                        Shell.BackendUserData = nullptr;
+                    }
+                }
+                Vec.clear();
             }
         }
     }
@@ -296,8 +330,8 @@ uint64_t ImGuiOverlayRasterization::RegisterOrUpdateExternalImage(
 
     if (Entry.Descriptor != VK_NULL_HANDLE)
     {
-        vkDeviceWaitIdle(BoundDevice->AccessDevice());
-        ImGui_ImplVulkan_RemoveTexture(Entry.Descriptor);
+        const std::size_t RetireSlot = static_cast<std::size_t>(PresentSlotCursor % kPresentSlotsInFlight);
+        DeferredExternalDescriptors[RetireSlot].push_back(Entry.Descriptor);
         Entry.Descriptor = VK_NULL_HANDLE;
     }
 
@@ -1065,6 +1099,54 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
         }
     }
 
+    const std::size_t PresentSlot = static_cast<std::size_t>(PresentSlotCursor % kPresentSlotsInFlight);
+    auto DrainRetiredTexturesForSlot = [&](std::size_t SlotIdx)
+    {
+        auto& List = DeferredTextureRetirements[SlotIdx];
+        for (const RetiredImGuiTextureHandle& Retired : List)
+        {
+            if (Retired.BackendUserData != nullptr)
+            {
+                ImTextureData Shell {};
+                Shell.BackendUserData = Retired.BackendUserData;
+                Shell.TexID           = static_cast<ImTextureID>(Retired.NativeTexId);
+                Shell.Status          = ImTextureStatus_WantDestroy;
+                Shell.UnusedFrames    = 64;
+                ImGui_ImplVulkan_UpdateTexture(&Shell);
+                Shell.BackendUserData = nullptr;
+            }
+        }
+        List.clear();
+        auto& ExtList = DeferredExternalDescriptors[SlotIdx];
+        for (VkDescriptorSet Desc : ExtList)
+        {
+            if (Desc != VK_NULL_HANDLE)
+            {
+                ImGui_ImplVulkan_RemoveTexture(Desc);
+            }
+        }
+        ExtList.clear();
+    };
+
+    if (Stats.LiveWindowSwapchain && InFlightCommandBuffers[PresentSlot] != VK_NULL_HANDLE)
+    {
+        if (PresentSyncSignals[PresentSlot] != VK_NULL_HANDLE)
+        {
+            (void)vkWaitForFences(BoundDevice->AccessDevice(), 1u, &PresentSyncSignals[PresentSlot], VK_TRUE, 5000000000ull);
+            for (VkFence& ImgSignal : ImagesInFlightSignals)
+            {
+                if (ImgSignal == PresentSyncSignals[PresentSlot])
+                {
+                    ImgSignal = VK_NULL_HANDLE;
+                }
+            }
+            (void)vkResetFences(BoundDevice->AccessDevice(), 1u, &PresentSyncSignals[PresentSlot]);
+        }
+        vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &InFlightCommandBuffers[PresentSlot]);
+        InFlightCommandBuffers[PresentSlot] = VK_NULL_HANDLE;
+        DrainRetiredTexturesForSlot(PresentSlot);
+    }
+
     // Texture uploads submit their own short-lived transfer command buffer.  Complete those
     // requests before acquiring an image or beginning the render pass: doing it inside the
     // old custom command decoder allowed a texture upload to race the frame being presented.
@@ -1081,10 +1163,13 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
         if (Texture->Status == ImTextureStatus_WantCreate &&
             (Texture->BackendUserData != nullptr || Texture->GetTexID() != ImTextureID_Invalid))
         {
-            vkDeviceWaitIdle(BoundDevice->AccessDevice());
-            Texture->SetStatus(ImTextureStatus_WantDestroy);
-            Texture->UnusedFrames = 64;
-            ImGui_ImplVulkan_UpdateTexture(Texture);
+            if (Texture->BackendUserData != nullptr)
+            {
+                DeferredTextureRetirements[PresentSlot].push_back(
+                    { Texture->BackendUserData, static_cast<uint64_t>(Texture->GetTexID()) });
+            }
+            Texture->BackendUserData = nullptr;
+            Texture->SetTexID(ImTextureID_Invalid);
             Texture->SetStatus(ImTextureStatus_WantCreate);
         }
         if (Texture->Status == ImTextureStatus_WantUpdates &&
@@ -1163,26 +1248,8 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
     }
 
     uint32_t ImageIndex = 0u;
-    const std::size_t PresentSlot = static_cast<std::size_t>(PresentSlotCursor % kPresentSlotsInFlight);
     if (Stats.LiveWindowSwapchain)
     {
-        if (InFlightCommandBuffers[PresentSlot] != VK_NULL_HANDLE)
-        {
-            if (PresentSyncSignals[PresentSlot] != VK_NULL_HANDLE)
-            {
-                (void)vkWaitForFences(BoundDevice->AccessDevice(), 1u, &PresentSyncSignals[PresentSlot], VK_TRUE, 5000000000ull);
-                for (VkFence& ImgSignal : ImagesInFlightSignals)
-                {
-                    if (ImgSignal == PresentSyncSignals[PresentSlot])
-                    {
-                        ImgSignal = VK_NULL_HANDLE;
-                    }
-                }
-                (void)vkResetFences(BoundDevice->AccessDevice(), 1u, &PresentSyncSignals[PresentSlot]);
-            }
-            vkFreeCommandBuffers(BoundDevice->AccessDevice(), BoundDevice->AccessCommandAllocator(), 1u, &InFlightCommandBuffers[PresentSlot]);
-            InFlightCommandBuffers[PresentSlot] = VK_NULL_HANDLE;
-        }
         const VkResult AcquireResult = vkAcquireNextImageKHR(
             BoundDevice->AccessDevice(),
             SwapchainHandle,

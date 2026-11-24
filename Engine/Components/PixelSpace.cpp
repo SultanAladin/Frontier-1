@@ -203,7 +203,8 @@ void PixelSpace::FillTexturedRectangle(
     uint64_t    NativeTextureHandle,
     ColorRgba   Tint,
     Point2D     UvMin,
-    Point2D     UvMax) noexcept
+    Point2D     UvMax,
+    float       CornerRadius) noexcept
 {
     if (!CanvasBuffer || Bounds.Width <= 0.0f || Bounds.Height <= 0.0f || Tint.Alpha == 0u)
     {
@@ -219,13 +220,27 @@ void PixelSpace::FillTexturedRectangle(
         (SoftwareTextureData != nullptr)
             ? const_cast<ImTextureData*>(static_cast<const ImTextureData*>(SoftwareTextureData))->GetTexRef()
             : ImTextureRef(static_cast<ImTextureID>(NativeTextureHandle));
-    CanvasBuffer->AddImage(
-        TexRef,
-        ImVec2(Phys.X, Phys.Y),
-        ImVec2(Phys.Right(), Phys.Bottom()),
-        ImVec2(UvMin.X, UvMin.Y),
-        ImVec2(UvMax.X, UvMax.Y),
-        PackColor(Tint));
+    if (CornerRadius > 0.0f)
+    {
+        CanvasBuffer->AddImageRounded(
+            TexRef,
+            ImVec2(Phys.X, Phys.Y),
+            ImVec2(Phys.Right(), Phys.Bottom()),
+            ImVec2(UvMin.X, UvMin.Y),
+            ImVec2(UvMax.X, UvMax.Y),
+            PackColor(Tint),
+            CornerRadius * Scale);
+    }
+    else
+    {
+        CanvasBuffer->AddImage(
+            TexRef,
+            ImVec2(Phys.X, Phys.Y),
+            ImVec2(Phys.Right(), Phys.Bottom()),
+            ImVec2(UvMin.X, UvMin.Y),
+            ImVec2(UvMax.X, UvMax.Y),
+            PackColor(Tint));
+    }
 }
 
 void PixelSpace::StrokeLine(Point2D From, Point2D To, ColorRgba Stroke, float Thickness) noexcept

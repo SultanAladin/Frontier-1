@@ -1,9 +1,10 @@
 /*============================================================================================================================================
                                                          POINTLIGHTINSPECTOR.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of standalone multi-instance PointLightInspector with own retained radial falloff diagram
+// 🧩 Brand-new 1:1 HTML parity port of Point Light Inspector (2 tabs: Overview, Source)
 
 #include "Engine/Editor/Inspectors/PointLightInspector.h"
+#include "Engine/Editor/Inspectors/LightInspectorShared.h"
 
 #include <algorithm>
 #include <array>
@@ -15,110 +16,212 @@ namespace Frontier
 
 namespace
 {
-constexpr float PiF = 3.14159265359f;
-
+[[nodiscard]] uint8_t ClampBytePt(float V) noexcept
+{
+    return static_cast<uint8_t>(std::clamp(std::lround(V), 0l, 255l));
+}
 } // namespace
 
+void PointLightInspector::UpdateFalloffSurface(const PointLightData& Instance)
+{
+    uint64_t Key = 0x11010001ull;
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.IntensityCandela);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.ReachMeters);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.DecayExponent);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.RadiantTint.R);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.RadiantTint.B);
 
+    // Seamless dark card background rgb(24,24,25) with concentric reach rings + indigo core
+    const uint32_t W = 524u, H = 376u;
+    InspectorGpuBakeSpec GpuSpec {
+        InspectorGpuBakeMode::PhotometricLightPreview, 0u,
+        { Instance.IntensityCandela * 0.0015f, Instance.ReachMeters, Instance.DecayExponent, 0.0f },
+        { 0.0f, 0.0f, 0.0f, 0.0f },
+        { Instance.RadiantTint.R, Instance.RadiantTint.G, Instance.RadiantTint.B, 1.0f }
+    };
+    FalloffPreview.EnsureUpdatedGpu(Key, W, H, GpuSpec, [&](std::vector<uint8_t>& Pixels)
+    {
+        const float Cx = static_cast<float>(W) * 0.5f;
+        const float Cy = static_cast<float>(H) * 0.50f;
+        const float MaxR = 148.0f;
+        const float TR = std::clamp(Instance.RadiantTint.R, 0.2f, 1.0f);
+        const float TG = std::clamp(Instance.RadiantTint.G, 0.2f, 1.0f);
+        const float TB = std::clamp(Instance.RadiantTint.B, 0.2f, 1.0f);
+
+        for (uint32_t Y = 0u; Y < H; ++Y)
+        {
+            for (uint32_t X = 0u; X < W; ++X)
+            {
+                const float DX = static_cast<float>(X) - Cx;
+                const float DY = static_cast<float>(Y) - Cy;
+                const float D  = std::sqrt(DX * DX + DY * DY);
+
+                float R = 24.0f, G = 24.0f, B = 25.0f;
+                // Soft radial bluish-indigo glow matching reference-rim-point__0
+                const float Halo = std::exp(-D / 52.0f) * 34.0f;
+                R += Halo * 0.58f * TR;
+                G += Halo * 0.65f * TG;
+                B += Halo * 1.35f * TB;
+
+                // 4 concentric reach rings
+                for (int K = 1; K <= 4; ++K)
+                {
+                    const float RR = MaxR * (static_cast<float>(K) * 0.25f);
+                    if (std::fabs(D - RR) < 1.05f) { R += 18.0f; G += 19.0f; B += 22.0f; }
+                }
+                // Emitter core dot
+                if (D < 10.5f)
+                {
+                    const float Core = 1.0f - std::clamp((D - 8.0f) / 2.5f, 0.0f, 1.0f);
+                    R = R * (1.0f - Core) + (104.0f * TR) * Core;
+                    G = G * (1.0f - Core) + (116.0f * TG) * Core;
+                    B = B * (1.0f - Core) + (214.0f * TB) * Core;
+                }
+
+                const std::size_t Off = (static_cast<std::size_t>(Y) * W + X) * 4u;
+                Pixels[Off + 0u] = ClampBytePt(R);
+                Pixels[Off + 1u] = ClampBytePt(G);
+                Pixels[Off + 2u] = ClampBytePt(B);
+                Pixels[Off + 3u] = 255u;
+            }
+        }
+    });
+}
 
 float PointLightInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
     OutlinerRecordEntry& Entry, PointLightData& Instance,
     const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched)
 {
-    static constexpr std::array<const char*, 5u> Pages = {{ "Overview", "Output", "Attenuation", "Placement", "Shadows" }};
-    float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, LeftX, TopY, InnerWidth, Pages, ActivePage, Input, OutPageSwitched);
-    const float PadX = InspectorMetrics::SectionPadX, BodyW = InnerWidth - PadX * 2.0f;
-
-    const float Lux5m = Instance.IntensityCandela / std::pow(5.0f, std::max(0.01f, Instance.DecayExponent));
+    const float WideX = LeftX;
+    const float WideW = InnerWidth;
+    static constexpr std::array<const char*, 2u> Pages = {{ "Overview", "Source" }};
+    float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, WideX, TopY, WideW, Pages, ActivePage, Input, OutPageSwitched);
+    const float PadX  = std::clamp(WideW * 0.065f, 14.0f, 22.0f);
+    const float BodyX = WideX + PadX;
+    const float BodyW = std::max(100.0f, WideW - PadX * 2.0f);
+    const float Lux5m = Instance.IntensityCandela / std::max(0.01f, std::pow(5.0f, std::max(0.2f, Instance.DecayExponent)));
 
     if (ActivePage == 0u)
     {
-        const auto K = InspectorPrimitives::ComputeKelvinRgb(Instance.KelvinTemperature);
-        const Mathematics::LinearRGB EffTint { Instance.RadiantTint.R * K.R, Instance.RadiantTint.G * K.G, Instance.RadiantTint.B * K.B };
-        const Rectangle2D PrevSec { LeftX, CursorY, InnerWidth, 286.0f };
-        InspectorVector::ConstructSectionSurfaceWithIcon(
-            Surface, PrevSec, InspectorVector::HtmlGlyph::PointLight, InspectorPrimitives::EncodeLinearRgbToSrgb8(EffTint),
-            "Radial falloff", "Point");
-        float HY = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        char WBuf[20]{}, FBuf[8]{}, CapBuf[64]{};
-        std::snprintf(WBuf, sizeof(WBuf), "%.0f", std::floor(std::max(0.0f, Instance.IntensityCandela)));
-        std::snprintf(FBuf, sizeof(FBuf), ".%d", static_cast<int>(std::lround((Instance.IntensityCandela - std::floor(Instance.IntensityCandela)) * 10.0f)) % 10);
-        std::snprintf(CapBuf, sizeof(CapBuf), "Omnidirectional · decay %.1f · %.0f K", Instance.DecayExponent, Instance.KelvinTemperature);
-        HY = InspectorVector::ConstructSplitMetricReadout(Surface, LeftX + PadX, HY, WBuf, FBuf, "cd", CapBuf, 30.0f);
-        InspectorVector::LightBlueprintParams Bp{};
-        Bp.Kind = InspectorVector::LightBlueprintKind::Point;
-        Bp.TintRgb = EffTint;
-        Bp.WidthMeters = Instance.ReachMeters;
-        Bp.FalloffPower = Instance.DecayExponent;
-        InspectorVector::ConstructLightBlueprint(Surface, { LeftX + PadX, HY + 2.0f, BodyW, 158.0f }, Bp);
-        CursorY = PrevSec.Bottom() + InspectorMetrics::SectionGap;
+        UpdateFalloffSurface(Instance);
+        const float ImgH = LightUi::ComputeOverviewPreviewHeight(BodyW);
+        const Rectangle2D Card { WideX, CursorY, WideW, LightUi::ComputeOverviewCardHeight(ImgH) };
+        LightUi::ConstructDarkLuminaireCard(Surface, Card);
 
-        char CdBuf[20]{}, LuxBuf[20]{}, ReachBuf[20]{}, RadBuf[20]{};
-        std::snprintf(CdBuf,    sizeof(CdBuf),    "%.1f", Instance.IntensityCandela);
-        std::snprintf(LuxBuf,   sizeof(LuxBuf),   "%.2f", Lux5m);
-        std::snprintf(ReachBuf, sizeof(ReachBuf), "%.0f", Instance.ReachMeters);
-        std::snprintf(RadBuf,   sizeof(RadBuf),   "%.0f", Instance.SourceRadiusMeters * 1000.0f);
-        const std::array<InspectorKpiMetricSpec, 4u> Tiles = {{
-            { CdBuf,    "cd", "INTENSITY" },
-            { LuxBuf,   "lx", "AT 5 M"    },
-            { ReachBuf, "m",  "REACH"     },
-            { RadBuf,   "mm", "BULB RAD"  },
-        }};
-        CursorY = InspectorPrimitives::ConstructKpiMetricGrid(Surface, LeftX, CursorY, InnerWidth, Tiles);
+        WorkspaceAppearance::ConstructEnvironmentSymbolIcon(Surface, EnvironmentSymbolCategory::PointLight, { BodyX, Card.Y + 21.0f }, 20.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + 28.0f, Card.Y + 23.0f }, 16.4f, InspectorMetrics::HeadingInk, "Radial falloff");
 
-        const std::array<InspectorQuickSwitchSpec, 2u> Quick = {{
-            { "Enabled",      InspectorSwitchSymbol::LightBulb, Entry.VisibilityEnabled, false },
-            { "Show glow",    InspectorSwitchSymbol::Sun,       Instance.ShowGlow,       false },
-        }};
-        int32_t Clicked = -1;
-        CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, LeftX, CursorY, InnerWidth, Quick, Input, Clicked);
-        if (Clicked == 0) { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; OutMutated = true; }
-        else if (Clicked == 1) { Instance.ShowGlow = !Instance.ShowGlow; OutMutated = true; }
+        float Y = LightUi::ConstructGiantMetric(Surface, BodyX, Card.Y + 64.0f, Instance.IntensityCandela, "cd", "Authored luminous intensity");
+        Surface.StrokeLine({ BodyX, Y }, { BodyX + BodyW, Y }, LightUi::DividerInk, 1.0f);
+        Y += 16.0f;
 
-        static constexpr std::array<const char*, 2u> Tags = {{ "lighting", "point" }};
-        CursorY = InspectorPrimitives::ConstructTagsSection(Surface, LeftX, CursorY, InnerWidth, Tags);
-        CursorY = InspectorPrimitives::ConstructNotesSection(Surface, LeftX, CursorY, InnerWidth, Entry.AuthorNotes);
-    }
-    else if (ActivePage == 1u)
-    {
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, 294.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Source & colour");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        char CdBuf[20]{}; std::snprintf(CdBuf, sizeof(CdBuf), "%.1f", Instance.IntensityCandela);
-        Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, CdBuf, "cd", "Authored luminous intensity");
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 8110u, "Intensity", "cd", "%.1f", 0.0f, 60.0f, Instance.IntensityCandela, ActiveDragId, Input, OutMutated, Entry.Locked);
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 8111u, "Colour temperature", "K", "%.0f", 1800.0f, 12000.0f, Instance.KelvinTemperature, ActiveDragId, Input, OutMutated, Entry.Locked);
-        (void)InspectorPrimitives::ConstructColourFieldRow(Surface, LeftX + PadX, Y, BodyW, 8112u, "Emission tint", Instance.RadiantTint, ActiveDragId, Input, OutMutated, Entry.Locked);
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
-    }
-    else if (ActivePage == 2u)
-    {
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, 356.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Attenuation & distance response");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        std::array<float, 32u> Curve {};
-        for (std::size_t I = 0u; I < Curve.size(); ++I)
-        {
-            const float Dist = 1.0f + (static_cast<float>(I) / 31.0f) * 9.0f;
-            Curve[I] = std::clamp(1.0f / std::pow(Dist, std::max(0.05f, Instance.DecayExponent)), 0.0f, 1.0f);
-        }
-        InspectorPrimitives::ConstructCurvePlot(
-            Surface, { LeftX + PadX, Y, BodyW, 74.0f }, Curve,
-            ColorRgba{ 246u, 206u, 128u, 255u }, ColorRgba{ 246u, 206u, 128u, 32u }, "1 m", "10 m");
-        Y += 86.0f;
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 8120u, "Reach", "m", "%.0f", 1.0f, 120.0f, Instance.ReachMeters, ActiveDragId, Input, OutMutated, Entry.Locked);
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 8121u, "Decay exponent", "", "%.2f", 0.0f, 4.0f, Instance.DecayExponent, ActiveDragId, Input, OutMutated, Entry.Locked);
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 8122u, "Source radius", "m", "%.2f", 0.01f, 1.0f, Instance.SourceRadiusMeters, ActiveDragId, Input, OutMutated, Entry.Locked);
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
-    }
-    else if (ActivePage == 3u)
-    {
-        CursorY = InspectorPrimitives::ConstructTransformSections(Surface, LeftX, CursorY, InnerWidth, Entry, 8140u, ActiveDragId, Input, OutMutated);
+        char SumBuf[48]{};
+        std::snprintf(SumBuf, sizeof(SumBuf), "Omnidirectional / decay %.1f", Instance.DecayExponent);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, Y }, 11.8f, InspectorMetrics::MutedInk, SumBuf);
+        Y += 26.0f;
+
+        const Rectangle2D ImgBox { BodyX, Y + 8.0f, BodyW, ImgH };
+        FalloffPreview.Present(Surface, ImgBox, InspectorMetrics::PreviewRadius, ColorRgba{ 255u, 255u, 255u, 255u }, InspectorPreviewFitMode::Contain, LightUi::CardFill);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ImgBox.X + 4.0f, ImgBox.Y + 6.0f }, 8.4f, InspectorMetrics::DimInk, "OMNIDIRECTIONAL");
+        char DecBuf[24]{};
+        std::snprintf(DecBuf, sizeof(DecBuf), "DECAY %.1f", Instance.DecayExponent);
+        const float DW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.4f, DecBuf);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ImgBox.Right() - DW - 4.0f, ImgBox.Y + 6.0f }, 8.4f, InspectorMetrics::DimInk, DecBuf);
+        char RingBuf[48]{};
+        std::snprintf(RingBuf, sizeof(RingBuf), "%.0f m  %.0f m  %.0f m  %.0f m",
+            Instance.ReachMeters * 0.25f, Instance.ReachMeters * 0.50f, Instance.ReachMeters * 0.75f, Instance.ReachMeters);
+        WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { ImgBox.Center().X + 18.0f, ImgBox.Center().Y - 5.0f }, ImgBox.Width * 0.5f - 20.0f, 7.8f, InspectorMetrics::DimInk, RingBuf);
+        const char* Cap = "Reach guides \xC2\xB7 free space";
+        const float CW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.6f, Cap);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ImgBox.Center().X - CW * 0.5f, ImgBox.Bottom() - 14.0f }, 8.6f, InspectorMetrics::DimInk, Cap);
+
+        char LuxBuf[24]{}, ReachBuf[24]{};
+        std::snprintf(LuxBuf, sizeof(LuxBuf), "%.2f lx", Lux5m);
+        std::snprintf(ReachBuf, sizeof(ReachBuf), "%.0f m", Instance.ReachMeters);
+        LightUi::ConstructStudyTilesAndFooter(
+            Surface, BodyX, ImgBox.Bottom() + 24.0f, BodyW,
+            "Source study \xC2\xB7 photometric summary",
+            "At 5 m \xC2\xB7 estimate", LuxBuf, nullptr,
+            "Reach", ReachBuf, nullptr,
+            "Source & colour", "Intensity");
+        CursorY = Card.Bottom() + InspectorMetrics::SectionGap;
     }
     else
     {
-        CursorY = InspectorPrimitives::ConstructLuminaireShadowsSection(Surface, LeftX, CursorY, InnerWidth, Entry, false, "Show glow", Instance.ShowGlow, Input, OutMutated);
+        // TAB 2: SOURCE — Attenuation (h = 624)
+        const Rectangle2D Card { WideX, CursorY, WideW, 624.0f };
+        LightUi::ConstructDarkLuminaireCard(Surface, Card);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, Card.Y + 24.0f }, 16.4f, InspectorMetrics::HeadingInk, "Attenuation");
+        const float OW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.6f, "OPTICS");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW - OW, Card.Y + 28.0f }, 9.6f, InspectorMetrics::DimInk, "OPTICS");
+
+        char LuxBuf[24]{};
+        std::snprintf(LuxBuf, sizeof(LuxBuf), "%.2f lx", Lux5m);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, Card.Y + 58.0f }, 36.0f, ColorRgba{ 244u, 244u, 244u, 255u }, LuxBuf);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, Card.Y + 108.0f }, 11.2f, InspectorMetrics::MutedInk, "Authored decay at 5 m \xC2\xB7 free-space estimate");
+
+        // Illuminance decay curve plot (1m..10m)
+        const Rectangle2D Plot { BodyX + 42.0f, Card.Y + 158.0f, BodyW - 46.0f, 118.0f };
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Plot.X, Plot.Y - 22.0f }, 9.2f, InspectorMetrics::DimInk, "ILLUMINANCE \xC2\xB7 lx");
+        for (int R = 0; R <= 4; ++R)
+        {
+            const float GY = Plot.Y + Plot.Height * (static_cast<float>(R) / 4.0f);
+            Surface.StrokeLine({ Plot.X, GY }, { Plot.Right(), GY }, ColorRgba{ 255u, 255u, 255u, 16u }, 1.0f);
+            char YLbl[16]{};
+            std::snprintf(YLbl, sizeof(YLbl), "%.3g", Instance.IntensityCandela * (1.0f - static_cast<float>(R) * 0.25f));
+            const float YW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 9.2f, YLbl);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Plot.X - YW - 8.0f, GY - 5.0f }, 9.2f, InspectorMetrics::DimInk, YLbl);
+        }
+        const int Segs = 40;
+        Point2D Prev {};
+        for (int I = 0; I <= Segs; ++I)
+        {
+            const float T = static_cast<float>(I) / static_cast<float>(Segs);
+            const float Dist = 1.0f + T * 9.0f;
+            const float Rel  = std::pow(1.0f / Dist, std::max(0.2f, Instance.DecayExponent));
+            const Point2D P { Plot.X + T * Plot.Width, Plot.Bottom() - Rel * Plot.Height };
+            if (I > 0) Surface.StrokeLine(Prev, P, ColorRgba{ 112u, 126u, 224u, 255u }, 1.8f);
+            Prev = P;
+        }
+        const std::array<float, 4u> Dists = {{ 1.0f, 2.0f, 5.0f, 10.0f }};
+        for (float D : Dists)
+        {
+            const float T   = (D - 1.0f) / 9.0f;
+            const float Rel = std::pow(1.0f / D, std::max(0.2f, Instance.DecayExponent));
+            const Point2D P { Plot.X + T * Plot.Width, Plot.Bottom() - Rel * Plot.Height };
+            Surface.FillCircle(P, 3.5f, (D == 5.0f) ? ColorRgba{ 245u, 245u, 245u, 255u } : ColorRgba{ 112u, 126u, 224u, 255u });
+            char XLbl[12]{};
+            std::snprintf(XLbl, sizeof(XLbl), "%.0f m", D);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { P.X - 8.0f, Plot.Bottom() + 8.0f }, 9.2f, InspectorMetrics::DimInk, XLbl);
+        }
+
+        // 4-row Distance / Estimate / Relative table
+        float TY = Plot.Bottom() + 38.0f;
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, TY }, 10.6f, InspectorMetrics::DimInk, "Distance");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + 144.0f, TY }, 10.6f, InspectorMetrics::DimInk, "Estimate");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW - 44.0f, TY }, 10.6f, InspectorMetrics::DimInk, "Relative");
+        TY += 18.0f;
+        for (float D : Dists)
+        {
+            Surface.StrokeLine({ BodyX, TY }, { BodyX + BodyW, TY }, LightUi::DividerInk, 1.0f);
+            const float Rel = std::pow(1.0f / D, std::max(0.2f, Instance.DecayExponent));
+            char DStr[16]{}, EStr[24]{}, RStr[16]{};
+            std::snprintf(DStr, sizeof(DStr), "%.0f m", D);
+            std::snprintf(EStr, sizeof(EStr), "%.2f lx", Instance.IntensityCandela * Rel);
+            std::snprintf(RStr, sizeof(RStr), "%.1f%%", Rel * 100.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, TY + 8.0f }, 11.4f, InspectorMetrics::HeadingInk, DStr);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + 144.0f, TY + 8.0f }, 11.4f, InspectorMetrics::HeadingInk, EStr);
+            const float RW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 11.4f, RStr);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW - RW, TY + 8.0f }, 11.4f, InspectorMetrics::HeadingInk, RStr);
+            TY += 26.0f;
+        }
+
+        TY += 14.0f;
+        TY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, TY, BodyW, 8601u, "Reach",          "m", "%.0f", 2.0f, 80.0f, Instance.ReachMeters,   ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, TY, BodyW, 8602u, "Decay exponent", "",  "%.2g", 0.5f,  4.0f, Instance.DecayExponent, ActiveDragId, Input, OutMutated);
+        CursorY = Card.Bottom() + InspectorMetrics::SectionGap;
+        CursorY = LightUi::ConstructTransformCard(Surface, WideX, CursorY, WideW, Entry);
     }
 
     return CursorY;

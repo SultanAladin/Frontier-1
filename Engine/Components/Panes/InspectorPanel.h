@@ -64,6 +64,7 @@ public:
     void AttachOutliner(OutlinerPanel* SourceOutliner) noexcept;
     void ConfigureCustomSectionCallback(InspectorSectionRenderCallback Callback);
     void ConfigureFullOverrideCallback(InspectorFullOverrideCallback Callback);
+    void ConfigureOverrideSignatureCallback(std::function<uint64_t()> Callback);
     void ConfigureNotesBoxOpen(bool Open) noexcept;
     void AssignActiveNotes(std::string_view NotesText);
     void ConfigureScrollOffset(float OffsetY) noexcept;
@@ -80,6 +81,10 @@ public:
     [[nodiscard]] OutlinerPanel* QueryAttachedOutliner() const noexcept;
     [[nodiscard]] bool           QueryNotesBoxOpen() const noexcept;
     [[nodiscard]] float          QueryScrollOffset() const noexcept;
+    [[nodiscard]] float          QueryLastRenderDurationMs() const noexcept { return LastRenderDurationMs; }
+    [[nodiscard]] bool           QueryLastRenderReplayed() const noexcept { return LastRenderReplayed; }
+    [[nodiscard]] uint64_t       QueryRetainedCaptureCount() const noexcept { return RetainedCanvas.QueryCaptureCount(); }
+    [[nodiscard]] uint64_t       QueryRetainedReplayCount() const noexcept { return RetainedCanvas.QueryReplayCount(); }
 
 private:
     void SyncNotesBufferWithSelection(OutlinerSlotToken ActiveToken, const OutlinerRecordEntry* ActiveEntry) noexcept;
@@ -130,8 +135,11 @@ private:
     float                          LastContentHeight        = 0.0f;                                  // [px] - Measured scroll document height
     InspectorSectionRenderCallback CustomSectionCallback {};                                  // [-]  - Optional domain extension cards
     InspectorFullOverrideCallback  FullOverrideCallback  {};                                  // [-]  - Complete domain inspector replacement
+    std::function<uint64_t()>      OverrideSignatureCallback {};                              // [-]  - Active inspector card revision hash for retained replay
     uint64_t                       ExternalRevision      = 0ull;                              // [cnt]- Optional host display-setting stamp
     RetainedCanvasCache            RetainedCanvas        {};                                  // [-]  - Cached ImDrawList snapshot for unchanged ticks
+    float                          LastRenderDurationMs  = 0.0f;                              // [ms] - Wall-clock build or replay time of last tick
+    bool                           LastRenderReplayed    = false;                             // [-]  - True when last tick replayed RetainedCanvas without redraw
 };
 
 //------------------------------------------------------------------------------------------------------------------------

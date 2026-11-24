@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Controls/DropdownSelector.h"
+#include "Engine/Components/Panes/WorkspaceAppearance.h"
 
 #include <algorithm>
 
@@ -283,7 +284,17 @@ ControlContact ConstructDirectiveSheet(
         const float RowOpacity = Entry.Disabled ? (Opacity * DisabledAlpha) : Opacity;
 
         float PadX = 12.0f;
-        if (Entry.LeadingTint.Alpha > 0u)
+        if (Entry.LeadingSymbol > 0u)
+        {
+            WorkspaceAppearance::ConstructEnvironmentSymbolIcon(
+                Surface,
+                static_cast<EnvironmentSymbolCategory>(Entry.LeadingSymbol),
+                { Row.X + PadX - 1.0f, Row.Y + (Row.Height - 16.0f) * 0.5f },
+                16.0f,
+                RowOpacity);
+            PadX += 22.0f;
+        }
+        else if (Entry.LeadingTint.Alpha > 0u)
         {
             Surface.FillCircle({ Row.X + PadX + 4.0f, Row.Y + Row.Height * 0.5f }, 3.8f, Entry.LeadingTint.ScaledAlpha(RowOpacity));
             PadX += 16.0f;

@@ -205,6 +205,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/PixelSpace.cpp
     Engine/Components/RetainedCanvasCache.cpp
     Engine/Components/VectorIcons/VectorIconRepository.cpp
+    Engine/Components/VectorIcons/EditorIconAtlas.cpp
     Engine/Components/Appearance/ThemeRepository.cpp
     Engine/Components/Appearance/TypographyRepository.cpp
     Engine/Components/Motion/SpringIntegrator.cpp
@@ -232,7 +233,6 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Controls/ConfirmationDialogue.cpp
     Engine/Components/Controls/NotificationSequence.cpp
     Engine/Components/Controls/InspectorSectionPrimitives.cpp
-    Engine/Components/Controls/InspectorVectorGraphics.cpp
     Engine/Components/Controls/PolarDirectionDial.cpp
     Engine/Components/Docking/WorkspaceTabStrip.cpp
     Engine/Components/Docking/WorkspaceDockContainer.cpp
@@ -486,6 +486,8 @@ frontier_compile_modular_slang_shader(Atmosphere/StellarTileCullCompute.slang   
 frontier_compile_modular_slang_shader(Atmosphere/StellarTileCullCompute.slang                 ProjectCullStellarTilesEntry    compute  StellarTileCullCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/LensFlareBakeCompute.slang                     ComputeEntry                    compute  LensFlareBakeCompute.comp.spv)
 frontier_compile_modular_slang_shader(Atmosphere/LensFlareCompute.slang                         ComputeEntry                    compute  LensFlareCompute.comp.spv)
+frontier_compile_modular_slang_shader(Baking/ThumbnailSpecimenCompute.slang                     ComputeEntry                    compute  ThumbnailSpecimenCompute.comp.spv)
+frontier_compile_modular_slang_shader(GeometricRaster/InspectorPreviewCompute.slang             ComputeEntry                    compute  InspectorPreviewCompute.comp.spv)
 
 function(frontier_compile_sketcher_slang_shader SLANG_FILE ENTRY_NAME SHADER_UNIT OUT_SPV_NAME)
     set(IN_SLANG "${CMAKE_SOURCE_DIR}/Engine/Shaders/Sketcher/${SLANG_FILE}")
@@ -756,6 +758,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/GeometrySpace/Primitives/AnalyticPrimitives.cpp
     Engine/GeometrySpace/Primitives/RevolutionSweepPrimitives.cpp
     Engine/GeometrySpace/Primitives/WatertightSewing.cpp
+    Engine/GeometrySpace/Procedural/ProceduralGeometry.cpp
     Engine/GeometrySpace/Analysis/CurvatureAnalysis.cpp
     Engine/GeometrySpace/Analysis/StretchMeasurement.cpp
     Engine/GeometrySpace/Selection/ComponentSelectionMask.cpp
@@ -1040,6 +1043,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Inspectors/ProceduralGeometryInspector.cpp
         Engine/Editor/Inspectors/ProjectInspectorFoundation.cpp
         Engine/Editor/Inspectors/FolderInspector.cpp
+        Engine/Editor/Inspectors/InspectorGpuBaker.cpp
         Engine/Editor/Inspectors/InspectorRegistry.cpp
         Engine/Lifecycle/EditorLifecycle.cpp
     )

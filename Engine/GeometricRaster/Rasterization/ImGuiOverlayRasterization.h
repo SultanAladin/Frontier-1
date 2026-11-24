@@ -129,6 +129,13 @@ private:
     std::array<VkSemaphore, kPresentSlotsInFlight>            ImageAcquireSemaphores { VK_NULL_HANDLE, VK_NULL_HANDLE };
     std::array<VkFence, kPresentSlotsInFlight>                PresentSyncSignals     { VK_NULL_HANDLE, VK_NULL_HANDLE };
     std::array<VkCommandBuffer, kPresentSlotsInFlight>        InFlightCommandBuffers { VK_NULL_HANDLE, VK_NULL_HANDLE };
+    struct RetiredImGuiTextureHandle
+    {
+        void*    BackendUserData = nullptr;
+        uint64_t NativeTexId     = 0ull;
+    };
+    std::array<std::vector<RetiredImGuiTextureHandle>, kPresentSlotsInFlight> DeferredTextureRetirements {};
+    std::array<std::vector<VkDescriptorSet>, kPresentSlotsInFlight>           DeferredExternalDescriptors {};
     uint32_t                                                  PresentSlotCursor      = 0u;
     uint32_t                                                  LastPresentedImageIndex = 0u;
 

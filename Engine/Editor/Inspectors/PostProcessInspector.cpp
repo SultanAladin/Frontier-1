@@ -1,9 +1,10 @@
 /*============================================================================================================================================
-                                                         POSTPROCESSINSPECTOR.CPP
+                                                        POSTPROCESSINSPECTOR.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of standalone multi-instance PostProcessInspector
+// 🧩 Brand-new 1:1 HTML parity port of Post Process Inspector (2 tabs: Overview, Settings)
 
 #include "Engine/Editor/Inspectors/PostProcessInspector.h"
+#include "Engine/Components/Panes/WorkspaceAppearance.h"
 
 #include <algorithm>
 #include <array>
@@ -15,63 +16,69 @@ namespace Frontier
 float PostProcessInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
     OutlinerRecordEntry& Entry, PostProcessInstanceData& Instance,
-    ViewportDisplaySettings* DisplaySettings,
+    ViewportDisplaySettings* /*DisplaySettings*/,
     const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched)
 {
-    static constexpr std::array<const char*, 3u> Pages = {{ "Overview", "Tone", "Colour" }};
-    float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, LeftX, TopY, InnerWidth, Pages, ActivePage, Input, OutPageSwitched);
-    const float PadX = InspectorMetrics::SectionPadX, BodyW = InnerWidth - PadX * 2.0f;
+    const float WideX = LeftX;
+    const float WideW = InnerWidth;
+    static constexpr std::array<const char*, 2u> Pages = {{ "Overview", "Settings" }};
+    float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, WideX, TopY, WideW, Pages, ActivePage, Input, OutPageSwitched);
+    const float PadX  = std::clamp(WideW * 0.065f, 14.0f, 22.0f);
+    const float BodyX = WideX + PadX;
+    const float BodyW = std::max(100.0f, WideW - PadX * 2.0f);
 
     if (ActivePage == 0u)
     {
-        const bool AaOn   = DisplaySettings ? DisplaySettings->AntiAliasingEnabled     : true;
-        const bool ReflOn = DisplaySettings ? DisplaySettings->ReflectionsEnabled      : true;
-        const bool AoOn   = DisplaySettings ? DisplaySettings->XeGtaoEnabled           : false;
-        const std::array<InspectorQuickSwitchSpec, 4u> Quick = {{
-            { "Enabled",       InspectorSwitchSymbol::PostFx, Entry.VisibilityEnabled && Instance.Enabled, false },
-            { "Anti-aliasing", InspectorSwitchSymbol::PostFx, AaOn,   false },
-            { "Reflections",   InspectorSwitchSymbol::Stars,  ReflOn, false },
-            { "XeGTAO",        InspectorSwitchSymbol::Orbit,  AoOn,   false },
+        // TAB 1: OVERVIEW — Quick controls (1 tile: Enabled), Tags (post process + Add tag inline), Notes
+        const std::array<InspectorQuickSwitchSpec, 1u> Quick = {{
+            { "Enabled", InspectorSwitchSymbol::Eye, Entry.VisibilityEnabled, false },
         }};
         int32_t Clicked = -1;
-        CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, LeftX, CursorY, InnerWidth, Quick, Input, Clicked);
-        if (Clicked == 0) { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; Instance.Enabled = Entry.VisibilityEnabled; OutMutated = true; }
-        else if (Clicked == 1 && DisplaySettings) { DisplaySettings->AntiAliasingEnabled = !DisplaySettings->AntiAliasingEnabled; OutMutated = true; }
-        else if (Clicked == 2 && DisplaySettings) { DisplaySettings->ReflectionsEnabled = !DisplaySettings->ReflectionsEnabled; OutMutated = true; }
-        else if (Clicked == 3 && DisplaySettings) { DisplaySettings->XeGtaoEnabled = !DisplaySettings->XeGtaoEnabled; OutMutated = true; }
-
-        static constexpr std::array<const char*, 2u> Tags = {{ "post-process", "grading" }};
-        CursorY = InspectorPrimitives::ConstructTagsSection(Surface, LeftX, CursorY, InnerWidth, Tags);
-        CursorY = InspectorPrimitives::ConstructNotesSection(Surface, LeftX, CursorY, InnerWidth, Entry.AuthorNotes);
-    }
-    else if (ActivePage == 1u)
-    {
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, 344.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Exposure & tone curve");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        std::array<float, 28u> Curve{};
-        const float Gain = std::pow(2.0f, Instance.ExposureEv);
-        for (std::size_t I = 0u; I < Curve.size(); ++I)
+        CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, WideX, CursorY, WideW, Quick, Input, Clicked);
+        if (Clicked == 0)
         {
-            const float X = (static_cast<float>(I) / 27.0f) * 3.0f * Gain;
-            Curve[I] = std::clamp(std::pow(X / (1.0f + X), Instance.ContrastGain), 0.0f, 1.0f);
+            Entry.VisibilityEnabled = !Entry.VisibilityEnabled;
+            Instance.Enabled        = Entry.VisibilityEnabled;
+            OutMutated              = true;
         }
-        InspectorPrimitives::ConstructCurvePlot(Surface, { LeftX + PadX, Y, BodyW, 74.0f }, Curve, ColorRgba{ 232u, 232u, 238u, 255u }, ColorRgba{ 188u, 198u, 218u, 36u }, "Toe", "Shoulder");
-        Y += 86.0f;
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 7201u, "Exposure", "EV", "%.2f", -4.0f, 4.0f, Instance.ExposureEv, ActiveDragId, Input, OutMutated);
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 7202u, "Vignette", "", "%.2f", 0.0f, 1.0f, Instance.VignetteStrength, ActiveDragId, Input, OutMutated);
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 7203u, "Chromatic shift", "", "%.2f", 0.0f, 1.0f, Instance.ChromaticShift, ActiveDragId, Input, OutMutated);
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+
+        // Single-row Tags card (h = 106 matching post__0.json: tag + Add tag on same row)
+        const Rectangle2D TagCard { WideX, CursorY, WideW, 106.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, TagCard, "Tags", "1", InspectorMetrics::MutedInk);
+        const Rectangle2D Chip { BodyX, TagCard.Y + 52.0f, 96.0f, 26.0f };
+        Surface.FillRectangle(Chip, InspectorMetrics::TagFill, 13.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Chip.X + 11.0f, Chip.Y + 6.5f }, 11.0f, InspectorMetrics::TagInk, "post process");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Chip.Right() - 14.0f, Chip.Y + 6.0f }, 11.0f, InspectorMetrics::TagInk.ScaledAlpha(0.65f), "x");
+        const Rectangle2D AddPill { Chip.Right() + 8.0f, Chip.Y, 92.0f, 26.0f };
+        Surface.StrokeRectangle(AddPill, ColorRgba{ 255u, 255u, 255u, 28u }, 13.0f, 1.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { AddPill.X + 12.0f, AddPill.Y + 6.5f }, 10.6f, InspectorMetrics::DimInk, "Add tag");
+        CursorY = TagCard.Bottom() + InspectorMetrics::SectionGap;
+
+        CursorY = InspectorPrimitives::ConstructNotesSection(Surface, WideX, CursorY, WideW, Entry.AuthorNotes);
     }
     else
     {
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, 212.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Colour grading");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 7204u, "Contrast", "x", "%.2f", 0.5f, 1.8f, Instance.ContrastGain, ActiveDragId, Input, OutMutated);
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 7205u, "Saturation", "x", "%.2f", 0.0f, 2.0f, Instance.SaturationGain, ActiveDragId, Input, OutMutated);
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+        // TAB 2: SETTINGS — Card 1 Exposure (h=163), Card 2 Tone Mapping (h=235), Card 3 Lens Effects (h=235)
+        const Rectangle2D ExpCard { WideX, CursorY, WideW, 163.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, ExpCard, "Exposure");
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, ExpCard.Y + 68.0f, BodyW, 8101u, "EV Compensation", "EV", "%.2g", -4.0f, 4.0f, Instance.ExposureEv, ActiveDragId, Input, OutMutated);
+        CursorY = ExpCard.Bottom() + InspectorMetrics::SectionGap;
+
+        const Rectangle2D ToneCard { WideX, CursorY, WideW, 235.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, ToneCard, "Tone Mapping");
+        float TY = ToneCard.Y + 68.0f;
+        TY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, TY, BodyW, 8102u, "Saturation", "", "%.2g", 0.0f, 2.0f, Instance.SaturationGain, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, TY, BodyW, 8103u, "Contrast", "", "%.2g", 0.5f, 2.0f, Instance.ContrastGain, ActiveDragId, Input, OutMutated);
+        CursorY = ToneCard.Bottom() + InspectorMetrics::SectionGap;
+
+        const Rectangle2D LensCard { WideX, CursorY, WideW, 235.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, LensCard, "Lens Effects");
+        float LY = LensCard.Y + 68.0f;
+        LY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, LY, BodyW, 8104u, "Bloom Intensity", "", "%.2g", 0.0f, 1.0f, BloomIntensity, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, LY, BodyW, 8105u, "Vignette", "", "%.2g", 0.0f, 1.0f, Instance.VignetteStrength, ActiveDragId, Input, OutMutated);
+        CursorY = LensCard.Bottom() + InspectorMetrics::SectionGap;
     }
+
     return CursorY;
 }
 

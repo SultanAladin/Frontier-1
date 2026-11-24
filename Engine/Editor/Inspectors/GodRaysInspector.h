@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            GODRAYSINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance God Rays Inspector (Overview, Optics with phase anisotropy curve)
+// 🧩 Brand-new 1:1 HTML parity port of God Rays Inspector (2 tabs: Overview, Settings)
 
 #pragma once
 
@@ -15,7 +15,7 @@ class GodRaysInspector
 {
 public:
     GodRaysInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Volumetric crepuscular shafts"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Sun component \xC2\xB7 volumetric light shafts that clouds and fog occlude"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,

@@ -26,6 +26,7 @@ file(WRITE "${THORVG_STAGING}/config.h"
     "#define THORVG_VERSION_STRING \"1.0.0\"\n"
     "#define THORVG_SVG_LOADER_SUPPORT 1\n"
     "#define THORVG_TTF_LOADER_SUPPORT 1\n"
+    "#define THORVG_SW_RASTER_SUPPORT 1\n"
     "#define THORVG_THREAD_SUPPORT 1\n"
     "#define THORVG_FILE_IO_SUPPORT 1\n"
 )
@@ -35,13 +36,14 @@ set(THORVG_PRIVATE_INCLUDES
     "${THORVG_STAGING}"
     "${THORVG_SRC}/src/common"
     "${THORVG_SRC}/src/renderer"
+    "${THORVG_SRC}/src/renderer/sw_engine"
     "${THORVG_SRC}/src/loaders/svg"
     "${THORVG_SRC}/src/loaders/ttf"
     "${THORVG_SRC}/src/loaders/raw"
 )
 set(THORVG_SOURCES "${THORVG_STAGING}/tvgInitializer.cpp")
 
-foreach(SUBDIR src/common src/renderer src/loaders/svg src/loaders/ttf src/loaders/raw)
+foreach(SUBDIR src/common src/renderer src/renderer/sw_engine src/loaders/svg src/loaders/ttf src/loaders/raw)
     file(GLOB THORVG_SUBDIR_SOURCES CONFIGURE_DEPENDS "${THORVG_SRC}/${SUBDIR}/*.cpp")
     list(REMOVE_ITEM THORVG_SUBDIR_SOURCES "${THORVG_SRC}/src/renderer/tvgInitializer.cpp")
     list(APPEND THORVG_SOURCES ${THORVG_SUBDIR_SOURCES})

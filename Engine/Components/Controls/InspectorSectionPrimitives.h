@@ -11,6 +11,7 @@
 
 #include "Engine/Components/Controls/ControlAppearance.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
+#include "Engine/Components/RetainedCanvasCache.h"
 #include "Engine/Mathematics/LinearColors.h"
 
 #include <imgui.h>
@@ -58,15 +59,17 @@ enum class InspectorSwitchSymbol : uint8_t
 
 namespace InspectorMetrics
 {
-    inline constexpr float     PaneInsetX          = 34.0f; // [px] - Horizontal pane inset (340 - 68 = 272px content)
-    inline constexpr float     SectionRadius       = 25.0f; // [px] - Rounded section outer radius
-    inline constexpr float     SectionPadTop       = 23.0f; // [px] - Section top inner padding
-    inline constexpr float     SectionPadX         = 24.0f; // [px] - Section horizontal inner padding
-    inline constexpr float     SectionPadBottom    = 22.0f; // [px] - Section bottom inner padding
-    inline constexpr float     SectionGap          = 16.0f; // [px] - Vertical gap between sections
+    inline constexpr float     PaneInsetX          = 18.0f; // [px] - Responsive baseline horizontal pane inset
+    inline constexpr float     SectionRadius       = 12.0f; // [px] - Subtle precision section corner radius
+    inline constexpr float     SectionPadTop       = 20.0f; // [px] - Section top inner padding
+    inline constexpr float     SectionPadX         = 18.0f; // [px] - Section horizontal inner padding
+    inline constexpr float     SectionPadBottom    = 18.0f; // [px] - Section bottom inner padding
+    inline constexpr float     SectionGap          = 12.0f; // [px] - Vertical gap between sections
     inline constexpr float     PageStripHeight     = 34.0f; // [px] - Numbered page strip height
-    inline constexpr float     QuickTileHeight     = 100.0f;// [px] - Quick switch tile height
-    inline constexpr float     QuickTileRadius     = 17.0f; // [px] - Quick switch tile corner radius
+    inline constexpr float     QuickTileHeight     = 92.0f; // [px] - Quick switch tile baseline height
+    inline constexpr float     QuickTileRadius     = 9.0f;  // [px] - Subtle quick switch tile corner radius
+    inline constexpr float     PreviewRadius       = 8.0f;  // [px] - Subtle preview surface corner radius
+    inline constexpr float     ControlRadius       = 8.0f;  // [px] - Subtle input / dropdown corner radius
     inline constexpr float     SplitWidth          = 92.0f; // [px] - Split numeric + unit capsule width
     inline constexpr float     SplitHeight         = 28.0f; // [px] - Split numeric + unit capsule height
     inline constexpr float     ToggleWidth         = 44.0f; // [px] - Binary switch track width
@@ -109,16 +112,67 @@ struct InspectorKpiMetricSpec
     const char* CaptionText = "";
 };
 
+enum class InspectorGpuBakeMode : uint32_t
+{
+    AtmosphereLimb          = 0u,
+    AtmosphereGlobe         = 1u,
+    TransmittanceLut        = 2u,
+    SkyViewLut              = 3u,
+    SolarBake               = 4u,
+    CloudSwath              = 5u,
+    LunarPhase              = 6u,
+    StarfieldSheet          = 7u,
+    FogLayer                = 8u,
+    RainbowArc              = 9u,
+    EnvironmentDome         = 10u,
+    GeometrySdfSlice        = 11u,
+    GeometryUvAtlas         = 12u,
+    LensFlarePreview        = 13u,
+    CameraBodyPreview       = 14u,
+    RendererHeroPreview     = 15u,
+    PhotometricLightPreview = 16u,
+    GeometrySpecimenPreview = 17u,
+};
+
+struct InspectorGpuBakeSpec
+{
+    InspectorGpuBakeMode Mode       = InspectorGpuBakeMode::AtmosphereLimb;
+    uint32_t             Flags      = 0u;
+    float                ParamA[4]  { 1.0f, 1.0f, 1.0f, 30.0f };
+    float                ParamB[4]  { 0.0f, 0.0f, 0.0f, 0.0f };
+    float                ColourA[4] { 0.8f, 0.85f, 0.92f, 1.0f };
+    float                ColourB[4] { 0.1f, 0.14f, 0.22f, 1.0f };
+};
+
+enum class InspectorPreviewFitMode : uint8_t
+{
+    Contain = 0, // [-] - Preserve 1:1 aspect inside Bounds (zero stretch, zero clip)
+    Cover   = 1, // [-] - Fill Bounds edge-to-edge with aspect-preserving centered UV crop (zero stretch)
+    Stretch = 2, // [-] - Full UV [0,1]x[0,1] mapping (for 2D LUT heatmaps)
+};
+
 // Shared on-demand retained RGBA32 texture surface for LUTs, sky/moon/cloud visuals, and specimen previews.
-// Only re-rasterizes when RevisionSignature changes; otherwise presents the resident texture with zero per-tick work.
+// Only re-bakes when RevisionSignature changes; dispatches on Vulkan GPU compute whenever attached, and throttles drag updates.
 class InspectorPreviewSurface
 {
 public:
+    using GpuBakeHookFn          = std::function<bool(const InspectorGpuBakeSpec&, uint32_t, uint32_t, std::vector<uint8_t>&)>;
+    using GpuDirectBakeHookFn    = std::function<bool(uint64_t, const InspectorGpuBakeSpec&, uint32_t, uint32_t, uint64_t&)>;
+    using GpuDirectReleaseHookFn = std::function<void(uint64_t)>;
+
     InspectorPreviewSurface() noexcept = default;
     ~InspectorPreviewSurface() noexcept;
 
     InspectorPreviewSurface(const InspectorPreviewSurface&)            = delete;
     InspectorPreviewSurface& operator=(const InspectorPreviewSurface&) = delete;
+
+    static void AssignGpuBakeHook(GpuBakeHookFn Hook);
+    static void ClearGpuBakeHook() noexcept;
+    [[nodiscard]] static bool QueryGpuBakeHookAttached() noexcept;
+
+    static void AssignGpuDirectBakeHook(GpuDirectBakeHookFn Hook, GpuDirectReleaseHookFn ReleaseHook = {});
+    static void ClearGpuDirectBakeHook() noexcept;
+    [[nodiscard]] static bool QueryGpuDirectBakeHookAttached() noexcept;
 
     // Ensures the RGBA32 buffer matches (WidthPx, HeightPx) and RevisionSignature.
     // RasterCallback receives a mutable RGBA8 byte buffer of size WidthPx * HeightPx * 4.
@@ -128,27 +182,47 @@ public:
         uint32_t                                          HeightPx,
         const std::function<void(std::vector<uint8_t>&)>& RasterCallback);
 
+    // Pure-GPU first path: dispatches InspectorPreviewCompute.comp.spv directly into a zero-copy GPU ImGui VkImage
+    // when available (zero CPU readback / re-upload bounce), falling back to staging GPU or headless CPU callback.
+    void EnsureUpdatedGpu(
+        uint64_t                                          RevisionSignature,
+        uint32_t                                          WidthPx,
+        uint32_t                                          HeightPx,
+        const InspectorGpuBakeSpec&                       GpuSpec,
+        const std::function<void(std::vector<uint8_t>&)>& CpuFallbackCallback);
+
     void Present(
-        PixelSpace& Surface,
-        Rectangle2D Bounds,
-        float       CornerRadius = 12.0f,
-        ColorRgba   Tint         = { 255u, 255u, 255u, 255u }) noexcept;
+        PixelSpace&             Surface,
+        Rectangle2D             Bounds,
+        float                   CornerRadius = InspectorMetrics::PreviewRadius,
+        ColorRgba               Tint         = { 255u, 255u, 255u, 255u },
+        InspectorPreviewFitMode FitMode      = InspectorPreviewFitMode::Contain,
+        ColorRgba               ChamberFill  = InspectorMetrics::ChamberDark) noexcept;
 
-    void Release() noexcept;
-
-    [[nodiscard]] bool     QueryResident() const noexcept { return ResidentTexture.Pixels != nullptr && WidthPx > 0u && HeightPx > 0u; }
+    [[nodiscard]] bool     QueryResident() const noexcept { return (DirectGpuTextureHandle != 0ull || ResidentTexture.Pixels != nullptr) && WidthPx > 0u && HeightPx > 0u; }
     [[nodiscard]] uint64_t QueryRevision() const noexcept { return RetainedSignature; }
     [[nodiscard]] uint32_t QueryWidthPx()  const noexcept { return WidthPx; }
     [[nodiscard]] uint32_t QueryHeightPx() const noexcept { return HeightPx; }
     [[nodiscard]] uint32_t QueryUploadCount() const noexcept { return UploadCounter; }
+    [[nodiscard]] uint32_t QueryGpuUploadCount() const noexcept { return GpuUploadCounter; }
+    [[nodiscard]] uint32_t QueryDirectGpuUploadCount() const noexcept { return DirectGpuUploadCounter; }
+    [[nodiscard]] uint32_t QueryCpuUploadCount() const noexcept { return CpuUploadCounter; }
 
 private:
-    ImTextureData        ResidentTexture   {};
-    std::vector<uint8_t> StagingPixels     {};
-    uint64_t             RetainedSignature = 0ull;
-    uint32_t             WidthPx           = 0u;
-    uint32_t             HeightPx          = 0u;
-    uint32_t             UploadCounter     = 0u;
+    void UploadStagingPixels(uint64_t RevisionSignature, uint32_t TargetWidthPx, uint32_t TargetHeightPx, bool SizeMismatch, bool BakedOnGpu);
+
+    ImTextureData        ResidentTexture        {};
+    std::vector<uint8_t> StagingPixels          {};
+    uint64_t             DirectGpuTextureHandle = 0ull;
+    uint64_t             SurfaceUniqueId        = 0ull;
+    uint64_t             RetainedSignature      = 0ull;
+    uint32_t             WidthPx                = 0u;
+    uint32_t             HeightPx               = 0u;
+    uint32_t             UploadCounter          = 0u;
+    uint32_t             GpuUploadCounter       = 0u;
+    uint32_t             DirectGpuUploadCounter = 0u;
+    uint32_t             CpuUploadCounter       = 0u;
+    uint64_t             LastBakeTimeNs         = 0ull;
 };
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -157,6 +231,8 @@ private:
 
 namespace InspectorPrimitives
 {
+
+[[nodiscard]] Rectangle2D ComputeAspectFitRect(Rectangle2D Bounds, uint32_t TextureWidthPx, uint32_t TextureHeightPx) noexcept;
 
 [[nodiscard]] uint64_t MixRevisionU64(uint64_t Seed, uint64_t Bits) noexcept;
 [[nodiscard]] uint64_t MixRevisionFloat(uint64_t Seed, float Reading) noexcept;
@@ -405,6 +481,40 @@ struct GeometrySurfaceBinding
     const PaneInputReading& Input,
     bool&                   OutMutated) noexcept;
 
+// 1:1 HTML split-precision KPI metric (bright white integer part + dimmed fractional digits + unit + caption)
+[[nodiscard]] float ConstructSplitMetricReadout(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    const char* WholePart,
+    const char* FractionalPart,
+    const char* UnitText,
+    const char* CaptionText) noexcept;
+
+// 1:1 HTML dark rounded stat tile (#121316 fill, 12px radius, uppercase caption + bright reading)
+void ConstructStatTile(
+    PixelSpace& Surface,
+    Rectangle2D Bounds,
+    const char* TopCaption,
+    const char* PrimaryReading,
+    const char* UnitSuffix = "",
+    bool        CaptionBelow = false) noexcept;
+
+// 1:1 HTML side-by-side 2-column summary boxes (e.g. Checks passed / Warnings or Visible / Hidden)
+[[nodiscard]] float ConstructDualStatusBoxes(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    const char* LeftLabel,
+    const char* LeftCount,
+    ColorRgba   LeftAccent,
+    bool        LeftCheckMark,
+    const char* RightLabel,
+    const char* RightCount,
+    ColorRgba   RightAccent,
+    bool        RightExclaimMark) noexcept;
+
 // Compact labelled key-value metadata row inside a section
 [[nodiscard]] float ConstructMetadataRow(
     PixelSpace& Surface,
@@ -413,6 +523,30 @@ struct GeometrySurfaceBinding
     float       InnerWidth,
     const char* Label,
     const char* ReadingText) noexcept;
+
+// Exact 1:1 HTML .rc-segments pill-track selector (#121212 track, #e6e6e6 active white pill with #141414 ink)
+[[nodiscard]] float ConstructSegmentTrack(
+    PixelSpace&                  Surface,
+    float                        LeftX,
+    float                        TopY,
+    float                        InnerWidth,
+    const char*                  UppercaseCaption,
+    std::span<const char* const> Choices,
+    uint32_t                     ActiveIndex,
+    const PaneInputReading&      Input,
+    int32_t&                     OutChosenIndex) noexcept;
+
+// Exact 1:1 HTML clickable summary navigation row ("Shadows"  "Voxel + Cone GI · 24 steps  >")
+[[nodiscard]] float ConstructNavigationRow(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    const char*             LeftLabel,
+    const char*             RightSummary,
+    bool                    ShowBottomDivider,
+    const PaneInputReading& Input,
+    bool&                   OutClicked) noexcept;
 
 // Full-width interactive pill action button inside a section
 [[nodiscard]] bool ConstructSectionActionButton(
@@ -440,7 +574,115 @@ struct GeometrySurfaceBinding
     const PaneInputReading& Input,
     bool&                   OutMutated) noexcept;
 
-// Bottom 28px inspector footer bar
+// Shared Geometry workspace pages matching PrimitiveInspector.jsx (UV, Fracture, SDF, LOD)
+[[nodiscard]] float ConstructUvWorkspaceSection(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    uint32_t    UvChannelCount,
+    const char* ProjectionLabel) noexcept;
+
+[[nodiscard]] float ConstructFractureWorkspaceSection(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    uint32_t    CellCount,
+    const char* ModeLabel) noexcept;
+
+[[nodiscard]] float ConstructSdfWorkspaceSection(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    bool        SdfActive,
+    const char* BoundsLabel) noexcept;
+
+[[nodiscard]] float ConstructLodWorkspaceSection(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       InnerWidth,
+    uint32_t    TriangleCount,
+    uint32_t    ClusterCount) noexcept;
+
+// Exact HTML LiveGraph.jsx <Plot> series descriptor (supports up to 4 curves per interactive plot)
+struct InspectorLivePlotSeries
+{
+    const char*                  Name    = "";
+    ColorRgba                    Ink     { 158u, 184u, 208u, 255u };
+    std::function<float(float)>  Sample  {};
+};
+
+// Word-wrapped body paragraph matching HTML .graph-note / .property-card > p
+[[nodiscard]] float ConstructWrappedParagraph(
+    PixelSpace& Surface,
+    float       LeftX,
+    float       TopY,
+    float       MaxWidth,
+    float       FontSize,
+    float       LineStep,
+    ColorRgba   Ink,
+    const char* Text) noexcept;
+
+// Dashed line stroke helper
+void ConstructDashedSegment(
+    PixelSpace& Surface,
+    Point2D     Start,
+    Point2D     End,
+    ColorRgba   Ink,
+    float       DashLength,
+    float       GapLength,
+    float       StrokeWidth = 1.0f) noexcept;
+
+// Exact HTML LiveGraph.jsx <Plot> interactive curve plot (header readout + 215px SVG grid/fill/curve/probe + wrapped note)
+[[nodiscard]] float ConstructLivePlot(
+    PixelSpace&                                Surface,
+    float                                      LeftX,
+    float                                      TopY,
+    float                                      InnerWidth,
+    uint32_t                                   ControlId,
+    float                                      DomainMin,
+    float                                      DomainMax,
+    float                                      RangeMin,
+    float                                      RangeMax,
+    std::span<const InspectorLivePlotSeries>   Series,
+    float&                                     InOutProbeX,
+    const char*                                UnitX,
+    const char*                                UnitY,
+    const char*                                NoteText,
+    uint32_t&                                  InOutActiveDragId,
+    const PaneInputReading&                    Input,
+    bool&                                      OutChanged) noexcept;
+
+// Exact HTML "Bake / image" card (rainbow__2, atmosphere, stars, lens-flare): left status tile + Bake/Load buttons + footer note
+[[nodiscard]] float ConstructBakeImageCard(
+    PixelSpace&             Surface,
+    float                   LeftX,
+    float                   TopY,
+    float                   InnerWidth,
+    bool                    UseBakedImage,
+    const char*             StatusCaption,
+    const char*             RightCaption,
+    const char*             FooterNote,
+    const PaneInputReading& Input,
+    bool&                   OutBakeClicked,
+    bool&                   OutLoadClicked) noexcept;
+
+// Frame capture scope for hover-zone dirty gating, scroll-clip culling, and drag-cadence bake throttling
+void BeginInspectorCaptureScope(
+    RetainedCanvasCache* ActiveCache,
+    Rectangle2D          ScrollClipLogical,
+    Point2D              SurfaceOriginPhysical,
+    float                ScaleFactor) noexcept;
+void EndInspectorCaptureScope() noexcept;
+void RegisterInteractiveRect(Rectangle2D LogicalBounds) noexcept;
+[[nodiscard]] bool QueryVisibleInScrollClip(Rectangle2D LogicalBounds) noexcept;
+void NoteInteractiveDragActive(bool Active) noexcept;
+[[nodiscard]] bool QueryInteractiveDragActive() noexcept;
+
+// Bottom 45px inspector footer bar
 void ConstructInspectorFooter(
     PixelSpace& Surface,
     Rectangle2D FooterBounds,

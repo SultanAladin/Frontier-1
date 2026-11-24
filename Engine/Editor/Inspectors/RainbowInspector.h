@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                            RAINBOWINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance Rainbow Inspector (primary 42 deg & secondary 51 deg optical bow dispersion)
+// 🧩 Brand-new 1:1 HTML parity port of Rainbow Inspector (3 tabs: Overview, Bow, Baking)
 
 #pragma once
 
@@ -15,7 +15,7 @@ class RainbowInspector
 {
 public:
     RainbowInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Atmospheric optical bow"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Rainbow \xC2\xB7 liquid-water optics"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -25,8 +25,13 @@ public:
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
 
 private:
-    uint32_t ActivePage   = 0u;
-    uint32_t ActiveDragId = 0u;
+    void UpdateRainbowSurface(const RainbowInstanceData& Instance);
+
+    uint32_t                ActivePage           = 0u;
+    uint32_t                ActiveDragId         = 0u;
+    bool                    AlexanderBandEnabled = true;
+    float                   MinimumPathMeters    = 250.0f;
+    InspectorPreviewSurface RainbowPreview       {};
 };
 
 } // namespace Frontier

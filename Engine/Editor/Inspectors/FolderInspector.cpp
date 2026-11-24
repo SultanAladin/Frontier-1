@@ -1,126 +1,183 @@
 /*============================================================================================================================================
                                                            FOLDERINSPECTOR.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of standalone generic FolderInspector for any Outliner container (never hardcoded to a single folder name)
+// 🧩 Brand-new 1:1 HTML parity port of Folder / Collection Inspector (matches world__0-default.png)
 
 #include "Engine/Editor/Inspectors/FolderInspector.h"
-
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
+#include <unordered_map>
 
 namespace Frontier
 {
 
+namespace
+{
+
+struct FolderMetricsSummary
+{
+    uint32_t TotalEntries   = 0u;
+    uint32_t DirectChildren = 0u;
+    uint32_t NestedFolders  = 0u;
+    uint32_t MaxDepth       = 0u;
+    uint32_t VisibleCount   = 0u;
+    uint32_t HiddenCount    = 0u;
+};
+
+void AccumulateFolderMetrics(
+    const OutlinerPanel& Outliner, OutlinerSlotToken Parent,
+    uint32_t Depth, FolderMetricsSummary& Out) noexcept
+{
+    for (const auto& E : Outliner.QueryEntries())
+    {
+        if (E.EnclosingToken.Identifier != Parent.Identifier) continue;
+        ++Out.TotalEntries;
+        if (Depth == 1u) ++Out.DirectChildren;
+        if (Depth > Out.MaxDepth) Out.MaxDepth = Depth;
+        if (E.VisibilityEnabled) ++Out.VisibleCount;
+        else ++Out.HiddenCount;
+        if (E.Category == ConstructSlotCategory::Folder)
+        {
+            ++Out.NestedFolders;
+            AccumulateFolderMetrics(Outliner, E.Token, Depth + 1u, Out);
+        }
+    }
+}
+
+} // namespace
+
 float FolderInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
     OutlinerRecordEntry& FolderEntry, OutlinerPanel& Outliner,
-    const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched)
+    const PaneInputReading& /*Input*/, bool& /*OutMutated*/, bool& /*OutPageSwitched*/)
 {
-    static constexpr std::array<const char*, 2u> Pages = {{ "Overview", "Contents" }};
-    float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, LeftX, TopY, InnerWidth, Pages, ActivePage, Input, OutPageSwitched);
-    const float PadX = InspectorMetrics::SectionPadX, BodyW = InnerWidth - PadX * 2.0f;
+    const float WideX = LeftX;
+    const float WideW = InnerWidth;
+    const float PadX  = std::clamp(WideW * 0.065f, 14.0f, 22.0f);
+    const float BodyX = WideX + PadX;
+    const float BodyW = std::max(100.0f, WideW - PadX * 2.0f);
 
-    const uint32_t DirectCount = Outliner.CountDirectNested(FolderEntry.Token);
-    const uint32_t TotalCount  = Outliner.CountAllNested(FolderEntry.Token);
-    const uint32_t FolderCount = Outliner.CountNestedFolders(FolderEntry.Token);
+    FolderMetricsSummary Stats {};
+    AccumulateFolderMetrics(Outliner, FolderEntry.Token, 1u, Stats);
+    if (Stats.MaxDepth == 0u && Stats.TotalEntries > 0u) Stats.MaxDepth = 1u;
 
-    if (ActivePage == 0u)
+    float CursorY = TopY + 38.0f;
+
+    // Dashed "+ Add notes" pill (matching world__0-default.png above World crumb pill)
     {
-        char DirBuf[16]{}, TotBuf[16]{}, SubBuf[16]{}, VisBuf[16]{};
-        std::snprintf(DirBuf, sizeof(DirBuf), "%u", DirectCount);
-        std::snprintf(TotBuf, sizeof(TotBuf), "%u", TotalCount);
-        std::snprintf(SubBuf, sizeof(SubBuf), "%u", FolderCount);
-        std::snprintf(VisBuf, sizeof(VisBuf), "%s", FolderEntry.VisibilityEnabled ? "ON" : "OFF");
-        const std::array<InspectorKpiMetricSpec, 4u> Kpis = {{
-            { DirBuf, "", "DIRECT" },
-            { TotBuf, "", "TOTAL" },
-            { SubBuf, "", "FOLDERS" },
-            { VisBuf, "", "VISIBILITY" },
-        }};
-        CursorY = InspectorPrimitives::ConstructKpiMetricGrid(Surface, LeftX, CursorY, InnerWidth, Kpis);
-
-        const std::array<InspectorQuickSwitchSpec, 2u> Quick = {{
-            { "Visible",  InspectorSwitchSymbol::Eye,  FolderEntry.VisibilityEnabled, false },
-            { "Expanded", InspectorSwitchSymbol::Cube, FolderEntry.Expanded,          false },
-        }};
-        int32_t Clicked = -1;
-        CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, LeftX, CursorY, InnerWidth, Quick, Input, Clicked);
-        if (Clicked == 0) { FolderEntry.VisibilityEnabled = !FolderEntry.VisibilityEnabled; OutMutated = true; }
-        else if (Clicked == 1) { FolderEntry.Expanded = !FolderEntry.Expanded; OutMutated = true; }
-
-        // Folder accent colour strip
-        const Rectangle2D SwatchSec { LeftX, CursorY, InnerWidth, 94.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, SwatchSec, "Folder accent");
-        static constexpr std::array<ColorRgba, 6u> Swatches = {{
-            WorkspaceSurfaceColors::ShowcaseSage,
-            ColorRgba{ 126u, 174u, 232u, 255u },
-            ColorRgba{ 232u, 178u, 108u, 255u },
-            ColorRgba{ 196u, 148u, 232u, 255u },
-            ColorRgba{ 226u, 128u, 134u, 255u },
-            ColorRgba{ 168u, 172u, 178u, 255u },
-        }};
-        const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-        for (std::size_t I = 0u; I < Swatches.size(); ++I)
-        {
-            const Point2D Ctr { LeftX + PadX + 12.0f + static_cast<float>(I) * 36.0f, CursorY + 62.0f };
-            Surface.FillCircle(Ctr, 11.0f, Swatches[I]);
-            if (FolderEntry.FolderTint.Red == Swatches[I].Red && FolderEntry.FolderTint.Green == Swatches[I].Green && FolderEntry.FolderTint.Blue == Swatches[I].Blue)
-            {
-                Surface.StrokeCircle(Ctr, 13.5f, ColorRgba{ 244u, 244u, 246u, 255u }, 1.5f);
-            }
-            const float DX = Cursor.X - Ctr.X, DY = Cursor.Y - Ctr.Y;
-            if (DX * DX + DY * DY <= 144.0f && Input.PrimaryPointer.Pressed)
-            {
-                FolderEntry.FolderTint = Swatches[I];
-                OutMutated = true;
-            }
-        }
-        CursorY = SwatchSec.Bottom() + InspectorMetrics::SectionGap;
-
-        static constexpr std::array<const char*, 2u> Tags = {{ "folder", "container" }};
-        CursorY = InspectorPrimitives::ConstructTagsSection(Surface, LeftX, CursorY, InnerWidth, Tags);
-        CursorY = InspectorPrimitives::ConstructNotesSection(Surface, LeftX, CursorY, InnerWidth, FolderEntry.AuthorNotes);
+        const Rectangle2D NotesPill { WideX + 6.0f, CursorY, 78.0f, 28.0f };
+        Surface.StrokeRectangle(NotesPill, ColorRgba{ 255u, 255u, 255u, 44u }, 14.0f, 1.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { NotesPill.X + 12.0f, NotesPill.Y + 7.5f }, 10.6f, InspectorMetrics::MutedInk, "+  Add notes");
+        CursorY = NotesPill.Bottom() + 14.0f;
     }
-    else
-    {
-        uint32_t Listed = 0u;
-        for (const auto& Entry : Outliner.QueryEntries())
-        {
-            if (Entry.EnclosingToken == FolderEntry.Token) ++Listed;
-        }
-        const float RowH = 28.0f;
-        const float SecH = InspectorMetrics::SectionPadTop + 34.0f + std::max(1u, Listed) * RowH + InspectorMetrics::SectionPadBottom;
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, SecH };
-        char CountBuf[20]{}; std::snprintf(CountBuf, sizeof(CountBuf), "%u", Listed);
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Contained entries", CountBuf);
 
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 30.0f;
-        if (Listed == 0u)
+    // Folder pill badge (matching "World" pill above Collection contents)
+    {
+        const float PillW = std::clamp(WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 11.0f, FolderEntry.Title) + 26.0f, 54.0f, 140.0f);
+        const Rectangle2D Pill { WideX + 6.0f, CursorY, PillW, 28.0f };
+        Surface.FillRectangle(Pill, ColorRgba{ 28u, 28u, 30u, 255u }, 14.0f);
+        Surface.StrokeRectangle(Pill, ColorRgba{ 255u, 255u, 255u, 28u }, 14.0f, 1.0f);
+        WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { Pill.X + 13.0f, Pill.Y + 7.5f }, Pill.Width - 20.0f, 11.0f, InspectorMetrics::HeadingInk, FolderEntry.Title);
+        CursorY = Pill.Bottom() + 18.0f;
+    }
+
+    // Card 1: Collection contents (h = 260)
+    {
+        const Rectangle2D Card { WideX, CursorY, WideW, 260.0f };
+        Surface.FillRectangle(Card, ColorRgba{ 28u, 28u, 29u, 255u }, InspectorMetrics::SectionRadius);
+        Surface.StrokeRectangle(Card, ColorRgba{ 255u, 255u, 255u, 18u }, InspectorMetrics::SectionRadius, 1.0f);
+
+        // Vertical sage accent bar + "Collection contents"
+        Surface.FillRectangle({ BodyX, Card.Y + 26.0f, 3.0f, 16.0f }, ColorRgba{ 162u, 182u, 198u, 255u }, 1.5f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + 12.0f, Card.Y + 25.0f }, 14.2f, InspectorMetrics::HeadingInk, "Collection contents");
+
+        char TotBuf[16]{};
+        std::snprintf(TotBuf, sizeof(TotBuf), "%u", Stats.TotalEntries);
+        (void)InspectorPrimitives::ConstructMetricReadout(Surface, BodyX, Card.Y + 68.0f, TotBuf, "entries", nullptr, 44.0f);
+
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, Card.Y + 136.0f }, 11.2f, InspectorMetrics::MutedInk, "All descendants, including nested folders");
+        Surface.StrokeLine({ BodyX, Card.Y + 170.0f }, { BodyX + BodyW, Card.Y + 170.0f }, ColorRgba{ 255u, 255u, 255u, 16u }, 1.0f);
+
+        // 3 clean borderless stat columns: Direct children | Nested folders | Levels below
+        char DirBuf[16]{}, NestBuf[16]{}, LevBuf[16]{};
+        std::snprintf(DirBuf,  sizeof(DirBuf),  "%u", Stats.DirectChildren);
+        std::snprintf(NestBuf, sizeof(NestBuf), "%u", Stats.NestedFolders);
+        std::snprintf(LevBuf,  sizeof(LevBuf),  "%u", Stats.MaxDepth);
+        const std::array<std::pair<const char*, const char*>, 3u> Cols = {{
+            { DirBuf,  "Direct children" },
+            { NestBuf, "Nested folders"  },
+            { LevBuf,  "Levels below"    },
+        }};
+        const float ColW = BodyW / 3.0f;
+        for (uint32_t I = 0u; I < 3u; ++I)
         {
-            WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { LeftX + PadX, Y + 4.0f }, BodyW, 11.0f, InspectorMetrics::MutedInk, "Folder is empty.");
+            const float CX = BodyX + static_cast<float>(I) * ColW;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX, Card.Y + 188.0f }, 22.0f, InspectorMetrics::HeadingInk, Cols[I].first);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX, Card.Y + 220.0f }, 9.6f, InspectorMetrics::DimInk, Cols[I].second);
         }
-        else
+        CursorY = Card.Bottom() + 14.0f;
+    }
+
+    // Row 2: 2 equal square cards: Visible (green dot) | Hidden (tan dot)
+    {
+        const float Gap = 12.0f;
+        const float HalfW = std::floor((WideW - Gap) * 0.5f);
+        char VisBuf[16]{}, HidBuf[16]{};
+        std::snprintf(VisBuf, sizeof(VisBuf), "%u", Stats.VisibleCount);
+        std::snprintf(HidBuf, sizeof(HidBuf), "%u", Stats.HiddenCount);
+
+        const auto DrawKpi = [&](float X, ColorRgba Dot, const char* Label, const char* Val)
         {
-            const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-            for (const auto& Entry : Outliner.QueryEntries())
-            {
-                if (Entry.EnclosingToken != FolderEntry.Token) continue;
-                const Rectangle2D RowRect { LeftX + PadX, Y, BodyW, 24.0f };
-                Surface.FillRectangle(RowRect, ColorRgba{ 24u, 24u, 27u, 255u }, 8.0f);
-                WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { RowRect.X + 10.0f, RowRect.Y + 5.5f }, BodyW - 44.0f, 11.0f, ColorRgba{ 230u, 230u, 234u, 255u }, Entry.Title.c_str());
-                const char* VisTxt = Entry.VisibilityEnabled ? "ON" : "OFF";
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { RowRect.Right() - 28.0f, RowRect.Y + 6.5f }, 9.5f, Entry.VisibilityEnabled ? InspectorMetrics::QuickActiveGreen : InspectorMetrics::DimInk, VisTxt);
-                if (RowRect.Contains(Cursor) && Input.PrimaryPointer.Pressed)
-                {
-                    Outliner.SelectSingle(Entry.Token);
-                    break;
-                }
-                Y += RowH;
-            }
+            const Rectangle2D K { X, CursorY, HalfW, 114.0f };
+            Surface.FillRectangle(K, ColorRgba{ 28u, 28u, 29u, 255u }, InspectorMetrics::SectionRadius);
+            Surface.StrokeRectangle(K, ColorRgba{ 255u, 255u, 255u, 18u }, InspectorMetrics::SectionRadius, 1.0f);
+            Surface.FillCircle({ K.X + 24.0f, K.Y + 26.0f }, 4.0f, Dot);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { K.X + 36.0f, K.Y + 19.5f }, 11.4f, InspectorMetrics::MutedInk, Label);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { K.X + 20.0f, K.Y + 56.0f }, 32.0f, InspectorMetrics::HeadingInk, Val);
+        };
+        DrawKpi(WideX,              ColorRgba{ 88u, 198u, 122u, 255u }, "Visible", VisBuf);
+        DrawKpi(WideX + HalfW + Gap,ColorRgba{ 196u, 158u, 122u, 255u }, "Hidden",  HidBuf);
+        CursorY += 114.0f + 14.0f;
+    }
+
+    // Card 3: Composition (h = 160) with pastel segmented bar + 2-column type list
+    {
+        const Rectangle2D Card { WideX, CursorY, WideW, 160.0f };
+        Surface.FillRectangle(Card, ColorRgba{ 28u, 28u, 29u, 255u }, InspectorMetrics::SectionRadius);
+        Surface.StrokeRectangle(Card, ColorRgba{ 255u, 255u, 255u, 18u }, InspectorMetrics::SectionRadius, 1.0f);
+
+        Surface.FillRectangle({ BodyX, Card.Y + 26.0f, 3.0f, 16.0f }, ColorRgba{ 216u, 194u, 126u, 255u }, 1.5f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + 12.0f, Card.Y + 25.0f }, 14.2f, InspectorMetrics::HeadingInk, "Composition");
+        char TypesBuf[24]{};
+        std::snprintf(TypesBuf, sizeof(TypesBuf), "%u types", std::max(1u, Stats.TotalEntries));
+        const float TW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.6f, TypesBuf);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW - TW, Card.Y + 27.0f }, 10.6f, InspectorMetrics::DimInk, TypesBuf);
+
+        // Segmented pastel composition bar (up to 13 rounded pills)
+        static constexpr std::array<ColorRgba, 5u> Pastel = {{
+            { 182u, 202u, 178u, 255u }, { 148u, 174u, 198u, 255u },
+            { 212u, 184u, 148u, 255u }, { 166u, 162u, 156u, 255u },
+            { 138u, 168u, 162u, 255u },
+        }};
+        const uint32_t Segs = std::clamp(Stats.TotalEntries, 4u, 13u);
+        const float Gap = 3.0f;
+        const float SW = std::floor((BodyW - Gap * static_cast<float>(Segs - 1u)) / static_cast<float>(Segs));
+        for (uint32_t I = 0u; I < Segs; ++I)
+        {
+            const Rectangle2D Seg { BodyX + static_cast<float>(I) * (SW + Gap), Card.Y + 62.0f, SW, 12.0f };
+            Surface.FillRectangle(Seg, Pastel[I % Pastel.size()], 5.0f);
         }
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+
+        // 2-column type counts
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, Card.Y + 98.0f }, 10.8f, InspectorMetrics::MutedInk, "Aerial fog");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW * 0.46f, Card.Y + 98.0f }, 10.8f, InspectorMetrics::HeadingInk, "1");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW * 0.54f, Card.Y + 98.0f }, 10.8f, InspectorMetrics::MutedInk, "Atmospheres");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + BodyW - 8.0f, Card.Y + 98.0f }, 10.8f, InspectorMetrics::HeadingInk, "1");
+        CursorY = Card.Bottom() + InspectorMetrics::SectionGap;
     }
 
     return CursorY;

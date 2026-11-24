@@ -8,6 +8,7 @@
 //------------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Components/VectorIcons/EditorIconAtlas.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
 #include "Engine/Input/InputExtension.h"
 
@@ -733,6 +734,10 @@ void ConstructShowcaseFolderIcon(
     {
         return;
     }
+    if (EditorIconAtlas::DrawSymbolIcon(Surface, EnvironmentSymbolCategory::FolderWorld, TopLeft, Extent, Opacity))
+    {
+        return;
+    }
 
     const auto ProjectX = [&](float SvgX) noexcept -> float { return TopLeft.X + (SvgX / 256.0f) * Extent; };
     const auto ProjectY = [&](float SvgY) noexcept -> float { return TopLeft.Y + (SvgY / 256.0f) * Extent; };
@@ -827,6 +832,10 @@ void ConstructGenericFolderIcon(
     {
         return;
     }
+    if (EditorIconAtlas::DrawSymbolIcon(Surface, EnvironmentSymbolCategory::FolderGeneric, TopLeft, Extent, Opacity))
+    {
+        return;
+    }
 
     const auto ProjectX = [&](float SvgX) noexcept -> float { return TopLeft.X + (SvgX / 256.0f) * Extent; };
     const auto ProjectY = [&](float SvgY) noexcept -> float { return TopLeft.Y + (SvgY / 256.0f) * Extent; };
@@ -874,6 +883,10 @@ void ConstructCameraIcon(
     float       Opacity) noexcept
 {
     if (Extent <= 2.0f || Opacity <= 0.0f)
+    {
+        return;
+    }
+    if (EditorIconAtlas::DrawSymbolIcon(Surface, EnvironmentSymbolCategory::Camera, TopLeft, Extent, Opacity))
     {
         return;
     }
@@ -935,6 +948,10 @@ void ConstructSlotCategoryIcon(
 
         case ConstructSlotCategory::GeometryVolume:
         {
+            if (EditorIconAtlas::DrawSymbolIcon(Surface, EnvironmentSymbolCategory::Primitive, TopLeft, Extent, Opacity))
+            {
+                break;
+            }
             // Workspace editor-cube: #174B88 filled hexagon + #389CFF bold isometric edges
             const std::array<Point2D, 6> Hex = {{
                 { ProjectX(128.0f), ProjectY(40.0f)  },
@@ -965,6 +982,10 @@ void ConstructSlotCategoryIcon(
 
         case ConstructSlotCategory::LayerGroup:
         {
+            if (EditorIconAtlas::DrawSymbolIcon(Surface, EnvironmentSymbolCategory::Collection, TopLeft, Extent, Opacity))
+            {
+                break;
+            }
             // Workspace collection-stacked-layers (scale 5.3333 in 256x256 space)
             const auto Slab = [&](float CenterY, ColorRgba Fill, ColorRgba Edge)
             {
@@ -986,6 +1007,10 @@ void ConstructSlotCategoryIcon(
 
         case ConstructSlotCategory::PointLuminaire:
         {
+            if (EditorIconAtlas::DrawSymbolIcon(Surface, EnvironmentSymbolCategory::PointLight, TopLeft, Extent, Opacity))
+            {
+                break;
+            }
             // Workspace editor-point-light: #F0AD22 filled core + #FFCD38 stroke & 8 rays
             const Point2D   Center{ ProjectX(128.0f), ProjectY(128.0f) };
             const float     CoreR  = (32.0f / 256.0f) * Extent;
@@ -1018,17 +1043,47 @@ void ConstructSlotCategoryIcon(
 
 EnvironmentSymbolCategory ResolveEnvironmentSymbolFromTag(std::string_view DomainTag) noexcept
 {
-    if (DomainTag == "env:atmosphere")     return EnvironmentSymbolCategory::Atmosphere;
-    if (DomainTag == "env:sun")            return EnvironmentSymbolCategory::Sun;
-    if (DomainTag == "env:clouds")         return EnvironmentSymbolCategory::Clouds;
-    if (DomainTag == "env:moon")           return EnvironmentSymbolCategory::Moon;
-    if (DomainTag == "env:stars")          return EnvironmentSymbolCategory::Stars;
-    if (DomainTag == "env:wind")           return EnvironmentSymbolCategory::Wind;
-    if (DomainTag == "env:fog")            return EnvironmentSymbolCategory::Fog;
-    if (DomainTag == "env:precipitation")  return EnvironmentSymbolCategory::Precipitation;
-    if (DomainTag == "env:god-rays")       return EnvironmentSymbolCategory::GodRays;
-    if (DomainTag == "env:rainbow")        return EnvironmentSymbolCategory::Rainbow;
-    if (DomainTag == "env:vehicle")        return EnvironmentSymbolCategory::Vehicle;
+    if (DomainTag == "env:atmosphere")          return EnvironmentSymbolCategory::Atmosphere;
+    if (DomainTag == "env:sun")                 return EnvironmentSymbolCategory::Sun;
+    if (DomainTag == "env:clouds")              return EnvironmentSymbolCategory::Clouds;
+    if (DomainTag == "env:local-cloud")         return EnvironmentSymbolCategory::LocalCloud;
+    if (DomainTag == "env:moon")                return EnvironmentSymbolCategory::Moon;
+    if (DomainTag == "env:stars")               return EnvironmentSymbolCategory::Stars;
+    if (DomainTag == "env:wind" || DomainTag == "weather:wind") return EnvironmentSymbolCategory::Wind;
+    if (DomainTag == "env:aerial-fog" || DomainTag == "env:atmospheric-fog") return EnvironmentSymbolCategory::AtmosphericFog;
+    if (DomainTag == "env:fog" || DomainTag == "weather:fog" ||
+        DomainTag == "env:height-fog") return EnvironmentSymbolCategory::Fog;
+    if (DomainTag == "env:local-fog")           return EnvironmentSymbolCategory::LocalFog;
+    if (DomainTag == "env:precipitation" || DomainTag == "weather:precipitation") return EnvironmentSymbolCategory::Precipitation;
+    if (DomainTag == "env:god-rays" || DomainTag == "weather:god-rays") return EnvironmentSymbolCategory::GodRays;
+    if (DomainTag == "env:rainbow" || DomainTag == "weather:rainbow") return EnvironmentSymbolCategory::Rainbow;
+    if (DomainTag == "env:lens-flare")          return EnvironmentSymbolCategory::LensFlare;
+    if (DomainTag == "env:environment-light")   return EnvironmentSymbolCategory::EnvironmentLight;
+    if (DomainTag == "env:post-process")        return EnvironmentSymbolCategory::PostProcess;
+    if (DomainTag == "env:motion-blur")         return EnvironmentSymbolCategory::MotionBlur;
+    if (DomainTag == "env:camera-settings" || DomainTag == "env:render-engine" ||
+        DomainTag == "camera:settings" || DomainTag == "render:settings") return EnvironmentSymbolCategory::CameraSettings;
+    if (DomainTag == "camera:perspective" || DomainTag == "camera:editor" || DomainTag == "camera") return EnvironmentSymbolCategory::Camera;
+    if (DomainTag == "env:vehicle" || DomainTag == "vehicle:sedan") return EnvironmentSymbolCategory::Vehicle;
+    if (DomainTag == "light:point" || DomainTag == "pointlight") return EnvironmentSymbolCategory::PointLight;
+    if (DomainTag == "light:area"  || DomainTag == "arealight")  return EnvironmentSymbolCategory::AreaLight;
+    if (DomainTag == "light:spot"  || DomainTag == "spotlight")  return EnvironmentSymbolCategory::SpotLight;
+    if (DomainTag == "light:ies"   || DomainTag == "ieslight")   return EnvironmentSymbolCategory::IesLight;
+    if (DomainTag == "light:tube"  || DomainTag == "tubelight")  return EnvironmentSymbolCategory::TubeLight;
+    if (DomainTag == "light:led"   || DomainTag == "ledlight")   return EnvironmentSymbolCategory::LedLight;
+    if (DomainTag == "light:led-strip" || DomainTag == "ledstrip") return EnvironmentSymbolCategory::LedStrip;
+    if (DomainTag == "geom:primitive")          return EnvironmentSymbolCategory::Primitive;
+    if (DomainTag == "geom:procedural")         return EnvironmentSymbolCategory::ProceduralMesh;
+    if (DomainTag == "geom:native")             return EnvironmentSymbolCategory::NativeMesh;
+    if (DomainTag == "geom:imported")           return EnvironmentSymbolCategory::ImportedAsset;
+    if (DomainTag == "folder:world" || DomainTag == "folder:environment") return EnvironmentSymbolCategory::FolderWorld;
+    if (DomainTag == "folder:water")            return EnvironmentSymbolCategory::FolderWater;
+    if (DomainTag == "folder:generic" || DomainTag == "folder") return EnvironmentSymbolCategory::FolderGeneric;
+    if (DomainTag == "collection")              return EnvironmentSymbolCategory::Collection;
+    if (DomainTag == "material")                return EnvironmentSymbolCategory::Material;
+    if (DomainTag == "forest")                  return EnvironmentSymbolCategory::Forest;
+    if (DomainTag == "fluid" || DomainTag == "water") return EnvironmentSymbolCategory::Fluid;
+    if (DomainTag == "earth" || DomainTag == "world") return EnvironmentSymbolCategory::Earth;
     return EnvironmentSymbolCategory::None;
 }
 
@@ -1040,6 +1095,12 @@ void ConstructEnvironmentSymbolIcon(
     float                     Opacity) noexcept
 {
     if (Extent <= 2.0f || Opacity <= 0.0f)
+    {
+        return;
+    }
+
+    // Prefer the official studio SVG icon from EngineContent/Icons/Editor/*.svg rasterized via ThorVG.
+    if (EditorIconAtlas::DrawSymbolIcon(Surface, Symbol, TopLeft, Extent, Opacity))
     {
         return;
     }
@@ -1100,8 +1161,8 @@ void ConstructEnvironmentSymbolIcon(
 
         case EnvironmentSymbolCategory::Stars:
         {
-            // Twin 4-point violet-white crystalline sparkles (matches HTML 03-ConstructModalEnvironment.png)
-            auto DrawFourPointStar = [&](Point2D Origin, float Outer, float Inner, ColorRgba Fill, ColorRgba Edge)
+            // Three 4-point violet-white sparkles matching reference outliner-stars.svg
+            auto DrawFourPointStar = [&](Point2D Origin, float Outer, float Inner, ColorRgba Fill)
             {
                 const std::array<Point2D, 8> StarPts = {{
                     { Origin.X,           Origin.Y - Outer },
@@ -1114,68 +1175,89 @@ void ConstructEnvironmentSymbolIcon(
                     { Origin.X - Inner,   Origin.Y - Inner },
                 }};
                 Surface.FillPolygon(StarPts, Fill);
-                Surface.StrokePolyline(StarPts, Edge, std::max(1.0f, Extent * 0.032f), true);
             };
-            DrawFourPointStar(
-                { Center.X - R * 0.16f, Center.Y + R * 0.08f },
-                R * 0.56f,
-                R * 0.16f,
-                ScaleAlpha({ 226, 210, 255, 255 }, Opacity),
-                ScaleAlpha({ 172, 136, 242, 230 }, Opacity));
-            DrawFourPointStar(
-                { Center.X + R * 0.36f, Center.Y - R * 0.34f },
-                R * 0.30f,
-                R * 0.09f,
-                ScaleAlpha({ 242, 232, 255, 255 }, Opacity),
-                ScaleAlpha({ 186, 152, 246, 220 }, Opacity));
+            DrawFourPointStar({ TopLeft.X + Extent * 0.375f, TopLeft.Y + Extent * 0.542f }, R * 0.70f, R * 0.21f, ScaleAlpha({ 209, 194, 239, 255 }, Opacity));
+            DrawFourPointStar({ TopLeft.X + Extent * 0.792f, TopLeft.Y + Extent * 0.250f }, R * 0.42f, R * 0.125f, ScaleAlpha({ 242, 236, 255, 255 }, Opacity));
+            DrawFourPointStar({ TopLeft.X + Extent * 0.833f, TopLeft.Y + Extent * 0.833f }, R * 0.33f, R * 0.10f, ScaleAlpha({ 169, 152, 213, 255 }, Opacity));
             break;
         }
 
         case EnvironmentSymbolCategory::Wind:
         {
-            const ColorRgba Ink = ScaleAlpha({ 182, 196, 212, 235 }, Opacity);
-            const float     W   = std::max(1.2f, Extent * 0.055f);
-            Surface.StrokeLine({ Center.X - R * 0.58f, Center.Y - R * 0.24f }, { Center.X + R * 0.34f, Center.Y - R * 0.24f }, Ink, W);
-            Surface.StrokeLine({ Center.X - R * 0.64f, Center.Y },             { Center.X + R * 0.56f, Center.Y },             Ink, W);
-            Surface.StrokeLine({ Center.X - R * 0.44f, Center.Y + R * 0.26f }, { Center.X + R * 0.24f, Center.Y + R * 0.26f }, Ink, W);
+            // Flowing curled streamlines matching reference wind.svg (#b7d7dc)
+            const ColorRgba Ink = ScaleAlpha({ 183, 215, 220, 240 }, Opacity);
+            const float     W   = std::max(1.25f, Extent * 0.058f);
+            const auto PX = [&](float SvgX) noexcept -> float { return TopLeft.X + (SvgX / 256.0f) * Extent; };
+            const auto PY = [&](float SvgY) noexcept -> float { return TopLeft.Y + (SvgY / 256.0f) * Extent; };
+            const std::array<Point2D, 6> Upper = {{
+                { PX(43.0f), PY(102.0f) }, { PX(155.0f), PY(102.0f) }, { PX(178.0f), PY(92.0f) },
+                { PX(182.0f), PY(72.0f) }, { PX(166.0f), PY(62.0f) },  { PX(151.0f), PY(75.0f) },
+            }};
+            const std::array<Point2D, 6> Mid = {{
+                { PX(34.0f), PY(130.0f) }, { PX(191.0f), PY(130.0f) }, { PX(212.0f), PY(142.0f) },
+                { PX(214.0f), PY(161.0f) }, { PX(201.0f), PY(169.0f) }, { PX(184.0f), PY(158.0f) },
+            }};
+            const std::array<Point2D, 5> Lower = {{
+                { PX(58.0f), PY(158.0f) }, { PX(119.0f), PY(158.0f) }, { PX(137.0f), PY(168.0f) },
+                { PX(138.0f), PY(185.0f) }, { PX(126.0f), PY(191.0f) },
+            }};
+            Surface.StrokePolyline(Upper, Ink, W, false);
+            Surface.StrokePolyline(Mid,   Ink, W, false);
+            Surface.StrokePolyline(Lower, Ink, W, false);
             break;
         }
 
         case EnvironmentSymbolCategory::Fog:
         {
-            Surface.FillCircle({ Center.X - R * 0.22f, Center.Y + R * 0.02f }, R * 0.30f, ScaleAlpha({ 134, 140, 150, 175 }, Opacity));
-            Surface.FillCircle({ Center.X + R * 0.16f, Center.Y - R * 0.04f }, R * 0.34f, ScaleAlpha({ 152, 158, 168, 185 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.24f, Center.Y + R * 0.06f }, R * 0.34f, ScaleAlpha({ 184, 200, 210, 170 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.16f, Center.Y - R * 0.04f }, R * 0.38f, ScaleAlpha({ 206, 218, 224, 185 }, Opacity));
             Surface.FillRectangle(
-                { Center.X - R * 0.52f, Center.Y + R * 0.14f, R * 1.04f, R * 0.20f },
-                ScaleAlpha({ 124, 130, 140, 165 }, Opacity),
-                R * 0.10f);
+                { Center.X - R * 0.60f, Center.Y + R * 0.16f, R * 1.20f, R * 0.22f },
+                ScaleAlpha({ 162, 182, 194, 175 }, Opacity),
+                R * 0.11f);
+            const ColorRgba Wisp = ScaleAlpha({ 210, 223, 226, 130 }, Opacity);
+            const float     W    = std::max(1.0f, Extent * 0.045f);
+            Surface.StrokeLine({ Center.X - R * 0.64f, Center.Y + R * 0.44f }, { Center.X + R * 0.56f, Center.Y + R * 0.40f }, Wisp, W);
             break;
         }
 
         case EnvironmentSymbolCategory::Precipitation:
         {
-            Surface.FillCircle({ Center.X - R * 0.22f, Center.Y - R * 0.12f }, R * 0.28f, ScaleAlpha({ 134, 178, 214, 240 }, Opacity));
-            Surface.FillCircle({ Center.X + R * 0.14f, Center.Y - R * 0.16f }, R * 0.34f, ScaleAlpha({ 150, 192, 226, 250 }, Opacity));
-            const ColorRgba DropInk = ScaleAlpha({ 136, 178, 212, 230 }, Opacity);
-            const float     DropW   = std::max(1.2f, Extent * 0.055f);
-            for (int32_t Drop = -1; Drop <= 1; ++Drop)
-            {
-                const float X = Center.X + static_cast<float>(Drop) * R * 0.26f;
-                Surface.StrokeLine({ X, Center.Y + R * 0.20f }, { X - R * 0.08f, Center.Y + R * 0.48f }, DropInk, DropW);
-            }
+            // Umbrella silhouette matching reference outliner-precipitation.svg (#86bbd7 / #c4e6f5)
+            const auto PX = [&](float X) noexcept -> float { return TopLeft.X + (X / 24.0f) * Extent; };
+            const auto PY = [&](float Y) noexcept -> float { return TopLeft.Y + (Y / 24.0f) * Extent; };
+            const float StemW = std::max(1.3f, Extent * 0.085f);
+            Surface.StrokeLine({ PX(12.0f), PY(2.0f) }, { PX(12.0f), PY(4.2f) }, ScaleAlpha({ 217, 237, 245, 255 }, Opacity), StemW);
+            const std::array<Point2D, 5> Handle = {{
+                { PX(12.0f), PY(11.0f) }, { PX(12.0f), PY(19.0f) }, { PX(10.8f), PY(21.4f) },
+                { PX(7.5f),  PY(21.4f) }, { PX(6.0f),  PY(19.0f) },
+            }};
+            Surface.StrokePolyline(Handle, ScaleAlpha({ 197, 220, 232, 255 }, Opacity), StemW, false);
+            // Outer blue canopy + lighter center gore
+            const std::array<Point2D, 9> Canopy = {{
+                { PX(1.5f),  PY(13.0f) }, { PX(3.5f),  PY(7.5f) },  { PX(7.5f),  PY(4.2f) },
+                { PX(12.0f), PY(3.2f)  }, { PX(16.5f), PY(4.2f) },  { PX(20.5f), PY(7.5f) },
+                { PX(22.5f), PY(13.0f) }, { PX(17.2f), PY(11.4f) }, { PX(6.8f),  PY(11.4f) },
+            }};
+            Surface.FillPolygon(Canopy, ScaleAlpha({ 134, 187, 215, 255 }, Opacity));
+            const std::array<Point2D, 5> CenterGore = {{
+                { PX(12.0f), PY(3.2f)  }, { PX(15.2f), PY(6.8f) },
+                { PX(17.0f), PY(12.6f) }, { PX(12.0f), PY(11.0f) }, { PX(7.0f), PY(12.6f) },
+            }};
+            Surface.FillPolygon(CenterGore, ScaleAlpha({ 196, 230, 245, 245 }, Opacity));
             break;
         }
 
         case EnvironmentSymbolCategory::GodRays:
         {
-            Surface.FillCircle({ Center.X, Center.Y - R * 0.26f }, R * 0.32f, ScaleAlpha({ 246, 198, 102, 220 }, Opacity));
-            const ColorRgba RayInk = ScaleAlpha({ 242, 206, 134, 175 }, Opacity);
-            const float     RayW   = std::max(1.2f, Extent * 0.05f);
+            Surface.FillCircle({ Center.X, Center.Y - R * 0.26f }, R * 0.30f, ScaleAlpha({ 246, 198, 102, 235 }, Opacity));
+            const ColorRgba RayInk = ScaleAlpha({ 242, 206, 134, 195 }, Opacity);
+            const float     RayW   = std::max(1.2f, Extent * 0.055f);
             for (int32_t Ray = -1; Ray <= 1; ++Ray)
             {
                 Surface.StrokeLine(
-                    { Center.X + static_cast<float>(Ray) * R * 0.10f, Center.Y + R * 0.04f },
-                    { Center.X + static_cast<float>(Ray) * R * 0.36f, Center.Y + R * 0.54f },
+                    { Center.X + static_cast<float>(Ray) * R * 0.12f, Center.Y + R * 0.04f },
+                    { Center.X + static_cast<float>(Ray) * R * 0.44f, Center.Y + R * 0.60f },
                     RayInk,
                     RayW);
             }
@@ -1184,14 +1266,259 @@ void ConstructEnvironmentSymbolIcon(
 
         case EnvironmentSymbolCategory::Rainbow:
         {
-            const float StrokeW = std::max(1.2f, Extent * 0.07f);
-            Surface.StrokeCircle({ Center.X, Center.Y + R * 0.26f }, R * 0.56f, ScaleAlpha({ 238, 122, 108, 210 }, Opacity), StrokeW);
-            Surface.StrokeCircle({ Center.X, Center.Y + R * 0.26f }, R * 0.44f, ScaleAlpha({ 142, 216, 152, 210 }, Opacity), StrokeW);
-            Surface.StrokeCircle({ Center.X, Center.Y + R * 0.26f }, R * 0.32f, ScaleAlpha({ 112, 172, 242, 210 }, Opacity), StrokeW);
-            Surface.FillRectangle(
-                { TopLeft.X, Center.Y + R * 0.26f, Extent, R * 0.74f },
-                ScaleAlpha({ 30, 30, 30, 255 }, Opacity),
-                0.0f);
+            // 6-band spectral upper arch polyline matching reference rainbow.svg (transparent backdrop!)
+            static constexpr std::array<ColorRgba, 6u> Spectral = {{
+                { 233, 129, 119, 220 },
+                { 234, 182, 116, 220 },
+                { 233, 215, 145, 220 },
+                { 156, 204, 170, 220 },
+                { 136, 191, 224, 220 },
+                { 163, 144, 211, 220 },
+            }};
+            const float StrokeW = std::max(1.1f, Extent * 0.045f);
+            const Point2D ArchC { Center.X, Center.Y + R * 0.36f };
+            for (std::size_t Band = 0u; Band < Spectral.size(); ++Band)
+            {
+                const float ArcR = R * (0.76f - static_cast<float>(Band) * 0.075f);
+                std::array<Point2D, 15u> Pts{};
+                for (std::size_t I = 0u; I < Pts.size(); ++I)
+                {
+                    const float Ang = 3.14159265f * (1.0f - static_cast<float>(I) / static_cast<float>(Pts.size() - 1u));
+                    Pts[I] = { ArchC.X + std::cos(Ang) * ArcR, ArchC.Y - std::sin(Ang) * ArcR };
+                }
+                Surface.StrokePolyline(Pts, ScaleAlpha(Spectral[Band], Opacity), StrokeW, false);
+            }
+            break;
+        }
+
+        case EnvironmentSymbolCategory::LocalCloud:
+        {
+            // Cumulus cloud inside #9ac8f0 bounding corner brackets (matches reference local-cloud.svg)
+            const float Inner = Extent * 0.72f;
+            ConstructEnvironmentSymbolIcon(
+                Surface,
+                EnvironmentSymbolCategory::Clouds,
+                { Center.X - Inner * 0.5f, Center.Y - Inner * 0.5f },
+                Inner,
+                Opacity);
+            const ColorRgba Bracket = ScaleAlpha({ 154, 200, 240, 240 }, Opacity);
+            const float     BW      = std::max(1.2f, Extent * 0.055f);
+            const float     Pad     = Extent * 0.08f;
+            const float     Arm     = Extent * 0.22f;
+            const float     L = TopLeft.X + Pad, T = TopLeft.Y + Pad;
+            const float     Ri = TopLeft.X + Extent - Pad, B = TopLeft.Y + Extent - Pad;
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { L, T + Arm }, { L, T }, { L + Arm, T } }}, Bracket, BW, false);
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { Ri - Arm, T }, { Ri, T }, { Ri, T + Arm } }}, Bracket, BW, false);
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { Ri, B - Arm }, { Ri, B }, { Ri - Arm, B } }}, Bracket, BW, false);
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { L + Arm, B }, { L, B }, { L, B - Arm } }}, Bracket, BW, false);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::LocalFog:
+        {
+            // Soft volumetric mist inside #99cdbb bounding corner brackets (matches reference local-fog.svg)
+            const float Inner = Extent * 0.72f;
+            ConstructEnvironmentSymbolIcon(
+                Surface,
+                EnvironmentSymbolCategory::Fog,
+                { Center.X - Inner * 0.5f, Center.Y - Inner * 0.5f },
+                Inner,
+                Opacity);
+            const ColorRgba Bracket = ScaleAlpha({ 153, 205, 187, 240 }, Opacity);
+            const float     BW      = std::max(1.2f, Extent * 0.055f);
+            const float     Pad     = Extent * 0.08f;
+            const float     Arm     = Extent * 0.22f;
+            const float     L = TopLeft.X + Pad, T = TopLeft.Y + Pad;
+            const float     Ri = TopLeft.X + Extent - Pad, B = TopLeft.Y + Extent - Pad;
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { L, T + Arm }, { L, T }, { L + Arm, T } }}, Bracket, BW, false);
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { Ri - Arm, T }, { Ri, T }, { Ri, T + Arm } }}, Bracket, BW, false);
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { Ri, B - Arm }, { Ri, B }, { Ri - Arm, B } }}, Bracket, BW, false);
+            Surface.StrokePolyline(std::array<Point2D, 3>{{ { L + Arm, B }, { L, B }, { L, B - Arm } }}, Bracket, BW, false);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::LensFlare:
+        {
+            // Glowing golden core + anamorphic blue-white streak + hexagonal teal iris + bokeh ghost (lens-flare.svg)
+            const Point2D Core { TopLeft.X + Extent * 0.32f, TopLeft.Y + Extent * 0.35f };
+            Surface.FillCircle({ TopLeft.X + Extent * 0.72f, TopLeft.Y + Extent * 0.69f }, R * 0.34f, ScaleAlpha({ 153, 213, 174, 88 }, Opacity));
+            Surface.StrokeCircle({ TopLeft.X + Extent * 0.72f, TopLeft.Y + Extent * 0.69f }, R * 0.32f, ScaleAlpha({ 218, 202, 131, 135 }, Opacity), std::max(1.0f, Extent * 0.035f));
+            Surface.FillCircle({ TopLeft.X + Extent * 0.55f, TopLeft.Y + Extent * 0.55f }, R * 0.16f, ScaleAlpha({ 182, 204, 131, 145 }, Opacity));
+            Surface.StrokeLine({ TopLeft.X + Extent * 0.06f, Core.Y }, { TopLeft.X + Extent * 0.84f, Core.Y }, ScaleAlpha({ 172, 217, 239, 175 }, Opacity), std::max(1.1f, Extent * 0.045f));
+            Surface.FillCircle(Core, R * 0.42f, ScaleAlpha({ 255, 209, 139, 110 }, Opacity));
+            Surface.FillCircle(Core, R * 0.24f, ScaleAlpha({ 255, 240, 189, 235 }, Opacity));
+            Surface.FillCircle(Core, R * 0.11f, ScaleAlpha({ 255, 255, 248, 255 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::EnvironmentLight:
+        {
+            // Blue-to-warm sky hemisphere dome + sun + cloud + horizon bar (editor-dome-light.svg)
+            const Point2D DomeC { Center.X, Center.Y + R * 0.36f };
+            const float   DomeR = R * 0.72f;
+            std::array<Point2D, 15u> Semi{};
+            for (std::size_t I = 0u; I < Semi.size(); ++I)
+            {
+                const float Ang = 3.14159265f * (1.0f - static_cast<float>(I) / static_cast<float>(Semi.size() - 1u));
+                Semi[I] = { DomeC.X + std::cos(Ang) * DomeR, DomeC.Y - std::sin(Ang) * DomeR };
+            }
+            Surface.FillPolygon(Semi, ScaleAlpha({ 78, 168, 224, 225 }, Opacity));
+            Surface.StrokePolyline(Semi, ScaleAlpha({ 169, 214, 236, 230 }, Opacity), std::max(1.0f, Extent * 0.04f), true);
+            Surface.FillCircle({ DomeC.X - DomeR * 0.28f, DomeC.Y - DomeR * 0.48f }, DomeR * 0.22f, ScaleAlpha({ 255, 240, 182, 250 }, Opacity));
+            Surface.FillCircle({ DomeC.X + DomeR * 0.24f, DomeC.Y - DomeR * 0.24f }, DomeR * 0.20f, ScaleAlpha({ 246, 252, 255, 225 }, Opacity));
+            Surface.StrokeLine({ DomeC.X - DomeR * 1.08f, DomeC.Y + R * 0.14f }, { DomeC.X + DomeR * 1.08f, DomeC.Y + R * 0.14f }, ScaleAlpha({ 182, 211, 223, 235 }, Opacity), std::max(1.2f, Extent * 0.055f));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::PostProcess:
+        {
+            // Split dark/lit exposure disc with + / - (environment-exposure.svg)
+            const float DiscR = R * 0.66f;
+            Surface.FillCircle(Center, DiscR, ScaleAlpha({ 56, 68, 86, 255 }, Opacity));
+            std::array<Point2D, 13u> RightHalf{};
+            for (std::size_t I = 0u; I < RightHalf.size(); ++I)
+            {
+                const float Ang = -1.5707963f + 3.14159265f * (static_cast<float>(I) / static_cast<float>(RightHalf.size() - 1u));
+                RightHalf[I] = { Center.X + std::cos(Ang) * DiscR, Center.Y + std::sin(Ang) * DiscR };
+            }
+            Surface.FillPolygon(RightHalf, ScaleAlpha({ 240, 236, 224, 250 }, Opacity));
+            Surface.StrokeCircle(Center, DiscR, ScaleAlpha({ 188, 200, 212, 210 }, Opacity), std::max(1.1f, Extent * 0.05f));
+            const float Sw = std::max(1.1f, Extent * 0.055f);
+            // '+' on dark left half
+            Surface.StrokeLine({ Center.X - DiscR * 0.48f, Center.Y - DiscR * 0.22f }, { Center.X - DiscR * 0.48f, Center.Y + DiscR * 0.22f }, ScaleAlpha({ 232, 236, 232, 250 }, Opacity), Sw);
+            Surface.StrokeLine({ Center.X - DiscR * 0.70f, Center.Y }, { Center.X - DiscR * 0.26f, Center.Y }, ScaleAlpha({ 232, 236, 232, 250 }, Opacity), Sw);
+            // '-' on lit right half
+            Surface.StrokeLine({ Center.X + DiscR * 0.24f, Center.Y }, { Center.X + DiscR * 0.68f, Center.Y }, ScaleAlpha({ 75, 86, 100, 250 }, Opacity), Sw);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::MotionBlur:
+        {
+            // Motion sphere + velocity trail arcs
+            Surface.FillCircle({ Center.X - R * 0.34f, Center.Y }, R * 0.32f, ScaleAlpha({ 124, 178, 242, 75 }, Opacity));
+            Surface.FillCircle({ Center.X - R * 0.08f, Center.Y }, R * 0.36f, ScaleAlpha({ 148, 198, 250, 145 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.24f, Center.Y }, R * 0.40f, ScaleAlpha({ 214, 232, 255, 250 }, Opacity));
+            const float Sw = std::max(1.1f, Extent * 0.05f);
+            Surface.StrokeLine({ Center.X - R * 0.74f, Center.Y - R * 0.26f }, { Center.X - R * 0.28f, Center.Y - R * 0.26f }, ScaleAlpha({ 164, 206, 248, 185 }, Opacity), Sw);
+            Surface.StrokeLine({ Center.X - R * 0.78f, Center.Y + R * 0.26f }, { Center.X - R * 0.26f, Center.Y + R * 0.26f }, ScaleAlpha({ 164, 206, 248, 185 }, Opacity), Sw);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::CameraSettings:
+        {
+            // Aperture ring + optical render sensor icon
+            Surface.FillCircle(Center, R * 0.68f, ScaleAlpha({ 36, 44, 58, 255 }, Opacity));
+            Surface.StrokeCircle(Center, R * 0.68f, ScaleAlpha({ 126, 196, 248, 235 }, Opacity), std::max(1.2f, Extent * 0.06f));
+            Surface.StrokeCircle(Center, R * 0.36f, ScaleAlpha({ 220, 236, 250, 240 }, Opacity), std::max(1.1f, Extent * 0.05f));
+            Surface.FillCircle(Center, R * 0.14f, ScaleAlpha({ 126, 196, 248, 240 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::AreaLight:
+        {
+            // Studio softbox panel + warm #fff8e5 diffused grid + yoke (editor-area-light.svg)
+            const float W = std::max(1.1f, Extent * 0.055f);
+            const ColorRgba Frame = ScaleAlpha({ 182, 190, 197, 240 }, Opacity);
+            const Rectangle2D Panel { Center.X - R * 0.58f, Center.Y - R * 0.60f, R * 1.16f, R * 0.88f };
+            Surface.FillRectangle(Panel, ScaleAlpha({ 74, 80, 88, 255 }, Opacity), R * 0.14f);
+            Surface.StrokeRectangle(Panel, Frame, R * 0.14f, W);
+            const Rectangle2D Face { Panel.X + R * 0.12f, Panel.Y + R * 0.12f, Panel.Width - R * 0.24f, Panel.Height - R * 0.24f };
+            Surface.FillRectangle(Face, ScaleAlpha({ 255, 248, 229, 255 }, Opacity), R * 0.06f);
+            const ColorRgba Grid = ScaleAlpha({ 221, 207, 172, 220 }, Opacity);
+            Surface.StrokeLine({ Face.X + Face.Width * 0.34f, Face.Y }, { Face.X + Face.Width * 0.34f, Face.Bottom() }, Grid, std::max(0.8f, Extent * 0.03f));
+            Surface.StrokeLine({ Face.X + Face.Width * 0.67f, Face.Y }, { Face.X + Face.Width * 0.67f, Face.Bottom() }, Grid, std::max(0.8f, Extent * 0.03f));
+            Surface.StrokeLine({ Face.X, Face.Center().Y }, { Face.Right(), Face.Center().Y }, Grid, std::max(0.8f, Extent * 0.03f));
+            // Yoke & stand
+            Surface.StrokeLine({ Center.X, Panel.Bottom() }, { Center.X, Center.Y + R * 0.66f }, Frame, W);
+            Surface.StrokeLine({ Center.X - R * 0.32f, Center.Y + R * 0.68f }, { Center.X + R * 0.32f, Center.Y + R * 0.68f }, Frame, W);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::SpotLight:
+        {
+            // Studio spotlight barn-door housing + warm Fresnel lens (editor-spotlight.svg)
+            const float W = std::max(1.1f, Extent * 0.055f);
+            const ColorRgba Trim = ScaleAlpha({ 182, 166, 139, 240 }, Opacity);
+            const Rectangle2D Housing { Center.X - R * 0.48f, Center.Y - R * 0.48f, R * 0.96f, R * 0.96f };
+            Surface.FillRectangle(Housing, ScaleAlpha({ 56, 52, 46, 255 }, Opacity), R * 0.14f);
+            Surface.StrokeRectangle(Housing, Trim, R * 0.14f, W);
+            // Top & bottom barn doors
+            Surface.StrokeLine({ Center.X - R * 0.56f, Center.Y - R * 0.72f }, { Center.X + R * 0.56f, Center.Y - R * 0.72f }, Trim, W);
+            Surface.StrokeLine({ Center.X - R * 0.56f, Center.Y + R * 0.72f }, { Center.X + R * 0.56f, Center.Y + R * 0.72f }, Trim, W);
+            Surface.FillCircle(Center, R * 0.34f, ScaleAlpha({ 255, 226, 161, 255 }, Opacity));
+            Surface.StrokeCircle(Center, R * 0.34f, ScaleAlpha({ 242, 190, 101, 250 }, Opacity), std::max(1.0f, Extent * 0.045f));
+            Surface.FillCircle(Center, R * 0.21f, ScaleAlpha({ 255, 249, 229, 255 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::IesLight:
+        {
+            // Photometric butterfly polar distribution lobe
+            const Point2D Source { Center.X, Center.Y - R * 0.44f };
+            const std::array<Point2D, 7> Lobe = {{
+                Source,
+                { Center.X + R * 0.52f, Center.Y - R * 0.06f },
+                { Center.X + R * 0.38f, Center.Y + R * 0.52f },
+                { Center.X,             Center.Y + R * 0.26f },
+                { Center.X - R * 0.38f, Center.Y + R * 0.52f },
+                { Center.X - R * 0.52f, Center.Y - R * 0.06f },
+                Source,
+            }};
+            Surface.FillPolygon(Lobe, ScaleAlpha({ 246, 206, 118, 120 }, Opacity));
+            Surface.StrokePolyline(Lobe, ScaleAlpha({ 255, 224, 148, 245 }, Opacity), std::max(1.1f, Extent * 0.05f), true);
+            Surface.FillCircle(Source, R * 0.18f, ScaleAlpha({ 255, 248, 224, 255 }, Opacity));
+            break;
+        }
+
+        case EnvironmentSymbolCategory::TubeLight:
+        {
+            // Glowing horizontal studio tube fixture
+            const Rectangle2D Glow { Center.X - R * 0.76f, Center.Y - R * 0.24f, R * 1.52f, R * 0.48f };
+            Surface.FillRectangle(Glow, ScaleAlpha({ 255, 224, 152, 72 }, Opacity), R * 0.24f);
+            const Rectangle2D Tube { Center.X - R * 0.68f, Center.Y - R * 0.13f, R * 1.36f, R * 0.26f };
+            Surface.FillRectangle(Tube, ScaleAlpha({ 255, 246, 220, 255 }, Opacity), R * 0.13f);
+            Surface.FillRectangle({ Tube.X - R * 0.10f, Tube.Y - R * 0.04f, R * 0.16f, Tube.Height + R * 0.08f }, ScaleAlpha({ 146, 154, 164, 255 }, Opacity), R * 0.04f);
+            Surface.FillRectangle({ Tube.Right() - R * 0.06f, Tube.Y - R * 0.04f, R * 0.16f, Tube.Height + R * 0.08f }, ScaleAlpha({ 146, 154, 164, 255 }, Opacity), R * 0.04f);
+            break;
+        }
+
+        case EnvironmentSymbolCategory::LedLight:
+        {
+            // Dark housing + warm 4x3 LED matrix (matches reference slate-l-e-d-panel.svg)
+            const Rectangle2D Panel { Center.X - R * 0.66f, Center.Y - R * 0.48f, R * 1.32f, R * 0.96f };
+            Surface.FillRectangle(Panel, ScaleAlpha({ 44, 46, 52, 255 }, Opacity), R * 0.14f);
+            Surface.StrokeRectangle(Panel, ScaleAlpha({ 132, 138, 146, 235 }, Opacity), R * 0.14f, std::max(1.1f, Extent * 0.05f));
+            const ColorRgba Diode = ScaleAlpha({ 255, 241, 200, 245 }, Opacity);
+            const float     DotR  = std::max(1.0f, Extent * 0.052f);
+            for (int Row = 0; Row < 3; ++Row)
+            {
+                for (int Col = 0; Col < 4; ++Col)
+                {
+                    const float X = Panel.X + Panel.Width * (0.20f + 0.20f * static_cast<float>(Col));
+                    const float Y = Panel.Y + Panel.Height * (0.26f + 0.24f * static_cast<float>(Row));
+                    Surface.FillCircle({ X, Y }, DotR, Diode);
+                }
+            }
+            break;
+        }
+
+        case EnvironmentSymbolCategory::LedStrip:
+        {
+            // Flexible LED ribbon strip with glowing nodes
+            const std::array<Point2D, 5> Ribbon = {{
+                { Center.X - R * 0.66f, Center.Y + R * 0.22f },
+                { Center.X - R * 0.30f, Center.Y - R * 0.24f },
+                { Center.X,             Center.Y + R * 0.04f },
+                { Center.X + R * 0.34f, Center.Y - R * 0.22f },
+                { Center.X + R * 0.66f, Center.Y + R * 0.14f },
+            }};
+            Surface.StrokePolyline(Ribbon, ScaleAlpha({ 92, 98, 108, 245 }, Opacity), std::max(2.4f, Extent * 0.14f), false);
+            Surface.StrokePolyline(Ribbon, ScaleAlpha({ 255, 224, 152, 165 }, Opacity), std::max(1.1f, Extent * 0.055f), false);
+            const float DotR = std::max(1.1f, Extent * 0.065f);
+            for (const Point2D& Node : Ribbon)
+            {
+                Surface.FillCircle(Node, DotR, ScaleAlpha({ 255, 244, 206, 255 }, Opacity));
+            }
             break;
         }
 
@@ -1208,7 +1535,44 @@ void ConstructEnvironmentSymbolIcon(
             break;
         }
 
+        case EnvironmentSymbolCategory::AtmosphericFog:
+        {
+            Surface.FillCircle({ Center.X - R * 0.20f, Center.Y - R * 0.08f }, R * 0.36f, ScaleAlpha({ 176, 188, 200, 185 }, Opacity));
+            Surface.FillCircle({ Center.X + R * 0.18f, Center.Y + R * 0.12f }, R * 0.34f, ScaleAlpha({ 146, 160, 178, 175 }, Opacity));
+            break;
+        }
+        case EnvironmentSymbolCategory::Camera:
+            ConstructCameraIcon(Surface, TopLeft, Extent, Opacity);
+            break;
+        case EnvironmentSymbolCategory::PointLight:
+            ConstructSlotCategoryIcon(Surface, ConstructSlotCategory::PointLuminaire, TopLeft, Extent, WorkspaceSurfaceColors::SageCollection, Opacity);
+            break;
+        case EnvironmentSymbolCategory::Primitive:
+        case EnvironmentSymbolCategory::ProceduralMesh:
+        case EnvironmentSymbolCategory::NativeMesh:
+        case EnvironmentSymbolCategory::ImportedAsset:
+            ConstructSlotCategoryIcon(Surface, ConstructSlotCategory::GeometryVolume, TopLeft, Extent, WorkspaceSurfaceColors::SageCollection, Opacity);
+            break;
+        case EnvironmentSymbolCategory::FolderWorld:
+        case EnvironmentSymbolCategory::FolderWater:
+            ConstructShowcaseFolderIcon(Surface, TopLeft, Extent, WorkspaceSurfaceColors::SageCollection, Opacity);
+            break;
+        case EnvironmentSymbolCategory::FolderGeneric:
+            ConstructGenericFolderIcon(Surface, TopLeft, Extent, { 185, 173, 149, 255 }, Opacity);
+            break;
+        case EnvironmentSymbolCategory::Collection:
+            ConstructSlotCategoryIcon(Surface, ConstructSlotCategory::LayerGroup, TopLeft, Extent, WorkspaceSurfaceColors::SageCollection, Opacity);
+            break;
+        case EnvironmentSymbolCategory::Material:
+        case EnvironmentSymbolCategory::Forest:
+        case EnvironmentSymbolCategory::Fluid:
+        case EnvironmentSymbolCategory::Earth:
+            Surface.FillCircle(Center, R * 0.62f, ScaleAlpha({ 120, 168, 212, 235 }, Opacity));
+            Surface.StrokeCircle(Center, R * 0.62f, ScaleAlpha({ 196, 224, 248, 220 }, Opacity), std::max(1.0f, Extent * 0.05f));
+            break;
+
         case EnvironmentSymbolCategory::None:
+        case EnvironmentSymbolCategory::Count:
         default:
             break;
     }

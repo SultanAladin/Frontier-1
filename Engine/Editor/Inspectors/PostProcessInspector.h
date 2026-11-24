@@ -1,7 +1,7 @@
 /*============================================================================================================================================
-                                                          POSTPROCESSINSPECTOR.H
+                                                         POSTPROCESSINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance Post Process Inspector (Overview switches, Tone & exposure curve, Colour grading)
+// 🧩 Brand-new 1:1 HTML parity port of Post Process Inspector (2 tabs: Overview, Settings)
 
 #pragma once
 
@@ -15,7 +15,7 @@ class PostProcessInspector
 {
 public:
     PostProcessInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Tonemap  ·  anti-aliasing  ·  grading"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Post processing"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -26,8 +26,9 @@ public:
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
 
 private:
-    uint32_t ActivePage   = 0u;
-    uint32_t ActiveDragId = 0u;
+    uint32_t ActivePage     = 0u;
+    uint32_t ActiveDragId   = 0u;
+    float    BloomIntensity = 0.05f;
 };
 
 } // namespace Frontier

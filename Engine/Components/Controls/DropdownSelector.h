@@ -32,6 +32,7 @@ struct DropdownDirectiveEntry
     bool        SectionCaption = false;                 // [-] - Non-interactive uppercase group header row
     bool        Disabled       = false;                 // [-] - Non-interactive greyed-out directive row (0.40 alpha)
     const char* DisabledReason = "";                    // [-] - Optional hover tooltip explaining why disabled
+    uint8_t     LeadingSymbol  = 0u;                    // [-] - Optional EnvironmentSymbolCategory studio icon (> 0)
 };
 
 namespace DropdownSelector

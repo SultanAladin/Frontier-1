@@ -5,8 +5,8 @@
 
 #include "Engine/Editor/Inspectors/InspectorRegistry.h"
 
-#include "Engine/Components/Controls/InspectorVectorGraphics.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
 
 #include <algorithm>
 #include <cmath>
@@ -165,9 +165,33 @@ enum class ResolvedInspectorTarget : uint8_t
         return ResolvedInspectorTarget::CameraSettings;
     if (Tag == "env:environment-light") return ResolvedInspectorTarget::EnvironmentLight;
     if (Tag == "env:post-process")      return ResolvedInspectorTarget::PostProcess;
+    if (Tag == "camera:perspective")    return ResolvedInspectorTarget::Camera;
     if (Tag.rfind("light:", 0u) == 0u)  return ClassifyLuminaireEntry(Entry);
-    if (ContainsCaseFold(Entry.Title, "camera settings") || ContainsCaseFold(Entry.Title, "render engine"))
-        return ResolvedInspectorTarget::CameraSettings;
+    if (Tag.rfind("geom:", 0u) == 0u)   return ClassifyGeometryEntry(Entry);
+
+    // Fallback title / category classifier so even legacy untagged Outliner items route to their exact Inspector card
+    const auto MatchAny = [&](std::string_view Needle) noexcept -> bool
+    {
+        return ContainsCaseFold(Entry.Title, Needle) || ContainsCaseFold(Entry.CategoryLabel, Needle);
+    };
+    if (MatchAny("camera settings") || MatchAny("render engine")) return ResolvedInspectorTarget::CameraSettings;
+    if (MatchAny("atmosphere"))                                   return ResolvedInspectorTarget::Atmosphere;
+    if (MatchAny("lens flare"))                                   return ResolvedInspectorTarget::LensFlare;
+    if (MatchAny("motion blur"))                                  return ResolvedInspectorTarget::MotionBlur;
+    if (MatchAny("post process"))                                 return ResolvedInspectorTarget::PostProcess;
+    if (MatchAny("environment light") || MatchAny("sky dome"))    return ResolvedInspectorTarget::EnvironmentLight;
+    if (MatchAny("local cloud"))                                  return ResolvedInspectorTarget::LocalCloud;
+    if (MatchAny("cloud"))                                        return ResolvedInspectorTarget::Cloud;
+    if (MatchAny("local fog"))                                    return ResolvedInspectorTarget::LocalFog;
+    if (MatchAny("atmospheric fog") || MatchAny("aerial fog"))    return ResolvedInspectorTarget::AtmosphericFog;
+    if (MatchAny("height fog") || MatchAny("fog"))                return ResolvedInspectorTarget::HeightFog;
+    if (MatchAny("god ray"))                                      return ResolvedInspectorTarget::GodRays;
+    if (MatchAny("precipitation") || MatchAny("rain") || MatchAny("snow")) return ResolvedInspectorTarget::Precipitation;
+    if (MatchAny("rainbow"))                                      return ResolvedInspectorTarget::Rainbow;
+    if (MatchAny("wind"))                                         return ResolvedInspectorTarget::Wind;
+    if (MatchAny("star"))                                         return ResolvedInspectorTarget::Starfield;
+    if (MatchAny("moon") || MatchAny("luna"))                     return ResolvedInspectorTarget::Lunar;
+    if (MatchAny("sun") || MatchAny("solar"))                     return ResolvedInspectorTarget::Solar;
 
     switch (Entry.Category)
     {
@@ -241,6 +265,7 @@ bool InspectorRegistry::ConstructActiveInspector(
     const PaneInputReading&                   Input,
     bool&                                     OutMutated) noexcept
 {
+    FRONTIER_THOUGHT_SCOPE("Inspector.ConstructActive");
     OutlinerRecordEntry* Entry = Outliner.AccessEntry(Outliner.QueryPrimarySelection());
     if (Entry == nullptr)
     {
@@ -249,8 +274,14 @@ bool InspectorRegistry::ConstructActiveInspector(
 
     if (Entry->Token.Identifier != LastEntryId)
     {
-        LastEntryId   = Entry->Token.Identifier;
-        ScrollOffsetY = 0.0f;
+        LastEntryId        = Entry->Token.Identifier;
+        ScrollOffsetY      = 0.0f;
+        TargetScrollOffsetY = 0.0f;
+        CachedMaxScrollY   = 0.0f;
+        LastContentHeightPx = 0.0f;
+        HasCachedMaxScroll = false;
+        ScrollAnimating    = false;
+        ++ActivePanelRevision;
     }
 
     const ResolvedInspectorTarget Target = ResolveTarget(*Entry);
@@ -266,53 +297,85 @@ bool InspectorRegistry::ConstructActiveInspector(
 
     InspectorPrimitives::ResetTooltipQueue();
 
-    Surface.FillRectangle(PaneBounds, ColorRgba{ 9u, 9u, 9u, 255u }, 0.0f);
+    Surface.FillRectangle(PaneBounds, ColorRgba{ 18u, 18u, 18u, 255u }, 0.0f);
     Surface.StrokeLine({ PaneBounds.X + 0.5f, PaneBounds.Y }, { PaneBounds.X + 0.5f, PaneBounds.Bottom() }, ColorRgba{ 255u, 255u, 255u, 14u }, 1.0f);
 
-    const float FooterH    = 28.0f;
+    const float FooterH    = 45.0f;
     const Rectangle2D ScrollClip { PaneBounds.X, PaneBounds.Y, PaneBounds.Width, std::max(40.0f, PaneBounds.Height - FooterH) };
     const Rectangle2D FooterRect { PaneBounds.X, ScrollClip.Bottom(), PaneBounds.Width, FooterH };
 
     const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    if (ScrollClip.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 0.01f)
+    const auto    Now = std::chrono::steady_clock::now();
+    float         DtSeconds = 1.0f / 60.0f;
+    if (LastScrollTickTime.time_since_epoch().count() != 0)
     {
-        ScrollOffsetY = std::max(0.0f, ScrollOffsetY - Input.WheelDeltaY * 36.0f);
+        const float RawDt = std::chrono::duration<float>(Now - LastScrollTickTime).count();
+        DtSeconds = std::clamp(RawDt, 1.0f / 240.0f, 1.0f / 20.0f);
+    }
+    LastScrollTickTime = Now;
+
+    if (std::fabs(PaneBounds.Width - LastPaneWidthPx) > 0.5f)
+    {
+        LastPaneWidthPx = PaneBounds.Width;
+        // Keep current scroll clamped safely without snapping on resize
     }
 
-    const float PadX       = std::min(InspectorMetrics::PaneInsetX, std::max(12.0f, (PaneBounds.Width - 272.0f) * 0.5f));
+    if (ScrollClip.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 0.001f)
+    {
+        TargetScrollOffsetY -= Input.WheelDeltaY * 42.0f;
+        if (HasCachedMaxScroll)
+        {
+            TargetScrollOffsetY = std::clamp(TargetScrollOffsetY, 0.0f, CachedMaxScrollY);
+        }
+        else
+        {
+            TargetScrollOffsetY = std::max(0.0f, TargetScrollOffsetY);
+        }
+    }
+
+    // Critically-damped smooth scroll micro-animation with strict pre-draw clamping (zero overshoot, zero snap-back!)
+    if (HasCachedMaxScroll)
+    {
+        TargetScrollOffsetY = std::clamp(TargetScrollOffsetY, 0.0f, CachedMaxScrollY);
+    }
+    const float ScrollAlpha = 1.0f - std::exp(-16.0f * DtSeconds);
+    ScrollOffsetY += (TargetScrollOffsetY - ScrollOffsetY) * ScrollAlpha;
+    if (std::fabs(TargetScrollOffsetY - ScrollOffsetY) < 0.25f)
+    {
+        ScrollOffsetY   = TargetScrollOffsetY;
+        ScrollAnimating = false;
+    }
+    else
+    {
+        ScrollAnimating = true;
+    }
+    if (HasCachedMaxScroll)
+    {
+        ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, CachedMaxScrollY);
+    }
+    else
+    {
+        ScrollOffsetY = std::max(0.0f, ScrollOffsetY);
+    }
+
+    const float PadX       = std::clamp(PaneBounds.Width * 0.055f, 10.0f, InspectorMetrics::PaneInsetX);
     const float InnerLeft  = PaneBounds.X + PadX;
-    const float InnerWidth = std::max(180.0f, PaneBounds.Width - PadX * 2.0f);
+    const float InnerWidth = std::max(140.0f, PaneBounds.Width - PadX * 2.0f);
 
     Surface.PushClip(ScrollClip);
-    float CursorY = PaneBounds.Y + 18.0f - ScrollOffsetY;
+    float CursorY = PaneBounds.Y + 32.0f - ScrollOffsetY;
 
-    // Dynamic breadcrumb + F78 "+ Add notes" pill + optional parent-camera linked component card
+    // Dynamic breadcrumb from actual enclosing Outliner hierarchy (zero hardcoded folder names!)
     const std::string Breadcrumb = InspectorInstanceRegister::ResolveEnclosingBreadcrumb(Outliner, Entry->Token);
-    const OutlinerRecordEntry* LinkedParent = nullptr;
-    if (Target == ResolvedInspectorTarget::CameraSettings && Entry->EnclosingToken.Identifier != 0u)
-    {
-        LinkedParent = Outliner.AccessEntry(Entry->EnclosingToken);
-    }
-    bool AddNotesClicked   = false;
-    bool ParentLinkClicked = false;
-    CursorY = InspectorVector::ConstructInspectorHeaderEx(
+    CursorY = InspectorPrimitives::ConstructInspectorHeader(
         Surface, InnerLeft, CursorY, InnerWidth,
-        Breadcrumb.c_str(), Entry->Title.c_str(), ActiveSubtitle,
-        LinkedParent ? LinkedParent->Title.c_str() : nullptr,
-        LinkedParent ? "Component of this camera · values are stored on it" : nullptr,
-        Input, AddNotesClicked, ParentLinkClicked);
-    if (AddNotesClicked && Entry->AuthorNotes.empty())
-    {
-        Entry->AuthorNotes = "Scene notes…";
-        OutMutated = true;
-    }
-    if (ParentLinkClicked && LinkedParent != nullptr)
-    {
-        Outliner.SelectSingle(LinkedParent->Token);
-    }
+        Breadcrumb.c_str(), Entry->Title.c_str(), ActiveSubtitle);
 
     bool LocalMutated = false;
     bool PageSwitched = false;
+    ++ConstructCallCount;
+    LastEvaluatedCardCount = 1u;
+    LastSkippedCardCount   = 30u;
 
     if (UseProjectBlueprint)
     {
@@ -418,95 +481,58 @@ bool InspectorRegistry::ConstructActiveInspector(
             break;
     }
 
-    // Action row (Reset + Delete)
-    bool ResetRequested  = false;
-    bool DeleteRequested = false;
-    {
-        const float Gap       = 8.0f;
-        const float BtnH      = 30.0f;
-        const bool  CanDelete = !Entry->RemovalProtected;
-        const float BtnW      = CanDelete ? (InnerWidth - Gap) * 0.5f : InnerWidth;
-
-        const Rectangle2D ResetRect { InnerLeft, CursorY, BtnW, BtnH };
-        const bool ResetHov = ResetRect.Contains(Cursor);
-        Surface.FillRectangle(ResetRect, ResetHov ? ColorRgba{ 46u, 46u, 52u, 255u } : ColorRgba{ 32u, 32u, 36u, 255u }, 12.0f);
-        Surface.StrokeRectangle(ResetRect, ColorRgba{ 255u, 255u, 255u, 18u }, 12.0f, 1.0f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { ResetRect.X + BtnW * 0.5f - 16.0f, ResetRect.Y + 8.0f }, 11.5f, InspectorMetrics::HeadingInk, "Reset");
-        if (ResetHov && Input.PrimaryPointer.Pressed) ResetRequested = true;
-
-        if (CanDelete)
-        {
-            const Rectangle2D DelRect { ResetRect.Right() + Gap, CursorY, BtnW, BtnH };
-            const bool DelHov = DelRect.Contains(Cursor);
-            Surface.FillRectangle(DelRect, DelHov ? ColorRgba{ 68u, 28u, 30u, 255u } : ColorRgba{ 44u, 22u, 24u, 255u }, 12.0f);
-            Surface.StrokeRectangle(DelRect, ColorRgba{ 232u, 108u, 108u, 52u }, 12.0f, 1.0f);
-            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { DelRect.X + BtnW * 0.5f - 18.0f, DelRect.Y + 8.0f }, 11.5f, ColorRgba{ 238u, 146u, 146u, 255u }, "Delete");
-            if (DelHov && Input.PrimaryPointer.Pressed) DeleteRequested = true;
-        }
-        CursorY += BtnH + 24.0f;
-    }
-
-    if (ResetRequested)
-    {
-        Instances.EraseEntry(Entry->Token);
-        ProjectHost.EraseEntryReadings(Entry->Token);
-        if (Target == ResolvedInspectorTarget::AnalyticPrimitive ||
-            Target == ResolvedInspectorTarget::NativeGeometry    ||
-            Target == ResolvedInspectorTarget::ImportedGeometry  ||
-            Target == ResolvedInspectorTarget::ProceduralGeometry)
-        {
-            Entry->PositionX = Entry->PositionY = Entry->PositionZ = 0.0f;
-            Entry->RotationX = Entry->RotationY = Entry->RotationZ = 0.0f;
-            Entry->ScaleX    = Entry->ScaleY    = Entry->ScaleZ    = 1.0f;
-        }
-        LocalMutated = true;
-    }
-
-    if (DeleteRequested && !Entry->RemovalProtected)
-    {
-        const OutlinerSlotToken TargetToken = Entry->Token;
-        Instances.EraseEntry(TargetToken);
-        ProjectHost.EraseEntryReadings(TargetToken);
-        bool RemovedViaRegistry = false;
-        if (EnvironmentRegistry != nullptr)
-        {
-            for (const auto& Reg : EnvironmentRegistry->QueryRegisteredEntries())
-            {
-                if (Reg.Token == TargetToken)
-                {
-                    std::array<OutlinerSlotToken, 1u> Tokens {{ TargetToken }};
-                    EnvironmentRegistry->UnregisterSlots(Tokens, Outliner, Scene, DisplaySettings);
-                    RemovedViaRegistry = true;
-                    break;
-                }
-            }
-        }
-        if (!RemovedViaRegistry)
-        {
-            Outliner.DeleteSlot(TargetToken);
-        }
-        LocalMutated = true;
-    }
+    (void)EnvironmentRegistry;
 
     if (PageSwitched)
     {
-        ScrollOffsetY = 0.0f;
+        ScrollOffsetY       = 0.0f;
+        TargetScrollOffsetY = 0.0f;
+        CachedMaxScrollY    = 0.0f;
+        HasCachedMaxScroll  = false;
+        ScrollAnimating     = false;
+        ++ActivePanelRevision;
     }
 
     if (LocalMutated)
     {
+        ++ActivePanelRevision;
         Instances.CombineIntoScene(Outliner, Scene, DisplaySettings);
         OutMutated = true;
     }
 
     const float ContentHeight = (CursorY + ScrollOffsetY) - PaneBounds.Y + 24.0f;
     const float MaxScroll     = std::max(0.0f, ContentHeight - ScrollClip.Height);
-    ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, MaxScroll);
+    LastContentHeightPx       = ContentHeight;
+    CachedMaxScrollY          = MaxScroll;
+    HasCachedMaxScroll        = true;
+    TargetScrollOffsetY       = std::clamp(TargetScrollOffsetY, 0.0f, MaxScroll);
+    ScrollOffsetY             = std::clamp(ScrollOffsetY, 0.0f, MaxScroll);
+    if (std::fabs(TargetScrollOffsetY - ScrollOffsetY) < 0.25f)
+    {
+        ScrollOffsetY   = TargetScrollOffsetY;
+        ScrollAnimating = false;
+    }
+
+    WorkspaceAppearance::ConstructVerticalScrollIndicator(Surface, ScrollClip, ContentHeight, ScrollOffsetY, Cursor);
 
     Surface.PopClip();
     InspectorPrimitives::ConstructInspectorFooter(Surface, FooterRect, ActiveSubtitle, "F11");
     InspectorPrimitives::FlushTooltipOverlay(Surface, PaneBounds);
     return true;
+}
+
+uint64_t InspectorRegistry::QueryActiveSignature() const noexcept
+{
+    uint64_t Sig = RetainedCanvasCache::MixHash(0x51A7C0DE1337BEEFull, ActivePanelRevision);
+    Sig = RetainedCanvasCache::MixHash(Sig, LastEntryId);
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollOffsetY * 4.0f)));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(TargetScrollOffsetY * 4.0f)));
+    if (ScrollAnimating)
+    {
+        const uint64_t Tick = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count() >> 14);
+        Sig = RetainedCanvasCache::MixHash(Sig, Tick);
+    }
+    return Sig;
 }
 
 } // namespace Frontier

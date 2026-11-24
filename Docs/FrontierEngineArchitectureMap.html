@@ -554,7 +554,8 @@
       <a href="#gpu-internals">3. How GPU Executes</a>
       <a href="#hazards">4. Every Spike &amp; Load</a>
       <a href="#gtx-bug">5. GTX Sky-Line Bug</a>
-      <a href="#phase2">6. Phase 1 vs Phase 2</a>
+      <a href="#phase2">6. P1 + P2 + UI Merge</a>
+      <a href="#instances">7. Instance &amp; Dual Loop</a>
     </nav>
   </div>
 </header>
@@ -571,9 +572,9 @@
           Click any pipeline node below to inspect its exact source files, CPU vs GPU ownership, synchronization hazards, and Phase 1 / Phase 2 optimization status.
         </p>
       </div>
-      <div style="text-align:right; min-width:230px;">
-        <div class="badge b-fixed" style="margin-bottom:6px;">Phase 1 + Tick Fix + Phase 2 Live</div><br />
-        <span style="font-size:11.5px; color:var(--muted);">Branch: <code>arena/2809d087-frontier</code> · <code>306820fe+</code></span>
+      <div style="text-align:right; min-width:250px;">
+        <div class="badge b-fixed" style="margin-bottom:6px;">Phase 2 Verified: 248.6 FPS Avg on GTX!</div><br />
+        <span style="font-size:11.5px; color:var(--muted);">Branch: <code>arena/2809d087-frontier</code> · Phase 2 + UI Merge</span>
       </div>
     </div>
     <div class="pill-row">
@@ -595,29 +596,29 @@
 
     <div class="grid-4" style="margin-bottom:16px;">
       <div class="card">
-        <h3>Verified Phase 1 GPU Gain <span class="badge b-fixed">Measured GTX</span></h3>
-        <div class="metric-val" style="color:var(--fixed);">8.72 ms</div>
-        <div class="metric-sub">Down from <b>19.1 ms</b> (<b>2.2× faster</b>; <code>Trc 7.80 ms</code>, <code>Den 0.86 ms</code>, <code>3.57 ms</code> open sky)</div>
+        <h3>Phase 2 Steady FPS <span class="badge b-fixed">Measured GTX!</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">248.6 FPS</div>
+        <div class="metric-sub">Median <b>246.6 FPS</b> · Peak <b>383.6 FPS</b> (<code>Total 4.06 ms</code> med · up from ~51–69 FPS baseline!)</div>
       </div>
       <div class="card">
-        <h3>Drag SceneSync Spikes <span class="badge b-fixed">45× Faster</span></h3>
-        <div class="metric-val" style="color:var(--fixed);">0.43 ms</div>
-        <div class="metric-sub">Down from <b>22–28.74 ms</b> (147 spikes eliminated by GPU instance transform)</div>
+        <h3>Phase 2 GPU World Total <span class="badge b-fixed">5.7× Faster!</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">3.34 ms</div>
+        <div class="metric-sub">Down from <b>19.1 ms</b> baseline &amp; <b>8.72 ms</b> P1 (<code>Trc 2.46 ms</code> · <code>Den 0.80 ms</code> · min <b>1.98 ms</b>)</div>
       </div>
       <div class="card">
-        <h3>Tick Ping-Pong &amp; UI/Vec <span class="badge b-fixed">Fixed c2e6 + P2</span></h3>
-        <div class="metric-val" style="color:var(--fixed);">0 Stalls</div>
-        <div class="metric-sub">500 ms/frame CPU SkyView ping-pong fixed (<code>c2e6c5a1</code>) + async ImGui/Vector uploads (<code>306820fe</code>)</div>
+        <h3>SceneSync / Tick / Gizmo <span class="badge b-fixed">Zero Stalls</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">0.02 ms</div>
+        <div class="metric-sub"><code>SceneSync 0.02 ms</code> (was 28.74 ms) · <code>Tick 0.05 ms</code> (was 500 ms) · <code>Gizmo 0.52 ms</code></div>
       </div>
       <div class="card">
-        <h3>Phase 2 GPU Pipeline <span class="badge b-fixed">Shipped P2</span></h3>
-        <div class="metric-val" style="color:var(--gpu-gfx);">~3.5–5 ms</div>
-        <div class="metric-sub">HW Reversed-Z VisBuffer + ½-Res (¼ px) AO/GI + 2×2 Bilateral Upsample + GTX Sky Seam Fix</div>
+        <h3>Merged UI &amp; SVG Overhaul <span class="badge b-fixed">Merged Now</span></h3>
+        <div class="metric-val" style="color:var(--gpu-comp);">50 SVGs + GPU</div>
+        <div class="metric-sub">31 1:1 HTML inspectors, <code>InspectorGpuBaker</code>, <code>RetainedCanvasCache</code>, deferred ImGui retirement</div>
       </div>
     </div>
 
     <div class="card">
-      <h3>Where Every Millisecond Goes (GTX 1650 SUPER · 960×670 · GTX GDF GI Q3)</h3>
+      <h3>Where Every Millisecond Goes (GTX 1650 SUPER · 960×670 · GTX GDF GI Q3 — Measured Progression)</h3>
 
       <div class="bar-wrap">
         <div class="bar-label-row">
@@ -635,7 +636,7 @@
 
       <div class="bar-wrap">
         <div class="bar-label-row">
-          <span><b>Phase 1 + Tick Fix (Verified GTX — <code>185a8926</code> + <code>c2e6c5a1</code>)</b> — 3D Tex GDF/GI + 1-Pass Denoise + GPU Transform + Tick Fix</span>
+          <span><b>Phase 1 + Tick Fix (Measured GTX — <code>185a8926</code> + <code>c2e6c5a1</code>)</b> — 3D Tex GDF/GI + 1-Pass Denoise + GPU Transform + Tick Fix</span>
           <span><b>8.72 ms GPU measured</b> (<b>115+ FPS</b> steady · <code>SceneSync 0.43 ms</code> · <code>Gizmo 0.24 ms</code>)</span>
         </div>
         <div class="stacked-bar">
@@ -649,16 +650,15 @@
 
       <div class="bar-wrap">
         <div class="bar-label-row">
-          <span><b>Phase 2 (Shipped Now — <code>306820fe+</code>)</b> — HW Raster VisBuffer + Lean Direct + ½-Res (¼ px) AO/GI + 2×2 Upsample + Async UI/Vec</span>
-          <span><b>~3.5–5.0 ms target</b> (<b>180–250+ FPS</b> steady · Zero GTX sky seam · Ready to benchmark)</span>
+          <span><b>Phase 2 + UI Overhaul (Verified GTX — <code>FrontierTiming-4.log</code>, <code>be2d1fe8+</code>)</b> — HW VisBuffer + ½-Res AO/GI + 2×2 Upsample + GPU Inspectors</span>
+          <span><b>3.34 ms GPU median · 4.06 ms Total</b> (<b>246.6 FPS med · 383.6 FPS peak!</b> · <b>5.7× GPU gain</b>)</span>
         </div>
         <div class="stacked-bar">
-          <div class="seg" style="width:5%; background:#10b981;">Vis</div>
-          <div class="seg" style="width:10%; background:#38bdf8;">Direct · 1.2</div>
-          <div class="seg" style="width:10%; background:#06b6d4;">½-Res GI · 1.3</div>
-          <div class="seg" style="width:4.5%; background:#818cf8;">0.8</div>
-          <div class="seg" style="width:4.5%; background:#f59e0b;">UI</div>
-          <div class="seg" style="width:66%; background:rgba(16,185,129,0.12); color:#6ee7b7;">Massive GPU Headroom · HW Rasterizer Active · 7/7 Vulkan CTests Pass</div>
+          <div class="seg" style="width:12.5%; background:#10b981;">Vis+Direct+½GI · 2.46ms</div>
+          <div class="seg" style="width:4.5%; background:#818cf8;">0.80</div>
+          <div class="seg" style="width:7%; background:#f59e0b;">UI 1.39</div>
+          <div class="seg" style="width:4%; background:#06b6d4;">0.75</div>
+          <div class="seg" style="width:72%; background:rgba(34,197,94,0.14); color:#86efac;">Verified 248.6 FPS avg · 383.6 FPS peak on GTX 1650 SUPER!</div>
         </div>
       </div>
 
@@ -1268,6 +1268,90 @@ int   IX1     = (IX0 + 1) % W;</div>
           <li><b>Async ImGui &amp; VectorCanvas Retirement:</b> Eliminated mid-frame <code>AwaitTimelineTick</code> stalls in <code>ImGuiOverlayRasterization</code> &amp; <code>VectorCanvasRasterizer</code>.</li>
           <li><b>Build Commit &amp; DateTime in <code>FrontierTiming.log</code> + Fast Windows CI:</b> Stamps <code># BuildCommit: &lt;sha&gt; | RunDateTime: YYYY-MM-DD HH:MM:SS</code> + caches deps/fonts/<code>sccache</code> in <code>windows-build.yml</code>.</li>
         </ul>
+      </div>
+    </div>
+  </section>
+  <!-- SECTION 7: LIGHTWEIGHT INSTANCE ARCHITECTURE & DUAL EDITOR/PRODUCTION LOOP -->
+  <section id="instances">
+    <div class="sec-head">
+      <h2><span class="sec-num">07</span> Next Architecture: Lean <code>Instance</code> System, <code>.Instance</code> Files &amp; Dual Editor/Production Loop</h2>
+      <span class="sec-sub">Full implementation plan in <code>Documentation/Plans/InstanceAndDualLoopArchitecturePlan.md</code> &amp; <code>DocumentFormatsInstancePlan.md</code></span>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px;">
+      <div class="card" style="border-color:rgba(16,185,129,0.38);">
+        <h3>1. Zero-Bloat Domain <code>Instance</code> Classes (No <code>UObject</code>!) <span class="badge b-gfx">48 B · Zero vtable</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:10px;">
+          Every world entity (<code>ObjectInstance</code>, <code>LunarInstance</code>, <code>SolarInstance</code>, <code>LightInstance</code>, <code>ParticleInstance</code>, <code>ForceFieldInstance</code>, <code>TriggerInstance</code>, <code>AudioInstance</code>) uses an 8-byte generation-checked <code>InstanceToken</code> + 48-byte non-virtual <code>InstanceHeader</code> backed by cache-contiguous SoA domain pools.
+        </p>
+        <ul class="insp-list">
+          <li><b>Dual Constructor/Destructor (<code>#if FRONTIER_PROFILE_EDITOR</code>):</b> Production builds run ONLY <code>RegisterProduction()</code> / <code>UnregisterProduction()</code> (O(1) SoA slot, zero UI headers). Editor builds execute the exact same production path + auto-register/unregister Outliner, Inspector, Gizmo Pick, and Undo — so C++ spawns &amp; Editor <code>+</code> spawns are always 100% in sync!</li>
+          <li><b>Tight Loop Updaters (<code>ExecuteLunarLoop(Params)</code>, <code>ExecuteParticleLoop(Params)</code>, <code>ExecuteForceFieldLoop(Params)</code>, <code>ExecuteTriggerLoop(Params)</code>):</b> Every domain loop takes a <code>Params</code> struct with <code>bool ShouldUpdate</code> — skipping idle/static domains in 1 branch (~0.0001 ms) and streaming linearly over SoA arrays when active.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="border-color:rgba(56,189,248,0.38);">
+        <h3>2. Composable <code>.Instance</code> File Format (Lean Blueprint) <span class="badge b-comp">Multi-.Space Asset</span></h3>
+        <p style="color:var(--muted); font-size:12.6px; margin-bottom:10px;">
+          Built on Frontier's Two-Tier Hybrid Container (UTF-8 TOML manifest at top + 64-byte aligned binary payload &amp; <code>.Revision</code> log at bottom). One <code>.Instance</code> asset can compose multiple native formats together:
+        </p>
+        <div class="code-block"><span class="hl-cyan">MyVehicleWheel.Instance</span>  (Tier 1 TOML + Tier 2 64B Binary)
+ ├── <span class="hl-amber">[EditorMetadata]</span>  Title, DomainTag, Studio SVG Icon, Folder <span class="hl-muted">(stripped in Shipping!)</span>
+ ├── <span class="hl-green">Slot 0 · .GeometrySpace</span>    Mesh / Analytic / Procedural solid
+ ├── <span class="hl-green">Slot 1 · .MaterialSpace</span>    OpenPBR closure + embedded .TextureSpace
+ ├── <span class="hl-green">Slot 2 · .ParticleSpace</span>    GPU compute dust / exhaust emitter
+ ├── <span class="hl-green">Slot 3 · .SimulationSpace</span>  ForceField / RigidBody / Trigger volume
+ └── <span class="hl-green">Slot 4 · .Acoustic</span>         Spatial audio emitter</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3. Production / Gaming / Shipping Tight Loop vs Editor Loop Separation</h3>
+      <div class="svg-box" style="margin-top:8px;">
+        <svg viewBox="0 0 880 185" width="100%" height="185">
+          <!-- Production Row -->
+          <text x="12" y="22" fill="#86efac" font-size="11.5" font-weight="700">PRODUCTION / SHIPPING LOOP (FRONTIER_PROFILE_SHIPPING — ZERO EDITOR OVERHEAD)</text>
+          <rect x="12" y="32" width="105" height="36" rx="6" fill="#f59e0b"/>
+          <text x="64" y="54" fill="#080a0f" font-size="10.5" font-weight="700" text-anchor="middle">1. Input Poll</text>
+          <text x="125" y="54" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="140" y="32" width="320" height="36" rx="6" fill="#0ea5e9"/>
+          <text x="300" y="48" fill="#06121a" font-size="10.5" font-weight="700" text-anchor="middle">2. Tight Domain Loops (SoA · Skip if !ShouldUpdate)</text>
+          <text x="300" y="61" fill="#082f49" font-size="9" font-weight="600" text-anchor="middle">ExecuteSolar/Lunar · ForceField · JoltPhysics · Trigger · Particle · Transform</text>
+          <text x="468" y="54" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="483" y="32" width="235" height="36" rx="6" fill="#10b981"/>
+          <text x="600" y="48" fill="#06120e" font-size="10.5" font-weight="700" text-anchor="middle">3. Phase 2 GPU World (2.5–3.5 ms)</text>
+          <text x="600" y="61" fill="#064e3b" font-size="9" font-weight="600" text-anchor="middle">GPU Xfm · HW VisBuf · Direct · ½-Res GI · ACES</text>
+          <text x="726" y="54" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="741" y="32" width="126" height="36" rx="6" fill="#22c55e"/>
+          <text x="804" y="54" fill="#06120e" font-size="10.5" font-weight="700" text-anchor="middle">4. Direct Present</text>
+
+          <!-- Divider -->
+          <line x1="12" y1="88" x2="868" y2="88" stroke="rgba(255,255,255,0.12)" stroke-dasharray="4 4"/>
+
+          <!-- Editor Row -->
+          <text x="12" y="110" fill="#7dd3fc" font-size="11.5" font-weight="700">EDITOR LOOP (#if FRONTIER_PROFILE_EDITOR — WRAPS IDENTICAL CORE + ASYNC UI)</text>
+          <rect x="12" y="120" width="140" height="44" rx="6" fill="#a855f7"/>
+          <text x="82" y="139" fill="#fff" font-size="10" font-weight="700" text-anchor="middle">Editor Pre-Sync</text>
+          <text x="82" y="153" fill="#e9d5ff" font-size="8.8" text-anchor="middle">Outliner / Insp / PIE Gate</text>
+          <text x="159" y="146" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="174" y="120" width="230" height="44" rx="6" fill="rgba(14,165,233,0.22)" stroke="#38bdf8"/>
+          <text x="289" y="139" fill="#7dd3fc" font-size="10" font-weight="700" text-anchor="middle">Identical Tight Domain Loops</text>
+          <text x="289" y="153" fill="#bae6fd" font-size="8.8" text-anchor="middle">Edit Mode: DirtyOnly · PIE: Full Tick</text>
+          <text x="411" y="146" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="426" y="120" width="185" height="44" rx="6" fill="rgba(16,185,129,0.22)" stroke="#10b981"/>
+          <text x="518" y="139" fill="#6ee7b7" font-size="10" font-weight="700" text-anchor="middle">Identical Phase 2 GPU World</text>
+          <text x="518" y="153" fill="#a7f3d0" font-size="8.8" text-anchor="middle">3.34 ms med on GTX 1650S</text>
+          <text x="618" y="146" fill="#64748b" font-size="13" font-weight="700">→</text>
+
+          <rect x="633" y="120" width="234" height="44" rx="6" fill="#f59e0b"/>
+          <text x="750" y="139" fill="#080a0f" font-size="10" font-weight="700" text-anchor="middle">Async Editor Overlays + Present</text>
+          <text x="750" y="153" fill="#451a03" font-size="8.8" font-weight="600" text-anchor="middle">3-Slot Gizmo · Retained/GPU Insp · 50 SVGs</text>
+        </svg>
       </div>
     </div>
   </section>

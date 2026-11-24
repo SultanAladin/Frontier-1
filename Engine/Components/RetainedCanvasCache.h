@@ -45,6 +45,24 @@ public:
         Point2D     CurrentMousePhysical,
         bool        ForceRebuild) const noexcept;
 
+    [[nodiscard]] bool QueryReusableStationary(
+        uint64_t    CandidateSignature,
+        Rectangle2D PhysicalBounds,
+        Point2D     CurrentMousePhysical,
+        bool        ForceRebuild) const noexcept;
+
+    // Hover-zone-aware reuse: replays the entire cached draw list even while the cursor moves across non-interactive
+    // background/cards inside the pane, rebuilding ONLY when the cursor enters/exits a registered interactive control.
+    [[nodiscard]] bool QueryReusableHoverAware(
+        uint64_t    CandidateSignature,
+        Rectangle2D PhysicalBounds,
+        Point2D     CurrentMousePhysical,
+        bool        ForceRebuild) const noexcept;
+
+    void ClearInteractiveZones() noexcept;
+    void RegisterInteractiveZone(Rectangle2D PhysicalRect);
+    [[nodiscard]] int32_t QueryHoveredZone(Point2D PhysicalPoint) const noexcept;
+
     void BeginCapture(ImDrawList* TargetCanvas) noexcept;
     void EndCapture(
         ImDrawList* TargetCanvas,
@@ -64,9 +82,11 @@ private:
     std::vector<ImDrawVert>          CachedVertices       {};          // [-]   - Snapshot of pane vertices
     std::vector<ImDrawIdx>           CachedIndices        {};          // [idx] - Local 0-based vertex indices
     std::vector<RetainedCommandSpan> CachedCommands       {};          // [-]   - Snapshot of clip/texture spans
+    std::vector<Rectangle2D>         InteractiveZones     {};          // [px]  - Registered physical hit-boxes of interactive controls
     uint64_t                         CachedSignature      = 0ull;      // [id]  - Last recorded content hash
     Rectangle2D                      CachedPhysicalBounds {};          // [px]  - Last recorded physical bounds
     Point2D                          LastMousePhysical    { -1.0e5f, -1.0e5f }; // [px] - Prior cursor sample
+    int32_t                          LastHoveredZone      = -1;        // [idx] - Interactive zone hovered during capture/last replay
     int32_t                          CaptureStartCmd      = 0;         // [idx] - CmdBuffer start index
     uint32_t                         CapturePriorTailElem = 0u;        // [cnt] - Prior trailing command ElemCount
     int32_t                          CaptureStartVtx      = 0;         // [idx] - VtxBuffer start index

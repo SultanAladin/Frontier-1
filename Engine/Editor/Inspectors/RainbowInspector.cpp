@@ -1,67 +1,153 @@
 /*============================================================================================================================================
-                                                           RAINBOWINSPECTOR.CPP
+                                                          RAINBOWINSPECTOR.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of standalone multi-instance RainbowInspector
+// 🧩 Brand-new 1:1 HTML parity port of Rainbow Inspector (3 tabs: Overview, Bow, Baking)
 
 #include "Engine/Editor/Inspectors/RainbowInspector.h"
+#include "Engine/Components/Panes/WorkspaceAppearance.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 
 namespace Frontier
 {
+
+namespace
+{
+
+[[nodiscard]] uint8_t ClampByteRb(float V) noexcept
+{
+    return static_cast<uint8_t>(std::clamp(std::lround(V), 0l, 255l));
+}
+
+} // namespace
+
+void RainbowInspector::UpdateRainbowSurface(const RainbowInstanceData& Instance)
+{
+    uint64_t Key = 0x5A1AB0E1ull;
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.PrimaryIntensity);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.SupernumeraryWidth);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Instance.SecondaryIntensity);
+    Key ^= AlexanderBandEnabled ? 0x1111ull : 0x2222ull;
+
+    // Exact rainbow__0 square optical preview (222 x 208 -> render 2x crisp 444 x 416)
+    const uint32_t W = 444u, H = 416u;
+    InspectorGpuBakeSpec GpuSpec { InspectorGpuBakeMode::RainbowArc, AlexanderBandEnabled ? 1u : 0u, { Instance.PrimaryIntensity, Instance.SecondaryIntensity, Instance.SupernumeraryWidth, 0.0f } };
+    RainbowPreview.EnsureUpdatedGpu(Key, W, H, GpuSpec, [&](std::vector<uint8_t>& Pixels)
+    {
+        const float Gain  = std::clamp(Instance.PrimaryIntensity, 0.0f, 2.5f);
+        const float Width = std::clamp(Instance.SupernumeraryWidth, 0.25f, 3.0f);
+        const float Cx    = static_cast<float>(W) * 0.50f;
+        const float Cy    = static_cast<float>(H) * 0.90f;
+        const float R0    = static_cast<float>(W) * 0.72f;
+        const float BandW = static_cast<float>(W) * 0.062f * std::max(0.5f, Width);
+
+        for (uint32_t Y = 0u; Y < H; ++Y)
+        {
+            const float V = static_cast<float>(Y) / static_cast<float>(H);
+            // Exact muted blue-grey to pale mist vertical sky gradient matching rainbow__0
+            const float SkyR = 72.0f + (130.0f - 72.0f) * V;
+            const float SkyG = 93.0f + (146.0f - 93.0f) * V;
+            const float SkyB = 112.0f + (152.0f - 112.0f) * V;
+
+            for (uint32_t X = 0u; X < W; ++X)
+            {
+                const float DX = static_cast<float>(X) - Cx;
+                const float DY = static_cast<float>(Y) - Cy;
+                const float D  = std::sqrt(DX * DX + DY * DY);
+                const float U  = (D - R0) / BandW; // -1 inner violet .. +1 outer red
+
+                float R = SkyR, G = SkyG, B = SkyB;
+                // Alexander's dark band outside primary bow
+                if (AlexanderBandEnabled && U > 0.8f && U < 3.5f)
+                {
+                    const float Dark = 0.08f * std::sin(std::clamp((U - 0.8f) / 2.7f, 0.0f, 1.0f) * 3.14159f);
+                    R *= (1.0f - Dark); G *= (1.0f - Dark); B *= (1.0f - Dark);
+                }
+                // Primary 42-deg spectral rainbow arc (violet inner -> blue -> green -> yellow -> red outer)
+                if (std::fabs(U) < 1.35f)
+                {
+                    const float Env = std::exp(-U * U * 2.2f) * 0.28f * Gain;
+                    const float Red = std::exp(-std::pow((U - 0.48f) * 2.6f, 2.0f));
+                    const float Grn = std::exp(-std::pow((U - 0.05f) * 2.6f, 2.0f));
+                    const float Blu = std::exp(-std::pow((U + 0.42f) * 2.6f, 2.0f));
+                    R += (Red * 180.0f + Grn * 70.0f + Blu * 45.0f) * Env;
+                    G += (Red * 55.0f  + Grn * 165.0f + Blu * 55.0f) * Env;
+                    B += (Blu * 190.0f + Grn * 45.0f) * Env;
+                }
+
+                const std::size_t Off = (static_cast<std::size_t>(Y) * W + X) * 4u;
+                Pixels[Off + 0u] = ClampByteRb(R);
+                Pixels[Off + 1u] = ClampByteRb(G);
+                Pixels[Off + 2u] = ClampByteRb(B);
+                Pixels[Off + 3u] = 255u;
+            }
+        }
+    });
+}
 
 float RainbowInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
     OutlinerRecordEntry& Entry, RainbowInstanceData& Instance,
     const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched)
 {
-    static constexpr std::array<const char*, 2u> Pages = {{ "Overview", "Optics" }};
+    static constexpr std::array<const char*, 3u> Pages = {{ "Overview", "Bow", "Baking" }};
     float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, LeftX, TopY, InnerWidth, Pages, ActivePage, Input, OutPageSwitched);
-
-    const float PadX = InspectorMetrics::SectionPadX, BodyW = InnerWidth - PadX * 2.0f;
+    const float PadX  = 25.0f;
+    const float BodyX = LeftX + PadX;
+    const float BodyW = InnerWidth - PadX * 2.0f;
 
     if (ActivePage == 0u)
     {
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, 224.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Spectral dispersion");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        char Buf[16]{}; std::snprintf(Buf, sizeof(Buf), "%.0f", Instance.DropletRadiusUm);
-        Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, Buf, "um", "Mean droplet radius (42 deg primary)");
-        std::array<float, 28u> Curve{};
-        for (std::size_t I = 0u; I < Curve.size(); ++I)
-        {
-            const float T = static_cast<float>(I) / 27.0f;
-            const float Pri = std::exp(-std::pow((T - 0.35f) * 8.0f, 2.0f)) * Instance.PrimaryIntensity;
-            const float Sec = std::exp(-std::pow((T - 0.72f) * 7.0f, 2.0f)) * Instance.SecondaryIntensity;
-            Curve[I] = std::clamp((Pri + Sec) * 0.55f, 0.0f, 1.0f);
-        }
-        InspectorPrimitives::ConstructCurvePlot(Surface, { LeftX + PadX, Y, BodyW, 74.0f }, Curve, ColorRgba{ 196u, 224u, 255u, 255u }, ColorRgba{ 168u, 198u, 245u, 38u }, "40 deg", "54 deg");
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+        // TAB 1: OVERVIEW — Optical preview (h = 362), Quick controls (Enabled, Alexander's Band), Tags, Notes
+        UpdateRainbowSurface(Instance);
+        const Rectangle2D PrevCard { LeftX, CursorY, InnerWidth, 362.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, PrevCard, "Optical preview");
 
-        const std::array<InspectorQuickSwitchSpec, 1u> Quick = {{
-            { "Enabled", InspectorSwitchSymbol::Sun, Entry.VisibilityEnabled, false },
+        const Rectangle2D Box { BodyX, PrevCard.Y + 66.0f, BodyW, 208.0f };
+        RainbowPreview.Present(Surface, Box, InspectorMetrics::PreviewRadius, { 255u, 255u, 255u, 255u }, InspectorPreviewFitMode::Cover);
+
+        (void)InspectorPrimitives::ConstructWrappedParagraph(
+            Surface, BodyX, PrevCard.Y + 292.0f, BodyW, 11.8f, 16.5f, InspectorMetrics::MutedInk,
+            "Liquid-water optics \xC2\xB7 illustrative HTML preview, not the spectral kernel.");
+
+        CursorY = PrevCard.Bottom() + InspectorMetrics::SectionGap;
+
+        const std::array<InspectorQuickSwitchSpec, 2u> Quick = {{
+            { "Enabled",          InspectorSwitchSymbol::PostFx, Entry.VisibilityEnabled, false },
+            { "Alexander's Band", InspectorSwitchSymbol::PostFx, AlexanderBandEnabled,    false },
         }};
         int32_t Clicked = -1;
         CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, LeftX, CursorY, InnerWidth, Quick, Input, Clicked);
-        if (Clicked == 0) { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; Instance.Enabled = Entry.VisibilityEnabled; OutMutated = true; }
+        if (Clicked == 0)      { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; Instance.Enabled = Entry.VisibilityEnabled; OutMutated = true; }
+        else if (Clicked == 1) { AlexanderBandEnabled = !AlexanderBandEnabled; OutMutated = true; }
 
-        static constexpr std::array<const char*, 2u> Tags = {{ "rainbow", "optics" }};
+        static constexpr std::array<const char*, 2u> Tags = {{ "environment", "optics" }};
         CursorY = InspectorPrimitives::ConstructTagsSection(Surface, LeftX, CursorY, InnerWidth, Tags);
         CursorY = InspectorPrimitives::ConstructNotesSection(Surface, LeftX, CursorY, InnerWidth, Entry.AuthorNotes);
     }
+    else if (ActivePage == 1u)
+    {
+        // TAB 2: BOW — Bow response (h = 379: Intensity, Width, Secondary, Minimum Path)
+        const Rectangle2D S { LeftX, CursorY, InnerWidth, 379.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Bow response");
+        float FY = S.Y + 70.0f;
+        FY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 6901u, "Intensity",    "\xC3\x97", "%.2g",  0.0f,    2.5f, Instance.PrimaryIntensity,   ActiveDragId, Input, OutMutated);
+        FY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 6902u, "Width",        "\xC3\x97", "%.2g",  0.25f,   3.0f, Instance.SupernumeraryWidth, ActiveDragId, Input, OutMutated);
+        FY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 6903u, "Secondary",    "",         "%.2g",  0.0f,    1.0f, Instance.SecondaryIntensity, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 6904u, "Minimum Path", "m",        "%.0f", 20.0f, 1500.0f, MinimumPathMeters,           ActiveDragId, Input, OutMutated);
+        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+    }
     else
     {
-        const Rectangle2D S { LeftX, CursorY, InnerWidth, 290.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, S, "Optical bow parameters");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 6601u, "Primary bow", "x", "%.2f", 0.0f, 2.0f, Instance.PrimaryIntensity, ActiveDragId, Input, OutMutated);
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 6602u, "Secondary bow", "x", "%.2f", 0.0f, 1.0f, Instance.SecondaryIntensity, ActiveDragId, Input, OutMutated);
-        Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 6603u, "Supernumerary", "", "%.2f", 0.0f, 1.0f, Instance.SupernumeraryWidth, ActiveDragId, Input, OutMutated);
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 6604u, "Droplet radius", "um", "%.0f", 50.0f, 1500.0f, Instance.DropletRadiusUm, ActiveDragId, Input, OutMutated);
-        CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+        // TAB 3: BAKING — Bake / image (h = 240.5)
+        bool BakeClicked = false, LoadClicked = false;
+        CursorY = InspectorPrimitives::ConstructBakeImageCard(
+            Surface, LeftX, CursorY, InnerWidth, false, "UNAVAILABLE",
+            "No image source connected.",
+            "Renderer / imported-image binding unavailable",
+            Input, BakeClicked, LoadClicked);
     }
 
     return CursorY;

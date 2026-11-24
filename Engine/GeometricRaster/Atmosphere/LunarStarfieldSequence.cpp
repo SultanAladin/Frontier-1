@@ -6,6 +6,7 @@
 #include "Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.h"
 #include "Engine/GeometricRaster/Atmosphere/AtmosphericSkySequence.h"
 #include "Engine/GeometricRaster/Atmosphere/J2000BrightStarRepository.h"
+#include "Engine/Codecs/ImageCodec.h"
 
 #if __has_include(<stb_image.h>)
 #define STB_IMAGE_STATIC
@@ -1155,6 +1156,36 @@ std::vector<uint8_t> LunarStarfieldSequence::BuildLunarSurfaceAtlasRgba8()
 {
     const uint32_t TotalH = AtlasTileHeightPx * AtlasPresetCount;
     std::vector<uint8_t> Pixels(static_cast<std::size_t>(AtlasTileWidthPx) * TotalH * 4u, 255u);
+
+    // 1. Primary content-folder path: EngineContent/Skies/LunarSurfaceAtlas.ImageSpace (all 6 real 2K lunar textures)
+    {
+        const std::array<std::filesystem::path, 3u> ContentCandidates {{
+            std::filesystem::path("EngineContent/Skies/LunarSurfaceAtlas.ImageSpace"),
+            std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "EngineContent/Skies/LunarSurfaceAtlas.ImageSpace",
+            std::filesystem::path(FRONTIER_REPO_ROOT_DIR) / "Content/Optics/LunarSurfaceSheet.ImageSpace",
+        }};
+        for (const auto& Candidate : ContentCandidates)
+        {
+            std::error_code Ec {};
+            if (!std::filesystem::exists(Candidate, Ec))
+            {
+                continue;
+            }
+            Codecs::ImageSpaceDocumentModel Decoded {};
+            std::string Diag {};
+            if (Codecs::ImageDecoder::DecodeFromFile(Candidate, Decoded, Diag) &&
+                Decoded.NominalWidthPx == AtlasTileWidthPx &&
+                Decoded.NominalHeightPx == TotalH &&
+                Decoded.LinearRgbaPreview.size() == Pixels.size())
+            {
+                for (std::size_t I = 0u; I < Pixels.size(); ++I)
+                {
+                    Pixels[I] = static_cast<uint8_t>(std::clamp(std::lround(Decoded.LinearRgbaPreview[I] * 255.0f), 0l, 255l));
+                }
+                return Pixels;
+            }
+        }
+    }
 
 #if FRONTIER_HAS_STB_IMAGE
     static constexpr std::array<const char*, AtlasPresetCount> TextureFiles {{

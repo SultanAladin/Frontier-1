@@ -38,18 +38,47 @@ enum class ConstructSlotCategory : uint8_t
 
 enum class EnvironmentSymbolCategory : uint8_t
 {
-    None          = 0, // [-] - Fallback to ConstructSlotCategory icon
-    Atmosphere    = 1, // [-] - Planetary limb + Rayleigh blue glow disc
-    Sun           = 2, // [-] - Solar golden-orange photosphere + corona
-    Clouds        = 3, // [-] - Multi-lobe cumulus cloud silhouette
-    Moon          = 4, // [-] - Lunar regolith sphere with craters
-    Stars         = 5, // [-] - Twin 4-point celestial starfield sparkles
-    Wind          = 6, // [-] - Curled wind streamlines
-    Fog           = 7, // [-] - Soft layered mist bank
-    Precipitation = 8, // [-] - Cloud with rain streaks
-    GodRays       = 9, // [-] - Solar crepuscular rays
-    Rainbow       = 10,// [-] - Spectral optical arc
-    Vehicle       = 11,// [-] - Stylized vehicle silhouette
+    None             = 0,  // [-] - Fallback to ConstructSlotCategory icon
+    Atmosphere       = 1,  // [-] - Planetary limb + Rayleigh blue glow disc (sky-scattering.svg)
+    Sun              = 2,  // [-] - Solar golden-orange photosphere + corona (sun.svg)
+    Clouds           = 3,  // [-] - Multi-lobe cumulus cloud silhouette (clouds.svg)
+    Moon             = 4,  // [-] - Lunar regolith sphere with craters (moon.svg)
+    Stars            = 5,  // [-] - Three 4-point celestial starfield sparkles (outliner-stars.svg)
+    Wind             = 6,  // [-] - Curled wind streamlines (wind.svg)
+    Fog              = 7,  // [-] - Soft layered height fog bank (fog.svg)
+    Precipitation    = 8,  // [-] - Umbrella precipitation silhouette (outliner-precipitation.svg)
+    GodRays          = 9,  // [-] - Solar crepuscular rays / lightning (lightning.svg)
+    Rainbow          = 10, // [-] - Spectral optical arc (rainbow.svg)
+    Vehicle          = 11, // [-] - Interactive / vehicle controller (game-controller.svg)
+    LocalCloud       = 12, // [-] - Bounded cumulus cloud inside corner brackets (local-cloud.svg)
+    LocalFog         = 13, // [-] - Bounded mist bank inside corner brackets (local-fog.svg)
+    LensFlare        = 14, // [-] - Starburst core + anamorphic streak + bokeh ghosts (lens-flare.svg)
+    EnvironmentLight = 15, // [-] - Sky hemisphere IBL dome + horizon (editor-hdri-light.svg)
+    PostProcess      = 16, // [-] - Split dark/lit exposure disc (+/-) (environment-exposure.svg)
+    MotionBlur       = 17, // [-] - Motion clapperboard / shutter (clapperboard.svg)
+    CameraSettings   = 18, // [-] - Render & camera settings (slate-video-player.svg)
+    AreaLight        = 19, // [-] - Studio softbox panel + diffused grid + yoke (editor-area-light.svg)
+    SpotLight        = 20, // [-] - Barn-door studio spotlight + Fresnel lens (slate-spotlight.svg)
+    IesLight         = 21, // [-] - Photometric lantern luminaire (slate-lantern.svg)
+    TubeLight        = 22, // [-] - Glowing studio tube / ring light (slate-ring-light.svg)
+    LedLight         = 23, // [-] - Dark fixture housing + warm LED diode matrix (slate-l-e-d-panel.svg)
+    LedStrip         = 24, // [-] - Flexible ribbon strip with glowing LED nodes (editor-hazard-lights.svg)
+    AtmosphericFog   = 25, // [-] - Aerial perspective haze / mist (smoke.svg)
+    Camera           = 26, // [-] - Perspective optical camera (camera.svg)
+    PointLight       = 27, // [-] - Omnidirectional point luminaire (editor-point-light.svg)
+    Primitive        = 28, // [-] - Analytic 3D primitive mesh (editor-mesh.svg)
+    ProceduralMesh   = 29, // [-] - Procedural terrain / architectural generator (terrain.svg)
+    NativeMesh       = 30, // [-] - Native indexed triangle mesh (mesh.svg)
+    ImportedAsset    = 31, // [-] - Imported 3D asset package (package.svg)
+    FolderWorld      = 32, // [-] - World / Environment showcase folder (folder-environment.svg)
+    FolderGeneric    = 33, // [-] - Generic outliner folder (folder-generic.svg)
+    FolderWater      = 34, // [-] - Water / fluid outliner folder (folder-water.svg)
+    Collection       = 35, // [-] - Scene object collection (collection-bracketed-objects.svg)
+    Material         = 36, // [-] - Surface material shader ball (editor-material.svg)
+    Forest           = 37, // [-] - Foliage / forest biome (forest.svg)
+    Fluid            = 38, // [-] - Liquid / water volume (fluid-glass.svg)
+    Earth            = 39, // [-] - Project / world root globe (earth.svg)
+    Count            = 40, // [count] - Total editor icon categories
 };
 
 enum class VisualTokenShape : uint8_t

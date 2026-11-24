@@ -1,11 +1,9 @@
 /*============================================================================================================================================
-                                                            LUNARINSPECTOR.CPP
+                                                           LUNARINSPECTOR.CPP
 ============================================================================================================================================*/
-// 🧩 Implementation of standalone multi-instance LunarInspector (real ray-cast LunarSurfaceAtlas globe, 6 presets, night-sky halo & rotation)
+// 🧩 Brand-new 1:1 HTML parity port of Moon (Lunar) Inspector (3 tabs: Overview, Appearance, Position)
 
 #include "Engine/Editor/Inspectors/LunarInspector.h"
-
-#include "Engine/Components/Controls/PolarDirectionDial.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/GeometricRaster/Atmosphere/LunarStarfieldSequence.h"
 
@@ -19,297 +17,352 @@ namespace Frontier
 
 namespace
 {
-constexpr float PiF = 3.14159265359f;
 
-inline void PutPixel(std::vector<uint8_t>& Buf, uint32_t W, uint32_t X, uint32_t Y, uint8_t R, uint8_t G, uint8_t B, uint8_t A) noexcept
+[[nodiscard]] uint8_t ClampByteLu(float V) noexcept
 {
-    const std::size_t Off = (static_cast<std::size_t>(Y) * W + X) * 4u;
-    Buf[Off + 0u] = R; Buf[Off + 1u] = G; Buf[Off + 2u] = B; Buf[Off + 3u] = A;
+    return static_cast<uint8_t>(std::clamp(std::lround(V), 0l, 255l));
 }
+
+void SampleLunarAtlasBilinear(
+    const std::vector<uint8_t>& Atlas,
+    uint32_t PresetIdx, float U, float V,
+    float& OutR, float& OutG, float& OutB) noexcept
+{
+    const uint32_t W = GeometricRaster::LunarStarfieldSequence::AtlasTileWidthPx;
+    const uint32_t H = GeometricRaster::LunarStarfieldSequence::AtlasTileHeightPx;
+    const uint32_t SafePreset = std::min(PresetIdx, GeometricRaster::LunarStarfieldSequence::AtlasPresetCount - 1u);
+    const std::size_t ExpectedSize = static_cast<std::size_t>(W) * H * GeometricRaster::LunarStarfieldSequence::AtlasPresetCount * 4u;
+    if (Atlas.size() < ExpectedSize)
+    {
+        OutR = 200.0f; OutG = 196.0f; OutB = 188.0f;
+        return;
+    }
+
+    const float WrappedU = U - std::floor(U);
+    const float ClampedV = std::clamp(V, 0.0f, 1.0f);
+    const float FX = WrappedU * static_cast<float>(W) - 0.5f;
+    const float FY = ClampedV * static_cast<float>(H) - 0.5f;
+    const int32_t X0 = ((static_cast<int32_t>(std::floor(FX)) % static_cast<int32_t>(W)) + static_cast<int32_t>(W)) % static_cast<int32_t>(W);
+    const int32_t X1 = (X0 + 1) % static_cast<int32_t>(W);
+    const int32_t Y0 = std::clamp(static_cast<int32_t>(std::floor(FY)), 0, static_cast<int32_t>(H) - 1);
+    const int32_t Y1 = std::min(Y0 + 1, static_cast<int32_t>(H) - 1);
+    const float TX = std::clamp(FX - std::floor(FX), 0.0f, 1.0f);
+    const float TY = std::clamp(FY - std::floor(FY), 0.0f, 1.0f);
+
+    const std::size_t TileRowOff = static_cast<std::size_t>(SafePreset) * H;
+    const auto Fetch = [&](int32_t X, int32_t Y, uint32_t C) noexcept -> float
+    {
+        return static_cast<float>(Atlas[((TileRowOff + static_cast<std::size_t>(Y)) * W + static_cast<std::size_t>(X)) * 4u + C]);
+    };
+
+    const auto Bilerp = [&](uint32_t C) noexcept -> float
+    {
+        const float Top = Fetch(X0, Y0, C) + (Fetch(X1, Y0, C) - Fetch(X0, Y0, C)) * TX;
+        const float Bot = Fetch(X0, Y1, C) + (Fetch(X1, Y1, C) - Fetch(X0, Y1, C)) * TX;
+        return Top + (Bot - Top) * TY;
+    };
+
+    OutR = Bilerp(0u);
+    OutG = Bilerp(1u);
+    OutB = Bilerp(2u);
+}
+
 } // namespace
 
 void LunarInspector::RasterizeLunarGlobe(
-    InspectorPreviewSurface&                       Target,
-    const GeometricRaster::LunarBodyConfiguration& Moon,
-    uint32_t                                       WidthPx,
-    uint32_t                                       HeightPx,
-    float                                          DiscRadiusPx,
-    bool                                           ApplyPhaseShadow,
-    bool                                           IncludeNightBackdrop,
-    float                                          NaturalRingRadiusPx)
+    InspectorPreviewSurface& Target, const GeometricRaster::LunarBodyConfiguration& Moon,
+    uint32_t WidthPx, uint32_t HeightPx, float DiscRadiusPx,
+    bool ApplyPhaseShadow, bool IncludeNightBackdrop, uint8_t OverridePresetIndex)
 {
-    uint64_t Sig = 0x4D005005ull;
-    Sig = InspectorPrimitives::MixRevisionU64(Sig, static_cast<uint64_t>(Moon.SurfacePreset));
-    Sig = InspectorPrimitives::MixRevisionU64(Sig, (ApplyPhaseShadow ? 1ull : 0ull) | (IncludeNightBackdrop ? 2ull : 0ull) | (Moon.HasAtmosphere ? 4ull : 0ull));
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.SynodicPhaseFraction);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.BrightnessMultiplier);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.HaloGlowMultiplier);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.SurfaceRollDegrees);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.SurfacePitchDegrees);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.AtmosphereIntensity);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.AtmosphereThicknessScale);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.AtmosphereTint.R);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.AtmosphereTint.G);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, Moon.AtmosphereTint.B);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, DiscRadiusPx);
-    Sig = InspectorPrimitives::MixRevisionFloat(Sig, NaturalRingRadiusPx);
+    const uint8_t Preset = (OverridePresetIndex < 6u) ? OverridePresetIndex : static_cast<uint8_t>(Moon.SurfacePreset);
+    const uint32_t BakeFlags = static_cast<uint32_t>(Preset & 7u) |
+                               (ApplyPhaseShadow ? 8u : 0u) |
+                               (IncludeNightBackdrop ? 16u : 0u);
+    uint64_t Key = 0x104A0002ull ^ (static_cast<uint64_t>(BakeFlags) << 8u);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Moon.SynodicPhaseFraction);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Moon.BrightnessMultiplier);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, Moon.HaloGlowMultiplier);
+    Key = InspectorPrimitives::MixRevisionFloat(Key, DiscRadiusPx);
 
-    Target.EnsureUpdated(Sig, WidthPx, HeightPx, [&](std::vector<uint8_t>& Pixels)
+    const float NormDiscR = DiscRadiusPx / std::max(1.0f, static_cast<float>(std::min(WidthPx, HeightPx)) * 0.5f);
+    const auto PresetTint = GeometricRaster::LunarStarfieldSequence::QueryPresetTint(static_cast<GeometricRaster::LunarSurfacePreset>(Preset));
+    InspectorGpuBakeSpec GpuSpec {
+        InspectorGpuBakeMode::LunarPhase,
+        BakeFlags,
+        { Moon.SynodicPhaseFraction, Moon.BrightnessMultiplier, Moon.HaloGlowMultiplier, NormDiscR },
+        { 0.0f, 0.0f, 0.0f, 0.0f },
+        { PresetTint.R, PresetTint.G, PresetTint.B, 1.0f },
+        { 0.04f, 0.06f, 0.12f, 1.0f }
+    };
+    Target.EnsureUpdatedGpu(Key, WidthPx, HeightPx, GpuSpec, [&](std::vector<uint8_t>& Pixels)
     {
-        const auto& SurfaceSheet = GeometricRaster::LunarStarfieldSequence::QueryLunarSurfaceAtlasRgba8();
-        const uint32_t TileW     = GeometricRaster::LunarStarfieldSequence::AtlasTileWidthPx;
-        const uint32_t TileH     = GeometricRaster::LunarStarfieldSequence::AtlasTileHeightPx;
-        const uint32_t PresetIdx = std::min<uint32_t>(static_cast<uint32_t>(Moon.SurfacePreset), GeometricRaster::LunarStarfieldSequence::AtlasPresetCount - 1u);
-
-        const float CX = static_cast<float>(WidthPx) * 0.5f;
-        const float CY = static_cast<float>(HeightPx) * 0.5f;
-        const float RollRad  = Moon.SurfaceRollDegrees  * (PiF / 180.0f);
-        const float PitchRad = Moon.SurfacePitchDegrees * (PiF / 180.0f);
-        const float CR = std::cos(RollRad),  SR = std::sin(RollRad);
-        const float CP = std::cos(PitchRad), SP = std::sin(PitchRad);
-
-        const float PhaseRad  = (ApplyPhaseShadow ? Moon.SynodicPhaseFraction : 0.5f) * 2.0f * PiF;
-        const float LX        = std::sin(PhaseRad), LZ = -std::cos(PhaseRad);
-        const float Gain      = std::min(1.55f, 0.55f + 0.34f * Moon.BrightnessMultiplier);
-        const float RimSpan   = Moon.HasAtmosphere ? (0.06f + 0.08f * Moon.AtmosphereThicknessScale) : 0.0f;
-        const float LitFactor = ApplyPhaseShadow ? (0.25f + 0.75f * (1.0f - std::cos(PhaseRad)) * 0.5f) : 1.0f;
+        const auto& Atlas = GeometricRaster::LunarStarfieldSequence::QueryLunarSurfaceAtlasRgba8();
+        const float Cx = static_cast<float>(WidthPx) * 0.5f;
+        const float Cy = static_cast<float>(HeightPx) * 0.5f;
+        const float PhaseRad = (Moon.SynodicPhaseFraction - 0.5f) * 6.2831853f;
+        const float Lx = std::sin(PhaseRad), Ly = -0.14f, Lz = std::cos(PhaseRad);
 
         for (uint32_t Y = 0u; Y < HeightPx; ++Y)
         {
-            const float FY = static_cast<float>(Y) + 0.5f;
-            const float T  = FY / static_cast<float>(HeightPx);
+            const float V = static_cast<float>(Y) / static_cast<float>(HeightPx);
             for (uint32_t X = 0u; X < WidthPx; ++X)
             {
-                const float FX   = static_cast<float>(X) + 0.5f;
-                const float DX   = FX - CX, DY = FY - CY;
-                const float Dist = std::sqrt(DX * DX + DY * DY);
+                const float DX = static_cast<float>(X) - Cx;
+                const float DY = static_cast<float>(Y) - Cy;
+                const float D  = std::sqrt(DX * DX + DY * DY);
 
-                float R = IncludeNightBackdrop ? (0.015f + 0.06f * T * T) : (32.0f / 255.0f);
-                float G = IncludeNightBackdrop ? (0.025f + 0.09f * T * T) : (32.0f / 255.0f);
-                float B = IncludeNightBackdrop ? (0.055f + 0.16f * T * T) : (32.0f / 255.0f);
-                uint8_t OutA = IncludeNightBackdrop ? 255u : 0u;
-
-                if (Moon.HaloGlowMultiplier > 0.01f && IncludeNightBackdrop)
+                float R = 32.0f, G = 32.0f, B = 32.0f, A = 0.0f;
+                if (IncludeNightBackdrop)
                 {
-                    const float Reach = DiscRadiusPx * (1.25f + Moon.HaloGlowMultiplier * 0.85f);
-                    if (Dist < Reach)
+                    // Deep navy starry night sky + radial lunar halo glow matching moon__1
+                    R = 11.0f + V * 14.0f;
+                    G = 16.0f + V * 19.0f;
+                    B = 30.0f + V * 28.0f;
+                    const float Halo = std::exp(-D / (DiscRadiusPx * 1.45f)) * 46.0f * std::clamp(Moon.HaloGlowMultiplier, 0.0f, 2.5f);
+                    R += Halo * 0.90f; G += Halo * 0.94f; B += Halo * 1.05f;
+                    if (D > DiscRadiusPx + 2.0f)
                     {
-                        const float H01   = 1.0f - std::clamp((Dist - DiscRadiusPx * 0.88f) / std::max(1.0f, Reach - DiscRadiusPx * 0.88f), 0.0f, 1.0f);
-                        const float HaloA = H01 * H01 * std::min(0.70f, 0.14f * Moon.BrightnessMultiplier * std::min(1.5f, Moon.HaloGlowMultiplier)) * LitFactor;
-                        R += 0.84f * HaloA; G += 0.89f * HaloA; B += 1.00f * HaloA;
+                        const uint32_t Hs = static_cast<uint32_t>(X * 73856093u ^ Y * 19349663u);
+                        if ((Hs & 2047u) < 3u)
+                        {
+                            const float Bri = 110.0f + static_cast<float>(Hs & 95u);
+                            R = std::max(R, Bri); G = std::max(G, Bri); B = std::max(B, Bri + 16.0f);
+                        }
                     }
-                }
-                if (Moon.HasAtmosphere && Dist >= DiscRadiusPx * 0.96f && Dist < DiscRadiusPx * (1.0f + RimSpan))
-                {
-                    const float RimT = 1.0f - (Dist - DiscRadiusPx * 0.96f) / std::max(1.0f, DiscRadiusPx * (RimSpan + 0.04f));
-                    const float RimA = RimT * RimT * std::min(0.85f, 0.55f * Moon.AtmosphereIntensity);
-                    R += Moon.AtmosphereTint.R * RimA; G += Moon.AtmosphereTint.G * RimA; B += Moon.AtmosphereTint.B * RimA;
-                    OutA = std::max<uint8_t>(OutA, static_cast<uint8_t>(std::clamp(RimA * 255.0f, 0.0f, 255.0f)));
-                }
-                if (NaturalRingRadiusPx > 2.0f && std::fabs(Dist - NaturalRingRadiusPx) < 0.95f)
-                {
-                    if (std::fmod(std::atan2(DY, DX) + PiF, 0.24f) < 0.12f) { R = 0.72f; G = 0.76f; B = 0.84f; OutA = 255u; }
+                    A = 255.0f;
                 }
 
-                const float NX = DX / std::max(1.0f, DiscRadiusPx), NY = -DY / std::max(1.0f, DiscRadiusPx);
-                const float D2 = NX * NX + NY * NY;
-                if (D2 <= 1.0f)
+                if (D <= DiscRadiusPx + 1.0f)
                 {
-                    const float NZ = std::sqrt(std::max(0.0f, 1.0f - D2));
-                    const float X1 = NX * CR + NY * SR, Y1 = -NX * SR + NY * CR;
-                    const float Y2 = Y1 * CP - NZ * SP, Z2 = Y1 * SP + NZ * CP;
-                    const float U = std::clamp(0.5f + std::atan2(X1, Z2) / (2.0f * PiF), 0.0f, 0.9999f);
-                    const float V = std::clamp(0.5f - std::asin(std::clamp(Y2, -1.0f, 1.0f)) / PiF, 0.0f, 0.9999f);
+                    const float EdgeCov = std::clamp(DiscRadiusPx + 0.5f - D, 0.0f, 1.0f);
+                    const float Nx = std::clamp(DX / std::max(1.0f, DiscRadiusPx), -1.0f, 1.0f);
+                    const float Ny = std::clamp(DY / std::max(1.0f, DiscRadiusPx), -1.0f, 1.0f);
+                    const float Nz = std::sqrt(std::max(0.0f, 1.0f - Nx * Nx - Ny * Ny));
 
-                    float TexR = 0.65f, TexG = 0.65f, TexB = 0.65f;
-                    if (SurfaceSheet.size() >= static_cast<std::size_t>(TileW) * TileH * (PresetIdx + 1u) * 4u)
+                    // Sample real 2K Lunar Surface Atlas texture from EngineContent/Skies/LunarSurfaceAtlas.ImageSpace
+                    const float LonU = std::atan2(Nx, Nz) * (0.5f / 3.14159265f) + 0.5f;
+                    const float LatV = std::acos(std::clamp(-Ny, -1.0f, 1.0f)) / 3.14159265f;
+                    float TexR = 200.0f, TexG = 196.0f, TexB = 188.0f;
+                    SampleLunarAtlasBilinear(Atlas, Preset, LonU, LatV, TexR, TexG, TexB);
+
+                    float Light = 0.96f * (0.58f + 0.42f * std::pow(Nz, 0.30f));
+                    if (ApplyPhaseShadow)
                     {
-                        const uint32_t TX = std::min(TileW - 1u, static_cast<uint32_t>(U * static_cast<float>(TileW)));
-                        const uint32_t TY = PresetIdx * TileH + std::min(TileH - 1u, static_cast<uint32_t>(V * static_cast<float>(TileH)));
-                        const std::size_t Off = (static_cast<std::size_t>(TY) * TileW + TX) * 4u;
-                        TexR = static_cast<float>(SurfaceSheet[Off + 0u]) / 255.0f;
-                        TexG = static_cast<float>(SurfaceSheet[Off + 1u]) / 255.0f;
-                        TexB = static_cast<float>(SurfaceSheet[Off + 2u]) / 255.0f;
+                        const float NdotL = Nx * Lx + Ny * Ly + Nz * Lz;
+                        const float Lit   = std::clamp((NdotL + 0.10f) / 0.28f, 0.0f, 1.0f);
+                        Light = (0.09f + 0.96f * Lit) * (0.55f + 0.45f * std::pow(Nz, 0.32f));
                     }
 
-                    const float NDotL    = NX * LX + NZ * LZ;
-                    const float Shade    = ApplyPhaseShadow
-                                               ? (0.045f + 0.955f * std::clamp((NDotL + 0.08f) / 0.24f, 0.0f, 1.0f) * std::pow(std::max(0.0f, NDotL), 0.48f))
-                                               : (0.28f + 0.72f * std::pow(NZ, 0.45f));
-                    const float LimbDark = 0.78f + 0.22f * std::pow(NZ, 0.35f);
-                    R = TexR * Shade * LimbDark * Gain;
-                    G = TexG * Shade * LimbDark * Gain;
-                    B = TexB * Shade * LimbDark * Gain;
-
-                    if (Moon.HasAtmosphere)
+                    const float GR = TexR * Light;
+                    const float GG = TexG * Light;
+                    const float GB = TexB * Light;
+                    if (IncludeNightBackdrop)
                     {
-                        const float Fresnel = std::pow(1.0f - NZ, 3.0f) * std::min(0.85f, 0.55f * Moon.AtmosphereIntensity);
-                        R += Moon.AtmosphereTint.R * Fresnel; G += Moon.AtmosphereTint.G * Fresnel; B += Moon.AtmosphereTint.B * Fresnel;
+                        R = R * (1.0f - EdgeCov) + GR * EdgeCov;
+                        G = G * (1.0f - EdgeCov) + GG * EdgeCov;
+                        B = B * (1.0f - EdgeCov) + GB * EdgeCov;
+                        A = 255.0f;
                     }
-                    const float EdgeAA = std::clamp((DiscRadiusPx - Dist) * 1.4f, 0.0f, 1.0f);
-                    OutA = IncludeNightBackdrop ? 255u : static_cast<uint8_t>(std::clamp(EdgeAA * 255.0f, 0.0f, 255.0f));
+                    else
+                    {
+                        R = GR; G = GG; B = GB; A = EdgeCov * 255.0f;
+                    }
                 }
 
-                PutPixel(Pixels, WidthPx, X, Y,
-                    static_cast<uint8_t>(std::clamp(std::lround(R * 255.0f), 0l, 255l)),
-                    static_cast<uint8_t>(std::clamp(std::lround(G * 255.0f), 0l, 255l)),
-                    static_cast<uint8_t>(std::clamp(std::lround(B * 255.0f), 0l, 255l)), OutA);
-            }
-        }
-        if (IncludeNightBackdrop)
-        {
-            uint32_t Seed = 7u;
-            auto Next01 = [&]() noexcept -> float { Seed = (Seed * 16807u) % 2147483647u; return static_cast<float>(Seed) / 2147483647.0f; };
-            for (int32_t S = 0; S < 70; ++S)
-            {
-                const uint32_t SX = std::min(WidthPx - 1u, static_cast<uint32_t>(Next01() * static_cast<float>(WidthPx)));
-                const uint32_t SY = std::min(HeightPx - 1u, static_cast<uint32_t>(Next01() * static_cast<float>(HeightPx) * 0.88f));
-                const float DX = static_cast<float>(SX) - CX, DY = static_cast<float>(SY) - CY;
-                if (DX * DX + DY * DY > DiscRadiusPx * DiscRadiusPx * 1.08f)
-                {
-                    const float Br = 0.35f + Next01() * 0.65f;
-                    PutPixel(Pixels, WidthPx, SX, SY, static_cast<uint8_t>(215.0f * Br), static_cast<uint8_t>(228.0f * Br), static_cast<uint8_t>(255.0f * Br), 255u);
-                }
+                const std::size_t Off = (static_cast<std::size_t>(Y) * WidthPx + X) * 4u;
+                Pixels[Off + 0u] = ClampByteLu(R);
+                Pixels[Off + 1u] = ClampByteLu(G);
+                Pixels[Off + 2u] = ClampByteLu(B);
+                Pixels[Off + 3u] = ClampByteLu(A);
             }
         }
     });
 }
 
 float LunarInspector::Construct(
-    PixelSpace&             Surface,
-    float                   LeftX,
-    float                   TopY,
-    float                   InnerWidth,
-    OutlinerRecordEntry&    Entry,
-    LunarInstanceData&      Instance,
-    uint32_t                DisplayOrdinal,
-    const PaneInputReading& Input,
-    bool&                   OutMutated,
-    bool&                   OutPageSwitched)
+    PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
+    OutlinerRecordEntry& Entry, LunarInstanceData& Instance, uint32_t DisplayOrdinal,
+    const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched)
 {
     static constexpr std::array<const char*, 3u> Pages = {{ "Overview", "Appearance", "Position" }};
     float CursorY = InspectorPrimitives::ConstructPageStrip(Surface, LeftX, TopY, InnerWidth, Pages, ActivePage, Input, OutPageSwitched);
-
-    auto& Moon = Instance.Moon;
-    const float PadX  = InspectorMetrics::SectionPadX;
-    const float BodyW = InnerWidth - PadX * 2.0f;
-    static constexpr std::array<const char*, 6u> PresetNames = {{ "Luna", "Ember", "Glacier", "Sulfur", "Shroud", "Shard" }};
+    auto& Moon    = Instance.Moon;
+    const float PadX  = std::clamp(InnerWidth * 0.065f, 14.0f, 22.0f);
+    const float BodyX = LeftX + PadX;
+    const float BodyW = std::max(100.0f, InnerWidth - PadX * 2.0f);
+    const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
 
     if (ActivePage == 0u)
     {
-        const Rectangle2D SlotSec { LeftX, CursorY, InnerWidth, 106.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, SlotSec, "Moon slot");
-        char SlotLabel[32]{}; std::snprintf(SlotLabel, sizeof(SlotLabel), "Moon %u", DisplayOrdinal + 1u);
-        const Rectangle2D SlotBtn { SlotSec.Right() - PadX - 96.0f, CursorY + InspectorMetrics::SectionPadTop - 5.0f, 96.0f, 26.0f };
-        Surface.FillRectangle(SlotBtn, ColorRgba{ 16u, 16u, 18u, 255u }, 13.0f);
-        Surface.StrokeRectangle(SlotBtn, ColorRgba{ 255u, 255u, 255u, 24u }, 13.0f, 1.0f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { SlotBtn.X + 14.0f, SlotBtn.Y + 6.5f }, 11.0f, ColorRgba{ 238u, 238u, 238u, 255u }, SlotLabel);
-        WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { LeftX + PadX, CursorY + 58.0f }, BodyW, 10.5f, InspectorMetrics::MutedInk, "Multiple moons can coexist across any folder.");
-        CursorY = SlotSec.Bottom() + InspectorMetrics::SectionGap;
+        // TAB 1: OVERVIEW — Card 1 Moon slot (h = 138), Card 2 Lunar phase (h = 444.5), Card 3 Quick controls
+        const Rectangle2D SlotCard { LeftX, CursorY, InnerWidth, 138.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, SlotCard, "Moon slot");
 
-        RasterizeLunarGlobe(PhaseGlobe, Moon, 164u, 164u, 76.0f, true, false, 0.0f);
-        const Rectangle2D PhaseSec { LeftX, CursorY, InnerWidth, 386.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, PhaseSec, "Lunar phase");
-        float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-        const float Days  = Moon.SynodicPhaseFraction * 29.53f;
-        const float Illum = (1.0f - std::cos(Moon.SynodicPhaseFraction * 2.0f * PiF)) * 50.0f;
-        char DaysBuf[16]{}, IllumBuf[48]{};
-        std::snprintf(DaysBuf,  sizeof(DaysBuf),  "%.1f", Days);
-        std::snprintf(IllumBuf, sizeof(IllumBuf), "%.0f%% illuminated", Illum);
-        Y = InspectorPrimitives::ConstructMetricReadout(Surface, LeftX + PadX, Y, DaysBuf, "days", IllumBuf);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { LeftX + PadX, Y + 2.0f }, 10.5f, InspectorMetrics::MutedInk, "Position in the 29.53-day synodic cycle");
-        Y += 20.0f;
-        const Rectangle2D MoonBox { PhaseSec.Center().X - 78.0f, Y + 4.0f, 156.0f, 156.0f };
-        PhaseGlobe.Present(Surface, MoonBox, 78.0f);
-        Y = MoonBox.Bottom() + 14.0f;
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4001u, "Phase", "", "%.2f", 0.0f, 1.0f, Moon.SynodicPhaseFraction, ActiveDragId, Input, OutMutated, Moon.FollowSkyOppositeSun);
-        CursorY = PhaseSec.Bottom() + InspectorMetrics::SectionGap;
+        const Rectangle2D SlotPill { BodyX + BodyW - 96.0f, SlotCard.Y + 18.0f, 96.0f, 28.0f };
+        Surface.FillRectangle(SlotPill, ColorRgba{ 16u, 16u, 16u, 255u }, 14.0f);
+        Surface.StrokeRectangle(SlotPill, ColorRgba{ 255u, 255u, 255u, 16u }, 14.0f, 1.0f);
+        char SlotBuf[24]{};
+        std::snprintf(SlotBuf, sizeof(SlotBuf), "Moon %u", std::max(1u, DisplayOrdinal));
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { SlotPill.X + 14.0f, SlotPill.Y + 8.0f }, 11.4f, InspectorMetrics::HeadingInk, SlotBuf);
+        const Point2D Ch { SlotPill.Right() - 14.0f, SlotPill.Center().Y };
+        Surface.StrokeLine({ Ch.X - 3.5f, Ch.Y - 1.5f }, { Ch.X, Ch.Y + 2.0f }, InspectorMetrics::HeadingInk, 1.4f);
+        Surface.StrokeLine({ Ch.X, Ch.Y + 2.0f }, { Ch.X + 3.5f, Ch.Y - 1.5f }, InspectorMetrics::HeadingInk, 1.4f);
 
-        const std::array<InspectorQuickSwitchSpec, 3u> Quick = {{
-            { "Visible",        InspectorSwitchSymbol::Eye,   Entry.VisibilityEnabled,   false },
-            { "Follow Sky",     InspectorSwitchSymbol::Orbit, Moon.FollowSkyOppositeSun, false },
-            { "Has atmosphere", InspectorSwitchSymbol::Cloud, Moon.HasAtmosphere,        false },
+        (void)InspectorPrimitives::ConstructWrappedParagraph(
+            Surface, BodyX, SlotCard.Y + 68.0f, BodyW, 11.6f, 16.5f, InspectorMetrics::MutedInk,
+            "Six moons can be up at once; every card edits the slot chosen here.");
+        CursorY = SlotCard.Bottom() + InspectorMetrics::SectionGap;
+
+        // Card 2: Lunar phase (h = 444.5)
+        RasterizeLunarGlobe(PhaseGlobe, Moon, 304u, 304u, 146.0f, true, false, 255u);
+        const Rectangle2D PhaseCard { LeftX, CursorY, InnerWidth, 444.5f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, PhaseCard, "Lunar phase");
+
+        const float SynodicDays = Moon.SynodicPhaseFraction * 29.53f;
+        const int IllumPct = static_cast<int>(std::lround(50.0f * (1.0f - std::cos(Moon.SynodicPhaseFraction * 6.2831853f))));
+        char DayBuf[24]{};
+        std::snprintf(DayBuf, sizeof(DayBuf), "%.1f", SynodicDays);
+        (void)InspectorPrimitives::ConstructMetricReadout(Surface, BodyX, PhaseCard.Y + 62.0f, DayBuf, "days", nullptr, 36.0f);
+
+        char IllumBuf[32]{};
+        std::snprintf(IllumBuf, sizeof(IllumBuf), "%d%% illuminated", IllumPct);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, PhaseCard.Y + 116.5f }, 11.4f, InspectorMetrics::MutedInk, IllumBuf);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, PhaseCard.Y + 147.0f }, 11.4f, InspectorMetrics::MutedInk, "Position in the 29.53-day synodic cycle");
+
+        const float GlobeD = std::clamp(BodyW - 12.0f, 96.0f, 152.0f);
+        const Rectangle2D GlobeBox { PhaseCard.Center().X - GlobeD * 0.5f, PhaseCard.Y + 178.0f + (152.0f - GlobeD) * 0.5f, GlobeD, GlobeD };
+        PhaseGlobe.Present(Surface, GlobeBox, 0.0f, { 255u, 255u, 255u, 255u }, InspectorPreviewFitMode::Contain, ColorRgba{ 0u, 0u, 0u, 0u });
+
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, PhaseCard.Y + 350.0f, BodyW, 7801u, "Phase", "", "%.2f", 0.0f, 1.0f, Moon.SynodicPhaseFraction, ActiveDragId, Input, OutMutated);
+        CursorY = PhaseCard.Bottom() + InspectorMetrics::SectionGap;
+
+        const std::array<InspectorQuickSwitchSpec, 2u> Quick = {{
+            { "Enabled",            InspectorSwitchSymbol::Orbit, Entry.VisibilityEnabled,    false },
+            { "Opposite the sun",   InspectorSwitchSymbol::Orbit, Moon.FollowSkyOppositeSun,  false },
         }};
         int32_t Clicked = -1;
         CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, LeftX, CursorY, InnerWidth, Quick, Input, Clicked);
-        if (Clicked == 0) { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; OutMutated = true; }
+        if (Clicked == 0)      { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; Moon.Visible = Entry.VisibilityEnabled; OutMutated = true; }
         else if (Clicked == 1) { Moon.FollowSkyOppositeSun = !Moon.FollowSkyOppositeSun; OutMutated = true; }
-        else if (Clicked == 2) { Moon.HasAtmosphere = !Moon.HasAtmosphere; OutMutated = true; }
-
-        static constexpr std::array<const char*, 2u> Tags = {{ "lunar", "celestial" }};
-        CursorY = InspectorPrimitives::ConstructTagsSection(Surface, LeftX, CursorY, InnerWidth, Tags);
-        CursorY = InspectorPrimitives::ConstructNotesSection(Surface, LeftX, CursorY, InnerWidth, Entry.AuthorNotes);
     }
     else if (ActivePage == 1u)
     {
+        // TAB 2: APPEARANCE — Card 1 Moon catalogue (h = 231: Luna + Ember), Card 2 Moonlight, size and atmosphere (h = 460)
+        RasterizeLunarGlobe(LunaPreset,  Moon, 176u, 176u, 82.0f, false, false, 0u);
+        RasterizeLunarGlobe(EmberPreset, Moon, 176u, 176u, 82.0f, false, false, 1u);
+
+        const Rectangle2D CatCard { LeftX, CursorY, InnerWidth, 231.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, CatCard, "Moon catalogue");
+
+        const float Gap   = 12.0f;
+        const float TileW = std::floor((BodyW - Gap) * 0.5f);
+        const float TileH = 128.0f;
+        static constexpr std::array<const char*, 2u> Names = {{ "Luna", "Ember" }};
+        for (uint32_t I = 0u; I < 2u; ++I)
         {
-            const Rectangle2D GalSec { LeftX, CursorY, InnerWidth, 232.0f };
-            InspectorPrimitives::ConstructSectionSurface(Surface, GalSec, "Surface presets");
-            const float Gap = 8.0f, TileW = std::floor((BodyW - Gap * 2.0f) / 3.0f), TileH = 74.0f;
-            const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-            for (uint32_t P = 0u; P < 6u; ++P)
+            const Rectangle2D Tile { BodyX + static_cast<float>(I) * (TileW + Gap), CatCard.Y + 74.0f, TileW, TileH };
+            const bool Sel = (static_cast<uint32_t>(Moon.SurfacePreset) == I);
+            if (Sel)
             {
-                auto SampleMoon = Moon;
-                SampleMoon.SurfacePreset = static_cast<GeometricRaster::LunarSurfacePreset>(P);
-                SampleMoon.HasAtmosphere = false;
-                RasterizeLunarGlobe(PresetGlobes[P], SampleMoon, 64u, 64u, 28.0f, false, false, 0.0f);
-                const Rectangle2D Tile {
-                    LeftX + PadX + static_cast<float>(P % 3u) * (TileW + Gap),
-                    CursorY + InspectorMetrics::SectionPadTop + 28.0f + static_cast<float>(P / 3u) * (TileH + Gap),
-                    TileW, TileH,
-                };
-                const bool Sel = (static_cast<uint32_t>(Moon.SurfacePreset) == P);
-                Surface.FillRectangle(Tile, Sel ? ColorRgba{ 42u, 44u, 48u, 255u } : ColorRgba{ 26u, 26u, 28u, 255u }, 12.0f);
-                Surface.StrokeRectangle(Tile, Sel ? ColorRgba{ 158u, 184u, 216u, 255u } : ColorRgba{ 255u, 255u, 255u, 12u }, 12.0f, 1.0f);
-                PresetGlobes[P].Present(Surface, { Tile.Center().X - 22.0f, Tile.Y + 6.0f, 44.0f, 44.0f }, 22.0f);
-                const float LW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 10.0f, PresetNames[P]);
-                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Tile.Center().X - LW * 0.5f, Tile.Bottom() - 18.0f }, 10.0f, ColorRgba{ 222u, 222u, 226u, 255u }, PresetNames[P]);
-                if (Tile.Contains(Cursor) && Input.PrimaryPointer.Pressed) { Moon.SurfacePreset = static_cast<GeometricRaster::LunarSurfacePreset>(P); OutMutated = true; }
+                Surface.FillRectangle(Tile, ColorRgba{ 36u, 38u, 42u, 255u }, InspectorMetrics::QuickTileRadius);
+                Surface.StrokeRectangle(Tile, ColorRgba{ 138u, 152u, 176u, 200u }, InspectorMetrics::QuickTileRadius, 1.2f);
             }
-            CursorY = GalSec.Bottom() + InspectorMetrics::SectionGap;
+            const Rectangle2D Img { Tile.Center().X - 42.0f, Tile.Y + 8.0f, 84.0f, 84.0f };
+            (I == 0u ? LunaPreset : EmberPreset).Present(Surface, Img, 0.0f, { 255u, 255u, 255u, 255u }, InspectorPreviewFitMode::Contain, ColorRgba{ 0u, 0u, 0u, 0u });
+            const float NW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 11.4f, Names[I]);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Tile.Center().X - NW * 0.5f, Tile.Bottom() - 22.0f }, 11.4f, InspectorMetrics::HeadingInk, Names[I]);
+            if (Tile.Contains(Cursor) && Input.PrimaryPointer.Pressed)
+            {
+                Moon.SurfacePreset = static_cast<GeometricRaster::LunarSurfacePreset>(I);
+                OutMutated = true;
+            }
         }
-        {
-            const float MoonR = std::min(62.0f, 12.0f + 22.0f * std::sqrt(std::max(0.05f, Moon.AngularDiameterDegrees)));
-            const float NatR  = 12.0f + 22.0f * std::sqrt(0.52f);
-            RasterizeLunarGlobe(LookGlobe, Moon, 224u, 160u, MoonR, true, true, NatR);
-            const Rectangle2D LookSec { LeftX, CursorY, InnerWidth, 580.0f };
-            InspectorPrimitives::ConstructSectionSurface(Surface, LookSec, "Moonlight, size & atmosphere");
-            float Y = CursorY + InspectorMetrics::SectionPadTop + 28.0f;
-            LookGlobe.Present(Surface, { LeftX + PadX, Y, BodyW, 152.0f }, 12.0f);
-            Y += 166.0f;
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4101u, "Bright", "x", "%.2f", 0.0f, 6.0f, Moon.BrightnessMultiplier, ActiveDragId, Input, OutMutated);
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4102u, "Glow", "x", "%.2f", 0.0f, 3.0f, Moon.HaloGlowMultiplier, ActiveDragId, Input, OutMutated);
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4103u, "Size", "deg", "%.2f", 0.1f, 15.0f, Moon.AngularDiameterDegrees, ActiveDragId, Input, OutMutated);
-            Y = InspectorPrimitives::ConstructToggleFieldRow(Surface, LeftX + PadX, Y, BodyW, "Has atmosphere", Moon.HasAtmosphere, Input, OutMutated);
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4104u, "Atmosphere intensity", "x", "%.2f", 0.0f, 3.0f, Moon.AtmosphereIntensity, ActiveDragId, Input, OutMutated, !Moon.HasAtmosphere);
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4105u, "Thickness scale", "x", "%.2f", 0.05f, 1.0f, Moon.AtmosphereThicknessScale, ActiveDragId, Input, OutMutated, !Moon.HasAtmosphere);
-            (void)InspectorPrimitives::ConstructColourFieldRow(Surface, LeftX + PadX, Y, BodyW, 4110u, "Atmosphere tint", Moon.AtmosphereTint, ActiveDragId, Input, OutMutated, !Moon.HasAtmosphere);
-            CursorY = LookSec.Bottom() + InspectorMetrics::SectionGap;
-        }
+        CursorY = CatCard.Bottom() + InspectorMetrics::SectionGap;
+
+        // Card 2: Moonlight, size and atmosphere
+        RasterizeLunarGlobe(NightPreview, Moon, 444u, 312u, 48.0f, true, true, 255u);
+        const Rectangle2D LookCard { LeftX, CursorY, InnerWidth, 460.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, LookCard, "Moonlight, size and atmosphere");
+
+        char BriBuf[20]{}, DiaBuf[20]{};
+        std::snprintf(BriBuf, sizeof(BriBuf), "%.2f\xC3\x97", Moon.BrightnessMultiplier);
+        std::snprintf(DiaBuf, sizeof(DiaBuf), "%.2f\xC2\xB0", Moon.AngularDiameterDegrees);
+        const char* AtmoLabel = Moon.HasAtmosphere ? "Yes" : "None";
+
+        const float ColW = BodyW / 3.0f;
+        const float KpiY = LookCard.Y + 62.0f;
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, KpiY }, 16.5f, InspectorMetrics::HeadingInk, BriBuf);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, KpiY + 22.0f }, 10.6f, InspectorMetrics::MutedInk, "moonlight");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + ColW, KpiY }, 16.5f, InspectorMetrics::HeadingInk, DiaBuf);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + ColW, KpiY + 22.0f }, 10.6f, InspectorMetrics::MutedInk, "across");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + ColW * 2.0f, KpiY }, 16.5f, InspectorMetrics::HeadingInk, AtmoLabel);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX + ColW * 2.0f, KpiY + 22.0f }, 10.6f, InspectorMetrics::MutedInk, "atmosphere");
+
+        const Rectangle2D NightBox { BodyX, LookCard.Y + 114.0f, BodyW, 156.0f };
+        NightPreview.Present(Surface, NightBox, InspectorMetrics::PreviewRadius, { 255u, 255u, 255u, 255u }, InspectorPreviewFitMode::Cover);
+
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, NightBox.Bottom() + 18.0f }, 9.6f, InspectorMetrics::DimInk, "MOONLIGHT");
+        float FY = NightBox.Bottom() + 42.0f;
+        FY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 7810u, "Bright", "\xC3\x97", "%.2g", 0.0f, 6.0f, Moon.BrightnessMultiplier, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 7811u, "Halo", "\xC3\x97", "%.2g", 0.0f, 3.0f, Moon.HaloGlowMultiplier, ActiveDragId, Input, OutMutated);
+
+        CursorY = LookCard.Bottom() + InspectorMetrics::SectionGap;
     }
     else
     {
+        // TAB 3: POSITION — Card 1 Lunar position (h = 444: spherical sky dial + Azimuth + Elevation), Card 2 Moon rotation
+        const Rectangle2D PosCard { LeftX, CursorY, InnerWidth, 444.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, PosCard, "Lunar position");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, PosCard.Y + 68.0f }, 11.4f, InspectorMetrics::MutedInk, "Position in the sky \xC2\xB7 drag the spherical dial");
+
+        // Centered spherical sky hemisphere dial matching moon__2 (responsive radius so narrow panes never clip)
+        const Point2D DialC { PosCard.Center().X, PosCard.Y + 168.0f };
+        const float R = std::clamp(BodyW * 0.25f, 34.0f, 54.0f);
+        Surface.FillCircle(DialC, R, ColorRgba{ 28u, 34u, 44u, 255u });
+        Surface.StrokeCircle(DialC, R, ColorRgba{ 118u, 134u, 156u, 140u }, 1.2f);
+        Surface.StrokeCircle(DialC, R + 12.0f, ColorRgba{ 255u, 255u, 255u, 22u }, 1.0f);
+        // Horizon ellipse + meridian line + center dot
+        for (int Seg = 0; Seg < 36; ++Seg)
         {
-            const Rectangle2D S { LeftX, CursorY, InnerWidth, 344.0f };
-            InspectorPrimitives::ConstructSectionSurface(Surface, S, "Lunar position");
-            bool DialChanged = false;
-            PolarDirectionDial::Construct(Surface, { S.Center().X, CursorY + 116.0f }, 62.0f, Moon.AzimuthDegrees, Moon.ElevationDegrees, true, Input, Moon.AzimuthDegrees, Moon.ElevationDegrees, DialChanged, !Moon.FollowSkyOppositeSun);
-            if (DialChanged) OutMutated = true;
-            float Y = CursorY + 194.0f;
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4201u, "Azimuth", "deg", "%.1f", 0.0f, 360.0f, Moon.AzimuthDegrees, ActiveDragId, Input, OutMutated, Moon.FollowSkyOppositeSun);
-            (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4202u, "Elevation", "deg", "%.1f", -90.0f, 90.0f, Moon.ElevationDegrees, ActiveDragId, Input, OutMutated, Moon.FollowSkyOppositeSun);
-            CursorY = S.Bottom() + InspectorMetrics::SectionGap;
+            const float A0 = static_cast<float>(Seg) / 36.0f * 6.2831853f;
+            const float A1 = static_cast<float>(Seg + 1) / 36.0f * 6.2831853f;
+            Surface.StrokeLine({ DialC.X + std::cos(A0) * R, DialC.Y + std::sin(A0) * R * 0.34f },
+                               { DialC.X + std::cos(A1) * R, DialC.Y + std::sin(A1) * R * 0.34f },
+                               ColorRgba{ 148u, 164u, 184u, 125u }, 1.0f);
         }
-        {
-            RasterizeLunarGlobe(TurnGlobe, Moon, 140u, 140u, 64.0f, false, false, 0.0f);
-            const Rectangle2D S { LeftX, CursorY, InnerWidth, 340.0f };
-            InspectorPrimitives::ConstructSectionSurface(Surface, S, "Moon rotation");
-            TurnGlobe.Present(Surface, { S.Center().X - 64.0f, CursorY + InspectorMetrics::SectionPadTop + 26.0f, 128.0f, 128.0f }, 64.0f);
-            float Y = CursorY + 186.0f;
-            Y = InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4203u, "Roll", "deg", "%.1f", 0.0f, 360.0f, Moon.SurfaceRollDegrees, ActiveDragId, Input, OutMutated);
-            (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, LeftX + PadX, Y, BodyW, 4204u, "Pitch", "deg", "%.1f", -180.0f, 180.0f, Moon.SurfacePitchDegrees, ActiveDragId, Input, OutMutated);
-            CursorY = S.Bottom() + InspectorMetrics::SectionGap;
-        }
+        Surface.FillCircle(DialC, 2.0f, ColorRgba{ 225u, 232u, 240u, 210u });
+        // Cardinal N / E / S / W
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DialC.X - 3.5f, DialC.Y - R - 24.0f }, 9.2f, InspectorMetrics::MutedInk, "N");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DialC.X + R + 17.0f, DialC.Y - 4.0f }, 9.2f, InspectorMetrics::MutedInk, "E");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DialC.X - 3.0f, DialC.Y + R + 14.0f }, 9.2f, InspectorMetrics::MutedInk, "S");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DialC.X - R - 26.0f, DialC.Y - 4.0f }, 9.2f, InspectorMetrics::MutedInk, "W");
+
+        // Moon position handle dot
+        const float AzRad = Moon.AzimuthDegrees * 0.01745329f;
+        const float ElRad = std::clamp(Moon.ElevationDegrees, -85.0f, 85.0f) * 0.01745329f;
+        const Point2D Handle { DialC.X + std::sin(AzRad) * std::cos(ElRad) * R * 0.92f, DialC.Y - std::sin(ElRad) * R * 0.85f };
+        InspectorPrimitives::ConstructDashedSegment(Surface, DialC, Handle, ColorRgba{ 165u, 186u, 215u, 135u }, 2.0f, 3.0f, 1.0f);
+        Surface.FillCircle(Handle, 5.5f, ColorRgba{ 168u, 200u, 238u, 255u });
+        Surface.StrokeCircle(Handle, 5.5f, ColorRgba{ 242u, 248u, 255u, 220u }, 1.0f);
+
+        const float CapW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Regular, 8.8f, "Near side \xC2\xB7 drag to orbit");
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { DialC.X - CapW * 0.5f, DialC.Y + R + 28.0f }, 8.8f, InspectorMetrics::DimInk, "Near side \xC2\xB7 drag to orbit");
+
+        float FY = PosCard.Y + 277.0f;
+        FY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 7820u, "Azimuth",   "deg", "%.0f",   0.0f, 360.0f, Moon.AzimuthDegrees,   ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, FY, BodyW, 7821u, "Elevation", "deg", "%.0f", -90.0f,  90.0f, Moon.ElevationDegrees, ActiveDragId, Input, OutMutated);
+        CursorY = PosCard.Bottom() + InspectorMetrics::SectionGap;
+
+        // Card 2: Moon rotation
+        RasterizeLunarGlobe(TurnGlobe, Moon, 352u, 352u, 168.0f, false, false, 255u);
+        const Rectangle2D RotCard { LeftX, CursorY, InnerWidth, 340.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, RotCard, "Moon rotation");
+        (void)InspectorPrimitives::ConstructWrappedParagraph(
+            Surface, BodyX, RotCard.Y + 68.0f, BodyW, 11.4f, 16.5f, InspectorMetrics::MutedInk,
+            "Surface orientation \xC2\xB7 independent of sky position");
+        const Rectangle2D RotBox { RotCard.Center().X - 88.0f, RotCard.Y + 115.0f, 176.0f, 176.0f };
+        TurnGlobe.Present(Surface, RotBox, 0.0f);
+        CursorY = RotCard.Bottom() + InspectorMetrics::SectionGap;
     }
 
     return CursorY;

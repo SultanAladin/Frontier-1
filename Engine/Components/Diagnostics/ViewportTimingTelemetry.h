@@ -43,12 +43,17 @@ struct ViewportTimingBreakdown
     std::string TimingLogPath       { "FrontierTiming.log" }; // [-] - Debug log file path
 
     // End-to-end host frame stages [ms]
-    float TotalFrameMs              = 0.0f;  // [ms] - Full frame wall-clock delta
-    float DesktopPollAndUiMs        = 0.0f;  // [ms] - GLFW poll + ImGui frame build
-    float EditorTickMs              = 0.0f;  // [ms] - Scene/outliner tick before render
-    float SceneSyncGpuMs            = 0.0f;  // [ms] - GPU scene upload & shadow cascade sync
-    float GizmoOverlayMs            = 0.0f;  // [ms] - 3D Transform gizmo raster & composite
-    float SwapchainPresentMs        = 0.0f;  // [ms] - ImGui draw + texture upload + vkQueuePresentKHR
+    float    TotalFrameMs           = 0.0f;  // [ms]  - Full frame wall-clock delta
+    float    DesktopPollAndUiMs     = 0.0f;  // [ms]  - GLFW poll + ImGui frame build
+    float    EditorTickMs           = 0.0f;  // [ms]  - Scene/outliner tick before render
+    float    EnvSyncMs              = 0.0f;  // [ms]  - Environment registry + active inspector sync
+    float    InspectorUiMs          = 0.0f;  // [ms]  - Active selected inspector card build or retained replay
+    bool     InspectorCacheReplayed = false; // [-]   - True when Inspector replayed retained canvas without redraw
+    uint64_t InspectorCaptureCount  = 0ull;  // [cnt] - Cumulative Inspector rebuild count
+    uint64_t InspectorReplayCount   = 0ull;  // [cnt] - Cumulative Inspector zero-redraw replay count
+    float    SceneSyncGpuMs         = 0.0f;  // [ms]  - GPU scene upload & shadow cascade sync
+    float    GizmoOverlayMs         = 0.0f;  // [ms]  - 3D Transform gizmo raster & composite
+    float    SwapchainPresentMs     = 0.0f;  // [ms]  - ImGui draw + texture upload + vkQueuePresentKHR
 
     // Vulkan world compute GPU hardware pass breakdown [ms]
     float GpuTotalPassMs            = 0.0f;  // [ms] - VkQueryPool total GPU time across world passes
@@ -175,7 +180,7 @@ inline void InitializeTimingLogFile(const std::filesystem::path& LogPath, std::s
     LogChannel.HeaderText.append(AdapterName.data(), AdapterName.size());
     LogChannel.HeaderText += " | HardwareGPU: ";
     LogChannel.HeaderText += (HwGpu ? "YES\n" : "NO\n");
-    LogChannel.HeaderText += "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | GizmoMs | UiBuildMs | PresentMs\n";
+    LogChannel.HeaderText += "# Columns: Frame | FPS | TotalMs | Engine | Shadow | Res | WorldGpuTotalMs | SkyLutMs | CloudsMs | TraceMs | DenoiseMs | CopyMs | HostWaitMs | SceneSyncMs | TickMs | EnvSyncMs | GizmoMs | UiBuildMs | InspectorMs(HIT/BUILD) | PresentMs\n";
     LogChannel.PendingFlush = false;
 }
 
@@ -196,13 +201,13 @@ inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const View
         return;
     }
     const float Fps = (T.TotalFrameMs > 0.01f) ? (1000.0f / T.TotalFrameMs) : 0.0f;
-    char Line[512]{};
+    char Line[640]{};
     const int Written = std::snprintf(
         Line,
         sizeof(Line),
         "[%s] F=%llu | %5.1f fps | Total=%6.2f ms | %s/%s Q%u | %ux%u | "
         "GPU(Tot=%5.2f Sky=%4.2f Cld=%4.2f Trc=%5.2f Den=%4.2f Cpy=%4.2f HostWait=%5.2f) | "
-        "SceneSync=%5.2f Tick=%4.2f Gizmo=%4.2f UI=%4.2f Present=%5.2f\n",
+        "SceneSync=%5.2f Tick=%4.2f EnvSync=%4.2f Gizmo=%4.2f UI=%4.2f Insp=%4.2f(%s %llu/%llu) Present=%5.2f\n",
         ReasonTag != nullptr ? ReasonTag : "SAMPLE",
         static_cast<unsigned long long>(T.FrameIndex),
         Fps,
@@ -221,8 +226,13 @@ inline void AppendTimingLogLine(const std::filesystem::path& LogPath, const View
         T.GpuHostSubmitWaitMs,
         T.SceneSyncGpuMs,
         T.EditorTickMs,
+        T.EnvSyncMs,
         T.GizmoOverlayMs,
         T.DesktopPollAndUiMs,
+        T.InspectorUiMs,
+        T.InspectorCacheReplayed ? "HIT" : "BUILD",
+        static_cast<unsigned long long>(T.InspectorReplayCount),
+        static_cast<unsigned long long>(T.InspectorCaptureCount),
         T.SwapchainPresentMs);
     if (Written > 0)
     {

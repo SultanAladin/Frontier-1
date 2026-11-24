@@ -7,6 +7,7 @@
 
 #include "Engine/Components/Controls/InspectorSectionPrimitives.h"
 #include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
+#include "Engine/GeometrySpace/Procedural/ProceduralGeometry.h"
 
 namespace Frontier
 {
@@ -33,9 +34,10 @@ public:
 private:
     void UpdateProceduralSurface(const ProceduralGeometryData& Instance);
 
-    uint32_t                ActivePage        = 0u;
-    uint32_t                ActiveDragId      = 0u;
-    InspectorPreviewSurface ProceduralPreview {};
+    uint32_t                                ActivePage        = 0u;
+    uint32_t                                ActiveDragId      = 0u;
+    InspectorPreviewSurface                 ProceduralPreview {};
+    GeometrySpace::ProceduralGeometryAsset  LiveAsset         {};
 };
 
 } // namespace Frontier

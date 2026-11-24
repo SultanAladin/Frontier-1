@@ -18,7 +18,7 @@ public:
 
     [[nodiscard]] static const char* QuerySubtitle() noexcept
     {
-        return "Analytical primitive  ·  parametric SDF";
+        return "Geometry";
     }
 
     [[nodiscard]] float Construct(

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           LOCALCLOUDINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone Local Cloud Volume Inspector (multi-instance bounded cloud volumes; 4 pages: Overview, Coverage, Layer, Body)
+// 🧩 Brand-new 1:1 HTML parity port of Local Cloud Inspector (4 tabs: Overview, Coverage, Layer, Body)
 
 #pragma once
 
@@ -15,26 +15,21 @@ class LocalCloudInspector
 {
 public:
     LocalCloudInspector() noexcept = default;
-
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Bounded cloud volume"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Bounded volumetric clouds"; }
 
     [[nodiscard]] float Construct(
-        PixelSpace&             Surface,
-        float                   LeftX,
-        float                   TopY,
-        float                   InnerWidth,
-        OutlinerRecordEntry&    Entry,
-        LocalCloudInstanceData& Instance,
-        const PaneInputReading& Input,
-        bool&                   OutMutated,
-        bool&                   OutPageSwitched);
+        PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
+        OutlinerRecordEntry& Entry, LocalCloudInstanceData& Instance,
+        const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched);
 
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
-    [[nodiscard]] uint32_t QueryActivePage() const noexcept { return ActivePage; }
 
 private:
-    uint32_t ActivePage   = 0u;
-    uint32_t ActiveDragId = 0u;
+    uint32_t                ActivePage            = 0u;
+    uint32_t                ActiveDragId          = 0u;
+    float                   DensityProbeAltitudeM = 130.0f;
+    InspectorPreviewSurface SwathPreview          {};
+    InspectorPreviewSurface DeckPreview           {};
 };
 
 } // namespace Frontier

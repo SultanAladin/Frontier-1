@@ -1343,13 +1343,13 @@ void RegisterShowcaseGalleryInOutliner(
     if (!PreserveConstructTemplates)
     {
         const std::array<OutlinerConstructTemplate, 7u> Templates = {{
-            { "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume   },
-            { "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume   },
-            { "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume   },
-            { "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume   },
-            { "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume   },
-            { "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire },
-            { "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera  },
+            { "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume, "geom:primitive"     },
+            { "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume, "geom:primitive"     },
+            { "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume, "geom:primitive"     },
+            { "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume, "geom:primitive"     },
+            { "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume, "geom:primitive"     },
+            { "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire, "light:area"         },
+            { "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera,   "camera:perspective" },
         }};
         TargetOutliner.ConfigureConstructTemplates(Templates);
         LightTemplateOrd  = 5u;
@@ -1404,6 +1404,7 @@ void RegisterShowcaseGalleryInOutliner(
             Entry->Title             = Obj.Title;
             Entry->CategoryLabel     = "Geometry · " + Obj.MaterialTitle;
             Entry->Subtitle          = Obj.Subtitle;
+            Entry->DomainTag         = Obj.SphericalPrimitive ? "geom:primitive" : "geom:native";
             Entry->AuthorNotes       = Obj.AuthorNotes;
             Entry->PositionX         = Obj.CenterWorld.X;
             Entry->PositionY         = Obj.CenterWorld.Y;
@@ -1433,6 +1434,7 @@ void RegisterShowcaseGalleryInOutliner(
         CamEntry->Title             = "Editor Camera";
         CamEntry->CategoryLabel     = "Scene / Cameras";
         CamEntry->Subtitle          = "Editor · permanent · 43.0 deg FOV";
+        CamEntry->DomainTag         = "camera:perspective";
         CamEntry->AuthorNotes       = "Target (0.00, 0.55, 0.15) m · Near 0.15 m · Far 60.0 m · Exposure 1.35x.";
         CamEntry->PositionX         = InOutBundle.EditorCamera.CameraOrigin.X;
         CamEntry->PositionY         = InOutBundle.EditorCamera.CameraOrigin.Y;
@@ -1452,6 +1454,7 @@ void RegisterShowcaseGalleryInOutliner(
     {
         Folder->FolderTint  = WorkspaceSurfaceColors::ShowcaseWarmGold;
         Folder->Subtitle    = "Sun, Moon, Stars & Volumetric Clouds";
+        Folder->DomainTag   = "env:folder";
         Folder->AuthorNotes = "Physical Rayleigh/Mie/Ozone sky dome, 6-slot lunar discs, deterministic starfield, and 3D FBM volumetric clouds.";
         Folder->Expanded    = true;
     }
@@ -1459,10 +1462,11 @@ void RegisterShowcaseGalleryInOutliner(
     InOutBundle.SunEmitterToken = TargetOutliner.ConstructFromTemplate(LightTemplateOrd, InOutBundle.WorldFolderToken);
     if (OutlinerRecordEntry* SunEntry = TargetOutliner.AccessEntry(InOutBundle.SunEmitterToken))
     {
-        SunEntry->Category          = ConstructSlotCategory::LayerGroup;
+        SunEntry->Category          = ConstructSlotCategory::PointLuminaire;
         SunEntry->Title             = "Sun";
         SunEntry->CategoryLabel     = "World / Solar Light";
         SunEntry->Subtitle          = "Solar ephemeris & direct disc";
+        SunEntry->DomainTag         = "env:sun";
         SunEntry->AuthorNotes       = "3.91 mm/tx GTX Contact-Clip + BVH4 Penumbra directional sun and physical SkyView LUT driver.";
         SunEntry->PositionX         = InOutBundle.Scene.Sun.DirectionToSun.X;
         SunEntry->PositionY         = InOutBundle.Scene.Sun.DirectionToSun.Y;
@@ -1478,6 +1482,7 @@ void RegisterShowcaseGalleryInOutliner(
         MoonEntry->Title             = "Moon";
         MoonEntry->CategoryLabel     = "World / Lunar Disc";
         MoonEntry->Subtitle          = "Luna · Slot 0 · 29.53 d phase";
+        MoonEntry->DomainTag         = "env:moon";
         MoonEntry->AuthorNotes       = "Multi-slot lunar disc (6 presets: Luna, Ember, Glacier, Sulfur, Shroud, Shard).";
         MoonEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Moons[0].Visible;
         MoonEntry->CastShadows       = false;
@@ -1490,6 +1495,7 @@ void RegisterShowcaseGalleryInOutliner(
         StarsEntry->Title             = "Stars";
         StarsEntry->CategoryLabel     = "World / Starfield";
         StarsEntry->Subtitle          = "Limiting 5.5 mag · scintillation";
+        StarsEntry->DomainTag         = "env:stars";
         StarsEntry->AuthorNotes       = "Deterministic nocturnal starfield modulated by limiting magnitude and atmospheric scintillation.";
         StarsEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Stars.StarfieldEnabled;
         StarsEntry->CastShadows       = false;
@@ -1502,6 +1508,7 @@ void RegisterShowcaseGalleryInOutliner(
         CloudsEntry->Title             = "Volumetric Clouds";
         CloudsEntry->CategoryLabel     = "World / Volumetric Clouds";
         CloudsEntry->Subtitle          = "Cumulus · 34% cover · 1.40 km floor";
+        CloudsEntry->DomainTag         = "env:clouds";
         CloudsEntry->AuthorNotes       = "Raymarched 3D FBM cloud deck with dual-lobe Henyey-Greenstein and Beer-Powder self-shadowing.";
         CloudsEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.Clouds.CloudsEnabled;
         CloudsEntry->CastShadows       = InOutBundle.Scene.Atmosphere.Clouds.CloudShadow.ShadowEnabled;
@@ -1514,6 +1521,7 @@ void RegisterShowcaseGalleryInOutliner(
         LocalEntry->Title             = "Local Cloud";
         LocalEntry->CategoryLabel     = "World / Local Cloud Volume";
         LocalEntry->Subtitle          = "Bounded 3D cloud box · 200x200x100 m";
+        LocalEntry->DomainTag         = "env:local-cloud";
         LocalEntry->AuthorNotes       = "Spatially bounded 3D FBM cloud box in world meters.";
         LocalEntry->VisibilityEnabled = InOutBundle.Scene.Atmosphere.LocalCloud.LocalEnabled;
         LocalEntry->CastShadows       = false;
@@ -1540,6 +1548,7 @@ void RegisterShowcaseGalleryInOutliner(
             LightEntry->Title             = "Ceiling Softbox";
             LightEntry->CategoryLabel     = "Lighting / LTC Area Quad";
             LightEntry->Subtitle          = "LTC Quad · 1.70 × 1.30 m · 7.5, 6.6, 5.4 nit";
+            LightEntry->DomainTag         = "light:area";
             LightEntry->AuthorNotes       = "Overhead architectural softbox illuminating gallery floor and specular spheres.";
             LightEntry->PositionX         = Softbox.CenterWorld.X;
             LightEntry->PositionY         = Softbox.CenterWorld.Y;

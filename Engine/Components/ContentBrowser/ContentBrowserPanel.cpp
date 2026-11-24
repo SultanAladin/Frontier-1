@@ -3404,11 +3404,10 @@ void ContentBrowserPanel::Render(Rectangle2D HostBoundsPhysical, double DeltaSec
         PotentialRampDrag || DraggingColourRamp ||
         PotentialMatCapDrag || DraggingMatCap ||
         PotentialContentDrag || DraggingContentEntry ||
-        Pointer.Pressed || Pointer.HeldDown || Pointer.Released ||
-        Pointer.DoubleClicked || std::fabs(Pointer.WheelDeltaY) > 1.0e-4f ||
-        CursorOnDrawerOrNotch;
+        (CursorOnDrawerOrNotch && (Pointer.Pressed || Pointer.HeldDown || Pointer.Released ||
+                                   Pointer.DoubleClicked || std::fabs(Pointer.WheelDeltaY) > 1.0e-4f));
 
-    if (RetainedCanvas.QueryReusable(Sig, ActiveBrowserBounds, PhysicalCursor, AnyDragOrAnim) &&
+    if (RetainedCanvas.QueryReusableStationary(Sig, ActiveBrowserBounds, PhysicalCursor, AnyDragOrAnim) &&
         RetainedCanvas.ReplayInto(FgList, PhysicalCursor))
     {
         WorkspaceAppearance::AssignExternalDragSuppression(false);

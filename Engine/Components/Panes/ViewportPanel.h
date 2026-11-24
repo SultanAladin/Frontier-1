@@ -100,8 +100,28 @@ struct ViewportDisplaySettings
     bool     RaytracingEnabled     = true;   // [-]   - Hardware BVH4 raytracing toggle
     bool     XeGtaoEnabled         = false;  // [-]   - XeGTAO screen-space AO for direct PBR (no GI)
     float    XeGtaoStrength        = 1.0f;   // [x]   - XeGTAO occlusion strength [0..2]
+    uint32_t XeGtaoSliceCount      = 4u;     // [cnt] - XeGTAO directional slices [2..8]
+    uint32_t XeGtaoStepsPerSide    = 4u;     // [cnt] - XeGTAO horizon march steps per side [2..8]
+    float    XeGtaoSearchRadiusM   = 0.85f;  // [m]   - XeGTAO world-space search radius [0.25..3.0]
+    uint32_t GiCandidateIndex      = 1u;     // [idx] - 0=StokesContour, 1=SurfelRadiosity
+    uint32_t SdfConeSteps          = 6u;     // [cnt] - GDF voxel cone GI march steps [3..12]
+    float    SdfGiIntensity        = 1.0f;   // [x]   - GDF voxel cone GI indirect scale [0..2.5]
+    float    SdfAoRadiusM          = 1.55f;  // [m]   - SDF UDF ambient occlusion reach [0.35..3.0]
+    float    SdfAoContrast         = 1.50f;  // [x]   - SDF UDF ambient occlusion contrast/darkness [0.40..3.0]
+    uint32_t MatcapChannelIndex    = 0u;     // [idx] - 0=Clay, 1=Ceramic, 2=Metallic, 3=Normal
+    float    MatcapRimGain         = 0.35f;  // [0-1] - MatCap silhouette rim boost
+    float    CameraFocalLengthMm   = 35.0f;  // [mm]  - Active viewport camera focal length [12..200]
+    float    CameraSensorWidthMm   = 36.0f;  // [mm]  - Active viewport camera sensor width [12..70]
+    float    CameraApertureFStop   = 2.8f;   // [f/]  - Active viewport camera aperture [1.2..22]
+    float    CameraFocusDistanceM  = 6.0f;   // [m]   - Active viewport camera focus distance [0.3..100]
+    float    CameraRollDegrees     = 0.0f;   // [deg] - Active viewport camera Dutch roll [-45..45]
     uint32_t PathTraceTargetSpp    = 256u;   // [spp] - Progressive PT convergence target (0 = render continuously, no cap)
     uint32_t PathTraceBatchSpp     = 1u;     // [spp] - PT samples accumulated per frame (1/2/4/8, HTML lab parity)
+    uint32_t PathTraceMaxBounces   = 3u;     // [cnt] - Path tracer maximum bounce depth [1..8]
+    uint32_t SmrtShadowRays        = 4u;     // [cnt] - SMRT quadratic shadow ray count [1..8]
+    uint32_t SmrtMarchSteps        = 10u;    // [cnt] - SMRT quadratic march steps per ray [4..16]
+    float    SkyFillGain           = 1.0f;   // [x]   - Sky dome fill gain multiplier [0..3.0]
+    float    ExposureGain          = 1.0f;   // [x]   - Final ACES display exposure gain [0.1..4.0]
     bool     ClusterLodEnabled       = true;   // [-]   - Nanite-like cluster LOD drives the viewport BVH
     float    ClusterLodPixelError    = 1.25f;  // [px]  - Screen-space LOD error budget (0.5 quality / 1.25 balanced / 2.5 / 5 aggressive)
     int32_t  ClusterForcedLodLevel   = -1;     // [lvl] - -1 = automatic view cut, >= 0 = force exact pyramid level

@@ -9,14 +9,17 @@
 
 #include "Engine/Components/Panes/InspectorPanel.h"
 #include "Engine/Components/Controls/DropdownSelector.h"
+#include "Engine/Components/Controls/InspectorSectionPrimitives.h"
 #include "Engine/Components/Controls/ScalarSlider.h"
 #include "Engine/Components/VectorIcons/VectorIconRepository.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1698,15 +1701,23 @@ void InspectorPanel::Render(
 
         const float       InnerW = std::max(100.0f, ScrollViewport.Width - 52.0f);
         const Rectangle2D BatchSection{ LeftX, TopY + 96.0f, InnerW, 32.0f + static_cast<float>(std::min<std::size_t>(Selected.size(), 8u)) * 30.0f };
-        Surface.FillRectangle(BatchSection, WorkspaceSurfaceColors::GenericSurface, 20.0f);
-        Surface.StrokeRectangle(BatchSection, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
+        Surface.FillRectangle(BatchSection, WorkspaceSurfaceColors::GenericSurface, 12.0f);
+        Surface.StrokeRectangle(BatchSection, WorkspaceSurfaceColors::HairlineLight, 12.0f, 1.0f);
 
         float RowY = BatchSection.Y + 16.0f;
         for (std::size_t Idx = 0u; Idx < std::min<std::size_t>(Selected.size(), 8u); ++Idx)
         {
             if (const OutlinerRecordEntry* SubEntry = AttachedOutliner->FindEntry(Selected[Idx]))
             {
-                WorkspaceAppearance::ConstructSlotCategoryIcon(Surface, SubEntry->Category, { BatchSection.X + 16.0f, RowY + 2.0f }, 18.0f, SubEntry->FolderTint, 1.0f);
+                const EnvironmentSymbolCategory EnvSymbol = WorkspaceAppearance::ResolveEnvironmentSymbolFromTag(SubEntry->DomainTag);
+                if (EnvSymbol != EnvironmentSymbolCategory::None)
+                {
+                    WorkspaceAppearance::ConstructEnvironmentSymbolIcon(Surface, EnvSymbol, { BatchSection.X + 16.0f, RowY + 2.0f }, 18.0f, 1.0f);
+                }
+                else
+                {
+                    WorkspaceAppearance::ConstructSlotCategoryIcon(Surface, SubEntry->Category, { BatchSection.X + 16.0f, RowY + 2.0f }, 18.0f, SubEntry->FolderTint, 1.0f);
+                }
                 WorkspaceAppearance::ConstructTruncatedText(
                     Surface,
                     FontWeightClass::Regular,
@@ -1865,54 +1876,67 @@ void InspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
                static_cast<uint64_t>(C.Alpha);
     };
 
-    uint64_t Sig = RetainedCanvasCache::MixBounds(0x8831C0DE71A55E11ull, ScreenBounds, SafeScale);
-    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::SectionSurface));
-    Sig = RetainedCanvasCache::MixHash(Sig, PackRgba(WorkspaceSurfaceColors::PrimaryInk));
-    Sig = RetainedCanvasCache::MixHash(Sig, ExternalRevision);
-    Sig = MixFloat(Sig, ScrollOffsetY);
-    Sig = RetainedCanvasCache::MixHash(Sig, NotesBoxExpanded ? 1ull : 0ull);
-    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(BrowseScope));
-    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(BrowseSort));
-    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(FolderVisibilityFilter));
-
-    if (AttachedOutliner != nullptr)
+    auto ComputeSignature = [&]() -> uint64_t
     {
-        const auto Selected = AttachedOutliner->QuerySelectedTokens();
-        Sig = RetainedCanvasCache::MixHash(Sig, Selected.size());
-        for (const OutlinerSlotToken& Tok : Selected)
+        uint64_t OutSig = RetainedCanvasCache::MixBounds(0x8831C0DE71A55E11ull, ScreenBounds, SafeScale);
+        OutSig = RetainedCanvasCache::MixHash(OutSig, PackRgba(WorkspaceSurfaceColors::SectionSurface));
+        OutSig = RetainedCanvasCache::MixHash(OutSig, PackRgba(WorkspaceSurfaceColors::PrimaryInk));
+        OutSig = RetainedCanvasCache::MixHash(OutSig, ExternalRevision);
+        if (OverrideSignatureCallback)
         {
-            Sig = RetainedCanvasCache::MixHash(Sig, Tok.Identifier);
-            if (const OutlinerRecordEntry* Rec = AttachedOutliner->FindEntry(Tok))
+            OutSig = RetainedCanvasCache::MixHash(OutSig, OverrideSignatureCallback());
+        }
+        OutSig = MixFloat(OutSig, ScrollOffsetY);
+        OutSig = RetainedCanvasCache::MixHash(OutSig, NotesBoxExpanded ? 1ull : 0ull);
+        OutSig = RetainedCanvasCache::MixHash(OutSig, static_cast<uint64_t>(BrowseScope));
+        OutSig = RetainedCanvasCache::MixHash(OutSig, static_cast<uint64_t>(BrowseSort));
+        OutSig = RetainedCanvasCache::MixHash(OutSig, static_cast<uint64_t>(FolderVisibilityFilter));
+
+        if (AttachedOutliner != nullptr)
+        {
+            const auto Selected = AttachedOutliner->QuerySelectedTokens();
+            OutSig = RetainedCanvasCache::MixHash(OutSig, Selected.size());
+            for (const OutlinerSlotToken& Tok : Selected)
             {
-                Sig = MixString(Sig, Rec->Title);
-                Sig = MixString(Sig, Rec->CategoryLabel);
-                Sig = MixString(Sig, Rec->Subtitle);
-                Sig = MixString(Sig, Rec->AuthorNotes);
-                Sig = MixFloat(Sig, Rec->PositionX);
-                Sig = MixFloat(Sig, Rec->PositionY);
-                Sig = MixFloat(Sig, Rec->PositionZ);
-                Sig = MixFloat(Sig, Rec->RotationX);
-                Sig = MixFloat(Sig, Rec->RotationY);
-                Sig = MixFloat(Sig, Rec->RotationZ);
-                Sig = MixFloat(Sig, Rec->ScaleX);
-                Sig = MixFloat(Sig, Rec->ScaleY);
-                Sig = MixFloat(Sig, Rec->ScaleZ);
-                const uint64_t CapBits =
-                    (Rec->VisibilityEnabled ? 1ull : 0ull) |
-                    (Rec->Expanded ? 2ull : 0ull) |
-                    (Rec->Locked ? 4ull : 0ull) |
-                    (Rec->DynamicMotion ? 8ull : 0ull) |
-                    (Rec->CastShadows ? 16ull : 0ull);
-                Sig = RetainedCanvasCache::MixHash(Sig, CapBits);
+                OutSig = RetainedCanvasCache::MixHash(OutSig, Tok.Identifier);
+                if (const OutlinerRecordEntry* Rec = AttachedOutliner->FindEntry(Tok))
+                {
+                    OutSig = MixString(OutSig, Rec->Title);
+                    OutSig = MixString(OutSig, Rec->CategoryLabel);
+                    OutSig = MixString(OutSig, Rec->Subtitle);
+                    OutSig = MixString(OutSig, Rec->AuthorNotes);
+                    OutSig = MixFloat(OutSig, Rec->PositionX);
+                    OutSig = MixFloat(OutSig, Rec->PositionY);
+                    OutSig = MixFloat(OutSig, Rec->PositionZ);
+                    OutSig = MixFloat(OutSig, Rec->RotationX);
+                    OutSig = MixFloat(OutSig, Rec->RotationY);
+                    OutSig = MixFloat(OutSig, Rec->RotationZ);
+                    OutSig = MixFloat(OutSig, Rec->ScaleX);
+                    OutSig = MixFloat(OutSig, Rec->ScaleY);
+                    OutSig = MixFloat(OutSig, Rec->ScaleZ);
+                    const uint64_t CapBits =
+                        (Rec->VisibilityEnabled ? 1ull : 0ull) |
+                        (Rec->Expanded ? 2ull : 0ull) |
+                        (Rec->Locked ? 4ull : 0ull) |
+                        (Rec->DynamicMotion ? 8ull : 0ull) |
+                        (Rec->CastShadows ? 16ull : 0ull);
+                    OutSig = RetainedCanvasCache::MixHash(OutSig, CapBits);
+                }
             }
         }
-    }
+        return OutSig;
+    };
 
-    const ImVec2  RawMouse = ImGui::GetIO().MousePos;
+    const uint64_t Sig = ComputeSignature();
+
+    const auto    InspStart = std::chrono::steady_clock::now();
+    const ImVec2  RawMouse  = ImGui::GetIO().MousePos;
     const Point2D PhysicalMouse{ RawMouse.x, RawMouse.y };
+    const bool    PointerActiveInPane =
+        PhysicalMouse.X >= ScreenBounds.X && PhysicalMouse.X <= ScreenBounds.Right() &&
+        PhysicalMouse.Y >= ScreenBounds.Y && PhysicalMouse.Y <= ScreenBounds.Bottom();
     const bool    ForceRebuild =
-        static_cast<bool>(FullOverrideCallback) ||
-        ImGui::IsMouseDown(0) ||
+        (ImGui::IsMouseDown(0) && (PointerActiveInPane || DraggingTransformCell >= 0 || InspectorPrimitives::QueryInteractiveDragActive())) ||
         ScopeDropdownOpen ||
         SortDropdownOpen ||
         NotesEditor.Active ||
@@ -1920,30 +1944,46 @@ void InspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
         TransformCellEditor.Active ||
         ActiveTransformCell >= 0 ||
         DraggingTransformCell >= 0 ||
-        Input.PrimaryPointer.Down ||
-        Input.PrimaryPointer.Pressed ||
-        Input.PrimaryPointer.Released ||
-        Input.SecondaryPressed ||
-        std::fabs(Input.WheelDeltaY) > 1.0e-4f;
+        (PointerActiveInPane && (Input.PrimaryPointer.Down || Input.PrimaryPointer.Pressed ||
+                                 Input.PrimaryPointer.Released || Input.SecondaryPressed ||
+                                 std::fabs(Input.WheelDeltaY) > 1.0e-4f));
 
-    if (RetainedCanvas.QueryReusable(Sig, ScreenBounds, PhysicalMouse, ForceRebuild) &&
+    if (RetainedCanvas.QueryReusableHoverAware(Sig, ScreenBounds, PhysicalMouse, ForceRebuild) &&
         RetainedCanvas.ReplayInto(PaneCanvasList, PhysicalMouse))
     {
+        FRONTIER_THOUGHT_SCOPE("Inspector.RetainedReplay");
+        LastRenderReplayed   = true;
+        LastRenderDurationMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - InspStart).count());
         WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, false);
         return;
     }
 
-    RetainedCanvas.BeginCapture(PaneCanvasList);
-    Render(WindowSurface, LogicalBounds, Input, Δt);
-    if (!ForceRebuild)
     {
-        RetainedCanvas.EndCapture(PaneCanvasList, Sig, ScreenBounds, PhysicalMouse);
-    }
-    else
-    {
-        RetainedCanvas.Invalidate();
+        FRONTIER_THOUGHT_SCOPE("Inspector.Rebuild");
+        RetainedCanvas.BeginCapture(PaneCanvasList);
+        InspectorPrimitives::BeginInspectorCaptureScope(&RetainedCanvas, LogicalBounds, { ScreenBounds.X, ScreenBounds.Y }, SafeScale);
+        Render(WindowSurface, LogicalBounds, Input, Δt);
+        InspectorPrimitives::EndInspectorCaptureScope();
+        if (!ForceRebuild)
+        {
+            RetainedCanvas.EndCapture(PaneCanvasList, ComputeSignature(), ScreenBounds, PhysicalMouse);
+        }
+        else
+        {
+            RetainedCanvas.Invalidate();
+        }
+        LastRenderReplayed   = false;
+        LastRenderDurationMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - InspStart).count());
     }
     WorkspaceAppearance::UpdatePanePointerOwnership(this, ScreenBounds, SafeScale, Input, DraggingTransformCell >= 0);
+}
+
+void InspectorPanel::ConfigureOverrideSignatureCallback(std::function<uint64_t()> Callback)
+{
+    OverrideSignatureCallback = std::move(Callback);
+    RetainedCanvas.Invalidate();
 }
 
 } // namespace Frontier

@@ -10,6 +10,7 @@
 #if FRONTIER_EDITOR_ENABLED
 
 #include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Editor/Inspectors/InspectorGpuBaker.h"
 
 #include <imgui.h>
 
@@ -166,15 +167,21 @@ bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
         std::vector<OutlinerConstructTemplate> Templates;
-        Templates.reserve(8u);
-        Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry", "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry", "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry", "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry", "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry", "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume   });
-        Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting", "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire   });
-        Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",   "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera     });
-        Templates.push_back({ "Generate Apocalyptic City Level", "Apocalyptic City Level", "WorldGenerator", "Procedural Ruined Warzone Racing Level", ConstructSlotCategory::LayerGroup });
+        Templates.reserve(15u);
+        Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry",    "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry",    "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry",    "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry",    "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry",    "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Point Light",       "Point Light",       "Lighting",    "Omnidirectional Luminaire",  ConstructSlotCategory::PointLuminaire, "light:point"        });
+        Templates.push_back({ "Add Spot Light",        "Spot Light",        "Lighting",    "Focused Cone Spotlight",     ConstructSlotCategory::PointLuminaire, "light:spot"         });
+        Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting",    "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire, "light:area"         });
+        Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",      "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera,   "camera:perspective" });
+        Templates.push_back({ "Add Atmosphere",        "Atmosphere",        "Environment", "Rayleigh / Mie / Ozone Sky", ConstructSlotCategory::LayerGroup,     "env:atmosphere"     });
+        Templates.push_back({ "Add Sun",               "Sun",               "Environment", "Solar Ephemeris & Direct",   ConstructSlotCategory::PointLuminaire, "env:sun"            });
+        Templates.push_back({ "Add Moon",              "Moon",              "Environment", "Celestial Lunar Body",       ConstructSlotCategory::LayerGroup,     "env:moon"           });
+        Templates.push_back({ "Add Clouds",            "Volumetric Clouds", "Weather",     "Volumetric Cloud Deck",      ConstructSlotCategory::LayerGroup,     "env:clouds"         });
+        Templates.push_back({ "Generate Apocalyptic City Level", "Apocalyptic City Level", "WorldGenerator", "Procedural Ruined Warzone Racing Level", ConstructSlotCategory::LayerGroup, "" });
         Panes->Outliner.ConfigureConstructTemplates(std::move(Templates));
 
         Panes->Viewport.ConfigureOpenContentBrowserCallback(
@@ -264,6 +271,10 @@ bool EditorLifecycle::AttachVulkanGizmoOverlay(
         if (CandidateWorldGpu->InitializeSequence(*BoundDevice, CompiledShaderDirectory))
         {
             GpuWorldRenderer = std::move(CandidateWorldGpu);
+            if (StartupConfig.ImGuiPresenter != nullptr)
+            {
+                InspectorGpuBaker::AttachImGuiPresenter(StartupConfig.ImGuiPresenter);
+            }
             if (ShowcaseBundle != nullptr)
             {
                 GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, true);
@@ -580,6 +591,12 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
                 PendingInteractionSceneSync    = true;
             }
             return Handled;
+        });
+
+    Panes->Inspector.ConfigureOverrideSignatureCallback(
+        [this]() noexcept -> uint64_t
+        {
+            return Inspectors.QueryActiveSignature();
         });
 
     Panes->Outliner.ConfigureFocusViewportCallback(
@@ -2245,6 +2262,15 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
 
     ShowcaseBundle->EditorCamera.ViewportWidthPx  = UseGpuViewport ? TargetW : TraceW;
     ShowcaseBundle->EditorCamera.ViewportHeightPx = UseGpuViewport ? TargetH : TraceH;
+    // Live Camera Inspector optics binding (zero CPU overhead — pure focal/sensor FOV evaluation)
+    {
+        const float SafeFocal  = std::clamp(DisplayCfg.CameraFocalLengthMm, 12.0f, 200.0f);
+        const float SafeSensor = std::clamp(DisplayCfg.CameraSensorWidthMm, 12.0f, 70.0f);
+        const float Aspect     = static_cast<float>(std::max(1u, TargetW)) / static_cast<float>(std::max(1u, TargetH));
+        const float SensorH    = SafeSensor / std::max(0.5f, Aspect);
+        ShowcaseBundle->EditorCamera.VerticalFovRadians =
+            std::clamp(2.0f * std::atan(SensorH / (2.0f * SafeFocal)), 0.14f, 2.10f);
+    }
 
     const uint32_t QTier = std::min(4u, DisplayCfg.QualityTier);
 
@@ -2256,10 +2282,27 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
         ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
         : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
     RenderConfig.DebugChannel           = std::min(22u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.GiCandidate            = (DisplayCfg.GiCandidateIndex == 0u)
+        ? GeometricRaster::RealTimeGiCandidate::StokesContour
+        : GeometricRaster::RealTimeGiCandidate::SurfelRadiosity;
     RenderConfig.XeGtaoEnabled          = DisplayCfg.XeGtaoEnabled;
     RenderConfig.XeGtaoStrength         = DisplayCfg.XeGtaoStrength;
+    RenderConfig.XeGtaoSliceCount       = std::clamp(DisplayCfg.XeGtaoSliceCount, 2u, 8u);
+    RenderConfig.XeGtaoStepsPerSide     = std::clamp(DisplayCfg.XeGtaoStepsPerSide, 2u, 8u);
+    RenderConfig.XeGtaoSearchRadiusM    = std::clamp(DisplayCfg.XeGtaoSearchRadiusM, 0.25f, 3.0f);
+    RenderConfig.SdfConeSteps           = std::clamp(DisplayCfg.SdfConeSteps, 3u, 12u);
+    RenderConfig.SdfGiIntensity         = std::clamp(DisplayCfg.SdfGiIntensity, 0.0f, 2.5f);
+    RenderConfig.SdfAoRadiusM           = std::clamp(DisplayCfg.SdfAoRadiusM, 0.35f, 3.5f);
+    RenderConfig.SdfAoContrast          = std::clamp(DisplayCfg.SdfAoContrast, 0.40f, 3.5f);
+    RenderConfig.MatcapChannelIndex     = std::min(3u, DisplayCfg.MatcapChannelIndex);
+    RenderConfig.MatcapRimGain          = std::clamp(DisplayCfg.MatcapRimGain, 0.0f, 1.0f);
     RenderConfig.PathTraceSamples       = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
     RenderConfig.PathTraceTargetSpp     = DisplayCfg.PathTraceTargetSpp;
+    RenderConfig.PathTraceMaxBounces    = std::clamp(DisplayCfg.PathTraceMaxBounces, 1u, 8u);
+    RenderConfig.SmrtShadowRays         = std::clamp(DisplayCfg.SmrtShadowRays, 1u, 8u);
+    RenderConfig.SmrtMarchSteps         = std::clamp(DisplayCfg.SmrtMarchSteps, 4u, 16u);
+    RenderConfig.SkyFillGain            = std::clamp(DisplayCfg.SkyFillGain, 0.0f, 3.0f);
+    RenderConfig.ExposureGain           = std::clamp(DisplayCfg.ExposureGain, 0.1f, 4.0f);
     RenderConfig.NaniteLodEnabled       = DisplayCfg.ClusterLodEnabled;
     RenderConfig.NanitePixelError       = DisplayCfg.ClusterLodPixelError;
     RenderConfig.NaniteForcedLodLevel   = DisplayCfg.ClusterForcedLodLevel;
@@ -2453,7 +2496,8 @@ void EditorLifecycle::RefreshOutlinerFooterTelemetry() noexcept
     const bool  GpuReady   = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
     const bool  HwGpu      = GpuReady && GpuWorldRenderer->QueryHardwareGpuActive();
 
-    OutlinerFooterReadings Footer = Panes->Outliner.QueryFooterReadings();
+    const OutlinerFooterReadings PriorFooter = Panes->Outliner.QueryFooterReadings();
+    OutlinerFooterReadings       Footer      = PriorFooter;
     const char* EngineShortTag = "OpenPBR";
     switch (DisplayCfg.RenderEngineIndex)
     {
@@ -2504,7 +2548,14 @@ void EditorLifecycle::RefreshOutlinerFooterTelemetry() noexcept
             ShowcaseBundle->EditorCamera.CameraOrigin.Z);
         Footer.CameraText = CamBuffer;
     }
-    Panes->Outliner.ConfigureFooterReadings(Footer);
+    if (Footer.RealtimeText  != PriorFooter.RealtimeText  ||
+        Footer.QualityText   != PriorFooter.QualityText   ||
+        Footer.PrimarySlot   != PriorFooter.PrimarySlot   ||
+        Footer.SecondarySlot != PriorFooter.SecondarySlot ||
+        Footer.CameraText    != PriorFooter.CameraText)
+    {
+        Panes->Outliner.ConfigureFooterReadings(Footer);
+    }
 }
 
 bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
@@ -2623,6 +2674,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
 
             // Authoritative Outliner -> WorldScene environment sync (handles Hide/Show/Isolate/Delete/Construct)
+            const auto EnvSyncStart = std::chrono::steady_clock::now();
             const bool EnvRegistryChanged = EnvironmentRegistry.SyncToWorld(
                 Panes->Outliner,
                 ShowcaseBundle->Scene,
@@ -2645,8 +2697,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
             const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || AtmoAnimTick;
             // Only bake the CPU Bruneton SkyView LUT when the software CPU fallback renderer is active (!GpuReady).
-            // When Vulkan GPU compute is active, the GPU builds its own SkyView LUT on-device; CPU only runs
-            // lightweight (~0.01 ms) solar ephemeris + transmittance to keep Sun direction & irradiance live.
+            // When the Vulkan hardware GPU compute pipeline is active, the GPU builds its own SkyView LUT on-device;
+            // CPU only runs lightweight (~0.01ms) solar ephemeris + transmittance to keep Sun direction/irradiance live.
             const bool NeedCpuSkySync =
                 !GpuReady && ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
                 (ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || DisplayCfg.DayCyclePlaying || AtmoAnimTick);
@@ -2657,7 +2709,6 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             else if (Atmo.Medium.AtmosphereEnabled && (AtmoChanged || DisplayCfg.DayCyclePlaying))
             {
                 const auto Solved = GeometricRaster::CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
-                ShowcaseBundle->Scene.Sun.DirectionToSun = Solved.WorldDirectionToSun;
                 const float ObsAlt = Atmo.Medium.ObserverAltitudeMeters;
                 const auto Trans = GeometricRaster::AtmosphericSkySequence::ComputeSolarTransmittance(
                     Solved.WorldDirectionToSun,
@@ -2665,6 +2716,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                     ObsAlt);
                 const bool IsOrbital = Atmo.Medium.OrbitalViewEnabled || (ObsAlt > Atmo.Medium.AtmosphereThicknessMeters);
                 const float SunVis = IsOrbital ? 1.0f : std::clamp((Solved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
+                ShowcaseBundle->Scene.Sun.DirectionToSun = Solved.WorldDirectionToSun;
                 ShowcaseBundle->Scene.Sun.SunAngularRadiusRadians =
                     std::clamp(Atmo.Solar.AngularDiameterDegrees * 0.5f * 0.0174532925f, 0.002f, 0.25f);
                 if (Atmo.Solar.SolarEnabled)
@@ -2677,6 +2729,8 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                     };
                 }
             }
+            LatestViewportTiming.EnvSyncMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - EnvSyncStart).count());
 
             const ViewportProjectionPreset CurProjection = Panes->Viewport.QueryPrimaryProjection();
             bool ProjectionChanged = false;
@@ -2770,6 +2824,24 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.PathTraceBatchSpp != LastPathTraceBatchSpp ||
                 DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
                 std::abs(DisplayCfg.XeGtaoStrength - LastXeGtaoStrength) > 0.001f ||
+                DisplayCfg.XeGtaoSliceCount != LastXeGtaoSlices ||
+                DisplayCfg.XeGtaoStepsPerSide != LastXeGtaoSteps ||
+                std::abs(DisplayCfg.XeGtaoSearchRadiusM - LastXeGtaoRadiusM) > 0.001f ||
+                DisplayCfg.GiCandidateIndex != LastGiCandidate ||
+                DisplayCfg.SdfConeSteps != LastSdfConeSteps ||
+                std::abs(DisplayCfg.SdfGiIntensity - LastSdfGiIntensity) > 0.001f ||
+                std::abs(DisplayCfg.SdfAoRadiusM - LastSdfAoRadiusM) > 0.001f ||
+                std::abs(DisplayCfg.SdfAoContrast - LastSdfAoContrast) > 0.001f ||
+                DisplayCfg.MatcapChannelIndex != LastMatcapChannel ||
+                std::abs(DisplayCfg.MatcapRimGain - LastMatcapRimGain) > 0.001f ||
+                std::abs(DisplayCfg.CameraFocalLengthMm - LastCameraFocalMm) > 0.01f ||
+                std::abs(DisplayCfg.CameraSensorWidthMm - LastCameraSensorMm) > 0.01f ||
+                std::abs(DisplayCfg.CameraRollDegrees - LastCameraRollDeg) > 0.01f ||
+                DisplayCfg.PathTraceMaxBounces != LastPtMaxBounces ||
+                DisplayCfg.SmrtShadowRays != LastSmrtShadowRays ||
+                DisplayCfg.SmrtMarchSteps != LastSmrtMarchSteps ||
+                std::abs(DisplayCfg.SkyFillGain - LastSkyFillGain) > 0.001f ||
+                std::abs(DisplayCfg.ExposureGain - LastExposureGain) > 0.001f ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
                 DisplayCfg.RaytracingEnabled != LastRtEnabled ||
@@ -2797,6 +2869,24 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastPathTraceBatchSpp  = DisplayCfg.PathTraceBatchSpp;
             LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
             LastXeGtaoStrength     = DisplayCfg.XeGtaoStrength;
+            LastXeGtaoSlices       = DisplayCfg.XeGtaoSliceCount;
+            LastXeGtaoSteps        = DisplayCfg.XeGtaoStepsPerSide;
+            LastXeGtaoRadiusM      = DisplayCfg.XeGtaoSearchRadiusM;
+            LastGiCandidate        = DisplayCfg.GiCandidateIndex;
+            LastSdfConeSteps       = DisplayCfg.SdfConeSteps;
+            LastSdfGiIntensity     = DisplayCfg.SdfGiIntensity;
+            LastSdfAoRadiusM       = DisplayCfg.SdfAoRadiusM;
+            LastSdfAoContrast      = DisplayCfg.SdfAoContrast;
+            LastMatcapChannel      = DisplayCfg.MatcapChannelIndex;
+            LastMatcapRimGain      = DisplayCfg.MatcapRimGain;
+            LastCameraFocalMm      = DisplayCfg.CameraFocalLengthMm;
+            LastCameraSensorMm     = DisplayCfg.CameraSensorWidthMm;
+            LastCameraRollDeg      = DisplayCfg.CameraRollDegrees;
+            LastPtMaxBounces       = DisplayCfg.PathTraceMaxBounces;
+            LastSmrtShadowRays     = DisplayCfg.SmrtShadowRays;
+            LastSmrtMarchSteps     = DisplayCfg.SmrtMarchSteps;
+            LastSkyFillGain        = DisplayCfg.SkyFillGain;
+            LastExposureGain       = DisplayCfg.ExposureGain;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
             LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
             LastRtEnabled          = DisplayCfg.RaytracingEnabled;
@@ -2934,7 +3024,7 @@ bool EditorLifecycle::QueryRequiresContinuousRefresh() noexcept
     {
         return true;
     }
-    if (ContentBrowserDrawer.QueryPanel().QueryShelfAnimating())
+    if (ContentBrowserDrawer.QueryPanel().QueryShelfAnimating() || Inspectors.QueryScrollAnimating())
     {
         return true;
     }
@@ -2999,6 +3089,10 @@ void EditorLifecycle::RecordFramePresentationTiming(
 
     if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
+        LatestViewportTiming.InspectorUiMs          = Panes->Inspector.QueryLastRenderDurationMs();
+        LatestViewportTiming.InspectorCacheReplayed = Panes->Inspector.QueryLastRenderReplayed();
+        LatestViewportTiming.InspectorCaptureCount  = Panes->Inspector.QueryRetainedCaptureCount();
+        LatestViewportTiming.InspectorReplayCount   = Panes->Inspector.QueryRetainedReplayCount();
         Panes->Viewport.ConfigureViewportTimingBreakdown(LatestViewportTiming);
         RefreshOutlinerFooterTelemetry();
         const auto& Disp = Panes->Viewport.QueryDisplaySettings();
@@ -3221,6 +3315,7 @@ void EditorLifecycle::Finalize() noexcept
         }
     }
     EditorSequence.Finalize();
+    InspectorGpuBaker::DetachImGuiPresenter();
     if (StartupConfig.ImGuiPresenter != nullptr)
     {
         StartupConfig.ImGuiPresenter->ReleaseExternalImages();

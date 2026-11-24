@@ -121,7 +121,8 @@ public:
         uint64_t    NativeTextureHandle = 0ull,
         ColorRgba   Tint                = { 255u, 255u, 255u, 255u },
         Point2D     UvMin               = { 0.0f, 0.0f },
-        Point2D     UvMax               = { 1.0f, 1.0f }) noexcept;
+        Point2D     UvMax               = { 1.0f, 1.0f },
+        float       CornerRadius        = 0.0f) noexcept;
     void StrokeLine(Point2D From, Point2D To, ColorRgba Stroke, float Thickness = 1.0f) noexcept;
     void StrokePolyline(std::span<const Point2D> Vertices, ColorRgba Stroke, float Thickness = 1.0f, bool Closed = false) noexcept;
 

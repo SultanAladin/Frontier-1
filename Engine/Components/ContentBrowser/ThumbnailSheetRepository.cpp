@@ -12,6 +12,7 @@
 #include "Engine/MaterialSpace/SurfaceMaterial.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -23,6 +24,11 @@ namespace Frontier
 
 namespace
 {
+
+std::mutex                                     GlobalThumbGpuBakerMutex {};
+ThumbnailSheetRepository::GpuThumbnailBakerFn  GlobalThumbGpuBaker      {};
+std::atomic<uint64_t>                          GlobalThumbGpuBakeCount  { 0ull };
+std::atomic<uint64_t>                          GlobalThumbCpuBakeCount  { 0ull };
 
 constexpr uint32_t CategoryBit(ContentCategory Category) noexcept
 {
@@ -775,11 +781,115 @@ void SynthesizeMaterialPreviewTileRgba(
     std::memcpy(OutTileRgba.data(), Baked.Rgba8.data(), CopyBytes);
 }
 
+void ThumbnailSheetRepository::AssignGpuThumbnailBaker(GpuThumbnailBakerFn Baker)
+{
+    std::lock_guard<std::mutex> Lock(GlobalThumbGpuBakerMutex);
+    GlobalThumbGpuBaker = std::move(Baker);
+}
+
+void ThumbnailSheetRepository::ClearGpuThumbnailBaker() noexcept
+{
+    std::lock_guard<std::mutex> Lock(GlobalThumbGpuBakerMutex);
+    GlobalThumbGpuBaker = {};
+}
+
+bool ThumbnailSheetRepository::QueryGpuThumbnailBakerAttached() noexcept
+{
+    std::lock_guard<std::mutex> Lock(GlobalThumbGpuBakerMutex);
+    return static_cast<bool>(GlobalThumbGpuBaker);
+}
+
+uint64_t ThumbnailSheetRepository::QueryGpuBakedTileCount() noexcept
+{
+    return GlobalThumbGpuBakeCount.load(std::memory_order_relaxed);
+}
+
+uint64_t ThumbnailSheetRepository::QueryCpuBakedTileCount() noexcept
+{
+    return GlobalThumbCpuBakeCount.load(std::memory_order_relaxed);
+}
+
 void ThumbnailSheetRepository::BakeProceduralTileIntoPage(ContentRepositoryEntry& Entry)
 {
     std::vector<uint8_t> TileRgba(static_cast<std::size_t>(TileDimensionPixels) * TileDimensionPixels * 4u, 0u);
     const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
     const ColorRgba Tint{ Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
+
+    // Pure-GPU Vulkan compute specimen path first (Materials, Geometry, Photometry) — zero CPU raytracing when GPU is active!
+    if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry || Category == ContentCategory::Materials)
+    {
+        GpuThumbnailBakerFn GpuBaker {};
+        {
+            std::lock_guard<std::mutex> Lock(GlobalThumbGpuBakerMutex);
+            GpuBaker = GlobalThumbGpuBaker;
+        }
+        if (GpuBaker)
+        {
+            ThumbnailGpuBakeDesc Desc {};
+            Desc.Category = Category;
+            Desc.Tint     = Tint;
+            std::string Lower(Entry.DisplayTitle);
+            for (char& Ch : Lower)
+            {
+                Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+            }
+            if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
+            {
+                if (Lower.find("cube") != std::string::npos || Lower.find("box") != std::string::npos || Lower.find("crate") != std::string::npos)
+                    Desc.SubMode = 1u;
+                else if (Lower.find("torus") != std::string::npos || Lower.find("ring") != std::string::npos || Lower.find("wheel") != std::string::npos)
+                    Desc.SubMode = 2u;
+                else if (Lower.find("cone") != std::string::npos || Lower.find("pyramid") != std::string::npos)
+                    Desc.SubMode = 3u;
+                else if (Lower.find("cyl") != std::string::npos || Lower.find("barrel") != std::string::npos || Lower.find("pillar") != std::string::npos)
+                    Desc.SubMode = 4u;
+                else
+                    Desc.SubMode = 0u;
+                Desc.Roughness = 0.34f;
+                Desc.Metallic  = (Lower.find("metal") != std::string::npos || Lower.find("chrome") != std::string::npos) ? 0.85f : 0.08f;
+            }
+            else
+            {
+                if (Lower.find("metal") != std::string::npos || Lower.find("chrome") != std::string::npos ||
+                    Lower.find("gold") != std::string::npos || Lower.find("brass") != std::string::npos ||
+                    Lower.find("steel") != std::string::npos || Lower.find("copper") != std::string::npos)
+                {
+                    Desc.Metallic  = 0.95f;
+                    Desc.Roughness = (Lower.find("brushed") != std::string::npos) ? 0.28f : 0.12f;
+                }
+                else if (Lower.find("glass") != std::string::npos || Lower.find("crystal") != std::string::npos || Lower.find("water") != std::string::npos)
+                {
+                    Desc.Transmission = 0.92f;
+                    Desc.Roughness    = 0.05f;
+                    Desc.Clearcoat    = 0.5f;
+                }
+                else if (Lower.find("coat") != std::string::npos || Lower.find("car") != std::string::npos || Lower.find("lacquer") != std::string::npos)
+                {
+                    Desc.Clearcoat = 1.0f;
+                    Desc.Roughness = 0.16f;
+                }
+                else if (Lower.find("emiss") != std::string::npos || Lower.find("neon") != std::string::npos || Lower.find("glow") != std::string::npos)
+                {
+                    Desc.Emission  = 1.4f;
+                    Desc.Roughness = 0.25f;
+                }
+                else
+                {
+                    Desc.Roughness = 0.32f;
+                }
+            }
+
+            if (GpuBaker(Desc, TileDimensionPixels, TileRgba) &&
+                TileRgba.size() >= static_cast<std::size_t>(TileDimensionPixels) * TileDimensionPixels * 4u)
+            {
+                CopyTileBytesIntoPage(Entry.IndexHeader, TileRgba);
+                Entry.TileResident = true;
+                GlobalThumbGpuBakeCount.fetch_add(1ull, std::memory_order_relaxed);
+                return;
+            }
+        }
+    }
+
     if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
     {
         const MaterialSpace::SpecimenPreviewImage Baked = GeometricRaster::RasterizeGeometrySpecimenByTitle(
@@ -800,6 +910,7 @@ void ThumbnailSheetRepository::BakeProceduralTileIntoPage(ContentRepositoryEntry
     }
     CopyTileBytesIntoPage(Entry.IndexHeader, TileRgba);
     Entry.TileResident = true;
+    GlobalThumbCpuBakeCount.fetch_add(1ull, std::memory_order_relaxed);
 }
 
 std::size_t ThumbnailSheetRepository::RegisterPrebakedEntry(
@@ -1139,7 +1250,9 @@ void ThumbnailSheetRepository::PopulateDefaultWorkspaceEntries()
         const std::filesystem::path EntryPath = (Seed.RelativePath != nullptr)
             ? (RootDir / Seed.RelativePath)
             : (RootDir / QueryCategoryTitle(Seed.Category) / (std::string(Seed.Title) + Ext));
-        const std::size_t Idx = RegisterPrebakedEntry(Seed.Title, Seed.Category, Seed.Origin, Seed.Tint, EntryPath, true);
+        // Lazy GPU-ready baking: defer specimen baking until the tile is actually visible or queried,
+        // eliminating synchronous startup CPU raytracing stalls on F=1 before the Vulkan GPU baker attaches.
+        const std::size_t Idx = RegisterPrebakedEntry(Seed.Title, Seed.Category, Seed.Origin, Seed.Tint, EntryPath, false);
         if (Seed.CustomSuffix != nullptr && Idx < Entries.size())
         {
             Entries[Idx].ContainerFormat = Seed.CustomSuffix;
@@ -1160,6 +1273,15 @@ bool ThumbnailSheetRepository::PersistBinarySheetIndex(
     if (SheetFilePath.has_parent_path())
     {
         std::filesystem::create_directories(SheetFilePath.parent_path(), IoErr);
+    }
+
+    auto* MutableSelf = const_cast<ThumbnailSheetRepository*>(this);
+    for (ContentRepositoryEntry& Entry : MutableSelf->Entries)
+    {
+        if (!Entry.TileResident)
+        {
+            MutableSelf->BakeProceduralTileIntoPage(Entry);
+        }
     }
 
     std::vector<ContentIndexEntry64> PackedHeaders;
@@ -1568,8 +1690,13 @@ ThumbnailUvQuad ThumbnailSheetRepository::QueryTileUv(std::size_t EntryIndex) co
     {
         return Quad;
     }
-    const ContentRepositoryEntry& Entry   = Entries[EntryIndex];
-    const uint16_t                PageOrd = Entry.IndexHeader.SheetPageOrdinal;
+    auto* MutableSelf = const_cast<ThumbnailSheetRepository*>(this);
+    ContentRepositoryEntry& Entry = MutableSelf->Entries[EntryIndex];
+    if (!Entry.TileResident)
+    {
+        MutableSelf->BakeProceduralTileIntoPage(Entry);
+    }
+    const uint16_t PageOrd = Entry.IndexHeader.SheetPageOrdinal;
     if (PageOrd >= SheetPages.size() || !Entry.TileResident)
     {
         return Quad;
@@ -1598,6 +1725,11 @@ bool ThumbnailSheetRepository::QueryTileRgbaPixels(std::size_t EntryIndex, std::
     if (EntryIndex >= Entries.size())
     {
         return false;
+    }
+    auto* MutableSelf = const_cast<ThumbnailSheetRepository*>(this);
+    if (!MutableSelf->Entries[EntryIndex].TileResident)
+    {
+        MutableSelf->BakeProceduralTileIntoPage(MutableSelf->Entries[EntryIndex]);
     }
     const ContentIndexEntry64& Hdr = Entries[EntryIndex].IndexHeader;
     if (Hdr.SheetPageOrdinal >= SheetPages.size() || !SheetPages[Hdr.SheetPageOrdinal])

@@ -229,6 +229,25 @@ public:
     [[nodiscard]] bool                                    QueryTileRgbaPixels(std::size_t EntryIndex, std::vector<uint8_t>& OutTileRgba) const;
     [[nodiscard]] uint32_t                                PageCount() const noexcept;
 
+    struct ThumbnailGpuBakeDesc
+    {
+        ContentCategory Category     = ContentCategory::Materials;
+        uint32_t        SubMode      = 0u; // 0=Sphere, 1=Cube, 2=Torus, 3=Cone, 4=Cylinder
+        ColorRgba       Tint         { 180u, 180u, 186u, 255u };
+        float           Metallic     = 0.0f;
+        float           Roughness    = 0.28f;
+        float           Clearcoat    = 0.0f;
+        float           Transmission = 0.0f;
+        float           Emission     = 0.0f;
+    };
+    using GpuThumbnailBakerFn = std::function<bool(const ThumbnailGpuBakeDesc&, uint32_t, std::vector<uint8_t>&)>;
+
+    static void AssignGpuThumbnailBaker(GpuThumbnailBakerFn Baker);
+    static void ClearGpuThumbnailBaker() noexcept;
+    [[nodiscard]] static bool     QueryGpuThumbnailBakerAttached() noexcept;
+    [[nodiscard]] static uint64_t QueryGpuBakedTileCount() noexcept;
+    [[nodiscard]] static uint64_t QueryCpuBakedTileCount() noexcept;
+
 private:
     struct SheetPageTexture
     {

@@ -1,7 +1,7 @@
 /*============================================================================================================================================
                                                           HEIGHTFOGINSPECTOR.H
 ============================================================================================================================================*/
-// 🧩 Standalone multi-instance Height Fog Inspector (Overview, Density with altitude extinction curve, Light)
+// 🧩 Standalone Height Fog Inspector (1:1 HTML parity port of FogCards.jsx + HeightFogVisual.jsx + Inspectors.jsx)
 
 #pragma once
 
@@ -15,7 +15,7 @@ class HeightFogInspector
 {
 public:
     HeightFogInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Exponential height fog"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Height fog \xC2\xB7 exponential vertical density"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
@@ -25,8 +25,14 @@ public:
     void SetActivePage(uint32_t PageIndex) noexcept { ActivePage = PageIndex; }
 
 private:
-    uint32_t ActivePage   = 0u;
-    uint32_t ActiveDragId = 0u;
+    void UpdateLayerSurface(const HeightFogInstanceData& Instance, bool Enabled);
+    void UpdateLightStudySurfaces(const HeightFogInstanceData& Instance);
+
+    uint32_t                ActivePage         = 0u;
+    uint32_t                ActiveDragId       = 0u;
+    InspectorPreviewSurface LayerPreview       {};
+    InspectorPreviewSurface TowardsSunPreview  {};
+    InspectorPreviewSurface AwayFromSunPreview {};
 };
 
 } // namespace Frontier

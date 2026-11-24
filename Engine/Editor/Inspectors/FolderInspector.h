@@ -15,7 +15,7 @@ class FolderInspector
 {
 public:
     FolderInspector() noexcept = default;
-    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Generic folder container"; }
+    [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Environment \xC2\xB7 indexed from the current scene"; }
 
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,

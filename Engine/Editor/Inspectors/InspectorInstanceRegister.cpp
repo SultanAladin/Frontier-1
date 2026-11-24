@@ -832,6 +832,95 @@ void InspectorInstanceRegister::CombineIntoScene(
             Scene.Atmosphere.Wind.SpeedMetersPerSecond = 0.0f;
         }
     }
+
+    // Sync active Camera Settings entry & active Camera optics into live ViewportDisplaySettings -> GPU uniforms
+    if (DisplaySettings != nullptr)
+    {
+        for (const auto& Entry : Outliner.QueryEntries())
+        {
+            if (!Outliner.QueryEffectiveVisibility(Entry.Token)) continue;
+            if (Entry.DomainTag == "env:camera-settings" ||
+                Entry.DomainTag == "env:render-engine" ||
+                Entry.DomainTag == "camera:settings" ||
+                Entry.DomainTag == "render:settings")
+            {
+                if (const auto It = CameraSettingsEntries.find(Entry.Token.Identifier); It != CameraSettingsEntries.end())
+                {
+                    SyncCameraSettingsToDisplay(It->second, DisplaySettings);
+                    break;
+                }
+            }
+        }
+        for (const auto& Entry : Outliner.QueryEntries())
+        {
+            if (!Outliner.QueryEffectiveVisibility(Entry.Token)) continue;
+            if (Entry.DomainTag == "camera:perspective" ||
+                Entry.DomainTag == "camera:orthographic" ||
+                Entry.DomainTag == "camera:cinematic" ||
+                Entry.DomainTag == "camera:primary" ||
+                Entry.DomainTag == "scene:camera")
+            {
+                if (const auto It = Cameras.find(Entry.Token.Identifier); It != Cameras.end())
+                {
+                    DisplaySettings->CameraFocalLengthMm  = std::clamp(It->second.FocalLengthMm, 12.0f, 200.0f);
+                    DisplaySettings->CameraSensorWidthMm  = std::clamp(It->second.SensorWidthMm, 12.0f, 70.0f);
+                    DisplaySettings->CameraApertureFStop  = std::clamp(It->second.ApertureFStop, 1.2f, 22.0f);
+                    DisplaySettings->CameraFocusDistanceM = std::clamp(It->second.FocusDistanceMeters, 0.3f, 100.0f);
+                    DisplaySettings->CameraRollDegrees    = std::clamp(It->second.CameraRollDegrees, -45.0f, 45.0f);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void InspectorInstanceRegister::SyncCameraSettingsToDisplay(
+    const CameraSettingsData& Data,
+    ViewportDisplaySettings*  DisplaySettings) noexcept
+{
+    if (DisplaySettings == nullptr) return;
+
+    switch (Data.RendererIndex)
+    {
+        case 0u: DisplaySettings->RenderEngineIndex = 1u; break; // WorldRenderEngine::OpenPbrDirect
+        case 1u: DisplaySettings->RenderEngineIndex = 2u; break; // WorldRenderEngine::RealTimeGiGtxLowEnd
+        case 2u: DisplaySettings->RenderEngineIndex = 3u + std::min<uint32_t>(Data.RayTracerIndex, 2u); break; // 3=BVH4, 4=PT Realtime, 5=PT Final
+        default: DisplaySettings->RenderEngineIndex = 0u; break; // WorldRenderEngine::MatCap
+    }
+
+    DisplaySettings->QualityTier             = std::min<uint32_t>(Data.QualityTierIndex, 4u);
+    DisplaySettings->ShadowAlgorithmIndex    = (Data.RendererIndex == 2u) ? std::min<uint32_t>(Data.RayShadowIndex, 4u) : std::min<uint32_t>(Data.PbrShadowIndex, 4u);
+    DisplaySettings->SmrtShadowRays          = static_cast<uint32_t>(std::clamp(std::lround(Data.SmrtShadowRays), 1l, 8l));
+    DisplaySettings->SmrtMarchSteps          = static_cast<uint32_t>(std::clamp(std::lround(Data.SmrtMarchSteps), 4l, 16l));
+    DisplaySettings->SdfShadowPenumbraIndex  = std::min<uint32_t>(Data.SdfPenumbraIndex, 5u);
+    DisplaySettings->GiCandidateIndex        = std::min<uint32_t>(Data.GiCandidateIndex, 1u);
+    DisplaySettings->SdfConeSteps            = static_cast<uint32_t>(std::clamp(std::lround(Data.SdfConeSteps), 3l, 12l));
+    DisplaySettings->SdfGiIntensity          = std::clamp(Data.SdfGiIntensity, 0.0f, 2.5f);
+    DisplaySettings->SdfAoRadiusM            = std::clamp(Data.SdfAoRadiusM, 0.35f, 3.5f);
+    DisplaySettings->SdfAoContrast           = std::clamp(Data.SdfAoContrast, 0.40f, 3.5f);
+    DisplaySettings->MatcapChannelIndex      = std::min<uint32_t>(Data.MatcapChannelIndex, 3u);
+    DisplaySettings->MatcapRimGain           = std::clamp(Data.MatcapRimGain, 0.0f, 1.0f);
+    DisplaySettings->ReflectionsEnabled      = (Data.RendererIndex == 2u) ? Data.RayReflectionsEnabled : Data.PbrReflectionsEnabled;
+    DisplaySettings->ReflectionSourceIndex   = std::min<uint32_t>(Data.ReflectionSourceIndex, 1u);
+    DisplaySettings->RaytracingEnabled       = Data.RaytracingEnabled;
+    DisplaySettings->XeGtaoEnabled           = (Data.RendererIndex == 1u) ? false : Data.XeGtaoEnabled;
+    DisplaySettings->XeGtaoStrength          = std::clamp(Data.XeGtaoStrength, 0.0f, 2.0f);
+    DisplaySettings->XeGtaoSliceCount        = static_cast<uint32_t>(std::clamp(std::lround(Data.XeGtaoSliceCount), 2l, 8l));
+    DisplaySettings->XeGtaoStepsPerSide      = static_cast<uint32_t>(std::clamp(std::lround(Data.XeGtaoStepsPerSide), 2l, 8l));
+    DisplaySettings->XeGtaoSearchRadiusM     = std::clamp(Data.XeGtaoSearchRadiusM, 0.25f, 3.0f);
+    DisplaySettings->PathTraceBatchSpp       = static_cast<uint32_t>(std::clamp(std::lround(Data.PathTraceBatchSpp), 1l, 8l));
+    DisplaySettings->PathTraceTargetSpp      = static_cast<uint32_t>(std::clamp(std::lround(Data.PathTraceTargetSpp), 0l, 2048l));
+    DisplaySettings->PathTraceMaxBounces     = static_cast<uint32_t>(std::clamp(std::lround(Data.PathTraceMaxBounces), 1l, 8l));
+    DisplaySettings->RenderScalePercent      = std::clamp(Data.RenderScalePercent, 50.0f, 200.0f);
+    DisplaySettings->TraceResolutionIndex    = std::min<uint32_t>(Data.TraceResolutionIndex, 2u);
+    DisplaySettings->SkyFillGain             = std::clamp((Data.RendererIndex == 1u) ? Data.SdfFillGain : Data.PbrFillGain, 0.0f, 3.0f);
+    DisplaySettings->ExposureGain            = std::clamp(Data.ExposureGain, 0.1f, 4.0f);
+    DisplaySettings->AntiAliasingEnabled     = Data.SpatialAntiAliasing;
+    DisplaySettings->ClusterLodEnabled       = Data.ClusterLodEnabled;
+    DisplaySettings->ClusterLodPixelError    = std::clamp(Data.ClusterLodPixelError, 0.25f, 8.0f);
+    DisplaySettings->ClusterForcedLodLevel   = std::clamp(Data.ClusterForcedLodLevel, -1, 3);
+    DisplaySettings->ClusterWireframeOverlay = Data.ClusterWireframeOverlay;
+    DisplaySettings->DebugChannelIndex       = std::min<uint32_t>(Data.DebugChannelIndex, 22u);
 }
 
 std::string InspectorInstanceRegister::ResolveEnclosingBreadcrumb(

@@ -48,6 +48,7 @@
 #include "Engine/Editor/WorldEnvironmentRegistry.h"
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 
+#include <chrono>
 #include <cstdint>
 
 namespace Frontier
@@ -69,8 +70,19 @@ public:
         const PaneInputReading&                   Input,
         bool&                                     OutMutated) noexcept;
 
-    void SetScrollOffset(float ScrollPixels) noexcept { ScrollOffsetY = std::max(0.0f, ScrollPixels); }
-    void ClearInstances() noexcept { Instances.Clear(); ProjectHost.ClearAll(); }
+    void SetScrollOffset(float ScrollPixels) noexcept
+    {
+        ScrollOffsetY       = std::max(0.0f, ScrollPixels);
+        TargetScrollOffsetY = ScrollOffsetY;
+        ScrollAnimating     = false;
+        ++ActivePanelRevision;
+    }
+    [[nodiscard]] bool QueryScrollAnimating() const noexcept { return ScrollAnimating; }
+    void ClearInstances() noexcept { Instances.Clear(); ProjectHost.ClearAll(); ++ActivePanelRevision; }
+    [[nodiscard]] uint64_t QueryActiveSignature() const noexcept;
+    [[nodiscard]] uint64_t QueryConstructCallCount() const noexcept { return ConstructCallCount; }
+    [[nodiscard]] uint32_t QueryLastEvaluatedCardCount() const noexcept { return LastEvaluatedCardCount; }
+    [[nodiscard]] uint32_t QueryLastSkippedCardCount() const noexcept { return LastSkippedCardCount; }
 
     [[nodiscard]] ProjectInspectorHost&      QueryProjectHost() noexcept { return ProjectHost; }
     [[nodiscard]] InspectorInstanceRegister& QueryInstances() noexcept { return Instances; }
@@ -142,8 +154,19 @@ private:
     FolderInspector             Folder             {};
     ProjectInspectorHost        ProjectHost        {};
 
-    uint32_t LastEntryId   = 0u;
-    float    ScrollOffsetY = 0.0f;
+    uint32_t LastEntryId            = 0u;
+    float    ScrollOffsetY          = 0.0f;
+    float    TargetScrollOffsetY    = 0.0f;
+    float    CachedMaxScrollY       = 0.0f;
+    float    LastContentHeightPx    = 0.0f;
+    float    LastPaneWidthPx        = 0.0f;
+    bool     HasCachedMaxScroll     = false;
+    bool     ScrollAnimating        = false;
+    std::chrono::steady_clock::time_point LastScrollTickTime{};
+    uint64_t ActivePanelRevision    = 1ull;
+    uint64_t ConstructCallCount     = 0ull;
+    uint32_t LastEvaluatedCardCount = 0u;
+    uint32_t LastSkippedCardCount   = 30u;
 };
 
 } // namespace Frontier

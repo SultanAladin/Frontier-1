@@ -115,46 +115,61 @@ struct CameraInstanceData
     GeometricRaster::LensFlareConfiguration LensFlare {};
 };
 
-// Camera Settings (formerly Render Engine - F77/F78): per-renderer independent parameters + Output + Quality budget
+// Camera Settings (F77/F78): linked end-to-end to ViewportDisplaySettings -> WorldRenderConfiguration -> WorldViewportRadiometricCompute.slang
 struct CameraSettingsData
 {
-    uint32_t RendererIndex         = 0u;     // [0..3] - 0=PBR, 1=SDF, 2=Ray traced, 3=MatCap
-    uint32_t QualityTierIndex      = 2u;     // [0..3] - Low, Medium, High, Ultra
+    uint32_t RendererIndex           = 0u;     // [0..3] - 0=PBR (OpenPbrDirect), 1=SDF (RealTimeGiGtxLowEnd), 2=Ray (BVH4/PathTracer), 3=MatCap
+    uint32_t QualityTierIndex        = 3u;     // [0..4] - Low, Medium, Standard, High, Ultra (ViewportDisplaySettings::QualityTier)
 
-    // PBR raster settings
-    uint32_t PbrShadowIndex        = 1u;     // [0..2] - PCF, PCSS, SMRT
-    float    PbrShadowCascadeRes    = 2048.0f;// [px]   - Cascade shadow resolution
-    bool     PbrAreaLights         = true;   // [-]    - Heitz LTC polygonal area lights
-    float    PbrFillGain           = 1.00f;  // [x]    - Sky fill radiance multiplier
-    bool     PbrAoEnabled          = true;   // [-]    - XeGTAO screen-space ambient occlusion
+    // PBR raster settings (OpenPbrDirect)
+    uint32_t PbrShadowIndex          = 0u;     // [0..4] - 0=Contact PCSS, 1=Plane PCSS, 2=SMRT, 3=PCF, 4=BVH RayQuery
+    float    SmrtShadowRays          = 4.0f;   // [cnt]  - SMRT shadow rays [1..8] (.slang EvaluateSolarShadow Alg 2)
+    float    SmrtMarchSteps          = 10.0f;  // [cnt]  - SMRT march steps per ray [4..16] (.slang EvaluateSolarShadow Alg 2)
+    bool     PbrReflectionsEnabled   = true;   // [-]    - Specular reflections toggle
+    uint32_t ReflectionSourceIndex   = 0u;     // [0..1] - 0=BVH4 Raytrace, 1=Sky Environment
+    float    PbrFillGain             = 1.00f;  // [x]    - Sky dome fill gain [0..3] (.slang EvaluateSkyDome)
 
-    // SDF tracing settings
-    uint32_t SdfShadowIndex        = 1u;     // [0..2] - Hard SDF, Soft Cone, Hybrid Cascade
-    float    SdfTraceSteps         = 48.0f;  // [cnt]  - Maximum sphere-trace steps
-    bool     SdfConeGiEnabled      = true;   // [-]    - Real-time SDF cone GI
-    float    SdfConeCount          = 6.0f;   // [cnt]  - Diffuse GI cones per pixel
-    float    SdfFillGain           = 1.00f;  // [x]    - Ambient fallback fill multiplier
-    bool     SdfAoEnabled          = true;   // [-]    - Distance-field ambient occlusion
+    // Real XeGTAO screen-space ambient occlusion (.slang EvaluateGroundTruthAmbientOcclusion)
+    bool     XeGtaoEnabled           = false;  // [-]    - Enable XeGTAO screen-space AO
+    float    XeGtaoStrength          = 1.00f;  // [x]    - XeGTAO power exponent [0..2]
+    float    XeGtaoSliceCount        = 4.0f;   // [cnt]  - XeGTAO directional slices [2..8]
+    float    XeGtaoStepsPerSide      = 4.0f;   // [cnt]  - XeGTAO horizon march steps per side [2..8]
+    float    XeGtaoSearchRadiusM     = 0.85f;  // [m]    - XeGTAO world-space search radius [0.25..3.0]
 
-    // Ray traced settings
-    uint32_t RayTracerIndex        = 0u;     // [0..2] - WideTree BVH, ReSTIR GI, Path Tracer
-    bool     RayGiEnabled          = true;   // [-]    - Hardware/BVH traced indirect GI
-    float    RayGiSamples          = 4.0f;   // [spp]  - GI rays per pixel
-    float    RayShadowRays         = 2.0f;   // [spp]  - Area shadow rays per pixel
-    bool     RayReflectionsEnabled = true;   // [-]    - Traced glossy reflections
-    float    RayReflectionBounces  = 2.0f;   // [cnt]  - Specular bounce depth
-    bool     RayAoEnabled          = true;   // [-]    - Short-ray cavity AO
+    // SDF tracing settings (RealTimeGiGtxLowEnd)
+    uint32_t SdfPenumbraIndex        = 3u;     // [0..5] - 0=PointSdf, 1=AnalyticCone, 2=Clipmap, 3=ConeGi, 4=HybridSobol, 5=McRef96
+    uint32_t GiCandidateIndex        = 1u;     // [0..1] - 0=StokesContour, 1=SurfelRadiosity
+    float    SdfConeSteps            = 6.0f;   // [cnt]  - GDF voxel cone GI march steps [3..12] (.slang EvaluateGdfVoxelConeGi)
+    float    SdfGiIntensity          = 1.00f;  // [x]    - GDF voxel cone GI intensity [0..2.5]
+    float    SdfAoRadiusM            = 1.55f;  // [m]    - SDF UDF ambient occlusion reach [0.35..3.5]
+    float    SdfAoContrast           = 1.50f;  // [x]    - SDF UDF ambient occlusion contrast [0.40..3.5]
+    float    SdfFillGain             = 1.00f;  // [x]    - Sky dome ambient fill [0..3]
 
-    // MatCap studio shading settings
-    uint32_t MatcapShadowIndex     = 1u;     // [0..2] - None, Contact floor, Soft studio
-    float    MatcapLightAngleDeg   = 38.0f;  // [deg]  - Studio key angle
-    float    MatcapRimGain         = 0.35f;  // [0-1]  - Grazing silhouette rim boost
-    uint32_t MatcapChannelIndex    = 0u;     // [0..3] - Clay, Ceramic, Metallic, Normal
+    // Ray traced & Path Tracer settings (RealTimeGiHighEnd=3, PathTracerGameRealtime=4, PathTracerSceneFinalRender=5)
+    uint32_t RayTracerIndex          = 1u;     // [0..2] - 0=BVH4 High-End GI, 1=Path Tracer Realtime, 2=Path Tracer Final
+    bool     RaytracingEnabled       = true;   // [-]    - Hardware/BVH4 raytracing toggle
+    float    PathTraceBatchSpp       = 1.0f;   // [spp]  - Samples accumulated per frame [1..8]
+    float    PathTraceTargetSpp      = 256.0f; // [spp]  - Convergence target [0..1024] (0 = continuous)
+    float    PathTraceMaxBounces     = 3.0f;   // [cnt]  - Path tracer bounce depth [1..8] (.slang EvaluateProgressiveViewportPath)
+    uint32_t RayShadowIndex          = 4u;     // [0..4] - Shadow algorithm for BVH4 High-End GI
+    bool     RayReflectionsEnabled   = true;   // [-]    - Traced specular reflections toggle
 
-    // Output settings
-    float    RenderScalePercent    = 100.0f; // [%]    - Internal resolution scale [50..200]
-    float    ExposureGain          = 1.00f;  // [x]    - Linear output exposure multiplier
-    bool     TemporalAntiAliasing  = true;   // [-]    - Temporal accumulation jitter
+    // MatCap shading settings
+    uint32_t MatcapShadowIndex       = 1u;     // [0..2] - None, Contact, Soft
+    float    MatcapLightAngleDeg     = 38.0f;  // [deg]  - Key light angle
+    float    MatcapRimGain           = 0.35f;  // [0-1]  - Grazing silhouette rim boost
+    uint32_t MatcapChannelIndex      = 0u;     // [0..3] - Clay, Ceramic, Metallic, Normal
+
+    // Output & Cluster-LOD settings (shared across all 4 renderers -> ViewportDisplaySettings)
+    float    RenderScalePercent      = 100.0f; // [%]    - Internal resolution scale [50..200]
+    uint32_t TraceResolutionIndex    = 0u;     // [0..2] - 0=Full, 1=1/2 Trace, 2=1/4 Trace
+    float    ExposureGain            = 1.00f;  // [x]    - ACES display exposure gain [0.1..4.0] (.slang ApplyAcesFilmicGpu)
+    bool     SpatialAntiAliasing     = true;   // [-]    - Spatial bilateral shadow/AA filter
+    bool     ClusterLodEnabled       = true;   // [-]    - View-dependent Cluster-LOD BVH cut
+    float    ClusterLodPixelError    = 1.25f;  // [px]   - Screen-space LOD error budget [0.25..8.0]
+    int32_t  ClusterForcedLodLevel   = -1;     // [idx]  - -1=Auto, 0..3=Forced LOD tier
+    bool     ClusterWireframeOverlay = false;  // [-]    - Analytical triangle edge wireframe overlay
+    uint32_t DebugChannelIndex       = 0u;     // [0..22]- Shader debug inspection channel
 };
 
 struct LensFlareInstanceData
@@ -390,6 +405,11 @@ public:
         const OutlinerPanel&                      Outliner,
         GeometricRaster::WorldSceneSpecification& Scene,
         ViewportDisplaySettings*                  DisplaySettings = nullptr) const;
+
+    // Push active CameraSettingsData live into ViewportDisplaySettings -> WorldRenderConfiguration -> .slang GPU uniforms
+    static void SyncCameraSettingsToDisplay(
+        const CameraSettingsData& Data,
+        ViewportDisplaySettings*  DisplaySettings) noexcept;
 
     // Builds an uppercase breadcrumb dynamically from the enclosing folder hierarchy in Outliner (never hardcoded)
     [[nodiscard]] static std::string ResolveEnclosingBreadcrumb(
