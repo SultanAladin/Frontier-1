@@ -183,6 +183,8 @@ function StudioVectorIcon({ Name, Size = 24 }) {
     "studio-lift": "#f2c14e",
     "studio-toolbox": "#e04f4f",
     "studio-cables": "#7a8999",
+    "studio-track": "#f29d52",
+    "studio-smoke": "#cdd8e3",
   }[Name];
   if (!Accent) return null;
   return (
@@ -326,6 +328,17 @@ function StudioVectorIcon({ Name, Size = 24 }) {
           <>
             <path d="M3.5 16.5c3-5 5.5-5 8.5 0s5.5 5 8.5-1.5" />
             <path d="M3.5 11.5c3-3.5 5.5-3.5 8.5 0s5.5 3.5 8.5-1" opacity="0.65" />
+          </>
+        ) : Name === "studio-track" ? (
+          <>
+            <path d="M4.5 20L9 4M19.5 20L15 4" />
+            <path d="M12 5.5v3M12 11v3M12 16.5v3" />
+            <path d="M3 16l2-1.5M21 16l-2-1.5" opacity="0.7" />
+          </>
+        ) : Name === "studio-smoke" ? (
+          <>
+            <path d="M6.5 18a3.8 3.8 0 0 1-.5-7.5 4.8 4.8 0 0 1 9.2-1.2 3.5 3.5 0 0 1 1.8 6.5" fill="currentColor" fillOpacity="0.16" />
+            <path d="M4.5 19.5h15" opacity="0.6" />
           </>
         ) : (
           <>

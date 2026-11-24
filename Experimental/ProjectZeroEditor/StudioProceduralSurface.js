@@ -34,6 +34,11 @@ export const SurfaceMaterialCode = {
   CherryRedTool: 27,
   SafetyYellow: 28,
   ConcreteGarage: 29,
+  TrackAsphalt: 30,
+  TrackPaintWhite: 31,
+  TrackGrass: 32,
+  StadiumSkyBlue: 33,
+  StadiumSkyDome: 34,
 };
 
 function CreateBuilder() {
@@ -1785,36 +1790,12 @@ function ConstructGarageShell(Params) {
   const HalfW = W * 0.5;
   const BackZ = -6.2;
 
-  // --- A) Sunlit Racing Stadium Grandstand & Pit-Lane Vista Backdrop outside the open pit archway ---
-  const VistaW = Number(Params.ScreenWidth ?? 18.4);
-  const VistaH = Number(Params.ScreenHeight ?? 8.2);
-  const VistaZ = BackZ - 3.6;
-  const VistaCx = -3.8;
-  const SegX = 10, SegY = 6;
-  for (let Iy = 0; Iy < SegY; Iy++) {
-    const Y0 = 0.08 + (Iy / SegY) * VistaH;
-    const Y1 = 0.08 + ((Iy + 1) / SegY) * VistaH;
-    for (let Ix = 0; Ix < SegX; Ix++) {
-      const X0 = VistaCx - VistaW * 0.5 + (Ix / SegX) * VistaW;
-      const X1 = VistaCx - VistaW * 0.5 + ((Ix + 1) / SegX) * VistaW;
-      // Store local coords offset relative to VistaCx in U? Shader reads vLocalPos.xy directly,
-      // so center the vista UV cleanly around VistaCx in shader via uBackdropCenter!
-      B.PushTri(
-        [X0, Y0, VistaZ], [X1, Y0, VistaZ], [X1, Y1, VistaZ],
-        [0, 0, 1], [0, 0, 1], [0, 0, 1],
-        SurfaceMaterialCode.ForestBackdrop,
-        Ix / SegX, (Ix + 1) / SegX, (Ix + 1) / SegX,
-      );
-      B.PushTri(
-        [X0, Y0, VistaZ], [X1, Y1, VistaZ], [X0, Y1, VistaZ],
-        [0, 0, 1], [0, 0, 1], [0, 0, 1],
-        SurfaceMaterialCode.ForestBackdrop,
-        Ix / SegX, (Ix + 1) / SegX, Ix / SegX,
-      );
-    }
-  }
-  // Sunlit outdoor pit-lane concrete apron extending from garage lip out toward stadium vista
-  B.AddBox([VistaCx, -0.02, BackZ - 1.85], [VistaW * 0.52, 0.02, 1.9], SurfaceMaterialCode.ConcreteGarage);
+  // --- A) Open Concrete Pit-Bay Threshold (opens straight out onto the real 3D Racing Track & Stadium!) ---
+  // Threshold concrete sill & recessed rain drainage grate along the pit-bay archway lip
+  B.AddBox([-4.8, 0.008, BackZ], [6.1, 0.008, 0.32], SurfaceMaterialCode.FanHousing);
+  // Subtle concrete bumper curb posts flanking the open pit-bay driveway
+  B.AddTube([-10.2, 0.0, BackZ + 0.55], [-10.2, 0.85, BackZ + 0.55], 0.075, 0.075, 10, SurfaceMaterialCode.SafetyYellow);
+  B.AddTube([0.62, 0.0, BackZ + 0.55], [0.62, 0.85, BackZ + 0.55], 0.075, 0.075, 10, SurfaceMaterialCode.SafetyYellow);
 
   // --- B) Back Pit Wall: Open Stadium Bay Archway on Left + Steel Bar Security Cages on Right (Ref Image 1!) ---
   // Left corner structural pier & mid divider concrete column framing the wide open stadium pit portal
@@ -2067,6 +2048,121 @@ function ConstructGarageProps(Params) {
     return B.Finish();
   }
 
+  if (Variant === "tool-chest") {
+    // Heavy double-bank cherry-red 10-drawer rolling mechanic's tool chest + top flip-lid toolbox!
+    const W = 1.86, D = 0.68, BaseH = 0.96;
+    // Main double-bank red steel cabinet body + black rubber work mat on top
+    B.AddBox([0, 0.14 + (BaseH - 0.14) * 0.5, 0], [W * 0.5, (BaseH - 0.14) * 0.5, D * 0.5], SurfaceMaterialCode.CherryRedTool);
+    B.AddBox([0, BaseH + 0.015, 0], [W * 0.49, 0.015, D * 0.48], SurfaceMaterialCode.RubberMat);
+    // 4 heavy-duty swivel casters + side tubular chrome push handle
+    for (const Sx of [-1, 1]) {
+      for (const Sz of [-1, 1]) {
+        const Cx = Sx * (W * 0.43), Cz = Sz * (D * 0.38);
+        B.AddTube([Cx, 0.14, Cz], [Cx, 0.025, Cz], 0.062, 0.062, 10, SurfaceMaterialCode.RubberMat);
+        B.AddBox([Cx, 0.13, Cz], [0.04, 0.025, 0.04], SurfaceMaterialCode.ChromeMetal);
+      }
+    }
+    B.AddTube([W * 0.55, BaseH - 0.06, -D * 0.36], [W * 0.55, BaseH - 0.06, D * 0.36], 0.018, 0.018, 8, SurfaceMaterialCode.ChromeMetal);
+    for (const Sz of [-1, 1]) {
+      B.AddTube([W * 0.5, BaseH - 0.06, Sz * D * 0.36], [W * 0.55, BaseH - 0.06, Sz * D * 0.36], 0.014, 0.014, 6, SurfaceMaterialCode.ChromeMetal);
+    }
+    // 10 crisp brushed-chrome drawer pulls (2 wide columns × 5 drawers)
+    for (const ColX of [-0.45, 0.45]) {
+      for (let Dr = 0; Dr < 5; Dr++) {
+        const Dy = 0.24 + Dr * 0.145;
+        B.AddBox([ColX, Dy, D * 0.5 + 0.014], [0.39, 0.014, 0.014], SurfaceMaterialCode.ChromeMetal);
+      }
+    }
+    // Top cherry-red hinged mechanic's toolbox chest sitting on left half
+    B.AddBox([-0.42, BaseH + 0.27, -0.02], [0.46, 0.25, 0.29], SurfaceMaterialCode.CherryRedTool);
+    for (let Dr = 0; Dr < 3; Dr++) {
+      B.AddBox([-0.42, BaseH + 0.11 + Dr * 0.11, 0.278], [0.39, 0.012, 0.012], SurfaceMaterialCode.ChromeMetal);
+    }
+    // Slightly propped lid on top chest + chrome sockets & pneumatic impact wrench on right workbench pad!
+    B.AddBox([-0.42, BaseH + 0.56, -0.08], [0.465, 0.025, 0.28], SurfaceMaterialCode.CherryRedTool, -0.35, 0, 0);
+    // Cordless / air impact wrench & red socket organizer tray on right half
+    B.AddBox([0.36, BaseH + 0.055, 0.04], [0.24, 0.025, 0.14], SurfaceMaterialCode.DarkMetal);
+    for (let Sk = 0; Sk < 7; Sk++) {
+      const Sx = 0.18 + Sk * 0.058;
+      B.AddTube([Sx, BaseH + 0.08, 0.04], [Sx, BaseH + 0.135, 0.04], 0.014, 0.014, 8, SurfaceMaterialCode.ChromeMetal);
+    }
+    // Impact gun body + grip resting on mat
+    B.AddBox([0.66, BaseH + 0.08, -0.08], [0.11, 0.042, 0.042], SurfaceMaterialCode.CherryRedTool, 0, 0.42, 0);
+    B.AddBox([0.75, BaseH + 0.08, -0.11], [0.055, 0.028, 0.028], SurfaceMaterialCode.ChromeMetal, 0, 0.42, 0);
+    return B.Finish();
+  }
+
+  if (Variant === "workbench") {
+    // Heavy steel mechanic's workbench with bench vise, perforated tool pegboard, wrenches & oil drums!
+    const W = 2.25, D = 0.82, H = 0.94;
+    // Thick butcher-block / brushed steel tabletop & lower shelf
+    B.AddBox([0, H, 0], [W * 0.5, 0.036, D * 0.5], SurfaceMaterialCode.FallenWood);
+    B.AddBox([0, 0.24, 0], [W * 0.48, 0.022, D * 0.45], SurfaceMaterialCode.FanHousing);
+    // 4 heavy square steel legs + back pegboard riser posts
+    for (const Sx of [-1, 1]) {
+      for (const Sz of [-1, 1]) {
+        B.AddBox([Sx * (W * 0.47), H * 0.5, Sz * (D * 0.44)], [0.032, H * 0.5, 0.032], SurfaceMaterialCode.DarkMetal);
+      }
+      B.AddBox([Sx * (W * 0.47), H + 0.55, -D * 0.44], [0.026, 0.55, 0.026], SurfaceMaterialCode.DarkMetal);
+    }
+    // Perforated steel tool pegboard backplane + overhead fluorescent bench light hood
+    B.AddBox([0, H + 0.54, -D * 0.43], [W * 0.47, 0.46, 0.018], SurfaceMaterialCode.FanHousing);
+    B.AddBox([0, H + 1.06, -D * 0.22], [W * 0.46, 0.035, 0.14], SurfaceMaterialCode.DarkMetal);
+    B.AddBox([0, H + 1.02, -D * 0.22], [W * 0.42, 0.012, 0.07], SurfaceMaterialCode.EmissiveDiffuser);
+    // Hanging chrome wrenches, torque bars & red screwdrivers mounted on pegboard!
+    for (let Wr = 0; Wr < 8; Wr++) {
+      const Wx = -0.78 + Wr * 0.13;
+      const Len = 0.22 + (Wr % 4) * 0.06;
+      B.AddBox([Wx, H + 0.62 - Len * 0.35, -D * 0.4], [0.016, Len * 0.5, 0.012], SurfaceMaterialCode.ChromeMetal);
+    }
+    for (let Sd = 0; Sd < 5; Sd++) {
+      const Sx = 0.35 + Sd * 0.11;
+      B.AddBox([Sx, H + 0.72, -D * 0.4], [0.018, 0.06, 0.018], SurfaceMaterialCode.CherryRedTool);
+      B.AddTube([Sx, H + 0.66, -D * 0.4], [Sx, H + 0.46, -D * 0.4], 0.007, 0.007, 6, SurfaceMaterialCode.ChromeMetal);
+    }
+    // Heavy bolted cherry-red mechanic's bench vise on front-left corner
+    B.AddBox([-W * 0.36, H + 0.12, D * 0.32], [0.11, 0.09, 0.14], SurfaceMaterialCode.CherryRedTool);
+    B.AddTube([-W * 0.36 - 0.16, H + 0.11, D * 0.48], [-W * 0.36 + 0.16, H + 0.11, D * 0.48], 0.012, 0.012, 8, SurfaceMaterialCode.ChromeMetal);
+    // Portable red steel toolbox resting on workbench right + parts organizer trays
+    B.AddBox([0.52, H + 0.16, 0.05], [0.28, 0.13, 0.16], SurfaceMaterialCode.CherryRedTool, 0, -0.18, 0);
+    B.AddTube([0.42, H + 0.32, 0.05], [0.62, H + 0.32, 0.05], 0.012, 0.012, 6, SurfaceMaterialCode.ChromeMetal);
+    // Two 55-gallon racing-oil steel drums standing beside/under workbench!
+    B.AddTube([-W * 0.5 - 0.42, 0.0, -0.05], [-W * 0.5 - 0.42, 0.88, -0.05], 0.29, 0.29, 16, SurfaceMaterialCode.CherryRedTool);
+    B.AddTube([-W * 0.5 - 0.42, 0.28, -0.05], [-W * 0.5 - 0.42, 0.31, -0.05], 0.305, 0.305, 16, SurfaceMaterialCode.SafetyYellow);
+    B.AddTube([-W * 0.5 - 0.42, 0.58, -0.05], [-W * 0.5 - 0.42, 0.61, -0.05], 0.305, 0.305, 16, SurfaceMaterialCode.SafetyYellow);
+    return B.Finish();
+  }
+
+  if (Variant === "air-compressor") {
+    // Tall vertical industrial cherry-red air compressor + coiled yellow hose & twin welding gas cylinder trolley!
+    // Vertical 80-gallon cherry-red pressure tank
+    B.AddTube([-0.35, 0.14, 0], [-0.35, 1.48, 0], 0.28, 0.28, 18, SurfaceMaterialCode.CherryRedTool);
+    B.AddSphere([-0.35, 1.48, 0], 0.278, 14, 7, SurfaceMaterialCode.CherryRedTool);
+    B.AddBox([-0.35, 0.07, 0], [0.34, 0.07, 0.34], SurfaceMaterialCode.DarkMetal);
+    // Top electric motor + twin-cylinder finned iron pump head & flywheel cage
+    B.AddBox([-0.35, 1.76, 0], [0.32, 0.025, 0.22], SurfaceMaterialCode.DarkMetal);
+    B.AddTube([-0.52, 1.88, 0], [-0.26, 1.88, 0], 0.11, 0.11, 12, SurfaceMaterialCode.FanHousing);
+    B.AddBox([-0.14, 1.94, 0], [0.11, 0.15, 0.11], SurfaceMaterialCode.DarkMetal);
+    // Chrome pressure regulator & dual dials + coiled safety-yellow air hose hanging on side
+    B.AddTube([-0.06, 1.32, 0.12], [0.06, 1.32, 0.12], 0.042, 0.042, 10, SurfaceMaterialCode.ChromeMetal);
+    for (let C = 0; C < 5; C++) {
+      B.AddTube([-0.04, 0.72 + C * 0.07, 0.18], [-0.04, 0.75 + C * 0.07, 0.18], 0.11, 0.11, 12, SurfaceMaterialCode.SafetyYellow);
+    }
+    // Welding gas bottle hand-truck trolley beside compressor (oxygen + argon tanks!)
+    B.AddBox([0.52, 0.04, 0], [0.32, 0.025, 0.24], SurfaceMaterialCode.DarkMetal);
+    B.AddTube([0.22, 0.16, -0.18], [0.22, 1.38, -0.18], 0.018, 0.018, 8, SurfaceMaterialCode.DarkMetal);
+    B.AddTube([0.82, 0.16, -0.18], [0.82, 1.38, -0.18], 0.018, 0.018, 8, SurfaceMaterialCode.DarkMetal);
+    B.AddTube([0.22, 1.38, -0.18], [0.82, 1.38, -0.18], 0.018, 0.018, 8, SurfaceMaterialCode.DarkMetal);
+    // Twin tall pressurized steel welding bottles
+    B.AddTube([0.38, 0.06, 0.02], [0.38, 1.44, 0.02], 0.115, 0.115, 14, SurfaceMaterialCode.StadiumSkyBlue);
+    B.AddSphere([0.38, 1.44, 0.02], 0.114, 12, 6, SurfaceMaterialCode.StadiumSkyBlue);
+    B.AddTube([0.38, 1.54, 0.02], [0.38, 1.66, 0.02], 0.032, 0.026, 8, SurfaceMaterialCode.ChromeMetal);
+    B.AddTube([0.66, 0.06, 0.02], [0.66, 1.36, 0.02], 0.11, 0.11, 14, SurfaceMaterialCode.SafetyYellow);
+    B.AddSphere([0.66, 1.36, 0.02], 0.109, 12, 6, SurfaceMaterialCode.SafetyYellow);
+    B.AddTube([0.66, 1.46, 0.02], [0.66, 1.58, 0.02], 0.03, 0.025, 8, SurfaceMaterialCode.ChromeMetal);
+    return B.Finish();
+  }
+
   // Tall cherry-red & brushed-steel rolling diagnostic cabinet & rear workshop shelving (Ref Image 2 mid-left!)
   B.AddBox([0, 0.88, 0], [0.58, 0.82, 0.42], SurfaceMaterialCode.CherryRedTool);
   B.AddBox([0, 1.32, 0.425], [0.48, 0.28, 0.02], SurfaceMaterialCode.TetherScreen);
@@ -2178,6 +2274,221 @@ export function ConstructShowcasePrimitive(Kind) {
   return B.Finish();
 }
 
+// 19. Real 3D Exterior Racing Track, Multi-Lane Asphalt Circuit, Kerbs, Pit Wall, Stadium Grandstands & Sky Dome (studio.race_track)
+function ConstructRaceTrack(Params) {
+  const B = CreateBuilder();
+  const TrackLen = Math.max(80, Math.min(220, Number(Params.TrackLength ?? 150)));
+  const LaneCount = Math.max(2, Math.min(4, Math.round(Number(Params.TrackLanes ?? 3))));
+  const ShowGrandstands = Params.ShowGrandstands !== false;
+  const ShowGantry = Params.ShowGantry !== false;
+  const HalfLen = TrackLen * 0.5;
+  const PitFrontZ = -6.22;
+  const PitWallZ = -13.65;
+  const TrackNearZ = -14.35;
+  const TrackWidth = 5.4 * LaneCount; // ~16.2m for 3 wide FIA GT racing lanes
+  const TrackFarZ = TrackNearZ - TrackWidth;
+  const TrackMidZ = (TrackNearZ + TrackFarZ) * 0.5;
+
+  // --- A) Real 3D Sunlit Afternoon Racing Stadium Sky Dome Hemisphere (inward normals!) ---
+  const SkyRad = 215.0;
+  const SkyRings = 10;
+  const SkySegs = 28;
+  for (let R = 0; R < SkyRings; R++) {
+    const Phi0 = -0.06 + (R / SkyRings) * (Math.PI * 0.56);
+    const Phi1 = -0.06 + ((R + 1) / SkyRings) * (Math.PI * 0.56);
+    const Y0 = Math.sin(Phi0) * SkyRad;
+    const Y1 = Math.sin(Phi1) * SkyRad;
+    const Rad0 = Math.cos(Phi0) * SkyRad;
+    const Rad1 = Math.cos(Phi1) * SkyRad;
+    for (let S = 0; S < SkySegs; S++) {
+      const Th0 = (S / SkySegs) * Math.PI * 2;
+      const Th1 = ((S + 1) / SkySegs) * Math.PI * 2;
+      const A = [Math.cos(Th0) * Rad0, Y0, Math.sin(Th0) * Rad0 - 15];
+      const Bb = [Math.cos(Th1) * Rad0, Y0, Math.sin(Th1) * Rad0 - 15];
+      const C = [Math.cos(Th1) * Rad1, Y1, Math.sin(Th1) * Rad1 - 15];
+      const D = [Math.cos(Th0) * Rad1, Y1, Math.sin(Th0) * Rad1 - 15];
+      const InN = (P) => {
+        const L = Math.hypot(P[0], P[1], P[2] + 15) || 1;
+        return [-P[0] / L, -P[1] / L, -(P[2] + 15) / L];
+      };
+      B.PushTri(A, C, Bb, InN(A), InN(C), InN(Bb), SurfaceMaterialCode.StadiumSkyDome);
+      B.PushTri(A, D, C, InN(A), InN(D), InN(C), SurfaceMaterialCode.StadiumSkyDome);
+    }
+  }
+
+  // --- B) Sunlit Concrete Pit-Lane Apron & Painted White Pit-Box Lanes (Z = -6.22 to -13.65) ---
+  const PitMidZ = (PitFrontZ + PitWallZ) * 0.5;
+  const PitDepth = Math.abs(PitWallZ - PitFrontZ);
+  B.AddBox([0, -0.03, PitMidZ], [HalfLen, 0.03, PitDepth * 0.5], SurfaceMaterialCode.ConcreteGarage);
+  // Crisp white pit-lane fast-lane / working-lane boundary lines & pit-box hash rectangles
+  B.AddBox([0, 0.008, -10.15], [HalfLen, 0.008, 0.14], SurfaceMaterialCode.TrackPaintWhite);
+  B.AddBox([0, 0.008, -12.95], [HalfLen, 0.008, 0.12], SurfaceMaterialCode.TrackPaintWhite);
+  B.AddBox([0, 0.009, -10.42], [HalfLen, 0.008, 0.08], SurfaceMaterialCode.CherryRedTool);
+  for (let Px = -44; Px <= 44; Px += 11) {
+    B.AddBox([Px, 0.009, -8.35], [0.11, 0.008, 1.75], SurfaceMaterialCode.TrackPaintWhite);
+    B.AddBox([Px + 5.5, 0.009, -9.8], [3.6, 0.008, 0.09], SurfaceMaterialCode.SafetyYellow);
+  }
+
+  // --- C) Real 3D Concrete Pit Wall, FIA Top Trim & Catch-Fence Stanchions (Z = -13.65) ---
+  B.AddBox([0, 0.56, PitWallZ], [HalfLen, 0.56, 0.28], SurfaceMaterialCode.ConcreteGarage);
+  // Alternating red/white FIA pit-wall safety striping along pit-wall top cap
+  const SegW = 4.0;
+  for (let X = -HalfLen + SegW * 0.5; X < HalfLen; X += SegW) {
+    const Red = Math.abs(Math.floor((X + HalfLen) / SegW)) % 2 === 0;
+    B.AddBox([X, 1.15, PitWallZ], [SegW * 0.5, 0.06, 0.3], Red ? SurfaceMaterialCode.CherryRedTool : SurfaceMaterialCode.TrackPaintWhite);
+  }
+  // Steel catch-fence stanchions + horizontal safety cables along pit wall (open viewing sightlines!)
+  for (let Fx = -64; Fx <= 64; Fx += 4.0) {
+    B.AddTube([Fx, 1.18, PitWallZ], [Fx, 3.25, PitWallZ], 0.032, 0.028, 6, SurfaceMaterialCode.FanHousing);
+    B.AddTube([Fx, 3.25, PitWallZ], [Fx, 3.55, PitWallZ - 0.32], 0.026, 0.024, 6, SurfaceMaterialCode.FanHousing);
+  }
+  for (const Cy of [1.65, 2.25, 2.85, 3.35]) {
+    B.AddTube([-64, Cy, PitWallZ], [64, Cy, PitWallZ], 0.014, 0.014, 6, SurfaceMaterialCode.ChromeMetal, false);
+  }
+
+  // --- D) Real 3D Multi-Lane Asphalt Racing Track, Lane Dividers, Starting Grid & Red/White Kerbs! ---
+  B.AddBox([0, -0.025, TrackMidZ], [HalfLen, 0.025, TrackWidth * 0.5 + 0.65], SurfaceMaterialCode.TrackAsphalt);
+
+  // Solid FIA white track-edge boundary lines along near & far edges
+  B.AddBox([0, 0.012, TrackNearZ - 0.42], [HalfLen, 0.01, 0.16], SurfaceMaterialCode.TrackPaintWhite);
+  B.AddBox([0, 0.012, TrackFarZ + 0.42], [HalfLen, 0.01, 0.16], SurfaceMaterialCode.TrackPaintWhite);
+
+  // Crisp dashed white racing lane divider strips between every lane!
+  const LaneW = (TrackWidth - 0.84) / LaneCount;
+  for (let L = 1; L < LaneCount; L++) {
+    const LaneZ = TrackNearZ - 0.42 - L * LaneW;
+    for (let Dx = -HalfLen + 4; Dx < HalfLen - 4; Dx += 7.5) {
+      B.AddBox([Dx, 0.012, LaneZ], [1.95, 0.01, 0.11], SurfaceMaterialCode.TrackPaintWhite);
+    }
+  }
+
+  // Bold Start/Finish Line + Alternating Checkered Blocks across the asphalt lanes at X = -14!
+  const SfX = -14.0;
+  B.AddBox([SfX, 0.014, TrackMidZ], [0.42, 0.01, TrackWidth * 0.48], SurfaceMaterialCode.TrackPaintWhite);
+  for (let Ck = 0; Ck < 12; Ck++) {
+    const Cz = TrackFarZ + 0.85 + Ck * ((TrackWidth - 1.7) / 12);
+    B.AddBox([SfX + (Ck % 2 === 0 ? 0.58 : -0.58), 0.015, Cz], [0.24, 0.01, 0.48], SurfaceMaterialCode.TrackPaintWhite);
+  }
+
+  // Painted FIA Staggered Starting Grid Boxes along the lanes (clearly visible through the open pit archway!)
+  for (let RowIdx = 0; RowIdx < 6; RowIdx++) {
+    const BaseX = SfX + 6.5 + RowIdx * 8.2;
+    for (let Col = 0; Col < 2; Col++) {
+      const Gx = BaseX + Col * 3.8;
+      const Gz = Col === 0 ? TrackNearZ - 3.6 : TrackFarZ + 3.6;
+      B.AddBox([Gx - 1.4, 0.013, Gz], [0.14, 0.01, 1.35], SurfaceMaterialCode.TrackPaintWhite);
+      B.AddBox([Gx - 0.25, 0.013, Gz - 1.25], [1.25, 0.01, 0.12], SurfaceMaterialCode.TrackPaintWhite);
+      B.AddBox([Gx - 0.25, 0.013, Gz + 1.25], [1.25, 0.01, 0.12], SurfaceMaterialCode.TrackPaintWhite);
+    }
+  }
+
+  // Real 3D Sculpted Alternating Red & White FIA Apex Kerbs / Rumble Strips along BOTH track edges!
+  const KerbLen = 1.65;
+  for (let Kx = -HalfLen + KerbLen * 0.5; Kx < HalfLen; Kx += KerbLen) {
+    const IsRed = Math.abs(Math.floor((Kx + HalfLen) / KerbLen)) % 2 === 0;
+    const KMat = IsRed ? SurfaceMaterialCode.CherryRedTool : SurfaceMaterialCode.TrackPaintWhite;
+    B.AddBox([Kx, 0.045, TrackNearZ + 0.18], [KerbLen * 0.495, 0.055, 0.42], KMat, 0.11, 0, 0);
+    B.AddBox([Kx, 0.045, TrackFarZ - 0.18], [KerbLen * 0.495, 0.055, 0.42], KMat, -0.11, 0, 0);
+  }
+
+  // --- E) Overhead Steel Start/Finish Timing Gantry Bridge spanning the racing lanes! ---
+  if (ShowGantry) {
+    const Gh = 7.4;
+    B.AddBox([SfX, Gh * 0.5, PitWallZ - 0.35], [0.55, Gh * 0.5, 0.55], SurfaceMaterialCode.FanHousing);
+    B.AddBox([SfX, Gh * 0.5, TrackFarZ - 1.55], [0.55, Gh * 0.5, 0.55], SurfaceMaterialCode.FanHousing);
+    const GSpan = Math.abs(TrackFarZ - 1.55 - (PitWallZ - 0.35));
+    const GMidZ = (PitWallZ - 0.35 + (TrackFarZ - 1.55)) * 0.5;
+    B.AddBox([SfX, Gh - 0.55, GMidZ], [0.52, 0.85, GSpan * 0.5 + 0.4], SurfaceMaterialCode.DarkMetal);
+    B.AddBox([SfX + 0.55, Gh - 0.55, GMidZ], [0.06, 0.56, GSpan * 0.46], SurfaceMaterialCode.CherryRedTool);
+    B.AddBox([SfX + 0.58, Gh - 0.12, GMidZ], [0.06, 0.12, GSpan * 0.46], SurfaceMaterialCode.TrackPaintWhite);
+    for (let Pod = -2; Pod <= 2; Pod++) {
+      const Pz = TrackMidZ + Pod * 2.25;
+      B.AddBox([SfX + 0.15, Gh - 1.75, Pz], [0.22, 0.34, 0.24], SurfaceMaterialCode.DarkMetal);
+      B.AddSphere([SfX + 0.38, Gh - 1.75, Pz], 0.11, 8, 6, SurfaceMaterialCode.CherryRedTool);
+    }
+  }
+
+  // --- F) Sunlit Mowed Grass Runoff Apron, Concrete FIA Trackside Barrier & Distant Horizon Ground ---
+  const GrassFarZ = TrackFarZ - 8.5;
+  B.AddBox([0, -0.05, (TrackFarZ + GrassFarZ) * 0.5], [HalfLen + 25, 0.04, 4.4], SurfaceMaterialCode.TrackGrass);
+  B.AddBox([0, -0.14, -105], [220, 0.08, 105], SurfaceMaterialCode.TrackGrass);
+  const BarrierZ = TrackFarZ - 5.6;
+  B.AddBox([0, 0.72, BarrierZ], [HalfLen + 10, 0.72, 0.34], SurfaceMaterialCode.ConcreteGarage);
+  for (let Bx = -HalfLen; Bx < HalfLen; Bx += 6.0) {
+    const BandMat = Math.abs(Math.floor((Bx + HalfLen) / 6.0)) % 2 === 0 ? SurfaceMaterialCode.CherryRedTool : SurfaceMaterialCode.SafetyYellow;
+    B.AddBox([Bx + 3.0, 1.32, BarrierZ + 0.12], [2.95, 0.16, 0.26], BandMat);
+  }
+  for (let Fx = -68; Fx <= 68; Fx += 4.5) {
+    B.AddTube([Fx, 1.4, BarrierZ], [Fx, 3.6, BarrierZ], 0.036, 0.03, 6, SurfaceMaterialCode.FanHousing);
+  }
+
+  // --- G) Massive 3D Multi-Tier Racing Stadium Grandstands (Red & Yellow Seat Rows, Concrete Stairs, Roof Canopy & Floodlights!) ---
+  if (ShowGrandstands) {
+    const StandW = 112.0;
+    const StandFrontZ = BarrierZ - 2.4;
+    const TierCount = 14;
+    const TierRise = 0.76;
+    const TierRun = 1.05;
+    const BaseLift = 1.65;
+
+    B.AddBox([0, BaseLift * 0.5, StandFrontZ], [StandW * 0.5, BaseLift * 0.5, 0.55], SurfaceMaterialCode.ConcreteGarage);
+    for (let T = 0; T < TierCount; T++) {
+      const Ty = BaseLift + T * TierRise;
+      const Tz = StandFrontZ - T * TierRun - 0.5;
+      B.AddBox([0, Ty + TierRise * 0.3, Tz], [StandW * 0.5, TierRise * 0.52, TierRun * 0.54], SurfaceMaterialCode.ConcreteGarage);
+      const SeatBlocks = 7;
+      const BlockW = StandW / SeatBlocks;
+      for (let Bl = 0; Bl < SeatBlocks; Bl++) {
+        const Bcx = -StandW * 0.5 + (Bl + 0.5) * BlockW;
+        const UseYellow = (T >= 4 && T <= 8 && Bl % 2 === 1) || (T >= 10 && Bl % 2 === 0);
+        const SeatMat = UseYellow ? SurfaceMaterialCode.SafetyYellow : SurfaceMaterialCode.CherryRedTool;
+        B.AddBox([Bcx, Ty + TierRise * 0.68, Tz + 0.14], [BlockW * 0.44, 0.24, 0.22], SeatMat);
+      }
+    }
+
+    const StandTopY = BaseLift + TierCount * TierRise;
+    const StandBackZ = StandFrontZ - TierCount * TierRun;
+    for (let Ax = -40; Ax <= 40; Ax += 16) {
+      for (let St = 0; St < TierCount; St++) {
+        const Sy = BaseLift + St * TierRise + 0.26;
+        const Sz = StandFrontZ - St * TierRun - 0.15;
+        B.AddBox([Ax, Sy, Sz], [0.85, 0.28, 0.58], SurfaceMaterialCode.ConcreteGarage);
+      }
+      B.AddTube([Ax, BaseLift + 1.05, StandFrontZ + 0.1], [Ax, StandTopY + 0.95, StandBackZ], 0.036, 0.036, 6, SurfaceMaterialCode.SafetyYellow);
+    }
+
+    B.AddBox([0, (StandTopY + 4.8) * 0.5, StandBackZ - 0.7], [StandW * 0.5, (StandTopY + 4.8) * 0.5, 0.55], SurfaceMaterialCode.ConcreteGarage);
+    const RoofRearY = StandTopY + 4.8;
+    const RoofFrontY = StandTopY + 7.2;
+    const RoofFrontZ = StandFrontZ - 2.2;
+    const RoofMidZ = (StandBackZ + RoofFrontZ) * 0.5;
+    const RoofSpanZ = Math.abs(StandBackZ - RoofFrontZ);
+    B.AddBox([0, (RoofRearY + RoofFrontY) * 0.5, RoofMidZ], [StandW * 0.51, 0.34, RoofSpanZ * 0.54], SurfaceMaterialCode.StadiumSkyBlue, -0.14, 0, 0);
+    B.AddBox([0, RoofFrontY - 0.15, RoofFrontZ], [StandW * 0.51, 0.48, 0.22], SurfaceMaterialCode.TrackPaintWhite);
+    for (let Rx = -50; Rx <= 50; Rx += 12.5) {
+      B.AddBox([Rx, RoofRearY * 0.5, StandBackZ - 0.3], [0.34, RoofRearY * 0.5, 0.34], SurfaceMaterialCode.FanHousing);
+      B.AddTube([Rx, RoofRearY - 0.2, StandBackZ], [Rx, RoofFrontY - 0.25, RoofFrontZ], 0.18, 0.14, 6, SurfaceMaterialCode.FanHousing);
+    }
+
+    for (const Tx of [-42, -14, 14, 42]) {
+      const TowerZ = StandBackZ - 2.2;
+      B.AddTube([Tx, 0, TowerZ], [Tx, RoofFrontY + 8.5, TowerZ + 1.8], 0.45, 0.24, 8, SurfaceMaterialCode.FanHousing);
+      B.AddBox([Tx, RoofFrontY + 8.6, TowerZ + 2.1], [2.4, 1.35, 0.35], SurfaceMaterialCode.DarkMetal, 0.28, 0, 0);
+      B.AddBox([Tx, RoofFrontY + 8.5, TowerZ + 2.48], [2.1, 1.1, 0.12], SurfaceMaterialCode.EmissiveDiffuser, 0.28, 0, 0);
+    }
+  }
+
+  return B.Finish();
+}
+
+// 20. Procedural Garage & Exhaust Smoke Emitter Marker (studio.garage_smoke — live clouds rendered on GPU!)
+function ConstructGarageSmokeMarker(Params) {
+  const B = CreateBuilder();
+  const R = Number(Params.EmitterRadius ?? 0.22);
+  B.AddSphere([0, 0.25, 0], R, 10, 6, SurfaceMaterialCode.EmissiveDiffuser);
+  return B.Finish();
+}
+
 export function ConstructProceduralSurface(Kind, Params = {}) {
   switch (Kind) {
     case "studio.cyclorama":
@@ -2216,6 +2527,10 @@ export function ConstructProceduralSurface(Kind, Params = {}) {
       return ConstructGarageProps(Params);
     case "studio.garage_cables":
       return ConstructGarageCables(Params);
+    case "studio.race_track":
+      return ConstructRaceTrack(Params);
+    case "studio.garage_smoke":
+      return ConstructGarageSmokeMarker(Params);
     default:
       return ConstructShowcasePrimitive("cube");
   }

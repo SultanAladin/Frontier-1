@@ -422,9 +422,30 @@ export function StudioProceduralInspector({
           {NativeSlider("Garage Width", Values.GarageWidth ?? 22.0, 16, 30, "m", 1, (V) => Change("GarageWidth", V))}
           {NativeSlider("Garage Depth", Values.GarageDepth ?? 18.0, 12, 26, "m", 1, (V) => Change("GarageDepth", V))}
           {NativeSlider("Ceiling Height", Values.GarageHeight ?? 7.15, 5.5, 9.5, "m", 2, (V) => Change("GarageHeight", V))}
-          {NativeSlider("Stadium Sunlight", Values.BackdropBrightness ?? 1.32, 0.35, 2.4, "×", 2, (V) => Change("BackdropBrightness", V))}
-          {NativeToggle("Two-Story Mezzanine Catwalks", Values.ShowMezzanine ?? true, (V) => Change("ShowMezzanine", V))}
-          {NativeToggle("Overhead Linear Shop LEDs", Values.ShowLinearLeds ?? true, (V) => Change("ShowLinearLeds", V))}
+          {NativeSwitch("Two-Story Mezzanine Catwalks", Values.ShowMezzanine ?? true, (V) => Change("ShowMezzanine", V))}
+          {NativeSwitch("Overhead Linear Shop LEDs", Values.ShowLinearLeds ?? true, (V) => Change("ShowLinearLeds", V))}
+        </details>
+      )}
+
+      {Kind === "studio.race_track" && (
+        <details open className="generic-card">
+          <summary>3D Racing Track &amp; Stadium Grandstands</summary>
+          {NativeSlider("Track Lanes", Values.TrackLanes ?? 3, 2, 4, " lanes", 0, (V) => Change("TrackLanes", Math.round(V)))}
+          {NativeSlider("Track Straight Length", Values.TrackLength ?? 150, 80, 220, "m", 0, (V) => Change("TrackLength", Math.round(V)))}
+          {NativeSlider("Afternoon Sunlight", Values.SunlightIntensity ?? 1.25, 0.35, 2.2, "×", 2, (V) => Change("SunlightIntensity", V))}
+          {NativeSwitch("Tiered Stadium Grandstands", Values.ShowGrandstands ?? true, (V) => Change("ShowGrandstands", V))}
+          {NativeSwitch("Start/Finish Timing Gantry", Values.ShowGantry ?? true, (V) => Change("ShowGantry", V))}
+        </details>
+      )}
+
+      {Kind === "studio.garage_smoke" && (
+        <details open className="generic-card">
+          <summary>Volumetric Garage &amp; Tire Smoke</summary>
+          {NativeSlider("Smoke Density", Values.SmokeDensity ?? 1.15, 0.1, 2.2, "×", 2, (V) => Change("SmokeDensity", V))}
+          {NativeSlider("Billow Speed", Values.BillowSpeed ?? 0.65, 0.1, 2.4, "×", 2, (V) => Change("BillowSpeed", V))}
+          {NativeSlider("Plume Spread", Values.PlumeSpread ?? 1.18, 0.5, 2.2, "×", 2, (V) => Change("PlumeSpread", V))}
+          {NativeSlider("Sunbeam Warmth", Values.SunbeamWarmth ?? 0.72, 0.0, 1.0, "", 2, (V) => Change("SunbeamWarmth", V))}
+          {NativeSlider("Cloud Puffs", Values.CloudCount ?? 145, 36, 240, "", 0, (V) => Change("CloudCount", Math.round(V)))}
         </details>
       )}
 
@@ -441,12 +462,8 @@ export function StudioProceduralInspector({
           <summary>Mechanics Workshop Equipment</summary>
           {NativeSelect(
             "Equipment Preset",
+            ["tool-chest", "tool-cart", "workbench", "air-compressor", "tire-rack", "diag-cabinet"],
             Values.PropVariant || "tool-cart",
-            [
-              { Value: "tool-cart", Label: "Rolling Cherry-Red Tool Cart" },
-              { Value: "tire-rack", Label: "Racing Slick Tire Rack & Jack" },
-              { Value: "diag-cabinet", Label: "Diagnostic Telemetry Cabinet" },
-            ],
             (V) => Change("PropVariant", V),
           )}
         </details>

@@ -150,6 +150,7 @@ uniform sampler2D uForestBackdropTex;
 uniform int uHasForestTex;
 uniform vec2 uBackdropSize;
 uniform float uBackdropCenterX;
+uniform float uStadiumSunStrength;
 
 // Per-entity vehicle/surface paint overrides
 uniform vec3 uPaintAlbedo;
@@ -746,6 +747,56 @@ void main() {
     Albedo = RawConcrete * (0.86 + 0.14 * Seam);
     Metallic = 0.02;
     Roughness = 0.78;
+  } else if (Mat == 30) {
+    // Real 3D Motorsport Racing Asphalt (aggregate micro-grain + subtle rubbered-in racing grooves!)
+    float Agg = FbmPlaster(vWorldPos.xz * 2.4);
+    float Fine = Hash21(floor(vWorldPos.xz * 24.0));
+    float LaneWear = 0.86 + 0.14 * sin(vWorldPos.z * 1.15);
+    vec3 BaseAsphalt = mix(vec3(0.042, 0.044, 0.048), vec3(0.088, 0.091, 0.096), Agg * 0.72 + Fine * 0.28);
+    Albedo = BaseAsphalt * LaneWear;
+    Metallic = 0.02;
+    Roughness = mix(0.58, 0.82, Agg);
+  } else if (Mat == 31) {
+    // FIA Crisp White Painted Track Lane Lines, Starting Grid & White Kerbs
+    float Wear = FbmPlaster(vWorldPos.xz * 1.8);
+    Albedo = mix(vec3(0.76, 0.77, 0.78), vec3(0.92, 0.93, 0.94), Wear);
+    Metallic = 0.0;
+    Roughness = 0.52;
+  } else if (Mat == 32) {
+    // Sunlit Mowed Racing Stadium Trackside Grass Turf (alternating lawn-mower stripes!)
+    float Stripe = smoothstep(-0.2, 0.2, sin(vWorldPos.x * 0.72));
+    float Patch = FbmPlaster(vWorldPos.xz * 0.35);
+    vec3 GrassDark = vec3(0.065, 0.17, 0.042);
+    vec3 GrassBright = vec3(0.115, 0.255, 0.062);
+    Albedo = mix(GrassDark, GrassBright, Stripe * 0.52 + Patch * 0.48);
+    Metallic = 0.0;
+    Roughness = 0.88;
+  } else if (Mat == 33) {
+    // Architectural steel-blue grandstand roof canopy & pressurized welding tank
+    Albedo = vec3(0.11, 0.22, 0.36);
+    Metallic = 0.42;
+    Roughness = 0.36;
+  } else if (Mat == 34) {
+    // Real 3D Sunlit Afternoon Racing Stadium Sky Dome (blue zenith -> golden-warm horizon + sun glow!)
+    vec3 Dir = normalize(vWorldPos - vec3(0.0, 0.0, -15.0));
+    float Elev = clamp(Dir.y, 0.0, 1.0);
+    vec3 HorizonCol = vec3(0.95, 0.78, 0.56);
+    vec3 MidSkyCol = vec3(0.38, 0.58, 0.84);
+    vec3 ZenithCol = vec3(0.16, 0.34, 0.66);
+    vec3 Sky = mix(HorizonCol, MidSkyCol, smoothstep(0.0, 0.26, Elev));
+    Sky = mix(Sky, ZenithCol, smoothstep(0.22, 0.78, Elev));
+    vec3 SunDir = normalize(vec3(-0.42, 0.28, -0.86));
+    float SunCos = max(dot(Dir, SunDir), 0.0);
+    Sky += vec3(1.0, 0.88, 0.64) * pow(SunCos, 10.0) * 0.65;
+    Sky += vec3(1.0, 0.96, 0.86) * pow(SunCos, 180.0) * 2.4;
+    // Soft wispy afternoon stadium clouds
+    float Cloud = FbmPlaster(Dir.xz / max(Elev + 0.14, 0.14) * 1.4);
+    float CloudMask = smoothstep(0.52, 0.76, Cloud) * smoothstep(0.04, 0.22, Elev) * smoothstep(0.85, 0.35, Elev);
+    Sky = mix(Sky, vec3(0.98, 0.93, 0.86), CloudMask * 0.38);
+    Albedo = vec3(0.0);
+    Metallic = 0.0;
+    Roughness = 1.0;
+    Emissive = Sky * max(0.35, uStadiumSunStrength * 0.82);
   }
 
   vec3 F0 = mix(vec3(0.04), Albedo, Metallic);
@@ -755,12 +806,18 @@ void main() {
   float OverheadBand = smoothstep(0.32, 0.92, R.y) * smoothstep(8.5, 1.5, length(vWorldPos.xz));
   vec3 StudioIbl = mix(vec3(0.018, 0.021, 0.028), vec3(0.22, 0.24, 0.29), clamp(R.y * 0.5 + 0.5, 0.0, 1.0));
   StudioIbl += vec3(0.55, 0.58, 0.65) * OverheadBand * (1.0 - Roughness) * 0.35;
-  // Reflect the real photorealistic Forest LED display wall onto the vehicle clearcoat, glass & stream!
+  // Reflect the real photorealistic Forest LED display wall onto the vehicle clearcoat, glass & stream (Lobby 2)
   if (uHasForestTex == 1 && Mat != 21 && R.z < -0.08) {
     vec2 RefUv = vec2(clamp(R.x * 0.55 + 0.5, 0.02, 0.98), clamp(0.68 - R.y * 0.62, 0.02, 0.98));
     vec3 LedRef = pow(texture(uForestBackdropTex, RefUv).rgb, vec3(2.2));
     float BackMask = smoothstep(-0.08, -0.45, R.z) * smoothstep(-0.2, 0.25, R.y);
     StudioIbl += LedRef * BackMask * (0.48 + 0.42 * (1.0 - Roughness));
+  }
+  // In Lobby 3 (3D Racing Stadium), reflect bright sunlit afternoon stadium sky & track through open archway!
+  if (uStadiumSunStrength > 0.01 && Mat != 34) {
+    float SkyMask = smoothstep(-0.1, 0.5, R.y) * (vWorldPos.z < -6.1 ? 1.0 : smoothstep(0.05, -0.45, R.z));
+    vec3 StadiumRef = mix(vec3(0.92, 0.72, 0.46), vec3(0.34, 0.56, 0.85), clamp(R.y * 1.4, 0.0, 1.0));
+    StudioIbl += StadiumRef * SkyMask * uStadiumSunStrength * (0.36 + 0.32 * (1.0 - Roughness));
   }
 
   float ContactOcc = (Mat == 6 || Mat == 7 || Mat == 16 || Mat == 17) ? ComputeVehicleContactShadow(vWorldPos) : 1.0;
@@ -774,6 +831,39 @@ void main() {
   }
 
   vec3 Direct = vec3(0.0);
+  // Real 3D Racing Stadium Afternoon Sunlight (blazing outside the pit wall + diagonal golden sunbeam into garage!)
+  if (uStadiumSunStrength > 0.01 && Mat != 34) {
+    vec3 SunDir = normalize(vec3(-0.38, 0.54, 0.75));
+    float NdotL = max(dot(N, SunDir), 0.0);
+    // Outside garage (Z < -6.15): full sunlit outdoor stadium! Inside: golden shaft through open pit archway!
+    float OutdoorMask = smoothstep(-5.6, -6.5, vWorldPos.z);
+    float ArchX = vWorldPos.x - (vWorldPos.z + 6.2) * 0.36;
+    float ArchY = vWorldPos.y + (vWorldPos.z + 6.2) * 0.42;
+    float PortalShaft = smoothstep(-10.5, -8.5, ArchX) * smoothstep(2.4, 0.6, ArchX) *
+                        smoothstep(5.4, 3.6, ArchY) * smoothstep(8.2, -5.8, vWorldPos.z);
+    float SunVis = max(OutdoorMask, PortalShaft * 0.85);
+    if (SunVis > 0.005) {
+      vec3 SunCol = vec3(1.0, 0.87, 0.68) * (2.65 * uStadiumSunStrength * SunVis);
+      vec3 H = normalize(V + SunDir);
+      float NdotV = max(dot(N, V), 0.001);
+      float NdotH = max(dot(N, H), 0.0);
+      float VdotH = max(dot(V, H), 0.0);
+      float D = DistributionGgx(NdotH, Roughness);
+      float G = GeometrySmith(NdotV, NdotL, Roughness);
+      vec3 F = FresnelSchlick(VdotH, F0);
+      vec3 Spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
+      vec3 Kd = (vec3(1.0) - F) * (1.0 - Metallic);
+      Direct += (Kd * Albedo / 3.14159265 + Spec) * SunCol * NdotL;
+      if (Clearcoat > 0.01 && NdotL > 0.0) {
+        float Dc = DistributionGgx(NdotH, 0.05);
+        float Fc = 0.04 + 0.96 * pow(1.0 - VdotH, 5.0);
+        Direct += vec3(Dc * Fc * Clearcoat * 0.25) * SunCol * NdotL;
+      }
+      // Bright outdoor afternoon sky hemisphere fill outside the garage
+      vec3 SkyHem = mix(vec3(0.45, 0.38, 0.31), vec3(0.42, 0.60, 0.86), N.y * 0.5 + 0.5);
+      Ambient += Albedo * (1.0 - Metallic) * SkyHem * (0.48 * uStadiumSunStrength * OutdoorMask);
+    }
+  }
   for (int I = 0; I < 6; I++) {
     if (I >= uAreaCount) break;
     Direct += EvaluateAreaLight(
@@ -813,9 +903,17 @@ precision highp float;
 layout(location = 0) in vec3 aPos;
 uniform mat4 uViewProj;
 uniform float uPointSize;
+uniform int uSmokeMode;
+out float vSeed;
 void main() {
   gl_Position = uViewProj * vec4(aPos, 1.0);
-  gl_PointSize = max(1.0, uPointSize);
+  vSeed = float(gl_VertexID) * 1.6180339;
+  if (uSmokeMode == 1) {
+    float Dist = max(gl_Position.w, 1.4);
+    gl_PointSize = clamp(uPointSize / Dist, 22.0, 260.0);
+  } else {
+    gl_PointSize = max(1.0, uPointSize);
+  }
 }
 `;
 
@@ -823,8 +921,41 @@ const GizmoFragmentSource = `#version 300 es
 precision highp float;
 uniform vec4 uColor;
 uniform float uPointSize;
+uniform int uSmokeMode;
+uniform float uTime;
+in float vSeed;
 out vec4 FragColor;
+
+float SmokeHash(vec2 P) {
+  return fract(sin(dot(P, vec2(127.1, 311.7))) * 43758.5453);
+}
+float SmokeNoise(vec2 P) {
+  vec2 I = floor(P);
+  vec2 F = fract(P);
+  vec2 U = F * F * (3.0 - 2.0 * F);
+  return mix(
+    mix(SmokeHash(I), SmokeHash(I + vec2(1.0, 0.0)), U.x),
+    mix(SmokeHash(I + vec2(0.0, 1.0)), SmokeHash(I + vec2(1.0, 1.0)), U.x),
+    U.y
+  );
+}
+
 void main() {
+  if (uSmokeMode == 1) {
+    vec2 P = gl_PointCoord - vec2(0.5);
+    float D = length(P) * 2.0;
+    if (D > 1.0) discard;
+    float Ang = fract(vSeed) * 6.283185 + uTime * (0.14 * (fract(vSeed * 3.1) - 0.5));
+    float Ca = cos(Ang), Sa = sin(Ang);
+    vec2 Rp = vec2(P.x * Ca - P.y * Sa, P.x * Sa + P.y * Ca);
+    float N1 = SmokeNoise(Rp * 4.2 + vec2(vSeed * 2.3, uTime * 0.16));
+    float N2 = SmokeNoise(Rp * 8.4 - vec2(uTime * 0.22, vSeed * 1.7));
+    float Wisp = smoothstep(0.18, 0.88, N1 * 0.65 + N2 * 0.35);
+    float SoftEdge = pow(1.0 - D, 1.85);
+    float Alpha = uColor.a * SoftEdge * (0.42 + 0.58 * Wisp);
+    FragColor = vec4(uColor.rgb * (0.85 + 0.22 * N1), Alpha);
+    return;
+  }
   if (uPointSize > 1.5) {
     float D = length(gl_PointCoord - vec2(0.5)) * 2.0;
     if (D > 1.0) discard;
@@ -1027,7 +1158,7 @@ export class StudioRenderEngine {
     const Names = [
       "uViewProj", "uModel", "uNormalMat", "uCameraPos", "uViewportSize",
       "uTime", "uWindStrength", "uWindTurbulence", "uWindDir", "uWindOrigin", "uFanSpinAngle",
-      "uForestBackdropTex", "uHasForestTex", "uBackdropSize", "uBackdropCenterX",
+      "uForestBackdropTex", "uHasForestTex", "uBackdropSize", "uBackdropCenterX", "uStadiumSunStrength",
       "uExposure", "uAmbientFill", "uShadowDepth", "uVignette",
       "uTileSize", "uFloorGloss", "uPlasterGrain", "uCycloramaTint", "uFloorTint",
       "uSelectedFlag", "uPaintAlbedo", "uPaintMetallic", "uPaintRoughness", "uPaintClearcoat",
@@ -1044,6 +1175,8 @@ export class StudioRenderEngine {
       uViewProj: Gl.getUniformLocation(this.GizmoProgram, "uViewProj"),
       uColor: Gl.getUniformLocation(this.GizmoProgram, "uColor"),
       uPointSize: Gl.getUniformLocation(this.GizmoProgram, "uPointSize"),
+      uSmokeMode: Gl.getUniformLocation(this.GizmoProgram, "uSmokeMode"),
+      uTime: Gl.getUniformLocation(this.GizmoProgram, "uTime"),
     };
   }
 
@@ -1300,6 +1433,7 @@ export class StudioRenderEngine {
       this.Loc.uBackdropCenterX,
       Number(Val.BackdropCenterX ?? (IsGarageShellThumb ? -3.8 : 0.0)),
     );
+    Gl.uniform1f(this.Loc.uStadiumSunStrength, Val?.ProceduralKind === "studio.race_track" ? 1.15 : 0.0);
     Gl.uniform1f(this.Loc.uExposure, 1.45);
     Gl.uniform1f(this.Loc.uAmbientFill, 0.34);
     Gl.uniform1f(this.Loc.uShadowDepth, 0.0);
@@ -1455,7 +1589,7 @@ export class StudioRenderEngine {
           Val.LightType === 2 ||
           Row.Icon === "editor-area-light";
         const ParentVal = Row.Parent ? Values[Row.Parent] || {} : {};
-        const IsOverheadSoftbox = ParentVal.FixtureStyle === "Overhead Softbox";
+        const IsOverheadSoftbox = ParentVal.FixtureStyle === "Overhead Softbox" || Val.DownwardArea === true;
 
         if (IsArea && AreaLights.length < 6) {
           const Lw = Number(RefProps.width ?? Val.Width ?? ParentVal.ApertureWidth ?? 2.0);
@@ -1567,22 +1701,20 @@ export class StudioRenderEngine {
     Gl.uniform3fv(this.Loc.uWindOrigin, WindOrigin);
     Gl.uniform1f(this.Loc.uFanSpinAngle, FanSpinAngle);
 
-    // Bind photorealistic Backdrop texture on unit 0 (Lobby 2 Forest LED / Lobby 3 Stadium Grandstand Vista)
+    // Bind photorealistic Forest LED Volume Backdrop texture on unit 0 (Lobby 2 only; Lobby 3 uses real 3D Racing Track & Stadium!)
     const IsL3 = LevelId === "studio-lobby-3";
-    const BdVal = IsL3 ? Values["l3-garage-shell"] || {} : Values["l2-forest-backdrop"] || {};
+    const BdVal = Values["l2-forest-backdrop"] || {};
+    const TrackVal = Values["l3-race-track"] || {};
     Gl.activeTexture(Gl.TEXTURE0);
-    Gl.bindTexture(Gl.TEXTURE_2D, IsL3 ? this.StadiumVistaTex : this.ForestBackdropTex);
+    Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
     Gl.uniform1i(this.Loc.uForestBackdropTex, 0);
-    Gl.uniform1i(
-      this.Loc.uHasForestTex,
-      (IsL3 ? this.StadiumVistaReady : LevelId === "studio-lobby-2" && this.ForestBackdropReady) ? 1 : 0,
+    Gl.uniform1i(this.Loc.uHasForestTex, LevelId === "studio-lobby-2" && this.ForestBackdropReady ? 1 : 0);
+    Gl.uniform2f(this.Loc.uBackdropSize, Number(BdVal.ScreenWidth ?? 12.4), Number(BdVal.ScreenHeight ?? 6.2));
+    Gl.uniform1f(this.Loc.uBackdropCenterX, 0.0);
+    Gl.uniform1f(
+      this.Loc.uStadiumSunStrength,
+      IsL3 ? Number(TrackVal.SunlightIntensity ?? 1.25) : 0.0,
     );
-    Gl.uniform2f(
-      this.Loc.uBackdropSize,
-      Number(BdVal.ScreenWidth ?? (IsL3 ? 18.4 : 12.4)),
-      Number(BdVal.ScreenHeight ?? (IsL3 ? 8.2 : 6.2)),
-    );
-    Gl.uniform1f(this.Loc.uBackdropCenterX, Number(BdVal.BackdropCenterX ?? (IsL3 ? -3.8 : 0.0)));
 
     const AmbientVal = Values["studio-ambient"] || {};
     const CycVal = Values["studio-cyclorama"] || {};
@@ -1739,6 +1871,7 @@ export class StudioRenderEngine {
         );
       } else if (Row.Panel === "studio-procedural" && Val.ProceduralKind && Val.ProceduralKind !== "studio.ambient") {
         if (Val.ProceduralKind === "studio.dust_field" && !EditMode) continue;
+        if (Val.ProceduralKind === "studio.garage_smoke" && (!EditMode || Row.Id !== Selected)) continue;
         const Gpu = this.GetCachedProcedural(Val.ProceduralKind, Val);
         const IsArch =
           Val.ProceduralKind === "studio.cyclorama" ||
@@ -1747,6 +1880,7 @@ export class StudioRenderEngine {
           Val.ProceduralKind === "studio.forest_backdrop" ||
           Val.ProceduralKind === "studio.rock_outcrop" ||
           Val.ProceduralKind === "studio.garage_shell" ||
+          Val.ProceduralKind === "studio.race_track" ||
           Val.ProceduralKind === "studio.garage_cables";
 
         // Match fixture diffuser emissive tint/brightness to its child light, or Backdrop brightness!
@@ -1808,7 +1942,7 @@ export class StudioRenderEngine {
       }
     }
 
-    // Render live sunlit Dust Particles advected by the Studio Wind Fan (Lobby 2!)
+    // Render live sunlit Dust Particles advected by the Studio Wind Fan (Lobby 2 & 3!)
     const DustRow = Rows.find((R) => R.Panel === "studio-procedural" && Values[R.Id]?.ProceduralKind === "studio.dust_field");
     if (DustRow && Hierarchy[DustRow.Id]?.Visible) {
       this.RenderDustParticles(
@@ -1820,6 +1954,18 @@ export class StudioRenderEngine {
         WindStrength,
       );
       DrawCalls += 2;
+    }
+
+    // Render live billowing Volumetric Garage & Tire/Exhaust Smoke plumes (Lobby 3!)
+    const SmokeRow = Rows.find((R) => R.Panel === "studio-procedural" && Values[R.Id]?.ProceduralKind === "studio.garage_smoke");
+    if (SmokeRow && Hierarchy[SmokeRow.Id]?.Visible) {
+      this.RenderGarageSmoke(
+        ViewProj,
+        TimeSec,
+        Values[SmokeRow.Id] || {},
+        Hierarchy[SmokeRow.Id].Position,
+      );
+      DrawCalls += 3;
     }
 
     // Optional Edit-mode Light Rig Gizmos (Area quads & IES beam cones)
@@ -1850,6 +1996,7 @@ export class StudioRenderEngine {
               "studio.forest_backdrop",
               "studio.rock_outcrop",
               "studio.garage_shell",
+              "studio.race_track",
               "studio.garage_cables",
               "studio.ambient",
             ].includes(SelVal.ProceduralKind) &&
@@ -2270,6 +2417,8 @@ export class StudioRenderEngine {
     const Gl = this.Gl;
     Gl.useProgram(this.GizmoProgram);
     Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.uniform1i(this.GizmoLoc.uSmokeMode, 0);
+    Gl.uniform1f(this.GizmoLoc.uTime, TimeSec);
     Gl.bindVertexArray(this.GizmoVao);
     Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
     Gl.enableVertexAttribArray(0);
@@ -2294,6 +2443,106 @@ export class StudioRenderEngine {
 
     Gl.depthMask(true);
     Gl.disable(Gl.BLEND);
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1.0);
+    Gl.bindVertexArray(null);
+  }
+
+  // Volumetric billowing Garage Floor, Tire/Exhaust & Golden Sunbeam Smoke Plumes (zero extra shaders!)
+  RenderGarageSmoke(ViewProj, TimeSec, SmokeVal, Center) {
+    const Density = Math.max(0.1, Math.min(2.2, Number(SmokeVal.SmokeDensity ?? 1.05)));
+    const Speed = Math.max(0.1, Math.min(2.4, Number(SmokeVal.BillowSpeed ?? 0.65)));
+    const Spread = Math.max(0.5, Math.min(2.2, Number(SmokeVal.PlumeSpread ?? 1.15)));
+    const Warmth = Math.max(0.0, Math.min(1.0, Number(SmokeVal.SunbeamWarmth ?? 0.68)));
+    const CloudCount = Math.max(36, Math.min(240, Math.round(Number(SmokeVal.CloudCount ?? 135))));
+
+    const FloorExhaustVerts = [];
+    const SunbeamPlumeVerts = [];
+    const AmbientMistVerts = [];
+    const T = TimeSec * Speed;
+
+    for (let I = 0; I < CloudCount; I++) {
+      const H1 = Math.sin(I * 19.37 + 1.1) * 43758.5453;
+      const H2 = Math.sin(I * 53.19 + 3.7) * 29183.1921;
+      const H3 = Math.sin(I * 91.73 + 6.4) * 18427.6193;
+      const Rx = H1 - Math.floor(H1);
+      const Ry = H2 - Math.floor(H2);
+      const Rz = H3 - Math.floor(H3);
+
+      const Life = (Ry + T * (0.09 + 0.06 * Rx)) % 1.0;
+      const Swirl = Math.sin(T * 0.55 + I * 1.7) * 0.65 * Spread;
+      const SwirlZ = Math.cos(T * 0.42 + I * 2.3) * 0.55 * Spread;
+
+      if (I % 3 === 0) {
+        // 1) Low rolling exhaust & tire smoke curling around the Hero GT's rear diffuser & tires
+        const Px = Center[0] + (Rx - 0.5) * 4.8 * Spread + Life * 1.35 + Swirl * 0.4;
+        const Py = 0.22 + Life * 1.35;
+        const Pz = Center[2] + (Rz - 0.5) * 3.8 * Spread + Life * 1.1 + SwirlZ * 0.4;
+        FloorExhaustVerts.push(Px, Py, Pz);
+      } else if (I % 3 === 1) {
+        // 2) Warm golden smoke drifting up through the pit-bay archway sunbeam shaft!
+        const Px = -2.2 + (Rx - 0.5) * 6.8 * Spread + Life * 1.9 + Swirl * 0.55;
+        const Py = 0.55 + Life * 3.45;
+        const Pz = -2.1 + (Rz - 0.5) * 4.8 * Spread + Life * 2.1 + SwirlZ * 0.45;
+        SunbeamPlumeVerts.push(Px, Py, Pz);
+      } else {
+        // 3) Cool industrial haze drifting gently around the hydraulic lift & right tool bay
+        const Px = (Rx - 0.5) * 13.5 * Spread + Swirl * 0.65;
+        const Py = 0.35 + Life * 2.25;
+        const Pz = 1.1 + (Rz - 0.5) * 8.2 * Spread + SwirlZ * 0.55;
+        AmbientMistVerts.push(Px, Py, Pz);
+      }
+    }
+
+    const Gl = this.Gl;
+    const ScalePx = this.Canvas.width > 900 ? 1.0 : 0.78;
+    Gl.useProgram(this.GizmoProgram);
+    Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.uniform1i(this.GizmoLoc.uSmokeMode, 1);
+    Gl.uniform1f(this.GizmoLoc.uTime, TimeSec);
+    Gl.bindVertexArray(this.GizmoVao);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
+    Gl.enableVertexAttribArray(0);
+
+    Gl.enable(Gl.BLEND);
+    Gl.blendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
+    Gl.depthMask(false);
+
+    // 1) Dense low exhaust & tire smoke plumes
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 920.0 * ScalePx * Spread);
+    Gl.uniform4f(
+      this.GizmoLoc.uColor,
+      0.78 + 0.14 * Warmth,
+      0.76 + 0.09 * Warmth,
+      0.75 - 0.06 * Warmth,
+      Math.min(0.32, 0.14 * Density),
+    );
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(FloorExhaustVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.POINTS, 0, FloorExhaustVerts.length / 3);
+
+    // 2) Warm golden backlit sunbeam smoke clouds streaming from pit archway
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1280.0 * ScalePx * Spread);
+    Gl.uniform4f(
+      this.GizmoLoc.uColor,
+      0.96,
+      0.84 + 0.08 * Warmth,
+      0.66 + 0.14 * (1 - Warmth),
+      Math.min(0.28, 0.115 * Density),
+    );
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(SunbeamPlumeVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.POINTS, 0, SunbeamPlumeVerts.length / 3);
+
+    // 3) Soft cool industrial garage mist wisps
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1150.0 * ScalePx * Spread);
+    Gl.uniform4f(this.GizmoLoc.uColor, 0.66, 0.72, 0.79, Math.min(0.22, 0.075 * Density));
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(AmbientMistVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.POINTS, 0, AmbientMistVerts.length / 3);
+
+    Gl.depthMask(true);
+    Gl.disable(Gl.BLEND);
+    Gl.uniform1i(this.GizmoLoc.uSmokeMode, 0);
     Gl.uniform1f(this.GizmoLoc.uPointSize, 1.0);
     Gl.bindVertexArray(null);
   }
