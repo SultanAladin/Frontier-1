@@ -567,7 +567,8 @@ ContentCategory ThumbnailSheetRepository::ClassifyExternalSuffix(const std::file
         return ContentCategory::Colours;
     }
     if (Ext == ".gltf" || Ext == ".glb" || Ext == ".fbx" || Ext == ".obj" || Ext == ".step"
-        || Ext == ".geometryspace" || Ext == ".componentspace" || Ext == ".worldspace" || Ext == ".instancespace"
+        || Ext == ".geometryspace" || Ext == ".componentspace" || Ext == ".worldspace"
+        || Ext == ".instancespace" || Ext == ".instance"
         || Ext == ".assembly" || Ext == ".sketch")
     {
         return ContentCategory::Geometry;

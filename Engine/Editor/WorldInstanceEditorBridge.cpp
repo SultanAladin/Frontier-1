@@ -101,6 +101,7 @@ void WorldInstanceEditorBridge::BindOutliner(
         const OutlinerSlotToken OutlinerSlot = Found->second;
         InstanceToOutlinerMap.erase(Found);
         OutlinerToInstanceMap.erase(OutlinerSlot.Identifier);
+        DocumentModelsBySlot.erase(Token.SlotIndex);
 
         if ((BoundOutliner != nullptr) && OutlinerSlot.Valid())
         {
@@ -151,6 +152,7 @@ void WorldInstanceEditorBridge::Unbind() noexcept
 void WorldInstanceEditorBridge::ReleaseManagedInstances() noexcept
 {
     ManagedHandles.clear();
+    DocumentModelsBySlot.clear();
 }
 
 void WorldInstanceEditorBridge::AdoptWorldSceneIntoRegister(
@@ -414,7 +416,44 @@ World::InstanceToken WorldInstanceEditorBridge::SpawnInstanceFromDocument(
         }
     }
 
+    DocumentModelsBySlot[Token.SlotIndex] = DocumentModel;
     ManagedHandles.push_back(std::move(Spawned));
+    return Token;
+}
+
+World::InstanceToken WorldInstanceEditorBridge::SpawnInstanceFromFile(
+    World::WorldInstanceRegister& TargetRegister,
+    const std::filesystem::path&  SourcePath,
+    const std::array<float, 3>&   WorldPosition,
+    World::InstanceToken          EnclosingToken,
+    std::string*                  OutDiagnostic)
+{
+    Codecs::InstanceDocumentModel DecodedModel{};
+    std::string LocalDiagnostic{};
+    if (!Codecs::InstanceDecoder::DecodeFromFile(SourcePath, DecodedModel, LocalDiagnostic))
+    {
+        if (OutDiagnostic != nullptr)
+        {
+            *OutDiagnostic = std::move(LocalDiagnostic);
+        }
+        return World::InstanceToken{};
+    }
+
+    DecodedModel.PositionMeters = WorldPosition;
+    const World::InstanceToken Token = SpawnInstanceFromDocument(TargetRegister, DecodedModel, EnclosingToken);
+    if (Token.QueryValid() && (BoundOutliner != nullptr))
+    {
+        const OutlinerSlotToken OutlinerSlot = QueryOutlinerSlot(Token);
+        if (OutlinerSlot.Valid())
+        {
+            BoundOutliner->SelectSingle(OutlinerSlot);
+        }
+    }
+
+    if (OutDiagnostic != nullptr)
+    {
+        OutDiagnostic->clear();
+    }
     return Token;
 }
 
@@ -424,11 +463,212 @@ bool WorldInstanceEditorBridge::RemoveManagedInstance(World::InstanceToken Token
     {
         if (It->QueryToken() == Token)
         {
+            DocumentModelsBySlot.erase(Token.SlotIndex);
             ManagedHandles.erase(It);
             return true;
         }
     }
     return false;
+}
+
+uint32_t WorldInstanceEditorBridge::RemoveOutlinerBoundSlots(std::span<const OutlinerSlotToken> Tokens) noexcept
+{
+    uint32_t ReclaimedCount = 0u;
+    for (const OutlinerSlotToken OutlinerSlot : Tokens)
+    {
+        const World::InstanceToken Token = QueryInstanceToken(OutlinerSlot);
+        if (Token.QueryValid() && RemoveManagedInstance(Token))
+        {
+            ++ReclaimedCount;
+        }
+    }
+    return ReclaimedCount;
+}
+
+OutlinerSlotToken WorldInstanceEditorBridge::DuplicateOutlinerBoundSlot(
+    World::WorldInstanceRegister& TargetRegister,
+    OutlinerSlotToken             SourceSlot)
+{
+    const World::InstanceToken SourceToken = QueryInstanceToken(SourceSlot);
+    if (!SourceToken.QueryValid())
+    {
+        return OutlinerSlotToken{};
+    }
+
+    const auto ModelIt = DocumentModelsBySlot.find(SourceToken.SlotIndex);
+    if (ModelIt == DocumentModelsBySlot.end())
+    {
+        return OutlinerSlotToken{};
+    }
+
+    Codecs::InstanceDocumentModel ClonedModel = ModelIt->second;
+
+    // Pull latest live transform & directives from WorldRegister before duplicating
+    if (const World::InstanceRecordEntry* Entry = TargetRegister.FindRecordEntry(SourceToken))
+    {
+        ClonedModel.DirectiveMask = Entry->DirectiveMask;
+        if (Entry->TransformSlot != World::InvalidInstanceSlot)
+        {
+            const World::WorldTransformStorage& Transforms = TargetRegister.InspectTransforms();
+            const uint32_t Slot                            = Entry->TransformSlot;
+            ClonedModel.PositionMeters  = {
+                Transforms.PositionMetersX[Slot] + 1.0f,
+                Transforms.PositionMetersY[Slot],
+                Transforms.PositionMetersZ[Slot]
+            };
+            ClonedModel.RotationDegrees = {
+                Transforms.RotationDegreesX[Slot],
+                Transforms.RotationDegreesY[Slot],
+                Transforms.RotationDegreesZ[Slot]
+            };
+            ClonedModel.ScaleScalar     = {
+                Transforms.ScaleScalarX[Slot],
+                Transforms.ScaleScalarY[Slot],
+                Transforms.ScaleScalarZ[Slot]
+            };
+        }
+    }
+
+    ClonedModel.DocumentTitle += " Copy";
+    if (!ClonedModel.EditorDirectives.OutlinerTitle.empty())
+    {
+        ClonedModel.EditorDirectives.OutlinerTitle += " Copy";
+    }
+
+    const World::InstanceToken ClonedToken = SpawnInstanceFromDocument(TargetRegister, ClonedModel);
+    if (!ClonedToken.QueryValid())
+    {
+        return OutlinerSlotToken{};
+    }
+
+    const OutlinerSlotToken ClonedOutlinerSlot = QueryOutlinerSlot(ClonedToken);
+    if ((BoundOutliner != nullptr) && ClonedOutlinerSlot.Valid())
+    {
+        BoundOutliner->SelectSingle(ClonedOutlinerSlot);
+    }
+    return ClonedOutlinerSlot;
+}
+
+bool WorldInstanceEditorBridge::SynchronizeOutlinerMutationsToRegister(
+    World::WorldInstanceRegister& TargetRegister) noexcept
+{
+    if ((BoundOutliner == nullptr) || InstanceToOutlinerMap.empty())
+    {
+        return false;
+    }
+
+    bool Mutated = false;
+    const World::WorldTransformStorage& Transforms = TargetRegister.InspectTransforms();
+
+    for (const auto& [SlotIndex, OutlinerSlot] : InstanceToOutlinerMap)
+    {
+        const OutlinerRecordEntry* Row = BoundOutliner->FindEntry(OutlinerSlot);
+        if (Row == nullptr)
+        {
+            continue;
+        }
+
+        const World::InstanceToken Token = QueryInstanceToken(OutlinerSlot);
+        const World::InstanceRecordEntry* Entry = TargetRegister.FindRecordEntry(Token);
+        if ((Entry == nullptr) || (Entry->TransformSlot == World::InvalidInstanceSlot))
+        {
+            continue;
+        }
+
+        const uint32_t TSlot = Entry->TransformSlot;
+        const bool TransformChanged =
+            DifferAboveEpsilon(Transforms.PositionMetersX[TSlot], Row->PositionX) ||
+            DifferAboveEpsilon(Transforms.PositionMetersY[TSlot], Row->PositionY) ||
+            DifferAboveEpsilon(Transforms.PositionMetersZ[TSlot], Row->PositionZ) ||
+            DifferAboveEpsilon(Transforms.RotationDegreesX[TSlot], Row->RotationX) ||
+            DifferAboveEpsilon(Transforms.RotationDegreesY[TSlot], Row->RotationY) ||
+            DifferAboveEpsilon(Transforms.RotationDegreesZ[TSlot], Row->RotationZ) ||
+            DifferAboveEpsilon(Transforms.ScaleScalarX[TSlot], Row->ScaleX) ||
+            DifferAboveEpsilon(Transforms.ScaleScalarY[TSlot], Row->ScaleY) ||
+            DifferAboveEpsilon(Transforms.ScaleScalarZ[TSlot], Row->ScaleZ);
+
+        if (TransformChanged)
+        {
+            (void)TargetRegister.AssignWorldTransform(
+                Token,
+                Row->PositionX,
+                Row->PositionY,
+                Row->PositionZ,
+                Row->RotationX,
+                Row->RotationY,
+                Row->RotationZ,
+                Row->ScaleX,
+                Row->ScaleY,
+                Row->ScaleZ);
+            Mutated = true;
+        }
+
+        const bool RegisterVisible = World::QueryDirectiveEnabled(
+            Entry->DirectiveMask,
+            World::InstanceDirectiveMask::EnableVisibility);
+        if (RegisterVisible != Row->VisibilityEnabled)
+        {
+            (void)TargetRegister.AssignVisibility(Token, Row->VisibilityEnabled);
+            Mutated = true;
+        }
+    }
+
+    return Mutated;
+}
+
+bool WorldInstanceEditorBridge::ExportInstanceToFile(
+    const World::WorldInstanceRegister& SourceRegister,
+    World::InstanceToken                Token,
+    const std::filesystem::path&        TargetPath,
+    bool                                StripEditorDirectives,
+    std::string&                        OutDiagnostic) const
+{
+    const World::InstanceRecordEntry* Entry = SourceRegister.FindRecordEntry(Token);
+    if (Entry == nullptr)
+    {
+        OutDiagnostic = "Cannot export invalid or reclaimed InstanceToken.";
+        return false;
+    }
+
+    Codecs::InstanceDocumentModel ExportModel{};
+    if (const auto ModelIt = DocumentModelsBySlot.find(Token.SlotIndex); ModelIt != DocumentModelsBySlot.end())
+    {
+        ExportModel = ModelIt->second;
+    }
+    else
+    {
+        ExportModel.DocumentTitle = std::string(World::QueryInstanceCategoryName(Token.QueryCategory()));
+        ExportModel.Category      = Token.QueryCategory();
+    }
+
+    ExportModel.DirectiveMask = Entry->DirectiveMask;
+    if (Entry->TransformSlot != World::InvalidInstanceSlot)
+    {
+        const World::WorldTransformStorage& Transforms = SourceRegister.InspectTransforms();
+        const uint32_t Slot                            = Entry->TransformSlot;
+        ExportModel.PositionMeters  = {
+            Transforms.PositionMetersX[Slot],
+            Transforms.PositionMetersY[Slot],
+            Transforms.PositionMetersZ[Slot]
+        };
+        ExportModel.RotationDegrees = {
+            Transforms.RotationDegreesX[Slot],
+            Transforms.RotationDegreesY[Slot],
+            Transforms.RotationDegreesZ[Slot]
+        };
+        ExportModel.ScaleScalar     = {
+            Transforms.ScaleScalarX[Slot],
+            Transforms.ScaleScalarY[Slot],
+            Transforms.ScaleScalarZ[Slot]
+        };
+    }
+
+    return Codecs::InstanceEncoder::EncodeToFile(
+        TargetPath,
+        ExportModel,
+        OutDiagnostic,
+        StripEditorDirectives,
+        nullptr);
 }
 
 bool WorldInstanceEditorBridge::SynchronizeRegisterToWorldScene(

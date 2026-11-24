@@ -192,6 +192,20 @@ bool InstanceEncoder::EncodeToFile(
     return SpaceContainerEncoder::EncodeToFile(TargetPath, Payload, OutDiagnostic);
 }
 
+bool InstanceEncoder::CookFileForShipping(
+    const std::filesystem::path& SourcePath,
+    const std::filesystem::path& CookedTargetPath,
+    std::string&                 OutDiagnostic)
+{
+    InstanceDocumentModel Model{};
+    if (!InstanceDecoder::DecodeFromFile(SourcePath, Model, OutDiagnostic, nullptr))
+    {
+        return false;
+    }
+
+    return EncodeToFile(CookedTargetPath, Model, OutDiagnostic, true, nullptr);
+}
+
 //------------------------------------------------------------------------------------------------------------------------
 //                                                    INSTANCE DECODER
 //------------------------------------------------------------------------------------------------------------------------

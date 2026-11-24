@@ -14,7 +14,9 @@
 #include "Engine/World/CategoryInstances.h"
 #include "Engine/World/WorldInstanceRegister.h"
 
+#include <array>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -205,6 +207,135 @@ bool ValidateWorldSceneSynchronization()
     return Passed;
 }
 
+bool ValidateDiskDropBidirectionalSyncShippingCook()
+{
+    namespace fs = std::filesystem;
+    const fs::path TempDir     = fs::temp_directory_path();
+    const fs::path SourcePath  = TempDir / "FrontierPhaseC_Source.Instance";
+    const fs::path ExportPath  = TempDir / "FrontierPhaseC_Export.Instance";
+    const fs::path CookedPath  = TempDir / "FrontierPhaseC_Cooked.Instance";
+
+    Codecs::InstanceDocumentModel AuthorDoc{};
+    AuthorDoc.DocumentTitle   = "CampfireLantern";
+    AuthorDoc.Category        = World::InstanceCategory::SurfaceGeometry;
+    AuthorDoc.PositionMeters  = { 0.0f, 0.0f, 0.0f };
+    AuthorDoc.RotationDegrees = { 0.0f, 0.0f, 15.0f };
+    AuthorDoc.ScaleScalar     = { 1.0f, 1.0f, 1.0f };
+    AuthorDoc.EditorDirectives.OutlinerTitle = "Campfire Lantern";
+    AuthorDoc.EditorDirectives.CategoryLabel = "Composite Fixture";
+    AuthorDoc.EditorDirectives.Subtitle      = "Geometry + Material + Flame Particles";
+    AuthorDoc.SpaceSlots = {
+        { "PrimarySurface",  ".GeometrySpace", "Content/Props/Lantern.GeometrySpace",   0ull },
+        { "SurfaceMaterial", ".MaterialSpace", "Content/Materials/Brass.MaterialSpace", 0ull },
+        { "FlameParticles",  ".ParticleSpace", "Content/Effects/Flame.ParticleSpace",   0ull }
+    };
+
+    bool Passed = true;
+    std::string Diagnostic{};
+    Passed &= ExpectCondition(
+        Codecs::InstanceEncoder::EncodeToFile(SourcePath, AuthorDoc, Diagnostic, false),
+        "Writing source .Instance file to disk must succeed");
+
+    OutlinerPanel                     Outliner{};
+    World::WorldInstanceRegister      WorldRegister{};
+    Editor::WorldInstanceEditorBridge Bridge{};
+    Bridge.BindOutliner(WorldRegister, Outliner);
+
+    // 1. Spawn from disk at raycasted drop coordinates
+    const World::InstanceToken DroppedToken = Bridge.SpawnInstanceFromFile(
+        WorldRegister,
+        SourcePath,
+        { 7.5f, -3.25f, 1.10f },
+        {},
+        &Diagnostic);
+    Passed &= ExpectCondition(DroppedToken.QueryValid(), "SpawnInstanceFromFile must return valid InstanceToken");
+
+    const OutlinerSlotToken RowSlot = Bridge.QueryOutlinerSlot(DroppedToken);
+    Passed &= ExpectCondition(
+        Outliner.QueryPrimarySelection() == RowSlot,
+        "SpawnInstanceFromFile must select the newly created Outliner row");
+
+    // Flush initial transform RequireRebuild
+    (void)World::ExecuteTransformLoop(WorldRegister);
+
+    // 2. Simulate Gizmo drag + Outliner visibility toggle -> bidirectional push back into WorldRegister
+    OutlinerRecordEntry* Row = Outliner.AccessEntry(RowSlot);
+    Passed &= ExpectCondition(Row != nullptr, "Spawned Outliner row must be accessible");
+    if (Row != nullptr)
+    {
+        Row->PositionX         = 11.25f;
+        Row->RotationZ         = 90.0f;
+        Row->VisibilityEnabled = false;
+    }
+
+    const bool PushedBack = Bridge.SynchronizeOutlinerMutationsToRegister(WorldRegister);
+    Passed &= ExpectCondition(PushedBack, "SynchronizeOutlinerMutationsToRegister must report mutation");
+    const World::InstanceRecordEntry* RegEntry = WorldRegister.FindRecordEntry(DroppedToken);
+    Passed &= ExpectCondition(
+        (RegEntry != nullptr) &&
+            !World::QueryDirectiveEnabled(RegEntry->DirectiveMask, World::InstanceDirectiveMask::EnableVisibility) &&
+            (std::fabs(WorldRegister.InspectTransforms().PositionMetersX[RegEntry->TransformSlot] - 11.25f) < 1e-4f) &&
+            (std::fabs(WorldRegister.InspectTransforms().RotationDegreesZ[RegEntry->TransformSlot] - 90.0f) < 1e-4f) &&
+            WorldRegister.InspectTransforms().RequireRebuild,
+        "Outliner transform & visibility edits must propagate into WorldRegister and set RequireRebuild");
+
+    // 3. Duplicate via Outliner override -> must clone live transform (+1m X)
+    const OutlinerSlotToken DuplicatedSlot = Bridge.DuplicateOutlinerBoundSlot(WorldRegister, RowSlot);
+    const OutlinerRecordEntry* ClonedRow   = Outliner.FindEntry(DuplicatedSlot);
+    Passed &= ExpectCondition(
+        DuplicatedSlot.Valid() &&
+            (ClonedRow != nullptr) &&
+            (std::fabs(ClonedRow->PositionX - 12.25f) < 1e-4f) &&
+            (Outliner.QueryTotalCount() == 2u),
+        "DuplicateOutlinerBoundSlot must clone live transform with +1m X offset");
+
+    // 4. Export mutated live instance & cook for Shipping on disk
+    Passed &= ExpectCondition(
+        Bridge.ExportInstanceToFile(WorldRegister, DroppedToken, ExportPath, false, Diagnostic),
+        "ExportInstanceToFile (Editor) must succeed");
+    Passed &= ExpectCondition(
+        Codecs::InstanceEncoder::CookFileForShipping(ExportPath, CookedPath, Diagnostic),
+        "InstanceEncoder::CookFileForShipping must succeed");
+
+    const uintmax_t EditorFileSize   = fs::file_size(ExportPath);
+    const uintmax_t ShippingFileSize = fs::file_size(CookedPath);
+    Passed &= ExpectCondition(
+        ShippingFileSize < EditorFileSize,
+        "Cooked Shipping .Instance file must be smaller than Editor .Instance file");
+
+    Codecs::InstanceDocumentModel DecodedCooked{};
+    Passed &= ExpectCondition(
+        Codecs::InstanceDecoder::DecodeFromFile(CookedPath, DecodedCooked, Diagnostic),
+        "Decoding cooked Shipping .Instance file must succeed");
+    Passed &= ExpectCondition(
+        DecodedCooked.EditorDirectives.OutlinerTitle.empty() &&
+            (DecodedCooked.SpaceSlots.size() == 3u) &&
+            (std::fabs(DecodedCooked.PositionMeters[0] - 11.25f) < 1e-4f) &&
+            (std::fabs(DecodedCooked.RotationDegrees[2] - 90.0f) < 1e-4f) &&
+            !World::QueryDirectiveEnabled(DecodedCooked.DirectiveMask, World::InstanceDirectiveMask::EnableVisibility),
+        "Cooked Shipping .Instance must strip [Editor] while preserving mutated transform, visibility & SpaceSlots");
+
+    // 5. Delete both via Outliner delete override -> must reclaim both slots & remove both rows
+    const std::array<OutlinerSlotToken, 2u> BothSlots{ RowSlot, DuplicatedSlot };
+    const uint32_t ReclaimedCount = Bridge.RemoveOutlinerBoundSlots(BothSlots);
+    Passed &= ExpectCondition(
+        (ReclaimedCount == 2u) &&
+            (Outliner.QueryTotalCount() == 0u) &&
+            (Bridge.QueryBoundRowCount() == 0u) &&
+            !WorldRegister.AuthenticateToken(DroppedToken),
+        "RemoveOutlinerBoundSlots must cleanly remove Outliner rows and reclaim WorldRegister slots");
+
+    Bridge.Unbind();
+    std::error_code IgnoreError{};
+    fs::remove(SourcePath, IgnoreError);
+    fs::remove(ExportPath, IgnoreError);
+    fs::remove(CookedPath, IgnoreError);
+
+    std::cout << "[PASS] Disk .Instance drop, bidirectional gizmo/Outliner sync, duplicate & Shipping cook verified ("
+              << EditorFileSize << " B Editor -> " << ShippingFileSize << " B Shipping)\n";
+    return Passed;
+}
+
 } // namespace
 
 int main()
@@ -213,6 +344,7 @@ int main()
     AllPassed &= ValidateLiveOutlinerBinding();
     AllPassed &= ValidateInstanceDocumentSpawning();
     AllPassed &= ValidateWorldSceneSynchronization();
+    AllPassed &= ValidateDiskDropBidirectionalSyncShippingCook();
 
     if (!AllPassed)
     {

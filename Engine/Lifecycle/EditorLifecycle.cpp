@@ -481,13 +481,18 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
             {
                 return;
             }
-            if (EnvironmentRegistry.UnregisterSlots(
-                    Tokens,
-                    ActivePanes->Outliner,
-                    ShowcaseBundle->Scene,
-                    &ActivePanes->Viewport.AccessDisplaySettings()) > 0u)
+            const uint32_t RemovedEnv = EnvironmentRegistry.UnregisterSlots(
+                Tokens,
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            const uint32_t RemovedInstances = InstanceEditorBridge.RemoveOutlinerBoundSlots(Tokens);
+            if ((RemovedEnv > 0u) || (RemovedInstances > 0u))
             {
-                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                if (RemovedEnv > 0u)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
                 PendingInteractionWorldRefresh = true;
                 PendingInteractionSceneSync    = true;
             }
@@ -501,14 +506,22 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
             {
                 return;
             }
-            const OutlinerSlotToken Duplicated = EnvironmentRegistry.DuplicateSlot(
+            OutlinerSlotToken Duplicated = EnvironmentRegistry.DuplicateSlot(
                 SourceToken,
                 ActivePanes->Outliner,
                 ShowcaseBundle->Scene,
                 &ActivePanes->Viewport.AccessDisplaySettings());
+            const bool DuplicatedFromEnv = Duplicated.Valid();
+            if (!DuplicatedFromEnv)
+            {
+                Duplicated = InstanceEditorBridge.DuplicateOutlinerBoundSlot(WorldRegister, SourceToken);
+            }
             if (Duplicated.Valid())
             {
-                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                if (DuplicatedFromEnv)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
                 PendingInteractionWorldRefresh = true;
                 PendingInteractionSceneSync    = true;
             }
@@ -1832,6 +1845,25 @@ void EditorLifecycle::HandleContentDropOnViewport(
     const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
     const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
 
+    if (Entry.ContainerFormat == ".Instance" || Entry.ContainerFormat == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".Instance" || Entry.DiskPath.extension() == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".instance" || Entry.DiskPath.extension() == ".instancespace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+        std::string Diagnostic{};
+        if (InstanceEditorBridge.SpawnInstanceFromFile(
+                WorldRegister,
+                Entry.DiskPath,
+                { DropPos.X, DropPos.Y, DropPos.Z },
+                {},
+                &Diagnostic).QueryValid())
+        {
+            PendingInteractionWorldRefresh = true;
+            PendingInteractionSceneSync    = true;
+        }
+        return;
+    }
+
     if (Entry.ContainerFormat == ".ComponentSpace" || Entry.DiskPath.extension() == ".ComponentSpace")
     {
         const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
@@ -1901,6 +1933,26 @@ void EditorLifecycle::HandleContentDropOnOutliner(
     OutlinerSlotToken HitSlot = Panes->Outliner.QuerySlotAtPhysicalPoint(PhysicalPt);
     const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
     const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Entry.ContainerFormat == ".Instance" || Entry.ContainerFormat == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".Instance" || Entry.DiskPath.extension() == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".instance" || Entry.DiskPath.extension() == ".instancespace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.62f, 0.36f);
+        const World::InstanceToken EnclosingToken = InstanceEditorBridge.QueryInstanceToken(HitSlot);
+        std::string Diagnostic{};
+        if (InstanceEditorBridge.SpawnInstanceFromFile(
+                WorldRegister,
+                Entry.DiskPath,
+                { DropPos.X, DropPos.Y, DropPos.Z },
+                EnclosingToken,
+                &Diagnostic).QueryValid())
+        {
+            PendingInteractionWorldRefresh = true;
+            PendingInteractionSceneSync    = true;
+        }
+        return;
+    }
 
     if (Entry.ContainerFormat == ".ComponentSpace" || Entry.DiskPath.extension() == ".ComponentSpace")
     {
@@ -2928,6 +2980,10 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 }
             }
 
+            // Pull any Outliner/Gizmo edits back into WorldRegister before executing tight SoA loops
+            const bool OutlinerPushedToRegister =
+                InstanceEditorBridge.SynchronizeOutlinerMutationsToRegister(WorldRegister);
+
             // Execute tight SoA WorldInstanceRegister loops (Edit Mode: RequireRebuild-only early-out; Play/Simulate: live Δt)
             const bool WorldSimEnabled =
                 (Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit) &&
@@ -2937,11 +2993,13 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                     WorldRegister,
                     static_cast<float>(SafeStep),
                     WorldSimEnabled);
-            const bool WorldRegisterMutated = InstanceEditorBridge.SynchronizeRegisterToWorldScene(
-                WorldRegister,
-                WorldLoopMetrics,
-                ShowcaseBundle->Scene,
-                static_cast<float>(SafeStep));
+            const bool WorldRegisterMutated =
+                OutlinerPushedToRegister ||
+                InstanceEditorBridge.SynchronizeRegisterToWorldScene(
+                    WorldRegister,
+                    WorldLoopMetrics,
+                    ShowcaseBundle->Scene,
+                    static_cast<float>(SafeStep));
 
             // Advance live warzone collapse, smashable glass/walls & roaming deer when Play or Simulate is active
             bool ApocalypticSimMutated = false;

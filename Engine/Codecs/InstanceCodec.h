@@ -92,6 +92,11 @@ public:
         std::string&                       OutDiagnostic,
         bool                               StripEditorDirectives = false,
         const Workspaces::RevisionTracker* OptionalRevision      = nullptr);
+
+    [[nodiscard]] static bool CookFileForShipping(
+        const std::filesystem::path& SourcePath,
+        const std::filesystem::path& CookedTargetPath,
+        std::string&                 OutDiagnostic);
 };
 
 //------------------------------------------------------------------------------------------------------------------------
