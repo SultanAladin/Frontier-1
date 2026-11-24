@@ -919,6 +919,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Input/InputExtension.cpp
     Engine/Lifecycle/ProjectExecutionPolicy.cpp
     Engine/Lifecycle/RuntimeLifecycle.cpp
+    Engine/Lifecycle/RuntimeWorldHost.cpp
     Engine/Lifecycle/ProjectExecutionRunner.cpp
     Engine/SimulationSpace/Policies/GameplayRulePolicy.cpp
     Engine/SimulationSpace/Policies/DeterministicDrivingPolicy.cpp
@@ -951,6 +952,7 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/ControlVehicleSurfaceDecoder.cpp
     Engine/World/WorldInstanceRegister.cpp
     Engine/World/CategoryInstances.cpp
+    Engine/World/WorldSceneSyncBridge.cpp
     Engine/Tools/DefaultContentGenerator.cpp
     Engine/ComponentClass/ComponentInstanceStorage.cpp
     Engine/ComponentClass/ComponentClassDefinition.cpp
@@ -1314,6 +1316,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(SketcherBlendImportValidation             Exhibits/ParametricSketcher/SketcherBlendImportValidation.cpp)
     frontier_register_exhibit(DataDrivenSpaceContentValidation          Exhibits/DataDrivenSpaceContentValidation.cpp)
     frontier_register_exhibit(WorldInstanceValidation                   Exhibits/WorldInstanceValidation.cpp)
+    frontier_register_exhibit(RuntimeWorldHostValidation                Exhibits/RuntimeWorldHostValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(SketcherWorkspaceValidation           Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
         frontier_register_exhibit(WorldInstanceEditorBridgeValidation   Exhibits/WorldInstanceEditorBridgeValidation.cpp)

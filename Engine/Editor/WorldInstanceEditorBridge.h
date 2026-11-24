@@ -18,6 +18,7 @@
 #include "Engine/GeometricRaster/GlobalIllumination/TieredWorldRenderSequence.h"
 #include "Engine/World/CategoryInstances.h"
 #include "Engine/World/WorldInstanceRegister.h"
+#include "Engine/World/WorldSceneSyncBridge.h"
 
 #include <array>
 #include <cstdint>

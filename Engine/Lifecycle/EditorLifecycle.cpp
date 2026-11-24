@@ -445,6 +445,7 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
 
     // Bind WorldInstanceRegister <-> OutlinerPanel and adopt loaded scene atmosphere/celestials into SoA registers
     InstanceEditorBridge.Unbind();
+    SceneSyncBridge.ClearBindings();
     WorldRegister.ClearAll();
     InstanceEditorBridge.BindOutliner(WorldRegister, Panes->Outliner);
     InstanceEditorBridge.AdoptWorldSceneIntoRegister(WorldRegister, ShowcaseBundle->Scene);
@@ -2980,9 +2981,11 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 }
             }
 
-            // Pull any Outliner/Gizmo edits back into WorldRegister before executing tight SoA loops
+            // Pull any Outliner/Gizmo edits back into WorldRegister and flush O(rebuilt) transforms into ClusterInstances
             const bool OutlinerPushedToRegister =
                 InstanceEditorBridge.SynchronizeOutlinerMutationsToRegister(WorldRegister);
+            const uint32_t SyncedClusterTransforms =
+                SceneSyncBridge.FlushRebuiltTransformsToScene(WorldRegister, ShowcaseBundle->Scene);
 
             // Execute tight SoA WorldInstanceRegister loops (Edit Mode: RequireRebuild-only early-out; Play/Simulate: live Δt)
             const bool WorldSimEnabled =
@@ -2995,6 +2998,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                     WorldSimEnabled);
             const bool WorldRegisterMutated =
                 OutlinerPushedToRegister ||
+                (SyncedClusterTransforms > 0u) ||
                 InstanceEditorBridge.SynchronizeRegisterToWorldScene(
                     WorldRegister,
                     WorldLoopMetrics,
@@ -3403,6 +3407,7 @@ void EditorLifecycle::Finalize() noexcept
     GpuWorldRenderer.reset();
     ShowcaseRenderer.reset();
     InstanceEditorBridge.Unbind();
+    SceneSyncBridge.ClearBindings();
     WorldRegister.ClearAll();
     ShowcaseBundle.reset();
     Workspaces.Finalize();

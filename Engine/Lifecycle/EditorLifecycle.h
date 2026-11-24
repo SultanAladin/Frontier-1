@@ -132,6 +132,7 @@ public:
     [[nodiscard]] World::WorldInstanceRegister&                          AccessWorldRegister() noexcept { return WorldRegister; }
     [[nodiscard]] const World::WorldInstanceRegister&                    InspectWorldRegister() const noexcept { return WorldRegister; }
     [[nodiscard]] Editor::WorldInstanceEditorBridge&                     AccessInstanceEditorBridge() noexcept { return InstanceEditorBridge; }
+    [[nodiscard]] World::WorldSceneSyncBridge&                           AccessSceneSyncBridge() noexcept { return SceneSyncBridge; }
     [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
@@ -196,6 +197,7 @@ private:
     std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted default world scene & Outliner tokens
     WorldEnvironmentRegistry                                         EnvironmentRegistry  {}; // [-] - Authoritative Environment Outliner & WorldScene registry
     World::WorldInstanceRegister                                     WorldRegister        {}; // [-] - Contiguous SoA world instance register
+    World::WorldSceneSyncBridge                                      SceneSyncBridge      {}; // [-] - O(rebuilt) transform & atmosphere sync bridge
     Editor::WorldInstanceEditorBridge                                InstanceEditorBridge {}; // [-] - Outliner/WorldScene dual-profile bridge
     InspectorRegistry                                                Inspectors           {}; // [-] - Modular per-type Inspector registry & multi-instance register
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated MatCap / OpenPBR Direct world renderer
