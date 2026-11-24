@@ -70,14 +70,31 @@ for (const Prim of ["cube", "sphere", "cylinder", "torus", "cone"]) {
   AssertValidSurface("primitive(" + Prim + ")", ConstructShowcasePrimitive(Prim));
 }
 // 2b. Verify wider lobby dimensions + straight vertical overhead softbox rigging & power/tether cables
-assert.ok(StudioLobbyInitialValues["studio-cyclorama"].CoveWidth >= 18.0, "Wider cyclorama prevents camera clipping");
-assert.ok(StudioLobbyInitialValues["studio-cyclorama"].FloorDepth >= 13.0, "Deeper studio floor prevents clipping");
+const CycInit = StudioLobbyInitialValues["studio-cyclorama"];
+assert.ok(CycInit.CoveWidth >= 18.0, "Wider cyclorama prevents camera clipping");
+assert.ok(CycInit.FloorDepth >= 13.0, "Deeper studio floor prevents clipping");
 assert.ok(StudioLobbyInitialValues["studio-ceiling"].CeilingHeight >= 7.0, "Higher studio ceiling prevents clipping");
+
+// Verify strict studio set staging: ONLY Hero Coupe + lighting inside cyclorama; other 2 vehicles, desk, cases & foreground cameras OUTSIDE
+const CycHalfW = CycInit.CoveWidth * 0.5;
+const CycFrontZ = CycInit.Position[2] + CycInit.FloorDepth * 0.42;
+const CycBackZ = CycInit.Position[2] - CycInit.FloorDepth * 0.58;
+const IsInsideCyclorama = (Pos) =>
+  Math.abs(Pos[0]) < CycHalfW && Pos[2] > CycBackZ && Pos[2] < CycFrontZ;
+
+assert.ok(IsInsideCyclorama(StudioLobbyInitialValues["vehicle-hero"].Position), "Hero Coupe is inside cyclorama set");
+assert.ok(!IsInsideCyclorama(StudioLobbyInitialValues["vehicle-gt3"].Position), "Alpine GT is OUTSIDE cyclorama set");
+assert.ok(!IsInsideCyclorama(StudioLobbyInitialValues["vehicle-tourer"].Position), "Liquid Tourer is OUTSIDE cyclorama set");
+assert.ok(!IsInsideCyclorama(StudioLobbyInitialValues["prop-workstation"].Position), "Tether Workstation desk is OUTSIDE cyclorama set");
+assert.ok(!IsInsideCyclorama(StudioLobbyInitialValues["prop-grip-cases"].Position), "Grip Cases & props are OUTSIDE cyclorama set");
+assert.ok(!IsInsideCyclorama(StudioLobbyInitialValues["rig-cam-a-tripod"].Position), "Cinema Tripod A is OUTSIDE cyclorama front lip");
+assert.ok(!IsInsideCyclorama(StudioLobbyInitialValues["rig-cam-b-tripod"].Position), "Cinema Tripod B is OUTSIDE cyclorama front lip");
+
 const SoftboxSurface = ConstructProceduralSurface("studio.light_fixture", StudioLobbyInitialValues["rig-softbox-fixture"]);
 assert.ok(SoftboxSurface.TriangleCount > 500, "Overhead softbox includes vertical cables + coiled umbilical + roof wiring (" + SoftboxSurface.TriangleCount + " tris)");
 const TripodSurface = ConstructProceduralSurface("studio.tripod", StudioLobbyInitialValues["rig-key-tripod"]);
 assert.ok(TripodSurface.TriangleCount > 450, "Studio tripod includes power/tether cabling & ballast (" + TripodSurface.TriangleCount + " tris)");
-console.log("PASS [2/6] All 7 procedural studio component families, wider lobby & vertical cables/wires verified");
+console.log("PASS [2/6] Wider lobby, vertical cables/wires & strict 1-car-in-set / props-outside staging verified");
 
 // 3. Verify 3 vehicles + 6 shared studio.tripod instances + hierarchical mount propagation
 const VehicleRows = StudioLobbyRows.filter((R) => R.Panel === "studio-vehicle");

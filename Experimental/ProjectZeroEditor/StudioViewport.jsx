@@ -61,15 +61,19 @@ function ClampCameraInsideLobby(Eye, Values, LevelId) {
   if (LevelId !== "studio-lobby") return Eye;
   const Cyc = Values["studio-cyclorama"] || {};
   const Ceil = Values["studio-ceiling"] || {};
-  const HalfW = Math.max(6.5, Number(Cyc.CoveWidth ?? 18.0) * 0.5 - 0.85);
+  const CoveHalfW = Math.max(6.5, Number(Cyc.CoveWidth ?? 18.0) * 0.5 - 0.85);
   const CycZ = Number(Cyc.Position?.[2] ?? -0.8);
   const FloorD = Number(Cyc.FloorDepth ?? 13.5);
+  const FrontZ = CycZ + FloorD * 0.42;
   const BackZ = CycZ - FloorD * 0.58 + 1.15;
   const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
+  const ClampedZ = Math.max(BackZ, Math.min(18.0, Eye[2]));
+  // Inside the cyclorama cove zone stay clear of the side wing walls; in front of the set allow wide outer-bay orbit
+  const MaxHalfX = ClampedZ < FrontZ + 0.45 ? CoveHalfW : 21.0;
   return [
-    Math.max(-HalfW, Math.min(HalfW, Eye[0])),
+    Math.max(-MaxHalfX, Math.min(MaxHalfX, Eye[0])),
     Math.max(0.32, Math.min(MaxY, Eye[1])),
-    Math.max(BackZ, Math.min(14.5, Eye[2])),
+    ClampedZ,
   ];
 }
 

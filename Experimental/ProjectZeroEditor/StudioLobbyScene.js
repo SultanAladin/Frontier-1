@@ -167,12 +167,12 @@ export function ComputeTripodMountHeight(Params = {}) {
 }
 
 // Compute exact initial aim angles from each tripod's mount head to Hero Coupe
-const AimKey = ComputeAimAngles([-3.45, 2.28, 1.55], HeroCarAimTarget);
-const AimUmbrella = ComputeAimAngles([3.25, 2.12, 1.85], HeroCarAimTarget);
-const AimRim = ComputeAimAngles([-4.15, 2.52, -2.55], HeroCarAimTarget);
-const AimAccent = ComputeAimAngles([4.35, 2.32, -2.3], HeroCarAimTarget);
-const AimCamA = ComputeAimAngles([-2.85, 1.78, 4.18], HeroCarAimTarget);
-const AimCamB = ComputeAimAngles([2.15, 1.6, 4.02], HeroCarAimTarget);
+const AimKey = ComputeAimAngles([-3.65, 2.28, 1.55], HeroCarAimTarget);
+const AimUmbrella = ComputeAimAngles([3.45, 2.12, 1.85], HeroCarAimTarget);
+const AimRim = ComputeAimAngles([-4.35, 2.52, -2.65], HeroCarAimTarget);
+const AimAccent = ComputeAimAngles([4.55, 2.32, -2.4], HeroCarAimTarget);
+const AimCamA = ComputeAimAngles([-3.25, 1.78, 5.75], HeroCarAimTarget);
+const AimCamB = ComputeAimAngles([2.55, 1.6, 5.65], HeroCarAimTarget);
 
 export const StudioLobbyRows = [
   // Vehicles collection (3 vehicles in level)
@@ -187,19 +187,19 @@ export const StudioLobbyRows = [
   ],
   [
     "vehicle-gt3",
-    "Alpine GT · Left Bay",
+    "Alpine GT · Outer Left Bay",
     "studio-vehicle",
     "studio-vehicle",
     "studio-vehicles",
-    "ControlledIntegrator · Stage-left wing showcase",
+    "ControlledIntegrator · Parked outside cyclorama on outer tiled floor",
   ],
   [
     "vehicle-tourer",
-    "Liquid Tourer · Right Bay",
+    "Liquid Tourer · Outer Right Bay",
     "studio-vehicle",
     "studio-vehicle",
     "studio-vehicles",
-    "ControlledIntegrator · Stage-right wing showcase",
+    "ControlledIntegrator · Parked outside cyclorama on outer tiled floor",
   ],
 
   // Studio architecture collection
@@ -462,7 +462,7 @@ export const StudioLobbyRows = [
 }));
 
 export const StudioLobbyInitialValues = {
-  // Vehicles (3 vehicles in the level)
+  // Vehicles: ONLY Hero Coupe is inside the cyclorama set; the 2 companion vehicles are parked OUTSIDE on the outer glossy tiled studio floor
   "vehicle-hero": {
     Position: [0.0, 0.0, -0.15],
     Rotation: [0, -16, 0],
@@ -476,9 +476,9 @@ export const StudioLobbyInitialValues = {
     CaliperHex: "#b81d24",
   },
   "vehicle-gt3": {
-    Position: [-6.6, 0.0, -1.8],
-    Rotation: [0, -32, 0],
-    YawDeg: -32,
+    Position: [-12.2, 0.0, 4.8],
+    Rotation: [0, -24, 0],
+    YawDeg: -24,
     Scale: 0.74,
     PaintHex: "#eceff3",
     Metallic: 0.18,
@@ -488,9 +488,9 @@ export const StudioLobbyInitialValues = {
     CaliperHex: "#c91e26",
   },
   "vehicle-tourer": {
-    Position: [6.7, 0.0, -1.8],
-    Rotation: [0, -148, 0],
-    YawDeg: -148,
+    Position: [12.2, 0.0, 4.8],
+    Rotation: [0, -156, 0],
+    YawDeg: -156,
     Scale: 0.74,
     PaintHex: "#9ca5b4",
     Metallic: 0.92,
@@ -579,10 +579,10 @@ export const StudioLobbyInitialValues = {
     },
   },
 
-  // Key Fresnel Tripod -> Barn-Door Fresnel -> Native IES Light (Aimed DEAD-ON at Hero Coupe!)
+  // Key Fresnel Tripod -> Barn-Door Fresnel -> Native IES Light (Inside set, aimed DEAD-ON at Hero Coupe)
   "rig-key-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [-3.45, 0.0, 1.55],
+    Position: [-3.65, 0.0, 1.55],
     Rotation: [0, AimKey.YawDeg, 0],
     YawDeg: AimKey.YawDeg,
     StandHeight: 1.58,
@@ -638,10 +638,10 @@ export const StudioLobbyInitialValues = {
     },
   },
 
-  // Parabolic Umbrella Tripod -> Modifier -> Native Rect Area Light (Aimed DEAD-ON at Hero Coupe!)
+  // Parabolic Umbrella Tripod -> Modifier -> Native Rect Area Light (Inside set, aimed DEAD-ON at Hero Coupe)
   "rig-umbrella-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [3.25, 0.0, 1.85],
+    Position: [3.45, 0.0, 1.85],
     Rotation: [0, AimUmbrella.YawDeg, 0],
     YawDeg: AimUmbrella.YawDeg,
     StandHeight: 1.56,
@@ -695,10 +695,10 @@ export const StudioLobbyInitialValues = {
     },
   },
 
-  // Back-Left Rim Tripod -> LED Panel -> Native Rect Area Light (Aimed DEAD-ON at Hero Coupe!)
+  // Back-Left Rim Tripod -> LED Panel -> Native Rect Area Light (Inside set, aimed DEAD-ON at Hero Coupe)
   "rig-rim-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [-4.15, 0.0, -2.55],
+    Position: [-4.35, 0.0, -2.65],
     Rotation: [0, AimRim.YawDeg, 0],
     YawDeg: AimRim.YawDeg,
     StandHeight: 1.72,
@@ -752,10 +752,10 @@ export const StudioLobbyInitialValues = {
     },
   },
 
-  // Back-Right Accent Tripod -> Octa Strobe -> Native IES Light (Aimed DEAD-ON at Hero Coupe!)
+  // Back-Right Accent Tripod -> Octa Strobe -> Native IES Light (Inside set, aimed DEAD-ON at Hero Coupe)
   "rig-accent-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [4.35, 0.0, -2.3],
+    Position: [4.55, 0.0, -2.4],
     Rotation: [0, AimAccent.YawDeg, 0],
     YawDeg: AimAccent.YawDeg,
     StandHeight: 1.66,
@@ -811,10 +811,10 @@ export const StudioLobbyInitialValues = {
     },
   },
 
-  // Cinema Tripod A -> Cinema Camera A -> Native Car Configurator Camera (Aimed DEAD-ON at Hero Coupe!)
+  // Cinema Tripod A -> Cinema Camera A (OUTSIDE cyclorama front lip on dark glossy tiled floor!)
   "rig-cam-a-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [-2.85, 0.0, 4.18],
+    Position: [-3.25, 0.0, 5.75],
     Rotation: [0, AimCamA.YawDeg, 0],
     YawDeg: AimCamA.YawDeg,
     StandHeight: 1.38,
@@ -849,10 +849,10 @@ export const StudioLobbyInitialValues = {
     PresetIndex: 0,
   },
 
-  // Cinema Tripod B -> Medium Format Camera B -> Native Profile 65mm Camera (Aimed DEAD-ON at Hero Coupe!)
+  // Cinema Tripod B -> Medium Format Camera B (OUTSIDE cyclorama front lip on dark glossy tiled floor!)
   "rig-cam-b-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [2.15, 0.0, 4.02],
+    Position: [2.55, 0.0, 5.65],
     Rotation: [0, AimCamB.YawDeg, 0],
     YawDeg: AimCamB.YawDeg,
     StandHeight: 1.24,
@@ -884,12 +884,12 @@ export const StudioLobbyInitialValues = {
     "Subject Distance": 7.8,
   },
 
-  // Studio Props & Crew
+  // Studio Props & Crew (OUTSIDE the cyclorama set on the dark glossy tiled outer floor!)
   "prop-workstation": {
     ProceduralKind: "studio.workstation",
-    Position: [4.75, 0.0, 3.65],
-    Rotation: [0, -26, 0],
-    YawDeg: -26,
+    Position: [5.9, 0.0, 6.45],
+    Rotation: [0, -28, 0],
+    YawDeg: -28,
     DeskWidth: 1.48,
     DeskDepth: 0.72,
     DeskHeight: 0.78,
@@ -899,9 +899,9 @@ export const StudioLobbyInitialValues = {
   },
   "prop-grip-cases": {
     ProceduralKind: "studio.workstation",
-    Position: [-4.85, 0.0, 3.25],
-    Rotation: [0, 18, 0],
-    YawDeg: 18,
+    Position: [-6.4, 0.0, 6.25],
+    Rotation: [0, 22, 0],
+    YawDeg: 22,
     DeskWidth: 1.0,
     DeskDepth: 0.55,
     DeskHeight: 0.65,

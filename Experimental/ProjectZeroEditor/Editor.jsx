@@ -220,7 +220,7 @@ const DebugViews = [
   "Patch Tiles",
   "Tiles + Wireframe",
 ];
-const StorageKey = "Frontier.ProjectZeroStudioLobby.v3";
+const StorageKey = "Frontier.ProjectZeroStudioLobby.v4";
 function Restore() {
   try {
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
