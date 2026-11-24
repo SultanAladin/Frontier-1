@@ -178,6 +178,11 @@ function StudioVectorIcon({ Name, Size = 24 }) {
     "studio-fan": "#76d1f0",
     "studio-backdrop": "#93c98d",
     "studio-dust": "#f7dc88",
+    "studio-garage": "#c9a47e",
+    "studio-stadium": "#f2845c",
+    "studio-lift": "#f2c14e",
+    "studio-toolbox": "#e04f4f",
+    "studio-cables": "#7a8999",
   }[Name];
   if (!Accent) return null;
   return (
@@ -295,6 +300,32 @@ function StudioVectorIcon({ Name, Size = 24 }) {
             <circle cx="11.5" cy="12.5" r="1.8" fill="currentColor" />
             <circle cx="18" cy="14" r="1.1" fill="currentColor" />
             <circle cx="7.5" cy="16.8" r="1.2" fill="currentColor" />
+          </>
+        ) : Name === "studio-garage" ? (
+          <>
+            <path d="M3 19.5V8l9-4 9 4v11.5" />
+            <path d="M6.5 19.5V11h11v8.5M6.5 14h11M6.5 16.8h11" opacity="0.75" />
+          </>
+        ) : Name === "studio-stadium" ? (
+          <>
+            <path d="M3 17.5h18M4.5 14h15M6 10.5h12M7.5 7h9" />
+            <path d="M3 17.5 6 7M21 17.5 18 7M12 17.5V7" opacity="0.6" />
+          </>
+        ) : Name === "studio-lift" ? (
+          <>
+            <path d="M5 20V4.5M19 20V4.5M5 5.5h14" />
+            <path d="M5 13h14M7.5 13v-2h9v2" fill="currentColor" fillOpacity="0.2" />
+            <path d="M3.5 20h3M17.5 20h3" />
+          </>
+        ) : Name === "studio-toolbox" ? (
+          <>
+            <rect x="4" y="7" width="16" height="11.5" rx="1.4" fill="currentColor" fillOpacity="0.18" />
+            <path d="M8.5 7V5.2h7V7M4 11h16M4 14.8h16M7 18.5v2M17 18.5v2" />
+          </>
+        ) : Name === "studio-cables" ? (
+          <>
+            <path d="M3.5 16.5c3-5 5.5-5 8.5 0s5.5 5 8.5-1.5" />
+            <path d="M3.5 11.5c3-3.5 5.5-3.5 8.5 0s5.5 3.5 8.5-1" opacity="0.65" />
           </>
         ) : (
           <>

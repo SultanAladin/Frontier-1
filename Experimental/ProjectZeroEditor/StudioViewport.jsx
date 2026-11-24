@@ -149,13 +149,25 @@ export default function StudioViewport({
   };
 
   // 1) UNRESTRICTED Editor Camera (EDIT & SIM modes, and Split View 2) — ZERO angle/position/zoom limits!
+  const InitialEditEye =
+    View === 2
+      ? [...ConfiguratorPresets[4].Eye]
+      : LevelId === "studio-lobby-3"
+        ? [5.85, 2.05, 8.25]
+        : [6.2, 2.45, 7.85];
+  const InitialEditTarget =
+    View === 2
+      ? [...ConfiguratorPresets[4].Target]
+      : LevelId === "studio-lobby-3"
+        ? [-0.55, 1.35, -0.65]
+        : [0.0, 1.12, -0.25];
   const EditorCamRef = useRef({
-    Eye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [6.2, 2.45, 7.85],
-    Target: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 1.12, -0.25],
+    Eye: [...InitialEditEye],
+    Target: [...InitialEditTarget],
     Up: [0, 1, 0],
     FovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 40,
-    GoalEye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [6.2, 2.45, 7.85],
-    GoalTarget: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 1.12, -0.25],
+    GoalEye: [...InitialEditEye],
+    GoalTarget: [...InitialEditTarget],
     GoalFovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 40,
     FocusGlide: false,
   });

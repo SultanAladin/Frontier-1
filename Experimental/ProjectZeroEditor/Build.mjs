@@ -120,6 +120,11 @@ if (fs.existsSync(ForestBackdropPath)) {
   Assets.ForestLedBackdrop =
     "data:image/jpeg;base64," + fs.readFileSync(ForestBackdropPath).toString("base64");
 }
+const StadiumVistaPath = path.join(Folder, "Assets/StadiumVistaBackdrop.jpg");
+if (fs.existsSync(StadiumVistaPath)) {
+  Assets.StadiumVistaBackdrop =
+    "data:image/jpeg;base64," + fs.readFileSync(StadiumVistaPath).toString("base64");
+}
 
 // Preserve the reference's document-wide CSS and control behaviour without restyling the current editor.
 const ReferenceOutput = await build({

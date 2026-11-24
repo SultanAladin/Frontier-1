@@ -9,6 +9,8 @@ import {
   StudioLobbyInitialValues,
   StudioLobby2Rows,
   StudioLobby2InitialValues,
+  StudioLobby3Rows,
+  StudioLobby3InitialValues,
   ConfiguratorPresets,
   EvaluateOpeningReveal,
   ClampGameCameraInsideLobby,
@@ -16,6 +18,7 @@ import {
   ResolveStudioHierarchy,
   HeroCarAimTarget,
   Lobby2HeroAimTarget,
+  Lobby3HeroAimTarget,
   FixtureStyles,
   CinemaCameraStyles,
 } from "./StudioLobbyScene.js";
@@ -118,6 +121,38 @@ assert.ok(L2Ferns.TriangleCount > 2000, "Real sculpted 3D pinnate ferns (" + L2F
 assert.ok(L2Grass.TriangleCount > 1000, "Real 3D grass tufts & woodland shrubs (" + L2Grass.TriangleCount + " tris)");
 assert.ok(L2Rock.TriangleCount > 4000, "Sculpted mossy granite rock incline, boulders & river cobbles (" + L2Rock.TriangleCount + " tris)");
 assert.ok(L2Wood.TriangleCount > 400, "Gnarled fallen tree trunk & twisted roots (" + L2Wood.TriangleCount + " tris)");
+
+// 2d. Verify ALL Lobby 3 Racing Stadium Mechanics Garage procedural 3D meshes & live Hydraulic Car Lift coupling!
+const L3Shell = ConstructProceduralSurface("studio.garage_shell", StudioLobby3InitialValues["l3-garage-shell"]);
+const L3Lift = ConstructProceduralSurface("studio.car_lift", StudioLobby3InitialValues["l3-car-lift"]);
+const L3Cart = ConstructProceduralSurface("studio.garage_props", StudioLobby3InitialValues["l3-tool-cart"]);
+const L3TireRack = ConstructProceduralSurface("studio.garage_props", StudioLobby3InitialValues["l3-tire-rack"]);
+const L3Diag = ConstructProceduralSurface("studio.garage_props", StudioLobby3InitialValues["l3-diag-cabinet"]);
+const L3Cables = ConstructProceduralSurface("studio.garage_cables", StudioLobby3InitialValues["l3-garage-cables"]);
+AssertValidSurface("L3 studio.garage_shell", L3Shell);
+AssertValidSurface("L3 studio.car_lift", L3Lift);
+AssertValidSurface("L3 studio.garage_props(tool-cart)", L3Cart);
+AssertValidSurface("L3 studio.garage_props(tire-rack)", L3TireRack);
+AssertValidSurface("L3 studio.garage_props(diag-cabinet)", L3Diag);
+AssertValidSurface("L3 studio.garage_cables", L3Cables);
+assert.ok(L3Shell.TriangleCount > 1200, "Racing Stadium Garage shell with cages, mezzanine, trusses & linear LEDs (" + L3Shell.TriangleCount + " tris)");
+
+// Verify live Hydraulic Car Lift -> Elevated Vehicle vertical hierarchy coupling!
+const L3HierDefault = ResolveStudioHierarchy(StudioLobby3Rows, StudioLobby3InitialValues, {});
+assert.ok(
+  Math.abs(L3HierDefault["vehicle-lift"].Position[1] - StudioLobby3InitialValues["l3-car-lift"].LiftHeight) < 1e-4,
+  "Elevated car mounts flush atop Hydraulic 4-Post Car Lift at Y=" + StudioLobby3InitialValues["l3-car-lift"].LiftHeight,
+);
+const L3LoweredVals = {
+  ...StudioLobby3InitialValues,
+  "l3-car-lift": { ...StudioLobby3InitialValues["l3-car-lift"], LiftHeight: 0.85 },
+};
+const L3HierLowered = ResolveStudioHierarchy(StudioLobby3Rows, L3LoweredVals, {});
+assert.ok(
+  Math.abs(L3HierLowered["vehicle-lift"].Position[1] - 0.85) < 1e-4,
+  "Lowering Hydraulic Car Lift moves elevated vehicle live to Y=0.85m",
+);
+assert.equal(StudioLobby3Rows.filter((R) => R.Panel === "studio-vehicle").length, 4, "Lobby 3 stages 4 vehicles including elevated lift car");
 assert.ok(L2Fan.TriangleCount > 500, "Wheeled Studio Wind Fan with spinning propeller & wire cage (" + L2Fan.TriangleCount + " tris)");
 console.log(
   `PASS [2/6] Lobby 1 & Lobby 2 procedural 3D geometry verified (Ferns: ${L2Ferns.TriangleCount} tris, Grass: ${L2Grass.TriangleCount} tris, Rock: ${L2Rock.TriangleCount} tris, Wood: ${L2Wood.TriangleCount} tris, Fan: ${L2Fan.TriangleCount} tris)`,
@@ -314,35 +349,34 @@ assert.ok(Doc.querySelector(".studio-viewport-canvas"), "WebGL2 canvas present i
 assert.equal(CompileSpy.Programs, 2, "Exactly 2 WebGL2 programs compiled once on startup");
 assert.ok(CompileSpy.Draws > 10, "WebGL2 renderer drew studio scene (" + CompileSpy.Draws + " draw calls)");
 
-// Confirm default Lobby 2 Forest Stage Outliner + 4 vehicles + ferns, wood, rock, grass, fan & dust mounted
+// Confirm default Lobby 3 Racing Stadium Garage Outliner + 4 vehicles + hydraulic car lift, tools & stadium vista mounted
 const TreeText = Doc.querySelector(".outliner-rows")?.textContent || "";
-assert.ok(TreeText.includes("Hero Vehicle"), "Outliner lists Hero Vehicle on rock incline");
-assert.ok(TreeText.includes("Obsidian Coupe"), "Outliner lists companion car #1");
-assert.ok(TreeText.includes("Alpine GT"), "Outliner lists companion car #2");
-assert.ok(TreeText.includes("Liquid Tourer"), "Outliner lists companion car #3");
-assert.ok(TreeText.includes("Real 3D Forest Ferns"), "Outliner lists Real 3D Forest Ferns");
-assert.ok(TreeText.includes("Gnarled Fallen Log"), "Outliner lists Gnarled Fallen Log & Roots");
-assert.ok(TreeText.includes("Mossy Rock Incline"), "Outliner lists Mossy Rock Incline & Stream");
-assert.ok(TreeText.includes("Grass Tufts"), "Outliner lists Grass Tufts & Woodland Shrubs");
-assert.ok(TreeText.includes("Studio Wind Fan"), "Outliner lists Studio Wind Fan (Blower)");
-assert.ok(TreeText.includes("Sunbeam Dust Particles"), "Outliner lists Sunbeam Dust Particles");
-assert.ok(TreeText.includes("Key Fresnel Tripod"), "Outliner lists Key Fresnel Tripod");
-assert.ok(TreeText.includes("Overhead Softbox Bank"), "Outliner lists Overhead Softbox Bank");
+assert.ok(TreeText.includes("Hero GT · Pit Bay Center"), "Outliner lists Lobby 3 Signal Orange Hero GT");
+assert.ok(TreeText.includes("Track Coupe · On Hydraulic Lift"), "Outliner lists elevated car parented to hydraulic lift");
+assert.ok(TreeText.includes("Alpine GT · Right Pit Bay"), "Outliner lists right pit bay vehicle");
+assert.ok(TreeText.includes("Midnight Cobalt · Outer Paddock"), "Outliner lists outer paddock vehicle");
+assert.ok(TreeText.includes("Stadium Pit Garage & Grandstands"), "Outliner lists Stadium Pit Garage & Grandstands");
+assert.ok(TreeText.includes("Hydraulic 4-Post Car Lift"), "Outliner lists Hydraulic 4-Post Car Lift");
+assert.ok(TreeText.includes("Rolling Cherry-Red Tool Cart"), "Outliner lists Rolling Cherry-Red Tool Cart");
+assert.ok(TreeText.includes("Racing Slick Tire Rack & Jack"), "Outliner lists Racing Slick Tire Rack & Jack");
+assert.ok(TreeText.includes("Floor Air Hoses & Cable Ramp"), "Outliner lists Floor Air Hoses & Cable Ramp");
+assert.ok(TreeText.includes("Sunbeam Garage Dust Motes"), "Outliner lists Sunbeam Garage Dust Motes");
+assert.ok(TreeText.includes("Overhead Linear Shop Bank"), "Outliner lists Overhead Linear Shop Bank");
 
 // Wait briefly for thumbnail capture tick (400ms interval) and verify real 3D geometry thumbnails in Outliner!
 await new Promise((Resolve) => setTimeout(Resolve, 460));
 const GeoThumbs = Doc.querySelectorAll("[data-geometry-thumb]");
 assert.ok(GeoThumbs.length >= 20, "Outliner renders real WebGL2 3D geometry screenshots (" + GeoThumbs.length + " thumbnails)");
 assert.ok(Doc.querySelector('[data-geometry-thumb="vehicle-hero"]'), "Hero Vehicle shows actual 3D geometry screenshot in Outliner");
-assert.ok(Doc.querySelector('[data-geometry-thumb="l2-fern-cluster"]'), "Real 3D Ferns shows actual 3D geometry screenshot in Outliner");
-assert.ok(Doc.querySelector('[data-geometry-thumb="l2-studio-fan"]'), "Studio Wind Fan shows actual 3D geometry screenshot in Outliner");
-assert.ok(Doc.querySelector('[data-geometry-thumb="rig-softbox-fixture"]'), "Overhead Softbox shows actual 3D geometry screenshot in Outliner");
+assert.ok(Doc.querySelector('[data-geometry-thumb="l3-car-lift"]'), "Hydraulic 4-Post Car Lift shows actual 3D geometry screenshot in Outliner");
+assert.ok(Doc.querySelector('[data-geometry-thumb="l3-tool-cart"]'), "Rolling Tool Cart shows actual 3D geometry screenshot in Outliner");
+assert.ok(Doc.querySelector('[data-geometry-thumb="rig-softbox-fixture"]'), "Overhead Linear Shop Bank shows actual 3D geometry screenshot in Outliner");
 
-// Click Key Fresnel Tripod -> verify reused native TransformPanel + shared instances + Aim at Hero Car
+// Click Stadium Portal Sun Stand -> verify reused native TransformPanel + shared instances + Aim at Hero Car
 const TripodItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
-  El.textContent.includes("Key Fresnel Tripod"),
+  El.textContent.includes("Stadium Portal Sun Stand"),
 );
-assert.ok(TripodItem, "Found Key Fresnel Tripod row");
+assert.ok(TripodItem, "Found Stadium Portal Sun Stand row");
 TripodItem.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 const InspectorText = Doc.querySelector(".inspector-scroll")?.textContent || "";
@@ -350,6 +384,18 @@ assert.ok(InspectorText.includes("6 SHARED INSTANCES"), "Procedural inspector re
 assert.ok(InspectorText.includes("Mount Height"), "Procedural inspector shows live tripod mount height");
 assert.ok(Doc.querySelector(".inspector-scroll .transform-card"), "Procedural inspector reuses native TransformPanel");
 assert.ok(InspectorText.includes("Aim at Hero Car"), "Procedural inspector includes Aim at Hero Car action");
+
+// Click Hydraulic 4-Post Car Lift -> verify LiftHeight slider card renders
+const LiftItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
+  El.textContent.includes("Hydraulic 4-Post Car Lift"),
+);
+assert.ok(LiftItem, "Found Hydraulic 4-Post Car Lift row");
+LiftItem.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.ok(
+  (Doc.querySelector(".inspector-scroll")?.textContent || "").includes("Deck Lift Height"),
+  "Hydraulic Car Lift inspector exposes Deck Lift Height slider",
+);
 
 // Click Car Configurator Camera -> verify reused native Camera cards + Studio add-on card
 const CamItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
@@ -364,27 +410,27 @@ assert.ok(CamText.includes("Aperture study"), "Reuses native Camera Aperture car
 assert.ok(CamText.includes("Subject plane + sharpness"), "Reuses native Camera DepthOfField card");
 assert.ok(CamText.includes("Car Configurator Studio Rig"), "Appends Studio Camera add-on card");
 
-// Click Key Fresnel IES Light -> verify reused native ReferencePanel (ieslight) + Studio coupling card
+// Click Stadium Sunbeam IES Light -> verify reused native ReferencePanel (ieslight) + Studio coupling card
 const IesItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
-  El.textContent.includes("Key Fresnel IES Light"),
+  El.textContent.includes("Stadium Sunbeam IES Light"),
 );
-assert.ok(IesItem, "Found Key Fresnel IES Light row");
+assert.ok(IesItem, "Found Stadium Sunbeam IES Light row");
 IesItem.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.ok(
   Doc.querySelector('.inspector-scroll [data-reference-kind="ieslight"]'),
-  "Key Fresnel IES Light reuses native ieslight ReferencePanel",
+  "Stadium Sunbeam IES Light reuses native ieslight ReferencePanel",
 );
 assert.ok(
   (Doc.querySelector(".inspector-scroll")?.textContent || "").includes("Studio Rig Coupling"),
   "IES Light includes Studio Rig Coupling add-on card",
 );
 
-// Click Overhead Softbox Area Light -> verify reused native ReferencePanel (arealight)
+// Click Overhead Shop LED Area Light -> verify reused native ReferencePanel (arealight)
 const AreaItem = [...Doc.querySelectorAll(".outliner-row")].find((El) =>
-  El.textContent.includes("Overhead Softbox Area Light"),
+  El.textContent.includes("Overhead Shop LED Area Light"),
 );
-assert.ok(AreaItem, "Found Overhead Softbox Area Light row");
+assert.ok(AreaItem, "Found Overhead Shop LED Area Light row");
 AreaItem.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.ok(
@@ -434,12 +480,17 @@ EditBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Edit mode restores unrestricted Editor Camera");
 
-// Switch levels Lobby 2 -> Lobby 1 -> Showcase -> Lobby 2 and assert ZERO extra shader compilations!
+// Switch levels Lobby 3 -> Lobby 2 -> Lobby 1 -> Showcase -> Lobby 3 and assert ZERO extra shader compilations!
 const LevelSelect = Doc.querySelector(".studio-level-select");
 assert.ok(LevelSelect, "Level switcher present in viewport toolbar");
 const ProgramsBefore = CompileSpy.Programs;
 const SwitchT0 = performance.now();
 const NativeSetter = Object.getOwnPropertyDescriptor(Dom.window.HTMLSelectElement.prototype, "value").set;
+
+NativeSetter.call(LevelSelect, "studio-lobby-2");
+LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Real 3D Forest Ferns"), "Lobby 2 Forest Stage loaded");
 
 NativeSetter.call(LevelSelect, "studio-lobby");
 LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
@@ -451,25 +502,28 @@ LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Cube"), "Showcase level loaded");
 
-NativeSetter.call(LevelSelect, "studio-lobby-2");
+NativeSetter.call(LevelSelect, "studio-lobby-3");
 LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 const SwitchElapsed = Math.round((performance.now() - SwitchT0) * 10) / 10;
-assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Real 3D Forest Ferns"), "Lobby 2 Forest Stage restored");
-assert.equal(CompileSpy.Programs, ProgramsBefore, "ZERO shader recompilations across all 3 level switches!");
+assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Hydraulic 4-Post Car Lift"), "Lobby 3 Racing Garage restored");
+assert.equal(CompileSpy.Programs, ProgramsBefore, "ZERO shader recompilations across all 4 level switches!");
 assert.equal(PageErrors.length, 0, "Zero runtime errors across interactions");
 console.log(
-  `PASS [5/6] Standalone index.html JSDOM + WebGL2 verified: ${CompileSpy.Draws} draw calls, 0 shader recompiles, round-trip level switch OK`,
+  `PASS [5/6] Standalone index.html JSDOM + WebGL2 verified: ${CompileSpy.Draws} draw calls, 0 shader recompiles, 4-level round-trip switch OK`,
 );
 
-// 6. Verify HTTP preview server responds 200 OK for both index.html and ControlledIntegrator.GeometrySpace
+// 6. Verify HTTP preview server responds 200 OK for index.html, both backdrop plates, and ControlledIntegrator.GeometrySpace
 const RespIndex = await fetch("http://127.0.0.1:8092/");
 assert.equal(RespIndex.status, 200, "Serve.py / returns 200");
 const HtmlText = await RespIndex.text();
 assert.ok(HtmlText.length > 4_000_000, "Serve.py serves full standalone index.html (" + HtmlText.length + " bytes)");
 assert.ok(HtmlText.includes("ForestLedBackdrop"), "Standalone index.html embeds photorealistic ForestLedBackdrop LED plate");
+assert.ok(HtmlText.includes("StadiumVistaBackdrop"), "Standalone index.html embeds photorealistic StadiumVistaBackdrop racing stadium plate");
 const RespBackdrop = await fetch("http://127.0.0.1:8092/Experimental/ProjectZeroEditor/Assets/ForestLedBackdrop.jpg");
 assert.equal(RespBackdrop.status, 200, "Serve.py serves ForestLedBackdrop.jpg directly");
+const RespStadium = await fetch("http://127.0.0.1:8092/Experimental/ProjectZeroEditor/Assets/StadiumVistaBackdrop.jpg");
+assert.equal(RespStadium.status, 200, "Serve.py serves StadiumVistaBackdrop.jpg directly");
 const RespCar = await fetch("http://127.0.0.1:8092/EngineContent/Geometry/ControlledIntegrator.GeometrySpace");
 assert.equal(RespCar.status, 200, "Serve.py serves ControlledIntegrator.GeometrySpace");
 console.log("PASS [6/6] Live HTTP preview server verified on http://0.0.0.0:8092/");

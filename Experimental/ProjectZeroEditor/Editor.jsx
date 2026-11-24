@@ -60,6 +60,8 @@ import {
   StudioLobbyInitialValues,
   StudioLobby2Rows,
   StudioLobby2InitialValues,
+  StudioLobby3Rows,
+  StudioLobby3InitialValues,
   IsStudioLobbyLevel,
   ConfiguratorPresets,
   ComputeTripodMountHeight,
@@ -223,7 +225,7 @@ const DebugViews = [
   "Patch Tiles",
   "Tiles + Wireframe",
 ];
-const StorageKey = "Frontier.ProjectZeroStudioLobby.v5";
+const StorageKey = "Frontier.ProjectZeroStudioLobby.v6";
 function Restore() {
   try {
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
@@ -464,7 +466,7 @@ function App() {
     () =>
       new URLSearchParams(location.search).get("level") ||
       Saved.LevelId ||
-      "studio-lobby-2",
+      "studio-lobby-3",
   );
   const [Paused, SetPaused] = useState(false);
   const [ActivePreset, SetActivePreset] = useState(null);
@@ -488,23 +490,27 @@ function App() {
   const LevelSnapshots = useRef({});
 
   const BuildDefaultRowsForLevel = (TargetLevel) =>
-    TargetLevel === "studio-lobby-2"
-      ? EnsureEditorCamera(StudioLobby2Rows.map((Row) => ({ ...Row })))
-      : TargetLevel === "studio-lobby"
-        ? EnsureEditorCamera(StudioLobbyRows.map((Row) => ({ ...Row })))
-        : EnsureEditorCamera(
-            PrepareLightRows(EnsureReferenceLights(InitialRows), 1),
-          );
+    TargetLevel === "studio-lobby-3"
+      ? EnsureEditorCamera(StudioLobby3Rows.map((Row) => ({ ...Row })))
+      : TargetLevel === "studio-lobby-2"
+        ? EnsureEditorCamera(StudioLobby2Rows.map((Row) => ({ ...Row })))
+        : TargetLevel === "studio-lobby"
+          ? EnsureEditorCamera(StudioLobbyRows.map((Row) => ({ ...Row })))
+          : EnsureEditorCamera(
+              PrepareLightRows(EnsureReferenceLights(InitialRows), 1),
+            );
 
   const BuildDefaultValuesForLevel = (TargetLevel) =>
-    TargetLevel === "studio-lobby-2"
-      ? JSON.parse(JSON.stringify(StudioLobby2InitialValues))
-      : TargetLevel === "studio-lobby"
-        ? JSON.parse(JSON.stringify(StudioLobbyInitialValues))
-        : {};
+    TargetLevel === "studio-lobby-3"
+      ? JSON.parse(JSON.stringify(StudioLobby3InitialValues))
+      : TargetLevel === "studio-lobby-2"
+        ? JSON.parse(JSON.stringify(StudioLobby2InitialValues))
+        : TargetLevel === "studio-lobby"
+          ? JSON.parse(JSON.stringify(StudioLobbyInitialValues))
+          : {};
 
   const [Rows, StoreRows] = useState(() => {
-      if (Saved.Rows && (Saved.LevelId || "studio-lobby-2") === LevelId) {
+      if (Saved.Rows && (Saved.LevelId || "studio-lobby-3") === LevelId) {
         return EnsureEditorCamera(Saved.Rows);
       }
       return BuildDefaultRowsForLevel(LevelId);
@@ -515,7 +521,7 @@ function App() {
         (IsStudioLobbyLevel(LevelId) ? "vehicle-hero" : "sun"),
     ),
     [Values, AssignValues] = useState(() => {
-      if (Saved.Values && Object.keys(Saved.Values).length && (Saved.LevelId || "studio-lobby-2") === LevelId) {
+      if (Saved.Values && Object.keys(Saved.Values).length && (Saved.LevelId || "studio-lobby-3") === LevelId) {
         return { ...BuildDefaultValuesForLevel(LevelId), ...Saved.Values };
       }
       return BuildDefaultValuesForLevel(LevelId);

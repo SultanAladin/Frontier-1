@@ -416,6 +416,49 @@ export function StudioProceduralInspector({
         </details>
       )}
 
+      {Kind === "studio.garage_shell" && (
+        <details open className="generic-card">
+          <summary>Racing Stadium Pit Garage</summary>
+          {NativeSlider("Garage Width", Values.GarageWidth ?? 22.0, 16, 30, "m", 1, (V) => Change("GarageWidth", V))}
+          {NativeSlider("Garage Depth", Values.GarageDepth ?? 18.0, 12, 26, "m", 1, (V) => Change("GarageDepth", V))}
+          {NativeSlider("Ceiling Height", Values.GarageHeight ?? 7.15, 5.5, 9.5, "m", 2, (V) => Change("GarageHeight", V))}
+          {NativeSlider("Stadium Sunlight", Values.BackdropBrightness ?? 1.32, 0.35, 2.4, "×", 2, (V) => Change("BackdropBrightness", V))}
+          {NativeToggle("Two-Story Mezzanine Catwalks", Values.ShowMezzanine ?? true, (V) => Change("ShowMezzanine", V))}
+          {NativeToggle("Overhead Linear Shop LEDs", Values.ShowLinearLeds ?? true, (V) => Change("ShowLinearLeds", V))}
+        </details>
+      )}
+
+      {Kind === "studio.car_lift" && (
+        <details open className="generic-card">
+          <summary>Hydraulic 4-Post Car Lift</summary>
+          {NativeSlider("Deck Lift Height", Values.LiftHeight ?? 2.12, 0.15, 2.6, "m", 2, (V) => Change("LiftHeight", V))}
+          {NativeSlider("Steel Post Height", Values.PostHeight ?? 3.85, 2.8, 5.0, "m", 2, (V) => Change("PostHeight", V))}
+        </details>
+      )}
+
+      {Kind === "studio.garage_props" && (
+        <details open className="generic-card">
+          <summary>Mechanics Workshop Equipment</summary>
+          {NativeSelect(
+            "Equipment Preset",
+            Values.PropVariant || "tool-cart",
+            [
+              { Value: "tool-cart", Label: "Rolling Cherry-Red Tool Cart" },
+              { Value: "tire-rack", Label: "Racing Slick Tire Rack & Jack" },
+              { Value: "diag-cabinet", Label: "Diagnostic Telemetry Cabinet" },
+            ],
+            (V) => Change("PropVariant", V),
+          )}
+        </details>
+      )}
+
+      {Kind === "studio.garage_cables" && (
+        <details open className="generic-card">
+          <summary>Floor Air Hoses &amp; Cable Ramp</summary>
+          {NativeSlider("Cable Run Span", Values.CableSpan ?? 11.5, 6.0, 18.0, "m", 1, (V) => Change("CableSpan", V))}
+        </details>
+      )}
+
       {Kind === "studio.rock_outcrop" && (
         <details open className="generic-card">
           <summary>Mossy Granite Rock Incline & Stream</summary>

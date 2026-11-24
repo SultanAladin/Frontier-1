@@ -31,6 +31,9 @@ export const SurfaceMaterialCode = {
   FernFrond: 24,
   GrassBlade: 25,
   FanBlade: 26,
+  CherryRedTool: 27,
+  SafetyYellow: 28,
+  ConcreteGarage: 29,
 };
 
 function CreateBuilder() {
@@ -1771,6 +1774,373 @@ function ConstructDustFieldMarker(Params) {
   return B.Finish();
 }
 
+// 15. Procedural Racing Stadium Pit Garage Shell, Steel Bar Shutters, Mezzanine Catwalks & Linear LEDs (studio.garage_shell)
+function ConstructGarageShell(Params) {
+  const B = CreateBuilder();
+  const W = Number(Params.GarageWidth ?? 22.0);
+  const D = Number(Params.GarageDepth ?? 18.0);
+  const H = Number(Params.GarageHeight ?? 7.15);
+  const ShowMezzanine = Params.ShowMezzanine !== false;
+  const ShowLinearLeds = Params.ShowLinearLeds !== false;
+  const HalfW = W * 0.5;
+  const BackZ = -6.2;
+
+  // --- A) Sunlit Racing Stadium Grandstand & Pit-Lane Vista Backdrop outside the open pit archway ---
+  const VistaW = Number(Params.ScreenWidth ?? 18.4);
+  const VistaH = Number(Params.ScreenHeight ?? 8.2);
+  const VistaZ = BackZ - 3.6;
+  const VistaCx = -3.8;
+  const SegX = 10, SegY = 6;
+  for (let Iy = 0; Iy < SegY; Iy++) {
+    const Y0 = 0.08 + (Iy / SegY) * VistaH;
+    const Y1 = 0.08 + ((Iy + 1) / SegY) * VistaH;
+    for (let Ix = 0; Ix < SegX; Ix++) {
+      const X0 = VistaCx - VistaW * 0.5 + (Ix / SegX) * VistaW;
+      const X1 = VistaCx - VistaW * 0.5 + ((Ix + 1) / SegX) * VistaW;
+      // Store local coords offset relative to VistaCx in U? Shader reads vLocalPos.xy directly,
+      // so center the vista UV cleanly around VistaCx in shader via uBackdropCenter!
+      B.PushTri(
+        [X0, Y0, VistaZ], [X1, Y0, VistaZ], [X1, Y1, VistaZ],
+        [0, 0, 1], [0, 0, 1], [0, 0, 1],
+        SurfaceMaterialCode.ForestBackdrop,
+        Ix / SegX, (Ix + 1) / SegX, (Ix + 1) / SegX,
+      );
+      B.PushTri(
+        [X0, Y0, VistaZ], [X1, Y1, VistaZ], [X0, Y1, VistaZ],
+        [0, 0, 1], [0, 0, 1], [0, 0, 1],
+        SurfaceMaterialCode.ForestBackdrop,
+        Ix / SegX, (Ix + 1) / SegX, Ix / SegX,
+      );
+    }
+  }
+  // Sunlit outdoor pit-lane concrete apron extending from garage lip out toward stadium vista
+  B.AddBox([VistaCx, -0.02, BackZ - 1.85], [VistaW * 0.52, 0.02, 1.9], SurfaceMaterialCode.ConcreteGarage);
+
+  // --- B) Back Pit Wall: Open Stadium Bay Archway on Left + Steel Bar Security Cages on Right (Ref Image 1!) ---
+  // Left corner structural pier & mid divider concrete column framing the wide open stadium pit portal
+  B.AddBox([-HalfW + 0.55, H * 0.5, BackZ], [0.55, H * 0.5, 0.55], SurfaceMaterialCode.ConcreteGarage);
+  B.AddBox([1.15, H * 0.5, BackZ], [0.46, H * 0.5, 0.55], SurfaceMaterialCode.ConcreteGarage);
+  B.AddBox([6.2, H * 0.5, BackZ], [0.42, H * 0.5, 0.55], SurfaceMaterialCode.ConcreteGarage);
+  B.AddBox([HalfW - 0.55, H * 0.5, BackZ], [0.55, H * 0.5, 0.55], SurfaceMaterialCode.ConcreteGarage);
+
+  // Overhead concrete lintel header & rolled-up corrugated steel shutter above the open pit-bay archway
+  const ArchTop = 4.95;
+  B.AddBox([-4.9, ArchTop + (H - ArchTop) * 0.5, BackZ], [6.2, (H - ArchTop) * 0.5, 0.42], SurfaceMaterialCode.ConcreteGarage);
+  B.AddTube([-10.2, ArchTop - 0.22, BackZ + 0.28], [0.7, ArchTop - 0.22, BackZ + 0.28], 0.22, 0.22, 12, SurfaceMaterialCode.FanHousing);
+  // Subtle bay-number red accent placard ("07" look from Ref 1!) above pit archway
+  B.AddBox([-4.8, ArchTop + 0.36, BackZ + 0.44], [0.42, 0.22, 0.03], SurfaceMaterialCode.CherryRedTool);
+
+  // Right-side two-tier Galvanized Steel Vertical-Bar Security Shutters (signature look of Ref Image 1!)
+  const AddSecurityCageBay = (XMin, XMax, ZPos) => {
+    const Cx = (XMin + XMax) * 0.5;
+    const Span = XMax - XMin;
+    // Mid horizontal concrete/steel divider beam
+    B.AddBox([Cx, 3.35, ZPos], [Span * 0.5, 0.26, 0.34], SurfaceMaterialCode.ConcreteGarage);
+    B.AddBox([Cx, H - 0.32, ZPos], [Span * 0.5, 0.32, 0.34], SurfaceMaterialCode.ConcreteGarage);
+    // Dark recessed neighbor pit bay behind the bars
+    B.AddBox([Cx, H * 0.5, ZPos - 1.35], [Span * 0.52, H * 0.5, 0.12], SurfaceMaterialCode.BlackFlag);
+    // Crisp vertical galvanized steel security cage bars (lower & upper bays)
+    const BarCount = Math.max(10, Math.round(Span * 3.4));
+    for (let I = 0; I <= BarCount; I++) {
+      const Bx = XMin + 0.12 + (I / BarCount) * (Span - 0.24);
+      B.AddTube([Bx, 0.08, ZPos], [Bx, 3.08, ZPos], 0.015, 0.015, 6, SurfaceMaterialCode.ChromeMetal, false);
+      B.AddTube([Bx, 3.62, ZPos], [Bx, H - 0.65, ZPos], 0.015, 0.015, 6, SurfaceMaterialCode.ChromeMetal, false);
+    }
+    // Horizontal locking bars across cages
+    for (const Ry of [1.05, 2.08, 4.6, 5.65]) {
+      B.AddBox([Cx, Ry, ZPos], [Span * 0.49, 0.035, 0.04], SurfaceMaterialCode.DarkMetal);
+    }
+  };
+  AddSecurityCageBay(1.62, 5.76, BackZ);
+  AddSecurityCageBay(6.62, HalfW - 1.1, BackZ);
+
+  // --- C) Left & Right Concrete/Steel Side Garage Walls & Pillars ---
+  for (const Side of [-1, 1]) {
+    const Wx = Side * HalfW;
+    B.AddBox([Wx, H * 0.5, 1.5], [0.22, H * 0.5, D * 0.5], SurfaceMaterialCode.ConcreteGarage);
+    // Structural steel H-columns lining both side walls
+    for (let Z = BackZ + 2.6; Z <= BackZ + D - 2.2; Z += 4.2) {
+      B.AddBox([Wx - Side * 0.36, H * 0.5, Z], [0.24, H * 0.5, 0.24], SurfaceMaterialCode.FanHousing);
+    }
+    // Subtle safety-yellow painted dado bumper strip along lower side walls
+    B.AddBox([Wx - Side * 0.24, 1.12, 1.5], [0.03, 0.08, D * 0.48], SurfaceMaterialCode.SafetyYellow);
+  }
+
+  // --- D) Two-Story Industrial Mezzanine Catwalks & Yellow-Railed Staircases (Ref Image 3!) ---
+  if (ShowMezzanine) {
+    for (const Side of [-1, 1]) {
+      const CatX = Side * (HalfW - 1.45);
+      const DeckY = 3.35;
+      // Steel catwalk deck & structural edge I-beam
+      B.AddBox([CatX, DeckY, 2.4], [1.25, 0.1, 6.2], SurfaceMaterialCode.FanHousing);
+      B.AddBox([CatX - Side * 1.24, DeckY + 0.06, 2.4], [0.05, 0.14, 6.2], SurfaceMaterialCode.SafetyYellow);
+      // Support columns beneath catwalk
+      for (const Zp of [-3.2, 2.4, 8.0]) {
+        B.AddBox([CatX - Side * 1.15, DeckY * 0.5, Zp], [0.1, DeckY * 0.5, 0.1], SurfaceMaterialCode.DarkMetal);
+      }
+      // Yellow safety top & mid railings along inner edge of mezzanine
+      const RailX = CatX - Side * 1.2;
+      B.AddTube([RailX, DeckY + 1.02, -3.7], [RailX, DeckY + 1.02, 8.5], 0.026, 0.026, 6, SurfaceMaterialCode.SafetyYellow);
+      B.AddTube([RailX, DeckY + 0.54, -3.7], [RailX, DeckY + 0.54, 8.5], 0.018, 0.018, 6, SurfaceMaterialCode.SafetyYellow);
+      for (let Zp = -3.6; Zp <= 8.4; Zp += 1.5) {
+        B.AddTube([RailX, DeckY + 0.05, Zp], [RailX, DeckY + 1.04, Zp], 0.02, 0.02, 6, SurfaceMaterialCode.DarkMetal);
+      }
+      // Angled steel staircase descending from mezzanine toward front bay
+      const Steps = 11;
+      for (let S = 0; S < Steps; S++) {
+        const T = S / (Steps - 1);
+        const Sy = 0.25 + T * (DeckY - 0.25);
+        const Sz = 9.8 - T * 3.1;
+        B.AddBox([CatX - Side * 0.45, Sy, Sz], [0.58, 0.035, 0.14], SurfaceMaterialCode.DarkMetal);
+      }
+      B.AddTube([CatX - Side * 1.02, 0.95, 9.9], [CatX - Side * 1.02, DeckY + 1.02, 6.7], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+      B.AddTube([CatX + Side * 0.12, 0.95, 9.9], [CatX + Side * 0.12, DeckY + 1.02, 6.7], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+    }
+  }
+
+  // --- E) Industrial Steel Roof Deck, Transverse I-Beam Trusses, Chain Hoist & Overhead Linear LEDs (Ref 2 & 3!) ---
+  B.AddBox([0, H, 1.5], [HalfW + 0.3, 0.12, D * 0.5 + 0.4], SurfaceMaterialCode.CeilingRib);
+  for (let Z = BackZ + 0.4; Z <= BackZ + D - 0.5; Z += 3.1) {
+    // Deep box roof truss chord + web braces
+    B.AddBox([0, H - 0.34, Z], [HalfW - 0.1, 0.09, 0.12], SurfaceMaterialCode.DarkMetal);
+    B.AddBox([0, H - 0.78, Z], [HalfW - 0.1, 0.07, 0.1], SurfaceMaterialCode.DarkMetal);
+    for (let X = -HalfW + 1.6; X <= HalfW - 1.6; X += 2.2) {
+      B.AddTube([X, H - 0.34, Z], [X + 1.1, H - 0.78, Z], 0.022, 0.022, 5, SurfaceMaterialCode.FanHousing);
+    }
+  }
+
+  // Overhead central hoist trolley rail + hanging chain loops (Ref Image 2!)
+  B.AddBox([-0.6, H - 0.92, 0.8], [0.16, 0.16, 13.5], SurfaceMaterialCode.SafetyYellow);
+  B.AddBox([-0.6, H - 1.24, -0.8], [0.34, 0.24, 0.48], SurfaceMaterialCode.FanHousing);
+  B.AddTube([-0.6, H - 1.48, -0.8], [-0.6, H - 2.35, -0.8], 0.018, 0.018, 6, SurfaceMaterialCode.ChromeMetal);
+  // Hanging overhead festoon power cable arcs along roof hoist
+  for (let Loop = 0; Loop < 4; Loop++) {
+    const Z0 = -3.8 + Loop * 1.45;
+    const Z1 = Z0 + 1.45;
+    const Zm = (Z0 + Z1) * 0.5;
+    B.AddTube([-0.38, H - 1.05, Z0], [-0.38, H - 1.85, Zm], 0.016, 0.016, 6, SurfaceMaterialCode.RubberMat);
+    B.AddTube([-0.38, H - 1.85, Zm], [-0.38, H - 1.05, Z1], 0.016, 0.016, 6, SurfaceMaterialCode.RubberMat);
+  }
+
+  // Crisp rows of suspended Linear Industrial LED Tube Bars (Ref Image 3 signature lighting!)
+  if (ShowLinearLeds) {
+    const LedY = H - 1.02;
+    const RowsZ = [-3.6, 0.4, 4.4];
+    const ColsX = [-5.8, 0.0, 5.8];
+    for (const Lz of RowsZ) {
+      for (const Lx of ColsX) {
+        const BarHalfLen = Lx === 0 ? 2.15 : 1.55;
+        // Straight vertical suspension rods to roof truss
+        B.AddTube([Lx - BarHalfLen * 0.75, LedY + 0.06, Lz], [Lx - BarHalfLen * 0.75, H - 0.1, Lz], 0.008, 0.008, 5, SurfaceMaterialCode.ChromeMetal);
+        B.AddTube([Lx + BarHalfLen * 0.75, LedY + 0.06, Lz], [Lx + BarHalfLen * 0.75, H - 0.1, Lz], 0.008, 0.008, 5, SurfaceMaterialCode.ChromeMetal);
+        // Aluminum housing channel + bright glowing LED diffuser tube
+        B.AddBox([Lx, LedY + 0.04, Lz], [BarHalfLen, 0.04, 0.11], SurfaceMaterialCode.DarkMetal);
+        B.AddBox([Lx, LedY - 0.012, Lz], [BarHalfLen * 0.96, 0.022, 0.085], SurfaceMaterialCode.EmissiveDiffuser);
+      }
+    }
+  }
+
+  return B.Finish();
+}
+
+// 16. Procedural Heavy 4-Post Hydraulic Mechanic Car Lift (supports real elevated car via LiftHeight!) (studio.car_lift)
+function ConstructCarLift(Params) {
+  const B = CreateBuilder();
+  const LiftH = Math.max(0.15, Math.min(2.6, Number(Params.LiftHeight ?? 2.12)));
+  const PostH = Number(Params.PostHeight ?? 3.85);
+  const DeckLen = 4.75;
+  const DeckW = 2.48;
+  const PostX = DeckLen * 0.44;
+  const PostZ = DeckW * 0.54;
+
+  // Yellow-black hazard floor pad & 4 bolted heavy steel H-columns
+  B.AddBox([0, 0.012, 0], [DeckLen * 0.56, 0.012, DeckW * 0.68], SurfaceMaterialCode.DarkMetal);
+  B.AddBox([0, 0.016, PostZ + 0.18], [DeckLen * 0.56, 0.01, 0.08], SurfaceMaterialCode.SafetyYellow);
+  B.AddBox([0, 0.016, -(PostZ + 0.18)], [DeckLen * 0.56, 0.01, 0.08], SurfaceMaterialCode.SafetyYellow);
+
+  for (const Sx of [-1, 1]) {
+    for (const Sz of [-1, 1]) {
+      const Px = Sx * PostX;
+      const Pz = Sz * PostZ;
+      // Heavy anchor base plate & steel vertical H-column
+      B.AddBox([Px, 0.05, Pz], [0.22, 0.05, 0.22], SurfaceMaterialCode.SafetyYellow);
+      B.AddBox([Px, PostH * 0.5, Pz], [0.11, PostH * 0.5, 0.12], SurfaceMaterialCode.FanHousing);
+      // Chrome hydraulic lift piston rod running beside column
+      B.AddTube([Px - Sx * 0.11, 0.12, Pz], [Px - Sx * 0.11, LiftH + 0.12, Pz], 0.036, 0.036, 10, SurfaceMaterialCode.ChromeMetal);
+      // Heavy lift carriage slider hugging column at LiftHeight
+      B.AddBox([Px, LiftH - 0.06, Pz], [0.16, 0.22, 0.17], SurfaceMaterialCode.SafetyYellow);
+    }
+    // Overhead top gantry cross-beam connecting front/back columns
+    B.AddBox([Sx * PostX, PostH - 0.1, 0], [0.1, 0.12, PostZ + 0.12], SurfaceMaterialCode.FanHousing);
+    // Cross lifting bridge beam under the twin decks at LiftHeight
+    B.AddBox([Sx * PostX, LiftH - 0.12, 0], [0.12, 0.11, PostZ + 0.08], SurfaceMaterialCode.SafetyYellow);
+  }
+
+  // Hydraulic power pump unit mounted on front-right column
+  B.AddBox([PostX + 0.22, 1.35, PostZ], [0.14, 0.28, 0.14], SurfaceMaterialCode.CherryRedTool);
+  B.AddTube([PostX + 0.22, 1.65, PostZ], [PostX + 0.22, 2.02, PostZ], 0.08, 0.08, 10, SurfaceMaterialCode.DarkMetal);
+
+  // Twin steel drive-on car runway tracks sitting flush at LiftH (car tires rest cleanly on Y = LiftH!)
+  const TrackZ = 0.78;
+  for (const Sz of [-1, 1]) {
+    B.AddBox([0, LiftH - 0.05, Sz * TrackZ], [DeckLen * 0.5, 0.05, 0.32], SurfaceMaterialCode.FanHousing);
+    // Safety-yellow raised outer wheel-guide rails
+    B.AddBox([0, LiftH + 0.025, Sz * (TrackZ + 0.31)], [DeckLen * 0.49, 0.032, 0.025], SurfaceMaterialCode.SafetyYellow);
+    // Angled hinged drive-on approach ramps at rear end (-X)
+    B.AddBox([-DeckLen * 0.5 - 0.34, LiftH - 0.18, Sz * TrackZ], [0.38, 0.035, 0.29], SurfaceMaterialCode.SafetyYellow, 0, 0, 0.38);
+    // Front wheel stop chocks (+X)
+    B.AddBox([DeckLen * 0.47, LiftH + 0.06, Sz * TrackZ], [0.06, 0.06, 0.26], SurfaceMaterialCode.CherryRedTool);
+  }
+  // Center rolling jack bridge tray between runways
+  B.AddBox([0.35, LiftH - 0.08, 0], [0.42, 0.04, TrackZ - 0.28], SurfaceMaterialCode.CherryRedTool);
+
+  return B.Finish();
+}
+
+// 17. Procedural Mechanic's Rolling Tool Cart, Cherry-Red Toolboxes, Tire Rack & Floor Jack (studio.garage_props)
+function ConstructGarageProps(Params) {
+  const B = CreateBuilder();
+  const Variant = Params.PropVariant || "tool-cart";
+
+  if (Variant === "tool-cart") {
+    // Rolling stainless mechanic's service trolley with stacked cherry-red Snap-on toolboxes (Ref Image 2 right!)
+    const W = 1.55, D = 0.72, H = 0.94;
+    // Lower & upper brushed steel cart shelves
+    B.AddBox([0, 0.2, 0], [W * 0.5, 0.025, D * 0.5], SurfaceMaterialCode.ChromeMetal);
+    B.AddBox([0, H, 0], [W * 0.5, 0.028, D * 0.5], SurfaceMaterialCode.ChromeMetal);
+    // 4 vertical chrome corner posts + 4 caster wheels + side push handle
+    for (const Sx of [-1, 1]) {
+      for (const Sz of [-1, 1]) {
+        const Cx = Sx * (W * 0.47), Cz = Sz * (D * 0.45);
+        B.AddTube([Cx, 0.12, Cz], [Cx, H, Cz], 0.022, 0.022, 8, SurfaceMaterialCode.ChromeMetal);
+        B.AddTube([Cx, 0.12, Cz], [Cx, 0.03, Cz], 0.048, 0.048, 10, SurfaceMaterialCode.RubberMat);
+      }
+    }
+    B.AddTube([W * 0.54, H + 0.08, -D * 0.38], [W * 0.54, H + 0.08, D * 0.38], 0.018, 0.018, 8, SurfaceMaterialCode.ChromeMetal);
+
+    // Hero stacked cherry-red multi-drawer mechanic's toolboxes resting atop trolley!
+    B.AddBox([0.22, H + 0.28, 0], [0.48, 0.26, 0.31], SurfaceMaterialCode.CherryRedTool);
+    for (let Dr = 0; Dr < 4; Dr++) {
+      const Dy = H + 0.1 + Dr * 0.115;
+      B.AddBox([0.22, Dy, 0.322], [0.42, 0.014, 0.014], SurfaceMaterialCode.ChromeMetal);
+    }
+    B.AddBox([-0.48, H + 0.16, 0.02], [0.24, 0.14, 0.26], SurfaceMaterialCode.CherryRedTool);
+    B.AddBox([-0.48, H + 0.16, 0.288], [0.19, 0.014, 0.014], SurfaceMaterialCode.ChromeMetal);
+
+    // Stacked spare matte rubber slick tires resting on lower trolley shelf (straight from Ref Image 2!)
+    for (let Tr = 0; Tr < 2; Tr++) {
+      B.AddTube([-0.24, 0.23 + Tr * 0.22, 0], [-0.24, 0.43 + Tr * 0.22, 0], 0.31, 0.31, 16, SurfaceMaterialCode.CarTire);
+      B.AddTube([-0.24, 0.26 + Tr * 0.22, 0], [-0.24, 0.41 + Tr * 0.22, 0], 0.17, 0.17, 14, SurfaceMaterialCode.CarRim);
+    }
+    // Motor oil jerrycan sitting on floor beside tool cart
+    B.AddBox([W * 0.5 + 0.28, 0.22, 0.08], [0.13, 0.22, 0.18], SurfaceMaterialCode.UmbrellaSilver, 0, -0.25, 0);
+    B.AddBox([W * 0.5 + 0.28, 0.46, 0.02], [0.04, 0.04, 0.04], SurfaceMaterialCode.CherryRedTool);
+    return B.Finish();
+  }
+
+  if (Variant === "tire-rack") {
+    // Motorsport pit-garage twin-tier steel racing slick tire rack + hydraulic trolley jack & jack stands
+    const Rw = 2.4, Rh = 1.95;
+    for (const Sx of [-1, 1]) {
+      for (const Sz of [-1, 1]) {
+        B.AddTube([Sx * Rw * 0.5, 0, Sz * 0.34], [Sx * Rw * 0.5, Rh, Sz * 0.34], 0.026, 0.026, 8, SurfaceMaterialCode.FanHousing);
+      }
+    }
+    for (const Ry of [0.55, 1.38]) {
+      B.AddBox([0, Ry, -0.28], [Rw * 0.5, 0.035, 0.035], SurfaceMaterialCode.SafetyYellow);
+      B.AddBox([0, Ry, 0.28], [Rw * 0.5, 0.035, 0.035], SurfaceMaterialCode.SafetyYellow);
+      // 5 wide racing slick tires standing upright on each tier
+      for (let T = -2; T <= 2; T++) {
+        const Tx = T * 0.44;
+        B.AddTube([Tx - 0.16, Ry + 0.34, 0], [Tx + 0.16, Ry + 0.34, 0], 0.34, 0.34, 16, SurfaceMaterialCode.CarTire);
+        B.AddTube([Tx - 0.17, Ry + 0.34, 0], [Tx + 0.17, Ry + 0.34, 0], 0.18, 0.18, 12, SurfaceMaterialCode.CarRim);
+      }
+    }
+    // Low-profile cherry-red hydraulic racing floor jack resting in front of rack
+    B.AddBox([-0.45, 0.08, 0.92], [0.36, 0.06, 0.18], SurfaceMaterialCode.CherryRedTool, 0, 0.32, 0);
+    B.AddTube([-0.75, 0.12, 1.02], [-1.35, 0.95, 1.25], 0.018, 0.016, 8, SurfaceMaterialCode.ChromeMetal);
+    // Pair of safety-yellow jack stands
+    for (const Jx of [0.42, 0.86]) {
+      B.AddTube([Jx, 0.02, 0.88], [Jx, 0.36, 0.88], 0.14, 0.045, 4, SurfaceMaterialCode.SafetyYellow);
+      B.AddBox([Jx, 0.38, 0.88], [0.06, 0.025, 0.04], SurfaceMaterialCode.DarkMetal);
+    }
+    return B.Finish();
+  }
+
+  // Tall cherry-red & brushed-steel rolling diagnostic cabinet & rear workshop shelving (Ref Image 2 mid-left!)
+  B.AddBox([0, 0.88, 0], [0.58, 0.82, 0.42], SurfaceMaterialCode.CherryRedTool);
+  B.AddBox([0, 1.32, 0.425], [0.48, 0.28, 0.02], SurfaceMaterialCode.TetherScreen);
+  for (let Dr = 0; Dr < 4; Dr++) {
+    B.AddBox([0, 0.24 + Dr * 0.19, 0.43], [0.48, 0.016, 0.016], SurfaceMaterialCode.ChromeMetal);
+  }
+  for (const Sx of [-0.46, 0.46]) {
+    for (const Sz of [-0.32, 0.32]) {
+      B.AddTube([Sx, 0.09, Sz], [Sx, 0.02, Sz], 0.045, 0.045, 8, SurfaceMaterialCode.RubberMat);
+    }
+  }
+  return B.Finish();
+}
+
+// 18. Procedural Snaking Black & Orange Pneumatic Garage Air Hoses / Power Cables & Cable Ramp (studio.garage_cables)
+function ConstructGarageCables(Params) {
+  const B = CreateBuilder();
+  const Span = Number(Params.CableSpan ?? 11.5);
+
+  const AddSnakingCable = (Pts, Rad, Mat) => {
+    for (let I = 0; I < Pts.length - 1; I++) {
+      B.AddTube(Pts[I], Pts[I + 1], Rad, Rad, 6, Mat, false);
+    }
+  };
+
+  // Bundle of snaking black rubber air/power cables trailing from left lift across center garage floor (Ref 2 & 3!)
+  const Scale = Span / 11.5;
+  AddSnakingCable(
+    [
+      [-5.6 * Scale, 0.022, -1.2],
+      [-4.2 * Scale, 0.022, 0.6],
+      [-2.8 * Scale, 0.022, 1.85],
+      [-1.1 * Scale, 0.022, 2.55],
+      [0.6 * Scale, 0.022, 3.25],
+      [2.1 * Scale, 0.022, 4.15],
+      [3.6 * Scale, 0.022, 4.95],
+      [5.1 * Scale, 0.022, 5.45],
+    ],
+    0.024,
+    SurfaceMaterialCode.RubberMat,
+  );
+  AddSnakingCable(
+    [
+      [-5.3 * Scale, 0.02, -0.8],
+      [-3.8 * Scale, 0.02, 0.9],
+      [-2.3 * Scale, 0.02, 2.1],
+      [-0.7 * Scale, 0.02, 2.75],
+      [0.85 * Scale, 0.02, 3.4],
+      [2.5 * Scale, 0.02, 4.05],
+      [4.2 * Scale, 0.02, 4.65],
+    ],
+    0.019,
+    SurfaceMaterialCode.RubberMat,
+  );
+  // High-visibility safety-orange/yellow pneumatic compressor hose looping toward right tool cart (Ref Image 3!)
+  AddSnakingCable(
+    [
+      [1.2 * Scale, 0.018, -3.4],
+      [2.4 * Scale, 0.018, -1.6],
+      [3.3 * Scale, 0.018, 0.45],
+      [4.6 * Scale, 0.018, 2.15],
+      [5.8 * Scale, 0.018, 3.45],
+    ],
+    0.018,
+    SurfaceMaterialCode.SafetyYellow,
+  );
+
+  // Heavy-duty yellow & black ribbed rubber floor cable protector ramp across the foreground cable bundle (Ref Image 2!)
+  B.AddBox([2.35 * Scale, 0.032, 4.25], [0.95, 0.032, 0.26], SurfaceMaterialCode.RubberMat, 0, -0.45, 0);
+  B.AddBox([2.35 * Scale, 0.066, 4.25], [0.88, 0.01, 0.14], SurfaceMaterialCode.SafetyYellow, 0, -0.45, 0);
+
+  return B.Finish();
+}
+
 // Classic Showcase level primitives so level switching renders full 3D PBR immediately!
 export function ConstructShowcasePrimitive(Kind) {
   const B = CreateBuilder();
@@ -1838,6 +2208,14 @@ export function ConstructProceduralSurface(Kind, Params = {}) {
       return ConstructStudioFan(Params);
     case "studio.dust_field":
       return ConstructDustFieldMarker(Params);
+    case "studio.garage_shell":
+      return ConstructGarageShell(Params);
+    case "studio.car_lift":
+      return ConstructCarLift(Params);
+    case "studio.garage_props":
+      return ConstructGarageProps(Params);
+    case "studio.garage_cables":
+      return ConstructGarageCables(Params);
     default:
       return ConstructShowcasePrimitive("cube");
   }

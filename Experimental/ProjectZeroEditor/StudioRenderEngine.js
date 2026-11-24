@@ -149,6 +149,7 @@ uniform float uWindStrength;
 uniform sampler2D uForestBackdropTex;
 uniform int uHasForestTex;
 uniform vec2 uBackdropSize;
+uniform float uBackdropCenterX;
 
 // Per-entity vehicle/surface paint overrides
 uniform vec3 uPaintAlbedo;
@@ -670,28 +671,27 @@ void main() {
     Roughness = 0.06;
     Clearcoat = 1.0;
   } else if (Mat == 21) {
-    // Photorealistic Virtual Production LED Volume Display Wall (ForestLedBackdrop.jpg!)
+    // Photorealistic LED Display / Open Stadium Pit-Lane Vista Wall (ForestLedBackdrop.jpg / StadiumVistaBackdrop.jpg)
     vec2 LedUv = vec2(
-      clamp(vLocalPos.x / max(uBackdropSize.x, 0.5) + 0.5, 0.0, 1.0),
+      clamp((vLocalPos.x - uBackdropCenterX) / max(uBackdropSize.x, 0.5) + 0.5, 0.0, 1.0),
       clamp(1.0 - (vLocalPos.y - 0.08) / max(uBackdropSize.y, 0.5), 0.0, 1.0)
     );
     vec3 ForestImg = uHasForestTex == 1
       ? pow(texture(uForestBackdropTex, LedUv).rgb, vec3(2.2))
       : EvaluateForestBackdrop(vLocalPos.xy);
 
-    // Subtle real-world LED Volume cabinet micro-grid when inspecting up close
+    // Subtle real-world LED Volume cabinet micro-grid when inspecting up close (disabled for distant stadium vista)
     float CamDist = length(uCameraPos - vWorldPos);
-    float CloseFactor = smoothstep(4.2, 0.9, CamDist);
+    float CloseFactor = smoothstep(4.2, 0.9, CamDist) * (abs(uBackdropCenterX) < 0.5 ? 1.0 : 0.0);
     vec2 PixelCell = fract(vLocalPos.xy * 185.0);
     float DiodeMask = 0.88 + 0.12 * smoothstep(0.06, 0.22, PixelCell.x) * smoothstep(0.06, 0.22, PixelCell.y);
-    // Subtle dark satin LED glass coating & extreme perimeter bezel feathering
     float EdgeFeather = smoothstep(0.0, 0.015, LedUv.x) * smoothstep(1.0, 0.985, LedUv.x) *
                         smoothstep(0.0, 0.02, LedUv.y) * smoothstep(1.0, 0.98, LedUv.y);
     vec3 LedEmission = ForestImg * mix(1.0, DiodeMask, CloseFactor * 0.45) * (0.94 + 0.06 * EdgeFeather);
     Albedo = vec3(0.015, 0.017, 0.016);
-    Metallic = 0.08;
-    Roughness = 0.3;
-    Clearcoat = 0.25;
+    Metallic = 0.06;
+    Roughness = 0.34;
+    Clearcoat = 0.18;
     Emissive = LedEmission * max(0.25, uEmissiveStrength);
   } else if (Mat == 22) {
     // Matte velvet-black studio negative-fill flags & proscenium surround
@@ -726,6 +726,26 @@ void main() {
     Albedo = vec3(0.74, 0.78, 0.83);
     Metallic = 0.94;
     Roughness = 0.22;
+  } else if (Mat == 27) {
+    // Glossy cherry-red mechanic's Snap-on toolbox & hydraulic pump enamel
+    Albedo = vec3(0.58, 0.024, 0.02);
+    Metallic = 0.42;
+    Roughness = 0.2;
+    Clearcoat = 0.88;
+  } else if (Mat == 28) {
+    // Industrial safety-yellow powder-coated steel railings, lift decks & hazard trim
+    Albedo = vec3(0.78, 0.52, 0.02);
+    Metallic = 0.28;
+    Roughness = 0.34;
+    Clearcoat = 0.22;
+  } else if (Mat == 29) {
+    // Cast motorsport pit-garage architectural concrete pillars & weathered apron
+    float Grain = FbmPlaster(vWorldPos.xy * 0.85 + vWorldPos.zy * 0.75);
+    float Seam = smoothstep(0.02, 0.05, abs(fract(vWorldPos.y * 0.65) - 0.5));
+    vec3 RawConcrete = mix(vec3(0.085, 0.082, 0.078), vec3(0.21, 0.20, 0.19), Grain);
+    Albedo = RawConcrete * (0.86 + 0.14 * Seam);
+    Metallic = 0.02;
+    Roughness = 0.78;
   }
 
   vec3 F0 = mix(vec3(0.04), Albedo, Metallic);
@@ -981,7 +1001,9 @@ export class StudioRenderEngine {
     this.InitThumbnailTarget();
     this.ForestBackdropTex = null;
     this.ForestBackdropReady = false;
-    this.InitForestBackdropTexture();
+    this.StadiumVistaTex = null;
+    this.StadiumVistaReady = false;
+    this.InitBackdropTextures();
     this.LastStats = {
       DrawCalls: 0,
       Triangles: 0,
@@ -1005,7 +1027,7 @@ export class StudioRenderEngine {
     const Names = [
       "uViewProj", "uModel", "uNormalMat", "uCameraPos", "uViewportSize",
       "uTime", "uWindStrength", "uWindTurbulence", "uWindDir", "uWindOrigin", "uFanSpinAngle",
-      "uForestBackdropTex", "uHasForestTex", "uBackdropSize",
+      "uForestBackdropTex", "uHasForestTex", "uBackdropSize", "uBackdropCenterX",
       "uExposure", "uAmbientFill", "uShadowDepth", "uVignette",
       "uTileSize", "uFloorGloss", "uPlasterGrain", "uCycloramaTint", "uFloorTint",
       "uSelectedFlag", "uPaintAlbedo", "uPaintMetallic", "uPaintRoughness", "uPaintClearcoat",
@@ -1025,52 +1047,56 @@ export class StudioRenderEngine {
     };
   }
 
-  InitForestBackdropTexture() {
-    const Gl = this.Gl;
-    const Tex = Gl.createTexture();
-    this.ForestBackdropTex = Tex;
-    Gl.bindTexture(Gl.TEXTURE_2D, Tex);
-    // Safe 1x1 dark forest placeholder until decoded image uploads
-    Gl.texImage2D(
-      Gl.TEXTURE_2D,
-      0,
-      Gl.RGBA,
-      1,
-      1,
-      0,
-      Gl.RGBA,
-      Gl.UNSIGNED_BYTE,
-      new Uint8Array([18, 34, 22, 255]),
-    );
-    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
-    Gl.bindTexture(Gl.TEXTURE_2D, null);
-
-    if (typeof Image === "undefined") return;
-    const Src =
-      (typeof window !== "undefined" && window.NativeAssets?.ForestLedBackdrop) ||
-      "/Experimental/ProjectZeroEditor/Assets/ForestLedBackdrop.jpg";
-    const Img = new Image();
-    Img.crossOrigin = "anonymous";
-    Img.onload = () => {
-      if (this.Disposed || !this.ForestBackdropTex) return;
-      Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
-      Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.RGBA, Gl.UNSIGNED_BYTE, Img);
-      Gl.generateMipmap(Gl.TEXTURE_2D);
+  InitBackdropTextures() {
+    const CreateBackdropTex = (PlaceholderRgba, NativeKey, FallbackUrl, ThumbPrefix, OnLoaded) => {
+      const Gl = this.Gl;
+      const Tex = Gl.createTexture();
+      Gl.bindTexture(Gl.TEXTURE_2D, Tex);
+      Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, 1, 1, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, new Uint8Array(PlaceholderRgba));
       Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
       Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR_MIPMAP_LINEAR);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
       Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
       Gl.bindTexture(Gl.TEXTURE_2D, null);
-      this.ForestBackdropReady = true;
-      // Clear cached backdrop thumbnail so it refreshes with the real photorealistic forest image!
-      for (const Key of this.ThumbCache.keys()) {
-        if (Key.startsWith("proc:studio.forest_backdrop")) this.ThumbCache.delete(Key);
+
+      if (typeof Image !== "undefined") {
+        const Src = (typeof window !== "undefined" && window.NativeAssets?.[NativeKey]) || FallbackUrl;
+        const Img = new Image();
+        Img.crossOrigin = "anonymous";
+        Img.onload = () => {
+          if (this.Disposed) return;
+          Gl.bindTexture(Gl.TEXTURE_2D, Tex);
+          Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.RGBA, Gl.UNSIGNED_BYTE, Img);
+          Gl.generateMipmap(Gl.TEXTURE_2D);
+          Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+          Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+          Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR_MIPMAP_LINEAR);
+          Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+          Gl.bindTexture(Gl.TEXTURE_2D, null);
+          OnLoaded();
+          for (const Key of this.ThumbCache.keys()) {
+            if (Key.startsWith(ThumbPrefix)) this.ThumbCache.delete(Key);
+          }
+        };
+        Img.src = Src;
       }
+      return Tex;
     };
-    Img.src = Src;
+
+    this.ForestBackdropTex = CreateBackdropTex(
+      [18, 34, 22, 255],
+      "ForestLedBackdrop",
+      "/Experimental/ProjectZeroEditor/Assets/ForestLedBackdrop.jpg",
+      "proc:studio.forest_backdrop",
+      () => { this.ForestBackdropReady = true; },
+    );
+    this.StadiumVistaTex = CreateBackdropTex(
+      [96, 82, 68, 255],
+      "StadiumVistaBackdrop",
+      "/Experimental/ProjectZeroEditor/Assets/StadiumVistaBackdrop.jpg",
+      "proc:studio.garage_shell",
+      () => { this.StadiumVistaReady = true; },
+    );
   }
 
   UploadSurface(Surface) {
@@ -1258,10 +1284,22 @@ export class StudioRenderEngine {
     Gl.uniform3fv(this.Loc.uWindOrigin, [0.0, 0.0, 0.0]);
     Gl.uniform1f(this.Loc.uFanSpinAngle, 0.0);
     Gl.activeTexture(Gl.TEXTURE0);
-    Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
+    const IsGarageShellThumb = Val?.ProceduralKind === "studio.garage_shell";
+    Gl.bindTexture(Gl.TEXTURE_2D, IsGarageShellThumb ? this.StadiumVistaTex : this.ForestBackdropTex);
     Gl.uniform1i(this.Loc.uForestBackdropTex, 0);
-    Gl.uniform1i(this.Loc.uHasForestTex, this.ForestBackdropReady ? 1 : 0);
-    Gl.uniform2f(this.Loc.uBackdropSize, Number(Val.ScreenWidth ?? 12.4), Number(Val.ScreenHeight ?? 6.2));
+    Gl.uniform1i(
+      this.Loc.uHasForestTex,
+      (IsGarageShellThumb ? this.StadiumVistaReady : this.ForestBackdropReady) ? 1 : 0,
+    );
+    Gl.uniform2f(
+      this.Loc.uBackdropSize,
+      Number(Val.ScreenWidth ?? (IsGarageShellThumb ? 18.4 : 12.4)),
+      Number(Val.ScreenHeight ?? (IsGarageShellThumb ? 8.2 : 6.2)),
+    );
+    Gl.uniform1f(
+      this.Loc.uBackdropCenterX,
+      Number(Val.BackdropCenterX ?? (IsGarageShellThumb ? -3.8 : 0.0)),
+    );
     Gl.uniform1f(this.Loc.uExposure, 1.45);
     Gl.uniform1f(this.Loc.uAmbientFill, 0.34);
     Gl.uniform1f(this.Loc.uShadowDepth, 0.0);
@@ -1529,13 +1567,22 @@ export class StudioRenderEngine {
     Gl.uniform3fv(this.Loc.uWindOrigin, WindOrigin);
     Gl.uniform1f(this.Loc.uFanSpinAngle, FanSpinAngle);
 
-    // Bind photorealistic Forest LED Volume Backdrop texture on unit 0
-    const BdVal = Values["l2-forest-backdrop"] || {};
+    // Bind photorealistic Backdrop texture on unit 0 (Lobby 2 Forest LED / Lobby 3 Stadium Grandstand Vista)
+    const IsL3 = LevelId === "studio-lobby-3";
+    const BdVal = IsL3 ? Values["l3-garage-shell"] || {} : Values["l2-forest-backdrop"] || {};
     Gl.activeTexture(Gl.TEXTURE0);
-    Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
+    Gl.bindTexture(Gl.TEXTURE_2D, IsL3 ? this.StadiumVistaTex : this.ForestBackdropTex);
     Gl.uniform1i(this.Loc.uForestBackdropTex, 0);
-    Gl.uniform1i(this.Loc.uHasForestTex, this.ForestBackdropReady && LevelId === "studio-lobby-2" ? 1 : 0);
-    Gl.uniform2f(this.Loc.uBackdropSize, Number(BdVal.ScreenWidth ?? 12.4), Number(BdVal.ScreenHeight ?? 6.2));
+    Gl.uniform1i(
+      this.Loc.uHasForestTex,
+      (IsL3 ? this.StadiumVistaReady : LevelId === "studio-lobby-2" && this.ForestBackdropReady) ? 1 : 0,
+    );
+    Gl.uniform2f(
+      this.Loc.uBackdropSize,
+      Number(BdVal.ScreenWidth ?? (IsL3 ? 18.4 : 12.4)),
+      Number(BdVal.ScreenHeight ?? (IsL3 ? 8.2 : 6.2)),
+    );
+    Gl.uniform1f(this.Loc.uBackdropCenterX, Number(BdVal.BackdropCenterX ?? (IsL3 ? -3.8 : 0.0)));
 
     const AmbientVal = Values["studio-ambient"] || {};
     const CycVal = Values["studio-cyclorama"] || {};
@@ -1698,13 +1745,17 @@ export class StudioRenderEngine {
           Val.ProceduralKind === "studio.tiled_floor" ||
           Val.ProceduralKind === "studio.ceiling_truss" ||
           Val.ProceduralKind === "studio.forest_backdrop" ||
-          Val.ProceduralKind === "studio.rock_outcrop";
+          Val.ProceduralKind === "studio.rock_outcrop" ||
+          Val.ProceduralKind === "studio.garage_shell" ||
+          Val.ProceduralKind === "studio.garage_cables";
 
-        // Match fixture diffuser emissive tint/brightness to its child light, or Forest LED Backdrop brightness!
+        // Match fixture diffuser emissive tint/brightness to its child light, or Backdrop brightness!
         let EmissiveTint = [0.97, 0.985, 1.0];
         let EmissiveStrength = 2.8;
         if (Val.ProceduralKind === "studio.forest_backdrop") {
-          EmissiveStrength = Number(Val.BackdropBrightness ?? 1.45);
+          EmissiveStrength = Number(Val.BackdropBrightness ?? 1.25);
+        } else if (Val.ProceduralKind === "studio.garage_shell") {
+          EmissiveStrength = Number(Val.BackdropBrightness ?? 1.32);
         } else if (Val.ProceduralKind === "studio.light_fixture") {
           const ChildLight = Rows.find((R) => R.Parent === Row.Id && R.Panel === "light");
           if (ChildLight) {
@@ -1798,6 +1849,8 @@ export class StudioRenderEngine {
               "studio.ceiling_truss",
               "studio.forest_backdrop",
               "studio.rock_outcrop",
+              "studio.garage_shell",
+              "studio.garage_cables",
               "studio.ambient",
             ].includes(SelVal.ProceduralKind) &&
             (!SelRow.Parent || Rows.find((P) => P.Id === SelRow.Parent)?.Panel === "group")));
@@ -2264,6 +2317,7 @@ export class StudioRenderEngine {
     if (this.ThumbTex) Gl.deleteTexture(this.ThumbTex);
     if (this.ThumbDepth) Gl.deleteRenderbuffer(this.ThumbDepth);
     if (this.ForestBackdropTex) Gl.deleteTexture(this.ForestBackdropTex);
+    if (this.StadiumVistaTex) Gl.deleteTexture(this.StadiumVistaTex);
     Gl.deleteProgram(this.Program);
     Gl.deleteProgram(this.GizmoProgram);
   }

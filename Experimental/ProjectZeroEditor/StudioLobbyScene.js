@@ -4,16 +4,24 @@
 
 export const HeroCarAimTarget = [0.0, 0.88, -0.15];
 export const Lobby2HeroAimTarget = [0.0, 1.38, -0.35];
+export const Lobby3HeroAimTarget = [0.35, 0.88, 0.35];
 
 export function IsStudioLobbyLevel(LevelId) {
-  return LevelId === "studio-lobby" || LevelId === "studio-lobby-2";
+  return LevelId === "studio-lobby" || LevelId === "studio-lobby-2" || LevelId === "studio-lobby-3";
 }
 
 export function GetHeroAimTargetForLevel(LevelId) {
-  return LevelId === "studio-lobby-2" ? Lobby2HeroAimTarget : HeroCarAimTarget;
+  if (LevelId === "studio-lobby-2") return Lobby2HeroAimTarget;
+  if (LevelId === "studio-lobby-3") return Lobby3HeroAimTarget;
+  return HeroCarAimTarget;
 }
 
 export const StudioLevels = [
+  {
+    Id: "studio-lobby-3",
+    Label: "Lobby 3 · Racing Garage",
+    Subtitle: "Racing stadium pit garage · hydraulic car lift · tools, cages & sunlit grandstands",
+  },
   {
     Id: "studio-lobby-2",
     Label: "Lobby 2 · Forest Stage",
@@ -32,6 +40,7 @@ export const StudioLevels = [
 ];
 
 export const VehiclePaintPresets = [
+  { Name: "Signal Orange", Hex: "#e86512", Metallic: 0.62, Roughness: 0.14, Clearcoat: 1.0 },
   { Name: "Forest Sage", Hex: "#7ea689", Metallic: 0.42, Roughness: 0.16, Clearcoat: 0.98 },
   { Name: "Obsidian Gloss", Hex: "#111319", Metallic: 0.82, Roughness: 0.14, Clearcoat: 1.0 },
   { Name: "Alpine GT3 White", Hex: "#eceff3", Metallic: 0.16, Roughness: 0.16, Clearcoat: 0.98 },
@@ -128,6 +137,16 @@ export function ClampGameCameraInsideLobby(Eye, Values, LevelId) {
   if (!IsStudioLobbyLevel(LevelId)) return Eye;
   const Ceil = Values["studio-ceiling"] || {};
   const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
+  if (LevelId === "studio-lobby-3") {
+    const Sh = Values["l3-garage-shell"] || {};
+    const HalfW = Math.max(8.0, Number(Sh.GarageWidth ?? 22.0) * 0.5 - 1.25);
+    const MaxGarageY = Math.max(4.5, Number(Sh.GarageHeight ?? 7.15) - 1.15);
+    return [
+      Math.max(-HalfW, Math.min(HalfW, Eye[0])),
+      Math.max(0.45, Math.min(MaxGarageY, Eye[1])),
+      Math.max(-4.8, Math.min(16.5, Eye[2])),
+    ];
+  }
   if (LevelId === "studio-lobby-2") {
     const Bd = Values["l2-forest-backdrop"] || {};
     const BackZ = Number(Bd.Position?.[2] ?? -5.65) + 1.25;
@@ -183,10 +202,11 @@ export function EvaluateOpeningReveal(Progress, LevelId = "studio-lobby") {
       : 1 - Math.pow(-2 * Clamped + 2, 3) / 2;
 
   const IsL2 = LevelId === "studio-lobby-2";
-  const P0 = IsL2 ? [-5.4, 1.35, 7.65] : [-5.8, 0.92, 6.95];
-  const P1 = IsL2 ? [-1.1, 1.52, 8.25] : [-1.4, 1.12, 7.65];
-  const P2 = IsL2 ? [3.8, 2.25, 7.95] : [3.9, 1.92, 7.35];
-  const P3 = IsL2 ? [5.45, 2.05, 7.15] : ConfiguratorPresets[0].Eye;
+  const IsL3 = LevelId === "studio-lobby-3";
+  const P0 = IsL3 ? [6.1, 1.35, 6.2] : IsL2 ? [-5.4, 1.35, 7.65] : [-5.8, 0.92, 6.95];
+  const P1 = IsL3 ? [4.4, 1.48, 6.85] : IsL2 ? [-1.1, 1.52, 8.25] : [-1.4, 1.12, 7.65];
+  const P2 = IsL3 ? [3.6, 1.56, 5.95] : IsL2 ? [3.8, 2.25, 7.95] : [3.9, 1.92, 7.35];
+  const P3 = IsL3 ? [4.95, 1.52, 5.85] : IsL2 ? [5.45, 2.05, 7.15] : ConfiguratorPresets[0].Eye;
 
   const Inv = 1 - Smooth;
   const Eye = [0, 1, 2].map(
@@ -197,8 +217,8 @@ export function EvaluateOpeningReveal(Progress, LevelId = "studio-lobby") {
       Smooth * Smooth * Smooth * P3[Axis],
   );
 
-  const T0 = IsL2 ? [-0.45, 1.05, 0.1] : [-0.65, 0.62, 0.25];
-  const T1 = IsL2 ? [0.05, 1.28, -0.35] : ConfiguratorPresets[0].Target;
+  const T0 = IsL3 ? [-0.6, 1.12, -1.2] : IsL2 ? [-0.45, 1.05, 0.1] : [-0.65, 0.62, 0.25];
+  const T1 = IsL3 ? [0.15, 0.95, 0.15] : IsL2 ? [0.05, 1.28, -0.35] : ConfiguratorPresets[0].Target;
   const Target = [0, 1, 2].map(
     (Axis) => T0[Axis] + (T1[Axis] - T0[Axis]) * Smooth,
   );
@@ -1686,6 +1706,658 @@ export const StudioLobby2InitialValues = {
   },
 };
 
+// ============================================================================
+// STUDIO LOBBY 3 · MECHANICS GARAGE AT A RACING STADIUM
+// Open pit-lane archway overlooking sunlit tiered stadium grandstands,
+// galvanized steel bar shutters, 4-post hydraulic car lift holding a raised car,
+// two-story mezzanine catwalks, overhead linear LED shop bars, rolling tool cart,
+// cherry-red toolboxes, racing tire rack, snaking air hoses & golden sunbeams!
+// ============================================================================
+const L3AimKey = ComputeAimAngles([-4.2, 3.15, -3.65], Lobby3HeroAimTarget);
+const L3AimUmbrella = ComputeAimAngles([4.85, 2.25, 2.65], Lobby3HeroAimTarget);
+const L3AimRim = ComputeAimAngles([-4.6, 2.55, 3.25], Lobby3HeroAimTarget);
+const L3AimAccent = ComputeAimAngles([4.95, 2.48, -2.55], Lobby3HeroAimTarget);
+const L3AimCamA = ComputeAimAngles([-2.85, 1.75, 6.45], Lobby3HeroAimTarget);
+const L3AimCamB = ComputeAimAngles([3.85, 1.58, 6.25], Lobby3HeroAimTarget);
+
+export const StudioLobby3Rows = [
+  // Vehicles collection: Hero Signal-Orange GT + Elevated Car on Hydraulic Lift + 2 Paddock Cars
+  ["studio-vehicles", "Vehicles", "group", "folder-scene", null, "Racing Stadium Garage lineup · 4 cars (including 1 on hydraulic lift)"],
+  [
+    "vehicle-hero",
+    "Hero GT · Pit Bay Center",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Signal Orange GT bathed in stadium pit-lane sunbeam",
+  ],
+  [
+    "vehicle-gt3",
+    "Alpine GT · Right Pit Bay",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Paddock GT car staged in right bay",
+  ],
+  [
+    "vehicle-tourer",
+    "Midnight Cobalt · Outer Paddock",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Reserve track car on outer pit apron",
+  ],
+
+  // Mechanics Garage Architecture, Hydraulic Car Lift (with Elevated Car child!) & Workshop Equipment
+  ["studio-architecture", "Racing Stadium Garage", "group", "folder-world", null, "Pit-lane archway, sunlit stadium grandstands, steel cages, mezzanine & hydraulic lift"],
+  [
+    "l3-garage-shell",
+    "Stadium Pit Garage & Grandstands",
+    "studio-procedural",
+    "studio-stadium",
+    "studio-architecture",
+    "Concrete pit bay portal, sunlit racing stadium grandstands, steel bar cages, mezzanine & linear LEDs",
+  ],
+  [
+    "l3-car-lift",
+    "Hydraulic 4-Post Car Lift",
+    "studio-procedural",
+    "studio-lift",
+    "studio-architecture",
+    "Heavy hydraulic mechanic lift · LiftHeight raises & lowers the elevated car live",
+  ],
+  [
+    "vehicle-lift",
+    "Track Coupe · On Hydraulic Lift",
+    "studio-vehicle",
+    "studio-vehicle",
+    "l3-car-lift",
+    "ControlledIntegrator · Elevated race car mounted directly on the hydraulic lift deck",
+  ],
+  [
+    "studio-floor",
+    "Polished Concrete Pit Floor",
+    "studio-procedural",
+    "studio-floor-grid",
+    "studio-architecture",
+    "Tire-scuffed glossy dark concrete motorsport garage floor",
+  ],
+
+  // Mechanics Workshop Props, Tool Carts, Tire Rack & Snaking Air Hoses
+  ["studio-props", "Mechanics Equipment & Tools", "group", "studio-toolbox", null, "Rolling cherry-red toolboxes, racing tire rack, hydraulic jack & floor hoses"],
+  [
+    "l3-tool-cart",
+    "Rolling Cherry-Red Tool Cart",
+    "studio-procedural",
+    "studio-toolbox",
+    "studio-props",
+    "Stainless service cart with stacked cherry-red toolboxes, spare slicks & oil can",
+  ],
+  [
+    "l3-tire-rack",
+    "Racing Slick Tire Rack & Jack",
+    "studio-procedural",
+    "studio-garage",
+    "studio-props",
+    "Two-tier motorsport tire rack, hydraulic floor trolley jack & yellow jack stands",
+  ],
+  [
+    "l3-diag-cabinet",
+    "Diagnostic Telemetry Cabinet",
+    "studio-procedural",
+    "studio-workstation",
+    "studio-props",
+    "Rolling red diagnostic chest & live pit telemetry screen",
+  ],
+  [
+    "l3-garage-cables",
+    "Floor Air Hoses & Cable Ramp",
+    "studio-procedural",
+    "studio-cables",
+    "studio-props",
+    "Snaking pneumatic hoses, power cables & yellow rubber floor cable ramp",
+  ],
+  [
+    "l3-dust-particles",
+    "Sunbeam Garage Dust Motes",
+    "studio-procedural",
+    "studio-dust",
+    "studio-props",
+    "Warm atmospheric workshop dust floating through the pit-lane sunlight shaft",
+  ],
+  [
+    "studio-ambient",
+    "Garage Exposure & Atmosphere",
+    "studio-procedural",
+    "environment-exposure",
+    "studio-props",
+    "ACES exposure, dark concrete contrast & warm pit-lane bounce",
+  ],
+
+  // Lighting Rigs (Overhead LED Bank + Golden Stadium Portal Sunlight + Worklamps)
+  ["studio-lighting", "Garage Lighting Rigs", "group", "folder-generic", null, "Linear overhead LED shop bank, stadium portal sunlight & warm mechanic lamps"],
+  [
+    "rig-softbox-fixture",
+    "Overhead Linear Shop Bank",
+    "studio-procedural",
+    "studio-softbox",
+    "studio-lighting",
+    "Suspended overhead factory light bank with straight vertical rigging",
+  ],
+  [
+    "light-overhead-area",
+    "Overhead Shop LED Area Light",
+    "light",
+    "editor-area-light",
+    "rig-softbox-fixture",
+    "Rect Area Light · crisp 5800 K overhead factory LED bay illumination",
+    "arealight",
+    "Softbox",
+  ],
+  [
+    "rig-key-tripod",
+    "Stadium Portal Sun Stand",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Golden afternoon stadium pit-lane sunlight key stand",
+  ],
+  [
+    "rig-key-fixture",
+    "Barn-Door Fresnel Fixture",
+    "studio-procedural",
+    "studio-fresnel",
+    "rig-key-tripod",
+    "Warm golden stadium sunbeam directional head",
+  ],
+  [
+    "light-key-ies",
+    "Stadium Sunbeam IES Light",
+    "light",
+    "editor-dome-light",
+    "rig-key-fixture",
+    "IES Photometric · golden late-afternoon sunlight streaming through pit portal",
+    "ieslight",
+    "IES Downlight",
+  ],
+  [
+    "rig-umbrella-tripod",
+    "Pit Bay Fill Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Front-right silver bounce fill stand",
+  ],
+  [
+    "rig-umbrella-fixture",
+    "Parabolic Umbrella Modifier",
+    "studio-procedural",
+    "studio-umbrella",
+    "rig-umbrella-tripod",
+    "16-rib parabolic silver bounce modifier",
+  ],
+  [
+    "light-umbrella-area",
+    "Pit Bay Fill Area Light",
+    "light",
+    "editor-area-light",
+    "rig-umbrella-fixture",
+    "Rect Area Light · soft ambient garage bounce",
+    "arealight",
+    "Softbox",
+  ],
+  [
+    "rig-rim-tripod",
+    "Workshop Rim Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Left bay LED rim separation stand",
+  ],
+  [
+    "rig-rim-fixture",
+    "Rim LED Panel Fixture",
+    "studio-procedural",
+    "studio-led-panel",
+    "rig-rim-tripod",
+    "Cool industrial workshop contour LED panel",
+  ],
+  [
+    "light-rim-area",
+    "Workshop Rim Area Light",
+    "light",
+    "editor-area-light",
+    "rig-rim-fixture",
+    "Rect Area Light · cool metallic contour edge light",
+    "arealight",
+    "Softbox",
+  ],
+  [
+    "rig-accent-tripod",
+    "Mechanic Worklamp Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Warm amber mechanic's spotlight stand by right cage wall",
+  ],
+  [
+    "rig-accent-fixture",
+    "Barn-Door Worklamp Head",
+    "studio-procedural",
+    "studio-fresnel",
+    "rig-accent-tripod",
+    "Warm tungsten workshop halogen worklamp",
+  ],
+  [
+    "light-accent-ies",
+    "Mechanic Worklamp IES Light",
+    "light",
+    "editor-dome-light",
+    "rig-accent-fixture",
+    "IES Photometric · warm 3350 K workshop accent beam",
+    "ieslight",
+    "IES Downlight",
+  ],
+
+  // Camera Rigs
+  ["cameras", "Camera Rigs", "group", "camera", null, "Unrestricted Editor Camera & Pit Garage Game Camera rigs"],
+  [
+    "camera",
+    "Editor Camera",
+    "camera",
+    "camera",
+    "cameras",
+    "Unrestricted free 360° editor navigation camera",
+  ],
+  [
+    "rig-cam-a-tripod",
+    "Cinema Tripod A",
+    "studio-procedural",
+    "studio-tripod",
+    "cameras",
+    "Pit garage cinema camera tripod on rubber mat",
+  ],
+  [
+    "rig-cam-a-body",
+    "Cinema Camera A",
+    "studio-procedural",
+    "studio-cinema-camera",
+    "rig-cam-a-tripod",
+    "Cinema matte-box camera mounted on Tripod A",
+  ],
+  [
+    "cam-configurator",
+    "Car Configurator Camera",
+    "camera",
+    "camera",
+    "rig-cam-a-body",
+    "Moving Game Camera · Pit Bay Opening Reveal + Showroom Orbit",
+  ],
+  [
+    "rig-cam-b-tripod",
+    "Cinema Tripod B",
+    "studio-procedural",
+    "studio-tripod",
+    "cameras",
+    "Foreground right secondary pit camera tripod",
+  ],
+  [
+    "rig-cam-b-body",
+    "Cinema Camera B",
+    "studio-procedural",
+    "studio-cinema-camera",
+    "rig-cam-b-tripod",
+    "Medium format tether camera mounted on Tripod B",
+  ],
+  [
+    "cam-profile",
+    "Profile 65mm Camera",
+    "camera",
+    "camera",
+    "rig-cam-b-body",
+    "65mm pit-lane profile camera aimed at Signal Orange Hero GT",
+  ],
+].map(([Id, Name, Panel, Icon, Parent, Description, ReferenceType, ReferencePreset]) => ({
+  Id,
+  Name,
+  Panel,
+  Icon,
+  Parent,
+  Description,
+  ...(ReferenceType ? { ReferenceType } : {}),
+  ...(ReferencePreset ? { ReferencePreset } : {}),
+}));
+
+export const StudioLobby3InitialValues = {
+  ...JSON.parse(JSON.stringify(StudioLobbyInitialValues)),
+
+  // 1) Signal Orange Hero GT car parked heroically in the sunlit pit-bay shaft (Ref Image 1!)
+  "vehicle-hero": {
+    Position: [0.35, 0.0, 0.35],
+    Rotation: [0, -146, 0],
+    YawDeg: -146,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.78,
+    PaintHex: "#e86512",
+    Metallic: 0.62,
+    Roughness: 0.14,
+    Clearcoat: 1.0,
+    RimHex: "#1b1d22",
+    CaliperHex: "#e86512",
+  },
+  // 2) Elevated Track Coupe mounted directly atop the 4-post Hydraulic Car Lift (Ref Image 2!)
+  "vehicle-lift": {
+    Position: [0.0, 0.0, 0.0],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.74,
+    PaintHex: "#111319",
+    Metallic: 0.86,
+    Roughness: 0.14,
+    Clearcoat: 1.0,
+    RimHex: "#cfd5de",
+    CaliperHex: "#b81d24",
+  },
+  // 3) Companion GT parked in right paddock bay
+  "vehicle-gt3": {
+    Position: [8.35, 0.0, 3.85],
+    Rotation: [0, -156, 0],
+    YawDeg: -156,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.75,
+    PaintHex: "#eceff3",
+    Metallic: 0.18,
+    Roughness: 0.15,
+    Clearcoat: 0.98,
+    RimHex: "#1d1f24",
+    CaliperHex: "#b81d24",
+  },
+  // 4) Reserve track car on outer pit apron
+  "vehicle-tourer": {
+    Position: [-8.65, 0.0, 7.65],
+    Rotation: [0, -28, 0],
+    YawDeg: -28,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.75,
+    PaintHex: "#13294b",
+    Metallic: 0.85,
+    Roughness: 0.16,
+    Clearcoat: 1.0,
+    RimHex: "#7d6850",
+    CaliperHex: "#e86512",
+  },
+
+  // Racing Stadium Pit Garage Shell & Sunlit Grandstand Vista
+  "l3-garage-shell": {
+    ProceduralKind: "studio.garage_shell",
+    Position: [0.0, 0.0, 0.0],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    GarageWidth: 22.0,
+    GarageDepth: 18.0,
+    GarageHeight: 7.15,
+    ScreenWidth: 18.4,
+    ScreenHeight: 8.2,
+    BackdropCenterX: -3.8,
+    BackdropBrightness: 1.32,
+    ShowMezzanine: true,
+    ShowLinearLeds: true,
+  },
+  // Heavy 4-Post Hydraulic Car Lift (parent of vehicle-lift!)
+  "l3-car-lift": {
+    ProceduralKind: "studio.car_lift",
+    Position: [-6.4, 0.0, -1.35],
+    Rotation: [0, 8, 0],
+    YawDeg: 8,
+    LiftHeight: 2.12,
+    PostHeight: 3.85,
+  },
+  // Glossy dark concrete garage floor with subtle tire-scuff slabs & crisp reflections
+  "studio-floor": {
+    ProceduralKind: "studio.tiled_floor",
+    Position: [0.0, -0.004, 1.5],
+    FloorWidth: 44.0,
+    FloorDepth: 36.0,
+    TileSize: 2.8,
+    FloorGloss: 0.76,
+    SurfaceTint: "#202226",
+  },
+
+  // Mechanics Props: Rolling Tool Cart, Tire Rack, Diagnostic Chest, Snaking Floor Cables & Dust
+  "l3-tool-cart": {
+    ProceduralKind: "studio.garage_props",
+    PropVariant: "tool-cart",
+    Position: [5.25, 0.0, 3.15],
+    Rotation: [0, -28, 0],
+    YawDeg: -28,
+  },
+  "l3-tire-rack": {
+    ProceduralKind: "studio.garage_props",
+    PropVariant: "tire-rack",
+    Position: [4.15, 0.0, -4.65],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+  },
+  "l3-diag-cabinet": {
+    ProceduralKind: "studio.garage_props",
+    PropVariant: "diag-cabinet",
+    Position: [-2.35, 0.0, -5.05],
+    Rotation: [0, 14, 0],
+    YawDeg: 14,
+  },
+  "l3-garage-cables": {
+    ProceduralKind: "studio.garage_cables",
+    Position: [0.0, 0.0, 0.0],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    CableSpan: 11.5,
+  },
+  "l3-dust-particles": {
+    ProceduralKind: "studio.dust_field",
+    Position: [-0.8, 2.0, -0.4],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    EmitterRadius: 0.14,
+    ParticleCount: 165,
+    DriftSpeed: 0.36,
+    GlowIntensity: 0.92,
+    MoteSize: 4.0,
+  },
+
+  // Garage Lighting Rigs (Overhead Linear LEDs + Golden Stadium Portal Sunlight + Worklamps)
+  "rig-softbox-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Overhead Softbox",
+    Position: [0.0, 5.18, 0.25],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    ApertureWidth: 7.4,
+    ApertureHeight: 3.2,
+    HousingDepth: 0.22,
+    SuspensionDrop: 1.85,
+    BarnDoorSpread: 35,
+    YokeTiltDeg: 0,
+  },
+  "rig-key-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [-4.2, 0.0, -3.65],
+    Rotation: [0, L3AimKey.YawDeg, 0],
+    YawDeg: L3AimKey.YawDeg,
+    StandHeight: 2.7,
+    ColumnLift: 0.37,
+    LegSpread: 0.82,
+    TubeRadius: 0.022,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L3AimKey.PitchDeg,
+  },
+  "rig-key-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Barn-Door Fresnel",
+    Position: [0, 0, 0],
+    ApertureWidth: 0.48,
+    ApertureHeight: 0.48,
+    HousingDepth: 0.44,
+    BarnDoorSpread: 48,
+    YokeTiltDeg: L3AimKey.PitchDeg,
+  },
+  "light-key-ies": {
+    ...JSON.parse(JSON.stringify(StudioLobbyInitialValues["light-key-ies"])),
+    ReferenceInspector: {
+      Preset: "IES Downlight",
+      Properties: {
+        ...StudioLobbyInitialValues["light-key-ies"].ReferenceInspector.Properties,
+        lumens: 18500,
+        temperature: 4450,
+        cone: 62,
+        target: [...Lobby3HeroAimTarget],
+      },
+    },
+  },
+  "rig-umbrella-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [4.85, 0.0, 2.65],
+    Rotation: [0, L3AimUmbrella.YawDeg, 0],
+    YawDeg: L3AimUmbrella.YawDeg,
+    StandHeight: 1.92,
+    ColumnLift: 0.25,
+    LegSpread: 0.72,
+    TubeRadius: 0.02,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L3AimUmbrella.PitchDeg,
+  },
+  "rig-umbrella-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Parabolic Umbrella",
+    Position: [0, 0, 0],
+    ApertureWidth: 1.45,
+    ApertureHeight: 1.45,
+    HousingDepth: 0.5,
+    BarnDoorSpread: 35,
+    YokeTiltDeg: L3AimUmbrella.PitchDeg,
+  },
+  "rig-rim-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [-4.6, 0.0, 3.25],
+    Rotation: [0, L3AimRim.YawDeg, 0],
+    YawDeg: L3AimRim.YawDeg,
+    StandHeight: 2.18,
+    ColumnLift: 0.29,
+    LegSpread: 0.75,
+    TubeRadius: 0.021,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L3AimRim.PitchDeg,
+  },
+  "rig-rim-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Studio LED Panel",
+    Position: [0, 0, 0],
+    ApertureWidth: 1.1,
+    ApertureHeight: 0.58,
+    HousingDepth: 0.14,
+    BarnDoorSpread: 30,
+    YokeTiltDeg: L3AimRim.PitchDeg,
+  },
+  "rig-accent-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [4.95, 0.0, -2.55],
+    Rotation: [0, L3AimAccent.YawDeg, 0],
+    YawDeg: L3AimAccent.YawDeg,
+    StandHeight: 2.12,
+    ColumnLift: 0.28,
+    LegSpread: 0.74,
+    TubeRadius: 0.021,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L3AimAccent.PitchDeg,
+  },
+  "rig-accent-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Barn-Door Fresnel",
+    Position: [0, 0, 0],
+    ApertureWidth: 0.42,
+    ApertureHeight: 0.42,
+    HousingDepth: 0.4,
+    BarnDoorSpread: 44,
+    YokeTiltDeg: L3AimAccent.PitchDeg,
+  },
+  "light-accent-ies": {
+    ...JSON.parse(JSON.stringify(StudioLobbyInitialValues["light-accent-ies"])),
+    ReferenceInspector: {
+      Preset: "IES Downlight",
+      Properties: {
+        ...StudioLobbyInitialValues["light-accent-ies"].ReferenceInspector.Properties,
+        lumens: 12800,
+        temperature: 3350,
+        cone: 54,
+        target: [...Lobby3HeroAimTarget],
+      },
+    },
+  },
+
+  // Foreground Camera Rigs aimed at Hero GT in Pit Bay Center
+  "rig-cam-a-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [-2.85, 0.0, 6.45],
+    Rotation: [0, L3AimCamA.YawDeg, 0],
+    YawDeg: L3AimCamA.YawDeg,
+    StandHeight: 1.48,
+    ColumnLift: 0.24,
+    LegSpread: 0.72,
+    TubeRadius: 0.024,
+    Casters: false,
+    FloorMat: true,
+    HeadTiltDeg: L3AimCamA.PitchDeg,
+  },
+  "rig-cam-a-body": {
+    ProceduralKind: "studio.cinema_camera",
+    CameraStyle: "Cinema Matte Box",
+    Position: [0, 0, 0],
+    BodyLength: 0.44,
+    LensLength: 0.32,
+    MatteBoxWidth: 0.28,
+    PitchDeg: L3AimCamA.PitchDeg,
+  },
+  "rig-cam-b-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [3.85, 0.0, 6.25],
+    Rotation: [0, L3AimCamB.YawDeg, 0],
+    YawDeg: L3AimCamB.YawDeg,
+    StandHeight: 1.34,
+    ColumnLift: 0.21,
+    LegSpread: 0.66,
+    TubeRadius: 0.021,
+    Casters: false,
+    FloorMat: true,
+    HeadTiltDeg: L3AimCamB.PitchDeg,
+  },
+  "rig-cam-b-body": {
+    ProceduralKind: "studio.cinema_camera",
+    CameraStyle: "Medium Format Tether",
+    Position: [0, 0, 0],
+    BodyLength: 0.32,
+    LensLength: 0.22,
+    MatteBoxWidth: 0.2,
+    PitchDeg: L3AimCamB.PitchDeg,
+  },
+
+  "studio-ambient": {
+    ProceduralKind: "studio.ambient",
+    Exposure: 1.18,
+    AmbientFill: 0.16,
+    ShadowDepth: 0.76,
+    Vignette: 0.28,
+    ShowLightGizmos: false,
+  },
+};
+
 export function KelvinToRgb(Kelvin) {
   const Temp = Math.max(1800, Math.min(12000, Number(Kelvin || 5600))) / 100;
   let R, G, B;
@@ -1782,6 +2454,8 @@ export function ResolveStudioHierarchy(Rows, Values, Hidden) {
     let MountY = 0;
     if (ParentVal.ProceduralKind === "studio.tripod") {
       MountY = ComputeTripodMountHeight(ParentVal);
+    } else if (ParentVal.ProceduralKind === "studio.car_lift") {
+      MountY = Math.max(0.15, Math.min(2.6, Number(ParentVal.LiftHeight ?? 2.12)));
     }
 
     const CosY = Math.cos(ParentXf.YawRad);
