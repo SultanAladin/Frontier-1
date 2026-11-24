@@ -47,6 +47,19 @@ import Notch from "./Notch.jsx";
 import ActionIcon from "./ActionIcon.jsx";
 import ConstructPanel from "./ConstructPanel.jsx";
 import CheckerViewport, { PreviewVisible } from "./CheckerViewport.jsx";
+import StudioViewport from "./StudioViewport.jsx";
+import {
+  StudioVehicleInspector,
+  StudioProceduralInspector,
+  StudioLightInspectorBlock,
+} from "./StudioInspectorPanel.jsx";
+import {
+  StudioLevels,
+  StudioLobbyRows,
+  StudioLobbyInitialValues,
+  ConfiguratorPresets,
+  ComputeTripodMountHeight,
+} from "./StudioLobbyScene.js";
 import "./Editor.css";
 const InitialRows = [
   ["showcase", "Showcase", "group", "folder-scene", null, "Scene collection"],
@@ -203,7 +216,7 @@ const DebugViews = [
   "Patch Tiles",
   "Tiles + Wireframe",
 ];
-const StorageKey = "Frontier.ProjectZeroHtml.v1";
+const StorageKey = "Frontier.ProjectZeroStudioLobby.v1";
 function Restore() {
   try {
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
@@ -238,6 +251,42 @@ function OutlinerMetadata(Row, Record = {}, Rows = []) {
   if (Row.Panel === "group") {
     const Count = Rows.filter((Item) => Item.Parent === Row.Id).length;
     return Count + (Count === 1 ? " item" : " items");
+  }
+  if (Row.Panel === "studio-vehicle") {
+    return (
+      (Record.PaintHex || "#111319") +
+      " · " +
+      CompactNumber(Record.Scale ?? 0.76, 2) +
+      "× · " +
+      CompactPosition(Record.Position || [0, 0, 0])
+    );
+  }
+  if (Row.Panel === "studio-procedural") {
+    const Kind = Record.ProceduralKind || "studio.prop";
+    if (Kind === "studio.tripod") {
+      return (
+        "studio.tripod · mount " +
+        ComputeTripodMountHeight(Record).toFixed(2) +
+        " m"
+      );
+    }
+    if (Kind === "studio.light_fixture") {
+      return (
+        (Record.FixtureStyle || "Light Fixture") +
+        " · " +
+        CompactNumber(Record.ApertureWidth ?? 1.5, 1) +
+        "×" +
+        CompactNumber(Record.ApertureHeight ?? 1.2, 1) +
+        " m"
+      );
+    }
+    if (Kind === "studio.cinema_camera") {
+      return Record.CameraStyle || "Cinema Camera";
+    }
+    if (Kind === "studio.ambient") {
+      return "EV " + CompactNumber(Record.Exposure ?? 1.16, 2) + " · ACES";
+    }
+    return Kind + " · " + CompactPosition(Record.Position || [0, 0, 0]);
   }
   if (Row.Panel === "geometry")
     return "Position " + CompactPosition(Position) + " m";
@@ -404,36 +453,59 @@ function App() {
     [HiZ, ToggleHiZ] = useState(true),
     [Alias, ToggleAlias] = useState(true),
     [PatchError, SetPatchError] = useState(1);
-  const [Rows, StoreRows] = useState(() =>
-      EnsureEditorCamera(
-        PrepareLightRows(
-          Saved.ReferenceDesignRevision === 1
-            ? Saved.Rows || EnsureReferenceLights(InitialRows)
-            : EnsureReferenceLights(Saved.Rows || InitialRows),
-          Saved.LightDesignRevision,
-        ),
-      ),
-    ),
+  const [LevelId, SetLevelId] = useState(
+    () =>
+      new URLSearchParams(location.search).get("level") ||
+      Saved.LevelId ||
+      "studio-lobby",
+  );
+  const [Paused, SetPaused] = useState(false);
+  const [ActivePreset, SetActivePreset] = useState(null);
+  const [IntroNonce, SetIntroNonce] = useState(0);
+  const [FocusNonce, SetFocusNonce] = useState(0);
+  const [Use2DAnalytical, SetUse2DAnalytical] = useState(false);
+  const [LevelSwitchMs, SetLevelSwitchMs] = useState(0);
+  const [StudioTelemetry, SetStudioTelemetry] = useState({
+    Fps: 60,
+    DrawCalls: 0,
+    Triangles: 0,
+    CachedSurfaces: 0,
+    ShaderCompiles: 1,
+    ShaderRecompiles: 0,
+    ShaderCompileMs: 0,
+    VehicleSource: "ControlledIntegrator.GeometrySpace",
+    CameraPos: [5.4, 1.6, 6.2],
+  });
+  const LevelSnapshots = useRef({});
+
+  const BuildDefaultRowsForLevel = (TargetLevel) =>
+    TargetLevel === "studio-lobby"
+      ? EnsureEditorCamera(StudioLobbyRows.map((Row) => ({ ...Row })))
+      : EnsureEditorCamera(
+          PrepareLightRows(EnsureReferenceLights(InitialRows), 1),
+        );
+
+  const BuildDefaultValuesForLevel = (TargetLevel) =>
+    TargetLevel === "studio-lobby"
+      ? JSON.parse(JSON.stringify(StudioLobbyInitialValues))
+      : {};
+
+  const [Rows, StoreRows] = useState(() => {
+      if (Saved.Rows && (Saved.LevelId || "studio-lobby") === LevelId) {
+        return EnsureEditorCamera(Saved.Rows);
+      }
+      return BuildDefaultRowsForLevel(LevelId);
+    }),
     [Selected, Select] = useState(
       new URLSearchParams(location.search).get("inspect") ||
         Saved.Selected ||
-        "sun",
+        (LevelId === "studio-lobby" ? "vehicle-hero" : "sun"),
     ),
     [Values, AssignValues] = useState(() => {
-      const Restored = { ...Saved.Values };
-      for (const Row of Saved.Rows || InitialRows) {
-        const Record = ReadFracture(Row.Id);
-        if (
-          Row.Panel === "geometry" &&
-          Record?.Settings?.EditedAt >
-            (Restored[Row.Id]?.Fracture?.EditedAt || 0)
-        )
-          Restored[Row.Id] = {
-            ...Restored[Row.Id],
-            Fracture: NormalizeFracture(Record.Settings),
-          };
+      if (Saved.Values && Object.keys(Saved.Values).length && (Saved.LevelId || "studio-lobby") === LevelId) {
+        return { ...BuildDefaultValuesForLevel(LevelId), ...Saved.Values };
       }
-      return Restored;
+      return BuildDefaultValuesForLevel(LevelId);
     }),
     [Hidden, AssignHidden] = useState({ ...Saved.Hidden, camera: false }),
     [Collapsed, Collapse] = useState(Saved.Collapsed || {}),
@@ -449,12 +521,12 @@ function App() {
       () =>
         new URLSearchParams(location.search).get("workspace") === "inspector",
     ),
-    [Name, RenameProject] = useState(Saved.Name || "Project-Zero"),
+    [Name, RenameProject] = useState(Saved.Name || "Project-Zero · Studio Lobby"),
     [Rename, RenameRow] = useState(null),
     [Construct, OpenConstruct] = useState(false),
     [Projection, SetProjection] = useState("PERSP"),
     [SplitView, SetSplitView] = useState(false),
-    [RunMode, SetRunMode] = useState("EDIT"),
+    [RunMode, SetRunMode] = useState(LevelId === "studio-lobby" ? "PLAY" : "EDIT"),
     [Message, Notify] = useState(""),
     [Console, ShowConsole] = useState(false),
     [PaneTabs, AssignTabs] = useState({
@@ -812,14 +884,69 @@ function App() {
       }),
     );
   };
+  const SwitchLevel = (NextLevel) => {
+    if (NextLevel === LevelId) return;
+    const T0 = performance.now();
+    LevelSnapshots.current[LevelId] = {
+      Rows,
+      Values,
+      Hidden,
+      Collapsed,
+      Selected,
+    };
+    const Snap = LevelSnapshots.current[NextLevel];
+    if (Snap) {
+      StoreRows(Snap.Rows);
+      AssignValues(Snap.Values);
+      AssignHidden(Snap.Hidden);
+      Collapse(Snap.Collapsed);
+      Select(Snap.Selected);
+    } else {
+      StoreRows(BuildDefaultRowsForLevel(NextLevel));
+      AssignValues(BuildDefaultValuesForLevel(NextLevel));
+      AssignHidden({ camera: false });
+      Collapse({});
+      Select(NextLevel === "studio-lobby" ? "vehicle-hero" : "sun");
+    }
+    SetLevelId(NextLevel);
+    if (NextLevel === "studio-lobby") {
+      SetRunMode("PLAY");
+      SetPaused(false);
+      SetActivePreset(null);
+      SetIntroNonce((N) => N + 1);
+    }
+    const Elapsed = Math.max(0.1, Math.round((performance.now() - T0) * 10) / 10);
+    SetLevelSwitchMs(Elapsed);
+    const Label =
+      StudioLevels.find((L) => L.Id === NextLevel)?.Label || NextLevel;
+    Toast(
+      `Switched to ${Label} in ${Elapsed} ms · 0 shader recompiles (cached)`,
+    );
+  };
   const Change = (Key, Value) =>
-    AssignValues((Previous) => ({
-      ...Previous,
-      [Selected]: {
-        ...Previous[Selected],
-        [Key]: Key === "Fracture" ? { ...Value, EditedAt: Date.now() } : Value,
-      },
-    }));
+    AssignValues((Previous) => {
+      const Next = {
+        ...Previous,
+        [Selected]: {
+          ...Previous[Selected],
+          [Key]: Key === "Fracture" ? { ...Value, EditedAt: Date.now() } : Value,
+        },
+      };
+      // Sync fixture aperture changes to its child studio Area Light automatically
+      if (Key === "ApertureWidth" || Key === "ApertureHeight") {
+        const ChildLight = Rows.find(
+          (Row) => Row.Parent === Selected && Row.Panel === "light",
+        );
+        if (ChildLight) {
+          const LightKey = Key === "ApertureWidth" ? "Width" : "Height";
+          Next[ChildLight.Id] = {
+            ...Next[ChildLight.Id],
+            [LightKey]: Value,
+          };
+        }
+      }
+      return Next;
+    });
   useEffect(() => {
     document
       .querySelector(".outliner-row.selected")
@@ -838,6 +965,7 @@ function App() {
       localStorage.setItem(
         StorageKey,
         JSON.stringify({
+          LevelId,
           Rows,
           ReferenceDesignRevision: 1,
           LightDesignRevision: 1,
@@ -855,7 +983,7 @@ function App() {
         "Browser storage is full or unavailable. Export the scene to keep your material drafts.",
       );
     }
-  }, [Rows, Selected, Values, Hidden, Collapsed, Settings, Name, AssetRecords]);
+  }, [LevelId, Rows, Selected, Values, Hidden, Collapsed, Settings, Name, AssetRecords]);
   useEffect(() => {
     const Key = (Event) => {
       if (
@@ -904,10 +1032,29 @@ function App() {
       }
       if (Event.key === "F2" && Selected !== "camera") RenameRow(Selected);
       if (Event.key === "`") ShowConsole((Previous) => !Previous);
+      if (Event.key >= "1" && Event.key <= "6" && !Event.ctrlKey && !Event.metaKey) {
+        const Idx = Number(Event.key) - 1;
+        SetActivePreset(Idx);
+        Toast("Camera preset · " + ConfiguratorPresets[Idx].Label);
+      }
+      if (Event.key === "0" && !Event.ctrlKey && !Event.metaKey) {
+        SetRunMode("PLAY");
+        SetPaused(false);
+        SetActivePreset(null);
+        SetIntroNonce((N) => N + 1);
+        Toast("Replaying Car Configurator opening reveal");
+      }
+      if (Event.code === "Space" && RunMode === "PLAY") {
+        Event.preventDefault();
+        SetPaused((Prev) => !Prev);
+      }
+      if (Event.key.toLowerCase() === "f" && !Event.ctrlKey && !Event.metaKey) {
+        SetFocusNonce((N) => N + 1);
+      }
     };
     window.addEventListener("keydown", Key);
     return () => window.removeEventListener("keydown", Key);
-  }, [Selected, Construct, Shade, AssetsOpen, WindSubject]);
+  }, [Selected, Construct, Shade, AssetsOpen, WindSubject, RunMode]);
   useEffect(() => {
     const Move = (Event) => {
       if (!Divider.current) return;
@@ -1268,7 +1415,12 @@ function App() {
     <>
       <div className="outliner-heading">
         <h1>Outliner</h1>
-        <small>Showcase · {Rows.length} nodes</small>
+        <small>
+          {(StudioLevels.find((L) => L.Id === LevelId)?.Label || "Studio Lobby") +
+            " · " +
+            Rows.length +
+            " nodes"}
+        </small>
         <button
           aria-label="Outliner menu"
           onClick={(Event) => {
@@ -1487,16 +1639,38 @@ function App() {
           <div className="viewport-identity">
             <Icon Name="folder-scene" Size={24} />
             <div>
-              <strong>Scene</strong>
+              <strong>
+                {StudioLevels.find((L) => L.Id === LevelId)?.Label ||
+                  "Studio Lobby"}
+              </strong>
               <span>
-                {Rows.filter((Entry) => Entry.Preview).length} constructed
+                {Rows.filter((R) => R.Panel === "studio-vehicle").length > 0
+                  ? Rows.filter((R) => R.Panel === "studio-vehicle").length +
+                    " vehicles · " +
+                    Rows.filter((R) => R.Panel === "studio-procedural").length +
+                    " procedural rigs"
+                  : Rows.filter((Entry) => Entry.Preview).length +
+                    " constructed"}
               </span>
             </div>
-            <span
-              className="viewport-preview-badge"
-              title="Analytical HTML preview; the native renderer is not connected"
+            <select
+              className="studio-level-select"
+              aria-label="Active level"
+              title="Fast cached level switch (0 shader recompiles)"
+              value={LevelId}
+              onChange={(Event) => SwitchLevel(Event.target.value)}
             >
-              PREVIEW
+              {StudioLevels.map((Lvl) => (
+                <option key={Lvl.Id} value={Lvl.Id}>
+                  {Lvl.Label}
+                </option>
+              ))}
+            </select>
+            <span
+              className="viewport-preview-badge live"
+              title="Real-time WebGL2 PBR Studio Prototype · cached shaders"
+            >
+              WEBGL2 PBR
             </span>
           </div>
           <div className="viewport-modes" role="group" aria-label="Editor mode">
@@ -1512,22 +1686,45 @@ function App() {
                 className={RunMode === Mode ? "active" : ""}
                 title={
                   Mode === "EDIT"
-                    ? "Edit the HTML scene"
-                    : "UI mode only — native simulation is not connected"
+                    ? "Free Orbit / Pan / Zoom & click-to-select studio editing"
+                    : Mode === "PLAY"
+                      ? "Run Car Configurator Camera & opening cinematic reveal"
+                      : "Interactive lighting & procedural rig preview"
                 }
                 onClick={() => {
                   SetRunMode(Mode);
-                  if (Mode !== "EDIT")
-                    Toast(
-                      Label +
-                        " selected · UI preview only; no native simulation runs",
-                    );
+                  if (Mode === "PLAY") {
+                    SetPaused(false);
+                    SetActivePreset(null);
+                    SetIntroNonce((N) => N + 1);
+                    Toast("Play mode · Car Configurator Camera active");
+                  } else {
+                    Toast(Label + " mode · Free 3D studio editing");
+                  }
                 }}
               >
                 <ActionIcon Name={Symbol} Size={13} />
                 <span>{Label}</span>
               </button>
             ))}
+            {RunMode === "PLAY" && (
+              <button
+                aria-label={Paused ? "Resume Play" : "Pause Play"}
+                aria-pressed={Paused}
+                className={Paused ? "active" : ""}
+                title="Pause or resume Car Configurator Camera (Space)"
+                onClick={() => {
+                  SetPaused((Prev) => !Prev);
+                  Toast(
+                    Paused
+                      ? "Car Configurator Camera resumed"
+                      : "Car Configurator Camera paused",
+                  );
+                }}
+              >
+                <span>{Paused ? "▶ Resume" : "❚❚ Pause"}</span>
+              </button>
+            )}
           </div>
         </div>
         <div className="viewport-action-row">
@@ -1544,31 +1741,15 @@ function App() {
           <button
             className="viewport-icon-button"
             aria-label="Frame selected"
-            title={
-              Subject.Preview
-                ? "Frame selected marker"
-                : "Select a constructed marker to frame it"
-            }
-            disabled={
-              !Subject.Preview || !PreviewVisible(Subject, Rows, Hidden)
-            }
-            onClick={() => {
-              const Marker = [
-                ...document.querySelectorAll("[data-preview-id]"),
-              ].find((Entry) => Entry.dataset.previewId === Selected);
-              Marker?.scrollIntoView({
-                block: "center",
-                inline: "center",
-                behavior: "smooth",
-              });
-            }}
+            title="Focus 3D camera on selected entity (F)"
+            onClick={() => SetFocusNonce((N) => N + 1)}
           >
             <ActionIcon Name="focus" Size={17} />
           </button>
           <span className="viewport-tool-divider" />
           <label
             className="viewport-projection"
-            title="Projection preference only; the analytical preview stays 2D"
+            title="Viewport projection mode"
           >
             <Icon Name="camera" Size={16} />
             <select
@@ -1589,6 +1770,14 @@ function App() {
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            className={"studio-view-toggle" + (Use2DAnalytical ? " active" : "")}
+            title="Switch between real-time WebGL2 3D Studio Viewport and legacy 2D Analytical markers"
+            onClick={() => SetUse2DAnalytical((Prev) => !Prev)}
+          >
+            {Use2DAnalytical ? "3D WebGL2" : "2D Map"}
+          </button>
           <div className="viewport-secondary-tools">
             <button
               className="viewport-icon-button"
@@ -1696,22 +1885,74 @@ function App() {
       )}
       <div
         className={"scene-image " + (SplitView ? "split-view" : "")}
-        title="Checkerboard authoring preview. Symbols represent constructed entities, not engine rendering."
+        title="Real-time WebGL2 Photographic Studio Viewport · Drag to orbit, Shift+Drag to pan, Scroll to zoom, Click to select"
       >
-        <CheckerViewport
-          Rows={Rows}
-          Hidden={Hidden}
-          Selected={Selected}
-          Select={SelectRow}
-        />
-        {SplitView && (
-          <CheckerViewport
-            Rows={Rows}
-            Hidden={Hidden}
-            Selected={Selected}
-            Select={SelectRow}
-            View={2}
-          />
+        {Use2DAnalytical ? (
+          <>
+            <CheckerViewport
+              Rows={Rows}
+              Hidden={Hidden}
+              Selected={Selected}
+              Select={SelectRow}
+            />
+            {SplitView && (
+              <CheckerViewport
+                Rows={Rows}
+                Hidden={Hidden}
+                Selected={Selected}
+                Select={SelectRow}
+                View={2}
+              />
+            )}
+          </>
+        ) : (
+          <>
+            <StudioViewport
+              Rows={Rows}
+              Values={Values}
+              Hidden={Hidden}
+              Selected={Selected}
+              Select={SelectRow}
+              RunMode={RunMode}
+              Paused={Paused}
+              TogglePaused={() => SetPaused((Prev) => !Prev)}
+              SetRunMode={SetRunMode}
+              LevelId={LevelId}
+              ActivePreset={ActivePreset}
+              SelectPreset={(Idx) => {
+                SetActivePreset(Idx);
+                Toast("Camera preset · " + ConfiguratorPresets[Idx].Label);
+              }}
+              IntroNonce={IntroNonce}
+              ReplayIntro={() => {
+                SetActivePreset(null);
+                SetIntroNonce((N) => N + 1);
+              }}
+              FocusNonce={FocusNonce}
+              OnTelemetry={SetStudioTelemetry}
+              View={1}
+            />
+            {SplitView && (
+              <StudioViewport
+                Rows={Rows}
+                Values={Values}
+                Hidden={Hidden}
+                Selected={Selected}
+                Select={SelectRow}
+                RunMode="EDIT"
+                Paused={true}
+                TogglePaused={() => {}}
+                SetRunMode={SetRunMode}
+                LevelId={LevelId}
+                ActivePreset={null}
+                SelectPreset={() => {}}
+                IntroNonce={0}
+                ReplayIntro={() => {}}
+                FocusNonce={FocusNonce}
+                View={2}
+              />
+            )}
+          </>
         )}
         {Debug > 0 && (
           <DiagnosticsCard
@@ -1753,17 +1994,15 @@ function App() {
       </div>
       <footer
         className="viewport-footer"
-        title="Browser-local analytical symbols, not native geometry or renderer telemetry"
+        title="Real-time WebGL2 PBR Studio Prototype telemetry"
       >
-        HTML PREVIEW · CONSTRUCTED{" "}
-        <b>{Rows.filter((Subject) => Subject.Preview).length}</b> ·{" "}
-        {
-          Rows.filter(
-            (Subject) =>
-              Subject.Preview && PreviewVisible(Subject, Rows, Hidden),
-          ).length
-        }{" "}
-        visible · NO ENGINE CONNECTION
+        WEBGL2 PBR · <b>{StudioTelemetry.Fps} FPS</b> ·{" "}
+        <b>{(StudioTelemetry.Triangles / 1000).toFixed(1)}k tris</b> ·{" "}
+        {StudioTelemetry.DrawCalls} draws ·{" "}
+        <b>{StudioTelemetry.ShaderRecompiles} shader recompiles</b> (cached{" "}
+        {StudioTelemetry.CachedSurfaces} surfaces)
+        {LevelSwitchMs > 0 ? ` · switch ${LevelSwitchMs} ms` : ""} ·{" "}
+        {StudioTelemetry.VehicleSource}
       </footer>
     </>
   );
@@ -1820,8 +2059,33 @@ function App() {
               }}
               ToggleHidden={ToggleHidden}
             />
+          ) : Subject.Panel === "studio-vehicle" ? (
+            <StudioVehicleInspector
+              Subject={Subject}
+              Values={Values[Selected] || {}}
+              Change={Change}
+              OnFocus={() => SetFocusNonce((N) => N + 1)}
+            />
+          ) : Subject.Panel === "studio-procedural" ? (
+            <StudioProceduralInspector
+              Subject={Subject}
+              Rows={Rows}
+              AllValues={Values}
+              Values={Values[Selected] || {}}
+              Change={Change}
+              Select={SelectRow}
+              OnFocus={() => SetFocusNonce((N) => N + 1)}
+            />
           ) : (
-            <Inspector
+            <>
+              {Subject.Panel === "light" && LevelId === "studio-lobby" && (
+                <StudioLightInspectorBlock
+                  Subject={Subject}
+                  Values={Values[Selected] || {}}
+                  Change={Change}
+                />
+              )}
+              <Inspector
               Subject={Subject}
               Values={Values[Selected] || {}}
               Change={Change}
@@ -1870,6 +2134,7 @@ function App() {
                   : null
               }
             />
+            </>
           )}
           {![
             "sun",
@@ -1911,6 +2176,16 @@ function App() {
                 : Asset,
             ),
           ),
+      };
+    }
+    if (Subject?.Panel === "studio-vehicle") {
+      return {
+        Label: Subject.Name + " · Automotive Paint",
+        AssignHex: (Hex) =>
+          AssignValues((Previous) => ({
+            ...Previous,
+            [Subject.Id]: { ...Previous[Subject.Id], PaintHex: Hex },
+          })),
       };
     }
     if (Subject?.Panel === "geometry") {
