@@ -52,7 +52,20 @@ namespace DropdownSelector
     ControlIcon            LeadingIcon = ControlIcon::Count,
     const OptionalTooltip& Tooltip     = {}) noexcept;
 
+[[nodiscard]] constexpr uint32_t QueryMaxVisibleDropdownOptions() noexcept
+{
+    return 10u;
+}
+
+[[nodiscard]] bool QueryAnyScrollAnimating() noexcept;
+
 [[nodiscard]] Rectangle2D QuerySheetBounds(Rectangle2D ButtonBounds, uint32_t OptionCount) noexcept;
+
+[[nodiscard]] Rectangle2D QuerySheetBounds(
+    PixelSpace&        Surface,
+    Rectangle2D        ButtonBounds,
+    const char* const* Options,
+    uint32_t           OptionCount) noexcept;
 
 [[nodiscard]] ControlContact ConstructOptionSheet(
     PixelSpace&           Surface,

@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/Controls/SmoothScrollView.h"
 #include "Engine/Components/Controls/TextInputField.h"
 #include "Engine/Components/Panes/WorkspaceAppearance.h"
 #include "Engine/Components/RetainedCanvasCache.h"
@@ -230,6 +231,7 @@ public:
     [[nodiscard]] uint32_t                                 CountAllNested(OutlinerSlotToken Enclosure) const noexcept;
     [[nodiscard]] uint32_t                                 CountNestedFolders(OutlinerSlotToken Enclosure) const noexcept;
     [[nodiscard]] float                                    QueryScrollOffset() const noexcept;
+    [[nodiscard]] bool                                     QueryScrollAnimating() const noexcept;
     [[nodiscard]] OutlinerSettingsDirective                QueryLastSettingsDirective() const noexcept;
     [[nodiscard]] bool                                     QueryConstructDropdownOpen() const noexcept;
     [[nodiscard]] bool                                     QuerySettingsDropdownOpen() const noexcept;
@@ -263,7 +265,7 @@ private:
     OutlinerVisibilityFilter               VisibilityFilter        = OutlinerVisibilityFilter::All;       // [-]   - Active Visible/Hidden filter
     OutlinerCategoryFilter                 CategoryFilter          = OutlinerCategoryFilter::All;         // [-]   - Active category chip filter
     bool                                   FilterStripOpen         = false;                               // [-]   - Filter chip strip visibility
-    float                                  ScrollOffsetY           = 0.0f;                                // [px]  - Vertical tree scroll offset
+    SmoothScrollView                       ScrollView              {};                                    // [-]   - Animated vertical tree scroll view
 
     bool                                   ConstructDropdownOpen   = false;                               // [-]   - "+" construct dropdown open
     Point2D                                ConstructDropdownAnchor {};                                    // [px]  - Construct dropdown top-right
@@ -327,7 +329,12 @@ inline uint32_t OutlinerPanel::QueryTotalCount() const noexcept
 
 inline float OutlinerPanel::QueryScrollOffset() const noexcept
 {
-    return ScrollOffsetY;
+    return ScrollView.QueryDisplayOffset();
+}
+
+inline bool OutlinerPanel::QueryScrollAnimating() const noexcept
+{
+    return ScrollView.QueryAnimating();
 }
 
 inline OutlinerSettingsDirective OutlinerPanel::QueryLastSettingsDirective() const noexcept

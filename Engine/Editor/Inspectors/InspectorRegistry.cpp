@@ -274,13 +274,8 @@ bool InspectorRegistry::ConstructActiveInspector(
 
     if (Entry->Token.Identifier != LastEntryId)
     {
-        LastEntryId        = Entry->Token.Identifier;
-        ScrollOffsetY      = 0.0f;
-        TargetScrollOffsetY = 0.0f;
-        CachedMaxScrollY   = 0.0f;
-        LastContentHeightPx = 0.0f;
-        HasCachedMaxScroll = false;
-        ScrollAnimating    = false;
+        LastEntryId = Entry->Token.Identifier;
+        ScrollView.Reset();
         ++ActivePanelRevision;
     }
 
@@ -305,14 +300,6 @@ bool InspectorRegistry::ConstructActiveInspector(
     const Rectangle2D FooterRect { PaneBounds.X, ScrollClip.Bottom(), PaneBounds.Width, FooterH };
 
     const Point2D Cursor { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
-    const auto    Now = std::chrono::steady_clock::now();
-    float         DtSeconds = 1.0f / 60.0f;
-    if (LastScrollTickTime.time_since_epoch().count() != 0)
-    {
-        const float RawDt = std::chrono::duration<float>(Now - LastScrollTickTime).count();
-        DtSeconds = std::clamp(RawDt, 1.0f / 240.0f, 1.0f / 20.0f);
-    }
-    LastScrollTickTime = Now;
 
     if (std::fabs(PaneBounds.Width - LastPaneWidthPx) > 0.5f)
     {
@@ -320,43 +307,9 @@ bool InspectorRegistry::ConstructActiveInspector(
         // Keep current scroll clamped safely without snapping on resize
     }
 
-    if (ScrollClip.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 0.001f)
-    {
-        TargetScrollOffsetY -= Input.WheelDeltaY * 42.0f;
-        if (HasCachedMaxScroll)
-        {
-            TargetScrollOffsetY = std::clamp(TargetScrollOffsetY, 0.0f, CachedMaxScrollY);
-        }
-        else
-        {
-            TargetScrollOffsetY = std::max(0.0f, TargetScrollOffsetY);
-        }
-    }
-
-    // Critically-damped smooth scroll micro-animation with strict pre-draw clamping (zero overshoot, zero snap-back!)
-    if (HasCachedMaxScroll)
-    {
-        TargetScrollOffsetY = std::clamp(TargetScrollOffsetY, 0.0f, CachedMaxScrollY);
-    }
-    const float ScrollAlpha = 1.0f - std::exp(-16.0f * DtSeconds);
-    ScrollOffsetY += (TargetScrollOffsetY - ScrollOffsetY) * ScrollAlpha;
-    if (std::fabs(TargetScrollOffsetY - ScrollOffsetY) < 0.25f)
-    {
-        ScrollOffsetY   = TargetScrollOffsetY;
-        ScrollAnimating = false;
-    }
-    else
-    {
-        ScrollAnimating = true;
-    }
-    if (HasCachedMaxScroll)
-    {
-        ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, CachedMaxScrollY);
-    }
-    else
-    {
-        ScrollOffsetY = std::max(0.0f, ScrollOffsetY);
-    }
+    const SmoothScrollUpdateResult ScrollRes =
+        ScrollView.Advance(ScrollClip, -1.0f, Input.PrimaryPointer, Input.WheelDeltaY, 42.0f);
+    const float ScrollOffsetY = ScrollRes.DisplayOffsetY;
 
     const float PadX       = std::clamp(PaneBounds.Width * 0.055f, 10.0f, InspectorMetrics::PaneInsetX);
     const float InnerLeft  = PaneBounds.X + PadX;
@@ -485,11 +438,7 @@ bool InspectorRegistry::ConstructActiveInspector(
 
     if (PageSwitched)
     {
-        ScrollOffsetY       = 0.0f;
-        TargetScrollOffsetY = 0.0f;
-        CachedMaxScrollY    = 0.0f;
-        HasCachedMaxScroll  = false;
-        ScrollAnimating     = false;
+        ScrollView.Reset();
         ++ActivePanelRevision;
     }
 
@@ -501,19 +450,8 @@ bool InspectorRegistry::ConstructActiveInspector(
     }
 
     const float ContentHeight = (CursorY + ScrollOffsetY) - PaneBounds.Y + 24.0f;
-    const float MaxScroll     = std::max(0.0f, ContentHeight - ScrollClip.Height);
-    LastContentHeightPx       = ContentHeight;
-    CachedMaxScrollY          = MaxScroll;
-    HasCachedMaxScroll        = true;
-    TargetScrollOffsetY       = std::clamp(TargetScrollOffsetY, 0.0f, MaxScroll);
-    ScrollOffsetY             = std::clamp(ScrollOffsetY, 0.0f, MaxScroll);
-    if (std::fabs(TargetScrollOffsetY - ScrollOffsetY) < 0.25f)
-    {
-        ScrollOffsetY   = TargetScrollOffsetY;
-        ScrollAnimating = false;
-    }
-
-    WorkspaceAppearance::ConstructVerticalScrollIndicator(Surface, ScrollClip, ContentHeight, ScrollOffsetY, Cursor);
+    ScrollView.FinalizeContentHeight(ScrollClip.Height, ContentHeight);
+    ScrollView.RenderIndicator(Surface, ScrollClip, ContentHeight, Cursor);
 
     Surface.PopClip();
     InspectorPrimitives::ConstructInspectorFooter(Surface, FooterRect, ActiveSubtitle, "F11");
@@ -525,9 +463,9 @@ uint64_t InspectorRegistry::QueryActiveSignature() const noexcept
 {
     uint64_t Sig = RetainedCanvasCache::MixHash(0x51A7C0DE1337BEEFull, ActivePanelRevision);
     Sig = RetainedCanvasCache::MixHash(Sig, LastEntryId);
-    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollOffsetY * 4.0f)));
-    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(TargetScrollOffsetY * 4.0f)));
-    if (ScrollAnimating)
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollView.QueryDisplayOffset() * 4.0f)));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollView.QueryTargetOffset() * 4.0f)));
+    if (ScrollView.QueryAnimating())
     {
         const uint64_t Tick = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count() >> 14);
         Sig = RetainedCanvasCache::MixHash(Sig, Tick);

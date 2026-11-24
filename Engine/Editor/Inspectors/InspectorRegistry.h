@@ -25,6 +25,7 @@
 #include "Engine/Editor/Inspectors/HeightFogInspector.h"
 #include "Engine/Editor/Inspectors/IesLightInspector.h"
 #include "Engine/Editor/Inspectors/ImportedGeometryInspector.h"
+#include "Engine/Components/Controls/SmoothScrollView.h"
 #include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
 #include "Engine/Editor/Inspectors/LedLightInspector.h"
 #include "Engine/Editor/Inspectors/LedStripInspector.h"
@@ -72,12 +73,10 @@ public:
 
     void SetScrollOffset(float ScrollPixels) noexcept
     {
-        ScrollOffsetY       = std::max(0.0f, ScrollPixels);
-        TargetScrollOffsetY = ScrollOffsetY;
-        ScrollAnimating     = false;
+        ScrollView.ConfigureImmediateOffset(ScrollPixels);
         ++ActivePanelRevision;
     }
-    [[nodiscard]] bool QueryScrollAnimating() const noexcept { return ScrollAnimating; }
+    [[nodiscard]] bool QueryScrollAnimating() const noexcept { return ScrollView.QueryAnimating(); }
     void ClearInstances() noexcept { Instances.Clear(); ProjectHost.ClearAll(); ++ActivePanelRevision; }
     [[nodiscard]] uint64_t QueryActiveSignature() const noexcept;
     [[nodiscard]] uint64_t QueryConstructCallCount() const noexcept { return ConstructCallCount; }
@@ -154,16 +153,10 @@ private:
     FolderInspector             Folder             {};
     ProjectInspectorHost        ProjectHost        {};
 
-    uint32_t LastEntryId            = 0u;
-    float    ScrollOffsetY          = 0.0f;
-    float    TargetScrollOffsetY    = 0.0f;
-    float    CachedMaxScrollY       = 0.0f;
-    float    LastContentHeightPx    = 0.0f;
-    float    LastPaneWidthPx        = 0.0f;
-    bool     HasCachedMaxScroll     = false;
-    bool     ScrollAnimating        = false;
-    std::chrono::steady_clock::time_point LastScrollTickTime{};
-    uint64_t ActivePanelRevision    = 1ull;
+    uint32_t         LastEntryId            = 0u;
+    SmoothScrollView ScrollView             {};
+    float            LastPaneWidthPx        = 0.0f;
+    uint64_t         ActivePanelRevision    = 1ull;
     uint64_t ConstructCallCount     = 0ull;
     uint32_t LastEvaluatedCardCount = 0u;
     uint32_t LastSkippedCardCount   = 30u;

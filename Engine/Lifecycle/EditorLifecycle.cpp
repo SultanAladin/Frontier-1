@@ -10,6 +10,7 @@
 #if FRONTIER_EDITOR_ENABLED
 
 #include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Components/Controls/DropdownSelector.h"
 #include "Engine/Editor/Inspectors/InspectorGpuBaker.h"
 
 #include <imgui.h>
@@ -3149,7 +3150,9 @@ bool EditorLifecycle::QueryRequiresContinuousRefresh() noexcept
     {
         return true;
     }
-    if (ContentBrowserDrawer.QueryPanel().QueryShelfAnimating() || Inspectors.QueryScrollAnimating())
+    if (ContentBrowserDrawer.QueryPanel().QueryShelfAnimating() ||
+        Inspectors.QueryScrollAnimating() ||
+        DropdownSelector::QueryAnyScrollAnimating())
     {
         return true;
     }
@@ -3168,6 +3171,10 @@ bool EditorLifecycle::QueryRequiresContinuousRefresh() noexcept
     }
     if (const WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
     {
+        if (Panes->Outliner.QueryScrollAnimating() || Panes->Inspector.QueryScrollAnimating())
+        {
+            return true;
+        }
         if (Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit &&
             !Panes->Viewport.QueryPlayPaused())
         {

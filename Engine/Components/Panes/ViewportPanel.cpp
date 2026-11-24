@@ -2259,7 +2259,8 @@ void ViewportPanel::RenderSettingsSheet(
             "Engine: Path Tracer (Real-Time)",
             "Engine: Path Tracer (Final)",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(EngineButtonBounds, static_cast<uint32_t>(EngineOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(
+            Overlay, EngineButtonBounds, EngineOptions.data(), static_cast<uint32_t>(EngineOptions.size()));
         const uint32_t    CurIdx     = DisplaySettings.RenderEngineIndex % static_cast<uint32_t>(EngineOptions.size());
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
@@ -2283,7 +2284,8 @@ void ViewportPanel::RenderSettingsSheet(
             "Shadow: PCF 3x3",
             "Shadow: BVH4 Ray",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, static_cast<uint32_t>(ShadowOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(
+            Overlay, ShadowButtonBounds, ShadowOptions.data(), static_cast<uint32_t>(ShadowOptions.size()));
         const uint32_t    CurIdx     = DisplaySettings.ShadowAlgorithmIndex % 5u;
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
@@ -2308,7 +2310,8 @@ void ViewportPanel::RenderSettingsSheet(
             "4. Hybrid SDF + Sobol Spherical Cap",
             "5. SDF Monte Carlo PT Ref (96 SPP)",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(SdfPenumbraButtonBounds, static_cast<uint32_t>(SdfOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(
+            Overlay, SdfPenumbraButtonBounds, SdfOptions.data(), static_cast<uint32_t>(SdfOptions.size()));
         const uint32_t    CurIdx     = DisplaySettings.SdfShadowPenumbraIndex % static_cast<uint32_t>(SdfOptions.size());
         uint32_t          ChosenIdx  = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
@@ -2350,7 +2353,8 @@ void ViewportPanel::RenderSettingsSheet(
             "Debug View: Nanite Error",
             "Debug View: Nanite UV Seams",
         }};
-        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(DebugButtonBounds, static_cast<uint32_t>(DebugOptions.size()));
+        const Rectangle2D DropBounds = DropdownSelector::QuerySheetBounds(
+            Overlay, DebugButtonBounds, DebugOptions.data(), static_cast<uint32_t>(DebugOptions.size()));
         const uint32_t    CurrentIdx = DisplaySettings.DebugChannelIndex % static_cast<uint32_t>(DebugOptions.size());
         uint32_t          ChosenIdx  = CurrentIdx;
         if (DropdownSelector::ConstructOptionSheet(
@@ -2776,7 +2780,8 @@ void ViewportPanel::Render(
             (SplitViewportEnabled && ActivePaneIndex == 1u) ? SecondaryProjection : PrimaryProjection;
         const uint32_t    CurrentIdx = static_cast<uint32_t>(Current);
         uint32_t          ChosenIdx  = CurrentIdx;
-        const Rectangle2D DropSheet  = DropdownSelector::QuerySheetBounds(ProjectionBtn, static_cast<uint32_t>(ProjectionOptions.size()));
+        const Rectangle2D DropSheet  = DropdownSelector::QuerySheetBounds(
+            ActiveOverlay, ProjectionBtn, ProjectionOptions.data(), static_cast<uint32_t>(ProjectionOptions.size()));
 
         if (DropdownSelector::ConstructOptionSheet(
                 ActiveOverlay,
@@ -2832,7 +2837,7 @@ void ViewportPanel::Render(
             "22 · Nanite UV Seams",
         }};
         const Rectangle2D DropSheet = DropdownSelector::QuerySheetBounds(
-            HeaderDebugButtonBounds, static_cast<uint32_t>(HeaderDebugOptions.size()));
+            ActiveOverlay, HeaderDebugButtonBounds, HeaderDebugOptions.data(), static_cast<uint32_t>(HeaderDebugOptions.size()));
         const uint32_t CurIdx    = DisplaySettings.DebugChannelIndex % static_cast<uint32_t>(HeaderDebugOptions.size());
         uint32_t       ChosenIdx = CurIdx;
         if (DropdownSelector::ConstructOptionSheet(
@@ -2860,7 +2865,7 @@ void ViewportPanel::Render(
             "Atmosphere...",
         }};
         const Rectangle2D MenuSheet = DropdownSelector::QuerySheetBounds(
-            RenderMenuButtonBounds, static_cast<uint32_t>(RenderMenuOptions.size()));
+            ActiveOverlay, RenderMenuButtonBounds, RenderMenuOptions.data(), static_cast<uint32_t>(RenderMenuOptions.size()));
         uint32_t ChosenIdx = RenderSettingsSection;
         if (DropdownSelector::ConstructOptionSheet(
                 ActiveOverlay, RenderMenuButtonBounds, RenderMenuOptions.data(),
@@ -2902,7 +2907,7 @@ void ViewportPanel::Render(
             const Rectangle2D EngineSheetRect      = DropdownSelector::QuerySheetBounds(EngineButtonBounds, 6u);
             const Rectangle2D ShadowSheetRect      = DropdownSelector::QuerySheetBounds(ShadowButtonBounds, 5u);
             const Rectangle2D SdfPenumbraSheetRect = DropdownSelector::QuerySheetBounds(SdfPenumbraButtonBounds, 6u);
-            const Rectangle2D DebugSheetRect       = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 12u);
+            const Rectangle2D DebugSheetRect       = DropdownSelector::QuerySheetBounds(DebugButtonBounds, 23u);
             const bool InDropdown =
                 (EngineDropdownOpen      && EngineSheetRect.Contains(Cursor)) ||
                 (ShadowDropdownOpen      && ShadowSheetRect.Contains(Cursor)) ||

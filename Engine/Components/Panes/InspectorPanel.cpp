@@ -167,7 +167,7 @@ void InspectorPanel::AssignActiveNotes(std::string_view NotesText)
 
 void InspectorPanel::ConfigureScrollOffset(float OffsetY) noexcept
 {
-    ScrollOffsetY = std::max(0.0f, OffsetY);
+    ScrollView.ConfigureImmediateOffset(OffsetY);
 }
 
 void InspectorPanel::SyncNotesBufferWithSelection(OutlinerSlotToken ActiveToken, const OutlinerRecordEntry* ActiveEntry) noexcept
@@ -1603,15 +1603,9 @@ void InspectorPanel::Render(
         std::max(0.0f, Bounds.Height - FooterHeight)
     };
 
-    if (ScrollViewport.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 1.0e-4f)
-    {
-        ScrollOffsetY -= Input.WheelDeltaY * 38.0f;
-    }
-    ScrollOffsetY = std::max(0.0f, ScrollOffsetY);
-    if (LastContentHeight > 0.0f)
-    {
-        ScrollOffsetY = std::min(ScrollOffsetY, std::max(0.0f, LastContentHeight - ScrollViewport.Height));
-    }
+    const SmoothScrollUpdateResult ScrollRes =
+        ScrollView.Advance(ScrollViewport, -1.0f, Input.PrimaryPointer, Input.WheelDeltaY, 42.0f);
+    const float ScrollOffsetY = ScrollRes.DisplayOffsetY;
 
     Surface.PushClip(Bounds);
     Surface.FillRectangle(Bounds, WorkspaceAppearance::QueryDockedPaneBackground());
@@ -1637,7 +1631,7 @@ void InspectorPanel::Render(
     std::string FooterLeftLabel = "No selection";
     if (Selected.empty() || AttachedOutliner == nullptr)
     {
-        ScrollOffsetY     = 0.0f;
+        ScrollView.Reset();
         LastContentHeight = ScrollViewport.Height;
 
         const float LeftX = ScrollViewport.X + 28.0f;
@@ -1667,7 +1661,7 @@ void InspectorPanel::Render(
     }
     else if (Selected.size() > 1u)
     {
-        ScrollOffsetY     = 0.0f;
+        ScrollView.Reset();
         LastContentHeight = ScrollViewport.Height;
 
         const float LeftX = ScrollViewport.X + 26.0f;
@@ -1745,9 +1739,8 @@ void InspectorPanel::Render(
         }
     }
 
-    const float MaxScrollAfter = std::max(0.0f, LastContentHeight - ScrollViewport.Height);
-    ScrollOffsetY              = std::clamp(ScrollOffsetY, 0.0f, MaxScrollAfter);
-    WorkspaceAppearance::ConstructVerticalScrollIndicator(Surface, ScrollViewport, LastContentHeight, ScrollOffsetY, Cursor);
+    ScrollView.FinalizeContentHeight(ScrollViewport.Height, LastContentHeight);
+    ScrollView.RenderIndicator(Surface, ScrollViewport, LastContentHeight, Cursor);
     Surface.PopClip();
 
     // workspace Inspector Footer (.inspector-footer: 45px height, #151515)
@@ -1886,7 +1879,13 @@ void InspectorPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
         {
             OutSig = RetainedCanvasCache::MixHash(OutSig, OverrideSignatureCallback());
         }
-        OutSig = MixFloat(OutSig, ScrollOffsetY);
+        OutSig = MixFloat(OutSig, ScrollView.QueryDisplayOffset());
+        OutSig = MixFloat(OutSig, ScrollView.QueryTargetOffset());
+        if (ScrollView.QueryAnimating())
+        {
+            const uint64_t Tick = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count() >> 14);
+            OutSig = RetainedCanvasCache::MixHash(OutSig, Tick);
+        }
         OutSig = RetainedCanvasCache::MixHash(OutSig, NotesBoxExpanded ? 1ull : 0ull);
         OutSig = RetainedCanvasCache::MixHash(OutSig, static_cast<uint64_t>(BrowseScope));
         OutSig = RetainedCanvasCache::MixHash(OutSig, static_cast<uint64_t>(BrowseSort));

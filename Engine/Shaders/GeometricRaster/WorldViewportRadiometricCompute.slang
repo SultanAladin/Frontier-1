@@ -1494,6 +1494,18 @@ float3 TraceSingleRadiosityCone(
     bool  IsGroundReceiver = (GroundZ > ValidAnalyticGroundFloorZ) &&
                              (abs(Origin.z - GroundZ) < Vox0 * 0.90) &&
                              (GeomN.z > 0.85);
+    bool  HitsAnalyticGround = false;
+    float TGroundHit         = 1.0e6;
+    if (!IsGroundReceiver && GroundZ > ValidAnalyticGroundFloorZ && ConeDir.z < -1.0e-3 && StartP.z > GroundZ)
+    {
+        float TGround = (GroundZ - StartP.z) / ConeDir.z;
+        if (TGround > 0.0 && TGround < MaxTrace * 1.5)
+        {
+            HitsAnalyticGround = true;
+            TGroundHit         = TGround;
+            MaxTrace           = min(MaxTrace, TGround);
+        }
+    }
 
     float3 AccumRad = float3(0.0);
     float  AccumOcc = 0.0;
@@ -1522,24 +1534,14 @@ float3 TraceSingleRadiosityCone(
         float MipVox          = Vox0 * exp2(float(MipIdx));
         float ConeRadius      = 0.5 * Diameter;
         float PlaneClearance  = dot(SampleP - Origin, GeomN);
-        // Reject coplanar receiver self-bleed from 2x2x2 mip dilation on flat ground/walls;
-        // only bypass HeightClear when a non-ground SDF surface genuinely intersects the cone sample.
+        // Reject coplanar receiver self-bleed from 2x2x2 mip dilation on non-ground walls/roofs;
+        // AnalyticGroundSlab is excluded from RadiosityMip0..3 so open floor has zero floor-mip self-bleed.
         float HeightClear     = smoothstep(MipVox * 0.85, MipVox * 1.75, PlaneClearance);
         float SdfProximity    = InSdf ? smoothstep(ConeRadius + Vox0 * 0.85, ConeRadius + Vox0 * 0.10, SdfD) : 0.0;
         float CloserThanPlane = InSdf ? smoothstep(Vox0 * 0.30, Vox0 * 0.95, PlaneClearance - SdfD) : 0.0;
         float AboveReceiver   = smoothstep(Vox0 * 0.55, Vox0 * 1.15, PlaneClearance);
         float OtherGeomWeight = SdfProximity * CloserThanPlane * AboveReceiver;
-        float SelfRejection   = max(HeightClear, OtherGeomWeight);
-
-        if (IsGroundReceiver)
-        {
-            // A flat upward-facing ground plane cannot illuminate or reflect itself:
-            // inside the ground slab's dilated mip layer, strictly gate radiosity hits
-            // by actual non-ground SDF intersection so open ground has ZERO Cascade-0 square seam.
-            float GroundSlabHeight = SampleP.z - GroundZ;
-            float AboveFloorMip    = smoothstep(MipVox * 1.65, MipVox * 2.65, GroundSlabHeight);
-            SelfRejection          = max(AboveFloorMip, SdfProximity * AboveReceiver);
-        }
+        float SelfRejection   = IsGroundReceiver ? SdfProximity : max(HeightClear, OtherGeomWeight);
 
         float Weight = OriginFade * SampleFade * SelfRejection;
 
@@ -1553,7 +1555,22 @@ float3 TraceSingleRadiosityCone(
 
     if (AccumOcc < 0.99)
     {
-        AccumRad += (1.0 - AccumOcc) * EvaluateSkyDome(ConeDir) * SkyFallbackScale;
+        if (HitsAnalyticGround)
+        {
+            float3 GroundP     = StartP + ConeDir * TGroundHit;
+            float3 GroundN     = float3(0.0, 0.0, 1.0);
+            GpuWorldMaterial80 GroundMat = MaterialEntries[0u];
+            float3 GroundAlb   = GroundMat.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(GroundMat.SpecParams.y));
+            float3 SunDir      = WorldUniforms.SunDirConeTan.xyz;
+            float  SunVis      = SampleCascadedSunShadowFast(GroundP, GroundN, GroundN, SunDir);
+            float3 GroundRad   = GroundAlb * (InvPiConst * max(0.0, SunDir.z) * SunVis) * WorldUniforms.SolarIrradiancePad.xyz
+                               + GroundAlb * (0.28 * EvaluateSkyDome(GroundN));
+            AccumRad += (1.0 - AccumOcc) * GroundRad * SkyFallbackScale;
+        }
+        else
+        {
+            AccumRad += (1.0 - AccumOcc) * EvaluateSkyDome(ConeDir) * SkyFallbackScale;
+        }
     }
     return AccumRad;
 }
@@ -4682,8 +4699,11 @@ void GlobalDistanceBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             }
 
             bool AnalyticGroundSlab = (PackedBits & InstanceGroundSlabBit) != 0u;
-            if (AnalyticGroundSlab && CascadeIdx != 0u)
+            if (AnalyticGroundSlab)
             {
+                // Analytic horizontal ground slabs are evaluated exactly via QueryGlobalDistanceAnalyticGroundZ()
+                // in AO, shadows, and cone tracing; excluding them from RadiosityMip0..3 eliminates all
+                // floor-mip dilation self-reflection / Cascade-0 square artifacts in Lit and Debug 11 Specular.
                 continue;
             }
 

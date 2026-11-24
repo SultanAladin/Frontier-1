@@ -9,6 +9,7 @@
 //                                                        INCLUDES
 //------------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Components/Controls/SmoothScrollView.h"
 #include "Engine/Components/Panes/OutlinerPanel.h"
 
 #include <cstdint>
@@ -81,6 +82,7 @@ public:
     [[nodiscard]] OutlinerPanel* QueryAttachedOutliner() const noexcept;
     [[nodiscard]] bool           QueryNotesBoxOpen() const noexcept;
     [[nodiscard]] float          QueryScrollOffset() const noexcept;
+    [[nodiscard]] bool           QueryScrollAnimating() const noexcept;
     [[nodiscard]] float          QueryLastRenderDurationMs() const noexcept { return LastRenderDurationMs; }
     [[nodiscard]] bool           QueryLastRenderReplayed() const noexcept { return LastRenderReplayed; }
     [[nodiscard]] uint64_t       QueryRetainedCaptureCount() const noexcept { return RetainedCanvas.QueryCaptureCount(); }
@@ -131,7 +133,7 @@ private:
     float                    TransformDragStartVal  = 0.0f;                                  // [-]  - Value snapshot at drag start
     bool                     TransformDragMoved     = false;                                 // [-]  - Drag distance exceeded 4px threshold
     TextEditBuffer           TransformCellEditor    {};                                      // [-]  - Numeric text input for focused cell
-    float                          ScrollOffsetY            = 0.0f;                                  // [px] - Vertical inspector scroll offset
+    SmoothScrollView               ScrollView               {};                                      // [-]  - Animated vertical inspector scroll view
     float                          LastContentHeight        = 0.0f;                                  // [px] - Measured scroll document height
     InspectorSectionRenderCallback CustomSectionCallback {};                                  // [-]  - Optional domain extension cards
     InspectorFullOverrideCallback  FullOverrideCallback  {};                                  // [-]  - Complete domain inspector replacement
@@ -163,7 +165,12 @@ inline bool InspectorPanel::QueryNotesBoxOpen() const noexcept
 
 inline float InspectorPanel::QueryScrollOffset() const noexcept
 {
-    return ScrollOffsetY;
+    return ScrollView.QueryDisplayOffset();
+}
+
+inline bool InspectorPanel::QueryScrollAnimating() const noexcept
+{
+    return ScrollView.QueryAnimating();
 }
 
 } // namespace Frontier

@@ -465,7 +465,7 @@ void OutlinerPanel::ClearAll() noexcept
     Entries.clear();
     SelectedTokens.clear();
     SelectionAnchor    = {};
-    ScrollOffsetY      = 0.0f;
+    ScrollView.Reset();
     DirectiveSheetOpen   = false;
     DragActive         = false;
 }
@@ -816,7 +816,7 @@ void OutlinerPanel::ConfigureFilterStripOpen(bool Open) noexcept
 
 void OutlinerPanel::ConfigureScrollOffset(float OffsetY) noexcept
 {
-    ScrollOffsetY = std::max(0.0f, OffsetY);
+    ScrollView.ConfigureImmediateOffset(OffsetY);
 }
 
 void OutlinerPanel::OpenConstructDropdown() noexcept
@@ -1438,13 +1438,15 @@ void OutlinerPanel::Render(
     constexpr float TopPadding    = 4.0f;
     constexpr float BottomPadding = 10.0f;
     const float     ContentHeight = TopPadding + static_cast<float>(VisibleRows.size()) * RowHeight + BottomPadding;
-    const float     MaxScrollY    = std::max(0.0f, ContentHeight - TreeViewport.Height);
 
-    if (!OverlayOpenBefore && TreeViewport.Contains(Cursor) && std::fabs(Input.WheelDeltaY) > 1.0e-4f)
+    ControlPointer TreeScrollPointer = Input.PrimaryPointer;
+    if (OverlayOpenBefore)
     {
-        ScrollOffsetY -= Input.WheelDeltaY * 34.0f;
+        TreeScrollPointer.Enabled = false;
     }
-    ScrollOffsetY = std::clamp(ScrollOffsetY, 0.0f, MaxScrollY);
+    const SmoothScrollUpdateResult ScrollRes =
+        ScrollView.Advance(TreeViewport, ContentHeight, TreeScrollPointer, OverlayOpenBefore ? 0.0f : Input.WheelDeltaY, 42.0f);
+    const float ScrollOffsetY = ScrollRes.DisplayOffsetY;
 
     Surface.PushClip(TreeViewport);
 
@@ -1766,7 +1768,7 @@ void OutlinerPanel::Render(
         }
     }
 
-    WorkspaceAppearance::ConstructVerticalScrollIndicator(Surface, TreeViewport, ContentHeight, ScrollOffsetY, Cursor);
+    ScrollView.RenderIndicator(Surface, TreeViewport, ContentHeight, Cursor);
     Surface.PopClip();
 
     // 5. workspace Outliner Footer (.outliner-footer: 45px height, #151515)
@@ -2343,7 +2345,13 @@ void OutlinerPanel::PresentInImGuiPane(double Δt, float ScaleFactor)
     Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(VisibilityFilter));
     Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(CategoryFilter));
     Sig = RetainedCanvasCache::MixHash(Sig, FilterStripOpen ? 1ull : 0ull);
-    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollOffsetY * 4.0f)));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollView.QueryDisplayOffset() * 4.0f)));
+    Sig = RetainedCanvasCache::MixHash(Sig, static_cast<uint64_t>(std::llround(ScrollView.QueryTargetOffset() * 4.0f)));
+    if (ScrollView.QueryAnimating())
+    {
+        const uint64_t Tick = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count() >> 14);
+        Sig = RetainedCanvasCache::MixHash(Sig, Tick);
+    }
     Sig = MixString(Sig, std::string_view(SearchEditor.Text, SearchEditor.Length));
     Sig = RetainedCanvasCache::MixHash(Sig, Entries.size());
     for (const OutlinerSlotToken& Tok : SelectedTokens)

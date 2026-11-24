@@ -228,6 +228,7 @@ set(FRONTIER_UI_COMPONENT_SOURCES
     Engine/Components/Controls/ConstraintTilePicker.cpp
     Engine/Components/Controls/Vector3CapsuleInput.cpp
     Engine/Components/Controls/ThemePreviewTile.cpp
+    Engine/Components/Controls/SmoothScrollView.cpp
     Engine/Components/Controls/DropdownSelector.cpp
     Engine/Components/Controls/TextInputField.cpp
     Engine/Components/Controls/ConfirmationDialogue.cpp
