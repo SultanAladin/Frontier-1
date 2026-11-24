@@ -12,6 +12,35 @@ function Lerp(A, B, T) {
   return A + (B - A) * T;
 }
 
+function RotateVecAroundAxis(Vec, Axis, AngleRad) {
+  const C = Math.cos(AngleRad);
+  const S = Math.sin(AngleRad);
+  const Al = Math.hypot(Axis[0], Axis[1], Axis[2]) || 1;
+  const Kx = Axis[0] / Al, Ky = Axis[1] / Al, Kz = Axis[2] / Al;
+  const Dot = Kx * Vec[0] + Ky * Vec[1] + Kz * Vec[2];
+  const Cx = Ky * Vec[2] - Kz * Vec[1];
+  const Cy = Kz * Vec[0] - Kx * Vec[2];
+  const Cz = Kx * Vec[1] - Ky * Vec[0];
+  return [
+    Vec[0] * C + Cx * S + Kx * Dot * (1 - C),
+    Vec[1] * C + Cy * S + Ky * Dot * (1 - C),
+    Vec[2] * C + Cz * S + Kz * Dot * (1 - C),
+  ];
+}
+
+function NormalizeVec3(V, Fallback = [0, 1, 0]) {
+  const L = Math.hypot(V[0], V[1], V[2]);
+  return L > 1e-6 ? [V[0] / L, V[1] / L, V[2] / L] : Fallback;
+}
+
+function CrossVec3(A, B) {
+  return [
+    A[1] * B[2] - A[2] * B[1],
+    A[2] * B[0] - A[0] * B[2],
+    A[0] * B[1] - A[1] * B[0],
+  ];
+}
+
 function SphericalFromEyeTarget(Eye, Target) {
   const Dx = Eye[0] - Target[0];
   const Dy = Eye[1] - Target[1];
@@ -119,14 +148,15 @@ export default function StudioViewport({
     OnThumbnails,
   };
 
-  // 1) UNRESTRICTED Editor Camera (EDIT & SIM modes, and Split View 2) — NEVER clamped to studio bounds
+  // 1) UNRESTRICTED Editor Camera (EDIT & SIM modes, and Split View 2) — ZERO angle/position/zoom limits!
   const EditorCamRef = useRef({
-    Eye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [7.6, 3.85, 10.4],
-    Target: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 0.85, 0.2],
-    FovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 42,
-    GoalEye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [7.6, 3.85, 10.4],
-    GoalTarget: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 0.85, 0.2],
-    GoalFovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 42,
+    Eye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [6.2, 2.45, 7.85],
+    Target: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 1.12, -0.25],
+    Up: [0, 1, 0],
+    FovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 40,
+    GoalEye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [6.2, 2.45, 7.85],
+    GoalTarget: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 1.12, -0.25],
+    GoalFovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 40,
     FocusGlide: false,
   });
 
@@ -179,7 +209,8 @@ export default function StudioViewport({
     const ECam = EditorCamRef.current;
     ECam.GoalTarget = Target;
     ECam.GoalEye = [Target[0] + 4.2, Target[1] + 1.85, Target[2] + 4.8];
-    ECam.GoalFovDeg = 42;
+    ECam.GoalFovDeg = 40;
+    ECam.Up = [0, 1, 0];
     ECam.FocusGlide = true;
   }, [FocusNonce, Selected]);
 
@@ -499,24 +530,46 @@ export default function StudioViewport({
     if (!Drag.Moved) return;
 
     if (Drag.Kind === "editor-camera") {
-      // UNRESTRICTED Editor Camera — NO wall/ceiling/floor clamp, full pitch & unlimited pan!
+      // COMPLETELY UNRESTRICTED 360° Editor Camera — ZERO pitch/angle clamp, ZERO wall/floor/ceiling limits!
       const ECam = EditorCamRef.current;
       ECam.FocusGlide = false;
-      const Sph = SphericalFromEyeTarget(ECam.Eye, ECam.Target);
+      const Offset = [
+        ECam.Eye[0] - ECam.Target[0],
+        ECam.Eye[1] - ECam.Target[1],
+        ECam.Eye[2] - ECam.Target[2],
+      ];
+      const Dist = Math.max(0.05, Math.hypot(Offset[0], Offset[1], Offset[2]));
+      const Fwd = NormalizeVec3([-Offset[0], -Offset[1], -Offset[2]], [0, 0, -1]);
+      let Up = NormalizeVec3(ECam.Up || [0, 1, 0], [0, 1, 0]);
+      const Right = NormalizeVec3(CrossVec3(Fwd, Up), [1, 0, 0]);
+      // Re-orthogonalize camera up
+      Up = NormalizeVec3(CrossVec3(Right, Fwd), [0, 1, 0]);
+
       if (Drag.Button === 2 || Drag.Button === 1 || Drag.Shift) {
-        const Scale = Math.max(0.002, Sph.Radius * 0.0015);
-        const RightX = Math.cos(Sph.Azimuth);
-        const RightZ = -Math.sin(Sph.Azimuth);
-        ECam.Target[0] -= RightX * Dx * Scale;
-        ECam.Target[2] -= RightZ * Dx * Scale;
-        ECam.Target[1] += Dy * Scale;
-        ECam.Eye[0] -= RightX * Dx * Scale;
-        ECam.Eye[2] -= RightZ * Dx * Scale;
-        ECam.Eye[1] += Dy * Scale;
+        const Scale = Math.max(0.002, Dist * 0.0015);
+        const MoveX = (-Right[0] * Dx + Up[0] * Dy) * Scale;
+        const MoveY = (-Right[1] * Dx + Up[1] * Dy) * Scale;
+        const MoveZ = (-Right[2] * Dx + Up[2] * Dy) * Scale;
+        ECam.Target = [ECam.Target[0] + MoveX, ECam.Target[1] + MoveY, ECam.Target[2] + MoveZ];
+        ECam.Eye = [ECam.Eye[0] + MoveX, ECam.Eye[1] + MoveY, ECam.Eye[2] + MoveZ];
+        ECam.Up = Up;
       } else {
-        const NextAz = Sph.Azimuth - Dx * 0.0062;
-        const NextEl = Math.max(-1.54, Math.min(1.54, Sph.Elevation + Dy * 0.0052));
-        ECam.Eye = EyeFromSpherical(ECam.Target, Sph.Radius, NextAz, NextEl);
+        // Free 360° yaw + unlimited 360° pitch around live camera Right axis (NO angle clamp!)
+        const YawAxis = [0, Up[1] >= 0 ? 1 : -1, 0];
+        const YawAngle = -Dx * 0.0062;
+        const PitchAngle = -Dy * 0.0055;
+        let NextOffset = RotateVecAroundAxis(Offset, YawAxis, YawAngle);
+        let NextUp = RotateVecAroundAxis(Up, YawAxis, YawAngle);
+        const MidFwd = NormalizeVec3([-NextOffset[0], -NextOffset[1], -NextOffset[2]], Fwd);
+        const MidRight = NormalizeVec3(CrossVec3(MidFwd, NextUp), Right);
+        NextOffset = RotateVecAroundAxis(NextOffset, MidRight, PitchAngle);
+        NextUp = NormalizeVec3(RotateVecAroundAxis(NextUp, MidRight, PitchAngle), [0, 1, 0]);
+        ECam.Eye = [
+          ECam.Target[0] + NextOffset[0],
+          ECam.Target[1] + NextOffset[1],
+          ECam.Target[2] + NextOffset[2],
+        ];
+        ECam.Up = NextUp;
       }
       return;
     }
@@ -570,12 +623,22 @@ export default function StudioViewport({
     const Factor = Math.exp(Event.deltaY * 0.0011);
 
     if (!IsPlayView) {
-      // UNRESTRICTED Editor Camera zoom — NO room clamp, wide 0.35 m .. 240 m range
+      // UNRESTRICTED Editor Camera zoom — NO upper distance limit & NO room clamp!
       const ECam = EditorCamRef.current;
       ECam.FocusGlide = false;
-      const Sph = SphericalFromEyeTarget(ECam.Eye, ECam.Target);
-      const NextR = Math.max(0.35, Math.min(240, Sph.Radius * Factor));
-      ECam.Eye = EyeFromSpherical(ECam.Target, NextR, Sph.Azimuth, Sph.Elevation);
+      const Offset = [
+        ECam.Eye[0] - ECam.Target[0],
+        ECam.Eye[1] - ECam.Target[1],
+        ECam.Eye[2] - ECam.Target[2],
+      ];
+      const Dist = Math.max(0.05, Math.hypot(Offset[0], Offset[1], Offset[2]));
+      const NextR = Math.max(0.08, Dist * Factor);
+      const Scale = NextR / Dist;
+      ECam.Eye = [
+        ECam.Target[0] + Offset[0] * Scale,
+        ECam.Target[1] + Offset[1] * Scale,
+        ECam.Target[2] + Offset[2] * Scale,
+      ];
       return;
     }
 

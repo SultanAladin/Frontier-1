@@ -539,7 +539,7 @@ function App() {
     [Construct, OpenConstruct] = useState(false),
     [Projection, SetProjection] = useState("PERSP"),
     [SplitView, SetSplitView] = useState(false),
-    [RunMode, SetRunMode] = useState(IsStudioLobbyLevel(LevelId) ? "PLAY" : "EDIT"),
+    [RunMode, SetRunMode] = useState("EDIT"),
     [Message, Notify] = useState(""),
     [Console, ShowConsole] = useState(false),
     [PaneTabs, AssignTabs] = useState({
@@ -944,8 +944,6 @@ function App() {
     SetObjectThumbnails({});
     SetLevelId(NextLevel);
     if (IsStudioLobbyLevel(NextLevel)) {
-      SetRunMode("PLAY");
-      SetPaused(false);
       SetActivePreset(null);
       SetIntroNonce((N) => N + 1);
     }

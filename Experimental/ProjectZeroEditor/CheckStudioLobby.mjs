@@ -387,33 +387,21 @@ assert.ok(
   "Overhead Softbox Area Light reuses native arealight ReferencePanel",
 );
 
-// Verify Pause button works in Play mode
-const PauseBtn = Doc.querySelector('[aria-label="Pause Play"]');
-assert.ok(PauseBtn, "Pause button visible in default Play mode");
-PauseBtn.click();
-await new Promise((Resolve) => setTimeout(Resolve, 40));
-assert.ok(Doc.querySelector('[aria-label="Resume Play"]'), "Clicking Pause toggles to Resume");
-
-// Switch to Edit mode and verify Move (W) / Rotate (E) Transform Gizmo controls + Unrestricted Editor Camera
+// Verify Editor ALWAYS boots in EDIT mode with the UNRESTRICTED Editor Camera & 3D Transform Gizmo!
 const ViewportHost = Doc.querySelector(".studio-viewport-host");
-assert.equal(ViewportHost.getAttribute("data-active-camera"), "game", "Play mode renders through Game Camera");
-const EditBtn = Doc.querySelector('[aria-label="Edit mode"]');
-assert.ok(EditBtn, "Edit mode button present");
-EditBtn.click();
-await new Promise((Resolve) => setTimeout(Resolve, 60));
-assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Edit mode renders through unrestricted Editor Camera");
-assert.ok(Doc.querySelector(".studio-gizmo-pill"), "3D Transform Gizmo pill (Move W / Rotate E) visible in Edit mode");
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Editor boots in Edit mode using unrestricted Editor Camera");
+assert.ok(Doc.querySelector(".studio-gizmo-pill"), "3D Transform Gizmo pill (Move W / Rotate E) visible immediately in Edit mode");
 assert.ok(
   (Doc.querySelector(".studio-viewport-top-hud")?.textContent || "").includes("EDITOR CAMERA"),
-  "HUD clearly indicates unrestricted Editor Camera in Edit mode",
+  "HUD clearly indicates unrestricted Editor Camera on boot",
 );
 
-// Verify Editor Camera is NOT limited by room bounds (large wheel zoom-out succeeds freely)
+// Verify Editor Camera is NOT limited by room bounds or pitch angle (large wheel zoom-out succeeds freely)
 const CanvasEl = Doc.querySelector(".studio-viewport-canvas");
 for (let W = 0; W < 6; W++) {
   CanvasEl.dispatchEvent(new Dom.window.WheelEvent("wheel", { deltaY: 600, bubbles: true, cancelable: true }));
 }
-await new Promise((Resolve) => setTimeout(Resolve, 420));
+await new Promise((Resolve) => setTimeout(Resolve, 120));
 
 // Switch to Sim mode and verify Editor Camera stays active while Game Camera animates
 const SimBtn = Doc.querySelector('[aria-label="Sim mode"]');
@@ -422,11 +410,24 @@ SimBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Sim mode views through unrestricted Editor Camera while Game Camera runs live");
 
-// Switch back to Play mode and verify Game Camera takes over cleanly
+// Switch to Play mode and verify moving Game Camera + Pause/Resume work cleanly
 const PlayBtn = Doc.querySelector('[aria-label="Play mode"]');
+assert.ok(PlayBtn, "Play mode button present");
 PlayBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
-assert.equal(ViewportHost.getAttribute("data-active-camera"), "game", "Play mode switches back to moving Game Camera");
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "game", "Play mode switches to moving Game Camera");
+const PauseBtn = Doc.querySelector('[aria-label="Pause Play"]');
+assert.ok(PauseBtn, "Pause button visible in Play mode");
+PauseBtn.click();
+await new Promise((Resolve) => setTimeout(Resolve, 40));
+assert.ok(Doc.querySelector('[aria-label="Resume Play"]'), "Clicking Pause toggles to Resume");
+
+// Switch back to Edit mode
+const EditBtn = Doc.querySelector('[aria-label="Edit mode"]');
+assert.ok(EditBtn, "Edit mode button present");
+EditBtn.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Edit mode restores unrestricted Editor Camera");
 
 // Switch levels Lobby 2 -> Lobby 1 -> Showcase -> Lobby 2 and assert ZERO extra shader compilations!
 const LevelSelect = Doc.querySelector(".studio-level-select");

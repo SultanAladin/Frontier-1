@@ -1288,10 +1288,11 @@ export class StudioRenderEngine {
     Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
 
     const Aspect = W / H;
-    const Proj = PerspectiveMat((Camera.FovDeg * Math.PI) / 180, Aspect, 0.12, 420);
-    const View = LookAtMat(Camera.Eye, Camera.Target);
+    const CamUp = Camera.Up || [0, 1, 0];
+    const Proj = PerspectiveMat((Camera.FovDeg * Math.PI) / 180, Aspect, 0.12, 1200);
+    const View = LookAtMat(Camera.Eye, Camera.Target, CamUp);
     const ViewProj = MulMat4(Proj, View);
-    this.LastCamera = { Eye: Camera.Eye, Target: Camera.Target, FovDeg: Camera.FovDeg, Aspect };
+    this.LastCamera = { Eye: Camera.Eye, Target: Camera.Target, Up: CamUp, FovDeg: Camera.FovDeg, Aspect };
 
     const Hierarchy = ResolveStudioHierarchy(Rows, Values, Hidden);
 
@@ -1904,13 +1905,15 @@ export class StudioRenderEngine {
 
   ComputeWorldRay(NdcX, NdcY) {
     if (!this.LastCamera) return null;
-    const { Eye, Target, FovDeg, Aspect } = this.LastCamera;
+    const { Eye, Target, Up = [0, 1, 0], FovDeg, Aspect } = this.LastCamera;
     let Fx = Target[0] - Eye[0], Fy = Target[1] - Eye[1], Fz = Target[2] - Eye[2];
     const Fl = Math.hypot(Fx, Fy, Fz) || 1;
     Fx /= Fl; Fy /= Fl; Fz /= Fl;
-    let Rx = -Fz, Ry = 0, Rz = Fx;
+    let Rx = Fy * Up[2] - Fz * Up[1];
+    let Ry = Fz * Up[0] - Fx * Up[2];
+    let Rz = Fx * Up[1] - Fy * Up[0];
     const Rl = Math.hypot(Rx, Ry, Rz) || 1;
-    Rx /= Rl; Rz /= Rl;
+    Rx /= Rl; Ry /= Rl; Rz /= Rl;
     const Ux = Ry * Fz - Rz * Fy;
     const Uy = Rz * Fx - Rx * Fz;
     const Uz = Rx * Fy - Ry * Fx;
@@ -1957,29 +1960,10 @@ export class StudioRenderEngine {
   // Screen-space ray picking against rendered pickable entities
   PickAtNormalizedCoords(NdcX, NdcY) {
     if (!this.LastCamera || !this.LastPickables.length) return null;
-    const { Eye, Target, FovDeg, Aspect } = this.LastCamera;
-
-    let Fx = Target[0] - Eye[0], Fy = Target[1] - Eye[1], Fz = Target[2] - Eye[2];
-    const Fl = Math.hypot(Fx, Fy, Fz) || 1;
-    Fx /= Fl; Fy /= Fl; Fz /= Fl;
-
-    let Rx = Fy * 0 - Fz * 1;
-    let Ry = Fz * 0 - Fx * 0;
-    let Rz = Fx * 1 - Fy * 0;
-    // Right = normalize(cross(Fwd, [0,1,0]))
-    Rx = -Fz; Ry = 0; Rz = Fx;
-    const Rl = Math.hypot(Rx, Ry, Rz) || 1;
-    Rx /= Rl; Rz /= Rl;
-    const Ux = Ry * Fz - Rz * Fy;
-    const Uy = Rz * Fx - Rx * Fz;
-    const Uz = Rx * Fy - Ry * Fx;
-
-    const TanHalf = Math.tan(((FovDeg * Math.PI) / 180) * 0.5);
-    let Dx = Fx + Rx * NdcX * TanHalf * Aspect + Ux * NdcY * TanHalf;
-    let Dy = Fy + Ry * NdcX * TanHalf * Aspect + Uy * NdcY * TanHalf;
-    let Dz = Fz + Rz * NdcX * TanHalf * Aspect + Uz * NdcY * TanHalf;
-    const Dl = Math.hypot(Dx, Dy, Dz) || 1;
-    Dx /= Dl; Dy /= Dl; Dz /= Dl;
+    const Ray = this.ComputeWorldRay(NdcX, NdcY);
+    if (!Ray) return null;
+    const Eye = Ray.Origin;
+    const [Dx, Dy, Dz] = Ray.Dir;
 
     let BestId = null;
     let BestT = Infinity;
