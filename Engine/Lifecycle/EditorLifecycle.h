@@ -26,6 +26,7 @@
 #include "Engine/Editor/Explorer/ContentBrowser.h"
 #include "Engine/Editor/Inspectors/InspectorRegistry.h"
 #include "Engine/Editor/WorldEnvironmentRegistry.h"
+#include "Engine/Editor/WorldInstanceEditorBridge.h"
 #include "Engine/GeometricRaster/Gizmo/TransformGizmo.h"
 #include "Engine/GeometricRaster/Gizmo/WorldGizmoOverlayRasterization.h"
 #include "Engine/GeometricRaster/GlobalIllumination/ApocalypticCityBuilder.h"
@@ -128,6 +129,9 @@ public:
         const std::filesystem::path& OptionalAssetPath = {});
     void SynchronizeComponentPlacementOverrides();
     [[nodiscard]] const ComponentClass::ComponentWorldPlacementRegister& QueryWorldPlacements() const noexcept { return WorldPlacements; }
+    [[nodiscard]] World::WorldInstanceRegister&                          AccessWorldRegister() noexcept { return WorldRegister; }
+    [[nodiscard]] const World::WorldInstanceRegister&                    InspectWorldRegister() const noexcept { return WorldRegister; }
+    [[nodiscard]] Editor::WorldInstanceEditorBridge&                     AccessInstanceEditorBridge() noexcept { return InstanceEditorBridge; }
     [[nodiscard]] const std::vector<ComponentClass::ComponentClassDefinition>& QueryComponentDefinitions() const noexcept { return ComponentDefinitions; }
 
     [[nodiscard]] GeometricRaster::ShowcaseWorldSceneBundle* AccessShowcaseScene() noexcept { return ShowcaseBundle.get(); }
@@ -191,6 +195,8 @@ private:
     LifecycleSequence                          EditorSequence         {};     // [-]     - Registered GPU .slang overlay & editor hooks
     std::unique_ptr<GeometricRaster::ShowcaseWorldSceneBundle>       ShowcaseBundle       {}; // [-] - Mounted default world scene & Outliner tokens
     WorldEnvironmentRegistry                                         EnvironmentRegistry  {}; // [-] - Authoritative Environment Outliner & WorldScene registry
+    World::WorldInstanceRegister                                     WorldRegister        {}; // [-] - Contiguous SoA world instance register
+    Editor::WorldInstanceEditorBridge                                InstanceEditorBridge {}; // [-] - Outliner/WorldScene dual-profile bridge
     InspectorRegistry                                                Inspectors           {}; // [-] - Modular per-type Inspector registry & multi-instance register
     std::unique_ptr<GeometricRaster::TieredWorldRenderSequence>      ShowcaseRenderer     {}; // [-] - Calibrated MatCap / OpenPBR Direct world renderer
     std::unique_ptr<GeometricRaster::VulkanWorldRenderSequence>      GpuWorldRenderer     {}; // [-] - Hardware Vulkan .slang compute world render sequence

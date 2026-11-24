@@ -443,6 +443,12 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
     EnvironmentRegistry.AdoptInitialSceneState(Panes->Outliner, ShowcaseBundle->Scene, &Panes->Viewport.AccessDisplaySettings());
     EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
 
+    // Bind WorldInstanceRegister <-> OutlinerPanel and adopt loaded scene atmosphere/celestials into SoA registers
+    InstanceEditorBridge.Unbind();
+    WorldRegister.ClearAll();
+    InstanceEditorBridge.BindOutliner(WorldRegister, Panes->Outliner);
+    InstanceEditorBridge.AdoptWorldSceneIntoRegister(WorldRegister, ShowcaseBundle->Scene);
+
     // Wire Construct modal -> WorldEnvironmentRegistry
     Panes->Viewport.ConfigureConstructApplyCallback(
         [this](std::string_view RegistryKey, std::string_view CustomTitle)
@@ -2922,11 +2928,24 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 }
             }
 
+            // Execute tight SoA WorldInstanceRegister loops (Edit Mode: RequireRebuild-only early-out; Play/Simulate: live Δt)
+            const bool WorldSimEnabled =
+                (Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit) &&
+                !Panes->Viewport.QueryPlayPaused();
+            const World::WorldLoopStepMetrics WorldLoopMetrics =
+                World::ExecuteWorldSimulationSequence(
+                    WorldRegister,
+                    static_cast<float>(SafeStep),
+                    WorldSimEnabled);
+            const bool WorldRegisterMutated = InstanceEditorBridge.SynchronizeRegisterToWorldScene(
+                WorldRegister,
+                WorldLoopMetrics,
+                ShowcaseBundle->Scene,
+                static_cast<float>(SafeStep));
+
             // Advance live warzone collapse, smashable glass/walls & roaming deer when Play or Simulate is active
             bool ApocalypticSimMutated = false;
-            if (ApocalypticCitySim.ActiveCityLevel &&
-                Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit &&
-                !Panes->Viewport.QueryPlayPaused())
+            if (ApocalypticCitySim.ActiveCityLevel && WorldSimEnabled)
             {
                 ApocalypticSimMutated = GeometricRaster::StepApocalypticCitySimulation(
                     *ShowcaseBundle,
@@ -2941,7 +2960,7 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 Panes->Outliner,
                 *ShowcaseBundle,
                 NeedsPrep,
-                UseGpuDynamicSync) || ApocalypticSimMutated;
+                UseGpuDynamicSync) || ApocalypticSimMutated || WorldRegisterMutated;
             if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
             {
                 if (!GpuReady)
@@ -3325,6 +3344,8 @@ void EditorLifecycle::Finalize() noexcept
     WorldGizmoRasterizer.reset();
     GpuWorldRenderer.reset();
     ShowcaseRenderer.reset();
+    InstanceEditorBridge.Unbind();
+    WorldRegister.ClearAll();
     ShowcaseBundle.reset();
     Workspaces.Finalize();
 

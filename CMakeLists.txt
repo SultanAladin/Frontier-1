@@ -1013,6 +1013,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Explorer/ContentBrowser.cpp
         Engine/Editor/Explorer/ProjectBrowser.cpp
         Engine/Editor/WorldEnvironmentRegistry.cpp
+        Engine/Editor/WorldInstanceEditorBridge.cpp
         Engine/Editor/Inspectors/InspectorInstanceRegister.cpp
         Engine/Editor/Inspectors/AtmosphereInspector.cpp
         Engine/Editor/Inspectors/SolarInspector.cpp
@@ -1315,6 +1316,7 @@ if(BUILD_TESTING)
     frontier_register_exhibit(WorldInstanceValidation                   Exhibits/WorldInstanceValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(SketcherWorkspaceValidation           Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
+        frontier_register_exhibit(WorldInstanceEditorBridgeValidation   Exhibits/WorldInstanceEditorBridgeValidation.cpp)
     endif()
 endif()
 
