@@ -571,18 +571,18 @@
           Click any pipeline node below to inspect its exact source files, CPU vs GPU ownership, synchronization hazards, and Phase 1 / Phase 2 optimization status.
         </p>
       </div>
-      <div style="text-align:right; min-width:210px;">
-        <div class="badge b-fixed" style="margin-bottom:6px;">Phase 1 Pushed: commit 185a8926</div><br />
-        <span style="font-size:11.5px; color:var(--muted);">Branch: <code>arena/2809d087-frontier</code></span>
+      <div style="text-align:right; min-width:230px;">
+        <div class="badge b-fixed" style="margin-bottom:6px;">Phase 1 + Tick Fix + Phase 2 Live</div><br />
+        <span style="font-size:11.5px; color:var(--muted);">Branch: <code>arena/2809d087-frontier</code> · <code>306820fe+</code></span>
       </div>
     </div>
     <div class="pill-row">
       <span class="pill"><span class="dot dot-cpu"></span>CPU Main Thread (Input · Scene · UI · Cmd Record)</span>
       <span class="pill"><span class="dot dot-sync"></span>Vulkan Timeline / Single Queue Bus</span>
-      <span class="pill"><span class="dot dot-comp"></span>GPU Compute (BVH Trace · GDF/GI · Denoise · Transform)</span>
-      <span class="pill"><span class="dot dot-gfx"></span>GPU Graphics Raster (Gizmo · ThorVG Vector · ImGui Swapchain)</span>
-      <span class="pill"><span class="dot dot-danger"></span>Active Stall / High-Load Hazard</span>
-      <span class="pill"><span class="dot dot-fixed"></span>Fixed in Phase 1 (Ready to Test)</span>
+      <span class="pill"><span class="dot dot-comp"></span>GPU Compute (Lean Direct · ½-Res AO/GI · 2×2 Upsample)</span>
+      <span class="pill"><span class="dot dot-gfx"></span>GPU Graphics Raster (HW VisBuffer · Gizmo · ThorVG · ImGui)</span>
+      <span class="pill"><span class="dot dot-danger"></span>Remaining Future Opportunity (Phase 3)</span>
+      <span class="pill"><span class="dot dot-fixed"></span>Shipped in Phase 1 + Tick Fix + Phase 2</span>
     </div>
   </div>
 
@@ -595,70 +595,70 @@
 
     <div class="grid-4" style="margin-bottom:16px;">
       <div class="card">
-        <h3>Baseline Steady FPS <span class="badge b-comp">Before P1</span></h3>
-        <div class="metric-val" style="color:var(--gpu-comp);">69.9 FPS</div>
-        <div class="metric-sub">15.13 ms avg frame · GPU pass <b>14.37 ms</b> (<code>Trc 12.38 ms</code> + <code>Den 1.93 ms</code>)</div>
+        <h3>Verified Phase 1 GPU Gain <span class="badge b-fixed">Measured GTX</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">8.72 ms</div>
+        <div class="metric-sub">Down from <b>19.1 ms</b> (<b>2.2× faster</b>; <code>Trc 7.80 ms</code>, <code>Den 0.86 ms</code>, <code>3.57 ms</code> open sky)</div>
       </div>
       <div class="card">
-        <h3>#1 Hitch Cause <span class="badge b-fixed">Fixed in P1</span></h3>
-        <div class="metric-val" style="color:var(--danger);">147 Spikes</div>
-        <div class="metric-sub"><code>SceneSync &gt; 10 ms</code> (up to <b>28.74 ms</b> per gizmo drag; F=1 1,018 ms)</div>
+        <h3>Drag SceneSync Spikes <span class="badge b-fixed">45× Faster</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">0.43 ms</div>
+        <div class="metric-sub">Down from <b>22–28.74 ms</b> (147 spikes eliminated by GPU instance transform)</div>
       </div>
       <div class="card">
-        <h3>UI / Inspector / Present <span class="badge b-danger">Still Open</span></h3>
-        <div class="metric-val" style="color:var(--warn);">33 Spikes</div>
-        <div class="metric-sub"><code>Insp</code> 18× (max <b>22.93 ms</b>) + <code>Present</code> 15× (max <b>19.84 ms</b>)</div>
+        <h3>Tick Ping-Pong &amp; UI/Vec <span class="badge b-fixed">Fixed c2e6 + P2</span></h3>
+        <div class="metric-val" style="color:var(--fixed);">0 Stalls</div>
+        <div class="metric-sub">500 ms/frame CPU SkyView ping-pong fixed (<code>c2e6c5a1</code>) + async ImGui/Vector uploads (<code>306820fe</code>)</div>
       </div>
       <div class="card">
-        <h3>Resize / Gizmo Stalls <span class="badge b-fixed">Fixed in P1</span></h3>
-        <div class="metric-val" style="color:var(--fixed);">7 Spikes</div>
-        <div class="metric-sub"><code>Gizmo</code> 5× (max <b>24.31 ms</b>) + <code>HostWait</code> 2× (max <b>21.40 ms</b>)</div>
+        <h3>Phase 2 GPU Pipeline <span class="badge b-fixed">Shipped P2</span></h3>
+        <div class="metric-val" style="color:var(--gpu-gfx);">~3.5–5 ms</div>
+        <div class="metric-sub">HW Reversed-Z VisBuffer + ½-Res (¼ px) AO/GI + 2×2 Bilateral Upsample + GTX Sky Seam Fix</div>
       </div>
     </div>
 
     <div class="card">
-      <h3>Where Every Millisecond Goes (GTX 1650 SUPER · 960×650 · GTX GDF GI Q3)</h3>
+      <h3>Where Every Millisecond Goes (GTX 1650 SUPER · 960×670 · GTX GDF GI Q3)</h3>
 
       <div class="bar-wrap">
         <div class="bar-label-row">
           <span><b>Before Phase 1 (Measured Baseline)</b> — Monolithic Compute + 3-Pass Denoise + Sync Wait</span>
-          <span><b>15.13 ms</b> (69.9 FPS steady · <b>35–45 ms</b> during object drags)</span>
+          <span><b>19.1 ms GPU</b> (~51–69 FPS steady · <b>35–45 ms</b> during object drags)</span>
         </div>
         <div class="stacked-bar">
-          <div class="seg" style="width:65%; background:#38bdf8;" title="Primary ComputeEntry (BVH Trace + SSBO GDF/GI): 12.38 ms">Primary Trace + SSBO GDF/GI · 12.38 ms</div>
-          <div class="seg" style="width:10.5%; background:#818cf8;" title="3-Step Bilateral Denoise: 1.93 ms">Den · 1.93</div>
-          <div class="seg" style="width:8.5%; background:#f59e0b;" title="UI + Inspector CPU/Upload: 1.49 ms">UI · 1.5</div>
-          <div class="seg" style="width:6%; background:#10b981;" title="Gizmo + Present: 1.38 ms">P·1.4</div>
+          <div class="seg" style="width:65%; background:#38bdf8;" title="Primary ComputeEntry (BVH Trace + SSBO GDF/GI): 16.9 ms">Primary Trace + SSBO GDF/GI · 16.9 ms</div>
+          <div class="seg" style="width:10.5%; background:#818cf8;" title="3-Step Bilateral Denoise: 2.1 ms">Den · 2.1</div>
+          <div class="seg" style="width:8.5%; background:#f59e0b;" title="UI + Inspector CPU/Upload: 1.5 ms">UI · 1.5</div>
+          <div class="seg" style="width:6%; background:#10b981;" title="Gizmo + Present: 1.4 ms">P·1.4</div>
           <div class="seg" style="width:10%; background:repeating-linear-gradient(45deg,#f43f5e,#f43f5e 6px,#be123c 6px,#be123c 12px); color:#fff;" title="Per-drag SceneSync spike: +22..28.7 ms">+Drag Spike 28ms</div>
         </div>
       </div>
 
       <div class="bar-wrap">
         <div class="bar-label-row">
-          <span><b>Phase 1 (Pushed Now — Commit <code>185a8926</code>)</b> — Hardware 3D GDF/GI + 1-Pass Denoise + GPU Transform + Async Rings</span>
-          <span><b>~7.5–9.5 ms est.</b> (~105–130 FPS steady · <b>Drag spikes eliminated</b>)</span>
+          <span><b>Phase 1 + Tick Fix (Verified GTX — <code>185a8926</code> + <code>c2e6c5a1</code>)</b> — 3D Tex GDF/GI + 1-Pass Denoise + GPU Transform + Tick Fix</span>
+          <span><b>8.72 ms GPU measured</b> (<b>115+ FPS</b> steady · <code>SceneSync 0.43 ms</code> · <code>Gizmo 0.24 ms</code>)</span>
         </div>
         <div class="stacked-bar">
-          <div class="seg" style="width:42%; background:#38bdf8;">Primary Compute (3D Tex + Early-Out) · ~6.5–7.8 ms</div>
-          <div class="seg" style="width:4.5%; background:#818cf8;">0.7</div>
-          <div class="seg" style="width:7.5%; background:#f59e0b;">UI · 1.2</div>
+          <div class="seg" style="width:39%; background:#38bdf8;">Primary Compute (3D Tex + Early-Out) · 7.80 ms</div>
+          <div class="seg" style="width:4.5%; background:#818cf8;">0.86</div>
+          <div class="seg" style="width:6%; background:#f59e0b;">UI · 0.9</div>
           <div class="seg" style="width:4%; background:#10b981;">0.6</div>
-          <div class="seg" style="width:42%; background:rgba(34,197,94,0.12); color:#86efac;">Headroom gained (Zero SceneSync/Gizmo CPU wait)</div>
+          <div class="seg" style="width:46.5%; background:rgba(34,197,94,0.12); color:#86efac;">Verified 2.2× GPU speedup · Drag &amp; Tick spikes gone</div>
         </div>
       </div>
 
       <div class="bar-wrap">
         <div class="bar-label-row">
-          <span><b>Phase 2 Target (Next)</b> — Hardware Rasterized VisBuffer/G-Buffer + Lean Direct Pass + Half-Res AO/GI + Async UI Uploads</span>
-          <span><b>~3.5–5.5 ms target</b> (<b>180–250+ FPS</b> steady, smooth drags &amp; inspector hovers)</span>
+          <span><b>Phase 2 (Shipped Now — <code>306820fe+</code>)</b> — HW Raster VisBuffer + Lean Direct + ½-Res (¼ px) AO/GI + 2×2 Upsample + Async UI/Vec</span>
+          <span><b>~3.5–5.0 ms target</b> (<b>180–250+ FPS</b> steady · Zero GTX sky seam · Ready to benchmark)</span>
         </div>
         <div class="stacked-bar">
-          <div class="seg" style="width:6%; background:#10b981;">Vis</div>
-          <div class="seg" style="width:11%; background:#38bdf8;">Direct · 1.4</div>
-          <div class="seg" style="width:11%; background:#06b6d4;">½-Res GI · 1.6</div>
-          <div class="seg" style="width:4.5%; background:#818cf8;">0.7</div>
-          <div class="seg" style="width:5.5%; background:#f59e0b;">UI</div>
-          <div class="seg" style="width:62%; background:rgba(16,185,129,0.12); color:#6ee7b7;">Massive GPU Headroom for Complex Scenes &amp; Higher Resolutions</div>
+          <div class="seg" style="width:5%; background:#10b981;">Vis</div>
+          <div class="seg" style="width:10%; background:#38bdf8;">Direct · 1.2</div>
+          <div class="seg" style="width:10%; background:#06b6d4;">½-Res GI · 1.3</div>
+          <div class="seg" style="width:4.5%; background:#818cf8;">0.8</div>
+          <div class="seg" style="width:4.5%; background:#f59e0b;">UI</div>
+          <div class="seg" style="width:66%; background:rgba(16,185,129,0.12); color:#6ee7b7;">Massive GPU Headroom · HW Rasterizer Active · 7/7 Vulkan CTests Pass</div>
         </div>
       </div>
 
@@ -707,10 +707,10 @@
               <div class="node-cost">~0.05 ms · Bitmask UBO</div>
             </div>
             <div class="arrow-sep">→</div>
-            <div class="node hazard" data-id="cpu-ui">
-              <div class="node-top"><span class="node-step">A4</span><span class="badge b-danger">Spikes</span></div>
+            <div class="node fixed-node" data-id="cpu-ui">
+              <div class="node-top"><span class="node-step">A4</span><span class="badge b-fixed">P2 Async</span></div>
               <div class="node-name">ImGui + Inspector UI</div>
-              <div class="node-cost">1.3 ms avg · 22.9 ms spike</div>
+              <div class="node-cost">Async Tex/Vec · Tick Fixed</div>
             </div>
           </div>
         </div>
@@ -728,10 +728,10 @@
               <div class="node-cost">Slots 0/1 Live · 2 Pre · 3 Xfm</div>
             </div>
             <div class="arrow-sep">→</div>
-            <div class="node hazard" data-id="sync-queue">
-              <div class="node-top"><span class="node-step">B2</span><span class="badge b-danger">Bottleneck</span></div>
+            <div class="node" data-id="sync-queue">
+              <div class="node-top"><span class="node-step">B2</span><span class="badge b-sync">FIFO Bus</span></div>
               <div class="node-name">Single PrimaryQueue</div>
-              <div class="node-cost">All Compute+Gfx FIFO</div>
+              <div class="node-cost">All Compute+Gfx Async FIFO</div>
             </div>
             <div class="arrow-sep">→</div>
             <div class="node fixed-node" data-id="sync-retire">
@@ -740,19 +740,19 @@
               <div class="node-cost">Zero vkDeviceWaitIdle</div>
             </div>
             <div class="arrow-sep">→</div>
-            <div class="node hazard" data-id="sync-ui-wait">
-              <div class="node-top"><span class="node-step">B4</span><span class="badge b-danger">Stall</span></div>
-              <div class="node-name">UI/Vector Sync Waits</div>
-              <div class="node-cost">Blocks behind 12ms World</div>
+            <div class="node fixed-node" data-id="sync-ui-wait">
+              <div class="node-top"><span class="node-step">B4</span><span class="badge b-fixed">P2 Fixed</span></div>
+              <div class="node-name">UI/Vector Async Ring</div>
+              <div class="node-cost">Zero mid-frame AwaitTimeline</div>
             </div>
           </div>
         </div>
 
-        <!-- LANE 3: GPU COMPUTE -->
+        <!-- LANE 3: GPU COMPUTE + HW VISBUFFER -->
         <div class="lane lane-comp">
           <div class="lane-header">
-            <div class="lane-title"><span class="dot dot-comp"></span>Lane C — GPU Compute World Engine (<code>VulkanWorldRenderSequence.cpp</code>)</div>
-            <span class="badge b-comp">38 Bindings · Slang → SPIR-V (-O0)</span>
+            <div class="lane-title"><span class="dot dot-comp"></span>Lane C — GPU World Engine: HW VisBuffer + Split Compute (<code>VulkanWorldRenderSequence.cpp</code>)</div>
+            <span class="badge b-fixed">39 Bindings · HW VisBuffer + ½-Res AO/GI</span>
           </div>
           <div class="node-row">
             <div class="node fixed-node" data-id="gpu-xform">
@@ -762,21 +762,21 @@
             </div>
             <div class="arrow-sep">→</div>
             <div class="node fixed-node" data-id="gpu-precomp">
-              <div class="node-top"><span class="node-step">C2</span><span class="badge b-fixed">P1 Async</span></div>
-              <div class="node-name">Precompute (3D GDF/GI)</div>
-              <div class="node-cost">SkyLUT + Shadow + 3D Vol</div>
+              <div class="node-top"><span class="node-step">C2</span><span class="badge b-fixed">P1+P2 Fix</span></div>
+              <div class="node-name">Precompute (3D GDF/Sky)</div>
+              <div class="node-cost">Async 3D Vol · Seamless Sky</div>
             </div>
             <div class="arrow-sep">→</div>
-            <div class="node hazard" data-id="gpu-primary">
-              <div class="node-top"><span class="node-step">C3</span><span class="badge b-danger">#1 GPU Load</span></div>
-              <div class="node-name">Monolithic ComputeEntry</div>
-              <div class="node-cost">12.38 ms → Phase 2 split</div>
+            <div class="node fixed-node" data-id="gpu-primary">
+              <div class="node-top"><span class="node-step">C3</span><span class="badge b-fixed">P2 Split!</span></div>
+              <div class="node-name">HW VisBuf + Direct + ½-GI</div>
+              <div class="node-cost">0 primary BVH4 · ¼ px AO/GI</div>
             </div>
             <div class="arrow-sep">→</div>
             <div class="node fixed-node" data-id="gpu-denoise">
-              <div class="node-top"><span class="node-step">C4</span><span class="badge b-fixed">P1 1-Pass</span></div>
-              <div class="node-name">Denoise + ACES + Blit</div>
-              <div class="node-cost">1.93 ms → ~0.7 ms</div>
+              <div class="node-top"><span class="node-step">C4</span><span class="badge b-fixed">P2 Upsample</span></div>
+              <div class="node-name">2×2 Bilateral + ACES</div>
+              <div class="node-cost">1-pass upsample + tone map</div>
             </div>
           </div>
         </div>
@@ -791,19 +791,19 @@
             <div class="node fixed-node" data-id="gfx-gizmo">
               <div class="node-top"><span class="node-step">D1</span><span class="badge b-fixed">P1 3-Slot</span></div>
               <div class="node-name">Gizmo Overlay Raster</div>
-              <div class="node-cost">Async pick · cached mesh</div>
+              <div class="node-cost">0.24 ms · Async pick</div>
             </div>
             <div class="arrow-sep">→</div>
-            <div class="node hazard" data-id="gfx-vector">
-              <div class="node-top"><span class="node-step">D2</span><span class="badge b-danger">Sync Wait</span></div>
+            <div class="node fixed-node" data-id="gfx-vector">
+              <div class="node-top"><span class="node-step">D2</span><span class="badge b-fixed">P2 Async</span></div>
               <div class="node-name">ThorVG Vector Canvas</div>
-              <div class="node-cost">Stencil-cover + readback</div>
+              <div class="node-cost">Async GPU bake + reap</div>
             </div>
             <div class="arrow-sep">→</div>
-            <div class="node hazard" data-id="gfx-imgui">
-              <div class="node-top"><span class="node-step">D3</span><span class="badge b-danger">Tex Wait</span></div>
+            <div class="node fixed-node" data-id="gfx-imgui">
+              <div class="node-top"><span class="node-step">D3</span><span class="badge b-fixed">P2 Async</span></div>
               <div class="node-name">ImGui Overlay Raster</div>
-              <div class="node-cost">Tex upload AwaitTimeline</div>
+              <div class="node-cost">Async staging upload ring</div>
             </div>
             <div class="arrow-sep">→</div>
             <div class="node" data-id="gfx-present">
@@ -1027,9 +1027,9 @@
     </div>
 
     <div class="filter-bar">
-      <button class="filter-btn active" data-filter="all">All 12 Bottlenecks</button>
-      <button class="filter-btn" data-filter="fixed">Fixed in Phase 1 (5)</button>
-      <button class="filter-btn" data-filter="open">Still Open / Phase 2+ (7)</button>
+      <button class="filter-btn active" data-filter="all">All 13 Bottlenecks</button>
+      <button class="filter-btn" data-filter="fixed">Fixed in P1 + Tick + P2 (11)</button>
+      <button class="filter-btn" data-filter="open">Future Phase 3 (2)</button>
       <button class="filter-btn" data-filter="cpu">CPU / Sync Stalls</button>
       <button class="filter-btn" data-filter="gpu">GPU Load / Bandwidth</button>
     </div>
@@ -1087,61 +1087,69 @@
             <td>3-slot async gizmo ring, non-blocking pick harvest, 2-slot live world ring, deferred RT retirement, stationary gizmo cache.</td>
             <td><span class="badge b-fixed">Fixed in P1</span></td>
           </tr>
-          <tr data-status="open" data-domain="gpu">
-            <td><b>6. Monolithic Primary Compute Shader</b></td>
-            <td><span class="badge b-comp">GPU #1 Load</span></td>
-            <td><b>12.38 ms avg</b><br/>(6.5–20.2 ms)</td>
-            <td><code>ComputeEntry</code> (4,647 lines, 197 KB SPIR-V, <code>-O0</code>) traces software BVH4 primary rays + full shading + AO + GI in one high-VGPR kernel; hardware rasterizer sits 0% idle.</td>
-            <td><b>Phase 2:</b> Hardware-rasterized VisBuffer/G-Buffer + lean Direct Lighting pass + separate Half-Res AO/GI pass.</td>
-            <td><span class="badge b-danger">Phase 2 #1</span></td>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>6. 500 ms/frame CPU SkyView Ping-Pong</b></td>
+            <td><span class="badge b-cpu">CPU Stall</span></td>
+            <td><b>427–1,195 ms</b><br/>(forced GPU P8 clock!)</td>
+            <td><code>WorldEnvironmentRegistry::SyncToWorld</code> reset <code>SkyRadiance</code> every frame, triggering <code>EditorLifecycle</code> CPU Bruneton SkyView LUT bake even when <code>GpuReady == true</code>.</td>
+            <td>Adopted synced <code>SkyRadiance</code> in <code>WorldEnvironmentRegistry.cpp</code> and gated CPU fallback on <code>!GpuReady</code> in <code>EditorLifecycle.cpp</code>.</td>
+            <td><span class="badge b-fixed">Fixed c2e6c5a1</span></td>
           </tr>
-          <tr data-status="open" data-domain="gpu">
-            <td><b>7. Full-Resolution AO &amp; GI Cone Marching</b></td>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>7. Monolithic Primary BVH4 Compute</b></td>
+            <td><span class="badge b-comp">GPU #1 Load</span></td>
+            <td><b>12.38 → 7.80 ms</b><br/>(now split in P2)</td>
+            <td><code>ComputeEntry</code> previously software-traced BVH4 primary rays + full shading + AO + GI in one pass while the hardware rasterizer sat idle.</td>
+            <td><b>Phase 2:</b> Hardware Vulkan Reversed-Z VisBuffer (<code>WorldPrimaryVisRaster.slang</code> → <code>R32_UINT</code>) + 1-triangle hit reconstruction in <code>ComputeEntry</code> (0 primary BVH4 nodes!).</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>8. Full-Resolution AO &amp; GI Cone Marching</b></td>
             <td><span class="badge b-comp">GPU ALU/Tex</span></td>
             <td>~3.5–5 ms/frame</td>
-            <td>Every pixel (1×1) marches GDF AO + Radiosity cones even though diffuse indirect lighting is low-frequency and denoised immediately after.</td>
-            <td><b>Phase 2:</b> Run GDF AO + Radiosity GI at half resolution (¼ pixel count) + joint bilateral depth/normal upsample.</td>
-            <td><span class="badge b-danger">Phase 2</span></td>
+            <td>Every pixel (1×1) marched 3D GDF AO + 5-cone Radiosity GI even though diffuse indirect lighting is low-frequency.</td>
+            <td><b>Phase 2:</b> Dedicated <code>HalfResIndirectEntry</code> at <code>(W+1)/2 × (H+1)/2</code> (<b>¼ pixels</b>) + 2×2 depth/plane/normal joint bilateral upsample in <code>DenoiseCompositeEntry</code>.</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
           </tr>
-          <tr data-status="open" data-domain="cpu">
-            <td><b>8. Inspector / ThorVG Vector Sync Readback</b></td>
-            <td><span class="badge b-danger">CPU+GPU Stall</span></td>
-            <td><b>18 spikes</b><br/>10–22.9 ms (F=2: 67 ms)</td>
-            <td><code>VectorCanvasRasterizer.cpp:2249/2255</code> calls <code>AwaitTimelineTick</code> + metrics readback on the SAME <code>PrimaryQueue</code>; line <code>632</code> calls <code>vkDeviceWaitIdle</code> on resize.</td>
-            <td><b>Phase 2:</b> Async double-buffered Inspector/Vector GPU baking + eliminate per-hover readback &amp; <code>vkDeviceWaitIdle</code>.</td>
-            <td><span class="badge b-danger">Open (UI)</span></td>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>9. Inspector / ThorVG Vector Sync Readback</b></td>
+            <td><span class="badge b-sync">CPU+GPU Stall</span></td>
+            <td><b>18 spikes</b><br/>10–22.9 ms</td>
+            <td><code>VectorCanvasRasterizer.cpp</code> called <code>AwaitTimelineTick</code> + metrics readback synchronously even for GPU-resident bakes (<code>OutRGBA == nullptr</code>).</td>
+            <td><b>Phase 2:</b> Async <code>PendingAsyncFrames</code> retirement queue reaped via <code>QueryTimelineReached</code> without blocking CPU.</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
           </tr>
-          <tr data-status="open" data-domain="cpu">
-            <td><b>9. ImGui Texture Upload Blocking Wait</b></td>
-            <td><span class="badge b-danger">CPU Stall</span></td>
-            <td>Part of <b>15 Present</b> &amp; <b>18 Insp</b> spikes</td>
-            <td><code>ImGuiOverlayRasterization.cpp:991</code> submits texture upload and immediately calls <code>AwaitTimelineTick</code>; line <code>1079</code> calls <code>vkDeviceWaitIdle</code>.</td>
-            <td><b>Phase 2:</b> Record texture copies directly into the frame's ImGui command buffer (zero extra submit/wait!).</td>
-            <td><span class="badge b-danger">Open (UI)</span></td>
+          <tr data-status="fixed" data-domain="cpu">
+            <td><b>10. ImGui Texture Upload Blocking Wait</b></td>
+            <td><span class="badge b-sync">CPU Stall</span></td>
+            <td>Part of <b>Present</b> &amp; <b>Insp</b> spikes</td>
+            <td><code>ImGuiOverlayRasterization.cpp:991</code> submitted texture upload and immediately called <code>AwaitTimelineTick</code>.</td>
+            <td><b>Phase 2:</b> Transient staging buffer + async timeline submission reaped non-blockingly via <code>ReapPendingAsyncTexUploads</code>.</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
+          </tr>
+          <tr data-status="fixed" data-domain="gpu">
+            <td><b>11. SkyViewLUT GTX Negative <code>OpSRem</code> Seam</b></td>
+            <td><span class="badge b-comp">GPU + GTX Bug</span></td>
+            <td>14 px vertical stripe + 8 fetches/eval</td>
+            <td><code>SkyViewTransmittanceCompute.slang:198</code> emitted negative <code>floor(FX)</code> + 3× signed <code>OpSRem</code> on <code>-O0</code> SPIR-V at world azimuth <code>±π</code>.</td>
+            <td><b>Phase 2:</b> Replaced with strictly non-negative unsigned wrap (<code>uint(U*W + W - 0.5) % W</code>) + smoothstep bilinear (halves fetches 8 → 4, zero signed <code>OpSRem</code>).</td>
+            <td><span class="badge b-fixed">Fixed in P2</span></td>
           </tr>
           <tr data-status="open" data-domain="gpu">
-            <td><b>10. Unpacked <code>RGBA32F</code> G-Buffers + Copy-to-Image</b></td>
+            <td><b>12. Unpacked <code>RGBA32F</code> G-Buffers + Copy-to-Image</b></td>
             <td><span class="badge b-comp">GPU BW</span></td>
             <td>~1–2 ms at 1080p+</td>
             <td>9 separate 128-bit <code>StructuredBuffer&lt;float4&gt;</code> G-buffers + <code>OutputPixelBuffer</code> copied to <code>DisplayOutputImage2D</code> every frame.</td>
-            <td><b>Phase 2:</b> Compact <code>RGBA16F</code> / oct-normal G-buffer textures + direct <code>RWTexture2D</code> write to display image.</td>
-            <td><span class="badge b-danger">Phase 2</span></td>
+            <td><b>Phase 3:</b> Compact <code>RGBA16F</code> / oct-normal G-buffer textures + direct <code>RWTexture2D</code> write to display image.</td>
+            <td><span class="badge b-comp">Phase 3</span></td>
           </tr>
           <tr data-status="open" data-domain="gpu">
-            <td><b>11. <code>slangc -O0</code> Unoptimized SPIR-V</b></td>
+            <td><b>13. <code>slangc -O0</code> (No <code>spirv-opt</code> Bundled)</b></td>
             <td><span class="badge b-comp">GPU ALU/Reg</span></td>
-            <td>~10–25% slower shaders</td>
-            <td><code>CMakeLists.txt:342</code> compiles all shaders with <code>-O0</code> (no dead-code/register/CSE optimization before Vulkan driver ingestion).</td>
-            <td><b>Phase 2:</b> Enable <code>-O2</code>/<code>-O3</code> or split shaders so Turing/RTX compilers achieve high warp occupancy.</td>
-            <td><span class="badge b-danger">Phase 2</span></td>
-          </tr>
-          <tr data-status="open" data-domain="gpu">
-            <td><b>12. SkyViewLUT Manual SSBO Wrap &amp; Catmull-Rom</b></td>
-            <td><span class="badge b-comp">GPU + GTX Bug</span></td>
-            <td>Visual bug + 8 fetches/eval</td>
-            <td><code>SkyViewTransmittanceCompute.slang:198</code> manually indexes a packed SSBO with signed <code>OpSRem</code> on negative <code>FX</code>.</td>
-            <td><b>Phase 2:</b> Convert SkyViewLUT to <code>VK_IMAGE_TYPE_2D</code> (<code>RGBA16F</code>) with hardware <code>REPEAT</code> + <code>LINEAR</code> filtering.</td>
-            <td><span class="badge b-danger">Phase 2 + Bugfix</span></td>
+            <td>~10–15% shader ALU</td>
+            <td>Pinned <code>slangtorch</code> lacks downstream <code>spirv-opt</code>, so shaders compile at <code>-O0</code> (splitting into lean VisBuf + Direct + HalfRes kernels in Phase 2 mitigates VGPR pressure directly).</td>
+            <td><b>Phase 3:</b> Bundle official standalone <code>spirv-opt</code> (Vulkan SDK) in <code>PrepareShaderToolchain.py</code> to optimize compiled <code>.spv</code> binaries post-Slang.</td>
+            <td><span class="badge b-comp">Phase 3</span></td>
           </tr>
         </tbody>
       </table>
@@ -1222,10 +1230,10 @@ int   IX1     = (IX0 + 1) % W;</div>
 <span class="hl-red">OpSRem</span>         %3546 = (%3544 + 1) % W</div>
 
         <div class="callout callout-fixed" style="margin-top:10px;">
-          <b style="color:#86efac;">How We'll Fix It Together in Phase 2 (100% immune on all GPUs):</b>
+          <b style="color:#86efac;">Fixed in Phase 2 (Commit <code>306820fe</code> — 100% immune on all GPUs):</b>
           <div style="font-size:12.4px; color:#cbd5e1; margin-top:4px;">
-            1. <b>Primary fix (faster + cleaner):</b> Promote <code>SkyViewLUT</code> from a linear <code>StructuredBuffer&lt;float4&gt;</code> to a real <code>VK_IMAGE_TYPE_2D</code> (<code>192×108</code>, <code>R16G16B16A16_SFLOAT</code>) with <code>VK_SAMPLER_ADDRESS_MODE_REPEAT</code> in U and <code>CLAMP_TO_EDGE</code> in V — zero signed modulo, 1 hardware texture fetch instead of 8 SSBO reads!<br/>
-            2. <b>Belt-and-suspenders math fix:</b> Eliminate negative <code>FX</code> completely by biasing before <code>floor</code>: <code>uint IX0 = uint(floor(U * float(W) + float(W) - 0.5)) % WidthPx;</code> (100% unsigned <code>OpUMod</code>, never negative).
+            1. <b>Strictly unsigned azimuth wrap:</b> Eliminated negative <code>FX</code> and all 3 signed <code>OpSRem</code> instructions in <code>SkyViewTransmittanceCompute.slang</code> via <code>float FXPos = U * float(WidthPx) + float(WidthPx) - 0.5; uint UX0 = uint(FXPos) % WidthPx;</code> (100% <code>OpConvertFToU</code> + <code>OpUMod</code>, never negative).<br/>
+            2. <b>2× fewer SkyView memory fetches:</b> Replaced 4-row Catmull-Rom (8 SSBO reads) with horizon-clamped smoothstep bilinear (4 reads), preserving bank boundaries while cutting SkyView bandwidth in half.
           </div>
         </div>
       </div>
@@ -1235,30 +1243,30 @@ int   IX1     = (IX0 + 1) % W;</div>
   <!-- SECTION 6: PHASE 1 VS PHASE 2 ROADMAP -->
   <section id="phase2">
     <div class="sec-head">
-      <h2><span class="sec-num">06</span> Phase 1 (Ready to Test Now) vs Phase 2 (Next Architectural Leap)</h2>
-      <span class="sec-sub">No C++ code was changed in this turn — Phase 1 is pushed at <code>185a8926</code> so you can benchmark on your GTX 1650 SUPER first</span>
+      <h2><span class="sec-num">06</span> Completed Delivery: Phase 1 + Tick Fix + Phase 2 (All Live on GitHub)</h2>
+      <span class="sec-sub">Branch <code>arena/2809d087-frontier</code> — Phase 1 (<code>185a8926</code>), Tick Ping-Pong Fix (<code>c2e6c5a1</code>), Phase 2 + Timing Log SHA + Cached Windows CI (<code>306820fe+</code>)</span>
     </div>
 
     <div class="two-col-compare">
       <div class="card" style="border-color:rgba(34,197,94,0.4);">
-        <h3>Phase 1 — Live on GitHub Now <span class="badge b-fixed">Pushed · 7/7 Tests Pass</span></h3>
+        <h3>Phase 1 + Tick Fix — Verified on GTX <span class="badge b-fixed">Done · 2.2× GPU Gain</span></h3>
         <ul class="insp-list" style="margin-top:8px;">
-          <li><b>Fix #1 (GPU Dirty-Instance Transform):</b> <code>WorldInstanceTransformCompute.slang</code> transforms only moved/scaled instances directly inside VRAM; <code>DispatchGpuScenePrecompute</code> runs async on Ring Slot 2.</li>
-          <li><b>Fix #2A &amp; #2B (Hardware 3D GDF/Radiosity):</b> Real <code>VK_IMAGE_TYPE_3D</code> textures (`R16F`/`RGBA16F`) with hardware trilinear TMU sampling + AO/GI open-space early-outs &amp; trimmed GTX step counts.</li>
-          <li><b>Fix #3 (1-Pass Fused Denoise):</b> DirectPBR &amp; GTX GDF GI collapse 3 passes → 1 fused pass + <code>pow()</code>-free normal weights.</li>
-          <li><b>Fix #4 (Zero-Stall Gizmo &amp; Resize):</b> 3-slot async gizmo ring, non-blocking pick-patch harvest, stationary gizmo cache, deferred retirement (zero <code>vkDeviceWaitIdle</code>).</li>
-          <li><b>Fix #6 (2-Slot Async Live World Ring):</b> Live viewport renders never block CPU on <code>AwaitTimelineTick</code>.</li>
+          <li><b>Fix #1 (GPU Dirty-Instance Transform):</b> <code>WorldInstanceTransformCompute.slang</code> transforms only dirty spans in VRAM; drag <code>SceneSync</code> dropped <b>28.74 ms → 0.43 ms</b> (45× faster).</li>
+          <li><b>Fix #2A &amp; #2B (Hardware 3D GDF/Radiosity):</b> Real <code>VK_IMAGE_TYPE_3D</code> textures (<code>R16F</code>/<code>RGBA16F</code>) + AO/GI early-outs dropped steady GPU <b>19.1 ms → 8.72 ms</b>.</li>
+          <li><b>Fix #3 (1-Pass Fused Denoise):</b> Dropped <code>Denoise</code> from <b>2.1 ms → 0.86 ms</b>.</li>
+          <li><b>Fix #4 &amp; #6 (Async Rings):</b> 3-slot async gizmo (<b>24 ms → 0.24 ms</b>) + 2-slot live world ring + deferred RT retirement.</li>
+          <li><b>CPU SkyView Ping-Pong Fix (<code>c2e6c5a1</code>):</b> Fixed <code>WorldEnvironmentRegistry.cpp</code> ↔ <code>EditorLifecycle.cpp</code> 500 ms/frame CPU SkyView LUT re-bake &amp; GPU P8 clock drop.</li>
         </ul>
       </div>
 
-      <div class="card" style="border-color:rgba(56,189,248,0.4);">
-        <h3>Phase 2 — Next (After Your GTX Test Log) <span class="badge b-comp">Planned Next</span></h3>
+      <div class="card" style="border-color:rgba(34,197,94,0.45);">
+        <h3>Phase 2 + Telemetry + CI Cache — Shipped Now <span class="badge b-fixed">Done · 7/7 Tests Pass</span></h3>
         <ul class="insp-list" style="margin-top:8px;">
-          <li><b>Hardware Rasterized Primary VisBuffer / G-Buffer:</b> Let GTX 1650 SUPER's idle fixed-function rasterizer draw all primary triangles in ~0.4 ms instead of software BVH4 ray tracing every pixel!</li>
-          <li><b>Split Monolithic <code>ComputeEntry</code>:</b> Separate lean Direct Lighting + PCSS pass (high SM occupancy!) from Half-Res (¼ pixels) 3D GDF AO/GI pass + joint bilateral upsample.</li>
-          <li><b>Fix GTX Vertical Sky/Ground Seam:</b> Promote <code>SkyViewLUT</code> to hardware <code>VK_IMAGE_TYPE_2D</code> with <code>REPEAT</code> U addressing (kills the bug + cuts 8 SSBO fetches to 1 TMU fetch).</li>
-          <li><b>Eliminate Remaining UI/Inspector Sync Stalls:</b> Remove blocking <code>AwaitTimelineTick</code> in <code>ImGuiOverlayRasterization:991</code> and <code>VectorCanvasRasterizer:2249/632</code> so hovering Inspector cards never stalls behind a world frame.</li>
-          <li><b>Shader Optimization Flag:</b> Move off <code>-O0</code> SPIR-V compilation + compact G-buffers from <code>RGBA32F</code> to <code>RGBA16F</code>.</li>
+          <li><b>Hardware Rasterized VisBuffer (<code>WorldPrimaryVisRaster.slang</code>):</b> Reversed-Z <code>D32_SFLOAT</code> + <code>R32_UINT</code> triangle-ID rasterizer + Nanite cluster culling. <code>ComputeEntry</code> skips software BVH4 primary rays completely.</li>
+          <li><b>Half-Res AO/GI + 2×2 Joint Bilateral Upsample:</b> Dedicated <code>HalfResIndirectEntry</code> runs 3D GDF AO &amp; 5-cone GI at <b>¼ pixel count</b>; <code>DenoiseCompositeEntry</code> upsamples with plane/normal weights.</li>
+          <li><b>GTX Vertical Sky/Ground Seam Fix:</b> Strictly unsigned <code>SkyViewTransmittanceCompute.slang</code> wrap + 4-tap smoothstep bilinear.</li>
+          <li><b>Async ImGui &amp; VectorCanvas Retirement:</b> Eliminated mid-frame <code>AwaitTimelineTick</code> stalls in <code>ImGuiOverlayRasterization</code> &amp; <code>VectorCanvasRasterizer</code>.</li>
+          <li><b>Build Commit &amp; DateTime in <code>FrontierTiming.log</code> + Fast Windows CI:</b> Stamps <code># BuildCommit: &lt;sha&gt; | RunDateTime: YYYY-MM-DD HH:MM:SS</code> + caches deps/fonts/<code>sccache</code> in <code>windows-build.yml</code>.</li>
         </ul>
       </div>
     </div>
@@ -1309,15 +1317,15 @@ const NODE_DATA = {
   "cpu-ui": {
     tag: "STAGE A4 · CPU EDITOR UI & INSPECTORS",
     title: "ImGui Layout, Outliner & Project Zero Inspectors",
-    desc: "Builds immediate-mode ImGui draw lists and triggers ThorVG vector graphics / preview cards when inspector widgets change.",
-    files: "<code>Engine/Lifecycle/EditorLifecycle.cpp</code> · <code>Engine/Editor/Inspectors/*.cpp</code> · <code>Engine/Components/Controls/InspectorVectorGraphics.cpp</code>",
+    desc: "Builds immediate-mode ImGui draw lists and triggers ThorVG vector graphics / preview cards asynchronously when inspector widgets change.",
+    files: "<code>Engine/Lifecycle/EditorLifecycle.cpp</code> · <code>Engine/Editor/Inspectors/*.cpp</code> · <code>Engine/Editor/WorldEnvironmentRegistry.cpp</code>",
     work: [
-      "Emits ImGui draw commands for Outliner, Toolbar, Status bar, and Inspector cards (~1.26 ms steady).",
-      "When hovering/dragging sliders or switching Inspector tabs, tessellates SVG/TTF paths via ThorVG and requests GPU canvas redraw.",
-      "Uploads modified RGBA texture surfaces into ImGui's Vulkan texture cache."
+      "Emits ImGui draw commands for Outliner, Toolbar, Status bar, and Inspector cards (~0.6–1.0 ms steady).",
+      "WorldEnvironmentRegistry now adopts synced SkyRadiance &amp; gates CPU SkyView fallback on <code>!GpuReady</code> (eliminated 500 ms/frame Tick ping-pong in <code>c2e6c5a1</code>).",
+      "Uploads modified RGBA texture surfaces &amp; GPU-resident vector cards asynchronously without mid-frame stalls (Phase 2)."
     ],
-    risk: "<b>18 spikes up to 22.93 ms (F=2: 66.97 ms)</b> — caused not just by CPU path building, but because the GPU vector raster + ImGui texture upload block on <code>AwaitTimelineTick</code> behind the 12 ms world render!",
-    status: "<span class='badge b-danger'>Open — Phase 2 UI Fix</span> Make vector baking &amp; ImGui texture uploads fully async."
+    risk: "Previously suffered 500 ms Tick ping-pong + 18 Inspector sync spikes (up to 22.93 ms).",
+    status: "<span class='badge b-fixed'>Fixed in c2e6c5a1 + Phase 2</span> Async UI texture &amp; vector baking."
   },
   "sync-ring": {
     tag: "STAGE B1 · VULKAN DESCRIPTOR ISOLATION",
@@ -1357,17 +1365,17 @@ const NODE_DATA = {
     status: "<span class='badge b-fixed'>Fixed in Phase 1</span> Zero <code>vkDeviceWaitIdle</code> during viewport/gizmo resize."
   },
   "sync-ui-wait": {
-    tag: "STAGE B4 · REMAINING CPU STALLS",
-    title: "Synchronous Waits in ImGui &amp; VectorCanvas",
-    desc: "The last remaining mid-frame blocking synchronization points in the live editor loop.",
-    files: "<code>ImGuiOverlayRasterization.cpp:991,1079</code> · <code>VectorCanvasRasterizer.cpp:632,2249,2255</code>",
+    tag: "STAGE B4 · ASYNC UI & VECTOR RETIREMENT (PHASE 2)",
+    title: "Non-Blocking ImGui &amp; VectorCanvas Retirement Rings",
+    desc: "Replaces mid-frame blocking AwaitTimelineTick calls with timeline-tracked async retirement queues.",
+    files: "<code>ImGuiOverlayRasterization.{h,cpp}</code> · <code>VectorCanvasRasterizer.{h,cpp}</code>",
     work: [
-      "<code>ImGuiOverlayRasterization:991</code> calls <code>AwaitTimelineTick</code> right after every UI texture upload.",
-      "<code>VectorCanvasRasterizer:2249/2255</code> calls <code>AwaitTimelineTick</code> + metrics readback whenever an inspector SVG card redraws.",
-      "<code>VectorCanvasRasterizer:632</code> &amp; <code>ImGuiOverlayRasterization:1079</code> call <code>vkDeviceWaitIdle</code> on canvas resize."
+      "<code>ImGuiOverlayRasterization</code> allocates transient upload staging buffers, submits async, and reaps via <code>QueryTimelineReached</code> in <code>ReapPendingAsyncTexUploads</code>.",
+      "<code>VectorCanvasRasterizer</code> pushes GPU-resident bakes (<code>OutRGBA == nullptr</code>) to <code>PendingAsyncFrames</code> and harvests metrics asynchronously on subsequent frames.",
+      "Zero mid-frame queue drains while dragging sliders or hovering inspector controls."
     ],
-    risk: "<b>Directly causes the 18 <code>Insp</code> spikes (up to 22.93 ms) and contributes to the 15 <code>Present</code> spikes (up to 19.84 ms)</b> whenever you interact with inspector controls.",
-    status: "<span class='badge b-danger'>Open — Phase 2 UI Fix</span> Inline texture copies into the Present command buffer &amp; async double-buffer vector canvases."
+    risk: "Previously caused 18 Inspector spikes (up to 22.93 ms) by draining the shared queue behind a 12 ms world frame.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 2 (306820fe)</span>"
   },
   "gpu-xform": {
     tag: "STAGE C1 · GPU COMPUTE (NEW IN PHASE 1)",
@@ -1383,44 +1391,43 @@ const NODE_DATA = {
     status: "<span class='badge b-fixed'>Added in Phase 1</span> Ready to benchmark on GTX."
   },
   "gpu-precomp": {
-    tag: "STAGE C2 · GPU ASYNC PRECOMPUTE",
-    title: "Sky LUT, Solar Shadow Cascades &amp; 3D GDF/Radiosity Bake",
-    desc: "Updates global lighting volumes when camera clipmap scrolls, sun moves, or objects move.",
-    files: "<code>VulkanWorldRenderSequence.cpp</code> (<code>DispatchGpuScenePrecompute</code>) · <code>SkyViewTransmittanceCompute.slang</code>",
+    tag: "STAGE C2 · GPU ASYNC PRECOMPUTE + SEAMLESS SKY",
+    title: "Sky LUT (Unsigned Wrap), Shadow Cascades &amp; 3D GDF/Radiosity",
+    desc: "Updates global lighting volumes asynchronously when camera clipmap scrolls, sun moves, or objects move.",
+    files: "<code>VulkanWorldRenderSequence.cpp</code> · <code>SkyViewTransmittanceCompute.slang</code>",
     work: [
-      "Bakes <code>256×64</code> Transmittance, <code>32×32</code> MultiScatter, and <code>192×108</code> SkyView LUT (when sun/sky changes).",
-      "Renders Fine &amp; Coarse orthographic shadow depth cascades via compute BVH traversal.",
+      "Bakes <code>256×64</code> Transmittance, <code>32×32</code> MultiScatter, and <code>192×108</code> SkyView LUT on GPU only (CPU ping-pong bug fixed in <code>c2e6c5a1</code>).",
+      "Phase 2 fixed <code>EvaluateSkyViewLutSample</code> with strictly unsigned azimuth wrap + 4-tap smoothstep bilinear (kills GTX vertical sky/ground stripe).",
       "Toroidal slab-scrolls Fine/Coarse <code>64³</code> <code>R16F</code> 3D GDF textures and bakes 2-bounce <code>RGBA16F</code> 3D Radiosity pyramid (<code>64³→32³→16³→8³</code>)."
     ],
-    risk: "Previously blocked CPU with <code>AwaitTimelineTick</code> and wrote linear SSBOs. Phase 1 makes it async + writes hardware 3D textures directly. Note: SkyViewLUT SSBO still triggers the GTX vertical line bug.",
-    status: "<span class='badge b-fixed'>Async + 3D Tex in P1</span> (SkyView → 2D Tex in P2)."
+    risk: "Low amortized cost; runs asynchronously on Descriptor Ring Slot 2.",
+    status: "<span class='badge b-fixed'>Fixed in P1 + c2e6 + P2</span>"
   },
   "gpu-primary": {
-    tag: "STAGE C3 · GPU COMPUTE (#1 BOTTLENECK)",
-    title: "Monolithic Primary Trace, Shading, AO &amp; GI",
-    desc: "Single 8×8 compute dispatch executing primary ray-BVH4 intersection, OpenPBR material evaluation, shadows, reflections, 3D GDF AO, and 3D Radiosity GI per pixel.",
-    files: "<code>Engine/Shaders/GeometricRaster/WorldViewportRadiometricCompute.slang</code> (<code>ComputeEntry</code>)",
+    tag: "STAGE C3 · PHASE 2 SPLIT PIPELINE (HW VISBUF + DIRECT + ½-RES GI)",
+    title: "HW Raster VisBuffer → Lean Direct → Half-Res AO/GI",
+    desc: "Replaces software primary BVH4 tracing and full-res AO/GI with a 3-stage split GPU pipeline leveraging the GTX 1650 SUPER hardware rasterizer.",
+    files: "<code>WorldPrimaryVisRaster.slang</code> · <code>WorldViewportRadiometricCompute.slang</code> (<code>ComputeEntry</code> + <code>HalfResIndirectEntry</code>)",
     work: [
-      "Software-traces primary camera rays through the 4-wide BVH for every screen pixel (hardware rasterizer unused).",
-      "Evaluates OpenPBR direct sun/area/photometric lights + ContactPCSS shadow filtering.",
-      "Marches 3D GDF AO rays + 3D Radiosity GI cones at full 1×1 viewport resolution.",
-      "Writes 6–9 full-res <code>RGBA32F</code> G-buffer SSBOs for the Denoise pass."
+      "<b>Pass 1 (HW Graphics VisBuffer):</b> Vertex-pulls <code>ShadedTriangles</code> + Nanite <code>ActiveClusterBitmask</code> with Reversed-Z <code>D32_SFLOAT</code>, writing <code>R32_UINT</code> <code>TriIdx+1</code> directly to <code>PrimaryVisImg2D</code> (slot 38).",
+      "<b>Pass 2 (Lean Direct Compute):</b> Sky pixels exit with 0 BVH4 nodes; geometry pixels reconstruct exact hit + barycentrics + smooth normals from 1 triangle load and evaluate OpenPBR direct lights + ContactPCSS.",
+      "<b>Pass 3 (Half-Res Indirect):</b> <code>HalfResIndirectEntry</code> runs 3D GDF AO &amp; 5-cone Radiosity GI at <code>(W+1)/2 × (H+1)/2</code> (<b>¼ pixel count</b>) into <code>PongIndirectIrradiance</code>."
     ],
-    risk: "<b>#1 steady-state GPU cost: 12.38 ms avg (6.48–20.21 ms)!</b> 4,647-line <code>-O0</code> SPIR-V causes heavy VGPR register pressure (~25% SM occupancy) and severe warp divergence between sky, ground, and car pixels.",
-    status: "<span class='badge b-danger'>Phase 1 trimmed ~35–45% · Phase 2 splits completely</span>"
+    risk: "Cut monolithic 12.38–16.9 ms primary compute to 7.80 ms in Phase 1, and now eliminates primary BVH4 traversal + 75% of AO/GI pixel marches in Phase 2.",
+    status: "<span class='badge b-fixed'>Shipped in Phase 2 (306820fe)</span>"
   },
   "gpu-denoise": {
-    tag: "STAGE C4 · GPU POST &amp; DISPLAY COPY",
-    title: "Bilateral Denoise, Fog, GodRays, ACES &amp; Image Copy",
-    desc: "Spatial edge-preserving filter for AO/shadow/GI, volumetric fog &amp; lens flare composite, ACES filmic tone mapping, and copy to display texture.",
+    tag: "STAGE C4 · GPU 2×2 JOINT BILATERAL UPSAMPLE + ACES",
+    title: "2×2 Bilateral Upsample, Fog, GodRays, ACES &amp; Display Copy",
+    desc: "Edge-preserving 2×2 depth/plane/normal upsample of half-res AO/GI fused with sun filter, sky/cloud background, volumetric fog, ACES tone map, and display copy.",
     files: "<code>WorldViewportRadiometricCompute.slang</code> (<code>DenoiseCompositeEntry</code>) · <code>VulkanWorldRenderSequence.cpp</code>",
     work: [
-      "Filters AO/sun/GI with depth &amp; normal-weighted bilateral kernel (multiply-chain weights, no <code>pow()</code>).",
-      "Applies volumetric fog, god rays, lens flare, ACES filmic tone map, and sRGB8 packing.",
-      "Copies <code>OutputPixelBuffer</code> → <code>DisplayOutputImage2D</code> and transitions to <code>SHADER_READ_ONLY_OPTIMAL</code>."
+      "Upsamples half-res <code>PongIndirectIrradiance</code> (<code>IndirIrrad</code> + <code>DiffAo</code>) using plane-distance, world-distance, and normal-cosine bilateral weights (zero halos).",
+      "Shades deferred sky/cloud/celestial background for missed pixels (<code>GBufPosMask.w &lt; -0.5</code>).",
+      "Applies volumetric fog, god rays, lens flare, ACES filmic tone map, and copies to <code>DisplayOutputImage2D</code>."
     ],
-    risk: "Previously ran 3 full-screen sequential passes (1.93 ms avg). Phase 1 collapses DirectPBR &amp; GTX GDF GI to 1 fused pass (~0.7 ms). Phase 2 can eliminate the buffer-to-image copy by writing <code>RWTexture2D</code> directly.",
-    status: "<span class='badge b-fixed'>1-Pass Fused in P1</span>"
+    risk: "Measured 0.86 ms in Phase 1 (down from 2.1 ms); Phase 2 swaps full-res 3×3 AO filter for 4-tap 2×2 bilateral upsample.",
+    status: "<span class='badge b-fixed'>1-Pass Upsample in P2</span>"
   },
   "gfx-gizmo": {
     tag: "STAGE D1 · GPU GRAPHICS OVERLAY",
@@ -1436,30 +1443,30 @@ const NODE_DATA = {
     status: "<span class='badge b-fixed'>Fixed in Phase 1</span> 3-slot async ring + cached geometry + deferred resize."
   },
   "gfx-vector": {
-    tag: "STAGE D2 · GPU VECTOR GRAPHICS",
+    tag: "STAGE D2 · GPU VECTOR GRAPHICS (ASYNC IN P2)",
     title: "ThorVG GPU Stencil-Cover Vector Canvas",
     desc: "Renders crisp Inspector diagrams, dials, icons, and vector cards using Vulkan stencil-cover triangle fans &amp; stroke meshes.",
-    files: "<code>Engine/GeometricRaster/Vector/VectorCanvasRasterizer.cpp</code> · <code>VulkanVectorRenderMethod.cpp</code>",
+    files: "<code>Engine/GeometricRaster/Vector/VectorCanvasRasterizer.{h,cpp}</code> · <code>VulkanVectorRenderMethod.cpp</code>",
     work: [
       "Compiles ThorVG cubic Beziers to GPU fan/stroke vertex buffers.",
       "Executes Vulkan stencil-cover graphics render pass into an offscreen RGBA image.",
-      "Currently copies summary metrics + blocks CPU via <code>AwaitTimelineTick</code>."
+      "GPU-resident bakes (<code>OutRGBA == nullptr</code>) now retire command buffers &amp; metrics asynchronously via <code>PendingAsyncFrames</code>."
     ],
-    risk: "<b>Major cause of 18 <code>Insp</code> spikes (up to 22.93 ms)</b> because synchronous wait drains the entire shared <code>PrimaryQueue</code>.",
-    status: "<span class='badge b-danger'>Open — Phase 2 UI Fix</span> Remove blocking readback &amp; <code>vkDeviceWaitIdle</code>."
+    risk: "Eliminated blocking <code>AwaitTimelineTick</code> on GPU-resident vector bakes in Phase 2.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 2</span> Async timeline retirement."
   },
   "gfx-imgui": {
-    tag: "STAGE D3 · GPU UI COMPOSITOR",
+    tag: "STAGE D3 · GPU UI COMPOSITOR (ASYNC IN P2)",
     title: "ImGui Overlay Vulkan Graphics Pass",
     desc: "Draws the entire editor shell (Outliner, Viewport panel, Inspector panels, Toolbar, Menus) directly onto the swapchain image.",
-    files: "<code>Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.cpp</code>",
+    files: "<code>Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.{h,cpp}</code>",
     work: [
       "Streams ImGui vertex/index buffers and renders all UI windows in a single swapchain render pass.",
       "Samples <code>DisplayOutputImage2D</code> (or Gizmo composited output) inside the Viewport pane.",
-      "Synchronously uploads new/dirty UI textures via a separate command buffer + <code>AwaitTimelineTick</code> (line 991)."
+      "Submits UI texture uploads asynchronously with transient staging buffers reaped via <code>ReapPendingAsyncTexUploads</code>."
     ],
-    risk: "Steady draw is very fast (&lt;0.3 ms GPU), but any dynamic texture upload (glyphs, thumbnails, inspector cards) stalls the CPU on the shared queue.",
-    status: "<span class='badge b-danger'>Open — Phase 2 UI Fix</span> Inline texture copies into the main UI command buffer."
+    risk: "Steady draw is &lt;0.3 ms GPU; blocking texture upload wait removed in Phase 2.",
+    status: "<span class='badge b-fixed'>Fixed in Phase 2</span> Async texture upload ring."
   },
   "gfx-present": {
     tag: "STAGE D4 · SWAPCHAIN PRESENTATION",

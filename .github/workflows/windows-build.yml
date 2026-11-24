@@ -22,9 +22,6 @@ jobs:
     name: Build portable Frontier workspace package
     runs-on: windows-2022
     timeout-minutes: 90
-    env:
-      SCCACHE_DIR: ${{ runner.temp }}/sccache
-      SCCACHE_CACHE_SIZE: 4G
     steps:
       - name: Check out branch source
         uses: actions/checkout@v4
@@ -51,6 +48,10 @@ jobs:
           if (-not (Get-Command sccache -ErrorAction SilentlyContinue)) {
             choco install sccache -y --no-progress
           }
+          $SccacheDir = Join-Path $env:RUNNER_TEMP 'sccache'
+          New-Item -ItemType Directory -Force $SccacheDir | Out-Null
+          "SCCACHE_DIR=$SccacheDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCCACHE_CACHE_SIZE=4G" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           ninja --version
           sccache --version
 
