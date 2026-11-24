@@ -115,6 +115,12 @@ if (
   };
 }
 
+const ForestBackdropPath = path.join(Folder, "Assets/ForestLedBackdrop.jpg");
+if (fs.existsSync(ForestBackdropPath)) {
+  Assets.ForestLedBackdrop =
+    "data:image/jpeg;base64," + fs.readFileSync(ForestBackdropPath).toString("base64");
+}
+
 // Preserve the reference's document-wide CSS and control behaviour without restyling the current editor.
 const ReferenceOutput = await build({
   plugins: [

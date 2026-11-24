@@ -1391,7 +1391,7 @@ export const StudioLobby2InitialValues = {
     ProsceniumWidth: 20.5,
     WallHeight: 7.25,
     StudioFlags: true,
-    BackdropBrightness: 1.45,
+    BackdropBrightness: 1.25,
   },
   "l2-rock-outcrop": {
     ProceduralKind: "studio.rock_outcrop",

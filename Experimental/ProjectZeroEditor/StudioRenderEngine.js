@@ -146,6 +146,9 @@ uniform vec3 uFloorTint;
 uniform int uSelectedFlag;
 uniform float uTime;
 uniform float uWindStrength;
+uniform sampler2D uForestBackdropTex;
+uniform int uHasForestTex;
+uniform vec2 uBackdropSize;
 
 // Per-entity vehicle/surface paint overrides
 uniform vec3 uPaintAlbedo;
@@ -667,12 +670,29 @@ void main() {
     Roughness = 0.06;
     Clearcoat = 1.0;
   } else if (Mat == 21) {
-    // Backlit Forest LED Volume Backdrop Screen (procedural sunlit redwood forest!)
-    vec3 ForestImg = EvaluateForestBackdrop(vLocalPos.xy);
-    Albedo = ForestImg * 0.12;
-    Metallic = 0.0;
-    Roughness = 0.72;
-    Emissive = ForestImg * max(0.25, uEmissiveStrength);
+    // Photorealistic Virtual Production LED Volume Display Wall (ForestLedBackdrop.jpg!)
+    vec2 LedUv = vec2(
+      clamp(vLocalPos.x / max(uBackdropSize.x, 0.5) + 0.5, 0.0, 1.0),
+      clamp(1.0 - (vLocalPos.y - 0.08) / max(uBackdropSize.y, 0.5), 0.0, 1.0)
+    );
+    vec3 ForestImg = uHasForestTex == 1
+      ? pow(texture(uForestBackdropTex, LedUv).rgb, vec3(2.2))
+      : EvaluateForestBackdrop(vLocalPos.xy);
+
+    // Subtle real-world LED Volume cabinet micro-grid when inspecting up close
+    float CamDist = length(uCameraPos - vWorldPos);
+    float CloseFactor = smoothstep(4.2, 0.9, CamDist);
+    vec2 PixelCell = fract(vLocalPos.xy * 185.0);
+    float DiodeMask = 0.88 + 0.12 * smoothstep(0.06, 0.22, PixelCell.x) * smoothstep(0.06, 0.22, PixelCell.y);
+    // Subtle dark satin LED glass coating & extreme perimeter bezel feathering
+    float EdgeFeather = smoothstep(0.0, 0.015, LedUv.x) * smoothstep(1.0, 0.985, LedUv.x) *
+                        smoothstep(0.0, 0.02, LedUv.y) * smoothstep(1.0, 0.98, LedUv.y);
+    vec3 LedEmission = ForestImg * mix(1.0, DiodeMask, CloseFactor * 0.45) * (0.94 + 0.06 * EdgeFeather);
+    Albedo = vec3(0.015, 0.017, 0.016);
+    Metallic = 0.08;
+    Roughness = 0.3;
+    Clearcoat = 0.25;
+    Emissive = LedEmission * max(0.25, uEmissiveStrength);
   } else if (Mat == 22) {
     // Matte velvet-black studio negative-fill flags & proscenium surround
     Albedo = vec3(0.011, 0.012, 0.014);
@@ -715,6 +735,13 @@ void main() {
   float OverheadBand = smoothstep(0.32, 0.92, R.y) * smoothstep(8.5, 1.5, length(vWorldPos.xz));
   vec3 StudioIbl = mix(vec3(0.018, 0.021, 0.028), vec3(0.22, 0.24, 0.29), clamp(R.y * 0.5 + 0.5, 0.0, 1.0));
   StudioIbl += vec3(0.55, 0.58, 0.65) * OverheadBand * (1.0 - Roughness) * 0.35;
+  // Reflect the real photorealistic Forest LED display wall onto the vehicle clearcoat, glass & stream!
+  if (uHasForestTex == 1 && Mat != 21 && R.z < -0.08) {
+    vec2 RefUv = vec2(clamp(R.x * 0.55 + 0.5, 0.02, 0.98), clamp(0.68 - R.y * 0.62, 0.02, 0.98));
+    vec3 LedRef = pow(texture(uForestBackdropTex, RefUv).rgb, vec3(2.2));
+    float BackMask = smoothstep(-0.08, -0.45, R.z) * smoothstep(-0.2, 0.25, R.y);
+    StudioIbl += LedRef * BackMask * (0.48 + 0.42 * (1.0 - Roughness));
+  }
 
   float ContactOcc = (Mat == 6 || Mat == 7 || Mat == 16 || Mat == 17) ? ComputeVehicleContactShadow(vWorldPos) : 1.0;
   // Subtle ambient occlusion near studio cove corners and floor
@@ -952,6 +979,9 @@ export class StudioRenderEngine {
     this.ActiveGizmoState = null;
     this.ThumbCache = new Map();
     this.InitThumbnailTarget();
+    this.ForestBackdropTex = null;
+    this.ForestBackdropReady = false;
+    this.InitForestBackdropTexture();
     this.LastStats = {
       DrawCalls: 0,
       Triangles: 0,
@@ -975,6 +1005,7 @@ export class StudioRenderEngine {
     const Names = [
       "uViewProj", "uModel", "uNormalMat", "uCameraPos", "uViewportSize",
       "uTime", "uWindStrength", "uWindTurbulence", "uWindDir", "uWindOrigin", "uFanSpinAngle",
+      "uForestBackdropTex", "uHasForestTex", "uBackdropSize",
       "uExposure", "uAmbientFill", "uShadowDepth", "uVignette",
       "uTileSize", "uFloorGloss", "uPlasterGrain", "uCycloramaTint", "uFloorTint",
       "uSelectedFlag", "uPaintAlbedo", "uPaintMetallic", "uPaintRoughness", "uPaintClearcoat",
@@ -992,6 +1023,54 @@ export class StudioRenderEngine {
       uColor: Gl.getUniformLocation(this.GizmoProgram, "uColor"),
       uPointSize: Gl.getUniformLocation(this.GizmoProgram, "uPointSize"),
     };
+  }
+
+  InitForestBackdropTexture() {
+    const Gl = this.Gl;
+    const Tex = Gl.createTexture();
+    this.ForestBackdropTex = Tex;
+    Gl.bindTexture(Gl.TEXTURE_2D, Tex);
+    // Safe 1x1 dark forest placeholder until decoded image uploads
+    Gl.texImage2D(
+      Gl.TEXTURE_2D,
+      0,
+      Gl.RGBA,
+      1,
+      1,
+      0,
+      Gl.RGBA,
+      Gl.UNSIGNED_BYTE,
+      new Uint8Array([18, 34, 22, 255]),
+    );
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+    Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+    Gl.bindTexture(Gl.TEXTURE_2D, null);
+
+    if (typeof Image === "undefined") return;
+    const Src =
+      (typeof window !== "undefined" && window.NativeAssets?.ForestLedBackdrop) ||
+      "/Experimental/ProjectZeroEditor/Assets/ForestLedBackdrop.jpg";
+    const Img = new Image();
+    Img.crossOrigin = "anonymous";
+    Img.onload = () => {
+      if (this.Disposed || !this.ForestBackdropTex) return;
+      Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
+      Gl.texImage2D(Gl.TEXTURE_2D, 0, Gl.RGBA, Gl.RGBA, Gl.UNSIGNED_BYTE, Img);
+      Gl.generateMipmap(Gl.TEXTURE_2D);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR_MIPMAP_LINEAR);
+      Gl.texParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+      Gl.bindTexture(Gl.TEXTURE_2D, null);
+      this.ForestBackdropReady = true;
+      // Clear cached backdrop thumbnail so it refreshes with the real photorealistic forest image!
+      for (const Key of this.ThumbCache.keys()) {
+        if (Key.startsWith("proc:studio.forest_backdrop")) this.ThumbCache.delete(Key);
+      }
+    };
+    Img.src = Src;
   }
 
   UploadSurface(Surface) {
@@ -1178,6 +1257,11 @@ export class StudioRenderEngine {
     Gl.uniform3fv(this.Loc.uWindDir, [1.0, 0.0, 0.0]);
     Gl.uniform3fv(this.Loc.uWindOrigin, [0.0, 0.0, 0.0]);
     Gl.uniform1f(this.Loc.uFanSpinAngle, 0.0);
+    Gl.activeTexture(Gl.TEXTURE0);
+    Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
+    Gl.uniform1i(this.Loc.uForestBackdropTex, 0);
+    Gl.uniform1i(this.Loc.uHasForestTex, this.ForestBackdropReady ? 1 : 0);
+    Gl.uniform2f(this.Loc.uBackdropSize, Number(Val.ScreenWidth ?? 12.4), Number(Val.ScreenHeight ?? 6.2));
     Gl.uniform1f(this.Loc.uExposure, 1.45);
     Gl.uniform1f(this.Loc.uAmbientFill, 0.34);
     Gl.uniform1f(this.Loc.uShadowDepth, 0.0);
@@ -1444,6 +1528,14 @@ export class StudioRenderEngine {
     Gl.uniform3fv(this.Loc.uWindDir, WindDir);
     Gl.uniform3fv(this.Loc.uWindOrigin, WindOrigin);
     Gl.uniform1f(this.Loc.uFanSpinAngle, FanSpinAngle);
+
+    // Bind photorealistic Forest LED Volume Backdrop texture on unit 0
+    const BdVal = Values["l2-forest-backdrop"] || {};
+    Gl.activeTexture(Gl.TEXTURE0);
+    Gl.bindTexture(Gl.TEXTURE_2D, this.ForestBackdropTex);
+    Gl.uniform1i(this.Loc.uForestBackdropTex, 0);
+    Gl.uniform1i(this.Loc.uHasForestTex, this.ForestBackdropReady && LevelId === "studio-lobby-2" ? 1 : 0);
+    Gl.uniform2f(this.Loc.uBackdropSize, Number(BdVal.ScreenWidth ?? 12.4), Number(BdVal.ScreenHeight ?? 6.2));
 
     const AmbientVal = Values["studio-ambient"] || {};
     const CycVal = Values["studio-cyclorama"] || {};
@@ -2171,6 +2263,7 @@ export class StudioRenderEngine {
     if (this.ThumbFbo) Gl.deleteFramebuffer(this.ThumbFbo);
     if (this.ThumbTex) Gl.deleteTexture(this.ThumbTex);
     if (this.ThumbDepth) Gl.deleteRenderbuffer(this.ThumbDepth);
+    if (this.ForestBackdropTex) Gl.deleteTexture(this.ForestBackdropTex);
     Gl.deleteProgram(this.Program);
     Gl.deleteProgram(this.GizmoProgram);
   }
