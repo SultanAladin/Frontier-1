@@ -48,7 +48,21 @@ function AssertValidSurface(Label, Surface) {
   }
 }
 
-// 1. Verify ControlledIntegrator.GeometrySpace binary decode
+// 1. Verify ControlledIntegrator.GeometrySpace binary decode + GLSL shader symbol integrity
+const EngineSrc = fs.readFileSync(path.join(Here, "StudioRenderEngine.js"), "utf8");
+const GlslBuiltins = new Set([
+  "vec2","vec3","vec4","ivec2","ivec3","ivec4","mat2","mat3","mat4","float","int","uint","bool",
+  "sin","cos","tan","asin","acos","atan","pow","exp","log","sqrt","abs","sign","floor","ceil","fract",
+  "mod","min","max","clamp","mix","step","smoothstep","length","distance","dot","cross","normalize",
+  "reflect","refract","texture","transpose","inverse","main","if","for","while","return","layout",
+]);
+for (const [, ShaderName, RawBody] of EngineSrc.matchAll(/const (VertexShaderSource|FragmentShaderSource|GizmoVertexSource|GizmoFragmentSource) = `([\s\S]*?)`;/g)) {
+  const Body = RawBody.replace(/\/\/[^\n]*/g, "");
+  const Defs = new Set([...Body.matchAll(/^\s*(?:void|float|int|vec2|vec3|vec4|mat3|mat4)\s+([A-Za-z_]\w*)\s*\(/gm)].map((M) => M[1]));
+  const Calls = new Set([...Body.matchAll(/\b([A-Za-z_]\w*)\s*\(/g)].map((M) => M[1]));
+  const Missing = [...Calls].filter((C) => !Defs.has(C) && !GlslBuiltins.has(C));
+  assert.deepEqual(Missing, [], ShaderName + " has zero undefined GLSL function calls");
+}
 const GeoPath = path.join(Root, "EngineContent/Geometry/ControlledIntegrator.GeometrySpace");
 const RawBytes = fs.readFileSync(GeoPath);
 const RawBuf = RawBytes.buffer.slice(RawBytes.byteOffset, RawBytes.byteOffset + RawBytes.byteLength);

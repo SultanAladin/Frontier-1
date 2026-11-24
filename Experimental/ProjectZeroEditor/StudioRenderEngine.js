@@ -848,14 +848,14 @@ void main() {
       float NdotV = max(dot(N, V), 0.001);
       float NdotH = max(dot(N, H), 0.0);
       float VdotH = max(dot(V, H), 0.0);
-      float D = DistributionGgx(NdotH, Roughness);
-      float G = GeometrySmith(NdotV, NdotL, Roughness);
+      float D = DistributionGGX(NdotH, Roughness);
+      float G = GeometrySchlick(NdotV, Roughness) * GeometrySchlick(NdotL, Roughness);
       vec3 F = FresnelSchlick(VdotH, F0);
       vec3 Spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
       vec3 Kd = (vec3(1.0) - F) * (1.0 - Metallic);
-      Direct += (Kd * Albedo / 3.14159265 + Spec) * SunCol * NdotL;
+      Direct += (Kd * Albedo / PI + Spec) * SunCol * NdotL;
       if (Clearcoat > 0.01 && NdotL > 0.0) {
-        float Dc = DistributionGgx(NdotH, 0.05);
+        float Dc = DistributionGGX(NdotH, 0.05);
         float Fc = 0.04 + 0.96 * pow(1.0 - VdotH, 5.0);
         Direct += vec3(Dc * Fc * Clearcoat * 0.25) * SunCol * NdotL;
       }
