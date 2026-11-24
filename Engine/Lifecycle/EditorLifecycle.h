@@ -244,6 +244,17 @@ private:
     uint32_t                                                         LastSmrtMarchSteps   = 10u;
     float                                                            LastSkyFillGain      = 1.0f;
     float                                                            LastExposureGain     = 1.0f;
+    float                                                            LastPostProcessSat   = 1.0f;
+    float                                                            LastPostProcessCon   = 1.0f;
+    float                                                            LastPostProcessVig   = 0.0f;
+    bool                                                             LastMotionBlurOn     = false;
+    uint32_t                                                         LastMotionBlurStyle  = 0u;
+    float                                                            LastMotionBlurShutter = 180.0f;
+    float                                                            LastMotionBlurIntensity = 1.0f;
+    float                                                            LastMotionBlurRadius = 24.0f;
+    uint32_t                                                         LastMotionBlurSamples = 12u;
+    float                                                            LastMotionBlurAngle  = 0.0f;
+    uint64_t                                                         LastOutlinerVisibilitySig = 0ull;
     bool                                                             LastReflectionsEnabled = true;
     bool                                                             LastAaEnabled        = true;
     bool                                                             LastRtEnabled        = true;

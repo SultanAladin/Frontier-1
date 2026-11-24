@@ -301,6 +301,7 @@ private:
     uint32_t               CloudLayerProgramHandle       = UINT32_MAX;
     uint32_t               HalfResIndirectProgramHandle  = UINT32_MAX;
     uint32_t               DenoiseProgramHandle          = UINT32_MAX;
+    uint32_t               MotionBlurProgramHandle       = UINT32_MAX;
     uint32_t               TransmittanceLutProgramHandle = UINT32_MAX;
     uint32_t               MultiScatterLutProgramHandle  = UINT32_MAX;
     uint32_t               SkyViewLutProgramHandle       = UINT32_MAX;
@@ -452,6 +453,8 @@ private:
     uint32_t               LastPenumbraOrdinal           = UINT32_MAX;
     Mathematics::Axis3D    LastCameraOrigin              {};
     Mathematics::Axis3D    LastCameraForward             {};
+    OrthonormalCameraBasis PrevMotionBlurCameraBasis     {};
+    bool                   HasPrevMotionBlurCameraBasis  = false;
     float                  LastDispatchMilliseconds      = 0.0f;
     float                  LastSceneSyncMilliseconds     = 0.0f;
     ViewportTimingBreakdown LastViewportTiming           {};

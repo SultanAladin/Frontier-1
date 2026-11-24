@@ -45,7 +45,150 @@ namespace
     return Drop.Bottom() + 12.0f;
 }
 
+struct AttachableCameraComponentSpec
+{
+    const char*           DomainTag;
+    const char*           Title;
+    const char*           CategoryLabel;
+    const char*           Subtitle;
+    ConstructSlotCategory SlotCategory;
+    ColorRgba             AccentColor;
+};
+
+static constexpr std::array<AttachableCameraComponentSpec, 5u> AttachableCameraComponents = {{
+    { "env:lens-flare",      "Lens Flare",      "Cameras / Lens Flare",    "Optical streaks, halos & ghosts",      ConstructSlotCategory::LayerGroup,   ColorRgba{ 242u, 178u, 76u,  255u } },
+    { "env:motion-blur",     "Motion Blur",     "Cameras / Motion Blur",   "Shutter angle & camera velocity blur", ConstructSlotCategory::LayerGroup,   ColorRgba{ 130u, 186u, 245u, 255u } },
+    { "env:exposure",        "Exposure",        "Cameras / Exposure",      "EV compensation & display exposure",   ConstructSlotCategory::LayerGroup,   ColorRgba{ 234u, 206u, 108u, 255u } },
+    { "env:post-process",    "Post Process",    "Cameras / Post Process",  "ACES tone map, contrast & vignette",   ConstructSlotCategory::LayerGroup,   ColorRgba{ 196u, 148u, 240u, 255u } },
+    { "env:camera-settings", "Camera Settings", "Cameras / Render Engine", "Render engine, GI & shadow quality",   ConstructSlotCategory::OpticsCamera, ColorRgba{ 120u, 214u, 168u, 255u } },
+}};
+
+[[nodiscard]] ColorRgba ResolveComponentAccent(std::string_view Tag) noexcept
+{
+    for (const auto& Spec : AttachableCameraComponents)
+    {
+        if (Tag == Spec.DomainTag) return Spec.AccentColor;
+    }
+    return ColorRgba{ 168u, 174u, 188u, 255u };
+}
+
+[[nodiscard]] std::string FormatComponentLayerSummary(
+    const OutlinerRecordEntry& Child,
+    const InspectorInstanceRegister& Instances)
+{
+    char Buf[96]{};
+    if (Child.DomainTag == "env:lens-flare")
+    {
+        static constexpr std::array<const char*, 3u> Styles = {{ "Anamorphic", "Streaks", "Halos" }};
+        if (const auto* LF = Instances.FindLensFlare(Child.Token))
+        {
+            const uint32_t S = std::min<uint32_t>(static_cast<uint32_t>(LF->Flare.Style), 2u);
+            std::snprintf(Buf, sizeof(Buf), "%s \xC2\xB7 %.2f\xC3\x97", Styles[S], LF->Flare.FlareIntensity);
+            return Buf;
+        }
+        return "Anamorphic \xC2\xB7 1.15\xC3\x97";
+    }
+    if (Child.DomainTag == "env:motion-blur")
+    {
+        static constexpr std::array<const char*, 3u> Modes = {{ "Camera", "Directional", "Radial" }};
+        if (const auto* MB = Instances.FindMotionBlur(Child.Token))
+        {
+            const uint32_t M = std::min<uint32_t>(MB->StyleIndex, 2u);
+            std::snprintf(Buf, sizeof(Buf), "%.0f\xC2\xB0 shutter \xC2\xB7 %s", MB->ShutterAngleDegrees, Modes[M]);
+            return Buf;
+        }
+        return "180\xC2\xB0 shutter \xC2\xB7 Camera";
+    }
+    if (Child.DomainTag == "env:exposure")
+    {
+        if (const auto* Exp = Instances.FindExposure(Child.Token))
+        {
+            const float Gain = std::pow(2.0f, Exp->ExposureEv) * Exp->BiasMultiplier;
+            std::snprintf(Buf, sizeof(Buf), "%+.2f EV (%.2f\xC3\x97)", Exp->ExposureEv, Gain);
+            return Buf;
+        }
+        return "+0.00 EV (1.00\xC3\x97)";
+    }
+    if (Child.DomainTag == "env:post-process")
+    {
+        if (const auto* PP = Instances.FindPostProcess(Child.Token))
+        {
+            std::snprintf(Buf, sizeof(Buf), "EV %+.1f \xC2\xB7 Sat %.2f \xC2\xB7 Con %.2f", PP->ExposureEv, PP->SaturationGain, PP->ContrastGain);
+            return Buf;
+        }
+        return "ACES Filmic \xC2\xB7 Neutral";
+    }
+    if (!Child.Subtitle.empty()) return Child.Subtitle;
+    return "Camera component";
+}
+
 } // namespace
+
+OutlinerSlotToken CameraInspector::AttachCameraComponent(
+    OutlinerPanel&                                  Outliner,
+    InspectorInstanceRegister&                      Instances,
+    const GeometricRaster::WorldSceneSpecification& Scene,
+    OutlinerSlotToken                               CameraToken,
+    std::string_view                                ComponentTag)
+{
+    if (!CameraToken.Valid()) return {};
+
+    const AttachableCameraComponentSpec* FoundSpec = nullptr;
+    for (const auto& Spec : AttachableCameraComponents)
+    {
+        if (ComponentTag == Spec.DomainTag)
+        {
+            FoundSpec = &Spec;
+            break;
+        }
+    }
+    if (FoundSpec == nullptr) return {};
+
+    if (OutlinerRecordEntry* Cam = Outliner.AccessEntry(CameraToken))
+    {
+        Cam->Expanded = true;
+    }
+
+    OutlinerRecordEntry Record {};
+    Record.EnclosingToken    = CameraToken;
+    Record.Category          = FoundSpec->SlotCategory;
+    Record.Title             = FoundSpec->Title;
+    Record.DomainTag         = FoundSpec->DomainTag;
+    Record.CategoryLabel     = FoundSpec->CategoryLabel;
+    Record.Subtitle          = FoundSpec->Subtitle;
+    Record.VisibilityEnabled = true;
+
+    const OutlinerSlotToken ChildToken = Outliner.ConstructDirectEntry(std::move(Record));
+    if (!ChildToken.Valid()) return {};
+
+    if (ComponentTag == "env:lens-flare")
+    {
+        auto& LF = Instances.AccessLensFlare(ChildToken, Scene);
+        LF.Flare.Enabled = true;
+        if (LF.Flare.FlareIntensity < 0.05f) LF.Flare.FlareIntensity = 1.15f;
+    }
+    else if (ComponentTag == "env:motion-blur")
+    {
+        auto& MB = Instances.AccessMotionBlur(ChildToken);
+        MB.Enabled = true;
+    }
+    else if (ComponentTag == "env:exposure")
+    {
+        auto& Exp = Instances.AccessExposure(ChildToken);
+        Exp.Enabled = true;
+    }
+    else if (ComponentTag == "env:post-process")
+    {
+        auto& PP = Instances.AccessPostProcess(ChildToken);
+        PP.Enabled = true;
+    }
+    else if (ComponentTag == "env:camera-settings")
+    {
+        (void)Instances.AccessCameraSettings(ChildToken);
+    }
+
+    return ChildToken;
+}
 
 void CameraInspector::UpdateCameraBodySurface(uint32_t RigPresetIndex)
 {
@@ -75,9 +218,12 @@ void CameraInspector::UpdateCameraBodySurface(uint32_t RigPresetIndex)
 float CameraInspector::Construct(
     PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
     OutlinerRecordEntry& Entry, CameraInstanceData& Instance,
+    OutlinerPanel& Outliner, InspectorInstanceRegister& Instances,
+    const GeometricRaster::WorldSceneSpecification& Scene,
     ViewportDisplaySettings* DisplaySettings,
     const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched)
 {
+    const OutlinerSlotToken CameraToken = Entry.Token;
     const auto SyncCameraOptics = [&]() {
         if (DisplaySettings == nullptr) return;
         DisplaySettings->CameraFocalLengthMm  = std::clamp(Instance.FocalLengthMm, 12.0f, 200.0f);
@@ -100,7 +246,7 @@ float CameraInspector::Construct(
         Surface.StrokeRectangle(Banner, ColorRgba{ 255u, 255u, 255u, 22u }, 16.0f, 1.0f);
         (void)InspectorPrimitives::ConstructWrappedParagraph(
             Surface, Banner.X + 16.0f, Banner.Y + 14.0f, Banner.Width - 32.0f, 11.4f, 16.8f, InspectorMetrics::HeadingInk,
-            "Editor navigation camera \xC2\xB7 always present. Cannot be deleted or hidden. Construct adds separate scene cameras.");
+            "Editor navigation camera \xC2\xB7 always present. Cannot be deleted or hidden. Stack optical & post components below.");
         CursorY = Banner.Bottom() + 18.0f;
     }
 
@@ -109,6 +255,209 @@ float CameraInspector::Construct(
 
     if (ActivePage == 0u)
     {
+        // CAMERA COMPONENT LAYERSTACK CARD (ProjectZeroEditor-parity component stack directly on Camera)
+        struct LayerRowInfo
+        {
+            OutlinerSlotToken Token;
+            std::string       Title;
+            std::string       DomainTag;
+            std::string       Summary;
+            bool              Visible;
+            ColorRgba         Accent;
+        };
+        std::vector<LayerRowInfo> AttachedLayers {};
+        for (const OutlinerRecordEntry& Candidate : Outliner.QueryEntries())
+        {
+            if (Candidate.EnclosingToken == CameraToken && Candidate.Category != ConstructSlotCategory::Folder)
+            {
+                AttachedLayers.push_back({
+                    Candidate.Token,
+                    Candidate.Title,
+                    Candidate.DomainTag,
+                    FormatComponentLayerSummary(Candidate, Instances),
+                    Candidate.VisibilityEnabled,
+                    ResolveComponentAccent(Candidate.DomainTag),
+                });
+            }
+        }
+
+        const float RowH       = 46.0f;
+        const float RowGap     = 6.0f;
+        const float ListH      = AttachedLayers.empty()
+            ? 42.0f
+            : static_cast<float>(AttachedLayers.size()) * RowH + static_cast<float>(AttachedLayers.size() - 1u) * RowGap;
+        const float DrawerRowH = 38.0f;
+        const float DrawerGap  = 5.0f;
+        const float DrawerH    = AddComponentDrawerOpen
+            ? (18.0f + static_cast<float>(AttachableCameraComponents.size()) * (DrawerRowH + DrawerGap) + 6.0f)
+            : 0.0f;
+        const float StackCardH = 66.0f + ListH + 14.0f + 32.0f + DrawerH + 16.0f;
+
+        const Rectangle2D StackCard { LeftX, CursorY, InnerWidth, StackCardH };
+        char CountBuf[24]{};
+        std::snprintf(CountBuf, sizeof(CountBuf), "%zu layer%s", AttachedLayers.size(), AttachedLayers.size() == 1u ? "" : "s");
+        InspectorPrimitives::ConstructSectionSurface(Surface, StackCard, "Components", CountBuf, InspectorMetrics::MutedInk);
+
+        float LY = StackCard.Y + 62.0f;
+        OutlinerSlotToken PendingToggleToken {};
+        OutlinerSlotToken PendingSelectToken {};
+        OutlinerSlotToken PendingRemoveToken {};
+        std::string_view  PendingAttachTag   {};
+
+        if (AttachedLayers.empty())
+        {
+            const Rectangle2D EmptyWell { BodyX, LY, BodyW, 42.0f };
+            Surface.FillRectangle(EmptyWell, ColorRgba{ 24u, 24u, 26u, 255u }, 10.0f);
+            Surface.StrokeRectangle(EmptyWell, ColorRgba{ 255u, 255u, 255u, 14u }, 10.0f, 1.0f);
+            WorkspaceAppearance::ConstructTruncatedText(
+                Surface, FontWeightClass::Regular, { EmptyWell.X + 12.0f, EmptyWell.Y + 14.0f }, EmptyWell.Width - 24.0f,
+                10.8f, InspectorMetrics::DimInk, "No components stacked \xC2\xB7 add Lens Flare, Motion Blur, or Exposure");
+            LY = EmptyWell.Bottom() + 14.0f;
+        }
+        else
+        {
+            for (std::size_t I = 0u; I < AttachedLayers.size(); ++I)
+            {
+                const LayerRowInfo& Layer = AttachedLayers[I];
+                const Rectangle2D RowRect { BodyX, LY, BodyW, RowH };
+                const Rectangle2D EyeBtn  { RowRect.X + 8.0f, RowRect.Center().Y - 11.0f, 22.0f, 22.0f };
+                const Rectangle2D DelBtn  { RowRect.Right() - 28.0f, RowRect.Center().Y - 11.0f, 22.0f, 22.0f };
+                const bool RowHover = RowRect.Contains(Cursor);
+                const bool EyeHover = EyeBtn.Contains(Cursor);
+                const bool DelHover = DelBtn.Contains(Cursor);
+
+                Surface.FillRectangle(RowRect,
+                    RowHover ? ColorRgba{ 34u, 35u, 39u, 255u } : ColorRgba{ 25u, 26u, 28u, 255u }, 11.0f);
+                Surface.StrokeRectangle(RowRect,
+                    Layer.Visible ? ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(RowHover ? 42u : 20u) } : ColorRgba{ 255u, 255u, 255u, 10u },
+                    11.0f, 1.0f);
+
+                // Left visibility toggle dot
+                Surface.FillRectangle(EyeBtn,
+                    EyeHover ? ColorRgba{ 48u, 48u, 54u, 255u } : ColorRgba{ 18u, 18u, 20u, 255u }, 7.0f);
+                Surface.FillCircle(EyeBtn.Center(), 4.2f,
+                    Layer.Visible ? Layer.Accent : ColorRgba{ 78u, 78u, 86u, 255u });
+
+                // Title + live parameter summary
+                const float TextX = EyeBtn.Right() + 10.0f;
+                const float TextW = std::max(40.0f, DelBtn.X - TextX - 20.0f);
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Medium, { TextX, RowRect.Y + 8.0f }, TextW, 11.8f,
+                    Layer.Visible ? InspectorMetrics::HeadingInk : InspectorMetrics::DimInk, Layer.Title.c_str());
+                WorkspaceAppearance::ConstructTruncatedText(
+                    Surface, FontWeightClass::Regular, { TextX, RowRect.Y + 25.0f }, TextW, 9.8f,
+                    InspectorMetrics::MutedInk, Layer.Summary.c_str());
+
+                // Inspect chevron
+                const Point2D Chev { DelBtn.X - 10.0f, RowRect.Center().Y };
+                Surface.StrokeLine({ Chev.X - 2.5f, Chev.Y - 4.0f }, { Chev.X + 2.0f, Chev.Y }, InspectorMetrics::DimInk, 1.3f);
+                Surface.StrokeLine({ Chev.X + 2.0f, Chev.Y }, { Chev.X - 2.5f, Chev.Y + 4.0f }, InspectorMetrics::DimInk, 1.3f);
+
+                // Remove button (x)
+                Surface.FillRectangle(DelBtn,
+                    DelHover ? ColorRgba{ 120u, 44u, 44u, 220u } : ColorRgba{ 20u, 20u, 22u, 255u }, 7.0f);
+                const Point2D DC = DelBtn.Center();
+                const ColorRgba XInk = DelHover ? ColorRgba{ 255u, 228u, 228u, 255u } : InspectorMetrics::DimInk;
+                Surface.StrokeLine({ DC.X - 3.2f, DC.Y - 3.2f }, { DC.X + 3.2f, DC.Y + 3.2f }, XInk, 1.3f);
+                Surface.StrokeLine({ DC.X + 3.2f, DC.Y - 3.2f }, { DC.X - 3.2f, DC.Y + 3.2f }, XInk, 1.3f);
+
+                if (Input.PrimaryPointer.Pressed)
+                {
+                    if (EyeHover)      PendingToggleToken = Layer.Token;
+                    else if (DelHover) PendingRemoveToken = Layer.Token;
+                    else if (RowHover) PendingSelectToken = Layer.Token;
+                }
+
+                LY = RowRect.Bottom() + ((I + 1u < AttachedLayers.size()) ? RowGap : 14.0f);
+            }
+        }
+
+        // "+ Add component" button
+        const Rectangle2D AddBtn { BodyX, LY, BodyW, 32.0f };
+        const bool AddHover = AddBtn.Contains(Cursor);
+        Surface.FillRectangle(AddBtn,
+            AddComponentDrawerOpen ? ColorRgba{ 42u, 44u, 52u, 255u } : (AddHover ? ColorRgba{ 36u, 37u, 42u, 255u } : ColorRgba{ 26u, 27u, 30u, 255u }),
+            10.0f);
+        Surface.StrokeRectangle(AddBtn,
+            AddComponentDrawerOpen ? ColorRgba{ 224u, 166u, 76u, 185u } : ColorRgba{ 255u, 255u, 255u, static_cast<uint8_t>(AddHover ? 48u : 22u) },
+            10.0f, 1.0f);
+        const char* AddLabel = AddComponentDrawerOpen ? "Close component picker" : "+ Add component";
+        const float AddLW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 11.4f, AddLabel);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium,
+            { AddBtn.Center().X - AddLW * 0.5f, AddBtn.Y + 9.5f }, 11.4f,
+            AddComponentDrawerOpen ? ColorRgba{ 246u, 212u, 146u, 255u } : InspectorMetrics::HeadingInk, AddLabel);
+        if (AddHover && Input.PrimaryPointer.Pressed)
+        {
+            AddComponentDrawerOpen = !AddComponentDrawerOpen;
+        }
+
+        // Inline attachable camera component picker
+        if (AddComponentDrawerOpen)
+        {
+            float DY = AddBtn.Bottom() + 12.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, DY - 2.0f }, 9.2f, InspectorMetrics::DimInk, "STACK COMPONENT ON CAMERA");
+            DY += 12.0f;
+            for (const auto& Spec : AttachableCameraComponents)
+            {
+                bool AlreadyAttached = false;
+                for (const auto& L : AttachedLayers)
+                {
+                    if (L.DomainTag == Spec.DomainTag) { AlreadyAttached = true; break; }
+                }
+                const Rectangle2D OptRect { BodyX, DY, BodyW, DrawerRowH };
+                const bool OptHover = OptRect.Contains(Cursor);
+                Surface.FillRectangle(OptRect, OptHover ? ColorRgba{ 34u, 36u, 42u, 255u } : ColorRgba{ 20u, 20u, 22u, 255u }, 9.0f);
+                Surface.StrokeRectangle(OptRect, OptHover ? Spec.AccentColor.ScaledAlpha(0.75f) : ColorRgba{ 255u, 255u, 255u, 14u }, 9.0f, 1.0f);
+                Surface.FillCircle({ OptRect.X + 14.0f, OptRect.Center().Y }, 4.0f, Spec.AccentColor);
+                WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Medium, { OptRect.X + 26.0f, OptRect.Y + 6.0f }, OptRect.Width - 96.0f, 11.2f, InspectorMetrics::HeadingInk, Spec.Title);
+                WorkspaceAppearance::ConstructTruncatedText(Surface, FontWeightClass::Regular, { OptRect.X + 26.0f, OptRect.Y + 21.0f }, OptRect.Width - 96.0f, 9.2f, InspectorMetrics::DimInk, Spec.Subtitle);
+
+                const char* PillTxt = AlreadyAttached ? "Stack +" : "Add";
+                const float PW = WorkspaceAppearance::MeasureWeightedTextWidth(Surface, FontWeightClass::Medium, 9.5f, PillTxt) + 14.0f;
+                const Rectangle2D Pill { OptRect.Right() - PW - 8.0f, OptRect.Center().Y - 10.0f, PW, 20.0f };
+                Surface.FillRectangle(Pill, AlreadyAttached ? ColorRgba{ 46u, 46u, 52u, 255u } : Spec.AccentColor.ScaledAlpha(0.22f), 10.0f);
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { Pill.X + 7.0f, Pill.Y + 4.5f }, 9.5f,
+                    AlreadyAttached ? InspectorMetrics::MutedInk : Spec.AccentColor, PillTxt);
+
+                if (OptHover && Input.PrimaryPointer.Pressed)
+                {
+                    PendingAttachTag = Spec.DomainTag;
+                }
+                DY = OptRect.Bottom() + DrawerGap;
+            }
+        }
+
+        // Apply deferred Outliner mutations cleanly after layout rendering
+        if (PendingToggleToken.Valid())
+        {
+            if (OutlinerRecordEntry* Target = Outliner.AccessEntry(PendingToggleToken))
+            {
+                Target->VisibilityEnabled = !Target->VisibilityEnabled;
+                OutMutated = true;
+            }
+        }
+        else if (PendingRemoveToken.Valid())
+        {
+            Instances.EraseEntry(PendingRemoveToken);
+            (void)Outliner.DeleteSlot(PendingRemoveToken);
+            OutMutated = true;
+        }
+        else if (!PendingAttachTag.empty())
+        {
+            const OutlinerSlotToken NewChild = AttachCameraComponent(Outliner, Instances, Scene, CameraToken, PendingAttachTag);
+            if (NewChild.Valid())
+            {
+                AddComponentDrawerOpen = false;
+                OutMutated             = true;
+            }
+        }
+        else if (PendingSelectToken.Valid())
+        {
+            Outliner.SelectSingle(PendingSelectToken);
+        }
+
+        CursorY = StackCard.Bottom() + InspectorMetrics::SectionGap;
+
         // TAB 1: OVERVIEW — Lens + field of view (h = 516)
         const Rectangle2D LensCard { LeftX, CursorY, InnerWidth, 516.0f };
         InspectorPrimitives::ConstructSectionSurface(Surface, LensCard, "Lens + field of view");

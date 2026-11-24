@@ -27,12 +27,6 @@ public:
 private:
     uint32_t ActivePage      = 0u;
     uint32_t ActiveDragId    = 0u;
-    bool     ObjectMotion    = true;
-    bool     CameraMotion    = true;
-    uint32_t FrameRateIdx    = 0u; // 0=24fps, 1=30fps, 2=60fps
-    float    MaxBlurPercent  = 6.0f;
-    float    SampleCount     = 12.0f;
-    float    PreviewSpeed    = 1.0f;
 };
 
 } // namespace Frontier

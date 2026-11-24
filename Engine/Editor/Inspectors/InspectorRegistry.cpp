@@ -47,10 +47,11 @@ enum class ResolvedInspectorTarget : uint8_t
     LedStrip           = 24u,
     EnvironmentLight   = 25u,
     PostProcess        = 26u,
-    AnalyticPrimitive  = 27u,
-    NativeGeometry     = 28u,
-    ImportedGeometry   = 29u,
-    ProceduralGeometry = 30u,
+    Exposure           = 27u,
+    AnalyticPrimitive  = 28u,
+    NativeGeometry     = 29u,
+    ImportedGeometry   = 30u,
+    ProceduralGeometry = 31u,
 };
 
 [[nodiscard]] bool ContainsCaseFold(std::string_view Haystack, std::string_view Needle) noexcept
@@ -165,6 +166,7 @@ enum class ResolvedInspectorTarget : uint8_t
         return ResolvedInspectorTarget::CameraSettings;
     if (Tag == "env:environment-light") return ResolvedInspectorTarget::EnvironmentLight;
     if (Tag == "env:post-process")      return ResolvedInspectorTarget::PostProcess;
+    if (Tag == "env:exposure")          return ResolvedInspectorTarget::Exposure;
     if (Tag == "camera:perspective")    return ResolvedInspectorTarget::Camera;
     if (Tag.rfind("light:", 0u) == 0u)  return ClassifyLuminaireEntry(Entry);
     if (Tag.rfind("geom:", 0u) == 0u)   return ClassifyGeometryEntry(Entry);
@@ -178,6 +180,7 @@ enum class ResolvedInspectorTarget : uint8_t
     if (MatchAny("atmosphere"))                                   return ResolvedInspectorTarget::Atmosphere;
     if (MatchAny("lens flare"))                                   return ResolvedInspectorTarget::LensFlare;
     if (MatchAny("motion blur"))                                  return ResolvedInspectorTarget::MotionBlur;
+    if (MatchAny("exposure"))                                     return ResolvedInspectorTarget::Exposure;
     if (MatchAny("post process"))                                 return ResolvedInspectorTarget::PostProcess;
     if (MatchAny("environment light") || MatchAny("sky dome"))    return ResolvedInspectorTarget::EnvironmentLight;
     if (MatchAny("local cloud"))                                  return ResolvedInspectorTarget::LocalCloud;
@@ -232,6 +235,7 @@ enum class ResolvedInspectorTarget : uint8_t
         case ResolvedInspectorTarget::LedStrip:           return LedStripInspector::QuerySubtitle();
         case ResolvedInspectorTarget::EnvironmentLight:   return EnvironmentLightInspector::QuerySubtitle();
         case ResolvedInspectorTarget::PostProcess:        return PostProcessInspector::QuerySubtitle();
+        case ResolvedInspectorTarget::Exposure:           return ExposureInspector::QuerySubtitle();
         case ResolvedInspectorTarget::AnalyticPrimitive:  return AnalyticPrimitiveInspector::QuerySubtitle();
         case ResolvedInspectorTarget::ImportedGeometry:   return ImportedGeometryInspector::QuerySubtitle();
         case ResolvedInspectorTarget::ProceduralGeometry: return ProceduralGeometryInspector::QuerySubtitle();
@@ -382,7 +386,7 @@ bool InspectorRegistry::ConstructActiveInspector(
             CursorY = Rainbow.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessRainbow(Entry->Token), Input, LocalMutated, PageSwitched);
             break;
         case ResolvedInspectorTarget::Camera:
-            CursorY = Camera.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessCamera(Entry->Token, Scene), DisplaySettings, Input, LocalMutated, PageSwitched);
+            CursorY = Camera.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessCamera(Entry->Token, Scene), Outliner, Instances, Scene, DisplaySettings, Input, LocalMutated, PageSwitched);
             break;
         case ResolvedInspectorTarget::CameraSettings:
             CursorY = CameraSettings.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessCameraSettings(Entry->Token), DisplaySettings, Input, LocalMutated, PageSwitched);
@@ -419,6 +423,9 @@ bool InspectorRegistry::ConstructActiveInspector(
             break;
         case ResolvedInspectorTarget::PostProcess:
             CursorY = PostProcess.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessPostProcess(Entry->Token), DisplaySettings, Input, LocalMutated, PageSwitched);
+            break;
+        case ResolvedInspectorTarget::Exposure:
+            CursorY = Exposure.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessExposure(Entry->Token), DisplaySettings, Input, LocalMutated, PageSwitched);
             break;
         case ResolvedInspectorTarget::AnalyticPrimitive:
             CursorY = AnalyticPrimitive.Construct(Surface, InnerLeft, CursorY, InnerWidth, *Entry, Instances.AccessAnalyticPrimitive(Entry->Token, *Entry, Scene), Scene, Input, LocalMutated, PageSwitched);

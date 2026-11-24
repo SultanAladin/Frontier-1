@@ -43,6 +43,7 @@ void InspectorInstanceRegister::Clear() noexcept
     CameraSettingsEntries.clear();
     LensFlares.clear();
     MotionBlurs.clear();
+    Exposures.clear();
     PointLights.clear();
     SpotLights.clear();
     IesLights.clear();
@@ -78,6 +79,7 @@ void InspectorInstanceRegister::EraseEntry(OutlinerSlotToken Token) noexcept
     CameraSettingsEntries.erase(Key);
     LensFlares.erase(Key);
     MotionBlurs.erase(Key);
+    Exposures.erase(Key);
     PointLights.erase(Key);
     SpotLights.erase(Key);
     IesLights.erase(Key);
@@ -157,7 +159,12 @@ HeightFogInstanceData& InspectorInstanceRegister::AccessHeightFog(
     OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
 {
     auto [It, Inserted] = HeightFogs.try_emplace(Token.Identifier);
-    if (Inserted) It->second.HeightFog = Scene.Atmosphere.Fog.HeightFog;
+    if (Inserted)
+    {
+        It->second.HeightFog = Scene.Atmosphere.Fog.HeightFog;
+        It->second.HeightFog.Enabled = true;
+        if (It->second.HeightFog.Density < 1.0e-4f) It->second.HeightFog.Density = 0.018f;
+    }
     return It->second;
 }
 
@@ -165,7 +172,12 @@ AtmosphericFogInstanceData& InspectorInstanceRegister::AccessAtmosphericFog(
     OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
 {
     auto [It, Inserted] = AtmosphericFogs.try_emplace(Token.Identifier);
-    if (Inserted) It->second.AerialFog = Scene.Atmosphere.Fog.AerialFog;
+    if (Inserted)
+    {
+        It->second.AerialFog = Scene.Atmosphere.Fog.AerialFog;
+        It->second.AerialFog.Enabled = true;
+        if (It->second.AerialFog.DensityMultiplier < 0.05f) It->second.AerialFog.DensityMultiplier = 1.0f;
+    }
     return It->second;
 }
 
@@ -173,9 +185,14 @@ LocalFogInstanceData& InspectorInstanceRegister::AccessLocalFog(
     OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
 {
     auto [It, Inserted] = LocalFogs.try_emplace(Token.Identifier);
-    if (Inserted && !Scene.Atmosphere.Fog.LocalFogs.empty())
+    if (Inserted)
     {
-        It->second.LocalFog = Scene.Atmosphere.Fog.LocalFogs.front();
+        if (!Scene.Atmosphere.Fog.LocalFogs.empty())
+        {
+            It->second.LocalFog = Scene.Atmosphere.Fog.LocalFogs.front();
+        }
+        It->second.LocalFog.Enabled = true;
+        if (It->second.LocalFog.Density < 1.0e-4f) It->second.LocalFog.Density = 0.065f;
     }
     return It->second;
 }
@@ -184,7 +201,11 @@ GodRaysInstanceData& InspectorInstanceRegister::AccessGodRays(
     OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
 {
     auto [It, Inserted] = GodRays.try_emplace(Token.Identifier);
-    if (Inserted) It->second.GodRays = Scene.Atmosphere.Fog.GodRays;
+    if (Inserted)
+    {
+        It->second.GodRays = Scene.Atmosphere.Fog.GodRays;
+        It->second.GodRays.Enabled = true;
+    }
     return It->second;
 }
 
@@ -215,13 +236,47 @@ LensFlareInstanceData& InspectorInstanceRegister::AccessLensFlare(
     OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene)
 {
     auto [It, Inserted] = LensFlares.try_emplace(Token.Identifier);
-    if (Inserted) It->second.Flare = Scene.Atmosphere.LensFlare;
+    if (Inserted)
+    {
+        It->second.Flare = Scene.Atmosphere.LensFlare;
+        It->second.Flare.Enabled = true;
+        if (It->second.Flare.FlareIntensity < 0.05f) It->second.Flare.FlareIntensity = 1.15f;
+    }
     return It->second;
 }
 
 MotionBlurInstanceData& InspectorInstanceRegister::AccessMotionBlur(OutlinerSlotToken Token)
 {
     return MotionBlurs[Token.Identifier];
+}
+
+ExposureInstanceData& InspectorInstanceRegister::AccessExposure(OutlinerSlotToken Token)
+{
+    return Exposures[Token.Identifier];
+}
+
+const LensFlareInstanceData* InspectorInstanceRegister::FindLensFlare(OutlinerSlotToken Token) const noexcept
+{
+    const auto It = LensFlares.find(Token.Identifier);
+    return (It != LensFlares.end()) ? &It->second : nullptr;
+}
+
+const MotionBlurInstanceData* InspectorInstanceRegister::FindMotionBlur(OutlinerSlotToken Token) const noexcept
+{
+    const auto It = MotionBlurs.find(Token.Identifier);
+    return (It != MotionBlurs.end()) ? &It->second : nullptr;
+}
+
+const ExposureInstanceData* InspectorInstanceRegister::FindExposure(OutlinerSlotToken Token) const noexcept
+{
+    const auto It = Exposures.find(Token.Identifier);
+    return (It != Exposures.end()) ? &It->second : nullptr;
+}
+
+const PostProcessInstanceData* InspectorInstanceRegister::FindPostProcess(OutlinerSlotToken Token) const noexcept
+{
+    const auto It = PostProcesses.find(Token.Identifier);
+    return (It != PostProcesses.end()) ? &It->second : nullptr;
 }
 
 namespace
@@ -432,6 +487,20 @@ void InspectorInstanceRegister::CombineIntoScene(
     uint32_t ActiveWindCount   = 0u;
     uint32_t ActiveHeightFogCount = 0u;
     bool     FoundAnyHeightFog    = false;
+    bool     FoundAnyAerialFog    = false;
+    bool     FoundAnyGodRays      = false;
+    bool     FoundAnyLensFlare    = false;
+    bool     ActiveAerialFog      = false;
+    bool     ActiveGodRays        = false;
+    bool     ActiveLensFlare      = false;
+    bool     ActiveMotionBlur     = false;
+    bool     ActiveExposureOrPost = false;
+    float    CombinedExposureMul  = 1.0f;
+    float    CombinedSaturation   = 1.0f;
+    float    CombinedContrast     = 1.0f;
+    float    CombinedVignette     = 0.0f;
+    MotionBlurInstanceData CombinedMotionBlur {};
+    CombinedMotionBlur.Enabled    = false;
     GeometricRaster::HeightFogConfiguration CombinedHeightFog {};
 
     bool     FoundAnyAtmo      = false;
@@ -594,57 +663,130 @@ void InspectorInstanceRegister::CombineIntoScene(
             FoundAnyHeightFog = true;
             if (Visible)
             {
-                if (const auto It = HeightFogs.find(Key); It != HeightFogs.end())
+                HeightFogInstanceData DefaultHF {};
+                DefaultHF.HeightFog.Enabled = true;
+                const auto It = HeightFogs.find(Key);
+                const auto& HF = (It != HeightFogs.end()) ? It->second.HeightFog : DefaultHF.HeightFog;
+                if (ActiveHeightFogCount == 0u)
                 {
-                    if (ActiveHeightFogCount == 0u)
-                    {
-                        CombinedHeightFog = It->second.HeightFog;
-                    }
-                    else
-                    {
-                        CombinedHeightFog.Density = std::clamp(CombinedHeightFog.Density + It->second.HeightFog.Density, 0.0f, 0.25f);
-                        CombinedHeightFog.FalloffHeightMeters = std::max(CombinedHeightFog.FalloffHeightMeters, It->second.HeightFog.FalloffHeightMeters);
-                        CombinedHeightFog.SunScatterIntensity = std::max(CombinedHeightFog.SunScatterIntensity, It->second.HeightFog.SunScatterIntensity);
-                    }
-                    CombinedHeightFog.Enabled = true;
-                    ++ActiveHeightFogCount;
+                    CombinedHeightFog = HF;
                 }
+                else
+                {
+                    CombinedHeightFog.Density = std::clamp(CombinedHeightFog.Density + HF.Density, 0.0f, 0.25f);
+                    CombinedHeightFog.FalloffHeightMeters = std::max(CombinedHeightFog.FalloffHeightMeters, HF.FalloffHeightMeters);
+                    CombinedHeightFog.SunScatterIntensity = std::max(CombinedHeightFog.SunScatterIntensity, HF.SunScatterIntensity);
+                }
+                CombinedHeightFog.Enabled = true;
+                ++ActiveHeightFogCount;
             }
         }
         else if (Tag == "env:aerial-fog")
         {
-            if (const auto It = AtmosphericFogs.find(Key); It != AtmosphericFogs.end())
+            FoundAnyAerialFog = true;
+            if (Visible)
             {
-                Scene.Atmosphere.Fog.AerialFog = It->second.AerialFog;
-                Scene.Atmosphere.Fog.AerialFog.Enabled = Visible;
+                AtmosphericFogInstanceData DefaultAF {};
+                DefaultAF.AerialFog.Enabled = true;
+                const auto It = AtmosphericFogs.find(Key);
+                Scene.Atmosphere.Fog.AerialFog = (It != AtmosphericFogs.end()) ? It->second.AerialFog : DefaultAF.AerialFog;
+                Scene.Atmosphere.Fog.AerialFog.Enabled = true;
+                ActiveAerialFog = true;
             }
         }
         else if (Tag == "env:local-fog")
         {
             if (Visible)
             {
-                if (const auto It = LocalFogs.find(Key); It != LocalFogs.end())
+                LocalFogInstanceData DefaultLF {};
+                DefaultLF.LocalFog.Enabled = true;
+                if (std::fabs(Entry.PositionX) > 1.0e-3f || std::fabs(Entry.PositionY) > 1.0e-3f || std::fabs(Entry.PositionZ) > 1.0e-3f)
                 {
-                    auto F = It->second.LocalFog;
-                    F.Enabled = true;
-                    Scene.Atmosphere.Fog.LocalFogs.push_back(F);
+                    DefaultLF.LocalFog.VolumeCenterMeters = { Entry.PositionX, Entry.PositionY, Entry.PositionZ };
                 }
+                const auto It = LocalFogs.find(Key);
+                auto F = (It != LocalFogs.end()) ? It->second.LocalFog : DefaultLF.LocalFog;
+                F.Enabled = true;
+                Scene.Atmosphere.Fog.LocalFogs.push_back(F);
             }
         }
         else if (Tag == "env:god-rays")
         {
-            if (const auto It = GodRays.find(Key); It != GodRays.end())
+            FoundAnyGodRays = true;
+            if (Visible)
             {
-                Scene.Atmosphere.Fog.GodRays = It->second.GodRays;
-                Scene.Atmosphere.Fog.GodRays.Enabled = Visible;
+                GodRaysInstanceData DefaultGR {};
+                DefaultGR.GodRays.Enabled = true;
+                const auto It = GodRays.find(Key);
+                Scene.Atmosphere.Fog.GodRays = (It != GodRays.end()) ? It->second.GodRays : DefaultGR.GodRays;
+                Scene.Atmosphere.Fog.GodRays.Enabled = true;
+                ActiveGodRays = true;
             }
         }
         else if (Tag == "env:lens-flare")
         {
-            if (const auto It = LensFlares.find(Key); It != LensFlares.end())
+            FoundAnyLensFlare = true;
+            if (Visible)
             {
-                Scene.Atmosphere.LensFlare = It->second.Flare;
-                Scene.Atmosphere.LensFlare.Enabled = Visible && It->second.Flare.Enabled;
+                LensFlareInstanceData DefaultFlare {};
+                DefaultFlare.Flare.Enabled        = true;
+                DefaultFlare.Flare.FlareIntensity = 1.15f;
+                const auto It = LensFlares.find(Key);
+                const auto& LF = (It != LensFlares.end()) ? It->second.Flare : DefaultFlare.Flare;
+                if (LF.Enabled)
+                {
+                    Scene.Atmosphere.LensFlare         = LF;
+                    Scene.Atmosphere.LensFlare.Enabled = true;
+                    ActiveLensFlare                    = true;
+                }
+            }
+        }
+        else if (Tag == "env:motion-blur")
+        {
+            if (Visible)
+            {
+                MotionBlurInstanceData DefaultMB {};
+                const auto It = MotionBlurs.find(Key);
+                const auto& MB = (It != MotionBlurs.end()) ? It->second : DefaultMB;
+                if (MB.Enabled)
+                {
+                    CombinedMotionBlur = MB;
+                    ActiveMotionBlur   = true;
+                }
+            }
+        }
+        else if (Tag == "env:exposure")
+        {
+            if (Visible)
+            {
+                ExposureInstanceData DefaultExp {};
+                const auto It = Exposures.find(Key);
+                const auto& Exp = (It != Exposures.end()) ? It->second : DefaultExp;
+                if (Exp.Enabled)
+                {
+                    CombinedExposureMul *= std::pow(2.0f, Exp.ExposureEv) * Exp.BiasMultiplier;
+                    CombinedSaturation  *= Exp.SaturationGain;
+                    CombinedContrast    *= Exp.ContrastGain;
+                    CombinedVignette     = std::max(CombinedVignette, Exp.VignetteStrength);
+                    ActiveExposureOrPost = true;
+                }
+            }
+        }
+        else if (Tag == "env:post-process")
+        {
+            if (Visible)
+            {
+                PostProcessInstanceData DefaultPP {};
+                const auto It = PostProcesses.find(Key);
+                const auto& PP = (It != PostProcesses.end()) ? It->second : DefaultPP;
+                if (PP.Enabled)
+                {
+                    CombinedExposureMul *= std::pow(2.0f, PP.ExposureEv);
+                    CombinedSaturation  *= PP.SaturationGain;
+                    CombinedContrast    *= PP.ContrastGain;
+                    CombinedVignette     = std::max(CombinedVignette, PP.VignetteStrength);
+                    ActiveExposureOrPost = true;
+                }
             }
         }
         else if (Tag == "env:environment-light")
@@ -801,16 +943,25 @@ void InspectorInstanceRegister::CombineIntoScene(
         Scene.Atmosphere.Stars = CombinedStars;
         if (DisplaySettings) DisplaySettings->CelestialStarsEnabled = (ActiveStarCount > 0u);
     }
-    if (FoundAnyHeightFog)
+    if (FoundAnyHeightFog && ActiveHeightFogCount > 0u)
     {
-        if (ActiveHeightFogCount > 0u)
-        {
-            Scene.Atmosphere.Fog.HeightFog = CombinedHeightFog;
-        }
-        else
-        {
-            Scene.Atmosphere.Fog.HeightFog.Enabled = false;
-        }
+        Scene.Atmosphere.Fog.HeightFog = CombinedHeightFog;
+    }
+    else
+    {
+        Scene.Atmosphere.Fog.HeightFog.Enabled = false;
+    }
+    if (!FoundAnyAerialFog || !ActiveAerialFog)
+    {
+        Scene.Atmosphere.Fog.AerialFog.Enabled = false;
+    }
+    if (!FoundAnyGodRays || !ActiveGodRays)
+    {
+        Scene.Atmosphere.Fog.GodRays.Enabled = false;
+    }
+    if (!FoundAnyLensFlare || !ActiveLensFlare)
+    {
+        Scene.Atmosphere.LensFlare.Enabled = false;
     }
 
     if (FoundAnyWind)
@@ -836,6 +987,7 @@ void InspectorInstanceRegister::CombineIntoScene(
     // Sync active Camera Settings entry & active Camera optics into live ViewportDisplaySettings -> GPU uniforms
     if (DisplaySettings != nullptr)
     {
+        float BaseExposureGain = 1.0f;
         for (const auto& Entry : Outliner.QueryEntries())
         {
             if (!Outliner.QueryEffectiveVisibility(Entry.Token)) continue;
@@ -847,9 +999,42 @@ void InspectorInstanceRegister::CombineIntoScene(
                 if (const auto It = CameraSettingsEntries.find(Entry.Token.Identifier); It != CameraSettingsEntries.end())
                 {
                     SyncCameraSettingsToDisplay(It->second, DisplaySettings);
+                    BaseExposureGain = std::clamp(It->second.ExposureGain, 0.1f, 4.0f);
                     break;
                 }
             }
+        }
+
+        // Apply active Exposure & Post Process components on top of BaseExposureGain
+        if (ActiveExposureOrPost)
+        {
+            DisplaySettings->ExposureGain          = std::clamp(BaseExposureGain * CombinedExposureMul, 0.0625f, 16.0f);
+            DisplaySettings->PostProcessSaturation = std::clamp(CombinedSaturation, 0.0f, 2.0f);
+            DisplaySettings->PostProcessContrast   = std::clamp(CombinedContrast, 0.5f, 2.0f);
+            DisplaySettings->PostProcessVignette   = std::clamp(CombinedVignette, 0.0f, 1.0f);
+        }
+        else
+        {
+            DisplaySettings->ExposureGain          = BaseExposureGain;
+            DisplaySettings->PostProcessSaturation = 1.0f;
+            DisplaySettings->PostProcessContrast   = 1.0f;
+            DisplaySettings->PostProcessVignette   = 0.0f;
+        }
+
+        // Apply active Motion Blur component into ViewportDisplaySettings -> GPU MotionBlurPostEntry
+        if (ActiveMotionBlur)
+        {
+            DisplaySettings->MotionBlurEnabled             = true;
+            DisplaySettings->MotionBlurStyleIndex          = std::min(2u, CombinedMotionBlur.StyleIndex);
+            DisplaySettings->MotionBlurShutterAngleDeg     = std::clamp(CombinedMotionBlur.ShutterAngleDegrees, 1.0f, 360.0f);
+            DisplaySettings->MotionBlurIntensity           = std::clamp(CombinedMotionBlur.VelocityScale, 0.0f, 2.5f);
+            DisplaySettings->MotionBlurMaxRadiusPx         = std::clamp(CombinedMotionBlur.MaxSampleRadiusPx, 2.0f, 48.0f);
+            DisplaySettings->MotionBlurSampleCount         = std::clamp(CombinedMotionBlur.SampleCount, 4u, 16u);
+            DisplaySettings->MotionBlurDirectionalAngleRad = CombinedMotionBlur.DirectionalAngleDeg * (PiF / 180.0f);
+        }
+        else
+        {
+            DisplaySettings->MotionBlurEnabled = false;
         }
         for (const auto& Entry : Outliner.QueryEntries())
         {

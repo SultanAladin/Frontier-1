@@ -37,6 +37,7 @@
 #include "Engine/Editor/Inspectors/NativeGeometryInspector.h"
 #include "Engine/Editor/Inspectors/PointLightInspector.h"
 #include "Engine/Editor/Inspectors/PostProcessInspector.h"
+#include "Engine/Editor/Inspectors/ExposureInspector.h"
 #include "Engine/Editor/Inspectors/PrecipitationInspector.h"
 #include "Engine/Editor/Inspectors/ProceduralGeometryInspector.h"
 #include "Engine/Editor/Inspectors/ProjectInspectorFoundation.h"
@@ -111,6 +112,7 @@ public:
     [[nodiscard]] LedStripInspector&           QueryLedStrip() noexcept { return LedStrip; }
     [[nodiscard]] EnvironmentLightInspector&   QueryEnvironmentLight() noexcept { return EnvironmentLight; }
     [[nodiscard]] PostProcessInspector&        QueryPostProcess() noexcept { return PostProcess; }
+    [[nodiscard]] ExposureInspector&           QueryExposure() noexcept { return Exposure; }
     [[nodiscard]] AnalyticPrimitiveInspector&  QueryAnalyticPrimitive() noexcept { return AnalyticPrimitive; }
     [[nodiscard]] NativeGeometryInspector&     QueryNativeGeometry() noexcept { return NativeGeometry; }
     [[nodiscard]] ImportedGeometryInspector&   QueryImportedGeometry() noexcept { return ImportedGeometry; }
@@ -146,6 +148,7 @@ private:
     LedStripInspector           LedStrip           {};
     EnvironmentLightInspector   EnvironmentLight   {};
     PostProcessInspector        PostProcess        {};
+    ExposureInspector           Exposure           {};
     AnalyticPrimitiveInspector  AnalyticPrimitive  {};
     NativeGeometryInspector     NativeGeometry     {};
     ImportedGeometryInspector   ImportedGeometry   {};

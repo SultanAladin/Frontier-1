@@ -30,14 +30,16 @@ float MotionBlurInspector::Construct(
 
     static constexpr std::array<float, 3u> FpsVals = {{ 24.0f, 30.0f, 60.0f }};
     static constexpr std::array<const char*, 3u> FpsNames = {{ "24 fps", "30 fps", "60 fps" }};
-    const float Fps = FpsVals[std::min(FrameRateIdx, 2u)];
+    static constexpr std::array<const char*, 3u> StyleNames = {{ "Camera Velocity", "Directional Shutter", "Radial Zoom" }};
+    const float Fps = FpsVals[std::min(Instance.FrameRateIndex, 2u)];
     const float Denom = std::max(1.0f, Fps * (360.0f / std::max(1.0f, Instance.ShutterAngleDegrees)));
+    float SampleCountF   = static_cast<float>(std::clamp(Instance.SampleCount, 4u, 16u));
 
     if (ActivePage == 0u)
     {
         // TAB 1: OVERVIEW — Shutter study (h = 372), Quick controls (3 switches: Enabled, Object motion, Camera motion)
         const Rectangle2D StudyCard { WideX, CursorY, WideW, 372.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, StudyCard, "Shutter study", "Authored values", InspectorMetrics::DimInk);
+        InspectorPrimitives::ConstructSectionSurface(Surface, StudyCard, "Shutter study", StyleNames[std::min(Instance.StyleIndex, 2u)], InspectorMetrics::DimInk);
 
         char ExpBuf[24]{};
         std::snprintf(ExpBuf, sizeof(ExpBuf), "1/%.0f", Denom);
@@ -98,10 +100,10 @@ float MotionBlurInspector::Construct(
         const float KpiW = std::floor((BodyW - KpiGap * 2.0f) / 3.0f);
         char ExpS[28]{}, CapBuf[16]{}, SmpBuf[16]{};
         std::snprintf(ExpS,   sizeof(ExpS),   "1/%.0f s", Denom);
-        std::snprintf(CapBuf, sizeof(CapBuf), "%.1f%%", MaxBlurPercent);
-        std::snprintf(SmpBuf, sizeof(SmpBuf), "%.0f", SampleCount);
+        std::snprintf(CapBuf, sizeof(CapBuf), "%.1f px", Instance.MaxSampleRadiusPx);
+        std::snprintf(SmpBuf, sizeof(SmpBuf), "%u", std::clamp(Instance.SampleCount, 4u, 16u));
         const std::array<std::pair<const char*, const char*>, 3u> Kpis = {{
-            { "EXPOSURE", ExpS }, { "STREAK \xC2\xB7 CAP", CapBuf }, { "SAMPLES", SmpBuf }
+            { "EXPOSURE", ExpS }, { "MAX BLUR", CapBuf }, { "SAMPLES", SmpBuf }
         }};
         for (uint32_t I = 0u; I < 3u; ++I)
         {
@@ -113,50 +115,70 @@ float MotionBlurInspector::Construct(
 
         (void)InspectorPrimitives::ConstructWrappedParagraph(
             Surface, BodyX, KpiY + 58.0f, BodyW, 10.2f, 14.5f, InspectorMetrics::DimInk,
-            "180\xC2\xB0 shutter at 24 fps \xC2\xB7 drag to change the shutter angle. Diagram of the authored values; not the native renderer.");
+            "Live GPU velocity post-pass \xC2\xB7 camera reprojection, directional shutter, and radial zoom modes.");
         CursorY = StudyCard.Bottom() + InspectorMetrics::SectionGap;
 
         // Quick controls (3 switches: Enabled, Object motion, Camera motion)
         const std::array<InspectorQuickSwitchSpec, 3u> Quick = {{
-            { "Enabled",       InspectorSwitchSymbol::Eye,        Entry.VisibilityEnabled, false },
-            { "Object motion", InspectorSwitchSymbol::Physics,    ObjectMotion,            false },
-            { "Camera motion", InspectorSwitchSymbol::CameraLens, CameraMotion,            false },
+            { "Enabled",       InspectorSwitchSymbol::Eye,        Entry.VisibilityEnabled && Instance.Enabled, false },
+            { "Object motion", InspectorSwitchSymbol::Physics,    Instance.ObjectMotionEnabled,                false },
+            { "Camera motion", InspectorSwitchSymbol::CameraLens, Instance.CameraMotionEnabled,                false },
         }};
         int32_t Clicked = -1;
         CursorY = InspectorPrimitives::ConstructQuickSwitchSection(Surface, WideX, CursorY, WideW, Quick, Input, Clicked);
-        if (Clicked == 0)      { Entry.VisibilityEnabled = !Entry.VisibilityEnabled; Instance.Enabled = Entry.VisibilityEnabled; OutMutated = true; }
-        else if (Clicked == 1) { ObjectMotion = !ObjectMotion; OutMutated = true; }
-        else if (Clicked == 2) { CameraMotion = !CameraMotion; OutMutated = true; }
+        if (Clicked == 0)
+        {
+            const bool Next = !(Entry.VisibilityEnabled && Instance.Enabled);
+            Entry.VisibilityEnabled = Next;
+            Instance.Enabled        = Next;
+            OutMutated              = true;
+        }
+        else if (Clicked == 1) { Instance.ObjectMotionEnabled = !Instance.ObjectMotionEnabled; OutMutated = true; }
+        else if (Clicked == 2) { Instance.CameraMotionEnabled = !Instance.CameraMotionEnabled; OutMutated = true; }
     }
     else
     {
-        // TAB 2: SETTINGS — Card 1 Shutter (h=237), Card 2 Quality (h=235), Card 3 Preview (h=163)
-        const Rectangle2D ShutCard { WideX, CursorY, WideW, 237.0f };
+        // TAB 2: SETTINGS — Card 1 Shutter & Mode (h=310), Card 2 Quality (h=235), Card 3 Velocity & Direction (h=235)
+        const Rectangle2D ShutCard { WideX, CursorY, WideW, 310.0f };
         InspectorPrimitives::ConstructSectionSurface(Surface, ShutCard, "Shutter");
-        const float AfterAng = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, ShutCard.Y + 68.0f, BodyW, 8201u, "Shutter angle", "\xC2\xB0", "%.0f", 1.0f, 360.0f, Instance.ShutterAngleDegrees, ActiveDragId, Input, OutMutated);
+        float SY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, ShutCard.Y + 68.0f, BodyW, 8201u, "Shutter angle", "\xC2\xB0", "%.0f", 1.0f, 360.0f, Instance.ShutterAngleDegrees, ActiveDragId, Input, OutMutated);
 
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, AfterAng }, 11.4f, InspectorMetrics::MutedInk, "Reference rate");
-        const Rectangle2D Drop { BodyX, AfterAng + 18.0f, BodyW, 34.0f };
+        // Blur Mode selector (Camera Velocity / Directional Shutter / Radial Zoom)
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, SY }, 11.4f, InspectorMetrics::MutedInk, "Blur mode");
+        const Rectangle2D ModeDrop { BodyX, SY + 18.0f, BodyW, 34.0f };
+        Surface.FillRectangle(ModeDrop, ColorRgba{ 12u, 12u, 12u, 255u }, InspectorMetrics::ControlRadius);
+        Surface.StrokeRectangle(ModeDrop, ColorRgba{ 255u, 255u, 255u, 18u }, InspectorMetrics::ControlRadius, 1.0f);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { ModeDrop.X + 16.0f, ModeDrop.Y + 10.5f }, 12.2f, InspectorMetrics::HeadingInk, StyleNames[std::min(Instance.StyleIndex, 2u)]);
+        const Point2D MCh { ModeDrop.Right() - 16.0f, ModeDrop.Center().Y };
+        Surface.StrokeLine({ MCh.X - 4.0f, MCh.Y - 2.0f }, { MCh.X, MCh.Y + 2.5f }, InspectorMetrics::HeadingInk, 1.5f);
+        Surface.StrokeLine({ MCh.X, MCh.Y + 2.5f }, { MCh.X + 4.0f, MCh.Y - 2.0f }, InspectorMetrics::HeadingInk, 1.5f);
+        if (ModeDrop.Contains(Cursor) && Input.PrimaryPointer.Pressed) { Instance.StyleIndex = (Instance.StyleIndex + 1u) % 3u; OutMutated = true; }
+        SY = ModeDrop.Bottom() + 14.0f;
+
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { BodyX, SY }, 11.4f, InspectorMetrics::MutedInk, "Reference rate");
+        const Rectangle2D Drop { BodyX, SY + 18.0f, BodyW, 34.0f };
         Surface.FillRectangle(Drop, ColorRgba{ 12u, 12u, 12u, 255u }, InspectorMetrics::ControlRadius);
         Surface.StrokeRectangle(Drop, ColorRgba{ 255u, 255u, 255u, 18u }, InspectorMetrics::ControlRadius, 1.0f);
-        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Drop.X + 16.0f, Drop.Y + 10.5f }, 12.2f, InspectorMetrics::HeadingInk, FpsNames[std::min(FrameRateIdx, 2u)]);
+        WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Drop.X + 16.0f, Drop.Y + 10.5f }, 12.2f, InspectorMetrics::HeadingInk, FpsNames[std::min(Instance.FrameRateIndex, 2u)]);
         const Point2D Ch { Drop.Right() - 16.0f, Drop.Center().Y };
         Surface.StrokeLine({ Ch.X - 4.0f, Ch.Y - 2.0f }, { Ch.X, Ch.Y + 2.5f }, InspectorMetrics::HeadingInk, 1.5f);
         Surface.StrokeLine({ Ch.X, Ch.Y + 2.5f }, { Ch.X + 4.0f, Ch.Y - 2.0f }, InspectorMetrics::HeadingInk, 1.5f);
-        if (Drop.Contains(Cursor) && Input.PrimaryPointer.Pressed) { FrameRateIdx = (FrameRateIdx + 1u) % 3u; OutMutated = true; }
+        if (Drop.Contains(Cursor) && Input.PrimaryPointer.Pressed) { Instance.FrameRateIndex = (Instance.FrameRateIndex + 1u) % 3u; OutMutated = true; }
         CursorY = ShutCard.Bottom() + InspectorMetrics::SectionGap;
 
         const Rectangle2D QualCard { WideX, CursorY, WideW, 235.0f };
         InspectorPrimitives::ConstructSectionSurface(Surface, QualCard, "Quality");
         float QY = QualCard.Y + 68.0f;
-        QY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, QY, BodyW, 8202u, "Max blur", "% width", "%.0f", 0.0f, 20.0f, MaxBlurPercent, ActiveDragId, Input, OutMutated);
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, QY, BodyW, 8203u, "Samples", "", "%.0f", 4.0f, 32.0f, SampleCount, ActiveDragId, Input, OutMutated);
-        Instance.MaxSampleRadiusPx = MaxBlurPercent * 4.0f;
+        QY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, QY, BodyW, 8202u, "Max blur", "px", "%.0f", 2.0f, 48.0f, Instance.MaxSampleRadiusPx, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, QY, BodyW, 8203u, "Samples", "", "%.0f", 4.0f, 16.0f, SampleCountF, ActiveDragId, Input, OutMutated);
+        Instance.SampleCount = static_cast<uint32_t>(std::clamp(std::lround(SampleCountF), 4l, 16l));
         CursorY = QualCard.Bottom() + InspectorMetrics::SectionGap;
 
-        const Rectangle2D PrevCard { WideX, CursorY, WideW, 163.0f };
-        InspectorPrimitives::ConstructSectionSurface(Surface, PrevCard, "Preview");
-        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, PrevCard.Y + 68.0f, BodyW, 8204u, "Preview speed", "", "%.2g", 0.1f, 4.0f, PreviewSpeed, ActiveDragId, Input, OutMutated);
+        const Rectangle2D PrevCard { WideX, CursorY, WideW, 235.0f };
+        InspectorPrimitives::ConstructSectionSurface(Surface, PrevCard, "Velocity");
+        float VY = PrevCard.Y + 68.0f;
+        VY = InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, VY, BodyW, 8204u, "Intensity", "\xC3\x97", "%.2f", 0.0f, 2.5f, Instance.VelocityScale, ActiveDragId, Input, OutMutated);
+        (void)InspectorPrimitives::ConstructScalarFieldRow(Surface, BodyX, VY, BodyW, 8205u, "Direction / Spin", "\xC2\xB0", "%.0f", -180.0f, 180.0f, Instance.DirectionalAngleDeg, ActiveDragId, Input, OutMutated);
         CursorY = PrevCard.Bottom() + InspectorMetrics::SectionGap;
     }
 

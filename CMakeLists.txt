@@ -390,6 +390,7 @@ frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCasc
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalDistanceBakeEntry   compute  WorldViewportGlobalDistanceBake.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalRadiosityBakeEntry  compute  WorldViewportGlobalRadiosityBake.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ViewportPathTraceEntry    compute  WorldViewportPathTraceCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   MotionBlurPostEntry       compute  WorldViewportMotionBlurCompute.comp.spv)
 frontier_compile_slang_shader(WorldPrimaryVisRaster.slang             PrimaryVisVertexEntry     vertex   WorldPrimaryVisRaster.vert.spv)
 frontier_compile_slang_shader(WorldPrimaryVisRaster.slang             PrimaryVisFragmentEntry   fragment WorldPrimaryVisRaster.frag.spv)
 frontier_compile_slang_shader(WorldInstanceTransformCompute.slang     TransformBvhNodesEntry    compute  WorldInstanceTransformBvh.comp.spv)
@@ -1044,6 +1045,7 @@ if(FRONTIER_PROFILE STREQUAL "Editor")
         Engine/Editor/Inspectors/LedStripInspector.cpp
         Engine/Editor/Inspectors/EnvironmentLightInspector.cpp
         Engine/Editor/Inspectors/PostProcessInspector.cpp
+        Engine/Editor/Inspectors/ExposureInspector.cpp
         Engine/Editor/Inspectors/AnalyticPrimitiveInspector.cpp
         Engine/Editor/Inspectors/NativeGeometryInspector.cpp
         Engine/Editor/Inspectors/ImportedGeometryInspector.cpp
@@ -1305,6 +1307,9 @@ if(BUILD_TESTING)
     frontier_register_exhibit(DeterministicPathTracerValidation         Exhibits/DeterministicPathTracerValidation.cpp)
     frontier_register_exhibit(ApocalypticCityValidation                 Exhibits/ApocalypticCityValidation.cpp)
     frontier_register_exhibit(WindCloudsFogValidation                   Exhibits/WindCloudsFogValidation.cpp)
+    if(FRONTIER_PROFILE STREQUAL "Editor")
+        frontier_register_exhibit(CameraEffectsAndAtmosphereValidation  Exhibits/CameraEffectsAndAtmosphereValidation.cpp)
+    endif()
     frontier_register_exhibit(SketcherKernelValidation                  Exhibits/ParametricSketcher/SketcherKernelValidation.cpp)
     frontier_register_exhibit(SketcherDocumentValidation                Exhibits/ParametricSketcher/SketcherDocumentValidation.cpp)
     frontier_register_exhibit(SketcherViewportValidation                Exhibits/ParametricSketcher/SketcherViewportValidation.cpp)

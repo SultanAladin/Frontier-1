@@ -8,6 +8,8 @@
 #include "Engine/Components/Controls/InspectorSectionPrimitives.h"
 #include "Engine/Editor/Inspectors/InspectorInstanceRegister.h"
 
+#include <string_view>
+
 namespace Frontier
 {
 
@@ -17,9 +19,20 @@ public:
     CameraInspector() noexcept = default;
     [[nodiscard]] static const char* QuerySubtitle() noexcept { return "Permanent editor navigation camera \xC2\xB7 not a scene render camera"; }
 
+    // Attaches a camera component (env:lens-flare, env:motion-blur, env:exposure, env:post-process, env:camera-settings)
+    // as a child layer directly on CameraToken in Outliner and initializes its instance data.
+    static OutlinerSlotToken AttachCameraComponent(
+        OutlinerPanel&                                  Outliner,
+        InspectorInstanceRegister&                      Instances,
+        const GeometricRaster::WorldSceneSpecification& Scene,
+        OutlinerSlotToken                               CameraToken,
+        std::string_view                                ComponentTag);
+
     [[nodiscard]] float Construct(
         PixelSpace& Surface, float LeftX, float TopY, float InnerWidth,
         OutlinerRecordEntry& Entry, CameraInstanceData& Instance,
+        OutlinerPanel& Outliner, InspectorInstanceRegister& Instances,
+        const GeometricRaster::WorldSceneSpecification& Scene,
         ViewportDisplaySettings* DisplaySettings,
         const PaneInputReading& Input, bool& OutMutated, bool& OutPageSwitched);
 
@@ -30,9 +43,10 @@ public:
 private:
     void UpdateCameraBodySurface(uint32_t RigPresetIndex);
 
-    uint32_t                ActivePage   = 0u;
-    uint32_t                ActiveDragId = 0u;
-    InspectorPreviewSurface BodyPreview  {};
+    uint32_t                ActivePage             = 0u;
+    uint32_t                ActiveDragId           = 0u;
+    bool                    AddComponentDrawerOpen = false;
+    InspectorPreviewSurface BodyPreview            {};
 };
 
 } // namespace Frontier

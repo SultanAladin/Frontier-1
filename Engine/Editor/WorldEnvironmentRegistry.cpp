@@ -350,7 +350,7 @@ OutlinerSlotToken WorldEnvironmentRegistry::RegisterFromRegistryKey(
         const char*           FolderName;
     };
 
-    static constexpr std::array<DirectInspectorEntrySpec, 25u> DirectSpecs = {{
+    static constexpr std::array<DirectInspectorEntrySpec, 26u> DirectSpecs = {{
         { "env:local-cloud",       "env:local-cloud",       "Local Cloud",        "World / Local Cloud",       "Bounded 3D cloud box",       ConstructSlotCategory::LayerGroup,     "World"    },
         { "env:wind",              "env:wind",              "Wind",               "World / Wind",              "Global advection field",     ConstructSlotCategory::LayerGroup,     "World"    },
         { "weather:wind",          "env:wind",              "Wind",               "World / Wind",              "Global advection field",     ConstructSlotCategory::LayerGroup,     "World"    },
@@ -364,9 +364,10 @@ OutlinerSlotToken WorldEnvironmentRegistry::RegisterFromRegistryKey(
         { "weather:god-rays",      "env:god-rays",          "God Rays",           "World / God Rays",          "Crepuscular light shafts",   ConstructSlotCategory::LayerGroup,     "World"    },
         { "env:rainbow",           "env:rainbow",           "Rainbow",            "World / Rainbow",           "Spectral atmospheric arc",   ConstructSlotCategory::LayerGroup,     "World"    },
         { "weather:rainbow",       "env:rainbow",           "Rainbow",            "World / Rainbow",           "Spectral atmospheric arc",   ConstructSlotCategory::LayerGroup,     "World"    },
-        { "env:lens-flare",        "env:lens-flare",        "Lens Flare",         "World / Lens Flare",        "Optical streaks & ghosts",   ConstructSlotCategory::LayerGroup,     "World"    },
+        { "env:lens-flare",        "env:lens-flare",        "Lens Flare",         "Cameras / Lens Flare",      "Optical streaks & ghosts",   ConstructSlotCategory::LayerGroup,     "Cameras"  },
         { "env:environment-light", "env:environment-light", "Environment Light",  "Lighting / Sky Dome IBL",   "Hemisphere sky irradiance",  ConstructSlotCategory::PointLuminaire, "Lighting" },
         { "env:post-process",      "env:post-process",      "Post Process",       "Cameras / Post Process",    "Tone map & color grade",     ConstructSlotCategory::LayerGroup,     "Cameras"  },
+        { "env:exposure",          "env:exposure",          "Exposure",           "Cameras / Exposure",        "Photographic EV exposure",   ConstructSlotCategory::LayerGroup,     "Cameras"  },
         { "env:motion-blur",       "env:motion-blur",       "Motion Blur",        "Cameras / Motion Blur",     "Shutter velocity blur",      ConstructSlotCategory::LayerGroup,     "Cameras"  },
         { "env:camera-settings",   "env:camera-settings",   "Camera Settings",    "Cameras / Render Engine",   "Renderer GI, AO & shadows",  ConstructSlotCategory::OpticsCamera,   "Cameras"  },
         { "camera:perspective",    "camera:perspective",    "Camera",             "Cameras / Optics",          "Perspective optical camera", ConstructSlotCategory::OpticsCamera,   "Cameras"  },
@@ -406,14 +407,35 @@ OutlinerSlotToken WorldEnvironmentRegistry::RegisterFromRegistryKey(
     }
 
     OutlinerSlotToken ParentFolder{};
-    for (const OutlinerRecordEntry& Entry : Outliner.QueryEntries())
+    const std::string_view MatchedTag = Matched->DomainTag;
+    const bool IsCameraStackComponent =
+        MatchedTag == "env:lens-flare" ||
+        MatchedTag == "env:motion-blur" ||
+        MatchedTag == "env:exposure" ||
+        MatchedTag == "env:post-process" ||
+        MatchedTag == "env:camera-settings";
+    if (IsCameraStackComponent)
     {
-        if (Entry.Category == ConstructSlotCategory::Folder &&
-            (Entry.Title == Matched->FolderName ||
-             (std::string_view(Matched->FolderName) == "World" && Entry.DomainTag == "env:folder")))
+        if (OutlinerRecordEntry* Selected = Outliner.AccessEntry(Outliner.QueryPrimarySelection()))
         {
-            ParentFolder = Entry.Token;
-            break;
+            if (Selected->DomainTag == "camera:perspective" || Selected->Category == ConstructSlotCategory::OpticsCamera)
+            {
+                Selected->Expanded = true;
+                ParentFolder       = Selected->Token;
+            }
+        }
+    }
+    if (!ParentFolder.Valid())
+    {
+        for (const OutlinerRecordEntry& Entry : Outliner.QueryEntries())
+        {
+            if (Entry.Category == ConstructSlotCategory::Folder &&
+                (Entry.Title == Matched->FolderName ||
+                 (std::string_view(Matched->FolderName) == "World" && Entry.DomainTag == "env:folder")))
+            {
+                ParentFolder = Entry.Token;
+                break;
+            }
         }
     }
     if (!ParentFolder.Valid())
@@ -1124,6 +1146,21 @@ std::vector<ConstructRegistryEntry> WorldEnvironmentRegistry::BuildConstructRegi
         "Cameras",
         ConstructCategoryRail::Cameras,
         EnvironmentSymbolCategory::MotionBlur,
+        ConstructSlotCategory::LayerGroup,
+        false,
+        "",
+        "",
+    });
+
+    Entries.push_back({
+        "env:exposure",
+        "Exposure",
+        "Exposure",
+        "Cameras",
+        "Photographic EV stop compensation, exposure bias, and ACES tone control.",
+        "Cameras",
+        ConstructCategoryRail::Cameras,
+        EnvironmentSymbolCategory::PostProcess,
         ConstructSlotCategory::LayerGroup,
         false,
         "",

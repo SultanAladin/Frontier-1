@@ -489,7 +489,19 @@ void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t
                 ShowcaseBundle->Scene,
                 &ActivePanes->Viewport.AccessDisplaySettings());
             const uint32_t RemovedInstances = InstanceEditorBridge.RemoveOutlinerBoundSlots(Tokens);
-            if ((RemovedEnv > 0u) || (RemovedInstances > 0u))
+            uint32_t RemovedDirect = 0u;
+            for (const OutlinerSlotToken Tok : Tokens)
+            {
+                Inspectors.AccessInstances().EraseEntry(Tok);
+                if (ActivePanes->Outliner.FindEntry(Tok) != nullptr)
+                {
+                    if (ActivePanes->Outliner.DeleteSlot(Tok))
+                    {
+                        ++RemovedDirect;
+                    }
+                }
+            }
+            if ((RemovedEnv > 0u) || (RemovedInstances > 0u) || (RemovedDirect > 0u))
             {
                 if (RemovedEnv > 0u)
                 {
@@ -2384,7 +2396,17 @@ void EditorLifecycle::RefreshShowcaseViewportRaster()
     RenderConfig.SmrtShadowRays         = std::clamp(DisplayCfg.SmrtShadowRays, 1u, 8u);
     RenderConfig.SmrtMarchSteps         = std::clamp(DisplayCfg.SmrtMarchSteps, 4u, 16u);
     RenderConfig.SkyFillGain            = std::clamp(DisplayCfg.SkyFillGain, 0.0f, 3.0f);
-    RenderConfig.ExposureGain           = std::clamp(DisplayCfg.ExposureGain, 0.1f, 4.0f);
+    RenderConfig.ExposureGain           = std::clamp(DisplayCfg.ExposureGain, 0.0625f, 16.0f);
+    RenderConfig.PostProcessSaturation  = std::clamp(DisplayCfg.PostProcessSaturation, 0.0f, 2.0f);
+    RenderConfig.PostProcessContrast    = std::clamp(DisplayCfg.PostProcessContrast, 0.5f, 2.0f);
+    RenderConfig.PostProcessVignette    = std::clamp(DisplayCfg.PostProcessVignette, 0.0f, 1.0f);
+    RenderConfig.MotionBlurEnabled      = DisplayCfg.MotionBlurEnabled;
+    RenderConfig.MotionBlurStyleIndex   = std::min(2u, DisplayCfg.MotionBlurStyleIndex);
+    RenderConfig.MotionBlurShutterAngleDeg = std::clamp(DisplayCfg.MotionBlurShutterAngleDeg, 1.0f, 360.0f);
+    RenderConfig.MotionBlurIntensity    = std::clamp(DisplayCfg.MotionBlurIntensity, 0.0f, 2.5f);
+    RenderConfig.MotionBlurMaxRadiusPx  = std::clamp(DisplayCfg.MotionBlurMaxRadiusPx, 2.0f, 48.0f);
+    RenderConfig.MotionBlurSampleCount  = std::clamp(DisplayCfg.MotionBlurSampleCount, 4u, 16u);
+    RenderConfig.MotionBlurDirectionalAngleRad = DisplayCfg.MotionBlurDirectionalAngleRad;
     RenderConfig.NaniteLodEnabled       = DisplayCfg.ClusterLodEnabled;
     RenderConfig.NanitePixelError       = DisplayCfg.ClusterLodPixelError;
     RenderConfig.NaniteForcedLodLevel   = DisplayCfg.ClusterForcedLodLevel;
@@ -2787,8 +2809,22 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
             }
 
+            // Detect Outliner visibility/structure changes (eye toggle, add/remove of fog/flare/motion-blur/exposure)
+            uint64_t OutlinerVisSig = 14695981039346656037ull;
+            for (const auto& Entry : Panes->Outliner.QueryEntries())
+            {
+                OutlinerVisSig ^= Entry.Token.Identifier;
+                OutlinerVisSig *= 1099511628211ull;
+                OutlinerVisSig ^= (Panes->Outliner.QueryEffectiveVisibility(Entry.Token) ? 0xA5u : 0x5Au);
+                OutlinerVisSig *= 1099511628211ull;
+                OutlinerVisSig ^= Entry.EnclosingToken.Identifier;
+                OutlinerVisSig *= 1099511628211ull;
+            }
+            const bool OutlinerVisChanged = (LastOutlinerVisibilitySig != 0ull) && (OutlinerVisSig != LastOutlinerVisibilitySig);
+            LastOutlinerVisibilitySig     = OutlinerVisSig;
+
             // Re-apply standalone multi-instance inspector bindings so user edits and multi-instance rigs stay authoritative
-            const bool InspectorEdited = PendingInteractionSceneSync;
+            const bool InspectorEdited = PendingInteractionSceneSync || OutlinerVisChanged;
             if (InspectorEdited || EnvRegistryChanged)
             {
                 Inspectors.AccessInstances().CombineIntoScene(
@@ -2945,6 +2981,16 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
                 DisplayCfg.SmrtMarchSteps != LastSmrtMarchSteps ||
                 std::abs(DisplayCfg.SkyFillGain - LastSkyFillGain) > 0.001f ||
                 std::abs(DisplayCfg.ExposureGain - LastExposureGain) > 0.001f ||
+                std::abs(DisplayCfg.PostProcessSaturation - LastPostProcessSat) > 0.001f ||
+                std::abs(DisplayCfg.PostProcessContrast - LastPostProcessCon) > 0.001f ||
+                std::abs(DisplayCfg.PostProcessVignette - LastPostProcessVig) > 0.001f ||
+                DisplayCfg.MotionBlurEnabled != LastMotionBlurOn ||
+                DisplayCfg.MotionBlurStyleIndex != LastMotionBlurStyle ||
+                std::abs(DisplayCfg.MotionBlurShutterAngleDeg - LastMotionBlurShutter) > 0.01f ||
+                std::abs(DisplayCfg.MotionBlurIntensity - LastMotionBlurIntensity) > 0.001f ||
+                std::abs(DisplayCfg.MotionBlurMaxRadiusPx - LastMotionBlurRadius) > 0.01f ||
+                DisplayCfg.MotionBlurSampleCount != LastMotionBlurSamples ||
+                std::abs(DisplayCfg.MotionBlurDirectionalAngleRad - LastMotionBlurAngle) > 0.001f ||
                 DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
                 DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
                 DisplayCfg.RaytracingEnabled != LastRtEnabled ||
@@ -2990,6 +3036,16 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
             LastSmrtMarchSteps     = DisplayCfg.SmrtMarchSteps;
             LastSkyFillGain        = DisplayCfg.SkyFillGain;
             LastExposureGain       = DisplayCfg.ExposureGain;
+            LastPostProcessSat     = DisplayCfg.PostProcessSaturation;
+            LastPostProcessCon     = DisplayCfg.PostProcessContrast;
+            LastPostProcessVig     = DisplayCfg.PostProcessVignette;
+            LastMotionBlurOn       = DisplayCfg.MotionBlurEnabled;
+            LastMotionBlurStyle    = DisplayCfg.MotionBlurStyleIndex;
+            LastMotionBlurShutter  = DisplayCfg.MotionBlurShutterAngleDeg;
+            LastMotionBlurIntensity = DisplayCfg.MotionBlurIntensity;
+            LastMotionBlurRadius   = DisplayCfg.MotionBlurMaxRadiusPx;
+            LastMotionBlurSamples  = DisplayCfg.MotionBlurSampleCount;
+            LastMotionBlurAngle    = DisplayCfg.MotionBlurDirectionalAngleRad;
             LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
             LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
             LastRtEnabled          = DisplayCfg.RaytracingEnabled;

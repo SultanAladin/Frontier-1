@@ -179,10 +179,26 @@ struct LensFlareInstanceData
 
 struct MotionBlurInstanceData
 {
-    bool  Enabled             = true;
-    float ShutterAngleDegrees = 180.0f;
-    float VelocityScale       = 1.0f;
-    float MaxSampleRadiusPx   = 24.0f;
+    bool     Enabled              = true;
+    uint32_t StyleIndex           = 0u;     // [idx] - 0=CameraVelocity, 1=DirectionalShutter, 2=RadialZoom
+    float    ShutterAngleDegrees  = 180.0f; // [deg] - Rotary shutter open angle [1..360]
+    float    VelocityScale        = 1.0f;   // [x]   - Blur velocity intensity [0..2.5]
+    float    MaxSampleRadiusPx    = 24.0f;  // [px]  - Maximum blur radius [2..48]
+    uint32_t SampleCount          = 12u;    // [cnt] - Blur gather samples [4..16]
+    float    DirectionalAngleDeg  = 0.0f;   // [deg] - Directional shutter angle [-180..180]
+    bool     ObjectMotionEnabled  = true;   // [-]   - Object motion blur toggle
+    bool     CameraMotionEnabled  = true;   // [-]   - Camera motion blur toggle
+    uint32_t FrameRateIndex       = 0u;     // [idx] - 0=24fps, 1=30fps, 2=60fps
+};
+
+struct ExposureInstanceData
+{
+    bool  Enabled          = true;
+    float ExposureEv       = 0.0f;  // [EV]  - Photographic stop compensation [-4..+4]
+    float BiasMultiplier   = 1.0f;  // [x]   - Direct linear gain multiplier [0.25..4.0]
+    float SaturationGain   = 1.0f;  // [x]   - Colour saturation [0..2.0]
+    float ContrastGain     = 1.0f;  // [x]   - Tonal contrast [0.5..2.0]
+    float VignetteStrength = 0.0f;  // [0-1] - Optical vignette falloff [0..1.0]
 };
 
 // Luminaire 1: Omnidirectional Point Light
@@ -386,6 +402,11 @@ public:
     CameraSettingsData&           AccessCameraSettings(OutlinerSlotToken Token);
     LensFlareInstanceData&        AccessLensFlare(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     MotionBlurInstanceData&       AccessMotionBlur(OutlinerSlotToken Token);
+    ExposureInstanceData&         AccessExposure(OutlinerSlotToken Token);
+    [[nodiscard]] const LensFlareInstanceData*  FindLensFlare(OutlinerSlotToken Token) const noexcept;
+    [[nodiscard]] const MotionBlurInstanceData* FindMotionBlur(OutlinerSlotToken Token) const noexcept;
+    [[nodiscard]] const ExposureInstanceData*   FindExposure(OutlinerSlotToken Token) const noexcept;
+    [[nodiscard]] const PostProcessInstanceData* FindPostProcess(OutlinerSlotToken Token) const noexcept;
     PointLightData&               AccessPointLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     SpotLightData&                AccessSpotLight(OutlinerSlotToken Token, const GeometricRaster::WorldSceneSpecification& Scene);
     IesLightData&                 AccessIesLight(OutlinerSlotToken Token, const OutlinerRecordEntry& Entry);
@@ -434,6 +455,7 @@ private:
     std::unordered_map<uint64_t, CameraSettingsData>           CameraSettingsEntries {};
     std::unordered_map<uint64_t, LensFlareInstanceData>        LensFlares        {};
     std::unordered_map<uint64_t, MotionBlurInstanceData>       MotionBlurs       {};
+    std::unordered_map<uint64_t, ExposureInstanceData>         Exposures         {};
     std::unordered_map<uint64_t, PointLightData>               PointLights       {};
     std::unordered_map<uint64_t, SpotLightData>                SpotLights        {};
     std::unordered_map<uint64_t, IesLightData>                 IesLights         {};

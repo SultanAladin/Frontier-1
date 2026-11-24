@@ -89,7 +89,19 @@ struct WorldRenderConfiguration
     uint32_t                              SmrtShadowRays         = 4u;    // [cnt]  - SMRT quadratic shadow ray count [1..8]
     uint32_t                              SmrtMarchSteps         = 10u;   // [cnt]  - SMRT quadratic march steps per ray [4..16]
     float                                 SkyFillGain            = 1.0f;  // [x]    - Sky dome fill gain multiplier [0..3.0]
-    float                                 ExposureGain           = 1.0f;  // [x]    - Final ACES display exposure gain [0.1..4.0]
+    float                                 ExposureGain           = 1.0f;  // [x]    - Final ACES display exposure gain [0.0625..16.0]
+    float                                 PostProcessSaturation  = 1.0f;  // [x]    - Post-process colour saturation [0.0..2.0]
+    float                                 PostProcessContrast    = 1.0f;  // [x]    - Post-process tonal contrast [0.5..2.0]
+    float                                 PostProcessVignette    = 0.0f;  // [0-1]  - Post-process optical vignette darkening [0.0..1.0]
+    bool                                  MotionBlurEnabled      = false; // [-]    - GPU post-process motion blur pass toggle
+    uint32_t                              MotionBlurStyleIndex   = 0u;    // [idx]  - 0=CameraVelocity, 1=DirectionalShutter, 2=RadialZoom
+    float                                 MotionBlurShutterAngleDeg = 180.0f; // [deg] - Rotary camera shutter angle [1..360]
+    float                                 MotionBlurIntensity    = 1.0f;  // [x]    - Motion blur strength multiplier [0.0..2.5]
+    float                                 MotionBlurMaxRadiusPx  = 24.0f; // [px]   - Maximum blur streak radius in pixels [2..48]
+    uint32_t                              MotionBlurSampleCount  = 12u;   // [cnt]  - Velocity gather sample taps [4..16]
+    float                                 MotionBlurDirectionalAngleRad = 0.0f; // [rad] - Directional shutter blur angle
+    float                                 MotionBlurVelocityUvOverrideX = 0.0f; // [uv] - Optional deterministic velocity override X
+    float                                 MotionBlurVelocityUvOverrideY = 0.0f; // [uv] - Optional deterministic velocity override Y
     bool                                  NaniteLodEnabled       = true;  // [-]    - Viewport traces the per-camera Cluster LOD cut
     float                                 NanitePixelError       = 1.25f; // [px]   - Screen-space error budget driving the monotonic LOD cut
     int32_t                               NaniteForcedLodLevel   = -1;    // [lvl]  - -1 = automatic cut, >= 0 = force exact pyramid level

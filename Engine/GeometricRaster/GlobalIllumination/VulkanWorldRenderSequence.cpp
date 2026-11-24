@@ -201,9 +201,15 @@ struct WorldViewportUniformBlockStd140
     uint32_t                     GlobalDistanceSlabBounds[4]         {};
     uint32_t                     SelectionOutlineSpan[4]             {}; // x=FirstClusterOrd, y=ClusterCount, z/w=Reserved
     float                        SelectionOutlineColorWidth[4]       {}; // xyz=LinearOutlineRGB, w=WidthPx
+    float                        PostProcessParams[4]                {}; // x=ExposureGain, y=Saturation, z=Contrast, w=Vignette
+    float                        MotionBlurParams0[4]                {}; // x=Enabled(0/1), y=ShutterScale*Intensity, z=SampleCount, w=MaxBlurRadiusPx
+    float                        MotionBlurParams1[4]                {}; // x=VelocityOverrideU, y=VelocityOverrideV, z=Style, w=DirAngleOrSpin
+    float                        PrevCameraOriginTanX[4]             {}; // xyz=PrevOrigin, w=PrevTanHalfFovX
+    float                        PrevCameraForwardValid[4]           {}; // xyz=PrevForward, w=PrevValid
+    float                        PrevCameraRightTanY[4]              {}; // xyz=PrevRight, w=PrevTanHalfFovY
+    float                        PrevCameraUpPad[4]                  {}; // xyz=PrevUp, w=Reserved
 };
-
-static_assert(sizeof(WorldViewportUniformBlockStd140) == 3040u, "WorldViewportUniformBlockStd140 must equal 3040 bytes.");
+static_assert(sizeof(WorldViewportUniformBlockStd140) == 3152u, "WorldViewportUniformBlockStd140 must equal 3152 bytes.");
 
 struct GpuShadedTriangle96
 {
@@ -501,6 +507,12 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         TeardownSequence();
         return false;
     }
+
+    const std::filesystem::path MotionBlurShaderPath = CompiledShaderDirectory / "WorldViewportMotionBlurCompute.comp.spv";
+    MotionBlurProgramHandle = DispatchEncoder.RegisterProgram(
+        MotionBlurShaderPath,
+        SlotTypes,
+        "MotionBlurPostEntry");
 
     constexpr std::array<VkDescriptorType, 2u> SkySlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -829,6 +841,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     CloudLayerProgramHandle           = UINT32_MAX;
     HalfResIndirectProgramHandle      = UINT32_MAX;
     DenoiseProgramHandle              = UINT32_MAX;
+    MotionBlurProgramHandle           = UINT32_MAX;
     TransmittanceLutProgramHandle     = UINT32_MAX;
     MultiScatterLutProgramHandle      = UINT32_MAX;
     SkyViewLutProgramHandle           = UINT32_MAX;
@@ -882,6 +895,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     SkyViewLutValid                 = false;
     LastSkyViewUniformSnapshot.fill(0u);
     LastRadiosityLightingSignature  = 0ull;
+    HasPrevMotionBlurCameraBasis    = false;
     UploadedBvhCount                = 0u;
     UploadedTriangleCount           = 0u;
     UploadedClusterSlotCount        = 0u;
@@ -6679,7 +6693,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
 
         const auto& LF = Atmo.LensFlare;
         auto&       LFU = Uniforms.LensFlareParams;
-        if (AtmoActive && LF.Enabled && Config.DebugChannel == 0u)
+        if (LF.Enabled && Config.DebugChannel == 0u)
         {
             const ProjectedLensFlareSlice FlareProj = LensFlareSequence::ResolveSolarFlareProjection(
                 Basis.CameraOrigin,
@@ -6782,6 +6796,45 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     Uniforms.SelectionOutlineColorWidth[1] = std::pow(std::clamp(Config.SelectionOutlineColor.Y, 0.0f, 1.0f), 2.2f);
     Uniforms.SelectionOutlineColorWidth[2] = std::pow(std::clamp(Config.SelectionOutlineColor.Z, 0.0f, 1.0f), 2.2f);
     Uniforms.SelectionOutlineColorWidth[3] = std::clamp(Config.SelectionOutlineWidthPx, 1.0f, 3.0f);
+
+    // Exposure & Post-Process grading parameters (neutral defaults {1, 1, 1, 0} when inactive)
+    Uniforms.PostProcessParams[0] = std::clamp(Config.ExposureGain, 0.03125f, 16.0f);
+    Uniforms.PostProcessParams[1] = std::clamp(Config.PostProcessSaturation, 0.0f, 2.0f);
+    Uniforms.PostProcessParams[2] = std::clamp(Config.PostProcessContrast, 0.25f, 2.5f);
+    Uniforms.PostProcessParams[3] = std::clamp(Config.PostProcessVignette, 0.0f, 1.0f);
+
+    // Motion Blur post-pass parameters (0.000 ms overhead when disabled)
+    const bool MotionBlurActive =
+        Config.MotionBlurEnabled &&
+        Config.DebugChannel == 0u &&
+        MotionBlurProgramHandle != UINT32_MAX &&
+        Config.MotionBlurIntensity > 1.0e-4f &&
+        Config.MotionBlurShutterAngleDeg > 0.5f;
+    const float ShutterNorm = std::clamp(Config.MotionBlurShutterAngleDeg / 360.0f, 0.01f, 1.0f);
+    Uniforms.MotionBlurParams0[0] = MotionBlurActive ? 1.0f : 0.0f;
+    Uniforms.MotionBlurParams0[1] = ShutterNorm * std::clamp(Config.MotionBlurIntensity, 0.0f, 3.0f);
+    Uniforms.MotionBlurParams0[2] = static_cast<float>(std::clamp(Config.MotionBlurSampleCount, 4u, 16u));
+    Uniforms.MotionBlurParams0[3] = std::clamp(Config.MotionBlurMaxRadiusPx, 1.0f, 48.0f);
+    Uniforms.MotionBlurParams1[0] = Config.MotionBlurVelocityUvOverrideX;
+    Uniforms.MotionBlurParams1[1] = Config.MotionBlurVelocityUvOverrideY;
+    Uniforms.MotionBlurParams1[2] = static_cast<float>(std::min(2u, Config.MotionBlurStyleIndex));
+    Uniforms.MotionBlurParams1[3] = Config.MotionBlurDirectionalAngleRad;
+    Uniforms.PrevCameraOriginTanX[0]   = PrevMotionBlurCameraBasis.CameraOrigin.X;
+    Uniforms.PrevCameraOriginTanX[1]   = PrevMotionBlurCameraBasis.CameraOrigin.Y;
+    Uniforms.PrevCameraOriginTanX[2]   = PrevMotionBlurCameraBasis.CameraOrigin.Z;
+    Uniforms.PrevCameraOriginTanX[3]   = PrevMotionBlurCameraBasis.TanHalfFovX;
+    Uniforms.PrevCameraForwardValid[0] = PrevMotionBlurCameraBasis.ForwardAxis.X;
+    Uniforms.PrevCameraForwardValid[1] = PrevMotionBlurCameraBasis.ForwardAxis.Y;
+    Uniforms.PrevCameraForwardValid[2] = PrevMotionBlurCameraBasis.ForwardAxis.Z;
+    Uniforms.PrevCameraForwardValid[3] = HasPrevMotionBlurCameraBasis ? 1.0f : 0.0f;
+    Uniforms.PrevCameraRightTanY[0]    = PrevMotionBlurCameraBasis.RightAxis.X;
+    Uniforms.PrevCameraRightTanY[1]    = PrevMotionBlurCameraBasis.RightAxis.Y;
+    Uniforms.PrevCameraRightTanY[2]    = PrevMotionBlurCameraBasis.RightAxis.Z;
+    Uniforms.PrevCameraRightTanY[3]    = PrevMotionBlurCameraBasis.TanHalfFovY;
+    Uniforms.PrevCameraUpPad[0]        = PrevMotionBlurCameraBasis.UpAxis.X;
+    Uniforms.PrevCameraUpPad[1]        = PrevMotionBlurCameraBasis.UpAxis.Y;
+    Uniforms.PrevCameraUpPad[2]        = PrevMotionBlurCameraBasis.UpAxis.Z;
+    Uniforms.PrevCameraUpPad[3]        = 0.0f;
     if (Config.SelectedClusterInstanceIndex != UINT32_MAX)
     {
         for (const ResidentClusterInstanceSpan& Span : ResidentClusterInstances)
@@ -6995,6 +7048,8 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         (Config.DebugChannel == 0u) &&
         (ViewportPathTraceProgramHandle != UINT32_MAX);
 
+    bool MotionBlurSourceSwapPingPong = false;
+
     if (UseDedicatedPathTracer)
     {
         WriteStamp(4u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -7133,6 +7188,10 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             {
                 const bool IsFinalStep = (StepIndex + 1u == BilateralDenoiseStepCount);
                 const bool SwapPingPong = (StepIndex & 1u) != 0u;
+                if (IsFinalStep)
+                {
+                    MotionBlurSourceSwapPingPong = SwapPingPong;
+                }
                 if (IsFinalStep && UseHalfResIndirect)
                 {
                     if (!DispatchHalfResIndirect(SwapPingPong))
@@ -7182,6 +7241,34 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         }
         WriteStamp(7u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
+
+    if (MotionBlurActive)
+    {
+        VkMemoryBarrier CompositeToBlur {};
+        CompositeToBlur.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        CompositeToBlur.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        CompositeToBlur.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(
+            Cmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0u,
+            1u,
+            &CompositeToBlur,
+            0u,
+            nullptr,
+            0u,
+            nullptr);
+
+        const auto BlurSlots = ConstructStepSlots(0ull, MotionBlurSourceSwapPingPong);
+        if (!DispatchEncoder.EncodeComputeDispatch(Cmd, MotionBlurProgramHandle, BlurSlots, GroupsX, GroupsY, 1u))
+        {
+            BoundDevice->FreeCommandBuffer(Cmd);
+            return false;
+        }
+    }
+    PrevMotionBlurCameraBasis    = Basis;
+    HasPrevMotionBlurCameraBasis = true;
 
     WriteStamp(8u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     {

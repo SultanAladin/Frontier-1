@@ -60,6 +60,13 @@ struct WorldViewportUniformBlock
     uint4                       GlobalDistanceSlabBounds;         // xyz = (SlabMin | (SlabMax << 16)), w = SlabActiveFlag
     uint4                       SelectionOutlineSpan;             // x = FirstClusterOrd, y = ClusterCount, z/w = Reserved
     float4                      SelectionOutlineColorWidth;       // xyz = LinearOutlineRGB, w = WidthPx
+    float4                      PostProcessParams;                // x = ExposureGain, y = Saturation, z = Contrast, w = Vignette
+    float4                      MotionBlurParams0;                // x = Enabled(0/1), y = ShutterScale*Intensity, z = SampleCount, w = MaxBlurRadiusPx
+    float4                      MotionBlurParams1;                // x = VelocityOverrideU, y = VelocityOverrideV, z = Style(0=Cam,1=Dir,2=Radial), w = DirAngleOrSpin
+    float4                      PrevCameraOriginTanX;             // xyz = PrevOrigin, w = PrevTanHalfFovX
+    float4                      PrevCameraForwardValid;           // xyz = PrevForward, w = PrevValid(0/1)
+    float4                      PrevCameraRightTanY;              // xyz = PrevRight, w = PrevTanHalfFovY
+    float4                      PrevCameraUpPad;                  // xyz = PrevUp, w = Reserved
 };
 
 struct GpuWideTreeEntry128
@@ -3915,6 +3922,34 @@ void HighEndBvhComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     PingIndirectIrradiance[PixelIdx] = float4(IndirectIrradiance, FilterIndirect ? 1.0 : 0.0);
 }
 
+float3 ApplyExposureAndPostProcessGpu(float3 FinalHdr, float2 PixelUv)
+{
+    float ExposureGain = max(0.03125, WorldUniforms.PostProcessParams.x);
+    float Saturation   = max(0.0, WorldUniforms.PostProcessParams.y);
+    float Contrast     = max(0.1, WorldUniforms.PostProcessParams.z);
+    float Vignette     = saturate(WorldUniforms.PostProcessParams.w);
+
+    float3 DisplayLinear = ApplyAcesFilmicGpu(FinalHdr * ExposureGain);
+
+    if (abs(Contrast - 1.0) > 1.0e-4)
+    {
+        DisplayLinear = max(float3(0.0), (DisplayLinear - float3(0.18)) * Contrast + float3(0.18));
+    }
+    if (abs(Saturation - 1.0) > 1.0e-4)
+    {
+        float Luma = dot(DisplayLinear, float3(0.2126, 0.7152, 0.0722));
+        DisplayLinear = max(float3(0.0), lerp(float3(Luma), DisplayLinear, Saturation));
+    }
+    if (Vignette > 1.0e-4)
+    {
+        float2 Centered = PixelUv * 2.0 - 1.0;
+        float  Rad2     = dot(Centered, Centered);
+        float  VigAtten = saturate(1.0 - Vignette * smoothstep(0.22, 1.55, Rad2) * 0.78);
+        DisplayLinear *= VigAtten;
+    }
+    return DisplayLinear;
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void ViewportPathTraceEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
@@ -3946,11 +3981,16 @@ void ViewportPathTraceEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     AccumulationHdrBuffer[PixelIdx] = float4(NextAccum, float(SampleIdx + 1u));
 
     float3 FinalHdr = NextAccum;
-    if (WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
+    if (WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
     {
         FinalHdr += EvaluateBakedLensFlareGpu(WorldUniforms.LensFlareParams, BakedLensFlareAtlasTexels, PixelUv);
     }
-    OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(ApplyAcesFilmicGpu(FinalHdr), DispatchThreadID.xy);
+    float3 DisplayLinear = ApplyExposureAndPostProcessGpu(FinalHdr, PixelUv);
+    if (WorldUniforms.MotionBlurParams0.x > 0.5)
+    {
+        PongShadowAo[PixelIdx] = float4(DisplayLinear, 1.0);
+    }
+    OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(DisplayLinear, DispatchThreadID.xy);
 }
 
 // XeGTAO-style ground-truth ambient occlusion: multi-slice horizon search over the G-buffer.
@@ -4408,13 +4448,14 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
             WorldUniforms.SolarIrradiancePad.xyz,
             float2(DispatchThreadID.xy));
 
-        if (WorldUniforms.AtmosphereMaskPad.x != 0u && WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
+        if (WorldUniforms.LensFlareParams.GhostRotationTint.w > 0.5)
         {
             FinalHdr += EvaluateBakedLensFlareGpu(WorldUniforms.LensFlareParams, BakedLensFlareAtlasTexels, PixelUv);
         }
     }
 
-    float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyAcesFilmicGpu(FinalHdr);
+    float2 CompositeUv   = (float2(DispatchThreadID.xy) + float2(0.5, 0.5)) / float2(float(Width), float(Height));
+    float3 DisplayLinear = (DebugMode != 0u) ? FinalHdr : ApplyExposureAndPostProcessGpu(FinalHdr, CompositeUv);
 
     // Zero-overhead GPU silhouette selection outline (0.000 ms when inactive; works in Editor & Game)
     if (WorldUniforms.SelectionOutlineSpan.y > 0u && DebugMode == 0u)
@@ -4448,6 +4489,11 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
                 DisplayLinear       = lerp(DisplayLinear, OutlineCol, OutlineAlpha * 0.94);
             }
         }
+    }
+
+    if (WorldUniforms.MotionBlurParams0.x > 0.5 && DebugMode == 0u)
+    {
+        PongShadowAo[PixelIdx] = float4(DisplayLinear, 1.0);
     }
 
     OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(DisplayLinear, DispatchThreadID.xy);
@@ -5058,4 +5104,125 @@ void GlobalRadiosityBakeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         float3 TotalRad = min(BaseRad + DiffAlbedo * Bounce1Irr, float3(28.0));
         RadiosityBakeDstImg3D[int3(PhysCoord)] = float4(TotalRad * Opacity, Opacity);
     }
+}
+
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void MotionBlurPostEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint Width  = uint(WorldUniforms.CameraUpWidth.w + 0.5);
+    uint Height = uint(WorldUniforms.CameraForwardHeight.w + 0.5);
+    if (DispatchThreadID.x >= Width || DispatchThreadID.y >= Height) return;
+
+    uint   PixelIdx    = DispatchThreadID.y * Width + DispatchThreadID.x;
+    float3 CenterColor = PongShadowAo[PixelIdx].xyz;
+
+    float ShutterGain = max(0.0, WorldUniforms.MotionBlurParams0.y);
+    if (WorldUniforms.MotionBlurParams0.x < 0.5 || ShutterGain <= 1.0e-4)
+    {
+        OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(CenterColor, DispatchThreadID.xy);
+        return;
+    }
+
+    float2 ResF      = float2(float(Width), float(Height));
+    float2 PixelUv   = (float2(DispatchThreadID.xy) + float2(0.5, 0.5)) / ResF;
+    uint   Style     = uint(WorldUniforms.MotionBlurParams1.z + 0.5);
+    float2 VelocityPx = float2(0.0, 0.0);
+
+    float2 OverrideUv = WorldUniforms.MotionBlurParams1.xy;
+    if (dot(OverrideUv, OverrideUv) > 1.0e-8)
+    {
+        VelocityPx = OverrideUv * ResF * ShutterGain;
+    }
+    else if (Style == 1u)
+    {
+        // Directional shutter smear
+        float AngleRad = WorldUniforms.MotionBlurParams1.w;
+        float2 DirUv   = float2(cos(AngleRad), sin(AngleRad)) * 0.045;
+        VelocityPx     = DirUv * ResF * ShutterGain;
+    }
+    else if (Style == 2u)
+    {
+        // Radial zoom + spin velocity field
+        float2 FromCenter = PixelUv - float2(0.5, 0.5);
+        float  Spin       = WorldUniforms.MotionBlurParams1.w;
+        float2 Tang       = float2(-FromCenter.y, FromCenter.x) * Spin;
+        VelocityPx        = (FromCenter * 0.14 + Tang * 0.10) * ResF * ShutterGain;
+    }
+    else if (WorldUniforms.PrevCameraForwardValid.w > 0.5)
+    {
+        // CameraVelocity: exact per-pixel 3D world-space camera reprojection using GBufPosMask
+        float4 HitPack = GBufPosMask[PixelIdx];
+        float3 WorldP;
+        if (HitPack.w > 0.5)
+        {
+            WorldP = HitPack.xyz;
+        }
+        else
+        {
+            float  NdcX   = PixelUv.x * 2.0 - 1.0;
+            float  NdcY   = 1.0 - PixelUv.y * 2.0;
+            float3 RayDir = normalize(
+                WorldUniforms.CameraForwardHeight.xyz +
+                WorldUniforms.CameraRightTanY.xyz * (NdcX * WorldUniforms.CameraOriginTanX.w) +
+                WorldUniforms.CameraUpWidth.xyz   * (NdcY * WorldUniforms.CameraRightTanY.w));
+            WorldP = WorldUniforms.CameraOriginTanX.xyz + RayDir * 1000.0;
+        }
+
+        float3 PrevRel  = WorldP - WorldUniforms.PrevCameraOriginTanX.xyz;
+        float  PrevFwd  = dot(PrevRel, WorldUniforms.PrevCameraForwardValid.xyz);
+        if (PrevFwd > 0.05)
+        {
+            float PrevRight = dot(PrevRel, WorldUniforms.PrevCameraRightTanY.xyz);
+            float PrevUp    = dot(PrevRel, WorldUniforms.PrevCameraUpPad.xyz);
+            float PrevTanX  = max(1.0e-3, WorldUniforms.PrevCameraOriginTanX.w);
+            float PrevTanY  = max(1.0e-3, WorldUniforms.PrevCameraRightTanY.w);
+            float PrevU     = 0.5 + 0.5 * (PrevRight / (PrevFwd * PrevTanX));
+            float PrevV     = 0.5 - 0.5 * (PrevUp    / (PrevFwd * PrevTanY));
+            VelocityPx      = (PixelUv - float2(PrevU, PrevV)) * ResF * ShutterGain;
+        }
+    }
+
+    float MaxRadiusPx = clamp(WorldUniforms.MotionBlurParams0.w, 1.0, 48.0);
+    float VelLenPx    = length(VelocityPx);
+    if (VelLenPx < 0.35)
+    {
+        OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(CenterColor, DispatchThreadID.xy);
+        return;
+    }
+    if (VelLenPx > MaxRadiusPx)
+    {
+        VelocityPx *= (MaxRadiusPx / VelLenPx);
+    }
+
+    int    BaseSamples = clamp(int(WorldUniforms.MotionBlurParams0.z + 0.5), 4, 32);
+    int    Samples     = clamp(max(BaseSamples, int(ceil(VelLenPx)) + 2), 4, 32);
+    float2 CenterPx    = float2(DispatchThreadID.xy);
+    float3 AccumColor  = float3(0.0);
+    float  AccumW      = 0.0;
+
+    float InvSamples = 1.0 / float(Samples);
+
+    [loop]
+    for (int I = 0; I < Samples; ++I)
+    {
+        float  T       = (float(I) + 0.5) * InvSamples - 0.5;
+        float  Weight  = 1.0 - 0.35 * abs(T * 2.0);
+        float2 TapF    = clamp(CenterPx + VelocityPx * T, float2(0.0, 0.0), float2(float(Width - 1u), float(Height - 1u)));
+        int2   P0      = int2(floor(TapF));
+        int2   P1      = min(P0 + int2(1, 1), int2(int(Width) - 1, int(Height) - 1));
+        float2 Fr      = TapF - float2(P0);
+
+        float3 C00 = PongShadowAo[uint(P0.y) * Width + uint(P0.x)].xyz;
+        float3 C10 = PongShadowAo[uint(P0.y) * Width + uint(P1.x)].xyz;
+        float3 C01 = PongShadowAo[uint(P1.y) * Width + uint(P0.x)].xyz;
+        float3 C11 = PongShadowAo[uint(P1.y) * Width + uint(P1.x)].xyz;
+        float3 SampleCol = lerp(lerp(C00, C10, Fr.x), lerp(C01, C11, Fr.x), Fr.y);
+
+        AccumColor += SampleCol * Weight;
+        AccumW     += Weight;
+    }
+
+    float3 Blurred = (AccumW > 1.0e-5) ? (AccumColor / AccumW) : CenterColor;
+    OutDisplayRgba8[PixelIdx] = PackLinearToSrgb8Rgba(Blurred, DispatchThreadID.xy);
 }
