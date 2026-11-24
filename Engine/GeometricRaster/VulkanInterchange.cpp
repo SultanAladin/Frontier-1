@@ -718,7 +718,8 @@ DeviceImageResource VulkanInterchange::AllocateImage3D(
     uint32_t           DepthPx,
     VkFormat           Format,
     VkImageUsageFlags  UsageMask,
-    VkImageAspectFlags AspectMask) const
+    VkImageAspectFlags AspectMask,
+    uint32_t           MipLevels) const
 {
     DeviceImageResource Result {};
     if (LogicalDevice == VK_NULL_HANDLE || WidthPx == 0u || HeightPx == 0u || DepthPx == 0u)
@@ -726,12 +727,14 @@ DeviceImageResource VulkanInterchange::AllocateImage3D(
         return Result;
     }
 
+    const uint32_t SafeMipLevels = std::max(1u, MipLevels);
+
     VkImageCreateInfo ImgSpec {};
     ImgSpec.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ImgSpec.imageType     = VK_IMAGE_TYPE_3D;
     ImgSpec.format        = Format;
     ImgSpec.extent        = { WidthPx, HeightPx, DepthPx };
-    ImgSpec.mipLevels     = 1u;
+    ImgSpec.mipLevels     = SafeMipLevels;
     ImgSpec.arrayLayers   = 1u;
     ImgSpec.samples       = VK_SAMPLE_COUNT_1_BIT;
     ImgSpec.tiling        = VK_IMAGE_TILING_OPTIMAL;
@@ -768,18 +771,8 @@ DeviceImageResource VulkanInterchange::AllocateImage3D(
 
     vkBindImageMemory(LogicalDevice, Result.ImageHandle, Result.MemoryHandle, 0u);
 
-    VkImageViewCreateInfo ViewSpec {};
-    ViewSpec.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    ViewSpec.image                           = Result.ImageHandle;
-    ViewSpec.viewType                        = VK_IMAGE_VIEW_TYPE_3D;
-    ViewSpec.format                          = Format;
-    ViewSpec.subresourceRange.aspectMask     = AspectMask;
-    ViewSpec.subresourceRange.baseMipLevel   = 0u;
-    ViewSpec.subresourceRange.levelCount     = 1u;
-    ViewSpec.subresourceRange.baseArrayLayer = 0u;
-    ViewSpec.subresourceRange.layerCount     = 1u;
-
-    if (vkCreateImageView(LogicalDevice, &ViewSpec, nullptr, &Result.ViewHandle) != VK_SUCCESS)
+    Result.ViewHandle = CreateImageView3DMip(Result.ImageHandle, Format, 0u, SafeMipLevels, AspectMask);
+    if (Result.ViewHandle == VK_NULL_HANDLE)
     {
         ReleaseImage2D(Result);
         return Result;
@@ -790,6 +783,37 @@ DeviceImageResource VulkanInterchange::AllocateImage3D(
     Result.HeightPx    = HeightPx;
     Result.DepthPx     = DepthPx;
     return Result;
+}
+
+VkImageView VulkanInterchange::CreateImageView3DMip(
+    VkImage            ImageHandle,
+    VkFormat           Format,
+    uint32_t           BaseMipLevel,
+    uint32_t           LevelCount,
+    VkImageAspectFlags AspectMask) const
+{
+    if (LogicalDevice == VK_NULL_HANDLE || ImageHandle == VK_NULL_HANDLE || LevelCount == 0u)
+    {
+        return VK_NULL_HANDLE;
+    }
+
+    VkImageViewCreateInfo ViewSpec {};
+    ViewSpec.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ViewSpec.image                           = ImageHandle;
+    ViewSpec.viewType                        = VK_IMAGE_VIEW_TYPE_3D;
+    ViewSpec.format                          = Format;
+    ViewSpec.subresourceRange.aspectMask     = AspectMask;
+    ViewSpec.subresourceRange.baseMipLevel   = BaseMipLevel;
+    ViewSpec.subresourceRange.levelCount     = LevelCount;
+    ViewSpec.subresourceRange.baseArrayLayer = 0u;
+    ViewSpec.subresourceRange.layerCount     = 1u;
+
+    VkImageView View = VK_NULL_HANDLE;
+    if (vkCreateImageView(LogicalDevice, &ViewSpec, nullptr, &View) != VK_SUCCESS)
+    {
+        return VK_NULL_HANDLE;
+    }
+    return View;
 }
 
 void VulkanInterchange::ReleaseImage2D(DeviceImageResource& Resource) const noexcept

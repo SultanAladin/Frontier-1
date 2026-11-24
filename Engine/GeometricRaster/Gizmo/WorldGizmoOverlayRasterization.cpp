@@ -264,8 +264,164 @@ bool WorldGizmoOverlayRasterization::InitializeOverlay(
         return false;
     }
 
+    for (AsyncCompositeSlot& Slot : CompositeSlots)
+    {
+        if (vkCreateDescriptorPool(DeviceHandle, &PoolSpec, nullptr, &Slot.DescriptorPool) != VK_SUCCESS)
+        {
+            TeardownOverlay();
+            return false;
+        }
+        Slot.UniformBuffer = DeviceInterchange->AllocateBuffer(
+            sizeof(GPUWorldGizmoUniformBlock),
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        Slot.ReadbackPickPatchBuf = DeviceInterchange->AllocateBuffer(
+            81ull * 16ull,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+        if (Slot.UniformBuffer.BufferHandle == VK_NULL_HANDLE || Slot.UniformBuffer.HostAddress == nullptr)
+        {
+            TeardownOverlay();
+            return false;
+        }
+    }
+    CompositeSlotCursor     = 0u;
+    CompositeFrameOrdinal   = 0ull;
+    LastHarvestedPickSignal = 0ull;
+    CachedGizmoStreamKey    = 0ull;
+    CachedOrderedVertices.clear();
+    CachedOpaqueVertexCount = 0u;
+    CachedTranslucentCount  = 0u;
+
     Ready = true;
     return true;
+}
+
+void WorldGizmoOverlayRasterization::HarvestCompletedPickPatches() noexcept
+{
+    if (DeviceInterchange == nullptr || !DeviceInterchange->Ready())
+    {
+        return;
+    }
+
+    for (AsyncCompositeSlot& Slot : CompositeSlots)
+    {
+        if (Slot.CommandBuffer == VK_NULL_HANDLE)
+        {
+            continue;
+        }
+        if (Slot.TimelineSignal != 0ull && !DeviceInterchange->QueryTimelineReached(Slot.TimelineSignal))
+        {
+            continue;
+        }
+        if (Slot.HasPendingPickPatch &&
+            Slot.TimelineSignal >= LastHarvestedPickSignal &&
+            Slot.ReadbackPickPatchBuf.HostAddress != nullptr &&
+            Slot.PendingPatchW > 0u && Slot.PendingPatchH > 0u)
+        {
+            CachedPickPatchX0 = Slot.PendingPatchX0;
+            CachedPickPatchY0 = Slot.PendingPatchY0;
+            CachedPickPatchW  = Slot.PendingPatchW;
+            CachedPickPatchH  = Slot.PendingPatchH;
+            const std::size_t PatchPixels = static_cast<std::size_t>(Slot.PendingPatchW) * Slot.PendingPatchH;
+            CachedPickOrdinals.resize(PatchPixels);
+            const auto* RawPickWords = static_cast<const uint32_t*>(Slot.ReadbackPickPatchBuf.HostAddress);
+            for (std::size_t Idx = 0u; Idx < PatchPixels; ++Idx)
+            {
+                CachedPickOrdinals[Idx] = RawPickWords[Idx * 4u + 3u];
+            }
+            LastHarvestedPickSignal = Slot.TimelineSignal;
+        }
+        DeviceInterchange->FreeCommandBuffer(Slot.CommandBuffer);
+        Slot.CommandBuffer       = VK_NULL_HANDLE;
+        Slot.TimelineSignal      = 0ull;
+        Slot.HasPendingPickPatch = false;
+    }
+}
+
+void WorldGizmoOverlayRasterization::RetireSlot(std::size_t SlotIndex, bool BlockIfBusy) noexcept
+{
+    if (DeviceInterchange == nullptr || !DeviceInterchange->Ready() || SlotIndex >= CompositeSlots.size())
+    {
+        return;
+    }
+    AsyncCompositeSlot& Slot = CompositeSlots[SlotIndex];
+    if (Slot.CommandBuffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    if (Slot.TimelineSignal != 0ull && !DeviceInterchange->QueryTimelineReached(Slot.TimelineSignal))
+    {
+        if (!BlockIfBusy)
+        {
+            return;
+        }
+        (void)DeviceInterchange->AwaitTimelineTick(Slot.TimelineSignal);
+    }
+    if (Slot.HasPendingPickPatch &&
+        Slot.TimelineSignal >= LastHarvestedPickSignal &&
+        Slot.ReadbackPickPatchBuf.HostAddress != nullptr &&
+        Slot.PendingPatchW > 0u && Slot.PendingPatchH > 0u)
+    {
+        CachedPickPatchX0 = Slot.PendingPatchX0;
+        CachedPickPatchY0 = Slot.PendingPatchY0;
+        CachedPickPatchW  = Slot.PendingPatchW;
+        CachedPickPatchH  = Slot.PendingPatchH;
+        const std::size_t PatchPixels = static_cast<std::size_t>(Slot.PendingPatchW) * Slot.PendingPatchH;
+        CachedPickOrdinals.resize(PatchPixels);
+        const auto* RawPickWords = static_cast<const uint32_t*>(Slot.ReadbackPickPatchBuf.HostAddress);
+        for (std::size_t Idx = 0u; Idx < PatchPixels; ++Idx)
+        {
+            CachedPickOrdinals[Idx] = RawPickWords[Idx * 4u + 3u];
+        }
+        LastHarvestedPickSignal = Slot.TimelineSignal;
+    }
+    DeviceInterchange->FreeCommandBuffer(Slot.CommandBuffer);
+    Slot.CommandBuffer       = VK_NULL_HANDLE;
+    Slot.TimelineSignal      = 0ull;
+    Slot.HasPendingPickPatch = false;
+}
+
+void WorldGizmoOverlayRasterization::ReapRetiredRenderTargets(bool ForceDrainAll) noexcept
+{
+    if (DeviceInterchange == nullptr || !DeviceInterchange->Ready() || RetiredRenderTargets.empty())
+    {
+        return;
+    }
+    VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+    std::size_t WriteIdx = 0u;
+    for (std::size_t ReadIdx = 0u; ReadIdx < RetiredRenderTargets.size(); ++ReadIdx)
+    {
+        RetiredRenderTargetSet& Entry = RetiredRenderTargets[ReadIdx];
+        const bool TimelineReady =
+            (Entry.TimelineSignal == 0ull) ||
+            DeviceInterchange->QueryTimelineReached(Entry.TimelineSignal);
+        const bool FrameGracePassed = (CompositeFrameOrdinal >= Entry.RetireAfterFrame);
+        if (ForceDrainAll || (TimelineReady && FrameGracePassed))
+        {
+            if (Entry.GpuCompositeFramebuffer != VK_NULL_HANDLE)
+            {
+                vkDestroyFramebuffer(DeviceHandle, Entry.GpuCompositeFramebuffer, nullptr);
+            }
+            if (Entry.TargetFramebuffer != VK_NULL_HANDLE)
+            {
+                vkDestroyFramebuffer(DeviceHandle, Entry.TargetFramebuffer, nullptr);
+            }
+            DeviceInterchange->ReleaseImage2D(Entry.ColorAttachment);
+            DeviceInterchange->ReleaseImage2D(Entry.PickAttachment);
+            DeviceInterchange->ReleaseImage2D(Entry.DepthAttachment);
+        }
+        else
+        {
+            if (WriteIdx != ReadIdx)
+            {
+                RetiredRenderTargets[WriteIdx] = Entry;
+            }
+            ++WriteIdx;
+        }
+    }
+    RetiredRenderTargets.resize(WriteIdx);
 }
 
 void WorldGizmoOverlayRasterization::FlushPreviousCompositeCmd()
@@ -280,6 +436,10 @@ void WorldGizmoOverlayRasterization::FlushPreviousCompositeCmd()
     }
     PreviousCompositeCmd    = VK_NULL_HANDLE;
     PreviousCompositeSignal = 0ull;
+    for (std::size_t Idx = 0u; Idx < CompositeSlots.size(); ++Idx)
+    {
+        RetireSlot(Idx, true);
+    }
 }
 
 void WorldGizmoOverlayRasterization::TeardownOverlay()
@@ -288,12 +448,28 @@ void WorldGizmoOverlayRasterization::TeardownOverlay()
     CachedPickOrdinals.clear();
     CachedPickPatchW = 0u;
     CachedPickPatchH = 0u;
+    CachedGizmoStreamKey = 0ull;
+    CachedOrderedVertices.clear();
+    CachedOpaqueVertexCount = 0u;
+    CachedTranslucentCount  = 0u;
     if (DeviceInterchange != nullptr && DeviceInterchange->Ready())
     {
         VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
         FlushPreviousCompositeCmd();
         vkDeviceWaitIdle(DeviceHandle);
+        ReapRetiredRenderTargets(true);
         ReleaseRenderTargets();
+        for (AsyncCompositeSlot& Slot : CompositeSlots)
+        {
+            DeviceInterchange->ReleaseBuffer(Slot.UniformBuffer);
+            DeviceInterchange->ReleaseBuffer(Slot.VertexBuffer);
+            DeviceInterchange->ReleaseBuffer(Slot.ReadbackPickPatchBuf);
+            if (Slot.DescriptorPool != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorPool(DeviceHandle, Slot.DescriptorPool, nullptr);
+                Slot.DescriptorPool = VK_NULL_HANDLE;
+            }
+        }
         if (BlitLinearSampler != VK_NULL_HANDLE)
         {
             vkDestroySampler(DeviceHandle, BlitLinearSampler, nullptr);
@@ -323,6 +499,7 @@ void WorldGizmoOverlayRasterization::TeardownOverlay()
             OverlayRenderTargetFormat = VK_NULL_HANDLE;
         }
     }
+    RetiredRenderTargets.clear();
     DeviceInterchange = nullptr;
 }
 
@@ -356,6 +533,9 @@ bool WorldGizmoOverlayRasterization::EnsureRenderTargets(uint32_t WidthPx, uint3
     {
         return false;
     }
+
+    ReapRetiredRenderTargets(false);
+
     if (TargetFramebuffer != VK_NULL_HANDLE && GpuCompositeFramebuffer != VK_NULL_HANDLE &&
         TargetWidthPx == WidthPx && TargetHeightPx == HeightPx)
     {
@@ -363,9 +543,41 @@ bool WorldGizmoOverlayRasterization::EnsureRenderTargets(uint32_t WidthPx, uint3
     }
 
     VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
-    FlushPreviousCompositeCmd();
-    vkDeviceWaitIdle(DeviceHandle);
-    ReleaseRenderTargets();
+
+    // Defer destroying the previous render targets until all in-flight composite slots & ImGui
+    // frames that may reference ColorAttachment.ViewHandle have retired (zero vkDeviceWaitIdle!).
+    if (TargetFramebuffer != VK_NULL_HANDLE ||
+        GpuCompositeFramebuffer != VK_NULL_HANDLE ||
+        ColorAttachment.ImageHandle != VK_NULL_HANDLE ||
+        PickAttachment.ImageHandle != VK_NULL_HANDLE ||
+        DepthAttachment.ImageHandle != VK_NULL_HANDLE)
+    {
+        uint64_t LatestSignal = PreviousCompositeSignal;
+        for (const AsyncCompositeSlot& Slot : CompositeSlots)
+        {
+            if (Slot.TimelineSignal > LatestSignal)
+            {
+                LatestSignal = Slot.TimelineSignal;
+            }
+        }
+        RetiredRenderTargetSet Retired {};
+        Retired.TargetFramebuffer       = TargetFramebuffer;
+        Retired.GpuCompositeFramebuffer = GpuCompositeFramebuffer;
+        Retired.ColorAttachment         = ColorAttachment;
+        Retired.PickAttachment          = PickAttachment;
+        Retired.DepthAttachment         = DepthAttachment;
+        Retired.TimelineSignal          = LatestSignal;
+        Retired.RetireAfterFrame        = CompositeFrameOrdinal + 4ull;
+        RetiredRenderTargets.push_back(Retired);
+
+        TargetFramebuffer       = VK_NULL_HANDLE;
+        GpuCompositeFramebuffer = VK_NULL_HANDLE;
+        ColorAttachment         = {};
+        PickAttachment          = {};
+        DepthAttachment         = {};
+        TargetWidthPx           = 0u;
+        TargetHeightPx          = 0u;
+    }
 
     ColorAttachment = DeviceInterchange->AllocateImage2D(
         WidthPx,
@@ -922,65 +1134,122 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
         return false;
     }
 
-    FlushPreviousCompositeCmd();
+    ++CompositeFrameOrdinal;
+    HarvestCompletedPickPatches();
 
     if (!EnsureRenderTargets(Request.TargetWidthPx, Request.TargetHeightPx))
     {
         return false;
     }
 
-    // Build gizmo geometry if requested
-    std::vector<Editor::GizmoGPUVertex> OrderedVertices {};
+    // Acquire next triple-buffered composite slot (only waits if all 3 slots are still in flight)
+    const std::size_t SlotIdx = CompositeSlotCursor;
+    CompositeSlotCursor = (CompositeSlotCursor + 1u) % CompositeSlots.size();
+    RetireSlot(SlotIdx, true);
+    AsyncCompositeSlot& Slot = CompositeSlots[SlotIdx];
+
+    // Build gizmo geometry if requested (cached across stationary frames)
     uint32_t OpaqueVertexCount      = 0u;
     uint32_t TranslucentVertexCount = 0u;
     Mathematics::Axis3D Eye {}, Right {}, Up {}, Fwd {};
     ComputeCameraBasis(Request.Camera, Eye, Right, Up, Fwd);
+    bool HasGizmoGeometry = false;
     if (Request.DrawGizmo && Request.Gizmo3D != nullptr)
     {
-        const std::vector<Editor::GizmoGPUVertex> RawVertices = Request.Gizmo3D->BuildTriangleStream(Right, Up, Fwd);
-        if (!RawVertices.empty())
+        auto MixBits = [](uint64_t H, uint64_t V) noexcept -> uint64_t
         {
-            OrderedVertices.reserve(RawVertices.size());
-            for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
-            {
-                if (RawVertices[Tri].PositionAlpha.W >= 0.95f)
-                {
-                    OrderedVertices.push_back(RawVertices[Tri]);
-                    OrderedVertices.push_back(RawVertices[Tri + 1u]);
-                    OrderedVertices.push_back(RawVertices[Tri + 2u]);
-                }
-            }
-            OpaqueVertexCount = static_cast<uint32_t>(OrderedVertices.size());
-            for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
-            {
-                if (RawVertices[Tri].PositionAlpha.W < 0.95f)
-                {
-                    OrderedVertices.push_back(RawVertices[Tri]);
-                    OrderedVertices.push_back(RawVertices[Tri + 1u]);
-                    OrderedVertices.push_back(RawVertices[Tri + 2u]);
-                }
-            }
-            TranslucentVertexCount = static_cast<uint32_t>(OrderedVertices.size()) - OpaqueVertexCount;
+            H ^= V;
+            H *= 1099511628211ull;
+            return H;
+        };
+        auto FloatBits = [](float F) noexcept -> uint64_t
+        {
+            uint32_t Bits = 0u;
+            std::memcpy(&Bits, &F, sizeof(Bits));
+            return static_cast<uint64_t>(Bits);
+        };
+        const auto  Origin = Request.Gizmo3D->QueryPivotOrigin();
+        const float Radius = Request.Gizmo3D->QueryWorldRadius();
+        const float YawDeg = Request.Gizmo3D->QueryAnchorYawDegrees();
+        uint64_t Key = 14695981039346656037ull;
+        Key = MixBits(Key, FloatBits(Origin.X));
+        Key = MixBits(Key, FloatBits(Origin.Y));
+        Key = MixBits(Key, FloatBits(Origin.Z));
+        Key = MixBits(Key, FloatBits(Radius));
+        Key = MixBits(Key, FloatBits(YawDeg));
+        Key = MixBits(Key, FloatBits(Right.X));
+        Key = MixBits(Key, FloatBits(Right.Y));
+        Key = MixBits(Key, FloatBits(Right.Z));
+        Key = MixBits(Key, FloatBits(Up.X));
+        Key = MixBits(Key, FloatBits(Up.Y));
+        Key = MixBits(Key, FloatBits(Up.Z));
+        Key = MixBits(Key, FloatBits(Fwd.X));
+        Key = MixBits(Key, FloatBits(Fwd.Y));
+        Key = MixBits(Key, FloatBits(Fwd.Z));
+        Key = MixBits(Key, static_cast<uint64_t>(Request.Gizmo3D->QueryDimensionMode()));
+        Key = MixBits(Key, static_cast<uint64_t>(Request.Gizmo3D->QueryHandleFilter()));
+        Key = MixBits(Key, static_cast<uint64_t>(Request.Gizmo3D->QueryHoveredHandle()));
+        Key = MixBits(Key, static_cast<uint64_t>(Request.Gizmo3D->QueryActiveHandle()));
+        Key = MixBits(Key, Request.Gizmo3D->QueryDragging() ? 1ull : 0ull);
+        if (Key == 0ull)
+        {
+            Key = 1ull;
         }
+
+        if (Key != CachedGizmoStreamKey)
+        {
+            CachedOrderedVertices.clear();
+            CachedOpaqueVertexCount = 0u;
+            CachedTranslucentCount  = 0u;
+            const std::vector<Editor::GizmoGPUVertex> RawVertices = Request.Gizmo3D->BuildTriangleStream(Right, Up, Fwd);
+            if (!RawVertices.empty())
+            {
+                CachedOrderedVertices.reserve(RawVertices.size());
+                for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
+                {
+                    if (RawVertices[Tri].PositionAlpha.W >= 0.95f)
+                    {
+                        CachedOrderedVertices.push_back(RawVertices[Tri]);
+                        CachedOrderedVertices.push_back(RawVertices[Tri + 1u]);
+                        CachedOrderedVertices.push_back(RawVertices[Tri + 2u]);
+                    }
+                }
+                CachedOpaqueVertexCount = static_cast<uint32_t>(CachedOrderedVertices.size());
+                for (std::size_t Tri = 0u; Tri + 2u < RawVertices.size(); Tri += 3u)
+                {
+                    if (RawVertices[Tri].PositionAlpha.W < 0.95f)
+                    {
+                        CachedOrderedVertices.push_back(RawVertices[Tri]);
+                        CachedOrderedVertices.push_back(RawVertices[Tri + 1u]);
+                        CachedOrderedVertices.push_back(RawVertices[Tri + 2u]);
+                    }
+                }
+                CachedTranslucentCount = static_cast<uint32_t>(CachedOrderedVertices.size()) - CachedOpaqueVertexCount;
+            }
+            CachedGizmoStreamKey = Key;
+        }
+        OpaqueVertexCount      = CachedOpaqueVertexCount;
+        TranslucentVertexCount = CachedTranslucentCount;
+        HasGizmoGeometry       = !CachedOrderedVertices.empty();
     }
 
     uint64_t VertBytes = 0ull;
-    if (!OrderedVertices.empty())
+    if (HasGizmoGeometry)
     {
-        VertBytes = OrderedVertices.size() * sizeof(Editor::GizmoGPUVertex);
-        if (VertexBuffer.ByteCapacity < VertBytes)
+        VertBytes = CachedOrderedVertices.size() * sizeof(Editor::GizmoGPUVertex);
+        if (Slot.VertexBuffer.ByteCapacity < VertBytes)
         {
-            DeviceInterchange->ReleaseBuffer(VertexBuffer);
-            VertexBuffer = DeviceInterchange->AllocateBuffer(
+            DeviceInterchange->ReleaseBuffer(Slot.VertexBuffer);
+            Slot.VertexBuffer = DeviceInterchange->AllocateBuffer(
                 std::max<uint64_t>(VertBytes, 16384ull),
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            if (VertexBuffer.HostAddress == nullptr)
+            if (Slot.VertexBuffer.HostAddress == nullptr)
             {
                 return false;
             }
         }
-        std::memcpy(VertexBuffer.HostAddress, OrderedVertices.data(), static_cast<std::size_t>(VertBytes));
+        std::memcpy(Slot.VertexBuffer.HostAddress, CachedOrderedVertices.data(), static_cast<std::size_t>(VertBytes));
 
         GPUWorldGizmoUniformBlock Uniforms {};
         const float FovDeg = Request.Camera.VerticalFovRadians * Constants::RadToDegFloat;
@@ -1005,15 +1274,15 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
         Uniforms.HeadlightDirection[1] = KeyLight.Y;
         Uniforms.HeadlightDirection[2] = KeyLight.Z;
         Uniforms.HeadlightDirection[3] = 1.0f;
-        std::memcpy(UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
+        std::memcpy(Slot.UniformBuffer.HostAddress, &Uniforms, sizeof(Uniforms));
     }
 
     VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
-    vkResetDescriptorPool(DeviceHandle, OverlayDescriptorAllocator, 0u);
+    vkResetDescriptorPool(DeviceHandle, Slot.DescriptorPool, 0u);
 
     VkDescriptorSet BlitSet = VK_NULL_HANDLE;
     {
-        VkDescriptorSetAllocateInfo AllocBlit { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, OverlayDescriptorAllocator, 1u, &ViewportBlitProgram.SlotLayout };
+        VkDescriptorSetAllocateInfo AllocBlit { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, Slot.DescriptorPool, 1u, &ViewportBlitProgram.SlotLayout };
         if (vkAllocateDescriptorSets(DeviceHandle, &AllocBlit, &BlitSet) != VK_SUCCESS || BlitSet == VK_NULL_HANDLE)
         {
             return false;
@@ -1030,16 +1299,16 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
     }
 
     VkDescriptorSet GizmoSet = VK_NULL_HANDLE;
-    if (!OrderedVertices.empty())
+    if (HasGizmoGeometry)
     {
-        VkDescriptorSetAllocateInfo AllocGizmo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, OverlayDescriptorAllocator, 1u, &GizmoDepthProgram.SlotLayout };
+        VkDescriptorSetAllocateInfo AllocGizmo { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, Slot.DescriptorPool, 1u, &GizmoDepthProgram.SlotLayout };
         if (vkAllocateDescriptorSets(DeviceHandle, &AllocGizmo, &GizmoSet) != VK_SUCCESS || GizmoSet == VK_NULL_HANDLE)
         {
             return false;
         }
         const std::array<VkDescriptorBufferInfo, 2u> BufferInfos {{
-            { UniformBuffer.BufferHandle, 0u, sizeof(GPUWorldGizmoUniformBlock) },
-            { VertexBuffer.BufferHandle, 0u, VertBytes },
+            { Slot.UniformBuffer.BufferHandle, 0u, sizeof(GPUWorldGizmoUniformBlock) },
+            { Slot.VertexBuffer.BufferHandle, 0u, VertBytes },
         }};
         std::array<VkWriteDescriptorSet, 2u> GizmoWrites {};
         for (uint32_t Idx = 0u; Idx < 2u; ++Idx)
@@ -1086,7 +1355,7 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
     vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ViewportBlitProgram.ProgramLayout, 0u, 1u, &BlitSet, 0u, nullptr);
     vkCmdDraw(Cmd, 3u, 1u, 0u, 0u);
 
-    if (!OrderedVertices.empty())
+    if (HasGizmoGeometry)
     {
         if (OpaqueVertexCount > 0u)
         {
@@ -1104,56 +1373,59 @@ bool WorldGizmoOverlayRasterization::CompositeOntoGpuViewport(
 
     vkCmdEndRenderPass(Cmd);
 
-    const bool DoPatchReadback = Request.RequestPickPatch && !OrderedVertices.empty() && ReadbackPickPatchBuffer.HostAddress != nullptr;
-    int32_t PatchX0 = 0;
-    int32_t PatchY0 = 0;
-    uint32_t PatchW = 0u;
-    uint32_t PatchH = 0u;
-
+    const bool DoPatchReadback = Request.RequestPickPatch && HasGizmoGeometry && Slot.ReadbackPickPatchBuf.HostAddress != nullptr;
     if (DoPatchReadback)
     {
         const int32_t Cx = std::clamp(static_cast<int32_t>(Request.PickCursorX), 0, static_cast<int32_t>(Request.TargetWidthPx) - 1);
         const int32_t Cy = std::clamp(static_cast<int32_t>(Request.PickCursorY), 0, static_cast<int32_t>(Request.TargetHeightPx) - 1);
-        PatchX0 = std::max(0, Cx - 4);
-        PatchY0 = std::max(0, Cy - 4);
+        const int32_t PatchX0 = std::max(0, Cx - 4);
+        const int32_t PatchY0 = std::max(0, Cy - 4);
         const int32_t PatchX1 = std::min(static_cast<int32_t>(Request.TargetWidthPx) - 1, Cx + 4);
         const int32_t PatchY1 = std::min(static_cast<int32_t>(Request.TargetHeightPx) - 1, Cy + 4);
-        PatchW = static_cast<uint32_t>(PatchX1 - PatchX0 + 1);
-        PatchH = static_cast<uint32_t>(PatchY1 - PatchY0 + 1);
+        const uint32_t PatchW = static_cast<uint32_t>(PatchX1 - PatchX0 + 1);
+        const uint32_t PatchH = static_cast<uint32_t>(PatchY1 - PatchY0 + 1);
 
         VkBufferImageCopy PatchCopy {};
         PatchCopy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
         PatchCopy.imageOffset      = { PatchX0, PatchY0, 0 };
         PatchCopy.imageExtent      = { PatchW, PatchH, 1u };
-        vkCmdCopyImageToBuffer(Cmd, PickAttachment.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ReadbackPickPatchBuffer.BufferHandle, 1u, &PatchCopy);
+        vkCmdCopyImageToBuffer(Cmd, PickAttachment.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, Slot.ReadbackPickPatchBuf.BufferHandle, 1u, &PatchCopy);
 
-        const uint64_t Signal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
-        (void)DeviceInterchange->AwaitTimelineTick(Signal);
-        DeviceInterchange->FreeCommandBuffer(Cmd);
+        VkMemoryBarrier HostBarrier {};
+        HostBarrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        HostBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        HostBarrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(
+            Cmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_HOST_BIT,
+            0u,
+            1u,
+            &HostBarrier,
+            0u,
+            nullptr,
+            0u,
+            nullptr);
 
-        CachedPickPatchX0 = static_cast<uint32_t>(PatchX0);
-        CachedPickPatchY0 = static_cast<uint32_t>(PatchY0);
-        CachedPickPatchW  = PatchW;
-        CachedPickPatchH  = PatchH;
-        const std::size_t PatchPixels = static_cast<std::size_t>(PatchW) * PatchH;
-        CachedPickOrdinals.resize(PatchPixels);
-        const auto* RawPickWords = static_cast<const uint32_t*>(ReadbackPickPatchBuffer.HostAddress);
-        for (std::size_t Idx = 0u; Idx < PatchPixels; ++Idx)
-        {
-            CachedPickOrdinals[Idx] = RawPickWords[Idx * 4u + 3u];
-        }
+        Slot.HasPendingPickPatch = true;
+        Slot.PendingPatchX0      = static_cast<uint32_t>(PatchX0);
+        Slot.PendingPatchY0      = static_cast<uint32_t>(PatchY0);
+        Slot.PendingPatchW       = PatchW;
+        Slot.PendingPatchH       = PatchH;
     }
     else
     {
-        if (!Request.DrawGizmo || OrderedVertices.empty())
+        Slot.HasPendingPickPatch = false;
+        if (!Request.DrawGizmo || !HasGizmoGeometry)
         {
             CachedPickPatchW = 0u;
             CachedPickPatchH = 0u;
             CachedPickOrdinals.clear();
         }
-        PreviousCompositeSignal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
-        PreviousCompositeCmd    = Cmd;
     }
+
+    Slot.TimelineSignal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
+    Slot.CommandBuffer  = Cmd;
 
     OutResult.ColorImageView  = ColorAttachment.ViewHandle;
     OutResult.ImageGeneration = ColorAttachmentGeneration;

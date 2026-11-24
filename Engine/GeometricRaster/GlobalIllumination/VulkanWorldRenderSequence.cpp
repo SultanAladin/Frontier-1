@@ -404,7 +404,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 32u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 38u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // 0:  WorldUniforms
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 1:  SceneBvhEntries
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 2:  SceneTriangles
@@ -437,6 +437,12 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 29: LocalAssetSdfVoxelBuffer
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 30: DynamicLocalSdfInstanceBuffer
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 31: ActiveClusterBitmask
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, // 32: GdfFineTex3D
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, // 33: GdfCoarseTex3D
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, // 34: RadiosityMip0Tex3D
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, // 35: RadiosityCoarseTex3D
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          // 36: GdfBakeTargetImg3D
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          // 37: RadiosityBakeDstImg3D
     }};
 
     const std::filesystem::path ShaderBinaryPath = CompiledShaderDirectory / "WorldViewportRadiometricCompute.comp.spv";
@@ -531,8 +537,32 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         CompiledShaderDirectory / "WorldViewportGlobalRadiosityBake.comp.spv",
         SlotTypes,
         "GlobalRadiosityBakeEntry");
-    HighEndBvhProgramHandle        = UINT32_MAX;
-    ViewportPathTraceProgramHandle = UINT32_MAX;
+    HighEndBvhProgramHandle           = UINT32_MAX;
+    ViewportPathTraceProgramHandle    = UINT32_MAX;
+    InstanceTransformBvhProgramHandle = UINT32_MAX;
+    InstanceTransformTriProgramHandle = UINT32_MAX;
+    {
+        constexpr std::array<VkDescriptorType, 5u> TransformSlotTypes {{
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // 0: InstanceTransform
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 1: LocalBvhEntries
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 2: WorldBvhEntries
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 3: LocalTriangles
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 4: WorldTriangles
+        }};
+        const auto XformBvhPath = CompiledShaderDirectory / "WorldInstanceTransformBvh.comp.spv";
+        const auto XformTriPath = CompiledShaderDirectory / "WorldInstanceTransformTri.comp.spv";
+        if (std::filesystem::exists(XformBvhPath) && std::filesystem::exists(XformTriPath))
+        {
+            InstanceTransformBvhProgramHandle = DispatchEncoder.RegisterProgram(
+                XformBvhPath,
+                TransformSlotTypes,
+                "TransformBvhNodesEntry");
+            InstanceTransformTriProgramHandle = DispatchEncoder.RegisterProgram(
+                XformTriPath,
+                TransformSlotTypes,
+                "TransformTrianglesEntry");
+        }
+    }
     if (TargetDevice.QueryHardwareAccelerated())
     {
         HighEndBvhProgramHandle = DispatchEncoder.RegisterProgram(
@@ -556,12 +586,31 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         {
             TimestampQueryPool = VK_NULL_HANDLE;
         }
+        for (AsyncLiveFrameSlot& Slot : LiveFrameSlots)
+        {
+            if (vkCreateQueryPool(TargetDevice.AccessDevice(), &PoolInfo, nullptr, &Slot.TimestampQueryPool) != VK_SUCCESS)
+            {
+                Slot.TimestampQueryPool = VK_NULL_HANDLE;
+            }
+        }
     }
 
     EnsureBufferCapacity(UniformBuffer, 8192ull * 12ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(PrecomputeUniformBuffer, 8192ull * 24ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(InstanceTransformUniformBuffer, 256ull * 64ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    EnsureBufferCapacity(TopNodeStagingBuffer, 64ull * sizeof(SpatialAcceleration::WideTreeEntry), VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    for (AsyncLiveFrameSlot& Slot : LiveFrameSlots)
+    {
+        EnsureBufferCapacity(Slot.UniformBuffer, 8192ull * 12ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    }
     EnsureDeviceBufferCapacity(GlobalDistanceFieldBuffer, 2ull * 262144ull * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(GlobalRadiosityFieldBuffer, 299520ull * sizeof(uint32_t) * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     EnsureDeviceBufferCapacity(GlobalSurfaceShellBuffer, 262144ull * sizeof(uint32_t) * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    if (!EnsureVolume3DResources())
+    {
+        TeardownSequence();
+        return false;
+    }
     EnsureBufferCapacity(SkyViewUniformBuffer, sizeof(AtmosphericSkyUniformStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     EnsureBufferCapacity(StellarCullUniformBuffer, sizeof(StellarCullUniformBlockStd140), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
     {
@@ -691,13 +740,33 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
 {
     if (BoundDevice != nullptr && BoundDevice->Ready())
     {
+        FlushAllAsyncDispatches();
         vkDeviceWaitIdle(BoundDevice->AccessDevice());
+        ReapRetiredDisplayImages(true);
+        ReleaseVolume3DResources();
         if (TimestampQueryPool != VK_NULL_HANDLE)
         {
             vkDestroyQueryPool(BoundDevice->AccessDevice(), TimestampQueryPool, nullptr);
             TimestampQueryPool = VK_NULL_HANDLE;
         }
+        for (AsyncLiveFrameSlot& Slot : LiveFrameSlots)
+        {
+            if (Slot.TimestampQueryPool != VK_NULL_HANDLE)
+            {
+                vkDestroyQueryPool(BoundDevice->AccessDevice(), Slot.TimestampQueryPool, nullptr);
+                Slot.TimestampQueryPool = VK_NULL_HANDLE;
+            }
+            BoundDevice->ReleaseBuffer(Slot.UniformBuffer);
+            Slot.CommandBuffer    = VK_NULL_HANDLE;
+            Slot.TimelineSignal   = 0ull;
+            Slot.HasGpuTimestamps = false;
+        }
         BoundDevice->ReleaseBuffer(UniformBuffer);
+        BoundDevice->ReleaseBuffer(PrecomputeUniformBuffer);
+        BoundDevice->ReleaseBuffer(InstanceTransformUniformBuffer);
+        BoundDevice->ReleaseBuffer(TopNodeStagingBuffer);
+        BoundDevice->ReleaseBuffer(ResidentLocalBvhBuffer);
+        BoundDevice->ReleaseBuffer(ResidentLocalTriBuffer);
         BoundDevice->ReleaseBuffer(SkyViewUniformBuffer);
         BoundDevice->ReleaseBuffer(StellarCullUniformBuffer);
         BoundDevice->ReleaseBuffer(UploadStagingBuffer);
@@ -735,6 +804,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         BoundDevice->ReleaseBuffer(ActiveClusterMaskBuffer);
         BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
     }
+    RetiredDisplayImages.clear();
     AssetClusterTreeCache.clear();
     PreparedPyramidVolumes.clear();
     ResidentClusterInstances.clear();
@@ -742,19 +812,28 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     FinestClusterMaskWords.clear();
     ViewportClusterMaskWords.clear();
     DispatchEncoder.TeardownEncoder();
-    RadiometricProgramHandle        = UINT32_MAX;
-    CloudLayerProgramHandle         = UINT32_MAX;
-    DenoiseProgramHandle            = UINT32_MAX;
-    TransmittanceLutProgramHandle   = UINT32_MAX;
-    MultiScatterLutProgramHandle    = UINT32_MAX;
-    SkyViewLutProgramHandle         = UINT32_MAX;
-    StellarClearProgramHandle       = UINT32_MAX;
-    StellarCullProgramHandle        = UINT32_MAX;
-    ShadowCascadeProgramHandle      = UINT32_MAX;
-    GlobalDistanceBakeProgramHandle = UINT32_MAX;
-    GlobalRadiosityProgramHandle    = UINT32_MAX;
-    HighEndBvhProgramHandle         = UINT32_MAX;
-    ViewportPathTraceProgramHandle  = UINT32_MAX;
+    RadiometricProgramHandle          = UINT32_MAX;
+    CloudLayerProgramHandle           = UINT32_MAX;
+    DenoiseProgramHandle              = UINT32_MAX;
+    TransmittanceLutProgramHandle     = UINT32_MAX;
+    MultiScatterLutProgramHandle      = UINT32_MAX;
+    SkyViewLutProgramHandle           = UINT32_MAX;
+    StellarClearProgramHandle         = UINT32_MAX;
+    StellarCullProgramHandle          = UINT32_MAX;
+    ShadowCascadeProgramHandle        = UINT32_MAX;
+    GlobalDistanceBakeProgramHandle   = UINT32_MAX;
+    GlobalRadiosityProgramHandle      = UINT32_MAX;
+    HighEndBvhProgramHandle           = UINT32_MAX;
+    ViewportPathTraceProgramHandle    = UINT32_MAX;
+    InstanceTransformBvhProgramHandle = UINT32_MAX;
+    InstanceTransformTriProgramHandle = UINT32_MAX;
+    LiveFrameCursor                   = 0u;
+    PendingPrecomputeCmd              = VK_NULL_HANDLE;
+    PendingPrecomputeSignal           = 0ull;
+    PendingTransformCmd               = VK_NULL_HANDLE;
+    PendingTransformSignal            = 0ull;
+    ReservedTopNodeCount              = 0u;
+    CachedResidentTopologySig         = 0ull;
     UploadedCatalogStarCount        = 0u;
     UploadedPhotometricProfiles     = 0u;
     UploadedPhotometricLamps        = 0u;
@@ -824,6 +903,10 @@ void VulkanWorldRenderSequence::EnsureBufferCapacity(
     {
         return;
     }
+    if (TargetBuffer.BufferHandle != VK_NULL_HANDLE)
+    {
+        FlushAllAsyncDispatches();
+    }
     BoundDevice->ReleaseBuffer(TargetBuffer);
     const uint64_t PaddedBytes = std::max<uint64_t>(SafeBytes, (SafeBytes * 5ull) / 4ull);
     TargetBuffer               = DispatchEncoder.AllocateHostWritableBuffer(PaddedBytes, UsageMask);
@@ -842,6 +925,10 @@ void VulkanWorldRenderSequence::EnsureDeviceBufferCapacity(
     if (BoundDevice == nullptr)
     {
         return;
+    }
+    if (TargetBuffer.BufferHandle != VK_NULL_HANDLE)
+    {
+        FlushAllAsyncDispatches();
     }
     BoundDevice->ReleaseBuffer(TargetBuffer);
     const uint64_t PaddedBytes = std::max<uint64_t>(SafeBytes, (SafeBytes * 5ull) / 4ull);
@@ -862,15 +949,343 @@ void VulkanWorldRenderSequence::EnsureReadbackBufferCapacity(
     {
         return;
     }
+    if (TargetBuffer.BufferHandle != VK_NULL_HANDLE)
+    {
+        FlushAllAsyncDispatches();
+    }
     BoundDevice->ReleaseBuffer(TargetBuffer);
     const uint64_t PaddedBytes = std::max<uint64_t>(SafeBytes, (SafeBytes * 5ull) / 4ull);
     TargetBuffer               = DispatchEncoder.AllocateReadbackStagingBuffer(PaddedBytes);
+}
+
+uint64_t VulkanWorldRenderSequence::QueryLatestSubmittedTimelineSignal() const noexcept
+{
+    uint64_t Latest = std::max(PendingPrecomputeSignal, PendingTransformSignal);
+    for (const AsyncLiveFrameSlot& Slot : LiveFrameSlots)
+    {
+        if (Slot.TimelineSignal > Latest)
+        {
+            Latest = Slot.TimelineSignal;
+        }
+    }
+    return Latest;
+}
+
+void VulkanWorldRenderSequence::RetireLiveFrameSlot(uint32_t SlotIndex, bool BlockIfBusy) noexcept
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || SlotIndex >= kLiveFrameSlots)
+    {
+        return;
+    }
+    AsyncLiveFrameSlot& Slot = LiveFrameSlots[SlotIndex];
+    if (Slot.CommandBuffer == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    if (Slot.TimelineSignal != 0ull && !BoundDevice->QueryTimelineReached(Slot.TimelineSignal))
+    {
+        if (!BlockIfBusy)
+        {
+            return;
+        }
+        (void)BoundDevice->AwaitTimelineTick(Slot.TimelineSignal, 60000000000ull);
+    }
+
+    if (Slot.HasGpuTimestamps && Slot.TimestampQueryPool != VK_NULL_HANDLE)
+    {
+        uint64_t Stamps[10u]{};
+        if (vkGetQueryPoolResults(
+                BoundDevice->AccessDevice(),
+                Slot.TimestampQueryPool,
+                0u,
+                10u,
+                sizeof(Stamps),
+                Stamps,
+                sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT) == VK_SUCCESS)
+        {
+            const uint32_t Bits     = BoundDevice->QueryTimestampValidBits();
+            const uint64_t Mask     = (Bits >= 64u) ? ~0ull : ((1ull << Bits) - 1ull);
+            const double   PeriodMs = static_cast<double>(BoundDevice->QueryTimestampPeriodNs()) * 1.0e-6;
+            auto DeltaMs = [&](uint32_t A, uint32_t B) -> float
+            {
+                const uint64_t DA = Stamps[A] & Mask;
+                const uint64_t DB = Stamps[B] & Mask;
+                return (DB >= DA) ? static_cast<float>(static_cast<double>(DB - DA) * PeriodMs) : 0.0f;
+            };
+            LastViewportTiming.GpuSkyLutMs        = DeltaMs(0u, 1u);
+            LastViewportTiming.GpuCloudsMs        = DeltaMs(2u, 3u);
+            LastViewportTiming.GpuPrimaryTraceMs  = DeltaMs(4u, 5u);
+            LastViewportTiming.GpuDenoiseMs       = DeltaMs(6u, 7u);
+            LastViewportTiming.GpuReadbackCopyMs  = DeltaMs(8u, 9u);
+            LastViewportTiming.GpuTotalPassMs     = DeltaMs(0u, 9u);
+            LastViewportTiming.GpuTimestampsValid = true;
+        }
+    }
+
+    BoundDevice->FreeCommandBuffer(Slot.CommandBuffer);
+    Slot.CommandBuffer    = VK_NULL_HANDLE;
+    Slot.TimelineSignal   = 0ull;
+    Slot.HasGpuTimestamps = false;
+}
+
+void VulkanWorldRenderSequence::RetirePendingPrecompute(bool BlockIfBusy) noexcept
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || PendingPrecomputeCmd == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    if (PendingPrecomputeSignal != 0ull && !BoundDevice->QueryTimelineReached(PendingPrecomputeSignal))
+    {
+        if (!BlockIfBusy)
+        {
+            return;
+        }
+        (void)BoundDevice->AwaitTimelineTick(PendingPrecomputeSignal, 60000000000ull);
+    }
+    BoundDevice->FreeCommandBuffer(PendingPrecomputeCmd);
+    PendingPrecomputeCmd    = VK_NULL_HANDLE;
+    PendingPrecomputeSignal = 0ull;
+}
+
+void VulkanWorldRenderSequence::RetirePendingTransform(bool BlockIfBusy) noexcept
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || PendingTransformCmd == VK_NULL_HANDLE)
+    {
+        return;
+    }
+    if (PendingTransformSignal != 0ull && !BoundDevice->QueryTimelineReached(PendingTransformSignal))
+    {
+        if (!BlockIfBusy)
+        {
+            return;
+        }
+        (void)BoundDevice->AwaitTimelineTick(PendingTransformSignal, 60000000000ull);
+    }
+    BoundDevice->FreeCommandBuffer(PendingTransformCmd);
+    PendingTransformCmd    = VK_NULL_HANDLE;
+    PendingTransformSignal = 0ull;
+}
+
+void VulkanWorldRenderSequence::FlushAllAsyncDispatches() noexcept
+{
+    for (uint32_t Idx = 0u; Idx < kLiveFrameSlots; ++Idx)
+    {
+        RetireLiveFrameSlot(Idx, true);
+    }
+    RetirePendingPrecompute(true);
+    RetirePendingTransform(true);
+}
+
+void VulkanWorldRenderSequence::ReapRetiredDisplayImages(bool ForceDrainAll) noexcept
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || RetiredDisplayImages.empty())
+    {
+        return;
+    }
+    std::size_t WriteIdx = 0u;
+    for (std::size_t ReadIdx = 0u; ReadIdx < RetiredDisplayImages.size(); ++ReadIdx)
+    {
+        RetiredDisplayImageEntry& Entry = RetiredDisplayImages[ReadIdx];
+        const bool TimelineDone =
+            (Entry.TimelineSignal == 0ull) ||
+            BoundDevice->QueryTimelineReached(Entry.TimelineSignal);
+        const bool GracePassed = (FrameSequenceIndex >= Entry.RetireAfterFrame);
+        if (ForceDrainAll || (TimelineDone && GracePassed))
+        {
+            BoundDevice->ReleaseImage2D(Entry.Image);
+        }
+        else
+        {
+            if (WriteIdx != ReadIdx)
+            {
+                RetiredDisplayImages[WriteIdx] = Entry;
+            }
+            ++WriteIdx;
+        }
+    }
+    RetiredDisplayImages.resize(WriteIdx);
+}
+
+void VulkanWorldRenderSequence::ReleaseVolume3DResources() noexcept
+{
+    if (BoundDevice != nullptr && BoundDevice->Ready())
+    {
+        VkDevice DeviceHandle = BoundDevice->AccessDevice();
+        for (VkImageView& MipView : RadiosityCoarseMipViews)
+        {
+            if (MipView != VK_NULL_HANDLE)
+            {
+                vkDestroyImageView(DeviceHandle, MipView, nullptr);
+                MipView = VK_NULL_HANDLE;
+            }
+        }
+        if (LinearRepeatSampler3D != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(DeviceHandle, LinearRepeatSampler3D, nullptr);
+            LinearRepeatSampler3D = VK_NULL_HANDLE;
+        }
+        if (LinearClampSampler3D != VK_NULL_HANDLE)
+        {
+            vkDestroySampler(DeviceHandle, LinearClampSampler3D, nullptr);
+            LinearClampSampler3D = VK_NULL_HANDLE;
+        }
+        BoundDevice->ReleaseImage2D(GdfFineImage3D);
+        BoundDevice->ReleaseImage2D(GdfCoarseImage3D);
+        BoundDevice->ReleaseImage2D(RadiosityMip0Image3D);
+        BoundDevice->ReleaseImage2D(RadiosityMip0ScratchImage3D);
+        BoundDevice->ReleaseImage2D(RadiosityCoarseImage3D);
+        BoundDevice->ReleaseImage2D(DummyFloat1x1x1Image3D);
+        BoundDevice->ReleaseImage2D(DummyRgba1x1x1Image3D);
+    }
+    Volume3DResourcesInitialized = false;
+}
+
+bool VulkanWorldRenderSequence::EnsureVolume3DResources()
+{
+    if (Volume3DResourcesInitialized)
+    {
+        return true;
+    }
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return false;
+    }
+
+    const VkImageUsageFlags VolUsage =
+        VK_IMAGE_USAGE_SAMPLED_BIT |
+        VK_IMAGE_USAGE_STORAGE_BIT |
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+    GdfFineImage3D = BoundDevice->AllocateImage3D(64u, 64u, 64u, VK_FORMAT_R16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 1u);
+    GdfCoarseImage3D = BoundDevice->AllocateImage3D(64u, 64u, 64u, VK_FORMAT_R16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 1u);
+    RadiosityMip0Image3D = BoundDevice->AllocateImage3D(64u, 64u, 64u, VK_FORMAT_R16G16B16A16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 1u);
+    RadiosityMip0ScratchImage3D = BoundDevice->AllocateImage3D(64u, 64u, 64u, VK_FORMAT_R16G16B16A16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 1u);
+    RadiosityCoarseImage3D = BoundDevice->AllocateImage3D(32u, 32u, 32u, VK_FORMAT_R16G16B16A16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 3u);
+    DummyFloat1x1x1Image3D = BoundDevice->AllocateImage3D(1u, 1u, 1u, VK_FORMAT_R16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 1u);
+    DummyRgba1x1x1Image3D = BoundDevice->AllocateImage3D(1u, 1u, 1u, VK_FORMAT_R16G16B16A16_SFLOAT, VolUsage, VK_IMAGE_ASPECT_COLOR_BIT, 1u);
+
+    if (GdfFineImage3D.ViewHandle == VK_NULL_HANDLE ||
+        GdfCoarseImage3D.ViewHandle == VK_NULL_HANDLE ||
+        RadiosityMip0Image3D.ViewHandle == VK_NULL_HANDLE ||
+        RadiosityMip0ScratchImage3D.ViewHandle == VK_NULL_HANDLE ||
+        RadiosityCoarseImage3D.ViewHandle == VK_NULL_HANDLE ||
+        DummyFloat1x1x1Image3D.ViewHandle == VK_NULL_HANDLE ||
+        DummyRgba1x1x1Image3D.ViewHandle == VK_NULL_HANDLE)
+    {
+        ReleaseVolume3DResources();
+        return false;
+    }
+
+    for (uint32_t Mip = 0u; Mip < 3u; ++Mip)
+    {
+        RadiosityCoarseMipViews[Mip] = BoundDevice->CreateImageView3DMip(
+            RadiosityCoarseImage3D.ImageHandle,
+            VK_FORMAT_R16G16B16A16_SFLOAT,
+            Mip,
+            1u);
+        if (RadiosityCoarseMipViews[Mip] == VK_NULL_HANDLE)
+        {
+            ReleaseVolume3DResources();
+            return false;
+        }
+    }
+
+    VkDevice DeviceHandle = BoundDevice->AccessDevice();
+    VkSamplerCreateInfo SampSpec {};
+    SampSpec.sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    SampSpec.magFilter    = VK_FILTER_LINEAR;
+    SampSpec.minFilter    = VK_FILTER_LINEAR;
+    SampSpec.mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    SampSpec.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    SampSpec.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    SampSpec.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    SampSpec.minLod       = 0.0f;
+    SampSpec.maxLod       = 0.0f;
+    if (vkCreateSampler(DeviceHandle, &SampSpec, nullptr, &LinearRepeatSampler3D) != VK_SUCCESS)
+    {
+        ReleaseVolume3DResources();
+        return false;
+    }
+
+    SampSpec.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    SampSpec.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    SampSpec.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    SampSpec.maxLod       = 3.0f;
+    if (vkCreateSampler(DeviceHandle, &SampSpec, nullptr, &LinearClampSampler3D) != VK_SUCCESS)
+    {
+        ReleaseVolume3DResources();
+        return false;
+    }
+
+    // One-time initial layout transition + clear to safe defaults
+    VkCommandBuffer InitCmd = BoundDevice->BeginSingleTimeCommands();
+    if (InitCmd == VK_NULL_HANDLE)
+    {
+        ReleaseVolume3DResources();
+        return false;
+    }
+
+    auto TransitionInit = [&](VkImage Img, uint32_t Mips, VkImageLayout OldL, VkImageLayout NewL,
+                              VkPipelineStageFlags SrcStage, VkPipelineStageFlags DstStage,
+                              VkAccessFlags SrcAccess, VkAccessFlags DstAccess)
+    {
+        VkImageMemoryBarrier B {};
+        B.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        B.oldLayout           = OldL;
+        B.newLayout           = NewL;
+        B.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        B.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        B.image               = Img;
+        B.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, Mips, 0u, 1u };
+        B.srcAccessMask       = SrcAccess;
+        B.dstAccessMask       = DstAccess;
+        vkCmdPipelineBarrier(InitCmd, SrcStage, DstStage, 0u, 0u, nullptr, 0u, nullptr, 1u, &B);
+    };
+
+    const VkImageSubresourceRange Range1 { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+    const VkImageSubresourceRange Range3 { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 3u, 0u, 1u };
+    const VkClearColorValue ClearGdf   {{ 10000.0f, 10000.0f, 10000.0f, 10000.0f }};
+    const VkClearColorValue ClearZero  {{ 0.0f, 0.0f, 0.0f, 0.0f }};
+
+    TransitionInit(GdfFineImage3D.ImageHandle,              1u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+    TransitionInit(GdfCoarseImage3D.ImageHandle,            1u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+    TransitionInit(RadiosityMip0Image3D.ImageHandle,        1u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+    TransitionInit(RadiosityMip0ScratchImage3D.ImageHandle, 1u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+    TransitionInit(RadiosityCoarseImage3D.ImageHandle,      3u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+    TransitionInit(DummyFloat1x1x1Image3D.ImageHandle,      1u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+    TransitionInit(DummyRgba1x1x1Image3D.ImageHandle,       1u, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+    vkCmdClearColorImage(InitCmd, GdfFineImage3D.ImageHandle,              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearGdf,  1u, &Range1);
+    vkCmdClearColorImage(InitCmd, GdfCoarseImage3D.ImageHandle,            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearGdf,  1u, &Range1);
+    vkCmdClearColorImage(InitCmd, RadiosityMip0Image3D.ImageHandle,        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearZero, 1u, &Range1);
+    vkCmdClearColorImage(InitCmd, RadiosityMip0ScratchImage3D.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearZero, 1u, &Range1);
+    vkCmdClearColorImage(InitCmd, RadiosityCoarseImage3D.ImageHandle,      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearZero, 1u, &Range3);
+    vkCmdClearColorImage(InitCmd, DummyFloat1x1x1Image3D.ImageHandle,      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearGdf,  1u, &Range1);
+    vkCmdClearColorImage(InitCmd, DummyRgba1x1x1Image3D.ImageHandle,       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearZero, 1u, &Range1);
+
+    TransitionInit(GdfFineImage3D.ImageHandle,              1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    TransitionInit(GdfCoarseImage3D.ImageHandle,            1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    TransitionInit(RadiosityMip0Image3D.ImageHandle,        1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    TransitionInit(RadiosityMip0ScratchImage3D.ImageHandle, 1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+    TransitionInit(RadiosityCoarseImage3D.ImageHandle,      3u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    TransitionInit(DummyFloat1x1x1Image3D.ImageHandle,      1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+    TransitionInit(DummyRgba1x1x1Image3D.ImageHandle,       1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,                  VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+
+    const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(InitCmd);
+    (void)BoundDevice->AwaitTimelineTick(SyncPoint, 60000000000ull);
+    BoundDevice->FreeCommandBuffer(InitCmd);
+
+    Volume3DResourcesInitialized = true;
+    return true;
 }
 
 void VulkanWorldRenderSequence::EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx)
 {
     const uint32_t SafeW = std::max(1u, WidthPx);
     const uint32_t SafeH = std::max(1u, HeightPx);
+    ReapRetiredDisplayImages(false);
     if (DisplayOutputImage2D.ImageHandle != VK_NULL_HANDLE &&
         DisplayOutputImage2D.WidthPx == SafeW &&
         DisplayOutputImage2D.HeightPx == SafeH)
@@ -881,8 +1296,16 @@ void VulkanWorldRenderSequence::EnsureDisplayOutputImage(uint32_t WidthPx, uint3
     {
         return;
     }
-    vkDeviceWaitIdle(BoundDevice->AccessDevice());
-    BoundDevice->ReleaseImage2D(DisplayOutputImage2D);
+    // Defer releasing previous DisplayOutputImage2D until in-flight GPU work & ImGui finish (zero vkDeviceWaitIdle!)
+    if (DisplayOutputImage2D.ImageHandle != VK_NULL_HANDLE)
+    {
+        RetiredDisplayImageEntry Retired {};
+        Retired.Image            = DisplayOutputImage2D;
+        Retired.TimelineSignal   = QueryLatestSubmittedTimelineSignal();
+        Retired.RetireAfterFrame = FrameSequenceIndex + 4u;
+        RetiredDisplayImages.push_back(Retired);
+        DisplayOutputImage2D = {};
+    }
     DisplayOutputImage2D = BoundDevice->AllocateImage2D(
         SafeW,
         SafeH,
@@ -1680,6 +2103,31 @@ uint64_t VulkanWorldRenderSequence::ComputeResidentClusterTransformSignature(
     return Sig;
 }
 
+uint64_t VulkanWorldRenderSequence::ComputeResidentClusterTopologySignature(
+    const WorldSceneSpecification& Scene) const noexcept
+{
+    uint64_t Sig = 14695981039346656037ull;
+    auto Mix = [&](uint64_t V) noexcept
+    {
+        Sig ^= V;
+        Sig *= 1099511628211ull;
+    };
+    Mix(static_cast<uint64_t>(Scene.ClusterInstances.size()));
+    for (uint32_t InstIdx = 0u; InstIdx < static_cast<uint32_t>(Scene.ClusterInstances.size()); ++InstIdx)
+    {
+        const RigidClusterInstance& Inst = Scene.ClusterInstances[InstIdx];
+        if (Inst.TransparentGlass || Inst.UniformScale <= 1.0e-4f)
+        {
+            continue;
+        }
+        Mix(InstIdx + 1u);
+        Mix(reinterpret_cast<uintptr_t>(Inst.PyramidAsset));
+        Mix(Inst.PyramidAsset != nullptr ? static_cast<uint64_t>(Inst.PyramidAsset->Clusters.size()) : 0ull);
+        Mix(Inst.PyramidAsset != nullptr ? static_cast<uint64_t>(Inst.PyramidAsset->Triangles.size()) : 0ull);
+    }
+    return Sig;
+}
+
 bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
     const WorldSceneSpecification& Scene,
     bool                           ForceReassemble)
@@ -1704,10 +2152,23 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
     }
 
     const uint64_t TransformSig = ComputeResidentClusterTransformSignature(Scene);
+    const uint64_t TopologySig  = ComputeResidentClusterTopologySignature(Scene);
     if (!ForceReassemble && ResidentClusterBvhActive && TransformSig == CachedResidentTransformSig)
     {
         return true;
     }
+
+    const bool CanAttemptGpuFastTransform =
+        ResidentClusterBvhActive &&
+        (TopologySig == CachedResidentTopologySig) &&
+        (ReservedTopNodeCount > 0u) &&
+        (InstanceTransformBvhProgramHandle != UINT32_MAX) &&
+        (InstanceTransformTriProgramHandle != UINT32_MAX) &&
+        (ResidentLocalBvhBuffer.BufferHandle != VK_NULL_HANDLE) &&
+        (ResidentLocalTriBuffer.BufferHandle != VK_NULL_HANDLE) &&
+        (BvhEntryBuffer.BufferHandle != VK_NULL_HANDLE) &&
+        (ShadedTriangleBuffer.BufferHandle != VK_NULL_HANDLE) &&
+        (ActiveOpaqueInstanceCount == static_cast<uint32_t>(ResidentClusterInstances.size()));
 
     // Pre-warm per-asset local cluster sub-BVH4 cache (built once per asset across the entire session).
     for (const RigidClusterInstance& Inst : Scene.ClusterInstances)
@@ -1803,6 +2264,9 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
         OutMin.Z = Translation.Z + SMinZ;
         OutMax.Z = Translation.Z + SMaxZ;
     };
+
+    const std::vector<ResidentClusterInstanceSpan> PreviousSpans =
+        CanAttemptGpuFastTransform ? ResidentClusterInstances : std::vector<ResidentClusterInstanceSpan>{};
 
     ResidentClusterInstances.clear();
     ResidentClusterInstances.reserve(ActiveOpaqueInstanceCount);
@@ -2332,6 +2796,13 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
     }
 
     const uint32_t TopNodeCount = static_cast<uint32_t>(TopNodes.size());
+    const bool UseGpuFastTransform =
+        CanAttemptGpuFastTransform &&
+        (TopNodeCount <= ReservedTopNodeCount);
+    const uint32_t EffectiveTopReserve = UseGpuFastTransform
+        ? ReservedTopNodeCount
+        : std::max(TopNodeCount, std::max<uint32_t>(4u, static_cast<uint32_t>(ClusterBoxes.size()) * 2u));
+
     for (auto& Node : TopNodes)
     {
         for (uint32_t Lane = 0u; Lane < 4u; ++Lane)
@@ -2339,7 +2810,7 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
             const uint32_t GatePlusOne = Node.BranchPrimitiveCount[Lane] >> 4u;
             if (GatePlusOne != 0u && (GatePlusOne - 1u) < TotalClusterAndLevelSlots)
             {
-                Node.BranchReference[Lane] += TopNodeCount;
+                Node.BranchReference[Lane] += EffectiveTopReserve;
             }
         }
     }
@@ -2350,17 +2821,231 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
     FinestClusterMaskWords.resize(FullMaskWordCount, 0u);
     PropagateTopBranchGateBits(FinestClusterMaskWords);
 
-    std::vector<SpatialAcceleration::WideTreeEntry> AllBvhNodes(TopNodeCount + RunningSubNodeOff);
+    if (UseGpuFastTransform)
+    {
+        struct alignas(16) GpuInstanceTransformUniformStd140
+        {
+            float    TranslationMaxScale[4] {};
+            float    ScaleCosYaw[4]         {};
+            float    InvScaleSinYaw[4]      {};
+            uint32_t RangeMaterialFlags[4]  {};
+        };
+
+        std::vector<uint32_t> DirtySpanIndices {};
+        DirtySpanIndices.reserve(ResidentClusterInstances.size());
+        uint32_t RunningFirstNode = EffectiveTopReserve;
+        uint32_t RunningFirstTri  = 0u;
+
+        for (uint32_t SpanIdx = 0u; SpanIdx < static_cast<uint32_t>(ResidentClusterInstances.size()); ++SpanIdx)
+        {
+            ResidentClusterInstanceSpan& Span = ResidentClusterInstances[SpanIdx];
+            const RigidClusterInstance&  Inst = Scene.ClusterInstances[Span.InstanceIndex];
+            const auto& Hierarchy             = *InstanceHierarchies[Span.InstanceIndex];
+
+            uint32_t InstNodes = 0u;
+            uint32_t InstTris  = 0u;
+            for (uint32_t Level = 0u; Level < static_cast<uint32_t>(Hierarchy.LevelSubtrees.size()) && Level < 8u; ++Level)
+            {
+                const auto& Sub = Hierarchy.LevelSubtrees[Level];
+                if (Span.LevelGateOrdinals[Level] == UINT32_MAX || Sub.TriangleCount == 0u || Sub.LocalBvh.WideEntries.empty())
+                {
+                    continue;
+                }
+                InstNodes += static_cast<uint32_t>(Sub.LocalBvh.WideEntries.size());
+                InstTris  += Sub.TriangleCount;
+            }
+            Span.FirstBvhNode  = RunningFirstNode;
+            Span.BvhNodeCount  = InstNodes;
+            Span.FirstTriangle = RunningFirstTri;
+            Span.TriangleCount = InstTris;
+            RunningFirstNode  += InstNodes;
+            RunningFirstTri   += InstTris;
+
+            const float ScaleU = std::max(1.0e-4f, Inst.UniformScale);
+            const float ScaleX = (Inst.NonUniformScale.X > 1.0e-4f) ? Inst.NonUniformScale.X : ScaleU;
+            const float ScaleY = (Inst.NonUniformScale.Y > 1.0e-4f) ? Inst.NonUniformScale.Y : ScaleU;
+            const float ScaleZ = (Inst.NonUniformScale.Z > 1.0e-4f) ? Inst.NonUniformScale.Z : ScaleU;
+
+            const ResidentClusterInstanceSpan& PrevSpan = PreviousSpans[SpanIdx];
+            const bool Dirty =
+                (std::fabs(ScaleX - PrevSpan.CachedScaleX) > 1.0e-5f) ||
+                (std::fabs(ScaleY - PrevSpan.CachedScaleY) > 1.0e-5f) ||
+                (std::fabs(ScaleZ - PrevSpan.CachedScaleZ) > 1.0e-5f) ||
+                (std::fabs(Inst.RotationZDegrees - PrevSpan.CachedYawDeg) > 1.0e-4f) ||
+                (std::fabs(Inst.WorldTranslation.X - PrevSpan.CachedTranslation.X) > 1.0e-5f) ||
+                (std::fabs(Inst.WorldTranslation.Y - PrevSpan.CachedTranslation.Y) > 1.0e-5f) ||
+                (std::fabs(Inst.WorldTranslation.Z - PrevSpan.CachedTranslation.Z) > 1.0e-5f) ||
+                (static_cast<uint32_t>(Inst.MaterialSlot) != PrevSpan.CachedMaterialSlot);
+
+            Span.CachedScaleX       = ScaleX;
+            Span.CachedScaleY       = ScaleY;
+            Span.CachedScaleZ       = ScaleZ;
+            Span.CachedYawDeg       = Inst.RotationZDegrees;
+            Span.CachedTranslation  = Inst.WorldTranslation;
+            Span.CachedMaterialSlot = static_cast<uint32_t>(Inst.MaterialSlot);
+            if (Dirty)
+            {
+                DirtySpanIndices.push_back(SpanIdx);
+            }
+        }
+
+        const uint64_t TopBytes = static_cast<uint64_t>(TopNodeCount) * sizeof(SpatialAcceleration::WideTreeEntry);
+        const uint64_t UniStride = 256ull;
+        const uint64_t NeededUniBytes = std::max<uint64_t>(1u, static_cast<uint64_t>(DirtySpanIndices.size()) * 2ull) * UniStride;
+        RetirePendingTransform(true);
+        EnsureBufferCapacity(TopNodeStagingBuffer, TopBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        EnsureBufferCapacity(InstanceTransformUniformBuffer, NeededUniBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+        if (TopNodeStagingBuffer.HostAddress != nullptr && InstanceTransformUniformBuffer.HostAddress != nullptr)
+        {
+            std::memcpy(TopNodeStagingBuffer.HostAddress, TopNodes.data(), static_cast<std::size_t>(TopBytes));
+
+            DispatchEncoder.SelectDescriptorRingSlot(3u);
+            DispatchEncoder.ResetTransientDescriptors();
+            VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
+            if (Cmd != VK_NULL_HANDLE)
+            {
+                VkBufferCopy TopCopy {};
+                TopCopy.srcOffset = 0ull;
+                TopCopy.dstOffset = 0ull;
+                TopCopy.size      = TopBytes;
+                vkCmdCopyBuffer(Cmd, TopNodeStagingBuffer.BufferHandle, BvhEntryBuffer.BufferHandle, 1u, &TopCopy);
+
+                auto* UniHost = reinterpret_cast<uint8_t*>(InstanceTransformUniformBuffer.HostAddress);
+                uint64_t UniSlot = 0ull;
+                for (uint32_t SpanIdx : DirtySpanIndices)
+                {
+                    const ResidentClusterInstanceSpan& Span = ResidentClusterInstances[SpanIdx];
+                    const float ScaleX    = Span.CachedScaleX;
+                    const float ScaleY    = Span.CachedScaleY;
+                    const float ScaleZ    = Span.CachedScaleZ;
+                    const float MaxScale  = std::max({ ScaleX, ScaleY, ScaleZ });
+                    const bool  NonUni    = (std::fabs(ScaleX - ScaleY) > 1.0e-4f) || (std::fabs(ScaleX - ScaleZ) > 1.0e-4f);
+                    const float YawRad    = Span.CachedYawDeg * Constants::DegToRadFloat;
+                    const bool  HasYaw    = std::fabs(YawRad) > 1.0e-5f;
+                    const float CosZ      = HasYaw ? std::cos(YawRad) : 1.0f;
+                    const float SinZ      = HasYaw ? std::sin(YawRad) : 0.0f;
+                    const uint32_t Flags  = (HasYaw ? 1u : 0u) | (NonUni ? 2u : 0u);
+
+                    GpuInstanceTransformUniformStd140 BaseUni {};
+                    BaseUni.TranslationMaxScale[0] = Span.CachedTranslation.X;
+                    BaseUni.TranslationMaxScale[1] = Span.CachedTranslation.Y;
+                    BaseUni.TranslationMaxScale[2] = Span.CachedTranslation.Z;
+                    BaseUni.TranslationMaxScale[3] = MaxScale;
+                    BaseUni.ScaleCosYaw[0]         = ScaleX;
+                    BaseUni.ScaleCosYaw[1]         = ScaleY;
+                    BaseUni.ScaleCosYaw[2]         = ScaleZ;
+                    BaseUni.ScaleCosYaw[3]         = CosZ;
+                    BaseUni.InvScaleSinYaw[0]      = 1.0f / ScaleX;
+                    BaseUni.InvScaleSinYaw[1]      = 1.0f / ScaleY;
+                    BaseUni.InvScaleSinYaw[2]      = 1.0f / ScaleZ;
+                    BaseUni.InvScaleSinYaw[3]      = SinZ;
+                    BaseUni.RangeMaterialFlags[2]  = Span.CachedMaterialSlot;
+                    BaseUni.RangeMaterialFlags[3]  = Flags;
+
+                    if (Span.BvhNodeCount > 0u)
+                    {
+                        const uint64_t OffBvh = (UniSlot++) * UniStride;
+                        GpuInstanceTransformUniformStd140 BvhUni = BaseUni;
+                        BvhUni.RangeMaterialFlags[0] = Span.FirstBvhNode;
+                        BvhUni.RangeMaterialFlags[1] = Span.BvhNodeCount;
+                        std::memcpy(UniHost + OffBvh, &BvhUni, sizeof(BvhUni));
+                        const std::array<ComputeSlotDescriptor, 5u> Slots {{
+                            { 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, InstanceTransformUniformBuffer.BufferHandle, sizeof(BvhUni), OffBvh },
+                            { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ResidentLocalBvhBuffer.BufferHandle,         VK_WHOLE_SIZE },
+                            { 2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,                 VK_WHOLE_SIZE },
+                            { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ResidentLocalTriBuffer.BufferHandle,         VK_WHOLE_SIZE },
+                            { 4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,           VK_WHOLE_SIZE },
+                        }};
+                        (void)DispatchEncoder.EncodeComputeDispatch(
+                            Cmd,
+                            InstanceTransformBvhProgramHandle,
+                            Slots,
+                            (Span.BvhNodeCount + 63u) / 64u,
+                            1u,
+                            1u);
+                    }
+
+                    if (Span.TriangleCount > 0u)
+                    {
+                        const uint64_t OffTri = (UniSlot++) * UniStride;
+                        GpuInstanceTransformUniformStd140 TriUni = BaseUni;
+                        TriUni.RangeMaterialFlags[0] = Span.FirstTriangle;
+                        TriUni.RangeMaterialFlags[1] = Span.TriangleCount;
+                        std::memcpy(UniHost + OffTri, &TriUni, sizeof(TriUni));
+                        const std::array<ComputeSlotDescriptor, 5u> Slots {{
+                            { 0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, InstanceTransformUniformBuffer.BufferHandle, sizeof(TriUni), OffTri },
+                            { 1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ResidentLocalBvhBuffer.BufferHandle,         VK_WHOLE_SIZE },
+                            { 2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,                 VK_WHOLE_SIZE },
+                            { 3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ResidentLocalTriBuffer.BufferHandle,         VK_WHOLE_SIZE },
+                            { 4u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,           VK_WHOLE_SIZE },
+                        }};
+                        (void)DispatchEncoder.EncodeComputeDispatch(
+                            Cmd,
+                            InstanceTransformTriProgramHandle,
+                            Slots,
+                            (Span.TriangleCount + 63u) / 64u,
+                            1u,
+                            1u);
+                    }
+                }
+
+                VkMemoryBarrier DoneBarrier {};
+                DoneBarrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                DoneBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+                DoneBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                vkCmdPipelineBarrier(
+                    Cmd,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    0u,
+                    1u,
+                    &DoneBarrier,
+                    0u,
+                    nullptr,
+                    0u,
+                    nullptr);
+
+                PendingTransformSignal = BoundDevice->DispatchCommandBufferAsync(Cmd);
+                PendingTransformCmd    = Cmd;
+
+                ViewportClusterMaskWords = FinestClusterMaskWords;
+                const uint64_t RawWordBytes = static_cast<uint64_t>(FinestClusterMaskWords.size()) * sizeof(uint32_t);
+                MaskSliceOffsetBytes = std::max<uint64_t>(256ull, (RawWordBytes + 255ull) & ~255ull);
+                EnsureBufferCapacity(ActiveClusterMaskBuffer, MaskSliceOffsetBytes * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+                if (ActiveClusterMaskBuffer.HostAddress != nullptr)
+                {
+                    auto* HostBytes = reinterpret_cast<uint8_t*>(ActiveClusterMaskBuffer.HostAddress);
+                    std::memset(HostBytes, 0, static_cast<std::size_t>(MaskSliceOffsetBytes * 2ull));
+                    std::memcpy(HostBytes, FinestClusterMaskWords.data(), static_cast<std::size_t>(RawWordBytes));
+                    std::memcpy(HostBytes + MaskSliceOffsetBytes, ViewportClusterMaskWords.data(), static_cast<std::size_t>(RawWordBytes));
+                }
+
+                CachedResidentTransformSig  = TransformSig;
+                CachedNaniteCutSignature    = 0u;
+                ViewportMaskHoldsFinestOnly = true;
+                return true;
+            }
+        }
+    }
+
+    std::vector<SpatialAcceleration::WideTreeEntry> AllBvhNodes(EffectiveTopReserve + RunningSubNodeOff);
+    std::vector<SpatialAcceleration::WideTreeEntry> LocalBvhNodes(EffectiveTopReserve + RunningSubNodeOff);
     std::memcpy(
         AllBvhNodes.data(),
         TopNodes.data(),
         static_cast<std::size_t>(TopNodeCount) * sizeof(SpatialAcceleration::WideTreeEntry));
+    std::memcpy(
+        LocalBvhNodes.data(),
+        TopNodes.data(),
+        static_cast<std::size_t>(TopNodeCount) * sizeof(SpatialAcceleration::WideTreeEntry));
 
     std::vector<GpuShadedTriangle96> AllShadedTris(std::max<uint32_t>(1u, TotalTriangles));
-    uint32_t CurNodeBase = TopNodeCount;
+    std::vector<GpuShadedTriangle96> LocalShadedTris(std::max<uint32_t>(1u, TotalTriangles));
+    uint32_t CurNodeBase = EffectiveTopReserve;
     uint32_t CurTriBase  = 0u;
 
-    for (const ResidentClusterInstanceSpan& Span : ResidentClusterInstances)
+    for (ResidentClusterInstanceSpan& Span : ResidentClusterInstances)
     {
         const RigidClusterInstance& Inst      = Scene.ClusterInstances[Span.InstanceIndex];
         const auto&                 Hierarchy = *InstanceHierarchies[Span.InstanceIndex];
@@ -2376,6 +3061,15 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
         const bool  HasYaw    = std::fabs(YawRad) > 1.0e-5f;
         const float CosZ      = HasYaw ? std::cos(YawRad) : 1.0f;
         const float SinZ      = HasYaw ? std::sin(YawRad) : 0.0f;
+
+        Span.FirstBvhNode       = CurNodeBase;
+        Span.FirstTriangle      = CurTriBase;
+        Span.CachedScaleX       = ScaleX;
+        Span.CachedScaleY       = ScaleY;
+        Span.CachedScaleZ       = ScaleZ;
+        Span.CachedYawDeg       = Inst.RotationZDegrees;
+        Span.CachedTranslation  = Inst.WorldTranslation;
+        Span.CachedMaterialSlot = static_cast<uint32_t>(Inst.MaterialSlot);
 
         auto RotZ = [CosZ, SinZ](Mathematics::Axis3D V) noexcept -> Mathematics::Axis3D
         {
@@ -2405,7 +3099,8 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
             const bool        HasTransGate = (Sub.TransitionLaneClusterGate.size() == SubNodeCnt);
             for (std::size_t NodeOff = 0u; NodeOff < SubNodeCnt; ++NodeOff)
             {
-                SpatialAcceleration::WideTreeEntry DstNode = Sub.LocalBvh.WideEntries[NodeOff];
+                SpatialAcceleration::WideTreeEntry LocalNode = Sub.LocalBvh.WideEntries[NodeOff];
+                SpatialAcceleration::WideTreeEntry DstNode   = LocalNode;
                 for (uint32_t Lane = 0u; Lane < 4u; ++Lane)
                 {
                     if (DstNode.BranchReference[Lane] == SpatialAcceleration::EmptyBranchReference)
@@ -2452,15 +3147,19 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
                             PackedCnt |= ((GlobalClust + 1u) << 4u);
                         }
                     }
-                    DstNode.BranchPrimitiveCount[Lane] = PackedCnt;
+                    DstNode.BranchPrimitiveCount[Lane]   = PackedCnt;
+                    LocalNode.BranchReference[Lane]      = DstNode.BranchReference[Lane];
+                    LocalNode.BranchPrimitiveCount[Lane] = PackedCnt;
                 }
-                AllBvhNodes[CurNodeBase + NodeOff] = DstNode;
+                AllBvhNodes[CurNodeBase + NodeOff]   = DstNode;
+                LocalBvhNodes[CurNodeBase + NodeOff] = LocalNode;
             }
 
             const auto* SrcTris = reinterpret_cast<const GpuShadedTriangle96*>(Sub.LocalShadedTriBytes.data());
             for (uint32_t TriIdx = 0u; TriIdx < Sub.TriangleCount; ++TriIdx)
             {
-                GpuShadedTriangle96 DstTri = SrcTris[TriIdx];
+                GpuShadedTriangle96 LocalTri = SrcTris[TriIdx];
+                GpuShadedTriangle96 DstTri   = LocalTri;
                 const Mathematics::Axis3D LC0  = ScaleVec({ DstTri.Corner0Pad[0], DstTri.Corner0Pad[1], DstTri.Corner0Pad[2] });
                 const Mathematics::Axis3D LE01 = ScaleVec({ DstTri.Edge01Pad[0],  DstTri.Edge01Pad[1],  DstTri.Edge01Pad[2] });
                 const Mathematics::Axis3D LE02 = ScaleVec({ DstTri.Edge02Pad[0],  DstTri.Edge02Pad[1],  DstTri.Edge02Pad[2] });
@@ -2481,15 +3180,20 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
                 const uint32_t SrcMetaWord = UnpackSafeBits30FromFloat(DstTri.Corner0Pad[3]);
                 const uint32_t LocalGroup  = (SrcMetaWord >> 11u) & 0x7FFFFu;
                 const uint32_t GlobalGroup = Span.FirstGlobalClusterOrdinal + LocalGroup;
-
-                DstTri.Corner0Pad[0]  = WC0.X;
-                DstTri.Corner0Pad[1]  = WC0.Y;
-                DstTri.Corner0Pad[2]  = WC0.Z;
-                DstTri.Corner0Pad[3]  = PackNaniteTriangleMetaWord(
+                const float    PackedMeta  = PackNaniteTriangleMetaWord(
                     SrcMetaWord & 0xFu,
                     (SrcMetaWord >> 4u) & 0xFu,
                     (SrcMetaWord >> 8u) & 0x7u,
                     GlobalGroup);
+
+                LocalTri.Corner0Pad[3] = PackedMeta;
+                LocalTri.Edge01Pad[3]  = static_cast<float>(GlobalOrd);
+                LocalShadedTris[CurTriBase + TriIdx] = LocalTri;
+
+                DstTri.Corner0Pad[0]  = WC0.X;
+                DstTri.Corner0Pad[1]  = WC0.Y;
+                DstTri.Corner0Pad[2]  = WC0.Z;
+                DstTri.Corner0Pad[3]  = PackedMeta;
                 DstTri.Edge01Pad[0]   = WE01.X;
                 DstTri.Edge01Pad[1]   = WE01.Y;
                 DstTri.Edge01Pad[2]   = WE01.Z;
@@ -2514,6 +3218,8 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
             CurNodeBase += static_cast<uint32_t>(SubNodeCnt);
             CurTriBase  += Sub.TriangleCount;
         }
+        Span.BvhNodeCount  = CurNodeBase - Span.FirstBvhNode;
+        Span.TriangleCount = CurTriBase  - Span.FirstTriangle;
     }
 
     if (!UploadDualDeviceBuffers(
@@ -2529,6 +3235,16 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
         return false;
     }
 
+    (void)UploadDualDeviceBuffers(
+        ResidentLocalBvhBuffer,
+        LocalBvhNodes.data(),
+        static_cast<uint64_t>(LocalBvhNodes.size()) * sizeof(SpatialAcceleration::WideTreeEntry),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        ResidentLocalTriBuffer,
+        LocalShadedTris.data(),
+        static_cast<uint64_t>(LocalShadedTris.size()) * sizeof(GpuShadedTriangle96),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
     ViewportClusterMaskWords = FinestClusterMaskWords;
     const uint64_t RawWordBytes = static_cast<uint64_t>(FinestClusterMaskWords.size()) * sizeof(uint32_t);
     MaskSliceOffsetBytes = std::max<uint64_t>(256ull, (RawWordBytes + 255ull) & ~255ull);
@@ -2542,8 +3258,10 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
     }
 
     UploadedBvhCount                     = static_cast<uint32_t>(AllBvhNodes.size());
+    ReservedTopNodeCount                 = EffectiveTopReserve;
     ResidentFinestTriangleCount          = FinestTriSum;
     CachedResidentTransformSig           = TransformSig;
+    CachedResidentTopologySig            = TopologySig;
     CachedNaniteCutSignature             = 0u;
     ResidentClusterBvhActive             = true;
     ViewportMaskHoldsFinestOnly          = true;
@@ -2977,7 +3695,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
 {
     if (!QueryReady() ||
         ShadowCascadeProgramHandle == UINT32_MAX ||
-        UniformBuffer.HostAddress == nullptr)
+        PrecomputeUniformBuffer.HostAddress == nullptr)
     {
         return false;
     }
@@ -3387,16 +4105,34 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
     Uniforms.GlobalDistanceBakeControl[2] = 1u;
     Uniforms.GlobalDistanceBakeControl[3] = (UploadedLocalSdfInstanceCount & 0xFFFFu) << 16u;
 
+    if (!EnsureVolume3DResources())
+    {
+        return false;
+    }
+
+    RetirePendingPrecompute(true);
+
     constexpr uint64_t UniformStrideBytes = 8192ull;
-    EnsureBufferCapacity(UniformBuffer, UniformStrideBytes * 24ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
-    uint8_t* UniformHostBytes = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
+    EnsureBufferCapacity(PrecomputeUniformBuffer, UniformStrideBytes * 24ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    uint8_t* UniformHostBytes = reinterpret_cast<uint8_t*>(PrecomputeUniformBuffer.HostAddress);
     std::memcpy(UniformHostBytes, &Uniforms, sizeof(Uniforms));
 
     EnsureBufferCapacity(ActiveClusterMaskBuffer, MaskSliceOffsetBytes * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    auto ConstructPrecomputeSlots = [&](uint64_t UniOffs) -> std::array<ComputeSlotDescriptor, 32u>
+    auto ConstructPrecomputeSlots = [&](
+        uint64_t      UniOffs,
+        VkImageView   GdfFineReadView,
+        VkImageLayout GdfFineReadLayout,
+        VkImageView   GdfCoarseReadView,
+        VkImageLayout GdfCoarseReadLayout,
+        VkImageView   RadMip0ReadView,
+        VkImageLayout RadMip0ReadLayout,
+        VkImageView   RadCoarseReadView,
+        VkImageLayout RadCoarseReadLayout,
+        VkImageView   GdfWriteView,
+        VkImageView   RadWriteView) -> std::array<ComputeSlotDescriptor, 38u>
     {
         return {{
-            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,                   sizeof(WorldViewportUniformBlockStd140), UniOffs },
+            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, PrecomputeUniformBuffer.BufferHandle,         sizeof(WorldViewportUniformBlockStd140), UniOffs },
             {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,                  VK_WHOLE_SIZE },
             {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,            VK_WHOLE_SIZE },
             {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
@@ -3428,15 +4164,46 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
             { 29u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LocalAssetSdfVoxelBuffer.BufferHandle,        VK_WHOLE_SIZE },
             { 30u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DynamicLocalSdfInstanceBuffer.BufferHandle,   VK_WHOLE_SIZE },
             { 31u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ActiveClusterMaskBuffer.BufferHandle,         MaskSliceOffsetBytes, 0ull },
+            { 32u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, GdfFineReadView,   LinearRepeatSampler3D, GdfFineReadLayout },
+            { 33u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, GdfCoarseReadView, LinearRepeatSampler3D, GdfCoarseReadLayout },
+            { 34u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, RadMip0ReadView,   LinearRepeatSampler3D, RadMip0ReadLayout },
+            { 35u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, RadCoarseReadView, LinearClampSampler3D,  RadCoarseReadLayout },
+            { 36u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, GdfWriteView,      VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
+            { 37u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, RadWriteView,      VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
         }};
     };
 
+    DispatchEncoder.SelectDescriptorRingSlot(2u);
     DispatchEncoder.ResetTransientDescriptors();
     VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
     if (Cmd == VK_NULL_HANDLE)
     {
         return false;
     }
+
+    auto TransitionVol3D = [&](
+        VkImage              Img,
+        uint32_t             BaseMip,
+        uint32_t             LevelCount,
+        VkImageLayout        OldLayout,
+        VkImageLayout        NewLayout,
+        VkPipelineStageFlags SrcStage,
+        VkPipelineStageFlags DstStage,
+        VkAccessFlags        SrcAccess,
+        VkAccessFlags        DstAccess)
+    {
+        VkImageMemoryBarrier B {};
+        B.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        B.oldLayout           = OldLayout;
+        B.newLayout           = NewLayout;
+        B.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        B.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        B.image               = Img;
+        B.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, BaseMip, LevelCount, 0u, 1u };
+        B.srcAccessMask       = SrcAccess;
+        B.dstAccessMask       = DstAccess;
+        vkCmdPipelineBarrier(Cmd, SrcStage, DstStage, 0u, 0u, nullptr, 0u, nullptr, 1u, &B);
+    };
 
     auto InsertPrecomputeBarrier = [&]()
     {
@@ -3467,6 +4234,22 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
         vkCmdFillBuffer(Cmd, SolarShadowDepthBuffer.BufferHandle, 0ull, ShadowDepthBytes, 0x49742400u); // 1.0e6f
         vkCmdFillBuffer(Cmd, GlobalRadiosityFieldBuffer.BufferHandle, 0ull, VK_WHOLE_SIZE, 0u);
         vkCmdFillBuffer(Cmd, GlobalSurfaceShellBuffer.BufferHandle, 0ull, VK_WHOLE_SIZE, 0u);
+        const VkImageSubresourceRange Range1 { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 1u, 0u, 1u };
+        const VkImageSubresourceRange Range3 { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 3u, 0u, 1u };
+        const VkClearColorValue ClearGdf  {{ 10000.0f, 10000.0f, 10000.0f, 10000.0f }};
+        const VkClearColorValue ClearZero {{ 0.0f, 0.0f, 0.0f, 0.0f }};
+        TransitionVol3D(GdfFineImage3D.ImageHandle,         0u, 1u, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        TransitionVol3D(GdfCoarseImage3D.ImageHandle,       0u, 1u, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        TransitionVol3D(RadiosityMip0Image3D.ImageHandle,   0u, 1u, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        TransitionVol3D(RadiosityCoarseImage3D.ImageHandle, 0u, 3u, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        vkCmdClearColorImage(Cmd, GdfFineImage3D.ImageHandle,         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearGdf,  1u, &Range1);
+        vkCmdClearColorImage(Cmd, GdfCoarseImage3D.ImageHandle,       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearGdf,  1u, &Range1);
+        vkCmdClearColorImage(Cmd, RadiosityMip0Image3D.ImageHandle,   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearZero, 1u, &Range1);
+        vkCmdClearColorImage(Cmd, RadiosityCoarseImage3D.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &ClearZero, 1u, &Range3);
+        TransitionVol3D(GdfFineImage3D.ImageHandle,         0u, 1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        TransitionVol3D(GdfCoarseImage3D.ImageHandle,       0u, 1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        TransitionVol3D(RadiosityMip0Image3D.ImageHandle,   0u, 1u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        TransitionVol3D(RadiosityCoarseImage3D.ImageHandle, 0u, 3u, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
         GlobalDistanceFieldReady = false;
         FineToroidalValid        = false;
         CoarseToroidalValid      = false;
@@ -3491,7 +4274,14 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                 ? std::max(CachedFineSunCascade.ResolutionTexels, DoCoarseShadow ? CachedSunCascade.ResolutionTexels : 0u)
                 : CachedSunCascade.ResolutionTexels;
             const uint32_t ShadowGroups = (MaxActiveRes + 7u) / 8u;
-            const auto CascadeSlots = ConstructPrecomputeSlots(UniOffs);
+            const auto CascadeSlots = ConstructPrecomputeSlots(
+                UniOffs,
+                GdfFineImage3D.ViewHandle,         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                GdfCoarseImage3D.ViewHandle,       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                RadiosityMip0Image3D.ViewHandle,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                RadiosityCoarseImage3D.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                DummyFloat1x1x1Image3D.ViewHandle,
+                DummyRgba1x1x1Image3D.ViewHandle);
             if (!DispatchEncoder.EncodeComputeDispatch(Cmd, ShadowCascadeProgramHandle, CascadeSlots, ShadowGroups, ShadowGroups, CascadeCount))
             {
                 BoundDevice->FreeCommandBuffer(Cmd);
@@ -3522,6 +4312,13 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                     continue;
                 }
 
+                DeviceImageResource& DstGdfImg = (CascadeIdx == 0u) ? GdfFineImage3D : GdfCoarseImage3D;
+                TransitionVol3D(
+                    DstGdfImg.ImageHandle, 0u, 1u,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+
                 for (uint32_t SlabIdx = 0u; SlabIdx < SlabCnt; ++SlabIdx)
                 {
                     const ToroidalSlabBox& Box = SlabArray[SlabIdx];
@@ -3540,7 +4337,16 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                     PackSlabUniform(GdfUni, Box);
                     std::memcpy(UniformHostBytes + UniOffs, &GdfUni, sizeof(GdfUni));
 
-                    const auto GdfSlots = ConstructPrecomputeSlots(UniOffs);
+                    const auto GdfSlots = ConstructPrecomputeSlots(
+                        UniOffs,
+                        (CascadeIdx == 0u) ? DummyFloat1x1x1Image3D.ViewHandle : GdfFineImage3D.ViewHandle,
+                        (CascadeIdx == 0u) ? VK_IMAGE_LAYOUT_GENERAL          : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        (CascadeIdx == 1u) ? DummyFloat1x1x1Image3D.ViewHandle : GdfCoarseImage3D.ViewHandle,
+                        (CascadeIdx == 1u) ? VK_IMAGE_LAYOUT_GENERAL          : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        RadiosityMip0Image3D.ViewHandle,   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        RadiosityCoarseImage3D.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        DstGdfImg.ViewHandle,
+                        DummyRgba1x1x1Image3D.ViewHandle);
                     if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalDistanceBakeProgramHandle, GdfSlots, GroupsX, GroupsY, GroupsZ))
                     {
                         BoundDevice->FreeCommandBuffer(Cmd);
@@ -3548,6 +4354,12 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                     }
                     DispatchedAnySlab = true;
                 }
+
+                TransitionVol3D(
+                    DstGdfImg.ImageHandle, 0u, 1u,
+                    VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
 
                 if (CascadeIdx == 0u)
                 {
@@ -3599,8 +4411,14 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                 constexpr std::array<uint32_t, 8u> PhaseGroupCounts {{ 16u, 8u, 4u, 2u, 16u, 8u, 4u, 2u }};
                 for (uint32_t Phase = 0u; Phase < PhaseCount; ++Phase)
                 {
-                    if (Phase == 0u || Phase == 4u)
+                    if (Phase == 0u)
                     {
+                        TransitionVol3D(
+                            RadiosityMip0Image3D.ImageHandle, 0u, 1u,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+
                         for (uint32_t SlabIdx = 0u; SlabIdx < RadSlabCount; ++SlabIdx)
                         {
                             const ToroidalSlabBox& Box = RadSlabArray[SlabIdx];
@@ -3616,16 +4434,133 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                             PackSlabUniform(RadUni, Box);
                             std::memcpy(UniformHostBytes + UniOffs, &RadUni, sizeof(RadUni));
 
-                            const auto RadSlots = ConstructPrecomputeSlots(UniOffs);
+                            const auto RadSlots = ConstructPrecomputeSlots(
+                                UniOffs,
+                                GdfFineImage3D.ViewHandle,         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                GdfCoarseImage3D.ViewHandle,       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                DummyRgba1x1x1Image3D.ViewHandle,  VK_IMAGE_LAYOUT_GENERAL,
+                                RadiosityCoarseImage3D.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                DummyFloat1x1x1Image3D.ViewHandle,
+                                RadiosityMip0Image3D.ViewHandle);
                             if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalRadiosityProgramHandle, RadSlots, GroupsX, GroupsY, GroupsZ))
                             {
                                 BoundDevice->FreeCommandBuffer(Cmd);
                                 return false;
                             }
                         }
+
+                        TransitionVol3D(
+                            RadiosityMip0Image3D.ImageHandle, 0u, 1u,
+                            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+                    }
+                    else if (Phase == 4u)
+                    {
+                        if (IncrementalRadiositySlabs)
+                        {
+                            TransitionVol3D(
+                                RadiosityMip0Image3D.ImageHandle, 0u, 1u,
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+                            TransitionVol3D(
+                                RadiosityMip0ScratchImage3D.ImageHandle, 0u, 1u,
+                                VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                            VkImageCopy SeedCopy {};
+                            SeedCopy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+                            SeedCopy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+                            SeedCopy.extent         = { 64u, 64u, 64u };
+                            vkCmdCopyImage(
+                                Cmd,
+                                RadiosityMip0Image3D.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                                RadiosityMip0ScratchImage3D.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                1u, &SeedCopy);
+                            TransitionVol3D(
+                                RadiosityMip0Image3D.ImageHandle, 0u, 1u,
+                                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT);
+                            TransitionVol3D(
+                                RadiosityMip0ScratchImage3D.ImageHandle, 0u, 1u,
+                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+                        }
+
+                        for (uint32_t SlabIdx = 0u; SlabIdx < RadSlabCount; ++SlabIdx)
+                        {
+                            const ToroidalSlabBox& Box = RadSlabArray[SlabIdx];
+                            const uint32_t GroupsX = (Box.MaxCoord[0] - Box.MinCoord[0] + 3u) / 4u;
+                            const uint32_t GroupsY = (Box.MaxCoord[1] - Box.MinCoord[1] + 3u) / 4u;
+                            const uint32_t GroupsZ = (Box.MaxCoord[2] - Box.MinCoord[2] + 3u) / 4u;
+
+                            const uint64_t UniOffs = static_cast<uint64_t>(NextUniSlot++) * UniformStrideBytes;
+                            WorldViewportUniformBlockStd140 RadUni = Uniforms;
+                            RadUni.GlobalDistanceBakeControl[0] = Phase;
+                            RadUni.GlobalDistanceBakeControl[1] = 0u;
+                            RadUni.GlobalDistanceBakeControl[2] = 1u;
+                            PackSlabUniform(RadUni, Box);
+                            std::memcpy(UniformHostBytes + UniOffs, &RadUni, sizeof(RadUni));
+
+                            const auto RadSlots = ConstructPrecomputeSlots(
+                                UniOffs,
+                                GdfFineImage3D.ViewHandle,              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                GdfCoarseImage3D.ViewHandle,            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                RadiosityMip0Image3D.ViewHandle,        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                RadiosityCoarseImage3D.ViewHandle,      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                DummyFloat1x1x1Image3D.ViewHandle,
+                                RadiosityMip0ScratchImage3D.ViewHandle);
+                            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalRadiosityProgramHandle, RadSlots, GroupsX, GroupsY, GroupsZ))
+                            {
+                                BoundDevice->FreeCommandBuffer(Cmd);
+                                return false;
+                            }
+                        }
+
+                        // Copy updated 2nd-bounce Mip 0 from Scratch -> Mip 0
+                        TransitionVol3D(
+                            RadiosityMip0ScratchImage3D.ImageHandle, 0u, 1u,
+                            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+                        TransitionVol3D(
+                            RadiosityMip0Image3D.ImageHandle, 0u, 1u,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+                        VkImageCopy Copy2nd {};
+                        Copy2nd.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+                        Copy2nd.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
+                        Copy2nd.extent         = { 64u, 64u, 64u };
+                        vkCmdCopyImage(
+                            Cmd,
+                            RadiosityMip0ScratchImage3D.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            RadiosityMip0Image3D.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            1u, &Copy2nd);
+                        TransitionVol3D(
+                            RadiosityMip0Image3D.ImageHandle, 0u, 1u,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+                        TransitionVol3D(
+                            RadiosityMip0ScratchImage3D.ImageHandle, 0u, 1u,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
                     }
                     else
                     {
+                        // Downsample phases: 1/5 -> Coarse[0], 2/6 -> Coarse[1], 3/7 -> Coarse[2]
+                        const uint32_t DstCoarseMip = (Phase == 1u || Phase == 5u) ? 0u : ((Phase == 2u || Phase == 6u) ? 1u : 2u);
+                        TransitionVol3D(
+                            RadiosityCoarseImage3D.ImageHandle, DstCoarseMip, 1u,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT);
+
                         const uint64_t UniOffs = static_cast<uint64_t>(NextUniSlot++) * UniformStrideBytes;
                         WorldViewportUniformBlockStd140 RadUni = Uniforms;
                         RadUni.GlobalDistanceBakeControl[0] = Phase;
@@ -3634,13 +4569,28 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
                         RadUni.GlobalDistanceSlabBounds[3]  = 0u;
                         std::memcpy(UniformHostBytes + UniOffs, &RadUni, sizeof(RadUni));
 
-                        const uint32_t Groups   = PhaseGroupCounts[Phase];
-                        const auto     RadSlots = ConstructPrecomputeSlots(UniOffs);
+                        const VkImageView   SrcCoarseView   = (DstCoarseMip == 0u) ? DummyRgba1x1x1Image3D.ViewHandle : RadiosityCoarseMipViews[DstCoarseMip - 1u];
+                        const VkImageLayout SrcCoarseLayout = (DstCoarseMip == 0u) ? VK_IMAGE_LAYOUT_GENERAL          : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                        const uint32_t Groups = PhaseGroupCounts[Phase];
+                        const auto RadSlots = ConstructPrecomputeSlots(
+                            UniOffs,
+                            GdfFineImage3D.ViewHandle,       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            GdfCoarseImage3D.ViewHandle,     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            RadiosityMip0Image3D.ViewHandle, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            SrcCoarseView,                   SrcCoarseLayout,
+                            DummyFloat1x1x1Image3D.ViewHandle,
+                            RadiosityCoarseMipViews[DstCoarseMip]);
                         if (!DispatchEncoder.EncodeComputeDispatch(Cmd, GlobalRadiosityProgramHandle, RadSlots, Groups, Groups, Groups))
                         {
                             BoundDevice->FreeCommandBuffer(Cmd);
                             return false;
                         }
+
+                        TransitionVol3D(
+                            RadiosityCoarseImage3D.ImageHandle, DstCoarseMip, 1u,
+                            VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
                     }
                     InsertPrecomputeBarrier();
                 }
@@ -3686,10 +4636,10 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
         0u,
         nullptr);
 
-    const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(Cmd);
-    const bool Ok = BoundDevice->AwaitTimelineTick(SyncPoint, 60000000000ull);
-    BoundDevice->FreeCommandBuffer(Cmd);
-    return Ok;
+    // Submit asynchronously on the Vulkan timeline (zero CPU AwaitTimelineTick stall!)
+    PendingPrecomputeSignal = BoundDevice->DispatchCommandBufferAsync(Cmd);
+    PendingPrecomputeCmd    = Cmd;
+    return true;
 }
 
 void VulkanWorldRenderSequence::UploadSolarCascadeDepth(const WorldSceneSpecification& Scene)
@@ -4519,7 +5469,15 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
 
     const auto StartClock = std::chrono::steady_clock::now();
+    ReapRetiredDisplayImages(false);
+    RetirePendingPrecompute(false);
+    RetirePendingTransform(false);
     LastViewportTiming = {};
+
+    if (!EnsureVolume3DResources())
+    {
+        return false;
+    }
 
     if (!SceneUploadedOnce)
     {
@@ -5247,7 +6205,6 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
 
     constexpr uint64_t UniformStrideBytes = 8192ull;
-    EnsureBufferCapacity(UniformBuffer, UniformStrideBytes * 12ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
     // Refresh the 2-bounce 3D Radiosity Pyramid (~0.2 ms, zero triangle traversal) if dynamic luminaire/solar radiance shifted
     {
@@ -5282,6 +6239,20 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         LastRadiosityLightingSignature = LightingSig;
     }
 
+    const bool     SyncReadbackMode = CopyToReadbackStaging || (OutDisplayRgba8 != nullptr);
+    const uint32_t SlotIdx          = SyncReadbackMode ? 0u : LiveFrameCursor;
+    if (!SyncReadbackMode)
+    {
+        LiveFrameCursor = (LiveFrameCursor + 1u) % kLiveFrameSlots;
+    }
+    RetireLiveFrameSlot(SlotIdx, true);
+    AsyncLiveFrameSlot& ActiveSlot = LiveFrameSlots[SlotIdx];
+    EnsureBufferCapacity(ActiveSlot.UniformBuffer, UniformStrideBytes * 12ull, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+    if (ActiveSlot.UniformBuffer.HostAddress == nullptr)
+    {
+        return false;
+    }
+
     std::memcpy(&CachedFineToroidalMinCell[3], &ActiveAnalyticGroundPlaneZ, sizeof(float));
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
@@ -5297,13 +6268,14 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         (static_cast<uint32_t>(std::clamp(Config.XeGtaoStrength, 0.0f, 2.0f) * 127.5f) << 8u) |
         ((UploadedLocalSdfInstanceCount & 0xFFFFu) << 16u);
 
-    uint8_t* UniformBytes = reinterpret_cast<uint8_t*>(UniformBuffer.HostAddress);
+    uint8_t* UniformBytes = reinterpret_cast<uint8_t*>(ActiveSlot.UniformBuffer.HostAddress);
     std::memcpy(UniformBytes, &Uniforms, sizeof(Uniforms));
 
     const auto UniformDoneClock = std::chrono::steady_clock::now();
     const float CpuUniformMs = static_cast<float>(
         std::chrono::duration<double, std::milli>(UniformDoneClock - StartClock).count());
 
+    DispatchEncoder.SelectDescriptorRingSlot(SlotIdx);
     DispatchEncoder.ResetTransientDescriptors();
     VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
     if (Cmd == VK_NULL_HANDLE)
@@ -5311,17 +6283,18 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         return false;
     }
 
-    const bool UseGpuTimers = (TimestampQueryPool != VK_NULL_HANDLE && BoundDevice->QueryTimestampValidBits() > 0u);
+    const VkQueryPool ActiveQueryPool = ActiveSlot.TimestampQueryPool;
+    const bool UseGpuTimers = (ActiveQueryPool != VK_NULL_HANDLE && BoundDevice->QueryTimestampValidBits() > 0u);
     auto WriteStamp = [&](uint32_t Index, VkPipelineStageFlagBits Stage)
     {
         if (UseGpuTimers)
         {
-            vkCmdWriteTimestamp(Cmd, Stage, TimestampQueryPool, Index);
+            vkCmdWriteTimestamp(Cmd, Stage, ActiveQueryPool, Index);
         }
     };
     if (UseGpuTimers)
     {
-        vkCmdResetQueryPool(Cmd, TimestampQueryPool, 0u, 10u);
+        vkCmdResetQueryPool(Cmd, ActiveQueryPool, 0u, 10u);
     }
 
     WriteStamp(0u, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
@@ -5343,14 +6316,14 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     WriteStamp(1u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     EnsureBufferCapacity(ActiveClusterMaskBuffer, MaskSliceOffsetBytes * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    auto ConstructStepSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 32u>
+    auto ConstructStepSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 38u>
     {
         const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
         const auto& OutShadow = SwapPingPong ? PingShadowAoBuffer : PongShadowAoBuffer;
         const auto& InIndir   = SwapPingPong ? PongIndirectIrradianceBuffer : PingIndirectIrradianceBuffer;
         const auto& OutIndir  = SwapPingPong ? PingIndirectIrradianceBuffer : PongIndirectIrradianceBuffer;
         return {{
-            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, UniformBuffer.BufferHandle,                   sizeof(WorldViewportUniformBlockStd140), UniOffset },
+            {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ActiveSlot.UniformBuffer.BufferHandle,        sizeof(WorldViewportUniformBlockStd140), UniOffset },
             {  1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BvhEntryBuffer.BufferHandle,                  VK_WHOLE_SIZE },
             {  2u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShadedTriangleBuffer.BufferHandle,            VK_WHOLE_SIZE },
             {  3u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MaterialEntryBuffer.BufferHandle,             VK_WHOLE_SIZE },
@@ -5382,6 +6355,12 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             { 29u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, LocalAssetSdfVoxelBuffer.BufferHandle,        VK_WHOLE_SIZE },
             { 30u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DynamicLocalSdfInstanceBuffer.BufferHandle,   VK_WHOLE_SIZE },
             { 31u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, ActiveClusterMaskBuffer.BufferHandle,         MaskSliceOffsetBytes, MaskSliceOffsetBytes },
+            { 32u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, GdfFineImage3D.ViewHandle,         LinearRepeatSampler3D, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { 33u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, GdfCoarseImage3D.ViewHandle,       LinearRepeatSampler3D, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { 34u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, RadiosityMip0Image3D.ViewHandle,   LinearRepeatSampler3D, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { 35u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, RadiosityCoarseImage3D.ViewHandle, LinearClampSampler3D,  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            { 36u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, DummyFloat1x1x1Image3D.ViewHandle, VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
+            { 37u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, DummyRgba1x1x1Image3D.ViewHandle,  VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
         }};
     };
 
@@ -5423,11 +6402,22 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
     WriteStamp(3u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
+    auto MakeLazyViewportSlots = []() -> std::array<VkDescriptorType, 38u>
+    {
+        std::array<VkDescriptorType, 38u> LazySlots {};
+        LazySlots.fill(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        LazySlots[0]  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        LazySlots[32] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        LazySlots[33] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        LazySlots[34] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        LazySlots[35] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        LazySlots[36] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        LazySlots[37] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        return LazySlots;
+    };
     if ((EngIdx == 4u || EngIdx == 5u) && Config.DebugChannel == 0u && ViewportPathTraceProgramHandle == UINT32_MAX)
     {
-        std::array<VkDescriptorType, 32u> LazyPtSlots {};
-        LazyPtSlots.fill(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-        LazyPtSlots[0] = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        const auto LazyPtSlots = MakeLazyViewportSlots();
         ViewportPathTraceProgramHandle = DispatchEncoder.RegisterProgram(
             CachedCompiledShaderDir / "WorldViewportPathTraceCompute.comp.spv",
             LazyPtSlots,
@@ -5436,9 +6426,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
     if (EngIdx == 3u && HighEndBvhProgramHandle == UINT32_MAX)
     {
-        std::array<VkDescriptorType, 32u> LazyHighEndSlots {};
-        LazyHighEndSlots.fill(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-        LazyHighEndSlots[0] = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        const auto LazyHighEndSlots = MakeLazyViewportSlots();
         HighEndBvhProgramHandle = DispatchEncoder.RegisterProgram(
             CachedCompiledShaderDir / "WorldViewportHighEndCompute.comp.spv",
             LazyHighEndSlots,
@@ -5516,8 +6504,34 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             MultiStepSunFilter ||
             (EngIdx == DirectPbrOrdinal || EngIdx == LowEndGtxOrdinal);
 
+        // Fix #3: Collapse 3-step sequential Denoise -> 1 fused pass (stride 2) on DirectPBR / GTX GDF GI
+        // when multi-step stochastic penumbra filtering is not required.
+        const bool UseSingleFusedDenoisePass =
+            MultiStepBilateralDenoise &&
+            !MultiStepSunFilter &&
+            (Config.DebugChannel != DebugChannelFilteredAo) &&
+            (EngIdx == DirectPbrOrdinal || EngIdx == LowEndGtxOrdinal);
+
         WriteStamp(6u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        if (MultiStepBilateralDenoise)
+        if (UseSingleFusedDenoisePass)
+        {
+            const uint64_t UniformOffset = UniformStrideBytes;
+            WorldViewportUniformBlockStd140 StepUniforms = Uniforms;
+            StepUniforms.DenoiseStepParams[0] = 2u;
+            StepUniforms.DenoiseStepParams[1] =
+                EnableFinalToneStackBit |
+                EnableSpatialAoDenoiseBit |
+                (FirstStepSunFilter ? EnableSpatialSunDenoiseBit : 0u);
+            std::memcpy(UniformBytes + UniformOffset, &StepUniforms, sizeof(StepUniforms));
+
+            const auto StepSlots = ConstructStepSlots(UniformOffset, false);
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, StepSlots, GroupsX, GroupsY, 1u))
+            {
+                BoundDevice->FreeCommandBuffer(Cmd);
+                return false;
+            }
+        }
+        else if (MultiStepBilateralDenoise)
         {
             for (uint32_t StepIndex = 0u; StepIndex < BilateralDenoiseStepCount; ++StepIndex)
             {
@@ -5664,45 +6678,23 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     WriteStamp(9u, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
     const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(Cmd);
-    if (!BoundDevice->AwaitTimelineTick(SyncPoint, 60000000000ull))
-    {
-        std::fprintf(stderr, "[VulkanWorldRenderSequence] AwaitTimelineTick timed out (Engine=%u, %ux%u)\n",
-                     static_cast<unsigned>(Config.Engine), WidthPx, HeightPx);
-        BoundDevice->FreeCommandBuffer(Cmd);
-        return false;
-    }
-    BoundDevice->FreeCommandBuffer(Cmd);
+    ActiveSlot.CommandBuffer    = Cmd;
+    ActiveSlot.TimelineSignal   = SyncPoint;
+    ActiveSlot.HasGpuTimestamps = UseGpuTimers;
 
-    if (UseGpuTimers)
+    if (SyncReadbackMode)
     {
-        uint64_t Stamps[10u]{};
-        if (vkGetQueryPoolResults(
-                BoundDevice->AccessDevice(),
-                TimestampQueryPool,
-                0u,
-                10u,
-                sizeof(Stamps),
-                Stamps,
-                sizeof(uint64_t),
-                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS)
+        if (!BoundDevice->AwaitTimelineTick(SyncPoint, 60000000000ull))
         {
-            const uint32_t Bits = BoundDevice->QueryTimestampValidBits();
-            const uint64_t Mask = (Bits >= 64u) ? ~0ull : ((1ull << Bits) - 1ull);
-            const double PeriodMs = static_cast<double>(BoundDevice->QueryTimestampPeriodNs()) * 1.0e-6;
-            auto DeltaMs = [&](uint32_t A, uint32_t B) -> float
-            {
-                const uint64_t DA = Stamps[A] & Mask;
-                const uint64_t DB = Stamps[B] & Mask;
-                return (DB >= DA) ? static_cast<float>(static_cast<double>(DB - DA) * PeriodMs) : 0.0f;
-            };
-            LastViewportTiming.GpuSkyLutMs        = DeltaMs(0u, 1u);
-            LastViewportTiming.GpuCloudsMs        = DeltaMs(2u, 3u);
-            LastViewportTiming.GpuPrimaryTraceMs  = DeltaMs(4u, 5u);
-            LastViewportTiming.GpuDenoiseMs       = DeltaMs(6u, 7u);
-            LastViewportTiming.GpuReadbackCopyMs  = DeltaMs(8u, 9u);
-            LastViewportTiming.GpuTotalPassMs     = DeltaMs(0u, 9u);
-            LastViewportTiming.GpuTimestampsValid = true;
+            std::fprintf(stderr, "[VulkanWorldRenderSequence] AwaitTimelineTick timed out (Engine=%u, %ux%u)\n",
+                         static_cast<unsigned>(Config.Engine), WidthPx, HeightPx);
+            BoundDevice->FreeCommandBuffer(Cmd);
+            ActiveSlot.CommandBuffer    = VK_NULL_HANDLE;
+            ActiveSlot.TimelineSignal   = 0ull;
+            ActiveSlot.HasGpuTimestamps = false;
+            return false;
         }
+        RetireLiveFrameSlot(SlotIdx, false);
     }
 
     const auto CopyStart = std::chrono::steady_clock::now();
@@ -5725,9 +6717,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     LastViewportTiming.HardwareGpuActive   = QueryHardwareGpuActive();
     LastViewportTiming.WorldDispatched     = true;
     LastViewportTiming.AdapterName         = std::string(QueryAdapterTitle());
-    LastViewportTiming.GpuHostSubmitWaitMs = std::max(
-        0.0f,
-        TotalDispatchMs - LastViewportTiming.GpuTotalPassMs - LastViewportTiming.SceneSyncGpuMs) + CpuUniformMs * 0.0f + CopyMs * 0.0f;
+    LastViewportTiming.GpuHostSubmitWaitMs = SyncReadbackMode
+        ? std::max(0.0f, TotalDispatchMs - LastViewportTiming.GpuTotalPassMs - LastViewportTiming.SceneSyncGpuMs) + CpuUniformMs * 0.0f + CopyMs * 0.0f
+        : std::max(0.0f, TotalDispatchMs - LastViewportTiming.SceneSyncGpuMs) + CpuUniformMs * 0.0f + CopyMs * 0.0f;
     if (LastViewportTiming.SceneSyncGpuMs <= 0.0f && LastSceneSyncMilliseconds > 0.0f)
     {
         LastViewportTiming.SceneSyncGpuMs = LastSceneSyncMilliseconds;

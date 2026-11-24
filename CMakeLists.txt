@@ -387,6 +387,8 @@ frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCasc
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalDistanceBakeEntry   compute  WorldViewportGlobalDistanceBake.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalRadiosityBakeEntry  compute  WorldViewportGlobalRadiosityBake.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ViewportPathTraceEntry    compute  WorldViewportPathTraceCompute.comp.spv)
+frontier_compile_slang_shader(WorldInstanceTransformCompute.slang     TransformBvhNodesEntry    compute  WorldInstanceTransformBvh.comp.spv)
+frontier_compile_slang_shader(WorldInstanceTransformCompute.slang     TransformTrianglesEntry   compute  WorldInstanceTransformTri.comp.spv)
 
 set(FRONTIER_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/Generated")
 file(MAKE_DIRECTORY "${FRONTIER_GENERATED_INCLUDE_DIR}")

@@ -92,7 +92,10 @@ private:
 
     [[nodiscard]] bool EnsureRenderTargets(uint32_t WidthPx, uint32_t HeightPx);
     void               ReleaseRenderTargets();
+    void               ReapRetiredRenderTargets(bool ForceDrainAll) noexcept;
     void               FlushPreviousCompositeCmd();
+    void               HarvestCompletedPickPatches() noexcept;
+    void               RetireSlot(std::size_t SlotIndex, bool BlockIfBusy) noexcept;
     [[nodiscard]] bool ConstructGizmoProgram(
         const std::filesystem::path& VertSpirv,
         const std::filesystem::path& FragSpirv,
@@ -102,6 +105,33 @@ private:
         const std::filesystem::path& VertSpirv,
         const std::filesystem::path& FragSpirv,
         GraphicsProgramUnit&         OutUnit);
+
+    static constexpr std::size_t kCompositeSlots = 3u;
+    struct AsyncCompositeSlot
+    {
+        VkDescriptorPool     DescriptorPool        = VK_NULL_HANDLE;
+        DeviceBufferResource UniformBuffer         {};
+        DeviceBufferResource VertexBuffer          {};
+        DeviceBufferResource ReadbackPickPatchBuf  {};
+        VkCommandBuffer      CommandBuffer         = VK_NULL_HANDLE;
+        uint64_t             TimelineSignal        = 0ull;
+        bool                 HasPendingPickPatch   = false;
+        uint32_t             PendingPatchX0        = 0u;
+        uint32_t             PendingPatchY0        = 0u;
+        uint32_t             PendingPatchW         = 0u;
+        uint32_t             PendingPatchH         = 0u;
+    };
+
+    struct RetiredRenderTargetSet
+    {
+        VkFramebuffer       TargetFramebuffer       = VK_NULL_HANDLE;
+        VkFramebuffer       GpuCompositeFramebuffer = VK_NULL_HANDLE;
+        DeviceImageResource ColorAttachment         {};
+        DeviceImageResource PickAttachment          {};
+        DeviceImageResource DepthAttachment         {};
+        uint64_t            TimelineSignal          = 0ull;
+        uint64_t            RetireAfterFrame        = 0ull;
+    };
 
     VulkanInterchange*    DeviceInterchange           = nullptr;
     VkRenderPass          OverlayRenderTargetFormat   = VK_NULL_HANDLE;
@@ -124,6 +154,15 @@ private:
     uint32_t              TargetWidthPx               = 0u;
     uint32_t              TargetHeightPx              = 0u;
     uint64_t              ColorAttachmentGeneration   = 0ull;
+    uint64_t              CompositeFrameOrdinal       = 0ull;
+    std::array<AsyncCompositeSlot, kCompositeSlots> CompositeSlots {};
+    std::size_t           CompositeSlotCursor         = 0u;
+    uint64_t              LastHarvestedPickSignal     = 0ull;
+    std::vector<RetiredRenderTargetSet> RetiredRenderTargets {};
+    uint64_t              CachedGizmoStreamKey        = 0ull;
+    std::vector<Editor::GizmoGPUVertex> CachedOrderedVertices {};
+    uint32_t              CachedOpaqueVertexCount     = 0u;
+    uint32_t              CachedTranslucentCount      = 0u;
     VkCommandBuffer       PreviousCompositeCmd        = VK_NULL_HANDLE;
     uint64_t              PreviousCompositeSignal     = 0ull;
     std::vector<uint32_t> CachedPickOrdinals          {};

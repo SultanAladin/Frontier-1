@@ -84,7 +84,7 @@ bool ComputeDispatchEncoder::InitializeEncoder(VulkanInterchange* BoundDevice, u
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         MaxDispatchesPerAllocator * 2u },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MaxDispatchesPerAllocator * 36u },
         { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          MaxDispatchesPerAllocator * 8u },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 4u },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 8u },
     }};
 
     VkDescriptorPoolCreateInfo AllocatorSpec {};
@@ -93,13 +93,17 @@ bool ComputeDispatchEncoder::InitializeEncoder(VulkanInterchange* BoundDevice, u
     AllocatorSpec.poolSizeCount = static_cast<uint32_t>(AllocatorCapacities.size());
     AllocatorSpec.pPoolSizes    = AllocatorCapacities.data();
 
-    VkDescriptorPool InitialAllocator = VK_NULL_HANDLE;
-    if (vkCreateDescriptorPool(DeviceInterchange->AccessDevice(), &AllocatorSpec, nullptr, &InitialAllocator) != VK_SUCCESS)
+    ActiveDescriptorRingSlot = 0u;
+    for (uint32_t RingIdx = 0u; RingIdx < kDescriptorRingSlots; ++RingIdx)
     {
-        DeviceInterchange = nullptr;
-        return false;
+        VkDescriptorPool InitialAllocator = VK_NULL_HANDLE;
+        if (vkCreateDescriptorPool(DeviceInterchange->AccessDevice(), &AllocatorSpec, nullptr, &InitialAllocator) != VK_SUCCESS)
+        {
+            TeardownEncoder();
+            return false;
+        }
+        DescriptorRingAllocators[RingIdx].push_back(InitialAllocator);
     }
-    DescriptorAllocators.push_back(InitialAllocator);
 
     // Initialize driver-UUID validated persistent VkPipelineCache so hardware SPIR-V -> ISA compilation happens once
     if (DeviceInterchange->AccessPhysicalDevice() != VK_NULL_HANDLE)
@@ -198,14 +202,18 @@ void ComputeDispatchEncoder::TeardownEncoder() noexcept
         }
         Programs.clear();
 
-        for (VkDescriptorPool Allocator : DescriptorAllocators)
+        for (auto& RingVec : DescriptorRingAllocators)
         {
-            if (Allocator != VK_NULL_HANDLE)
+            for (VkDescriptorPool Allocator : RingVec)
             {
-                vkDestroyDescriptorPool(DeviceHandle, Allocator, nullptr);
+                if (Allocator != VK_NULL_HANDLE)
+                {
+                    vkDestroyDescriptorPool(DeviceHandle, Allocator, nullptr);
+                }
             }
+            RingVec.clear();
         }
-        DescriptorAllocators.clear();
+        ActiveDescriptorRingSlot = 0u;
     }
     ProgramCacheFilePath.clear();
     DeviceInterchange = nullptr;
@@ -299,12 +307,17 @@ void ComputeDispatchEncoder::PersistProgramCache() const noexcept
     WriteProgramCacheToDisk();
 }
 
+void ComputeDispatchEncoder::SelectDescriptorRingSlot(uint32_t RingSlot) noexcept
+{
+    ActiveDescriptorRingSlot = RingSlot % kDescriptorRingSlots;
+}
+
 void ComputeDispatchEncoder::ResetTransientDescriptors() noexcept
 {
     if (DeviceInterchange != nullptr)
     {
         const VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
-        for (VkDescriptorPool Allocator : DescriptorAllocators)
+        for (VkDescriptorPool Allocator : DescriptorRingAllocators[ActiveDescriptorRingSlot])
         {
             if (Allocator != VK_NULL_HANDLE)
             {
@@ -337,8 +350,9 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
     AllocSpec.descriptorSetCount = 1u;
     AllocSpec.pSetLayouts        = &Prog.SlotLayout;
 
+    auto& ActiveAllocators = DescriptorRingAllocators[ActiveDescriptorRingSlot];
     VkDescriptorSet DescSet = VK_NULL_HANDLE;
-    for (VkDescriptorPool Allocator : DescriptorAllocators)
+    for (VkDescriptorPool Allocator : ActiveAllocators)
     {
         AllocSpec.descriptorPool = Allocator;
         const VkResult AllocStatus = vkAllocateDescriptorSets(DeviceHandle, &AllocSpec, &DescSet);
@@ -353,7 +367,7 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
     }
     if (DescSet == VK_NULL_HANDLE)
     {
-        if (DescriptorAllocators.size() >= 64u)
+        if (ActiveAllocators.size() >= 64u)
         {
             return false;
         }
@@ -361,7 +375,7 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         MaxDispatchesPerAllocator * 2u },
             { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         MaxDispatchesPerAllocator * 36u },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          MaxDispatchesPerAllocator * 8u },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 4u },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MaxDispatchesPerAllocator * 8u },
         }};
         VkDescriptorPoolCreateInfo AllocatorSpecNew {};
         AllocatorSpecNew.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -379,7 +393,7 @@ bool ComputeDispatchEncoder::EncodeComputeDispatch(
             vkDestroyDescriptorPool(DeviceHandle, NewAllocator, nullptr);
             return false;
         }
-        DescriptorAllocators.push_back(NewAllocator);
+        ActiveAllocators.push_back(NewAllocator);
     }
 
     std::vector<VkDescriptorBufferInfo> BufInfos(Slots.size());

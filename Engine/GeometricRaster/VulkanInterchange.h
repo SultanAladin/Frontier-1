@@ -105,7 +105,15 @@ public:
         uint32_t              DepthPx,
         VkFormat              Format,
         VkImageUsageFlags     UsageMask,
-        VkImageAspectFlags    AspectMask) const;
+        VkImageAspectFlags    AspectMask,
+        uint32_t              MipLevels = 1u) const;
+
+    [[nodiscard]] VkImageView CreateImageView3DMip(
+        VkImage               ImageHandle,
+        VkFormat              Format,
+        uint32_t              BaseMipLevel,
+        uint32_t              LevelCount,
+        VkImageAspectFlags    AspectMask = VK_IMAGE_ASPECT_COLOR_BIT) const;
 
     void ReleaseImage2D(DeviceImageResource& Resource) const noexcept;
 

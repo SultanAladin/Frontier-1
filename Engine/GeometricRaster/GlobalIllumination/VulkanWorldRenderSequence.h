@@ -158,10 +158,37 @@ private:
         uint32_t                 InstanceIndex             = 0u;
         uint32_t                 FirstGlobalClusterOrdinal = 0u;
         uint32_t                 ClusterCount              = 0u;
+        uint32_t                 FirstBvhNode              = 0u;
+        uint32_t                 BvhNodeCount              = 0u;
+        uint32_t                 FirstTriangle             = 0u;
+        uint32_t                 TriangleCount             = 0u;
+        float                    CachedScaleX              = 1.0f;
+        float                    CachedScaleY              = 1.0f;
+        float                    CachedScaleZ              = 1.0f;
+        float                    CachedYawDeg              = 0.0f;
+        Mathematics::Axis3D      CachedTranslation         { 0.0f, 0.0f, 0.0f };
+        uint32_t                 CachedMaterialSlot        = 0u;
         std::array<uint32_t, 8u> LevelGateOrdinals         {
             UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX,
             UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX
         };
+    };
+
+    struct RetiredDisplayImageEntry
+    {
+        DeviceImageResource Image            {};
+        uint64_t            TimelineSignal   = 0ull;
+        uint32_t            RetireAfterFrame = 0u;
+    };
+
+    static constexpr uint32_t kLiveFrameSlots = 2u;
+    struct AsyncLiveFrameSlot
+    {
+        DeviceBufferResource UniformBuffer       {};
+        VkQueryPool          TimestampQueryPool  = VK_NULL_HANDLE;
+        VkCommandBuffer      CommandBuffer       = VK_NULL_HANDLE;
+        uint64_t             TimelineSignal      = 0ull;
+        bool                 HasGpuTimestamps    = false;
     };
 
     struct TopBranchGateRule
@@ -208,9 +235,19 @@ private:
         const SpatialAcceleration::ClusterPyramid* PyramidAsset);
     [[nodiscard]] uint64_t ComputeResidentClusterTransformSignature(
         const WorldSceneSpecification& Scene) const noexcept;
+    [[nodiscard]] uint64_t ComputeResidentClusterTopologySignature(
+        const WorldSceneSpecification& Scene) const noexcept;
     [[nodiscard]] bool AssembleResidentClusterSceneBvh(
         const WorldSceneSpecification& Scene,
         bool                           ForceReassemble);
+    [[nodiscard]] bool EnsureVolume3DResources();
+    void               ReleaseVolume3DResources() noexcept;
+    void               RetireLiveFrameSlot(uint32_t SlotIndex, bool BlockIfBusy) noexcept;
+    void               RetirePendingPrecompute(bool BlockIfBusy) noexcept;
+    void               RetirePendingTransform(bool BlockIfBusy) noexcept;
+    void               FlushAllAsyncDispatches() noexcept;
+    void               ReapRetiredDisplayImages(bool ForceDrainAll) noexcept;
+    [[nodiscard]] uint64_t QueryLatestSubmittedTimelineSignal() const noexcept;
 
     void DispatchGpuSkyViewLut(VkCommandBuffer Cmd, const WorldSceneSpecification& Scene);
     void DispatchGpuStellarTileCull(
@@ -256,14 +293,21 @@ private:
     uint32_t               StellarClearProgramHandle       = UINT32_MAX;
     uint32_t               StellarCullProgramHandle        = UINT32_MAX;
     uint32_t               ShadowCascadeProgramHandle      = UINT32_MAX;
-    uint32_t               GlobalDistanceBakeProgramHandle = UINT32_MAX;
-    uint32_t               GlobalRadiosityProgramHandle    = UINT32_MAX;
-    uint32_t               HighEndBvhProgramHandle         = UINT32_MAX;
-    uint32_t               ViewportPathTraceProgramHandle  = UINT32_MAX;
-    VkQueryPool            TimestampQueryPool              = VK_NULL_HANDLE;
+    uint32_t               GlobalDistanceBakeProgramHandle     = UINT32_MAX;
+    uint32_t               GlobalRadiosityProgramHandle        = UINT32_MAX;
+    uint32_t               HighEndBvhProgramHandle             = UINT32_MAX;
+    uint32_t               ViewportPathTraceProgramHandle      = UINT32_MAX;
+    uint32_t               InstanceTransformBvhProgramHandle   = UINT32_MAX;
+    uint32_t               InstanceTransformTriProgramHandle   = UINT32_MAX;
+    VkQueryPool            TimestampQueryPool                  = VK_NULL_HANDLE;
 
-    DeviceBufferResource   UniformBuffer                   {};
-    DeviceBufferResource   SkyViewUniformBuffer            {};
+    DeviceBufferResource   UniformBuffer                       {};
+    DeviceBufferResource   PrecomputeUniformBuffer             {};
+    DeviceBufferResource   InstanceTransformUniformBuffer      {};
+    DeviceBufferResource   TopNodeStagingBuffer                {};
+    DeviceBufferResource   ResidentLocalBvhBuffer              {};
+    DeviceBufferResource   ResidentLocalTriBuffer              {};
+    DeviceBufferResource   SkyViewUniformBuffer                {};
     DeviceBufferResource   StellarCullUniformBuffer        {};
     DeviceBufferResource   UploadStagingBuffer             {};
     DeviceBufferResource   OutputReadbackStagingBuffer     {};
@@ -300,6 +344,30 @@ private:
     DeviceBufferResource   ActiveClusterMaskBuffer         {};
 
     DeviceImageResource    DisplayOutputImage2D            {};
+    std::vector<RetiredDisplayImageEntry> RetiredDisplayImages {};
+
+    // Hardware VK_IMAGE_TYPE_3D GDF & Radiosity volume textures + linear samplers
+    DeviceImageResource    GdfFineImage3D                  {};
+    DeviceImageResource    GdfCoarseImage3D                {};
+    DeviceImageResource    RadiosityMip0Image3D            {};
+    DeviceImageResource    RadiosityMip0ScratchImage3D     {};
+    DeviceImageResource    RadiosityCoarseImage3D          {};
+    std::array<VkImageView, 3u> RadiosityCoarseMipViews    { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+    DeviceImageResource    DummyFloat1x1x1Image3D          {};
+    DeviceImageResource    DummyRgba1x1x1Image3D           {};
+    VkSampler              LinearRepeatSampler3D           = VK_NULL_HANDLE;
+    VkSampler              LinearClampSampler3D            = VK_NULL_HANDLE;
+    bool                   Volume3DResourcesInitialized    = false;
+
+    // Async timeline rings (zero AwaitTimelineTick on live interactive frames)
+    std::array<AsyncLiveFrameSlot, kLiveFrameSlots> LiveFrameSlots {};
+    uint32_t               LiveFrameCursor                 = 0u;
+    VkCommandBuffer        PendingPrecomputeCmd            = VK_NULL_HANDLE;
+    uint64_t               PendingPrecomputeSignal         = 0ull;
+    VkCommandBuffer        PendingTransformCmd             = VK_NULL_HANDLE;
+    uint64_t               PendingTransformSignal          = 0ull;
+    uint32_t               ReservedTopNodeCount            = 0u;
+    uint64_t               CachedResidentTopologySig       = 0ull;
 
     OrthographicShadowCascade CachedFineSunCascade         {};
     OrthographicShadowCascade CachedSunCascade             {};
