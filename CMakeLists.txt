@@ -947,7 +947,10 @@ set(FRONTIER_ENGINE_SOURCES
     Engine/Codecs/VolumetricSpaceCodec.cpp
     Engine/Codecs/RenderSpaceCodec.cpp
     Engine/Codecs/WorldSpaceCodec.cpp
+    Engine/Codecs/InstanceCodec.cpp
     Engine/Codecs/ControlVehicleSurfaceDecoder.cpp
+    Engine/World/WorldInstanceRegister.cpp
+    Engine/World/CategoryInstances.cpp
     Engine/Tools/DefaultContentGenerator.cpp
     Engine/ComponentClass/ComponentInstanceStorage.cpp
     Engine/ComponentClass/ComponentClassDefinition.cpp
@@ -1309,6 +1312,7 @@ if(BUILD_TESTING)
 
     frontier_register_exhibit(SketcherBlendImportValidation             Exhibits/ParametricSketcher/SketcherBlendImportValidation.cpp)
     frontier_register_exhibit(DataDrivenSpaceContentValidation          Exhibits/DataDrivenSpaceContentValidation.cpp)
+    frontier_register_exhibit(WorldInstanceValidation                   Exhibits/WorldInstanceValidation.cpp)
     if(FRONTIER_PROFILE STREQUAL "Editor")
         frontier_register_exhibit(SketcherWorkspaceValidation           Exhibits/ParametricSketcher/SketcherWorkspaceValidation.cpp)
     endif()

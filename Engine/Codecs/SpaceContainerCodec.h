@@ -55,7 +55,8 @@ enum class SpaceSuffixCategory : uint8_t
     PhotometrySpace       = 23, // [-] - .PhotometrySpace solar ephemeris, area luminaires & 128x32 goniophotometric grids
     RenderSpace           = 24, // [-] - .RenderSpace viewport render engine, shadow cascades, distance field & tone transforms
     SurfaceParameterSpace = 25, // [-] - .SurfaceParameterSpace 2D surface parameterization tiles, seams & pin coordinates
-    InstanceSpace         = 26  // [-] - .InstanceSpace full unabbreviated domain-tagged instance container
+    InstanceSpace         = 26, // [-] - .InstanceSpace full unabbreviated domain-tagged instance container
+    Instance              = 27  // [-] - .Instance multi-pillar world instance package (canonical Tier B suffix)
 };
 
 //------------------------------------------------------------------------------------------------------------------------

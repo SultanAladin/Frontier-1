@@ -31,7 +31,7 @@ struct SpaceSuffixMappingEntry
     std::string_view       LowercaseExtension;
 };
 
-constexpr std::array<SpaceSuffixMappingEntry, 27u> SpaceSuffixRegistry = {{
+constexpr std::array<SpaceSuffixMappingEntry, 28u> SpaceSuffixRegistry = {{
     { SpaceSuffixCategory::ProjectSpace,          ".ProjectSpace",          ".projectspace"          },
     { SpaceSuffixCategory::ColourSpace,           ".ColourSpace",           ".colourspace"           },
     { SpaceSuffixCategory::GeometrySpace,         ".GeometrySpace",         ".geometryspace"         },
@@ -59,6 +59,7 @@ constexpr std::array<SpaceSuffixMappingEntry, 27u> SpaceSuffixRegistry = {{
     { SpaceSuffixCategory::RenderSpace,           ".RenderSpace",           ".renderspace"           },
     { SpaceSuffixCategory::SurfaceParameterSpace, ".SurfaceParameterSpace", ".surfaceparameterspace" },
     { SpaceSuffixCategory::InstanceSpace,         ".InstanceSpace",         ".instancespace"         },
+    { SpaceSuffixCategory::Instance,              ".Instance",              ".instance"              },
 }};
 
 struct SubFormatMappingEntry
@@ -67,7 +68,7 @@ struct SubFormatMappingEntry
     std::string_view LowercaseTag;
 };
 
-constexpr std::array<SubFormatMappingEntry, 51u> SubFormatRegistry = {{
+constexpr std::array<SubFormatMappingEntry, 53u> SubFormatRegistry = {{
     { ".DocumentHeader",            ".documentheader"            },
     { ".SectionDirectory",          ".sectiondirectory"          },
     { ".Revision",                  ".revision"                  },
@@ -119,6 +120,8 @@ constexpr std::array<SubFormatMappingEntry, 51u> SubFormatRegistry = {{
     { ".EditorCamera",              ".editorcamera"              },
     { ".SurfaceParameterization",   ".surfaceparameterization"   },
     { ".SmoothNormals",             ".smoothnormals"             },
+    { ".InstanceDefaults",          ".instancedefaults"          },
+    { ".SpaceSlotLinks",            ".spaceslotlinks"            },
 }};
 
 [[nodiscard]] std::string ToAsciiLower(std::string_view Text)
