@@ -382,11 +382,14 @@ frontier_compile_slang_shader(CameraVisualEffects.slang               ComputeEnt
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ComputeEntry              compute  WorldViewportRadiometricCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   HighEndBvhComputeEntry    compute  WorldViewportHighEndCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   CloudComputeEntry         compute  WorldViewportCloudCompute.comp.spv)
+frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   HalfResIndirectEntry      compute  WorldViewportHalfResIndirectCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   DenoiseCompositeEntry     compute  WorldViewportDenoiseCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ShadowCascadeComputeEntry compute  WorldViewportShadowCascadeCompute.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalDistanceBakeEntry   compute  WorldViewportGlobalDistanceBake.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   GlobalRadiosityBakeEntry  compute  WorldViewportGlobalRadiosityBake.comp.spv)
 frontier_compile_slang_shader(WorldViewportRadiometricCompute.slang   ViewportPathTraceEntry    compute  WorldViewportPathTraceCompute.comp.spv)
+frontier_compile_slang_shader(WorldPrimaryVisRaster.slang             PrimaryVisVertexEntry     vertex   WorldPrimaryVisRaster.vert.spv)
+frontier_compile_slang_shader(WorldPrimaryVisRaster.slang             PrimaryVisFragmentEntry   fragment WorldPrimaryVisRaster.frag.spv)
 frontier_compile_slang_shader(WorldInstanceTransformCompute.slang     TransformBvhNodesEntry    compute  WorldInstanceTransformBvh.comp.spv)
 frontier_compile_slang_shader(WorldInstanceTransformCompute.slang     TransformTrianglesEntry   compute  WorldInstanceTransformTri.comp.spv)
 
@@ -1089,6 +1092,28 @@ target_include_directories(FrontierEngine PUBLIC
     "${CMAKE_SOURCE_DIR}/ExternalPackages/tomlpp/include"
     "${CMAKE_SOURCE_DIR}/ExternalPackages/stb"
 )
+set(FRONTIER_GIT_COMMIT_HASH "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short=8 HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE _FRONTIER_GIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(_FRONTIER_GIT_SHA)
+        set(FRONTIER_GIT_COMMIT_HASH "${_FRONTIER_GIT_SHA}")
+    endif()
+endif()
+# Write commit hash into a dedicated header (only included by ViewportTimingTelemetry.h)
+# so sccache keeps ~99% cache hit rate across commits on Windows CI!
+file(WRITE "${FRONTIER_GENERATED_INCLUDE_DIR}/FrontierBuildInfo.h.tmp"
+    "#pragma once\n#define FRONTIER_GIT_COMMIT_HASH \"${FRONTIER_GIT_COMMIT_HASH}\"\n")
+configure_file(
+    "${FRONTIER_GENERATED_INCLUDE_DIR}/FrontierBuildInfo.h.tmp"
+    "${FRONTIER_GENERATED_INCLUDE_DIR}/FrontierBuildInfo.h"
+    COPYONLY)
 target_compile_definitions(FrontierEngine PUBLIC
     "FRONTIER_COMPILED_SHADER_DIR=\"${FRONTIER_COMPILED_SHADER_DIR}\""
     "FRONTIER_REPO_ROOT_DIR=\"${CMAKE_SOURCE_DIR}\""

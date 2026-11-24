@@ -266,6 +266,19 @@ private:
         const PerspectiveCameraBasis*  OptionalCamera,
         const WorldSceneSpecification& Scene) const noexcept;
     void EnsureDisplayOutputImage(uint32_t WidthPx, uint32_t HeightPx);
+    [[nodiscard]] bool InitializePrimaryVisRasterPipeline();
+    void ReleasePrimaryVisFramebuffer() noexcept;
+    void ReleasePrimaryVisResources() noexcept;
+    [[nodiscard]] bool EnsurePrimaryVisTargets(uint32_t WidthPx, uint32_t HeightPx);
+    void RecordPrimaryVisRasterPass(
+        VkCommandBuffer Cmd,
+        uint32_t        SlotIdx,
+        uint32_t        WidthPx,
+        uint32_t        HeightPx,
+        const float     CamOriginTanX[4],
+        const float     CamRightTanY[4],
+        const float     CamUpNearZ[4],
+        const float     CamForwardFarZ[4]);
     // Rebuilds the GPU BVH from the per-camera monotonic cluster cut when the cut signature changes.
     void RefreshNaniteLodGeometry(
         const WorldRenderConfiguration& Config,
@@ -286,6 +299,7 @@ private:
     ComputeDispatchEncoder DispatchEncoder               {};
     uint32_t               RadiometricProgramHandle      = UINT32_MAX;
     uint32_t               CloudLayerProgramHandle       = UINT32_MAX;
+    uint32_t               HalfResIndirectProgramHandle  = UINT32_MAX;
     uint32_t               DenoiseProgramHandle          = UINT32_MAX;
     uint32_t               TransmittanceLutProgramHandle = UINT32_MAX;
     uint32_t               MultiScatterLutProgramHandle  = UINT32_MAX;
@@ -346,6 +360,17 @@ private:
     DeviceImageResource    DisplayOutputImage2D            {};
     std::vector<RetiredDisplayImageEntry> RetiredDisplayImages {};
 
+    // Hardware Vulkan graphics VisBuffer rasterization targets & pipeline (Phase 2B)
+    DeviceImageResource    PrimaryVisImage2D               {};
+    DeviceImageResource    PrimaryVisDepthImage2D          {};
+    VkFramebuffer          PrimaryVisFramebuffer           = VK_NULL_HANDLE;
+    VkRenderPass           PrimaryVisRenderPass            = VK_NULL_HANDLE;
+    VkDescriptorSetLayout  PrimaryVisDescLayout            = VK_NULL_HANDLE;
+    VkDescriptorPool       PrimaryVisDescPool              = VK_NULL_HANDLE;
+    std::array<VkDescriptorSet, kLiveFrameSlots> PrimaryVisDescSets {};
+    VkPipelineLayout       PrimaryVisPipelineLayout        = VK_NULL_HANDLE;
+    VkPipeline             PrimaryVisPipeline              = VK_NULL_HANDLE;
+
     // Hardware VK_IMAGE_TYPE_3D GDF & Radiosity volume textures + linear samplers
     DeviceImageResource    GdfFineImage3D                  {};
     DeviceImageResource    GdfCoarseImage3D                {};
@@ -401,6 +426,8 @@ private:
     uint32_t               UploadedPhotometricLamps      = 0u;
     uint32_t               CoarseShadowOffsetTexels      = 0u;
     uint32_t               UploadedBvhCount              = 0u;
+    uint32_t               UploadedTriangleCount         = 0u;
+    uint32_t               UploadedClusterSlotCount      = 0u;
     uint32_t               UploadedMaterialCount         = 0u;
     uint32_t               UploadedCatalogStarCount      = 0u;
     bool                   SceneUploadedOnce             = false;

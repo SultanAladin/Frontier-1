@@ -140,8 +140,17 @@ private:
     VkPipeline                                                OverlayRasterUnit     = VK_NULL_HANDLE;
     bool                                                      UpstreamImGuiBackendReady = false;
 
+    struct PendingAsyncTexUpload
+    {
+        VkCommandBuffer      Cmd            = VK_NULL_HANDLE;
+        DeviceBufferResource Staging        {};
+        uint64_t             TimelineSignal = 0ull;
+    };
+    void ReapPendingAsyncTexUploads(bool ForceDrain) noexcept;
+
     DeviceBufferResource                                      VertexStreamBuffer    {};
     DeviceBufferResource                                      UploadStagingBuffer   {};
+    std::vector<PendingAsyncTexUpload>                        PendingAsyncTexUploads {};
     DeviceImageResource                                       FallbackWhiteTex      {};
     VkDescriptorSet                                           FallbackDescriptor    = VK_NULL_HANDLE;
     std::unordered_map<const ImTextureData*, CachedImGuiTexture> TextureCache       {};

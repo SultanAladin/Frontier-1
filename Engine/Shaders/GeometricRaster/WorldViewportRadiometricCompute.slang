@@ -148,6 +148,7 @@ struct GpuDynamicLocalSdfInstance144
 [[vk::binding(35, 0)]] Sampler3D<float4>                             RadiosityCoarseTex3D;
 [[vk::image_format("r16f")]]    [[vk::binding(36, 0)]] RWTexture3D<float>  GdfBakeTargetImg3D;
 [[vk::image_format("rgba16f")]] [[vk::binding(37, 0)]] RWTexture3D<float4> RadiosityBakeDstImg3D;
+[[vk::image_format("r32ui")]]   [[vk::binding(38, 0)]] RWTexture2D<uint>   PrimaryVisImg2D;
 
 bool QueryClusterBitActive(uint ClusterOrdinal)
 {
@@ -245,8 +246,10 @@ float3 UnpackOctNormal32(uint Packed)
     return normalize(N);
 }
 
-bool IsReflectionsEnabled() { return (WorldUniforms.AtmosphereMaskPad.w & 2u) == 0u; }
-bool IsRaytracingEnabled()  { return (WorldUniforms.AtmosphereMaskPad.w & 8u) == 0u; }
+bool IsReflectionsEnabled()      { return (WorldUniforms.AtmosphereMaskPad.w & 2u) == 0u; }
+bool IsRaytracingEnabled()       { return (WorldUniforms.AtmosphereMaskPad.w & 8u) == 0u; }
+bool IsPrimaryVisBufferActive()  { return (WorldUniforms.AtmosphereMaskPad.w & (1u << 24u)) != 0u; }
+bool IsHalfResIndirectActive()   { return (WorldUniforms.AtmosphereMaskPad.w & (1u << 25u)) != 0u; }
 
 float3 EvaluateSkyDome(float3 Dir)
 {
@@ -652,6 +655,113 @@ float4 IntersectFourBoxes(float3 Origin, float3 InvDir, float MinT, float MaxT, 
     return select(NearT <= FarT, NearT, float4(1.0e30));
 }
 
+RayHitReading ReconstructPrimaryHitFromTriangle(float3 Origin, float3 Dir, float MinT, float MaxT, uint TriIdx)
+{
+    RayHitReading Res;
+    Res.Hit             = false;
+    Res.Distance        = MaxT;
+    Res.Position        = Origin;
+    Res.ShadingNormal   = float3(0.0, 0.0, 1.0);
+    Res.GeomNormal      = float3(0.0, 0.0, 1.0);
+    Res.MaterialSlot    = 0u;
+    Res.LodLevel        = 0u;
+    Res.MaxLodLevel     = 0u;
+    Res.ClusterOrdinal  = 0u;
+    Res.GroupOrdinal    = 0u;
+    Res.TriangleOrdinal = TriIdx;
+    Res.SeamEdgeMask    = 0u;
+    Res.SelfErrorMeters = 0.0;
+    Res.EdgeDistMeters  = 1.0e9;
+    Res.SeamDistMeters  = 1.0e9;
+    Res.SurfaceUv       = float2(0.0, 0.0);
+
+    GpuShadedTriangle96 Tri = SceneTriangles[TriIdx];
+    float3 Corner0 = Tri.Corner0Pad.xyz;
+    float3 Edge01  = Tri.Edge01Pad.xyz;
+    float3 Edge02  = Tri.Edge02Pad.xyz;
+    float3 PVec    = cross(Dir, Edge02);
+    float  Det     = dot(Edge01, PVec);
+    if (abs(Det) <= 1.0e-11)
+    {
+        return Res;
+    }
+
+    float  InvDet = 1.0 / Det;
+    float3 TVec   = Origin - Corner0;
+    float  U      = dot(TVec, PVec) * InvDet;
+    float3 QVec   = cross(TVec, Edge01);
+    float  V      = dot(Dir, QVec) * InvDet;
+    float  HitT   = dot(Edge02, QVec) * InvDet;
+    if (HitT < MinT || HitT > MaxT)
+    {
+        return Res;
+    }
+
+    // Clamp grazing rasterized edge barycentrics onto the triangle simplex so sub-pixel edges stay exact
+    U = saturate(U);
+    V = saturate(V);
+    float UVSum = U + V;
+    if (UVSum > 1.0)
+    {
+        float InvSum = 1.0 / UVSum;
+        U *= InvSum;
+        V *= InvSum;
+    }
+    float W0 = max(0.0, 1.0 - U - V);
+
+    float4 N2Slot   = Tri.Normal2Slot;
+    float3 RawCross = cross(Edge01, Edge02);
+    float  Area2    = length(RawCross);
+    float3 RawGeom  = (Area2 > 1.0e-12) ? (RawCross / Area2) : float3(0.0, 0.0, 1.0);
+    float3 SmoothN  = normalize(
+        Tri.Normal0Pad.xyz * W0 +
+        Tri.Normal1Pad.xyz * U +
+        N2Slot.xyz * V);
+    if (dot(RawGeom, Dir) > 0.0)
+    {
+        RawGeom = -RawGeom;
+        SmoothN = -SmoothN;
+    }
+    if (dot(SmoothN, -Dir) < 0.0)
+    {
+        SmoothN = normalize(SmoothN - Dir * (dot(SmoothN, -Dir) - 0.02));
+    }
+
+    uint   MetaWord = asuint(Tri.Corner0Pad.w) & 0x3FFFFFFFu;
+    uint   UvWordA  = asuint(Tri.Normal0Pad.w) & 0x3FFFFFFFu;
+    uint   UvWordB  = asuint(Tri.Normal1Pad.w) & 0x3FFFFFFFu;
+    float2 Uv0      = float2(float(UvWordA & 0x3FFu), float((UvWordA >> 10u) & 0x3FFu)) * (4.0 / 1023.0);
+    float2 Uv1      = float2(float((UvWordA >> 20u) & 0x3FFu), float(UvWordB & 0x3FFu)) * (4.0 / 1023.0);
+    float2 Uv2      = float2(float((UvWordB >> 10u) & 0x3FFu), float((UvWordB >> 20u) & 0x3FFu)) * (4.0 / 1023.0);
+
+    float  DistE01  = V * Area2 / max(1.0e-6, length(Edge01));
+    float  DistE12  = W0 * Area2 / max(1.0e-6, length(Edge02 - Edge01));
+    float  DistE20  = U * Area2 / max(1.0e-6, length(Edge02));
+    uint   SeamMask = (MetaWord >> 8u) & 0x7u;
+    float  SeamDist = 1.0e9;
+    if ((SeamMask & 1u) != 0u) SeamDist = min(SeamDist, DistE01);
+    if ((SeamMask & 2u) != 0u) SeamDist = min(SeamDist, DistE12);
+    if ((SeamMask & 4u) != 0u) SeamDist = min(SeamDist, DistE20);
+
+    Res.Hit             = true;
+    Res.Distance        = HitT;
+    Res.Position        = Corner0 + Edge01 * U + Edge02 * V;
+    Res.GeomNormal      = RawGeom;
+    Res.ShadingNormal   = SmoothN;
+    Res.MaterialSlot    = uint(N2Slot.w + 0.5);
+    Res.LodLevel        = MetaWord & 0xFu;
+    Res.MaxLodLevel     = (MetaWord >> 4u) & 0xFu;
+    Res.SeamEdgeMask    = SeamMask;
+    Res.GroupOrdinal    = (MetaWord >> 11u) & 0x7FFFFu;
+    Res.ClusterOrdinal  = uint(Tri.Edge01Pad.w + 0.5);
+    Res.TriangleOrdinal = TriIdx;
+    Res.SelfErrorMeters = max(0.0, Tri.Edge02Pad.w);
+    Res.EdgeDistMeters  = min(DistE01, min(DistE12, DistE20));
+    Res.SeamDistMeters  = SeamDist;
+    Res.SurfaceUv       = Uv0 * W0 + Uv1 * U + Uv2 * V;
+    return Res;
+}
+
 RayHitReading TraceSceneClosest(float3 Origin, float3 Dir, float MinT, float MaxT)
 {
     RayHitReading Res;
@@ -917,6 +1027,7 @@ static const float UdfAoMinimumStepFloor          = 1.0e-5;     // [m]     - Ste
 static const uint  DenoiseFinalToneStackBit       = 1u;         // [mask]  - Final step tone-stack & display output bit
 static const uint  DenoiseSpatialAoBit            = 2u;         // [mask]  - Joint-bilateral UDF AO spatial filter bit
 static const uint  DenoiseSpatialSunBit           = 4u;         // [mask]  - Joint-bilateral solar shadow spatial filter bit
+static const uint  DenoiseHalfResIndirectBit      = 8u;         // [mask]  - 2x2 joint-bilateral upsample of half-res AO/GI from PongIndirectIrradiance
 static const float DenoiseAoWorldFloorSq          = 0.004;      // [m^2]   - Minimum world-distance variance in AO kernel
 static const float DenoiseAoWorldDistScale        = 0.006;      // [m]     - Distance-scaled world variance per camera meter
 static const float DenoiseAoNormalPower           = 16.0;       // [-]     - Normal cosine exponent in bilateral AO filter
@@ -2468,9 +2579,11 @@ void ShadePrimarySurfaceDemod(
     }
 
     // 3. Ambient Occlusion: Golden-angle cosine-hemisphere UDF Clipmap AO on GTX (Engines 1..2)
+    //    Deferred to HalfResIndirectEntry (1/4 pixels + 2x2 joint bilateral upsample) when IsHalfResIndirectActive()
     float3 BasisT, BasisB;
     ConstructOrthonormalBasis(N, BasisT, BasisB);
-    OutDiffAo = IsGlobalDistanceFieldReady()
+    bool DeferIndirectToHalfRes = IsHalfResIndirectActive();
+    OutDiffAo = (!DeferIndirectToHalfRes && IsGlobalDistanceFieldReady())
         ? EvaluateGlobalDistanceAmbientOcclusion(Hit.Position, N, Hit.GeomNormal, BasisT, BasisB, PixelXY)
         : 1.0;
 
@@ -2525,7 +2638,7 @@ void ShadePrimarySurfaceDemod(
     }
 
     // 6. Demodulated Indirect Diffuse GI (Engine 2 GTX GDF GI: 5-cone 2-bounce 3D Radiosity Cone Tracing, 0 BVH4 rays)
-    bool EnableIndirectGi = (PenumbraMode != 2u) && (dot(OutDiffuseAlbedoMatte, float3(1.0)) > 1.0e-4);
+    bool EnableIndirectGi = !DeferIndirectToHalfRes && (PenumbraMode != 2u) && (dot(OutDiffuseAlbedoMatte, float3(1.0)) > 1.0e-4);
     if (EnableIndirectGi && EngineMode == 2u && IsGlobalDistanceFieldReady())
     {
         OutIndirectIrradiance = EvaluateGdfVoxelConeGi(Hit.Position, N, Hit.GeomNormal, BasisT, BasisB);
@@ -3049,7 +3162,42 @@ void ComputeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         WorldUniforms.CameraUpWidth.xyz   * (NdcY * WorldUniforms.CameraRightTanY.w));
 
     float PrimaryMaxT = max(120.0, WorldUniforms.SolarIrradiancePad.w);
-    RayHitReading PrimaryHit = TraceSceneClosest(CamOrigin, RayDir, 0.08, PrimaryMaxT);
+    RayHitReading PrimaryHit;
+    if (IsPrimaryVisBufferActive())
+    {
+        uint VisTriPlus1 = PrimaryVisImg2D[DispatchThreadID.xy];
+        if (VisTriPlus1 == 0u)
+        {
+            PrimaryHit.Hit             = false;
+            PrimaryHit.Distance        = PrimaryMaxT;
+            PrimaryHit.Position        = CamOrigin;
+            PrimaryHit.ShadingNormal   = float3(0.0, 0.0, 1.0);
+            PrimaryHit.GeomNormal      = float3(0.0, 0.0, 1.0);
+            PrimaryHit.MaterialSlot    = 0u;
+            PrimaryHit.LodLevel        = 0u;
+            PrimaryHit.MaxLodLevel     = 0u;
+            PrimaryHit.ClusterOrdinal  = 0u;
+            PrimaryHit.GroupOrdinal    = 0u;
+            PrimaryHit.TriangleOrdinal = 0u;
+            PrimaryHit.SeamEdgeMask    = 0u;
+            PrimaryHit.SelfErrorMeters = 0.0;
+            PrimaryHit.EdgeDistMeters  = 1.0e9;
+            PrimaryHit.SeamDistMeters  = 1.0e9;
+            PrimaryHit.SurfaceUv       = float2(0.0, 0.0);
+        }
+        else
+        {
+            PrimaryHit = ReconstructPrimaryHitFromTriangle(CamOrigin, RayDir, 0.08, PrimaryMaxT, VisTriPlus1 - 1u);
+            if (!PrimaryHit.Hit)
+            {
+                PrimaryHit = TraceSceneClosest(CamOrigin, RayDir, 0.08, PrimaryMaxT);
+            }
+        }
+    }
+    else
+    {
+        PrimaryHit = TraceSceneClosest(CamOrigin, RayDir, 0.08, PrimaryMaxT);
+    }
 
     float TriHitT      = PrimaryHit.Hit ? PrimaryHit.Distance : PrimaryMaxT;
     float BestGlassT   = TriHitT;
@@ -3790,6 +3938,52 @@ float EvaluateGroundTruthAmbientOcclusion(uint2 PixelCoord, float3 WorldPos, flo
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
+void HalfResIndirectEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
+{
+    uint Width  = uint(WorldUniforms.CameraUpWidth.w + 0.5);
+    uint Height = uint(WorldUniforms.CameraForwardHeight.w + 0.5);
+    uint HalfW  = (Width + 1u) >> 1u;
+    uint HalfH  = (Height + 1u) >> 1u;
+    if (DispatchThreadID.x >= HalfW || DispatchThreadID.y >= HalfH)
+    {
+        return;
+    }
+
+    uint HalfIdx = DispatchThreadID.y * HalfW + DispatchThreadID.x;
+    uint FullX   = min(DispatchThreadID.x * 2u, Width - 1u);
+    uint FullY   = min(DispatchThreadID.y * 2u, Height - 1u);
+    uint FullIdx = FullY * Width + FullX;
+
+    float4 PosMask = GBufPosMask[FullIdx];
+    if (PosMask.w <= 0.0)
+    {
+        PongIndirectIrradiance[HalfIdx] = float4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    float3 SurfN = normalize(GBufNormAo[FullIdx].xyz);
+    float3 BasisT, BasisB;
+    ConstructOrthonormalBasis(SurfN, BasisT, BasisB);
+
+    bool  GdfReady = IsGlobalDistanceFieldReady();
+    float DiffAo   = GdfReady
+        ? EvaluateGlobalDistanceAmbientOcclusion(PosMask.xyz, SurfN, SurfN, BasisT, BasisB, uint2(FullX, FullY))
+        : 1.0;
+
+    uint   EngineMode   = WorldUniforms.EngineShadowReflPad.x;
+    uint   PenumbraMode = (WorldUniforms.AtmosphereMaskPad.w >> 16u) & 0x7u;
+    float3 AlbedoMatte  = GBufAlbedo[FullIdx].xyz;
+    float3 IndirIrrad   = float3(0.0);
+    if (GdfReady && EngineMode == 2u && PenumbraMode != 2u && dot(AlbedoMatte, float3(1.0)) > 1.0e-4)
+    {
+        IndirIrrad = EvaluateGdfVoxelConeGi(PosMask.xyz, SurfN, SurfN, BasisT, BasisB);
+    }
+
+    PongIndirectIrradiance[HalfIdx] = float4(IndirIrrad, DiffAo);
+}
+
+[shader("compute")]
+[numthreads(8, 8, 1)]
 void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
 {
     uint Width  = uint(WorldUniforms.CameraUpWidth.w + 0.5);
@@ -3918,6 +4112,70 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
         PongShadowAo[PixelIdx] = float4(OutSunVis, OutDiffAo, OutBlocker, InShadAo.w);
         PongIndirectIrradiance[PixelIdx] = (CenterPos.w > 0.0) ? float4(OutIndirIrrad, InIndir.w) : float4(0.0);
         return;
+    }
+
+    if ((WorldUniforms.DenoiseStepParams.y & DenoiseHalfResIndirectBit) != 0u && CenterPos.w > 0.0)
+    {
+        uint   HalfW      = (Width + 1u) >> 1u;
+        uint   HalfH      = (Height + 1u) >> 1u;
+        uint   HX0        = min(DispatchThreadID.x >> 1u, HalfW - 1u);
+        uint   HY0        = min(DispatchThreadID.y >> 1u, HalfH - 1u);
+        uint   HX1        = min(HX0 + 1u, HalfW - 1u);
+        uint   HY1        = min(HY0 + 1u, HalfH - 1u);
+        float  FracX      = ((DispatchThreadID.x & 1u) != 0u) ? 0.5 : 0.0;
+        float  FracY      = ((DispatchThreadID.y & 1u) != 0u) ? 0.5 : 0.0;
+        float3 CenterN    = normalize(CenterNorm.xyz);
+        float  CamDist    = max(0.25, length(CenterPos.xyz - WorldUniforms.CameraOriginTanX.xyz));
+        float  InvWorldAo = 1.0 / max(DenoiseAoWorldFloorSq, DenoiseAoWorldDistScale * CamDist);
+
+        float3 SumIndir = float3(0.0);
+        float  SumAo    = 0.0;
+        float  SumW     = 0.0;
+
+        for (uint DY = 0u; DY < 2u; ++DY)
+        {
+            uint  HY    = (DY == 0u) ? HY0 : HY1;
+            float WY    = (DY == 0u) ? (1.0 - FracY * 0.85) : (0.15 + FracY * 0.85);
+            uint  FullY = min(HY * 2u, Height - 1u);
+            for (uint DX = 0u; DX < 2u; ++DX)
+            {
+                uint  HX    = (DX == 0u) ? HX0 : HX1;
+                float WX    = (DX == 0u) ? (1.0 - FracX * 0.85) : (0.15 + FracX * 0.85);
+                uint  FullX = min(HX * 2u, Width - 1u);
+                uint  SIdx  = FullY * Width + FullX;
+                float4 SPos = GBufPosMask[SIdx];
+                if (SPos.w <= 0.0) continue;
+
+                float3 SNrm      = normalize(GBufNormAo[SIdx].xyz);
+                float3 WorldDiff = SPos.xyz - CenterPos.xyz;
+                float  PlaneDist = abs(dot(CenterN, WorldDiff));
+                float  WPlane    = exp(-PlaneDist * 45.0);
+                float  WDist     = exp(-dot(WorldDiff, WorldDiff) * InvWorldAo);
+                float  NCos      = saturate(dot(CenterN, SNrm));
+                float  NCos2     = NCos * NCos;
+                float  NCos4     = NCos2 * NCos2;
+                float  WNrm      = NCos4 * NCos4;
+                float  W         = WX * WY * WPlane * WDist * WNrm;
+
+                float4 SamplePack = PongIndirectIrradiance[HY * HalfW + HX];
+                SumIndir += SamplePack.xyz * W;
+                SumAo    += SamplePack.w * W;
+                SumW     += W;
+            }
+        }
+
+        if (SumW > 1.0e-5)
+        {
+            float InvW    = 1.0 / SumW;
+            OutIndirIrrad = SumIndir * InvW;
+            OutDiffAo     = SumAo * InvW;
+        }
+        else
+        {
+            float4 FallbackPack = PongIndirectIrradiance[HY0 * HalfW + HX0];
+            OutIndirIrrad       = FallbackPack.xyz;
+            OutDiffAo           = FallbackPack.w;
+        }
     }
 
     float4 DirectBase = GBufDirectBase[PixelIdx];

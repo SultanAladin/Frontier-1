@@ -22,6 +22,9 @@ jobs:
     name: Build portable Frontier workspace package
     runs-on: windows-2022
     timeout-minutes: 90
+    env:
+      SCCACHE_DIR: ${{ runner.temp }}/sccache
+      SCCACHE_CACHE_SIZE: 4G
     steps:
       - name: Check out branch source
         uses: actions/checkout@v4
@@ -34,10 +37,46 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Set up MSVC x64 developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja and sccache
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+          if (-not (Get-Command sccache -ErrorAction SilentlyContinue)) {
+            choco install sccache -y --no-progress
+          }
+          ninja --version
+          sccache --version
+
+      - name: Cache pinned native dependencies, fonts, and shader toolchain
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ExternalPackages
+            EngineContent/Fonts
+          key: win-x64-deps-v1-${{ hashFiles('Automation/**') }}
+
+      - name: Cache sccache compiled object files
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sccache
+          key: win-x64-sccache-v1-${{ hashFiles('CMakeLists.txt', 'Engine/**/*.h', 'Engine/**/*.cpp') }}
+          restore-keys: |
+            win-x64-sccache-v1-
+
       - name: Install pinned font-generation dependency
+        if: steps.deps-cache.outputs.cache-hit != 'true'
         run: python -m pip install --requirement Automation/FontRequirements.txt
 
       - name: Recover pinned native dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,17 +91,26 @@ jobs:
           }
 
       - name: Prepare bundled fonts
+        if: steps.deps-cache.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python Automation/PrepareFonts.py
 
       - name: Install pinned Windows Slang compiler
+        if: steps.deps-cache.outputs.cache-hit != 'true'
         run: python Automation/PrepareShaderToolchain.py
 
-      - name: Configure Windows x64 build
+      - name: Configure Windows x64 Ninja build with sccache
         shell: pwsh
         run: |
-          cmake -S . -B Build/Windows -G "Visual Studio 17 2022" -A x64 `
+          cmake -S . -B Build/Windows -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_POLICY_DEFAULT_CMP0141=NEW `
+            -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded `
             -DFRONTIER_PROFILE=Editor `
             -DBUILD_TESTING=OFF `
             '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>'
@@ -71,11 +119,12 @@ jobs:
       - name: Build Windows x64 Frontier and SolidArc applications
         shell: pwsh
         run: |
-          $Output = & cmake --build Build/Windows --config Release --parallel 4 --target `
+          $Output = & cmake --build Build/Windows --parallel 4 --target `
             Frontier FrontierSketcher `
             FrontierEngineRuntimeDll FrontierWorkspaceUiDll 2>&1
           $Result = $LASTEXITCODE
           $Output | ForEach-Object { Write-Output "$_" }
+          sccache --show-stats
           if ($Result -ne 0) {
             $Diagnostics = $Output | Select-String -Pattern '(?i)(:\s*(?:fatal\s+)?error\b|LNK[0-9]+|FAILED|Build FAILED|MSB[0-9]+)' | Select-Object -Last 12
             if (-not $Diagnostics) { $Diagnostics = $Output | Select-Object -Last 10 }
@@ -89,8 +138,8 @@ jobs:
         run: |
           $Payload = Join-Path $env:RUNNER_TEMP 'Frontier-Workspaces-Windows-x64'
           New-Item -ItemType Directory -Force "$Payload/CompiledShaders", "$Payload/EngineContent", "$Payload/Binaries/Win64" | Out-Null
-          Copy-Item 'Build/Windows/Release/Frontier.exe' "$Payload/Frontier.exe"
-          Copy-Item 'Build/Windows/Release/FrontierSketcher.exe' "$Payload/SolidArc.exe"
+          Copy-Item 'Build/Windows/Frontier.exe' "$Payload/Frontier.exe"
+          Copy-Item 'Build/Windows/FrontierSketcher.exe' "$Payload/SolidArc.exe"
           Copy-Item 'Build/Windows/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
           Copy-Item 'Build/Windows/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
           Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force

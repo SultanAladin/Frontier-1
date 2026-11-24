@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <unordered_map>
 #include <vector>
@@ -239,10 +240,19 @@ private:
     DeviceBufferResource      GizmoVertexBuffer             {};
     DeviceBufferResource      RegionPickMaskBuffer          {};
 
+    struct PendingAsyncVectorFrame
+    {
+        VkCommandBuffer Cmd            = VK_NULL_HANDLE;
+        ReadbackTicket  SummaryTicket  {};
+        uint64_t        TimelineSignal = 0ull;
+    };
+    void ReapPendingAsyncFrames(bool ForceDrain) noexcept;
+
     uint64_t                  CachedSessionSerial           = 0ull;
     uint64_t                  CachedGeometryRevision        = 0ull;
     std::unordered_map<uint32_t, CompiledLayerGeometry> CachedLayerGeometry {};
     std::vector<uint8_t>      CachedColorBytes              {};
+    std::deque<PendingAsyncVectorFrame> PendingAsyncFrames  {};
     VectorGpuEvaluationMetrics LastMetrics                  {};
 };
 

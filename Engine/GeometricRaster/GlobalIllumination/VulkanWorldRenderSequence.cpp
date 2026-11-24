@@ -404,7 +404,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         return false;
     }
 
-    constexpr std::array<VkDescriptorType, 38u> SlotTypes {{
+    constexpr std::array<VkDescriptorType, 39u> SlotTypes {{
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // 0:  WorldUniforms
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 1:  SceneBvhEntries
         VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, // 2:  SceneTriangles
@@ -443,6 +443,7 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, // 35: RadiosityCoarseTex3D
         VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          // 36: GdfBakeTargetImg3D
         VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          // 37: RadiosityBakeDstImg3D
+        VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          // 38: PrimaryVisImg2D
     }};
 
     const std::filesystem::path ShaderBinaryPath = CompiledShaderDirectory / "WorldViewportRadiometricCompute.comp.spv";
@@ -476,6 +477,12 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         TeardownSequence();
         return false;
     }
+
+    const std::filesystem::path HalfResShaderPath = CompiledShaderDirectory / "WorldViewportHalfResIndirectCompute.comp.spv";
+    HalfResIndirectProgramHandle = DispatchEncoder.RegisterProgram(
+        HalfResShaderPath,
+        SlotTypes,
+        "HalfResIndirectEntry");
 
     const std::filesystem::path DenoiseShaderPath = CompiledShaderDirectory / "WorldViewportDenoiseCompute.comp.spv";
     DenoiseProgramHandle = DispatchEncoder.RegisterProgram(
@@ -721,15 +728,18 @@ bool VulkanWorldRenderSequence::InitializeSequence(
         CachedLocalSdfAssetSignature  = 0ull;
         CachedLocalSdfOffsets.clear();
     }
+    (void)InitializePrimaryVisRasterPipeline();
     if (UniformBuffer.BufferHandle != VK_NULL_HANDLE)
     {
         std::fprintf(
             stdout,
-            "[FrontierWorld] VulkanWorldRenderSequence active on %.*s (Hardware GPU: %s, GPU ShadowCascade: %s)\n",
+            "[FrontierWorld] VulkanWorldRenderSequence active on %.*s (Hardware GPU: %s, GPU ShadowCascade: %s, HW VisBuffer: %s, HalfRes AO/GI: %s)\n",
             static_cast<int>(TargetDevice.QueryAdapterName().size()),
             TargetDevice.QueryAdapterName().data(),
             TargetDevice.QueryHardwareAccelerated() ? "YES" : "NO (Software ICD)",
-            ShadowCascadeProgramHandle != UINT32_MAX ? "YES" : "NO");
+            ShadowCascadeProgramHandle != UINT32_MAX ? "YES" : "NO",
+            PrimaryVisPipeline != VK_NULL_HANDLE ? "YES" : "NO",
+            HalfResIndirectProgramHandle != UINT32_MAX ? "YES" : "NO");
         std::fflush(stdout);
         return true;
     }
@@ -743,6 +753,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
         FlushAllAsyncDispatches();
         vkDeviceWaitIdle(BoundDevice->AccessDevice());
         ReapRetiredDisplayImages(true);
+        ReleasePrimaryVisResources();
         ReleaseVolume3DResources();
         if (TimestampQueryPool != VK_NULL_HANDLE)
         {
@@ -814,6 +825,7 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     DispatchEncoder.TeardownEncoder();
     RadiometricProgramHandle          = UINT32_MAX;
     CloudLayerProgramHandle           = UINT32_MAX;
+    HalfResIndirectProgramHandle      = UINT32_MAX;
     DenoiseProgramHandle              = UINT32_MAX;
     TransmittanceLutProgramHandle     = UINT32_MAX;
     MultiScatterLutProgramHandle      = UINT32_MAX;
@@ -868,6 +880,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     LastSkyViewUniformSnapshot.fill(0u);
     LastRadiosityLightingSignature  = 0ull;
     UploadedBvhCount                = 0u;
+    UploadedTriangleCount           = 0u;
+    UploadedClusterSlotCount        = 0u;
     UploadedMaterialCount           = 0u;
 }
 
@@ -1312,6 +1326,482 @@ void VulkanWorldRenderSequence::EnsureDisplayOutputImage(uint32_t WidthPx, uint3
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT);
+}
+
+void VulkanWorldRenderSequence::ReleasePrimaryVisFramebuffer() noexcept
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return;
+    }
+    VkDevice Dev = BoundDevice->AccessDevice();
+    if (PrimaryVisFramebuffer != VK_NULL_HANDLE)
+    {
+        vkDestroyFramebuffer(Dev, PrimaryVisFramebuffer, nullptr);
+        PrimaryVisFramebuffer = VK_NULL_HANDLE;
+    }
+    BoundDevice->ReleaseImage2D(PrimaryVisImage2D);
+    BoundDevice->ReleaseImage2D(PrimaryVisDepthImage2D);
+}
+
+void VulkanWorldRenderSequence::ReleasePrimaryVisResources() noexcept
+{
+    ReleasePrimaryVisFramebuffer();
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return;
+    }
+    VkDevice Dev = BoundDevice->AccessDevice();
+    if (PrimaryVisPipeline != VK_NULL_HANDLE)
+    {
+        vkDestroyPipeline(Dev, PrimaryVisPipeline, nullptr);
+        PrimaryVisPipeline = VK_NULL_HANDLE;
+    }
+    if (PrimaryVisPipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(Dev, PrimaryVisPipelineLayout, nullptr);
+        PrimaryVisPipelineLayout = VK_NULL_HANDLE;
+    }
+    if (PrimaryVisRenderPass != VK_NULL_HANDLE)
+    {
+        vkDestroyRenderPass(Dev, PrimaryVisRenderPass, nullptr);
+        PrimaryVisRenderPass = VK_NULL_HANDLE;
+    }
+    if (PrimaryVisDescPool != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorPool(Dev, PrimaryVisDescPool, nullptr);
+        PrimaryVisDescPool = VK_NULL_HANDLE;
+    }
+    PrimaryVisDescSets.fill(VK_NULL_HANDLE);
+    if (PrimaryVisDescLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorSetLayout(Dev, PrimaryVisDescLayout, nullptr);
+        PrimaryVisDescLayout = VK_NULL_HANDLE;
+    }
+}
+
+bool VulkanWorldRenderSequence::EnsurePrimaryVisTargets(uint32_t WidthPx, uint32_t HeightPx)
+{
+    const uint32_t SafeW = std::max(1u, WidthPx);
+    const uint32_t SafeH = std::max(1u, HeightPx);
+    if (PrimaryVisImage2D.ImageHandle != VK_NULL_HANDLE &&
+        PrimaryVisImage2D.WidthPx == SafeW &&
+        PrimaryVisImage2D.HeightPx == SafeH &&
+        PrimaryVisFramebuffer != VK_NULL_HANDLE)
+    {
+        return true;
+    }
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || PrimaryVisRenderPass == VK_NULL_HANDLE)
+    {
+        return false;
+    }
+    if (PrimaryVisImage2D.ImageHandle != VK_NULL_HANDLE)
+    {
+        FlushAllAsyncDispatches();
+        ReleasePrimaryVisFramebuffer();
+    }
+
+    PrimaryVisImage2D = BoundDevice->AllocateImage2D(
+        SafeW,
+        SafeH,
+        VK_FORMAT_R32_UINT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT);
+    PrimaryVisDepthImage2D = BoundDevice->AllocateImage2D(
+        SafeW,
+        SafeH,
+        VK_FORMAT_D32_SFLOAT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (PrimaryVisImage2D.ViewHandle == VK_NULL_HANDLE || PrimaryVisDepthImage2D.ViewHandle == VK_NULL_HANDLE)
+    {
+        ReleasePrimaryVisFramebuffer();
+        return false;
+    }
+
+    const std::array<VkImageView, 2u> Attachments {{
+        PrimaryVisImage2D.ViewHandle,
+        PrimaryVisDepthImage2D.ViewHandle,
+    }};
+    VkFramebufferCreateInfo FbInfo {};
+    FbInfo.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    FbInfo.renderPass      = PrimaryVisRenderPass;
+    FbInfo.attachmentCount = static_cast<uint32_t>(Attachments.size());
+    FbInfo.pAttachments    = Attachments.data();
+    FbInfo.width           = SafeW;
+    FbInfo.height          = SafeH;
+    FbInfo.layers          = 1u;
+    if (vkCreateFramebuffer(BoundDevice->AccessDevice(), &FbInfo, nullptr, &PrimaryVisFramebuffer) != VK_SUCCESS)
+    {
+        ReleasePrimaryVisFramebuffer();
+        return false;
+    }
+
+    // Transition freshly allocated PrimaryVisImage2D into VK_IMAGE_LAYOUT_GENERAL so descriptor slot 38 is valid immediately
+    VkCommandBuffer InitCmd = BoundDevice->BeginSingleTimeCommands();
+    if (InitCmd != VK_NULL_HANDLE)
+    {
+        VkImageMemoryBarrier Barrier {};
+        Barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        Barrier.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+        Barrier.newLayout                       = VK_IMAGE_LAYOUT_GENERAL;
+        Barrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        Barrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+        Barrier.image                           = PrimaryVisImage2D.ImageHandle;
+        Barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        Barrier.subresourceRange.baseMipLevel   = 0u;
+        Barrier.subresourceRange.levelCount     = 1u;
+        Barrier.subresourceRange.baseArrayLayer = 0u;
+        Barrier.subresourceRange.layerCount     = 1u;
+        Barrier.srcAccessMask                   = 0u;
+        Barrier.dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(
+            InitCmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0u, 0u, nullptr, 0u, nullptr, 1u, &Barrier);
+        const uint64_t InitSig = BoundDevice->DispatchCommandBufferAsync(InitCmd);
+        if (InitSig != 0ull)
+        {
+            (void)BoundDevice->AwaitTimelineTick(InitSig);
+        }
+        BoundDevice->FreeCommandBuffer(InitCmd);
+    }
+    return true;
+}
+
+bool VulkanWorldRenderSequence::InitializePrimaryVisRasterPipeline()
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return false;
+    }
+    VkDevice Dev = BoundDevice->AccessDevice();
+
+    const std::filesystem::path VertPath = CachedCompiledShaderDir / "WorldPrimaryVisRaster.vert.spv";
+    const std::filesystem::path FragPath = CachedCompiledShaderDir / "WorldPrimaryVisRaster.frag.spv";
+    VkShaderModule VertMod = BoundDevice->LoadShaderBinary(VertPath);
+    VkShaderModule FragMod = BoundDevice->LoadShaderBinary(FragPath);
+    if (VertMod == VK_NULL_HANDLE || FragMod == VK_NULL_HANDLE)
+    {
+        if (VertMod != VK_NULL_HANDLE) vkDestroyShaderModule(Dev, VertMod, nullptr);
+        if (FragMod != VK_NULL_HANDLE) vkDestroyShaderModule(Dev, FragMod, nullptr);
+        return false;
+    }
+
+    // 1. RenderPass: R32_UINT TriIdPlus1 color (UNDEFINED -> GENERAL) + D32_SFLOAT Reversed-Z depth
+    VkAttachmentDescription ColorAtt {};
+    ColorAtt.format         = VK_FORMAT_R32_UINT;
+    ColorAtt.samples        = VK_SAMPLE_COUNT_1_BIT;
+    ColorAtt.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    ColorAtt.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+    ColorAtt.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    ColorAtt.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    ColorAtt.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+    ColorAtt.finalLayout    = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkAttachmentDescription DepthAtt {};
+    DepthAtt.format         = VK_FORMAT_D32_SFLOAT;
+    DepthAtt.samples        = VK_SAMPLE_COUNT_1_BIT;
+    DepthAtt.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    DepthAtt.storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    DepthAtt.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    DepthAtt.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    DepthAtt.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+    DepthAtt.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference ColorRef { 0u, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+    VkAttachmentReference DepthRef { 1u, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+
+    VkSubpassDescription Subpass {};
+    Subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    Subpass.colorAttachmentCount    = 1u;
+    Subpass.pColorAttachments       = &ColorRef;
+    Subpass.pDepthStencilAttachment = &DepthRef;
+
+    std::array<VkSubpassDependency, 2u> Deps {};
+    Deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
+    Deps[0].dstSubpass    = 0u;
+    Deps[0].srcStageMask  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    Deps[0].dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    Deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    Deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+    Deps[1].srcSubpass    = 0u;
+    Deps[1].dstSubpass    = VK_SUBPASS_EXTERNAL;
+    Deps[1].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    Deps[1].dstStageMask  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    Deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    Deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    const std::array<VkAttachmentDescription, 2u> Atts {{ ColorAtt, DepthAtt }};
+    VkRenderPassCreateInfo RpInfo {};
+    RpInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    RpInfo.attachmentCount = static_cast<uint32_t>(Atts.size());
+    RpInfo.pAttachments    = Atts.data();
+    RpInfo.subpassCount    = 1u;
+    RpInfo.pSubpasses      = &Subpass;
+    RpInfo.dependencyCount = static_cast<uint32_t>(Deps.size());
+    RpInfo.pDependencies   = Deps.data();
+
+    if (vkCreateRenderPass(Dev, &RpInfo, nullptr, &PrimaryVisRenderPass) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(Dev, VertMod, nullptr);
+        vkDestroyShaderModule(Dev, FragMod, nullptr);
+        return false;
+    }
+
+    // 2. Descriptor set layout & per-slot ring descriptor sets (bindings 0: SceneTriangles, 1: ActiveClusterBitmask)
+    std::array<VkDescriptorSetLayoutBinding, 2u> Bindings {};
+    Bindings[0].binding         = 0u;
+    Bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    Bindings[0].descriptorCount = 1u;
+    Bindings[0].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+    Bindings[1].binding         = 1u;
+    Bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    Bindings[1].descriptorCount = 1u;
+    Bindings[1].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo DslInfo {};
+    DslInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    DslInfo.bindingCount = static_cast<uint32_t>(Bindings.size());
+    DslInfo.pBindings    = Bindings.data();
+    if (vkCreateDescriptorSetLayout(Dev, &DslInfo, nullptr, &PrimaryVisDescLayout) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(Dev, VertMod, nullptr);
+        vkDestroyShaderModule(Dev, FragMod, nullptr);
+        ReleasePrimaryVisResources();
+        return false;
+    }
+
+    VkDescriptorPoolSize PoolSize { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kLiveFrameSlots * 2u };
+    VkDescriptorPoolCreateInfo PoolInfo {};
+    PoolInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    PoolInfo.maxSets       = kLiveFrameSlots;
+    PoolInfo.poolSizeCount = 1u;
+    PoolInfo.pPoolSizes    = &PoolSize;
+    if (vkCreateDescriptorPool(Dev, &PoolInfo, nullptr, &PrimaryVisDescPool) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(Dev, VertMod, nullptr);
+        vkDestroyShaderModule(Dev, FragMod, nullptr);
+        ReleasePrimaryVisResources();
+        return false;
+    }
+
+    std::array<VkDescriptorSetLayout, kLiveFrameSlots> Layouts {};
+    Layouts.fill(PrimaryVisDescLayout);
+    VkDescriptorSetAllocateInfo AllocInfo {};
+    AllocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    AllocInfo.descriptorPool     = PrimaryVisDescPool;
+    AllocInfo.descriptorSetCount = kLiveFrameSlots;
+    AllocInfo.pSetLayouts        = Layouts.data();
+    if (vkAllocateDescriptorSets(Dev, &AllocInfo, PrimaryVisDescSets.data()) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(Dev, VertMod, nullptr);
+        vkDestroyShaderModule(Dev, FragMod, nullptr);
+        ReleasePrimaryVisResources();
+        return false;
+    }
+
+    // 3. Pipeline layout with 80-byte VisRasterPushConstants
+    VkPushConstantRange PushRange {};
+    PushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    PushRange.offset     = 0u;
+    PushRange.size       = 80u;
+
+    VkPipelineLayoutCreateInfo PlInfo {};
+    PlInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    PlInfo.setLayoutCount         = 1u;
+    PlInfo.pSetLayouts            = &PrimaryVisDescLayout;
+    PlInfo.pushConstantRangeCount = 1u;
+    PlInfo.pPushConstantRanges    = &PushRange;
+    if (vkCreatePipelineLayout(Dev, &PlInfo, nullptr, &PrimaryVisPipelineLayout) != VK_SUCCESS)
+    {
+        vkDestroyShaderModule(Dev, VertMod, nullptr);
+        vkDestroyShaderModule(Dev, FragMod, nullptr);
+        ReleasePrimaryVisResources();
+        return false;
+    }
+
+    // 4. Graphics pipeline: vertex-pulling (no vertex buffers), two-sided (CULL_MODE_NONE), Reversed-Z (COMPARE_OP_GREATER)
+    std::array<VkPipelineShaderStageCreateInfo, 2u> Stages {};
+    Stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    Stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
+    Stages[0].module = VertMod;
+    Stages[0].pName  = "PrimaryVisVertexEntry";
+    Stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    Stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+    Stages[1].module = FragMod;
+    Stages[1].pName  = "PrimaryVisFragmentEntry";
+
+    VkPipelineVertexInputStateCreateInfo ViState {};
+    ViState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+    VkPipelineInputAssemblyStateCreateInfo IaState {};
+    IaState.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    IaState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineViewportStateCreateInfo VpState {};
+    VpState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    VpState.viewportCount = 1u;
+    VpState.scissorCount  = 1u;
+
+    const std::array<VkDynamicState, 2u> DynStates {{ VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR }};
+    VkPipelineDynamicStateCreateInfo DynState {};
+    DynState.sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    DynState.dynamicStateCount = static_cast<uint32_t>(DynStates.size());
+    DynState.pDynamicStates    = DynStates.data();
+
+    VkPipelineRasterizationStateCreateInfo RastState {};
+    RastState.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    RastState.polygonMode = VK_POLYGON_MODE_FILL;
+    RastState.cullMode    = VK_CULL_MODE_NONE;
+    RastState.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    RastState.lineWidth   = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo MsState {};
+    MsState.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    MsState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo DsState {};
+    DsState.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    DsState.depthTestEnable  = VK_TRUE;
+    DsState.depthWriteEnable = VK_TRUE;
+    DsState.depthCompareOp   = VK_COMPARE_OP_GREATER; // Reversed-Z [1 at ZNear, 0 at ZFar]
+
+    VkPipelineColorBlendAttachmentState BlendAtt {};
+    BlendAtt.colorWriteMask = VK_COLOR_COMPONENT_R_BIT;
+    VkPipelineColorBlendStateCreateInfo BlendState {};
+    BlendState.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    BlendState.attachmentCount = 1u;
+    BlendState.pAttachments    = &BlendAtt;
+
+    VkGraphicsPipelineCreateInfo PipeInfo {};
+    PipeInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    PipeInfo.stageCount          = static_cast<uint32_t>(Stages.size());
+    PipeInfo.pStages             = Stages.data();
+    PipeInfo.pVertexInputState   = &ViState;
+    PipeInfo.pInputAssemblyState = &IaState;
+    PipeInfo.pViewportState      = &VpState;
+    PipeInfo.pRasterizationState = &RastState;
+    PipeInfo.pMultisampleState   = &MsState;
+    PipeInfo.pDepthStencilState  = &DsState;
+    PipeInfo.pColorBlendState    = &BlendState;
+    PipeInfo.pDynamicState       = &DynState;
+    PipeInfo.layout              = PrimaryVisPipelineLayout;
+    PipeInfo.renderPass          = PrimaryVisRenderPass;
+    PipeInfo.subpass             = 0u;
+
+    const VkResult PipeRes = vkCreateGraphicsPipelines(Dev, VK_NULL_HANDLE, 1u, &PipeInfo, nullptr, &PrimaryVisPipeline);
+    vkDestroyShaderModule(Dev, VertMod, nullptr);
+    vkDestroyShaderModule(Dev, FragMod, nullptr);
+    if (PipeRes != VK_SUCCESS)
+    {
+        ReleasePrimaryVisResources();
+        return false;
+    }
+
+    // Allocate initial 1x1 dummy target in VK_IMAGE_LAYOUT_GENERAL so descriptor slot 38 is always valid
+    return EnsurePrimaryVisTargets(1u, 1u);
+}
+
+void VulkanWorldRenderSequence::RecordPrimaryVisRasterPass(
+    VkCommandBuffer Cmd,
+    uint32_t        SlotIdx,
+    uint32_t        WidthPx,
+    uint32_t        HeightPx,
+    const float     CamOriginTanX[4],
+    const float     CamRightTanY[4],
+    const float     CamUpNearZ[4],
+    const float     CamForwardFarZ[4])
+{
+    if (PrimaryVisPipeline == VK_NULL_HANDLE || PrimaryVisFramebuffer == VK_NULL_HANDLE || UploadedTriangleCount == 0u)
+    {
+        return;
+    }
+    VkDescriptorSet DescSet = PrimaryVisDescSets[SlotIdx % kLiveFrameSlots];
+
+    VkDescriptorBufferInfo TriInfo {};
+    TriInfo.buffer = ShadedTriangleBuffer.BufferHandle;
+    TriInfo.offset = 0ull;
+    TriInfo.range  = VK_WHOLE_SIZE;
+
+    VkDescriptorBufferInfo MaskInfo {};
+    MaskInfo.buffer = ActiveClusterMaskBuffer.BufferHandle;
+    MaskInfo.offset = MaskSliceOffsetBytes;
+    MaskInfo.range  = MaskSliceOffsetBytes;
+
+    std::array<VkWriteDescriptorSet, 2u> Writes {};
+    Writes[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    Writes[0].dstSet          = DescSet;
+    Writes[0].dstBinding      = 0u;
+    Writes[0].descriptorCount = 1u;
+    Writes[0].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    Writes[0].pBufferInfo     = &TriInfo;
+
+    Writes[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    Writes[1].dstSet          = DescSet;
+    Writes[1].dstBinding      = 1u;
+    Writes[1].descriptorCount = 1u;
+    Writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    Writes[1].pBufferInfo     = &MaskInfo;
+
+    vkUpdateDescriptorSets(BoundDevice->AccessDevice(), static_cast<uint32_t>(Writes.size()), Writes.data(), 0u, nullptr);
+
+    std::array<VkClearValue, 2u> Clears {};
+    Clears[0].color.uint32[0] = 0u;
+    Clears[0].color.uint32[1] = 0u;
+    Clears[0].color.uint32[2] = 0u;
+    Clears[0].color.uint32[3] = 0u;
+    Clears[1].depthStencil    = { 0.0f, 0u }; // Reversed-Z far plane clear
+
+    VkRenderPassBeginInfo RpBegin {};
+    RpBegin.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    RpBegin.renderPass        = PrimaryVisRenderPass;
+    RpBegin.framebuffer       = PrimaryVisFramebuffer;
+    RpBegin.renderArea.offset = { 0, 0 };
+    RpBegin.renderArea.extent = { WidthPx, HeightPx };
+    RpBegin.clearValueCount   = static_cast<uint32_t>(Clears.size());
+    RpBegin.pClearValues      = Clears.data();
+
+    vkCmdBeginRenderPass(Cmd, &RpBegin, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, PrimaryVisPipeline);
+    vkCmdBindDescriptorSets(Cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, PrimaryVisPipelineLayout, 0u, 1u, &DescSet, 0u, nullptr);
+
+    VkViewport Vp {};
+    Vp.x        = 0.0f;
+    Vp.y        = 0.0f;
+    Vp.width    = static_cast<float>(WidthPx);
+    Vp.height   = static_cast<float>(HeightPx);
+    Vp.minDepth = 0.0f;
+    Vp.maxDepth = 1.0f;
+    vkCmdSetViewport(Cmd, 0u, 1u, &Vp);
+
+    VkRect2D Scissor { { 0, 0 }, { WidthPx, HeightPx } };
+    vkCmdSetScissor(Cmd, 0u, 1u, &Scissor);
+
+    struct alignas(16) VisPushConstants80
+    {
+        float    CamOriginTanX[4];
+        float    CamRightTanY[4];
+        float    CamUpNearZ[4];
+        float    CamForwardFarZ[4];
+        uint32_t TriangleMeta[4];
+    };
+    static_assert(sizeof(VisPushConstants80) == 80u);
+    VisPushConstants80 Push {};
+    std::memcpy(Push.CamOriginTanX,  CamOriginTanX,  sizeof(Push.CamOriginTanX));
+    std::memcpy(Push.CamRightTanY,   CamRightTanY,   sizeof(Push.CamRightTanY));
+    std::memcpy(Push.CamUpNearZ,     CamUpNearZ,     sizeof(Push.CamUpNearZ));
+    std::memcpy(Push.CamForwardFarZ, CamForwardFarZ, sizeof(Push.CamForwardFarZ));
+    Push.TriangleMeta[0] = UploadedTriangleCount;
+    Push.TriangleMeta[1] = UploadedClusterSlotCount;
+    Push.TriangleMeta[2] = 0u;
+    Push.TriangleMeta[3] = 0u;
+
+    vkCmdPushConstants(Cmd, PrimaryVisPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0u, sizeof(Push), &Push);
+    vkCmdDraw(Cmd, UploadedTriangleCount * 3u, 1u, 0u, 0u);
+    vkCmdEndRenderPass(Cmd);
 }
 
 bool VulkanWorldRenderSequence::UploadToDeviceBuffer(
@@ -2197,7 +2687,9 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
         UploadDualDeviceBuffers(
             BvhEntryBuffer, &DummyEntry, sizeof(DummyEntry), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
             ShadedTriangleBuffer, &DummyTri, sizeof(DummyTri), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-        UploadedBvhCount = 0u;
+        UploadedBvhCount         = 0u;
+        UploadedTriangleCount    = 0u;
+        UploadedClusterSlotCount = 0u;
         ResidentClusterInstances.clear();
         TopBranchGateRules.clear();
         FinestClusterMaskWords.assign(1u, 0u);
@@ -3258,6 +3750,8 @@ bool VulkanWorldRenderSequence::AssembleResidentClusterSceneBvh(
     }
 
     UploadedBvhCount                     = static_cast<uint32_t>(AllBvhNodes.size());
+    UploadedTriangleCount                = static_cast<uint32_t>(AllShadedTris.size());
+    UploadedClusterSlotCount             = static_cast<uint32_t>(FinestClusterMaskWords.size() * 32u);
     ReservedTopNodeCount                 = EffectiveTopReserve;
     ResidentFinestTriangleCount          = FinestTriSum;
     CachedResidentTransformSig           = TransformSig;
@@ -4129,7 +4623,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
         VkImageView   RadCoarseReadView,
         VkImageLayout RadCoarseReadLayout,
         VkImageView   GdfWriteView,
-        VkImageView   RadWriteView) -> std::array<ComputeSlotDescriptor, 38u>
+        VkImageView   RadWriteView) -> std::array<ComputeSlotDescriptor, 39u>
     {
         return {{
             {  0u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, PrecomputeUniformBuffer.BufferHandle,         sizeof(WorldViewportUniformBlockStd140), UniOffs },
@@ -4170,6 +4664,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
             { 35u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, RadCoarseReadView, LinearClampSampler3D,  RadCoarseReadLayout },
             { 36u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, GdfWriteView,      VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
             { 37u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, RadWriteView,      VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
+            { 38u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, PrimaryVisImage2D.ViewHandle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL },
         }};
     };
 
@@ -4857,6 +5352,8 @@ void VulkanWorldRenderSequence::SynchronizeSceneResources(
     }
         const uint64_t TriBytes = ShadedTris.size() * sizeof(GpuShadedTriangle96);
         UploadToDeviceBuffer(ShadedTriangleBuffer, ShadedTris.data(), TriBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+        UploadedTriangleCount                = static_cast<uint32_t>(ShadedTris.size());
+        UploadedClusterSlotCount             = 0u;
         NaniteLodStats.FullTriangleCount     = static_cast<uint32_t>(SrcPrims.size());
         NaniteLodStats.GeometryRebuildCount += 1u;
     }
@@ -6268,6 +6765,33 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         (static_cast<uint32_t>(std::clamp(Config.XeGtaoStrength, 0.0f, 2.0f) * 127.5f) << 8u) |
         ((UploadedLocalSdfInstanceCount & 0xFFFFu) << 16u);
 
+    const uint32_t EngIdxPre             = static_cast<uint32_t>(Config.Engine);
+    const uint32_t DirectPbrOrdinalPre   = static_cast<uint32_t>(WorldRenderEngine::OpenPbrDirect);
+    const uint32_t LowEndGtxOrdinalPre   = static_cast<uint32_t>(WorldRenderEngine::RealTimeGiGtxLowEnd);
+    const bool     PathTracePre          = (EngIdxPre == 4u || EngIdxPre == 5u) && (Config.DebugChannel == 0u);
+    const bool     UseHardwarePrimaryVis =
+        !PathTracePre &&
+        (EngIdxPre != 3u) &&
+        (PrimaryVisPipeline != VK_NULL_HANDLE) &&
+        (UploadedTriangleCount > 0u) &&
+        EnsurePrimaryVisTargets(WidthPx, HeightPx);
+    const bool     UseHalfResIndirect    =
+        !PathTracePre &&
+        (HalfResIndirectProgramHandle != UINT32_MAX) &&
+        (EngIdxPre == DirectPbrOrdinalPre || EngIdxPre == LowEndGtxOrdinalPre) &&
+        (Config.DebugChannel == DebugChannelShadedLit ||
+         (Config.DebugChannel >= DebugChannelSunShadow && Config.DebugChannel <= DebugChannelSpecular)) &&
+        (Config.DebugChannel != DebugChannelFilteredAo);
+
+    if (UseHardwarePrimaryVis)
+    {
+        Uniforms.AtmosphereMaskPad[3] |= (1u << 24u);
+    }
+    if (UseHalfResIndirect)
+    {
+        Uniforms.AtmosphereMaskPad[3] |= (1u << 25u);
+    }
+
     uint8_t* UniformBytes = reinterpret_cast<uint8_t*>(ActiveSlot.UniformBuffer.HostAddress);
     std::memcpy(UniformBytes, &Uniforms, sizeof(Uniforms));
 
@@ -6316,7 +6840,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     WriteStamp(1u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     EnsureBufferCapacity(ActiveClusterMaskBuffer, MaskSliceOffsetBytes * 2ull, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-    auto ConstructStepSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 38u>
+    auto ConstructStepSlots = [&](uint64_t UniOffset, bool SwapPingPong) -> std::array<ComputeSlotDescriptor, 39u>
     {
         const auto& InShadow  = SwapPingPong ? PongShadowAoBuffer : PingShadowAoBuffer;
         const auto& OutShadow = SwapPingPong ? PingShadowAoBuffer : PongShadowAoBuffer;
@@ -6361,6 +6885,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             { 35u, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_NULL_HANDLE, 0ull, 0ull, RadiosityCoarseImage3D.ViewHandle, LinearClampSampler3D,  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
             { 36u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, DummyFloat1x1x1Image3D.ViewHandle, VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
             { 37u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, DummyRgba1x1x1Image3D.ViewHandle,  VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
+            { 38u, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          VK_NULL_HANDLE, 0ull, 0ull, PrimaryVisImage2D.ViewHandle,      VK_NULL_HANDLE,        VK_IMAGE_LAYOUT_GENERAL },
         }};
     };
 
@@ -6402,9 +6927,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
     WriteStamp(3u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-    auto MakeLazyViewportSlots = []() -> std::array<VkDescriptorType, 38u>
+    auto MakeLazyViewportSlots = []() -> std::array<VkDescriptorType, 39u>
     {
-        std::array<VkDescriptorType, 38u> LazySlots {};
+        std::array<VkDescriptorType, 39u> LazySlots {};
         LazySlots.fill(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         LazySlots[0]  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         LazySlots[32] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -6413,6 +6938,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         LazySlots[35] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         LazySlots[36] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         LazySlots[37] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        LazySlots[38] = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         return LazySlots;
     };
     if ((EngIdx == 4u || EngIdx == 5u) && Config.DebugChannel == 0u && ViewportPathTraceProgramHandle == UINT32_MAX)
@@ -6472,6 +6998,22 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     else
     {
         WriteStamp(4u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        if (UseHardwarePrimaryVis)
+        {
+            const float PrimaryFarZ = std::max(120.0f, Uniforms.SolarIrradiancePad[3]);
+            const float CamUpNearZ[4]     { Uniforms.CameraUpWidth[0],       Uniforms.CameraUpWidth[1],       Uniforms.CameraUpWidth[2],       0.08f       };
+            const float CamForwardFarZ[4] { Uniforms.CameraForwardHeight[0], Uniforms.CameraForwardHeight[1], Uniforms.CameraForwardHeight[2], PrimaryFarZ };
+            RecordPrimaryVisRasterPass(
+                Cmd,
+                SlotIdx,
+                WidthPx,
+                HeightPx,
+                Uniforms.CameraOriginTanX,
+                Uniforms.CameraRightTanY,
+                CamUpNearZ,
+                CamForwardFarZ);
+        }
+
         const uint32_t PrimaryProgramHandle =
             (EngIdx == 3u && HighEndBvhProgramHandle != UINT32_MAX)
                 ? HighEndBvhProgramHandle
@@ -6482,7 +7024,22 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             return false;
         }
         InsertComputeSyncBarrier();
-        WriteStamp(5u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+        constexpr uint32_t EnableHalfResIndirectBit = 8u;
+        const uint32_t HalfW       = (WidthPx  + 1u) >> 1u;
+        const uint32_t HalfH       = (HeightPx + 1u) >> 1u;
+        const uint32_t HalfGroupsX = (HalfW + 7u) / 8u;
+        const uint32_t HalfGroupsY = (HalfH + 7u) / 8u;
+        auto DispatchHalfResIndirect = [&](bool SwapPingPongForFinalStep) -> bool
+        {
+            const auto HalfSlots = ConstructStepSlots(0ull, SwapPingPongForFinalStep);
+            if (!DispatchEncoder.EncodeComputeDispatch(Cmd, HalfResIndirectProgramHandle, HalfSlots, HalfGroupsX, HalfGroupsY, 1u))
+            {
+                return false;
+            }
+            InsertComputeSyncBarrier();
+            return true;
+        };
 
         const uint32_t DirectPbrOrdinal  = static_cast<uint32_t>(WorldRenderEngine::OpenPbrDirect);
         const uint32_t LowEndGtxOrdinal  = static_cast<uint32_t>(WorldRenderEngine::RealTimeGiGtxLowEnd);
@@ -6504,13 +7061,22 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             MultiStepSunFilter ||
             (EngIdx == DirectPbrOrdinal || EngIdx == LowEndGtxOrdinal);
 
-        // Fix #3: Collapse 3-step sequential Denoise -> 1 fused pass (stride 2) on DirectPBR / GTX GDF GI
-        // when multi-step stochastic penumbra filtering is not required.
+        // Collapse 3-step sequential Denoise -> 1 fused pass on DirectPBR / GTX GDF GI when multi-step sun denoise isn't required.
         const bool UseSingleFusedDenoisePass =
             MultiStepBilateralDenoise &&
             !MultiStepSunFilter &&
             (Config.DebugChannel != DebugChannelFilteredAo) &&
             (EngIdx == DirectPbrOrdinal || EngIdx == LowEndGtxOrdinal);
+
+        if (UseHalfResIndirect && (UseSingleFusedDenoisePass || !MultiStepBilateralDenoise))
+        {
+            if (!DispatchHalfResIndirect(false))
+            {
+                BoundDevice->FreeCommandBuffer(Cmd);
+                return false;
+            }
+        }
+        WriteStamp(5u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
         WriteStamp(6u, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         if (UseSingleFusedDenoisePass)
@@ -6520,7 +7086,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             StepUniforms.DenoiseStepParams[0] = 2u;
             StepUniforms.DenoiseStepParams[1] =
                 EnableFinalToneStackBit |
-                EnableSpatialAoDenoiseBit |
+                (UseHalfResIndirect ? EnableHalfResIndirectBit : EnableSpatialAoDenoiseBit) |
                 (FirstStepSunFilter ? EnableSpatialSunDenoiseBit : 0u);
             std::memcpy(UniformBytes + UniformOffset, &StepUniforms, sizeof(StepUniforms));
 
@@ -6535,23 +7101,33 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
         {
             for (uint32_t StepIndex = 0u; StepIndex < BilateralDenoiseStepCount; ++StepIndex)
             {
+                const bool IsFinalStep = (StepIndex + 1u == BilateralDenoiseStepCount);
+                const bool SwapPingPong = (StepIndex & 1u) != 0u;
+                if (IsFinalStep && UseHalfResIndirect)
+                {
+                    if (!DispatchHalfResIndirect(SwapPingPong))
+                    {
+                        BoundDevice->FreeCommandBuffer(Cmd);
+                        return false;
+                    }
+                }
                 const uint64_t UniformOffset = static_cast<uint64_t>(StepIndex + 1u) * UniformStrideBytes;
                 WorldViewportUniformBlockStd140 StepUniforms = Uniforms;
                 const bool FilterSunThisStep = (StepIndex == 0u) ? FirstStepSunFilter : MultiStepSunFilter;
                 StepUniforms.DenoiseStepParams[0] = BilateralDenoiseStrides[StepIndex];
                 StepUniforms.DenoiseStepParams[1] =
-                    ((StepIndex + 1u == BilateralDenoiseStepCount) ? EnableFinalToneStackBit : 0u) |
-                    EnableSpatialAoDenoiseBit |
+                    (IsFinalStep ? EnableFinalToneStackBit : 0u) |
+                    (UseHalfResIndirect ? (IsFinalStep ? EnableHalfResIndirectBit : 0u) : EnableSpatialAoDenoiseBit) |
                     (FilterSunThisStep ? EnableSpatialSunDenoiseBit : 0u);
                 std::memcpy(UniformBytes + UniformOffset, &StepUniforms, sizeof(StepUniforms));
 
-                const auto StepSlots = ConstructStepSlots(UniformOffset, (StepIndex & 1u) != 0u);
+                const auto StepSlots = ConstructStepSlots(UniformOffset, SwapPingPong);
                 if (!DispatchEncoder.EncodeComputeDispatch(Cmd, DenoiseProgramHandle, StepSlots, GroupsX, GroupsY, 1u))
                 {
                     BoundDevice->FreeCommandBuffer(Cmd);
                     return false;
                 }
-                if (StepIndex + 1u < BilateralDenoiseStepCount)
+                if (!IsFinalStep)
                 {
                     InsertComputeSyncBarrier();
                 }
@@ -6562,7 +7138,9 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
             const uint64_t UniformOffset = UniformStrideBytes;
             WorldViewportUniformBlockStd140 StepUniforms = Uniforms;
             StepUniforms.DenoiseStepParams[0] = BilateralDenoiseStrides[0u];
-            StepUniforms.DenoiseStepParams[1] = EnableFinalToneStackBit;
+            StepUniforms.DenoiseStepParams[1] =
+                EnableFinalToneStackBit |
+                (UseHalfResIndirect ? EnableHalfResIndirectBit : 0u);
             std::memcpy(UniformBytes + UniformOffset, &StepUniforms, sizeof(StepUniforms));
 
             const auto StepSlots = ConstructStepSlots(UniformOffset, false);

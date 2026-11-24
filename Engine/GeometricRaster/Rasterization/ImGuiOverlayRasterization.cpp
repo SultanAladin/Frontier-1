@@ -900,26 +900,24 @@ VkDescriptorSet ImGuiOverlayRasterization::EnsureTextureUploaded(ImTextureData* 
 
     const VkDevice LogicalVk   = BoundDevice->AccessDevice();
     const uint64_t UploadBytes = static_cast<uint64_t>(W) * H * 4ull;
-    if (UploadBytes > UploadStagingBuffer.ByteCapacity)
+    ReapPendingAsyncTexUploads(false);
+    DeviceBufferResource AsyncStaging = BoundDevice->AllocateBuffer(
+        UploadBytes,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (AsyncStaging.HostAddress == nullptr)
     {
-        BoundDevice->ReleaseBuffer(UploadStagingBuffer);
-        UploadStagingBuffer = BoundDevice->AllocateBuffer(
-            UploadBytes,
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    }
-    if (UploadStagingBuffer.HostAddress == nullptr)
-    {
+        BoundDevice->ReleaseBuffer(AsyncStaging);
         return FallbackDescriptor;
     }
 
     if (Rgba32)
     {
-        std::memcpy(UploadStagingBuffer.HostAddress, RawBytes, static_cast<std::size_t>(UploadBytes));
+        std::memcpy(AsyncStaging.HostAddress, RawBytes, static_cast<std::size_t>(UploadBytes));
     }
     else
     {
-        auto* Dst = static_cast<uint8_t*>(UploadStagingBuffer.HostAddress);
+        auto* Dst = static_cast<uint8_t*>(AsyncStaging.HostAddress);
         for (std::size_t Px = 0u; Px < static_cast<std::size_t>(W) * H; ++Px)
         {
             Dst[Px * 4u + 0u] = 255u;
@@ -943,12 +941,14 @@ VkDescriptorSet ImGuiOverlayRasterization::EnsureTextureUploaded(ImTextureData* 
     }
     if (Entry.Image.ImageHandle == VK_NULL_HANDLE)
     {
+        BoundDevice->ReleaseBuffer(AsyncStaging);
         return FallbackDescriptor;
     }
 
     VkCommandBuffer Cmd = BoundDevice->BeginSingleTimeCommands();
     if (Cmd == VK_NULL_HANDLE)
     {
+        BoundDevice->ReleaseBuffer(AsyncStaging);
         return FallbackDescriptor;
     }
     VkImageMemoryBarrier ToDst {};
@@ -978,7 +978,7 @@ VkDescriptorSet ImGuiOverlayRasterization::EnsureTextureUploaded(ImTextureData* 
     VkBufferImageCopy CopyRegion {};
     CopyRegion.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0u, 0u, 1u };
     CopyRegion.imageExtent      = { W, H, 1u };
-    vkCmdCopyBufferToImage(Cmd, UploadStagingBuffer.BufferHandle, Entry.Image.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &CopyRegion);
+    vkCmdCopyBufferToImage(Cmd, AsyncStaging.BufferHandle, Entry.Image.ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1u, &CopyRegion);
 
     VkImageMemoryBarrier ToRead = ToDst;
     ToRead.oldLayout            = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -987,11 +987,15 @@ VkDescriptorSet ImGuiOverlayRasterization::EnsureTextureUploaded(ImTextureData* 
     ToRead.dstAccessMask        = VK_ACCESS_SHADER_READ_BIT;
     vkCmdPipelineBarrier(Cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u, &ToRead);
 
+    // Async timeline submission — Vulkan queue order guarantees the upload completes before Present samples it!
     const uint64_t SyncPoint = BoundDevice->DispatchCommandBufferAsync(Cmd);
-    if (!BoundDevice->AwaitTimelineTick(SyncPoint))
+    if (SyncPoint == 0ull)
     {
+        BoundDevice->FreeCommandBuffer(Cmd);
+        BoundDevice->ReleaseBuffer(AsyncStaging);
         return FallbackDescriptor;
     }
+    PendingAsyncTexUploads.push_back(PendingAsyncTexUpload { Cmd, AsyncStaging, SyncPoint });
 
     if (Entry.Descriptor == VK_NULL_HANDLE)
     {
@@ -1049,6 +1053,7 @@ bool ImGuiOverlayRasterization::PresentImGuiBatches(
     {
         return ReportPresentationFailure("The ImGui Vulkan presentation backend is not initialized.");
     }
+    ReapPendingAsyncTexUploads(false);
 
     TargetWidthPx  = std::max(16u, TargetWidthPx);
     TargetHeightPx = std::max(16u, TargetHeightPx);
@@ -1422,6 +1427,41 @@ bool ImGuiOverlayRasterization::ReadbackLastPresentedRgba(
     return true;
 }
 
+void ImGuiOverlayRasterization::ReapPendingAsyncTexUploads(bool ForceDrain) noexcept
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready() || PendingAsyncTexUploads.empty())
+    {
+        return;
+    }
+    std::size_t WriteIdx = 0u;
+    for (std::size_t Idx = 0u; Idx < PendingAsyncTexUploads.size(); ++Idx)
+    {
+        auto& Entry = PendingAsyncTexUploads[Idx];
+        if (ForceDrain && Entry.TimelineSignal != 0ull)
+        {
+            (void)BoundDevice->AwaitTimelineTick(Entry.TimelineSignal);
+        }
+        if (ForceDrain || Entry.TimelineSignal == 0ull || BoundDevice->QueryTimelineReached(Entry.TimelineSignal))
+        {
+            if (Entry.Cmd != VK_NULL_HANDLE)
+            {
+                BoundDevice->FreeCommandBuffer(Entry.Cmd);
+                Entry.Cmd = VK_NULL_HANDLE;
+            }
+            BoundDevice->ReleaseBuffer(Entry.Staging);
+        }
+        else
+        {
+            if (WriteIdx != Idx)
+            {
+                PendingAsyncTexUploads[WriteIdx] = Entry;
+            }
+            ++WriteIdx;
+        }
+    }
+    PendingAsyncTexUploads.resize(WriteIdx);
+}
+
 void ImGuiOverlayRasterization::TeardownOverlay() noexcept
 {
     if (BoundDevice == nullptr || !BoundDevice->Ready())
@@ -1431,6 +1471,7 @@ void ImGuiOverlayRasterization::TeardownOverlay() noexcept
         return;
     }
 
+    ReapPendingAsyncTexUploads(true);
     TeardownUpstreamImGuiBackend();
     DestroyTargetAttachments();
     const VkDevice LogicalVk = BoundDevice->AccessDevice();

@@ -176,7 +176,7 @@ float3 EvaluateSkyViewLutSample(
 
     float Azimuth    = atan2(Dir.y, Dir.x);
     float PolarAngle = acos(clamp(Dir.z, -1.0, 1.0));
-    float U          = frac(Azimuth / AtmoTauConst + 0.5);
+    float U          = frac(Azimuth / AtmoTauConst + 1.5);
 
     bool  LowerBank = (PolarAngle > LimbAngle);
     float CoordY    = 0.0;
@@ -194,29 +194,24 @@ float3 EvaluateSkyViewLutSample(
     int BankMin = LowerBank ? HalfH : 0;
     int BankMax = LowerBank ? (HalfH * 2 - 1) : (HalfH - 1);
 
-    float FX  = U * float(W) - 0.5;
-    int   IX0 = ((int(floor(FX)) % W) + W) % W;
-    int   IX1 = (IX0 + 1) % W;
-    float TX  = FX - floor(FX);
-    float SX  = TX * TX * (3.0 - 2.0 * TX);
+    // Strictly non-negative unsigned wrap in [W - 0.5, 2*W - 0.5) so slangc -O0 never emits
+    // signed OpSRem on negative operands (fixes GTX Turing vertical seam at Azimuth = +-pi).
+    float FXPos   = U * float(WidthPx) + float(WidthPx) - 0.5;
+    uint  UXFloor = uint(FXPos);
+    uint  UX0     = UXFloor % WidthPx;
+    uint  UX1     = (UX0 + 1u) % WidthPx;
+    float TX      = FXPos - float(UXFloor);
+    float SX      = TX * TX * (3.0 - 2.0 * TX);
 
-    int   IY1 = clamp(int(floor(CoordY)), BankMin, BankMax);
-    int   IY0 = clamp(IY1 - 1, BankMin, BankMax);
-    int   IY2 = clamp(IY1 + 1, BankMin, BankMax);
-    int   IY3 = clamp(IY1 + 2, BankMin, BankMax);
-    float TY  = clamp(CoordY - float(IY1), 0.0, 1.0);
+    int   IY0 = clamp(int(floor(CoordY)), BankMin, BankMax);
+    int   IY1 = clamp(IY0 + 1, BankMin, BankMax);
+    float TY  = clamp(CoordY - float(IY0), 0.0, 1.0);
+    float SY  = TY * TY * (3.0 - 2.0 * TY);
 
-    float3 R0 = lerp(SkyLut[uint(IY0) * WidthPx + uint(IX0)].xyz, SkyLut[uint(IY0) * WidthPx + uint(IX1)].xyz, SX);
-    float3 R1 = lerp(SkyLut[uint(IY1) * WidthPx + uint(IX0)].xyz, SkyLut[uint(IY1) * WidthPx + uint(IX1)].xyz, SX);
-    float3 R2 = lerp(SkyLut[uint(IY2) * WidthPx + uint(IX0)].xyz, SkyLut[uint(IY2) * WidthPx + uint(IX1)].xyz, SX);
-    float3 R3 = lerp(SkyLut[uint(IY3) * WidthPx + uint(IX0)].xyz, SkyLut[uint(IY3) * WidthPx + uint(IX1)].xyz, SX);
+    float3 R0 = lerp(SkyLut[uint(IY0) * WidthPx + UX0].xyz, SkyLut[uint(IY0) * WidthPx + UX1].xyz, SX);
+    float3 R1 = lerp(SkyLut[uint(IY1) * WidthPx + UX0].xyz, SkyLut[uint(IY1) * WidthPx + UX1].xyz, SX);
 
-    return max(
-        float3(0.0, 0.0, 0.0),
-        float3(
-            AtmoCatmullRom(R0.x, R1.x, R2.x, R3.x, TY),
-            AtmoCatmullRom(R0.y, R1.y, R2.y, R3.y, TY),
-            AtmoCatmullRom(R0.z, R1.z, R2.z, R3.z, TY)));
+    return max(float3(0.0, 0.0, 0.0), lerp(R0, R1, SY));
 }
 
 float3 EvaluateSkyViewLutSample(StructuredBuffer<float4> SkyLut, uint WidthPx, uint HeightPx, float3 Dir)

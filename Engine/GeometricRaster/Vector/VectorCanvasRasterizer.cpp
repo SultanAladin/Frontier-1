@@ -624,10 +624,50 @@ bool VectorCanvasRasterizer::InitializeRasterizer(
     return true;
 }
 
+void VectorCanvasRasterizer::ReapPendingAsyncFrames(bool ForceDrain) noexcept
+{
+    if (DeviceInterchange == nullptr || !DeviceInterchange->Ready() || PendingAsyncFrames.empty())
+    {
+        return;
+    }
+    VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
+    while (!PendingAsyncFrames.empty())
+    {
+        auto& Front = PendingAsyncFrames.front();
+        if (!ForceDrain && Front.TimelineSignal != 0ull && !DeviceInterchange->QueryTimelineReached(Front.TimelineSignal))
+        {
+            break;
+        }
+        if (ForceDrain && Front.TimelineSignal != 0ull)
+        {
+            (void)DeviceInterchange->AwaitTimelineTick(Front.TimelineSignal);
+        }
+        GPUVectorSummaryMetrics MetricsRead {};
+        if (TransferRegister.AwaitReadbackTyped<GPUVectorSummaryMetrics>(
+                Front.SummaryTicket, std::span<GPUVectorSummaryMetrics>(&MetricsRead, 1u)))
+        {
+            LastMetrics.TotalInstancesEvaluated = MetricsRead.InstanceCount;
+            LastMetrics.MinNoiseScale           = (MetricsRead.MinScaleFixed <= MetricsRead.MaxScaleFixed)
+                ? static_cast<float>(MetricsRead.MinScaleFixed) / 10000.0f
+                : 1.0f;
+            LastMetrics.MaxNoiseScale           = (MetricsRead.MaxScaleFixed >= 100u)
+                ? static_cast<float>(MetricsRead.MaxScaleFixed) / 10000.0f
+                : 1.0f;
+        }
+        if (Front.Cmd != VK_NULL_HANDLE)
+        {
+            vkFreeCommandBuffers(DeviceHandle, DeviceInterchange->AccessCommandAllocator(), 1u, &Front.Cmd);
+            Front.Cmd = VK_NULL_HANDLE;
+        }
+        PendingAsyncFrames.pop_front();
+    }
+}
+
 void VectorCanvasRasterizer::TeardownRasterizer() noexcept
 {
     if (DeviceInterchange != nullptr && DeviceInterchange->Ready())
     {
+        ReapPendingAsyncFrames(true);
         VkDevice DeviceHandle = DeviceInterchange->AccessDevice();
         vkDeviceWaitIdle(DeviceHandle);
 
@@ -1198,6 +1238,7 @@ bool VectorCanvasRasterizer::EnsureFinalTarget(uint32_t WidthPx, uint32_t Height
     {
         return true;
     }
+    ReapPendingAsyncFrames(true);
     ReleaseFinalTarget();
 
     FinalTarget.ColorImage = DeviceInterchange->AllocateImage2D(
@@ -2224,6 +2265,7 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
     }
 
     // 8. Encode summary metrics + optional RGBA8 readback into timeline staging ring
+    ReapPendingAsyncFrames(false);
     TransferRegister.AdvanceRingSlot();
     ReadbackTicket SummaryTicket = TransferRegister.EncodeBufferReadback(Cmd, SummaryMetricsBuffer.BufferHandle, 0ull, sizeof(GPUVectorSummaryMetrics));
     ReadbackTicket ColorTicket {};
@@ -2242,17 +2284,16 @@ bool VectorCanvasRasterizer::ExecuteCanvasRasterization(
 
     const uint64_t Signal = DeviceInterchange->DispatchCommandBufferAsync(Cmd);
     TransferRegister.BindTicketTimelineSignal(SummaryTicket, Signal);
-    if (OutRGBA != nullptr)
+    if (OutRGBA == nullptr)
     {
-        TransferRegister.BindTicketTimelineSignal(ColorTicket, Signal);
-        OutRGBA->resize(static_cast<std::size_t>(WidthPx) * static_cast<std::size_t>(HeightPx) * 4u);
-        if (!TransferRegister.AwaitReadbackBytes(ColorTicket, *OutRGBA))
-        {
-            vkFreeCommandBuffers(DeviceHandle, DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
-            return false;
-        }
+        // GPU-resident vector bake: retire command buffer & metrics asynchronously (zero CPU stall!)
+        PendingAsyncFrames.push_back(PendingAsyncVectorFrame { Cmd, SummaryTicket, Signal });
+        return true;
     }
-    else if (!DeviceInterchange->AwaitTimelineTick(Signal))
+
+    TransferRegister.BindTicketTimelineSignal(ColorTicket, Signal);
+    OutRGBA->resize(static_cast<std::size_t>(WidthPx) * static_cast<std::size_t>(HeightPx) * 4u);
+    if (!TransferRegister.AwaitReadbackBytes(ColorTicket, *OutRGBA))
     {
         vkFreeCommandBuffers(DeviceHandle, DeviceInterchange->AccessCommandAllocator(), 1u, &Cmd);
         return false;

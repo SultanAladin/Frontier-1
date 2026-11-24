@@ -11,10 +11,15 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
+
+#if __has_include("FrontierBuildInfo.h")
+#include "FrontierBuildInfo.h"
+#endif
 
 namespace Frontier
 {
@@ -140,8 +145,32 @@ inline void InitializeTimingLogFile(const std::filesystem::path& LogPath, std::s
     LogChannel.BufferedLines.clear();
     LogChannel.BufferedLines.reserve(8192u);
     LogChannel.HeaderText.clear();
-    LogChannel.HeaderText.reserve(320u);
+    LogChannel.HeaderText.reserve(420u);
+
+    char DateTimeBuf[64] = "unknown";
+    const std::time_t NowEpoch = std::time(nullptr);
+    std::tm LocalTm {};
+#if defined(_WIN32)
+    if (localtime_s(&LocalTm, &NowEpoch) == 0)
+    {
+        std::strftime(DateTimeBuf, sizeof(DateTimeBuf), "%Y-%m-%d %H:%M:%S", &LocalTm);
+    }
+#else
+    if (localtime_r(&NowEpoch, &LocalTm) != nullptr)
+    {
+        std::strftime(DateTimeBuf, sizeof(DateTimeBuf), "%Y-%m-%d %H:%M:%S", &LocalTm);
+    }
+#endif
+#ifndef FRONTIER_GIT_COMMIT_HASH
+#define FRONTIER_GIT_COMMIT_HASH "unknown"
+#endif
+
     LogChannel.HeaderText += "# Frontier Per-Stage Timing Log\n";
+    LogChannel.HeaderText += "# BuildCommit: ";
+    LogChannel.HeaderText += FRONTIER_GIT_COMMIT_HASH;
+    LogChannel.HeaderText += " | RunDateTime: ";
+    LogChannel.HeaderText += DateTimeBuf;
+    LogChannel.HeaderText += "\n";
     LogChannel.HeaderText += "# Adapter: ";
     LogChannel.HeaderText.append(AdapterName.data(), AdapterName.size());
     LogChannel.HeaderText += " | HardwareGPU: ";
