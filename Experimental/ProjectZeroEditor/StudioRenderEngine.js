@@ -1003,7 +1003,7 @@ export class StudioRenderEngine {
     return Result;
   }
 
-  RenderScene({ Rows, Values, Hidden, Selected, Camera, LevelId, EditMode, GizmoMode = "translate", HoveredAxis = null }) {
+  RenderScene({ Rows, Values, Hidden, Selected, Camera, GameCamera = null, LevelId, EditMode, GizmoMode = "translate", HoveredAxis = null }) {
     const Gl = this.Gl;
     const W = this.Canvas.width;
     const H = this.Canvas.height;
@@ -1023,7 +1023,7 @@ export class StudioRenderEngine {
     Gl.clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
 
     const Aspect = W / H;
-    const Proj = PerspectiveMat((Camera.FovDeg * Math.PI) / 180, Aspect, 0.12, 140);
+    const Proj = PerspectiveMat((Camera.FovDeg * Math.PI) / 180, Aspect, 0.12, 420);
     const View = LookAtMat(Camera.Eye, Camera.Target);
     const ViewProj = MulMat4(Proj, View);
     this.LastCamera = { Eye: Camera.Eye, Target: Camera.Target, FovDeg: Camera.FovDeg, Aspect };
@@ -1356,6 +1356,11 @@ export class StudioRenderEngine {
       this.RenderLightGizmos(ViewProj, AreaLights, IesLights);
     }
 
+    // In Edit / Sim modes, draw the live Game Camera frustum so the user can watch it move while flying the unrestricted Editor Camera
+    if (EditMode && GameCamera && LevelId === "studio-lobby") {
+      this.RenderGameCameraFrustum(ViewProj, GameCamera, Aspect);
+    }
+
     // Interactive 3D Transform Gizmo (Translate W / Rotate E) on selected vehicle or movable rig
     this.ActiveGizmoState = null;
     if (EditMode && GizmoMode !== "off" && Selected && Hierarchy[Selected]?.Visible) {
@@ -1686,6 +1691,72 @@ export class StudioRenderEngine {
       }
     }
     return BestId;
+  }
+
+  RenderGameCameraFrustum(ViewProj, GameCamera, Aspect = 16 / 9) {
+    const Eye = GameCamera?.Eye;
+    const Target = GameCamera?.Target;
+    if (!Eye || !Target) return;
+    const Dx = Target[0] - Eye[0];
+    const Dy = Target[1] - Eye[1];
+    const Dz = Target[2] - Eye[2];
+    const Fl = Math.hypot(Dx, Dy, Dz) || 1;
+    const F = [Dx / Fl, Dy / Fl, Dz / Fl];
+    // R = normalize(F x Up)
+    let Rx = -F[2];
+    let Ry = 0;
+    let Rz = F[0];
+    const Rl = Math.hypot(Rx, Ry, Rz);
+    const R = Rl > 1e-4 ? [Rx / Rl, Ry / Rl, Rz / Rl] : [1, 0, 0];
+    // U = R x F
+    const U = [
+      R[1] * F[2] - R[2] * F[1],
+      R[2] * F[0] - R[0] * F[2],
+      R[0] * F[1] - R[1] * F[0],
+    ];
+
+    const Depth = 1.15;
+    const HalfH = Math.tan(((Number(GameCamera.FovDeg ?? 36) * Math.PI) / 180) * 0.5) * Depth;
+    const HalfW = HalfH * Math.max(1.0, Math.min(2.2, Aspect));
+
+    const Corner = (Sx, Sy) => [
+      Eye[0] + F[0] * Depth + R[0] * HalfW * Sx + U[0] * HalfH * Sy,
+      Eye[1] + F[1] * Depth + R[1] * HalfW * Sx + U[1] * HalfH * Sy,
+      Eye[2] + F[2] * Depth + R[2] * HalfW * Sx + U[2] * HalfH * Sy,
+    ];
+    const C0 = Corner(-1, -1);
+    const C1 = Corner(1, -1);
+    const C2 = Corner(1, 1);
+    const C3 = Corner(-1, 1);
+    const TopL = Corner(-0.35, 1.04);
+    const TopR = Corner(0.35, 1.04);
+    const TopPeak = Corner(0.0, 1.38);
+
+    const FrustumVerts = [
+      ...Eye, ...C0, ...Eye, ...C1, ...Eye, ...C2, ...Eye, ...C3,
+      ...C0, ...C1, ...C1, ...C2, ...C2, ...C3, ...C3, ...C0,
+      ...TopL, ...TopPeak, ...TopPeak, ...TopR, ...TopL, ...TopR,
+    ];
+    const AimVerts = [...Eye, ...Target];
+
+    const Gl = this.Gl;
+    Gl.useProgram(this.GizmoProgram);
+    Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.bindVertexArray(this.GizmoVao);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
+    Gl.enableVertexAttribArray(0);
+
+    Gl.uniform4f(this.GizmoLoc.uColor, 0.28, 0.88, 1.0, 0.95);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(FrustumVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.LINES, 0, FrustumVerts.length / 3);
+
+    Gl.uniform4f(this.GizmoLoc.uColor, 1.0, 0.78, 0.25, 0.55);
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(AimVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.LINES, 0, AimVerts.length / 3);
+
+    Gl.bindVertexArray(null);
   }
 
   Dispose() {

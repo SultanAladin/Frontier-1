@@ -9,6 +9,7 @@ import {
   StudioLobbyInitialValues,
   ConfiguratorPresets,
   EvaluateOpeningReveal,
+  ClampGameCameraInsideLobby,
   ComputeTripodMountHeight,
   ResolveStudioHierarchy,
   HeroCarAimTarget,
@@ -147,7 +148,7 @@ for (const Id of AimedIds) {
 }
 console.log("PASS [3/6] 3 vehicles, 6 shared tripods, mount propagation & 12/12 camera/light aim directions verified (dot > 0.99)");
 
-// 4. Verify Opening Reveal curve & 6 Configurator Presets
+// 4. Verify Opening Reveal curve, 6 Configurator Presets & Game Camera studio bounds
 assert.equal(ConfiguratorPresets.length, 6, "6 Car Configurator Camera presets");
 const RevealStart = EvaluateOpeningReveal(0);
 const RevealMid = EvaluateOpeningReveal(0.5);
@@ -156,7 +157,9 @@ for (let A = 0; A < 3; A++) {
   assert.ok(Number.isFinite(RevealStart.Eye[A]) && Number.isFinite(RevealMid.Eye[A]));
   assert.ok(Math.abs(RevealEnd.Eye[A] - ConfiguratorPresets[0].Eye[A]) < 1e-4, "Opening reveal settles on Hero 3/4");
 }
-console.log("PASS [4/6] Opening reveal (3.8 s) and 6 Car Configurator presets verified");
+const ClampedGameEye = ClampGameCameraInsideLobby([35, 22, -20], StudioLobbyInitialValues, "studio-lobby");
+assert.ok(ClampedGameEye[0] <= 9.0 && ClampedGameEye[1] < 7.0 && ClampedGameEye[2] > -8.63, "Game Camera stays clamped inside studio cove");
+console.log("PASS [4/6] Opening reveal (3.8 s), 6 presets & Game Camera bounds verified");
 
 // 5. Mount compiled standalone Experimental/ProjectZeroEditor/index.html in JSDOM + WebGL2 spy
 const Html = fs.readFileSync(path.join(Here, "index.html"), "utf8");
@@ -334,12 +337,39 @@ PauseBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 40));
 assert.ok(Doc.querySelector('[aria-label="Resume Play"]'), "Clicking Pause toggles to Resume");
 
-// Switch to Edit mode and verify Move (W) / Rotate (E) Transform Gizmo controls appear
+// Switch to Edit mode and verify Move (W) / Rotate (E) Transform Gizmo controls + Unrestricted Editor Camera
+const ViewportHost = Doc.querySelector(".studio-viewport-host");
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "game", "Play mode renders through Game Camera");
 const EditBtn = Doc.querySelector('[aria-label="Edit mode"]');
 assert.ok(EditBtn, "Edit mode button present");
 EditBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
-assert.ok(Doc.querySelector('.studio-gizmo-pill'), "3D Transform Gizmo pill (Move W / Rotate E) visible in Edit mode");
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Edit mode renders through unrestricted Editor Camera");
+assert.ok(Doc.querySelector(".studio-gizmo-pill"), "3D Transform Gizmo pill (Move W / Rotate E) visible in Edit mode");
+assert.ok(
+  (Doc.querySelector(".studio-viewport-top-hud")?.textContent || "").includes("EDITOR CAMERA"),
+  "HUD clearly indicates unrestricted Editor Camera in Edit mode",
+);
+
+// Verify Editor Camera is NOT limited by room bounds (large wheel zoom-out succeeds freely)
+const CanvasEl = Doc.querySelector(".studio-viewport-canvas");
+for (let W = 0; W < 6; W++) {
+  CanvasEl.dispatchEvent(new Dom.window.WheelEvent("wheel", { deltaY: 600, bubbles: true, cancelable: true }));
+}
+await new Promise((Resolve) => setTimeout(Resolve, 420));
+
+// Switch to Sim mode and verify Editor Camera stays active while Game Camera animates
+const SimBtn = Doc.querySelector('[aria-label="Sim mode"]');
+assert.ok(SimBtn, "Sim mode button present");
+SimBtn.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "editor", "Sim mode views through unrestricted Editor Camera while Game Camera runs live");
+
+// Switch back to Play mode and verify Game Camera takes over cleanly
+const PlayBtn = Doc.querySelector('[aria-label="Play mode"]');
+PlayBtn.click();
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.equal(ViewportHost.getAttribute("data-active-camera"), "game", "Play mode switches back to moving Game Camera");
 
 // Switch level Studio Lobby -> Showcase -> Studio Lobby and assert ZERO extra shader compilations!
 const LevelSelect = Doc.querySelector(".studio-level-select");

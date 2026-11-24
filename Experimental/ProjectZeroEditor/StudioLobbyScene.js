@@ -107,6 +107,27 @@ export const ConfiguratorPresets = [
 
 export const OpeningRevealDurationSec = 3.8;
 
+// Keep ONLY the Game / Configurator Camera safely inside the studio walls & ceiling.
+// Never apply this to the Editor Camera, which remains completely unrestricted.
+export function ClampGameCameraInsideLobby(Eye, Values, LevelId) {
+  if (LevelId !== "studio-lobby") return Eye;
+  const Cyc = Values["studio-cyclorama"] || {};
+  const Ceil = Values["studio-ceiling"] || {};
+  const CoveHalfW = Math.max(6.5, Number(Cyc.CoveWidth ?? 18.0) * 0.5 - 0.85);
+  const CycZ = Number(Cyc.Position?.[2] ?? -0.8);
+  const FloorD = Number(Cyc.FloorDepth ?? 13.5);
+  const FrontZ = CycZ + FloorD * 0.42;
+  const BackZ = CycZ - FloorD * 0.58 + 1.15;
+  const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
+  const ClampedZ = Math.max(BackZ, Math.min(18.0, Eye[2]));
+  const MaxHalfX = ClampedZ < FrontZ + 0.45 ? CoveHalfW : 21.0;
+  return [
+    Math.max(-MaxHalfX, Math.min(MaxHalfX, Eye[0])),
+    Math.max(0.32, Math.min(MaxY, Eye[1])),
+    ClampedZ,
+  ];
+}
+
 // Compute exact YawDeg & downward PitchDeg so local +Z (lens / light mouth) aims dead-on at TargetPos.
 // Matches ModelTransformMat where local +Z maps to world [+sin(Yaw), 0, +cos(Yaw)],
 // and positive PitchDeg tilts downward along Fwd = [0, -sin(Pitch), cos(Pitch)].

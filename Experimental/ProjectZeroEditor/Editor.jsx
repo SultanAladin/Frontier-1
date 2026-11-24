@@ -1113,21 +1113,23 @@ function App() {
       if (Event.key === "`") ShowConsole((Previous) => !Previous);
       if (Event.key >= "1" && Event.key <= "6" && !Event.ctrlKey && !Event.metaKey) {
         const Idx = Number(Event.key) - 1;
+        if (RunMode === "EDIT") SetRunMode("PLAY");
         SetActivePreset(Idx);
-        Toast("Camera preset · " + ConfiguratorPresets[Idx].Label);
+        Toast("Game Camera · " + ConfiguratorPresets[Idx].Label);
       }
       if (Event.key === "0" && !Event.ctrlKey && !Event.metaKey) {
-        SetRunMode("PLAY");
+        if (RunMode !== "SIM") SetRunMode("PLAY");
         SetPaused(false);
         SetActivePreset(null);
         SetIntroNonce((N) => N + 1);
-        Toast("Replaying Car Configurator opening reveal");
+        Toast("Replaying Game Camera opening reveal");
       }
-      if (Event.code === "Space" && RunMode === "PLAY") {
+      if (Event.code === "Space" && (RunMode === "PLAY" || RunMode === "SIM")) {
         Event.preventDefault();
         SetPaused((Prev) => !Prev);
       }
       if (Event.key.toLowerCase() === "f" && !Event.ctrlKey && !Event.metaKey) {
+        if (RunMode === "PLAY") SetRunMode("EDIT");
         SetFocusNonce((N) => N + 1);
       }
       if (Event.key.toLowerCase() === "w" && !Event.ctrlKey && !Event.metaKey) {
@@ -1800,9 +1802,12 @@ function App() {
                     SetPaused(false);
                     SetActivePreset(null);
                     SetIntroNonce((N) => N + 1);
-                    Toast("Play mode · Car Configurator Camera active");
+                    Toast("Play mode · Game Camera active & moving");
+                  } else if (Mode === "SIM") {
+                    SetPaused(false);
+                    Toast("Sim mode · Unrestricted Editor Camera (Game Camera live)");
                   } else {
-                    Toast(Label + " mode · Free 3D studio editing");
+                    Toast("Edit mode · Unrestricted Editor Camera");
                   }
                 }}
               >

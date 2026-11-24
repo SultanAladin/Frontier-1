@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { StudioRenderEngine } from "./StudioRenderEngine.js";
 import {
+  ClampGameCameraInsideLobby,
   ConfiguratorPresets,
   EvaluateOpeningReveal,
   OpeningRevealDurationSec,
@@ -15,9 +16,9 @@ function SphericalFromEyeTarget(Eye, Target) {
   const Dx = Eye[0] - Target[0];
   const Dy = Eye[1] - Target[1];
   const Dz = Eye[2] - Target[2];
-  const Radius = Math.max(1.2, Math.hypot(Dx, Dy, Dz));
+  const Radius = Math.max(0.35, Math.hypot(Dx, Dy, Dz));
   const Azimuth = Math.atan2(Dx, Dz);
-  const Elevation = Math.asin(Math.max(-0.95, Math.min(0.95, Dy / Radius)));
+  const Elevation = Math.asin(Math.max(-0.998, Math.min(0.998, Dy / Radius)));
   return { Radius, Azimuth, Elevation };
 }
 
@@ -33,7 +34,7 @@ function EyeFromSpherical(Target, Radius, Azimuth, Elevation) {
 function IntersectHorizontalPlane(Ray, PlaneY) {
   if (!Ray || Math.abs(Ray.Dir[1]) < 1e-5) return null;
   const T = (PlaneY - Ray.Origin[1]) / Ray.Dir[1];
-  if (T <= 0.05 || T > 120) return null;
+  if (T <= 0.05 || T > 240) return null;
   return [
     Ray.Origin[0] + Ray.Dir[0] * T,
     PlaneY,
@@ -55,26 +56,6 @@ function ClosestAxisParam(Ray, AxisOrigin, AxisDir) {
   const Denom = A * C - B * B;
   if (Math.abs(Denom) < 1e-6) return 0;
   return (A * E - B * D) / Denom;
-}
-
-function ClampCameraInsideLobby(Eye, Values, LevelId) {
-  if (LevelId !== "studio-lobby") return Eye;
-  const Cyc = Values["studio-cyclorama"] || {};
-  const Ceil = Values["studio-ceiling"] || {};
-  const CoveHalfW = Math.max(6.5, Number(Cyc.CoveWidth ?? 18.0) * 0.5 - 0.85);
-  const CycZ = Number(Cyc.Position?.[2] ?? -0.8);
-  const FloorD = Number(Cyc.FloorDepth ?? 13.5);
-  const FrontZ = CycZ + FloorD * 0.42;
-  const BackZ = CycZ - FloorD * 0.58 + 1.15;
-  const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
-  const ClampedZ = Math.max(BackZ, Math.min(18.0, Eye[2]));
-  // Inside the cyclorama cove zone stay clear of the side wing walls; in front of the set allow wide outer-bay orbit
-  const MaxHalfX = ClampedZ < FrontZ + 0.45 ? CoveHalfW : 21.0;
-  return [
-    Math.max(-MaxHalfX, Math.min(MaxHalfX, Eye[0])),
-    Math.max(0.32, Math.min(MaxY, Eye[1])),
-    ClampedZ,
-  ];
 }
 
 export default function StudioViewport({
@@ -113,45 +94,81 @@ export default function StudioViewport({
   });
 
   // Live mutable refs so the requestAnimationFrame loop never recreates WebGL2
-  const PropsRef = useRef({ Rows, Values, Hidden, Selected, RunMode, Paused, LevelId, GizmoMode, OnTransformEntity, OnThumbnails });
-  PropsRef.current = { Rows, Values, Hidden, Selected, RunMode, Paused, LevelId, GizmoMode, OnTransformEntity, OnThumbnails };
+  const PropsRef = useRef({
+    Rows,
+    Values,
+    Hidden,
+    Selected,
+    RunMode,
+    Paused,
+    LevelId,
+    GizmoMode,
+    OnTransformEntity,
+    OnThumbnails,
+  });
+  PropsRef.current = {
+    Rows,
+    Values,
+    Hidden,
+    Selected,
+    RunMode,
+    Paused,
+    LevelId,
+    GizmoMode,
+    OnTransformEntity,
+    OnThumbnails,
+  };
 
-  const CamRef = useRef({
-    Eye: [...(View === 2 ? ConfiguratorPresets[4].Eye : ConfiguratorPresets[0].Eye)],
-    Target: [...(View === 2 ? ConfiguratorPresets[4].Target : ConfiguratorPresets[0].Target)],
-    FovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : ConfiguratorPresets[0].FovDeg,
-    GoalEye: [...(View === 2 ? ConfiguratorPresets[4].Eye : ConfiguratorPresets[0].Eye)],
-    GoalTarget: [...(View === 2 ? ConfiguratorPresets[4].Target : ConfiguratorPresets[0].Target)],
-    GoalFovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : ConfiguratorPresets[0].FovDeg,
-    IntroElapsed: View === 2 ? OpeningRevealDurationSec : 0,
-    OrbitAngleOffset: 0,
-    ManualControl: View === 2,
-    PresetGlide: false,
+  // 1) UNRESTRICTED Editor Camera (EDIT & SIM modes, and Split View 2) — NEVER clamped to studio bounds
+  const EditorCamRef = useRef({
+    Eye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [7.6, 3.85, 10.4],
+    Target: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 0.85, 0.2],
+    FovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 42,
+    GoalEye: View === 2 ? [...ConfiguratorPresets[4].Eye] : [7.6, 3.85, 10.4],
+    GoalTarget: View === 2 ? [...ConfiguratorPresets[4].Target] : [0.0, 0.85, 0.2],
+    GoalFovDeg: View === 2 ? ConfiguratorPresets[4].FovDeg : 42,
+    FocusGlide: false,
   });
 
-  // Replay opening cinematic reveal when IntroNonce increments or entering Play mode
+  // 2) MOVING Game / Car Configurator Camera (PLAY mode + live frustum in EDIT/SIM) — bounded inside studio set
+  const GameCamRef = useRef({
+    Eye: [...ConfiguratorPresets[0].Eye],
+    Target: [...ConfiguratorPresets[0].Target],
+    FovDeg: ConfiguratorPresets[0].FovDeg,
+    GoalEye: [...ConfiguratorPresets[0].Eye],
+    GoalTarget: [...ConfiguratorPresets[0].Target],
+    GoalFovDeg: ConfiguratorPresets[0].FovDeg,
+    IntroElapsed: 0,
+    OrbitAngleOffset: 0,
+    PresetGlide: false,
+    ResumeOrbitAt: 0,
+  });
+
+  // Replay opening cinematic reveal on the GAME CAMERA (never hijacks Editor Camera)
   useEffect(() => {
     if (View === 2) return;
-    CamRef.current.IntroElapsed = 0;
-    CamRef.current.OrbitAngleOffset = 0;
-    CamRef.current.ManualControl = false;
-    CamRef.current.PresetGlide = false;
+    const GCam = GameCamRef.current;
+    GCam.IntroElapsed = 0;
+    GCam.OrbitAngleOffset = 0;
+    GCam.PresetGlide = false;
+    GCam.ResumeOrbitAt = 0;
   }, [IntroNonce, View]);
 
-  // Smooth glide when user selects a Car Configurator preset (1..6)
+  // Smooth glide on the GAME CAMERA when user selects a Car Configurator preset (1..6)
   useEffect(() => {
     if (View === 2 || ActivePreset == null) return;
     const Preset = ConfiguratorPresets[ActivePreset] || ConfiguratorPresets[0];
-    CamRef.current.GoalEye = [...Preset.Eye];
-    CamRef.current.GoalTarget = [...Preset.Target];
-    CamRef.current.GoalFovDeg = Preset.FovDeg;
-    CamRef.current.IntroElapsed = OpeningRevealDurationSec;
-    CamRef.current.OrbitAngleOffset = 0;
-    CamRef.current.PresetGlide = true;
-    CamRef.current.ManualControl = false;
+    const GCam = GameCamRef.current;
+    GCam.GoalEye = [...Preset.Eye];
+    GCam.GoalTarget = [...Preset.Target];
+    GCam.GoalFovDeg = Preset.FovDeg;
+    GCam.IntroElapsed = OpeningRevealDurationSec;
+    GCam.OrbitAngleOffset = 0;
+    GCam.PresetGlide = true;
+    GCam.ResumeOrbitAt = 0;
   }, [ActivePreset, View]);
 
-  // Frame currently selected entity when FocusNonce increments
+  // Frame currently selected entity with the UNRESTRICTED Editor Camera when FocusNonce increments
   useEffect(() => {
     if (!FocusNonce || !Selected) return;
     const { Rows: R, Values: V, Hidden: H } = PropsRef.current;
@@ -159,11 +176,11 @@ export default function StudioViewport({
     const Xf = Hier[Selected];
     if (!Xf) return;
     const Target = [Xf.Position[0], Math.max(0.7, Xf.Position[1] + 0.65), Xf.Position[2]];
-    CamRef.current.GoalTarget = Target;
-    CamRef.current.GoalEye = [Target[0] + 3.2, Target[1] + 1.15, Target[2] + 3.6];
-    CamRef.current.GoalFovDeg = 36;
-    CamRef.current.PresetGlide = true;
-    CamRef.current.ManualControl = true;
+    const ECam = EditorCamRef.current;
+    ECam.GoalTarget = Target;
+    ECam.GoalEye = [Target[0] + 4.2, Target[1] + 1.85, Target[2] + 4.8];
+    ECam.GoalFovDeg = 42;
+    ECam.FocusGlide = true;
   }, [FocusNonce, Selected]);
 
   // Mount WebGL2 renderer ONCE and run continuous render loop
@@ -205,83 +222,115 @@ export default function StudioViewport({
         FpsStamp = Now;
       }
 
-      const { Rows: CurRows, Values: CurValues, Hidden: CurHidden, Selected: CurSelected, RunMode: CurMode, Paused: IsPaused, LevelId: CurLevel, GizmoMode: CurGizmo, OnThumbnails: PushThumbs } = PropsRef.current;
-      const Cam = CamRef.current;
+      const {
+        Rows: CurRows,
+        Values: CurValues,
+        Hidden: CurHidden,
+        Selected: CurSelected,
+        RunMode: CurMode,
+        Paused: IsPaused,
+        LevelId: CurLevel,
+        GizmoMode: CurGizmo,
+        OnThumbnails: PushThumbs,
+      } = PropsRef.current;
+
+      const ECam = EditorCamRef.current;
+      const GCam = GameCamRef.current;
+      const IsPlayView = View === 1 && CurMode === "PLAY";
+
+      // --- 1) Step the MOVING GAME CAMERA (active in PLAY and live-simulated in SIM) ---
       const ConfigCam = CurValues["cam-configurator"] || {};
       const OrbitDegSec = Number(ConfigCam.OrbitSpeedDegPerSec ?? 7.5);
       const ShowroomOrbit = ConfigCam.ShowroomOrbit !== false;
-      // Live optical FOV from Project-Zero's native Camera Inspector Focal Length & Sensor Width!
       const NativeFocal = Number(ConfigCam["Focal Length"] ?? 36);
       const NativeSensor = Number(ConfigCam["Sensor Width"] ?? 36);
       const NativeVertFov =
         (2 * Math.atan(NativeSensor / (16 / 9) / (2 * Math.max(10, NativeFocal))) * 180) / Math.PI;
-      if (View === 1 && (Cam.ManualControl || (!Cam.PresetGlide && Cam.IntroElapsed >= OpeningRevealDurationSec))) {
-        Cam.FovDeg = Lerp(Cam.FovDeg, NativeVertFov, 1 - Math.exp(-Dt * 10));
-      }
 
-      let Phase = CurMode === "PLAY" ? (IsPaused ? "Paused" : "Showroom Orbit") : "Free Orbit";
+      const GameShouldStep = View === 1 && (CurMode === "PLAY" || CurMode === "SIM");
+      let GamePhase = IsPaused ? "Paused" : "Showroom Orbit";
 
-      if (View === 1 && CurMode === "PLAY" && !Cam.ManualControl) {
-        if (!Cam.PresetGlide && Cam.IntroElapsed < OpeningRevealDurationSec) {
+      if (GameShouldStep) {
+        if (!GCam.PresetGlide && GCam.IntroElapsed < OpeningRevealDurationSec) {
           if (!IsPaused) {
-            Cam.IntroElapsed = Math.min(OpeningRevealDurationSec, Cam.IntroElapsed + Dt);
+            GCam.IntroElapsed = Math.min(OpeningRevealDurationSec, GCam.IntroElapsed + Dt);
           }
-          const Progress = Cam.IntroElapsed / OpeningRevealDurationSec;
+          const Progress = GCam.IntroElapsed / OpeningRevealDurationSec;
           const Sample = EvaluateOpeningReveal(Progress);
-          Cam.Eye = Sample.Eye;
-          Cam.Target = Sample.Target;
-          Cam.FovDeg = Sample.FovDeg;
-          Cam.GoalEye = [...Sample.Eye];
-          Cam.GoalTarget = [...Sample.Target];
-          Cam.GoalFovDeg = Sample.FovDeg;
-          Phase = IsPaused ? "Reveal Paused" : "Opening Reveal";
-        } else {
+          GCam.Eye = Sample.Eye;
+          GCam.Target = Sample.Target;
+          GCam.FovDeg = Sample.FovDeg;
+          GCam.GoalEye = [...Sample.Eye];
+          GCam.GoalTarget = [...Sample.Target];
+          GCam.GoalFovDeg = Sample.FovDeg;
+          GamePhase = IsPaused ? "Reveal Paused" : "Opening Reveal";
+        } else if (GCam.PresetGlide) {
           const Glide = 1 - Math.exp(-Dt * 5.2);
-          if (Cam.PresetGlide) {
-            for (let A = 0; A < 3; A++) {
-              Cam.Eye[A] = Lerp(Cam.Eye[A], Cam.GoalEye[A], Glide);
-              Cam.Target[A] = Lerp(Cam.Target[A], Cam.GoalTarget[A], Glide);
-            }
-            Cam.FovDeg = Lerp(Cam.FovDeg, Cam.GoalFovDeg, Glide);
-            const Dist = Math.hypot(
-              Cam.Eye[0] - Cam.GoalEye[0],
-              Cam.Eye[1] - Cam.GoalEye[1],
-              Cam.Eye[2] - Cam.GoalEye[2],
-            );
-            if (Dist < 0.03) Cam.PresetGlide = false;
-          } else if (ShowroomOrbit && !IsPaused) {
-            const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
-            const Delta = ((OrbitDegSec * Math.PI) / 180) * Dt;
-            Cam.OrbitAngleOffset += Delta;
-            Cam.Eye = EyeFromSpherical(Cam.Target, Sph.Radius, Sph.Azimuth + Delta, Sph.Elevation);
+          for (let A = 0; A < 3; A++) {
+            GCam.Eye[A] = Lerp(GCam.Eye[A], GCam.GoalEye[A], Glide);
+            GCam.Target[A] = Lerp(GCam.Target[A], GCam.GoalTarget[A], Glide);
           }
+          GCam.FovDeg = Lerp(GCam.FovDeg, GCam.GoalFovDeg, Glide);
+          const Dist = Math.hypot(
+            GCam.Eye[0] - GCam.GoalEye[0],
+            GCam.Eye[1] - GCam.GoalEye[1],
+            GCam.Eye[2] - GCam.GoalEye[2],
+          );
+          GamePhase = "Preset Glide";
+          if (Dist < 0.03) GCam.PresetGlide = false;
+        } else {
+          GCam.FovDeg = Lerp(GCam.FovDeg, NativeVertFov, 1 - Math.exp(-Dt * 10));
+          const IsDraggingGameCam = DragRef.current?.Kind === "game-camera";
+          if (ShowroomOrbit && !IsPaused && !IsDraggingGameCam && Now >= GCam.ResumeOrbitAt) {
+            const Sph = SphericalFromEyeTarget(GCam.Eye, GCam.Target);
+            const Delta = ((OrbitDegSec * Math.PI) / 180) * Dt;
+            GCam.OrbitAngleOffset += Delta;
+            GCam.Eye = EyeFromSpherical(GCam.Target, Sph.Radius, Sph.Azimuth + Delta, Sph.Elevation);
+          }
+          GamePhase = IsPaused
+            ? "Paused"
+            : IsDraggingGameCam
+              ? "Game Orbit"
+              : ShowroomOrbit
+                ? "Showroom Orbit"
+                : "Game Static";
         }
-      } else if (Cam.PresetGlide) {
-        const Glide = 1 - Math.exp(-Dt * 6.5);
-        for (let A = 0; A < 3; A++) {
-          Cam.Eye[A] = Lerp(Cam.Eye[A], Cam.GoalEye[A], Glide);
-          Cam.Target[A] = Lerp(Cam.Target[A], Cam.GoalTarget[A], Glide);
-        }
-        Cam.FovDeg = Lerp(Cam.FovDeg, Cam.GoalFovDeg, Glide);
-        const Dist = Math.hypot(
-          Cam.Eye[0] - Cam.GoalEye[0],
-          Cam.Eye[1] - Cam.GoalEye[1],
-          Cam.Eye[2] - Cam.GoalEye[2],
-        );
-        if (Dist < 0.025) Cam.PresetGlide = false;
+        // Only the GAME CAMERA is bounded inside the studio set so it never clips walls/ceiling
+        GCam.Eye = ClampGameCameraInsideLobby(GCam.Eye, CurValues, CurLevel);
       }
 
-      // Prevent camera from ever clipping through cyclorama walls or ceiling
-      Cam.Eye = ClampCameraInsideLobby(Cam.Eye, CurValues, CurLevel);
+      // --- 2) Step the UNRESTRICTED EDITOR CAMERA (focus glide only — NEVER clamped!) ---
+      if (!IsPlayView && ECam.FocusGlide) {
+        const Glide = 1 - Math.exp(-Dt * 7.0);
+        for (let A = 0; A < 3; A++) {
+          ECam.Eye[A] = Lerp(ECam.Eye[A], ECam.GoalEye[A], Glide);
+          ECam.Target[A] = Lerp(ECam.Target[A], ECam.GoalTarget[A], Glide);
+        }
+        ECam.FovDeg = Lerp(ECam.FovDeg, ECam.GoalFovDeg, Glide);
+        const Dist = Math.hypot(
+          ECam.Eye[0] - ECam.GoalEye[0],
+          ECam.Eye[1] - ECam.GoalEye[1],
+          ECam.Eye[2] - ECam.GoalEye[2],
+        );
+        if (Dist < 0.025) ECam.FocusGlide = false;
+      }
+
+      const ActiveCamera = IsPlayView ? GCam : ECam;
+      const Phase = IsPlayView
+        ? GamePhase
+        : CurMode === "SIM"
+          ? `Unrestricted · Game Cam (${GamePhase})`
+          : "Unrestricted Free Orbit";
 
       Engine.RenderScene({
         Rows: CurRows,
         Values: CurValues,
         Hidden: CurHidden,
         Selected: CurSelected,
-        Camera: Cam,
+        Camera: ActiveCamera,
+        GameCamera: !IsPlayView && View === 1 ? GCam : null,
         LevelId: CurLevel,
-        EditMode: CurMode !== "PLAY",
+        EditMode: !IsPlayView,
         GizmoMode: CurGizmo,
         HoveredAxis: HoveredAxisRef.current,
       });
@@ -291,7 +340,7 @@ export default function StudioViewport({
           const Captured = Engine.CaptureAllEntityThumbnails(CurRows, CurValues);
           if (Object.keys(Captured).length > 0) PushThumbs(Captured);
         }
-        const Progress = Math.min(1, Cam.IntroElapsed / OpeningRevealDurationSec);
+        const Progress = Math.min(1, GCam.IntroElapsed / OpeningRevealDurationSec);
         SetHudState({ Fps: CurrentFps, Phase, IntroProgress: Progress });
         if (View === 1 && OnTelemetry) {
           OnTelemetry({
@@ -303,7 +352,9 @@ export default function StudioViewport({
             ShaderRecompiles: Engine.ShaderRecompiles,
             ShaderCompileMs: Engine.ShaderCompileMs,
             VehicleSource: Engine.LastStats.VehicleSource,
-            CameraPos: Cam.Eye.map((V) => Math.round(V * 10) / 10),
+            CameraPos: ActiveCamera.Eye.map((V) => Math.round(V * 10) / 10),
+            GameCameraPos: GCam.Eye.map((V) => Math.round(V * 10) / 10),
+            EditorCameraPos: ECam.Eye.map((V) => Math.round(V * 10) / 10),
           });
         }
       }
@@ -332,11 +383,13 @@ export default function StudioViewport({
   };
 
   const OnPointerDown = (Event) => {
-    if (Event.button !== 0 && Event.button !== 2) return;
+    if (Event.button !== 0 && Event.button !== 1 && Event.button !== 2) return;
     Event.currentTarget.setPointerCapture(Event.pointerId);
 
+    const IsPlayView = View === 1 && PropsRef.current.RunMode === "PLAY";
+
     // Check 3D Transform Gizmo hit first in Edit/Sim mode on left click
-    if (Event.button === 0 && EngineRef.current && CanvasRef.current) {
+    if (!IsPlayView && Event.button === 0 && EngineRef.current && CanvasRef.current) {
       const [NdcX, NdcY] = PointerNdc(Event);
       const Axis = EngineRef.current.HitTestGizmo(NdcX, NdcY);
       const GState = EngineRef.current.ActiveGizmoState;
@@ -371,7 +424,7 @@ export default function StudioViewport({
     }
 
     DragRef.current = {
-      Kind: "camera",
+      Kind: IsPlayView ? "game-camera" : "editor-camera",
       Button: Event.button,
       Shift: Event.shiftKey,
       StartX: Event.clientX,
@@ -385,7 +438,6 @@ export default function StudioViewport({
   const OnPointerMove = (Event) => {
     const Drag = DragRef.current;
     if (!Drag) {
-      // Live gizmo axis hover highlight
       if (EngineRef.current && CanvasRef.current && PropsRef.current.RunMode !== "PLAY") {
         const [NdcX, NdcY] = PointerNdc(Event);
         const Hit = EngineRef.current.HitTestGizmo(NdcX, NdcY);
@@ -444,35 +496,63 @@ export default function StudioViewport({
     }
     if (!Drag.Moved) return;
 
-    const Cam = CamRef.current;
-    Cam.ManualControl = true;
-    Cam.PresetGlide = false;
-    Cam.IntroElapsed = OpeningRevealDurationSec;
+    if (Drag.Kind === "editor-camera") {
+      // UNRESTRICTED Editor Camera — NO wall/ceiling/floor clamp, full pitch & unlimited pan!
+      const ECam = EditorCamRef.current;
+      ECam.FocusGlide = false;
+      const Sph = SphericalFromEyeTarget(ECam.Eye, ECam.Target);
+      if (Drag.Button === 2 || Drag.Button === 1 || Drag.Shift) {
+        const Scale = Math.max(0.002, Sph.Radius * 0.0015);
+        const RightX = Math.cos(Sph.Azimuth);
+        const RightZ = -Math.sin(Sph.Azimuth);
+        ECam.Target[0] -= RightX * Dx * Scale;
+        ECam.Target[2] -= RightZ * Dx * Scale;
+        ECam.Target[1] += Dy * Scale;
+        ECam.Eye[0] -= RightX * Dx * Scale;
+        ECam.Eye[2] -= RightZ * Dx * Scale;
+        ECam.Eye[1] += Dy * Scale;
+      } else {
+        const NextAz = Sph.Azimuth - Dx * 0.0062;
+        const NextEl = Math.max(-1.54, Math.min(1.54, Sph.Elevation + Dy * 0.0052));
+        ECam.Eye = EyeFromSpherical(ECam.Target, Sph.Radius, NextAz, NextEl);
+      }
+      return;
+    }
 
-    if (Drag.Button === 2 || Drag.Shift) {
-      const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
-      const Scale = Sph.Radius * 0.0014;
+    // GAME CAMERA interaction (PLAY mode) — bounded inside studio cyclorama & resumes smooth orbit after release
+    const GCam = GameCamRef.current;
+    GCam.PresetGlide = false;
+    GCam.IntroElapsed = OpeningRevealDurationSec;
+    GCam.ResumeOrbitAt = performance.now() + 1800;
+
+    if (Drag.Button === 2 || Drag.Button === 1 || Drag.Shift) {
+      const Sph = SphericalFromEyeTarget(GCam.Eye, GCam.Target);
+      const Scale = Sph.Radius * 0.0012;
       const RightX = Math.cos(Sph.Azimuth);
       const RightZ = -Math.sin(Sph.Azimuth);
-      Cam.Target[0] -= RightX * Dx * Scale;
-      Cam.Target[2] -= RightZ * Dx * Scale;
-      Cam.Target[1] = Math.max(0.15, Math.min(4.8, Cam.Target[1] + Dy * Scale));
-      Cam.Eye[0] -= RightX * Dx * Scale;
-      Cam.Eye[2] -= RightZ * Dx * Scale;
-      Cam.Eye[1] = Math.max(0.32, Math.min(6.4, Cam.Eye[1] + Dy * Scale));
+      GCam.Target[0] = Math.max(-4.5, Math.min(4.5, GCam.Target[0] - RightX * Dx * Scale));
+      GCam.Target[2] = Math.max(-4.5, Math.min(4.5, GCam.Target[2] - RightZ * Dx * Scale));
+      GCam.Target[1] = Math.max(0.25, Math.min(2.8, GCam.Target[1] + Dy * Scale));
+      GCam.Eye[0] -= RightX * Dx * Scale;
+      GCam.Eye[2] -= RightZ * Dx * Scale;
+      GCam.Eye[1] += Dy * Scale;
     } else {
-      const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
+      const Sph = SphericalFromEyeTarget(GCam.Eye, GCam.Target);
       const NextAz = Sph.Azimuth - Dx * 0.0062;
-      const NextEl = Math.max(0.03, Math.min(1.22, Sph.Elevation + Dy * 0.0052));
-      Cam.Eye = EyeFromSpherical(Cam.Target, Sph.Radius, NextAz, NextEl);
+      const NextEl = Math.max(0.05, Math.min(1.15, Sph.Elevation + Dy * 0.0052));
+      GCam.Eye = EyeFromSpherical(GCam.Target, Sph.Radius, NextAz, NextEl);
     }
-    Cam.Eye = ClampCameraInsideLobby(Cam.Eye, PropsRef.current.Values, PropsRef.current.LevelId);
+    GCam.Eye = ClampGameCameraInsideLobby(GCam.Eye, PropsRef.current.Values, PropsRef.current.LevelId);
   };
 
   const OnPointerUp = (Event) => {
     const Drag = DragRef.current;
     DragRef.current = null;
     if (!Drag || Drag.Kind === "gizmo") return;
+    if (Drag.Kind === "game-camera" && Drag.Moved) {
+      GameCamRef.current.ResumeOrbitAt = performance.now() + 1800;
+      return;
+    }
     if (!Drag.Moved && Drag.Button === 0 && EngineRef.current && CanvasRef.current) {
       const [NdcX, NdcY] = PointerNdc(Event);
       const HitId = EngineRef.current.PickAtNormalizedCoords(NdcX, NdcY);
@@ -484,15 +564,28 @@ export default function StudioViewport({
 
   const OnWheel = (Event) => {
     Event.preventDefault();
-    const Cam = CamRef.current;
-    Cam.ManualControl = true;
-    Cam.PresetGlide = false;
-    Cam.IntroElapsed = OpeningRevealDurationSec;
-    const Sph = SphericalFromEyeTarget(Cam.Eye, Cam.Target);
+    const IsPlayView = View === 1 && PropsRef.current.RunMode === "PLAY";
     const Factor = Math.exp(Event.deltaY * 0.0011);
-    const NextR = Math.max(1.8, Math.min(15.5, Sph.Radius * Factor));
-    Cam.Eye = ClampCameraInsideLobby(
-      EyeFromSpherical(Cam.Target, NextR, Sph.Azimuth, Sph.Elevation),
+
+    if (!IsPlayView) {
+      // UNRESTRICTED Editor Camera zoom — NO room clamp, wide 0.35 m .. 240 m range
+      const ECam = EditorCamRef.current;
+      ECam.FocusGlide = false;
+      const Sph = SphericalFromEyeTarget(ECam.Eye, ECam.Target);
+      const NextR = Math.max(0.35, Math.min(240, Sph.Radius * Factor));
+      ECam.Eye = EyeFromSpherical(ECam.Target, NextR, Sph.Azimuth, Sph.Elevation);
+      return;
+    }
+
+    // GAME CAMERA zoom (PLAY mode) — bounded cleanly inside the studio set
+    const GCam = GameCamRef.current;
+    GCam.PresetGlide = false;
+    GCam.IntroElapsed = OpeningRevealDurationSec;
+    GCam.ResumeOrbitAt = performance.now() + 1800;
+    const Sph = SphericalFromEyeTarget(GCam.Eye, GCam.Target);
+    const NextR = Math.max(2.2, Math.min(12.5, Sph.Radius * Factor));
+    GCam.Eye = ClampGameCameraInsideLobby(
+      EyeFromSpherical(GCam.Target, NextR, Sph.Azimuth, Sph.Elevation),
       PropsRef.current.Values,
       PropsRef.current.LevelId,
     );
@@ -512,6 +605,7 @@ export default function StudioViewport({
       ref={HostRef}
       className="studio-viewport-host"
       data-viewport-index={View}
+      data-active-camera={View === 1 && RunMode === "PLAY" ? "game" : "editor"}
       onContextMenu={(Event) => Event.preventDefault()}
     >
       <canvas
@@ -529,7 +623,7 @@ export default function StudioViewport({
           <div className="studio-viewport-top-hud">
             <span className="studio-hud-chip">
               <i className={RunMode === "PLAY" && !Paused ? "dot live" : "dot"} />
-              <b>{RunMode === "PLAY" ? "PLAY · CONFIGURATOR" : RunMode + " · STUDIO"}</b>
+              <b>{RunMode === "PLAY" ? "PLAY · GAME CAMERA" : RunMode + " · EDITOR CAMERA"}</b>
               <span>{HudState.Phase}</span>
             </span>
             {RunMode !== "PLAY" && SetGizmoMode && (
@@ -563,7 +657,7 @@ export default function StudioViewport({
               <button
                 type="button"
                 className={RunMode === "PLAY" && !Paused ? "active" : ""}
-                title={RunMode === "PLAY" && !Paused ? "Pause configurator motion" : "Play configurator camera"}
+                title={RunMode === "PLAY" && !Paused ? "Pause game camera motion" : "Play game camera"}
                 onClick={() => {
                   if (RunMode !== "PLAY") {
                     SetRunMode("PLAY");
@@ -577,7 +671,7 @@ export default function StudioViewport({
               </button>
               <button
                 type="button"
-                title="Replay 3.8 s opening cinematic reveal (0)"
+                title="Replay 3.8 s Game Camera opening reveal (0)"
                 onClick={() => {
                   if (RunMode !== "PLAY") SetRunMode("PLAY");
                   if (Paused) TogglePaused();
@@ -593,8 +687,11 @@ export default function StudioViewport({
                   key={Preset.Id}
                   type="button"
                   className={ActivePreset === Index ? "active" : ""}
-                  title={`${Preset.Label} (Shortcut ${Preset.Key})`}
-                  onClick={() => SelectPreset(Index)}
+                  title={`Game Camera · ${Preset.Label} (Shortcut ${Preset.Key})`}
+                  onClick={() => {
+                    if (RunMode === "EDIT") SetRunMode("PLAY");
+                    SelectPreset(Index);
+                  }}
                 >
                   <kbd>{Preset.Key}</kbd>
                   <span>{Preset.Label}</span>
