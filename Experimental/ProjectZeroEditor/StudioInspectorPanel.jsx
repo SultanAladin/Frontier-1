@@ -101,6 +101,10 @@ function StudioTransformCard({ Values, Change, ShowScale = false }) {
       if (Values.ProceduralKind === "studio.light_fixture") Change("YokeTiltDeg", Val[0]);
       else if (Values.ProceduralKind === "studio.cinema_camera") Change("PitchDeg", Val[0]);
       else if (Values.ProceduralKind === "studio.tripod") Change("HeadTiltDeg", Val[0]);
+      else if (!Values.ProceduralKind) {
+        Change("InclineDeg", Val[0]);
+        Change("BankDeg", Val[2]);
+      }
       return;
     }
     if (Key === "Scale") {
@@ -165,6 +169,18 @@ export function StudioVehicleInspector({
           )}
         </div>
       </section>
+
+      <details open className="generic-card">
+        <summary>Terrain Stance & Incline</summary>
+        {NativeSlider("Incline Pitch (Nose Up)", Values.InclineDeg ?? 0, -25, 25, "°", 1, (V) => {
+          Change("InclineDeg", V);
+          Change("Rotation", [V, Number(Values.YawDeg ?? 0), Number(Values.BankDeg ?? 0)]);
+        })}
+        {NativeSlider("Lateral Roll Bank", Values.BankDeg ?? 0, -20, 20, "°", 1, (V) => {
+          Change("BankDeg", V);
+          Change("Rotation", [Number(Values.InclineDeg ?? 0), Number(Values.YawDeg ?? 0), V]);
+        })}
+      </details>
 
       <details open className="generic-card">
         <summary>Automotive Paint & Clearcoat</summary>
@@ -232,6 +248,7 @@ export function StudioProceduralInspector({
   const CanAim =
     Kind === "studio.tripod" ||
     Kind === "studio.cinema_camera" ||
+    Kind === "studio.studio_fan" ||
     (Kind === "studio.light_fixture" && Values.FixtureStyle !== "Overhead Softbox");
 
   return (
@@ -375,6 +392,71 @@ export function StudioProceduralInspector({
           )}
           {NativeSwitch("Pelican Flight Cases", Values.FlightCases !== false, (V) => Change("FlightCases", V))}
           {NativeSwitch("Coiled Floor Power Cables", Values.CoiledCables !== false, (V) => Change("CoiledCables", V))}
+        </details>
+      )}
+
+      {Kind === "studio.studio_fan" && (
+        <details open className="generic-card">
+          <summary>Studio Wind Fan (Live Plant & Dust Blower)</summary>
+          {NativeSlider("Wind Blow Speed", Values.WindSpeed ?? 0.82, 0, 2.0, "×", 2, (V) => Change("WindSpeed", V))}
+          {NativeSlider("Gust Turbulence", Values.GustTurbulence ?? 0.55, 0, 1.5, "", 2, (V) => Change("GustTurbulence", V))}
+          {NativeSlider("Fan Drum Radius", Values.FanRadius ?? 0.52, 0.3, 0.85, "m", 2, (V) => Change("FanRadius", V))}
+          {NativeSlider("Stand Hub Height", Values.StandHeight ?? 1.28, 0.7, 2.4, "m", 2, (V) => Change("StandHeight", V))}
+          {NativeSlider("Drum Pitch Tilt", Values.TiltDeg ?? -4, -30, 30, "°", 1, (V) => Change("TiltDeg", V))}
+        </details>
+      )}
+
+      {Kind === "studio.dust_field" && (
+        <details open className="generic-card">
+          <summary>Sunbeam Dust Particles</summary>
+          {NativeSlider("Particle Count", Values.ParticleCount ?? 280, 40, 480, "", 0, (V) => Change("ParticleCount", Math.round(V)))}
+          {NativeSlider("Wind Drift Speed", Values.DriftSpeed ?? 0.72, 0.1, 2.0, "×", 2, (V) => Change("DriftSpeed", V))}
+          {NativeSlider("Sunbeam Glow", Values.GlowIntensity ?? 1.05, 0.2, 2.0, "", 2, (V) => Change("GlowIntensity", V))}
+          {NativeSlider("Mote Pixel Size", Values.MoteSize ?? 4.8, 2.0, 9.0, "px", 1, (V) => Change("MoteSize", V))}
+        </details>
+      )}
+
+      {Kind === "studio.rock_outcrop" && (
+        <details open className="generic-card">
+          <summary>Mossy Granite Rock Incline & Stream</summary>
+          {NativeSlider("Rock Crest Height", Values.InclineHeight ?? 0.56, 0.2, 1.2, "m", 2, (V) => Change("InclineHeight", V))}
+          {NativeSlider("Incline Slope", Values.InclineDeg ?? 8.5, -18, 20, "°", 1, (V) => Change("InclineDeg", V))}
+          {NativeSlider("Cross Bank Angle", Values.BankDeg ?? 3.8, -14, 14, "°", 1, (V) => Change("BankDeg", V))}
+          {NativeSlider("Boulder Scale", Values.RockScale ?? 1.0, 0.6, 1.5, "×", 2, (V) => Change("RockScale", V))}
+          {NativeSwitch("Shallow Forest Stream & Pond", Values.HasStream !== false, (V) => Change("HasStream", V))}
+        </details>
+      )}
+
+      {Kind === "studio.fallen_wood" && (
+        <details open className="generic-card">
+          <summary>Gnarled Fallen Tree Trunk</summary>
+          {NativeSlider("Log & Root Scale", Values.LogScale ?? 1.05, 0.5, 1.8, "×", 2, (V) => Change("LogScale", V))}
+        </details>
+      )}
+
+      {Kind === "studio.fern_cluster" && (
+        <details open className="generic-card">
+          <summary>Real 3D Forest Ferns (Wind-Reactive)</summary>
+          {NativeSlider("Fern Rosettes", Values.FernCount ?? 15, 4, 18, "", 0, (V) => Change("FernCount", Math.round(V)))}
+          {NativeSlider("Frond Scale", Values.FernScale ?? 1.05, 0.5, 1.7, "×", 2, (V) => Change("FernScale", V))}
+        </details>
+      )}
+
+      {Kind === "studio.grass_plants" && (
+        <details open className="generic-card">
+          <summary>3D Grass Tufts & Woodland Shrubs</summary>
+          {NativeSlider("Grass Tuft Density", Values.TuftCount ?? 56, 18, 72, "", 0, (V) => Change("TuftCount", Math.round(V)))}
+          {NativeSlider("Plant Height Scale", Values.GrassScale ?? 1.05, 0.5, 1.7, "×", 2, (V) => Change("GrassScale", V))}
+        </details>
+      )}
+
+      {Kind === "studio.forest_backdrop" && (
+        <details open className="generic-card">
+          <summary>Forest LED Volume Backdrop & Flags</summary>
+          {NativeSlider("LED Backlight Brightness", Values.BackdropBrightness ?? 1.45, 0.3, 2.8, "×", 2, (V) => Change("BackdropBrightness", V))}
+          {NativeSlider("LED Screen Width", Values.ScreenWidth ?? 12.4, 8.0, 17.0, "m", 1, (V) => Change("ScreenWidth", V))}
+          {NativeSlider("LED Screen Height", Values.ScreenHeight ?? 6.2, 4.0, 7.2, "m", 1, (V) => Change("ScreenHeight", V))}
+          {NativeSwitch("Flanking Negative-Fill Flags", Values.StudioFlags !== false, (V) => Change("StudioFlags", V))}
         </details>
       )}
 

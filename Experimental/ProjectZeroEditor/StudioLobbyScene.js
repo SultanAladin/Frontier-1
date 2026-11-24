@@ -3,11 +3,25 @@
 // property initialization, Car Configurator presets, and hierarchical transforms.
 
 export const HeroCarAimTarget = [0.0, 0.88, -0.15];
+export const Lobby2HeroAimTarget = [0.0, 1.38, -0.35];
+
+export function IsStudioLobbyLevel(LevelId) {
+  return LevelId === "studio-lobby" || LevelId === "studio-lobby-2";
+}
+
+export function GetHeroAimTargetForLevel(LevelId) {
+  return LevelId === "studio-lobby-2" ? Lobby2HeroAimTarget : HeroCarAimTarget;
+}
 
 export const StudioLevels = [
   {
+    Id: "studio-lobby-2",
+    Label: "Lobby 2 · Forest Stage",
+    Subtitle: "Forest soundstage · rock incline · ferns, wood, wind fan & dust · 4 cars",
+  },
+  {
     Id: "studio-lobby",
-    Label: "Studio Lobby",
+    Label: "Lobby 1 · Cyclorama",
     Subtitle: "Photographic cyclorama · 3 vehicles · procedural rigs",
   },
   {
@@ -18,6 +32,7 @@ export const StudioLevels = [
 ];
 
 export const VehiclePaintPresets = [
+  { Name: "Forest Sage", Hex: "#7ea689", Metallic: 0.42, Roughness: 0.16, Clearcoat: 0.98 },
   { Name: "Obsidian Gloss", Hex: "#111319", Metallic: 0.82, Roughness: 0.14, Clearcoat: 1.0 },
   { Name: "Alpine GT3 White", Hex: "#eceff3", Metallic: 0.16, Roughness: 0.16, Clearcoat: 0.98 },
   { Name: "Liquid Titanium", Hex: "#9ca5b4", Metallic: 0.92, Roughness: 0.18, Clearcoat: 0.95 },
@@ -110,15 +125,27 @@ export const OpeningRevealDurationSec = 3.8;
 // Keep ONLY the Game / Configurator Camera safely inside the studio walls & ceiling.
 // Never apply this to the Editor Camera, which remains completely unrestricted.
 export function ClampGameCameraInsideLobby(Eye, Values, LevelId) {
-  if (LevelId !== "studio-lobby") return Eye;
-  const Cyc = Values["studio-cyclorama"] || {};
+  if (!IsStudioLobbyLevel(LevelId)) return Eye;
   const Ceil = Values["studio-ceiling"] || {};
+  const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
+  if (LevelId === "studio-lobby-2") {
+    const Bd = Values["l2-forest-backdrop"] || {};
+    const BackZ = Number(Bd.Position?.[2] ?? -5.65) + 1.25;
+    const HalfW = Math.max(7.2, Number(Bd.ProsceniumWidth ?? 20.5) * 0.5 - 0.95);
+    const ClampedZ = Math.max(BackZ, Math.min(18.0, Eye[2]));
+    const MaxHalfX = ClampedZ < 3.5 ? HalfW : 21.0;
+    return [
+      Math.max(-MaxHalfX, Math.min(MaxHalfX, Eye[0])),
+      Math.max(0.45, Math.min(MaxY, Eye[1])),
+      ClampedZ,
+    ];
+  }
+  const Cyc = Values["studio-cyclorama"] || {};
   const CoveHalfW = Math.max(6.5, Number(Cyc.CoveWidth ?? 18.0) * 0.5 - 0.85);
   const CycZ = Number(Cyc.Position?.[2] ?? -0.8);
   const FloorD = Number(Cyc.FloorDepth ?? 13.5);
   const FrontZ = CycZ + FloorD * 0.42;
   const BackZ = CycZ - FloorD * 0.58 + 1.15;
-  const MaxY = Math.max(4.2, Number(Ceil.CeilingHeight ?? 7.25) - 0.78);
   const ClampedZ = Math.max(BackZ, Math.min(18.0, Eye[2]));
   const MaxHalfX = ClampedZ < FrontZ + 0.45 ? CoveHalfW : 21.0;
   return [
@@ -148,17 +175,18 @@ export function ComputeForwardVector(YawRad, PitchRad = 0) {
   return [Cp * Math.sin(YawRad), -Sp, Cp * Math.cos(YawRad)];
 }
 
-export function EvaluateOpeningReveal(Progress) {
+export function EvaluateOpeningReveal(Progress, LevelId = "studio-lobby") {
   const Clamped = Math.max(0, Math.min(1, Progress));
   const Smooth =
     Clamped < 0.5
       ? 4 * Clamped * Clamped * Clamped
       : 1 - Math.pow(-2 * Clamped + 2, 3) / 2;
 
-  const P0 = [-5.8, 0.92, 6.95];
-  const P1 = [-1.4, 1.12, 7.65];
-  const P2 = [3.9, 1.92, 7.35];
-  const P3 = ConfiguratorPresets[0].Eye;
+  const IsL2 = LevelId === "studio-lobby-2";
+  const P0 = IsL2 ? [-5.4, 1.35, 7.65] : [-5.8, 0.92, 6.95];
+  const P1 = IsL2 ? [-1.1, 1.52, 8.25] : [-1.4, 1.12, 7.65];
+  const P2 = IsL2 ? [3.8, 2.25, 7.95] : [3.9, 1.92, 7.35];
+  const P3 = IsL2 ? [5.45, 2.05, 7.15] : ConfiguratorPresets[0].Eye;
 
   const Inv = 1 - Smooth;
   const Eye = [0, 1, 2].map(
@@ -169,8 +197,8 @@ export function EvaluateOpeningReveal(Progress) {
       Smooth * Smooth * Smooth * P3[Axis],
   );
 
-  const T0 = [-0.65, 0.62, 0.25];
-  const T1 = ConfiguratorPresets[0].Target;
+  const T0 = IsL2 ? [-0.45, 1.05, 0.1] : [-0.65, 0.62, 0.25];
+  const T1 = IsL2 ? [0.05, 1.28, -0.35] : ConfiguratorPresets[0].Target;
   const Target = [0, 1, 2].map(
     (Axis) => T0[Axis] + (T1[Axis] - T0[Axis]) * Smooth,
   );
@@ -942,6 +970,722 @@ export const StudioLobbyInitialValues = {
   },
 };
 
+// ============================================================================
+// STUDIO LOBBY 2 · FOREST SOUNDSTAGE (Real 3D Ferns, Fallen Wood, Rock Incline,
+// Grass & Shrubs, Blowing Wind Fan, Sunbeam Dust Particles, Same Studio Lights
+// + Hero Car Angled on Rock Incline + 3 Companion Cars Positioned Outside Set)
+// ============================================================================
+const L2AimKey = ComputeAimAngles([-4.75, 2.78, 1.45], Lobby2HeroAimTarget);
+const L2AimUmbrella = ComputeAimAngles([4.85, 2.45, 2.15], Lobby2HeroAimTarget);
+const L2AimRim = ComputeAimAngles([-4.95, 2.85, -2.55], Lobby2HeroAimTarget);
+const L2AimAccent = ComputeAimAngles([5.05, 2.72, -2.25], Lobby2HeroAimTarget);
+const L2AimCamA = ComputeAimAngles([-3.65, 1.85, 6.25], Lobby2HeroAimTarget);
+const L2AimCamB = ComputeAimAngles([3.15, 1.68, 6.15], Lobby2HeroAimTarget);
+const L2AimFan = ComputeAimAngles([-5.25, 1.28, 1.65], [0.4, 0.85, 0.35]);
+
+export const StudioLobby2Rows = [
+  // Vehicles collection: 1 Hero perched & angled on rock incline + 3 companion vehicles outside set
+  ["studio-vehicles", "Vehicles", "group", "folder-scene", null, "Forest Stage lineup · 1 Hero on rock incline + 3 staging cars"],
+  [
+    "vehicle-hero",
+    "Hero Vehicle · Rock Incline",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Forest Sage perched & angled on granite rock incline",
+  ],
+  [
+    "vehicle-gt3",
+    "Obsidian Coupe · Left Bay",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Companion vehicle #1 parked on left studio floor",
+  ],
+  [
+    "vehicle-tourer",
+    "Alpine GT · Right Bay",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Companion vehicle #2 parked on right studio floor",
+  ],
+  [
+    "vehicle-reserve",
+    "Liquid Tourer · Outer Bay",
+    "studio-vehicle",
+    "studio-vehicle",
+    "studio-vehicles",
+    "ControlledIntegrator · Companion vehicle #3 parked in outer right staging bay",
+  ],
+
+  // Forest Soundstage Natural Set & Studio Architecture
+  ["studio-architecture", "Forest Soundstage Set", "group", "folder-world", null, "LED forest backdrop, rock incline, fallen wood, ferns & grass"],
+  [
+    "l2-forest-backdrop",
+    "Forest LED Backdrop & Flags",
+    "studio-procedural",
+    "studio-backdrop",
+    "studio-architecture",
+    "Backlit sunlit forest LED volume wall + proscenium + V-flat flags",
+  ],
+  [
+    "l2-rock-outcrop",
+    "Mossy Rock Incline & Stream",
+    "studio-procedural",
+    "studio-rock",
+    "studio-architecture",
+    "Granite rock incline outcrop, mossy boulders, river pebbles & forest stream",
+  ],
+  [
+    "l2-fallen-wood",
+    "Gnarled Fallen Log & Roots",
+    "studio-procedural",
+    "studio-wood",
+    "studio-architecture",
+    "Weathered sculpted fallen tree trunk & twisted roots on foreground moss",
+  ],
+  [
+    "l2-fern-cluster",
+    "Real 3D Forest Ferns",
+    "studio-procedural",
+    "studio-fern",
+    "studio-architecture",
+    "Multi-frond 3D pinnate ferns blowing dynamically in the studio fan wind",
+  ],
+  [
+    "l2-grass-plants",
+    "Grass Tufts & Woodland Shrubs",
+    "studio-procedural",
+    "studio-grass",
+    "studio-architecture",
+    "3D grass blades, leafy shrubs & bamboo shoots blowing in the fan wind",
+  ],
+  [
+    "studio-floor",
+    "Studio Concrete Floor",
+    "studio-procedural",
+    "studio-floor-grid",
+    "studio-architecture",
+    "Dark matte-satin concrete soundstage floor surrounding the forest island",
+  ],
+  [
+    "studio-ceiling",
+    "Ribbed Ceiling & Truss",
+    "studio-procedural",
+    "studio-ceiling-truss",
+    "studio-architecture",
+    "Dark overhead steel truss grid supporting softbox & lighting",
+  ],
+
+  // Wind Machine & Atmospheric Dust Effects
+  ["studio-atmosphere", "Wind Fan & Dust FX", "group", "wind", null, "Live studio wind blower & sunlit floating dust particles"],
+  [
+    "l2-studio-fan",
+    "Studio Wind Fan (Blower)",
+    "studio-procedural",
+    "studio-fan",
+    "studio-atmosphere",
+    "Wheeled spinning studio wind fan blowing ferns, grass & dust particles",
+  ],
+  [
+    "l2-dust-particles",
+    "Sunbeam Dust Particles",
+    "studio-procedural",
+    "studio-dust",
+    "studio-atmosphere",
+    "Floating sunlit dust motes & spores advected by the Studio Wind Fan",
+  ],
+
+  // Lighting Rigs (EXACT same studio lighting suite as Studio Lobby 1!)
+  ["studio-lighting", "Lighting Rigs", "group", "folder-generic", null, "Same Studio Lobby hierarchical stands, softbox & native Area/IES lights"],
+  [
+    "rig-softbox-fixture",
+    "Overhead Softbox Bank",
+    "studio-procedural",
+    "studio-softbox",
+    "studio-lighting",
+    "Suspended overhead silk diffuser with straight vertical hoist cables",
+  ],
+  [
+    "light-overhead-area",
+    "Overhead Softbox Area Light",
+    "light",
+    "editor-area-light",
+    "rig-softbox-fixture",
+    "Rect Area Light · wide overhead skylight softbox",
+    "arealight",
+    "Softbox",
+  ],
+  [
+    "rig-key-tripod",
+    "Key Fresnel Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Left stage Fresnel light stand casting warm golden woodland beam",
+  ],
+  [
+    "rig-key-fixture",
+    "Barn-Door Fresnel Fixture",
+    "studio-procedural",
+    "studio-fresnel",
+    "rig-key-tripod",
+    "Articulated 4-leaf barn-door studio Fresnel head",
+  ],
+  [
+    "light-key-ies",
+    "Key Fresnel IES Light",
+    "light",
+    "editor-dome-light",
+    "rig-key-fixture",
+    "IES Photometric · warm golden Fresnel sunbeam key",
+    "ieslight",
+    "IES Downlight",
+  ],
+  [
+    "rig-umbrella-tripod",
+    "Umbrella Fill Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Front-right silver bounce umbrella stand",
+  ],
+  [
+    "rig-umbrella-fixture",
+    "Parabolic Umbrella Modifier",
+    "studio-procedural",
+    "studio-umbrella",
+    "rig-umbrella-tripod",
+    "16-rib parabolic silver bounce modifier",
+  ],
+  [
+    "light-umbrella-area",
+    "Umbrella Bounce Area Light",
+    "light",
+    "editor-area-light",
+    "rig-umbrella-fixture",
+    "Rect Area Light · gentle woodland ambient fill",
+    "arealight",
+    "Softbox",
+  ],
+  [
+    "rig-rim-tripod",
+    "Back-Left Rim Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Back-left LED rim light stand",
+  ],
+  [
+    "rig-rim-fixture",
+    "Rim LED Panel Fixture",
+    "studio-procedural",
+    "studio-led-panel",
+    "rig-rim-tripod",
+    "Edge-separation daylight forest rim LED panel",
+  ],
+  [
+    "light-rim-area",
+    "Rim LED Area Light",
+    "light",
+    "editor-area-light",
+    "rig-rim-fixture",
+    "Rect Area Light · crisp canopy edge rim",
+    "arealight",
+    "Softbox",
+  ],
+  [
+    "rig-accent-tripod",
+    "Back-Right Accent Tripod",
+    "studio-procedural",
+    "studio-tripod",
+    "studio-lighting",
+    "Right stage high-stand backlight Fresnel/Octa",
+  ],
+  [
+    "rig-accent-fixture",
+    "Octa Softbox Strobe",
+    "studio-procedural",
+    "studio-octa",
+    "rig-accent-tripod",
+    "Right flank warm sun-rim studio head",
+  ],
+  [
+    "light-accent-ies",
+    "Accent Strobe IES Light",
+    "light",
+    "editor-dome-light",
+    "rig-accent-fixture",
+    "IES Photometric · warm sunbeam right backlight",
+    "ieslight",
+    "IES Downlight",
+  ],
+
+  // Camera Rigs (outside the forest diorama set, aimed at elevated Hero Vehicle)
+  ["cameras", "Camera Rigs", "group", "camera", null, "Unrestricted Editor Camera & Game Camera rigs"],
+  [
+    "camera",
+    "Editor Camera",
+    "camera",
+    "camera",
+    "cameras",
+    "Unrestricted free 3D editor navigation camera",
+  ],
+  [
+    "rig-cam-a-tripod",
+    "Cinema Tripod A",
+    "studio-procedural",
+    "studio-tripod",
+    "cameras",
+    "Foreground left cinema camera tripod on rubber mat",
+  ],
+  [
+    "rig-cam-a-body",
+    "Cinema Camera A",
+    "studio-procedural",
+    "studio-cinema-camera",
+    "rig-cam-a-tripod",
+    "Cinema matte-box camera mounted on Tripod A",
+  ],
+  [
+    "cam-configurator",
+    "Car Configurator Camera",
+    "camera",
+    "camera",
+    "rig-cam-a-body",
+    "Moving Game Camera · Opening Reveal + Showroom Orbit",
+  ],
+  [
+    "rig-cam-b-tripod",
+    "Cinema Tripod B",
+    "studio-procedural",
+    "studio-tripod",
+    "cameras",
+    "Foreground right secondary camera tripod",
+  ],
+  [
+    "rig-cam-b-body",
+    "Cinema Camera B",
+    "studio-procedural",
+    "studio-cinema-camera",
+    "rig-cam-b-tripod",
+    "Medium format tether camera mounted on Tripod B",
+  ],
+  [
+    "cam-profile",
+    "Profile 65mm Camera",
+    "camera",
+    "camera",
+    "rig-cam-b-body",
+    "65mm portrait camera aimed at Hero Vehicle on rock incline",
+  ],
+
+  // Outer Studio Crew Props & Ambient
+  ["studio-props", "Studio Props & Crew", "group", "folder-generic", null, "Tether desk & grip cases outside forest island"],
+  [
+    "prop-workstation",
+    "Tether Workstation & Desk",
+    "studio-procedural",
+    "studio-workstation",
+    "studio-props",
+    "Hairpin studio desk & tether display outside forest set",
+  ],
+  [
+    "prop-grip-cases",
+    "Grip Cases & Cables",
+    "studio-procedural",
+    "studio-workstation",
+    "studio-props",
+    "Rugged studio cases & coiled power cabling outside set",
+  ],
+  [
+    "studio-ambient",
+    "Studio Atmosphere & Exposure",
+    "studio-procedural",
+    "environment-exposure",
+    "studio-props",
+    "Exposure, forest haze ambient fill & vignette",
+  ],
+].map(([Id, Name, Panel, Icon, Parent, Description, ReferenceType, ReferencePreset]) => ({
+  Id,
+  Name,
+  Panel,
+  Icon,
+  Parent,
+  Description,
+  ...(ReferenceType ? { ReferenceType } : {}),
+  ...(ReferencePreset ? { ReferencePreset } : {}),
+}));
+
+export const StudioLobby2InitialValues = {
+  ...JSON.parse(JSON.stringify(StudioLobbyInitialValues)),
+
+  // 1) Hero Vehicle perched & angled heroically up the granite rock incline (Forest Sage like Ref 1 & 2!)
+  "vehicle-hero": {
+    Position: [0.0, 0.56, -0.35],
+    Rotation: [8.5, -22, 3.8],
+    YawDeg: -22,
+    InclineDeg: 8.5,
+    BankDeg: 3.8,
+    Scale: 0.78,
+    PaintHex: "#7ea689",
+    Metallic: 0.42,
+    Roughness: 0.16,
+    Clearcoat: 0.98,
+    RimHex: "#1e2126",
+    CaliperHex: "#8c9c7a",
+  },
+  // 3 Companion Vehicles positioned cleanly outside the forest set on the surrounding studio floor
+  "vehicle-gt3": {
+    Position: [-11.8, 0.0, 4.2],
+    Rotation: [0, -24, 0],
+    YawDeg: -24,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.74,
+    PaintHex: "#111319",
+    Metallic: 0.84,
+    Roughness: 0.14,
+    Clearcoat: 1.0,
+    RimHex: "#cfd5de",
+    CaliperHex: "#b81d24",
+  },
+  "vehicle-tourer": {
+    Position: [11.8, 0.0, 4.2],
+    Rotation: [0, -156, 0],
+    YawDeg: -156,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.74,
+    PaintHex: "#eceff3",
+    Metallic: 0.18,
+    Roughness: 0.16,
+    Clearcoat: 0.98,
+    RimHex: "#1d1f24",
+    CaliperHex: "#b81d24",
+  },
+  "vehicle-reserve": {
+    Position: [10.8, 0.0, 9.4],
+    Rotation: [0, -138, 0],
+    YawDeg: -138,
+    InclineDeg: 0,
+    BankDeg: 0,
+    Scale: 0.74,
+    PaintHex: "#9ca5b4",
+    Metallic: 0.92,
+    Roughness: 0.18,
+    Clearcoat: 0.95,
+    RimHex: "#7d6850",
+    CaliperHex: "#1e4d9b",
+  },
+
+  // Forest Soundstage Architecture & Natural Elements
+  "l2-forest-backdrop": {
+    ProceduralKind: "studio.forest_backdrop",
+    Position: [0.0, 0.0, -5.65],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    ScreenWidth: 12.4,
+    ScreenHeight: 6.2,
+    ProsceniumWidth: 20.5,
+    WallHeight: 7.25,
+    StudioFlags: true,
+    BackdropBrightness: 1.45,
+  },
+  "l2-rock-outcrop": {
+    ProceduralKind: "studio.rock_outcrop",
+    Position: [0.0, 0.0, -0.35],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    IslandWidth: 11.4,
+    IslandDepth: 9.2,
+    InclineHeight: 0.56,
+    InclineDeg: 8.5,
+    BankDeg: 3.8,
+    VehicleYawDeg: -22,
+    RockScale: 1.0,
+    HasStream: true,
+  },
+  "l2-fallen-wood": {
+    ProceduralKind: "studio.fallen_wood",
+    Position: [2.35, 0.02, 2.25],
+    Rotation: [0, -14, 0],
+    YawDeg: -14,
+    LogScale: 1.05,
+  },
+  "l2-fern-cluster": {
+    ProceduralKind: "studio.fern_cluster",
+    Position: [0.0, 0.0, -0.35],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    FernCount: 15,
+    FernScale: 1.05,
+  },
+  "l2-grass-plants": {
+    ProceduralKind: "studio.grass_plants",
+    Position: [0.0, 0.0, -0.35],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    TuftCount: 56,
+    GrassScale: 1.05,
+  },
+  "studio-floor": {
+    ProceduralKind: "studio.tiled_floor",
+    Position: [0.0, -0.004, 1.5],
+    FloorWidth: 46.0,
+    FloorDepth: 40.0,
+    TileSize: 1.8,
+    FloorGloss: 0.42,
+    SurfaceTint: "#1c1f24",
+  },
+  "studio-ceiling": {
+    ProceduralKind: "studio.ceiling_truss",
+    Position: [0.0, 0.0, -0.8],
+    CeilingWidth: 26.0,
+    CeilingDepth: 22.0,
+    CeilingHeight: 7.25,
+    RibCount: 14,
+  },
+
+  // Studio Wind Fan & Floating Sunbeam Dust Particles
+  "l2-studio-fan": {
+    ProceduralKind: "studio.studio_fan",
+    Position: [-5.25, 0.0, 1.65],
+    Rotation: [0, L2AimFan.YawDeg, 0],
+    YawDeg: L2AimFan.YawDeg,
+    StandHeight: 1.28,
+    FanRadius: 0.52,
+    TiltDeg: -4,
+    WindSpeed: 0.82,
+    GustTurbulence: 0.55,
+  },
+  "l2-dust-particles": {
+    ProceduralKind: "studio.dust_field",
+    Position: [0.0, 2.1, -0.2],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    EmitterRadius: 0.14,
+    ParticleCount: 280,
+    DriftSpeed: 0.72,
+    GlowIntensity: 1.05,
+    MoteSize: 4.8,
+  },
+
+  // Same Studio Lighting Rigs aimed cleanly at the elevated Hero Vehicle on the rock incline!
+  "rig-softbox-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Overhead Softbox",
+    Position: [0.0, 4.42, -0.45],
+    Rotation: [0, 0, 0],
+    YawDeg: 0,
+    ApertureWidth: 6.4,
+    ApertureHeight: 3.8,
+    HousingDepth: 0.3,
+    SuspensionDrop: 2.68,
+    BarnDoorSpread: 40,
+    YokeTiltDeg: 0,
+  },
+  "rig-key-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [-4.75, 0.0, 1.45],
+    Rotation: [0, L2AimKey.YawDeg, 0],
+    YawDeg: L2AimKey.YawDeg,
+    StandHeight: 2.35,
+    ColumnLift: 0.35,
+    LegSpread: 0.78,
+    TubeRadius: 0.022,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L2AimKey.PitchDeg,
+  },
+  "rig-key-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Barn-Door Fresnel",
+    Position: [0, 0, 0],
+    ApertureWidth: 0.44,
+    ApertureHeight: 0.44,
+    HousingDepth: 0.42,
+    BarnDoorSpread: 44,
+    YokeTiltDeg: L2AimKey.PitchDeg,
+  },
+  "light-key-ies": {
+    ...JSON.parse(JSON.stringify(StudioLobbyInitialValues["light-key-ies"])),
+    ReferenceInspector: {
+      Preset: "IES Downlight",
+      Properties: {
+        ...StudioLobbyInitialValues["light-key-ies"].ReferenceInspector.Properties,
+        lumens: 15500,
+        temperature: 3450,
+        cone: 54,
+        target: [...Lobby2HeroAimTarget],
+      },
+    },
+  },
+  "rig-umbrella-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [4.85, 0.0, 2.15],
+    Rotation: [0, L2AimUmbrella.YawDeg, 0],
+    YawDeg: L2AimUmbrella.YawDeg,
+    StandHeight: 2.08,
+    ColumnLift: 0.29,
+    LegSpread: 0.72,
+    TubeRadius: 0.02,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L2AimUmbrella.PitchDeg,
+  },
+  "rig-umbrella-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Parabolic Umbrella",
+    Position: [0, 0, 0],
+    ApertureWidth: 1.55,
+    ApertureHeight: 1.55,
+    HousingDepth: 0.52,
+    BarnDoorSpread: 35,
+    YokeTiltDeg: L2AimUmbrella.PitchDeg,
+  },
+  "rig-rim-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [-4.95, 0.0, -2.55],
+    Rotation: [0, L2AimRim.YawDeg, 0],
+    YawDeg: L2AimRim.YawDeg,
+    StandHeight: 2.42,
+    ColumnLift: 0.35,
+    LegSpread: 0.76,
+    TubeRadius: 0.021,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L2AimRim.PitchDeg,
+  },
+  "rig-rim-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Studio LED Panel",
+    Position: [0, 0, 0],
+    ApertureWidth: 1.05,
+    ApertureHeight: 0.62,
+    HousingDepth: 0.14,
+    BarnDoorSpread: 30,
+    YokeTiltDeg: L2AimRim.PitchDeg,
+  },
+  "rig-accent-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [5.05, 0.0, -2.25],
+    Rotation: [0, L2AimAccent.YawDeg, 0],
+    YawDeg: L2AimAccent.YawDeg,
+    StandHeight: 2.32,
+    ColumnLift: 0.32,
+    LegSpread: 0.74,
+    TubeRadius: 0.021,
+    Casters: true,
+    FloorMat: false,
+    HeadTiltDeg: L2AimAccent.PitchDeg,
+  },
+  "rig-accent-fixture": {
+    ProceduralKind: "studio.light_fixture",
+    FixtureStyle: "Barn-Door Fresnel",
+    Position: [0, 0, 0],
+    ApertureWidth: 0.42,
+    ApertureHeight: 0.42,
+    HousingDepth: 0.4,
+    BarnDoorSpread: 42,
+    YokeTiltDeg: L2AimAccent.PitchDeg,
+  },
+  "light-accent-ies": {
+    ...JSON.parse(JSON.stringify(StudioLobbyInitialValues["light-accent-ies"])),
+    ReferenceInspector: {
+      Preset: "IES Downlight",
+      Properties: {
+        ...StudioLobbyInitialValues["light-accent-ies"].ReferenceInspector.Properties,
+        lumens: 14200,
+        temperature: 3250,
+        cone: 52,
+        target: [...Lobby2HeroAimTarget],
+      },
+    },
+  },
+
+  // Foreground Camera Rigs (outside the forest moss island)
+  "rig-cam-a-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [-3.65, 0.0, 6.25],
+    Rotation: [0, L2AimCamA.YawDeg, 0],
+    YawDeg: L2AimCamA.YawDeg,
+    StandHeight: 1.56,
+    ColumnLift: 0.26,
+    LegSpread: 0.72,
+    TubeRadius: 0.024,
+    Casters: false,
+    FloorMat: true,
+    HeadTiltDeg: L2AimCamA.PitchDeg,
+  },
+  "rig-cam-a-body": {
+    ProceduralKind: "studio.cinema_camera",
+    CameraStyle: "Cinema Matte Box",
+    Position: [0, 0, 0],
+    BodyLength: 0.44,
+    LensLength: 0.32,
+    MatteBoxWidth: 0.28,
+    PitchDeg: L2AimCamA.PitchDeg,
+  },
+  "rig-cam-b-tripod": {
+    ProceduralKind: "studio.tripod",
+    Position: [3.15, 0.0, 6.15],
+    Rotation: [0, L2AimCamB.YawDeg, 0],
+    YawDeg: L2AimCamB.YawDeg,
+    StandHeight: 1.42,
+    ColumnLift: 0.23,
+    LegSpread: 0.66,
+    TubeRadius: 0.021,
+    Casters: false,
+    FloorMat: true,
+    HeadTiltDeg: L2AimCamB.PitchDeg,
+  },
+  "rig-cam-b-body": {
+    ProceduralKind: "studio.cinema_camera",
+    CameraStyle: "Medium Format Tether",
+    Position: [0, 0, 0],
+    BodyLength: 0.32,
+    LensLength: 0.22,
+    MatteBoxWidth: 0.2,
+    PitchDeg: L2AimCamB.PitchDeg,
+  },
+
+  "prop-workstation": {
+    ProceduralKind: "studio.workstation",
+    Position: [6.4, 0.0, 6.85],
+    Rotation: [0, -28, 0],
+    YawDeg: -28,
+    DeskWidth: 1.48,
+    DeskDepth: 0.72,
+    DeskHeight: 0.78,
+    FlightCases: true,
+    CoiledCables: true,
+    HasDesk: true,
+  },
+  "prop-grip-cases": {
+    ProceduralKind: "studio.workstation",
+    Position: [-6.8, 0.0, 6.55],
+    Rotation: [0, 22, 0],
+    YawDeg: 22,
+    DeskWidth: 1.0,
+    DeskDepth: 0.55,
+    DeskHeight: 0.65,
+    FlightCases: true,
+    CoiledCables: true,
+    HasDesk: false,
+  },
+
+  "studio-ambient": {
+    ProceduralKind: "studio.ambient",
+    Exposure: 1.18,
+    AmbientFill: 0.16,
+    ShadowDepth: 0.75,
+    Vignette: 0.3,
+    ShowLightGizmos: false,
+  },
+};
+
 export function KelvinToRgb(Kelvin) {
   const Temp = Math.max(1800, Math.min(12000, Number(Kelvin || 5600))) / 100;
   let R, G, B;
@@ -1016,12 +1760,16 @@ export function ResolveStudioHierarchy(Rows, Values, Hidden) {
     const LocalPos = Val.Position || Val.LocalOffset || [0, 0, 0];
     const LocalYaw = (ReadYawDeg(Val) * Math.PI) / 180;
     const LocalPitch = (ReadPitchDeg(Val) * Math.PI) / 180;
+    const LocalIncline = ((Val.InclineDeg !== undefined ? Number(Val.InclineDeg) : Number(Val.Rotation?.[0] || 0)) * Math.PI) / 180;
+    const LocalBank = ((Val.BankDeg !== undefined ? Number(Val.BankDeg) : Number(Val.Rotation?.[2] || 0)) * Math.PI) / 180;
 
     if (!Row || !Row.Parent || !ById[Row.Parent] || ById[Row.Parent].Panel === "group") {
       Cache[Id] = {
         Position: [LocalPos[0], LocalPos[1], LocalPos[2]],
         YawRad: LocalYaw,
         PitchRad: LocalPitch,
+        InclineRad: LocalIncline,
+        BankRad: LocalBank,
         Forward: ComputeForwardVector(LocalYaw, LocalPitch),
         Visible: IsVisible(Id),
       };

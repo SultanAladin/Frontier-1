@@ -12,6 +12,7 @@ import {
 } from "./StudioProceduralSurface.js";
 import {
   HexToLinearRgb,
+  IsStudioLobbyLevel,
   KelvinToRgb,
   ResolveStudioHierarchy,
   IesProfiles,
@@ -59,6 +60,12 @@ layout(location = 3) in float aUv;
 uniform mat4 uViewProj;
 uniform mat4 uModel;
 uniform mat3 uNormalMat;
+uniform float uTime;
+uniform float uWindStrength;
+uniform float uWindTurbulence;
+uniform vec3 uWindDir;
+uniform vec3 uWindOrigin;
+uniform float uFanSpinAngle;
 
 out vec3 vWorldPos;
 out vec3 vLocalPos;
@@ -67,10 +74,47 @@ out float vMatCode;
 out float vUv;
 
 void main() {
-  vec4 WorldPos = uModel * vec4(aPos, 1.0);
+  vec3 Pos = aPos;
+  vec3 Norm = aNormal;
+  int Mat = int(aMatCode + 0.5);
+
+  // Live GPU spinning aluminum blades on the Studio Wind Fan (aUv stores local hub Y)
+  if (Mat == 26) {
+    float HubY = aUv;
+    float Dy = Pos.y - HubY;
+    float Cs = cos(uFanSpinAngle);
+    float Sn = sin(uFanSpinAngle);
+    Pos = vec3(Pos.x * Cs - Dy * Sn, HubY + Pos.x * Sn + Dy * Cs, Pos.z);
+    Norm = vec3(Norm.x * Cs - Norm.y * Sn, Norm.x * Sn + Norm.y * Cs, Norm.z);
+  }
+
+  vec4 WorldPos = uModel * vec4(Pos, 1.0);
+  vec3 WNorm = normalize(uNormalMat * Norm);
+
+  // Live GPU aerodynamic wind sway driven by Studio Wind Fan on all 3D ferns (24) & grass/shrubs (25)
+  if ((Mat == 24 || Mat == 25) && uWindStrength > 0.001) {
+    float Flex = pow(clamp(aUv, 0.0, 1.0), 1.5);
+    vec2 WindXz = normalize(uWindDir.xz + vec2(1e-5, 0.0));
+    vec2 ToPlant = WorldPos.xz - uWindOrigin.xz;
+    float Downwind = dot(ToPlant, WindXz);
+    float CrossDist = length(ToPlant - WindXz * max(0.0, Downwind));
+    float JetBoost = 0.42 + 1.25 * exp(-CrossDist * CrossDist * 0.065) *
+                     smoothstep(-1.8, 1.8, Downwind) * smoothstep(16.5, 2.2, Downwind);
+    float Phase = uTime * (2.6 + uWindStrength * 4.0) - dot(WorldPos.xz, WindXz) * 0.92 + WorldPos.x * 0.55;
+    float Gust = 0.65 + 0.35 * sin(Phase) + 0.24 * uWindTurbulence * cos(Phase * 2.17 + WorldPos.z * 1.85);
+    float Push = Flex * uWindStrength * JetBoost * Gust * (Mat == 24 ? 0.36 : 0.3);
+    vec2 SideXz = vec2(-WindXz.y, WindXz.x);
+    float Flutter = Flex * uWindStrength * (0.04 + 0.05 * uWindTurbulence) *
+                    sin(uTime * 7.2 + WorldPos.x * 4.7 + WorldPos.z * 3.9);
+    WorldPos.x += WindXz.x * Push + SideXz.x * Flutter;
+    WorldPos.z += WindXz.y * Push + SideXz.y * Flutter;
+    WorldPos.y -= min(0.24, Push * Push * 0.45);
+    WNorm = normalize(WNorm + vec3(WindXz.x, 0.0, WindXz.y) * Push * 0.85);
+  }
+
   vWorldPos = WorldPos.xyz;
-  vLocalPos = aPos;
-  vWorldNormal = normalize(uNormalMat * aNormal);
+  vLocalPos = Pos;
+  vWorldNormal = WNorm;
   vMatCode = aMatCode;
   vUv = aUv;
   gl_Position = uViewProj * WorldPos;
@@ -100,6 +144,8 @@ uniform float uPlasterGrain;
 uniform vec3 uCycloramaTint;
 uniform vec3 uFloorTint;
 uniform int uSelectedFlag;
+uniform float uTime;
+uniform float uWindStrength;
 
 // Per-entity vehicle/surface paint overrides
 uniform vec3 uPaintAlbedo;
@@ -125,10 +171,10 @@ uniform vec4 uIesDir[6];     // xyz = unit forward dir, w = cosHalfCone
 uniform vec4 uIesColor[6];   // rgb = linear color, w = profileId (0..3)
 uniform vec4 uIesParams[6];  // x = softness, y = radius
 
-// Vehicle grounded contact shadows (up to 3 vehicles)
+// Vehicle grounded contact shadows (up to 4 vehicles)
 uniform int uShadowCount;
-uniform vec4 uShadowCenter[3]; // xyz = pos, w = yawRad
-uniform vec4 uShadowExtents[3]; // x = halfLen, y = halfWidth
+uniform vec4 uShadowCenter[4]; // xyz = pos, w = yawRad
+uniform vec4 uShadowExtents[4]; // x = halfLen, y = halfWidth
 
 const float PI = 3.14159265359;
 
@@ -177,13 +223,14 @@ vec3 FresnelSchlick(float CosTheta, vec3 F0) {
   return F0 + (1.0 - F0) * pow(clamp(1.0 - CosTheta, 0.0, 1.0), 5.0);
 }
 
-// Evaluate grounded soft studio contact shadow under vehicles
+// Evaluate grounded soft studio contact shadow under vehicles (supports flat floor & inclined rock mound!)
 float ComputeVehicleContactShadow(vec3 WorldPos) {
-  if (WorldPos.y > 0.35) return 1.0;
-  float HeightFade = smoothstep(0.0, 0.32, WorldPos.y);
   float Shadow = 1.0;
-  for (int I = 0; I < 3; I++) {
+  for (int I = 0; I < 4; I++) {
     if (I >= uShadowCount) break;
+    float Dy = abs(WorldPos.y - uShadowCenter[I].y);
+    if (Dy > 0.62) continue;
+    float HeightFade = smoothstep(0.05, 0.58, Dy);
     vec2 Rel = WorldPos.xz - uShadowCenter[I].xz;
     float Yaw = uShadowCenter[I].w;
     float C = cos(Yaw), S = sin(Yaw);
@@ -195,7 +242,6 @@ float ComputeVehicleContactShadow(vec3 WorldPos) {
     float Umbra = smoothstep(0.72, 1.18, Ellip);
     float Penumbra = smoothstep(0.88, 1.68, Ellip);
     float CarOcc = mix(0.14, 1.0, Umbra * 0.65 + Penumbra * 0.35);
-    // Extra crisp dark wheel contact wells near the 4 corners
     for (int Wx = -1; Wx <= 1; Wx += 2) {
       for (int Wz = -1; Wz <= 1; Wz += 2) {
         vec2 WPos = vec2(float(Wx) * Half.x * 0.64, float(Wz) * Half.y * 0.84);
@@ -206,6 +252,79 @@ float ComputeVehicleContactShadow(vec3 WorldPos) {
     Shadow = min(Shadow, mix(CarOcc, 1.0, HeightFade));
   }
   return mix(1.0, Shadow, uShadowDepth);
+}
+
+// Procedural high-resolution Sunlit Forest LED Volume Backdrop (matching Ref 1 & 2!)
+vec3 EvaluateForestBackdrop(vec2 LocalXY) {
+  vec2 Uv = vec2(LocalXY.x / 12.4 + 0.5, clamp((LocalXY.y - 0.08) / 6.2, 0.0, 1.0));
+  vec2 SunPos = vec2(0.74, 0.94);
+
+  // Misty forest depth sky/canopy gradient
+  vec3 DeepForest = vec3(0.032, 0.068, 0.048);
+  vec3 MidMist = vec3(0.11, 0.21, 0.14);
+  vec3 SunGlow = vec3(1.15, 0.96, 0.64);
+  vec3 Col = mix(DeepForest, MidMist, smoothstep(0.05, 0.85, Uv.y));
+
+  // Soft sunlit atmospheric glow around upper right clearing
+  float SunDist = length((Uv - SunPos) * vec2(1.25, 1.0));
+  Col += SunGlow * exp(-SunDist * 2.4) * 0.68;
+
+  // Volumetric golden god-rays streaming diagonally from upper right through woodland canopy
+  vec2 FromSun = Uv - SunPos;
+  float RayAng = atan(FromSun.y, FromSun.x);
+  float RayBand = 0.5 + 0.5 * sin(RayAng * 19.0 + 0.8) * sin(RayAng * 11.0 - 0.5);
+  float RayNoise = FbmPlaster(vec2(RayAng * 6.5, SunDist * 2.2));
+  float GodRay = pow(clamp(RayBand * 0.65 + RayNoise * 0.55, 0.0, 1.0), 2.1) *
+                 smoothstep(1.35, 0.05, SunDist) * smoothstep(0.0, 0.35, Uv.y + 0.15);
+  Col += vec3(1.08, 0.92, 0.58) * GodRay * 0.58;
+
+  // Background misty tree silhouettes
+  for (int I = 0; I < 7; I++) {
+    float Fi = float(I);
+    float Tx = 0.08 + Fi * 0.142 + 0.025 * sin(Fi * 3.1);
+    float Tw = 0.022 + 0.012 * sin(Fi * 2.3 + 1.0);
+    float Taper = mix(1.45, 0.72, Uv.y);
+    float Sway = 0.012 * sin(Uv.y * 4.0 + Fi);
+    float D = abs(Uv.x - (Tx + Sway)) / (Tw * Taper);
+    float Mask = 1.0 - smoothstep(0.72, 1.05, D);
+    vec3 TrunkCol = vec3(0.045, 0.072, 0.052) * (0.75 + 0.5 * smoothstep(0.0, 1.0, (Uv.x - Tx) / max(Tw, 0.01) + 0.5));
+    Col = mix(Col, TrunkCol, Mask * 0.72);
+  }
+
+  // Soft sunlit canopy leaves + cherry blossom clouds (Ref Image 1 & 2!)
+  float CanopyNoise = FbmPlaster(Uv * vec2(9.5, 7.5) + vec2(1.4, -0.6));
+  float UpperCanopy = smoothstep(0.42, 0.92, Uv.y) * smoothstep(0.38, 0.72, CanopyNoise);
+  vec3 LeafGreen = mix(vec3(0.08, 0.19, 0.07), vec3(0.32, 0.48, 0.16), smoothstep(0.45, 0.85, CanopyNoise));
+  Col = mix(Col, LeafGreen, UpperCanopy * 0.68);
+
+  // Delicate flowering pink cherry-blossom clusters in midground (Ref Image 1!)
+  float BlossomZone = smoothstep(0.18, 0.44, Uv.y) * smoothstep(0.76, 0.48, Uv.y);
+  float BlossomNoise = FbmPlaster(Uv * vec2(14.0, 11.0) + vec2(4.2, 2.7));
+  float BlossomMask = BlossomZone * smoothstep(0.56, 0.78, BlossomNoise) *
+                      (smoothstep(0.28, 0.45, Uv.x) * smoothstep(0.98, 0.72, Uv.x));
+  vec3 BlossomPink = mix(vec3(0.58, 0.42, 0.46), vec3(0.95, 0.78, 0.82), smoothstep(0.55, 0.85, BlossomNoise));
+  Col = mix(Col, BlossomPink, BlossomMask * 0.52);
+
+  // Two prominent foreground redwood trunks with mossy buttress roots & sunlit edge wrap
+  for (int T = 0; T < 3; T++) {
+    float Tx = T == 0 ? 0.17 : (T == 1 ? 0.51 : 0.86);
+    float Tw = T == 0 ? 0.068 : (T == 1 ? 0.036 : 0.048);
+    float Buttress = 1.0 + 0.95 * pow(max(0.0, 1.0 - Uv.y * 2.2), 2.2);
+    float D = (Uv.x - Tx) / (Tw * Buttress);
+    float Mask = 1.0 - smoothstep(0.84, 1.02, abs(D));
+    float BarkGrain = FbmPlaster(vec2(Uv.x * 55.0, Uv.y * 12.0));
+    float SunEdge = smoothstep(0.35, 0.95, D); // Sun from right wraps warm rim onto right edge!
+    vec3 Bark = mix(vec3(0.045, 0.038, 0.028), vec3(0.16, 0.13, 0.08), BarkGrain);
+    Bark = mix(Bark, vec3(0.11, 0.18, 0.06), smoothstep(0.45, 0.12, Uv.y) * 0.65); // Mossy lower trunk
+    Bark += vec3(0.52, 0.44, 0.24) * SunEdge * 0.65;
+    Col = mix(Col, Bark, Mask * 0.94);
+  }
+
+  // Atmospheric sunlit mist drift at bottom edge blending into 3D diorama
+  float FloorMist = smoothstep(0.28, 0.0, Uv.y);
+  Col = mix(Col, vec3(0.14, 0.22, 0.15), FloorMist * 0.42);
+  Col += vec3(0.95, 0.82, 0.54) * GodRay * 0.38;
+  return Col;
 }
 
 // Analytical rectangular Area Light (representative specular point + soft diffuse)
@@ -494,6 +613,99 @@ void main() {
     Albedo = vec3(0.014, 0.016, 0.02);
     Metallic = 0.3;
     Roughness = 0.62;
+  } else if (Mat == 16) {
+    // Velvety woodland moss blanket with damp forest soil hollows
+    float MossMacro = FbmPlaster(vWorldPos.xz * 1.15);
+    float MossFine = FbmPlaster(vWorldPos.xz * 6.4 + vec2(3.1, 7.4));
+    vec3 Soil = vec3(0.055, 0.042, 0.028);
+    vec3 DeepMoss = vec3(0.055, 0.125, 0.024);
+    vec3 BrightMoss = vec3(0.165, 0.275, 0.052);
+    vec3 MossCol = mix(DeepMoss, BrightMoss, clamp(MossFine * 1.15, 0.0, 1.0));
+    Albedo = mix(Soil, MossCol, smoothstep(0.18, 0.62, MossMacro * 0.75 + N.y * 0.45));
+    Metallic = 0.0;
+    Roughness = 0.9;
+  } else if (Mat == 17) {
+    // Stratified mossy granite rock outcrop (moss caps naturally on upward ledges!)
+    float Strata = FbmPlaster(vec2(vWorldPos.x * 1.8 + vWorldPos.z * 1.4, vWorldPos.y * 5.2));
+    float Micro = FbmPlaster(vWorldPos.xz * 7.5 + vWorldPos.y * 4.0);
+    vec3 DarkGranite = vec3(0.075, 0.08, 0.078);
+    vec3 LightGranite = vec3(0.24, 0.25, 0.23);
+    vec3 RockCol = mix(DarkGranite, LightGranite, clamp(Strata * 0.72 + Micro * 0.35, 0.0, 1.0));
+    float MossCap = smoothstep(0.56, 0.88, N.y) * smoothstep(0.32, 0.74, FbmPlaster(vWorldPos.xz * 1.9));
+    vec3 LichenMoss = vec3(0.11, 0.20, 0.042);
+    Albedo = mix(RockCol, LichenMoss, MossCap * 0.72);
+    Metallic = 0.02;
+    Roughness = mix(0.76, 0.9, MossCap);
+  } else if (Mat == 18) {
+    // Weathered gnarled fallen tree trunk & grooved driftwood bark
+    float Bark = FbmPlaster(vec2(vWorldPos.x * 2.4 + vWorldPos.z * 2.1, vWorldPos.y * 14.0 + vUv * 6.0));
+    float Grain = FbmPlaster(vWorldPos.xz * 8.5);
+    vec3 Umber = vec3(0.075, 0.045, 0.025);
+    vec3 Driftwood = vec3(0.24, 0.165, 0.095);
+    vec3 BarkCol = mix(Umber, Driftwood, clamp(Bark * 0.7 + Grain * 0.35, 0.0, 1.0));
+    float TopMoss = smoothstep(0.62, 0.9, N.y) * smoothstep(0.42, 0.78, Grain);
+    Albedo = mix(BarkCol, vec3(0.11, 0.19, 0.045), TopMoss * 0.65);
+    Metallic = 0.0;
+    Roughness = 0.86;
+  } else if (Mat == 19) {
+    // Smooth wet river cobbles & pebbles (variegated mineral tones + wet clearcoat)
+    float StoneId = Hash21(floor(vWorldPos.xz * 5.2));
+    vec3 Slate = vec3(0.11, 0.115, 0.12);
+    vec3 Sandstone = vec3(0.26, 0.21, 0.15);
+    vec3 Basalt = vec3(0.06, 0.065, 0.07);
+    Albedo = mix(mix(Basalt, Slate, StoneId), Sandstone, smoothstep(0.55, 0.95, StoneId));
+    Metallic = 0.04;
+    Roughness = 0.28;
+    Clearcoat = 0.45;
+  } else if (Mat == 20) {
+    // Shimmering shallow forest stream / woodland pool with subtle wind-driven ripples
+    float Rip1 = sin(vWorldPos.x * 11.0 + uTime * (1.8 + uWindStrength * 3.0) + vWorldPos.z * 7.0);
+    float Rip2 = cos(vWorldPos.z * 14.0 - uTime * (2.2 + uWindStrength * 2.5) + vWorldPos.x * 5.0);
+    N = normalize(N + vec3(Rip1, 0.0, Rip2) * (0.025 + 0.045 * uWindStrength));
+    Albedo = vec3(0.025, 0.045, 0.04);
+    Metallic = 0.12;
+    Roughness = 0.06;
+    Clearcoat = 1.0;
+  } else if (Mat == 21) {
+    // Backlit Forest LED Volume Backdrop Screen (procedural sunlit redwood forest!)
+    vec3 ForestImg = EvaluateForestBackdrop(vLocalPos.xy);
+    Albedo = ForestImg * 0.12;
+    Metallic = 0.0;
+    Roughness = 0.72;
+    Emissive = ForestImg * max(0.25, uEmissiveStrength);
+  } else if (Mat == 22) {
+    // Matte velvet-black studio negative-fill flags & proscenium surround
+    Albedo = vec3(0.011, 0.012, 0.014);
+    Metallic = 0.02;
+    Roughness = 0.94;
+  } else if (Mat == 23) {
+    // Industrial Studio Wind Fan hammered steel housing
+    Albedo = vec3(0.085, 0.095, 0.115);
+    Metallic = 0.72;
+    Roughness = 0.34;
+  } else if (Mat == 24) {
+    // Real 3D woodland fern fronds (emerald stem -> bright sunlit chartreuse tip + translucent glow)
+    float Tip = clamp(vUv, 0.0, 1.0);
+    float Vein = FbmPlaster(vWorldPos.xz * 9.0);
+    Albedo = mix(vec3(0.065, 0.175, 0.035), vec3(0.22, 0.43, 0.075), Tip * 0.78 + Vein * 0.22);
+    Metallic = 0.0;
+    Roughness = 0.56;
+    Emissive = Albedo * (0.14 + 0.12 * Tip); // Soft forest backlit subsurface translucency
+  } else if (Mat == 25) {
+    // Real 3D grass blades & leafy woodland shrubs
+    float Tip = clamp(vUv, 0.0, 1.0);
+    float Var = FbmPlaster(vWorldPos.xz * 4.5);
+    vec3 DeepGrass = vec3(0.055, 0.145, 0.028);
+    vec3 SunlitTip = vec3(0.26, 0.46, 0.085);
+    Albedo = mix(DeepGrass, SunlitTip, Tip * 0.8 + Var * 0.2);
+    Metallic = 0.0;
+    Roughness = 0.58;
+    Emissive = Albedo * (0.1 + 0.1 * Tip);
+  } else if (Mat == 26) {
+    // Spinning brushed aluminum propeller blades inside Studio Wind Fan
+    Albedo = vec3(0.74, 0.78, 0.83);
+    Metallic = 0.94;
+    Roughness = 0.22;
   }
 
   vec3 F0 = mix(vec3(0.04), Albedo, Metallic);
@@ -504,7 +716,7 @@ void main() {
   vec3 StudioIbl = mix(vec3(0.018, 0.021, 0.028), vec3(0.22, 0.24, 0.29), clamp(R.y * 0.5 + 0.5, 0.0, 1.0));
   StudioIbl += vec3(0.55, 0.58, 0.65) * OverheadBand * (1.0 - Roughness) * 0.35;
 
-  float ContactOcc = (Mat == 6 || Mat == 7) ? ComputeVehicleContactShadow(vWorldPos) : 1.0;
+  float ContactOcc = (Mat == 6 || Mat == 7 || Mat == 16 || Mat == 17) ? ComputeVehicleContactShadow(vWorldPos) : 1.0;
   // Subtle ambient occlusion near studio cove corners and floor
   float HeightBounce = mix(0.76, 1.0, smoothstep(0.0, 2.2, vWorldPos.y));
   vec3 Ambient = Albedo * (1.0 - Metallic) * uAmbientFill * HeightBounce * ContactOcc;
@@ -553,16 +765,26 @@ const GizmoVertexSource = `#version 300 es
 precision highp float;
 layout(location = 0) in vec3 aPos;
 uniform mat4 uViewProj;
+uniform float uPointSize;
 void main() {
   gl_Position = uViewProj * vec4(aPos, 1.0);
+  gl_PointSize = max(1.0, uPointSize);
 }
 `;
 
 const GizmoFragmentSource = `#version 300 es
 precision highp float;
 uniform vec4 uColor;
+uniform float uPointSize;
 out vec4 FragColor;
 void main() {
+  if (uPointSize > 1.5) {
+    float D = length(gl_PointCoord - vec2(0.5)) * 2.0;
+    if (D > 1.0) discard;
+    float Glow = pow(1.0 - D, 2.2);
+    FragColor = vec4(uColor.rgb, uColor.a * Glow);
+    return;
+  }
   FragColor = uColor;
 }
 `;
@@ -667,6 +889,41 @@ function NormalMat3FromYaw(YawRad) {
   ]);
 }
 
+// Full 3D vehicle incline matrix: InclineRad lifts +X nose up (around Z), BankRad rolls laterally (around X), then YawRad around Y
+function VehicleTransformMat(Pos, YawRad, InclineRad = 0, BankRad = 0, Scale = 1) {
+  const Cy = Math.cos(YawRad), Sy = Math.sin(YawRad);
+  const Ci = Math.cos(InclineRad), Si = Math.sin(InclineRad);
+  const Cb = Math.cos(BankRad), Sb = Math.sin(BankRad);
+  // Apply Rz(Incline) -> Rx(-Bank) -> Ry(Yaw)
+  // Basis column 0 (+X nose): [Ci, Si, 0] -> Bank -> [Ci, Si*Cb, -Si*Sb] -> Yaw
+  const X0 = Ci * Cy - Si * Sb * Sy;
+  const Y0 = Si * Cb;
+  const Z0 = -Ci * Sy - Si * Sb * Cy;
+  // Basis column 1 (+Y up): [-Si, Ci, 0] -> Bank -> [-Si, Ci*Cb, -Ci*Sb] -> Yaw
+  const X1 = -Si * Cy - Ci * Sb * Sy;
+  const Y1 = Ci * Cb;
+  const Z1 = Si * Sy - Ci * Sb * Cy;
+  // Basis column 2 (+Z right): [0, 0, 1] -> Bank -> [0, Sb, Cb] -> Yaw
+  const X2 = Cb * Sy;
+  const Y2 = Sb;
+  const Z2 = Cb * Cy;
+  return new Float32Array([
+    X0 * Scale, Y0 * Scale, Z0 * Scale, 0,
+    X1 * Scale, Y1 * Scale, Z1 * Scale, 0,
+    X2 * Scale, Y2 * Scale, Z2 * Scale, 0,
+    Pos[0], Pos[1], Pos[2], 1,
+  ]);
+}
+
+function VehicleNormalMat3(YawRad, InclineRad = 0, BankRad = 0) {
+  const M = VehicleTransformMat([0, 0, 0], YawRad, InclineRad, BankRad, 1);
+  return new Float32Array([
+    M[0], M[1], M[2],
+    M[4], M[5], M[6],
+    M[8], M[9], M[10],
+  ]);
+}
+
 export class StudioRenderEngine {
   constructor(Canvas) {
     this.Canvas = Canvas;
@@ -717,6 +974,7 @@ export class StudioRenderEngine {
     const Gl = this.Gl;
     const Names = [
       "uViewProj", "uModel", "uNormalMat", "uCameraPos", "uViewportSize",
+      "uTime", "uWindStrength", "uWindTurbulence", "uWindDir", "uWindOrigin", "uFanSpinAngle",
       "uExposure", "uAmbientFill", "uShadowDepth", "uVignette",
       "uTileSize", "uFloorGloss", "uPlasterGrain", "uCycloramaTint", "uFloorTint",
       "uSelectedFlag", "uPaintAlbedo", "uPaintMetallic", "uPaintRoughness", "uPaintClearcoat",
@@ -732,6 +990,7 @@ export class StudioRenderEngine {
     this.GizmoLoc = {
       uViewProj: Gl.getUniformLocation(this.GizmoProgram, "uViewProj"),
       uColor: Gl.getUniformLocation(this.GizmoProgram, "uColor"),
+      uPointSize: Gl.getUniformLocation(this.GizmoProgram, "uPointSize"),
     };
   }
 
@@ -913,6 +1172,12 @@ export class StudioRenderEngine {
     Gl.uniformMatrix4fv(this.Loc.uViewProj, false, ViewProj);
     Gl.uniform3fv(this.Loc.uCameraPos, Eye);
     Gl.uniform2f(this.Loc.uViewportSize, S, S);
+    Gl.uniform1f(this.Loc.uTime, 0.0);
+    Gl.uniform1f(this.Loc.uWindStrength, 0.0);
+    Gl.uniform1f(this.Loc.uWindTurbulence, 0.0);
+    Gl.uniform3fv(this.Loc.uWindDir, [1.0, 0.0, 0.0]);
+    Gl.uniform3fv(this.Loc.uWindOrigin, [0.0, 0.0, 0.0]);
+    Gl.uniform1f(this.Loc.uFanSpinAngle, 0.0);
     Gl.uniform1f(this.Loc.uExposure, 1.45);
     Gl.uniform1f(this.Loc.uAmbientFill, 0.34);
     Gl.uniform1f(this.Loc.uShadowDepth, 0.0);
@@ -1003,7 +1268,7 @@ export class StudioRenderEngine {
     return Result;
   }
 
-  RenderScene({ Rows, Values, Hidden, Selected, Camera, GameCamera = null, LevelId, EditMode, GizmoMode = "translate", HoveredAxis = null }) {
+  RenderScene({ Rows, Values, Hidden, Selected, Camera, GameCamera = null, LevelId, EditMode, GizmoMode = "translate", HoveredAxis = null, TimeSec = 0 }) {
     const Gl = this.Gl;
     const W = this.Canvas.width;
     const H = this.Canvas.height;
@@ -1155,6 +1420,30 @@ export class StudioRenderEngine {
     Gl.uniform3fv(this.Loc.uCameraPos, Camera.Eye);
     Gl.uniform2f(this.Loc.uViewportSize, W, H);
 
+    // Resolve live Studio Wind Fan state (if present & visible in the scene)
+    const FanRow = Rows.find((R) => R.Panel === "studio-procedural" && Values[R.Id]?.ProceduralKind === "studio.studio_fan");
+    let WindStrength = 0.0;
+    let WindTurbulence = 0.4;
+    let WindDir = [1.0, 0.0, 0.0];
+    let WindOrigin = [-5.0, 1.2, 1.5];
+    let FanSpinAngle = 0.0;
+    if (FanRow && Hierarchy[FanRow.Id]?.Visible) {
+      const FanVal = Values[FanRow.Id] || {};
+      const FanXf = Hierarchy[FanRow.Id];
+      WindStrength = Math.max(0.0, Math.min(2.0, Number(FanVal.WindSpeed ?? 0.8)));
+      WindTurbulence = Math.max(0.0, Math.min(1.5, Number(FanVal.GustTurbulence ?? 0.55)));
+      WindOrigin = FanXf.Position;
+      // Local +Z of fan shroud is blow direction -> world [+sin(Yaw), 0, +cos(Yaw)]
+      WindDir = [Math.sin(FanXf.YawRad), 0.0, Math.cos(FanXf.YawRad)];
+      FanSpinAngle = TimeSec * (3.5 + WindStrength * 22.0);
+    }
+    Gl.uniform1f(this.Loc.uTime, TimeSec);
+    Gl.uniform1f(this.Loc.uWindStrength, WindStrength);
+    Gl.uniform1f(this.Loc.uWindTurbulence, WindTurbulence);
+    Gl.uniform3fv(this.Loc.uWindDir, WindDir);
+    Gl.uniform3fv(this.Loc.uWindOrigin, WindOrigin);
+    Gl.uniform1f(this.Loc.uFanSpinAngle, FanSpinAngle);
+
     const AmbientVal = Values["studio-ambient"] || {};
     const CycVal = Values["studio-cyclorama"] || {};
     const FloorVal = Values["studio-floor"] || {};
@@ -1202,10 +1491,10 @@ export class StudioRenderEngine {
     Gl.uniform4fv(this.Loc.uIesColor, IColor);
     Gl.uniform4fv(this.Loc.uIesParams, IParams);
 
-    // Upload grounded contact shadow ellipses for vehicles
-    const ShadowCount = Math.min(3, Shadows.length);
+    // Upload grounded contact shadow ellipses for up to 4 vehicles
+    const ShadowCount = Math.min(4, Shadows.length);
     Gl.uniform1i(this.Loc.uShadowCount, ShadowCount);
-    const SCenter = new Float32Array(12), SExt = new Float32Array(12);
+    const SCenter = new Float32Array(16), SExt = new Float32Array(16);
     for (let I = 0; I < ShadowCount; I++) {
       SCenter.set([Shadows[I].Pos[0], Shadows[I].Pos[1], Shadows[I].Pos[2], Shadows[I].YawRad], I * 4);
       SExt.set([Shadows[I].HalfLen, Shadows[I].HalfWidth, 0, 0], I * 4);
@@ -1218,10 +1507,19 @@ export class StudioRenderEngine {
     let Triangles = 0;
     const Pickables = [];
 
-    const SubmitSurface = (Gpu, RowId, Pos, YawRad, Scale, PaintOpts, Pickable = true) => {
+    const SubmitSurface = (Gpu, RowId, Pos, YawRad, Scale, PaintOpts, Pickable = true, InclineRad = 0, BankRad = 0) => {
       if (!Gpu) return;
-      Gl.uniformMatrix4fv(this.Loc.uModel, false, ModelTransformMat(Pos, YawRad, Scale));
-      Gl.uniformMatrix3fv(this.Loc.uNormalMat, false, NormalMat3FromYaw(YawRad));
+      const HasTilt = Math.abs(InclineRad) > 1e-4 || Math.abs(BankRad) > 1e-4;
+      Gl.uniformMatrix4fv(
+        this.Loc.uModel,
+        false,
+        HasTilt ? VehicleTransformMat(Pos, YawRad, InclineRad, BankRad, Scale) : ModelTransformMat(Pos, YawRad, Scale),
+      );
+      Gl.uniformMatrix3fv(
+        this.Loc.uNormalMat,
+        false,
+        HasTilt ? VehicleNormalMat3(YawRad, InclineRad, BankRad) : NormalMat3FromYaw(YawRad),
+      );
       Gl.uniform1i(this.Loc.uSelectedFlag, EditMode && Selected === RowId ? 1 : 0);
       Gl.uniform3fv(this.Loc.uPaintAlbedo, PaintOpts.Albedo);
       Gl.uniform1f(this.Loc.uPaintMetallic, PaintOpts.Metallic);
@@ -1288,18 +1586,33 @@ export class StudioRenderEngine {
           EmissiveTint: [1, 1, 1],
           EmissiveStrength: 1.5,
         };
-        SubmitSurface(Gpu, Row.Id, Xf.Position, Xf.YawRad, Number(Val.Scale ?? 0.76), Paint, true);
+        SubmitSurface(
+          Gpu,
+          Row.Id,
+          Xf.Position,
+          Xf.YawRad,
+          Number(Val.Scale ?? 0.76),
+          Paint,
+          true,
+          Xf.InclineRad || 0,
+          Xf.BankRad || 0,
+        );
       } else if (Row.Panel === "studio-procedural" && Val.ProceduralKind && Val.ProceduralKind !== "studio.ambient") {
+        if (Val.ProceduralKind === "studio.dust_field" && !EditMode) continue;
         const Gpu = this.GetCachedProcedural(Val.ProceduralKind, Val);
         const IsArch =
           Val.ProceduralKind === "studio.cyclorama" ||
           Val.ProceduralKind === "studio.tiled_floor" ||
-          Val.ProceduralKind === "studio.ceiling_truss";
+          Val.ProceduralKind === "studio.ceiling_truss" ||
+          Val.ProceduralKind === "studio.forest_backdrop" ||
+          Val.ProceduralKind === "studio.rock_outcrop";
 
-        // Match fixture diffuser emissive tint/brightness to its child light!
+        // Match fixture diffuser emissive tint/brightness to its child light, or Forest LED Backdrop brightness!
         let EmissiveTint = [0.97, 0.985, 1.0];
         let EmissiveStrength = 2.8;
-        if (Val.ProceduralKind === "studio.light_fixture") {
+        if (Val.ProceduralKind === "studio.forest_backdrop") {
+          EmissiveStrength = Number(Val.BackdropBrightness ?? 1.45);
+        } else if (Val.ProceduralKind === "studio.light_fixture") {
           const ChildLight = Rows.find((R) => R.Parent === Row.Id && R.Panel === "light");
           if (ChildLight) {
             const Lv = Values[ChildLight.Id] || {};
@@ -1351,13 +1664,27 @@ export class StudioRenderEngine {
       }
     }
 
+    // Render live sunlit Dust Particles advected by the Studio Wind Fan (Lobby 2!)
+    const DustRow = Rows.find((R) => R.Panel === "studio-procedural" && Values[R.Id]?.ProceduralKind === "studio.dust_field");
+    if (DustRow && Hierarchy[DustRow.Id]?.Visible) {
+      this.RenderDustParticles(
+        ViewProj,
+        TimeSec,
+        Values[DustRow.Id] || {},
+        Hierarchy[DustRow.Id].Position,
+        WindDir,
+        WindStrength,
+      );
+      DrawCalls += 2;
+    }
+
     // Optional Edit-mode Light Rig Gizmos (Area quads & IES beam cones)
     if (EditMode && AmbientVal.ShowLightGizmos) {
       this.RenderLightGizmos(ViewProj, AreaLights, IesLights);
     }
 
     // In Edit / Sim modes, draw the live Game Camera frustum so the user can watch it move while flying the unrestricted Editor Camera
-    if (EditMode && GameCamera && LevelId === "studio-lobby") {
+    if (EditMode && GameCamera && IsStudioLobbyLevel(LevelId)) {
       this.RenderGameCameraFrustum(ViewProj, GameCamera, Aspect);
     }
 
@@ -1372,9 +1699,14 @@ export class StudioRenderEngine {
           SelRow.Panel === "geometry" ||
           (SelRow.Panel === "studio-procedural" &&
             SelVal.ProceduralKind &&
-            !["studio.cyclorama", "studio.tiled_floor", "studio.ceiling_truss", "studio.ambient"].includes(
-              SelVal.ProceduralKind,
-            ) &&
+            ![
+              "studio.cyclorama",
+              "studio.tiled_floor",
+              "studio.ceiling_truss",
+              "studio.forest_backdrop",
+              "studio.rock_outcrop",
+              "studio.ambient",
+            ].includes(SelVal.ProceduralKind) &&
             (!SelRow.Parent || Rows.find((P) => P.Id === SelRow.Parent)?.Panel === "group")));
       if (Movable) {
         const Origin = [
@@ -1412,6 +1744,7 @@ export class StudioRenderEngine {
     Gl.clear(Gl.DEPTH_BUFFER_BIT);
     Gl.useProgram(this.GizmoProgram);
     Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1.0);
     Gl.bindVertexArray(this.GizmoVao);
     Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
     Gl.enableVertexAttribArray(0);
@@ -1611,6 +1944,7 @@ export class StudioRenderEngine {
 
     Gl.useProgram(this.GizmoProgram);
     Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1.0);
     Gl.uniform4f(this.GizmoLoc.uColor, 0.45, 0.82, 1.0, 0.85);
     Gl.bindVertexArray(this.GizmoVao);
     Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
@@ -1742,6 +2076,7 @@ export class StudioRenderEngine {
     const Gl = this.Gl;
     Gl.useProgram(this.GizmoProgram);
     Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1.0);
     Gl.bindVertexArray(this.GizmoVao);
     Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
     Gl.enableVertexAttribArray(0);
@@ -1756,6 +2091,81 @@ export class StudioRenderEngine {
     Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
     Gl.drawArrays(Gl.LINES, 0, AimVerts.length / 3);
 
+    Gl.bindVertexArray(null);
+  }
+
+  // Softly glowing sunlit floating dust motes & woodland spores advected live by the Studio Wind Fan!
+  RenderDustParticles(ViewProj, TimeSec, DustVal, Center, WindDir, WindStrength) {
+    const Count = Math.max(40, Math.min(480, Math.round(Number(DustVal.ParticleCount ?? 280))));
+    const Drift = Number(DustVal.DriftSpeed ?? 0.72);
+    const Glow = Number(DustVal.GlowIntensity ?? 1.05);
+    const MoteSize = Number(DustVal.MoteSize ?? 4.8);
+    const SpanX = 11.6;
+    const SpanY = 4.6;
+    const SpanZ = 9.4;
+
+    const Wrap = (V, Span) => ((((V + Span * 0.5) % Span) + Span) % Span) - Span * 0.5;
+    const WarmVerts = [];
+    const CoolVerts = [];
+    const Speed = (0.28 + WindStrength * 1.45) * Drift;
+
+    for (let I = 0; I < Count; I++) {
+      // Deterministic golden-ratio / Halton-like distribution across the studio volume
+      const S1 = Math.sin(I * 12.9898 + 1.23) * 43758.5453;
+      const S2 = Math.sin(I * 78.233 + 4.56) * 23421.6312;
+      const S3 = Math.sin(I * 37.719 + 7.89) * 19283.4123;
+      const Rx = S1 - Math.floor(S1);
+      const Ry = S2 - Math.floor(S2);
+      const Rz = S3 - Math.floor(S3);
+
+      const BaseX = (Rx - 0.5) * SpanX;
+      const BaseY = 0.25 + Ry * SpanY;
+      const BaseZ = (Rz - 0.5) * SpanZ;
+
+      const Eddy = 0.35 + 0.65 * Math.sin(TimeSec * (0.7 + Rx * 0.9) + I * 1.7);
+      const AdvX = BaseX + WindDir[0] * TimeSec * Speed * (0.65 + 0.6 * Rz) + Math.sin(TimeSec * 0.9 + I) * 0.32;
+      const AdvZ = BaseZ + WindDir[2] * TimeSec * Speed * (0.65 + 0.6 * Rz) + Math.cos(TimeSec * 0.8 + I * 1.3) * 0.32;
+      const AdvY = BaseY + Math.sin(TimeSec * 1.15 + I * 2.1) * 0.24 * Eddy + WindStrength * 0.14 * Math.cos(TimeSec * 1.6 + I);
+
+      const Px = Center[0] + Wrap(AdvX, SpanX);
+      const Py = Math.max(0.18, Math.min(5.6, AdvY));
+      const Pz = Center[2] + Wrap(AdvZ, SpanZ);
+
+      if (I % 3 === 0) {
+        CoolVerts.push(Px, Py, Pz);
+      } else {
+        WarmVerts.push(Px, Py, Pz);
+      }
+    }
+
+    const Gl = this.Gl;
+    Gl.useProgram(this.GizmoProgram);
+    Gl.uniformMatrix4fv(this.GizmoLoc.uViewProj, false, ViewProj);
+    Gl.bindVertexArray(this.GizmoVao);
+    Gl.bindBuffer(Gl.ARRAY_BUFFER, this.GizmoVbo);
+    Gl.enableVertexAttribArray(0);
+
+    Gl.enable(Gl.BLEND);
+    Gl.blendFunc(Gl.SRC_ALPHA, Gl.ONE);
+    Gl.depthMask(false);
+
+    // Warm golden sunbeam dust motes
+    Gl.uniform1f(this.GizmoLoc.uPointSize, MoteSize * (this.Canvas.width > 900 ? 1.15 : 0.9));
+    Gl.uniform4f(this.GizmoLoc.uColor, 1.0, 0.92, 0.68, Math.min(0.92, 0.62 * Glow));
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(WarmVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.POINTS, 0, WarmVerts.length / 3);
+
+    // Finer sunlit woodland pollen/mist specks
+    Gl.uniform1f(this.GizmoLoc.uPointSize, Math.max(2.2, MoteSize * 0.62));
+    Gl.uniform4f(this.GizmoLoc.uColor, 0.84, 0.96, 0.78, Math.min(0.85, 0.45 * Glow));
+    Gl.bufferData(Gl.ARRAY_BUFFER, new Float32Array(CoolVerts), Gl.DYNAMIC_DRAW);
+    Gl.vertexAttribPointer(0, 3, Gl.FLOAT, false, 0, 0);
+    Gl.drawArrays(Gl.POINTS, 0, CoolVerts.length / 3);
+
+    Gl.depthMask(true);
+    Gl.disable(Gl.BLEND);
+    Gl.uniform1f(this.GizmoLoc.uPointSize, 1.0);
     Gl.bindVertexArray(null);
   }
 

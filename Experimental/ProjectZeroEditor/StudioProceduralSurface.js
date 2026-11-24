@@ -20,6 +20,17 @@ export const SurfaceMaterialCode = {
   TetherScreen: 13,
   PelicanCase: 14,
   CeilingRib: 15,
+  ForestMoss: 16,
+  MossyRock: 17,
+  FallenWood: 18,
+  RiverPebble: 19,
+  ForestWater: 20,
+  ForestBackdrop: 21,
+  BlackFlag: 22,
+  FanHousing: 23,
+  FernFrond: 24,
+  GrassBlade: 25,
+  FanBlade: 26,
 };
 
 function CreateBuilder() {
@@ -963,6 +974,803 @@ function ConstructWorkstation(Params) {
   return B.Finish();
 }
 
+// Deterministic seeded PRNG for repeatable studio forest placement
+function MakeSeededRng(Seed) {
+  let State = (Seed >>> 0) || 1337;
+  return () => {
+    State = (Math.imul(State, 1664525) + 1013904223) >>> 0;
+    return State / 4294967296;
+  };
+}
+
+function OrganicNoise2(X, Z) {
+  return (
+    Math.sin(X * 0.85 + Z * 0.42) * 0.42 +
+    Math.cos(X * 1.63 - Z * 1.17) * 0.31 +
+    Math.sin(X * 3.1 + Z * 2.75) * 0.17 +
+    Math.cos(X * 5.4 - Z * 4.9) * 0.1
+  );
+}
+
+// Helper: faceted organic 3D granite boulder with deterministic displacement
+function AddOrganicBoulder(B, Center, Radii, YawRad, Seed, Mat) {
+  const [Cx, Cy, Cz] = Center;
+  const [Rx, Ry, Rz] = Radii;
+  const Rings = 8;
+  const Segs = 12;
+  const Cyw = Math.cos(YawRad), Syw = Math.sin(YawRad);
+
+  const Pt = (I, J) => {
+    const Phi = (I / Rings) * Math.PI;
+    const Th = (J / Segs) * Math.PI * 2;
+    const Sp = Math.sin(Phi), Cp = Math.cos(Phi);
+    const Nx = Sp * Math.cos(Th);
+    const Ny = Cp;
+    const Nz = Sp * Math.sin(Th);
+    const Facet =
+      1.0 +
+      0.19 * Math.sin(Nx * 3.7 + Seed) * Math.cos(Nz * 3.3 - Seed * 0.7) +
+      0.11 * Math.cos(Ny * 5.2 + Nx * 4.1 + Seed * 1.3) +
+      0.06 * Math.sin(Nz * 7.1 - Ny * 6.3 + Seed);
+    // Flatten underside slightly so boulders seat firmly into moss/earth
+    const FlatY = Ny < -0.25 ? Ny * 0.62 : Ny;
+    const Lx = Nx * Rx * Facet;
+    const Ly = FlatY * Ry * Facet;
+    const Lz = Nz * Rz * Facet;
+    return [
+      Cx + Lx * Cyw + Lz * Syw,
+      Math.max(0.0, Cy + Ly),
+      Cz - Lx * Syw + Lz * Cyw,
+    ];
+  };
+
+  for (let I = 0; I < Rings; I++) {
+    for (let J = 0; J < Segs; J++) {
+      const P00 = Pt(I, J);
+      const P10 = Pt(I + 1, J);
+      const P11 = Pt(I + 1, J + 1);
+      const P01 = Pt(I, J + 1);
+      if (I > 0) {
+        const N1 = B.FlatNormal(P00, P10, P11);
+        B.PushTri(P00, P10, P11, N1, N1, N1, Mat);
+      }
+      if (I < Rings - 1) {
+        const N2 = B.FlatNormal(P00, P11, P01);
+        B.PushTri(P00, P11, P01, N2, N2, N2, Mat);
+      }
+    }
+  }
+}
+
+// Evaluate exact rock incline crest plane so Hero Vehicle tires sit flush on the outcrop!
+export function EvaluateForestRockPlane(LocalX, LocalZ, Params = {}) {
+  const CrestY = Number(Params.InclineHeight ?? 0.56);
+  const InclineRad = (Number(Params.InclineDeg ?? 8.5) * Math.PI) / 180;
+  const BankRad = (Number(Params.BankDeg ?? 3.8) * Math.PI) / 180;
+  const YawRad = (Number(Params.VehicleYawDeg ?? -22) * Math.PI) / 180;
+  const Along = LocalX * Math.cos(YawRad) - LocalZ * Math.sin(YawRad);
+  const Across = LocalX * Math.sin(YawRad) + LocalZ * Math.cos(YawRad);
+  return {
+    Along,
+    Across,
+    PlaneY: CrestY + Along * Math.tan(InclineRad) + Across * Math.tan(BankRad),
+  };
+}
+
+// 8. Procedural Mossy Granite Rock Incline Mound, Woodland Moss Blanket, River Cobbles & Stream (studio.rock_outcrop)
+function ConstructRockOutcrop(Params) {
+  const B = CreateBuilder();
+  const IslandRadiusX = Number(Params.IslandWidth ?? 11.4) * 0.5;
+  const IslandRadiusZ = Number(Params.IslandDepth ?? 9.2) * 0.5;
+  const RockScale = Number(Params.RockScale ?? 1.0);
+  const HasStream = Params.HasStream !== false;
+  const GridX = 40;
+  const GridZ = 34;
+
+  // Height & material classifier for the sculpted moss/granite island
+  const SampleTerrain = (Ix, Iz) => {
+    const Fx = (Ix / GridX) * 2 - 1;
+    const Fz = (Iz / GridZ) * 2 - 1;
+    const Lx = Fx * IslandRadiusX;
+    const Lz = Fz * IslandRadiusZ;
+    const NormR = Math.hypot(Lx / IslandRadiusX, Lz / IslandRadiusZ);
+    const EdgeNoise = 0.14 * OrganicNoise2(Lx * 0.55, Lz * 0.55);
+    const Mask = Math.max(0, Math.min(1, 1 - Math.max(0, (NormR + EdgeNoise - 0.56) / 0.46)));
+    const SmoothMask = Mask * Mask * (3 - 2 * Mask);
+
+    const { Along, Across, PlaneY } = EvaluateForestRockPlane(Lx, Lz, Params);
+    // Elliptical rock outcrop core directly beneath the Hero Vehicle
+    const CoreDist = Math.hypot(Along / 2.65, Across / 1.68);
+    const CoreWeight = Math.max(0, Math.min(1, 1 - Math.max(0, (CoreDist - 0.72) / 0.55)));
+    const SmoothCore = CoreWeight * CoreWeight * (3 - 2 * CoreWeight);
+
+    // Natural mossy woodland undulation surrounding the rock crest
+    const MossHummock =
+      (0.18 + 0.14 * Math.max(0, OrganicNoise2(Lx * 0.85, Lz * 0.85)) + 0.08 * Math.sin(Lx * 1.4) * Math.cos(Lz * 1.2)) *
+      SmoothMask;
+
+    // Shallow forest stream channel winding through front-left hollow (Ref Image 1 & 2)
+    const StreamCenterX = -1.65 + Math.sin(Lz * 0.7) * 0.65;
+    const StreamDist = Math.abs(Lx - StreamCenterX);
+    const InStreamZone = Lz > 1.25 && Lz < IslandRadiusZ * 0.82 && StreamDist < 0.92;
+    const StreamCarve = InStreamZone ? Math.cos((StreamDist / 0.92) * Math.PI * 0.5) * 0.16 : 0;
+
+    let Y = MossHummock * (1 - SmoothCore) + (PlaneY - 0.015 + 0.025 * OrganicNoise2(Lx * 2.1, Lz * 2.1) * (1 - SmoothCore * 0.85)) * SmoothCore;
+    Y = Math.max(0.0, Y * SmoothMask - StreamCarve);
+    if (NormR > 0.96) Y = 0.0;
+
+    // Granite outcrop rock near center crest & steep ledges; velvety moss elsewhere
+    const IsRock = SmoothCore > 0.28 || (Y > 0.34 && OrganicNoise2(Lx * 1.6, Lz * 1.6) > -0.15);
+    return { P: [Lx, Y, Lz], IsRock };
+  };
+
+  const Grid = [];
+  for (let Iz = 0; Iz <= GridZ; Iz++) {
+    const Row = [];
+    for (let Ix = 0; Ix <= GridX; Ix++) Row.push(SampleTerrain(Ix, Iz));
+    Grid.push(Row);
+  }
+  for (let Iz = 0; Iz < GridZ; Iz++) {
+    for (let Ix = 0; Ix < GridX; Ix++) {
+      const A = Grid[Iz][Ix];
+      const Bv = Grid[Iz][Ix + 1];
+      const C = Grid[Iz + 1][Ix + 1];
+      const D = Grid[Iz + 1][Ix];
+      if (A.P[1] <= 0.002 && Bv.P[1] <= 0.002 && C.P[1] <= 0.002 && D.P[1] <= 0.002) continue;
+      const Mat = A.IsRock || C.IsRock ? SurfaceMaterialCode.MossyRock : SurfaceMaterialCode.ForestMoss;
+      B.AddQuadFlat(A.P, D.P, C.P, Bv.P, Mat);
+    }
+  }
+
+  // Sculpted rugged granite boulders buttressing the rock incline mound (Ref Image 2!)
+  const Boulders = [
+    // Prominent front-center & front-left rock face directly beneath the vehicle crest
+    [0.25, 0.34, 1.55, 1.18, 0.42, 0.88, 0.3, 11],
+    [-1.45, 0.3, 1.38, 0.95, 0.38, 0.82, -0.45, 23],
+    [1.82, 0.32, 1.15, 0.96, 0.4, 0.78, 0.62, 37],
+    // Rear & side granite outcrop ledges supporting the inclined ramp
+    [-2.25, 0.36, -0.2, 1.12, 0.46, 0.96, 0.2, 41],
+    [2.35, 0.42, -0.35, 1.18, 0.52, 0.92, -0.3, 53],
+    [-1.35, 0.36, -1.65, 1.25, 0.48, 0.88, 0.55, 67],
+    [1.15, 0.44, -1.72, 1.32, 0.54, 0.94, -0.22, 79],
+    // Secondary mossy accent stones around the outer moss bank
+    [-3.4, 0.18, 1.7, 0.62, 0.26, 0.52, 0.9, 91],
+    [3.3, 0.2, 1.9, 0.68, 0.28, 0.56, -0.8, 107],
+    [-2.95, 0.22, -1.85, 0.72, 0.32, 0.58, 0.4, 119],
+    [3.1, 0.24, -1.6, 0.78, 0.34, 0.62, -0.5, 131],
+  ];
+  for (const [X, Y, Z, Rx, Ry, Rz, Yaw, Seed] of Boulders) {
+    AddOrganicBoulder(B, [X, Y * RockScale, Z], [Rx * RockScale, Ry * RockScale, Rz * RockScale], Yaw, Seed, SurfaceMaterialCode.MossyRock);
+  }
+
+  // Lush mossy hummock cushions along the front & sides (soft ragged transition to concrete floor)
+  const Rng = MakeSeededRng(4207);
+  for (let M = 0; M < 32; M++) {
+    const Ang = (M / 32) * Math.PI * 2 + (Rng() - 0.5) * 0.22;
+    const DistX = (3.4 + Rng() * 2.15) * (IslandRadiusX / 5.7);
+    const DistZ = (2.75 + Rng() * 1.75) * (IslandRadiusZ / 4.6);
+    const Mx = Math.cos(Ang) * DistX;
+    const Mz = Math.sin(Ang) * DistZ;
+    AddOrganicBoulder(
+      B,
+      [Mx, 0.06 + Rng() * 0.07, Mz],
+      [0.45 + Rng() * 0.52, 0.14 + Rng() * 0.14, 0.42 + Rng() * 0.48],
+      Rng() * Math.PI,
+      300 + M * 17,
+      SurfaceMaterialCode.ForestMoss,
+    );
+  }
+
+  // Smooth wet river pebbles & cobbles clustered along front moss bank & stream edge (Ref Image 2!)
+  for (let P = 0; P < 58; P++) {
+    const Side = P % 3 === 0 ? -1 : 1;
+    const Px = -2.6 + Rng() * 5.6 + (P < 18 ? -1.1 : 0);
+    const Pz = 2.35 + Rng() * 1.85;
+    const Pr = 0.065 + Rng() * 0.11;
+    AddOrganicBoulder(
+      B,
+      [Px, Pr * 0.45, Pz],
+      [Pr * (1.1 + Rng() * 0.45), Pr * (0.48 + Rng() * 0.24), Pr * (0.95 + Rng() * 0.4) * Math.abs(Side)],
+      Rng() * Math.PI,
+      700 + P * 13,
+      SurfaceMaterialCode.RiverPebble,
+    );
+  }
+
+  // Shallow shimmering forest stream / woodland puddle surface (Ref Image 1 & 2)
+  if (HasStream) {
+    const StreamSegs = 12;
+    const WaterY = 0.065;
+    for (let S = 0; S < StreamSegs; S++) {
+      const Z0 = 1.35 + (S / StreamSegs) * 2.55;
+      const Z1 = 1.35 + ((S + 1) / StreamSegs) * 2.55;
+      const Cx0 = -1.65 + Math.sin(Z0 * 0.7) * 0.65;
+      const Cx1 = -1.65 + Math.sin(Z1 * 0.7) * 0.65;
+      const W0 = 0.48 + 0.18 * Math.sin(S * 0.8);
+      const W1 = 0.48 + 0.18 * Math.sin((S + 1) * 0.8);
+      B.AddQuadFlat(
+        [Cx0 - W0, WaterY, Z0],
+        [Cx1 - W1, WaterY, Z1],
+        [Cx1 + W1, WaterY, Z1],
+        [Cx0 + W0, WaterY, Z0],
+        SurfaceMaterialCode.ForestWater,
+      );
+    }
+    // Small circular woodland basin pond at front center-right (Ref Image 2!)
+    const PondSegs = 16;
+    const PondC = [1.15, 0.055, 3.25];
+    for (let S = 0; S < PondSegs; S++) {
+      const A0 = (S / PondSegs) * Math.PI * 2;
+      const A1 = ((S + 1) / PondSegs) * Math.PI * 2;
+      const P0 = [PondC[0] + Math.cos(A0) * 0.62, PondC[1], PondC[2] + Math.sin(A0) * 0.46];
+      const P1 = [PondC[0] + Math.cos(A1) * 0.62, PondC[1], PondC[2] + Math.sin(A1) * 0.46];
+      B.PushTri(PondC, P1, P0, [0, 1, 0], [0, 1, 0], [0, 1, 0], SurfaceMaterialCode.ForestWater);
+    }
+  }
+
+  return B.Finish();
+}
+
+// Helper: gnarled fluted organic tree trunk / branch segment chain
+function AddGnarledBranch(B, Points, Radii, Sides, TwistSeed, Mat) {
+  const Rings = [];
+  for (let I = 0; I < Points.length; I++) {
+    const P = Points[I];
+    const Prev = Points[Math.max(0, I - 1)];
+    const Next = Points[Math.min(Points.length - 1, I + 1)];
+    let Tx = Next[0] - Prev[0], Ty = Next[1] - Prev[1], Tz = Next[2] - Prev[2];
+    const Tl = Math.hypot(Tx, Ty, Tz) || 1;
+    Tx /= Tl; Ty /= Tl; Tz /= Tl;
+    const Ref = Math.abs(Ty) < 0.85 ? [0, 1, 0] : [1, 0, 0];
+    let Rx = Ref[1] * Tz - Ref[2] * Ty;
+    let Ry = Ref[2] * Tx - Ref[0] * Tz;
+    let Rz = Ref[0] * Ty - Ref[1] * Tx;
+    const Rl = Math.hypot(Rx, Ry, Rz) || 1;
+    Rx /= Rl; Ry /= Rl; Rz /= Rl;
+    const Ux = Ty * Rz - Tz * Ry;
+    const Uy = Tz * Rx - Tx * Rz;
+    const Uz = Tx * Ry - Ty * Rx;
+
+    const Ring = [];
+    for (let S = 0; S < Sides; S++) {
+      const A = (S / Sides) * Math.PI * 2 + I * 0.24;
+      const Fluting = 1.0 + 0.16 * Math.sin(A * 3 + I * 0.9 + TwistSeed) + 0.08 * Math.cos(A * 5 - I * 1.4);
+      const Rad = Radii[I] * Fluting;
+      const Ca = Math.cos(A), Sa = Math.sin(A);
+      Ring.push([
+        P[0] + (Rx * Ca + Ux * Sa) * Rad,
+        P[1] + (Ry * Ca + Uy * Sa) * Rad,
+        P[2] + (Rz * Ca + Uz * Sa) * Rad,
+      ]);
+    }
+    Rings.push(Ring);
+  }
+  for (let I = 0; I < Rings.length - 1; I++) {
+    for (let S = 0; S < Sides; S++) {
+      const S1 = (S + 1) % Sides;
+      B.AddQuadFlat(Rings[I][S], Rings[I][S1], Rings[I + 1][S1], Rings[I + 1][S], Mat, I / (Rings.length - 1));
+    }
+  }
+  // Cap both ends with jagged wood fracture face
+  const StartC = Points[0], EndC = Points[Points.length - 1];
+  for (let S = 0; S < Sides; S++) {
+    const S1 = (S + 1) % Sides;
+    const N0 = B.FlatNormal(StartC, Rings[0][S1], Rings[0][S]);
+    B.PushTri(StartC, Rings[0][S1], Rings[0][S], N0, N0, N0, Mat);
+    const N1 = B.FlatNormal(EndC, Rings[Rings.length - 1][S], Rings[Rings.length - 1][S1]);
+    B.PushTri(EndC, Rings[Rings.length - 1][S], Rings[Rings.length - 1][S1], N1, N1, N1, Mat);
+  }
+}
+
+// 9. Procedural Weathered Fallen Tree Trunk, Twisted Roots & Split Branches (studio.fallen_wood)
+function ConstructFallenWood(Params) {
+  const B = CreateBuilder();
+  const Scale = Number(Params.LogScale ?? 1.0);
+  const S = (Pts) => Pts.map(([X, Y, Z]) => [X * Scale, Y * Scale, Z * Scale]);
+  const R = (Arr) => Arr.map((V) => V * Scale);
+
+  // Main dramatic gnarled fallen log rising toward the root crown (Ref Image 1 foreground right!)
+  AddGnarledBranch(
+    B,
+    S([
+      [-2.15, 0.24, 0.85],
+      [-1.35, 0.34, 0.56],
+      [-0.45, 0.48, 0.22],
+      [0.45, 0.64, -0.06],
+      [1.22, 0.88, -0.28],
+      [1.76, 1.18, -0.44],
+    ]),
+    R([0.16, 0.22, 0.28, 0.34, 0.42, 0.36]),
+    10,
+    1.2,
+    SurfaceMaterialCode.FallenWood,
+  );
+
+  // Split twisted upper root-flare limbs arching off the right crown
+  AddGnarledBranch(
+    B,
+    S([
+      [1.28, 0.86, -0.28],
+      [1.92, 0.96, 0.08],
+      [2.52, 0.72, 0.34],
+      [2.95, 0.22, 0.48],
+    ]),
+    R([0.2, 0.15, 0.11, 0.055]),
+    8,
+    3.4,
+    SurfaceMaterialCode.FallenWood,
+  );
+  AddGnarledBranch(
+    B,
+    S([
+      [1.48, 1.04, -0.34],
+      [2.05, 1.38, -0.58],
+      [2.65, 1.56, -0.78],
+    ]),
+    R([0.18, 0.12, 0.045]),
+    8,
+    5.1,
+    SurfaceMaterialCode.FallenWood,
+  );
+  AddGnarledBranch(
+    B,
+    S([
+      [0.72, 0.66, -0.14],
+      [1.15, 0.44, 0.42],
+      [1.62, 0.16, 0.78],
+    ]),
+    R([0.15, 0.11, 0.05]),
+    8,
+    7.8,
+    SurfaceMaterialCode.FallenWood,
+  );
+
+  // Broken side snag protruding from mid-trunk
+  AddGnarledBranch(
+    B,
+    S([
+      [-0.42, 0.5, 0.22],
+      [-0.68, 0.78, -0.18],
+      [-0.86, 0.96, -0.42],
+    ]),
+    R([0.13, 0.085, 0.035]),
+    7,
+    2.6,
+    SurfaceMaterialCode.FallenWood,
+  );
+
+  // Moss pads clinging along top ridges of the weathered trunk
+  AddOrganicBoulder(B, [0.1 * Scale, 0.68 * Scale, 0.05 * Scale], [0.55 * Scale, 0.14 * Scale, 0.26 * Scale], -0.32, 91, SurfaceMaterialCode.ForestMoss);
+  AddOrganicBoulder(B, [-1.05 * Scale, 0.45 * Scale, 0.42 * Scale], [0.48 * Scale, 0.12 * Scale, 0.22 * Scale], -0.32, 97, SurfaceMaterialCode.ForestMoss);
+
+  return B.Finish();
+}
+
+// Helper: build one REAL 3D sculpted pinnate fern rosette (arching stems + V-folded leaflets, aUv = wind flex!)
+function AddRealFernRosette(B, Center, FrondCount, FrondLength, Seed) {
+  const [Cx, Cy, Cz] = Center;
+  const Rng = MakeSeededRng(Seed);
+
+  for (let F = 0; F < FrondCount; F++) {
+    const GoldenAng = F * 2.39996 + Rng() * 0.28;
+    const RingLayer = F < FrondCount * 0.35 ? 0 : 1; // inner upright fronds vs outer arching fronds
+    const Len = FrondLength * (RingLayer === 0 ? 0.68 + Rng() * 0.22 : 0.88 + Rng() * 0.3);
+    const LiftAngle = RingLayer === 0 ? 0.92 + Rng() * 0.25 : 0.46 + Rng() * 0.28;
+    const Droop = RingLayer === 0 ? 0.32 : 0.58;
+    const CosA = Math.cos(GoldenAng);
+    const SinA = Math.sin(GoldenAng);
+    const SideX = -SinA;
+    const SideZ = CosA;
+
+    const SpineSteps = 10;
+    const Spine = [];
+    for (let S = 0; S <= SpineSteps; S++) {
+      const T = S / SpineSteps;
+      const Horiz = Math.cos(LiftAngle) * Len * T + Math.sin(T * Math.PI * 0.5) * Len * 0.14;
+      const Vert = Math.sin(LiftAngle) * Len * T - Droop * Len * T * T;
+      Spine.push([
+        Cx + CosA * Horiz,
+        Math.max(0.02, Cy + Vert),
+        Cz + SinA * Horiz,
+      ]);
+    }
+
+    // Central arching rachis stem rib
+    for (let S = 0; S < SpineSteps; S++) {
+      const T0 = S / SpineSteps;
+      const T1 = (S + 1) / SpineSteps;
+      const W0 = 0.011 * (1 - T0 * 0.72);
+      const W1 = 0.011 * (1 - T1 * 0.72);
+      const P0 = Spine[S], P1 = Spine[S + 1];
+      const L0 = [P0[0] - SideX * W0, P0[1], P0[2] - SideZ * W0];
+      const R0 = [P0[0] + SideX * W0, P0[1], P0[2] + SideZ * W0];
+      const L1 = [P1[0] - SideX * W1, P1[1], P1[2] - SideZ * W1];
+      const R1 = [P1[0] + SideX * W1, P1[1], P1[2] + SideZ * W1];
+      const N = B.FlatNormal(L0, R0, R1);
+      B.PushTri(L0, R0, R1, N, N, N, SurfaceMaterialCode.FernFrond, T0, T0, T1);
+      B.PushTri(L0, R1, L1, N, N, N, SurfaceMaterialCode.FernFrond, T0, T1, T1);
+    }
+
+    // Pairs of serrated 3D angled pinnate leaflets (pinnae) radiating along the frond
+    for (let S = 1; S < SpineSteps; S++) {
+      const T = S / SpineSteps;
+      const Envelope = Math.sin(Math.pow(T, 0.72) * Math.PI);
+      const PinnaLen = Len * 0.24 * Envelope;
+      const PinnaHalfW = Math.max(0.018, (Len / SpineSteps) * 0.44);
+      const Base = Spine[S];
+      const Next = Spine[Math.min(SpineSteps, S + 1)];
+      let FwdX = Next[0] - Base[0], FwdY = Next[1] - Base[1], FwdZ = Next[2] - Base[2];
+      const Fl = Math.hypot(FwdX, FwdY, FwdZ) || 1;
+      FwdX /= Fl; FwdY /= Fl; FwdZ /= Fl;
+
+      for (const Sign of [-1, 1]) {
+        // Angle each leaflet slightly forward & upward into a V-trough for realistic 3D light catch
+        const Mid = [
+          Base[0] + SideX * Sign * PinnaLen * 0.55 + FwdX * PinnaLen * 0.22,
+          Base[1] + PinnaLen * 0.14 + FwdY * PinnaLen * 0.18,
+          Base[2] + SideZ * Sign * PinnaLen * 0.55 + FwdZ * PinnaLen * 0.22,
+        ];
+        const Tip = [
+          Base[0] + SideX * Sign * PinnaLen + FwdX * PinnaLen * 0.45,
+          Base[1] + PinnaLen * 0.04 + FwdY * PinnaLen * 0.3,
+          Base[2] + SideZ * Sign * PinnaLen + FwdZ * PinnaLen * 0.45,
+        ];
+        const BackBase = [
+          Base[0] - FwdX * PinnaHalfW * 0.5,
+          Base[1] - FwdY * PinnaHalfW * 0.5,
+          Base[2] - FwdZ * PinnaHalfW * 0.5,
+        ];
+        const FrontBase = [
+          Base[0] + FwdX * PinnaHalfW * 0.85,
+          Base[1] + FwdY * PinnaHalfW * 0.85,
+          Base[2] + FwdZ * PinnaHalfW * 0.85,
+        ];
+        const EdgeMid = [
+          Mid[0] + FwdX * PinnaHalfW * 0.52,
+          Mid[1] + FwdY * PinnaHalfW * 0.52 + 0.012,
+          Mid[2] + FwdZ * PinnaHalfW * 0.52,
+        ];
+        const FlexBase = Math.max(0.08, T * 0.82);
+        const FlexTip = Math.min(1.0, T * 0.92 + 0.14);
+        const N1 = B.FlatNormal(BackBase, FrontBase, EdgeMid);
+        B.PushTri(BackBase, FrontBase, EdgeMid, N1, N1, N1, SurfaceMaterialCode.FernFrond, FlexBase, FlexBase, (FlexBase + FlexTip) * 0.5);
+        const N2 = B.FlatNormal(BackBase, EdgeMid, Tip);
+        B.PushTri(BackBase, EdgeMid, Tip, N2, N2, N2, SurfaceMaterialCode.FernFrond, FlexBase, (FlexBase + FlexTip) * 0.5, FlexTip);
+      }
+    }
+  }
+}
+
+// 10. Procedural Real 3D Ferns Collection arranged around rock outcrop & moss bank (studio.fern_cluster)
+function ConstructFernCluster(Params) {
+  const B = CreateBuilder();
+  const FernScale = Number(Params.FernScale ?? 1.0);
+  const Density = Math.max(4, Math.min(18, Math.round(Number(Params.FernCount ?? 13))));
+
+  // Curated hero placements matching Reference Image 2 (lush foreground & flanking ferns)
+  const Spots = [
+    [-1.15, 0.16, 2.38, 11, 1.15, 101],
+    [-2.52, 0.14, 1.95, 10, 1.02, 113],
+    [2.28, 0.18, 2.12, 11, 1.1, 127],
+    [-3.38, 0.12, 0.85, 10, 1.08, 139],
+    [3.55, 0.15, 0.72, 10, 1.06, 151],
+    [-2.85, 0.24, -1.45, 9, 1.12, 163],
+    [2.95, 0.22, -1.35, 9, 1.08, 179],
+    [-0.15, 0.22, 2.55, 9, 0.92, 191],
+    [1.15, 0.24, 2.25, 9, 0.96, 211],
+    [-3.75, 0.1, -0.45, 9, 0.98, 223],
+    [3.92, 0.1, -0.35, 9, 1.04, 239],
+    [-1.72, 0.26, -2.28, 8, 1.02, 251],
+    [1.82, 0.24, -2.25, 8, 1.05, 263],
+    [-4.1, 0.08, 1.75, 8, 0.86, 277],
+    [4.18, 0.08, 1.68, 8, 0.88, 283],
+    [0.25, 0.22, -2.55, 8, 0.95, 293],
+    [-2.05, 0.18, 2.95, 8, 0.84, 307],
+    [2.75, 0.14, 2.85, 8, 0.86, 313],
+  ];
+
+  for (let I = 0; I < Math.min(Density, Spots.length); I++) {
+    const [X, Y, Z, Fronds, Len, Seed] = Spots[I];
+    AddRealFernRosette(B, [X, Y, Z], Fronds, Len * FernScale, Seed);
+  }
+  return B.Finish();
+}
+
+// 11. Procedural Real 3D Grass Blades, Sedges, Woodland Leafy Shrubs & Bamboo Shoots (studio.grass_plants)
+function ConstructGrassPlants(Params) {
+  const B = CreateBuilder();
+  const GrassScale = Number(Params.GrassScale ?? 1.0);
+  const TuftCount = Math.max(18, Math.min(72, Math.round(Number(Params.TuftCount ?? 52))));
+  const Rng = MakeSeededRng(8821);
+
+  // Build individual curved tapered 3D grass tufts scattered naturally around the moss island & boulders
+  for (let T = 0; T < TuftCount; T++) {
+    // Ring distribution avoiding exact car center footprint while framing rocks & moss bank
+    const Ang = (T / TuftCount) * Math.PI * 2 + (Rng() - 0.5) * 0.35;
+    const RingR = 1.95 + Rng() * 2.95;
+    const Gx = Math.cos(Ang) * RingR * 1.12;
+    const Gz = Math.sin(Ang) * RingR * 0.84;
+    const Gy = Math.max(0.06, 0.22 * Math.max(0, 1 - RingR / 5.4));
+
+    const Blades = 6 + Math.floor(Rng() * 4);
+    for (let K = 0; K < Blades; K++) {
+      const Ba = Rng() * Math.PI * 2;
+      const Bx = Gx + Math.cos(Ba) * (0.04 + Rng() * 0.16);
+      const Bz = Gz + Math.sin(Ba) * (0.04 + Rng() * 0.16);
+      const Bh = (0.34 + Rng() * 0.44) * GrassScale;
+      const Lean = (0.14 + Rng() * 0.26) * GrassScale;
+      const BaseW = 0.024 * GrassScale;
+      const DirX = Math.cos(Ba), DirZ = Math.sin(Ba);
+      const SideX = -DirZ, SideZ = DirX;
+
+      // 3-segment curved blade with aUv = 0.0 at root -> 1.0 at tip for realistic wind sway!
+      const P0 = [Bx, Gy, Bz];
+      const P1 = [Bx + DirX * Lean * 0.35, Gy + Bh * 0.48, Bz + DirZ * Lean * 0.35];
+      const P2 = [Bx + DirX * Lean * 0.85, Gy + Bh * 0.84, Bz + DirZ * Lean * 0.85];
+      const P3 = [Bx + DirX * Lean * 1.32, Gy + Bh, Bz + DirZ * Lean * 1.32];
+
+      const L0 = [P0[0] - SideX * BaseW, P0[1], P0[2] - SideZ * BaseW];
+      const R0 = [P0[0] + SideX * BaseW, P0[1], P0[2] + SideZ * BaseW];
+      const L1 = [P1[0] - SideX * BaseW * 0.72, P1[1], P1[2] - SideZ * BaseW * 0.72];
+      const R1 = [P1[0] + SideX * BaseW * 0.72, P1[1], P1[2] + SideZ * BaseW * 0.72];
+      const L2 = [P2[0] - SideX * BaseW * 0.38, P2[1], P2[2] - SideZ * BaseW * 0.38];
+      const R2 = [P2[0] + SideX * BaseW * 0.38, P2[1], P2[2] + SideZ * BaseW * 0.38];
+
+      const N0 = B.FlatNormal(L0, R0, R1);
+      B.PushTri(L0, R0, R1, N0, N0, N0, SurfaceMaterialCode.GrassBlade, 0.0, 0.0, 0.42);
+      B.PushTri(L0, R1, L1, N0, N0, N0, SurfaceMaterialCode.GrassBlade, 0.0, 0.42, 0.42);
+      const N1 = B.FlatNormal(L1, R1, R2);
+      B.PushTri(L1, R1, R2, N1, N1, N1, SurfaceMaterialCode.GrassBlade, 0.42, 0.42, 0.78);
+      B.PushTri(L1, R2, L2, N1, N1, N1, SurfaceMaterialCode.GrassBlade, 0.42, 0.78, 0.78);
+      const N2 = B.FlatNormal(L2, R2, P3);
+      B.PushTri(L2, R2, P3, N2, N2, N2, SurfaceMaterialCode.GrassBlade, 0.78, 0.78, 1.0);
+    }
+  }
+
+  // Branching woodland shrubs (left & right flanking shrubs from Reference Image 2!)
+  const Shrubs = [
+    [-3.05, 0.16, 1.52, 1.05, 501],
+    [2.62, 0.18, 1.88, 1.12, 509],
+    [-3.45, 0.14, -1.15, 0.95, 521],
+    [3.55, 0.16, -1.05, 1.0, 541],
+    [-1.95, 0.15, 2.55, 0.85, 557],
+  ];
+  for (const [Sx, Sy, Sz, Sc, Seed] of Shrubs) {
+    const Sr = MakeSeededRng(Seed);
+    const Stems = 7;
+    for (let I = 0; I < Stems; I++) {
+      const A = (I / Stems) * Math.PI * 2 + Sr() * 0.4;
+      const StemH = (0.72 + Sr() * 0.48) * Sc * GrassScale;
+      const Spread = (0.36 + Sr() * 0.34) * Sc;
+      const Top = [Sx + Math.cos(A) * Spread, Sy + StemH, Sz + Math.sin(A) * Spread];
+      const Mid = [Sx + Math.cos(A) * Spread * 0.45, Sy + StemH * 0.54, Sz + Math.sin(A) * Spread * 0.45];
+      B.AddTube([Sx, Sy, Sz], Mid, 0.014, 0.01, 5, SurfaceMaterialCode.FallenWood, false);
+      B.AddTube(Mid, Top, 0.01, 0.005, 5, SurfaceMaterialCode.FallenWood, false);
+
+      // Cluster of 3D angled oval woodland leaves near stem middle & tip (wind-animated!)
+      for (let L = 0; L < 5; L++) {
+        const Tpos = 0.45 + (L / 5) * 0.55;
+        const Base = [
+          Sx + (Top[0] - Sx) * Tpos,
+          Sy + (Top[1] - Sy) * Tpos,
+          Sz + (Top[2] - Sz) * Tpos,
+        ];
+        const La = A + (L - 2) * 0.95 + Sr() * 0.4;
+        const Llen = (0.14 + Sr() * 0.09) * Sc * GrassScale;
+        const Lw = Llen * 0.42;
+        const Dx = Math.cos(La), Dz = Math.sin(La);
+        const Px = -Dz, Pz = Dx;
+        const MidL = [Base[0] + Dx * Llen * 0.5 - Px * Lw, Base[1] + 0.035, Base[2] + Dz * Llen * 0.5 - Pz * Lw];
+        const MidR = [Base[0] + Dx * Llen * 0.5 + Px * Lw, Base[1] + 0.035, Base[2] + Dz * Llen * 0.5 + Pz * Lw];
+        const Tip = [Base[0] + Dx * Llen, Base[1] + 0.015, Base[2] + Dz * Llen];
+        const Flex = Math.min(1.0, Tpos * 0.95);
+        const N1 = B.FlatNormal(Base, MidR, Tip);
+        B.PushTri(Base, MidR, Tip, N1, N1, N1, SurfaceMaterialCode.GrassBlade, Flex * 0.85, Flex, Math.min(1, Flex + 0.1));
+        const N2 = B.FlatNormal(Base, Tip, MidL);
+        B.PushTri(Base, Tip, MidL, N2, N2, N2, SurfaceMaterialCode.GrassBlade, Flex * 0.85, Math.min(1, Flex + 0.1), Flex);
+      }
+    }
+  }
+
+  // Pair of sculpted wild forest bamboo shoots emerging in foreground (straight from Reference Image 2!)
+  const Shoots = [
+    [0.52, 0.1, 2.52, 0.64, 0.068],
+    [0.72, 0.1, 2.66, 0.48, 0.056],
+  ];
+  for (const [Bx, By, Bz, Bh, Br] of Shoots) {
+    B.AddTube([Bx, By, Bz], [Bx + 0.02, By + Bh, Bz - 0.01], Br, 0.008, 8, SurfaceMaterialCode.FallenWood);
+  }
+
+  return B.Finish();
+}
+
+// 12. Procedural Backlit Forest LED Volume Backdrop Wall, Proscenium Frame & Angled Studio Flags (studio.forest_backdrop)
+function ConstructForestBackdrop(Params) {
+  const B = CreateBuilder();
+  const ScreenW = Number(Params.ScreenWidth ?? 12.4);
+  const ScreenH = Number(Params.ScreenHeight ?? 6.2);
+  const FrameW = Number(Params.ProsceniumWidth ?? 20.5);
+  const FrameH = Number(Params.WallHeight ?? 7.25);
+  const HasFlags = Params.StudioFlags !== false;
+
+  const HalfSw = ScreenW * 0.5;
+  const HalfFw = FrameW * 0.5;
+  const BottomY = 0.08;
+  const TopScreenY = BottomY + ScreenH;
+
+  // Backlit Forest LED Volume Screen (subdivided front plane with clean local coordinates for procedural forest shader)
+  const SegX = 12, SegY = 8;
+  for (let Iy = 0; Iy < SegY; Iy++) {
+    const Y0 = BottomY + (Iy / SegY) * ScreenH;
+    const Y1 = BottomY + ((Iy + 1) / SegY) * ScreenH;
+    for (let Ix = 0; Ix < SegX; Ix++) {
+      const X0 = -HalfSw + (Ix / SegX) * ScreenW;
+      const X1 = -HalfSw + ((Ix + 1) / SegX) * ScreenW;
+      B.PushTri(
+        [X0, Y0, 0.02], [X1, Y0, 0.02], [X1, Y1, 0.02],
+        [0, 0, 1], [0, 0, 1], [0, 0, 1],
+        SurfaceMaterialCode.ForestBackdrop,
+        Ix / SegX, (Ix + 1) / SegX, (Ix + 1) / SegX,
+      );
+      B.PushTri(
+        [X0, Y0, 0.02], [X1, Y1, 0.02], [X0, Y1, 0.02],
+        [0, 0, 1], [0, 0, 1], [0, 0, 1],
+        SurfaceMaterialCode.ForestBackdrop,
+        Ix / SegX, (Ix + 1) / SegX, Ix / SegX,
+      );
+    }
+  }
+
+  // Deep matte-black studio proscenium walls surrounding the glowing LED forest window (Ref Image 1 & 2!)
+  const SideW = Math.max(1.2, (FrameW - ScreenW) * 0.5);
+  B.AddBox([-(HalfSw + SideW * 0.5), FrameH * 0.5, -0.08], [SideW * 0.5, FrameH * 0.5, 0.16], SurfaceMaterialCode.BlackFlag);
+  B.AddBox([HalfSw + SideW * 0.5, FrameH * 0.5, -0.08], [SideW * 0.5, FrameH * 0.5, 0.16], SurfaceMaterialCode.BlackFlag);
+  const TopBandH = Math.max(0.4, FrameH - TopScreenY);
+  B.AddBox([0, TopScreenY + TopBandH * 0.5, -0.08], [HalfSw, TopBandH * 0.5, 0.16], SurfaceMaterialCode.BlackFlag);
+  // Rear light-tight backing cabinet & steel truss uprights behind LED wall
+  B.AddBox([0, FrameH * 0.5, -0.26], [HalfFw, FrameH * 0.5, 0.06], SurfaceMaterialCode.DarkMetal);
+  for (let Ix = -3; Ix <= 3; Ix++) {
+    B.AddTube([Ix * 2.6, 0, -0.34], [Ix * 2.6, FrameH, -0.34], 0.04, 0.04, 8, SurfaceMaterialCode.DarkMetal);
+  }
+
+  // Side matte-black studio return walls framing the soundstage
+  const WingDepth = 7.4;
+  B.AddBox([-HalfFw + 0.12, FrameH * 0.5, WingDepth * 0.5], [0.14, FrameH * 0.5, WingDepth * 0.5], SurfaceMaterialCode.BlackFlag);
+  B.AddBox([HalfFw - 0.12, FrameH * 0.5, WingDepth * 0.5], [0.14, FrameH * 0.5, WingDepth * 0.5], SurfaceMaterialCode.BlackFlag);
+
+  // Two angled studio negative-fill bounce flags / V-flats flanking left & right (straight from Ref Image 2!)
+  if (HasFlags) {
+    for (const Side of [-1, 1]) {
+      const Fx = Side * (HalfSw + 1.45);
+      const Fz = 5.4;
+      const Fy = 3.15;
+      const FlagYaw = Side * -0.46;
+      // Matte duvetyne black flag panel with aluminum perimeter tube frame
+      B.AddBox([Fx, Fy, Fz], [0.03, 1.85, 1.55], SurfaceMaterialCode.BlackFlag, 0, FlagYaw, 0);
+      B.AddBox([Fx, Fy + 1.86, Fz], [0.035, 0.028, 1.58], SurfaceMaterialCode.ChromeMetal, 0, FlagYaw, 0);
+      B.AddBox([Fx, Fy - 1.86, Fz], [0.035, 0.028, 1.58], SurfaceMaterialCode.ChromeMetal, 0, FlagYaw, 0);
+      // Support C-stand column & base legs
+      B.AddTube([Fx, 0.04, Fz], [Fx, Fy - 1.82, Fz], 0.026, 0.022, 8, SurfaceMaterialCode.ChromeMetal);
+      for (let L = 0; L < 3; L++) {
+        const La = (L / 3) * Math.PI * 2 + 0.4;
+        B.AddTube([Fx, 0.34, Fz], [Fx + Math.cos(La) * 0.52, 0.02, Fz + Math.sin(La) * 0.52], 0.015, 0.013, 6, SurfaceMaterialCode.DarkMetal);
+      }
+    }
+  }
+
+  return B.Finish();
+}
+
+// 13. Procedural Wheeled Studio Wind Fan (Spinning 5-Blade Propeller + Safety Cage + Live Wind Source!) (studio.studio_fan)
+function ConstructStudioFan(Params) {
+  const B = CreateBuilder();
+  const StandH = Number(Params.StandHeight ?? 1.28);
+  const CageR = Number(Params.FanRadius ?? 0.52);
+  const Tilt = (Number(Params.TiltDeg ?? -4) * Math.PI) / 180;
+  const HubY = StandH;
+  const CosT = Math.cos(Tilt), SinT = Math.sin(Tilt);
+
+  // Heavy wheeled steel rolling base + 4 caster legs
+  B.AddBox([0, 0.12, 0], [0.11, 0.045, 0.11], SurfaceMaterialCode.DarkMetal);
+  for (let L = 0; L < 4; L++) {
+    const A = (L / 4) * Math.PI * 2 + Math.PI / 4;
+    const Ex = Math.cos(A) * 0.44;
+    const Ez = Math.sin(A) * 0.44;
+    B.AddTube([0, 0.12, 0], [Ex, 0.075, Ez], 0.022, 0.018, 8, SurfaceMaterialCode.DarkMetal);
+    B.AddTube([Ex, 0.075, Ez], [Ex, 0.025, Ez], 0.024, 0.024, 8, SurfaceMaterialCode.RubberMat);
+  }
+  // Vertical chrome telescoping riser + locking collar + U-yoke cradle
+  B.AddTube([0, 0.14, 0], [0, HubY - CageR - 0.1, 0], 0.028, 0.025, 10, SurfaceMaterialCode.ChromeMetal);
+  B.AddTube([0, HubY - CageR - 0.14, 0], [0, HubY - CageR - 0.05, 0], 0.036, 0.036, 10, SurfaceMaterialCode.DarkMetal);
+  const YokeW = CageR + 0.09;
+  B.AddBox([0, HubY - CageR - 0.08, 0], [YokeW, 0.02, 0.028], SurfaceMaterialCode.FanHousing);
+  B.AddBox([-YokeW, HubY - (CageR + 0.08) * 0.5, 0], [0.022, (CageR + 0.08) * 0.52, 0.028], SurfaceMaterialCode.FanHousing);
+  B.AddBox([YokeW, HubY - (CageR + 0.08) * 0.5, 0], [0.022, (CageR + 0.08) * 0.52, 0.028], SurfaceMaterialCode.FanHousing);
+  // Side tilt locking handwheels
+  B.AddTube([-YokeW - 0.05, HubY, 0], [-YokeW + 0.02, HubY, 0], 0.042, 0.042, 10, SurfaceMaterialCode.DarkMetal);
+  B.AddTube([YokeW - 0.02, HubY, 0], [YokeW + 0.05, HubY, 0], 0.042, 0.042, 10, SurfaceMaterialCode.DarkMetal);
+
+  // Transform helper relative to tilted fan drum center [0, HubY, 0] (+Z is blow direction!)
+  const DrumPt = (Lx, Ly, Lz) => [
+    Lx,
+    HubY + Ly * CosT - Lz * SinT,
+    Ly * SinT + Lz * CosT,
+  ];
+
+  // Cylindrical sheet-steel wind tunnel shroud drum
+  const Segs = 24;
+  const ShroudHalfD = 0.18;
+  for (let S = 0; S < Segs; S++) {
+    const A0 = (S / Segs) * Math.PI * 2;
+    const A1 = ((S + 1) / Segs) * Math.PI * 2;
+    const C0 = Math.cos(A0), S0 = Math.sin(A0);
+    const C1 = Math.cos(A1), S1 = Math.sin(A1);
+    const P0b = DrumPt(C0 * CageR, S0 * CageR, -ShroudHalfD);
+    const P1b = DrumPt(C1 * CageR, S1 * CageR, -ShroudHalfD);
+    const P0f = DrumPt(C0 * CageR, S0 * CageR, ShroudHalfD);
+    const P1f = DrumPt(C1 * CageR, S1 * CageR, ShroudHalfD);
+    B.AddQuadFlat(P0b, P1b, P1f, P0f, SurfaceMaterialCode.FanHousing);
+    // Concentric chrome wire guard rings on front (+Z) & rear (-Z)
+    for (const Zface of [-ShroudHalfD - 0.015, ShroudHalfD + 0.025]) {
+      for (const RingScale of [0.38, 0.68, 0.96]) {
+        B.AddTube(
+          DrumPt(C0 * CageR * RingScale, S0 * CageR * RingScale, Zface),
+          DrumPt(C1 * CageR * RingScale, S1 * CageR * RingScale, Zface),
+          0.005, 0.005, 5, SurfaceMaterialCode.ChromeMetal, false,
+        );
+      }
+    }
+  }
+  // Radial chrome grille spokes
+  for (let R = 0; R < 8; R++) {
+    const A = (R / 8) * Math.PI * 2;
+    const Ca = Math.cos(A), Sa = Math.sin(A);
+    B.AddTube(DrumPt(0, 0, ShroudHalfD + 0.028), DrumPt(Ca * CageR, Sa * CageR, ShroudHalfD + 0.022), 0.0055, 0.0055, 5, SurfaceMaterialCode.ChromeMetal, false);
+    B.AddTube(DrumPt(0, 0, -ShroudHalfD - 0.018), DrumPt(Ca * CageR, Sa * CageR, -ShroudHalfD - 0.015), 0.0055, 0.0055, 5, SurfaceMaterialCode.ChromeMetal, false);
+  }
+
+  // Rear industrial electric drive motor & variable speed control box
+  B.AddTube(DrumPt(0, 0, -ShroudHalfD - 0.24), DrumPt(0, 0, 0.04), 0.11, 0.1, 14, SurfaceMaterialCode.DarkMetal);
+  B.AddBox(DrumPt(0, -0.15, -ShroudHalfD - 0.14), [0.075, 0.06, 0.065], SurfaceMaterialCode.PelicanCase, Tilt, 0, 0);
+
+  // 5-blade pitched aluminum propeller (Mat = FanBlade -> spins live in GPU vertex shader around HubY!)
+  // Store HubY in vUv so the vertex shader rotates around [0, HubY, 0] smoothly!
+  const BladeCount = 5;
+  for (let K = 0; K < BladeCount; K++) {
+    const BaseAng = (K / BladeCount) * Math.PI * 2;
+    const RInner = 0.07;
+    const ROuter = CageR * 0.89;
+    const Sweep = 0.44;
+    const PitchZ = 0.055;
+    const A0 = BaseAng - Sweep * 0.45;
+    const A1 = BaseAng + Sweep * 0.55;
+    const P00 = DrumPt(Math.cos(A0) * RInner, Math.sin(A0) * RInner, -PitchZ * 0.4);
+    const P10 = DrumPt(Math.cos(A1) * RInner, Math.sin(A1) * RInner, PitchZ * 0.4);
+    const P11 = DrumPt(Math.cos(A1 + 0.14) * ROuter, Math.sin(A1 + 0.14) * ROuter, PitchZ);
+    const P01 = DrumPt(Math.cos(A0 + 0.08) * ROuter, Math.sin(A0 + 0.08) * ROuter, -PitchZ);
+    const N = B.FlatNormal(P00, P10, P11);
+    B.PushTri(P00, P10, P11, N, N, N, SurfaceMaterialCode.FanBlade, HubY, HubY, HubY);
+    B.PushTri(P00, P11, P01, N, N, N, SurfaceMaterialCode.FanBlade, HubY, HubY, HubY);
+  }
+  // Center spinner nose cone
+  B.AddTube(DrumPt(0, 0, -0.02), DrumPt(0, 0, 0.09), 0.068, 0.02, 12, SurfaceMaterialCode.ChromeMetal);
+
+  // Trailing studio AC power cable running off the motor box down to the floor
+  B.AddTube(DrumPt(0, -0.18, -ShroudHalfD - 0.14), [0.14, 0.55, -0.35], 0.011, 0.011, 6, SurfaceMaterialCode.RubberMat);
+  B.AddTube([0.14, 0.55, -0.35], [0.22, 0.014, -0.68], 0.011, 0.011, 6, SurfaceMaterialCode.RubberMat);
+  B.AddTube([0.22, 0.014, -0.68], [-0.42, 0.014, -1.25], 0.011, 0.011, 6, SurfaceMaterialCode.RubberMat);
+
+  return B.Finish();
+}
+
+// 14. Lightweight emitter beacon for Atmospheric Dust & Sunbeam Motes (studio.dust_field)
+function ConstructDustFieldMarker(Params) {
+  const B = CreateBuilder();
+  const R = Number(Params.EmitterRadius ?? 0.18);
+  B.AddSphere([0, R, 0], R * 0.55, 10, 14, SurfaceMaterialCode.EmissiveDiffuser);
+  return B.Finish();
+}
+
 // Classic Showcase level primitives so level switching renders full 3D PBR immediately!
 export function ConstructShowcasePrimitive(Kind) {
   const B = CreateBuilder();
@@ -1016,6 +1824,20 @@ export function ConstructProceduralSurface(Kind, Params = {}) {
       return ConstructLightFixture(Params);
     case "studio.workstation":
       return ConstructWorkstation(Params);
+    case "studio.rock_outcrop":
+      return ConstructRockOutcrop(Params);
+    case "studio.fallen_wood":
+      return ConstructFallenWood(Params);
+    case "studio.fern_cluster":
+      return ConstructFernCluster(Params);
+    case "studio.grass_plants":
+      return ConstructGrassPlants(Params);
+    case "studio.forest_backdrop":
+      return ConstructForestBackdrop(Params);
+    case "studio.studio_fan":
+      return ConstructStudioFan(Params);
+    case "studio.dust_field":
+      return ConstructDustFieldMarker(Params);
     default:
       return ConstructShowcasePrimitive("cube");
   }

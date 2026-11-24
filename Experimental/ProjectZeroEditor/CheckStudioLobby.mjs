@@ -7,12 +7,15 @@ import { createRequire } from "node:module";
 import {
   StudioLobbyRows,
   StudioLobbyInitialValues,
+  StudioLobby2Rows,
+  StudioLobby2InitialValues,
   ConfiguratorPresets,
   EvaluateOpeningReveal,
   ClampGameCameraInsideLobby,
   ComputeTripodMountHeight,
   ResolveStudioHierarchy,
   HeroCarAimTarget,
+  Lobby2HeroAimTarget,
   FixtureStyles,
   CinemaCameraStyles,
 } from "./StudioLobbyScene.js";
@@ -95,7 +98,30 @@ const SoftboxSurface = ConstructProceduralSurface("studio.light_fixture", Studio
 assert.ok(SoftboxSurface.TriangleCount > 500, "Overhead softbox includes vertical cables + coiled umbilical + roof wiring (" + SoftboxSurface.TriangleCount + " tris)");
 const TripodSurface = ConstructProceduralSurface("studio.tripod", StudioLobbyInitialValues["rig-key-tripod"]);
 assert.ok(TripodSurface.TriangleCount > 450, "Studio tripod includes power/tether cabling & ballast (" + TripodSurface.TriangleCount + " tris)");
-console.log("PASS [2/6] Wider lobby, vertical cables/wires & strict 1-car-in-set / props-outside staging verified");
+
+// 2c. Verify ALL 7 new Lobby 2 Forest Soundstage procedural 3D meshes (real ferns, wood, rock incline, grass, fan, backdrop, dust)
+const L2Rock = ConstructProceduralSurface("studio.rock_outcrop", StudioLobby2InitialValues["l2-rock-outcrop"]);
+const L2Wood = ConstructProceduralSurface("studio.fallen_wood", StudioLobby2InitialValues["l2-fallen-wood"]);
+const L2Ferns = ConstructProceduralSurface("studio.fern_cluster", StudioLobby2InitialValues["l2-fern-cluster"]);
+const L2Grass = ConstructProceduralSurface("studio.grass_plants", StudioLobby2InitialValues["l2-grass-plants"]);
+const L2Backdrop = ConstructProceduralSurface("studio.forest_backdrop", StudioLobby2InitialValues["l2-forest-backdrop"]);
+const L2Fan = ConstructProceduralSurface("studio.studio_fan", StudioLobby2InitialValues["l2-studio-fan"]);
+const L2Dust = ConstructProceduralSurface("studio.dust_field", StudioLobby2InitialValues["l2-dust-particles"]);
+AssertValidSurface("L2 studio.rock_outcrop", L2Rock);
+AssertValidSurface("L2 studio.fallen_wood", L2Wood);
+AssertValidSurface("L2 studio.fern_cluster", L2Ferns);
+AssertValidSurface("L2 studio.grass_plants", L2Grass);
+AssertValidSurface("L2 studio.forest_backdrop", L2Backdrop);
+AssertValidSurface("L2 studio.studio_fan", L2Fan);
+AssertValidSurface("L2 studio.dust_field", L2Dust);
+assert.ok(L2Ferns.TriangleCount > 2000, "Real sculpted 3D pinnate ferns (" + L2Ferns.TriangleCount + " tris)");
+assert.ok(L2Grass.TriangleCount > 1000, "Real 3D grass tufts & woodland shrubs (" + L2Grass.TriangleCount + " tris)");
+assert.ok(L2Rock.TriangleCount > 4000, "Sculpted mossy granite rock incline, boulders & river cobbles (" + L2Rock.TriangleCount + " tris)");
+assert.ok(L2Wood.TriangleCount > 400, "Gnarled fallen tree trunk & twisted roots (" + L2Wood.TriangleCount + " tris)");
+assert.ok(L2Fan.TriangleCount > 500, "Wheeled Studio Wind Fan with spinning propeller & wire cage (" + L2Fan.TriangleCount + " tris)");
+console.log(
+  `PASS [2/6] Lobby 1 & Lobby 2 procedural 3D geometry verified (Ferns: ${L2Ferns.TriangleCount} tris, Grass: ${L2Grass.TriangleCount} tris, Rock: ${L2Rock.TriangleCount} tris, Wood: ${L2Wood.TriangleCount} tris, Fan: ${L2Fan.TriangleCount} tris)`,
+);
 
 // 3. Verify 3 vehicles + 6 shared studio.tripod instances + hierarchical mount propagation
 const VehicleRows = StudioLobbyRows.filter((R) => R.Panel === "studio-vehicle");
@@ -146,7 +172,25 @@ for (const Id of AimedIds) {
     `${Id} must face Hero Coupe (dot=${Dot.toFixed(4)}, fwd=${Xf.Forward.map((V) => V.toFixed(2))})`,
   );
 }
-console.log("PASS [3/6] 3 vehicles, 6 shared tripods, mount propagation & 12/12 camera/light aim directions verified (dot > 0.99)");
+
+// 3c. Verify Lobby 2 has 4 vehicles (Hero angled on rock incline + 3 companion vehicles outside forest island) & 12/12 aimed rigs!
+const L2Vehicles = StudioLobby2Rows.filter((R) => R.Panel === "studio-vehicle");
+assert.equal(L2Vehicles.length, 4, "Lobby 2 has Hero Vehicle on rock incline + 3 other positioned vehicles");
+const L2Hero = StudioLobby2InitialValues["vehicle-hero"];
+assert.ok(L2Hero.Position[1] > 0.45 && L2Hero.InclineDeg >= 6 && L2Hero.BankDeg >= 2, "Lobby 2 Hero Vehicle is elevated & angled on rock incline");
+const HierL2 = ResolveStudioHierarchy(StudioLobby2Rows, StudioLobby2InitialValues, {});
+for (const Id of AimedIds) {
+  const Xf = HierL2[Id];
+  assert.ok(Xf && Xf.Forward, "L2 " + Id + " resolved with Forward vector");
+  const From = [Xf.Position[0], Xf.Position[1] + 0.16, Xf.Position[2]];
+  const ToX = Lobby2HeroAimTarget[0] - From[0];
+  const ToY = Lobby2HeroAimTarget[1] - From[1];
+  const ToZ = Lobby2HeroAimTarget[2] - From[2];
+  const Len = Math.hypot(ToX, ToY, ToZ) || 1;
+  const Dot = (Xf.Forward[0] * ToX + Xf.Forward[1] * ToY + Xf.Forward[2] * ToZ) / Len;
+  assert.ok(Dot > 0.99, `L2 ${Id} must aim at elevated Hero Vehicle (dot=${Dot.toFixed(4)})`);
+}
+console.log("PASS [3/6] Lobby 1 (3 cars) & Lobby 2 (4 cars, rock incline) hierarchy & 24/24 camera/light aim directions verified (dot > 0.99)");
 
 // 4. Verify Opening Reveal curve, 6 Configurator Presets & Game Camera studio bounds
 assert.equal(ConfiguratorPresets.length, 6, "6 Car Configurator Camera presets");
@@ -179,6 +223,10 @@ function CreateMockWebGL2() {
         if (Prop === "DYNAMIC_DRAW") return 35048;
         if (Prop === "TRIANGLES") return 4;
         if (Prop === "LINES") return 1;
+        if (Prop === "POINTS") return 0;
+        if (Prop === "BLEND") return 3042;
+        if (Prop === "SRC_ALPHA") return 770;
+        if (Prop === "ONE") return 1;
         if (Prop === "FLOAT") return 5126;
         if (Prop === "DEPTH_TEST") return 2929;
         if (Prop === "LEQUAL") return 515;
@@ -261,19 +309,28 @@ assert.ok(Doc.querySelector(".studio-viewport-canvas"), "WebGL2 canvas present i
 assert.equal(CompileSpy.Programs, 2, "Exactly 2 WebGL2 programs compiled once on startup");
 assert.ok(CompileSpy.Draws > 10, "WebGL2 renderer drew studio scene (" + CompileSpy.Draws + " draw calls)");
 
-// Confirm default Studio Lobby Outliner + Vehicle Inspector mounted
+// Confirm default Lobby 2 Forest Stage Outliner + 4 vehicles + ferns, wood, rock, grass, fan & dust mounted
 const TreeText = Doc.querySelector(".outliner-rows")?.textContent || "";
-assert.ok(TreeText.includes("Hero Coupe"), "Outliner lists Hero Coupe");
-assert.ok(TreeText.includes("Alpine GT"), "Outliner lists Alpine GT");
-assert.ok(TreeText.includes("Liquid Tourer"), "Outliner lists Liquid Tourer");
+assert.ok(TreeText.includes("Hero Vehicle"), "Outliner lists Hero Vehicle on rock incline");
+assert.ok(TreeText.includes("Obsidian Coupe"), "Outliner lists companion car #1");
+assert.ok(TreeText.includes("Alpine GT"), "Outliner lists companion car #2");
+assert.ok(TreeText.includes("Liquid Tourer"), "Outliner lists companion car #3");
+assert.ok(TreeText.includes("Real 3D Forest Ferns"), "Outliner lists Real 3D Forest Ferns");
+assert.ok(TreeText.includes("Gnarled Fallen Log"), "Outliner lists Gnarled Fallen Log & Roots");
+assert.ok(TreeText.includes("Mossy Rock Incline"), "Outliner lists Mossy Rock Incline & Stream");
+assert.ok(TreeText.includes("Grass Tufts"), "Outliner lists Grass Tufts & Woodland Shrubs");
+assert.ok(TreeText.includes("Studio Wind Fan"), "Outliner lists Studio Wind Fan (Blower)");
+assert.ok(TreeText.includes("Sunbeam Dust Particles"), "Outliner lists Sunbeam Dust Particles");
 assert.ok(TreeText.includes("Key Fresnel Tripod"), "Outliner lists Key Fresnel Tripod");
 assert.ok(TreeText.includes("Overhead Softbox Bank"), "Outliner lists Overhead Softbox Bank");
 
 // Wait briefly for thumbnail capture tick (400ms interval) and verify real 3D geometry thumbnails in Outliner!
 await new Promise((Resolve) => setTimeout(Resolve, 460));
 const GeoThumbs = Doc.querySelectorAll("[data-geometry-thumb]");
-assert.ok(GeoThumbs.length >= 15, "Outliner renders real WebGL2 3D geometry screenshots (" + GeoThumbs.length + " thumbnails)");
-assert.ok(Doc.querySelector('[data-geometry-thumb="vehicle-hero"]'), "Hero Coupe shows actual 3D geometry screenshot in Outliner");
+assert.ok(GeoThumbs.length >= 20, "Outliner renders real WebGL2 3D geometry screenshots (" + GeoThumbs.length + " thumbnails)");
+assert.ok(Doc.querySelector('[data-geometry-thumb="vehicle-hero"]'), "Hero Vehicle shows actual 3D geometry screenshot in Outliner");
+assert.ok(Doc.querySelector('[data-geometry-thumb="l2-fern-cluster"]'), "Real 3D Ferns shows actual 3D geometry screenshot in Outliner");
+assert.ok(Doc.querySelector('[data-geometry-thumb="l2-studio-fan"]'), "Studio Wind Fan shows actual 3D geometry screenshot in Outliner");
 assert.ok(Doc.querySelector('[data-geometry-thumb="rig-softbox-fixture"]'), "Overhead Softbox shows actual 3D geometry screenshot in Outliner");
 
 // Click Key Fresnel Tripod -> verify reused native TransformPanel + shared instances + Aim at Hero Car
@@ -371,23 +428,29 @@ PlayBtn.click();
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.equal(ViewportHost.getAttribute("data-active-camera"), "game", "Play mode switches back to moving Game Camera");
 
-// Switch level Studio Lobby -> Showcase -> Studio Lobby and assert ZERO extra shader compilations!
+// Switch levels Lobby 2 -> Lobby 1 -> Showcase -> Lobby 2 and assert ZERO extra shader compilations!
 const LevelSelect = Doc.querySelector(".studio-level-select");
 assert.ok(LevelSelect, "Level switcher present in viewport toolbar");
 const ProgramsBefore = CompileSpy.Programs;
 const SwitchT0 = performance.now();
 const NativeSetter = Object.getOwnPropertyDescriptor(Dom.window.HTMLSelectElement.prototype, "value").set;
+
+NativeSetter.call(LevelSelect, "studio-lobby");
+LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
+await new Promise((Resolve) => setTimeout(Resolve, 60));
+assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Cyclorama Infinity Cove"), "Lobby 1 Cyclorama loaded");
+
 NativeSetter.call(LevelSelect, "showcase");
 LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Cube"), "Showcase level loaded");
 
-NativeSetter.call(LevelSelect, "studio-lobby");
+NativeSetter.call(LevelSelect, "studio-lobby-2");
 LevelSelect.dispatchEvent(new Dom.window.Event("change", { bubbles: true }));
 await new Promise((Resolve) => setTimeout(Resolve, 60));
 const SwitchElapsed = Math.round((performance.now() - SwitchT0) * 10) / 10;
-assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Hero Coupe"), "Studio Lobby restored");
-assert.equal(CompileSpy.Programs, ProgramsBefore, "ZERO shader recompilations across level switches!");
+assert.ok(Doc.querySelector(".outliner-rows").textContent.includes("Real 3D Forest Ferns"), "Lobby 2 Forest Stage restored");
+assert.equal(CompileSpy.Programs, ProgramsBefore, "ZERO shader recompilations across all 3 level switches!");
 assert.equal(PageErrors.length, 0, "Zero runtime errors across interactions");
 console.log(
   `PASS [5/6] Standalone index.html JSDOM + WebGL2 verified: ${CompileSpy.Draws} draw calls, 0 shader recompiles, round-trip level switch OK`,

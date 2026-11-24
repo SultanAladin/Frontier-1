@@ -58,6 +58,9 @@ import {
   StudioLevels,
   StudioLobbyRows,
   StudioLobbyInitialValues,
+  StudioLobby2Rows,
+  StudioLobby2InitialValues,
+  IsStudioLobbyLevel,
   ConfiguratorPresets,
   ComputeTripodMountHeight,
   ComputeAimAngles,
@@ -220,7 +223,7 @@ const DebugViews = [
   "Patch Tiles",
   "Tiles + Wireframe",
 ];
-const StorageKey = "Frontier.ProjectZeroStudioLobby.v4";
+const StorageKey = "Frontier.ProjectZeroStudioLobby.v5";
 function Restore() {
   try {
     return JSON.parse(localStorage.getItem(StorageKey)) || {};
@@ -461,7 +464,7 @@ function App() {
     () =>
       new URLSearchParams(location.search).get("level") ||
       Saved.LevelId ||
-      "studio-lobby",
+      "studio-lobby-2",
   );
   const [Paused, SetPaused] = useState(false);
   const [ActivePreset, SetActivePreset] = useState(null);
@@ -485,19 +488,23 @@ function App() {
   const LevelSnapshots = useRef({});
 
   const BuildDefaultRowsForLevel = (TargetLevel) =>
-    TargetLevel === "studio-lobby"
-      ? EnsureEditorCamera(StudioLobbyRows.map((Row) => ({ ...Row })))
-      : EnsureEditorCamera(
-          PrepareLightRows(EnsureReferenceLights(InitialRows), 1),
-        );
+    TargetLevel === "studio-lobby-2"
+      ? EnsureEditorCamera(StudioLobby2Rows.map((Row) => ({ ...Row })))
+      : TargetLevel === "studio-lobby"
+        ? EnsureEditorCamera(StudioLobbyRows.map((Row) => ({ ...Row })))
+        : EnsureEditorCamera(
+            PrepareLightRows(EnsureReferenceLights(InitialRows), 1),
+          );
 
   const BuildDefaultValuesForLevel = (TargetLevel) =>
-    TargetLevel === "studio-lobby"
-      ? JSON.parse(JSON.stringify(StudioLobbyInitialValues))
-      : {};
+    TargetLevel === "studio-lobby-2"
+      ? JSON.parse(JSON.stringify(StudioLobby2InitialValues))
+      : TargetLevel === "studio-lobby"
+        ? JSON.parse(JSON.stringify(StudioLobbyInitialValues))
+        : {};
 
   const [Rows, StoreRows] = useState(() => {
-      if (Saved.Rows && (Saved.LevelId || "studio-lobby") === LevelId) {
+      if (Saved.Rows && (Saved.LevelId || "studio-lobby-2") === LevelId) {
         return EnsureEditorCamera(Saved.Rows);
       }
       return BuildDefaultRowsForLevel(LevelId);
@@ -505,10 +512,10 @@ function App() {
     [Selected, Select] = useState(
       new URLSearchParams(location.search).get("inspect") ||
         Saved.Selected ||
-        (LevelId === "studio-lobby" ? "vehicle-hero" : "sun"),
+        (IsStudioLobbyLevel(LevelId) ? "vehicle-hero" : "sun"),
     ),
     [Values, AssignValues] = useState(() => {
-      if (Saved.Values && Object.keys(Saved.Values).length && (Saved.LevelId || "studio-lobby") === LevelId) {
+      if (Saved.Values && Object.keys(Saved.Values).length && (Saved.LevelId || "studio-lobby-2") === LevelId) {
         return { ...BuildDefaultValuesForLevel(LevelId), ...Saved.Values };
       }
       return BuildDefaultValuesForLevel(LevelId);
@@ -532,7 +539,7 @@ function App() {
     [Construct, OpenConstruct] = useState(false),
     [Projection, SetProjection] = useState("PERSP"),
     [SplitView, SetSplitView] = useState(false),
-    [RunMode, SetRunMode] = useState(LevelId === "studio-lobby" ? "PLAY" : "EDIT"),
+    [RunMode, SetRunMode] = useState(IsStudioLobbyLevel(LevelId) ? "PLAY" : "EDIT"),
     [Message, Notify] = useState(""),
     [Console, ShowConsole] = useState(false),
     [PaneTabs, AssignTabs] = useState({
@@ -932,10 +939,11 @@ function App() {
       AssignValues(BuildDefaultValuesForLevel(NextLevel));
       AssignHidden({ camera: false });
       Collapse({});
-      Select(NextLevel === "studio-lobby" ? "vehicle-hero" : "sun");
+      Select(IsStudioLobbyLevel(NextLevel) ? "vehicle-hero" : "sun");
     }
+    SetObjectThumbnails({});
     SetLevelId(NextLevel);
-    if (NextLevel === "studio-lobby") {
+    if (IsStudioLobbyLevel(NextLevel)) {
       SetRunMode("PLAY");
       SetPaused(false);
       SetActivePreset(null);
@@ -2281,7 +2289,7 @@ function App() {
                     : null
                 }
               />
-              {Subject.Panel === "camera" && LevelId === "studio-lobby" && (
+              {Subject.Panel === "camera" && IsStudioLobbyLevel(LevelId) && (
                 <StudioCameraExtensionCard
                   Subject={Subject}
                   Values={Values[Selected] || {}}
@@ -2299,7 +2307,7 @@ function App() {
                   }}
                 />
               )}
-              {Subject.Panel === "light" && LevelId === "studio-lobby" && (
+              {Subject.Panel === "light" && IsStudioLobbyLevel(LevelId) && (
                 <StudioLightExtensionCard
                   Subject={Subject}
                   Rows={Rows}

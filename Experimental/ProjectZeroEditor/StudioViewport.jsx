@@ -207,7 +207,8 @@ export default function StudioViewport({
     Observer.observe(Host);
 
     let RafId = 0;
-    let LastTime = performance.now();
+    const BootTime = performance.now();
+    let LastTime = BootTime;
     let TickSamples = 0;
     let FpsStamp = LastTime;
     let CurrentFps = 60;
@@ -256,7 +257,7 @@ export default function StudioViewport({
             GCam.IntroElapsed = Math.min(OpeningRevealDurationSec, GCam.IntroElapsed + Dt);
           }
           const Progress = GCam.IntroElapsed / OpeningRevealDurationSec;
-          const Sample = EvaluateOpeningReveal(Progress);
+          const Sample = EvaluateOpeningReveal(Progress, CurLevel);
           GCam.Eye = Sample.Eye;
           GCam.Target = Sample.Target;
           GCam.FovDeg = Sample.FovDeg;
@@ -333,6 +334,7 @@ export default function StudioViewport({
         EditMode: !IsPlayView,
         GizmoMode: CurGizmo,
         HoveredAxis: HoveredAxisRef.current,
+        TimeSec: (Now - BootTime) / 1000,
       });
 
       if (TickSamples === 0) {

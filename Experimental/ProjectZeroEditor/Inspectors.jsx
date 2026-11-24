@@ -171,6 +171,13 @@ function StudioVectorIcon({ Name, Size = 24 }) {
     "studio-floor-grid": "#8c9bb0",
     "studio-ceiling-truss": "#97a3b5",
     "studio-workstation": "#a3c6b1",
+    "studio-fern": "#6bc46d",
+    "studio-wood": "#c28f5d",
+    "studio-rock": "#9ba39e",
+    "studio-grass": "#85cf5e",
+    "studio-fan": "#76d1f0",
+    "studio-backdrop": "#93c98d",
+    "studio-dust": "#f7dc88",
   }[Name];
   if (!Accent) return null;
   return (
@@ -250,6 +257,44 @@ function StudioVectorIcon({ Name, Size = 24 }) {
         ) : Name === "studio-ceiling-truss" ? (
           <>
             <path d="M2.5 7.5h19M2.5 14.5h19M4.5 7.5l4 7 4-7 4 7 3-7" />
+          </>
+        ) : Name === "studio-fern" ? (
+          <>
+            <path d="M12 20.5C11.5 14 13.5 8 17.5 4" />
+            <path d="M12.2 16.5 7.5 15M12.6 13.5 7 11.2M13.5 10.5 8.8 8M15 7.5 11.4 5.4M12.8 15l5.2-1.4M13.6 12l5.2-1.8M14.8 9l4.2-1.8" />
+          </>
+        ) : Name === "studio-wood" ? (
+          <>
+            <path d="M3.5 16.5 14.5 9.5l5.5-1-3.5 4.2 3.5 2.3-4.8.4-10.2 4.6Z" fill="currentColor" fillOpacity="0.16" />
+            <path d="M8.5 15.5 13 12.6M11 16.5l4-2.2" opacity="0.7" />
+          </>
+        ) : Name === "studio-rock" ? (
+          <>
+            <polygon points="3,18.5 6.8,10.2 12.2,6.5 17.8,9.8 21,18.5" fill="currentColor" fillOpacity="0.16" />
+            <path d="m12.2 6.5-1.4 6.2 6.8 5.8M6.8 10.2l4 2.5-3.2 5.8" opacity="0.65" />
+          </>
+        ) : Name === "studio-grass" ? (
+          <>
+            <path d="M6 20c0-5-1.5-8.5-3-11M10 20c-.5-6.5.5-11 2-14M14 20c.8-5.5 2.5-9.5 4.5-12M18 20c.8-4 2-6.5 3.2-8.2" />
+          </>
+        ) : Name === "studio-fan" ? (
+          <>
+            <circle cx="12" cy="11" r="7.5" fill="currentColor" fillOpacity="0.1" />
+            <circle cx="12" cy="11" r="1.6" />
+            <path d="M12 9.4c-.6-2.8 1.8-4.4 3.4-2.6M13.4 11.8c2.6.8 2.8 3.6.5 4.2M10.5 11.8c-2.6.6-3.6-2-1.8-3.6M12 18.5V21M8.5 21h7" />
+          </>
+        ) : Name === "studio-backdrop" ? (
+          <>
+            <rect x="3.5" y="4.5" width="17" height="12.5" rx="1.4" fill="currentColor" fillOpacity="0.14" />
+            <path d="M7.5 17V9.5M12 17V8M16.5 17v-6.5M3.5 17h17M6.5 17 5 20.5M17.5 17l1.5 3.5" />
+          </>
+        ) : Name === "studio-dust" ? (
+          <>
+            <circle cx="6.5" cy="8" r="1.3" fill="currentColor" />
+            <circle cx="15.5" cy="6.5" r="1.6" fill="currentColor" />
+            <circle cx="11.5" cy="12.5" r="1.8" fill="currentColor" />
+            <circle cx="18" cy="14" r="1.1" fill="currentColor" />
+            <circle cx="7.5" cy="16.8" r="1.2" fill="currentColor" />
           </>
         ) : (
           <>
