@@ -61,8 +61,8 @@ jobs:
         with:
           path: |
             ExternalPackages
-            EngineContent/Fonts
-          key: win-x64-deps-v1-${{ hashFiles('Automation/**') }}
+            EngineContent/FontsArchives
+          key: win-x64-deps-v2-${{ hashFiles('Automation/**') }}
 
       - name: Cache sccache compiled object files
         uses: actions/cache@v4
@@ -144,6 +144,19 @@ jobs:
           Copy-Item 'Build/Windows/Binaries/Win64/*' "$Payload/Binaries/Win64/" -Recurse -Force
           Copy-Item 'Build/Windows/CompiledShaders/*' "$Payload/CompiledShaders/" -Recurse -Force
           Copy-Item 'EngineContent/*' "$Payload/EngineContent/" -Recurse -Force
+          $RequiredPayload = @(
+            "$Payload/Frontier.exe",
+            "$Payload/SolidArc.exe",
+            "$Payload/CompiledShaders/WorldViewportRadiometricCompute.comp.spv",
+            "$Payload/EngineContent/FontsArchives/FontRepository.FontSpace",
+            "$Payload/EngineContent/FontsArchives/Inter/Inter-Regular.otf"
+          )
+          foreach ($RequiredPath in $RequiredPayload) {
+            if (-not (Test-Path $RequiredPath)) {
+              Write-Error "Portable Windows package is missing required file: $RequiredPath"
+              exit 1
+            }
+          }
           @'
           Frontier & SolidArc for Windows x64
 

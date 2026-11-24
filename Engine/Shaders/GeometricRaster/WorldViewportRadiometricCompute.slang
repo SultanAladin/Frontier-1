@@ -1050,6 +1050,12 @@ float QueryGlobalDistanceAnalyticGroundZ()
     return asfloat(uint(WorldUniforms.GlobalDistanceFineToroidalCell.w));
 }
 
+uint QueryGlobalDistanceAnalyticGroundMaterialSlot()
+{
+    uint MatCount = max(1u, WorldUniforms.LightGlassMaterialDebug.z);
+    return min(uint(WorldUniforms.GlobalDistanceCoarseToroidalCell.w), MatCount - 1u);
+}
+
 float EvaluateCascadeBorderWeight(float3 NormalizedOffsetAbs)
 {
     float3 BorderMargin = 0.5 - NormalizedOffsetAbs * 0.5;
@@ -1559,7 +1565,7 @@ float3 TraceSingleRadiosityCone(
         {
             float3 GroundP     = StartP + ConeDir * TGroundHit;
             float3 GroundN     = float3(0.0, 0.0, 1.0);
-            GpuWorldMaterial80 GroundMat = MaterialEntries[0u];
+            GpuWorldMaterial80 GroundMat = MaterialEntries[QueryGlobalDistanceAnalyticGroundMaterialSlot()];
             float3 GroundAlb   = GroundMat.DiffuseAlbedoRoughness.xyz * (1.0 - saturate(GroundMat.SpecParams.y));
             float3 SunDir      = WorldUniforms.SunDirConeTan.xyz;
             float  SunVis      = SampleCascadedSunShadowFast(GroundP, GroundN, GroundN, SunDir);
@@ -2682,25 +2688,34 @@ void ShadePrimarySurfaceDemod(
     float TransW          = saturate(Mat.CoatRoughnessOptics.y);
     OutDiffuseAlbedoMatte = Mat.DiffuseAlbedoRoughness.xyz * (1.0 - Metalness) * (1.0 - TransW);
 
-    // 5. Secondary Specular Reflection (Mirror BVH4 ray only for sharp metals/clearcoats; GDF Glossy Cone for rough GTX surfaces)
+    // 5. Secondary Specular Reflection (Mirror BVH4 ray for sharp metals/clearcoats; GGX-aligned GDF glossy cone for semi-gloss, smooth sky fallback for rough dielectrics)
     float CoatW = saturate(Mat.EdgeTintCoatWeight.w);
-    if (IsReflectionsEnabled() && (Metalness > 0.20 || CoatW > 0.20 || OutSpecRough < 0.24 || EngineMode == 2u))
+    if (IsReflectionsEnabled() && (Metalness > 0.18 || CoatW > 0.18 || OutSpecRough < 0.28 || EngineMode == 2u))
     {
         float3 ReflDir       = reflect(-ViewDir, N);
+        float  Alpha         = max(1.0e-3, OutSpecRough * OutSpecRough);
+        float3 DomDir        = normalize(lerp(N, ReflDir, (1.0 - Alpha) * (sqrt(max(0.0, 1.0 - Alpha)) + Alpha)));
+        float3 TraceDir      = (OutSpecRough > 0.06 && dot(DomDir, Hit.GeomNormal) > 0.02) ? DomDir : ReflDir;
         float3 EnvRad        = float3(0.0);
         bool   SharpSpecular = (OutSpecRough < 0.18) || (CoatW > 0.20 && Mat.CoatRoughnessOptics.x < 0.16);
 
-        if (!SharpSpecular && IsGlobalDistanceFieldReady())
-        {
-            EnvRad = EvaluateGdfGlossyCone(Hit.Position, Hit.GeomNormal, ReflDir, OutSpecRough);
-        }
-        else if (SharpSpecular)
+        if (SharpSpecular)
         {
             EnvRad = ShadeSecondaryBounce(Hit.Position + Hit.GeomNormal * 3.0e-3, ReflDir);
         }
         else
         {
-            EnvRad = EvaluateSkyDome(ReflDir);
+            float3 SkyEnvRad       = EvaluateSkyDome(TraceDir);
+            float  GdfGlossyWeight = (Metalness > 0.18 || CoatW > 0.18) ? 1.0 : smoothstep(0.42, 0.24, OutSpecRough);
+            if (GdfGlossyWeight > 0.01 && IsGlobalDistanceFieldReady())
+            {
+                float3 GdfEnvRad = EvaluateGdfGlossyCone(Hit.Position, Hit.GeomNormal, TraceDir, OutSpecRough);
+                EnvRad           = lerp(SkyEnvRad, GdfEnvRad, GdfGlossyWeight);
+            }
+            else
+            {
+                EnvRad = SkyEnvRad;
+            }
         }
 
         if (OutSpecRough > 0.12)
@@ -4340,16 +4355,9 @@ void DenoiseCompositeEntry(uint3 DispatchThreadID : SV_DispatchThreadID)
     }
     else if (CenterPos.w > 0.0 && DebugMode == 11u)
     {
-        float3 CamOrigin  = WorldUniforms.CameraOriginTanX.xyz;
-        float3 VDir       = normalize(CamOrigin - CenterPos.xyz);
-        float  NdotV      = max(1.0e-3, dot(normalize(CenterNorm.xyz), VDir));
-        float4 SpecPack   = AccumulationHdrBuffer[PixelIdx];
-        float  SpecRough  = clamp(SpecPack.w, 0.025, 1.0);
-        uint   EngineMode = WorldUniforms.EngineShadowReflPad.x;
-        float  RawSpecAo  = saturate(pow(NdotV + OutDiffAo, exp2(-16.0 * SpecRough - 1.0)) - 1.0 + OutDiffAo);
-        bool   TracedSpec = (EngineMode >= 2u && IsGlobalDistanceFieldReady()) || (SpecRough < 0.18);
-        float  SpecAo     = TracedSpec ? lerp(1.0, RawSpecAo, 0.35) : RawSpecAo;
-        FinalHdr = ApplyAcesFilmicGpu(SpecPack.xyz * SpecAo);
+        // Pure specular/reflection buffer without diffuse-AO double-darkening
+        float4 SpecPack = AccumulationHdrBuffer[PixelIdx];
+        FinalHdr = ApplyAcesFilmicGpu(SpecPack.xyz);
     }
 
     if (DebugMode == 0u)

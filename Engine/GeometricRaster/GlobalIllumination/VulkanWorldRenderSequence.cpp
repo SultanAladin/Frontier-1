@@ -866,7 +866,8 @@ void VulkanWorldRenderSequence::TeardownSequence() noexcept
     PendingFineGeometryReset        = true;
     PendingCoarseGeometryReset      = true;
     DistanceFieldStats              = {};
-    ActiveAnalyticGroundPlaneZ      = UnsetAnalyticGroundPlaneZ;
+    ActiveAnalyticGroundPlaneZ       = UnsetAnalyticGroundPlaneZ;
+    ActiveAnalyticGroundMaterialSlot = 0u;
     CachedLocalSdfOffsets.clear();
     MaskSliceOffsetBytes            = 256ull;
     CachedNaniteCutSignature        = 0u;
@@ -3885,7 +3886,8 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
     // ② Upload compact per-instance dynamic rigid/scale transform array (< 0.02 ms even during gizmo drag)
     std::vector<GpuDynamicLocalSdfInstance144> GpuInstances;
     GpuInstances.reserve(std::max<std::size_t>(1u, Scene.ClusterInstances.size()));
-    float NextAnalyticGroundZ = UnsetAnalyticGroundPlaneZ;
+    float    NextAnalyticGroundZ            = UnsetAnalyticGroundPlaneZ;
+    uint32_t NextAnalyticGroundMaterialSlot = 0u;
 
     for (const RigidClusterInstance& Inst : Scene.ClusterInstances)
     {
@@ -4017,7 +4019,8 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
                 const float SlabTopZ = T.Z + BoxMax.Z * ScaleZ;
                 if (NextAnalyticGroundZ < ValidAnalyticGroundFloorZ || SlabTopZ > NextAnalyticGroundZ)
                 {
-                    NextAnalyticGroundZ = SlabTopZ;
+                    NextAnalyticGroundZ            = SlabTopZ;
+                    NextAnalyticGroundMaterialSlot = static_cast<uint32_t>(Inst.MaterialSlot);
                 }
             }
         }
@@ -4029,10 +4032,12 @@ bool VulkanWorldRenderSequence::SynchronizeLocalSdfResources(const WorldSceneSpe
         GpuInstances.push_back(Dst);
     }
 
-    if (std::fabs(NextAnalyticGroundZ - ActiveAnalyticGroundPlaneZ) > DatumChangeToleranceMeters)
+    if (std::fabs(NextAnalyticGroundZ - ActiveAnalyticGroundPlaneZ) > DatumChangeToleranceMeters ||
+        NextAnalyticGroundMaterialSlot != ActiveAnalyticGroundMaterialSlot)
     {
-        ActiveAnalyticGroundPlaneZ = NextAnalyticGroundZ;
-        ResourcesChanged           = true;
+        ActiveAnalyticGroundPlaneZ       = NextAnalyticGroundZ;
+        ActiveAnalyticGroundMaterialSlot = NextAnalyticGroundMaterialSlot;
+        ResourcesChanged                 = true;
     }
 
     uint64_t DynSig = 14695981039346656037ull;
@@ -4594,6 +4599,7 @@ bool VulkanWorldRenderSequence::DispatchGpuScenePrecompute(
     Uniforms.SunCascadeForwardPad[2] = CachedSunCascade.LightForwardAxis.Z;
 
     std::memcpy(&CachedFineToroidalMinCell[3], &ActiveAnalyticGroundPlaneZ, sizeof(float));
+    std::memcpy(&CachedCoarseToroidalMinCell[3], &ActiveAnalyticGroundMaterialSlot, sizeof(uint32_t));
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceFineToroidalCell, CachedFineToroidalMinCell, sizeof(CachedFineToroidalMinCell));
@@ -6753,6 +6759,7 @@ bool VulkanWorldRenderSequence::ExecuteWorldRenderDispatch(
     }
 
     std::memcpy(&CachedFineToroidalMinCell[3], &ActiveAnalyticGroundPlaneZ, sizeof(float));
+    std::memcpy(&CachedCoarseToroidalMinCell[3], &ActiveAnalyticGroundMaterialSlot, sizeof(uint32_t));
     std::memcpy(Uniforms.GlobalDistanceFineCenterSpan, CachedFineGdfCenterSpan, sizeof(CachedFineGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceCoarseCenterSpan, CachedCoarseGdfCenterSpan, sizeof(CachedCoarseGdfCenterSpan));
     std::memcpy(Uniforms.GlobalDistanceFineToroidalCell, CachedFineToroidalMinCell, sizeof(CachedFineToroidalMinCell));

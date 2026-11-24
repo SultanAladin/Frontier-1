@@ -418,8 +418,9 @@ private:
     Mathematics::Axis3D    LastCoarseGdfFocusWorld         { 0.0f, 0.0f, 0.0f };
     bool                   ActiveClipFocusInitialized      = false;
     bool                   CascadeFocusInitialized         = false;
-    uint32_t               UploadedLocalSdfInstanceCount   = 0u;
-    float                  ActiveAnalyticGroundPlaneZ      = UnsetAnalyticGroundPlaneZ;
+    uint32_t               UploadedLocalSdfInstanceCount    = 0u;
+    float                  ActiveAnalyticGroundPlaneZ       = UnsetAnalyticGroundPlaneZ;
+    uint32_t               ActiveAnalyticGroundMaterialSlot = 0u;
     std::vector<std::pair<const DistanceFieldSpace::LocalSignedDistanceVolume*, uint32_t>> CachedLocalSdfOffsets {};
     Mathematics::Axis3D    LastSyncedSunDir              { 0.0f, 0.0f, 0.0f };
     uint32_t               UploadedPhotometricProfiles   = 0u;
