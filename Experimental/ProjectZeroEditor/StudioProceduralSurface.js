@@ -1847,35 +1847,96 @@ function ConstructGarageShell(Params) {
     B.AddBox([Wx - Side * 0.24, 1.12, 1.5], [0.03, 0.08, D * 0.48], SurfaceMaterialCode.SafetyYellow);
   }
 
-  // --- D) Two-Story Industrial Mezzanine Catwalks & Yellow-Railed Staircases (Ref Image 3!) ---
+  // --- D) Two-Story Industrial Mezzanine Catwalks & Proper Structural Steel Staircases (Ref Image 3!) ---
   if (ShowMezzanine) {
     for (const Side of [-1, 1]) {
       const CatX = Side * (HalfW - 1.45);
       const DeckY = 3.35;
-      // Steel catwalk deck & structural edge I-beam
-      B.AddBox([CatX, DeckY, 2.4], [1.25, 0.1, 6.2], SurfaceMaterialCode.FanHousing);
-      B.AddBox([CatX - Side * 1.24, DeckY + 0.06, 2.4], [0.05, 0.14, 6.2], SurfaceMaterialCode.SafetyYellow);
-      // Support columns beneath catwalk
-      for (const Zp of [-3.2, 2.4, 8.0]) {
-        B.AddBox([CatX - Side * 1.15, DeckY * 0.5, Zp], [0.1, DeckY * 0.5, 0.1], SurfaceMaterialCode.DarkMetal);
-      }
-      // Yellow safety top & mid railings along inner edge of mezzanine
+      const DeckBackZ = -3.8;
+      const DeckFrontZ = 6.6;
+      const DeckMidZ = (DeckBackZ + DeckFrontZ) * 0.5;
+      const DeckHalfLen = (DeckFrontZ - DeckBackZ) * 0.5;
       const RailX = CatX - Side * 1.2;
-      B.AddTube([RailX, DeckY + 1.02, -3.7], [RailX, DeckY + 1.02, 8.5], 0.026, 0.026, 6, SurfaceMaterialCode.SafetyYellow);
-      B.AddTube([RailX, DeckY + 0.54, -3.7], [RailX, DeckY + 0.54, 8.5], 0.018, 0.018, 6, SurfaceMaterialCode.SafetyYellow);
-      for (let Zp = -3.6; Zp <= 8.4; Zp += 1.5) {
+
+      // Steel catwalk deck & safety-yellow perimeter edge beam
+      B.AddBox([CatX, DeckY, DeckMidZ], [1.25, 0.1, DeckHalfLen], SurfaceMaterialCode.FanHousing);
+      B.AddBox([CatX - Side * 1.24, DeckY + 0.06, DeckMidZ], [0.05, 0.14, DeckHalfLen], SurfaceMaterialCode.SafetyYellow);
+      // Front edge header beam at top of staircase
+      B.AddBox([CatX, DeckY + 0.04, DeckFrontZ], [1.25, 0.12, 0.06], SurfaceMaterialCode.SafetyYellow);
+
+      // Structural steel support columns beneath catwalk (aligned cleanly along inner edge, clear of stairs!)
+      for (const Zp of [-3.4, 1.6, 6.45]) {
+        B.AddBox([CatX - Side * 1.15, DeckY * 0.5, Zp], [0.1, DeckY * 0.5, 0.1], SurfaceMaterialCode.DarkMetal);
+        B.AddBox([CatX - Side * 1.15, 0.03, Zp], [0.18, 0.03, 0.18], SurfaceMaterialCode.SafetyYellow);
+      }
+
+      // Yellow safety top & mid railings along inner edge + closed back edge of mezzanine
+      B.AddTube([RailX, DeckY + 1.02, DeckBackZ], [RailX, DeckY + 1.02, DeckFrontZ], 0.026, 0.026, 6, SurfaceMaterialCode.SafetyYellow);
+      B.AddTube([RailX, DeckY + 0.54, DeckBackZ], [RailX, DeckY + 0.54, DeckFrontZ], 0.018, 0.018, 6, SurfaceMaterialCode.SafetyYellow);
+      for (let Zp = DeckBackZ; Zp <= DeckFrontZ + 0.01; Zp += 1.73) {
         B.AddTube([RailX, DeckY + 0.05, Zp], [RailX, DeckY + 1.04, Zp], 0.02, 0.02, 6, SurfaceMaterialCode.DarkMetal);
       }
-      // Angled steel staircase descending from mezzanine toward front bay
-      const Steps = 11;
-      for (let S = 0; S < Steps; S++) {
-        const T = S / (Steps - 1);
-        const Sy = 0.25 + T * (DeckY - 0.25);
-        const Sz = 9.8 - T * 3.1;
-        B.AddBox([CatX - Side * 0.45, Sy, Sz], [0.58, 0.035, 0.14], SurfaceMaterialCode.DarkMetal);
+      // Back-end safety rail closing off rear catwalk edge
+      B.AddTube([RailX, DeckY + 1.02, DeckBackZ], [CatX + Side * 1.18, DeckY + 1.02, DeckBackZ], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+      B.AddTube([RailX, DeckY + 0.54, DeckBackZ], [CatX + Side * 1.18, DeckY + 0.54, DeckBackZ], 0.018, 0.018, 6, SurfaceMaterialCode.SafetyYellow);
+
+      // Proper Structural Steel Staircase descending outward from DeckFrontZ (6.6) to StairFootZ (10.55)!
+      const StairFootZ = 10.55;
+      const StairRun = StairFootZ - DeckFrontZ; // 3.95 m horizontal run
+      const StairCx = CatX - Side * 0.12;
+      const StairHalfW = 0.64;
+      const SlopeAng = Math.atan2(DeckY, StairRun);
+      const StringerLen = Math.hypot(DeckY, StairRun);
+
+      // Twin heavy angled steel C-channel stringers anchoring cleanly from floor plates to mezzanine header!
+      for (const SSide of [-1, 1]) {
+        const Sx = StairCx + SSide * (StairHalfW + 0.035);
+        // Solid sloped steel beam supporting all treads
+        B.AddBox(
+          [Sx, DeckY * 0.5, (DeckFrontZ + StairFootZ) * 0.5],
+          [0.038, 0.13, StringerLen * 0.5],
+          SurfaceMaterialCode.FanHousing,
+          SlopeAng,
+          0,
+          0,
+        );
+        // Floor anchor base plate at foot of each stringer
+        B.AddBox([Sx, 0.022, StairFootZ], [0.1, 0.022, 0.14], SurfaceMaterialCode.SafetyYellow);
+
+        // Angled top & mid safety-yellow handrails supported by vertical steel balusters along the stringer!
+        const RailTopY0 = 1.02;
+        const RailTopY1 = DeckY + 1.02;
+        B.AddTube([Sx, RailTopY0, StairFootZ], [Sx, RailTopY1, DeckFrontZ], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+        B.AddTube([Sx, 0.54, StairFootZ], [Sx, DeckY + 0.54, DeckFrontZ], 0.016, 0.016, 6, SurfaceMaterialCode.SafetyYellow);
+
+        // 5 evenly spaced vertical steel handrail stanchions anchoring cleanly into the stringer
+        for (let P = 0; P <= 4; P++) {
+          const U = P / 4;
+          const Py = U * DeckY;
+          const Pz = StairFootZ - U * StairRun;
+          B.AddTube([Sx, Py + 0.02, Pz], [Sx, Py + 1.04, Pz], 0.018, 0.018, 6, SurfaceMaterialCode.DarkMetal);
+        }
       }
-      B.AddTube([CatX - Side * 1.02, 0.95, 9.9], [CatX - Side * 1.02, DeckY + 1.02, 6.7], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
-      B.AddTube([CatX + Side * 0.12, 0.95, 9.9], [CatX + Side * 0.12, DeckY + 1.02, 6.7], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+
+      // Connect inner stair top newel post smoothly to mezzanine inner railing (closes landing gap!)
+      const InnerStairX = StairCx - Side * (StairHalfW + 0.035);
+      B.AddTube([RailX, DeckY + 1.02, DeckFrontZ], [InnerStairX, DeckY + 1.02, DeckFrontZ], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+      B.AddTube([RailX, DeckY + 0.54, DeckFrontZ], [InnerStairX, DeckY + 0.54, DeckFrontZ], 0.018, 0.018, 6, SurfaceMaterialCode.SafetyYellow);
+      // Close outer gap at top landing between stair outer rail and side concrete wall
+      const OuterStairX = StairCx + Side * (StairHalfW + 0.035);
+      B.AddTube([OuterStairX, DeckY + 1.02, DeckFrontZ], [CatX + Side * 1.18, DeckY + 1.02, DeckFrontZ], 0.024, 0.024, 6, SurfaceMaterialCode.SafetyYellow);
+
+      // 12 solid non-slip steel treads + safety-yellow nosing strips nestled squarely BETWEEN the twin stringers!
+      const Steps = 12;
+      for (let S = 1; S <= Steps; S++) {
+        const T = S / (Steps + 1);
+        const Sy = T * DeckY;
+        const Sz = StairFootZ - T * StairRun;
+        // Solid steel tread plate spanning between stringers
+        B.AddBox([StairCx, Sy, Sz], [StairHalfW, 0.028, 0.165], SurfaceMaterialCode.DarkMetal);
+        // Subtle safety-yellow anti-slip front nosing strip on each step
+        B.AddBox([StairCx, Sy + 0.024, Sz + 0.152], [StairHalfW - 0.02, 0.01, 0.016], SurfaceMaterialCode.SafetyYellow);
+      }
     }
   }
 

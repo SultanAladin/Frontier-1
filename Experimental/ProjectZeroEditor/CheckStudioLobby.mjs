@@ -189,6 +189,80 @@ assert.ok(
   "Lowering Hydraulic Car Lift moves elevated vehicle live to Y=0.85m",
 );
 assert.equal(StudioLobby3Rows.filter((R) => R.Panel === "studio-vehicle").length, 4, "Lobby 3 stages 4 vehicles including elevated lift car");
+
+// 2e. Automated 3D XZ Footprint Non-Overlap Check across ALL Lobby 3 vehicles, lift, props, tripods, stairs & mezzanine columns!
+function ComputeRotatedWorldAabb(Bounds, Pos, YawDeg, Scale = 1) {
+  const Rad = (YawDeg * Math.PI) / 180;
+  const C = Math.cos(Rad), S = Math.sin(Rad);
+  let MinX = Infinity, MaxX = -Infinity, MinZ = Infinity, MaxZ = -Infinity;
+  for (const X of [Bounds.Min[0] * Scale, Bounds.Max[0] * Scale]) {
+    for (const Z of [Bounds.Min[2] * Scale, Bounds.Max[2] * Scale]) {
+      const Wx = Pos[0] + X * C + Z * S;
+      const Wz = Pos[2] - X * S + Z * C;
+      if (Wx < MinX) MinX = Wx;
+      if (Wx > MaxX) MaxX = Wx;
+      if (Wz < MinZ) MinZ = Wz;
+      if (Wz > MaxZ) MaxZ = Wz;
+    }
+  }
+  return { MinX, MaxX, MinZ, MaxZ };
+}
+function BoxesOverlap(A, B, Margin = 0.08) {
+  return A.MinX < B.MaxX + Margin && A.MaxX + Margin > B.MinX && A.MinZ < B.MaxZ + Margin && A.MaxZ + Margin > B.MinZ;
+}
+const L3Footprints = [];
+const AddObjBox = (Id, Bounds, Scale = 1) => {
+  const Xf = L3HierDefault[Id];
+  const V = StudioLobby3InitialValues[Id] || {};
+  L3Footprints.push({
+    Id,
+    Box: ComputeRotatedWorldAabb(Bounds, Xf.Position, Number(V.YawDeg ?? V.Rotation?.[1] ?? 0), Scale),
+  });
+};
+AddObjBox("vehicle-hero", Vehicle.Bounds, StudioLobby3InitialValues["vehicle-hero"].Scale);
+AddObjBox("vehicle-gt3", Vehicle.Bounds, StudioLobby3InitialValues["vehicle-gt3"].Scale);
+AddObjBox("vehicle-tourer", Vehicle.Bounds, StudioLobby3InitialValues["vehicle-tourer"].Scale);
+AddObjBox("l3-car-lift", L3Lift.Bounds, 1);
+AddObjBox("l3-tool-chest", L3Chest.Bounds, 1);
+AddObjBox("l3-tool-cart", L3Cart.Bounds, 1);
+AddObjBox("l3-workbench", L3Bench.Bounds, 1);
+AddObjBox("l3-air-compressor", L3Comp.Bounds, 1);
+AddObjBox("l3-tire-rack", L3TireRack.Bounds, 1);
+AddObjBox("l3-diag-cabinet", L3Diag.Bounds, 1);
+AddObjBox("rig-cam-a-tripod", ConstructProceduralSurface("studio.tripod", StudioLobby3InitialValues["rig-cam-a-tripod"]).Bounds, 1);
+AddObjBox("rig-cam-b-tripod", ConstructProceduralSurface("studio.tripod", StudioLobby3InitialValues["rig-cam-b-tripod"]).Bounds, 1);
+
+// Structural obstacles (both staircases, all 6 mezzanine columns, both side concrete walls & back wall)
+const L3Structures = [
+  { Id: "left-staircase", Box: { MinX: -10.45, MaxX: -8.9, MinZ: 6.55, MaxZ: 10.65 } },
+  { Id: "right-staircase", Box: { MinX: 8.9, MaxX: 10.45, MinZ: 6.55, MaxZ: 10.65 } },
+  { Id: "left-wall", Box: { MinX: -11.3, MaxX: -10.72, MinZ: -6.5, MaxZ: 12.0 } },
+  { Id: "right-wall", Box: { MinX: 10.72, MaxX: 11.3, MinZ: -6.5, MaxZ: 12.0 } },
+  { Id: "back-wall", Box: { MinX: -11.2, MaxX: 11.2, MinZ: -6.8, MaxZ: -5.62 } },
+];
+for (const Side of [-1, 1]) {
+  const ColX = Side * (11.0 - 1.45 - 1.15); // ±8.4 m
+  for (const Zp of [-3.4, 1.6, 6.45]) {
+    L3Structures.push({
+      Id: (Side < 0 ? "left" : "right") + "-mezz-col@" + Zp,
+      Box: { MinX: ColX - 0.16, MaxX: ColX + 0.16, MinZ: Zp - 0.16, MaxZ: Zp + 0.16 },
+    });
+  }
+}
+for (let I = 0; I < L3Footprints.length; I++) {
+  for (let J = I + 1; J < L3Footprints.length; J++) {
+    assert.ok(
+      !BoxesOverlap(L3Footprints[I].Box, L3Footprints[J].Box, 0.05),
+      `Lobby 3 overlap detected between ${L3Footprints[I].Id} and ${L3Footprints[J].Id}`,
+    );
+  }
+  for (const St of L3Structures) {
+    assert.ok(
+      !BoxesOverlap(L3Footprints[I].Box, St.Box, 0.02),
+      `Lobby 3 overlap detected between ${L3Footprints[I].Id} and structure ${St.Id}`,
+    );
+  }
+}
 assert.ok(L2Fan.TriangleCount > 500, "Wheeled Studio Wind Fan with spinning propeller & wire cage (" + L2Fan.TriangleCount + " tris)");
 console.log(
   `PASS [2/6] Lobby 1 & Lobby 2 procedural 3D geometry verified (Ferns: ${L2Ferns.TriangleCount} tris, Grass: ${L2Grass.TriangleCount} tris, Rock: ${L2Rock.TriangleCount} tris, Wood: ${L2Wood.TriangleCount} tris, Fan: ${L2Fan.TriangleCount} tris)`,

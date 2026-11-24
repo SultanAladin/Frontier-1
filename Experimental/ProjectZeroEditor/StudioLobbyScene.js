@@ -1718,8 +1718,8 @@ export const StudioLobby2InitialValues = {
 const L3AimSun = ComputeAimAngles([-9.4, 8.2, -13.5], Lobby3HeroAimTarget);
 const L3AimPortal = ComputeAimAngles([-4.2, 3.1, -6.3], Lobby3HeroAimTarget);
 const L3AimBayLamp = ComputeAimAngles([5.2, 5.4, 1.4], Lobby3HeroAimTarget);
-const L3AimCamA = ComputeAimAngles([-2.85, 1.75, 6.45], Lobby3HeroAimTarget);
-const L3AimCamB = ComputeAimAngles([3.85, 1.58, 6.25], Lobby3HeroAimTarget);
+const L3AimCamA = ComputeAimAngles([-1.25, 1.75, 4.95], Lobby3HeroAimTarget);
+const L3AimCamB = ComputeAimAngles([1.85, 1.58, 4.85], Lobby3HeroAimTarget);
 
 export const StudioLobby3Rows = [
   // Vehicles collection: Hero Signal-Orange GT + Elevated Car on Hydraulic Lift + 2 Paddock Cars
@@ -1992,7 +1992,7 @@ export const StudioLobby3InitialValues = {
 
   // 1) Signal Orange Hero GT car parked heroically in the sunlit pit-bay shaft (Ref Image 1!)
   "vehicle-hero": {
-    Position: [0.35, 0.0, 0.35],
+    Position: [0.35, 0.0, 0.25],
     Rotation: [0, -146, 0],
     YawDeg: -146,
     InclineDeg: 0,
@@ -2020,11 +2020,11 @@ export const StudioLobby3InitialValues = {
     RimHex: "#cfd5de",
     CaliperHex: "#b81d24",
   },
-  // 3) Companion GT parked in right paddock bay
+  // 3) Companion GT parked cleanly in open front-right garage bay (clear of right mezzanine, stairs & tripods!)
   "vehicle-gt3": {
-    Position: [8.45, 0.0, 4.45],
-    Rotation: [0, -156, 0],
-    YawDeg: -156,
+    Position: [5.45, 0.0, 8.65],
+    Rotation: [0, -142, 0],
+    YawDeg: -142,
     InclineDeg: 0,
     BankDeg: 0,
     Scale: 0.75,
@@ -2035,11 +2035,11 @@ export const StudioLobby3InitialValues = {
     RimHex: "#1d1f24",
     CaliperHex: "#b81d24",
   },
-  // 4) Reserve track car on outer pit apron
+  // 4) Reserve track car parked cleanly in open front-left garage bay (clear of left mezzanine, stairs & tripods!)
   "vehicle-tourer": {
-    Position: [-8.65, 0.0, 7.65],
-    Rotation: [0, -28, 0],
-    YawDeg: -28,
+    Position: [-5.35, 0.0, 8.75],
+    Rotation: [0, -36, 0],
+    YawDeg: -36,
     InclineDeg: 0,
     BankDeg: 0,
     Scale: 0.75,
@@ -2075,12 +2075,12 @@ export const StudioLobby3InitialValues = {
     ShowMezzanine: true,
     ShowLinearLeds: true,
   },
-  // Heavy 4-Post Hydraulic Car Lift (parent of vehicle-lift!)
+  // Heavy 4-Post Hydraulic Car Lift (oriented cleanly along left pit bay, clear of mezzanine & Hero GT!)
   "l3-car-lift": {
     ProceduralKind: "studio.car_lift",
-    Position: [-6.4, 0.0, -1.35],
-    Rotation: [0, 8, 0],
-    YawDeg: 8,
+    Position: [-5.55, 0.0, -1.55],
+    Rotation: [0, 90, 0],
+    YawDeg: 90,
     LiftHeight: 2.12,
     PostHeight: 3.85,
   },
@@ -2109,48 +2109,48 @@ export const StudioLobby3InitialValues = {
     CloudCount: 145,
   },
 
-  // Packed Mechanics Workshop Equipment: Tool Chest, Tool Cart, Workbench, Air Compressor, Tire Rack & Telemetry
+  // Packed Mechanics Workshop Equipment: zero overlap with columns, stairs, lift, or vehicles!
   "l3-tool-chest": {
     ProceduralKind: "studio.garage_props",
     PropVariant: "tool-chest",
-    Position: [5.45, 0.0, -1.55],
-    Rotation: [0, -76, 0],
-    YawDeg: -76,
+    Position: [7.1, 0.0, -2.4],
+    Rotation: [0, -85, 0],
+    YawDeg: -85,
   },
   "l3-tool-cart": {
     ProceduralKind: "studio.garage_props",
     PropVariant: "tool-cart",
-    Position: [5.15, 0.0, 3.05],
-    Rotation: [0, -28, 0],
-    YawDeg: -28,
+    Position: [5.35, 0.0, 2.2],
+    Rotation: [0, -32, 0],
+    YawDeg: -32,
   },
   "l3-workbench": {
     ProceduralKind: "studio.garage_props",
     PropVariant: "workbench",
-    Position: [9.45, 0.0, -1.25],
+    Position: [9.75, 0.0, -0.35],
     Rotation: [0, -90, 0],
     YawDeg: -90,
   },
   "l3-air-compressor": {
     ProceduralKind: "studio.garage_props",
     PropVariant: "air-compressor",
-    Position: [-9.25, 0.0, 2.55],
-    Rotation: [0, 78, 0],
-    YawDeg: 78,
+    Position: [-9.65, 0.0, 3.85],
+    Rotation: [0, 90, 0],
+    YawDeg: 90,
   },
   "l3-tire-rack": {
     ProceduralKind: "studio.garage_props",
     PropVariant: "tire-rack",
-    Position: [4.15, 0.0, -4.65],
+    Position: [4.05, 0.0, -4.55],
     Rotation: [0, 0, 0],
     YawDeg: 0,
   },
   "l3-diag-cabinet": {
     ProceduralKind: "studio.garage_props",
     PropVariant: "diag-cabinet",
-    Position: [-2.35, 0.0, -5.05],
-    Rotation: [0, 14, 0],
-    YawDeg: 14,
+    Position: [-1.55, 0.0, -4.65],
+    Rotation: [0, 18, 0],
+    YawDeg: 18,
   },
   "l3-garage-cables": {
     ProceduralKind: "studio.garage_cables",
@@ -2239,10 +2239,10 @@ export const StudioLobby3InitialValues = {
     },
   },
 
-  // Foreground Camera Rigs aimed at Hero GT in Pit Bay Center
+  // Foreground Camera Rigs aimed at Hero GT in Pit Bay Center (clear of all vehicles & props!)
   "rig-cam-a-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [-2.85, 0.0, 6.45],
+    Position: [-1.25, 0.0, 4.95],
     Rotation: [0, L3AimCamA.YawDeg, 0],
     YawDeg: L3AimCamA.YawDeg,
     StandHeight: 1.48,
@@ -2264,7 +2264,7 @@ export const StudioLobby3InitialValues = {
   },
   "rig-cam-b-tripod": {
     ProceduralKind: "studio.tripod",
-    Position: [3.85, 0.0, 6.25],
+    Position: [1.85, 0.0, 4.85],
     Rotation: [0, L3AimCamB.YawDeg, 0],
     YawDeg: L3AimCamB.YawDeg,
     StandHeight: 1.34,
