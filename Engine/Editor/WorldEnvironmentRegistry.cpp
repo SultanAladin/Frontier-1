@@ -671,12 +671,31 @@ bool WorldEnvironmentRegistry::SyncToWorld(
         }
     }
 
-    // Keep background sky clean black vacuum whenever Atmosphere is not active so removing Atmosphere visibly clears the sky
-    const Mathematics::LinearRGB TargetSkyRadiance = AtmoActive ? CachedFallbackSky : Mathematics::LinearRGB{ 0.0f, 0.0f, 0.0f };
-    if (LinearRgbDifferent(Scene.SkyRadiance, TargetSkyRadiance))
+    // Keep background sky clean black vacuum whenever Atmosphere is not active so removing Atmosphere visibly clears the sky.
+    // When Atmosphere IS active, adopt any live non-zero sky radiance computed by the atmosphere solver into CachedFallbackSky
+    // instead of resetting it every frame (avoids an infinite Changed=true ping-pong with SynchronizeWorldAtmosphere).
+    if (AtmoActive)
     {
-        Scene.SkyRadiance = TargetSkyRadiance;
-        Changed = true;
+        if (Scene.SkyRadiance.R <= 1.0e-4f &&
+            Scene.SkyRadiance.G <= 1.0e-4f &&
+            Scene.SkyRadiance.B <= 1.0e-4f)
+        {
+            Scene.SkyRadiance = CachedFallbackSky;
+            Changed = true;
+        }
+        else
+        {
+            CachedFallbackSky = Scene.SkyRadiance;
+        }
+    }
+    else
+    {
+        const Mathematics::LinearRGB VacuumSky { 0.0f, 0.0f, 0.0f };
+        if (LinearRgbDifferent(Scene.SkyRadiance, VacuumSky))
+        {
+            Scene.SkyRadiance = VacuumSky;
+            Changed = true;
+        }
     }
 
     if (DisplaySettings != nullptr)

@@ -2644,17 +2644,38 @@ bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
 
             const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
             const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || AtmoAnimTick;
+            // Only bake the CPU Bruneton SkyView LUT when the software CPU fallback renderer is active (!GpuReady).
+            // When Vulkan GPU compute is active, the GPU builds its own SkyView LUT on-device; CPU only runs
+            // lightweight (~0.01 ms) solar ephemeris + transmittance to keep Sun direction & irradiance live.
             const bool NeedCpuSkySync =
-                ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
-                (ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || (!GpuReady && (DisplayCfg.DayCyclePlaying || AtmoAnimTick)));
+                !GpuReady && ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
+                (ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || DisplayCfg.DayCyclePlaying || AtmoAnimTick);
             if (NeedCpuSkySync)
             {
                 ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
             }
-            else if (Atmo.Medium.AtmosphereEnabled && DisplayCfg.DayCyclePlaying)
+            else if (Atmo.Medium.AtmosphereEnabled && (AtmoChanged || DisplayCfg.DayCyclePlaying))
             {
                 const auto Solved = GeometricRaster::CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
                 ShowcaseBundle->Scene.Sun.DirectionToSun = Solved.WorldDirectionToSun;
+                const float ObsAlt = Atmo.Medium.ObserverAltitudeMeters;
+                const auto Trans = GeometricRaster::AtmosphericSkySequence::ComputeSolarTransmittance(
+                    Solved.WorldDirectionToSun,
+                    Atmo.Medium,
+                    ObsAlt);
+                const bool IsOrbital = Atmo.Medium.OrbitalViewEnabled || (ObsAlt > Atmo.Medium.AtmosphereThicknessMeters);
+                const float SunVis = IsOrbital ? 1.0f : std::clamp((Solved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
+                ShowcaseBundle->Scene.Sun.SunAngularRadiusRadians =
+                    std::clamp(Atmo.Solar.AngularDiameterDegrees * 0.5f * 0.0174532925f, 0.002f, 0.25f);
+                if (Atmo.Solar.SolarEnabled)
+                {
+                    const float IrradScale = Atmo.Solar.SolarIntensityMultiplier * Atmo.Solar.DirectGainMultiplier * 0.044f * SunVis;
+                    ShowcaseBundle->Scene.Sun.SolarIrradiance = {
+                        Solved.EffectiveSolarTint.R * Trans.R * IrradScale,
+                        Solved.EffectiveSolarTint.G * Trans.G * IrradScale,
+                        Solved.EffectiveSolarTint.B * Trans.B * IrradScale,
+                    };
+                }
             }
 
             const ViewportProjectionPreset CurProjection = Panes->Viewport.QueryPrimaryProjection();
