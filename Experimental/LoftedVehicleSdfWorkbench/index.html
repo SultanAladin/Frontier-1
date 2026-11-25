@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lofted Bi-Directional Curve SDF vs. 3D Voxel Grid · ControlVehicle Workbench</title>
+    <style>
+        @font-face {
+            font-family: "DM Sans";
+            src: url("./Fonts/dm-sans-latin-400-normal.woff2") format("woff2");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "DM Sans";
+            src: url("./Fonts/dm-sans-latin-500-normal.woff2") format("woff2");
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            --bg-ink: #0a0f15;
+            --panel-bg: #101720;
+            --panel-elev: #16202c;
+            --line-soft: rgba(148, 192, 224, 0.14);
+            --line-strong: rgba(76, 204, 248, 0.46);
+            --text-main: #edf3f8;
+            --text-muted: #93a7ba;
+            --accent-cyan: #3cd4f8;
+            --accent-gold: #f7be45;
+            --accent-mint: #42db92;
+            --accent-coral: #f46d54;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-ink);
+            color: var(--text-main);
+            font-family: "DM Sans", sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            user-select: none;
+        }
+
+        .WorkbenchLayout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 408px;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .ViewportPane {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(circle at 46% 38%, #1a2736 0%, #090d13 100%);
+        }
+
+        #ViewportCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        #ViewportCanvas:active {
+            cursor: grabbing;
+        }
+
+        .TopTelemetryBar {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            right: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .TelemetryCluster {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            background: rgba(12, 18, 26, 0.86);
+            border: 1px solid var(--line-soft);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 7px 12px;
+            pointer-events: auto;
+        }
+
+        .RuntimeTag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 12px;
+            background: rgba(60, 212, 248, 0.14);
+            border: 1px solid rgba(60, 212, 248, 0.42);
+            color: #93e8fc;
+        }
+
+        .MetricChip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.045);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .MetricChip strong {
+            color: var(--text-main);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .SplitBanner {
+            position: absolute;
+            top: 62px;
+            left: 14px;
+            right: 14px;
+            display: none;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .SplitBanner.Visible {
+            display: grid;
+        }
+
+        .SplitPaneHeader {
+            text-align: center;
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: rgba(10, 15, 22, 0.85);
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .SplitPaneHeader.LeftLoft {
+            border: 1px solid rgba(60, 212, 248, 0.45);
+            color: #9ae9fc;
+        }
+        .SplitPaneHeader.RightVox {
+            border: 1px solid rgba(244, 109, 84, 0.45);
+            color: #fcc2b6;
+        }
+
+        .BottomViewportBar {
+            position: absolute;
+            bottom: 14px;
+            left: 14px;
+            right: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .CameraBtnRow {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            background: rgba(12, 18, 26, 0.86);
+            border: 1px solid var(--line-soft);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 6px 8px;
+            pointer-events: auto;
+        }
+
+        .ViewportBtn {
+            appearance: none;
+            border: 1px solid var(--line-soft);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 11.5px;
+            font-weight: 500;
+            padding: 5px 9px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .ViewportBtn:hover {
+            background: rgba(60, 212, 248, 0.14);
+            border-color: var(--line-strong);
+        }
+
+        .SplineLegendRow {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            background: rgba(12, 18, 26, 0.86);
+            border: 1px solid var(--line-soft);
+            border-radius: 10px;
+            padding: 6px 11px;
+            font-size: 11.5px;
+            color: var(--text-muted);
+            pointer-events: auto;
+        }
+        .LegendSwatch {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: -1px;
+        }
+
+        .SidebarPane {
+            height: 100vh;
+            overflow-y: auto;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--line-soft);
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .HeaderBlock h1 {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-main);
+            letter-spacing: -0.01em;
+        }
+        .HeaderBlock p {
+            margin-top: 3px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .ControlSection {
+            background: var(--panel-elev);
+            border: 1px solid var(--line-soft);
+            border-radius: 10px;
+            padding: 11px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+        }
+
+        .SectionTitle {
+            font-size: 11.5px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent-cyan);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .QuickModeBar {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+        }
+        .QuickModeBtn {
+            appearance: none;
+            border: 1px solid var(--line-soft);
+            background: rgba(255, 255, 255, 0.035);
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 11.5px;
+            font-weight: 500;
+            padding: 6px 6px;
+            border-radius: 7px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .QuickModeBtn.Active {
+            background: rgba(60, 212, 248, 0.16);
+            border-color: var(--line-strong);
+            color: #a9edff;
+        }
+
+        .FieldRow {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .FieldHeader {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .FieldHeader span:last-child {
+            color: var(--text-main);
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+        }
+
+        select {
+            width: 100%;
+            background: #0d131b;
+            color: var(--text-main);
+            border: 1px solid var(--line-soft);
+            border-radius: 7px;
+            padding: 6px 8px;
+            font-family: inherit;
+            font-size: 12px;
+            outline: none;
+        }
+        select:focus {
+            border-color: var(--line-strong);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-cyan);
+            cursor: pointer;
+        }
+
+        .ToggleLine {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+        .ToggleLine input[type="checkbox"] {
+            accent-color: var(--accent-cyan);
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+
+        .BenchmarkGrid {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr 1fr;
+            gap: 5px 8px;
+            font-size: 11.5px;
+            align-items: center;
+        }
+        .BenchColHead {
+            font-weight: 500;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--line-soft);
+        }
+        .BenchColHead.LoftCol {
+            color: var(--accent-cyan);
+            text-align: right;
+        }
+        .BenchColHead.VoxCol {
+            color: var(--accent-coral);
+            text-align: right;
+        }
+        .BenchMetricName {
+            color: var(--text-muted);
+        }
+        .BenchCellLoft {
+            text-align: right;
+            color: #b7f0ff;
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+        }
+        .BenchCellVox {
+            text-align: right;
+            color: #ffd0c6;
+            font-variant-numeric: tabular-nums;
+            font-weight: 500;
+        }
+
+        .InsightNote {
+            font-size: 11.5px;
+            color: var(--text-muted);
+            background: rgba(60, 212, 248, 0.06);
+            border-left: 2px solid var(--accent-cyan);
+            padding: 7px 9px;
+            border-radius: 0 6px 6px 0;
+            line-height: 1.45;
+        }
+
+        @media (max-width: 980px) {
+            .WorkbenchLayout {
+                grid-template-columns: 1fr;
+                grid-template-rows: 56vh 44vh;
+            }
+            .SidebarPane {
+                height: 44vh;
+                border-left: none;
+                border-top: 1px solid var(--line-soft);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="WorkbenchLayout">
+        <div class="ViewportPane">
+            <canvas id="ViewportCanvas"></canvas>
+
+            <div class="TopTelemetryBar">
+                <div class="TelemetryCluster">
+                    <span class="RuntimeTag" id="RuntimeTag">🔍 Loading ControlVehicle...</span>
+                    <span class="MetricChip">Loft VRAM <strong id="TelLoftVram">--</strong></span>
+                    <span class="MetricChip">Voxel VRAM <strong id="TelVoxVram">--</strong></span>
+                    <span class="MetricChip">Compression <strong id="TelVramRatio">--</strong></span>
+                </div>
+                <div class="TelemetryCluster">
+                    <span class="MetricChip">Skin Accuracy <strong id="TelSkinErr">--</strong></span>
+                    <span class="MetricChip">Speed <strong id="TelFps">-- FPS</strong></span>
+                </div>
+            </div>
+
+            <div class="SplitBanner" id="SplitBanner">
+                <div class="SplitPaneHeader LeftLoft" id="SplitLeftLabel">LEFT · Bi-Directional Lofted Curve SDF</div>
+                <div class="SplitPaneHeader RightVox" id="SplitRightLabel">RIGHT · Uniform 3D Voxel Grid SDF</div>
+            </div>
+
+            <div class="BottomViewportBar">
+                <div class="CameraBtnRow">
+                    <button class="ViewportBtn" id="CamHeroBtn" type="button">3/4 Hero</button>
+                    <button class="ViewportBtn" id="CamFenderBtn" type="button">Fender &amp; Wheel Arch</button>
+                    <button class="ViewportBtn" id="CamProfileBtn" type="button">Side Aero Loft</button>
+                    <button class="ViewportBtn" id="CamShadowBtn" type="button">Long Shadow</button>
+                    <button class="ViewportBtn" id="CamTopRibsBtn" type="button">Overhead Rib × Rail</button>
+                </div>
+                <div class="SplineLegendRow">
+                    <span><i class="LegendSwatch" style="background:#3cd4f8;"></i>Transverse Ribs (M)</span>
+                    <span><i class="LegendSwatch" style="background:#f7be45;"></i>Longitudinal Loft Rails (K)</span>
+                    <span><i class="LegendSwatch" style="background:#42db92;"></i>Revolved Wheel Lofts</span>
+                </div>
+            </div>
+        </div>
+
+        <aside class="SidebarPane">
+            <div class="HeaderBlock">
+                <h1>🧩 Lofted Surface-Curve SDF vs. 3D Voxel SDF</h1>
+                <p>Frontier <strong>Controlled Integrator</strong> (12,572 verts · 25,068 triangles) · Bi-Directional Bicubic Ferguson–Hermite Rib × Rail Lofting vs. Trilinear 3D Voxels</p>
+            </div>
+
+            <div class="ControlSection">
+                <div class="SectionTitle">
+                    <span>1 · Inspection View &amp; Split Comparison</span>
+                </div>
+                <div class="QuickModeBar">
+                    <button class="QuickModeBtn Active" id="ModeBtnShowroom" type="button">Showroom + SDF</button>
+                    <button class="QuickModeBtn" id="ModeBtnIsoSurface" type="button">Pure d(x)=0 SDF</button>
+                    <button class="QuickModeBtn" id="ModeBtnCutaway" type="button">3D Field Cutaway</button>
+                </div>
+                <label class="ToggleLine">
+                    <input type="checkbox" id="SplitCompareToggle" />
+                    <span><strong>Split Viewport:</strong> Lofted Curve (Left) vs. Voxel Grid (Right)</span>
+                </label>
+                <label class="ToggleLine">
+                    <input type="checkbox" id="ZebraInspectToggle" />
+                    <span>Class-A Zebra Reflection Stripes (in Pure d(x)=0 SDF view)</span>
+                </label>
+                <label class="ToggleLine">
+                    <input type="checkbox" id="LoftCageToggle" checked />
+                    <span>Overlay 3D Bi-Directional Rib × Rail Spline Cage</span>
+                </label>
+                <label class="ToggleLine">
+                    <input type="checkbox" id="VoxelCageToggle" />
+                    <span>Overlay 3D Rectilinear Voxel Lattice Cells</span>
+                </label>
+            </div>
+
+            <div class="ControlSection">
+                <div class="SectionTitle">
+                    <span>2 · SDF Resolution Scaling (O(M·K) vs. O(N³))</span>
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Single-View Active SDF</span>
+                        <span id="ActiveParadigmReadout">Lofted Curve</span>
+                    </div>
+                    <select id="ActiveParadigmSelect">
+                        <option value="0" selected>Bi-Directional Lofted Curve SDF — O(M · K) Manifold</option>
+                        <option value="1">Uniform 3D Voxel Grid SDF — O(N³) Volume</option>
+                    </select>
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Loft Curve Density (M Ribs × K Rails)</span>
+                        <span id="LoftPresetReadout">32 × 36</span>
+                    </div>
+                    <select id="LoftPresetSelect">
+                        <option value="loft-10x16">10 × 16 · Ultra-Compact (0.36 KB compact / 1.34 KB GPU)</option>
+                        <option value="loft-18x24">18 × 24 · Balanced Aero (0.91 KB compact / 3.50 KB GPU)</option>
+                        <option value="loft-32x36" selected>32 × 36 · High-Precision (2.34 KB compact / 9.19 KB GPU)</option>
+                        <option value="loft-48x64">48 × 64 · Reference Skin (6.13 KB compact / 24.25 KB GPU)</option>
+                    </select>
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>3D Voxel Grid Resolution (N³)</span>
+                        <span id="VoxelPresetReadout">32³</span>
+                    </div>
+                    <select id="VoxelPresetSelect">
+                        <option value="vox-16">16³ Voxel Volume (8.0 KB r16f / 32.0 KB rgba16f)</option>
+                        <option value="vox-32" selected>32³ Voxel Volume (64.0 KB r16f / 256.0 KB rgba16f)</option>
+                        <option value="vox-64">64³ Voxel Volume (512.0 KB r16f / 2,048 KB rgba16f)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="ControlSection">
+                <div class="SectionTitle">
+                    <span>3 · Showroom Lighting &amp; Distance Cutaway</span>
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Sun Azimuth</span>
+                        <span id="SunAzimuthReadout">42°</span>
+                    </div>
+                    <input type="range" id="SunAzimuthSlider" min="-180" max="180" step="1" value="42" />
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Sun Elevation</span>
+                        <span id="SunElevationReadout">26°</span>
+                    </div>
+                    <input type="range" id="SunElevationSlider" min="8" max="78" step="1" value="26" />
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>SDF Shadow Cone Sharpness</span>
+                        <span id="ShadowSoftnessReadout">14</span>
+                    </div>
+                    <input type="range" id="ShadowSoftnessSlider" min="3" max="32" step="1" value="14" />
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Showroom Floor SDF Reflection</span>
+                        <span id="FloorReflectReadout">65%</span>
+                    </div>
+                    <input type="range" id="FloorReflectSlider" min="0" max="100" step="1" value="65" />
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Cutaway Plane Axis</span>
+                        <span id="CutAxisReadout">Transverse Z</span>
+                    </div>
+                    <select id="CutAxisSelect">
+                        <option value="0" selected>Transverse Cross-Section Rib Plane (World Z)</option>
+                        <option value="1">Longitudinal Centerline Profile Plane (World X)</option>
+                    </select>
+                </div>
+                <div class="FieldRow">
+                    <div class="FieldHeader">
+                        <span>Cutaway Plane Position</span>
+                        <span id="CutCoordReadout">+0.35 m</span>
+                    </div>
+                    <input type="range" id="CutCoordSlider" min="-3.15" max="3.15" step="0.02" value="0.35" />
+                </div>
+                <label class="ToggleLine">
+                    <input type="checkbox" id="CutClipCarToggle" />
+                    <span>Clip Vehicle Across Active Cutaway Plane</span>
+                </label>
+            </div>
+
+            <div class="ControlSection">
+                <div class="SectionTitle">
+                    <span>4 · Live Measured Telemetry (ControlVehicle)</span>
+                </div>
+                <div class="BenchmarkGrid">
+                    <span class="BenchColHead" style="color:var(--text-muted);">Metric</span>
+                    <span class="BenchColHead LoftCol" id="BenchHeadLoft">Loft 32×36</span>
+                    <span class="BenchColHead VoxCol" id="BenchHeadVox">Voxel 32³</span>
+
+                    <span class="BenchMetricName">Compact / r16f VRAM</span>
+                    <span class="BenchCellLoft" id="BenchLoftCompact">--</span>
+                    <span class="BenchCellVox" id="BenchVoxFp16">--</span>
+
+                    <span class="BenchMetricName">GPU rgba16f VRAM</span>
+                    <span class="BenchCellLoft" id="BenchLoftGpu">--</span>
+                    <span class="BenchCellVox" id="BenchVoxRgba16">--</span>
+
+                    <span class="BenchMetricName">Compile / Bake Time</span>
+                    <span class="BenchCellLoft" id="BenchLoftFitMs">--</span>
+                    <span class="BenchCellVox" id="BenchVoxBakeMs">--</span>
+
+                    <span class="BenchMetricName">Median Skin Error</span>
+                    <span class="BenchCellLoft" id="BenchLoftMedMm">--</span>
+                    <span class="BenchCellVox" id="BenchVoxMedMm">--</span>
+
+                    <span class="BenchMetricName">90th-Pct Skin Error</span>
+                    <span class="BenchCellLoft" id="BenchLoftP90Mm">--</span>
+                    <span class="BenchCellVox" id="BenchVoxP90Mm">--</span>
+
+                    <span class="BenchMetricName">CPU Single-Eval Cost</span>
+                    <span class="BenchCellLoft" id="BenchLoftUs">--</span>
+                    <span class="BenchCellVox" id="BenchVoxUs">--</span>
+
+                    <span class="BenchMetricName">Normal Continuity</span>
+                    <span class="BenchCellLoft">C¹ Smooth</span>
+                    <span class="BenchCellVox">C⁰ Staircase</span>
+                </div>
+                <div class="InsightNote" id="LiveSummaryNote">
+                    💡 Switch to <strong>Pure d(x)=0 SDF</strong> + <strong>Split Viewport</strong> + <strong>Zebra Stripes</strong> to inspect C¹ bicubic Hermite surface continuity vs. trilinear voxel grid terracing.
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script type="module" src="./LoftedVehicleSdfWorkbench.js"></script>
+</body>
+</html>
