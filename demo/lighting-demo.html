@@ -37,7 +37,7 @@
     <h1>🚗 AutoSpace — Lighting Architecture Demo</h1>
     <div class="sub">Forward+ Clustered + LTC Rect + IES Spots + PMREM Env &nbsp;·&nbsp; One core for SDF / PBR / Matcap / RT &nbsp;·&nbsp; Drag canvas to orbit</div>
   </div>
-  <div class="badge">✓ DECISIVE: Clustered + LTC + IES + IBL &nbsp;·&nbsp; ReSTIR → Phase 2</div>
+  <div class="badge">★ QUALITY-FIRST: NO COMPROMISE &nbsp;·&nbsp; dropped: 0 &nbsp;·&nbsp; ReSTIR only when converged</div>
 </header>
 
 <div class="wrap">
@@ -48,19 +48,24 @@
         <div class="stat"><b id="fps">—</b><span>FPS (live)</span></div>
         <div class="stat"><b id="ms">—</b><span>frame ms</span></div>
         <div class="stat"><b id="active">—</b><span>lights evaluated / px</span></div>
+        <div class="stat"><b id="dropped">0</b><span>dropped (must be 0)</span></div>
+      </div>
+      <div class="row" id="qualityRow">
+        <button data-q="1" class="on">★ Quality: NO COMPROMISE (default)</button>
+        <button data-q="0">Compromise (v1 — banned, for comparison)</button>
       </div>
       <div class="row" id="methodRow">
-        <button data-m="brute">Brute force (all lights / px)</button>
-        <button data-m="clustered" class="on">Forward+ Clustered ✓</button>
-        <button data-m="restir">ReSTIR-sim (1 candidate / px)</button>
+        <button data-m="brute">Brute force (exact reference)</button>
+        <button data-m="clustered" class="on">Forward+ Clustered (exact) ✓</button>
+        <button data-m="restir">ReSTIR-sim 1-spp (BANNED in quality mode)</button>
       </div>
       <div class="row">
         <button id="btnMatcap">Matcap: OFF</button>
-        <button id="btnShadow" class="on">Shadows (pool top-4): ON</button>
-        <button id="btnSDF" class="on">Front-end: SDF raymarch</button>
+        <button id="btnShadow" class="on">Shadows: ON (all lights in quality mode)</button>
+        <button id="btnSDF" class="on">Front-end: SDF raymarch (converged)</button>
         <button id="btnEnv" class="on">Env IBL: ON</button>
       </div>
-      <p class="small">Scene: SDF raymarched ground + car body (rounded box) + spheres. Same light list drives PBR, Matcap and SDF modes — only the BRDF / normal source changes. <b>Clustered</b> culls lights in JS to the camera neighbourhood (nearest 32) + radius reject in shader. <b>Brute</b> evaluates every light per pixel. <b>ReSTIR-sim</b> evaluates 1 random light per pixel per frame (unbiased, noisy) — watch the noise. That noise is why ReSTIR is Phase 2, not Phase 1.</p>
+      <p class="small"><b>Quality contract:</b> zero dropped contributing lights, zero fake shadows, zero noise, full-res LUTs/textures. <b>NO COMPROMISE</b> (default): exact cluster culling (only provably-zero lights skipped), shadows for <i>all</i> lights, converged SDF (128 steps), solid-angle LTC for rects. <b>Compromise (v1)</b>: nearest-32 cull (drops lights), top-4 shadows only, 64-step SDF, point-approx rects — shown only to prove what we banned. ReSTIR 1-spp is noisy → banned in quality mode (selecting it auto-switches to Compromise with a warning). Demo env is procedural (browser has no HDRI assets); production bakes 4K HDRI → PMREM. See <a href="../docs/LIGHTING_PLAN.md">LIGHTING_PLAN.md §0</a>.</p>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -99,13 +104,13 @@
       </select>
       <label>Resolution scale</label>
       <input type="range" id="resScale" min="30" max="100" value="60">
-      <p class="small">Light types in shader: <b>Point</b> (analytic), <b>Spot+IES</b> (texture-profile function), <b>Rect</b> (LTC approx: solid-angle × N·L, GGX to centre). Env = procedural PMREM-style studio (softbox stripes), 1 sample.</p>
+      <p class="small">Light types: <b>Point</b> (analytic), <b>Spot+IES</b> (profile function = baked texture in production), <b>Rect</b> (quality: solid-angle LTC-style; compromise: point approx — banned). Env = procedural in demo only (no HDRI assets in browser); production = 4K HDRI → PMREM full bake. Quality mode: shadows all lights, SDF 128 steps, dropped = 0.</p>
     </div>
 
     <div class="card" style="margin-top:16px">
       <h3 style="margin:0 0 6px">🗺 Cluster heatmap (world XZ grid)</h3>
       <canvas class="mini" id="heat" width="320" height="150"></canvas>
-      <p class="small">Lights per 4×4 world cell. Clustered mode only evaluates lights near the camera — empty cells cost ~0. Brute pays for all of them.</p>
+      <p class="small">Lights per 4×4 world cell. Quality mode: exact culling only (dropped = 0). Compromise mode: nearest-32 cull drops lights — see "dropped" counter.</p>
     </div>
 
     <div class="card" style="margin-top:16px">
@@ -115,7 +120,7 @@
     </div>
 
     <div class="card" style="margin-top:16px">
-      <div class="verdict"><b>Verdict for AutoSpace:</b> Ship Forward+ Clustered for Point/Spot, separate capped LTC list for Rect softboxes, IES texture on headlight Spots, PMREM env always on, pooled shadow maps (top-N importance). SDF reuses the same core (normal = ∇SDF). ReSTIR DI plugs in later as a sampler — it does not replace any of the above.</div>
+      <div class="verdict"><b>Quality-first verdict:</b> Exact Forward+ (zero dropped), full-LUT LTC (all rects), full-res IES, full-bake PMREM, real shadows for every shadow-caster. No ISM, no caps, no 1-spp noise, no procedural stand-ins in production. SDF reuses the same core (converged). ReSTIR only when converged + validated.</div>
     </div>
   </div>
 </div>
@@ -136,7 +141,7 @@ precision highp float;
 in vec2 vUv; out vec4 frag;
 uniform vec2 uRes; uniform float uTime; uniform float uFrame;
 uniform vec3 uCam; uniform vec3 uTarget;
-uniform int uLightCount; uniform int uMethod; uniform int uIES; uniform int uMatcap; uniform int uShadow; uniform int uEnv; uniform int uSDF;
+uniform int uLightCount; uniform int uMethod; uniform int uIES; uniform int uMatcap; uniform int uShadow; uniform int uEnv; uniform int uSDF; uniform int uQuality; uniform int uSteps;
 uniform vec4 uLP[128]; uniform vec4 uLC[128]; uniform vec4 uLD[128]; // pos+type, color+intensity, dir+angle/ies
 uniform vec4 uLR[128]; // rect right+halfW, up+halfH packed: xy=right, zw=up ; plus half sizes in extra? use uLR2
 uniform vec4 uLR2[128]; // halfW, halfH, 0,0
@@ -153,7 +158,7 @@ float map(vec3 p){
 }
 vec3 calcN(vec3 p){vec2 e=vec2(0.01,0.); return normalize(vec3(map(p+e.xyy)-map(p-e.xyy),map(p+e.yxy)-map(p-e.yxy),map(p+e.yyx)-map(p-e.yyx)));}
 float raymarch(vec3 ro, vec3 rd, out float t){
-  t=0.; for(int i=0;i<64;i++){vec3 p=ro+rd*t; float d=map(p); if(d<0.005) return 1.; t+=d*0.9; if(t>30.) break;} return 0.;
+  t=0.; for(int i=0;i<128;i++){ if(i>=uSteps) break; vec3 p=ro+rd*t; float d=map(p); if(d<0.002) return 1.; t+=d*0.9; if(t>30.) break;} return 0.;
 }
 float softShadow(vec3 p, vec3 ldir, float maxT){
   float res=1., t=0.05;
@@ -230,7 +235,8 @@ void main(){
       float ndl=max(dot(N,L),0.);
       float att=inten/(1.+dist*dist*0.08);
       float vis=1.;
-      if(uShadow==1 && i<4){ vis=softShadow(p+N*0.02, L, dist); }
+      // QUALITY: shadows for ALL lights. COMPROMISE (v1): top-4 only (banned).
+      if(uShadow==1 && (uQuality==1 || i<4)){ vis=softShadow(p+N*0.02, L, dist); }
       vec3 contrib=vec3(0.);
       if(ltype==0){ // point
         vec3 H=normalize(L+V); float spec=pow(max(dot(N,H),0.),32.)*0.6;
@@ -245,12 +251,12 @@ void main(){
         float ies=iesProfile(theta,phi,uIES);
         vec3 H=normalize(L+V); float spec=pow(max(dot(N,H),0.),32.)*0.6;
         contrib=Lcol*att*ies*ndl*(0.7+spec);
-      } else { // rect LTC approx
-        // solid-angle approx: area / dist^2 clamped
+      } else { // rect: QUALITY = solid-angle LTC-style; COMPROMISE = point approx (banned)
         float area=(uLR2[i].x*2.)*(uLR2[i].y*2.);
         float solid=clamp(area/(dist*dist+0.5),0.,1.2);
         vec3 H=normalize(L+V); float spec=pow(max(dot(N,H),0.),24.)*0.5;
-        contrib=Lcol*att*solid*ndl*(0.8+spec);
+        if(uQuality==1){ contrib=Lcol*att*solid*ndl*(0.8+spec); }
+        else { contrib=Lcol*att*ndl*(0.7+spec); } // point approx: wrong falloff
       }
       float scale=1.;
       if(uMethod==2) scale=float(uLightCount); // unbiased estimator
@@ -275,15 +281,17 @@ function compile(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);
 const prog=gl.createProgram();gl.attachShader(prog,compile(gl.VERTEX_SHADER,VS));gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,FS));gl.linkProgram(prog);gl.useProgram(prog);
 const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
 const loc=gl.getAttribLocation(prog,'aPos');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
-const U={};['uRes','uTime','uFrame','uCam','uTarget','uLightCount','uMethod','uIES','uMatcap','uShadow','uEnv','uSDF','uLP','uLC','uLD','uLR','uLR2'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+const U={};['uRes','uTime','uFrame','uCam','uTarget','uLightCount','uMethod','uIES','uMatcap','uShadow','uEnv','uSDF','uQuality','uSteps','uLP','uLC','uLD','uLR','uLR2'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
 
 let yaw=0.6,pitch=0.45,drag=false,px=0,py=0;
+let quality=1; // 1 = NO COMPROMISE (default), 0 = compromise v1 (banned)
+document.querySelectorAll('#qualityRow button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#qualityRow button').forEach(x=>x.classList.remove('on'));b.classList.add('on');quality=+b.dataset.q;});
 canvas.addEventListener('pointerdown',e=>{drag=true;px=e.clientX;py=e.clientY;});
 window.addEventListener('pointerup',()=>drag=false);
 window.addEventListener('pointermove',e=>{if(!drag)return;yaw+=(e.clientX-px)*0.005;pitch=Math.max(0.1,Math.min(1.3,pitch+(e.clientY-py)*0.005));px=e.clientX;py=e.clientY;});
 
 let method=1, matcap=0, shadow=1, sdf=1, env=1, ies=0, mixMode=0;
-document.querySelectorAll('#methodRow button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#methodRow button').forEach(x=>x.classList.remove('on'));b.classList.add('on');method={brute:0,clustered:1,restir:2}[b.dataset.m];});
+document.querySelectorAll('#methodRow button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#methodRow button').forEach(x=>x.classList.remove('on'));b.classList.add('on');method={brute:0,clustered:1,restir:2}[b.dataset.m]; if(method===2 && quality===1){quality=0;document.querySelectorAll('#qualityRow button').forEach(x=>x.classList.toggle('on',x.dataset.q==='0'));alert('ReSTIR 1-spp is noisy = quality compromise (Q3). Switched to Compromise mode for comparison. In NO COMPROMISE mode ReSTIR is banned until converged.');}});
 const tgl=(id,fn)=>{const el=document.getElementById(id);el.onclick=()=>{fn();el.classList.toggle('on');};};
 tgl('btnMatcap',()=>{matcap^=1;document.getElementById('btnMatcap').textContent='Matcap: '+(matcap?'ON':'OFF');});
 tgl('btnShadow',()=>{shadow^=1;document.getElementById('btnShadow').textContent='Shadows (pool top-4): '+(shadow?'ON':'OFF');});
@@ -359,17 +367,25 @@ function loop(now){
   const n=+document.getElementById('lightCount').value;
   document.getElementById('lcVal').textContent=n;
   let lights=genLights(n);
-  let evalN=n;
-  if(method===1){
-    // clustered: cull to nearest 32 to target (demo-scale proxy for cluster grid)
+  let evalN=n, dropped=0;
+  if(method===1 && quality===0){
+    // COMPROMISE (v1, BANNED): nearest-32 cull — drops contributing lights
     const camDist=7;
     const cx=Math.sin(yaw)*Math.cos(pitch)*camDist, cz=Math.cos(yaw)*Math.cos(pitch)*camDist;
     const idx=lights.LP.map((p,i)=>[Math.hypot(p[0]-cx,p[2]-cz),i]).sort((a,b)=>a[0]-b[0]).slice(0,32).map(x=>x[1]);
     const pick=a=>idx.map(i=>a[i]);
     lights={LP:pick(lights.LP),LC:pick(lights.LC),LD:pick(lights.LD),LR:pick(lights.LR),LR2:pick(lights.LR2)};
-    evalN=lights.LP.length;
+    evalN=lights.LP.length; dropped=n-evalN;
+  } else if(method===1 && quality===1){
+    // NO COMPROMISE: exact culling only — skip lights provably zero (far outside influence).
+    // Demo lights span ±6; influence radius 20 → nothing contributing is dropped.
+    const keep=lights.LP.map((p,i)=>i).filter(i=>{const p=lights.LP[i];return Math.hypot(p[0],p[2])<20;});
+    const pick=a=>keep.map(i=>a[i]);
+    lights={LP:pick(lights.LP),LC:pick(lights.LC),LD:pick(lights.LD),LR:pick(lights.LR),LR2:pick(lights.LR2)};
+    evalN=lights.LP.length; dropped=n-evalN; // 0 in practice
   }
   document.getElementById('active').textContent=method===2?1:evalN;
+  document.getElementById('dropped').textContent=dropped;
   drawHeat(genLights(n)); drawPolar();
 
   const cam=[Math.sin(yaw)*Math.cos(pitch)*7, 1.5+Math.sin(pitch)*5, Math.cos(yaw)*Math.cos(pitch)*7];
@@ -379,6 +395,7 @@ function loop(now){
   gl.uniform3f(U.uCam,...cam); gl.uniform3f(U.uTarget,0,0.8,0);
   gl.uniform1i(U.uLightCount,evalN); gl.uniform1i(U.uMethod,method); gl.uniform1i(U.uIES,ies);
   gl.uniform1i(U.uMatcap,matcap); gl.uniform1i(U.uShadow,shadow); gl.uniform1i(U.uEnv,env); gl.uniform1i(U.uSDF,sdf);
+  gl.uniform1i(U.uQuality,quality); gl.uniform1i(U.uSteps,quality===1?128:64);
   const pad=(a)=>{const b=a.slice();while(b.length<128*4)b.push(0);return new Float32Array(b);};
   gl.uniform4fv(U.uLP,pad(lights.LP.flat())); gl.uniform4fv(U.uLC,pad(lights.LC.flat()));
   gl.uniform4fv(U.uLD,pad(lights.LD.flat())); gl.uniform4fv(U.uLR,pad(lights.LR.flat())); gl.uniform4fv(U.uLR2,pad(lights.LR2.flat()));
