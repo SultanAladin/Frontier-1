@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frontier Studio — Non-Destructive Terrain Pipeline &amp; 3D SDF Editor</title>
+  <link rel="stylesheet" href="/src/app/style.css" />
+</head>
+<body>
+  <div id="app" class="tp-studio">
+    <!-- =====================================================================
+         FRONTIER STUDIO WORKSPACE HEADER (43px, #0b0b0b)
+         ===================================================================== -->
+    <header class="tp-workspace-header">
+      <div class="tp-header-left">
+        <div class="tp-studio-mark">
+          <span class="tp-mark-glyph">◆</span>
+          <span class="tp-mark-text">Frontier<b class="tp-brand-dot">.</b></span>
+          <span class="tp-experimental-badge">EXPERIMENTAL</span>
+        </div>
+        <span class="tp-header-sep"></span>
+        <span class="tp-doc-name" id="tp-doc-title">Icelandic Glacial Highlands</span>
+        <button id="btn-toggle-panels" class="tp-hdr-btn tp-focus-btn" type="button" aria-pressed="false" title="Hide the side panels and give the 3D viewport the full workspace">Focus</button>
+      </div>
+
+      <div class="tp-workspace-switch" id="studio-mode-switcher">
+        <button id="mode-btn-world" class="tp-ws-btn" type="button">World Layout</button>
+        <button id="mode-btn-erosion" class="tp-ws-btn active" type="button">
+          <span class="tp-ws-dot"></span>
+          Terrain Studio
+        </button>
+        <button id="mode-btn-rock" class="tp-ws-btn" type="button">
+          Rock &amp; Cliff Studio
+        </button>
+      </div>
+
+      <div class="tp-header-right" id="tp-terrain-header-actions">
+        <label class="tp-resolution-control" title="Terrain simulation/render grid. Changing this cleanly reloads Terrain Studio so every GPU buffer is rebuilt at the new resolution.">
+          <span>Terrain grid</span>
+          <select id="tp-terrain-resolution" class="tp-resolution-select" aria-label="Terrain resolution">
+            <option value="256">256² · Performance · 1.95 m</option>
+            <option value="512" selected>512² · Balanced · 0.98 m</option>
+            <option value="768">768² · High · 0.65 m</option>
+            <option value="1024">1024² · Ultra · 0.49 m</option>
+          </select>
+        </label>
+        <button id="btn-er-reset" class="tp-hdr-btn" type="button" title="Re-evaluate full bottom-to-top pipeline">↻ Re-evaluate</button>
+        <button id="btn-er-play" class="tp-hdr-btn" type="button" title="Simulate the selected season (or all enabled seasons in Simultaneous mode) [Space]">▶ Simulate</button>
+        <span class="tp-header-sep"></span>
+        <button id="btn-er-export-glb" class="tp-hdr-btn primary" type="button" title="Export 3D Terrain Mesh (.GLB)">Export .GLB</button>
+        <button id="btn-er-export-obj" class="tp-hdr-btn" type="button" title="Export Wavefront Mesh (.OBJ)">.OBJ</button>
+      </div>
+    </header>
+
+    <!-- =====================================================================
+         3-COLUMN DOCKED FRONTIER EDITOR LAYOUT
+         ===================================================================== -->
+    <div id="world-layout" class="world-layout hidden-panel"></div>
+    <div class="tp-layout">
+      <!-- 1. LEFT DOCK: LAYER STACK -->
+      <aside class="tp-dock tp-layer-dock">
+        <div class="tp-tab-strip">
+          <div class="tp-document-tab active">
+            <span id="tp-left-tab-label">Outliner</span>
+            <span class="tp-tab-close" aria-hidden="true">✕</span>
+          </div>
+          <span class="tp-tab-add" aria-hidden="true">+</span>
+        </div>
+
+        <!-- TERRAIN LAYER STACK PANE -->
+        <div id="left-erosion-panels" class="tp-pane-scroll">
+          <div class="tp-pane-heading">
+            <div class="tp-pane-title-wrap">
+              <h1>Outliner</h1>
+              <span class="tp-count-pill" id="tp-layer-count">7</span>
+              <span class="tp-outliner-meta">Terrain pipeline · bottom → top</span>
+            </div>
+            <div class="tp-add-menu-anchor">
+              <button type="button" class="tp-add-btn" id="tp-btn-add-layer" title="Add Landform, SDF Cave, Sculpt, Simulation, Spline, Rock or Vegetation Layer">+</button>
+              <div class="tp-add-popover" id="tp-add-layer-menu" hidden></div>
+            </div>
+          </div>
+
+          <div class="tp-layer-stats">
+            <div class="tp-stat-card">
+              <div class="tp-stat-top">
+                <span class="tp-stat-disc active">✓</span>
+                <span class="tp-stat-label">Active</span>
+              </div>
+              <div class="tp-stat-num" id="tp-stat-visible">7</div>
+            </div>
+            <div class="tp-stat-card">
+              <div class="tp-stat-top">
+                <span class="tp-stat-disc muted">△</span>
+                <span class="tp-stat-label">Muted</span>
+              </div>
+              <div class="tp-stat-num" id="tp-stat-hidden">0</div>
+            </div>
+          </div>
+
+          <label class="tp-layer-search">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></svg>
+            <input type="text" id="tp-layer-search-input" placeholder="Search layers..." autocomplete="off" />
+          </label>
+
+          <div id="tp-sim-panel" class="tp-sim-panel" aria-label="Simulation seasons"></div>
+
+          <div class="tp-layer-order top">
+            <span>TOP — EVALUATED LAST</span>
+            <em>↑ Bottom-Up Pipeline</em>
+          </div>
+
+          <div class="tp-layer-list" id="tp-layer-list"></div>
+
+          <div class="tp-layer-order bottom">
+            <span>BOTTOM — BASE FIRST · ENVIRONMENT LAST (LOCKED)</span>
+          </div>
+        </div>
+
+        <!-- 3D ROCK STUDIO LEFT PANE (Preserved cleanly behind Workspace Switcher) -->
+        <div id="left-rock-panels" class="tp-pane-scroll hidden-panel">
+          <section class="panel-section">
+            <div class="section-header">
+              <span>FORMATION ARCHETYPE</span>
+              <span class="tag-pill" id="active-category">Arch</span>
+            </div>
+            <div id="cat-filter-bar" class="cat-filter-bar"></div>
+            <div id="archetype-list" class="archetype-grid"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header">
+              <span>3D SPLINE RIG &amp; GIZMO</span>
+              <span class="tag-pill" id="curve-mode-pill">Gizmo</span>
+            </div>
+            <div class="export-buttons">
+              <button id="btn-curve-draw" class="btn-primary" type="button" title="Click on the 3D ground grid to draw points on the active spline">Draw Spline</button>
+              <button id="btn-curve-reset" class="btn-secondary" type="button" title="Reset all splines to canonical rest pose">Reset</button>
+            </div>
+            <div class="export-buttons" style="margin-top:6px;">
+              <button id="btn-curve-branch" class="btn-secondary" type="button" title="Add branch arch or subdivide active spline">+ Point / Branch</button>
+              <button id="btn-curve-delete" class="btn-secondary" type="button" title="Delete selected spline control point">− Point</button>
+            </div>
+            <div class="slider-group" style="margin-top:8px;">
+              <div class="slider-label">
+                <span>Point Scale / Width</span>
+                <output id="out-curve-radius">1.00×</output>
+              </div>
+              <input id="slider-curve-radius" type="range" min="0.4" max="2.4" step="0.05" value="1.0" />
+            </div>
+            <p class="export-note" id="curve-point-readout" style="margin-bottom:0;">Spline P3 · r 1.00×</p>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header">
+              <span>PROCEDURAL SEED</span>
+              <button id="btn-random-seed" class="btn-mini accent" type="button">Randomize</button>
+            </div>
+            <div class="seed-row">
+              <input id="input-seed" type="number" step="1" value="4029" />
+              <button id="btn-apply-seed" class="btn-mini" type="button">Apply</button>
+            </div>
+            <div id="seed-strip" class="seed-strip"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header"><span>STUDIO SHADING &amp; RIG</span></div>
+            <label class="field-row">
+              <span>Surface Mode</span>
+              <select id="select-shading">
+                <option value="lithology">Lithology &amp; Strata</option>
+                <option value="flat-stone">Neutral Grey Stone</option>
+                <option value="pure-clay">Pure Sculptor Clay</option>
+                <option value="ao">Baked Volumetric AO</option>
+                <option value="curvature">Cavity / Edge Mask</option>
+                <option value="normals">World Crease Normals</option>
+              </select>
+            </label>
+            <label class="field-row" id="row-lithology">
+              <span>Stone Tone</span>
+              <select id="select-lithology"></select>
+            </label>
+            <label class="field-row">
+              <span>Stone Fabric</span>
+              <select id="select-rock-fabric">
+                <option value="0">Clean Studio Stone</option>
+                <option value="1">Columnar Basalt</option>
+                <option value="2">Aeolian Cross-Bedding</option>
+                <option value="3">Tafoni Honeycomb</option>
+                <option value="4">Foliated Gneiss</option>
+              </select>
+            </label>
+            <div class="slider-group">
+              <div class="slider-label"><span>Sun Azimuth</span><output id="out-sun-az">42°</output></div>
+              <input id="slider-sun-az" type="range" min="-180" max="180" step="1" value="42" />
+            </div>
+            <div class="slider-group">
+              <div class="slider-label"><span>Sun Elevation</span><output id="out-sun-el">44°</output></div>
+              <input id="slider-sun-el" type="range" min="8" max="85" step="1" value="44" />
+            </div>
+            <div class="toggle-grid">
+              <label class="check-pill"><input id="chk-human" type="checkbox" checked /><span>1.8m Ref</span></label>
+              <label class="check-pill"><input id="chk-wireframe" type="checkbox" /><span>Wireframe</span></label>
+              <label class="check-pill"><input id="chk-turntable" type="checkbox" /><span>Turntable</span></label>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <!-- 2. CENTER DOCK: 3D VIEWPORT + SHADING BAR + AUTHORING BAR + PRESET SHELF -->
+      <main class="tp-dock tp-viewport-dock">
+        <div class="tp-tab-strip">
+          <div class="tp-document-tab viewport-tab active">
+            <span>Viewport</span>
+            <span class="tp-tab-close" aria-hidden="true">✕</span>
+          </div>
+          <span class="tp-tab-add" aria-hidden="true">+</span>
+        </div>
+
+        <div id="tp-world-terrain-bar" class="tp-world-terrain-bar">
+          <label for="tp-world-terrain">World terrain</label>
+          <select id="tp-world-terrain" aria-label="Choose a world terrain to edit" disabled>
+            <option value="">Standalone terrain</option>
+          </select>
+          <span id="tp-world-mask-state" class="tp-world-mask-state">Loading world regions…</span>
+          <button id="tp-world-layout-open" type="button">World Layout</button>
+          <button id="tp-world-terrain-bake" type="button" hidden>Save &amp; view world</button>
+        </div>
+
+        <!-- VIEWPORT HEADER: camera + shading + visibility ONLY.
+             Authoring tools live in their own rail inside the stage below,
+             deliberately split away from this header. -->
+        <div id="tp-terrain-bars" class="tp-viewport-header">
+          <div class="tp-vp-left">
+            <div class="tp-vp-cam-group" id="tp-scene-nav" role="group" aria-label="Camera framing">
+              <button type="button" id="btn-er-frame" class="tp-vp-btn" title="Frame full terrain [F]">Overview</button>
+              <button type="button" id="btn-cam-cliff" class="tp-vp-btn" title="Frame low cliff &amp; SDF cave perspective">Cliff &amp; Caves</button>
+              <button type="button" id="btn-cam-top" class="tp-vp-btn" title="Top-down orthographic-style plan view">Top Plan</button>
+            </div>
+            <span class="tp-vp-sep" aria-hidden="true"></span>
+            <div class="tp-toolbar-group">
+              <span class="tp-bar-label">Shading</span>
+              <select id="tp-select-shading" class="tp-pill-select">
+                <option value="0">Derived Geology (AO + Strata + Sediment + Flow)</option>
+                <option value="1">AO &amp; Ridge Protrusions</option>
+                <option value="2">3D Rock Hardness &amp; Competency</option>
+                <option value="3">Drainage Flow &amp; Basin Water</option>
+                <option value="4">Sedimentation (Talus vs Alluvium)</option>
+                <option value="5">Selected Layer B&amp;W Mask</option>
+                <option value="6">Pure Sculptor Clay</option>
+                <option value="7">Cryosphere (Snow &amp; Glacier Ice)</option>
+                <option value="8">2.5D Hydrology &amp; Basins</option>
+                <option value="9">Mineral Strata &amp; Dissolved Stain (Fe / Cu)</option>
+                <option value="10">Frost Damage &amp; Sub-Resolution Cracks</option>
+              </select>
+            </div>
+
+            <div class="tp-toolbar-group">
+              <span class="tp-bar-label">Palette</span>
+              <select id="tp-select-palette" class="tp-pill-select"></select>
+            </div>
+          </div>
+
+          <div class="tp-vp-right">
+            <div class="tp-toolbar-group">
+              <span class="tp-bar-label">Show</span>
+              <label class="tp-vis-toggle"><input type="checkbox" id="tp-vis-water" checked /><span>Water</span></label>
+              <label class="tp-vis-toggle"><input type="checkbox" id="tp-vis-snow" checked /><span>Snow</span></label>
+              <label class="tp-vis-toggle"><input type="checkbox" id="tp-vis-rain" checked /><span>Rain</span></label>
+              <label class="tp-vis-toggle" title="Chemical weathering visibility: terrain + boulder rust, copper patina, salt, desert varnish and clay alteration"><span>Weathering</span><input type="range" id="tp-chem" min="0" max="1" step="0.05" value="0.7" style="width:64px" /></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3D CANVAS STAGE -->
+        <div class="viewport-stage">
+          <div id="progress-bar" class="progress-bar hidden">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+
+          <div class="tp-scene-caption" id="tp-scene-caption">
+            PIPELINE · EVALUATING BOTTOM → TOP
+          </div>
+
+          <!-- AUTHORING TOOL RAIL: split from the viewport header.
+               Vertical square tool buttons docked to the stage's left edge. -->
+          <div class="tp-tool-rail" id="tp-author-tools" role="toolbar" aria-label="Authoring tools">
+            <span class="tp-tool-rail-label">Tools</span>
+            <button type="button" data-tool="navigate" class="active" title="Orbit (LMB), Pan (MMB/Alt+LMB), Fly (RMB + WASD/QE)"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.341 6.484A10 10 0 0 1 10.266 21.85"/><path d="M3.659 17.516A10 10 0 0 1 13.74 2.152"/><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/></svg></span><span class="tp-tool-label">Orbit</span></button>
+            <button type="button" data-tool="sculpt-add" title="Non-destructively raise terrain in active Sculpt Layer"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></span><span class="tp-tool-label">Raise</span></button>
+            <button type="button" data-tool="sculpt-remove" title="Non-destructively carve terrain in active Sculpt Layer"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span><span class="tp-tool-label">Carve</span></button>
+            <button type="button" data-tool="sculpt-smooth" title="Smooth terrain inside active Sculpt Layer"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5c5-2 7 2.5 3 4C1.5 10 2 15 5 16c5 2 9-10 14-7s.5 13.5-4 12c-5-2.5.5-11 6-2"/></svg></span><span class="tp-tool-label">Smooth</span></button>
+            <span class="tp-tool-sep" aria-hidden="true"></span>
+            <button type="button" data-tool="cave-carve" title="Subtract real 3D volumetric SDF caves &amp; overhangs!"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 17a10 10 0 0 0-20 0"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M10 17a2 2 0 0 1 4 0"/></svg></span><span class="tp-tool-label">Cave −</span></button>
+            <button type="button" data-tool="cave-fill" title="Fill 3D SDF cave volume"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg></span><span class="tp-tool-label">Cave +</span></button>
+            <span class="tp-tool-sep" aria-hidden="true"></span>
+            <button type="button" data-tool="spline-edit" title="Drag 3D spline control handles directly on terrain"><span class="tp-tool-glyph"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M5 17A12 12 0 0 1 17 5"/></svg></span><span class="tp-tool-label">Spline</span></button>
+          </div>
+
+          <!-- Rock Studio Multi-Spline Rig & Fast-Preview -> Bake Bar (only visible in Rock Studio mode) -->
+          <div id="rock-spline-toolbar" class="rock-spline-toolbar hidden-panel" role="toolbar" aria-label="3D Spline Rig and Bake">
+            <span id="rock-bake-state-badge" class="rock-bake-badge is-preview" title="Fast Base Preview skips 3D SDF erosion while sculpting splines; click Bake to run full Mesh → SDF erosion &amp; staining">BASE PREVIEW</span>
+            <button id="btn-spline-gizmo-toggle" class="rock-tb-btn active" type="button" title="Show or hide 3D Spline handles and XYZ translation gizmo">3D Splines</button>
+            <span class="rock-tb-sep" aria-hidden="true"></span>
+            <div id="rock-spline-role-pills" class="rock-spline-role-pills" role="group" aria-label="Active spline selector"></div>
+            <span class="rock-tb-sep" aria-hidden="true"></span>
+            <button id="btn-spline-place" class="rock-tb-btn" type="button" title="Click on the ground plane to draw control points on the active spline">Draw</button>
+            <button id="btn-spline-add-pt" class="rock-tb-btn" type="button" title="Insert or extend a control point on the active spline">+ Pt</button>
+            <button id="btn-spline-del-pt" class="rock-tb-btn" type="button" title="Remove selected control point">− Pt</button>
+            <button id="btn-spline-reset" class="rock-tb-btn" type="button" title="Reset splines to default pose for this preset">Reset</button>
+            <span class="rock-tb-sep" aria-hidden="true"></span>
+            <label class="rock-fast-toggle" title="Synthesize fast base formation (~50 ms) while editing splines &amp; macro sliders, then click Bake for full 3D SDF erosion">
+              <input id="chk-fast-base-preview" type="checkbox" checked />
+              <span>Fast Base</span>
+            </label>
+            <button id="btn-bake-formation" class="rock-bake-cta" type="button" title="Run full-resolution Mesh → SDF 3D erosion, QEM decimation, and mineral staining">⚡ Bake</button>
+          </div>
+
+          <!-- Rock Studio HUD & Camera Bar (only visible in Rock Studio mode) -->
+          <div id="hud-rock" class="hud-top hidden-panel">
+            <div class="hud-stat"><span class="hud-k">DIMS</span><span class="hud-v" id="stat-dims">—</span></div>
+            <div class="hud-stat"><span class="hud-k">TRIS</span><span class="hud-v" id="stat-tris">—</span></div>
+            <div class="hud-stat"><span class="hud-k">VERTS</span><span class="hud-v" id="stat-verts">—</span></div>
+            <div class="hud-stat"><span class="hud-k">LITHONS</span><span class="hud-v" id="stat-blocks">—</span></div>
+            <div class="hud-stat"><span class="hud-k">SDF</span><span class="hud-v" id="stat-sdf">—</span></div>
+            <div class="hud-stat"><span class="hud-k">TIME</span><span class="hud-v" id="stat-time">—</span></div>
+          </div>
+
+          <div id="status-toast" class="status-toast hidden">Synthesizing...</div>
+
+          <!-- WebGL2 Terrain Pipeline Canvas -->
+          <canvas id="erosion-canvas" class="erosion-canvas"></canvas>
+
+          <!-- Wind Erosion Debug Vector-Field Overlay -->
+          <canvas id="wind-debug-canvas" class="tp-wind-debug-canvas"></canvas>
+
+          <!-- Interactive 3D Spline Control-Point SVG Overlay -->
+          <svg id="spline-gizmo-svg" class="tp-spline-svg"></svg>
+
+          <!-- Three.js 3D Rock Studio Container -->
+          <div id="viewport-canvas" class="viewport-canvas hidden-panel"></div>
+
+          <div id="rock-camera-bar" class="camera-bar hidden-panel">
+            <button data-cam="hero" class="cam-btn" type="button">3/4 Hero [F]</button>
+            <button data-cam="front" class="cam-btn" type="button">Front Face</button>
+            <button data-cam="low" class="cam-btn" type="button">Low Eye</button>
+            <button data-cam="side" class="cam-btn" type="button">Side</button>
+            <button data-cam="top" class="cam-btn" type="button">Top</button>
+          </div>
+        </div>
+
+        <!-- VIEWPORT TELEMETRY FOOTER -->
+        <footer class="tp-viewport-footer" id="hud-erosion">
+          <span>GRID <strong id="er-stat-grid">512²</strong></span>
+          <span>PASSES <strong id="er-stat-steps">8</strong></span>
+          <span>CLIMATE <strong id="er-stat-climate">YEAR 1 · SEASON</strong></span>
+          <span>EVAL <strong id="er-stat-eval">0.0 ms</strong></span>
+          <span>SDF CAVES <strong id="er-stat-caves">0 tris</strong></span>
+          <span>TALUS <strong id="er-stat-cut">0 m³</strong></span>
+          <span>ALLUVIUM <strong id="er-stat-sed">0 m³</strong></span>
+          <span>WATER <strong id="er-stat-water">0 m³</strong></span>
+          <span>WASD+QE FLY · RMB LOOK · <strong id="er-stat-fps">60 FPS</strong></span>
+        </footer>
+
+        <!-- COLLAPSIBLE PRESET STACK RECIPES SHELF (.asset-content-browser / .cb-*) -->
+        <section class="asset-content-browser" id="cb-shelf-root">
+          <div class="cb-bar">
+            <button type="button" class="cb-toggle-btn" id="cb-btn-toggle" aria-expanded="false">
+              <span class="cb-chevron">▾</span>
+              <span>Terrain recipes</span>
+            </button>
+            <span class="cb-hint" id="cb-world-preset-hint">Closed by default · open when switching terrains</span>
+          </div>
+          <div class="cb-drawer" id="cb-shelf-drawer" hidden>
+            <div class="cb-preset-grid" id="cb-preset-grid"></div>
+          </div>
+        </section>
+      </main>
+
+      <!-- 3. RIGHT DOCK: CONTEXTUAL LAYER INSPECTOR -->
+      <aside class="tp-dock tp-inspector-dock">
+        <div class="tp-tab-strip">
+          <div class="tp-document-tab active">
+            <span>Inspector</span>
+            <span class="tp-tab-close" aria-hidden="true">✕</span>
+          </div>
+          <span class="tp-tab-add" aria-hidden="true">+</span>
+        </div>
+
+        <!-- TERRAIN LAYER INSPECTOR -->
+        <div id="right-erosion-panels" class="tp-pane-scroll">
+          <div id="tp-inspector-content" class="tp-inspector-body"></div>
+        </div>
+
+        <!-- 3D ROCK STUDIO INSPECTOR (Preserved cleanly behind Workspace Switcher) -->
+        <div id="right-rock-panels" class="tp-pane-scroll hidden-panel">
+          <section class="panel-section">
+            <div class="section-header"><span>VOXEL DENSITY &amp; TOPOLOGY</span></div>
+            <div class="quality-seg" id="quality-buttons">
+              <button data-q="fast" type="button">Fast</button>
+              <button data-q="medium" class="active" type="button">Interactive</button>
+              <button data-q="high" type="button">High</button>
+              <button data-q="ultra" type="button">Ultra</button>
+            </div>
+            <label class="field-row" style="margin-top:8px;">
+              <span>QEM Target</span>
+              <select id="select-decimation">
+                <option value="1">Source Mesh (100%)</option>
+                <option value="0.55">Clean Planar (55%)</option>
+                <option value="0.30">Game LOD0 (30%)</option>
+                <option value="0.14">Game LOD1 (14%)</option>
+                <option value="0.06">Game LOD2 (6%)</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header">
+              <span>TECTONICS &amp; BEDDING</span>
+              <button id="btn-reset-params" class="btn-mini" type="button">Reset</button>
+            </div>
+            <div id="sliders-tectonics"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header"><span>MACRO ARCHITECTURE</span></div>
+            <div id="sliders-macro"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header"><span>SURFACE &amp; CLEAVAGE</span></div>
+            <div id="sliders-detail"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header">
+              <span>EROSION BAKE — MESH → SDF</span>
+              <span class="tag-pill">3D PROCESSES</span>
+            </div>
+            <label class="field-row">
+              <span>Erosion SDF Source</span>
+              <select id="select-sdf-erosion-source">
+                <option value="mesh" selected>Placement Mesh → SDF</option>
+                <option value="analytic">Analytic Formation SDF</option>
+              </select>
+            </label>
+            <label class="field-row">
+              <span>Erosion Resolution</span>
+              <select id="select-erosion-sdf-resolution">
+                <option value="0">Match source grid</option>
+                <option value="192" selected>192 — Detail bake</option>
+                <option value="256">256 — Hero bake</option>
+                <option value="320">320 — Ultra bake</option>
+                <option value="384">384 — Extreme (slow)</option>
+              </select>
+            </label>
+            <label class="field-row">
+              <span>Wind Direction Over Time</span>
+              <select id="select-wind-shift-mode">
+                <option value="fixed">Fixed prevailing wind</option>
+                <option value="variable" selected>Variable wind rose (prevailing + smooth sector shifts)</option>
+                <option value="sectors">Weather fronts (smooth veer/back between sectors)</option>
+                <option value="rotate">Full wind rose (all sectors, smooth shifts)</option>
+              </select>
+            </label>
+            <div class="toggle-grid" style="margin:8px 0;">
+              <label class="check-pill"><input id="chk-live-erosion-preview" type="checkbox" /><span>▶ Watch erosion live</span></label>
+            </div>
+            <div class="export-buttons" style="margin-bottom:8px;">
+              <button id="btn-bake-formation-inspector" class="btn-primary" type="button" style="width:100%;">⚡ Bake Erosion &amp; Detail</button>
+            </div>
+            <p class="export-note" id="sdf-erosion-readout">The generated placement mesh is voxelized into a true signed-distance field, eroded in 3D, contoured again, and only then QEM-baked. World scale and grounded Y=0 are preserved. Enable Watch erosion live to see staged SDF checkpoints in the viewport while the final bake continues.</p>
+            <div id="sliders-erosion"></div>
+            <p class="export-note">Set every process yourself above. Terrain Studio’s laws are adapted to overhangs and undersides: capacity-limited rain, gusting wrap-around wind saltation whose weather system persists in one sector, then veers or backs smoothly through intervening bearings to another while the chosen prevailing sector remains most common, repose-gated talus, freeze–thaw wedging, and wet-path chemical dissolution. All share hardness, sharp-edge and thin-span protection — incision, not melting. Live frames are previews only; export always uses the completed final mesh.</p>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-header"><span>EXPORT ROCK ASSET</span></div>
+            <div class="export-buttons">
+              <button id="btn-export-glb" class="btn-primary" type="button">Export .GLB</button>
+              <button id="btn-export-obj" class="btn-secondary" type="button">Export .OBJ</button>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script type="module" src="/src/app/main.js"></script>
+</body>
+</html>
