@@ -1,0 +1,290 @@
+<!doctype html>
+<!--==========================================================================================================================================
+                                                               INDEX.HTML
+===========================================================================================================================================-->
+<!-- Frontier · SDF Terrain Studio: Infinite 2D Sparse-Tile World Mask + Multi-Terrain 3D Ocean + Thin-Slab SDF + 3D Spline Gizmo Studio
+     styled 1:1 in the Experimental Remastered (3D Clay Studio / Sun Inspector / Fluid Editor) studio UI system. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0b0b" />
+    <title>SDF Terrain Studio — Frontier Experimental Remastered</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Cpath d='M5 23l7-12 5 7 4-5 6 10z' fill='%23eff4cf'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./TerrainWorldEditor.css" />
+    <script type="module" src="./TerrainWorldEditor.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Top Studio Header: Frontier logomark, slanted terrain tabs, pill workspace nav, live engine pill & export -->
+        <header class="app-header">
+            <div class="brand">
+                <span class="brand-mark">frontier<span class="brand-dot">.</span></span>
+                <span class="experimental">SDF TERRAIN STUDIO</span>
+            </div>
+
+            <div class="document-dock">
+                <div id="region-tabs" class="document-tabs" role="tablist" aria-label="Terrain Bounds Regions"></div>
+                <button id="new-scene-btn" class="icon-button" type="button" title="Draw or add a new Terrain Bounds Region (R)" aria-label="New Terrain Bounds">+</button>
+            </div>
+
+            <nav class="top-nav" aria-label="Workspace views">
+                <button class="nav-button" data-ws="2d" type="button">2D Mask <small>1</small></button>
+                <button class="nav-button" data-ws="3d" type="button">3D Landscape <small>2</small></button>
+                <button class="nav-button active" data-ws="split" type="button">Split 2D + 3D <small>3</small></button>
+                <a class="nav-button" href="../SdfSculptEditor/index.html" style="text-decoration:none">3D Clay Studio ↗</a>
+            </nav>
+
+            <div class="header-end">
+                <span class="live-engine-tag" id="engine-pill"><i></i><span id="engine-pill-text">THIN-SLAB · 60 FPS</span></span>
+                <button id="undo-btn" class="icon-button" type="button" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+                <button id="redo-btn" class="icon-button" type="button" title="Redo (Ctrl+Y)" aria-label="Redo"></button>
+                <button id="import-btn" class="button" type="button" title="Load Open-World Terrain .json project">Import</button>
+                <input type="file" id="FileLoadJson" accept=".json" hidden />
+                <button id="export-button" class="button export-button" type="button" title="Export Visible Thin-Slab SDF Terrains as Wavefront .OBJ Triangles">Export .OBJ</button>
+            </div>
+        </header>
+
+        <!-- Three Floating 22px Charcoal Studio Panels: Outliner | Stage | Contextual Inspector -->
+        <main class="workspace" id="studio-workspace">
+            <!-- LEFT: Outliner + Quick Landform & Spline Library -->
+            <aside class="left-panel" id="left-panel">
+                <div class="outliner-heading">
+                    <div>
+                        <h1>Outliner</h1>
+                        <span class="outliner-subtitle" id="outliner-subtitle">3 Terrains · 16 Sparse Tiles</span>
+                    </div>
+                    <div class="outliner-heading-actions">
+                        <button id="compact-outliner" class="icon-button" type="button" title="Compact outliner" aria-label="Compact outliner"></button>
+                        <button id="add-button" class="icon-button" type="button" title="Quick-add a 3D Spline Landform Layer" aria-label="Add 3D Spline Layer"></button>
+                    </div>
+                </div>
+
+                <!-- Census Tiles -->
+                <div class="scene-statistics">
+                    <div class="scene-stat">
+                        <span class="stat-symbol enabled-symbol" id="stat-active-icon"></span>
+                        <span class="stat-label">Terrains ON</span>
+                        <strong id="stat-terrains-on">3</strong>
+                    </div>
+                    <div class="scene-stat">
+                        <span class="stat-symbol cutter-symbol" id="stat-spline-icon" style="background:rgba(239,244,207,0.16);color:#eff4cf"></span>
+                        <span class="stat-label">Layers &amp; Splines</span>
+                        <strong id="stat-layers-total">9</strong>
+                    </div>
+                </div>
+
+                <label class="search scene-search">
+                    <span id="search-icon-slot"></span>
+                    <input type="search" id="scene-search" placeholder="Search terrains, masks, splines…" aria-label="Search terrain outliner" />
+                </label>
+
+                <div class="scene-filters" id="scene-filters" aria-label="Outliner category filters">
+                    <button data-filter="all" class="active" type="button">All</button>
+                    <button data-filter="terrains" type="button">Terrains</button>
+                    <button data-filter="splines" type="button">Splines</button>
+                    <button data-filter="masks" type="button">2D Masks</button>
+                </div>
+
+                <div class="panel-scroll outliner-scroll" id="OutlinerScroll">
+                    <div class="panel-content" id="OutlinerContent"></div>
+                </div>
+
+                <!-- Embedded Add Layer & 3D Spline Quick Library -->
+                <div class="library" id="quick-library">
+                    <div class="panel-heading">
+                        <span>Add Layer &amp; Splines</span>
+                        <span class="count">7</span>
+                    </div>
+                    <div class="quick-lib-scroll" id="quick-add-list"></div>
+                </div>
+
+                <div class="left-footer">
+                    <span class="footer-dot"></span>
+                    <span id="left-footer-label">Infinite Sparse 2D Mask · Thin-Slab SDF</span>
+                </div>
+            </aside>
+
+            <!-- CENTER: Dominant 2D / 3D / Split Stage + Lower Transport & History Strip -->
+            <section class="center-panel" id="center-panel">
+                <div class="viewport-bar">
+                    <span id="viewport-title-icon"></span>
+                    <strong>Stage</strong>
+                    <span class="bar-divider"></span>
+
+                    <select id="scope-select" aria-label="3D multi-terrain view scope" title="Work on all enabled terrains, multi-selected terrains, or solo active terrain">
+                        <option value="all" selected>Scope · All Enabled</option>
+                        <option value="selected">Scope · Selected</option>
+                        <option value="solo">Scope · Solo Active</option>
+                    </select>
+
+                    <select id="lens-select" aria-label="3D diagnostic shading lens">
+                        <option value="0" selected>Lens · Geological Studio</option>
+                        <option value="1">Lens · Falloff Heatmap</option>
+                        <option value="2">Lens · Elevation &amp; Contours</option>
+                        <option value="3">Lens · Slope &amp; Cliff Angle</option>
+                        <option value="4">Lens · 25m Triangle Grid</option>
+                        <optgroup label="Gaea Data Maps" id="lens-map-group"></optgroup>
+                    </select>
+
+                    <div class="sym-cluster">
+                        <button class="sym-pill active" id="pill-add-spline" type="button" title="Add a new 3D Spline Layer with Up/Down Y Gizmo">+ Add Spline</button>
+                        <button class="sym-pill" id="pill-place-knot" type="button" title="Click directly on 3D terrain to place new spline knots (K)">+ Place Knot</button>
+                    </div>
+
+                    <div class="viewport-bar-end">
+                        <button id="toggle-ocean-btn" class="button pill-btn active" type="button" title="Toggle 3D Ocean ON/OFF to inspect thin flat SDF underside (W)">Ocean ON</button>
+                        <button id="toggle-gizmo-btn" class="icon-button active" type="button" title="Toggle 3D Spline XYZ (Up/Down) Gizmo (G)" aria-label="Toggle 3D Spline Gizmo"></button>
+                        <button id="toggle-bounds-btn" class="icon-button active" type="button" title="Toggle 3D Terrain Bounds Cages" aria-label="Toggle 3D Bounds"></button>
+                        <button id="toggle-contours-btn" class="icon-button" type="button" title="Toggle 25m/100m Topographic Contours" aria-label="Toggle Contours"></button>
+                        <button id="focus-btn" class="icon-button" type="button" title="Frame All Visible Terrains (F)" aria-label="Frame World"></button>
+                        <button id="maximize-btn" class="icon-button" type="button" title="Maximize Stage (Tab)" aria-label="Maximize Stage"></button>
+                    </div>
+                </div>
+
+                <!-- Seamless 2D | 3D | Split Stage -->
+                <div class="terrain-stage-grid mode-split" id="StageGrid">
+                    <!-- 2D Infinite World Mask Pane -->
+                    <div class="stage-pane stage-pane-2d" id="Pane2D">
+                        <canvas id="Canvas2D" aria-label="Infinite 2D World Mask &amp; Terrain Bounds Editor"></canvas>
+
+                        <div class="viewport-caption">
+                            <span class="live-pill"><i></i><span>2D WORLD MASK</span></span>
+                            <span id="hud-2d-tool">Brush Land</span>
+                            <small id="Hud2DCoords" class="tabular">0.00, 0.00 km</small>
+                        </div>
+
+                        <div class="viewport-tools" id="Tools2DRail" role="toolbar" aria-label="2D Mask and Bounds Tools"></div>
+
+                        <div class="viewport-help">
+                            <span>Drag: paint mask</span><i>·</i><span>Shift/RMB: erase</span><i>·</i><span>Space/MMB: pan</span><i>·</i><span>Shift+Click Bounds: multi-select</span>
+                        </div>
+                    </div>
+
+                    <!-- 3D SDF Landscape + Ocean + Spline Gizmo Pane -->
+                    <div class="stage-pane stage-pane-3d" id="Pane3D">
+                        <canvas id="Canvas3D" aria-label="3D Multi-Terrain SDF Landscape &amp; Ocean Viewport"></canvas>
+                        <canvas id="Overlay3D" class="stage-overlay-canvas" aria-hidden="true"></canvas>
+
+                        <div class="viewport-caption">
+                            <span class="live-pill"><i></i><span id="hud-3d-scope">3 TERRAINS</span></span>
+                            <span id="hud-3d-tool">Spline + 3D Gizmo</span>
+                        </div>
+
+                        <div class="viewport-tools" id="Tools3DRail" role="toolbar" aria-label="3D Spline Gizmo &amp; Sculpt Tools"></div>
+
+                        <div class="viewport-right-hud" id="ViewportHud">
+                            <span class="hud-pill">Slab<b id="hud-slab-floor">-6.5 m</b></span>
+                            <span class="hud-pill">Tris<b id="hud-tris-count">0</b></span>
+                        </div>
+
+                        <div class="axis-gizmo" aria-label="World coordinate axes">
+                            <svg viewBox="0 0 76 76">
+                                <path d="M38 39V10M38 39L11 55M38 39L65 55" />
+                                <circle cx="38" cy="39" r="3" />
+                                <text x="34" y="9" class="axis-y">Y</text>
+                                <text x="3" y="64" class="axis-x">X</text>
+                                <text x="64" y="64" class="axis-z">Z</text>
+                            </svg>
+                        </div>
+
+                        <div class="viewport-help">
+                            <span>Drag Green Y ↕ Arrow: move spline up/down</span><i>·</i><span>Shift+Click terrain: add knot</span><i>·</i><span>Drag sky/RMB: orbit</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lower 52px Quick Transport Bar -->
+                <div class="transport">
+                    <div class="dock-stat-group">
+                        <span class="dock-label">Brush / Width</span>
+                        <input id="dock-radius-range" class="pill-range dock-range" type="range" min="20" max="600" step="5" value="120" aria-label="Brush or spline width" />
+                        <span id="dock-radius-val" class="dock-readout">120 m</span>
+                    </div>
+
+                    <span class="transport-divider"></span>
+
+                    <div class="dock-stat-group">
+                        <span class="dock-label">Exposure</span>
+                        <input id="dock-exposure-range" class="pill-range dock-range" type="range" min="0.35" max="1.65" step="0.02" value="0.94" aria-label="Scene exposure" />
+                        <span id="dock-exposure-val" class="dock-readout">0.94</span>
+                    </div>
+
+                    <span class="transport-divider"></span>
+
+                    <select id="dock-atmos-select" aria-label="Scene lighting atmosphere">
+                        <option value="0" selected>Sky · Obsidian Studio</option>
+                        <option value="1">Sky · Coastal Dusk</option>
+                        <option value="2">Sky · Soft Daylight</option>
+                    </select>
+
+                    <div class="transport-actions">
+                        <button class="button burst-button" id="dock-fit-mask-btn" type="button" title="Tightly fit active Terrain Bounds Box around painted 2D mask">Fit Bounds</button>
+                        <button class="button burst-button" id="dock-save-json-btn" type="button" title="Save Open-World Terrain Project (.json)">Save .JSON</button>
+                        <button class="button burst-button accent" id="dock-new-spline-btn" type="button" title="Add a 3D Spline Layer and activate its Up/Down Gizmo">+ New 3D Spline</button>
+                    </div>
+                </div>
+
+                <!-- Lower 42px History & Demo Presets Strip -->
+                <div class="timeline" aria-label="World presets and quick actions">
+                    <div class="timeline-label">
+                        <span>WORLD</span>
+                        <span id="stroke-counter" class="tabular">3 DEMO MASKS</span>
+                    </div>
+                    <div class="history-strip" id="preset-strip"></div>
+                </div>
+            </section>
+
+            <!-- RIGHT: Contextual Sun + Fluid Inspector -->
+            <aside class="inspector-panel" id="inspector-panel">
+                <div class="panel-heading inspector-top-heading">
+                    <span class="inspector-crumb" id="inspector-crumb">Inspector / Terrain 01</span>
+                    <button id="reset-demo-btn" class="reset-pill" type="button" title="Reset to the 3 Demonstration Masks &amp; Terrains">3 Demo Masks ↗</button>
+                </div>
+
+                <div class="object-heading" id="object-heading">
+                    <div class="object-symbol" id="object-symbol"></div>
+                    <div class="object-heading-copy">
+                        <input id="object-name" value="Terrain 01 · Highland Massif" maxlength="64" aria-label="Selected terrain name" />
+                        <span id="object-type">THIN-SLAB SDF · 148 CELLS</span>
+                    </div>
+                    <label class="switch" title="Enable / show active Terrain Bounds Region">
+                        <input type="checkbox" id="object-enabled" checked aria-label="Toggle active terrain visibility" />
+                        <span></span>
+                    </label>
+                </div>
+
+                <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector categories">
+                    <button data-itab="layers" class="active" type="button">Layers &amp; Falloff</button>
+                    <button data-itab="spline" type="button">Spline &amp; Gizmo</button>
+                    <button data-itab="slab" type="button">Thin-Slab</button>
+                    <button data-itab="sim" type="button">Simulation</button>
+                    <button data-itab="texturing" type="button">Texturing</button>
+                    <button data-itab="stage" type="button">Stage &amp; Export</button>
+                </div>
+
+                <div class="panel-scroll inspector-scroll" id="InspectorScroll">
+                    <div class="panel-content" id="InspectorContent"></div>
+                </div>
+
+                <div class="inspector-footer">
+                    <span id="inspector-foot-left">Thin-Slab SDF · Zero deep-ocean waste</span>
+                    <span id="inspector-foot-right">Live triangle mesher ↗</span>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Studio Bottom Telemetry Status Bar -->
+        <footer class="status-bar" id="status-bar">
+            <span class="status-ready"><i></i><span id="status-main">Terrain 01 · Highland Massif</span></span>
+            <span class="status-divider"></span>
+            <span id="status-tiles" class="tabular">Sparse 2D Tiles: 16 (1,024 KB)</span>
+            <span class="status-divider"></span>
+            <span id="status-slab" class="tabular">Thin SDF Base: -6.5 m → +233 m</span>
+            <div class="status-right">
+                <span id="status-mesh" class="tabular">Triangles: 0 · Vertices: 0</span>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

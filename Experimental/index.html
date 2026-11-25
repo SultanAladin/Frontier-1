@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0; url=./TerrainWorldEditor/" />
+    <title>Frontier Experimental Studios</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            background: #0d0e11;
+            color: #eef0f4;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .hub {
+            max-width: 560px;
+            padding: 28px 32px;
+            border-radius: 20px;
+            background: #15171c;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        h1 { margin: 0 0 8px; font-size: 18px; color: #eff4cf; }
+        p { margin: 0 0 18px; font-size: 13px; color: #9ca3af; }
+        ul { margin: 0; padding-left: 18px; line-height: 1.9; font-size: 13.5px; }
+        a { color: #e8c27a; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+    <script>
+        if (!window.location.search.includes('hub')) {
+            window.location.replace('./TerrainWorldEditor/' + window.location.search);
+        }
+    </script>
+</head>
+<body>
+    <div class="hub">
+        <h1>Frontier Experimental Studios</h1>
+        <p>Launching Open-World SDF Terrain Studio (use <code>?hub</code> to keep this launcher open):</p>
+        <ul>
+            <li><a href="./TerrainWorldEditor/">Open-World SDF Terrain Studio</a> (Infinite 2D Masks · Sub-World Partitioner · 6-Process Erosion)</li>
+            <li><a href="./SdfSculptEditor/">3D Clay &amp; CSG SDF Sculpt Studio</a> (RGBA16F Clay + 24 CSG Primitives)</li>
+            <li><a href="./BakedLightGridWorkbench/">Baked Light Grid Workbench</a> (Milestone 1)</li>
+            <li><a href="./ThinLeafSdfWorkbench/">Thin-Leaf Foliage SDF Workbench</a> (Milestone 2)</li>
+            <li><a href="./LoftedVehicleSdfWorkbench/">Lofted Vehicle SDF Workbench</a> (Milestone 3)</li>
+        </ul>
+    </div>
+</body>
+</html>

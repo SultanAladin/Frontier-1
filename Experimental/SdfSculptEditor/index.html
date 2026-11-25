@@ -1,0 +1,383 @@
+<!doctype html>
+<!--==========================================================================================================================================
+                                                               INDEX.HTML
+===========================================================================================================================================-->
+<!-- Frontier · SDF Sculpt Studio: Real-time Hybrid RGBA16F 3D Volume + Parametric CSG SDF Sculpting Workspace
+     built in the Experimental Remastered (Sun Inspector + Fluid Editor + Vehicle Lab) studio UI system. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0b0b" />
+    <title>SDF Sculpt Studio — Frontier Experimental Remastered</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23161616'/%3E%3Ccircle cx='14' cy='15' r='8' fill='%23e8c27a'/%3E%3Crect x='15' y='13' width='10' height='10' rx='3' fill='%233ec46d' fill-opacity='0.88'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./SdfSculptEditor.css" />
+    <script type="module" src="./SdfSculptEditor.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Top Studio Header: Frontier logomark, slanted scene tabs, pill workspace nav, live engine pill & export -->
+        <header class="app-header">
+            <div class="brand">
+                <span class="brand-mark">frontier<span class="brand-dot">.</span></span>
+                <span class="experimental">SDF SCULPT STUDIO</span>
+            </div>
+
+            <div class="document-dock">
+                <div id="scene-tabs" class="document-tabs" role="tablist" aria-label="SDF sculpt scenes"></div>
+                <button id="new-scene-btn" class="icon-button" type="button" title="New blank clay sculpt scene" aria-label="New blank clay scene">+</button>
+            </div>
+
+            <nav class="top-nav" aria-label="Workspace views">
+                <button class="nav-button active" id="nav-workspace" type="button">Workspace</button>
+                <button class="nav-button" id="nav-library" type="button">Kitbash <small id="nav-preset-total">18</small></button>
+                <button class="nav-button" id="nav-log" type="button">Log Stream <small id="nav-log-count">0</small></button>
+                <a class="nav-button" href="../TerrainWorldEditor/index.html" style="text-decoration:none">Terrain Studio</a>
+            </nav>
+
+            <div class="header-end">
+                <span class="live-engine-tag" id="engine-pill"><i></i><span id="engine-pill-text">INITIALIZING</span></span>
+                <button id="undo-btn" class="icon-button" type="button" title="Undo sculpt / CSG edit (Ctrl+Z)" aria-label="Undo"></button>
+                <button id="redo-btn" class="icon-button" type="button" title="Redo sculpt / CSG edit (Ctrl+Y)" aria-label="Redo"></button>
+                <button id="import-btn" class="button" type="button" title="Import Frontier .sdfspace binary or .json scene">Import</button>
+                <input type="file" id="import-file-input" accept=".sdfspace,.json" hidden />
+                <button id="help-button" class="icon-button" type="button" title="Sculpting shortcuts &amp; architecture" aria-label="Help"></button>
+                <button id="export-button" class="button export-button" type="button">Export SDF / Mesh</button>
+            </div>
+        </header>
+
+        <!-- Three Floating 22px Charcoal Studio Panels: Outliner | 3D Stage | Contextual Inspector -->
+        <main class="workspace" id="studio-workspace">
+            <!-- LEFT: Outliner + Embedded Kitbash & Primitive Library -->
+            <aside class="left-panel" id="left-panel">
+                <div class="outliner-heading">
+                    <div>
+                        <h1>Outliner</h1>
+                        <span class="outliner-subtitle" id="outliner-subtitle">Hybrid SDF · 96³ clay</span>
+                    </div>
+                    <div class="outliner-heading-actions">
+                        <button id="compact-outliner" class="icon-button" type="button" title="Compact outliner" aria-label="Compact outliner" aria-pressed="false"></button>
+                        <button id="add-button" class="icon-button" type="button" title="Add CSG primitive or boolean cutter" aria-label="Add SDF node" aria-expanded="false"></button>
+                    </div>
+                </div>
+
+                <!-- Project Zero / Sun Census Tiles -->
+                <div class="scene-statistics">
+                    <div class="scene-stat">
+                        <span class="stat-symbol enabled-symbol" id="stat-active-icon"></span>
+                        <span class="stat-label">Active SDF</span>
+                        <strong id="active-sdf-count">0</strong>
+                    </div>
+                    <div class="scene-stat">
+                        <span class="stat-symbol cutter-symbol" id="stat-cutter-icon"></span>
+                        <span class="stat-label">Cutters &amp; Off</span>
+                        <strong id="cutter-sdf-count">0</strong>
+                    </div>
+                </div>
+
+                <label class="search scene-search">
+                    <span id="search-icon-slot"></span>
+                    <input type="search" id="scene-search" placeholder="Search SDF tree…" aria-label="Search SDF outliner" />
+                    <kbd>Ctrl F</kbd>
+                </label>
+
+                <div class="scene-filters" id="scene-filters" aria-label="Outliner category filters">
+                    <button data-filter="all" class="active" type="button">All</button>
+                    <button data-filter="clay" type="button">Clay</button>
+                    <button data-filter="union" type="button">Union</button>
+                    <button data-filter="subtract" type="button">Cutters</button>
+                    <button data-filter="intersect" type="button">Intersect</button>
+                </div>
+
+                <div class="panel-scroll outliner-scroll" id="OutlinerScroll">
+                    <div class="panel-content" id="OutlinerContent"></div>
+                </div>
+
+                <!-- Embedded Kitbash & Primitive Quick Library -->
+                <div class="library" id="quick-library">
+                    <div class="panel-heading">
+                        <span>Kitbash &amp; Stamps</span>
+                        <span class="count" id="quick-preset-count">18</span>
+                        <button class="text-pill-btn" id="open-full-library" type="button">Browse all ↗</button>
+                    </div>
+                    <label class="search quick-preset-search">
+                        <span id="preset-search-icon-slot"></span>
+                        <input type="search" id="quick-preset-search" placeholder="Find primitive or cutter…" aria-label="Search kitbash presets" />
+                        <kbd>/</kbd>
+                    </label>
+                    <div class="filter-row" id="quick-preset-filters"></div>
+                    <div class="preset-list" id="quick-presets-list"></div>
+                </div>
+
+                <div class="left-footer">
+                    <span class="footer-dot"></span>
+                    <span id="left-footer-label">RGBA16F 3D Volume · Analytic CSG</span>
+                </div>
+            </aside>
+
+            <!-- CENTER: Dominant 3D SDF Sculpting Stage + Lower Sculpt & History Dock -->
+            <section class="center-panel" id="center-panel">
+                <div class="viewport-bar">
+                    <span id="viewport-title-icon"></span>
+                    <strong>Stage</strong>
+                    <span class="bar-divider"></span>
+
+                    <select id="camera-view-select" aria-label="Camera projection view">
+                        <option value="orbit">Perspective orbit</option>
+                        <option value="front">Front ortho (XY)</option>
+                        <option value="side">Right ortho (ZY)</option>
+                        <option value="top">Top ortho (XZ)</option>
+                    </select>
+
+                    <select id="lens-select" aria-label="Shading and debug lens"></select>
+
+                    <div class="sym-cluster" aria-label="Sculpt mirror symmetry">
+                        <button class="sym-pill active" id="sym-x-btn" type="button" title="Mirror sculpt strokes across X plane (X)">Sym X</button>
+                        <button class="sym-pill" id="sym-y-btn" type="button" title="Mirror sculpt strokes across Y plane">Y</button>
+                        <button class="sym-pill" id="sym-z-btn" type="button" title="Mirror sculpt strokes across Z plane">Z</button>
+                        <button class="sym-pill" id="sym-rad-btn" type="button" title="Cycle radial Y-axis symmetry (Off / 4× / 6× / 8×)">R1×</button>
+                    </div>
+
+                    <div class="viewport-bar-end">
+                        <button id="toggle-slice-btn" class="button pill-btn" type="button" title="Toggle 3D cross-section cut plane">Cut Plane</button>
+                        <button id="toggle-bounds-btn" class="icon-button" type="button" title="Toggle 3D sculpt domain bounds cage (auto-glows near edges)" aria-label="Toggle 3D domain bounds"></button>
+                        <button id="toggle-gizmo-btn" class="icon-button active" type="button" title="Toggle 3D CSG transform gizmo (G)" aria-label="Toggle gizmo"></button>
+                        <button id="toggle-grid-btn" class="icon-button active" type="button" title="Toggle 3D studio ground grid" aria-label="Toggle 3D ground grid"></button>
+                        <button id="toggle-minimap-btn" class="icon-button active" type="button" title="Toggle 2D SDF distance slice inset (M)" aria-label="Toggle slice minimap"></button>
+                        <button id="toggle-turntable-btn" class="icon-button" type="button" title="Toggle studio turntable orbit" aria-label="Toggle turntable"></button>
+                        <button id="toggle-log-btn" class="icon-button" type="button" title="Toggle Log Stream drawer" aria-label="Toggle log drawer"></button>
+                        <button id="focus-btn" class="icon-button" type="button" title="Frame camera on target (F)" aria-label="Reset camera focus"></button>
+                        <button id="maximize-btn" class="icon-button" type="button" title="Maximize sculpting stage (Tab)" aria-label="Maximize stage"></button>
+                    </div>
+                </div>
+
+                <div class="viewport" id="ViewportSurface">
+                    <canvas id="ViewportCanvas" aria-label="Interactive 3D SDF sculpting viewport"></canvas>
+                    <canvas id="OverlayCanvas" aria-hidden="true"></canvas>
+
+                    <div class="viewport-caption">
+                        <span class="live-pill" id="live-pill"><i></i><span id="live-pill-label">SCULPT · 96³</span></span>
+                        <span id="viewport-object">Clay Buildup</span>
+                        <small id="viewport-subtitle">Trilinear RGBA16F + C1 Smooth CSG</small>
+                    </div>
+
+                    <div class="viewport-tools" id="ViewportTools" role="toolbar" aria-label="3D Sculpting Brushes &amp; Transform"></div>
+
+                    <div class="viewport-right-hud" id="ViewportHud"></div>
+
+                    <div class="viewport-inset minimap-inset shown" id="MinimapInset">
+                        <canvas id="SliceCanvas" aria-label="2D SDF distance field cross-section"></canvas>
+                        <div class="inset-label" id="SliceInsetLabel"><span>SDF Slice · XY</span><span>z = 0.00 m</span></div>
+                    </div>
+
+                    <div class="axis-gizmo" aria-label="World coordinate axes">
+                        <svg viewBox="0 0 76 76">
+                            <path d="M38 39V10M38 39L11 55M38 39L65 55" />
+                            <circle cx="38" cy="39" r="3" />
+                            <text x="34" y="9" class="axis-y">Y</text>
+                            <text x="3" y="64" class="axis-x">X</text>
+                            <text x="64" y="64" class="axis-z">Z</text>
+                        </svg>
+                    </div>
+
+                    <div class="viewport-help">
+                        <span>Drag model: sculpt</span><i>·</i><span>Alt: invert</span><i>·</i><span>Shift: smooth</span><i>·</i><span>[ ] radius</span><i>·</i><span>Drag sky / Right-drag: orbit &amp; pan</span>
+                    </div>
+                </div>
+
+                <!-- Lower 52px Sculpt & Volume Quick Bar -->
+                <div class="transport">
+                    <div class="dock-stat-group">
+                        <span class="dock-label">Radius</span>
+                        <input id="dock-radius-range" class="pill-range dock-range" type="range" min="0.04" max="1.0" step="0.01" value="0.24" aria-label="Brush radius" />
+                        <span id="dock-radius-val" class="dock-readout">0.24 m</span>
+                    </div>
+
+                    <span class="transport-divider"></span>
+
+                    <div class="dock-stat-group">
+                        <span class="dock-label">Strength</span>
+                        <input id="dock-strength-range" class="pill-range dock-range" type="range" min="0.05" max="1.0" step="0.01" value="0.68" aria-label="Brush strength" />
+                        <span id="dock-strength-val" class="dock-readout">68%</span>
+                    </div>
+
+                    <span class="transport-divider"></span>
+
+                    <select id="dock-res-select" aria-label="Sculpt volume grid resolution" title="Non-destructively resample 3D SDF clay resolution">
+                        <option value="64">Grid · 64³ Fast</option>
+                        <option value="96" selected>Grid · 96³ Studio</option>
+                        <option value="128">Grid · 128³ Fine</option>
+                    </select>
+
+                    <select id="dock-bounds-select" aria-label="Out-of-bounds sculpt behavior" title="How the 3D SDF volume handles strokes reaching or crossing the domain boundary">
+                        <option value="expand" selected>Bounds · Auto-Expand</option>
+                        <option value="soft">Bounds · Soft Cap</option>
+                        <option value="hard">Bounds · Hard Clip</option>
+                    </select>
+
+                    <div class="transport-actions">
+                        <button class="button burst-button" id="dock-fit-bounds-btn" type="button" title="Tightly re-center and fit the voxel domain around sculpted clay">Fit Bounds</button>
+                        <button class="button burst-button" id="dock-eikonal-btn" type="button" title="Relax Eikonal gradient |∇d| → 1 across sculpt volume">Normalize |∇d|</button>
+                        <button class="button burst-button accent" id="dock-bake-csg-btn" type="button" title="Commit all visible Parametric CSG nodes into the sculptable Clay Volume">Bake CSG → Clay <span class="key-hint">B</span></button>
+                    </div>
+                </div>
+
+                <!-- Lower 42px Interactive Sculpt History Strip -->
+                <div class="timeline" aria-label="Sculpt undo and redo history">
+                    <div class="timeline-label">
+                        <span>HISTORY</span>
+                        <span id="stroke-counter" class="tabular">REV 01 · READY</span>
+                    </div>
+                    <div class="history-strip" id="history-strip"></div>
+                </div>
+
+                <!-- Collapsible Studio Log Stream Drawer -->
+                <section class="log-drawer" id="log-drawer" hidden>
+                    <div class="log-head">
+                        <span>SDF Engine Telemetry &amp; Event Log</span>
+                        <button id="clear-log-btn" class="text-pill-btn" type="button">Clear</button>
+                    </div>
+                    <div class="panel-scroll log-scroll" id="LogScroll">
+                        <div class="panel-content" id="LogContent"></div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- RIGHT: Contextual Sun + Fluid Inspector -->
+            <aside class="inspector-panel" id="inspector-panel">
+                <div class="panel-heading inspector-top-heading">
+                    <span class="inspector-crumb" id="inspector-crumb">Inspector / Sculpt Volume</span>
+                    <button id="reset-selection-btn" class="reset-pill" type="button" title="Reset active scene to starter state">Reset Scene ↗</button>
+                </div>
+
+                <div class="object-heading" id="object-heading">
+                    <div class="object-symbol" id="object-symbol"></div>
+                    <div class="object-heading-copy">
+                        <input id="object-name" value="Clay Volume" maxlength="64" aria-label="Selected entity name" />
+                        <span id="object-type">VOLUMETRIC SDF · 96³ RGBA16F</span>
+                    </div>
+                    <label class="switch" title="Enable / show selected SDF item">
+                        <input type="checkbox" id="object-enabled" checked aria-label="Toggle visibility" />
+                        <span></span>
+                    </label>
+                </div>
+
+                <div class="inspector-tabs" id="inspector-tabs" role="tablist" aria-label="Inspector categories">
+                    <button data-itab="brush" class="active" type="button">Brush</button>
+                    <button data-itab="node" type="button">Node &amp; CSG</button>
+                    <button data-itab="material" type="button">Stage &amp; Light</button>
+                    <button data-itab="export" type="button">Mesh &amp; SDF1</button>
+                </div>
+
+                <div class="panel-scroll inspector-scroll" id="InspectorScroll">
+                    <div class="panel-content" id="InspectorContent"></div>
+                </div>
+
+                <div class="inspector-footer">
+                    <span id="inspector-foot-left">Hybrid SDF · Live evaluation</span>
+                    <span id="inspector-foot-right">Changes apply live ↗</span>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Studio Bottom Telemetry Status Bar -->
+        <footer class="status-bar" id="status-bar">
+            <span class="status-ready"><i></i><span id="status-main">Hybrid SDF Ready</span></span>
+            <span class="status-divider"></span>
+            <span id="status-voxels" class="tabular">96³ · 884,736 voxels (7.08 MB RGBA16F)</span>
+            <span class="status-divider"></span>
+            <span id="status-cursor" class="tabular">Cursor: idle</span>
+            <div class="status-right">
+                <span class="gpu-dot"></span>
+                <span id="status-backend">WebGL2 Raymarcher</span>
+                <span class="status-divider"></span>
+                <span class="version">FRONTIER / SDF SCULPT 2.0</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Add Node Popover Menu -->
+    <div class="popover add-menu" id="add-popover" hidden></div>
+
+    <!-- Full-Screen Kitbash, Cutter & Clay Blank Library Modal -->
+    <div class="library-veil" id="library-veil" role="dialog" aria-modal="true" aria-label="Kitbash and SDF Stamp Library">
+        <div class="library-sheet">
+            <div class="library-head">
+                <div>
+                    <span class="experimental">SDF KITBASH CATALOGUE</span>
+                    <h2>Primitives, Boolean Cutters &amp; Clay Blanks</h2>
+                </div>
+                <label class="search library-search">
+                    <span id="modal-search-icon"></span>
+                    <input type="search" id="modal-library-search" placeholder="Filter 18 SDF assets…" aria-label="Filter kitbash library" />
+                </label>
+                <button id="close-library-btn" class="icon-button" type="button" aria-label="Close library"></button>
+            </div>
+            <div class="library-tabs" id="modal-library-tabs"></div>
+            <div class="library-grid" id="modal-library-grid"></div>
+        </div>
+    </div>
+
+    <!-- Multi-Format Export Dialog (.sdfspace, .obj, .stl, .sdfsculpt.toml, .json) -->
+    <dialog id="export-dialog" aria-label="Export SDF and Mesh">
+        <div class="dialog-heading">
+            <h2>Export SDF Volume &amp; Watertight Mesh</h2>
+            <button id="close-export-btn" class="icon-button" type="button" aria-label="Close export dialog"></button>
+        </div>
+        <p class="dialog-sub" id="export-summary-text">
+            Extract Dual Surface Nets watertight geometry or serialize a native Frontier IEEE-754 Float16 <code>.sdfspace</code> ("SDF1") volume archive.
+        </p>
+        <div class="export-format-grid">
+            <button class="export-format-card" id="dl-sdfspace-btn" type="button">
+                <strong>Frontier .sdfspace (SDF1)</strong>
+                <small>68-byte header + Float16 3D distance volume</small>
+            </button>
+            <button class="export-format-card" id="dl-obj-btn" type="button">
+                <strong>Wavefront .OBJ Mesh</strong>
+                <small>Dual Surface Nets mesh + normals + vertex RGB</small>
+            </button>
+            <button class="export-format-card" id="dl-stl-btn" type="button">
+                <strong>Binary .STL Solid</strong>
+                <small>Closed manifold triangle solid for CAD / 3D print</small>
+            </button>
+            <button class="export-format-card" id="dl-json-btn" type="button">
+                <strong>Scene Bundle (.json)</strong>
+                <small>Full re-importable CSG + material + clay project</small>
+            </button>
+        </div>
+        <pre class="export-code" id="export-toml-preview"></pre>
+        <div class="dialog-actions">
+            <button class="button" id="copy-toml-btn" type="button">Copy .sdfsculpt.toml</button>
+            <button class="button export-button" id="dl-toml-btn" type="button">Download .toml</button>
+        </div>
+    </dialog>
+
+    <!-- Keyboard Shortcuts & Engine Notes Dialog -->
+    <dialog id="help-dialog" aria-label="Shortcuts and SDF Engine Notes">
+        <div class="dialog-heading">
+            <h2>SDF Sculpt Studio — Controls &amp; Shortcuts</h2>
+            <button id="close-help-btn" class="icon-button" type="button" aria-label="Close help dialog"></button>
+        </div>
+        <p class="dialog-sub">
+            Combines a real-time trilinear <code>RGBA16F</code> 3D Sculpt Clay Volume with up to 24 live analytical CSG primitives in a single WebGL2 sphere-traced viewport.
+        </p>
+        <div class="shortcut-list">
+            <span>Sculpt on Surface <kbd>Left Drag</kbd></span>
+            <span>Invert Add / Subtract <kbd>Hold Alt</kbd></span>
+            <span>Quick Smooth Relax <kbd>Hold Shift</kbd></span>
+            <span>Orbit Camera <kbd>Sky Drag / R-Drag</kbd></span>
+            <span>Pan Camera <kbd>Shift+Sky / M-Drag</kbd></span>
+            <span>Brush Radius − / + <kbd>[  /  ]</kbd></span>
+            <span>Brushes 1–10 <kbd>Keys 1 – 0</kbd></span>
+            <span>CSG Transform Gizmo <kbd>V or G</kbd></span>
+            <span>Mirror X Symmetry <kbd>X</kbd></span>
+            <span>Bake CSG to Clay <kbd>B</kbd></span>
+            <span>Frame Camera <kbd>F</kbd></span>
+            <span>Undo / Redo <kbd>Ctrl+Z / Y</kbd></span>
+        </div>
+        <div class="dialog-actions">
+            <button class="button export-button" id="ok-help-btn" type="button">Got it</button>
+        </div>
+    </dialog>
+</body>
+</html>

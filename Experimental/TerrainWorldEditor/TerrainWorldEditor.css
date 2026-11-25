@@ -1,0 +1,370 @@
+/*==========================================================================================================================================
+                                                      TERRAINWORLDEDITOR.CSS
+==========================================================================================================================================*/
+/* Inherits 100% of Frontier's Experimental Remastered 3D Clay Studio (SdfSculptEditor.css) design system:
+   Obsidian #0b0b0b shell, floating 22px charcoal panels (#121212), trapezoidal tabs, #eff4cf lime-cream highlights,
+   ControlPanel::SliderPill (92px scrubbable value-pill + spherical thumb), KPI trio, and floating viewport tool rails. */
+
+@import url("../SdfSculptEditor/SdfSculptEditor.css");
+
+/* Fix @font-face paths relative to TerrainWorldEditor/ */
+@font-face {
+    font-family: "DM Sans";
+    src: url("../SdfSculptEditor/Fonts/dm-sans-latin-300-normal.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+}
+@font-face {
+    font-family: "DM Sans";
+    src: url("../SdfSculptEditor/Fonts/dm-sans-latin-400-normal.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+}
+@font-face {
+    font-family: "DM Sans";
+    src: url("../SdfSculptEditor/Fonts/dm-sans-latin-500-normal.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 500 700;
+    font-display: swap;
+}
+@font-face {
+    font-family: "Font Awesome 6 Free";
+    src: url("../SdfSculptEditor/Fonts/fa-solid-900.woff2") format("woff2");
+    font-style: normal;
+    font-weight: 900;
+    font-display: block;
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+                                   SEAMLESS 2D | 3D | SPLIT VIEWPORT STAGE LAYOUT
+------------------------------------------------------------------------------------------------------------------------*/
+.terrain-stage-grid {
+    position: relative;
+    flex: 1;
+    min-height: 220px;
+    display: grid;
+    background: #090b0e;
+    overflow: hidden;
+}
+
+.terrain-stage-grid.mode-2d {
+    grid-template-columns: 1fr;
+}
+.terrain-stage-grid.mode-2d .stage-pane-3d {
+    display: none;
+}
+
+.terrain-stage-grid.mode-3d {
+    grid-template-columns: 1fr;
+}
+.terrain-stage-grid.mode-3d .stage-pane-2d {
+    display: none;
+}
+
+.terrain-stage-grid.mode-split {
+    grid-template-columns: minmax(240px, 0.94fr) minmax(260px, 1.06fr);
+}
+.terrain-stage-grid.mode-split .stage-pane-2d {
+    border-right: 1px solid var(--line-strong);
+}
+
+.stage-pane {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.stage-pane canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.stage-overlay-canvas {
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* Outliner Indented Child Layer Rows & Action Icons */
+.tree-row.child-layer {
+    margin-left: 16px;
+    height: 35px;
+}
+.tree-row.multi-selected:not(.selected) {
+    background: rgba(126, 200, 255, 0.08);
+    border-color: rgba(126, 200, 255, 0.26);
+}
+.row-end-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 6px;
+}
+.row-mini-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: #7d7d7d;
+}
+.row-mini-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f0f0f0;
+}
+.row-mini-btn.eye-on {
+    color: var(--live);
+}
+
+/* Quick Add Landform / Spline Cards in Left Library */
+.quick-lib-scroll {
+    padding: 0 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow-y: auto;
+    max-height: 215px;
+    scrollbar-width: none;
+}
+.quick-lib-scroll::-webkit-scrollbar { display: none; }
+
+.quick-add-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 11px;
+    border-radius: 14px;
+    background: #181818;
+    border: 1px solid rgba(255, 255, 255, 0.055);
+    text-align: left;
+}
+.quick-add-card:hover {
+    background: #222222;
+    border-color: var(--line-strong);
+}
+.quick-add-card.featured-spline {
+    background: linear-gradient(135deg, rgba(239, 244, 207, 0.11), rgba(62, 196, 109, 0.08));
+    border-color: rgba(239, 244, 207, 0.28);
+}
+.quick-add-card.featured-spline:hover {
+    background: linear-gradient(135deg, rgba(239, 244, 207, 0.18), rgba(62, 196, 109, 0.13));
+}
+.quick-add-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--warm);
+    flex: none;
+}
+.quick-add-card.featured-spline .quick-add-icon {
+    background: var(--highlight-bg);
+    color: var(--highlight-ink);
+}
+.quick-add-copy {
+    flex: 1;
+    min-width: 0;
+}
+.quick-add-copy strong {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: #efefef;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.quick-add-copy small {
+    display: block;
+    font-size: 9.5px;
+    color: #7d7d7d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Inspector Select & Segmented Pill Rows matching SdfSculptEditor */
+.studio-select {
+    width: 100%;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: #0d0d0d;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: #ececec;
+    font-size: 11.5px;
+}
+
+.studio-btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+.studio-btn-row .button {
+    flex: 1;
+    justify-content: center;
+    height: 30px;
+    font-size: 11px;
+}
+
+/* Boundary Falloff Curve Canvas inside .diagram-wrap */
+.falloff-curve-canvas {
+    width: 100%;
+    height: 96px;
+    display: block;
+    border-radius: 10px;
+    cursor: crosshair;
+}
+
+/* Interactive 3D Spline Knot List inside Spline & Gizmo Tab */
+.knot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0;
+}
+.knot-chip-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: #141414;
+    border: 1px solid var(--line);
+    font-size: 11px;
+    cursor: pointer;
+}
+.knot-chip-row:hover {
+    background: #1d1d1d;
+}
+.knot-chip-row.active {
+    background: rgba(239, 244, 207, 0.12);
+    border-color: rgba(239, 244, 207, 0.38);
+    color: #ffffff;
+}
+.knot-badge {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.07);
+    color: #d8d8d8;
+    flex: none;
+}
+.knot-chip-row.active .knot-badge {
+    background: var(--highlight-bg);
+    color: var(--highlight-ink);
+}
+.knot-coords {
+    flex: 1;
+    font-variant-numeric: tabular-nums;
+    color: #b5b5b5;
+    font-size: 10.5px;
+}
+.knot-elev-pill {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(62, 196, 109, 0.14);
+    color: #9be3b5;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+/*------------------------------------------------------------------------------------------------------------------------
+   EROSION SIMULATION · SEASONAL HUD · GAEA DATA-MAP / STAMP TEXTURING PANELS
+-------------------------------------------------------------------------------------------------------------------------*/
+.sim-hud-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    padding: 2px;
+}
+.sim-hud-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 9px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    min-width: 0;
+}
+.sim-hud-cell small {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8f9299;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sim-hud-cell b {
+    font-size: 11px;
+    font-weight: 500;
+    color: #e6e6e6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+}
+.sim-hud-cell:last-child {
+    grid-column: 1 / -1;
+}
+.data-map-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 2px;
+}
+.data-map-btn {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 9px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.04);
+    color: #cfcfcf;
+    font-size: 10.5px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    min-width: 0;
+}
+.data-map-btn span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.data-map-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+}
+.data-map-btn.active {
+    background: var(--highlight-bg, #eff4cf);
+    border-color: var(--highlight-bg, #eff4cf);
+    color: var(--highlight-ink, #1c1c14);
+}
+.data-map-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: none;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
+}
