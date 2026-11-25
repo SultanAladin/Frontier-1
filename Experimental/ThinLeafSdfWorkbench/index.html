@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thin-Leaf Foliage SDF Shadow Workbench · WebGPU</title>
+    <style>
+        @font-face {
+            font-family: "DM Sans";
+            src: url("./Fonts/dm-sans-latin-400-normal.woff2") format("woff2");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "DM Sans";
+            src: url("./Fonts/dm-sans-latin-500-normal.woff2") format("woff2");
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            --bg-ink: #0b1014;
+            --panel-bg: #11181f;
+            --panel-elev: #17212b;
+            --line-soft: rgba(168, 204, 192, 0.14);
+            --line-strong: rgba(114, 218, 162, 0.44);
+            --text-main: #edf4f1;
+            --text-muted: #93a8a1;
+            --accent-leaf: #42d685;
+            --accent-amber: #f5b84c;
+            --accent-crimson: #f25f5c;
+            --accent-cyan: #4cc3f5;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-ink);
+            color: var(--text-main);
+            font-family: "DM Sans", sans-serif;
+            font-size: 13px;
+            line-height: 1.4;
+            user-select: none;
+        }
+
+        .WorkbenchLayout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 392px;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .ViewportPane {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(circle at 48% 36%, #1c2833 0%, #0b1014 100%);
+        }
+
+        #ViewportCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        #ViewportCanvas:active {
+            cursor: grabbing;
+        }
+
+        .TopTelemetryBar {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            right: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .TelemetryCluster {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            background: rgba(13, 20, 26, 0.84);
+            border: 1px solid var(--line-soft);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 7px 12px;
+            pointer-events: auto;
+        }
+
+        .RuntimeTag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 12px;
+            background: rgba(66, 214, 133, 0.14);
+            border: 1px solid rgba(66, 214, 133, 0.38);
+            color: #8bf0b5;
+        }
+
+        .MetricChip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .MetricChip strong {
+            color: var(--text-main);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .SplitColumnBanner {
+            position: absolute;
+            top: 62px;
+            left: 14px;
+            right: 14px;
+            display: none;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .SplitColumnBanner.Visible {
+            display: grid;
+        }
+        .SplitPaneLabel {
+            text-align: center;
+            padding: 5px 10px;
+            border-radius: 7px;
+            background: rgba(11, 16, 20, 0.82);
+            border: 1px solid rgba(245, 184, 76, 0.36);
+            font-size: 11.5px;
+            font-weight: 500;
+            color: #f6e3ba;
+        }
+
+        .BottomHintStrip {
+            position: absolute;
+            left: 14px;
+            bottom: 12px;
+            display: flex;
+            gap: 12px;
+            padding: 6px 11px;
+            border-radius: 8px;
+            background: rgba(11, 16, 20, 0.78);
+            border: 1px solid var(--line-soft);
+            color: var(--text-muted);
+            font-size: 11.5px;
+            pointer-events: none;
+        }
+
+        .ControlSidebar {
+            height: 100vh;
+            overflow-y: auto;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--line-soft);
+            padding: 14px 14px 24px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .SidebarHeader {
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--line-soft);
+        }
+        .SidebarHeader h1 {
+            font-size: 15px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+            color: var(--text-main);
+        }
+        .SidebarHeader p {
+            margin-top: 3px;
+            font-size: 11.5px;
+            color: var(--text-muted);
+        }
+
+        .SectionBox {
+            background: var(--panel-elev);
+            border: 1px solid var(--line-soft);
+            border-radius: 10px;
+            padding: 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .SectionTitle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11.5px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #a9c4bc;
+        }
+
+        select {
+            width: 100%;
+            background: #0e151b;
+            color: var(--text-main);
+            border: 1px solid var(--line-soft);
+            border-radius: 7px;
+            padding: 7px 9px;
+            font-family: inherit;
+            font-size: 12.5px;
+            outline: none;
+        }
+        select:focus {
+            border-color: var(--accent-leaf);
+        }
+
+        .ModeButtonStack {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .SdfModeBtn {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            width: 100%;
+            text-align: left;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--line-soft);
+            background: #0f161d;
+            color: var(--text-main);
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 0.14s ease, background 0.14s ease;
+        }
+        .SdfModeBtn:hover {
+            border-color: rgba(168, 204, 192, 0.36);
+        }
+        .SdfModeBtn.Active {
+            background: rgba(66, 214, 133, 0.12);
+            border-color: var(--line-strong);
+        }
+        .SdfModeBtn .BtnTop {
+            font-size: 12.5px;
+            font-weight: 500;
+        }
+        .SdfModeBtn .BtnSub {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .CompactBtnRow {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+        }
+        .CompactBtn {
+            padding: 6px 4px;
+            border-radius: 6px;
+            border: 1px solid var(--line-soft);
+            background: #0e151b;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 11.2px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .CompactBtn:hover {
+            border-color: rgba(168, 204, 192, 0.38);
+        }
+        .CompactBtn.Active {
+            background: rgba(66, 214, 133, 0.16);
+            border-color: var(--line-strong);
+            color: #9bf4c0;
+        }
+
+        .SliderRow {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .SliderHeader {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11.8px;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .SliderHeader span:last-child {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent-leaf);
+            cursor: pointer;
+        }
+
+        .ToggleCheckRow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+        .ToggleCheckRow input {
+            accent-color: var(--accent-leaf);
+            cursor: pointer;
+        }
+
+        .ArchetypeInspectorWrap {
+            display: grid;
+            grid-template-columns: 148px 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+        #LeafArchetypeCanvas {
+            width: 148px;
+            height: 148px;
+            border-radius: 8px;
+            border: 1px solid var(--line-soft);
+            background: #0a1015;
+        }
+        .ArchetypeMetaList {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-size: 11.5px;
+            color: var(--text-muted);
+        }
+        .ArchetypeMetaList strong {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .BenchmarkGrid {
+            display: grid;
+            grid-template-columns: 1.45fr 0.75fr 0.75fr 0.68fr;
+            gap: 4px 6px;
+            font-size: 11.2px;
+            font-variant-numeric: tabular-nums;
+            align-items: center;
+        }
+        .BenchmarkHead {
+            color: var(--text-muted);
+            font-weight: 500;
+            padding-bottom: 3px;
+            border-bottom: 1px solid var(--line-soft);
+        }
+        .BenchGood { color: #67e89e; font-weight: 500; }
+        .BenchWarn { color: #f5b84c; font-weight: 500; }
+        .BenchBad  { color: #f67e7b; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="WorkbenchLayout">
+        <main class="ViewportPane">
+            <canvas id="ViewportCanvas"></canvas>
+
+            <div class="TopTelemetryBar">
+                <div class="TelemetryCluster">
+                    <span id="GpuRuntimeTag" class="RuntimeTag">🟢 Initializing WebGPU...</span>
+                    <span class="MetricChip">Leaves <strong id="HudLeafCount">235</strong></span>
+                    <span class="MetricChip">Bricks <strong id="HudBrickCount">383 / 4096</strong></span>
+                    <span class="MetricChip">Blade <strong id="HudBladeThick">1.2 mm</strong></span>
+                </div>
+                <div class="TelemetryCluster">
+                    <span class="MetricChip">Leaf Survival <strong id="HudSurvivalStat">100.0%</strong></span>
+                    <span class="MetricChip">Blob Bloat <strong id="HudBloatStat">0.0%</strong></span>
+                    <span class="MetricChip">Shadow RMSE <strong id="HudRmseStat">0.27%</strong></span>
+                    <span class="MetricChip">Avg Steps <strong id="HudStepsStat">8.0</strong></span>
+                </div>
+            </div>
+
+            <div id="SplitColumnBanner" class="SplitColumnBanner">
+                <div class="SplitPaneLabel">① Exact Ray-Traced Ground Truth (Zero Voxel Grid)</div>
+                <div class="SplitPaneLabel" id="SplitCenterLabel">② Active SDF: Two-Level 2.5D Thin-Sheet</div>
+                <div class="SplitPaneLabel">③ Signed Error (Crimson = Vanished Leaf · Cyan = Blob Bloat)</div>
+            </div>
+
+            <div class="BottomHintStrip">
+                <span>Orbit: Left-Drag</span>
+                <span>Pan: Right-Drag / Shift+Drag</span>
+                <span>Zoom: Scroll</span>
+                <span>Move 3D Shadow Ray: Alt+Click Courtyard</span>
+            </div>
+        </main>
+
+        <aside class="ControlSidebar">
+            <div class="SidebarHeader">
+                <h1>Thin-Leaf Foliage SDF Workbench</h1>
+                <p>Unconditional 1.2 mm leaf silhouettes via Two-Level 16³ Canopy Bricks + 5 × 64² 2D Signed-Sheet Extrusion</p>
+            </div>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>1 · Botanical Scene &amp; Camera</span>
+                    <span id="CompileTimingLabel">0 ms</span>
+                </div>
+                <select id="ScenePresetSelect">
+                    <option value="bough-closeup">0 · Bough Close-Up (36 Thin Leaves · 5 Templates)</option>
+                    <option value="full-arbor" selected>1 · Full Botanical Arbor (235 Thin Leaves · 28 Limbs)</option>
+                    <option value="avenue-lod">2 · Three-Arbor Avenue (705 Leaves · Cone-Width LOD)</option>
+                </select>
+                <div class="CompactBtnRow">
+                    <button class="CompactBtn" id="CamShadowBtn" type="button">Shadow</button>
+                    <button class="CompactBtn Active" id="CamCanopyBtn" type="button">Canopy</button>
+                    <button class="CompactBtn" id="CamWallBtn" type="button">Wall</button>
+                    <button class="CompactBtn" id="CamFarLodBtn" type="button">Avenue</button>
+                </div>
+            </section>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>2 · SDF Thin-Feature Method</span>
+                </div>
+                <div class="ModeButtonStack">
+                    <button class="SdfModeBtn" id="SdfModeBtn0" type="button">
+                        <span class="BtnTop">🔴 0 · Standard 32³ Signed Voxel SDF</span>
+                        <span class="BtnSub">Zero-crossing erasure: 1.2 mm leaves vanish between voxel corners</span>
+                    </button>
+                    <button class="SdfModeBtn" id="SdfModeBtn1" type="button">
+                        <span class="BtnTop">🚩 1 · Dilated Two-Sided 32³ Voxel SDF</span>
+                        <span class="BtnSub">|d| − 0.54·Δx survives voxels, but bloats into dark meatball blobs</span>
+                    </button>
+                    <button class="SdfModeBtn" id="SdfModeBtn2" type="button">
+                        <span class="BtnTop">🏷️ 2 · Non-Instanced 32³ Opacity UDF</span>
+                        <span class="BtnSub">Unsigned distance + sub-voxel extinction: soft wash, blurred teeth</span>
+                    </button>
+                    <button class="SdfModeBtn Active" id="SdfModeBtn3" type="button">
+                        <span class="BtnTop">🟢 3 · Two-Level Brick + 5× 2D Thin-Sheet SDF</span>
+                        <span class="BtnSub">Unconditional 1.2 mm silhouettes + automatic Beer–Lambert Cone-LOD</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>3 · Viewport Diagnostic &amp; 3D Debug</span>
+                </div>
+                <select id="DisplayModeSelect">
+                    <option value="0" selected>0 · Active SDF Shadow — Sunlit Foliage</option>
+                    <option value="2">1 · 3-Way Split (Exact GT | Active SDF | Signed Error)</option>
+                    <option value="1">2 · Exact Ray-Traced Ground Truth Reference</option>
+                    <option value="3">3 · SDF Step-Count &amp; Cone-LOD Heatmap</option>
+                    <option value="4">4 · Pure Botanical Shadow Lithograph V(x)</option>
+                </select>
+                <label class="ToggleCheckRow">
+                    <input type="checkbox" id="DebugBricksCheck" />
+                    <span>Show Occupied 16³ Canopy Bricks (Macro Hull)</span>
+                </label>
+                <label class="ToggleCheckRow">
+                    <input type="checkbox" id="DebugLeavesCheck" />
+                    <span>Show 5-Template Curved Sheet Outlines + Normals</span>
+                </label>
+                <label class="ToggleCheckRow">
+                    <input type="checkbox" id="DebugRaysCheck" checked />
+                    <span>Show Live 3D Sun Shadow-Ray March Steps</span>
+                </label>
+            </section>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>4 · Solar Direction &amp; Cone-Width LOD</span>
+                    <button class="CompactBtn" id="AnimateSunBtn" type="button" style="padding:2px 8px;">Orbit Sun</button>
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>Sun Azimuth</span><span id="SunAzimuthReadout">42°</span></div>
+                    <input type="range" id="SunAzimuthSlider" min="-180" max="180" step="1" value="42" />
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>Sun Elevation</span><span id="SunElevationReadout">55°</span></div>
+                    <input type="range" id="SunElevationSlider" min="16" max="78" step="1" value="55" />
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>Solar Cone Half-Angle</span><span id="SunConeReadout">0.46°</span></div>
+                    <input type="range" id="SunConeSlider" min="0.15" max="3.00" step="0.05" value="0.46" />
+                </div>
+                <div class="SliderRow">
+                    <div class="SliderHeader"><span>Cone-LOD Distance Scale</span><span id="LodScaleReadout">1.00×</span></div>
+                    <input type="range" id="LodScaleSlider" min="0.25" max="3.50" step="0.05" value="1.00" />
+                </div>
+            </section>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>5 · 64×64 2D Leaf Template SDFs (20 KB)</span>
+                </div>
+                <div class="CompactBtnRow" style="grid-template-columns: repeat(5, 1fr);">
+                    <button class="CompactBtn Active" id="ArchTabBtn0" type="button">Beech</button>
+                    <button class="CompactBtn" id="ArchTabBtn1" type="button">Linden</button>
+                    <button class="CompactBtn" id="ArchTabBtn2" type="button">Oak</button>
+                    <button class="CompactBtn" id="ArchTabBtn3" type="button">Maple</button>
+                    <button class="CompactBtn" id="ArchTabBtn4" type="button">Willow</button>
+                </div>
+                <div class="ArchetypeInspectorWrap">
+                    <canvas id="LeafArchetypeCanvas" width="148" height="148"></canvas>
+                    <div class="ArchetypeMetaList">
+                        <div>Template: <strong id="ArchNameLabel">0 · Ovate Beech</strong></div>
+                        <div>Grid: <strong>64 × 64 rgba16f (4.0 KB)</strong></div>
+                        <div>Blade Area: <strong id="ArchAreaLabel">29.6%</strong></div>
+                        <div>Extrusion: <strong>h = ±0.60 mm (1.2 mm)</strong></div>
+                        <div>Sheet Formula: <strong>max(d₂D, |y − c(u,w)| − h)</strong></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="SectionBox">
+                <div class="SectionTitle">
+                    <span>6 · Measured Accuracy vs. Ground Truth</span>
+                </div>
+                <div class="BenchmarkGrid">
+                    <div class="BenchmarkHead">Method</div>
+                    <div class="BenchmarkHead">Survival</div>
+                    <div class="BenchmarkHead">Bloat</div>
+                    <div class="BenchmarkHead">RMSE</div>
+
+                    <div>0 · Signed 32³</div>
+                    <div id="BenchSurv0" class="BenchBad">0.0%</div>
+                    <div id="BenchBloat0">0.0%</div>
+                    <div id="BenchRmse0" class="BenchBad">25.0%</div>
+
+                    <div>1 · Dilated 32³</div>
+                    <div id="BenchSurv1" class="BenchGood">100%</div>
+                    <div id="BenchBloat1" class="BenchBad">212%</div>
+                    <div id="BenchRmse1" class="BenchBad">29.7%</div>
+
+                    <div>2 · Opacity UDF</div>
+                    <div id="BenchSurv2" class="BenchWarn">57.6%</div>
+                    <div id="BenchBloat2" class="BenchWarn">15.2%</div>
+                    <div id="BenchRmse2" class="BenchWarn">15.7%</div>
+
+                    <div><strong>3 · Thin-Sheet</strong></div>
+                    <div id="BenchSurv3" class="BenchGood">100.0%</div>
+                    <div id="BenchBloat3" class="BenchGood">0.0%</div>
+                    <div id="BenchRmse3" class="BenchGood">0.27%</div>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <script type="module" src="./ThinLeafSdfWorkbench.js"></script>
+</body>
+</html>
