@@ -1,0 +1,295 @@
+# Light Strands — Fluid Studio scene preset (Studio). No smoke — aerodynamic light strands streaming past a sphere collider wake, plus a bundle of silk ribbons twisting through an orbit field.
+# Converted from the legacy preset object by script; scene fingerprint d8a5b2e3fad7b4be (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 14
+Id = "preset-light-strands"
+Name = "Light Strands"
+Family = "Studio"
+Icon = "strands"
+Summary = "No smoke — aerodynamic light strands streaming past a sphere collider wake, plus a bundle of silk ribbons twisting through an orbit field."
+Boundary = "OpenAll"
+
+[Grid]
+Resolution = [96, 36, 48]
+Size = [16, 6, 8]
+
+[Render]
+Visible = false
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 16, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.2 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.995, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#8e8f94", Absorption = 3.2, Anisotropy = 0.45, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Tunnel Wind"
+  Position = [0, 0, 0]
+  Strength = 0.9
+  Direction = [1, 0, 0]
+  Falloff = "Constant"
+  Frequency = 0.2
+  Secondary = 0.1
+
+[[Force]]
+  Type = "Orbit"
+  Name = "Twist"
+  Position = [2, -0.6, 1.4]
+  Strength = 2.2
+  Radius = 2.6
+  Falloff = "Gaussian"
+  Direction = [1, 0.2, 0]
+  Frequency = 0.15
+  Secondary = 0.3
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Weave"
+  Position = [0, 0, 0]
+  Strength = 0.35
+  Radius = 8
+  Falloff = "Plateau"
+  Frequency = 0.4
+  Secondary = 0.12
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Air Resistance"
+  Position = [0, 0, 0]
+  Strength = 0.25
+  Radius = 9
+  Falloff = "Constant"
+
+[[Collider]]
+  Name = "Bluff Body"
+  Position = [-1, 0, 0]
+  Radius = 1
+
+
+[[Particle]]
+  Template = "light-strands"
+  Name = "Streamlines"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 3, Position = [-7.4, 0.2, 0], Direction = [1, 0, 0], Radius = 1.6, Fill = 0.0, Count = 1536, Rate = 0.6, Lifetime = 24.0, Linger = 4.0, Speed = 1.1, Spread = 0.06, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 0.1 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 0.25, NoiseScale = 0.45, NoiseSpeed = 0.06 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 207
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { GasInfluence = 1.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 0, Palette = ["#ffffff", "#bfe9ff", "#60a5fa", "#312e81"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.3, Brightness = 1.3, Flicker = 0.4 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 0, SizeStart = 0.03, SizeEnd = 0.02, SizeRandom = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 0, Glow = 0.8, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-9"
+    Category = 212
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Trail = 1, TrailLength = 96, TrailInterval = 0.1, TrailWidth = 0.012, TrailTaper = 0.7, TrailFade = 0.6, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 1.0 }
+
+[[Particle]]
+  Template = "silk-ribbons"
+  Name = "Silk Bundle"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 3, Position = [-7, -1.6, 2.2], Direction = [1, 0.1, 0], Radius = 0.35, Fill = 0.0, Count = 1024, Rate = 0.7, Lifetime = 26.0, Linger = 4.0, Speed = 0.8, Spread = 0.1, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 0.08 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 0.55, NoiseScale = 0.4, NoiseSpeed = 0.05 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 5, Palette = ["#ff7ab6", "#f472b6", "#c084fc", "#fb7185", "#fff1f2"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.05, BrightnessJitter = 0.4, Brightness = 1.2, Flicker = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 0, SizeStart = 0.02, SizeEnd = 0.012, SizeRandom = 0.8 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 0, Glow = 0.7, Blend = 1, Style = 0, FocusDistance = 6.0, Aperture = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 212
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Trail = 1, TrailLength = 96, TrailInterval = 0.12, TrailWidth = 0.016, TrailTaper = 0.5, TrailFade = 0.5, TrailSubdivisions = 3, TrailColour = 0, TrailRatio = 1.0 }

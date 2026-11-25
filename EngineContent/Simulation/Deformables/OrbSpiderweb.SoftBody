@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Orb Spiderweb"
+PresetId = "OrbSpiderweb"
+PresetKind = "OrbSpiderweb"
+SolverCategory = "XpbdStrand"
+Description = "Silk & Dew deformable preset (spiderweb)"
+
+[Solver]
+Substeps = 5
+GravityY = -4.5
+Damping = 0.991999984
+UnderwaterEnabled = false
+
+[Material]
+StretchStiffness = 1500.0
+BendStiffness = 0.200000003
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 1.89999998
+
+[Environment]
+WindStrength = 2.0
+Turbulence = 1.20000005
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 30.0
+AxleLoad = 1.35000002
+SpinRadPerSec = 3.0

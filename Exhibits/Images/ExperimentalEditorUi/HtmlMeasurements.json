@@ -1,0 +1,782 @@
+{
+  "Errors": [],
+  "Measurements": {
+    "FreshOutlinerRows": [
+      {
+        "Id": "showcase",
+        "Name": "Showcase",
+        "Meta": "5 items",
+        "Depth": "0"
+      },
+      {
+        "Id": "cameras",
+        "Name": "Cameras",
+        "Meta": "5 items",
+        "Depth": "0"
+      },
+      {
+        "Id": "world",
+        "Name": "World",
+        "Meta": "10 items",
+        "Depth": "0"
+      },
+      {
+        "Id": "atmosphere",
+        "Name": "Atmosphere",
+        "Meta": "Mie 1× · ozone 1.2",
+        "Depth": "1"
+      },
+      {
+        "Id": "sun",
+        "Name": "Sun",
+        "Meta": "22× · 0.53°",
+        "Depth": "1"
+      },
+      {
+        "Id": "moon",
+        "Name": "Moons",
+        "Meta": "Lunar phase 223° · 62%",
+        "Depth": "1"
+      },
+      {
+        "Id": "stars",
+        "Name": "Stars",
+        "Meta": "5.5 mag · 1×",
+        "Depth": "1"
+      },
+      {
+        "Id": "wind",
+        "Name": "Wind",
+        "Meta": "7 m/s · 250°",
+        "Depth": "1"
+      },
+      {
+        "Id": "height-fog",
+        "Name": "Height Fog",
+        "Meta": "0.02× · 400 m",
+        "Depth": "1"
+      },
+      {
+        "Id": "aerial-fog",
+        "Name": "Atmospheric Fog",
+        "Meta": "1× · starts 50 m",
+        "Depth": "1"
+      },
+      {
+        "Id": "local-fog",
+        "Name": "Local Fog",
+        "Meta": "1× · 55%",
+        "Depth": "1"
+      },
+      {
+        "Id": "clouds",
+        "Name": "Clouds",
+        "Meta": "34% · 2.4×",
+        "Depth": "1"
+      },
+      {
+        "Id": "local-cloud",
+        "Name": "Local Cloud",
+        "Meta": "80% · 2.5×",
+        "Depth": "1"
+      },
+      {
+        "Id": "lighting",
+        "Name": "Lighting",
+        "Meta": "11 items",
+        "Depth": "0"
+      },
+      {
+        "Id": "vehicles",
+        "Name": "Vehicles",
+        "Meta": "3 items",
+        "Depth": "0"
+      }
+    ],
+    "ConstructDialog": {
+      "DialogRect": {
+        "W": 860,
+        "H": 760
+      },
+      "DialogBg": "rgb(23, 23, 23)",
+      "DialogBorder": "1px solid rgb(55, 55, 55)",
+      "DialogRadius": "12px",
+      "RailWidth": 138,
+      "RailGroups": [
+        "All",
+        "Environment",
+        "Weather",
+        "Cameras",
+        "Geometry",
+        "Lighting",
+        "Vehicle"
+      ],
+      "SearchHeight": 38,
+      "CardRect": {
+        "W": 161,
+        "H": 116
+      },
+      "AllEntities": [
+        "Cube",
+        "Sphere",
+        "Cylinder",
+        "Torus",
+        "Cone",
+        "Main Camera",
+        "Cine Camera",
+        "Motion Blur",
+        "Lens Flare",
+        "Post Process",
+        "Heat Shimmer",
+        "Glitch",
+        "Chromatic Aberration",
+        "Film Grain",
+        "Lens Distortion",
+        "Scanlines",
+        "Sharpen",
+        "Atmosphere",
+        "Sun",
+        "God Rays",
+        "Moons",
+        "Stars",
+        "Wind",
+        "Height Fog",
+        "Atmospheric Fog",
+        "Local Fog",
+        "Clouds",
+        "Precipitation",
+        "Local Cloud",
+        "Rainbow",
+        "Area Light",
+        "Controlled Vehicle",
+        "Body",
+        "SuspensionFL",
+        "SteerFL",
+        "WheelFL",
+        "WheelFLRim",
+        "SuspensionFR",
+        "SteerFR",
+        "WheelFR",
+        "WheelFRRim",
+        "SuspensionRL",
+        "WheelRL",
+        "WheelRLRim",
+        "SuspensionRR",
+        "WheelRR",
+        "WheelRRRim",
+        "Tow Hitch",
+        "Headlights",
+        "Brake Lights",
+        "Off-road Vehicle",
+        "Pickup Truck",
+        "Environment Light",
+        "Key Spot",
+        "Rim Point",
+        "Fill Point",
+        "ECE Low Beam",
+        "Softbox",
+        "Studio Tube",
+        "LED Emitter",
+        "LED Strip",
+        "IES Downlight"
+      ]
+    },
+    "EnvironmentEntities": [
+      "Atmosphere",
+      "Sun",
+      "God Rays",
+      "Moons",
+      "Stars",
+      "Rainbow"
+    ],
+    "WeatherEntities": [
+      "Wind",
+      "Height Fog",
+      "Atmospheric Fog",
+      "Local Fog",
+      "Clouds",
+      "Precipitation",
+      "Local Cloud"
+    ],
+    "ContextMenuSun": {
+      "Rect": {
+        "W": 220,
+        "H": 378
+      },
+      "Bg": "rgb(26, 26, 26)",
+      "Border": "1px solid rgba(255, 255, 255, 0.075)",
+      "Radius": "14px",
+      "Padding": "8px",
+      "FontFamily": "\"DM Sans\", sans-serif",
+      "Items": [
+        {
+          "Tag": "label",
+          "Class": "",
+          "Text": "Sun",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "9px",
+          "Color": "rgb(119, 119, 119)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 28
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Rename\nF2",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Hide",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Isolate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Inspect in workspace",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Select children",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Move into new collection",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Duplicate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Copy name",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "danger",
+          "Text": "Delete\nDel",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(255, 138, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        }
+      ]
+    },
+    "ContextMenuWorldFolder": {
+      "Rect": {
+        "W": 220,
+        "H": 378
+      },
+      "Bg": "rgb(26, 26, 26)",
+      "Border": "1px solid rgba(255, 255, 255, 0.075)",
+      "Radius": "14px",
+      "Padding": "8px",
+      "FontFamily": "\"DM Sans\", sans-serif",
+      "Items": [
+        {
+          "Tag": "label",
+          "Class": "",
+          "Text": "World",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "9px",
+          "Color": "rgb(119, 119, 119)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 28
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Rename\nF2",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Hide",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Isolate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Inspect in workspace",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Select children",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Move into new collection",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Duplicate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Copy name",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "danger",
+          "Text": "Delete\nDel",
+          "Disabled": true,
+          "Title": "Built-in collections cannot be deleted",
+          "FontSize": "12px",
+          "Color": "rgb(107, 107, 107)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "0.4",
+          "Height": 34
+        }
+      ]
+    },
+    "ContextMenuEditorCamera": {
+      "Rect": {
+        "W": 220,
+        "H": 310
+      },
+      "Bg": "rgb(26, 26, 26)",
+      "Border": "1px solid rgba(255, 255, 255, 0.075)",
+      "Radius": "14px",
+      "Padding": "8px",
+      "FontFamily": "\"DM Sans\", sans-serif",
+      "Items": [
+        {
+          "Tag": "label",
+          "Class": "",
+          "Text": "Editor Camera",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "9px",
+          "Color": "rgb(119, 119, 119)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 28
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Rename\nF2",
+          "Disabled": true,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "0.4",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Isolate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Inspect in workspace",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Select children",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Duplicate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Copy name",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "danger",
+          "Text": "Delete\nDel",
+          "Disabled": true,
+          "Title": "The editor camera cannot be deleted",
+          "FontSize": "12px",
+          "Color": "rgb(107, 107, 107)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "0.4",
+          "Height": 34
+        }
+      ]
+    },
+    "ContextMenuMultiSelect": {
+      "Rect": {
+        "W": 220,
+        "H": 310
+      },
+      "Bg": "rgb(26, 26, 26)",
+      "Border": "1px solid rgba(255, 255, 255, 0.075)",
+      "Radius": "14px",
+      "Padding": "8px",
+      "FontFamily": "\"DM Sans\", sans-serif",
+      "Items": [
+        {
+          "Tag": "label",
+          "Class": "",
+          "Text": "3 selected",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "9px",
+          "Color": "rgb(119, 119, 119)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 28
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Hide",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Isolate",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Select children",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Group into collection",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Duplicate 3",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "button",
+          "Class": "",
+          "Text": "Copy names",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(240, 240, 240)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        },
+        {
+          "Tag": "hr",
+          "Class": "",
+          "Text": "",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "13px",
+          "Color": "rgb(128, 128, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 1
+        },
+        {
+          "Tag": "button",
+          "Class": "danger",
+          "Text": "Delete 3\nDel",
+          "Disabled": false,
+          "Title": "",
+          "FontSize": "12px",
+          "Color": "rgb(255, 138, 128)",
+          "Bg": "rgba(0, 0, 0, 0)",
+          "Opacity": "1",
+          "Height": 34
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,78 @@
+# Light Speed Streaks — particle template (Trails). Ported from Particle Studio (Streaks): high-velocity Sport-mode speed lines rushing past a vehicle silhouette with tapered Catmull-Rom streaks.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "52ce39858ba4e96f"
+
+[Template]
+Order = 55
+Id = "light-speed-streaks"
+Name = "Light Speed Streaks"
+Category = "Trails"
+Icon = "track"
+Tint = "#38bdf8"
+Summary = "Ported from Particle Studio (Light speed): high-velocity Sport-mode light streaks rushing past the car with luminous cyan-to-amber trails."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 2, Position = [2.4, 0.1, 0.0], Direction = [-1, 0, 0], Radius = 1.55, Fill = 0.0, Count = 2048, Rate = 320.0, Lifetime = 0.85, Linger = 0.15, Speed = 10.5, Spread = 0.04, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.04 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 0.85 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 1, Palette = ["#0ea5e9", "#38bdf8", "#f8fafc", "#fbbf24"], RampSource = 0, MaxSpeed = 11.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.04, BrightnessJitter = 0.25, Brightness = 1.65, Flicker = 0.12 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.016, SizeEnd = 0.005, SizeRandom = 0.35 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.65, Blend = 1, Style = 1, FocusDistance = 5.2, Aperture = 0.22, CarrierMode = 0 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 18, TrailInterval = 0.02, TrailWidth = 0.012, TrailTaper = 0.85, TrailFade = 1.4, TrailSubdivisions = 2, TrailRatio = 0.6, TrailColour = 1 }

@@ -1,0 +1,17 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.Configuration'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.RuntimeConfiguration'
+DocumentTitle = 'RuntimeDefault'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-0000000003fb'
+
+[RuntimeConfiguration]
+ApplicationTitle = 'Frontier Engine'
+EnableVerticalSync = true
+EnableVulkanValidation = true
+StartupWorldPath = 'Content/Worlds/VehicleClearSkyDefault.WorldSpace'
+TargetFramesPerSecond = 60
+WindowHeightPixels = 1080
+WindowWidthPixels = 1920

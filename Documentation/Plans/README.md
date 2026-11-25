@@ -1,0 +1,73 @@
+# 📝 `Documentation/Plans/` — Architectural Plans, Reports & Markdown Studio
+
+> **TL;DR**: `Documentation/Plans/` stores active architectural specifications, cleanup/audit reports, superseded specifications for removed domains queued for redo, live session notes (`SessionNotes.md`), and the compiled browser viewer (`MarkdownStudioViewer.html`, rebuilt via `python3 Automation/BuildMarkdownViewer.py` and served by `Automation/ServeMarkdownStudio.py`).
+
+---
+
+## 🧩 1. Active Architecture & Engine Plans
+
+| Plan Document | Domain |
+| :--- | :--- |
+| [ProjectZeroInspectorExactPortPlan.md](ProjectZeroInspectorExactPortPlan.md) | **🟢 Active Plan (`2026-11-23`)**: Strict 1:1 pixel-for-pixel C++ port of `ProjectZeroEditor` HTML inspector cards (`6392b471` Sun Direction, F76 3-face Baking, F77/F78 Camera Settings & Camera Mount, pure-vector Lights/Atmosphere/Wind, zero `vkQueueWaitIdle` stalls, live `.cpp`/`.slang` variable bindings) |
+| [UnifiedFluidParticleForceFieldPortPlan.md](UnifiedFluidParticleForceFieldPortPlan.md) | **🚩 Ready for Execution (`2026-11-23`)**: Zero-divergence 1:1 C++20 + Vulkan `.slang` port of `SultanAladin/Frontier-1` `Experimental/FluidEditor` + `ClothEditor` XPBD — ordered Phase 0 HTML PNG capture → Phase 1 ForceFields (20 models, 7 falloffs, KeyTracks, Jolt coupling) → Phase 2 GPU Particle Simulation + GPU Collisions (`RigidColliderProxy` + spatial-hash self-collision) + GPU Orthotropic XPBD → Phase 3 3D/WorldGrid/Infinite Fluid + Wrenninge Volume Raymarcher → Phase 4 1:1 Workspace UI (`Engine/Components/`) → Phase 5 Codecs & Validation Exhibits |
+| [CrossThreadPhysicsConstraintPlan.md](CrossThreadPhysicsConstraintPlan.md) | **🟢 Completion Report (`2026-11-23`)**: Generic wait-free multi-reader `PublishedReadingExchange`, `ThreadBoundaryExchange`, dedicated `PhysicsThread`, and all 8 `ProjectZeroEditor`-parity Jolt physics constraints |
+| [ProjectLifecyclePolicyPlan.md](ProjectLifecyclePolicyPlan.md) | **🟢 Active Plan (`2026-11-23`)**: `Projects/` root, reference lean project `Projects/Untitled/` (`UntitledLifecycle`), tight zero-Editor `RuntimeLifecycle` fixed-step loop, `ProjectExecutionPolicy`, `GameplayRulePolicy`, and `DeterministicDrivingPolicy` |
+| [ModularInspectorArchitecturePlan.md](ModularInspectorArchitecturePlan.md) | **🟢 Approved & Active (`2026-11-23`)**: Standalone per-type generic Inspector architecture (`24` independent `.h/.cpp` Inspectors, zero monolithic buckets, zero hardcoded folders/singletons, multi-instance combination for Suns/Moons/Winds/Stars/Fogs/Lights/Cameras/Geometry, on-demand retained previews & real LUT previews) |
+| [EnvironmentConstructDirectivePlan.md](EnvironmentConstructDirectivePlan.md) | **🚩 Ready for Review (`2026-11-23`)**: Rendered HTML reference (`2fd4c62`, 9 PNG captures + DOM tokens), audited C++/`.slang` defects, decision tables, and 1:1 native blueprint for constructing/removing Sun, Clouds, Moon, Stars & Atmosphere + HTML-matched Outliner right-click directive sheet |
+| [SerializationArchitecturePlan.md](SerializationArchitecturePlan.md) | **🟢 Active Plan (`2026-11-23`)**: `*Space` Stratification Rule, 5–6 alternatives across all 15 general-purpose categories, embedded multi-pillar `.Instance`/`.WorldSpace`/`.ParticleSpace` containers, `Engine/Serialization/` layout, persistent `DependencyOrder` & hardcoded showcase removal |
+| [ExperimentalEditorUiPortPlan.md](ExperimentalEditorUiPortPlan.md) | Proposed editor-only HTML-to-native UI parity plan, reusable components, visual evidence and production isolation |
+| [UdfClipmapAoFormattingReport.md](UdfClipmapAoFormattingReport.md) | **🟢 Completion Report (`2026-11-22`)**: UDF Clipmap AO port, magic-number root-cause & named-constant remediation (`64+` unit-tagged constants), zero-raw-`new` `PreparedPyramidVolumes`, and build/CTest scope restriction to `Frontier` + `SolidArc` (`FrontierSketcher`) |
+| [ViewportTelemetrySpikeRemediationReport.md](ViewportTelemetrySpikeRemediationReport.md) | **🟢 Completion Report (`2026-11-22`)**: `FrontierTiming.log` (`40,080` ticks on `GTX 1650 SUPER`) spike & ray-budget audit, dedicated `HighEndBvhComputeEntry` (`2..3` rays/pixel), persistent `VkPipelineCache`, `2048x2048` font atlas, and zero-stall gizmo/UI hover pacing |
+| [DataDrivenSpaceContentFormattingPlan.md](DataDrivenSpaceContentFormattingPlan.md) | **🟢 Active Review Plan (`2026-11-21`)**: Zero-abbreviation `*Space` vs. `.InstanceSpace` decision table, `Content/` folder structure, domain codecs, and `FrontierDefaultContentGenerator` C++ tool |
+| [WorldRenderingRedoReport.md](WorldRenderingRedoReport.md) | **🟢 Completion Report (`2026-11-20`)**: Quantitative & visual verification across Phase 0 (`757b5c6`), Order 1 Direct PBR (`4294a70`), Order 2 Real-Time GI (`18b3329`), and Order 3 Unified Deterministic Path Tracer (`GameRealtime` & `SceneFinalRender`) |
+| [WorldRenderingRedoPlan.md](WorldRenderingRedoPlan.md) | **🟢 Completed Master Plan (`2026-11-20`)**: Phase 0 `Engine/` SDF/SDF-baking purge → **(1st)** Standalone Direct PBR (`0` GI, `0` SDF) → **(2nd)** GTX SDF Shadows (`Candidate 1: HybridConeShadow`) + GI (`Candidates 1 + 2: StokesContour + SurfelRadiosity`, Low-End & High-End) → **(3rd)** Unified Deterministic Path Tracer (Games + Scene Rendering via settings) |
+| [DocumentationCleanupReport.md](DocumentationCleanupReport.md) | **2026-11-20** governance & documentation cleanup after retiring simplified `Fluid`, `ForceField`, `GI/SDF`, and `Particle` code + automatic HTML parity gate |
+| [GameEngineBringupPlan.md](GameEngineBringupPlan.md) | Overall engine bringup roadmap & domain ordering |
+| [ThreadingArchitecturePlan.md](ThreadingArchitecturePlan.md) | Priority-budgeted `ExecutionChannels`, `TaskScheduler`, `WorkspaceThread` & `AudioThread` |
+| [DocumentFormatsInstancePlan.md](DocumentFormatsInstancePlan.md) | Two-Tier Hybrid `.Space` codec registry & non-kinship instances |
+| [DocumentSpacesRevisionPlan.md](DocumentSpacesRevisionPlan.md) | Confirmed `.Space` codecs, `215` / `750 MiB` revision DAG & workspace tree |
+| [ContentBrowserArchitecturePlan.md](ContentBrowserArchitecturePlan.md) | Pre-baked `ThumbnailSheet`, streaming, quarantine import & UV masks |
+| [ColourSpaceArchitecturePlan.md](ColourSpaceArchitecturePlan.md) | Tristimulus colour spaces, spectral distributions & tone transforms |
+| [MaterialVisibilityRenderingBringupPlan.md](MaterialVisibilityRenderingBringupPlan.md) | 10-lobe `MaterialSpace`, 64-bit VisBuffer & direct rendering bringup |
+| [DynamicMaterialSystemPlan.md](DynamicMaterialSystemPlan.md) | Time-varying procedural/transition OpenPBR material compiler |
+| [CelestialSkyCloudsSystemPlan.md](CelestialSkyCloudsSystemPlan.md) | Physical 3-LUT sky, solar/lunar ephemeris & single-source `PlanetaryClouds` |
+| [NetworkingPolicyBringupPlan.md](NetworkingPolicyBringupPlan.md) | UDP/TCP socket transport & reading replication policy |
+| [RemediationInputCameraPlan.md](RemediationInputCameraPlan.md) | Input exchange & orbit/fly camera remediation |
+
+---
+
+## 🧩 2. Active Workspace Plans & Completion Reports (9 Host Workspaces)
+
+| Plan / Report | Workspace |
+| :--- | :--- |
+| [ProjectBrowserWorkspacePlan.md](ProjectBrowserWorkspacePlan.md) · [ProjectBrowserWorkspaceImplementationReport.md](ProjectBrowserWorkspaceImplementationReport.md) | `ProjectBrowser` |
+| [UVWorkspaceArchitecturePlan.md](UVWorkspaceArchitecturePlan.md) · [UVWorkspaceHtmlPortProgress.md](UVWorkspaceHtmlPortProgress.md) · [UVWorkspaceSyncViewportReport.md](UVWorkspaceSyncViewportReport.md) · [UVWorkspaceFullCompletionReport.md](UVWorkspaceFullCompletionReport.md) | `UVWorkspace` |
+| [VectorGraphicsWorkspacePlan.md](VectorGraphicsWorkspacePlan.md) · [BakingHardwareClusterIconPlan.md](BakingHardwareClusterIconPlan.md) | `PatternWorkspace` · `StampWorkspace` · `BakingWorkspace` |
+| [FractureWorkspaceImplementationPlan.md](FractureWorkspaceImplementationPlan.md) | `FractureWorkspace` |
+| [ParametricSketcherIntegrationPlan.md](ParametricSketcherIntegrationPlan.md) · [ParametricSketcherOverhaulPlan.md](ParametricSketcherOverhaulPlan.md) | `SketcherWorkspace` (`ParametricSketcher`) |
+| [ComponentEditorArchitecturePlan.md](ComponentEditorArchitecturePlan.md) | `ComponentEditor` |
+
+---
+
+## 🚧 3. Superseded Plans — Queued for Clean 1:1 Ground-Up Redo
+
+⚠️ Target C++ implementations were removed (`63db120`, `daed305`) to eliminate simplified approximations and broken couplings. See [`../../Experimental/RemovedSdfGi/README.md`](../../Experimental/RemovedSdfGi/README.md) and [`../../CLAUDE.md`](../../CLAUDE.md) §1.2 & §2.1 before starting any redo.
+
+| Plan / Reference | Queued Redo Domain |
+| :--- | :--- |
+| [RenderingRaytracingArchitecturePlan.md](RenderingRaytracingArchitecturePlan.md) · [WorldRenderEngineUnificationPlan.md](WorldRenderEngineUnificationPlan.md) · [DeterministicPathTracerVulkanOptimizationPlan.md](DeterministicPathTracerVulkanOptimizationPlan.md) · [DeterministicPathTracerAuditReport.md](DeterministicPathTracerAuditReport.md) | **Priority Redo (`BKL-012`)**: SDF Shadows, SDF GI, Emissive GI & Deterministic Path Tracing ([`Experimental/RemovedSdfGi/`](../../Experimental/RemovedSdfGi/README.md)) |
+| [ParticleSpaceModularPortPlan.md](ParticleSpaceModularPortPlan.md) · [ParticleRendererDerezMaterialTexturePlan.md](ParticleRendererDerezMaterialTexturePlan.md) | **Deferred Redo (`BKL-013`)**: Un-simplified 1:1 `Particle` solver & studio |
+| [VectorFieldArchitecturePlan.md](VectorFieldArchitecturePlan.md) · [VectorFieldVulkanConversionPlan.md](VectorFieldVulkanConversionPlan.md) | **Deferred Redo (`BKL-013`)**: Un-simplified 1:1 `ForceField` / `VectorField` solver & studio |
+
+---
+
+## 🔍 4. Audits, Notes & Studio Viewer
+
+| File | Purpose |
+| :--- | :--- |
+| [AuditRemediationReport.md](AuditRemediationReport.md) | Historical cross-repo naming & structural audit report (`2026-11-15`) |
+| [GeometryCompilerFindingsReport.md](GeometryCompilerFindingsReport.md) | Geometry compiler audit & diagnostic findings |
+| [VehicleHmiRendererReflectionReport.md](VehicleHmiRendererReflectionReport.md) | Vehicle HMI renderer reflection & parity notes |
+| [Note-1608.md](Note-1608.md) | Engineering note 1608 |
+| [SessionNotes.md](SessionNotes.md) | Live Markdown Studio session notepad |
+| `MarkdownStudioViewer.html` | Self-contained HTML viewer rebuilt via `python3 Automation/BuildMarkdownViewer.py` |

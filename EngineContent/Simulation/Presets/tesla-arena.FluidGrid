@@ -1,0 +1,116 @@
+# High-Voltage Arc Lab — scene preset (VFX). Parameterized electrical arc showcase: Tesla Sphere Lightning, Plasma Cage & Arc Collector, Multi-Shape Prism Barrier and catenary heavy chains under electromagnetic swirl.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Scene]
+Order = 53
+Id = "preset-tesla-arena"
+Name = "High-Voltage Arc Lab"
+Family = "VFX"
+Icon = "electric"
+Boundary = "ClosedBox"
+Summary = "Tesla Sphere Lightning, Plasma Cage collector arcs, Multi-Shape Prism Barrier and catenary heavy chains."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.6, 5.6, 6.6]
+
+[Render]
+Visible = false
+Exposure = 1.3
+Steps = 72
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.0, ForceResponse = 1.0, PressureIterations = 24, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "Orbit"
+  Name = "Magnetic Containment"
+  Position = [0.0, 0.2, 0.0]
+  Strength = 1.65
+  Radius = 3.4
+  Falloff = "SmoothStep"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.6
+  Secondary = 0.0
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Ion Turbulence"
+  Position = [0.0, 0.2, 0.0]
+  Strength = 1.1
+  Radius = 3.8
+  Falloff = "Gaussian"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 1.4
+  Secondary = 0.25
+
+[[Particle]]
+  Template = "electrical-arcs"
+  Name = "Tesla Sphere Lightning"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.45, 0.0]
+  Radius = 1.6
+  Count = 512
+
+[[Particle]]
+  Template = "electrical-arcs"
+  Name = "Plasma Cage Collector"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.75, 0.15, -0.35]
+  Radius = 1.25
+  Count = 384
+  StrandMode = "PlasmaCage"
+  StrandCount = 16
+  StrandSpan = 1.5
+  Palette = ["#e0f2fe", "#38bdf8", "#818cf8", "#c084fc"]
+
+[[Particle]]
+  Template = "energy-hex-shield"
+  Name = "Prism Barrier"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [1.7, 0.05, 0.2]
+  Radius = 1.15
+  Count = 2048
+  SpawnObject = "HexPrism"
+  Sprite = "CrystalShard2D"
+  Palette = ["#0ea5e9", "#38bdf8", "#a855f7", "#f8fafc"]
+
+[[Particle]]
+  Template = "hanging-strands"
+  Name = "Rigging Chains"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.95, -1.25]
+  Radius = 1.85
+  Count = 192
+  StrandMode = "CablesChains"
+  StrandVariant = "Secondary"
+  StrandCount = 18
+  StrandSag = 0.48
+  StrandThickness = 0.042

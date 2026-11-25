@@ -1,0 +1,87 @@
+# Bokeh Stream Ribbons — particle template (Trails). Luminous out-of-focus bokeh orbs gliding through curl turbulence while pulling silky tapered Catmull-Rom light ribbons behind them.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Template]
+Order = 67
+Id = "bokeh-stream-ribbons"
+Name = "Bokeh Stream Ribbons"
+Category = "Trails"
+Icon = "silk"
+Tint = "#f472b6"
+Summary = "Luminous bokeh orbs gliding through smooth curl currents and pulling silky tapered light ribbons behind them."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 4, Position = [0, 0.0, 0], Direction = [0, 1, 0], Radius = 1.65, Fill = 0.25, Count = 1280, Rate = 9.0, Lifetime = 4.2, Linger = 1.8, Speed = 1.45, Spread = 0.28, Radial = 0.1 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.72 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 1.55, NoiseScale = 0.95, NoiseSpeed = 0.45 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.15 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 6, Palette = ["#f472b6", "#fb923c", "#fde047", "#38bdf8", "#a855f7"], RampSource = 0, MaxSpeed = 5.0, DisplacementRange = 1.0, CycleSpeed = 0.35, HueJitter = 0.08, BrightnessJitter = 0.25, Brightness = 1.35, Flicker = 0.15 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.068, SizeEnd = 0.024, SizeRandom = 0.72 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 2, Glow = 0.9, Blend = 1, Style = 0, FocusDistance = 4.2, Aperture = 0.6 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 212
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Trail = 1, TrailLength = 26, TrailInterval = 0.055, TrailWidth = 0.014, TrailTaper = 0.9, TrailFade = 0.85, TrailSubdivisions = 2, TrailColour = 1, TrailRatio = 0.85 }

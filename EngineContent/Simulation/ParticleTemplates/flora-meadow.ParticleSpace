@@ -1,0 +1,70 @@
+# Flora Meadow — particle template (Environment). A rooted meadow of bending blades: every stalk is a column of particles rising from the soil disc, so the wind moves the tips far more than the roots.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 43
+Id = "flora-meadow"
+Name = "Flora Meadow"
+Category = "Environment"
+Icon = "leaf"
+Tint = "#22c55e"
+Summary = "A rooted meadow of bending blades: every stalk is a column of particles rising from the soil disc, so the wind moves the tips far more than the roots."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 14, Position = [0, -0.6, 0], Direction = [0, 1, 0], Radius = 2.1, Fill = 0.22, Count = 8192, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0, ShapeDetail = 36.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 2.2, Damping = 1.15, Dissolve = 0.09 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.26, NoiseScale = 1.65, NoiseSpeed = 0.45 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 3, Palette = ["#fef08a", "#bef264", "#22c55e", "#065f46"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.08, BrightnessJitter = 0.28, Brightness = 1.35, Flicker = 0.14 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.042, SizeEnd = 0.018, SizeRandom = 0.52 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 11, Glow = 0.35, Blend = 0, Style = 0, FocusDistance = 5.5, Aperture = 0.42, CarrierMode = 0 }

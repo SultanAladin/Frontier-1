@@ -1,0 +1,70 @@
+# Aurora Curtain — particle template (Environment). A vertical aurora veil: line-shaped columns using the drifting curtain cutout, additive with palette cycling — no billboard glow blob anywhere in it.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 51
+Id = "aurora-curtain"
+Name = "Aurora Curtain"
+Category = "Environment"
+Icon = "aurora"
+Tint = "#34d399"
+Summary = "A vertical aurora veil: line-shaped columns using the drifting curtain cutout, additive with palette cycling — no billboard glow blob anywhere in it."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 5, Position = [0, 0.4, 0], Direction = [0, 1, 0], Radius = 2.3, Fill = 0.0, Count = 4096, Rate = 180.0, Lifetime = 6.0, Linger = 0.5, Speed = 0.25, Spread = 0.18, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.65 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.32, NoiseScale = 0.9, NoiseSpeed = 0.4 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 6, Palette = ["#bbf7d0", "#34d399", "#22d3ee", "#818cf8"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.22, HueJitter = 0.05, BrightnessJitter = 0.25, Brightness = 1.35, Flicker = 0.18 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 1.35, SizeEnd = 0.9, SizeRandom = 0.4 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 16, Glow = 0.6, Blend = 1, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }

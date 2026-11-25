@@ -1,0 +1,17 @@
+# Frontier Sectioned Document Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'AutoSpace.Configuration'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.RuntimeConfiguration'
+DocumentTitle = 'RuntimeDefault'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-a070-7000-8000-000000000902'
+
+[RuntimeConfiguration]
+ApplicationTitle = 'AutoSpace'
+EnableVerticalSync = true
+EnableVulkanValidation = false
+StartupWorldPath = 'Content/Worlds/MainWorld.WorldSpace'
+TargetFramesPerSecond = 60
+WindowHeightPixels = 720
+WindowWidthPixels = 1280

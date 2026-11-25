@@ -1,0 +1,58 @@
+# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase TOML Header)
+['.AtmosphericMedium']
+AtmosphereEnabled = true
+AtmosphereThicknessMeters = 60000.0
+FallbackSkyRadiance = [ 0.41999998688697815, 0.57999998331069946, 0.87999999523162842 ]
+GlobalWindBearingDegrees = 250.0
+GlobalWindSpeedMetersPerSecond = 0.0
+GroundAlbedo = [ 0.045000001788139343, 0.087999999523162842, 0.16500000655651093 ]
+HeightFogDensity = 0.019999999552965164
+HeightFogEnabled = false
+HeightFogFalloffHeightMeters = 400.0
+LimbGlowIntensity = 1.0
+MieAnisotropy = 0.77999997138977051
+MieScaleHeightMeters = 1200.0
+MieStrength = 1.0
+MoonAngularDiameterDegrees = 0.51999998092651367
+MoonAzimuthDegrees = 300.0
+MoonElevationDegrees = 28.0
+MoonPhaseFraction = 0.62000000476837158
+MoonPrimaryEnabled = false
+ObserverAltitudeMeters = 100.0
+OzoneStrength = 1.2000000476837158
+PlanetRadiusMeters = 6360000.0
+RayleighScaleHeightMeters = 8000.0
+RayleighStrength = 1.0
+SkyBrightnessMultiplier = 1.0
+SkyTint = [ 1.0, 1.0, 1.0 ]
+StarBrightnessMultiplier = 1.0
+StarfieldEnabled = false
+
+['.CloudDeck']
+AnvilTopSpread = 0.5
+CategoryOrdinal = 2
+CloudFloorMeters = 1400.0
+CloudFraction = 0.34000000357627869
+CloudMarchSteps = 64
+CloudRenderScale = 1.0
+CloudShadowEnabled = true
+CloudsEnabled = true
+DeckCeilingMeters = 16000.0
+ErosionVolumeDimension = 0
+ExtinctionMultiplier = 2.4000000953674316
+FeatureScaleMultiplier = 0.34999999403953552
+FollowWindEnabled = false
+ForwardScatterAnisotropy = 0.44999998807907104
+LayerThicknessMeters = 1100.0
+LocalCloudEnabled = false
+ShapeVolumeDimension = 0
+WindBearingDegrees = 250.0
+WindSpeedMetersPerSecond = 0.0
+
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.VolumetricWorkspace'
+BinaryAlignmentBytes = 64
+ContainerExtension = '.VolumetricSpace'
+DocumentTitle = 'StaticFullResolutionCumulus'
+SchemaVersion = 1
+# === FRONTIER_BINARY_BOUNDARY ===

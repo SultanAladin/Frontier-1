@@ -1,0 +1,193 @@
+# Voxel Collider Flow Deflection — Fluid Studio scene preset (Pyro). Demonstrates a 3D solid sphere collider inside the Eulerian grid—fire and smoke split and curl around the obstacle.
+# Converted from the legacy preset object by script; scene fingerprint 4dbca14c7bbc3341 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 25
+Id = "pyro-obstacle-deflection"
+Name = "Voxel Collider Flow Deflection"
+Family = "Pyro"
+Icon = "collider"
+Summary = "Demonstrates a 3D solid sphere collider inside the Eulerian grid—fire and smoke split and curl around the obstacle."
+Boundary = "OpenTop"
+
+[Grid]
+Resolution = [56, 64, 56]
+Size = [5.74, 6.51, 5.74]
+
+[Debris]
+Visible = true
+Count = 1100
+Lifetime = 2.5
+Size = 2.2
+Drag = 2.2
+Bounce = 0.2
+Glow = 1.5
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.23, ForceResponse = 1.0, PressureIterations = 30, TimeScale = 1.0, SceneLoop = 8.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-1" }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 102
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Emitter = "emitter-2" }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 103
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Buoyancy = 1.6, AmbientTemperature = 0.0, Cooling = 1.08 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.75, Expansion = 0.57 }
+
+  [[Volume.Layer]]
+    Token = "layer-6"
+    Category = 105
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Vorticity = 0.25 }
+
+  [[Volume.Layer]]
+    Token = "layer-7"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.997, VelocityDissipation = 0.9988 }
+
+  [[Volume.Layer]]
+    Token = "layer-8"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#3e3e3e", Absorption = 4.07, Anisotropy = 0.38, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-9"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 6.16, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Emitter]]
+  Token = "emitter-1"
+  Name = "Fire Source"
+  Shape = "Disc"
+  Position = [0, -2.8, 0]
+  Radius = 0.82
+  Density = 0.61
+  Temperature = 5.6
+  Fuel = 1.54
+  Velocity = [0, 1.47, 0]
+  Jitter = 0.4
+  Debris = 0.12
+  DebrisSpeed = 1.4
+  DebrisKind = "Ember"
+
+[[Emitter]]
+  Token = "emitter-2"
+  Name = "Charge"
+  Shape = "Sphere"
+  Position = [0, -2.08, 0]
+  Radius = 1.65
+  Density = 1.17
+  Temperature = 5.94
+  Fuel = 1.38
+  Velocity = [0, 0, 0]
+  Jitter = 0.8
+  StartTime = 0.2
+  Duration = 0.35
+  Fade = 0.08
+  Debris = 1
+  DebrisSpeed = 8.82
+  DebrisKind = "Ember"
+
+[[Force]]
+  Type = "RadialBurst"
+  Name = "Blast"
+  Position = [0, -2.08, 0]
+  Strength = 33.32
+  Radius = 2.01
+  Frequency = 6
+  Secondary = 0.12
+  Tertiary = 0.2
+  StartTime = 0.2
+  Duration = 0.45
+  Fade = 0.05
+
+[[Force]]
+  Type = "DirectionalWind"
+  Name = "Breeze"
+  Position = [0, 0, 0]
+  Strength = 0.22
+  Direction = [1, 0, 0]
+  Falloff = "Constant"
+  Frequency = 0.3
+  Secondary = 0.4
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Turbulence"
+  Position = [0, -0.98, 0]
+  Strength = 0.49
+  Radius = 2.87
+  Falloff = "Gaussian"
+  Frequency = 2.66
+  Secondary = 0.8
+
+[[Force]]
+  Type = "DragBaffle"
+  Name = "Ceiling Brake"
+  Position = [0, 2.73, 0]
+  Strength = 1.2
+  Radius = 3.44
+  Falloff = "Plateau"
+
+[[Collider]]
+  Name = "Sphere Obstacle"
+  Position = [0, -0.52, 0]
+  Radius = 0.46

@@ -1,0 +1,293 @@
+# Frontier Two-Tier Hybrid .Space Container (Canonical PascalCase TOML Header)
+[['.ComponentHierarchy'.Instances]]
+Category = 0
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleOrigin'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleBody.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'ControlVehicleOrigin'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleBody'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+Axis = 2
+BreakForceNewtons = 3500.0
+BreakTorqueNm = 0.0
+Category = 3
+ConeAngleDegrees = 35.0
+ConstraintKind = 4
+DampingRatioZeta = 0.44999998807907104
+DisableSelfCollide = true
+DockConnected = true
+DockKey = ''
+DriveMode = 0
+EnclosingTitle = 'ControlVehicleBody'
+HiddenInPlay = false
+Location = [ 1.3799999952316284, 0.81999999284744263, 0.34000000357627869 ]
+MaxAngleDegrees = 32.0
+MaxMotorTorqueNm = 400.0
+MaxTravelMeters = 0.090000003576278687
+MinAngleDegrees = -32.0
+MinTravelMeters = -0.090000003576278687
+NaturalFrequencyHz = 2.25
+NormalizedEditPose = 0.5
+RopeLengthMeters = 0.31999999284744263
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+SnapRadiusMeters = 0.34999999403953552
+TargetRpm = 600.0
+Title = 'SuspensionFrontLeft'
+TravelEachWayMeters = 0.090000003576278687
+TwistLimitDegrees = 45.0
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleRim.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'SuspensionFrontLeft'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleRimFrontLeft'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleTyre.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'ControlVehicleRimFrontLeft'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleTyreFrontLeft'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+Axis = 2
+BreakForceNewtons = 3500.0
+BreakTorqueNm = 0.0
+Category = 3
+ConeAngleDegrees = 35.0
+ConstraintKind = 4
+DampingRatioZeta = 0.44999998807907104
+DisableSelfCollide = true
+DockConnected = true
+DockKey = ''
+DriveMode = 0
+EnclosingTitle = 'ControlVehicleBody'
+HiddenInPlay = false
+Location = [ 1.3799999952316284, -0.81999999284744263, 0.34000000357627869 ]
+MaxAngleDegrees = 32.0
+MaxMotorTorqueNm = 400.0
+MaxTravelMeters = 0.090000003576278687
+MinAngleDegrees = -32.0
+MinTravelMeters = -0.090000003576278687
+NaturalFrequencyHz = 2.25
+NormalizedEditPose = 0.5
+RopeLengthMeters = 0.31999999284744263
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+SnapRadiusMeters = 0.34999999403953552
+TargetRpm = 600.0
+Title = 'SuspensionFrontRight'
+TravelEachWayMeters = 0.090000003576278687
+TwistLimitDegrees = 45.0
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleRim.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'SuspensionFrontRight'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleRimFrontRight'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleTyre.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'ControlVehicleRimFrontRight'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleTyreFrontRight'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+Axis = 2
+BreakForceNewtons = 3500.0
+BreakTorqueNm = 0.0
+Category = 3
+ConeAngleDegrees = 35.0
+ConstraintKind = 4
+DampingRatioZeta = 0.44999998807907104
+DisableSelfCollide = true
+DockConnected = true
+DockKey = ''
+DriveMode = 0
+EnclosingTitle = 'ControlVehicleBody'
+HiddenInPlay = false
+Location = [ -1.3600000143051147, 0.81999999284744263, 0.34000000357627869 ]
+MaxAngleDegrees = 32.0
+MaxMotorTorqueNm = 400.0
+MaxTravelMeters = 0.090000003576278687
+MinAngleDegrees = -32.0
+MinTravelMeters = -0.090000003576278687
+NaturalFrequencyHz = 2.25
+NormalizedEditPose = 0.5
+RopeLengthMeters = 0.31999999284744263
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+SnapRadiusMeters = 0.34999999403953552
+TargetRpm = 600.0
+Title = 'SuspensionRearLeft'
+TravelEachWayMeters = 0.090000003576278687
+TwistLimitDegrees = 45.0
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleRim.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'SuspensionRearLeft'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleRimRearLeft'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleTyre.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'ControlVehicleRimRearLeft'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleTyreRearLeft'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+Axis = 2
+BreakForceNewtons = 3500.0
+BreakTorqueNm = 0.0
+Category = 3
+ConeAngleDegrees = 35.0
+ConstraintKind = 4
+DampingRatioZeta = 0.44999998807907104
+DisableSelfCollide = true
+DockConnected = true
+DockKey = ''
+DriveMode = 0
+EnclosingTitle = 'ControlVehicleBody'
+HiddenInPlay = false
+Location = [ -1.3600000143051147, -0.81999999284744263, 0.34000000357627869 ]
+MaxAngleDegrees = 32.0
+MaxMotorTorqueNm = 400.0
+MaxTravelMeters = 0.090000003576278687
+MinAngleDegrees = -32.0
+MinTravelMeters = -0.090000003576278687
+NaturalFrequencyHz = 2.25
+NormalizedEditPose = 0.5
+RopeLengthMeters = 0.31999999284744263
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+SnapRadiusMeters = 0.34999999403953552
+TargetRpm = 600.0
+Title = 'SuspensionRearRight'
+TravelEachWayMeters = 0.090000003576278687
+TwistLimitDegrees = 45.0
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleRim.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'SuspensionRearRight'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleRimRearRight'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AssetIdentifier = 'Content/Geometry/Vehicles/ControlVehicleTyre.GeometrySpace'
+CastShadow = true
+Category = 2
+CollisionProfile = 0
+EnclosingTitle = 'ControlVehicleRimRearRight'
+ForcedLodLevel = -1
+HiddenInPlay = false
+Location = [ 0.0, 0.0, 0.0 ]
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleTyreRearRight'
+Visible = true
+
+[['.ComponentHierarchy'.Instances]]
+AeroLiftAreaM2 = 1.3999999761581421
+BoundWheelTitles = []
+Category = 8
+ChassisMassKg = 1300.0
+DragCoefficient = 0.31000000238418579
+FinalDriveRatio = 3.7200000286102295
+FrontalAreaM2 = 2.1500000953674316
+GearRatios = [ 3.3599998950958252, 2.0699999332427979, 1.4299999475479126, 1.0900000333786011, 0.87000000476837158, 0.72000002861022949 ]
+HiddenInPlay = false
+IdleRpm = 850.0
+Interpolation = 1
+Location = [ 0.0, 0.0, 0.0 ]
+RedlineRpm = 7200.0
+Rotation = [ 0.0, 0.0, 0.0 ]
+Scale = [ 1.0, 1.0, 1.0 ]
+Title = 'ControlVehicleDynamics'
+TorqueCurve = []
+Visible = true
+WheelRadiusMeters = 0.34000000357627869
+
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.ComponentEditor'
+BinaryAlignmentBytes = 64
+ContainerExtension = '.ComponentSpace'
+DocumentTitle = 'ControlVehicle'
+SchemaVersion = 1
+# === FRONTIER_BINARY_BOUNDARY ===
+                                                     

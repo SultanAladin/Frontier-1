@@ -1,0 +1,105 @@
+# Paper & Debris — particle template (Environment). Fluttering paper sheets and lightweight wind-blown debris tumbling through curl turbulence and bouncing along the ground.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Template]
+Order = 63
+Id = "paper-debris"
+Name = "Paper & Debris"
+Category = "Environment"
+Icon = "debris"
+Tint = "#e2e8f0"
+Summary = "Fluttering paper sheets and wind-blown debris chunks tumbling through curl turbulence and skipping along the ground."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 2, Position = [-1.6, 0.9, 0], Direction = [1, 0.15, 0], Radius = 1.6, Fill = 1.0, Count = 1024, Rate = 10.0, Lifetime = 4.5, Linger = 0.5, Speed = 2.4, Spread = 0.45, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 1.45 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 1.25 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 1.45, NoiseScale = 1.15, NoiseSpeed = 0.95 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.2 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 207
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { GasInfluence = 0.7 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.35 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 5, Palette = ["#f8fafc", "#e2e8f0", "#cbd5e1", "#d6d3d1", "#fef3c7"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.25, Brightness = 1.0, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.068, SizeEnd = 0.062, SizeRandom = 0.55 }
+
+[[Layer]]
+  Token = "layer-10"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 4, Glow = 0.0, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 1, CarrierObject = 0, ObjectSpin = 3.4, ObjectTilt = 1.0, ObjectRoughness = 0.82, ObjectMetallic = 0.0, ObjectGlow = 0.0 }

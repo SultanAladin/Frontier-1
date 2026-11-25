@@ -1,0 +1,70 @@
+# Cloth Flag — particle template (Environment). A hanging woven sheet: a drape-fold grid that ripples on curl noise from a fixed top edge. Distinct from the sphere/box shells — the particles form the fabric itself.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 42
+Id = "cloth-flag"
+Name = "Cloth Flag"
+Category = "Environment"
+Icon = "flag"
+Tint = "#f472b6"
+Summary = "A hanging woven sheet: a drape-fold grid that ripples on curl noise from a fixed top edge. Distinct from the sphere/box shells — the particles form the fabric itself."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 1, Shape = 13, Position = [0, 0.35, 0], Direction = [0, 1, 0], Radius = 1.7, Fill = 0.32, Count = 9216, Rate = 8.0, Lifetime = 8.0, Linger = 0.0, Speed = 0.0, Spread = 0.0, Radial = 0.0, ShapeDetail = 6.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 202
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Spring = 3.1, Damping = 1.55, Dissolve = 0.02 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.52, NoiseScale = 1.15, NoiseSpeed = 0.75 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 3, Palette = ["#fdf2f8", "#f9a8d4", "#db2777", "#831843"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.18, Brightness = 1.05, Flicker = 0.05 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.009, SizeEnd = 0.007, SizeRandom = 0.3 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 1, Glow = 0.2, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 0 }

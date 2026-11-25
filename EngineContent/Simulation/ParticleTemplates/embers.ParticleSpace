@@ -1,0 +1,96 @@
+# Embers — particle template (Emitters). Buoyant incandescent fire cinders drifting upward through curl turbulence with flickering blackbody cooling and delicate glowing wakes.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "885cc8c5a43d9053"
+
+[Template]
+Order = 65
+Id = "embers"
+Name = "Embers"
+Category = "Emitters"
+Icon = "flame"
+Tint = "#f97316"
+Summary = "Buoyant glowing embers drifting upward through convective curl turbulence with warm blackbody cooling."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 3, Position = [0, -1.2, 0], Direction = [0, 1, 0], Radius = 1.35, Fill = 1.0, Count = 2048, Rate = 12.0, Lifetime = 4.4, Linger = 0.5, Speed = 1.35, Spread = 0.35, Radial = 0.1 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = -0.85 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.95 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 1.25, NoiseScale = 1.35, NoiseSpeed = 0.85 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.1 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 207
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { GasInfluence = 0.85 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#fffbeb", "#fde047", "#f97316", "#dc2626", "#450a0a"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.35, Brightness = 1.65, Flicker = 0.68 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.022, SizeEnd = 0.005, SizeRandom = 0.6 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.85, Blend = 1, Style = 1, FocusDistance = 0.0, Aperture = 0.5 }

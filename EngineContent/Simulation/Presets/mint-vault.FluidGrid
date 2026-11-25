@@ -1,0 +1,93 @@
+# Mint Vault — scene preset (Particles). Hard-surface composition — metallic coin meshes bouncing on the floor, a metallic micro-sphere ferrofluid node and a flat radar scope — all reflective rather than glowy.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Scene]
+Order = 44
+Id = "preset-mint-vault"
+Name = "Mint Vault"
+Family = "VFX"
+Icon = "coin"
+Boundary = "ClosedBox"
+Summary = "A treasury test chamber: coins fountain off a ring nozzle, a ferrofluid node spits magnetic spikes beside it, and a radar scope sweeps the floor."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [6.5, 6.0, 6.5]
+
+[Render]
+Visible = false
+Exposure = 1.15
+Steps = 76
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "MagneticDipole"
+  Name = "Ferrofluid Magnet"
+  Position = [1.15, 0.15, -0.2]
+  Strength = 2.4
+  Radius = 2.2
+  Falloff = "Gaussian"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.5
+  Secondary = 0.0
+
+[[Force]]
+  Type = "Spin"
+  Name = "Coin Swirl"
+  Position = [-0.6, -0.35, 0.0]
+  Strength = 1.1
+  Radius = 2.0
+  Falloff = "SmoothStep"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.3
+  Secondary = 0.0
+
+[[Particle]]
+  Template = "coin-fountain"
+  Name = "Coin Fountain"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-0.6, -1.15, 0.0]
+  Radius = 0.32
+  Count = 1024
+
+[[Particle]]
+  Template = "ferrofluid-spikes"
+  Name = "Magnetic Node"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [1.15, 0.15, -0.2]
+  Radius = 0.9
+  Count = 1536
+
+[[Particle]]
+  Template = "radar-sweep"
+  Name = "Scope Floor"
+  StartTime = 0.2
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -1.35, 0.9]
+  Radius = 1.5
+  Brightness = 0.8

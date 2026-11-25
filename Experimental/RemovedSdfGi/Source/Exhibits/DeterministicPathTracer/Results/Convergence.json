@@ -1,0 +1,64 @@
+{
+  "Summary": {
+    "Width": 160,
+    "Height": 90,
+    "ReferenceSamples": 1024,
+    "SecondsPerSample": 0.25849628906250016,
+    "RelativeRmsAt1": 0.347216447691977,
+    "RelativeRmsAt64": 0.015128533071674924,
+    "RelativeRmsAt512": 0.003096772048511362
+  },
+  "Curve": [
+    {
+      "Samples": 1,
+      "Seconds": 0.2707000000001863,
+      "RelativeRms": 0.347216447691977
+    },
+    {
+      "Samples": 2,
+      "Seconds": 0.5251000000005588,
+      "RelativeRms": 0.1582464180585933
+    },
+    {
+      "Samples": 4,
+      "Seconds": 1.0737000000001862,
+      "RelativeRms": 0.08218284451549981
+    },
+    {
+      "Samples": 8,
+      "Seconds": 2.2425,
+      "RelativeRms": 0.056137918901033944
+    },
+    {
+      "Samples": 16,
+      "Seconds": 4.285200000000186,
+      "RelativeRms": 0.03619820156520422
+    },
+    {
+      "Samples": 32,
+      "Seconds": 8.755600000000559,
+      "RelativeRms": 0.024059710503990497
+    },
+    {
+      "Samples": 64,
+      "Seconds": 16.494900000000374,
+      "RelativeRms": 0.015128533071674924
+    },
+    {
+      "Samples": 128,
+      "Seconds": 33.14630000000074,
+      "RelativeRms": 0.008649479249734355
+    },
+    {
+      "Samples": 256,
+      "Seconds": 66.5515,
+      "RelativeRms": 0.007489422093463375
+    },
+    {
+      "Samples": 512,
+      "Seconds": 132.359,
+      "RelativeRms": 0.003096772048511362
+    }
+  ],
+  "Note": "Self-referenced: error of N samples against the same deterministic sequence at 1024 samples (Hero view, full scene)."
+}

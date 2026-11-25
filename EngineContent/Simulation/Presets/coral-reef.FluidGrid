@@ -1,0 +1,95 @@
+# Coral Reef Drift — scene preset (Particles). Marine composition built from the flora-bed kelp re-tinted teal, the 3D fish swarm and a light bubble column — the gas field couples the fish drift.
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Scene]
+Order = 43
+Id = "preset-coral-reef"
+Name = "Coral Reef Drift"
+Family = "VFX"
+Icon = "fish"
+Boundary = "OpenAll"
+Summary = "A reef at night: a bioluminescent fish school threads a kelp bed of bending blades while sparse bubbles rise through the current."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [7.0, 5.5, 7.0]
+
+[Render]
+Visible = false
+Exposure = 1.1
+Steps = 80
+Filter = "Smooth"
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 36, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+[[Force]]
+  Type = "FlowStream"
+  Name = "Reef Current"
+  Position = [0.0, 0.1, 0.0]
+  Strength = 1.35
+  Radius = 3.8
+  Falloff = "Plateau"
+  Direction = [0.88, 0.15, 0.42]
+  Frequency = 0.4
+  Secondary = 0.0
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Surge Eddies"
+  Position = [0.0, -0.2, 0.0]
+  Strength = 0.7
+  Radius = 3.4
+  Falloff = "SmoothStep"
+  Direction = [0.0, 1.0, 0.0]
+  Frequency = 0.65
+  Secondary = 0.15
+
+[[Particle]]
+  Template = "fish-school"
+  Name = "Bioluminescent School"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, 0.25, 0.0]
+  Radius = 2.45
+  Count = 1024
+
+[[Particle]]
+  Template = "flora-meadow"
+  Name = "Kelp Bed"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [0.0, -1.1, 0.0]
+  Radius = 1.5
+  ShapeDetail = 44.0
+  Palette = ["#ccfbf1", "#0f766e", "#134e4a", "#052e2b"]
+
+[[Particle]]
+  Template = "bubbles"
+  Name = "Bubble Column"
+  StartTime = 0.0
+  Duration = 0.0
+  Fade = 0.15
+  Repeat = 0.0
+  Position = [-1.35, -1.2, 0.6]
+  Radius = 0.55
+  Rate = 26.0
+  Count = 1024

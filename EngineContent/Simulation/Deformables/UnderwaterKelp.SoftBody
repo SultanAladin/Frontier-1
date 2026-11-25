@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Underwater Kelp"
+PresetId = "UnderwaterKelp"
+PresetKind = "UnderwaterKelp"
+SolverCategory = "XpbdStrand"
+Description = "Buoyant deformable preset (kelp)"
+
+[Solver]
+Substeps = 5
+GravityY = 4.4000001
+Damping = 0.985000014
+UnderwaterEnabled = true
+
+[Material]
+StretchStiffness = 1600.0
+BendStiffness = 0.25
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 0.0
+
+[Environment]
+WindStrength = 2.5999999
+Turbulence = 1.70000005
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 30.0
+AxleLoad = 1.35000002
+SpinRadPerSec = 0.0

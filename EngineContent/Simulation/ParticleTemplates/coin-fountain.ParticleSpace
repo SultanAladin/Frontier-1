@@ -1,0 +1,79 @@
+# Coin Fountain — particle template (Emitters). Struck coins launched from a ring nozzle: each particle carries the minted Coin mesh, spinning on its own axis with true metallic specular, bouncing off the floor.
+# Ported from the Particle Studio / Workspace reference family as a Fluid LayerStack document; no existing template shares its origin shape or carrier.
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 2
+SpecificationHash = "a214aa4e57e2d742"
+
+[Template]
+Order = 46
+Id = "coin-fountain"
+Name = "Coin Fountain"
+Category = "Emitters"
+Icon = "coin"
+Tint = "#fbbf24"
+Summary = "Struck coins launched from a ring nozzle: each particle carries the minted Coin mesh, spinning on its own axis with true metallic specular, bouncing off the floor."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 4, Position = [0, -0.85, 0], Direction = [0, 1, 0], Radius = 0.28, Fill = 0.0, Count = 2048, Rate = 220.0, Lifetime = 3.4, Linger = 0.35, Speed = 4.6, Spread = 0.28, Radial = 0.45 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 9.8 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 0.22 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.55 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 5, Palette = ["#fef3c7", "#fbbf24", "#d97706", "#78350f"], RampSource = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.18, Brightness = 1.1, Flicker = 0.05 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.085, SizeEnd = 0.075, SizeRandom = 0.16 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 17, Glow = 0.18, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5, CarrierMode = 1, CarrierObject = 2, ObjectSpin = 3.4, ObjectTilt = 0.35, ObjectRoughness = 0.22, ObjectMetallic = 1.0, ObjectGlow = 0.05 }

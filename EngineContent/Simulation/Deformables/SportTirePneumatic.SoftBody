@@ -1,0 +1,32 @@
+# Frontier Engine — .SoftBody Deformable Simulation Preset
+[Container]
+FormatSuffix = ".SoftBody"
+SchemaVersion = 1
+DocumentTitle = "Pneumatic Tire XPBD"
+PresetId = "SportTirePneumatic"
+PresetKind = "SportTirePneumatic"
+SolverCategory = "PneumaticXpbd"
+Description = "Pneumatic deformable preset (tyre)"
+
+[Solver]
+Substeps = 6
+GravityY = -9.80000019
+Damping = 0.985000014
+UnderwaterEnabled = false
+
+[Material]
+StretchStiffness = 1600.0
+BendStiffness = 0.550000012
+FemYoungMpa = 2.4000001
+FemPoissonNu = 0.439999998
+TearRatio = 0.0
+
+[Environment]
+WindStrength = 0.0
+Turbulence = 0.0
+ColliderEnabled = true
+
+[Tire]
+PressurePsi = 32.0
+AxleLoad = 1.14999998
+SpinRadPerSec = 3.5

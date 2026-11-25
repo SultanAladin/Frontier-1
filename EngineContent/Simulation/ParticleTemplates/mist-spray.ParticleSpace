@@ -1,0 +1,106 @@
+# Mist Spray — particle template (Environment). Dense fine spray from a nozzle that drifts, slows and hangs in the air — droplets, not smoke.
+# Converted from the legacy template object by script; node fingerprint 0cad40ab923b5ac7 (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-particle-template"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Template]
+Order = 23
+Id = "mist-spray"
+Name = "Mist Spray"
+Category = "Environment"
+Icon = "mist"
+Tint = "#e2e8f0"
+Summary = "Dense fine spray from a nozzle that drifts, slows and hangs in the air — droplets, not smoke."
+
+[[Layer]]
+  Token = "layer-1"
+  Category = 201
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Mode = 0, Shape = 3, Position = [0, 0, 0], Direction = [1, 0.35, 0], Radius = 0.08, Fill = 0.0, Count = 16384, Rate = 12.0, Lifetime = 5.0, Linger = 0.5, Speed = 4.0, Spread = 0.18, Radial = 0.0 }
+
+[[Layer]]
+  Token = "layer-2"
+  Category = 203
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Gravity = 1.5 }
+
+[[Layer]]
+  Token = "layer-3"
+  Category = 204
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Drag = 2.2 }
+
+[[Layer]]
+  Token = "layer-4"
+  Category = 205
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Noise = 0.5, NoiseScale = 1.2, NoiseSpeed = 0.4 }
+
+[[Layer]]
+  Token = "layer-5"
+  Category = 206
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { FieldInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-6"
+  Category = 207
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { GasInfluence = 1.0 }
+
+[[Layer]]
+  Token = "layer-7"
+  Category = 208
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Bounce = 0.05 }
+
+[[Layer]]
+  Token = "layer-8"
+  Category = 209
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { ColourMode = 0, Palette = ["#ffffff", "#e2e8f0", "#94a3b8"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.3, Brightness = 0.9, Flicker = 0.0 }
+
+[[Layer]]
+  Token = "layer-9"
+  Category = 210
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { SizeMode = 0, SizeStart = 0.004, SizeEnd = 0.009, SizeRandom = 0.7 }
+
+[[Layer]]
+  Token = "layer-10"
+  Category = 211
+  Enabled = true
+  Solo = false
+  Weight = 1.0
+  Blend = 0
+  Parameters = { Sprite = 0, Glow = 0.2, Blend = 0, Style = 0, FocusDistance = 0.0, Aperture = 0.5 }

@@ -1,0 +1,15 @@
+# Frontier Two-Tier Hybrid Container (Canonical PascalCase TOML Header)
+['.DocumentHeader']
+AuthoringWorkspace = 'Frontier.ProjectWorkspace'
+BinaryAlignmentBytes = 64
+ContainerSuffix = '.ProjectIndex'
+DocumentTitle = 'Frontier'
+SchemaVersion = 1
+StableIdentifier = '0193b5c0-7a1e-7000-8000-000000000100'
+
+[ProjectIndex]
+ContentSearchRoots = [ 'Content', 'EngineContent' ]
+ProjectIdentifier = '0193b5c0-7a1e-7000-8000-000000000100'
+ProjectName = 'Frontier'
+RegisteredWorlds = [ 'Content/Worlds/VehicleClearSkyDefault.WorldSpace' ]
+StartupWorldPath = 'Content/Worlds/VehicleClearSkyDefault.WorldSpace'

@@ -1,0 +1,3755 @@
+/*============================================================================================================================================
+                                                             EDITORLIFECYCLE.CPP
+============================================================================================================================================*/
+// 🧩 Editor-only authoring loop implementation
+
+#include "Engine/Lifecycle/EditorLifecycle.h"
+#include "Engine/Lifecycle/ThoughtLog.h"
+#include "Engine/GeometricRaster/Rasterization/ImGuiOverlayRasterization.h"
+
+#if FRONTIER_EDITOR_ENABLED
+
+#include "Engine/Components/Controls/CapsuleButton.h"
+#include "Engine/Components/Controls/DropdownSelector.h"
+#include "Engine/Editor/Inspectors/InspectorGpuBaker.h"
+#include "Engine/SimulationSpace/PhysicsSpace/PhysicsDebugLog.h"
+
+#include <imgui.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+namespace Frontier::Lifecycle
+{
+
+//------------------------------------------------------------------------------------------------------------------------
+//                                                LIFECYCLE IMPLEMENTATION
+//------------------------------------------------------------------------------------------------------------------------
+
+EditorLifecycle::~EditorLifecycle() noexcept
+{
+    Finalize();
+}
+
+bool EditorLifecycle::Initialize(const EditorStartupConfiguration& Configuration) noexcept
+{
+    Diagnostics::ThoughtLog::Initialize();
+    Finalize();
+
+    StartupConfig        = Configuration;
+    TerminationRequested = false;
+    CurrentStepSeconds   = 1.0 / 60.0;
+
+    if (!DockContainer.Initialize(StartupConfig.WindowDescriptor))
+    {
+        return false;
+    }
+
+    InputParticipant.Initialize();
+
+    if (!Workspaces.Initialize(false))
+    {
+        InputParticipant.Finalize();
+        DockContainer.Finalize();
+        return false;
+    }
+
+    WorkspaceDocumentDescriptor DefaultDocument{};
+    DefaultDocument.DocumentTitle   = "Scene";
+    DefaultDocument.OutlinerVariant = StartupConfig.OutlinerHeading;
+    DefaultDocument.InitialMode     = ViewportExecutionMode::Edit;
+    if (!Workspaces.OpenSession(DefaultDocument).Valid())
+    {
+        Workspaces.Finalize();
+        InputParticipant.Finalize();
+        DockContainer.Finalize();
+        return false;
+    }
+
+    if (StartupConfig.ProjectSpacePath.empty())
+    {
+        ControlCentre.AccessDraftAppearance().Theme = ThemePreset::Dark;
+        ControlCentre.ApplyDraftAppearanceImmediate();
+        ControlCentre.AccessNotificationStream().ClearPending();
+    }
+    else
+    {
+        (void)ControlCentre.AttachProjectSpace(StartupConfig.ProjectSpacePath);
+    }
+
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        ImGuiIO& Io = ImGui::GetIO();
+        Io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+        if (!StartupConfig.FontRepositoryRoot.empty() && Typography.LoadRepository(StartupConfig.FontRepositoryRoot) > 0u)
+        {
+            TypographyRepository::AssignCurrent(&Typography);
+            ControlCentre.AttachTypefaces(&Typography);
+            if (ImFont* TabFont = Typography.QueryTabStripFont())
+            {
+                Io.FontDefault = TabFont;
+            }
+        }
+
+        Components::ConfigureImGuiWorkspaceTheme(DockContainer.ActiveTabMetrics(), ControlCentre.QueryThemeRepository());
+    }
+
+    ControlCentre.ConfigureWorkspaceCallbacks(
+        [this](bool Allowed) noexcept
+        {
+            DockContainer.ConfigureDetachedWindowsAllowed(Allowed);
+        },
+        [this]() noexcept
+        {
+            DockContainer.ResetPrimaryLayout();
+        });
+    DockContainer.ConfigureDetachedWindowsAllowed(ControlCentre.QueryDetachedWindowsAllowed());
+
+    const char* LeftPaneTitle = (StartupConfig.OutlinerHeading == OutlinerTitleVariant::LayerStack) ? "LayerStack" : "Outliner";
+
+    Components::WorkspaceDockPaneDescriptor LeftDesc{};
+    LeftDesc.PaneTitle         = LeftPaneTitle;
+    LeftDesc.InitialDirection  = Components::DockPlacementDirection::SplitLeft;
+    LeftDesc.InitialSplitRatio = 0.21f;
+    LeftDesc.Directives        = Components::PaneDirectiveMask::StandardPaneDirectives;
+    LeftDesc.ContentPresenter  = [this]()
+    {
+        if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+        {
+            Panes->Outliner.PresentInImGuiPane(CurrentStepSeconds, ControlCentre.QueryInterfaceScaleFactor());
+        }
+    };
+    OutlinerPaneToken = DockContainer.RegisterPane(LeftDesc);
+
+    Components::WorkspaceDockPaneDescriptor CenterDesc{};
+    CenterDesc.PaneTitle         = "Viewport";
+    CenterDesc.InitialDirection  = Components::DockPlacementDirection::CenterTabGroup;
+    CenterDesc.InitialSplitRatio = 0.58f;
+    CenterDesc.Directives        = Components::PaneDirectiveMask::CentralViewportDirectives;
+    CenterDesc.ContentPresenter  = [this]()
+    {
+        if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+        {
+            Panes->Viewport.PresentInImGuiPane(CurrentStepSeconds, ControlCentre.QueryInterfaceScaleFactor());
+        }
+    };
+    ViewportPaneToken = DockContainer.RegisterPane(CenterDesc);
+
+    Components::WorkspaceDockPaneDescriptor RightDesc{};
+    RightDesc.PaneTitle         = "Inspector";
+    RightDesc.InitialDirection  = Components::DockPlacementDirection::SplitRight;
+    RightDesc.InitialSplitRatio = 0.21f;
+    RightDesc.Directives        = Components::PaneDirectiveMask::StandardPaneDirectives;
+    RightDesc.ContentPresenter  = [this]()
+    {
+        if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+        {
+            Panes->Inspector.PresentInImGuiPane(CurrentStepSeconds, ControlCentre.QueryInterfaceScaleFactor());
+        }
+    };
+    InspectorPaneToken = DockContainer.RegisterPane(RightDesc);
+
+    if (!EditorSequence.Initialize())
+    {
+        Workspaces.Finalize();
+        InputParticipant.Finalize();
+        DockContainer.Finalize();
+        return false;
+    }
+
+    if (ImGui::GetCurrentContext() != nullptr)
+    {
+        Components::ConfigureImGuiWorkspaceStyle(DockContainer.ActiveTabMetrics());
+        Components::ConfigureImGuiWorkspaceTheme(DockContainer.ActiveTabMetrics(), ControlCentre.QueryThemeRepository());
+    }
+
+    Initialized = true;
+    if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+    {
+        std::vector<OutlinerConstructTemplate> Templates;
+        Templates.reserve(15u);
+        Templates.push_back({ "Add Box Geometry",      "Box Specimen",      "Geometry",    "Box · OpenPBR Surface",      ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Sphere Geometry",   "Sphere Specimen",   "Geometry",    "Sphere · OpenPBR Surface",   ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Cylinder Geometry", "Cylinder Specimen", "Geometry",    "Cylinder · OpenPBR Surface", ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Cone Geometry",     "Cone Specimen",     "Geometry",    "Cone · OpenPBR Surface",     ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Torus Geometry",    "Torus Specimen",    "Geometry",    "Torus · OpenPBR Surface",    ConstructSlotCategory::GeometryVolume, "geom:primitive"     });
+        Templates.push_back({ "Add Point Light",       "Point Light",       "Lighting",    "Omnidirectional Luminaire",  ConstructSlotCategory::PointLuminaire, "light:point"        });
+        Templates.push_back({ "Add Spot Light",        "Spot Light",        "Lighting",    "Focused Cone Spotlight",     ConstructSlotCategory::PointLuminaire, "light:spot"         });
+        Templates.push_back({ "Add Area Light",        "Area Quad Light",   "Lighting",    "LTC Polygonal Quad Light",   ConstructSlotCategory::PointLuminaire, "light:area"         });
+        Templates.push_back({ "Add Scene Camera",      "Scene Camera",      "Camera",      "Perspective Optical Camera", ConstructSlotCategory::OpticsCamera,   "camera:perspective" });
+        Templates.push_back({ "Add Atmosphere",        "Atmosphere",        "Environment", "Rayleigh / Mie / Ozone Sky", ConstructSlotCategory::LayerGroup,     "env:atmosphere"     });
+        Templates.push_back({ "Add Sun",               "Sun",               "Environment", "Solar Ephemeris & Direct",   ConstructSlotCategory::PointLuminaire, "env:sun"            });
+        Templates.push_back({ "Add Moon",              "Moon",              "Environment", "Celestial Lunar Body",       ConstructSlotCategory::LayerGroup,     "env:moon"           });
+        Templates.push_back({ "Add Clouds",            "Volumetric Clouds", "Weather",     "Volumetric Cloud Deck",      ConstructSlotCategory::LayerGroup,     "env:clouds"         });
+        Templates.push_back({ "Generate Apocalyptic City Level", "Apocalyptic City Level", "WorldGenerator", "Procedural Ruined Warzone Racing Level", ConstructSlotCategory::LayerGroup, "" });
+        Panes->Outliner.ConfigureConstructTemplates(std::move(Templates));
+
+        Panes->Viewport.ConfigureOpenContentBrowserCallback(
+            [this]()
+            {
+                ContentBrowserDrawer.AccessPanel().ConfigureOriginFilter(ContentOriginFilter::All);
+                (void)ContentBrowserDrawer.AccessPanel().ActivateCategory(ContentCategory::Geometry);
+                ContentBrowserDrawer.AccessPanel().ConfigureShelfExtent(ContentShelfExtent::SplitHalf, false);
+            });
+
+        ContentBrowserDrawer.AccessPanel().AssignContentActivationCallback(
+            [this](const ContentRepositoryEntry& Entry)
+            {
+                const auto Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+                if (Category == ContentCategory::Geometry && ShowcaseBundle != nullptr)
+                {
+                    if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+                    {
+                        GeometricRaster::ShowcasePrimitiveShape Shape = GeometricRaster::ShowcasePrimitiveShape::Box;
+                        if (Entry.DisplayTitle.find("Sphere") != std::string::npos || Entry.DisplayTitle.find("Orb") != std::string::npos)
+                        {
+                            Shape = GeometricRaster::ShowcasePrimitiveShape::Sphere;
+                        }
+                        else if (Entry.DisplayTitle.find("Cylinder") != std::string::npos)
+                        {
+                            Shape = GeometricRaster::ShowcasePrimitiveShape::Cylinder;
+                        }
+                        else if (Entry.DisplayTitle.find("Cone") != std::string::npos)
+                        {
+                            Shape = GeometricRaster::ShowcasePrimitiveShape::Cone;
+                        }
+                        else if (Entry.DisplayTitle.find("Torus") != std::string::npos)
+                        {
+                            Shape = GeometricRaster::ShowcasePrimitiveShape::Torus;
+                        }
+                        const auto Pos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.72f, 0.36f);
+                        const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+                        (void)GeometricRaster::ConstructShowcasePrimitiveInOutliner(
+                            ActivePanes->Outliner,
+                            *ShowcaseBundle,
+                            Shape,
+                            Pos);
+                        if (GpuActive)
+                        {
+                            GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, true);
+                        }
+                        else if (ShowcaseRenderer != nullptr)
+                        {
+                            ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
+                        }
+                        RefreshShowcaseViewportRaster();
+                    }
+                }
+            });
+    }
+    if (StartupConfig.VulkanDevice != nullptr && !StartupConfig.CompiledShaderDirectory.empty())
+    {
+        (void)AttachVulkanGizmoOverlay(StartupConfig.VulkanDevice, StartupConfig.CompiledShaderDirectory);
+    }
+    if (StartupConfig.PopulateApocalypticCityScene)
+    {
+        PopulateApocalypticCitySession();
+    }
+    else if (StartupConfig.PopulateBlankPlaneSkyScene)
+    {
+        PopulateBlankPlaneSkySession();
+    }
+    else if (StartupConfig.PopulateShowcaseScene)
+    {
+        PopulateShowcaseGallerySession();
+    }
+    return true;
+}
+
+bool EditorLifecycle::AttachVulkanGizmoOverlay(
+    GeometricRaster::VulkanInterchange* BoundDevice,
+    const std::filesystem::path&        CompiledShaderDirectory)
+{
+    if (BoundDevice == nullptr || !BoundDevice->Ready())
+    {
+        return false;
+    }
+
+    if (GpuWorldRenderer == nullptr || !GpuWorldRenderer->QueryReady())
+    {
+        auto CandidateWorldGpu = std::make_unique<GeometricRaster::VulkanWorldRenderSequence>();
+        if (CandidateWorldGpu->InitializeSequence(*BoundDevice, CompiledShaderDirectory))
+        {
+            GpuWorldRenderer = std::move(CandidateWorldGpu);
+            if (StartupConfig.ImGuiPresenter != nullptr)
+            {
+                InspectorGpuBaker::AttachImGuiPresenter(StartupConfig.ImGuiPresenter);
+            }
+            if (ShowcaseBundle != nullptr)
+            {
+                GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, true);
+            }
+        }
+    }
+
+    if (WorldGizmoRasterizer == nullptr || !WorldGizmoRasterizer->QueryReady())
+    {
+        WorldGizmoRasterizer = std::make_unique<GeometricRaster::WorldGizmoOverlayRasterization>();
+        if (!WorldGizmoRasterizer->InitializeOverlay(BoundDevice, CompiledShaderDirectory))
+        {
+            WorldGizmoRasterizer.reset();
+            return false;
+        }
+    }
+
+#if FRONTIER_SIM_OVERLAY_HAS_VULKAN
+    (void)SimulationAdapter.AttachVulkanDevice(WorldSimulation, BoundDevice, CompiledShaderDirectory);
+#endif
+
+    WorldTransformGizmo.ConfigureDimensionMode(Editor::GizmoDimensionMode::Spatial3D);
+    WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+    if (ShowcaseBundle != nullptr)
+    {
+        RefreshShowcaseViewportRaster();
+    }
+    return true;
+}
+
+void EditorLifecycle::AssignReturnToProjectBrowserCallback(std::function<void()> Callback)
+{
+    ReturnToBrowserCallback = std::move(Callback);
+}
+
+void EditorLifecycle::ConfigureActiveProjectTitle(std::string_view ProjectTitle)
+{
+    ActiveProjectTitle = std::string(ProjectTitle);
+    if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+    {
+        if (!ActiveProjectTitle.empty())
+        {
+            Panes->Viewport.ConfigureSceneTitle(ActiveProjectTitle + (BlankPlaneSkySessionActive ? " · Blank Scene" : " · Vehicle & Clear Sky"));
+        }
+    }
+}
+
+void EditorLifecycle::PopulateShowcaseGallerySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive   = false;
+    ApocalypticCitySessionActive = false;
+    ApocalypticCitySim           = {};
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateBlankPlaneSkySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive   = true;
+    ApocalypticCitySessionActive = false;
+    ApocalypticCitySim           = {};
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateApocalypticCitySession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    BlankPlaneSkySessionActive   = false;
+    ApocalypticCitySessionActive = true;
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::OpenProjectSpaceSession(
+    const std::filesystem::path& ProjectSpaceFile,
+    uint32_t                     RenderWidthPx,
+    uint32_t                     RenderHeightPx)
+{
+    StartupConfig.ProjectSpacePath = ProjectSpaceFile;
+    if (!ProjectSpaceFile.empty())
+    {
+        (void)ControlCentre.AttachProjectSpace(ProjectSpaceFile);
+    }
+    BlankPlaneSkySessionActive   = false;
+    ApocalypticCitySessionActive = false;
+    ApocalypticCitySim           = {};
+    PopulateWorldSceneSession(RenderWidthPx, RenderHeightPx);
+}
+
+void EditorLifecycle::PopulateWorldSceneSession(uint32_t RenderWidthPx, uint32_t RenderHeightPx)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr)
+    {
+        return;
+    }
+
+    ShowcaseBundle     = std::make_unique<GeometricRaster::ShowcaseWorldSceneBundle>();
+    ShowcaseRenderer   = std::make_unique<GeometricRaster::TieredWorldRenderSequence>();
+    CachedWorldRgba8.clear();
+    CachedWorldWidthPx  = 0u;
+    CachedWorldHeightPx = 0u;
+    WorldTransformGizmo.ConfigureDimensionMode(Editor::GizmoDimensionMode::Spatial3D);
+    WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+
+    const bool GpuActive = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool LoadedWorldFileAuthoritative = (!ApocalypticCitySessionActive && !BlankPlaneSkySessionActive);
+    if (ApocalypticCitySessionActive)
+    {
+        GeometricRaster::BuildApocalypticCityRacingScene(*ShowcaseBundle, ApocalypticCitySim, RenderWidthPx, RenderHeightPx);
+        auto& MutDisp = Panes->Viewport.AccessDisplaySettings();
+        MutDisp.AtmosphereSkyEnabled    = true;
+        MutDisp.VolumetricCloudsEnabled = true;
+        MutDisp.CloudFraction           = 0.34f;
+        MutDisp.SolarTimeOfDayHours     = 10.35f;
+    }
+    else if (BlankPlaneSkySessionActive)
+    {
+        GeometricRaster::BuildBlankPlaneSkyScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+    }
+    else
+    {
+        bool LoadedProjectWorld = false;
+        if (!StartupConfig.ProjectSpacePath.empty())
+        {
+            const std::filesystem::path ProjectWorldPath =
+                StartupConfig.ProjectSpacePath.parent_path() / "Content" / "Worlds" / "MainWorld.WorldSpace";
+            std::error_code ExistEc {};
+            if (std::filesystem::exists(ProjectWorldPath, ExistEc))
+            {
+                std::filesystem::path RepoRoot = std::filesystem::current_path();
+                for (int Depth = 0; Depth < 6; ++Depth)
+                {
+                    if (std::filesystem::exists(
+                            RepoRoot / "Content" / "Environment" / "Skies" / "ClearSkyDaylight.VolumetricSpace",
+                            ExistEc) ||
+                        std::filesystem::exists(
+                            RepoRoot / "Content" / "Worlds" / "VehicleClearSkyDefault.WorldSpace",
+                            ExistEc))
+                    {
+                        break;
+                    }
+                    if (!RepoRoot.has_parent_path())
+                    {
+                        break;
+                    }
+                    RepoRoot = RepoRoot.parent_path();
+                }
+                std::string LoadDiag {};
+                LoadedProjectWorld = GeometricRaster::LoadWorldSceneFromSpaceFile(
+                    ProjectWorldPath,
+                    RepoRoot,
+                    *ShowcaseBundle,
+                    RenderWidthPx,
+                    RenderHeightPx,
+                    LoadDiag);
+            }
+        }
+        if (!LoadedProjectWorld)
+        {
+            GeometricRaster::BuildVehicleClearSkyDefaultScene(*ShowcaseBundle, RenderWidthPx, RenderHeightPx);
+        }
+    }
+    {
+        auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
+        if (LoadedWorldFileAuthoritative)
+        {
+            // Synchronize viewport display settings FROM the loaded .WorldSpace atmosphere instead of overwriting it
+            auto& MutDisplay = Panes->Viewport.AccessDisplaySettings();
+            MutDisplay.AtmosphereSkyEnabled    = Atmo.Medium.AtmosphereEnabled;
+            MutDisplay.VolumetricCloudsEnabled = Atmo.Clouds.CloudsEnabled;
+            MutDisplay.CloudFraction           = Atmo.Clouds.CloudFraction;
+            MutDisplay.CloudShadowsEnabled     = Atmo.Clouds.CloudShadow.ShadowEnabled;
+            MutDisplay.CloudWindSpeedMps       = Atmo.Clouds.WindSpeedMetersPerSecond;
+            MutDisplay.CelestialStarsEnabled   = Atmo.Stars.StarfieldEnabled;
+            MutDisplay.DayCyclePlaying         = Atmo.Solar.CycleAnimationEnabled;
+            MutDisplay.SolarTimeOfDayHours     = Atmo.Solar.LocalHours;
+        }
+        else
+        {
+            const auto& DisplaySettings = Panes->Viewport.QueryDisplaySettings();
+            Atmo.Medium.AtmosphereEnabled        = DisplaySettings.AtmosphereSkyEnabled;
+            Atmo.Clouds.CloudsEnabled            = DisplaySettings.VolumetricCloudsEnabled;
+            Atmo.Clouds.CloudFraction            = DisplaySettings.CloudFraction;
+            Atmo.Clouds.CloudShadow.ShadowEnabled = DisplaySettings.CloudShadowsEnabled;
+            Atmo.Clouds.WindSpeedMetersPerSecond = DisplaySettings.CloudWindSpeedMps;
+            Atmo.Clouds.FollowWindEnabled        = (DisplaySettings.CloudWindSpeedMps > 0.01f);
+            Atmo.Wind.SpeedMetersPerSecond       = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplaySettings.CloudWindSpeedMps);
+            Atmo.Stars.StarfieldEnabled          = DisplaySettings.CelestialStarsEnabled;
+            // Solar visibility is independent of night celestial starfield visibility
+            Atmo.Solar.SolarEnabled              = DisplaySettings.AtmosphereSkyEnabled;
+            Atmo.Moons[0].Visible                = false;
+            Atmo.Solar.CycleAnimationEnabled     = DisplaySettings.DayCyclePlaying;
+            Atmo.Solar.LocalHours                = DisplaySettings.SolarTimeOfDayHours;
+        }
+        if (Atmo.Medium.AtmosphereEnabled)
+        {
+            ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+        }
+    }
+    if (GpuActive)
+    {
+        GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, true);
+    }
+    else
+    {
+        ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
+    }
+    EditorCameraLag.SnapTo(ShowcaseBundle->EditorCamera.CameraOrigin, ShowcaseBundle->EditorCamera.TargetPoint);
+    DesiredCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
+    DesiredCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+    DesiredCameraValid  = true;
+    if (ApocalypticCitySessionActive)
+    {
+        GeometricRaster::RegisterApocalypticCityInOutliner(Panes->Outliner, *ShowcaseBundle, true);
+    }
+    else
+    {
+        GeometricRaster::RegisterShowcaseGalleryInOutliner(Panes->Outliner, *ShowcaseBundle, true);
+    }
+
+    // Protect primary Editor camera from accidental deletion & adopt scene environment into single Environment folder
+    if (OutlinerRecordEntry* CamRec = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+    {
+        CamRec->RemovalProtected = true;
+        CamRec->RemovalReason    = "Primary editor camera cannot be removed";
+    }
+    EnvironmentRegistry.AdoptInitialSceneState(Panes->Outliner, ShowcaseBundle->Scene, &Panes->Viewport.AccessDisplaySettings());
+    EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
+
+    // Bind WorldInstanceRegister <-> OutlinerPanel and adopt loaded scene atmosphere/celestials into SoA registers
+    InstanceEditorBridge.Unbind();
+    SceneSyncBridge.ClearBindings();
+    WorldRegister.ClearAll();
+    InstanceEditorBridge.BindOutliner(WorldRegister, Panes->Outliner);
+    InstanceEditorBridge.AdoptWorldSceneIntoRegister(WorldRegister, ShowcaseBundle->Scene);
+
+    // Wire Construct modal -> WorldEnvironmentRegistry
+    Panes->Viewport.ConfigureConstructApplyCallback(
+        [this](std::string_view RegistryKey, std::string_view CustomTitle)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerSlotToken Issued = EnvironmentRegistry.RegisterFromRegistryKey(
+                RegistryKey,
+                CustomTitle,
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            if (Issued.Valid())
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    // Wire Outliner directive sheet callbacks -> WorldEnvironmentRegistry
+    Panes->Outliner.ConfigureDeleteOverrideCallback(
+        [this](std::span<const OutlinerSlotToken> Tokens)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const uint32_t RemovedEnv = EnvironmentRegistry.UnregisterSlots(
+                Tokens,
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            const uint32_t RemovedInstances = InstanceEditorBridge.RemoveOutlinerBoundSlots(Tokens);
+            uint32_t RemovedDirect = 0u;
+            for (const OutlinerSlotToken Tok : Tokens)
+            {
+                Inspectors.AccessInstances().EraseEntry(Tok);
+                if (ActivePanes->Outliner.FindEntry(Tok) != nullptr)
+                {
+                    if (ActivePanes->Outliner.DeleteSlot(Tok))
+                    {
+                        ++RemovedDirect;
+                    }
+                }
+            }
+            if ((RemovedEnv > 0u) || (RemovedInstances > 0u) || (RemovedDirect > 0u))
+            {
+                if (RemovedEnv > 0u)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    Panes->Outliner.ConfigureDuplicateOverrideCallback(
+        [this](OutlinerSlotToken SourceToken)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            OutlinerSlotToken Duplicated = EnvironmentRegistry.DuplicateSlot(
+                SourceToken,
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            const bool DuplicatedFromEnv = Duplicated.Valid();
+            if (!DuplicatedFromEnv)
+            {
+                Duplicated = InstanceEditorBridge.DuplicateOutlinerBoundSlot(WorldRegister, SourceToken);
+            }
+            if (Duplicated.Valid())
+            {
+                if (DuplicatedFromEnv)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    Panes->Outliner.ConfigureUndoDeleteCallback(
+        [this]() -> bool
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return false;
+            }
+            if (EnvironmentRegistry.UndoLastRemoval(
+                    ActivePanes->Outliner,
+                    ShowcaseBundle->Scene,
+                    &ActivePanes->Viewport.AccessDisplaySettings()))
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+                return true;
+            }
+            return false;
+        });
+
+    Panes->Outliner.ConfigureQueryUndoAvailableCallback(
+        [this]() -> bool
+        {
+            return EnvironmentRegistry.QueryUndoAvailable();
+        });
+
+    Panes->Outliner.ConfigureDirectConstructCallback(
+        [this](std::string_view RegistryKey)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerSlotToken Issued = EnvironmentRegistry.RegisterFromRegistryKey(
+                RegistryKey,
+                "",
+                ActivePanes->Outliner,
+                ShowcaseBundle->Scene,
+                &ActivePanes->Viewport.AccessDisplaySettings());
+            if (Issued.Valid())
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+        });
+
+    Panes->Inspector.ConfigureFullOverrideCallback(
+        [this](
+            PixelSpace&             Surface,
+            Rectangle2D             Bounds,
+            OutlinerPanel*          Outliner,
+            OutlinerRecordEntry*    /*PrimaryEntry*/,
+            const PaneInputReading& Input,
+            double                  /*DeltaTime*/) -> bool
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (Outliner == nullptr || ShowcaseBundle == nullptr)
+            {
+                return false;
+            }
+            bool Mutated = false;
+            const bool Handled = Inspectors.ConstructActiveInspector(
+                Surface,
+                Bounds,
+                *Outliner,
+                &EnvironmentRegistry,
+                ShowcaseBundle->Scene,
+                ActivePanes != nullptr ? &ActivePanes->Viewport.AccessDisplaySettings() : nullptr,
+                Input,
+                Mutated);
+            if (Mutated)
+            {
+                if (ActivePanes != nullptr)
+                {
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(ActivePanes->Viewport);
+                }
+                PendingInteractionWorldRefresh = true;
+                PendingInteractionSceneSync    = true;
+            }
+            return Handled;
+        });
+
+    Panes->Inspector.ConfigureOverrideSignatureCallback(
+        [this]() noexcept -> uint64_t
+        {
+            return Inspectors.QueryActiveSignature();
+        });
+
+    Panes->Outliner.ConfigureFocusViewportCallback(
+        [this](OutlinerSlotToken Token)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const OutlinerRecordEntry* Rec = ActivePanes->Outliner.FindEntry(Token);
+            if (Rec == nullptr)
+            {
+                return;
+            }
+            if (Rec->DomainTag.rfind("env:", 0u) == 0u)
+            {
+                // Frame the sky horizon cleanly for Environment entries
+                const auto& Cam = ShowcaseBundle->EditorCamera;
+                DesiredCameraOrigin = Cam.CameraOrigin;
+                DesiredCameraTarget = { Cam.CameraOrigin.X + 4.0f, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z + 2.4f };
+                DesiredCameraValid  = true;
+                PendingInteractionWorldRefresh = true;
+            }
+            else
+            {
+                DesiredCameraTarget = { Rec->PositionX, Rec->PositionY, Rec->PositionZ };
+                DesiredCameraOrigin = { Rec->PositionX - 3.6f, Rec->PositionY - 2.2f, Rec->PositionZ + 1.8f };
+                DesiredCameraValid  = true;
+                PendingInteractionWorldRefresh = true;
+            }
+        });
+    const char* SceneSubtitle = ApocalypticCitySessionActive
+        ? "Apocalyptic City Racing Level"
+        : (BlankPlaneSkySessionActive ? "Blank Scene · Ground Plane & Sky" : "Vehicle & Clear Sky");
+    Panes->Viewport.ConfigureSceneTitle(
+        ActiveProjectTitle.empty()
+            ? std::string(SceneSubtitle)
+            : (ActiveProjectTitle + " · " + SceneSubtitle));
+
+    Panes->Viewport.ConfigureInteractionCallback(
+        [this](uint32_t PaneIdx, Rectangle2D PaneBounds, const PaneInputReading& Input)
+        {
+            ProcessShowcaseViewportInteraction(PaneIdx, PaneBounds, Input);
+        });
+    Panes->Viewport.AssignNavigationCallback(
+        [this](ViewportNavigationDirective Directive)
+        {
+            ProcessShowcaseNavigationDirective(Directive);
+        });
+    Panes->Viewport.ConfigureConstructCanvasDropCallback(
+        [this](int32_t TemplateIndex, int32_t /*PresetIndex*/, Point2D CanvasLogicalPos)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            const Rectangle2D CanvasBounds = ActivePanes->Viewport.QueryLastCanvasPaneBounds();
+            const float U = std::clamp((CanvasLogicalPos.X - CanvasBounds.X) / std::max(1.0f, CanvasBounds.Width), 0.0f, 1.0f);
+            const float V = std::clamp((CanvasLogicalPos.Y - CanvasBounds.Y) / std::max(1.0f, CanvasBounds.Height), 0.0f, 1.0f);
+            const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+
+            if (TemplateIndex >= 0)
+            {
+                const auto Templates = ActivePanes->Outliner.QueryConstructTemplates();
+                if (static_cast<std::size_t>(TemplateIndex) < Templates.size())
+                {
+                    const auto& Tpl = Templates[static_cast<std::size_t>(TemplateIndex)];
+                    if (Tpl.CategoryTitle == "WorldGenerator")
+                    {
+                        PopulateApocalypticCitySession();
+                        RefreshShowcaseViewportRaster();
+                        return;
+                    }
+                    const std::string_view Title = Tpl.DefaultTitle.empty() ? std::string_view(Tpl.DropdownLabel) : std::string_view(Tpl.DefaultTitle);
+                    (void)GeometricRaster::ConstructShowcaseModelInOutliner(
+                        ActivePanes->Outliner,
+                        *ShowcaseBundle,
+                        Title,
+                        { 212u, 208u, 200u, 255u },
+                        DropPos,
+                        {});
+                    SynchronizeShowcaseRendererAfterEdit(true);
+                }
+            }
+            else
+            {
+                (void)ActivePanes->Outliner.ConstructFolder("Folder");
+            }
+        });
+
+    auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
+    BrowserPanel.AttachOutlinerFallback(&Panes->Outliner);
+
+    Panes->Inspector.ConfigureCustomSectionCallback(
+        [this](
+            PixelSpace&             Surface,
+            Rectangle2D             ScrollViewport,
+            float                   LeftX,
+            float                   TopY,
+            float                   InnerWidth,
+            OutlinerRecordEntry&    Entry,
+            const PaneInputReading& Input) -> float
+        {
+            (void)ScrollViewport;
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return TopY;
+            }
+            const bool IsCamera = (Entry.Token == ShowcaseBundle->EditorCameraToken) ||
+                                  (Entry.Category == ConstructSlotCategory::OpticsCamera);
+            if (!IsCamera)
+            {
+                return TopY;
+            }
+
+            auto& Disp = ActivePanes->Viewport.AccessDisplaySettings();
+            const Point2D Cursor{ Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+            const auto HitTest = [&](Rectangle2D R) -> bool
+            {
+                return Input.PrimaryPointer.Pressed && R.Contains(Cursor);
+            };
+
+            float Y = TopY + 10.0f;
+
+            // Card 1: Render Settings (mirrors Inspectors.jsx Card + Control)
+            const float Card1H = 186.0f;
+            const Rectangle2D Card1{ LeftX, Y, InnerWidth, Card1H };
+            Surface.FillRectangle(Card1, WorkspaceSurfaceColors::SectionSurface, 20.0f);
+            Surface.StrokeRectangle(Card1, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
+
+            float CY = Y + 14.0f;
+            const float CX = LeftX + 14.0f;
+            const float CW = InnerWidth - 28.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CX, CY }, 11.0f, WorkspaceSurfaceColors::PrimaryInk, "Render Settings");
+            CY += 24.0f;
+
+            static constexpr const char* kEngines[6] = { "MatCap", "OpenPBR Direct", "GTX SDF GI", "HighEnd BVH4", "Game Realtime", "Scene Final" };
+            const uint32_t EngIdx = (Disp.RenderEngineIndex < 6u) ? Disp.RenderEngineIndex : 2u;
+            const Rectangle2D EngRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(EngRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Engine");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, kEngines[EngIdx]);
+            if (HitTest(EngRow)) { Disp.RenderEngineIndex = (EngIdx + 1u) % 6u; }
+            CY += 32.0f;
+
+            static constexpr const char* kSdfModes[6] = { "0. Point SDF", "1. Analytic Cone", "2. Voxel Clipmap", "3. Voxel + Cone GI", "4. Hybrid Sobol", "5. MC PT Ref" };
+            const uint32_t SdfIdx = (Disp.SdfShadowPenumbraIndex < 6u) ? Disp.SdfShadowPenumbraIndex : 3u;
+            const Rectangle2D SdfRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(SdfRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "SDF Shadow");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, kSdfModes[SdfIdx]);
+            if (HitTest(SdfRow)) { Disp.SdfShadowPenumbraIndex = (SdfIdx + 1u) % 6u; }
+            CY += 32.0f;
+
+            static constexpr const char* kQuals[5] = { "Low", "Med", "Std", "High", "Ultra" };
+            const uint32_t QIdx = static_cast<uint32_t>(Disp.QualityTier) % 5u;
+            const float SegW = (CW - 8.0f) / 5.0f;
+            for (uint32_t Q = 0u; Q < 5u; ++Q)
+            {
+                const Rectangle2D Seg{ CX + static_cast<float>(Q) * (SegW + 2.0f), CY, SegW, 24.0f };
+                Surface.FillRectangle(Seg, (Q == QIdx) ? ColorRgba{ 46, 50, 57, 255 } : WorkspaceSurfaceColors::ControlWell, 12.0f);
+                WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { Seg.X + 8.0f, Seg.Y + 6.0f }, 9.0f,
+                    (Q == QIdx) ? WorkspaceSurfaceColors::PrimaryInk : WorkspaceSurfaceColors::SecondaryInk, kQuals[Q]);
+                if (HitTest(Seg)) { Disp.QualityTier = static_cast<decltype(Disp.QualityTier)>(Q); }
+            }
+            CY += 30.0f;
+
+            const Rectangle2D RtRow{ CX, CY, CW, 24.0f };
+            Surface.FillRectangle(RtRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 5.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Raytracing");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 5.0f }, 9.5f,
+                Disp.RaytracingEnabled ? ColorRgba{ 74, 222, 128, 255 } : WorkspaceSurfaceColors::SecondaryInk, Disp.RaytracingEnabled ? "ON" : "OFF");
+            if (HitTest(RtRow)) { Disp.RaytracingEnabled = !Disp.RaytracingEnabled; }
+
+            Y += Card1H + 12.0f;
+
+            // Card 2: Sky, Sun, Moon & Clouds
+            const float Card2H = 132.0f;
+            const Rectangle2D Card2{ LeftX, Y, InnerWidth, Card2H };
+            Surface.FillRectangle(Card2, WorkspaceSurfaceColors::SectionSurface, 20.0f);
+            Surface.StrokeRectangle(Card2, WorkspaceSurfaceColors::HairlineLight, 20.0f, 1.0f);
+
+            CY = Y + 14.0f;
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Medium, { CX, CY }, 11.0f, WorkspaceSurfaceColors::PrimaryInk, "Sky, Sun, Moon & Clouds");
+            CY += 24.0f;
+
+            char SunBuf[24];
+            std::snprintf(SunBuf, sizeof(SunBuf), "%.1f h", Disp.SolarTimeOfDayHours);
+            const Rectangle2D SunRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(SunRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Solar Time");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, SunBuf);
+            if (HitTest(SunRow)) { Disp.SolarTimeOfDayHours = (Disp.SolarTimeOfDayHours >= 22.0f) ? 6.0f : (Disp.SolarTimeOfDayHours + 2.0f); }
+            CY += 32.0f;
+
+            char CloudBuf[24];
+            std::snprintf(CloudBuf, sizeof(CloudBuf), "%.0f%%", Disp.CloudFraction * 100.0f);
+            const Rectangle2D CloudRow{ CX, CY, CW, 26.0f };
+            Surface.FillRectangle(CloudRow, WorkspaceSurfaceColors::ControlWell, 10.0f);
+            WorkspaceAppearance::ConstructWeightedText(Surface, FontWeightClass::Regular, { CX + 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::SecondaryInk, "Cloud Cover");
+            WorkspaceAppearance::ConstructRightAlignedText(Surface, FontWeightClass::Medium, { CX + CW - 10.0f, CY + 6.0f }, 9.5f, WorkspaceSurfaceColors::PrimaryInk, CloudBuf);
+            if (HitTest(CloudRow))
+            {
+                Disp.CloudFraction = (Disp.CloudFraction >= 0.80f) ? 0.0f : (Disp.CloudFraction + 0.20f);
+                Disp.VolumetricCloudsEnabled = (Disp.CloudFraction > 0.01f);
+            }
+
+            return Y + Card2H + 10.0f;
+        });
+    BrowserPanel.AssignContentActivationCallback(
+        [this](const ContentRepositoryEntry& Entry)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            if (Entry.IndexHeader.MatCapPresetMarker != 0u)
+            {
+                ActivePanes->Viewport.AccessDisplaySettings().RenderEngineIndex =
+                    static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::MatCap);
+                ActivePanes->Viewport.AccessDisplaySettings().DebugChannelIndex =
+                    (Entry.IndexHeader.MatCapSlotOrdinal == 9u) ? 3u : 0u;
+                RefreshShowcaseViewportRaster();
+                return;
+            }
+            const Rectangle2D DropBounds = ContentBrowserDrawer.QueryPanel().MapPhysicalToLogicalBounds(
+                ActivePanes->Viewport.QueryLastCanvasPhysicalBounds());
+            HandleContentDropOnViewport(
+                Entry,
+                { DropBounds.X + DropBounds.Width * 0.5f, DropBounds.Y + DropBounds.Height * 0.62f },
+                DropBounds);
+        });
+
+    SynchronizeShowcaseGizmoAnchor();
+    RefreshShowcaseViewportRaster();
+}
+
+void EditorLifecycle::SynchronizeShowcaseGizmoAnchor() noexcept
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const OutlinerSlotToken PrimarySlot = Panes->Outliner.QueryPrimarySelection();
+    const OutlinerRecordEntry* Entry    = PrimarySlot.Valid() ? Panes->Outliner.FindEntry(PrimarySlot) : nullptr;
+    if (Entry == nullptr ||
+        Entry->Category == ConstructSlotCategory::Folder ||
+        Entry->Token == ShowcaseBundle->EditorCameraToken ||
+        Entry->Token == ShowcaseBundle->SunEmitterToken ||
+        Entry->Locked)
+    {
+        LastGizmoSlot = {};
+        return;
+    }
+
+    const Mathematics::Axis3D Pivot{ Entry->PositionX, Entry->PositionY, Entry->PositionZ };
+    const float DistToCam = std::sqrt(
+        (Pivot.X - ShowcaseBundle->EditorCamera.CameraOrigin.X) * (Pivot.X - ShowcaseBundle->EditorCamera.CameraOrigin.X) +
+        (Pivot.Y - ShowcaseBundle->EditorCamera.CameraOrigin.Y) * (Pivot.Y - ShowcaseBundle->EditorCamera.CameraOrigin.Y) +
+        (Pivot.Z - ShowcaseBundle->EditorCamera.CameraOrigin.Z) * (Pivot.Z - ShowcaseBundle->EditorCamera.CameraOrigin.Z));
+    // Screen-constant gizmo size across all distances (from 0.25 m up to 5000 m):
+    // scales linearly with vertical FOV and distance to camera so handles never shrink into sub-pixel slivers!
+    const float TanHalfFov = std::tan(std::clamp(ShowcaseBundle->EditorCamera.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
+    const float WorldRad   = std::max(0.18f, DistToCam * TanHalfFov * 0.48f);
+    WorldTransformGizmo.ConfigureAnchor(Pivot, WorldRad, Entry->RotationZ);
+    LastGizmoSlot = PrimarySlot;
+}
+
+void EditorLifecycle::FrameShowcaseCameraSelection() noexcept
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const OutlinerSlotToken    Primary = Panes->Outliner.QueryPrimarySelection();
+    const OutlinerRecordEntry* Entry   = Primary.Valid() ? Panes->Outliner.FindEntry(Primary) : nullptr;
+    if (Entry != nullptr &&
+        Entry->Category != ConstructSlotCategory::Folder &&
+        Entry->Token != ShowcaseBundle->EditorCameraToken &&
+        Entry->Token != ShowcaseBundle->SunEmitterToken)
+    {
+        const Mathematics::Axis3D TargetPos{ Entry->PositionX, Entry->PositionY, Entry->PositionZ };
+        const float MaxExtent = std::max(0.45f, std::max({ std::fabs(Entry->ScaleX), std::fabs(Entry->ScaleY), std::fabs(Entry->ScaleZ) }));
+        const Mathematics::Axis3D ViewOffset = Mathematics::NormalizeAxis(
+            ShowcaseBundle->EditorCamera.CameraOrigin - TargetPos,
+            { 0.0f, -1.0f, 0.12f });
+        const float Dist = std::clamp(MaxExtent * 2.25f, 1.45f, 7.0f);
+        ShowcaseBundle->EditorCamera.TargetPoint  = TargetPos;
+        ShowcaseBundle->EditorCamera.CameraOrigin = TargetPos + ViewOffset * Dist;
+    }
+    else
+    {
+        ShowcaseBundle->EditorCamera.CameraOrigin = { 0.00f, -3.55f, 0.42f };
+        ShowcaseBundle->EditorCamera.TargetPoint  = { 0.00f,  0.55f, 0.15f };
+    }
+
+    if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+    {
+        CamEntry->PositionX = ShowcaseBundle->EditorCamera.CameraOrigin.X;
+        CamEntry->PositionY = ShowcaseBundle->EditorCamera.CameraOrigin.Y;
+        CamEntry->PositionZ = ShowcaseBundle->EditorCamera.CameraOrigin.Z;
+    }
+    EditorCameraLag.SnapTo(ShowcaseBundle->EditorCamera.CameraOrigin, ShowcaseBundle->EditorCamera.TargetPoint);
+    DesiredCameraOrigin = ShowcaseBundle->EditorCamera.CameraOrigin;
+    DesiredCameraTarget = ShowcaseBundle->EditorCamera.TargetPoint;
+    DesiredCameraValid  = true;
+    SynchronizeShowcaseGizmoAnchor();
+    PendingInteractionWorldRefresh = true;
+}
+
+void EditorLifecycle::ProcessShowcaseNavigationDirective(ViewportNavigationDirective Directive)
+{
+    if (ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    if (Directive == ViewportNavigationDirective::FitView)
+    {
+        FrameShowcaseCameraSelection();
+        return;
+    }
+
+    const Mathematics::Axis3D PriorOrigin  = DesiredCameraValid ? DesiredCameraOrigin : ShowcaseBundle->EditorCamera.CameraOrigin;
+    const Mathematics::Axis3D PriorTarget  = DesiredCameraValid ? DesiredCameraTarget : ShowcaseBundle->EditorCamera.TargetPoint;
+    const Mathematics::Axis3D ToTarget     = PriorTarget - PriorOrigin;
+    const float               CurDist      = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+    const Mathematics::Axis3D Fwd          = Mathematics::NormalizeAxis(ToTarget, { 0.0f, 1.0f, 0.0f });
+    const float               NextDist     = (Directive == ViewportNavigationDirective::ZoomIn)
+                                                 ? std::clamp(CurDist * 0.85f, 0.45f, 2500.0f)
+                                                 : std::clamp(CurDist * 1.18f, 0.45f, 2500.0f);
+    DesiredCameraOrigin = PriorTarget - Fwd * NextDist;
+    DesiredCameraTarget = PriorTarget;
+    DesiredCameraValid  = true;
+    ShowcaseBundle->EditorCamera.CameraOrigin = DesiredCameraOrigin;
+    ShowcaseBundle->EditorCamera.TargetPoint  = DesiredCameraTarget;
+    EditorCameraLag.SnapTo(DesiredCameraOrigin, DesiredCameraTarget);
+
+    if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+    {
+        if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+        {
+            CamEntry->PositionX = ShowcaseBundle->EditorCamera.CameraOrigin.X;
+            CamEntry->PositionY = ShowcaseBundle->EditorCamera.CameraOrigin.Y;
+            CamEntry->PositionZ = ShowcaseBundle->EditorCamera.CameraOrigin.Z;
+        }
+    }
+    SynchronizeShowcaseGizmoAnchor();
+    PendingInteractionWorldRefresh = true;
+}
+
+void EditorLifecycle::ProcessShowcaseViewportInteraction(
+    uint32_t                PaneIndex,
+    Rectangle2D             PaneBounds,
+    const PaneInputReading& Input)
+{
+    FRONTIER_THOUGHT_SCOPE("Editor.ViewportInteraction");
+    (void)PaneIndex;
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr || PaneBounds.Width < 16.0f || PaneBounds.Height < 16.0f)
+    {
+        return;
+    }
+
+    ImGuiIO&      Io               = ImGui::GetIO();
+    const Point2D Cursor           { Input.PrimaryPointer.X, Input.PrimaryPointer.Y };
+    const float   RawCursorDeltaX  = PointerTrackingValid ? (Cursor.X - LastPointerPosition.X) : 0.0f;
+    const float   RawCursorDeltaY  = PointerTrackingValid ? (Cursor.Y - LastPointerPosition.Y) : 0.0f;
+    LastPointerPosition            = Cursor;
+    PointerTrackingValid           = true;
+
+    const float UiScale = std::clamp(ControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+    float       DeltaX  = RawCursorDeltaX;
+    float       DeltaY  = RawCursorDeltaY;
+    if (const auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+    {
+        const auto& Snapshot = ActiveExt->InspectEditorSnapshot();
+        if (std::fabs(Snapshot.TickDeltaX) > 0.0f || std::fabs(Snapshot.TickDeltaY) > 0.0f)
+        {
+            DeltaX = Snapshot.TickDeltaX / UiScale;
+            DeltaY = Snapshot.TickDeltaY / UiScale;
+        }
+        else if (RightMouseFlyActive && std::fabs(Io.MouseDelta.x) > 0.0f)
+        {
+            DeltaX = Io.MouseDelta.x / UiScale;
+            DeltaY = Io.MouseDelta.y / UiScale;
+        }
+    }
+
+    const float RawNormU = std::clamp((Cursor.X - PaneBounds.X) / PaneBounds.Width, 0.0f, 1.0f);
+    const float RawNormV = std::clamp((Cursor.Y - PaneBounds.Y) / PaneBounds.Height, 0.0f, 1.0f);
+
+    bool CameraMoved      = false;
+    bool SceneChanged     = false;
+    bool GizmoOverlayOnly = false;
+    bool GizmoDragEnded   = false;
+
+    auto& Cam = ShowcaseBundle->EditorCamera;
+    if (!DesiredCameraValid)
+    {
+        DesiredCameraOrigin = Cam.CameraOrigin;
+        DesiredCameraTarget = Cam.TargetPoint;
+        DesiredCameraValid  = true;
+    }
+
+    // Rendered basis (matches exact on-screen camera for gizmo/scene ray picking)
+    const Mathematics::Axis3D RenderFwd   = Mathematics::NormalizeAxis(Cam.TargetPoint - Cam.CameraOrigin, { 0.0f, 1.0f, 0.0f });
+    const Mathematics::Axis3D RenderRight = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(RenderFwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
+    const Mathematics::Axis3D RenderUp    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(RenderRight, RenderFwd), { 0.0f, 0.0f, 1.0f });
+
+    // Desired (undamped) basis: ALL navigation inputs integrate strictly onto DesiredCameraOrigin/Target
+    // so camera lag never feeds back into input integration and never discards mouse-look / fly deltas!
+    Mathematics::Axis3D Fwd   = Mathematics::NormalizeAxis(DesiredCameraTarget - DesiredCameraOrigin, RenderFwd);
+    Mathematics::Axis3D Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), RenderRight);
+    Mathematics::Axis3D Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), RenderUp);
+
+    // 1. Modifier & Mouse Button State (Unreal Engine Z-Up Viewport Controls)
+    const bool RightHeld  = ImGui::IsMouseDown(ImGuiMouseButton_Right);
+    const bool MiddleHeld = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+    const bool LeftHeld   = ImGui::IsMouseDown(ImGuiMouseButton_Left) || Input.PrimaryPointer.Down;
+    const bool ShiftHeld  = Io.KeyShift || ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
+    const bool CtrlHeld   = Io.KeyCtrl  || ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
+    const bool AltHeld    = Io.KeyAlt   || ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt);
+
+    const bool WantCursorLock =
+        RightHeld && !AltHeld && !LeftHeld && !MiddleHeld && !WorldTransformGizmo.QueryDragging();
+    if (WantCursorLock != RightMouseFlyActive)
+    {
+        RightMouseFlyActive = WantCursorLock;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(
+                WantCursorLock ? Input::CursorConfinementMode::LockedRelativeHidden
+                               : Input::CursorConfinementMode::FreeVisible);
+        }
+    }
+
+    const bool AnyNavButtonHeld = RightHeld || MiddleHeld || LeftHeld;
+    const float NavDeltaX       = NavigationDragWasActive ? DeltaX : 0.0f;
+    const float NavDeltaY       = NavigationDragWasActive ? DeltaY : 0.0f;
+    NavigationDragWasActive     = AnyNavButtonHeld;
+
+    // 2. GPU Gizmo Hover / Drag & 3D Ray Picking (evaluated first so Gizmo handles preempt LMB camera walk)
+    const uint32_t PickSurfaceW = (LastTargetWidthPx > 0u)
+        ? LastTargetWidthPx
+        : ((CachedWorldWidthPx > 0u) ? CachedWorldWidthPx : std::max(1u, Cam.ViewportWidthPx));
+    const uint32_t PickSurfaceH = (LastTargetHeightPx > 0u)
+        ? LastTargetHeightPx
+        : ((CachedWorldHeightPx > 0u) ? CachedWorldHeightPx : std::max(1u, Cam.ViewportHeightPx));
+
+    // Match ViewportPanel::ConstructSingleViewportPane aspect-fit UV crop so cursor UVs align 1:1 with pixels!
+    const float SourceAspect = static_cast<float>(PickSurfaceW) / static_cast<float>(PickSurfaceH);
+    const float TargetAspect = PaneBounds.Width / std::max(1.0f, PaneBounds.Height);
+    Point2D     UvMin{ 0.0f, 0.0f };
+    Point2D     UvMax{ 1.0f, 1.0f };
+    if (TargetAspect > SourceAspect)
+    {
+        const float CropH = SourceAspect / TargetAspect;
+        UvMin.Y           = 0.5f * (1.0f - CropH);
+        UvMax.Y           = 1.0f - UvMin.Y;
+    }
+    else if (SourceAspect > TargetAspect)
+    {
+        const float CropW = TargetAspect / SourceAspect;
+        UvMin.X           = 0.5f * (1.0f - CropW);
+        UvMax.X           = 1.0f - UvMin.X;
+    }
+    const float NormU = std::clamp(UvMin.X + RawNormU * (UvMax.X - UvMin.X), 0.0f, 1.0f);
+    const float NormV = std::clamp(UvMin.Y + RawNormV * (UvMax.Y - UvMin.Y), 0.0f, 1.0f);
+
+    const float Aspect  = SourceAspect;
+    const float TanHalf = std::tan(std::clamp(Cam.VerticalFovRadians, 0.10f, 2.60f) * 0.5f);
+    const float NdcX    = (NormU * 2.0f - 1.0f) * Aspect * TanHalf;
+    const float NdcY    = (1.0f - NormV * 2.0f) * TanHalf;
+    const Editor::ViewportRay3D CursorRay{
+        Cam.CameraOrigin,
+        Mathematics::NormalizeAxis(RenderFwd + RenderRight * NdcX + RenderUp * NdcY, RenderFwd),
+    };
+
+    if (WorldTransformGizmo.QueryDragging())
+    {
+        if (LeftHeld && LastGizmoSlot.Valid())
+        {
+            Configuration::GizmoSnapSettings SnapCfg {};
+            const auto Delta = WorldTransformGizmo.EvaluateDragInteraction(CursorRay, CtrlHeld, SnapCfg, GizmoActiveTransform);
+            if (Delta.TransformChanged)
+            {
+                if (OutlinerRecordEntry* SelectedEntry = Panes->Outliner.AccessEntry(LastGizmoSlot))
+                {
+                    SelectedEntry->PositionX = GizmoActiveTransform.Position.X;
+                    SelectedEntry->PositionY = GizmoActiveTransform.Position.Y;
+                    SelectedEntry->PositionZ = GizmoActiveTransform.Position.Z;
+                    SelectedEntry->ScaleX    = std::max(0.08f, GizmoActiveTransform.Scale.X);
+                    SelectedEntry->ScaleY    = std::max(0.08f, GizmoActiveTransform.Scale.Y);
+                    SelectedEntry->ScaleZ    = std::max(0.08f, GizmoActiveTransform.Scale.Z);
+                    SelectedEntry->RotationZ = GizmoActiveTransform.Rotation.Z;
+                    WorldTransformGizmo.ConfigureAnchor(
+                        GizmoActiveTransform.Position,
+                        WorldTransformGizmo.QueryWorldRadius(),
+                        SelectedEntry->RotationZ);
+                    SceneChanged = true;
+                }
+            }
+        }
+        else
+        {
+            WorldTransformGizmo.EndDragInteraction();
+            CameraInteractiveDrag = false;
+            GizmoDragEnded        = true;
+            SceneChanged          = true;
+        }
+    }
+    else if (!AltHeld && !RightHeld && !MiddleHeld)
+    {
+        bool CursorNearGizmo = false;
+        if (LastGizmoSlot.Valid())
+        {
+            const Mathematics::Axis3D ToPivot = WorldTransformGizmo.QueryPivotOrigin() - CursorRay.Origin;
+            const float DistSq  = Mathematics::EvaluateDot(ToPivot, ToPivot);
+            const float Along   = Mathematics::EvaluateDot(ToPivot, CursorRay.Direction);
+            const float BoundR  = std::max(0.25f, WorldTransformGizmo.QueryWorldRadius() * 1.65f);
+            const float BoundSq = BoundR * BoundR;
+            CursorNearGizmo     = (DistSq <= BoundSq) || (Along > 0.0f && std::max(0.0f, DistSq - Along * Along) <= BoundSq);
+        }
+
+        // Analytical ray-gizmo hover avoids per-pixel GPU readback and re-composites ONLY when hovered handle changes
+        Editor::GizmoHandleOrdinal Hovered = Editor::GizmoHandleOrdinal::None;
+        if (CursorNearGizmo)
+        {
+            Hovered = WorldTransformGizmo.EvaluateRayHover(CursorRay, RenderRight, RenderUp);
+        }
+        if (Hovered != WorldTransformGizmo.QueryHoveredHandle())
+        {
+            WorldTransformGizmo.AssignHoveredHandle(Hovered);
+            GizmoOverlayOnly = true;
+        }
+
+        if (Input.PrimaryPointer.Pressed)
+        {
+            if (Hovered != Editor::GizmoHandleOrdinal::None && LastGizmoSlot.Valid())
+            {
+                if (const OutlinerRecordEntry* SelectedEntry = Panes->Outliner.FindEntry(LastGizmoSlot))
+                {
+                    GizmoActiveTransform            = {};
+                    GizmoActiveTransform.Position   = { SelectedEntry->PositionX, SelectedEntry->PositionY, SelectedEntry->PositionZ };
+                    GizmoActiveTransform.Rotation.Z = SelectedEntry->RotationZ;
+                    GizmoActiveTransform.Scale      = { SelectedEntry->ScaleX, SelectedEntry->ScaleY, SelectedEntry->ScaleZ };
+                    (void)WorldTransformGizmo.BeginDragInteraction(Hovered, CursorRay, GizmoActiveTransform, RenderRight, RenderUp);
+                    CameraInteractiveDrag = true;
+                    GizmoOverlayOnly      = true;
+                }
+            }
+            else
+            {
+                const OutlinerSlotToken Picked = GeometricRaster::PickShowcaseGalleryEntryAtUv(
+                    Panes->Outliner,
+                    *ShowcaseBundle,
+                    NormU,
+                    NormV);
+                if (Picked.Valid())
+                {
+                    if (Picked != Panes->Outliner.QueryPrimarySelection())
+                    {
+                        Panes->Outliner.SelectSingle(Picked);
+                        SynchronizeShowcaseGizmoAnchor();
+                        PendingInteractionWorldRefresh = true;
+                        GizmoOverlayOnly               = true;
+                    }
+                }
+                else if (Panes->Outliner.QueryPrimarySelection().Valid() || LastGizmoSlot.Valid())
+                {
+                    Panes->Outliner.ClearSelection();
+                    SynchronizeShowcaseGizmoAnchor();
+                    PendingInteractionWorldRefresh = true;
+                    GizmoOverlayOnly               = true;
+                }
+            }
+        }
+    }
+
+    if (!Io.WantTextInput && !WorldTransformGizmo.QueryDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+    {
+        if (Panes->Outliner.QueryPrimarySelection().Valid() || LastGizmoSlot.Valid())
+        {
+            Panes->Outliner.ClearSelection();
+            SynchronizeShowcaseGizmoAnchor();
+            PendingInteractionWorldRefresh = true;
+            GizmoOverlayOnly               = true;
+        }
+    }
+
+    // 3. Unreal Engine Camera Navigation (ONE camera model — never two competing models):
+    //    - RMB held: Mouse-Look + WASD + Q (Down) + E (Up) + Shift (3x Sprint) + Ctrl (0.3x Slow)
+    //    - LMB: Gizmo drag & selection ONLY. LMB never moves the camera and never enables fly keys,
+    //      so a gizmo drag can never be stolen by camera walk (the old LMB-walk model is removed).
+    //    - MMB or LMB+RMB: Truck / Pedestal Pan
+    //    - Alt+LMB: Orbit around Target, Alt+RMB: Smooth Dolly, Alt+MMB: Pan
+    //    - Wheel (with or without RMB): Fly-Speed Adjustment (never Dolly-Zoom; Dolly stays on Alt+RMB & +/- capsule)
+    //    - Shift is a Sprint modifier only: it must never switch RMB Mouse-Look into Pan or stop Fly keys
+    //    - Arrow Keys + PageUp/PageDown (no mouse button): Keyboard Fly
+    const bool GizmoBusy = WorldTransformGizmo.QueryDragging();
+    const bool FlyKeysPossible = !Io.WantTextInput && !GizmoBusy && RightHeld && !AltHeld;
+
+    // Wheel source: InputExtension snapshot and ImGui carry the same packet in the desktop host;
+    // take the larger magnitude so neither path is double-counted and headless ImGui-only frames still work.
+    const float WheelDeltaY = (std::fabs(Input.WheelDeltaY) >= std::fabs(Io.MouseWheel)) ? Input.WheelDeltaY : Io.MouseWheel;
+
+    if (!GizmoBusy)
+    {
+        if (std::fabs(WheelDeltaY) > 0.01f)
+        {
+            CameraFlySpeedScalar = std::clamp(
+                CameraFlySpeedScalar * std::pow(1.20f, WheelDeltaY),
+                0.10f,
+                16.0f);
+        }
+
+        if (RightHeld && !AltHeld && !LeftHeld && !MiddleHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
+                const float Dist  = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float Yaw   = std::atan2(Fwd.X, Fwd.Y) + NavDeltaX * 0.0042f;
+                const float Pitch = std::clamp(
+                    std::asin(std::clamp(Fwd.Z, -0.995f, 0.995f)) - NavDeltaY * 0.0042f,
+                    -1.52f,
+                    1.52f);
+                const float CosP    = std::cos(Pitch);
+                Fwd                 = Mathematics::NormalizeAxis({ std::sin(Yaw) * CosP, std::cos(Yaw) * CosP, std::sin(Pitch) }, Fwd);
+                DesiredCameraTarget = DesiredCameraOrigin + Fwd * Dist;
+                Right               = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), { 1.0f, 0.0f, 0.0f });
+                Up                  = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), { 0.0f, 0.0f, 1.0f });
+                CameraMoved         = true;
+            }
+        }
+        else if ((MiddleHeld && !AltHeld) || (LeftHeld && RightHeld && !AltHeld))
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
+                const float CurDist  = std::max(0.50f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.45f) * (ShiftHeld ? 2.5f : 1.0f);
+                const Mathematics::Axis3D PanOffset = Right * (-NavDeltaX * PanScale) + Up * (NavDeltaY * PanScale);
+                DesiredCameraOrigin = DesiredCameraOrigin + PanOffset;
+                DesiredCameraTarget = DesiredCameraTarget + PanOffset;
+                CameraMoved         = true;
+            }
+        }
+        else if (AltHeld && LeftHeld && !RightHeld && !MiddleHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D Offset = DesiredCameraOrigin - DesiredCameraTarget;
+                const float Dist  = std::max(0.45f, std::sqrt(Mathematics::EvaluateDot(Offset, Offset)));
+                const float Yaw   = std::atan2(Offset.X, Offset.Y) + NavDeltaX * 0.0055f;
+                const float Pitch = std::clamp(
+                    std::asin(std::clamp(Offset.Z / Dist, -0.995f, 0.995f)) + NavDeltaY * 0.0055f,
+                    -1.48f,
+                    1.48f);
+                const float CosP    = std::cos(Pitch);
+                DesiredCameraOrigin = DesiredCameraTarget + Mathematics::Axis3D{
+                    std::sin(Yaw) * CosP * Dist,
+                    std::cos(Yaw) * CosP * Dist,
+                    std::sin(Pitch) * Dist
+                };
+                Fwd   = Mathematics::NormalizeAxis(DesiredCameraTarget - DesiredCameraOrigin, Fwd);
+                Right = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Fwd, Cam.WorldUpAxis), Right);
+                Up    = Mathematics::NormalizeAxis(Mathematics::EvaluateCross(Right, Fwd), Up);
+                CameraMoved = true;
+            }
+        }
+        else if (AltHeld && RightHeld && !LeftHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
+                const float CurDist     = std::max(0.35f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float DollyStep   = (NavDeltaX - NavDeltaY) * std::max(0.008f, CurDist * 0.0055f) * (ShiftHeld ? 2.5f : 1.0f);
+                const float NextDist    = std::clamp(CurDist - DollyStep, 0.35f, 2500.0f);
+                DesiredCameraOrigin     = DesiredCameraTarget - Fwd * NextDist;
+                CameraMoved             = true;
+            }
+        }
+        else if (AltHeld && MiddleHeld)
+        {
+            if (std::fabs(NavDeltaX) > 0.01f || std::fabs(NavDeltaY) > 0.01f)
+            {
+                const Mathematics::Axis3D ToTarget = DesiredCameraTarget - DesiredCameraOrigin;
+                const float CurDist  = std::max(0.50f, std::sqrt(Mathematics::EvaluateDot(ToTarget, ToTarget)));
+                const float PanScale = std::clamp(CurDist * 0.0014f, 0.0018f, 0.45f) * (ShiftHeld ? 2.5f : 1.0f);
+                const Mathematics::Axis3D PanOffset = Right * (-NavDeltaX * PanScale) + Up * (NavDeltaY * PanScale);
+                DesiredCameraOrigin = DesiredCameraOrigin + PanOffset;
+                DesiredCameraTarget = DesiredCameraTarget + PanOffset;
+                CameraMoved         = true;
+            }
+        }
+        // (No LMB camera branch: LMB is reserved for Gizmo drag & selection above.)
+
+        if (FlyKeysPossible)
+        {
+            Mathematics::Axis3D WishDir { 0.0f, 0.0f, 0.0f };
+            if (ImGui::IsKeyDown(ImGuiKey_W)) WishDir = WishDir + Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_S)) WishDir = WishDir - Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_D)) WishDir = WishDir + Right;
+            if (ImGui::IsKeyDown(ImGuiKey_A)) WishDir = WishDir - Right;
+            if (ImGui::IsKeyDown(ImGuiKey_E)) WishDir = WishDir + Cam.WorldUpAxis;
+            if (ImGui::IsKeyDown(ImGuiKey_Q)) WishDir = WishDir - Cam.WorldUpAxis;
+
+            const float WishLenSq = Mathematics::EvaluateDot(WishDir, WishDir);
+            if (WishLenSq > 1.0e-8f)
+            {
+                const Mathematics::Axis3D NormDir = WishDir * (1.0f / std::sqrt(WishLenSq));
+                const float ModifierBoost = ShiftHeld ? 3.0f : (CtrlHeld ? 0.30f : 1.0f);
+                const float StepMeters =
+                    6.0f * CameraFlySpeedScalar * ModifierBoost *
+                    static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
+                const Mathematics::Axis3D MoveVec = NormDir * StepMeters;
+                DesiredCameraOrigin = DesiredCameraOrigin + MoveVec;
+                DesiredCameraTarget = DesiredCameraTarget + MoveVec;
+                CameraMoved         = true;
+            }
+        }
+        else if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
+        {
+            // Arrow-key + PageUp/PageDown viewport flight without mouse button
+            Mathematics::Axis3D ArrowDir { 0.0f, 0.0f, 0.0f };
+            if (ImGui::IsKeyDown(ImGuiKey_UpArrow))    ArrowDir = ArrowDir + Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_DownArrow))  ArrowDir = ArrowDir - Fwd;
+            if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) ArrowDir = ArrowDir + Right;
+            if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))  ArrowDir = ArrowDir - Right;
+            if (ImGui::IsKeyDown(ImGuiKey_PageUp))     ArrowDir = ArrowDir + Cam.WorldUpAxis;
+            if (ImGui::IsKeyDown(ImGuiKey_PageDown))   ArrowDir = ArrowDir - Cam.WorldUpAxis;
+
+            const float ArrowLenSq = Mathematics::EvaluateDot(ArrowDir, ArrowDir);
+            if (ArrowLenSq > 1.0e-8f)
+            {
+                const Mathematics::Axis3D NormDir = ArrowDir * (1.0f / std::sqrt(ArrowLenSq));
+                const float StepMeters =
+                    6.0f * CameraFlySpeedScalar * (ShiftHeld ? 3.0f : 1.0f) *
+                    static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
+                const Mathematics::Axis3D MoveVec = NormDir * StepMeters;
+                DesiredCameraOrigin = DesiredCameraOrigin + MoveVec;
+                DesiredCameraTarget = DesiredCameraTarget + MoveVec;
+                CameraMoved         = true;
+            }
+        }
+
+    }
+
+    {
+        char SpeedReadout[80]{};
+        std::snprintf(
+            SpeedReadout,
+            sizeof(SpeedReadout),
+            "Fly Speed %.2fx%s",
+            CameraFlySpeedScalar,
+            (ShiftHeld && FlyKeysPossible) ? " · Sprint x3" : "");
+        Panes->Viewport.ConfigureProbeReadoutText(SpeedReadout);
+    }
+
+    const bool UserActivelyNavigating =
+        RightHeld || MiddleHeld || (AltHeld && LeftHeld) || WorldTransformGizmo.QueryDragging() || CameraMoved;
+
+    // 4. Gizmo & Frame-Selection Keyboard Shortcuts (when not flying RMB/LMB and not typing in text fields)
+    if (!RightHeld && !LeftHeld && !Io.WantTextInput && !CtrlHeld && !AltHeld)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::TranslateOnly);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_E, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::RotateOnly);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::ScaleOnly);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_U, false) || ImGui::IsKeyPressed(ImGuiKey_Q, false))
+        {
+            WorldTransformGizmo.ConfigureHandleFilter(Editor::GizmoHandleFilter::Universal);
+            GizmoOverlayOnly = true;
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_F, false))
+        {
+            FrameShowcaseCameraSelection();
+            return;
+        }
+    }
+
+    // Function-key viewport shortcuts: F3 toggles the telemetry overlay, F1 cycles debug views
+    if (!Io.WantTextInput && !CtrlHeld && !AltHeld)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_F3, false))
+        {
+            Panes->Viewport.ConfigureDiagnosticsVisible(!Panes->Viewport.QueryDiagnosticsVisible());
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_F1, false))
+        {
+            Panes->Viewport.AdvanceDebugChannelCycle();
+        }
+    }
+
+    // Camera lag: input above integrates strictly onto DesiredCameraOrigin/Target; the reusable
+    // CameraLagComponent damps the rendered pose toward DesiredCamera* every tick without feedback loss.
+    bool RenderedPoseUpdated = false;
+    if (DesiredCameraValid && !WorldTransformGizmo.QueryDragging())
+    {
+        if (!EditorCameraLag.QueryPrimed())
+        {
+            EditorCameraLag.SnapTo(Cam.CameraOrigin, Cam.TargetPoint);
+        }
+        const float LagStepSeconds = static_cast<float>(std::clamp(CurrentStepSeconds, 0.001, 0.100));
+        if (EditorCameraLag.AdvanceLag(DesiredCameraOrigin, DesiredCameraTarget, LagStepSeconds))
+        {
+            Cam.CameraOrigin    = EditorCameraLag.QueryPosition();
+            Cam.TargetPoint     = EditorCameraLag.QueryTarget();
+            RenderedPoseUpdated = true;
+        }
+    }
+    CameraInteractiveDrag = UserActivelyNavigating;
+    CameraLagSettling     = RenderedPoseUpdated && !UserActivelyNavigating;
+
+    if (CameraMoved || RenderedPoseUpdated)
+    {
+        if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+        {
+            CamEntry->PositionX = Cam.CameraOrigin.X;
+            CamEntry->PositionY = Cam.CameraOrigin.Y;
+            CamEntry->PositionZ = Cam.CameraOrigin.Z;
+        }
+        SynchronizeShowcaseGizmoAnchor();
+    }
+
+    if (CameraMoved || RenderedPoseUpdated || SceneChanged)
+    {
+        PendingInteractionWorldRefresh = true;
+        if (SceneChanged)
+        {
+            PendingInteractionSceneSync = true;
+        }
+        PendingInteractionFastDrag = WorldTransformGizmo.QueryDragging() && !GizmoDragEnded;
+    }
+    else if (GizmoOverlayOnly)
+    {
+        PendingInteractionGizmoRefresh = true;
+    }
+}
+
+OutlinerSlotToken EditorLifecycle::SpawnComponentClassPlacement(
+    std::string_view             ClassTitle,
+    Mathematics::Axis3D          WorldPosition,
+    OutlinerSlotToken            ExplicitEnclosure,
+    const std::filesystem::path& OptionalAssetPath)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return {};
+    }
+
+    uint32_t ClassIndex = UINT32_MAX;
+    for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(ComponentDefinitions.size()); ++Idx)
+    {
+        if (ComponentDefinitions[Idx].Title == ClassTitle)
+        {
+            ClassIndex = Idx;
+            break;
+        }
+    }
+
+    if (ClassIndex == UINT32_MAX)
+    {
+        ComponentClass::ComponentClassDefinition Def {};
+        bool Loaded = false;
+        if (!OptionalAssetPath.empty() && std::filesystem::exists(OptionalAssetPath))
+        {
+            std::string Diag {};
+            Loaded = Codecs::ComponentSpaceDecoder::DecodeFromFile(OptionalAssetPath, Def, Diag);
+        }
+        if (!Loaded)
+        {
+            std::filesystem::path ModelsDir = std::filesystem::path("Experimental/Shared/Models");
+            if (!std::filesystem::exists(ModelsDir) && !StartupConfig.FontRepositoryRoot.empty())
+            {
+                ModelsDir = StartupConfig.FontRepositoryRoot.parent_path().parent_path() / "Experimental/Shared/Models";
+            }
+            ComponentClass::ControlVehicleBuildResult BuildRes {};
+            std::string Diag {};
+            if (ComponentClass::ControlVehicleClassBuilder::ConstructControlVehicle(ModelsDir, BuildRes, Diag))
+            {
+                Def = std::move(BuildRes.ClassDefinition);
+                if (!ClassTitle.empty() && ClassTitle != "ControlVehicle")
+                {
+                    Def.Title = std::string(ClassTitle);
+                }
+                Loaded = true;
+            }
+        }
+        if (!Loaded)
+        {
+            return {};
+        }
+
+        const auto ValidationIssues = ComponentClass::ComponentClassValidator::ValidateClass(Def);
+        bool HasErrors = false;
+        for (const auto& Issue : ValidationIssues)
+        {
+            if (Issue.Severity == ComponentClass::DiagnosticSeverity::Error)
+            {
+                HasErrors = true;
+                break;
+            }
+        }
+        if (!HasErrors)
+        {
+            Def.FinalizeCompiledRevision();
+        }
+        ClassIndex = static_cast<uint32_t>(ComponentDefinitions.size());
+        ComponentDefinitions.push_back(std::move(Def));
+    }
+
+    const ComponentClass::ComponentClassDefinition& ClassDef = ComponentDefinitions[ClassIndex];
+    const uint32_t PlacementOrdinal = WorldPlacements.QueryLivePlacementCount() + 1u;
+    char TitleBuf[128]{};
+    std::snprintf(TitleBuf, sizeof(TitleBuf), "%s_%02u", ClassDef.Title.c_str(), PlacementOrdinal);
+
+    const Mathematics::Axis3D FloorOrigin {
+        WorldPosition.X,
+        WorldPosition.Y,
+        std::max(-0.64f, WorldPosition.Z),
+    };
+    ComponentClass::ComponentTransform PlacementXform {};
+    PlacementXform.LocationMeters = FloorOrigin;
+    PlacementXform.ScaleFactors   = { 0.38f, 0.38f, 0.38f };
+
+    const ComponentClass::ComponentClassToken ClassTok { ClassIndex + 1u, 1u };
+    const ComponentClass::WorldPlacementToken PlacementTok =
+        WorldPlacements.SpawnPlacement(ClassTok, TitleBuf, PlacementXform);
+
+    OutlinerSlotToken TargetEnclosure = ShowcaseBundle->ShowcaseFolderToken;
+    if (ExplicitEnclosure.Valid())
+    {
+        if (const OutlinerRecordEntry* ExplicitEntry = Panes->Outliner.FindEntry(ExplicitEnclosure))
+        {
+            TargetEnclosure = (ExplicitEntry->Category == ConstructSlotCategory::Folder)
+                                  ? ExplicitEntry->Token
+                                  : ExplicitEntry->EnclosingToken;
+        }
+    }
+
+    const OutlinerSlotToken RootOutlinerSlot = Panes->Outliner.ConstructFolder(TitleBuf, TargetEnclosure);
+    if (OutlinerRecordEntry* RootRow = Panes->Outliner.AccessEntry(RootOutlinerSlot))
+    {
+        RootRow->Expanded      = true;
+        RootRow->FolderTint    = ColorRgba { 242u, 224u, 48u, 255u };
+        RootRow->CategoryLabel = "ComponentClass · Placement";
+        RootRow->Subtitle      = ClassDef.Title + " · .ComponentSpace";
+        RootRow->PositionX     = FloorOrigin.X;
+        RootRow->PositionY     = FloorOrigin.Y;
+        RootRow->PositionZ     = FloorOrigin.Z;
+    }
+
+    const ComponentClass::ComponentInstanceToken OriginTok = ClassDef.Storage.QueryOriginToken();
+    PlacementLinks.push_back({ RootOutlinerSlot, PlacementTok, OriginTok, ClassIndex });
+
+    std::vector<std::pair<uint32_t, OutlinerSlotToken>> CompToOutliner {};
+    auto LookupEnclosingOutliner = [&](uint32_t EnclosingIdx) -> OutlinerSlotToken
+    {
+        if (EnclosingIdx == ComponentClass::InvalidNestingIndex)
+        {
+            return RootOutlinerSlot;
+        }
+        const auto* EncHeader = ClassDef.Storage.InspectHeaderByIndex(EnclosingIdx);
+        if (EncHeader == nullptr || EncHeader->Token == OriginTok)
+        {
+            return RootOutlinerSlot;
+        }
+        for (const auto& Pair : CompToOutliner)
+        {
+            if (Pair.first == EncHeader->Token.SlotIndex)
+            {
+                return Pair.second;
+            }
+        }
+        return RootOutlinerSlot;
+    };
+
+    auto FindTemplateIndex = [&](ConstructSlotCategory Cat) -> uint32_t
+    {
+        const auto Templates = Panes->Outliner.QueryConstructTemplates();
+        for (uint32_t Idx = 0u; Idx < static_cast<uint32_t>(Templates.size()); ++Idx)
+        {
+            if (Templates[Idx].Category == Cat)
+            {
+                return Idx;
+            }
+        }
+        return 0u;
+    };
+
+    const float WorldScale = 0.38f;
+    ClassDef.Storage.WalkSpatialNesting(
+        [&](const ComponentClass::ComponentInstanceHeader& Hdr)
+        {
+            if (Hdr.Token == OriginTok)
+            {
+                return;
+            }
+
+            const OutlinerSlotToken EncOutliner = LookupEnclosingOutliner(Hdr.EnclosingIndex);
+            const ComponentClass::ComponentTransform LocalXform =
+                WorldPlacements.EvaluateEffectiveLocalTransform(ClassDef, PlacementTok, Hdr.Token);
+            const Mathematics::Axis3D WorldPos {
+                FloorOrigin.X + LocalXform.LocationMeters.X * WorldScale,
+                FloorOrigin.Y + LocalXform.LocationMeters.Z * WorldScale,
+                FloorOrigin.Z + LocalXform.LocationMeters.Y * WorldScale + 0.14f,
+            };
+
+            OutlinerSlotToken SpawnedSlot {};
+            if (Hdr.Category == ComponentClass::ComponentCategory::GeometryInstance)
+            {
+                const ColorRgba PartTint = (Hdr.Title.find("Body") != std::string::npos || Hdr.Title.find("Wing") != std::string::npos)
+                                               ? ColorRgba { 242u, 224u, 48u, 255u }
+                                               : ColorRgba { 52u, 56u, 64u, 255u };
+                SpawnedSlot = GeometricRaster::ConstructShowcaseModelInOutliner(
+                    Panes->Outliner,
+                    *ShowcaseBundle,
+                    Hdr.Title,
+                    PartTint,
+                    WorldPos,
+                    EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->RotationX         = LocalXform.RotationDegrees.X;
+                    Row->RotationY         = LocalXform.RotationDegrees.Y;
+                    Row->RotationZ         = LocalXform.RotationDegrees.Z;
+                    Row->ScaleX            = LocalXform.ScaleFactors.X;
+                    Row->ScaleY            = LocalXform.ScaleFactors.Y;
+                    Row->ScaleZ            = LocalXform.ScaleFactors.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                    Row->CategoryLabel     = "Component · GeometryInstance";
+                    Row->Expanded          = true;
+                    if (const auto* Geom = ClassDef.Storage.InspectGeometry(Hdr.Token))
+                    {
+                        Row->Subtitle = Geom->AssetIdentifier;
+                    }
+                }
+            }
+            else if (Hdr.Category == ComponentClass::ComponentCategory::LightInstance)
+            {
+                const auto* Light = ClassDef.Storage.InspectLight(Hdr.Token);
+                SpawnedSlot = Panes->Outliner.ConstructFromTemplate(
+                    FindTemplateIndex(ConstructSlotCategory::PointLuminaire),
+                    EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->Category          = ConstructSlotCategory::PointLuminaire;
+                    Row->Title             = Hdr.Title;
+                    Row->CategoryLabel     = "Component · LightInstance";
+                    Row->Subtitle          = "SpotBeam · OpenPBR Direct";
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                }
+                if (Light != nullptr)
+                {
+                    bool NeedsRebuild = false;
+                    (void)GeometricRaster::SynchronizeShowcaseGallerySceneLive(Panes->Outliner, *ShowcaseBundle, NeedsRebuild);
+                    for (auto& Binding : ShowcaseBundle->AreaLightBindings)
+                    {
+                        if (Binding.SlotToken == SpawnedSlot && Binding.AreaLightIndex < ShowcaseBundle->Scene.AreaLights.size())
+                        {
+                            const float ScaleRad = std::clamp(Light->IntensityCandela / 250.0f, 1.0f, 12.0f);
+                            const Mathematics::LinearRGB Rad {
+                                Light->LinearColourRGB.X * ScaleRad,
+                                Light->LinearColourRGB.Y * ScaleRad,
+                                Light->LinearColourRGB.Z * ScaleRad,
+                            };
+                            Binding.BaseEmittedRadiance = Rad;
+                            ShowcaseBundle->Scene.AreaLights[Binding.AreaLightIndex].EmittedRadiance = Rad;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                const ConstructSlotCategory RowCat =
+                    (Hdr.Category == ComponentClass::ComponentCategory::CameraInstance)
+                        ? ConstructSlotCategory::OpticsCamera
+                        : ConstructSlotCategory::LayerGroup;
+                SpawnedSlot = Panes->Outliner.ConstructFromTemplate(FindTemplateIndex(RowCat), EncOutliner);
+                if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(SpawnedSlot))
+                {
+                    Row->Category          = RowCat;
+                    Row->Title             = Hdr.Title;
+                    Row->CategoryLabel     = "Component · " + std::string(ComponentClass::QueryCategoryLabel(Hdr.Category));
+                    Row->Subtitle          = ComponentClass::QueryCategoryLabel(Hdr.Category);
+                    Row->MotionTagText     = (Hdr.Category == ComponentClass::ComponentCategory::ConstraintInstance) ? "JOLT" : "";
+                    Row->PositionX         = LocalXform.LocationMeters.X;
+                    Row->PositionY         = LocalXform.LocationMeters.Y;
+                    Row->PositionZ         = LocalXform.LocationMeters.Z;
+                    Row->ScaleX            = LocalXform.ScaleFactors.X;
+                    Row->ScaleY            = LocalXform.ScaleFactors.Y;
+                    Row->ScaleZ            = LocalXform.ScaleFactors.Z;
+                    Row->VisibilityEnabled = Hdr.VisibilityEnabled;
+                    Row->Expanded          = true;
+                }
+            }
+
+            if (SpawnedSlot.Valid())
+            {
+                CompToOutliner.emplace_back(Hdr.Token.SlotIndex, SpawnedSlot);
+                PlacementLinks.push_back({ SpawnedSlot, PlacementTok, Hdr.Token, ClassIndex });
+            }
+        });
+
+    std::vector<ComponentClass::ComponentInstanceToken> BehaviourTokens {};
+    ClassDef.Storage.CollectBehaviourTokens(BehaviourTokens);
+    for (const auto& BehTok : BehaviourTokens)
+    {
+        if (const auto* Hdr = ClassDef.Storage.InspectHeader(BehTok))
+        {
+            const OutlinerSlotToken BehSlot = Panes->Outliner.ConstructFromTemplate(
+                FindTemplateIndex(ConstructSlotCategory::LayerGroup),
+                RootOutlinerSlot);
+            if (OutlinerRecordEntry* Row = Panes->Outliner.AccessEntry(BehSlot))
+            {
+                Row->Category      = ConstructSlotCategory::LayerGroup;
+                Row->Title         = Hdr->Title;
+                Row->CategoryLabel = "Component · Behaviour";
+                Row->Subtitle      = ComponentClass::QueryCategoryLabel(Hdr->Category);
+                Row->MotionTagText = "DRIVE";
+            }
+            if (BehSlot.Valid())
+            {
+                PlacementLinks.push_back({ BehSlot, PlacementTok, BehTok, ClassIndex });
+            }
+        }
+    }
+
+    SynchronizeShowcaseRendererAfterEdit(true);
+    Panes->Outliner.SelectSingle(RootOutlinerSlot);
+    return RootOutlinerSlot;
+}
+
+void EditorLifecycle::SynchronizeComponentPlacementOverrides()
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || PlacementLinks.empty())
+    {
+        return;
+    }
+
+    auto NearlyDiff = [](float A, float B) noexcept { return std::fabs(A - B) > 1.0e-4f; };
+    for (const OutlinerPlacementLink& Link : PlacementLinks)
+    {
+        if (Link.ClassIndex >= ComponentDefinitions.size())
+        {
+            continue;
+        }
+        const OutlinerRecordEntry* Row = Panes->Outliner.FindEntry(Link.OutlinerSlot);
+        const ComponentClass::ComponentClassDefinition& ClassDef = ComponentDefinitions[Link.ClassIndex];
+        const auto* Hdr = ClassDef.Storage.InspectHeader(Link.ComponentToken);
+        if (Row == nullptr || Hdr == nullptr || Hdr->Token == ClassDef.Storage.QueryOriginToken())
+        {
+            continue;
+        }
+
+        if (ComponentClass::QueryCategoryHasTransform(Hdr->Category))
+        {
+            const auto& AuthoredXform = Hdr->LocalTransform;
+            const bool TransformModified =
+                NearlyDiff(Row->PositionX, AuthoredXform.LocationMeters.X) ||
+                NearlyDiff(Row->PositionY, AuthoredXform.LocationMeters.Y) ||
+                NearlyDiff(Row->PositionZ, AuthoredXform.LocationMeters.Z) ||
+                NearlyDiff(Row->RotationX, AuthoredXform.RotationDegrees.X) ||
+                NearlyDiff(Row->RotationY, AuthoredXform.RotationDegrees.Y) ||
+                NearlyDiff(Row->RotationZ, AuthoredXform.RotationDegrees.Z) ||
+                NearlyDiff(Row->ScaleX, AuthoredXform.ScaleFactors.X) ||
+                NearlyDiff(Row->ScaleY, AuthoredXform.ScaleFactors.Y) ||
+                NearlyDiff(Row->ScaleZ, AuthoredXform.ScaleFactors.Z);
+            if (TransformModified)
+            {
+                auto& Delta = WorldPlacements.AcquireOverride(Link.PlacementToken, Link.ComponentToken);
+                Delta.OverrideTransform               = true;
+                Delta.LocalTransform.LocationMeters   = { Row->PositionX, Row->PositionY, Row->PositionZ };
+                Delta.LocalTransform.RotationDegrees  = { Row->RotationX, Row->RotationY, Row->RotationZ };
+                Delta.LocalTransform.ScaleFactors     = { Row->ScaleX, Row->ScaleY, Row->ScaleZ };
+            }
+        }
+        if (Row->VisibilityEnabled != Hdr->VisibilityEnabled)
+        {
+            auto& Delta = WorldPlacements.AcquireOverride(Link.PlacementToken, Link.ComponentToken);
+            Delta.OverrideVisibility = true;
+            Delta.VisibilityEnabled  = Row->VisibilityEnabled;
+        }
+    }
+}
+
+void EditorLifecycle::SynchronizeShowcaseRendererAfterEdit(bool RebuildGeometry)
+{
+    if (ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady())
+    {
+        GpuWorldRenderer->SynchronizeSceneResources(ShowcaseBundle->Scene, RebuildGeometry);
+    }
+    else if (ShowcaseRenderer != nullptr)
+    {
+        ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
+    }
+    SynchronizeShowcaseGizmoAnchor();
+    RefreshShowcaseViewportRaster();
+}
+
+void EditorLifecycle::HandleContentDropOnViewport(
+    const ContentRepositoryEntry& Entry,
+    Point2D                       DropLogicalPos,
+    Rectangle2D                   ViewportDropBounds)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const float U = std::clamp((DropLogicalPos.X - ViewportDropBounds.X) / std::max(1.0f, ViewportDropBounds.Width), 0.0f, 1.0f);
+    const float V = std::clamp((DropLogicalPos.Y - ViewportDropBounds.Y) / std::max(1.0f, ViewportDropBounds.Height), 0.0f, 1.0f);
+    const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
+    const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Entry.ContainerFormat == ".Instance" || Entry.ContainerFormat == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".Instance" || Entry.DiskPath.extension() == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".instance" || Entry.DiskPath.extension() == ".instancespace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+        std::string Diagnostic{};
+        if (InstanceEditorBridge.SpawnInstanceFromFile(
+                WorldRegister,
+                Entry.DiskPath,
+                { DropPos.X, DropPos.Y, DropPos.Z },
+                {},
+                &Diagnostic).QueryValid())
+        {
+            PendingInteractionWorldRefresh = true;
+            PendingInteractionSceneSync    = true;
+        }
+        return;
+    }
+
+    if (Entry.ContainerFormat == ".ComponentSpace" || Entry.DiskPath.extension() == ".ComponentSpace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+        (void)SpawnComponentClassPlacement(Entry.DisplayTitle, DropPos, {}, Entry.DiskPath);
+        return;
+    }
+
+    if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, U, V, 0.36f);
+        (void)GeometricRaster::ConstructShowcaseModelInOutliner(
+            Panes->Outliner,
+            *ShowcaseBundle,
+            Entry.DisplayTitle,
+            Tint,
+            DropPos,
+            {});
+        SynchronizeShowcaseRendererAfterEdit(true);
+        return;
+    }
+
+    if (Category == ContentCategory::Materials && Entry.IndexHeader.MatCapPresetMarker == 0u)
+    {
+        OutlinerSlotToken Target = GeometricRaster::PickShowcaseGalleryEntryAtUv(Panes->Outliner, *ShowcaseBundle, U, V);
+        if (!Target.Valid())
+        {
+            Target = Panes->Outliner.QueryPrimarySelection();
+        }
+        else
+        {
+            Panes->Outliner.SelectSingle(Target);
+        }
+        const MaterialSpace::SurfaceMaterial Mat = GeometricRaster::BuildMaterialFromContentPreset(Entry.DisplayTitle, Tint);
+        if (GeometricRaster::AssignShowcaseEntryMaterial(Panes->Outliner, *ShowcaseBundle, Target, Mat, Entry.DisplayTitle))
+        {
+            if (Panes->Viewport.QueryDisplaySettings().RenderEngineIndex == static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::MatCap))
+            {
+                Panes->Viewport.AccessDisplaySettings().RenderEngineIndex =
+                    static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::OpenPbrDirect);
+                Panes->Viewport.AccessDisplaySettings().DebugChannelIndex = 0u;
+            }
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+        return;
+    }
+}
+
+void EditorLifecycle::HandleContentDropOnOutliner(
+    const ContentRepositoryEntry& Entry,
+    Point2D                       DropLogicalPos,
+    Rectangle2D                   OutlinerDropBounds)
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const Rectangle2D OutlinerPhys = Panes->Outliner.QueryLastPhysicalBounds();
+    const float RelX = (DropLogicalPos.X - OutlinerDropBounds.X) / std::max(1.0f, OutlinerDropBounds.Width);
+    const float RelY = (DropLogicalPos.Y - OutlinerDropBounds.Y) / std::max(1.0f, OutlinerDropBounds.Height);
+    const Point2D PhysicalPt {
+        OutlinerPhys.X + RelX * OutlinerPhys.Width,
+        OutlinerPhys.Y + RelY * OutlinerPhys.Height,
+    };
+
+    OutlinerSlotToken HitSlot = Panes->Outliner.QuerySlotAtPhysicalPoint(PhysicalPt);
+    const ColorRgba Tint { Entry.IndexHeader.TintRed, Entry.IndexHeader.TintGreen, Entry.IndexHeader.TintBlue, 255u };
+    const ContentCategory Category = static_cast<ContentCategory>(Entry.IndexHeader.CategoryCode);
+
+    if (Entry.ContainerFormat == ".Instance" || Entry.ContainerFormat == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".Instance" || Entry.DiskPath.extension() == ".InstanceSpace" ||
+        Entry.DiskPath.extension() == ".instance" || Entry.DiskPath.extension() == ".instancespace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.62f, 0.36f);
+        const World::InstanceToken EnclosingToken = InstanceEditorBridge.QueryInstanceToken(HitSlot);
+        std::string Diagnostic{};
+        if (InstanceEditorBridge.SpawnInstanceFromFile(
+                WorldRegister,
+                Entry.DiskPath,
+                { DropPos.X, DropPos.Y, DropPos.Z },
+                EnclosingToken,
+                &Diagnostic).QueryValid())
+        {
+            PendingInteractionWorldRefresh = true;
+            PendingInteractionSceneSync    = true;
+        }
+        return;
+    }
+
+    if (Entry.ContainerFormat == ".ComponentSpace" || Entry.DiskPath.extension() == ".ComponentSpace")
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.62f, 0.36f);
+        (void)SpawnComponentClassPlacement(Entry.DisplayTitle, DropPos, HitSlot, Entry.DiskPath);
+        return;
+    }
+
+    if (Category == ContentCategory::Geometry || Category == ContentCategory::Photometry)
+    {
+        const Mathematics::Axis3D DropPos = GeometricRaster::RaycastShowcasePlacementAtUv(*ShowcaseBundle, 0.50f, 0.62f, 0.36f);
+        (void)GeometricRaster::ConstructShowcaseModelInOutliner(
+            Panes->Outliner,
+            *ShowcaseBundle,
+            Entry.DisplayTitle,
+            Tint,
+            DropPos,
+            HitSlot);
+        SynchronizeShowcaseRendererAfterEdit(true);
+        return;
+    }
+
+    if (Category == ContentCategory::Materials && Entry.IndexHeader.MatCapPresetMarker == 0u)
+    {
+        // Material assignment only targets geometry rows; environment/folder/camera rows fall back to current selection
+        const OutlinerRecordEntry* HitEntry = HitSlot.Valid() ? Panes->Outliner.FindEntry(HitSlot) : nullptr;
+        if (HitEntry == nullptr || HitEntry->Category != ConstructSlotCategory::GeometryVolume)
+        {
+            HitSlot = {};
+        }
+        if (!HitSlot.Valid())
+        {
+            HitSlot = Panes->Outliner.QueryPrimarySelection();
+        }
+        else
+        {
+            Panes->Outliner.SelectSingle(HitSlot);
+        }
+        const MaterialSpace::SurfaceMaterial Mat = GeometricRaster::BuildMaterialFromContentPreset(Entry.DisplayTitle, Tint);
+        if (GeometricRaster::AssignShowcaseEntryMaterial(Panes->Outliner, *ShowcaseBundle, HitSlot, Mat, Entry.DisplayTitle))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+        return;
+    }
+}
+
+void EditorLifecycle::SynchronizeContentBrowserColourTargets()
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
+    const Rectangle2D ViewportPhys       = Panes->Viewport.QueryLastCanvasPhysicalBounds();
+    const Rectangle2D ViewportDropBounds = BrowserPanel.MapPhysicalToLogicalBounds(ViewportPhys);
+    const Rectangle2D OutlinerPhys       = Panes->Outliner.QueryLastPhysicalBounds();
+    const Rectangle2D OutlinerDropBounds = BrowserPanel.MapPhysicalToLogicalBounds(OutlinerPhys);
+
+    const OutlinerSlotToken    PrimarySlot = Panes->Outliner.QueryPrimarySelection();
+    const OutlinerRecordEntry* Selected    = PrimarySlot.Valid() ? Panes->Outliner.FindEntry(PrimarySlot) : nullptr;
+    const std::string          TargetLabel = (Selected != nullptr) ? (Selected->Title + " BaseColor") : std::string("Active World Surface");
+
+    BrowserPanel.ClearColourSlots();
+    ColourSlotRegistration WorldSlot {};
+    WorldSlot.SlotIdentifier = "ActiveWorldSurfaceColour";
+    WorldSlot.DisplayTitle   = TargetLabel;
+    WorldSlot.ScreenBounds   = ViewportDropBounds;
+    WorldSlot.NotifyColourAssigned = [this](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry)
+    {
+        WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+        if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+        {
+            return;
+        }
+        const OutlinerSlotToken Target = ActivePanes->Outliner.QueryPrimarySelection();
+        if (GeometricRaster::AssignShowcaseEntryBaseColor(
+                ActivePanes->Outliner,
+                *ShowcaseBundle,
+                Target,
+                AssignedColor,
+                SwatchEntry.AliasName))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+    };
+    WorldSlot.NotifyColourAssignedAt = [this, ViewportDropBounds](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry, Point2D DropLogicalPos)
+    {
+        WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+        if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+        {
+            return;
+        }
+        const float U = std::clamp((DropLogicalPos.X - ViewportDropBounds.X) / std::max(1.0f, ViewportDropBounds.Width), 0.0f, 1.0f);
+        const float V = std::clamp((DropLogicalPos.Y - ViewportDropBounds.Y) / std::max(1.0f, ViewportDropBounds.Height), 0.0f, 1.0f);
+        OutlinerSlotToken Target = GeometricRaster::PickShowcaseGalleryEntryAtUv(ActivePanes->Outliner, *ShowcaseBundle, U, V);
+        if (Target.Valid())
+        {
+            ActivePanes->Outliner.SelectSingle(Target);
+        }
+        else
+        {
+            Target = ActivePanes->Outliner.QueryPrimarySelection();
+        }
+        if (GeometricRaster::AssignShowcaseEntryBaseColor(
+                ActivePanes->Outliner,
+                *ShowcaseBundle,
+                Target,
+                AssignedColor,
+                SwatchEntry.AliasName))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+    };
+    BrowserPanel.RegisterColourSlot(WorldSlot);
+
+    ColourSlotRegistration OutlinerColourSlot {};
+    OutlinerColourSlot.SlotIdentifier = "OutlinerSurfaceColour";
+    OutlinerColourSlot.DisplayTitle   = "Outliner Row Colour";
+    OutlinerColourSlot.ScreenBounds   = OutlinerDropBounds;
+    OutlinerColourSlot.NotifyColourAssignedAt = [this, OutlinerDropBounds](ColorRgba AssignedColor, const ColourSwatchEntry& SwatchEntry, Point2D DropLogicalPos)
+    {
+        WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+        if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+        {
+            return;
+        }
+        const Rectangle2D OutlinerPhysNow = ActivePanes->Outliner.QueryLastPhysicalBounds();
+        const float RelX = (DropLogicalPos.X - OutlinerDropBounds.X) / std::max(1.0f, OutlinerDropBounds.Width);
+        const float RelY = (DropLogicalPos.Y - OutlinerDropBounds.Y) / std::max(1.0f, OutlinerDropBounds.Height);
+        const Point2D PhysicalPt {
+            OutlinerPhysNow.X + RelX * OutlinerPhysNow.Width,
+            OutlinerPhysNow.Y + RelY * OutlinerPhysNow.Height,
+        };
+        OutlinerSlotToken Target = ActivePanes->Outliner.QuerySlotAtPhysicalPoint(PhysicalPt);
+        if (Target.Valid())
+        {
+            ActivePanes->Outliner.SelectSingle(Target);
+        }
+        else
+        {
+            Target = ActivePanes->Outliner.QueryPrimarySelection();
+        }
+        if (GeometricRaster::AssignShowcaseEntryBaseColor(
+                ActivePanes->Outliner,
+                *ShowcaseBundle,
+                Target,
+                AssignedColor,
+                SwatchEntry.AliasName))
+        {
+            SynchronizeShowcaseRendererAfterEdit(false);
+        }
+    };
+    BrowserPanel.RegisterColourSlot(OutlinerColourSlot);
+    BrowserPanel.FocusColourSlot("ActiveWorldSurfaceColour");
+
+    BrowserPanel.ClearMatCapSlots();
+    BrowserPanel.RegisterMatCapSlot(MatCapSlotRegistration{
+        "WorldViewportMatCap",
+        "3D World MatCap",
+        ViewportDropBounds,
+        [this](uint8_t MatCapSlot, const ContentRepositoryEntry&)
+        {
+            WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes();
+            if (ActivePanes == nullptr || ShowcaseBundle == nullptr)
+            {
+                return;
+            }
+            ActivePanes->Viewport.AccessDisplaySettings().RenderEngineIndex =
+                static_cast<uint32_t>(GeometricRaster::WorldRenderEngine::MatCap);
+            ActivePanes->Viewport.AccessDisplaySettings().DebugChannelIndex =
+                (MatCapSlot == 9u) ? 3u : 0u;
+            RefreshShowcaseViewportRaster();
+        },
+    });
+
+    BrowserPanel.ClearContentDropZones();
+    BrowserPanel.RegisterContentDropZone(ContentDropZoneRegistration{
+        "world.viewport",
+        "3D World Viewport",
+        ViewportDropBounds,
+        ContentCategory::All,
+        [this, ViewportDropBounds](const ContentRepositoryEntry& Entry, Point2D DropLogicalPos)
+        {
+            HandleContentDropOnViewport(Entry, DropLogicalPos, ViewportDropBounds);
+        },
+    });
+    BrowserPanel.RegisterContentDropZone(ContentDropZoneRegistration{
+        "world.outliner",
+        "World Outliner",
+        OutlinerDropBounds,
+        ContentCategory::All,
+        [this, OutlinerDropBounds](const ContentRepositoryEntry& Entry, Point2D DropLogicalPos)
+        {
+            HandleContentDropOnOutliner(Entry, DropLogicalPos, OutlinerDropBounds);
+        },
+    });
+}
+
+void EditorLifecycle::RefreshGizmoOverlayFromCachedWorld()
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr)
+    {
+        return;
+    }
+
+    const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool UseGpuViewport =
+        GpuReady &&
+        StartupConfig.ImGuiPresenter != nullptr &&
+        WorldGizmoRasterizer != nullptr &&
+        WorldGizmoRasterizer->QueryReady() &&
+        WorldGizmoRasterizer->QueryGpuCompositeSupported();
+
+    if (UseGpuViewport)
+    {
+        if (LastWorldImageView == VK_NULL_HANDLE || LastTargetWidthPx == 0u || LastTargetHeightPx == 0u)
+        {
+            RefreshShowcaseViewportRaster();
+            return;
+        }
+
+        SynchronizeShowcaseGizmoAnchor();
+
+        const Rectangle2D CanvasBounds = Panes->Viewport.QueryLastCanvasPaneBounds();
+        const bool CursorInCanvas = PointerTrackingValid && CanvasBounds.Width >= 16.0f &&
+                                    CanvasBounds.Height >= 16.0f && CanvasBounds.Contains(LastPointerPosition);
+        uint32_t PickX = LastTargetWidthPx / 2u;
+        uint32_t PickY = LastTargetHeightPx / 2u;
+        if (CursorInCanvas)
+        {
+            const float RawU = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
+            const float RawV = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+            const float SrcAspect = static_cast<float>(std::max(1u, LastTargetWidthPx)) / static_cast<float>(std::max(1u, LastTargetHeightPx));
+            const float TgtAspect = CanvasBounds.Width / std::max(1.0f, CanvasBounds.Height);
+            Point2D     UvMin{ 0.0f, 0.0f };
+            Point2D     UvMax{ 1.0f, 1.0f };
+            if (TgtAspect > SrcAspect)
+            {
+                const float CropH = SrcAspect / TgtAspect;
+                UvMin.Y           = 0.5f * (1.0f - CropH);
+                UvMax.Y           = 1.0f - UvMin.Y;
+            }
+            else if (SrcAspect > TgtAspect)
+            {
+                const float CropW = TgtAspect / SrcAspect;
+                UvMin.X           = 0.5f * (1.0f - CropW);
+                UvMax.X           = 1.0f - UvMin.X;
+            }
+            const float U = std::clamp(UvMin.X + RawU * (UvMax.X - UvMin.X), 0.0f, 1.0f);
+            const float V = std::clamp(UvMin.Y + RawV * (UvMax.Y - UvMin.Y), 0.0f, 1.0f);
+            PickX = static_cast<uint32_t>(U * static_cast<float>(std::max(1u, LastTargetWidthPx) - 1u));
+            PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, LastTargetHeightPx) - 1u));
+        }
+
+        VkImageView ComposedWorldView = LastWorldImageView;
+#if FRONTIER_SIM_OVERLAY_HAS_VULKAN
+        {
+            const auto& Cam = ShowcaseBundle->EditorCamera;
+            SimulationSpace::SimulationOverlayCamera SimCam {};
+            SimCam.EyeMeters       = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
+            SimCam.TargetMeters    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
+            SimCam.UpAxis          = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
+            SimCam.VerticalFovRad  = Cam.VerticalFovRadians;
+            SimCam.NearPlaneMeters = Cam.NearClipMeters;
+            SimCam.FarPlaneMeters  = Cam.FarClipMeters;
+            ComposedWorldView = SimulationAdapter.CompositeOverWorldImage(
+                WorldSimulation, LastWorldImageView, LastTargetWidthPx, LastTargetHeightPx, SimCam);
+        }
+#endif
+
+        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
+        CompReq.WorldSourceView      = ComposedWorldView;
+        CompReq.TargetWidthPx        = LastTargetWidthPx;
+        CompReq.TargetHeightPx       = LastTargetHeightPx;
+        CompReq.Camera               = ShowcaseBundle->EditorCamera;
+        CompReq.Gizmo3D              = &WorldTransformGizmo;
+        CompReq.DrawGizmo            = LastGizmoSlot.Valid();
+        CompReq.RequestPickPatch     = false;
+        CompReq.PickCursorX          = PickX;
+        CompReq.PickCursorY          = PickY;
+
+        GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayResult CompOut {};
+        const auto GizmoStart = std::chrono::steady_clock::now();
+        const bool CompOk = WorldGizmoRasterizer->CompositeOntoGpuViewport(CompReq, CompOut);
+        const auto GizmoEnd = std::chrono::steady_clock::now();
+        LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+
+        if (CompOk && CompOut.ColorImageView != VK_NULL_HANDLE)
+        {
+            const uint64_t NativeTex = StartupConfig.ImGuiPresenter->RegisterOrUpdateExternalImage(
+                0x46525456503031ull,
+                CompOut.ImageGeneration,
+                CompOut.ColorImageView);
+            if (NativeTex != 0ull)
+            {
+                Panes->Viewport.AssignCanvasGpuTexture(NativeTex, CompOut.WidthPx, CompOut.HeightPx);
+                return;
+            }
+        }
+    }
+
+    if (CachedWorldRgba8.empty() || CachedWorldWidthPx == 0u || CachedWorldHeightPx == 0u)
+    {
+        RefreshShowcaseViewportRaster();
+        return;
+    }
+
+    SynchronizeShowcaseGizmoAnchor();
+    std::vector<uint8_t> ViewportRgba = CachedWorldRgba8;
+
+    const auto GizmoStart = std::chrono::steady_clock::now();
+    if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
+    {
+        (void)WorldGizmoRasterizer->RasterizeGizmoOntoWorldBuffer(
+            ViewportRgba,
+            CachedWorldWidthPx,
+            CachedWorldHeightPx,
+            ShowcaseBundle->EditorCamera,
+            WorldTransformGizmo);
+    }
+    const auto GizmoEnd = std::chrono::steady_clock::now();
+    LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
+        std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+    Panes->Viewport.AssignCanvasRasterImage(ViewportRgba.data(), CachedWorldWidthPx, CachedWorldHeightPx);
+}
+
+void EditorLifecycle::RefreshShowcaseViewportRaster()
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr || ShowcaseBundle == nullptr || ShowcaseRenderer == nullptr)
+    {
+        return;
+    }
+
+    const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
+    const bool  GpuReady   = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool  HwGpu      = GpuReady && GpuWorldRenderer->QueryHardwareGpuActive();
+    const bool  UseGpuViewport =
+        GpuReady &&
+        StartupConfig.ImGuiPresenter != nullptr &&
+        WorldGizmoRasterizer != nullptr &&
+        WorldGizmoRasterizer->QueryReady() &&
+        WorldGizmoRasterizer->QueryGpuCompositeSupported();
+
+    const uint32_t TraceResIdx = DisplayCfg.TraceResolutionIndex % 3u;
+    const uint32_t TraceDiv    = (TraceResIdx == 2u) ? 4u : ((TraceResIdx == 1u) ? 2u : 1u);
+
+    uint32_t TargetW = 320u;
+    uint32_t TargetH = 190u;
+    const Rectangle2D CanvasBounds = Panes->Viewport.QueryLastCanvasPaneBounds();
+    if (CanvasBounds.Width >= 120.0f && CanvasBounds.Height >= 90.0f)
+    {
+        const float Aspect    = std::clamp(CanvasBounds.Width / CanvasBounds.Height, 0.5f, 3.2f);
+        const float ScaleNorm = std::clamp(DisplayCfg.RenderScalePercent / 100.0f, 0.50f, 1.50f);
+        if (HwGpu)
+        {
+            const float DesiredW = (UseGpuViewport ? 960.0f : (CameraInteractiveDrag ? 680.0f : 960.0f)) * ScaleNorm;
+            TargetW              = static_cast<uint32_t>(std::clamp(std::round(DesiredW), 320.0f, 1600.0f));
+        }
+        else
+        {
+            const float DesiredW = (UseGpuViewport ? 384.0f : (CameraInteractiveDrag ? 280.0f : 384.0f)) * ScaleNorm;
+            TargetW              = static_cast<uint32_t>(std::clamp(std::round(DesiredW), 192.0f, 640.0f));
+        }
+        TargetH = std::max(140u, static_cast<uint32_t>(std::round(static_cast<float>(TargetW) / Aspect)));
+        TargetW = std::max(192u, static_cast<uint32_t>(std::round(static_cast<float>(TargetH) * Aspect)));
+    }
+    else if (HwGpu)
+    {
+        TargetW = 960u;
+        TargetH = 640u;
+    }
+
+    const uint32_t TraceW = std::max(96u, (TargetW + TraceDiv - 1u) / TraceDiv);
+    const uint32_t TraceH = std::max(70u, (TargetH + TraceDiv - 1u) / TraceDiv);
+
+    ShowcaseBundle->EditorCamera.ViewportWidthPx  = UseGpuViewport ? TargetW : TraceW;
+    ShowcaseBundle->EditorCamera.ViewportHeightPx = UseGpuViewport ? TargetH : TraceH;
+    // Live Camera Inspector optics binding (zero CPU overhead — pure focal/sensor FOV evaluation)
+    {
+        const float SafeFocal  = std::clamp(DisplayCfg.CameraFocalLengthMm, 12.0f, 200.0f);
+        const float SafeSensor = std::clamp(DisplayCfg.CameraSensorWidthMm, 12.0f, 70.0f);
+        const float Aspect     = static_cast<float>(std::max(1u, TargetW)) / static_cast<float>(std::max(1u, TargetH));
+        const float SensorH    = SafeSensor / std::max(0.5f, Aspect);
+        ShowcaseBundle->EditorCamera.VerticalFovRadians =
+            std::clamp(2.0f * std::atan(SensorH / (2.0f * SafeFocal)), 0.14f, 2.10f);
+    }
+
+    const uint32_t QTier = std::min(4u, DisplayCfg.QualityTier);
+
+    GeometricRaster::WorldRenderConfiguration RenderConfig {};
+    RenderConfig.Engine           = static_cast<GeometricRaster::WorldRenderEngine>(std::min(5u, DisplayCfg.RenderEngineIndex));
+    RenderConfig.ShadowAlgorithm  = static_cast<GeometricRaster::SolarShadowAlgorithm>(std::min(4u, DisplayCfg.ShadowAlgorithmIndex));
+    RenderConfig.SdfPenumbraMode  = static_cast<GeometricRaster::DirectLighting::SdfShadowPenumbraMode>(std::min(5u, DisplayCfg.SdfShadowPenumbraIndex));
+    RenderConfig.ReflectionSource = (DisplayCfg.ReflectionsEnabled && DisplayCfg.RaytracingEnabled && DisplayCfg.ReflectionSourceIndex == 0u)
+        ? GeometricRaster::SpecularReflectionSource::WideTreeRaytrace
+        : GeometricRaster::SpecularReflectionSource::SkyEnvironment;
+    RenderConfig.DebugChannel           = std::min(22u, DisplayCfg.DebugChannelIndex);
+    RenderConfig.GiCandidate            = (DisplayCfg.GiCandidateIndex == 0u)
+        ? GeometricRaster::RealTimeGiCandidate::StokesContour
+        : GeometricRaster::RealTimeGiCandidate::SurfelRadiosity;
+    RenderConfig.XeGtaoEnabled          = DisplayCfg.XeGtaoEnabled;
+    RenderConfig.XeGtaoStrength         = DisplayCfg.XeGtaoStrength;
+    RenderConfig.XeGtaoSliceCount       = std::clamp(DisplayCfg.XeGtaoSliceCount, 2u, 8u);
+    RenderConfig.XeGtaoStepsPerSide     = std::clamp(DisplayCfg.XeGtaoStepsPerSide, 2u, 8u);
+    RenderConfig.XeGtaoSearchRadiusM    = std::clamp(DisplayCfg.XeGtaoSearchRadiusM, 0.25f, 3.0f);
+    RenderConfig.SdfConeSteps           = std::clamp(DisplayCfg.SdfConeSteps, 3u, 12u);
+    RenderConfig.SdfGiIntensity         = std::clamp(DisplayCfg.SdfGiIntensity, 0.0f, 2.5f);
+    RenderConfig.SdfAoRadiusM           = std::clamp(DisplayCfg.SdfAoRadiusM, 0.35f, 3.5f);
+    RenderConfig.SdfAoContrast          = std::clamp(DisplayCfg.SdfAoContrast, 0.40f, 3.5f);
+    RenderConfig.MatcapChannelIndex     = std::min(3u, DisplayCfg.MatcapChannelIndex);
+    RenderConfig.MatcapRimGain          = std::clamp(DisplayCfg.MatcapRimGain, 0.0f, 1.0f);
+    RenderConfig.PathTraceSamples       = std::clamp(DisplayCfg.PathTraceBatchSpp, 1u, 8u);
+    RenderConfig.PathTraceTargetSpp     = DisplayCfg.PathTraceTargetSpp;
+    RenderConfig.PathTraceMaxBounces    = std::clamp(DisplayCfg.PathTraceMaxBounces, 1u, 8u);
+    RenderConfig.SmrtShadowRays         = std::clamp(DisplayCfg.SmrtShadowRays, 1u, 8u);
+    RenderConfig.SmrtMarchSteps         = std::clamp(DisplayCfg.SmrtMarchSteps, 4u, 16u);
+    RenderConfig.SkyFillGain            = std::clamp(DisplayCfg.SkyFillGain, 0.0f, 3.0f);
+    RenderConfig.ExposureGain           = std::clamp(DisplayCfg.ExposureGain, 0.0625f, 16.0f);
+    RenderConfig.PostProcessSaturation  = std::clamp(DisplayCfg.PostProcessSaturation, 0.0f, 2.0f);
+    RenderConfig.PostProcessContrast    = std::clamp(DisplayCfg.PostProcessContrast, 0.5f, 2.0f);
+    RenderConfig.PostProcessVignette    = std::clamp(DisplayCfg.PostProcessVignette, 0.0f, 1.0f);
+    RenderConfig.MotionBlurEnabled      = DisplayCfg.MotionBlurEnabled;
+    RenderConfig.MotionBlurStyleIndex   = std::min(2u, DisplayCfg.MotionBlurStyleIndex);
+    RenderConfig.MotionBlurShutterAngleDeg = std::clamp(DisplayCfg.MotionBlurShutterAngleDeg, 1.0f, 360.0f);
+    RenderConfig.MotionBlurIntensity    = std::clamp(DisplayCfg.MotionBlurIntensity, 0.0f, 2.5f);
+    RenderConfig.MotionBlurMaxRadiusPx  = std::clamp(DisplayCfg.MotionBlurMaxRadiusPx, 2.0f, 48.0f);
+    RenderConfig.MotionBlurSampleCount  = std::clamp(DisplayCfg.MotionBlurSampleCount, 4u, 16u);
+    RenderConfig.MotionBlurDirectionalAngleRad = DisplayCfg.MotionBlurDirectionalAngleRad;
+    RenderConfig.NaniteLodEnabled       = DisplayCfg.ClusterLodEnabled;
+    RenderConfig.NanitePixelError       = DisplayCfg.ClusterLodPixelError;
+    RenderConfig.NaniteForcedLodLevel   = DisplayCfg.ClusterForcedLodLevel;
+    RenderConfig.NaniteWireframeOverlay = DisplayCfg.ClusterWireframeOverlay;
+    RenderConfig.QualityTier            = QTier;
+    RenderConfig.ReflectionsEnabled     = DisplayCfg.ReflectionsEnabled;
+    RenderConfig.RaytracingEnabled      = DisplayCfg.RaytracingEnabled;
+    RenderConfig.SelectedClusterInstanceIndex = UINT32_MAX;
+    RenderConfig.SelectionOutlineColor        = { 1.00f, 0.58f, 0.08f };
+    RenderConfig.SelectionOutlineWidthPx      = 2.0f;
+    {
+        const OutlinerSlotToken PrimarySel = Panes->Outliner.QueryPrimarySelection();
+        LastOutlinedSlot                   = PrimarySel;
+        if (PrimarySel.Valid())
+        {
+            for (const auto& Obj : ShowcaseBundle->Objects)
+            {
+                if (Obj.SlotToken == PrimarySel && Obj.StableIdentifier != "ground-plane")
+                {
+                    if (Obj.ClusterInstanceIndex < ShowcaseBundle->Scene.ClusterInstances.size())
+                    {
+                        RenderConfig.SelectedClusterInstanceIndex = Obj.ClusterInstanceIndex;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    std::vector<uint8_t> CleanWorldRgba {};
+    uint32_t             OutWidthPx     = TraceW;
+    uint32_t             OutHeightPx    = TraceH;
+    bool                 RenderedOnGpu  = false;
+    bool                 GpuCompositeDone = false;
+
+    if (UseGpuViewport)
+    {
+        auto TraceCam = ShowcaseBundle->EditorCamera;
+        TraceCam.ViewportWidthPx  = TraceW;
+        TraceCam.ViewportHeightPx = TraceH;
+        VkImageView WorldView = VK_NULL_HANDLE;
+        uint32_t    TracedW   = 0u;
+        uint32_t    TracedH   = 0u;
+        if (GpuWorldRenderer->RenderWorldViewportToGpuImage(
+                RenderConfig,
+                0u,
+                TraceCam,
+                ShowcaseBundle->Scene,
+                WorldView,
+                TracedW,
+                TracedH) && WorldView != VK_NULL_HANDLE)
+        {
+            RenderedOnGpu = true;
+            LastWorldImageView = WorldView;
+            LastTargetWidthPx  = TargetW;
+            LastTargetHeightPx = TargetH;
+
+            const float SavedTickMs = LatestViewportTiming.EditorTickMs;
+            LatestViewportTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
+            LatestViewportTiming.EditorTickMs = SavedTickMs;
+
+            SynchronizeShowcaseGizmoAnchor();
+            const bool CursorInCanvas = PointerTrackingValid && CanvasBounds.Width >= 16.0f &&
+                                        CanvasBounds.Height >= 16.0f && CanvasBounds.Contains(LastPointerPosition);
+            uint32_t PickX = TargetW / 2u;
+            uint32_t PickY = TargetH / 2u;
+            if (CursorInCanvas)
+            {
+                const float RawU = std::clamp((LastPointerPosition.X - CanvasBounds.X) / CanvasBounds.Width, 0.0f, 1.0f);
+                const float RawV = std::clamp((LastPointerPosition.Y - CanvasBounds.Y) / CanvasBounds.Height, 0.0f, 1.0f);
+                const float SrcAspect = static_cast<float>(std::max(1u, TargetW)) / static_cast<float>(std::max(1u, TargetH));
+                const float TgtAspect = CanvasBounds.Width / std::max(1.0f, CanvasBounds.Height);
+                Point2D     UvMin{ 0.0f, 0.0f };
+                Point2D     UvMax{ 1.0f, 1.0f };
+                if (TgtAspect > SrcAspect)
+                {
+                    const float CropH = SrcAspect / TgtAspect;
+                    UvMin.Y           = 0.5f * (1.0f - CropH);
+                    UvMax.Y           = 1.0f - UvMin.Y;
+                }
+                else if (SrcAspect > TgtAspect)
+                {
+                    const float CropW = TgtAspect / SrcAspect;
+                    UvMin.X           = 0.5f * (1.0f - CropW);
+                    UvMax.X           = 1.0f - UvMin.X;
+                }
+                const float U = std::clamp(UvMin.X + RawU * (UvMax.X - UvMin.X), 0.0f, 1.0f);
+                const float V = std::clamp(UvMin.Y + RawV * (UvMax.Y - UvMin.Y), 0.0f, 1.0f);
+                PickX = static_cast<uint32_t>(U * static_cast<float>(std::max(1u, TargetW) - 1u));
+                PickY = static_cast<uint32_t>(V * static_cast<float>(std::max(1u, TargetH) - 1u));
+            }
+
+            VkImageView ComposedWorldView = WorldView;
+#if FRONTIER_SIM_OVERLAY_HAS_VULKAN
+            {
+                const auto& Cam = ShowcaseBundle->EditorCamera;
+                SimulationSpace::SimulationOverlayCamera SimCam {};
+                SimCam.EyeMeters       = { Cam.CameraOrigin.X, Cam.CameraOrigin.Y, Cam.CameraOrigin.Z };
+                SimCam.TargetMeters    = { Cam.TargetPoint.X,  Cam.TargetPoint.Y,  Cam.TargetPoint.Z };
+                SimCam.UpAxis          = { Cam.WorldUpAxis.X,  Cam.WorldUpAxis.Y,  Cam.WorldUpAxis.Z };
+                SimCam.VerticalFovRad  = Cam.VerticalFovRadians;
+                SimCam.NearPlaneMeters = Cam.NearClipMeters;
+                SimCam.FarPlaneMeters  = Cam.FarClipMeters;
+                ComposedWorldView = SimulationAdapter.CompositeOverWorldImage(
+                    WorldSimulation, WorldView, TargetW, TargetH, SimCam);
+            }
+#endif
+
+            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayRequest CompReq {};
+            CompReq.WorldSourceView      = ComposedWorldView;
+            CompReq.TargetWidthPx        = TargetW;
+            CompReq.TargetHeightPx       = TargetH;
+            CompReq.Camera               = ShowcaseBundle->EditorCamera;
+            CompReq.Gizmo3D              = &WorldTransformGizmo;
+            CompReq.DrawGizmo            = LastGizmoSlot.Valid();
+            CompReq.RequestPickPatch     = false;
+            CompReq.PickCursorX          = PickX;
+            CompReq.PickCursorY          = PickY;
+
+            GeometricRaster::WorldGizmoOverlayRasterization::GpuViewportOverlayResult CompOut {};
+            const auto GizmoStart = std::chrono::steady_clock::now();
+            const bool CompOk = WorldGizmoRasterizer->CompositeOntoGpuViewport(CompReq, CompOut);
+            const auto GizmoEnd = std::chrono::steady_clock::now();
+            LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+
+            if (CompOk && CompOut.ColorImageView != VK_NULL_HANDLE)
+            {
+                const uint64_t NativeTex = StartupConfig.ImGuiPresenter->RegisterOrUpdateExternalImage(
+                    0x46525456503031ull,
+                    CompOut.ImageGeneration,
+                    CompOut.ColorImageView);
+                if (NativeTex != 0ull)
+                {
+                    Panes->Viewport.AssignCanvasGpuTexture(NativeTex, CompOut.WidthPx, CompOut.HeightPx);
+                    GpuCompositeDone = true;
+                }
+            }
+        }
+    }
+    else if (GpuReady)
+    {
+        RenderedOnGpu = GpuWorldRenderer->RenderWorldViewportWithEngine(
+            RenderConfig,
+            0u,
+            ShowcaseBundle->EditorCamera,
+            ShowcaseBundle->Scene,
+            CleanWorldRgba);
+        if (RenderedOnGpu)
+        {
+            const float SavedTickMs = LatestViewportTiming.EditorTickMs;
+            LatestViewportTiming = GpuWorldRenderer->QueryLastTimingBreakdown();
+            LatestViewportTiming.EditorTickMs = SavedTickMs;
+        }
+    }
+
+    if (RenderedOnGpu && GpuWorldRenderer != nullptr && DisplayCfg.RenderEngineIndex < 4u)
+    {
+        // Live Nanite proof in the viewport footer: triangles actually traced vs full-res scene.
+        const auto& LodStats = GpuWorldRenderer->QueryNaniteLodStats();
+        char LodReadout[128] {};
+        if (LodStats.Enabled)
+        {
+            std::snprintf(
+                LodReadout, sizeof(LodReadout), "Nanite LOD %u tris · %u clusters (full %u)",
+                LodStats.ActiveTriangleCount, LodStats.ActiveClusterCount, LodStats.FullTriangleCount);
+        }
+        else
+        {
+            std::snprintf(LodReadout, sizeof(LodReadout), "Nanite LOD off · %u tris full-res", LodStats.FullTriangleCount);
+        }
+        Panes->Viewport.ConfigureProbeReadoutText(LodReadout);
+    }
+
+    if (!RenderedOnGpu)
+    {
+        if (GpuReady)
+        {
+            std::fprintf(stderr, "[FrontierEditor] GPU world compute failed; skipping CPU fallback to protect desktop responsiveness.\n");
+            return;
+        }
+        auto CpuOutput = ShowcaseRenderer->RenderWorldFrameWithEngine(
+            RenderConfig,
+            ShowcaseBundle->EditorCamera,
+            ShowcaseBundle->EditorCamera,
+            ShowcaseBundle->Scene);
+        OutWidthPx     = CpuOutput.WidthPx;
+        OutHeightPx    = CpuOutput.HeightPx;
+        CleanWorldRgba = std::move(CpuOutput.DisplayRgba8);
+    }
+
+    if (!GpuCompositeDone)
+    {
+        CachedWorldRgba8    = CleanWorldRgba;
+        CachedWorldWidthPx  = OutWidthPx;
+        CachedWorldHeightPx = OutHeightPx;
+
+        SynchronizeShowcaseGizmoAnchor();
+        const auto GizmoStart = std::chrono::steady_clock::now();
+        if (WorldGizmoRasterizer != nullptr && WorldGizmoRasterizer->QueryReady() && LastGizmoSlot.Valid())
+        {
+            (void)WorldGizmoRasterizer->RasterizeGizmoOntoWorldBuffer(
+                CleanWorldRgba,
+                OutWidthPx,
+                OutHeightPx,
+                ShowcaseBundle->EditorCamera,
+                WorldTransformGizmo);
+        }
+        const auto GizmoEnd = std::chrono::steady_clock::now();
+        LatestViewportTiming.GizmoOverlayMs = static_cast<float>(
+            std::chrono::duration<double, std::milli>(GizmoEnd - GizmoStart).count());
+
+        Panes->Viewport.AssignCanvasRasterImage(CleanWorldRgba.data(), OutWidthPx, OutHeightPx);
+    }
+
+    RefreshOutlinerFooterTelemetry();
+}
+
+void EditorLifecycle::RefreshOutlinerFooterTelemetry() noexcept
+{
+    WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes();
+    if (Panes == nullptr)
+    {
+        return;
+    }
+
+    const auto& DisplayCfg = Panes->Viewport.QueryDisplaySettings();
+    const bool  GpuReady   = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+    const bool  HwGpu      = GpuReady && GpuWorldRenderer->QueryHardwareGpuActive();
+
+    const OutlinerFooterReadings PriorFooter = Panes->Outliner.QueryFooterReadings();
+    OutlinerFooterReadings       Footer      = PriorFooter;
+    const char* EngineShortTag = "OpenPBR";
+    switch (DisplayCfg.RenderEngineIndex)
+    {
+    case 0u: EngineShortTag = "MatCap";   break;
+    case 1u: EngineShortTag = "OpenPBR";  break;
+    case 2u: EngineShortTag = "GTX GI";   break;
+    case 3u: EngineShortTag = "BVH4 GI";  break;
+    case 4u: EngineShortTag = "PT RT";    break;
+    case 5u: EngineShortTag = "PT Final"; break;
+    default: EngineShortTag = "GTX GI";   break;
+    }
+
+    const float LiveIntervalMs = (LatestViewportTiming.TotalFrameMs > 0.01f)
+        ? LatestViewportTiming.TotalFrameMs
+        : static_cast<float>(std::max(0.0001, CurrentStepSeconds) * 1000.0);
+    const int EstFps = std::clamp(static_cast<int>(std::lround(1000.0f / std::max(0.05f, LiveIntervalMs))), 1, 9999);
+    char FpsBuf[32]{};
+    std::snprintf(FpsBuf, sizeof(FpsBuf), "%d fps", EstFps);
+    Footer.RealtimeText = FpsBuf;
+    Footer.QualityText  = GpuReady
+        ? (std::string(HwGpu ? "GPU " : "VK ") + EngineShortTag)
+        : (std::string("CPU ") + EngineShortTag);
+
+    if (ShowcaseBundle != nullptr)
+    {
+        const float SunElevDeg = std::asin(std::clamp(ShowcaseBundle->Scene.Sun.DirectionToSun.Z, -1.0f, 1.0f)) * 57.2957795f;
+        uint32_t    ActiveLtc  = 0u;
+        for (const auto& Quad : ShowcaseBundle->Scene.AreaLights)
+        {
+            if (Quad.EmittedRadiance.R + Quad.EmittedRadiance.G + Quad.EmittedRadiance.B > 0.01f)
+            {
+                ++ActiveLtc;
+            }
+        }
+        char SunBuf[32]{};
+        std::snprintf(SunBuf, sizeof(SunBuf), "Sun %.0f°", std::max(0.0f, SunElevDeg));
+        Footer.PrimarySlot = SunBuf;
+        char LtcBuf[32]{};
+        std::snprintf(LtcBuf, sizeof(LtcBuf), "LTC %u", ActiveLtc);
+        Footer.SecondarySlot = LtcBuf;
+        char CamBuffer[48]{};
+        std::snprintf(
+            CamBuffer,
+            sizeof(CamBuffer),
+            "%.1f, %.1f, %.1f",
+            ShowcaseBundle->EditorCamera.CameraOrigin.X,
+            ShowcaseBundle->EditorCamera.CameraOrigin.Y,
+            ShowcaseBundle->EditorCamera.CameraOrigin.Z);
+        Footer.CameraText = CamBuffer;
+    }
+    if (Footer.RealtimeText  != PriorFooter.RealtimeText  ||
+        Footer.QualityText   != PriorFooter.QualityText   ||
+        Footer.PrimarySlot   != PriorFooter.PrimarySlot   ||
+        Footer.SecondarySlot != PriorFooter.SecondarySlot ||
+        Footer.CameraText    != PriorFooter.CameraText)
+    {
+        Panes->Outliner.ConfigureFooterReadings(Footer);
+    }
+}
+
+bool EditorLifecycle::ExecuteExternalDesktopTick(double Δt)
+{
+    if (!Initialized || TerminationRequested)
+    {
+        return false;
+    }
+
+    FRONTIER_THOUGHT_SCOPE("Editor.Tick");
+    const auto TickStart = std::chrono::steady_clock::now();
+    LatestViewportTiming.WorldDispatched = false;
+    LatestViewportTiming.GizmoOverlayMs  = 0.0f;
+    LatestViewportTiming.SceneSyncGpuMs  = 0.0f;
+
+    const double MaxStep  = StartupConfig.MaximumStep > 0.0 ? StartupConfig.MaximumStep : 0.100;
+    const double SafeStep = (std::isfinite(Δt) && Δt > 0.0) ? std::min(Δt, MaxStep) : 0.0;
+    CurrentStepSeconds    = SafeStep;
+
+    Workspaces.Tick(SafeStep);
+    bool WorldSimStepped = false;
+    {
+        SimulationSpace::EditorSimulationToolbarState TbState {};
+        TbState.DeltaSeconds      = SafeStep;
+        TbState.CameraWorldMeters = { DesiredCameraOrigin.X, DesiredCameraOrigin.Y, DesiredCameraOrigin.Z };
+        if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+        {
+            TbState.PlayOrSimulateActive = (ActivePanes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit);
+            TbState.Paused               = ActivePanes->Viewport.QueryPlayPaused();
+            TbState.StepRequested        = ActivePanes->Viewport.ConsumeSimulationStepRequest();
+        }
+        WorldSimStepped = SimulationAdapter.SynchronizeToolbarControls(
+            WorldSimulation,
+            TbState,
+            [this]() { return BeginWorldSimulationPlay(); });
+    }
+    if (ShowcaseBundle != nullptr)
+    {
+        if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+        {
+            const OutlinerSlotToken CurrentSel = Panes->Outliner.QueryPrimarySelection();
+            const Rectangle2D       CanvasRect = Panes->Viewport.QueryLastCanvasPaneBounds();
+            auto&                   DisplayCfg = Panes->Viewport.AccessDisplaySettings();
+            const uint32_t          CurCanvasW = static_cast<uint32_t>(std::max(0.0f, std::round(CanvasRect.Width)));
+            const uint32_t          CurCanvasH = static_cast<uint32_t>(std::max(0.0f, std::round(CanvasRect.Height)));
+            const int32_t           CurScale   = static_cast<int32_t>(std::lround(DisplayCfg.RenderScalePercent));
+
+            auto& Atmo = ShowcaseBundle->Scene.Atmosphere;
+            if (DisplayCfg.DayCyclePlaying && SafeStep > 0.0)
+            {
+                Atmo.Solar.CycleAnimationEnabled = true;
+                GeometricRaster::CelestialEphemerisSolver::AdvanceDayCycleHours(Atmo.Solar, SafeStep);
+                DisplayCfg.SolarTimeOfDayHours = Atmo.Solar.LocalHours;
+            }
+            const bool AtmoAnimTick =
+                DisplayCfg.AtmosphereSkyEnabled &&
+                DisplayCfg.DayCyclePlaying &&
+                SafeStep > 0.0;
+            if (AtmoAnimTick)
+            {
+                Atmo.SimulationSeconds += static_cast<float>(SafeStep);
+            }
+
+            const bool ViewportTogglesChanged =
+                DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky ||
+                DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled ||
+                DisplayCfg.CloudShadowsEnabled != LastCloudShadowsEnabled ||
+                DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled ||
+                std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f ||
+                std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f ||
+                std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f;
+
+            auto MirrorToggleToRegistry = [&](WorldEnvironmentCategory Category, bool WantEnabled)
+            {
+                bool FoundExisting = false;
+                for (const RegisteredEnvironmentEntry& Reg : EnvironmentRegistry.QueryRegisteredEntries())
+                {
+                    if (Reg.Category == Category)
+                    {
+                        FoundExisting = true;
+                        if (OutlinerRecordEntry* Rec = Panes->Outliner.AccessEntry(Reg.Token))
+                        {
+                            Rec->VisibilityEnabled = WantEnabled;
+                        }
+                    }
+                }
+                if (!FoundExisting && WantEnabled)
+                {
+                    EnvironmentRegistry.RegisterCategory(
+                        Category,
+                        "",
+                        Panes->Outliner,
+                        ShowcaseBundle->Scene,
+                        &DisplayCfg);
+                    EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
+                }
+            };
+
+            if (DisplayCfg.AtmosphereSkyEnabled != LastAtmosphereSky)
+            {
+                Atmo.Medium.AtmosphereEnabled = DisplayCfg.AtmosphereSkyEnabled;
+                MirrorToggleToRegistry(WorldEnvironmentCategory::Atmosphere, DisplayCfg.AtmosphereSkyEnabled);
+            }
+            if (DisplayCfg.VolumetricCloudsEnabled != LastCloudsEnabled)
+            {
+                Atmo.Clouds.CloudsEnabled = DisplayCfg.VolumetricCloudsEnabled;
+                MirrorToggleToRegistry(WorldEnvironmentCategory::Clouds, DisplayCfg.VolumetricCloudsEnabled);
+            }
+            if (DisplayCfg.CloudShadowsEnabled != LastCloudShadowsEnabled)
+            {
+                Atmo.Clouds.CloudShadow.ShadowEnabled = DisplayCfg.CloudShadowsEnabled;
+            }
+            if (std::fabs(DisplayCfg.CloudFraction - LastCloudFraction) > 1.0e-3f)
+            {
+                Atmo.Clouds.CloudFraction = DisplayCfg.CloudFraction;
+            }
+            if (std::fabs(DisplayCfg.CloudWindSpeedMps - LastCloudWindSpeedMps) > 1.0e-2f)
+            {
+                Atmo.Clouds.WindSpeedMetersPerSecond = DisplayCfg.CloudWindSpeedMps;
+                Atmo.Clouds.FollowWindEnabled        = (DisplayCfg.CloudWindSpeedMps > 0.01f);
+                Atmo.Wind.SpeedMetersPerSecond       = std::max(Atmo.Wind.SpeedMetersPerSecond, DisplayCfg.CloudWindSpeedMps);
+            }
+            if (DisplayCfg.CelestialStarsEnabled != LastCelestialsEnabled)
+            {
+                Atmo.Stars.StarfieldEnabled = DisplayCfg.CelestialStarsEnabled;
+                MirrorToggleToRegistry(WorldEnvironmentCategory::Stars, DisplayCfg.CelestialStarsEnabled);
+            }
+            if (std::fabs(DisplayCfg.SolarTimeOfDayHours - LastSolarTimeHours) > 1.0e-3f)
+            {
+                Atmo.Solar.LocalHours = DisplayCfg.SolarTimeOfDayHours;
+            }
+            Atmo.Solar.CycleAnimationEnabled = DisplayCfg.DayCyclePlaying;
+
+            // Authoritative Outliner -> WorldScene environment sync (handles Hide/Show/Isolate/Delete/Construct)
+            const auto EnvSyncStart = std::chrono::steady_clock::now();
+            const bool EnvRegistryChanged = EnvironmentRegistry.SyncToWorld(
+                Panes->Outliner,
+                ShowcaseBundle->Scene,
+                &Panes->Viewport.AccessDisplaySettings());
+            if (EnvRegistryChanged)
+            {
+                EnvironmentRegistry.RefreshViewportConstructRegistry(Panes->Viewport);
+            }
+
+            // Detect Outliner visibility/structure changes (eye toggle, add/remove of fog/flare/motion-blur/exposure)
+            uint64_t OutlinerVisSig = 14695981039346656037ull;
+            for (const auto& Entry : Panes->Outliner.QueryEntries())
+            {
+                OutlinerVisSig ^= Entry.Token.Identifier;
+                OutlinerVisSig *= 1099511628211ull;
+                OutlinerVisSig ^= (Panes->Outliner.QueryEffectiveVisibility(Entry.Token) ? 0xA5u : 0x5Au);
+                OutlinerVisSig *= 1099511628211ull;
+                OutlinerVisSig ^= Entry.EnclosingToken.Identifier;
+                OutlinerVisSig *= 1099511628211ull;
+            }
+            const bool OutlinerVisChanged = (LastOutlinerVisibilitySig != 0ull) && (OutlinerVisSig != LastOutlinerVisibilitySig);
+            LastOutlinerVisibilitySig     = OutlinerVisSig;
+
+            // Re-apply standalone multi-instance inspector bindings so user edits and multi-instance rigs stay authoritative
+            const bool InspectorEdited = PendingInteractionSceneSync || OutlinerVisChanged;
+            if (InspectorEdited || EnvRegistryChanged)
+            {
+                Inspectors.AccessInstances().CombineIntoScene(
+                    Panes->Outliner,
+                    ShowcaseBundle->Scene,
+                    &Panes->Viewport.AccessDisplaySettings());
+            }
+
+            const bool GpuReady = (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady());
+            const bool AtmoChanged = ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || AtmoAnimTick;
+            // Only bake the CPU Bruneton SkyView LUT when the software CPU fallback renderer is active (!GpuReady).
+            // When the Vulkan hardware GPU compute pipeline is active, the GPU builds its own SkyView LUT on-device;
+            // CPU only runs lightweight (~0.01ms) solar ephemeris + transmittance to keep Sun direction/irradiance live.
+            const bool NeedCpuSkySync =
+                !GpuReady && ShowcaseRenderer != nullptr && Atmo.Medium.AtmosphereEnabled &&
+                (ViewportTogglesChanged || EnvRegistryChanged || InspectorEdited || DisplayCfg.DayCyclePlaying || AtmoAnimTick);
+            if (NeedCpuSkySync)
+            {
+                ShowcaseRenderer->SynchronizeWorldAtmosphere(ShowcaseBundle->Scene);
+            }
+            else if (Atmo.Medium.AtmosphereEnabled && (AtmoChanged || DisplayCfg.DayCyclePlaying))
+            {
+                const auto Solved = GeometricRaster::CelestialEphemerisSolver::SolveSolarEphemeris(Atmo.Solar);
+                const float ObsAlt = Atmo.Medium.ObserverAltitudeMeters;
+                const auto Trans = GeometricRaster::AtmosphericSkySequence::ComputeSolarTransmittance(
+                    Solved.WorldDirectionToSun,
+                    Atmo.Medium,
+                    ObsAlt);
+                const bool IsOrbital = Atmo.Medium.OrbitalViewEnabled || (ObsAlt > Atmo.Medium.AtmosphereThicknessMeters);
+                const float SunVis = IsOrbital ? 1.0f : std::clamp((Solved.ElevationDegrees + 4.0f) / 10.0f, 0.0f, 1.0f);
+                ShowcaseBundle->Scene.Sun.DirectionToSun = Solved.WorldDirectionToSun;
+                ShowcaseBundle->Scene.Sun.SunAngularRadiusRadians =
+                    std::clamp(Atmo.Solar.AngularDiameterDegrees * 0.5f * 0.0174532925f, 0.002f, 0.25f);
+                if (Atmo.Solar.SolarEnabled)
+                {
+                    const float IrradScale = Atmo.Solar.SolarIntensityMultiplier * Atmo.Solar.DirectGainMultiplier * 0.044f * SunVis;
+                    ShowcaseBundle->Scene.Sun.SolarIrradiance = {
+                        Solved.EffectiveSolarTint.R * Trans.R * IrradScale,
+                        Solved.EffectiveSolarTint.G * Trans.G * IrradScale,
+                        Solved.EffectiveSolarTint.B * Trans.B * IrradScale,
+                    };
+                }
+            }
+            LatestViewportTiming.EnvSyncMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - EnvSyncStart).count());
+
+            const ViewportProjectionPreset CurProjection = Panes->Viewport.QueryPrimaryProjection();
+            bool ProjectionChanged = false;
+            if (CurProjection != LastPrimaryProjection)
+            {
+                LastPrimaryProjection = CurProjection;
+                ProjectionChanged     = true;
+                auto& Cam             = ShowcaseBundle->EditorCamera;
+                const bool VehicleDefaultScene = (ShowcaseBundle->Objects.size() == 2u);
+                Cam.TargetPoint       = VehicleDefaultScene
+                    ? Mathematics::Axis3D{ 0.10f, 0.00f, 0.62f }
+                    : Mathematics::Axis3D{ 0.00f, 0.55f, 0.15f };
+                Cam.WorldUpAxis       = { 0.00f, 0.00f, 1.00f };
+                switch (CurProjection)
+                {
+                case ViewportProjectionPreset::Top:
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 0.10f, 0.00f, 6.20f }
+                        : Mathematics::Axis3D{ 0.00f, 0.50f, 5.20f };
+                    Cam.WorldUpAxis  = { 0.00f, 1.00f, 0.00f };
+                    break;
+                case ViewportProjectionPreset::Front:
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 6.20f, 0.00f, 0.72f }
+                        : Mathematics::Axis3D{ 0.00f, -4.40f, 0.45f };
+                    break;
+                case ViewportProjectionPreset::Right:
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 0.10f, -5.60f, 0.72f }
+                        : Mathematics::Axis3D{ 4.60f, 0.55f, 0.45f };
+                    break;
+                case ViewportProjectionPreset::Perspective:
+                case ViewportProjectionPreset::Orthographic:
+                default:
+                    Cam.CameraOrigin = VehicleDefaultScene
+                        ? Mathematics::Axis3D{ 4.85f, -4.15f, 1.68f }
+                        : Mathematics::Axis3D{ 0.00f, -3.55f, 0.42f };
+                    break;
+                }
+                DesiredCameraOrigin = Cam.CameraOrigin;
+                DesiredCameraTarget = Cam.TargetPoint;
+                DesiredCameraValid  = true;
+                EditorCameraLag.SnapTo(DesiredCameraOrigin, DesiredCameraTarget);
+            }
+
+            // Advance camera lag even when the cursor is outside the viewport pane so smooth settling never stalls
+            if (DesiredCameraValid && !PendingInteractionWorldRefresh && !WorldTransformGizmo.QueryDragging())
+            {
+                auto& Cam = ShowcaseBundle->EditorCamera;
+                if (!EditorCameraLag.QueryPrimed())
+                {
+                    EditorCameraLag.SnapTo(Cam.CameraOrigin, Cam.TargetPoint);
+                }
+                const float LagStepSeconds = static_cast<float>(std::clamp(SafeStep, 0.001, 0.100));
+                if (EditorCameraLag.AdvanceLag(DesiredCameraOrigin, DesiredCameraTarget, LagStepSeconds))
+                {
+                    Cam.CameraOrigin               = EditorCameraLag.QueryPosition();
+                    Cam.TargetPoint                = EditorCameraLag.QueryTarget();
+                    CameraLagSettling              = true;
+                    PendingInteractionWorldRefresh = true;
+                    if (OutlinerRecordEntry* CamEntry = Panes->Outliner.AccessEntry(ShowcaseBundle->EditorCameraToken))
+                    {
+                        CamEntry->PositionX = Cam.CameraOrigin.X;
+                        CamEntry->PositionY = Cam.CameraOrigin.Y;
+                        CamEntry->PositionZ = Cam.CameraOrigin.Z;
+                    }
+                    SynchronizeShowcaseGizmoAnchor();
+                }
+                else
+                {
+                    CameraLagSettling = false;
+                }
+            }
+
+            const bool              DisplayChanged =
+                (CurCanvasW >= 120u && CurCanvasH >= 90u &&
+                 (std::abs(static_cast<int>(CurCanvasW) - static_cast<int>(LastCanvasPaneWidth)) > 8 ||
+                  std::abs(static_cast<int>(CurCanvasH) - static_cast<int>(LastCanvasPaneHeight)) > 8)) ||
+                DisplayCfg.QualityTier != LastViewportTier ||
+                DisplayCfg.DebugChannelIndex != LastViewportDebug ||
+                DisplayCfg.RenderEngineIndex != LastRenderEngine ||
+                DisplayCfg.ShadowAlgorithmIndex != LastShadowAlgorithm ||
+                DisplayCfg.SdfShadowPenumbraIndex != LastSdfPenumbraIndex ||
+                DisplayCfg.ReflectionSourceIndex != LastReflectionSource ||
+                DisplayCfg.TraceResolutionIndex != LastTraceResolutionIdx ||
+                DisplayCfg.ClusterLodEnabled != LastClusterLodEnabled ||
+                DisplayCfg.ClusterLodPixelError != LastClusterLodPixelError ||
+                DisplayCfg.ClusterForcedLodLevel != LastClusterForcedLod ||
+                DisplayCfg.ClusterWireframeOverlay != LastClusterWireframe ||
+                DisplayCfg.PathTraceTargetSpp != LastPathTraceTargetSpp ||
+                DisplayCfg.PathTraceBatchSpp != LastPathTraceBatchSpp ||
+                DisplayCfg.XeGtaoEnabled != LastXeGtaoEnabled ||
+                std::abs(DisplayCfg.XeGtaoStrength - LastXeGtaoStrength) > 0.001f ||
+                DisplayCfg.XeGtaoSliceCount != LastXeGtaoSlices ||
+                DisplayCfg.XeGtaoStepsPerSide != LastXeGtaoSteps ||
+                std::abs(DisplayCfg.XeGtaoSearchRadiusM - LastXeGtaoRadiusM) > 0.001f ||
+                DisplayCfg.GiCandidateIndex != LastGiCandidate ||
+                DisplayCfg.SdfConeSteps != LastSdfConeSteps ||
+                std::abs(DisplayCfg.SdfGiIntensity - LastSdfGiIntensity) > 0.001f ||
+                std::abs(DisplayCfg.SdfAoRadiusM - LastSdfAoRadiusM) > 0.001f ||
+                std::abs(DisplayCfg.SdfAoContrast - LastSdfAoContrast) > 0.001f ||
+                DisplayCfg.MatcapChannelIndex != LastMatcapChannel ||
+                std::abs(DisplayCfg.MatcapRimGain - LastMatcapRimGain) > 0.001f ||
+                std::abs(DisplayCfg.CameraFocalLengthMm - LastCameraFocalMm) > 0.01f ||
+                std::abs(DisplayCfg.CameraSensorWidthMm - LastCameraSensorMm) > 0.01f ||
+                std::abs(DisplayCfg.CameraRollDegrees - LastCameraRollDeg) > 0.01f ||
+                DisplayCfg.PathTraceMaxBounces != LastPtMaxBounces ||
+                DisplayCfg.SmrtShadowRays != LastSmrtShadowRays ||
+                DisplayCfg.SmrtMarchSteps != LastSmrtMarchSteps ||
+                std::abs(DisplayCfg.SkyFillGain - LastSkyFillGain) > 0.001f ||
+                std::abs(DisplayCfg.ExposureGain - LastExposureGain) > 0.001f ||
+                std::abs(DisplayCfg.PostProcessSaturation - LastPostProcessSat) > 0.001f ||
+                std::abs(DisplayCfg.PostProcessContrast - LastPostProcessCon) > 0.001f ||
+                std::abs(DisplayCfg.PostProcessVignette - LastPostProcessVig) > 0.001f ||
+                DisplayCfg.MotionBlurEnabled != LastMotionBlurOn ||
+                DisplayCfg.MotionBlurStyleIndex != LastMotionBlurStyle ||
+                std::abs(DisplayCfg.MotionBlurShutterAngleDeg - LastMotionBlurShutter) > 0.01f ||
+                std::abs(DisplayCfg.MotionBlurIntensity - LastMotionBlurIntensity) > 0.001f ||
+                std::abs(DisplayCfg.MotionBlurMaxRadiusPx - LastMotionBlurRadius) > 0.01f ||
+                DisplayCfg.MotionBlurSampleCount != LastMotionBlurSamples ||
+                std::abs(DisplayCfg.MotionBlurDirectionalAngleRad - LastMotionBlurAngle) > 0.001f ||
+                DisplayCfg.ReflectionsEnabled != LastReflectionsEnabled ||
+                DisplayCfg.AntiAliasingEnabled != LastAaEnabled ||
+                DisplayCfg.RaytracingEnabled != LastRtEnabled ||
+                AtmoChanged ||
+                ProjectionChanged ||
+                CurScale != LastRenderScalePct;
+
+            if (CurCanvasW >= 120u && CurCanvasH >= 90u)
+            {
+                LastCanvasPaneWidth  = CurCanvasW;
+                LastCanvasPaneHeight = CurCanvasH;
+            }
+            LastViewportTier       = DisplayCfg.QualityTier;
+            LastViewportDebug      = DisplayCfg.DebugChannelIndex;
+            LastRenderEngine       = DisplayCfg.RenderEngineIndex;
+            LastShadowAlgorithm    = DisplayCfg.ShadowAlgorithmIndex;
+            LastSdfPenumbraIndex   = DisplayCfg.SdfShadowPenumbraIndex;
+            LastReflectionSource   = DisplayCfg.ReflectionSourceIndex;
+            LastTraceResolutionIdx = DisplayCfg.TraceResolutionIndex;
+            LastClusterLodEnabled  = DisplayCfg.ClusterLodEnabled;
+            LastClusterLodPixelError = DisplayCfg.ClusterLodPixelError;
+            LastClusterForcedLod   = DisplayCfg.ClusterForcedLodLevel;
+            LastClusterWireframe   = DisplayCfg.ClusterWireframeOverlay;
+            LastPathTraceTargetSpp = DisplayCfg.PathTraceTargetSpp;
+            LastPathTraceBatchSpp  = DisplayCfg.PathTraceBatchSpp;
+            LastXeGtaoEnabled      = DisplayCfg.XeGtaoEnabled;
+            LastXeGtaoStrength     = DisplayCfg.XeGtaoStrength;
+            LastXeGtaoSlices       = DisplayCfg.XeGtaoSliceCount;
+            LastXeGtaoSteps        = DisplayCfg.XeGtaoStepsPerSide;
+            LastXeGtaoRadiusM      = DisplayCfg.XeGtaoSearchRadiusM;
+            LastGiCandidate        = DisplayCfg.GiCandidateIndex;
+            LastSdfConeSteps       = DisplayCfg.SdfConeSteps;
+            LastSdfGiIntensity     = DisplayCfg.SdfGiIntensity;
+            LastSdfAoRadiusM       = DisplayCfg.SdfAoRadiusM;
+            LastSdfAoContrast      = DisplayCfg.SdfAoContrast;
+            LastMatcapChannel      = DisplayCfg.MatcapChannelIndex;
+            LastMatcapRimGain      = DisplayCfg.MatcapRimGain;
+            LastCameraFocalMm      = DisplayCfg.CameraFocalLengthMm;
+            LastCameraSensorMm     = DisplayCfg.CameraSensorWidthMm;
+            LastCameraRollDeg      = DisplayCfg.CameraRollDegrees;
+            LastPtMaxBounces       = DisplayCfg.PathTraceMaxBounces;
+            LastSmrtShadowRays     = DisplayCfg.SmrtShadowRays;
+            LastSmrtMarchSteps     = DisplayCfg.SmrtMarchSteps;
+            LastSkyFillGain        = DisplayCfg.SkyFillGain;
+            LastExposureGain       = DisplayCfg.ExposureGain;
+            LastPostProcessSat     = DisplayCfg.PostProcessSaturation;
+            LastPostProcessCon     = DisplayCfg.PostProcessContrast;
+            LastPostProcessVig     = DisplayCfg.PostProcessVignette;
+            LastMotionBlurOn       = DisplayCfg.MotionBlurEnabled;
+            LastMotionBlurStyle    = DisplayCfg.MotionBlurStyleIndex;
+            LastMotionBlurShutter  = DisplayCfg.MotionBlurShutterAngleDeg;
+            LastMotionBlurIntensity = DisplayCfg.MotionBlurIntensity;
+            LastMotionBlurRadius   = DisplayCfg.MotionBlurMaxRadiusPx;
+            LastMotionBlurSamples  = DisplayCfg.MotionBlurSampleCount;
+            LastMotionBlurAngle    = DisplayCfg.MotionBlurDirectionalAngleRad;
+            LastReflectionsEnabled = DisplayCfg.ReflectionsEnabled;
+            LastAaEnabled          = DisplayCfg.AntiAliasingEnabled;
+            LastRtEnabled          = DisplayCfg.RaytracingEnabled;
+            LastAtmosphereSky      = DisplayCfg.AtmosphereSkyEnabled;
+            LastCloudsEnabled      = DisplayCfg.VolumetricCloudsEnabled;
+            LastCloudShadowsEnabled = DisplayCfg.CloudShadowsEnabled;
+            LastCelestialsEnabled  = DisplayCfg.CelestialStarsEnabled;
+            LastSolarTimeHours     = DisplayCfg.SolarTimeOfDayHours;
+            LastCloudFraction      = DisplayCfg.CloudFraction;
+            LastCloudWindSpeedMps  = DisplayCfg.CloudWindSpeedMps;
+            LastRenderScalePct     = CurScale;
+
+            const bool InteractionWorldRefresh = PendingInteractionWorldRefresh;
+            const bool InteractionGizmoRefresh = PendingInteractionGizmoRefresh;
+            const bool InteractionSceneSync    = PendingInteractionSceneSync;
+            const bool InteractionFastDrag     = PendingInteractionFastDrag;
+            PendingInteractionWorldRefresh = false;
+            PendingInteractionGizmoRefresh = false;
+            PendingInteractionSceneSync    = false;
+            PendingInteractionFastDrag     = false;
+
+            SynchronizeComponentPlacementOverrides();
+
+            // Trigger full procedural Apocalyptic City generation if user clicked it in the Outliner "+" menu
+            for (const OutlinerRecordEntry& Rec : Panes->Outliner.QueryEntries())
+            {
+                if (Rec.CategoryLabel == "WorldGenerator")
+                {
+                    PopulateApocalypticCitySession();
+                    RefreshShowcaseViewportRaster();
+                    EditorSequence.Tick(SafeStep);
+                    return !TerminationRequested;
+                }
+            }
+
+            // Pull any Outliner/Gizmo edits back into WorldRegister and flush O(rebuilt) transforms into ClusterInstances
+            const bool OutlinerPushedToRegister =
+                InstanceEditorBridge.SynchronizeOutlinerMutationsToRegister(WorldRegister);
+            const uint32_t SyncedClusterTransforms =
+                SceneSyncBridge.FlushRebuiltTransformsToScene(WorldRegister, ShowcaseBundle->Scene);
+
+            // Execute tight SoA WorldInstanceRegister loops (Edit Mode: RequireRebuild-only early-out; Play/Simulate: live Δt)
+            const bool WorldSimEnabled =
+                (Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit) &&
+                !Panes->Viewport.QueryPlayPaused();
+            const World::WorldLoopStepMetrics WorldLoopMetrics =
+                World::ExecuteWorldSimulationSequence(
+                    WorldRegister,
+                    static_cast<float>(SafeStep),
+                    WorldSimEnabled);
+            const bool WorldRegisterMutated =
+                OutlinerPushedToRegister ||
+                (SyncedClusterTransforms > 0u) ||
+                InstanceEditorBridge.SynchronizeRegisterToWorldScene(
+                    WorldRegister,
+                    WorldLoopMetrics,
+                    ShowcaseBundle->Scene,
+                    static_cast<float>(SafeStep));
+
+            // Advance live warzone collapse, smashable glass/walls & roaming deer when Play or Simulate is active
+            bool ApocalypticSimMutated = false;
+            if (ApocalypticCitySim.ActiveCityLevel && WorldSimEnabled)
+            {
+                ApocalypticSimMutated = GeometricRaster::StepApocalypticCitySimulation(
+                    *ShowcaseBundle,
+                    ApocalypticCitySim,
+                    &Panes->Outliner,
+                    SafeStep);
+            }
+
+            bool       NeedsPrep = false;
+            const bool UseGpuDynamicSync = GpuReady;
+            const bool SceneMutated = GeometricRaster::SynchronizeShowcaseGallerySceneLive(
+                Panes->Outliner,
+                *ShowcaseBundle,
+                NeedsPrep,
+                UseGpuDynamicSync) || ApocalypticSimMutated || WorldRegisterMutated;
+            if (InteractionSceneSync && !NeedsPrep && !InteractionFastDrag && !WorldTransformGizmo.QueryDragging())
+            {
+                if (!GpuReady)
+                {
+                    GeometricRaster::RebuildShowcaseSceneAcceleration(*ShowcaseBundle);
+                    NeedsPrep = true;
+                }
+            }
+            if (NeedsPrep)
+            {
+                if (GpuReady)
+                {
+                    GpuWorldRenderer->SynchronizeSceneResources(
+                        ShowcaseBundle->Scene,
+                        true);
+                }
+                else if (ShowcaseRenderer != nullptr)
+                {
+                    ShowcaseRenderer->PrepareWorldScene(ShowcaseBundle->Scene);
+                }
+            }
+            const auto TickPrepEnd = std::chrono::steady_clock::now();
+            LatestViewportTiming.EditorTickMs = static_cast<float>(
+                std::chrono::duration<double, std::milli>(TickPrepEnd - TickStart).count());
+            // Progressive PT renders continuously until it converges: keep dispatching while the
+            // accumulated spp is below the target (0 = no cap, renders until camera/scene changes,
+            // which reset accumulation in the Vulkan sequence / below).
+            const bool PathTracerEngineActive = (DisplayCfg.RenderEngineIndex == 4u || DisplayCfg.RenderEngineIndex == 5u);
+            if (PathTracerEngineActive && GpuReady && (SceneMutated || DisplayChanged))
+            {
+                GpuWorldRenderer->ResetProgressiveAccumulation();
+            }
+            const bool ProgressiveOrder3Active =
+                GpuReady && PathTracerEngineActive &&
+                (DisplayCfg.PathTraceTargetSpp == 0u ||
+                 GpuWorldRenderer->QueryProgressiveSampleCount() < DisplayCfg.PathTraceTargetSpp);
+            const bool DiagnosticsLiveActive =
+                Panes->Viewport.QueryDiagnosticsVisible() && !Panes->Viewport.QueryDiagnosticsPaused();
+            const bool SelectionOutlineChanged = (CurrentSel != LastOutlinedSlot);
+            if (InteractionWorldRefresh || SceneMutated || WorldSimStepped || DisplayChanged || SelectionOutlineChanged || ProgressiveOrder3Active || DiagnosticsLiveActive)
+            {
+                FRONTIER_THOUGHT_SCOPE("Editor.ViewportRaster");
+                RefreshShowcaseViewportRaster();
+                if (PathTracerEngineActive && GpuWorldRenderer != nullptr)
+                {
+                    char PtReadout[96] {};
+                    if (DisplayCfg.PathTraceTargetSpp == 0u)
+                    {
+                        std::snprintf(PtReadout, sizeof(PtReadout), "PT %u spp · continuous", GpuWorldRenderer->QueryProgressiveSampleCount());
+                    }
+                    else
+                    {
+                        std::snprintf(
+                            PtReadout, sizeof(PtReadout), "PT %u / %u spp%s",
+                            GpuWorldRenderer->QueryProgressiveSampleCount(),
+                            DisplayCfg.PathTraceTargetSpp,
+                            (GpuWorldRenderer->QueryProgressiveSampleCount() >= DisplayCfg.PathTraceTargetSpp) ? " · converged" : "");
+                    }
+                    Panes->Viewport.ConfigureProbeReadoutText(PtReadout);
+                }
+            }
+            else if (InteractionGizmoRefresh || CurrentSel != LastGizmoSlot)
+            {
+                FRONTIER_THOUGHT_SCOPE("Editor.GizmoOverlayRefresh");
+                RefreshGizmoOverlayFromCachedWorld();
+            }
+        }
+    }
+    EditorSequence.Tick(SafeStep);
+    return !TerminationRequested;
+}
+
+bool EditorLifecycle::QueryRequiresContinuousRefresh() noexcept
+{
+    if (!Initialized || TerminationRequested)
+    {
+        return false;
+    }
+    if (CameraInteractiveDrag || CameraLagSettling || RightMouseFlyActive ||
+        PendingInteractionWorldRefresh || PendingInteractionGizmoRefresh || PendingInteractionSceneSync)
+    {
+        return true;
+    }
+    if (ContentBrowserDrawer.QueryPanel().QueryShelfAnimating() ||
+        Inspectors.QueryScrollAnimating() ||
+        DropdownSelector::QueryAnyScrollAnimating())
+    {
+        return true;
+    }
+    if (ControlCentre.QueryActiveContact() ||
+        !ControlCentre.AccessNotificationStream().QueryPending().empty())
+    {
+        return true;
+    }
+    const float CurShade = ControlCentre.QueryShadeProgress();
+    const bool  ShadeMoving = std::fabs(CurShade - LastShadeProgress) > 5.0e-4f ||
+                              (ControlCentre.QueryDetent() == DrawerDetentStop::Closed && CurShade > 1.0e-3f);
+    LastShadeProgress = CurShade;
+    if (ShadeMoving)
+    {
+        return true;
+    }
+    if (const WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+    {
+        if (Panes->Outliner.QueryScrollAnimating() || Panes->Inspector.QueryScrollAnimating())
+        {
+            return true;
+        }
+        if (Panes->Viewport.QueryExecutionMode() != ViewportExecutionMode::Edit &&
+            !Panes->Viewport.QueryPlayPaused())
+        {
+            return true;
+        }
+        if (Panes->Viewport.QueryDiagnosticsVisible() && !Panes->Viewport.QueryDiagnosticsPaused())
+        {
+            return true;
+        }
+        const auto& Disp = Panes->Viewport.QueryDisplaySettings();
+        const bool  PtEngine = (Disp.RenderEngineIndex == 4u || Disp.RenderEngineIndex == 5u);
+        if (PtEngine && GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady())
+        {
+            if (Disp.PathTraceTargetSpp == 0u ||
+                GpuWorldRenderer->QueryProgressiveSampleCount() < Disp.PathTraceTargetSpp)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void EditorLifecycle::RecordFramePresentationTiming(
+    float DesktopPollAndUiMs,
+    float SwapchainPresentMs,
+    float TotalFrameMs) noexcept
+{
+    ++TimingFrameCounter;
+    LatestViewportTiming.FrameIndex         = TimingFrameCounter;
+    LatestViewportTiming.DesktopPollAndUiMs = DesktopPollAndUiMs;
+    LatestViewportTiming.SwapchainPresentMs = SwapchainPresentMs;
+    LatestViewportTiming.TotalFrameMs       = TotalFrameMs;
+    if (LatestViewportTiming.WorldDispatched)
+    {
+        LastActiveWorldTotalMs = TotalFrameMs;
+    }
+
+    if (GpuWorldRenderer != nullptr && GpuWorldRenderer->QueryReady() && LatestViewportTiming.RenderWidthPx == 0u)
+    {
+        LatestViewportTiming.HardwareGpuActive = GpuWorldRenderer->QueryHardwareGpuActive();
+        LatestViewportTiming.AdapterName       = std::string(GpuWorldRenderer->QueryAdapterTitle());
+    }
+
+    if (WorkspaceSessionPanes* Panes = Workspaces.AccessActivePanes())
+    {
+        LatestViewportTiming.InspectorUiMs          = Panes->Inspector.QueryLastRenderDurationMs();
+        LatestViewportTiming.InspectorCacheReplayed = Panes->Inspector.QueryLastRenderReplayed();
+        LatestViewportTiming.InspectorCaptureCount  = Panes->Inspector.QueryRetainedCaptureCount();
+        LatestViewportTiming.InspectorReplayCount   = Panes->Inspector.QueryRetainedReplayCount();
+        Panes->Viewport.ConfigureViewportTimingBreakdown(LatestViewportTiming);
+
+        // Keep F3 Physics & Vehicle diagnostics synced with the thread-safe PhysicsDebugLog journal
+        auto& PhysJournal = SimulationSpace::PhysicsSpace::PhysicsDebugLog::AccessSharedJournal();
+        const uint64_t SeqNow = PhysJournal.QueryTotalEmittedCount();
+        PhysicsTelemetryReading PhysTel = Panes->Viewport.QueryLastPhysicsTelemetry();
+        if (SeqNow != PhysTel.DebugLogSequence)
+        {
+            PhysTel.DebugLogSequence = SeqNow;
+            const auto RecentLogs = PhysJournal.CopyRecentEntries(4u);
+            PhysTel.RecentLogLines.clear();
+            for (const auto& Entry : RecentLogs)
+            {
+                PhysTel.RecentLogLines.push_back(SimulationSpace::PhysicsSpace::PhysicsDebugLog::FormatEntryLine(Entry));
+            }
+            if (!PhysTel.RecentLogLines.empty())
+            {
+                PhysTel.LatestLogSummary = PhysTel.RecentLogLines.back();
+            }
+            Panes->Viewport.ConfigurePhysicsTelemetry(PhysTel);
+        }
+
+        RefreshOutlinerFooterTelemetry();
+        const auto& Disp = Panes->Viewport.QueryDisplaySettings();
+        const uint64_t DispRev =
+            (static_cast<uint64_t>(Disp.RenderEngineIndex) << 24u) ^
+            (static_cast<uint64_t>(Disp.SdfShadowPenumbraIndex) << 16u) ^
+            (static_cast<uint64_t>(Disp.QualityTier) << 8u) ^
+            static_cast<uint64_t>(Disp.PathTraceTargetSpp);
+        Panes->Inspector.AssignExternalRevision(DispRev);
+    }
+
+    if (!TimingLogInitialized)
+    {
+        InitializeTimingLogFile(
+            LatestViewportTiming.TimingLogPath,
+            LatestViewportTiming.AdapterName,
+            LatestViewportTiming.HardwareGpuActive);
+        TimingLogInitialized = true;
+    }
+
+    const bool LogStartup  = (TimingFrameCounter <= 5ull);
+    const bool LogPeriodic = LatestViewportTiming.WorldDispatched && ((TimingFrameCounter % 60ull) == 0ull);
+    const bool LogSpike    = LatestViewportTiming.WorldDispatched &&
+                             ((TotalFrameMs > 30.0f) || (LatestViewportTiming.SceneSyncGpuMs > 10.0f));
+    if (LogStartup || LogPeriodic || LogSpike)
+    {
+        const char* Tag = LogStartup ? "INIT" : (LogSpike ? "SPIKE" : "SAMPLE");
+        AppendTimingLogLine(LatestViewportTiming.TimingLogPath, LatestViewportTiming, Tag);
+    }
+}
+
+bool EditorLifecycle::ExecuteAuthoringTick(double Δt)
+{
+    if (!Initialized || TerminationRequested)
+    {
+        return false;
+    }
+
+    const double MaxStep  = StartupConfig.MaximumStep > 0.0 ? StartupConfig.MaximumStep : 0.100;
+    const double SafeStep = (std::isfinite(Δt) && Δt > 0.0) ? std::min(Δt, MaxStep) : 0.0;
+    CurrentStepSeconds    = SafeStep;
+
+    InputParticipant.BeginTick();
+    DockContainer.PollOperatingWindows(InputParticipant);
+    (void)InputParticipant.TickExchange();
+
+    if (Windowing::HeadlessPlatformWindow* Primary = DockContainer.AccessOperatingSurface(Components::HostWindowToken{ 0u }))
+    {
+        if (Primary->CloseRequested())
+        {
+            TerminationRequested = true;
+        }
+        else
+        {
+            (void)InputParticipant.FlushOutboundDirectives(*Primary);
+        }
+    }
+
+    if (!TerminationRequested)
+    {
+        return ExecuteExternalDesktopTick(SafeStep);
+    }
+
+    return !TerminationRequested;
+}
+
+void EditorLifecycle::PresentPrimaryEditorImGui(double Δt)
+{
+    FRONTIER_THOUGHT_SCOPE("Editor.ImGuiPresent");
+    if (!Initialized || ImGui::GetCurrentContext() == nullptr)
+    {
+        return;
+    }
+
+    const double SafeStep = (std::isfinite(Δt) && Δt > 0.0) ? Δt : CurrentStepSeconds;
+    CurrentStepSeconds    = SafeStep;
+
+    Components::ConfigureImGuiWorkspaceTheme(DockContainer.ActiveTabMetrics(), ControlCentre.QueryThemeRepository());
+    ContentBrowserDrawer.AttachThemeRepository(&ControlCentre.QueryThemeRepository());
+
+    const float UiScale = std::clamp(ControlCentre.QueryInterfaceScaleFactor(), 0.75f, 2.0f);
+    const Components::HostWindowReading HostReading = DockContainer.InspectHostWindow(Components::HostWindowToken{ 0u });
+    const bool HostValid = HostReading.Active && HostReading.SurfaceExtent.PixelWidth > 0u && HostReading.SurfaceExtent.PixelHeight > 0u;
+    const Rectangle2D Bounds = HostValid
+                                   ? Rectangle2D{
+                                         0.0f,
+                                         0.0f,
+                                         static_cast<float>(HostReading.SurfaceExtent.PixelWidth),
+                                         static_cast<float>(HostReading.SurfaceExtent.PixelHeight),
+                                     }
+                                   : Rectangle2D{};
+
+    if (HostValid)
+    {
+        auto& BrowserPanel = ContentBrowserDrawer.AccessPanel();
+        BrowserPanel.SynchronizeHostBounds(Bounds, UiScale);
+        ControlCentre.SynchronizeHostBounds(Bounds, UiScale);
+        if (ControlCentre.QueryFullScreenBlocking() || BrowserPanel.QueryShelfDragging())
+        {
+            WorkspaceAppearance::AssignOverlayPointerShield(Bounds);
+        }
+        else
+        {
+            WorkspaceAppearance::AssignOverlayPointerShield(
+                BrowserPanel.QueryDrawerPhysicalBounds(),
+                BrowserPanel.QueryNotchPhysicalBounds());
+            WorkspaceAppearance::AppendOverlayPointerShield(ControlCentre.QueryShadePhysicalBounds());
+            WorkspaceAppearance::AppendOverlayPointerShield(ControlCentre.QueryTabPhysicalBounds());
+        }
+    }
+
+    if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+    {
+        ContentBrowserDrawer.SynchronizeWorkspaceTargets(&ActivePanes->Outliner, &ActivePanes->Inspector);
+    }
+
+    DockContainer.PresentWindowImGuiPanes(Components::HostWindowToken{ 0u });
+    WorkspaceAppearance::ClearOverlayPointerShield();
+    if (RightMouseFlyActive && !ImGui::IsMouseDown(ImGuiMouseButton_Right))
+    {
+        RightMouseFlyActive     = false;
+        NavigationDragWasActive = false;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
+    }
+
+    if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+    {
+        ContentBrowserDrawer.SynchronizeWorkspaceTargets(&ActivePanes->Outliner, &ActivePanes->Inspector);
+        SynchronizeContentBrowserColourTargets();
+    }
+
+    if (HostValid)
+    {
+        const float RefreshHz = HostReading.SurfaceExtent.RefreshRateHz > 0u
+                                    ? static_cast<float>(HostReading.SurfaceExtent.RefreshRateHz)
+                                    : 60.0f;
+        ContentBrowserDrawer.Render(Bounds, SafeStep, UiScale);
+        ControlCentre.Render(Bounds, SafeStep, RefreshHz);
+
+        // Live GPU ImGui readout badge for active Transform / Rotate / Scale gizmo drags (~0.002 ms GPU)
+        if (WorldTransformGizmo.QueryDragging() && !WorldTransformGizmo.QueryActiveHudReadout().empty())
+        {
+            if (WorkspaceSessionPanes* ActivePanes = Workspaces.AccessActivePanes())
+            {
+                const Rectangle2D CanvasBounds = ActivePanes->Viewport.QueryLastCanvasPaneBounds();
+                if (CanvasBounds.Width >= 64.0f && CanvasBounds.Height >= 64.0f)
+                {
+                    PixelSpace HudOverlay(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, UiScale);
+                    const Point2D MouseLogical = HudOverlay.QueryMousePosition();
+                    const std::string& Label   = WorldTransformGizmo.QueryActiveHudReadout();
+                    const float FontSz         = 12.0f;
+                    const float TextW          = std::max(56.0f, HudOverlay.MeasureTextWidth(FontSz, Label.c_str()));
+                    const float PillW          = TextW + 22.0f;
+                    const float PillH          = 24.0f;
+                    const float ClampMinX      = CanvasBounds.X + 8.0f;
+                    const float ClampMaxX      = std::max(ClampMinX, CanvasBounds.Right() - PillW - 8.0f);
+                    const float ClampMinY      = CanvasBounds.Y + 8.0f;
+                    const float ClampMaxY      = std::max(ClampMinY, CanvasBounds.Bottom() - PillH - 8.0f);
+                    const float PillX          = std::clamp(MouseLogical.X + 18.0f, ClampMinX, ClampMaxX);
+                    const float PillY          = std::clamp(MouseLogical.Y - PillH - 12.0f, ClampMinY, ClampMaxY);
+                    const Rectangle2D PillRect { PillX, PillY, PillW, PillH };
+
+                    ColorRgba AccentColor { 255u, 255u, 255u, 255u };
+                    const auto ActiveH = WorldTransformGizmo.QueryActiveHandle();
+                    if (ActiveH == Editor::GizmoHandleOrdinal::TranslateX ||
+                        ActiveH == Editor::GizmoHandleOrdinal::ScaleX ||
+                        ActiveH == Editor::GizmoHandleOrdinal::RotateX)
+                    {
+                        AccentColor = { 224u, 20u, 20u, 255u };
+                    }
+                    else if (ActiveH == Editor::GizmoHandleOrdinal::TranslateY ||
+                             ActiveH == Editor::GizmoHandleOrdinal::ScaleY ||
+                             ActiveH == Editor::GizmoHandleOrdinal::RotateY)
+                    {
+                        AccentColor = { 18u, 212u, 10u, 255u };
+                    }
+                    else if (ActiveH == Editor::GizmoHandleOrdinal::TranslateZ ||
+                             ActiveH == Editor::GizmoHandleOrdinal::ScaleZ ||
+                             ActiveH == Editor::GizmoHandleOrdinal::RotateZ)
+                    {
+                        AccentColor = { 21u, 96u, 224u, 255u };
+                    }
+
+                    HudOverlay.FillRectangle(PillRect, ColorRgba{ 16u, 20u, 26u, 236u }, 6.0f);
+                    HudOverlay.StrokeRectangle(PillRect, AccentColor, 6.0f, 1.5f);
+                    HudOverlay.FillRectangle(Rectangle2D{ PillX + 4.0f, PillY + 5.0f, 3.0f, PillH - 10.0f }, AccentColor, 1.5f);
+                    HudOverlay.Text(
+                        Point2D{ PillX + 13.0f, PillY + 5.0f },
+                        FontSz,
+                        ColorRgba{ 242u, 246u, 252u, 255u },
+                        Label.c_str());
+                }
+            }
+        }
+
+        if (ReturnToBrowserCallback && !ControlCentre.QueryOpen())
+        {
+            PixelSpace TopOverlay(ImGui::GetForegroundDrawList(), Point2D{ 0.0f, 0.0f }, UiScale);
+            const Point2D MouseLogical = TopOverlay.QueryMousePosition();
+            ControlPointer Ptr {};
+            Ptr.X        = MouseLogical.X;
+            Ptr.Y        = MouseLogical.Y;
+            Ptr.Down     = TopOverlay.QueryMouseDown(0);
+            Ptr.Pressed  = TopOverlay.QueryMouseClicked(0);
+            Ptr.Released = TopOverlay.QueryMouseReleased(0);
+
+            const float LogicalW = Bounds.Width / UiScale;
+            const Rectangle2D BtnBounds { std::max(320.0f, LogicalW * 0.5f + 98.0f), 3.0f, 82.0f, 23.0f };
+            ButtonDescriptor Desc {};
+            Desc.Label    = "Projects";
+            Desc.Tone     = ButtonTone::Secondary;
+            Desc.FontSize = 10.5f;
+            Desc.PaddingX = 12.0f;
+            if (CapsuleButton::Construct(TopOverlay, BtnBounds, Desc, Ptr).Pressed)
+            {
+                ReturnToBrowserCallback();
+            }
+        }
+    }
+}
+
+bool EditorLifecycle::Suspend() noexcept
+{
+    if (!Initialized)
+    {
+        return false;
+    }
+    if (RightMouseFlyActive)
+    {
+        RightMouseFlyActive = false;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
+    }
+    const bool OverlaySuspended   = EditorSequence.Suspend();
+    const bool WorkspaceSuspended = Workspaces.Suspend();
+    return OverlaySuspended && WorkspaceSuspended;
+}
+
+bool EditorLifecycle::Resume() noexcept
+{
+    if (!Initialized)
+    {
+        return false;
+    }
+    const bool WorkspaceResumed = Workspaces.Resume();
+    const bool OverlayResumed   = EditorSequence.Resume();
+    return WorkspaceResumed && OverlayResumed;
+}
+
+void EditorLifecycle::RequestTermination() noexcept
+{
+    TerminationRequested = true;
+}
+
+void EditorLifecycle::Finalize() noexcept
+{
+    if (!Initialized)
+    {
+        EditorSequence.Finalize();
+        return;
+    }
+
+    // 🔴 CRITICAL: Flush RAM-buffered viewport timing telemetry to disk on editor exit before tearing down subsystems.
+    ReleaseTimingLogOnExit();
+    if (RightMouseFlyActive)
+    {
+        RightMouseFlyActive = false;
+        if (auto* ActiveExt = Input::InputExtension::QueryActiveExtension())
+        {
+            ActiveExt->RequestCursorConfinement(Input::CursorConfinementMode::FreeVisible);
+        }
+    }
+    SimulationAdapter.Teardown();
+    WorldSimulation.Stop();
+    EditorSequence.Finalize();
+    InspectorGpuBaker::DetachImGuiPresenter();
+    if (StartupConfig.ImGuiPresenter != nullptr)
+    {
+        StartupConfig.ImGuiPresenter->ReleaseExternalImages();
+    }
+    CachedWorldRgba8.clear();
+    LastWorldImageView = VK_NULL_HANDLE;
+    WorldGizmoRasterizer.reset();
+    GpuWorldRenderer.reset();
+    ShowcaseRenderer.reset();
+    InstanceEditorBridge.Unbind();
+    SceneSyncBridge.ClearBindings();
+    WorldRegister.ClearAll();
+    ShowcaseBundle.reset();
+    Workspaces.Finalize();
+
+    if (TypographyRepository::QueryCurrent() == &Typography)
+    {
+        TypographyRepository::AssignCurrent(nullptr);
+    }
+
+    InputParticipant.Finalize();
+    DockContainer.Finalize();
+
+    OutlinerPaneToken    = {};
+    ViewportPaneToken    = {};
+    InspectorPaneToken   = {};
+    Initialized          = false;
+    TerminationRequested = false;
+}
+
+bool EditorLifecycle::BeginWorldSimulationPlay(std::string* OutError)
+{
+    return WorldSimulation.BeginPlayFromWorldPlacements(
+        ComponentDefinitions,
+        WorldPlacements,
+        ActiveProjectTitle.empty() ? "FrontierWorldPlay" : ActiveProjectTitle,
+        OutError);
+}
+
+bool EditorLifecycle::BeginWorldSimulationFromSceneFile(const std::filesystem::path& ScenePath, std::string* OutError)
+{
+    return WorldSimulation.BeginPlayFromSceneFile(ScenePath, OutError);
+}
+
+EditorLifecycleReading EditorLifecycle::InspectReading() const noexcept
+{
+    EditorLifecycleReading Reading{};
+    Reading.SequencePhase       = EditorSequence.QueryPhase();
+    Reading.SequenceMetrics     = EditorSequence.InspectMetrics();
+    Reading.ActiveWindowCount   = DockContainer.ActiveOperatingWindowCount();
+    Reading.RegisteredPaneCount = static_cast<uint32_t>(DockContainer.RegisteredPaneCount());
+    Reading.OpenWorkspaceCount  = Workspaces.OpenSessionCount();
+    Reading.GpuOverlayCount     = RegisteredGpuOverlays;
+    Reading.ControlCentreOpen   = ControlCentre.QueryOpen();
+    Reading.ContentBrowserOpen  = ContentBrowserDrawer.QueryPanel().QueryOpen();
+    Reading.AuthoringActive     = QueryActive();
+    return Reading;
+}
+
+} // namespace Frontier::Lifecycle
+
+#endif // FRONTIER_EDITOR_ENABLED

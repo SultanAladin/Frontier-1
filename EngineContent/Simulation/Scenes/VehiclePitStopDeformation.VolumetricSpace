@@ -1,0 +1,60 @@
+# Frontier Unified Multi-Domain Simulation Scene (.VolumetricSpace)
+
+[Scene]
+Title = "VehiclePitStopDeformation"
+SchemaVersion = 1
+FixedStepHz = 60.0
+CameraWorldPosition = [4.5, 1.9, 4.6]
+
+[Fluid]
+GridCells = [16, 16, 16]
+CellSizeMeters = 0.22
+CentreMeters = [-1.2, 1.4, -0.6]
+Buoyancy = 2.4
+Combustion = 0.9
+PressureIterations = 12
+
+[Vehicle]
+EnableCoupling = true
+VertexAtlasPath = "EngineContent/Simulation/Deformables/SportTireFem.VertexAtlas"
+
+[[Force]]
+Identifier = "PitLaneDraft"
+ModelCode = 0
+Position = [0.0, 1.0, 0.0]
+Direction = [0.85, 0.1, 0.5]
+Strength = 3.2
+RadiusMeters = 14.0
+FalloffCode = 3
+
+[[FluidSource]]
+Identifier = "ExhaustHeatPlume"
+Position = [-1.6, 0.55, -0.4]
+RadiusMeters = 0.35
+VelocityMps = [-1.8, 0.9, 0.2]
+Density = 1.4
+Temperature = 3.1
+Fuel = 0.6
+
+[[ParticleCloud]]
+Identifier = "BrakeSparks"
+Position = [-0.8, 0.45, 0.8]
+RadiusMeters = 0.28
+ParticleCount = 256
+ReleaseRate = 20.0
+SpeedMps = 3.2
+LifetimeSec = 1.4
+GravityY = -4.5
+GasInfluence = 0.65
+FieldInfluence = 0.7
+
+[[SoftBody]]
+Label = "SpareTireStack"
+SoftBodyPath = "EngineContent/Simulation/Deformables/SportTirePneumatic.SoftBody"
+WorldOrigin = [1.6, 0.65, -1.2]
+
+[[RigidCollider]]
+BodySlotIndex = 202
+CenterMeters = [1.6, 0.35, -1.2]
+RadiusMeters = 0.35
+DynamicReply = true

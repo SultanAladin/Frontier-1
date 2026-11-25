@@ -1,0 +1,74 @@
+# Frontier Unified Multi-Domain Simulation Scene (.VolumetricSpace)
+
+[Scene]
+Title = "IndustrialWindTunnel"
+SchemaVersion = 1
+FixedStepHz = 60.0
+CameraWorldPosition = [3.8, 2.2, 5.4]
+
+[Fluid]
+GridCells = [16, 16, 16]
+CellSizeMeters = 0.24
+CentreMeters = [0.0, 1.8, 0.0]
+Buoyancy = 0.85
+Combustion = 0.0
+PressureIterations = 14
+
+[Vehicle]
+EnableCoupling = false
+VertexAtlasPath = ""
+
+[[Force]]
+Identifier = "TunnelJetStream"
+ModelCode = 0
+Position = [-2.5, 1.8, 0.0]
+Direction = [1.0, 0.0, 0.0]
+Strength = 7.5
+RadiusMeters = 10.0
+FalloffCode = 3
+
+[[Force]]
+Identifier = "WakeTurbulence"
+ModelCode = 1
+Position = [0.4, 1.8, 0.0]
+Direction = [1.0, 0.2, 0.0]
+Strength = 2.4
+RadiusMeters = 4.0
+FalloffCode = 0
+
+[[FluidSource]]
+Identifier = "SmokeRakeInlet"
+Position = [-1.8, 1.8, 0.0]
+RadiusMeters = 0.45
+VelocityMps = [3.6, 0.0, 0.0]
+Density = 1.9
+Temperature = 0.4
+Fuel = 0.0
+
+[[ParticleCloud]]
+Identifier = "StreamlineTracers"
+Position = [-1.7, 1.8, 0.0]
+RadiusMeters = 0.4
+ParticleCount = 256
+ReleaseRate = 18.0
+SpeedMps = 2.5
+LifetimeSec = 2.2
+GravityY = 0.0
+GasInfluence = 1.0
+FieldInfluence = 0.9
+
+[[SoftBody]]
+Label = "TestBanner"
+SoftBodyPath = "EngineContent/Simulation/Deformables/WovenCloth.SoftBody"
+WorldOrigin = [0.2, 1.8, -0.4]
+
+[[SoftBody]]
+Label = "RiggingChains"
+SoftBodyPath = "EngineContent/Simulation/Deformables/CablesChains.SoftBody"
+WorldOrigin = [1.1, 2.2, 0.5]
+
+[[RigidCollider]]
+BodySlotIndex = 101
+CenterMeters = [-0.4, 1.8, 0.0]
+RadiusMeters = 0.38
+DynamicReply = true

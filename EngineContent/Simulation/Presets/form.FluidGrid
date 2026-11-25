@@ -1,0 +1,241 @@
+# Dissolving Form — Fluid Studio scene preset (Studio). No smoke — a solid particle sphere peeling into noise, with a bioluminescent bloom rising beneath it.
+# Converted from the legacy preset object by script; scene fingerprint e5f33ce106baf73a (checked by FluidValidation.mjs).
+
+[Document]
+Format = "frontier-fluid-preset"
+Revision = 1
+SpecificationHash = "c0d4526879189117"
+
+[Scene]
+Order = 15
+Id = "preset-form"
+Name = "Dissolving Form"
+Family = "Studio"
+Icon = "swarm"
+Summary = "No smoke — a solid particle sphere peeling into noise, with a bioluminescent bloom rising beneath it."
+
+[Grid]
+Resolution = [48, 48, 48]
+Size = [6, 6, 6]
+
+[Render]
+Visible = false
+
+[[Volume]]
+  Token = "gas-volume"
+  Category = 1
+
+  [[Volume.Layer]]
+    Token = "layer-1"
+    Category = 101
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Gravity = 0.25, ForceResponse = 1.0, PressureIterations = 8, TimeScale = 1.0, SceneLoop = 0.0, Advection = 1 }
+
+  [[Volume.Layer]]
+    Token = "layer-2"
+    Category = 104
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Combustion = 1.0, Expansion = 0.6 }
+
+  [[Volume.Layer]]
+    Token = "layer-3"
+    Category = 106
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Dissipation = 0.99, VelocityDissipation = 0.999 }
+
+  [[Volume.Layer]]
+    Token = "layer-4"
+    Category = 107
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Density = 1.0, Albedo = "#8e8f94", Absorption = 3.2, Anisotropy = 0.45, Ambient = "#3a414c", LightIntensity = 1.4 }
+
+  [[Volume.Layer]]
+    Token = "layer-5"
+    Category = 108
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FireIntensity = 4.0, FireThreshold = 1.0, FireSoftness = 3.5, FireOpacity = 1.4, FireEmber = "#ff2a05", FireFlame = "#ff8a16", FireCore = "#fff3cf", FireLight = 1.0 }
+
+[[Force]]
+  Type = "CurlNoiseTurbulence"
+  Name = "Peel"
+  Position = [0, 0.4, 0]
+  Strength = 1.2
+  Radius = 2.2
+  Falloff = "Gaussian"
+  Frequency = 0.8
+  Secondary = 0.35
+
+[[Force]]
+  Type = "ThermalUpdraft"
+  Name = "Lift"
+  Position = [0, -1.5, 0]
+  Strength = 0.5
+  Radius = 2.4
+  Falloff = "Plateau"
+
+
+[[Particle]]
+  Template = "dissolving-sphere"
+  Name = "Form Sphere"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 1, Shape = 1, Position = [0, 0.4, 0], Direction = [0, 1, 0], Radius = 1.4, Fill = 0.7, Count = 16384, Rate = 8.0, Lifetime = 3.0, Linger = 0.6, Speed = 2.0, Spread = 0.5, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 202
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Spring = 4.0, Damping = 2.0, Dissolve = 0.5 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 0.0, NoiseScale = 0.8, NoiseSpeed = 0.15 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 208
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Bounce = 0.2 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 2, Palette = ["#fde7d9", "#f9c6b0", "#f5a98a", "#ffffff"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 0.9, CycleSpeed = 0.5, HueJitter = 0.0, BrightnessJitter = 0.25, Brightness = 1.0, Flicker = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 0, SizeStart = 0.014, SizeEnd = 0.014, SizeRandom = 0.6 }
+
+  [[Particle.Layer]]
+    Token = "layer-8"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 1, Glow = 0.15, Blend = 0, Style = 0, FocusDistance = 6.0, Aperture = 0.35 }
+
+[[Particle]]
+  Template = "bioluminescent"
+  Name = "Bloom"
+  StartTime = 0
+  Duration = 0
+  Fade = 0.15
+  Repeat = 0
+
+  [[Particle.Layer]]
+    Token = "layer-1"
+    Category = 201
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Mode = 0, Shape = 3, Position = [0, -2.9, 0], Direction = [0, 1, 0], Radius = 2.2, Fill = 0.0, Count = 8192, Rate = 4.0, Lifetime = 9.0, Linger = 0.6, Speed = 0.45, Spread = 0.5, Radial = 0.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-2"
+    Category = 204
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Drag = 1.1 }
+
+  [[Particle.Layer]]
+    Token = "layer-3"
+    Category = 205
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Noise = 1.0, NoiseScale = 0.7, NoiseSpeed = 0.25 }
+
+  [[Particle.Layer]]
+    Token = "layer-4"
+    Category = 206
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { FieldInfluence = 1.0 }
+
+  [[Particle.Layer]]
+    Token = "layer-5"
+    Category = 209
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { ColourMode = 0, Palette = ["#d9fff0", "#6ee7b7", "#10b981", "#064e3b"], RampSource = 0, Ramp = 0, MaxSpeed = 6.0, DisplacementRange = 1.0, CycleSpeed = 0.5, HueJitter = 0.06, BrightnessJitter = 0.5, Brightness = 1.3, Flicker = 0.7 }
+
+  [[Particle.Layer]]
+    Token = "layer-6"
+    Category = 210
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { SizeMode = 0, SizeStart = 0.006, SizeEnd = 0.014, SizeRandom = 0.85 }
+
+  [[Particle.Layer]]
+    Token = "layer-7"
+    Category = 211
+    Enabled = true
+    Solo = false
+    Weight = 1.0
+    Blend = 0
+    Parameters = { Sprite = 2, Glow = 0.4, Blend = 1, Style = 0, FocusDistance = 5.5, Aperture = 0.45 }
